@@ -129,12 +129,25 @@ export function checkSettings(s: Partial<CoreSettings>) {
       int(s.live.engineProofN, "engine proof closes");
     }
     if (s.live.engineProofPf !== undefined) num(s.live.engineProofPf, 0, 10, "engine proof PF");
-    if (s.live.promotedLanes !== undefined && (!Array.isArray(s.live.promotedLanes) ||
-      s.live.promotedLanes.some((lane) => !lane || !validPromotedLaneProof(lane, lane.asOf))))
-      throw new Error("promoted lanes: exact, complete after-Base and owned-execution proofs required");
+    if (
+      s.live.promotedLanes !== undefined &&
+      (!Array.isArray(s.live.promotedLanes) ||
+        s.live.promotedLanes.some((lane) => !lane || !validPromotedLaneProof(lane, lane.asOf)))
+    )
+      throw new Error(
+        "promoted lanes: exact, complete after-Base and owned-execution proofs required",
+      );
     if (s.live.kinds !== undefined) {
       if (!Array.isArray(s.live.kinds)) throw new Error("live kinds: a list of strategy kinds");
-      const ok = new Set(["normal", "trailing", "trailing-only", "dca", "dca-active", "axis"]);
+      const ok = new Set([
+        "normal",
+        "trailing",
+        "trailing-only",
+        "exit",
+        "dca",
+        "dca-active",
+        "axis",
+      ]);
       for (const k of s.live.kinds)
         if (!ok.has(k))
           throw new Error(`live kinds: ${k} is not a strategy kind (${[...ok].join(", ")})`);
@@ -213,6 +226,37 @@ export function checkSettings(s: Partial<CoreSettings>) {
   if (s.toggles)
     for (const [k, v] of Object.entries(s.toggles))
       if (typeof v !== "boolean") throw new Error(`toggle ${k} must be boolean`);
+  if (s.exitStrategy) {
+    const e = s.exitStrategy;
+    if (e.enabled !== undefined && typeof e.enabled !== "boolean")
+      throw new Error("historic exit strategy: on / off");
+    num(e.lookbackH, 0, 720, "historic exit lookback (hours)");
+    num(e.trainFraction, 0.5, 0.8, "historic exit fit fraction");
+    num(e.minEntries, 5, 1000, "historic exit fit entries");
+    num(e.minValidationTrades, 2, 500, "historic exit validation closes");
+    num(e.minPf, 1.05, 10, "historic exit validation PF");
+    num(e.maxDdr, 0, 10, "historic exit max drawdown / net ratio");
+    num(e.holdH, 0.5, 96, "historic exit maximum hold (hours)");
+    num(e.maxConfigsPerPair, 2, 128, "historic exit configs per pair");
+    int(e.minEntries, "historic exit fit entries");
+    int(e.minValidationTrades, "historic exit validation closes");
+    int(e.maxConfigsPerPair, "historic exit configs per pair");
+    const list = (xs: unknown, lo: number, hi: number, name: string) => {
+      if (xs === undefined) return;
+      if (!Array.isArray(xs) || xs.length < 1 || xs.length > 4)
+        throw new Error(`${name}: 1–4 values`);
+      for (const x of xs) num(x, lo, hi, name);
+    };
+    list(e.quantiles, 0.2, 0.95, "historic exit MFE quantile");
+    list(e.trailShares, 0.1, 0.95, "historic exit trail share");
+    list(e.stopMultiples, 0.25, 5, "historic exit stop multiple");
+    const gridN =
+      (e.quantiles?.length ?? 2) * (e.trailShares?.length ?? 2) * (e.stopMultiples?.length ?? 2);
+    if (gridN > 16)
+      throw new Error(
+        `historic exit config grid too large (${gridN}, max 16 per range and direction)`,
+      );
+  }
   if (s.tactics) {
     for (const k of [
       "session",
@@ -250,7 +294,10 @@ export function checkSettings(s: Partial<CoreSettings>) {
   if (s.block) {
     num(s.block.ratio, 0, 2, "block ratio");
     num(s.block.sharedRatio, 0, 2, "block Shared ratio");
-    if (s.block.historySource !== undefined && !["accepted-orders", "real-candidates"].includes(s.block.historySource))
+    if (
+      s.block.historySource !== undefined &&
+      !["accepted-orders", "real-candidates"].includes(s.block.historySource)
+    )
       throw new Error("block history source: accepted-orders or real-candidates");
     num(s.block.maxLevel, 1, 12, "block max level");
     num(s.block.minActiveLevel, 1, 12, "block active level");

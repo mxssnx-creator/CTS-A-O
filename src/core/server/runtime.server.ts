@@ -38,7 +38,13 @@ import {
 import { microSpecs, type MicroIndRule } from "../indications/micro.ts";
 import { sharedFeed } from "../market/shared-feed.ts";
 import { catchUp } from "./loop-budget.ts";
-import { evalFamilyMatch, familiesNarrowBase, familyTags, parseEvalFamilies, type EvalFamily } from "../eval-family.ts";
+import {
+  evalFamilyMatch,
+  familiesNarrowBase,
+  familyTags,
+  parseEvalFamilies,
+  type EvalFamily,
+} from "../eval-family.ts";
 import { partitionByIndication } from "./partition.ts";
 import { diffPositions, diffTrades, type WrittenPos } from "./paper-rows.ts";
 import type { ConnId } from "../exchange/bingx.server.ts";
@@ -83,9 +89,20 @@ import {
 } from "../presets.ts";
 import type { Bars, BlockConfig, Candle, OpenPosition, Protect, Trade } from "../domain/types.ts";
 import { syntheticCandles, tailBars, headBars } from "../market/bars.ts";
-import { CandleSeries, barsOfSeries, headroomFor, resampleTailBars } from "../market/candle-series.ts";
+import {
+  CandleSeries,
+  barsOfSeries,
+  headroomFor,
+  resampleTailBars,
+} from "../market/candle-series.ts";
 import { startStallProbe, type StallProbe } from "./stall-probe.server.ts";
-import { BaseConfigJobRunner, baseConfigJobKey, type BaseConfigJob, type BaseConfigSnapshot, type BaseConfigSummary } from "./base-config-job.server.ts";
+import {
+  BaseConfigJobRunner,
+  baseConfigJobKey,
+  type BaseConfigJob,
+  type BaseConfigSnapshot,
+  type BaseConfigSummary,
+} from "./base-config-job.server.ts";
 import type { BaseConfigChunkReply } from "./pool.server.ts";
 import {
   fetchHistory,
@@ -202,7 +219,14 @@ import {
   type LiveValidationStatus,
   type LivePromotionStatus,
 } from "../live-validation.ts";
-import { exchangeAcceptIndex, executionRecordKey, liveRecords, ownedPaperExecutionRecords, postBaseExecutionRecords, type LiveRecord } from "../live-record.ts";
+import {
+  exchangeAcceptIndex,
+  executionRecordKey,
+  liveRecords,
+  ownedPaperExecutionRecords,
+  postBaseExecutionRecords,
+  type LiveRecord,
+} from "../live-record.ts";
 import { signalActiveHas, type ExchangeAccept } from "../signals.ts";
 
 import os from "node:os";
@@ -226,16 +250,36 @@ import {
   signalHistProtectsGen,
   type SignalHistDiagnostics,
 } from "../signal-hist.ts";
+import {
+  emptyExitStrategyDiagnostics,
+  exitHistoryFingerprint,
+  exitTargetsForPair,
+  exitStrategyProtectsGen,
+  heldExitProtect,
+  type ExitCandidateTarget,
+  type ExitStrategyDiagnostics,
+  type ExitStrategyValidation,
+} from "../exit-strategy.ts";
 import type { SignalAccept, SignalSettings } from "../signal-config.ts";
 import { PriceStream, type StreamStats } from "./stream.server.ts";
 import { isSignalInd, laneOf, signalSourceOf } from "../indications/registry.ts";
 import { orderKey, sizeBook, sizeBookGen, sizingSettings } from "../sizing.ts";
 import { presetSeries, type PresetSeries } from "../statistics.ts";
-import { modeledUnitReturn as unitReturn, modeledUnitStatsOf as unitStatsOf } from "../metrics/stats.ts";
+import {
+  modeledUnitReturn as unitReturn,
+  modeledUnitStatsOf as unitStatsOf,
+} from "../metrics/stats.ts";
 import { promoteLaneKey, validPromotedLaneProof } from "../live-promote.ts";
 import { auditState, auditStateGen, type AuditInput, type AuditReport } from "../audit.ts";
 import { closedPositions, openTimeline } from "../positions.ts";
-import { backfillLabel, batchesOf, DONE_STAGE, estimatedFraction, overallOf, pipelineStage } from "../progress.ts";
+import {
+  backfillLabel,
+  batchesOf,
+  DONE_STAGE,
+  estimatedFraction,
+  overallOf,
+  pipelineStage,
+} from "../progress.ts";
 import { connDb, connPath, coreDb, type CoreDb } from "./db.server.ts";
 
 const H = 3_600_000;
@@ -381,13 +425,26 @@ export interface RuntimeStatus {
     openPositions?: number;
     openOrders?: number;
   };
+  /** Independent historic exit type: fit/holdout counts and qualified tapes from the last compute. */
+  exitStrategies?: {
+    enabled: boolean;
+    pairs: number;
+    configs: number;
+    history: ExitStrategyDiagnostics;
+  };
   /** Base config sets evaluated / passing the Base gate (PF ≥ min PF) in the last compute */
   baseEvaluated?: number;
   basePassed?: number;
   /** pairs grid.allSets built for measurement without passing Base (not validated; apart from basePassed) */
   baseBuilt?: number;
   /** the passed count of the last computes (bounded; the events table keeps the long record): continuity of Base */
-  baseHistory?: Array<{ at: number; compute: number; passed: number; built: number; byRange: Record<string, number> }>;
+  baseHistory?: Array<{
+    at: number;
+    compute: number;
+    passed: number;
+    built: number;
+    byRange: Record<string, number>;
+  }>;
   /** tapes released at the start of the last compute's Tapes phase (partial processing: slimTapes) */
   tapesReleased?: number;
   /** after the Base PF evaluation, per range type (Wide, Micro … Long, Signals): sets evaluated / passed and PF */
@@ -395,7 +452,14 @@ export interface RuntimeStatus {
   /** Exact causal Base config counts, separate from the representative pair counts above. */
   baseConfigs?: BaseConfigSummary;
   /** counts of the listings of the last paper step (CoreRuntime.listings; the pages page through coreListing) */
-  listings?: { paperStep: number; at: number; validated: number; active: number; proven: number | null; byRange: Array<{ range: string; validated: number; pf: number | null }> };
+  listings?: {
+    paperStep: number;
+    at: number;
+    validated: number;
+    active: number;
+    proven: number | null;
+    byRange: Array<{ range: string; validated: number; pf: number | null }>;
+  };
   /** the preset comparison after the paper step (comparePresets): running, presets done / total, when it last finished */
   compare?: { running: boolean; done: number; total: number; at?: number; error?: string };
   /**
@@ -428,7 +492,15 @@ export interface RuntimeStatus {
    * the realtime entry step's last run (CTS_CORE_FAST_ENTRIES): the bar it ran on, its time, the seated configs it
    * rebuilt, their open positions on the current bars, and how many the paper book took
    */
-  fast?: { at: number; bar: number; ms: number; seated: number; open: number; added: number; error: string | null };
+  fast?: {
+    at: number;
+    bar: number;
+    ms: number;
+    seated: number;
+    open: number;
+    added: number;
+    error: string | null;
+  };
   /** the last event-loop stalls over 150 ms, with what was running (the live tick waits behind them) */
   stalls?: Array<{ at: number; ms: number; where: string }>;
   /** the last probed stalls (CTS_CORE_STALL_PROBE=1): what the main thread did during each (stall-probe.server.ts) */
@@ -436,7 +508,15 @@ export interface RuntimeStatus {
   /** live validation of the selected configs (live last N) */
   liveValidation?: LiveValidationStatus;
   livePromotion?: LivePromotionStatus;
-  engineProof?: { n: number; minPf: number; judged: number; proven: number; unknown: number; unknownConfigs: number; pfBasis: "unit-net-returns" };
+  engineProof?: {
+    n: number;
+    minPf: number;
+    judged: number;
+    proven: number;
+    unknown: number;
+    unknownConfigs: number;
+    pfBasis: "unit-net-returns";
+  };
   /**
    * tape positions the paper step did not open, by reason (notSelected, stale, duplicate, liveValidation,
    * heldBack:<why>, exec:<why>, cap:<which>; signal ones prefixed "sig:"), and the pending entries the live adapter was
@@ -470,7 +550,8 @@ const blankTick = (): TickStatus => ({
 const posId = (p: { cfg: string; sym: string; side: number; entryT: number }) =>
   `${p.cfg}|${p.sym}|${p.side > 0 ? 1 : -1}|${p.entryT}`;
 /** the identity before the direction was part of it (persisted stop hits written by an older build) */
-const posIdLegacy = (p: { cfg: string; sym: string; entryT: number }) => `${p.cfg}|${p.sym}|${p.entryT}`;
+const posIdLegacy = (p: { cfg: string; sym: string; entryT: number }) =>
+  `${p.cfg}|${p.sym}|${p.entryT}`;
 
 /** true when `px` is at or through the position's stop (long: at or below, short: at or above) */
 export function crossedStop(p: { side: number; stop: number }, px: number): boolean {
@@ -545,7 +626,14 @@ export function carryTrail(
 }
 
 export function crossedExit(
-  p: { side: number; stop: number; target?: number; trailOn?: boolean; trailOnly?: boolean; trailFree?: boolean },
+  p: {
+    side: number;
+    stop: number;
+    target?: number;
+    trailOn?: boolean;
+    trailOnly?: boolean;
+    trailFree?: boolean;
+  },
   px: number,
   trailFree = false,
 ): number {
@@ -602,7 +690,11 @@ const yieldNow = () => new Promise<void>((r) => setImmediate(r));
  * The Block book and the signal guard as of a time (every executed position closed by then fed in), and `advance`:
  * the same feed in pieces — at most `max` entries a call, true once the book holds everything up to `t`.
  */
-type BooksAt = ((t: number) => { book: BlockBook | null; guard: SignalGuard | null; direction: CandidateDirectionBook | null }) & {
+type BooksAt = ((t: number) => {
+  book: BlockBook | null;
+  guard: SignalGuard | null;
+  direction: CandidateDirectionBook | null;
+}) & {
   advance: (t: number, max: number) => boolean;
 };
 
@@ -654,6 +746,14 @@ function* compactByCarryGen(tapes: readonly ConfigTape[]): Generator<number, Con
   }
   return out;
 }
+
+const cloneExitProtectMap = (source: Record<string, Protect[]>): Record<string, Protect[]> =>
+  Object.fromEntries(
+    Object.entries(source).map(([pair, protects]) => [
+      pair,
+      protects.map((p) => ({ ...p, ...(p.atr ? { atr: { ...p.atr } } : {}) })),
+    ]),
+  );
 
 export class CoreRuntime {
   readonly db: CoreDb;
@@ -730,7 +830,8 @@ export class CoreRuntime {
   /** every 50 ms: a tick that comes late by more than 150 ms is a stall, recorded with what was running */
   private startStallWatch() {
     let last = performance.now();
-    if (process.env.CTS_CORE_STALL_PROBE === "1") this.stallProbe = startStallProbe((p) => this.noteStallProbe(p));
+    if (process.env.CTS_CORE_STALL_PROBE === "1")
+      this.stallProbe = startStallProbe((p) => this.noteStallProbe(p));
     this.stallTimer = setInterval(() => {
       this.stallProbe?.beat();
       const now = performance.now();
@@ -827,8 +928,15 @@ export class CoreRuntime {
     } = {},
   ) {
     if (opts.evaluationFromT !== undefined) {
-      if (!opts.replay || opts.conn || !Number.isFinite(opts.evaluationFromT) || opts.evaluationFromT < 0)
-        throw new Error("evaluationFromT is a finite nonnegative boundary for unconnected replays only");
+      if (
+        !opts.replay ||
+        opts.conn ||
+        !Number.isFinite(opts.evaluationFromT) ||
+        opts.evaluationFromT < 0
+      )
+        throw new Error(
+          "evaluationFromT is a finite nonnegative boundary for unconnected replays only",
+        );
       this.evaluationFromT = opts.evaluationFromT;
     }
     this.conn = opts.conn;
@@ -860,8 +968,7 @@ export class CoreRuntime {
     if (!db.kvGet("ddtMax35") && settings?.gates?.maxDdtH === undefined) {
       this.settings.gates.maxDdtH = 35;
       const presets = db.kvGet<Preset[]>("presets") ?? [];
-      for (const p of presets)
-        p.settings.gates = { ...(p.settings.gates ?? {}), maxDdtH: 35 };
+      for (const p of presets) p.settings.gates = { ...(p.settings.gates ?? {}), maxDdtH: 35 };
       db.kvSet("presets", presets);
       db.kvSet("settings", this.settings);
       db.kvSet("ddtMax35", true);
@@ -941,13 +1048,26 @@ export class CoreRuntime {
    * in the first compute and their exchange positions were closed (x02, 7 Oct 04:42: 21 at once after a deploy).
    */
   private restorePaperBook(): number {
-    const book = this.db.kvGet<{ startedAt?: number; selected?: string[]; positions?: PaperBook["positions"]; ownedEntryAllocations?: Array<[string, { unitUsd: number; vol: number }]> }>(
-      "paperBook",
-    );
+    const book = this.db.kvGet<{
+      startedAt?: number;
+      selected?: string[];
+      positions?: PaperBook["positions"];
+      ownedEntryAllocations?: Array<[string, { unitUsd: number; vol: number }]>;
+    }>("paperBook");
     if (!book || !Array.isArray(book.positions)) return 0;
     this.paper.positions = book.positions;
-    this.paperOwnedAllocations = new Map((book.ownedEntryAllocations ?? []).filter((row) => Array.isArray(row) && typeof row[0] === "string" &&
-      row[1] && Number.isFinite(row[1].unitUsd) && row[1].unitUsd > 0 && Number.isFinite(row[1].vol) && row[1].vol > 0));
+    this.paperOwnedAllocations = new Map(
+      (book.ownedEntryAllocations ?? []).filter(
+        (row) =>
+          Array.isArray(row) &&
+          typeof row[0] === "string" &&
+          row[1] &&
+          Number.isFinite(row[1].unitUsd) &&
+          row[1].unitUsd > 0 &&
+          Number.isFinite(row[1].vol) &&
+          row[1].vol > 0,
+      ),
+    );
     for (const p of this.paper.positions) {
       const own = parseConfigId(p.cfg)?.protect;
       if (own?.trailOnly) {
@@ -959,7 +1079,8 @@ export class CoreRuntime {
       }
     }
     this.paper.selected = Array.isArray(book.selected) ? book.selected : [];
-    if (typeof book.startedAt === "number" && book.startedAt > 0) this.paper.startedAt = book.startedAt;
+    if (typeof book.startedAt === "number" && book.startedAt > 0)
+      this.paper.startedAt = book.startedAt;
     return book.positions.length;
   }
 
@@ -1008,12 +1129,16 @@ export class CoreRuntime {
       // the ledger writes since that snapshot (a crash between snapshots loses none of them)
       const n = this.db.replayJournal();
       this.baseConfigRunner.restore(this.db.kvGet<BaseConfigSnapshot>("baseConfigCounts"));
-      this.db.event("info", `restored snapshot ${this.snapshotPath}${n ? ` + ${n} journaled write(s)` : ""}`);
+      this.db.event(
+        "info",
+        `restored snapshot ${this.snapshotPath}${n ? ` + ${n} journaled write(s)` : ""}`,
+      );
       // the paper book the snapshot carries (an empty book here held nothing: every unselected config's position
       // was closed on the exchange after the first compute)
       if (!this.paper.positions.length && !this.paper.selected.length) {
         const p = this.restorePaperBook();
-        if (p) this.db.event("info", `paper book continued from the snapshot: ${p} open position(s)`);
+        if (p)
+          this.db.event("info", `paper book continued from the snapshot: ${p} open position(s)`);
       }
     }
     this.stopped = false;
@@ -1040,7 +1165,8 @@ export class CoreRuntime {
   /** The tick: every tickMs, open paper positions marked to market and the live step (never overlapping). */
   private startTick() {
     if (this.tickTimer) return;
-    if (!this.stream && this.market === "bingx" && this.priceStream) this.stream = this.priceStream();
+    if (!this.stream && this.market === "bingx" && this.priceStream)
+      this.stream = this.priceStream();
     const loop = () => {
       this.tickTimer = setTimeout(
         () => {
@@ -1071,12 +1197,24 @@ export class CoreRuntime {
   }
 
   /** Σ closed paper orders × their unit: recomputed only when the paper book changes, not on every tick. */
-  private closedMemo: { trades: unknown; units: unknown; n: number; notional: number; sum: number } | null = null;
+  private closedMemo: {
+    trades: unknown;
+    units: unknown;
+    n: number;
+    notional: number;
+    sum: number;
+  } | null = null;
   private closedPaperSum(): number {
     const { trades, units } = this.paper;
     const notional = this.settings.paperNotional;
     const m = this.closedMemo;
-    if (m && m.trades === trades && m.units === units && m.n === trades.length && m.notional === notional)
+    if (
+      m &&
+      m.trades === trades &&
+      m.units === units &&
+      m.n === trades.length &&
+      m.notional === notional
+    )
       return m.sum;
     let sum = 0;
     for (const t of trades) sum += t.r * (units?.get(orderKey(t)) ?? notional);
@@ -1111,15 +1249,27 @@ export class CoreRuntime {
   }
 
   /** The open paper orders' units, in book order (order keys built once per paper book, not on every tick). */
-  private unitMemo: { positions: unknown; units: unknown; notional: number; a: Float64Array } | null = null;
+  private unitMemo: {
+    positions: unknown;
+    units: unknown;
+    notional: number;
+    a: Float64Array;
+  } | null = null;
   private paperUnits(): Float64Array {
     const { positions, units } = this.paper;
     const notional = this.settings.paperNotional;
     const m = this.unitMemo;
-    if (m && m.positions === positions && m.units === units && m.notional === notional && m.a.length === positions.length)
+    if (
+      m &&
+      m.positions === positions &&
+      m.units === units &&
+      m.notional === notional &&
+      m.a.length === positions.length
+    )
       return m.a;
     const a = new Float64Array(positions.length);
-    for (let i = 0; i < positions.length; i++) a[i] = units?.get(orderKey(positions[i])) ?? notional;
+    for (let i = 0; i < positions.length; i++)
+      a[i] = units?.get(orderKey(positions[i])) ?? notional;
     this.unitMemo = { positions, units, notional, a };
     return a;
   }
@@ -1154,7 +1304,16 @@ export class CoreRuntime {
    */
   private async fastStep(): Promise<void> {
     const a = this.fastArgs;
-    if (!a || this.fastBusy || this.fastHold || this.paperRunning || !this.paperStepped || !this.sim || !this.lastSelection) return;
+    if (
+      !a ||
+      this.fastBusy ||
+      this.fastHold ||
+      this.paperRunning ||
+      !this.paperStepped ||
+      !this.sim ||
+      !this.lastSelection
+    )
+      return;
     const bar = this.status.lastBarT;
     if (!(bar > this.fastBarDone)) return;
     if (!workersAvailable() || this.workersBroken) return;
@@ -1177,7 +1336,9 @@ export class CoreRuntime {
       // the tail: FAST_TAIL_H of history (a position held that long still blocks a re-entry, as in the full tapes)
       // plus the slowest lane's indicator and tactic warm-up
       const maxTf = Math.max(...(s.tfs ?? [s.tfMin]));
-      const tail1m = Math.round((FAST_TAIL_H * 60) / s.tfMin) + (FAST_WARMUP_BARS + tacticWarmupBars(s.tactics)) * Math.ceil(maxTf / s.tfMin);
+      const tail1m =
+        Math.round((FAST_TAIL_H * 60) / s.tfMin) +
+        (FAST_WARMUP_BARS + tacticWarmupBars(s.tactics)) * Math.ceil(maxTf / s.tfMin);
       // per symbol, a yield between them (all at once was a 60–90 ms block at 30 symbols)
       const lanes: ReturnType<typeof laneSeriesFrom> = [];
       for (const [sym, cs] of this.candles) {
@@ -1203,7 +1364,13 @@ export class CoreRuntime {
             adjust: a.adjust,
             floors: { ...a[k].floors, onlyIds: ids[k] },
           });
-      const res = await runOnWorkers<{ tapes: ConfigTape[] }>(msgs, poolSize(), 120_000, undefined, true);
+      const res = await runOnWorkers<{ tapes: ConfigTape[] }>(
+        msgs,
+        poolSize(),
+        120_000,
+        undefined,
+        true,
+      );
       if (gen !== this.gen || this.fastHold || this.paperRunning) return;
       // the rebuilt configs' open positions, and their signals on a lane bar that closed now as entries at the open of
       // the bar that starts (as the simulation enters them: next open) — not one lane bar later at a moved price
@@ -1211,11 +1378,17 @@ export class CoreRuntime {
       const priceOf = (sym: string) => this.stream?.price(sym) ?? this.candles.get(sym)?.lastC();
       const opens = new Map<string, OpenPosition[]>();
       for (const r of res)
-        for (const tp of r.tapes) opens.set(tp.id, [...tp.open, ...pendingAsOpen(tp, barEnd, s.tfMin, priceOf, s.cost)]);
+        for (const tp of r.tapes)
+          opens.set(tp.id, [...tp.open, ...pendingAsOpen(tp, barEnd, s.tfMin, priceOf, s.cost)]);
       const before = this.paper.positions.length;
       this.paperRunning = true;
       try {
-        await this.driveSliced("Realtime", this.stepPaperGen({ opens, t: barEnd }), gen, () => undefined);
+        await this.driveSliced(
+          "Realtime",
+          this.stepPaperGen({ opens, t: barEnd }),
+          gen,
+          () => undefined,
+        );
       } finally {
         this.paperRunning = false;
       }
@@ -1232,7 +1405,11 @@ export class CoreRuntime {
       };
       this.emit("paper");
     } catch (e) {
-      this.status.fast = { ...(this.status.fast ?? { at: 0, bar: 0, ms: 0, seated: 0, open: 0, added: 0 }), at: Date.now(), error: e instanceof Error ? e.message : String(e) };
+      this.status.fast = {
+        ...(this.status.fast ?? { at: 0, bar: 0, ms: 0, seated: 0, open: 0, added: 0 }),
+        at: Date.now(),
+        error: e instanceof Error ? e.message : String(e),
+      };
     } finally {
       this.fastBusy = false;
     }
@@ -1258,7 +1435,12 @@ export class CoreRuntime {
       since >= CONTROL_IDLE_MS ||
       (this.controlTrail && since >= CONTROL_TRAIL_MS);
     if (due) {
-      this.controlSeen = { positions: this.paper.positions, live: this.settings.live, bar: this.status.lastBarT, at: Date.now() };
+      this.controlSeen = {
+        positions: this.paper.positions,
+        live: this.settings.live,
+        bar: this.status.lastBarT,
+        at: Date.now(),
+      };
       this.controlUrgent = false;
       this.controlTrail = false;
     }
@@ -1273,7 +1455,14 @@ export class CoreRuntime {
    * them (barsPending). Real market only, never during a backfill or a universe change.
    */
   private marketLoop() {
-    if (!this.busy || this.status.state !== "computing" || this.pulling || this.market !== "bingx" || this.status.source !== "bingx") return;
+    if (
+      !this.busy ||
+      this.status.state !== "computing" ||
+      this.pulling ||
+      this.market !== "bingx" ||
+      this.status.source !== "bingx"
+    )
+      return;
     if (this.resetUniverse || !this.backfillKey || this.prehistPending) return;
     if (Date.now() - this.marketPullAt < Math.max(250, this.settings.cycleMs)) return;
     this.marketPullAt = Date.now();
@@ -1330,7 +1519,11 @@ export class CoreRuntime {
             // a price through the stop stops the position now (the live control drops its lane at once); the paper
             // book records the exit when the bar closes, at the stop, as the simulation does
             if (!p.stopHit) {
-              const lvl = crossedExit(p, px, isSignalInd(p.cfg.split("|")[1] ?? "") ? false : trailFree);
+              const lvl = crossedExit(
+                p,
+                px,
+                isSignalInd(p.cfg.split("|")[1] ?? "") ? false : trailFree,
+              );
               if (lvl > 0) {
                 p.stopHit = Date.now();
                 p.hitPx = lvl;
@@ -1351,7 +1544,9 @@ export class CoreRuntime {
       if (trailMoved) this.controlTrail = true;
       // the tick's stop crossings persisted in one write (a read and a write of every hit per crossing before)
       if (newHits) {
-        const hits = this.db.kvGet<Record<string, { at: number; stop: number; px?: number }>>("stopHits") ?? {};
+        const hits =
+          this.db.kvGet<Record<string, { at: number; stop: number; px?: number }>>("stopHits") ??
+          {};
         this.db.kvSet("stopHits", Object.assign(hits, newHits));
       }
       this.paper.equity = (this.paper.carried ?? 0) + this.closedPaperSum() + open;
@@ -1395,7 +1590,10 @@ export class CoreRuntime {
         // collector's multi-second pauses (x02, 7 Oct profile) — there they only refresh the status' "pending:"
         // reasons, every PENDING_STATUS_MS
         let intents: LiveIntent[] = [];
-        if ((this.settings.live.mode ?? "overall") !== "overall" || Date.now() - this.pendingAt >= PENDING_STATUS_MS) {
+        if (
+          (this.settings.live.mode ?? "overall") !== "overall" ||
+          Date.now() - this.pendingAt >= PENDING_STATUS_MS
+        ) {
           this.livePhase = "pending entries";
           intents = this.pendingEntries();
           this.pendingAt = Date.now();
@@ -1572,7 +1770,10 @@ export class CoreRuntime {
     const prev = this.candles as Map<string, unknown>;
     if (prev instanceof Map && [...prev.values()].some((cs) => Array.isArray(cs))) {
       this.candles = new Map(
-        [...prev].map(([sym, cs]) => [sym, Array.isArray(cs) ? CandleSeries.fromCandles(cs as Candle[]) : (cs as CandleSeries)]),
+        [...prev].map(([sym, cs]) => [
+          sym,
+          Array.isArray(cs) ? CandleSeries.fromCandles(cs as Candle[]) : (cs as CandleSeries),
+        ]),
       );
       (self.btCandles as Map<string, unknown>).clear();
     }
@@ -1709,7 +1910,10 @@ export class CoreRuntime {
       if (process.env.CTS_CORE_MAINNET_WAIVE_FLOORS !== "1") {
         this.wf.lastN = Math.max(MAINNET_LAST_N, this.wf.lastN ?? 0);
         this.wf.validLastN = Math.max(MAINNET_VALID_LAST_N, this.wf.validLastN ?? 0);
-        this.wf.signalValidLastN = Math.max(MAINNET_SIGNAL_VALID_LAST_N, this.wf.signalValidLastN ?? 0);
+        this.wf.signalValidLastN = Math.max(
+          MAINNET_SIGNAL_VALID_LAST_N,
+          this.wf.signalValidLastN ?? 0,
+        );
       } else if (!this.floorsWaivedNoted) {
         this.floorsWaivedNoted = true;
         this.db.event(
@@ -1834,11 +2038,14 @@ export class CoreRuntime {
       return;
     }
     if (this.progressTimer) return;
-    this.progressTimer = setTimeout(() => {
-      this.progressTimer = null;
-      this.lastProgressEmit = Date.now();
-      this.emit("progress");
-    }, Math.max(1, 250 - el));
+    this.progressTimer = setTimeout(
+      () => {
+        this.progressTimer = null;
+        this.lastProgressEmit = Date.now();
+        this.emit("progress");
+      },
+      Math.max(1, 250 - el),
+    );
     (this.progressTimer as { unref?: () => void }).unref?.();
   }
 
@@ -1997,7 +2204,9 @@ export class CoreRuntime {
         const auditLabel = `self-audit · ${this.paper.selected.length} seats`;
         this.setStage("Paper", 0.8, 1, auditLabel);
         try {
-          await this.runAuditAsync(gen, (f) => this.setStage("Paper", 0.8 + 0.2 * f, 1, auditLabel));
+          await this.runAuditAsync(gen, (f) =>
+            this.setStage("Paper", 0.8 + 0.2 * f, 1, auditLabel),
+          );
         } finally {
           this.busyPhase = "";
         }
@@ -2006,7 +2215,8 @@ export class CoreRuntime {
         this.status.paperSteps = (this.status.paperSteps ?? 0) + 1;
         this.status.paperCompute = this.status.computes;
         this.buildListings();
-        if (this.status.prehistoric) this.status.prehistoric.counts.real = this.paper.selected.length;
+        if (this.status.prehistoric)
+          this.status.prehistoric.counts.real = this.paper.selected.length;
         this.endJob(
           `${this.computeSummary ? `${this.computeSummary} · ` : ""}${this.paper.selected.length} seats · ${this.paper.positions.length} open`,
         );
@@ -2091,7 +2301,13 @@ export class CoreRuntime {
       await this.comparePresets(gen);
     } catch (e) {
       if (gen === this.gen) {
-        this.status.compare = { running: false, done: 0, total: 0, at: this.status.compare?.at, error: e instanceof Error ? e.message : String(e) };
+        this.status.compare = {
+          running: false,
+          done: 0,
+          total: 0,
+          at: this.status.compare?.at,
+          error: e instanceof Error ? e.message : String(e),
+        };
         this.db.event("warn", `preset comparison: ${this.status.compare.error}`);
       }
     }
@@ -2139,13 +2355,10 @@ export class CoreRuntime {
     // the smallest spacing of the last bars is the timeframe (a missing bar only makes one gap larger)
     const spacing = (cs: CandleSeries) => {
       let m = Infinity;
-      for (let i = Math.max(1, cs.n - 10); i < cs.n; i++)
-        m = Math.min(m, cs.t[i] - cs.t[i - 1]);
+      for (let i = Math.max(1, cs.n - 10); i < cs.n; i++) m = Math.min(m, cs.t[i] - cs.t[i - 1]);
       return m;
     };
-    const wrongTf = [...this.candles.values()].some(
-      (cs) => cs.n > 2 && spacing(cs) !== baseMs,
-    );
+    const wrongTf = [...this.candles.values()].some((cs) => cs.n > 2 && spacing(cs) !== baseMs);
     if (wrongTf) {
       this.db.event("info", `stored candles are not ${s.tfMin}m bars: re-backfilling`);
       this.candles.clear();
@@ -2174,7 +2387,13 @@ export class CoreRuntime {
             for (const x of cs) [x.o, x.h, x.l, x.c] = [K / x.o, K / x.l, K / x.h, K / x.c];
           }
           await this.storeCandles(`SYN${i}-USDT`, cs);
-          this.setStage("backfill", i + 1, s.symbols, backfillLabel(`SYN${i}-USDT`, 1, 1, this.candles.size, s.symbols), i === 0);
+          this.setStage(
+            "backfill",
+            i + 1,
+            s.symbols,
+            backfillLabel(`SYN${i}-USDT`, 1, 1, this.candles.size, s.symbols),
+            i === 0,
+          );
           await yieldNow();
         }
         this.status.source = "synthetic";
@@ -2193,7 +2412,12 @@ export class CoreRuntime {
         // forced symbols first (always traded), then the ranking (after its offset) up to the symbol count
         const ranked = forceSymbols(
           (
-            await rankUniverse(this.tickers, s.symbols + offset, s.symbolRank ?? "volatility1h", this.feed.klines)
+            await rankUniverse(
+              this.tickers,
+              s.symbols + offset,
+              s.symbolRank ?? "volatility1h",
+              this.feed.klines,
+            )
           ).slice(offset),
           s.forceSymbols,
           s.symbols,
@@ -2235,7 +2459,10 @@ export class CoreRuntime {
           async (sym) => {
             // a failed fetch is logged (it was silently "skipped" and never retried while the process ran)
             const cs = await this.feed.history(sym, s.tfMin, want, { pauseMs: 60 }).catch((e) => {
-              this.db.event("warn", `${sym} history: ${e instanceof Error ? e.message : e} — skipped this batch`);
+              this.db.event(
+                "warn",
+                `${sym} history: ${e instanceof Error ? e.message : e} — skipped this batch`,
+              );
               return [];
             });
             if (gen !== this.gen) return;
@@ -2285,8 +2512,7 @@ export class CoreRuntime {
     // gap repair: a symbol more than 300 bars behind cannot be caught up incrementally → backfill it again
     const wantBars = Math.round((s.historyDays * 24 * 60) / s.tfMin);
     const behind = [...this.candles.entries()].filter(
-      ([sym, cs]) =>
-        now - (cs.lastT() ?? 0) > 300 * tfMs && (this.staleUntil.get(sym) ?? 0) < now,
+      ([sym, cs]) => now - (cs.lastT() ?? 0) > 300 * tfMs && (this.staleUntil.get(sym) ?? 0) < now,
     );
     if (behind.length) {
       let repaired = 0;
@@ -2295,12 +2521,13 @@ export class CoreRuntime {
         4,
         async ([sym, old]) => {
           const prevLast = old.lastT() ?? 0;
-          const cs = await this.feed
-            .history(sym, s.tfMin, wantBars, { pauseMs: 60 })
-            .catch((e) => {
-              this.db.event("warn", `${sym} gap repair: ${e instanceof Error ? e.message : e} — retried next cycle`);
-              return [];
-            });
+          const cs = await this.feed.history(sym, s.tfMin, wantBars, { pauseMs: 60 }).catch((e) => {
+            this.db.event(
+              "warn",
+              `${sym} gap repair: ${e instanceof Error ? e.message : e} — retried next cycle`,
+            );
+            return [];
+          });
           if (gen !== this.gen || !this.candles.has(sym)) return;
           const fresh = cs.filter((c) => c.t > prevLast).length;
           if (cs.length >= minBars && fresh > 0) {
@@ -2406,14 +2633,26 @@ export class CoreRuntime {
     // by its count (a builder grows past a count that moved)
     const want = Math.round((this.settings.historyDays * 24 * 60) / this.settings.tfMin);
     const counts = new Map<string, number>();
-    for (const row of this.db.iterate("SELECT sym, COUNT(*) FROM candles GROUP BY sym ORDER BY sym")) {
+    for (const row of this.db.iterate(
+      "SELECT sym, COUNT(*) FROM candles GROUP BY sym ORDER BY sym",
+    )) {
       const [sym, n] = row as [string, number];
       counts.set(sym, n);
     }
     let curSym: string | null = null;
     let cur: ReturnType<typeof CandleSeries.builder> | null = null;
-    for (const row of this.db.iterate("SELECT sym, t, o, h, l, c, v FROM candles ORDER BY sym, t")) {
-      const [sym, t, o, h, l, c, v] = row as [string, number, number, number, number, number, number];
+    for (const row of this.db.iterate(
+      "SELECT sym, t, o, h, l, c, v FROM candles ORDER BY sym, t",
+    )) {
+      const [sym, t, o, h, l, c, v] = row as [
+        string,
+        number,
+        number,
+        number,
+        number,
+        number,
+        number,
+      ];
       if (!cur || curSym !== sym) {
         if (cur && curSym !== null) this.candles.set(curSym, cur.done());
         curSym = sym;
@@ -2457,8 +2696,7 @@ export class CoreRuntime {
         for (const c of part) this.db.run(ins, sym, c.t, c.o, c.h, c.l, c.c, c.v);
       });
     }
-    if (trimmed.n)
-      this.db.run("DELETE FROM candles WHERE sym = ? AND t < ?", sym, trimmed.t[0]);
+    if (trimmed.n) this.db.run("DELETE FROM candles WHERE sym = ? AND t < ?", sym, trimmed.t[0]);
   }
 
   private upsertSymbols() {
@@ -2700,7 +2938,8 @@ export class CoreRuntime {
         maxSlice = Math.max(maxSlice, el);
         await yieldNow();
         if (runGen !== this.gen) throw new Error("superseded by a newer loop generation");
-        if (this.memPressured) throw new Error(this.memLastAbort ?? "memory pressure: compute aborted");
+        if (this.memPressured)
+          throw new Error(this.memLastAbort ?? "memory pressure: compute aborted");
         slice = performance.now();
         stepT = slice;
       }
@@ -2738,7 +2977,8 @@ export class CoreRuntime {
     // (workers → in-process) is not shown as current
     const prevPhases = this.status.phases;
     this.status.phases = {};
-    for (const k of ["Paper", "Adjust", "Audit", "Compare"]) if (prevPhases[k]) this.status.phases[k] = prevPhases[k];
+    for (const k of ["Paper", "Adjust", "Audit", "Compare"])
+      if (prevPhases[k]) this.status.phases[k] = prevPhases[k];
     // never the last job's stage (e.g. "Realtime 100 %") under "computing" while the lane series are built
     this.setStage("Base", 0, 1, `preparing ${this.candles.size} symbols`, true);
     this.emit("state");
@@ -2768,15 +3008,27 @@ export class CoreRuntime {
       await yieldNow();
       if (gen !== this.gen) return;
     }
-    if (this.evaluationFromT !== undefined && this.paper.positions.some((p) => p.entryT < this.evaluationFromT!))
-      throw new Error("Replay evaluationFromT excludes a held entry; existing tapes, book and protection remain unchanged");
+    if (
+      this.evaluationFromT !== undefined &&
+      this.paper.positions.some((p) => p.entryT < this.evaluationFromT!)
+    )
+      throw new Error(
+        "Replay evaluationFromT excludes a held entry; existing tapes, book and protection remain unchanged",
+      );
     const u = makeUniverse(allBars, this.evaluationFromT);
     if (!u.bars.length) return;
     // causal evaluation: the stages see only the history before the simulated run (its start, as walkForward sets it)
     const runStartT = Math.floor((u.nowT - wf.simH * H) / H) * H;
     if (this.evaluationFromT !== undefined && (!wf.causalBase || this.evaluationFromT >= runStartT))
-      throw new Error("Replay evaluationFromT requires a causal Base window before the trading start");
-    const uStage = wf.causalBase ? makeUniverse(allBars.map((b) => headBars(b, runStartT)), this.evaluationFromT) : u;
+      throw new Error(
+        "Replay evaluationFromT requires a causal Base window before the trading start",
+      );
+    const uStage = wf.causalBase
+      ? makeUniverse(
+          allBars.map((b) => headBars(b, runStartT)),
+          this.evaluationFromT,
+        )
+      : u;
     if (!uStage.bars.length) return;
     if (this.baseConfigs && this.baseConfigs.summary.cutT !== (wf.causalBase ? runStartT : u.nowT))
       this.baseConfigRunner.cancel("newBaseCut");
@@ -2787,7 +3039,8 @@ export class CoreRuntime {
     let pre: { s1: ComboRun[] } | undefined;
     // bar series in shared memory once: every worker message then carries references, not copies. Every series given
     // (Universe.series): the worker's universe rebuilt from `bars` alone (≥ 120 bars) had a market without the short ones
-    const sharedU = workersAvailable() && !this.workersBroken ? shareBars(uStage.series) : uStage.series;
+    const sharedU =
+      workersAvailable() && !this.workersBroken ? shareBars(uStage.series) : uStage.series;
     this.status.workers = !workersAvailable()
       ? "unavailable (in-process)"
       : this.workersBroken
@@ -2803,7 +3056,10 @@ export class CoreRuntime {
       // partial progression (CTS_CORE_BASE_SLICES = K > 1): each compute refreshes one K-th of the combos on the
       // new bars and keeps the others' last results, so every combo is recomputed every K computes at 1 / K of the
       // cost; a universe or Base settings change recomputes all of them
-      const slices = Math.max(1, Math.min(24, Math.round(Number(process.env.CTS_CORE_BASE_SLICES) || 1)));
+      const slices = Math.max(
+        1,
+        Math.min(24, Math.round(Number(process.env.CTS_CORE_BASE_SLICES) || 1)),
+      );
       const ck = (c: { bot: string; ind: string }) => `${c.bot}|${c.ind}`;
       const bkey = JSON.stringify([
         uStage.bars.map((b) => `${b.sym}@${b.tfMin}`),
@@ -2824,7 +3080,12 @@ export class CoreRuntime {
         s.gates,
       ]);
       const cache = slices > 1 && this.baseCache?.key === bkey ? this.baseCache : null;
-      const { todo, sliceNo } = baseSlice(combos, cache ? { runs: cache.runs, slice: cache.slice } : null, slices, ck);
+      const { todo, sliceNo } = baseSlice(
+        combos,
+        cache ? { runs: cache.runs, slice: cache.slice } : null,
+        slices,
+        ck,
+      );
       // one indication's combos in one part (the worker builds its series once): see partitionByIndication
       const parts: Array<typeof combos> = partitionByIndication(todo, n * 2);
       const baseLabel = `Base on ${n} cores · ${todo.length}${todo.length < combos.length ? ` of ${combos.length}` : ""} combos${
@@ -2916,7 +3177,10 @@ export class CoreRuntime {
     const tailOf = (tf: number) =>
       Math.round(((24 + Math.max(wf.preH, wf.longH) + wf.simH) * 60) / tf) +
       tacticWarmupBars(s.tactics);
-    const wu = makeUniverse(allBars.map((b) => tailBars(b, tailOf(b.tfMin))), this.evaluationFromT);
+    const wu = makeUniverse(
+      allBars.map((b) => tailBars(b, tailOf(b.tfMin))),
+      this.evaluationFromT,
+    );
     // Main candidates: Base combos by score (default protect, full history), plus every pair held right now
     // Base gate: only config sets with PF ≥ min PF (and positive net, enough trades) continue to Main → Real → Live
     const main = new Set<string>();
@@ -2925,7 +3189,9 @@ export class CoreRuntime {
     // previous tape of the range (a fresh process) there is nothing to carry: the range passes nothing in this compute —
     // its Base passes had no tape and no seat — while a pair that passed another range keeps that range and its seat
     const carryTags = fallbackCarriedTags(this.memComputeLevel);
-    const noCarry = new Set([...carryTags].filter((t) => !this.tapes.some((x) => x.protect.tag === t)));
+    const noCarry = new Set(
+      [...carryTags].filter((t) => !this.tapes.some((x) => x.protect.tag === t)),
+    );
     const { rangeOn, applies } = baseRangeRules(s, noCarry);
     // evaluation families (CTS_CORE_FAMILY, "label; label", the causal per-family runs): an engine-only list narrows Base
     // to its bots and ranges. With a signal family Base is not narrowed — the engine pairs pass, build their tapes and take
@@ -2935,7 +3201,12 @@ export class CoreRuntime {
     const famNarrow = !!evalFams && familiesNarrowBase(evalFams);
     // each pair at the default protect and at one cell of each enabled range: the ranges and targets it passes are the
     // ones whose configs it computes (basePass — the preset backtest judges by the same rule)
-    const { passed, pairTags, pairTps, added: baseBuilt } = basePass(pipeline.s1, s, applies, famNarrow ? evalFams : null);
+    const {
+      passed,
+      pairTags,
+      pairTps,
+      added: baseBuilt,
+    } = basePass(pipeline.s1, s, applies, famNarrow ? evalFams : null);
     this.basePairTags = pairTags;
     // the count of pairs that passed Base (validated); the pairs grid.allSets adds for measurement are reported apart
     this.status.basePassed = passed.length - baseBuilt;
@@ -2967,7 +3238,10 @@ export class CoreRuntime {
     // from the paper book with no close (and live flattened it). Only that config is kept, not every cell of its
     // range: adding the range to the pair's tags built them all and let the pair take new seats in a range it had
     // not passed Base in.
-    const heldIds = new Set<string>([...this.paper.selected, ...this.paper.positions.map((p) => p.cfg)]);
+    const heldIds = new Set<string>([
+      ...this.paper.selected,
+      ...this.paper.positions.map((p) => p.cfg),
+    ]);
     // pinned pairs are evaluated in Base like every other pair (baseFocus): they reach Main only when they pass
     const passedKeys = new Set(passed.map((r) => `${r.bot}|${r.ind}`));
     for (const k of s.pinned ?? []) if (passedKeys.has(k)) main.add(k);
@@ -2982,7 +3256,8 @@ export class CoreRuntime {
         if (pairTags[k]) pairTags[m] = [...new Set([...(pairTags[m] ?? []), ...pairTags[k]])];
         if (pairTps[k]) {
           const t = (pairTps[m] ??= {});
-          for (const [tag, tps] of Object.entries(pairTps[k])) t[tag] = [...new Set([...(t[tag] ?? []), ...tps])];
+          for (const [tag, tps] of Object.entries(pairTps[k]))
+            t[tag] = [...new Set([...(t[tag] ?? []), ...tps])];
         }
       }
     // only pairs that passed Base take a seat; held pairs stay in Main to manage their open positions
@@ -2995,16 +3270,26 @@ export class CoreRuntime {
     const sig = signalSettings(s.signals);
     // The full-history ranking is status-only; the simulation ranks each type causally from its own tapes.
     let sigActive = sig.enabled ? activeSignals(pipeline.s1, sig) : new Set<string>();
-    const configuredSignals = signalCombos(sig, s.tfs).filter((c) =>
-      seriesOf(uStage, c.ind).length > 0 &&
-      (!evalFams || evalFams.some((f) => evalFamilyMatch(f, c.bot, c.ind, []))));
+    const configuredSignals = signalCombos(sig, s.tfs).filter(
+      (c) =>
+        seriesOf(uStage, c.ind).length > 0 &&
+        (!evalFams || evalFams.some((f) => evalFamilyMatch(f, c.bot, c.ind, []))),
+    );
     const representativePass = (r: ComboRun) => passesBase(r.full, setsGates);
     const sigPairs = signalEvaluationPairs(configuredSignals, pipeline.s1, sig, representativePass);
-    const representativePassed = signalEvaluationPairs(configuredSignals, pipeline.s1, { ...sig, baseGate: true }, representativePass);
+    const representativePassed = signalEvaluationPairs(
+      configuredSignals,
+      pipeline.s1,
+      { ...sig, baseGate: true },
+      representativePass,
+    );
     const signalBaseGate = sig.enabled && sig.baseGate !== false;
     this.status.baseEvaluated =
       pipeline.s1.filter((r) => !isSignalInd(r.ind)).length +
-      (signalBaseGate ? new Set(pipeline.s1.filter((r) => isSignalInd(r.ind)).map((r) => `${r.bot}|${r.ind}`)).size : 0);
+      (signalBaseGate
+        ? new Set(pipeline.s1.filter((r) => isSignalInd(r.ind)).map((r) => `${r.bot}|${r.ind}`))
+            .size
+        : 0);
     // a held signal pair keeps its tapes to manage its open positions; new entries still need Base + validation
     wf.signalBasePassed = new Set(sigPairs);
     this.wf.signalBasePassed = wf.signalBasePassed;
@@ -3014,6 +3299,204 @@ export class CoreRuntime {
         sigPairs.add(k);
       }
     this.status.mainPairs = main.size;
+    // The new Exit type only searches engine pairs after Base. Its target choices come from that pair's own Base-passed
+    // targets; fit and holdout histories are causal and the worker chunks are bounded to two pairs for low memory use.
+    const exitProtects: Record<string, Protect[]> = {};
+    const retainedExitIds = new Set<string>();
+    const exitDiagnostics = emptyExitStrategyDiagnostics();
+    const exitTargetsByPair: Record<string, ExitCandidateTarget[]> = {};
+    const minTrailByTag: Partial<Record<import("../domain/types.ts").RangeTag, number>> = {};
+    const rangeGridByTag: Record<string, string> = {
+      mc: "micro",
+      mn: "minimal",
+      mp: "minimalPlus",
+      sh: "short",
+      gn: "general",
+      lg: "long",
+    };
+    for (const [tag, key] of Object.entries(rangeGridByTag)) {
+      const range = (s.grid as unknown as Record<string, { minTrail?: number } | false | undefined>)[key];
+      if (range && typeof range === "object" && range.minTrail !== undefined)
+        minTrailByTag[tag as import("../domain/types.ts").RangeTag] = range.minTrail;
+      else if (tag === "mc") minTrailByTag.mc = 0.0005;
+    }
+    if (s.exitStrategy.enabled) {
+      for (const pair of main) {
+        const ind = pair.split("|")[1] ?? "";
+        if (!ind || isSignalInd(ind)) continue;
+        const targets = exitTargetsForPair(pairTags[pair] ?? [], pairTps[pair], wf.protects, {
+          baseRanges: s.grid.baseRanges !== false,
+          minTrailByTag,
+          defaultMinTrail: s.grid.minTrail,
+        });
+        if (targets.length) exitTargetsByPair[pair] = targets;
+      }
+    }
+    const exitPairs = Object.keys(exitTargetsByPair).sort();
+    if (s.exitStrategy.enabled && exitPairs.length) {
+      if (gen !== this.gen) return;
+      if (this.memPressured)
+        throw new Error(this.memLastAbort ?? "memory pressure: compute aborted");
+      // Exit fitting and holdout both end before the Real simulation window, even when the broader Base ranking is
+      // configured to use the full history. This keeps Exit parameter selection outside the period it will be scored on.
+      const cutT = runStartT;
+      const labelBase = `historic exit candidates · ${exitPairs.length} Base-passed pairs`;
+      this.setStage("Tapes", 0, 1, `preparing: ${labelBase}`);
+      const exitValidation: ExitStrategyValidation = {
+        cost: s.cost,
+        minPf: Math.max(s.exitStrategy.minPf, setsGates.minPf),
+        minTrades: Math.max(s.exitStrategy.minValidationTrades, setsGates.minTrades),
+        maxDdr: setsGates.maxDdr,
+        minSl: s.protectFloor.minSl,
+        minTrail: s.protectFloor.minTrail,
+      };
+      const historyKey = JSON.stringify([
+        cutT,
+        this.evaluationFromT ?? null,
+        exitHistoryFingerprint(uStage, exitPairs, cutT),
+        exitPairs.map((pair) => [pair, exitTargetsByPair[pair]]),
+        s.exitStrategy,
+        s.tactics,
+        exitValidation,
+      ]);
+      const cacheStarted = performance.now();
+      const cached = this.exitHistoryCache?.key === historyKey ? this.exitHistoryCache : null;
+      let history: Record<string, Protect[]> | null = null;
+      if (cached) {
+        history = cloneExitProtectMap(cached.protects);
+        Object.assign(exitProtects, history);
+        Object.assign(exitDiagnostics, cached.diagnostics);
+        this.status.phases["Exit history"] = {
+          ms: performance.now() - cacheStarted,
+          maxSliceMs: 0,
+          mainMs: 0,
+          slowest: "unchanged causal history · fingerprint cache",
+        };
+      } else {
+        if (workersAvailable() && !this.workersBroken) {
+          const parts = slices(exitPairs, Math.ceil(exitPairs.length / 2));
+          // Keep exit fitting parallel while bounding per-runtime temporary trade arrays and worker arenas.
+          const n = Math.min(poolSize(), parts.length, 8);
+          const label = `${labelBase} on ${n} workers`;
+          this.setStage("Tapes", 0, 1, label);
+          const started = performance.now();
+          const elu = nodePerf.eventLoopUtilization();
+          try {
+            const replies = await runOnWorkers<import("./pool.server.ts").ExitStrategyReply>(
+              parts.map((pairs) => ({
+                type: "exit-hist",
+                evaluationFromT: this.evaluationFromT,
+                bars: sharedU,
+                pairs,
+                targetsByPair: Object.fromEntries(
+                  pairs.map((pair) => [pair, exitTargetsByPair[pair]]),
+                ),
+                settings: s.exitStrategy,
+                tactics: s.tactics,
+                cutT,
+                validation: exitValidation,
+              })),
+              n,
+              15 * 60_000,
+              (fraction) => {
+                if (gen === this.gen) this.setStage("Tapes", fraction, 1, label);
+              },
+            );
+            if (gen !== this.gen) return;
+            if (this.memPressured)
+              throw new Error(this.memLastAbort ?? "memory pressure: compute aborted");
+            for (let i = 0; i < replies.length; i++) {
+              const own = new Set(parts[i]);
+              const ps = replies[i]?.pairProtects;
+              if (
+                !ps ||
+                typeof ps !== "object" ||
+                Array.isArray(ps) ||
+                Object.entries(ps).some(
+                  ([pair, protects]) => !own.has(pair) || !Array.isArray(protects),
+                )
+              )
+                throw new Error("unexpected Exit history worker reply (module version mismatch?)");
+              Object.assign(exitProtects, ps);
+              const diagnostics = replies[i]?.diagnostics;
+              if (diagnostics)
+                for (const key of Object.keys(exitDiagnostics) as Array<
+                  keyof ExitStrategyDiagnostics
+                >)
+                  exitDiagnostics[key] += diagnostics[key] ?? 0;
+            }
+            history = exitProtects;
+            this.status.phases["Exit history"] = {
+              ms: performance.now() - started,
+              maxSliceMs: 0,
+              mainMs: nodePerf.eventLoopUtilization(elu).active,
+              slowest: `${n} workers · ${parts.length} bounded chunks of at most two pairs`,
+            };
+          } catch (err) {
+            if (gen !== this.gen) return;
+            this.workersFailed(err, "Exit history");
+          }
+        }
+        if (history === null) {
+          const g = exitStrategyProtectsGen(
+            uStage,
+            exitPairs,
+            exitTargetsByPair,
+            s.exitStrategy,
+            s.tactics,
+            cutT,
+            exitValidation,
+            exitDiagnostics,
+          );
+          let yields = 0;
+          history = await this.drive(
+            "Exit history",
+            g,
+            () => {
+              if (++yields % 64 === 0) this.setStage("Tapes", 0, 1, labelBase);
+            },
+            gen,
+          );
+          Object.assign(exitProtects, history);
+        }
+        if (history !== null)
+          this.exitHistoryCache = {
+            key: historyKey,
+            protects: cloneExitProtectMap(history),
+            diagnostics: { ...exitDiagnostics },
+          };
+      }
+    }
+    // A changed history or disabled switch must not orphan an open historic Exit position. Rebuild only its exact id
+    // and mark it held-only so it manages its stop without creating a fresh seat or entry.
+    for (const pos of this.paper.positions) {
+      const h = heldExitProtect(pos.cfg);
+      if (!h || !main.has(h.pair)) continue;
+      const list = (exitProtects[h.pair] ??= []);
+      const heldId = configId(
+        h.pair.split("|")[0] as import("../domain/types.ts").BotType,
+        h.pair.split("|")[1],
+        laneProtect(h.protect, h.pair.split("|")[1]),
+      );
+      if (
+        !list.some((p) => {
+          const [bot, ind] = h.pair.split("|");
+          return (
+            configId(bot as import("../domain/types.ts").BotType, ind, laneProtect(p, ind)) ===
+            heldId
+          );
+        })
+      ) {
+        list.push(h.protect);
+        retainedExitIds.add(heldId);
+      }
+    }
+    this.status.exitStrategies = {
+      enabled: s.exitStrategy.enabled,
+      pairs: exitPairs.length,
+      configs: Object.values(exitProtects).reduce((n, xs) => n + xs.length, 0),
+      history: exitDiagnostics,
+    };
     // each signal's historic trailing configs (signal-hist.ts) from the stage's history (causal: before the run start),
     // computed between ticks; a held historic config whose distances moved since keeps its own tape
     const sigHist: Record<string, Protect[]> = {};
@@ -3028,7 +3511,8 @@ export class CoreRuntime {
     try {
       if (sig.enabled && sig.hist.enabled && sigPairs.size) {
         if (gen !== this.gen) return;
-        if (this.memPressured) throw new Error(this.memLastAbort ?? "memory pressure: compute aborted");
+        if (this.memPressured)
+          throw new Error(this.memLastAbort ?? "memory pressure: compute aborted");
         const cutT = wf.causalBase ? runStartT : u.nowT;
         const histLabel = `preparing: signal historic configs · ${sigPairs.size} pairs`;
         this.setStage("Tapes", 0, 1, histLabel);
@@ -3044,29 +3528,54 @@ export class CoreRuntime {
           const eluH = nodePerf.eventLoopUtilization();
           try {
             const res = await runOnWorkers<import("./pool.server.ts").SignalHistReply>(
-              parts.map((pairs) => ({ type: "signal-hist", evaluationFromT: this.evaluationFromT, bars: sharedU, pairs, sig, tactics: s.tactics, cutT, validation: signalHistValidation })),
-              n, 15 * 60_000,
-              (fraction) => { if (gen === this.gen) this.setStage("Tapes", fraction, 1, label); },
+              parts.map((pairs) => ({
+                type: "signal-hist",
+                evaluationFromT: this.evaluationFromT,
+                bars: sharedU,
+                pairs,
+                sig,
+                tactics: s.tactics,
+                cutT,
+                validation: signalHistValidation,
+              })),
+              n,
+              15 * 60_000,
+              (fraction) => {
+                if (gen === this.gen) this.setStage("Tapes", fraction, 1, label);
+              },
             );
             if (gen !== this.gen) return;
-            if (this.memPressured) throw new Error(this.memLastAbort ?? "memory pressure: compute aborted");
+            if (this.memPressured)
+              throw new Error(this.memLastAbort ?? "memory pressure: compute aborted");
             const byPair = new Map<string, Protect[]>();
             for (let i = 0; i < res.length; i++) {
               const own = new Set(parts[i]);
               const ps = res[i]?.pairProtects;
-              if (!ps || typeof ps !== "object" || Array.isArray(ps) ||
-                Object.entries(ps).some(([pair, protects]) => !own.has(pair) || !Array.isArray(protects)))
-                throw new Error("unexpected Signal history worker reply (module version mismatch?)");
+              if (
+                !ps ||
+                typeof ps !== "object" ||
+                Array.isArray(ps) ||
+                Object.entries(ps).some(
+                  ([pair, protects]) => !own.has(pair) || !Array.isArray(protects),
+                )
+              )
+                throw new Error(
+                  "unexpected Signal history worker reply (module version mismatch?)",
+                );
               for (const [pair, protects] of Object.entries(ps)) byPair.set(pair, protects);
               const d = res[i]?.diagnostics;
               if (d)
-                for (const key of Object.keys(signalHistDiagnostics) as Array<keyof SignalHistDiagnostics>)
+                for (const key of Object.keys(signalHistDiagnostics) as Array<
+                  keyof SignalHistDiagnostics
+                >)
                   signalHistDiagnostics[key] += d[key] ?? 0;
             }
             hist = {};
             for (const pair of order) if (byPair.has(pair)) hist[pair] = byPair.get(pair)!;
             this.status.phases["Signal history"] = {
-              ms: performance.now() - th, maxSliceMs: 0, mainMs: nodePerf.eventLoopUtilization(eluH).active,
+              ms: performance.now() - th,
+              maxSliceMs: 0,
+              mainMs: nodePerf.eventLoopUtilization(eluH).active,
               slowest: `${n} cores · ${parts.length} replies`,
             };
           } catch (err) {
@@ -3088,22 +3597,39 @@ export class CoreRuntime {
             signalHistDiagnostics,
           );
           let k = 0;
-          hist = await this.drive("Signal history", g, () => {
-            if (++k % 64 === 0) this.setStage("Tapes", 0, 1, histLabel);
-          }, gen);
+          hist = await this.drive(
+            "Signal history",
+            g,
+            () => {
+              if (++k % 64 === 0) this.setStage("Tapes", 0, 1, histLabel);
+            },
+            gen,
+          );
         }
         Object.assign(sigHist, hist);
       }
       // Removed/disabled trailing configs retain exactly their open tape, including when historic additions are off.
       // A recovered-only config manages that position's exit and cannot use its old positive sample to re-enter.
       const standard = signalProtects(sig);
-      const held = heldHistProtects(this.paper.positions.map((p) => p.cfg), sigPairs, standard);
+      const held = heldHistProtects(
+        this.paper.positions.map((p) => p.cfg),
+        sigPairs,
+        standard,
+      );
       for (const [pair, ps] of Object.entries(held)) {
         const [bot, ind] = pair.split("|");
         const list = (sigHist[pair] ??= []);
-        const current = new Set([...standard, ...list].map((p) => configId(bot as import("../domain/types.ts").BotType, ind, laneProtect(p, ind))));
+        const current = new Set(
+          [...standard, ...list].map((p) =>
+            configId(bot as import("../domain/types.ts").BotType, ind, laneProtect(p, ind)),
+          ),
+        );
         for (const h of ps) {
-          const id = configId(bot as import("../domain/types.ts").BotType, ind, laneProtect(h, ind));
+          const id = configId(
+            bot as import("../domain/types.ts").BotType,
+            ind,
+            laneProtect(h, ind),
+          );
           if (!current.has(id)) {
             list.push(h);
             retainedSignalIds.add(id);
@@ -3123,7 +3649,9 @@ export class CoreRuntime {
       combos: pipeline.s1.filter((r) => isSignalInd(r.ind)).length,
       active: sigActive.size,
       pairs: sigPairs.size,
-      configs: sigPairs.size * signalProtects(sig).length + Object.values(sigHist).reduce((a, x) => a + x.length, 0),
+      configs:
+        sigPairs.size * signalProtects(sig).length +
+        Object.values(sigHist).reduce((a, x) => a + x.length, 0),
       discoveryPairs: wf.signalBasePassed.size,
       representativePassed: representativePassed.size,
       representativeBaseGate: sig.baseGate !== false,
@@ -3145,7 +3673,10 @@ export class CoreRuntime {
       }));
       const sigRuns = pipeline.s1.filter((r) => isSignalInd(r.ind));
       if (sig.enabled) {
-        const pfs = sigRuns.map((r) => r.full.pf).filter(Number.isFinite).sort((a, b) => a - b);
+        const pfs = sigRuns
+          .map((r) => r.full.pf)
+          .filter(Number.isFinite)
+          .sort((a, b) => a - b);
         // the pairs that passed (Base gate, enough trades on a symbol, the family focus): the count and the PF of
         // the same runs
         const okRuns = sigRuns.filter((r) => representativePassed.has(`${r.bot}|${r.ind}`));
@@ -3183,7 +3714,8 @@ export class CoreRuntime {
       ).filter((x) => enabled(x.tag));
       // Base totals include Signal representatives only when their representative Base gate is enabled; the Signals
       // range row remains an independent diagnostic either way.
-      this.status.basePassed = passed.length - baseBuilt + (signalBaseGate ? representativePassed.size : 0);
+      this.status.basePassed =
+        passed.length - baseBuilt + (signalBaseGate ? representativePassed.size : 0);
       // continuity: the passed count per compute (last BASE_HISTORY_N), per range
       const hist = this.status.baseHistory ?? [];
       hist.push({
@@ -3193,13 +3725,17 @@ export class CoreRuntime {
         built: this.status.baseBuilt ?? 0,
         byRange: Object.fromEntries(rows.map((r) => [r.tag || "wide", r.passed])),
       });
-      this.status.baseHistory = hist.length > BASE_HISTORY_N ? hist.slice(hist.length - BASE_HISTORY_N) : hist;
+      this.status.baseHistory =
+        hist.length > BASE_HISTORY_N ? hist.slice(hist.length - BASE_HISTORY_N) : hist;
       const f = (x: number | null) => (x === null ? "–" : x.toFixed(2));
       this.db.event(
         "info",
         `Base by range: ${rows
           .filter((r) => r.enabled)
-          .map((r) => `${r.range} ${r.passed}/${r.evaluated} (PF ≥ ${r.minPf.toFixed(2)}, median ${f(r.pfMedian)}, passed ${f(r.pfPassedMedian)})`)
+          .map(
+            (r) =>
+              `${r.range} ${r.passed}/${r.evaluated} (PF ≥ ${r.minPf.toFixed(2)}, median ${f(r.pfMedian)}, passed ${f(r.pfPassedMedian)})`,
+          )
           .join(" · ")}`,
       );
     }
@@ -3212,7 +3748,9 @@ export class CoreRuntime {
     let sharedWuMemo: typeof wu.series | null = null;
     const sharedWuOf = () =>
       (sharedWuMemo ??=
-        sharedU !== uStage.series && wu.series.length === uStage.series.length && wu.series.every((b, i) => b === uStage.series[i])
+        sharedU !== uStage.series &&
+        wu.series.length === uStage.series.length &&
+        wu.series.every((b, i) => b === uStage.series[i])
           ? sharedU
           : shareBars(wu.series));
     const tapesFor = async (
@@ -3293,10 +3831,17 @@ export class CoreRuntime {
               for (const pe of t.pending) pe.sym = one(pe.sym);
               buckets[rank.get(`${t.bot}|${t.ind}`) ?? 0].push(t);
             }
-          if (floors.buildStats) for (const r of res) mergeBuildStats(floors.buildStats, r.buildStats ?? []);
+          if (floors.buildStats)
+            for (const r of res) mergeBuildStats(floors.buildStats, r.buildStats ?? []);
           workerTapes = [];
           for (const b of buckets) for (const t of b) workerTapes.push(t);
-          this.status.phases[what === "strategy tapes" ? "Tapes" : what === "carried tapes" ? "Carried tapes" : "Signal tapes"] = {
+          this.status.phases[
+            what === "strategy tapes"
+              ? "Tapes"
+              : what === "carried tapes"
+                ? "Carried tapes"
+                : "Signal tapes"
+          ] = {
             ms: performance.now() - tt,
             maxSliceMs: 0,
             slowest: `${n} cores · ${parts.filter((p) => p.length).length} replies`,
@@ -3317,7 +3862,7 @@ export class CoreRuntime {
             what === "signal tapes" ? "Signals" : "Tapes",
             p.done,
             p.total,
-            `${what === "strategy tapes" ? "strategy tapes (normal · trailing · DCA · DCA Active)" : what} · ${pairs.size} pairs`,
+            `${what === "strategy tapes" ? "strategy tapes (normal · trailing · Historic Exit · DCA · DCA Active)" : what} · ${pairs.size} pairs`,
           ),
         gen,
       );
@@ -3333,6 +3878,8 @@ export class CoreRuntime {
       ...protectFloors(s),
       pairTags: this.basePairTags,
       pairTps,
+      pairProtects: exitProtects,
+      heldOnlyIds: retainedExitIds,
       heldIds,
       microOwnInds: microOwnInds(s.grid),
       buildStats,
@@ -3350,7 +3897,9 @@ export class CoreRuntime {
           carriedHeld.pairs,
           carriedHeld.protects,
           // (Axis builds on the first DCA cell of the whole grid — a Wide config, never carried)
-          carriedHeld.dcaProtects.length ? { ...dcaOpt, protects: carriedHeld.dcaProtects, axis: undefined } : undefined,
+          carriedHeld.dcaProtects.length
+            ? { ...dcaOpt, protects: carriedHeld.dcaProtects, axis: undefined }
+            : undefined,
           "carried tapes",
           {
             ...protectFloors(s),
@@ -3363,7 +3912,9 @@ export class CoreRuntime {
         )
       : [];
     if (!rebuilt || gen !== this.gen) return;
-    const mainTapes = carryTags.size ? withCarried(rebuilt.length ? [...built, ...rebuilt] : built, this.tapes, carryTags) : built;
+    const mainTapes = carryTags.size
+      ? withCarried(rebuilt.length ? [...built, ...rebuilt] : built, this.tapes, carryTags)
+      : built;
     // Signals: the active signals (best N by Base on each symbol) run their own Normal + Trailing configs and,
     // per signals.strategies, the DCA (+ DCA Active) and Axis sets
     const sigStrat =
@@ -3390,7 +3941,19 @@ export class CoreRuntime {
     // cells, a carried one's included (it builds only the seated ids: under a memory fallback the seated Micro /
     // Minimal configs took no new entry between computes)
     this.fastArgs = {
-      main: { protects: this.wf.protects, dcaFor: { ...dcaOpt, protects: this.wf.dcaProtects }, floors: { ...protectFloors(s), pairTags: this.basePairTags, pairTps, heldIds, microOwnInds: microOwnInds(s.grid) } },
+      main: {
+        protects: this.wf.protects,
+        dcaFor: { ...dcaOpt, protects: this.wf.dcaProtects },
+        floors: {
+          ...protectFloors(s),
+          pairTags: this.basePairTags,
+          pairTps,
+          pairProtects: exitProtects,
+          heldIds,
+          heldOnlyIds: retainedExitIds,
+          microOwnInds: microOwnInds(s.grid),
+        },
+      },
       sig: {
         protects: signalProtects(sig),
         dcaFor: sigStrat,
@@ -3406,14 +3969,15 @@ export class CoreRuntime {
       adjust: adjustNow,
     };
     // a demo probe measures the plus cells live: their static last-N gate does not apply there
-    const tapes = this.wf.probe?.perRange || this.wf.probe?.perCell
-      ? [...mainTapes, ...sigTapes]
-      : gateMinimalPlus(
-          [...mainTapes, ...sigTapes],
-          s.grid.minimalPlus,
-          // as of the run start (the walk-forward's own start): never on closes from inside the run
-          wf.startT ?? Math.floor((wu.nowT - wf.simH * H) / H) * H,
-        );
+    const tapes =
+      this.wf.probe?.perRange || this.wf.probe?.perCell
+        ? [...mainTapes, ...sigTapes]
+        : gateMinimalPlus(
+            [...mainTapes, ...sigTapes],
+            s.grid.minimalPlus,
+            // as of the run start (the walk-forward's own start): never on closes from inside the run
+            wf.startT ?? Math.floor((wu.nowT - wf.simH * H) / H) * H,
+          );
     wf.signalRank = sig.enabled ? sig : undefined;
     wf.signalActive = sig.enabled ? sigActive : undefined;
     wf.signalGuardN = sig.enabled && sig.guard.enabled ? sig.guard.lastN : 0;
@@ -3501,7 +4065,8 @@ export class CoreRuntime {
       const sigSummary = function* () {
         for (let i = 0; i < feedAll.length; i++) {
           const e = feedAll[i];
-          if (!e.open && e.ind && isSignalInd(e.ind)) g.add(guardKey(e.cfg ?? e.ind, e.sym, e.side, e.type ?? "normal"), e.r);
+          if (!e.open && e.ind && isSignalInd(e.ind))
+            g.add(guardKey(e.cfg ?? e.ind, e.sym, e.side, e.type ?? "normal"), e.r);
           if ((i + 1) % 20_000 === 0) yield i;
         }
         const xs = sim.trades.filter((x) => isSignalInd(x.cfg.split("|")[1] ?? ""));
@@ -3521,7 +4086,10 @@ export class CoreRuntime {
           peakOrders: tl.maxOrders,
         };
       };
-      Object.assign(sigStatus, await this.drive("Signal status", sigSummary(), () => undefined, gen));
+      Object.assign(
+        sigStatus,
+        await this.drive("Signal status", sigSummary(), () => undefined, gen),
+      );
     }
     this.phase("Persist sim", () => this.persistSim(sim));
     this.phase("Auto preset", () => this.autoPreset(s, wf, sim));
@@ -3542,7 +4110,10 @@ export class CoreRuntime {
     );
     // every preset on the same tapes (the Compare page): after the paper step, so the book never waits for a UI table
     // (CTS_CORE_COMPARE=0 on live desks and session runs: no comparison at all)
-    this.compareInput = process.env.CTS_CORE_COMPARE !== "0" ? { tapes, wf, wu, startT: sim.startT, endT: sim.endT } : null;
+    this.compareInput =
+      process.env.CTS_CORE_COMPARE !== "0"
+        ? { tapes, wf, wu, startT: sim.startT, endT: sim.endT }
+        : null;
     this.computeSummary = `PF ${sim.stats.pf.toFixed(2)} · DDT ${sim.stats.ddt.toFixed(1)}h · green ${Math.round(sim.stats.gh * 100)}% · validate last ${wf.validLastN ?? 0} · live last ${wf.lastN}`;
     // the paper step on the new tapes follows in this cycle (it was "Real 100 %" again after Compare — backwards)
     this.setStage("Paper", 0, 1, `paper step next · ${this.computeSummary}`);
@@ -3553,24 +4124,69 @@ export class CoreRuntime {
     if (gen === this.gen && settingsAt === this.status.settingsAt) {
       const tacticRuns = pipeline.s1.filter((r) => laneOf(r.ind).base.startsWith("tactic-"));
       const countPairs = allCombos(baseFocus(s), s.disabledKinds, s.tfs, microLaneFloor(s.grid))
-        .filter((r) => laneOf(r.ind).base.startsWith("tactic-")).map((r) => `${r.bot}|${r.ind}`);
-      const admittedPairKeys = passed.filter((r) => laneOf(r.ind).base.startsWith("tactic-") && setsPassTags(r, setsGates, applies, ALL_RANGE_TAGS).length > 0).map((r) => `${r.bot}|${r.ind}`);
-      const kinds = (["normal", "trailing", "dca", "dca-active", "axis"] as const).filter((kind) => kindExecutable(kind, wf.toggles));
+        .filter((r) => laneOf(r.ind).base.startsWith("tactic-"))
+        .map((r) => `${r.bot}|${r.ind}`);
+      const admittedPairKeys = passed
+        .filter(
+          (r) =>
+            laneOf(r.ind).base.startsWith("tactic-") &&
+            setsPassTags(r, setsGates, applies, ALL_RANGE_TAGS).length > 0,
+        )
+        .map((r) => `${r.bot}|${r.ind}`);
+      const kinds = (["normal", "trailing", "dca", "dca-active", "axis"] as const).filter((kind) =>
+        kindExecutable(kind, wf.toggles),
+      );
+      const hasExecutableStrategy =
+        kinds.length > 0 ||
+        (s.exitStrategy.enabled && kindExecutable("exit", wf.toggles));
       const enabled = !s.disabledKinds?.includes("tactic");
-      const reason = !enabled ? "typeDisabled" : !countPairs.length ? "focusExcluded" : !kinds.length ? "strategiesDisabled" : !tacticRuns.length ? "noBaseHistory" : !admittedPairKeys.length ? "representativesNotAdmitted" : undefined;
+      const reason = !enabled
+        ? "typeDisabled"
+        : !countPairs.length
+          ? "focusExcluded"
+          : !hasExecutableStrategy
+            ? "strategiesDisabled"
+            : !tacticRuns.length
+              ? "noBaseHistory"
+              : !admittedPairKeys.length
+                ? "representativesNotAdmitted"
+                : undefined;
       // All configured range cells are measured. Base representative target/range pruning is not a substitute
       // for evaluating the other cells; only structural lane/Micro/horizon rules remain, with explicit skip counts.
       const countApplies = baseRangeRules(s).applies;
-      const countTags = Object.fromEntries(countPairs.map((pair) => {
-        const ind = pair.split("|")[1];
-        return [pair, ["", ...ALL_RANGE_TAGS].filter((tag) => rangeAppliesTo(ind, tag, countApplies))];
-      }));
+      const countTags = Object.fromEntries(
+        countPairs.map((pair) => {
+          const ind = pair.split("|")[1];
+          return [
+            pair,
+            ["", ...ALL_RANGE_TAGS].filter((tag) => rangeAppliesTo(ind, tag, countApplies)),
+          ];
+        }),
+      );
       const input: Omit<BaseConfigJob, "key" | "settingsAt"> = {
-        pairs: countPairs, admittedPairKeys, protects: [...countProtects], kinds, reason,
+        pairs: countPairs,
+        admittedPairKeys,
+        protects: [...countProtects],
+        kinds,
+        reason,
         dcaOpt: { protects: countDcaProtects, dca: wf.dca, axis: s.axis },
-        common: { evaluationFromT: this.evaluationFromT, bars: sharedU, cost: s.cost, tactics: s.tactics,
-          options: { gates: s.gates, cost: s.cost, cutT: wf.causalBase ? runStartT : u.nowT, fromT: uStage.startT },
-          floors: { ...protectFloors(s), pairTags: countTags, countFitProtects: countProtects, microOwnInds: microOwnInds(s.grid) },
+        common: {
+          evaluationFromT: this.evaluationFromT,
+          bars: sharedU,
+          cost: s.cost,
+          tactics: s.tactics,
+          options: {
+            gates: s.gates,
+            cost: s.cost,
+            cutT: wf.causalBase ? runStartT : u.nowT,
+            fromT: uStage.startT,
+          },
+          floors: {
+            ...protectFloors(s),
+            pairTags: countTags,
+            countFitProtects: countProtects,
+            microOwnInds: microOwnInds(s.grid),
+          },
         },
       };
       this.baseConfigRunner.request({ ...input, key: baseConfigJobKey(input), settingsAt });
@@ -3710,7 +4326,12 @@ export class CoreRuntime {
     }
     this.status.phases.Compare = { ms: performance.now() - tc, maxSliceMs: maxSlice };
     this.db.kvSet("presetSims", { at: Date.now(), startT, endT, presets });
-    this.status.compare = { running: false, done: names.length, total: names.length, at: Date.now() };
+    this.status.compare = {
+      running: false,
+      done: names.length,
+      total: names.length,
+      at: Date.now(),
+    };
   }
 
   /** Write rows in small transactions, yielding between them. */
@@ -4062,8 +4683,12 @@ export class CoreRuntime {
     if (rows.length < 40) return null;
     // Legacy zero placeholders are not measured. Newly confirmed zero commission
     // carries its durable flag and belongs to the same actual-cost sample.
-    const withFee = rows.filter((r) => r.fee !== null && Number.isFinite(r.fee) &&
-      (r.fee > 0 || r.fee === 0 && r.fee_known === 1));
+    const withFee = rows.filter(
+      (r) =>
+        r.fee !== null &&
+        Number.isFinite(r.fee) &&
+        (r.fee > 0 || (r.fee === 0 && r.fee_known === 1)),
+    );
     if (withFee.length < 20) return null;
     let fee = 0;
     for (const r of withFee) {
@@ -4140,7 +4765,11 @@ export class CoreRuntime {
     const invalid = new Set(removedIds);
     for (const before of this.savedPresets()) {
       const after = byId.get(before.id);
-      if (!after || !isDeepStrictEqual(before.settings, after.settings) || !isDeepStrictEqual(before.wf, after.wf))
+      if (
+        !after ||
+        !isDeepStrictEqual(before.settings, after.settings) ||
+        !isDeepStrictEqual(before.wf, after.wf)
+      )
         invalid.add(before.id);
     }
     this.db.kvSet("presets", next);
@@ -4291,8 +4920,11 @@ export class CoreRuntime {
     const ids = [...ALL_RESEARCH_PRESETS, ...this.savedPresets()]
       .map((p) => p.id)
       .filter((id) => !onlyMissing || (this.presetSeries(id)?.days ?? 0) < d)
-      .filter((id) => !this.backtestQueue.some((q) => q.id === id) &&
-        !(this.backtestJob?.state === "running" && this.backtestJob.id === id));
+      .filter(
+        (id) =>
+          !this.backtestQueue.some((q) => q.id === id) &&
+          !(this.backtestJob?.state === "running" && this.backtestJob.id === id),
+      );
     this.backtestQueue.push(...ids.map((id) => ({ id, days: d })));
     this.nextQueuedBacktest();
     return ids.length;
@@ -4339,12 +4971,16 @@ export class CoreRuntime {
     this.backtestControls ??= new WeakMap();
     this.backtestControls.set(job, controller);
     const task = {
-      job, controller, revision: structuredClone({ settings: p.settings, wf: p.wf }),
-      promise: Promise.resolve(), timer: null as ReturnType<typeof setTimeout> | null,
+      job,
+      controller,
+      revision: structuredClone({ settings: p.settings, wf: p.wf }),
+      promise: Promise.resolve(),
+      timer: null as ReturnType<typeof setTimeout> | null,
     };
     this.backtestTask = task;
     task.timer = setTimeout(() => {
-      if (this.backtestTask === task) this.cancelBacktest("backtest exceeded its 15 min limit — aborted");
+      if (this.backtestTask === task)
+        this.cancelBacktest("backtest exceeded its 15 min limit — aborted");
     }, BACKTEST_LIMIT_MS);
     task.timer.unref?.();
     task.promise = this.runPresetBacktest(p, d, job)
@@ -4355,7 +4991,10 @@ export class CoreRuntime {
           job.error = err instanceof Error ? err.message : String(err);
         }
         if (!controller.signal.aborted && !this.disposed)
-          this.db.event("error", `backtest ${p.label}: ${err instanceof Error ? err.message : err}`);
+          this.db.event(
+            "error",
+            `backtest ${p.label}: ${err instanceof Error ? err.message : err}`,
+          );
       })
       .finally(() => {
         if (task.timer) clearTimeout(task.timer);
@@ -4394,7 +5033,8 @@ export class CoreRuntime {
     if (!job) return;
     const controller = this.backtestControls?.get(job);
     controller?.signal.throwIfAborted();
-    if (controller && this.backtestTask?.job !== job) throw new Error("backtest canceled: superseded task");
+    if (controller && this.backtestTask?.job !== job)
+      throw new Error("backtest canceled: superseded task");
     if (job.state && job.state !== "running") throw new Error(job.error ?? "backtest canceled");
     if (Number.isFinite(job.startedAt) && Date.now() - job.startedAt > BACKTEST_LIMIT_MS) {
       const err = new Error("backtest exceeded its 15 min limit — aborted");
@@ -4410,23 +5050,35 @@ export class CoreRuntime {
     // Direct private phase fixtures have no public task registration or catalog ownership.
     if (task?.job !== job) return;
     const current = this.findPreset(job.id);
-    if (!current || !isDeepStrictEqual(current.settings, task.revision.settings) || !isDeepStrictEqual(current.wf, task.revision.wf)) {
+    if (
+      !current ||
+      !isDeepStrictEqual(current.settings, task.revision.settings) ||
+      !isDeepStrictEqual(current.wf, task.revision.wf)
+    ) {
       this.cancelBacktest("backtest canceled: preset settings changed or preset removed");
       this.checkBacktest(job);
     }
   }
 
   /** Abandon the owner continuation promptly without canceling a transport shared by other runtimes. */
-  private async backtestAwait<T>(job: NonNullable<CoreRuntime["backtestJob"]>, promise: Promise<T>): Promise<T> {
+  private async backtestAwait<T>(
+    job: NonNullable<CoreRuntime["backtestJob"]>,
+    promise: Promise<T>,
+  ): Promise<T> {
     this.checkBacktest(job);
     const signal = this.backtestControls?.get(job)?.signal;
     let cancel: (() => void) | undefined;
     try {
-      const value = signal ? await Promise.race([promise, new Promise<never>((_, reject) => {
-        cancel = () => reject(signal.reason);
-        signal.addEventListener("abort", cancel, { once: true });
-        if (signal.aborted) cancel();
-      })]) : await promise;
+      const value = signal
+        ? await Promise.race([
+            promise,
+            new Promise<never>((_, reject) => {
+              cancel = () => reject(signal.reason);
+              signal.addEventListener("abort", cancel, { once: true });
+              if (signal.aborted) cancel();
+            }),
+          ])
+        : await promise;
       this.checkBacktest(job);
       return value;
     } finally {
@@ -4487,7 +5139,8 @@ export class CoreRuntime {
   }
   /** Workers that failed are tried again after WORKERS_RETRY_MS. */
   private workersRetry() {
-    if (this.workersBroken && Date.now() - this.workersBrokenAt > WORKERS_RETRY_MS) this.workersBroken = false;
+    if (this.workersBroken && Date.now() - this.workersBrokenAt > WORKERS_RETRY_MS)
+      this.workersBroken = false;
   }
   private floorsWaivedNoted = false;
   /** when this desk's live record starts (kept across restarts): the live validation counts closes from here */
@@ -4518,11 +5171,27 @@ export class CoreRuntime {
     const byRange: SetListings["byRange"] = {};
     for (const p of picks) {
       // (the selection's window carries its gross profit / loss as well)
-      const w = p.window as { n: number; net: number; pf: number; ddt: number; gp?: number; gl?: number };
+      const w = p.window as {
+        n: number;
+        net: number;
+        pf: number;
+        ddt: number;
+        gp?: number;
+        gl?: number;
+      };
       const tag = rangeOfId(p.id);
       const range = RANGE_LABEL[tag];
       const row = validated.length;
-      validated.push({ id: p.id, range, kind: kindOfId(p.id), score: p.score, pf: w.pf, n: w.n, net: w.net, ddt: w.ddt });
+      validated.push({
+        id: p.id,
+        range,
+        kind: kindOfId(p.id),
+        score: p.score,
+        pf: w.pf,
+        n: w.n,
+        net: w.net,
+        ddt: w.ddt,
+      });
       const r = (byRange[range] ??= { rows: [], gp: 0, gl: 0, pf: null });
       r.rows.push(row);
       r.gp += w.gp ?? 0;
@@ -4534,7 +5203,12 @@ export class CoreRuntime {
       const [bot, ind, sym, side, kind] = k.split("|");
       active.push({ bot, ind, sym, side: side === "-1" ? -1 : 1, ...(kind ? { kind } : {}) });
     }
-    active.sort((a, b) => (a.bot + a.ind + a.sym).localeCompare(b.bot + b.ind + b.sym) || b.side - a.side || (a.kind ?? "").localeCompare(b.kind ?? ""));
+    active.sort(
+      (a, b) =>
+        (a.bot + a.ind + a.sym).localeCompare(b.bot + b.ind + b.sym) ||
+        b.side - a.side ||
+        (a.kind ?? "").localeCompare(b.kind ?? ""),
+    );
     const proof = this.engineProof();
     this.listings = {
       paperStep: this.status.paperSteps ?? 0,
@@ -4550,70 +5224,170 @@ export class CoreRuntime {
       validated: validated.length,
       active: active.length,
       proven: this.listings.proven ? this.listings.proven.length : null,
-      byRange: Object.entries(byRange).map(([range, r]) => ({ range, validated: r.rows.length, pf: r.pf })),
+      byRange: Object.entries(byRange).map(([range, r]) => ({
+        range,
+        validated: r.rows.length,
+        pf: r.pf,
+      })),
     };
   }
-  private proofMemo: { key: string; out: { proven: Set<string>; judged: number; n: number; minPf: number; unknown: number; unknownConfigs: number } } | null = null;
-  private promotionModelMemo: { sim: WalkForwardResult; trades: Trade[]; n: number; records: Map<string, LiveRecord>; byConfig: Map<string, LiveRecord> } | null = null;
+  private proofMemo: {
+    key: string;
+    out: {
+      proven: Set<string>;
+      judged: number;
+      n: number;
+      minPf: number;
+      unknown: number;
+      unknownConfigs: number;
+    };
+  } | null = null;
+  private promotionModelMemo: {
+    sim: WalkForwardResult;
+    trades: Trade[];
+    n: number;
+    records: Map<string, LiveRecord>;
+    byConfig: Map<string, LiveRecord>;
+  } | null = null;
   private promotionOwnedMemo: { version: number; records: Map<string, LiveRecord> } | null = null;
   private promotionSelectedMemo: { selected: string[]; ids: Set<string> } | null = null;
-  private promotionReferenceMemo: { lanes: NonNullable<CoreSettings["live"]["promotedLanes"]>; byKey: Map<string, NonNullable<CoreSettings["live"]["promotedLanes"]>[number]>; records: Map<string, LiveRecord> } | null = null;
+  private promotionReferenceMemo: {
+    lanes: NonNullable<CoreSettings["live"]["promotedLanes"]>;
+    byKey: Map<string, NonNullable<CoreSettings["live"]["promotedLanes"]>[number]>;
+    records: Map<string, LiveRecord>;
+  } | null = null;
   private modeledExecutionRecords() {
     const sim = this.sim;
     if (!sim) return null;
     let model = this.promotionModelMemo;
-    if (!model || model.sim !== sim || model.trades !== sim.trades || model.n !== sim.trades.length || !model.byConfig) {
-      model = { sim, trades: sim.trades, n: sim.trades.length, records: postBaseExecutionRecords(sim.trades),
-        byConfig: liveRecords(sim.trades.map((t) => ({ cfg: t.cfg, exitT: t.exitT, r: unitReturn(t) }))) };
+    if (
+      !model ||
+      model.sim !== sim ||
+      model.trades !== sim.trades ||
+      model.n !== sim.trades.length ||
+      !model.byConfig
+    ) {
+      model = {
+        sim,
+        trades: sim.trades,
+        n: sim.trades.length,
+        records: postBaseExecutionRecords(sim.trades),
+        byConfig: liveRecords(
+          sim.trades.map((t) => ({ cfg: t.cfg, exitT: t.exitT, r: unitReturn(t) })),
+        ),
+      };
       this.promotionModelMemo = model;
     }
     return model;
   }
   /** Settled post-Base model outcomes and funded OWNED PAPER executions are distinct evidence, never venue fills. */
   livePromotionGate(lane: { cfg: string; sym: string; side: number }, now = Date.now()): LiveGate {
-    const n = Math.max(1, this.settings.gates.minTrades ?? 0, this.settings.live.liveLastN ?? 25, this.settings.live.engineProofN ?? 0);
+    const n = Math.max(
+      1,
+      this.settings.gates.minTrades ?? 0,
+      this.settings.live.liveLastN ?? 25,
+      this.settings.live.engineProofN ?? 0,
+    );
     const ind = lane.cfg.split("|")[1] ?? "";
-    const minPf = Math.max(minPfOf(this.settings.gates, rangeOfId(lane.cfg), ind),
+    const minPf = Math.max(
+      minPfOf(this.settings.gates, rangeOfId(lane.cfg), ind),
       this.settings.live.liveMinPf ?? 0,
-      (this.settings.live.engineProofN ?? 0) > 0 && !isSignalInd(ind) ? this.settings.live.engineProofPf ?? ENGINE_PROOF_PF : 0);
+      (this.settings.live.engineProofN ?? 0) > 0 && !isSignalInd(ind)
+        ? (this.settings.live.engineProofPf ?? ENGINE_PROOF_PF)
+        : 0,
+    );
     const sim = this.sim;
     const model = this.modeledExecutionRecords();
     const version = this.db.version("paper_book_trades");
     let owned = this.promotionOwnedMemo;
     if (!owned || owned.version !== version) {
-      const rows = this.db.all<{ cfg: string; sym: string; side: number; exit_t: number; unit_r: number | null; owned_notional_usd: number | null }>(
+      const rows = this.db.all<{
+        cfg: string;
+        sym: string;
+        side: number;
+        exit_t: number;
+        unit_r: number | null;
+        owned_notional_usd: number | null;
+      }>(
         "SELECT cfg,sym,side,exit_t,unit_r,owned_notional_usd FROM paper_book_trades WHERE reason != 'dropped' AND exit_t IS NOT NULL",
       );
-      owned = { version, records: ownedPaperExecutionRecords(rows.map((r) => ({ cfg: r.cfg, sym: r.sym, side: r.side,
-        exitT: r.exit_t, unitR: r.unit_r, ownedNotionalUsd: r.owned_notional_usd }))) };
+      owned = {
+        version,
+        records: ownedPaperExecutionRecords(
+          rows.map((r) => ({
+            cfg: r.cfg,
+            sym: r.sym,
+            side: r.side,
+            exitT: r.exit_t,
+            unitR: r.unit_r,
+            ownedNotionalUsd: r.owned_notional_usd,
+          })),
+        ),
+      };
       this.promotionOwnedMemo = owned;
     }
     const key = executionRecordKey(lane.cfg, lane.sym, lane.side);
     const lanes = this.settings.live.promotedLanes;
     if (lanes && this.promotionReferenceMemo?.lanes !== lanes) {
-      const records = liveRecords(lanes.filter((p) => validPromotedLaneProof(p, now)).flatMap((p) => p.executionCloses.map((c) => ({ cfg: promoteLaneKey(p), exitT: c.exitT, r: c.unitR }))));
-      this.promotionReferenceMemo = { lanes, byKey: new Map(lanes.map((p) => [promoteLaneKey(p), p])), records };
+      const records = liveRecords(
+        lanes
+          .filter((p) => validPromotedLaneProof(p, now))
+          .flatMap((p) =>
+            p.executionCloses.map((c) => ({ cfg: promoteLaneKey(p), exitT: c.exitT, r: c.unitR })),
+          ),
+      );
+      this.promotionReferenceMemo = {
+        lanes,
+        byKey: new Map(lanes.map((p) => [promoteLaneKey(p), p])),
+        records,
+      };
     }
-    const ref = !isSignalInd(ind) && lanes ? this.promotionReferenceMemo?.byKey.get(key) : undefined;
+    const ref =
+      !isSignalInd(ind) && lanes ? this.promotionReferenceMemo?.byKey.get(key) : undefined;
     const reference = validPromotedLaneProof(ref, now) ? ref : undefined;
     const referenceRecord = reference ? this.promotionReferenceMemo?.records.get(key) : undefined;
-    const referenceGate = referenceRecord ? liveGate(referenceRecord, reference!.fromT, now, n, minPf) : undefined;
+    const referenceGate = referenceRecord
+      ? liveGate(referenceRecord, reference!.fromT, now, n, minPf)
+      : undefined;
     const b = referenceRecord ? lowerBound(referenceRecord.exitT, now + 1) : 0;
     const a = Math.max(0, b - n);
     const referenceGp = referenceRecord ? referenceRecord.gp[b] - referenceRecord.gp[a] : 0;
     const referenceGl = referenceRecord ? referenceRecord.gl[b] - referenceRecord.gl[a] : 0;
     const noLoss = referenceGp > 0 && referenceGl === 0;
-    const gate = promotionGate(sim ? model?.records.get(key) : undefined, owned.records.get(key), 0, now, n, minPf,
-      reference && referenceGate ? { source: reference.executionSource, n: referenceGate.n, pf: referenceGate.pf, unknown: referenceGate.unknown ?? 0,
-        fromT: b > a ? referenceRecord!.exitT[a] : null, toT: b > a ? referenceRecord!.exitT[b - 1] : null,
-        noLoss, pfConvention: noLoss ? "no-loss-score" : "ratio", validUntilT: reference.validUntilT } : undefined);
+    const gate = promotionGate(
+      sim ? model?.records.get(key) : undefined,
+      owned.records.get(key),
+      0,
+      now,
+      n,
+      minPf,
+      reference && referenceGate
+        ? {
+            source: reference.executionSource,
+            n: referenceGate.n,
+            pf: referenceGate.pf,
+            unknown: referenceGate.unknown ?? 0,
+            fromT: b > a ? referenceRecord!.exitT[a] : null,
+            toT: b > a ? referenceRecord!.exitT[b - 1] : null,
+            noLoss,
+            pfConvention: noLoss ? "no-loss-score" : "ratio",
+            validUntilT: reference.validUntilT,
+          }
+        : undefined,
+    );
     const tp = this.tapeIndex().get(lane.cfg);
     const selected = this.paper.selected;
     if (selected && this.promotionSelectedMemo?.selected !== selected)
       this.promotionSelectedMemo = { selected, ids: new Set(selected) };
-    const eligible = selected && this.promotionSelectedMemo?.ids.has(lane.cfg) && tp && !tp.heldOnly &&
-      (!isSignalInd(ind) || ((!this.wf.signalBasePassed || this.wf.signalBasePassed.has(`${tp.bot}|${tp.ind}`)) &&
-        (!this.wf.signalActive || signalActiveHas(this.wf.signalActive, tp.bot, tp.ind, lane.sym, lane.side, tp.kind))));
+    const eligible =
+      selected &&
+      this.promotionSelectedMemo?.ids.has(lane.cfg) &&
+      tp &&
+      !tp.heldOnly &&
+      (!isSignalInd(ind) ||
+        ((!this.wf.signalBasePassed || this.wf.signalBasePassed.has(`${tp.bot}|${tp.ind}`)) &&
+          (!this.wf.signalActive ||
+            signalActiveHas(this.wf.signalActive, tp.bot, tp.ind, lane.sym, lane.side, tp.kind))));
     return eligible ? gate : { ...gate, ok: false, state: "ineligible" };
   }
   /**
@@ -4621,9 +5395,21 @@ export class CoreRuntime {
    * exact symbol/direction windows instead: siblings cannot qualify or veto each other. Nominal venue-attribution
    * rows have no allocation proof and never replace these measured paper closes.
    */
-  engineProof(now = Date.now()): { proven: Set<string>; judged: number; n: number; minPf: number; unknown: number; unknownConfigs: number } | null {
+  engineProof(
+    now = Date.now(),
+  ): {
+    proven: Set<string>;
+    judged: number;
+    n: number;
+    minPf: number;
+    unknown: number;
+    unknownConfigs: number;
+  } | null {
     const n = this.settings.live.engineProofN ?? 0;
-    if (!(n > 0)) { this.status.engineProof = undefined; return null; }
+    if (!(n > 0)) {
+      this.status.engineProof = undefined;
+      return null;
+    }
     const minPf = this.settings.live.engineProofPf ?? ENGINE_PROOF_PF;
     // memoized on the two records' write versions: an unchanged book costs no query at all (every live control step
     // asks), a change re-reads the real closes from the partial index paper_book_trades_closed
@@ -4631,18 +5417,49 @@ export class CoreRuntime {
     const key = `unit-net-returns|${n}|${minPf}|${this.db.version("paper_book_trades")}|${this.db.version("live_lane_trades")}`;
     if (this.proofMemo?.key === key) {
       const out = this.proofMemo.out;
-      this.status.engineProof = { n, minPf, judged: out.judged, proven: out.proven.size, unknown: out.unknown, unknownConfigs: out.unknownConfigs, pfBasis: "unit-net-returns" };
+      this.status.engineProof = {
+        n,
+        minPf,
+        judged: out.judged,
+        proven: out.proven.size,
+        unknown: out.unknown,
+        unknownConfigs: out.unknownConfigs,
+        pfBasis: "unit-net-returns",
+      };
       return out;
     }
-    const rows = this.db.all<{ cfg: string; exit_t: number | null; unit_r: number | null; owned_notional_usd: number | null }>(
+    const rows = this.db.all<{
+      cfg: string;
+      exit_t: number | null;
+      unit_r: number | null;
+      owned_notional_usd: number | null;
+    }>(
       "SELECT cfg, exit_t, unit_r, owned_notional_usd FROM paper_book_trades WHERE reason != 'dropped' AND exit_t IS NOT NULL",
     );
     // Keep NULLs in time order: skipping a new unknown could incorrectly prove the config on older known wins.
-    const paper = liveRecords(rows.map((x) => ({ cfg: x.cfg, exitT: x.exit_t!, r:
-      typeof x.owned_notional_usd === "number" && Number.isFinite(x.owned_notional_usd) && x.owned_notional_usd > 1e-9 ? x.unit_r : null })));
+    const paper = liveRecords(
+      rows.map((x) => ({
+        cfg: x.cfg,
+        exitT: x.exit_t!,
+        r:
+          typeof x.owned_notional_usd === "number" &&
+          Number.isFinite(x.owned_notional_usd) &&
+          x.owned_notional_usd > 1e-9
+            ? x.unit_r
+            : null,
+      })),
+    );
     // live_lane_trades is nominal attribution without allocated quantities, so it cannot replace owned proof.
     const out = { ...engineProven(paper, new Map(), now, n, minPf), n, minPf };
-    this.status.engineProof = { n, minPf, judged: out.judged, proven: out.proven.size, unknown: out.unknown, unknownConfigs: out.unknownConfigs, pfBasis: "unit-net-returns" };
+    this.status.engineProof = {
+      n,
+      minPf,
+      judged: out.judged,
+      proven: out.proven.size,
+      unknown: out.unknown,
+      unknownConfigs: out.unknownConfigs,
+      pfBasis: "unit-net-returns",
+    };
     const prev = this.proofMemo?.out;
     if (!prev || prev.proven.size !== out.proven.size || prev.judged !== out.judged)
       this.db.event(
@@ -4660,9 +5477,14 @@ export class CoreRuntime {
     this.exAcceptAt = now;
     const key = String(this.db.version("live_lane_trades"));
     if (this.exAcceptMemo?.key === key) return this.exAcceptMemo.idx;
-    const rows = this.db.all<{ cfg: string; sym: string; side: number; exit_t: number; entry_t: number | null; r: number }>(
-      "SELECT cfg, sym, side, exit_t, entry_t, r FROM live_lane_trades",
-    );
+    const rows = this.db.all<{
+      cfg: string;
+      sym: string;
+      side: number;
+      exit_t: number;
+      entry_t: number | null;
+      r: number;
+    }>("SELECT cfg, sym, side, exit_t, entry_t, r FROM live_lane_trades");
     const idx = exchangeAcceptIndex(
       rows.map((x) => ({
         cfg: x.cfg,
@@ -4696,6 +5518,12 @@ export class CoreRuntime {
   } | null = null;
   /** Base results by combo for the partial progression (CTS_CORE_BASE_SLICES) */
   private baseCache: { key: string; runs: Map<string, ComboRun[]>; slice: number } | null = null;
+  /** One small, causal result cache; a verified prehistory fingerprint prevents refitting identical Exit inputs. */
+  private exitHistoryCache: {
+    key: string;
+    protects: Record<string, Protect[]>;
+    diagnostics: ExitStrategyDiagnostics;
+  } | null = null;
 
   /** Time-sliced driver for backtests: yields every SLICE_MS, aborts past the job's time limit. */
   private async sliced<T, R>(
@@ -4774,13 +5602,26 @@ export class CoreRuntime {
         signal,
       );
       this.checkBacktest(job);
-      for (const r of res) for (const chunk of r.runsJson) for (const x of JSON.parse(chunk) as ComboRun[]) add(x);
+      for (const r of res)
+        for (const chunk of r.runsJson) for (const x of JSON.parse(chunk) as ComboRun[]) add(x);
     });
     if (!viaWorkers) {
       const look = makeUniverse(lookBars);
       function* base() {
         for (let i = 0; i < combos.length; i++) {
-          const rs = baseRuns(look, [combos[i]], s.cost, s.tactics, false, false, undefined, rangeProtects, rangeMinTf, micro, s.gates);
+          const rs = baseRuns(
+            look,
+            [combos[i]],
+            s.cost,
+            s.tactics,
+            false,
+            false,
+            undefined,
+            rangeProtects,
+            rangeMinTf,
+            micro,
+            s.gates,
+          );
           for (const x of rs) add(x);
           yield i;
         }
@@ -4844,7 +5685,10 @@ export class CoreRuntime {
         const end = Number(process.env.CTS_CORE_SYNTHETIC_END) || Date.now();
         candles = new Map();
         for (let i = 0; i < s.symbols; i++)
-          candles.set(`SYN${i}-USDT`, CandleSeries.fromCandles(syntheticCandles(`SYN${i}`, s.tfMin, wantBars, end)));
+          candles.set(
+            `SYN${i}-USDT`,
+            CandleSeries.fromCandles(syntheticCandles(`SYN${i}`, s.tfMin, wantBars, end)),
+          );
         this.btCandles.set(uniKey, { at: Date.now(), candles });
       } else {
         candles = new Map();
@@ -4861,10 +5705,13 @@ export class CoreRuntime {
             this.tickers = tickers;
           }
           syms = forceSymbols(
-            await this.backtestAwait(job, rankUniverse(this.tickers, s.symbols, s.symbolRank ?? "volatility1h", (...args) => {
-              this.checkBacktest(job);
-              return this.backtestAwait(job, this.feed.klines(...args));
-            })),
+            await this.backtestAwait(
+              job,
+              rankUniverse(this.tickers, s.symbols, s.symbolRank ?? "volatility1h", (...args) => {
+                this.checkBacktest(job);
+                return this.backtestAwait(job, this.feed.klines(...args));
+              }),
+            ),
             s.forceSymbols,
             s.symbols,
           );
@@ -4872,28 +5719,45 @@ export class CoreRuntime {
         let done = 0;
         // the engine's candles at this timeframe are reused; only the missing older part is downloaded
         const tfMs = s.tfMin * 60_000;
-        await mapLimit(syms, 8, async (sym) => {
-          this.checkBacktest(job);
-          const have = s.tfMin === this.settings.tfMin ? (this.candles.get(sym) ?? CandleSeries.EMPTY) : CandleSeries.EMPTY;
-          const missing = wantBars - have.n;
-          let cs: CandleSeries = have;
-          if (missing > 0) {
-            const first = have.firstT();
-            const older = await this.backtestAwait(job, this.feed
-              .history(sym, s.tfMin, have.n ? missing : wantBars, {
-                pauseMs: 0,
-                nowT: first,
-              })
-              .catch(() => [] as Candle[]));
+        await mapLimit(
+          syms,
+          8,
+          async (sym) => {
             this.checkBacktest(job);
-            cs =
-              first !== undefined
-                ? CandleSeries.prepend(older.filter((c) => c.t < first && c.t >= first - missing * tfMs), have)
-                : CandleSeries.fromCandles(older);
-          }
-          if (cs.n) candles.set(sym, cs);
-          job.progress = (++done / syms.length) * 0.3;
-        }, () => !this.disposed && job.state === "running" && !this.backtestControls?.get(job)?.signal.aborted);
+            const have =
+              s.tfMin === this.settings.tfMin
+                ? (this.candles.get(sym) ?? CandleSeries.EMPTY)
+                : CandleSeries.EMPTY;
+            const missing = wantBars - have.n;
+            let cs: CandleSeries = have;
+            if (missing > 0) {
+              const first = have.firstT();
+              const older = await this.backtestAwait(
+                job,
+                this.feed
+                  .history(sym, s.tfMin, have.n ? missing : wantBars, {
+                    pauseMs: 0,
+                    nowT: first,
+                  })
+                  .catch(() => [] as Candle[]),
+              );
+              this.checkBacktest(job);
+              cs =
+                first !== undefined
+                  ? CandleSeries.prepend(
+                      older.filter((c) => c.t < first && c.t >= first - missing * tfMs),
+                      have,
+                    )
+                  : CandleSeries.fromCandles(older);
+            }
+            if (cs.n) candles.set(sym, cs);
+            job.progress = (++done / syms.length) * 0.3;
+          },
+          () =>
+            !this.disposed &&
+            job.state === "running" &&
+            !this.backtestControls?.get(job)?.signal.aborted,
+        );
         this.checkBacktest(job);
         if (!candles.size) throw new Error("no market data (exchange unreachable)");
         this.btCandles.set(uniKey, { at: Date.now(), candles });
@@ -4939,7 +5803,12 @@ export class CoreRuntime {
     const adjust = s.adjust?.enabled ? this.adjustState() : null;
     // the engine's tape rules: only the ranges and targets a pair passed in Base, and the Micro indication rule (the
     // floors alone built every range and target of every pair, and Micro cells for every indication)
-    const floors: EntryFloors = { ...protectFloors(s), pairTags, pairTps, microOwnInds: microOwnInds(s.grid) };
+    const floors: EntryFloors = {
+      ...protectFloors(s),
+      pairTags,
+      pairTps,
+      microOwnInds: microOwnInds(s.grid),
+    };
     let tapes: ConfigTape[] = [];
     // pairs in the engine's combo order, cut into contiguous slices → identical tape order to one process
     // (lane combos included: the pairs are lane ids when the settings carry timeframe lanes)
@@ -5009,10 +5878,14 @@ export class CoreRuntime {
       // The same initialized-pair discovery rule as the live runtime; type/config qualification remains causal.
       sigActive = activeSignals(runs, sig);
       const signalFamilies = parseEvalFamilies(process.env.CTS_CORE_FAMILY);
-      const initialized = sigCombos.filter((c) => seriesOf(look, c.ind).length > 0 &&
-        (!signalFamilies || signalFamilies.some((f) => evalFamilyMatch(f, c.bot, c.ind, []))));
-      const sigPairs = signalEvaluationPairs(initialized, runs, sig,
-        (r) => passesBase(r.full, baseSetsGates(s.gates)));
+      const initialized = sigCombos.filter(
+        (c) =>
+          seriesOf(look, c.ind).length > 0 &&
+          (!signalFamilies || signalFamilies.some((f) => evalFamilyMatch(f, c.bot, c.ind, []))),
+      );
+      const sigPairs = signalEvaluationPairs(initialized, runs, sig, (r) =>
+        passesBase(r.full, baseSetsGates(s.gates)),
+      );
       if (sigPairs.size)
         tapes = tapes.concat(
           await this.sliced(
@@ -5053,7 +5926,9 @@ export class CoreRuntime {
     const st = sim.stats;
     const knownBasis = st.pfBasis === "unit-net-returns" && st.unknownReturns === 0;
     const noLoss = knownBasis ? st.gp > 0 && st.gl === 0 : null;
-    const settledTrades = sim.trades.filter((trade) => trade.exitT > startT && trade.exitT <= sim.endT);
+    const settledTrades = sim.trades.filter(
+      (trade) => trade.exitT > startT && trade.exitT <= sim.endT,
+    );
     const settled = unitStatsOf(settledTrades, sim.endT);
     const settledKnown = settled.pfBasis === "unit-net-returns";
     const settledNoLoss = settledKnown ? settled.gp > 0 && settled.gl === 0 : null;
@@ -5069,7 +5944,11 @@ export class CoreRuntime {
       gp: knownBasis ? st.gp : null,
       gl: knownBasis ? st.gl : null,
       noLoss,
-      pfConvention: !knownBasis ? "unavailable" : noLoss ? "no-loss-sentinel" : "gross-return-ratio",
+      pfConvention: !knownBasis
+        ? "unavailable"
+        : noLoss
+          ? "no-loss-sentinel"
+          : "gross-return-ratio",
       sample: "with-endpoint-marks",
       endpointMarks: sim.openAtEnd?.length ?? 0,
       settledStats: {
@@ -5079,10 +5958,16 @@ export class CoreRuntime {
         gp: settledKnown ? settled.gp : null,
         gl: settledKnown ? settled.gl : null,
         noLoss: settledNoLoss,
-        pfConvention: !settledKnown ? "unavailable" : settledNoLoss ? "no-loss-sentinel" : "gross-return-ratio",
+        pfConvention: !settledKnown
+          ? "unavailable"
+          : settledNoLoss
+            ? "no-loss-sentinel"
+            : "gross-return-ratio",
         sample: "settled-closes",
       },
-      sizeWeightedDiagnostics: sim.sizedStats ? { ...sim.sizedStats, sample: "with-endpoint-marks" } : undefined,
+      sizeWeightedDiagnostics: sim.sizedStats
+        ? { ...sim.sizedStats, sample: "with-endpoint-marks" }
+        : undefined,
       n: sim.trades.length + (sim.openAtEnd?.length ?? 0),
       perDay: (sim.trades.length + (sim.openAtEnd?.length ?? 0)) / days,
       wr: st.wr,
@@ -5112,7 +5997,10 @@ export class CoreRuntime {
       r.maxDdPct = series.info.maxDdPct;
     } catch (err) {
       this.checkBacktest(job);
-      this.db.event("warn", `backtest ${p.label}: diagrams not built: ${err instanceof Error ? err.message : err}`);
+      this.db.event(
+        "warn",
+        `backtest ${p.label}: diagrams not built: ${err instanceof Error ? err.message : err}`,
+      );
     }
     this.checkBacktestRevision(job);
     const all = this.presetBacktests();
@@ -5141,7 +6029,11 @@ export class CoreRuntime {
     // a preset replaces tactics and focus completely (not merged with the current ones), and starts from the
     // default gates and walk-forward validation: what an earlier preset relaxed (last N 0, a lower min PF) does
     // not survive into the next one (the run horizons stay)
-    const wfBase = { ...pickWf(defaultWalkForward(DEFAULT_SETTINGS)), preH: this.wf.preH, simH: this.wf.simH };
+    const wfBase = {
+      ...pickWf(defaultWalkForward(DEFAULT_SETTINGS)),
+      preH: this.wf.preH,
+      simH: this.wf.simH,
+    };
     this.updateSettings(
       {
         ...patch,
@@ -5229,7 +6121,11 @@ export class CoreRuntime {
   private liveBooks: {
     sim: WalkForwardResult | null;
     t: number;
-    at: ((t: number) => { book: BlockBook | null; guard: SignalGuard | null; direction: CandidateDirectionBook | null }) & {
+    at: ((t: number) => {
+      book: BlockBook | null;
+      guard: SignalGuard | null;
+      direction: CandidateDirectionBook | null;
+    }) & {
       advance: (t: number, max: number) => boolean;
     };
   } | null = null;
@@ -5241,12 +6137,16 @@ export class CoreRuntime {
    * those are kept — compacted into one buffer, since a kept tape would otherwise hold its whole worker-reply arena —
    * plus the ranges a memory fallback carries over; the rest of the pool is released before the new tapes are built.
    */
-  private async slimTapes(carryTags: ReadonlySet<string> = new Set(), gen = this.gen): Promise<void> {
+  private async slimTapes(
+    carryTags: ReadonlySet<string> = new Set(),
+    gen = this.gen,
+  ): Promise<void> {
     if (!this.tapes.length) return;
     const keep = new Set<string>(this.paper.selected ?? []);
     for (const p of this.paper.positions) keep.add(p.cfg);
     const kept = this.tapes.filter(
-      (t) => keep.has(t.id) || isSignalInd(t.ind) || (!!t.protect.tag && carryTags.has(t.protect.tag)),
+      (t) =>
+        keep.has(t.id) || isSignalInd(t.ind) || (!!t.protect.tag && carryTags.has(t.protect.tag)),
     );
     if (kept.length === this.tapes.length) return;
     const released = this.tapes.length - kept.length;
@@ -5336,7 +6236,10 @@ export class CoreRuntime {
   }
 
   /** The audit in time slices (the cycle): the live tick runs between them. */
-  private async runAuditAsync(gen = this.gen, onFraction?: (f: number) => void): Promise<AuditReport> {
+  private async runAuditAsync(
+    gen = this.gen,
+    onFraction?: (f: number) => void,
+  ): Promise<AuditReport> {
     return this.finishAudit(
       onFraction
         ? await this.driveSliced("Audit", auditStateGen(this.auditInput()), gen, onFraction)
@@ -5450,7 +6353,13 @@ export class CoreRuntime {
   private confirmPoolOf(
     engineIv: ReadonlyMap<string, { e: Float64Array; mx: Float64Array }>,
     openNowOf: () => ReadonlyMap<string, number>,
-    positions: ReadonlyArray<{ cfg: string; sym: string; side: number; entryT: number; stopHit?: number }>,
+    positions: ReadonlyArray<{
+      cfg: string;
+      sym: string;
+      side: number;
+      entryT: number;
+      stopHit?: number;
+    }>,
   ): ConfirmPool {
     // built on the first signal that asks (the pending entries run every tick; most ticks have no signal entry)
     let openNow: ReadonlyMap<string, number> | null = null;
@@ -5478,7 +6387,10 @@ export class CoreRuntime {
   }
 
   /** the engine tape positions open now per "sym|side" (earliest entry) of the given configs */
-  private engineOpenNow(ids: Iterable<string>, byId: ReadonlyMap<string, ConfigTape>): Map<string, number> {
+  private engineOpenNow(
+    ids: Iterable<string>,
+    byId: ReadonlyMap<string, ConfigTape>,
+  ): Map<string, number> {
     const out = new Map<string, number>();
     for (const id of ids) {
       if (sigCfg(id)) continue;
@@ -5525,9 +6437,11 @@ export class CoreRuntime {
       if (cap < Infinity) {
         const k = crowdKey(op.cfg, op.sym, op.side, op.entryT);
         let n = 0;
-        for (const x of open) if (x.entryT === op.entryT && crowdKey(x.cfg, x.sym, x.side, x.entryT) === k) n++;
+        for (const x of open)
+          if (x.entryT === op.entryT && crowdKey(x.cfg, x.sym, x.side, x.entryT) === k) n++;
         if (crowdSeats)
-          for (const x of crowdSeats) if (x.entryT === op.entryT && crowdKey(x.cfg, x.sym, x.side, x.entryT) === k) n++;
+          for (const x of crowdSeats)
+            if (x.entryT === op.entryT && crowdKey(x.cfg, x.sym, x.side, x.entryT) === k) n++;
         if (n >= cap) return "crowd";
       }
     }
@@ -5536,7 +6450,15 @@ export class CoreRuntime {
     // a hedge-only signal trades while the book is losing (this or the previous hour), without confirmation
     const hedging =
       this.hedgeKeys.size > 0 &&
-      this.hedgeKeys.has(sigActiveKey(op.cfg.split("|")[0], op.cfg.split("|")[1] ?? "", op.sym, op.side, kindOfId(op.cfg)));
+      this.hedgeKeys.has(
+        sigActiveKey(
+          op.cfg.split("|")[0],
+          op.cfg.split("|")[1] ?? "",
+          op.sym,
+          op.side,
+          kindOfId(op.cfg),
+        ),
+      );
     if (hedging) {
       const losing =
         (!this.wf.coord?.hedgePrevOnly && (hourNet.get(hk) ?? 0) < 0) ||
@@ -5568,7 +6490,10 @@ export class CoreRuntime {
    * kept as it is, and new entries only from `fast.opens` (the seated configs' tape positions on the current bars),
    * through the same entry rules; the full step (after each compute) re-seats and closes.
    */
-  private *stepPaperGen(fast?: { opens: ReadonlyMap<string, readonly OpenPosition[]>; t: number }): Generator<number, void> {
+  private *stepPaperGen(fast?: {
+    opens: ReadonlyMap<string, readonly OpenPosition[]>;
+    t: number;
+  }): Generator<number, void> {
     if (!this.tapes.length || !this.sim) return;
     if (fast && !this.lastSelection) return;
     // sub-timings (the Paper phase is one synchronous slice: its slowest part is named in the phase record)
@@ -5617,7 +6542,8 @@ export class CoreRuntime {
         heldAt?: number;
       }
     > = [];
-    const saved = this.db.kvGet<Record<string, { at: number; stop: number; px?: number }>>("stopHits") ?? {};
+    const saved =
+      this.db.kvGet<Record<string, { at: number; stop: number; px?: number }>>("stopHits") ?? {};
     const stopHits: Record<string, number> = {};
     const stopHitsStop: Record<string, number> = {};
     const stopHitsPx: Record<string, number | undefined> = {};
@@ -5676,7 +6602,9 @@ export class CoreRuntime {
     // (the configs seated at the steps inside this step's entry window are visited too: dropped at t, their entries
     // of that window still stand as the simulation took them)
     const visit = new Set(keep);
-    if (!fast) for (const st of this.sim.steps) if (st.t >= t - stepMs && st.t < t) for (const id of st.real) visit.add(id);
+    if (!fast)
+      for (const st of this.sim.steps)
+        if (st.t >= t - stepMs && st.t < t) for (const id of st.real) visit.add(id);
     for (const id of fast ? [] : visit) {
       const tp = byId.get(id);
       if (!tp) continue;
@@ -5722,7 +6650,11 @@ export class CoreRuntime {
     const { closedBy, srcClosed, engineIv } = this.coordOf(this.sim);
     // signal confirmation's pool: the run's engine candidates, the engine tape positions open now of the selected /
     // held engine configs, and the book's engine positions (as the simulation: taken or not)
-    const confirmPool = this.confirmPoolOf(engineIv, () => this.engineOpenNow(keep, byId), positions);
+    const confirmPool = this.confirmPoolOf(
+      engineIv,
+      () => this.engineOpenNow(keep, byId),
+      positions,
+    );
     yield 0;
     const s2End = this.wf.coord?.enabled ? this.sim.s2 : undefined;
     const hourNet = new Map<number, number>();
@@ -5746,10 +6678,13 @@ export class CoreRuntime {
       const stageMin = minPfOf(this.settings.gates, x.protect.tag, x.ind);
       const minPf = x.ind.startsWith("tactic-")
         ? Math.max(stageMin, this.settings.live.liveMinPf ?? stageMin)
-        : this.settings.live.liveMinPf ?? stageMin;
+        : (this.settings.live.liveMinPf ?? stageMin);
       if (!g) {
         const model = lvModel.get(x.id);
-        g = { ...(model ? liveGate(model, lvSince, at, lvN, minPf) : { ok: true, n: 0, pf: null }), source: "post-base-accepted" };
+        g = {
+          ...(model ? liveGate(model, lvSince, at, lvN, minPf) : { ok: true, n: 0, pf: null }),
+          source: "post-base-accepted",
+        };
         lvMemo.set(mk, g);
       }
       return g;
@@ -5823,7 +6758,12 @@ export class CoreRuntime {
         // simulation gave it (judged first, its seat went to a config the simulation had crowded out)
         if (
           lvN > 0 &&
-          !liveEntryOk(lvOf(tp, op.entryT), (lvGroupsAt.has(op.entryT) ? lvGroupsAt.get(op.entryT)! : groupsAt(op.entryT)).get(liveGroupOf(tp.id)))
+          !liveEntryOk(
+            lvOf(tp, op.entryT),
+            (lvGroupsAt.has(op.entryT) ? lvGroupsAt.get(op.entryT)! : groupsAt(op.entryT)).get(
+              liveGroupOf(tp.id),
+            ),
+          )
         ) {
           lvSkipped++;
           pSkip("liveValidation");
@@ -5906,8 +6846,13 @@ export class CoreRuntime {
         vol: positionVolume(d.vol * cv, op),
         level: d.level,
         ...(d.legs ? { legs: d.legs } : {}),
-        ...(d.blockLevels ? { blockLevels: d.blockLevels, blockEffectiveLevels: d.blockEffectiveLevels,
-          blockSampleCounts: d.blockSampleCounts } : {}),
+        ...(d.blockLevels
+          ? {
+              blockLevels: d.blockLevels,
+              blockEffectiveLevels: d.blockEffectiveLevels,
+              blockSampleCounts: d.blockSampleCounts,
+            }
+          : {}),
         ...tr,
         // a stop crossed at tick time stays crossed until the bar-closed exit replaces the position — only while
         // the stop is the same one (a recompute can move it), and across a restart (persisted)
@@ -5943,7 +6888,10 @@ export class CoreRuntime {
         carriedMissing++;
       }
       if (carriedMissing && carriedMissing !== this.carriedMissing)
-        this.db.event("warn", `paper: ${carriedMissing} held position(s) carried without their tape this compute`);
+        this.db.event(
+          "warn",
+          `paper: ${carriedMissing} held position(s) carried without their tape this compute`,
+        );
       this.carriedMissing = carriedMissing;
     }
     // (the blocks below yield between them: in one piece they were the realtime step's ~0.4 s final slice)
@@ -5951,7 +6899,8 @@ export class CoreRuntime {
     // persisted tick-time stops: only those of positions still open
     const keepHits: Record<string, { at: number; stop: number; px?: number }> = {};
     for (const p of positions)
-      if (p.stopHit) keepHits[posId(p)] = { at: p.stopHit, stop: p.stop, ...(p.hitPx ? { px: p.hitPx } : {}) };
+      if (p.stopHit)
+        keepHits[posId(p)] = { at: p.stopHit, stop: p.stop, ...(p.hitPx ? { px: p.hitPx } : {}) };
     if (
       Object.keys(keepHits).length !== Object.keys(saved).length ||
       Object.keys(keepHits).some((k) => !saved[k])
@@ -5999,14 +6948,49 @@ export class CoreRuntime {
         const x = tradeOf.get(k);
         rows.push(
           x
-            ? [p.cfg, p.sym, p.side, p.entryT, x.exitT, x.r, x.vol ?? 1, x.reason ?? "close", p.heldAt ?? null, now,
-              Number.isFinite(unitReturn(x)) ? unitReturn(x) : null,
-              (() => { const allocation = this.paperOwnedAllocations?.get(orderKey(p));
-                const sameShare = typeof x.vol === "number" && typeof p.vol === "number" && Math.abs(x.vol - p.vol) <= 1e-9 * Math.max(1, p.vol);
-                const notional = sameShare && allocation && typeof p.vol === "number" && p.vol <= allocation.vol + 1e-12 ? allocation.unitUsd * p.vol : NaN;
-                return Number.isFinite(notional) && notional > 1e-9 ? notional : null; })()]
+            ? [
+                p.cfg,
+                p.sym,
+                p.side,
+                p.entryT,
+                x.exitT,
+                x.r,
+                x.vol ?? 1,
+                x.reason ?? "close",
+                p.heldAt ?? null,
+                now,
+                Number.isFinite(unitReturn(x)) ? unitReturn(x) : null,
+                (() => {
+                  const allocation = this.paperOwnedAllocations?.get(orderKey(p));
+                  const sameShare =
+                    typeof x.vol === "number" &&
+                    typeof p.vol === "number" &&
+                    Math.abs(x.vol - p.vol) <= 1e-9 * Math.max(1, p.vol);
+                  const notional =
+                    sameShare &&
+                    allocation &&
+                    typeof p.vol === "number" &&
+                    p.vol <= allocation.vol + 1e-12
+                      ? allocation.unitUsd * p.vol
+                      : NaN;
+                  return Number.isFinite(notional) && notional > 1e-9 ? notional : null;
+                })(),
+              ]
             : // left the book without a close on record (retired, dropped from its tape): its last mark, flagged
-              [p.cfg, p.sym, p.side, p.entryT, now, (p.mtm ?? 0) * (p.vol ?? 1), p.vol ?? 1, "dropped", p.heldAt ?? null, now, null, null],
+              [
+                p.cfg,
+                p.sym,
+                p.side,
+                p.entryT,
+                now,
+                (p.mtm ?? 0) * (p.vol ?? 1),
+                p.vol ?? 1,
+                "dropped",
+                p.heldAt ?? null,
+                now,
+                null,
+                null,
+              ],
         );
       }
       if (rows.length)
@@ -6030,17 +7014,27 @@ export class CoreRuntime {
         this.sim.startT,
       )?.s ?? 0;
     let carriedDropped = 0;
-    for (const row of this.db.all<{ cfg: string; sym: string; side: number; entry_t: number; pnl: number | null }>(
+    for (const row of this.db.all<{
+      cfg: string;
+      sym: string;
+      side: number;
+      entry_t: number;
+      pnl: number | null;
+    }>(
       "SELECT cfg, sym, side, entry_t, pnl FROM paper_trades WHERE exit_t >= ? AND entry_t >= ?",
       since,
       this.sim.startT,
     ))
-      if (!inSim.has(orderKey({ cfg: row.cfg, sym: row.sym, side: row.side, entryT: row.entry_t }))) carriedDropped += row.pnl ?? 0;
+      if (!inSim.has(orderKey({ cfg: row.cfg, sym: row.sym, side: row.side, entryT: row.entry_t })))
+        carriedDropped += row.pnl ?? 0;
     const carried = carriedBefore + carriedDropped;
     yield 0;
     // sizing: every order's unit from the equity at its entry (fixed % of equity) or the fixed notional
     const sizing = this.paperSizing();
-    const sized = yield* sizeBookGen(trades, positions, { ...sizing, balance: sizing.balance + carried });
+    const sized = yield* sizeBookGen(trades, positions, {
+      ...sizing,
+      balance: sizing.balance + carried,
+    });
     const ownedEntryAllocations = new Map<string, { unitUsd: number; vol: number }>();
     for (const p of positions) {
       const k = orderKey(p);
@@ -6048,7 +7042,13 @@ export class CoreRuntime {
       const prior = this.paperOwnedAllocations?.get(k);
       const unit = !prevByKey.has(posId(p)) ? sized.units.get(k) : undefined;
       if (prior) ownedEntryAllocations.set(k, prior);
-      else if (typeof unit === "number" && Number.isFinite(unit) && unit > 0 && Number.isFinite(p.vol) && p.vol > 0)
+      else if (
+        typeof unit === "number" &&
+        Number.isFinite(unit) &&
+        unit > 0 &&
+        Number.isFinite(p.vol) &&
+        p.vol > 0
+      )
         ownedEntryAllocations.set(k, { unitUsd: unit, vol: p.vol });
     }
     this.paperOwnedAllocations = ownedEntryAllocations;
@@ -6066,7 +7066,13 @@ export class CoreRuntime {
       const part = pd.gone.slice(i, i + PAPER_ROWS);
       db.tx(() => {
         for (const g of part)
-          db.run("DELETE FROM paper_positions WHERE cfg = ? AND sym = ? AND side = ? AND entry_t = ?", g.cfg, g.sym, g.side, g.entryT);
+          db.run(
+            "DELETE FROM paper_positions WHERE cfg = ? AND sym = ? AND side = ? AND entry_t = ?",
+            g.cfg,
+            g.sym,
+            g.side,
+            g.entryT,
+          );
       });
       yield i;
     }
@@ -6235,14 +7241,19 @@ export class CoreRuntime {
       !!this.wf.signalAccept?.enabled ||
       !!this.wf.signalSideAccept?.enabled ||
       !!this.wf.engineSideAccept?.enabled;
-    if (!wantBook && !wantGuard && !direction) return Object.assign(() => ({ book: null, guard: null, direction: null }), { advance: () => true });
+    if (!wantBook && !wantGuard && !direction)
+      return Object.assign(() => ({ book: null, guard: null, direction: null }), {
+        advance: () => true,
+      });
     const feed = this.sim?.feed ?? [];
     // (fed only when read: an unread book cost the tick seconds after each new run)
     const book = wantBook ? blockBookOf(this.wf.block, !!this.wf.toggles.blockActive) : null;
     // acceptance on the same tape record the simulation judged on
     const guard = signalGuardFor(this.tapes, this.wf);
     // the desk's own exchange closes judge an acceptance group once they number its minTrades (live-record.ts)
-    const exchange = { stats: (k: string, t: number, h: number) => this.exchangeAccept().stats(k, t, h) };
+    const exchange = {
+      stats: (k: string, t: number, h: number) => this.exchangeAccept().stats(k, t, h),
+    };
     guard.exchange = exchange;
     let i = 0;
     const at = (t: number) => {
@@ -6252,7 +7263,8 @@ export class CoreRuntime {
     // the feed up to t, at most `max` entries a call (true once there): the first lookup of a fresh book replayed the
     // whole run's feed in one block — 1–4 s of the paper step on x02 (7 Oct profile), the loop held throughout
     const advance = (t: number, max: number) => {
-      for (let n = 0; n < max && i < feed.length && feed[i].exitT <= t; n++) feedBooks(feed[i++], book, guard, direction);
+      for (let n = 0; n < max && i < feed.length && feed[i].exitT <= t; n++)
+        feedBooks(feed[i++], book, guard, direction);
       return !(i < feed.length && feed[i].exitT <= t);
     };
     return Object.assign(at, { advance });
@@ -6275,7 +7287,9 @@ export class CoreRuntime {
     // entry is judged on a half-fed book (the next tick continues)
     if (!catchUp(this.liveBooks.at.advance, entryT, BOOK_CATCHUP_MS)) {
       this.status.paperSkips = {
-        ...Object.fromEntries(Object.entries(this.status.paperSkips ?? {}).filter(([k]) => !k.startsWith("pending:"))),
+        ...Object.fromEntries(
+          Object.entries(this.status.paperSkips ?? {}).filter(([k]) => !k.startsWith("pending:")),
+        ),
         "pending:booksCatchingUp": 1,
       };
       return out;
@@ -6285,7 +7299,11 @@ export class CoreRuntime {
     const coord = this.sim ? this.coordOf(this.sim) : null;
     // signal confirmation's pool, as in the paper step (engine candidates taken or not, open at the entry)
     const confirmPool = coord
-      ? this.confirmPoolOf(coord.engineIv, () => this.engineOpenNow(this.paper.selected, byId), this.paper.positions)
+      ? this.confirmPoolOf(
+          coord.engineIv,
+          () => this.engineOpenNow(this.paper.selected, byId),
+          this.paper.positions,
+        )
       : null;
     // every pending entry not sent, by reason (status.paperSkips "pending:…", replaced per call)
     const skips: Record<string, number> = {};
@@ -6372,7 +7390,9 @@ export class CoreRuntime {
     }
     // the step's reasons stay; the pending ones are this call's
     this.status.paperSkips = {
-      ...Object.fromEntries(Object.entries(this.status.paperSkips ?? {}).filter(([k]) => !k.startsWith("pending:"))),
+      ...Object.fromEntries(
+        Object.entries(this.status.paperSkips ?? {}).filter(([k]) => !k.startsWith("pending:")),
+      ),
       ...skips,
     };
     return out;
@@ -6432,7 +7452,8 @@ export function backtestSeries(
 ): PresetSeries {
   const balance = s.paperBalance ?? 1000;
   const sized = sizeBook(trades, [], { balance, sizing: s.sizing, fixedNotional: s.paperNotional });
-  const unit = (x: { cfg: string; sym: string; side: number; entryT: number }) => sized.units.get(orderKey(x)) ?? s.paperNotional;
+  const unit = (x: { cfg: string; sym: string; side: number; entryT: number }) =>
+    sized.units.get(orderKey(x)) ?? s.paperNotional;
   const price = (sym: string, t: number) => candles.get(sym)?.closeAtOrBefore(t) ?? null;
   return presetSeries(trades as never, {
     startT,
@@ -6462,7 +7483,16 @@ export interface SetListings {
   paperStep: number;
   at: number;
   /** engine configs validated (seated) at the paper step, best score first, with their validation-window figures */
-  validated: Array<{ id: string; range: string; kind: string; score: number; pf: number; n: number; net: number; ddt: number }>;
+  validated: Array<{
+    id: string;
+    range: string;
+    kind: string;
+    score: number;
+    pf: number;
+    n: number;
+    net: number;
+    ddt: number;
+  }>;
   /** per range: the rows of `validated` (best first) and the range's PF taken together on the validation windows */
   byRange: Record<string, { rows: number[]; gp: number; gl: number; pf: number | null }>;
   /** signal units active at the paper step (full pair × symbol × side × type); Base/discovery rows omit kind */
@@ -6556,7 +7586,10 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
   if (p.familyNeedsBase !== undefined) p.familyNeedsBase = Boolean(p.familyNeedsBase);
   if (p.seatPer !== undefined && !["pair", "config"].includes(String(p.seatPer))) delete p.seatPer;
   // symbol gate: veto (a proven loser on the symbol is skipped) / proven (only proven symbols) / per side / off
-  if (p.symGate !== undefined && !["veto", "proven", "vetoSide", "provenSide", "off"].includes(String(p.symGate)))
+  if (
+    p.symGate !== undefined &&
+    !["veto", "proven", "vetoSide", "provenSide", "off"].includes(String(p.symGate))
+  )
     delete p.symGate;
   num("symMinN", 1, 50, true); // closes on the symbol before its result counts
   num("symH", 0, 1440); // the symbol's look-back (h); 0 = the long / pre window
@@ -6571,7 +7604,11 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
       hours: Math.round(n(a.hours, 24, 1, 336)),
       minTrades: Math.round(n(a.minTrades, 30, 1, 100_000)),
       ...(Array.isArray(a.perInd)
-        ? { perInd: a.perInd.filter((r) => ["mc", "mn", "mp", "sh", "gn", "lg", "wide"].includes(r)) }
+        ? {
+            perInd: a.perInd.filter((r) =>
+              ["mc", "mn", "mp", "sh", "gn", "lg", "wide"].includes(r),
+            ),
+          }
         : {}),
     };
   }
@@ -6722,7 +7759,9 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
     // TP ranges in position-cost multiples (Minimal 4–8×, Short 9–14×, General 16–22×, Long 24–32×) and the swept
     // Block default (Overall). A range, wide target list or Block still on a former default moves; a changed one stays.
     const sameTp = (r: unknown, tp: number[]) =>
-      !!r && typeof r === "object" && JSON.stringify((r as { tp?: unknown }).tp) === JSON.stringify(tp);
+      !!r &&
+      typeof r === "object" &&
+      JSON.stringify((r as { tp?: unknown }).tp) === JSON.stringify(tp);
     const moveGrid = <T extends Record<string, unknown>>(g: T): T => {
       const n: Record<string, unknown> = { ...g };
       if (sameTp(n.minimal, FORMER_MINIMAL_TP)) n.minimal = structuredClone(MINIMAL_RANGE);
@@ -6744,8 +7783,10 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
     const presets = db.kvGet<Preset[]>("presets");
     if (Array.isArray(presets)) {
       for (const p of presets) {
-        if (p.settings?.grid) p.settings = { ...p.settings, grid: moveGrid(p.settings.grid as never) };
-        if (p.settings && formerBlock(p.settings.block as Partial<BlockConfig>)) delete p.settings.block;
+        if (p.settings?.grid)
+          p.settings = { ...p.settings, grid: moveGrid(p.settings.grid as never) };
+        if (p.settings && formerBlock(p.settings.block as Partial<BlockConfig>))
+          delete p.settings.block;
       }
       db.kvSet("presets", presets);
     }
@@ -6753,7 +7794,9 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
   if (v < 17) {
     // every config possibility is computed: a grid still on the former horizon-fit default moves to it off
     const unfit = <T extends { rangeFit?: { enabled?: boolean } }>(g: T): T =>
-      g.rangeFit && g.rangeFit.enabled === true && Object.keys(g.rangeFit).length === 1 ? { ...g, rangeFit: { enabled: false } } : g;
+      g.rangeFit && g.rangeFit.enabled === true && Object.keys(g.rangeFit).length === 1
+        ? { ...g, rangeFit: { enabled: false } }
+        : g;
     if (st?.grid) st.grid = unfit(st.grid as never);
   }
   if (v < 18) {
@@ -6783,9 +7826,11 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
   if (v < 21) {
     // General / Long stop ratios 0.25–1.5 step 0.25 (operator, 13 Oct): a database still on the former default
     // ladder [0.5, 0.75, 1] moves to WIDE_TARGET_SL; a ladder chosen since stays
-    const g = st?.grid as { general?: { slOfTp?: number[] } | false; long?: { slOfTp?: number[] } | false } | undefined;
+    const g = st?.grid as
+      { general?: { slOfTp?: number[] } | false; long?: { slOfTp?: number[] } | false } | undefined;
     for (const r of [g?.general, g?.long])
-      if (r && JSON.stringify(r.slOfTp) === JSON.stringify([0.5, 0.75, 1])) r.slOfTp = [...WIDE_TARGET_SL];
+      if (r && JSON.stringify(r.slOfTp) === JSON.stringify([0.5, 0.75, 1]))
+        r.slOfTp = [...WIDE_TARGET_SL];
   }
   if (v < 22) {
     // every TP × SL × Trail in every range (operator, 13 Oct): a range lever still on its former default moves to the
@@ -6795,7 +7840,8 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
       const r = g?.[key];
       if (!r) continue;
       for (const [field, [was, next]] of Object.entries(now))
-        if (JSON.stringify(r[field]) === JSON.stringify(was)) r[field] = Array.isArray(next) ? [...next] : next;
+        if (JSON.stringify(r[field]) === JSON.stringify(was))
+          r[field] = Array.isArray(next) ? [...next] : next;
     }
   }
   if (v < 23) {
@@ -6806,7 +7852,8 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
   if (v < 24) {
     // the range families PROTOCOL-8 kept join the default focus (13 Oct): a focus still on the former default moves to
     // the new one; a focus chosen since stays
-    if (st && JSON.stringify(st.focus) === JSON.stringify(FORMER_FOCUS_13OCT)) st.focus = [...DEFAULT_SETTINGS.focus];
+    if (st && JSON.stringify(st.focus) === JSON.stringify(FORMER_FOCUS_13OCT))
+      st.focus = [...DEFAULT_SETTINGS.focus];
   }
   if (v < 25) {
     // Micro at 2–5× the position cost (operator, 13 Oct): a stored Micro target list still on the former default moves
@@ -6921,13 +7968,28 @@ export function baseRangeRules(
   rangeOn: (tag: string) => boolean;
   applies: Parameters<typeof rangeAppliesTo>[2];
 } {
-  const rangeGrid = s.grid as unknown as Record<string, unknown> & { minimalPlus?: { enabled?: boolean } };
-  const RANGE_GRID_KEY: Record<string, string> = { mc: "micro", mn: "minimal", sh: "short", gn: "general", lg: "long" };
+  const rangeGrid = s.grid as unknown as Record<string, unknown> & {
+    minimalPlus?: { enabled?: boolean };
+  };
+  const RANGE_GRID_KEY: Record<string, string> = {
+    mc: "micro",
+    mn: "minimal",
+    sh: "short",
+    gn: "general",
+    lg: "long",
+  };
   const rangeOn = (tag: string) =>
-    !tag || (!off.has(tag) && (tag === "mp" ? !!rangeGrid.minimalPlus?.enabled : !!rangeGrid[RANGE_GRID_KEY[tag]]));
+    !tag ||
+    (!off.has(tag) &&
+      (tag === "mp" ? !!rangeGrid.minimalPlus?.enabled : !!rangeGrid[RANGE_GRID_KEY[tag]]));
   return {
     rangeOn,
-    applies: { enabled: rangeOn, minTf: rangeMinTfOf(s.grid), microOwnInds: microOwnInds(s.grid), baseTf: s.tfMin },
+    applies: {
+      enabled: rangeOn,
+      minTf: rangeMinTfOf(s.grid),
+      microOwnInds: microOwnInds(s.grid),
+      baseTf: s.tfMin,
+    },
   };
 }
 
@@ -7061,7 +8123,10 @@ export function baseSlice<C>(
 ): { todo: C[]; sliceNo: number } {
   if (!cache || slices <= 1) return { todo: [...combos], sliceNo: 0 };
   const sliceNo = (cache.slice + 1) % slices;
-  return { todo: combos.filter((c, i) => i % slices === sliceNo || !cache.runs.has(key(c))), sliceNo };
+  return {
+    todo: combos.filter((c, i) => i % slices === sliceNo || !cache.runs.has(key(c))),
+    sliceNo,
+  };
 }
 
 function mergeSettings(
@@ -7077,7 +8142,7 @@ function mergeSettings(
     toggles: { ...base.toggles },
     tactics: { ...base.tactics },
     focus: [...(base.focus ?? [])],
-      pinned: [...(base.pinned ?? [])],
+    pinned: [...(base.pinned ?? [])],
     disabledKinds: [...(base.disabledKinds ?? [])],
     block: { ...base.block },
     protectFloor: { ...DEFAULT_SETTINGS.protectFloor, ...(base.protectFloor ?? {}) },
@@ -7086,6 +8151,7 @@ function mergeSettings(
     grid: { ...base.grid },
     fees: { ...base.fees },
     adjust: { ...base.adjust },
+    exitStrategy: { ...DEFAULT_SETTINGS.exitStrategy, ...(base.exitStrategy ?? {}) },
     signals: mergeSignals(base.signals),
     sizing: sizingSettings(base.sizing),
   };
@@ -7095,6 +8161,7 @@ function mergeSettings(
       ...out,
       ...p,
       gates: { ...out.gates, ...(p.gates ?? {}) },
+      exitStrategy: { ...out.exitStrategy, ...(p.exitStrategy ?? {}) },
       live: { ...out.live, ...(p.live ?? {}) },
       toggles: { ...out.toggles, ...(p.toggles ?? {}) },
       tactics: { ...out.tactics, ...(p.tactics ?? {}) },
@@ -7154,14 +8221,22 @@ export function laneSeriesFrom(
  * One symbol's lanes: the base as stored, each resampled lane from only the base bars of its last n + 1 buckets
  * (market/candle-series.ts resampleTailBars: the same bars as resampling everything and keeping the last n).
  */
-export function laneSeriesOf(sym: string, cs: CandleSeries, s: CoreSettings, extraDays = 0): Bars[] {
+export function laneSeriesOf(
+  sym: string,
+  cs: CandleSeries,
+  s: CoreSettings,
+  extraDays = 0,
+): Bars[] {
   // the enabled lanes ride on every series (Bars.lanes): a combined lane agrees with the higher ENABLED lanes, the
   // ones laneInds generates it from (the whole ladder agreed with 15m / 30m on a desk running 1m and 5m only)
   const lanes = Object.freeze([...(s.tfs ?? [s.tfMin])]);
   const out: Bars[] = [];
   for (const tf of lanes) {
     const n = laneBars(s, tf) + Math.round((extraDays * 24 * 60) / tf);
-    const b = tf === s.tfMin ? barsOfSeries(sym, tf, cs, cs.n - n, cs.n) : resampleTailBars(sym, cs, s.tfMin, tf, n);
+    const b =
+      tf === s.tfMin
+        ? barsOfSeries(sym, tf, cs, cs.n - n, cs.n)
+        : resampleTailBars(sym, cs, s.tfMin, tf, n);
     b.lanes = lanes;
     out.push(b);
   }
@@ -7190,13 +8265,15 @@ async function liveStep(r: CoreRuntime, intents: LiveIntent[], gen: number) {
 // existing install keeps its data; the others get `<state>.<conn>.json` / `<snapshot>.<conn>.sqlite`.
 
 export const CONN_IDS: readonly ConnId[] = ["bingx-vst-02", "bingx-vst-01", "bingx-x01"];
-export const isConnId = (x: unknown): x is ConnId => typeof x === "string" && (CONN_IDS as readonly string[]).includes(x);
+export const isConnId = (x: unknown): x is ConnId =>
+  typeof x === "string" && (CONN_IDS as readonly string[]).includes(x);
 
 /** The connection holding the original state: CTS_CORE_PRIMARY_CONN, else the saved live connection, else vst-02. */
 export function primaryConn(): ConnId {
   const env = process.env.CTS_CORE_PRIMARY_CONN?.trim();
   if (isConnId(env)) return env;
-  const live = coreDb().kvGet<Partial<CoreSettings>>("settings")?.live as { connId?: unknown } | undefined;
+  const live = coreDb().kvGet<Partial<CoreSettings>>("settings")?.live as
+    { connId?: unknown } | undefined;
   return isConnId(live?.connId) ? live.connId : DEFAULT_SETTINGS.live.connId;
 }
 
@@ -7299,10 +8376,18 @@ export function carriedRebuild(
  * synthetic market with no network (no ticker feed, no price stream), with CTS_CORE_TEST_SETTINGS (JSON) applied —
  * the UI functional test renders every page on real computed numbers this way.
  */
-function testMarket(): { settings?: SettingsPatch; opts: { market?: "synthetic"; feed?: Partial<MarketFeed>; priceStream?: null } } {
+function testMarket(): {
+  settings?: SettingsPatch;
+  opts: { market?: "synthetic"; feed?: Partial<MarketFeed>; priceStream?: null };
+} {
   if (process.env.CTS_CORE_MARKET !== "synthetic") return { opts: {} };
-  const settings = process.env.CTS_CORE_TEST_SETTINGS ? (JSON.parse(process.env.CTS_CORE_TEST_SETTINGS) as SettingsPatch) : undefined;
-  return { settings, opts: { market: "synthetic", feed: { tickers: async () => [] }, priceStream: null } };
+  const settings = process.env.CTS_CORE_TEST_SETTINGS
+    ? (JSON.parse(process.env.CTS_CORE_TEST_SETTINGS) as SettingsPatch)
+    : undefined;
+  return {
+    settings,
+    opts: { market: "synthetic", feed: { tickers: async () => [] }, priceStream: null },
+  };
 }
 
 export function runtimeFor(conn?: ConnId, opts: { start?: boolean } = {}): CoreRuntime {
@@ -7314,7 +8399,10 @@ export function runtimeFor(conn?: ConnId, opts: { start?: boolean } = {}): CoreR
     // the shared database also gets this version's methods and tables (hot reload)
     if (G.__ctsCoreRuntime) coreDb();
     if (!G.__ctsCoreRuntime)
-      G.__ctsCoreRuntime = new CoreRuntime(coreDb(), testMarket().settings, { conn: c, ...testMarket().opts });
+      G.__ctsCoreRuntime = new CoreRuntime(coreDb(), testMarket().settings, {
+        conn: c,
+        ...testMarket().opts,
+      });
     r = G.__ctsCoreRuntime;
   } else {
     const map = (G.__ctsCoreRuntimes ??= new Map());
@@ -7370,7 +8458,8 @@ export function coreRuntime(): CoreRuntime {
 
 /** Demo probe for a test run (never on mainnet): see WalkForwardOptions.probe. */
 export function setProbe(rt: CoreRuntime, perRange: number, perCell = 0): void {
-  if (rt.settings.live.connId === "bingx-x01") throw new Error("the probe is for demo connections only");
+  if (rt.settings.live.connId === "bingx-x01")
+    throw new Error("the probe is for demo connections only");
   rt.wf.probe =
     perRange > 0 || perCell > 0
       ? {

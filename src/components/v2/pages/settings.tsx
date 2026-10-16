@@ -26,22 +26,42 @@ import { blockRatioOf, blockStackCap, stepRaise } from "@/core/sim/block";
 import { DEFAULT_SIGNALS, SIGNAL_COUNT_CHOICES, SIGNAL_SOURCES } from "@/core/signal-config";
 import { Confirm, downloadFile, Empty, ErrorNote, fmt, Panel, Pill, Switch, usePoll } from "../ui";
 
-const TACTIC_IDS = TACTIC_TECHNIQUES.flatMap((technique) => ["s", "m"].map((range) => `tactic-${technique.id}-${range}`));
+const TACTIC_IDS = TACTIC_TECHNIQUES.flatMap((technique) =>
+  ["s", "m"].map((range) => `tactic-${technique.id}-${range}`),
+);
 
-function TacticFocusInfo(props: { focus: string[]; pinned: string[]; disabled: boolean; onInclude: () => void }) {
+function TacticFocusInfo(props: {
+  focus: string[];
+  pinned: string[];
+  disabled: boolean;
+  onInclude: () => void;
+}) {
   const coverage = tacticFocusCoverage(props.focus, TACTIC_IDS, props.pinned);
   return (
     <div className="v2-lines" style={{ gap: 8 }}>
-      <div className={props.disabled || coverage.covered === 0 ? "v2-warn" : "v2-muted"} style={{ fontSize: "var(--v-fs-xs)" }}>
+      <div
+        className={props.disabled || coverage.covered === 0 ? "v2-warn" : "v2-muted"}
+        style={{ fontSize: "var(--v-fs-xs)" }}
+      >
         {props.disabled ? "Tactic indication type is off. " : ""}
-        {coverage.all ? `Focus includes all ${coverage.total} Tactic indication variants.`
-          : coverage.covered === 0 ? "Base focus and pinned pairs include no Tactic pairs, so Base has no Tactic configurations to evaluate."
-          : `Base focus and pinned pairs represent ${coverage.covered}/${coverage.total} Tactic variants; ${coverage.full}/${coverage.total} include Follow on every selected timeframe lane.`}
+        {coverage.all
+          ? `Focus includes all ${coverage.total} Tactic indication variants.`
+          : coverage.covered === 0
+            ? "Base focus and pinned pairs include no Tactic pairs, so Base has no Tactic configurations to evaluate."
+            : `Base focus and pinned pairs represent ${coverage.covered}/${coverage.total} Tactic variants; ${coverage.full}/${coverage.total} include Follow on every selected timeframe lane.`}
       </div>
-      <button type="button" className="v2-btn" disabled={!props.disabled && coverage.full === coverage.total} onClick={props.onInclude}>
+      <button
+        type="button"
+        className="v2-btn"
+        disabled={!props.disabled && coverage.full === coverage.total}
+        onClick={props.onInclude}
+      >
         Include Tactic in Base focus
       </button>
-      <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>Adds the ten Follow Tactic bases to an explicit Focus and enables the type. Other pairs stay selected; an empty Focus already includes all indications. Save to apply.</div>
+      <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
+        Adds the ten Follow Tactic bases to an explicit Focus and enables the type. Other pairs stay
+        selected; an empty Focus already includes all indications. Save to apply.
+      </div>
     </div>
   );
 }
@@ -64,6 +84,8 @@ const LIVE_KIND_CHOICES: ReadonlyArray<readonly [string, string]> = [
   ["normal", "Normal only"],
   ["normal,trailing", "Normal + trailing with TP"],
   ["normal,trailing,trailing-only", "Normal + both trailing types"],
+  ["exit", "Historic Exit only"],
+  ["normal,trailing,trailing-only,exit", "Normal + trailing + Historic Exit"],
   ["axis", "Axis only"],
   ["dca,dca-active", "DCA only"],
 ];
@@ -142,8 +164,11 @@ const BLOCK_SOURCE_HELP: Array<[string, string]> = [
   ["overall", "all orders in the selected Real history; only settled closes contribute"],
   ["symbol", "same symbol × direction; long and short have separate histories and stacks"],
   ["direction", "same direction across symbols; long and short are judged separately"],
-  ["indication", "exact indication ID × timeframe lane × direction; sibling indications and lanes stay independent"],
-  ["type", "same strategy type (Normal, Trailing, DCA, Axis)"],
+  [
+    "indication",
+    "exact indication ID × timeframe lane × direction; sibling indications and lanes stay independent",
+  ],
+  ["type", "same strategy type (Normal, Trailing, Historic Exit, DCA, Axis)"],
 ];
 
 /** Block sources and how their levels combine (shared = strongest, additive = sum, overall = each its own Block). */
@@ -181,7 +206,9 @@ export function BlockSources(props: {
           onChange={(e) => props.set(["block", "historySource"], e.target.value)}
         >
           <option value="accepted-orders">Accepted Real orders</option>
-          <option value="real-candidates">Legacy Real candidates · includes skips (diagnostic)</option>
+          <option value="real-candidates">
+            Legacy Real candidates · includes skips (diagnostic)
+          </option>
         </select>
       </Field>
       {BLOCK_SOURCE_HELP.map(([k, help]) => (
@@ -246,7 +273,10 @@ export function SignalsSettings(props: {
         </div>
         {st?.enabled ? (
           <span className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
-            {fmt.num(st.combos)} representative results · {fmt.num(processingCounts.discovery)} discovery pairs · {fmt.num(processingCounts.representativePassed)} representative Base passes · {fmt.num(st.active)} historically active units (before entry gates) · {fmt.num(processingCounts.requested)} requested protection configurations
+            {fmt.num(st.combos)} representative results · {fmt.num(processingCounts.discovery)}{" "}
+            discovery pairs · {fmt.num(processingCounts.representativePassed)} representative Base
+            passes · {fmt.num(st.active)} historically active units (before entry gates) ·{" "}
+            {fmt.num(processingCounts.requested)} requested protection configurations
             {st.positions !== undefined
               ? ` · positions / orders ${st.positions} / ${st.orders} (peak ${st.peakPositions} / ${st.peakOrders})`
               : st.trades !== undefined
@@ -260,7 +290,10 @@ export function SignalsSettings(props: {
         ) : null}
       </div>
       <div className="v2-grid v2-cols-4">
-        <Field label="Active signal units" hint="ranked independently for each full signal pair (source, range and lane) × strategy type × symbol × direction · 0 = no cap">
+        <Field
+          label="Active signal units"
+          hint="ranked independently for each full signal pair (source, range and lane) × strategy type × symbol × direction · 0 = no cap"
+        >
           <select
             className="v2-select"
             aria-label="Active signals"
@@ -334,7 +367,8 @@ export function SignalsSettings(props: {
           />
         </Field>
         <Field label="Stability: min orders" hint="fewer taken orders than this: not judged yet">
-          <Num int
+          <Num
+            int
             value={g.sourceGate?.minTrades ?? 5}
             min={1}
             max={100}
@@ -380,7 +414,10 @@ export function SignalsSettings(props: {
             onChange={(v) => set(["minBlockShare"], v)}
           />
         </Field>
-        <Field label="Min Base trades" hint="Base discovery seed per full signal pair and symbol; each strategy type then qualifies from its own record">
+        <Field
+          label="Min Base trades"
+          hint="Base discovery seed per full signal pair and symbol; each strategy type then qualifies from its own record"
+        >
           <Num int value={g.minTrades} min={1} max={100} onChange={(v) => set(["minTrades"], v)} />
         </Field>
         <Field
@@ -393,7 +430,8 @@ export function SignalsSettings(props: {
               checked={guard.enabled}
               onChange={(v) => set(["guard", "enabled"], v)}
             />
-            <Num int
+            <Num
+              int
               value={guard.lastN}
               min={2}
               max={50}
@@ -442,7 +480,8 @@ export function SignalsSettings(props: {
           label="Max positions"
           hint="signal positions (symbol × direction, long and short counted apart) · 0 = no limit"
         >
-          <Num int
+          <Num
+            int
             value={g.maxPositions ?? 0}
             min={0}
             max={10000}
@@ -453,7 +492,8 @@ export function SignalsSettings(props: {
           label="Orders / symbol"
           hint="all signal orders and partials on a symbol · 0 = unlimited"
         >
-          <Num int
+          <Num
+            int
             value={g.perSymbol ?? 0}
             min={0}
             max={1000}
@@ -461,7 +501,13 @@ export function SignalsSettings(props: {
           />
         </Field>
         <Field label="Max orders" hint="all open signal orders and partials · 0 = unlimited">
-          <Num int value={g.maxOpen ?? 0} min={0} max={100000} onChange={(v) => set(["maxOpen"], v)} />
+          <Num
+            int
+            value={g.maxOpen ?? 0}
+            min={0}
+            max={100000}
+            onChange={(v) => set(["maxOpen"], v)}
+          />
         </Field>
         <Field
           label="PF acceptance"
@@ -483,15 +529,20 @@ export function SignalsSettings(props: {
           />
         </Field>
         <Field label="PF window (h)">
-          <Num int
+          <Num
+            int
             value={g.accept?.hours ?? 48}
             min={6}
             max={336}
             onChange={(v) => set(["accept", "hours"], v)}
           />
         </Field>
-        <Field label="PF min. trades" hint="fewer closes in the window: judged on twice the hours; still fewer = valid">
-          <Num int
+        <Field
+          label="PF min. trades"
+          hint="fewer closes in the window: judged on twice the hours; still fewer = valid"
+        >
+          <Num
+            int
             value={g.accept?.minTrades ?? 6}
             min={1}
             max={200}
@@ -518,7 +569,8 @@ export function SignalsSettings(props: {
           />
         </Field>
         <Field label="Direction window (h)">
-          <Num int
+          <Num
+            int
             value={g.sideAccept?.hours ?? 24}
             min={6}
             max={336}
@@ -526,7 +578,8 @@ export function SignalsSettings(props: {
           />
         </Field>
         <Field label="Direction min. trades">
-          <Num int
+          <Num
+            int
             value={g.sideAccept?.minTrades ?? 20}
             min={1}
             max={1000}
@@ -556,7 +609,10 @@ export function SignalsSettings(props: {
             onChange={(v) => set(["filter", "trendH"], v)}
           />
         </Field>
-        <Field label="Strategy sets" hint="besides Normal, trailing with TP and enabled trailing-only sets, each signal runs these sets">
+        <Field
+          label="Strategy sets"
+          hint="besides Normal, trailing with TP and enabled trailing-only sets, each signal runs these sets"
+        >
           <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
             <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
               <Switch
@@ -597,7 +653,8 @@ export function SignalsSettings(props: {
           />
         </Field>
         <Field label="Min losing closes">
-          <Num int
+          <Num
+            int
             value={cluster.minLosses}
             min={1}
             max={1000}
@@ -643,17 +700,43 @@ export function SignalsSettings(props: {
         </Field>
       </div>
       <div className="v2-grid v2-cols-4">
-        <Field label={`Trailing only · TP None → ${counts.trailingOnly} configs`} hint="independent of percent / ATR exits; each full source, range, lane, symbol and direction qualifies this type separately">
-          <Switch label="Signal trailing-only sets" checked={trailingOnly.enabled} onChange={(v) => set(["trailingOnly", "enabled"], v)} />
+        <Field
+          label={`Trailing only · TP None → ${counts.trailingOnly} configs`}
+          hint="independent of percent / ATR exits; each full source, range, lane, symbol and direction qualifies this type separately"
+        >
+          <Switch
+            label="Signal trailing-only sets"
+            checked={trailingOnly.enabled}
+            onChange={(v) => set(["trailingOnly", "enabled"], v)}
+          />
         </Field>
-        <Field label="Trailing only: hard SL (%)" hint="stop from entry, at the 15m reference and scaled per lane">
+        <Field
+          label="Trailing only: hard SL (%)"
+          hint="stop from entry, at the 15m reference and scaled per lane"
+        >
           <List pct value={trailingOnly.sl} onChange={(v) => set(["trailingOnly", "sl"], v)} />
         </Field>
-        <Field label="Trailing only: activation move (%)" hint="completed-bar peak must reach this move from entry to arm the trail">
-          <List pct value={trailingOnly.trail} onChange={(v) => set(["trailingOnly", "trail"], v)} />
+        <Field
+          label="Trailing only: activation move (%)"
+          hint="completed-bar peak must reach this move from entry to arm the trail"
+        >
+          <List
+            pct
+            value={trailingOnly.trail}
+            onChange={(v) => set(["trailingOnly", "trail"], v)}
+          />
         </Field>
-        <Field label="Trailing gap × activation move" hint="gap distance = activation move × this ratio; 1 uses equal distances. The stop only tightens from completed-bar peaks and takes effect from the next bar. Hold limit still applies.">
-          <Num value={trailingOnly.trailStep} min={0.1} max={2} step={0.1} onChange={(v) => set(["trailingOnly", "trailStep"], v)} />
+        <Field
+          label="Trailing gap × activation move"
+          hint="gap distance = activation move × this ratio; 1 uses equal distances. The stop only tightens from completed-bar peaks and takes effect from the next bar. Hold limit still applies."
+        >
+          <Num
+            value={trailingOnly.trailStep}
+            min={0.1}
+            max={2}
+            step={0.1}
+            onChange={(v) => set(["trailingOnly", "trailStep"], v)}
+          />
         </Field>
       </div>
       <div className="v2-grid v2-cols-4">
@@ -697,7 +780,8 @@ export function SignalsSettings(props: {
           </div>
         </Field>
         <Field label="ATR: hold (15m bars)" hint="scaled per lane · 0 = the signal hold above">
-          <Num int
+          <Num
+            int
             value={atr.holdBars}
             min={0}
             max={384}
@@ -716,24 +800,51 @@ export function SignalsSettings(props: {
             onChange={(v) => set(["hist", "enabled"], v)}
           />
         </Field>
-        <Field label="Historic: target quantiles (MFE)" hint="0.2–0.95 of the move the signal's entries reached">
+        <Field
+          label="Historic: target quantiles (MFE)"
+          hint="0.2–0.95 of the move the signal's entries reached"
+        >
           <List value={hist.quantiles} onChange={(v) => set(["hist", "quantiles"], v)} />
         </Field>
-        <Field label="Historic: trail shares × stop multiples" hint="trail 0.1–0.95 of the target · stop 0.25–5 × the target">
+        <Field
+          label="Historic: trail shares × stop multiples"
+          hint="trail 0.1–0.95 of the target · stop 0.25–5 × the target"
+        >
           <div className="v2-grid v2-cols-2" style={{ gap: 6 }}>
             <List value={hist.trailOfTp} onChange={(v) => set(["hist", "trailOfTp"], v)} />
             <List value={hist.slOfTp} onChange={(v) => set(["hist", "slOfTp"], v)} />
           </div>
         </Field>
-        <Field label="Historic: entries needed (minN)" hint="a signal with fewer historic entries gets none (5–1000)">
-          <Num int value={hist.minN} min={5} max={1000} onChange={(v) => set(["hist", "minN"], v)} />
+        <Field
+          label="Historic: entries needed (minN)"
+          hint="a signal with fewer historic entries gets none (5–1000)"
+        >
+          <Num
+            int
+            value={hist.minN}
+            min={5}
+            max={1000}
+            onChange={(v) => set(["hist", "minN"], v)}
+          />
         </Field>
-        <Field label="Historic: lookback (hours)" hint="only the signal's entries of the last N hours before the cut feed its historic configs; 0 = the whole history (0–720)">
-          <Num int value={hist.lookbackH ?? 0} min={0} max={720} onChange={(v) => set(["hist", "lookbackH"], v)} />
+        <Field
+          label="Historic: lookback (hours)"
+          hint="only the signal's entries of the last N hours before the cut feed its historic configs; 0 = the whole history (0–720)"
+        >
+          <Num
+            int
+            value={hist.lookbackH ?? 0}
+            min={0}
+            max={720}
+            onChange={(v) => set(["hist", "lookbackH"], v)}
+          />
         </Field>
       </div>
       <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
-        {counts.total} percent / ATR / trailing-only configs per signal ({counts.pct} percent + {counts.atr} ATR + {counts.trailingOnly} trailing only, TP None), each run independently per full source, range, lane, type, symbol and direction. Master Trailing controls execution of both trailing types; disabled sets still retain held-position protection.
+        {counts.total} percent / ATR / trailing-only configs per signal ({counts.pct} percent +{" "}
+        {counts.atr} ATR + {counts.trailingOnly} trailing only, TP None), each run independently per
+        full source, range, lane, type, symbol and direction. Master Trailing controls execution of
+        both trailing types; disabled sets still retain held-position protection.
       </div>
       <div>
         <div style={{ fontWeight: 600, marginBottom: 6 }}>Sources</div>
@@ -861,7 +972,8 @@ export function Num(props: {
     text.trim() === "" ||
     !Number.isFinite(typed) ||
     (!(props.zeroOk && val === 0) &&
-      ((props.min !== undefined && val < props.min - eps) || (props.max !== undefined && val > props.max + eps)));
+      ((props.min !== undefined && val < props.min - eps) ||
+        (props.max !== undefined && val > props.max + eps)));
   const scale = (x: number | undefined) =>
     x === undefined ? undefined : props.pct ? +(x * 100).toFixed(6) : x;
   return (
@@ -933,7 +1045,15 @@ export function List(props: {
         const xs = parse(text);
         if (xs.length) props.onChange(xs.map((x) => (props.pct ? x / 100 : x)));
         else if (props.allowEmpty && empty) props.onChange([]);
-        setText(toText(xs.length ? xs.map((x) => (props.pct ? x / 100 : x)) : props.allowEmpty && empty ? [] : props.value));
+        setText(
+          toText(
+            xs.length
+              ? xs.map((x) => (props.pct ? x / 100 : x))
+              : props.allowEmpty && empty
+                ? []
+                : props.value,
+          ),
+        );
       }}
     />
   );
@@ -961,13 +1081,19 @@ type RangeSpec = {
 const MIN_TF_CHOICES = [0, 5, 15, 30] as const;
 /** a range's order tag (minimal-coord.ts RangeTag) */
 const RANGE_TAG = { micro: "mc", minimal: "mn", short: "sh", general: "gn", long: "lg" } as const;
-const RANGE_MIN_TF_DEFAULT: Partial<Record<string, number>> = { micro: 5, short: 15, general: 15, long: 15 };
+const RANGE_MIN_TF_DEFAULT: Partial<Record<string, number>> = {
+  micro: 5,
+  short: 15,
+  general: 15,
+  long: 15,
+};
 
 /** Values from `from` to `to` in `step` (at most 60). */
 function stepValues(from: number, to: number, step: number, digits: number, max: number): number[] {
   if (!(step > 0) || !(to >= from)) return [from];
   const out: number[] = [];
-  for (let x = from; x <= to + step * 1e-6 && out.length < max; x += step) out.push(+x.toFixed(digits));
+  for (let x = from; x <= to + step * 1e-6 && out.length < max; x += step)
+    out.push(+x.toFixed(digits));
   return out;
 }
 
@@ -987,16 +1113,40 @@ export function StepList(props: {
   const xs = props.value.length ? [...props.value] : [0];
   const lo = Math.min(...xs);
   const hi = Math.max(...xs);
-  const step = xs.length > 1 ? +((hi - lo) / (xs.length - 1)).toFixed(6) : props.pct ? 0.0005 : 0.25;
+  const step =
+    xs.length > 1 ? +((hi - lo) / (xs.length - 1)).toFixed(6) : props.pct ? 0.0005 : 0.25;
   const d = props.digits ?? (props.pct ? 6 : 3);
   const max = props.max ?? 64;
   const put = (a: number, b: number, c: number) => props.onChange(stepValues(a, b, c, d, max));
   return (
-    <Field label={props.label} hint={`${xs.length} values (max ${max}): ${xs.map((x) => (props.pct ? +(x * 100).toFixed(3) : x)).join(", ")}`}>
+    <Field
+      label={props.label}
+      hint={`${xs.length} values (max ${max}): ${xs.map((x) => (props.pct ? +(x * 100).toFixed(3) : x)).join(", ")}`}
+    >
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6 }}>
-        <Num pct={props.pct} step={props.pct ? 0.025 : 0.25} min={props.lo ?? 0} max={props.hi} value={lo} onChange={(v) => put(v, Math.max(v, hi), step)} />
-        <Num pct={props.pct} step={props.pct ? 0.025 : 0.25} min={props.lo ?? 0} max={props.hi} value={hi} onChange={(v) => put(Math.min(lo, v), v, step)} />
-        <Num pct={props.pct} step={props.pct ? 0.025 : 0.25} min={props.pct ? 0.00001 : 0.01} value={step} onChange={(v) => put(lo, hi, v)} />
+        <Num
+          pct={props.pct}
+          step={props.pct ? 0.025 : 0.25}
+          min={props.lo ?? 0}
+          max={props.hi}
+          value={lo}
+          onChange={(v) => put(v, Math.max(v, hi), step)}
+        />
+        <Num
+          pct={props.pct}
+          step={props.pct ? 0.025 : 0.25}
+          min={props.lo ?? 0}
+          max={props.hi}
+          value={hi}
+          onChange={(v) => put(Math.min(lo, v), v, step)}
+        />
+        <Num
+          pct={props.pct}
+          step={props.pct ? 0.025 : 0.25}
+          min={props.pct ? 0.00001 : 0.01}
+          value={step}
+          onChange={(v) => put(lo, hi, v)}
+        />
       </div>
     </Field>
   );
@@ -1024,7 +1174,9 @@ export function RangeEditor(props: {
       minSl: props.defaults.minSl,
       minTrail: props.defaults.minTrail,
       ...(props.defaults.minTf !== undefined ? { minTf: props.defaults.minTf } : {}),
-      ...(props.defaults.tpNetOfCost !== undefined ? { tpNetOfCost: props.defaults.tpNetOfCost } : {}),
+      ...(props.defaults.tpNetOfCost !== undefined
+        ? { tpNetOfCost: props.defaults.tpNetOfCost }
+        : {}),
       ...(props.defaults.ownInds !== undefined ? { ownInds: props.defaults.ownInds } : {}),
       ...(props.defaults.minSlNet !== undefined ? { minSlNet: props.defaults.minSlNet } : {}),
     });
@@ -1034,11 +1186,16 @@ export function RangeEditor(props: {
   // the engine's own defaults (pipeline.ts baseCells): best = range ?? grid ?? true; ownBase = range ?? the range's
   // default (RANGE_OWN_BASE: Micro and Minimal on) ?? best
   const baseBest = s.baseBest ?? (props.grid.baseBest as boolean | undefined) ?? true;
-  const ownBase = (s as { ownBase?: boolean }).ownBase ?? RANGE_OWN_BASE[RANGE_TAG[props.k]] ?? baseBest;
+  const ownBase =
+    (s as { ownBase?: boolean }).ownBase ?? RANGE_OWN_BASE[RANGE_TAG[props.k]] ?? baseBest;
   return (
     <>
       <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-        <Switch label={props.title} checked={on} onChange={(v) => (v ? enable() : props.set(["grid", props.k], false))} />
+        <Switch
+          label={props.title}
+          checked={on}
+          onChange={(v) => (v ? enable() : props.set(["grid", props.k], false))}
+        />
         <div>
           <div style={{ fontWeight: 600 }}>
             {props.title} {on && <span className="v2-muted">· {cells} cells per hold</span>}
@@ -1072,7 +1229,11 @@ export function RangeEditor(props: {
               label="TP net of the position cost"
               hint="on: TP is the profit per winning order after the round-trip cost; the price target is TP + cost (0.1 % net at a 0.2 % cost = 0.3 %)"
             >
-              <Switch label="TP net of cost" checked={net} onChange={(v) => props.set(p("tpNetOfCost"), v)} />
+              <Switch
+                label="TP net of cost"
+                checked={net}
+                onChange={(v) => props.set(p("tpNetOfCost"), v)}
+              />
             </Field>
           )}
           {props.k === "micro" && (
@@ -1102,19 +1263,48 @@ export function RangeEditor(props: {
               />
             </Field>
           )}
-          <Field label={`${props.title} trail × TP`} hint="0 = no trail; several widths, each its own config">
+          <Field
+            label={`${props.title} trail × TP`}
+            hint="0 = no trail; several widths, each its own config"
+          >
             <List value={s.trailOfTp} onChange={(v) => props.set(p("trailOfTp"), v)} />
           </Field>
           {props.k !== "micro" && (
-            <Field label="Trailing stop at least (× TP)" hint="trailing cells use at least this stop (higher stops)">
-              <Num step={0.25} min={1} max={5} value={s.trailSlOfTp ?? 2} onChange={(v) => props.set(p("trailSlOfTp"), v)} />
+            <Field
+              label="Trailing stop at least (× TP)"
+              hint="trailing cells use at least this stop (higher stops)"
+            >
+              <Num
+                step={0.25}
+                min={1}
+                max={5}
+                value={s.trailSlOfTp ?? 2}
+                onChange={(v) => props.set(p("trailSlOfTp"), v)}
+              />
             </Field>
           )}
-          <Field label="Min SL (%)" hint="this range's own stop floor (the wide-grid floor does not apply)">
-            <Num pct step={0.01} min={0} max={0.2} value={s.minSl ?? 0} onChange={(v) => props.set(p("minSl"), v)} />
+          <Field
+            label="Min SL (%)"
+            hint="this range's own stop floor (the wide-grid floor does not apply)"
+          >
+            <Num
+              pct
+              step={0.01}
+              min={0}
+              max={0.2}
+              value={s.minSl ?? 0}
+              onChange={(v) => props.set(p("minSl"), v)}
+            />
           </Field>
           <Field label="Min trail (%)" hint="this range's own trailing floor">
-            <Num pct step={0.01} min={0} max={0.1} value={s.minTrail ?? 0} onChange={(v) => props.set(p("minTrail"), v)} />
+            <Num
+              pct
+              step={0.01}
+              min={0}
+              max={0.1}
+              value={s.minTrail ?? 0}
+              onChange={(v) => props.set(p("minTrail"), v)}
+            />
           </Field>
           <Field
             label="Min SL, evaluation (%)"
@@ -1189,7 +1379,10 @@ export function RangeEditor(props: {
               />
             </Field>
           )}
-          <Field label="Shortest lane" hint="faster timeframe lanes do not trade this range (its target is too far for their signals)">
+          <Field
+            label="Shortest lane"
+            hint="faster timeframe lanes do not trade this range (its target is too far for their signals)"
+          >
             <select
               className="v2-select"
               value={String(s.minTf ?? RANGE_MIN_TF_DEFAULT[props.k] ?? 0)}
@@ -1209,7 +1402,10 @@ export function RangeEditor(props: {
 }
 
 /** Short range: 9–14× reference cost (1.8–2.8 %), step 1×, SL 1–2.5× TP. */
-export function ShortRange(props: { grid: Record<string, unknown> | object; set: (path: string[], v: unknown) => void }) {
+export function ShortRange(props: {
+  grid: Record<string, unknown> | object;
+  set: (path: string[], v: unknown) => void;
+}) {
   return (
     <RangeEditor
       grid={props.grid as Record<string, unknown>}
@@ -1223,7 +1419,10 @@ export function ShortRange(props: { grid: Record<string, unknown> | object; set:
 }
 
 /** Minimal range: 4–8× reference cost (0.8–1.6 %), step 0.5×, SL 1.5–3× TP. */
-export function MinimalRange(props: { grid: Record<string, unknown> | object; set: (path: string[], v: unknown) => void }) {
+export function MinimalRange(props: {
+  grid: Record<string, unknown> | object;
+  set: (path: string[], v: unknown) => void;
+}) {
   return (
     <RangeEditor
       grid={props.grid as Record<string, unknown>}
@@ -1237,7 +1436,10 @@ export function MinimalRange(props: { grid: Record<string, unknown> | object; se
 }
 
 /** General range: 14–22× position cost (2.8–4.4 %), step 2×, SL 0.5–1× TP, two trail widths. */
-export function GeneralRange(props: { grid: Record<string, unknown> | object; set: (path: string[], v: unknown) => void }) {
+export function GeneralRange(props: {
+  grid: Record<string, unknown> | object;
+  set: (path: string[], v: unknown) => void;
+}) {
   return (
     <RangeEditor
       grid={props.grid as Record<string, unknown>}
@@ -1251,7 +1453,10 @@ export function GeneralRange(props: { grid: Record<string, unknown> | object; se
 }
 
 /** Long range: 22–32× position cost (4.4–6.4 %), step 2×, SL 0.5–1× TP, two trail widths. */
-export function LongRange(props: { grid: Record<string, unknown> | object; set: (path: string[], v: unknown) => void }) {
+export function LongRange(props: {
+  grid: Record<string, unknown> | object;
+  set: (path: string[], v: unknown) => void;
+}) {
   return (
     <RangeEditor
       grid={props.grid as Record<string, unknown>}
@@ -1265,7 +1470,10 @@ export function LongRange(props: { grid: Record<string, unknown> | object; set: 
 }
 
 /** Micro range: net 0.1–0.4 % after the position cost (price targets 0.3–0.6 % at 0.2 %), SL 1–5× step 0.25. */
-export function MicroRange(props: { grid: Record<string, unknown> | object; set: (path: string[], v: unknown) => void }) {
+export function MicroRange(props: {
+  grid: Record<string, unknown> | object;
+  set: (path: string[], v: unknown) => void;
+}) {
   return (
     <RangeEditor
       grid={props.grid as Record<string, unknown>}
@@ -1280,13 +1488,23 @@ export function MicroRange(props: { grid: Record<string, unknown> | object; set:
 
 /** Minimal plus: 2–5× cost (step 0.25), SL 0.5–3× (step 0.25), trailing cells with higher stops; only stored cells. */
 export function MinimalPlusRange(props: {
-  grid: { minimalPlus?: false | (RangeSpec & { enabled?: boolean; lastN?: number; minPf?: number; cells?: ReadonlyArray<unknown> }) };
+  grid: {
+    minimalPlus?:
+      | false
+      | (RangeSpec & {
+          enabled?: boolean;
+          lastN?: number;
+          minPf?: number;
+          cells?: ReadonlyArray<unknown>;
+        });
+  };
   set: (path: string[], v: unknown) => void;
 }) {
   const mp = props.grid.minimalPlus || null;
   const on = !!mp && mp.enabled === true;
   const base = mp || { ...MINIMAL_PLUS_RANGE, enabled: false, lastN: 50, minPf: 1.35, cells: [] };
-  const put = (patch: Record<string, unknown>) => props.set(["grid", "minimalPlus"], { ...base, ...patch });
+  const put = (patch: Record<string, unknown>) =>
+    props.set(["grid", "minimalPlus"], { ...base, ...patch });
   const cells = base.cells?.length ?? 0;
   return (
     <>
@@ -1304,37 +1522,92 @@ export function MinimalPlusRange(props: {
             Minimal plus <span className="v2-muted">· {cells} stored cells</span>
           </div>
           <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
-            TP 2–5× position cost (step 0.25), SL 0.5–3× (step 0.25), trailing cells at least 2.5×. Only the stored cells
-            are built, each kept while its last N closes clear the min PF. Orders tracked as M. Off by default.
-            {cells === 0 && !on && " No cell has cleared the last-N gate yet, so it cannot be switched on."}
+            TP 2–5× position cost (step 0.25), SL 0.5–3× (step 0.25), trailing cells at least 2.5×.
+            Only the stored cells are built, each kept while its last N closes clear the min PF.
+            Orders tracked as M. Off by default.
+            {cells === 0 &&
+              !on &&
+              " No cell has cleared the last-N gate yet, so it cannot be switched on."}
           </div>
         </div>
       </div>
       {on && (
         <div className="v2-grid v2-cols-3">
           <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)", gridColumn: "1 / -1" }}>
-            Informational: the TP / SL / trail ranges, the trailing stop and the floors below do not build cells — the
-            cells come from the last-N gate (the stored cells). Only last N and its min PF act.
+            Informational: the TP / SL / trail ranges, the trailing stop and the floors below do not
+            build cells — the cells come from the last-N gate (the stored cells). Only last N and
+            its min PF act.
           </div>
-          <StepList label="Plus TP (%) min · max · step (informational)" pct lo={0.002} hi={0.2} value={base.tp} onChange={(v) => put({ tp: v })} />
-          <StepList label="Plus SL × TP min · max · step (informational)" lo={0.2} hi={5} value={base.slOfTp} onChange={(v) => put({ slOfTp: v })} />
-          <Field label="Plus trail × TP (informational)" hint="0 = no trail · cells come from the last-N gate">
+          <StepList
+            label="Plus TP (%) min · max · step (informational)"
+            pct
+            lo={0.002}
+            hi={0.2}
+            value={base.tp}
+            onChange={(v) => put({ tp: v })}
+          />
+          <StepList
+            label="Plus SL × TP min · max · step (informational)"
+            lo={0.2}
+            hi={5}
+            value={base.slOfTp}
+            onChange={(v) => put({ slOfTp: v })}
+          />
+          <Field
+            label="Plus trail × TP (informational)"
+            hint="0 = no trail · cells come from the last-N gate"
+          >
             <List value={base.trailOfTp} onChange={(v) => put({ trailOfTp: v })} />
           </Field>
           <Field label="Previous closes (last N)" hint="50 – 500">
-            <Num int min={50} max={500} value={base.lastN ?? 50} onChange={(v) => put({ lastN: Math.max(50, Math.round(v)) })} />
+            <Num
+              int
+              min={50}
+              max={500}
+              value={base.lastN ?? 50}
+              onChange={(v) => put({ lastN: Math.max(50, Math.round(v)) })}
+            />
           </Field>
           <Field label="Min PF of those closes" hint="higher than the usual gate (at least 1.05)">
-            <Num step={0.05} min={1.05} max={5} value={base.minPf ?? 1.35} onChange={(v) => put({ minPf: v })} />
+            <Num
+              step={0.05}
+              min={1.05}
+              max={5}
+              value={base.minPf ?? 1.35}
+              onChange={(v) => put({ minPf: v })}
+            />
           </Field>
-          <Field label="Plus trailing stop at least (× TP) (informational)" hint="1 – 5 · cells come from the last-N gate">
-            <Num step={0.25} min={1} max={5} value={base.trailSlOfTp ?? 2.5} onChange={(v) => put({ trailSlOfTp: v })} />
+          <Field
+            label="Plus trailing stop at least (× TP) (informational)"
+            hint="1 – 5 · cells come from the last-N gate"
+          >
+            <Num
+              step={0.25}
+              min={1}
+              max={5}
+              value={base.trailSlOfTp ?? 2.5}
+              onChange={(v) => put({ trailSlOfTp: v })}
+            />
           </Field>
           <Field label="Plus min SL (%) (informational)" hint="cells come from the last-N gate">
-            <Num pct step={0.01} min={0} max={0.2} value={base.minSl ?? 0} onChange={(v) => put({ minSl: v })} />
+            <Num
+              pct
+              step={0.01}
+              min={0}
+              max={0.2}
+              value={base.minSl ?? 0}
+              onChange={(v) => put({ minSl: v })}
+            />
           </Field>
           <Field label="Plus min trail (%) (informational)" hint="cells come from the last-N gate">
-            <Num pct step={0.01} min={0} max={0.1} value={base.minTrail ?? 0} onChange={(v) => put({ minTrail: v })} />
+            <Num
+              pct
+              step={0.01}
+              min={0}
+              max={0.1}
+              value={base.minTrail ?? 0}
+              onChange={(v) => put({ minTrail: v })}
+            />
           </Field>
         </div>
       )}
@@ -1344,11 +1617,16 @@ export function MinimalPlusRange(props: {
 
 /** Range gate and range seats: every range cell needs its last N closes at a higher PF before a seat. */
 export function RangeGate(props: {
-  grid: { rangeGate?: { enabled: boolean; lastN: number; minPf: number }; rangeSeats?: boolean; baseBest?: boolean };
+  grid: {
+    rangeGate?: { enabled: boolean; lastN: number; minPf: number };
+    rangeSeats?: boolean;
+    baseBest?: boolean;
+  };
   set: (path: string[], v: unknown) => void;
 }) {
   const g = props.grid.rangeGate ?? { ...RANGE_GATE, enabled: false };
-  const put = (patch: Record<string, unknown>) => props.set(["grid", "rangeGate"], { ...g, ...patch });
+  const put = (patch: Record<string, unknown>) =>
+    props.set(["grid", "rangeGate"], { ...g, ...patch });
   return (
     <div className="v2-grid v2-cols-3">
       <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
@@ -1356,22 +1634,34 @@ export function RangeGate(props: {
         <div>
           <div style={{ fontWeight: 600 }}>Range gate</div>
           <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
-            micro, minimal, short and plus cells seat only after their last N closes clear the min PF
+            micro, minimal, short and plus cells seat only after their last N closes clear the min
+            PF
           </div>
         </div>
       </div>
       <Field label="Range last N" hint="previous closes, at least 50">
-        <Num int min={50} max={1000} value={g.lastN} onChange={(v) => put({ lastN: Math.max(50, Math.round(v)) })} />
+        <Num
+          int
+          min={50}
+          max={1000}
+          value={g.lastN}
+          onChange={(v) => put({ lastN: Math.max(50, Math.round(v)) })}
+        />
       </Field>
       <Field label="Range min PF" hint="higher than the usual gate (at least 1.05)">
         <Num step={0.05} min={1.05} max={5} value={g.minPf} onChange={(v) => put({ minPf: v })} />
       </Field>
       <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-        <Switch label="Range seats" checked={!!props.grid.rangeSeats} onChange={(v) => props.set(["grid", "rangeSeats"], v)} />
+        <Switch
+          label="Range seats"
+          checked={!!props.grid.rangeSeats}
+          onChange={(v) => props.set(["grid", "rangeSeats"], v)}
+        />
         <div>
           <div style={{ fontWeight: 600 }}>Range seats</div>
           <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
-            short / minimal / plus hold their own seat per pair instead of competing with the wide cells
+            short / minimal / plus hold their own seat per pair instead of competing with the wide
+            cells
           </div>
         </div>
       </div>
@@ -1384,8 +1674,8 @@ export function RangeGate(props: {
         <div>
           <div style={{ fontWeight: 600 }}>Base at every config</div>
           <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
-            Base judges every range (Micro, Minimal, Short, General, Long) at each target × stop and passes a range on
-            its best cell; off: one middle cell per range
+            Base judges every range (Micro, Minimal, Short, General, Long) at each target × stop and
+            passes a range on its best cell; off: one middle cell per range
           </div>
         </div>
       </div>
@@ -1400,7 +1690,8 @@ export function RangeFit(props: {
 }) {
   // DEFAULT_RANGE_FIT (walkforward.ts): lo 0.2, hi 2.5, keep 2
   const f = { lo: 0.2, hi: 2.5, keep: 2, ...(props.grid.rangeFit ?? { enabled: false }) };
-  const put = (patch: Record<string, unknown>) => props.set(["grid", "rangeFit"], { ...f, ...patch });
+  const put = (patch: Record<string, unknown>) =>
+    props.set(["grid", "rangeFit"], { ...f, ...patch });
   return (
     <div className="v2-grid v2-cols-2">
       <SwitchRow
@@ -1425,10 +1716,15 @@ export function RangeFit(props: {
           min={0.5}
           max={10}
           value={f.hi}
-          onChange={(v) => put({ hi: v, lo: Math.max(0.05, Math.min(f.lo, +(v - 0.05).toFixed(2))) })}
+          onChange={(v) =>
+            put({ hi: v, lo: Math.max(0.05, Math.min(f.lo, +(v - 0.05).toFixed(2))) })
+          }
         />
       </Field>
-      <Field label="Targets kept per range" hint="at least this many targets stay per range · 1 – 8">
+      <Field
+        label="Targets kept per range"
+        hint="at least this many targets stay per range · 1 – 8"
+      >
         <Num min={1} max={8} value={f.keep} onChange={(v) => put({ keep: Math.round(v) })} />
       </Field>
     </div>
@@ -1461,13 +1757,25 @@ const SYMBOL_RANK: Record<string, string> = {
 };
 
 /** Bot types the engine runs (src/core/bots/bots.ts); the Real-stage filter takes any subset. */
-const BOT_TYPES = ["follow", "revert", "pivot", "magnet", "clamp", "sweep", "ribbon", "pulse", "snap", "sandwich"] as const;
+const BOT_TYPES = [
+  "follow",
+  "revert",
+  "pivot",
+  "magnet",
+  "clamp",
+  "sweep",
+  "ribbon",
+  "pulse",
+  "snap",
+  "sandwich",
+] as const;
 
 const TOGGLE_HELP: Record<string, string> = {
   normal:
-    "the plain base (Normal and Trailing entries); off = neither executes unless Block raises it — Block, DCA, DCA Active and Axis keep processing (every set is still computed and evaluated)",
+    "the plain base (Normal and Trailing entries); off = neither executes unless Block raises it — Historic Exit, DCA, DCA Active and Axis keep processing (every set is still computed and evaluated)",
   trailing:
     "trailing with TP and trailing-only without TP; off = no new trailing execution anywhere (base, Block-raised, signals), still computed; held positions retain their protection",
+  exit: "independently qualified historic exits: one tape per passed target, range, and direction; candidates fit older prehistory and pass a later holdout. Live lane orders can exit each lane partially; overall control coordinates the combined position.",
   block: "adds +ratio volume per passing last-n window (1..max)",
   blockActive:
     "Active: engine entries below the minimum Block level are skipped even when Normal is on. Signal bases follow their own eligibility rules and retain the independent Signal base exception.",
@@ -1537,7 +1845,8 @@ const TACTIC_HELP: Record<string, string> = {
   volRegime: "volatility regime — ATR% in the upper half of its last ~2 weeks",
   trendStrength: "trend strength — ADX(14) ≥ 20",
   chopRegime: "choppiness regime — no entry while CHOP(14) ≥ 61.8 (a sideways range)",
-  onRun: "tactics on the whole state run — follow / revert enter on the first bar of a state run the tactics keep, not only on its onset bar",
+  onRun:
+    "tactics on the whole state run — follow / revert enter on the first bar of a state run the tactics keep, not only on its onset bar",
   cooldown: "pacing — after an exit the config waits N bars before re-entering the symbol",
 };
 
@@ -1788,7 +2097,8 @@ export function SettingsPage() {
             label="Symbol offset"
             hint="skip this many symbols at the top of the ranking (desks sharing one account take disjoint slices) · 0 = none"
           >
-            <Num int
+            <Num
+              int
               value={s.symbolOffset ?? 0}
               min={0}
               max={200}
@@ -1799,13 +2109,28 @@ export function SettingsPage() {
             label="Forced symbols"
             hint="always in the universe whatever their rank (comma separated, e.g. XRP, SOL, BCH); the ranking fills the rest up to the symbol count"
           >
-            <ForcedSymbols value={s.forceSymbols ?? []} onChange={(v) => set(["forceSymbols"], v)} />
+            <ForcedSymbols
+              value={s.forceSymbols ?? []}
+              onChange={(v) => set(["forceSymbols"], v)}
+            />
           </Field>
           <Field label="Cycle (ms)" hint="checks for newly closed bars · 100 – 600000">
-            <Num value={s.cycleMs} step={50} min={100} max={600_000} onChange={(v) => set(["cycleMs"], v)} />
+            <Num
+              value={s.cycleMs}
+              step={50}
+              min={100}
+              max={600_000}
+              onChange={(v) => set(["cycleMs"], v)}
+            />
           </Field>
           <Field label="Tick (ms)" hint="open positions marked to market + live step · 50 – 10000">
-            <Num value={s.tickMs ?? 100} step={50} min={50} max={10_000} onChange={(v) => set(["tickMs"], v)} />
+            <Num
+              value={s.tickMs ?? 100}
+              step={50}
+              min={50}
+              max={10_000}
+              onChange={(v) => set(["tickMs"], v)}
+            />
           </Field>
           <Field
             label="Position cost (round trip, %)"
@@ -1961,9 +2286,20 @@ export function SettingsPage() {
                 <Field key={k} label={label} hint="this range's stage min PF (empty = Min PF)">
                   <select
                     className="v2-select"
-                    value={v === undefined ? "" : String(RANGE_PF_CHOICES.reduce((a, b) => (Math.abs(b - v) < Math.abs(a - v) ? b : a)))}
+                    value={
+                      v === undefined
+                        ? ""
+                        : String(
+                            RANGE_PF_CHOICES.reduce((a, b) =>
+                              Math.abs(b - v) < Math.abs(a - v) ? b : a,
+                            ),
+                          )
+                    }
                     onChange={(e) =>
-                      set(["gates", "rangeMinPf", k], e.target.value === "" ? undefined : Number(e.target.value))
+                      set(
+                        ["gates", "rangeMinPf", k],
+                        e.target.value === "" ? undefined : Number(e.target.value),
+                      )
                     }
                   >
                     <option value="">= Min PF</option>
@@ -1991,7 +2327,10 @@ export function SettingsPage() {
                 ))}
               </select>
             </Field>
-            <Field label="Min DDT (hours)" hint="floor under the DDT limit: it scales with a config's history (max DDT per 72 h), and never drops below this · 0 = no floor · 0 – 72 h">
+            <Field
+              label="Min DDT (hours)"
+              hint="floor under the DDT limit: it scales with a config's history (max DDT per 72 h), and never drops below this · 0 = no floor · 0 – 72 h"
+            >
               <Num
                 step={1}
                 min={0}
@@ -2018,7 +2357,8 @@ export function SettingsPage() {
               </select>
             </Field>
             <Field label="Min trades" hint="closed trades a config needs · 1 – 500">
-              <Num int
+              <Num
+                int
                 value={s.gates.minTrades}
                 min={1}
                 max={500}
@@ -2109,6 +2449,143 @@ export function SettingsPage() {
             ))}
           </div>
         </Panel>
+        <Panel
+          title="Historic exit strategy"
+          sub="fits exit candidates on older prehistory, checks each candidate on a later untouched segment, and keeps qualified sets independent by range and direction"
+        >
+          <div className="v2-grid v2-cols-2" style={{ gap: 8 }}>
+            <Field
+              label="Build historic exits"
+              hint="only Base-passed engine pairs are considered; the execution toggle above still controls whether qualified sets can trade"
+            >
+              <Switch
+                label="enabled"
+                checked={s.exitStrategy.enabled}
+                onChange={(v) => set(["exitStrategy", "enabled"], v)}
+              />
+            </Field>
+            <Field
+              label="Prehistory lookback (h)"
+              hint="0 uses all available history; otherwise only the newest N hours before the run cut"
+            >
+              <Num
+                int
+                min={0}
+                max={720}
+                value={s.exitStrategy.lookbackH}
+                onChange={(v) => set(["exitStrategy", "lookbackH"], v)}
+              />
+            </Field>
+            <Field
+              label="Fit fraction"
+              hint="older prehistory fraction used to fit candidates; the later fraction is held out for validation"
+            >
+              <Num
+                step={0.05}
+                min={0.5}
+                max={0.8}
+                value={s.exitStrategy.trainFraction}
+                onChange={(v) => set(["exitStrategy", "trainFraction"], v)}
+              />
+            </Field>
+            <Field
+              label="Fit entries per direction"
+              hint="minimum mature moves used to estimate MFE targets"
+            >
+              <Num
+                int
+                min={5}
+                max={1000}
+                value={s.exitStrategy.minEntries}
+                onChange={(v) => set(["exitStrategy", "minEntries"], v)}
+              />
+            </Field>
+            <Field
+              label="Validation closes per direction"
+              hint="minimum completed holdout closes before a set can qualify"
+            >
+              <Num
+                int
+                min={2}
+                max={500}
+                value={s.exitStrategy.minValidationTrades}
+                onChange={(v) => set(["exitStrategy", "minValidationTrades"], v)}
+              />
+            </Field>
+            <Field
+              label="Minimum holdout PF"
+              hint="the runtime applies the stricter of this and the configured stage PF"
+            >
+              <Num
+                step={0.05}
+                min={1.05}
+                max={10}
+                value={s.exitStrategy.minPf}
+                onChange={(v) => set(["exitStrategy", "minPf"], v)}
+              />
+            </Field>
+            <Field
+              label="Maximum drawdown / net ratio"
+              hint="1 = drawdown equals net profit; 0 disables this additional validation limit"
+            >
+              <Num
+                step={1}
+                min={0}
+                max={10}
+                value={s.exitStrategy.maxDdr}
+                onChange={(v) => set(["exitStrategy", "maxDdr"], v)}
+              />
+            </Field>
+            <Field
+              label="Maximum hold (h)"
+              hint="shortened automatically when prehistory is too short"
+            >
+              <Num
+                step={0.5}
+                min={0.5}
+                max={96}
+                value={s.exitStrategy.holdH}
+                onChange={(v) => set(["exitStrategy", "holdH"], v)}
+              />
+            </Field>
+            <Field
+              label="Maximum configs per pair"
+              hint="memory bound across all passed ranges and both directions"
+            >
+              <Num
+                int
+                min={2}
+                max={128}
+                value={s.exitStrategy.maxConfigsPerPair}
+                onChange={(v) => set(["exitStrategy", "maxConfigsPerPair"], v)}
+              />
+            </Field>
+            <Field
+              label="Fit MFE quantiles"
+              hint="each quantile maps to the nearest TP that already passed Base for this pair and range"
+            >
+              <List
+                value={s.exitStrategy.quantiles}
+                onChange={(v) => set(["exitStrategy", "quantiles"], v)}
+              />
+            </Field>
+            <Field
+              label="Trail share × stop multiple"
+              hint="each combination is tested as its own exit config; at most 16 combinations per range and side"
+            >
+              <div className="v2-grid v2-cols-2" style={{ gap: 6 }}>
+                <List
+                  value={s.exitStrategy.trailShares}
+                  onChange={(v) => set(["exitStrategy", "trailShares"], v)}
+                />
+                <List
+                  value={s.exitStrategy.stopMultiples}
+                  onChange={(v) => set(["exitStrategy", "stopMultiples"], v)}
+                />
+              </div>
+            </Field>
+          </div>
+        </Panel>
       </div>
 
       <div className="v2-grid v2-cols-2">
@@ -2172,7 +2649,8 @@ export function SettingsPage() {
         >
           <div className="v2-grid v2-cols-3">
             <Field label="Positions (last N)" hint="positions per set judged · 5 – 100">
-              <Num int
+              <Num
+                int
                 value={s.adjust?.window ?? 15}
                 min={5}
                 max={100}
@@ -2271,7 +2749,10 @@ export function SettingsPage() {
                 onChange={(v) => set(["adjust", "trailScale"], v)}
               />
             </Field>
-            <Field label="Scale max (×)" hint="the relative steps widen a set to at most this multiple · 1 – 5">
+            <Field
+              label="Scale max (×)"
+              hint="the relative steps widen a set to at most this multiple · 1 – 5"
+            >
               <Num
                 step={0.25}
                 min={1}
@@ -2280,7 +2761,10 @@ export function SettingsPage() {
                 onChange={(v) => set(["adjust", "scaleMax"], v)}
               />
             </Field>
-            <Field label="Closes per step" hint="new closes a set needs after a step before the next one · 1 – 100">
+            <Field
+              label="Closes per step"
+              hint="new closes a set needs after a step before the next one · 1 – 100"
+            >
               <Num
                 step={1}
                 min={1}
@@ -2321,7 +2805,8 @@ export function SettingsPage() {
                 </div>
                 {k === "cooldown" && (
                   <div style={{ width: 90 }}>
-                    <Num int
+                    <Num
+                      int
                       value={s.tactics?.cooldownBars ?? 4}
                       min={0}
                       max={96}
@@ -2360,19 +2845,31 @@ export function SettingsPage() {
             })}
           </div>
           <div style={{ marginTop: 10 }}>
-            <TacticFocusInfo focus={s.focus ?? []} pinned={s.pinned ?? []} disabled={(s.disabledKinds ?? []).includes("tactic")} onInclude={() => {
-              set(["focus"], includeTacticInFocus(s.focus ?? [], TACTIC_IDS));
-              set(["disabledKinds"], (s.disabledKinds ?? []).filter((kind: string) => kind !== "tactic"));
-            }} />
+            <TacticFocusInfo
+              focus={s.focus ?? []}
+              pinned={s.pinned ?? []}
+              disabled={(s.disabledKinds ?? []).includes("tactic")}
+              onInclude={() => {
+                set(["focus"], includeTacticInFocus(s.focus ?? [], TACTIC_IDS));
+                set(
+                  ["disabledKinds"],
+                  (s.disabledKinds ?? []).filter((kind: string) => kind !== "tactic"),
+                );
+              }}
+            />
           </div>
           <p className="v2-muted" style={{ fontSize: "var(--v-fs-xs)", margin: "10px 0 0" }}>
-            Tactic indication: Short and Medium configurations run independently on each selected regular or combined timeframe lane.
+            Tactic indication: Short and Medium configurations run independently on each selected
+            regular or combined timeframe lane.
           </p>
           <details style={{ marginTop: 8, fontSize: "var(--v-fs-xs)" }}>
             <summary>Tactic techniques</summary>
             <div className="v2-lines" style={{ marginTop: 8 }}>
               {TACTIC_TECHNIQUES.map((technique) => (
-                <div key={technique.id}><strong>{technique.label}</strong> · <span className="v2-muted">{technique.description}</span></div>
+                <div key={technique.id}>
+                  <strong>{technique.label}</strong> ·{" "}
+                  <span className="v2-muted">{technique.description}</span>
+                </div>
               ))}
             </div>
           </details>
@@ -2407,7 +2904,10 @@ export function SettingsPage() {
       <div className="v2-grid v2-cols-4">
         <Panel title="Block">
           <div className="v2-grid v2-cols-2">
-            <Field label="Ratio per level" hint="common extra base volume per passing level · 0.2 = +20% with continuous steps · Shared can use its own override">
+            <Field
+              label="Ratio per level"
+              hint="common extra base volume per passing level · 0.2 = +20% with continuous steps · Shared can use its own override"
+            >
               <Num
                 step={0.05}
                 min={0}
@@ -2418,9 +2918,11 @@ export function SettingsPage() {
             </Field>
             <Field
               label="Shared ratio per level"
-              hint={s.block.sharedRatio === undefined
-                ? `Uses the common ratio (${s.block.ratio}) until edited. Editing saves a Shared-only override; choose a higher ratio here for stronger Shared stacking.`
-                : "Shared-only override · strongest qualifying source uses this ratio; Additive and Overall use the common ratio. Max stack still bounds the total."}
+              hint={
+                s.block.sharedRatio === undefined
+                  ? `Uses the common ratio (${s.block.ratio}) until edited. Editing saves a Shared-only override; choose a higher ratio here for stronger Shared stacking.`
+                  : "Shared-only override · strongest qualifying source uses this ratio; Additive and Overall use the common ratio. Max stack still bounds the total."
+              }
             >
               <Num
                 step={0.05}
@@ -2438,7 +2940,10 @@ export function SettingsPage() {
                 onChange={(v) => set(["block", "maxLevel"], v)}
               />
             </Field>
-            <Field label="Active min level" hint="Block Active: entries below this level are skipped">
+            <Field
+              label="Active min level"
+              hint="Block Active: entries below this level are skipped"
+            >
               <Num
                 value={s.block.minActiveLevel}
                 min={1}
@@ -2446,7 +2951,10 @@ export function SettingsPage() {
                 onChange={(v) => set(["block", "minActiveLevel"], v)}
               />
             </Field>
-            <Field label="Volume steps" hint="equal steps up to Max stack; larger raises round down, positive raises below one step keep their exact ratio (0 = continuous)">
+            <Field
+              label="Volume steps"
+              hint="equal steps up to Max stack; larger raises round down, positive raises below one step keep their exact ratio (0 = continuous)"
+            >
               <Num
                 value={s.block.steps ?? 0}
                 min={0}
@@ -2454,7 +2962,10 @@ export function SettingsPage() {
                 onChange={(v) => set(["block", "steps"], v)}
               />
             </Field>
-            <Field label="Pause after a win" hint="closes a source waits after a positive raised position (0 = none)">
+            <Field
+              label="Pause after a win"
+              hint="closes a source waits after a positive raised position (0 = none)"
+            >
               <Num
                 value={s.block.pause ?? 0}
                 min={0}
@@ -2495,12 +3006,25 @@ export function SettingsPage() {
             const quantized = (s.block.steps ?? 0) > 0;
             const changed = Math.abs(extra - continuous) > 1e-9;
             return (
-              <div className={changed ? "v2-warn" : "v2-muted"} style={{ fontSize: "var(--v-fs-xs)", marginTop: 8 }}>
-                One passing level with the current {s.block.mode ?? "shared"} ratio gives {(1 + extra).toFixed(2)}× base volume
-                {quantized ? ` after volume-step rounding (${(1 + continuous).toFixed(2)}× before rounding)` : "; continuous steps use the configured ratio within Max stack"}.
-                {changed ? " Volume steps round this raise down within the configured ratio; set Volume steps to 0 for the exact per-level ratio." : ""}
-                {quantized && !changed ? " Volume steps never increase the configured raise; a positive raise smaller than one step is kept exactly." : ""}
-                {s.block.mode === "overall" ? " Each source calculates its leg independently; all legs together remain inside Max stack." : ""}
+              <div
+                className={changed ? "v2-warn" : "v2-muted"}
+                style={{ fontSize: "var(--v-fs-xs)", marginTop: 8 }}
+              >
+                One passing level with the current {s.block.mode ?? "shared"} ratio gives{" "}
+                {(1 + extra).toFixed(2)}× base volume
+                {quantized
+                  ? ` after volume-step rounding (${(1 + continuous).toFixed(2)}× before rounding)`
+                  : "; continuous steps use the configured ratio within Max stack"}
+                .
+                {changed
+                  ? " Volume steps round this raise down within the configured ratio; set Volume steps to 0 for the exact per-level ratio."
+                  : ""}
+                {quantized && !changed
+                  ? " Volume steps never increase the configured raise; a positive raise smaller than one step is kept exactly."
+                  : ""}
+                {s.block.mode === "overall"
+                  ? " Each source calculates its leg independently; all legs together remain inside Max stack."
+                  : ""}
               </div>
             );
           })()}
@@ -2516,7 +3040,14 @@ export function SettingsPage() {
                   min · max each Block knob may take (presets and sweeps stay inside)
                 </div>
                 <div className="v2-grid v2-cols-2">
-                  <Span label="Levels" hint="1 – 12" value={r.levels} lo={1} hi={12} onChange={(v) => putR("levels", v)} />
+                  <Span
+                    label="Levels"
+                    hint="1 – 12"
+                    value={r.levels}
+                    lo={1}
+                    hi={12}
+                    onChange={(v) => putR("levels", v)}
+                  />
                   <Span
                     label="Volume ratio"
                     hint="0.05 – 2"
@@ -2526,7 +3057,14 @@ export function SettingsPage() {
                     step={0.05}
                     onChange={(v) => putR("volRatio", v)}
                   />
-                  <Span label="Volume steps" hint="0 – 12" value={r.steps} lo={0} hi={12} onChange={(v) => putR("steps", v)} />
+                  <Span
+                    label="Volume steps"
+                    hint="0 – 12"
+                    value={r.steps}
+                    lo={0}
+                    hi={12}
+                    onChange={(v) => putR("steps", v)}
+                  />
                   <Span
                     label="Increase"
                     hint="0.05 – 1"
@@ -2536,7 +3074,14 @@ export function SettingsPage() {
                     step={0.05}
                     onChange={(v) => putR("increase", v)}
                   />
-                  <Span label="Pause" hint="0 – 12" value={r.pause} lo={0} hi={12} onChange={(v) => putR("pause", v)} />
+                  <Span
+                    label="Pause"
+                    hint="0 – 12"
+                    value={r.pause}
+                    lo={0}
+                    hi={12}
+                    onChange={(v) => putR("pause", v)}
+                  />
                 </div>
               </div>
             );
@@ -2588,8 +3133,12 @@ export function SettingsPage() {
                 })}
               </div>
             </Field>
-            <Field label={s.axis?.mode === "desk" ? "Rungs (min 2)" : "Legs (incl. base)"} hint="1 – 8">
-              <Num int
+            <Field
+              label={s.axis?.mode === "desk" ? "Rungs (min 2)" : "Legs (incl. base)"}
+              hint="1 – 8"
+            >
+              <Num
+                int
                 value={s.axis?.levels ?? 3}
                 min={1}
                 max={8}
@@ -2703,7 +3252,8 @@ export function SettingsPage() {
                   />
                 </Field>
                 <Field label="Rung expiry (bars)" hint="0 = the protect's hold">
-                  <Num int
+                  <Num
+                    int
                     min={0}
                     max={500}
                     value={s.axis?.expiry ?? 0}
@@ -2742,15 +3292,22 @@ export function SettingsPage() {
         </Panel>
         <Panel title="DCA">
           <div className="v2-grid v2-cols-2">
-            <Field label="Levels" hint="deeper legs after the base leg · the stack is at most 5 stages (base + 4)">
-              <Num int
+            <Field
+              label="Levels"
+              hint="deeper legs after the base leg · the stack is at most 5 stages (base + 4)"
+            >
+              <Num
+                int
                 value={s.dca.levels}
                 min={1}
                 max={4}
                 onChange={(v) => set(["dca", "levels"], v)}
               />
             </Field>
-            <Field label="Step (%)" hint="distance between levels (unless a step × target is set) · 0.1 – 10">
+            <Field
+              label="Step (%)"
+              hint="distance between levels (unless a step × target is set) · 0.1 – 10"
+            >
               <Num
                 pct
                 min={0.001}
@@ -2767,14 +3324,14 @@ export function SettingsPage() {
                 pct
                 value={s.dca.tp?.length ? s.dca.tp : DCA_TP_DEFAULT}
                 onChange={(v) =>
-                  set(
-                    ["dca", "tp"],
-                    v.filter((x) => x >= 0.002 && x <= 0.2).slice(0, 12),
-                  )
+                  set(["dca", "tp"], v.filter((x) => x >= 0.002 && x <= 0.2).slice(0, 12))
                 }
               />
             </Field>
-            <Field label="Step × target" hint="level distance as a multiple of the DCA target (0 = the % step)">
+            <Field
+              label="Step × target"
+              hint="level distance as a multiple of the DCA target (0 = the % step)"
+            >
               <Num
                 step={0.25}
                 min={0}
@@ -2783,7 +3340,10 @@ export function SettingsPage() {
                 onChange={(v) => set(["dca", "stepOfTp"], v)}
               />
             </Field>
-            <Field label="Stop gap (levels)" hint="the stop sits this many level steps beyond the deepest level">
+            <Field
+              label="Stop gap (levels)"
+              hint="the stop sits this many level steps beyond the deepest level"
+            >
               <Num
                 step={0.25}
                 min={0}
@@ -2792,7 +3352,10 @@ export function SettingsPage() {
                 onChange={(v) => set(["dca", "stopGap"], v)}
               />
             </Field>
-            <Field label="Stop × target" hint="DCA stop as a multiple of its target (never inside the deepest level + gap)">
+            <Field
+              label="Stop × target"
+              hint="DCA stop as a multiple of its target (never inside the deepest level + gap)"
+            >
               <Num
                 step={0.25}
                 min={0.25}
@@ -2808,7 +3371,10 @@ export function SettingsPage() {
           sub="wide targets, short range, and a minimal range under it — every combination is its own tape (max 20,000 variants)"
         >
           <div className="v2-grid" style={{ gap: 8 }}>
-            <Field label="TP (%)" hint="empty = no wide targets (the position-cost ranges cover them; the default)">
+            <Field
+              label="TP (%)"
+              hint="empty = no wide targets (the position-cost ranges cover them; the default)"
+            >
               <List pct allowEmpty value={s.grid.tp} onChange={(v) => set(["grid", "tp"], v)} />
             </Field>
             <Field label="SL × TP (max ratio 2–2.5)">
@@ -3019,7 +3585,8 @@ export function SettingsPage() {
               label="Live last-N"
               hint={`end stage and live: last closes must clear min PF and DDT again · 0 = off · 0 – 200 · mainnet (${MAINNET_CONN}): at least ${MAINNET_LAST_N} enforced${onMainnet ? " — active now" : ""}`}
             >
-              <Num int
+              <Num
+                int
                 value={wf.lastN}
                 min={0}
                 max={200}
@@ -3035,7 +3602,10 @@ export function SettingsPage() {
                 onChange={(v) => setW("lastNMinPf", v)}
               />
             </Field>
-            <Field label="Robust share" hint="share of a pair's variants that must pass the long window · 0 – 1">
+            <Field
+              label="Robust share"
+              hint="share of a pair's variants that must pass the long window · 0 – 1"
+            >
               <Num
                 step={0.05}
                 min={0}
@@ -3064,7 +3634,8 @@ export function SettingsPage() {
               label="Max positions"
               hint="engine positions: symbol × direction, long and short apart; orders on an open one add no position · signals have their own cap · 0 = no limit"
             >
-              <Num int
+              <Num
+                int
                 value={wf.maxPositions ?? 0}
                 min={0}
                 max={10_000}
@@ -3072,7 +3643,8 @@ export function SettingsPage() {
               />
             </Field>
             <Field label="Max open orders" hint="0 = no limit">
-              <Num int
+              <Num
+                int
                 value={wf.maxOpen}
                 min={0}
                 max={100_000}
@@ -3110,7 +3682,10 @@ export function SettingsPage() {
                 <option value="net">net result</option>
               </select>
             </Field>
-            <Field label="Durable splits" hint="durable selection: sub-windows of the long window · 2 – 12">
+            <Field
+              label="Durable splits"
+              hint="durable selection: sub-windows of the long window · 2 – 12"
+            >
               <Num
                 value={wf.durableSplits ?? 4}
                 min={2}
@@ -3182,39 +3757,70 @@ export function SettingsPage() {
             </Field>
             <Field
               label="Direction acceptance (engine)"
-              hint="Real, engine configs. ON: each type family (Normal + Trailing / DCA / Axis) × range × side opens new entries only while its candidates' PF over the last hours clears the min PF — a side that loses (shorts in a rally) pauses in that family and range alone and reopens once its record recovers; the other side and the other ranges keep trading. Too few closes in the window: it is judged on twice the hours, and still too few counts as valid. OFF (default): both directions always trade, every config judged on its own gates only. Measured 5–6 Oct on the same tapes (12 symbols, 6 h + 6 h): turning it off let in 187 shorts at PF 0.05 and the window's PF fell 3.62 → 1.82 — in a rally it is what keeps losing shorts out. Long and short positions are never closed by it."
+              hint="Real, engine configs. ON: each type family (Normal + Trailing / Historic Exit / DCA / Axis) × range × side opens new entries only while its candidates' PF over the last hours clears the min PF — a side that loses (shorts in a rally) pauses in that family and range alone and reopens once its record recovers; the other side and the other ranges keep trading. Too few closes in the window: it is judged on twice the hours, and still too few counts as valid. OFF (default): both directions always trade, every config judged on its own gates only. Measured 5–6 Oct on the same tapes (12 symbols, 6 h + 6 h): turning it off let in 187 shorts at PF 0.05 and the window's PF fell 3.62 → 1.82 — in a rally it is what keeps losing shorts out. Long and short positions are never closed by it."
             >
               <Switch
                 label="Engine direction acceptance"
                 checked={wf.engineSideAccept?.enabled === true}
                 onChange={(v) =>
-                  setW("engineSideAccept", { minPf: 1.05, hours: 24, minTrades: 30, ...wf.engineSideAccept, enabled: v })
+                  setW("engineSideAccept", {
+                    minPf: 1.05,
+                    hours: 24,
+                    minTrades: 30,
+                    ...wf.engineSideAccept,
+                    enabled: v,
+                  })
                 }
               />
             </Field>
-            <Field label="Direction acceptance: min PF · hours · min closes" hint="PF 0 – 10 · 1 – 336 h · closes before it judges">
+            <Field
+              label="Direction acceptance: min PF · hours · min closes"
+              hint="PF 0 – 10 · 1 – 336 h · closes before it judges"
+            >
               <div className="v2-grid v2-cols-3">
                 <Num
                   value={wf.engineSideAccept?.minPf ?? 1.05}
                   min={0}
                   max={10}
                   step={0.05}
-                  onChange={(v) => setW("engineSideAccept", { enabled: false, hours: 24, minTrades: 30, ...wf.engineSideAccept, minPf: v })}
+                  onChange={(v) =>
+                    setW("engineSideAccept", {
+                      enabled: false,
+                      hours: 24,
+                      minTrades: 30,
+                      ...wf.engineSideAccept,
+                      minPf: v,
+                    })
+                  }
                 />
-                <Num int
+                <Num
+                  int
                   value={wf.engineSideAccept?.hours ?? 24}
                   min={1}
                   max={336}
                   onChange={(v) =>
-                    setW("engineSideAccept", { enabled: false, minPf: 1.05, minTrades: 30, ...wf.engineSideAccept, hours: Math.round(v) })
+                    setW("engineSideAccept", {
+                      enabled: false,
+                      minPf: 1.05,
+                      minTrades: 30,
+                      ...wf.engineSideAccept,
+                      hours: Math.round(v),
+                    })
                   }
                 />
-                <Num int
+                <Num
+                  int
                   value={wf.engineSideAccept?.minTrades ?? 30}
                   min={1}
                   max={100000}
                   onChange={(v) =>
-                    setW("engineSideAccept", { enabled: false, minPf: 1.05, hours: 24, ...wf.engineSideAccept, minTrades: Math.round(v) })
+                    setW("engineSideAccept", {
+                      enabled: false,
+                      minPf: 1.05,
+                      hours: 24,
+                      ...wf.engineSideAccept,
+                      minTrades: Math.round(v),
+                    })
                   }
                 />
               </div>
@@ -3234,12 +3840,7 @@ export function SettingsPage() {
               label="Symbol gate window (h)"
               hint="how far back the symbol gate looks · 0 = the long window · up to 1440"
             >
-              <Num
-                value={wf.symH ?? 0}
-                min={0}
-                max={1440}
-                onChange={(v) => setW("symH", v)}
-              />
+              <Num value={wf.symH ?? 0} min={0} max={1440} onChange={(v) => setW("symH", v)} />
             </Field>
           </div>
           <div className="v2-grid v2-cols-2" style={{ marginTop: 10 }}>
@@ -3275,7 +3876,8 @@ export function SettingsPage() {
           <div style={{ marginTop: 10 }}>
             <div style={{ fontWeight: 600, fontSize: "var(--v-fs-sm)" }}>Bot types</div>
             <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)", marginBottom: 6 }}>
-              which bots may take Real seats · every bot is still computed and evaluated (all on = no filter)
+              which bots may take Real seats · every bot is still computed and evaluated (all on =
+              no filter)
             </div>
             <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
               {BOT_TYPES.map((b) => {
@@ -3432,10 +4034,7 @@ export function SettingsPage() {
                     onChange={(v) => setC("hedgeMinPf", v)}
                   />
                 </Field>
-                <Field
-                  label="Hedge: min results"
-                  hint="results in losing hours needed · 1 – 100"
-                >
+                <Field label="Hedge: min results" hint="results in losing hours needed · 1 – 100">
                   <Num
                     min={1}
                     max={100}
@@ -3478,7 +4077,10 @@ export function SettingsPage() {
                 onChange={(v) => (v ? setAsk("live") : set(["live", "enabled"], false))}
               />
             </Field>
-            <Field label="Connection" hint="these settings belong to the connection selected at the top">
+            <Field
+              label="Connection"
+              hint="these settings belong to the connection selected at the top"
+            >
               <input className="v2-input" value={s.live.connId} readOnly aria-readonly />
             </Field>
             <Field label="Notional per entry ($)" hint="1 – 500">
@@ -3493,7 +4095,8 @@ export function SettingsPage() {
               label="Max positions"
               hint="engine positions (symbol × direction, long and short apart; every lane order on one counts once) · signals have their own cap (Signals → Max positions)"
             >
-              <Num int
+              <Num
+                int
                 value={s.live.maxPositions}
                 min={0}
                 max={10_000}
@@ -3543,7 +4146,7 @@ export function SettingsPage() {
             </Field>
             <Field
               label="Live excluded ranges"
-              hint="ranges whose configs are not sent to the exchange — only the range's own Normal / Trailing configs, never the signals; Axis and DCA ladders follow the live kinds (and source) instead. They keep computing and paper-trading; a held position is still managed until its lanes exit · none = every range"
+              hint="ranges whose configs are not sent to the exchange — only the range's own Normal / Trailing / Historic Exit configs, never the signals; Axis and DCA ladders follow the live kinds (and source) instead. They keep computing and paper-trading; a held position is still managed until its lanes exit · none = every range"
             >
               <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
                 {LIVE_RANGE_CHOICES.map(([r, l]) => {
@@ -3557,7 +4160,9 @@ export function SettingsPage() {
                         onChange={(v) =>
                           set(
                             ["live", "excludeRanges"],
-                            v ? [...xs.filter((x: string) => x !== r), r] : xs.filter((x: string) => x !== r),
+                            v
+                              ? [...xs.filter((x: string) => x !== r), r]
+                              : xs.filter((x: string) => x !== r),
                           )
                         }
                       />
@@ -3583,7 +4188,8 @@ export function SettingsPage() {
               label="Live max symbols"
               hint="the exchange sees at most this many distinct symbols · 0 = every symbol. Symbols already held come first, so the cap never closes a held position. The engine keeps computing and paper-trading the whole universe, so a desk can evaluate more symbols at Base than it trades"
             >
-              <Num int
+              <Num
+                int
                 value={s.live.maxSymbols ?? 0}
                 min={0}
                 max={1000}
@@ -3619,7 +4225,10 @@ export function SettingsPage() {
                 aria-label="Leverage"
                 value={String(s.live.leverage ?? "max")}
                 onChange={(e) =>
-                  set(["live", "leverage"], e.target.value === "max" ? "max" : Number(e.target.value))
+                  set(
+                    ["live", "leverage"],
+                    e.target.value === "max" ? "max" : Number(e.target.value),
+                  )
                 }
               >
                 <option value="max">Maximum</option>
@@ -3726,7 +4335,10 @@ export function SettingsPage() {
                 onChange={(v) => set(["live", "maxBackstopLossPct"], v)}
               />
             </Field>
-            <Field label="Max exposure × equity" hint="gross notional cap as a multiple of the equity · 0 = off">
+            <Field
+              label="Max exposure × equity"
+              hint="gross notional cap as a multiple of the equity · 0 = off"
+            >
               <Num
                 min={0}
                 max={500}
@@ -3746,7 +4358,10 @@ export function SettingsPage() {
                 onChange={(v) => set(["live", "ratio"], v)}
               />
             </Field>
-            <Field label="Max $ per position" hint="cap per symbol + direction · 0 = no cap (volume from the factors and relations) · 1 – 5000">
+            <Field
+              label="Max $ per position"
+              hint="cap per symbol + direction · 0 = no cap (volume from the factors and relations) · 1 – 5000"
+            >
               <Num
                 zeroOk
                 min={1}
@@ -3778,7 +4393,10 @@ export function SettingsPage() {
                 onChange={(v) => set(["live", "requireReady"], v)}
               />
             </Field>
-            <Field label="Minimum stop (%)" hint="exchange stops are never closer than this · 0.1 – 20">
+            <Field
+              label="Minimum stop (%)"
+              hint="exchange stops are never closer than this · 0.1 – 20"
+            >
               <Num
                 pct
                 step={0.1}

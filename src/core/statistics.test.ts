@@ -53,6 +53,7 @@ test("timeline: balance steps at each close, equity marks open orders, margin an
 
 test("types and sub-types: Block raised / Active level, DCA vs DCA Active, Axis, Signals", () => {
   assert.equal(typeOf(tr({ kind: "trailing" })), "Trailing");
+  assert.equal(typeOf(tr({ cfg: "follow|rsi-mom-14-20@m15|tp3|sl3|tr0|h64|hxL" })), "Historic Exit");
   assert.equal(typeOf(tr({ cfg: "follow|sig-cci-m@m15|tp3|sl3|tr0|h64" })), "Signals");
   assert.equal(typeOf(tr({ cfg: "follow|x|tp3|sl3|tr0|h64|dcaA" })), "DCA Active");
   assert.deepEqual(subTypeOf(tr({ mult: 1 }), 2), ["Base (unit volume)"]);
@@ -62,6 +63,24 @@ test("types and sub-types: Block raised / Active level, DCA vs DCA Active, Axis,
   assert.deepEqual(subTypeOf(tr({ mult: 1.5, coordVol: 1.5 }), 2), ["Base (unit volume)"]);
   assert.deepEqual(subTypeOf(tr({ kind: "axis" }), 2), ["Axis"]);
   assert.deepEqual(subTypeOf(tr({}), 2), ["Base (no Block detail)"]);
+});
+
+test("preset diagrams include cumulative Historic Exit P&L", () => {
+  const s = presetSeries(
+    [tr({ cfg: "follow|rsi-mom-14-20@m15|tp3|sl3|tr1|h64|hxL", r: 0.025 })],
+    {
+      startT: T0,
+      endT: T0 + 2 * H,
+      balance: 1000,
+      unit: () => 100,
+      price: () => 100,
+      cost: 0.002,
+      leverage: 10,
+      days: 1 / 12,
+      points: 2,
+    },
+  );
+  assert.equal(s.kinds["Historic Exit"].at(-1), 2.5);
 });
 
 test("the report groups every dimension and compares presets with and without each sub-strategy", () => {

@@ -68,8 +68,8 @@ import {
 } from "./live.ts";
 
 /**
- * Whether live.excludeRanges leaves this lane's config out. A range is a target band of the engine's Normal and
- * Trailing configs: "wide" is the untagged default-protect grid. Signal configs, and the untagged Axis / DCA ladders,
+ * Whether live.excludeRanges leaves this lane's config out. A range is a target band of the engine's Normal,
+ * Trailing and Historic Exit configs: "wide" is the untagged default-protect grid. Signal configs, and the untagged Axis / DCA ladders,
  * carry no range tag either but are not the Wide grid — signals are narrowed by live.source, Axis / DCA by
  * live.kinds — so excluding "wide" never stops them (it did: x01's "wide" exclusion silenced every signal lane).
  */
@@ -77,7 +77,13 @@ export function rangeExcluded(cfg: string, exRanges: ReadonlySet<string>): boole
   const c = cfgInfo(cfg);
   if (c.tag) return exRanges.has(c.tag);
   if (c.isSig) return false;
-  if (c.kind !== "normal" && c.kind !== "trailing" && c.kind !== "trailing-only") return false;
+  if (
+    c.kind !== "normal" &&
+    c.kind !== "trailing" &&
+    c.kind !== "trailing-only" &&
+    c.kind !== "exit"
+  )
+    return false;
   return exRanges.has("wide");
 }
 

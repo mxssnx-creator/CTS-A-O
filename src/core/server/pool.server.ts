@@ -8,6 +8,12 @@ import { Worker } from "node:worker_threads";
 import type { Bars, Protect, Tactics } from "../domain/types.ts";
 import type { SignalSettings } from "../signal-config.ts";
 import type { SignalHistDiagnostics, SignalHistValidation } from "../signal-hist.ts";
+import type {
+  ExitCandidateTarget,
+  ExitStrategyDiagnostics,
+  ExitStrategyValidation,
+} from "../exit-strategy.ts";
+import type { ExitStrategySettings } from "../config.ts";
 import type { BaseConfigCountOptions, BaseConfigCountRow } from "../base-config-counts.ts";
 import type { buildTapesGen, EntryFloors } from "../sim/walkforward.ts";
 
@@ -40,16 +46,43 @@ export type SignalHistMessage = {
   cutT: number;
   validation?: SignalHistValidation;
 };
-export type SignalHistReply = { pairProtects: Record<string, Protect[]>; diagnostics?: SignalHistDiagnostics };
+export type SignalHistReply = {
+  pairProtects: Record<string, Protect[]>;
+  diagnostics?: SignalHistDiagnostics;
+};
+
+/** Historical exit search: bounded pair chunks, Base-approved targets only, and a chronological validation split. */
+export type ExitStrategyMessage = {
+  type: "exit-hist";
+  evaluationFromT?: number;
+  bars: Bars[];
+  pairs: string[];
+  targetsByPair: Record<string, ExitCandidateTarget[]>;
+  settings: ExitStrategySettings;
+  tactics?: Tactics | null;
+  cutT: number;
+  validation: ExitStrategyValidation;
+};
+export type ExitStrategyReply = {
+  pairProtects: Record<string, Protect[]>;
+  diagnostics?: ExitStrategyDiagnostics;
+};
 
 /** Source installs use TypeScript; production builds place one standalone ESM worker beside the server entry. */
-export function resolveWorkerUrl(moduleUrl = import.meta.url, configured = process.env.CTS_CORE_WORKER): URL {
+export function resolveWorkerUrl(
+  moduleUrl = import.meta.url,
+  configured = process.env.CTS_CORE_WORKER,
+): URL {
   // An explicit operator path is authoritative. A typo remains unavailable instead of silently selecting another file.
   if (configured) return pathToFileURL(configured);
   const source = new URL("./tapes.worker.ts", moduleUrl);
   if (source.protocol !== "file:") return source;
   const isFile = (url: URL) => {
-    try { return statSync(fileURLToPath(url)).isFile(); } catch { return false; }
+    try {
+      return statSync(fileURLToPath(url)).isFile();
+    } catch {
+      return false;
+    }
   };
   if (isFile(source)) return source;
   let dir = dirname(fileURLToPath(moduleUrl));
@@ -65,7 +98,9 @@ export function resolveWorkerUrl(moduleUrl = import.meta.url, configured = proce
   return source;
 }
 export function workerExecArgv(url: URL): string[] {
-  return /\.[cm]?ts$/.test(url.pathname) ? ["--experimental-strip-types", "--no-warnings"] : ["--no-warnings"];
+  return /\.[cm]?ts$/.test(url.pathname)
+    ? ["--experimental-strip-types", "--no-warnings"]
+    : ["--no-warnings"];
 }
 const WORKER_URL = resolveWorkerUrl();
 
@@ -117,14 +152,21 @@ const G = globalThis as unknown as {
 };
 const pool = (): SharedPool => {
   const p = (G.__ctsPool ??= {
-    slots: [], idle: null, waiters: [], urgent: [], activity: { inFlight: 0, at: 0 }, abortReason: null,
+    slots: [],
+    idle: null,
+    waiters: [],
+    urgent: [],
+    activity: { inFlight: 0, at: 0 },
+    abortReason: null,
     aborters: new Set(),
   });
   if (!p.waiters || !p.urgent || !p.activity || !p.aborters) {
     // Old module copies may own private queues or calls without an abort registration. Leave their pool untouched
     // so existing calls can drain. A process restart creates the complete shared schema; partial adoption cannot
     // cancel those older calls reliably, and adopting private queues could strand them forever.
-    throw new Error("Worker pool upgrade requires a process restart: legacy scheduler state cannot be adopted safely");
+    throw new Error(
+      "Worker pool upgrade requires a process restart: legacy scheduler state cannot be adopted safely",
+    );
   }
   if (p.abortReason === undefined) p.abortReason = null;
   return p as SharedPool;
@@ -161,7 +203,11 @@ type Waiter = (slot: Slot | null) => void;
  */
 const waiters = pool().waiters;
 const urgent = pool().urgent;
-function acquire(priority = false, queued?: Set<Waiter>, claimed?: (slot: Slot) => void): Promise<Slot | null> {
+function acquire(
+  priority = false,
+  queued?: Set<Waiter>,
+  claimed?: (slot: Slot) => void,
+): Promise<Slot | null> {
   const p = pool();
   const free = p.slots.find((x) => !x.busy);
   // (a routine message takes a free worker only while fewer than the cores are busy: an idle extra worker stays
@@ -349,7 +395,10 @@ async function runOnWorkersNow<R>(
       const slot = await acquire(priority, queued, (slot) => running.add(slot));
       // (null: aborted while waiting, or this call failed meanwhile)
       if (!slot) return fail(abortedError(p.abortReason ?? "worker aborted"));
-      if (failed) { running.delete(slot); return release(slot); }
+      if (failed) {
+        running.delete(slot);
+        return release(slot);
+      }
       try {
         const w = slot.w;
         out[i] = await new Promise<R>((resolve, reject) => {
@@ -358,20 +407,25 @@ async function runOnWorkersNow<R>(
             drop(slot);
             reject(new Error("worker timed out"));
           }, timeoutMs);
-          const onMsg = (m: {
-            ok?: boolean;
-            error?: string;
-            id?: number;
-            progress?: number;
-            total?: number;
-          } & R) => {
+          const onMsg = (
+            m: {
+              ok?: boolean;
+              error?: string;
+              id?: number;
+              progress?: number;
+              total?: number;
+            } & R,
+          ) => {
             if (failed) return cancel(failed);
             // progress posts keep the watchdog alive and move the desk bar; they are not the reply
             if (m.ok == null && typeof m.progress === "number") {
               activity.at = Date.now();
               const id = typeof m.id === "number" ? m.id : i;
               // never backwards for one message (a late post after its reply, or a smaller count)
-              frac.set(id, Math.max(frac.get(id) ?? 0, m.total ? Math.min(1, m.progress / m.total) : 0));
+              frac.set(
+                id,
+                Math.max(frac.get(id) ?? 0, m.total ? Math.min(1, m.progress / m.total) : 0),
+              );
               if (messages.length) progress(sumOf(frac) / messages.length);
               return;
             }
@@ -403,7 +457,10 @@ async function runOnWorkersNow<R>(
             w.off("exit", onExit);
             cancellations.delete(cancel);
           };
-          const cancel = (err: Error) => { cleanup(); reject(err); };
+          const cancel = (err: Error) => {
+            cleanup();
+            reject(err);
+          };
           cancellations.add(cancel);
           w.on("message", onMsg);
           w.once("error", onErr);

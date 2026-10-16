@@ -49,6 +49,10 @@ describe(
             dcaActive: false,
             axis: true,
           },
+          // Historic Exit has dedicated fit, holdout, worker-parity, tape, and lane tests. Keep this deliberately
+          // exhaustive all-ranges/all-strategies reachability fixture focused on the existing grid; multiplying
+          // its thousands of pairs by historical exit candidate simulations makes it a poor bounded regression test.
+          exitStrategy: { ...DEFAULT_SETTINGS.exitStrategy, enabled: false },
           // every range on: Micro added to the default Minimal / Short / General / Long and the Wide grid
           grid: { ...DEFAULT_SETTINGS.grid, micro: MICRO_RANGE },
           tactics: {

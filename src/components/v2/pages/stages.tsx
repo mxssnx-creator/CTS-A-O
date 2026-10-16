@@ -28,6 +28,8 @@ export function StagesPage() {
   const selected = (d.paper.selected ?? []) as string[];
   const sigSel = selected.filter((id) => (id.split("|")[1] ?? "").includes("sig-")).length;
   const realSel = selected.length - sigSel;
+  const exits = d.status?.exitStrategies;
+  const exitHistory = exits?.history ?? {};
   return (
     <>
       <ErrorNote error={error} />
@@ -42,7 +44,8 @@ export function StagesPage() {
             <p>
               Every indication × bot type is evaluated at Base; {d.wf.tapes} independent
               strategy tapes (Normal, capped Trailing, trailing-only, DCA, DCA Active and Axis across the configured protection variants)
-              are built for later validation or measurement. A computed tape is not an admitted or funded order.
+              are built for later validation or measurement. Qualified Historic Exit tapes are added for Base-passed engine pairs from pre-run history.
+              A computed tape is not an admitted or funded order.
             </p>
           </div>
           <div className="v2-stage">
@@ -66,7 +69,7 @@ export function StagesPage() {
                 : ""}{" "}
               (PF and DDT) before a seat. End stage and
               live re-check last-N {d.wf.lastN ? d.wf.lastN : "off"} (PF and DDT), then Block.
-              Additional strategies (Trailing, DCA, Axis) pass the same gates.
+              Additional strategies (Historic Exit, Trailing, DCA, Axis) pass the same gates.
             </p>
           </div>
           <div className="v2-stage">
@@ -85,6 +88,44 @@ export function StagesPage() {
       </Panel>
 
       <PromotionEvidence status={d.status?.livePromotion} />
+
+      <Panel
+        title="Historic Exit sets"
+        sub="candidate distances fit completed-bar prehistory and pass a later holdout before the Real simulation; each range and direction keeps independent configs"
+      >
+        {exits ? (
+          <div className="v2-lines">
+            <Line
+              k="Build / execution"
+              v={`${exits.enabled ? "on" : "off"} / ${tg.exit !== false ? "on" : "off"}`}
+            />
+            <Line k="Base-passed engine pairs" v={fmt.num(exits.pairs)} />
+            <Line k="Current configs (includes held lanes)" v={fmt.num(exits.configs)} />
+            <Line
+              k="Candidates / holdout evaluations / qualified"
+              v={`${fmt.num(exitHistory.candidates)} / ${fmt.num(exitHistory.evaluated)} / ${fmt.num(exitHistory.qualified)}`}
+            />
+            <Line
+              k="Capped / insufficient history or entries"
+              v={`${fmt.num(exitHistory.capped)} / ${fmt.num((exitHistory.noPrehistory ?? 0) + (exitHistory.insufficientEntries ?? 0))}`}
+            />
+            <Line
+              k="Holdout rejects: short / PF / drawdown"
+              v={`${fmt.num(exitHistory.insufficientTrades)} / ${fmt.num(exitHistory.pfRejected)} / ${fmt.num(exitHistory.ddrRejected)}`}
+            />
+            <Line
+              k="Position exits"
+              v={
+                d.settings.live.laneOrders
+                  ? "lane orders · each lane has its own partial stop / target"
+                  : "overall control · coordinates the combined position; lane completions can reduce it"
+              }
+            />
+          </div>
+        ) : (
+          <Empty>Historic Exit status is not available yet</Empty>
+        )}
+      </Panel>
 
       <Panel
         title="Timeframe lanes"
