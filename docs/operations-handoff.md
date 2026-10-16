@@ -11,9 +11,13 @@ checkpoint `backup/pre-relate-20261016` preserves main
 slot-admission fix; remote backup `backup/pre-relate-main-update-20261016`
 preserves that exact commit. The main tree was merged locally as `4ca2877`; the only
 conflict was a gating-test fixture, resolved to the current positive-DDR sample.
-The merged source tree is `73e5d82b4564e1e6dd14dd9f725c207597eaea8c`. Draft
-PR [#146](https://github.com/mxssnx-creator/CTS-A-O/pull/146) contains the
-work.
+The Relate work was merged by PR
+[#146](https://github.com/mxssnx-creator/CTS-A-O/pull/146) at
+`8750e259beafdf9d7ac98bc8a66c4ca6f2b878a1`. PR
+[#151](https://github.com/mxssnx-creator/CTS-A-O/pull/151) then restored the
+complete scheduler regression after a truncated test blob was detected and
+merged at `10d50c5bb1f16fced70a5b5067a9f3bf6dcd8201`. Current `main` is that
+commit, tree `03703031a535c4dc5d027abf4c1b761719237664`.
 
 Original Relate source checkpoint: `ec0c489fc590a693fc67ca294401e66d328bda78`,
 tree `494bb1047d1db9dc19339412cc3bd0d12375c919`; GitHub mirrored it at
