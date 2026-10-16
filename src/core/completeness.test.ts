@@ -238,7 +238,7 @@ const CASES: Record<string, Case> = {
   "grid.rangeGate.minPf": num(1.05, 5),
   "live.connId": oneOf(["bingx-x01", "bingx-vst-01", "bingx-vst-02"], ["bingx-x02", "bogus"]),
   "live.notionalUsd": num(1, 500),
-  "live.maxPositions": num(0, 10_000, { int: true }),
+  "live.maxPositions": num(1, 100, { int: true }),
   "live.mode": oneOf(["overall", "entries"]),
   "live.ratio": num(0.1, 500),
   // 0 = no per-position cap

@@ -1,6 +1,5 @@
 // Nothing unvalidated executes: signal configs need the same validation as engine configs, only pairs that passed
-// Base take a seat, a seat needs min-trades closes in its window, and live has one position cap for engine and
-// signal positions together.
+// Base take a seat, a seat needs min-trades closes in its window, and live admission alone applies the exchange slot cap.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -132,26 +131,43 @@ describe("gating: nothing unvalidated executes", () => {
     assert.equal(selectFixed([tp], NOW, { ...base, validLastN: 0 }).picks.length, 0, "3 closes < 12");
   });
 
-  it("live: one position cap for engine and signal positions together", () => {
+  it("live: 100 exchange slots aggregate 1500 engine and signal orders", () => {
     const lanes: ControlContribution[] = [];
     const prices = new Map<string, number>();
-    for (let i = 0; i < 200; i++) {
+    for (let i = 0; i < 150; i++) {
       const sym = `S${i}-USDT`;
       prices.set(sym, 10);
       const ind = i < 50 ? "rsi-mom-14-20@m15" : "sig-ema-cross-s@m15";
-      for (let k = 0; k < 3; k++)
-        lanes.push({ id: `${sym}|${k}`, cfg: `follow|${ind}|tp1|sl1|tr0|h32|${k}`, sym, side: 1, vol: 1, sl: 0.02 });
+      for (let k = 0; k < 10; k++)
+        lanes.push({
+          id: `${sym}|${k}`,
+          cfg: `follow|${ind}|tp1|sl1|tr0|h32|${k}`,
+          sym,
+          side: 1,
+          vol: 1,
+          sl: 0.02,
+        });
     }
-    const cs = controlSettingsOf(DEFAULT_SETTINGS.live, 6, DEFAULT_SETTINGS.signals.maxPositions);
-    const { targets } = controlTargets(lanes, prices, cs);
-    // no position cap by default (operator: process freely, many orders) — the cap is not what limits the targets
-    assert.equal(DEFAULT_SETTINGS.live.maxPositions, 0, "no control position cap by default");
-    assert.ok(targets.length > 100, `${targets.length} targets without a cap`);
-    // set one and engine and signal positions share it
+    const cs = controlSettingsOf(DEFAULT_SETTINGS.live, 6);
+    const plan = controlTargets(lanes, prices, cs);
+    const { targets } = plan;
+    // Orders/configs are not positions: ten lane orders on each accepted relation share one exchange slot.
+    assert.equal(DEFAULT_SETTINGS.live.maxPositions, 100, "exchange cap is separate from simulation caps");
+    assert.equal(DEFAULT_SETTINGS.signals.maxPositions, 250, "signal evaluation keeps its own independent cap");
+    assert.equal(lanes.length, 1500);
+    assert.equal(targets.length, 100, "100 unique exchange positions across 150 candidate symbols");
+    assert.ok(targets.every((target) => target.lanes === 10), "ten config orders share each accepted slot");
+    assert.equal(
+      targets.reduce((n, target) => n + target.lanes, 0),
+      1000,
+      "one thousand independent config orders remain active on the admitted positions",
+    );
+    assert.equal(plan.skipped.length, 50, "only the fifty additional positions exceed exchange capacity");
+    // Lowering the exchange cap changes only account admission; engine and signal lanes still aggregate together.
     const capped = controlTargets(
       lanes,
       prices,
-      controlSettingsOf({ ...DEFAULT_SETTINGS.live, maxPositions: 8 }, 6, DEFAULT_SETTINGS.signals.maxPositions),
+      controlSettingsOf({ ...DEFAULT_SETTINGS.live, maxPositions: 8 }, 6),
     );
     assert.equal(capped.targets.length, 8, "one cap for engine and signal positions together");
   });
@@ -245,7 +261,7 @@ describe("sample warm-up (gates.warmup): a check that cannot be computed yet is 
     assert.equal(sets.minPf, 1);
     assert.equal(sets.rangeMinPf, undefined, "one floor for every range at the sets stage");
     // a set at PF 1.02 is built and evaluated, and still has to clear its range minimum to trade
-    const st = { n: 40, pf: 1.02, net: 0.5, mdd: 0 };
+    const st = { n: 40, pf: 1.02, net: 0.5, mdd: 0.1 };
     assert.equal(passesBase(st, sets), true, "built and evaluated");
     for (const tag of ["mc", "mn", "gn", "lg"])
       assert.equal(passesBase(st, { ...DEFAULT_GATES, minPf: minPfOf(DEFAULT_GATES, tag) }), false, tag);

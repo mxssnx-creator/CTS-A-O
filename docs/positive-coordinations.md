@@ -208,12 +208,16 @@ check live and make sure all running correctly, fix issues. Run with min vol fac
 the mirror image of x01's narrowed live book: nothing is held back from live, and positivity is decided only by
 the calculations.
 
+This archived run predates the current exchange-slot limit. Current Live admission defaults to 100 occupied
+`(symbol, direction)` slots across strategies, ignores the former `maxSymbols` field, and aggregates every qualifying
+lane on an admitted slot. Strategy and signal evaluation limits remain separate.
+
 | What the desk runs | Setting (`runs/x02/patch.json`) |
 | --- | --- |
 | every range | `grid.micro / minimal / short / general / long` all on, plus the Wide grid |
 | every strategy type | `toggles` normal, trailing, block, dca, dcaActive, axis on (Axis with its full variant set: 2 modes x 2 hybrids x 5 ranges x 3 level counts) |
 | signals with their own sets | `signals.strategies: { dca: true, axis: true }`, `ownBase: true`, the measured-positive sources only |
-| no live narrowing | no `kinds`, no `plainOnly`, no `source`, no `maxSymbols`, `maxPositions: 0`, `maxNotionalUsd: 0` |
+| no live narrowing | no `kinds`, no `plainOnly`, no `source`, no symbol-count cap; current exchange-slot cap is 100, `maxNotionalUsd: 0` |
 | every risk budget off | `maxExposureX / maxRiskPct / maxBackstopLossPct / maxPositionX` all 0 — at the minimum size they could only drop sets, never protect anything (equity 475,622 USDT demo) |
 | the minimum volume factor | `live.ratio: 1` with `notionalUsd 1`: every order is raised to the exchange minimum, so size is the smallest the venue accepts |
 | positivity from the gates alone | per-range PF 1.05, `baseSetsMinPf: 1`, DDT/DDR with the sample warm-up, `liveLastN: 25`, signal acceptance PF 1.3 / 48 h |

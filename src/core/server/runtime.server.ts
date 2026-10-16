@@ -13,6 +13,7 @@ import {
   GENERAL_RANGE,
   MAX_BACKTEST_DAYS,
   GRID_VARIANTS_MAX,
+  exchangePositionLimit,
   LONG_RANGE,
   MINIMAL_RANGE,
   SHORT_RANGE,
@@ -6607,7 +6608,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
 function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
   const saved = db.kvGet<Partial<WalkForwardOptions>>("wf") ?? {};
   const v = db.kvGet<number>("wfCapsV") ?? 0;
-  if (v >= 25) return saved;
+  if (v >= 27) return saved;
   // each step runs only for a database older than it: a choice made after a step is never overwritten
   const out = { ...saved };
   const st = db.kvGet<Partial<CoreSettings>>("settings");
@@ -6817,9 +6818,38 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
     const mc = (st?.grid as { micro?: { tp?: number[] } | false } | undefined)?.micro;
     if (mc && JSON.stringify(mc.tp) === JSON.stringify(FORMER_MICRO_TP)) mc.tp = [...MICRO_TP];
   }
+  if (v < 26 && sig) {
+    // PF-qualified signal units no longer inherit the former top-100 / low-DD ranking defaults.
+    if (sig.count === 100) delete sig.count;
+    if (sig.maxPositions === 100) delete sig.maxPositions;
+    if (sig.rank === "lowdd") delete sig.rank;
+  }
+  if (v < 27) {
+    const migrateExchangeSettings = (settings: SettingsPatch | undefined) => {
+      if (!settings?.live) return false;
+      const live = settings.live as unknown as Record<string, unknown>;
+      // Former unlimited and shipped-12 live defaults inherit the 100-slot exchange ceiling. Preserve other
+      // deliberate lower caps, and remove the old symbol-count limiter from settings and presets.
+      let changed = false;
+      if (live.maxPositions === 0 || live.maxPositions === 12) {
+        delete live.maxPositions;
+        changed = true;
+      }
+      if (Object.hasOwn(live, "maxSymbols")) changed = true;
+      delete live.maxSymbols;
+      return changed;
+    };
+    migrateExchangeSettings(st);
+    const presets = db.kvGet<Preset[]>("presets");
+    if (Array.isArray(presets)) {
+      let changed = false;
+      for (const preset of presets) changed = migrateExchangeSettings(preset.settings) || changed;
+      if (changed) db.kvSet("presets", presets);
+    }
+  }
   db.kvSet("wf", pickWf(out));
   if (st) db.kvSet("settings", st);
-  db.kvSet("wfCapsV", 25);
+  db.kvSet("wfCapsV", 27);
   return out;
 }
 
@@ -7118,7 +7148,9 @@ function mergeSettings(
       tfDays: { ...out.tfDays, ...(p.tfDays ?? {}) },
     };
   }
-  return normalizeLanes(out);
+  const live = { ...out.live, maxPositions: exchangePositionLimit(out.live.maxPositions) };
+  delete (live as unknown as Record<string, unknown>).maxSymbols;
+  return normalizeLanes({ ...out, live });
 }
 
 /**
@@ -7250,6 +7282,7 @@ function rebind(cur: CoreRuntime | undefined): void {
   Object.setPrototypeOf(r, CoreRuntime.prototype);
   // settings added since the instance was created get their defaults
   r.settings = mergeSettings(DEFAULT_SETTINGS, r.settings);
+  r.settings.live.maxPositions = exchangePositionLimit(r.settings.live.maxPositions);
   r.ensureFields();
 }
 

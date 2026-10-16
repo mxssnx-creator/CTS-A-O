@@ -6,7 +6,18 @@ import { keyFunnel, type KeyFunnel } from "./live.server.ts";
 
 const f = (key: string, x: Partial<KeyFunnel>): [string, KeyFunnel] => [
   key,
-  { key, paper: 0, suppressed: 0, chased: 0, notSent: 0, notSelected: 0, sent: 0, budget: 0, target: false, ...x },
+  {
+    key,
+    paper: 0,
+    suppressed: 0,
+    chased: 0,
+    notSent: 0,
+    notSelected: 0,
+    sent: 0,
+    budget: 0,
+    target: false,
+    ...x,
+  },
 ];
 
 describe("control completeness (keyFunnel)", () => {
@@ -20,7 +31,11 @@ describe("control completeness (keyFunnel)", () => {
       f("F|-1", { paper: 1, sent: 1 }),
       f("G|1", { paper: 1, sent: 1, why: "foreign position or order" }),
     ]);
-    const keys = keyFunnel(funnel, [{ key: "A|1" }], [{ sym: "F", why: "max control positions (symbol × side)" }]);
+    const keys = keyFunnel(
+      funnel,
+      [{ key: "A|1" }],
+      [{ sym: "F", why: "max exchange positions (symbol × direction)" }],
+    );
     const why = Object.fromEntries(keys.map((k) => [k.key, k.target ? "target" : k.why]));
     assert.deepEqual(why, {
       "A|1": "target",
@@ -28,7 +43,7 @@ describe("control completeness (keyFunnel)", () => {
       "C|-1": "chased (live.maxChase)",
       "D|1": "not selected / signal unit inactive",
       "E|1": "budget (live.top fill)",
-      "F|-1": "max control positions (symbol × side)",
+      "F|-1": "max exchange positions (symbol × direction)",
       "G|1": "foreign position or order",
     });
     // keys without a target first, the most paper lanes first

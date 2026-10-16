@@ -4,13 +4,19 @@ Updated 2026-10-16, Europe/Vienna. Repository: `mxssnx-creator/CTS-A-O`.
 
 ## Relate indication and Micro verification
 
-Implementation branch: `feat/relate-indication-20261016`, based on current
-main `ec30c30c80c9d5531e368ac7de5084d41ac79d23`. Remote safety checkpoint
-`backup/pre-relate-20261016` preserves that main commit before this work. Source
-commit: `ec0c489fc590a693fc67ca294401e66d328bda78`, tree
-`494bb1047d1db9dc19339412cc3bd0d12375c919`. GitHub mirrors the source at
-`c748089523bec47f72fff49d51a5113f652ba41a` with the identical tree. Draft PR
-[#146](https://github.com/mxssnx-creator/CTS-A-O/pull/146) contains the work.
+Implementation branch: `feat/relate-indication-20261016`. The original remote
+safety checkpoint `backup/pre-relate-20261016` preserves main
+`ec30c30c80c9d5531e368ac7de5084d41ac79d23`. Main subsequently advanced to
+`f659a266590722d1de6a33eb900c02ab90aa020b` with the independent Live exchange
+slot-admission fix. That main tree was merged locally as `4ca2877`; the only
+conflict was a gating-test fixture, resolved to the current positive-DDR sample.
+The merged source tree is `73e5d82b4564e1e6dd14dd9f725c207597eaea8c`. Draft
+PR [#146](https://github.com/mxssnx-creator/CTS-A-O/pull/146) contains the
+work.
+
+Original Relate source checkpoint: `ec0c489fc590a693fc67ca294401e66d328bda78`,
+tree `494bb1047d1db9dc19339412cc3bd0d12375c919`; GitHub mirrored it at
+`c748089523bec47f72fff49d51a5113f652ba41a` with the identical tree.
 
 Relate has 40 stable exact identities: seven nonempty subsets of 1/5/15m × two
 modes (Trend and Adaptive) × two drawdown/activity profiles, with 28 standard
@@ -25,17 +31,27 @@ the independent Tactic/Relate Base measurement and 1.10 return-PF floor.
 
 Current verification:
 
-- `npm run typecheck -- --pretty false`: pass.
-- `npm run build:dev`: pass; generated a 24.65kB Relate client chunk and the
-  core worker bundle.
-- Guarded focused core regression: 12 files, 141 tests, 141 pass, 0 failed,
-  30 suites; includes every Relate ID, Micro routing, causal 1/5/15m alignment,
+- Before the main update, guarded focused core regressions passed 141/141 across
+  12 files and 30 suites; platform/UI tests passed 78/78 across 8 files and 16
+  suites. These cover every Relate ID, Micro routing, causal 1/5/15m alignment,
   gap reset, completed higher bars, drawdown/activity guards, Base range cells,
   128 processing-toggle combinations and worker counts.
-- Platform/UI tests: 8 files, 78 tests, 78 pass, 0 failed, 16 suites.
-- ESLint over changed files: 0 errors, 4 unused-variable warnings in
-  `runtime.server.ts` and `walkforward.ts`; the new Relate files have no lint
-  findings. `git diff --check` passes.
+- On merged tree `73e5d82`, `npm run typecheck -- --pretty false` and
+  `npm run build:dev` pass. The build packages the 24.65kB Relate client chunk
+  and core worker bundle.
+- ESLint on changed code files: 0 errors and 4 existing unused-variable
+  warnings in `runtime.server.ts` and `walkforward.ts` (the two Markdown files
+  are outside ESLint's configured file types). New Relate files are clean.
+  `git diff --check` passes.
+- Merged-tree targeted verification: Relate/Micro/lane/range tests passed
+  68/68 across 5 files; UI/platform tests passed 78/78 across 8 files. A
+  guarded 10-file core run passed 181 tests and cancelled 3 processing tests
+  when `processing.test.ts` hit its 400-second internal warm-up wait. There
+  were no assertion failures in that run; the 128-toggle and two related
+  processing cases did not complete. At least three other CPU-heavy test runs
+  were active in separate worktrees. The processing matrix must be rerun alone.
+  The earlier memguard-pressure and runtime cycle-serialization cases also
+  remain to be rerun after host contention clears.
 - Synthetic indicator benchmark: 40 IDs × 10 symbols (1,973,360 config-bar
   visits over 126,670 source bars) completed in 210ms; after GC, ArrayBuffer
   growth was 15.16MB, heap growth 0.36MB and RSS growth 26.13MB. This measures

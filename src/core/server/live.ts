@@ -3,8 +3,8 @@
 //   - OFF unless settings.live.enabled AND env CTS_CORE_LIVE=1 AND keys exist
 //   - own tickets carry the CTSB tag of this connection; nothing else is ever cancelled or closed
 //   - a symbol with any foreign position or order is skipped entirely
-//   - caps: max own positions, fixed notional per entry
-import type { LiveSettings } from "../config.ts";
+//   - the final live admission cap counts unique exchange positions (symbol × direction in hedge mode)
+import { exchangePositionLimit, type LiveSettings } from "../config.ts";
 import { sigCfg } from "../sim/walkforward.ts";
 import { rangeOfId } from "../minimal-coord.ts";
 import type { RangeTag } from "../domain/types.ts";
@@ -184,7 +184,13 @@ export function planLive(input: {
     else for (const sd of [1, -1] as const)
       if (!o.positionSide || (o.positionSide === "LONG") === (sd === 1)) held.add(keyOf(o.venueSymbol, sd));
   }
-  let open = ownKeys.size;
+  // All exchange positions consume account slots, including foreign positions. Own pending entries also reserve
+  // their symbol-direction slot until the position read catches up.
+  const occupied = new Set([
+    ...ownKeys,
+    ...held,
+    ...book.positions.map((p) => keyOf(p.venueSymbol, p.side === "long" ? 1 : -1)),
+  ]);
   const entries: LiveIntentLite[] = [];
   const skipped: LivePlan["skipped"] = [];
   const seen = new Set<string>();
@@ -208,13 +214,13 @@ export function planLive(input: {
       skipped.push({ sym: it.sym, why: oneway ? "already holding symbol" : "already holding symbol and direction" });
       continue;
     }
-    if (settings.maxPositions > 0 && open >= settings.maxPositions) {
-      skipped.push({ sym: it.sym, why: "max positions" });
+    if (!occupied.has(k) && occupied.size >= exchangePositionLimit(settings.maxPositions)) {
+      skipped.push({ sym: it.sym, why: "max exchange positions (symbol × direction)" });
       continue;
     }
     seen.add(k);
     entries.push(it);
-    open++;
+    occupied.add(k);
   }
   return { enabled: true, reason: "armed", entries, skipped };
 }
@@ -671,13 +677,8 @@ export interface ControlSettings {
   signalWeight?: number;
   /** cap per (symbol, direction) position, USD */
   maxNotionalUsd: number;
-  /** max simultaneous control positions of the engine (symbol × direction); every lane order on one counts once */
+  /** max occupied exchange slots (symbol × direction); every lane order on one counts once */
   maxPositions: number;
-  /**
-   * max simultaneous control positions that only signal lanes hold (symbol × direction, long and short apart);
-   * capped apart from the engine's — 0 / unset = no limit
-   */
-  signalMaxPositions?: number;
   /** only adjust an existing position when the target differs by more than this share */
   rebalancePct: number;
   /** every position `ratio` units whatever its lanes' volume (live.positionSize "min") */
@@ -769,7 +770,6 @@ export function controlTargets(
     sl: number;
     /** Σ weighted volume × lane stop (riskDist = rw / vol) */
     rw: number;
-    engine?: boolean;
     tag?: "" | RangeTag | "mix";
     /** the farthest lane target (long: highest, short: lowest); noTgt: a lane without one */
     tgt?: number;
@@ -786,9 +786,7 @@ export function controlTargets(
     const key = `${l.sym}|${l.side}`;
     const a = agg.get(key) ?? { sym: l.sym, side: l.side, lanes: 0, laneUnits: 0, vol: 0, sl: 0, rw: 0 };
     note(a, l.cfg);
-    // a position with any engine lane is an engine position; only signal lanes on it: a signal position
     const sig = sigCfg(l.cfg);
-    if (!sig) a.engine = true;
     a.lanes++;
     a.laneUnits += l.laneUnits ?? 1;
     const w = cs.laneMode
@@ -831,7 +829,6 @@ export function controlTargets(
         tgt: win?.tgt,
         noTgt: win?.noTgt,
         lw: win?.lw,
-        engine: !!(L?.engine || S?.engine),
         tag: tags.length && tags.every((t) => t === tags[0]) ? tags[0] : "mix",
       });
     }
@@ -839,8 +836,9 @@ export function controlTargets(
   }
   const targets: ControlTarget[] = [];
   const skipped: ControlPlan["skipped"] = [];
-  let engTargets = 0;
-  let sigTargets = 0;
+  const slotKey = (key: string) =>
+    cs.positionMode === "oneway" ? key.slice(0, key.lastIndexOf("|")) : key;
+  const occupied = new Set([...(cs.heldKeys ?? [])].map(slotKey));
   // held positions first, then the strongest: the position cap never closes a held position for a new one (that
   // may not even open — margin floor, mode refused — and every swap pays the round-trip cost)
   const isHeld = (k: string) => (cs.heldKeys?.has(k) ? 1 : 0);
@@ -853,12 +851,6 @@ export function controlTargets(
       skipped.push({ sym: a.sym, why: "no fresh price", keep: key });
       continue;
     }
-    // positions (symbol × direction) are capped per class: the engine's by maxPositions, the signals' by
-    // signalMaxPositions (orders — the lane orders on a position — are not limited)
-    // one cap for every live position (engine and signal positions together); the signal cap, when set,
-    // only narrows the signal share inside it
-    const isSig = !a.engine;
-    const sigCap = cs.signalMaxPositions ?? 0;
     // a target that cannot open this step takes no slot (a held one is always kept and counted)
     if (!isHeld(key) && cs.blocked) {
       const b = cs.blocked(key);
@@ -867,17 +859,9 @@ export function controlTargets(
         continue;
       }
     }
-    if (
-      (cs.maxPositions > 0 && engTargets + sigTargets >= cs.maxPositions) ||
-      (isSig && sigCap > 0 && sigTargets >= sigCap)
-    ) {
-      skipped.push({
-        sym: a.sym,
-        why:
-          cs.maxPositions > 0 && engTargets + sigTargets >= cs.maxPositions
-            ? "max control positions (symbol × side)"
-            : "max signal control positions (symbol × side)",
-      });
+    const slot = slotKey(key);
+    if (!occupied.has(slot) && occupied.size >= exchangePositionLimit(cs.maxPositions)) {
+      skipped.push({ sym: a.sym, why: "max exchange positions (symbol × direction)" });
       continue;
     }
     const unit = cs.unitOf ? cs.unitOf(a.sym, px) : cs.notionalUsd;
@@ -924,8 +908,7 @@ export function controlTargets(
       volEff: (qty * px) / Math.max(1e-9, unit * cs.ratio),
       ...(want > cs.maxNotionalUsd * 1.0001 ? { capped: true } : {}),
     });
-    if (isSig) sigTargets++;
-    else engTargets++;
+    occupied.add(slot);
   }
   return { targets, skipped };
 }
