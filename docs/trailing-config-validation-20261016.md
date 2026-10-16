@@ -1,5 +1,7 @@
 # Range and Signal trailing validation — 2026-10-16
 
+> Historical baseline: this report covers the earlier Signal arrays before the lower TP, SL/TP, and trail/TP values were added. The expanded defaults and matching replay are recorded in [`trailing-signal-expanded-grid-20261016.md`](trailing-signal-expanded-grid-20261016.md).
+
 ## Result
 
 The standard Signal grid now builds every effective lane-scaled configuration that the progress report counts. A mismatch had caused the tape builder to drop 5 effective configurations per Signal pair: two capped-trailing cells and three merged trailing-only cells. Progress still reported those cells. The fix applies the configured minimum-trail floor to standard Signal protections after lane scaling, then deduplicates by effective config identity. Historical/custom Signal protections remain subject to their exact lane-distance floor; a custom trail that scales below its floor stays disabled. A regression covers both paths and the local/worker builders.

@@ -1,5 +1,7 @@
 # 12 h simulated session — 4 symbols, 48 h pre-historic + 12 h run
 
+> Historical baseline: this replay predates the expanded 86-cell Signal grid. See [`expanded-grid validation`](../trailing-signal-expanded-grid-20261016.md) for the run with the lower defaults.
+
 Offline replay from the supplied cached candle feed (no market-data requests; simulated orders only), the engine itself (Base → Main → Real over the 1 / 5 / 15 / 30 min lanes), pre-historic 2026-10-12 09:00 → 2026-10-14 09:00 UTC, run 2026-10-14 09:00 → 2026-10-14 21:00 UTC. Signals use the same 48 h minimal evaluated history; no additional Signal warmup was loaded. Symbols: ATOM-USDT, APT-USDT, NEAR-USDT, DOT-USDT.
 
 Qualification uses the recorded full indication's runtime gates; Tactic minimum return PF 1.1, preserving stricter settings. No-loss qualification uses the runtime score 4.
