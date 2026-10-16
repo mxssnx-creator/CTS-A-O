@@ -16,18 +16,59 @@ import { entrySignal } from "./bots/bots.ts";
 import { laneOf } from "./indications/registry.ts";
 import {
   configId,
+  evaluationSignal,
   laneProtect,
   parseConfigId,
   REF_TF,
   seriesOf,
   type Universe,
 } from "./pipeline/pipeline.ts";
+import { ddrFails, statsOf } from "./metrics/stats.ts";
+import { tacticCooldown } from "./indications/filters.ts";
+import { bothSides, simulate } from "./sim/backtest.ts";
 import { filterEntries } from "./sim/walkforward.ts";
+import { adjustProtect } from "./adjust.ts";
+
+export interface SignalHistValidation {
+  cost: number;
+  minPf: number;
+  minTrades: number;
+  maxDdr?: number;
+}
+
+export interface SignalHistDiagnostics {
+  pairs: number;
+  insufficientEntries: number;
+  trailTooShort: number;
+  candidates: number;
+  evaluated: number;
+  insufficientTrades: number;
+  pfRejected: number;
+  ddrRejected: number;
+  qualified: number;
+}
+
+export const emptySignalHistDiagnostics = (): SignalHistDiagnostics => ({
+  pairs: 0,
+  insufficientEntries: 0,
+  trailTooShort: 0,
+  candidates: 0,
+  evaluated: 0,
+  insufficientTrades: 0,
+  pfRejected: 0,
+  ddrRejected: 0,
+  qualified: 0,
+});
 
 /** the grid historic targets, stops and trails are rounded to (0.25 % of price) */
 export const HIST_STEP = 0.0025;
 /** the smallest historic target: five round trips of the 0.2 % cost */
 export const HIST_MIN_TP = 0.01;
+
+/** Hold horizon admitted by the available causal sample; short histories reserve 75 % for matured PF evidence. */
+export function signalHistHoldH(configHoldH: number, availableH: number, laneTf: number): number {
+  return Math.max((2 * laneTf) / 60, Math.min(configHoldH, Math.max(0, availableH) / 4));
+}
 
 /** The q-quantile (0–1) of ascending `xs`, linear between neighbours; NaN when empty. */
 export function quantileSorted(xs: readonly number[], q: number): number {
@@ -88,6 +129,63 @@ export function* signalMfeGen(
   return out;
 }
 
+/** The config-specific PF/DD evidence on complete closes before the causal cut. */
+function signalHistStats(
+  u: Universe,
+  bot: string,
+  ind: string,
+  lane: Protect,
+  tactics: Tactics | null | undefined,
+  sig: SignalSettings,
+  fromT: number,
+  cutT: number,
+  validation: SignalHistValidation,
+  cooldown: number,
+) {
+  const trades: import("./domain/types.ts").Trade[] = [];
+  const id = configId(bot as "follow", ind, lane);
+  for (const s of seriesOf(u, ind)) {
+    const b = u.bars[s];
+    const clipped = barsThroughCut(b, cutT);
+    if (clipped.n < 2) continue;
+    let entries = entrySignal(bot as "follow", ind, u.caches[s], tactics);
+    if (!entries) continue;
+    if (sig.filter.trendH > 0 || sig.filter.volFloor > 0)
+      entries = filterEntries(entries, b, u.caches[s], sig.filter);
+    entries = Int8Array.from(evaluationSignal(u, b, entries));
+    for (let i = 0; i < entries.length; i++) {
+      const entryT = i + 1 < b.n ? b.t[i + 1] : b.t[i] + b.tfMin * 60_000;
+      if (entryT < fromT || i + 1 >= clipped.n) entries[i] = 0;
+    }
+    const actual = adjustProtect(lane, { minSl: sig.minSl, minTrail: sig.minTrail });
+    const results = bothSides(entries.subarray(0, clipped.n), (side) =>
+      simulate(id, clipped, side, actual, { cost: validation.cost, cooldown }),
+    );
+    for (const result of results) trades.push(...result.trades);
+  }
+  trades.sort((a, b) => a.exitT - b.exitT || a.entryT - b.entryT || b.side - a.side);
+  return statsOf(trades);
+}
+
+/** Keep the simulator's bars to completed candles at or before the historic cut. */
+function barsThroughCut(b: Bars, cutT: number): Bars {
+  let n = 0;
+  const tf = b.tfMin * 60_000;
+  while (n < b.n && b.t[n] + tf <= cutT) n++;
+  return n === b.n
+    ? b
+    : {
+        ...b,
+        n,
+        t: b.t.slice(0, n),
+        o: b.o.slice(0, n),
+        h: b.h.slice(0, n),
+        l: b.l.slice(0, n),
+        c: b.c.slice(0, n),
+        v: b.v.slice(0, n),
+      };
+}
+
 /**
  * The MFE of each entry of `sig` on `b` (decided on bar i's close, entered at bar i + 1's open, over the `hold` bars
  * from there), for entries whose hold's last bar closed before `cutT`. Appended to `out`.
@@ -134,8 +232,9 @@ export function signalHistProtects(
   sig: SignalSettings,
   tactics: Tactics | null | undefined,
   cutT: number,
+  validation?: SignalHistValidation,
 ): Record<string, Protect[]> {
-  const g = signalHistProtectsGen(u, pairs, sig, tactics, cutT);
+  const g = signalHistProtectsGen(u, pairs, sig, tactics, cutT, validation);
   let r = g.next();
   while (!r.done) r = g.next();
   return r.value;
@@ -148,45 +247,93 @@ export function* signalHistProtectsGen(
   sig: SignalSettings,
   tactics: Tactics | null | undefined,
   cutT: number,
+  validation?: SignalHistValidation,
+  diagnostics?: SignalHistDiagnostics,
 ): Generator<void, Record<string, Protect[]>> {
   const h = sig.hist;
   const out: Record<string, Protect[]> = {};
   if (!h?.enabled) return out;
-  const hold = Math.max(2, Math.round((sig.holdH * 60) / REF_TF));
+  const cooldown = tacticCooldown(tactics);
   for (const pair of pairs) {
     const [bot, ind] = pair.split("|");
     if (!bot || !ind) continue;
-    // the lookback (hist.lookbackH hours before the cut; 0 = the whole history)
-    const fromT = h.lookbackH > 0 ? cutT - h.lookbackH * 3_600_000 : undefined;
+    diagnostics && diagnostics.pairs++;
+    const series = seriesOf(u, ind);
+    const earliest = series.reduce((t, s) => Math.min(t, u.bars[s].t[0] ?? Infinity), Infinity);
+    // Signals always use the requested minimal historic range when the replay sets one. A configured lookback can
+    // narrow it further; otherwise live research begins at the earliest available candle for this lane.
+    const fromT = Math.max(
+      u.evaluationFromT ?? earliest,
+      h.lookbackH > 0 ? cutT - h.lookbackH * 3_600_000 : -Infinity,
+    );
+    if (!Number.isFinite(fromT) || fromT >= cutT) {
+      diagnostics && diagnostics.insufficientEntries++;
+      continue;
+    }
+    // Long configured holds cannot mature inside a short, bounded replay history. Use at most one quarter of the
+    // available sample for MFE/hold so the remaining three quarters can supply complete entries and closed PF rows.
+    const laneTf = laneOf(ind).tf ?? REF_TF;
+    const availableH = (cutT - fromT) / 3_600_000;
+    const holdH = signalHistHoldH(sig.holdH, availableH, laneTf);
+    const hold = Math.max(2, Math.round((holdH * 60) / REF_TF));
     const mfe = (yield* signalMfeGen(
       u,
       bot,
       ind,
-      sig.holdH,
+      holdH,
       tactics,
       cutT,
       sig.filter,
       fromT,
     )).sort((a, b) => a - b);
-    if (mfe.length < h.minN) continue;
-    // back to the 15m reference: the tape builder scales an untagged protect by √(tf / 15m)
-    const tf = laneOf(ind).tf ?? REF_TF;
-    const k = Math.sqrt(tf / REF_TF);
+    if (mfe.length < h.minN) {
+      diagnostics && diagnostics.insufficientEntries++;
+      continue;
+    }
     const ps: Protect[] = [];
     const seen = new Set<string>();
     for (const q of h.quantiles) {
-      const tp = Math.max(HIST_MIN_TP, onGrid(quantileSorted(mfe, q) / k));
+      const laneTp = Math.max(HIST_MIN_TP, onGrid(quantileSorted(mfe, q)));
+      const tpRef = onGrid(
+        invertLaneField(
+          laneTp,
+          (ref) => laneProtect({ tp: ref, sl: 0, trail: 0, hold }, ind).tp,
+        ) ?? laneTp,
+      );
       for (const m of h.slOfTp)
         for (const t of h.trailOfTp) {
           const p: Protect = {
-            tp,
-            sl: Math.max(sig.minSl, onGrid(tp * m)),
-            trail: Math.max(sig.minTrail, onGrid(tp * t)),
+            tp: tpRef,
+            sl: Math.max(sig.minSl, onGrid(tpRef * m)),
+            trail: onGrid(tpRef * t),
             hold,
           };
-          const key = `${p.tp}|${p.sl}|${p.trail}`;
+          const lane = laneProtect(p, ind);
+          if (lane.trail * (lane.trailStep ?? 1) + 1e-12 < sig.minTrail) {
+            diagnostics && diagnostics.trailTooShort++;
+            continue;
+          }
+          const key = `${p.tp}|${p.sl}|${p.trail}|${p.hold}`;
           if (seen.has(key)) continue;
           seen.add(key);
+          diagnostics && diagnostics.candidates++;
+          if (validation) {
+            const st = signalHistStats(u, bot, ind, lane, tactics, sig, fromT, cutT, validation, cooldown);
+            diagnostics && diagnostics.evaluated++;
+            if (st.n < Math.max(h.minN, validation.minTrades)) {
+              diagnostics && diagnostics.insufficientTrades++;
+              continue;
+            }
+            if (!(st.net > 0 && st.pf >= validation.minPf)) {
+              diagnostics && diagnostics.pfRejected++;
+              continue;
+            }
+            if (ddrFails(st.mdd, st.net, validation.maxDdr)) {
+              diagnostics && diagnostics.ddrRejected++;
+              continue;
+            }
+          }
+          diagnostics && diagnostics.qualified++;
           ps.push(p);
         }
     }

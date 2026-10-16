@@ -50,7 +50,7 @@ import {
 } from "../indications/registry.ts";
 import { signalCombos, signalSettings } from "../signals.ts";
 import { optimizeLastN } from "../lastn/optimizer.ts";
-import { profitFactor, scoreStats, statsOf } from "../metrics/stats.ts";
+import { ddrFails, profitFactor, scoreStats, statsOf } from "../metrics/stats.ts";
 import {
   ATR_PERIOD,
   LANE_MIN,
@@ -251,8 +251,8 @@ export function passesBase(
 ): boolean {
   // a floor below PF 1 (the sets pre-filter, Gates.baseSetsMinPf) cannot also ask for a positive net
   if (!(st.n >= g.minTrades && (st.net > 0 || g.minPf < 1) && st.pf >= g.minPf)) return false;
-  // max drawdown ratio: drawdown ÷ net of the Base window (off at 0)
-  return !(g.maxDdr && g.maxDdr > 0 && st.mdd !== undefined && st.mdd / st.net > g.maxDdr);
+  // max drawdown ratio: drawdown ÷ net of the Base window (off at 0); unknown evidence cannot pass an active gate.
+  return !ddrFails(st.mdd, st.net, g.maxDdr);
 }
 
 /** Every bot × indication combo; `focus` ("bot|indication" pairs) narrows it when non-empty. */
@@ -977,8 +977,7 @@ export function baseRangeWhy(
       if (!(st.n >= g.minTrades)) miss.push("closes");
       if (!(st.net > 0 || need < 1)) miss.push("net");
       if (!(st.pf >= need)) miss.push("pf");
-      if (g.maxDdr && g.maxDdr > 0 && st.mdd !== undefined && st.mdd / st.net > g.maxDdr)
-        miss.push("ddr");
+      if (ddrFails(st.mdd, st.net, g.maxDdr)) miss.push("ddr");
       if (!miss.length) {
         row.passed++;
         continue;

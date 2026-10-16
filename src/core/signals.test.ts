@@ -96,6 +96,19 @@ describe("signals: sources and combos", () => {
     for (const x of trailing) assert.ok(x.sl >= 2 * x.tp - 1e-9, "trailing stops at 2 × target");
   });
 
+  it("deactivates trails whose effective gap is below the configured minimum", () => {
+    const short = signalSettings({
+      minTrail: 0.005,
+      trailing: { ...on.trailing, tp: [0.01], trailOfTp: [0.1] },
+      trailingOnly: { ...on.trailingOnly, enabled: true, sl: [0.02], trail: [0.002], trailStep: 1 },
+    });
+    const protects = signalProtects(short);
+    assert.ok(protects.some((p) => p.trail === 0), "normal exits remain eligible");
+    assert.ok(protects.every((p) => p.trail === 0 || p.trail * (p.trailStep ?? 1) >= short.minTrail));
+    assert.ok(!protects.some((p) => p.trailOnly), "too-short Trailing only stops are omitted");
+    assert.ok(!protects.some((p) => p.trail === 0.001), "too-short capped trailing stops are omitted");
+  });
+
   it("exit models: percent (default), ATR (Stable-02: 9 cells × no trail / trail 0.8 %) or both", () => {
     assert.equal(on.exits, "pct");
     const pct = signalProtects({ ...on, exits: "pct" });

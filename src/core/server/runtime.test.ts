@@ -487,7 +487,8 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     assert.ok(p.settings.focus!.every((k) => focus.includes(k)), "the preset's focus is evaluated");
     assert.equal(
       rt.status.baseEvaluated,
-      allCombos(focus, rt.settings.disabledKinds, rt.settings.tfs, microLaneFloor(rt.settings.grid)).length + sigCombos,
+      allCombos(focus, rt.settings.disabledKinds, rt.settings.tfs, microLaneFloor(rt.settings.grid)).length +
+        (rt.settings.signals.enabled && rt.settings.signals.baseGate !== false ? sigCombos : 0),
     );
     assert.ok(
       rt.tapes.every((t) => {

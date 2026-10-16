@@ -218,7 +218,7 @@ export function EnginePage() {
               className={st.loop?.max > 250 ? "v2-down" : st.loop?.max > 100 ? "v2-warn" : "v2-up"}
             />
             <Line
-              k={`Main pairs (Base ${fmt.num(st.basePassed ?? 0)} passed of ${fmt.num(st.baseEvaluated ?? 0)})`}
+              k={`Main pairs (${st.signals?.enabled && st.signals.representativeBaseGate === false ? "engine Base" : st.signals?.enabled ? "Base + gated Signals" : "Base"} ${fmt.num(st.basePassed ?? 0)} passed of ${fmt.num(st.baseEvaluated ?? 0)})`}
               v={st.mainPairs}
             />
             <Line k="Compute queued" v={st.pending ? "yes" : "no"} />

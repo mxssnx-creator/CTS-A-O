@@ -5,7 +5,7 @@
 // N is chosen on the in-sample half; the out-of-sample half reports what that choice would have earned.
 import { LAST_N_GRID } from "../config.ts";
 import type { Gates, LastNResult, LastNRow, Trade } from "../domain/types.ts";
-import { EMPTY_STATS, profitFactor, scoreStats, statsOf } from "../metrics/stats.ts";
+import { ddrFails, EMPTY_STATS, profitFactor, scoreStats, statsOf } from "../metrics/stats.ts";
 
 const H = 3_600_000;
 
@@ -73,7 +73,7 @@ export function gatePasses(tape: Tape, p: number, nN: number, g: Gates, nowT: nu
   const net = tape.netPre[p] - tape.netPre[a];
   if (net <= 0) return false;
   if (profitFactor(gp, gl) < g.minPf) return false;
-  if (g.maxDdr && g.maxDdr > 0) {
+  if (g.maxDdr !== undefined && g.maxDdr !== 0) {
     let cum = 0;
     let peak = 0;
     let mdd = 0;
@@ -82,7 +82,7 @@ export function gatePasses(tape: Tape, p: number, nN: number, g: Gates, nowT: nu
       if (cum > peak) peak = cum;
       else if (peak - cum > mdd) mdd = peak - cum;
     }
-    if (mdd / net > g.maxDdr) return false;
+    if (ddrFails(mdd, net, g.maxDdr)) return false;
   }
   return windowDdt(tape.byExit, a, p, nowT) <= g.maxDdtH;
 }

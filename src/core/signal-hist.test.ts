@@ -7,8 +7,11 @@ import {
   heldHistProtects,
   heldSignalProtect,
   HIST_MIN_TP,
+  emptySignalHistDiagnostics,
   quantileSorted,
   signalHistProtects,
+  signalHistProtectsGen,
+  signalHistHoldH,
   signalMfe,
 } from "./signal-hist.ts";
 import { DEFAULT_SIGNALS, signalSettings } from "./signal-config.ts";
@@ -88,6 +91,13 @@ describe("signal historic trailing configs", () => {
     assert.ok(Number.isNaN(quantileSorted([], 0.5)));
   });
 
+  it("caps the historic hold to one quarter of the available minimal sample", () => {
+    assert.equal(signalHistHoldH(48, 6, 15), 1.5);
+    assert.equal(signalHistHoldH(48, 6, 1), 1.5, "faster lanes retain the same wall-clock hold");
+    assert.equal(signalHistHoldH(6, 48, 15), 6, "a configured short hold is not lengthened");
+    assert.equal(signalHistHoldH(48, 0.25, 15), 0.5, "at least two bars are needed for a hold");
+  });
+
   it("each signal gets targets at its MFE quantiles on the 0.25 % grid, every trail × stop, the floors held", () => {
     const sym = (s: string, seed: number) =>
       barsFromCandles(s, 15, syntheticCandles(s, 15, 3000, Date.UTC(2026, 9, 1), seed));
@@ -135,6 +145,19 @@ describe("signal historic trailing configs", () => {
       signalHistProtects(u, [pair], { ...sig, hist: { ...sig.hist, enabled: false } }, null, cut),
       {},
     );
+    const diagnostics = emptySignalHistDiagnostics();
+    const gated = signalHistProtectsGen(u, [pair], sig, null, cut, {
+      cost: 0.002,
+      minPf: 1e9,
+      minTrades: 3,
+      maxDdr: 0,
+    }, diagnostics);
+    let result = gated.next();
+    while (!result.done) result = gated.next();
+    assert.deepEqual(result.value, {}, "each custom config must clear its own historical PF gate");
+    assert.ok(diagnostics.evaluated > 0);
+    assert.equal(diagnostics.qualified, 0);
+    assert.equal(diagnostics.pfRejected, diagnostics.evaluated);
     // nothing before the cut, nothing to learn from
     assert.deepEqual(signalHistProtects(u, [pair], sig, null, u.bars[0].t[0]), {});
   });
@@ -159,6 +182,25 @@ describe("signal historic trailing configs", () => {
         .sort();
     assert.deepEqual(ids(a), [0.0125, 0.03]);
     assert.deepEqual(ids(b), [0.03]);
+  });
+
+  it("deactivates a signal trail that falls under the minimum after lane scaling", () => {
+    const b = barsFromCandles("A-USDT", 1, syntheticCandles("A", 1, 600, Date.UTC(2026, 9, 1), 31));
+    const u = makeUniverse([b]);
+    const pair = "follow|sig-ema-cross-s@m1";
+    const buildStats = new Map();
+    const tapes = buildTapes(
+      u,
+      [{ tp: 0.03, sl: 0.06, trail: 0.01, hold: 192 }],
+      0.002,
+      undefined,
+      new Set([pair]),
+      null,
+      undefined,
+      { minSl: 0, minTrail: 0.005, buildStats },
+    );
+    assert.deepEqual(tapes, [], "lane-scaled trail is omitted instead of widened to 0.5 %");
+    assert.equal(buildStats.get("sig-ema-cross-s@m1||trailing")?.skip.trailTooShort, 1);
   });
 
   it("a held historic config rebuilds exactly its own id (its open position keeps its tape)", () => {

@@ -382,10 +382,20 @@ describe("max drawdown ratio (DDR)", () => {
     assert.equal(ddrFails(2, 4, 1), false, "0.5 ≤ 1");
     assert.equal(ddrFails(5, 4, 1), true, "1.25 > 1");
     assert.equal(ddrFails(0, 0, 1), true, "nothing earned fails");
+    assert.equal(ddrFails(undefined, 4, 1), true, "missing drawdown evidence fails closed");
+    assert.equal(ddrFails(Number.NaN, 4, 1), true, "non-finite drawdown fails closed");
+    assert.equal(ddrFails(-1, 4, 1), true, "negative drawdown is invalid evidence");
+    assert.equal(ddrFails(1, -2, 1), true, "a loss cannot pass an active DDR gate");
+    assert.equal(ddrFails(1, 2, Number.NaN), true, "an invalid active limit fails closed");
     const g = { minPf: 1.1, minTrades: 3 };
     assert.ok(passesBase({ n: 10, pf: 1.5, net: 4, mdd: 6 }, g));
     assert.ok(!passesBase({ n: 10, pf: 1.5, net: 4, mdd: 6 }, { ...g, maxDdr: 1 }));
     assert.ok(passesBase({ n: 10, pf: 1.5, net: 4, mdd: 2 }, { ...g, maxDdr: 1 }));
+    assert.ok(!passesBase({ n: 10, pf: 1.5, net: 4 }, { ...g, maxDdr: 1 }), "missing Base MDD cannot pass");
+    assert.ok(
+      !passesBase({ n: 10, pf: 0.75, net: -2, mdd: 1 }, { minPf: 0.5, minTrades: 3, maxDdr: 1 }),
+      "a below-one PF gate cannot turn negative net into a valid DDR denominator",
+    );
     assert.doesNotThrow(() => checkSettings({ gates: { ...DEFAULT_SETTINGS.gates, maxDdr: 1.5 } }));
     assert.throws(() => checkSettings({ gates: { ...DEFAULT_SETTINGS.gates, maxDdr: -1 } }));
     // two configs with the same PF and net: one steady, one that first gives back 3 units

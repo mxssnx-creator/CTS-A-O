@@ -7,6 +7,7 @@ import { dirname, join } from "node:path";
 import { Worker } from "node:worker_threads";
 import type { Bars, Protect, Tactics } from "../domain/types.ts";
 import type { SignalSettings } from "../signal-config.ts";
+import type { SignalHistDiagnostics, SignalHistValidation } from "../signal-hist.ts";
 import type { BaseConfigCountOptions, BaseConfigCountRow } from "../base-config-counts.ts";
 import type { buildTapesGen, EntryFloors } from "../sim/walkforward.ts";
 
@@ -37,8 +38,9 @@ export type SignalHistMessage = {
   sig: SignalSettings;
   tactics?: Tactics | null;
   cutT: number;
+  validation?: SignalHistValidation;
 };
-export type SignalHistReply = { pairProtects: Record<string, Protect[]> };
+export type SignalHistReply = { pairProtects: Record<string, Protect[]>; diagnostics?: SignalHistDiagnostics };
 
 /** Source installs use TypeScript; production builds place one standalone ESM worker beside the server entry. */
 export function resolveWorkerUrl(moduleUrl = import.meta.url, configured = process.env.CTS_CORE_WORKER): URL {

@@ -87,6 +87,20 @@ export function profitFactor(gp: number, gl: number): number {
   return gp / gl;
 }
 
+/**
+ * One drawdown-ratio rule for every gate: max drawdown ÷ net return, with both inputs in the same unit.
+ * A disabled limit is null/undefined/zero. Once enabled, missing or invalid evidence fails closed.
+ */
+export function ddrFails(
+  mdd: number | undefined,
+  net: number,
+  maxDdr: number | undefined,
+): boolean {
+  if (maxDdr == null || maxDdr === 0) return false;
+  if (!(Number.isFinite(maxDdr) && maxDdr > 0)) return true;
+  return !(Number.isFinite(mdd) && mdd! >= 0 && Number.isFinite(net) && net > 0) || mdd! / net > maxDdr;
+}
+
 export const EMPTY_STATS: Stats = Object.freeze({
   n: 0,
   wins: 0,

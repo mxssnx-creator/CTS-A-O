@@ -220,7 +220,12 @@ import {
   guardKey,
   sigActiveKey,
 } from "../signals.ts";
-import { heldHistProtects, signalHistProtectsGen } from "../signal-hist.ts";
+import {
+  emptySignalHistDiagnostics,
+  heldHistProtects,
+  signalHistProtectsGen,
+  type SignalHistDiagnostics,
+} from "../signal-hist.ts";
 import type { SignalAccept, SignalSettings } from "../signal-config.ts";
 import { PriceStream, type StreamStats } from "./stream.server.ts";
 import { isSignalInd, laneOf, signalSourceOf } from "../indications/registry.ts";
@@ -362,6 +367,7 @@ export interface RuntimeStatus {
     discoveryPairs?: number;
     representativePassed?: number;
     representativeBaseGate?: boolean;
+    historic?: SignalHistDiagnostics;
     disabled?: number;
     trades?: number;
     pf?: number;
@@ -2934,7 +2940,7 @@ export class CoreRuntime {
     // the count of pairs that passed Base (validated); the pairs grid.allSets adds for measurement are reported apart
     this.status.basePassed = passed.length - baseBuilt;
     this.status.baseBuilt = baseBuilt;
-    this.status.baseEvaluated = pipeline.s1.length;
+    this.status.baseEvaluated = pipeline.s1.filter((r) => !isSignalInd(r.ind)).length;
     // every timeframe lane gets its share of Main, so each lane is processed through to the end stages
     for (const k of mainByLane(passed, s.mainTop)) main.add(k);
     // positions from before the timeframe lanes (plain ids, another base timeframe) cannot be continued on the
@@ -2995,6 +3001,10 @@ export class CoreRuntime {
     const representativePass = (r: ComboRun) => passesBase(r.full, setsGates);
     const sigPairs = signalEvaluationPairs(configuredSignals, pipeline.s1, sig, representativePass);
     const representativePassed = signalEvaluationPairs(configuredSignals, pipeline.s1, { ...sig, baseGate: true }, representativePass);
+    const signalBaseGate = sig.enabled && sig.baseGate !== false;
+    this.status.baseEvaluated =
+      pipeline.s1.filter((r) => !isSignalInd(r.ind)).length +
+      (signalBaseGate ? new Set(pipeline.s1.filter((r) => isSignalInd(r.ind)).map((r) => `${r.bot}|${r.ind}`)).size : 0);
     // a held signal pair keeps its tapes to manage its open positions; new entries still need Base + validation
     wf.signalBasePassed = new Set(sigPairs);
     this.wf.signalBasePassed = wf.signalBasePassed;
@@ -3008,6 +3018,13 @@ export class CoreRuntime {
     // computed between ticks; a held historic config whose distances moved since keeps its own tape
     const sigHist: Record<string, Protect[]> = {};
     const retainedSignalIds = new Set<string>();
+    const signalHistDiagnostics = emptySignalHistDiagnostics();
+    const signalHistValidation = {
+      cost: s.cost,
+      minPf: setsGates.minPf,
+      minTrades: setsGates.minTrades,
+      maxDdr: setsGates.maxDdr,
+    };
     try {
       if (sig.enabled && sig.hist.enabled && sigPairs.size) {
         if (gen !== this.gen) return;
@@ -3027,7 +3044,7 @@ export class CoreRuntime {
           const eluH = nodePerf.eventLoopUtilization();
           try {
             const res = await runOnWorkers<import("./pool.server.ts").SignalHistReply>(
-              parts.map((pairs) => ({ type: "signal-hist", evaluationFromT: this.evaluationFromT, bars: sharedU, pairs, sig, tactics: s.tactics, cutT })),
+              parts.map((pairs) => ({ type: "signal-hist", evaluationFromT: this.evaluationFromT, bars: sharedU, pairs, sig, tactics: s.tactics, cutT, validation: signalHistValidation })),
               n, 15 * 60_000,
               (fraction) => { if (gen === this.gen) this.setStage("Tapes", fraction, 1, label); },
             );
@@ -3041,6 +3058,10 @@ export class CoreRuntime {
                 Object.entries(ps).some(([pair, protects]) => !own.has(pair) || !Array.isArray(protects)))
                 throw new Error("unexpected Signal history worker reply (module version mismatch?)");
               for (const [pair, protects] of Object.entries(ps)) byPair.set(pair, protects);
+              const d = res[i]?.diagnostics;
+              if (d)
+                for (const key of Object.keys(signalHistDiagnostics) as Array<keyof SignalHistDiagnostics>)
+                  signalHistDiagnostics[key] += d[key] ?? 0;
             }
             hist = {};
             for (const pair of order) if (byPair.has(pair)) hist[pair] = byPair.get(pair)!;
@@ -3057,7 +3078,15 @@ export class CoreRuntime {
           // No workers or an ordinary worker failure: the same generator, with the compute's generation/memory
           // checks and heartbeat. A memory-guard abort is rethrown by workersFailed, never retried in-process.
           this.setStage("Tapes", 0, 1, histLabel);
-          const g = signalHistProtectsGen(uStage, sigPairs, sig, s.tactics, cutT);
+          const g = signalHistProtectsGen(
+            uStage,
+            sigPairs,
+            sig,
+            s.tactics,
+            cutT,
+            signalHistValidation,
+            signalHistDiagnostics,
+          );
           let k = 0;
           hist = await this.drive("Signal history", g, () => {
             if (++k % 64 === 0) this.setStage("Tapes", 0, 1, histLabel);
@@ -3098,6 +3127,7 @@ export class CoreRuntime {
       discoveryPairs: wf.signalBasePassed.size,
       representativePassed: representativePassed.size,
       representativeBaseGate: sig.baseGate !== false,
+      historic: signalHistDiagnostics,
     };
     // the sets per range type after the Base PF evaluation (status, the desk log and every report show them)
     {
@@ -3151,8 +3181,9 @@ export class CoreRuntime {
       this.status.baseWhy = baseRangeWhy(engineRuns, setsGates, ALL_RANGE_TAGS, (ind, tag) =>
         rangeAppliesTo(ind, tag, applies),
       ).filter((x) => enabled(x.tag));
-      // the totals on one basis: the evaluated count holds the signal pairs, so the passed count does too
-      this.status.basePassed = passed.length - baseBuilt + representativePassed.size;
+      // Base totals include Signal representatives only when their representative Base gate is enabled; the Signals
+      // range row remains an independent diagnostic either way.
+      this.status.basePassed = passed.length - baseBuilt + (signalBaseGate ? representativePassed.size : 0);
       // continuity: the passed count per compute (last BASE_HISTORY_N), per range
       const hist = this.status.baseHistory ?? [];
       hist.push({
