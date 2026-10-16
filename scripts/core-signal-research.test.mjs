@@ -109,7 +109,14 @@ describe("four-source frozen independent Signal research", () => {
 
   it("fails before scoring if frozen parameters, protects, cost, source universe or bars differ", () => {
     assert.throws(
-      () => researchCells(JSON.parse(readFileSync(new URL("../docs/signal-research-protocol-20261015.json", import.meta.url)))),
+      () =>
+        researchCells(
+          JSON.parse(
+            readFileSync(
+              new URL("../docs/signal-research-protocol-20261015.json", import.meta.url),
+            ),
+          ),
+        ),
       /superseded.*v2/,
     );
     for (const changed of [

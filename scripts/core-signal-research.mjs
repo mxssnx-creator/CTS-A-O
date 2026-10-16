@@ -28,7 +28,9 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 /** Enforce runtime-grid parity and the predeclared formulas before any market outcomes are calculated. */
 export function researchCells(protocol) {
   if (protocol.schema !== "cts-signal-new-sources-research-v2")
-    throw new Error("Unknown or superseded Signal protocol schema; use the runtime-parity v2 protocol");
+    throw new Error(
+      "Unknown or superseded Signal protocol schema; use the runtime-parity v2 protocol",
+    );
   const protects = signalProtects({ ...DEFAULT_SIGNALS, exits: "pct" });
   if (JSON.stringify(protects) !== JSON.stringify(protocol.protects))
     throw new Error("Frozen protects differ from runtime signalProtects");
