@@ -408,6 +408,8 @@ export type FakePaperPosition = {
   entry: number;
   stop: number;
   vol: number;
+  level?: number;
+  legs?: Partial<Record<"config" | "overall" | "symbol" | "direction" | "indication" | "type", number>>;
   entryT?: number;
   /** the lane's target price (unset: none) */
   target?: number;

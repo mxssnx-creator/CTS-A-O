@@ -13,7 +13,7 @@ import { acceptKey, engineSideKey, sideAcceptKey, type ExchangeAccept } from "./
 import { isSignalInd } from "./indications/registry.ts";
 import { kindOfId } from "./pipeline/pipeline.ts";
 import { rangeOfId } from "./minimal-coord.ts";
-import { unitReturn } from "./metrics/stats.ts";
+import { modeledUnitReturn } from "./metrics/stats.ts";
 import type { Trade } from "./domain/types.ts";
 
 /** Full protection/source/lane/type identity plus the independently traded symbol and direction. */
@@ -31,7 +31,7 @@ export interface OwnedPaperClose {
 
 /** Settled, post-Base execution results only; callers must never pass open-at-end marks or raw config tapes. */
 export function postBaseExecutionRecords(trades: readonly Trade[]): Map<string, LiveRecord> {
-  return identityRecords(trades.map((t) => ({ cfg: t.cfg, sym: t.sym, side: t.side, exitT: t.exitT, r: unitReturn(t) })));
+  return identityRecords(trades.map((t) => ({ cfg: t.cfg, sym: t.sym, side: t.side, exitT: t.exitT, r: modeledUnitReturn(t) })));
 }
 
 /** Legacy/dust/unallocated rows stay chronological unknowns; they cannot qualify older winning closes. */

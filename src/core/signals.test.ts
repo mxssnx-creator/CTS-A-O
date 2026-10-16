@@ -273,7 +273,7 @@ describe("signals: active ranking and guard", () => {
   it("the Real gate refuses inactive signals and guarded sets", () => {
     const o = {
       ...defaultWalkForward(DEFAULT_SETTINGS),
-      signalActive: new Set(["follow|sig-ema-cross-s@m15|A|1"]),
+      signalActive: new Set([sigActiveKey("follow", "sig-ema-cross-s@m15", "A", 1, "normal")]),
       signalGuardN: 8,
     };
     const tp = {
@@ -313,6 +313,9 @@ describe("signals trade their own base", () => {
       bot: "follow",
       ind,
       kind,
+      syms: ["A"],
+      symI: new Uint16Array(0),
+      side: new Int8Array(0),
       n: 0,
       exitT: new Float64Array(0),
       entryT: new Float64Array(0),
@@ -379,7 +382,7 @@ describe("signal guard window", () => {
 describe("signals: guards through the feed (as the simulation runs them)", () => {
   const base = () => ({
     ...defaultWalkForward(DEFAULT_SETTINGS),
-    signalActive: new Set(["follow|sig-ema-cross-s@m15|A|1"]),
+    signalActive: new Set([sigActiveKey("follow", "sig-ema-cross-s@m15", "A", 1, "normal")]),
   });
   const tp = {
     id: "follow|sig-ema-cross-s@m15|tp2|sl2|tr0|h96",
@@ -1118,16 +1121,16 @@ describe("signal seats in the session report", () => {
       ind: "sig-swing-m@m15",
       syms: ["AAA-USDT", "BBB-USDT", "CCC-USDT"],
     };
-    // the engine's active set (activeSignals): "bot|ind|sym|side" keys — BBB short and CCC long of this pair, AAA of another
+    // Causal active keys include the strategy type: BBB short and CCC long of this Normal pair, AAA of another.
     const active = new Set([
-      sigActiveKey("follow", "sig-swing-m@m15", "BBB-USDT", -1),
-      sigActiveKey("follow", "sig-swing-m@m15", "CCC-USDT", 1),
-      sigActiveKey("follow", "sig-kama-m@m15", "AAA-USDT", 1),
+      sigActiveKey("follow", "sig-swing-m@m15", "BBB-USDT", -1, "normal"),
+      sigActiveKey("follow", "sig-swing-m@m15", "CCC-USDT", 1, "normal"),
+      sigActiveKey("follow", "sig-kama-m@m15", "AAA-USDT", 1, "normal"),
     ]);
     assert.deepEqual([...signalSeatSymbols(tp, active)].sort(), [1, 2]);
     // an active pair on none of the tape's symbols seats nothing (keyed by the pair alone it seated all three)
     assert.equal(
-      signalSeatSymbols(tp, new Set([sigActiveKey("follow", "sig-swing-m@m15", "ZZZ-USDT", 1)]))
+      signalSeatSymbols(tp, new Set([sigActiveKey("follow", "sig-swing-m@m15", "ZZZ-USDT", 1, "normal")]))
         .size,
       0,
     );

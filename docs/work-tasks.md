@@ -1,6 +1,31 @@
 # CTS-A-O work and tasks
 
-Updated 15 October 2026, Europe/Vienna. Continuation baseline: main `c70cbd25213bd072c341f5e20a8376d63b5ab121`, PR #137. Scope remains CTS-A-O.
+Updated 16 October 2026, Europe/Vienna. Current baseline: merged main
+`0ade0fb2ba22a50e49cf03a9825ea612b4abc30f`, PR #138. Scope remains CTS-A-O.
+
+## Current release: independent exits and bounded Block
+
+| Task | Status | Acceptance evidence |
+|---|---|---|
+| Reload current main and preserve recovered work | Complete | Verified local bundle/patch/stash; remote `backup/pre-exit-block-20261016` |
+| Independent exit admission and modeled return provenance | Implemented; final regressions pending | Typed Signal keys and explicit modeled unit basis; unknown/losing evidence retained |
+| Bound Block stacking and native quantities | Implemented; focused checks pass | Total cap, exact config/symbol/side levels, proportional source weights, no compounding or pending-cap release |
+| Compare Overall/Shared/Additive and off | Six-arm protocol/harness prepared | Ratio 0.2, separate higher Shared 0.4, total caps, two six-hour folds/preparation, owned settled PF and exact minute drawdown |
+| Patch dependency advisories and verify release | Clean install/audit pass; final release checks in progress | Node22/npm10, zero advisory entries, full tests, typecheck/lint/build and dev/production UI |
+| Push and merge tested source | Pending final verification | Exact source/tree, reviewed artifacts and updated recovery handoff |
+
+Primary PF is computed from owned unit-net returns after costs. Increasing
+Block volume alone cannot improve that PF. Preserve measured losses and empty
+cohorts; do not substitute cash PF or an attractive sibling. The default Block
+cap remains 8x pending a valid causal comparison. Current changes make lower
+configured total caps effective; existing holdings are protected until closure.
+Ratio 0.2 additions cannot be inflated by volume-step rounding. The six-arm
+assessment asks for PF at least 1.1 and 20% above off in each fold, with at
+least 30 owned settled slices, no unknown primary returns and native minute
+equity drawdown at most 10% and no worse than off. These research assessment
+targets do not replace individual production gates or create live proof.
+
+The following sections preserve the prior release's research and limitations.
 
 ## Current work
 

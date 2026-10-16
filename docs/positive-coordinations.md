@@ -1,5 +1,19 @@
 # Positive coordinations — keep them
 
+**16 Oct correctness amendment: bounded, independently evidenced Block.**
+`maxMult` is the total multiple for a new config entry, including its base and
+all enabled source additions (with the existing absolute 8x bound). Earlier
+per-source-cap descriptions below are historical. Config-source levels and
+pauses now use exact config/symbol/direction evidence; the separately named
+pooled sources keep their scope. Fractional Block source legs retain logical
+identities and share their exact parent's physical exit, including optional
+native lane-order sizing. Pending/partial quantities reserve real capacity.
+Existing holdings keep their entry multiple after a lower cap is configured.
+Default 8x, all other coordination defaults and desk patches are unchanged.
+These fixes correct identity and cap enforcement; they are not a new claim of
+positive execution PF. The frozen Block comparison is recorded in the current
+operations handoff before scoring.
+
 **14 Oct operator amendment: independent Signals.** The operator explicitly requires independent parameter
 ranges, lanes, trade types and config evaluations, including historical calculations, minimum return-PF gates,
 parallel processing, live execution and statistics. Signal qualification must therefore retain the full indication

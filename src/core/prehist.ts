@@ -1,6 +1,6 @@
 // Prehistoric (pre-realtime) result statistics: what the complete computation produced before realtime starts.
 import type { Trade } from "./domain/types.ts";
-import { unitReturnReport, returnGroup } from "./reporting-stats.ts";
+import { modeledReturnReport as unitReturnReport, returnGroup } from "./reporting-stats.ts";
 import { closedPositions, openTimeline } from "./positions.ts";
 
 export interface PrehistStats {

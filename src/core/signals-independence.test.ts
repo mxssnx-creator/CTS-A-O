@@ -13,7 +13,9 @@ const NOW = 100 * H;
 const IND = "sig-ema-cross-s@m15";
 const SYM = "A-USDT";
 function tape(kind: StratKind, rs: number[], ind = IND, tp = 0.03) {
-  const protect = { tp, sl: 0.06, trail: kind === "trailing" ? 0.015 : 0, hold: 192 };
+  const protect = kind === "trailing-only"
+    ? { tp: 0, sl: 0.06, trail: 0.015, trailOnly: true, hold: 192 }
+    : { tp, sl: 0.06, trail: kind === "trailing" ? 0.015 : 0, hold: 192 };
   const id = configId("follow", ind, protect);
   const trades: Trade[] = rs.map((r, i) => ({
     cfg: id, sym: SYM, side: 1, entryT: (80 + i) * H, exitT: (90 + i) * H,
@@ -63,13 +65,40 @@ describe("independent signal qualification", () => {
     assert.deepEqual([...signalSeatSymbols(trailing, active)], []);
   });
 
-  it("legacy Base/discovery keys never override a measured type in a mixed recovered set", () => {
+  it("legacy Base/discovery keys never authorize any unmeasured strategy type", () => {
     const legacy = sigActiveKey("follow", IND, SYM, 1);
-    assert.equal(signalActiveHas(new Set([legacy]), "follow", IND, SYM, 1, "normal"), true);
+    for (const kind of ["normal", "trailing", "trailing-only"])
+      assert.equal(signalActiveHas(new Set([legacy]), "follow", IND, SYM, 1, kind), false);
+    for (const kind of ["", " ", undefined, null])
+      assert.equal(signalActiveHas(new Set([legacy]), "follow", IND, SYM, 1, kind as string), false);
     const mixed = new Set([legacy, key("normal")]);
     assert.equal(signalActiveHas(mixed, "follow", IND, SYM, 1, "normal"), true);
     assert.equal(signalActiveHas(mixed, "follow", IND, SYM, 1, "trailing"), false);
     assert.equal(signalActiveHas(new Set([key("normal")]), "follow", IND, SYM, -1, "normal"), false);
+  });
+
+  it("an untyped recovered key supplies no execution, live or seated evidence", () => {
+    const active = new Set([sigActiveKey("follow", IND, SYM, 1)]);
+    const base = defaultWalkForward(DEFAULT_SETTINGS);
+    const options = {
+      ...base, signalActive: active, lastN: 0, validLastN: 0, signalValidLastN: 0,
+      signalGuardN: 0, signalCluster: undefined, signalAccept: undefined, signalSideAccept: undefined,
+      signalOwnBase: true, symGate: undefined,
+      toggles: { ...base.toggles, normal: true, trailing: true, block: false, blockActive: false },
+    };
+    const live = liveLaneFilter({ source: "signals" }, new Set(), active);
+    for (const kind of ["normal", "trailing", "trailing-only"] as const) {
+      const tp = tape(kind, []);
+      const decision = execDecision(tp, NOW, options, { sym: SYM, side: 1 });
+      assert.deepEqual(decision, { ok: false, why: "signalInactive" });
+      assert.equal(live.validLane({ cfg: tp.id, sym: SYM, side: 1, vol: 1 }), false);
+      assert.deepEqual([...signalSeatSymbols(tp, active)], []);
+      const typed = new Set([key(kind)]);
+      assert.equal(execDecision(tp, NOW, { ...options, signalActive: typed }, { sym: SYM, side: 1 }).ok, true);
+      assert.equal(liveLaneFilter({ source: "signals" }, new Set(), typed)
+        .validLane({ cfg: tp.id, sym: SYM, side: 1, vol: 1 }), true);
+      assert.deepEqual([...signalSeatSymbols(tp, typed)], [0]);
+    }
   });
 
   it("a qualifying type and its acceptance record cannot replace a config's own minimum PF", () => {

@@ -62,7 +62,7 @@ process.env.CTS_CORE_AUTOSTART = "0";
 const minOf = (xs) => xs.reduce((a, x) => (x < a ? x : a), Infinity);
 const maxOf = (xs) => xs.reduce((a, x) => (x > a ? x : a), -Infinity);
 
-const { profitFactor, unitReturn: unitR, unitStatsOf } = await import("../src/core/metrics/stats.ts");
+const { profitFactor, modeledUnitReturn: unitR, modeledUnitStatsOf: unitStatsOf } = await import("../src/core/metrics/stats.ts");
 {
   const { allocatorWarning } = await import("../src/core/server/memguard.server.ts");
   const w = allocatorWarning();
@@ -466,6 +466,10 @@ async function runEngine() {
   // end, as the live desk does — the run is then partly in-sample)
   const wfExtra = { causalBase: !flag("lookahead"), ...wfAll, ...JSON.parse(arg("wf", "{}")) };
   rt.updateSettings({}, { preH, simH: runH, ...wfExtra });
+  if (arg("frozen-block-study")) {
+    const { validateFrozenBlockRuntime } = await import("./lib/block-comparison.mjs");
+    validateFrozenBlockRuntime(rt, arg("frozen-block-study"), arg("study-fold"), feedFile, evaluationFromT, cutT);
+  }
   // a replayed feed keeps only what the engine reads through it, up to the cut (scripts/lib/session-feed.mjs): its own
   // timeframe and the 1-hour bars of the universe ranking
   if (feedFile && cutT) {
@@ -874,7 +878,8 @@ async function runEngine() {
   const openEnd = [];
   if (exact)
     for (const x of sim.openAtEnd)
-      openEnd.push({ cfg: x.cfg, sym: x.sym, side: x.side, entryT: x.entryT, entry: x.entry, mtmR: x.r, kind: x.kind, vol: x.vol ?? 1, mult: x.mult ?? 1 });
+      openEnd.push({ cfg: x.cfg, sym: x.sym, side: x.side, entryT: x.entryT, entry: x.entry, mtmR: x.r, kind: x.kind, vol: x.vol ?? 1,
+        ...(x.mult !== undefined ? { mult: x.mult } : {}), ...(x.unitR !== undefined ? { unitR: x.unitR } : {}) });
   else {
     const executed = new Set(sim.trades.map((x) => x.cfg));
     for (const tp of rt.tapes) {
@@ -1095,6 +1100,10 @@ async function runEngine() {
       rangeGate: obj(gate),
     },
   };
+  if (arg("frozen-block-study")) {
+    const { captureFrozenBlockArms } = await import("./lib/block-comparison.mjs");
+    await captureFrozenBlockArms(rt, sim, result, arg("frozen-block-study"), arg("study-fold"), coverageOf);
+  }
   // the runtime's timers and its worker pool ended: its stall watch and healer kept it reachable through the dump and the
   // report (0.9–1.5 GB of an eval child; 3–5 GB in an allSets report phase)
   rt.dispose();
@@ -2933,6 +2942,14 @@ const data = clean({
   episodes: episodes.length,
 });
 const htmlDir = arg("html");
+if (raw.frozenBlockComparison) data.frozenBlockRiskExact = {
+  schema: "cts-block-native-minute-risk-v1", window: { startT, endT },
+  fold: raw.frozenBlockComparison.fold, arm: raw.frozenBlockComparison.arm.id,
+  protocolSha256: raw.frozenBlockComparison.protocolSha256, sourceSha256: raw.frozenBlockComparison.sourceSha256,
+  equityMaxDd: T.equityMaxDd, equityMaxDdPct: T.equityMaxDdPct, eqMin: T.eqMin,
+  marginMax: T.marginMax, equityDdtMaxH: T.equityDdtMaxH,
+  basis: "Existing native minute-close marked-equity pass before report rounding; no tick or candle-wick path reconstructed.",
+};
 // Exact allocations from this report's shared capped book, without rounding individual small P&L slices.
 // A Signal contribution uses these same allocations; it never invents a second independently sized balance.
 if (flag("signal-progress")) data.sizedOrders = trades.map((x, closeIndex) => {
@@ -2947,7 +2964,7 @@ if (flag("signal-progress")) data.sizedOrders = trades.map((x, closeIndex) => {
 if (flag("signal-progress")) data.sizedOpenOrders = openEnd.map((x, openIndex) => {
   const key = orderKey(x), known = sized.units.has(key), unitNotional = known ? sized.units.get(key) : null;
   return { key, openIndex, cfg: x.cfg, sym: x.sym, side: x.side, entryT: x.entryT,
-    unitR: Number.isFinite(unitR({ r: x.mtmR, mult: x.mult })) ? unitR({ r: x.mtmR, mult: x.mult }) : null,
+    unitR: Number.isFinite(unitR({ ...x, r: x.mtmR })) ? unitR({ ...x, r: x.mtmR }) : null,
     sizedReturn: x.mtmR, volume: x.vol ?? 1, unitNotional,
     rawUnitNotional: sized.rawUnits.get(key) ?? null, rawGot: sized.rawNotionals.get(key) ?? null,
     allocatedNotional: known ? unitNotional * (x.vol ?? 1) : null,
@@ -3040,7 +3057,7 @@ function renderWriteup(d, dir) {
     `Settings (desk, ${s.desk ?? "flags"}): stage gate min PF ${s.gates.minPf}, focus ${s.focus === 0 ? "every combo" : s.focus + " pairs"}, disabled kinds ${s.disabledKinds.length ? s.disabledKinds.join(", ") : "none"}, ` +
       `toggles ${Object.entries(s.toggles).filter(([, v]) => v).map(([k]) => k).join(" / ")}, ranges ${Object.entries(s.ranges).filter(([, v]) => v).map(([k]) => k).join(" / ")} (micro ${s.ranges.micro ? "on" : "off"}), ` +
       `caps: positions ${s.wf.maxPositions || "none"}, signal positions ${s.wf.signalMaxPositions || "none"}, coordination ${s.wf.coord?.enabled ? "on" : "off"}, signals validated on their last ${s.wf.signalValidLastN}. ` +
-      `Block ${s.block.mode}, ${s.block.maxLevel} levels, Active from ${s.block.minActiveLevel}, ratio ${s.block.ratio}, max ${s.block.maxMult}×${s.block.mode === "overall" ? " per source, the stack up to 8×" : ""}. ` +
+      `Block ${s.block.mode}, ${s.block.maxLevel} levels, Active from ${s.block.minActiveLevel}, ratio ${s.block.ratio}, total max ${s.block.maxMult}× including base and all sources. ` +
       `Balance ${usd(s.balance0)}, each order unit ${sizingTxt(s)}, ${s.leverage}× for the margin, ${(s.cost * 100).toFixed(2)} % round-trip cost per close.`,
     ``,
     `Full report with diagrams: [${dir ? join(dir, "index.html") : "index.html"}](${dir ? join(dir.replace(/^docs\//, ""), "index.html") : "index.html"}) · numbers: \`${dir ? join(dir, "data.json") : "data.json"}\`.`,
@@ -3525,7 +3542,7 @@ function clientMain(D) {
     <span class="chip">position caps: ${S.wf.maxPositions || "none"} · signals ${S.wf.signalMaxPositions || "none"}</span>
     <span class="chip">coordination ${S.wf.coord && S.wf.coord.enabled ? "on" : "off"}</span>
     <span class="chip">signals ${S.signals ? "on" : "off"} · last ${S.wf.signalValidLastN}</span>
-    <span class="chip">Block ${esc(S.block.mode)} · L${S.block.minActiveLevel}+ active · ratio ${S.block.ratio} · max ${S.block.maxMult}×${S.block.mode === "overall" ? " per source · stack ≤ 8×" : ""}</span>
+    <span class="chip">Block ${esc(S.block.mode)} · L${S.block.minActiveLevel}+ active · ratio ${S.block.ratio} · total max ${S.block.maxMult}× (base + all sources)</span>
     <span class="chip">tactics ${esc(S.tactics)}</span>
     <span class="chip">unit ${S.sizing.mode === "fixed" ? usd(S.notional) + " fixed" : n2(S.sizing.pct * 100, 1) + " % of equity (compounding)"} · ${S.leverage}× · cost ${n2(S.cost * 100)} %</span>
   </div>

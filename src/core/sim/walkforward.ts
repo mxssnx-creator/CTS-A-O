@@ -72,8 +72,8 @@ import {
   profitFactor,
   scoreStats,
   statsOf,
-  unitReturn,
-  unitStatsOf,
+  modeledUnitReturn as unitReturn,
+  modeledUnitStatsOf as unitStatsOf,
   type UnitStats,
 } from "../metrics/stats.ts";
 import { ATR_PERIOD, simulate, splitSides } from "./backtest.ts";
@@ -84,7 +84,10 @@ import {
   BlockBook,
   blockBookOf,
   blockDecide,
+  blockStackCap,
+  BLOCK_SOURCES,
   bookLevels,
+  sourcesOf,
   sourceKey,
   type BlockSource,
 } from "./block.ts";
@@ -448,6 +451,8 @@ export interface WalkForwardOptions {
   signalMaxPositions?: number;
   toggles: StrategyToggles;
   block: BlockConfig;
+  /** Explicit offline audit capture of independent source levels; off by default to keep execution records compact. */
+  blockTrace?: boolean;
   dca: DcaConfig;
   gates: Gates;
   /**
@@ -2176,7 +2181,7 @@ export function buildTapes(
 }
 
 /** First index with exitT >= t. */
-export function lowerBound(a: Float64Array, t: number): number {
+export function lowerBound(a: ArrayLike<number>, t: number): number {
   let lo = 0;
   let hi = a.length;
   while (lo < hi) {
@@ -2261,15 +2266,30 @@ export function tapeExecutable(
   return kindExecutable(tp.kind, o.toggles);
 }
 
-/** Block level from the config's own closes before `entryT`: independent last-n windows, n = 1..maxLevel. */
-export function blockLevel(tp: ConfigTape, entryT: number, b: BlockConfig): number {
+/** Block level from the entry's own config × symbol × side closes, in independent last-n windows. */
+export function blockLevel(
+  tp: ConfigTape,
+  entryT: number,
+  b: BlockConfig,
+  scope?: { sym?: string; side?: number },
+  observed?: { n: number },
+): number {
   const end = lowerBound(tp.exitT, entryT + 1);
+  const idx = scope?.sym ? symTradeIdx(tp, scope.sym) : undefined;
+  if (idx === null) return 0;
+  const side = scope?.side;
+  const scopedEnd = idx ? lowerBound(idx, end) : end;
   let level = 0;
   let sum = 0;
-  for (let n = 1; n <= b.maxLevel && n <= end; n++) {
-    sum += tp.r[end - n];
+  let n = 0;
+  for (let j = scopedEnd - 1; j >= 0 && n < b.maxLevel; j--) {
+    const i = idx ? idx[j] : j;
+    if (side && tp.side[i] !== side) continue;
+    n++;
+    sum += tp.r[i];
     if (sum > 0) level++;
   }
+  if (observed) observed.n = n;
   return level;
 }
 
@@ -3693,6 +3713,10 @@ export type ExecDecision =
       legs?: Partial<Record<BlockSource, number>>;
       /** the Block sources that raised this entry (paused after it closes positive) */
       src?: BlockSource[];
+      /** Requested only by the explicit offline Block audit; raw source levels and enabled/unpaused levels. */
+      blockLevels?: Partial<Record<BlockSource, number>>;
+      blockEffectiveLevels?: Partial<Record<BlockSource, number>>;
+      blockSampleCounts?: Partial<Record<BlockSource, number>>;
     }
   | { ok: false; why: string };
 
@@ -3711,12 +3735,12 @@ export const crowdCapOf = (o: Pick<WalkForwardOptions, "entryCrowd">, cfg: strin
 /** Indication type of a tape (Block "indication" source). */
 export const kindOfInd = (ind: string) => INDICATION_BY_ID.get(laneOf(ind).base)?.kind ?? "none";
 
-/** Block book entry of a position: its unit result (without the Block multiplier, like the config level). */
-export const blockEntryOf = (x: Trade) => ({
+/** Executed rows need verified unit evidence. A raw ConfigTape candidate explicitly declares its intrinsic unit basis. */
+export const blockEntryOf = (x: Trade, basis: "modeled-execution" | "candidate-unit" = "modeled-execution") => ({
   sym: x.sym,
   side: x.side,
   kind: kindOfInd(x.cfg.split("|")[1] ?? ""),
-  r: x.r / (x.mult || 1),
+  r: basis === "candidate-unit" ? x.r : unitReturn(x),
   ind: x.cfg.split("|")[1] ?? "",
   type: x.kind ?? "normal",
   cfg: x.cfg,
@@ -3914,21 +3938,31 @@ export function execDecision(
   const own = !!o.block.signalsOwn && isSignalInd(tp.ind);
   const blk = own ? { ...o.block, sources: OWN_SOURCES } : o.block;
   const book = own ? null : ctx?.book;
+  const observed = o.blockTrace ? { n: 0 } : undefined;
+  const levels = { config: blockLevel(tp, entryT, blk, ctx, observed), ...bookLevels(book, t, blk.maxLevel) };
   const d = blockDecide(
-    { config: blockLevel(tp, entryT, blk), ...bookLevels(book, t, blk.maxLevel) },
+    levels,
     blk,
     !!tg.blockActive,
-    (src) => !!book?.paused(sourceKey(src, t)),
+    (src) => !!ctx?.book?.paused(sourceKey(src, t)),
   );
+  const traceSources = o.blockTrace ? sourcesOf(blk) : null;
+  const trace = o.blockTrace ? {
+    blockLevels: levels,
+    blockEffectiveLevels: Object.fromEntries(BLOCK_SOURCES.map((src) => [src,
+      traceSources?.[src] && !ctx?.book?.paused(sourceKey(src, t)) ? levels[src] : 0])),
+    blockSampleCounts: Object.fromEntries(BLOCK_SOURCES.map((src) => [src,
+      src === "config" ? observed?.n ?? 0 : book?.sampleCount(sourceKey(src, t), blk.maxLevel) ?? 0])),
+  } : {};
   // Block Active: only entries at the minimum level or above are opened — every lower entry is skipped; a signal's
   // own base trades at its unit then
   if (!d.adjusted && gatedBase)
-    return baseOk() ? { ok: true, level: 0, vol: 1 } : { ok: false, why: "normalPf" };
+    return baseOk() ? { ok: true, level: 0, vol: 1, ...trace } : { ok: false, why: "normalPf" };
   if (tg.blockActive && !d.adjusted && !sigBase) return { ok: false, why: "blockActive" };
   // Normal off: a plain Normal / Trailing entry needs Block (DCA / Axis are not plain and run on their own)
   if (plain && !tg.normal && !d.adjusted && !sigBase) return { ok: false, why: "normalOff" };
-  if (!d.adjusted) return { ok: true, level: 0, vol: 1 };
-  return { ok: true, level: d.level, vol: d.vol, src: d.src, ...(d.legs ? { legs: d.legs } : {}) };
+  if (!d.adjusted) return { ok: true, level: 0, vol: 1, ...trace };
+  return { ok: true, level: d.level, vol: d.vol, src: d.src, ...(d.legs ? { legs: d.legs } : {}), ...trace };
 }
 
 /** Synchronous wrapper (CLI / tests). The runtime drives walkForwardGen so it can yield between hours. */
@@ -4875,7 +4909,7 @@ export function* walkForwardGen(
       const fk = `${tr.cfg}|${tr.sym}|${tr.side}|${tr.entryT}`;
       let fx = seen.get(fk);
       if (!fx) {
-        const fe = blockEntryOf(tr);
+        const fe = blockEntryOf(tr, "candidate-unit");
         fx = { exitT: tr.exitT, ...fe, ...(tr.markedOpen ? { open: true } : {}) };
         // the auto window scores the windows on their levels now, at the entry (paper and the audit replay the stamps)
         book?.stampEntry(fx);
@@ -4962,7 +4996,7 @@ export function* walkForwardGen(
       // the sources that raised it pause once it closes positive (the feed entry carries them into the book)
       if (dec.vol > 1 && dec.src?.length) fx.bsrc = dec.src;
       // Stable-02 relation volume on top of the Block volume (the stack stays within the Block maximum)
-      const stackCap = o.block.mode === "overall" ? 8 : o.block.maxMult;
+      const stackCap = blockStackCap(o.block);
       const cv = s2 ? Math.min(s2.volume(tr.entryT), Math.max(1, stackCap / dec.vol)) : 1;
       const x: Trade = {
         ...tr,
@@ -4973,6 +5007,8 @@ export function* walkForwardGen(
         ...(hedging ? { hedge: true } : {}),
         level: tp.kind.startsWith("dca") || tp.kind === "axis" ? tr.level : dec.level,
         ...(dec.legs ? { legs: dec.legs } : {}),
+        ...(dec.blockLevels ? { blockLevels: dec.blockLevels, blockEffectiveLevels: dec.blockEffectiveLevels,
+          blockSampleCounts: dec.blockSampleCounts } : {}),
       };
       executedKeys.add(dk);
       if (o.entryCrowd) {

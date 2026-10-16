@@ -1,6 +1,86 @@
 # CTS-A-O operations handoff
 
-Updated 2026-10-15. Repository: `mxssnx-creator/CTS-A-O`.
+Updated 2026-10-16. Repository: `mxssnx-creator/CTS-A-O`.
+
+## 16 October independent exits and Block continuation — verification in progress
+
+Reloaded merged main `0ade0fb2ba22a50e49cf03a9825ea612b4abc30f` (PR #138).
+Current branch: `fix/independent-exits-block-20261016`. Remote backup
+`backup/pre-exit-block-20261016` preserves that main. The recovered stale
+continuation at `089e6d6` and its three dirty files were backed up and stashed;
+their older E2E fixture was not reapplied over the corrected merged source.
+Local verified bundle and pending patch are under
+`/workspace/scratch/fe9c0300366a/cts-ao-backups/20261016T094329Z`.
+The release is isolated at `/workspace/scratch/fe9c0300366a/CTS-A-O` so
+concurrent writes cannot change tested source. All current edits were copied
+and verified at `cts-ao-backups/isolated-source-20261016T100554Z`; the old
+checkout remains intact. Continue from the isolated release and its GitHub
+branch, rather than overwriting the older checkout.
+
+Independent exits retain exact indication/range/lane/config/type/symbol/side
+identities. Untyped legacy Signal discovery keys cannot authorize new Normal,
+capped Trailing or trailing-only entries. Modeled execution needs an explicit
+unit return or a verified recorded external multiplier; absent legacy basis
+stays unknown in promotion, APIs, Presets and reports. Raw intrinsic historical
+tapes retain their separate valid unit-return interpretation. Cash remains a
+separately labeled diagnostic. Endpoint exports preserve their actual basis.
+Actual fill measurement now has a nullable `fee_known` flag. Legacy zero fees
+remain unverified estimates; newly confirmed zero commission persists exactly
+through both native writers, restart, API and fee sampling. This migration
+does not change modeled replay costs or backfill old measurement claims.
+
+Block's configured `maxMult` now bounds the complete new-entry stack: base plus
+all source additions, subject to the absolute 8x bound. Config-source levels
+and pauses use exact config/symbol/direction evidence. Explicit pooled sources
+keep their documented scope. Optional native lane orders allocate fractional
+Block weights within the exact parent exit instead of one venue unit per
+fractional source; unrelated configs remain independent. Confirmed and pending
+quantities reserve capacity, and an installed parent stop suppresses every
+related source child. Existing holdings retain their entry multiple when a cap
+is lowered; a current-cap audit can still warn until they close. No forced
+reduction or rewritten ownership is implied. Default 8x is unchanged.
+At ratio 0.2, stepped volume no longer rounds a 0.2 addition up to 1.0.
+Sub-step positive fractions remain usable; larger steps round down, bounded by
+the raw requested addition and the total cap. Shared accepts any valid enabled
+relation, Additive sums its valid levels, and Overall retains independent
+source additions. Optional traces record raw/effective levels and actual
+closed-candidate sample counts. These are Real-selected candidate histories,
+separate from funded executions; open marks cannot create settled PF evidence.
+
+Current focused checks include 143 baseline native-control cases, 172 final
+Block/ratio/trace cases, 13 evidence-reducer cases and 95 actual fee/schema
+cases plus the retained-old-database regression. PF/identity,
+indication-specific MFE, parallel causality and reporting checks pass in scoped
+runs; overlapping counts must not be added together. Final full
+regression/build/UI checks and the comparison are pending.
+
+The comparison protocol uses frozen public four-symbol feeds, two historical
+six-hour execution folds and six hours of evaluated preparation per fold.
+Earlier candles initialize indicators only. Six prespecified arms keep the
+same complete configured focus and exits: off, Overall 8x/0.2, Shared 8x/0.2,
+Shared 8x/0.4 (the separately labelled higher-ratio profile), Additive 8x/0.2,
+and Overall 2x/0.2. The source mask is Overall/Symbol/Direction/Indication.
+Axis stays default-disabled; other settings,
+costs and positive coordinations are unchanged. Source/settings seals and exact
+native baseline parity are mandatory before scoring. All owned settled closes,
+unknowns, losses, empty cohorts and hourly outcomes remain visible. Pure size
+scaling cannot improve primary unit-return PF. These reused historical windows
+are development evidence and cannot establish future or live profitability.
+The prespecified assessment requires at least 30 owned settled slices per
+fold, no unknown primary returns, finite measured return PF at least 1.1 and
+20% above the matching off arm, and unrounded native minute-mark equity
+drawdown at most 10% and no worse than off. All folds must pass. These are
+assessment targets, not new production gates; pooled success cannot qualify
+an individual config, and no-loss sentinels cannot certify a measured lift.
+
+Dependency audit found seven installed advisory entries. Locked patches now
+use TanStack Start 1.168.60/server-core 1.169.39, source-map-js 1.2.2 and
+brace-expansion 1.1.21/5.0.12. Clean Node 22.23.3/npm 10.9.9 installation
+passes with 424 packages; the final audit reports zero vulnerabilities.
+The TanStack patch is documented in
+[GHSA-qx66-fv34-fjm8](https://github.com/advisories/GHSA-qx66-fv34-fjm8).
+No live reload, venue request or order has occurred.
+See `docs/work-tasks.md` for the current release checklist.
 
 ## 15 October post-Base promotion and range continuation — verified source and evidence
 

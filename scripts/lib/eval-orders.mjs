@@ -2,7 +2,7 @@
 // that closed, and those still open at the window's end marked to market at its last close (the engine's
 // sim.openAtEnd, dumped as openEnd: every gate, cap and volume applied). Counting only the closed ones kept a signal's
 // targets and trails inside its 48 h hold and dropped its losers still short of their stop — an upper bound on PF.
-import { unitReturn } from "../../src/core/metrics/stats.ts";
+import { modeledUnitReturn as unitReturn } from "../../src/core/metrics/stats.ts";
 
 /**
  * @param {{ trades?: Array<{cfg: string, sym: string, side: number, entryT: number, entry: number, exitT: number, exit: number, r: number, reason: string}>, openEnd?: Array<{cfg: string, sym: string, side: number, entryT: number, entry: number, mtmR: number}> }} raw a session dump

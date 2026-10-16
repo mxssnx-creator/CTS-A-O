@@ -1,5 +1,5 @@
 // Read-only evidence reduction. No strategy calculation, market acquisition or gate override occurs here.
-import { unitReturn } from "../../src/core/metrics/stats.ts";
+import { modeledUnitReturn as unitReturn } from "../../src/core/metrics/stats.ts";
 import { minPfOf, rangeOfId, RANGE_LABEL } from "../../src/core/minimal-coord.ts";
 import { orderKey } from "../../src/core/sizing.ts";
 import { addReturnEvidence, finishReturnEvidence, returnBucket } from "./return-evidence.mjs";

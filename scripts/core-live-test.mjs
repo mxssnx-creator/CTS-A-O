@@ -90,7 +90,7 @@ const warnPositive = (rt, name) => {
   const w = allocatorWarning();
   if (w) process.stderr.write(`${w}\n`);
 }
-const { profitFactor, unitReturn } = await import("../src/core/metrics/stats.ts");
+const { profitFactor, modeledUnitReturn: unitReturn } = await import("../src/core/metrics/stats.ts");
 const { ownResults, flatten, history, orderIdentity } = await import("./core-live-report.mjs");
 const { kindOfInd } = await import("../src/core/sim/walkforward.ts");
 const { rowOf, timeline } = await import("../src/core/statistics.ts");

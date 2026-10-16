@@ -1,5 +1,5 @@
 import { botFamilyOf, botStatsFromRows } from "../../src/core/bot-stats.ts";
-import { unitReturn } from "../../src/core/metrics/stats.ts";
+import { modeledUnitReturn as unitReturn } from "../../src/core/metrics/stats.ts";
 import { guardedStressStats } from "./eval-stress.mjs";
 
 const H = 3_600_000;

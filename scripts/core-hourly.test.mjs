@@ -8,7 +8,7 @@ import { hourlyNet, statsOf } from "../src/core/metrics/stats.ts";
 import { walkForwardHourlyReport } from "./lib/walkforward-hourly-report.mjs";
 
 const H = 3_600_000;
-const trade = (r, entryT, exitT, extra = {}) => ({ r, entryT, exitT, ...extra });
+const trade = (r, entryT, exitT, extra = {}) => ({ r, entryT, exitT, mult: 1, ...extra });
 const run = (trades, openAtEnd = [], extra = {}) => ({
   startT: 0,
   endT: 2 * H,
@@ -89,7 +89,7 @@ describe("walk-forward hourly reporting", () => {
       run([trade(0.9, 1, H, { unitR: 0.02, mult: 3 }), trade(-0.01, H + 1, 2 * H, { mult: 1 })]),
     );
     near(override.stats.pf, 2);
-    for (const extra of [{ unitR: null }, { mult: 0 }, { mult: NaN }]) {
+    for (const extra of [{ unitR: null }, { mult: undefined }, { mult: 0 }, { mult: NaN }]) {
       const result = walkForwardHourlyReport(
         run([trade(0.02, 1, H), trade(-0.01, H + 1, 2 * H, extra)]),
       );

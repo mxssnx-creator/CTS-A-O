@@ -1,7 +1,7 @@
 // Session reports use the runtime's qualification rules; stored aggregates are never requalified on replay.
 import { PF_NO_LOSS } from "../../src/core/config.ts";
 import { minPfOf } from "../../src/core/minimal-coord.ts";
-import { unitReturn } from "../../src/core/metrics/stats.ts";
+import { modeledUnitReturn as unitReturn } from "../../src/core/metrics/stats.ts";
 import { baseSetsGates, rangeCellPass, setsPassTags } from "../../src/core/pipeline/pipeline.ts";
 
 export const SESSION_QUALIFICATION = Object.freeze({
@@ -17,18 +17,20 @@ export function sessionReturnEvidence(raw) {
   const rows = raw.trades ?? [];
   let missingMultRows = 0;
   let unknownReturns = 0;
+  let verifiedUnitRows = 0;
   for (const row of rows) {
     if (!(typeof row.mult === "number" && Number.isFinite(row.mult) && row.mult > 0)) missingMultRows++;
     if (!Number.isFinite(unitReturn(row))) unknownReturns++;
+    if (typeof row.unitR === "number" && Number.isFinite(row.unitR)) verifiedUnitRows++;
   }
   const recorded = raw.executionReturns?.version === SESSION_EXECUTION_RETURNS.version && raw.executionReturns.encoding === SESSION_EXECUTION_RETURNS.encoding;
-  const state = unknownReturns ? "unavailable" : missingMultRows ? (missingMultRows < rows.length ? "partial" : "legacy-unverified") : recorded ? "recorded" : "legacy-unverified";
+  const state = unknownReturns ? "unavailable" : recorded || rows.length > 0 && verifiedUnitRows === rows.length ? "recorded" : "legacy-unverified";
   return {
-    state, missingMultRows, unknownReturns,
+    state, missingMultRows, unknownReturns, verifiedUnitRows,
     executionMultiplier: "recorded Block × coordination only",
     ladderTapeLegs: "retained",
     note: "Direct walk-forward order returns exclude each recorded Block/coordination execution multiple; ladder/tape leg semantics remain. Cash, equity and sizing retain the stored weighted results." +
-      (missingMultRows ? ` ${missingMultRows} of ${rows.length} closed orders lack a valid execution multiplier: their stored returns are retained with unknown unit basis.` : "") +
+      (missingMultRows ? ` ${missingMultRows} of ${rows.length} closed orders lack a valid execution multiplier; they require explicit verified unit returns or remain unknown.` : "") +
       (unknownReturns ? ` ${unknownReturns} returns are explicitly unknown or invalid; primary PF is unavailable for any sample containing them.` : "") +
       (!recorded ? " Historical source encoding was not recorded. Archived coverage, variant and preset aggregates are retained, not recomputed or certified as unit returns." : ""),
   };

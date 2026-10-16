@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS live_orders (coid TEXT PRIMARY KEY, cfg TEXT, sym TEX
 CREATE INDEX IF NOT EXISTS live_orders_cfg_kind ON live_orders (cfg, kind);
 -- the time windows of the statistics and the desk report (at >= ?) scan these without an index
 CREATE INDEX IF NOT EXISTS live_orders_at ON live_orders (at);
-CREATE TABLE IF NOT EXISTS live_fills (coid TEXT PRIMARY KEY, sym TEXT, side INTEGER, kind TEXT, qty REAL, ref_px REAL, fill_px REAL, fee REAL, at INTEGER);
+CREATE TABLE IF NOT EXISTS live_fills (coid TEXT PRIMARY KEY, sym TEXT, side INTEGER, kind TEXT, qty REAL, ref_px REAL, fill_px REAL, fee REAL, fee_known INTEGER, at INTEGER);
 CREATE INDEX IF NOT EXISTS live_fills_at ON live_fills (at);
 CREATE TABLE IF NOT EXISTS live_lane_trades (id TEXT NOT NULL, exit_t INTEGER NOT NULL, cfg TEXT NOT NULL, sym TEXT, side INTEGER, entry_t INTEGER, entry REAL, exit REAL, r REAL, reason TEXT, PRIMARY KEY (id, exit_t)) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS live_lane_trades_exit ON live_lane_trades (exit_t);
@@ -75,6 +75,11 @@ function applySchema(db: DatabaseSync) {
   const bookColumns = db.prepare("SELECT name FROM pragma_table_info('paper_book_trades')").all() as Array<{ name: string }>;
   if (!bookColumns.some((column) => column.name === "owned_notional_usd"))
     db.exec("ALTER TABLE paper_book_trades ADD COLUMN owned_notional_usd REAL");
+  // Earlier parsers stored absent commissions as zero. Never reinterpret those
+  // rows as measured free fills; only new parser-confirmed replies set this flag.
+  const fillColumns = db.prepare("SELECT name FROM pragma_table_info('live_fills')").all() as Array<{ name: string }>;
+  if (!fillColumns.some((column) => column.name === "fee_known"))
+    db.exec("ALTER TABLE live_fills ADD COLUMN fee_known INTEGER");
 }
 
 export class CoreDb {

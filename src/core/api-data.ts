@@ -3,8 +3,8 @@
 import { MAX_BACKTEST_DAYS, type CoreSettings } from "./config.ts";
 import { checkMerged, checkSettings } from "./settings-check.ts";
 import { closedPositions, openBook } from "./positions.ts";
-import { statsOf, unitStatsOf } from "./metrics/stats.ts";
-import { returnGroup, unitReturnReport, unitStatsReport, type ReturnStatsReport } from "./reporting-stats.ts";
+import { statsOf, modeledUnitStatsOf as unitStatsOf } from "./metrics/stats.ts";
+import { returnGroup, modeledReturnReport as unitReturnReport, unitStatsReport, type ReturnStatsReport } from "./reporting-stats.ts";
 import { runBlocks, runStable, type WalkForwardResult } from "./sim/walkforward.ts";
 
 type ReturnGroup = ReturnType<typeof returnGroup>;
@@ -1033,8 +1033,9 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
       at: number;
       fill_px: number | null;
       fee: number | null;
+      feeKnown: number | null;
     }>(
-      "SELECT o.coid, o.sym, o.side, o.kind, o.qty, o.px, o.status, o.msg, o.at, f.fill_px, f.fee FROM live_orders o LEFT JOIN live_fills f ON f.coid = o.coid ORDER BY o.at",
+      "SELECT o.coid, o.sym, o.side, o.kind, o.qty, o.px, o.status, o.msg, o.at, f.fill_px, f.fee, f.fee_known AS feeKnown FROM live_orders o LEFT JOIN live_fills f ON f.coid = o.coid ORDER BY o.at",
     );
     const tag = liveTag(r.settings.live.connId);
     trades = liveTrades(

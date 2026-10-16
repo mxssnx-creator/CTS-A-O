@@ -14,10 +14,11 @@ import { guardedStressStats, stressPricingEvidence, unitReturnEvidence } from ".
 import { botStatsFromRows, botFamilyOf, eventBar } from "../src/core/bot-stats.ts";
 import { positiveTypesReport } from "./lib/positive-types-report.mjs";
 
-test("a Block-raised order scores at its unit return; an unsized one as stored", () => {
+test("modeled orders need a recorded multiplier or verified unit return", () => {
   assert.equal(unitR({ r: 0.03, mult: 3 }), 0.01);
   assert.equal(unitR({ r: -0.02, mult: 1 }), -0.02);
-  assert.equal(unitR({ r: 0.015 }), 0.015, "no multiple stored: the return is the unit return");
+  assert.ok(Number.isNaN(unitR({ r: 0.015 })), "missing modeled weighting remains unknown");
+  assert.equal(unitR({ r: 0.015, unitR: 0.015 }), 0.015, "an explicit verified unit return needs no multiplier");
   for (const mult of [0, -1, NaN, Infinity, null, "2"]) assert.ok(Number.isNaN(unitR({ r: 0.015, mult })), `bad multiple ${mult} is unknown`);
   assert.ok(Number.isNaN(unitR({ r: 0.015, mult: 2, unitR: null })), "explicit unknown unit evidence cannot fall back to a raw or divided return");
   assert.equal(unitR({ r: 0.06, mult: 2, unitR: 0.01 }), 0.01, "verified unit evidence is never divided twice");

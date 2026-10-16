@@ -6,6 +6,9 @@ import { laneContributions, liveKv, resetLiveBackoff, stepLive, type ControlStat
 import { ExchangeRejected } from "../exchange/bingx.server.ts";
 import { SimExchange, fakeRt, lane } from "../test-support.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
+import { blockDecide } from "../sim/block.ts";
+import { DEFAULT_BLOCK } from "../config.ts";
+import type { LaneOrder } from "./lane-orders.ts";
 
 process.env.CTS_CORE_LIVE = "1";
 const core = (rt: unknown) => rt as CoreRuntime;
@@ -22,6 +25,118 @@ const gross = (ex: SimExchange) => [...ex.positions].reduce((sum, [key, q]) => s
 
 describe("actual execution account budgets across independent Signal sets", () => {
   afterEach(() => resetLiveBackoff());
+
+  for (const laneOrders of [false, true])
+  it(`Overall Block asks for its total capped target once across repeated native cycles (lane orders ${laneOrders})`, async () => {
+    const { rt, ex, step } = setup();
+    Object.assign(rt.settings.live, { notionalUsd: 25, maxExposureX: 1, laneOrders });
+    const levels = { config: 8, overall: 8, symbol: 8, direction: 8, indication: 8, type: 8 };
+    const d = blockDecide(levels, { ...DEFAULT_BLOCK, mode: "overall", maxMult: 2,
+      sources: { config: true, overall: true, symbol: true, direction: true, indication: true, type: true } }, false);
+    rt.paper.positions = [{ ...lane(sig("s"), "S0-USDT", 1, 10), vol: d.vol, legs: d.legs }];
+    const contributions = laneContributions(core(rt));
+    assert.equal(contributions.length, 7, "all six independent source IDs remain represented beside the base");
+    assert.ok(Math.abs(contributions.reduce((sum, c) => sum + c.vol, 0) - 2) < 1e-12);
+    const place = ex.order.bind(ex);
+    let entries = 0;
+    ex.order = async (p) => {
+      if (p.type === "MARKET" && p.side === "BUY") entries++;
+      return place(p);
+    };
+    for (let i = 0; i < 4; i++) await step();
+    assert.equal(entries, 1, "unchanged target does not add another Block stack each cycle");
+    assert.equal(ex.positions.get("S0-USDT|LONG"), 5, "25 USD base × total cap2 at price10 is5 owned units");
+    assert.ok(gross(ex) <= 50 + 1e-9);
+    if (laneOrders) {
+      const map = Object.values(liveKv<Record<string, LaneOrder>>(rt.db, "laneOrders") ?? {});
+      assert.equal(map.length, 1, "only the exact parent config and common exit are physically coalesced");
+      assert.equal(map[0].qty, 5, "the parent stop covers the whole owned stack");
+      assert.equal(Object.keys(map[0].weights ?? {}).length, 7, "base and all six source allocations remain explicit");
+      assert.ok(Math.abs(Object.values(map[0].weights ?? {}).reduce((sum, w) => sum + w, 0) - 2) < 1e-12);
+      assert.equal(ex.orders.filter((o) => o.type === "STOP_MARKET" && !o.closePosition)[0]?.qty, 5);
+    }
+  });
+
+  for (const laneOrders of [false, true])
+  it(`an unfilled capped Block target reserves its whole stack without repeating or funding a sibling (lane orders ${laneOrders})`, async () => {
+    const { rt, ex, step } = setup();
+    Object.assign(rt.settings.live, { notionalUsd: 25, maxExposureX: .5, laneOrders });
+    const d = blockDecide({ config: 8, overall: 8, symbol: 8, direction: 8, indication: 8, type: 8 },
+      { ...DEFAULT_BLOCK, mode: "overall", maxMult: 2 }, false);
+    rt.paper.positions = [{ ...lane(sig("s"), "S0-USDT", 1, 10), vol: d.vol, legs: d.legs }];
+    const place = ex.order.bind(ex);
+    let entries = 0;
+    ex.order = async (p) => {
+      if (p.type === "MARKET" && p.symbol === "S0-USDT" && p.side === "BUY") {
+        entries++;
+        assert.equal(Number(p.quantity), 5);
+        return { order: { orderId: "block-pending", status: "NEW", executedQty: 0 } };
+      }
+      return place(p);
+    };
+    await step();
+    rt.paper.positions.push(lane(sig("m"), "S1-USDT", 1, 17));
+    for (let i = 0; i < 3; i++) await step();
+    assert.equal(entries, 1, "one unresolved Block entry retains one durable request identity");
+    assert.equal(ex.positions.size, 0, "50 USD pending stack leaves none of the50 USD gross budget for a sibling");
+  });
+
+  it("weighted Block exits do not merge unrelated minimum-sized configs or change their one-unit rule", async () => {
+    const { rt, ex, step } = setup();
+    Object.assign(rt.settings.live, { notionalUsd: 25, laneOrders: true });
+    rt.paper.positions = [lane(sig("s"), "S0-USDT", 1, 10, 9), lane(sig("m"), "S0-USDT", 1, 10, 3)];
+    await step();
+    assert.equal(ex.positions.get("S0-USDT|LONG"), 5, "two independent ordinary configs keep one25USD unit each");
+    const map = Object.values(liveKv<Record<string, LaneOrder>>(rt.db, "laneOrders") ?? {});
+    assert.equal(map.length, 2, "different config identities retain separate physical exits");
+    assert.ok(map.every((x) => x.qty === 2.5));
+  });
+
+  it("a partial weighted Block fill reserves its unfilled remainder and cannot fund a new sibling", async () => {
+    const { rt, ex, step } = setup();
+    Object.assign(rt.settings.live, { notionalUsd: 25, maxExposureX: .5, laneOrders: true });
+    const d = blockDecide({ config: 8, overall: 8, symbol: 8, direction: 8, indication: 8, type: 8 },
+      { ...DEFAULT_BLOCK, mode: "overall", maxMult: 2 }, false);
+    rt.paper.positions = [{ ...lane(sig("s"), "S0-USDT", 1, 10), vol: d.vol, legs: d.legs }];
+    const place = ex.order.bind(ex);
+    let entries = 0;
+    ex.order = async (p) => {
+      if (p.type !== "MARKET" || p.symbol !== "S0-USDT" || p.side !== "BUY") return place(p);
+      entries++;
+      await place({ ...p, quantity: 2.5 });
+      return { order: { orderId: "partial-block", status: "PARTIALLY_FILLED", executedQty: 2.5 } };
+    };
+    await step();
+    rt.paper.positions.push(lane(sig("m"), "S1-USDT", 1, 17));
+    await step();
+    assert.equal(entries, 1);
+    assert.equal(ex.positions.get("S0-USDT|LONG"), 2.5);
+    assert.equal(ex.positions.has("S1-USDT|LONG"), false, "25USD confirmed plus25pending already fills the50USD cap");
+    assert.ok(ex.orders.some((o) => o.type === "STOP_MARKET"), "actual held quantity retains its protective backstop");
+  });
+
+  it("a coalesced Block stop suppresses all its source children while an unrelated held config continues", async () => {
+    const { rt, ex, step } = setup();
+    Object.assign(rt.settings.live, { notionalUsd: 25, laneOrders: true });
+    const d = blockDecide({ config: 8, overall: 8, symbol: 8, direction: 8, indication: 8, type: 8 },
+      { ...DEFAULT_BLOCK, mode: "overall", maxMult: 2,
+        sources: { config: true, overall: true, symbol: true, direction: true, indication: true, type: true } }, false);
+    rt.paper.positions = [{ ...lane(sig("s"), "S0-USDT", 1, 10), vol: d.vol, legs: d.legs },
+      lane(sig("m"), "S0-USDT", 1, 10)];
+    await step();
+    assert.equal(ex.positions.get("S0-USDT|LONG"), 7.5);
+    const physical = Object.values(liveKv<Record<string, LaneOrder>>(rt.db, "laneOrders") ?? {});
+    const block = physical.find((p) => Object.keys(p.weights ?? {}).length === 7)!;
+    assert.ok(block?.s?.oid, "the exact Block parent has its own physical stop");
+    ex.triggerOrder(block.s.oid);
+    assert.equal(ex.positions.get("S0-USDT|LONG"), 2.5, "only the unrelated25USD config remains held");
+    await step();
+    await step();
+    assert.equal(ex.positions.get("S0-USDT|LONG"), 2.5, "no source child reopens its parent after its own stop");
+    const suppressed = liveKv<Record<string, unknown>>(rt.db, "controlSuppressed") ?? {};
+    assert.equal(Object.keys(suppressed).length, 7, "all logical Block allocations share the proven stop exit");
+    assert.equal(Object.keys(liveKv(rt.db, "laneOrders") ?? {}).length, 1, "the unrelated config retains its separate protection");
+  });
 
   for (const gate of ["gross", "risk", "backstop"] as const) {
     for (const outcome of ["refused", "partial", "pending", "confirmed"] as const) {

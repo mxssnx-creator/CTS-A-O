@@ -65,7 +65,7 @@ function fixture(db = new CoreDb(":memory:")) {
       makeCoid(rt.settings.live.connId, "E"), intent.cfg, intent.sym, side, "E", 1, 10, "ok", "seed", Date.now() - 1_000);
   };
   const history = () => liveTrades(rt.db.all<LedgerRow>(
-    "SELECT o.*,f.fill_px AS fillPx,f.fee FROM live_orders o LEFT JOIN live_fills f USING(coid) ORDER BY o.at,o.rowid",
+    "SELECT o.*,f.fill_px AS fillPx,f.fee,f.fee_known AS feeKnown FROM live_orders o LEFT JOIN live_fills f USING(coid) ORDER BY o.at,o.rowid",
   ), liveTag(rt.settings.live.connId).length);
   return { rt, state, step, seed, history };
 }
@@ -289,6 +289,25 @@ describe("entries mode: actual MARKET execution quantities", () => {
     assert.equal(fill.qty, .25);
     assert.equal(fill.fill_px, 10.2);
     assert.equal(fill.fee, .01);
+  });
+
+  it("persists a parser-confirmed zero entry commission through the native journal", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "cts-entry-free-fee-"));
+    const db = new CoreDb();
+    try {
+      db.journalPath = join(dir, "orders.journal");
+      const { state, step } = fixture(db);
+      state.entry.order.commission = 0;
+      await step();
+      const fill = db.get<{ fee: number; fee_known: number }>("SELECT fee,fee_known FROM live_fills WHERE kind='E'")!;
+      assert.deepEqual({ ...fill }, { fee: 0, fee_known: 1 });
+      const restored = new CoreDb();
+      try {
+        restored.journalPath = db.journalPath;
+        restored.replayJournal();
+        assert.deepEqual(restored.get("SELECT fee,fee_known FROM live_fills WHERE kind='E'"), fill);
+      } finally { restored.db.close(); }
+    } finally { db.db.close(); rmSync(dir, { recursive: true, force: true }); }
   });
 
   it("a delayed entry settles on its original id and its actual fill survives into closed-position history", async () => {

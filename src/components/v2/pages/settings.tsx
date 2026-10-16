@@ -2417,7 +2417,7 @@ export function SettingsPage() {
                 onChange={(v) => set(["block", "minActiveLevel"], v)}
               />
             </Field>
-            <Field label="Volume steps" hint="raise in equal steps up to the max multiple (0 = continuous)">
+            <Field label="Volume steps" hint="full steps round down; smaller raises keep their fraction, never above ratio × level (0 = continuous)">
               <Num
                 value={s.block.steps ?? 0}
                 min={0}
@@ -2435,7 +2435,7 @@ export function SettingsPage() {
             </Field>
             <Field
               label="Max stack"
-              hint="volume cap of a raised position (default 8×) · Overall: each source up to max − 1 extra, the stack ≤ 8×"
+              hint="total base + all Block source additions (default 8×) · Overall sources share this cap; additions never compound"
             >
               <Num
                 step={0.1}

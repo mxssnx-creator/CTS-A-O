@@ -2,17 +2,21 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   AutoBlockBook,
+  BLOCK_SOURCES,
   BlockBook,
   blockBookOf,
   blockDecide,
+  blockStackCap,
   bookLevels,
   combineLevels,
   levelOfTail,
   sourcesOf,
   stepRaise,
+  sourceKey,
 } from "./block.ts";
 import {
   blockEntryOf,
+  blockLevel,
   defaultWalkForward,
   execDecision,
   feedBooks,
@@ -41,6 +45,16 @@ describe("Block sources", () => {
     assert.equal(levelOfTail([0.01, 0.01, 0.01], 3, 2), 1, "levels need all n × window closes");
     assert.equal(levelOfTail([0.02, -0.01, 0.01], 3), 2); // n=2 sums to 0 (not > 0)
     assert.equal(levelOfTail([0.02, -0.01, 0.01], 1), 1);
+  });
+
+  it("unknown units and overflow cannot raise a window, while finite shorter windows remain independent", () => {
+    for (const unknown of [NaN, Infinity, -Infinity]) {
+      assert.equal(levelOfTail([.01, unknown], 2), 0, "a latest unknown is retained, never skipped for an older win");
+      assert.equal(levelOfTail([unknown, .01], 2), 1, "only the complete finite last-one window qualifies");
+      assert.equal(levelOfTail([.01, unknown, .01, .01], 2, 2), 1, "the larger pooled window retains its unknown close");
+    }
+    assert.equal(levelOfTail([Number.MAX_VALUE, Number.MAX_VALUE], 2), 1,
+      "overflow in the second window is unknown, not a second winning level");
   });
 
   it("keeps symbol, direction and indication independent", () => {
@@ -238,7 +252,10 @@ describe("Block sources", () => {
       cfg: x.cfg,
       entryT: x.entryT,
     });
-    assert.equal(blockEntryOf({ ...x, mult: undefined }).r, -0.03);
+    for (const mult of [undefined, 0, NaN, Infinity])
+      assert.ok(Number.isNaN(blockEntryOf({ ...x, mult }).r), "unknown modeled units cannot become valid Block evidence");
+    assert.equal(blockEntryOf({ ...x, mult: undefined }, "candidate-unit").r, -0.03,
+      "the explicitly intrinsic raw candidate keeps its own unweighted return");
   });
 });
 
@@ -259,18 +276,106 @@ describe("Block types, Active, steps and pause", () => {
     assert.deepEqual(ad.src, ["overall", "symbol", "direction", "indication"]);
   });
 
+  it("Shared accepts any valid independent source, without requiring a losing or paused sibling to qualify", () => {
+    for (const source of ["overall", "symbol", "direction", "indication"] as const) {
+      const onlyOne = { config: 0, overall: 0, symbol: 0, direction: 0, indication: 0, type: 0, [source]: 3 };
+      const d = blockDecide(onlyOne, { ...ON, mode: "shared", minActiveLevel: 3 }, true);
+      assert.deepEqual(d, { adjusted: true, level: 3, vol: 1.6, src: [source] }, source);
+      const paused = blockDecide(onlyOne, { ...ON, mode: "shared", minActiveLevel: 3 }, true, (s) => s === source);
+      assert.deepEqual(paused, { adjusted: false, level: 0, vol: 1, src: [] }, `${source}: own pause applies`);
+    }
+    const tied = blockDecide({ ...L, overall: 4 }, { ...ON, mode: "shared", minActiveLevel: 4 }, true);
+    assert.equal(tied.vol, 1.8, "two valid sources share one raise, rather than compounding");
+    assert.deepEqual(tied.src, ["overall", "indication"], "each equally strongest source retains its attribution");
+  });
+
+  it("ratio 0.2 adds 20% per passing level before the explicit step grid and one aggregate cap", () => {
+    const levels = { config: 0, overall: 1, symbol: 2, direction: 3, indication: 4, type: 0 };
+    const b = { ...ON, ratio: .2, maxMult: 8, steps: 0 };
+    const shared = blockDecide(levels, { ...b, mode: "shared" }, false);
+    const additive = blockDecide(levels, { ...b, mode: "additive" }, false);
+    const overall = blockDecide(levels, { ...b, mode: "overall" }, false);
+    assert.equal(shared.vol, 1.8);
+    assert.equal(additive.vol, 3);
+    assert.equal(overall.vol, 3);
+    assert.deepEqual(overall.legs, { overall: .2, symbol: .4, direction: .6, indication: .8 });
+    const stepped = blockDecide(levels, { ...b, mode: "overall", steps: 7 }, false);
+    assert.deepEqual(stepped.legs, { overall: .2, symbol: .4, direction: .6, indication: .8 },
+      "sub-step additions retain their requested fractions, never five times the ratio at the first level");
+    assert.equal(stepped.vol, 3);
+  });
+
+  it("ratio 0.2 preserves one valid relation in every mode even when all stronger siblings are paused", () => {
+    for (const source of BLOCK_SOURCES)
+      for (const mode of ["shared", "additive", "overall"] as const) {
+        const levels = Object.fromEntries(BLOCK_SOURCES.map((s) => [s, s === source ? 1 : 8])) as typeof L;
+        const b = { ...ON, ratio: .2, maxLevel: 8, maxMult: 8, steps: 7, minActiveLevel: 1, mode,
+          sources: Object.fromEntries(BLOCK_SOURCES.map((s) => [s, true])) };
+        const d = blockDecide(levels, b, true, (s) => s !== source);
+        assert.equal(d.vol, 1.2, `${mode}/${source}: a 0.2 raise cannot become one full unit`);
+        assert.deepEqual(d.src, [source]);
+        if (mode === "overall") assert.deepEqual(d.legs, { [source]: .2 });
+        assert.equal(blockDecide(levels, b, true, () => true).adjusted, false, "all paused is not valid");
+      }
+  });
+
+  it("step and cap matrix never adds more than the requested ratio or compounds independent source raises", () => {
+    const levels = { config: 1, overall: 2, symbol: 3, direction: 4, indication: 5, type: 8 };
+    const sources = Object.fromEntries(BLOCK_SOURCES.map((s) => [s, true]));
+    for (const mode of ["shared", "additive", "overall"] as const)
+      for (const ratio of [.2, .4, .5])
+        for (const maxMult of [1, 1.0000001, 1.234567, 2, 2.5, 4, 8])
+          for (const steps of [0, 1, 3, 7, 12]) {
+            const b = { ...ON, sources, mode, ratio, maxLevel: 8, maxMult, steps };
+            const d = blockDecide(levels, b, false);
+            const raw = ratio * (mode === "shared" ? Math.max(...Object.values(levels)) : Object.values(levels).reduce((a, x) => a + x, 0));
+            assert.ok(d.vol - 1 <= Math.min(raw, maxMult - 1) + 1e-12,
+              `${mode}/${ratio}/${maxMult}/${steps}: ${d.vol} exceeds the requested additional volume`);
+            for (const source of BLOCK_SOURCES)
+              assert.ok((d.legs?.[source] ?? 0) <= ratio * levels[source] + 1e-12, `${source}: no inflated source leg`);
+            if (mode === "overall") assert.ok(Math.abs(d.vol - 1 - Object.values(d.legs ?? {}).reduce((a, x) => a + (x ?? 0), 0)) < 1e-12);
+          }
+  });
+
+  it("Symbol, Direction and Indication books calculate and stack their own closed candidate relations", () => {
+    const book = new BlockBook();
+    for (const e of [
+      { sym: "A", side: 1, kind: "trend", type: "normal", r: .01 },
+      { sym: "B", side: -1, kind: "osc", type: "trailing", r: -.01 },
+      { sym: "A", side: -1, kind: "trend", type: "normal", r: -.01 },
+      { sym: "B", side: 1, kind: "osc", type: "trailing", r: -.01 },
+      { sym: "A", side: 1, kind: "trend", type: "normal", r: .03 },
+    ]) book.add(e);
+    const own = { sym: "A", side: 1, kind: "trend", type: "normal" };
+    assert.deepEqual(bookLevels(book, own, 3), { overall: 3, symbol: 2, direction: 3, indication: 2, type: 3 });
+    assert.equal(bookLevels(book, { ...own, side: -1 }, 3).symbol, 0, "a losing short relation stays separate");
+    assert.equal(bookLevels(book, { ...own, sym: "B", kind: "osc" }, 3).indication, 0, "another indication's losses remain its own");
+    const levels = { config: 0, ...bookLevels(book, own, 3) };
+    const d = blockDecide(levels, { ...ON, mode: "overall", ratio: .2, steps: 7, maxMult: 8,
+      sources: { config: false, symbol: true, direction: true, indication: true } }, false);
+    assert.deepEqual(d.legs, { symbol: .4, direction: .6, indication: .4 });
+    assert.equal(d.vol, 2.4, "independent additions sum beside one base, rather than multiplying each other");
+    assert.equal(book.sampleCount(sourceKey("symbol", own), 3), 2);
+    assert.equal(book.sampleCount(sourceKey("direction", own), 3), 3);
+    assert.equal(book.sampleCount(sourceKey("indication", own), 3), 2);
+    const before = bookLevels(book, own, 3);
+    feedBooks({ ...own, exitT: 1000, entryT: 0, r: 1000, open: true }, book);
+    assert.deepEqual(bookLevels(book, own, 3), before, "an active open order's unrealized gain cannot qualify a closed-return relation");
+    assert.equal(book.sampleCount(sourceKey("symbol", own), 3), 2, "endpoint marks never inflate the closed-candidate count");
+  });
+
   it("overall: every source (overall, symbol, direction, indication) is its own Block with its own position", () => {
     const ov = blockDecide(L, { ...ON, mode: "overall" }, false);
     assert.deepEqual(ov.legs, { overall: 0.6, symbol: 0.4, direction: 0.2, indication: 0.8 });
     assert.ok(Math.abs(ov.vol - 3) < 1e-9, "1 + 0.6 + 0.4 + 0.2 + 0.8");
     assert.equal(ov.level, 4);
-    // each source is capped on its own (maxMult − 1), the whole stack at 8×
+    // The base and all sources share maxMult; adding sources never bypasses the chosen total cap.
     const big = blockDecide({ ...L, overall: 6, symbol: 6, direction: 6, indication: 6 }, { ...ON, mode: "overall", ratio: 1, maxMult: 3 }, false);
-    // 4 sources × 2 extra = 9× → the stack never exceeds 8×: every source's position shrinks to 1.75
-    assert.deepEqual(big.legs, { overall: 1.75, symbol: 1.75, direction: 1.75, indication: 1.75 });
-    assert.equal(big.vol, 8);
+    // 4 sources × 2 extra = 9× requested → total cap 3×, each extra shrinks to 0.5.
+    assert.deepEqual(big.legs, { overall: 0.5, symbol: 0.5, direction: 0.5, indication: 0.5 });
+    assert.equal(big.vol, 3);
     const legSum = Object.values(big.legs ?? {}).reduce((a, v) => a + (v ?? 0), 0);
-    assert.ok(Math.abs(1 + legSum - big.vol) < 1e-6, "legs shrink in proportion to the 8× cap");
+    assert.ok(Math.abs(1 + legSum - big.vol) < 1e-6, "legs conserve the configured total cap");
     // Active: only sources at the min level or above raise; none → not adjusted
     const act = blockDecide(L, { ...ON, mode: "overall", minActiveLevel: 3 }, true);
     assert.deepEqual(act.legs, { overall: 0.6, indication: 0.8 });
@@ -291,12 +396,100 @@ describe("Block types, Active, steps and pause", () => {
     );
   });
 
-  it("volume steps: the raise moves in equal steps up to maxMult (at least one step); 0 = continuous", () => {
+  it("every source shares the configured total cap, including fractional rounding and repeated decisions", () => {
+    const levels = { config: 8, overall: 8, symbol: 8, direction: 8, indication: 8, type: 8 };
+    const all = Object.fromEntries(Object.keys(levels).map((key) => [key, true]));
+    for (const maxMult of [1, 1.0000001, 1.234567, 2, 2.5, 4, 8]) {
+      const b = { ...ON, sources: all, mode: "overall" as const, maxMult, ratio: 1 };
+      const decision = blockDecide(levels, b, false);
+      assert.ok(decision.vol <= maxMult + 1e-12, `${decision.vol} > total cap ${maxMult}`);
+      const sum = Object.values(decision.legs ?? {}).reduce((a, v) => a + (v ?? 0), 0);
+      assert.ok(Math.abs(1 + sum - decision.vol) < 1e-12, "source orders conserve the base-plus-additions total");
+      assert.deepEqual(blockDecide(levels, b, false), decision, "the target is recalculated from the base, never compounded");
+    }
+    for (const mode of ["shared", "additive", "overall"] as const)
+      assert.deepEqual(blockDecide(levels, { ...ON, mode, maxMult: 1 }, true),
+        { adjusted: false, level: 0, vol: 1, src: [] }, `${mode}: no raise fits at a unit cap`);
+    for (const maxMult of [NaN, Infinity, -1]) assert.equal(blockStackCap({ maxMult }), 1);
+  });
+
+  it("the config level uses only the candidate's own symbol and direction, retaining its losses", () => {
+    const cfg = "follow|sig-ema-cross-s@m5|tp1|sl1|tr0|h32";
+    const row = (sym: string, side: 1 | -1, r: number, exitT: number): Trade => ({
+      cfg, sym, side, r, entryT: exitT - 1, exitT, entry: 100, exit: 100 * (1 + side * r),
+      reason: r > 0 ? "tp" : "sl", bars: 1, mfe: 0, mae: 0, kind: "normal",
+    });
+    const tp = makeTape(cfg, "follow", "sig-ema-cross-s@m5", { tp: .01, sl: .01, trail: 0, hold: 32 },
+      "normal", ["A", "B"], [row("A", -1, -.01, H), row("A", 1, .1, 2 * H),
+        row("B", -1, .1, 3 * H), row("B", 1, .1, 4 * H), row("A", -1, .1, 6 * H)], [], []);
+    assert.equal(blockLevel(tp, 5 * H, ON, { sym: "A", side: -1 }), 0, "sibling wins cannot raise a losing short");
+    assert.equal(blockLevel(tp, 5 * H, ON, { sym: "A", side: 1 }), 1);
+    assert.equal(blockLevel(tp, 5 * H, ON, { sym: "B", side: -1 }), 1);
+    assert.equal(blockLevel(tp, 5 * H, ON, { sym: "C", side: -1 }), 0, "unknown symbol has no level");
+    assert.equal(blockLevel(tp, 7 * H, ON, { sym: "A", side: -1 }), 2, "only a settled own recovery advances this side");
+    const base = defaultWalkForward(DEFAULT_SETTINGS);
+    const o = { ...base, signalValidLastN: 0, lastN: 0, symGate: "off" as const,
+      signalAccept: undefined, signalSideAccept: undefined, signalCluster: undefined,
+      toggles: { ...base.toggles, normal: true, block: true, blockActive: false },
+      block: { ...ON, signalsOwn: true } };
+    const d = execDecision(tp, 5 * H, o, { sym: "A", side: -1 });
+    assert.deepEqual(d, { ok: true, level: 0, vol: 1 }, "signalsOwn applies the same exact-side record in execution");
+    const book = new BlockBook(2);
+    book.add({ cfg, sym: "A", side: -1, kind: "osc", r: .1, bsrc: ["config"] });
+    assert.deepEqual(execDecision(tp, 7 * H, o, { book, sym: "A", side: -1 }),
+      { ok: true, level: 0, vol: 1 }, "signalsOwn still honors its own config pause without reading pooled levels");
+    const long = execDecision(tp, 7 * H, o, { book, sym: "A", side: 1 });
+    assert.ok(long.ok && long.vol > 1, "the short's pause cannot suppress the independent long");
+    const traced = execDecision(tp, 7 * H, { ...o, blockTrace: true }, { book, sym: "A", side: -1 });
+    assert.ok(traced.ok);
+    assert.deepEqual(traced.blockLevels, { config: 2, overall: 0, symbol: 0, direction: 0, indication: 0, type: 0 });
+    assert.deepEqual(traced.blockEffectiveLevels, { config: 0, overall: 0, symbol: 0, direction: 0, indication: 0, type: 0 });
+    assert.deepEqual(traced.blockSampleCounts, { config: 2, overall: 0, symbol: 0, direction: 0, indication: 0, type: 0 });
+  });
+
+  it("Block trace is explicit opt-in and survives native WF sanitization, updates and saved settings", async () => {
+    const { CoreRuntime, sanitizeWf } = await import("../server/runtime.server.ts");
+    const { CoreDb } = await import("../server/db.server.ts");
+    const db = new CoreDb(":memory:");
+    const rt = new CoreRuntime(db, { symbols: 1 }, { market: "synthetic" });
+    assert.equal(rt.wf.blockTrace, undefined);
+    assert.equal(sanitizeWf({ blockTrace: true }).blockTrace, true);
+    assert.equal(sanitizeWf({ blockTrace: "false" as never }).blockTrace, false, "a truthy string cannot enable trace");
+    rt.updateSettings({}, { blockTrace: true });
+    assert.equal(rt.wf.blockTrace, true);
+    assert.equal(db.kvGet<{ blockTrace?: boolean }>("wf")?.blockTrace, true);
+    rt.updateSettings({ block: { ratio: .2 } });
+    assert.equal(rt.wf.blockTrace, true);
+    rt.updateSettings({}, { blockTrace: false });
+    assert.equal(rt.wf.blockTrace, false);
+    assert.equal(rt.status.computes, 0, "the stopped fixture does not start strategy scoring");
+    rt.stop();
+    db.db.close();
+  });
+
+  it("a config pause affects only its own symbol and side, and siblings cannot consume it", () => {
+    const book = new BlockBook(2);
+    const own = { sym: "A", side: 1, kind: "rsi", cfg: "cfg" };
+    book.add({ ...own, r: .01, bsrc: ["config"] });
+    const key = sourceKey("config", own);
+    assert.ok(book.paused(key));
+    for (const other of [{ ...own, side: -1 }, { ...own, sym: "B" }, { ...own, cfg: "other" }]) {
+      assert.equal(book.paused(sourceKey("config", other)), false);
+      book.add({ ...other, r: .01 });
+    }
+    assert.ok(book.paused(key), "sibling closes have not consumed either own pause close");
+    book.add({ ...own, r: -.01 });
+    assert.ok(book.paused(key));
+    book.add({ ...own, r: -.01 });
+    assert.equal(book.paused(key), false);
+  });
+
+  it("volume steps never inflate the raw raise; full steps floor and smaller raises retain their fraction", () => {
     const b: BlockConfig = { ...ON, maxMult: 2.5, steps: 6 }; // step 0.25
-    assert.equal(stepRaise(0.2, b, 1.5), 0.25);
-    assert.equal(stepRaise(0.4, b, 1.5), 0.5);
+    assert.equal(stepRaise(0.2, b, 1.5), 0.2);
+    assert.equal(stepRaise(0.4, b, 1.5), 0.25);
     assert.equal(stepRaise(0.6, b, 1.5), 0.5);
-    assert.equal(stepRaise(0.7, b, 1.5), 0.75);
+    assert.equal(stepRaise(0.7, b, 1.5), 0.5);
     assert.equal(stepRaise(5, b, 1.5), 1.5, "capped");
     assert.equal(stepRaise(0.2, { ...b, steps: 0 }, 1.5), 0.2);
     const d = blockDecide({ ...L, indication: 3, overall: 0, symbol: 0, direction: 0 }, { ...b, mode: "shared" }, false);
@@ -311,7 +504,7 @@ describe("Block types, Active, steps and pause", () => {
     // the symbol source is per direction (long and short run independently): key "s:A|1"
     e(0.01, ["symbol", "config"]);
     assert.ok(book.paused("s:A|1"), "symbol paused");
-    assert.ok(book.paused("c:c1"), "config set paused");
+    assert.ok(book.paused("c:c1|A|1"), "own config, symbol and side paused");
     assert.ok(!book.paused("all"), "overall did not raise it");
     e(0.01); // 1 of 2
     assert.ok(book.paused("s:A|1"));
@@ -410,6 +603,19 @@ describe("AutoBlockBook (windowAuto)", () => {
     window: 1,
     windowCandidates: [1],
   };
+  it("an unknown raised unit return stays in the auto-window sample and cannot become a no-loss score", () => {
+    const b = new AutoBlockBook(alt);
+    for (let i = 0; i < 30; i++) b.add({ ...entry(.01), autoRaise: 1 });
+    assert.equal(b.scores()[0].n, 30);
+    assert.ok((b.scores()[0].pf ?? 0) > 1);
+    b.add({ ...entry(NaN), autoRaise: 1 });
+    assert.deepEqual(b.scores(), [{ window: 1, n: 31, pf: null }], "unknown chronology is retained and blocks PF selection");
+  });
+  it("overflow in known auto-window returns remains an unavailable score, not an infinite winning PF", () => {
+    const b = new AutoBlockBook(alt);
+    for (let i = 0; i < 30; i++) b.add({ ...entry(Number.MAX_VALUE), autoRaise: 1 });
+    assert.deepEqual(b.scores(), [{ window: 1, n: 30, pf: null }]);
+  });
   it("scores each window on its level at the candidate's entry, not at its exit", () => {
     const b = new AutoBlockBook(alt);
     for (let k = 0; k < 100; k++) {

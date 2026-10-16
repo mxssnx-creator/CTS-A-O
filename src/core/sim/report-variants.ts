@@ -9,7 +9,7 @@
 // Neither builds tapes: tactics that shape tapes at build time are listed as "needs a recompute".
 import type { Trade, StrategyToggles } from "../domain/types.ts";
 import type { WalkForwardOptions, CoordSettings } from "./walkforward.ts";
-import { profitFactor, unitStatsOf } from "../metrics/stats.ts";
+import { profitFactor, modeledUnitStatsOf as unitStatsOf } from "../metrics/stats.ts";
 import { typeOf } from "../statistics.ts";
 import {
   controlTargets,
