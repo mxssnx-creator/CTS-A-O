@@ -957,6 +957,7 @@ async function runEngine() {
       preH,
       runH,
       evaluationFromT: evaluationFromT ?? null,
+      marketDataSource: feedFile ? "offline-cached-feed" : recordFile ? "recorded-public-bingx" : "public-bingx",
       tactics: tacticsMode,
       tacticsSet: s.tactics,
       signals: signalsOn,
@@ -2433,6 +2434,12 @@ const hm = (t) => new Date(t).toISOString().slice(11, 16);
 const hourLabel = (h) => (h.partial ? `${hm(h.t)} (partial, ${h.minutes} min)` : hm(h.t));
 /** PF from gross profit / loss: "∞ (no loss)" when nothing lost (the engine's PF_NO_LOSS placeholder is no PF) */
 const pfStr = (gp, gl, n = 1) => (!n ? "–" : !Number.isFinite(gp) || !Number.isFinite(gl) ? "unavailable" : gl > 0 ? f2(gp / gl) : gp > 0 ? "∞ (no loss)" : "–");
+function sessionMarketDataLabel(source) {
+  if (source === "offline-cached-feed") return "Offline replay from the supplied cached candle feed (no market-data requests; simulated orders only)";
+  if (source === "recorded-public-bingx") return "Public BingX 1m market data recorded during this run (simulated orders; no exchange execution proof)";
+  if (source === "public-bingx") return "Public BingX 1m market data (simulated orders; no exchange execution proof)";
+  return "Market-data source not recorded in this session dump";
+}
 const LANES = lanes.map((l) => l.key);
 const tacticsLabel = `tactics ${tacticsMode}`;
 const symAsked = raw.settings.symbolsAsked ?? null;
@@ -2472,7 +2479,8 @@ const sigOn = !!signalsOn;
 const lines = [
   `# Simulated trading session — ${symText}, ${preH} h pre-historic + ${runH} h run (${tacticsLabel}, signals ${sigOn ? "on" : "off"})`,
   ``,
-  `Simulated orders on real BingX 1m data; no exchange execution proof. Timeframe lanes ${report.settings.lanes.join(" / ")} min set (independent + combined; traded: ${LANES.join(", ") || "none"}), strategies ${strategiesOn.join(", ") || "none"}${blockText}${sigOn ? ", signals" : ""}. ` +
+  `${sessionMarketDataLabel(raw.settings.marketDataSource)}. Timeframe lanes ${report.settings.lanes.join(" / ")} min set (independent + combined; traded: ${LANES.join(", ") || "none"}), strategies ${strategiesOn.join(", ") || "none"}${blockText}${sigOn ? ", signals" : ""}. ` +
+    `Signals use the same ${preH} h minimal evaluated history; no additional Signal warmup was loaded. ` +
     `Balance ${usd(balance0)}; ${sizing.mode === "fixed" ? `each order volume unit = ${usd(notional)} notional` : `each order volume unit = ${(sizing.pct * 100).toFixed(1)} % of the realized equity at entry (${usd(report.settings.unitMin)}–${usd(report.settings.unitMax)} before the caps)`} at ${leverage}×; ${(cost * 100).toFixed(2)} % round-trip cost on every close. ` +
     `Window ${new Date(startT).toISOString().slice(0, 16)} → ${new Date(endT).toISOString().slice(0, 16)} UTC. Engine: Base ${E.basePassed}/${E.baseEvaluated} pairs passed${E.baseBuilt ? ` (+${E.baseBuilt} built for measurement, grid.allSets — not validated)` : ""} (incl. signal pairs) — per range, passed / evaluated pairs · median Base PF of the passed pairs: ${baseRangeText(E)}; Main ${E.mainPairs} pairs, ${E.tapes} tapes, ${realText}, compute ${Math.round(E.computeMs / 1000)} s. ${raw.settings.wf?.causalBase ? "Causal: Base / Main / Real ranked on the history before the run." : "Look-ahead: Base / Main / Real ranked on every bar up to the end (the run is partly in-sample)."}`,
   ``,
@@ -3029,12 +3037,13 @@ function renderWriteup(d, dir) {
   const neg = (rows) => rows.filter((r) => r.net < 0).sort((a, b) => a.net - b.net);
   const list = (rows, n = 6) => rows.slice(0, n).map((r) => `${r.key} ${usd(r.net)} (PF ${pf(r)}, ${r.n} orders)`).join(" · ") || "none";
   const s = d.settings;
+  const marketDataText = sessionMarketDataLabel(s.marketDataSource);
   return [
     `# ${s.runH} h simulated session — ${d.symbols.length} symbols, ${s.preH} h pre-historic + ${s.runH} h run${s.desk ? ", desk settings" : ""}`,
     ``,
-    `Real BingX 1m data (public market data only; simulated orders, no exchange execution proof), the engine itself (Base → Main → Real over the ${s.lanes.join(" / ")} min lanes), ` +
+    `${marketDataText}, the engine itself (Base → Main → Real over the ${s.lanes.join(" / ")} min lanes), ` +
       `pre-historic ${hmd(d.window.preStartT)} → ${hmd(d.window.startT)} UTC, run ${hmd(d.window.startT)} → ${hmd(d.window.endT)} UTC. ` +
-      `Symbols: ${d.symbols.join(", ")}.`,
+      `Signals use the same ${s.preH} h minimal evaluated history; no additional Signal warmup was loaded. Symbols: ${d.symbols.join(", ")}.`,
     ``,
     sessionQualificationEvidence(d.evidence?.qualification).note,
     d.evidence?.returns?.note ?? sessionReturnEvidence({}).note,
