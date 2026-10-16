@@ -37,6 +37,7 @@ import {
   WIDE_TARGET_SL,
 } from "../minimal-coord.ts";
 import { microSpecs, type MicroIndRule } from "../indications/micro.ts";
+import { isBreakRelInd } from "../indications/break-config.ts";
 import { sharedFeed } from "../market/shared-feed.ts";
 import { catchUp } from "./loop-budget.ts";
 import { evalFamilyMatch, familiesNarrowBase, familyTags, parseEvalFamilies, type EvalFamily } from "../eval-family.ts";
@@ -252,8 +253,48 @@ const PENDING_STATUS_MS = 30_000;
  */
 const CONTROL_IDLE_MS = Number(process.env.CTS_CORE_CONTROL_IDLE_MS) || 1_000;
 const CONTROL_TRAIL_MS = 250;
-/** the realtime entry step (fastStep): on with CTS_CORE_FAST_ENTRIES=1 (x02 first, then x01 once its parity holds) */
-const FAST_ENTRIES = process.env.CTS_CORE_FAST_ENTRIES === "1";
+/**
+ * Realtime entries are Break-only by default. `1` enables every selected indication; `0`/`off` disables this path.
+ * This keeps the new Break live path scoped while leaving the existing broad rollout explicitly operator-controlled.
+ */
+export type FastEntryMode = "off" | "break" | "all";
+export function fastEntryMode(raw = process.env.CTS_CORE_FAST_ENTRIES): FastEntryMode {
+  const x = raw?.trim().toLowerCase();
+  if (x === "1" || x === "all") return "all";
+  if (x === "0" || x === "off") return "off";
+  if (x === "break") return "break";
+  return x ? "off" : "break";
+}
+const FAST_ENTRY_MODE = fastEntryMode();
+const FAST_ENTRIES = FAST_ENTRY_MODE !== "off";
+export function fastEntryLaneDue(ind: string, barOpenT: number, baseTfMin: number, mode = FAST_ENTRY_MODE): boolean {
+  return mode !== "off" && (mode === "all" || isBreakRelInd(ind)) &&
+    laneClosesWith(barOpenT, baseTfMin, laneOf(ind).tf ?? baseTfMin);
+}
+/** Replace refreshed tape identities while preserving all unrelated tapes. */
+export function mergeFastTapes<T extends { id: string }>(current: readonly T[], refreshed: readonly T[]): T[] {
+  if (!refreshed.length) return current as T[];
+  const byId = new Map(refreshed.map((x) => [x.id, x] as const));
+  let changed = false;
+  const next = current.map((x) => {
+    const y = byId.get(x.id);
+    if (!y) return x;
+    changed = true;
+    return y;
+  });
+  return changed ? next : (current as T[]);
+}
+/** Exchange candles are already filtered to closed bars; allow two seconds for final publication. */
+const KLINE_FINALITY_MS = 2_000;
+const FAST_BAR_MAX_DELAY_MS = 15_000;
+/** A 1m Base candle after its close plus the exchange publication grace is ready to pull. */
+export function realtimeBarDue(lastOpenT: number, nowT: number, tfMin: number): boolean {
+  return Number.isFinite(lastOpenT) && Number.isFinite(nowT) && tfMin > 0 &&
+    lastOpenT + tfMin * 60_000 + KLINE_FINALITY_MS <= nowT;
+}
+export function fastBarFresh(barCloseT: number, nowT: number, maxDelayMs = FAST_BAR_MAX_DELAY_MS): boolean {
+  return Number.isFinite(barCloseT) && Number.isFinite(nowT) && nowT >= barCloseT && nowT - barCloseT <= maxDelayMs;
+}
 /** its bar tail: the longest hold a position blocks a re-entry for (signals 48 h), and the indicators' warm-up bars */
 const FAST_TAIL_H = 48;
 const FAST_WARMUP_BARS = 200;
@@ -429,7 +470,7 @@ export interface RuntimeStatus {
    * the realtime entry step's last run (CTS_CORE_FAST_ENTRIES): the bar it ran on, its time, the seated configs it
    * rebuilt, their open positions on the current bars, and how many the paper book took
    */
-  fast?: { at: number; bar: number; ms: number; seated: number; open: number; added: number; error: string | null };
+  fast?: { at: number; bar: number; ms: number; delayMs?: number; seated: number; open: number; added: number; error: string | null };
   /** the last event-loop stalls over 150 ms, with what was running (the live tick waits behind them) */
   stalls?: Array<{ at: number; ms: number; where: string }>;
   /** the last probed stalls (CTS_CORE_STALL_PROBE=1): what the main thread did during each (stall-probe.server.ts) */
@@ -1147,18 +1188,35 @@ export class CoreRuntime {
   }
 
   /**
-   * The realtime entry step (CTS_CORE_FAST_ENTRIES=1): on every newly closed bar — also while a compute runs — the
-   * seated configs are rebuilt on a short tail of the current bars (a priority worker message: never behind the
-   * compute's messages; onlyIds: only those configs) and the paper book takes their new positions with the same entry
-   * rules as the paper step (stepPaperGen fast mode). Between two computes the book took no entry for 9–18 min: the
-   * orders that opened and closed in between were never executed (x01 1,377 at PF 2.19; x02 6,298 at PF 1.59).
+   * The realtime entry step (Break-only by default; CTS_CORE_FAST_ENTRIES=1 selects all types): on each new closed
+   * lane bar — also while a compute runs — seated configs are rebuilt on a short tail in a priority worker (onlyIds)
+   * and their tape refresh is published to both live modes before the paper book takes positions with the usual gates.
    */
   private async fastStep(): Promise<void> {
     const a = this.fastArgs;
-    if (!a || this.fastBusy || this.fastHold || this.paperRunning || !this.paperStepped || !this.sim || !this.lastSelection) return;
+    if (this.replay || !a || this.fastBusy || this.fastHold || this.paperRunning || !this.paperStepped || !this.sim || !this.lastSelection) return;
     const bar = this.status.lastBarT;
     if (!(bar > this.fastBarDone)) return;
-    if (!workersAvailable() || this.workersBroken) return;
+    const barEnd = bar + this.settings.tfMin * 60_000;
+    const startAt = Date.now();
+    if (!fastBarFresh(barEnd, startAt)) {
+      this.fastBarDone = bar;
+      this.status.fast = {
+        at: startAt, bar, ms: 0, delayMs: Math.max(0, startAt - barEnd),
+        seated: 0, open: this.paper.positions.length, added: 0,
+        error: "closed candle is stale; late entry suppressed",
+      };
+      return;
+    }
+    if (!workersAvailable() || this.workersBroken) {
+      this.fastBarDone = bar;
+      this.status.fast = {
+        at: startAt, bar, ms: 0, delayMs: Math.max(0, startAt - barEnd),
+        seated: 0, open: this.paper.positions.length, added: 0,
+        error: "priority worker unavailable; full compute path remains active",
+      };
+      return;
+    }
     this.fastBusy = true;
     const gen = this.gen;
     const t0 = performance.now();
@@ -1170,11 +1228,16 @@ export class CoreRuntime {
       for (const id of this.paper.selected ?? []) {
         const tp = byId.get(id);
         if (!tp) continue;
+        // Break-only mode keeps the new path scoped; a 5m/15m config runs only at its own candle close.
+        if (!fastEntryLaneDue(tp.ind, bar, s.tfMin, FAST_ENTRY_MODE)) continue;
         const k = isSignalInd(tp.ind) ? "sig" : "main";
         ids[k].add(id);
         pairs[k].add(`${tp.bot}|${tp.ind}`);
       }
-      if (!ids.main.size && !ids.sig.size) return;
+      if (!ids.main.size && !ids.sig.size) {
+        this.fastBarDone = bar;
+        return;
+      }
       // the tail: FAST_TAIL_H of history (a position held that long still blocks a re-entry, as in the full tapes)
       // plus the slowest lane's indicator and tactic warm-up
       const maxTf = Math.max(...(s.tfs ?? [s.tfMin]));
@@ -1206,9 +1269,21 @@ export class CoreRuntime {
           });
       const res = await runOnWorkers<{ tapes: ConfigTape[] }>(msgs, poolSize(), 120_000, undefined, true);
       if (gen !== this.gen || this.fastHold || this.paperRunning) return;
+      if (!fastBarFresh(barEnd, Date.now())) {
+        this.fastBarDone = bar;
+        this.status.fast = {
+          at: Date.now(), bar, ms: Math.round(performance.now() - t0), delayMs: Math.max(0, Date.now() - barEnd),
+          seated: ids.main.size + ids.sig.size, open: this.paper.positions.length, added: 0,
+          error: "closed candle aged out during processing; late entry suppressed",
+        };
+        return;
+      }
+      // Publish refreshed seated tapes as well as paper opens: Entries mode reads pending from tapes; Overall mode
+      // reads the positions below. Without both, only one live mode saw the fast result.
+      const refreshed = res.flatMap((r) => r.tapes);
+      if (refreshed.length) this.tapes = mergeFastTapes(this.tapes, refreshed);
       // the rebuilt configs' open positions, and their signals on a lane bar that closed now as entries at the open of
       // the bar that starts (as the simulation enters them: next open) — not one lane bar later at a moved price
-      const barEnd = bar + s.tfMin * 60_000;
       const priceOf = (sym: string) => this.stream?.price(sym) ?? this.candles.get(sym)?.lastC();
       const opens = new Map<string, OpenPosition[]>();
       for (const r of res)
@@ -1226,6 +1301,7 @@ export class CoreRuntime {
         at: Date.now(),
         bar,
         ms: Math.round(performance.now() - t0),
+        delayMs: Math.max(0, Date.now() - barEnd),
         seated: ids.main.size + ids.sig.size,
         open: n,
         added: this.paper.positions.length - before,
@@ -1292,7 +1368,7 @@ export class CoreRuntime {
     const t0 = performance.now();
     try {
       this.marketLoop();
-      if (FAST_ENTRIES) void this.fastStep();
+      if (FAST_ENTRIES && !this.replay) void this.fastStep();
       // follow the universe with the price stream
       const syms = this.status.symbols;
       const key = syms.join(",");
@@ -1922,6 +1998,7 @@ export class CoreRuntime {
     try {
       if (this.resetUniverse) {
         this.resetUniverse = false;
+        this.fastBarDone = 0;
         this.candles.clear();
         this.backfillKey = "";
         this.staleUntil.clear();
@@ -2344,7 +2421,7 @@ export class CoreRuntime {
         : [...this.candles.entries()].filter(([sym, cs]) => {
             const last = cs.lastT() ?? 0;
             return (
-              last + 2 * tfMs <= now &&
+              realtimeBarDue(last, now, s.tfMin) &&
               now - last <= 300 * tfMs &&
               now - (this.klinesAt.get(sym) ?? 0) >= 1_000
             );
@@ -3554,14 +3631,14 @@ export class CoreRuntime {
     if (gen === this.gen && settingsAt === this.status.settingsAt) {
       const isMeasuredIndication = (ind: string) => {
         const base = laneOf(ind).base;
-        return base.startsWith("tactic-") || base.startsWith("relate-");
+        return base.startsWith("tactic-") || base.startsWith("relate-") || base.startsWith("break-rel-") || base.startsWith("break-mc-rel-");
       };
       const measuredRuns = pipeline.s1.filter((r) => isMeasuredIndication(r.ind));
       const countPairs = allCombos(baseFocus(s), s.disabledKinds, s.tfs, microLaneFloor(s.grid))
         .filter((r) => isMeasuredIndication(r.ind)).map((r) => `${r.bot}|${r.ind}`);
       const admittedPairKeys = passed.filter((r) => isMeasuredIndication(r.ind) && setsPassTags(r, setsGates, applies, ALL_RANGE_TAGS).length > 0).map((r) => `${r.bot}|${r.ind}`);
       const kinds = (["normal", "trailing", "dca", "dca-active", "axis"] as const).filter((kind) => kindExecutable(kind, wf.toggles));
-      const enabled = ["tactic", "relate"].some((kind) => !s.disabledKinds?.includes(kind));
+      const enabled = ["tactic", "relate", "break"].some((kind) => !s.disabledKinds?.includes(kind));
       const reason = !enabled ? "typeDisabled" : !countPairs.length ? "focusExcluded" : !kinds.length ? "strategiesDisabled" : !measuredRuns.length ? "noBaseHistory" : !admittedPairKeys.length ? "representativesNotAdmitted" : undefined;
       // All configured range cells are measured. Base representative target/range pruning is not a substitute
       // for evaluating the other cells; only structural lane/Micro/horizon rules remain, with explicit skip counts.
@@ -5749,7 +5826,7 @@ export class CoreRuntime {
       let g = lvMemo.get(mk);
       // without an explicit live floor every config is held to its own range's minimum (as at the stages)
       const stageMin = minPfOf(this.settings.gates, x.protect.tag, x.ind);
-      const minPf = x.ind.startsWith("tactic-") || x.ind.startsWith("relate-")
+      const minPf = x.ind.startsWith("tactic-") || x.ind.startsWith("relate-") || x.ind.startsWith("break-rel-") || x.ind.startsWith("break-mc-rel-")
         ? Math.max(stageMin, this.settings.live.liveMinPf ?? stageMin)
         : this.settings.live.liveMinPf ?? stageMin;
       if (!g) {

@@ -3,6 +3,7 @@
 import { after, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { CoreRuntime } from "./runtime.server.ts";
+import { fastBarFresh, fastEntryLaneDue, fastEntryMode, mergeFastTapes } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
 import { SIGNAL_SOURCES, signalSettings } from "../signal-config.ts";
 import type { OpenPosition } from "../domain/types.ts";
@@ -34,6 +35,39 @@ const until = async (c: () => boolean, ms = 900_000) => {
 };
 
 describe("realtime entry step", { timeout: 1_200_000 }, () => {
+  it("defaults to selected Break only and gates 5m/15m refreshes on their own closes", () => {
+    const t0 = Date.UTC(2026, 9, 16, 12, 0);
+    assert.equal(fastEntryMode(""), "break");
+    assert.equal(fastEntryMode("break"), "break");
+    assert.equal(fastEntryMode("1"), "all");
+    assert.equal(fastEntryMode("off"), "off");
+    assert.equal(fastBarFresh(t0, t0), true);
+    assert.equal(fastBarFresh(t0, t0 + 15_000), true);
+    assert.equal(fastBarFresh(t0, t0 + 15_001), false, "late closed bars are not entered after the live window");
+    assert.equal(fastBarFresh(t0, t0 - 1), false, "future close timestamps are ignored");
+    assert.equal(fastEntryLaneDue("break-rel-don-1-dd24-guarded@m1", t0, 1, "break"), true);
+    assert.equal(fastEntryLaneDue("break-rel-don-5-dd24-guarded@m5", t0 + 3 * 60_000, 1, "break"), false);
+    assert.equal(fastEntryLaneDue("break-rel-don-5-dd24-guarded@m5", t0 + 4 * 60_000, 1, "break"), true);
+    assert.equal(fastEntryLaneDue("break-rel-don-15-dd24-guarded@m15", t0 + 13 * 60_000, 1, "break"), false);
+    assert.equal(fastEntryLaneDue("break-rel-don-15-dd24-guarded@m15", t0 + 14 * 60_000, 1, "break"), true);
+    assert.equal(fastEntryLaneDue("trend-ema@m1", t0, 1, "break"), false);
+    assert.equal(fastEntryLaneDue("trend-ema@m1", t0, 1, "all"), true);
+  });
+
+  it("publishes refreshed pending tapes without replacing unrelated identities", () => {
+    const pendingA = { id: "follow|break-rel-don-1-dd24-guarded", pending: [{ sym: "AAA-USDT", side: 1 }] };
+    const oldA = { ...pendingA, pending: [] };
+    const keep = { id: "follow|ema-21-55", pending: [] };
+    const current = [oldA, keep];
+    const refreshed = { ...pendingA, pending: [{ sym: "AAA-USDT", side: -1 }] };
+    const next = mergeFastTapes(current, [refreshed]);
+    assert.equal(next[0], refreshed);
+    assert.equal(next[1], keep);
+    assert.equal(oldA.pending.length, 0, "the in-flight full compute's tape stays immutable");
+    assert.deepEqual(next[0].pending, [{ sym: "AAA-USDT", side: -1 }], "Entries mode reads the newest closed-bar signal");
+    assert.equal(mergeFastTapes(current, []).length, current.length);
+  });
+
   it("adds nothing the full step decided, and re-takes a fresh position with the same rules", async () => {
     const rt = new CoreRuntime(new CoreDb(":memory:"), small as never, { market: "synthetic" });
     rts.push(rt);

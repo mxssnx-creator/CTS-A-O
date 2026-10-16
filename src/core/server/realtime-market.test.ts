@@ -2,7 +2,7 @@
 // paper / live side and the realtime entry step see the current market, and the next cycle computes on them.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { CoreRuntime, type MarketFeed } from "./runtime.server.ts";
+import { CoreRuntime, realtimeBarDue, type MarketFeed } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
 import { syntheticCandles } from "../market/bars.ts";
 import { CandleSeries } from "../market/candle-series.ts";
@@ -10,6 +10,16 @@ import { CandleSeries } from "../market/candle-series.ts";
 const M = 60_000;
 
 describe("realtime market loop", () => {
+  it("polls a finalized candle after a short publication grace, not after a second full timeframe", () => {
+    const t = Date.UTC(2026, 9, 16, 12, 0);
+    assert.equal(realtimeBarDue(t, t + M + 1_999, 1), false);
+    assert.equal(realtimeBarDue(t, t + M + 2_000, 1), true);
+    assert.equal(realtimeBarDue(t, t + 2 * M, 1), true);
+    assert.equal(realtimeBarDue(t, t + 60_000 + 2_000, 5), false);
+    assert.equal(realtimeBarDue(t, t + 5 * M + 2_000, 5), true);
+    assert.equal(realtimeBarDue(t, t + M + 2_000, 0), false);
+  });
+
   it("pulls closed bars during a compute, marks them for the next cycle, and never two pulls at once", async () => {
     const now = Math.floor(Date.now() / M) * M;
     let calls = 0;
