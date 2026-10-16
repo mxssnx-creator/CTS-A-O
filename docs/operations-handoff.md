@@ -633,3 +633,15 @@ The offline session uses the cached candle feed through 2026-10-15 04:00 UTC and
 - Checks: 383 focused strategy/Block/Signal/promotion tests and 143 balance/sizing tests passed; typecheck also passes after the report changes. The offline session itself completed in 12 seconds; its consistency report is 55/64 because the aforementioned ranges and Signals have no configs/orders in six hours.
 
 GitHub state at this checkpoint: PR #142 is merged into current `main`; there are no open issues. Draft PR #132 remains unrelated and was not merged.
+
+## Signals Coordination (Type) — 2026-10-16
+
+Implementation is on `feat/signals-coordination-20261016` (review PR pending). It adds five independent domination thresholds (60%, 65%, 70%, 75%, 80%) across enabled source pools and Short-only, Medium-only and combined source parameter inputs. Each source contributes at most one directional vote per bar; conflicting Short/Medium variants abstain, and quiet sources do not dilute the ratio. The default minimum is three active votes. Each threshold/input mix/lane remains a separate indication and strategy-PF identity, with a separate active-unit cap from classic Signals.
+
+Coordinator protection configs are built only for the selected Short, Normal/General and Long exit ranges. Historical signal protection calculations are attached to each available range tag, and open coordinator configs retain their exact lane distances and range tag across range/grid changes. The backtest, worker tape build, realtime fast-entry path, simulation guard, live exchange acceptance, order tracking and statistics all handle the coordinator identity. Exchange client-order IDs retain the selected range letter; persisted config IDs retain the ratio/input/source pool and protect tag.
+
+Verification uses synthetic fixtures only. The runtime smoke built all 15 coordinator pairs for the selected lane and reported 12,960 coordinator range/history configs; none met the active validation gate, so coordinator orders were zero and return PF was 0 (no hourly sample). This is not market evidence and does not show positive results or hourly success. The implementation uses the existing historical-calculation path when runtime candle history is available, but no fresh held-out coordinator replay or live execution check was performed. Do not relax the PF/sample gates based on the synthetic smoke.
+
+Code verification: `npm run typecheck`, `npm run build:dev`, and lint for the new coordinator module/tests passed. Focused signal/statistics tests passed 108/108; range/gating tests passed 38/38; API reporting, execution quantity, and journal tests passed 55/55. The long runtime coordination suite completed successfully, including stop/restart, held-position, order-close and concurrency checks. An earlier combined run had one failure because it had already loaded the old range-floor test fixture before its correction; the corrected range/gating suite passes on a fresh process.
+
+No exchange credentials were used and no live orders were placed. Preserve the existing return-PF and execution-proof requirements before any live promotion.

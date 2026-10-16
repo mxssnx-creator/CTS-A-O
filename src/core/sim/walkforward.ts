@@ -93,6 +93,7 @@ import {
   type BlockSource,
 } from "./block.ts";
 import { S2Coord } from "./s2coord.ts";
+import { isSignalCoordinationInd } from "../signal-coordination.ts";
 import { botFamilyOf } from "../bot-stats.ts";
 import { INDICATION_BY_ID, isSignalInd, laneOf, signalSourceOf } from "../indications/registry.ts";
 import { isMicroInd, microIndFits, type MicroIndRule } from "../indications/micro.ts";
@@ -2540,6 +2541,8 @@ export function feedBooks(e: BlockFeedEntry, book: BlockBook | null, guard?: Sig
   if (book && (!book.acceptedOnly || e.accepted === true)) book.add(e);
   // keyed by the candidate's config (the same key execDecision checks); the exit time feeds the loss-cluster guard
   if (guard && e.ind && isSignalInd(e.ind)) {
+    const coordination = isSignalCoordinationInd(e.ind);
+    const population = coordination ? "coordination" : "signals";
     // the signal entry the close belongs to: its k configs count once in the loss cluster and the acceptance counts
     const onset =
       e.entryT !== undefined ? `${e.ind}|${e.sym}|${e.side > 0 ? 1 : -1}|${e.entryT}` : undefined;
@@ -2549,9 +2552,10 @@ export function feedBooks(e: BlockFeedEntry, book: BlockBook | null, guard?: Sig
       e.exitT,
       e.side,
       onset,
+      population,
     );
     guard.addAccept(acceptKey(e.ind, e.sym, e.side, e.type ?? "normal"), e.r, e.exitT, onset);
-    guard.addAccept(sideAcceptKey(e.side), e.r, e.exitT, onset);
+    guard.addAccept(sideAcceptKey(e.side, coordination), e.r, e.exitT, onset);
   }
 }
 
@@ -3846,7 +3850,8 @@ export function execDecision(
     )
       return { ok: false, why: "signalGuard" };
     // the loss cluster of this direction only (a cluster of losing shorts never pauses the longs)
-    if (o.signalCluster?.enabled && ctx.guard?.clustered(entryT, o.signalCluster, ctx.side))
+    const coordination = isSignalCoordinationInd(tp.ind);
+    if (o.signalCluster?.enabled && ctx.guard?.clustered(entryT, o.signalCluster, ctx.side, coordination ? "coordination" : "signals"))
       return { ok: false, why: "signalCluster" };
     if (
       o.signalAccept?.enabled &&
@@ -3862,7 +3867,7 @@ export function execDecision(
       ctx.guard &&
       !o.probe?.perRange &&
       !o.probe?.perCell &&
-      !ctx.guard.accepts(sideAcceptKey(ctx.side), entryT, o.signalSideAccept)
+      !ctx.guard.accepts(sideAcceptKey(ctx.side, coordination), entryT, o.signalSideAccept)
     )
       return { ok: false, why: "signalSide" };
     // the validation an engine config needs for its seat (min PF, DDT and DDR), on the signal's own last N

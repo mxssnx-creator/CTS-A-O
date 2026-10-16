@@ -8,6 +8,7 @@ import type { LiveSettings } from "../config.ts";
 import { sigCfg } from "../sim/walkforward.ts";
 import { rangeOfId } from "../minimal-coord.ts";
 import type { RangeTag } from "../domain/types.ts";
+import { isSignalCoordinationInd } from "../signal-coordination.ts";
 
 export const LIVE_TAG: Record<LiveSettings["connId"], string> = {
   "bingx-x01": "CTSBX1_",
@@ -45,6 +46,11 @@ export type EntryKind = "E" | "U" | "M" | "N" | "H" | "G" | "L" | "Q";
  * their own letter their live closes landed in Wide), else "E" (the wide grid or a mix).
  */
 export function entryCoidKind(cfg: string | undefined): EntryKind {
+  const ind = cfg?.split("|")[1] ?? "";
+  if (isSignalCoordinationInd(ind)) {
+    const range = rangeOfId(cfg);
+    if (range) return RANGE_COID[range];
+  }
   if (cfg && sigCfg(cfg)) return "Q";
   const r = rangeOfId(cfg);
   return r ? RANGE_COID[r] : "E";

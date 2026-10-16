@@ -736,6 +736,23 @@ export function checkSettings(s: Partial<CoreSettings>) {
       num(g.cluster.lossShare, 0.3, 1, "loss-cluster loss share");
       int(g.cluster.minLosses, "loss-cluster min losses");
     }
+    if (g.coordination) {
+      const c = g.coordination;
+      bool(c.enabled, "signals coordination");
+      num(c.minSources, 2, 100, "signals coordination minimum sources");
+      int(c.minSources, "signals coordination minimum sources");
+      if (c.count !== 0) {
+        num(c.count, 10, 2000, "active coordination units");
+        if (c.count % 10 !== 0) throw new Error("active coordination units: steps of 10");
+      }
+      if (c.ranges) {
+        bool(c.ranges.short, "coordination Short range");
+        bool(c.ranges.normal, "coordination Normal range");
+        bool(c.ranges.long, "coordination Long range");
+        if (c.enabled && c.ranges.short === false && c.ranges.normal === false && c.ranges.long === false)
+          throw new Error("signals coordination: at least one exit range");
+      }
+    }
     if (g.accept) {
       bool(g.accept.enabled, "signal PF acceptance");
       num(g.accept.minPf, 1, 5, "signal acceptance minimum PF");

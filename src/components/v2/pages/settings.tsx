@@ -212,11 +212,25 @@ export function SignalsSettings(props: {
   signals: Any;
   set: (path: string[], v: unknown) => void;
   status?: Any;
+  grid?: Any;
 }) {
   const g = { ...DEFAULT_SIGNALS, ...(props.signals ?? {}) } as Any;
   const guard = { ...DEFAULT_SIGNALS.guard, ...(g.guard ?? {}) };
   const cluster = { ...DEFAULT_SIGNALS.cluster, ...(g.cluster ?? {}) };
   const ranges = { ...DEFAULT_SIGNALS.ranges, ...(g.ranges ?? {}) };
+  const coordination = {
+    ...DEFAULT_SIGNALS.coordination,
+    ...(g.coordination ?? {}),
+    ranges: { ...DEFAULT_SIGNALS.coordination.ranges, ...(g.coordination?.ranges ?? {}) },
+  };
+  const coordGridKeys = { short: "short", normal: "general", long: "long" } as const;
+  const coordRangeAvailable = (range: keyof typeof coordGridKeys) => {
+    if (!props.grid) return true;
+    const x = props.grid[coordGridKeys[range]];
+    return !!x && x !== false && (x.tp?.length ?? 0) > 0;
+  };
+  const coordRangeKeys = ["short", "normal", "long"] as const;
+  const availableCoordRanges = coordRangeKeys.filter(coordRangeAvailable);
   const normal = { ...DEFAULT_SIGNALS.normal, ...(g.normal ?? {}) };
   const trailing = { ...DEFAULT_SIGNALS.trailing, ...(g.trailing ?? {}) };
   const trailingOnly = { ...DEFAULT_SIGNALS.trailingOnly, ...(g.trailingOnly ?? {}) };
@@ -254,6 +268,9 @@ export function SignalsSettings(props: {
                 : ""}
             {st.openPositions !== undefined
               ? ` · open now ${st.openPositions} / ${st.openOrders}`
+              : ""}
+            {st.coordinationOrders !== undefined
+              ? ` · coordination orders ${fmt.num(st.coordinationOrders)} (PF ${fmt.num(st.coordinationPf)} · net ${fmt.num(st.coordinationNet)})`
               : ""}
             {st.disabled ? ` · ${st.disabled} guarded` : ""}
           </span>
@@ -403,7 +420,7 @@ export function SignalsSettings(props: {
         </Field>
       </div>
       <div className="v2-grid v2-cols-4">
-        <Field label="Ranges">
+        <Field label="Source parameter ranges" hint="Short / Medium inputs used by classic sources and by the independent coordinator variants">
           <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
             {(["short", "medium"] as const).map((r) => (
               <span key={r} style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
@@ -413,7 +430,7 @@ export function SignalsSettings(props: {
                   disabled={!!ranges[r] && !ranges[r === "short" ? "medium" : "short"]}
                   onChange={(v) => set(["ranges", r], v)}
                 />
-                {r}
+                {r === "short" ? "Short" : "Medium"}
               </span>
             ))}
           </div>
@@ -734,6 +751,68 @@ export function SignalsSettings(props: {
       </div>
       <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
         {counts.total} percent / ATR / trailing-only configs per signal ({counts.pct} percent + {counts.atr} ATR + {counts.trailingOnly} trailing only, TP None), each run independently per full source, range, lane, type, symbol and direction. Master Trailing controls execution of both trailing types; disabled sets still retain held-position protection.
+      </div>
+      <div style={{ borderTop: "1px solid var(--v-border)", paddingTop: 10 }}>
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
+          <Switch
+            label="Signals Coordination processing"
+            checked={coordination.enabled}
+            disabled={availableCoordRanges.length === 0}
+            onChange={(v) => {
+              if (v && !coordRangeKeys.some((range) => coordination.ranges[range] && coordRangeAvailable(range))) {
+                const first = availableCoordRanges[0];
+                if (first) set(["coordination", "ranges", first], true);
+              }
+              set(["coordination", "enabled"], v);
+            }}
+          />
+          <strong>Signals Coordination (Type)</strong>
+          <span className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
+            {coordination.enabled
+              ? `${fmt.num(st?.coordinationPairs ?? 0)} pairs · ${fmt.num(st?.coordinationConfigs ?? 0)} range/history configs · ${fmt.num(st?.coordinationActive ?? 0)} active units${st?.coordinationOrders !== undefined ? ` · ${fmt.num(st.coordinationOrders)} orders · PF ${fmt.num(st.coordinationPf)}` : ""}`
+              : "Off"}
+          </span>
+        </div>
+        <div className="v2-grid v2-cols-4">
+          <Field label="Domination ratios" hint="each threshold is an independent config; one source contributes at most one vote per bar">
+            <div className="v2-muted">60% · 65% · 70% · 75% · 80%</div>
+          </Field>
+          <Field label="Minimum active sources" hint="minimum non-conflicting directional votes required on the bar">
+            <Num int value={coordination.minSources} min={2} max={SIGNAL_SOURCES.length} onChange={(v) => set(["coordination", "minSources"], v)} />
+          </Field>
+          <Field label="Active coordination units" hint="independent cap for pair × strategy × symbol × direction · 0 = no cap">
+            <select className="v2-select" aria-label="Active coordination units" value={coordination.count} onChange={(e) => set(["coordination", "count"], Number(e.target.value))}>
+              {SIGNAL_COUNT_CHOICES.map((n) => <option key={n} value={n}>{n || "no cap"}</option>)}
+            </select>
+          </Field>
+          <Field label="Exit ranges" hint="each range tag has its own PF / position result group; Normal uses the existing General grid">
+            <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+              {([
+                ["short", "Short", "short"],
+                ["normal", "Normal (General)", "general"],
+                ["long", "Long", "long"],
+              ] as const).map(([key, label, gridKey]) => {
+                const rangeGrid = props.grid?.[gridKey];
+                const configured = !props.grid || (!!rangeGrid && rangeGrid !== false && (rangeGrid.tp?.length ?? 0) > 0);
+                const anotherSelectedRange = coordRangeKeys.some((range) =>
+                  range !== key && coordination.ranges[range] && coordRangeAvailable(range),
+                );
+                return <span key={key} style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+                  <Switch
+                    label={`Coordination ${label}`}
+                    checked={coordination.ranges[key] && configured}
+                    disabled={!configured || (coordination.enabled && coordination.ranges[key] && !anotherSelectedRange)}
+                    onChange={(v) => set(["coordination", "ranges", key], v)}
+                  />
+                  {label}
+                </span>;
+              })}
+            </div>
+          </Field>
+          <div className="v2-muted" style={{ gridColumn: "1 / -1", fontSize: "var(--v-fs-xs)" }}>
+            Votes combine the selected source pool and Short / Medium parameter variants. A source whose two enabled variants disagree abstains; inactive sources do not dilute the ratio. Strategy PF, historic configs, active ranking and loss-cluster checks are kept per coordinator identity.
+          </div>
+        </div>
       </div>
       <div>
         <div style={{ fontWeight: 600, marginBottom: 6 }}>Sources</div>
@@ -1906,7 +1985,7 @@ export function SettingsPage() {
         title="Signals"
         sub="signal sources · full pair × strategy type × symbol × direction ranked independently · each type uses its own configs and returns"
       >
-        <SignalsSettings signals={s.signals} set={set} status={status?.signals} />
+        <SignalsSettings signals={s.signals} set={set} status={status?.signals} grid={s.grid} />
       </Panel>
 
       <div className="v2-grid v2-cols-2">

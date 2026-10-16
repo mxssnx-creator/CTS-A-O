@@ -6,6 +6,7 @@ import type { ConfigTape } from "./sim/walkforward.ts";
 import { profitFactor } from "./metrics/stats.ts";
 import { isSignalInd } from "./indications/registry.ts";
 import { RANGE_LABEL, rangeOfId } from "./minimal-coord.ts";
+import { isSignalCoordinationInd } from "./signal-coordination.ts";
 
 export interface LiveGate {
   ok: boolean;
@@ -170,7 +171,12 @@ export function liveGate(
  * tag) — the categories the desk reports its forward results in.
  */
 export function liveGroupOf(cfg: string): string {
-  return isSignalInd(cfg.split("|")[1] ?? "") ? "Signals" : RANGE_LABEL[rangeOfId(cfg)];
+  const ind = cfg.split("|")[1] ?? "";
+  if (isSignalCoordinationInd(ind)) {
+    const tag = rangeOfId(cfg);
+    return `Signals Coordination${tag ? ` · ${RANGE_LABEL[tag]}` : ""}`;
+  }
+  return isSignalInd(ind) ? "Signals" : RANGE_LABEL[rangeOfId(cfg)];
 }
 
 /**

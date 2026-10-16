@@ -172,6 +172,7 @@ import {
   floorsForPairs,
   mergeBuildStats,
   DEFAULT_RANGE_FIT,
+  protectGrid,
   type WalkForwardOptions,
   type WalkForwardResult,
   lowerBound,
@@ -204,6 +205,7 @@ import {
 } from "../live-validation.ts";
 import { exchangeAcceptIndex, executionRecordKey, liveRecords, ownedPaperExecutionRecords, postBaseExecutionRecords, type LiveRecord } from "../live-record.ts";
 import { signalActiveHas, type ExchangeAccept } from "../signals.ts";
+import { isSignalCoordinationInd, signalCoordinationHistory, signalCoordinationRanges } from "../signal-coordination.ts";
 
 import os from "node:os";
 import { isDeepStrictEqual } from "node:util";
@@ -223,6 +225,7 @@ import {
 import {
   emptySignalHistDiagnostics,
   heldHistProtects,
+  heldCoordinationProtects,
   signalHistProtectsGen,
   type SignalHistDiagnostics,
 } from "../signal-hist.ts";
@@ -363,6 +366,16 @@ export interface RuntimeStatus {
     active: number;
     pairs: number;
     configs: number;
+    coordinationPairs?: number;
+    coordinationConfigs?: number;
+    coordinationActive?: number;
+    coordinationTrades?: number;
+    coordinationPf?: number;
+    coordinationNet?: number;
+    coordinationPositions?: number;
+    coordinationOrders?: number;
+    coordinationPeakPositions?: number;
+    coordinationPeakOrders?: number;
     /** Pair discovery is independent configuration evaluation, not a passed return-PF gate. */
     discoveryPairs?: number;
     representativePassed?: number;
@@ -1131,6 +1144,7 @@ export class CoreRuntime {
   private fastArgs: {
     main: { protects: readonly Protect[]; dcaFor: unknown; floors: EntryFloors };
     sig: { protects: readonly Protect[]; dcaFor: unknown; floors: EntryFloors };
+    coord: { protects: readonly Protect[]; dcaFor: unknown; floors: EntryFloors };
     adjust: AdjustState | null;
   } | null = null;
   /** a paper step (full or realtime) owns the book */
@@ -1164,16 +1178,16 @@ export class CoreRuntime {
     const s = this.settings;
     try {
       const byId = this.tapeIndex();
-      const ids = { main: new Set<string>(), sig: new Set<string>() };
-      const pairs = { main: new Set<string>(), sig: new Set<string>() };
+      const ids = { main: new Set<string>(), sig: new Set<string>(), coord: new Set<string>() };
+      const pairs = { main: new Set<string>(), sig: new Set<string>(), coord: new Set<string>() };
       for (const id of this.paper.selected ?? []) {
         const tp = byId.get(id);
         if (!tp) continue;
-        const k = isSignalInd(tp.ind) ? "sig" : "main";
+        const k = isSignalCoordinationInd(tp.ind) ? "coord" : isSignalInd(tp.ind) ? "sig" : "main";
         ids[k].add(id);
         pairs[k].add(`${tp.bot}|${tp.ind}`);
       }
-      if (!ids.main.size && !ids.sig.size) return;
+      if (!ids.main.size && !ids.sig.size && !ids.coord.size) return;
       // the tail: FAST_TAIL_H of history (a position held that long still blocks a re-entry, as in the full tapes)
       // plus the slowest lane's indicator and tactic warm-up
       const maxTf = Math.max(...(s.tfs ?? [s.tfMin]));
@@ -1189,7 +1203,7 @@ export class CoreRuntime {
       // every series (the short ones too): the worker's market reference is the main thread's (Universe.series)
       const shared = shareBars(u.series);
       const msgs: Array<Record<string, unknown>> = [];
-      for (const k of ["main", "sig"] as const)
+      for (const k of ["main", "sig", "coord"] as const)
         if (ids[k].size)
           msgs.push({
             type: "tapes",
@@ -1225,7 +1239,7 @@ export class CoreRuntime {
         at: Date.now(),
         bar,
         ms: Math.round(performance.now() - t0),
-        seated: ids.main.size + ids.sig.size,
+        seated: ids.main.size + ids.sig.size + ids.coord.size,
         open: n,
         added: this.paper.positions.length - before,
         error: null,
@@ -2993,10 +3007,20 @@ export class CoreRuntime {
     // Signals processing: the active signals and every signal pair still holding a position take the signal
     // configs, never the engine's protect grid
     const sig = signalSettings(s.signals);
+    const heldCoordinationRanges = this.paper.positions.flatMap((p) =>
+      isSignalCoordinationInd(p.cfg.split("|")[1] ?? "") && rangeOfId(p.cfg)
+        ? [rangeOfId(p.cfg)!]
+        : [],
+    );
+    const coordRanges = signalCoordinationRanges(sig.coordination.ranges, heldCoordinationRanges);
+    const coordProtects = signalCoordinationProtects(s.grid, s.cost, coordRanges);
     // The full-history ranking is status-only; the simulation ranks each type causally from its own tapes.
-    let sigActive = sig.enabled ? activeSignals(pipeline.s1, sig) : new Set<string>();
+    let sigActive = sig.enabled
+      ? activeSignals(pipeline.s1.filter((r) => !isSignalCoordinationInd(r.ind) || coordProtects.length > 0), sig)
+      : new Set<string>();
     const configuredSignals = signalCombos(sig, s.tfs).filter((c) =>
       seriesOf(uStage, c.ind).length > 0 &&
+      (!isSignalCoordinationInd(c.ind) || coordProtects.length > 0) &&
       (!evalFams || evalFams.some((f) => evalFamilyMatch(f, c.bot, c.ind, []))));
     const representativePass = (r: ComboRun) => passesBase(r.full, setsGates);
     const sigPairs = signalEvaluationPairs(configuredSignals, pipeline.s1, sig, representativePass);
@@ -3013,6 +3037,8 @@ export class CoreRuntime {
         main.delete(k);
         sigPairs.add(k);
       }
+    const coordinationPairs = new Set([...sigPairs].filter((pair) => isSignalCoordinationInd(pair.slice(pair.indexOf("|") + 1))));
+    const sourcePairs = new Set([...sigPairs].filter((pair) => !coordinationPairs.has(pair)));
     this.status.mainPairs = main.size;
     // each signal's historic trailing configs (signal-hist.ts) from the stage's history (causal: before the run start),
     // computed between ticks; a held historic config whose distances moved since keeps its own tape
@@ -3025,6 +3051,7 @@ export class CoreRuntime {
       minTrades: setsGates.minTrades,
       maxDdr: setsGates.maxDdr,
     };
+    const standard = signalProtects(sig);
     try {
       if (sig.enabled && sig.hist.enabled && sigPairs.size) {
         if (gen !== this.gen) return;
@@ -3092,21 +3119,25 @@ export class CoreRuntime {
             if (++k % 64 === 0) this.setStage("Tapes", 0, 1, histLabel);
           }, gen);
         }
-        Object.assign(sigHist, hist);
+        Object.assign(sigHist, signalCoordinationHistory(hist, coordinationPairs, coordProtects));
       }
-      // Removed/disabled trailing configs retain exactly their open tape, including when historic additions are off.
-      // A recovered-only config manages that position's exit and cannot use its old positive sample to re-enter.
-      const standard = signalProtects(sig);
-      const held = heldHistProtects(this.paper.positions.map((p) => p.cfg), sigPairs, standard);
-      for (const [pair, ps] of Object.entries(held)) {
-        const [bot, ind] = pair.split("|");
-        const list = (sigHist[pair] ??= []);
-        const current = new Set([...standard, ...list].map((p) => configId(bot as import("../domain/types.ts").BotType, ind, laneProtect(p, ind))));
-        for (const h of ps) {
-          const id = configId(bot as import("../domain/types.ts").BotType, ind, laneProtect(h, ind));
-          if (!current.has(id)) {
-            list.push(h);
-            retainedSignalIds.add(id);
+      // Removed/disabled configs retain exactly their open tape. Source Signals and each coordinator keep their own
+      // current grid, so a source's wide cells cannot replace a coordination range (or vice versa).
+      for (const [pairs, currentProtects] of [[sourcePairs, standard], [coordinationPairs, coordProtects]] as const) {
+        const openConfigs = this.paper.positions.map((p) => p.cfg);
+        const held = pairs === coordinationPairs
+          ? heldCoordinationProtects(openConfigs, pairs, currentProtects)
+          : heldHistProtects(openConfigs, pairs, currentProtects);
+        for (const [pair, ps] of Object.entries(held)) {
+          const [bot, ind] = pair.split("|");
+          const list = (sigHist[pair] ??= []);
+          const current = new Set([...currentProtects, ...list].map((p) => configId(bot as import("../domain/types.ts").BotType, ind, laneProtect(p, ind))));
+          for (const h of ps) {
+            const id = configId(bot as import("../domain/types.ts").BotType, ind, laneProtect(h, ind));
+            if (!current.has(id)) {
+              list.push(h);
+              retainedSignalIds.add(id);
+            }
           }
         }
       }
@@ -3118,12 +3149,17 @@ export class CoreRuntime {
       for (const c of uStage.caches) c.clear();
       if (u !== uStage) for (const c of u.caches) c.clear();
     }
+    const sourceHistConfigs = [...sourcePairs].reduce((n, pair) => n + (sigHist[pair]?.length ?? 0), 0);
+    const coordinationHistConfigs = [...coordinationPairs].reduce((n, pair) => n + (sigHist[pair]?.length ?? 0), 0);
     this.status.signals = {
       enabled: sig.enabled,
       combos: pipeline.s1.filter((r) => isSignalInd(r.ind)).length,
       active: sigActive.size,
       pairs: sigPairs.size,
-      configs: sigPairs.size * signalProtects(sig).length + Object.values(sigHist).reduce((a, x) => a + x.length, 0),
+      configs: sourcePairs.size * standard.length + sourceHistConfigs + coordinationPairs.size * coordProtects.length + coordinationHistConfigs,
+      coordinationPairs: coordinationPairs.size,
+      coordinationConfigs: coordinationPairs.size * coordProtects.length + coordinationHistConfigs,
+      coordinationActive: [...sigActive].filter((key) => isSignalCoordinationInd(key.split("|")[1] ?? "")).length,
       discoveryPairs: wf.signalBasePassed.size,
       representativePassed: representativePassed.size,
       representativeBaseGate: sig.baseGate !== false,
@@ -3223,6 +3259,7 @@ export class CoreRuntime {
       what: string,
       floors: EntryFloors,
     ): Promise<ConfigTape[] | null> => {
+      const signalStage = what.startsWith("signal");
       let workerTapes: ConfigTape[] | null = null;
       if (workersAvailable() && !this.workersBroken && pairs.size) {
         const n = poolSize();
@@ -3239,7 +3276,7 @@ export class CoreRuntime {
         order.forEach((k, i) => parts[i % parts.length].push(k));
         // each message carries its own pairs' share of the floors (Base ranges, targets, held ids, own configs)
         const floorsOf = floorsForPairs(floors);
-        const stage = what === "signal tapes" ? "Signals" : "Tapes";
+        const stage = signalStage ? "Signals" : "Tapes";
         // the pairs of this compute (a large universe: tens of thousands of tapes from them)
         const tapeLabel = `${what} on ${n} cores · ${pairs.size} pairs`;
         this.setStage(stage, 0, 1, tapeLabel);
@@ -3296,7 +3333,7 @@ export class CoreRuntime {
           if (floors.buildStats) for (const r of res) mergeBuildStats(floors.buildStats, r.buildStats ?? []);
           workerTapes = [];
           for (const b of buckets) for (const t of b) workerTapes.push(t);
-          this.status.phases[what === "strategy tapes" ? "Tapes" : what === "carried tapes" ? "Carried tapes" : "Signal tapes"] = {
+          this.status.phases[what === "strategy tapes" ? "Tapes" : what === "carried tapes" ? "Carried tapes" : what === "signal coordination tapes" ? "Signal coordination tapes" : "Signal tapes"] = {
             ms: performance.now() - tt,
             maxSliceMs: 0,
             slowest: `${n} cores · ${parts.filter((p) => p.length).length} replies`,
@@ -3314,7 +3351,7 @@ export class CoreRuntime {
         buildTapesGen(wu, protects, s.cost, dcaFor, pairs, s.tactics, adjustNow, floors),
         (p) =>
           this.setStage(
-            what === "signal tapes" ? "Signals" : "Tapes",
+            signalStage ? "Signals" : "Tapes",
             p.done,
             p.total,
             `${what === "strategy tapes" ? "strategy tapes (normal · trailing · DCA · DCA Active)" : what} · ${pairs.size} pairs`,
@@ -3374,31 +3411,61 @@ export class CoreRuntime {
             noDca: !sig.strategies.dca,
           }
         : undefined;
-    const sigTapes = sigPairs.size
-      ? await tapesFor(sigPairs, signalProtects(sig), sigStrat, "signal tapes", {
+    const pairProtectsOf = (pairs: ReadonlySet<string>) => Object.fromEntries(
+      [...pairs].flatMap((pair) => sigHist[pair]?.length ? [[pair, sigHist[pair]!]] : []),
+    );
+    const sourceHist = pairProtectsOf(sourcePairs);
+    const coordHist = pairProtectsOf(coordinationPairs);
+    const coordStrat = sigStrat ? { ...sigStrat, protects: coordProtects } : undefined;
+    const sourceTapes = sourcePairs.size
+      ? await tapesFor(sourcePairs, standard, sigStrat, "signal tapes", {
           minSl: sig.minSl,
           minTrail: sig.minTrail,
           entry: sig.filter.trendH > 0 || sig.filter.volFloor > 0 ? sig.filter : null,
-          pairProtects: sigHist,
+          pairProtects: sourceHist,
+          heldIds,
+          heldOnlyIds: retainedSignalIds,
+        })
+      : [];
+    if (!sourceTapes || gen !== this.gen) return;
+    const coordTapes = coordinationPairs.size
+      ? await tapesFor(coordinationPairs, coordProtects, coordStrat, "signal coordination tapes", {
+          minSl: sig.minSl,
+          minTrail: sig.minTrail,
+          entry: sig.filter.trendH > 0 || sig.filter.volFloor > 0 ? sig.filter : null,
+          pairProtects: coordHist,
           heldIds,
           heldOnlyIds: retainedSignalIds,
         })
       : [];
     sharedWuMemo = null;
-    if (!sigTapes || gen !== this.gen) return;
+    if (!coordTapes || gen !== this.gen) return;
+    const sigTapes = [...sourceTapes, ...coordTapes];
     // the realtime entry step rebuilds the seated configs with exactly these arguments (fastStep) — every range's
     // cells, a carried one's included (it builds only the seated ids: under a memory fallback the seated Micro /
     // Minimal configs took no new entry between computes)
     this.fastArgs = {
       main: { protects: this.wf.protects, dcaFor: { ...dcaOpt, protects: this.wf.dcaProtects }, floors: { ...protectFloors(s), pairTags: this.basePairTags, pairTps, heldIds, microOwnInds: microOwnInds(s.grid) } },
       sig: {
-        protects: signalProtects(sig),
+        protects: standard,
         dcaFor: sigStrat,
         floors: {
           minSl: sig.minSl,
           minTrail: sig.minTrail,
           entry: sig.filter.trendH > 0 || sig.filter.volFloor > 0 ? sig.filter : null,
-          pairProtects: sigHist,
+          pairProtects: sourceHist,
+          heldIds,
+          heldOnlyIds: retainedSignalIds,
+        },
+      },
+      coord: {
+        protects: coordProtects,
+        dcaFor: coordStrat,
+        floors: {
+          minSl: sig.minSl,
+          minTrail: sig.minTrail,
+          entry: sig.filter.trendH > 0 || sig.filter.volFloor > 0 ? sig.filter : null,
+          pairProtects: coordHist,
           heldIds,
           heldOnlyIds: retainedSignalIds,
         },
@@ -3478,7 +3545,10 @@ export class CoreRuntime {
       this.hedgeKeys = new Set((sim.hedgeEnd ?? []).filter((k) => !sigActive.has(k)));
       for (const k of this.hedgeKeys) sigActive.add(k);
       this.wf.signalActive = sigActive;
-      if (this.status.signals) this.status.signals.active = sigActive.size;
+      if (this.status.signals) {
+        this.status.signals.active = sigActive.size;
+        this.status.signals.coordinationActive = [...sigActive].filter((key) => isSignalCoordinationInd(key.split("|")[1] ?? "")).length;
+      }
     } else this.wf.signalActive = wf.signalActive;
     // stage sets of this compute, for the self-audit (Base-validated → Main config sets → Real → trades)
     this.stageSets = {
@@ -3508,6 +3578,9 @@ export class CoreRuntime {
         yield 0;
         const st = unitStatsOf(xs);
         const tl = openTimeline(xs, sim.startT, sim.endT);
+        const coord = xs.filter((x) => isSignalCoordinationInd(x.cfg.split("|")[1] ?? ""));
+        const coordStats = unitStatsOf(coord);
+        const coordTimeline = openTimeline(coord, sim.startT, sim.endT);
         yield 0;
         return {
           disabled: sig.guard.enabled ? g.disabledKeys(sig.guard.lastN).length : 0,
@@ -3519,6 +3592,13 @@ export class CoreRuntime {
           orders: xs.length,
           peakPositions: tl.maxPositions,
           peakOrders: tl.maxOrders,
+          coordinationTrades: coord.length,
+          coordinationPf: coordStats.pf,
+          coordinationNet: coordStats.net,
+          coordinationPositions: closedPositions(coord),
+          coordinationOrders: coord.length,
+          coordinationPeakPositions: coordTimeline.maxPositions,
+          coordinationPeakOrders: coordTimeline.maxOrders,
         };
       };
       Object.assign(sigStatus, await this.drive("Signal status", sigSummary(), () => undefined, gen));
@@ -4975,7 +5055,10 @@ export class CoreRuntime {
       );
     // Signals: scored on the window before the backtest, the best N trade their 15 Normal + 15 Trailing configs
     const sig = signalSettings(s.signals);
-    const sigCombos = signalCombos(sig, s.tfs);
+    const coordProtects = signalCoordinationProtects(s.grid, s.cost, sig.coordination.ranges);
+    const sigCombos = signalCombos(sig, s.tfs).filter((c) =>
+      !isSignalCoordinationInd(c.ind) || coordProtects.length > 0,
+    );
     let sigActive: Set<string> | undefined;
     if (sigCombos.length) {
       const look = makeUniverse(
@@ -5013,19 +5096,57 @@ export class CoreRuntime {
         (!signalFamilies || signalFamilies.some((f) => evalFamilyMatch(f, c.bot, c.ind, []))));
       const sigPairs = signalEvaluationPairs(initialized, runs, sig,
         (r) => passesBase(r.full, baseSetsGates(s.gates)));
-      if (sigPairs.size)
-        tapes = tapes.concat(
-          await this.sliced(
-            buildTapesGen(u, signalProtects(sig), s.cost, undefined, sigPairs, s.tactics, adjust, {
-              minSl: sig.minSl,
-              minTrail: sig.minTrail,
-              // the entry filter (trend / volatility floor) the compute builds the signal tapes with
-              entry: sig.filter.trendH > 0 || sig.filter.volFloor > 0 ? sig.filter : null,
+      if (sigPairs.size) {
+        const coordinationPairs = new Set([...sigPairs].filter((pair) => isSignalCoordinationInd(pair.slice(pair.indexOf("|") + 1))));
+        const sourcePairs = new Set([...sigPairs].filter((pair) => !coordinationPairs.has(pair)));
+        const history = sig.hist.enabled
+          ? await this.sliced(
+              signalHistProtectsGen(
+                u,
+                sigPairs,
+                sig,
+                s.tactics,
+                startT,
+                { cost: s.cost, ...baseSetsGates(s.gates) },
+              ),
+              () => undefined,
+              job,
+            )
+          : {};
+        const taggedHistory = signalCoordinationHistory(history, coordinationPairs, coordProtects);
+        const historyOf = (pairs: ReadonlySet<string>) => Object.fromEntries(
+          [...pairs].flatMap((pair) => taggedHistory[pair]?.length ? [[pair, taggedHistory[pair]!]] : []),
+        );
+        const entryFloors = {
+          minSl: sig.minSl,
+          minTrail: sig.minTrail,
+          entry: sig.filter.trendH > 0 || sig.filter.volFloor > 0 ? sig.filter : null,
+        };
+        const sigStrat = sig.strategies.dca || sig.strategies.axis
+          ? { ...dcaOpt, axis: sig.strategies.axis ? s.axis : undefined, noDca: !sig.strategies.dca }
+          : undefined;
+        const coordStrat = sigStrat ? { ...sigStrat, protects: coordProtects } : undefined;
+        if (sourcePairs.size) {
+          tapes = tapes.concat(await this.sliced(
+            buildTapesGen(u, signalProtects(sig), s.cost, sigStrat, sourcePairs, s.tactics, adjust, {
+              ...entryFloors,
+              pairProtects: historyOf(sourcePairs),
             }),
             () => undefined,
             job,
-          ),
-        );
+          ));
+        }
+        if (coordinationPairs.size) {
+          tapes = tapes.concat(await this.sliced(
+            buildTapesGen(u, coordProtects, s.cost, coordStrat, coordinationPairs, s.tactics, adjust, {
+              ...entryFloors,
+              pairProtects: historyOf(coordinationPairs),
+            }),
+            () => undefined,
+            job,
+          ));
+        }
+      }
     }
     this.checkBacktest(job);
     job.stage = "Simulation";
@@ -5760,7 +5881,9 @@ export class CoreRuntime {
     const lvGroupMin =
       this.settings.live.liveMinPf ??
       ((g: string) => {
-        const tag = RANGE_TAGS.find((t) => RANGE_LABEL[t] === g);
+        const prefix = "Signals Coordination · ";
+        const label = g.startsWith(prefix) ? g.slice(prefix.length) : g;
+        const tag = RANGE_TAGS.find((t) => RANGE_LABEL[t] === label);
         return minPfOf(this.settings.gates, tag);
       });
     // the group gates as of a time (each distinct entry time of the step once)
@@ -6905,6 +7028,27 @@ export function microOwnInds(g: CoreSettings["grid"] | undefined): MicroIndRule 
 
 /** every range tag a protect grid can carry */
 export const ALL_RANGE_TAGS = ["mc", "mn", "mp", "sh", "gn", "lg"] as const;
+
+/** Position-cost exit configs for Signals Coordination, restricted to the selected Short / Normal(General) / Long ranges. */
+export function signalCoordinationProtects(
+  grid: CoreSettings["grid"],
+  cost: number,
+  ranges: SignalSettings["coordination"]["ranges"],
+): Protect[] {
+  const selected = signalCoordinationRanges(ranges);
+  return protectGrid(15, {
+    ...grid,
+    tp: [],
+    slOfTp: [],
+    trailOfTp: [],
+    short: selected.short ? grid.short : false,
+    general: selected.normal ? grid.general : false,
+    long: selected.long ? grid.long : false,
+    minimal: false,
+    micro: false,
+    minimalPlus: false,
+  }, cost).filter((p) => p.tag === "sh" || p.tag === "gn" || p.tag === "lg");
+}
 /** computes kept in status.baseHistory */
 export const BASE_HISTORY_N = 48;
 
