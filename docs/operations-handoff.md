@@ -1,65 +1,295 @@
 # CTS-A-O operations handoff
 
-Updated 2026-10-16. Repository: `mxssnx-creator/CTS-A-O`.
+Updated 2026-10-16, Europe/Vienna. Repository: `mxssnx-creator/CTS-A-O`.
 
-## 16 October Overall Block relation clarification — verification in progress
+## 16 October Overall Block and execution correctness release
 
-The user clarified Overall Block at the end of Real, independent Symbol/Direction/exact Indication relation histories, ratio 0.2, Shared any-valid behavior with a higher configurable ratio, and comparison against Block disabled with bounded equity drawdown. Work is isolated in `fix/overall-block-relations-20261016` at `/workspace/scratch/18f0ba5d9c08/CTS-A-O-block`, preserving the concurrent independent-exits continuation unchanged. Remote backup `backup/pre-overall-block-20261016` retains main `0ade0fb2ba22a50e49cf03a9825ea612b4abc30f`.
+Current release: [PR #140](https://github.com/mxssnx-creator/CTS-A-O/pull/140).
+Latest pushed combined production/test checkpoint:
+`08cd452e16b37acac9799450066088ebceaa1314` (CP10), tree
+`214927a2683e2ba2e69d8fcd4e6249c72effe71d`, direct parent
+`da5fe49058bc721086d207ac4b34e67cab856b32` (CP9), then
+`e6914363380599e1f49a837a3a7a835ff9276faf` (CP8). CP8's merge preserves parents
+`c6ed5e9275a70f1fd995992f11a19cd9b57bf290` (CP7 direction correction) and
+`fc2ec3b3e9e6fe61b55a95fd1ea8802103c564a8` (main PR #139). Final broad/build/core verification
+and evidence publication are tracked below; do not infer live deployment.
+The pre-release main is `0ade0fb2ba22a50e49cf03a9825ea612b4abc30f` (PR #138),
+preserved remotely as `backup/pre-overall-block-20261016`.
 
-New default history is settled, accepted account-independent Real virtual orders; raw Real-candidate learning remains an explicitly labeled legacy diagnostic. Funded/venue execution is separate. Config/symbol/side and exact indication/lane/side remain independent. Shared may override the common ratio; unset preserves legacy ratio. Quantized existing steps are disclosed and tested separately from exact continuous 0.2; a higher 0.4 Shared ratio is prespecified only for comparison, not an enabled default. The total external cap includes the base, all sources and relation volume. Existing positions keep their entry multiplier. Native confirmed quantities and durable protective-order identities are being checked through equity/ratio resizing and conditional partial fills.
+Work is isolated in `CTS-A-O-block` on `fix/overall-block-relations-20261016`;
+the original overlapping checkout is left intact. PR #139 historical study and
+verification documents are retained with explicit historical banners. Fetch/check out the verified source checkpoint from GitHub before continuing
+in another chat. This instruction does not describe a completed live reload. Do not overwrite the
+other checkout or merge an older overlapping branch over these contracts.
+Source checkpoints were pushed regularly. Private credentials/account records
+are excluded from Git and public research evidence.
 
-Focused checks currently pass: Block accepted/replay/relations 76, settings/completeness 260, strict modeled-return/overflow checks 17, independent exits 63, comparison harness 19. Counts overlap and must not be summed. Final native review, integrated checks and the prespecified study remain pending. The final study protocol is `ab86d56fdc7a8aade6a2bebd696dba333ad181961531f51c52ff50eea627b9e7`: ten arms, two reused historical six-hour folds and six hours of evaluated prehistory, with older candles only for warmup. These are retrospective comparisons, not untouched/live profitability. Source seal and exact native baseline parity are required before any scoring.
+CP9 corrects completed/error-job rerun eligibility and owns each background
+backtest through a controller, absolute deadline and tracked task. Stop, shutdown
+and disposal cancel only that runtime's work; canceled worker tasks cannot fall
+back locally, publish late results or start queued successors. Shared market reads
+can finish for other consumers; canceled owner continuations cannot write caches
+or progress. A fresh stopped runtime may backtest; a disposed runtime cannot.
+The test tracker cancels and drains before closing the pool. A fresh process
+restart is still required; old untracked hot-reload work is not certified.
 
-## 16 October independent exits and Block continuation — verification in progress
+The queue baseline reproduced three failures; identical tests now pass 7/7.
+Lifecycle baseline reproduced six failures; final lifecycle scope passes 10/10.
+The final nine-file focused bundle passes 57/57 plus the existing fallback 1/1;
+global TypeScript passes and scoped lint has zero errors/three existing warnings.
+Its actual before/after inventory is **505 files**. An earlier 510 claim was
+corrected in the retained scope erratum; the later canonical 510-file inventory
+is a distinct scope and does not establish the earlier window retroactively.
+CP9 broad checks passed (455 scripts, eight standard skips; platform 77; lint
+zero errors/21 warnings), and stopped-fixture build/UI passed (28 checks, 431
+decoded responses, 18 save/reload pairs). Its fresh 20-capture comparison and
+independent audit completed without economic defects; no arm qualified both folds.
+The 168-file regular core run was deliberately interrupted with exit 130 after a
+further preset edit/delete invalidation race was confirmed. It is incomplete;
+slow tests never started. Attempt04 preserves the partial run, unchanged 510-file
+source/dependencies, zero memory-event deltas and all 40 observed owned process
+identities exited. CP10 now selectively invalidates changed or removed derived preset caches and
+cancels only their matching calculation. All four active saved-list writers use
+the same path; exact immutable settings/WF fences guard both final publications.
+Metadata-only changes, unrelated work and research-copy originals remain valid.
+The corrected coherent nine-file bundle passes 69/69 plus fallback 1/1, global
+TypeScript and scoped lint (zero errors/three existing warnings). Its actual
+510-file before/after inventory is unchanged; dependencies match, cgroup-event
+deltas are zero and all 11 observed owned identities/wrapper exited.
+Fresh release checks run against this frozen CP10 source: broad, early two slow
+cases, UI, comparison/audit, then the 168-file regular suite. Both runtime-phase
+receipts must match the same source/HEAD/tree; no combined invocation is invented.
+CP10 broad checks now pass: 455 script tests/eight standard skips, platform
+77/77, full lint zero errors/21 warnings. Source/HEAD/tree and dependencies are
+unchanged; all 135 observed owned identities/wrapper exited. Whole concurrent
+cgroup max events increased 24,445, with zero OOM/kill/high/low deltas and no
+per-process attribution. The next normal production memory gate passed.
+The exact two slow cases started at 14:43:53 UTC; regular has not started. No earlier result is relabeled CP10.
+Existing live preset caches created before these corrections are unverified;
+a consistent backup and re-evaluation or selective retirement of derived preset
+results is required before live reload. No live cache or execution ledger was
+modified in this session. CP8 remains available on remote backup
+`backup/pre-backtest-lifecycle-20261016` at exact `e6914363`; CP9 is backed up as
+`backup/pre-preset-invalidation-20261016` at exact `da5fe490`.
 
-Reloaded merged main `0ade0fb2ba22a50e49cf03a9825ea612b4abc30f` (PR #138).
-Current branch: `fix/independent-exits-block-20261016`. Remote backup
-`backup/pre-exit-block-20261016` preserves that main. The recovered stale
-continuation at `089e6d6` and its three dirty files were backed up and stashed;
-their older E2E fixture was not reapplied over the corrected merged source.
-Local verified bundle and pending patch are under
-`/workspace/scratch/fe9c0300366a/cts-ao-backups/20261016T094329Z`.
+Overall learns from settled accepted Real virtual orders before account funding.
+Each exact config × symbol × direction, symbol × direction, global direction,
+and exact indication/lane × direction keeps independent history and pauses.
+Overall source legs share one total cap including base and relation volume.
+Shared accepts any qualifying enabled relation and an optional independent
+`sharedRatio`; Additive sums valid enabled levels. A positive 0.2 request remains
+0.2 even with seven volume steps; larger step requests round down. Six-decimal
+recording also rounds down, so tiny additions cannot inflate into a full micro-unit. Defaults for
+ratio, steps and cap are unchanged. Current holdings retain their entry Block
+multiple; actual confirmed quantity/equity resizing reconciles their protection.
 
-Independent exits retain exact indication/range/lane/config/type/symbol/side
-identities. Untyped legacy Signal discovery keys cannot authorize new Normal,
-capped Trailing or trailing-only entries. Modeled execution needs an explicit
-unit return or a verified recorded external multiplier; absent legacy basis
-stays unknown in promotion, APIs, Presets and reports. Raw intrinsic historical
-tapes retain their separate valid unit-return interpretation. Cash remains a
-separately labeled diagnostic. Endpoint exports preserve their actual basis.
+Runtime restoration merges current defaults: persisted settings missing
+`historySource` adopt accepted orders. Explicit `real-candidates` preserves the
+legacy diagnostic across restart; only direct configs outside runtime default
+merging have the unset-field legacy fallback. Neither history is venue-fill
+proof. Empty accepted-history Block Active cannot invent a seed or borrow raw
+wins; its explicit Signal own-base exception remains.
 
-Block's configured `maxMult` now bounds the complete new-entry stack: base plus
-all source additions, subject to the absolute 8x bound. Config-source levels
-and pauses use exact config/symbol/direction evidence. Explicit pooled sources
-keep their documented scope. Optional native lane orders allocate fractional
-Block weights within the exact parent exit instead of one venue unit per
-fractional source; unrelated configs remain independent. Confirmed and pending
-quantities reserve capacity, and an installed parent stop suppresses every
-related source child. Existing holdings retain their entry multiple when a cap
-is lowered; a current-cap audit can still warn until they close. No forced
-reduction or rewritten ownership is implied. Default 8x is unchanged.
+Native protection now follows confirmed parent quantities, weighted source
+shares, one-way funded units, partial fills, cancellation races and refusals.
+Provisional stop/TP IDs and residual quantity caps are durably checkpointed
+before requests; required state/journal failure blocks new funding. Volume
+uses verified selected-account equity and all enabled position/exposure/risk/
+backstop/free-margin budgets. Unknown or pending quantities reserve capacity.
+Cumulative receipts do not certify independently timed individual fill slices.
 
-Current focused checks include 143 baseline native-control cases, 111 revised
-Block integration cases and 68 final Block provenance cases. PF/identity,
-indication-specific MFE, parallel causality and reporting checks pass in scoped
-runs; overlapping counts must not be added together. Final dependency install,
-full regression/build/UI checks and the comparison are pending.
+The shared worker pool synchronously cancels running calls across module copies,
+including a queued successful reply and a reserved-worker handoff. A later ordinary
+worker exit cannot inherit an earlier abort reason. This new shared schema requires
+a fresh process restart; hot adoption of an older scheduler object is rejected.
+The selected connection's missing-key help no longer directs X02 to X01 credentials.
 
-The comparison protocol uses frozen public four-symbol feeds, two historical
-six-hour execution folds and six hours of evaluated preparation per fold.
-Earlier candles initialize indicators only. Three prespecified arms keep the
-same complete configured focus and exits: Block off (diagnostic), on at 2x,
-and on at the current 8x default. Axis stays default-disabled; other settings,
-costs and positive coordinations are unchanged. Source/settings seals and exact
-native baseline parity are mandatory before scoring. All owned settled closes,
-unknowns, losses, empty cohorts and hourly outcomes remain visible. Pure size
-scaling cannot improve primary unit-return PF. These reused historical windows
-are development evidence and cannot establish future or live profitability.
+Primary PF removes external Block × coordination weighting once, on the same
+funded settled parent-close sample as cash reconciliation. Intrinsic ladder
+semantics remain. Duplicate modeled parent closes reject scoring, regardless
+of source legs/allocation indices. Unknown ownership/returns/overflow remain
+unavailable; known zero allocations stay visible outside funded PF. General
+session headlines, groups, hourly counts/returns/hold averages now share that
+owned cohort. Virtual requests, episodes and marks are labeled separately.
+Confirmed zero fees persist distinctly from unknown/legacy estimates. Live
+statistics retain actual close notional even at zero return; cash no-loss
+labels require explicit provenance.
 
-Dependency audit found installed TanStack Start and transitive advisories;
-patched locked dependencies and clean-install compatibility are being checked
-before the release build. No live reload, venue request or order has occurred.
-See `docs/work-tasks.md` for the current release checklist.
+The optional `sideGateN` filter now reads its own bounded all-candidate direction
+history in simulation, runtime, audit and cached pending entries. Rejected losses
+and winning recovery cannot disappear into accepted-only Block history. CP7
+passes full regression/audit 93/93, Block 46/46, all 128 processing combinations,
+global TypeScript and scoped lint. The seven-failure complete CP6 invocation and
+its original stacks remain preserved. The historical CP8 regular verification
+passed 1,917 cases with zero failures and two standard opt-in skips. Its separate
+slow verification failed in the queued-preset wait; the preserved result is below.
+CP9 queue eligibility and disposal fixes passed focused checks; the further CP10
+preset-revision repair and current release status are described at the top. Main integration also preserves measured commission across
+identical sparse cumulative-fill polls, while changed quantity or price requires
+new fee evidence; all four added regression cases pass in the 62-case native focus.
+The CP8 trace/rounding focus passed 102/102, global TypeScript and scoped lint.
+An earlier 149-case matrix/replay focus is preserved before the narrow rounding
+correction. The optional trace includes unknowns in available sample counts and
+never changes admission or sizing. Historical CP8 standard core selection was 166
+files plus two slow cases, with 508 source/config files. CP9/CP10 use 168 regular
+files plus two slow cases and a separate 510-file release inventory.
+
+### Preserved historical comparison on CP8
+
+Ten arms × two six-hour execution windows, each with six hours of evaluated
+preparation; older candles initialize indicators only. BTC/ETH/SOL/XRP,
+unchanged complete configured focus/exits/cost/capital/settings and causal gates.
+Protocol SHA256:
+`70d7b62c80a11f1be2971e7873e1560f6c52f3d38c3526fb433ddfc6e553d99d`.
+108-file source-set SHA256:
+`48c4240a00b0243d2325c8079d36769dfb4bcb040d82c320fac3aa1e3ea4b87a`.
+Source-freeze record SHA256:
+`55c5470b6f806a7b2d6f0c5754e77a94359380e95b222b945dee3f52770ef906`.
+Independent CP8 accounting audit SHA256:
+`ca91afe47b7fefec45d7175aaca0c14efa4dc573b17e29cc6cfa1a1342423090`.
+Parameter/source summary proof SHA256:
+`5e29a2c9cc4f9cf23ce984acfef3cdedf025b21820a32f1f6e8ce6ad8a8accca`.
+Final owner manifest SHA256:
+`7a6665a76648a260cebe5c160bb9b02576d87326885de5f179d1c89231861945`.
+
+All 20 fresh CP8 captures completed in 69.138s. Exact settings, feeds, folds,
+arms and policy match the prior frozen protocol; no outcome-based retuning
+occurred. The independent audit recomputed all owned cohorts, groups, hours,
+closed/open cash allocations and 7,200 causal minute equity/margin points,
+with zero economic defects. Raw CP6 economic identity was observed after
+calculation, never required or assumed. This is reused retrospective evidence,
+not an untouched holdout or venue execution.
+
+The frozen study has `sideGateN: 0` and `blockTrace: false`; it does not activate
+the newly repaired optional direction filter or diagnostic trace. Their enabled
+runtime/simulation behavior is verified separately by focused regressions.
+The original captured study is retained as attempt03, corrected CP5 comparison
+as attempt04, memory-degraded CP6 refusal as attempt05, and the complete prior
+CP6 capture as attempt06. Initial preservation manifests remain unchanged;
+the later CP6 owner-binding copy has an append-only addendum. Earlier protocols,
+raw outcomes, failed checks, incomplete diagnoses, errata and audits remain
+retained. No source, memory threshold or strategy gate was waived.
+
+The book is a **modeled $1,000 account**, sized at **2% of equity** with
+**10× leverage** and fixed modeled **0.20% round-trip costs**. The research
+launcher uses the frozen X01 fallback caps
+`maxPositionX: 0.75` and `maxExposureX: 7` where its captured settings lack
+positive caps; these are research inputs, not authenticated X02 account limits.
+Drawdown measures unrounded model minute-close marked equity, including open
+marks. It does not measure the worst intraminute mark or verify tick-level
+fills, slippage, funding or liquidation behavior.
+
+All 20 captures failed the native Signal-execution activity check. This study
+does not establish active Signal execution or positive independent
+Micro/Minimal/Short qualification. Engine/direction aggregate PF cannot
+substitute for those missing exact cohorts.
+
+No arm passes both folds. The first window and all Active arms have no owned
+closes, hence unavailable PF. In the second window every non-Active arm has
+792 funded parent closes (258 losses), 144 zero allocations retained separately,
+return PF **2.3748515218**, cash PF **2.2230310512**, closed cash net **+4.41871304**
+on the simulated $1,000 book, and exact minute-equity drawdown **2.8716649447%**.
+Long direction (+1): 60 closes, all losses, PF **0**. Short direction (−1): 732
+closes, PF **5.93804698**. These direction aggregates do not establish the
+independent Micro/Minimal/Short range qualifications.
+All 792 matched unit returns are identical to Off. Actual Block raises occur on
+450 funded closes, but position caps neutralize their funded amounts; incremental
+settled PF/cash benefit is zero. Shared 0.2/0.4 saturates the tested 2× cap at
+observed levels, so this window cannot establish higher-Shared superiority.
+
+Base computation completes 920/920 requested comparisons, while required range/
+type coverage and activity conditions genuinely fail. `grid.allSets` is a mode,
+not completion. Empty PF equality remains non-comparable (null serializes
+unavailable values), never a manufactured numeric pass. No performance defaults,
+promotion thresholds or losing/empty cohorts were changed to obtain success.
+
+### Preserved verification snapshots and CP8 checks
+
+| Check | Status |
+|---|---|
+| Prior Block relations/ratio/replay snapshot | 77 focused cases pass on their recorded checkpoint; retained historical evidence |
+| Prior independent exits and modeled return provenance snapshot | 63 focused cases pass on their recorded checkpoint; final CP8 regular core also passes |
+| Prior native quantities/protection/durability/fees snapshot | 167 focused cases pass on their recorded checkpoint; added CP8 sparse-fee focus passes 62/62 |
+| Prior reporting/API/UI snapshots | 147 focused cases and 16 session follow-up cases pass on their respective recorded checkpoints |
+| Complete scripts, 52 files | 455 pass, 8 standard skips, 0 failures/cancellations |
+| Platform/auth/UI helpers, 8 files | 77 pass |
+| Final CP8 Block trace/admission and conservative recording | 102 focused cases pass; earlier 149-case pre-quantization matrix/replay scope is retained separately |
+| TypeScript | Final CP8 pass |
+| Full ESLint | 0 errors, 22 existing warnings; scoped seven-file lint also clean |
+| Preserved CP6 worker pool cancellation snapshot, 9 files | 59 tests pass; those pool source hashes remain unchanged in CP8 |
+| Statistics property fixture repair | 3 focused tests / 700 cases pass; separate unknown losing-return regression retains cash/count and unavailable PF |
+| Final production build | Pass on CP8, exit 0 in 3.16s; 277 source hashes unchanged |
+| Stopped synthetic SQLite dev/production desktop/mobile UI fixtures | 14 checks each mode, 427 decoded API responses and 18 save/reload pairs; 0 app/decode errors, 18 navigation capture gaps and 36 blocked external requests per mode retained; selected X02 help verified; private processes stopped |
+| Complete regular core, 166 files | 1,917 passed, 0 failed, 2 standard opt-in skips, 0 cancellations in 1,714.146s; all 508 source hashes unchanged; prior complete CP6 failure and CP5 partial failure preserved |
+| Separate opt-in runtime slow cases | CP8: 1 passed, 1 failed, 0 skips/cancellations in 1,078.134s; timeout at runtime.test.ts:640 awaiting the queued 25-symbol preset; initial two-day result completed, 30-day assertion not reached |
+| Historical comparison capture/accounting audit | All 20 fresh CP8 captured; independent 7,200-minute accounting audit passes; performance policy not met |
+
+Focused counts overlap other suites and must not be added into a monolithic
+claim. Checks use before-import nonlocal transport guards, sanitized credentials
+and bounded workers; no venue traffic occurs. Original failed script fixtures
+and browser setup attempts are preserved. Synthetic PF fixtures explicitly declare their known unit basis. Legacy raw-
+bootstrap tests explicitly select candidate history; default accepted-history
+checks, all 128 processing combinations and numeric/PF assertions remain. No
+assertion, cost, sample or promotion gate was waived.
+An invalid PID-namespace RSS trace in one broad wrapper is excluded from process/
+memory conclusions; direct known host PID cleanup was separately verified.
+The first CP5 complete-scope invocation was interrupted after two statistics
+property fixture failures; it is incomplete, not a complete passing suite. Its
+507 source hashes stayed unchanged and no OOM/kill occurred. The fixture now
+declares multiplier 1 for intentionally unit trades without changing RNG calls
+or the original assertions. The separate mixed-legacy case confirms unknown
+returns cannot be silently treated as known. Both original failure stacks and
+corrected focused results are preserved before the CP6 invocation. That complete
+165-file run finished with 1,882 passed, seven failed, two standard opt-in skips
+and zero cancellations; slow correctly did not start. Its seven actual causes
+were repaired and focused-verified in CP7. The historical CP8 combined-source
+regular run passed completely, but its separate slow phase failed. Full attempt03 retains
+both raw logs, the actual stack, all 508 unchanged source hashes, exact matching
+dependencies, zero memory-event deltas and verified cleanup of 129 owned identities
+plus wrapper/observer. No signals were sent. Its failed release-status SHA256 is
+`722928b70f12d8b734b00ad5bc3c074992fdb8b65801930b622a7e3d1bfe50c1`.
+The fixture waited 600 seconds for a new 25-symbol preset introduced into the
+catalog. Separate static and baseline checks found that a completed job ID was
+wrongly excluded from later queues, and disposal failed to invalidate its running
+backtest or prevent fallback, publication and next-queue work. Those defects were
+corrected and focused-verified in CP9. The later preset-revision invalidation
+race requires CP10 corrections and fresh release verification. The original
+timeout remains a failed attempt; it is never relabeled as a passing workload.
+Memory guards stay enabled. The prior CP6 full run initially observed conservative hard
+pressure from active file cache, then passed the API contract after capacity
+recovered. A later own-file cache hint preserved all 590 files' stat identities;
+the bulk recovery had already occurred and is not attributed to that hint.
+No source, memory threshold, trading gate or unrelated process changed. A saved
+research lock reappeared after a successful unlink; its namespace-local PID is
+not process ownership evidence and must never be used to kill a process.
+
+### Live and remaining work
+
+The operator explicitly requests actual x2 VST testing of opening, updating,
+closing, protection, volume, statistics and sustained execution. Canonical
+connection `bingx-vst-02` uses the VST host, but no usable authentication or
+reachable host is available here. The documented live-host/SSH routes return ENETUNREACH on TCP port 22 from
+this environment; no exchange API probe was made, and this does not prove
+the hosts or venue are down. No venue order, live
+reload or account success was verified. Before any authorized live change, take
+settings/durable-state and database-supported consistent backups, verify the
+actual selected demo account, and reconcile current own holdings/orders.
+
+Open work: obtain authenticated x2 access, perform bounded venue lifecycle and
+forward exact-config PF/volume/statistics checks, establish adequate independent
+samples in both directions and each requested range/type, and measure future
+Block benefit/drawdown without weakening gates. High order count and continuous
+positive PF are unproven. The external rename of `imperative-greeting-fox` still
+requires its exact deployment resource identity; no guessed resource was renamed.
+A metadata-only check of connected Sites/Library/GitHub status surfaces found
+no verified matching asset. Available GitHub tools cannot inventory Codespaces
+or deployments; the prior Vercel inventory also found no matching project.
+Evidence: `cts-block-rename-identity-20261016.json`, SHA256
+`55c3cbd1bf2390e713e545bf1ea8cfbe9f2fc9403291bcc08d8583d1ceff2834`.
+
+Historical CP8 UI and comparison results are preserved above; current CP9/CP10
+status is at the top. The final evidence archive/report identity and complete
+current regular/slow results will be filled after verification. See `docs/work-tasks.md` and `AGENTS.project.md`.
 
 ## 15 October post-Base promotion and range continuation — verified source and evidence
 
@@ -190,7 +420,8 @@ Current continuation checks against the integrated source snapshot:
 | --- | --- |
 | Complete scripts | 344 passed, 8 environment/browser skips |
 | Platform/authentication/UI helpers | 73 passed |
-| TypeScript | Pass |
+| Final CP8 Block trace/admission and conservative recording | 102 focused cases pass; earlier 149-case pre-quantization matrix/replay scope is retained separately |
+| TypeScript | Final CP8 pass |
 | Production build, including packaged worker | Pass |
 | Full ESLint | 0 errors, 23 warnings |
 | Offline page/viewport QA | 24 checks passed; static/local evidence |

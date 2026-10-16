@@ -1,28 +1,39 @@
 # CTS-A-O work and tasks
 
-Updated 16 October 2026, Europe/Vienna. Current baseline: merged main
-`0ade0fb2ba22a50e49cf03a9825ea612b4abc30f`, PR #138. Scope remains CTS-A-O.
+Updated 16 October 2026, Europe/Vienna. Repository: `mxssnx-creator/CTS-A-O`.
+Current release PR: [#140](https://github.com/mxssnx-creator/CTS-A-O/pull/140).
+Latest pushed combined production/test checkpoint: `08cd452e16b37acac9799450066088ebceaa1314` (CP10), tree `214927a2683e2ba2e69d8fcd4e6249c72effe71d`.
+Its direct parent is CP9 `da5fe490`, then CP8 `e6914363`, whose two-parent integration preserves CP7 `c6ed5e9` and main PR #139 merge `fc2ec3b3`. CP8 is also backed up as `backup/pre-backtest-lifecycle-20261016`; exact CP9 is backed up as `backup/pre-preset-invalidation-20261016`. Queue/lifecycle and selective preset invalidation corrections are pushed. The CP9 full regular run was deliberately interrupted after the stale-result race was confirmed. CP10 focused verification and independent review pass; fresh release checks are in progress.
 
-## Current release: independent exits and bounded Block
+## Current release: independent Overall Block and execution correctness
 
 | Task | Status | Acceptance evidence |
 |---|---|---|
-| Reload current main and preserve recovered work | Complete | Verified local bundle/patch/stash; remote `backup/pre-exit-block-20261016` |
-| Independent exit admission and modeled return provenance | Implemented; final regressions pending | Typed Signal keys and explicit modeled unit basis; unknown/losing evidence retained |
-| Bound Block stacking and native quantities | Implemented; focused checks pass | Total cap, exact config/symbol/side levels, proportional source weights, no compounding or pending-cap release |
-| Compare Block off/2x/8x | Protocol/harness prepared | Same frozen configs, two six-hour folds, six-hour preparation, funded settled unit PF and hourly details |
-| Patch dependency advisories and verify release | In progress | Locked patch updates, clean install, full tests, typecheck/lint/build and dev/production UI |
-| Push and merge tested source | Pending final verification | Exact source/tree, reviewed artifacts and updated recovery handoff |
+| Preserve all recovered work and remote backups | Complete | Main `0ade0fb2`, remote `backup/pre-overall-block-20261016`; private release worktree and pushed checkpoints |
+| Exact post-Base and independent exit qualification | Historical CP8 regular core passed; current full verification incomplete | Prior 63 independent-exit cases; unknown/losing siblings retained, strict modeled unit basis |
+| Independent Overall/Shared/Additive histories and total cap | Complete; final CP8 focused checks pass | Prior 77 Block snapshot plus CP8 102-case trace/admission/rounding focus (overlapping); accepted Real virtual history, exact indication/lane and side, source pause isolation and replay |
+| Ratio 0.2, stepped volume and higher Shared ratio | Complete | 0.2 gives 1.2× at level one even with seven steps; steps never inflate additions; Shared override independently configurable |
+| Candidate direction gate independent of accepted Block history | Corrected and pushed; focused checks pass | Rejected losses, recovery and downturn now use a separate bounded causal history in runtime, simulation, audit and cached pending entries. Block sizing remains accepted-only. Full regression/audit 93/93, Block 46/46 and all 128 processing combinations pass; the original incomplete diagnosis and correction remain preserved |
+| Native opening, updating, closing and protective orders | Historical CP8 regular core passed; current full verification incomplete | Prior 167 native/fee snapshot plus CP8 62-case native sparse-fee focus (overlapping); confirmed quantities, reservations, durable identities, cancellation races and storage fail-closed behavior |
+| Balance volume and statistics | Focused verification passes | Synthetic fixtures exercise verified selected-account equity and own funded shares; return PF primary, cash separate, measured zero fee distinct from unknown. No authenticated X02 balance is verified |
+| Frozen Block-versus-Off comparison | Fresh CP9 complete and independently audited; no arm qualifies both folds | Second fold: 792 funded parent closes, return PF 2.3748515218 and minute-equity drawdown 2.8716649447%; settled PF/cash identical to Off. First fold and all Active arms are empty. Long direction (+1) has 60 losses, PF 0; short direction (−1) has 732 closes, PF 5.938. These direction aggregates do not establish Micro/Minimal/Short range qualification. All 20 native Signal-activity checks fail; these aggregates do not establish active Signal execution. Drawdown is model minute-close risk. No performance promotion |
+| Worker cancellation and statistics property fixtures | Corrected; focused checks pass | 59 pool tests, 700 property cases across three focused tests; global TypeScript and scoped lint pass. Missing legacy return evidence remains unknown |
+| Broad scripts/platform/typecheck/lint | CP10 passes | Scripts 455 passed + 8 standard skips; platform 77 passed; global TypeScript passes; ESLint 0 errors/21 warnings. All 510 source hashes/HEAD/tree unchanged; dependencies match, 135 observed owned identities and wrapper exited. Whole-cgroup max events increased 24,445, OOM/kill deltas zero; no per-process attribution. Next production memory gate OK with normal thresholds |
+| Development and production settings UI | CP9 stopped synthetic SQLite fixtures pass; fresh CP10 verification required | Build succeeds; 14 checks each in dev/production, 431 decoded API responses and 18 save/reload pairs; 0 app/decode errors, 13 navigation capture gaps and 36 blocked external requests per mode disclosed. Selected X02 help verified; 279 source hashes unchanged and private processes stopped |
+| Complete regular and slow core suite | CP9 regular interrupted; CP10 early slow cases running, regular not started | CP9 168-file regular scope started, then exited 130 after owned SIGINT for a confirmed preset invalidation race; no complete totals. All 510 source hashes unchanged, dependencies matched, memory-event deltas zero, all 40 observed owned identities and wrapper exited. Incomplete attempt04 preserved. Historical CP8: Complete 166-file regular run: 1,917 passed, 0 failed, 2 standard opt-in skips, 0 cancellations in 1,714.146s. Separate slow: 1 passed, 1 failed in 1,078.134s, timeout at runtime.test.ts:640 while waiting for a queued 25-symbol preset. All 508 source hashes stayed unchanged; dependencies match and memory event deltas are zero. All 129 owned identities plus wrapper/observer exited. Complete failed attempt03 is preserved; no merge or final-pass claim |
+| Preset backtest rerun and disposal | CP10 focused checks and independent review pass | CP10 final nine-file bundle is 69/69 (22 lifecycle, seven queue, 40 existing cases), plus fallback 1/1, TypeScript and scoped lint with zero errors/three existing warnings; all 510 source hashes unchanged. Four active saved-list writers invalidate only changed/removed derived caches and matching jobs; exact settings/WF fences prevent stale publication. Metadata-only changes, unrelated jobs and research-copy originals remain valid. Historical CP9: queue baseline three failures became 7/7; lifecycle baseline six failures became 10/10. Final nine-file scope 57/57 plus existing fallback 1/1, global TypeScript and scoped lint pass. Scoped cancellation stops owned workers, fallback, late cache/result writes and queued successors; completed/error jobs remain eligible. Focused inventory is 505 files; the separate 510-file release inventory is not retroactive evidence for that window |
+| Actual x2 VST execution tests and live reload | Blocked by unavailable access | Static ID `bingx-vst-02` maps to the VST host; authenticated account and SSH access are unavailable. No exchange API probe, venue order or live reload occurred |
+| Final evidence, push and merge | CP10 pushed; fresh release verification required | CP9 broad, build/UI and comparison/audit completed; full core remains incomplete. Same-ID preset edits/deletes and alternate upsert/eviction must invalidate captured old settings before result publication. Preserve prior evidence, push CP10, then rerun all source-bound release checks before final artifacts and merge |
 
-Primary PF is computed from owned unit-net returns after costs. Increasing
-Block volume alone cannot improve that PF. Preserve measured losses and empty
-cohorts; do not substitute cash PF or an attractive sibling. The default Block
-cap remains 8x pending a valid causal comparison. Current changes make lower
-configured total caps effective; existing holdings are protected until closure.
+Primary PF uses the same owned settled unit-net-return sample after costs.
+Logical Block legs never add primary sample frequency. Higher volume alone
+cannot improve return PF. All losses, unknowns, insufficient and empty cohorts
+remain visible. More orders never waives independent PF, sample or risk gates.
+No default performance promotion or live-success claim is justified by fixtures.
 
-The following sections preserve the prior release's research and limitations.
+The following sections preserve the 15 October 2026 PR #138 release's research and limitations.
 
-## Current work
+## Prior release work
 
 | Task | Status | Acceptance evidence |
 |---|---|---|
@@ -35,7 +46,7 @@ The following sections preserve the prior release's research and limitations.
 
 Qualification must come from corrected causal calculations or measured improvements. Do not lower a reported PF floor, omit losses, substitute a winning sibling, expand history silently, or select a new configuration using the reported evaluation period.
 
-## Current diagnosis and checkpoints
+## Prior release diagnosis and checkpoints
 
 Confirmed promotion defects include unfiltered tape fallback, unknown group returns, endpoint-only readiness and nullable SQL returns coerced to zero. Those paths now require explicit post-Base and owned execution evidence. Legacy nominal lane attribution is not funded-fill proof.
 
@@ -73,12 +84,12 @@ See `operations-handoff.md` for prior release records, complete results and save
 
 Whole-book fold-2 P0/P2 is 90 funded closes at return PF **1.0820357007** (cash PF 1.3778827443); P1 is 112 at return PF **0.4801513711** (cash PF 1.2639199617). All 12 source close CSVs independently reconcile. This supplement cannot qualify an individual range/config or the empty first fold. Four reporter tests pass; checkpoint `a5442158a46268da560cbc175c807350fed4c17f` preserves the report.
 
-Final tested source is `f873221550c80933ebc7efbc7995ceba4ccead53` (tree `429085a0edda103f78c2078e0cc84f0d730503b2`). The saved `cts-ao-post-base-range-evidence-20261015.zip` contains 203 members/38,376,641 bytes, SHA-256 `b7a7143037ffddce14f2a3243f814cf47a9b0b99965ced62ac28ab17bbe2ef21`; all CRC, original-evidence and link checks pass. Full artifact identity and release verification are in `operations-handoff.md`. Future performance work needs a new frozen protocol, sufficient exact training onsets and new evaluation windows; no current profile is qualified for live promotion.
+The 15 October PR #138 release tested source is `f873221550c80933ebc7efbc7995ceba4ccead53` (tree `429085a0edda103f78c2078e0cc84f0d730503b2`). The saved `cts-ao-post-base-range-evidence-20261015.zip` contains 203 members/38,376,641 bytes, SHA-256 `b7a7143037ffddce14f2a3243f814cf47a9b0b99965ced62ac28ab17bbe2ef21`; all CRC, original-evidence and link checks pass. Full artifact identity and release verification are in `operations-handoff.md`. Future performance work needs a new frozen protocol, sufficient exact training onsets and new evaluation windows; no current profile is qualified for live promotion.
 
 ## 16 October Overall Block clarification
 
 - Preserve prior independent-exit work in an isolated checkout; remote baseline backup created.
 - Accepted Real virtual-order history and independent exact indication/lane/direction relations: focused checks pass.
 - Shared higher optional ratio and explicit continuous-versus-quantized 0.2 sizing: settings/helper checks pass.
-- Confirmed native protection through resizing/partial fills: final review in progress.
-- Freeze and run all ten comparison arms on both historical folds; retain losses, empty outcomes, unit PF and native equity drawdown. No performance result or default activation yet.
+- Confirmed native protection through resizing/partial fills: prior 167-case focused snapshot and independent review pass; CP8 adds the separately bound 62-case sparse-fee focus. Historical CP8 regular core covered that checkpoint; CP10 verification remains pending.
+- All ten comparison arms on both historical folds are captured and independently reconciled. Losses, empty outcomes, unit PF and native equity drawdown are retained. No arm meets both-fold performance policy; no defaults are activated.
