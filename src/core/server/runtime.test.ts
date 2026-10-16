@@ -631,17 +631,38 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     assert.ok(s.info.posPerHour >= 0 && s.info.ddtH >= 0);
     assert.ok(s.info.positions <= b.n);
     assert.throws(() => rt.startPresetBacktest("nope", 2), /unknown preset/);
-    // "backtest all": queued one after another, only presets without diagrams over the range
-    const queued = rt.queuePresetBacktests(2, true);
-    assert.ok(queued >= 1);
-    assert.ok(!rt.backtestQueue.some((q) => q.id === p.id), "a preset with diagrams over the range is skipped");
+    // The complete catalog's order/onlyMissing/eligibility rules are covered without engines in
+    // preset-backtest-queue.test.ts. Here the real queue executes this known preset and persists its result.
+    // Dispatching the full catalog here instead launched the unrelated 25-symbol all-range live preset.
+    rt.backtestQueue.push({ id: p.id, days: 2 });
+    (rt as unknown as { nextQueuedBacktest(): void }).nextQueuedBacktest();
     assert.equal(rt.backtestJob?.state, "running");
-    rt.backtestQueue.length = 0;
+    assert.equal(rt.backtestJob?.id, p.id);
+    assert.equal(rt.backtestQueue.length, 0, "the queued job was actually dispatched");
     await until(() => rt.backtestJob?.state !== "running", 600_000);
-    // editing a saved preset or deleting it drops its diagrams; the 30-day maximum is enforced
+    assert.equal(rt.backtestJob?.state, "done", rt.backtestJob?.error);
+    const queuedResults = rt.presetBacktests()[p.id];
+    assert.equal(queuedResults.length, 2, "the actual queued run persisted a second result");
+    const queuedResult = queuedResults[0];
+    assert.equal(queuedResult.days, 2);
+    assert.ok(queuedResult.at >= b.at);
+    assert.equal(queuedResult.pfBasis, "unit-net-returns");
+    assert.equal(queuedResult.unknownReturns, 0);
+    assert.ok(queuedResult.pf !== null && Number.isFinite(queuedResult.pf));
+    assert.equal(queuedResult.pass, queuedResult.n > 0 && queuedResult.pf >= queuedResult.minPf && queuedResult.ddtH <= queuedResult.maxDdtH);
+    assert.equal(rt.presetSeries(p.id)?.days, 2);
+    // The maximum is enforced while still computing the actual clamped 30-day result.
     rt.startPresetBacktest(p.id, 99);
     assert.equal(rt.backtestJob?.days, 30);
     await until(() => rt.backtestJob?.state !== "running", 600_000);
+    assert.equal(rt.backtestJob?.state, "done", rt.backtestJob?.error);
+    const cappedResults = rt.presetBacktests()[p.id];
+    assert.equal(cappedResults.length, 3);
+    assert.equal(cappedResults[0].days, 30);
+    assert.equal(cappedResults[0].pfBasis, "unit-net-returns");
+    assert.equal(cappedResults[0].unknownReturns, 0);
+    assert.ok(cappedResults[0].pf !== null && Number.isFinite(cappedResults[0].pf));
+    assert.equal(rt.presetSeries(p.id)?.days, 30);
   });
 
   it("a set holding an open position stays processed until it closes, even when no longer selected", async () => {

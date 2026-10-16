@@ -712,6 +712,7 @@ export class CoreRuntime {
   /** loop generation: a cycle from an older generation never reschedules or publishes */
   private gen = 0;
   private stopped = false;
+  private disposed = false;
   private resetUniverse = false;
   private loop = monitorEventLoopDelay({ resolution: 20 });
   /** what runs on the main thread now (a synchronous phase), for the stall attribution */
@@ -993,6 +994,7 @@ export class CoreRuntime {
   }
 
   start() {
+    if (this.disposed) throw new Error("runtime disposed");
     if (!this.stopped && this.status.state !== "idle" && this.status.state !== "error") return;
     if (this.snapshotPath) this.db.journalPath = `${this.snapshotPath}.journal`;
     if (this.status.state === "idle" && this.snapshotPath && this.db.restore(this.snapshotPath)) {
@@ -1441,6 +1443,7 @@ export class CoreRuntime {
 
   /** Stop now: the in-flight cycle is abandoned at its next yield (a new generation), nothing half-published. */
   stop() {
+    this.cancelBacktests("backtest canceled: runtime stopped");
     this.baseConfigRunner.cancel("stopped");
     this.stopTick();
     this.stopped = true;
@@ -1458,10 +1461,13 @@ export class CoreRuntime {
    * Releases what keeps a stopped runtime reachable: the stall watch (started in the constructor), the healer, the
    * memory-guard timer, the progress timeout and the event-loop monitor. Tests and scripts only — a desk's runtime
    * lives as long as its process. stop() alone leaves the stall watch and the healer running, so every runtime a test
-   * built stayed in memory until its file ended (runtime.test.ts reached 7.3 GB, 13 Oct). The database is not closed:
-   * an abandoned cycle may still write to it before it sees the stopped generation.
+   * built stayed in memory until its file ended (runtime.test.ts reached 7.3 GB, 13 Oct). Preset tasks are canceled
+   * before any worker shutdown; backtestsSettled() drains their continuations. The database is not closed because
+   * an abandoned engine cycle may still write to it before it sees the stopped generation.
    */
   dispose() {
+    this.disposed = true;
+    this.cancelBacktests("backtest canceled: runtime disposed");
     if (!this.stopped) this.stop();
     for (const t of [this.stallTimer, this.healer, this.memTimer]) if (t) clearInterval(t);
     this.stallTimer = null;
@@ -1494,6 +1500,7 @@ export class CoreRuntime {
    * runs, evals). The next start restores both.
    */
   shutdown(reason = "shutdown"): { snapshot: boolean } {
+    this.cancelBacktests(`backtest canceled: ${reason}`);
     if (!this.stopped) this.stop();
     if (this.stallTimer) clearInterval(this.stallTimer);
     this.stallTimer = null;
@@ -1620,8 +1627,7 @@ export class CoreRuntime {
       this.backtestJob?.state === "running" &&
       Date.now() - this.backtestJob.startedAt > BACKTEST_LIMIT_MS + 60_000
     ) {
-      this.backtestJob.state = "error";
-      this.backtestJob.error = "timed out";
+      this.cancelBacktest("backtest exceeded its 15 min limit — aborted");
     }
     if (this.stopped) return;
     const beforeGen = this.gen;
@@ -4198,6 +4204,13 @@ export class CoreRuntime {
     startedAt: number;
     error?: string;
   } | null = null;
+  private backtestControls = new WeakMap<object, AbortController>();
+  private backtestTask: {
+    job: NonNullable<CoreRuntime["backtestJob"]>;
+    controller: AbortController;
+    promise: Promise<void>;
+    timer: ReturnType<typeof setTimeout> | null;
+  } | null = null;
   private btCandles = new Map<string, { at: number; candles: Map<string, CandleSeries> }>();
   /** presets waiting for a backtest ("backtest all"): run one after another */
   backtestQueue: Array<{ id: string; days: number }> = [];
@@ -4216,18 +4229,20 @@ export class CoreRuntime {
 
   /** Queue a backtest of every preset (research and saved) over `days`; returns how many were queued. */
   queuePresetBacktests(days: number, onlyMissing = false): number {
+    if (this.disposed) throw new Error("runtime disposed");
     const d = Math.min(MAX_BACKTEST_DAYS, Math.max(1, Math.round(days)));
     const ids = [...ALL_RESEARCH_PRESETS, ...this.savedPresets()]
       .map((p) => p.id)
       .filter((id) => !onlyMissing || (this.presetSeries(id)?.days ?? 0) < d)
-      .filter((id) => !this.backtestQueue.some((q) => q.id === id) && this.backtestJob?.id !== id);
+      .filter((id) => !this.backtestQueue.some((q) => q.id === id) &&
+        !(this.backtestJob?.state === "running" && this.backtestJob.id === id));
     this.backtestQueue.push(...ids.map((id) => ({ id, days: d })));
     this.nextQueuedBacktest();
     return ids.length;
   }
 
   private nextQueuedBacktest() {
-    if (this.backtestJob?.state === "running") return;
+    if (this.disposed || this.backtestTask || this.backtestJob?.state === "running") return;
     while (this.backtestQueue.length) {
       const q = this.backtestQueue.shift()!;
       if (!this.findPreset(q.id)) continue;
@@ -4245,9 +4260,10 @@ export class CoreRuntime {
    * diagrams (presetSeries) are kept per preset; a queued next one starts when it ends.
    */
   startPresetBacktest(id: string, days: number): void {
-    if (this.backtestJob?.state === "running")
+    if (this.disposed) throw new Error("runtime disposed");
+    if (this.backtestTask || this.backtestJob?.state === "running")
       throw new Error(
-        `a backtest is running (${this.backtestJob.label}, ${this.backtestJob.days}d)`,
+        `a backtest is running (${this.backtestJob?.label}, ${this.backtestJob?.days}d)`,
       );
     const p = this.findPreset(id);
     if (!p) throw new Error("unknown preset");
@@ -4262,32 +4278,102 @@ export class CoreRuntime {
       startedAt: Date.now(),
     };
     const job = this.backtestJob;
-    void this.runPresetBacktest(p, d, job)
+    const controller = new AbortController();
+    this.backtestControls ??= new WeakMap();
+    this.backtestControls.set(job, controller);
+    const task = { job, controller, promise: Promise.resolve(), timer: null as ReturnType<typeof setTimeout> | null };
+    this.backtestTask = task;
+    task.timer = setTimeout(() => {
+      if (this.backtestTask === task) this.cancelBacktest("backtest exceeded its 15 min limit — aborted");
+    }, BACKTEST_LIMIT_MS);
+    task.timer.unref?.();
+    task.promise = this.runPresetBacktest(p, d, job)
       .catch((err) => {
         // only this job — a later job is never touched by an older one's failure
         if (job.state === "running") {
           job.state = "error";
           job.error = err instanceof Error ? err.message : String(err);
         }
-        this.db.event("error", `backtest ${p.label}: ${err instanceof Error ? err.message : err}`);
+        if (!controller.signal.aborted && !this.disposed)
+          this.db.event("error", `backtest ${p.label}: ${err instanceof Error ? err.message : err}`);
       })
-      .finally(() => this.nextQueuedBacktest());
+      .finally(() => {
+        if (task.timer) clearTimeout(task.timer);
+        if (this.backtestTask !== task) return;
+        this.backtestTask = null;
+        this.nextQueuedBacktest();
+      });
+  }
+
+  /** Cancellation is scoped to this runtime; another connection's worker calls and shared reads keep running. */
+  private cancelBacktest(reason: string) {
+    const job = this.backtestTask?.job ?? this.backtestJob;
+    if (job?.state === "running") {
+      job.state = "error";
+      job.error = reason;
+    }
+    this.backtestTask?.controller.abort(new Error(reason));
+  }
+
+  private cancelBacktests(reason: string) {
+    this.backtestQueue.length = 0;
+    this.cancelBacktest(reason);
+  }
+
+  /** Settles only this runtime's canceled task; call after stop/dispose before releasing shared workers. */
+  async backtestsSettled(): Promise<void> {
+    await this.backtestTask?.promise;
+  }
+
+  private checkBacktest(job: CoreRuntime["backtestJob"]) {
+    if (this.disposed) throw new Error("backtest canceled: runtime disposed");
+    if (!job) return;
+    const controller = this.backtestControls?.get(job);
+    controller?.signal.throwIfAborted();
+    if (controller && this.backtestTask?.job !== job) throw new Error("backtest canceled: superseded task");
+    if (job.state && job.state !== "running") throw new Error(job.error ?? "backtest canceled");
+    if (Number.isFinite(job.startedAt) && Date.now() - job.startedAt > BACKTEST_LIMIT_MS) {
+      const err = new Error("backtest exceeded its 15 min limit — aborted");
+      controller?.abort(err);
+      throw err;
+    }
+  }
+
+  /** Abandon the owner continuation promptly without canceling a transport shared by other runtimes. */
+  private async backtestAwait<T>(job: NonNullable<CoreRuntime["backtestJob"]>, promise: Promise<T>): Promise<T> {
+    this.checkBacktest(job);
+    const signal = this.backtestControls?.get(job)?.signal;
+    let cancel: (() => void) | undefined;
+    try {
+      const value = signal ? await Promise.race([promise, new Promise<never>((_, reject) => {
+        cancel = () => reject(signal.reason);
+        signal.addEventListener("abort", cancel, { once: true });
+        if (signal.aborted) cancel();
+      })]) : await promise;
+      this.checkBacktest(job);
+      return value;
+    } finally {
+      if (cancel) signal?.removeEventListener("abort", cancel);
+    }
   }
 
   /** Run a backtest phase on worker threads (all cores); false = not available / failed → caller runs in-process. */
   private async onWorkers(
     job: NonNullable<CoreRuntime["backtestJob"]>,
     stage: string,
-    fn: (n: number) => Promise<void>,
+    fn: (n: number, signal?: AbortSignal) => Promise<void>,
   ): Promise<boolean> {
+    this.checkBacktest(job);
     this.workersRetry();
     if (!workersAvailable() || this.workersBroken) return false;
     const n = poolSize();
     job.stage = `${stage} · ${n} cores`;
     try {
-      await fn(n);
+      await fn(n, this.backtestControls?.get(job)?.signal);
+      this.checkBacktest(job);
       return true;
     } catch (err) {
+      this.checkBacktest(job);
       this.workersFailed(err, "backtest", true);
       job.stage = stage;
       return false;
@@ -4541,16 +4627,22 @@ export class CoreRuntime {
     job = this.backtestJob,
   ): Promise<R> {
     let slice = performance.now();
-    for (;;) {
-      const r = gen.next();
-      if (r.done) return r.value;
-      onStep(r.value);
-      if (performance.now() - slice > SLICE_MS) {
-        await yieldNow();
-        if (this.backtestJob && Date.now() - this.backtestJob.startedAt > BACKTEST_LIMIT_MS)
-          throw new Error("backtest exceeded its 15 min limit — aborted");
-        slice = performance.now();
+    try {
+      for (;;) {
+        this.checkBacktest(job);
+        const r = gen.next();
+        this.checkBacktest(job);
+        if (r.done) return r.value;
+        onStep(r.value);
+        this.checkBacktest(job);
+        if (performance.now() - slice > SLICE_MS) {
+          await yieldNow();
+          this.checkBacktest(job);
+          slice = performance.now();
+        }
       }
+    } finally {
+      gen.return(undefined as R);
     }
   }
 
@@ -4581,7 +4673,8 @@ export class CoreRuntime {
       if (xs) xs.push(x);
       else byPair.set(k, [x]);
     };
-    const viaWorkers = await this.onWorkers(job, "Base", async (n) => {
+    this.checkBacktest(job);
+    const viaWorkers = await this.onWorkers(job, "Base", async (n, signal) => {
       const res = await runOnWorkers<{ runsJson: string[] }>(
         partitionByIndication(combos, n * 2)
           .filter((p) => p.length)
@@ -4601,7 +4694,9 @@ export class CoreRuntime {
         undefined,
         // a backtest someone waits for goes before the engines' background recomputes
         true,
+        signal,
       );
+      this.checkBacktest(job);
       for (const r of res) for (const chunk of r.runsJson) for (const x of JSON.parse(chunk) as ComboRun[]) add(x);
     });
     if (!viaWorkers) {
@@ -4613,7 +4708,7 @@ export class CoreRuntime {
           yield i;
         }
       }
-      await this.sliced(base(), (i) => (job.progress = 0.3 + (0.3 * (i + 1)) / combos.length));
+      await this.sliced(base(), (i) => (job.progress = 0.3 + (0.3 * (i + 1)) / combos.length), job);
     }
     // in combo order (as the engine's S1), whichever path computed them
     const runs = combos.flatMap((c) => byPair.get(`${c.bot}|${c.ind}`) ?? []);
@@ -4626,6 +4721,7 @@ export class CoreRuntime {
     days: number,
     job: NonNullable<CoreRuntime["backtestJob"]>,
   ) {
+    this.checkBacktest(job);
     const patch = presetSettings(p.settings);
     const s = mergeSettings(this.settings, {
       ...patch,
@@ -4682,9 +4778,16 @@ export class CoreRuntime {
           : [];
         // the preset's own universe (or the engine's before its first sync), ranked the way the engine does
         if (!syms.length) {
-          if (!this.tickers.length) this.tickers = await this.feed.tickers();
+          if (!this.tickers.length) {
+            const tickers = await this.backtestAwait(job, this.feed.tickers());
+            this.checkBacktest(job);
+            this.tickers = tickers;
+          }
           syms = forceSymbols(
-            await rankUniverse(this.tickers, s.symbols, s.symbolRank ?? "volatility1h", this.feed.klines),
+            await this.backtestAwait(job, rankUniverse(this.tickers, s.symbols, s.symbolRank ?? "volatility1h", (...args) => {
+              this.checkBacktest(job);
+              return this.backtestAwait(job, this.feed.klines(...args));
+            })),
             s.forceSymbols,
             s.symbols,
           );
@@ -4693,17 +4796,19 @@ export class CoreRuntime {
         // the engine's candles at this timeframe are reused; only the missing older part is downloaded
         const tfMs = s.tfMin * 60_000;
         await mapLimit(syms, 8, async (sym) => {
+          this.checkBacktest(job);
           const have = s.tfMin === this.settings.tfMin ? (this.candles.get(sym) ?? CandleSeries.EMPTY) : CandleSeries.EMPTY;
           const missing = wantBars - have.n;
           let cs: CandleSeries = have;
           if (missing > 0) {
             const first = have.firstT();
-            const older = await this.feed
+            const older = await this.backtestAwait(job, this.feed
               .history(sym, s.tfMin, have.n ? missing : wantBars, {
                 pauseMs: 0,
                 nowT: first,
               })
-              .catch(() => [] as Candle[]);
+              .catch(() => [] as Candle[]));
+            this.checkBacktest(job);
             cs =
               first !== undefined
                 ? CandleSeries.prepend(older.filter((c) => c.t < first && c.t >= first - missing * tfMs), have)
@@ -4711,11 +4816,13 @@ export class CoreRuntime {
           }
           if (cs.n) candles.set(sym, cs);
           job.progress = (++done / syms.length) * 0.3;
-        });
+        }, () => !this.disposed && job.state === "running" && !this.backtestControls?.get(job)?.signal.aborted);
+        this.checkBacktest(job);
         if (!candles.size) throw new Error("no market data (exchange unreachable)");
         this.btCandles.set(uniKey, { at: Date.now(), candles });
       }
     }
+    this.checkBacktest(job);
     // every lane over its own history before the backtest window plus the window itself
     const bars = laneSeriesFrom(candles, s, days).map((b) =>
       tailBars(b, Math.ceil((wantBars * s.tfMin) / b.tfMin)),
@@ -4749,6 +4856,7 @@ export class CoreRuntime {
       });
       ({ main, pairTags, pairTps } = await this.presetBase(job, s, combos, lookBars));
     }
+    this.checkBacktest(job);
     job.stage = "Tapes";
     const dcaOpt = { protects: wf.dcaProtects, dca: wf.dca, axis: s.axis };
     const adjust = s.adjust?.enabled ? this.adjustState() : null;
@@ -4759,7 +4867,7 @@ export class CoreRuntime {
     // pairs in the engine's combo order, cut into contiguous slices → identical tape order to one process
     // (lane combos included: the pairs are lane ids when the settings carry timeframe lanes)
     const pairs = combos.map((c) => `${c.bot}|${c.ind}`).filter((x) => main.has(x));
-    const tapesViaWorkers = await this.onWorkers(job, "Tapes", async (n) => {
+    const tapesViaWorkers = await this.onWorkers(job, "Tapes", async (n, signal) => {
       const res = await runOnWorkers<{ tapes: ConfigTape[] }>(
         slices(pairs, n * 2).map((pp) => ({
           type: "tapes",
@@ -4777,13 +4885,16 @@ export class CoreRuntime {
         undefined,
         // a backtest someone waits for goes before the engines' background recomputes
         true,
+        signal,
       );
+      this.checkBacktest(job);
       tapes = res.flatMap((x) => x.tapes);
     });
     if (!tapesViaWorkers)
       tapes = await this.sliced(
         buildTapesGen(u, wf.protects, s.cost, dcaOpt, main, s.tactics, adjust, floors),
         (x) => (job.progress = 0.6 + (0.3 * x.done) / Math.max(1, x.total)),
+        job,
       );
     // Signals: scored on the window before the backtest, the best N trade their 15 Normal + 15 Trailing configs
     const sig = signalSettings(s.signals);
@@ -4817,7 +4928,7 @@ export class CoreRuntime {
           yield i;
         }
       }
-      await this.sliced(sigBase(), () => undefined);
+      await this.sliced(sigBase(), () => undefined, job);
       // The same initialized-pair discovery rule as the live runtime; type/config qualification remains causal.
       sigActive = activeSignals(runs, sig);
       const signalFamilies = parseEvalFamilies(process.env.CTS_CORE_FAMILY);
@@ -4835,9 +4946,11 @@ export class CoreRuntime {
               entry: sig.filter.trendH > 0 || sig.filter.volFloor > 0 ? sig.filter : null,
             }),
             () => undefined,
+            job,
           ),
         );
     }
+    this.checkBacktest(job);
     job.stage = "Simulation";
     const sim = await this.sliced(
       walkForwardGen(u, tapes, {
@@ -4857,7 +4970,9 @@ export class CoreRuntime {
         signalMaxPositions: sig.maxPositions,
       }),
       () => (job.progress = Math.min(0.99, job.progress + 0.001)),
+      job,
     );
+    this.checkBacktest(job);
     const st = sim.stats;
     const knownBasis = st.pfBasis === "unit-net-returns" && st.unknownReturns === 0;
     const noLoss = knownBasis ? st.gp > 0 && st.gl === 0 : null;
@@ -4910,6 +5025,7 @@ export class CoreRuntime {
     try {
       const to = Math.min(endT, u.nowT);
       const series = backtestSeries(sim.trades, candles, s, startT, to, days);
+      this.checkBacktest(job);
       this.setPresetSeries(p.id, series);
       r.posPerHour = series.info.posPerHour;
       r.pfLast12 = series.info.pfLast12;
@@ -4918,8 +5034,10 @@ export class CoreRuntime {
       r.equityDdtH = series.info.ddtH;
       r.maxDdPct = series.info.maxDdPct;
     } catch (err) {
+      this.checkBacktest(job);
       this.db.event("warn", `backtest ${p.label}: diagrams not built: ${err instanceof Error ? err.message : err}`);
     }
+    this.checkBacktest(job);
     const all = this.presetBacktests();
     all[p.id] = [r, ...(all[p.id] ?? [])].slice(0, 30);
     this.db.kvSet("presetBacktests", all);
