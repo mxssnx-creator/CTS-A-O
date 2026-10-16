@@ -2,16 +2,38 @@
 
 Updated 2026-10-16, Europe/Vienna. Repository: `mxssnx-creator/CTS-A-O`.
 
-## Continuation check — fast regression and trading window
+## Continuation check — systemwide PF and volume audit
 
-The current continuation was checked against the clean merged-main tree
-(`78df42af0d661624cba982357a50f79eb27803df`). The focused offline regression
-bundle passed **226/226 tests**, zero failures, in about 8.3 seconds across 26
-suites. It covered Overall Block admission/replay, gating, walk-forward,
-independent Signal history, return-unit accounting, native execution budgets,
-fee provenance, and the Block comparison/evidence reporters. Runtime state,
-autostart, comparison jobs and live execution were disabled; the offline network
-guard was active. This focused run found no new code defect.
+Validated local source commit: `86b018956a3edc995486a4d3489110ffe6fc93ef`;
+published PR head: `f93bf39a17aa9d67512509a466ac755a7b3b36d6`. Both have the exact
+tested source tree `38a13887ba443a3b310caa512bbadcd3830131b9`, based on merged
+main `ad7f603c27abfb1b1df8f2ea3777314847aaa8b9` (PR #141). PR #142 is the
+systemwide PF/volume audit fix. The remote backup
+`backup/pre-systemwide-pf-audit-20261016` preserves that base before this fix.
+The focused offline regression bundle passed **338/338 tests** across 32
+suites in 15.4 seconds. `npm run typecheck -- --pretty false` and scoped ESLint
+on the three changed source/test files also passed. The tests covered independent
+Block relations, .2 ratio and stack cap behavior, accepted-order replay, unit
+versus sized PF, cash reconciliation, ownership, the self-audit, and API reports.
+Runtime state, autostart, comparison jobs and live execution were disabled; the
+offline network guard was active.
+
+The audit found one defect: its plain-close cost check defaulted missing modeled
+volume evidence to multiplier 1, even though primary modeled PF correctly marked
+that sample unknown. It now uses the canonical modeled-unit return helper,
+requires a finite positive multiplier, and checks recorded position volume against
+the external multiplier. A regression confirms missing multiplier evidence fails
+the check. The statistics type comment now identifies recorded net points as
+volume-weighted diagnostics, separate from normalized PF and dollar P&L.
+
+The existing frozen 6h+6h Block study remains the strategy evidence and was not
+rescored: 920 base combinations were evaluated per fold; fold 1 had no owned
+settled closes; fold 2 had 792 settled slices at return PF 2.3748515, with no
+settled PF uplift over Block Off. Two scored hours had PF zero and every native
+Signal-activity check failed. This audit-only fix does not alter strategy sizing,
+trade selection or the measured outcome. A fresh untouched market window and
+authenticated account evidence are not available, so a profitable strategy
+change, positive results in every hour, or live execution cannot be claimed.
 
 Fast trading tests now default to six hours of evaluated prehistory plus six
 hours of simulated trading; older indicator warmup remains outside the score
