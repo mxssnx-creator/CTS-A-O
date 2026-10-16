@@ -51,7 +51,7 @@ const TOGGLE_LABEL: Record<keyof StrategyToggles, string> = {
   dcaActive: "DCA Active",
   axis: "Axis",
 };
-/** the tape kinds a toggle needs to act on anything (turning it on without them changes nothing) */
+/** The tape kinds a toggle needs to affect a run. Missing tapes require a recompute when enabling; disabling is n/a. */
 const TOGGLE_KINDS: Partial<Record<keyof StrategyToggles, string[]>> = {
   normal: ["normal", "trailing", "trailing-only"],
   trailing: ["trailing", "trailing-only"],
@@ -63,7 +63,7 @@ const TOGGLE_KINDS: Partial<Record<keyof StrategyToggles, string[]>> = {
 const onOff = (v: unknown) => (v ? "on" : "off");
 
 export interface VariantContext {
-  /** tapes per kind (normal / trailing / dca / dca-active / axis) and signal tapes */
+  /** tapes per kind (normal / trailing / exit / dca / dca-active / axis) and signal tapes */
   kinds: Readonly<Record<string, number>>;
   signalTapes: number;
   /** the compute's tactics (they shape tapes at build time: listed, never run) */
@@ -113,15 +113,20 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
       asRun: onOff(on),
       opts: { ...base, toggles: { ...tg, [k]: !on } },
     };
-    if (!on && have === 0)
-      Object.assign(v, {
-        status: "recompute",
-        why: `no ${need!.join(" / ")} tapes in this compute`,
-      });
-    else if (k === "dcaActive" && !tg.dca)
+    if (k === "dcaActive" && !tg.dca)
       Object.assign(v, {
         status: "na",
         why: "DCA is off: DCA Active only picks which DCA tapes trade",
+      });
+    else if (need && have === 0 && on)
+      Object.assign(v, {
+        status: "na",
+        why: `no ${need.join(" / ")} tapes in this compute`,
+      });
+    else if (need && have === 0)
+      Object.assign(v, {
+        status: "recompute",
+        why: `no ${need.join(" / ")} tapes in this compute`,
       });
     push(v);
   }
