@@ -58,6 +58,7 @@ describe("Signals: independent protection discovery", () => {
     const tapes = buildTapes(u, signalProtects(sig), 0.002, undefined, pairs, null, null, {
       minSl: sig.minSl,
       minTrail: sig.minTrail,
+      signalReferenceGrid: true,
     });
     assert.equal(tapes.length, 36);
     assert.ok(tapes.filter((tp) => tp.kind === "trailing-only").some((tp) => tp.n >= 3));
@@ -85,6 +86,22 @@ describe("Signals: independent protection discovery", () => {
       { ok: false, why: "signalInactive" },
       "another type's discovery/record is never its qualification",
     );
+
+    const historic = { tp: 0.03, sl: 0.06, trail: 0.01, hold: 192 };
+    const buildStats = new Map();
+    const withHistoric = buildTapes(u, signalProtects(sig), 0.002, undefined, pairs, null, null, {
+      minSl: sig.minSl,
+      minTrail: sig.minTrail,
+      signalReferenceGrid: true,
+      pairProtects: { [`follow|${IND}`]: [historic] },
+      buildStats,
+    });
+    assert.equal(withHistoric.length, 36, "standard lane aliases retain every effective configured cell");
+    assert.ok(
+      !withHistoric.some((tp) => tp.id === configId("follow", IND, laneProtect(historic, IND))),
+      "a history-qualified custom trail stays disabled if lane scaling takes it below its floor",
+    );
+    assert.equal(buildStats.get(`${IND}||trailing`)?.skip.trailTooShort, 1);
   });
 
   it("keeps explicit representative Base gates, initialization and family/configuration restrictions", () => {
@@ -171,7 +188,7 @@ describe("Signals: independent protection discovery", () => {
     const pairs = signalEvaluationPairs(configured, localBase, sig, (r) =>
       passesBase(r.full, gates),
     );
-    const floors = { minSl: sig.minSl, minTrail: sig.minTrail };
+    const floors = { minSl: sig.minSl, minTrail: sig.minTrail, signalReferenceGrid: true };
     const protects = signalProtects(sig);
     const local = buildTapes(u, protects, 0.002, undefined, pairs, null, null, floors);
     try {

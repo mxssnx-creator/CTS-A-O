@@ -1372,6 +1372,8 @@ export interface EntryFilter {
 export type EntryFloors = {
   minSl: number;
   minTrail: number;
+  /** Standard Signal protections use 15m reference distances; apply the trail floor after lane scaling. */
+  signalReferenceGrid?: boolean;
   /** Background Base evaluation: the same simulations, counted and immediately discarded. Never used for trading. */
   baseConfigCounter?: BaseConfigCounter;
   countOnly?: boolean;
@@ -1787,13 +1789,16 @@ export function* buildTapesGen(
         continue;
       }
       const lane = laneProtect(p0, c.ind);
-      // Signal trails below their configured floor are disabled, not widened by adjustProtect. Check after lane
-      // scaling, when fast timeframes can shrink an otherwise valid reference trail. An existing position still
-      // rebuilds its exact tape so its protection cannot disappear mid-trade.
+      // Historical Signal protections are qualified at their exact lane distances; a too-short one stays disabled
+      // instead of being widened after qualification. Standard Signal protections are specified at the 15m
+      // reference, so the caller marks that grid for floor adjustment after lane scaling (aliases then deduplicate
+      // by effective id below). An existing position still rebuilds its exact tape so protection cannot vanish.
       const laneId = configId(c.bot, c.ind, lane);
       const heldLane = floors?.heldIds?.has(laneId) || floors?.heldOnlyIds?.has(laneId);
+      const historicalProtect = own?.includes(p0) ?? false;
       if (
         isSignalInd(c.ind) &&
+        (!floors?.signalReferenceGrid || historicalProtect) &&
         p0.trail > 0 &&
         lane.trail * (lane.trailStep ?? 1) + 1e-12 < (floors?.minTrail ?? 0) &&
         !heldLane

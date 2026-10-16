@@ -3378,6 +3378,7 @@ export class CoreRuntime {
       ? await tapesFor(sigPairs, signalProtects(sig), sigStrat, "signal tapes", {
           minSl: sig.minSl,
           minTrail: sig.minTrail,
+          signalReferenceGrid: true,
           entry: sig.filter.trendH > 0 || sig.filter.volFloor > 0 ? sig.filter : null,
           pairProtects: sigHist,
           heldIds,
@@ -3397,6 +3398,7 @@ export class CoreRuntime {
         floors: {
           minSl: sig.minSl,
           minTrail: sig.minTrail,
+          signalReferenceGrid: true,
           entry: sig.filter.trendH > 0 || sig.filter.volFloor > 0 ? sig.filter : null,
           pairProtects: sigHist,
           heldIds,
@@ -5019,6 +5021,7 @@ export class CoreRuntime {
             buildTapesGen(u, signalProtects(sig), s.cost, undefined, sigPairs, s.tactics, adjust, {
               minSl: sig.minSl,
               minTrail: sig.minTrail,
+              signalReferenceGrid: true,
               // the entry filter (trend / volatility floor) the compute builds the signal tapes with
               entry: sig.filter.trendH > 0 || sig.filter.volFloor > 0 ? sig.filter : null,
             }),
