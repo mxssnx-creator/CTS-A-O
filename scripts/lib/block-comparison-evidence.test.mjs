@@ -385,7 +385,7 @@ it("reconciles native book risk separately from sampled ratios, closed-unit draw
   assert.equal(overflow.sampledCurve.unknownSamples, 1);
 });
 
-it("preserves native Block levels and inspected candidate counts, and never turns an absent trace into zero evidence", () => {
+it("preserves native Block levels and source-specific inspected history counts, and never turns an absent trace into zero evidence", () => {
   const blockLevels = { overall: 7, symbol: 3, direction: 2, indication: 1, config: 6, type: 4 };
   const blockEffectiveLevels = {
     overall: 7,
@@ -417,7 +417,39 @@ it("preserves native Block levels and inspected candidate counts, and never turn
   assert.equal(r.slices[1].blockLevels, null);
   assert.equal(r.slices[1].blockSampleCounts, null);
   assert.equal(r.total.n, 2);
-  assert.match(r.definitions.blockTrace, /not executed or PF-qualified/);
+  assert.match(r.definitions.blockTrace, /not counts of funded execution or PF-qualified/);
+});
+
+it("preserves source-book provenance and labels admitted, auxiliary candidate and owned funded histories separately", () => {
+  const f = fixture([trade(0.02)]);
+  const sourceBookEvidence = {
+    overall: "settled-final-real-admitted-before-allocation",
+    auxiliary: "closed-real-selected-candidates",
+    config: "exact-cfg-symbol-side-tape",
+    counts: { overall: 0, auxiliary: 12 },
+  };
+  f.raw.frozenBlockComparison.sourceBookEvidence = sourceBookEvidence;
+  const r = reduce(f);
+  assert.deepEqual(r.provenance.sourceBookEvidence, sourceBookEvidence);
+  assert.deepEqual(r.provenance.frozenBlockComparison.sourceBookEvidence, sourceBookEvidence);
+  assert.match(
+    r.definitions.sourceBooks,
+    /Overall learns only settled final modeled-Real-entry-admitted orders, before native cash allocation/,
+  );
+  assert.match(r.definitions.sourceBooks, /later entry rejects and unfunded candidates/);
+  assert.match(r.definitions.sourceBooks, /Config retains its exact own cfg\/symbol\/side tape/);
+  assert.match(
+    r.definitions.sourceBooks,
+    /neither admitted model orders nor auxiliary candidates establish funded ownership/,
+  );
+  assert.equal(r.total.n, 1);
+  assert.equal(
+    r.total.noLoss,
+    true,
+    "source-book diagnostics cannot replace the owned return sample",
+  );
+  delete f.raw.frozenBlockComparison.sourceBookEvidence;
+  assert.equal(reduce(f).provenance.sourceBookEvidence, null);
 });
 
 it("requires matching exact minute-risk provenance and keeps an unrounded drawdown boundary separate from rounded display", () => {
@@ -450,4 +482,126 @@ it("requires matching exact minute-risk provenance and keeps an unrounded drawdo
   assert.equal(reduce(f).risk.exactMinuteTotals, false);
   delete f.book.frozenBlockRiskExact;
   assert.equal(reduce(f).risk.exactMinuteTotalsStatus, "missing");
+});
+
+it("retains all hourly native type and direction cells with the same settled virtual/funded math", () => {
+  const trailOnly = "follow|sig-ema-cross-s@m5|tp0|sl2|tr1|h60|to";
+  const f = fixture(
+    [
+      trade(0.02, { exitT: startT + H, mult: 2 }),
+      trade(-0.01, { entryT: startT + 3, exitT: startT + H + 1, mult: undefined }),
+      trade(-0.2, {
+        cfg: cfg("ema-9-21@m5", "|axis"),
+        kind: "axis",
+        side: -1,
+        exitT: startT + 3 * H,
+      }),
+      trade(0.03, { cfg: trailOnly, kind: "trailing-only", side: -1, exitT: endT }),
+    ],
+    [10, 10, 0, 2],
+  );
+  const r = reduce(f),
+    rows = r.byHourTypeSide;
+  assert.equal(rows.length, 6 * 6 * 2);
+  assert.equal(
+    rows.reduce((s, x) => s + x.virtual.n, 0),
+    r.virtual.n,
+  );
+  assert.equal(
+    rows.reduce((s, x) => s + x.funded.n, 0),
+    r.total.n,
+  );
+  assert.equal(
+    rows.find((x) => x.hour === 0 && x.kind === "normal" && x.side === 1).funded.noLoss,
+    true,
+  );
+  const unknown = rows.find((x) => x.hour === 1 && x.kind === "normal" && x.side === 1);
+  assert.equal(unknown.funded.n, 1);
+  assert.equal(unknown.funded.unknownReturns, 1);
+  assert.equal(unknown.funded.pf, null);
+  const zero = rows.find((x) => x.hour === 2 && x.kind === "axis" && x.side === -1);
+  assert.equal(zero.virtual.n, 1);
+  assert.equal(zero.virtual.pf, 0);
+  assert.equal(zero.funded.n, 0);
+  assert.equal(zero.funded.zeroAllocations, 1);
+  assert.equal(zero.funded.pf, null);
+  assert.equal(
+    rows.find((x) => x.hour === 5 && x.kind === "trailing-only" && x.side === -1).funded.noLoss,
+    true,
+  );
+  assert.ok(
+    rows
+      .filter((x) => x.kind === "dca-active")
+      .every((x) => x.funded.n === 0 && x.funded.pf === null),
+  );
+});
+
+it("preserves prior-window selection, range and shared hypothetical stage evidence without inventing own hourly Base/Main PF", () => {
+  const f = fixture();
+  f.raw.validation = [
+    { t: startT, real: [cfg()], checks: [[cfg(), 1, 100, 2, 0.2, 0.1]] },
+    { t: startT + H, real: [], checks: [[cfg(), 0, 100, 0.5, 0.05, 0.1]] },
+  ];
+  f.raw.stepsByRange = [
+    { t: startT, byRange: { sig: { tapes: 4, validated: 2, candidates: 1, taken: 0 } } },
+    { t: startT + H, byRange: { mc: { tapes: 7, validated: 3, candidates: 2, taken: 1 } } },
+  ];
+  f.raw.funnel = {
+    nH: 6,
+    beforeBase: [{ n: 10, w: 3, gp: 0.02, gl: 0.03 }],
+    pool: [{ n: 20, w: 12, gp: 0.4, gl: 0.2 }],
+  };
+  f.raw.basePairs = [{ bot: "follow", ind: "ema-9-21@m5", tags: ["mc"] }];
+  f.raw.settings.toggles.axis = false;
+  f.book.hours = [{ t: startT, balance: 100, equity: 90, orders: 2, ordersOpenEnd: 1 }];
+  const r = reduce(f);
+  assert.equal(r.hourlyStageSnapshots.length, 6);
+  assert.deepEqual(r.hourlyStageSnapshots[0].validation, [f.raw.validation[0]]);
+  assert.deepEqual(r.hourlyStageSnapshots[1].validation, [f.raw.validation[1]]);
+  assert.deepEqual(r.hourlyStageSnapshots[0].stepsByRange, [f.raw.stepsByRange[0]]);
+  assert.deepEqual(r.provenance.funnel, f.raw.funnel);
+  assert.deepEqual(r.provenance.basePairs, f.raw.basePairs);
+  assert.equal(r.stagePfAvailability.ownHourlyBasePf, null);
+  assert.equal(r.stagePfAvailability.ownHourlyMainPf, null);
+  assert.match(r.stagePfAvailability.reason, /not recorded/);
+  assert.match(r.definitions.stages, /overlapping n values are not summed/);
+  assert.equal(r.settings.axisConfiguredEnabled, false);
+  assert.deepEqual(r.book.hours, f.book.hours);
+});
+
+it("distinguishes modeled entries, settled slices and matched positive/zero/unknown open allocations without adding marks to PF", () => {
+  const f = fixture([trade(0.01), trade(-0.02, { exitT: startT + 3 })], [10, 10]);
+  f.raw.openEnd = [
+    trade(-1),
+    trade(-2, { sym: "ETH-USDT", entryT: startT + 10, vol: 4 }),
+    trade(-3, { sym: "SOL-USDT", entryT: startT + 20 }),
+    trade(-4, { sym: "XRP-USDT", entryT: startT + 30 }),
+  ].map(({ r, ...x }) => ({ ...x, exitT: undefined, mtmR: r }));
+  f.book.sizedOpenOrders = f.raw.openEnd
+    .slice(0, 3)
+    .map((x, openIndex) => ({
+      openIndex,
+      key: orderKey(x),
+      cfg: x.cfg,
+      sym: x.sym,
+      side: x.side,
+      entryT: x.entryT,
+      volume: x.vol,
+      unitNotional: [10, 5e-10, 0][openIndex],
+      allocatedNotional: [10, 2e-9, 0][openIndex],
+      sizedPnl: x.mtmR * [10, 5e-10, 0][openIndex],
+    }));
+  const r = reduce(f);
+  assert.equal(r.counts.modeledUniqueEntryOrders, 4);
+  assert.equal(r.counts.modeledSettledCloseSlices, 2);
+  assert.equal(r.counts.modeledOpenOrders, 4);
+  assert.equal(r.counts.positiveOwnedSettledCloseSlices, 2);
+  assert.equal(r.counts.positiveOwnedOpenOrders, 2);
+  assert.equal(r.counts.zeroAllocatedOpenOrders, 1);
+  assert.equal(r.counts.unknownAllocatedOpenOrders, 1);
+  assert.equal(r.total.n, 2);
+  assert.equal(r.total.pf, 0.5);
+  delete f.raw.openEnd[3].sym;
+  assert.equal(reduce(f).counts.modeledUniqueEntryOrders, null);
+  assert.equal(reduce(f).counts.unknownOpenIdentityOrders, 1);
 });

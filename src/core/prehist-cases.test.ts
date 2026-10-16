@@ -18,6 +18,7 @@ const tr = (sym: string, side: 1 | -1, eH: number, xH: number, r: number): Trade
   entry: 1,
   exit: 1,
   r,
+  mult: 1, // Hand-computed modeled returns use one explicit execution unit.
   reason: r > 0 ? "tp" : "sl",
   bars: 1,
   mfe: 0,

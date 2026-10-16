@@ -43,9 +43,18 @@ At ratio 0.2, stepped volume no longer rounds a 0.2 addition up to 1.0.
 Sub-step positive fractions remain usable; larger steps round down, bounded by
 the raw requested addition and the total cap. Shared accepts any valid enabled
 relation, Additive sums its valid levels, and Overall retains independent
-source additions. Optional traces record raw/effective levels and actual
-closed-candidate sample counts. These are Real-selected candidate histories,
-separate from funded executions; open marks cannot create settled PF evidence.
+source additions. Overall's global source now learns only from closed orders
+admitted after all final modeled Real entry checks. The same rule applies in
+Overall, Shared and Additive modes. Symbol, Direction and Indication auxiliary
+books retain their independent selected-candidate histories; rejected candidates
+cannot teach or consume the pause of the global Overall book. Entry markers and
+separate auto-window verdicts survive causal replay. Cold Overall-only Active
+profiles need prior verified admissions; ordinary qualified 1x entries and
+independent auxiliary sources retain the default bootstrap.
+Optional traces record raw/effective levels and actual inspected sample counts.
+Final modeled admission precedes account cash allocation, so these histories
+remain separate from funded executions; open marks cannot create settled PF
+evidence.
 
 Current focused checks include 143 baseline native-control cases, 172 final
 Block/ratio/trace cases, 13 evidence-reducer cases and 95 actual fee/schema

@@ -10,7 +10,9 @@ import {
   COMPARISON_SOURCE_MASK,
   COMPARISON_WF_PATCH,
   COMPARISON_ASSESSMENT,
+  COMPARISON_SOURCE_BOOK_EVIDENCE,
   assessComparisonSummaries,
+  compareOwnedAllocations,
   canonical,
   comparisonRoot as root,
   comparisonSourceFiles,
@@ -184,6 +186,7 @@ export async function prepareComparison(dir) {
     symbols: COMPARISON_SYMBOLS,
     arms: COMPARISON_ARMS,
     assessment: COMPARISON_ASSESSMENT,
+    sourceBookEvidence: COMPARISON_SOURCE_BOOK_EVIDENCE,
     folds,
     preH: 6,
     runH: 6,
@@ -371,6 +374,11 @@ export async function runComparison(protocolFile) {
             "byRange",
             "bySide",
             "byRelation",
+            "byHourTypeSide",
+            "hourlyStageSnapshots",
+            "stagePfAvailability",
+            "counts",
+            "axisConfiguredEnabled",
             "risk",
             "book",
           ].map((key) => [key, evidence[key]]),
@@ -391,13 +399,15 @@ export async function runComparison(protocolFile) {
     const { compareBlockEvidence } = await import("./lib/block-comparison-evidence.mjs");
     const folds = p.folds.map((fold) => {
       const arms = p.arms.map((arm) => read(path.join(dir, fold.id, arm.id, "summary.json")));
+      const inputs = p.arms.map((arm) =>
+        read(path.join(dir, fold.id, arm.id, "comparison-input.json")),
+      );
       return {
         fold: fold.id,
         arms,
         researchAssessment: assessComparisonSummaries(arms),
-        comparison: compareBlockEvidence(
-          p.arms.map((arm) => read(path.join(dir, fold.id, arm.id, "comparison-input.json"))),
-        ),
+        allocationComparison: compareOwnedAllocations(inputs),
+        comparison: compareBlockEvidence(inputs),
       };
     });
     const report = {
@@ -415,6 +425,7 @@ export async function runComparison(protocolFile) {
       results,
       folds,
       assessmentCriteria: p.assessment,
+      sourceBookEvidence: p.sourceBookEvidence,
       allFoldAssessment: p.arms
         .filter((arm) => arm.id !== "off")
         .map((arm) => ({

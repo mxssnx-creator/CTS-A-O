@@ -394,6 +394,7 @@ function tradesOf(r: R, n: number, t0 = Date.UTC(2026, 8, 20)): StatTrade[] {
       exitT: entryT + int(r, 1, 600) * 60_000,
       entry: 100,
       r: rr,
+      mult: 1, // Synthetic modeled rows are explicitly unweighted unless the fixture raises them below.
       reason: pick(r, ["tp", "sl", "trail", "time"]),
       ...(r() < 0.5 ? { mult: pick(r, [1, 2, 3]), level: int(r, 0, 4) } : {}),
     };

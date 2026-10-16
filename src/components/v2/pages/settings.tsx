@@ -137,12 +137,12 @@ function SwitchRow(props: {
 }
 
 const BLOCK_SOURCE_HELP: Array<[string, string]> = [
-  ["config", "the config set's own closed positions"],
-  ["overall", "every executed position"],
-  ["symbol", "positions on the same symbol"],
-  ["direction", "positions on the same side (long / short)"],
-  ["indication", "positions of the same indication type"],
-  ["type", "positions of the same strategy type (Normal, Trailing, DCA, Axis)"],
+  ["config", "closed history of the exact config, symbol and direction"],
+  ["overall", "closed orders admitted at final Real, before account allocation; both directions pooled"],
+  ["symbol", "closed candidates on the same symbol and direction"],
+  ["direction", "closed candidates in the same direction across symbols"],
+  ["indication", "closed candidates in the same indication family and direction, across symbols and configs"],
+  ["type", "closed candidates of the same strategy type (Normal, Trailing, trailing-only, DCA, Axis); both directions pooled"],
 ];
 
 /** Block sources and how their levels combine (shared = strongest, additive = sum, overall = each its own Block). */
@@ -156,7 +156,7 @@ export function BlockSources(props: {
     <div className="v2-lines" style={{ gap: 6, marginTop: 8 }}>
       <Field
         label="Type"
-        hint="shared: strongest source's level · additive: levels add up (capped by max multiple) · overall: every source its own Block and own position (overall, symbol, direction, indication independent)"
+        hint="Shared: any valid source, using the strongest level · Additive: valid levels add up · Overall: independent source additions · all share the total stack cap"
       >
         <select
           className="v2-select"

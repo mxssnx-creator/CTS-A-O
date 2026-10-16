@@ -6,6 +6,8 @@ const { CoreDb } = await import("./server/db.server.ts");
 const { CoreRuntime } = await import("./server/runtime.server.ts");
 const { walkForward } = await import("./sim/walkforward.ts");
 const { statsOf } = await import("./metrics/stats.ts");
+const { CandleSeries } = await import("./market/candle-series.ts");
+const { liveTag } = await import("./server/live.ts");
 const { coreOverviewData, coreSimData, coreConnsData, coreStatisticsData, coreStatisticsInput, coreStatusData, connInput } = await import("./api-data.ts");
 import type { Trade } from "./domain/types.ts";
 
@@ -65,6 +67,33 @@ test("no-loss modeled score four stays distinct from a measured return ratio fou
   r.sim!.trades = [{ ...r.sim!.trades[0], r: 0.04, mult: 1 }, { ...r.sim!.trades[0], r: -0.01, mult: 1, entryT: END - H, exitT: END }];
   const measured = await coreOverviewData(connInput()) as Any;
   assert.equal(measured.sim.stats.pf, 4); assert.equal(measured.sim.stats.noLoss, false); assert.equal(measured.lanes[0].noLoss, false);
+});
+
+test("a flat measured live close retains actual notional for reconstructed drawdown and margin", async () => {
+  const r = fixture();
+  r.settings.sizing = { mode: "fixed", pct: 0.02 };
+  r.settings.paperNotional = 5;
+  r.settings.cost = 0;
+  const entryT = END - H;
+  const exitT = entryT + 2 * 60_000;
+  const tag = liveTag(r.settings.live.connId);
+  for (const [kind, at] of [["O", entryT], ["X", exitT]] as const) {
+    const coid = `${tag}Uflat-${kind}`;
+    r.db.run("INSERT INTO live_orders (coid,cfg,sym,side,kind,qty,px,status,at) VALUES (?,?,?,?,?,?,?,?,?)", coid, "owned-flat", "QA-FLAT-USDT", 1, kind, 1, 100, "ok", at);
+    r.db.run("INSERT INTO live_fills (coid,sym,side,kind,qty,ref_px,fill_px,fee,fee_known,at) VALUES (?,?,?,?,?,?,?,?,?,?)", coid, "QA-FLAT-USDT", 1, kind, 1, 100, 100, 0, 1, at);
+  }
+  r.candles.set("QA-FLAT-USDT", CandleSeries.fromCandles([100, 90, 100].map((price, i) => ({ t: entryT + i * 60_000, o: price, h: price, l: price, c: price, v: 1 }))));
+  const result = await coreStatisticsData(coreStatisticsInput({ source: "live", hours: 6 })) as Any;
+  assert.equal(result.closes.length, 1);
+  assert.equal(result.closes[0].notional, 100);
+  assert.equal(result.closes[0].r, 0);
+  assert.equal(result.report.total.n, 1);
+  assert.equal(result.report.total.usd, 0);
+  assert.equal(result.report.timeline.marginMax, 10, "actual $100 notional, not the unrelated $5 paper setting");
+  assert.equal(result.report.timeline.maxDd, 10, "the temporary 10% adverse mark uses the actual owned close notional");
+  assert.equal(result.report.timeline.ordersMax, 1);
+  assert.equal(result.report.timeline.positionsMax, 1);
+  assert.equal(result.balanceFrom, "unavailable", "a ledger notional never invents an account equity baseline");
 });
 
 function paperFixture() {

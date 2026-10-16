@@ -6,7 +6,7 @@ import { Fragment, useMemo, useState } from "react";
 import { coreStatistics } from "../api-conn";
 import { configStrategyLabel, indicationKindLabel } from "../indication-ui";
 import { hasNoTakeProfit, signalTrailGapRatio } from "../signal-units";
-import { accountSource, cashPf, comparisonPfDelta, comparisonPfText, returnPf, returnPfText, unitStatsPfText, liveBalanceUnavailable } from "../accounting";
+import { accountSource, cashPfText, comparisonPfDelta, comparisonPfText, returnPf, returnPfText, unitStatsPfText, liveBalanceUnavailable } from "../accounting";
 import { ArcShare, HeatGrid, MultiChart, SignedBars } from "../charts";
 import {
   downloadFile,
@@ -38,6 +38,7 @@ type Row = {
   noLoss?: boolean | null;
   pfConvention?: string;
   cashPf?: number;
+  cashNoLoss?: boolean;
   net: number;
   usd: number;
   avg: number;
@@ -85,7 +86,7 @@ function GroupTable(props: { rows: Row[]; label: string; empty?: string; dates?:
               </td>
               <td className="num">{pct(r.wr)}</td>
               <td className={`num ${pfTone(returnPf(r))}`}>{props.comparison ? comparisonPfText(r) : returnPfText(r)}</td>
-              <td className="num v2-muted">{fmt.pf(cashPf(r))}</td>
+              <td className="num v2-muted">{cashPfText(r)}</td>
               <td className={`num ${tone(r.net)}`}>{fmt.pct(r.net)}</td>
               <td className={`num ${tone(r.usd)}`}>{fmt.usd(r.usd)}</td>
               <td className="num">{fmt.h(r.ddt)}</td>
@@ -252,7 +253,7 @@ function Configs(props: { rows: Any[]; source: string }) {
                   <td className="num">{r.n}</td>
                   <td className="num">{pct(r.wr)}</td>
                   <td className={`num ${pfTone(returnPf(r))}`}>{returnPfText(r)}</td>
-                  <td className="num v2-muted">{fmt.pf(cashPf(r))}</td>
+                  <td className="num v2-muted">{cashPfText(r)}</td>
                   <td className={`num ${tone(r.usd)}`}>{fmt.usd(r.usd)}</td>
                   <td className="num">{fmt.h(r.ddt)}</td>
                 </tr>
@@ -396,7 +397,7 @@ export function StatisticsPage() {
             sub={unbasedLive ? balanceNote : `${hours > 0 ? "window start" : "start"} ${fmt.usd(hours > 0 ? (r.balanceStart ?? r.balance0) : r.balance0)} · ${fmt.usd(T.usd)}${balanceNote ? ` · ${balanceNote}` : ""}`}
             className={tone(T.usd)}
           />
-          <Kpi label={r.source === "live" ? "Ledger return PF" : r.source === "paper" ? "Owned paper return PF" : "Model return PF before allocation"} value={returnPfText(T)} sub={`${T.pfBasis === "unavailable" ? `unit-return evidence unavailable for ${fmt.num(T.unknownReturns)} closes · ` : ""}${r.source === "paper" ? "nominal paper cash PF" : "cash PF diagnostic"} ${fmt.pf(cashPf(T))} · ${r.source === "paper" ? "recorded WR" : "WR"} ${pct(T.wr)}`} className={pfTone(returnPf(T))} />
+          <Kpi label={r.source === "live" ? "Ledger return PF" : r.source === "paper" ? "Owned paper return PF" : "Model return PF before allocation"} value={returnPfText(T)} sub={`${T.pfBasis === "unavailable" ? `unit-return evidence unavailable for ${fmt.num(T.unknownReturns)} closes · ` : ""}${r.source === "paper" ? "nominal paper cash PF" : "cash PF diagnostic"} ${cashPfText(T)} · ${r.source === "paper" ? "recorded WR" : "WR"} ${pct(T.wr)}`} className={pfTone(returnPf(T))} />
           <Kpi label="Orders · positions" value={`${T.n} · ${T.positions}`} sub={`${r.source === "paper" ? "recorded: " : ""}${T.wins} won · ${T.losses} lost · ${fmt.pf(T.tph)}/h`} />
           <Kpi label={unbasedLive ? "Ledger drawdown ($)" : "Equity drawdown"} value={unbasedLive ? fmt.usd(tl.maxDd) : `${tl.maxDdPct.toFixed(2)}%`} sub={unbasedLive ? `account drawdown % unavailable · under water ${fmt.h(tl.maxDdH)}` : `${fmt.usd(tl.maxDd)} · under water ${fmt.h(tl.maxDdH)}`} className={!unbasedLive && tl.maxDdPct > 20 ? "v2-down" : ""} />
           <Kpi label="DDT (closes)" value={fmt.h(T.ddt)} sub={`green hours ${pct(T.gh)}`} />

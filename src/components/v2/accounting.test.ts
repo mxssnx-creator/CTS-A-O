@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   accountSource,
   cashPf,
+  cashPfText,
   comparisonPfDelta,
   comparisonPfText,
   hasUnitReturnBasis,
@@ -64,6 +65,15 @@ test("a no-loss return PF sample discloses the sentinel without changing its num
   assert.equal(returnPfText({ n: 3, pf: 4, noLoss: false }), "4.00");
   assert.equal(returnPfText({ n: 0, pf: 4, noLoss: true }), "–");
   assert.equal(returnPfText({ n: 3, pf: NaN, noLoss: true }), "–");
+});
+
+test("cash PF text uses explicit no-loss provenance without reinterpreting measured or legacy four", () => {
+  assert.equal(cashPfText({ n: 3, cashPf: 4, cashNoLoss: true }), "No losses");
+  assert.equal(cashPfText({ n: 3, cashPf: 4, cashNoLoss: false }), "4.00");
+  assert.equal(cashPfText({ n: 3, cashPf: 4 }), "4.00");
+  assert.equal(cashPfText({ n: 3, cashPf: 0, cashNoLoss: false }), "0.00");
+  assert.equal(cashPfText({ n: 0, cashPf: 4, cashNoLoss: true }), "–");
+  assert.equal(cashPfText({ n: 3, cashPf: Number.NaN, cashNoLoss: true }), "–");
 });
 
 test("preset comparisons distinguish a no-loss score from an actual finite ratio of four", () => {

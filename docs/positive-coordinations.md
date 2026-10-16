@@ -9,6 +9,12 @@ pooled sources keep their scope. Fractional Block source legs retain logical
 identities and share their exact parent's physical exit, including optional
 native lane-order sizing. Pending/partial quantities reserve real capacity.
 Existing holdings keep their entry multiple after a lower cap is configured.
+The global Overall source now uses settled final modeled Real admissions,
+before account allocation. Rejected candidates neither teach it nor consume
+its pause; independent auxiliary candidate books retain their scope. This
+implements the 16 October operator clarification across all three Block modes.
+Indication source means registry family × direction; exact config qualification
+and full indication × symbol × direction reporting remain separate scopes.
 Default 8x, all other coordination defaults and desk patches are unchanged.
 These fixes correct identity and cap enforcement; they are not a new claim of
 positive execution PF. The frozen Block comparison is recorded in the current

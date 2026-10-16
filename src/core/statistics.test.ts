@@ -444,6 +444,22 @@ test("cash PF uses actual dollars: normalized PF 1.36 can be cash PF 0.20", () =
   assert.ok(Math.abs(r.types[0].cashPf - 0.20) < 1e-12, "breakdowns use the same money basis");
 });
 
+test("cash no-loss provenance distinguishes the sentinel from an actual cash ratio of four", () => {
+  const win = tr({ r: 0.04, unitR: 0.04 });
+  const loss = tr({ r: -0.01, unitR: -0.01, exitT: T0 + 2 * H });
+  const report = (trades: StatTrade[]) => buildStatistics({ source: "live", trades, startT: T0, endT: T0 + 3 * H,
+    balance: 1000, unit: () => 100, price: () => null, cost: 0, leverage: 10, minActiveLevel: 1 });
+  const noLoss = report([win]);
+  assert.equal(noLoss.total.cashPf, 4);
+  assert.equal(noLoss.total.cashNoLoss, true);
+  assert.equal(noLoss.types[0].cashNoLoss, true);
+  const measured = report([win, loss]);
+  assert.equal(measured.total.cashPf, 4);
+  assert.equal(measured.total.cashNoLoss, false);
+  assert.equal(measured.types[0].cashNoLoss, false);
+  assert.equal(report([]).total.cashNoLoss, false);
+});
+
 test("modeled execution multipliers change cash PF, never the primary unit-return PF", () => {
   const trades = [tr({ r: 0.0136, mult: 1 }), tr({ r: -0.068, mult: 6.8, sym: "BTC-USDT", exitT: T0 + 2 * H })];
   const report = (xs: StatTrade[]) => buildStatistics({ source: "sim", trades: xs, startT: T0, endT: T0 + 3 * H,

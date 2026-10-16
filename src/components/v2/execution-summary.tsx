@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { coreStatistics } from "./api-conn";
-import { accountSource, cashPf, returnPf, returnPfText } from "./accounting";
+import { accountSource, cashPfText, returnPf, returnPfText } from "./accounting";
 import { ErrorNote, fmt, Kpi, Panel, pfTone, tone, usePoll } from "./ui";
 
 type Any = any;
@@ -23,7 +23,7 @@ export function ExecutionSummary({ account }: { account?: Any }) {
         <Kpi label="Account equity" value={fmt.usd(account?.equity)} sub={`margin used ${fmt.usd(account?.margin)}`} />
         <Kpi label="Open net" value={fmt.usd(account?.openNet)} className={tone(account?.openNet)} sub={`${fmt.num(account?.positions)} positions · ${fmt.num(account?.orders)} working orders`} />
         <Kpi label="Exchange realized" value={fmt.usd(account?.realized)} className={tone(account?.realized)} sub="account-reported total; exchange reporting period" />
-        <Kpi label="Ledger return PF · 24h" value={returnPfText(total)} className={pfTone(pf)} sub={total?.n ? `cash PF diagnostic ${fmt.pf(cashPf(total))} · ${total.n} closes` : "no owned closes in this window"} />
+        <Kpi label="Ledger return PF · 24h" value={returnPfText(total)} className={pfTone(pf)} sub={total?.n ? `cash PF diagnostic ${cashPfText(total)} · ${total.n} closes` : "no owned closes in this window"} />
         <Kpi label="Ledger net · 24h" value={total?.n ? fmt.usd(total.usd) : "–"} className={tone(total?.usd)} sub="realized P&L from owned execution ledger" />
       </div>
     </Panel>

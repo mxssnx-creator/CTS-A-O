@@ -5,6 +5,7 @@ import {
   armOptions,
   assertComparisonRuntime,
   assessComparisonSummaries,
+  compareOwnedAllocations,
   canonical,
   exactJson,
 } from "./block-comparison.mjs";
@@ -107,4 +108,55 @@ test("research criteria use unrounded own funded PF and minute DD without changi
   assert.equal(assessComparisonSummaries([off, row("overall8", null)])[1].passes, false);
   assert.equal(assessComparisonSummaries([row("off", 0), on])[1].passes, false);
   assert.equal(assessComparisonSummaries([off, on])[0].controlOnly, true);
+});
+test("physical allocation comparison preserves cap cancellation, non-cancellation and microscopic differences", () => {
+  const off = {
+    arm: "off",
+    slices: [
+      {
+        sliceKey: "a",
+        allocation: "positive",
+        allocatedNotional: 10,
+        unitNotional: 10,
+        mult: 1,
+        volume: 1,
+        sizedPnl: 1,
+      },
+      {
+        sliceKey: "b",
+        allocation: "positive",
+        allocatedNotional: 10,
+        unitNotional: 10,
+        mult: 1,
+        volume: 1,
+        sizedPnl: -1,
+      },
+    ],
+  };
+  const on = {
+    arm: "overall8",
+    slices: [
+      { ...off.slices[0], allocatedNotional: 10, unitNotional: 5, mult: 2, volume: 2 },
+      {
+        ...off.slices[1],
+        allocatedNotional: 10 + 1e-12,
+        unitNotional: (10 + 1e-12) / 2,
+        mult: 2,
+        volume: 2,
+      },
+    ],
+  };
+  const out = compareOwnedAllocations([off, on]).arms[1];
+  assert.equal(out.matchedPositiveOwnedSlices, 2);
+  assert.equal(out.externalMultipleChangedSlices, 2);
+  assert.equal(out.exactlyDifferentAllocatedSlices, 1);
+  assert.ok(out.maximumAbsoluteAllocatedNotionalDifferenceUsd > 0);
+  assert.equal(out.examples[0].exactDifference, 0);
+  on.slices[0].allocatedNotional = 20;
+  assert.equal(
+    compareOwnedAllocations([off, on]).arms[1].maximumAbsoluteAllocatedNotionalDifferenceUsd,
+    10,
+  );
+  on.slices.push({ ...on.slices[1] });
+  assert.equal(compareOwnedAllocations([off, on]).arms[1].matchedPositiveOwnedSlices, 1);
 });

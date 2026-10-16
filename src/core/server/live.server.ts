@@ -276,6 +276,25 @@ export function parseFill(resp: unknown): { px: number; fee: number | null; qty:
   return Number.isFinite(px) && px > 0 ? { px, fee, qty: replyQty(o) ?? 0 } : null;
 }
 
+/** A sparse status poll cannot erase a measured commission for the same cumulative fill. */
+function cumulativeFillFee(
+  db: CoreDb, coid: string, sym: string, side: number, kind: string, qty: number,
+  fill: { px: number; fee: number | null; qty: number },
+): { fee: number | null; known: number } {
+  if (fill.fee !== null)
+    return { fee: fill.fee * (fill.qty > qty ? qty / fill.qty : 1), known: 1 };
+  const prior = db.get<{ qty: number; fill_px: number; fee: number | null; fee_known: number | null }>(
+    "SELECT qty,fill_px,fee,fee_known FROM live_fills WHERE coid=? AND sym=? AND side=? AND kind=?",
+    coid, sym, side, kind,
+  );
+  if (prior && prior.qty === qty && Number.isFinite(prior.fill_px) &&
+    Math.abs(prior.fill_px - fill.px) <= 1e-12 * Math.max(1, Math.abs(fill.px)) &&
+    prior.fee !== null && Number.isFinite(prior.fee) && (prior.fee_known === 1 || prior.fee !== 0))
+    return { fee: Math.abs(prior.fee), known: 1 };
+  // A changed quantity or price is a different measurement scope; the old fee cannot certify the whole update.
+  return { fee: null, known: 0 };
+}
+
 /**
  * The explicit executed quantity, including zero, independently of fill price and never above the quantity sent.
  * Missing fields retain the legacy accepted-MARKET fallback; a stated nonfilled state never uses that fallback.
@@ -1042,12 +1061,14 @@ async function runStepNow(
       }
     }
     const f = qty > 0 ? parseFill(resp) : null;
-    if (f)
+    if (f) {
+      const fee = cumulativeFillFee(rt.db, coid, sym, side, kind, qty, f);
       rt.db.runDurable(
         "INSERT OR REPLACE INTO live_fills (coid, sym, side, kind, qty, ref_px, fill_px, fee, fee_known, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         coid, sym, side, kind, qty, px, f.px,
-        f.fee === null ? null : f.fee * (f.qty > qty ? qty / f.qty : 1), f.fee === null ? 0 : 1, executedAt,
+        fee.fee, fee.known, executedAt,
       );
+    }
     // A terminal fill can precede the position endpoint too. Retain its known ownership until first observed;
     // terminal means there is no unfilled remainder to reserve or poll, rather than pretending it never filled.
     const awaitingPosition = kind === "E" && qty > 0 && !pending[coid]?.positionSeen && !pending[coid]?.wasFlat;
@@ -1945,6 +1966,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     const f = parseFill(resp);
     if (f && f.px > 0) (kind === "O" || kind === "I" ? grew : shrank).set(`${a.sym}|${a.side}`, f.px);
     if (!f || !(refPx > 0)) return;
+    const fee = cumulativeFillFee(rt.db, coid, a.sym, a.side, kind, qty, f);
     // The order ledger is journaled too: losing just its fill between snapshots would replace the real price and
     // commission with the reference price and modeled cost after a crash, changing the same trade's P&L.
     rt.db.runDurable(
@@ -1957,8 +1979,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       refPx,
       f.px,
       // Keep an explicit zero distinct from a missing commission across restart.
-      f.fee === null ? null : f.fee * (f.qty > qty ? qty / f.qty : 1),
-      f.fee === null ? 0 : 1,
+      fee.fee,
+      fee.known,
       Date.now(),
     );
   };

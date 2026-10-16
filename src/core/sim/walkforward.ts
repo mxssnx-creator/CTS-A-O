@@ -2408,6 +2408,10 @@ export interface BlockFeedEntry {
   open?: boolean;
   /** windowAuto: the candidate windows that would have raised it at its entry (AutoBlockBook.stampEntry) */
   autoRaise?: number;
+  autoOverallRaise?: number;
+  autoAuxRaise?: number;
+  /** Final modeled Real entry admission; capital allocation and actual fills are separate evidence. */
+  realAccepted?: boolean;
 }
 
 const acceptIndexCache = new WeakMap<object, SignalAcceptIndex>();
@@ -4993,8 +4997,6 @@ export function* walkForwardGen(
         skipR(skipName(why), tr.r);
         continue;
       }
-      // the sources that raised it pause once it closes positive (the feed entry carries them into the book)
-      if (dec.vol > 1 && dec.src?.length) fx.bsrc = dec.src;
       // Stable-02 relation volume on top of the Block volume (the stack stays within the Block maximum)
       const stackCap = blockStackCap(o.block);
       const cv = s2 ? Math.min(s2.volume(tr.entryT), Math.max(1, stackCap / dec.vol)) : 1;
@@ -5022,6 +5024,10 @@ export function* walkForwardGen(
       net += x.r * 100;
       open.push(x.exitT, x);
       counts.add(x, 1);
+      // Mark the existing causal candidate entry only after final modeled admission and registration. Its raw
+      // intrinsic unit result teaches Overall when it settles; zero later capital allocation is not a venue fill.
+      fx.realAccepted = true;
+      if (dec.vol > 1 && dec.src?.length) fx.bsrc = dec.src;
     }
     steps.push({
       t,

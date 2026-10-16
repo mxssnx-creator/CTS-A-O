@@ -59,9 +59,9 @@ describe("Block sources", () => {
 
   it("keeps symbol, direction and indication independent", () => {
     const b = new BlockBook();
-    b.add({ sym: "A", side: 1, kind: "rsi", r: 0.01, type: "trailing" });
-    b.add({ sym: "A", side: 1, kind: "rsi", r: 0.01, type: "trailing" });
-    b.add({ sym: "B", side: -1, kind: "macd", r: -0.05 });
+    b.add({ sym: "A", side: 1, kind: "rsi", r: 0.01, type: "trailing", realAccepted: true });
+    b.add({ sym: "A", side: 1, kind: "rsi", r: 0.01, type: "trailing", realAccepted: true });
+    b.add({ sym: "B", side: -1, kind: "macd", r: -0.05, realAccepted: true });
     assert.deepEqual(bookLevels(b, { sym: "A", side: 1, kind: "rsi", type: "trailing" }, 3), {
       overall: 0,
       symbol: 2,
@@ -95,8 +95,8 @@ describe("Block sources", () => {
 
   it("long histories keep the right tail", () => {
     const b = new BlockBook();
-    for (let i = 0; i < 1000; i++) b.add({ sym: "A", side: 1, kind: "rsi", r: -0.01 });
-    b.add({ sym: "A", side: 1, kind: "rsi", r: 0.05 });
+    for (let i = 0; i < 1000; i++) b.add({ sym: "A", side: 1, kind: "rsi", r: -0.01, realAccepted: true });
+    b.add({ sym: "A", side: 1, kind: "rsi", r: 0.05, realAccepted: true });
     assert.equal(b.level("all", 3), 3);
   });
 
@@ -156,7 +156,7 @@ describe("Block sources", () => {
     );
     assert.equal(kindOfInd(ind.id), ind.kind);
     const book = new BlockBook();
-    for (let i = 0; i < 3; i++) book.add({ sym: "A", side: 1, kind: ind.kind, r: 0.01 });
+    for (let i = 0; i < 3; i++) book.add({ sym: "A", side: 1, kind: ind.kind, r: 0.01, realAccepted: true });
     const base = {
       ...defaultWalkForward(DEFAULT_SETTINGS),
       lastN: 0,
@@ -345,7 +345,7 @@ describe("Block types, Active, steps and pause", () => {
       { sym: "A", side: -1, kind: "trend", type: "normal", r: -.01 },
       { sym: "B", side: 1, kind: "osc", type: "trailing", r: -.01 },
       { sym: "A", side: 1, kind: "trend", type: "normal", r: .03 },
-    ]) book.add(e);
+    ]) book.add({ ...e, realAccepted: true });
     const own = { sym: "A", side: 1, kind: "trend", type: "normal" };
     assert.deepEqual(bookLevels(book, own, 3), { overall: 3, symbol: 2, direction: 3, indication: 2, type: 3 });
     assert.equal(bookLevels(book, { ...own, side: -1 }, 3).symbol, 0, "a losing short relation stays separate");
@@ -499,7 +499,7 @@ describe("Block types, Active, steps and pause", () => {
   it("pause: a positive raised close pauses its sources for N closes, then the level is recalculated", () => {
     const book = new BlockBook(2);
     const e = (r: number, bsrc?: Array<"symbol" | "overall" | "config">) =>
-      book.add({ sym: "A", side: 1, kind: "rsi", r, cfg: "c1", ...(bsrc ? { bsrc } : {}) });
+      book.add({ sym: "A", side: 1, kind: "rsi", r, cfg: "c1", realAccepted: true, ...(bsrc ? { bsrc } : {}) });
     e(0.01);
     // the symbol source is per direction (long and short run independently): key "s:A|1"
     e(0.01, ["symbol", "config"]);
@@ -527,8 +527,8 @@ describe("Block types, Active, steps and pause", () => {
     const t = makeTape("x", "magnet", ind.id, { tp: 0.02, sl: 0.02, trail: 0, hold: 32 }, "normal", ["A"], [], [], []);
     const book = new BlockBook();
     // 3 positive closes on A long of this kind; 2 negative on B short of another kind
-    for (let i = 0; i < 3; i++) book.add({ sym: "A", side: 1, kind: ind.kind, r: 0.01 });
-    for (let i = 0; i < 2; i++) book.add({ sym: "B", side: -1, kind: "zz", r: -0.01 });
+    for (let i = 0; i < 3; i++) book.add({ sym: "A", side: 1, kind: ind.kind, r: 0.01, realAccepted: true });
+    for (let i = 0; i < 2; i++) book.add({ sym: "B", side: -1, kind: "zz", r: -0.01, realAccepted: true });
     const o = {
       ...defaultWalkForward(DEFAULT_SETTINGS),
       lastN: 0,
@@ -549,12 +549,12 @@ describe("Block types, Active, steps and pause", () => {
 describe("Block pooled window", () => {
   it("the book judges pooled sources on n × window closes and keeps that much tail", () => {
     const book = new BlockBook(0, 25);
-    const add = (r: number) => book.add({ sym: "A-USDT", side: 1, kind: "rsi", r });
+    const add = (r: number) => book.add({ sym: "A-USDT", side: 1, kind: "rsi", r, realAccepted: true });
     // 200 closes: a loss of 1 % every 4th close, small wins in between (net slightly negative over long windows)
     for (let i = 0; i < 200; i++) add(i % 4 === 3 ? -0.01 : 0.003);
     assert.equal(book.level("all", 8), 0, "25-close windows see the losses");
     const short = new BlockBook(0, 1);
-    for (let i = 0; i < 200; i++) short.add({ sym: "A-USDT", side: 1, kind: "rsi", r: i % 4 === 3 ? -0.01 : 0.003 });
+    for (let i = 0; i < 200; i++) short.add({ sym: "A-USDT", side: 1, kind: "rsi", r: i % 4 === 3 ? -0.01 : 0.003, realAccepted: true });
     assert.ok(short.level("all", 8) >= 0);
     // retention: a long run still has every close a level can read
     for (let i = 0; i < 2000; i++) add(0.002);
@@ -572,7 +572,7 @@ describe("AutoBlockBook (windowAuto)", () => {
     windowAuto: true,
     windowCandidates: [1, 50],
   };
-  const entry = (r: number) => ({ sym: "AAA-USDT", side: 1, kind: "trend", r });
+  const entry = (r: number) => ({ sym: "AAA-USDT", side: 1, kind: "trend", r, realAccepted: true });
 
   it("keeps the configured window until every candidate has 30 raised closes", () => {
     const b = new AutoBlockBook(cfg);

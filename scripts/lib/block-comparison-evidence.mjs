@@ -1,4 +1,6 @@
 // Pure reduction of frozen native simulation output. This module never calculates strategies or changes gates.
+// Overall's admitted-order history, auxiliary candidate histories and Config's own tape are Block inputs;
+// none substitutes for the positive-owned settled-slice cohort used by this reducer's primary return PF.
 import { modeledUnitReturn, profitFactor, statsOf } from "../../src/core/metrics/stats.ts";
 import { isSignalInd, laneOf, signalSourceOf } from "../../src/core/indications/registry.ts";
 import { kindOfId, parseConfigId } from "../../src/core/pipeline/pipeline.ts";
@@ -278,7 +280,77 @@ function partitions(rows, window, inventory = [], symbols = []) {
       funded: summarize(xs, period, true),
     };
   });
+  const hourTypeSides = new Map();
+  for (const h of out.hourly)
+    for (const kind of TYPES)
+      for (const side of [1, -1])
+        hourTypeSides.set(`${h.hour}|${kind}|${side}`, {
+          hour: h.hour,
+          startT: h.startT,
+          endT: h.endT,
+          kind,
+          side,
+          rows: [],
+        });
+  for (const x of rows) {
+    const hour = Math.ceil((x.exitT - window.startT) / H) - 1;
+    hourTypeSides.get(`${hour}|${x.kind}|${x.side}`).rows.push(x);
+  }
+  out.byHourTypeSide = [...hourTypeSides.values()].map(({ rows: xs, ...scope }) => ({
+    ...scope,
+    virtual: summarize(xs, scope, false),
+    funded: summarize(xs, scope, true),
+  }));
   return out;
+}
+
+/** Count simulated ownership without converting endpoint marks into settled return evidence. */
+function orderCounts(raw, book, slices) {
+  const opens = raw.openEnd ?? [],
+    readOpen = allocationReader({
+      sizedOrders: (book.sizedOpenOrders ?? []).map((x) => ({ ...x, closeIndex: x.openIndex })),
+    });
+  const keys = new Set(slices.map((x) => x.orderKey));
+  const openStatus = { positive: 0, zero: 0, unknown: 0 };
+  let unknownOpenIdentityOrders = 0;
+  for (let i = 0; i < opens.length; i++) {
+    const x = opens[i];
+    if (
+      typeof x.cfg !== "string" ||
+      typeof x.sym !== "string" ||
+      ![1, -1].includes(x.side) ||
+      !finite(x.entryT)
+    ) {
+      unknownOpenIdentityOrders++;
+      openStatus.unknown++;
+      continue;
+    }
+    keys.add(orderKey(x));
+    openStatus[readOpen({ ...x, exitT: undefined, r: x.mtmR }, i).status]++;
+  }
+  return {
+    modeledUniqueEntryOrders: unknownOpenIdentityOrders ? null : keys.size,
+    knownModeledUniqueEntryOrders: keys.size,
+    modeledSettledCloseSlices: slices.length,
+    modeledOpenOrders: opens.length,
+    positiveOwnedSettledCloseSlices: slices.filter((x) => x.allocation === "positive").length,
+    zeroAllocatedSettledCloseSlices: slices.filter((x) => x.allocation === "zero").length,
+    unknownAllocatedSettledCloseSlices: slices.filter((x) => x.allocation === "unknown").length,
+    positiveOwnedOpenOrders: openStatus.positive,
+    zeroAllocatedOpenOrders: openStatus.zero,
+    unknownAllocatedOpenOrders: openStatus.unknown,
+    unknownOpenIdentityOrders,
+  };
+}
+
+function hourlyStageSnapshots(raw, hourly) {
+  return hourly.map(({ hour, startT, endT }) => ({
+    hour,
+    startT,
+    endT,
+    validation: (raw.validation ?? []).filter((x) => x.t >= startT && x.t < endT),
+    stepsByRange: (raw.stepsByRange ?? []).filter((x) => x.t >= startT && x.t < endT),
+  }));
 }
 
 /** Native minute-book risk, separate from the closed unit-return curve and five-minute display samples. */
@@ -511,21 +583,34 @@ export function blockComparisonEvidence(raw, book, meta) {
     total: summarize(slices, window, true),
     virtual: summarize(slices, window, false),
     ...groups,
+    counts: orderCounts(raw, book, slices),
+    hourlyStageSnapshots: hourlyStageSnapshots(raw, groups.hourly),
+    stagePfAvailability: {
+      ownHourlyBasePf: null,
+      ownHourlyMainPf: null,
+      reason:
+        "Exact own config/symbol/direction hourly Base/Main return cohorts are not recorded. Shared hypothetical funnel samples and prior-window selection checks are retained separately; their aggregate PF cannot substitute.",
+    },
     slices,
     risk: blockBookRisk(book, { ...meta, arm, window }),
     settings: {
       cost: raw.settings?.cost ?? null,
       block: raw.settings?.block ?? null,
       toggles: raw.settings?.toggles ?? null,
+      axisConfiguredEnabled:
+        typeof raw.settings?.toggles?.axis === "boolean" ? raw.settings.toggles.axis : null,
     },
     provenance: {
       frozenBlockComparison: raw.frozenBlockComparison ?? null,
+      sourceBookEvidence: raw.frozenBlockComparison.sourceBookEvidence ?? null,
       coverage: raw.engine?.coverage ?? null,
       memory: raw.engine?.mem ?? null,
       skips: raw.engine?.skips ?? null,
       sharedBase: raw.engine?.sharedBase ?? null,
       validation: raw.validation ?? [],
       stepsByRange: raw.stepsByRange ?? [],
+      funnel: raw.funnel ?? null,
+      basePairs: raw.basePairs ?? null,
       requestedSignalInventory: [...requested.values()].map(
         ({ id, origin, built, historyCalculated, status, requestedAliases }) => ({
           id,
@@ -568,11 +653,19 @@ export function blockComparisonEvidence(raw, book, meta) {
       volume:
         "maxActualMult is the external Block × coordination mult. maxActualVolume is native total vol including intrinsic Axis/DCA legs and external weighting; it is not multiplied by mult again and intrinsic volume above the external cap is not a cap failure. Per-slice Block legs retain their source weights. Native level is intrinsic ladder level for Axis/DCA and Block level otherwise; it cannot universally be labeled a Block level.",
       blockTrace:
-        "Native blockLevels, blockEffectiveLevels and blockSampleCounts are preserved without filling missing values. Missing OFF/excluded traces mean not computed, never zero. Effective levels use enabled/unpaused sources; Signal-own policy can restrict them to config. Sample counts are inspected closed-candidate tails, not executed or PF-qualified counts; repeated snapshots are not summed as independent observations.",
+        "Native blockLevels, blockEffectiveLevels and blockSampleCounts are preserved without filling missing values. Missing OFF/excluded traces mean not computed, never zero. Effective levels use enabled/unpaused sources; Signal-own policy can restrict them to config. Sample counts are inspected source-specific closed-history tails: admitted modeled orders for Overall, Real-selected candidates for auxiliary sources and exact own tape closes for Config. They are not counts of funded execution or PF-qualified observations; repeated snapshots are not summed as independent observations.",
+      sourceBooks:
+        "Overall learns only settled final modeled-Real-entry-admitted orders, before native cash allocation. Symbol, Direction, Indication and Type retain closed Real-selected candidates, including later entry rejects and unfunded candidates. Config retains its exact own cfg/symbol/side tape. These Block input histories are separate from the owned funded settled-slice cohort used for primary return PF; neither admitted model orders nor auxiliary candidates establish funded ownership. Accepted modeled orders also do not establish venue-owned fills.",
       drawdown:
         "Canonical cumulative unit-return closed-slice curve, in percentage points; DDT in hours through bucket end. Entry time is clipped to bucket start. This is not account equity drawdown.",
       partitions:
         "Descriptive separate own-slice groups. Pooled PF never qualifies an empty, losing or unknown config/symbol/direction sibling. Every built config and requested effective Signal config has all requested symbol/direction cells; unbuilt engine coverage remains aggregate and is never invented as a config result. All six native trade types remain visible.",
+      hourlyTypes:
+        "byHourTypeSide retains every close-hour × native type × direction cell, including zero allocations and unknown evidence; virtual/funded summaries use the same settled-slice math as the whole arm. Close hours are (startT,endT]; hour-level DDT ends at that hour's end.",
+      stages:
+        "hourlyStageSnapshots groups recorded validation and range steps by their step-start time [startT,endT), preserving checks unchanged. Validation checks describe prior selection windows pooled over symbols/sides, not universally Main or own-side proof; overlapping n values are not summed. Range validated counts are engine configs or Signal active units. Native funnel/basePairs are shared baseline engine diagnostics: beforeBase/afterBase are hypothetical representatives, pool and seated are distinct hypothetical config samples. They are not arm-owned Main PF or per-symbol/direction execution evidence.",
+      counts:
+        "Modeled unique entry orders deduplicate cfg/symbol/direction/entry time across settled slices and endpoint opens; a partial close and its remaining open order share one entry. Settled slices and modeled open orders are separate counts. Positive/zero/unknown ownership counts use matching native allocations; unknown open identities are retained as unknown. Endpoint marks never enter settled PF. These are simulated allocations, not venue fills. Axis configured state is explicit; a disabled zero sample is not a PF pass.",
       emptyCells:
         "Compact n=0 cells omit nonapplicable metrics. PF, exact ratio, no-loss state, drawdown and cash ratio are unavailable; all counts are zero. Empty cells never mean measured passes.",
       endpoints: "Open endpoint marks are separate; never settled close or PF evidence.",

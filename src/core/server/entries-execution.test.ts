@@ -310,6 +310,36 @@ describe("entries mode: actual MARKET execution quantities", () => {
     } finally { db.db.close(); rmSync(dir, { recursive: true, force: true }); }
   });
 
+  for (const fee of [.05, 0])
+  it(`keeps measured commission ${fee} across a same-fill sparse Entries poll, without certifying changed fills`, async () => {
+    const { rt, state, step } = fixture();
+    try {
+      state.entry.order = { orderId: "entry", status: "PARTIALLY_FILLED", executedQty: .25, avgPrice: 10.2, commission: -fee };
+      const actual = () => ({ ...rt.db.get("SELECT qty,fill_px,fee,fee_known FROM live_fills WHERE kind='E'")! });
+      await step();
+      assert.deepEqual(actual(), { qty: .25, fill_px: 10.2, fee, fee_known: 1 });
+      delete state.entry.order.commission;
+      mock.timers.tick(1_100);
+      await step();
+      assert.deepEqual(actual(), { qty: .25, fill_px: 10.2, fee, fee_known: 1 }, "the unchanged cumulative fill retains its measured cost");
+      state.entry.order.avgPrice = 10.3;
+      mock.timers.tick(1_100);
+      await step();
+      assert.deepEqual(actual(), { qty: .25, fill_px: 10.3, fee: null, fee_known: 0 }, "a price correction without commission has new unknown provenance");
+      state.entry.order = { ...state.entry.order, avgPrice: 10.2, commission: -fee };
+      mock.timers.tick(1_100);
+      await step();
+      assert.equal(actual().fee_known, 1);
+      state.entry.order.executedQty = .5;
+      state.qty = .5;
+      delete state.entry.order.commission;
+      mock.timers.tick(1_100);
+      await step();
+      assert.deepEqual(actual(), { qty: .5, fill_px: 10.2, fee: null, fee_known: 0 }, "an additional fill cannot borrow the earlier partial's fee proof");
+      assert.equal(state.sent.filter((p) => p.type === "MARKET" && p.side === "BUY").length, 1);
+    } finally { rt.db.db.close(); }
+  });
+
   it("a delayed entry settles on its original id and its actual fill survives into closed-position history", async () => {
     const { rt, state, step, history } = fixture();
     state.entry.order = { orderId: "entry", status: "NEW", executedQty: 0 };

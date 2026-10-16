@@ -1,10 +1,9 @@
 // Block levels from several independent sources. The config source judges the config set's own tape; the others
-// judge the Block feed: every Real-stage candidate position (executed or not) with its simulated unit result,
-// counted once it has closed before the entry (causal). Judging candidates rather than executed positions keeps
-// Block Active from locking itself out (no execution → no level → no execution) and keeps the Block volume from
-// feeding back into its own level.
+// judge causal closed unit results. Overall reads only orders admitted at the final modeled Real boundary;
+// auxiliary relations retain Real-selected candidates, including those execution later rejects. Unraised qualified
+// base entries and independent auxiliary relations can bootstrap a cold Overall book without inventing admissions.
 //   config     the config set's own closed positions
-//   overall    all Real candidates
+//   overall    final-Real admitted modeled orders (capital allocation and venue fills remain separate)
 //   symbol     candidates on the same symbol and side (long and short judged apart)
 //   direction  candidates on the same side
 //   indication candidates of the same indication type and side (long and short judged apart)
@@ -60,9 +59,15 @@ export interface BlockBookEntry {
   r: number;
   type?: string;
   cfg?: string;
+  entryT?: number;
   bsrc?: readonly BlockSource[];
   /** AutoBlockBook: bit i set when candidate window i would have raised it at its entry (stampEntry) */
   autoRaise?: number;
+  /** Entry-time auto-window verdicts split by evidence universe; rejected candidates can score auxiliary sources only. */
+  autoOverallRaise?: number;
+  autoAuxRaise?: number;
+  /** Set only after all modeled Real entry checks and accepted-order registration; never proof of funded ownership. */
+  realAccepted?: boolean;
 }
 
 /** Book key of a source for one position (config: the config set itself). */
@@ -105,6 +110,9 @@ export class BlockBook {
   add(t: BlockBookEntry) {
     const keys = BLOCK_SOURCES.map((s) => sourceKey(s, t));
     for (const k of keys) {
+      // The global relation judges only final modeled admissions. Rejected candidates neither teach it nor
+      // consume its pause, while the independent auxiliary candidate books continue unchanged.
+      if (k === "all" && t.realAccepted !== true) continue;
       // a paused source counts its closes down; at 0 its level is recalculated
       const left = this.pauseLeft.get(k);
       if (left !== undefined) {
@@ -120,7 +128,8 @@ export class BlockBook {
     }
     // a raised position that closed positive pauses the sources that raised it
     if (this.pause > 0 && t.r > 0 && t.bsrc?.length)
-      for (const s of t.bsrc) this.pauseLeft.set(sourceKey(s, t), this.pause);
+      for (const s of t.bsrc)
+        if (s !== "overall" || t.realAccepted === true) this.pauseLeft.set(sourceKey(s, t), this.pause);
   }
   level(key: string, maxLevel: number): number {
     return levelOfTail(this.lists.get(key) ?? [], maxLevel, this.window);
@@ -321,9 +330,12 @@ export class AutoBlockBook extends BlockBook {
     this.pooled = BLOCK_SOURCES.filter((s) => s !== "config" && on[s]);
   }
   /** whether window i's book raises `t` now (the strongest enabled pooled source at the minimum level) */
-  private raises(i: number, t: BlockBookEntry): boolean {
+  private raises(i: number, t: BlockBookEntry, group: "overall" | "aux"): boolean {
     let lv = 0;
-    for (const s of this.pooled) lv = Math.max(lv, this.books[i].level(sourceKey(s, t), this.maxLevel));
+    for (const s of this.pooled) {
+      if ((s === "overall") !== (group === "overall")) continue;
+      lv = Math.max(lv, this.books[i].level(sourceKey(s, t), this.maxLevel));
+    }
     return lv >= this.minLevel;
   }
   /**
@@ -332,14 +344,29 @@ export class AutoBlockBook extends BlockBook {
    */
   override stampEntry(t: BlockBookEntry) {
     if (this.books.length > 31) return; // one bit per window
-    let m = 0;
-    for (let i = 0; i < this.books.length; i++) if (this.raises(i, t)) m |= 1 << i;
-    t.autoRaise = m;
+    let overall = 0;
+    let aux = 0;
+    for (let i = 0; i < this.books.length; i++) {
+      if (this.raises(i, t, "overall")) overall |= 1 << i;
+      if (this.raises(i, t, "aux")) aux |= 1 << i;
+    }
+    t.autoOverallRaise = overall;
+    t.autoAuxRaise = aux;
+    t.autoRaise = overall | aux;
   }
   override add(t: BlockBookEntry) {
     for (let i = 0; i < this.books.length; i++) {
-      // stamped at its entry (a run's feed); unstamped, judged on the closes before this one
-      if (t.autoRaise !== undefined ? (t.autoRaise >> i) & 1 : this.raises(i, t)) {
+      // Entry-time masks preserve causal replay. A legacy union-only mask can score an admitted order, but
+      // cannot prove an auxiliary verdict for a rejected candidate; do not infer one using later close-time data.
+      const split = t.autoOverallRaise !== undefined && t.autoAuxRaise !== undefined;
+      const raised = split
+        ? !!(((t.autoAuxRaise ?? 0) >> i) & 1) ||
+          (t.realAccepted === true && !!(((t.autoOverallRaise ?? 0) >> i) & 1))
+        : t.autoRaise !== undefined
+          ? t.realAccepted === true && !!((t.autoRaise >> i) & 1)
+          : t.entryT === undefined &&
+            (this.raises(i, t, "aux") || (t.realAccepted === true && this.raises(i, t, "overall")));
+      if (raised) {
         const r = this.recent[i];
         r.push(t.r);
         if (r.length > 2 * this.lookback) r.splice(0, r.length - this.lookback);

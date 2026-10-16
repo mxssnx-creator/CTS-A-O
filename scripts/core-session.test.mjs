@@ -97,13 +97,31 @@ function summaryOf(html) {
 
 describe("session reports: return PF primary, simulated provenance", () => {
   it("zeros floating-point cap residue before cash/unit allocation and records the original ghost amount", () => {
-    const { data } = replay({ caps: true, exhaustedCap: true });
+    const { data, report, md, writeup, html } = replay({ caps: true, exhaustedCap: true });
     const ghost = data.sizedOrders.find((x) => x.cfg.endsWith("|ghost"));
     assert.ok(ghost.rawGot > 0 && ghost.rawGot <= 1e-9);
     assert.equal(ghost.unitNotional, 0); assert.equal(ghost.sizedPnl, 0); assert.equal(ghost.roundoffZeroed, true);
     assert.ok(data.ownershipPrecision.capped.roundoffZeroed > 0);
     assert.equal(data.ownershipPrecision.epsilonUsd, 1e-9);
     assert.equal(data.total.balanceEnd, 1);
+    assert.equal(data.total.orders, 2);
+    assert.equal(data.total.fundedOrders, 2);
+    assert.equal(data.total.zeroAllocatedOrders, 1);
+    assert.equal(data.total.pf, 0, "unfunded winner does not manufacture funded return evidence");
+    assert.equal(data.total.virtual.n, 3);
+    assert.equal(data.total.virtual.pf, 4);
+    assert.equal(data.total.virtual.noLoss, true, "the numeric4 is explicitly the no-loss sentinel");
+    assert.equal(report.strategies.total.n, 2);
+    assert.equal(data.hours[0].orders, 2); assert.equal(data.hours[0].virtual.n, 3);
+    assert.equal(data.hours[0].pf, 0); assert.equal(data.typeHours[0].closes, 2);
+    assert.equal(data.typeHours[0].pf, 0); assert.equal(data.types[0].n, 2);
+    assert.equal(data.total.uncapped.n, 3); assert.equal(data.total.uncapped.pf, 4);
+    assert.equal(data.checksOk, true);
+    assert.match(md, /2 funded orders · 3 virtual closes/);
+    assert.match(md, /Virtual diagnostic:.*3 closes · Return PF ∞ \(no loss\)/);
+    assert.match(writeup, /Separate virtual diagnostic: 3 closes/);
+    assert.match(summaryOf(html), /Separate virtual diagnostic:<\/b> 3 closes/);
+
   });
   it("keeps return PF primary across JSON, Markdown, write-up and the rendered HTML headline", () => {
     const { data, report, md, writeup, html } = replay();
