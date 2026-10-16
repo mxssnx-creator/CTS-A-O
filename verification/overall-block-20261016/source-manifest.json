@@ -1,0 +1,94 @@
+{
+  "schema": "cts-overall-block-verification-source-backup-v1",
+  "at": "2026-10-16T15:10:39.428709+00:00",
+  "testedSourceCheckpoint": "08cd452e16b37acac9799450066088ebceaa1314",
+  "testedSourceTree": "214927a2683e2ba2e69d8fcd4e6249c72effe71d",
+  "statusAtSnapshot": "Regular168 running; earlyslow2/broad/UI/studyaudit passed; reportgenerationpending. Historical fixtures include intended failures.",
+  "files": {
+    "verification/overall-block-20261016/independent_audit.py": {
+      "originalPath": "/tmp/cts-block-independent-cp10-review-20261016.py",
+      "sha256": "d8043924f263ea6d4f67f8945d20c20f70b56542f41169469e9d4e488fcd49ec",
+      "bytes": 25427
+    },
+    "verification/overall-block-20261016/observe_regular.py": {
+      "originalPath": "/tmp/cts-overall-block-cp10-regular-only-process-observer-20261016.py",
+      "sha256": "4158de65ddd4f550f0e82663b784b5345ed605826c2a1dea71b83973a3864e48",
+      "bytes": 2366
+    },
+    "verification/overall-block-20261016/observe_slow.py": {
+      "originalPath": "/tmp/cts-overall-block-cp10-early-slow-process-observer-20261016.py",
+      "sha256": "fb9938f7acead1da00e1190c465e20ac41becb9eacec746cee65367ed9b8e285",
+      "bytes": 2362
+    },
+    "verification/overall-block-20261016/package_evidence.py": {
+      "originalPath": "/tmp/cts-overall-block-package-20261016.py",
+      "sha256": "ec7f5d06c3bcad62767d01d39b47998adedefc6ecfc060d5c0850db258192bd0",
+      "bytes": 36502
+    },
+    "verification/overall-block-20261016/preset-invalidation-baselines/preset-lifecycle-intermediate-cache-red.test.ts": {
+      "originalPath": "/tmp/cts-block-cp10-preset-revision-baseline-20261016/preset-lifecycle-intermediate-cache-red.test.ts",
+      "sha256": "080734bcdd7995cc98fffde141a7914c02ba9ce6af60e369b36f93fe8f018580",
+      "bytes": 20721
+    },
+    "verification/overall-block-20261016/preset-invalidation-baselines/preset-lifecycle-publication-red.test.ts": {
+      "originalPath": "/tmp/cts-block-cp10-preset-revision-baseline-20261016/preset-lifecycle-publication-red.test.ts",
+      "sha256": "ef22ec8b76b8ecc0ee967b92647fbb23f29ecca913b055f6a89a9da63dcbb9c5",
+      "bytes": 18363
+    },
+    "verification/overall-block-20261016/preset-invalidation-baselines/preset-lifecycle-red.test.ts": {
+      "originalPath": "/tmp/cts-block-cp10-preset-revision-baseline-20261016/preset-lifecycle-red.test.ts",
+      "sha256": "7062483f3318568a06ebf5c48cf3f121a6562d882a304c65312b30bd89d45c40",
+      "bytes": 14958
+    },
+    "verification/overall-block-20261016/preset-invalidation-baselines/preset-lifecycle-tsc-failed.test.ts": {
+      "originalPath": "/tmp/cts-block-cp10-preset-revision-baseline-20261016/preset-lifecycle-tsc-failed.test.ts",
+      "sha256": "1303dc7f2f6cee096877473eec648c3e978df443dad601926f34e0def55eceec",
+      "bytes": 20833
+    },
+    "verification/overall-block-20261016/preset-invalidation-baselines/preset-lifecycle.test.ts": {
+      "originalPath": "/tmp/cts-block-cp10-preset-revision-baseline-20261016/preset-lifecycle.test.ts",
+      "sha256": "e4db3a5ce5bfac0c0aad76400b1bef59cdac5784d41f0abe06d7528cb4b50a69",
+      "bytes": 8902
+    },
+    "verification/overall-block-20261016/preset-invalidation-baselines/runtime-intermediate-active-fix.server.ts": {
+      "originalPath": "/tmp/cts-block-cp10-preset-revision-baseline-20261016/runtime-intermediate-active-fix.server.ts",
+      "sha256": "18c903474f4422b41b89f47c8093fdf51432a6d4b0cf2687016b74761d7c671c",
+      "bytes": 334382
+    },
+    "verification/overall-block-20261016/preset-invalidation-baselines/runtime.server.ts": {
+      "originalPath": "/tmp/cts-block-cp10-preset-revision-baseline-20261016/runtime.server.ts",
+      "sha256": "195261ae6ec08d7e194acb5568bb7fc86e6162b38c3d5e9ccb43c57c29c46420",
+      "bytes": 333005
+    },
+    "verification/overall-block-20261016/release_owned_cache.py": {
+      "originalPath": "/tmp/cts-block-own-immutable-cache-hint-cp10-20261016.py",
+      "sha256": "75d85c191f667b2a8db402cf90b4b1a1028dfef71046140e8821b9fad6ca71f6",
+      "bytes": 7243
+    },
+    "verification/overall-block-20261016/report.py": {
+      "originalPath": "/tmp/cts-overall-block-report-20261016.py",
+      "sha256": "8f7c036bfcf40873abf11317435cee4cf24733dd0d630277e3050177d9f51d78",
+      "bytes": 87427
+    },
+    "verification/overall-block-20261016/run_broad.py": {
+      "originalPath": "/tmp/cts-block-final-cp10-broad-run-20261016.py",
+      "sha256": "2044733da5fd83ebe6fce9145ba0376210443b9ab69ce9a145925354f455a318",
+      "bytes": 16031
+    },
+    "verification/overall-block-20261016/run_regular.py": {
+      "originalPath": "/tmp/cts-overall-block-cp10-regular-only-runner-20261016.py",
+      "sha256": "a3026eaaf4858d840b7477f3deebb6f41490f4c242276a067013bc6fc1fa937e",
+      "bytes": 19812
+    },
+    "verification/overall-block-20261016/run_slow.py": {
+      "originalPath": "/tmp/cts-overall-block-cp10-early-slow-runner-20261016.py",
+      "sha256": "251273dd0561d025fcee4fc4998ea87d0fc7c809fb85434c3cae1952816a68a2",
+      "bytes": 19776
+    },
+    "verification/overall-block-20261016/validate_report.py": {
+      "originalPath": "/tmp/cts-overall-block-report-final-validate-20261016.py",
+      "sha256": "2cd8bed06193559df3938e6840bbe564bcbc455fa59ee5be7bbdf5f6f496a4fb",
+      "bytes": 21908
+    }
+  }
+}
