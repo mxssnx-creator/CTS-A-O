@@ -259,7 +259,7 @@ export function* signalHistProtectsGen(
   for (const pair of pairs) {
     const [bot, ind] = pair.split("|");
     if (!bot || !ind) continue;
-    diagnostics && diagnostics.pairs++;
+    if (diagnostics) diagnostics.pairs++;
     const series = seriesOf(u, ind);
     const earliest = series.reduce((t, s) => Math.min(t, u.bars[s].t[0] ?? Infinity), Infinity);
     // Signals always use the requested minimal historic range when the replay sets one. A configured lookback can
@@ -269,7 +269,7 @@ export function* signalHistProtectsGen(
       h.lookbackH > 0 ? cutT - h.lookbackH * 3_600_000 : -Infinity,
     );
     if (!Number.isFinite(fromT) || fromT >= cutT) {
-      diagnostics && diagnostics.insufficientEntries++;
+      if (diagnostics) diagnostics.insufficientEntries++;
       continue;
     }
     // Long configured holds cannot mature inside a short, bounded replay history. Use at most one quarter of the
@@ -289,7 +289,7 @@ export function* signalHistProtectsGen(
       fromT,
     )).sort((a, b) => a - b);
     if (mfe.length < h.minN) {
-      diagnostics && diagnostics.insufficientEntries++;
+      if (diagnostics) diagnostics.insufficientEntries++;
       continue;
     }
     const ps: Protect[] = [];
@@ -312,30 +312,30 @@ export function* signalHistProtectsGen(
           };
           const lane = laneProtect(p, ind);
           if (lane.trail * (lane.trailStep ?? 1) + 1e-12 < sig.minTrail) {
-            diagnostics && diagnostics.trailTooShort++;
+            if (diagnostics) diagnostics.trailTooShort++;
             continue;
           }
           const key = `${p.tp}|${p.sl}|${p.trail}|${p.hold}`;
           if (seen.has(key)) continue;
           seen.add(key);
-          diagnostics && diagnostics.candidates++;
+          if (diagnostics) diagnostics.candidates++;
           if (validation) {
             const st = signalHistStats(u, bot, ind, lane, tactics, sig, fromT, cutT, validation, cooldown);
-            diagnostics && diagnostics.evaluated++;
+            if (diagnostics) diagnostics.evaluated++;
             if (st.n < Math.max(h.minN, validation.minTrades)) {
-              diagnostics && diagnostics.insufficientTrades++;
+              if (diagnostics) diagnostics.insufficientTrades++;
               continue;
             }
             if (!(st.net > 0 && st.pf >= validation.minPf)) {
-              diagnostics && diagnostics.pfRejected++;
+              if (diagnostics) diagnostics.pfRejected++;
               continue;
             }
             if (ddrFails(st.mdd, st.net, validation.maxDdr)) {
-              diagnostics && diagnostics.ddrRejected++;
+              if (diagnostics) diagnostics.ddrRejected++;
               continue;
             }
           }
-          diagnostics && diagnostics.qualified++;
+          if (diagnostics) diagnostics.qualified++;
           ps.push(p);
         }
     }

@@ -61,7 +61,7 @@ Of 76,432 built Micro config-sides,10,944 have a funded close and only 16 have a
 - A separate source audit found custom SL/trailing-step parity defects; their correction is being verified independently. Shipped step 1 defaults are byte-identical, so these defects do not explain this default six-hour loss.
 - Pre-fix settings prose understated the actual ladders: Short is 9–14× cost with SL 1–2.5×, Minimal steps 0.5× cost, Micro net targets 0.2–0.8%. Actual saved effective IDs/distances are authoritative; copied old prose is not.
 
-Broader saved research is useful for generating hypotheses, not substituting qualification proof. Old research files lack current range/side/ownership provenance;105 and 102 raw survivor rows collapse to 17 and 14 unique effective protects. The narrow 1 m selected replay loses OOS (PF 0.460549/83 closes). The newer four-source Signal “Short” parameter family is not engine range`sh`; its selected 1 m cohort still loses (PF 0.898309/9,221 closes), and all short-direction configurations fail its fixed IS screen. No source is promoted by this diagnosis.
+Broader saved research is useful for generating hypotheses, not substituting qualification proof. Old research files lack current range/side/ownership provenance;105 and 102 raw survivor rows collapse to 17 and 14 unique effective protects. The narrow 1 m selected replay loses OOS (PF 0.460549/83 closes). The newer four-source Signal “Short” parameter family is not engine range`sh`; its archived 1 m PF and the archived short-direction screen are withdrawn pending the runtime-parity rerun in `docs/signal-research-protocol-20261016.json`. No source is promoted by this diagnosis.
 
 ## Exact evidence
 

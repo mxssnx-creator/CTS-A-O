@@ -27,8 +27,8 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 /** Enforce runtime-grid parity and the predeclared formulas before any market outcomes are calculated. */
 export function researchCells(protocol) {
-  if (protocol.schema !== "cts-signal-new-sources-research-v1")
-    throw new Error("Unknown Signal protocol schema");
+  if (protocol.schema !== "cts-signal-new-sources-research-v2")
+    throw new Error("Unknown or superseded Signal protocol schema; use the runtime-parity v2 protocol");
   const protects = signalProtects({ ...DEFAULT_SIGNALS, exits: "pct" });
   if (JSON.stringify(protects) !== JSON.stringify(protocol.protects))
     throw new Error("Frozen protects differ from runtime signalProtects");
@@ -53,6 +53,13 @@ export function researchCells(protocol) {
         const ind = laneInd(signalId(candidate.name, range), tf);
         for (let i = 0; i < protects.length; i++) {
           const requestedProtect = laneProtect(protects[i], ind);
+          // Match buildTapesGen: a signal trail that falls below its configured minimum after lane scaling is
+          // disabled, not widened back to the floor by adjustProtect. The runtime checks this before adjustment.
+          if (
+            requestedProtect.trail > 0 &&
+            requestedProtect.trail * (requestedProtect.trailStep ?? 1) + 1e-12 < floors.minTrail
+          )
+            continue;
           const protect = adjustProtect(requestedProtect, floors);
           const cfg = configId("follow", ind, protect);
           for (const side of [1, -1]) {
@@ -83,7 +90,16 @@ export function researchCells(protocol) {
       }
     }
   }
-  return [...effective.values()];
+  const cells = [...effective.values()];
+  const frozenGrid = protocol.runtimeParityCorrection?.grid;
+  if (
+    !frozenGrid ||
+    cells.length !== frozenGrid.configSideIdentities ||
+    new Set(cells.map((cell) => cell.cfg)).size !== frozenGrid.distinctProtectionConfigs ||
+    new Set(cells.map((cell) => cell.ind)).size !== frozenGrid.indicatorIdentities
+  )
+    throw new Error("Corrected runtime Signal grid differs from the v2 protocol");
+  return cells;
 }
 
 export function validateProtocolMarket(market, protocol) {
@@ -452,7 +468,7 @@ async function main() {
     options[args[i].slice(2)] = args[i + 1];
   }
   if (!options.out) throw new Error("--out is required");
-  const protocolPath = resolve(options.protocol ?? "docs/signal-research-protocol-20261015.json");
+  const protocolPath = resolve(options.protocol ?? "docs/signal-research-protocol-20261016.json");
   const protocolBytes = await readFile(protocolPath);
   const protocol = JSON.parse(protocolBytes);
   const cells = researchCells(protocol);
