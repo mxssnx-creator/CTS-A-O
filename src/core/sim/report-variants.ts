@@ -646,8 +646,8 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
   push({
     id: "gate:maxPositions",
     group: "gates",
-    label: mp > 0 ? "Position cap off" : "Position cap 12",
-    change: `max open positions (symbol × side) ${mp || "none"} → ${mp > 0 ? "none" : 12}`,
+    label: mp > 0 ? "Simulation position cap off" : "Simulation position cap 12",
+    change: `strategy simulation positions (symbol × side) ${mp || "none"} → ${mp > 0 ? "none" : 12}`,
     asRun: String(mp || "none"),
     opts: { ...base, maxPositions: mp > 0 ? 0 : 12 },
   });
@@ -853,7 +853,7 @@ export interface SizingSpec {
   top: "fill" | "all" | number;
   /** an existing position is only resized when its target moved by more than this share */
   rebalancePct: number;
-  /** max control positions (symbol × side), 0 = no limit */
+  /** Maximum live exchange slots (symbol × direction); 0 or unset uses the hard 100-slot ceiling. */
   maxPositions: number;
   minStopPct: number;
 }
