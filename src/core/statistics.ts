@@ -173,10 +173,11 @@ export interface GroupRow {
   cashPf: number;
   /** Explicit cash no-loss convention; numeric cash PF alone cannot identify a sentinel. */
   cashNoLoss: boolean;
-  /** summed result, % of one unit */
+  /** Sum of recorded volume-weighted return points; neither normalized unit net nor actual dollar P&L. */
   net: number;
   /** result in USD at the book's sizing */
   usd: number;
+  /** Mean and path diagnostics from the recorded volume-weighted return stream. */
   avg: number;
   ddt: number;
   gh: number;
