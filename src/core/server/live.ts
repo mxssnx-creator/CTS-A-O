@@ -234,6 +234,8 @@ export interface ControlContribution {
   side: 1 | -1;
   /** Block volume multiple of this lane's position (1 = plain) */
   vol: number;
+  /** Optional Block allocation in minimum-lane units; source children share their parent's bounded total. */
+  laneUnits?: number;
   /** stop distance of the lane's protect (fraction) */
   sl: number;
   /**
@@ -376,6 +378,8 @@ export interface ControlTarget {
   sym: string;
   side: 1 | -1;
   lanes: number;
+  /** Minimum-lane sizing units, including proportional Block additions; logical lane count remains separate. */
+  laneUnits?: number;
   vol: number;
   notional: number;
   qty: number;
@@ -678,7 +682,7 @@ export interface ControlSettings {
   rebalancePct: number;
   /** every position `ratio` units whatever its lanes' volume (live.positionSize "min") */
   minSize?: boolean;
-  /** lane orders (live.laneOrders): every lane one unit — the position is its lane count × ratio units */
+  /** lane orders: every independent base config one unit; its Block additions use their bounded extra weights */
   laneMode?: boolean;
   /** oneway: one net position per symbol (long and short lanes offset each other) */
   positionMode?: "hedge" | "oneway";
@@ -760,6 +764,7 @@ export function controlTargets(
     sym: string;
     side: 1 | -1;
     lanes: number;
+    laneUnits: number;
     vol: number;
     sl: number;
     /** Σ weighted volume × lane stop (riskDist = rw / vol) */
@@ -779,13 +784,16 @@ export function controlTargets(
   let agg = new Map<string, Agg>();
   for (const l of lanes) {
     const key = `${l.sym}|${l.side}`;
-    const a = agg.get(key) ?? { sym: l.sym, side: l.side, lanes: 0, vol: 0, sl: 0, rw: 0 };
+    const a = agg.get(key) ?? { sym: l.sym, side: l.side, lanes: 0, laneUnits: 0, vol: 0, sl: 0, rw: 0 };
     note(a, l.cfg);
     // a position with any engine lane is an engine position; only signal lanes on it: a signal position
     const sig = sigCfg(l.cfg);
     if (!sig) a.engine = true;
     a.lanes++;
-    const w = Math.max(0, l.vol) * (sig ? Math.max(0, cs.signalWeight ?? 1) : 1);
+    a.laneUnits += l.laneUnits ?? 1;
+    const w = cs.laneMode
+      ? Math.max(0, l.laneUnits ?? 1)
+      : Math.max(0, l.vol) * (sig ? Math.max(0, cs.signalWeight ?? 1) : 1);
     a.vol += w;
     a.rw += w * Math.max(0, l.risk ?? l.sl);
     a.sl = Math.max(a.sl, l.sl);
@@ -802,7 +810,11 @@ export function controlTargets(
     for (const sym of syms) {
       const L = agg.get(`${sym}|1`);
       const S = agg.get(`${sym}|-1`);
-      const v = (L?.vol ?? 0) - (S?.vol ?? 0);
+      // Lane sizing nets the actual minimum-lane units, including fractional Block additions.
+      // Raw intrinsic model volume must not choose a different side from the units being funded.
+      const v = cs.laneMode
+        ? (L?.laneUnits ?? 0) - (S?.laneUnits ?? 0)
+        : (L?.vol ?? 0) - (S?.vol ?? 0);
       if (Math.abs(v) < 1e-9) continue;
       const side = (v > 0 ? 1 : -1) as 1 | -1;
       // the stop and the risk come from the side that survives the netting (the other side's lanes are offset)
@@ -812,6 +824,7 @@ export function controlTargets(
         sym,
         side,
         lanes: (L?.lanes ?? 0) + (S?.lanes ?? 0),
+        laneUnits: Math.abs((L?.laneUnits ?? 0) - (S?.laneUnits ?? 0)),
         vol: Math.abs(v),
         sl: win?.sl ?? 0,
         rw: win && win.vol > 0 ? (win.rw / win.vol) * Math.abs(v) : 0,
@@ -868,7 +881,7 @@ export function controlTargets(
       continue;
     }
     const unit = cs.unitOf ? cs.unitOf(a.sym, px) : cs.notionalUsd;
-    const want = unit * (cs.laneMode ? a.lanes : cs.minSize ? 1 : a.vol) * cs.ratio;
+    const want = unit * (cs.laneMode ? a.laneUnits : cs.minSize ? 1 : a.vol) * cs.ratio;
     const notional = Math.min(cs.maxNotionalUsd, want);
     const sn = snap(a.sym, notional / px, px);
     const qty = typeof sn === "number" ? sn : sn.qty;
@@ -894,6 +907,7 @@ export function controlTargets(
       sym: a.sym,
       side: a.side,
       lanes: a.lanes,
+      ...(cs.laneMode ? { laneUnits: a.laneUnits } : {}),
       vol: a.vol,
       notional: qty * px,
       qty,

@@ -1,5 +1,5 @@
 import { PF_NO_LOSS } from "../../src/core/config.ts";
-import { statsOf, unitStatsOf } from "../../src/core/metrics/stats.ts";
+import { statsOf, modeledUnitStatsOf as unitStatsOf } from "../../src/core/metrics/stats.ts";
 
 export const COMPARISON_BASIS = "settled-net-unit-simulated-returns";
 const RETURN_UNITS =
@@ -7,7 +7,7 @@ const RETURN_UNITS =
 const ordered = (trades) => [...trades].sort((a, b) => a.exitT - b.exitT || a.entryT - b.entryT);
 
 function finishStats(stats, n, unknownReturns, pfBasis) {
-  if (unknownReturns) {
+  if (pfBasis === "unavailable" || unknownReturns) {
     return {
       ...Object.fromEntries(
         Object.entries(stats).map(([k, v]) => [k, typeof v === "number" ? null : v]),
@@ -15,6 +15,7 @@ function finishStats(stats, n, unknownReturns, pfBasis) {
       n,
       pfBasis: "unavailable",
       unknownReturns,
+      ...(stats.unknownReturnTotals ? { unknownReturnTotals: stats.unknownReturnTotals } : {}),
       noLoss: null,
       exactRatio: null,
       pfConvention: "unavailable",

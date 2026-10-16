@@ -72,6 +72,7 @@ const base = defaultWalkForward(DEFAULT_SETTINGS);
 /** x01: Block overall over the pooled sources, ratio 0.5, 7 steps, max 4×, Block Active from level 5, auto window. */
 const x01Block: BlockConfig = {
   ...base.block,
+  historySource: "real-candidates",
   sources: { config: false, overall: true, symbol: true, direction: true, indication: true, type: false },
   mode: "overall",
   ratio: 0.5,
@@ -173,4 +174,29 @@ describe("audit replay with the Block window chosen by results (windowAuto)", ()
       [],
     );
   });
+
+  for (const mode of ["overall", "shared", "additive"] as const)
+    it(`${mode}: accepted-only simulation and replay use the same settled Real orders, never skipped candidates or marks`, () => {
+      const original = x01({ mode, historySource: "accepted-orders", maxLevel: 3, minActiveLevel: 1,
+        ratio: .2, sharedRatio: .4, steps: 0, pause: 2, window: 1, windowCandidates: [1, 2] });
+      const o = { ...original, toggles: { ...original.toggles, blockActive: false } };
+      const sim = walkForward(u, tapes, o);
+      assert.ok(sim.trades.length > 0, "Normal and other enabled bases can create actual accepted history");
+      assert.ok(sim.trades.some((x) => (x.mult ?? 1) > 1), "settled accepted outcomes can later raise the book");
+      assert.ok(sim.feed.some((x) => x.accepted !== true), "skipped candidates remain visible for independent guard learning");
+      const accepted = new Set(sim.feed.filter((x) => x.accepted === true)
+        .map((x) => `${x.cfg}|${x.sym}|${x.side}|${x.entryT}`));
+      const taken = [...sim.trades, ...(sim.openAtEnd ?? [])];
+      assert.equal(accepted.size, taken.length, "each accepted feed marker corresponds to exactly one actual Real order");
+      for (const x of taken)
+        assert.ok(accepted.has(`${x.cfg}|${x.sym}|${x.side}|${x.entryT}`), "every Real order retains its exact accepted identity");
+      assert.deepEqual(auditState({ sim, tapes, cost: COST }).checks.filter((c) => !c.ok), []);
+      const book = new AutoBlockBook(o.block, false);
+      for (const f of sim.feed) feedBooks(f, book);
+      assert.equal(book.acceptedOnly, true);
+      const settled = sim.feed.filter((f) => f.accepted === true && !f.open).slice(-5);
+      assert.equal(book.tailSum("all", 5).n, settled.length);
+      assert.ok(Math.abs(book.tailSum("all", 5).sum - settled.reduce((sum, f) => sum + f.r, 0)) < 1e-10,
+        "replayed book contains only accepted settled unit outcomes");
+    });
 });

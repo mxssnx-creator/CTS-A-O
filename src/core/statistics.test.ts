@@ -401,14 +401,14 @@ test("preset diagrams preserve unknown losing closes and disclose no-loss scores
   assert.ok(Math.abs(series.info.cash.pf - 0.2) < 1e-10);
   assert.ok(Math.abs(series.info.netUsd + 5.44) < 1e-10);
   const wins = presetSeries([known], options).info;
-  const measuredFour = presetSeries([tr({ r: 0.04 }), tr({ r: -0.01, exitT: T0 + 2 * H })], options).info;
+  const measuredFour = presetSeries([tr({ r: 0.04, mult: 1 }), tr({ r: -0.01, mult: 1, exitT: T0 + 2 * H })], options).info;
   assert.equal(wins.pf, 4);
   assert.equal(wins.noLoss, true);
   assert.equal(wins.pfConvention, "no-loss-sentinel");
   assert.equal(measuredFour.pf, 4);
   assert.equal(measuredFour.noLoss, false);
   assert.equal(measuredFour.pfConvention, "gross-return-ratio");
-  const boundary = presetSeries([tr({ exitT: T0, r: 1 }), tr({ exitT: options.endT, r: -0.01 })], options).info;
+  const boundary = presetSeries([tr({ exitT: T0, r: 1, mult: 1 }), tr({ exitT: options.endT, r: -0.01, mult: 1 })], options).info;
   assert.equal(boundary.n, 1, "primary sample is (from, to] settled closes");
   assert.equal(boundary.pf, 0);
 });
@@ -431,8 +431,8 @@ test("an unmeasured fill is charged the model round-trip fee share, never zero",
 });
 
 test("cash PF uses actual dollars: normalized PF 1.36 can be cash PF 0.20", () => {
-  const win = tr({ r: 0.0136 });
-  const loss = tr({ sym: "BTC-USDT", r: -0.01, exitT: T0 + 2 * H });
+  const win = tr({ r: 0.0136, unitR: 0.0136 });
+  const loss = tr({ sym: "BTC-USDT", r: -0.01, unitR: -0.01, exitT: T0 + 2 * H });
   const r = buildStatistics({
     source: "live", trades: [win, loss], startT: T0, endT: T0 + 3 * H,
     balance: 1000, unit: (x) => x.sym === "BTC-USDT" ? 680 : 100,
@@ -496,7 +496,7 @@ test("preset comparisons require a unit-basis aggregate and never divide that ag
 
 test("return gross sums distinguish a no-loss sentinel from a measured return PF of four", async () => {
   const { rowOf, emptyRow } = await import("./statistics.ts");
-  const base = { cfg: "a", sym: "A-USDT", side: 1, entryT: 1, exitT: 2, entry: 100, r: .01 };
+  const base = { cfg: "a", sym: "A-USDT", side: 1, entryT: 1, exitT: 2, entry: 100, r: .01, mult: 1 };
   const noLoss = rowOf("win", [base], () => 100);
   const measured = rowOf("ratio", [{ ...base, r: .04 }, { ...base, r: -.01, exitT: 3 }], () => 100);
   assert.equal(noLoss.pf, measured.pf);

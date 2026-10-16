@@ -72,8 +72,8 @@ import {
   profitFactor,
   scoreStats,
   statsOf,
-  unitReturn,
-  unitStatsOf,
+  modeledUnitReturn as unitReturn,
+  modeledUnitStatsOf as unitStatsOf,
   type UnitStats,
 } from "../metrics/stats.ts";
 import { ATR_PERIOD, simulate, splitSides } from "./backtest.ts";
@@ -84,6 +84,7 @@ import {
   BlockBook,
   blockBookOf,
   blockDecide,
+  blockStackCap,
   bookLevels,
   sourceKey,
   type BlockSource,
@@ -2176,7 +2177,7 @@ export function buildTapes(
 }
 
 /** First index with exitT >= t. */
-export function lowerBound(a: Float64Array, t: number): number {
+export function lowerBound(a: ArrayLike<number>, t: number): number {
   let lo = 0;
   let hi = a.length;
   while (lo < hi) {
@@ -2261,13 +2262,28 @@ export function tapeExecutable(
   return kindExecutable(tp.kind, o.toggles);
 }
 
-/** Block level from the config's own closes before `entryT`: independent last-n windows, n = 1..maxLevel. */
-export function blockLevel(tp: ConfigTape, entryT: number, b: BlockConfig): number {
+/** Block level from the entry's own config × symbol × side closes, in independent last-n windows. */
+export function blockLevel(
+  tp: ConfigTape,
+  entryT: number,
+  b: BlockConfig,
+  scope?: { sym?: string; side?: number },
+): number {
   const end = lowerBound(tp.exitT, entryT + 1);
+  const idx = scope?.sym ? symTradeIdx(tp, scope.sym) : undefined;
+  if (idx === null) return 0;
+  const side = scope?.side;
+  const scopedEnd = idx ? lowerBound(idx, end) : end;
   let level = 0;
   let sum = 0;
-  for (let n = 1; n <= b.maxLevel && n <= end; n++) {
-    sum += tp.r[end - n];
+  let n = 0;
+  for (let j = scopedEnd - 1; j >= 0 && n < b.maxLevel; j--) {
+    const i = idx ? idx[j] : j;
+    if (side && tp.side[i] !== side) continue;
+    n++;
+    const r = tp.r[i];
+    if (!Number.isFinite(r) || !Number.isFinite(sum + r)) return level;
+    sum += r;
     if (sum > 0) level++;
   }
   return level;
@@ -2388,6 +2404,10 @@ export interface BlockFeedEntry {
   open?: boolean;
   /** windowAuto: the candidate windows that would have raised it at its entry (AutoBlockBook.stampEntry) */
   autoRaise?: number;
+  /** windowAuto pause attribution: BLOCK_SOURCES bitmask per candidate window, stamped at entry. */
+  autoSources?: number[];
+  /** Passed every actual Real entry gate; only settled accepted orders feed accepted-order Block history. */
+  accepted?: boolean;
 }
 
 const acceptIndexCache = new WeakMap<object, SignalAcceptIndex>();
@@ -2453,17 +2473,17 @@ export function signalGuardFor(
  * and nothing read it (x02, 7 Oct profile: Block off, 5 s of the loop's stalls in the book).
  */
 export function bookFor(o: {
-  toggles: { block?: boolean };
+  toggles: { block?: boolean; blockActive?: boolean };
   sideGateN?: number;
   block: Parameters<typeof blockBookOf>[0];
 }): BlockBook | null {
-  return o.toggles.block || (o.sideGateN ?? 0) > 0 ? blockBookOf(o.block) : null;
+  return o.toggles.block || (o.sideGateN ?? 0) > 0 ? blockBookOf(o.block, !!o.toggles.blockActive) : null;
 }
 
 /** Feed one closed candidate into the Block book and, for a signal, into the signal guard. */
 export function feedBooks(e: BlockFeedEntry, book: BlockBook | null, guard?: SignalGuard | null) {
   if (e.open) return; // not closed: its mark is no result
-  book?.add(e);
+  if (book && (!book.acceptedOnly || e.accepted === true)) book.add(e);
   // keyed by the candidate's config (the same key execDecision checks); the exit time feeds the loss-cluster guard
   if (guard && e.ind && isSignalInd(e.ind)) {
     // the signal entry the close belongs to: its k configs count once in the loss cluster and the acceptance counts
@@ -3708,15 +3728,15 @@ export const crowdCapOf = (o: Pick<WalkForwardOptions, "entryCrowd">, cfg: strin
   return k && k > 0 ? k : Infinity;
 };
 
-/** Indication type of a tape (Block "indication" source). */
+/** Indication type of a tape; exact Block indication relations use the full ID separately. */
 export const kindOfInd = (ind: string) => INDICATION_BY_ID.get(laneOf(ind).base)?.kind ?? "none";
 
-/** Block book entry of a position: its unit result (without the Block multiplier, like the config level). */
-export const blockEntryOf = (x: Trade) => ({
+/** Executed rows need verified unit evidence. A raw ConfigTape candidate explicitly declares its intrinsic unit basis. */
+export const blockEntryOf = (x: Trade, basis: "modeled-execution" | "candidate-unit" = "modeled-execution") => ({
   sym: x.sym,
   side: x.side,
   kind: kindOfInd(x.cfg.split("|")[1] ?? ""),
-  r: x.r / (x.mult || 1),
+  r: basis === "candidate-unit" ? x.r : unitReturn(x),
   ind: x.cfg.split("|")[1] ?? "",
   type: x.kind ?? "normal",
   cfg: x.cfg,
@@ -3907,6 +3927,7 @@ export function execDecision(
     sym: ctx?.sym ?? "",
     side: ctx?.side ?? 0,
     kind: kindOfInd(tp.ind),
+    ind: tp.ind,
     type: tp.kind,
     cfg: tp.id,
   };
@@ -3914,17 +3935,21 @@ export function execDecision(
   const own = !!o.block.signalsOwn && isSignalInd(tp.ind);
   const blk = own ? { ...o.block, sources: OWN_SOURCES } : o.block;
   const book = own ? null : ctx?.book;
+  // Accepted-order history must not borrow unexecuted raw config wins, including when the book is absent.
+  const configLevel = blk.historySource === "accepted-orders"
+    ? ctx?.book?.level(sourceKey("config", t), blk.maxLevel) ?? 0
+    : blockLevel(tp, entryT, blk, ctx);
   const d = blockDecide(
-    { config: blockLevel(tp, entryT, blk), ...bookLevels(book, t, blk.maxLevel) },
+    { config: configLevel, ...bookLevels(book, t, blk.maxLevel) },
     blk,
     !!tg.blockActive,
-    (src) => !!book?.paused(sourceKey(src, t)),
+    (src) => !!ctx?.book?.paused(sourceKey(src, t)),
   );
   // Block Active: only entries at the minimum level or above are opened — every lower entry is skipped; a signal's
   // own base trades at its unit then
+  if (tg.blockActive && !d.adjusted && !sigBase) return { ok: false, why: "blockActive" };
   if (!d.adjusted && gatedBase)
     return baseOk() ? { ok: true, level: 0, vol: 1 } : { ok: false, why: "normalPf" };
-  if (tg.blockActive && !d.adjusted && !sigBase) return { ok: false, why: "blockActive" };
   // Normal off: a plain Normal / Trailing entry needs Block (DCA / Axis are not plain and run on their own)
   if (plain && !tg.normal && !d.adjusted && !sigBase) return { ok: false, why: "normalOff" };
   if (!d.adjusted) return { ok: true, level: 0, vol: 1 };
@@ -4640,7 +4665,7 @@ export function* walkForwardGen(
       m[why] = (m[why] ?? 0) + 1;
     }
   };
-  // Block sources: every Real candidate's simulated result, entered into the book when it closes (causal)
+  // Block evidence is settled accepted Real orders, or the explicitly configured legacy candidate diagnostic.
   const book = bookFor(o);
   // acceptance on the tapes' record: every candidate of the source closed before the entry (before the run too)
   const guard = new SignalGuard();
@@ -4871,11 +4896,11 @@ export function* walkForwardGen(
       // a busy step is worked through in slices
       if (++ci % 300 === 0) yield -1;
       settle(tr.entryT);
-      // the candidate's own result feeds the Block sources when it closes, whether it executes or not
+      // Keep the full candidate feed for guards/confirmation; accepted-order Block reads only the later marker.
       const fk = `${tr.cfg}|${tr.sym}|${tr.side}|${tr.entryT}`;
       let fx = seen.get(fk);
       if (!fx) {
-        const fe = blockEntryOf(tr);
+        const fe = blockEntryOf(tr, "candidate-unit");
         fx = { exitT: tr.exitT, ...fe, ...(tr.markedOpen ? { open: true } : {}) };
         // the auto window scores the windows on their levels now, at the entry (paper and the audit replay the stamps)
         book?.stampEntry(fx);
@@ -4959,10 +4984,12 @@ export function* walkForwardGen(
         skipR(skipName(why), tr.r);
         continue;
       }
+      // All account-independent Real entry gates passed. Do not stamp candidates held back by any earlier gate.
+      fx.accepted = true;
       // the sources that raised it pause once it closes positive (the feed entry carries them into the book)
       if (dec.vol > 1 && dec.src?.length) fx.bsrc = dec.src;
       // Stable-02 relation volume on top of the Block volume (the stack stays within the Block maximum)
-      const stackCap = o.block.mode === "overall" ? 8 : o.block.maxMult;
+      const stackCap = blockStackCap(o.block);
       const cv = s2 ? Math.min(s2.volume(tr.entryT), Math.max(1, stackCap / dec.vol)) : 1;
       const x: Trade = {
         ...tr,

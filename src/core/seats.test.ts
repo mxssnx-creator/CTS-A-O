@@ -231,14 +231,14 @@ describe("stage audit", () => {
 describe("best first", () => {
   it("engine sets by selection score, then signals by their active ranking", async () => {
     const { bestFirst } = await import("./sim/walkforward.ts");
-    const tp = (id: string, ind: string) => ({ id, bot: "follow", ind }) as unknown as ConfigTape;
+    const tp = (id: string, ind: string) => ({ id, bot: "follow", ind, kind: "normal" }) as unknown as ConfigTape;
     const prio = bestFirst(
       [
         { id: "weak", score: 1 },
         { id: "strong", score: 9 },
       ],
       // active keys carry the direction (sigActiveKey); prio's side defaults to long
-      { signalActive: new Set(["follow|sig-b-s@m5|A|1", "follow|sig-a-s@m5|A|1"]) },
+      { signalActive: new Set(["follow|sig-b-s@m5|A|1|normal", "follow|sig-a-s@m5|A|1|normal"]) },
     );
     const order = [
       tp("sigA", "sig-a-s@m5"),

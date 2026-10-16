@@ -1,6 +1,26 @@
 # CTS-A-O work and tasks
 
-Updated 15 October 2026, Europe/Vienna. Continuation baseline: main `c70cbd25213bd072c341f5e20a8376d63b5ab121`, PR #137. Scope remains CTS-A-O.
+Updated 16 October 2026, Europe/Vienna. Current baseline: merged main
+`0ade0fb2ba22a50e49cf03a9825ea612b4abc30f`, PR #138. Scope remains CTS-A-O.
+
+## Current release: independent exits and bounded Block
+
+| Task | Status | Acceptance evidence |
+|---|---|---|
+| Reload current main and preserve recovered work | Complete | Verified local bundle/patch/stash; remote `backup/pre-exit-block-20261016` |
+| Independent exit admission and modeled return provenance | Implemented; final regressions pending | Typed Signal keys and explicit modeled unit basis; unknown/losing evidence retained |
+| Bound Block stacking and native quantities | Implemented; focused checks pass | Total cap, exact config/symbol/side levels, proportional source weights, no compounding or pending-cap release |
+| Compare Block off/2x/8x | Protocol/harness prepared | Same frozen configs, two six-hour folds, six-hour preparation, funded settled unit PF and hourly details |
+| Patch dependency advisories and verify release | In progress | Locked patch updates, clean install, full tests, typecheck/lint/build and dev/production UI |
+| Push and merge tested source | Pending final verification | Exact source/tree, reviewed artifacts and updated recovery handoff |
+
+Primary PF is computed from owned unit-net returns after costs. Increasing
+Block volume alone cannot improve that PF. Preserve measured losses and empty
+cohorts; do not substitute cash PF or an attractive sibling. The default Block
+cap remains 8x pending a valid causal comparison. Current changes make lower
+configured total caps effective; existing holdings are protected until closure.
+
+The following sections preserve the prior release's research and limitations.
 
 ## Current work
 
@@ -54,3 +74,11 @@ See `operations-handoff.md` for prior release records, complete results and save
 Whole-book fold-2 P0/P2 is 90 funded closes at return PF **1.0820357007** (cash PF 1.3778827443); P1 is 112 at return PF **0.4801513711** (cash PF 1.2639199617). All 12 source close CSVs independently reconcile. This supplement cannot qualify an individual range/config or the empty first fold. Four reporter tests pass; checkpoint `a5442158a46268da560cbc175c807350fed4c17f` preserves the report.
 
 Final tested source is `f873221550c80933ebc7efbc7995ceba4ccead53` (tree `429085a0edda103f78c2078e0cc84f0d730503b2`). The saved `cts-ao-post-base-range-evidence-20261015.zip` contains 203 members/38,376,641 bytes, SHA-256 `b7a7143037ffddce14f2a3243f814cf47a9b0b99965ced62ac28ab17bbe2ef21`; all CRC, original-evidence and link checks pass. Full artifact identity and release verification are in `operations-handoff.md`. Future performance work needs a new frozen protocol, sufficient exact training onsets and new evaluation windows; no current profile is qualified for live promotion.
+
+## 16 October Overall Block clarification
+
+- Preserve prior independent-exit work in an isolated checkout; remote baseline backup created.
+- Accepted Real virtual-order history and independent exact indication/lane/direction relations: focused checks pass.
+- Shared higher optional ratio and explicit continuous-versus-quantized 0.2 sizing: settings/helper checks pass.
+- Confirmed native protection through resizing/partial fills: final review in progress.
+- Freeze and run all ten comparison arms on both historical folds; retain losses, empty outcomes, unit PF and native equity drawdown. No performance result or default activation yet.

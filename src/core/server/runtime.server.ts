@@ -204,7 +204,7 @@ import { exchangeAcceptIndex, executionRecordKey, liveRecords, ownedPaperExecuti
 import { signalActiveHas, type ExchangeAccept } from "../signals.ts";
 
 import os from "node:os";
-import { type BlockBook, blockBookOf } from "../sim/block.ts";
+import { type BlockBook, blockBookOf, blockStackCap } from "../sim/block.ts";
 import { trailBar } from "../sim/backtest.ts";
 import {
   activeSignals,
@@ -223,7 +223,7 @@ import { PriceStream, type StreamStats } from "./stream.server.ts";
 import { isSignalInd, laneOf, signalSourceOf } from "../indications/registry.ts";
 import { orderKey, sizeBook, sizeBookGen, sizingSettings } from "../sizing.ts";
 import { presetSeries, type PresetSeries } from "../statistics.ts";
-import { unitReturn, unitStatsOf } from "../metrics/stats.ts";
+import { modeledUnitReturn as unitReturn, modeledUnitStatsOf as unitStatsOf } from "../metrics/stats.ts";
 import { promoteLaneKey, validPromotedLaneProof } from "../live-promote.ts";
 import { auditState, auditStateGen, type AuditInput, type AuditReport } from "../audit.ts";
 import { closedPositions, openTimeline } from "../positions.ts";
@@ -5699,7 +5699,7 @@ export class CoreRuntime {
       perSide.set(`${cls}|${op.side}`, sd + 1);
       openBy.set(cls, (openBy.get(cls) ?? 0) + 1);
       // new entries take the relation volume the simulation ended with (within the Block maximum)
-      const stackCap = this.wf.block.mode === "overall" ? 8 : this.wf.block.maxMult;
+      const stackCap = blockStackCap(this.wf.block);
       const cv =
         !held && s2End?.factor ? Math.min(1 + s2End.factor, Math.max(1, stackCap / d.vol)) : 1;
       openKeys.add(openDupKey(op));
@@ -5804,7 +5804,7 @@ export class CoreRuntime {
         rows.push(
           x
             ? [p.cfg, p.sym, p.side, p.entryT, x.exitT, x.r, x.vol ?? 1, x.reason ?? "close", p.heldAt ?? null, now,
-              typeof x.mult === "number" && x.mult > 0 && Number.isFinite(x.mult) && Number.isFinite(x.r) ? unitReturn(x) : null,
+              Number.isFinite(unitReturn(x)) ? unitReturn(x) : null,
               (() => { const allocation = this.paperOwnedAllocations?.get(orderKey(p));
                 const sameShare = typeof x.vol === "number" && typeof p.vol === "number" && Math.abs(x.vol - p.vol) <= 1e-9 * Math.max(1, p.vol);
                 const notional = sameShare && allocation && typeof p.vol === "number" && p.vol <= allocation.vol + 1e-12 ? allocation.unitUsd * p.vol : NaN;
@@ -5918,7 +5918,7 @@ export class CoreRuntime {
             pnl,
             t.reason,
             Date.now(),
-            typeof t.mult === "number" && t.mult > 0 && Number.isFinite(t.mult) && Number.isFinite(t.r) ? unitReturn(t) : null,
+            Number.isFinite(unitReturn(t)) ? unitReturn(t) : null,
           );
       });
       yield i;
@@ -6029,7 +6029,8 @@ export class CoreRuntime {
     // the direction gate reads the same feed, Block on or off
     const wantBook =
       (this.wf.toggles.block &&
-        (!!(src.overall || src.symbol || src.direction || src.indication || src.type) ||
+        (this.wf.block.historySource === "accepted-orders" ||
+          !!(src.overall || src.symbol || src.direction || src.indication || src.type) ||
           (this.wf.block.pause ?? 0) > 0)) ||
       (this.wf.sideGateN ?? 0) > 0;
     const wantGuard =
@@ -6041,7 +6042,7 @@ export class CoreRuntime {
     if (!wantBook && !wantGuard) return Object.assign(() => ({ book: null, guard: null }), { advance: () => true });
     const feed = this.sim?.feed ?? [];
     // (fed only when read: an unread book cost the tick seconds after each new run)
-    const book = wantBook ? blockBookOf(this.wf.block) : null;
+    const book = wantBook ? blockBookOf(this.wf.block, !!this.wf.toggles.blockActive) : null;
     // acceptance on the same tape record the simulation judged on
     const guard = signalGuardFor(this.tapes, this.wf);
     // the desk's own exchange closes judge an acceptance group once they number its minTrades (live-record.ts)

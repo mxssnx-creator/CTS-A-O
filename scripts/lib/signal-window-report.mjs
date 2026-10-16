@@ -1,4 +1,4 @@
-import { profitFactor, unitReturn } from "../../src/core/metrics/stats.ts";
+import { profitFactor, modeledUnitReturn as unitReturn } from "../../src/core/metrics/stats.ts";
 import { orderKey } from "../../src/core/sizing.ts";
 import { isSignalInd, laneOf, signalSourceOf } from "../../src/core/indications/registry.ts";
 import { kindOfId, parseConfigId } from "../../src/core/pipeline/pipeline.ts";

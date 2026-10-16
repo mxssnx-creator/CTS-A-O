@@ -249,6 +249,9 @@ export function checkSettings(s: Partial<CoreSettings>) {
   }
   if (s.block) {
     num(s.block.ratio, 0, 2, "block ratio");
+    num(s.block.sharedRatio, 0, 2, "block Shared ratio");
+    if (s.block.historySource !== undefined && !["accepted-orders", "real-candidates"].includes(s.block.historySource))
+      throw new Error("block history source: accepted-orders or real-candidates");
     num(s.block.maxLevel, 1, 12, "block max level");
     num(s.block.minActiveLevel, 1, 12, "block active level");
     num(s.block.maxMult, 1, 8, "block max multiple (stack ≤ 8×)");

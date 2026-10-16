@@ -103,12 +103,13 @@ export const DEFAULT_TACTICS: Tactics = {
 
 /**
  * Block default from the 12-symbol sweeps (docs/block-sweep.md): Overall, every source of overall / symbol /
- * direction / indication its own Block, 8 levels, Active from level 2, ratio 0.5, max stack 8× (each source up to
- * 7× extra, the stack ≤ 8×), 7 volume steps (one step = one more unit: one exchange minimum lot live), no pause.
+ * direction / indication its own Block, 8 levels, Active from level 2, ratio 0.5, total max stack 8× including
+ * base and every source, 7 volume steps (one step = one more unit: one exchange minimum lot live), no pause.
  */
 export const DEFAULT_BLOCK: BlockConfig = {
   sources: { config: false, overall: true, symbol: true, direction: true, indication: true, type: false },
   mode: "overall",
+  historySource: "accepted-orders",
   ratio: 0.5,
   maxLevel: 8,
   minActiveLevel: 2,

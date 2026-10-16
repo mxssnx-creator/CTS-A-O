@@ -91,6 +91,30 @@ test("unknown losing close remains in the full sample and cannot enter ranked re
   assert.equal(JSON.parse(JSON.stringify(unknown)).pf, null);
 });
 
+test("aggregate overflow retains the complete sample with unavailable PF and no false no-loss claim", () => {
+  const result = aggregate(run([trade(1e308), trade(1e308), trade(-1)]));
+  assert.equal(result.n, 3);
+  assert.equal(result.detail[0].n, 3);
+  assert.equal(result.unknownReturns, 0);
+  assert.equal(result.unknownReturnTotals, 1);
+  assert.equal(result.unavailableRuns, 1);
+  assert.equal(result.pfBasis, "unavailable");
+  for (const field of [
+    "pf",
+    "gp",
+    "gl",
+    "net",
+    "mdd",
+    "ddt",
+    "noLoss",
+    "exactRatio",
+    "positiveRuns",
+  ])
+    assert.equal(result[field], null, field);
+  assert.equal(rankableComparison(result), false);
+  assert.equal(comparisonPfText(result), "unit basis unavailable");
+});
+
 test("a positive endpoint mark cannot turn a settled losing run positive", () => {
   const result = aggregate(
     run([trade(-0.01)], [trade(0.02, 1, { markedOpen: true, exitT: 2 * H })], {

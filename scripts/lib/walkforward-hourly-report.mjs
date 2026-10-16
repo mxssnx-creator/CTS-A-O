@@ -1,5 +1,5 @@
 import { PF_NO_LOSS } from "../../src/core/config.ts";
-import { hourlyNet, statsOf, unitReturn, unitStatsOf } from "../../src/core/metrics/stats.ts";
+import { hourlyNet, statsOf, modeledUnitReturn as unitReturn, modeledUnitStatsOf as unitStatsOf } from "../../src/core/metrics/stats.ts";
 
 const H = 3_600_000;
 const pfConvention = `Shared engine no-loss sentinel ${PF_NO_LOSS}; no finite measured ratio when GP > 0 and GL = 0.`;

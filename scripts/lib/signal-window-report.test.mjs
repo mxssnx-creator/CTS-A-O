@@ -28,7 +28,7 @@ it("uses unit returns, settled hour boundaries and both directions while keeping
   const xs = [
     { cfg: cfg(), kind: "normal", side: 1, sym: "TEST-USDT", entryT: H + 1, exitT: 2 * H, r: 0.02, mult: 2, reason: "tp" },
     { cfg: cfg(), kind: "normal", side: -1, sym: "TEST-USDT", entryT: 2 * H, exitT: 2 * H + 1, r: -0.01, mult: 1, reason: "sl" },
-    { cfg: cfg("trailing"), kind: "trailing", side: 1, sym: "TEST-USDT", entryT: 3 * H, exitT: 3 * H + 1, r: 0.03, reason: "trail" },
+    { cfg: cfg("trailing"), kind: "trailing", side: 1, sym: "TEST-USDT", entryT: 3 * H, exitT: 3 * H + 1, r: 0.03, mult: 1, reason: "trail" },
   ];
   const { raw, book, protocol } = fixture(xs);
   raw.openEnd.push({ cfg: cfg(), sym: "TEST-USDT", side: 1, entryT: H + 1, mtmR: -0.5, mult: 5 });
@@ -64,13 +64,29 @@ it("makes positive-notional ownership primary, retains zero-allocation diagnosti
   assert.equal(r.planned.total.n, 4); assert.equal(r.planned.total.unknownAllocations, 1);
 });
 it("matches repeated entry allocation units to each partial close's own return, not the last slice P&L", () => {
-  const xs = [0.01, -0.02].map((r, i) => ({ cfg: cfg(), kind: "normal", side: 1, sym: "TEST-USDT", entryT: H + 1, exitT: H + i + 2, r, reason: "close" }));
+  const xs = [0.01, -0.02].map((r, i) => ({ cfg: cfg(), kind: "normal", side: 1, sym: "TEST-USDT", entryT: H + 1, exitT: H + i + 2, r, mult: 1, reason: "close" }));
   const { raw, book, protocol } = fixture(xs);
   book.sizedOrders = xs.map((x) => ({ key: `${x.cfg}|${x.sym}|${x.side}|${x.entryT}`, unitNotional: 10, sizedPnl: x.r * 10 }));
   const r = signalWindowReport(raw, book, protocol);
   assert.equal(r.total.n, 2); assert.equal(r.total.pf, 0.5);
   assert.equal(r.total.cashGp, 0.1); assert.equal(r.total.cashGl, 0.2);
   assert.equal(r.trades[0].sizedPnl, 0.1); assert.equal(r.trades[1].sizedPnl, -0.2);
+});
+it("keeps a missing modeled multiplier inside its funded type and hourly cohort as unknown", () => {
+  const xs = [
+    { cfg: cfg(), kind: "normal", side: 1, sym: "TEST-USDT", entryT: H + 1, exitT: H + 2, r: 0.02, mult: 1, reason: "tp" },
+    { cfg: cfg(), kind: "normal", side: 1, sym: "TEST-USDT", entryT: H + 3, exitT: H + 4, r: -0.01, reason: "sl" },
+  ];
+  const { raw, book, protocol } = fixture(xs);
+  const r = signalWindowReport(raw, book, protocol);
+  assert.equal(r.total.n, 2);
+  assert.equal(r.total.unknownReturns, 1);
+  assert.equal(r.total.pf, null);
+  assert.equal(r.types[0].pf, null);
+  assert.equal(r.hours[0].pf, null);
+  assert.equal(r.trades[1].unitR, null);
+  assert.equal(r.total.cashGp, .02);
+  assert.equal(r.total.cashGl, .01);
 });
 it("keeps mixed engine book equity separate and reconciles Signal cash from actual shared allocations", () => {
   const xs = [

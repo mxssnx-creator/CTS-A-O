@@ -124,9 +124,10 @@ describe("Block matrix at the Real stage", { timeout: 1_200_000 }, () => {
           const m = x.mult ?? 1;
           // every raise is a whole number of 0.25 steps (per source for overall)
           const parts = mode === "overall" ? Object.values(x.legs ?? {}).map((v) => v ?? 0) : [m - 1];
-          for (const p of parts) assert.ok(Math.abs(p / 0.25 - Math.round(p / 0.25)) < 1e-6 || m === 8, `${mode} raise ${p}`);
-          if (mode !== "overall") assert.ok(m <= 2.5 + 1e-9);
-          else assert.ok(parts.every((p) => p <= 1.5 + 1e-9), "every source within max multiple");
+          // When the total cap binds, proportional source allocations can be fractional steps.
+          for (const p of parts) assert.ok(Math.abs(p / 0.25 - Math.round(p / 0.25)) < 1e-6 || m === 2.5, `${mode} raise ${p}`);
+          assert.ok(m <= 2.5 + 1e-9, "base plus every source shares the configured total cap");
+          if (mode === "overall") assert.ok(parts.every((p) => p <= 1.5 + 1e-9), "every source within total extra budget");
         }
       }
       // the pause only ever lowers raises: total extra volume with a pause ≤ without

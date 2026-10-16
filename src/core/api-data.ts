@@ -3,8 +3,8 @@
 import { MAX_BACKTEST_DAYS, type CoreSettings } from "./config.ts";
 import { checkMerged, checkSettings } from "./settings-check.ts";
 import { closedPositions, openBook } from "./positions.ts";
-import { statsOf, unitStatsOf } from "./metrics/stats.ts";
-import { returnGroup, unitReturnReport, unitStatsReport, type ReturnStatsReport } from "./reporting-stats.ts";
+import { statsOf, modeledUnitStatsOf as unitStatsOf } from "./metrics/stats.ts";
+import { returnGroup, modeledReturnReport as unitReturnReport, unitStatsReport, type ReturnStatsReport } from "./reporting-stats.ts";
 import { runBlocks, runStable, type WalkForwardResult } from "./sim/walkforward.ts";
 
 type ReturnGroup = ReturnType<typeof returnGroup>;

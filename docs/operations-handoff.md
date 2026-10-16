@@ -1,6 +1,65 @@
 # CTS-A-O operations handoff
 
-Updated 2026-10-15. Repository: `mxssnx-creator/CTS-A-O`.
+Updated 2026-10-16. Repository: `mxssnx-creator/CTS-A-O`.
+
+## 16 October Overall Block relation clarification — verification in progress
+
+The user clarified Overall Block at the end of Real, independent Symbol/Direction/exact Indication relation histories, ratio 0.2, Shared any-valid behavior with a higher configurable ratio, and comparison against Block disabled with bounded equity drawdown. Work is isolated in `fix/overall-block-relations-20261016` at `/workspace/scratch/18f0ba5d9c08/CTS-A-O-block`, preserving the concurrent independent-exits continuation unchanged. Remote backup `backup/pre-overall-block-20261016` retains main `0ade0fb2ba22a50e49cf03a9825ea612b4abc30f`.
+
+New default history is settled, accepted account-independent Real virtual orders; raw Real-candidate learning remains an explicitly labeled legacy diagnostic. Funded/venue execution is separate. Config/symbol/side and exact indication/lane/side remain independent. Shared may override the common ratio; unset preserves legacy ratio. Quantized existing steps are disclosed and tested separately from exact continuous 0.2; a higher 0.4 Shared ratio is prespecified only for comparison, not an enabled default. The total external cap includes the base, all sources and relation volume. Existing positions keep their entry multiplier. Native confirmed quantities and durable protective-order identities are being checked through equity/ratio resizing and conditional partial fills.
+
+Focused checks currently pass: Block accepted/replay/relations 76, settings/completeness 260, strict modeled-return/overflow checks 17, independent exits 63, comparison harness 19. Counts overlap and must not be summed. Final native review, integrated checks and the prespecified study remain pending. The final study protocol is `ab86d56fdc7a8aade6a2bebd696dba333ad181961531f51c52ff50eea627b9e7`: ten arms, two reused historical six-hour folds and six hours of evaluated prehistory, with older candles only for warmup. These are retrospective comparisons, not untouched/live profitability. Source seal and exact native baseline parity are required before any scoring.
+
+## 16 October independent exits and Block continuation — verification in progress
+
+Reloaded merged main `0ade0fb2ba22a50e49cf03a9825ea612b4abc30f` (PR #138).
+Current branch: `fix/independent-exits-block-20261016`. Remote backup
+`backup/pre-exit-block-20261016` preserves that main. The recovered stale
+continuation at `089e6d6` and its three dirty files were backed up and stashed;
+their older E2E fixture was not reapplied over the corrected merged source.
+Local verified bundle and pending patch are under
+`/workspace/scratch/fe9c0300366a/cts-ao-backups/20261016T094329Z`.
+
+Independent exits retain exact indication/range/lane/config/type/symbol/side
+identities. Untyped legacy Signal discovery keys cannot authorize new Normal,
+capped Trailing or trailing-only entries. Modeled execution needs an explicit
+unit return or a verified recorded external multiplier; absent legacy basis
+stays unknown in promotion, APIs, Presets and reports. Raw intrinsic historical
+tapes retain their separate valid unit-return interpretation. Cash remains a
+separately labeled diagnostic. Endpoint exports preserve their actual basis.
+
+Block's configured `maxMult` now bounds the complete new-entry stack: base plus
+all source additions, subject to the absolute 8x bound. Config-source levels
+and pauses use exact config/symbol/direction evidence. Explicit pooled sources
+keep their documented scope. Optional native lane orders allocate fractional
+Block weights within the exact parent exit instead of one venue unit per
+fractional source; unrelated configs remain independent. Confirmed and pending
+quantities reserve capacity, and an installed parent stop suppresses every
+related source child. Existing holdings retain their entry multiple when a cap
+is lowered; a current-cap audit can still warn until they close. No forced
+reduction or rewritten ownership is implied. Default 8x is unchanged.
+
+Current focused checks include 143 baseline native-control cases, 111 revised
+Block integration cases and 68 final Block provenance cases. PF/identity,
+indication-specific MFE, parallel causality and reporting checks pass in scoped
+runs; overlapping counts must not be added together. Final dependency install,
+full regression/build/UI checks and the comparison are pending.
+
+The comparison protocol uses frozen public four-symbol feeds, two historical
+six-hour execution folds and six hours of evaluated preparation per fold.
+Earlier candles initialize indicators only. Three prespecified arms keep the
+same complete configured focus and exits: Block off (diagnostic), on at 2x,
+and on at the current 8x default. Axis stays default-disabled; other settings,
+costs and positive coordinations are unchanged. Source/settings seals and exact
+native baseline parity are mandatory before scoring. All owned settled closes,
+unknowns, losses, empty cohorts and hourly outcomes remain visible. Pure size
+scaling cannot improve primary unit-return PF. These reused historical windows
+are development evidence and cannot establish future or live profitability.
+
+Dependency audit found installed TanStack Start and transitive advisories;
+patched locked dependencies and clean-install compatibility are being checked
+before the release build. No live reload, venue request or order has occurred.
+See `docs/work-tasks.md` for the current release checklist.
 
 ## 15 October post-Base promotion and range continuation — verified source and evidence
 

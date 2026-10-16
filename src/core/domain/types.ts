@@ -300,10 +300,14 @@ export interface Tactics {
 export interface BlockConfig {
   /** extra volume per passing level (additive) */
   ratio: number;
+  /** Shared-only ratio override. Unset preserves ratio; a higher value still shares the total maxMult cap. */
+  sharedRatio?: number;
+  /** Closed accepted Real orders, or the explicitly labeled legacy candidate-learning diagnostic. */
+  historySource?: "accepted-orders" | "real-candidates";
   /** last-N windows 1..maxLevel are checked independently */
   maxLevel: number;
   minActiveLevel: number;
-  /** total volume cap as a multiple of the base position */
+  /** total external volume cap including the base and every Block source, maximum 8× */
   maxMult: number;
   /** which positions the levels are judged on (config set only by default) */
   sources?: {
@@ -317,7 +321,7 @@ export interface BlockConfig {
   };
   /**
    * shared: the strongest source's level; additive: the sources' levels add up; overall: every source is its own
-   * Block (its own level, its own extra position, tracked per source — the sources never combine)
+   * Block (its own level and extra position, tracked per source inside one shared total maxMult cap)
    */
   mode?: "shared" | "additive" | "overall";
   /**
@@ -339,7 +343,7 @@ export interface BlockConfig {
   /** raised closes per candidate window that windowAuto judges on. Default 300. */
   windowLookback?: number;
   /**
-   * signals judged on their own: a signal config's Block level comes only from its own closes (the config source),
+   * signals judged on their own: a signal config's Block level comes only from its own symbol × side closes,
    * never from the pooled overall / symbol / direction / indication / type books of the other positions
    */
   signalsOwn?: boolean;

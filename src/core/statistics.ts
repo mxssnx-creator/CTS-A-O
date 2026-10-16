@@ -3,7 +3,7 @@
 // symbol, exit reason, hour of day, weekday × hour), every config with its parameters and dates, and the execution
 // presets computed on the same tapes (with / without Block, Block Active, DCA, DCA Active, Axis, Trailing).
 // Pure: the server function hands in the trades, the sizing and a price lookup.
-import { profitFactor, statsOf, unitStatsOf, type UnitStats } from "./metrics/stats.ts";
+import { profitFactor, statsOf, modeledUnitStatsOf as unitStatsOf, type UnitStats } from "./metrics/stats.ts";
 import { closedPositions } from "./positions.ts";
 import { parseConfigId, kindOfId } from "./pipeline/pipeline.ts";
 import { rangeOfId, RANGE_LABEL } from "./minimal-coord.ts";
@@ -693,6 +693,9 @@ export function liveTrades(rows: readonly LedgerRow[], tagLen: number, modelCost
       exitT: x.at,
       entry,
       r: notional > 0 ? pnl / notional : 0,
+      // This is already the confirmed venue-owned net return on the closed
+      // slice's actual notional, with no modeled execution multiple to undo.
+      unitR: notional > 0 ? pnl / notional : null,
       reason,
       notional,
     };

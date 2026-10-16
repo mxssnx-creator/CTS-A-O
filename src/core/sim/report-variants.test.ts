@@ -206,13 +206,13 @@ describe("run summary", () => {
     assert.equal(s.pf, 4);
     assert.equal(s.noLoss, true);
     assert.equal(s.pfConvention, "shared-profitFactor-no-loss-score");
-    const flat = summarizeRun({ trades: [tr("b|ema|wide", "A", 1, 0, 0.5, 0)] }, T0, T0 + H);
+    const flat = summarizeRun({ trades: [{ ...tr("b|ema|wide", "A", 1, 0, 0.5, 0), mult: 1 }] }, T0, T0 + H);
     assert.equal(flat.pf, 0);
     assert.equal(flat.noLoss, false);
   });
 
   it("marks the entire primary sample unavailable when one execution return is unknown", () => {
-    const s = summarizeRun({ trades: [{ ...trades[0], mult: 0 }, trades[1]] }, T0, T0 + 3 * H);
+    const s = summarizeRun({ trades: [{ ...trades[0], mult: 0 }, { ...trades[1], mult: 1 }] }, T0, T0 + 3 * H);
     assert.equal(s.orders, 2);
     assert.equal(s.net, 0.5, "weighted net remains available");
     assert.equal(s.pfBasis, "unavailable");

@@ -14,7 +14,7 @@ import { isSignalInd } from "../indications/registry.ts";
 import { signalActiveHas } from "../signals.ts";
 import { rangeOfId } from "../minimal-coord.ts";
 import { kindOfId, parseConfigId } from "../pipeline/pipeline.ts";
-import { runSubset, type WalkForwardResult } from "../sim/walkforward.ts";
+import { positionMult, runSubset, type WalkForwardResult } from "../sim/walkforward.ts";
 import type { CoreRuntime, LiveIntent } from "./runtime.server.ts";
 import type { CoreDb } from "./db.server.ts";
 import { attributeLanes, laneKeyOf, type LaneOpen, type LaneStepInput, type LaneTrade } from "../live-record.ts";
@@ -1682,11 +1682,14 @@ export function keyFunnel(
 function laneMapsOf(lanes: readonly ControlContribution[]) {
   const laneIds = new Set<string>();
   const legacyIds = new Map<string, string>();
-  const laneIdByKey = new Map<string, string>();
+  const laneIdByKey = new Map<string, string[]>();
   for (const l of lanes) {
     if (!l.id) continue;
     laneIds.add(l.id);
-    laneIdByKey.set(l.lk ?? laneKeyOf({ id: l.id, cfg: l.cfg, sym: l.sym, side: l.side }), l.id);
+    const parent = l.lk ?? laneKeyOf({ id: l.id, cfg: l.cfg, sym: l.sym, side: l.side });
+    const ids = laneIdByKey.get(parent) ?? [];
+    ids.push(l.id);
+    laneIdByKey.set(parent, ids);
     if (l.legacy) {
       legacyIds.set(l.legacy, l.id);
       continue;
@@ -1770,8 +1773,15 @@ export function laneContributions(
           legsSum += v;
         }
       }
+    // Minimum-lane units remove intrinsic DCA / Axis ladder weight for every Block mode. A legacy unraised
+    // ordinary parent with no ladder/external provenance retains its documented single-unit rule.
+    const externalUnits = legsN > 0 || (p.level ?? 0) > 0 || p.w !== undefined;
+    const intrinsic = p.w ?? 1;
+    const multiplier = positionMult(p);
+    const unitsKnown = Number.isFinite(intrinsic) && intrinsic > 0 && Number.isFinite(multiplier) && multiplier > 0;
     const c = (lid: string, v: number, legacy: string): ControlContribution => {
       const x: ControlContribution = { id: lid, cfg: p.cfg, sym: p.sym, side: p.side, vol: v, sl, risk, chase };
+      if (externalUnits) x.laneUnits = unitsKnown ? v / intrinsic : NaN;
       if (tgt !== undefined) x.tgt = tgt;
       if (stopPx !== undefined) x.stopPx = stopPx;
       x.key = ls.key;
@@ -2541,6 +2551,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       ? { ...(liveKv<Record<string, LaneOrder>>(rt.db, "laneOrders") ?? {}) }
       : {};
     const laneExit = new Map<string, { px: number; reason: "stop" | "target" }>();
+    const laneBusy = new Set<string>();
+    const laneCaps: Record<string, number> = { ...(liveKv<Record<string, number>>(rt.db, "laneQuantityCaps") ?? {}) };
     const laneStat = { onExchange: 0, placed: 0, moved: 0, cancelled: 0, filled: 0, pending: 0 };
     const ownResting = (b: BookView) =>
       new Set(
@@ -2552,7 +2564,16 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     const goneOf = async (sym: string, oid?: string) => {
       if (!oid || !ex.orderStatus) return { status: "unknown" } as const;
       try {
-        return goneOrderOf(await ex.orderStatus(sym, oid));
+        const reply = await ex.orderStatus(sym, oid);
+        const result = goneOrderOf(reply);
+        if (result.status === "cancelled") {
+          const order = ((reply as { order?: unknown })?.order ?? reply) as Record<string, unknown> | null;
+          const raw = order?.executedQty ?? order?.cumExecQty ?? order?.filledQty;
+          // Terminal status alone does not prove that a conditional exited zero quantity before cancellation.
+          if (raw === undefined || raw === null || raw === "" || !Number.isFinite(Number(raw)) || Number(raw) < 0)
+            return { status: "unknown" } as const;
+        }
+        return result;
       } catch {
         return { status: "unknown" } as const;
       }
@@ -2569,51 +2590,80 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         "ok",
         `lane ${lo.id}: its ${which === "s" ? "stop" : "take-profit"} filled on the exchange`,
       );
-    if (laneMode && !ordersStale) {
-      const resting = ownResting(book);
-      for (const lo of Object.values(laneMap)) {
-        if (!alive()) break;
-        // its whole position went (an outside close books its lanes) — but a lane order that filled before is still
-        // that lane's own exit, at its own fill (x02, 7 Oct: 146 lane stops and take-profits filled while the desk was
-        // down, then the side was closed by hand, and every lane was booked at the side's close)
-        if (!onExchange.has(lo.key) && !lagging.has(lo.key)) {
-          for (const which of ["s", "t"] as const) {
-            const o = lo[which];
-            if (!o || resting.has(o.coid.toUpperCase())) continue;
-            const g = await goneOf(lo.sym, o.oid ?? orderIdOf.get(o.coid.toUpperCase()));
-            if (g.status !== "filled") continue;
-            laneExit.set(lo.id, { px: g.px, reason: which === "s" ? "stop" : "target" });
-            laneStat.filled++;
-            break;
-          }
-          delete laneMap[lo.id];
-          continue;
-        }
-        for (const which of ["s", "t"] as const) {
-          const o = lo[which];
-          if (!o || resting.has(o.coid.toUpperCase())) continue;
-          const g = await goneOf(lo.sym, o.oid ?? orderIdOf.get(o.coid.toUpperCase()));
-          if (g.status !== "filled") {
-            delete lo[which];
+    const cancelLaneOrders = async (lo: LaneOrder, ids: ReadonlyMap<string, string | undefined>) => {
+      let cleared = true;
+      for (const which of ["s", "t"] as const) {
+        const o = lo[which];
+        if (!o) continue;
+        const oid = o.oid ?? ids.get(o.coid.toUpperCase());
+        if (!oid) { cleared = false; continue; }
+        if (await ex.cancel(lo.sym, oid)) {
+          status.cancelled++;
+          laneStat.cancelled++;
+          // A successful cancel can terminate a partially filled conditional. Reconcile its measured cumulative
+          // quantity before forgetting the identity or following it with a market reduction.
+          const result = ex.orderStatus ? await goneOf(lo.sym, oid) : { status: "cancelled" } as const;
+          if (result.status === "unknown" || (result.status === "filled" &&
+            (result.qty === undefined || result.qty > (o.filledQty ?? 0) + 1e-12))) {
+            cleared = false;
             continue;
           }
-          laneExit.set(lo.id, { px: g.px, reason: which === "s" ? "stop" : "target" });
-          laneStat.filled++;
-          laneFilled(lo, g.px, which);
-          const sib = lo[which === "s" ? "t" : "s"];
-          const sibId = sib ? (sib.oid ?? orderIdOf.get(sib.coid.toUpperCase())) : undefined;
-          if (sib && sibId && resting.has(sib.coid.toUpperCase()) && (await ex.cancel(lo.sym, sibId))) {
-            status.cancelled++;
-            laneStat.cancelled++;
+          delete lo[which];
+          continue;
+        }
+        const gone = await goneOf(lo.sym, oid);
+        if (gone.status === "cancelled") delete lo[which];
+        else cleared = false; // filled or unresolved: retain it for canonical fill/restart reconciliation
+      }
+      if (!cleared) laneBusy.add(lo.key);
+      return cleared;
+    };
+    if (laneMode && !ordersStale) {
+      const resting = ownResting(book);
+      const tracked = new Map<string, number>();
+      for (const lo of Object.values(laneMap)) tracked.set(lo.key, (tracked.get(lo.key) ?? 0) + lo.qty);
+      const actual = new Map(book.positions.map((p) => [`${p.venueSymbol}|${p.side === "long" ? 1 : -1}`, p.qty]));
+      for (const lo of Object.values(laneMap)) {
+        if (!alive()) break;
+        for (const which of ["s", "t"] as const) {
+          const o = lo[which];
+          if (!o) continue;
+          o.oid ??= orderIdOf.get(o.coid.toUpperCase());
+          // A partial conditional fill may remain in openOrders. Poll it when measured holdings shrank, or
+          // while a previously observed partial is unresolved. A healthy steady book does not poll every lane.
+          if (resting.has(o.coid.toUpperCase()) && !(o.filledQty && o.filledQty > 0) &&
+            (actual.get(lo.key) ?? 0) >= (tracked.get(lo.key) ?? 0) - 1e-12) continue;
+          const g = await goneOf(lo.sym, o.oid ?? orderIdOf.get(o.coid.toUpperCase()));
+          if (g.status === "cancelled") { delete lo[which]; continue; }
+          if (g.status !== "filled" || g.qty === undefined) { laneBusy.add(lo.key); continue; }
+          const sent = o.qty ?? lo.qty + (o.filledQty ?? 0);
+          if (g.qty > sent + 1e-9 || g.qty < (o.filledQty ?? 0) - 1e-12) { laneBusy.add(lo.key); continue; }
+          const id = `lanefill-${o.coid}`;
+          const prior = controlRows(rt).get(id);
+          const cumulative = Math.max(prior?.qty ?? 0, g.qty);
+          const delta = Math.min(lo.qty, Math.max(0, cumulative - (o.filledQty ?? 0)));
+          if (delta > 0) {
+            // One cumulative durable record per actual conditional order makes stale polls/restarts idempotent.
+            record(id, { key: lo.key, sym: lo.sym, side: lo.side }, "R", cumulative, g.px, "ok",
+              `lane ${lo.id}: measured conditional ${which === "s" ? "stop" : "target"} fill`, prior?.at ?? Date.now());
+            lo.qty = Math.max(0, lo.qty - delta);
+            o.filledQty = cumulative;
+            // The paper parent still includes this filled share; do not buy it back while that same entry lives.
+            laneCaps[lo.id] = lo.qty;
+            laneStat.filled++;
           }
-          const lid = laneIdByKey.get(lo.id);
-          if (lid) suppressed[lid] = { key: lo.key, at: nowSup };
-          rt.db.event(
-            "info",
-            `lane ${lo.id}: its ${which === "s" ? "stop" : "take-profit"} filled on the exchange at ${g.px} — the lane is closed there`,
-          );
-          delete laneMap[lo.id];
-          break;
+          if (g.complete) delete lo[which];
+          if (!(lo.qty > 1e-12)) {
+            lo.closed = { px: g.px, reason: which === "s" ? "stop" : "target" };
+            laneExit.set(lo.id, lo.closed);
+          }
+          // Cancel any unfilled conditional remainder and its sibling before changing their quantities.
+          if (!(await cancelLaneOrders(lo, orderIdOf))) laneBusy.add(lo.key);
+        }
+        if (lo.closed) {
+          for (const lid of laneIdByKey.get(lo.id) ?? []) suppressed[lid] = { key: lo.key, at: nowSup };
+          laneExit.set(lo.id, lo.closed);
+          if (await cancelLaneOrders(lo, orderIdOf)) delete laneMap[lo.id];
         }
       }
       // the venue's TP/SL cap (one count for the whole account): every position's backstop comes first — when the
@@ -3042,6 +3092,30 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         .map((o) => `O:${o.clientOrderId}`)
         .sort(),
     ];
+    const laneRequestedQty = new Map<string, number>();
+    if (laneMode) {
+      // Conditional partial exits belong to the exact held parent. Its remaining share may shrink further,
+      // but a stale paper request cannot repurchase the already exited quantity or hand it to a sibling.
+      for (const target of targets) {
+        const parents = new Map<string, number>();
+        for (const l of liveLanes) {
+          if (`${l.sym}|${l.side}` !== target.key || !l.id) continue;
+          const id = l.lk ?? laneKeyOf({ id: l.id, cfg: l.cfg, sym: l.sym, side: l.side });
+          parents.set(id, (parents.get(id) ?? 0) + (l.laneUnits ?? 1));
+        }
+        const total = [...parents.values()].reduce((sum, x) => sum + x, 0);
+        if (!(total > 0)) continue;
+        const qty = [...parents].reduce((sum, [id, w]) => {
+          const part = Math.min(target.qty * w / total, laneCaps[id] ?? Infinity);
+          laneRequestedQty.set(id, part);
+          return sum + part;
+        }, 0);
+        if (![...parents.keys()].some((id) => laneCaps[id] !== undefined)) continue;
+        const spec = specs.get(target.sym) ?? null;
+        target.qty = bx.snapQtyDown(qty, spec);
+        target.notional = target.qty * (prices.get(target.sym) ?? 0);
+      }
+    }
     const plan = planControl({
       targets,
       held,
@@ -3739,39 +3813,20 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       } else failed(tk, "take-profit not placed", 30_000, 10 * 60_000);
     }
 
-    // lane orders: a lane that leaves the exchange (its paper position exited, deselected, held back) has its orders
-    // cancelled BEFORE the position is reduced. A cancel the venue refuses because the order filled is that lane's
-    // exit on the venue already: the reduce this plan would send for it is skipped (the book is read again next step).
-    const laneBusy = new Set<string>();
+    // A quantity change replaces its partial exits only after every old order is confirmed cancelled.
+    // A refusal/unknown keeps the durable identity and holds this key; a fill is reconciled by the next fresh
+    // book before any market reduction. The position-wide backstop remains throughout.
     if (laneMode && !ordersStale) {
       const want = new Set(
         liveLanes.flatMap((l) => (l.id ? [(l.lk ?? laneKeyOf({ id: l.id, cfg: l.cfg, sym: l.sym, side: l.side }))] : [])),
       );
+      // Before reducing a side, its old partial quantities must not remain larger than the residual position.
+      // Confirmed cancels remove only the physical exits; attribution still closes from actual fills below.
+      const reducing = new Set(plan.actions.filter((a) => a.kind === "reduce" || a.kind === "close").map((a) => a.key));
       for (const lo of Object.values(laneMap)) {
         if (!alive()) break;
-        if (want.has(lo.id)) continue;
-        let filled: { px: number; reason: "stop" | "target" } | null = null;
-        for (const which of ["s", "t"] as const) {
-          const o = lo[which];
-          const oid = o ? (o.oid ?? orderIdOf.get(o.coid.toUpperCase())) : undefined;
-          if (!o || !oid) continue;
-          if (await ex.cancel(lo.sym, oid)) {
-            status.cancelled++;
-            laneStat.cancelled++;
-            continue;
-          }
-          const g = await goneOf(lo.sym, oid);
-          if (g.status === "filled") {
-            filled = { px: g.px, reason: which === "s" ? "stop" : "target" };
-            laneFilled(lo, g.px, which);
-          }
-        }
-        if (filled) {
-          laneExit.set(lo.id, filled);
-          laneStat.filled++;
-          laneBusy.add(lo.key);
-        }
-        delete laneMap[lo.id];
+        if (want.has(lo.id) && !reducing.has(lo.key)) continue;
+        if (await cancelLaneOrders(lo, orderIdOf)) delete laneMap[lo.id];
       }
     }
 
@@ -3807,7 +3862,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         continue;
       }
       if (laneBusy.has(a.key)) {
-        res.msg = "a lane order filled as it was cancelled — the book is read again next step";
+        res.msg = "a lane order cancellation is unresolved or filled — the book is read again next step";
+        if (!grows) exitBlocked.add(a.sym);
         continue;
       }
       if (
@@ -4224,11 +4280,19 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         for (const p of b2.positions) qtyOn.set(`${p.venueSymbol}|${p.side === "long" ? 1 : -1}`, p.qty);
         // what this system holds of it (the ledger, after this step's orders)
         const own = ownLedger([...controlRows(rt).values()]);
-        const byKey = new Map<string, LaneWant[]>();
+        const byKey = new Map<string, Map<string, LaneWant & { units: number }>>();
         for (const l of liveLanes) {
           if (!l.id || !(l.stopPx !== undefined && l.stopPx > 0)) continue;
           const id = (l.lk ?? laneKeyOf({ id: l.id, cfg: l.cfg, sym: l.sym, side: l.side }));
           const k = `${l.sym}|${l.side}`;
+          const group = byKey.get(k) ?? new Map<string, LaneWant & { units: number }>();
+          if (!byKey.has(k)) byKey.set(k, group);
+          const prior = group.get(id);
+          if (prior) {
+            prior.units += l.laneUnits ?? 1;
+            (prior.weights ??= {})[l.id] = l.laneUnits ?? 1;
+            continue;
+          }
           const w: LaneWant = {
             id,
             key: k,
@@ -4238,33 +4302,52 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             ...(l.tgt !== undefined && l.tgt > 0 ? { target: l.tgt } : {}),
             entryT: Number(id.slice(id.lastIndexOf("|") + 1)) || 0,
           };
-          (byKey.get(k) ?? byKey.set(k, []).get(k)!).push(w);
+          group.set(id, { ...w, units: l.laneUnits ?? 1, weights: { [l.id]: l.laneUnits ?? 1 } });
         }
         const covered: LaneWant[] = [];
-        for (const [key, ws] of byKey) {
+        for (const [key, group] of byKey) {
           if (isForeign(foreign, key) || laneBusy.has(key)) continue;
           const t = targetOf.get(key);
           const spec = specs.get(key.split("|")[0]) ?? null;
           if (!t || !(t.lanes > 0) || !(t.qty > 0)) continue;
-          const laneQty = Number((t.qty / t.lanes).toFixed(Math.max(0, spec?.qtyPrec ?? 8)));
-          const q = Math.min(qtyOn.get(key) ?? 0, own.get(key) ?? qtyOn.get(key) ?? 0);
+          const precision = Math.max(0, spec?.qtyPrec ?? 8);
+          const step = spec?.step ?? 10 ** -precision;
+          const q = Math.min(qtyOn.get(key) ?? 0, own.get(key) ?? 0);
+          // One-way targets have already netted the opposite side. Divide only among the surviving parents;
+          // dividing by the net lane-unit count would allocate the offset quantity a second time.
+          const units = [...group.values()].reduce((sum, w) => sum + w.units, 0);
+          if (!(units > 0) || !(q > 0)) continue;
+          const changed = control.actions.some((a) => a.key === key && a.ok);
+          const atTarget = Math.abs(q - t.qty) <= Math.max(1e-12, step * 1e-6);
+          // A requested / pending quantity is not owned. Partial fills bound the replaceable allocation too.
+          // Ordinary price/equity drift inside the rebalance band keeps the original held lane quantities.
+          const reconcile = changed || atTarget;
+          const laneQty = Math.min(t.qty, q) / units;
+          const ws = [...group.values()].map((w) => ({ ...w,
+            qty: bx.snapQtyDown(Math.min(laneRequestedQty.get(w.id) ?? laneQty * w.units, laneCaps[w.id] ?? Infinity) *
+              Math.min(1, q / t.qty), spec) }));
+          if (reconcile) {
+            for (const w of ws) {
+              const lo = laneMap[w.id];
+              if (!lo) continue;
+              if (Math.abs(lo.qty - (w.qty ?? 0)) > Math.max(1e-12, step * 1e-6)) {
+                if (await cancelLaneOrders(lo, ids2)) delete laneMap[w.id];
+              } else lo.weights = w.weights;
+            }
+            if (laneBusy.has(key)) continue;
+          }
           const cov = coveredLanes(ws, laneMap, q, laneQty);
           const covIds = new Set(cov.map((w) => w.id));
           // lanes the position no longer covers (a partial fill, a scaler): their orders go
           for (const lo of Object.values(laneMap))
             if (lo.key === key && !covIds.has(lo.id)) {
-              for (const which of ["s", "t"] as const) {
-                const oid = lo[which]?.oid ?? ids2.get(lo[which]?.coid.toUpperCase() ?? "");
-                if (oid && (await ex.cancel(lo.sym, oid))) {
-                  status.cancelled++;
-                  laneStat.cancelled++;
-                }
-              }
-              delete laneMap[lo.id];
+              if (await cancelLaneOrders(lo, ids2)) delete laneMap[lo.id];
             }
+          if (laneBusy.has(key)) continue;
           for (const w of cov)
             if (!laneMap[w.id])
-              laneMap[w.id] = { id: w.id, key, sym: w.sym, side: w.side, qty: laneQty, at: Date.now() };
+              laneMap[w.id] = { id: w.id, key, sym: w.sym, side: w.side, qty: w.qty ?? laneQty,
+                ...(w.weights ? { weights: w.weights } : {}), at: Date.now() };
           covered.push(...cov);
         }
         const learned = (sym: string) => venueMins(rt).get(sym)?.stop ?? 0;
@@ -4332,6 +4415,9 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           const coid = makeCoid(s.connId, kind);
           const a = { key: lo.key, sym: lo.sym, side: lo.side };
           record(coid, a, kind, lo.qty, px, "pending", lo.id);
+          // Persist the request identity before the await; a timeout can mean the venue accepted this exit.
+          lo[which] = { coid, px, qty: lo.qty };
+          liveKvSet(rt.db, "laneOrders", laneMap);
           try {
             const resp = await ex.order({
               symbol: lo.sym,
@@ -4348,12 +4434,15 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
               ((resp as { order?: { orderId?: unknown } })?.order?.orderId ?? (resp as { orderId?: unknown })?.orderId) ??
                 "",
             );
-            lo[which] = { coid, ...(oid ? { oid } : {}), px };
+            lo[which] = { coid, ...(oid ? { oid } : {}), px, qty: lo.qty };
             record(coid, a, kind, lo.qty, px, "ok", lo.id);
             return true;
           } catch (err) {
             const msg = errText(err);
-            if (err instanceof bx.ExchangeRejected) record(coid, a, kind, lo.qty, px, "error", `${lo.id}: ${msg}`);
+            if (err instanceof bx.ExchangeRejected) {
+              record(coid, a, kind, lo.qty, px, "error", `${lo.id}: ${msg}`);
+              if (lo[which]?.coid === coid) delete lo[which];
+            }
             bx.noteRateLimit(msg);
             // the account's TP/SL cap: no new lane order for a while (retrying each step drew BingX's error-rate
             // ban — 110206 — which then refused the backstops too); any other refusal backs this lane off
@@ -4375,10 +4464,12 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             if (oid && !(await ex.cancel(lo.sym, oid))) {
               // gone already: a fill is the lane's exit (booked next step, from the book); otherwise placed anew
               const g = await goneOf(lo.sym, oid);
-              if (g.status === "filled") return;
+              if (g.status !== "cancelled") return;
             } else if (oid) {
               status.cancelled++;
               laneStat.cancelled++;
+              const g = ex.orderStatus ? await goneOf(lo.sym, oid) : { status: "cancelled" } as const;
+              if (g.status !== "cancelled") return;
             }
             delete lo[which];
             if (x.kind === "dropTarget") return;
@@ -4408,6 +4499,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     }
     if (laneMode) {
       liveKvSet(rt.db, "laneOrders", laneMap);
+      for (const id of Object.keys(laneCaps)) if (!laneIdByKey.has(id) && !laneMap[id]) delete laneCaps[id];
+      liveKvSet(rt.db, "laneQuantityCaps", laneCaps);
       control.laneOrders = laneStat;
     }
     // the lane volume each key now stands at: every target with nothing to do, or whose action went through; a key

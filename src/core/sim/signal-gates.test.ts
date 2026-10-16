@@ -106,7 +106,7 @@ describe("signals: acceptance on the source's record", () => {
   // the m15 lane of the source active on the symbol (the ranking is not under test)
   const o = (): WalkForwardOptions => ({
     ...base,
-    signalActive: new Set([`follow|sig-ema-cross-s@m15|${SYM}|1`]),
+    signalActive: new Set([`follow|sig-ema-cross-s@m15|${SYM}|1|normal`]),
     signalAccept: accept,
   });
 

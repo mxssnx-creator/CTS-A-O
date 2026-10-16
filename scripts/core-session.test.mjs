@@ -34,8 +34,8 @@ function replay({ caps = false, weighted = false, invalidReturn = false, qualifi
       },
       window: { startT: H, endT: 2 * H },
       trades: [
-        { cfg: "combo|ema-9-21@m1|win", sym: "TEST-USDT", side: 1, entryT: H + M, exitT: H + 2 * M, entry: 100, exit: 150, r: 0.5, reason: "tp", vol: 1 },
-        { cfg: "combo|ema-9-21@m1|loss", sym: "TEST-USDT", side: 1, entryT: H + 3 * M, exitT: H + 4 * M, entry: 150, exit: 120, r: -0.2, reason: "sl", vol: 1 },
+        { cfg: "combo|ema-9-21@m1|win", sym: "TEST-USDT", side: 1, entryT: H + M, exitT: H + 2 * M, entry: 100, exit: 150, r: 0.5, reason: "tp", vol: 1, mult: 1 },
+        { cfg: "combo|ema-9-21@m1|loss", sym: "TEST-USDT", side: 1, entryT: H + 3 * M, exitT: H + 4 * M, entry: 150, exit: 120, r: -0.2, reason: "sl", vol: 1, mult: 1 },
       ],
       closes: { "TEST-USDT": Array.from({ length: 60 }, (_, i) => [H + i * M, i < 1 ? 100 : i < 3 ? 150 : 120]) },
       openEnd: [], engine: { basePassed: 0, baseEvaluated: 0, mainPairs: 0, tapes: 0, real: 0, computeMs: 0 },
@@ -52,9 +52,9 @@ function replay({ caps = false, weighted = false, invalidReturn = false, qualifi
       raw.settings.book = { balance: 1, notional: 0.1, sizing: { mode: "fixed" }, leverage: 10 };
       raw.settings.live = { maxPositionX: 0.3, maxExposureX: 0 };
       raw.trades = [
-        { cfg: "follow|ema-9-21@m1|a", sym: "TEST-USDT", side: 1, entryT: H + M, exitT: H + 10 * M, entry: 100, exit: 100, r: 0, vol: 1 },
-        { cfg: "follow|ema-9-21@m1|b", sym: "TEST-USDT", side: 1, entryT: H + M, exitT: H + 20 * M, entry: 100, exit: 100, r: 0, vol: 2 },
-        { cfg: "follow|ema-9-21@m1|ghost", sym: "TEST-USDT", side: 1, entryT: H + 2 * M, exitT: H + 15 * M, entry: 100, exit: 110, r: 0.1, vol: 1 },
+        { cfg: "follow|ema-9-21@m1|a", sym: "TEST-USDT", side: 1, entryT: H + M, exitT: H + 10 * M, entry: 100, exit: 100, r: 0, vol: 1, mult: 1 },
+        { cfg: "follow|ema-9-21@m1|b", sym: "TEST-USDT", side: 1, entryT: H + M, exitT: H + 20 * M, entry: 100, exit: 100, r: 0, vol: 2, mult: 2 },
+        { cfg: "follow|ema-9-21@m1|ghost", sym: "TEST-USDT", side: 1, entryT: H + 2 * M, exitT: H + 15 * M, entry: 100, exit: 110, r: 0.1, vol: 1, mult: 1 },
       ];
       raw.closes = { "TEST-USDT": Array.from({ length: 60 }, (_, i) => [H + i * M, 100]) };
     }
@@ -247,16 +247,21 @@ describe("session qualification matches the runtime's full indication rules", ()
     assert.match(legacy.writeup, /Historical dump/);
     assert.match(summaryOf(legacy.html), /Historical dump/);
     assert.equal(legacy.data.evidence.returns.state, "legacy-unverified");
-    assert.match(legacy.md, /stored returns are retained with unknown unit basis/);
+    assert.match(legacy.md, /Historical source encoding was not recorded/);
     assert.equal(sessionQualificationEvidence({}).state, "legacy-unverified");
   });
 
   it("discloses partial return normalization without changing or certifying missing multipliers", () => {
     const evidence = sessionReturnEvidence({ trades: [{ r: 0.2, mult: 2 }, { r: -0.1 }] });
-    assert.equal(evidence.state, "partial");
+    assert.equal(evidence.state, "unavailable");
     assert.equal(evidence.missingMultRows, 1);
+    assert.equal(evidence.unknownReturns, 1);
     assert.match(evidence.note, /1 of 2 closed orders lack a valid execution multiplier/);
     assert.match(evidence.note, /Archived coverage, variant and preset aggregates are retained, not recomputed/);
+    const verified = sessionReturnEvidence({ trades: [{ r: 1, unitR: .02 }, { r: -1, unitR: -.01 }] });
+    assert.equal(verified.state, "recorded");
+    assert.equal(verified.unknownReturns, 0);
+    assert.equal(verified.verifiedUnitRows, 2);
   });
 
   it("retains legacy variant/preset aggregates while withholding an unrecorded primary unit PF", () => {
