@@ -424,11 +424,19 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
     for (const x of trades) {
       if (++ops % 256 === 0) yield ops;
       const tp = byId.get(x.cfg);
-      if (!tp || tp.kind.startsWith("dca") || tp.kind === "axis" || (x.vol ?? 1) !== (x.mult ?? 1))
-        continue;
+      if (!tp || tp.kind.startsWith("dca") || tp.kind === "axis") continue;
       costChecked++;
-      const unit = x.r / (x.mult ?? 1);
-      if (!close(unit, (x.side * (x.exit - x.entry)) / x.entry - inp.cost, 1e-4)) costBad++;
+      // Modeled closes need explicit volume provenance. Do not let this secondary cost check
+      // treat a missing multiplier as a unit order when the primary PF correctly rejects it.
+      const unit = unitReturn(x);
+      if (
+        !Number.isFinite(x.mult) ||
+        x.mult! <= 0 ||
+        !close(x.vol ?? 1, x.mult!) ||
+        !Number.isFinite(unit) ||
+        !close(unit, (x.side * (x.exit - x.entry)) / x.entry - inp.cost, 1e-4)
+      )
+        costBad++;
     }
     add(
       "numbers: every plain close pays the round-trip cost",

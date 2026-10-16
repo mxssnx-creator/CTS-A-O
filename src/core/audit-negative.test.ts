@@ -245,6 +245,11 @@ const UNIT_MULT_FAILS = {
   "numbers: hourly rows add up":
     "the recorded multiplier changes the reconstructed unit return of that exit hour",
 };
+const UNIT_AND_COST_MULT_FAILS = {
+  ...UNIT_MULT_FAILS,
+  "numbers: every plain close pays the round-trip cost":
+    "the recorded multiplier is required to verify the modeled unit cost result",
+};
 
 /** check name → the corruptions that must make it fail */
 const CORRUPTIONS: Record<string, Corruption[]> = {
@@ -367,7 +372,7 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
         const k = i.sim!.trades.findIndex((x) => (x.mult ?? 1) <= 2 && !x.coordVol);
         return withTrade(i, k, { mult: (i.sim!.trades[k].mult ?? 1) + 1 });
       },
-      alsoFails: UNIT_MULT_FAILS,
+      alsoFails: UNIT_AND_COST_MULT_FAILS,
     },
   ],
   "block: base plus all sources within max multiple": [
@@ -393,7 +398,7 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
         const mult = i.sim!.opts.block.maxMult + 1;
         return withTrade(i, k, { mult, coordVol: mult / blockPart });
       },
-      alsoFails: UNIT_MULT_FAILS,
+      alsoFails: UNIT_AND_COST_MULT_FAILS,
     },
   ],
   "block: off → volume 1": [
@@ -403,7 +408,7 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
       corrupt: (i) => withTrade(i, plainIdx(i.sim!, true), { mult: 2 }),
       alsoFails: {
         [REPLAY]: "both judge mult ÷ coordVol: with Block off the replayed volume is 1",
-        ...UNIT_MULT_FAILS,
+        ...UNIT_AND_COST_MULT_FAILS,
       },
     },
   ],
@@ -518,6 +523,12 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
         const k = plainIdx(i.sim!);
         return withTrade(i, k, { exit: i.sim!.trades[k].exit * 1.001 });
       },
+    },
+    {
+      run: "blockOff",
+      what: "a modeled unit close with missing multiplier provenance",
+      corrupt: (i) => withTrade(i, plainIdx(i.sim!, true), { mult: undefined }),
+      alsoFails: UNIT_MULT_FAILS,
     },
   ],
   "stages: Real selection ⊆ Main tapes": [
