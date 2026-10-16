@@ -2,6 +2,28 @@
 
 Updated 2026-10-16, Europe/Vienna. Repository: `mxssnx-creator/CTS-A-O`.
 
+## Continuation check — fast regression and trading window
+
+The current continuation was checked against the clean merged-main tree
+(`78df42af0d661624cba982357a50f79eb27803df`). The focused offline regression
+bundle passed **226/226 tests**, zero failures, in about 8.3 seconds across 26
+suites. It covered Overall Block admission/replay, gating, walk-forward,
+independent Signal history, return-unit accounting, native execution budgets,
+fee provenance, and the Block comparison/evidence reporters. Runtime state,
+autostart, comparison jobs and live execution were disabled; the offline network
+guard was active. This focused run found no new code defect.
+
+Fast trading tests now default to six hours of evaluated prehistory plus six
+hours of simulated trading; older indicator warmup remains outside the score
+window. The existing frozen 6h+6h Block study remains the strategy evidence and
+was not rescored on its reused folds: 920 base combinations were evaluated per
+fold; fold 1 had no owned settled closes; fold 2 had 792 settled slices at return
+PF 2.3748515, with no settled PF uplift over Block Off. Two scored hours had PF
+zero and every native Signal-activity check failed. These results do not meet
+the requested continuous-positive-hour outcome. A fresh untouched market window
+and authenticated account evidence are not available in this workspace, so a
+profitable strategy change or live execution claim cannot be verified here.
+
 ## 16 October Overall Block and execution correctness release
 
 Current release: [PR #140](https://github.com/mxssnx-creator/CTS-A-O/pull/140).
