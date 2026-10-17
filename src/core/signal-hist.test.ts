@@ -11,10 +11,13 @@ import {
   quantileSorted,
   signalHistProtects,
   signalHistProtectsGen,
+  signalHistPassingRanges,
   signalHistHoldH,
   signalMfe,
 } from "./signal-hist.ts";
-import { DEFAULT_SIGNALS, signalSettings } from "./signal-config.ts";
+import { DEFAULT_SIGNALS, SIGNAL_SOURCES, signalSettings } from "./signal-config.ts";
+import { signalCoordinationId } from "./signal-coordination.ts";
+import { DEFAULT_TACTICS } from "./config.ts";
 import { signalProtects } from "./signals.ts";
 import { configId, laneProtect, makeUniverse } from "./pipeline/pipeline.ts";
 import { buildTapes } from "./sim/walkforward.ts";
@@ -49,6 +52,75 @@ function rows(xs: ReadonlyArray<readonly [number, number, number, number]>): Bar
 }
 
 describe("signal historic trailing configs", () => {
+  it("applies the independent PF floor of each coordinator exit range", () => {
+    assert.deepEqual(signalHistPassingRanges(1.3, 1.1), [undefined], "classic Signals keep their untagged floor");
+    assert.deepEqual(
+      signalHistPassingRanges(1.3, 1.1, { sh: 1.05, gn: 1.25, lg: 1.35 }),
+      ["sh", "gn"],
+      "only the ranges whose own PF floor passes receive the historic config",
+    );
+    assert.deepEqual(signalHistPassingRanges(1.3, 1.1, {}), [], "no enabled coordinator ranges means no tagged history");
+    assert.deepEqual(signalHistPassingRanges(1.02, 1.1, { sh: 1.05, gn: 1.25, lg: 1.35 }), []);
+  });
+
+  it("tags historic coordinator configs only for ranges that clear their own PF floor", () => {
+    const b = barsFromCandles(
+      "A-USDT",
+      15,
+      syntheticCandles("A-USDT", 15, 3000, Date.UTC(2026, 9, 1), 3),
+    );
+    const u = makeUniverse([b]);
+    const ind =
+      signalCoordinationId(
+        SIGNAL_SOURCES.slice(0, 3).map((source) => source.name),
+        0.65,
+        3,
+        1,
+      ) + "@m15";
+    const pair = "follow|" + ind;
+    const sig = {
+      ...DEFAULT_SIGNALS,
+      hist: { ...DEFAULT_SIGNALS.hist, lookbackH: 0, minN: 1 },
+    };
+    const diagnostics = emptySignalHistDiagnostics();
+    const gen = signalHistProtectsGen(
+      u,
+      [pair],
+      sig,
+      DEFAULT_TACTICS,
+      u.nowT,
+      {
+        cost: 0.002,
+        minPf: 0,
+        minTrades: 1,
+        maxDdr: 1000,
+        rangeMinPf: { sh: 0, gn: 1e9, lg: 1e9 },
+      },
+      diagnostics,
+    );
+    let result = gen.next();
+    while (!result.done) result = gen.next();
+    const configs = result.value[pair] ?? [];
+    assert.ok(configs.length > 0, "permissive Short floor admits calculated historic configs");
+    assert.ok(configs.every((protect) => protect.tag === "sh"));
+    assert.equal(diagnostics.qualified, configs.length);
+
+    const disabledDiagnostics = emptySignalHistDiagnostics();
+    const disabledGen = signalHistProtectsGen(
+      u,
+      [pair],
+      sig,
+      DEFAULT_TACTICS,
+      u.nowT,
+      { cost: 0.002, minPf: 0, minTrades: 1, maxDdr: 1000, rangeMinPf: {} },
+      disabledDiagnostics,
+    );
+    let disabledResult = disabledGen.next();
+    while (!disabledResult.done) disabledResult = disabledGen.next();
+    assert.deepEqual(disabledResult.value[pair] ?? [], [], "disabled coordinator ranges never fall back to untagged configs");
+    assert.equal(disabledDiagnostics.qualified, 0);
+  });
+
   it("the MFE of each entry: from the next bar's open over the hold, long on highs, short on lows (hand-computed)", () => {
     const b = rows([
       [100, 101, 99, 100], // 0: long signal

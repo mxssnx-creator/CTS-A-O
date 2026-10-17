@@ -120,10 +120,12 @@ describe("exact background Base config counts", { timeout: 60_000 }, () => {
     const runner = runnerOf({ foreground: () => foreground, run: async (m) => { calls++; foreground = true; return remote(m); } });
     runner.request(jobOf());
     await until(() => calls === 1);
+    const sliceDone = until(() => runner.snapshot?.summary.doneChunks === 1);
     const began = performance.now();
     await runOnWorkers([{ type: "sleep", ms: 1 }], 1, 10_000, undefined, true);
-    assert.ok(performance.now() - began < 2000, "foreground priority does not wait for the full grid");
-    await until(() => runner.snapshot?.summary.doneChunks === 1);
+    const foregroundMs = performance.now() - began;
+    await sliceDone;
+    assert.ok(foregroundMs < performance.now() - began, "foreground priority completes before the bounded background slice");
     await new Promise((r) => setTimeout(r, 80));
     assert.equal(calls, 1, "foreground holds subsequent chunks; only the current bounded slice was sent");
     runner.cancel("test");

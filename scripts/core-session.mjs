@@ -70,6 +70,7 @@ if (argv.includes("--help") || argv.includes("-h")) {
       "",
       "Run an offline or live-data simulated session, or render a saved replay:",
       "  --feed FILE             replay cached candles offline",
+      "  --require-full-grid     stop if memory pressure omits configured ranges",
       "  --symbols N             symbols to load (default 12)",
       "  --pre H --run H         prehistory and simulated window (default 6 h each)",
       "  --end-at ISO            end time of the session",
@@ -478,7 +479,11 @@ async function runEngine() {
       signals: { enabled: signalsOn },
     },
     // a replayed window (--end-at / --end-ago / --to-now) reads no live price: no public price stream (priceStream null)
-    { market: "bingx", ...(cutT ? { replay: true, priceStream: null, evaluationFromT, feed: { ...replayFeed(cutT), ...(feedFile || recordFile ? { tickers: fetchTickers } : {}) } } : {}) },
+    { market: "bingx", ...(cutT ? { replay: true, priceStream: null, evaluationFromT,
+      // A frozen offline benchmark must calculate its complete requested universe once. Production keeps
+      // progressive loading so an initial live batch can trade while the remaining history downloads.
+      ...(feedFile ? { completeReplayUniverse: true } : {}),
+      feed: { ...replayFeed(cutT), ...(feedFile || recordFile ? { tickers: fetchTickers } : {}) } } : {}) },
   );
   // Historical replay otherwise inherits a wall-clock liveSince and cannot learn from simulated execution closes.
   // Restrict the override to a bounded offline window; ordinary runtime and live defaults are unchanged.
@@ -600,6 +605,11 @@ async function runEngine() {
     // computes aborted on memory pressure at the lightest level, again and again: the run cannot finish (and a
     // finished one would not be the asked settings) — stop with the reason instead of waiting forever
     const mem = rt.status.mem;
+    if (flag("require-full-grid") && ((mem?.fallback ?? 0) > 0 || (mem?.computeLevel ?? 0) > 0)) {
+      rt.stop();
+      process.stderr.write(`  memory: full grid required; fallback ${mem.fallbackLabel} · ${mem.lastAbort ?? "memory pressure before or during compute"}\n`);
+      throw new Error("Full-grid replay stopped: memory fallback would omit configured ranges");
+    }
     if (mem?.aborts > memAbortsSeen) {
       memAbortsSeen = mem.aborts;
       process.stderr.write(`  memory: ${mem.lastAbort} · fallback ${mem.fallbackLabel}\n`);

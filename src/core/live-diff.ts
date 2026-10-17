@@ -6,8 +6,7 @@
 // The attribution has no filled quantity or settled cash P&L. These unweighted return PFs are NOT account cash PF
 // or execution-profitability proof; repeated closes of a paper identity remain separate samples in its side's stats.
 import { profitFactor } from "./metrics/stats.ts";
-import { isSignalInd } from "./indications/registry.ts";
-import { RANGE_LABEL, rangeOfId } from "./minimal-coord.ts";
+import { liveGroupOf } from "./live-validation.ts";
 
 export interface DiffPaper {
   cfg: string;
@@ -68,8 +67,7 @@ export interface LiveDiff {
 }
 
 const H = 3_600_000;
-const groupOf = (cfg: string) =>
-  isSignalInd(cfg.split("|")[1] ?? "") ? "Signals" : RANGE_LABEL[rangeOfId(cfg)];
+const groupOf = liveGroupOf;
 const knownReturn = (r: number | null): r is number => typeof r === "number" && Number.isFinite(r);
 const side = (rs: Array<number | null>): DiffSide => {
   let gp = 0;
