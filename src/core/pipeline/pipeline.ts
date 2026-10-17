@@ -649,8 +649,8 @@ export function basePassTags(
 }
 
 /**
- * The gates Base computes a pair's sets on: the stage gates, or with Gates.baseSetsMinPf one floor for every range (a
- * wider pre-filter; each set is still judged at its own stage / range minimum before it can trade).
+ * The gates Base computes a pair's sets on: `baseSetsMinPf` replaces the fallback / Wide floor, while each tagged
+ * range retains its configured rangeMinPf. This widens only the untagged prefilter; it never weakens a range gate.
  */
 /** The Base pass of one range cell, exactly as basePassTags judges it (the sets gates, the range's own minimum). */
 export function rangeCellPass(
@@ -664,7 +664,7 @@ export function rangeCellPass(
 export function baseSetsGates<G extends Gates>(g: G): G {
   return g.baseSetsMinPf === undefined
     ? g
-    : { ...g, minPf: g.baseSetsMinPf, rangeMinPf: undefined };
+    : { ...g, minPf: g.baseSetsMinPf };
 }
 
 /**

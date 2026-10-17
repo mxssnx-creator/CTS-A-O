@@ -259,11 +259,11 @@ describe("both sides: active signals per direction", () => {
     }
     const tp = makeTape("follow|sig-a|x", "follow", "sig-a", { tp: 0.01, sl: 0.01, trail: 0, hold: 4 }, "normal", ["A"], trs, [], []);
     const idx = signalIndex([tp]);
-    assert.equal(idx.length, 2);
+    assert.equal(idx.length, 1, "one lazy descriptor retains both directions without copying tape history");
     const act = activeSignalsAt(idx, 11 * H, sig, 24);
-    assert.deepEqual([...act], [sigActiveKey("follow", "sig-a", "A", 1, "normal")], "the losing short is not active");
+    assert.deepEqual([...act], [sigActiveKey("follow", "sig-a", "A", 1, "normal", tp.id)], "the losing short is not active");
     const hedge = hedgeSignalsAt(idx, 11 * H, new Set([1, 2, 3]), 24, { minN: 1, minPf: 1 });
-    assert.deepEqual([...hedge], [sigActiveKey("follow", "sig-a", "A", 1, "normal")]);
+    assert.deepEqual([...hedge], [sigActiveKey("follow", "sig-a", "A", 1, "normal", tp.id)]);
   });
 });
 

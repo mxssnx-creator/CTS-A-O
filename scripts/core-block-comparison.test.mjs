@@ -7,6 +7,7 @@ import {
   validateComparisonFeed,
 } from "./core-block-comparison.mjs";
 import { assertComparisonRuntime } from "./lib/block-comparison.mjs";
+import { RT_COST } from "../src/core/model-cost.ts";
 
 const M = 60_000;
 const feed = () => ({
@@ -68,7 +69,7 @@ test("actual stopped runtime settings remain default-positive and retain full ex
   assert.equal(p.actualWf.causalBase, true);
   assert.equal(p.actualWf.preH, 6);
   assert.equal(p.actualWf.simH, 6);
-  assert.equal(p.actualSettings.cost, 0.002);
+  assert.equal(p.actualSettings.cost, RT_COST);
   assert.ok(p.actualSettings.focus.length > 30);
   assert.ok(p.actualSettings.grid.micro.tp.length > 5);
   assert.ok(p.actualSettings.grid.micro.slOfTp.length > 10);

@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { CoreDb, upgradeShared } from "./db.server.ts";
 import { CoreRuntime } from "./runtime.server.ts";
 import { feeOf, liveTrades } from "../statistics.ts";
+import { RT_COST } from "../config.ts";
 
 const LEGACY =
   "CREATE TABLE live_fills (coid TEXT PRIMARY KEY,sym TEXT,side INTEGER,kind TEXT,qty REAL,ref_px REAL,fill_px REAL,fee REAL,at INTEGER)";
@@ -165,9 +166,9 @@ it("charges actual measured zero and only estimates a missing or legacy fee leg"
       rows.map((x) => ({ ...x, feeKnown: null })),
       3,
     )[0].r,
-    -0.002,
+    -RT_COST,
   );
-  assert.equal(liveTrades([rows[0], { ...rows[1], feeKnown: 0 }], 3)[0].r, -0.001);
+  assert.equal(liveTrades([rows[0], { ...rows[1], feeKnown: 0 }], 3)[0].r, -RT_COST / 2);
 });
 
 it("measured live cost includes confirmed free fills while legacy zero rows remain unmeasured", () => {
@@ -183,7 +184,7 @@ it("measured live cost includes confirmed free fills while legacy zero rows rema
     for (let i = 0; i < 20; i++)
       rt.db.run("UPDATE live_fills SET fee_known=1 WHERE coid=?", String(i));
     assert.deepEqual(rt.liveCost(), { rt: 0, fills: 40, fee: 0, slip: 0 });
-    assert.equal(rt.settings.cost, 0.002, "measuring actual fees never changes modeled study cost");
+    assert.equal(rt.settings.cost, RT_COST, "measuring actual fees never changes modeled study cost");
   } finally {
     rt.dispose();
   }

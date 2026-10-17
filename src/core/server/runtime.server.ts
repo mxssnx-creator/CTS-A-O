@@ -222,6 +222,7 @@ import {
   SignalGuard,
   guardKey,
   sigActiveKey,
+  signalSeatSymbols,
 } from "../signals.ts";
 import {
   emptySignalHistDiagnostics,
@@ -4627,10 +4628,11 @@ export class CoreRuntime {
     for (const r of Object.values(byRange)) r.pf = r.gl > 1e-12 ? r.gp / r.gl : null;
     const active: SetListings["active"] = [];
     for (const k of this.wf.signalActive ?? []) {
-      const [bot, ind, sym, side, kind] = k.split("|");
-      active.push({ bot, ind, sym, side: side === "-1" ? -1 : 1, ...(kind ? { kind } : {}) });
+      const [bot, ind, sym, side, kind, config] = k.split("|");
+      const cfg = config?.startsWith("cfg=") ? decodeURIComponent(config.slice(4)) : undefined;
+      active.push({ bot, ind, sym, side: side === "-1" ? -1 : 1, ...(kind ? { kind } : {}), ...(cfg ? { cfg } : {}) });
     }
-    active.sort((a, b) => (a.bot + a.ind + a.sym).localeCompare(b.bot + b.ind + b.sym) || b.side - a.side || (a.kind ?? "").localeCompare(b.kind ?? ""));
+    active.sort((a, b) => (a.bot + a.ind + a.sym).localeCompare(b.bot + b.ind + b.sym) || b.side - a.side || (a.kind ?? "").localeCompare(b.kind ?? "") || (a.cfg ?? "").localeCompare(b.cfg ?? ""));
     const proof = this.engineProof();
     this.listings = {
       paperStep: this.status.paperSteps ?? 0,
@@ -4709,7 +4711,7 @@ export class CoreRuntime {
       this.promotionSelectedMemo = { selected, ids: new Set(selected) };
     const eligible = selected && this.promotionSelectedMemo?.ids.has(lane.cfg) && tp && !tp.heldOnly &&
       (!isSignalInd(ind) || ((!this.wf.signalBasePassed || this.wf.signalBasePassed.has(`${tp.bot}|${tp.ind}`)) &&
-        (!this.wf.signalActive || signalActiveHas(this.wf.signalActive, tp.bot, tp.ind, lane.sym, lane.side, tp.kind))));
+        (!this.wf.signalActive || signalActiveHas(this.wf.signalActive, tp.bot, tp.ind, lane.sym, lane.side, tp.kind, tp.id))));
     return eligible ? gate : { ...gate, ok: false, state: "ineligible" };
   }
   /**
@@ -5654,7 +5656,7 @@ export class CoreRuntime {
     return (
       sigCfg(op.cfg) &&
       this.hedgeKeys.has(
-        sigActiveKey(op.cfg.split("|")[0], op.cfg.split("|")[1] ?? "", op.sym, op.side, kindOfId(op.cfg)),
+        sigActiveKey(op.cfg.split("|")[0], op.cfg.split("|")[1] ?? "", op.sym, op.side, kindOfId(op.cfg), op.cfg),
       )
     );
   }
@@ -5686,8 +5688,11 @@ export class CoreRuntime {
     const nowT = Math.floor(Date.now() / H) * H;
     const t = fast ? fast.t : Math.min(nowT, this.sim.endT);
     const held = new Set(this.sim.steps[this.sim.steps.length - 1]?.real ?? []);
-    // signal configs are not selected into seats: every config of an active signal runs (Real gate per symbol)
-    const { engine: selTapes, signal: sigTapes } = splitSignalTapes(this.tapes, this.wf);
+    // Each Signal protection config needs its own active symbol/direction evidence before taking a paper seat.
+    // Held configs are kept separately below to manage their existing exits only.
+    const { engine: selTapes, signal: signalCandidates } = splitSignalTapes(this.tapes, this.wf);
+    const signalActive = this.wf.signalActive;
+    const sigTapes = signalActive ? signalCandidates.filter((tp) => !tp.heldOnly && signalSeatSymbols(tp, signalActive).size > 0) : [];
     // (slices between the opening passes over every tape: together they were one 0.5 s step at 21 symbols)
     yield 0;
     const { picks, eligible } = fast
@@ -6596,8 +6601,8 @@ export interface SetListings {
   validated: Array<{ id: string; range: string; kind: string; score: number; pf: number; n: number; net: number; ddt: number }>;
   /** per range: the rows of `validated` (best first) and the range's PF taken together on the validation windows */
   byRange: Record<string, { rows: number[]; gp: number; gl: number; pf: number | null }>;
-  /** signal units active at the paper step (full pair × symbol × side × type); Base/discovery rows omit kind */
-  active: Array<{ bot: string; ind: string; sym: string; side: 1 | -1; kind?: string }>;
+  /** Signal units active at the paper step include their exact protection config; Base/discovery rows omit cfg. */
+  active: Array<{ bot: string; ind: string; sym: string; side: 1 | -1; kind?: string; cfg?: string }>;
   /** engine configs proven live by their own closes (live.engineProofN); null when the proof is off */
   proven: string[] | null;
 }
@@ -6734,7 +6739,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
 function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
   const saved = db.kvGet<Partial<WalkForwardOptions>>("wf") ?? {};
   const v = db.kvGet<number>("wfCapsV") ?? 0;
-  if (v >= 33) return saved;
+  if (v >= 34) return saved;
   // each step runs only for a database older than it: a choice made after a step is never overwritten
   const out = { ...saved };
   const st = db.kvGet<Partial<CoreSettings>>("settings");
@@ -7088,9 +7093,28 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
       if (changed) db.kvSet("presets", presets);
     }
   }
+  if (v < 34) {
+    // Move only the explicitly stored former factory cost and fee tuple. Partial/custom models retain
+    // their provenance; measured exchange fills and their commissions are never rewritten.
+    const migrateModeledCost = (settings: SettingsPatch | undefined) => {
+      const fees = settings?.fees;
+      if (settings?.cost !== 0.002 || fees?.taker !== 0.0005 || fees?.maker !== 0.0002 || fees?.slippage !== 0.0005)
+        return false;
+      settings.cost = DEFAULT_SETTINGS.cost;
+      settings.fees = { ...fees, slippage: DEFAULT_SETTINGS.fees.slippage };
+      return true;
+    };
+    migrateModeledCost(st);
+    const presets = db.kvGet<Preset[]>("presets");
+    if (Array.isArray(presets)) {
+      let changed = false;
+      for (const preset of presets) changed = migrateModeledCost(preset.settings) || changed;
+      if (changed) db.kvSet("presets", presets);
+    }
+  }
   db.kvSet("wf", pickWf(out));
   if (st) db.kvSet("settings", st);
-  db.kvSet("wfCapsV", 33);
+  db.kvSet("wfCapsV", 34);
   return out;
 }
 

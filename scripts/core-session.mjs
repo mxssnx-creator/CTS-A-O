@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CTS-A-O — a complete simulated trading session on real BingX data, reported hour by hour.
+// CTS-A-O — a complete simulated trading session with recorded market-data provenance, reported hour by hour.
 // Runs the ENGINE itself (Base → Main → Real over every timeframe lane, strategy and Block / DCA / Axis),
 // with a pre-historic window before the simulated run, and reports per hour: balance (from a start balance),
 // equity with open positions marked to market every minute, equity drawdown, margin used, PF overall and per
@@ -77,6 +77,7 @@ if (argv.includes("--help") || argv.includes("-h")) {
       "  --selection-hours H     replay-only Base/config selection lookback",
       "  --signals on|off        include Signal processing",
       "  --desk FILE             apply a saved settings snapshot",
+      "  --frozen-session FILE   verify a frozen runtime/feed protocol before scoring",
       "  --settings JSON         apply a settings patch",
       "  --out PATH              write Markdown and JSON reports",
       "  --html DIR              write a standalone HTML report",
@@ -530,6 +531,10 @@ async function runEngine() {
   if (replaySelectionHours !== null) rt.wf = { ...rt.wf, longH: replaySelectionHours };
   // Keep stricter hour-consistency research bounds out of persisted production settings and native live execution.
   if (replayMinGreen !== null) rt.wf = { ...rt.wf, gates: { ...rt.wf.gates, minGreen: replayMinGreen } };
+  if (arg("frozen-session")) {
+    const { validateFrozenSessionRuntime } = await import("./lib/session-study.mjs");
+    await validateFrozenSessionRuntime(rt, arg("frozen-session"), feedFile, evaluationFromT, cutT);
+  }
   if (arg("frozen-block-study")) {
     const { validateFrozenBlockRuntime } = await import("./lib/block-comparison.mjs");
     validateFrozenBlockRuntime(rt, arg("frozen-block-study"), arg("study-fold"), feedFile, evaluationFromT, cutT);
@@ -649,12 +654,12 @@ async function runEngine() {
   if (rt.status.state !== "stopped") rt.stop();
   if (paperOk)
     process.stderr.write(
-      `  paper step on compute #${rt.status.paperCompute}: ${rt.paper.selected?.length ?? 0} Real seats (${Math.round((Date.now() - paperT0) / 1000)} s after the compute)\n`,
+      `  paper step on compute #${rt.status.paperCompute}: ${rt.paper.selected?.length ?? 0} paper/current selected configs (${Math.round((Date.now() - paperT0) / 1000)} s after the compute)\n`,
     );
   else
     process.stderr.write(
       `  WARNING: the paper step on compute #${rt.status.computes} did not finish within ${paperWaitS} s (--paper-wait-s) — ` +
-        `Real seats are from the paper step on compute #${rt.status.paperCompute ?? 0} (${rt.paper.selected?.length ?? 0})\n`,
+        `Paper/current selected configs are from the paper step on compute #${rt.status.paperCompute ?? 0} (${rt.paper.selected?.length ?? 0})\n`,
     );
   clearInterval(rssT);
   const sim = rt.sim;
@@ -812,7 +817,7 @@ async function runEngine() {
         gp += x;
       } else gl -= x;
       const active = sigOn ? sigSetAt(tp.entryT[i]) : null;
-      if (sigOn && active && signalActiveHas(active, tp.bot, tp.ind, tp.syms[tp.symI[i]], tp.side[i], tp.kind)) {
+      if (sigOn && active && signalActiveHas(active, tp.bot, tp.ind, tp.syms[tp.symI[i]], tp.side[i], tp.kind, tp.id)) {
         sigOn[i - a] = 1;
         so.n++;
         if (x > 0) {
@@ -994,6 +999,17 @@ async function runEngine() {
   }
   const selected = rt.paper.selected ?? [];
   const realSignal = selected.filter((id) => isSignalInd(String(id).split("|")[1] ?? "")).length;
+  const selectionSnapshot = (ids, t) => {
+    const signalConfigs = ids.filter((id) => isSignalInd(String(id).split("|")[1] ?? "")).length;
+    return { t: Number.isFinite(t) ? t : null, ids: [...ids], configs: ids.length,
+      engineConfigs: ids.length - signalConfigs, signalConfigs };
+  };
+  const firstStep = sim.steps?.[0];
+  // StepLog.real is the actual walk-forward engine selection, separate from Signal activation and the later paper book.
+  const realFirstStep = firstStep ? selectionSnapshot(firstStep.real ?? [], firstStep.t) : null;
+  const paperSelectionAfterCompute = { ...selectionSnapshot(selected, rt.lastUniverse?.nowT),
+    capturedAt: new Date().toISOString(), compute: rt.status.paperCompute ?? null,
+    phase: "paper-current-after-compute", complete: paperOk };
   const obj = (m) => Object.fromEntries([...m.entries()].map(([k, c]) => [k, { ...c, pf: profitFactor(c.gp, c.gl) }]));
   const s = rt.settings;
   const result = {
@@ -1035,6 +1051,7 @@ async function runEngine() {
       replaySelectionHours,
       replayMinGreen,
       marketDataSource: feedFile ? "offline-cached-feed" : recordFile ? "recorded-public-bingx" : "public-bingx",
+      marketDataDetails: store.source ? structuredClone(store.source) : feedFile ? null : { provider: "BingX", market: "swap", timeframe: "1m" },
       tactics: tacticsMode,
       tacticsSet: s.tactics,
       signals: signalsOn,
@@ -1124,7 +1141,12 @@ async function runEngine() {
       baseWhy: rt.status.baseWhy ?? [],
       mainPairs: rt.status.mainPairs,
       tapes: rt.tapes.length,
+      // Legacy fields remain the current paper snapshot; they never describe initial simulation seats.
       real: selected.length,
+      realPhase: "paper-current-after-compute",
+      realFirstStep,
+      paperSelectionAfterCompute,
+      configEvalPhase: { phase: "run-start", t: startT, evaluated: evalStats.evaluated, passed: evalStats.passed },
       realSignal,
       realEngine: selected.length - realSignal,
       signals: rt.status.signals ?? null,
@@ -1208,6 +1230,10 @@ async function runEngine() {
 // --replay raw.json / --render raw.json: rebuild every output from a dump, without running the engine again
 const replay = arg("replay") ?? arg("render");
 const raw = replay ? JSON.parse(readFileSync(replay, "utf8")) : await runEngine();
+if (arg("frozen-session")) {
+  const { validateFrozenSessionResult } = await import("./lib/session-study.mjs");
+  await validateFrozenSessionResult(raw, arg("frozen-session"));
+}
 // the runtime, its tapes and the feed are collected before the dump is serialized (with --expose-gc; the eval runners'
 // children run without it): unreachable only once runEngine has returned (its closures held them while it ran; a
 // collection inside it kept them all)
@@ -1595,11 +1621,11 @@ const baseGateMd = (e) => {
     ``,
     `### Base gate: what each change would admit`,
     ``,
-    `From the same Base results — no recompute. "pairs in a range" is what the tape stage builds from.`,
+    `From the same Base results — no recompute. The PF floor here changes the untagged / Wide fallback only; configured Micro, Minimal, Short, General and Long floors stay in force. "Pairs in a range" is what the tape stage builds from.`,
     ``,
     `The median is the runtime's Base gate PF score. A no-loss pair uses the finite score 4; that is a qualification score, not an exact PF.`,
     ``,
-    `| Base gate | PF floor | closes | DDR | pairs at the default cell | pairs in a range | share | median PF score of the passed |`,
+    `| Base gate | wide / fallback PF floor | closes | DDR | pairs at the default cell | pairs in a range | share | median PF score of the passed |`,
     `|---|---:|---:|---:|---:|---:|---:|---:|`,
     ...rows.map(
       (r) =>
@@ -1617,17 +1643,18 @@ const baseWhyMd = (e) => {
   const rows = (e?.baseWhy ?? []).filter((r) => r && typeof r.evaluated === "number" && r.evaluated > 0);
   if (!rows.length) return "";
   const g = (o, k) => o?.[k] ?? 0;
+  const floors = new Map((e?.baseByRange ?? []).map((r) => [r.tag, r.minPf]));
   return [
     ``,
     `### Base by range: which gate removes each pair`,
     ``,
     `Each pair at the range's own cell against the range's minimum. "first" = the first gate missed (closes → net → PF → DDR); "only" = pairs that miss that one gate alone (removing it admits them).`,
     ``,
-    `| range | evaluated | passed | share | first: closes / net / PF / DDR | only: closes / net / PF / DDR | median PF, only DDR |`,
-    `|---|---:|---:|---:|---|---|---:|`,
+    `| range | min PF | evaluated | passed | share | first: closes / net / PF / DDR | only: closes / net / PF / DDR | median PF, only DDR |`,
+    `|---|---:|---:|---:|---:|---|---|---:|`,
     ...rows.map(
       (r) =>
-        `| ${BASE_WHY_LABEL[r.tag] ?? r.tag} | ${r.evaluated} | ${r.passed} | ${((r.passed / r.evaluated) * 100).toFixed(1)} % |` +
+        `| ${BASE_WHY_LABEL[r.tag] ?? r.tag} | ${Number.isFinite(floors.get(r.tag)) ? floors.get(r.tag).toFixed(2) : "–"} | ${r.evaluated} | ${r.passed} | ${((r.passed / r.evaluated) * 100).toFixed(1)} % |` +
         ` ${g(r.first, "closes")} / ${g(r.first, "net")} / ${g(r.first, "pf")} / ${g(r.first, "ddr")} |` +
         ` ${g(r.only, "closes")} / ${g(r.only, "net")} / ${g(r.only, "pf")} / ${g(r.only, "ddr")} |` +
         ` ${r.onlyDdrPfMedian == null ? "–" : r.onlyDdrPfMedian.toFixed(3)} |`,
@@ -1734,7 +1761,7 @@ const baseRangeText = (e) => {
     rows
       .map(
         (r) =>
-          `${r.range} ${r.passed ?? 0}/${r.evaluated ?? 0}${r.passed && r.pfPassedMedian != null ? ` · ${r.passedGp > 1e-12 && (r.passedGl ?? 0) <= 1e-12 ? `pooled PF ∞ (no loss), median gate score ${r.pfPassedMedian.toFixed(2)}` : `median gate PF score ${r.pfPassedMedian.toFixed(2)}`}` : ""}` +
+          `${r.range} min PF ${Number.isFinite(r.minPf) ? r.minPf.toFixed(2) : "–"} · ${r.passed ?? 0}/${r.evaluated ?? 0}${r.passed && r.pfPassedMedian != null ? ` · ${r.passedGp > 1e-12 && (r.passedGl ?? 0) <= 1e-12 ? `pooled PF ∞ (no loss), median gate score ${r.pfPassedMedian.toFixed(2)}` : `median gate PF score ${r.pfPassedMedian.toFixed(2)}`}` : ""}` +
           // no own Base cell: these are the DEFAULT protect's figures (the same numbers the Wide row
           // carries), not a measurement of the range's own distances — say so instead of printing a copy
           (r.tag && r.tag !== "sig" && r.ownCells === 0 ? " (judged at the default cell — Wide's figures)" : ""),
@@ -2570,10 +2597,11 @@ const ENABLED_RANGES = [
   .map(([, l]) => l);
 const report = {
   evidence: { kind: "simulated", pfBasis: "net-returns", cashPf: "normalized base-$1 PF on the same funded settled sample using canonical unit returns; should match Return PF", cashPfDiagnostic: "actual sized-dollar PF on the same funded settled sample; unequal funded sizes can make it differ", actualExecution: false,
-    statisticsScope: { primary: "funded-settled simulated execution orders", qualification: "Base minimum-PF-qualified pairs, followed by post-Base config validation/seating", benchmark: "executed orders from the post-Base validated cohort", candidatePool: "pre-validation/unfiltered candidate PF is diagnostic only and excluded from primary benchmarks" },
+    statisticsScope: { primary: "all funded settled simulated book orders, including separately qualified Signals", qualification: "engine orders require per-range Base PF qualification followed by post-Base config validation/seating; Signals retain independent activation and qualification", benchmark: "engine-only funded settled orders from the post-Base validated Base cohort; Signal orders are reported separately", candidatePool: "pre-validation/unfiltered candidate PF is diagnostic only and excluded from the Base-to-execution benchmark" },
     qualification: sessionQualificationEvidence(raw.qualification), returns: sessionReturnEvidence(raw),
     allocation: { basis: "native-positive-funded-settled-slices", fundedOrders: tot.fundedOrders, zeroAllocatedOrders: tot.zeroAllocatedOrders, unknownAllocations: tot.unknownAllocations, virtualOrders: trades.length, epsilonUsd: BOOK_NOTIONAL_EPS_USD } },
   at: raw.at,
+  study: raw.study ?? null,
   symbols: raw.symbols,
   settings: {
     ...raw.settings,
@@ -2619,8 +2647,10 @@ const hm = (t) => new Date(t).toISOString().slice(11, 16);
 const hourLabel = (h) => (h.partial ? `${hm(h.t)} (partial, ${h.minutes} min)` : hm(h.t));
 /** PF from gross profit / loss: "∞ (no loss)" when nothing lost (the engine's PF_NO_LOSS placeholder is no PF) */
 const pfStr = (gp, gl, n = 1) => (!n ? "–" : !Number.isFinite(gp) || !Number.isFinite(gl) ? "unavailable" : gl > 0 ? f2(gp / gl) : gp > 0 ? "∞ (no loss)" : "–");
-function sessionMarketDataLabel(source) {
-  if (source === "offline-cached-feed") return "Offline replay from the supplied cached candle feed (no market-data requests; simulated orders only)";
+function sessionMarketDataLabel(source, details) {
+  const provider = typeof details?.provider === "string" ? details.provider : typeof details?.source === "string" ? details.source : null;
+  const origin = provider ? `; source: ${provider}${details?.venueParity ? `; ${details.venueParity}` : ""}` : "; original provider not recorded";
+  if (source === "offline-cached-feed") return `Offline replay from the supplied cached candle feed (no market-data requests${origin}; simulated orders only; no exchange execution proof)`;
   if (source === "recorded-public-bingx") return "Public BingX 1m market data recorded during this run (simulated orders; no exchange execution proof)";
   if (source === "public-bingx") return "Public BingX 1m market data (simulated orders; no exchange execution proof)";
   return "Market-data source not recorded in this session dump (simulated orders; no exchange execution proof)";
@@ -2640,11 +2670,23 @@ const strategiesOn = [
   tg.dca && tg.dcaActive && "DCA Active",
 ].filter(Boolean);
 const blockText = tg.block ? ` with Block${tg.blockActive ? ` (Block Active from level ${minActive})` : ""}` : "";
+// Historical dumps omitted wf.longH but did retain the actual selection window in evalRule.preH.
+const configEvaluationHistoryH = raw.tapeAgg?.evalRule?.preH ??
+  (Math.max(raw.settings?.wf?.longH ?? 0, raw.settings?.wf?.preH ?? 0) || null);
+report.configEvaluationHistoryH = configEvaluationHistoryH;
 const E = report.engine;
-const realText =
-  E.realSignal !== undefined
-    ? `Real seats: ${E.realEngine} engine configs + ${E.realSignal} signal configs (every config of the active signals)`
-    : `Real seats ${E.real} (engine seats + every config of the active signals; split not recorded in this dump)`;
+function sessionSelectionPhaseText(e) {
+  const first = e.realFirstStep;
+  const firstText = first
+    ? `First simulated step at ${new Date(first.t).toISOString()}: ${first.engineConfigs} engine configs selected (Signal activation is separate)`
+    : "First simulated-step selection not recorded in this dump";
+  const current = e.paperSelectionAfterCompute;
+  const paperText = current
+    ? `Paper selection after compute${current.t !== null ? ` as of ${new Date(current.t).toISOString()}` : ""}: ${current.engineConfigs} engine configs + ${current.signalConfigs} Signal configs (${current.complete ? "complete" : "incomplete"} paper step)`
+    : `Legacy paper/current selection snapshot: ${e.realEngine ?? e.real ?? "unknown"} engine${e.realSignal !== undefined ? ` + ${e.realSignal} Signal configs` : "/Signal configs (split not recorded)"}; initial selection not recorded`;
+  return `${firstText}. ${paperText}.`;
+}
+const realText = sessionSelectionPhaseText(E);
 const capsText = caps.on
   ? `position cap ${caps.maxPositionX}× balance per symbol × side, gross cap ${caps.maxExposureX}× balance (${caps.source})`
   : "no caps (--caps off)";
@@ -2664,10 +2706,10 @@ const sigOn = !!signalsOn;
 const lines = [
   `# Simulated trading session — ${symText}, ${preH} h pre-historic + ${runH} h run (${tacticsLabel}, signals ${sigOn ? "on" : "off"})`,
   ``,
-  `${sessionMarketDataLabel(raw.settings.marketDataSource)}. Timeframe lanes ${report.settings.lanes.join(" / ")} min set (independent + combined; traded: ${LANES.join(", ") || "none"}), strategies ${strategiesOn.join(", ") || "none"}${blockText}${sigOn ? ", signals" : ""}. ` +
+  `${sessionMarketDataLabel(raw.settings.marketDataSource, raw.settings.marketDataDetails)}. Timeframe lanes ${report.settings.lanes.join(" / ")} min set (independent + combined; traded: ${LANES.join(", ") || "none"}), strategies ${strategiesOn.join(", ") || "none"}${blockText}${sigOn ? ", signals" : ""}. ` +
     `Signals use the same ${preH} h minimal evaluated history; no additional Signal warmup was loaded. ` +
     `Balance ${usd(balance0)}; ${sizing.mode === "fixed" ? `each order volume unit = ${usd(notional)} notional` : `each order volume unit = ${(sizing.pct * 100).toFixed(1)} % of the realized account balance at entry (${usd(report.settings.unitMin)}–${usd(report.settings.unitMax)} before volume factors)`} at ${leverage}×; ${(cost * 100).toFixed(2)} % round-trip cost on every close. ` +
-  `Window ${new Date(startT).toISOString().slice(0, 16)} → ${new Date(endT).toISOString().slice(0, 16)} UTC. ${baseSummaryText(E)}${E.baseBuilt ? ` (+${E.baseBuilt} built for measurement, grid.allSets — not validated)` : ""} — per range, passed / evaluated pairs · median Base gate PF score of passed pairs (no-loss pooled PF called out): ${baseRangeText(E)}; Main ${E.mainPairs} pairs, ${E.tapes} tapes, ${realText}, compute ${Math.round(E.computeMs / 1000)} s. PF benchmarks below use only funded settled orders executed by post-Base validated configs; pre-validation candidate-pool PF is a diagnostic. ${raw.settings.wf?.causalBase ? "Causal: Base / Main / Real ranked on the history before the run." : "Look-ahead: Base / Main / Real ranked on every bar up to the end (the run is partly in-sample)."}`,
+  `Window ${new Date(startT).toISOString().slice(0, 16)} → ${new Date(endT).toISOString().slice(0, 16)} UTC. ${baseSummaryText(E)}${E.baseBuilt ? ` (+${E.baseBuilt} built for measurement, grid.allSets — not validated)` : ""} — per range, passed / evaluated pairs · applied Base PF floor and passed-pair PF scores: ${baseRangeText(E)}; Main ${E.mainPairs} pairs, ${E.tapes} tapes. ${realText} Compute ${Math.round(E.computeMs / 1000)} s. The combined account PF includes both Base-qualified engine orders and separately activated Signal orders; the Base-to-execution benchmark is engine-only, and Signal PF is separate. Pre-validation candidate-pool PF is diagnostic. ${raw.settings.wf?.causalBase ? "Causal: Base / Main / Real ranked on the history before the run." : "Look-ahead: Base / Main / Real ranked on every bar up to the end (the run is partly in-sample)."}`,
   ``,
   `**Simulated result (live sizing replay, ${capsText}):** balance ${usd(balance0)} → ${usd(T.balanceEnd)} (${f2(T.netPct * 100)} %, closed orders) · equity at end ${usd(T.equityEnd)} (${openText}) · Return PF ${pfStr(T.gpR, T.glR, T.orders)} · cash PF (base $1) ${pfStr(T.gpR, T.glR, T.orders)} · sized $ PF diagnostic ${pfStr(T.gp, T.gl, T.orders)} · ${T.positions} positions / ${T.orders} funded orders · ${T.virtual.n} virtual closes (${T.zeroAllocatedOrders} zero allocations) · WR ${f2(T.wr * 100)} % · DDT (closed trades, $) ${f2(T.ddtH)} h · DDR ${T.ddr === null ? "– (net ≤ 0)" : f2(T.ddr)} · equity max drawdown ${usd(T.equityMaxDd)} (${f2(T.equityMaxDdPct * 100)} %) · margin used max ${usd(T.marginMax)} · open avg ${f2(T.avgOpenPositions)} pos / ${f2(T.avgOpenOrders)} orders (peak ${T.maxOpenPositions} / ${T.maxOpenOrders})${feasText}`,
   ``,
@@ -2773,7 +2815,7 @@ if (raw.funnel) {
     ["pool Normal", (i) => F.poolNormal[i]],
     ["pool Trailing", (i) => F.poolTrailing[i]],
     ["pool Trailing only", (i) => F.poolTrailingOnly[i]],
-    ["post-Base validated / seated", (i) => F.seated[i]],
+    ["post-Base config-pass instances (hourly; may repeat)", (i) => F.seated[i]],
     ["post-gate virtual closes (pre-funding)", (i) => unit(exAt(i))],
     ["virtual Normal", (i) => unit(exAt(i).filter(kindIs("normal")))],
     ["virtual Trailing", (i) => unit(exAt(i).filter(kindIs("trailing")))],
@@ -2787,7 +2829,7 @@ if (raw.funnel) {
     ``,
     `## Stage funnel, hour by hour (post-gate virtual closes · one-unit PF)`,
     ``,
-    `Base (each pair at its default protect and its ranges' cells): ${k.basePairs ?? "?"} engine pairs evaluated, ${k.basePassed ?? "?"} passed (any range)${E.signals?.representativeBaseGate ? "; gated Signal pairs are included in the status totals" : "; Signal pairs are measured separately"}. Later stages: *candidate pool* = every config of the Base-passed pairs (${k.poolConfigs ?? "?"} tapes; diagnostic, before config validation), Normal / Trailing / Trailing only apart; *post-Base validated / seated* = configs that passed config evaluation (${k.seatedConfigs ?? "?"}); *post-gate virtual closes* = simulated trades that passed the causal config, coordination, caps and Block gates, before account funding/allocation. This count can include zero-allocated trades; funded settled orders and their PF are reported separately above. One-unit PF is every virtual close normalized to one unit after the ${((raw.settings?.cost ?? 0.002) * 100).toFixed(2)} % cost. Config-evaluation history is ${raw.settings?.wf?.longH ?? raw.settings?.wf?.preH ?? "unknown"} h (max of longH and preH); Base history is reported separately.${raw.settings?.replaySelectionHours != null ? ` Replay-only selection-window override: ${raw.settings.replaySelectionHours} h; it does not change normal runtime settings.` : ""} ${raw.settings?.wf?.lastN > 0 ? `Additional causal config entry check: each candidate needs the prior ${raw.settings.wf.lastN} closes of its exact config at PF ≥ max(${raw.settings.wf.lastNMinPf}, its range floor); no future closes are used.` : "The additional per-config entry last-N check is off (wf.lastN = 0); configEval still validates configs before seating."}${raw.settings?.live?.replaySinceT != null ? ` Separate post-Base paper Live-entry replay: last ${raw.settings.live.liveLastN} closes per config${raw.settings.live.liveGroupLastN ? ` and last ${raw.settings.live.liveGroupLastN} pooled closes per range` : ""}, from ${new Date(raw.settings.live.replaySinceT).toISOString()}; see the Live gate section for judged and rejected counts.` : "Native liveLastN is not replayed unless --live-since is set."}${k.causalBase ? "" : " Base and the candidate pool use the full history (in-sample for the run); seated / executed are causal."}`,
+    `Base (each pair at its default protect and its ranges' cells): ${k.basePairs ?? "?"} engine pairs evaluated, ${k.basePassed ?? "?"} passed (any range)${E.signals?.representativeBaseGate ? "; gated Signal pairs are included in the status totals" : "; Signal pairs are measured separately"}. Later stages: *candidate pool* = every config of the Base-passed pairs (${k.poolConfigs ?? "?"} tapes; diagnostic, before config validation), Normal / Trailing / Trailing only apart; *post-Base config passes* = ${k.seatedConfigs ?? "?"} distinct configs passed at least one causal config-evaluation step across the window (a config can pass again in a later hour; the hourly row below counts those repeat pass instances). At run start, use the separate config-evaluation denominator/pass count and first simulated-step selection when recorded; the later paper/current selection is a separate snapshot; *post-gate virtual closes* = simulated trades that passed the causal config, coordination, caps and Block gates, before account funding/allocation. This count can include zero-allocated trades; funded settled orders and their PF are reported separately above. One-unit PF is every virtual close normalized to one unit after the ${((raw.settings?.cost ?? 0.002) * 100).toFixed(2)} % cost. Config-evaluation history is ${configEvaluationHistoryH ?? "unknown"} h (max of longH and preH); Base history is reported separately.${raw.settings?.replaySelectionHours != null ? ` Replay-only selection-window override: ${raw.settings.replaySelectionHours} h; it does not change normal runtime settings.` : ""} ${raw.settings?.wf?.lastN > 0 ? `Additional causal config entry check: each candidate needs the prior ${raw.settings.wf.lastN} closes of its exact config at PF ≥ max(${raw.settings.wf.lastNMinPf}, its range floor); no future closes are used.` : "The additional per-config entry last-N check is off (wf.lastN = 0); configEval still validates configs before seating."}${raw.settings?.live?.replaySinceT != null ? ` Separate post-Base paper Live-entry replay: last ${raw.settings.live.liveLastN} closes per config${raw.settings.live.liveGroupLastN ? ` and last ${raw.settings.live.liveGroupLastN} pooled closes per range` : ""}, from ${new Date(raw.settings.live.replaySinceT).toISOString()}; see the Live gate section for judged and rejected counts.` : "Native liveLastN is not replayed unless --live-since is set."}${k.causalBase ? "" : " Base and the candidate pool use the full history (in-sample for the run); seated / executed are causal."}`,
     ``,
     `| hour (UTC) | ${COLS.map(([c]) => c).join(" | ")} |`,
     `|---|${COLS.map(() => "---:").join("|")}|`,
@@ -2938,8 +2980,7 @@ lines.push(
   ``,
   `## Base said, the book did — the same ranges on the same basis`,
   ``,
-  `The primary result and the gates use net return PF. Base lists a median gate score across passed sets on its validation`,
-  `sample; a no-loss Base sample has an exact pooled PF of ∞ and a separate finite gate score. The simulated book pools its closed-order returns in the run. Those samples and reducers differ, so`,
+  `The combined account result includes every funded engine and Signal order. For the Base-to-execution benchmark, engine range rows contain only funded orders from Base-qualified pairs whose configs passed post-Base validation; Signals are separately activated, qualified and reported. All PF gates use net returns. Base lists a median gate score across passed pairs on its Base sample; a no-loss Base sample has an exact pooled PF of ∞ and a separate finite gate score. The run PF is on the actual executed order cohort. These samples and reducers differ, so`,
   `their difference alone does not establish edge loss or a sizing effect. Cash PF is a separate diagnostic on`,
   `the same closed orders as the book's return PF; unequal notionals can change cash PF without changing return PF.`,
   ``,
@@ -3039,6 +3080,7 @@ const round = (v, d = 6) => (typeof v === "number" && Number.isFinite(v) ? +v.to
 const clean = (o) => JSON.parse(JSON.stringify(o, (_, v) => (typeof v === "number" ? round(v) : v)));
 const data = clean({
   evidence: report.evidence,
+  study: report.study,
   title: `Simulated trading session — ${symbols} symbols, ${preH} h pre-historic + ${runH} h run`,
   at: raw.at,
   runSeconds: raw.runSeconds ?? null,
@@ -3046,6 +3088,10 @@ const data = clean({
   window: { startT, endT, preStartT: startT - preH * H, preH, runH },
   settings: report.settings,
   engine: raw.engine,
+  evalStats: raw.tapeAgg?.evalStats ?? null,
+  marketDataLabel: sessionMarketDataLabel(raw.settings.marketDataSource, raw.settings.marketDataDetails),
+  selectionPhaseLabel: realText,
+  configEvaluationHistoryH,
   total: T,
   checks,
   checksOk,
@@ -3060,7 +3106,7 @@ const data = clean({
     pf: "primary: positive net order returns ÷ absolute negative net order returns on the same funded settled-order sample, after modeled costs; recorded Block/coordination execution multiples removed, ladder/tape leg semantics retained; see evidence.returns for source completeness",
     cashPf: "normalized base-$1 PF: every funded settled order gets the same $1 notional and its canonical unit return (stored r with Block/coordination multiple removed); therefore this must match Return PF apart from rounding",
     cashPfDiagnostic: "actual sized-dollar PF: gross realized cash gains ÷ losses from ((1 + execution-weighted return) − 1) × the order's funded unit notional; Block/coordination and ladder volume are already in r and are not multiplied twice; unequal funded sizes can make this differ from the normalized PF",
-    net: "Σ r × unit of the closed orders, $ (r already holds the 0.2 % round-trip cost, the Block multiple and the DCA legs)",
+    net: `Σ r × unit of the closed orders, $ (r already holds the recorded ${((raw.settings.cost ?? 0.002) * 100).toFixed(2)} % round-trip cost, the Block multiple and the DCA legs)`,
     ddt: "drawdown time, h: the longest time the closed-order curve stayed below a previous peak (an unrecovered one counts to the end of the window)",
     ddr: "drawdown ratio: the closed-order curve's max drawdown ÷ its net ($); – when net ≤ 0",
     maxDdPct: "group: max drawdown of its own closed curve ÷ (start balance + curve peak); total: the equity curve (open orders marked to market every minute)",
@@ -3249,17 +3295,19 @@ function renderWriteup(d, dir) {
   const neg = (rows) => rows.filter((r) => r.net < 0).sort((a, b) => a.net - b.net);
   const list = (rows, n = 6) => rows.slice(0, n).map((r) => `${r.key} ${usd(r.net)} (PF ${pf(r)}, ${r.n} orders)`).join(" · ") || "none";
   const s = d.settings;
-  const marketDataText = sessionMarketDataLabel(s.marketDataSource);
+  const engineOrders = d.classes?.find((r) => r.key === "Engine");
+  const signalOrders = d.classes?.find((r) => r.key === "Signals");
+  const marketDataText = sessionMarketDataLabel(s.marketDataSource, s.marketDataDetails);
   return [
     `# ${s.runH} h simulated session — ${d.symbols.length} symbols, ${s.preH} h pre-historic + ${s.runH} h run${s.desk ? ", desk settings" : ""}`,
     ``,
     `${marketDataText}, the engine itself (Base → Main → Real over the ${s.lanes.join(" / ")} min lanes), ` +
       `pre-historic ${hmd(d.window.preStartT)} → ${hmd(d.window.startT)} UTC, run ${hmd(d.window.startT)} → ${hmd(d.window.endT)} UTC. ` +
-      `Signals use the same ${s.preH} h minimal evaluated history; no additional Signal warmup was loaded. Symbols: ${d.symbols.join(", ")}.`,
+      `Signals use the same ${s.preH} h minimal evaluated history; no additional Signal warmup was loaded. Config evaluation uses the separately recorded ${d.configEvaluationHistoryH ?? "unknown"} h selection lookback. Symbols: ${d.symbols.join(", ")}.`,
     ``,
     sessionQualificationEvidence(d.evidence?.qualification).note,
     d.evidence?.returns?.note ?? sessionReturnEvidence({}).note,
-    `PF benchmark scope: funded settled orders executed by Base-qualified, post-Base validated configs. Pre-validation/unfiltered candidate PF is diagnostic only and excluded from the benchmark.`,
+    `The combined account PF includes all funded settled orders, including Signals. The Base-to-execution benchmark below isolates engine orders from Base-qualified pairs whose configs passed post-Base validation; Signal orders use their own activation and qualification and remain separate. Pre-validation/unfiltered candidate PF is diagnostic only.`,
     ``,
     `Settings (desk, ${s.desk ?? "flags"}): stage gate min PF ${s.gates.minPf}, focus ${s.focus === 0 ? "every combo" : s.focus + " pairs"}, disabled kinds ${s.disabledKinds.length ? s.disabledKinds.join(", ") : "none"}, ` +
       `toggles ${Object.entries(s.toggles).filter(([, v]) => v).map(([k]) => k).join(" / ")}, ranges ${Object.entries(s.ranges).filter(([, v]) => v).map(([k]) => k).join(" / ")} (micro ${s.ranges.micro ? "on" : "off"}), ` +
@@ -3281,14 +3329,31 @@ function renderWriteup(d, dir) {
     ``,
     `Separate virtual diagnostic: ${t.virtual.n} closes · Return PF ${pfStr(t.virtual.gpR, t.virtual.glR, t.virtual.n)} before funding allocation; ${t.zeroAllocatedOrders} zero allocations, ${t.unknownAllocations} unknown allocations. Position episodes, entry requests and open-order counts describe the native virtual book; settled order counts and PF use the owned cohort.`,
     ``,
-    `PF benchmark scope: funded settled orders executed by configs that passed Base and the later config validation/seating gates; pre-validation candidate PF is diagnostic only. Return PF is primary: positive net returns ÷ absolute negative net returns of those orders, after modeled costs. Cash PF (base $1) applies each canonical unit return to equal $1 notionals and should match Return PF. Sized $ PF is a separate diagnostic using actual funded sizes (${sizingTxt(s)}); it can differ as order sizes vary.` +
+    `Combined-book PF includes engine and independently qualified Signal orders. The Base-to-execution benchmark uses funded settled engine orders from Base-qualified pairs whose configs passed later validation/seating; Signals are reported as their own cohort. Pre-validation candidate PF is diagnostic only. Return PF is primary: positive net returns ÷ absolute negative net returns after modeled costs. Cash PF (base $1) applies each canonical unit return to equal $1 notionals and should match Return PF. Sized $ PF is a separate diagnostic using actual funded sizes (${sizingTxt(s)}); it can differ as order sizes vary.` +
       (s.sizing.mode !== "fixed"
         ? ` At a fixed unit of ${usd(t.fixedUnit)} (no compounding) the same orders net ${usd(t.netU * t.fixedUnit)} (${pct((t.netU * t.fixedUnit) / s.balance0)}), closed-order max drawdown ${usd(t.mddU * t.fixedUnit)}.`
         : "") +
       (t.ruinT ? ` **The equity reached $0 at ${hmd(t.ruinT)} UTC (lowest ${usd(t.eqMin)}): at this sizing with no position caps the account would have been liquidated there.**` : ""),
     ``,
-    `${baseSummaryText(d.engine)}${d.engine.baseBuilt ? ` (+${d.engine.baseBuilt} built for measurement, grid.allSets — not validated)` : ""} (per range, passed / evaluated pairs · median Base gate PF score of passed pairs: ${baseRangeText(d.engine)}), Main ${d.engine.mainPairs} pairs, ${d.engine.tapes} tapes, ${realText}, compute ${Math.round(d.engine.computeMs / 1000)} s, peak RSS ${d.engine.rssMaxMb} MB. ` +
+    `${baseSummaryText(d.engine)}${d.engine.baseBuilt ? ` (+${d.engine.baseBuilt} built for measurement, grid.allSets — not validated)` : ""} (per range, passed / evaluated pairs · applied Base PF floor and passed-pair PF scores: ${baseRangeText(d.engine)}), Main ${d.engine.mainPairs} pairs, ${d.engine.tapes} tapes, ${realText}, compute ${Math.round(d.engine.computeMs / 1000)} s, peak RSS ${d.engine.rssMaxMb} MB. ` +
       `Consistency checks: ${d.checks.filter((c) => c.ok).length} of ${d.checks.length} pass.`,
+    ``,
+    `## Base-to-execution progression`,
+    ``,
+    `All PF values are net unit-return PF after modeled costs. The run's combined funded book is shown separately because it also contains Signal orders.`,
+    ``,
+    `| stage / cohort | evaluated | passed or executed | PF |`,
+    `|---|---:|---:|---:|`,
+    `| Base engine pairs (any enabled range) | ${d.engine.baseEvaluated} | ${d.engine.basePassed} | see per-range Base pooled PF below |`,
+    `| Main | ${d.engine.basePassed} Base-qualified pairs | ${d.engine.mainPairs} pairs · ${d.engine.tapes} tapes | candidate pool is diagnostic |`,
+    `| Config evaluation at run start | ${d.evalStats?.evaluated ?? "–"} engine configs | ${d.evalStats?.passed ?? "–"} passed | see per-range validation PF below |`,
+    `| First simulated-step selection | – | ${d.engine.realFirstStep ? `${d.engine.realFirstStep.engineConfigs} engine configs at ${new Date(d.engine.realFirstStep.t).toISOString()}` : "not recorded"} | – |`,
+    `| Paper/current selection after compute | – | ${d.engine.paperSelectionAfterCompute ? `${d.engine.paperSelectionAfterCompute.engineConfigs} engine + ${d.engine.paperSelectionAfterCompute.signalConfigs} Signal configs` : `legacy snapshot: ${d.engine.realEngine ?? d.engine.real ?? "unknown"}; initial selection not recorded`} | – |`,
+    `| Funded engine execution | – | ${engineOrders?.n ?? 0} settled orders | ${engineOrders ? pf(engineOrders) : "–"} |`,
+    `| Signal execution (separate cohort) | – | ${signalOrders?.n ?? 0} settled orders | ${signalOrders ? pf(signalOrders) : "–"} |`,
+    `| Combined funded account | – | ${t.orders} settled orders | ${pf(t)} |`,
+    ``,
+    sessionSelectionPhaseText(d.engine),
     ``,
     `## Findings`,
     ``,
@@ -3482,7 +3547,7 @@ function clientMain(D) {
       rows
         .map(
           (r) =>
-            `${r.range} ${r.passed ?? 0}/${r.evaluated ?? 0}${r.passed && r.pfPassedMedian != null ? ` · ${r.passedGp > 1e-12 && (r.passedGl ?? 0) <= 1e-12 ? `pooled PF ∞ (no loss), median gate score ${r.pfPassedMedian.toFixed(2)}` : `median gate PF score ${r.pfPassedMedian.toFixed(2)}`}` : ""}` +
+            `${r.range} min PF ${Number.isFinite(r.minPf) ? r.minPf.toFixed(2) : "–"} · ${r.passed ?? 0}/${r.evaluated ?? 0}${r.passed && r.pfPassedMedian != null ? ` · ${r.passedGp > 1e-12 && (r.passedGl ?? 0) <= 1e-12 ? `pooled PF ∞ (no loss), median gate score ${r.pfPassedMedian.toFixed(2)}` : `median gate PF score ${r.pfPassedMedian.toFixed(2)}`}` : ""}` +
             // no own Base cell: these are the DEFAULT protect's figures (the same numbers the Wide row
             // carries), not a measurement of the range's own distances — say so instead of printing a copy
             (r.tag && r.tag !== "sig" && r.ownCells === 0 ? " (judged at the default cell — Wide's figures)" : ""),
@@ -3750,7 +3815,7 @@ function clientMain(D) {
   app.innerHTML = `
 <header>
   <h1>${esc(D.title)}</h1>
-  <p class="sub">Simulated orders on real BingX 1m market data; no exchange execution proof · the engine itself (Base → Main → Real over the ${S.lanes.join(" / ")} min lanes) · pre-historic ${dt(D.window.preStartT)} → ${dt(D.window.startT)} UTC · run ${dt(D.window.startT)} → ${dt(D.window.endT)} UTC</p>
+  <p class="sub">${esc(D.marketDataLabel)} · the engine itself (Base → Main → Real over the ${S.lanes.join(" / ")} min lanes) · pre-historic ${dt(D.window.preStartT)} → ${dt(D.window.startT)} UTC · run ${dt(D.window.startT)} → ${dt(D.window.endT)} UTC</p>
   <p class="note">${esc(D.evidence.qualification.note)}</p>
   <p class="note">${esc(D.evidence.returns.note)}</p>
   <div class="theme"><button id="themeBtn" type="button" aria-label="Toggle light / dark">Theme</button></div>
@@ -3796,7 +3861,7 @@ ${T.feasible === false ? `<p class="warn"><b>Infeasible: margin exceeded equity<
 <p class="note"><b>Separate virtual diagnostic:</b> ${T.virtual ? `${T.virtual.n} closes · Return PF ${pfTxt(T.virtual.gpR, T.virtual.glR, T.virtual.n)} before funding allocation; ${T.zeroAllocatedOrders} zero allocations, ${T.unknownAllocations} unknown allocations.` : "not recorded"} Position episodes, entry requests and open-order counts describe the native virtual book; settled order counts and PF use the owned cohort.</p>
 <p class="note"><b>Simulated live sizing replay:</b> ${T.caps && T.caps.on ? `position cap ${T.caps.maxPositionX}× balance per symbol × side, gross cap ${T.caps.maxExposureX}× balance (${esc(T.caps.source)})` : "no caps"} — ${T.caps ? T.caps.capped : 0} orders capped to $0, ${T.caps ? T.caps.scaled : 0} scaled down.${T.uncapped ? ` <b>Without the caps:</b> balance ${usd(S.balance0)} → ${usd(T.uncapped.balanceEnd)} · Return PF ${pfTxt(T.uncapped.gpR ?? T.gpR, T.uncapped.glR ?? T.glR, T.uncapped.n ?? T.orders)} · cash PF (base $1) ${pfTxt(T.uncapped.gpR ?? T.gpR, T.uncapped.glR ?? T.glR, T.uncapped.n ?? T.orders)} · sized $ PF diagnostic ${pfTxt(T.uncapped.gp, T.uncapped.gl, T.uncapped.n ?? T.orders)} · equity max drawdown ${usd(T.uncapped.equityMaxDd)} (${pct(T.uncapped.equityMaxDdPct)}) · margin max ${usd(T.uncapped.marginMax)}.` : ""}
 ${T.openEnd && T.openEnd.recorded ? `Open at the end: ${T.openEnd.positions} positions / ${T.openEnd.orders} orders, MTM ${susd(T.openEnd.mtm)} (${String(T.openEnd.rule ?? "").startsWith("exact") ? "exact: executed by the engine, marked to market" : "upper bound: tape-level open positions of the executed configs, one unit of volume"}), in the end equity ${usd(T.equityEnd)}.` : "Open positions at the end: not recorded in this dump."}</p>
-<p class="note">PF benchmark scope: funded settled orders executed by Base-qualified, post-Base validated configs; pre-validation/unfiltered candidate PF is diagnostic only. ${esc(baseSummaryText(D.engine))} (per range, passed / evaluated pairs · median Base gate PF score of passed pairs: ${esc(baseRangeText(D.engine))}) · Main ${D.engine.mainPairs} pairs · ${D.engine.tapes.toLocaleString("en-US")} tapes · ${D.engine.realSignal !== undefined ? `Real seats: ${D.engine.realEngine} engine configs + ${D.engine.realSignal} signal configs` : `Real seats ${D.engine.real} (engine seats + every config of the active signals)`} · compute ${Math.round(D.engine.computeMs / 1000)} s · peak RSS ${D.engine.rssMaxMb} MB${D.runSeconds ? " · session " + Math.round(D.runSeconds / 60) + " min" : ""}. Generated ${esc(D.at)}.
+<p class="note">The combined funded account PF includes engine and separately qualified Signal orders. The Base-to-execution benchmark isolates funded engine orders from Base-qualified pairs whose configs passed post-Base validation; Signals are shown separately. Pre-validation candidate PF is diagnostic only. ${esc(baseSummaryText(D.engine))} (per range, passed / evaluated pairs · applied Base PF floor and passed-pair PF scores: ${esc(baseRangeText(D.engine))}) · Main ${D.engine.mainPairs} pairs · ${D.engine.tapes.toLocaleString("en-US")} tapes · ${esc(D.selectionPhaseLabel)} · compute ${Math.round(D.engine.computeMs / 1000)} s · peak RSS ${D.engine.rssMaxMb} MB${D.runSeconds ? " · session " + Math.round(D.runSeconds / 60) + " min" : ""}. Generated ${esc(D.at)}.
 Consistency checks: <b class="${D.checksOk ? "ok" : "bad"}">${D.checks.filter((c) => c.ok).length} of ${D.checks.length} pass</b> (see <a href="#checks">Checks</a>).</p>
 ${
   baseGateRows(D.engine).length

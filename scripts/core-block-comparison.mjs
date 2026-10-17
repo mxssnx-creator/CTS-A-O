@@ -416,7 +416,7 @@ export async function runComparison(protocolFile) {
       performance,
       allNativeChecksPassed: results.every((x) => x.arms.every((a) => a.allNativeChecksPassed)),
       accountingLimits:
-        "Native modeled session book and configured 0.20% round-trip cost, not venue-owned fills or measured account fees. Native funding, latency, venue quantity precision and liquidation are not reconstructed. Coverage/activity failures remain explicit even when capture completes.",
+        `Native modeled session book and configured ${(p.actualSettings.cost * 100).toFixed(2)}% round-trip cost, not venue-owned fills or measured account fees. Native funding, latency, venue quantity precision and liquidation are not reconstructed. Coverage/activity failures remain explicit even when capture completes.`,
       elapsedSeconds: (Date.now() - started) / 1000,
     };
     write(path.join(dir, "comparison.json"), report);

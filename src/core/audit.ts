@@ -152,7 +152,7 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
         if (sigCfg(x.cfg)) {
           const act = activeAt(x.entryT);
           // the active set is keyed per side (a source's longs and shorts are activated on their own records)
-          if (act && !signalActiveHas(act, bot, ind, x.sym, x.side, x.kind ?? kindOfId(x.cfg)))
+          if (act && !signalActiveHas(act, bot, ind, x.sym, x.side, x.kind ?? kindOfId(x.cfg), x.cfg))
             badSignal++;
         } else if (!st.main.has(pair)) badEngine++;
       }

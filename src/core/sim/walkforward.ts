@@ -2629,7 +2629,7 @@ export function feedBooks(e: BlockFeedEntry, book: BlockBook | null, guard?: Sig
       e.side,
       onset,
     );
-    guard.addAccept(acceptKey(e.ind, e.sym, e.side, e.type ?? "normal"), e.r, e.exitT, onset);
+    guard.addAccept(acceptKey(e.ind, e.sym, e.side, e.type ?? "normal", e.cfg), e.r, e.exitT, onset);
     guard.addAccept(sideAcceptKey(e.side), e.r, e.exitT, onset);
   }
 }
@@ -3837,6 +3837,67 @@ export function lastNSideOk(
   return true;
 }
 
+/** Only queried config contexts allocate an index; original tape returns/times are never copied. */
+const signalContextIndices = new WeakMap<ConfigTape, Map<number, Uint32Array>>();
+function signalContextOf(tp: ConfigTape, sym: string, side: number): Uint32Array | null {
+  if (side !== 1 && side !== -1) return null;
+  const si = tp.syms.indexOf(sym);
+  if (si < 0) return null;
+  let contexts = signalContextIndices.get(tp);
+  if (!contexts) signalContextIndices.set(tp, (contexts = new Map()));
+  const slot = si * 2 + (side > 0 ? 1 : 0);
+  let indices = contexts.get(slot);
+  if (!indices) {
+    const own: number[] = [];
+    for (let i = 0; i < tp.n; i++) if (tp.symI[i] === si && tp.side[i] === side) own.push(i);
+    contexts.set(slot, (indices = Uint32Array.from(own)));
+  }
+  return indices;
+}
+
+/** The recent closes of one exact Signal config on the entry's own symbol and direction. */
+function signalLastNOk(
+  tp: ConfigTape,
+  sym: string,
+  side: number,
+  entryT: number,
+  n: number,
+  minPf: number,
+  maxDdtH = 0,
+  maxDdr = 0,
+  floor = 0,
+  warmup = true,
+  prior = 0,
+): boolean {
+  if (n <= 0) return true;
+  const own = signalContextOf(tp, sym, side);
+  if (!own) return false;
+  let lo = 0;
+  let hi = own.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (tp.exitT[own[mid]] <= entryT) lo = mid + 1; else hi = mid;
+  }
+  const idx = Array.from(own.subarray(Math.max(0, lo - n), lo));
+  const short = idx.length < n;
+  if (short && (!(floor > 0) || idx.length < floor)) return false;
+  let gp = 0;
+  let gl = 0;
+  let net = 0;
+  for (const i of idx) {
+    const r = tp.r[i];
+    net += r;
+    if (r > 0) gp += r; else gl -= r;
+  }
+  if (profitFactor(gp, gl + prior) < minPf) return false;
+  if ((!short || !warmup) && (maxDdtH > 0 || maxDdr !== 0)) {
+    const dd = winDdIdx(tp, idx, entryT);
+    if (maxDdtH > 0 && dd.ddtH > maxDdtH) return false;
+    if (ddrFails(dd.mdd, net, maxDdr)) return false;
+  }
+  return true;
+}
+
 export type ExecDecision =
   | {
       ok: true;
@@ -3929,7 +3990,7 @@ export function execDecision(
       return { ok: false, why: "signalBase" };
     if (
       o.signalActive &&
-      !signalActiveHas(o.signalActive, tp.bot, tp.ind, ctx.sym, ctx.side, tp.kind)
+      !signalActiveHas(o.signalActive, tp.bot, tp.ind, ctx.sym, ctx.side, tp.kind, tp.id)
     )
       return { ok: false, why: "signalInactive" };
     if (
@@ -3943,9 +4004,8 @@ export function execDecision(
     if (
       o.signalAccept?.enabled &&
       ctx.guard &&
-      // the signal source's record on this symbol, direction and type (one exit config alone rarely has the
-      // closes the acceptance needs: keyed per config, no signal would ever be accepted)
-      !ctx.guard.accepts(acceptKey(tp.ind, ctx.sym, ctx.side, tp.kind), entryT, o.signalAccept)
+      // Own-config acceptance is separate from the explicit shared side/cluster coordination below.
+      !ctx.guard.accepts(acceptKey(tp.ind, ctx.sym, ctx.side, tp.kind, tp.id), entryT, o.signalAccept)
     )
       return { ok: false, why: "signalPf" };
     // direction acceptance: this side's signal candidates, pooled over every source and symbol, must clear the PF
@@ -3957,14 +4017,14 @@ export function execDecision(
       !ctx.guard.accepts(sideAcceptKey(ctx.side), entryT, o.signalSideAccept)
     )
       return { ok: false, why: "signalSide" };
-    // the validation an engine config needs for its seat (min PF, DDT and DDR), on the signal's own last N
+    // the Signal's own last N on this exact symbol and direction (min PF, DDT and DDR)
     if (
       !o.probe?.perRange &&
       !o.probe?.perCell &&
-      !validOk(
-        tp,
-        entryT,
-        o.signalValidLastN === undefined ? o : { ...o, validLastN: o.signalValidLastN },
+      !signalLastNOk(
+        tp, ctx.sym, ctx.side, entryT, o.signalValidLastN ?? o.validLastN ?? 0,
+        minPfOf(o.gates, tp.protect.tag, tp.ind), o.gates.maxDdtH, o.gates.maxDdr ?? 0,
+        o.gates.lastNFloor ?? 0, o.gates.warmup !== false, lossPriorOf(tp, o.gates),
       )
     )
       return { ok: false, why: "signalValid" };
@@ -3976,25 +4036,26 @@ export function execDecision(
   // end stage / Live: the recent closes must clear min PF and the DDT gate again
   // signals: their own last N (never more than the engine's)
   // per direction: the last N closes of the entry's own side (long and short run independently). The seat validation
-  // above (validOk) stays pooled: a config's seat is one unit, judged on all of its closes
+  // above stays pooled only for engine seats; Signals always judge their own symbol and direction
   const lastN =
     o.signalValidLastN !== undefined && isSignalInd(tp.ind)
       ? Math.min(o.lastN, o.signalValidLastN)
       : o.lastN;
   if (
     !probed &&
-    !lastNSideOk(
-      tp,
-      ctx?.side ?? 0,
-      entryT,
-      lastN,
-      Math.max(o.lastNMinPf, minPfOf(o.gates, tp.protect.tag, tp.ind)),
-      o.gates.maxDdtH,
-      o.gates.maxDdr ?? 0,
-      o.gates.lastNFloor ?? 0,
-      o.gates.warmup !== false,
-      lossPriorOf(tp, o.gates),
-    )
+    !(isSignalInd(tp.ind) && ctx
+      ? signalLastNOk(
+          tp, ctx.sym, ctx.side, entryT, lastN,
+          Math.max(o.lastNMinPf, minPfOf(o.gates, tp.protect.tag, tp.ind)),
+          o.gates.maxDdtH, o.gates.maxDdr ?? 0, o.gates.lastNFloor ?? 0,
+          o.gates.warmup !== false, lossPriorOf(tp, o.gates),
+        )
+      : lastNSideOk(
+          tp, ctx?.side ?? 0, entryT, lastN,
+          Math.max(o.lastNMinPf, minPfOf(o.gates, tp.protect.tag, tp.ind)),
+          o.gates.maxDdtH, o.gates.maxDdr ?? 0, o.gates.lastNFloor ?? 0,
+          o.gates.warmup !== false, lossPriorOf(tp, o.gates),
+        ))
   )
     return { ok: false, why: "lastN" };
   // the config can clear min PF overall and still be the wrong set on this symbol. Judge that symbol alone.
@@ -4193,7 +4254,7 @@ export function capsOf(
  * and PF ≥ `minPf`. Keys `sigActiveKey` ("bot|ind|sym|side|kind": every type and direction a hedge of its own).
  */
 export function hedgeSignalsAt(
-  groups: readonly SignalGroup[],
+  groups: readonly SignalIndexRow[],
   t: number,
   negHours: ReadonlySet<number>,
   windowH: number,
@@ -4201,148 +4262,115 @@ export function hedgeSignalsAt(
 ): Set<string> {
   const out = new Set<string>();
   if (!negHours.size) return out;
-  const endB = Math.floor(t / H);
-  const fromB = endB - windowH;
-  for (const g of groups) {
-    let lo = 0;
-    let hi = g.h.length;
-    while (lo < hi) {
-      const m = (lo + hi) >> 1;
-      if (g.h[m] < fromB) lo = m + 1;
-      else hi = m;
-    }
-    let n = 0;
-    let net = 0;
-    let gp = 0;
-    let gl = 0;
-    for (let j = lo; j < g.h.length && g.h[j] < endB; j++) {
-      if (!negHours.has(g.h[j])) continue;
-      n += g.n[j];
-      net += g.net[j];
-      gp += g.gp[j];
-      gl += g.gl[j];
-    }
-    if (n >= opt.minN && net > 0 && profitFactor(gp, gl) >= opt.minPf) {
-      const i = g.pair.indexOf("|");
-      out.add(sigActiveKey(g.pair.slice(0, i), g.pair.slice(i + 1), g.sym, g.side, g.kind));
-    }
-  }
+  for (const row of signalWindowRows(groups, t, windowH, 24, negHours))
+    for (const [sym, st] of Object.entries(row.bySym))
+      for (const side of [1, -1] as const) {
+        const own = st.sides?.[side > 0 ? "1" : "-1"];
+        if (own && own.n >= opt.minN && own.net > 0 && own.pf >= opt.minPf)
+          out.add(sigActiveKey(row.bot, row.ind, sym, side, row.kind, row.cfg));
+      }
   return out;
 }
 
-/**
- * Hourly index of signal closes per pair × type × symbol × direction, averaged over that type's configs:
- * built once per tape set, so ranking at every step scans hour buckets,
- * not trades. Long and short of a signal on a symbol are separate groups (ranked and activated independently).
- */
-interface SignalGroup {
+/** Keep one reference per tape, avoiding a durable config × symbol × hour expansion. */
+interface SignalIndexRow {
+  tp: ConfigTape;
   pair: string;
-  kind: string;
-  sym: string;
-  /** direction of the group's closes (1 long, −1 short) */
-  side: 1 | -1;
-  /** signal source ("ema-cross") */
-  src: string;
-  /** hour bucket ids (floor(exitT / H)), ascending */
-  h: Float64Array;
-  /** per bucket: Σ r·100 / configs, Σ gains, Σ losses (r), trade count / configs */
-  net: Float64Array;
-  gp: Float64Array;
-  gl: Float64Array;
-  n: Float64Array;
 }
-const signalIndexCache = new WeakMap<object, SignalGroup[]>();
-export function signalIndex(sigTapes: readonly ConfigTape[], cacheKey?: object): SignalGroup[] {
+const signalIndexCache = new WeakMap<object, SignalIndexRow[]>();
+export function signalIndex(sigTapes: readonly ConfigTape[], cacheKey?: object): SignalIndexRow[] {
   const g = signalIndexGen(sigTapes, cacheKey);
   for (let r = g.next(); ; r = g.next()) if (r.done) return r.value;
 }
 
-/** signalIndex in slices (yields every few tapes, so a large index never blocks the event loop). */
+/** Build only immutable tape references; each ranking reads the causal window lazily. */
 export function* signalIndexGen(
   sigTapes: readonly ConfigTape[],
   cacheKey?: object,
-): Generator<number, SignalGroup[]> {
+): Generator<number, SignalIndexRow[]> {
   const hit = cacheKey && signalIndexCache.get(cacheKey);
   if (hit) return hit;
-  const cfgs = new Map<string, number>();
-  for (const tp of sigTapes) {
-    if (tp.heldOnly) continue;
-    const pair = `${tp.bot}|${tp.ind}|${tp.kind}`;
-    cfgs.set(pair, (cfgs.get(pair) ?? 0) + 1);
-  }
-  const acc = new Map<string, Map<number, [number, number, number, number]>>();
-  const meta = new Map<string, { pair: string; kind: string; sym: string; side: 1 | -1 }>();
-  let done = 0;
-  // slices by trades, not tapes (a signal tape holds thousands: 100 tapes were one 0.8 s step at 21 symbols); the
-  // key and its bucket map are resolved once per symbol × side slot of the tape, not per trade (same insertion order)
-  let work = 0;
-  for (const tp of sigTapes) {
-    if (tp.heldOnly) continue;
-    done++;
-    const pair = `${tp.bot}|${tp.ind}`;
-    const k = cfgs.get(`${pair}|${tp.kind}`)!;
-    const slot: Array<Map<number, [number, number, number, number]> | undefined> = new Array(
-      tp.syms.length * 2,
-    );
-    for (let i = 0; i < tp.n; i++) {
-      const si = tp.symI[i];
-      const side: 1 | -1 = tp.side[i] > 0 ? 1 : -1;
-      const sl = si * 2 + (side > 0 ? 1 : 0);
-      let m = slot[sl];
-      if (!m) {
-        const sym = tp.syms[si];
-        const key = sigActiveKey(tp.bot, tp.ind, sym, side, tp.kind);
-        m = acc.get(key);
-        if (!m) {
-          acc.set(key, (m = new Map()));
-          meta.set(key, { pair, kind: tp.kind, sym, side });
-        }
-        slot[sl] = m;
-      }
-      const hb = Math.floor(tp.exitT[i] / H);
-      let x = m.get(hb);
-      if (!x) m.set(hb, (x = [0, 0, 0, 0]));
-      const r = tp.r[i];
-      x[0] += (r * 100) / k;
-      if (r > 0) x[1] += r;
-      else x[2] -= r;
-      x[3] += 1 / k;
-    }
-    work += tp.n + 1;
-    if (work >= 20_000) {
-      work = 0;
-      yield done;
-    }
-  }
-  const out: SignalGroup[] = [];
-  let built = 0;
-  for (const [key, m] of acc) {
-    if (++built % 200 === 0) yield done;
-    const mt = meta.get(key)!;
-    const hs = [...m.keys()].sort((x, y) => x - y);
-    const g: SignalGroup = {
-      pair: mt.pair,
-      kind: mt.kind,
-      src: signalSourceOf(mt.pair.slice(mt.pair.indexOf("|") + 1)),
-      sym: mt.sym,
-      side: mt.side,
-      h: new Float64Array(hs),
-      net: new Float64Array(hs.length),
-      gp: new Float64Array(hs.length),
-      gl: new Float64Array(hs.length),
-      n: new Float64Array(hs.length),
-    };
-    hs.forEach((hb, j) => {
-      const x = m.get(hb)!;
-      g.net[j] = x[0];
-      g.gp[j] = x[1];
-      g.gl[j] = x[2];
-      g.n[j] = x[3];
-    });
-    out.push(g);
+  const out: SignalIndexRow[] = [];
+  for (let i = 0; i < sigTapes.length; i++) {
+    const tp = sigTapes[i];
+    if (!tp.heldOnly) out.push({ tp, pair: `${tp.bot}|${tp.ind}` });
+    if (i > 0 && i % 1000 === 0) yield i;
   }
   if (cacheKey) signalIndexCache.set(cacheKey, out);
   return out;
+}
+
+interface SignalWindowRow {
+  bot: string;
+  ind: string;
+  cfg: string;
+  kind: string;
+  bySym: Record<string, SymStat>;
+}
+/**
+ * Stream one tape at a time. Each context carries only its current hour/block and totals; no expanded per-config
+ * hourly arrays are retained or recreated. Own completed closes count as the sample, so empty/losing sibling
+ * protects cannot dilute it. Flushing an hour before updating DD preserves the former hourly causal semantics.
+ */
+function* signalWindowRows(
+  index: readonly SignalIndexRow[],
+  t: number,
+  windowH: number,
+  recentH: number,
+  negHours?: ReadonlySet<number>,
+): Generator<SignalWindowRow> {
+  const endB = Math.floor(t / H);
+  const fromB = endB - windowH;
+  const recentB = endB - recentH;
+  for (const { tp } of index) {
+    if (tp.heldOnly) continue;
+    type Context = { n: number; gp: number; gl: number; h: number; hourNet: number; hourGp: number; hourGl: number; net: number; peak: number;
+      dd: number; block: number; blockNet: number; blocks: number; ok: number; recentN: number; recentNet: number };
+    const contexts = new Map<number, Context>();
+    const flushHour = (x: Context) => {
+      x.net += x.hourNet;
+      x.gp += x.hourGp; x.gl += x.hourGl;
+      if (x.h >= recentB) x.recentNet += x.hourNet;
+      x.peak = Math.max(x.peak, x.net);
+      x.dd = Math.max(x.dd, x.peak - x.net);
+      const block = Math.floor(x.h / 4);
+      if (block !== x.block) {
+        if (x.blocks && x.blockNet > 0) x.ok++;
+        x.blocks++; x.block = block; x.blockNet = 0;
+      }
+      x.blockNet += x.hourNet;
+      x.hourNet = 0; x.hourGp = 0; x.hourGl = 0;
+    };
+    const a = lowerBound(tp.exitT, fromB * H);
+    const b = lowerBound(tp.exitT, endB * H);
+    for (let i = a; i < b; i++) {
+      const h = Math.floor(tp.exitT[i] / H);
+      if (negHours && !negHours.has(h)) continue;
+      const slot = tp.symI[i] * 2 + (tp.side[i] > 0 ? 1 : 0);
+      let x = contexts.get(slot);
+      if (!x) contexts.set(slot, (x = { n: 0, gp: 0, gl: 0, h, hourNet: 0, hourGp: 0, hourGl: 0, net: 0, peak: 0, dd: 0,
+        block: NaN, blockNet: 0, blocks: 0, ok: 0, recentN: 0, recentNet: 0 }));
+      if (h !== x.h) { flushHour(x); x.h = h; }
+      const r = tp.r[i];
+      x.hourNet += r * 100;
+      if (r > 0) x.hourGp += r; else x.hourGl -= r;
+      x.n++;
+      if (h >= recentB) x.recentN++;
+    }
+    if (!contexts.size) continue;
+    const bySym: Record<string, SymStat> = {};
+    for (const [slot, x] of contexts) {
+      flushHour(x);
+      if (x.blocks && x.blockNet > 0) x.ok++;
+      const sym = tp.syms[Math.floor(slot / 2)];
+      const st = (bySym[sym] ??= { n: 0, net: 0, pf: 0, sides: {} });
+      (st.sides ??= {})[slot % 2 ? "1" : "-1"] = {
+        n: x.n, net: x.net, pf: profitFactor(x.gp, x.gl), dd: x.dd,
+        okShare: x.blocks ? x.ok / x.blocks : 0, recentN: x.recentN, recentNet: x.recentNet,
+      };
+    }
+    yield { bot: tp.bot, ind: tp.ind, cfg: tp.id, kind: tp.kind, bySym };
+  }
 }
 
 /**
@@ -4377,97 +4405,21 @@ export function sourceUnstable(
 }
 
 /**
- * The active signals at time t, causally: every pair × type × symbol × direction judged on its own tapes' results in the hours
- * that closed completely in the `windowH` hours before t (hourly resolution: drawdown over hourly steps), averaged
- * over the signal's configs, then ranked by the same rules as the Base ranking (activeSignals: drawdown /
+ * The active signals at time t, causally: every exact config × type × symbol × direction judged on its own closes
+ * in complete hours before t inside `windowH` (hourly resolution: drawdown over hourly steps), then ranked by
+ * the same rules as the Base ranking (activeSignals: drawdown /
  * consistency / latest-24 h validation, the best `count`).
  */
 export function activeSignalsAt(
-  sigTapes: readonly ConfigTape[] | SignalGroup[],
+  sigTapes: readonly ConfigTape[] | SignalIndexRow[],
   t: number,
   sig: SignalSettings,
   windowH: number,
 ): Set<string> {
-  const groups =
-    sigTapes.length && "h" in sigTapes[0]
-      ? (sigTapes as SignalGroup[])
-      : signalIndex(sigTapes as readonly ConfigTape[]);
-  const endB = Math.floor(t / H); // buckets < endB closed completely by t
-  const fromB = endB - windowH;
-  const recentB = endB - (sig.validateH ?? 24);
-
-  const byPair = new Map<string, { pair: string; kind: string; bySym: Record<string, SymStat> }>();
-  const hb = (x: Float64Array, v: number) => {
-    let lo = 0;
-    let hi = x.length;
-    while (lo < hi) {
-      const m = (lo + hi) >> 1;
-      if (x[m] < v) lo = m + 1;
-      else hi = m;
-    }
-    return lo;
-  };
-  for (const g of groups) {
-    const a = hb(g.h, fromB);
-    const b = hb(g.h, endB);
-    if (a >= b) continue;
-    let cum = 0;
-    let peak = 0;
-    let dd = 0;
-    let gp = 0;
-    let gl = 0;
-    let n = 0;
-    let recentN = 0;
-    let recentNet = 0;
-    let blocks = 0;
-    let ok = 0;
-    let blk = NaN;
-    let blkSum = 0;
-    for (let j = a; j < b; j++) {
-      cum += g.net[j];
-      if (cum > peak) peak = cum;
-      if (peak - cum > dd) dd = peak - cum;
-      gp += g.gp[j];
-      gl += g.gl[j];
-      n += g.n[j];
-      if (g.h[j] >= recentB) {
-        recentN += g.n[j];
-        recentNet += g.net[j];
-      }
-      const bk = Math.floor(g.h[j] / 4);
-      if (bk !== blk) {
-        if (blocks && blkSum > 0) ok++;
-        blocks++;
-        blk = bk;
-        blkSum = 0;
-      }
-      blkSum += g.net[j];
-    }
-    if (blocks && blkSum > 0) ok++;
-    const groupKey = `${g.pair}|${g.kind}`;
-    let record = byPair.get(groupKey);
-    if (!record) byPair.set(groupKey, (record = { pair: g.pair, kind: g.kind, bySym: {} }));
-    const rec = record.bySym;
-    // each direction is its own unit (activeSignals ranks the sides; the pooled fields are not read)
-    const st = (rec[g.sym] ??= { n: 0, net: 0, pf: 0, sides: {} });
-    (st.sides ??= {})[g.side > 0 ? "1" : "-1"] = {
-      n,
-      net: cum,
-      pf: profitFactor(gp, gl),
-      dd,
-      okShare: blocks ? ok / blocks : 0,
-      recentN,
-      recentNet,
-    };
-  }
-  const pairs = [...byPair.values()];
-  return activeSignals(
-    pairs.map(({ pair, kind, bySym }) => {
-      const i = pair.indexOf("|");
-      return { bot: pair.slice(0, i), ind: pair.slice(i + 1), kind, bySym };
-    }),
-    sig,
-  );
+  const index = sigTapes.length && "tp" in sigTapes[0]
+    ? sigTapes as SignalIndexRow[]
+    : signalIndex(sigTapes as readonly ConfigTape[]);
+  return activeSignals(signalWindowRows(index, t, windowH, sig.validateH ?? 24), sig);
 }
 
 /**
@@ -4484,17 +4436,13 @@ export function bestFirst(
     [...picks].sort((a, b) => b.score - a.score || (a.id < b.id ? -1 : 1)).map((p, i) => [p.id, i]),
   );
   const sigRank = new Map([...(o.signalActive ?? [])].map((k, i) => [k, i]));
-  const active = o.signalActive ?? new Set<string>();
   const E = rank.size + 1;
   return (tp, sym, side = 1) => {
     const r = rank.get(tp.id);
     if (r !== undefined) return r;
     if (isSignalInd(tp.ind)) {
-      const typed = sigRank.get(sigActiveKey(tp.bot, tp.ind, sym, side, tp.kind));
-      const legacy = signalActiveHas(active, tp.bot, tp.ind, sym, side, tp.kind)
-        ? sigRank.get(sigActiveKey(tp.bot, tp.ind, sym, side))
-        : undefined;
-      return E + (typed ?? legacy ?? sigRank.size);
+      const exact = sigRank.get(sigActiveKey(tp.bot, tp.ind, sym, side, tp.kind, tp.id));
+      return E + (exact ?? sigRank.size);
     }
     return E - 1; // held / unranked engine set
   };
@@ -4910,15 +4858,15 @@ export function* walkForwardGen(
     const take = (sym: string, side: number) =>
       o.signalRank ||
       !o.signalActive ||
-      signalActiveHas(o.signalActive, tp.bot, tp.ind, sym, side, tp.kind);
-    const pk = `${tp.bot}|${tp.ind}|${tp.kind}`;
+      signalActiveHas(o.signalActive, tp.bot, tp.ind, sym, side, tp.kind, tp.id);
+    const pk = tp.id;
     let byPair = pairKeys.get(pk);
     if (!byPair) pairKeys.set(pk, (byPair = new Map()));
     const keyOf = (sym: string, side: number) => {
       let ks = byPair.get(sym);
       if (!ks) byPair.set(sym, (ks = [undefined, undefined]));
       const j = side > 0 ? 1 : 0;
-      return (ks[j] ??= sigActiveKey(tp.bot, tp.ind, sym, side, tp.kind));
+      return (ks[j] ??= sigActiveKey(tp.bot, tp.ind, sym, side, tp.kind, tp.id));
     };
     const slots: Array<string | undefined> = [];
     for (let i = 0; i < tp.n; i++) {
@@ -4948,7 +4896,7 @@ export function* walkForwardGen(
   const signalSteps: Array<{ t: number; keys: string[] }> = [];
   // the hourly signal index, shared by every run over the same tape set
   // (its slices yield −1: not a simulated step)
-  let sigIdx: SignalGroup[] = [];
+  let sigIdx: SignalIndexRow[] = [];
   if (o.signalRank && sigTapes.length) {
     const ig = signalIndexGen(sigTapes, tapes);
     for (let r = ig.next(); ; r = ig.next()) {
@@ -5104,7 +5052,7 @@ export function* walkForwardGen(
       const hedging =
         cls &&
         hedgeKeys.size > 0 &&
-        hedgeKeys.has(sigActiveKey(tp.bot, tp.ind, tr.sym, tr.side, tp.kind));
+        hedgeKeys.has(sigActiveKey(tp.bot, tp.ind, tr.sym, tr.side, tp.kind, tp.id));
       const bookLosing =
         (!o.coord?.hedgePrevOnly && (hourNet.get(hourKey) ?? 0) < 0) ||
         (hourNet.get(hourKey - 1) ?? 0) < 0;

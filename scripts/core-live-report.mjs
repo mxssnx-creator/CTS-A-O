@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 import { liveTrades } from "../src/core/statistics.ts";
 import { liveGroupOf } from "../src/core/live-validation.ts";
 import { profitFactor } from "../src/core/metrics/stats.ts";
+import { RT_COST } from "../src/core/model-cost.ts";
 
 const bxm = await import("../src/core/exchange/bingx.server.ts");
 // VST answers "network issue, please retry" (109500) and rate limits (100410) under load: retry with backoff
@@ -98,7 +99,9 @@ export async function historyWith(signed, network, conn, from, to) {
 }
 
 /** `all`: the account's orders already read (one read serves every tag of a monitoring round). */
-export async function ownResults({ conn = "bingx-vst-02", tag, from, to = Date.now(), all = null, modelCost = 0.002 }) {
+export async function ownResults({ conn = "bingx-vst-02", tag, from, to = Date.now(), all = null, modelCost }) {
+  const modelSource = modelCost === undefined ? "current-default-estimate" : "explicit-model";
+  if (modelCost === undefined) modelCost = RT_COST;
   if (!Number.isFinite(modelCost) || modelCost < 0) throw new Error("modelCost must be finite and nonnegative");
   const network = conn === "bingx-x01" ? "mainnet" : "testnet";
   const T = tag.toUpperCase();
@@ -235,6 +238,7 @@ export async function ownResults({ conn = "bingx-vst-02", tag, from, to = Date.n
     episodePfBasis: "whole-episode-exchange-profit-and-commission-return",
     costs: {
       modelRoundTrip: modelCost,
+      modelSource,
       estimatedFeeOrders: ledger.filter((x) => !(Number.isFinite(x.fee) && (x.fee !== 0 || x.feeKnown === true || x.feeKnown === 1)) && modelCost > 0).length,
       method: "same average-cost, owned quantity and fee allocation as the live ledger",
     },
@@ -358,7 +362,9 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const tag = arg("tag");
   if (!tag) throw new Error("--tag is required");
   if (argv.includes("--flatten")) console.log(`closed ${await flatten(conn, tag)} positions`);
-  const r = await ownResults({ conn, tag, from: Date.now() - Number(arg("hours", 24)) * 3_600_000, modelCost: Number(arg("cost", 0.002)) });
+  const requestedCost = arg("cost", undefined);
+  const r = await ownResults({ conn, tag, from: Date.now() - Number(arg("hours", 24)) * 3_600_000,
+    ...(requestedCost === undefined ? {} : { modelCost: Number(requestedCost) }) });
   const outPath = arg("out");
   if (outPath) writeFileSync(`${outPath}.json`, JSON.stringify(r, null, 2));
   console.log(`${r.tag} on ${r.conn}: ${r.orders} own orders, ${r.positions.length} positions`);

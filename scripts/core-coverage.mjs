@@ -191,7 +191,7 @@ const passB = topB.filter((r) => r.pfB >= 1.1).length;
 const md = [
   `# Complete coverage — every config, ${tf}m`,
   "",
-  `${U.bars.length} symbols · ${spanD.toFixed(1)} days of real BingX data · **${configs.toLocaleString("en-US")} configs** (${combos.length} bot × indication combos × ${variants} protect / sub-strategy variants) · **${symSims.toLocaleString("en-US")} symbol simulations** in ${secs.toFixed(0)} s (${Math.round(configs / secs)} configs/s, ${Math.round(symSims / secs)} symbol-sims/s) · peak RSS ${Math.round(peakRss / 1e6)} MB · cost 0.2% round trip`,
+  `${U.bars.length} symbols · ${spanD.toFixed(1)} days of real BingX data · **${configs.toLocaleString("en-US")} configs** (${combos.length} bot × indication combos × ${variants} protect / sub-strategy variants) · **${symSims.toLocaleString("en-US")} symbol simulations** in ${secs.toFixed(0)} s (${Math.round(configs / secs)} configs/s, ${Math.round(symSims / secs)} symbol-sims/s) · peak RSS ${Math.round(peakRss / 1e6)} MB · cost ${(s.cost * 100).toFixed(2)}% round trip`,
   "",
   `- Combos with **no signal at all**: ${deadSignal.length ? deadSignal.join(", ") : "none"}`,
   `- Combos with **no trade in any variant**: ${noTrades.length ? noTrades.join(", ") : "none"}`,

@@ -913,7 +913,7 @@ const protocolRows = [
   ["Symbols", report.protocol.symbols.join(", ")],
   ["Prehistory UTC", report.protocol.windows.utc.pre.join(" to ")],
   ["Trading UTC", report.protocol.windows.utc.trade.join(" to ")],
-  ["Model round-trip cost", "0.2%"],
+  ["Model round-trip cost", Number.isFinite(report.protocol.settings?.cost) ? `${(report.protocol.settings.cost * 100).toFixed(2)}%` : "Not recorded"],
   ["Combined lanes", report.protocol.combinedLanes],
   ["Indicator warmup UTC", report.protocol.indicatorWarmupStart ?? "No additional warmup"],
   ["Warmup policy", report.protocol.indicatorWarmupPolicy ?? "Strict 12-hour input only"],

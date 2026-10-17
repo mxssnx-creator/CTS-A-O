@@ -78,7 +78,7 @@ const TAPES = tapesOf(7);
 const PAIRS = new Set(TAPES.map((t) => `${t.bot}|${t.ind}`));
 const ACTIVE = new Set(
   TAPES.filter((tp) => tp.ind === SIGNAL).flatMap((tp) =>
-    SYMS.flatMap((sym) => [1, -1].map((side) => sigActiveKey(tp.bot, tp.ind, sym, side, tp.kind))),
+    SYMS.flatMap((sym) => [1, -1].map((side) => sigActiveKey(tp.bot, tp.ind, sym, side, tp.kind, tp.id))),
   ),
 );
 const base = defaultWalkForward(DEFAULT_SETTINGS);
@@ -300,7 +300,7 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
       what: "a traded signal × symbol × side missing from the compute's active set",
       corrupt: (i) => {
         const x = i.sim!.trades.find((t) => sigCfg(t.cfg))!;
-        const drop = sigActiveKey("follow", SIGNAL, x.sym, x.side, x.kind);
+        const drop = sigActiveKey("follow", SIGNAL, x.sym, x.side, x.kind, x.cfg);
         return {
           ...i,
           stages: { ...i.stages!, signalActive: new Set([...ACTIVE].filter((k) => k !== drop)) },

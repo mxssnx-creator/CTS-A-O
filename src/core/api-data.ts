@@ -123,7 +123,7 @@ export async function coreListingData(data: ReturnType<typeof coreListingInput>)
     const all = idx ? idx.map((i) => L.validated[i]) : L.validated;
     rows = q ? all.filter((x) => x.id.toLowerCase().includes(q)) : all;
   } else if (data.kind === "active") {
-    rows = q ? L.active.filter((x) => `${x.bot}|${x.ind}|${x.sym}|${x.side}|${x.kind ?? "discovery"}`.toLowerCase().includes(q)) : L.active;
+    rows = q ? L.active.filter((x) => `${x.bot}|${x.ind}|${x.sym}|${x.side}|${x.kind ?? "discovery"}|${x.cfg ?? ""}`.toLowerCase().includes(q)) : L.active;
   } else rows = (L.proven ?? []).filter((id) => !q || id.toLowerCase().includes(q)).map((id) => ({ id }));
   return ser({
     ready: true,

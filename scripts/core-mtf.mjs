@@ -154,7 +154,7 @@ const d = (t) => new Date(t).toISOString().slice(0, 10);
 const md = [
   `# Indications × timeframes — independent and combined`,
   "",
-  `${Object.keys(raw).length} symbols · ${days.toFixed(1)} days of real BingX ${srctf}m data (${d(startT)} → ${d(nowT)}) · half A → ${d(split)} selects, half B validates · cost 0.2% round trip · ${INDICATIONS.length} indications × follow/revert × 6 protects per timeframe · combined = the same indication agrees on the higher timeframe(s): ${tfs.map((t) => `${t}m → ${COMBINE[t].map((f) => `${t * f}m`).join("+")}`).join(", ")}`,
+  `${Object.keys(raw).length} symbols · ${days.toFixed(1)} days of real BingX ${srctf}m data (${d(startT)} → ${d(nowT)}) · half A → ${d(split)} selects, half B validates · cost ${(RT_COST * 100).toFixed(2)}% round trip · ${INDICATIONS.length} indications × follow/revert × 6 protects per timeframe · combined = the same indication agrees on the higher timeframe(s): ${tfs.map((t) => `${t}m → ${COMBINE[t].map((f) => `${t * f}m`).join("+")}`).join(", ")}`,
   "",
   "## Pooled (every indication × bot × protect; no selection)",
   "",
