@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: risk-entry-study-${{ github.event.pull_request.number || github.ref }}
@@ -53,7 +54,10 @@ jobs:
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
           import fs from 'node:fs';
-          import { ECONOMIC_COMMIT, RISK_CASES, CANDIDATE, riskCase, riskDesk, assessRiskOutcome } from './scripts/run-risk-entry-study.mjs';
+          import os from 'node:os';
+          import path from 'node:path';
+          import { ECONOMIC_COMMIT, RISK_CASES, CANDIDATE, RISK_NODE_FLAGS, riskCase, riskDesk, assessRiskOutcome, readRiskSessionResult, readRiskReportResult } from './scripts/run-risk-entry-study.mjs';
+          import { writeSessionDump } from './scripts/lib/session-dump.mjs';
           import { FEED_SHA256, SYMBOLS, assertEconomicSource, sessionArguments } from './scripts/run-exact-signal-study.mjs';
           const manifest = JSON.parse(fs.readFileSync('scripts/studies/baseline-2860c3f.json'));
           assertEconomicSource(process.cwd(), manifest, 'corrected');
@@ -92,11 +96,47 @@ jobs:
           assert.equal(assessRiskOutcome(loss, data, spec).researchAccepted, false);
           const signalLoss = structuredClone(audit); signalLoss.cohorts[1] = { key: 'Signals', ...row, exactPf: .8 };
           assert.equal(assessRiskOutcome(signalLoss, data, spec).researchAccepted, false);
-          console.log('Risk policy, 24h saved-WF override, feasibility failures and exact economic source: passed');
+          assert.ok(RISK_NODE_FLAGS.includes('--max-old-space-size=8192'));
+          assert.ok(!RISK_NODE_FLAGS.some(x => x.startsWith('NODE_OPTIONS=')));
+          const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cts-risk-sidecars-'));
+          try {
+            const file = path.join(dir, 'raw.json'), raw = { trades: [{ sym: 'BTCUSDT', unitR: .01, closeIndex: 0 }], openEnd: [{ sym: 'ETHUSDT' }], tapeTrades: [{ id: 't', trades: [[1, .01], [2, -.02]] }], validation: [{ t: 1, checks: [{ id: 'v', pass: true }] }] };
+            await writeSessionDump(file, raw, { arrayFields: ['trades'], maxChunkBytes: 256 });
+            const original = fs.readFileSync(file), header = JSON.parse(original), loaded = await readRiskSessionResult(file);
+            assert.deepEqual(loaded.trades, raw.trades); assert.deepEqual(loaded.openEnd, raw.openEnd);
+            assert.deepEqual(loaded.tapeTrades, []); assert.deepEqual(loaded.validation, []);
+            assert.deepEqual(loaded.tapeTradesSidecar, header.tapeTradesSidecar);
+            assert.deepEqual(loaded.validationSidecar, header.validationSidecar);
+            assert.deepEqual(fs.readFileSync(file), original);
+            for (const manifest of [header.tapeTradesSidecar, header.validationSidecar, header.arraySidecars.trades]) {
+              const chunk = path.join(dir, manifest.chunks[0].path), saved = fs.readFileSync(chunk), corrupt = Buffer.from(saved);
+              corrupt[0] ^= 1; fs.writeFileSync(chunk, corrupt);
+              await assert.rejects(readRiskSessionResult(file), /SHA256\/bytes mismatch/);
+              fs.writeFileSync(chunk, saved);
+            }
+            assert.deepEqual((await readRiskSessionResult(file)).trades, raw.trades);
+            const reportFile = path.join(dir, 'data.json');
+            await writeSessionDump(reportFile, { ...data, sizedOrders: [{ closeIndex: 0, unitNotional: 1 }], sizedOpenOrders: [{ openIndex: 0, unitNotional: 1 }] }, { arrayFields: ['sizedOrders', 'sizedOpenOrders'], maxChunkBytes: 256 });
+            const reportHeader = JSON.parse(fs.readFileSync(reportFile)), report = await readRiskReportResult(reportFile);
+            assert.deepEqual(report.sizedOrders, []); assert.deepEqual(report.sizedOpenOrders, []);
+            const result = assessRiskOutcome(audit, report, spec);
+            assert.equal(result.researchAccepted, true);
+            assert.deepEqual(result.reportEvidence.arraySidecars, reportHeader.arraySidecars);
+            for (const manifest of Object.values(reportHeader.arraySidecars)) {
+              const chunk = path.join(dir, manifest.chunks[0].path), saved = fs.readFileSync(chunk), corrupt = Buffer.from(saved);
+              corrupt[0] ^= 1; fs.writeFileSync(chunk, corrupt);
+              await assert.rejects(readRiskReportResult(reportFile), /SHA256\/bytes mismatch/);
+              fs.writeFileSync(chunk, saved);
+            }
+            const workflow = fs.readFileSync('.github/workflows/risk-entry-study.yml', 'utf8');
+            assert.ok(workflow.includes('/evidence/**'), 'all relative sidecar chunks remain in artifacts');
+            assert.ok(fs.readFileSync('scripts/run-risk-entry-study.mjs', 'utf8').includes('"--chunk-allocations"'));
+          } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+          console.log('Risk policy, 24h saved-WF, feasibility, 8GiB heap, verified lossless sidecars and exact economic source: passed');
           NODE
 
   data:
-    name: Rebuild and verify identical public candles
+    name: Acquire and verify identical public candles
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -106,10 +146,44 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Collect the same frozen public archives
+      - name: Check retained public feed availability
+        id: feed-availability
+        uses: actions/github-script@v7
+        with:
+          script: |
+            try {
+              const response = await github.rest.actions.listWorkflowRunArtifacts({ ...context.repo, run_id: 39075929197, per_page: 100 });
+              const artifact = response.data.artifacts.find(x => x.name === 'risk-entry-study-feed' && !x.expired);
+              core.setOutput('available', String(Boolean(artifact)));
+              core.info(artifact ? `Reuse retained public feed artifact ${artifact.id}` : 'Retained feed is absent or expired; rebuild exact public archives');
+            } catch (error) {
+              if (![404, 410].includes(error.status)) throw error;
+              core.setOutput('available', 'false');
+              core.info('Prior public run is unavailable; rebuild exact public archives');
+            }
+      - name: Restore retained exact public feed
+        id: restore-feed
+        if: steps.feed-availability.outputs.available == 'true'
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: risk-entry-study-feed
+          path: runs/risk-entry-feed
+          github-token: ${{ github.token }}
+          run-id: 39075929197
+      - name: Require available artifact download to succeed
+        if: steps.feed-availability.outputs.available == 'true' && steps.restore-feed.outcome != 'success'
+        run: |
+          echo 'Available feed artifact failed to download; preserve failure without rebuilding over possible corruption.' >&2
+          exit 1
+      - name: Collect missing or expired public feed
+        if: steps.feed-availability.outputs.available == 'false'
         run: |
           mkdir -p runs/risk-entry-feed/logs
           node scripts/build-public-eval-feed.mjs --out runs/risk-entry-feed --concurrency 4 2>&1 | tee runs/risk-entry-feed/logs/collector.log
+      - name: Verify exact feed hash and all archive evidence
+        run: |
+          mkdir -p runs/risk-entry-feed/logs
           node scripts/run-risk-entry-study.mjs --verify-feed runs/risk-entry-feed/feed.json 2>&1 | tee runs/risk-entry-feed/logs/verification.log
       - name: Preserve public data and checksum evidence
         if: always()
@@ -141,8 +215,8 @@ jobs:
           cache: npm
       - name: Install locked dependencies
         run: |
-          mkdir -p runs/risk-entry-study-ci/${{ matrix.case }}/logs
-          npm ci --ignore-scripts 2>&1 | tee runs/risk-entry-study-ci/${{ matrix.case }}/logs/install.log
+          mkdir -p runs/risk-entry-study-ci/${{ github.run_id }}-${{ github.run_attempt }}/${{ matrix.case }}/logs
+          npm ci --ignore-scripts 2>&1 | tee runs/risk-entry-study-ci/${{ github.run_id }}-${{ github.run_attempt }}/${{ matrix.case }}/logs/install.log
       - uses: actions/download-artifact@v4
         with:
           name: risk-entry-study-feed
@@ -150,19 +224,19 @@ jobs:
       - name: Run prespecified 22-symbol 24-hour account-risk arm
         run: |
           node scripts/run-risk-entry-study.mjs --case '${{ matrix.case }}' --feed runs/risk-entry-feed/feed.json \
-            --out runs/risk-entry-study-ci/${{ matrix.case }} 2>&1 | tee runs/risk-entry-study-ci/${{ matrix.case }}/logs/study.log
+            --out runs/risk-entry-study-ci/${{ github.run_id }}-${{ github.run_attempt }}/${{ matrix.case }} 2>&1 | tee runs/risk-entry-study-ci/${{ github.run_id }}-${{ github.run_attempt }}/${{ matrix.case }}/logs/study.log
       - name: Preserve complete evidence including failed attempts
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: risk-entry-study-${{ matrix.case }}
           path: |
-            runs/risk-entry-study-ci/${{ matrix.case }}/evidence/**
-            runs/risk-entry-study-ci/${{ matrix.case }}/frozen/**
-            runs/risk-entry-study-ci/${{ matrix.case }}/launcher.json
-            runs/risk-entry-study-ci/${{ matrix.case }}/source-proof.json
-            runs/risk-entry-study-ci/${{ matrix.case }}/failure.json
-            runs/risk-entry-study-ci/${{ matrix.case }}/logs/**
+            runs/risk-entry-study-ci/${{ github.run_id }}-${{ github.run_attempt }}/${{ matrix.case }}/evidence/**
+            runs/risk-entry-study-ci/${{ github.run_id }}-${{ github.run_attempt }}/${{ matrix.case }}/frozen/**
+            runs/risk-entry-study-ci/${{ github.run_id }}-${{ github.run_attempt }}/${{ matrix.case }}/launcher.json
+            runs/risk-entry-study-ci/${{ github.run_id }}-${{ github.run_attempt }}/${{ matrix.case }}/source-proof.json
+            runs/risk-entry-study-ci/${{ github.run_id }}-${{ github.run_attempt }}/${{ matrix.case }}/failure.json
+            runs/risk-entry-study-ci/${{ github.run_id }}-${{ github.run_attempt }}/${{ matrix.case }}/logs/**
           if-no-files-found: warn
           retention-days: 7
           compression-level: 1

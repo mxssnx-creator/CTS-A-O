@@ -6,9 +6,17 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { FEED_SHA256, SYMBOLS, assertEconomicSource, verifyFeed, sessionArguments } from "./run-exact-signal-study.mjs";
 import { readSessionStudy, validateFrozenSessionResult, studyExactJson as exact, studySha256 as sha } from "./lib/session-study.mjs";
+import { readSessionDump } from "./lib/session-dump.mjs";
 
 export const ECONOMIC_COMMIT = "fdabcdb3f9daf17160873f98962dc265f9142159";
 export const CANDIDATE = "entry5-gross1";
+export const RISK_NODE_FLAGS = Object.freeze(["--max-old-space-size=8192", "--expose-gc", "--experimental-strip-types"]);
+/** Keep every history chunk verified without retaining all tapes/checks alongside owned closes. */
+export const readRiskSessionResult = (file) => readSessionDump(file, {
+  loadTapeTrades: false, loadValidation: false, verifyUnloaded: true,
+});
+/** Assessment needs totals; preserve and verify every allocation manifest rather than hydrating it again. */
+export const readRiskReportResult = (file) => readSessionDump(file, { loadSidecars: false, verifyUnloaded: true });
 export const RISK_CASES = Object.freeze({
   "control-entry0-gross7": { entryLastN: 0, gross: 7 },
   "entry5-gross7": { entryLastN: 5, gross: 7 },
@@ -83,6 +91,7 @@ export function assessRiskOutcome(audit, data, spec) {
     signalEvidence: signals?.closes === 0 ? "empty-not-certified" : signals?.state ?? "unknown", engine, signals, combined: audit.total,
     engineDirections, combinedDirections: audit.byDirection, positiveHours, hours: 24,
     account: { ...audit.account, minimumEquity: t.eqMin, feasible: t.feasible, marginOverMinutes: marginOver },
+    reportEvidence: { arraySidecars: data.arraySidecars ?? {}, allocationDetails: data.arraySidecars ? "lossless-verified-sidecars" : "legacy-inline" },
     checks, failedCriteria: checks.filter((x) => !x.passed).map((x) => x.name), performance: audit.performance };
 }
 async function main() {
@@ -92,16 +101,18 @@ async function main() {
   if (args.includes("--validate-result")) {
     const sourceRoot = path.resolve(arg("source-root", ROOT));
     assertEconomicSource(sourceRoot, read(path.join(ROOT, "scripts/studies/baseline-2860c3f.json")), "corrected");
-    validateFrozenSessionResult(read(arg("raw")), arg("protocol"), sourceRoot);
+    validateFrozenSessionResult(await readRiskSessionResult(arg("raw")), arg("protocol"), sourceRoot);
     console.log(JSON.stringify({ strictFrozenResult: "passed" })); return;
   }
   if (args.includes("--assess-result")) {
-    const outcome = assessRiskOutcome(read(arg("audit")), read(arg("data")), riskCase(arg("case")));
+    const outcome = assessRiskOutcome(read(arg("audit")), await readRiskReportResult(arg("data")), riskCase(arg("case")));
     write(arg("result"), outcome);
     if (!outcome.integrityPassed) throw new Error("Risk evidence failed integrity checks; outcome and failures retained");
     console.log(JSON.stringify({ id: outcome.id, status: outcome.status, researchAccepted: outcome.researchAccepted, failedCriteria: outcome.failedCriteria })); return;
   }
-  const spec = riskCase(arg("case")), out = path.resolve(arg("out", `runs/risk-entry-study-ci/${spec.id}`));
+  const spec = riskCase(arg("case"));
+  const runScope = process.env.GITHUB_RUN_ID ? `${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT ?? "1"}` : "local";
+  const out = path.resolve(arg("out", `runs/risk-entry-study-ci/${runScope}/${spec.id}`));
   if (["launcher.json", "failure.json", "source-preparation"].some((name) => fs.existsSync(path.join(out, name)))) throw new Error("Preserve failed/prior attempts; use a fresh --out directory");
   const evidence = path.join(out, "evidence"); fs.mkdirSync(evidence, { recursive: true });
   const commands = [], deadline = Date.now() + 40 * 60_000;
@@ -109,7 +120,7 @@ async function main() {
     CTS_CORE_MEM_SOFT_MB: "2500", CTS_CORE_MEM_HARD_MB: "1200", MALLOC_ARENA_MAX: "2", MALLOC_MMAP_THRESHOLD_: "1048576", DATABASE_URL: "" };
   const run = (label, file, argv, allowFailure = false) => new Promise((resolve, reject) => {
     const log = path.join(evidence, `${label}.log`), fd = fs.openSync(log, "wx"), start = Date.now();
-    const command = { label, argv: [process.execPath, "--expose-gc", "--experimental-strip-types", file, ...argv], log: path.relative(out, log) }; commands.push(command);
+    const command = { label, argv: [process.execPath, ...RISK_NODE_FLAGS, file, ...argv], log: path.relative(out, log) }; commands.push(command);
     const child = spawn(process.execPath, command.argv.slice(1), { cwd: ROOT, env, stdio: ["ignore", "pipe", "pipe"] });
     for (const stream of [child.stdout, child.stderr]) stream.on("data", (chunk) => { fs.writeSync(fd, chunk); process.stdout.write(chunk); });
     const timer = setTimeout(() => { child.kill("SIGTERM"); const kill = setTimeout(() => child.kill("SIGKILL"), 5000); kill.unref(); }, Math.max(1000, deadline - Date.now()));
@@ -143,12 +154,14 @@ async function main() {
       sourceEconomicCommit: ECONOMIC_COMMIT, economicFileCount: 82, feed, sourceSha256: protocol.source.sha256, protocolSha256: sha(fs.readFileSync(chosen.protocol)),
       settingsSha256: sha(exact(protocol.actualSettings)), wfSha256: sha(exact(protocol.actualWf)),
       explicitAccountChangesFromUncappedDevelopment: { maxPositionX: 0.75, maxExposureX: spec.gross },
-      resourcePolicy: { workers: 4, maxMinutes: 40, requiredMemoryFallback: 0, backgroundPresetComparison: false, isolatedPublicStandardRunner: true }, commands };
+      resourcePolicy: { workers: 4, maxMinutes: 40, mainChildHeapLimitMb: 8192, heapLimitViaNodeOptions: false,
+        losslessBoundedSidecars: true, verifyEverySidecarBeforeAndAfterReport: true, outputRunScope: runScope,
+        requiredMemoryFallback: 0, backgroundPresetComparison: false, isolatedPublicStandardRunner: true }, commands };
     write(path.join(out, "launcher.json"), launch);
     await run("simulation", "scripts/core-session.mjs", sessionArguments(spec, { feed: feed.path, desk: chosen.desk, protocol: chosen.protocol, evidence }));
     await run("validate-dump", "scripts/run-risk-entry-study.mjs", ["--validate-result", "--raw", path.join(evidence, "raw.json"), "--protocol", chosen.protocol]);
     const reportCode = await run("report", "scripts/core-session.mjs", ["--replay", path.join(evidence, "raw.json"), "--frozen-session", chosen.protocol,
-      "--signal-progress", "--out", path.join(evidence, "report"), "--html", path.join(evidence, "html"), "--writeup", path.join(evidence, "summary.md"), "--quiet", "true"], true);
+      "--signal-progress", "--chunk-allocations", "--out", path.join(evidence, "report"), "--html", path.join(evidence, "html"), "--writeup", path.join(evidence, "summary.md"), "--quiet", "true"], true);
     const auditCode = await run("audit", "scripts/audit-session-study.mjs", ["--raw", path.join(evidence, "raw.json"), "--data", path.join(evidence, "html/data.json"),
       "--out", path.join(evidence, "audit"), "--purpose", "final", "--protocol", chosen.protocol], true);
     if (reportCode || auditCode) throw new Error("Strict report or independent arithmetic audit failed; all artifacts retained");

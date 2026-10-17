@@ -19,6 +19,7 @@
 // Outputs:
 //   --out docs/x        docs/x.md + docs/x.json (the engine report)
 //   --html docs/dir     docs/dir/index.html (standalone report with diagrams) + docs/dir/data.json
+//   --chunk-allocations store complete per-order allocation arrays in checksummed sidecars beside data.json
 //   --writeup docs/x.md short write-up with the key tables and findings
 //   --explain f.html    an explanation section (HTML fragment) placed at the top of the --html page
 //   --record-feed f.json  keep the candles and tickers read (needs --end-at); --feed f.json replays them offline
@@ -46,6 +47,7 @@ import { dirname, join } from "node:path";
 import { columnarStore, pruneFeed, RANK_TF, readStored } from "./lib/session-feed.mjs";
 import { closesIn } from "./lib/candles.mjs";
 import { captureSignalProgress } from "./lib/signal-progress.mjs";
+import { iterateSessionTapeTrades, iterateSessionValidation, readSessionDump, writeJsonFile, writeSessionDump } from "./lib/session-dump.mjs";
 import { BOOK_NOTIONAL_EPS_USD, normalizedBookNotional } from "./lib/book-notional.mjs";
 import { sessionAllocation, sessionCashPnl, sessionUnitNotional, sessionOwnedReturns, sessionVirtualReturns } from "./lib/session-owned-returns.mjs";
 import {
@@ -83,6 +85,7 @@ if (argv.includes("--help") || argv.includes("-h")) {
       "  --settings JSON         apply a settings patch",
       "  --out PATH              write Markdown and JSON reports",
       "  --html DIR              write a standalone HTML report",
+      "  --chunk-allocations     keep complete allocation rows in bounded data.json sidecars",
       "  --writeup PATH          write the compact result summary",
       "  --dump PATH             save the raw session for later replay",
       "  --replay PATH           rebuild reports from a saved raw session",
@@ -126,7 +129,7 @@ const flag = (k) => argv.includes(`--${k}`);
 // rendering error) — writes index.html next to it, or into --html
 if (arg("render")) {
   const dump = arg("render");
-  const d = JSON.parse(readFileSync(dump, "utf8"));
+  const d = await readSessionDump(dump);
   const out = arg("html") ?? dirname(dump);
   mkdirSync(out, { recursive: true });
   const ex = arg("explain") ? readFileSync(arg("explain"), "utf8").trim() : "";
@@ -1121,7 +1124,14 @@ async function runEngine() {
     tapeTrades: (() => {
       if (flag("dump-only") && !flag("tape-trades")) return [];
       const want = new Set([...(sim.trades ?? []).map((x) => x.cfg), ...(sim.steps ?? []).flatMap((x) => x.real ?? [])]);
-      return (rt.tapes ?? []).filter((tp) => want.has(tp.id)).map((tp) => ({ id: tp.id, trades: Array.from({ length: tp.n }, (_, i) => [tp.syms[tp.symI[i]], tp.side[i], tp.entryT[i], tp.exitT[i], tp.r[i]]) }));
+      return (rt.tapes ?? []).filter((tp) => want.has(tp.id)).map((tp) => {
+        function* rows() {
+          for (let i = 0; i < tp.n; i++) yield [tp.syms[tp.symI[i]], tp.side[i], tp.entryT[i], tp.exitT[i], tp.r[i]];
+        }
+        // A dump streams the original typed columns instead of retaining millions
+        // of boxed row arrays while its runtime is still being disposed.
+        return { id: tp.id, trades: arg("dump") ? rows() : Array.from(rows()) };
+      });
     })(),
     variants,
     cfgInfo,
@@ -1231,7 +1241,10 @@ async function runEngine() {
 
 // --replay raw.json / --render raw.json: rebuild every output from a dump, without running the engine again
 const replay = arg("replay") ?? arg("render");
-const raw = replay ? JSON.parse(readFileSync(replay, "utf8")) : await runEngine();
+const raw = replay ? await readSessionDump(replay, {
+  loadTapeTrades: false, loadValidation: false, verifyUnloaded: ["validation"],
+}) : await runEngine();
+let tapeSourceFile = replay;
 if (arg("frozen-session")) {
   const { validateFrozenSessionResult } = await import("./lib/session-study.mjs");
   await validateFrozenSessionResult(raw, arg("frozen-session"));
@@ -1251,7 +1264,20 @@ if (replay && raw.settings.book) {
 }
 if (arg("dump")) {
   mkdirSync(dirname(arg("dump")), { recursive: true });
-  writeFileSync(arg("dump"), JSON.stringify(raw));
+  const output = { ...raw };
+  delete output.tapeTradesSidecar;
+  delete output.validationSidecar;
+  delete output.arraySidecars;
+  const stored = await writeSessionDump(arg("dump"), output, {
+    arrayFields: ["trades"],
+    ...(raw.tapeTradesSidecar ? { tapeTrades: iterateSessionTapeTrades(tapeSourceFile) } : {}),
+    ...(raw.validationSidecar ? { validation: iterateSessionValidation(tapeSourceFile) } : {}),
+  });
+  raw.tapeTrades = [];
+  raw.validation = [];
+  raw.tapeTradesSidecar = stored.tapeTradesSidecar;
+  raw.validationSidecar = stored.validationSidecar;
+  tapeSourceFile = arg("dump");
   // --dump-only: the raw session is the product (the evaluation runs read the trades and stop); no report is rendered
   if (flag("dump-only")) process.exit(0);
 }
@@ -2235,14 +2261,30 @@ check("minute marks without a price", 0, mtmMissing, mtmMissing === 0);
 check("order keys unique (cfg · symbol · entry → one unit each)", trades.length, new Set(trades.map(orderKey)).size);
 // stages consistent: every executed order is its config's own tape trade (symbol, side, entry, exit, unit return)
 {
-  const tt = new Map((raw.tapeTrades ?? []).map((x) => [x.id, x.trades]));
-  if (tt.size) {
+  const queries = new Map();
+  for (const x of trades) {
+    if (!queries.has(x.cfg)) queries.set(x.cfg, []);
+    queries.get(x.cfg).push(x);
+  }
+  const failures = new Map([...queries].map(([cfg, xs]) => [cfg, xs.length]));
+  let tapeCount = 0;
+  const tapeRows = raw.tapeTradesSidecar ? iterateSessionTapeTrades(tapeSourceFile) : raw.tapeTrades ?? [];
+  // Consume every chunk even when no executed config needs it: checksums and
+  // complete physical row counts are part of the saved evidence contract.
+  for await (const tp of tapeRows) {
+    tapeCount++;
+    const xs = queries.get(tp.id);
+    if (!xs) continue;
     let bad = 0;
-    for (const x of trades) {
-      const rows = tt.get(x.cfg);
+    for (const x of xs) {
       const u = unitR(x);
-      if (!rows || !rows.some(([sym, side, e, ex, r]) => sym === x.sym && side === x.side && e === x.entryT && ex === x.exitT && Math.abs(r - u) < 1e-9)) bad++;
+      if (!tp.trades.some(([sym, side, e, ex, r]) => sym === x.sym && side === x.side && e === x.entryT && ex === x.exitT && Math.abs(r - u) < 1e-9)) bad++;
     }
+    // Legacy flat dumps used a Map; preserve its last duplicate-ID semantics.
+    failures.set(tp.id, bad);
+  }
+  if (tapeCount) {
+    const bad = [...failures.values()].reduce((n, x) => n + x, 0);
     check("stages consistent: every executed order is its config's tape trade", 0, bad, bad === 0);
   }
 }
@@ -3074,7 +3116,7 @@ const out = arg("out");
 if (out) {
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(`${out}.md`, md + "\n");
-  writeFileSync(`${out}.json`, JSON.stringify(report, null, 2));
+  await writeJsonFile(`${out}.json`, report);
 }
 
 // ── 7. the session report: data.json + standalone index.html ─────────────────────────────────────────────────
@@ -3231,7 +3273,10 @@ if (flag("signal-progress")) data.ownershipPrecision = {
 };
 if (htmlDir) {
   mkdirSync(htmlDir, { recursive: true });
-  writeFileSync(join(htmlDir, "data.json"), JSON.stringify(data, null, 1));
+  if (flag("chunk-allocations")) await writeSessionDump(join(htmlDir, "data.json"), data, {
+    arrayFields: ["sizedOrders", "sizedOpenOrders"],
+  });
+  else await writeJsonFile(join(htmlDir, "data.json"), data);
   // --explain fragment.html: a hand-written "how to read this run" section placed above the generated report
   const explain = arg("explain") ? readFileSync(arg("explain"), "utf8").trim() : "";
   const page = renderHtml(data);
@@ -3410,7 +3455,12 @@ function renderWriteup(d, dir) {
 
 // ── the standalone HTML report ───────────────────────────────────────────────────────────────────────────────
 function renderHtml(d) {
-  const normalized = { ...d, evidence: { ...d.evidence, qualification: sessionQualificationEvidence(d.evidence?.qualification), returns: d.evidence?.returns ?? sessionReturnEvidence({}) } };
+  // The browser uses summary tables/curves only. Exact per-order allocation rows
+  // remain complete in data.json instead of being duplicated into a giant HTML string.
+  const { sizedOrders, sizedOpenOrders, ...summary } = d;
+  const normalized = { ...summary, evidence: { ...d.evidence, qualification: sessionQualificationEvidence(d.evidence?.qualification), returns: d.evidence?.returns ?? sessionReturnEvidence({}) },
+    ...(sizedOrders || sizedOpenOrders ? { allocationEvidence: { file: "data.json", settledRows: sizedOrders?.length ?? 0, openRows: sizedOpenOrders?.length ?? 0 } } : {}),
+  };
   const json = JSON.stringify(normalized).replace(/</g, "\\u003c");
   const stamp = (t) => new Date(t).toISOString().slice(0, 16).replace("T", " ");
   return `<!doctype html>

@@ -8,13 +8,14 @@
 //   node --experimental-strip-types scripts/eval-gate.mjs --label base [--settings '{"gates":{"minTrades":30}}'] [--jobs 2]
 //     [--from ISO --to ISO [--split ISO]] [--plan: print the windows and their warm-up, run nothing] [--allow-short-warmup]
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { unitR, windowOrders } from "./lib/eval-orders.mjs";
 import { guardedStressStats, unitReturnEvidence } from "./lib/eval-stress.mjs";
 import { ENGINE_WARMUP_H, evalWindows, feedStartTFile, resolveSpan, warmupNeedH, warmupOf } from "./lib/eval-windows.mjs";
 import { admitter, availMb, guardChild, watchHwm } from "./lib/mem-admission.mjs";
 import { join } from "node:path";
 import { variantScores } from "./lib/eval-variants.mjs";
+import { readSessionDump, removeSessionDump } from "./lib/session-dump.mjs";
 
 const arg = (k, d) => {
   const i = process.argv.indexOf(`--${k}`);
@@ -254,8 +255,8 @@ await Promise.all(
           `window ${k + 1} stopped: the host had ${r.memStop.availMb} MB available (under CTS_EVAL_KILL_BELOW_MB; the live desk's memory comes first) — run fewer symbols, signals off, or with the desk down`,
         );
       if (!existsSync(r.dump)) throw new Error(`window ${k + 1} failed (exit ${r.code}): ${r.err}`);
-      const raw = JSON.parse(readFileSync(r.dump, "utf8"));
-      unlinkSync(r.dump);
+      const raw = await readSessionDump(r.dump, { loadTapeTrades: false, loadValidation: false, verifyUnloaded: true });
+      await removeSessionDump(r.dump);
       // a compute under the memory fallback left Micro (level 1) or Micro and Minimal (level 2) out: not a full-engine
       // window (--dump-only exits before the session's own memory check)
       const lvl = raw.engine?.mem?.computeLevel ?? 0;

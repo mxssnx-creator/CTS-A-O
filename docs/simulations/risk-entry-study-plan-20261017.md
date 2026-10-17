@@ -100,6 +100,36 @@ still computes and passes its unchanged qualification gates.
 All hourly/cohort/range/config/side evidence and failed criteria remain in
 artifacts; prior output directories cannot be reused.
 
+The first four attempts in Actions run `39075929197` completed the full
+22-symbol calculation, then aborted during capture at Node's default roughly
+4 GiB heap limit. Their source, feed, full settings and account policies were
+independently verified, but none produced a funded raw/report/audit result.
+Diagnostic pre-funding simulation PF is not an account outcome. These failed
+attempts remain preserved and cannot qualify or reject the frozen candidate.
+
+The resource-only retry explicitly grants each child Node process an **8 GiB
+heap limit** inside its isolated 16 GB runner. Lossless raw captures retain
+all tapes, validation rows and owned-close indices in relative SHA256-sealed
+sidecars, each chunk at most 8 MiB. Before and after reporting, the validator
+loads owned closes and verifies every unloaded history chunk, exact row order,
+counts and ordered payload hashes without retaining every tape/check at once.
+The reporter explicitly enables `--chunk-allocations`; complete funded closed
+and open allocation rows also remain in checksummed sidecars. The independent
+auditor verifies and reads these allocations, while final assessment verifies
+every report chunk and preserves its full manifest/digests alongside totals.
+Unloaded allocation placeholders never represent zero funded orders.
+The common helper and launcher are included in the new instrumentation seal;
+the 82-file economic pin, all four policies and candidate remain unchanged.
+Artifacts include `evidence/**`, covering every referenced sidecar. Retry
+directories include the Actions run ID and attempt, preserving earlier runs.
+
+The retry first reuses the exact retained public feed artifact from run
+`39075929197`. It rebuilds public archives only if that artifact is confirmed
+missing or expired. An available artifact's download or checksum failure
+fails the attempt; it does not silently rebuild over corrupted evidence.
+Whether restored or rebuilt, the feed hash and full 462-archive provenance
+checks remain mandatory before any simulation.
+
 The separate workflow changes only these three new paths and targets a PR
 based on `cts-ao/exact-signal-configs-20261017`; the current core/main workflow
 and ongoing original study stay unchanged. It uses public standard Ubuntu

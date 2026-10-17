@@ -7,9 +7,20 @@ import { spawn } from "node:child_process";
 import { assertStudyProtocol, deepStudyMerge, rangeStudyIdentityUniverse, studyJson, studySha256 } from "./lib/range-study.mjs";
 import { signalTicker } from "./lib/signal-market.mjs";
 import { rangeStudyEvidence } from "./lib/range-study-evidence.mjs";
+import { readSessionDump } from "./lib/session-dump.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (p) => { const bytes = fs.readFileSync(p); return { data: JSON.parse(bytes), sha256: studySha256(bytes), bytes: bytes.length }; };
+/** Hydrate all frozen histories and owned allocation rows, preserving the exact stored header provenance. */
+export async function readRangeStudyInputs(rawFile, bookFile) {
+  const readInput = async (file) => {
+    const data = await readSessionDump(file, { verifyUnloaded: true });
+    const bytes = fs.readFileSync(file);
+    return { data, sha256: studySha256(bytes), bytes: bytes.length };
+  };
+  const raw = await readInput(rawFile), book = await readInput(bookFile);
+  return { raw, book };
+}
 const write = (p, x) => { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, studyJson(x)); };
 const sourcePaths = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((x) => x.isDirectory() ? sourcePaths(path.join(dir, x.name)) : /\.(?:ts|tsx|mjs|cjs)$/.test(x.name) ? [path.join(dir, x.name)] : []);
 export function studySourceFiles() {
@@ -122,7 +133,7 @@ export async function rangeStudyMain(argv) {
       if (result.engine.exitCode !== 0 || !fs.existsSync(path.join(dest, "raw.json"))) throw new Error("Engine failed/incomplete; preserve exact exit and logs");
       result.render = await child(command.render, path.join(dest, "render.log"), p.budget.timeoutMinutesPerRun * 60_000);
       verifyStudySource(seal.data, loaded.sha256);
-      const raw = read(path.join(dest, "raw.json")), book = read(path.join(dest, "book/data.json"));
+      const { raw, book } = await readRangeStudyInputs(path.join(dest, "raw.json"), path.join(dest, "book/data.json"));
       const e = rangeStudyEvidence(raw.data, book.data, p, c.fold, c.profile, universe);
       const expectedTimes = Array.from({ length: 6 }, (_, i) => c.fold.tradeStartT + i * 3_600_000);
       const completeHours = expectedTimes.every((t) => e.validation.some((x) => x.t === t));
