@@ -146,6 +146,8 @@ export interface CoordSettings {
   s2Pause?: number;
   /** volume added per passing relation. Default 0.4. */
   s2Increase?: number;
+  /** Multiplier on s2Increase (0.2–5 by 0.2); 1 keeps the configured per-relation increase unchanged. */
+  s2VolumeFactor?: number;
   /** Stable-02 relation volume: winning relations add volume (0.4 each, ≤ 1.8×), re-evaluated every 2 h */
   s2RelVolume?: boolean;
   /**
@@ -156,6 +158,8 @@ export interface CoordSettings {
   /** hedge selection: PF of a signal in the book's losing hours (default 1.3) and results needed (default 5) */
   hedgeMinPf?: number;
   hedgeMinN?: number;
+  /** Multiplier applied only to hedge-selected Signal entries (0.2–5 by 0.2); 1 is neutral. */
+  hedgeVolumeFactor?: number;
   /** hedge only after a losing previous hour (default false: also while the current hour is negative) */
   hedgePrevOnly?: boolean;
 }
@@ -168,6 +172,8 @@ export const DEFAULT_COORD: CoordSettings = {
   cooldown: "off",
   conflict: false,
   confirm: true,
+  s2VolumeFactor: 1,
+  hedgeVolumeFactor: 1,
 };
 
 /** strict negative-hour hedge selection (the loose PF 1.3 / 5 lost on 8 days, docs/signals-validation.md) */
@@ -176,6 +182,7 @@ const numOr = (v: unknown, d: number, lo: number, hi: number) =>
   v === null || v === undefined || v === "" || !Number.isFinite(Number(v))
     ? d
     : Math.min(hi, Math.max(lo, Number(v)));
+const volumeFactor = (v: unknown) => Number((Math.round(numOr(v, 1, 0.2, 5) * 5) / 5).toFixed(1));
 
 export function coordSettings(c?: Partial<CoordSettings> | null): CoordSettings {
   const hl = Number(c?.hourLock);
@@ -192,10 +199,12 @@ export function coordSettings(c?: Partial<CoordSettings> | null): CoordSettings 
     s2Steps: c?.s2Steps,
     s2Pause: c?.s2Pause,
     s2Increase: c?.s2Increase,
+    s2VolumeFactor: volumeFactor(c?.s2VolumeFactor),
     s2RelVolume: c?.s2RelVolume === true,
     hedge: c?.hedge === true,
     hedgeMinPf: numOr(c?.hedgeMinPf, HEDGE_DEFAULTS.minPf, 1, 5),
     hedgeMinN: numOr(c?.hedgeMinN, HEDGE_DEFAULTS.minN, 1, 100),
+    hedgeVolumeFactor: volumeFactor(c?.hedgeVolumeFactor),
     hedgePrevOnly: c?.hedgePrevOnly === true,
   };
 }
@@ -4791,7 +4800,7 @@ export function* walkForwardGen(
           windowN: o.coord.s2Steps ?? 6,
           pauseN: o.coord.s2Pause ?? o.coord.s2Steps ?? 6,
           relVolume: !!o.coord.s2RelVolume,
-          ratio: o.coord.s2Increase ?? 0.4,
+          ratio: (o.coord.s2Increase ?? 0.4) * (o.coord.s2VolumeFactor ?? 1),
           minPf: 1.25,
           maxMult: 1.8,
           evalH: 2,
@@ -5085,14 +5094,16 @@ export function* walkForwardGen(
       // Stable-02 relation volume on top of the Block volume (the stack stays within the Block maximum)
       const stackCap = blockStackCap(o.block);
       const cv = s2 ? Math.min(s2.volume(tr.entryT), Math.max(1, stackCap / dec.vol)) : 1;
+      const hedgeVol = hedging ? o.coord?.hedgeVolumeFactor ?? 1 : 1;
       const rangeVol = rangeVolumeFactorFor(tp, o);
-      const executionMult = dec.vol * cv * rangeVol;
+      const executionMult = dec.vol * cv * hedgeVol * rangeVol;
       const x: Trade = {
         ...tr,
         r: tr.r * executionMult,
         vol: (tr.vol ?? 1) * executionMult,
         mult: executionMult,
         ...(cv !== 1 ? { coordVol: cv } : {}),
+        ...(hedgeVol !== 1 ? { hedgeVol } : {}),
         ...(hedging ? { hedge: true } : {}),
         level: tp.kind.startsWith("dca") || tp.kind === "axis" ? tr.level : dec.level,
         ...(dec.legs ? { legs: dec.legs } : {}),
