@@ -124,7 +124,7 @@ describe("Signal config identity through execution and persistence", () => {
       signalValidLastN: 4,
       gates: { ...DEFAULT_SETTINGS.gates, minPf: 1.3, maxDdtH: 1_000, maxDdr: 0, lossPrior: false },
       signalActive: new Set(
-        [...qualified, unqualified].map((tp) => sigActiveKey(tp.bot, tp.ind, "A", 1, tp.kind)),
+        [...qualified, unqualified].map((tp) => sigActiveKey(tp.bot, tp.ind, "A", 1, tp.kind, tp.id)),
       ),
       signalRank: undefined,
       signalGuardN: 0,
@@ -191,14 +191,17 @@ describe("Signal acceptance parity on actual settled returns", () => {
     ];
     const exchange = exchangeAcceptIndex(rows);
     const keys = [
-      acceptKey(ind, "A", 1, "normal"),
-      acceptKey("sig-ema-cross-m@m15", "A", 1, "normal"),
-      acceptKey("sig-ema-cross-s@m30", "A", 1, "normal"),
-      acceptKey(ind, "A", 1, "trailing"),
+      acceptKey(ind, "A", 1, "normal", cfg(1)),
+      acceptKey(ind, "A", 1, "normal", cfg(2)),
+      acceptKey("sig-ema-cross-m@m15", "A", 1, "normal", cfg(1, "sig-ema-cross-m@m15")),
+      acceptKey("sig-ema-cross-s@m30", "A", 1, "normal", cfg(1, "sig-ema-cross-s@m30")),
+      acceptKey(ind, "A", 1, "trailing", cfg(1, ind, 0.5)),
     ];
     assert.equal(new Set(keys).size, keys.length);
     assert.deepEqual(exchange.stats(keys[0], 2 * H, 24), { n: 1, pf: 0 });
-    for (const key of keys.slice(1))
+    assert.deepEqual(exchange.stats(keys[1], 2 * H, 24), { n: 1, pf: 0 });
+    assert.deepEqual(exchange.stats(acceptKey(ind, "A", 1, "normal"), 2 * H, 24), { n: 0, pf: 0 }, "no pooled qualification is synthesized");
+    for (const key of keys.slice(2))
       assert.deepEqual(exchange.stats(key, 2 * H, 24), { n: 1, pf: Infinity });
     // The explicitly broader side safety coordinator counts onsets across types only once.
     assert.equal(exchange.stats(sideAcceptKey(1), 2 * H, 24).n, 3);
@@ -206,6 +209,7 @@ describe("Signal acceptance parity on actual settled returns", () => {
 
   it("counts an onset once across parallel configs while retaining every close in return PF", () => {
     const tapes = Array.from({ length: 20 }, (_, i) => ({
+      id: cfg(i + 1),
       ind,
       kind: "normal",
       n: 2,
@@ -226,14 +230,15 @@ describe("Signal acceptance parity on actual settled returns", () => {
         r,
       })),
     );
-    const key = acceptKey(ind, "A", 1, "normal");
     const sim = new SignalAcceptIndex(tapes);
     const exchange = exchangeAcceptIndex(rows);
-    for (const at of [H + 10.5, 2 * H, 4 * H]) {
+    for (const tp of tapes) for (const at of [H + 10.5, 2 * H, 4 * H]) {
+      const key = acceptKey(ind, "A", 1, "normal", tp.id);
       assert.deepEqual(exchange.stats(key, at, 48), sim.stats(key, at, 48));
     }
-    assert.equal(exchange.stats(key, 4 * H, 48).n, 2);
-    assert.ok(Math.abs(exchange.stats(key, 4 * H, 48).pf - 7) < 1e-12);
+    assert.deepEqual(exchange.stats(acceptKey(ind, "A", 1, "normal", cfg(1)), 4 * H, 48), { n: 2, pf: Infinity });
+    assert.deepEqual(exchange.stats(acceptKey(ind, "A", 1, "normal", cfg(20)), 4 * H, 48), { n: 2, pf: 1 });
+    assert.ok(Math.abs(exchange.stats(sideAcceptKey(1), 4 * H, 48).pf - 7) < 1e-12);
     assert.equal(exchange.stats(sideAcceptKey(1), 4 * H, 48).n, 2);
     assert.equal(exchange.stats(sideAcceptKey(-1), 4 * H, 48).n, 0);
   });
@@ -244,7 +249,7 @@ describe("Signal acceptance parity on actual settled returns", () => {
       { cfg: cfg(1), sym: "A", side: 1, entryT: 0, exitT: 2 * H, r: -0.02 },
     ];
     const exchange = exchangeAcceptIndex(rows);
-    const key = acceptKey(ind, "A", 1, "normal");
+    const key = acceptKey(ind, "A", 1, "normal", cfg(1));
     assert.deepEqual(exchange.stats(key, 1.5 * H, 24), { n: 1, pf: Infinity });
     assert.deepEqual(exchange.stats(key, 3 * H, 24), { n: 1, pf: 1.5 });
     assert.deepEqual(exchange.stats(sideAcceptKey(1), 3 * H, 24), { n: 1, pf: 1.5 });
@@ -261,7 +266,7 @@ describe("Signal acceptance parity on actual settled returns", () => {
         r: -0.01,
       })),
     );
-    const key = acceptKey(ind, "A", 1, "normal");
+    const key = acceptKey(ind, "A", 1, "normal", cfg(1));
     const rule = { minPf: 1.3, minTrades: 3, hours: 24 };
     assert.equal(exchange.stats(key, 2 * H, 24).n, 1);
     let fallback = 0;

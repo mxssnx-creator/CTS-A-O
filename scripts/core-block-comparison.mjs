@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { readSessionDump } from "./lib/session-dump.mjs";
 import {
   COMPARISON_ARMS,
   COMPARISON_HISTORY_SOURCE,
@@ -19,6 +20,14 @@ import {
   verifyComparisonSource,
   writeComparisonJson as write,
 } from "./lib/block-comparison.mjs";
+
+/** The evidence reducer needs every validation row and both owned allocation arrays. */
+export async function blockComparisonEvidenceFromFiles(rawFile, bookFile, meta) {
+  const raw = await readSessionDump(rawFile, { verifyUnloaded: true });
+  const book = await readSessionDump(bookFile, { verifyUnloaded: true });
+  const { blockComparisonEvidence } = await import("./lib/block-comparison-evidence.mjs");
+  return blockComparisonEvidence(raw, book, meta);
+}
 
 const H = 3_600_000;
 const read = (file) => JSON.parse(fs.readFileSync(file));
@@ -363,10 +372,9 @@ export async function runComparison(protocolFile) {
           !fs.existsSync(path.join(armDir, "book/data.json"))
         )
           throw new Error("Native funded allocation/report failed");
-        const { blockComparisonEvidence } = await import("./lib/block-comparison-evidence.mjs");
-        const evidence = blockComparisonEvidence(
-          read(rawPath),
-          read(path.join(armDir, "book/data.json")),
+        const evidence = await blockComparisonEvidenceFromFiles(
+          rawPath,
+          path.join(armDir, "book/data.json"),
           {
             fold: fold.id,
             arm: arm.id,
@@ -376,8 +384,7 @@ export async function runComparison(protocolFile) {
         );
         write(path.join(armDir, "evidence.json"), evidence);
         item.complete = true;
-        item.failedChecks =
-          read(path.join(armDir, "book/data.json")).checks?.filter((x) => !x.ok) ?? [];
+        item.failedChecks = evidence.book.failedChecks;
         item.allNativeChecksPassed = item.failedChecks.length === 0;
         write(path.join(dir, "progress.json"), {
           started: new Date(started).toISOString(),
@@ -416,7 +423,7 @@ export async function runComparison(protocolFile) {
       performance,
       allNativeChecksPassed: results.every((x) => x.arms.every((a) => a.allNativeChecksPassed)),
       accountingLimits:
-        "Native modeled session book and configured 0.20% round-trip cost, not venue-owned fills or measured account fees. Native funding, latency, venue quantity precision and liquidation are not reconstructed. Coverage/activity failures remain explicit even when capture completes.",
+        `Native modeled session book and configured ${(p.actualSettings.cost * 100).toFixed(2)}% round-trip cost, not venue-owned fills or measured account fees. Native funding, latency, venue quantity precision and liquidation are not reconstructed. Coverage/activity failures remain explicit even when capture completes.`,
       elapsedSeconds: (Date.now() - started) / 1000,
     };
     write(path.join(dir, "comparison.json"), report);

@@ -337,12 +337,12 @@ describe("Signals: additional independent Trailing only sets", () => {
       validate: false,
     });
     const active = activeSignalsAt([capped, losing], NOW, sig, 48);
-    assert.deepEqual([...active], [sigActiveKey("follow", IND, SYM, 1, "trailing")]);
+    assert.deepEqual([...active], [sigActiveKey("follow", IND, SYM, 1, "trailing", capped.id)]);
     const guard = new SignalGuard();
     guard.acceptIndex = new SignalAcceptIndex([capped, losing]);
     const accept = { enabled: true, minPf: 1.1, hours: 48, minTrades: 4 };
-    assert.equal(guard.accepts(acceptKey(IND, SYM, 1, "trailing"), NOW, accept), true);
-    assert.equal(guard.accepts(acceptKey(IND, SYM, 1, "trailing-only"), NOW, accept), false);
+    assert.equal(guard.accepts(acceptKey(IND, SYM, 1, "trailing", capped.id), NOW, accept), true);
+    assert.equal(guard.accepts(acceptKey(IND, SYM, 1, "trailing-only", losing.id), NOW, accept), false);
     assert.notEqual(
       guardKey(capped.id, SYM, 1, "trailing"),
       guardKey(losing.id, SYM, 1, "trailing-only"),
@@ -350,6 +350,10 @@ describe("Signals: additional independent Trailing only sets", () => {
     const filter = liveLaneFilter({ source: "signals" }, new Set(), active);
     assert.equal(filter.validLane({ cfg: capped.id, sym: SYM, side: 1, vol: 1 }), true);
     assert.equal(filter.validLane({ cfg: losing.id, sym: SYM, side: 1, vol: 1 }), false);
+    const withoutEngineSelection = liveLaneFilter({ source: "signals" }, null, active);
+    assert.equal(withoutEngineSelection.validLane({ cfg: capped.id, sym: SYM, side: 1, vol: 1 }), true);
+    assert.equal(withoutEngineSelection.validLane({ cfg: losing.id, sym: SYM, side: 1, vol: 1 }), false,
+      "absence of engine selections cannot waive a Signal config's own activation");
   });
 
   it("a winning sibling range never bypasses another config's own return-PF gate", () => {
@@ -358,7 +362,7 @@ describe("Signals: additional independent Trailing only sets", () => {
     const base = defaultWalkForward(DEFAULT_SETTINGS);
     const options = {
       ...base,
-      signalActive: new Set([sigActiveKey("follow", IND, SYM, 1, "trailing-only")]),
+      signalActive: new Set([winning, losing].map((tp) => sigActiveKey("follow", IND, SYM, 1, "trailing-only", tp.id))),
       lastN: 4,
       validLastN: 4,
       signalValidLastN: 4,

@@ -624,7 +624,7 @@ test("a held config keeps its own tape, not every cell of its range", () => {
   assert.deepEqual(build({ pairTags: { [pair]: ["mn"] } }).filter((id) => id.includes("|gn")), []);
 });
 
-test("Base sets floor: a lower floor computes more pairs' sets; the stage gate is unchanged without it", () => {
+test("Base sets floor: lowering Wide never weakens a configured range floor", () => {
   const st = (pf: number, net: number) => ({ n: 40, pf, net, mdd: 1 }) as never;
   // the default floor is PF 1 (operator, 5 Oct: Base computes a pair's sets from PF 1 up)
   assert.equal(DEFAULT_SETTINGS.gates.baseSetsMinPf, 1);
@@ -639,9 +639,9 @@ test("Base sets floor: a lower floor computes more pairs' sets; the stage gate i
   assert.equal(baseSetsGates(g), g, "unset: the stage gates");
   const wide = baseSetsGates({ ...g, baseSetsMinPf: 0.9 });
   assert.equal(wide.minPf, 0.9);
-  assert.equal(wide.rangeMinPf, undefined, "one floor for every range");
-  // PF 0.95 (net negative) computes its sets under a 0.9 floor, not under the stage gate
-  assert.deepEqual(basePassTags({ full: st(0.95, -2) }, wide, ["sh", "lg"]), ["", "sh", "lg"]);
+  assert.deepEqual(wide.rangeMinPf, { long: 1.18 }, "tagged range floors remain active");
+  // PF 0.95 (net negative) computes Wide and Short sets under their 0.9 fallback; Long still needs 1.18.
+  assert.deepEqual(basePassTags({ full: st(0.95, -2) }, wide, ["sh", "lg"]), ["", "sh"]);
   assert.deepEqual(basePassTags({ full: st(0.95, -2) }, g, ["sh", "lg"]), []);
   // at the stage gate a positive net is still required
   assert.deepEqual(basePassTags({ full: st(1.1, -1) }, g, ["sh"]), []);

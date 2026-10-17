@@ -10,6 +10,7 @@ import { rangeOfId, RANGE_LABEL } from "./minimal-coord.ts";
 import { liveGroupOf } from "./live-validation.ts";
 import { INDICATION_BY_ID, isSignalInd, laneLabel, laneOf } from "./indications/registry.ts";
 import type { Stats, StratKind } from "./domain/types.ts";
+import { RT_COST } from "./model-cost.ts";
 
 const H = 3_600_000;
 const M = 60_000;
@@ -675,8 +676,8 @@ export function feeOf(x: { fee?: number | null; feeKnown?: number | boolean | nu
     : x.qty * px * (modelCost / 2);
 }
 
-/** @param modelCost the round-trip cost charged to an unmeasured fill (the desk's settings.cost; 0.2 % by default) */
-export function liveTrades(rows: readonly LedgerRow[], tagLen: number, modelCost = 0.002): Array<StatTrade & { notional: number }> {
+/** @param modelCost the round-trip cost charged to an unmeasured fill (the desk's settings.cost by default) */
+export function liveTrades(rows: readonly LedgerRow[], tagLen: number, modelCost = RT_COST): Array<StatTrade & { notional: number }> {
   const open = new Map<string, { qty: number; cost: number; fees: number; t: number; range: string }>();
   const out: Array<StatTrade & { notional: number }> = [];
   // `q` of the position `p` realized at `px`, with its share of the opening fees and the exit's own fee

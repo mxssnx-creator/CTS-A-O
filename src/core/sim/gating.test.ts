@@ -11,6 +11,7 @@ import {
   type WalkForwardOptions,
 } from "./walkforward.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
+import { sigActiveKey } from "../signals.ts";
 import type { Trade } from "../domain/types.ts";
 import { controlTargets, type ControlContribution } from "../server/live.ts";
 import { controlSettingsOf } from "../server/live.server.ts";
@@ -67,7 +68,7 @@ describe("gating: nothing unvalidated executes", () => {
     // 75 losers then 25 winners: the last 25 pass, the last 50 (PF 25 / 25 = 1) do not
     const sig = tape(SIG, "sig-ema-cross-s@m15", 75);
     // signals on the engine's last N (no signal-specific length)
-    const o = { ...base, signalValidLastN: undefined, signalActive: new Set(["follow|sig-ema-cross-s@m15|AAA-USDT|1|normal"]) };
+    const o = { ...base, signalValidLastN: undefined, signalActive: new Set([sigActiveKey("follow", "sig-ema-cross-s@m15", "AAA-USDT", 1, "normal", SIG)]) };
     const d = execDecision(sig, at, o, { sym: "AAA-USDT", side: 1 });
     assert.deepEqual(d, { ok: false, why: "signalValid" });
     assert.equal(walkForward(u, [sig], o).trades.length, 0);
@@ -80,7 +81,7 @@ describe("gating: nothing unvalidated executes", () => {
     // the default runs no extra signal validation (the acceptance gate judges signals); a set last N still applies
     // the code default since 6 Oct: signals validate on their own last 25 (the best window on the same tapes)
     assert.equal(defaultWalkForward(DEFAULT_SETTINGS).signalValidLastN, 25, "default");
-    const o = { ...base, signalValidLastN: 10, signalActive: new Set(["follow|sig-ema-cross-s@m15|AAA-USDT|1|normal"]) };
+    const o = { ...base, signalValidLastN: 10, signalActive: new Set([sigActiveKey("follow", "sig-ema-cross-s@m15", "AAA-USDT", 1, "normal", SIG)]) };
     const ctx = { sym: "AAA-USDT", side: 1 };
     // the last 12 closes and the entry; the last `lose` of the 12 are losers
     const only = (id: string, ind: string, lose: number) => {
@@ -251,7 +252,7 @@ describe("sample warm-up (gates.warmup): a check that cannot be computed yet is 
     assert.equal(stableOk(tp, at, 24, 6, 1.05, false), false, "warm-up off: fewer than two active blocks fails");
   });
 
-  it("Base computes a pair's sets from PF 1 up, and every range keeps its own trading minimum", async () => {
+  it("Base applies range PF floors while keeping the PF 1 wide-set prefilter", async () => {
     const { DEFAULT_GATES } = await import("../config.ts");
     const { baseSetsGates, passesBase } = await import("../pipeline/pipeline.ts");
     const { minPfOf } = await import("../minimal-coord.ts");
@@ -259,11 +260,16 @@ describe("sample warm-up (gates.warmup): a check that cannot be computed yet is 
     assert.equal(DEFAULT_GATES.warmup, true, "the sample warm-up is on");
     const sets = baseSetsGates(DEFAULT_GATES);
     assert.equal(sets.minPf, 1);
-    assert.equal(sets.rangeMinPf, undefined, "one floor for every range at the sets stage");
-    // a set at PF 1.02 is built and evaluated, and still has to clear its range minimum to trade
+    assert.deepEqual(sets.rangeMinPf, DEFAULT_GATES.rangeMinPf, "range floors remain active at Base");
+    // a wide set at PF 1.02 passes the deliberately wider prefilter
     const st = { n: 40, pf: 1.02, net: 0.5, mdd: 0.1 };
     assert.equal(passesBase(st, sets), true, "built and evaluated");
-    for (const tag of ["mc", "mn", "gn", "lg"])
-      assert.equal(passesBase(st, { ...DEFAULT_GATES, minPf: minPfOf(DEFAULT_GATES, tag) }), false, tag);
+    for (const tag of ["mc", "mn", "sh", "gn", "lg"])
+      assert.equal(passesBase(st, { ...sets, minPf: minPfOf(sets, tag) }), false, tag);
+    const middle = { n: 40, pf: 1.15, net: 0.5, mdd: 0.1 };
+    assert.equal(passesBase(middle, { ...sets, minPf: minPfOf(sets, "mn") }), true, "Minimal 1.10");
+    assert.equal(passesBase(middle, { ...sets, minPf: minPfOf(sets, "sh") }), true, "Short 1.10");
+    assert.equal(passesBase(middle, { ...sets, minPf: minPfOf(sets, "gn") }), false, "General 1.20");
+    assert.equal(passesBase(middle, { ...sets, minPf: minPfOf(sets, "lg") }), false, "Long 1.30");
   });
 });

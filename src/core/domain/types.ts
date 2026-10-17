@@ -521,7 +521,7 @@ export interface LastNResult {
   oos: Stats;
   oosRows: LastNRow[];
   success: boolean;
-  /** gate currently open for the next trade (using bestN on the full tape) */
+  /** gate open for the next trade as of its decision time; N=0 means the ungated baseline was selected */
   gateOpen: boolean;
 }
 
@@ -593,13 +593,13 @@ export interface Gates {
   /**
    * stage minimum PF per target range, in place of `minPf` for that range's configs (every PF gate a config passes:
    * the Main and Real windows, the pre-historic window, the validation last-N, the entry last-N and the symbol gate).
-   * Short, Wide and the signals keep `minPf`. Values 1.05–3.
+   * A tagged range uses its own floor when present; Wide and Signals use `minPf`. Values 1.05–3.
    */
   rangeMinPf?: Partial<Record<RangeMinPfKey, number>>;
   /**
-   * Base: the PF a pair needs on its Base cell to have its sets computed (every cell × strategy type). Unset = the
-   * stage minimum (as before). Lower (e.g. 0.9) computes many more sets — each set is still judged on its own at the
-   * stage / range minimum before it can trade; only the pre-filter on the pair is wider. 0.5–1.5.
+   * Base: fallback PF floor for the untagged / Wide Base cell. Unset = the stage minimum. A tagged cell still uses its
+   * rangeMinPf when configured. Lowering this floor widens only Wide set construction; it never weakens tagged ranges.
+   * 0.5–1.5.
    */
   baseSetsMinPf?: number;
   /**

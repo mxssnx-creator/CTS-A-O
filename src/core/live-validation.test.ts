@@ -101,6 +101,17 @@ describe("group live validation (range / signals, pooled last N)", () => {
     assert.equal(liveGroupGates(tapes, T0, now, 6, 1.05).get("Short")!.ok, false, "judged at 6: losing");
   });
 
+  it("selects tied cutoff closes deterministically, independent of tape/worker order", () => {
+    const loss = tape([-0.01], LONG_A);
+    const win = tape([0.01], LONG_B);
+    const a = liveGroupGates([loss, win], T0, now, 1, 1.05).get("Long")!;
+    const b = liveGroupGates([win, loss], T0, now, 1, 1.05).get("Long")!;
+    assert.deepEqual(a, b);
+    assert.equal(a.n, 1);
+    assert.equal(a.pf, 0, "the stable config-identity tie-break picks the same boundary close each time");
+    assert.equal(a.ok, false);
+  });
+
   it("each group can be held to its own floor (a range's minimum PF)", () => {
     // Long: 8 wins / 2 losses in the last 10 → PF 4
     const tapes = [

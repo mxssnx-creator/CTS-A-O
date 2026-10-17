@@ -14,6 +14,8 @@ import { DEFAULT_SIGNALS, type SignalSettings } from "./signal-config.ts";
 import { DEFAULT_SIZING, type SizingSettings } from "./sizing.ts";
 import type { PromotedLaneProof } from "./live-promote.ts";
 import { BREAK_CONFIG_IDS, breakAnchorTf, isBreakMicroInd } from "./indications/break-config.ts";
+import { RT_COST } from "./model-cost.ts";
+export { RT_COST } from "./model-cost.ts";
 
 /** Hard ceiling for unique positions on the exchange. Strategy/config orders do not consume extra slots. */
 export const MAX_EXCHANGE_POSITIONS = 100;
@@ -24,12 +26,10 @@ export function exchangePositionLimit(value?: number): number {
   return requested <= 0 ? MAX_EXCHANGE_POSITIONS : Math.min(requested, MAX_EXCHANGE_POSITIONS);
 }
 
-/** Round-trip position cost: 0.1% per side, doubled = 0.2% of notional per closed trade. */
-export const RT_COST = 0.002;
 /** Profit factor reported when a sample has wins and no losses. */
 export const PF_NO_LOSS = 4;
 
-/** Base-stage protect (15m bars): 2.6% target, 1.5× stop, 8h max hold. Wide targets clear the 0.2% cost. */
+/** Base-stage protect (15m bars): 2.6% target, 1.5× stop, 8h max hold. Wide targets clear the modeled cost. */
 export const DEFAULT_PROTECT: Protect = { tp: 0.026, sl: 0.039, trail: 0, hold: 32 };
 
 /** Main-stage refinement grid (fractions). SL is expressed relative to TP; trail relative to TP (0 = off). */
@@ -66,15 +66,13 @@ export const DEFAULT_GATES: Gates = {
   // max drawdown ratio: a config's largest drawdown ÷ its net over the window (docs/block-sweep.md, DDR sweep:
   // 12 windows — PF 1.232 → 1.244, drawdown −9 %, 85 % of the orders kept; 0.5 = low drawdown, −39 % orders)
   maxDdr: 1,
-  // stage minimum PF per target range (operator, 3 October): the longer targets need more margin to hold out of
-  // sample — General and Long passed at 1.05 and lost live (forward PF 0.96 / 0.76)
-  rangeMinPf: { micro: 1.05, minimal: 1.08, general: 1.12, long: 1.18 },
+  // stage minimum PF per target range: require progressively more return margin for longer targets.
+  // These are the defaults at Base and at post-Base config evaluation; short inherits the 1.1 stage floor.
+  rangeMinPf: { micro: 1.05, minimal: 1.1, short: 1.1, general: 1.2, long: 1.3 },
   minTrades: 12,
   quorum: 0.6,
-  // Base computes a pair's config sets from PF 1 up (operator, 5 Oct: "it is about the stage Base eval for sets with
-  // PF 1+ — that unfiltered sets come out under PF 1 is normal; keep all processing and validate the better ones by
-  // PF and DDT"). Every set is still judged at its own stage / range minimum before it can trade, so this only
-  // widens what is built and evaluated, never what trades.
+  // Base keeps the wide/default set prefilter at PF 1.0. Configured per-range PF floors still apply at Base to each
+  // tagged cell and again at config evaluation; this widens only the untagged prefilter, never a range gate.
   baseSetsMinPf: 1,
   // a check with too few closes to compute counts as valid until it has enough, then is judged normally
   warmup: true,
@@ -544,8 +542,8 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   cycleMs: 250,
   tickMs: 100,
   cost: RT_COST,
-  // BingX standard tier: 0.05 % taker / 0.02 % maker per side; + 0.05 % slippage per side → 0.20 % round trip
-  fees: { taker: 0.0005, maker: 0.0002, slippage: 0.0005 },
+  // Model per side: 0.05 % taker + 0.025 % slippage → 0.15 % round trip; measured venue fees stay authoritative.
+  fees: { taker: 0.0005, maker: 0.0002, slippage: 0.00025 },
   adjust: DEFAULT_ADJUST,
   gates: DEFAULT_GATES,
   refineTop: 24,
@@ -568,7 +566,7 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   axis: DEFAULT_AXIS,
   // Evidence (docs/research-*.md, 90 days, holdout): wider targets and SL 2–2.5 × TP scored best; min SL / min trail
   // distances were neutral; trailing slightly worse than none, so it stays one variant among others.
-  // TP ranges in multiples of the 0.2 % position cost (13 Oct: every TP × SL × Trail): Minimal 4–8× (step 0.5),
+  // TP ranges retain their fixed 0.2 % construction basis (13 Oct: every TP × SL × Trail): Minimal 4–8× (step 0.5),
   // Short 9–14×, General 15–22×, Long 23–32× (step 1). They replace the wide targets (3 / 5 / 8 %), which General and
   // Long cover.
   grid: {

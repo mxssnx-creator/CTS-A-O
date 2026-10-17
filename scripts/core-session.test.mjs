@@ -4,11 +4,13 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { runInNewContext } from "node:vm";
 import { DEFAULT_GATES, DEFAULT_SETTINGS } from "../src/core/config.ts";
 import { statsOf } from "../src/core/metrics/stats.ts";
 import { rangeCellPass } from "../src/core/pipeline/pipeline.ts";
 import { ALL_RANGE_TAGS, basePass } from "../src/core/server/runtime.server.ts";
+import { readSessionDump, writeSessionDump } from "./lib/session-dump.mjs";
 import {
   SESSION_QUALIFICATION,
   recordSessionMinimum,
@@ -21,7 +23,174 @@ import {
 const H = 3_600_000;
 const M = 60_000;
 const script = new URL("./core-session.mjs", import.meta.url).pathname;
-function replay({ caps = false, weighted = false, invalidReturn = false, qualification, thresholds, variants, presets, exhaustedCap = false, noBase = false, legacyRangeRows = false, baseNoLoss = false, signalCoverage = false, liveValidation } = {}) {
+
+function sidecarReplayRaw() {
+  const cfgs = ["combo|ema-9-21@m1|win", "combo|ema-9-21@m1|loss"];
+  const trades = [
+    { cfg: cfgs[0], sym: "TEST-USDT", side: 1, entryT: H + M, exitT: H + 2 * M, entry: 100, exit: 150, r: 0.5, reason: "tp", vol: 1, mult: 1, kind: "normal" },
+    { cfg: cfgs[1], sym: "TEST-USDT", side: -1, entryT: H + 3 * M, exitT: H + 4 * M, entry: 150, exit: 180, r: -0.2, reason: "sl", vol: 1, mult: 1, kind: "normal" },
+  ];
+  return {
+    at: "2026-10-14T00:00:00.000Z", symbols: ["TEST-USDT"],
+    settings: {
+      preH: 1, runH: 1, tactics: "off", signals: false, toggles: {}, block: {},
+      wf: { longH: 1 }, gates: { minPf: 1.1 }, lanes: [1], cost: 0, focus: 0, disabledKinds: [], ranges: {},
+      live: { maxPositionX: 0.75, maxExposureX: 7 },
+      book: { balance: 100, notional: 5, sizing: { mode: "equityPct", pct: 0.25 }, leverage: 10 },
+    },
+    window: { startT: H, endT: 2 * H }, trades,
+    closes: { "TEST-USDT": Array.from({ length: 60 }, (_, i) => [H + i * M, i < 1 ? 100 : i < 3 ? 150 : 180]) },
+    openEnd: [], engine: { basePassed: 0, baseEvaluated: 0, mainPairs: 0, tapes: 2, real: 0, computeMs: 0 },
+    tapeTrades: trades.map((x) => ({ id: x.cfg, trades: [
+      ...Array.from({ length: 30 }, (_, i) => ["TEST-USDT", x.side, i * M, i * M + M / 2, (i % 3 - 1) / 1000]),
+      [x.sym, x.side, x.entryT, x.exitT, x.r],
+    ] })),
+    validation: [
+      { t: H, real: cfgs, checks: Array.from({ length: 32 }, (_, i) => [cfgs[i % 2], 1, 25 + i, 1.2, 0.2, 0.1]) },
+      { t: H + 30 * M, real: [], checks: [] },
+    ],
+  };
+}
+function sidecarReplayCli(file, out, dump, { chunkAllocations = false } = {}) {
+  const result = spawnSync(process.execPath, ["--experimental-strip-types", "--no-warnings", script,
+    "--replay", file, "--caps", "off", "--out", join(out, "report"),
+    ...(dump ? ["--dump", dump] : []),
+    ...(chunkAllocations ? ["--chunk-allocations"] : []),
+    "--html", join(out, "html"), "--signal-progress", "--quiet", "true"], {
+    encoding: "utf8", timeout: 15_000, env: { ...process.env, CTS_CORE_VARIANTS: "0" },
+  });
+  return {
+    result,
+    report: () => JSON.parse(readFileSync(join(out, "report.json"), "utf8")),
+    data: () => JSON.parse(readFileSync(join(out, "html/data.json"), "utf8")),
+    html: () => readFileSync(join(out, "html/index.html"), "utf8"),
+  };
+}
+function sidecarUnitRowsSha(tapes) {
+  const hash = createHash("sha256");
+  for (const [configIndex, tape] of tapes.entries()) {
+    hash.update(JSON.stringify([configIndex, tape.id]) + "\n");
+    for (const [rowIndex, row] of tape.trades.entries()) hash.update(JSON.stringify([configIndex, rowIndex, row]) + "\n");
+  }
+  return hash.digest("hex");
+}
+
+describe("session CLI sidecar replay preserves complete evidence", () => {
+  it("matches legacy report data and unit-row SHA while retaining all physical validation history", async (t) => {
+    const dir = mkdtempSync(join(tmpdir(), "cts-sidecar-replay-"));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    const raw = sidecarReplayRaw();
+    const legacy = join(dir, "legacy.json"), chunked = join(dir, "chunked.json");
+    writeFileSync(legacy, JSON.stringify(raw));
+    await writeSessionDump(chunked, raw, { maxChunkBytes: 256 });
+    const physical = JSON.parse(readFileSync(chunked, "utf8"));
+    assert.deepEqual(physical.tapeTrades, []);
+    assert.deepEqual(physical.validation, []);
+    assert.equal(physical.validationSidecar.steps, 2);
+    assert.equal(physical.validationSidecar.rows, 32);
+    assert.ok(physical.validationSidecar.chunks.length > 2);
+    const restored = await readSessionDump(chunked);
+    assert.deepEqual(restored, raw);
+    assert.equal(sidecarUnitRowsSha(restored.tapeTrades), sidecarUnitRowsSha(raw.tapeTrades));
+    const plain = sidecarReplayCli(legacy, join(dir, "plain"));
+    const rewritten = join(dir, "rewritten.json");
+    const split = sidecarReplayCli(chunked, join(dir, "split"), rewritten);
+    assert.equal(plain.result.status, 0, plain.result.stderr || plain.result.stdout);
+    assert.equal(split.result.status, 0, split.result.stderr || split.result.stdout);
+    assert.deepEqual(split.report(), plain.report());
+    assert.deepEqual(split.data(), plain.data());
+    const exactData = split.data();
+    assert.equal(exactData.sizedOrders.length, 2, "data.json keeps every exact settled allocation row");
+    assert.equal(exactData.sizedOpenOrders.length, 0);
+    assert.deepEqual(exactData.sizedOrders.map((row) => [row.closeIndex, row.unitR]), [[0, 0.5], [1, -0.2]]);
+    const payload = split.html().match(/\bconst DATA = ([^\n]+);\n/);
+    assert.ok(payload, "the standalone HTML includes its browser summary payload");
+    const browserData = JSON.parse(payload[1]);
+    assert.equal(Object.hasOwn(browserData, "sizedOrders"), false);
+    assert.equal(Object.hasOwn(browserData, "sizedOpenOrders"), false);
+    assert.deepEqual(browserData.allocationEvidence, { file: "data.json", settledRows: 2, openRows: 0 });
+    assert.deepEqual(browserData.hours, exactData.hours, "hourly results are unchanged by allocation projection");
+    assert.deepEqual(browserData.total, exactData.total);
+    assert.equal(summaryOf(split.html()), summaryOf(plain.html()));
+    assert.equal(split.data().checksOk, true);
+    assert.ok(split.data().checks.find((x) => x.name === "stages consistent: every executed order is its config's tape trade")?.ok);
+    assert.deepEqual(await readSessionDump(chunked), raw, "reporting must not drop or rewrite validation evidence");
+    assert.deepEqual(await readSessionDump(rewritten), raw, "CLI re-dump preserves every tape, validation check, and executed slice");
+    const rewrittenHeader = JSON.parse(readFileSync(rewritten, "utf8"));
+    assert.equal(rewrittenHeader.validationSidecar.rows, 32);
+    assert.equal(rewrittenHeader.arraySidecars.trades.items, 2);
+
+    const allocationDir = join(dir, "allocation-chunks");
+    const allocationRun = sidecarReplayCli(chunked, allocationDir, undefined, { chunkAllocations: true });
+    assert.equal(allocationRun.result.status, 0, allocationRun.result.stderr || allocationRun.result.stdout);
+    const allocationFile = join(allocationDir, "html/data.json"), allocationHeader = allocationRun.data();
+    assert.deepEqual(allocationHeader.sizedOrders, []);
+    assert.deepEqual(allocationHeader.sizedOpenOrders, []);
+    assert.equal(allocationHeader.arraySidecars.sizedOrders.items, 2);
+    assert.equal(allocationHeader.arraySidecars.sizedOpenOrders.items, 0);
+    assert.deepEqual(await readSessionDump(allocationFile), exactData, "optional allocation chunking preserves every exact legacy data field and row");
+    const allocationPayload = JSON.parse(allocationRun.html().match(/\bconst DATA = ([^\n]+);\n/)[1]);
+    assert.deepEqual(allocationPayload, browserData, "chunking storage cannot change the browser counts or hourly summary");
+    assert.equal(summaryOf(allocationRun.html()), summaryOf(split.html()));
+
+    const renderedDir = join(dir, "rendered-allocation-chunks");
+    const rendered = spawnSync(process.execPath, ["--experimental-strip-types", "--no-warnings", script,
+      "--render", allocationFile, "--html", renderedDir, "--quiet", "true"], {
+      encoding: "utf8", timeout: 15_000, env: { ...process.env, CTS_CORE_VARIANTS: "0" },
+    });
+    assert.equal(rendered.status, 0, rendered.stderr || rendered.stdout);
+    const renderedHtml = readFileSync(join(renderedDir, "index.html"), "utf8");
+    const renderedPayload = JSON.parse(renderedHtml.match(/\bconst DATA = ([^\n]+);\n/)[1]);
+    assert.deepEqual(renderedPayload, browserData, "--render hydrates allocation sidecars before building the same HTML summary");
+    assert.equal(summaryOf(renderedHtml), summaryOf(split.html()));
+  });
+
+  it("fails replay when a tape chunk is corrupted instead of skipping stage evidence", async (t) => {
+    const dir = mkdtempSync(join(tmpdir(), "cts-sidecar-corrupt-"));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    const file = join(dir, "raw.json");
+    const raw = sidecarReplayRaw();
+    raw.tapeTrades.push({ id: "unused-config-after-all-executed-tapes", trades: [["TEST-USDT", 1, 0, M, 0.001]] });
+    await writeSessionDump(file, raw, { maxChunkBytes: 256 });
+    const physical = JSON.parse(readFileSync(file, "utf8"));
+    const chunk = join(dir, physical.tapeTradesSidecar.chunks.at(-1).path);
+    writeFileSync(chunk, readFileSync(chunk, "utf8") + "\n");
+    const replayed = sidecarReplayCli(file, join(dir, "report"));
+    assert.notEqual(replayed.result.status, 0);
+    assert.match(replayed.result.stderr + replayed.result.stdout, /sidecar|chunk|checksum|sha256|byte size/i);
+  });
+
+  it("still fails the stage check when valid sidecar data disagrees with an executed unit return", async (t) => {
+    const dir = mkdtempSync(join(tmpdir(), "cts-sidecar-mismatch-"));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    const file = join(dir, "raw.json"), raw = sidecarReplayRaw();
+    raw.tapeTrades[0].trades.at(-1)[4] = 0.125;
+    await writeSessionDump(file, raw, { maxChunkBytes: 256 });
+    const replayed = sidecarReplayCli(file, join(dir, "report"));
+    assert.equal(replayed.result.status, 1, replayed.result.stderr || replayed.result.stdout);
+    const check = replayed.data().checks.find((x) => x.name === "stages consistent: every executed order is its config's tape trade");
+    assert.equal(check?.ok, false);
+    assert.equal(check.actual, 1);
+    assert.equal(replayed.data().checksOk, false);
+  });
+});
+
+describe("session CLI background comparison policy", () => {
+  it("defaults off before runtime startup and preserves explicit diagnostic opt-in", () => {
+    for (const requested of [undefined, "0", "1"]) {
+      const env = { ...process.env };
+      if (requested === undefined) delete env.CTS_CORE_COMPARE;
+      else env.CTS_CORE_COMPARE = requested;
+      const result = spawnSync(process.execPath, ["--experimental-strip-types", "--input-type=module", "--eval",
+        `process.argv=[process.execPath,${JSON.stringify(script)},"--help"];process.once("exit",()=>process.stdout.write("\\nSESSION_COMPARE="+process.env.CTS_CORE_COMPARE+"\\n"));await import(${JSON.stringify(new URL("./core-session.mjs", import.meta.url).href)});`],
+      { env, encoding: "utf8", timeout: 10_000 });
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stdout, /Usage: node/);
+      assert.ok(result.stdout.includes(`SESSION_COMPARE=${requested ?? "0"}\n`));
+    }
+  });
+});
+function replay({ caps = false, weighted = false, invalidReturn = false, qualification, thresholds, variants, presets, exhaustedCap = false, noBase = false, legacyRangeRows = false, baseNoLoss = false, signalCoverage = false, liveValidation, selectionPhases = false, marketData } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "cts-session-report-"));
   try {
     const raw = {
@@ -57,6 +226,21 @@ function replay({ caps = false, weighted = false, invalidReturn = false, qualifi
         { cfg: "follow|ema-9-21@m1|ghost", sym: "TEST-USDT", side: 1, entryT: H + 2 * M, exitT: H + 15 * M, entry: 100, exit: 110, r: 0.1, vol: 1, mult: 1, kind: "normal" },
       ];
       raw.closes = { "TEST-USDT": Array.from({ length: 60 }, (_, i) => [H + i * M, 100]) };
+    }
+    if (marketData) {
+      raw.settings.marketDataSource = marketData.source;
+      raw.settings.marketDataDetails = marketData.details;
+    }
+    if (selectionPhases) {
+      raw.engine.real = 9;
+      raw.engine.realEngine = 8;
+      raw.engine.realSignal = 1;
+      raw.engine.realPhase = "paper-current-after-compute";
+      raw.engine.realFirstStep = { t: H, ids: ["first-a", "first-b"], configs: 2, engineConfigs: 2, signalConfigs: 0 };
+      raw.engine.paperSelectionAfterCompute = { t: 2 * H, ids: ["current-a"], configs: 1, engineConfigs: 1,
+        signalConfigs: 0, phase: "paper-current-after-compute", capturedAt: "2026-10-14T00:00:00.000Z", compute: 1, complete: true };
+      raw.engine.configEvalPhase = { phase: "run-start", t: H, evaluated: 3, passed: 2 };
+      raw.tapeAgg = { evalStats: { configs: 3, evaluated: 3, passed: 2, signalTapes: 0, signalActive: 0 }, evalRule: { preH: 336 } };
     }
     if (qualification) raw.qualification = qualification;
     if (liveValidation) raw.engine.liveValidation = liveValidation;
@@ -163,6 +347,47 @@ describe("session reports: return PF primary, simulated provenance", () => {
     assert.doesNotMatch(result.stdout, /computing Base|session: \d+ symbols/);
   });
 
+  it("keeps first simulated-step seats distinct from the later paper selection in every output", () => {
+    const { data, report, md, writeup, html } = replay({ selectionPhases: true });
+    for (const d of [data, report]) {
+      assert.deepEqual(d.engine.realFirstStep.ids, ["first-a", "first-b"]);
+      assert.equal(d.engine.realFirstStep.t, H);
+      assert.equal(d.engine.realFirstStep.engineConfigs, 2);
+      assert.equal(d.engine.paperSelectionAfterCompute.engineConfigs, 1);
+      assert.equal(d.engine.configEvalPhase.t, H);
+      assert.equal(d.engine.configEvalPhase.passed, 2);
+      assert.equal(d.engine.realEngine, 8, "legacy snapshot is retained without reinterpreting its phase");
+    }
+    for (const text of [md, writeup, summaryOf(html)]) {
+      assert.match(text, /First simulated step at 1970-01-01T01:00:00.000Z: 2 engine configs selected/);
+      assert.match(text, /Paper selection after compute as of 1970-01-01T02:00:00.000Z: 1 engine configs/);
+      assert.doesNotMatch(text, /initial[^\n]*8 engine/i);
+    }
+    assert.equal(data.configEvaluationHistoryH, 336, "recorded actual history takes precedence over an incomplete legacy WF snapshot");
+    assert.match(writeup, /separately recorded 336 h selection lookback/);
+    assert.match(writeup, /Config evaluation at run start \| 3 engine configs \| 2 passed/);
+    assert.match(writeup, /First simulated-step selection \| – \| 2 engine configs/);
+  });
+
+  it("reports offline source metadata and never invents a provider for legacy dumps", () => {
+    const details = { provider: "Binance USD-M archives", venueParity: "Distinct source from BingX; not venue-owned execution evidence", sha256: "source-checksum" };
+    const current = replay({ marketData: { source: "offline-cached-feed", details } });
+    assert.deepEqual(current.report.settings.marketDataDetails, details);
+    assert.deepEqual(current.data.settings.marketDataDetails, details);
+    for (const text of [current.md, current.writeup, summaryOf(current.html)]) {
+      assert.match(text, /Offline replay from the supplied cached candle feed/);
+      assert.match(text, /no market-data requests; source: Binance USD-M archives/);
+      assert.match(text, /Distinct source from BingX/);
+      assert.doesNotMatch(text, /Simulated orders on real BingX 1m market data/);
+    }
+    const legacy = replay();
+    for (const text of [legacy.md, legacy.writeup, summaryOf(legacy.html)]) {
+      assert.match(text, /Market-data source not recorded/);
+      assert.match(text, /initial selection not recorded/);
+      assert.doesNotMatch(text, /Simulated orders on real BingX 1m market data/);
+    }
+  });
+
   it("reports an empty Base run as unavailable PF with passing consistency checks", () => {
     const { data, md } = replay({ noBase: true });
     assert.equal(data.total.orders, 0);
@@ -191,9 +416,9 @@ describe("session reports: return PF primary, simulated provenance", () => {
     assert.equal(data.total.pf, 4, "the JSON gate-score convention remains finite");
     assert.equal(data.settings.wf.longH, 1, "reports preserve the actual config-selection history");
     assert.match(md, /\| Micro \| ∞ \(no loss\) \| 1 of 3 \| 1\.10 \| ∞ \(no loss\) \| 1 of 2 \| ∞ \(no loss\) \| 1 \|/);
-    assert.match(md, /median Base gate PF score.*pooled PF ∞ \(no loss\), median gate score 4\.00/);
+    assert.match(md, /Micro min PF.*pooled PF ∞ \(no loss\), median gate score 4\.00/);
     assert.match(md, /candidate pool \(pre-validation\)/);
-    assert.match(md, /post-Base validated \/ seated/);
+    assert.match(md, /post-Base config-pass instances \(hourly; may repeat\)/);
     assert.match(md, /post-gate virtual closes \(pre-funding\)/);
     assert.match(md, /funded settled orders and their PF are reported separately/);
     assert.match(md, /additional per-config entry last-N check is off \(wf\.lastN = 0\)/);
@@ -219,7 +444,7 @@ describe("session reports: return PF primary, simulated provenance", () => {
   it("keeps equal current range counts labeled as independent measurements", () => {
     const { md, writeup, html } = replay({ noBase: true });
     for (const text of [md, writeup, summaryOf(html)]) {
-      assert.match(text, /Wide 0\/1 · Micro 0\/1/);
+      assert.match(text, /Wide min PF – · 0\/1 · Micro min PF – · 0\/1/);
       assert.doesNotMatch(text, /no per-range split/);
     }
   });
@@ -281,12 +506,12 @@ describe("session reports: return PF primary, simulated provenance", () => {
     assert.equal(data.typeHours[0].pf, 2.5);
     assert.equal(data.evidence.actualExecution, false);
     assert.equal(data.evidence.pfBasis, "net-returns");
-    assert.equal(data.evidence.statisticsScope.primary, "funded-settled simulated execution orders");
-    assert.equal(data.evidence.statisticsScope.benchmark, "executed orders from the post-Base validated cohort");
-    assert.match(md, /PF benchmarks below use only funded settled orders executed by post-Base validated configs/);
+    assert.equal(data.evidence.statisticsScope.primary, "all funded settled simulated book orders, including separately qualified Signals");
+    assert.equal(data.evidence.statisticsScope.benchmark, "engine-only funded settled orders from the post-Base validated Base cohort; Signal orders are reported separately");
+    assert.match(md, /Base-to-execution benchmark is engine-only, and Signal PF is separate/);
     assert.match(md, /Diagnostic: every config over the run window/);
     assert.match(md, /This all-candidate table is diagnostic only: it is not the PF benchmark/);
-    assert.match(writeup, /PF benchmark scope: funded settled orders executed by Base-qualified, post-Base validated configs/);
+    assert.match(writeup, /Base-to-execution benchmark below isolates engine orders from Base-qualified pairs whose configs passed post-Base validation/);
     assert.match(md, /Return PF 2\.50.*cash PF \(base \$1\) 2\.50.*sized \$ PF diagnostic 2\.22/);
     assert.match(md, /\| Return PF \| cash PF \(base \$1\) \| sized \$ PF diagnostic \|/);
     assert.match(writeup, /\| Return PF \| cash PF \(base \$1\) \| sized \$ PF diagnostic \|/);

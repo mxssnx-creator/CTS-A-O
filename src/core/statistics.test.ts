@@ -229,7 +229,7 @@ test("live closes: an exchange stop-out (flat marker F, qty 0) ends the position
     row("CTSBV2_Ea2", "O", 2, 200, T + 2),
     row("CTSBV2_Ca3", "X", 2, 210, T + 3),
   ];
-  const xs = liveTrades(rows, "CTSBV2_".length);
+  const xs = liveTrades(rows, "CTSBV2_".length, 0.002); // This fixture pins its historical 0.20% model.
   assert.equal(xs.length, 1);
   // the second position alone: entry 200 (not the ghost's blended 166.7), opened at T + 2, +5 %
   assert.equal(xs[0].entry, 200);
@@ -238,7 +238,7 @@ test("live closes: an exchange stop-out (flat marker F, qty 0) ends the position
   // close 2 × 210 × 0.001 = 0.42 — on a gross +20 over a notional of 400: r = (20 − 0.82) / 400
   assert.ok(Math.abs(xs[0].r - 0.04795) < 1e-12, `r ${xs[0].r}`);
   // without the F marker an own open ("O") still starts a fresh position
-  const ys = liveTrades([rows[0], rows[2], rows[3]], "CTSBV2_".length);
+  const ys = liveTrades([rows[0], rows[2], rows[3]], "CTSBV2_".length, 0.002);
   assert.equal(ys.length, 1);
   assert.equal(ys[0].entry, 200);
 });
@@ -269,7 +269,7 @@ test("live closes: a position the exchange closed (its stop, its take-profit) is
     row("F-USDT", "CTSBV2_Ea8", "O", 1, 100, T + 11),
     row("F-USDT", "flat-5", "F", 0, 0, T + 12, "flat on the exchange"),
   ];
-  const xs = liveTrades(rows, "CTSBV2_".length);
+  const xs = liveTrades(rows, "CTSBV2_".length, 0.002); // This fixture pins its historical 0.20% model.
   assert.deepEqual(
     xs.map((x) => [x.sym, +x.r.toFixed(9), x.reason]),
     // Every unmeasured exit pays the model fee share, including the exchange's protective orders.
@@ -425,7 +425,7 @@ test("an unmeasured fill is charged the model round-trip fee share, never zero",
     { coid: "CTSBV2_Ua1", sym: "SOL-USDT", side: 1, kind: "O", qty: 1, px: 100, status: "ok", at: T, fillPx: 100, fee: null },
     { coid: "CTSBV2_Ca2", sym: "SOL-USDT", side: 1, kind: "X", qty: 1, px: 110, status: "ok", at: T + 1, fillPx: 110, fee: 0.05 },
   ];
-  const xs = liveTrades(rows, "CTSBV2_".length);
+  const xs = liveTrades(rows, "CTSBV2_".length, 0.002); // This fixture pins its historical 0.20% model.
   assert.equal(xs.length, 1);
   // +10 gross, −0.1 model fee on the open, −0.05 measured on the close → 9.85 on a notional of 100
   assert.ok(Math.abs(xs[0].r - 0.0985) < 1e-12, `r ${xs[0].r}`);

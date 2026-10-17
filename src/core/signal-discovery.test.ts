@@ -81,7 +81,7 @@ describe("Signals: independent protection discovery", () => {
       {
         ...wf,
         signalOwnBase: true,
-        signalActive: new Set([sigActiveKey("follow", IND, "A-USDT", 1, "trailing-only")]),
+        signalActive: new Set([sigActiveKey("follow", IND, "A-USDT", 1, "trailing-only", capped.id)]),
       },
       { sym: "A-USDT", side: 1 },
     );
@@ -237,6 +237,12 @@ describe("Signals: independent protection discovery", () => {
         2,
       );
       assert.deepEqual(remote.tapes, local);
+      for (const at of [CUT - 3 * H, CUT - H, CUT]) {
+        const localActive = [...activeSignalsAt(local, at, sig, 6)].sort();
+        const workerActive = [...activeSignalsAt(remote.tapes, at, sig, 6)].sort();
+        assert.deepEqual(workerActive, localActive, "workers retain the same causal exact-config activation");
+        assert.ok(workerActive.every((key) => key.includes("|cfg=")), "only exact protection evidence activates");
+      }
       assert.deepEqual(
         ["normal", "trailing", "trailing-only"].map(
           (kind) => remote.tapes.filter((tp) => tp.kind === kind).length,

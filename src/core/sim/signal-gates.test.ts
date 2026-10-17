@@ -11,7 +11,7 @@ import {
 import { DEFAULT_SETTINGS } from "../config.ts";
 import type { Trade } from "../domain/types.ts";
 import { signalSettings } from "../signal-config.ts";
-import { acceptKey, SignalAcceptIndex } from "../signals.ts";
+import { acceptKey, SignalAcceptIndex, sigActiveKey } from "../signals.ts";
 
 const H = 3_600_000;
 const T0 = Date.UTC(2026, 8, 1);
@@ -94,7 +94,7 @@ describe("signals: the active ranking", () => {
       [b.id],
       "B trades its in-run entry; A opens nothing new",
     );
-    assert.deepEqual(r.signalActiveEnd, [`follow|${b.ind}|${SYM}|1|normal`]);
+    assert.deepEqual(r.signalActiveEnd, [sigActiveKey("follow", b.ind, SYM, 1, "normal", b.id)]);
     assert.equal(r.skips["sig:signalBase"] ?? 0, 0);
     // A's entry outside the step's active set is counted (the signal funnel, per side), never dropped silently
     assert.equal(r.signalFunnel?.inactive, 1);
@@ -106,7 +106,7 @@ describe("signals: acceptance on the source's record", () => {
   // the m15 lane of the source active on the symbol (the ranking is not under test)
   const o = (): WalkForwardOptions => ({
     ...base,
-    signalActive: new Set([`follow|sig-ema-cross-s@m15|${SYM}|1|normal`]),
+    signalActive: new Set([sigActiveKey("follow", "sig-ema-cross-s@m15", SYM, 1, "normal", "follow|sig-ema-cross-s@m15|tp1|sl1|tr0|h32")]),
     signalAccept: accept,
   });
 
@@ -167,13 +167,13 @@ describe("signals: acceptance on the source's record", () => {
       trade(id, 0.03, NOW - 5 * H, -1),
     ]);
     const idx = new SignalAcceptIndex([tp]);
-    const key = acceptKey(tp.ind, SYM, 1, "normal");
+    const key = acceptKey(tp.ind, SYM, 1, "normal", tp.id);
     // exits 30 min after entry: at NOW the −50 h close is outside 48 h; the short is a group of its own
     assert.deepEqual(idx.stats(key, NOW, 48), { n: 2, pf: 2 });
     // at −5 h: the −50 h and −10 h winners (the −5 h loser closes after it)
     assert.deepEqual(idx.stats(key, NOW - 5 * H, 48), { n: 2, pf: Infinity });
     assert.deepEqual(idx.stats(key, NOW - 5 * H, 24), { n: 1, pf: Infinity });
-    assert.deepEqual(idx.stats(acceptKey(tp.ind, SYM, -1, "normal"), NOW, 48), {
+    assert.deepEqual(idx.stats(acceptKey(tp.ind, SYM, -1, "normal", tp.id), NOW, 48), {
       n: 1,
       pf: Infinity,
     });

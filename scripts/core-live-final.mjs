@@ -30,7 +30,7 @@ const names = readdirSync(dir)
 const lines = [
   `# Live test on BingX VST (x02) — every config set, independently`,
   ``,
-  `Each config set ran as its own desk with its own tracking tag, on its own slice of the symbol ranking, at minimum volume (each order at the contract's exchange minimum, at most $10 per position). The desks were checked every 10 minutes. Exchange results are read back by each tag's own client ids (fills, realized profit, fees). Simulation numbers use the engine's 0.20 % round-trip cost.`,
+  `Each config set ran as its own desk with its own tracking tag, on its own slice of the symbol ranking, at minimum volume (each order at the contract's exchange minimum, at most $10 per position). The desks were checked every 10 minutes. Exchange results are read back by each tag's own client ids (fills, realized profit, fees). Simulation cost is shown per desk when recorded; missing historical costs remain unspecified.`,
   ``,
   `What each number covers:`,
   ``,
@@ -75,7 +75,7 @@ for (const name of names) {
   sections.push(
     `## ${name} (${s.tag})`,
     ``,
-    `**Settings.** ${(s.symbols ?? []).length} symbols (${(s.symbols ?? []).join(", ")}); focus ${cfg.focus === undefined ? "default set" : cfg.focus.length ? `${cfg.focus.length} pairs` : "every indication × bot"}; ${ranges.join(", ")}; range gate ${g.rangeGate?.enabled === false ? "off" : "on"}, fit ${g.rangeFit?.enabled === false ? "off" : "on"}, range seats ${g.rangeSeats ? "on" : "off"}; toggles ${Object.entries(cfg.toggles ?? {}).filter(([, v]) => v).map(([x]) => x).join(", ") || "default"}; min PF ${cfg.gates?.minPf ?? "default"}; probe ${s.probe ? `top ${s.probe.perRange} per range` : "off"}; cycle ${cfg.cycleMs ?? 250} ms.`,
+    `**Settings.** model round-trip cost ${typeof s.modelCost === "number" && Number.isFinite(s.modelCost) ? `${(s.modelCost * 100).toFixed(2)} %` : "not recorded"}; ${(s.symbols ?? []).length} symbols (${(s.symbols ?? []).join(", ")}); focus ${cfg.focus === undefined ? "default set" : cfg.focus.length ? `${cfg.focus.length} pairs` : "every indication × bot"}; ${ranges.join(", ")}; range gate ${g.rangeGate?.enabled === false ? "off" : "on"}, fit ${g.rangeFit?.enabled === false ? "off" : "on"}, range seats ${g.rangeSeats ? "on" : "off"}; toggles ${Object.entries(cfg.toggles ?? {}).filter(([, v]) => v).map(([x]) => x).join(", ") || "default"}; min PF ${cfg.gates?.minPf ?? "default"}; probe ${s.probe ? `top ${s.probe.perRange} per range` : "off"}; cycle ${cfg.cycleMs ?? 250} ms.`,
     ``,
     `**Engine.** ${s.engine?.computes ?? 0} computes (last ${Math.round((s.engine?.lastComputeMs ?? 0) / 1000)} s), state ${s.engine?.state}, simulated run PF ${f2(s.engine?.sim?.pf)} over ${s.engine?.sim?.n ?? 0} orders, ${s.engine?.real ?? 0} seats; memory ${s.mem?.rssMb ?? "–"} MB; live step: ${s.live?.reason ?? "–"}.`,
     ``,

@@ -553,7 +553,7 @@ export interface SignalHistTrail {
 
 export interface SignalSettings {
   enabled: boolean;
-  /** active signal units (full source indication × type × symbol × direction); 10–200 step 10 */
+  /** active config units (source indication × protect × type × symbol × direction); 0 = unlimited */
   count: number;
   /** sources switched on (by name); missing = on (sourcesMode "deny") or off (sourcesMode "allow") */
   sources: Record<string, boolean>;
@@ -580,7 +580,7 @@ export interface SignalSettings {
   guard: { enabled: boolean; lastN: number };
   /** loss-cluster guard: pause signal executions while many signals just lost together (see SignalGuard) */
   cluster: SignalClusterSettings;
-  /** Base minimum per signal to be ranked: closed trades on that symbol */
+  /** Minimum own closes per exact config × symbol × direction to be ranked */
   minTrades: number;
   /**
    * How the active signals are ranked: "drawdown" (default) = net ÷ max drawdown (recovery), only signals whose
@@ -635,8 +635,8 @@ export interface SignalSettings {
 
 export const DEFAULT_SIGNALS: SignalSettings = {
   enabled: true,
-  // Signal simulation keeps its own high per-direction cap, independent of the live exchange's 100 position slots.
-  count: 100,
+  // Every independently qualified config context may process; explicit nonzero counts retain ranked selection.
+  count: 0,
   sourcesMode: "deny",
   // research sources: 8 are on (positive net in 7 of 8 replay windows and lower drawdown than the older sources alone:
   // regime breakout, regression channel, session trend, fractal breakout, AO saucer, inside-bar break, NR7 break,
@@ -729,7 +729,7 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   guard: { enabled: true, lastN: 8 },
   cluster: { enabled: true, windowMin: 60, minLosses: 8, lossShare: 0.6 },
   // minTrades counts two things, and each is named where it is used: the activation (signals.ts activeSignals) takes the
-  // raw Base trades of a symbol and side; the acceptance groups (acceptOnWindow) count the signal ENTRIES of their window
+  // own config trades of a symbol and side; the acceptance groups (acceptOnWindow) count the signal ENTRIES of their window
   minTrades: 3,
   // causal validation (8 days, with signal confirmation): lowdd PF 1.49 dd 490 · drawdown 1.49 / 521 · net 1.17 / 2565
   rank: "lowdd",
@@ -753,9 +753,10 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   ownBase: true,
   // volatility floor 0.3 %: the expected move must be worth the 0.2 % round trip (worst drawdown 523 vs 660)
   filter: { trendH: 0, volFloor: 0.003 },
-  // the acceptance is the edge (off: unit PF 0.4–0.7); thresholds barely matter (pooled closes are nearly all wins or
+  // the historical source-pooled acceptance was the edge (off: unit PF 0.4–0.7); thresholds barely mattered (pooled closes are nearly all wins or
   // all losses: PF 1.05 / 1.5 / 2 / 3 gave identical results on 3 Oct / 2 Oct / 23 Sep, PR #65); the operator's
-  // setting: PF 1.3 over 48 h
+  // setting: PF 1.3 over 48 h. Current qualification uses each exact config's own record; historical pooled evidence
+  // does not certify this independent-config correction. Sparse windows retain acceptOnWindow semantics.
   accept: { enabled: true, minPf: 1.3, hours: 48, minTrades: 6 },
   // on (a positive coordination, docs/positive-coordinations.md; x01 runs it): the pooled side record split cleanly
   // (48 h, 5 Oct: long PF 3–44, short PF 0.1–0.3 per 12 h); the operator's signal evaluation: PF 1.3, as the acceptance

@@ -116,7 +116,7 @@ const days = (U.nowT - U.startT) / 86_400_000;
 const md = [
   `# RSI-extreme momentum family — ${tf}m`,
   "",
-  `${U.bars.length} symbols · ${days.toFixed(0)} days · half A → ${new Date(split).toISOString().slice(0, 10)} · cost 0.2% round trip · ${rows.length} variants (${ok.length} with ≥ ${minN} trades per half)`,
+  `${U.bars.length} symbols · ${days.toFixed(0)} days · half A → ${new Date(split).toISOString().slice(0, 10)} · cost ${(RT_COST * 100).toFixed(2)}% round trip · ${rows.length} variants (${ok.length} with ≥ ${minN} trades per half)`,
   "",
   `**Both halves PF ≥ 1.1:** ${surv.length} of ${ok.length}.`,
   "",

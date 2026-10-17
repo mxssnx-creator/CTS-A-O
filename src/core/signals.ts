@@ -1,8 +1,8 @@
 // Signals processing: proven classic signal sources (see SIGNAL_SOURCES in the registry) processed per
 // source × symbol, independently of the engine's bot × indication combos.
 //   combos     every enabled source × range (short / medium) × signal lane, entered on the source's own onsets
-//   active     the best N signals (full source indication × type × symbol × direction); causal records rank every
-//              type and direction independently, while Base-only discovery records have no type evidence
+//   active     the best N configs (full source indication × protect × type × symbol × direction); causal records rank
+//              each config context independently, while Base-only discovery records have no config evidence
 //   configs    each signal: 42 Normal, 35 target-capped Trailing and 9 independent Trailing only sets by default;
 //              every stop × trailing range is expressed on the 15m reference and scaled per lane
 //   guard      every config runs independently per symbol and direction; a config set (source × type × symbol ×
@@ -138,14 +138,14 @@ export function signalEvaluationPairs<
 }
 
 /**
- * Active qualification: full pair × symbol × direction × strategy type. Base/discovery records omit the type;
- * causal ranking and hedge records always include it. Every type and direction is judged on its own record.
+ * Active qualification: full pair × protect × symbol × direction × strategy type. Base/discovery records omit
+ * config evidence; causal ranking and hedge records include the exact cfg suffix. Every context uses its own closes.
  * Every lookup of the active set (simulation, paper, pending entries, the live lane filter) builds its key here.
  */
-export const sigActiveKey = (bot: string, ind: string, sym: string, side: number, kind?: string) =>
-  `${bot}|${ind}|${sym}|${side > 0 ? 1 : -1}${kind ? `|${kind}` : ""}`;
+export const sigActiveKey = (bot: string, ind: string, sym: string, side: number, kind?: string, cfg?: string) =>
+  `${bot}|${ind}|${sym}|${side > 0 ? 1 : -1}${kind ? `|${kind}` : ""}${cfg ? `|cfg=${encodeURIComponent(cfg)}` : ""}`;
 
-/** Exact strategy-type qualification; old Base/discovery sets have no type evidence. */
+/** Exact qualification; production callers always supply cfg and never fall back to broad discovery keys. */
 export function signalActiveHas(
   active: { has(key: string): boolean } & Partial<Iterable<string>>,
   bot: string,
@@ -153,16 +153,17 @@ export function signalActiveHas(
   sym: string,
   side: number,
   kind: string,
+  cfg: string,
 ): boolean {
   // Base/discovery keys establish that a pair was calculated. They contain no
   // strategy-type result and cannot authorize an unmeasured recovered type.
   // A malformed recovered direction must not normalize into a valid short key.
   return (side === 1 || side === -1) && typeof kind === "string" && kind.trim().length > 0 &&
-    active.has(sigActiveKey(bot, ind, sym, side, kind));
+    typeof cfg === "string" && cfg.trim().length > 0 && active.has(sigActiveKey(bot, ind, sym, side, kind, cfg));
 }
 
 /**
- * The active signals (pair × type × symbol × direction, at least `minTrades` of that unit's closes), the
+ * The active signals (pair × protect × type × symbol × direction, at least `minTrades` own closes), the
  * best `count`: drawdown ranking (default) = profitable and positive in ≥ minBlockShare of its 4-hour blocks, by
  * net ÷ max drawdown; net ranking = by net then PF. Causal keys `sigActiveKey` ("bot|ind|sym|side|kind").
  *
@@ -170,11 +171,13 @@ export function signalActiveHas(
  * Stats without `sides` (a record made before the split) are one pooled unit that activates both directions.
  */
 export function activeSignals(
-  runs: ReadonlyArray<{
+  runs: Iterable<{
     bot: string;
     ind: string;
     /** Absent only on Base/discovery records, before strategy tapes exist. */
     kind?: string;
+    /** Exact protection identity, present on causal config qualification records. */
+    cfg?: string;
     bySym:
       | Record<
           string,
@@ -194,10 +197,8 @@ export function activeSignals(
   sig: SignalSettings,
 ): Set<string> {
   type St = SignalSideStat & { sides?: Partial<Record<"1" | "-1", SignalSideStat>> };
-  // automatic validation: the most recent part of the history must be positive too (when measured) — a unit without
-  // a close in it is never activated. (At least one close PER CONFIG — the step ranking's recentN is closes ÷ configs —
-  // was tried on 6 Oct and left no unit active on the synthetic desk: configs hold for up to 48 h, so most units
-  // average under one close per config in 24 h. That is a ranking change, not a fix: not applied.)
+  // The latest validation window must have positive own-config results when measured. No empty sibling protect
+  // can divide this context's count; discovery/status records without recent fields retain their existing meaning.
   const recentOk = (st: St) =>
     sig.validate === false ||
     st.recentN === undefined ||
@@ -226,8 +227,8 @@ export function activeSignals(
     if (!r.ind.includes("sig-")) continue;
     const by = typeof r.bySym === "string" ? (JSON.parse(r.bySym) as Record<string, St>) : r.bySym;
     for (const [sym, st] of Object.entries(by ?? {})) {
-      const L = sigActiveKey(r.bot, r.ind, sym, 1, r.kind);
-      const S = sigActiveKey(r.bot, r.ind, sym, -1, r.kind);
+      const L = sigActiveKey(r.bot, r.ind, sym, 1, r.kind, r.cfg);
+      const S = sigActiveKey(r.bot, r.ind, sym, -1, r.kind, r.cfg);
       if (st.sides) {
         if (st.sides["1"]) judge([L], st.sides["1"]);
         if (st.sides["-1"]) judge([S], st.sides["-1"]);
@@ -259,14 +260,16 @@ export const guardKey = (cfg: string, sym: string, side: number, kind: string) =
 
 /** Closed results per guard key, causal (filled as candidates close); the average of the last N decides. */
 /**
- * Acceptance group: one full signal indication (source, parameter range and lane) on one symbol, direction and type. Judged by its
- * profit factor over the last hours (SignalAccept).
+ * Acceptance group: one exact config (source, parameter range, lane, protection and type) on one symbol/direction.
+ * Production passes cfg; unqualified broad keys are retained only for explicit pooled diagnostics.
  */
-export const acceptKey = (ind: string, sym: string, side: number, kind: string) =>
-  `${ind}|${sym}|${side > 0 ? 1 : -1}|${kind}`;
+export const acceptKey = (ind: string, sym: string, side: number, kind: string, cfg?: string) =>
+  `${ind}|${sym}|${side > 0 ? 1 : -1}|${kind}${cfg ? `|cfg=${encodeURIComponent(cfg)}` : ""}`;
 
 /** The tape columns the acceptance record reads (a ConfigTape has them). */
 export interface AcceptTape {
+  /** Present on production config tapes; absent only on explicitly pooled diagnostic fixtures. */
+  id?: string;
   ind: string;
   kind: string;
   /** Recovered config kept only for an existing position; it supplies no new-entry qualification. */
@@ -283,7 +286,7 @@ export interface AcceptTape {
 
 /**
  * The acceptance record from the signal tapes: every candidate of every signal config closed so far, per acceptance
- * group (full indication × symbol × direction × type), in exit order with running gains / losses. It is the record the group
+ * group (full config × symbol × direction × type), in exit order with running gains / losses. It is the record the group
  * has at any time t (closes at or before t), independent of which signals the run held active and of where the run
  * started — fed only by the run's own active candidates, a group had no closes at the start of every run (nothing was
  * accepted for its first hours) and never the closes of its lanes / ranges that were not active.
@@ -320,9 +323,9 @@ export class SignalAcceptIndex {
     for (const _ of this.fill(tapes));
   }
   /**
-   * Fills the record from the tapes in slices (yields about every 100k closes: a large book holds millions of signal
-   * closes, built in one piece it held the event loop for seconds). Two passes over the tape columns, no per-close
-   * objects.
+   * Fills the record in time-bounded slices. A unique exact config's exit-sorted tape already contains every
+   * symbol/direction group in order, so it writes final prefixes directly. Pooled, duplicate or unordered inputs
+   * retain the generic stable sort and onset de-duplication below.
    */
   *fill(tapes: readonly AcceptTape[]): Generator<number, void> {
     // time-boxed: a yield every ~8 ms of work (a count of closes left 1–2.6 s slices on x02, 7 Oct profile)
@@ -331,12 +334,76 @@ export class SignalAcceptIndex {
       const keys: Array<string | undefined> = [];
       return (i: number) => {
         const slot = tp.symI[i] * 2 + (tp.side[i] > 0 ? 1 : 0);
-        return (keys[slot] ??= acceptKey(tp.ind, tp.syms[tp.symI[i]], tp.side[i], tp.kind));
+        return (keys[slot] ??= acceptKey(tp.ind, tp.syms[tp.symI[i]], tp.side[i], tp.kind, tp.id));
       };
     };
     const sigTapes = tapes.filter((tp) => isSignalInd(tp.ind) && !tp.heldOnly);
-    const count = new Map<string, number>();
+    const identityOf = (tp: AcceptTape) => JSON.stringify([tp.ind, tp.kind, tp.id]);
+    const identities = new Map<string, number>();
+    let identified = 0;
     for (const tp of sigTapes) {
+      if (tp.id?.trim()) {
+        const key = identityOf(tp);
+        identities.set(key, (identities.get(key) ?? 0) + 1);
+      }
+      if ((++identified & 1023) === 0 && clock()) yield 0;
+    }
+    const fallback: AcceptTape[] = [];
+    for (const tp of sigTapes) {
+      if (!tp.id?.trim() || identities.get(identityOf(tp)) !== 1 || new Set(tp.syms).size !== tp.syms.length) {
+        fallback.push(tp);
+        continue;
+      }
+      const counts = new Int32Array(tp.syms.length * 2);
+      const slots: number[] = [];
+      let ordered = true;
+      let previous = -Infinity;
+      for (let i = 0; i < tp.n; i++) {
+        const sym = tp.symI[i];
+        const t = tp.exitT[i];
+        if (!Number.isInteger(sym) || sym < 0 || sym >= tp.syms.length || !Number.isFinite(t) || t < previous) {
+          ordered = false;
+          break;
+        }
+        previous = t;
+        const slot = sym * 2 + (tp.side[i] > 0 ? 1 : 0);
+        if (counts[slot]++ === 0) slots.push(slot);
+        if ((i & 8191) === 8191 && clock()) yield 0;
+      }
+      if (!ordered) {
+        fallback.push(tp);
+        continue;
+      }
+      const cols: Array<{
+        t: Float64Array; gp: Float64Array; gl: Float64Array; cn: Int32Array;
+        next: number; seen: Set<number> | null;
+      } | undefined> = new Array(counts.length);
+      for (const slot of slots) {
+        const n = counts[slot];
+        cols[slot] = { t: new Float64Array(n), gp: new Float64Array(n + 1), gl: new Float64Array(n + 1),
+          cn: new Int32Array(n + 1), next: 0, seen: tp.entryT ? new Set() : null };
+      }
+      for (let i = 0; i < tp.n; i++) {
+        const x = cols[tp.symI[i] * 2 + (tp.side[i] > 0 ? 1 : 0)]!;
+        const j = x.next++;
+        const r = +tp.r[i];
+        x.t[j] = tp.exitT[i];
+        x.gp[j + 1] = x.gp[j] + (r > 0 ? r : 0);
+        x.gl[j + 1] = x.gl[j] + (r > 0 ? 0 : -r);
+        const entry = tp.entryT ? +tp.entryT[i] : 0;
+        const first = !x.seen?.has(entry);
+        x.seen?.add(entry);
+        x.cn[j + 1] = x.cn[j] + (first ? 1 : 0);
+        if ((i & 8191) === 8191 && clock()) yield 0;
+      }
+      for (const slot of slots) {
+        const { t, gp, gl, cn } = cols[slot]!;
+        this.groups.set(acceptKey(tp.ind, tp.syms[slot >> 1], slot % 2 ? 1 : -1, tp.kind, tp.id), { t, gp, gl, cn });
+      }
+      if (clock()) yield 0;
+    }
+    const count = new Map<string, number>();
+    for (const tp of fallback) {
       const key = keysOf(tp);
       for (let i = 0; i < tp.n; i++) {
         const k = key(i);
@@ -358,7 +425,7 @@ export class SignalAcceptIndex {
         ii: new Int32Array(n),
         n: 0,
       });
-    for (const tp of sigTapes) {
+    for (const tp of fallback) {
       const key = keysOf(tp);
       let ix = inds.get(tp.ind);
       if (ix === undefined) inds.set(tp.ind, (ix = inds.size));
@@ -789,21 +856,21 @@ export class SignalGuard {
 }
 
 /**
- * The symbols (indexes into `syms`) a signal tape is seated on: those its pair is active on in either direction. The
+ * The symbols (indexes into `syms`) a signal tape is seated on: those its exact config is active on in either direction. The
  * walk-forward gates a signal per pair × type × symbol × direction (`sigActiveKey`: `bot|ind|sym|side|kind`), so a
  * report that keyed the active set by the pair alone counted every symbol's closes of an active pair as seated (840
  * "seated" signal configs at PF 72 next to a book without one signal order) — and a lookup by `bot|ind|sym` alone
  * finds none of the engine's per-side keys.
  */
 export function signalSeatSymbols(
-  tp: { bot: string; ind: string; kind?: string; syms: readonly string[] },
+  tp: { id: string; bot: string; ind: string; kind?: string; syms: readonly string[] },
   active: ReadonlySet<string>,
 ): Set<number> {
   const out = new Set<number>();
   tp.syms.forEach((s, i) => {
     if (
-      signalActiveHas(active, tp.bot, tp.ind, s, 1, tp.kind ?? "normal") ||
-      signalActiveHas(active, tp.bot, tp.ind, s, -1, tp.kind ?? "normal")
+      signalActiveHas(active, tp.bot, tp.ind, s, 1, tp.kind ?? "normal", tp.id) ||
+      signalActiveHas(active, tp.bot, tp.ind, s, -1, tp.kind ?? "normal", tp.id)
     )
       out.add(i);
   });

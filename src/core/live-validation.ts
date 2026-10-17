@@ -190,49 +190,40 @@ export function liveGroupGates(
   const out = new Map<string, LiveGate>();
   if (!(n > 0)) return out;
   // each config contributes at most its own last n closes (the group's last n are among them)
-  const per = new Map<string, { t: number[]; p: number[]; l: number[]; u: number[] }>();
+  const per = new Map<string, Array<{ t: number; p: number; l: number; u: number; id: string; i: number }>>();
   for (const tp of tapes) {
     const a = lowerBound(tp.exitT, since);
     const b = lowerBound(tp.exitT, now + 1);
     if (b <= a) continue;
     const g = liveGroupOf(tp.id);
     let acc = per.get(g);
-    if (!acc) per.set(g, (acc = { t: [], p: [], l: [], u: [] }));
+    if (!acc) per.set(g, (acc = []));
     for (let i = Math.max(a, b - n); i < b; i++) {
-      acc.t.push(tp.exitT[i]);
-      acc.p.push(tp.gp[i + 1] - tp.gp[i]);
-      acc.l.push(tp.gl[i + 1] - tp.gl[i]);
-      acc.u.push((tp.unknown?.[i + 1] ?? 0) - (tp.unknown?.[i] ?? 0));
+      acc.push({
+        t: tp.exitT[i],
+        p: tp.gp[i + 1] - tp.gp[i],
+        l: tp.gl[i + 1] - tp.gl[i],
+        u: (tp.unknown?.[i + 1] ?? 0) - (tp.unknown?.[i] ?? 0),
+        id: tp.id,
+        i,
+      });
     }
   }
   for (const [g, acc] of per) {
-    const k = acc.t.length;
+    const k = acc.length;
     if (k < n) {
-      const unknown = acc.u.reduce((a, b) => a + b, 0);
+      const unknown = acc.reduce((sum, x) => sum + x.u, 0);
       out.set(g, { ok: unknown === 0, n: k, pf: null, ...(unknown ? { unknown } : {}) });
       continue;
     }
-    // the n latest: every close after the n-th latest exit time, then closes at that time until n
-    const sorted = Float64Array.from(acc.t).sort();
-    const cut = sorted[k - n];
+    // Tied exit times are ordered by exact config identity and then tape index. Without a stable
+    // tie-breaker, the selected boundary sample depended on iterable/worker completion order.
+    acc.sort((a, b) => a.t - b.t || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0) || a.i - b.i);
+    const latest = acc.slice(k - n);
     let gp = 0;
     let gl = 0;
-    let c = 0;
     let unknown = 0;
-    for (let i = 0; i < k; i++)
-      if (acc.t[i] > cut) {
-        gp += acc.p[i];
-        gl += acc.l[i];
-        unknown += acc.u[i];
-        c++;
-      }
-    for (let i = 0; i < k && c < n; i++)
-      if (acc.t[i] === cut) {
-        gp += acc.p[i];
-        gl += acc.l[i];
-        unknown += acc.u[i];
-        c++;
-      }
+    for (const x of latest) { gp += x.p; gl += x.l; unknown += x.u; }
     const pf = unknown ? null : profitFactor(gp, gl);
     out.set(g, { ok: pf !== null && pf >= (typeof minPf === "function" ? minPf(g) : minPf), n, pf, ...(unknown ? { unknown } : {}) });
   }
