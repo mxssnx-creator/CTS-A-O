@@ -13,6 +13,11 @@ export const STUDY_SYMBOLS = ["AVAX", "LINK", "LTC", "SUI", "NEAR", "DOT", "ATOM
 const plain = (x) => Array.isArray(x) ? x.map(plain) : x && typeof x === "object" ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, plain(x[k])])) : x;
 export const studyJson = (x) => JSON.stringify(plain(x), null, 2) + "\n";
 export const studyHash = (x) => createHash("sha256").update(x).digest("hex");
+export async function verifyStudyFeedHash(file, expected) {
+  const hash = createHash("sha256");
+  for await (const chunk of fs.createReadStream(file)) hash.update(chunk);
+  if (hash.digest("hex") !== expected) throw new Error("Frozen feed hash mismatch");
+}
 const read = (file) => { const b = fs.readFileSync(file); return { data: JSON.parse(b), sha256: studyHash(b), bytes: b.length }; };
 const writeNew = (file, data) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, studyJson(data), { flag: "wx" }); };
 const same = (a, b) => studyJson(a) === studyJson(b);
@@ -86,6 +91,7 @@ export function verifyStudySources(protocol) {
 export function studyCommand(protocol, studyCase, output, phase = "engine") {
   const args = ["--experimental-strip-types", "--no-warnings", "--expose-gc", `--max-old-space-size=${protocol.budget.heapMb}`, path.join(ROOT, "scripts/core-session.mjs")];
   const book = ["--balance", String(protocol.book.balance), "--sizing", protocol.book.mode, "--pct", String(protocol.book.pct), "--leverage", String(protocol.book.leverage)];
+  if (phase === "engine") args.push("--require-full-grid");
   if (phase === "engine") args.push("--feed", studyCase.feed, "--end-at", new Date(protocol.window.endT).toISOString(), "--evaluation-from", new Date(protocol.window.evaluationFromT).toISOString(), "--pre", String(protocol.window.preH), "--run", String(protocol.window.runH), "--symbols", String(studyCase.symbols.length), "--signals", "on", "--settings", JSON.stringify(studyCase.runtime.settings), "--wf", JSON.stringify(studyCase.runtime.commandWf), "--signal-progress", "--tape-trades", "--dump-only", "--dump", path.join(output, "raw.json"), "--max-wait-min", String(protocol.budget.timeoutMinutes), "--quiet", "true", ...book);
   else args.push("--replay", path.join(output, "raw.json"), "--signal-progress", "--out", path.join(output, "session"), "--html", path.join(output, "book"), ...book);
   return args;
@@ -94,7 +100,7 @@ export function studyEnvironment(workers = 2) {
   if (![1, 2].includes(workers)) throw new Error("Frozen worker count must be1 or2");
   return { PATH: process.env.PATH ?? "", LANG: "C.UTF-8", TZ: "UTC", NODE_OPTIONS: `--require ${path.join(ROOT, "scripts/lib/core-test-offline-guard.cjs")}`, MALLOC_ARENA_MAX: "2", MALLOC_MMAP_THRESHOLD_: "1048576", CTS_CORE_WORKERS: String(workers), CTS_CORE_COMPARE: "0", CTS_CORE_VARIANTS: "0", CTS_CORE_STATE: "off", CTS_CORE_AUTOSTART: "0", CTS_CORE_LIVE: "0" };
 }
-export const studyMemoryAbort = (log) => log.match(/^\s*memory:[^\n]*(?:compute aborted|abort[^\n]*fallback)[^\n]*$/im)?.[0]?.trim() ?? null;
+export const studyMemoryAbort = (log) => log.match(/^\s*memory:[^\n]*(?:compute aborted|compute not started|full grid required|abort[^\n]*fallback)[^\n]*$/im)?.[0]?.trim() ?? null;
 export async function studyChild(args, logfile, timeoutMs, { workers = 2, watchMemory = false } = {}) {
   const fd = fs.openSync(logfile, "wx"), started = Date.now();
   try { return await new Promise((resolve, reject) => {
@@ -195,10 +201,10 @@ export async function summarizeStudy(raw, book, protocol, studyCase, log = "") {
   check("actual causal/time/last-N settings", ["causalBase", "preH", "simH", "longH", "validLastN", "signalValidLastN"].every((k) => raw.settings?.wf?.[k] === expected.wf[k]));
   check("actual settings parity", raw.settings?.cost === expected.settings.cost && same(raw.settings?.gates, expected.settings.gates) && same(raw.settings?.lanes, expected.settings.tfs) && same(raw.settings?.toggles, expected.settings.toggles) && same(raw.settings?.disabledKinds, expected.settings.disabledKinds) && raw.settings?.focus === expected.settings.focus.length && raw.settings?.evaluationFromT === protocol.window.evaluationFromT);
   check("actual sizing parity", raw.settings?.book?.balance === protocol.book.balance && raw.settings?.book?.leverage === protocol.book.leverage && raw.settings?.book?.sizing?.mode === protocol.book.mode && raw.settings?.book?.sizing?.pct === expected.settings.sizing?.pct && raw.settings?.live?.sizingMode === expected.settings.sizing?.mode && protocol.book.pct === expected.settings.sizing?.pct);
-  check("full computation without memory fallback", (raw.engine?.mem?.computeLevel ?? raw.engine?.mem?.fallback ?? 0) === 0);
+  check("full computation without memory fallback", (raw.engine?.mem?.computeLevel ?? raw.engine?.mem?.fallback) === 0);
   check("completed paper step", /paper step on compute #\d+:/.test(log) && !/universe not complete|WARNING: the paper step|WARNING: the reported compute/.test(log));
   check("every hourly runtime revalidation recorded", Array.from({ length: 24 }, (_, i) => protocol.window.tradeStartT + i * H).every((t) => raw.validation?.some((x) => x.t === t && Array.isArray(x.checks))));
-  check("full Base processing coverage", raw.engine?.coverage?.expectedCombos === raw.engine?.coverage?.evaluated);
+  check("full Base processing coverage", Number.isSafeInteger(raw.engine?.coverage?.expectedCombos) && raw.engine.coverage.expectedCombos > 0 && raw.engine.coverage.expectedCombos === raw.engine.coverage.evaluated);
   const allocations = new Map();
   for (const a of book.sizedOrders ?? []) if (Number.isSafeInteger(a.closeIndex)) allocations.set(a.closeIndex, allocations.has(a.closeIndex) ? null : a);
   const virtual = empty(), funded = empty(), by = new Map(), config = new Map();
@@ -327,7 +333,9 @@ export async function studyMain(argv) {
     writeNew(path.join(dir, "comparison.json"), result); console.log(studyJson(result)); return;
   }
   const c = p.cases.find((x) => x.id === arg("case")); if (!c) throw new Error("Explicit frozen --case required");
-  const feed = read(c.feed); if (feed.sha256 !== c.feedSha256) throw new Error("Frozen feed hash mismatch"); validateStudyFeed(feed.data, c.symbols, p.window);
+  // prepare validated every candle. Identical bytes preserve that validation without retaining a second
+  // parsed market universe in the parent while the engine holds its own copy.
+  await verifyStudyFeedHash(c.feed, c.feedSha256);
   if (!same(await studyRuntimeSettings(c.symbols, p.window, c.runtime.laneHistoryDays ?? undefined), c.runtime)) throw new Error("Actual preflight settings changed after freeze");
   const dest = path.join(dir, c.id), lock = path.join(ROOT, "runs", "core-22-symbol-study.lock");
   if (fs.existsSync(dest)) throw new Error("Case already has an attempt; preserve it and prepare a new protocol for retries");

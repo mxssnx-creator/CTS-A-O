@@ -1,11 +1,20 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { STUDY_SYMBOLS, studyWindow, validateStudyFeed, studyCommand, studyEnvironment, studyRuntimeSettings, studyHour, summarizeStudy, studyEntryHistoryAudit, finishStudyReturns, studyMemoryAbort, studyChild } from "./core-22-symbol-study.mjs";
+import { STUDY_SYMBOLS, studyWindow, validateStudyFeed, verifyStudyFeedHash, studyHash, studyCommand, studyEnvironment, studyRuntimeSettings, studyHour, summarizeStudy, studyEntryHistoryAudit, finishStudyReturns, studyMemoryAbort, studyChild } from "./core-22-symbol-study.mjs";
 
 const H = 3_600_000;
+test("run verifies the exact prepared feed bytes without retaining a parsed duplicate", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "cts-study-feed-hash-")), file = join(dir, "feed.json"), bytes = Buffer.from([0, 255, 10, 13, 65]);
+  try {
+    writeFileSync(file, bytes); const expected = studyHash(bytes);
+    await verifyStudyFeedHash(file, expected);
+    writeFileSync(file, Buffer.from([0, 255, 10, 13, 66]));
+    await assert.rejects(() => verifyStudyFeedHash(file, expected), /Frozen feed hash mismatch/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
 test("study freezes24h trading with24h evaluated prehistory; older candles only warm indicators", () => {
   const w = studyWindow();
   assert.equal(w.endT - w.tradeStartT, 24 * H);
@@ -68,6 +77,8 @@ test("engine memory abort stops only its own child and retains the exact incompl
   try {
     const line = "  memory: memory pressure:1027 MB available—compute aborted · fallback micro carried";
     assert.equal(studyMemoryAbort(line), line.trim());
+    assert.equal(studyMemoryAbort("  memory: full grid required; fallback micro carried"), "memory: full grid required; fallback micro carried");
+    assert.equal(studyMemoryAbort("memory: memory pressure:1015 MB available — compute not started"), "memory: memory pressure:1015 MB available — compute not started");
     assert.equal(studyMemoryAbort("allocator setting available; regular computation continues"), null);
     const result = await studyChild(["--input-type=module", "-e", `console.error(${JSON.stringify(line)}); setInterval(() => {}, 1000);`], join(dir, "engine.log"), 10_000, { workers: 2, watchMemory: true });
     assert.equal(result.memoryAbort, line.trim()); assert.equal(result.timedOut, false);
@@ -116,6 +127,14 @@ test("summary fails closed on memory fallback, partial universe, missing validat
   assert.equal(s.complete, false); assert.equal(s.fundedModeledSettled.pf, null);
   assert.ok(s.structural.filter((x) => !x.ok).length >= 5);
   assert.equal(s.unknownAllocations, 1);
+});
+
+test("summary requires known memory provenance and positive measured Base coverage", async () => {
+  const f = await fixture(); delete f.raw.engine.mem; delete f.raw.engine.coverage;
+  const s = await summarizeStudy(f.raw, f.book, f.protocol, f.studyCase, "paper step on compute #2:1 Real seats");
+  assert.equal(s.complete, false);
+  for (const name of ["full computation without memory fallback", "full Base processing coverage"])
+    assert.equal(s.structural.find((x) => x.name === name).ok, false);
 });
 
 test("entry audit excludes future/tied history, keeps configured partial floor explicit and deduplicates entry episodes", async () => {

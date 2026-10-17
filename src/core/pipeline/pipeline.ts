@@ -695,7 +695,7 @@ export function basePairRows(
       n: r.full?.n ?? 0,
       pf: (r.full?.n ?? 0) > 0 ? (r.full?.pf ?? null) : null,
       net: r.full?.net ?? 0,
-      passed: !!tags,
+      passed: (tags?.length ?? 0) > 0,
       tags: [...(tags ?? [])],
     });
   }
