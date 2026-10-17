@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { DEFAULT_PROTECT, DEFAULT_SETTINGS } from "../config.ts";
 import type { RangeTag, StratKind, Trade } from "../domain/types.ts";
 import { sigActiveKey } from "../signals.ts";
-import { makeTape, type WalkForwardOptions, type WalkForwardResult } from "../sim/walkforward.ts";
+import { defaultWalkForward, makeTape, type WalkForwardResult } from "../sim/walkforward.ts";
 import { CoreRuntime } from "./runtime.server.ts";
 
 const NOW = Date.UTC(2026, 9, 17, 12);
@@ -21,11 +21,12 @@ function fixture(kind: StratKind = "normal", tag?: RangeTag, ind = ENGINE) {
   }));
   const tape = makeTape(cfg, "follow", ind, { ...DEFAULT_PROTECT, ...(tag ? { tag } : {}) }, kind, [SYM], trades, [], []);
   const rows = trades.map((t) => ({ cfg, sym: SYM, side: 1, exit_t: t.exitT, unit_r: t.r, owned_notional_usd: 20 }));
-  const rt = Object.assign(Object.create(CoreRuntime.prototype) as CoreRuntime, {
-    settings: { ...DEFAULT_SETTINGS, gates: { ...DEFAULT_SETTINGS.gates, minTrades: 3 },
-      live: { ...DEFAULT_SETTINGS.live, liveLastN: 3, engineProofN: 0 } },
-    wf: { basePassed: new Set([pair]), basePassedRanges: { [pair]: [tag ?? ""] },
-      baseWideLadderPairs: new Set<string>() } as WalkForwardOptions,
+  const settings = { ...DEFAULT_SETTINGS, gates: { ...DEFAULT_SETTINGS.gates, minTrades: 3 },
+    live: { ...DEFAULT_SETTINGS.live, liveLastN: 3, engineProofN: 0 } };
+  const rt: CoreRuntime = Object.assign(Object.create(CoreRuntime.prototype), {
+    settings,
+    wf: { ...defaultWalkForward(settings), basePassed: new Set([pair]), basePassedRanges: { [pair]: [tag ?? ""] },
+      baseWideLadderPairs: new Set<string>() },
     tapes: [tape], sim: { trades } as WalkForwardResult, paper: { selected: [cfg] },
     db: { version: () => 1, all: () => rows },
   });

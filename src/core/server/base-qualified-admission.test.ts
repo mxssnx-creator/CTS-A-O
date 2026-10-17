@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import { DEFAULT_SETTINGS, type CoreSettings } from "../config.ts";
 import type { Bars, StratKind, Trade } from "../domain/types.ts";
 import { auditState } from "../audit.ts";
+import { EMPTY_STATS } from "../metrics/stats.ts";
 import { syntheticCandles, barsFromCandles } from "../market/bars.ts";
 import { CandleSeries } from "../market/candle-series.ts";
 import { basePairRows, type ComboRun } from "../pipeline/pipeline.ts";
@@ -13,7 +14,7 @@ const H = 3_600_000;
 const NOW = Math.floor(Date.now() / H) * H;
 const IND = "ema-21-55@m15", BAD = "ema-9-21@m15";
 const pair = (ind = IND) => `follow|${ind}`;
-const good = { n: 30, pf: 2, net: 1, mdd: 0 }, bad = { n: 30, pf: .5, net: -1, mdd: 1 };
+const good = { ...EMPTY_STATS, n: 30, pf: 2, net: 1, mdd: 0 }, bad = { ...EMPTY_STATS, n: 30, pf: .5, net: -1, mdd: 1 };
 const run = (ind: string) => ({ bot: "follow", ind, score: 1, full: bad,
   ranges: { mn: ind === IND ? good : bad, sh: bad } }) as unknown as ComboRun;
 const settings: CoreSettings = { ...DEFAULT_SETTINGS, gates: { ...DEFAULT_SETTINGS.gates, minPf: 1.1, minTrades: 3, maxDdr: 0 },
@@ -108,7 +109,7 @@ describe("diagnostic construction preserves independent Base admission", () => {
 
   it("keeps current range qualification across settings changes and tightens carried ladder permission immediately", () => {
     const o = options(), ranges = o.basePassedRanges;
-    const rt = Object.assign(Object.create(CoreRuntime.prototype) as CoreRuntime, {
+    const rt: CoreRuntime = Object.assign(Object.create(CoreRuntime.prototype), {
       settings, wf: o, status: {}, db: { kvSet() {}, event() {} }, baseConfigRunner: { cancel() {} }, emit() {}, kick() {},
     });
     rt.updateSettings({ cycleMs: settings.cycleMs + 1 });
@@ -123,7 +124,7 @@ describe("diagnostic construction preserves independent Base admission", () => {
 
 describe("preset Base qualification", () => {
   it("returns the diagnostic build cohort separately from an empty qualified cohort without constructing a runtime", async () => {
-    const rt = Object.assign(Object.create(CoreRuntime.prototype) as CoreRuntime, {
+    const rt: CoreRuntime = Object.assign(Object.create(CoreRuntime.prototype), {
       checkBacktest() {}, onWorkers: async () => false,
       sliced: async (g: Generator<unknown, unknown>) => { for (;;) { const r = g.next(); if (r.done) return r.value; } },
     });
@@ -141,7 +142,7 @@ describe("preset Base qualification", () => {
     it(`${kind}: fixed-focus preset dispatches Base using only completed pre-window history`, async () => {
       const sentinel = new Error("captured causal Base before tape construction");
       let called = false;
-      const rt = Object.assign(Object.create(CoreRuntime.prototype) as CoreRuntime, {
+      const rt: CoreRuntime = Object.assign(Object.create(CoreRuntime.prototype), {
         settings: { ...DEFAULT_SETTINGS, symbols: 1, tfs: [15], tfDays: { "15": 3 } },
         candles: new Map([["AAA-USDT", CandleSeries.fromCandles(syntheticCandles("AAA-USDT", 1, 6000, NOW, 7))]]),
         checkBacktest() {}, btCandles: new Map(), market: "synthetic",
