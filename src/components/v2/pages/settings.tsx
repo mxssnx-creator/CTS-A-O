@@ -27,6 +27,7 @@ import { RELATE_CONFIG_IDS, RELATE_MODES, RELATE_PROFILES, RELATE_SUBSETS } from
 import { RANGE_OWN_BASE } from "@/core/minimal-coord";
 import { blockRatioOf, blockStackCap, stepRaise } from "@/core/sim/block";
 import { DEFAULT_SIGNALS, SIGNAL_COUNT_CHOICES, SIGNAL_SOURCES } from "@/core/signal-config";
+import { SIGNAL_COORDINATION_RATIOS } from "@/core/signal-coordination";
 import { Confirm, downloadFile, Empty, ErrorNote, fmt, Panel, Pill, Switch, usePoll } from "../ui";
 
 const TACTIC_IDS = TACTIC_TECHNIQUES.flatMap((technique) => ["s", "m"].map((range) => `tactic-${technique.id}-${range}`));
@@ -820,7 +821,9 @@ export function SignalsSettings(props: {
         </div>
         <div className="v2-grid v2-cols-4">
           <Field label="Domination ratios" hint="each threshold is an independent config; one source contributes at most one vote per bar">
-            <div className="v2-muted">60% · 65% · 70% · 75% · 80%</div>
+            <div className="v2-muted">
+              {SIGNAL_COORDINATION_RATIOS.map((ratio) => `${Math.round(ratio * 100)}%`).join(" · ")} (5-point steps)
+            </div>
           </Field>
           <Field
             label="Volume factor (× normal)"

@@ -22,7 +22,7 @@ import {
   SIGNAL_COORDINATION_RATIOS,
 } from "./signal-coordination.ts";
 
-const config = (ratio: 0.6 | 0.65 | 0.7 | 0.75 | 0.8 = 0.6, inputMask: 1 | 2 | 3 = 3) =>
+const config = (ratio: (typeof SIGNAL_COORDINATION_RATIOS)[number] = 0.6, inputMask: 1 | 2 | 3 = 3) =>
   signalCoordinationId(["macd-cross", "ema-cross", "rsi-reversal"], ratio, 3, inputMask);
 
 test("coordinator identities round-trip the sorted source pool and input range through lanes", () => {
@@ -37,7 +37,11 @@ test("coordinator identities round-trip the sorted source pool and input range t
   assert.equal(isSignalCoordinationInd(lane), true);
   assert.equal(isSignalCoordinationInd("sig-ema-cross-s@m15"), false);
   assert.equal(signalSourceOf(lane), "coordination-r65-i3");
-  assert.deepEqual(SIGNAL_COORDINATION_RATIOS, [0.6, 0.65, 0.7, 0.75, 0.8]);
+  assert.deepEqual(SIGNAL_COORDINATION_RATIOS, [0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 1]);
+  for (const ratio of SIGNAL_COORDINATION_RATIOS) {
+    const encoded = signalCoordinationId(["ema-cross", "macd-cross", "rsi-reversal"], ratio, 3, 3);
+    assert.equal(parseSignalCoordinationId(encoded)?.ratio, ratio, `${ratio} round-trips`);
+  }
 });
 
 test("source variants contribute at most one vote, conflicts abstain, and quiet sources do not dilute domination", () => {
@@ -57,6 +61,18 @@ test("source variants contribute at most one vote, conflicts abstain, and quiet 
   assert.deepEqual([...signalCoordinationStateFromVotes(counts, 0.6, 4)], [0, 0, 0, 0]);
 });
 
+test("every 5-point threshold is inclusive, and 100% requires unanimous active votes", () => {
+  const positive = Uint8Array.from([60, 65, 70, 75, 80, 85, 90, 95, 100]);
+  const negative = Uint8Array.from(positive, (n) => 100 - n);
+  for (let thresholdIndex = 0; thresholdIndex < SIGNAL_COORDINATION_RATIOS.length; thresholdIndex++) {
+    const ratio = SIGNAL_COORDINATION_RATIOS[thresholdIndex];
+    const state = signalCoordinationStateFromVotes({ positive, negative }, ratio, 3);
+    assert.ok(state.slice(thresholdIndex).every((x) => x === 1), `${ratio} accepts its exact boundary`);
+    assert.ok(state.slice(0, thresholdIndex).every((x) => x === 0), `${ratio} rejects lower shares`);
+  }
+  assert.equal(signalCoordinationStateFromVotes({ positive, negative }, 1, 3).at(-1), 1);
+});
+
 test("signal combos add independent ratio × input-range pairs and honor source selections", () => {
   const twoSources = {
     ...DEFAULT_SIGNALS,
@@ -66,12 +82,12 @@ test("signal combos add independent ratio × input-range pairs and honor source 
   };
   const allInputs = signalCombos(twoSources, [15]);
   const coordinated = allInputs.filter((x) => isSignalCoordinationInd(x.ind));
-  assert.equal(allInputs.length, 4 + 15);
-  assert.equal(coordinated.length, 15, "short-only, medium-only and combined each run five ratios");
-  assert.equal(new Set(coordinated.map((x) => x.ind)).size, 15);
+  assert.equal(allInputs.length, 4 + 27);
+  assert.equal(coordinated.length, 27, "short-only, medium-only and combined each run all nine ratios");
+  assert.equal(new Set(coordinated.map((x) => x.ind)).size, 27);
   assert.equal(
     coordinated.filter((x) => parseSignalCoordinationId(x.ind)?.inputMask === 3).length,
-    5,
+    9,
   );
 
   const shortOnly = signalCombos(
@@ -81,7 +97,7 @@ test("signal combos add independent ratio × input-range pairs and honor source 
     },
     [15],
   ).filter((x) => isSignalCoordinationInd(x.ind));
-  assert.equal(shortOnly.length, 5);
+  assert.equal(shortOnly.length, 9);
   assert.ok(shortOnly.every((x) => parseSignalCoordinationId(x.ind)?.inputMask === 1));
 
   const tooFew = signalCombos(
@@ -121,6 +137,26 @@ test("historic protections receive independent Short / Normal / Long config iden
     [{ tp: 0.02, sl: 0.03, trail: 0.01, hold: 24 }],
     "the source history remains untouched",
   );
+});
+
+test("already qualified historic range configs are not cloned into failing sibling ranges", () => {
+  const pair = `follow|${config()}`;
+  const history = {
+    [pair]: [
+      { tp: 0.02, sl: 0.03, trail: 0.01, hold: 24, tag: "sh" as const },
+      { tp: 0.02, sl: 0.03, trail: 0.01, hold: 24, tag: "gn" as const },
+    ],
+  };
+  const protections = ["sh", "gn", "lg"].map((tag) => ({
+    tp: 0.02,
+    sl: 0.03,
+    trail: 0,
+    hold: 24,
+    tag: tag as "sh" | "gn" | "lg",
+  }));
+  const tagged = signalCoordinationHistory(history, new Set([pair]), protections);
+  assert.deepEqual(tagged[pair].map((p) => p.tag), ["sh", "gn"]);
+  assert.equal(new Set(tagged[pair].map((p) => configId("follow", pair.split("|")[1], p))).size, 2);
 });
 
 test("a range toggle cannot discard a held coordinator position's exit family", () => {

@@ -36,6 +36,23 @@ export interface SignalHistValidation {
   minPf: number;
   minTrades: number;
   maxDdr?: number;
+  /** Coordinator historic configs qualify independently against each enabled exit range's stage PF floor. */
+  rangeMinPf?: Partial<Record<"sh" | "gn" | "lg", number>>;
+}
+
+/** Range-tagged coordinator identities that clear their own PF floor; undefined keeps classic untagged history behavior. */
+export function signalHistPassingRanges(
+  pf: number,
+  minPf: number,
+  rangeMinPf?: SignalHistValidation["rangeMinPf"],
+): Array<"sh" | "gn" | "lg" | undefined> {
+  if (rangeMinPf === undefined) return pf >= minPf ? [undefined] : [];
+  const ranges = Object.entries(rangeMinPf).filter(
+    (entry): entry is ["sh" | "gn" | "lg", number] =>
+      (entry[0] === "sh" || entry[0] === "gn" || entry[0] === "lg") &&
+      Number.isFinite(entry[1]),
+  );
+  return ranges.filter(([, threshold]) => pf >= threshold).map(([tag]) => tag);
 }
 
 export interface SignalHistDiagnostics {
@@ -326,7 +343,7 @@ export function* signalHistProtectsGen(
               if (diagnostics) diagnostics.insufficientTrades++;
               continue;
             }
-            if (!(st.net > 0 && st.pf >= validation.minPf)) {
+            if (!(st.net > 0)) {
               if (diagnostics) diagnostics.pfRejected++;
               continue;
             }
@@ -334,9 +351,23 @@ export function* signalHistProtectsGen(
               if (diagnostics) diagnostics.ddrRejected++;
               continue;
             }
+            const passingRanges = signalHistPassingRanges(
+              st.pf,
+              validation.minPf,
+              isSignalCoordinationInd(ind) ? (validation.rangeMinPf ?? {}) : undefined,
+            );
+            if (!passingRanges.length) {
+              if (diagnostics) diagnostics.pfRejected++;
+              continue;
+            }
+            for (const tag of passingRanges) {
+              ps.push(tag ? { ...p, tag } : p);
+              if (diagnostics) diagnostics.qualified++;
+            }
+          } else {
+            ps.push(p);
+            if (diagnostics) diagnostics.qualified++;
           }
-          if (diagnostics) diagnostics.qualified++;
-          ps.push(p);
         }
     }
     if (ps.length) out[pair] = ps;

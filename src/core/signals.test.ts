@@ -75,8 +75,8 @@ describe("signals: sources and combos", () => {
     assert.equal(signalCombos({ ...DEFAULT_SIGNALS, enabled: false }, [1, 5, 15, 30]).length, 0);
     assert.equal(DEFAULT_SIGNALS.enabled, true, "on by default");
     const c = signalCombos(on, [1, 5, 15, 30]);
-    // Classic sources × 2 parameter ranges + 5 thresholds × 3 input mixes, each on default lanes 15 / 30.
-    assert.equal(c.length, (ENABLED * 2 + 15) * DEFAULT_SIGNALS.lanes.length);
+    // Classic sources × 2 parameter ranges + 9 thresholds × 3 input mixes, each on default lanes 15 / 30.
+    assert.equal(c.length, (ENABLED * 2 + 27) * DEFAULT_SIGNALS.lanes.length);
     assert.ok(c.every((x) => x.bot === "follow" && isSignalInd(x.ind)));
     // a source off, a range off, a lane the engine does not run
     const off = signalSettings({
@@ -85,7 +85,7 @@ describe("signals: sources and combos", () => {
       ranges: { short: true, medium: false },
       lanes: [5, 60],
     });
-    assert.equal(signalCombos(off, [1, 5, 15, 30]).length, ENABLED - 1 + 5);
+    assert.equal(signalCombos(off, [1, 5, 15, 30]).length, ENABLED - 1 + 9);
   });
 
   it("coordinator exit ranges only build their selected grid tags", () => {
@@ -587,7 +587,7 @@ describe("signals: engine", { timeout: 400_000 }, () => {
     rt.stop();
     const st = rt.status.signals!;
     assert.ok(st.enabled);
-    assert.equal(st.combos, (ENABLED * 2 + 15) * DEFAULT_SIGNALS.lanes.length);
+    assert.equal(st.combos, (ENABLED * 2 + 27) * DEFAULT_SIGNALS.lanes.length);
     assert.ok(st.active > 0 && st.active <= 110, `active ${st.active}`);
     assert.ok((st.coordinationActive ?? 0) <= DEFAULT_SIGNALS.coordination.count);
     assert.ok((st.active ?? 0) - (st.coordinationActive ?? 0) <= 10, "classic signal cap is independent");

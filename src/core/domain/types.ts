@@ -590,7 +590,7 @@ export interface Gates {
   /**
    * stage minimum PF per target range, in place of `minPf` for that range's configs (every PF gate a config passes:
    * the Main and Real windows, the pre-historic window, the validation last-N, the entry last-N and the symbol gate).
-   * Short, Wide and the signals keep `minPf`. Values 1.05–3.
+   * Wide and untagged signals keep `minPf`; tagged ranges use their own configured floor. Values 1.05–3.
    */
   rangeMinPf?: Partial<Record<RangeMinPfKey, number>>;
   /**

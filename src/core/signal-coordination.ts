@@ -2,7 +2,7 @@ import { SIGNAL_SOURCES } from "./signal-config.ts";
 import type { SeriesCache } from "./indications/cache.ts";
 import type { Protect } from "./domain/types.ts";
 
-export const SIGNAL_COORDINATION_RATIOS = [0.6, 0.65, 0.7, 0.75, 0.8] as const;
+export const SIGNAL_COORDINATION_RATIOS = [0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 1] as const;
 export type SignalCoordinationRatio = (typeof SIGNAL_COORDINATION_RATIOS)[number];
 export type SignalInputMask = 1 | 2 | 3;
 export type SignalCoordinationRanges = { short: boolean; normal: boolean; long: boolean };
@@ -60,7 +60,7 @@ export function signalCoordinationId(
 /** Decode a lane-independent or lane-qualified coordinator indication identity. */
 export function parseSignalCoordinationId(ind: string): SignalCoordinationId | null {
   const base = stripLane(ind);
-  const m = /^sig-coord-v1-r(60|65|70|75|80)-n(\d+)-i([123])-b([0-9a-z]+)$/.exec(base);
+  const m = /^sig-coord-v1-r(60|65|70|75|80|85|90|95|100)-n(\d+)-i([123])-b([0-9a-z]+)$/.exec(base);
   if (!m) return null;
   const ratio = ratioPercent.get(Number(m[1]));
   const mask = fromBase36(m[4]);
