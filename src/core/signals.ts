@@ -323,9 +323,9 @@ export class SignalAcceptIndex {
     for (const _ of this.fill(tapes));
   }
   /**
-   * Fills the record from the tapes in slices (yields about every 100k closes: a large book holds millions of signal
-   * closes, built in one piece it held the event loop for seconds). Two passes over the tape columns, no per-close
-   * objects.
+   * Fills the record in time-bounded slices. A unique exact config's exit-sorted tape already contains every
+   * symbol/direction group in order, so it writes final prefixes directly. Pooled, duplicate or unordered inputs
+   * retain the generic stable sort and onset de-duplication below.
    */
   *fill(tapes: readonly AcceptTape[]): Generator<number, void> {
     // time-boxed: a yield every ~8 ms of work (a count of closes left 1–2.6 s slices on x02, 7 Oct profile)
@@ -338,8 +338,72 @@ export class SignalAcceptIndex {
       };
     };
     const sigTapes = tapes.filter((tp) => isSignalInd(tp.ind) && !tp.heldOnly);
-    const count = new Map<string, number>();
+    const identityOf = (tp: AcceptTape) => JSON.stringify([tp.ind, tp.kind, tp.id]);
+    const identities = new Map<string, number>();
+    let identified = 0;
     for (const tp of sigTapes) {
+      if (tp.id?.trim()) {
+        const key = identityOf(tp);
+        identities.set(key, (identities.get(key) ?? 0) + 1);
+      }
+      if ((++identified & 1023) === 0 && clock()) yield 0;
+    }
+    const fallback: AcceptTape[] = [];
+    for (const tp of sigTapes) {
+      if (!tp.id?.trim() || identities.get(identityOf(tp)) !== 1 || new Set(tp.syms).size !== tp.syms.length) {
+        fallback.push(tp);
+        continue;
+      }
+      const counts = new Int32Array(tp.syms.length * 2);
+      const slots: number[] = [];
+      let ordered = true;
+      let previous = -Infinity;
+      for (let i = 0; i < tp.n; i++) {
+        const sym = tp.symI[i];
+        const t = tp.exitT[i];
+        if (!Number.isInteger(sym) || sym < 0 || sym >= tp.syms.length || !Number.isFinite(t) || t < previous) {
+          ordered = false;
+          break;
+        }
+        previous = t;
+        const slot = sym * 2 + (tp.side[i] > 0 ? 1 : 0);
+        if (counts[slot]++ === 0) slots.push(slot);
+        if ((i & 8191) === 8191 && clock()) yield 0;
+      }
+      if (!ordered) {
+        fallback.push(tp);
+        continue;
+      }
+      const cols: Array<{
+        t: Float64Array; gp: Float64Array; gl: Float64Array; cn: Int32Array;
+        next: number; seen: Set<number> | null;
+      } | undefined> = new Array(counts.length);
+      for (const slot of slots) {
+        const n = counts[slot];
+        cols[slot] = { t: new Float64Array(n), gp: new Float64Array(n + 1), gl: new Float64Array(n + 1),
+          cn: new Int32Array(n + 1), next: 0, seen: tp.entryT ? new Set() : null };
+      }
+      for (let i = 0; i < tp.n; i++) {
+        const x = cols[tp.symI[i] * 2 + (tp.side[i] > 0 ? 1 : 0)]!;
+        const j = x.next++;
+        const r = +tp.r[i];
+        x.t[j] = tp.exitT[i];
+        x.gp[j + 1] = x.gp[j] + (r > 0 ? r : 0);
+        x.gl[j + 1] = x.gl[j] + (r > 0 ? 0 : -r);
+        const entry = tp.entryT ? +tp.entryT[i] : 0;
+        const first = !x.seen?.has(entry);
+        x.seen?.add(entry);
+        x.cn[j + 1] = x.cn[j] + (first ? 1 : 0);
+        if ((i & 8191) === 8191 && clock()) yield 0;
+      }
+      for (const slot of slots) {
+        const { t, gp, gl, cn } = cols[slot]!;
+        this.groups.set(acceptKey(tp.ind, tp.syms[slot >> 1], slot % 2 ? 1 : -1, tp.kind, tp.id), { t, gp, gl, cn });
+      }
+      if (clock()) yield 0;
+    }
+    const count = new Map<string, number>();
+    for (const tp of fallback) {
       const key = keysOf(tp);
       for (let i = 0; i < tp.n; i++) {
         const k = key(i);
@@ -361,7 +425,7 @@ export class SignalAcceptIndex {
         ii: new Int32Array(n),
         n: 0,
       });
-    for (const tp of sigTapes) {
+    for (const tp of fallback) {
       const key = keysOf(tp);
       let ix = inds.get(tp.ind);
       if (ix === undefined) inds.set(tp.ind, (ix = inds.size));
