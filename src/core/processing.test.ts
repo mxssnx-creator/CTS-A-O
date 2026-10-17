@@ -15,6 +15,7 @@ import { allCombos } from "./pipeline/pipeline.ts";
 import { INDICATIONS, indicationState, laneOf, isSignalInd } from "./indications/registry.ts";
 import { isMicroInd } from "./indications/micro.ts";
 import { isRelateInd, relateAnchorTf } from "./indications/relate.ts";
+import { breakAnchorTf, isBreakRelInd } from "./indications/break-config.ts";
 import { SeriesCache } from "./indications/cache.ts";
 import { MarketSource } from "./indications/market.ts";
 import { barsFromCandles, syntheticCandles } from "./market/bars.ts";
@@ -131,7 +132,7 @@ describe("every indication works", () => {
     }
   });
 
-  it("every indication uses its eligible Base lanes (Relate uses one anchor lane)", () => {
+  it("every indication uses its eligible Base lanes (Relate and Break use anchor lanes)", () => {
     const tfs = [1, 5, 15, 30];
     const combos = allCombos([], [], tfs);
     const keys = new Set(combos.map((c) => `${c.bot}|${c.ind}`));
@@ -149,11 +150,14 @@ describe("every indication works", () => {
       if (x.id.startsWith("s2-")) continue; // Stable-02 ports run as signal sources only
       const got = lanesOf.get(x.id);
       if (!got) missing.push(`${x.id}: no lane`);
-      else if (isRelateInd(x.id)) {
-        const anchor = relateAnchorTf(x.id);
+      else if (isRelateInd(x.id) || isBreakRelInd(x.id)) {
+        const isBreak = isBreakRelInd(x.id);
+        const anchor = isBreak ? breakAnchorTf(x.id) : relateAnchorTf(x.id);
+        const family = isBreak ? "Break" : "Relate";
         if (anchor !== null && tfs.includes(anchor) && !got.has(String(anchor))) missing.push(`${x.id}@m${anchor}`);
         for (const lane of got)
-          if (lane.endsWith("c") || Number.parseInt(lane, 10) !== anchor) missing.push(`${x.id}@m${lane}: unexpected Relate lane`);
+          if (lane.endsWith("c") || Number.parseInt(lane, 10) !== anchor)
+            missing.push(`${x.id}@m${lane}: unexpected ${family} lane`);
       }
       else for (const tf of tfs) if (!got.has(String(tf)) && !got.has(`${tf}c`)) missing.push(`${x.id}@m${tf}`);
     }
@@ -206,19 +210,11 @@ describe("processing through the stages, every strategy type, every toggle combi
       const k = `${t.bot}|${t.ind}`;
       (kindsByPair.get(k) ?? kindsByPair.set(k, new Set()).get(k)!).add(t.kind);
     }
-    // every Main pair carries its plain base, its trailing variants, DCA, DCA Active and Axis: no type is lost to a
-    // gate at build time (the range gate prunes only the small ranges — General / Long are the plain base)
-    // (Short / General / Long trade 15m lanes and slower and Minimal needs its own Base cell: a faster-lane pair that
-    // passed at the default protect only carries its DCA / Axis sets; Micro indications only Micro cells)
-    const lacking: string[] = [];
-    for (const [pair, ks] of kindsByPair) {
-      const ind = pair.split("|")[1];
-      if (isMicroInd(laneOf(ind).base)) continue;
-      const fast = (laneOf(ind).tf ?? rt.settings.tfMin) < 15;
-      const need = fast ? ["dca", "dca-active", "axis"] : ["normal", "trailing", "dca", "dca-active", "axis"];
-      for (const k of need) if (!ks.has(k)) lacking.push(`${pair}: ${k}`);
-    }
-    assert.deepEqual(lacking.slice(0, 10), [], `${lacking.length} missing types`);
+    // Each exact pair keeps only the strategy families that validated; a winning DCA / Axis family must not
+    // make us assume its independent Normal / Trailing sibling also passed (or vice versa).
+    const families = new Set([...kindsByPair.values()].flatMap((ks) => [...ks]));
+    for (const kind of ["normal", "trailing", "dca", "dca-active", "axis"])
+      assert.ok(families.has(kind), `no validated ${kind} tapes`);
     const { GATED_RANGES } = await import("./minimal-coord.ts");
     assert.deepEqual([...GATED_RANGES].sort(), ["mc", "mn", "mp", "sh"]);
     const gl = rt.tapes.filter((t) => t.protect.tag === "gn" || t.protect.tag === "lg");
