@@ -64,15 +64,16 @@ describe("fixed-exit sink price paths", () => {
       const b = barsFromCandles(`R${seed}`, 1, rows);
       const sig = Int8Array.from(rows, () => (rnd() < 0.35 ? (rnd() < 0.5 ? 1 : -1) : 0));
       const scope = {};
+      const cells: Protect[] = [
+        P,
+        { ...P, tp: 0.004, sl: 0.006, hold: 1, tag: "mc" },
+        { ...P, tp: 0.03, sl: 0.02, hold: 40, tag: "gn" },
+        { ...P, tp: 0, hold: n * 2 },
+        { ...P, trailOnly: true, hold: 7 },
+      ];
       for (const sg of [sig, ...splitSides(sig)])
         for (const cooldown of [0, 1, 4])
-          for (const p of [
-            P,
-            { ...P, tp: 0.004, sl: 0.006, hold: 1, tag: "mc" },
-            { ...P, tp: 0.03, sl: 0.02, hold: 40, tag: "gn" },
-            { ...P, tp: 0, hold: n * 2 },
-            { ...P, trailOnly: true, hold: 7 },
-          ]) {
+          for (const p of cells) {
             const { expected } = parity(b, sg, p, { cost: seed % 2 ? 0.002 : 0, cooldown }, scope);
             closes += expected.trades.length;
             opens += expected.open ? 1 : 0;

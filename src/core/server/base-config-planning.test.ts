@@ -13,7 +13,7 @@ const protects: Protect[] = Array.from({ length: 70 }, (_, i) => ({ tp: (i + 1) 
 const jobOf = (patch: Partial<BaseConfigJob> = {}): BaseConfigJob => ({ key: "metadata", settingsAt: 1,
   pairs: ["follow|one@m1"], protects, kinds: ["normal", "trailing", "dca", "dca-active", "axis"],
   dcaOpt: { protects: wf.dcaProtects, dca: wf.dca, axis: { ...DEFAULT_SETTINGS.axis } },
-  common: { bars: [{ n: 100_000 }] as BaseConfigJob["common"]["bars"], cost: 0.002, floors: {},
+  common: { bars: [{ n: 100_000 }] as BaseConfigJob["common"]["bars"], cost: 0.002, floors: { minSl: 0, minTrail: 0 },
     options: { gates: { minPf: 1.1, minTrades: 3, maxDdr: 0 }, cost: 0.002, cutT: 100, fromT: 0 } }, ...patch });
 const runnerOf = (patch: Partial<ConstructorParameters<typeof BaseConfigJobRunner>[0]> = {}) => new BaseConfigJobRunner({
   ready: () => true, foreground: () => false, memoryOkay: () => true, available: () => true,
@@ -83,7 +83,7 @@ test("lazy chunks cover every enabled cell exactly once across pair scopes, stra
     const job = jobOf({ pairs, dcaOpt: { ...seed.dcaOpt!, protects: Array.from({ length: 35 }, (_, i) => ({ ...wf.dcaProtects[0], tp: (i + 1) / 100 })),
       axis: { ...axis, modes: [...axis.modes], ranges: [...axis.ranges] } },
       common: { ...seed.common, bars: [{ n: bars }] as BaseConfigJob["common"]["bars"],
-        floors: { pairTags: tags, pairTps: { [pairs[1]]: { sh: [0.003] } } } } });
+        floors: { minSl: 0, minTrail: 0, pairTags: tags, pairTps: { [pairs[1]]: { sh: [0.003] } } } } });
     const messages: BaseConfigChunkMessage[] = [];
     const runner = runnerOf({ run: async (m) => { messages.push(m); return replyOf(m); } });
     try {
