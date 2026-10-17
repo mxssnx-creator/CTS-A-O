@@ -169,11 +169,19 @@ PF or hourly-success goals. Only nine real symbol feeds are cached, so a
 Focused indication/market/Micro/pipeline/range tests pass 97/97; Break-specific
 tests pass 9/9. Typecheck, development build and worker packaging pass. Replay
 checks pass 55/55 on both traded windows and 53/53 on each Trailing-off run.
-The no-seat Oct 11–12 window correctly placed no orders and did not meet the
-harness's activity-coverage expectation. No live execution or deployment was
-attempted. Keep current strategy defaults; do not promote from these samples.
-
-## Continuation check — systemwide PF and volume audit
+The Oct 11–12 no-seat replay placed no orders as expected; its old harness
+incorrectly failed because it equated an empty admitted-tape set with zero
+symbols processed and demanded active strategy configs. PR #155's reporting
+correction fixes this zero-admission path and the primary PF evidence check.
+The repeated 9-symbol 6h+6h no-trade comparison now reports PF unavailable and
+passes 53/53 consistency checks on both arms. Full hourly details are in
+[`docs/simulations/break-postfix-empty-run-20261017.md`](simulations/break-postfix-empty-run-20261017.md).
+Source fix: `cae2ec669b2d69ecbeb664d9853715a2dcfb9efb`. Empty samples are
+unavailable throughout sim, connection, prehistoric and preset APIs; runtime
+logs no longer print 0.00, and no-loss sentinel scores are labeled. The
+67/67 focused suite, typecheck and development build with worker packaging pass.
+No live execution or deployment was attempted. Keep current strategy defaults;
+do not promote from these samples.
 
 ## Continuation check — systemwide PF and volume audit
 

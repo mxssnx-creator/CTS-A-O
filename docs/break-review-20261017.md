@@ -95,8 +95,9 @@ ablation does not establish a profitable setting.
   was about 4.23 seconds and peak RSS was 803 MB. The 12-symbol memory/runtime
   profile remains unmeasured.
 - Updated replay checks: 55/55 on Oct 12–13 and 55/55 on Oct 13–14. The two
-  trailing-off ablations passed 53/53 each. The Oct 11–12 no-seat day fails the
-  harness's strategy-coverage expectations because it has no configs/orders.
+  trailing-off ablations passed 53/53 each. The older Oct 11–12 no-seat replay
+  exposed a false activity-coverage failure; the corrected empty-run path is
+  covered by the 53/53 post-fix comparisons below.
 - Focused indication, market, Micro, pipeline and range tests: 97/97 across 15
   suites. Break-specific tests: 9/9.
 - `npm run typecheck -- --pretty false`, `npm run build:dev` including core
@@ -112,3 +113,47 @@ Keep the code-level correction and replay coverage fix. Keep current strategy
 defaults and the 144-ID grid; do not promote configs based on these short,
 negative unit-PF windows. A genuine 12-symbol feed and longer untouched
 walk-forward windows are needed before making a positive performance claim.
+
+## Post-fix empty-run audit — 17 October
+
+I repeated the matched 9-symbol Micro Break comparison after fixing empty-sample
+PF reporting and no-admission session checks. The evaluation and trade windows,
+fees, sizing and qualification gate are unchanged: six
+evaluation hours (2026-10-14 16:00–22:00 UTC), then six simulated hours
+(22:00–2026-10-15 04:00 UTC), minimum 12 Base closes and return PF ≥ 1.10.
+
+| Arm | IDs | Base pairs evaluated / passed | Orders | Return PF | Hourly closes (22, 23, 00, 01, 02, 03 UTC) | Symbols covered | Audit checks |
+|---|---:|---:|---:|---:|---|---:|---:|
+| Legacy | 4 | 20 / 0 | 0 | Unavailable | 0, 0, 0, 0, 0, 0 | 9 / 9 | 53 / 53 |
+| Updated | 60 | 60 / 0 | 0 | Unavailable | 0, 0, 0, 0, 0, 0 | 9 / 9 | 53 / 53 |
+
+The Base rejection is real: every pair missed the minimum-close gate on this
+short sample. There are no funded or virtual closes to score, so PF, win rate
+and positive-hour rate are unavailable; they are not zero. The unchanged gate
+was not weakened to force orders. This result says the window could not qualify
+Break configs, not that the PF calculation returned a measured PF of zero.
+
+The audit fixes were:
+
+- Empty close samples now have null measured PF in Base, simulation, connection,
+  prehistoric and saved-preset reporting. Runtime status and logs say
+  “unavailable” rather than “0.00”; the internal no-loss score remains
+  available for qualification and is labeled separately.
+- If Base rejects every pair, symbol coverage is measured from the processed
+  candle universe, not from the empty set of admitted tapes. Empty strategy and
+  range coverage is accepted when there are no kept configs.
+- Session checks now require complete unit-return evidence for the primary PF;
+  unknown return units fail the audit instead of being silently omitted.
+- Regression tests cover empty Base, saved-preset, runtime-PF-label and
+  unknown-return paths. The focused Break/pipeline/range/session/reporting/
+  preset bundle passed 67/67, TypeScript passed, and the development build
+  with packaged core worker passed.
+
+This differs from the earlier broad systemwide 6-hour replay, which had 792
+funded closes at return PF 2.374852 and 4/6 positive hours. That replay used a
+different focus, symbols, indications and strategy set; it confirms the replay
+and PF pipeline can produce nonempty results but does not validate this Break
+window. See [`systemwide-pf-volume-audit-20261016.md`](sims/systemwide-pf-volume-audit-20261016.md)
+for its hourly and volume breakdown. The Break result is recorded with its
+complete hourly table in
+[`break-postfix-empty-run-20261017.md`](simulations/break-postfix-empty-run-20261017.md).
