@@ -133,6 +133,12 @@ export interface LiveIntentLite {
    * it, so entries mode skips it (overall mode mirrors every paper exit)
    */
   managed?: boolean;
+  /** Stable-02 relation-volume multiplier captured by the runtime's validated intent. */
+  coordVol?: number;
+  /** This entry belongs to the negative-hour hedge-only Signal set. */
+  hedge?: boolean;
+  /** Hedge-only size multiplier captured with the intent. */
+  hedgeVol?: number;
 }
 
 export interface LivePlan {
