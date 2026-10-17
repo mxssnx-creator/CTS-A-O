@@ -131,7 +131,7 @@ jobs:
           name: exact-signal-study-checks
           path: runs/exact-signal-study-ci/checks/logs/
           if-no-files-found: warn
-          retention-days: 7
+          retention-days: 90
           compression-level: 1
 
   data:
@@ -191,7 +191,7 @@ jobs:
           name: exact-signal-study-feed
           path: runs/eval-22-20261017/
           if-no-files-found: warn
-          retention-days: 7
+          retention-days: 90
           compression-level: 1
 
   research:
@@ -241,7 +241,7 @@ jobs:
             runs/exact-signal-study-ci/${{ matrix.case }}/failure.json
             runs/exact-signal-study-ci/${{ matrix.case }}/logs/**
           if-no-files-found: warn
-          retention-days: 7
+          retention-days: 90
           compression-level: 1
 
   final:
@@ -292,5 +292,5 @@ jobs:
             runs/exact-signal-study-ci/final22/failure.json
             runs/exact-signal-study-ci/final22/logs/**
           if-no-files-found: warn
-          retention-days: 7
+          retention-days: 90
           compression-level: 1
