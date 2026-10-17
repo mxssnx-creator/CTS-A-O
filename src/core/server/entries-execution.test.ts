@@ -18,6 +18,8 @@ const intent: LiveIntent = { cfg: "combo|ema-9-21@m1|entry", sym: "S0-USDT", sid
 type Reply = { order: { orderId?: string; status?: string; executedQty?: number; avgPrice?: number; commission?: number; updateTime?: number } };
 function fixture(db = new CoreDb(":memory:")) {
   const rt = fakeRt(db).rt;
+  // Settings are mutable runtime state; keep factor edits in each fixture from leaking across the test suite.
+  rt.settings = { ...rt.settings, grid: structuredClone(rt.settings.grid), live: { ...rt.settings.live } };
   rt.settings.live = { ...rt.settings.live, mode: "entries", requireReady: false, syncMs: 0 };
   rt.status.lastBarT = 1;
   const state = {
@@ -145,6 +147,51 @@ describe("entries mode: actual MARKET execution quantities", () => {
     await step([micro]);
     const entry = state.sent.find((p) => p.type === "MARKET" && p.side === "BUY")!;
     assert.equal(Number(entry.quantity), 2.5, "$10 normal size × Micro's 2.5 factor at $10 per unit");
+  });
+
+  for (const { name, cfg, factor } of [
+    { name: "Wide", cfg: intent.cfg, factor: 1.4 },
+    { name: "General", cfg: "combo|ema-9-21@m1|tp1|sl1|tr0|h32|gn", factor: 1.6 },
+    { name: "Long", cfg: "combo|ema-9-21@m1|tp1|sl1|tr0|h32|lg", factor: 2.2 },
+  ]) {
+    it(`${name} range factor reaches the native Entries quantity`, async () => {
+      const { rt, state, step } = fixture();
+      Object.assign(rt.settings.live, { notionalUsd: 10, maxNotionalUsd: 0, maxPositionX: 0,
+        maxExposureX: 0, maxRiskPct: 0, maxBackstopLossPct: 0, minFreeMargin: 0 });
+      if (name === "Wide") rt.settings.grid.volumeFactor = factor;
+      else {
+        const key = name === "General" ? "general" : "long";
+        const range = rt.settings.grid[key];
+        assert.ok(range);
+        Object.assign(range, { volumeFactor: factor });
+      }
+      await step([{ ...intent, cfg }]);
+      const entry = state.sent.find((p) => p.type === "MARKET" && p.side === "BUY")!;
+      assert.equal(Number(entry.quantity), factor, `$10 normal size × ${factor} for ${name}`);
+    });
+  }
+
+  it("captured Stable-02 and hedge factors scale Signal size before account caps", async () => {
+    const signal: LiveIntent = {
+      ...intent,
+      cfg: "follow|sig-ema-cross-s@m15|tp1|sl1|tr0|h32",
+      coordVol: 1.4,
+      hedge: true,
+      hedgeVol: 1.6,
+    };
+    const { rt, state, step } = fixture();
+    Object.assign(rt.settings.live, { notionalUsd: 10, maxNotionalUsd: 0, maxPositionX: 0,
+      maxExposureX: 0, maxRiskPct: 0, maxBackstopLossPct: 0, minFreeMargin: 0 });
+    await step([signal]);
+    let entry = state.sent.find((p) => p.type === "MARKET" && p.side === "BUY")!;
+    assert.equal(Number(entry.quantity), 2.24, "10 × 1.4 × 1.6 at $10 per unit; Signal does not take range sizing");
+
+    const capped = fixture();
+    Object.assign(capped.rt.settings.live, { notionalUsd: 10, maxNotionalUsd: 0, maxPositionX: 0.1,
+      maxExposureX: 0, maxRiskPct: 0, maxBackstopLossPct: 0, minFreeMargin: 0 });
+    await capped.step([signal]);
+    entry = capped.state.sent.find((p) => p.type === "MARKET" && p.side === "BUY")!;
+    assert.equal(Number(entry.quantity), 1, "the 10 USD per-position cap still bounds coordinated sizing");
   });
 
   it("applies the range factor before the same per-position equity cap", async () => {
