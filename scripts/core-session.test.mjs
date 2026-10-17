@@ -21,7 +21,7 @@ import {
 const H = 3_600_000;
 const M = 60_000;
 const script = new URL("./core-session.mjs", import.meta.url).pathname;
-function replay({ caps = false, weighted = false, invalidReturn = false, qualification, thresholds, variants, presets, exhaustedCap = false, noBase = false, legacyRangeRows = false, baseNoLoss = false } = {}) {
+function replay({ caps = false, weighted = false, invalidReturn = false, qualification, thresholds, variants, presets, exhaustedCap = false, noBase = false, legacyRangeRows = false, baseNoLoss = false, signalCoverage = false } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "cts-session-report-"));
   try {
     const raw = {
@@ -96,12 +96,21 @@ function replay({ caps = false, weighted = false, invalidReturn = false, qualifi
     if (noBase) {
       raw.trades = [];
       raw.openEnd = [];
-      raw.settings.signals = false;
+      raw.settings.signals = signalCoverage ? { enabled: true, trailingOnly: { enabled: false } } : false;
       raw.settings.toggles = { normal: true, block: false, trailing: true, dca: true, dcaActive: false, axis: false };
+      const engineTape = { configs: 1, activeConfigs: 1, closes: 0 };
+      const signalTape = { configs: 1, activeConfigs: 1, closes: 0 };
       raw.engine.coverage = {
-        expectedCombos: 1, evaluated: 1, kindsAll: ["break"],
-        byKind: { break: { evaluated: 1, passed: 0 } },
-        toggles: raw.settings.toggles, ranges: { mc: true }, sets: [], tapes: {},
+        expectedCombos: signalCoverage ? 2 : 1, evaluated: signalCoverage ? 2 : 1,
+        kindsAll: signalCoverage ? ["break", "signal"] : ["break"],
+        byKind: signalCoverage
+          ? { break: { evaluated: 1, passed: 0 }, signal: { evaluated: 1, passed: 0 } }
+          : { break: { evaluated: 1, passed: 0 } },
+        toggles: raw.settings.toggles, ranges: { mc: true },
+        sets: signalCoverage ? [{ ind: "break-x", tag: "wide", kind: "normal", lanes: 1, grid: 1, built: 1, kept: 1, few: 0, skip: {} }] : [],
+        noSets: [],
+        tapes: signalCoverage ? { "normal|wide": { configs: 2, activeConfigs: 2, closes: 0 } } : {},
+        ...(signalCoverage ? { engineTapes: { "normal|wide": engineTape }, signalTapes: { "normal|wide": signalTape }, signalCombos: 1 } : {}),
       };
       raw.engine.baseEvaluated = 1;
       raw.engine.basePassed = 0;
@@ -142,6 +151,17 @@ function summaryOf(html) {
 }
 
 describe("session reports: return PF primary, simulated provenance", () => {
+  it("prints CLI help without starting a simulated session", () => {
+    const result = spawnSync(process.execPath, ["--experimental-strip-types", "--no-warnings", script, "--help"], {
+      encoding: "utf8",
+      timeout: 5_000,
+      env: { ...process.env, CTS_CORE_VARIANTS: "0" },
+    });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.match(result.stdout, /Usage: node .*core-session\.mjs/);
+    assert.doesNotMatch(result.stdout, /computing Base|session: \d+ symbols/);
+  });
+
   it("reports an empty Base run as unavailable PF with passing consistency checks", () => {
     const { data, md } = replay({ noBase: true });
     assert.equal(data.total.orders, 0);
@@ -151,6 +171,17 @@ describe("session reports: return PF primary, simulated provenance", () => {
     assert.ok(data.checks.find((x) => x.name === "execution: strategy type normal output has config tapes")?.ok);
     assert.match(md, /Return PF –/);
     assert.doesNotMatch(md, /checks: [^\n]*FAILED/);
+  });
+
+  it("checks engine config sets separately from active Signal tapes", () => {
+    const { data } = replay({ noBase: true, signalCoverage: true });
+    const check = data.checks.find((x) => x.name === "coverage: strategy type normal active tapes match kept sets");
+    assert.equal(check?.ok, true);
+    assert.equal(check?.expected, 1);
+    assert.equal(check?.actual, 1);
+    assert.equal(data.coverage.tapes["normal|wide"].activeConfigs, 2, "combined rows still report both populations");
+    assert.equal(data.coverage.engineTapes["normal|wide"].activeConfigs, 1);
+    assert.equal(data.coverage.signalTapes["normal|wide"].activeConfigs, 1);
   });
 
   it("reports measured no-loss PF separately from the finite Base gate score and labels later funnel stages", () => {
@@ -226,23 +257,36 @@ describe("session reports: return PF primary, simulated provenance", () => {
     const { data, report, md, writeup, html } = replay();
     assert.equal(data.total.orders, 2);
     assert.equal(data.total.pf, 2.5);
-    assert.ok(Math.abs(data.total.cashPf - 12.5 / 5.625) < 1e-6);
+    assert.equal(data.total.cashPf, 2.5, "equal $1 notional cash PF matches unit-return PF");
+    assert.ok(Math.abs(data.total.cashPfDiagnostic - 12.5 / 5.625) < 1e-6, "sized-dollar PF keeps the actual allocation result");
     assert.equal(report.total.pf, 2.5);
     assert.equal(report.strategies.total.pf, 2.5);
     assert.equal(data.hours[0].pf, 2.5);
+    assert.equal(data.hours[0].cashPf, 2.5);
+    assert.ok(Math.abs(data.hours[0].cashPfDiagnostic - 12.5 / 5.625) < 1e-6);
+    assert.equal(data.hours[0].cumCashPf, 2.5);
+    assert.ok(Math.abs(data.hours[0].cumCashPfDiagnostic - 12.5 / 5.625) < 1e-6);
     assert.equal(data.typeHours[0].pf, 2.5);
     assert.equal(data.evidence.actualExecution, false);
     assert.equal(data.evidence.pfBasis, "net-returns");
-    assert.match(md, /Return PF 2\.50.*cash PF diagnostic 2\.22/);
-    assert.match(md, /\| Return PF \| cash PF diagnostic \|/);
-    assert.match(writeup, /\| Return PF \| cash PF diagnostic \|/);
-    assert.match(writeup, /2\.50 \| 2\.22/);
+    assert.equal(data.evidence.statisticsScope.primary, "funded-settled simulated execution orders");
+    assert.equal(data.evidence.statisticsScope.benchmark, "executed orders from the post-Base validated cohort");
+    assert.match(md, /PF benchmarks below use only funded settled orders executed by post-Base validated configs/);
+    assert.match(md, /Diagnostic: every config over the run window/);
+    assert.match(md, /This all-candidate table is diagnostic only: it is not the PF benchmark/);
+    assert.match(writeup, /PF benchmark scope: funded settled orders executed by Base-qualified, post-Base validated configs/);
+    assert.match(md, /Return PF 2\.50.*cash PF \(base \$1\) 2\.50.*sized \$ PF diagnostic 2\.22/);
+    assert.match(md, /\| Return PF \| cash PF \(base \$1\) \| sized \$ PF diagnostic \|/);
+    assert.match(writeup, /\| Return PF \| cash PF \(base \$1\) \| sized \$ PF diagnostic \|/);
+    assert.match(writeup, /2\.50 \| 2\.50 \| 2\.22/);
     assert.match(md, /no exchange execution proof/);
     assert.doesNotMatch(md, /PF \$|ate the edge|sizing.*flattered/);
     const summary = summaryOf(html);
     assert.match(summary, /Return PF<\/div>\s*<div class="v[^"]*">2\.50/);
-    assert.match(summary, /cash PF diagnostic 2\.22/);
+    assert.match(summary, /Cash PF \(base \$1\)<\/div>\s*<div class="v[^\"]*">2\.50/);
+    assert.match(summary, /Sized \$ PF diagnostic<\/div>\s*<div class="v[^\"]*">2\.22/);
     assert.match(summary, /no exchange execution proof/);
+    assert.match(html, /cum sized \$ PF diagnostic/);
   });
 
   it("the uncapped comparison uses return PF first on the same closed-order sample", () => {
@@ -251,8 +295,8 @@ describe("session reports: return PF primary, simulated provenance", () => {
     assert.equal(data.total.uncapped.pf, data.total.pf);
     assert.equal(data.total.uncapped.gpR, data.total.gpR);
     assert.equal(data.total.uncapped.glR, data.total.glR);
-    assert.match(md, /Without the caps:[^\n]*Return PF 2\.50.*cash PF diagnostic 2\.22/);
-    assert.match(summaryOf(html), /Without the caps:[^\n]*Return PF 2\.50.*cash PF diagnostic 2\.22/);
+    assert.match(md, /Without the caps:[^\n]*Return PF 2\.50.*cash PF \(base \$1\) 2\.50.*sized \$ PF diagnostic 2\.22/);
+    assert.match(summaryOf(html), /Without the caps:[^\n]*Return PF 2\.50.*cash PF \(base \$1\) 2\.50.*sized \$ PF diagnostic 2\.22/);
   });
 
   it("removes the execution volume multiple from primary PF while retaining sized cash results", () => {
@@ -267,7 +311,8 @@ describe("session reports: return PF primary, simulated provenance", () => {
     assert.equal(data.total.uncapped.pf, 2.5);
     assert.equal(data.evidence.returns.state, "recorded");
     assert.match(data.evidence.returns.note, /ladder\/tape leg semantics remain/);
-    assert.equal(data.total.cashPf, 5, "cash result retains the raised winning order");
+    assert.equal(data.total.cashPf, 2.5, "normalized base-one PF removes execution volume like Return PF");
+    assert.equal(data.total.cashPfDiagnostic, 5, "sized-dollar PF retains the raised winning order");
     assert.match(md, /Return PF 2\.50/);
     assert.match(summaryOf(html), /Return PF<\/div>\s*<div class="v[^"]*">2\.50/);
   });
@@ -278,7 +323,8 @@ describe("session reports: return PF primary, simulated provenance", () => {
     assert.equal(data.total.pfR, null);
     assert.equal(report.total.pf, null);
     assert.equal(data.hours[0].pf, null);
-    assert.equal(data.total.cashPf, 5);
+    assert.equal(data.total.cashPf, null);
+    assert.equal(data.total.cashPfDiagnostic, 5);
     assert.equal(data.total.pfBasis, "unavailable");
     assert.equal(data.evidence.returns.unknownReturns, 1);
     assert.equal(data.evidence.returns.state, "unavailable");
