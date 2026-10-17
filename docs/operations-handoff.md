@@ -1098,3 +1098,43 @@ resolved stale fixtures are listed in the progress report without summing
 overlapping runs. No configs have been removed. Complete both 22-symbol cases
 before producing an exclusion list; any selected list requires another
 prospective replay. No live deployment, reload or venue order was performed.
+
+
+## Hosted full-audit and v4 replay checkpoint — 2026-10-17
+
+Local source checkpoint `acba877` was published in
+[PR #164](https://github.com/mxssnx-creator/CTS-A-O/pull/164) as remote commit
+`f75026f0d675e95fdf0a5d94e1de2aadf2f4ccb3`, matching tree
+`6909bf864945b0ed36aa4243175ef51bdbd29db1`. The cgroup hierarchy-root scanner
+correction preserves unknown-reading rejection and the 4,096MiB admission
+floor. The four newly sealed v4 protocols retain exactly the v3 economic
+settings, feeds, ordered symbols, warmup, windows, sizing and gates; their
+source-manifest SHA-256 is
+`bc7216bd7ab6000b7651a5d83054a16887854097a31847e7701b9a92754693f7`.
+See `docs/simulations/expanded-postbase-v4-index-20261017.json` for all four
+protocol and runtime-settings hashes. No strategy outcome caused this reseal.
+
+The failed hosted launch39076740047 is preserved in commit `b48e7dd` under
+[`postbase-ci-interrupted-39076740047`](simulations/postbase-ci-interrupted-39076740047/README.md).
+It passed install, typecheck, build and 55 offline script tests, decoded the
+fixed public feed and prepared every case, then stopped before scoring on the
+root-cgroup reading. It establishes no market PF or execution count.
+
+The replacement
+[hosted run39077361130](https://github.com/mxssnx-creator/CTS-A-O/actions/runs/39077361130),
+job `117527184101`, was active at this checkpoint; runtime setup, TypeScript
+and the development build were verified. Its workflow requires the complete
+178-file core audit and two slow synthetic checks before launching the four
+serial offline replays. Those gates, the baseline/reclaim8 comparisons on
+20/22 symbols, and the final hourly/exclusion review remain pending; no
+current result is claimed. Preserve failure logs if any gate fails, and use
+the exact pushed source and newly frozen protocols for any retry.
+
+The public-data archive remains saved and hash-verified:
+`cts-ao-22-symbol-public-20261017.tar.gz`, 15,868,857 bytes, SHA-256
+`252bc0c3c43e66a7e2252450376b3c9cf1f475e11bcee15d79ebf0bdc3589938`.
+The tracked encoded fixture reconstructs source-feed SHA-256
+`02ad14fd7d7ba3e89dee99026962a2ec66d8145d6beb36b17ab42a89a7d2004e`.
+Finish the hosted checks and complete both final22 cases before selecting any
+prospective exclusions. No merge, live deployment/reload or exclusion was
+performed; existing PF/sample and own-position protection gates remain.
