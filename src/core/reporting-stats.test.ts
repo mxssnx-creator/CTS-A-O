@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { unitStatsOf } from "./metrics/stats.ts";
-import { modeledReturnReport, unitReturnReport } from "./reporting-stats.ts";
+import { modeledReturnReport, primaryPfLabel, unitReturnReport } from "./reporting-stats.ts";
 
 const trades = (returns: number[]) => returns.map((r, i) => ({ r, entryT: i + 1, exitT: i + 2 }));
 
@@ -19,7 +19,14 @@ test("reported gross sums distinguish a no-loss score from measured PF four and 
   assert.equal(noLoss.pf, 4); assert.equal(noLoss.noLoss, true); assert.equal(noLoss.pfConvention, "no-loss-sentinel");
   const measured = unitReturnReport(trades([0.04, -0.01]));
   assert.equal(measured.pf, 4); assert.equal(measured.noLoss, false); assert.equal(measured.pfConvention, "gross-return-ratio");
-  const empty = unitReturnReport([]); assert.equal(empty.n, 0); assert.equal(empty.pf, 0); assert.equal(empty.noLoss, false); assert.equal(empty.pfBasis, "unit-net-returns");
+  const empty = unitReturnReport([]); assert.equal(empty.n, 0); assert.equal(empty.pf, null); assert.equal(empty.noLoss, null); assert.equal(empty.pfBasis, "unavailable");
+});
+
+test("runtime PF labels keep empty, unknown and no-loss samples distinct", () => {
+  assert.equal(primaryPfLabel(unitReturnReport([])), "unavailable");
+  assert.equal(primaryPfLabel(modeledReturnReport(trades([0.01]))), "unavailable");
+  assert.equal(primaryPfLabel(unitReturnReport(trades([0.01]))), "∞ (no loss; gate score 4.00)");
+  assert.equal(primaryPfLabel(unitReturnReport(trades([0.04, -0.01]))), "4.00");
 });
 
 test("reporting removes modeled execution weighting once and honors explicit unit evidence", () => {

@@ -21,7 +21,7 @@ import {
 const H = 3_600_000;
 const M = 60_000;
 const script = new URL("./core-session.mjs", import.meta.url).pathname;
-function replay({ caps = false, weighted = false, invalidReturn = false, qualification, thresholds, variants, presets, exhaustedCap = false } = {}) {
+function replay({ caps = false, weighted = false, invalidReturn = false, qualification, thresholds, variants, presets, exhaustedCap = false, noBase = false } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "cts-session-report-"));
   try {
     const raw = {
@@ -65,6 +65,20 @@ function replay({ caps = false, weighted = false, invalidReturn = false, qualifi
       raw.engine.baseByRange = [{ tag: "sh", range: "Short", enabled: true, passed: 2, evaluated: 3, pfPassedPooled: 1.2 }];
       raw.tapeAgg = { evalAfterBase: { "Short|normal": thresholds } };
     }
+    if (noBase) {
+      raw.trades = [];
+      raw.openEnd = [];
+      raw.settings.signals = false;
+      raw.settings.toggles = { normal: true, block: false, trailing: true, dca: true, dcaActive: false, axis: false };
+      raw.engine.coverage = {
+        expectedCombos: 1, evaluated: 1, kindsAll: ["break"],
+        byKind: { break: { evaluated: 1, passed: 0 } },
+        toggles: raw.settings.toggles, ranges: { mc: true }, sets: [], tapes: {},
+      };
+      raw.engine.baseEvaluated = 1;
+      raw.engine.basePassed = 0;
+      raw.engine.baseBuilt = 0;
+    }
     writeFileSync(join(dir, "raw.json"), JSON.stringify(raw));
     const result = spawnSync(process.execPath, ["--experimental-strip-types", "--no-warnings", script,
       "--replay", join(dir, "raw.json"), "--caps", caps ? "on" : "off", "--out", join(dir, "report"),
@@ -96,6 +110,17 @@ function summaryOf(html) {
 }
 
 describe("session reports: return PF primary, simulated provenance", () => {
+  it("reports an empty Base run as unavailable PF with passing consistency checks", () => {
+    const { data, md } = replay({ noBase: true });
+    assert.equal(data.total.orders, 0);
+    assert.equal(data.total.pf, null);
+    assert.equal(data.checksOk, true);
+    assert.ok(data.checks.find((x) => x.name === "coverage: strategy type normal active tapes match kept sets")?.ok);
+    assert.ok(data.checks.find((x) => x.name === "execution: strategy type normal output has config tapes")?.ok);
+    assert.match(md, /Return PF –/);
+    assert.doesNotMatch(md, /checks: [^\n]*FAILED/);
+  });
+
   it("zeros floating-point cap residue before cash/unit allocation and records the original ghost amount", () => {
     const { data, report, md, writeup, html } = replay({ caps: true, exhaustedCap: true });
     const ghost = data.sizedOrders.find((x) => x.cfg.endsWith("|ghost"));

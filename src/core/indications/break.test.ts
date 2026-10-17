@@ -64,11 +64,11 @@ function breakoutBars(sym: string, tf: number, n: number, direction: 1 | -1 = 1,
 describe("Break indication family", () => {
   it("registers every breakout source, timeframe subset, profile and eligible Micro alias", () => {
     const specs = breakSpecs();
-    assert.equal(specs.length, 120);
-    assert.equal(BREAK_CONFIG_IDS.length, 120);
-    assert.equal(new Set(BREAK_CONFIG_IDS).size, 120);
+    assert.equal(specs.length, 144);
+    assert.equal(BREAK_CONFIG_IDS.length, 144);
+    assert.equal(new Set(BREAK_CONFIG_IDS).size, 144);
     assert.equal(BREAK_SUBSETS.length, 7);
-    assert.equal(BREAK_CORES.length, 3);
+    assert.equal(BREAK_CORES.length, 5);
     assert.equal(BREAK_PROFILES.length, 2);
     assert.deepEqual(BREAK_DRAWDOWN_WINDOWS.map((x) => x.bars), [24, 48]);
     assert.deepEqual([...new Set(specs.map((x) => x.params.drawdownBars))].sort(), [24, 48]);
@@ -76,7 +76,7 @@ describe("Break indication family", () => {
     for (const spec of specs) {
       assert.equal(INDICATION_BY_ID.get(spec.id)?.kind, "break", spec.id);
       assert.equal(spec.kind, "break", spec.id);
-      assert.equal(breakAnchorTf(spec.id), Number(spec.id.match(/^break-(?:mc-)?rel-(?:don|squeeze|retest)-(1|5|15)(?:x(?:5|15))*-dd(?:24|48)-(?:guarded|balanced)$/)?.[1]));
+      assert.equal(breakAnchorTf(spec.id), Number(spec.id.match(/^break-(?:mc-)?rel-(?:don|squeeze|retest|don8|retest8)-(1|5|15)(?:x(?:5|15))*-dd(?:24|48)-(?:guarded|balanced)$/)?.[1]));
       assert.equal(isBreakMicroInd(spec.id), spec.id.startsWith("break-mc-rel-"));
       assert.equal(isMicroInd(spec.id), spec.id.startsWith("break-mc-rel-"));
     }
@@ -85,8 +85,8 @@ describe("Break indication family", () => {
   it("routes each config only on its anchor lane and honors the Micro floor", () => {
     const focus = BREAK_CONFIG_IDS.map((id) => `follow|${id}`);
     const combos = allCombos(focus, [], [1, 5, 15, 30], 5);
-    assert.equal(combos.length, 120);
-    assert.equal(new Set(combos.map((x) => x.ind)).size, 120);
+    assert.equal(combos.length, 144);
+    assert.equal(new Set(combos.map((x) => x.ind)).size, 144);
     for (const combo of combos) {
       const lane = laneOf(combo.ind);
       assert.equal(lane.combined, false, combo.ind);
@@ -132,13 +132,14 @@ describe("Break indication family", () => {
       const up = new SeriesCache(breakoutBars(`UP-${tfs.join("x")}`, tf, n));
       const dn = new SeriesCache(breakoutBars(`DN-${tfs.join("x")}`, tf, n, -1));
       for (const core of BREAK_CORES) {
-        const id = `break-rel-${core.id}-${tfs.join("x")}-dd24-balanced`;
+        if (core.microOnly && tf < 5) continue;
+        const id = `break-${core.microOnly ? "mc-" : ""}rel-${core.id}-${tfs.join("x")}-dd24-balanced`;
         const spec = specs.find((x) => x.id === id)!;
         const upState = spec.fn(up);
         const dnState = spec.fn(dn);
         assert.ok(upState.some((x) => x === 1), `${id} long breakout`);
         assert.ok(dnState.some((x) => x === -1), `${id} short breakout`);
-        if (tf >= 5) {
+        if (tf >= 5 && !core.microOnly) {
           const micro = specs.find((x) => x.id === id.replace("break-rel-", "break-mc-rel-"))!;
           assert.deepEqual(micro.fn(up), upState, `${micro.id} preserves long direction`);
           assert.deepEqual(micro.fn(dn), dnState, `${micro.id} preserves short direction`);
@@ -162,6 +163,14 @@ describe("Break indication family", () => {
       throw new Error("Break shared context was not memoized");
     });
     assert.ok(retestContext.retest.some((x) => x !== 0), "a retest after the channel break is a distinct source event");
+
+    const fastCache = new SeriesCache(breakoutBars("FAST-RETEST", 5, 240));
+    breakSpecs().find((x) => x.id === "break-mc-rel-retest8-5-dd24-balanced")!.fn(fastCache);
+    const fastContext = fastCache.memo<{ retest8: Int8Array; don8: Int8Array; don: Int8Array }>("break:shared:context:v1", () => {
+      throw new Error("Break shared context was not memoized");
+    });
+    assert.ok(fastContext.retest8.some((x) => x !== 0), "the short-channel Micro retest is an independent event source");
+    assert.ok(fastContext.don8.some((x) => x !== 0), "the 8-bar Micro channel emits its own short-channel break events");
 
     const squeezeBars = bars("SQUEEZE", 5, 220, (i) =>
       i < 80 ? (i % 2 ? 0.0003 : -0.0003) : i === 80 ? 0.004 : 0.0004,
@@ -220,5 +229,47 @@ describe("Break indication family", () => {
       fullState.slice(0, cutAt + 1),
       "market-relative features do not read bars beyond the evaluation time",
     );
+  });
+
+  it("scores market and residual z-values against prior returns only", () => {
+    const shockAt = 150;
+    const target = bars("TARGET-Z", 5, 240, (i) =>
+      i === shockAt ? 0.012 : Math.sin(i * 0.47) * 0.001,
+    );
+    const peer = bars("PEER-Z", 5, 240, (i) =>
+      i === shockAt ? 0.008 : Math.cos(i * 0.23) * 0.0008,
+    );
+    const cache = makeUniverse([target, peer]).caches[0];
+    breakSpecs().find((x) => x.id === "break-rel-don-5-dd48-balanced")!.fn(cache);
+    const x = cache.memo<{ marketZ: Float32Array; residualZ: Float32Array }>("break:shared:context:v1", () => {
+      throw new Error("Break shared context was not memoized");
+    });
+    const market = cache.market()!;
+    const xs: number[] = [];
+    const ys: number[] = [];
+    for (let j = shockAt - 60; j < shockAt; j++) {
+      xs.push(market.ret[j]);
+      ys.push(Math.log(target.c[j] / target.c[j - 1]));
+    }
+    const meanX = xs.reduce((a, b) => a + b, 0) / xs.length;
+    const meanY = ys.reduce((a, b) => a + b, 0) / ys.length;
+    let vx = 0, vy = 0, cov = 0;
+    for (let j = 0; j < xs.length; j++) {
+      vx += (xs[j] - meanX) ** 2;
+      vy += (ys[j] - meanY) ** 2;
+      cov += (xs[j] - meanX) * (ys[j] - meanY);
+    }
+    vx /= xs.length;
+    vy /= xs.length;
+    cov /= xs.length;
+    const marketMove = market.idx[shockAt] - market.idx[shockAt - 12];
+    const marketZ = marketMove / (Math.sqrt(vx) * Math.sqrt(12));
+    const beta = cov / vx;
+    const residualSd = Math.sqrt(vy - (cov * cov) / vx);
+    const residualZ =
+      (Math.log(target.c[shockAt] / target.c[shockAt - 12]) - beta * marketMove) /
+      (residualSd * Math.sqrt(12));
+    assert.ok(Math.abs(x.marketZ[shockAt] - marketZ) < 1e-5, "current shock must not inflate its own market-volatility baseline");
+    assert.ok(Math.abs(x.residualZ[shockAt] - residualZ) < 1e-5, "current shock must not refit its own beta or residual baseline");
   });
 });

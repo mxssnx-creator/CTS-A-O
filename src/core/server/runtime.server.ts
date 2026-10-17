@@ -234,6 +234,7 @@ import { isSignalInd, laneOf, signalSourceOf } from "../indications/registry.ts"
 import { orderKey, sizeBook, sizeBookGen, sizingSettings } from "../sizing.ts";
 import { presetSeries, type PresetSeries } from "../statistics.ts";
 import { modeledUnitReturn as unitReturn, modeledUnitStatsOf as unitStatsOf } from "../metrics/stats.ts";
+import { primaryPfLabel, unitStatsReport } from "../reporting-stats.ts";
 import { promoteLaneKey, validPromotedLaneProof } from "../live-promote.ts";
 import { auditState, auditStateGen, type AuditInput, type AuditReport } from "../audit.ts";
 import { closedPositions, openTimeline } from "../positions.ts";
@@ -412,8 +413,10 @@ export interface RuntimeStatus {
     historic?: SignalHistDiagnostics;
     disabled?: number;
     trades?: number;
-    pf?: number;
-    net?: number;
+    pf?: number | null;
+    net?: number | null;
+    noLoss?: boolean | null;
+    pfConvention?: "gross-return-ratio" | "no-loss-sentinel" | "unavailable";
     /** positions (symbol × direction) and orders (all orders and partials) of the simulated signal book */
     positions?: number;
     orders?: number;
@@ -3223,7 +3226,7 @@ export class CoreRuntime {
       }));
       const sigRuns = pipeline.s1.filter((r) => isSignalInd(r.ind));
       if (sig.enabled) {
-        const pfs = sigRuns.map((r) => r.full.pf).filter(Number.isFinite).sort((a, b) => a - b);
+        const pfs = sigRuns.filter((r) => r.full.n > 0).map((r) => r.full.pf).filter(Number.isFinite).sort((a, b) => a - b);
         // the pairs that passed (Base gate, enough trades on a symbol, the family focus): the count and the PF of
         // the same runs
         const okRuns = sigRuns.filter((r) => representativePassed.has(`${r.bot}|${r.ind}`));
@@ -3584,7 +3587,7 @@ export class CoreRuntime {
         }
         const xs = sim.trades.filter((x) => isSignalInd(x.cfg.split("|")[1] ?? ""));
         yield 0;
-        const st = unitStatsOf(xs);
+        const st = unitStatsReport(unitStatsOf(xs), xs.length);
         const tl = openTimeline(xs, sim.startT, sim.endT);
         yield 0;
         return {
@@ -3592,6 +3595,8 @@ export class CoreRuntime {
           trades: xs.length,
           pf: st.pf,
           net: st.net,
+          noLoss: st.noLoss,
+          pfConvention: st.pfConvention,
           // positions (symbol × direction, closed episodes) and orders (every order and partial) apart
           positions: closedPositions(xs),
           orders: xs.length,
@@ -3621,7 +3626,7 @@ export class CoreRuntime {
     // every preset on the same tapes (the Compare page): after the paper step, so the book never waits for a UI table
     // (CTS_CORE_COMPARE=0 on live desks and session runs: no comparison at all)
     this.compareInput = process.env.CTS_CORE_COMPARE !== "0" ? { tapes, wf, wu, startT: sim.startT, endT: sim.endT } : null;
-    this.computeSummary = `PF ${sim.stats.pf.toFixed(2)} · DDT ${sim.stats.ddt.toFixed(1)}h · green ${Math.round(sim.stats.gh * 100)}% · validate last ${wf.validLastN ?? 0} · live last ${wf.lastN}`;
+    this.computeSummary = `PF ${primaryPfLabel(sim.stats)} · DDT ${sim.stats.ddt.toFixed(1)}h · green ${Math.round(sim.stats.gh * 100)}% · validate last ${wf.validLastN ?? 0} · live last ${wf.lastN}`;
     // the paper step on the new tapes follows in this cycle (it was "Real 100 %" again after Compare — backwards)
     this.setStage("Paper", 0, 1, `paper step next · ${this.computeSummary}`);
     this.status.computes++;
@@ -3679,7 +3684,7 @@ export class CoreRuntime {
     if (Date.now() - this.lastConsoleAt > 5 * 60_000) {
       this.lastConsoleAt = Date.now();
       console.info(
-        `[core-v2] compute #${this.status.computes} done in ${Math.round(this.status.lastComputeMs)} ms · sim PF ${sim.stats.pf.toFixed(2)} n ${sim.stats.n} · loop max ${this.status.loop.max.toFixed(0)} ms`,
+        `[core-v2] compute #${this.status.computes} done in ${Math.round(this.status.lastComputeMs)} ms · sim PF ${primaryPfLabel(sim.stats)} n ${sim.stats.n} · loop max ${this.status.loop.max.toFixed(0)} ms`,
       );
     }
     this.emit("compute");
@@ -3690,7 +3695,7 @@ export class CoreRuntime {
     }
     this.db.event(
       "info",
-      `compute #${this.status.computes}: sim PF ${sim.stats.pf.toFixed(2)} net ${sim.stats.net.toFixed(1)}% n ${sim.stats.n} · armed ${pipeline.armed.length} · ${Math.round(this.status.lastComputeMs)}ms`,
+      `compute #${this.status.computes}: sim PF ${primaryPfLabel(sim.stats)} net ${sim.stats.net.toFixed(1)}% n ${sim.stats.n} · armed ${pipeline.armed.length} · ${Math.round(this.status.lastComputeMs)}ms`,
     );
   }
 
@@ -4290,7 +4295,7 @@ export class CoreRuntime {
     this.storeSavedPresets(upsertPreset(this.savedPresets(), p));
     this.db.event(
       "info",
-      `preset saved: ${p.label} (PF ${p.metrics.pf.toFixed(2)}, ${p.metrics.n} trades)`,
+      `preset saved: ${p.label} (PF ${primaryPfLabel(p.metrics)}, ${p.metrics.n} trades)`,
     );
     return p;
   }
@@ -4299,7 +4304,7 @@ export class CoreRuntime {
     if (!qualifies(sim.stats, sim.stable, s.gates.minPf, s.gates.minTrades)) return;
     const p = this.currentPreset(
       "auto",
-      `Auto · PF ${sim.stats.pf.toFixed(2)} · ${sim.stats.n} trades`,
+      `Auto · PF ${primaryPfLabel(sim.stats)} · ${sim.stats.n} trades`,
       "saved automatically: the simulated run passed min PF, min trades and stability",
       s,
       wf,

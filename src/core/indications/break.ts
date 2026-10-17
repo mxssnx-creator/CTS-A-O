@@ -37,8 +37,10 @@ type SharedContext = {
   trend5: Int8Array;
   trend15: Int8Array;
   don: Int8Array;
+  don8: Int8Array;
   squeeze: Int8Array;
   retest: Int8Array;
+  retest8: Int8Array;
   priceDd24Long: Float32Array;
   priceDd24Short: Float32Array;
   priceDd48Long: Float32Array;
@@ -64,12 +66,19 @@ const LONG_WINDOW = 48;
 const ACT_WINDOW = 20;
 const REL_WINDOW = 60;
 const REL_MOVE = 12;
-const fin = (...xs: number[]) => xs.every(Number.isFinite);
+const finite2 = (a: number, b: number) => Number.isFinite(a) && Number.isFinite(b);
+const finite3 = (a: number, b: number, c: number) => Number.isFinite(a) && Number.isFinite(b) && Number.isFinite(c);
+const finite4 = (a: number, b: number, c: number, d: number) =>
+  Number.isFinite(a) && Number.isFinite(b) && Number.isFinite(c) && Number.isFinite(d);
+const finite6 = (a: number, b: number, c: number, d: number, e: number, f: number) =>
+  Number.isFinite(a) && Number.isFinite(b) && Number.isFinite(c) && Number.isFinite(d) && Number.isFinite(e) && Number.isFinite(f);
+const finite7 = (a: number, b: number, c: number, d: number, e: number, f: number, g: number) =>
+  finite6(a, b, c, d, e, f) && Number.isFinite(g);
 const clamp0 = (x: number) => (x > 0 ? x : 0);
 
 function valid(b: Bars, i: number): boolean {
   return (
-    fin(b.t[i], b.o[i], b.h[i], b.l[i], b.c[i], b.v[i]) &&
+    finite6(b.t[i], b.o[i], b.h[i], b.l[i], b.c[i], b.v[i]) &&
     b.l[i] > 0 &&
     b.h[i] >= Math.max(b.o[i], b.c[i]) &&
     b.l[i] <= Math.min(b.o[i], b.c[i]) &&
@@ -136,7 +145,7 @@ function trendOn(k: SeriesCache, tf: number): Int8Array {
   const { adx, pdi, mdi } = base.dmi(14);
   const dir = new Int8Array(b.n);
   for (let i = WARMUP - 1; i < b.n; i++) {
-    if (!fin(fast[i], slow[i], slow[i - 3], adx[i], pdi[i], mdi[i]) || adx[i] < 18) continue;
+    if (!finite6(fast[i], slow[i], slow[i - 3], adx[i], pdi[i], mdi[i]) || adx[i] < 18) continue;
     if (fast[i] > slow[i] && slow[i] > slow[i - 3] && pdi[i] > mdi[i]) dir[i] = 1;
     else if (fast[i] < slow[i] && slow[i] < slow[i - 3] && mdi[i] > pdi[i]) dir[i] = -1;
   }
@@ -153,8 +162,10 @@ function blankContext(n: number, market: MarketRef | null): SharedContext {
     trend5: new Int8Array(n),
     trend15: new Int8Array(n),
     don: new Int8Array(n),
+    don8: new Int8Array(n),
     squeeze: new Int8Array(n),
     retest: new Int8Array(n),
+    retest8: new Int8Array(n),
     priceDd24Long: f(),
     priceDd24Short: f(),
     priceDd48Long: f(),
@@ -184,6 +195,7 @@ function rawContext(k: SeriesCache, market: MarketRef | null): SharedContext {
   if (b.tfMin <= 15) out.trend15 = trendOn(k, 15);
 
   const dn = k.don(20);
+  const dn8 = k.don(8);
   const bb = k.bb(20, 2);
   const minW60 = priorExtreme(bb.width, 60, false);
   const atr = k.atr(14);
@@ -210,6 +222,12 @@ function rawContext(k: SeriesCache, market: MarketRef | null): SharedContext {
   let levelDn = 0;
   let retestUpUsed = false;
   let retestDnUsed = false;
+  let lastUp8 = -1;
+  let lastDn8 = -1;
+  let levelUp8 = 0;
+  let levelDn8 = 0;
+  let retestUp8Used = false;
+  let retestDn8Used = false;
   let sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0, relCount = 0;
   const relTerms = new Float64Array(REL_WINDOW * 5);
   const relValid = new Uint8Array(REL_WINDOW);
@@ -254,12 +272,6 @@ function rawContext(k: SeriesCache, market: MarketRef | null): SharedContext {
       marketRetCount[i + 1] = marketRetCount[i] + (validRet ? 1 : 0);
     }
 
-    if (market && market.syms > 1) {
-      // Evict the old slot before writing the current return into the same ring position.
-      if (i >= REL_WINDOW) removeRelation(i % REL_WINDOW);
-      addRelation(i);
-    }
-
     if (i >= WARMUP - 1 && Number.isFinite(atr[i]) && atr[i] > 0 && b.c[i] > 0) {
       const from = Math.max(0, i - ACT_WINDOW);
       const count = i - from;
@@ -279,11 +291,11 @@ function rawContext(k: SeriesCache, market: MarketRef | null): SharedContext {
       }
 
       const priorAtrForDd = i > 0 ? atr[i - 1] : NaN;
-      if (fin(hh24[i], ll24[i], priorAtrForDd) && priorAtrForDd > 0) {
+      if (finite3(hh24[i], ll24[i], priorAtrForDd) && priorAtrForDd > 0) {
         out.priceDd24Long[i] = clamp0((hh24[i] - b.c[i]) / priorAtrForDd);
         out.priceDd24Short[i] = clamp0((b.c[i] - ll24[i]) / priorAtrForDd);
       }
-      if (fin(hh48[i], ll48[i], priorAtrForDd) && priorAtrForDd > 0) {
+      if (finite3(hh48[i], ll48[i], priorAtrForDd) && priorAtrForDd > 0) {
         out.priceDd48Long[i] = clamp0((hh48[i] - b.c[i]) / priorAtrForDd);
         out.priceDd48Short[i] = clamp0((b.c[i] - ll48[i]) / priorAtrForDd);
       }
@@ -314,7 +326,7 @@ function rawContext(k: SeriesCache, market: MarketRef | null): SharedContext {
           const mean = sum / count;
           const variance = Math.max(0, sumSq / count - mean * mean);
           const scale = Math.sqrt(variance) * Math.sqrt(window);
-          if (!(scale > 1e-12) || !fin(peak[i], trough[i], market.idx[i])) return;
+          if (!(scale > 1e-12) || !finite3(peak[i], trough[i], market.idx[i])) return;
           if (window === WINDOW) {
             out.marketDd24Long[i] = clamp0((peak[i] - market.idx[i]) / scale);
             out.marketDd24Short[i] = clamp0((market.idx[i] - trough[i]) / scale);
@@ -327,7 +339,7 @@ function rawContext(k: SeriesCache, market: MarketRef | null): SharedContext {
         calcMarketDd(LONG_WINDOW, marketPeak48, marketTrough48, 30);
 
         const j = i - REL_MOVE;
-        if (j >= 0 && relCount >= 30 && fin(market.idx[i], market.idx[j])) {
+        if (j >= 0 && relCount >= 30 && finite2(market.idx[i], market.idx[j])) {
           const mx = sx / relCount, my = sy / relCount;
           const vx = sxx / relCount - mx * mx;
           const vy = syy / relCount - my * my;
@@ -347,7 +359,16 @@ function rawContext(k: SeriesCache, market: MarketRef | null): SharedContext {
       }
     }
 
-    if (i < 1 || !fin(dn.hi[i], dn.lo[i], b.o[i], b.h[i], b.l[i], b.c[i])) continue;
+    // Keep the rolling market/symbol regression strictly prior-only. The current bar is the
+    // observation being scored; including it in the baseline would partially normalize away
+    // the very shock the market-relative z-scores are meant to detect.
+    if (market && market.syms > 1) {
+      // Evict the old slot before writing the current return into the same ring position.
+      if (i >= REL_WINDOW) removeRelation(i % REL_WINDOW);
+      addRelation(i);
+    }
+
+    if (i < 1 || !finite6(dn.hi[i], dn.lo[i], b.o[i], b.h[i], b.l[i], b.c[i])) continue;
     const range = b.h[i] - b.l[i];
     if (!(range > 0)) continue;
     const location = (b.c[i] - b.l[i]) / range;
@@ -376,6 +397,28 @@ function rawContext(k: SeriesCache, market: MarketRef | null): SharedContext {
         b.h[i] >= levelDn * 0.999 && b.c[i] < levelDn && b.c[i] < b.o[i] && location <= 0.4) {
       out.retest[i] = -1;
       retestDnUsed = true;
+    }
+
+    // Short channels make the Micro family responsive without weakening its independent trend, activity,
+    // market-relative or drawdown gates. As with the 20-bar source, a staircase is one run; retests are one-shot.
+    if (!finite4(dn8.hi[i], dn8.lo[i], dn8.hi[i - 1], dn8.lo[i - 1])) continue;
+    const up8 = b.c[i] > dn8.hi[i] && b.c[i] > b.o[i] && location >= 0.65;
+    const down8 = b.c[i] < dn8.lo[i] && b.c[i] < b.o[i] && location <= 0.35;
+    const upCross8 = b.c[i] > dn8.hi[i] && !(b.c[i - 1] > dn8.hi[i - 1]);
+    const downCross8 = b.c[i] < dn8.lo[i] && !(b.c[i - 1] < dn8.lo[i - 1]);
+    if (up8 && !(b.c[i - 1] > dn8.hi[i - 1])) out.don8[i] = 1;
+    else if (down8 && !(b.c[i - 1] < dn8.lo[i - 1])) out.don8[i] = -1;
+    if (upCross8) { lastUp8 = i; levelUp8 = dn8.hi[i]; retestUp8Used = false; }
+    if (downCross8) { lastDn8 = i; levelDn8 = dn8.lo[i]; retestDn8Used = false; }
+    if (lastUp8 >= 0 && !retestUp8Used && i - lastUp8 >= 1 && i - lastUp8 <= 8 &&
+        b.l[i] <= levelUp8 * 1.001 && b.c[i] > levelUp8 && b.c[i] > b.o[i] && location >= 0.6) {
+      out.retest8[i] = 1;
+      retestUp8Used = true;
+    }
+    if (lastDn8 >= 0 && !retestDn8Used && i - lastDn8 >= 1 && i - lastDn8 <= 8 &&
+        b.h[i] >= levelDn8 * 0.999 && b.c[i] < levelDn8 && b.c[i] < b.o[i] && location <= 0.4) {
+      out.retest8[i] = -1;
+      retestDn8Used = true;
     }
   }
   return out;
@@ -429,14 +472,24 @@ function relationState(
   const x = context(k);
   const profile = profileById.get(profileId)!;
   const longDrawdown = ddWindow === "48";
-  const events = core === "don" ? x.don : core === "squeeze" ? x.squeeze : x.retest;
-  const trends = new Map<number, Int8Array>([[1, x.trend1], [5, x.trend5], [15, x.trend15]]);
+  const events = core === "don"
+    ? x.don
+    : core === "don8"
+      ? x.don8
+      : core === "squeeze"
+        ? x.squeeze
+        : core === "retest8"
+          ? x.retest8
+          : x.retest;
   const market = k.market();
   for (let i = WARMUP - 1; i < n; i++) {
     const dir = events[i];
     if (!dir) continue;
     let aligned = true;
-    for (const tf of tfs) if (trends.get(tf)?.[i] !== dir) { aligned = false; break; }
+    for (const tf of tfs) {
+      const trend = tf === 1 ? x.trend1 : tf === 5 ? x.trend5 : x.trend15;
+      if (trend[i] !== dir) { aligned = false; break; }
+    }
     if (!aligned) continue;
     const priceDd = dir > 0
       ? longDrawdown ? x.priceDd48Long[i] : x.priceDd24Long[i]
@@ -444,7 +497,7 @@ function relationState(
     const marketDd = dir > 0
       ? longDrawdown ? x.marketDd48Long[i] : x.marketDd24Long[i]
       : longDrawdown ? x.marketDd48Short[i] : x.marketDd24Short[i];
-    if (!fin(priceDd, marketDd, x.activityLast[i], x.activityPart[i], x.activityChange[i], x.atrRatio[i], x.rangeRatio[i])) continue;
+    if (!finite7(priceDd, marketDd, x.activityLast[i], x.activityPart[i], x.activityChange[i], x.atrRatio[i], x.rangeRatio[i])) continue;
     if (
       priceDd > profile.priceDrawdownMax || marketDd > profile.marketDrawdownMax ||
       x.activityLast[i] < profile.activityLastMin || x.activityLast[i] > profile.activityLastMax ||
@@ -453,7 +506,7 @@ function relationState(
       x.rangeRatio[i] < profile.rangeRatioMin || x.rangeRatio[i] > profile.rangeRatioMax
     ) continue;
     if (market && market.syms > 1) {
-      if (!fin(x.marketActivity[i], x.marketActivityPart[i], x.marketZ[i], x.residualZ[i])) continue;
+      if (!finite4(x.marketActivity[i], x.marketActivityPart[i], x.marketZ[i], x.residualZ[i])) continue;
       if (x.marketActivity[i] > profile.marketActivityMax || x.marketActivityPart[i] > profile.marketActivityPartMax) continue;
       if (dir * x.marketZ[i] < -profile.marketAgainstZMax || dir * x.residualZ[i] < profile.residualMin) continue;
     }
@@ -484,7 +537,7 @@ const spec = (
       tf15: tfs.includes(15) ? 1 : 0,
       core: BREAK_CORES.findIndex((x) => x.id === core),
       profile: BREAK_PROFILES.findIndex((x) => x.id === profileId),
-      donPeriod: 20,
+      donPeriod: core === "don8" || core === "retest8" ? 8 : 20,
       squeezeLookback: 60,
       retestBars: 8,
       drawdownBars: Number(ddWindow),
@@ -513,7 +566,7 @@ export function breakSpecs(): IndicationSpec[] {
     for (const core of BREAK_CORES)
       for (const ddWindow of BREAK_DRAWDOWN_WINDOWS)
         for (const profile of BREAK_PROFILES) {
-          out.push(spec(core.id, tfs, ddWindow.id, profile.id, false));
+          if (!core.microOnly) out.push(spec(core.id, tfs, ddWindow.id, profile.id, false));
           // Micro keeps independent 5m and 15m anchors; no 1m alias slips below the standard Micro floor.
           if (Math.min(...tfs) >= 5) out.push(spec(core.id, tfs, ddWindow.id, profile.id, true));
         }

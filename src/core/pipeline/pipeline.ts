@@ -677,11 +677,11 @@ export function baseSetsGates<G extends Gates>(g: G): G {
 export function basePairRows(
   s1: ReadonlyArray<Pick<ComboRun, "bot" | "ind" | "full">>,
   pairTags: Readonly<Record<string, readonly string[]>>,
-): Array<{ pair: string; n: number; pf: number; net: number; passed: boolean; tags: string[] }> {
+): Array<{ pair: string; n: number; pf: number | null; net: number; passed: boolean; tags: string[] }> {
   const out: Array<{
     pair: string;
     n: number;
-    pf: number;
+    pf: number | null;
     net: number;
     passed: boolean;
     tags: string[];
@@ -693,7 +693,7 @@ export function basePairRows(
     out.push({
       pair,
       n: r.full?.n ?? 0,
-      pf: r.full?.pf ?? 0,
+      pf: (r.full?.n ?? 0) > 0 ? (r.full?.pf ?? null) : null,
       net: r.full?.net ?? 0,
       passed: !!tags,
       tags: [...(tags ?? [])],
@@ -769,7 +769,7 @@ export interface BaseRangeCount {
   passed: number;
   /** the minimum PF the range is held to */
   minPf: number;
-  /** median PF of the evaluated sets / of the passed sets (null without any) */
+  /** Median measured PF among evaluated nonempty sets / passed sets (null without any measured PF). */
   pfMedian: number | null;
   pfPassedMedian: number | null;
   /** mean PF of the passed sets (null without any): the validated average, read against `minPf` */
@@ -822,7 +822,8 @@ export function baseRangeCounts(
       // range's. ownCells records how many rows carry the range's own distances, so a report can say which it is.
       if (own) ownCells++;
       const st = own ?? r.full;
-      pf.push(st.pf);
+      // EMPTY_STATS carries pf: 0 for gate arithmetic, but an empty close sample has no measured PF.
+      if (st.n > 0) pf.push(st.pf);
       const ownMin = minPfOf(g, tag, r.ind);
       appliedMin = Math.min(appliedMin, ownMin);
       const ok = own

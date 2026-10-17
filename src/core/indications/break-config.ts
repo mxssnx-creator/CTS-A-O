@@ -11,9 +11,11 @@ export const BREAK_SUBSETS = [
 ] as const;
 
 export const BREAK_CORES = [
-  { id: "don", label: "Donchian break" },
-  { id: "squeeze", label: "Squeeze expansion" },
-  { id: "retest", label: "Break retest" },
+  { id: "don", label: "Donchian break", microOnly: false },
+  { id: "squeeze", label: "Squeeze expansion", microOnly: false },
+  { id: "retest", label: "Break retest", microOnly: false },
+  { id: "don8", label: "Micro Donchian 8 break", microOnly: true },
+  { id: "retest8", label: "Micro 8-bar retest", microOnly: true },
 ] as const;
 export type BreakCore = (typeof BREAK_CORES)[number]["id"];
 
@@ -82,12 +84,12 @@ export function breakAnchorTf(base: string): number | null {
   return anchorById.get(base) ?? null;
 }
 
-/** Seven trend subsets × three sources × two drawdown horizons × two profiles, plus Micro aliases at 5m and 15m. */
+/** Seven trend subsets × three standard sources, plus two short-channel Micro sources, each with two DD windows/profiles. */
 export const BREAK_CONFIG_IDS = BREAK_SUBSETS.flatMap((tfs) =>
   BREAK_CORES.flatMap((core) =>
     BREAK_DRAWDOWN_WINDOWS.flatMap((ddWindow) =>
       BREAK_PROFILES.flatMap((profile) => [
-        breakConfigId(core.id, tfs, ddWindow.id, profile.id, false),
+        ...(!core.microOnly ? [breakConfigId(core.id, tfs, ddWindow.id, profile.id, false)] : []),
         ...(Math.min(...tfs) >= 5 ? [breakConfigId(core.id, tfs, ddWindow.id, profile.id, true)] : []),
       ]),
     ),
@@ -97,7 +99,8 @@ for (const tfs of BREAK_SUBSETS)
   for (const core of BREAK_CORES)
     for (const ddWindow of BREAK_DRAWDOWN_WINDOWS)
       for (const profile of BREAK_PROFILES) {
-        anchorById.set(breakConfigId(core.id, tfs, ddWindow.id, profile.id, false), Math.min(...tfs));
+        if (!core.microOnly)
+          anchorById.set(breakConfigId(core.id, tfs, ddWindow.id, profile.id, false), Math.min(...tfs));
         if (Math.min(...tfs) >= 5)
           anchorById.set(breakConfigId(core.id, tfs, ddWindow.id, profile.id, true), Math.min(...tfs));
       }

@@ -10,7 +10,7 @@ import { DESK_PRESETS } from "./presets.desk.ts";
 
 export interface PresetMetrics {
   /** profit factor after the 0.2% round-trip cost */
-  pf: number;
+  pf: number | null;
   /** Additive evidence for engine-saved presets; unmarked historical aggregates cannot prove unit returns. */
   pfBasis?: "unit-net-returns" | "unavailable";
   unknownReturns?: number;
@@ -116,10 +116,10 @@ export function metricsFromStats(
   source: string,
   extra: Partial<PresetMetrics> = {},
 ): PresetMetrics {
-  const known = st.pfBasis === "unit-net-returns" && st.unknownReturns === 0;
+  const known = st.n > 0 && st.pfBasis === "unit-net-returns" && st.unknownReturns === 0;
   const noLoss = known ? st.gp > 0 && st.gl === 0 : null;
   return {
-    pf: st.pf,
+    pf: known ? st.pf : null,
     n: st.n,
     perDay: spanH > 0 ? (st.n * 24) / spanH : 0,
     wr: st.wr,
@@ -144,8 +144,10 @@ export function upsertPreset(list: readonly Preset[], p: Preset, max = 40): Pres
   const i = out.findIndex((x) => x.id === p.id);
   if (i >= 0) {
     if (p.kind === "auto" && out[i].kind === "auto") {
-      const known = (m: PresetMetrics) => m.pfBasis === "unit-net-returns" && m.unknownReturns === 0 && Number.isFinite(m.pf);
-      if (known(out[i].metrics) && (!known(p.metrics) || out[i].metrics.pf >= p.metrics.pf)) return out;
+      const known = (m: PresetMetrics): m is PresetMetrics & { pf: number } =>
+        m.pfBasis === "unit-net-returns" && m.unknownReturns === 0 && typeof m.pf === "number" && Number.isFinite(m.pf);
+      const prior = out[i].metrics;
+      if (known(prior) && (!known(p.metrics) || prior.pf >= p.metrics.pf)) return out;
     }
     out[i] = p;
   } else out.push(p);

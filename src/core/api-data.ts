@@ -428,7 +428,7 @@ export async function coreSimData(data: ReturnType<typeof connInput>) {
   const archive = r.db.kvGet<{ presets?: Record<string, { stats?: Record<string, unknown>; [key: string]: unknown }>; [key: string]: unknown }>("presetSims") ?? null;
   // Old archives contain aggregate size-weighted numbers but no orders. Preserve them only as sized diagnostics.
   const presets = archive ? { ...archive, presets: Object.fromEntries(Object.entries(archive.presets ?? {}).map(([key, value]) => {
-    if (value.stats?.pfBasis === "unit-net-returns" && value.stats.unknownReturns === 0) return [key, value];
+    if (Number(value.stats?.n) > 0 && value.stats?.pfBasis === "unit-net-returns" && value.stats.unknownReturns === 0) return [key, value];
     const stats = { ...value.stats, pfBasis: "unavailable", unknownReturns: Number(value.stats?.n ?? 0),
       pf: null, gp: null, gl: null, net: null, avg: null, mdd: null, ddt: null, ddtNow: null, expectancy: null,
       sqn: null, recovery: null, greenHours: null, gh: null, worstHour: null };
@@ -763,7 +763,7 @@ export async function saveCoreSettingsData(data: ReturnType<typeof saveCoreSetti
 
 /** Research presets (fixed, measured) + presets saved from the engine, with their results. */
 function presetPrimaryView(value: Row, fields: readonly string[]): Row {
-  if (value.pfBasis === "unit-net-returns" && value.unknownReturns === 0 && typeof value.pf === "number" && Number.isFinite(value.pf)) return value;
+  if (Number(value.n) > 0 && value.pfBasis === "unit-net-returns" && value.unknownReturns === 0 && typeof value.pf === "number" && Number.isFinite(value.pf)) return value;
   return {
     ...value,
     ...Object.fromEntries(fields.map((key) => [key, null])),
@@ -777,7 +777,7 @@ function presetPrimaryView(value: Row, fields: readonly string[]): Row {
 }
 
 function presetStatsView(stats: WalkForwardResult["stats"] | ReturnStatsReport, n: number, sample: string): Row {
-  const known = stats.pfBasis === "unit-net-returns" && stats.unknownReturns === 0;
+  const known = n > 0 && stats.pfBasis === "unit-net-returns" && stats.unknownReturns === 0;
   const noLoss = known ? typeof stats.gp === "number" && stats.gp > 0 && stats.gl === 0 : null;
   return presetPrimaryView({ ...stats, n, sample, noLoss, pfConvention: !known ? "unavailable" : noLoss ? "no-loss-sentinel" : "gross-return-ratio" },
     ["pf", "gp", "gl", "net", "avg", "mdd", "ddt", "ddtNow", "expectancy", "sqn", "recovery", "greenHours", "gh", "worstHour"]);
