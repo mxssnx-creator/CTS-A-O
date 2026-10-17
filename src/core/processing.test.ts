@@ -5,7 +5,7 @@
 //   Trailing off  no trailing anywhere
 //   Block / Block Active / DCA / DCA Active / Axis  each processes on its own, whatever Normal / Trailing are
 // The toggles never stop the processing: every tape is still built and evaluated (Base PF, Block feed).
-import { before, describe, it } from "node:test";
+import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { CoreRuntime } from "./server/runtime.server.ts";
 import { CoreDb } from "./server/db.server.ts";
@@ -16,7 +16,8 @@ import { INDICATIONS, indicationState, laneOf, isSignalInd } from "./indications
 import { SeriesCache } from "./indications/cache.ts";
 import { MarketSource } from "./indications/market.ts";
 import { barsFromCandles, syntheticCandles } from "./market/bars.ts";
-import type { StrategyToggles } from "./domain/types.ts";
+import type { RangeGrid, StrategyToggles } from "./domain/types.ts";
+import { DEFAULT_SETTINGS } from "./config.ts";
 
 // the same synthetic market on every run: it otherwise ends at the current minute, and whether that minute's market
 // seats any DCA / Axis config decided how many toggle combinations trade (a run at the wrong minute failed)
@@ -161,6 +162,27 @@ describe("every indication works", () => {
 
 describe("processing through the stages, range/DCA/Axis types, every toggle combination", { timeout: 900_000 }, () => {
   let rt: CoreRuntime;
+  // This matrix checks processing and toggle coordination, not an exhaustive search of the production range grid.
+  // Preserve every range's floors/ownership/gates, two distinct target/stop values, both exit modes and both holds.
+  const ends = <T>(xs: readonly T[]): T[] => xs.length > 1 ? [xs[0], xs[xs.length - 1]] : [...xs];
+  const range = <T extends RangeGrid>(r: T | false | undefined): T | false | undefined => r && ({
+    ...r, tp: ends(r.tp), slOfTp: ends(r.slOfTp),
+    trailOfTp: [0, ...r.trailOfTp.filter((x) => x > 0).slice(0, 1)],
+  });
+  const grid = {
+    ...DEFAULT_SETTINGS.grid,
+    tp: ends(DEFAULT_SETTINGS.grid.tp),
+    slOfTp: ends(DEFAULT_SETTINGS.grid.slOfTp),
+    trailOfTp: [0, ...DEFAULT_SETTINGS.grid.trailOfTp.filter((x) => x > 0).slice(0, 1)],
+    minimal: range(DEFAULT_SETTINGS.grid.minimal), short: range(DEFAULT_SETTINGS.grid.short),
+    general: range(DEFAULT_SETTINGS.grid.general), long: range(DEFAULT_SETTINGS.grid.long),
+    micro: range(DEFAULT_SETTINGS.grid.micro),
+  };
+  after(async () => {
+    if (rt) { rt.stop(); rt.dispose(); await rt.backtestsSettled(); }
+    const { closePool } = await import("./server/pool.server.ts");
+    await closePool();
+  });
   before(async () => {
     rt = new CoreRuntime(
       new CoreDb(":memory:"),
@@ -172,6 +194,7 @@ describe("processing through the stages, range/DCA/Axis types, every toggle comb
         focus: [],
         pinned: [],
         mainTop: 24,
+        grid,
         // Historic Exit evaluates every initialized engine pair and has its own focused runtime regression. Keep this
         // 128-toggle matrix scoped to the shared range/DCA/Axis pipeline so it does not fit the full Exit universe.
         exitStrategy: { enabled: false },
@@ -179,9 +202,25 @@ describe("processing through the stages, range/DCA/Axis types, every toggle comb
       } as never,
       { market: "synthetic" },
     );
+    assert.ok(rt.wf.protects.length > 0 && rt.wf.protects.length <= 96,
+      `representative grid must remain bounded (${rt.wf.protects.length} cells)`);
+    for (const tag of ["mc", "mn", "sh", "gn", "lg"]) {
+      const own = rt.wf.protects.filter((p) => p.tag === tag);
+      assert.ok(new Set(own.map((p) => p.tp)).size >= 2, `${tag}: multiple targets`);
+      assert.ok(new Set(own.map((p) => p.sl)).size >= 2, `${tag}: multiple stops`);
+      assert.ok(own.some((p) => p.trail === 0) && own.some((p) => p.trail > 0), `${tag}: Normal and Trailing`);
+    }
     rt.start();
-    await until(() => rt.status.computes >= 1 && rt.status.state === "running" && rt.audit !== null);
-    rt.stop();
+    try {
+      await until(() => rt.status.computes >= 1 && rt.status.state === "running" && rt.audit !== null);
+    } catch (error) {
+      throw new Error(`processing fixture failed: ${error instanceof Error ? error.message : error}; ${JSON.stringify({
+        state: rt.status.state, stage: rt.status.stage, computes: rt.status.computes,
+        error: rt.status.error, mem: rt.status.mem, phases: rt.status.phases,
+      })}`);
+    } finally {
+      rt.stop();
+    }
   });
 
   it("Base evaluates every combo of every lane; Main keeps lanes; tapes carry every range strategy type", async () => {

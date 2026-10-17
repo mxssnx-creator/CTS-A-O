@@ -29,7 +29,16 @@ passes in 3.58 seconds. Production caps and gates were not weakened.
 Current focused checks include 44 invariant/range cases, 18 excursion/Exit
 cases, 7 final raw-entry/worker/active-protection cases, 6 promotion CLI cases
 and 5 component-label cases, all passing. Typecheck, lint and production build
-pass (lint has 17 existing warnings). The complete plain `npm test` rerun is running.
+pass (lint has 17 existing warnings). The final plain `npm test` attempt passed
+455 script tests (8 absent-template skips) and 78 component tests, then its core
+processing fixture hit a 400-second setup watchdog before its 128 cases ran.
+That active calculation inherited 2,656 production grid cells. The bounded
+fixture uses at most 96 existing representative cells and passes all 6 tests,
+including the actual 128 toggle combinations, in 201.9 seconds (155.6-second
+setup, 35.4-second toggle run). Independent review confirms every original
+assertion, indication/lane, range/type, DCA/Axis/Signals configuration, gate and
+cost remains covered. No production formula, economic gate or timeout changed.
+A fresh complete plain `npm test` is pending this fixture's final typecheck.
 Script/component stages are bounded to two files concurrently; synthetic tests
 have deterministic memory headroom while dedicated pressure tests still verify
 fallback and abort behavior. Chromium is installed and built desktop/mobile UI
