@@ -5537,9 +5537,7 @@ export class CoreRuntime {
     // confirmation as in the simulation: an engine candidate (taken or not) open at the entry, not only a position
     const coordWhy = coordBlock(this.wf.coord, op, hourNet, at, confirmPool);
     // a hedge-only signal trades while the book is losing (this or the previous hour), without confirmation
-    const hedging =
-      this.hedgeKeys.size > 0 &&
-      this.hedgeKeys.has(sigActiveKey(op.cfg.split("|")[0], op.cfg.split("|")[1] ?? "", op.sym, op.side, kindOfId(op.cfg)));
+    const hedging = this.isHedgeEntry(op);
     if (hedging) {
       const losing =
         (!this.wf.coord?.hedgePrevOnly && (hourNet.get(hk) ?? 0) < 0) ||
@@ -5556,6 +5554,21 @@ export class CoreRuntime {
       if (sourceUnstable(srcClosed.get(src), op.entryT, sg)) return "sourceUnstable";
     }
     return null;
+  }
+
+  private isHedgeEntry(op: { cfg: string; sym: string; side: number }): boolean {
+    return (
+      sigCfg(op.cfg) &&
+      this.hedgeKeys.has(
+        sigActiveKey(op.cfg.split("|")[0], op.cfg.split("|")[1] ?? "", op.sym, op.side, kindOfId(op.cfg)),
+      )
+    );
+  }
+
+  /** Stable-02 adds volume to the current Block size but cannot exceed its configured stack ceiling. */
+  private s2EntryVolume(blockVol: number): number {
+    const factor = this.wf.coord?.enabled ? this.sim?.s2?.factor : undefined;
+    return factor && factor > 0 ? Math.min(1 + factor, Math.max(1, blockStackCap(this.wf.block) / blockVol)) : 1;
   }
 
   /** The paper step run to completion (tests). The cycle drives stepPaperGen so the live tick runs between slices. */
@@ -5896,9 +5909,11 @@ export class CoreRuntime {
       perSide.set(`${cls}|${op.side}`, sd + 1);
       openBy.set(cls, (openBy.get(cls) ?? 0) + 1);
       // new entries take the relation volume the simulation ended with (within the Block maximum)
-      const stackCap = blockStackCap(this.wf.block);
-      const cv =
-        !held && s2End?.factor ? Math.min(1 + s2End.factor, Math.max(1, stackCap / d.vol)) : 1;
+      const cv = !held && s2End?.factor ? this.s2EntryVolume(d.vol) : 1;
+      const hedge = !held && this.isHedgeEntry(op);
+      const appliedHedgeVol = hedge ? this.wf.coord?.hedgeVolumeFactor ?? 1 : 1;
+      const recordedHedgeVol = held ? prev?.hedgeVol ?? 1 : appliedHedgeVol;
+      const coordVol = held ? prev?.coordVol ?? 1 : cv;
       // The configured range factor is captured only on entry; a settings edit cannot resize a held position.
       const rangeVol = held || sigCfg(op.cfg)
         ? 1
@@ -5910,7 +5925,9 @@ export class CoreRuntime {
         heldAt: prevByKey.get(posId(op))?.heldAt ?? Date.now(),
         // execution multiple × ladder weight (Axis: every filled rung is volume, as the simulation books it); the
         // live lane asks for this volume, and paper marks mtm (per unit) × it
-        vol: positionVolume(d.vol * cv * rangeVol, op),
+        vol: positionVolume(d.vol * cv * appliedHedgeVol * rangeVol, op),
+        ...(coordVol !== 1 ? { coordVol } : {}),
+        ...(recordedHedgeVol !== 1 ? { hedgeVol: recordedHedgeVol } : {}),
         level: d.level,
         ...(d.legs ? { legs: d.legs } : {}),
         ...(d.blockLevels ? { blockLevels: d.blockLevels, blockEffectiveLevels: d.blockEffectiveLevels,
@@ -6366,6 +6383,8 @@ export class CoreRuntime {
           skip(tp, "laneBar");
           continue;
         }
+        const hedge = this.isHedgeEntry({ cfg: tp.id, sym: p.sym, side: p.side });
+        const coordVol = this.s2EntryVolume(d.vol);
         out.push({
           cfg: tp.id,
           sym: p.sym,
@@ -6374,6 +6393,8 @@ export class CoreRuntime {
           protect: p.protect ?? tp.protect,
           barT,
           kind: tp.kind,
+          ...(coordVol !== 1 ? { coordVol } : {}),
+          ...(hedge ? { hedge: true, hedgeVol: this.wf.coord?.hedgeVolumeFactor ?? 1 } : {}),
         });
       }
     }
@@ -6462,6 +6483,12 @@ export interface LiveIntent {
   barT: number;
   /** sub-strategy of the set (trailing / DCA / Axis exits are managed by the simulation) */
   kind?: string;
+  /** Stable-02 relation-volume multiplier captured by the current simulation (neutral = omitted). */
+  coordVol?: number;
+  /** This is a hedge-only Signal selected from past negative hours. */
+  hedge?: boolean;
+  /** Hedge-only size multiplier captured with the intent (neutral = omitted). */
+  hedgeVol?: number;
 }
 
 /** CoreRuntime.listings: what the last paper step validated and keeps active, for paged listings (coreListing). */
