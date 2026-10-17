@@ -144,8 +144,10 @@ async function coverageOf(rt, s) {
   const tapes = {};
   for (const t of rt.tapes) {
     const k = `${t.kind}|${t.protect?.tag || "wide"}`;
-    const a = (tapes[k] ??= { configs: 0, closes: 0 });
+    const a = (tapes[k] ??= { configs: 0, activeConfigs: 0, closes: 0 });
     a.configs++;
+    // Held-only tapes carry positions from an earlier entry through their exit; they are not seatable kept sets.
+    if (!t.heldOnly) a.activeConfigs++;
     a.closes += t.n;
   }
   // per indication (the base indication, every lane together): Base evaluated / passed (the default cell or a range's
@@ -2266,9 +2268,9 @@ if (cov) {
   }
   for (const [tag, on] of Object.entries(cov.ranges ?? {})) {
     if (!on) continue;
-    const n = Object.entries(cov.tapes).filter(([k]) => k.endsWith(`|${tag}`)).reduce((a, [, v]) => a + v.configs, 0);
-    const built = (cov.sets ?? []).filter((x) => x.tag === tag).reduce((a, x) => a + x.built, 0);
-    check(`coverage: range ${tag} tape count matches built sets`, built, n);
+    const active = Object.entries(cov.tapes).filter(([k]) => k.endsWith(`|${tag}`)).reduce((a, [, v]) => a + v.activeConfigs, 0);
+    const kept = (cov.sets ?? []).filter((x) => x.tag === tag).reduce((a, x) => a + x.kept, 0);
+    check(`coverage: range ${tag} active tapes match kept sets`, kept, active);
   }
   if (raw.settings.signals)
     check("coverage: signal combos evaluated", 1, (cov.byKind.signal?.evaluated ?? 0) > 0 ? 1 : 0);

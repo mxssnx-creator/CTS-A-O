@@ -230,4 +230,46 @@ describe("Break indication family", () => {
       "market-relative features do not read bars beyond the evaluation time",
     );
   });
+
+  it("scores market and residual z-values against prior returns only", () => {
+    const shockAt = 150;
+    const target = bars("TARGET-Z", 5, 240, (i) =>
+      i === shockAt ? 0.012 : Math.sin(i * 0.47) * 0.001,
+    );
+    const peer = bars("PEER-Z", 5, 240, (i) =>
+      i === shockAt ? 0.008 : Math.cos(i * 0.23) * 0.0008,
+    );
+    const cache = makeUniverse([target, peer]).caches[0];
+    breakSpecs().find((x) => x.id === "break-rel-don-5-dd48-balanced")!.fn(cache);
+    const x = cache.memo<{ marketZ: Float32Array; residualZ: Float32Array }>("break:shared:context:v1", () => {
+      throw new Error("Break shared context was not memoized");
+    });
+    const market = cache.market()!;
+    const xs: number[] = [];
+    const ys: number[] = [];
+    for (let j = shockAt - 60; j < shockAt; j++) {
+      xs.push(market.ret[j]);
+      ys.push(Math.log(target.c[j] / target.c[j - 1]));
+    }
+    const meanX = xs.reduce((a, b) => a + b, 0) / xs.length;
+    const meanY = ys.reduce((a, b) => a + b, 0) / ys.length;
+    let vx = 0, vy = 0, cov = 0;
+    for (let j = 0; j < xs.length; j++) {
+      vx += (xs[j] - meanX) ** 2;
+      vy += (ys[j] - meanY) ** 2;
+      cov += (xs[j] - meanX) * (ys[j] - meanY);
+    }
+    vx /= xs.length;
+    vy /= xs.length;
+    cov /= xs.length;
+    const marketMove = market.idx[shockAt] - market.idx[shockAt - 12];
+    const marketZ = marketMove / (Math.sqrt(vx) * Math.sqrt(12));
+    const beta = cov / vx;
+    const residualSd = Math.sqrt(vy - (cov * cov) / vx);
+    const residualZ =
+      (Math.log(target.c[shockAt] / target.c[shockAt - 12]) - beta * marketMove) /
+      (residualSd * Math.sqrt(12));
+    assert.ok(Math.abs(x.marketZ[shockAt] - marketZ) < 1e-5, "current shock must not inflate its own market-volatility baseline");
+    assert.ok(Math.abs(x.residualZ[shockAt] - residualZ) < 1e-5, "current shock must not refit its own beta or residual baseline");
+  });
 });

@@ -150,6 +150,31 @@ deployment or live reload was verified. Full processing/runtime stress and the
 venue-contacting broad script suite remain open. Do not promote Break based on
 these results.
 
+
+Validated source diff: `fix: score Break market relations prior-only`, verified locally as `dd5a2e3`. Applied to PR #155 branch `feat/break-micro-short-channel-20261017`. The rolling market beta, volatility and
+residual baselines now exclude the bar being scored; a hand-calculated test
+checks both z-scores. The hot path also avoids per-config trend Maps and
+variadic finite-check arrays. Replay coverage now compares seatable tapes with
+kept config sets, excluding held-only position-carry tapes.
+
+The full review is in [`docs/break-review-20261017.md`](break-review-20261017.md).
+It includes a matched offline 9-symbol, 24-hour-prehistory/24-hour-trade replay,
+hour/config loss diagnosis and two adjacent-window Trailing ablations. The old
+4-ID set returned PF 0.174 on 1,593 orders; the updated 60-ID Micro set returned
+PF 0.447 on 11,851 orders in the matched window, with net cash −$43.10. The next
+day returned PF 0.325 on 31,149 orders. These do not meet the requested positive
+PF or hourly-success goals. Only nine real symbol feeds are cached, so a
+12-symbol result is unavailable; the busiest replay peaked at 803 MB RSS.
+
+Focused indication/market/Micro/pipeline/range tests pass 97/97; Break-specific
+tests pass 9/9. Typecheck, development build and worker packaging pass. Replay
+checks pass 55/55 on both traded windows and 53/53 on each Trailing-off run.
+The no-seat Oct 11–12 window correctly placed no orders and did not meet the
+harness's activity-coverage expectation. No live execution or deployment was
+attempted. Keep current strategy defaults; do not promote from these samples.
+
+## Continuation check — systemwide PF and volume audit
+
 ## Continuation check — systemwide PF and volume audit
 
 Validated local source commit: `86b018956a3edc995486a4d3489110ffe6fc93ef`;
