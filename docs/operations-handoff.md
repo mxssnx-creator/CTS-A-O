@@ -2,6 +2,73 @@
 
 Updated 2026-10-17, Europe/Vienna. Repository: `mxssnx-creator/CTS-A-O`.
 
+## Systemwide PF scope and cash basis — 17 October
+
+Systemwide test and simulation benchmarks now explicitly follow the validated
+cohort: Base minimum-PF-qualified pairs → post-Base configs validated/seated →
+funded settled orders actually executed. The evaluated/passed counts and each
+later-stage count remain visible. Headline, hourly, range and strategy PF use
+the executed cohort. The all-candidate/pre-validation PF table is labeled as a
+diagnostic and is excluded from benchmark ranking and qualification. This is a
+standing rule for future CTS-A-O work; do not optimize against an unfiltered
+candidate aggregate.
+
+Cash PF is the normalized base-$1 PF: each funded settled order contributes its
+canonical unit return at equal $1 notional and should match Return PF. Actual
+sized-dollar PF is separate because funded notionals differ. Cash P&L uses
+`(1 + execution-weighted return) − 1`, then scales by funded unit notional; tiny
+nonzero returns survive floating-point cancellation, and Block, coordination
+and ladder volume are not applied twice. No profitability claim or live setting
+change follows from this reporting fix.
+
+The default replay is the cached six-hour evaluated prehistory plus six-hour
+simulation. Its scored orders are already post-Base Real-stage executions;
+the latest code change makes that cohort explicit in JSON evidence, Markdown,
+write-up and HTML, and labels all-candidate tables diagnostic-only. Focused
+verification and replay results are recorded in the audit below.
+
+## Updated Micro defaults and runtime audit — 17 October
+
+The 60 updated Micro Break IDs are now in the default focus, bringing it to 97
+unique bot/indication pairs. Migration v28 upgrades only a saved prior-default
+focus; a user-customized focus is preserved. The regression checks verify all
+60 IDs are unique, eligible for processing and migrated without overwriting a
+custom selection.
+
+The audit found and fixed two correctness issues. A Base-failed held pair had
+been omitted from `pairTags`, which meant “no Base filter” and could rebuild
+every strategy range. The runtime now passes an explicit empty Base result and
+the builder retains only exact held configs as held-only tapes, including DCA
+and Axis ladders. A separate report check combined Signal tapes with engine
+Base sets; the output now keeps combined totals while checking each population
+against its own denominator.
+
+Fast offline audit: nine cached symbols, six evaluated history hours plus six
+simulated hours ending 2026-10-15 04:00 UTC, one worker, Signals enabled. All
+66/66 report consistency checks pass. Base evaluated 854 engine pairs and
+passed 53; 295 engine configs seated and 7,946 funded orders executed. The 60
+Micro identities are present in the default focus and all 980 requested engine
+and signal combos were processed. The signal trail screen qualified 0/126
+pairs in this short window (124 had insufficient entries; eight candidates
+were evaluated, four lacked the close minimum and four failed PF).
+
+Result is not profitable: Return PF and normalized base-$1 PF were both 1.90,
+while sized-dollar PF was 0.75; net was −$0.17 from $10, with 48 positions,
+10,692 virtual closes (2,746 zero allocations), 7.09% maximum equity drawdown,
+and two of six hours positive. Size weighting therefore turned a positive unit
+PF into a negative cash result. The six hourly rows, all PF definitions, and
+coverage details are in
+[the detailed 6+6 audit report](simulations/systemwide-postbase-6h-20261017/report.md).
+Engine peak RSS was 851 MB with full compute level, no memory fallback and no
+aborts; the replay did not change live settings or place venue orders. No
+profitability or live-promotion claim follows from this sample.
+
+Focused verification on this checkpoint: the combined PF/report, worker pool,
+Micro/default migration, seating, Break and stage bundle passes 76/76; TypeScript
+typecheck, Node syntax and `git diff --check` pass. A full core suite was
+running concurrently in the shared workspace; its completion status was
+unavailable, so it is not counted as a completed pass.
+
 ## Break retest and market-gap correction — 17 October
 
 Tested source checkpoint: local commit
@@ -901,10 +968,20 @@ The exact external resource `imperative-greeting-fox` was absent from source, co
 
 The offline session uses the cached candle feed through 2026-10-15 04:00 UTC and exactly six evaluated prehistory hours. Signals receive no additional warmup. The feed is historical and was about 38 hours old at the replay; this is a smoke check, not a current-market or profitability claim. Full hourly, per-type, range, lane, sizing and Block-multiplier tables are in [`docs/sims/systemwide-pf-volume-audit-20261016.md`](sims/systemwide-pf-volume-audit-20261016.md).
 
-- 6-hour session: 792 funded closes, Return PF 2.374852, cash PF diagnostic 2.223031, realized +$4.418713 from $1,000, end equity $1,000.703278, max equity drawdown 2.8717%, and 4/6 positive hours. Long had 60 losing orders; Short had 732 orders at PF 5.938047. The result is not positive in every hour.
+- 6-hour session: 792 funded closes, Return PF 2.374852, sized-dollar PF diagnostic 2.223031, realized +$4.418713 from $1,000, end equity $1,000.703278, max equity drawdown 2.8717%, and 4/6 positive hours. Long had 60 losing orders; Short had 732 orders at PF 5.938047. The result is not positive in every hour.
 - Range coverage: Micro executed 792 closes at PF 2.37. Minimal, Short, General and Long had no executed sets. Signals built 4,914 requested configs but had no active/executed units under the unchanged 24–48h gates. Keep these outcomes empty; do not relax gates using this short sample.
 - Volume: ×1 had 342 closes at Return PF 30.806253 / cash PF 31.595471 / +$5.143369. ×1.5–2 had 450 closes at Return PF 1.116727 / cash PF 0.789638 / -$0.724656. The overall 936-close virtual Return PF is 2.578589; funding/caps reduce the owned sample to 792. Volume changes cash outcomes, not unit-return PF on an unchanged cohort.
 - The report generator now carries the source mode into saved dumps, labels cached-feed replay accurately in both reports, and marks Signal history as the same minimal evaluated window. The local startup now resolves the repository root, uses the cgroup-bounded memory budget and available CPUs, and keeps the local app synthetic with autostart/live disabled.
 - Checks: 383 focused strategy/Block/Signal/promotion tests and 143 balance/sizing tests passed; typecheck also passes after the report changes. The offline session itself completed in 12 seconds; its consistency report is 55/64 because the aforementioned ranges and Signals have no configs/orders in six hours.
 
 GitHub state at this checkpoint: PR #142 is merged into current `main`; there are no open issues. Draft PR #132 remains unrelated and was not merged.
+
+## Break indication audit closure — 2026-10-17
+
+Detailed source-fix replay and hour table: [`simulations/break-post-fix-9x12-20261017.md`](simulations/break-post-fix-9x12-20261017.md).
+
+The indication audit fixed two real defects: market returns now require contiguous per-symbol closes, and market activity restarts its 60-bar warmup after a candle gap; a fresh opposite channel break cancels an older pending Break retest in the other direction. Market drawdown work was moved out of the per-bar inner loop. Break identities route only to their declared anchor lane, and the current lane audit covers Break and Relate.
+
+The repeated corrected 9-symbol 12h-history/12h-trade replay passed 56/56 consistency checks for each matched arm and reproduced the previous result exactly: legacy Break 1,563 orders at return PF 0.342; updated Micro Break 726 orders at return PF 3.272. Updated hourly outcomes remain 3 positive, 6 flat and 3 negative; the 18:00, 19:00 and 23:00 UTC hours remain below PF 1. Thus the hourly-success target is still unmet. The replay uses the previously examined window and does not count as out-of-sample evidence.
+
+The full offline core run traversed 170 test files and reported two stale test expectations. Both were corrected and focused reruns pass: Break/Micro/Relate/lane 38/38; corrected Base/Main processing assertion 1/1; seat/default migration 29/29; empty prehistory 7/7; session PF/accounting 23/23. The 128-toggle matrix passed in the full run. Typecheck, `build:dev` including the packaged core worker, and `git diff --check` pass. The monolithic full suite was not rerun after these test-only corrections; do not report it as wholly green.
