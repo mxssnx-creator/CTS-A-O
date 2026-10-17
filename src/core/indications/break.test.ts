@@ -183,6 +183,62 @@ describe("Break indication family", () => {
     assert.ok(squeezeContext.squeeze.some((x) => x !== 0), "compression followed by expansion creates a squeeze event");
   });
 
+  it("cancels a pending retest after a fresh opposite channel break", () => {
+    const b = bars("RETEST-FLIP", 5, 80, () => 0);
+    for (let i = 0; i < b.n; i++) {
+      b.o[i] = 100;
+      b.h[i] = 101;
+      b.l[i] = 99;
+      b.c[i] = 100;
+    }
+    // Break above the prior range at bar 40, then break below it with a wide reversal wick at bar 42. The
+    // following rebound crosses the old long retest level but stays beneath the new range high of 106.
+    b.o[40] = 100; b.h[40] = 103; b.l[40] = 99; b.c[40] = 102;
+    b.o[42] = 102; b.h[42] = 106; b.l[42] = 97; b.c[42] = 98;
+    b.o[43] = 100; b.h[43] = 103; b.l[43] = 100; b.c[43] = 102;
+
+    for (const [id, retestKey, breakKey] of [
+      ["break-rel-retest-5-dd24-balanced", "retest", "don"],
+      ["break-mc-rel-retest8-5-dd24-balanced", "retest8", "don8"],
+    ] as const) {
+      const cache = new SeriesCache(b);
+      breakSpecs().find((x) => x.id === id)!.fn(cache);
+      const context = cache.memo<Record<string, Int8Array>>("break:shared:context:v1", () => {
+        throw new Error("Break shared context was not memoized");
+      });
+      assert.equal(context[breakKey][42], -1, `${id} observes the opposite down break`);
+      assert.equal(context[retestKey][43], 0, `${id} cannot emit the stale long retest after the reversal`);
+    }
+  });
+
+  it("cancels a pending short retest after a fresh opposite channel break", () => {
+    const b = bars("RETEST-FLIP-SHORT", 5, 80, () => 0);
+    for (let i = 0; i < b.n; i++) {
+      b.o[i] = 100;
+      b.h[i] = 101;
+      b.l[i] = 99;
+      b.c[i] = 100;
+    }
+    // Break below the prior range at bar 40, then break above it at bar 42. Bar 43 closes back
+    // below the old short retest level while staying above the new channel low.
+    b.o[40] = 100; b.h[40] = 101; b.l[40] = 97; b.c[40] = 98;
+    b.o[42] = 100; b.h[42] = 103; b.l[42] = 99; b.c[42] = 102;
+    b.o[43] = 100; b.h[43] = 100; b.l[43] = 97; b.c[43] = 98;
+
+    for (const [id, retestKey, breakKey] of [
+      ["break-rel-retest-5-dd24-balanced", "retest", "don"],
+      ["break-mc-rel-retest8-5-dd24-balanced", "retest8", "don8"],
+    ] as const) {
+      const cache = new SeriesCache(b);
+      breakSpecs().find((x) => x.id === id)!.fn(cache);
+      const context = cache.memo<Record<string, Int8Array>>("break:shared:context:v1", () => {
+        throw new Error("Break shared context was not memoized");
+      });
+      assert.equal(context[breakKey][42], 1, `${id} observes the opposite up break`);
+      assert.equal(context[retestKey][43], 0, `${id} cannot emit the stale short retest after the reversal`);
+    }
+  });
+
   it("keeps 24- and 48-bar price drawdown windows independent", () => {
     const b = bars("DD-WINDOWS", 5, 180, (i) => (i < 60 ? 0.001 : i < 95 ? -0.0003 : 0.0002));
     const k = new SeriesCache(b);

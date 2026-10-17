@@ -78,11 +78,17 @@ describe("market reference", () => {
       for (const b of five) {
         const i = b.t.indexOf(t);
         if (i < 0) continue;
-        if (i >= 1) rs.push(Math.log(b.c[i] / b.c[i - 1]));
+        if (i >= 1 && b.t[i] - b.t[i - 1] === b.tfMin * 60_000)
+          rs.push(Math.log(b.c[i] / b.c[i - 1]));
         if (i >= MARKET_ACT_P - 1) {
+          let contiguous = true;
           let s = 0;
-          for (let j = i - MARKET_ACT_P + 1; j <= i; j++) s += b.v[j];
-          as.push(b.v[i] / (s / MARKET_ACT_P));
+          for (let j = i - MARKET_ACT_P + 1; j <= i; j++) {
+            s += b.v[j];
+            if (j > i - MARKET_ACT_P + 1 && b.t[j] - b.t[j - 1] !== b.tfMin * 60_000)
+              contiguous = false;
+          }
+          if (contiguous) as.push(b.v[i] / (s / MARKET_ACT_P));
         }
       }
       const mean = (x: number[]) => (x.length ? x.reduce((a, b) => a + b, 0) / x.length : NaN);
@@ -93,6 +99,11 @@ describe("market reference", () => {
     let cum = 0;
     for (let i = 1; i < 400; i++) cum += g.ret[i];
     assert.ok(Math.abs(g.idx[399] - cum) < 1e-12, "the index is the cumulative return");
+    const gapOnly = new MarketSource([five[2]]).grid(5);
+    assert.ok(Number.isNaN(gapOnly.ret[200]), "a missing candle cannot become a one-bar market return");
+    assert.equal(gapOnly.idx[200], gapOnly.idx[199], "the market index does not jump across missing data");
+    assert.ok(Number.isNaN(gapOnly.act[200]) && Number.isNaN(gapOnly.act[258]), "activity warmup restarts after a gap");
+    assert.ok(Number.isFinite(gapOnly.act[259]), "activity resumes after 60 contiguous bars");
     // the caches of a universe: a gapless series reads views into the one grid, a gapped one a copy matched by time
     const u = makeUniverse([...five, fifteen]);
     const m0 = u.caches[0].market()!;
