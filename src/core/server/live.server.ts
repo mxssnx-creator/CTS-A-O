@@ -28,7 +28,7 @@ import {
   type LaneWant,
 } from "./lane-orders.ts";
 import * as bx from "../exchange/bingx.server.ts";
-import type { LiveSettings } from "../config.ts";
+import { exchangePositionLimit, type LiveSettings } from "../config.ts";
 import { promoteLaneKey, validPromotedLaneProof } from "../live-promote.ts";
 import { promotionStatus, type LiveGate } from "../live-validation.ts";
 import {
@@ -566,14 +566,13 @@ export function positionCapOf(s: Pick<LiveSettings, "maxNotionalUsd" | "notional
   return s.maxNotionalUsd === 0 ? Infinity : (s.maxNotionalUsd ?? s.notionalUsd * 5);
 }
 
-export function controlSettingsOf(s: LiveSettings, unit: number, signalMaxPositions = 0) {
+export function controlSettingsOf(s: LiveSettings, unit: number) {
   return {
     notionalUsd: unit,
     ratio: s.ratio ?? 1,
     signalWeight: s.signalWeight ?? 1,
     maxNotionalUsd: positionCapOf(s),
-    maxPositions: s.maxPositions,
-    signalMaxPositions,
+    maxPositions: exchangePositionLimit(s.maxPositions),
     rebalancePct: s.rebalancePct ?? 0.25,
     positionMode: s.positionMode ?? "hedge",
     minStopPct: s.minStopPct ?? 0.01,
@@ -812,6 +811,8 @@ export interface ControlStatus {
   changes: number;
   targets: ControlTarget[];
   held: Array<{ key: string; qty: number }>;
+  /** Occupied/reserved account slots, including foreign positions and unresolved entries. */
+  exchangeSlots?: string[];
   actions: Array<ControlAction & { ok: boolean; msg?: string }>;
   /** lane orders per control key (reported with a position closed outside this system) */
   laneCounts?: Record<string, number>;
@@ -2968,7 +2969,9 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     // held now, and the keys opened moments ago that the position read does not show yet (lagging): a fresh open is
     // ranked as held, so the position cap or a budget scaler never displaces it (and closes it the next step)
     const heldNow = new Set<string>(held.keys());
+    for (const p of book.positions) heldNow.add(`${p.venueSymbol}|${p.side === "long" ? 1 : -1}`);
     for (const k of lagging) if (!isForeign(foreign, k)) heldNow.add(k);
+    for (const k of pendingKeys) if (!isForeign(foreign, k)) heldNow.add(k);
     // a quantity the venue has already named as its minimum is never undercut again — by the sizing or by a scaler
     const venueQty = (sym: string) => venueMinQty(rt, sym);
     const snapVenue = (sym: string, q: number, px: number) =>
@@ -2992,7 +2995,6 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     // the slot they took goes to the next target; held positions are never dropped. Passes repeat until no scaler
     // drops anything new (bounded: a key once dropped stays out, so each pass removes at least one).
     const budgetDrop = new Map<string, string>();
-    const slotCapped = (s.maxPositions ?? 0) > 0 || (rt.settings.signals.maxPositions ?? 0) > 0;
     // lanes the budget fill (live.top) left out, per key
     {
       const keptIds = new Set(liveLanes.map((l) => l.id ?? `${l.cfg}|${l.sym}|${l.side}`));
@@ -3005,12 +3007,12 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     let exposure: ReturnType<typeof scaleToExposure> = null;
     let risk: ReturnType<typeof scaleToRisk> = null;
     let worst: ReturnType<typeof scaleToRisk> = null;
-    for (let pass = 0; ; pass++) {
+    for (;;) {
       ({ targets, skipped } = controlTargets(
         liveLanes,
         prices,
         {
-          ...controlSettingsOf(s, unit ?? 0, rt.settings.signals.maxPositions),
+          ...controlSettingsOf(s, unit ?? 0),
           maxNotionalUsd: posCapNow,
           ...(minQty
             ? {
@@ -3026,30 +3028,6 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         },
         (sym, q, px) => bx.snapQtyExchange(q, px, specs.get(sym) ?? null, venueQty(sym)),
       ));
-      // live.maxSymbols: the exchange sees at most this many distinct symbols. Symbols already held come first, so
-      // the cap never closes a held position and never reshuffles which symbols trade between steps; the targets
-      // are already ranked, so the rest join in that order. The engine keeps the whole universe in Base and on paper.
-      const maxSyms = s.maxSymbols ?? 0;
-      if (maxSyms > 0) {
-        const heldSyms = new Set([...heldNow].map((k) => k.split("|")[0]));
-        const allowed = new Set(heldSyms);
-        for (const t of targets) {
-          if (allowed.size >= maxSyms) break;
-          allowed.add(t.sym);
-        }
-        const before = targets.length;
-        const keep = targets.filter((t) => allowed.has(t.sym));
-        if (keep.length < before) {
-          targets = keep;
-          liveKvSet(rt.db, "controlSymbolCap", {
-            at: Date.now(),
-            max: maxSyms,
-            symbols: allowed.size,
-            held: heldSyms.size,
-            dropped: before - keep.length,
-          });
-        }
-      }
       // the account budgets, their drops decided across all three at once (in rank order, every target whose
       // exchange minimum fits what each budget has left — a stronger target over a budget never empties the book):
       // account exposure factor: one factor for every target when the gross notional (long and short both counted
@@ -3071,13 +3049,9 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         ...(worst?.dropped ?? []).map((k) => [k, "worst-case budget"] as [string, string]),
       ];
       for (const [k, why] of fresh) budgetDrop.set(k, why);
-      // no slot cap: every candidate was tried against the budgets together, a drop frees nothing for another
-      // target — one pass is the answer (under a slot cap a drop frees a slot for the next candidate)
-      if (!fresh.length || !slotCapped || pass >= 8) {
-        // dropped in this (last) pass: shown like every other skipped target
-        for (const [k, why] of fresh) skipped.push({ sym: k.split("|")[0], why });
-        break;
-      }
+      // Exchange slots are filled after selection. If an account budget drops a candidate, the next pass releases
+      // that uncommitted slot to the next eligible key; already held exchange positions always keep their slots.
+      if (!fresh.length) break;
     }
     if (exposure && exposure.factor < 1)
       liveKvSet(rt.db, "controlExposure", { at: Date.now(), ...exposure });
@@ -3303,6 +3277,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           .filter((k) => !held.has(k) && !isForeign(foreign, k))
           .map((key) => ({ key, qty: ledger.get(key) ?? 0 })),
       ],
+      exchangeSlots: [...heldNow],
       actions: [],
       laneCounts: laneCountsByKey(lanes),
       keys: keyFunnel(funnel, plan.targets, skipped),

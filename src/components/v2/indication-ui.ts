@@ -1,6 +1,10 @@
 /** Keep the registered first-class indication name visible in every type selector. */
 export function indicationKindLabel(kind: string): string {
-  return kind === "tactic" ? "Tactic" : kind === "signal-coordination" ? "Signals Coordination" : kind;
+  if (kind === "tactic") return "Tactic";
+  if (kind === "signal-coordination") return "Signals Coordination";
+  if (kind === "relate") return "Relate";
+  if (kind === "break") return "Break";
+  return kind;
 }
 
 /** Registry labels may already name their kind (Tactic does); keep option names concise. */
@@ -22,11 +26,37 @@ export function configStrategyLabel(row: { type?: string; kind?: string }, sourc
 
 /** Empty Focus means all indications; an explicit Focus gets the ten Follow Tactic bases additively. */
 export function includeTacticInFocus(focus: readonly string[], ids: readonly string[]): string[] {
+  return includeIndicationsInFocus(focus, ids);
+}
+
+/** Empty Focus already selects every indication; explicit Focus gets the Relate identities additively. */
+export function includeRelateInFocus(focus: readonly string[], ids: readonly string[]): string[] {
+  return includeIndicationsInFocus(focus, ids);
+}
+
+/** Empty Focus already selects every indication; explicit Focus gets the Break identities additively. */
+export function includeBreakInFocus(focus: readonly string[], ids: readonly string[]): string[] {
+  return includeIndicationsInFocus(focus, ids);
+}
+
+function includeIndicationsInFocus(focus: readonly string[], ids: readonly string[]): string[] {
   return focus.length ? [...new Set([...focus, ...ids.map((id) => `follow|${id}`)])] : [];
 }
 
 /** A lane-specific entry represents its variant but does not enable every selected lane. */
 export function tacticFocusCoverage(focus: readonly string[], ids: readonly string[], pinned: readonly string[] = []) {
+  return indicationFocusCoverage(focus, ids, pinned);
+}
+
+export function relateFocusCoverage(focus: readonly string[], ids: readonly string[], pinned: readonly string[] = []) {
+  return indicationFocusCoverage(focus, ids, pinned);
+}
+
+export function breakFocusCoverage(focus: readonly string[], ids: readonly string[], pinned: readonly string[] = []) {
+  return indicationFocusCoverage(focus, ids, pinned);
+}
+
+function indicationFocusCoverage(focus: readonly string[], ids: readonly string[], pinned: readonly string[] = []) {
   if (!focus.length) return { all: true, covered: ids.length, full: ids.length, total: ids.length };
   const effective = [...focus, ...pinned];
   const set = new Set(effective);

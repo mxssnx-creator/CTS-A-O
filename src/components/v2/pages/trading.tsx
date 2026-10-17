@@ -352,9 +352,6 @@ export function TradingPage() {
             {d.controlPreview.top
               ? ` · top configs: ${d.controlPreview.top.kept} of ${d.controlPreview.top.of} kept`
               : ""}
-            {d.controlPreview.symbolCapDropped
-              ? ` · ${d.controlPreview.symbolCapDropped} positions over the symbol cap (${d.liveSettings?.maxSymbols})`
-              : ""}
             {" · after account exposure / risk scalers"}
           </div>
         )}

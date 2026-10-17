@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { progressText } from "@/core/progress";
 import { TACTIC_TECHNIQUES } from "@/core/indications/tactic";
-import { indicationKindLabel, includeTacticInFocus, tacticFocusCoverage } from "../indication-ui";
+import { breakFocusCoverage, indicationKindLabel, includeBreakInFocus, includeRelateInFocus, includeTacticInFocus, relateFocusCoverage, tacticFocusCoverage } from "../indication-ui";
 import { coreSettings, coreStatus, saveCoreSettings } from "../api-conn";
 import { signalConfigCounts } from "../signal-units";
 import { signalProgressCounts } from "../progression";
@@ -11,6 +11,7 @@ import {
   MAX_DDT_CHOICES,
   GENERAL_RANGE,
   LONG_RANGE,
+  MAX_EXCHANGE_POSITIONS,
   MICRO_RANGE,
   MIN_PF_CHOICES,
   MINIMAL_PLUS_RANGE,
@@ -21,12 +22,16 @@ import {
   SYMBOL_RANK_CHOICES,
 } from "@/core/config";
 import { INDICATION_KINDS, type AxisRange } from "@/core/domain/types";
+import { BREAK_CONFIG_IDS } from "@/core/indications/break-config";
+import { RELATE_CONFIG_IDS, RELATE_MODES, RELATE_PROFILES, RELATE_SUBSETS } from "@/core/indications/relate";
 import { RANGE_OWN_BASE } from "@/core/minimal-coord";
 import { blockRatioOf, blockStackCap, stepRaise } from "@/core/sim/block";
 import { DEFAULT_SIGNALS, SIGNAL_COUNT_CHOICES, SIGNAL_SOURCES } from "@/core/signal-config";
 import { Confirm, downloadFile, Empty, ErrorNote, fmt, Panel, Pill, Switch, usePoll } from "../ui";
 
 const TACTIC_IDS = TACTIC_TECHNIQUES.flatMap((technique) => ["s", "m"].map((range) => `tactic-${technique.id}-${range}`));
+const RELATE_IDS = RELATE_CONFIG_IDS;
+const BREAK_IDS = BREAK_CONFIG_IDS;
 
 function TacticFocusInfo(props: { focus: string[]; pinned: string[]; disabled: boolean; onInclude: () => void }) {
   const coverage = tacticFocusCoverage(props.focus, TACTIC_IDS, props.pinned);
@@ -42,6 +47,42 @@ function TacticFocusInfo(props: { focus: string[]; pinned: string[]; disabled: b
         Include Tactic in Base focus
       </button>
       <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>Adds the ten Follow Tactic bases to an explicit Focus and enables the type. Other pairs stay selected; an empty Focus already includes all indications. Save to apply.</div>
+    </div>
+  );
+}
+
+function RelateFocusInfo(props: { focus: string[]; pinned: string[]; disabled: boolean; onInclude: () => void }) {
+  const coverage = relateFocusCoverage(props.focus, RELATE_IDS, props.pinned);
+  return (
+    <div className="v2-lines" style={{ gap: 8 }}>
+      <div className={props.disabled || coverage.covered === 0 ? "v2-warn" : "v2-muted"} style={{ fontSize: "var(--v-fs-xs)" }}>
+        {props.disabled ? "Relate indication type is off. " : ""}
+        {coverage.all ? `Focus includes all ${coverage.total} Relate variants.`
+          : coverage.covered === 0 ? "Base focus and pinned pairs include no Relate candidates, so Base has no Relate configurations to evaluate."
+          : `Base focus and pinned pairs represent ${coverage.covered}/${coverage.total} Relate variants; ${coverage.full}/${coverage.total} include Follow on their anchored timeframe lane.`}
+      </div>
+      <button type="button" className="v2-btn" disabled={!props.disabled && coverage.full === coverage.total} onClick={props.onInclude}>
+        Include Relate in Base focus
+      </button>
+      <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>Adds the 40 1/5/15m relation variants to an explicit Focus and enables the type. Standard variants follow each range's timeframe minimum (Short defaults to 15m); Micro aliases are eligible for Micro and Minimal under the grid rules. Each runs on its own anchor lane and reads only completed higher-timeframe bars.</div>
+    </div>
+  );
+}
+
+function BreakFocusInfo(props: { focus: string[]; pinned: string[]; disabled: boolean; onInclude: () => void }) {
+  const coverage = breakFocusCoverage(props.focus, BREAK_IDS, props.pinned);
+  return (
+    <div className="v2-lines" style={{ gap: 8 }}>
+      <div className={props.disabled || coverage.covered === 0 ? "v2-warn" : "v2-muted"} style={{ fontSize: "var(--v-fs-xs)" }}>
+        {props.disabled ? "Break indication type is off. " : ""}
+        {coverage.all ? `Focus includes all ${coverage.total} Break configurations.`
+          : coverage.covered === 0 ? "Base focus and pinned pairs include no Break candidates, so Base has no Break configurations to evaluate."
+          : `Base focus and pinned pairs represent ${coverage.covered}/${coverage.total} Break configurations; ${coverage.full}/${coverage.total} include Follow on every anchored timeframe lane.`}
+      </div>
+      <button type="button" className="v2-btn" disabled={!props.disabled && coverage.full === coverage.total} onClick={props.onInclude}>
+        Include Break in Base focus
+      </button>
+      <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>Adds 120 exact Donchian, squeeze and retest configurations across seven 1/5/15m subsets, 24/48-bar drawdown windows and two activity profiles. Each runs on its own anchor lane; Micro aliases follow the Micro/Minimal grid rules.</div>
     </div>
   );
 }
@@ -1802,8 +1843,8 @@ export function SettingsPage() {
                 Live is on — after Save, orders go to the MAINNET account with real money.
               </p>
               <p>
-                Up to {s.live.maxPositions > 0 ? s.live.maxPositions : "unlimited"} positions of $
-                {s.live.notionalUsd} each. Takes effect after Save.
+                Up to {s.live.maxPositions} exchange positions of ${s.live.notionalUsd} each. Takes effect
+                after Save.
               </p>
             </>
           ) : ask === "live" ? (
@@ -1816,8 +1857,8 @@ export function SettingsPage() {
               <p>
                 Orders are only sent when the host also has CTS_CORE_LIVE=1 and API keys, and only
                 while the rolling simulated run holds PF ≥ {s.gates.minPf} and is stable. Up to{" "}
-                {s.live.maxPositions > 0 ? s.live.maxPositions : "unlimited"} positions of $
-                {s.live.notionalUsd} each. Takes effect after Save.
+                {s.live.maxPositions} exchange positions of ${s.live.notionalUsd} each. Takes effect after
+                Save.
               </p>
             </>
           ) : (
@@ -2493,8 +2534,20 @@ export function SettingsPage() {
               set(["disabledKinds"], (s.disabledKinds ?? []).filter((kind: string) => kind !== "tactic"));
             }} />
           </div>
+          <div style={{ marginTop: 10 }}>
+            <RelateFocusInfo focus={s.focus ?? []} pinned={s.pinned ?? []} disabled={(s.disabledKinds ?? []).includes("relate")} onInclude={() => {
+              set(["focus"], includeRelateInFocus(s.focus ?? [], RELATE_IDS));
+              set(["disabledKinds"], (s.disabledKinds ?? []).filter((kind: string) => kind !== "relate"));
+            }} />
+          </div>
+          <div style={{ marginTop: 10 }}>
+            <BreakFocusInfo focus={s.focus ?? []} pinned={s.pinned ?? []} disabled={(s.disabledKinds ?? []).includes("break")} onInclude={() => {
+              set(["focus"], includeBreakInFocus(s.focus ?? [], BREAK_IDS));
+              set(["disabledKinds"], (s.disabledKinds ?? []).filter((kind: string) => kind !== "break"));
+            }} />
+          </div>
           <p className="v2-muted" style={{ fontSize: "var(--v-fs-xs)", margin: "10px 0 0" }}>
-            Tactic indication: Short and Medium configurations run independently on each selected regular or combined timeframe lane.
+            Tactic indication: Short and Medium configurations run independently on each selected regular or combined timeframe lane. Relate: 1/5/15m trend combinations run on their anchor lane, with completed-bar higher-timeframe confirmation and separate drawdown/activity profiles. Break: Donchian, squeeze and retest configurations use their own anchor lane and drawdown horizon.
           </p>
           <details style={{ marginTop: 8, fontSize: "var(--v-fs-xs)" }}>
             <summary>Tactic techniques</summary>
@@ -2502,6 +2555,15 @@ export function SettingsPage() {
               {TACTIC_TECHNIQUES.map((technique) => (
                 <div key={technique.id}><strong>{technique.label}</strong> · <span className="v2-muted">{technique.description}</span></div>
               ))}
+            </div>
+          </details>
+          <details style={{ marginTop: 8, fontSize: "var(--v-fs-xs)" }}>
+            <summary>Relate timeframe combinations and ratio profiles</summary>
+            <div className="v2-lines" style={{ marginTop: 8 }}>
+              <div><strong>Timeframes:</strong> {RELATE_SUBSETS.map((x) => x.join("+")).join(", ")} minutes; each config runs on the smallest timeframe in its subset.</div>
+              {RELATE_MODES.map((mode) => <div key={mode.id}><strong>{mode.label}:</strong> {mode.description}</div>)}
+              {RELATE_PROFILES.map((profile) => <div key={profile.id}><strong>{profile.label}:</strong> price drawdown ≤ {profile.priceDrawdownMax} ATR; market drawdown ≤ {profile.marketDrawdownMax} volatility units; last activity {profile.lastActivityMin}–{profile.lastActivityMax}× prior volume; recent-part and change ratios ≥ {profile.activityPartMin}× / {profile.activityChangeMin}×; market activity ≤ {profile.marketActivityMax}×.</div>)}
+              <div className="v2-muted">The 40 exact IDs include 28 standard and 12 Micro aliases. Standard configs use each range's timeframe minimum; Micro aliases qualify for Micro and, with grid.minimal.microInds, Minimal.</div>
             </div>
           </details>
         </Panel>
@@ -3618,13 +3680,14 @@ export function SettingsPage() {
               />
             </Field>
             <Field
-              label="Max positions"
-              hint="engine positions (symbol × direction, long and short apart; every lane order on one counts once) · signals have their own cap (Signals → Max positions)"
+              label="Exchange positions"
+              hint="final Live Exchange stage cap · at most 100 occupied symbol-direction slots across all indications and strategies; thousands of config/lane orders can share each slot · hedge-mode long and short count separately"
             >
-              <Num int
+              <Num
+                int
                 value={s.live.maxPositions}
-                min={0}
-                max={10_000}
+                min={1}
+                max={MAX_EXCHANGE_POSITIONS}
                 onChange={(v) => set(["live", "maxPositions"], Math.round(v))}
               />
             </Field>
@@ -3705,17 +3768,6 @@ export function SettingsPage() {
                 max={200}
                 value={s.live.liveLastN ?? 25}
                 onChange={(v) => set(["live", "liveLastN"], v)}
-              />
-            </Field>
-            <Field
-              label="Live max symbols"
-              hint="the exchange sees at most this many distinct symbols · 0 = every symbol. Symbols already held come first, so the cap never closes a held position. The engine keeps computing and paper-trading the whole universe, so a desk can evaluate more symbols at Base than it trades"
-            >
-              <Num int
-                value={s.live.maxSymbols ?? 0}
-                min={0}
-                max={1000}
-                onChange={(v) => set(["live", "maxSymbols"], Math.round(v))}
               />
             </Field>
             <Field

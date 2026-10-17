@@ -65,7 +65,7 @@ export function ConfigPage(props: { id: string }) {
       <ErrorNote error={error} />
       <Panel
         title={<span className="v2-mono">{props.id}</span>}
-        sub={[indication?.kind === "tactic" ? indication.label : "", hasNoTakeProfit({ id: props.id }) ? "Trailing only · TP None · hard stop from entry; trailing follows completed-bar peaks" : ""].filter(Boolean).join(" · ") || undefined}
+        sub={[indication?.kind === "tactic" || indication?.kind === "relate" || indication?.kind === "break" ? indication.label : "", hasNoTakeProfit({ id: props.id }) ? "Trailing only · TP None · hard stop from entry; trailing follows completed-bar peaks" : ""].filter(Boolean).join(" · ") || undefined}
         right={
           <button
             type="button"

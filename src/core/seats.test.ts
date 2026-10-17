@@ -75,7 +75,7 @@ describe("Real seats", () => {
     assert.equal(o0.familyNeedsBase, false, "DCA / Axis need no base result to beat by default");
     assert.equal(o0.laneSeats, 3);
     assert.equal(DEFAULT_SETTINGS.mainTop, 0);
-    assert.equal(DEFAULT_SETTINGS.live.maxPositions, 0, "control positions: as many as the book holds");
+    assert.equal(DEFAULT_SETTINGS.live.maxPositions, 100, "exchange slot ceiling; independent of strategy seats");
   });
 
   it("DCA / Axis run next to the base on the same pair, only when they beat its PF", () => {
@@ -304,9 +304,34 @@ describe("bug-hunt regressions", () => {
     assert.deepEqual(rt.settings.signals.lanes, [15]);
     assert.equal(
       rt.settings.live.maxPositions,
-      12,
-      "the unlimited value a v5 migration wrote goes back",
+      100,
+      "legacy unlimited live settings migrate to the exchange slot ceiling",
     );
+  });
+  it("v27: exchange positions default to 100, legacy symbol caps disappear, and strategy caps stay independent", () => {
+    const db = new CoreDb(":memory:");
+    db.kvSet("wfCapsV", 26);
+    db.kvSet("settings", {
+      live: { maxPositions: 12, ...({ maxSymbols: 2 } as Record<string, unknown>) },
+      signals: { maxPositions: 100 },
+    });
+    db.kvSet("presets", [
+      {
+        id: "legacy-live-cap",
+        settings: { live: { maxPositions: 0, ...({ maxSymbols: 2 } as Record<string, unknown>) } },
+      },
+      { id: "custom-lower-cap", settings: { live: { maxPositions: 8 } } },
+    ]);
+    const rt = new CoreRuntime(db, undefined, { market: "synthetic" });
+    assert.equal(rt.settings.live.maxPositions, 100, "former shipped 12 becomes the 100 exchange ceiling");
+    assert.equal("maxSymbols" in rt.settings.live, false);
+    assert.equal(rt.settings.signals.maxPositions, 100, "v27 leaves the separately chosen signal evaluation cap intact");
+    assert.equal(DEFAULT_SIGNALS.maxPositions, 250);
+    assert.equal(db.kvGet<number>("wfCapsV"), 27);
+    const presets = db.kvGet<Array<{ settings: { live?: Record<string, unknown> } }>>("presets") ?? [];
+    assert.equal(presets[0].settings.live?.maxPositions, undefined, "legacy unlimited preset inherits default");
+    assert.equal("maxSymbols" in (presets[0].settings.live ?? {}), false);
+    assert.equal(presets[1].settings.live?.maxPositions, 8, "deliberate lower preset cap survives");
   });
   it("v10: signal settings still on the former defaults move to the validated ones; user choices stay", () => {
     const old = new CoreDb(":memory:");
@@ -502,7 +527,7 @@ describe("bug-hunt regressions", () => {
     old.kvSet("settings", { grid: { ...DEFAULT_SETTINGS.grid, micro: { ...DEFAULT_SETTINGS.grid.micro, tp: [...FORMER_MICRO_TP] } } });
     const a = new CoreRuntime(old, undefined, { market: "synthetic" });
     assert.deepEqual((a.settings.grid.micro as unknown as { tp: number[] }).tp, [...MICRO_TP]);
-    assert.equal(old.kvGet("wfCapsV"), 25);
+    assert.equal(old.kvGet("wfCapsV"), 27);
     const mine = new CoreDb(":memory:");
     mine.kvSet("wfCapsV", 24);
     mine.kvSet("settings", { grid: { ...DEFAULT_SETTINGS.grid, micro: { ...DEFAULT_SETTINGS.grid.micro, tp: [0.003] } } });
@@ -510,8 +535,8 @@ describe("bug-hunt regressions", () => {
     assert.deepEqual((b.settings.grid.micro as unknown as { tp: number[] }).tp, [0.003]);
   });
 
-  it("signal positions: 100 per direction (symbol × direction), orders unlimited, engine positions capped apart", () => {
-    assert.equal(DEFAULT_SIGNALS.maxPositions, 100);
+  it("signal simulation positions: 250 per direction, separate from exchange slots, orders unlimited", () => {
+    assert.equal(DEFAULT_SIGNALS.maxPositions, 250);
     assert.equal(DEFAULT_SIGNALS.perSymbol, 0);
     assert.equal(DEFAULT_SIGNALS.maxOpen, 0);
     const eng = "combo|ema-9-21|15|x";

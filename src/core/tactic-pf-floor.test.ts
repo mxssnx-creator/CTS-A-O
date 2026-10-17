@@ -87,13 +87,16 @@ const OPTIONS = {
   engineSideAccept: undefined,
 };
 
-describe("Tactic minimum return PF is consistent from Base through entry", () => {
-  it("applies the 1.1 floor only to full Tactic identities while preserving stricter stage/range minima", () => {
+describe("first-class indication minimum return PF is consistent from Base through entry", () => {
+  it("applies the 1.1 floor to Tactic, Relate and Break identities while preserving stricter stage/range minima", () => {
     for (const ind of [
       "tactic-trend-s",
       IND,
       "tactic-adaptive-m@m1c",
       "tactic-mean-reversion-s@m30",
+      "relate-1-trend-guarded@m1",
+      "break-rel-don-5-dd24-guarded@m5",
+      "break-mc-rel-retest-15-dd48-balanced@m15",
     ])
       for (const tag of [undefined, "mc", "sh"]) assert.equal(minPfOf(G, tag, ind), 1.1);
     assert.equal(minPfOf(G, "gn", IND), 1.3);

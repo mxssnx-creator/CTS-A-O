@@ -1,6 +1,138 @@
 # CTS-A-O operations handoff
 
-Updated 2026-10-16, Europe/Vienna. Repository: `mxssnx-creator/CTS-A-O`.
+Updated 2026-10-17, Europe/Vienna. Repository: `mxssnx-creator/CTS-A-O`.
+
+## Relate indication and Micro verification
+
+Implementation branch: `feat/relate-indication-20261016`. Remote safety
+checkpoint `backup/pre-relate-20261016` preserves main
+`ec30c30c80c9d5531e368ac7de5084d41ac79d23`. Main subsequently advanced to
+`f659a266590722d1de6a33eb900c02ab90aa020b` with the independent Live exchange
+slot-admission fix; remote backup `backup/pre-relate-main-update-20261016`
+preserves that exact commit. The main tree was merged locally as `4ca2877`; the only
+conflict was a gating-test fixture, resolved to the current positive-DDR sample.
+The Relate work was merged by PR
+[#146](https://github.com/mxssnx-creator/CTS-A-O/pull/146) at
+`8750e259beafdf9d7ac98bc8a66c4ca6f2b878a1`. PR
+[#151](https://github.com/mxssnx-creator/CTS-A-O/pull/151) then restored the
+complete scheduler regression after a truncated test blob was detected and
+merged at `10d50c5bb1f16fced70a5b5067a9f3bf6dcd8201`; that was main at the
+Relate verification. PR #152 later advanced the docs baseline to
+`83585ef6b12c215fa0ee6a0dd2f8cfacba35b6cf`, tree
+`d843e839f7bab4992f355576f528cdf9c9673ab8`, the base for PR #153.
+
+Original Relate source checkpoint: `ec0c489fc590a693fc67ca294401e66d328bda78`,
+tree `494bb1047d1db9dc19339412cc3bd0d12375c919`; GitHub mirrored it at
+`c748089523bec47f72fff49d51a5113f652ba41a` with the identical tree.
+
+Relate has 40 stable exact identities: seven nonempty subsets of 1/5/15m × two
+modes (Trend and Adaptive) × two drawdown/activity profiles, with 28 standard
+IDs plus 12 Micro aliases. Each config runs once on its fastest/anchor lane;
+higher-timeframe checks use completed bars. Micro aliases require the existing
+5m Micro lane floor, keeping the known weak 1m Micro lane out. Standard 5m
+identities remain eligible for Minimal and standard 15m identities for Short,
+subject to each range's own lane and Base rules. Per-config memoized typed-array
+calculations cover causal trend, ATR-normalized symbol and market drawdown,
+last-bar/recent-part/activity-change ratios, and market activity. Relate shares
+the independent Tactic/Relate Base measurement and 1.10 return-PF floor.
+
+Current verification:
+
+- Before the main update, guarded focused core regressions passed 141/141 across
+  12 files and 30 suites; platform/UI tests passed 78/78 across 8 files and 16
+  suites. These cover every Relate ID, Micro routing, causal 1/5/15m alignment,
+  gap reset, completed higher bars, drawdown/activity guards, Base range cells,
+  128 processing-toggle combinations and worker counts.
+- On merged tree `73e5d82`, `npm run typecheck -- --pretty false` and
+  `npm run build:dev` pass. The build packages the 24.65kB Relate client chunk
+  and core worker bundle.
+- ESLint on changed code files: 0 errors and 4 existing unused-variable
+  warnings in `runtime.server.ts` and `walkforward.ts` (the two Markdown files
+  are outside ESLint's configured file types). New Relate files are clean.
+  `git diff --check` passes.
+- Merged-tree targeted verification after the main update: 138/138 guarded
+  offline core tests pass across 10 files, covering Relate/Tactic/Micro,
+  completed higher bars, lane/range routing, pipeline causality, signal discovery,
+  seats and gating. The focused UI suite passes 10/10 across two files.
+- Hard-pressure memory guard: 1/1 passed. The former cycle-serialization test
+  timed out after performing two full 4-symbol, 18-day synthetic portfolio
+  runs; it now uses a controlled compute barrier, verifies one follow-up compute
+  with no overlap, and passes 1/1 in under one second. This is a scheduler test,
+  not a full runtime/processing stress run.
+- A prior guarded 10-file run passed 181 tests and cancelled 3 processing cases
+  after `processing.test.ts` hit its 400-second internal warm-up wait under
+  concurrent load. Its 128-toggle matrix and two related processing cases remain
+  incomplete.
+- Synthetic indicator benchmark: 40 IDs × 10 symbols (1,973,360 config-bar
+  visits over 126,670 source bars) completed in 210ms; after GC, ArrayBuffer
+  growth was 15.16MB, heap growth 0.36MB and RSS growth 26.13MB. This measures
+  calculation cost only, not strategy performance.
+
+An earlier complete guarded core run on this source before fixture corrections
+finished with 1,950 pass, 7 fail, 2 skipped, across 169 files. Every Relate
+test passed. Four stale test expectations were corrected (Base fixtures now
+state/disable the active DDR gate as intended; Signal counts reflect
+lane-scaled `minTrail` filtering), and upstream PR #145 supplies the missing
+report-page helper. The memguard hard-pressure assertion passes in a
+targeted rerun. The former cycle-serialization timeout was traced to the test
+running two full portfolio computations for a scheduling-only assertion; the
+focused deterministic scheduler regression now passes. The full runtime and
+processing suites have not been rerun after that test-scope change. Heavy
+concurrent test processes used the shared host; none were killed. The full core
+suite was not repeated.
+
+The broad raw script-test command `node --test 'scripts/**/*.test.mjs'` was
+stopped by automatic approval review because it could contact BingX endpoints.
+It was not retried or routed around the block. The review result does not
+establish whether a request was issued before termination; I made no manual
+exchange calls or live-execution attempt. Safe focused/UI and guarded offline core tests above pass;
+the broad script stage remains unverified pending an approved network-isolated
+environment. The saved public market feed is historical and was not rescored;
+no new held-out Micro performance, positive profitability, live execution or
+deployment claim is established. Do not promote or deploy Relate from these
+synthetic tests.
+
+## Break relational indications and realtime refresh
+
+Work branch: `feat/break-rel-indications-20261017`; PR
+[#153](https://github.com/mxssnx-creator/CTS-A-O/pull/153). The exact tested
+local source commit is `db66494d8a1dd8e6823ba51c8af2947a6c1725d8` (tree
+`a131d7c215c39c9f1a944755a4a474858c52255b`), based on main
+`83585ef6b12c215fa0ee6a0dd2f8cfacba35b6cf` (tree
+`d843e839f7bab4992f355576f528cdf9c9673ab8`).
+
+The family has 120 exact identities: Donchian, squeeze and retest sources ×
+seven nonempty 1/5/15m trend subsets × 24/48-bar drawdown windows ×
+Guarded/Balanced profiles, plus Micro aliases only for 5m and 15m anchors.
+Each config runs on its fastest selected lane and retains its full order
+identity. Completed higher bars, gap warmup, prior-only channel/volatility
+features, symbol/market drawdowns, volume/activity ratios and market-relative
+filters are exercised by the family tests. Break shares the 1.10 return-PF
+floor from Base through selection and live eligibility.
+
+Realtime refresh is Break-only by default; explicit `CTS_CORE_FAST_ENTRIES=1`
+selects all indication types and `=off` disables the fast path. It waits for a
+closed base bar plus the 2s exchange publication grace, refreshes a higher-lane
+config only on its own close, and publishes refreshed tapes to both Entries and
+Overall modes. The selected-tape refresh and clock helpers have focused tests;
+no venue order was sent.
+
+Verification:
+
+- The immediately preceding Break source checkpoint passed a 77/77 focused
+  core bundle across Break, pipeline, qualification, walk-forward and
+  config/seat identity tests. On final source `db66494`, Break/PF reruns pass
+  13/13; UI tests pass 11/11; focused fast-entry/realtime clock and freshness
+  tests pass 3/3.
+- `npm run typecheck -- --pretty false`, `npm run build:dev` and core-worker
+  packaging pass. Scoped ESLint has 0 errors and four existing unused-variable
+  warnings elsewhere in `runtime.server.ts` and `walkforward.ts`.
+- `git diff --check` and `node --check scripts/core-live-test.mjs` pass.
+
+This is functional evidence only. No new held-out PF or hourly strategy study
+was produced; no authenticated exchange execution, deployment or live reload
+was verified. Full processing/runtime stress and the venue-contacting broad
+script suite remain open. Do not promote Break based on these tests.
 
 ## Continuation check — systemwide PF and volume audit
 
@@ -645,3 +777,9 @@ Verification uses synthetic fixtures only. The runtime smoke built all 15 coordi
 Code verification: `npm run typecheck`, `npm run build:dev`, and lint for the new coordinator module/tests passed. Focused signal/statistics tests passed 109/109; range/gating tests passed 38/38; API reporting, execution quantity, and journal tests passed 55/55. The long runtime coordination suite completed successfully, including stop/restart, held-position, order-close and concurrency checks. An earlier combined run had one failure because it had already loaded the old range-floor test fixture before its correction; the corrected range/gating suite passes on a fresh process.
 
 No exchange credentials were used and no live orders were placed. Preserve the existing return-PF and execution-proof requirements before any live promotion.
+
+### Main integration and follow-up verification — 2026-10-17
+
+The Signals Coordination branch now includes current `main` through `b6094a4` (Break and Relate indications). Merge resolution retains the coordination kind and its own worker bucket while keeping the realtime candle-close/mode gate and delay reporting. All three indication kinds have named UI labels and remain registered.
+
+Post-merge checks: `npm run typecheck`, `npm run build:dev`, and `npm run lint` passed (0 lint errors, 21 existing warnings). Focused offline core runs passed 112 cases across 11 files and 399 cases across seven overlapping accounting, execution, statistics, completeness, and coordination files. UI tests passed 11/11; corrected Signal research-grid tests passed 8/8. These runs used the core offline transport guard and fixture data. The monolithic `npm test` was not completed: automatic review had blocked its broad core stage over potential BingX traffic, so it was not retried. The corrected market PF remains unavailable until the missing historical candle cache is restored.

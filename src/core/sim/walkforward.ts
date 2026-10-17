@@ -1123,9 +1123,15 @@ const AXIS_VARIANT_TAG = /^axd?-[a-z0-9]+$/;
  */
 export function orderCfgKey(cfg: string): string {
   const parts = cfg.split("|");
-  // Signal and Tactic sources, parameter ranges and timeframe lanes own independent trades even when their protect
+  // Signal, Tactic, Relate and Break sources, parameter ranges and timeframe lanes own independent trades even when their protect
   // and onset coincide. Keep their complete identity; other engine aliases and equivalent Axis depths still dedupe.
-  if (isSignalInd(parts[1] ?? "") || parts[1]?.startsWith("tactic-")) return cfg;
+  if (
+    isSignalInd(parts[1] ?? "") ||
+    parts[1]?.startsWith("tactic-") ||
+    parts[1]?.startsWith("relate-") ||
+    parts[1]?.startsWith("break-rel-") ||
+    parts[1]?.startsWith("break-mc-rel-")
+  ) return cfg;
   return `${parts[0]}|${parts
     .slice(2)
     .filter((s) => !AXIS_VARIANT_TAG.test(s))
@@ -2874,7 +2880,7 @@ export function selectAt(
     if (tp.heldOnly || !tapeExecutable(tp, o)) continue;
     const pa = lowerBound(tp.exitT, fromPre);
     const pre = win(tp, pa, b);
-    const preFloor = tp.ind.startsWith("tactic-")
+    const preFloor = tp.ind.startsWith("tactic-") || tp.ind.startsWith("relate-") || tp.ind.startsWith("break-rel-") || tp.ind.startsWith("break-mc-rel-")
       ? minPfOf(o.gates, tp.protect.tag, tp.ind)
       : PF_NEUTRAL;
     if (o.preGate && pre.n >= 3 && (pre.pf < preFloor || pre.net < 0)) continue;
@@ -2936,7 +2942,7 @@ export function selectDurable(
     if (tp.heldOnly || !tapeExecutable(tp, o)) continue;
     if (held.has(tp.id)) {
       // sticky: stay while the long window still pays (PF >= neutral)
-      const heldMin = tp.ind.startsWith("tactic-")
+      const heldMin = tp.ind.startsWith("tactic-") || tp.ind.startsWith("relate-") || tp.ind.startsWith("break-rel-") || tp.ind.startsWith("break-mc-rel-")
         ? minPfOf(o.gates, tp.protect.tag, tp.ind)
         : PF_NEUTRAL;
       if (w.n >= 3 && w.pf >= heldMin && w.net > 0)
@@ -2954,7 +2960,7 @@ export function selectDurable(
     if (pos / k < o.durableFrac) continue;
     if (o.preGate) {
       const pre = win(tp, lowerBound(tp.exitT, t - o.preH * H), b);
-      const preFloor = tp.ind.startsWith("tactic-")
+      const preFloor = tp.ind.startsWith("tactic-") || tp.ind.startsWith("relate-") || tp.ind.startsWith("break-rel-") || tp.ind.startsWith("break-mc-rel-")
         ? minPfOf(o.gates, tp.protect.tag, tp.ind)
         : PF_NEUTRAL;
       if (pre.n >= 3 && (pre.pf < preFloor || pre.net < 0)) continue;

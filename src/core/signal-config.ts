@@ -644,7 +644,7 @@ export interface SignalSettings {
    */
   baseGate?: boolean;
   maxOpen: number;
-  /** max open signal positions (symbol × direction, long and short apart); 0 = no limit */
+  /** Signal-simulation positions (symbol × direction, long and short apart); independent of the live exchange cap. */
   maxPositions: number;
 }
 
@@ -665,8 +665,7 @@ export function signalVolumeFactorsOf(settings: SignalSettings): SignalVolumeFac
 
 export const DEFAULT_SIGNALS: SignalSettings = {
   enabled: true,
-  // Preserve the existing 100-unit cap. Causal qualification now counts type as well as pair, symbol and direction;
-  // the earlier per-direction measurement predates this explicit type independence.
+  // Signal simulation keeps its own high per-direction cap, independent of the live exchange's 100 position slots.
   count: 100,
   sourcesMode: "deny",
   // research sources: 8 are on (positive net in 7 of 8 replay windows and lower drawdown than the older sources alone:
@@ -783,12 +782,11 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   // off: pausing a source after its executed orders lost cost net at every tested setting (continuous 8 days,
   // 43 sources: no gate PF 1.53 net 3470 · best gate 2 d / 67 % PF 1.50 net 2671; docs/signals-validation.md)
   sourceGate: { enabled: false, days: 2, minShare: 0.5, minTrades: 5 },
-  // orders (every order and partial) are unlimited; POSITIONS (symbol × direction, long and short apart) are capped
-  // at 100 for signals, apart from the engine's own cap (4 windows: signal net +10903 / worst drawdown 2501 at 32
-  // orders per symbol, +26524 / 5663 at 120; docs/signals-validation.md)
+  // Orders (every order and partial) are unlimited. Signal simulation permits 250 open positions per direction,
+  // separately from live exchange admission (100 total slots across all strategies).
   perSymbol: 0,
   maxOpen: 0,
-  maxPositions: 100,
+  maxPositions: 250,
   // off: signals run Normal + Trailing; DCA / Axis sets per signal are selectable (not validated as better)
   strategies: { dca: false, axis: false },
   // signals have their own switch: the engine's Normal off / Block Active skip left them ~16 closes in a day on x01

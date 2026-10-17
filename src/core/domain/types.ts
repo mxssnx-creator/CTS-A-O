@@ -46,6 +46,7 @@ export const INDICATION_KINDS = [
   "ichimoku",
   "smooth",
   "tactic",
+  "relate",
 ] as const;
 export type IndicationKind = (typeof INDICATION_KINDS)[number];
 

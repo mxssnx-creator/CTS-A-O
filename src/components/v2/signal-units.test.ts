@@ -47,7 +47,8 @@ test("Signal UI counts match the engine and include no-TP sets independently of 
   assert.equal(signalConfigCounts(disabled).total, signalProtects(disabled).length);
   const custom = signalSettings({ trailingOnly: { enabled: true, sl: [0.015, 0.015, 0.03], trail: [0.005], trailStep: 0.5 } });
   assert.equal(signalConfigCounts(custom).trailingOnly, 2);
-  assert.equal(signalConfigCounts(custom).total, signalProtects(custom).length);
+  assert.equal(signalConfigCounts(custom).total, 32, "UI shows requested cells, including a below-floor trail");
+  assert.equal(signalProtects(custom).length, 30, "engine excludes the trail below minTrail");
 });
 
 test("No-TP labels require the explicit mode, and trailing gap is separate from its activation move", () => {

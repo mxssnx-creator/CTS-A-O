@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { barsFromCandles, syntheticCandles, tailBars } from "../market/bars.ts";
 import { SeriesCache } from "../indications/cache.ts";
+import { isMicroInd } from "../indications/micro.ts";
 import { INDICATIONS, indicationState, mtfState } from "../indications/registry.ts";
 import { BOTS, comboSignal } from "../bots/bots.ts";
 import { optimizeLastN, windowDdt, gatedTrades } from "../lastn/optimizer.ts";
@@ -38,7 +39,7 @@ describe("indications", () => {
   const full = barsFromCandles("AAA", 5, syntheticCandles("AAA", 5, 600, END));
   const kFull = new SeriesCache(full);
 
-  it("covers all 10 kinds with unique ids", () => {
+  it("covers every registered indication kind with unique ids", () => {
     const kinds = new Set(INDICATIONS.map((s) => s.kind));
     for (const k of INDICATION_KINDS) assert.ok(kinds.has(k), k);
     assert.equal(new Set(INDICATIONS.map((s) => s.id)).size, INDICATIONS.length);
@@ -76,11 +77,16 @@ describe("indications", () => {
 
   it("produces both directions on a long random walk", () => {
     let both = 0;
-    for (const s of INDICATIONS) {
+    // Relate and relational Break IDs are anchored to one explicit timeframe. This generic test owns one 5m series,
+    // so their lane-correct direction checks live in the corresponding family tests instead.
+    const unanchored = INDICATIONS.filter(
+      (s) => !s.id.startsWith("relate-") && !s.id.startsWith("break-rel-") && !s.id.startsWith("break-mc-rel-"),
+    );
+    for (const s of unanchored) {
       const st = indicationState(s.id, kFull)!;
       if (st.includes(1) && st.includes(-1)) both++;
     }
-    assert.ok(both >= INDICATIONS.length * 0.8, `${both}`);
+    assert.ok(both >= unanchored.length * 0.8, `${both}/${unanchored.length}`);
   });
 });
 
@@ -225,7 +231,7 @@ describe("combos", () => {
 
   it("Micro indications are not produced on lanes below Micro's floor (they could pass nothing there)", () => {
     const tfs = [1, 5, 15, 30];
-    const micro = (c: { ind: string }) => c.ind.startsWith("mc-");
+    const micro = (c: { ind: string }) => isMicroInd(c.ind.split("@m")[0]);
     const all = allCombos(undefined, undefined, tfs).filter(micro);
     assert.ok(all.some((c) => c.ind.endsWith("@m1")), "every lane without a floor");
     const pruned = allCombos(undefined, undefined, tfs, 5).filter(micro);

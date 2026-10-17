@@ -379,7 +379,7 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     await until(() => rt.status.computes >= 1 && rt.status.state === "running", 180_000);
     const r = rt as unknown as { paperStepped: boolean; dirty: boolean };
     assert.equal(r.paperStepped, true, "the compute's tapes are stepped, not thrown away");
-    assert.equal(rt.settings.live.maxPositions, 0);
+    assert.equal(rt.settings.live.maxPositions, 100, "live admission retains the exchange ceiling");
     assert.equal(rt.settings.live.openPaused, "test");
     // a compute-relevant change still recomputes
     rt.updateSettings({ toggles: { ...rt.settings.toggles, dcaActive: !rt.settings.toggles.dcaActive } });
@@ -820,6 +820,32 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
 
   it("never runs two cycles at once, however often a recompute is requested", async () => {
     const rt = mk();
+    const inner = rt as unknown as Record<string, unknown>;
+    let computes = 0;
+    let activeComputes = 0;
+    let maxActiveComputes = 0;
+    // This case tests cycle scheduling, not pipeline throughput. Keep the first compute open while kicks arrive,
+    // then let the follow-up cycle finish without rebuilding the whole 4-symbol, 18-day synthetic portfolio.
+    inner.syncMarket = async () => false;
+    inner.paperStepped = true;
+    inner.compute = async () => {
+      const state = rt as unknown as { dirty: boolean; settingsStale: boolean };
+      state.dirty = false;
+      state.settingsStale = false;
+      rt.status.state = "computing";
+      activeComputes++;
+      maxActiveComputes = Math.max(maxActiveComputes, activeComputes);
+      const n = ++computes;
+      await new Promise((resolve) => setTimeout(resolve, n === 1 ? 800 : 10));
+      rt.status.computes++;
+      activeComputes--;
+    };
+    inner.paperIdle = async () => {};
+    inner.stepPaperGen = function* () {};
+    inner.runAdjust = () => {};
+    inner.runAuditAsync = async () => {};
+    inner.buildListings = () => {};
+    inner.comparePresets = async () => {};
     let running = 0;
     let maxRunning = 0;
     const orig = rt.cycle.bind(rt);
@@ -838,11 +864,11 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
       rt.kick();
       await new Promise((r) => setTimeout(r, 30));
     }
-    await until(() => rt.status.computes >= 2 && rt.status.state === "running", 240_000);
+    await until(() => rt.status.computes >= 2 && rt.status.state === "running", 10_000);
     rt.stop();
-    // an overlapping call returns immediately at the busy guard; real work never overlaps
-    assert.ok(rt.status.computes >= 2);
-    assert.ok(maxRunning <= 2, `overlap ${maxRunning}`);
+    assert.equal(rt.status.computes, 2, "the busy-cycle kicks produce one follow-up compute");
+    assert.equal(maxActiveComputes, 1, "computes never overlap");
+    assert.equal(maxRunning, 1, "the next cycle starts after the current one finishes");
   });
 });
 

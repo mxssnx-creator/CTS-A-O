@@ -70,7 +70,8 @@ function events(n: number, f: (i: number) => number): Int8Array {
 const spec = (id: string, label: string, params: Record<string, number>, fn: (k: SeriesCache) => Int8Array) =>
   ({ id, kind: "active", label, params, fn }) as IndicationSpec;
 
-export const isMicroInd = (base: string) => base.startsWith("mc-");
+export const isMicroInd = (base: string) =>
+  base.startsWith("mc-") || base.startsWith("relate-mc-") || base.startsWith("break-mc-rel-");
 
 /**
  * Which cells the Micro indications take (grid.micro.ownInds, grid.minimal.microInds): false = any indication on any
@@ -715,7 +716,8 @@ const wickEv = (k: SeriesCache, x: number) =>
   });
 
 /** ids of the Micro indications that read the market reference (neutral on a series without one) */
-export const isMicroRelation = (base: string) => /^mc-(lag|rsrev|mturn|act|irsi2|mrsi2|iz|ivwapd|rexh)-/.test(base);
+export const isMicroRelation = (base: string) =>
+  base.startsWith("relate-mc-") || base.startsWith("break-mc-rel-") || /^mc-(lag|rsrev|mturn|act|irsi2|mrsi2|iz|ivwapd|rexh)-/.test(base);
 
 // ── exhaustion (13 Oct): fade the move an entry would have chased ───────────────────────────────────────────────
 // The PF gap analysis of the executed orders (PF-SEARCH.md section 20): the engine's entries came after a strong move

@@ -38,6 +38,8 @@ import {
   microIndRule,
 } from "../minimal-coord.ts";
 import { isMicroInd, microIndFits, type MicroIndRule } from "../indications/micro.ts";
+import { isRelateInd, relateAnchorTf } from "../indications/relate.ts";
+import { breakAnchorTf, isBreakRelInd } from "../indications/break-config.ts";
 import { SeriesCache } from "../indications/cache.ts";
 import { MarketSource } from "../indications/market.ts";
 import {
@@ -292,7 +294,11 @@ export function allCombos(
                 microMinTf > 0 &&
                 isMicroInd(laneOf(ind).base) &&
                 (laneOf(ind).tf ?? 0) < microMinTf
-              ),
+              ) &&
+              (!isRelateInd(laneOf(ind).base) ||
+                (!laneOf(ind).combined && laneOf(ind).tf === relateAnchorTf(laneOf(ind).base))) &&
+              (!isBreakRelInd(laneOf(ind).base) ||
+                (!laneOf(ind).combined && laneOf(ind).tf === breakAnchorTf(laneOf(ind).base))),
           )
           .map((ind) => ({ bot: c.bot, ind })),
       )
@@ -1439,9 +1445,10 @@ export function baseRuns(
       if (onStep && (done === total || done % step === 0)) onStep(done, total);
     }
     // bot triggers are reused by every indication: kept; the indication's own series are released
-    if (release) for (const k of u.caches) k.clear(["bot:"]);
+    if (release) for (const k of u.caches) k.clear(["bot:", "break:shared:"]);
     else for (const c of g) forgetCombo(u, c.bot, c.ind);
   }
+  if (release) for (const k of u.caches) k.clear(["bot:"]);
   return out;
 }
 

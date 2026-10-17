@@ -14,7 +14,7 @@ export interface BaseConfigSummary {
   cost: number;
   floorPf: number;
   totalPairs: number;
-  population: "focusedTacticCandidates";
+  population: "focusedIndicationCandidates";
   admittedPairs: number;
   admittedPairKeys: string[];
   donePairs: number;
@@ -207,7 +207,7 @@ export class BaseConfigJobRunner {
         fromT,
         cost,
         floorPf: 1.1,
-        population: "focusedTacticCandidates",
+        population: "focusedIndicationCandidates",
         admittedPairs: job.admittedPairKeys?.length ?? 0,
         admittedPairKeys: [...(job.admittedPairKeys ?? [])],
         totalPairs: job.pairs.length,

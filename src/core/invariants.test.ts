@@ -205,8 +205,8 @@ function controlCase(r: R, integer = false): Case {
     ratio: integer ? pick(r, [1, 2, 10]) : pick(r, [0.5, 1, 2, 10, 60]),
     signalWeight: integer ? pick(r, [1, 2]) : pick(r, [0, 1, 2.5]),
     maxNotionalUsd: positionCapFor(fixed, equity, maxPositionX),
+    // The exchange cap is applied after strategy lanes aggregate into symbol-direction positions.
     maxPositions: pick(r, [0, 1, 2, 3, 5, 8]),
-    signalMaxPositions: pick(r, [0, 0, 1, 2]),
     rebalancePct: 0.25,
     positionMode: r() < 0.25 ? "oneway" : "hedge",
     minStopPct: pick(r, [0.005, 0.01, 0.02, 0.25]),
@@ -228,33 +228,30 @@ const run = (k: Case, lanes = k.lanes) =>
     k.specs ? (sym, q, px) => snapQtyExchange(q, px, k.specs!.get(sym)) : undefined,
   );
 
-/** the keys the control aggregates (hedge: symbol × side; oneway: the net side of each symbol) and their class */
-function keysOf(k: Case): Map<string, { signalOnly: boolean }> {
-  const by = new Map<string, { vol: number; engine: boolean }>();
+/** The exchange slots after lane aggregation (hedge: symbol × side; oneway: one net side per symbol). */
+function keysOf(k: Case): Set<string> {
+  const by = new Map<string, number>();
   for (const l of k.lanes) {
     const key = `${l.sym}|${l.side}`;
-    const a = by.get(key) ?? { vol: 0, engine: false };
-    a.vol += Math.max(0, l.vol) * (sigCfg(l.cfg) ? Math.max(0, k.cs.signalWeight ?? 1) : 1);
-    a.engine ||= !sigCfg(l.cfg);
-    by.set(key, a);
+    by.set(
+      key,
+      (by.get(key) ?? 0) +
+        Math.max(0, l.vol) * (sigCfg(l.cfg) ? Math.max(0, k.cs.signalWeight ?? 1) : 1),
+    );
   }
-  const out = new Map<string, { signalOnly: boolean }>();
-  if (k.cs.positionMode !== "oneway") {
-    for (const [key, a] of by) out.set(key, { signalOnly: !a.engine });
-    return out;
-  }
+  if (k.cs.positionMode !== "oneway") return new Set(by.keys());
+  const out = new Set<string>();
   for (const sym of new Set(k.lanes.map((l) => l.sym))) {
     const L = by.get(`${sym}|1`);
     const S = by.get(`${sym}|-1`);
-    const v = (L?.vol ?? 0) - (S?.vol ?? 0);
-    if (Math.abs(v) < 1e-9) continue;
-    out.set(`${sym}|${v > 0 ? 1 : -1}`, { signalOnly: !(L?.engine || S?.engine) });
+    const v = (L ?? 0) - (S ?? 0);
+    if (Math.abs(v) >= 1e-9) out.add(`${sym}|${v > 0 ? 1 : -1}`);
   }
   return out;
 }
 
 describe("live control targets (server/live.ts controlTargets)", () => {
-  it(`never above the position caps or the per-position cap; every key a target or a skip with a reason (${CASES} cases)`, () => {
+  it(`never above the exchange-slot or per-position cap; every key is a target or a reasoned skip (${CASES} cases)`, () => {
     const r = rng(201);
     let targets = 0;
     let raisedAtMin = 0;
@@ -271,21 +268,30 @@ describe("live control targets (server/live.ts controlTargets)", () => {
         const w = s.why.startsWith("exchange minimum") ? "exchange minimum" : s.why;
         why.set(w, (why.get(w) ?? 0) + 1);
       }
-      // the position caps: engine and signal positions together, the signal-only ones within their own cap
-      if (k.cs.maxPositions > 0) assert.ok(res.targets.length <= k.cs.maxPositions, at);
-      const sigTargets = res.targets.filter((t) => keys.get(t.key)?.signalOnly).length;
-      if (k.cs.signalMaxPositions) assert.ok(sigTargets <= k.cs.signalMaxPositions, at);
-      // a cap skip only once the cap is full
+      // All strategy lanes share the exchange capacity after aggregating to unique account positions.
+      const slotKey = (key: string) =>
+        k.cs.positionMode === "oneway" ? key.slice(0, key.lastIndexOf("|")) : key;
+      const heldSlots = new Set(Array.from(k.cs.heldKeys ?? [], slotKey));
+      const targetSlots = new Set(res.targets.map((t) => slotKey(t.key)));
+      const occupied = new Set([
+        ...heldSlots,
+        ...targetSlots,
+      ]);
+      const slotLimit = k.cs.maxPositions > 0 ? k.cs.maxPositions : 100;
+      const newSlots = [...targetSlots].filter((key) => !heldSlots.has(key));
+      assert.ok(
+        newSlots.length <= Math.max(0, slotLimit - heldSlots.size),
+        `${at}: ${newSlots.length} new exchange slots with ${heldSlots.size} already held (limit ${slotLimit})`,
+      );
+      // a cap skip occurs only once all exchange slots are occupied (held keys count too)
       for (const s of res.skipped) {
         assert.ok(typeof s.why === "string" && s.why.length > 0, `${at}: a skip without a reason`);
         assert.ok(
           k.prices.has(s.sym) || s.why === "no fresh price",
           `${at}: ${s.sym} skipped for ${s.why}`,
         );
-        if (s.why === "max control positions (symbol × side)")
-          assert.equal(res.targets.length, k.cs.maxPositions, at);
-        if (s.why === "max signal control positions (symbol × side)")
-          assert.equal(sigTargets, k.cs.signalMaxPositions, at);
+        if (s.why === "max exchange positions (symbol × direction)")
+          assert.ok(occupied.size >= slotLimit, at);
       }
       // every key accounted for exactly once
       assert.equal(
@@ -348,8 +354,7 @@ describe("live control targets (server/live.ts controlTargets)", () => {
     // every skip reason is exercised
     for (const w of [
       "no fresh price",
-      "max control positions (symbol × side)",
-      "max signal control positions (symbol × side)",
+      "max exchange positions (symbol × direction)",
       "size rounds to zero",
       "exchange minimum",
       "risk budget",

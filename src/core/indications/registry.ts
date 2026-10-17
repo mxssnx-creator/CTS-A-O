@@ -18,6 +18,8 @@ import {
   signalCoordinationSourceLabel,
   signalCoordinationState,
 } from "../signal-coordination.ts";
+import { relateSpecs } from "./relate.ts";
+import { breakSpecs } from "./break.ts";
 
 export { SIGNAL_SOURCES, signalId };
 
@@ -1006,6 +1008,10 @@ for (const x of research4Specs()) add(x);
 for (const x of rangeFamilySpecs()) add(x);
 // Tactic is a first-class indication kind; its techniques use the ordinary independent lanes and config PF gates.
 for (const x of tacticSpecs()) add(x);
+// Relate uses explicit 1/5/15m combinations and bounded standard/Micro identities.
+for (const x of relateSpecs()) add(x);
+// Break adds independent Donchian, squeeze and retest cells with trend, activity and drawdown filters.
+for (const x of breakSpecs()) add(x);
 // ── Micro range ("mc-…"): fast reversal entries for net 0.1–0.4 % targets (grid.micro.ownInds: only they trade Micro) ──
 for (const x of microSpecs()) add(x);
 

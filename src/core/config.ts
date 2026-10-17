@@ -14,6 +14,15 @@ import { DEFAULT_SIGNALS, type SignalSettings } from "./signal-config.ts";
 import { DEFAULT_SIZING, type SizingSettings } from "./sizing.ts";
 import type { PromotedLaneProof } from "./live-promote.ts";
 
+/** Hard ceiling for unique positions on the exchange. Strategy/config orders do not consume extra slots. */
+export const MAX_EXCHANGE_POSITIONS = 100;
+
+/** Normalize legacy, unset, or oversized exchange limits without allowing the account cap to be bypassed. */
+export function exchangePositionLimit(value?: number): number {
+  const requested = Number.isFinite(value) ? Math.floor(value!) : MAX_EXCHANGE_POSITIONS;
+  return requested <= 0 ? MAX_EXCHANGE_POSITIONS : Math.min(requested, MAX_EXCHANGE_POSITIONS);
+}
+
 /** Round-trip position cost: 0.1% per side, doubled = 0.2% of notional per closed trade. */
 export const RT_COST = 0.002;
 /** Profit factor reported when a sample has wins and no losses. */
@@ -300,6 +309,7 @@ export interface LiveSettings {
   enabled: boolean;
   connId: "bingx-x01" | "bingx-vst-01" | "bingx-vst-02";
   notionalUsd: number;
+  /** Maximum occupied exchange slots (symbol × direction), shared across every strategy and order; hard ceiling 100. */
   maxPositions: number;
   /**
    * overall — control orders: ONE position per (symbol, direction), sized from every lane holding it
@@ -421,14 +431,6 @@ export interface LiveSettings {
    * Signal configs have no family here (live.source narrows them). Unset / empty = none.
    */
   excludeConfigs?: readonly string[];
-  /**
-   * overall: the live control sends orders on at most this many distinct symbols (0 / unset = every symbol the
-   * universe has). Symbols already held come first, then the rest in the order the ranked targets arrive, so the
-   * cap never closes a held position and never reshuffles which symbols trade from step to step. The engine keeps
-   * computing and paper-trading the whole universe — this is how a desk evaluates more symbols at Base than it
-   * trades on the exchange.
-   */
-  maxSymbols?: number;
   /**
    * group live validation: until a config has its own `liveLastN` closes, its live group (Signals, or its target
    * range: Minimal, Short, General, Long, Wide …) decides — the group's last `liveGroupLastN` live closes pooled over
@@ -602,9 +604,8 @@ export const DEFAULT_SETTINGS: CoreSettings = {
     enabled: false,
     connId: "bingx-vst-02",
     notionalUsd: 6,
-    // control positions (symbol × direction) on the exchange: as many as the paper book holds (0 = no limit,
-    // the default — operator: process freely, many orders; the exposure / stop-risk / worst-case budgets size them)
-    maxPositions: 0,
+    // Final Live Exchange admission: at most 100 occupied symbol-direction positions across all lanes and strategies.
+    maxPositions: MAX_EXCHANGE_POSITIONS,
     mode: "overall",
     // control orders "overall" by default (operator, 7 Oct): per position one stop at the outer stop range and one
     // take-profit beyond the outer target, every lane's partial exit by the system; true = "partials" (lane orders)

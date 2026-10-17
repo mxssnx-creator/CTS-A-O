@@ -1,5 +1,5 @@
 // Range checks for a settings patch, shared by the Settings page, the preset dialog and presets (pure: testable).
-import { GRID_VARIANTS_MAX, type CoreSettings } from "./config.ts";
+import { GRID_VARIANTS_MAX, MAX_EXCHANGE_POSITIONS, type CoreSettings } from "./config.ts";
 import { INDICATION_KINDS } from "./domain/types.ts";
 import { validPromotedLaneProof } from "./live-promote.ts";
 
@@ -110,7 +110,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
   }
   if (s.live) {
     num(s.live.notionalUsd, 1, 500, "notionalUsd");
-    num(s.live.maxPositions, 0, 10_000, "maxPositions"); // 0 = no limit
+    num(s.live.maxPositions, 1, MAX_EXCHANGE_POSITIONS, "maxPositions");
     if (
       s.live.connId !== undefined &&
       !["bingx-x01", "bingx-vst-01", "bingx-vst-02"].includes(s.live.connId)
@@ -159,10 +159,6 @@ export function checkSettings(s: Partial<CoreSettings>) {
         throw new Error(
           "live excluded configs: a list of bot|range families, e.g. follow|mn or revert|wide",
         );
-    }
-    if (s.live.maxSymbols !== undefined) {
-      num(s.live.maxSymbols, 0, 1000, "live max symbols"); // 0 = every symbol
-      int(s.live.maxSymbols, "live max symbols");
     }
     if (s.live.top !== undefined && s.live.top !== "fill")
       num(s.live.top, 0, 100_000, "top configs");
