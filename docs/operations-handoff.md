@@ -2,6 +2,49 @@
 
 Updated 2026-10-17, Europe/Vienna. Repository: `mxssnx-creator/CTS-A-O`.
 
+## Break retest and market-gap correction — 17 October
+
+Tested source checkpoint: local commit
+`9b615befb9704e9f536a3a176673919abb296992`, tree
+`ae42df80a9106eef60c1cee560faa2ded96b6476`, based on merged main
+`9604431e5ab912f989aaa4282d344ec3bf87e89f`. GitHub mirror commit
+`853f4526658654b18380fe547f51d2289de56b57` contains the same tested source
+tree.
+
+The Break retest state now cancels a pending long or short retest when a fresh
+opposite Donchian cross occurs, for both regular and 8-bar channels. Market
+returns now require immediately contiguous candles, and market-volume activity
+restarts its 60-bar warmup after a gap. The shared market drawdown calculation
+was factored without changing its formula. Regression coverage exercises both
+reversal directions, gapped activity warmup, market-index continuity and Break
+anchor-lane routing.
+
+The default fast offline recheck used six evaluated prehistory hours plus six
+simulated hours on the cached nine-symbol feed (through 2026-10-15 04:00 UTC),
+Block ratio 0.2, Signals off, and a six-hour causal selection window. It
+reproduced the saved ratio-0.2 report exactly apart from compute-time and
+formatting text: 53/665 Base pairs passed, 49 engine configs seated, 3,759
+funded orders, Return PF 2.86, sized cash PF 0.74, net -$0.14, and 6.64% max
+equity drawdown. Five of six hours were cash-positive; 02:00 UTC lost $0.31 on
+1,845 orders (cash PF 0.43). The simulation's $10 start balance differs from
+the older positive $1,000 replay, so dollar totals are not directly comparable.
+
+The earlier 0/60 Break-only smoke had zero Base-passing pairs because its
+minimum close-count gate was unmet; PF was unavailable, not measured as zero.
+The expanded Micro run above has orders. The older positive systemwide replay
+used four symbols, 15-minute trading, Signals enabled and a different Base
+cohort: 792 funded orders, Return PF 2.37, cash PF 2.22 and +$4.42, with 4/6
+positive hours. These are different cohorts and settings, so the positive
+result does not contradict the current loss. No gates were relaxed, no live
+settings were changed, and no venue orders or deployment were used.
+
+Verification on the tested source: 31/31 focused guarded core tests pass across
+Break, market/Micro relations and lane routing; TypeScript typecheck passes;
+`npm run build:dev` passes and packages the core worker; the replay's
+consistency checks pass 64/64. The full repository core suite and live venue
+execution were not run for this patch; profitability is not established by the
+six-hour smoke.
+
 ## Break post-Base 12 h replay follow-up — 17 October
 
 Detailed report: [break-postbase-12h-20261017.md](simulations/break-postbase-12h-20261017.md).
