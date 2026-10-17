@@ -19,7 +19,7 @@ The longer check uses the existing **168-hour default Exit lookback** to answer 
 
 The longer fit evaluated 176 candidates: 50 had insufficient validation closes, 77 failed positive-net/PF, 21 failed DDR, and 28 qualified. The independent qualified sets were 2 static-SL short, 12 adaptive-SL short and 14 trailing short; no long config qualified. At the trading boundary, 6 retained configs passed their own seat gates; the other 22 failed last-N (4), DDR (4), PF (3), DDT (7), or positive net (4). Passing seat PFs ranged from 1.734 to 4.510 on their own prior history. Two independent config orders settled during the run: one adaptive-SL short and one trailing short. Losing, empty and insufficient outcomes remain in the evidence.
 
-All four runs passed applicable source/settings validation, production lane normalization, frozen WF/settings gate and cost parity, truncated-prehistory versus future-present fit/holdout parity, range exclusion, side identity, unique exact config/entry identity, evaluation-entry boundaries, and hourly/family settled-return reconciliation. The zero-order runs make their order-specific checks vacuous; the longer runs exercise actual modeled entries. The full 794-pair process used **243.4 MiB maximum RSS** and **44.7 seconds**, with one process and no worker fan-out. Separate project tests cover worker parallelism, held-position control and execution ownership; these bounded replays do not establish those exchange behaviors.
+All four original runs passed applicable source/settings validation, production lane normalization, frozen WF/settings gate and cost parity, truncated-prehistory versus future-present fit/holdout parity, range exclusion, side identity, unique exact config/entry identity, evaluation-entry boundaries, and hourly/family settled-return reconciliation. The zero-order runs make their order-specific checks vacuous; the longer runs exercise actual modeled entries. The original full 794-pair process used **243.4 MiB maximum RSS** and **44.7 seconds**, with one process and no worker fan-out. Separate project tests cover worker parallelism, held-position control and execution ownership; these bounded replays do not establish those exchange behaviors.
 
 These original runs require the exact source hashes recorded in each frozen protocol. Subsequent cache-fingerprint and saved-preset corrections change source provenance; the original launchers deliberately reject that changed source. Their protocols and results remain preserved. Commands for reproducing the original source snapshots are:
 
@@ -29,7 +29,17 @@ node --max-old-space-size=768 --experimental-strip-types --no-warnings scripts/e
 node --expose-gc --max-old-space-size=512 --experimental-strip-types --no-warnings scripts/exit-validation-20261017-default24h.mjs --run
 ```
 
-Protocols contain complete settings and source hashes; changed sources stop scoring. A separate final-source regression wrapper is prepared to repeat the unchanged 794-pair economics under a newly frozen source snapshot and compare every economic result. Its results will be reported separately; preparing the wrapper is not evidence that equality passed. The original attempt is retained as evidence of the earlier source and requires that source snapshot for reproduction.
+Protocols contain complete settings and source hashes; changed sources stop scoring. The original attempt is retained as evidence of the earlier source and requires that source snapshot for reproduction.
+
+**The final-source regression passed exact economic equality.** It repeats the same reused 794-pair, 24-hour sample after the cache-fingerprint, bounded-cache-cleanup and saved-preset Exit correctness fixes. It is not an additional alpha sample. Every settled trade, open mark, per-config/per-step check, hourly/family return, skip and qualification diagnostic matches the original exactly. Only timing/provenance metadata is excluded. Both canonical economic hashes are `cebdce48a2ca9c9876c014485ac4630118f34468693bd35ef18caf1e83ad08c3`. The losing endpoint result remains **PF 0.774226, −14.416 return points**. Model time was **38.1 seconds**, model maximum RSS **246.5 MiB**, and maximum RSS including the full exact comparison **297.9 MiB**.
+
+The new regression protocol permits exactly two changed production source files and archives their exact final content. The unchanged original runner is reused through declared infrastructure-only source bindings. Runtime cache invalidation and saved-preset enrollment are established by their separate focused tests; the direct replay verifies unchanged economics under their final imported source. Current final-source reproduction uses:
+
+```sh
+node --expose-gc --max-old-space-size=512 --experimental-strip-types --no-warnings scripts/exit-validation-20261017-cache-regression.mjs --run
+```
+
+Its full report is `exit-validation-20261017-cache-regression.md`, with a matching protocol, exact comparison JSON, lossless result gzip and compressed changed-source archive. Every original frozen protocol/result remains unchanged.
 
 | Attempt | Protocol SHA-256 |
 |---|---|
@@ -37,5 +47,6 @@ Protocols contain complete settings and source hashes; changed sources stop scor
 | Corrected 6 h | `d7fbb10e90998d58596f1a8ea8fa284d50a4b6c51cb39fea40fa16cdfdb21491` |
 | Corrected 168 h | `7a1247f9f5eaadf3d663ef7333b78076361b4c069f63c493a3af66f75e88c09d` |
 | Corrected default 794 pairs, 24 h trading | `679862904ce7f5197a8ce9ce998dfb876f5162b3723bd128973b9f427fe896cf` |
+| Final-source regression of the same 794-pair sample | `57d220904b462fe4457068012e719eb61e48f82c3087742a3be7faa26fc36d34` |
 
 Each matching result JSON includes all six independent set/direction slices per hour, initial per-config seat evaluations, every modeled settled order, open endpoint marks and rejection diagnostics. The 794-pair result also has a lossless `.json.gz` equivalent for compact persistence. Public input provenance is inherited from the existing cached feed and is not an independent audit of its original venue collection. These reused short forward windows cannot establish durable or consistently positive market returns.
