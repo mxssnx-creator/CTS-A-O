@@ -1203,6 +1203,9 @@ async function runStepNow(
         sl: Math.max(i.protect.sl, s.minStopPct ?? 0.01),
         barT: i.barT,
         managed: i.protect.trail > 0 || (i.kind !== undefined && i.kind !== "normal"),
+        coordVol: i.coordVol,
+        hedge: i.hedge,
+        hedgeVol: i.hedgeVol,
       })),
     });
     status.enabled = plan.enabled;
@@ -1393,7 +1396,10 @@ async function runStepNow(
       const signal = isSignalInd(e.cfg.split("|")[1] ?? "");
       const rangeFactor = signal ? 1 : rangeVolumeFactors[rangeOfId(e.cfg) || "wide"] ?? 1;
       // Apply the per-range multiplier before the same per-position, account, and aggregate-risk checks as normal size.
-      const unit = Math.min(raw * rangeFactor, cap);
+      const coordFactor = e.coordVol ?? 1;
+      const hedgeFactor = e.hedge ? (e.hedgeVol ?? 1) : 1;
+      // Coordination multipliers are captured when the intent is validated; all account and position caps still gate size.
+      const unit = Math.min(raw * rangeFactor * coordFactor * hedgeFactor, cap);
       const promotion = rt.livePromotionGate?.(e);
       rt.status.livePromotion = promotionStatus([{ cfg: e.cfg, sym: e.sym, side: e.side,
         ...(promotion ?? { required: true, ok: false, n: 0, pf: null, state: "execution-insufficient" }) }]);
