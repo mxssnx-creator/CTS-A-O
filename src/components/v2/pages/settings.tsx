@@ -974,11 +974,24 @@ function stepValues(from: number, to: number, step: number, digits: number, max:
 
 /** The stated 0.2 ladder, plus Micro's explicit 2.5× starting value. */
 const RANGE_VOLUME_FACTOR_CHOICES = [...new Set([...stepValues(0.2, 5, 0.2, 1, 25), 2.5])].sort((a, b) => a - b);
+const COORD_VOLUME_FACTOR_CHOICES = stepValues(0.2, 5, 0.2, 1, 25);
 
 function VolumeFactorInput(props: { value: number; onChange: (v: number) => void }) {
   return (
     <select className="v2-select" value={String(props.value)} onChange={(e) => props.onChange(Number(e.target.value))}>
       {RANGE_VOLUME_FACTOR_CHOICES.map((v) => (
+        <option key={v} value={String(v)}>
+          {v.toFixed(1)}× · {Math.round(v * 100)}%{v === 1 ? " (neutral)" : ""}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function CoordVolumeFactorInput(props: { value: number; onChange: (v: number) => void }) {
+  return (
+    <select className="v2-select" value={String(props.value)} onChange={(e) => props.onChange(Number(e.target.value))}>
+      {COORD_VOLUME_FACTOR_CHOICES.map((v) => (
         <option key={v} value={String(v)}>
           {v.toFixed(1)}× · {Math.round(v * 100)}%{v === 1 ? " (neutral)" : ""}
         </option>
@@ -3437,6 +3450,15 @@ export function SettingsPage() {
                   />
                 </Field>
                 <Field
+                  label="Stable-02 volume factor"
+                  hint="multiplies volume per relation · 0.2–5× in 0.2 steps · 1× is neutral; the 1.8× total cap still applies"
+                >
+                  <CoordVolumeFactorInput
+                    value={c.s2VolumeFactor ?? 1}
+                    onChange={(v) => setC("s2VolumeFactor", v)}
+                  />
+                </Field>
+                <Field
                   label="Negative-hour hedge"
                   hint="signals that were positive in the book's losing hours trade while the book is losing"
                 >
@@ -3444,6 +3466,15 @@ export function SettingsPage() {
                     label="Negative-hour hedge"
                     checked={!!c.hedge}
                     onChange={(v) => setC("hedge", v)}
+                  />
+                </Field>
+                <Field
+                  label="Hedge volume factor"
+                  hint="scales only hedge-selected Signal entries · 0.2–5× in 0.2 steps · 1× is neutral; position and account caps still apply"
+                >
+                  <CoordVolumeFactorInput
+                    value={c.hedgeVolumeFactor ?? 1}
+                    onChange={(v) => setC("hedgeVolumeFactor", v)}
                   />
                 </Field>
                 <Field
