@@ -620,10 +620,12 @@ test("Base sets floor: a lower floor computes more pairs' sets; the stage gate i
     baseSetsMinPf: undefined,
     minPf: 1.05,
     minTrades: 10,
+    maxDdr: 1,
     rangeMinPf: { long: 1.18 },
   };
   assert.equal(baseSetsGates(g), g, "unset: the stage gates");
-  const wide = baseSetsGates({ ...g, baseSetsMinPf: 0.9 });
+  // Disable DDR for this deliberately losing synthetic sample; this test isolates the lower PF prefilter.
+  const wide = baseSetsGates({ ...g, baseSetsMinPf: 0.9, maxDdr: 0 });
   assert.equal(wide.minPf, 0.9);
   assert.equal(wide.rangeMinPf, undefined, "one floor for every range");
   // PF 0.95 (net negative) computes its sets under a 0.9 floor, not under the stage gate
