@@ -8,7 +8,9 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const H = 3_600_000, M = 60_000;
-const SCHEMA = "cts-causal-22-symbol-study-v2";
+const SCHEMA = "cts-causal-22-symbol-study-v3";
+export const STUDY_RESOURCE_LOCK = "/workspace/scratch/.cts-ao-compute.lock";
+export const STUDY_ADMISSION = { minimumAvailableMiB: 4096, unknown: "reject", wait: false, timeoutBypass: false, sharedLock: STUDY_RESOURCE_LOCK, basis: "Require measured host and ancestor-cgroup headroom before each child, crediting only measured inactive_file as the production guard does. V8 heap is a ceiling; actual peak is recorded, and runtime memory guards remain enabled with every fallback rejected." };
 export const STUDY_SYMBOLS = ["AVAX", "LINK", "LTC", "SUI", "NEAR", "DOT", "ATOM", "APT", "BTC", "ETH", "SOL", "XRP", "BNB", "DOGE", "ADA", "BCH", "TRX", "ETC", "OP", "ARB", "FIL", "UNI"].map((x) => `${x}-USDT`);
 const plain = (x) => Array.isArray(x) ? x.map(plain) : x && typeof x === "object" ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, plain(x[k])])) : x;
 export const studyJson = (x) => JSON.stringify(plain(x), null, 2) + "\n";
@@ -16,6 +18,50 @@ export const studyHash = (x) => createHash("sha256").update(x).digest("hex");
 const read = (file) => { const b = fs.readFileSync(file); return { data: JSON.parse(b), sha256: studyHash(b), bytes: b.length }; };
 const writeNew = (file, data) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, studyJson(data), { flag: "wx" }); };
 const same = (a, b) => studyJson(a) === studyJson(b);
+const readText = (file) => { try { return fs.readFileSync(file, "utf8"); } catch { return null; } };
+const writeStatus = (file, data) => { fs.writeFileSync(file + ".tmp", studyJson(data)); fs.renameSync(file + ".tmp", file); };
+
+/** Both host and every visible cgroup-v2 ancestor must be known; no wait or unknown-reading bypass. */
+export function studyMemorySnapshot(readFile = readText, at = new Date().toISOString()) {
+  const meminfo = readFile("/proc/meminfo") ?? "", hostMatch = /^MemAvailable:\s+(\d+)\s+kB$/m.exec(meminfo);
+  const hostAvailableMiB = hostMatch ? Number(hostMatch[1]) / 1024 : null;
+  const membership = /^0::(\/[^\n]*)$/m.exec(readFile("/proc/self/cgroup") ?? ""), hierarchy = [], errors = [];
+  if (!Number.isFinite(hostAvailableMiB) || hostAvailableMiB < 0) errors.push("Host MemAvailable is unknown");
+  if (!membership || membership[1].split("/").includes("..")) errors.push("Cgroup-v2 membership is unknown");
+  else {
+    const parts = membership[1].split("/").filter(Boolean);
+    for (let depth = parts.length; depth >= 0; depth--) {
+      const dir = path.join("/sys/fs/cgroup", ...parts.slice(0, depth)), limitText = readFile(path.join(dir, "memory.max"))?.trim(), usedText = readFile(path.join(dir, "memory.current"))?.trim();
+      const used = /^\d+$/.test(usedText ?? "") ? Number(usedText) : NaN;
+      const inactiveMatch = /^inactive_file\s+(\d+)$/m.exec(readFile(path.join(dir, "memory.stat")) ?? ""), inactive = inactiveMatch ? Number(inactiveMatch[1]) : NaN;
+      const unlimited = limitText === "max", limit = /^\d+$/.test(limitText ?? "") ? Number(limitText) : NaN;
+      const known = Number.isSafeInteger(used) && used >= 0 && Number.isSafeInteger(inactive) && inactive >= 0 && (unlimited || Number.isSafeInteger(limit) && limit > 0);
+      if (!known) errors.push(`Unknown cgroup memory limit/current/inactive_file at ${dir}`);
+      hierarchy.push({ path: dir, known, unlimited, limitMiB: !unlimited && Number.isFinite(limit) ? limit / 2 ** 20 : null, usedMiB: Number.isFinite(used) ? used / 2 ** 20 : null, inactiveFileMiB: Number.isFinite(inactive) ? inactive / 2 ** 20 : null, availableMiB: known && !unlimited ? Math.max(0, limit - Math.max(0, used - inactive)) / 2 ** 20 : null });
+    }
+  }
+  const finite = hierarchy.filter((x) => x.known && !x.unlimited).map((x) => x.availableMiB);
+  const known = errors.length === 0 && hierarchy.length > 0;
+  return { at, unit: "MiB", known, hostAvailableMiB, cgroup: hierarchy, availableMiB: known ? Math.min(hostAvailableMiB, ...finite) : null, errors };
+}
+export function studyAdmissionDecision(snapshot, policy = STUDY_ADMISSION) {
+  const admitted = snapshot.known === true && Number.isFinite(snapshot.availableMiB) && snapshot.availableMiB >= policy.minimumAvailableMiB;
+  return { ...snapshot, minimumAvailableMiB: policy.minimumAvailableMiB, admitted, reason: admitted ? "Known host/cgroup headroom meets the frozen minimum" : snapshot.known !== true ? "Memory availability is unknown; repair host/cgroup readings and prepare a new attempt" : `Only ${Math.floor(snapshot.availableMiB)}MiB available; ${policy.minimumAvailableMiB}MiB required. Finish other memory-heavy work and prepare a new attempt; no timeout bypass is permitted.` };
+}
+/** flock is tied to this inherited open-file description and released even if the launcher is killed. */
+export async function acquireStudyResourceLock(file = STUDY_RESOURCE_LOCK) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const fd = fs.openSync(file, "a+");
+  try {
+    await new Promise((resolve, reject) => {
+      const p = spawn("flock", ["--nonblock", "--exclusive", "--conflict-exit-code", "73", "3"], { stdio: ["ignore", "ignore", "pipe", fd] });
+      let error = ""; p.stderr.on("data", (x) => error += x);
+      p.once("error", reject);
+      p.once("close", (code) => code === 0 ? resolve() : reject(new Error(code === 73 ? `Another cooperating compute owns ${file}; finish it and prepare a new attempt` : `Unable to acquire shared compute flock (${code}): ${error.trim()}`)));
+    });
+    return { file, fd, release() { fs.closeSync(fd); } };
+  } catch (e) { fs.closeSync(fd); throw e; }
+}
 
 export function studyWindow(endT = Date.parse("2026-10-17T21:00:00Z")) {
   if (!Number.isSafeInteger(endT) || endT % H) throw new Error("Study end must be an explicit complete UTC hour");
@@ -89,7 +135,7 @@ export async function studyRuntimeSettings(symbols, window, laneHistoryDays, { c
   if (!Number.isInteger(laneHistoryDays) || laneHistoryDays < neededDays || laneHistoryDays > 45) throw new Error(`All-lane history must cover at least${neededDays} days and at most45 days`);
   settings.tfDays = Object.fromEntries(settings.tfs.map((tf) => [String(tf), laneHistoryDays]));
   settings.historyDays = laneHistoryDays;
-  const runtime = new CoreRuntime(new CoreDb(":memory:"), { symbols: symbols.length, signals: { enabled: true } }, { replay: true, priceStream: null });
+  const runtime = new CoreRuntime(new CoreDb(":memory:"), { symbols: symbols.length, signals: { enabled: true } }, { replay: true, replayPreloadAll: true, priceStream: null });
   try {
     runtime.updateSettings(settings);
     runtime.updateSettings({}, { causalBase: true, recordValidation: true, preH: window.preH, longH: window.longH, simH: window.runH });
@@ -100,7 +146,8 @@ export async function studyRuntimeSettings(symbols, window, laneHistoryDays, { c
     // Full WF contains thousands of derived protection cells and exceeds Linux's per-argument size limit.
     // Store it as evidence, but send only this explicit patch; the same production defaults derive every cell.
     const commandWf = Object.fromEntries(["causalBase", "recordValidation", "preH", "simH", "longH", "validLastN", "signalValidLastN"].map((key) => [key, actual.wf[key]]));
-    return { ...actual, commandWf, settingsSha256: studyHash(studyJson(actual)), scope: "Complete production defaults with explicit cost, loading coverage, exact universe and opt-in source variant; independent gates remain unchanged", laneHistoryDays, variant, cost };
+    if (runtime.replayPreloadAll !== true) throw new Error("Runtime does not support the required frozen complete-feed preload; update sources and prepare a new protocol");
+    return { ...actual, commandWf, replayPreloadAll: true, settingsSha256: studyHash(studyJson(actual)), scope: "Complete production defaults with explicit cost, loading coverage, exact universe and opt-in source variant; independent gates remain unchanged", laneHistoryDays, variant, cost };
   } finally { runtime.dispose(); }
 }
 
@@ -110,25 +157,33 @@ export function studySources() {
   return files.filter((f) => fs.existsSync(f)).sort().map((f) => ({ path: path.relative(ROOT, f), sha256: studyHash(fs.readFileSync(f)) }));
 }
 export function verifyStudySources(protocol) {
+  if (protocol.execution?.replayPreloadAll !== true || !same(protocol.budget?.admission, STUDY_ADMISSION) || protocol.cases?.some((c) => c.runtime?.replayPreloadAll !== true)) throw new Error("Protocol lacks frozen complete-feed preload/memory admission; preserve it and prepare a new attempt");
   if (protocol.schema !== SCHEMA || !same(protocol.sources, studySources())) throw new Error("Source tree differs from frozen study; preserve this attempt and prepare a new one");
 }
 
 export function studyCommand(protocol, studyCase, output, phase = "engine") {
+  if (protocol.execution?.replayPreloadAll !== true || studyCase.runtime?.replayPreloadAll !== true) throw new Error("Explicit frozen replayPreloadAll required before child command construction");
   const args = ["--experimental-strip-types", "--no-warnings", "--expose-gc", `--max-old-space-size=${protocol.budget.heapMb}`, path.join(ROOT, "scripts/core-session.mjs")];
   const book = ["--balance", String(protocol.book.balance), "--pct", String(protocol.book.pct), "--leverage", String(protocol.book.leverage)];
-  if (phase === "engine") args.push("--feed", studyCase.feed, "--end-at", new Date(protocol.window.endT).toISOString(), "--evaluation-from", new Date(protocol.window.evaluationFromT).toISOString(), "--selection-hours", String(protocol.window.selectionH), "--pre", String(protocol.window.preH), "--run", String(protocol.window.runH), "--symbols", String(studyCase.symbols.length), "--signals", "on", "--settings", JSON.stringify(studyCase.runtime.settings), "--wf", JSON.stringify(studyCase.runtime.commandWf), "--signal-progress", "--tape-trades", "--dump-only", "--dump", path.join(output, "raw.json"), "--max-wait-min", String(protocol.budget.timeoutMinutes), "--quiet", "true", ...book);
+  if (phase === "engine") args.push("--feed", studyCase.feed, "--end-at", new Date(protocol.window.endT).toISOString(), "--evaluation-from", new Date(protocol.window.evaluationFromT).toISOString(), "--replay-preload-all", "--selection-hours", String(protocol.window.selectionH), "--pre", String(protocol.window.preH), "--run", String(protocol.window.runH), "--symbols", String(studyCase.symbols.length), "--signals", "on", "--settings", JSON.stringify(studyCase.runtime.settings), "--wf", JSON.stringify(studyCase.runtime.commandWf), "--signal-progress", "--tape-trades", "--dump-only", "--dump", path.join(output, "raw.json"), "--max-wait-min", String(protocol.budget.timeoutMinutes), "--quiet", "true", ...book);
   else args.push("--replay", path.join(output, "raw.json"), "--signal-progress", "--out", path.join(output, "session"), "--html", path.join(output, "book"), ...book);
   return args;
 }
 export const studyEnvironment = () => ({ PATH: process.env.PATH ?? "", LANG: "C.UTF-8", TZ: "UTC", NODE_OPTIONS: `--require ${path.join(ROOT, "scripts/lib/core-test-offline-guard.cjs")}`, MALLOC_ARENA_MAX: "2", MALLOC_MMAP_THRESHOLD_: "1048576", CTS_CORE_WORKERS: "1", CTS_CORE_COMPARE: "0", CTS_CORE_VARIANTS: "0", CTS_CORE_STATE: "off", CTS_CORE_AUTOSTART: "0", CTS_CORE_LIVE: "0" });
-async function child(args, logfile, timeoutMs) {
+export async function studyChild(args, logfile, timeoutMs, signal, resourceFd) {
   const fd = fs.openSync(logfile, "wx"), started = Date.now();
-  try { return await new Promise((resolve, reject) => {
-    const p = spawn(process.execPath, args, { cwd: ROOT, env: studyEnvironment(), stdio: ["ignore", fd, fd] });
-    let timedOut = false;
-    const timer = setTimeout(() => { timedOut = true; p.kill("SIGTERM"); setTimeout(() => p.kill("SIGKILL"), 5000).unref(); }, timeoutMs);
-    p.once("error", (e) => { clearTimeout(timer); reject(e); });
-    p.once("close", (exitCode, signal) => { clearTimeout(timer); resolve({ exitCode, signal, timedOut, seconds: (Date.now() - started) / 1000 }); });
+  try { return await new Promise((resolve) => {
+    if (signal?.aborted) { resolve({ exitCode: null, signal: null, interrupted: true, timedOut: false, seconds: 0 }); return; }
+    // The child keeps the shared flock even if its launcher is killed before it can forward a signal.
+    const p = spawn(process.execPath, args, { cwd: ROOT, env: studyEnvironment(), stdio: ["ignore", fd, fd, ...(resourceFd === undefined ? [] : [resourceFd])] });
+    let timedOut = false, interrupted = false, escalation;
+    const stop = () => { p.kill("SIGTERM"); escalation ??= setTimeout(() => p.kill("SIGKILL"), 5000); };
+    const onAbort = () => { interrupted = true; stop(); };
+    const timer = setTimeout(() => { timedOut = true; stop(); }, timeoutMs);
+    signal?.addEventListener("abort", onAbort, { once: true });
+    const cleanup = () => { clearTimeout(timer); clearTimeout(escalation); signal?.removeEventListener("abort", onAbort); };
+    p.once("error", (e) => { cleanup(); resolve({ exitCode: null, signal: null, spawnError: String(e), interrupted, timedOut, seconds: (Date.now() - started) / 1000 }); });
+    p.once("close", (exitCode, childSignal) => { cleanup(); resolve({ exitCode, signal: childSignal, interrupted, timedOut, seconds: (Date.now() - started) / 1000 }); });
   }); } finally { fs.closeSync(fd); }
 }
 
@@ -147,7 +202,7 @@ export const studyHour = (exitT, window) => Math.ceil((exitT - window.tradeStart
 /** Reduction of actual runtime output only; no fixed-cohort independent replay is substituted. */
 export async function summarizeStudy(raw, book, protocol, studyCase, log = "") {
   const { modeledUnitReturn } = await import("../src/core/metrics/stats.ts");
-  const [{ orderKey }, { rangeOfId }, { laneOf, isSignalInd }, { kindOfId }] = await Promise.all([import("../src/core/sizing.ts"), import("../src/core/minimal-coord.ts"), import("../src/core/indications/registry.ts"), import("../src/core/pipeline/pipeline.ts")]);
+  const [{ orderKey }, { rangeOfId }, { laneOf, isSignalInd }, { kindOfId }, { baseAllowsTape }] = await Promise.all([import("../src/core/sizing.ts"), import("../src/core/minimal-coord.ts"), import("../src/core/indications/registry.ts"), import("../src/core/pipeline/pipeline.ts"), import("../src/core/sim/walkforward.ts")]);
   const structural = [];
   const check = (name, ok) => structural.push({ name, ok: !!ok });
   const expected = studyCase.runtime;
@@ -158,6 +213,7 @@ export async function summarizeStudy(raw, book, protocol, studyCase, log = "") {
   check("complete frozen WF defaults and grids retained", Object.entries(expected.wf).filter(([, value]) => value !== undefined).every(([key, value]) => same(raw.settings?.effectiveWf?.[key], value)));
   check("complete effective runtime settings parity", same(raw.settings?.effective, expected.settings));
   check("actual selection history boundary", raw.settings?.replaySelectionHours === protocol.window.selectionH && raw.settings?.evaluationFromT === protocol.window.evaluationFromT && raw.settings?.effectiveWf?.recordValidation === true);
+  check("actual complete-feed replay preload", protocol.execution?.replayPreloadAll === true && expected.replayPreloadAll === true && raw.settings?.replayPreloadAll === true);
   const actualBook = raw.settings?.book;
   check("engine/report shared sizing parity", actualBook?.balance === protocol.book.balance && actualBook?.sizing?.mode === expected.settings.sizing?.mode && actualBook?.sizing?.pct === expected.settings.sizing?.pct && actualBook?.sizing?.pct === protocol.book.pct && actualBook?.leverage === protocol.book.leverage && book.settings?.balance0 === protocol.book.balance && same(book.settings?.sizing, actualBook?.sizing) && book.settings?.leverage === protocol.book.leverage);
   check("native report accounting checks", Array.isArray(book.checks) && book.checks.length > 0 && book.checks.every((x) => x.ok === true));
@@ -202,7 +258,8 @@ export async function summarizeStudy(raw, book, protocol, studyCase, log = "") {
   const hourly = hours.map(finalized);
   const sourceMeta = (id) => { const ind = id.split("|")[1] ?? "?"; return { ind, range: rangeOfId(id) || (isSignalInd(ind) ? "signal" : "wide"), kind: kindOfId(id) }; };
   const baseRanges = raw.settings?.effectiveWf?.basePassedRanges;
-  const allowed = (id) => { const meta = sourceMeta(id); return isSignalInd(meta.ind) ? true : !!baseRanges?.[id.split("|").slice(0, 2).join("|")]?.includes(rangeOfId(id) || ""); };
+  const baseOptions = { basePassed: new Set(raw.settings?.effectiveWf?.basePassed ?? []), basePassedRanges: baseRanges ?? {}, baseWideLadderPairs: new Set(raw.settings?.effectiveWf?.baseWideLadderPairs ?? []) };
+  const allowed = (id) => { const meta = sourceMeta(id); return isSignalInd(meta.ind) ? true : baseAllowsTape({ bot: id.split("|")[0], ind: meta.ind, kind: meta.kind, protect: { tag: rangeOfId(id) || undefined } }, baseOptions); };
   check("explicit engine Base qualification metadata", baseRanges !== null && typeof baseRanges === "object" && Array.isArray(raw.settings?.effectiveWf?.basePassed));
   check("executed engine configs retain matching Base range qualification", (raw.trades ?? []).every((x) => allowed(x.cfg)));
   const validationRows = (raw.validation ?? []).flatMap((step) => step.checks.map(([id, ok, n, gateScore, gp, gl]) => ({ t: step.t, id, ...sourceMeta(id), baseQualified: allowed(id), pass: !!ok, n, gateScore, gp, gl, pf: gl > 0 ? gp / gl : null, noLoss: n > 0 && gp > 0 && gl === 0 })));
@@ -268,7 +325,7 @@ export async function studyMain(argv) {
     const cases = [{ id: `${variant}-${count}`, variant, symbols, feed: file, feedSha256: studyHash(text), quality: validateStudyFeed(feed, symbols, window), runtime }];
     const sources = studySources();
     const p = { schema: SCHEMA, frozenAt: new Date().toISOString(), classification: "Rules/settings/source/feed frozen before this scoring attempt; retrospective public market simulation", window, originalFeed: { path: source, sha256: loaded.sha256 }, cases, sources,
-      book: { balance: runtime.settings.paperBalance, pct: runtime.settings.sizing.pct, leverage: 10 }, budget: { heapMb: 4096, workers: 1, concurrency: 1, timeoutMinutes },
+      book: { balance: runtime.settings.paperBalance, pct: runtime.settings.sizing.pct, leverage: 10 }, execution: { replayPreloadAll: true }, budget: { heapMb: 4096, workers: 1, concurrency: 1, timeoutMinutes, admission: STUDY_ADMISSION },
       ranking: { fromT: window.evaluationFromT, toT: window.tradeStartT, basis: "Frozen ticker values use each symbol's preceding24h completed1m bars; quote volume=sum(close*volume), change=last close / first open -1.", universe: "Exact forceSymbols list and matching requested count fix universe membership and order; runtime60m volatility ranking reads are discarded and do not select or reorder these cases." },
       selection: "No performance-based removal before the complete22-symbol24h baseline. Development and final trade windows are chronological and distinct; any later selection must be frozen using only pre-trade/development evidence and retain its baseline comparison.",
       actualExecution: false, live: false, newNetworkRequests: 0 };
@@ -289,27 +346,59 @@ export async function studyMain(argv) {
     writeNew(path.join(dir, "comparison.json"), result); console.log(studyJson(result)); return;
   }
   const c = p.cases.find((x) => x.id === arg("case")); if (!c) throw new Error("Explicit frozen --case required");
-  const feed = read(c.feed); if (feed.sha256 !== c.feedSha256) throw new Error("Frozen feed hash mismatch"); validateStudyFeed(feed.data, c.symbols, p.window);
-  if (!same(await studyRuntimeSettings(c.symbols, p.window, c.runtime.laneHistoryDays, { cost: c.runtime.cost, variant: c.variant }), c.runtime)) throw new Error("Actual preflight settings changed after freeze");
   const dest = path.join(dir, c.id), lock = path.join(ROOT, "runs", "core-22-symbol-study.lock");
   if (fs.existsSync(dest)) throw new Error("Case already has an attempt; preserve it and prepare a new protocol for retries");
-  fs.mkdirSync(path.dirname(lock), { recursive: true }); const lockFd = fs.openSync(lock, "wx"); fs.writeFileSync(lockFd, String(process.pid)); fs.mkdirSync(dest);
-  const command = { engine: studyCommand(p, c, dest), render: studyCommand(p, c, dest, "render"), environment: studyEnvironment(), protocolSha256: frozen.sha256 };
-  writeNew(path.join(dest, "command.json"), command);
-  const result = { id: c.id, complete: false };
+  fs.mkdirSync(dest);
+  const result = { id: c.id, complete: false, status: "starting", stage: "resource-admission", startedAt: new Date().toISOString(), protocolSha256: frozen.sha256, admission: [] };
+  const statusFile = path.join(dest, "status.json"), controller = new AbortController();
+  const publish = () => writeStatus(statusFile, result);
+  let resourceLock, lockFd, interrupted;
+  const onInterrupt = (signal) => {
+    interrupted ??= signal; result.status = "interrupted"; result.interrupted = { signal: interrupted, at: new Date().toISOString() };
+    controller.abort({ signal }); publish();
+  };
+  const sigint = () => onInterrupt("SIGINT"), sigterm = () => onInterrupt("SIGTERM");
+  process.on("SIGINT", sigint); process.on("SIGTERM", sigterm);
+  const admit = (phase) => {
+    const decision = { phase, ...studyAdmissionDecision(studyMemorySnapshot(), p.budget.admission) };
+    result.admission.push(decision); publish();
+    if (!decision.admitted) { result.status = "blocked"; throw new Error(decision.reason); }
+  };
+  publish();
   try {
-    result.engine = await child(command.engine, path.join(dest, "engine.log"), p.budget.timeoutMinutes * 60_000);
-    if (result.engine.exitCode !== 0 || result.engine.timedOut || !fs.existsSync(path.join(dest, "raw.json"))) throw new Error("Engine failed/incomplete; retained exact attempt");
-    result.render = await child(command.render, path.join(dest, "render.log"), p.budget.timeoutMinutes * 60_000);
-    if (![0, 1].includes(result.render.exitCode) || result.render.timedOut) throw new Error("Report render failed/incomplete");
+    admit("preflight");
+    resourceLock = await acquireStudyResourceLock(p.budget.admission.sharedLock);
+    if (controller.signal.aborted) throw new Error("Study interrupted before launch");
+    fs.mkdirSync(path.dirname(lock), { recursive: true }); lockFd = fs.openSync(lock, "wx"); fs.writeFileSync(lockFd, String(process.pid));
+    { const feed = read(c.feed); if (feed.sha256 !== c.feedSha256) throw new Error("Frozen feed hash mismatch"); validateStudyFeed(feed.data, c.symbols, p.window); }
+    if (!same(await studyRuntimeSettings(c.symbols, p.window, c.runtime.laneHistoryDays, { cost: c.runtime.cost, variant: c.variant }), c.runtime)) throw new Error("Actual preflight settings changed after freeze");
+    const command = { engine: studyCommand(p, c, dest), render: studyCommand(p, c, dest, "render"), environment: studyEnvironment(), protocolSha256: frozen.sha256, resourceLock: resourceLock.file, admissionPolicy: p.budget.admission };
+    writeNew(path.join(dest, "command.json"), command);
+    admit("engine"); result.stage = "engine"; result.status = "running"; publish();
+    result.engine = await studyChild(command.engine, path.join(dest, "engine.log"), p.budget.timeoutMinutes * 60_000, controller.signal, resourceLock.fd);
+    if (result.engine.exitCode !== 0 || result.engine.interrupted || result.engine.timedOut || !fs.existsSync(path.join(dest, "raw.json"))) throw new Error("Engine failed/incomplete; retained exact attempt");
+    admit("render"); result.stage = "render"; publish();
+    result.render = await studyChild(command.render, path.join(dest, "render.log"), p.budget.timeoutMinutes * 60_000, controller.signal, resourceLock.fd);
+    if (![0, 1].includes(result.render.exitCode) || result.render.interrupted || result.render.timedOut) throw new Error("Report render failed/incomplete");
+    if (controller.signal.aborted) throw new Error("Study interrupted before reduction");
+    result.stage = "summary"; publish();
     verifyStudySources(p);
     const raw = read(path.join(dest, "raw.json")), book = read(path.join(dest, "book/data.json"));
     const summary = await summarizeStudy(raw.data, book.data, p, c, fs.readFileSync(path.join(dest, "engine.log"), "utf8"));
+    if (controller.signal.aborted) throw new Error("Study interrupted during reduction; retained raw evidence without publishing a completed result");
     summary.provenance = { protocolSha256: frozen.sha256, feedSha256: c.feedSha256, rawSha256: raw.sha256, bookSha256: book.sha256 };
     writeNew(path.join(dest, "summary.json"), summary); fs.writeFileSync(path.join(dest, "summary.md"), studyMarkdown(summary), { flag: "wx" });
-    result.complete = summary.complete; result.structuralFailures = summary.structural.filter((x) => !x.ok); result.summarySha256 = studyHash(fs.readFileSync(path.join(dest, "summary.json")));
-  } catch (e) { result.error = String(e); }
-  finally { writeNew(path.join(dest, "run-result.json"), result); fs.closeSync(lockFd); fs.unlinkSync(lock); }
-  console.log(studyJson(result)); if (!result.complete) process.exitCode = 1;
+    result.complete = summary.complete; result.structuralFailures = summary.structural.filter((x) => !x.ok); result.summarySha256 = studyHash(fs.readFileSync(path.join(dest, "summary.json"))); result.status = summary.complete ? "complete" : "failed";
+  } catch (e) { result.error = String(e); if (controller.signal.aborted) result.status = "interrupted"; else if (result.status !== "blocked") result.status = result.stage === "resource-admission" ? "blocked" : "failed"; }
+  finally {
+    result.finishedAt = new Date().toISOString();
+    try { writeNew(path.join(dest, "run-result.json"), result); publish(); }
+    finally {
+      process.off("SIGINT", sigint); process.off("SIGTERM", sigterm);
+      try { if (lockFd !== undefined) { const held = fs.fstatSync(lockFd), current = fs.statSync(lock, { throwIfNoEntry: false }); fs.closeSync(lockFd); if (current?.dev === held.dev && current?.ino === held.ino) fs.unlinkSync(lock); } }
+      finally { resourceLock?.release(); }
+    }
+  }
+  console.log(studyJson(result)); if (!result.complete) process.exitCode = interrupted === "SIGINT" ? 130 : interrupted === "SIGTERM" ? 143 : 1;
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await studyMain(process.argv.slice(2));

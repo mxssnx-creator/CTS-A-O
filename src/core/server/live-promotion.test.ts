@@ -96,6 +96,30 @@ describe("strict live promotion uses two settled independent evidence axes", () 
     assert.equal(r.livePromotionGate(lane, NOW).state, "ineligible", "diagnostic construction is not Base qualification");
   });
 
+  it("native promotion preserves explicit independent untagged ladder admission without qualifying plain Wide or failed pairs", () => {
+    for (const kind of ["dca", "dca-active", "axis"] as const) {
+      const cfg = `${CFG}|${kind}`, identity = { ...lane, cfg }, pair = "follow|rsi-mom-14-25@m15";
+      const trades = [.02, -.01, .02].map((v, i) => close(v, i, { cfg, kind }));
+      const r = install(fixture(), trades);
+      owned(r, [.02, -.01, .02], { cfg });
+      r.tapes = [makeTape(cfg, "follow", "rsi-mom-14-25@m15", DEFAULT_PROTECT, kind, [SYM], trades, [], [])];
+      r.paper.selected = [cfg];
+      r.wf.basePassed = new Set([pair]);
+      r.wf.basePassedRanges = { [pair]: ["mn"] };
+      r.wf.baseWideLadderPairs = new Set([pair]);
+      assert.equal(r.livePromotionGate(identity, NOW).ok, true, kind);
+      r.updateSettings({ axis: { perRange: true } });
+      assert.equal(r.livePromotionGate(identity, NOW).state, "ineligible", "a stricter perRange toggle immediately tightens carried ladder eligibility");
+      r.updateSettings({ axis: { perRange: false } });
+      assert.equal(r.livePromotionGate(identity, NOW).state, "ineligible", "relaxing the policy waits for fresh computation");
+      r.wf.baseWideLadderPairs = new Set();
+      assert.equal(r.livePromotionGate(identity, NOW).state, "ineligible", "perRange on requires its exact Wide pass");
+      r.wf.baseWideLadderPairs = new Set([pair]);
+      r.wf.basePassed = new Set();
+      assert.equal(r.livePromotionGate(identity, NOW).state, "ineligible", "a failed pair never borrows ladder permission");
+    }
+  });
+
   it("retains unknown, zero and dust funding inside the chronological last-N window", () => {
     for (const notional of [null, 0, 1e-12]) {
       const r = install(fixture());

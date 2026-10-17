@@ -83,6 +83,30 @@ function richCandles(sym: string, tf: number, n: number, end: number, seed: numb
   return cs;
 }
 
+/** A shallow established trend with a bounded lower-channel wick sweep and recovery. The richer shock
+ * tape above has deep capitulations and expanding activity; those are different regimes from a guarded
+ * failed-break reclaim. Keep this quiet-participation regime and its mirror in the universal coverage check. */
+function channelReclaimCandles(tf: number): Candle[] {
+  const n = 180;
+  const step = tf * 60_000;
+  const out: Candle[] = [];
+  let price = 100;
+  for (let i = 0; i < n; i++) {
+    const o = price;
+    const c = o * 1.00015;
+    out.push({ t: END - (n - i) * step, o, h: c * 1.0008, l: o * 0.9992, c, v: 1_000 });
+    price = c;
+  }
+  const at = 150;
+  const priorLow = Math.min(...out.slice(at - 8, at).map((x) => x.l));
+  const o = out[at].o;
+  // A small wick past the old eight-bar edge, followed by a bullish body near the bar's high.
+  // Constant participation and a modest range preserve each profile's ordinary activity/ATR gates.
+  const c = o * 1.0002;
+  out[at] = { ...out[at], o, l: priorLow - o * 0.00025, c, h: c + o * 0.00008 };
+  return out;
+}
+
 /** Copied from src/core/indications/symmetry.test.ts (`mirror`, not exported there): the price mirror K / price. */
 const mirror = (cs: readonly Candle[]) => {
   const K = cs[0].c * cs[0].c;
@@ -111,7 +135,8 @@ const SYMMETRY_ONLY_EXCEPTIONS: ReadonlyMap<string, string> = new Map([
 /**
  * The test market, each universe next to its price mirror in a universe of its own: five 5m symbols on a shared
  * market walk (relations that follow or fade a broad move), processing.test.ts's 5m universe (three rich series and
- * two plain walks: their events do not coincide, so the own-activity relations fire), a 1m and a 15m series.
+ * two plain walks: their events do not coincide, so the own-activity relations fire), a 1m and a 15m series,
+ * and shallow 5m/15m trend sweeps for quiet-participation reclaim regimes.
  */
 function caches(): SeriesCache[] {
   const syms = ["AAA", "BBB", "CCC", "DDD", "EEE"];
@@ -144,6 +169,11 @@ function caches(): SeriesCache[] {
     const cs = richCandles("FFF-USDT", tf, n, END, seed);
     out.push(...makeUniverse([barsFromCandles("FFF-USDT", tf, cs)]).caches);
     out.push(...makeUniverse([barsFromCandles("FFF-USDT", tf, mirror(cs))]).caches);
+  }
+  for (const tf of [5, 15]) {
+    const cs = channelReclaimCandles(tf);
+    out.push(...makeUniverse([barsFromCandles("SWEEP-USDT", tf, cs)]).caches);
+    out.push(...makeUniverse([barsFromCandles("SWEEP-USDT", tf, mirror(cs))]).caches);
   }
   return out;
 }
@@ -197,6 +227,15 @@ describe("every indication fires long and short", { timeout: 600_000 }, () => {
       (id) => counts.get(id)!.long > 0 && counts.get(id)!.short > 0,
     );
     assert.deepEqual(stale, [], "ONE_SIDED entries that fire both ways: remove them");
+  });
+
+  it("quiet-participation sweeps exercise every reclaim profile and trend subset in both directions", () => {
+    const reclaims = INDICATIONS.filter((x) => x.id.startsWith("break-mc-rel-reclaim8-"));
+    assert.equal(reclaims.length, 12);
+    const counts = new Map<string, Count>();
+    for (const x of reclaims)
+      for (const k of ks.filter((x) => x.b.sym === "SWEEP-USDT")) add(counts, x.id, onsets(indicationState(x.id, k)));
+    assert.deepEqual(oneWay(counts, () => false), [], "all actual profile, trend and drawdown gates stay enabled");
   });
 
   it("every signal source (short and medium) enters long and short through bot follow, on a signal lane", () => {

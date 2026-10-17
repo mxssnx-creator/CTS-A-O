@@ -1,0 +1,7 @@
+session: 20 symbols · 24h pre-historic · 24h simulated · tactics default · min PF 1.1 · focus 97 · toggles {"normal":true,"trailing":true,"block":true,"blockActive":false,"dca":true,"dcaActive":false,"axis":false}
+  [0 s] computing Base 0% (job 10%) preparing 5 symbols · symbols 5/20 · computes 0 · paper on #0 · rss 196 MB
+  [30 s] computing Base 17% (job 16%) Base on 1 cores · 995 combos · symbols 5/20 · computes 0 · paper on #0 · rss 560 MB
+  [61 s] computing Base 29% (job 20%) Base on 1 cores · 995 combos · symbols 5/20 · computes 0 · paper on #0 · rss 560 MB
+  memory: memory pressure: 1101 MB available (hard 1200 MB), this process 534 MB — compute aborted · fallback micro carried
+  [91 s] running backfill 100% (job 10%) ARB-USDT · batch 4/4 · symbols 20/20 · symbols 20/20 · computes 0 · paper on #0 · rss 383 MB
+  [121 s] computing Base 0% (job 0%) Base on 1 cores · 995 combos · symbols 20/20 · computes 0 · paper on #0 · rss 641 MB

@@ -1055,3 +1055,46 @@ The verified source/test/replay tree is `d219f35c96e94393778e7147b4d1d6e2f66a012
 Post-rebase verification: `npm run typecheck -- --pretty false` passed. The focused config-independence/history/volume matrix passed 48 tests; the exhaustive Signal discovery/config suites passed 40 tests across 17 suites; return-PF/statistics/reporting tests passed 27/27; and the offline-guarded session-report/qualification suite passed 18/18. These checks cover independent per-config selectors, separate Signal Normal/Trailing qualification, no sibling seat or trade sharing, minimal Signal history, range-specific volume factors, report scope after Base and later gates, PF/volume labeling, and the actual exhaustive grid through workers and local calculations. The full core suite has not been rerun after rebase.
 
 The bounded engine replay is [`the six-hour report`](sims/trailing-systemwide-6h-window-20261017-summary.md), with [`full tables and hourly details`](sims/trailing-systemwide-6h-window-20261017.md). It uses four cached-feed symbols, 6h of evaluated history and 6h simulated (2026-10-14 09:00–15:00 / 15:00–21:00 UTC), config Last-N 25, min return-PF 1.1, and minimal Signal history. The source processed 854 engine config pairs for Base (4 passed), and separately measured 504 Signal representative pairs (2 passed the diagnostic gate, excluded from engine Base totals); Main had 4 pairs and Real had 12 engine configs / 0 Signal configs. The executed post-Base cohort closed 273 orders at Return PF 0.63, sized cash-PF diagnostic 0.93, 0.43% marked-equity max drawdown and 2/6 green hours; engine orders alone were PF 1.40 (241), while Signals were PF 0.10 (32). All 66 report consistency checks passed. This confirms processing and accounting on this window, while showing the desired positive-hour/PF outcome was not achieved. It is a short, previously examined cached-feed sample; do not tune on this same window or treat it as live evidence. No live orders or deployment were made.
+
+## Expanded 20/22-symbol post-Base study — checkpoint 2026-10-17
+
+Current branch `fix/postbase-expanded-study-20261017`,
+[PR #164](https://github.com/mxssnx-creator/CTS-A-O/pull/164); committed
+source checkpoint `b1a0e714d268574d5ab5c21d89f1a99279596cf3`.
+The [progress checkpoint](simulations/expanded-postbase-progress-20261017.md)
+contains the full reproduction recipe, preserved failure and verification
+details. The [frozen protocol](simulations/expanded-postbase-protocol-20261017.md)
+specifies 20-symbol development and 22-symbol final 24h comparisons, each
+with exactly 24h evaluated history, separate 205h indicator warmup, explicit
+0.15% modeled cost and unchanged independent PF/sample gates. The 12 new
+reclaim8 Break identities are opt-in; the original 60 default Micro IDs remain.
+
+Source corrections separate diagnostic Base construction from genuinely
+admitted pair/range identities, preserve their later-stage and Live floors,
+and require causal Base even for fixed-focus preset replays. The first
+`runs/postbase-dev20-baseline-20261017-v1/baseline-20/` attempt remains
+incomplete: a partial-universe calculation hit the memory reserve and
+fallback path, then its owned process was interrupted (SIGINT, exit 130).
+Its protocol, command, log and `run-result.json` are preserved. Preload and
+admission corrections and new sealed replay attempts remain open; no complete
+20/22-symbol PF, orders or hourly result is claimed. Do not reuse that failed
+attempt as a benchmark or call the source fixes profitability evidence.
+
+The full public archive is saved and verified:
+`cts-ao-22-symbol-public-20261017.tar.gz`, 15,868,857 bytes, SHA-256
+`252bc0c3c43e66a7e2252450376b3c9cf1f475e11bcee15d79ebf0bdc3589938`.
+It contains the 22-symbol feed, 374 raw public pages and acquisition/failure
+provenance, with no credentials or private account records. The tracked
+[data manifest](simulations/symbols22-data-20261017/README.md) records source
+bounds and per-file hashes. The
+[prior comparison audit](simulations/prior-comparison-audit-20261017.md)
+records the old 336h selection and mixed sizing/cost/cohort differences.
+
+The new read-only review helper and its eight synthetic tests verify
+complete four-case envelopes, exact native allocation/unit-return accounting,
+hash/settings parity and the prewritten prospective removal rule. Root
+typecheck and development build passed; focused source-test evidence and
+resolved stale fixtures are listed in the progress report without summing
+overlapping runs. No configs have been removed. Complete both 22-symbol cases
+before producing an exclusion list; any selected list requires another
+prospective replay. No live deployment, reload or venue order was performed.

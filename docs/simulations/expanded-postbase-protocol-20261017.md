@@ -45,6 +45,19 @@ are reused and revalidated. No missing candles are filled.
 - Sources, settings, complete grids, feed and commands are hashed before
   scoring. Failed or partial attempts are preserved and never scored as
   complete. Runs are serial with one compute worker and no network access.
+- Every arm preloads its complete offline universe before its first compute,
+  through the regular bounded history loader. Ordinary live startup retains
+  its progressive loading. The v1 interrupted attempt predates this correction
+  and is excluded. All four arms require a newly sealed source protocol.
+- Admission requires at least 4,096 MiB of measured host/cgroup headroom,
+  crediting only measured inactive file cache. Unknown readings or a held
+  shared compute lock reject the attempt. Runtime memory protections remain
+  enabled; no timeout bypass or lighter fallback qualifies as a complete run.
+- Untagged DCA/Axis ladders retain their configured independent admission:
+  with Axis per-range off, an actually Base-qualified pair can build these
+  ladders for their own config validation; with it on, Wide must qualify.
+  Diagnostic-only pairs cannot acquire this eligibility. Plain and trailing
+  ranges and tagged ladders retain their exact range qualification.
 
 ## Required observations
 

@@ -743,6 +743,8 @@ export class CoreRuntime {
   private tickTimer: ReturnType<typeof setTimeout> | null = null;
   /** the market is a replayed window (see the constructor option) */
   private replay = false;
+  /** Explicit offline replay startup: load its whole universe before the first compute. */
+  readonly replayPreloadAll: boolean;
   private ticking = false;
   private liveStartedAt = 0;
   private liveSlowNoted = false;
@@ -888,6 +890,8 @@ export class CoreRuntime {
       /** a replayed market (a fixed window of a feed): no wall clock to wait for between computes */
       replay?: boolean;
       evaluationFromT?: number;
+      /** Unconnected replay only; preserve the ordinary progressive startup when omitted. */
+      replayPreloadAll?: boolean;
     } = {},
   ) {
     if (opts.evaluationFromT !== undefined) {
@@ -895,6 +899,9 @@ export class CoreRuntime {
         throw new Error("evaluationFromT is a finite nonnegative boundary for unconnected replays only");
       this.evaluationFromT = opts.evaluationFromT;
     }
+    if (opts.replayPreloadAll && (!opts.replay || opts.conn))
+      throw new Error("replayPreloadAll is restricted to unconnected replays");
+    this.replayPreloadAll = opts.replayPreloadAll === true;
     this.conn = opts.conn;
     this.replay = !!opts.replay;
     if (opts.snapshotPath !== undefined) this.snapshotPath = opts.snapshotPath;
@@ -1766,6 +1773,11 @@ export class CoreRuntime {
     next.gates.minPf = Math.min(1.5, Math.max(1.05, next.gates.minPf));
     next.gates.maxDdtH = Math.min(35, Math.max(2, next.gates.maxDdtH));
     this.settings = next;
+    // Tightening the builder's ladder policy applies immediately to new admissions on the carried cohort.
+    // Relaxing it waits for fresh Base/tapes rather than inventing eligibility from a settings toggle.
+    let baseWideLadderPairs = this.wf.baseWideLadderPairs;
+    if (next.axis.perRange && baseWideLadderPairs && [...baseWideLadderPairs].some((pair) => !this.wf.basePassedRanges?.[pair]?.includes("")))
+      baseWideLadderPairs = new Set([...baseWideLadderPairs].filter((pair) => this.wf.basePassedRanges?.[pair]?.includes("")));
     // the per-compute gates (active signals, guards, signal caps, adjust pauses) carry over until the next
     // compute sets them again — dropping them left paper / live ungated for a whole compute
     const carry = {
@@ -1782,6 +1794,7 @@ export class CoreRuntime {
       // the Base gates of the last compute: without them every pair took seats until the next compute finished
       basePassed: this.wf.basePassed,
       basePassedRanges: this.wf.basePassedRanges,
+      baseWideLadderPairs,
       signalBasePassed: this.wf.signalBasePassed,
       family: this.wf.family,
       paused: this.wf.paused,
@@ -2307,7 +2320,7 @@ export class CoreRuntime {
           .filter((x) => !this.candles.has(x))
           .slice(0, Math.max(0, target - this.candles.size));
         // progressive start: load a batch, compute it completely, start realtime for it, then the next batch
-        const batch = Math.max(5, Math.ceil(target / 4));
+        const batch = this.replayPreloadAll ? target : Math.max(5, Math.ceil(target / 4));
         const syms = missing.slice(0, batch);
         const more = missing.length > syms.length;
         this.prehistTotal = Math.min(target, this.candles.size + missing.length);
@@ -3037,7 +3050,7 @@ export class CoreRuntime {
     const famNarrow = !!evalFams && familiesNarrowBase(evalFams);
     // each pair at the default protect and at one cell of each enabled range: the ranges and targets it passes are the
     // ones whose configs it computes (basePass — the preset backtest judges by the same rule)
-    const { passed, qualified, qualifiedTags, pairTags, pairTps, added: baseBuilt } = basePass(pipeline.s1, s, applies, famNarrow ? evalFams : null);
+    const { passed, qualified, qualifiedTags, wideLadderPairs, pairTags, pairTps, added: baseBuilt } = basePass(pipeline.s1, s, applies, famNarrow ? evalFams : null);
     this.basePairTags = pairTags;
     // the count of pairs that passed Base (validated); the pairs grid.allSets adds for measurement are reported apart
     this.status.basePassed = qualified.length;
@@ -3095,6 +3108,8 @@ export class CoreRuntime {
     this.wf.basePassed = passedKeys;
     wf.basePassedRanges = qualifiedTags;
     this.wf.basePassedRanges = qualifiedTags;
+    wf.baseWideLadderPairs = wideLadderPairs;
+    this.wf.baseWideLadderPairs = wideLadderPairs;
     wf.family = evalFams && !famNarrow ? evalFams.map((f) => f.label) : undefined;
     this.wf.family = wf.family;
     // Signals processing: the active signals and every signal pair still holding a position take the signal
@@ -4930,6 +4945,7 @@ export class CoreRuntime {
     main: Set<string>;
     qualified: Set<string>;
     qualifiedTags: Record<string, string[]>;
+    wideLadderPairs: Set<string>;
     pairTags: Record<string, string[]>;
     pairTps: Record<string, Record<string, readonly number[]>>;
   }> {
@@ -4982,11 +4998,12 @@ export class CoreRuntime {
     }
     // in combo order (as the engine's S1), whichever path computed them
     const runs = combos.flatMap((c) => byPair.get(`${c.bot}|${c.ind}`) ?? []);
-    const { passed, qualified, qualifiedTags, pairTags, pairTps } = basePass(runs, s);
+    const { passed, qualified, qualifiedTags, wideLadderPairs, pairTags, pairTps } = basePass(runs, s);
     return {
       main: new Set([...mainByLane(passed, s.mainTop), ...mainByLane(qualified, s.mainTop)]),
       qualified: new Set(qualified.map((r) => `${r.bot}|${r.ind}`)),
       qualifiedTags,
+      wideLadderPairs,
       pairTags,
       pairTps,
     };
@@ -5131,6 +5148,7 @@ export class CoreRuntime {
     ({ main, pairTags, pairTps } = base);
     wf.basePassed = base.qualified;
     wf.basePassedRanges = base.qualifiedTags;
+    wf.baseWideLadderPairs = base.wideLadderPairs;
     this.checkBacktest(job);
     job.stage = "Tapes";
     const dcaOpt = { protects: wf.dcaProtects, dca: wf.dca, axis: s.axis };
@@ -7447,6 +7465,8 @@ export function basePass(
   /** The actual Base-qualified rows and ranges, independent of diagnostic construction. */
   qualified: ComboRun[];
   qualifiedTags: Record<string, string[]>;
+  /** Independent untagged ladder admission follows the same policy as the actual tape builder. */
+  wideLadderPairs: Set<string>;
   pairTags: Record<string, string[]>;
   pairTps: Record<string, Record<string, readonly number[]>>;
   added: number;
@@ -7479,6 +7499,9 @@ export function basePass(
   });
   const qualified = [...passed];
   const qualifiedTags = Object.fromEntries(Object.entries(pairTags).map(([k, tags]) => [k, [...tags]]));
+  const wideLadderPairs = new Set(qualified
+    .map((r) => `${r.bot}|${r.ind}`)
+    .filter((pair) => !s.axis.perRange || qualifiedTags[pair].includes("")));
   // grid.allSets (measurement): every indication builds its complete config sets — its best pair at Base (bot ×
   // lane, passed or not) and every pair that passed build every range they apply to, every target × stop × trail
   // × hold. Selection still requires the original qualified pair/range and independent config evaluation.
@@ -7506,7 +7529,7 @@ export function basePass(
       }
     }
   }
-  return { passed, qualified, qualifiedTags, pairTags, pairTps, added };
+  return { passed, qualified, qualifiedTags, wideLadderPairs, pairTags, pairTps, added };
 }
 
 /** Paper deactivation and native admission preserve the same indication/range floor. */

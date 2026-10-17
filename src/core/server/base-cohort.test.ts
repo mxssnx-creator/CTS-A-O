@@ -1,7 +1,7 @@
 import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { DEFAULT_SETTINGS, type CoreSettings } from "../config.ts";
-import type { Trade } from "../domain/types.ts";
+import type { StratKind, Trade } from "../domain/types.ts";
 import { basePass, CoreRuntime } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
 import { baseAllowsTape, configEval, defaultWalkForward, execDecision, makeTape, selectAt, selectDurable, selectFixed } from "../sim/walkforward.ts";
@@ -27,15 +27,15 @@ const applies = { enabled: (tag: string) => tag === "mn" || tag === "sh" };
 function fixture() {
   return basePass([run(IND, { mn: good, sh: bad }), run(BAD, { mn: bad, sh: bad })], s, applies);
 }
-function tape(ind: string, tag: "mn" | "sh") {
+function tape(ind: string, tag: "mn" | "sh" | undefined, kind: StratKind = "normal") {
   const protect = { tp: 0.01, sl: 0.01, trail: 0, hold: 32, tag };
-  const id = `${pair(ind)}|tp1|sl1|tr0|h32|${tag}`;
+  const id = `${pair(ind)}|tp1|sl1|tr0|h32${tag ? `|${tag}` : ""}${kind === "normal" ? "" : `|${kind}`}`;
   const trades = Array.from({ length: 30 }, (_, i): Trade => ({
     cfg: id, sym: "AAA-USDT", side: 1, entryT: NOW - (31 - i) * H,
     exitT: NOW - (30 - i) * H, entry: 100, exit: 101, r: 0.01,
-    reason: "tp", bars: 1, mfe: 0.01, mae: 0, kind: "normal",
+    reason: "tp", bars: 1, mfe: 0.01, mae: 0, kind,
   }));
-  return makeTape(id, "follow", ind, protect, "normal", ["AAA-USDT"], trades, [], []);
+  return makeTape(id, "follow", ind, protect, kind, ["AAA-USDT"], trades, [], []);
 }
 function options() {
   const base = fixture();
@@ -45,6 +45,7 @@ function options() {
     gates: { ...s.gates, maxDdtH: 0, minDdtH: 0, minGreen: 0, stableBlocks: 0 },
     basePassed: new Set(base.qualified.map((r) => pair(r.ind))),
     basePassedRanges: base.qualifiedTags,
+    baseWideLadderPairs: base.wideLadderPairs,
   };
 }
 const tracked = trackRuntimes();
@@ -57,6 +58,7 @@ describe("diagnostic allSets retains the Base-qualified cohort", () => {
     assert.equal(out.added, 1);
     assert.deepEqual(out.qualified.map((r) => r.ind), [IND]);
     assert.deepEqual(out.qualifiedTags, { [pair(IND)]: ["mn"] });
+    assert.deepEqual([...out.wideLadderPairs], [pair(IND)], "independent wide ladders retain only actually qualified pairs");
     assert.deepEqual(out.pairTags, { [pair(IND)]: ["mn", "sh"], [pair(BAD)]: ["mn", "sh"] });
     out.pairTags[pair(IND)].push("gn");
     assert.deepEqual(out.qualifiedTags[pair(IND)], ["mn"], "build expansion cannot mutate qualification");
@@ -86,6 +88,40 @@ describe("diagnostic allSets retains the Base-qualified cohort", () => {
     assert.deepEqual(selectFixed(tapes, NOW, { ...o, basePassedRanges: { [pair(IND)]: ["sh"] } }).picks.map((p) => p.id), [tapes[1].id]);
   });
 
+  for (const perRange of [false, true]) {
+    it(`Axis perRange ${perRange}: independently admits only the builder's eligible untagged ladders`, () => {
+      const out = basePass([run(IND, { mn: good, sh: bad }), run(BAD, { mn: bad, sh: bad })],
+        { ...s, axis: { ...s.axis, perRange } }, applies);
+      assert.deepEqual([...out.wideLadderPairs], perRange ? [] : [pair(IND)]);
+      for (const kind of ["normal", "trailing", "trailing-only", "dca", "dca-active", "axis"] as const) {
+        const tp = tape(IND, undefined, kind), tagged = tape(IND, "mn", kind), failedRange = tape(IND, "sh", kind);
+        const o = { ...options(), baseWideLadderPairs: out.wideLadderPairs,
+          toggles: { ...s.toggles, normal: true, trailing: true, block: false, dca: true, dcaActive: kind === "dca-active", axis: true } };
+        const ladder = kind === "dca" || kind === "dca-active" || kind === "axis";
+        const admitted = ladder && !perRange;
+        assert.equal(configEval(tp, NOW, o).ok, true, "the independent config's own evaluation passes");
+        assert.equal(baseAllowsTape(tp, o), admitted, kind);
+        assert.equal(baseAllowsTape(tagged, o), true, "tagged configs retain their own admitted range");
+        assert.equal(baseAllowsTape(failedRange, o), false, "wide ladder permission never expands a tagged range");
+        assert.equal(baseAllowsTape(tape(BAD, undefined, kind), o), false, "measurement-only failed pairs remain excluded");
+        assert.equal(execDecision(tp, NOW, o).ok, admitted);
+        for (const select of [selectFixed, selectAt]) assert.equal(select([tp], NOW, o).picks.length, Number(admitted));
+        assert.equal(selectDurable([tp], NOW, o, new Set()).picks.length, Number(admitted));
+      }
+    });
+  }
+
+  it("preserves the exact Wide pass with perRange on and invalidates cached ladder permission independently", () => {
+    const wide = { ...run(IND, { mn: bad, sh: bad }), full: good };
+    const out = basePass([wide], { ...s, axis: { ...s.axis, perRange: true } }, { enabled: (tag) => ["", "mn", "sh"].includes(tag) });
+    assert.ok(out.wideLadderPairs.has(pair(IND)));
+    const tp = tape(IND, undefined, "axis"), tapes = [tp], o = { ...options(), toggles: { ...s.toggles, axis: true } };
+    assert.equal(selectFixed(tapes, NOW, { ...o, baseWideLadderPairs: new Set() }).picks.length, 0);
+    assert.equal(selectFixed(tapes, NOW, o).picks.length, 1);
+    assert.equal(baseAllowsTape(tp, { basePassedRanges: {}, baseWideLadderPairs: new Set([pair(IND)]) }), false,
+      "a contradictory allowlist cannot invent the required qualified pair");
+  });
+
   it("preserves explicit baseRanges off while allSets alone cannot expand admission", () => {
     const out = basePass([run(IND, { mn: good, sh: bad })], { ...s, grid: { ...s.grid, baseRanges: false } }, applies);
     assert.deepEqual(out.qualifiedTags[pair(IND)], ["mn", "sh"], "the independently configured range-expansion policy remains explicit");
@@ -112,12 +148,15 @@ describe("diagnostic allSets retains the Base-qualified cohort", () => {
     assert.ok(rt.tapes.length > 0, "the full independent measurement tape remains available");
     assert.deepEqual([...(rt.wf.basePassed ?? [])], []);
     assert.deepEqual(rt.wf.basePassedRanges, {});
+    assert.deepEqual([...(rt.wf.baseWideLadderPairs ?? [])], []);
     assert.equal(rt.sim?.trades.length, 0);
     assert.deepEqual([...rt.stageSets!.passed], []);
     assert.deepEqual([...rt.stageSets!.measured!], [pair(IND)]);
     const map = rt.wf.basePassedRanges;
+    const ladderPairs = rt.wf.baseWideLadderPairs;
     rt.updateSettings({ cycleMs: rt.settings.cycleMs + 1000 });
     assert.equal(rt.wf.basePassedRanges, map, "settings changes retain the current compute's exact range gate");
+    assert.equal(rt.wf.baseWideLadderPairs, ladderPairs, "settings changes retain the independent ladder policy until recomputed");
   });
 
   it("preset Base returns diagnostic construction and a separate empty admission cohort on both calculation paths", async () => {
@@ -126,7 +165,7 @@ describe("diagnostic allSets retains the Base-qualified cohort", () => {
     const settings: CoreSettings = { ...s, mainTop: 0, gates: { ...s.gates, minTrades: 10_000 } };
     const bars = [barsFromCandles("AAA-USDT", 15, syntheticCandles("AAA-USDT", 15, 160, NOW, 7))];
     const inner = rt as unknown as { presetBase(job: unknown, s: CoreSettings, combos: unknown[], bars: unknown[]): Promise<{
-      main: Set<string>; qualified: Set<string>; qualifiedTags: Record<string, string[]>;
+      main: Set<string>; qualified: Set<string>; qualifiedTags: Record<string, string[]>; wideLadderPairs: Set<string>;
     }> };
     const previous = process.env.CTS_CORE_WORKERS;
     try {
@@ -136,6 +175,7 @@ describe("diagnostic allSets retains the Base-qualified cohort", () => {
         assert.ok(result.main.has(pair(IND)), "the failed pair is still available for measurement");
         assert.deepEqual([...result.qualified], []);
         assert.deepEqual(result.qualifiedTags, {});
+        assert.deepEqual([...result.wideLadderPairs], []);
       }
     } finally {
       if (previous === undefined) delete process.env.CTS_CORE_WORKERS;
@@ -150,7 +190,7 @@ describe("diagnostic allSets retains the Base-qualified cohort", () => {
         process.env.CTS_CORE_WORKERS = workers;
         const rt = tracked.track(new CoreRuntime(new CoreDb(":memory:"), undefined, { market: "synthetic", priceStream: null }));
         rt.stop();
-        type Result = { main: Set<string>; qualified: Set<string>; qualifiedTags: Record<string, string[]> };
+        type Result = { main: Set<string>; qualified: Set<string>; qualifiedTags: Record<string, string[]>; wideLadderPairs: Set<string> };
         const inner = rt as unknown as {
           presetBase(...args: unknown[]): Promise<Result>;
           runPresetBacktest(p: unknown, days: number, job: unknown): Promise<void>;
@@ -171,6 +211,7 @@ describe("diagnostic allSets retains the Base-qualified cohort", () => {
         assert.equal(base.main.size, 0);
         assert.equal(base.qualified.size, 0);
         assert.deepEqual(base.qualifiedTags, {});
+        assert.deepEqual([...base.wideLadderPairs], []);
         const report = rt.db.kvGet<Record<string, Array<{ n: number; pass: boolean }>>>("presetBacktests")?.[id]?.[0];
         assert.ok(report);
         assert.equal(report.n, 0, "a focused pair that failed Base has no post-Base executed sample");

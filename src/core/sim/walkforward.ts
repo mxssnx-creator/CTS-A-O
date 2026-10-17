@@ -361,6 +361,8 @@ export interface WalkForwardOptions {
   basePassed?: ReadonlySet<string>;
   /** Exact engine pair → admitted range tags ("" = Wide), before diagnostic allSets expansion. */
   basePassedRanges?: Readonly<Record<string, readonly string[]>>;
+  /** Qualified pairs whose builder policy admits independent untagged DCA/Axis, before allSets expansion. */
+  baseWideLadderPairs?: ReadonlySet<string>;
   /**
    * signal pairs ("bot|ind") that passed their Base gate in the current compute: a held signal pair keeps its tapes
    * to manage its positions but opens nothing new. Unset = no restriction.
@@ -2330,13 +2332,19 @@ export function kindExecutable(kind: StratKind, tg: StrategyToggles): boolean {
 
 /** Diagnostic construction never expands the engine's Base-qualified pair/range cohort. */
 export function baseAllowsTape(
-  tp: Pick<ConfigTape, "bot" | "ind" | "protect">,
-  o: Pick<WalkForwardOptions, "basePassed" | "basePassedRanges">,
+  tp: Pick<ConfigTape, "bot" | "ind" | "protect" | "kind">,
+  o: Pick<WalkForwardOptions, "basePassed" | "basePassedRanges" | "baseWideLadderPairs">,
   /** An inverted research seat executes its mirror's tape but retains the source seat's qualification. */
   pair = `${tp.bot}|${tp.ind}`,
 ): boolean {
   if (o.basePassed && !o.basePassed.has(pair)) return false;
-  return !o.basePassedRanges || o.basePassedRanges[pair]?.includes(tp.protect.tag ?? "") === true;
+  const ranges = o.basePassedRanges?.[pair];
+  if (o.basePassedRanges && !ranges?.length) return false;
+  // With Axis perRange off, an admitted pair's independent untagged ladders are not the plain Wide config.
+  // This explicit builder permission never qualifies a plain/trailing Wide cell or another tagged range.
+  if (!tp.protect.tag && (tp.kind === "dca" || tp.kind === "dca-active" || tp.kind === "axis") && o.baseWideLadderPairs?.has(pair))
+    return true;
+  return !o.basePassedRanges || ranges!.includes(tp.protect.tag ?? "");
 }
 
 /**
@@ -3325,6 +3333,7 @@ function selSig(o: WalkForwardOptions): string {
     o.bots.join(","),
     objId(o.basePassed),
     objId(o.basePassedRanges),
+    objId(o.baseWideLadderPairs),
     JSON.stringify(o.toggles ?? null),
     o.signalOwnBase ? 1 : 0,
     o.seatPer ?? "",

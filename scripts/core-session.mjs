@@ -53,7 +53,6 @@ import {
   SESSION_EXECUTION_RETURNS,
   SESSION_QUALIFICATION,
   recordSessionMinimum,
-  sessionBaseTags,
   sessionOwnRangePassed,
   sessionQualificationEvidence,
   sessionReturnEvidence,
@@ -76,6 +75,7 @@ if (argv.includes("--help") || argv.includes("-h")) {
       "  --end-at ISO            end time of the session",
       "  --evaluation-from ISO   start of evaluated entries after prehistory",
       "  --selection-hours H     replay-only Base/config selection lookback",
+      "  --replay-preload-all    load the entire offline universe before its first compute",
       "  --signals on|off        include Signal processing",
       "  --desk FILE             apply a saved settings snapshot",
       "  --settings JSON         apply a settings patch",
@@ -91,6 +91,16 @@ if (argv.includes("--help") || argv.includes("-h")) {
     ].join("\n") + "\n",
   );
   process.exit(0);
+}
+const arg = (k, d) => {
+  const i = argv.indexOf(`--${k}`);
+  return i >= 0 ? argv[i + 1] : d;
+};
+const flag = (k) => argv.includes(`--${k}`);
+if (flag("replay-preload-all")) {
+  const end = Date.parse(arg("end-at")), from = Date.parse(arg("evaluation-from"));
+  if (!arg("feed") || !Number.isFinite(end) || !Number.isFinite(from) || from >= end)
+    throw new Error("--replay-preload-all needs an offline --feed, explicit --end-at and --evaluation-from");
 }
 /** min / max of a large array (spreading 100k+ values into Math.min / Math.max overflows the call stack) */
 const minOf = (xs) => xs.reduce((a, x) => (x < a ? x : a), Infinity);
@@ -115,11 +125,6 @@ const { walkForwardVariants, summarizeRun, effectOf, sizingReplay, sizingVariant
 const { kindOfTrade } = await import("../src/core/statistics.ts");
 const { sizeBook, orderKey } = await import("../src/core/sizing.ts");
 
-const arg = (k, d) => {
-  const i = argv.indexOf(`--${k}`);
-  return i >= 0 ? argv[i + 1] : d;
-};
-const flag = (k) => argv.includes(`--${k}`);
 // --render html/data.json: rebuild the report from a finished run's dump (a 12 h compute must never be lost to a
 // rendering error) — writes index.html next to it, or into --html
 if (arg("render")) {
@@ -462,6 +467,9 @@ async function runEngine() {
     throw new Error("--min-green needs a fraction from 0.5 to 1 and an offline --feed, --end-at and --evaluation-from");
   if (evaluationFromT !== undefined && (!feedFile || !cutT || !Number.isFinite(evaluationFromT) || evaluationFromT >= cutT))
     throw new Error("--evaluation-from needs an offline --feed, an explicit end and a valid earlier ISO timestamp");
+  const replayPreloadAll = flag("replay-preload-all");
+  if (replayPreloadAll && (!feedFile || !arg("end-at") || !cutT || !Number.isFinite(evaluationFromT)))
+    throw new Error("--replay-preload-all needs an offline --feed, explicit --end-at and --evaluation-from");
   function replayFeed(cut) {
     // only bars that closed by the cut
     const keep = (cs, tf) => cs.filter((c) => c.t + tf * 60_000 <= cut);
@@ -479,7 +487,7 @@ async function runEngine() {
       signals: { enabled: signalsOn },
     },
     // a replayed window (--end-at / --end-ago / --to-now) reads no live price: no public price stream (priceStream null)
-    { market: "bingx", ...(cutT ? { replay: true, priceStream: null, evaluationFromT, feed: { ...replayFeed(cutT), ...(feedFile || recordFile ? { tickers: fetchTickers } : {}) } } : {}) },
+    { market: "bingx", ...(cutT ? { replay: true, priceStream: null, evaluationFromT, replayPreloadAll, feed: { ...replayFeed(cutT), ...(feedFile || recordFile ? { tickers: fetchTickers } : {}) } } : {}) },
   );
   // Historical replay otherwise inherits a wall-clock liveSince and cannot learn from simulated execution closes.
   // Restrict the override to a bounded offline window; ordinary runtime and live defaults are unchanged.
@@ -754,13 +762,6 @@ async function runEngine() {
   // the configs of the pairs that PASSED Base (the runtime's indication-aware sets gates and applicable ranges) and the
   // first Real gate each of them misses — where the validation fails after stage Base
   const { grossOfStat } = await import("../src/core/pipeline/pipeline.ts");
-  const { baseRangeRules, ALL_RANGE_TAGS } = await import("../src/core/server/runtime.server.ts");
-  const baseApplies = baseRangeRules(rt.settings).applies;
-  const basePassed = new Set();
-  for (const r of rt.pipeline?.s1 ?? []) {
-    for (const tag of sessionBaseTags(r, G, baseApplies, ALL_RANGE_TAGS))
-      basePassed.add(`${r.bot}|${r.ind}|${tag || "wide"}`);
-  }
   const evalAfterBase = {};
   // signal units (pair × symbol × direction) are seated per step: an entry counts only when its unit was in the active
   // set of the step it entered in (signalSetAt), never every config of a pair with one active unit
@@ -859,7 +860,7 @@ async function runEngine() {
         pfs.evaluated.push(+ev.pf.toFixed(4));
         pfs.ddtLimitH.push(+Math.min(ddtMaxH, ddtLimitH(rt.wf, tp, startT, selH)).toFixed(2));
       }
-      if (basePassed.has(`${tp.bot}|${tp.ind}|${r || "wide"}`)) {
+      if (baseOk) {
         const f = (evalAfterBase[`${rl}|${tp.kind}`] ??= { configs: 0, passed: 0, pfs: [], okPfs: [], okGp: 0, okGl: 0 });
         recordSessionMinimum(f, evalGates, r || undefined, tp.ind);
         f.configs++;
@@ -1019,6 +1020,7 @@ async function runEngine() {
         tradeEndT: endT,
         causalBase: !!rt.wf.causalBase,
         selectionHours: Math.max(rt.wf.preH, rt.wf.longH),
+        replayPreloadAll: rt.replayPreloadAll,
       },
       symbolsAsked: symbols,
       // the report book's settings (a --replay / --render uses them unless the flags say otherwise)
@@ -1047,6 +1049,7 @@ async function runEngine() {
       runH,
       evaluationFromT: evaluationFromT ?? null,
       replaySelectionHours,
+      replayPreloadAll: rt.replayPreloadAll,
       replayMinGreen,
       marketDataSource: feedFile ? "offline-cached-feed" : recordFile ? "recorded-public-bingx" : "public-bingx",
       tactics: tacticsMode,
@@ -1687,6 +1690,7 @@ const afterBaseMd = (e, tapeAgg, xs) => {
     `### After each evaluation: PF and sets validated`,
     ``,
     `Base: the Base-passed pairs pooled on their gross return basis; no-loss samples show ∞ (no loss), while the runtime's finite no-loss gate score is shown separately in the run summary. Validation: the sets validated at the run start and their gross-return PF pooled on the validation window (signals: units active in the run). Orders: the run's funded settled orders and their realized PF; known zero allocations are excluded.`,
+    `With Axis perRange off, Wide-labeled validation and orders also include independent untagged DCA/Axis configs from pairs that qualified in another range, following the recorded builder admission policy.`,
     ``,
     `| range | Base pooled PF | pairs validated | effective validation min PF | validation PF | sets validated | orders PF | orders |`,
     `|---|---:|---:|---|---:|---:|---:|---:|`,

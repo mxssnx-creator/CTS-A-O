@@ -1,6 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { STUDY_SYMBOLS, studyWindow, trimStudyFeed, validateStudyFeed, studyCommand, studyEnvironment, studyRuntimeSettings, studyHour, summarizeStudy, studyMarkdown, finishStudyReturns } from "./core-22-symbol-study.mjs";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { STUDY_SYMBOLS, STUDY_ADMISSION, studyMemorySnapshot, studyAdmissionDecision, acquireStudyResourceLock, studyChild, verifyStudySources, studyWindow, trimStudyFeed, validateStudyFeed, studyCommand, studyEnvironment, studyRuntimeSettings, studyHour, summarizeStudy, studyMarkdown, finishStudyReturns } from "./core-22-symbol-study.mjs";
 
 const H = 3_600_000;
 test("study freezes24h evaluated prehistory,24h trade and separate205h indicator warmup", () => {
@@ -13,6 +16,74 @@ test("study freezes24h evaluated prehistory,24h trade and separate205h indicator
   assert.equal(STUDY_SYMBOLS.length, 22);
   assert.equal(STUDY_SYMBOLS[17], "ETC-USDT");
   assert.throws(() => studyWindow(123), /complete UTC hour/);
+});
+
+function memoryFixture({ available = 6000, limit = 8192, used = 5000, inactive = 1200, member = "/", extra = {} } = {}) {
+  const base = "/sys/fs/cgroup" + (member === "/" ? "" : member), files = {
+    "/proc/meminfo": `MemAvailable: ${available * 1024} kB\n`, "/proc/self/cgroup": `0::${member}\n`,
+    [base + "/memory.max"]: limit === "max" ? "max" : String(limit * 2 ** 20),
+    [base + "/memory.current"]: String(used * 2 ** 20), [base + "/memory.stat"]: `inactive_file ${inactive * 2 ** 20}\nactive_file ${2000 * 2 ** 20}\n`, ...extra,
+  };
+  return (file) => files[file] ?? null;
+}
+
+test("strict study memory admission uses known host and ancestor headroom, crediting measured inactive cache only", () => {
+  const snapshot = studyMemorySnapshot(memoryFixture(), "frozen-test");
+  assert.equal(snapshot.known, true); assert.equal(snapshot.availableMiB, 4392);
+  assert.equal(snapshot.cgroup[0].inactiveFileMiB, 1200);
+  assert.equal(studyAdmissionDecision(snapshot).admitted, true);
+  assert.equal(studyAdmissionDecision(studyMemorySnapshot(memoryFixture({ available: 4000 }))).admitted, false);
+  assert.equal(studyAdmissionDecision(studyMemorySnapshot(memoryFixture({ inactive: 0 }))).admitted, false, "active_file is not free memory");
+  assert.equal(studyAdmissionDecision(studyMemorySnapshot(memoryFixture({ limit: "max", available: 4096 }))).admitted, true);
+  const ancestor = studyMemorySnapshot(memoryFixture({ member: "/nested", extra: {
+    "/sys/fs/cgroup/memory.max": String(8192 * 2 ** 20), "/sys/fs/cgroup/memory.current": String(6000 * 2 ** 20), "/sys/fs/cgroup/memory.stat": `inactive_file ${100 * 2 ** 20}\n`,
+  } }));
+  assert.equal(ancestor.availableMiB, 2292); assert.equal(studyAdmissionDecision(ancestor).admitted, false);
+  for (const missing of ["/proc/meminfo", "/proc/self/cgroup", "/sys/fs/cgroup/memory.max", "/sys/fs/cgroup/memory.current", "/sys/fs/cgroup/memory.stat"]) {
+    const read = memoryFixture(), unknown = studyMemorySnapshot((file) => file === missing ? null : read(file));
+    assert.equal(unknown.known, false); assert.equal(unknown.availableMiB, null); assert.equal(studyAdmissionDecision(unknown).admitted, false);
+  }
+  assert.equal(STUDY_ADMISSION.minimumAvailableMiB, 4096); assert.equal(STUDY_ADMISSION.timeoutBypass, false);
+  assert.equal(studyAdmissionDecision({ known: false, availableMiB: 100000 }).admitted, false);
+});
+
+test("shared nonblocking flock rejects a second study and releases without stale ownership", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cts-study-lock-")), file = path.join(dir, "resource.lock");
+  let first, next;
+  try {
+    first = await acquireStudyResourceLock(file);
+    await assert.rejects(acquireStudyResourceLock(file), /Another cooperating compute/);
+    first.release(); first = null;
+    next = await acquireStudyResourceLock(file);
+  } finally { first?.release(); next?.release(); fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("owned child interruption and timeout resolve complete failure evidence without hanging", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cts-study-child-"));
+  try {
+    const controller = new AbortController(), timer = setTimeout(() => controller.abort({ signal: "SIGINT" }), 100);
+    const interrupted = await studyChild(["-e", "setInterval(() => {}, 1000)"], path.join(dir, "interrupt.log"), 5000, controller.signal);
+    clearTimeout(timer);
+    assert.equal(interrupted.interrupted, true); assert.equal(interrupted.timedOut, false); assert.equal(interrupted.exitCode, null);
+    const timedOut = await studyChild(["-e", "setInterval(() => {}, 1000)"], path.join(dir, "timeout.log"), 100);
+    assert.equal(timedOut.timedOut, true); assert.equal(timedOut.exitCode, null);
+    const already = new AbortController(); already.abort();
+    const skipped = await studyChild(["-e", "process.exit(99)"], path.join(dir, "skipped.log"), 5000, already.signal);
+    assert.equal(skipped.interrupted, true); assert.equal(skipped.seconds, 0);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("a running child retains the shared resource flock after its launcher descriptor closes", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cts-study-child-lock-")), file = path.join(dir, "resource.lock");
+  let owned, next, running;
+  try {
+    owned = await acquireStudyResourceLock(file);
+    running = studyChild(["-e", "setTimeout(() => process.exit(0), 400)"], path.join(dir, "child.log"), 5000, undefined, owned.fd);
+    owned.release(); owned = null;
+    await assert.rejects(acquireStudyResourceLock(file), /Another cooperating compute/);
+    assert.equal((await running).exitCode, 0);
+    next = await acquireStudyResourceLock(file);
+  } finally { await running; owned?.release(); next?.release(); fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 test("case feed trims397h and derives each ranking solely from its prior24h", () => {
@@ -58,6 +129,7 @@ test("preflight uses production complete nested ladders and unchanged gates with
   assert.equal(x.wf.preH, 24); assert.equal(x.wf.longH, 24); assert.equal(x.wf.simH, 24);
   assert.equal(x.wf.validLastN, 15); assert.equal(x.wf.signalValidLastN, 25);
   assert.equal(x.wf.causalBase, true); assert.equal(x.wf.recordValidation, true);
+  assert.equal(x.replayPreloadAll, true);
   assert.ok(JSON.stringify(x.wf).length > 131072, "full default protection cells exceed one Linux argument");
   assert.ok(JSON.stringify(x.commandWf).length < 1024, "derived grid stays in frozen evidence rather than oversized argv");
   await assert.rejects(studyRuntimeSettings(STUDY_SYMBOLS, studyWindow(), 10), /at least11/);
@@ -69,14 +141,15 @@ test("preflight uses production complete nested ladders and unchanged gates with
 });
 
 test("commands run the causal runtime offline with variants off and immutable replay output", () => {
-  const p = { window: studyWindow(), budget: { heapMb: 4096, timeoutMinutes: 180 }, book: { balance: 1000, pct: 0.001, leverage: 10 } };
-  const c = { feed: "/frozen/feed20.json", symbols: STUDY_SYMBOLS.slice(0, 20), runtime: { settings: { symbols: 20, forceSymbols: STUDY_SYMBOLS.slice(0, 20), grid: { short: { tpOfCost: [9, 10], slOfTp: [1], trailOfTp: [0] } } }, commandWf: { causalBase: true, recordValidation: true } } };
+  const p = { window: studyWindow(), execution: { replayPreloadAll: true }, budget: { heapMb: 4096, timeoutMinutes: 180 }, book: { balance: 1000, pct: 0.001, leverage: 10 } };
+  const c = { feed: "/frozen/feed20.json", symbols: STUDY_SYMBOLS.slice(0, 20), runtime: { replayPreloadAll: true, settings: { symbols: 20, forceSymbols: STUDY_SYMBOLS.slice(0, 20), grid: { short: { tpOfCost: [9, 10], slOfTp: [1], trailOfTp: [0] } } }, commandWf: { causalBase: true, recordValidation: true } } };
   const cmd = studyCommand(p, c, "/result");
   assert.ok(cmd.includes("--dump-only")); assert.ok(cmd.includes("--tape-trades"));
   assert.equal(cmd[cmd.indexOf("--symbols") + 1], "20");
   assert.equal(cmd[cmd.indexOf("--pre") + 1], "24");
   assert.equal(cmd[cmd.indexOf("--selection-hours") + 1], "24");
   assert.equal(cmd[cmd.indexOf("--pct") + 1], "0.001");
+  assert.ok(cmd.includes("--replay-preload-all"));
   assert.deepEqual(JSON.parse(cmd[cmd.indexOf("--settings") + 1]), c.runtime.settings);
   assert.deepEqual(JSON.parse(cmd[cmd.indexOf("--wf") + 1]), c.runtime.commandWf);
   assert.ok(studyCommand(p, c, "/result", "render").includes("--replay"));
@@ -84,6 +157,8 @@ test("commands run the causal runtime offline with variants off and immutable re
   assert.equal(env.CTS_CORE_VARIANTS, "0"); assert.equal(env.CTS_CORE_LIVE, "0");
   assert.match(env.NODE_OPTIONS, /core-test-offline-guard/);
   assert.equal(env.BINGX_API_KEY, undefined);
+  assert.throws(() => studyCommand({ ...p, execution: undefined }, c, "/result"), /frozen replayPreloadAll/);
+  assert.throws(() => verifyStudySources({}), /frozen complete-feed preload\/memory admission/);
 });
 
 test("right-closed hour convention retains exact-hour closes in the preceding hour", () => {
@@ -100,10 +175,10 @@ async function fixture() {
   const window = studyWindow(), symbols = STUDY_SYMBOLS.slice(0, 20);
   const wf = { causalBase: true, recordValidation: true, preH: 24, simH: 24, longH: 24, validLastN: 15, signalValidLastN: 25 };
   const settings = { cost: 0.0015, gates: { minPf: 1.1 }, tfs: [1, 5, 15, 30], toggles: { normal: true }, sizing: { mode: "equityPct", pct: 0.001 }, disabledKinds: [], focus: ["follow|test"] };
-  const runtime = { settings, wf, settingsSha256: "test" }, studyCase = { symbols, runtime }, protocol = { window, sources: [], book: { balance: 1000, pct: 0.001, leverage: 10 } };
+  const runtime = { settings, wf, replayPreloadAll: true, settingsSha256: "test" }, studyCase = { symbols, runtime }, protocol = { window, execution: { replayPreloadAll: true }, sources: [], book: { balance: 1000, pct: 0.001, leverage: 10 } };
   const rows = [{ cfg: "follow|ema-9-21@m1|tp3|sl3|tr0|h24|gn", sym: symbols[0], side: 1, entryT: window.tradeStartT + 1, exitT: window.tradeStartT + H, r: 0.04, mult: 2, vol: 2, kind: "normal", reason: "tp" },
     { cfg: "follow|ema-9-21@m1|tp3|sl3|tr0|h24|gn", sym: symbols[1], side: -1, entryT: window.tradeStartT + 2, exitT: window.tradeStartT + H + 1, r: -0.01, mult: 1, vol: 1, kind: "normal", reason: "sl" }];
-  const raw = { runSeconds: 5, window: { startT: window.tradeStartT, endT: window.endT }, settings: { ...settings, effective: settings, effectiveWf: { ...wf, basePassed: ["follow|ema-9-21@m1"], basePassedRanges: { "follow|ema-9-21@m1": ["gn"] } }, book: { balance: 1000, sizing: settings.sizing, leverage: 10 }, replaySelectionHours: 24, wf, symbolsAsked: 20, lanes: settings.tfs, focus: 1, evaluationFromT: window.evaluationFromT },
+  const raw = { runSeconds: 5, window: { startT: window.tradeStartT, endT: window.endT }, settings: { ...settings, effective: settings, replayPreloadAll: true, effectiveWf: { ...wf, basePassed: ["follow|ema-9-21@m1"], basePassedRanges: { "follow|ema-9-21@m1": ["gn"] } }, book: { balance: 1000, sizing: settings.sizing, leverage: 10 }, replaySelectionHours: 24, wf, symbolsAsked: 20, lanes: settings.tfs, focus: 1, evaluationFromT: window.evaluationFromT },
     engine: { universe: symbols, computeMs: 500, rssMaxMb: 123, mem: { computeLevel: 0, fallback: 0, lastAbort: null }, coverage: { expectedCombos: 1, evaluated: 1 }, baseEvaluated: 1, basePassed: 1, tapes: 1 },
     validation: Array.from({ length: 24 }, (_, i) => ({ t: window.tradeStartT + i * H, checks: [[rows[0].cfg, i % 2 === 0, 25, 1.2, 0.12, 0.1]] })), trades: rows };
   const book = { checks: [{ name: "native accounting", ok: true }], settings: { balance0: 1000, sizing: settings.sizing, leverage: 10 }, total: { equityMaxDd: 5, equityMaxDdPct: 0.005, equityDdtMaxH: 2, eqMin: 995 }, sizedOrders: rows.map((x, closeIndex) => ({ key: orderKey(x), closeIndex, cfg: x.cfg, exitT: x.exitT, unitNotional: closeIndex === 0 ? 5 : 0, allocatedNotional: closeIndex === 0 ? 10 : 0 })) };
@@ -165,6 +240,20 @@ test("summary rejects a winning diagnostic config outside its independently admi
   assert.equal(s.continuousValidation.afterBaseChecked, 0);
   assert.equal(s.validationRows[0].baseQualified, false);
   assert.ok(s.structural.some((x) => x.name.includes("matching Base range") && !x.ok));
+});
+
+test("summary uses production qualification for explicitly admitted untagged ladders", async () => {
+  const f = await fixture(), original = f.raw.trades[0].cfg, untagged = original.replace("|gn", "") + "|dca";
+  f.raw.settings.effectiveWf.basePassedRanges["follow|ema-9-21@m1"] = ["mc"];
+  f.raw.settings.effectiveWf.baseWideLadderPairs = ["follow|ema-9-21@m1"];
+  f.raw.validation[0].checks = [[untagged, true, 25, 1.2, 0.12, 0.1], [original + "|dca", true, 25, 1.2, 0.12, 0.1], [original.replace("|gn", ""), true, 25, 1.2, 0.12, 0.1]];
+  const s = await summarizeStudy(f.raw, f.book, f.protocol, f.studyCase, "paper step on compute #2:1 Real seats");
+  assert.equal(s.validationRows[0].baseQualified, true, "default wide ladder needs explicit eligible pair metadata");
+  assert.equal(s.validationRows[1].baseQualified, false, "tagged ladder keeps its exact range gate");
+  assert.equal(s.validationRows[2].baseQualified, false, "wide normal config cannot borrow ladder admission");
+  delete f.raw.settings.effectiveWf.baseWideLadderPairs;
+  const strict = await summarizeStudy(f.raw, f.book, f.protocol, f.studyCase, "paper step on compute #2:1 Real seats");
+  assert.equal(strict.validationRows[0].baseQualified, false);
 });
 
 test("summary detects nested settings, book sizing and missing performance evidence", async () => {
