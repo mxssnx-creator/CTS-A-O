@@ -6,8 +6,7 @@
 // The attribution has no filled quantity or settled cash P&L. These unweighted return PFs are NOT account cash PF
 // or execution-profitability proof; repeated closes of a paper identity remain separate samples in its side's stats.
 import { profitFactor } from "./metrics/stats.ts";
-import { isSignalInd } from "./indications/registry.ts";
-import { RANGE_LABEL, rangeOfId } from "./minimal-coord.ts";
+import { liveGroupOf } from "./live-validation.ts";
 
 export interface DiffPaper {
   cfg: string;
@@ -59,7 +58,7 @@ export interface LiveDiff {
   basis: "normalized-return";
   cashPfAvailable: false;
   total: DiffRow;
-  byRange: DiffRow[];
+  byGroup: DiffRow[];
   byHour: DiffRow[];
   /** the matched orders the exchange did worst against the system */
   worst: Array<{ id: string; system: number; exchange: number; gap: number; reason: string }>;
@@ -68,8 +67,7 @@ export interface LiveDiff {
 }
 
 const H = 3_600_000;
-const groupOf = (cfg: string) =>
-  isSignalInd(cfg.split("|")[1] ?? "") ? "Signals" : RANGE_LABEL[rangeOfId(cfg)];
+const groupOf = liveGroupOf;
 const knownReturn = (r: number | null): r is number => typeof r === "number" && Number.isFinite(r);
 const side = (rs: Array<number | null>): DiffSide => {
   let gp = 0;
@@ -155,7 +153,7 @@ export function liveDiff(paper: readonly DiffPaper[], live: readonly DiffLive[],
     basis: "normalized-return",
     cashPfAvailable: false,
     total: row("total"),
-    byRange: [...rows.keys()].filter((k) => k.startsWith("r:")).sort().map(row),
+    byGroup: [...rows.keys()].filter((k) => k.startsWith("r:")).sort().map(row),
     byHour: [...rows.keys()].filter((k) => k.startsWith("h:")).sort().map(row),
     worst: worst.slice(0, 10),
     stopMismatch,
@@ -176,7 +174,7 @@ export function liveDiffMd(d: LiveDiff): string {
     "",
     head,
     line(d.total),
-    ...d.byRange.map(line),
+    ...d.byGroup.map(line),
     "",
     "### Per hour (each side's exit hour; matched gaps use the system exit hour)",
     head,

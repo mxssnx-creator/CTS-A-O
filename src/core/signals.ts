@@ -9,7 +9,7 @@
 //              direction, each of its configs on its own) is disabled while the average of its last N (8) closed
 //              results is negative (judged on the closes of the units active at their step: an inactive unit's candidates
 //              never reach the feed) and re-enabled once it is positive again
-import type { Protect } from "./domain/types.ts";
+import type { ExitConfigSet, Protect } from "./domain/types.ts";
 import { atrProtect } from "./sim/backtest.ts";
 import { isSignalInd, laneInd } from "./indications/registry.ts";
 import {
@@ -435,7 +435,7 @@ export interface SideTape {
   ind: string;
   kind: string;
   n: number;
-  protect: { tag?: string };
+  protect: { tag?: string; exitSet?: ExitConfigSet };
   side: ArrayLike<number>;
   exitT: ArrayLike<number>;
   r: ArrayLike<number>;
@@ -482,17 +482,26 @@ export function acceptPreferExchange(
   return sim();
 }
 
-/** the type family a direction group pools: Normal + Trailing ("base"), DCA (both kinds), Axis */
-export const sideFamilyOf = (kind: string) =>
-  kind === "axis" ? "axis" : kind.startsWith("dca") ? "dca" : "base";
-/** the engine direction group of a tape and side: type family × range × side */
+/** direction families: Normal + Trailing ("base"), DCA, Axis, and each Historic Exit tactic independently */
+export const sideFamilyOf = (kind: string, exitSet?: ExitConfigSet) =>
+  kind === "exit"
+    ? `exit-${exitSet ?? "legacy"}`
+    : kind === "axis"
+      ? "axis"
+      : kind.startsWith("dca")
+        ? "dca"
+        : "base";
+/** the engine direction group of a tape and side: type family × range × side; Exit uses its own tactic key */
 export function engineSideKey(
   kind: string,
   tag: string | undefined,
   side: number,
   ind?: string,
+  exitSet?: ExitConfigSet,
 ): string {
-  return `${sideFamilyOf(kind)}|${tag ?? "wide"}|${side > 0 ? 1 : -1}${ind ? `|${ind}` : ""}`;
+  const family = sideFamilyOf(kind, exitSet);
+  const range = kind === "exit" ? "independent" : tag ?? "wide";
+  return `${family}|${range}|${side > 0 ? 1 : -1}${ind ? `|${ind}` : ""}`;
 }
 /**
  * The group an engine candidate is judged in: its type family × range × side, or — for a range listed in
@@ -504,8 +513,15 @@ export function engineSideKeyFor(
   side: number,
   ind: string,
   perInd: readonly string[] | undefined,
+  exitSet?: ExitConfigSet,
 ): string {
-  return engineSideKey(kind, tag, side, perInd?.includes(tag ?? "wide") ? ind : undefined);
+  return engineSideKey(
+    kind,
+    tag,
+    side,
+    kind !== "exit" && perInd?.includes(tag ?? "wide") ? ind : undefined,
+    exitSet,
+  );
 }
 
 /**
@@ -527,8 +543,8 @@ export class EngineSideIndex {
       if (isSignalInd(tp.ind)) continue;
       // every candidate enters its range group and its indication's group (engineSideAccept.perInd picks)
       const keys = [-1, 1].map((sd) => [
-        engineSideKey(tp.kind, tp.protect.tag, sd),
-        engineSideKey(tp.kind, tp.protect.tag, sd, tp.ind),
+        engineSideKey(tp.kind, tp.protect.tag, sd, undefined, tp.protect.exitSet),
+        engineSideKey(tp.kind, tp.protect.tag, sd, tp.ind, tp.protect.exitSet),
       ]);
       for (let i = 0; i < tp.n; i++) {
         const h = Math.floor(tp.exitT[i] / HOUR_MS);

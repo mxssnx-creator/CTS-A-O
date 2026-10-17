@@ -34,7 +34,7 @@ export interface SetAdjust {
 export type AdjustState = Record<string, SetAdjust>;
 
 const kindOf = (cfg: string): StratKind =>
-  /\|hx(?:L|S)?$/.test(cfg)
+  /\|hx(?:[LS])?[012]?$/.test(cfg)
     ? "exit"
     : cfg.endsWith("|axis")
       ? "axis"
@@ -66,10 +66,24 @@ export function adjustTrades(
   ];
 }
 
-/** "bot|ind|kind" of a config id. */
+/** "bot|ind|kind" of a config id; Historic Exit adds its tactic so its feedback is independent. */
 export function setKeyOf(cfg: string): string {
   const [bot, ind] = cfg.split("|");
-  return `${bot}|${ind}|${kindOf(cfg)}`;
+  const kind = kindOf(cfg);
+  if (kind === "exit") {
+    const code = /\|hx(?:[LS])?([012])?$/.exec(cfg)?.[1];
+    const set =
+      code === "0"
+        ? "static-sl"
+        : code === "1"
+          ? "adaptive-sl"
+          : code === "2"
+            ? "trailing"
+            : "legacy";
+    const side = /\|hx([LS])/.exec(cfg)?.[1];
+    return `${bot}|${ind}|exit|${set}${side ? `|${side === "L" ? "long" : "short"}` : ""}`;
+  }
+  return `${bot}|${ind}|${kind}`;
 }
 
 export function evaluateAdjust(

@@ -159,7 +159,9 @@ export function laneProtect(p: Protect, ind: string): Protect {
   if (tf === null || tf === REF_TF) return p;
   // a range cell (micro, minimal, short, general, long, plus) is a fixed price distance on every lane; its hold is
   // the same time on every lane (the grid gives it in 15m bars: 64 bars = 16 h, which is 64 minutes on a 1m lane)
-  if (p.tag) return { ...p, hold: Math.max(2, Math.round((p.hold * REF_TF) / tf)) };
+  // Historic Exit families are fitted from excursions in this exact lane: their distances are already native.
+  if (p.tag || (p.exitType === "historic" && p.exitSet))
+    return { ...p, hold: Math.max(2, Math.round((p.hold * REF_TF) / tf)) };
   const k = Math.sqrt(tf / REF_TF);
   const r4 = (x: number) => +(x * k).toFixed(4);
   // short lanes: a scaled target never below 3 × the round-trip cost, stops / trails never inside the noise.
@@ -328,7 +330,15 @@ export function configId(bot: BotType, ind: string, p: Protect, kind?: StratKind
     : "";
   const exit =
     p.exitType === "historic" || kind === "exit"
-      ? `|hx${p.exitSide === 1 ? "L" : p.exitSide === -1 ? "S" : ""}`
+      ? `|hx${p.exitSide === 1 ? "L" : p.exitSide === -1 ? "S" : ""}${
+          p.exitSet === "static-sl"
+            ? "0"
+            : p.exitSet === "adaptive-sl"
+              ? "1"
+              : p.exitSet === "trailing"
+                ? "2"
+                : ""
+        }`
       : "";
   const base = `${bot}|${ind}|tp${pct(p.tp)}|sl${pct(p.sl)}|tr${pct(p.trail)}|h${p.hold}${atrTag(p)}${p.tag ? `|${p.tag}` : ""}${mode}${exit}`;
   return kind === "dca"
@@ -342,7 +352,7 @@ export function configId(bot: BotType, ind: string, p: Protect, kind?: StratKind
 
 export function kindOfId(id: string): StratKind {
   const core = id.replace(/\|(?:mp|mc|mn|sh|gn|lg)(?=\||$)/g, "");
-  if (/\|hx(?:L|S)?$/.test(core)) return "exit";
+  if (/\|hx(?:[LS])?[012]?$/.test(core)) return "exit";
   if (core.endsWith("|axis")) return "axis";
   if (core.endsWith("|dcaA")) return "dca-active";
   if (core.endsWith("|dca")) return "dca";
@@ -372,7 +382,7 @@ export function parseConfigId(id: string): { bot: BotType; ind: string; protect:
   const m =
     // (the Axis variant tag — "|ax-atr2", "|axd-fib3h" from axisVariants — is matched and ignored: without the group
     // every managed / desk Axis id failed to parse and its report rows showed tp / sl / trail / hold 0)
-    /^([a-z]+)\|([a-z0-9.@-]+)\|tp([\d.]+)\|sl([\d.]+)\|tr([\d.]+)\|h(\d+)(?:\|atr([\d.]+)x([\d.]+)(?:t([\d.]+))?)?(\|mc|\|mp|\|mn|\|sh|\|gn|\|lg)?(?:\|axd?-[a-z0-9]+)?(\|hx([LS])?)?(\|dcaA?|\|axis)?$/.exec(
+    /^([a-z]+)\|([a-z0-9.@-]+)\|tp([\d.]+)\|sl([\d.]+)\|tr([\d.]+)\|h(\d+)(?:\|atr([\d.]+)x([\d.]+)(?:t([\d.]+))?)?(\|mc|\|mp|\|mn|\|sh|\|gn|\|lg)?(?:\|axd?-[a-z0-9]+)?(\|hx([LS])?([012])?)?(\|dcaA?|\|axis)?$/.exec(
       plainId,
     );
   if (!m) return null;
@@ -389,6 +399,9 @@ export function parseConfigId(id: string): { bot: BotType; ind: string; protect:
     protect.exitType = "historic";
     if (m[12] === "L") protect.exitSide = 1;
     if (m[12] === "S") protect.exitSide = -1;
+    if (m[13] === "0") protect.exitSet = "static-sl";
+    if (m[13] === "1") protect.exitSet = "adaptive-sl";
+    if (m[13] === "2") protect.exitSet = "trailing";
   }
   if (mode) {
     const step = mode[1] === undefined ? 1 : Number(mode[1]);

@@ -119,7 +119,7 @@ test("the report groups every dimension and compares presets with and without ea
   assert.equal(r.types.find((x) => x.key === "DCA")?.n, 1);
   assert.equal(r.subTypes.find((x) => x.key === "Block Active level")?.n, 1);
   assert.equal(r.configs.length, 3);
-  assert.equal(r.configs.find((c) => c.range === "Short")?.tp, 0.008);
+  assert.equal(r.configs.find((c) => c.group === "Short")?.tp, 0.008);
   // every hour of the day is a row (3 with closes), every UTC day of the window too
   assert.equal(r.hourOfDay.length, 24);
   assert.deepEqual(
@@ -359,10 +359,14 @@ test("preset diagrams and info: positions per hour, PF of the last 12 / 25 / 75 
     assert.ok(s.info.ddtH > 0);
 });
 
-test("ranges: a signal config is its own group, never counted as Wide", () => {
+test("ranges are Normal / Trailing only; Signals and Historic Exit use independent strategy groups", () => {
   const r = buildStatistics({
     source: "sim",
-    trades: [tr({}), tr({ cfg: "follow|sig-cci-m@m15|tp3|sl3|tr0|h64", exitT: T0 + 2 * H })],
+    trades: [
+      tr({}),
+      tr({ cfg: "follow|sig-cci-m@m15|tp3|sl3|tr0|h64", exitT: T0 + 2 * H }),
+      tr({ cfg: "follow|rsi-mom-14-20@m15|tp1|sl1|tr0|h32|hxL0", kind: "exit", exitT: T0 + 3 * H }),
+    ],
     startT: T0,
     endT: T0 + 4 * H,
     balance: 100,
@@ -375,12 +379,11 @@ test("ranges: a signal config is its own group, never counted as Wide", () => {
   });
   assert.deepEqual(
     r.ranges.map((x) => [x.key, x.n]),
-    [
-      ["Wide", 1],
-      ["Signals", 1],
-    ],
+    [["Wide", 1]],
   );
-  assert.equal(r.configs.find((c) => c.key.includes("sig-"))?.range, "Signals");
+  assert.deepEqual(r.strategyGroups.map((x) => [x.key, x.n]), [["Signals", 1], ["Historic Exit", 1]]);
+  assert.equal(r.configs.find((c) => c.key.includes("sig-"))?.group, "Signals");
+  assert.equal(r.configs.find((c) => c.key.includes("hxL0"))?.group, "Historic Exit");
 });
 
 test("preset diagrams use settled unit PF and keep cash episode PF explicitly diagnostic", () => {

@@ -5,7 +5,7 @@
 import { Fragment, useMemo, useState } from "react";
 import { coreStatistics } from "../api-conn";
 import { configStrategyLabel, indicationKindLabel } from "../indication-ui";
-import { hasNoTakeProfit, signalTrailGapRatio } from "../signal-units";
+import { hasNoTakeProfit, historicExitLabel, signalTrailGapRatio } from "../signal-units";
 import { accountSource, cashPfText, comparisonPfDelta, comparisonPfText, returnPf, returnPfText, unitStatsPfText, liveBalanceUnavailable } from "../accounting";
 import { ArcShare, HeatGrid, MultiChart, SignedBars } from "../charts";
 import {
@@ -194,13 +194,13 @@ function Configs(props: { rows: Any[]; source: string }) {
   const [sort, setSort] = useState<"usd" | "pf" | "n">("usd");
   const rows = useMemo(() => {
     const f = q.trim().toLowerCase();
-    const xs = f ? props.rows.filter((r) => r.key.toLowerCase().includes(f) || r.range.toLowerCase().includes(f) || configStrategyLabel(r, props.source).toLowerCase().includes(f)) : props.rows;
+    const xs = f ? props.rows.filter((r) => r.key.toLowerCase().includes(f) || r.group.toLowerCase().includes(f) || (historicExitLabel(r) ?? configStrategyLabel(r, props.source)).toLowerCase().includes(f)) : props.rows;
     return [...xs].sort((a, b) => b[sort] - a[sort]);
   }, [props.rows, props.source, q, sort]);
   return (
     <>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-        <input className="v2-input" placeholder="filter: indication, range, type…" value={q} onChange={(e) => setQ(e.target.value)} style={{ maxWidth: 280 }} />
+        <input className="v2-input" placeholder="filter: indication, group, type…" value={q} onChange={(e) => setQ(e.target.value)} style={{ maxWidth: 280 }} />
         <Seg
           label="Sort"
           value={sort}
@@ -221,7 +221,7 @@ function Configs(props: { rows: Any[]; source: string }) {
             <tr>
               <th>bot · indication</th>
               <th>type</th>
-              <th>range</th>
+              <th>range / strategy group</th>
               <th>lane</th>
               <th className="num">TP</th>
               <th className="num">SL</th>
@@ -241,8 +241,8 @@ function Configs(props: { rows: Any[]; source: string }) {
                   <td>
                     {r.bot} · {r.ind}
                   </td>
-                  <td>{configStrategyLabel(r, props.source)}</td>
-                  <td>{r.range}</td>
+                  <td>{historicExitLabel(r) ?? configStrategyLabel(r, props.source)}</td>
+                  <td>{r.group}</td>
                   <td>{r.lane}</td>
                   <td className="num">
                     {hasNoTakeProfit(r) ? "None" : `${(r.tp * 100).toFixed(3)}%`}
@@ -461,8 +461,11 @@ export function StatisticsPage() {
         <WithWithout rows={r.withWithout} presets={r.presets} />
       </Panel>
       <div className="v2-grid v2-cols-2">
-        <Panel title="Ranges" sub="Micro · Minimal · Minimal plus · Short · General · Long · Wide · Signals">
+        <Panel title="Ranges" sub="Normal / Trailing groups: Micro · Minimal · Minimal plus · Short · General · Long · Wide">
           <GroupTable rows={r.ranges} label="range" source={r.source} />
+        </Panel>
+        <Panel title="Strategy groups" sub="Signals and Historic Exit are evaluated independently of Normal / Trailing ranges">
+          <GroupTable rows={r.strategyGroups} label="strategy group" source={r.source} />
         </Panel>
         <Panel title="Timeframe lanes">
           <GroupTable rows={r.lanes} label="lane" source={r.source} />

@@ -32,6 +32,7 @@ import {
   allCombos,
   evaluationSignal,
   configId,
+  kindOfId,
   isPlainKind,
   isTrailingKind,
   protectKind,
@@ -78,6 +79,7 @@ import {
   type UnitStats,
 } from "../metrics/stats.ts";
 import { ATR_PERIOD, simulate, splitSides } from "./backtest.ts";
+import { createExitProtection } from "./exit-protection.ts";
 import { simulateDca } from "./dca.ts";
 import { simulateAxis, simulateAxisDesk, snapTpRatio } from "./axis.ts";
 import { adjustProtect, setKeyOf, type AdjustState } from "../adjust.ts";
@@ -378,7 +380,7 @@ export interface WalkForwardOptions {
    *  fixed   — every focus pair trades continuously (validated offline); best protect per pair
    */
   mode: "hourly" | "durable" | "fixed";
-  /** strategy config sets paused by the live-feedback adjuster ("bot|ind|kind") */
+  /** strategy config sets paused by live feedback ("bot|ind|kind", Historic Exit also includes its tactic) */
   paused?: ReadonlySet<string>;
   durableSplits: number;
   durableFrac: number;
@@ -1182,6 +1184,7 @@ export function pendingAsOpen(
     if (!(px && px > 0)) continue;
     const q = pe.protect ?? tp.protect;
     const side = pe.side;
+    const exitProtection = createExitProtection(q, px);
     out.push({
       cfg: tp.id,
       sym: pe.sym,
@@ -1194,6 +1197,7 @@ export function pendingAsOpen(
       peak: px,
       trailOn: false,
       mtm: -cost,
+      ...(exitProtection ? { exitProtection } : {}),
       ...(q.trail > 0
         ? {
             trail: q.trail,
@@ -1653,7 +1657,9 @@ export function* buildTapesGen(
   // (a set's level-0 entry carries the 0.5 % floors and lifted every Micro / Minimal cell of the set to them — bug hunt,
   // 13 Oct); it takes only the relative widening (slMult / trailMult), and is untouched without one
   const adj = (bot: string, ind: string, kind: StratKind, p: Protect) => {
-    const e = adjust?.[`${bot}|${ind}|${kind}`];
+    const key =
+      kind === "exit" ? setKeyOf(configId(bot as BotType, ind, p)) : `${bot}|${ind}|${kind}`;
+    const e = adjust?.[key];
     if (!p.tag) return adjustProtect(adjustProtect(p, floors), e);
     if (!e || ((e.slMult ?? 1) === 1 && (e.trailMult ?? 1) === 1)) return p;
     return adjustProtect(p, { minSl: 0, minTrail: 0, slMult: e.slMult, trailMult: e.trailMult });
@@ -1722,9 +1728,17 @@ export function* buildTapesGen(
       return t;
     };
     const sigs: Array<Int8Array | null> = new Array(u.bars.length).fill(null);
+    const hasExitSets = floors?.pairProtects?.[`${c.bot}|${c.ind}`]?.some((p) => p.exitSet);
+    const exitSigs: Array<Int8Array | null> | null = hasExitSets
+      ? new Array(u.bars.length).fill(null)
+      : null;
     for (const s of series) {
       const rawSignal = entrySignal(c.bot, c.ind, u.caches[s], tactics);
       sigs[s] = rawSignal ? evaluationSignal(u, u.bars[s], rawSignal) : null;
+      if (exitSigs) {
+        const signal = entrySignal(c.bot, c.ind, u.caches[s], null);
+        exitSigs[s] = signal ? evaluationSignal(u, u.bars[s], signal) : null;
+      }
       if (floors?.entry && sigs[s] && isSignalInd(c.ind))
         sigs[s] = filterEntries(sigs[s]!, u.bars[s], u.caches[s], floors.entry);
       // signal series for one symbol can be heavy on first use; let the caller yield per symbol
@@ -1772,7 +1786,7 @@ export function* buildTapesGen(
     // long and short run independently: each direction on its own side-filtered signal (its own position slot), so
     // an open long never drops a short signal (and vice versa); a one-sided signal runs once, as before
     const sides: Array<Int8Array[] | null> = sigs.map((x) => (x ? splitSides(x) : null));
-    const sideSignals = sides.map((xs) => {
+    const indexSides = (xs: Int8Array[] | null) => {
       if (!xs?.length) return null;
       if (xs.length > 1) return { long: xs[0], short: xs[1] };
       let first: number = 0;
@@ -1786,7 +1800,10 @@ export function* buildTapesGen(
         : first < 0
           ? { long: null, short: xs[0] }
           : { long: null, short: null };
-    });
+    };
+    const sideSignals = sides.map(indexSides);
+    const exitSides = exitSigs?.map((x) => (x ? splitSides(x) : null));
+    const exitSideSignals = exitSides?.map(indexSides);
     // short-lane floors can map two grid configs onto one: each config id is built once
     const built = floors?.countSeen ?? new Set<string>();
     const fitted = fittedRangeTps(
@@ -1801,6 +1818,7 @@ export function* buildTapesGen(
     const microInd = isMicroInd(laneOf(c.ind).base);
     const own = floors?.pairProtects?.[`${c.bot}|${c.ind}`];
     for (const p0 of own?.length ? [...protects, ...own] : protects) {
+      const exitConfig = p0.exitType === "historic";
       const kind: StratKind = protectKind(p0);
       if (floors?.countKinds && !floors.countKinds.includes(kind)) {
         done++;
@@ -1843,19 +1861,20 @@ export function* buildTapesGen(
       // the structural exclusions first (a cell below its range's lane floor, a Micro cell off a Micro indication):
       // neither is a Base-gate hold, and a pair's tags already leave a floored range out (rangeAppliesTo), so
       // testing baseRange first labelled every lane-floor cell a gate hold (13 Oct: grid.allSets "cells held back")
-      const why = !microIndFits(floors?.microOwnInds, p0.tag, microInd)
-        ? "microOwnInds"
-        : // (an untagged Wide cell reads the "wide" entry: grid.wideMinTf)
-          laneTf < (floors?.rangeMinTf?.[p0.tag ?? "wide"] ?? 0)
-          ? "laneFloor"
-          : !!tagsOk && !tagsOk.includes(p0.tag ?? "")
-            ? "baseRange"
-            : // only the targets of this range that passed Base
-              !!tps && !tps.includes(p0.tp)
-              ? "baseTarget"
-              : !!p0.tag && !!fitted && !fitted.has(`${p0.tag}|${p0.tp}`)
-                ? "rangeFit"
-                : null;
+      const why =
+        !exitConfig && !microIndFits(floors?.microOwnInds, p0.tag, microInd)
+          ? "microOwnInds"
+          : // (an untagged Wide cell reads the "wide" entry: grid.wideMinTf)
+            !exitConfig && laneTf < (floors?.rangeMinTf?.[p0.tag ?? "wide"] ?? 0)
+            ? "laneFloor"
+            : !exitConfig && !!tagsOk && !tagsOk.includes(p0.tag ?? "")
+              ? "baseRange"
+              : // only the targets of this range that passed Base
+                !exitConfig && !!tps && !tps.includes(p0.tp)
+                ? "baseTarget"
+                : !exitConfig && !!p0.tag && !!fitted && !fitted.has(`${p0.tag}|${p0.tp}`)
+                  ? "rangeFit"
+                  : null;
       const filtered = why !== null;
       const st =
         bs && why !== "microOwnInds" && why !== "laneFloor" ? statOf(c.ind, p0.tag, kind) : null;
@@ -1881,11 +1900,13 @@ export function* buildTapesGen(
       const open: OpenPosition[] = [];
       const pending: ConfigTape["pending"] = [];
       for (const s of series) {
+        const ownSides = p0.exitSet ? exitSides?.[s] : sides[s];
+        const ownSideSignals = p0.exitSet ? exitSideSignals?.[s] : sideSignals[s];
         const scoped = p0.exitType
           ? p0.exitSide === 1
-            ? sideSignals[s]?.long
+            ? ownSideSignals?.long
             : p0.exitSide === -1
-              ? sideSignals[s]?.short
+              ? ownSideSignals?.short
               : undefined
           : undefined;
         const runSignals = p0.exitType
@@ -1893,12 +1914,12 @@ export function* buildTapesGen(
             ? [scoped]
             : p0.exitSide
               ? []
-              : sides[s]!
+              : (ownSides ?? [])
           : sides[s]!;
         for (const sg of runSignals) {
           const res = simulate(id, u.bars[s], sg, p, {
             cost,
-            cooldown,
+            cooldown: p0.exitSet ? 0 : cooldown,
             atr: p.atr ? u.caches[s].atrEma(ATR_PERIOD) : undefined,
           });
           for (const tr of res.trades) {
@@ -2663,15 +2684,21 @@ function lcbFast(tp: ConfigTape, a: number, b: number): number {
 const seatsOf = (o: Pick<WalkForwardOptions, "portfolio">) =>
   o.portfolio > 0 ? o.portfolio : Infinity;
 
-/** Strategy family. Trailing is not part of the plain base: it is seated and executed on its own. */
-export const familyOf = (kind: string) =>
-  kind === "axis"
-    ? "axis"
-    : kind === "dca" || kind === "dca-active"
-      ? "dca"
-      : isTrailingKind(kind)
-        ? kind
-        : "base";
+/** Strategy family. Each Historic Exit tactic and direction keeps its own selection family and seats. */
+export const familyOf = (
+  kind: string,
+  exitSet?: Protect["exitSet"],
+  exitSide?: Protect["exitSide"],
+) =>
+  kind === "exit"
+    ? `exit-${exitSet ?? "legacy"}${exitSide === 1 ? "-long" : exitSide === -1 ? "-short" : ""}`
+    : kind === "axis"
+      ? "axis"
+      : kind === "dca" || kind === "dca-active"
+        ? "dca"
+        : isTrailingKind(kind)
+          ? kind
+          : "base";
 
 /** The mirror of an engine config or pair (follow ↔ revert: the same entries on the other side); null for other bots. */
 export function mirrorId(id: string): string | null {
@@ -2686,16 +2713,19 @@ const seatKey = (
   tp: ConfigTape,
   o: Pick<WalkForwardOptions, "familySeats" | "rangeSeats" | "seatPer">,
 ) => {
-  const tag = tp.protect.tag;
+  // Historic Exit has no range tag; its tactic × side is an independent family even when familySeats is off.
+  const tag = tp.kind === "exit" ? undefined : tp.protect.tag;
+  const family = familyOf(tp.kind, tp.protect.exitSet, tp.protect.exitSide);
   // independent configs: the config id is the seat (its family and range stay readable for the seat counts)
   if (o.seatPer === "config")
-    return `${tag ? `${tag}|` : ""}${tp.bot}|${tp.ind}|${familyOf(tp.kind)}#${tp.id.replaceAll("|", "~")}${
+    return `${tag ? `${tag}|` : ""}${tp.bot}|${tp.ind}|${family}#${tp.id.replaceAll("|", "~")}${
       isTrailingKind(tp.kind) ? `|${tp.kind === "trailing-only" ? "to" : "tr"}` : ""
     }`;
   if (tag === "mc") return `mc|${tp.id}`;
   const trail = isTrailingKind(tp.kind) ? `|${tp.kind === "trailing-only" ? "to" : "tr"}` : "";
+  if (tp.kind === "exit") return `${tp.bot}|${tp.ind}|${family}`;
   const key = o.familySeats
-    ? `${tp.bot}|${tp.ind}|${familyOf(tp.kind)}${trail}`
+    ? `${tp.bot}|${tp.ind}|${family}${trail}`
     : `${tp.bot}|${tp.ind}${trail}`;
   // range seats: short / minimal / plus each hold a seat of their own per pair
   return o.rangeSeats && tag ? `${tag}|${key}` : key;
@@ -2714,7 +2744,9 @@ const seatFamily = (pair: string, familySeats: boolean | undefined) => {
   const r = rangeSeat(pair);
   if (r === "mc") return "micro";
   if (r) return r;
-  return pair.endsWith("|tr") ? "trailing" : familySeats ? famOfKey(pair) : "base";
+  const family = famOfKey(pair);
+  if (family.startsWith("exit-")) return family;
+  return pair.endsWith("|tr") ? "trailing" : familySeats ? family : "base";
 };
 const famOfKey = (pair: string) => (pair.split("|")[2] ?? "base").split("#")[0];
 
@@ -2730,7 +2762,7 @@ function beatsBase<T extends { pair: string; window: { pf: number } }>(
   if (!o.familySeats || o.seatPer === "config") return xs;
   return xs.filter((c) => {
     const f = famOfKey(c.pair);
-    if (f === "base" || f === "trailing") return true;
+    if (f === "base" || f === "trailing" || f.startsWith("exit-")) return true;
     const b = basePf.get(c.pair.split("|").slice(0, 2).join("|"));
     // no base to beat in the window: rejected (unless the gate is relaxed) — nothing shows DCA / Axis improve it
     if (b === undefined) return o.familyNeedsBase === false;
@@ -2738,7 +2770,7 @@ function beatsBase<T extends { pair: string; window: { pf: number } }>(
   });
 }
 const noteBase = (m: Map<string, number>, tp: ConfigTape, w: { n: number; pf: number }) => {
-  if (w.n < 3 || familyOf(tp.kind) !== "base") return;
+  if (w.n < 3 || familyOf(tp.kind, tp.protect.exitSet, tp.protect.exitSide) !== "base") return;
   const k = `${tp.bot}|${tp.ind}`;
   m.set(k, Math.max(m.get(k) ?? -Infinity, w.pf));
 };
@@ -2767,13 +2799,34 @@ function pickSeats(
   }
   const plain = cands.filter((c) => !rangeSeat(c.pair));
   const plainHeld = picks.filter((p) => !rangeSeat(p.pair ?? ""));
-  const trail = plain.filter((c) => c.pair.endsWith("|tr"));
-  const rest = plain.filter((c) => !c.pair.endsWith("|tr"));
-  const trailHeld = plainHeld.filter((p) => (p.pair ?? "").endsWith("|tr"));
-  const restHeld = plainHeld.filter((p) => !(p.pair ?? "").endsWith("|tr"));
+  const exitFamily = (pair: string) => famOfKey(pair).startsWith("exit-");
+  const exits = plain.filter((c) => exitFamily(c.pair));
+  const exitHeld = plainHeld.filter((p) => exitFamily(p.pair ?? ""));
+  const trail = plain.filter((c) => !exitFamily(c.pair) && c.pair.endsWith("|tr"));
+  const rest = plain.filter((c) => !exitFamily(c.pair) && !c.pair.endsWith("|tr"));
+  const trailHeld = plainHeld.filter(
+    (p) => !exitFamily(p.pair ?? "") && (p.pair ?? "").endsWith("|tr"),
+  );
+  const restHeld = plainHeld.filter(
+    (p) => !exitFamily(p.pair ?? "") && !(p.pair ?? "").endsWith("|tr"),
+  );
   const trailOut = pickByLane(trail, seats, trailHeld, pairs, ls);
+  // Historic Exit set × direction seats remain independent even when the general family-seat switch is off.
+  const exitFamilies = [...new Set(exits.map((c) => famOfKey(c.pair)))];
+  const exitOut: Selection[] = [];
+  for (const f of exitFamilies) {
+    exitOut.push(
+      ...pickByLane(
+        exits.filter((c) => famOfKey(c.pair) === f),
+        seats,
+        exitHeld.filter((p) => famOfKey(p.pair ?? "") === f),
+        pairs,
+        ls,
+      ),
+    );
+  }
   if (!o.familySeats)
-    return [...pickByLane(rest, seats, restHeld, pairs, ls), ...trailOut, ...rangeOut];
+    return [...pickByLane(rest, seats, restHeld, pairs, ls), ...trailOut, ...rangeOut, ...exitOut];
   const fams = new Map<string, Array<Selection & { pair: string }>>();
   for (const c of rest) {
     const f = famOfKey(c.pair);
@@ -2789,9 +2842,9 @@ function pickSeats(
     xs.push(p);
   }
   const out: Selection[] = [];
-  for (const f of ["base", "dca", "axis", "trailing"])
+  for (const f of ["base", "dca", "axis", "trailing", ...exitFamilies])
     out.push(...pickByLane(fams.get(f) ?? [], seats, held.get(f) ?? [], pairs, ls));
-  return [...out, ...trailOut, ...rangeOut];
+  return [...out, ...trailOut, ...rangeOut, ...exitOut];
 }
 
 /**
@@ -2885,7 +2938,7 @@ export function selectAt(
   const botOk = o.bots.length ? new Set<string>(o.bots) : null;
   for (const tp of tapes) {
     if (botOk && !botOk.has(tp.bot)) continue;
-    if (o.basePassed && !o.basePassed.has(`${tp.bot}|${tp.ind}`)) continue;
+    if (tp.kind !== "exit" && o.basePassed && !o.basePassed.has(`${tp.bot}|${tp.ind}`)) continue;
     const a = lowerBound(tp.exitT, fromLong);
     const b = lowerBound(tp.exitT, t);
     if (b - a < minLong) continue;
@@ -2953,7 +3006,7 @@ export function selectDurable(
   const basePf = new Map<string, number>();
   for (const tp of tapes) {
     if (botOk && !botOk.has(tp.bot)) continue;
-    if (o.basePassed && !o.basePassed.has(`${tp.bot}|${tp.ind}`)) continue;
+    if (tp.kind !== "exit" && o.basePassed && !o.basePassed.has(`${tp.bot}|${tp.ind}`)) continue;
     // the window a tape can be judged on: the long window, clipped to where its lane's data begins (at least
     // the pre-calc window, so a lane with too little history is not judged on a sliver)
     const from = Math.min(t - o.preH * H, Math.max(from0, tp.fromT ?? from0));
@@ -3272,10 +3325,12 @@ function selInfoOf(
 ): SelInfo {
   const pairKey = `${tp.bot}|${tp.ind}`;
   const seat = seatKey(tp, o);
-  const fam = familyOf(tp.kind);
+  const fam = familyOf(tp.kind, tp.protect.exitSet, tp.protect.exitSide);
   return {
     tp,
-    inScope: !(botOk && !botOk.has(tp.bot)) && !(o.basePassed && !o.basePassed.has(pairKey)),
+    inScope:
+      !(botOk && !botOk.has(tp.bot)) &&
+      !(tp.kind !== "exit" && o.basePassed && !o.basePassed.has(pairKey)),
     canSeat: !tp.heldOnly && tapeExecutable(tp, o),
     base: fam === "base",
     pairKey,
@@ -3284,7 +3339,7 @@ function selInfoOf(
     seatFam: seatFamily(seat, o.familySeats),
     minPf: minPfOf(o.gates, tp.protect.tag, tp.ind),
     prior: lossPriorOf(tp, o.gates),
-    rangeGate: !!o.rangeGate && rangeGateOn(o.rangeGate, tp.protect.tag),
+    rangeGate: tp.kind !== "exit" && !!o.rangeGate && rangeGateOn(o.rangeGate, tp.protect.tag),
   };
 }
 function selInfos(tapes: readonly ConfigTape[], o: WalkForwardOptions): SelCache {
@@ -3818,8 +3873,12 @@ export type ExecDecision =
 
 /** The crowding group of a config: its range tag, "wide" without one, "sig" for a signal. */
 export const crowdRangeOf = (cfg: string): string =>
-  isSignalInd(cfg.split("|")[1] ?? "") ? "sig" : rangeOfId(cfg) || "wide";
-/** The crowding key of an entry: range × symbol × side × entry time. */
+  isSignalInd(cfg.split("|")[1] ?? "")
+    ? "sig"
+    : kindOfId(cfg) === "exit"
+      ? "exit"
+      : rangeOfId(cfg) || "wide";
+/** The crowding key of an entry: strategy group × symbol × side × entry time. */
 export const crowdKey = (cfg: string, sym: string, side: number, entryT: number) =>
   `${crowdRangeOf(cfg)}|${sym}|${side}|${entryT}`;
 /** The cap of a config's range under `entryCrowd` (Infinity = none). */
@@ -3872,7 +3931,12 @@ export function execDecision(
   const tg = o.toggles;
   if (tp.heldOnly) return { ok: false, why: "heldOnly" };
   if (!tapeExecutable(tp, o)) return { ok: false, why: "toggle" };
-  if (o.excludeRanges?.length && tp.protect.tag && o.excludeRanges.includes(tp.protect.tag))
+  if (
+    tp.kind !== "exit" &&
+    o.excludeRanges?.length &&
+    tp.protect.tag &&
+    o.excludeRanges.includes(tp.protect.tag)
+  )
     return { ok: false, why: "rangeOff" };
   // seat cool-off (wf.seatQuietH): an engine config that closed within the last H hours before the entry waits
   if (o.seatQuietH && o.seatQuietH > 0 && !isSignalInd(tp.ind)) {
@@ -3983,8 +4047,15 @@ export function execDecision(
     ctx.side &&
     !isSignalInd(tp.ind) &&
     !ctx.guard.engineSide.acceptsPerInd(
-      engineSideKeyFor(tp.kind, tp.protect.tag, ctx.side, tp.ind, o.engineSideAccept.perInd),
-      engineSideKey(tp.kind, tp.protect.tag, ctx.side),
+      engineSideKeyFor(
+        tp.kind,
+        tp.protect.tag,
+        ctx.side,
+        tp.ind,
+        o.engineSideAccept.perInd,
+        tp.protect.exitSet,
+      ),
+      engineSideKey(tp.kind, tp.protect.tag, ctx.side, undefined, tp.protect.exitSet),
       entryT,
       o.engineSideAccept,
       ctx.guard.exchange,
@@ -4031,7 +4102,8 @@ export function execDecision(
   }
   // a range Block never raises: its unit, on its own record (the Normal base PF still applies). "wide" is the untagged
   // Normal / Trailing grid, as live.excludeRanges reads it: signals and the untagged Axis / DCA ladders are not Wide
-  const blockRange = tp.protect.tag || (plain && !isSignalInd(tp.ind) ? "wide" : "");
+  const blockRange =
+    tp.kind === "exit" ? "" : tp.protect.tag || (plain && !isSignalInd(tp.ind) ? "wide" : "");
   if (blockRange && o.block.excludeRanges?.includes(blockRange)) {
     if (gatedBase && !baseOk()) return { ok: false, why: "normalPf" };
     return { ok: true, level: 0, vol: 1 };
@@ -4806,7 +4878,8 @@ export function* walkForwardGen(
       skipsBySide[k] = (skipsBySide[k] ?? 0) + 1;
     }
     if (cfg !== undefined) {
-      const m = (skipsByRange[sigCfg(cfg) ? "sig" : rangeOfId(cfg)] ??= {});
+      const group = sigCfg(cfg) ? "sig" : kindOfId(cfg) === "exit" ? "exit" : rangeOfId(cfg);
+      const m = (skipsByRange[group] ??= {});
       m[why] = (m[why] ?? 0) + 1;
     }
   };
@@ -4943,11 +5016,12 @@ export function* walkForwardGen(
     if (passed) sigIdx = sigIdx.filter((g) => passed.has(g.pair));
   }
   let stepOpts: WalkForwardOptions = o;
-  // every step's record per range (StepLog.byRange): the tapes of each range, counted once
-  const stepRange = (cfg: string) => (sigCfg(cfg) ? "sig" : rangeOfId(cfg));
+  // every step's record per group: ranges, signals, and the independent Historic Exit strategy.
+  const stepRange = (cfg: string) =>
+    sigCfg(cfg) ? "sig" : kindOfId(cfg) === "exit" ? "exit" : rangeOfId(cfg);
   const tapesByRange: Record<string, number> = {};
   for (const tp of selTapes)
-    tapesByRange[rangeOfId(tp.id)] = (tapesByRange[rangeOfId(tp.id)] ?? 0) + 1;
+    tapesByRange[stepRange(tp.id)] = (tapesByRange[stepRange(tp.id)] ?? 0) + 1;
   if (sigTapes.length) tapesByRange.sig = sigTapes.length;
   // the step's hedge-only signals (negative-hour hedge; outside the ranked set)
   let hedgeKeys = new Set<string>();

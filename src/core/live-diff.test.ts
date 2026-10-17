@@ -7,6 +7,7 @@ const H = 3_600_000;
 const T = 1000 * H;
 const cfg = "b|ema|tp2|sl2|tr0|h64|sh";
 const sig = "b|sig-swing-x@m15|tr0";
+const exit = "b|ema|tp1|sl1|tr0|h32|hxL0";
 
 describe("live vs system diff", () => {
   const paper = [
@@ -39,8 +40,13 @@ describe("live vs system diff", () => {
     assert.equal(d.worst[0].id, `${cfg}|A|1|${T}`);
   });
 
-  it("splits by range (signals apart) and by exit hour", () => {
-    assert.deepEqual(d.byRange.map((r) => r.key), ["Short", "Signals"]);
+  it("splits by range or strategy group and by exit hour", () => {
+    const grouped = liveDiff(
+      [...paper, { cfg: exit, sym: "A", side: -1, entryT: T, exitT: T + H + 120_000, r: 0.015 }],
+      [...live, { id: `${exit}|A|-1|${T}`, cfg: exit, sym: "A", exitT: T + H + 120_000, r: 0.014, reason: "exit" }],
+    );
+    assert.deepEqual(d.byGroup.map((r) => r.key), ["Short", "Signals"]);
+    assert.deepEqual(grouped.byGroup.map((r) => r.key), ["Historic Exit", "Short", "Signals"]);
     assert.equal(d.byHour.length, 2);
     assert.equal(d.byHour[1].system.n, 1);
     assert.ok(liveDiffMd(d).includes("### Live vs system"));

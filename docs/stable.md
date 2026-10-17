@@ -157,7 +157,7 @@ trailing did better than no trailing at every stop size — the live record deci
 
 **Promotion from the demo twin (x02 → x01, corrected 15 Oct).** A range-wide PF from `live_lane_trades` cannot
 prove allocated ownership or qualify its siblings. That table is nominal attribution and remains diagnostic.
-`scripts/core-live-promote.mjs` now requires a complete `cts-live-promotion/v1` evidence artifact to qualify each
+`scripts/core-live-promote.mjs` now requires a complete `cts-live-promotion/v2` evidence artifact to qualify each
 exact config × symbol × direction: settled post-Base accepted virtual unit returns before allocation, plus
 independently owned settled execution net returns after fees/funding. Both axes must pass. The promoter defaults
 remain last 30/minimum 20 and on-PF 1.2/off-PF 1.0; the native runtime independently enforces its current stricter

@@ -9,7 +9,6 @@ import type { Bars, Protect, Tactics } from "../domain/types.ts";
 import type { SignalSettings } from "../signal-config.ts";
 import type { SignalHistDiagnostics, SignalHistValidation } from "../signal-hist.ts";
 import type {
-  ExitCandidateTarget,
   ExitStrategyDiagnostics,
   ExitStrategyValidation,
 } from "../exit-strategy.ts";
@@ -51,13 +50,12 @@ export type SignalHistReply = {
   diagnostics?: SignalHistDiagnostics;
 };
 
-/** Historical exit search: bounded pair chunks, Base-approved targets only, and a chronological validation split. */
+/** Historical exit search: bounded pair chunks independent of Normal / Trailing targets, with a chronological split. */
 export type ExitStrategyMessage = {
   type: "exit-hist";
   evaluationFromT?: number;
   bars: Bars[];
   pairs: string[];
-  targetsByPair: Record<string, ExitCandidateTarget[]>;
   settings: ExitStrategySettings;
   tactics?: Tactics | null;
   cutT: number;

@@ -162,14 +162,14 @@ export function checkSettings(s: Partial<CoreSettings>) {
         throw new Error(`live excluded ranges: a list of ${ok.join(", ")}`);
     }
     if (s.live.excludeConfigs !== undefined) {
-      // a family: bot|range, e.g. follow|mn (the range tags of excludeRanges, and "wide" for the untagged grid)
-      const re = /^[a-z]+\|(wide|mc|mn|mp|sh|gn|lg)$/;
+      // a family: bot|range for Normal / Trailing, or bot|exit for all Historic Exit sets
+      const re = /^[a-z]+\|(wide|mc|mn|mp|sh|gn|lg|exit)$/;
       if (
         !Array.isArray(s.live.excludeConfigs) ||
         s.live.excludeConfigs.some((f) => typeof f !== "string" || !re.test(f))
       )
         throw new Error(
-          "live excluded configs: a list of bot|range families, e.g. follow|mn or revert|wide",
+          "live excluded configs: bot|range families or bot|exit, e.g. follow|mn, revert|wide or follow|exit",
         );
     }
     if (s.live.maxSymbols !== undefined) {
@@ -237,7 +237,12 @@ export function checkSettings(s: Partial<CoreSettings>) {
     num(e.minPf, 1.05, 10, "historic exit validation PF");
     num(e.maxDdr, 0, 10, "historic exit max drawdown / net ratio");
     num(e.holdH, 0.5, 96, "historic exit maximum hold (hours)");
-    num(e.maxConfigsPerPair, 2, 128, "historic exit configs per pair");
+    num(e.maxConfigsPerPair, 6, 128, "historic exit configs per pair");
+    num(e.minTp, 0.001, 0.5, "historic exit minimum TP");
+    num(e.maxTp, 0.002, 1, "historic exit maximum TP");
+    num(e.maxSl, 0.005, 1, "historic exit maximum SL");
+    if (e.minTp !== undefined && e.maxTp !== undefined && e.minTp >= e.maxTp)
+      throw new Error("historic exit TP floor must be below its cap");
     int(e.minEntries, "historic exit fit entries");
     int(e.minValidationTrades, "historic exit validation closes");
     int(e.maxConfigsPerPair, "historic exit configs per pair");
@@ -248,13 +253,19 @@ export function checkSettings(s: Partial<CoreSettings>) {
       for (const x of xs) num(x, lo, hi, name);
     };
     list(e.quantiles, 0.2, 0.95, "historic exit MFE quantile");
+    list(e.stopQuantiles, 0.2, 0.95, "historic exit MAE quantile");
     list(e.trailShares, 0.1, 0.95, "historic exit trail share");
     list(e.stopMultiples, 0.25, 5, "historic exit stop multiple");
-    const gridN =
-      (e.quantiles?.length ?? 2) * (e.trailShares?.length ?? 2) * (e.stopMultiples?.length ?? 2);
+    const q = e.quantiles?.length ?? 2;
+    const stopQ = e.stopQuantiles?.length ?? 2;
+    const gridN = Math.max(
+      q * (e.stopMultiples?.length ?? 2),
+      q * stopQ,
+      q * stopQ * (e.trailShares?.length ?? 2),
+    );
     if (gridN > 16)
       throw new Error(
-        `historic exit config grid too large (${gridN}, max 16 per range and direction)`,
+        `historic exit config grid too large (${gridN}, max 16 per config family and direction)`,
       );
   }
   if (s.tactics) {

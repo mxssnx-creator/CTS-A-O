@@ -48,7 +48,22 @@ describe("worker pool", { timeout: 300_000 }, () => {
   const wf = defaultWalkForward(s);
   const combos = allCombos().slice(0, 60);
   const pairs = combos.map((c) => `${c.bot}|${c.ind}`);
-  const dcaOpt = { protects: wf.dcaProtects, dca: wf.dca, axis: s.axis };
+  // Worker parity exercises transport, ordering and strategy variants; the production range grid grows independently.
+  // Freeze a representative bounded fixture instead of multiplying every new grid cell by all 60 pairs and 8 replays.
+  const parityProtects = [
+    { ...DEFAULT_PROTECT },
+    { ...DEFAULT_PROTECT, trail: 0.005 },
+    ...["mn", "sh"].flatMap((tag) => [false, true].map((trailing) => {
+      const p = wf.protects.find((p) => p.tag === tag && (p.trail > 0) === trailing);
+      assert.ok(p, `${tag ?? "Wide"} ${trailing ? "Trailing" : "Normal"} fixture exists`);
+      return p;
+    })),
+  ];
+  const dcaOpt = {
+    protects: wf.dcaProtects.slice(0, 2),
+    dca: wf.dca,
+    axis: { ...s.axis, ranges: ["atr", "fib"] as ("atr" | "fib")[], levelsSet: [2, 3] },
+  };
 
   it("engine Base (lanes, round-robin over workers) equals the in-process Base exactly", async () => {
     const cs = syntheticCandles("L", 1, 6000, END);
@@ -72,7 +87,10 @@ describe("worker pool", { timeout: 300_000 }, () => {
   });
 
   it("preset Compare (simulated trading) on workers equals the in-process walk-forward", async () => {
-    const tapes = buildTapes(u, wf.protects, s.cost, dcaOpt, new Set(pairs), s.tactics);
+    const tapes = buildTapes(u, parityProtects, s.cost, dcaOpt, new Set(pairs), s.tactics);
+    assert.ok(tapes.length <= pairs.length * 16, "worker parity fixture stays bounded as production defaults expand");
+    assert.deepEqual([...new Set(tapes.map((t) => t.kind))].sort(), ["axis", "dca", "dca-active", "normal", "trailing"]);
+    assert.deepEqual([...new Set(tapes.filter((t) => t.kind === "normal").map((t) => t.protect.tag ?? "wide"))].sort(), ["mn", "sh", "wide"]);
     const names = Object.keys(STRATEGY_PRESETS).slice(0, 4);
     // (a small synthetic fixture: seats from 3 closes, so the comparison has trades to compare)
     const o = { ...wf, simH: 48, validLastN: 0, lastN: 0, gates: { ...wf.gates, minTrades: 3 } };
@@ -104,7 +122,7 @@ describe("worker pool", { timeout: 300_000 }, () => {
       }
     const tapes = buildTapes(
       u,
-      wf.protects,
+      parityProtects,
       s.cost,
       dcaOpt,
       new Set(pairs.slice(0, 10)),
@@ -220,7 +238,7 @@ describe("worker pool", { timeout: 300_000 }, () => {
   it("tapes match the in-process ones exactly, in the same order", async () => {
     const local = buildTapes(
       u,
-      wf.protects.slice(0, 6),
+      parityProtects,
       s.cost,
       dcaOpt,
       new Set(pairs),
@@ -232,7 +250,7 @@ describe("worker pool", { timeout: 300_000 }, () => {
         type: "tapes",
         bars,
         pairs: pp,
-        protects: wf.protects.slice(0, 6),
+        protects: parityProtects,
         cost: s.cost,
         dcaOpt,
         tactics: s.tactics,
@@ -375,7 +393,7 @@ describe("worker pool", { timeout: 300_000 }, () => {
     const localStats = new Map<string, TapeBuildStat>();
     const local = buildTapes(
       u,
-      wf.protects.slice(0, 6),
+      parityProtects,
       s.cost,
       dcaOpt,
       new Set(pairs),
@@ -391,7 +409,7 @@ describe("worker pool", { timeout: 300_000 }, () => {
         type: "tapes",
         bars,
         pairs: pp,
-        protects: wf.protects.slice(0, 6),
+        protects: parityProtects,
         cost: s.cost,
         dcaOpt,
         tactics: s.tactics,
@@ -635,15 +653,11 @@ describe("worker pool", { timeout: 300_000 }, () => {
       holdH: 3,
       maxConfigsPerPair: 8,
     };
-    const targetsByPair = Object.fromEntries(
-      pairs.map((pair) => [pair, [{ tp: 0.03, minSl: 0.01, minTrail: 0.002 }]]),
-    );
     const validation = { cost: 0.002, minPf: 1.05, minTrades: 2, minSl: 0, minTrail: 0 };
     const diagnostics = emptyExitStrategyDiagnostics();
     const localGen = exitStrategyProtectsGen(
       hu,
       pairs,
-      targetsByPair,
       settings,
       null,
       hu.nowT,
@@ -654,12 +668,29 @@ describe("worker pool", { timeout: 300_000 }, () => {
     while (!localStep.done) localStep = localGen.next();
     const local = localStep.value;
     const shared = shareBars(hu.series);
+    const [oneChunk] = await runOnWorkers<ExitStrategyReply>(
+      [
+        {
+          type: "exit-hist",
+          bars: shared,
+          pairs,
+          settings,
+          tactics: null,
+          cutT: hu.nowT,
+          validation,
+        },
+      ],
+      1,
+      60_000,
+    );
+    assert.ok(pairs.length > 2, "runtime-sized chunks must not disable the worker pool");
+    assert.deepEqual(oneChunk.pairProtects, local);
+    assert.deepEqual(oneChunk.diagnostics, diagnostics);
     const parts = slices(pairs, 2);
     const messages: ExitStrategyMessage[] = parts.map((part) => ({
       type: "exit-hist",
       bars: shared,
       pairs: part,
-      targetsByPair: Object.fromEntries(part.map((pair) => [pair, targetsByPair[pair]])),
       settings,
       tactics: null,
       cutT: hu.nowT,

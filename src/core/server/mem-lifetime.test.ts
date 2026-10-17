@@ -1,18 +1,18 @@
 // Memory held between and inside computes (14 Oct): what a compute is done with is released when it is done with it,
 // and every release keeps the same results (scripts/core-golden.mjs digests the engine's results across computes).
-//   - the stage universe's indicator memos are cleared after the signal history (held through lastUniverse until the
-//     next compute's Base), also when the signal history aborts;
+//   - the stage universe's indicator memos are cleared after Exit and Signal history (held through lastUniverse until
+//     the next compute's Base), also when either fitting phase aborts;
 //   - the previous tape set's index and the live books of the previous run are released at the swap;
 //   - results.by_sym (per-symbol JSON nobody reads) is not stored;
 //   - the status' tape size memo holds the tape set by a weak reference;
 //   - the candles are columns (market/candle-series.ts), not an object per bar;
 //   - the boot loader streams the candles and builds the same map, in the same symbol order;
 //   - the signal acceptance record's counts are 4-byte integers and every query answers as before.
-import { describe, it } from "node:test";
+import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { CoreRuntime } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
-import { memInfo, type MemInfo } from "./memguard.server.ts";
+import { MEM_READ_MS, memInfo, type MemInfo } from "./memguard.server.ts";
 import { CandleSeries } from "../market/candle-series.ts";
 import { setImmediate as tick } from "node:timers/promises";
 import { SignalAcceptIndex, acceptKey, type AcceptTape } from "../signals.ts";
@@ -48,6 +48,24 @@ type Inner = {
 };
 
 describe("memory released after use, results unchanged", { timeout: 900_000 }, () => {
+  const soft0 = process.env.CTS_CORE_MEM_SOFT_MB;
+  const hard0 = process.env.CTS_CORE_MEM_HARD_MB;
+  before(async () => {
+    // These synthetic fixtures measure release/heap behavior and inject pressure aborts explicitly. Other host
+    // processes must not abort their setup; memguard-runtime.test.ts covers measured host soft/hard pressure.
+    process.env.CTS_CORE_MEM_SOFT_MB = "1";
+    process.env.CTS_CORE_MEM_HARD_MB = "1";
+    await new Promise((resolve) => setTimeout(resolve, MEM_READ_MS + 10));
+    memInfo();
+  });
+  after(async () => {
+    if (soft0 === undefined) delete process.env.CTS_CORE_MEM_SOFT_MB;
+    else process.env.CTS_CORE_MEM_SOFT_MB = soft0;
+    if (hard0 === undefined) delete process.env.CTS_CORE_MEM_HARD_MB;
+    else process.env.CTS_CORE_MEM_HARD_MB = hard0;
+    await new Promise((resolve) => setTimeout(resolve, MEM_READ_MS + 10));
+    memInfo();
+  });
   it("after a compute: no indicator memo left on the universe, the swap released the old index and books, no by_sym", async () => {
     const t = trackRuntimes();
     const rt = t.track(new CoreRuntime(new CoreDb(":memory:"), tiny as never, { market: "synthetic" }));
@@ -75,63 +93,104 @@ describe("memory released after use, results unchanged", { timeout: 900_000 }, (
     }
   });
 
-  it("a compute aborted in the signal history still clears the memos (worker and local fallback)", async (ctx) => {
+  it("a compute aborted in Exit or Signal history still clears the memos (worker and local fallback)", async (ctx) => {
     const workers0 = process.env.CTS_CORE_WORKERS;
     process.env.CTS_CORE_WORKERS = "1";
     try {
-      for (const mode of ["worker", "fallback"] as const) await ctx.test(mode, async () => {
-        const t = trackRuntimes();
-        const rt = t.track(new CoreRuntime(new CoreDb(":memory:"), tiny as never, { market: "synthetic" }));
-        try {
-          rt.wf.validLastN = 0;
-          rt.wf.lastN = 0;
-          rt.start();
-          await until(() => rt.status.computes >= 1 && (rt.status.paperSteps ?? 0) >= 1);
-          rt.stop();
-          const R = rt as unknown as Inner & {
-            drive: (name: string, g: Generator, ...a: unknown[]) => Promise<unknown>;
-            setStage: (stage: string, done: number, total: number, label?: string, restart?: boolean) => void;
-            workersBroken: boolean;
-          };
-          const drive0 = R.drive.bind(rt), setStage0 = R.setStage.bind(rt);
-          const memoOf = () => (rt.lastUniverse?.caches ?? []).reduce((a, c) => a + (c as unknown as { m: Map<string, unknown> }).m.size, 0);
-          let atAbort = -1, abortedWorkers = 0, localCalls = 0;
-          R.setStage = (stage, done, total, label = "", restart) => {
-            setStage0(stage, done, total, label, restart);
-            if (mode === "fallback" && label.startsWith("preparing: signal historic configs")) {
-              // Base still uses workers. Only the history phase exercises the ordinary local fallback.
-              R.workersBroken = true;
+      for (const phase of ["Exit history", "Signal history"] as const)
+        for (const mode of ["worker", "fallback"] as const)
+          await ctx.test(`${phase}: ${mode}`, async () => {
+            const t = trackRuntimes();
+            const rt = t.track(
+              new CoreRuntime(new CoreDb(":memory:"), tiny as never, { market: "synthetic" }),
+            );
+            try {
+              rt.wf.validLastN = 0;
+              rt.wf.lastN = 0;
+              rt.start();
+              await until(() => rt.status.computes >= 1 && (rt.status.paperSteps ?? 0) >= 1);
+              rt.stop();
+              const R = rt as unknown as Inner & {
+                drive: (name: string, g: Generator, ...a: unknown[]) => Promise<unknown>;
+                setStage: (
+                  stage: string,
+                  done: number,
+                  total: number,
+                  label?: string,
+                  restart?: boolean,
+                ) => void;
+                workersBroken: boolean;
+                exitHistoryCache: unknown;
+              };
+              // A repeated unchanged compute normally reuses causal Exit fits; force the phase under test to run.
+              if (phase === "Exit history") R.exitHistoryCache = null;
+              const drive0 = R.drive.bind(rt),
+                setStage0 = R.setStage.bind(rt);
+              const memoOf = () =>
+                (rt.lastUniverse?.caches ?? []).reduce(
+                  (a, c) => a + (c as unknown as { m: Map<string, unknown> }).m.size,
+                  0,
+                );
+              let atAbort = -1,
+                abortedWorkers = 0,
+                localCalls = 0;
+              const preparing = (label: string) =>
+                phase === "Exit history"
+                  ? label.startsWith("preparing: historic exit candidates")
+                  : label.startsWith("preparing: signal historic configs");
+              const onWorkers = (label: string) =>
+                phase === "Exit history"
+                  ? label.startsWith("historic exit candidates") && / on \d+ workers$/.test(label)
+                  : label.startsWith("signal historic configs on");
+              R.setStage = (stage, done, total, label = "", restart) => {
+                setStage0(stage, done, total, label, restart);
+                if (mode === "fallback" && preparing(label)) {
+                  // Base still uses workers. Only the history phase exercises the ordinary local fallback.
+                  R.workersBroken = true;
+                }
+                if (
+                  mode === "worker" &&
+                  atAbort < 0 &&
+                  onWorkers(label) &&
+                  workerActivity().inFlight > 0
+                ) {
+                  // A real worker progress post proves the history message has started. Populate a main-thread memo
+                  // as a detail/Base reader can: abort must release it as well as terminate the worker's own caches.
+                  for (const c of rt.lastUniverse?.caches ?? []) c.ema(9);
+                  atAbort = memoOf();
+                  abortedWorkers = abortWorkers(`memory pressure: ${phase} worker test`);
+                }
+              };
+              R.drive = async (name, g, ...a) => {
+                if (name !== phase) return drive0(name, g, ...a);
+                localCalls++;
+                if (mode === "worker") return drive0(name, g, ...a);
+                for (let i = 0; i < 1_000_000 && memoOf() === 0; i++) if (g.next().done) break;
+                atAbort = memoOf();
+                throw new Error(`memory pressure: ${phase} fallback test`);
+              };
+              assert.ok(workersAvailable(), "the worker case must use the source worker");
+              await assert.rejects(R.compute(R.gen), /memory pressure: (?:Exit|Signal) history/);
+              assert.ok(atAbort > 0, `memos existed before the ${mode} abort (${atAbort})`);
+              assert.equal(memoOf(), 0, "the aborted compute's main-universe memos are cleared");
+              assert.equal(
+                workerActivity().inFlight,
+                0,
+                "the aborted phase leaves no worker call running",
+              );
+              if (mode === "worker") {
+                assert.ok(abortedWorkers > 0, "the actual history worker was terminated");
+                assert.equal(
+                  poolWorkers(),
+                  0,
+                  "the aborted worker cannot retain its indicator caches",
+                );
+                assert.equal(localCalls, 0, "a memory-aborted worker phase is not retried locally");
+              } else assert.equal(localCalls, 1, "the local history generator ran before aborting");
+            } finally {
+              await t.disposeAll();
             }
-            if (mode === "worker" && atAbort < 0 && label.startsWith("signal historic configs on") && workerActivity().inFlight > 0) {
-              // A real worker progress post proves the history message has started. Populate a main-thread memo
-              // as a detail/Base reader can: abort must release it as well as terminate the worker's own caches.
-              for (const c of rt.lastUniverse?.caches ?? []) c.ema(9);
-              atAbort = memoOf();
-              abortedWorkers = abortWorkers("memory pressure: Signal history worker test");
-            }
-          };
-          R.drive = async (name, g, ...a) => {
-            if (name !== "Signal history") return drive0(name, g, ...a);
-            localCalls++;
-            if (mode === "worker") return drive0(name, g, ...a);
-            for (let i = 0; i < 1_000_000 && memoOf() === 0; i++) if (g.next().done) break;
-            atAbort = memoOf();
-            throw new Error("memory pressure: Signal history fallback test");
-          };
-          assert.ok(workersAvailable(), "the worker case must use the source worker");
-          await assert.rejects(R.compute(R.gen), /memory pressure: Signal history/);
-          assert.ok(atAbort > 0, `memos existed before the ${mode} abort (${atAbort})`);
-          assert.equal(memoOf(), 0, "the aborted compute's main-universe memos are cleared");
-          assert.equal(workerActivity().inFlight, 0, "the aborted phase leaves no worker call running");
-          if (mode === "worker") {
-            assert.ok(abortedWorkers > 0, "the actual history worker was terminated");
-            assert.equal(poolWorkers(), 0, "the aborted worker cannot retain its indicator caches");
-            assert.equal(localCalls, 0, "a memory-aborted worker phase is not retried locally");
-          } else assert.equal(localCalls, 1, "the local history generator ran before aborting");
-        } finally {
-          await t.disposeAll();
-        }
-      });
+          });
     } finally {
       if (workers0 === undefined) delete process.env.CTS_CORE_WORKERS;
       else process.env.CTS_CORE_WORKERS = workers0;

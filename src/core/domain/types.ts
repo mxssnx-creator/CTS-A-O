@@ -101,6 +101,26 @@ export interface Protect {
   exitType?: "historic";
   /** Historical exits are independent by direction. 1 = long, -1 = short. */
   exitSide?: 1 | -1;
+  /** Independently evaluated Historic Exit config family; encoded in its lane id. */
+  exitSet?: ExitConfigSet;
+}
+
+/** Historic Exit config families share the Exit strategy kind, but keep separate fits and execution identities. */
+export type ExitConfigSet = "static-sl" | "adaptive-sl" | "trailing";
+
+/** Bounded causal state of one Historic Exit position; anchors keep the qualified config identity stable. */
+export interface ExitProtectionState {
+  set: ExitConfigSet;
+  baseTp: number;
+  baseSl: number;
+  baseTrail: number;
+  baseTrailDist: number;
+  previousClose: number;
+  rangeEma: number;
+  moveEma: number;
+  samples: number;
+  /** last completed lane bar applied; duplicate/rebuilt bars cannot adjust twice */
+  lastBarT: number;
 }
 
 /**
@@ -451,6 +471,8 @@ export interface OpenPosition {
   /** The position's own exit mode, retained across compute/restart instead of reading a mutable global grid. */
   trailFree?: boolean;
   trailOnly?: boolean;
+  /** Per-position Historic Exit adaptation, serialized with the held paper book. */
+  exitProtection?: ExitProtectionState;
   /** mark-to-market return incl. cost at the last close, per unit of volume (from the average entry) */
   mtm: number;
   /**

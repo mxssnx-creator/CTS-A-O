@@ -32,29 +32,6 @@ function freePort() {
   });
 }
 
-/** computes of the primary runtime, read from the event stream's first (state) events */
-async function computes(base) {
-  const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), 3_000);
-  try {
-    const r = await fetch(`${base}/api/core/events`, { signal: ctl.signal });
-    const reader = r.body.getReader();
-    let txt = "";
-    while (!txt.includes("\n\n")) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      txt += new TextDecoder().decode(value);
-    }
-    ctl.abort();
-    const m = /"computes":(\d+)/.exec(txt);
-    return m ? Number(m[1]) : 0;
-  } catch {
-    return 0;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 describe(
   "UI functional: every page on computed numbers, desktop and phone",
   { skip: SKIP, timeout: 1_200_000 },
@@ -106,7 +83,9 @@ describe(
           throw new Error(`dev server exited early:\n${log.slice(-4000)}`);
         try {
           const r = await fetch(`${base}/v2`, { redirect: "manual" });
-          if (r.status === 200 && (await computes(base)) >= 1) break;
+          // Avoid opening and aborting the runtime's long-lived SSE stream just to probe readiness.
+          // The comparison table below is the durable signal that the synthetic compute completed.
+          if (r.status === 200) break;
         } catch {
           /* still booting */
         }

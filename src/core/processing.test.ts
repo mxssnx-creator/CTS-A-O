@@ -1,5 +1,5 @@
-// Complete processing regressions: every indication works on every lane, every combo is processed through the
-// stages (Base → Main → Real) and evaluated, no strategy type is blocked or isolated by another, and the toggles
+// Complete range/DCA/Axis processing regressions: every indication works on every lane, every combo is processed
+// through the stages (Base → Main → Real) and evaluated, no strategy type is blocked or isolated by another, and the toggles
 // do exactly what they say — for every one of the 128 toggle combinations:
 //   Normal off    the plain base (Normal and Trailing entries) executes only Block-raised
 //   Trailing off  no trailing anywhere
@@ -159,7 +159,7 @@ describe("every indication works", () => {
   });
 });
 
-describe("processing through the stages, every strategy type, every toggle combination", { timeout: 900_000 }, () => {
+describe("processing through the stages, range/DCA/Axis types, every toggle combination", { timeout: 900_000 }, () => {
   let rt: CoreRuntime;
   before(async () => {
     rt = new CoreRuntime(
@@ -172,6 +172,9 @@ describe("processing through the stages, every strategy type, every toggle combi
         focus: [],
         pinned: [],
         mainTop: 24,
+        // Historic Exit evaluates every initialized engine pair and has its own focused runtime regression. Keep this
+        // 128-toggle matrix scoped to the shared range/DCA/Axis pipeline so it does not fit the full Exit universe.
+        exitStrategy: { enabled: false },
         toggles: { normal: true, trailing: true, block: true, blockActive: false, dca: true, dcaActive: false, axis: true },
       } as never,
       { market: "synthetic" },
@@ -181,7 +184,7 @@ describe("processing through the stages, every strategy type, every toggle combi
     rt.stop();
   });
 
-  it("Base evaluates every combo of every lane; Main keeps lanes; tapes carry every strategy type and range", async () => {
+  it("Base evaluates every combo of every lane; Main keeps lanes; tapes carry every range strategy type", async () => {
     const s1 = new Set(rt.pipeline!.s1.map((r) => `${r.bot}|${r.ind}`));
     const want = allCombos(rt.settings.focus, rt.settings.disabledKinds, rt.settings.tfs);
     const notRun = want.filter((c) => !s1.has(`${c.bot}|${c.ind}`)).map((c) => `${c.bot}|${c.ind}`);

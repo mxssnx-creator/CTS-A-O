@@ -34,13 +34,13 @@ function fixture() {
   const base = (i) => ({ ...identity, id: `slice-${i}`, entryT: asOf - 100_000 + i * 1000,
     exitT: asOf - 99_000 + i * 1000, eligibilityId: "after-base-1" });
   const returns = Array.from({ length: 20 }, (_, i) => i % 2 ? -0.01 : 0.02);
-  const lane = { ...identity, source: "trend-adx@m15c", range: "sh", kind: "trailing-only",
+  const lane = { ...identity, source: "trend-adx@m15c", group: "sh", kind: "trailing-only",
     eligibility: { id: "after-base-1", stage: "after-base", passed: true, at: asOf - 2_000_000 },
     model: { ...window, complete: true, basis: "unit-net-returns", closes: returns.map((unitR, i) => ({ ...base(i), unitR })) },
     execution: { ...window, complete: true, basis: "owned-net-returns", executionSource: "verified-venue", closes: returns.map((netReturn, i) => ({ ...base(i),
       ownedQty: 1, entryNotional: 100, entryFillIds: ["owned-entry"], exitFillIds: [`owned-exit-${i}`],
       grossPnl: netReturn * 100 + 0.2, fees: 0.2, funding: 0, netPnl: netReturn * 100, netReturn })) } };
-  const evidence = { schema: "cts-live-promotion/v1", referenceId: "cts-ao-reference", complete: true,
+  const evidence = { schema: "cts-live-promotion/v2", referenceId: "cts-ao-reference", complete: true,
     ...window, validUntilT: asOf + 60_000, lanes: [lane] };
   const run = (args = []) => {
     const childEnv = { ...process.env, CTS_CORE_LIVE: "0", CTS_CORE_WORKERS: "0", CTS_CORE_COMPARE: "0" };

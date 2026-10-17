@@ -454,7 +454,7 @@ export interface ConfigRow extends GroupRow {
   lane: string;
   kind: string;
   type: string;
-  range: string;
+  group: string;
   indKind: string;
   tp: number;
   /** Micro: the net target after the round-trip cost (price target − cost); absent for the other ranges */
@@ -477,6 +477,7 @@ export interface StatisticsReport {
   types: GroupRow[];
   subTypes: GroupRow[];
   ranges: GroupRow[];
+  strategyGroups: GroupRow[];
   lanes: GroupRow[];
   indKinds: GroupRow[];
   bots: GroupRow[];
@@ -589,8 +590,8 @@ export function buildStatistics(i: StatisticsInput): StatisticsReport {
       lane: laneLabel(ind) || "plain",
       kind: KIND_LABEL[first ? kindOfTrade(first) : kindOfId(r.key)],
       type: first ? typeOf(first) : "Normal",
-      // signal configs carry no range tag: their own group, never counted as Wide
-      range: liveGroupOf(r.key),
+      // Range tags belong to Normal / Trailing; signals and Historic Exit carry independent strategy groups.
+      group: liveGroupOf(r.key),
       indKind:
         INDICATION_BY_ID.get(laneOf(ind).base)?.kind ?? (isSignalInd(ind) ? "signal" : "none"),
       tp: p?.protect.tp ?? 0,
@@ -651,10 +652,18 @@ export function buildStatistics(i: StatisticsInput): StatisticsReport {
       "Axis",
       "Base (no Block detail)",
     ]),
-    ranges: groupBy(trades, (x) => liveGroupOf(x.cfg), unit, [
-      ...Object.values(RANGE_LABEL),
-      "Signals",
-    ]),
+    ranges: groupBy(
+      trades.filter((x) => !isSignalInd(indOf(x.cfg)) && kindOfId(x.cfg) !== "exit"),
+      (x) => RANGE_LABEL[rangeOfId(x.cfg)],
+      unit,
+      Object.values(RANGE_LABEL),
+    ),
+    strategyGroups: groupBy(
+      trades.filter((x) => isSignalInd(indOf(x.cfg)) || kindOfId(x.cfg) === "exit"),
+      (x) => liveGroupOf(x.cfg),
+      unit,
+      ["Signals", "Historic Exit"],
+    ),
     lanes: groupBy(trades, (x) => laneLabel(indOf(x.cfg)) || "plain", unit),
     indKinds: groupBy(
       trades,

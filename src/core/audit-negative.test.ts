@@ -280,7 +280,7 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
       }),
     },
   ],
-  "stages: engine trades come from Main config sets": [
+  "stages: engine trades come from Main or independent Exit config sets": [
     {
       run: "overall",
       what: "an engine pair that traded dropped from Main",

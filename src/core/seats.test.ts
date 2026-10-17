@@ -3,13 +3,14 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { DEFAULT_SETTINGS, GENERAL_RANGE, LONG_RANGE, MINIMAL_RANGE, SHORT_RANGE } from "./config.ts";
-import { LANE_MIN, laneProtect, mainByLane } from "./pipeline/pipeline.ts";
+import { LANE_MIN, configId, laneProtect, mainByLane } from "./pipeline/pipeline.ts";
 import {
   defaultWalkForward,
   makeTape,
   positionsFull,
   selectDurable,
   selectFixed,
+  walkForward,
   type ConfigTape,
 } from "./sim/walkforward.ts";
 import { DEFAULT_SIGNALS } from "./signal-config.ts";
@@ -225,6 +226,81 @@ describe("stage audit", () => {
     const failed = bad.checks.filter((c) => !c.ok).map((c) => c.name);
     assert.ok(failed.includes("stages: every validated pair has config sets"));
     assert.ok(failed.includes("stages: Main ⊆ Base-validated ∪ held"));
+  });
+
+  it("allows an independently qualified Exit trade outside Base Main", () => {
+    const ind = "rsi-mom-14-20@m15";
+    const protect = {
+      tp: 0.02,
+      sl: 0.03,
+      trail: 0,
+      hold: 32,
+      exitType: "historic" as const,
+      exitSide: 1 as const,
+      exitSet: "static-sl" as const,
+    };
+    const id = configId("follow", ind, protect);
+    const trades: Trade[] = Array.from({ length: 84 }, (_, i) => {
+      const entryT = i * 4 * H;
+      const r = i % 5 === 0 ? -0.005 : 0.01;
+      return {
+        cfg: id,
+        sym: "A",
+        side: 1,
+        entryT,
+        exitT: entryT + H,
+        entry: 1,
+        exit: 1 + r + DEFAULT_SETTINGS.cost,
+        r,
+        reason: r > 0 ? "tp" : "sl",
+        bars: 4,
+        mfe: 0.02,
+        mae: 0.005,
+        kind: "exit",
+      };
+    });
+    const exitTape = makeTape(id, "follow", ind, protect, "exit", ["A"], trades, [], []);
+    const u = {
+      bars: [],
+      caches: [],
+      startT: 0,
+      endT: now,
+      splitT: 0,
+      nowT: now,
+      baseTf: 60,
+    } as never;
+    const defaults = defaultWalkForward(DEFAULT_SETTINGS);
+    const sim = walkForward(u, [exitTape], {
+      ...defaults,
+      mode: "fixed",
+      longH: 48,
+      preH: 48,
+      basePassed: new Set<string>(),
+      lastN: 0,
+      validLastN: 0,
+      gates: { ...defaults.gates, minTrades: 1, minDdtH: 0, maxDdr: 0 },
+      toggles: {
+        ...defaults.toggles,
+        normal: false,
+        trailing: false,
+        exit: true,
+        block: false,
+        dca: false,
+        dcaActive: false,
+        axis: false,
+      },
+    });
+    assert.ok(sim.trades.length > 0, "the independent Exit seat executes with Base admission empty");
+    const report = auditState({
+      sim,
+      tapes: [exitTape],
+      cost: DEFAULT_SETTINGS.cost,
+      stages: { passed: new Set(), main: new Set(), held: new Set(), mainTop: 12 },
+    });
+    const check = report.checks.find(
+      (item) => item.name === "stages: engine trades come from Main or independent Exit config sets",
+    );
+    assert.equal(check?.ok, true, check?.detail);
   });
 });
 

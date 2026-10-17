@@ -6,6 +6,11 @@
 // - ATR protects (Protect.atr) are resolved into distances at every entry from ATR(14) of the signal bar.
 import type { AtrProtect, Bars, OpenPosition, Protect, Side, Trade } from "../domain/types.ts";
 import { atrEma } from "../math/indicators.ts";
+import {
+  advanceExitProtection,
+  createExitProtection,
+  type ExitProtectionPosition,
+} from "./exit-protection.ts";
 
 export interface SimOptions {
   cost: number;
@@ -104,7 +109,12 @@ export function simulate(
   let nextAllowed = 0;
   // the distances in force (an ATR protect resolves them at every entry)
   let q: Protect = p;
+  let trail = p.trail;
   let dist = p.trail * (p.trailStep ?? 1);
+  let exitProtection: OpenPosition["exitProtection"];
+  let exitPosition:
+    (ExitProtectionPosition & { target: number; trail: number; trailDist: number }) | undefined;
+  const exitBar = { t: 0, high: 0, low: 0, close: 0 };
   const atr = p.atr ? (opt.atr ?? atrEma(h, l, c, ATR_PERIOD)) : null;
   const resolve = (i: number) => resolveAtrProtect(p, atr![i] / c[i], bars.tfMin);
   const nx = nextEntryIndex(sig);
@@ -164,6 +174,15 @@ export function simulate(
       if (inPos) {
         if (i - entryI + 1 >= p.hold) {
           close(i, c[i], "time", barEnd);
+        } else if (exitPosition) {
+          // Reuse per-position and per-call objects: the hot bar loop creates no protection-update garbage.
+          exitBar.t = t[i];
+          exitBar.high = h[i];
+          exitBar.low = l[i];
+          exitBar.close = c[i];
+          advanceExitProtection(exitPosition, exitBar);
+          ({ stop, target, peak, trailOn, trail } = exitPosition);
+          dist = exitPosition.trailDist;
         } else if (q.trail > 0) {
           if (side === 1) {
             if (h[i] > peak) peak = h[i];
@@ -202,8 +221,13 @@ export function simulate(
         }
         stop = side === 1 ? entry * (1 - q.sl) : entry * (1 + q.sl);
         target = q.trailOnly ? 0 : side === 1 ? entry * (1 + q.tp) : entry * (1 - q.tp);
+        trail = q.trail;
+        exitProtection = createExitProtection(q, entry);
         peak = entry;
         trailOn = false;
+        exitPosition = exitProtection
+          ? { side, entry, stop, target, peak, trailOn, trail, trailDist: dist, exitProtection }
+          : undefined;
         mfe = 0;
         mae = 0;
       }
@@ -226,9 +250,10 @@ export function simulate(
       trailOn,
       mtm: (side * (last - entry)) / entry - cost,
       // the trail in force (an ATR protect resolved it at the entry): the live tick advances it bar by bar
-      ...(q.trail > 0
+      ...(exitProtection ? { exitProtection } : {}),
+      ...(trail > 0
         ? {
-            trail: q.trail,
+            trail,
             trailDist: dist,
             trailFree: q.trailFree === true,
             ...(q.trailOnly ? { trailOnly: true } : {}),

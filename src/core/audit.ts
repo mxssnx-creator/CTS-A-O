@@ -2,7 +2,7 @@
 // compares. Runs after each compute (cheap, O(trades · log)) and on demand; failures are surfaced on the Engine
 // page and in the event log, never silently corrected.
 //
-//   stages     Base passed ≤ evaluated; Real selection ⊆ Main tapes
+//   stages     Base passed ≤ evaluated; Real selection ⊆ Main tapes; Historic Exit is independently validated
 //   replay     every executed trade, replayed in entry order through the Real-stage rules (toggles, last-N,
 //              Block over its sources in Shared / Additive, Block Active) with the Block feed as it stood at
 //              that entry, must be allowed and carry exactly the recorded Block level and volume
@@ -148,10 +148,10 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
           // the active set is keyed per side (a source's longs and shorts are activated on their own records)
           if (act && !signalActiveHas(act, bot, ind, x.sym, x.side, x.kind ?? kindOfId(x.cfg)))
             badSignal++;
-        } else if (!st.main.has(pair)) badEngine++;
+        } else if (!st.main.has(pair) && byId.get(x.cfg)?.kind !== "exit") badEngine++;
       }
       add(
-        "stages: engine trades come from Main config sets",
+        "stages: engine trades come from Main or independent Exit config sets",
         badEngine === 0,
         `${badEngine} outside Main`,
       );

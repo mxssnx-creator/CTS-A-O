@@ -313,19 +313,26 @@ export interface ExitStrategySettings {
   minEntries: number;
   /** completed, held-out closes required before a candidate can qualify, per direction */
   minValidationTrades: number;
-  /** minimum held-out net return profit factor (the runtime keeps any stricter configured stage floor) */
+  /** minimum held-out net return profit factor for this independent Exit candidate */
   minPf: number;
   /** maximum held-out drawdown / net ratio; 0 disables this additional cap */
   maxDdr: number;
   /** maximum hold horizon; shortened when the fit segment is small */
   holdH: number;
-  /** upper bound across all passed ranges and both directions for each pair */
+  /** upper bound across independent Exit config families and both directions for each pair */
   maxConfigsPerPair: number;
-  /** training MFE quantiles, each mapped to a target that already passed Base for this pair and range */
+  /** MFE quantiles estimate each adjustable TP directly from the fit history */
   quantiles: number[];
+  /** MAE quantiles estimate recalibrated SL distances for adaptive-SL and trailing families */
+  stopQuantiles: number[];
+  /** minimum and maximum fitted TP (fractions of entry price) */
+  minTp: number;
+  maxTp: number;
+  /** maximum fitted SL (fractions of entry price) */
+  maxSl: number;
   /** trailing distance as a share of the selected target */
   trailShares: number[];
-  /** stop distance as a multiple of the selected target */
+  /** static stop distance as a multiple of the selected target */
   stopMultiples: number[];
 }
 
@@ -453,15 +460,16 @@ export interface LiveSettings {
    * narrows only what the live control sends: the engine keeps computing and paper-trading every range, so a range
    * left out keeps its own paper record and can be let back in on evidence. A held position of a range left out is
    * still managed by its lanes until they exit (never force-closed, never orphaned) — only new ones do not open.
-   * A range is a target band of the Normal / Trailing / Historic Exit configs: signal configs and the Axis / DCA
-   * ladders carry no range tag but are never "wide" — `source` and `kinds` narrow those (rangeExcluded in live.server.ts).
+   * Ranges apply to Normal / Trailing engine grids only. Historic Exit owns its target/stop fit and config sets;
+   * signal configs and the Axis / DCA ladders carry no range tag either. `source` and `kinds` narrow those.
    */
   excludeRanges?: readonly string[];
   /**
    * overall: engine configs of these families do NOT reach the exchange, and a held position of one is CLOSED — its
    * lanes never ask for volume again, held or not (the operator's stop, unlike excludeRanges, which keeps a held lane
    * until its paper position exits). A family is `bot|range`: the bot "follow" or "revert", the range "wide" (untagged)
-   * or a range tag ("mc", "mn", "mp", "sh", "gn", "lg") — e.g. "follow|mn" = every engine follow config of Minimal.
+   * or a range tag ("mc", "mn", "mp", "sh", "gn", "lg"); `bot|exit` excludes every Historic Exit config set.
+   * Example: "follow|mn" = every Normal / Trailing follow config of Minimal.
    * Signal configs have no family here (live.source narrows them). Unset / empty = none.
    */
   excludeConfigs?: readonly string[];
@@ -594,7 +602,11 @@ export const DEFAULT_SETTINGS: CoreSettings = {
     maxDdr: 1,
     holdH: 24,
     maxConfigsPerPair: 24,
-    quantiles: [0.5, 0.75],
+    quantiles: [0.6, 0.8],
+    stopQuantiles: [0.5, 0.75],
+    minTp: 0.006,
+    maxTp: 0.2,
+    maxSl: 0.25,
     trailShares: [0.33, 0.66],
     stopMultiples: [1, 2],
   },

@@ -13,7 +13,16 @@ export interface SignalUnit {
 
 export function signalTypeLabel(kind?: string | null): string {
   if (!kind) return "Base / discovery";
-  return ({ normal: "Normal", trailing: "Trailing with TP", "trailing-only": "Trailing only · no TP", dca: "DCA", "dca-active": "DCA Active", axis: "Axis" } as Record<string, string>)[kind] ?? kind;
+  return ({ normal: "Normal", trailing: "Trailing with TP", "trailing-only": "Trailing only · no TP", exit: "Historic Exit", dca: "DCA", "dca-active": "DCA Active", axis: "Axis" } as Record<string, string>)[kind] ?? kind;
+}
+
+/** Read the canonical Exit suffix without importing the server-side config pipeline into the browser. */
+export function historicExitLabel(value: { cfg?: string; key?: string; id?: string }): string | null {
+  const suffix = /\|hx([LS])?([012])?$/.exec(value.cfg ?? value.key ?? value.id ?? "");
+  if (!suffix) return null;
+  const family = suffix[2] === "0" ? "Static SL" : suffix[2] === "1" ? "Adaptive SL" : suffix[2] === "2" ? "Trailing" : null;
+  const side = suffix[1] === "L" ? "Long" : suffix[1] === "S" ? "Short" : null;
+  return ["Historic Exit", family, side].filter(Boolean).join(" · ");
 }
 
 /** Match the engine's normalized percent/ATR grids and the independent no-TP grid. */

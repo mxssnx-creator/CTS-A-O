@@ -1775,7 +1775,7 @@ const TOGGLE_HELP: Record<string, string> = {
     "the plain base (Normal and Trailing entries); off = neither executes unless Block raises it — Historic Exit, DCA, DCA Active and Axis keep processing (every set is still computed and evaluated)",
   trailing:
     "trailing with TP and trailing-only without TP; off = no new trailing execution anywhere (base, Block-raised, signals), still computed; held positions retain their protection",
-  exit: "independently qualified historic exits: one tape per passed target, range, and direction; candidates fit older prehistory and pass a later holdout. Live lane orders can exit each lane partially; overall control coordinates the combined position.",
+  exit: "independently qualified Historic Exit sets: adjustable TP with a fixed hard SL, adaptive SL, or adaptive SL plus trailing. Each config family and direction fits older prehistory and passes its own later holdout. Active adjustments use completed bars; adaptive and trailing stops never loosen. Normal / Trailing range tags do not apply.",
   block: "adds +ratio volume per passing last-n window (1..max)",
   blockActive:
     "Active: engine entries below the minimum Block level are skipped even when Normal is on. Signal bases follow their own eligibility rules and retain the independent Signal base exception.",
@@ -2451,12 +2451,12 @@ export function SettingsPage() {
         </Panel>
         <Panel
           title="Historic exit strategy"
-          sub="fits exit candidates on older prehistory, checks each candidate on a later untouched segment, and keeps qualified sets independent by range and direction"
+          sub="fits higher TP values from older prehistory and validates each independent Exit config set on a later untouched segment. Active TP and adaptive SL adjustments use completed bars; static SL stays fixed and adaptive or trailing stops never loosen."
         >
           <div className="v2-grid v2-cols-2" style={{ gap: 8 }}>
             <Field
               label="Build historic exits"
-              hint="only Base-passed engine pairs are considered; the execution toggle above still controls whether qualified sets can trade"
+              hint="every initialized engine pair uses its complete indication entries, independently of Base admission, range tags and engine entry filters; each config retains its own PF and sample gates. The execution toggle controls trading."
             >
               <Switch
                 label="enabled"
@@ -2550,39 +2550,78 @@ export function SettingsPage() {
             </Field>
             <Field
               label="Maximum configs per pair"
-              hint="memory bound across all passed ranges and both directions"
+              hint="bounded round-robin across static SL, adaptive SL and trailing sets, long and short"
             >
               <Num
                 int
-                min={2}
+                min={6}
                 max={128}
                 value={s.exitStrategy.maxConfigsPerPair}
                 onChange={(v) => set(["exitStrategy", "maxConfigsPerPair"], v)}
               />
             </Field>
+            <Field label="Minimum fitted TP (%)" hint="minimum target from the independent Exit fit">
+              <Num
+                pct
+                step={0.001}
+                min={0.001}
+                max={0.5}
+                value={s.exitStrategy.minTp}
+                onChange={(v) => set(["exitStrategy", "minTp"], v)}
+              />
+            </Field>
+            <Field label="Maximum fitted TP (%)" hint="caps the historical target fit; adjust this independently of range grids">
+              <Num
+                pct
+                step={0.01}
+                min={0.002}
+                max={1}
+                value={s.exitStrategy.maxTp}
+                onChange={(v) => set(["exitStrategy", "maxTp"], v)}
+              />
+            </Field>
+            <Field label="Maximum fitted SL (%)" hint="caps the static or historical MAE stop distance">
+              <Num
+                pct
+                step={0.01}
+                min={0.005}
+                max={1}
+                value={s.exitStrategy.maxSl}
+                onChange={(v) => set(["exitStrategy", "maxSl"], v)}
+              />
+            </Field>
             <Field
               label="Fit MFE quantiles"
-              hint="each quantile maps to the nearest TP that already passed Base for this pair and range"
+              hint="each value estimates and updates its own TP from favorable prehistory; it is independent of Normal / Trailing range targets"
             >
               <List
                 value={s.exitStrategy.quantiles}
                 onChange={(v) => set(["exitStrategy", "quantiles"], v)}
               />
             </Field>
+            <Field label="Fit MAE quantiles" hint="adverse prehistory estimates the adaptive SL for each Exit set">
+              <List
+                value={s.exitStrategy.stopQuantiles}
+                onChange={(v) => set(["exitStrategy", "stopQuantiles"], v)}
+              />
+            </Field>
             <Field
-              label="Trail share × stop multiple"
-              hint="each combination is tested as its own exit config; at most 16 combinations per range and side"
+              label="Trail shares"
+              hint="trailing sets use their own share of the fitted TP distance"
             >
-              <div className="v2-grid v2-cols-2" style={{ gap: 6 }}>
-                <List
-                  value={s.exitStrategy.trailShares}
-                  onChange={(v) => set(["exitStrategy", "trailShares"], v)}
-                />
-                <List
-                  value={s.exitStrategy.stopMultiples}
-                  onChange={(v) => set(["exitStrategy", "stopMultiples"], v)}
-                />
-              </div>
+              <List
+                value={s.exitStrategy.trailShares}
+                onChange={(v) => set(["exitStrategy", "trailShares"], v)}
+              />
+            </Field>
+            <Field
+              label="Static SL multiples"
+              hint="static-SL sets fit the hard SL as a multiple of TP; each position keeps that hard stop fixed"
+            >
+              <List
+                value={s.exitStrategy.stopMultiples}
+                onChange={(v) => set(["exitStrategy", "stopMultiples"], v)}
+              />
             </Field>
           </div>
         </Panel>
@@ -3757,7 +3796,7 @@ export function SettingsPage() {
             </Field>
             <Field
               label="Direction acceptance (engine)"
-              hint="Real, engine configs. ON: each type family (Normal + Trailing / Historic Exit / DCA / Axis) × range × side opens new entries only while its candidates' PF over the last hours clears the min PF — a side that loses (shorts in a rally) pauses in that family and range alone and reopens once its record recovers; the other side and the other ranges keep trading. Too few closes in the window: it is judged on twice the hours, and still too few counts as valid. OFF (default): both directions always trade, every config judged on its own gates only. Measured 5–6 Oct on the same tapes (12 symbols, 6 h + 6 h): turning it off let in 187 shorts at PF 0.05 and the window's PF fell 3.62 → 1.82 — in a rally it is what keeps losing shorts out. Long and short positions are never closed by it."
+              hint="Real engine configs. ON: Normal / Trailing type × range × side, each Historic Exit tactic × side, DCA and Axis × side open only while their candidates' PF over the last hours clears the min PF. A losing group pauses independently; other sides, ranges and Exit tactics keep trading. Too few closes in the window: it is judged on twice the hours, and still too few counts as valid. OFF (default): both directions always trade, every config judged on its own gates only. Measured 5–6 Oct on the same tapes (12 symbols, 6 h + 6 h): turning it off let in 187 shorts at PF 0.05 and the window's PF fell 3.62 → 1.82. Long and short positions are never closed by it."
             >
               <Switch
                 label="Engine direction acceptance"
@@ -4146,7 +4185,7 @@ export function SettingsPage() {
             </Field>
             <Field
               label="Live excluded ranges"
-              hint="ranges whose configs are not sent to the exchange — only the range's own Normal / Trailing / Historic Exit configs, never the signals; Axis and DCA ladders follow the live kinds (and source) instead. They keep computing and paper-trading; a held position is still managed until its lanes exit · none = every range"
+              hint="ranges whose configs are not sent to the exchange — only Normal / Trailing range grids; Historic Exit uses its own fitted TP/SL sets and is controlled by strategy type. Signals, Axis and DCA follow live kinds (and source). They keep computing and paper-trading; held positions stay managed · none = every range"
             >
               <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
                 {LIVE_RANGE_CHOICES.map(([r, l]) => {

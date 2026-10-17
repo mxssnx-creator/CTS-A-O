@@ -22,7 +22,11 @@ import { DEFAULT_PROTECT } from "../config.ts";
 import type { Bars } from "../domain/types.ts";
 import type { MicroIndRule } from "../indications/micro.ts";
 import { emptySignalHistDiagnostics, signalHistProtectsGen } from "../signal-hist.ts";
-import { emptyExitStrategyDiagnostics, exitStrategyProtectsGen } from "../exit-strategy.ts";
+import {
+  EXIT_HISTORY_MAX_PAIRS,
+  emptyExitStrategyDiagnostics,
+  exitStrategyProtectsGen,
+} from "../exit-strategy.ts";
 import type {
   BaseConfigChunkMessage,
   ExitStrategyMessage,
@@ -258,12 +262,12 @@ parentPort!.on("message", (m: Msg) => {
       }
     }
     if (m.type === "exit-hist") {
-      if (m.pairs.length > 2) throw new Error("Exit history messages carry at most two pairs");
+      if (m.pairs.length > EXIT_HISTORY_MAX_PAIRS)
+        throw new Error(`Exit history messages carry at most ${EXIT_HISTORY_MAX_PAIRS} pairs`);
       const diagnostics = emptyExitStrategyDiagnostics();
       const g = exitStrategyProtectsGen(
         u,
         m.pairs,
-        m.targetsByPair,
         m.settings,
         m.tactics,
         m.cutT,

@@ -1,6 +1,43 @@
 # CTS-A-O operations handoff
 
-Updated 2026-10-16, Europe/Vienna. Repository: `mxssnx-creator/CTS-A-O`.
+Updated 2026-10-17, Europe/Vienna. Repository: `mxssnx-creator/CTS-A-O`.
+
+## 17 October Exit continuation — checkpoint pending complete test gate
+
+Historic Exit is a separate strategy kind with independent static-SL, adaptive-SL
+and trailing config families and directions. Its fitted distances are native to
+the indication's lane; range scaling, range admission and remove-only engine
+tactics cannot suppress these families. PF, sample, drawdown and subsequent
+entry/seat gates remain active. Held IDs stay stable. A shared completed-bar
+policy actively adjusts TP, retains a fixed-SL option, and ratchets adaptive or
+trailing stops without loosening them; its bounded heuristic is tested in both
+simulation and tick processing, including carry/restart and duplicate bars.
+
+Corrected the runtime/worker Exit chunk mismatch (16 versus 2), separate
+family/direction feedback lookup, early-history cancellation cleanup and the
+Micro range-floor discovery leak. Rolling excursion calculations preserve the
+reference result while using O(hold) storage; the measured dense fixture improved
+from 156.77 ms to 15.59 ms. The worker parity fixture now uses representative
+Normal/Trailing/range/DCA/Axis cells rather than over 159,000 tapes; its comparison
+passes in 3.58 seconds. Production caps and gates were not weakened.
+
+Current focused checks include 44 invariant/range cases, 18 excursion/Exit
+cases, 7 final raw-entry/worker/active-protection cases, 6 promotion CLI cases
+and 5 component-label cases, all passing. Typecheck, lint and production build
+pass. The complete `npm test` rerun is pending: its latest script stage exposed
+unbounded host-CPU concurrency causing a 10-second child startup timeout and a
+missing Chromium binary in the refreshed environment. Script/component stages
+are now bounded to two files concurrently; browser setup is being completed.
+The earlier failures and partial runs are not represented as one green full run.
+
+Frozen reused public-history results are in
+[`sims/exit-validation-20261017-summary.md`](sims/exit-validation-20261017-summary.md).
+Six evaluated prehistory hours are insufficient for default independent sample
+floors. With the default 168-hour lookback and six forward hours, 28 Exit configs
+qualify and six initially seat; two winning closes are accompanied by four
+losing open marks. The marked diagnostic PF is 0.015815, so this is not evidence
+of consistently positive or high-volume trading. Losing and empty outcomes are
+retained. No live deployment or venue execution occurred.
 
 ## 16 October Historic Exit strategy validation
 
@@ -9,7 +46,7 @@ Initial feature source commit: `869b7fec6d50991da2902c24ca811f7ba3cf526d`, tree
 `ec30c30c80c9d5531e368ac7de5084d41ac79d23`. Follow-up regression fixes and
 their validation are recorded below on draft [PR #149](https://github.com/mxssnx-creator/CTS-A-O/pull/149).
 
-Historic Exit now has independent long/short and range configurations. It fits
+Historic Exit now has independent long/short and tactic configurations. It fits
 only on closed pre-cut history, evaluates each side on later completed-bar
 holdout history, caps and fairly schedules candidate groups, and keeps exact
 held identities through lane restart. Runtime work uses the shared bar pool

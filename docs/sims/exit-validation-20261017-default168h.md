@@ -1,0 +1,43 @@
+# Exit causal validation — reused public history
+
+Retrospective reused cached public market candles; no new or unseen market-performance claim. Four fixed symbols; 16 initialized indication/bot/lane pairs; all three Exit config sets and both sides are reported, including empty outcomes. No new market-data requests or exchange orders.
+
+Window: **2026-10-17T15:00:00.000Z → 2026-10-17T21:00:00.000Z**. 168 hours of evaluated prehistory precede trading. Seventy-two older hours initialize indicators behind explicit evaluationFromT; they supply no scored entries. Modeled round-trip cost: **0.20%**.
+
+The frozen production settings retain their PF, minimum-close, DDR, last-N, confidence, hourly-success and symbol-side gates. Exit candidates have their own prehistory fit/holdout admission and subsequent seat/entry validation; Normal/Trailing Base and range admission is deliberately empty. New Exit config sets use unrestricted completed indication entries, independently of global remove-only entry tactics. No PF, close-count or drawdown gate is relaxed to create orders. TP/SL fitting is fixed at the trading boundary for this check; gates continue reading only prior settled closes.
+
+Settled modeled orders: **2**; primary unit-return PF: **no losses**; sum of unit returns: **0.027 percentage points**. Positive settled hours: **1/6**, flat: 5, negative: 0. Endpoint marks: 4, reported separately. This is virtual model evidence without account allocation; order counts are modeled settled config orders, never venue fills.
+
+**Endpoint reconciliation:** the four still-open modeled orders have marks totaling **−1.6944 unit-return points**. Settled closes plus these unrealized endpoint marks total **−1.6676 points**, with marked diagnostic PF **0.015815**. This marked cohort is losing; the two settled winners do not establish profitable overall performance. Marks remain separate from the primary settled-close sample.
+
+| Independent Exit set | Side | Holdout-qualified configs | Seat-qualified at start | Settled orders | Unit PF | Net return points |
+|---|---|---:|---:|---:|---:|---:|
+| static-sl | Long | 0 | 0 | 0 | empty | 0.000 |
+| static-sl | Short | 2 | 1 | 0 | empty | 0.000 |
+| adaptive-sl | Long | 0 | 0 | 0 | empty | 0.000 |
+| adaptive-sl | Short | 12 | 3 | 1 | no losses | 0.013 |
+| trailing | Long | 0 | 0 | 0 | empty | 0.000 |
+| trailing | Short | 14 | 2 | 1 | no losses | 0.013 |
+
+| Hour UTC | Settled orders | Unit PF | Net return points |
+|---|---:|---:|---:|
+| 2026-10-17T15:00 | 0 | empty | 0.000 |
+| 2026-10-17T16:00 | 0 | empty | 0.000 |
+| 2026-10-17T17:00 | 2 | no losses | 0.027 |
+| 2026-10-17T18:00 | 0 | empty | 0.000 |
+| 2026-10-17T19:00 | 0 | empty | 0.000 |
+| 2026-10-17T20:00 | 0 | empty | 0.000 |
+
+Qualification diagnostics: {"pairs":16,"noPrehistory":0,"insufficientEntries":8,"candidates":176,"capped":48,"evaluated":176,"insufficientTrades":50,"pfRejected":77,"ddrRejected":21,"qualified":28}. Entry skip reasons: {}. Every accepted config and its own initial seat evaluation and forward returns are in the result JSON. Each hourly JSON row also contains all six independent set/side slices.
+
+Correctness checks passed: production settings validation and lane normalization; exact WF/settings gate and cost parity; truncated-prehistory versus future-present fit/holdout parity; no range tags; exact side identity; no duplicate config or modeled entry; no pre-evaluation entries; independent family and hourly settled-return reconciliation. Runtime 2065 ms; process maximum RSS 158.5 MiB; one process, no worker fan-out. Worker/parallel parity, order ownership and live protection are covered by separate project tests; this harness does not reproduce exchange execution.
+
+Empty or insufficient outcomes establish no profitability result. A no-loss sample is labeled explicitly; its runtime qualification score uses the existing finite sentinel and is not presented as an exact measured PF. Reused retrospective history and a six-hour development window cannot establish durable profitability or positive results in every hour. Intrabar OHLC uncertainty and modeled costs remain limitations.
+
+Reproduce from the committed bounded public input and frozen protocol:
+
+```sh
+node --max-old-space-size=768 --experimental-strip-types --no-warnings scripts/exit-validation-20261017-attempt.mjs --attempt default168h --run
+```
+
+Protocol SHA-256: 7a1247f9f5eaadf3d663ef7333b78076361b4c069f63c493a3af66f75e88c09d. Bounded compressed input SHA-256: ac13bf70c1618ff5c7cdb86d24195c667564204229046e37f8ceec75f91ccdeb. The protocol records complete settings, source hashes and original cached-feed provenance. Source mismatches stop scoring.

@@ -79,11 +79,12 @@ type Json = string | number | boolean | null | Json[] | { [k: string]: Json };
 /** Server-function payloads must be serializable; this also strips typed arrays and undefined. */
 const ser = (x: unknown): Json => JSON.parse(JSON.stringify(x ?? null)) as Json;
 
-/** Input of a listing page: which list, an optional range and text filter, and the page. */
+/** Input of a listing page: which list, optional range/group and text filter, and the page. */
 export const coreListingInput = (d?: {
   conn?: string;
   kind?: string;
   range?: string;
+  group?: string;
   q?: string;
   offset?: number;
   limit?: number;
@@ -91,15 +92,16 @@ export const coreListingInput = (d?: {
   const kind = d?.kind ?? "validated";
   if (!["validated", "active", "proven", "baseConfigs"].includes(kind)) throw new Error("kind: validated, active, proven or baseConfigs");
   if (d?.range !== undefined && (typeof d.range !== "string" || d.range.length > 20)) throw new Error("bad range");
+  if (d?.group !== undefined && (typeof d.group !== "string" || d.group.length > 32)) throw new Error("bad group");
   if (d?.q !== undefined && (typeof d.q !== "string" || d.q.length > 80)) throw new Error("bad filter");
   const offset = Math.max(0, Math.floor(Number(d?.offset ?? 0)) || 0);
   const limit = Math.min(500, Math.max(1, Math.floor(Number(d?.limit ?? 100)) || 100));
-  return { ...connInput(d), kind: kind as "validated" | "active" | "proven" | "baseConfigs", range: d?.range, q: d?.q?.toLowerCase(), offset, limit };
+  return { ...connInput(d), kind: kind as "validated" | "active" | "proven" | "baseConfigs", range: d?.range, group: d?.group, q: d?.q?.toLowerCase(), offset, limit };
 };
 
 /**
  * One page of a listing of the last paper step (CoreRuntime.listings, built once per step): the validated engine
- * configs (best score first; a range reads its own row index), the active signal units or the engine configs proven
+ * configs (best score first; a range or strategy group reads its own row index), the active signal units or the engine configs proven
  * live — never a scan of the tapes per request.
  */
 export async function coreListingData(data: ReturnType<typeof coreListingInput>) {
@@ -112,14 +114,15 @@ export async function coreListingData(data: ReturnType<typeof coreListingInput>)
       (!data.q || `${x.bot}|${x.ind}|${x.tag}|${x.kind}`.toLowerCase().includes(data.q)),
     );
     return ser({ ready: !!snapshot, kind: data.kind, summary: snapshot?.summary ?? null, total: rows.length,
-      offset: data.offset, limit: data.limit, rows: rows.slice(data.offset, data.offset + data.limit), byRange: [] });
+      offset: data.offset, limit: data.limit, rows: rows.slice(data.offset, data.offset + data.limit), byRange: [], byGroup: [] });
   }
   const L = r.listings;
-  if (!L) return ser({ ready: false, kind: data.kind, total: 0, rows: [], byRange: [] });
+  if (!L) return ser({ ready: false, kind: data.kind, total: 0, rows: [], byRange: [], byGroup: [] });
   const q = data.q;
   let rows: unknown[];
   if (data.kind === "validated") {
-    const idx = data.range ? (L.byRange[data.range]?.rows ?? []) : null;
+    const selectedGroup = data.group ?? data.range;
+    const idx = selectedGroup ? (L.byGroup[selectedGroup]?.rows ?? []) : null;
     const all = idx ? idx.map((i) => L.validated[i]) : L.validated;
     rows = q ? all.filter((x) => x.id.toLowerCase().includes(q)) : all;
   } else if (data.kind === "active") {
@@ -134,6 +137,7 @@ export async function coreListingData(data: ReturnType<typeof coreListingInput>)
     offset: data.offset,
     rows: rows.slice(data.offset, data.offset + data.limit),
     byRange: Object.entries(L.byRange).map(([range, x]) => ({ range, validated: x.rows.length, pf: x.pf })),
+    byGroup: Object.entries(L.byGroup).map(([group, x]) => ({ group, validated: x.rows.length, pf: x.pf })),
     proofOn: L.proven !== null,
   });
 }

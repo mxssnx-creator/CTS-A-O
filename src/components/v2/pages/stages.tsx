@@ -44,7 +44,7 @@ export function StagesPage() {
             <p>
               Every indication × bot type is evaluated at Base; {d.wf.tapes} independent
               strategy tapes (Normal, capped Trailing, trailing-only, DCA, DCA Active and Axis across the configured protection variants)
-              are built for later validation or measurement. Qualified Historic Exit tapes are added for Base-passed engine pairs from pre-run history.
+              are built for later validation or measurement. Historic Exit fits every initialized engine pair from pre-run history, independently of Base admission and range tags.
               A computed tape is not an admitted or funded order.
             </p>
           </div>
@@ -91,7 +91,7 @@ export function StagesPage() {
 
       <Panel
         title="Historic Exit sets"
-        sub="candidate distances fit completed-bar prehistory and pass a later holdout before the Real simulation; each range and direction keeps independent configs"
+        sub="candidate distances fit completed-bar prehistory and pass a later holdout before the Real simulation; each Exit config family and direction keeps independent configs"
       >
         {exits ? (
           <div className="v2-lines">
@@ -99,7 +99,7 @@ export function StagesPage() {
               k="Build / execution"
               v={`${exits.enabled ? "on" : "off"} / ${tg.exit !== false ? "on" : "off"}`}
             />
-            <Line k="Base-passed engine pairs" v={fmt.num(exits.pairs)} />
+            <Line k="Initialized engine pairs" v={fmt.num(exits.pairs)} />
             <Line k="Current configs (includes held lanes)" v={fmt.num(exits.configs)} />
             <Line
               k="Candidates / holdout evaluations / qualified"
@@ -289,17 +289,17 @@ export function StagesPage() {
 const PAGE = 50;
 
 /**
- * The last paper step's listings (coreListing, built once per step): the engine configs it validated, per range with
- * that range's PF taken together on the validation windows, the signal units active, and the engine configs proven live.
+ * The last paper step's listings (coreListing, built once per step): validated Normal / Trailing ranges and independent
+ * strategy groups such as Historic Exit, with pooled validation PFs, active signal units, and proven live configs.
  */
 function SetListings(props: { minPf: number }) {
   const [kind, setKind] = useState<"validated" | "active" | "proven">("validated");
-  const [range, setRange] = useState("");
+  const [group, setGroup] = useState("");
   const [page, setPage] = useState(0);
   const { data } = usePoll(
-    () => coreListing({ data: { kind, range: range || undefined, offset: page * PAGE, limit: PAGE } }),
+    () => coreListing({ data: { kind, group: group || undefined, offset: page * PAGE, limit: PAGE } }),
     10000,
-    [kind, range, page],
+    [kind, group, page],
   );
   const d = data as Any;
   const pages = d?.total ? Math.ceil(d.total / PAGE) : 0;
@@ -319,13 +319,13 @@ function SetListings(props: { minPf: number }) {
             setPage(0);
           }}
         />
-        {kind === "validated" && Array.isArray(d?.byRange) && (
+        {kind === "validated" && Array.isArray(d?.byGroup) && (
           <Seg
-            value={range}
-            label="range"
-            options={[{ value: "", label: "All" }, ...d.byRange.map((x: Any) => ({ value: x.range, label: `${x.range} ${x.validated} · PF ${fmt.pf(x.pf)}` }))]}
+            value={group}
+            label="group"
+            options={[{ value: "", label: "All" }, ...d.byGroup.map((x: Any) => ({ value: x.group, label: `${x.group} ${x.validated} · PF ${fmt.pf(x.pf)}` }))]}
             onChange={(v) => {
-              setRange(v);
+              setGroup(v);
               setPage(0);
             }}
           />
@@ -344,7 +344,7 @@ function SetListings(props: { minPf: number }) {
               {kind === "validated" ? (
                 <tr>
                   <th>Config</th>
-                  <th>Range</th>
+                  <th>Range / strategy group</th>
                   <th className="num">PF</th>
                   <th className="num">Closes</th>
                   <th className="num">Net</th>
@@ -373,7 +373,7 @@ function SetListings(props: { minPf: number }) {
                         {x.id}
                       </Link>
                     </td>
-                    <td>{x.range}</td>
+                    <td>{x.group}</td>
                     <td className={`num ${pfTone(x.pf, props.minPf)}`}>{fmt.pf(x.pf)}</td>
                     <td className="num">{x.n}</td>
                     <td className={`num ${tone(x.net)}`}>{fmt.pct(x.net)}</td>

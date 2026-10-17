@@ -620,6 +620,7 @@ test("Base sets floor: a lower floor computes more pairs' sets; the stage gate i
     baseSetsMinPf: undefined,
     minPf: 1.05,
     minTrades: 10,
+    maxDdr: 0, // isolate the PF floor; an enabled DDR gate correctly rejects a negative net
     rangeMinPf: { long: 1.18 },
   };
   assert.equal(baseSetsGates(g), g, "unset: the stage gates");
@@ -628,6 +629,7 @@ test("Base sets floor: a lower floor computes more pairs' sets; the stage gate i
   assert.equal(wide.rangeMinPf, undefined, "one floor for every range");
   // PF 0.95 (net negative) computes its sets under a 0.9 floor, not under the stage gate
   assert.deepEqual(basePassTags({ full: st(0.95, -2) }, wide, ["sh", "lg"]), ["", "sh", "lg"]);
+  assert.deepEqual(basePassTags({ full: st(0.95, -2) }, { ...wide, maxDdr: 1 }, ["sh", "lg"]), [], "a lower PF floor never bypasses an enabled DDR gate");
   assert.deepEqual(basePassTags({ full: st(0.95, -2) }, g, ["sh", "lg"]), []);
   // at the stage gate a positive net is still required
   assert.deepEqual(basePassTags({ full: st(1.1, -1) }, g, ["sh"]), []);

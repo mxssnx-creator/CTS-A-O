@@ -238,7 +238,7 @@ export function preferExchange(exchange: LiveGate | null | undefined, sim: LiveG
 
 /**
  * The exchange closes as acceptance groups: a signal close enters its signal × symbol × side group and its side's pooled
- * group, an engine close its type family × range × side group — the keys the simulation's acceptance judges. A group
+ * group, a Normal / Trailing close its type × range × side group, and an Exit close its tactic × side group — the keys the simulation judges. A group
  * sees the closes before t only (exit < t). Parallel signal configs share one onset count; every settled close stays
  * in return PF, as in SignalAcceptIndex / SignalGuard.
  */
@@ -293,8 +293,10 @@ export function exchangeAcceptIndex(
       add(sideAcceptKey(x.side), x.exitT, x.r, onset);
     } else {
       const tag = rangeOfId(x.cfg) || undefined;
-      add(engineSideKey(kind, tag, x.side), x.exitT, x.r);
-      add(engineSideKey(kind, tag, x.side, ind), x.exitT, x.r);
+      const code = /\|hx(?:[LS])?([012])?$/.exec(x.cfg)?.[1];
+      const exitSet = code === "0" ? "static-sl" : code === "1" ? "adaptive-sl" : code === "2" ? "trailing" : undefined;
+      add(engineSideKey(kind, tag, x.side, undefined, exitSet), x.exitT, x.r);
+      add(engineSideKey(kind, tag, x.side, ind, exitSet), x.exitT, x.r);
     }
   }
   for (const l of by.values()) {

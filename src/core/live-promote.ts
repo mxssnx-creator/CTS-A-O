@@ -7,17 +7,25 @@ import { profitFactor } from "./metrics/stats.ts";
 
 export const PROMOTE_RANGES = ["mc", "mn", "mp", "sh", "gn", "lg", "wide"] as const;
 export type PromoteRange = (typeof PROMOTE_RANGES)[number];
-export const PROMOTE_EVIDENCE_SCHEMA = "cts-live-promotion/v1";
+export const PROMOTE_GROUPS = [...PROMOTE_RANGES, "exit"] as const;
+export type PromoteGroup = (typeof PROMOTE_GROUPS)[number];
+export const PROMOTE_EVIDENCE_SCHEMA = "cts-live-promotion/v2";
 // Same monetary ownership boundary as the allocated book: floating-point capacity residue is not funding.
 const OWNED_NOTIONAL_EPS_USD = 1e-9;
 
-/** The managed range of a config: its range tag, "wide" for the untagged grid; null for signals and ladders. */
+/** The managed range of a Normal / Trailing config; null for Historic Exit, signals and ladders. */
 export function promoteRangeOf(cfg: string): PromoteRange | null {
   if (isSignalInd(cfg.split("|")[1] ?? "")) return null;
   const kind = kindOfId(cfg);
-  if (kind !== "normal" && kind !== "trailing" && kind !== "trailing-only" && kind !== "exit")
+  if (kind !== "normal" && kind !== "trailing" && kind !== "trailing-only")
     return null;
   return rangeOfId(cfg) || "wide";
+}
+
+/** Exit is its own promotion group and never aliases the Wide range. */
+export function promoteGroupOf(cfg: string): PromoteGroup | null {
+  if (kindOfId(cfg) === "exit") return "exit";
+  return promoteRangeOf(cfg);
 }
 
 export interface PromoteOpts {
@@ -66,7 +74,7 @@ interface PromoteTape<T> {
 export interface PromoteEvidenceLane extends PromoteIdentity {
   /** Full indication, including its exact lane suffix, as encoded in cfg. */
   source: string;
-  range: PromoteRange;
+  group: PromoteGroup;
   kind: "normal" | "trailing" | "trailing-only" | "exit";
   eligibility: { id: string; stage: "after-base"; passed: true; at: number };
   model: PromoteTape<PromoteModelClose> & { basis: "unit-net-returns" };
@@ -110,8 +118,8 @@ export interface PromotedLaneProof extends PromoteIdentity {
   executionCloses: Array<{ id: string; exitT: number; unitR: number }>;
 }
 export interface PromoteDecision {
-  /** Summary only: an ON range never grants permission to an unlisted config/symbol/direction. */
-  on: Record<PromoteRange, boolean>;
+  /** Summary only: an ON group never grants permission to an unlisted config/symbol/direction. */
+  on: Record<PromoteGroup, boolean>;
   byIdentity: Record<string, boolean>;
   promotedLanes: PromotedLaneProof[];
   lines: string[];
@@ -157,7 +165,7 @@ function validWindow(v: Record<string, unknown>, nowT: number): boolean {
 
 /** Shared by settings validation and admission. No implicit evidence lifetime is invented. */
 export function validPromotedLaneProof(v: unknown, nowT = Date.now()): v is PromotedLaneProof {
-  if (!object(v) || !identity(v) || !promoteRangeOf(v.cfg) || !validWindow(v, nowT)) return false;
+  if (!object(v) || !identity(v) || !promoteGroupOf(v.cfg) || !validWindow(v, nowT)) return false;
   if (!(
     hash(v.proofId) &&
     text(v.referenceId) &&
@@ -230,12 +238,16 @@ function validOptions(o: PromoteOpts): boolean {
 function laneShape(v: unknown): v is PromoteEvidenceLane {
   if (!object(v) || !identity(v)) return false;
   const ranges = v.cfg.match(/\|(mc|mp|mn|sh|gn|lg)(?=\||$)/g) ?? [];
+  const group = promoteGroupOf(v.cfg);
   return (
+    group !== null &&
     ranges.length <= 1 &&
     v.cfg.split("|").length >= 6 &&
     text(v.source) &&
     v.source === v.cfg.split("|")[1] &&
-    v.range === promoteRangeOf(v.cfg) &&
+    v.group === group &&
+    !("range" in v) &&
+    (group !== "exit" || rangeOfId(v.cfg) === "") &&
     v.kind === kindOfId(v.cfg) &&
     object(v.eligibility) &&
     text(v.eligibility.id) &&
@@ -355,8 +367,8 @@ export function promoteDecide(
       "Invalid promotion thresholds: require integer 0 < minN <= lastN and 0 < offPf <= onPf",
     );
   const nowT = context?.nowT ?? Date.now();
-  const on = Object.fromEntries(PROMOTE_RANGES.map((r) => [r, false])) as Record<
-    PromoteRange,
+  const on = Object.fromEntries(PROMOTE_GROUPS.map((r) => [r, false])) as Record<
+    PromoteGroup,
     boolean
   >;
   const byIdentity: Record<string, boolean> = {};
@@ -409,7 +421,7 @@ export function promoteDecide(
         `${lane.cfg} ${lane.sym} ${lane.side === 1 ? "long" : "short"}: post-Base qualified virtual PF ${pfText(model)}, ${executionLabel} execution PF ${pfText(execution)} → ${passed ? "on" : "off"}`,
       );
       if (passed && model && execution) {
-        on[lane.range] = true;
+        on[lane.group] = true;
         promotedLanes.push({
           cfg: lane.cfg,
           sym: lane.sym,
