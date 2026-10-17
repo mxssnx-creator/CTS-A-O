@@ -21,7 +21,7 @@ import {
 const H = 3_600_000;
 const M = 60_000;
 const script = new URL("./core-session.mjs", import.meta.url).pathname;
-function replay({ caps = false, weighted = false, invalidReturn = false, qualification, thresholds, variants, presets, exhaustedCap = false, noBase = false } = {}) {
+function replay({ caps = false, weighted = false, invalidReturn = false, qualification, thresholds, variants, presets, exhaustedCap = false, noBase = false, legacyRangeRows = false, baseNoLoss = false } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "cts-session-report-"));
   try {
     const raw = {
@@ -65,6 +65,32 @@ function replay({ caps = false, weighted = false, invalidReturn = false, qualifi
       raw.engine.baseByRange = [{ tag: "sh", range: "Short", enabled: true, passed: 2, evaluated: 3, pfPassedPooled: 1.2 }];
       raw.tapeAgg = { evalAfterBase: { "Short|normal": thresholds } };
     }
+    if (baseNoLoss) {
+      raw.settings.ranges.micro = true;
+      raw.settings.live = { ...raw.settings.live, liveLastN: 25, liveGroupLastN: 0, replaySinceT: H };
+      raw.trades = [
+        { cfg: "follow|break-mc-rel-don8-5-dd24-balanced@m5|tp0.7|sl2.5|tr0.75|h1|mc", sym: "TEST-USDT", side: 1, entryT: H + M, exitT: H + 2 * M, entry: 100, exit: 102, r: 0.02, reason: "tp", vol: 1, mult: 1, kind: "normal" },
+      ];
+      raw.engine.baseEvaluated = 3;
+      raw.engine.basePassed = 1;
+      raw.engine.baseByRange = [
+        { tag: "mc", range: "Micro", enabled: true, evaluated: 3, passed: 1, pfPassedPooled: null, pfPassedMedian: 4, passedGp: 0.02, passedGl: 0, ownCells: 1 },
+      ];
+      raw.tapeAgg = {
+        evalStats: { signalUnitsRun: 0 },
+        evalAfterBase: { "Micro|normal": { configs: 2, passed: 1, okGp: 0.02, okGl: 0, minPf: 1.1, minPfMax: 1.1 } },
+      };
+      const empty = { n: 0, w: 0, gp: 0, gl: 0 };
+      raw.funnel = {
+        nH: 1,
+        pool: [{ n: 1, w: 1, gp: 0.02, gl: 0 }],
+        poolNormal: [{ n: 1, w: 1, gp: 0.02, gl: 0 }],
+        poolTrailing: [empty],
+        poolTrailingOnly: [empty],
+        seated: [{ n: 1, w: 1, gp: 0.02, gl: 0 }],
+        counts: { basePairs: 3, basePassed: 1, poolConfigs: 2, seatedConfigs: 1, causalBase: true },
+      };
+    }
     if (noBase) {
       raw.trades = [];
       raw.openEnd = [];
@@ -78,6 +104,10 @@ function replay({ caps = false, weighted = false, invalidReturn = false, qualifi
       raw.engine.baseEvaluated = 1;
       raw.engine.basePassed = 0;
       raw.engine.baseBuilt = 0;
+      raw.engine.baseByRange = [
+        { tag: "", range: "Wide", enabled: true, evaluated: 1, passed: 0, ownCells: legacyRangeRows ? undefined : 1 },
+        { tag: "mc", range: "Micro", enabled: true, evaluated: 1, passed: 0, ownCells: legacyRangeRows ? undefined : 1 },
+      ];
     }
     writeFileSync(join(dir, "raw.json"), JSON.stringify(raw));
     const result = spawnSync(process.execPath, ["--experimental-strip-types", "--no-warnings", script,
@@ -119,6 +149,32 @@ describe("session reports: return PF primary, simulated provenance", () => {
     assert.ok(data.checks.find((x) => x.name === "execution: strategy type normal output has config tapes")?.ok);
     assert.match(md, /Return PF –/);
     assert.doesNotMatch(md, /checks: [^\n]*FAILED/);
+  });
+
+  it("reports measured no-loss PF separately from the finite Base gate score and labels later funnel stages", () => {
+    const { data, md, html } = replay({ baseNoLoss: true });
+    assert.equal(data.total.orders, 1);
+    assert.equal(data.total.pf, 4, "the JSON gate-score convention remains finite");
+    assert.match(md, /\| Micro \| ∞ \(no loss\) \| 1 of 3 \| 1\.10 \| ∞ \(no loss\) \| 1 of 2 \| ∞ \(no loss\) \| 1 \|/);
+    assert.match(md, /median Base gate PF score.*pooled PF ∞ \(no loss\), median gate score 4\.00/);
+    assert.match(md, /candidate pool \(pre-validation\)/);
+    assert.match(md, /post-Base validated \/ seated/);
+    assert.match(md, /simulated executed \(all types\)/);
+    assert.match(md, /Causal post-Base entry gate: last 25 closes per config/);
+    assert.match(html, /pooled PF ∞ \(no loss\)/);
+  });
+
+  it("keeps equal current range counts labeled as independent measurements", () => {
+    const { md, writeup, html } = replay({ noBase: true });
+    for (const text of [md, writeup, summaryOf(html)]) {
+      assert.match(text, /Wide 0\/1 · Micro 0\/1/);
+      assert.doesNotMatch(text, /no per-range split/);
+    }
+  });
+
+  it("marks equal legacy counts as copied when range provenance is absent", () => {
+    const { md } = replay({ noBase: true, legacyRangeRows: true });
+    assert.match(md, /no per-range split/);
   });
 
   it("zeros floating-point cap residue before cash/unit allocation and records the original ghost amount", () => {
