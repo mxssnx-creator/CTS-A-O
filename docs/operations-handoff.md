@@ -1,6 +1,6 @@
 # CTS-A-O operations handoff
 
-Updated 2026-10-17, Europe/Vienna. Repository: `mxssnx-creator/CTS-A-O`.
+Updated 2026-10-18, Europe/Vienna. Repository: `mxssnx-creator/CTS-A-O`.
 
 ## 17 October Exit continuation — checkpoint pending complete test gate
 
@@ -14,8 +14,13 @@ trailing stops without loosening them; its bounded heuristic is tested in both
 simulation and tick processing, including carry/restart and duplicate bars.
 
 Corrected the runtime/worker Exit chunk mismatch (16 versus 2), separate
-family/direction feedback lookup, early-history cancellation cleanup and the
-Micro range-floor discovery leak. Rolling excursion calculations preserve the
+family/direction feedback lookup, early-history cancellation cleanup, the
+Micro range-floor discovery leak and the historical cache's missing exact
+indication inventory. The local history fallback now releases indicator caches
+after each 16-pair chunk, including generator cancellation, with exact output
+and diagnostic parity. Saved-preset backtests now fit and build Exit independently
+before their forward window, retain native lane history, and preserve the original
+Normal/Signals evaluation cohort. Rolling excursion calculations preserve the
 reference result while using O(hold) storage; the measured dense fixture improved
 from 156.77 ms to 15.59 ms. The worker parity fixture now uses representative
 Normal/Trailing/range/DCA/Axis cells rather than over 159,000 tapes; its comparison
@@ -24,20 +29,38 @@ passes in 3.58 seconds. Production caps and gates were not weakened.
 Current focused checks include 44 invariant/range cases, 18 excursion/Exit
 cases, 7 final raw-entry/worker/active-protection cases, 6 promotion CLI cases
 and 5 component-label cases, all passing. Typecheck, lint and production build
-pass. The complete `npm test` rerun is pending: its latest script stage exposed
-unbounded host-CPU concurrency causing a 10-second child startup timeout and a
-missing Chromium binary in the refreshed environment. Script/component stages
-are now bounded to two files concurrently; browser setup is being completed.
-The earlier failures and partial runs are not represented as one green full run.
+pass (lint has 17 existing warnings). The complete plain `npm test` rerun is running.
+Script/component stages are bounded to two files concurrently; synthetic tests
+have deterministic memory headroom while dedicated pressure tests still verify
+fallback and abort behavior. Chromium is installed and built desktop/mobile UI
+checks pass. The browser fixture passes all four checks over all desktop/phone
+pages, settings saves and strict server-error assertions. Its readiness probe now
+consumes the full streamed SSR response instead of abandoning its body. Eight
+preset tests verify exact ordered trades against direct local/worker calculation,
+native history, sparse 30m execution, unchanged Normal results and cancellation.
+Earlier failures and partial runs are not represented as one green full run.
+
+Older cached preset results with Exit enabled were computed without Exit. This
+source correction does not certify them: back up and re-evaluate those caches
+before any live reload or reliance on their PF. No running instance or its state
+has been accessed during this continuation.
 
 Frozen reused public-history results are in
 [`sims/exit-validation-20261017-summary.md`](sims/exit-validation-20261017-summary.md).
 Six evaluated prehistory hours are insufficient for default independent sample
 floors. With the default 168-hour lookback and six forward hours, 28 Exit configs
 qualify and six initially seat; two winning closes are accompanied by four
-losing open marks. The marked diagnostic PF is 0.015815, so this is not evidence
-of consistently positive or high-volume trading. Losing and empty outcomes are
-retained. No live deployment or venue execution occurred.
+losing open marks (marked diagnostic PF 0.015815). The broader 794-pair, four-symbol
+check uses 168 evaluated prehistory hours and 24 trading hours: 1,236 independent
+configs qualify, 132 initially seat, and 109 modeled orders settle at unit-return
+PF 19.554. Its 206 open marks total -53.574 return points; settled plus marked
+diagnostic PF is 0.774226 and net is -14.416 points. Only 8/24 hours have profitable
+settled closes. This is not evidence of consistently positive total returns.
+All rejects and losses remain in the evidence. The run took 44.7 seconds and
+243.4 MiB maximum RSS with 16-pair fit/build chunks and one unified default WF.
+The original frozen results are retained; a source-compatible regression replay
+will separately record the cache/preset integration fixes without retuning the
+same scored window. No live deployment or venue execution occurred.
 
 ## 16 October Historic Exit strategy validation
 

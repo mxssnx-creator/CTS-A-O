@@ -113,8 +113,12 @@ function barsViewThroughCut(b: Bars, cutT: number): Bars {
 /** Fingerprint only the closed prehistory each exit fit can read; future bars cannot invalidate a causal result. */
 export function exitHistoryFingerprint(u: Universe, pairs: Iterable<string>, cutT: number): string {
   const hash = createHash("sha256");
+  const identities = [...new Set(pairs)].sort();
+  // Exact pair inventory is an input too: different bots/indications can reference identical candle series.
+  hash.update(JSON.stringify(identities));
+  hash.update("\0");
   const series = new Set<number>();
-  for (const pair of pairs) {
+  for (const pair of identities) {
     const ind = pair.split("|")[1];
     if (ind) for (const s of seriesOf(u, ind)) series.add(s);
   }
@@ -400,6 +404,50 @@ export function* exitStrategyProtectsGen(
     }
     if (kept.length) out[pair] = kept;
   }
+  return out;
+}
+
+/** Local fitting has the same bounded indicator-cache lifetime as a worker's maximum-size message. */
+export function* exitStrategyProtectsBoundedGen(
+  u: Universe,
+  pairs: Iterable<string>,
+  settings: ExitStrategySettings,
+  tactics: Tactics | null | undefined,
+  cutT: number,
+  validation: ExitStrategyValidation,
+  diagnostics: ExitStrategyDiagnostics = emptyExitStrategyDiagnostics(),
+  entryFilters?: Readonly<Record<string, EntryFilter>>,
+): Generator<void, Record<string, Protect[]>> {
+  const out: Record<string, Protect[]> = {};
+  if (!settings.enabled) return out;
+  function* fit(chunk: string[]): Generator<void> {
+    try {
+      Object.assign(
+        out,
+        yield* exitStrategyProtectsGen(
+          u,
+          chunk,
+          settings,
+          tactics,
+          cutT,
+          validation,
+          diagnostics,
+          entryFilters,
+        ),
+      );
+    } finally {
+      for (const cache of u.caches) cache.clear();
+    }
+  }
+  let chunk: string[] = [];
+  for (const pair of pairs) {
+    chunk.push(pair);
+    if (chunk.length === EXIT_HISTORY_MAX_PAIRS) {
+      yield* fit(chunk);
+      chunk = [];
+    }
+  }
+  if (chunk.length) yield* fit(chunk);
   return out;
 }
 

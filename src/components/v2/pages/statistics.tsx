@@ -6,7 +6,16 @@ import { Fragment, useMemo, useState } from "react";
 import { coreStatistics } from "../api-conn";
 import { configStrategyLabel, indicationKindLabel } from "../indication-ui";
 import { hasNoTakeProfit, historicExitLabel, signalTrailGapRatio } from "../signal-units";
-import { accountSource, cashPfText, comparisonPfDelta, comparisonPfText, returnPf, returnPfText, unitStatsPfText, liveBalanceUnavailable } from "../accounting";
+import {
+  accountSource,
+  cashPfText,
+  comparisonPfDelta,
+  comparisonPfText,
+  returnPf,
+  returnPfText,
+  unitStatsPfText,
+  liveBalanceUnavailable,
+} from "../accounting";
 import { ArcShare, HeatGrid, MultiChart, SignedBars } from "../charts";
 import {
   downloadFile,
@@ -53,7 +62,14 @@ type Row = {
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const pct = (x: number) => `${(x * 100).toFixed(0)}%`;
 
-function GroupTable(props: { rows: Row[]; label: string; empty?: string; dates?: boolean; comparison?: boolean; source?: string }) {
+function GroupTable(props: {
+  rows: Row[];
+  label: string;
+  empty?: string;
+  dates?: boolean;
+  comparison?: boolean;
+  source?: string;
+}) {
   if (!props.rows.length) return <Empty>{props.empty ?? "No closes"}</Empty>;
   return (
     <div className="v2-table-wrap">
@@ -63,11 +79,24 @@ function GroupTable(props: { rows: Row[]; label: string; empty?: string; dates?:
             <th>{props.label}</th>
             <th className="num">orders</th>
             <th className="num">positions</th>
-            <th className="num">{props.source === "paper" ? "recorded wins / losses" : "wins / losses"}</th>
+            <th className="num">
+              {props.source === "paper" ? "recorded wins / losses" : "wins / losses"}
+            </th>
             <th className="num">{props.source === "paper" ? "recorded WR" : "WR"}</th>
             <th className="num">Return PF</th>
-            <th className="num">{props.source === "paper" ? "nominal cash PF ($)" : "cash PF ($, diagnostic)"}</th>
-            <th className="num" title={props.comparison ? undefined : "Sum of recorded returns before removing execution volume; separate from the primary unit-return sample"}>{props.comparison ? "net %" : "recorded net %"}</th>
+            <th className="num">
+              {props.source === "paper" ? "nominal cash PF ($)" : "cash PF ($, diagnostic)"}
+            </th>
+            <th
+              className="num"
+              title={
+                props.comparison
+                  ? undefined
+                  : "Sum of recorded returns before removing execution volume; separate from the primary unit-return sample"
+              }
+            >
+              {props.comparison ? "net %" : "recorded net %"}
+            </th>
             <th className="num">{props.source === "paper" ? "nominal net $" : "net $"}</th>
             <th className="num">DDT</th>
             <th className="num">green h</th>
@@ -85,13 +114,17 @@ function GroupTable(props: { rows: Row[]; label: string; empty?: string; dates?:
                 {r.wins} / {r.losses}
               </td>
               <td className="num">{pct(r.wr)}</td>
-              <td className={`num ${pfTone(returnPf(r))}`}>{props.comparison ? comparisonPfText(r) : returnPfText(r)}</td>
+              <td className={`num ${pfTone(returnPf(r))}`}>
+                {props.comparison ? comparisonPfText(r) : returnPfText(r)}
+              </td>
               <td className="num v2-muted">{cashPfText(r)}</td>
               <td className={`num ${tone(r.net)}`}>{fmt.pct(r.net)}</td>
               <td className={`num ${tone(r.usd)}`}>{fmt.usd(r.usd)}</td>
               <td className="num">{fmt.h(r.ddt)}</td>
               <td className="num">{pct(r.gh)}</td>
-              <td className="num">{Number.isFinite(r.avgHoldMin) ? `${fmt.num(r.avgHoldMin)}m` : "–"}</td>
+              <td className="num">
+                {Number.isFinite(r.avgHoldMin) ? `${fmt.num(r.avgHoldMin)}m` : "–"}
+              </td>
               {props.dates && (
                 <td className="v2-mono" style={{ whiteSpace: "nowrap" }}>
                   {fmt.time(r.firstT)} → {fmt.time(r.lastT)}
@@ -132,30 +165,46 @@ function WithWithout(props: { rows: Any[]; presets: Any[] }) {
             {props.rows.map((r) => {
               const deltaPf = comparisonPfDelta(r.with, r.without);
               return (
-              <tr key={r.label}>
-                <td>
-                  <b>{r.label}</b>
-                </td>
-                <td>{r.with.label}</td>
-                <td className={`num ${pfTone(r.with.pf)}`}>{comparisonPfText(r.with)}</td>
-                <td className={`num ${tone(r.with.net)}`}>{fmt.pct(r.with.net)}</td>
-                <td className="num">{fmt.h(r.with.ddt)}</td>
-                <td>{r.without.label}</td>
-                <td className={`num ${pfTone(r.without.pf)}`}>{comparisonPfText(r.without)}</td>
-                <td className={`num ${tone(r.without.net)}`}>{fmt.pct(r.without.net)}</td>
-                <td className="num">{fmt.h(r.without.ddt)}</td>
-                <td className={`num ${tone(deltaPf)}`} title={deltaPf === null ? "Unavailable: requires two nonempty measured return ratios" : undefined}>{deltaPf === null ? "–" : (deltaPf >= 0 ? "+" : "") + deltaPf.toFixed(2)}</td>
-                <td className={`num ${tone(r.dNet)}`}>{fmt.pct(r.dNet)}</td>
-                <td className={`num ${tone(-r.dDdt)}`}>{(r.dDdt >= 0 ? "+" : "") + r.dDdt.toFixed(1)}h</td>
-              </tr>
+                <tr key={r.label}>
+                  <td>
+                    <b>{r.label}</b>
+                  </td>
+                  <td>{r.with.label}</td>
+                  <td className={`num ${pfTone(r.with.pf)}`}>{comparisonPfText(r.with)}</td>
+                  <td className={`num ${tone(r.with.net)}`}>{fmt.pct(r.with.net)}</td>
+                  <td className="num">{fmt.h(r.with.ddt)}</td>
+                  <td>{r.without.label}</td>
+                  <td className={`num ${pfTone(r.without.pf)}`}>{comparisonPfText(r.without)}</td>
+                  <td className={`num ${tone(r.without.net)}`}>{fmt.pct(r.without.net)}</td>
+                  <td className="num">{fmt.h(r.without.ddt)}</td>
+                  <td
+                    className={`num ${tone(deltaPf)}`}
+                    title={
+                      deltaPf === null
+                        ? "Unavailable: requires two nonempty measured return ratios"
+                        : undefined
+                    }
+                  >
+                    {deltaPf === null ? "–" : (deltaPf >= 0 ? "+" : "") + deltaPf.toFixed(2)}
+                  </td>
+                  <td className={`num ${tone(r.dNet)}`}>{fmt.pct(r.dNet)}</td>
+                  <td className={`num ${tone(-r.dDdt)}`}>
+                    {(r.dDdt >= 0 ? "+" : "") + r.dDdt.toFixed(1)}h
+                  </td>
+                </tr>
               );
             })}
           </tbody>
         </table>
       </div>
-      <p className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>Return PF uses net-return gains divided by losses. No-loss scores and results without gross-return provenance have no finite PF delta.</p>
+      <p className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
+        Return PF uses net-return gains divided by losses. No-loss scores and results without
+        gross-return provenance have no finite PF delta.
+      </p>
       <details style={{ marginTop: 8 }}>
-        <summary className="v2-muted">Every execution preset on the same tapes ({props.presets.length})</summary>
+        <summary className="v2-muted">
+          Every execution preset on the same tapes ({props.presets.length})
+        </summary>
         <GroupTable
           label="preset"
           comparison
@@ -194,13 +243,28 @@ function Configs(props: { rows: Any[]; source: string }) {
   const [sort, setSort] = useState<"usd" | "pf" | "n">("usd");
   const rows = useMemo(() => {
     const f = q.trim().toLowerCase();
-    const xs = f ? props.rows.filter((r) => r.key.toLowerCase().includes(f) || r.group.toLowerCase().includes(f) || (historicExitLabel(r) ?? configStrategyLabel(r, props.source)).toLowerCase().includes(f)) : props.rows;
+    const xs = f
+      ? props.rows.filter(
+          (r) =>
+            r.key.toLowerCase().includes(f) ||
+            r.group.toLowerCase().includes(f) ||
+            (historicExitLabel(r) ?? configStrategyLabel(r, props.source))
+              .toLowerCase()
+              .includes(f),
+        )
+      : props.rows;
     return [...xs].sort((a, b) => b[sort] - a[sort]);
   }, [props.rows, props.source, q, sort]);
   return (
     <>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-        <input className="v2-input" placeholder="filter: indication, group, type…" value={q} onChange={(e) => setQ(e.target.value)} style={{ maxWidth: 280 }} />
+        <input
+          className="v2-input"
+          placeholder="filter: indication, group, type…"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          style={{ maxWidth: 280 }}
+        />
         <Seg
           label="Sort"
           value={sort}
@@ -211,7 +275,11 @@ function Configs(props: { rows: Any[]; source: string }) {
           ]}
           onChange={(v) => setSort(v)}
         />
-        <button type="button" className="v2-btn" onClick={() => downloadFile("configs.csv", toCsv(rows), "text/csv")}>
+        <button
+          type="button"
+          className="v2-btn"
+          onClick={() => downloadFile("configs.csv", toCsv(rows), "text/csv")}
+        >
           CSV
         </button>
       </div>
@@ -229,7 +297,9 @@ function Configs(props: { rows: Any[]; source: string }) {
               <th className="num">orders</th>
               <th className="num">WR</th>
               <th className="num">Return PF</th>
-              <th className="num">{props.source === "paper" ? "nominal cash PF ($)" : "cash PF ($, diagnostic)"}</th>
+              <th className="num">
+                {props.source === "paper" ? "nominal cash PF ($)" : "cash PF ($, diagnostic)"}
+              </th>
               <th className="num">net $</th>
               <th className="num">DDT</th>
             </tr>
@@ -237,7 +307,11 @@ function Configs(props: { rows: Any[]; source: string }) {
           <tbody>
             {rows.slice(0, 200).map((r) => (
               <Fragment key={r.key}>
-                <tr onClick={() => setOpen(open === r.key ? null : r.key)} style={{ cursor: "pointer" }} aria-expanded={open === r.key}>
+                <tr
+                  onClick={() => setOpen(open === r.key ? null : r.key)}
+                  style={{ cursor: "pointer" }}
+                  aria-expanded={open === r.key}
+                >
                   <td>
                     {r.bot} · {r.ind}
                   </td>
@@ -246,7 +320,9 @@ function Configs(props: { rows: Any[]; source: string }) {
                   <td>{r.lane}</td>
                   <td className="num">
                     {hasNoTakeProfit(r) ? "None" : `${(r.tp * 100).toFixed(3)}%`}
-                    {r.tpNet !== undefined && <span className="v2-muted"> (net {(r.tpNet * 100).toFixed(3)}%)</span>}
+                    {r.tpNet !== undefined && (
+                      <span className="v2-muted"> (net {(r.tpNet * 100).toFixed(3)}%)</span>
+                    )}
                   </td>
                   <td className="num">{(r.sl * 100).toFixed(3)}%</td>
                   <td className="num">{r.trail ? `${(r.trail * 100).toFixed(3)}%` : "–"}</td>
@@ -274,7 +350,9 @@ function Configs(props: { rows: Any[]; source: string }) {
                           {fmt.time(r.firstT)} → {fmt.time(r.lastT)}
                         </div>
                         <div>
-                          <div className="v2-muted">symbols · positions · green hours · avg hold</div>
+                          <div className="v2-muted">
+                            symbols · positions · green hours · avg hold
+                          </div>
                           {r.syms} · {r.positions} · {pct(r.gh)} · {fmt.num(r.avgHoldMin)}m
                         </div>
                         <div>
@@ -282,8 +360,19 @@ function Configs(props: { rows: Any[]; source: string }) {
                           {r.wins} / {r.losses} · {fmt.pct(r.avg, 3)}
                         </div>
                         <div>
-                          <div className="v2-muted">{hasNoTakeProfit(r) ? "Hard SL · trail activation · trailing gap" : "SL ÷ TP · trail ÷ TP"}</div>
-                          {hasNoTakeProfit(r) ? `${(r.sl * 100).toFixed(3)}% · ${(r.trail * 100).toFixed(3)}% · ${(r.trail * signalTrailGapRatio(r) * 100).toFixed(3)}%` : <>{(r.sl / Math.max(1e-9, r.tp)).toFixed(2)}× · {r.trail ? `${(r.trail / Math.max(1e-9, r.tp)).toFixed(2)}×` : "off"}</>}
+                          <div className="v2-muted">
+                            {hasNoTakeProfit(r)
+                              ? "Hard SL · trail activation · trailing gap"
+                              : "SL ÷ TP · trail ÷ TP"}
+                          </div>
+                          {hasNoTakeProfit(r) ? (
+                            `${(r.sl * 100).toFixed(3)}% · ${(r.trail * 100).toFixed(3)}% · ${(r.trail * signalTrailGapRatio(r) * 100).toFixed(3)}%`
+                          ) : (
+                            <>
+                              {(r.sl / Math.max(1e-9, r.tp)).toFixed(2)}× ·{" "}
+                              {r.trail ? `${(r.trail / Math.max(1e-9, r.tp)).toFixed(2)}×` : "off"}
+                            </>
+                          )}
                         </div>
                       </div>
                     </td>
@@ -294,7 +383,9 @@ function Configs(props: { rows: Any[]; source: string }) {
           </tbody>
         </table>
       </div>
-      {rows.length > 200 && <p className="v2-muted">Showing 200 of {rows.length} (filter or export the CSV for all).</p>}
+      {rows.length > 200 && (
+        <p className="v2-muted">Showing 200 of {rows.length} (filter or export the CSV for all).</p>
+      )}
     </>
   );
 }
@@ -302,7 +393,10 @@ function Configs(props: { rows: Any[]; source: string }) {
 export function StatisticsPage() {
   const [source, setSource] = useState<"sim" | "paper" | "live">("live");
   const [hours, setHours] = useState(0);
-  const { data, error } = usePoll(() => coreStatistics({ data: { source, hours } }), 30_000, [source, hours]);
+  const { data, error } = usePoll(() => coreStatistics({ data: { source, hours } }), 30_000, [
+    source,
+    hours,
+  ]);
   const d = data as Any;
   const r = d?.report;
   const unbasedLive = liveBalanceUnavailable(r?.source, d?.balanceFrom);
@@ -310,7 +404,8 @@ export function StatisticsPage() {
     if (!r) return null;
     const P = r.timeline.points as Any[];
     const basis = unbasedLive ? (r.balanceStart ?? 0) : 0;
-    const s = (k: string) => P.map((p) => ({ t: p.t, v: p[k] - (k === "balance" || k === "equity" ? basis : 0) }));
+    const s = (k: string) =>
+      P.map((p) => ({ t: p.t, v: p[k] - (k === "balance" || k === "equity" ? basis : 0) }));
     return [
       {
         title: unbasedLive ? "Ledger net change ($)" : "Balance · equity ($)",
@@ -318,11 +413,37 @@ export function StatisticsPage() {
         height: 160,
         series: [
           { name: unbasedLive ? "realized net" : "balance (reconstructed)", points: s("balance") },
-          { name: unbasedLive ? "modeled net incl. MTM" : "equity (reconstructed)", points: s("equity"), fill: true },
+          {
+            name: unbasedLive ? "modeled net incl. MTM" : "equity (reconstructed)",
+            points: s("equity"),
+            fill: true,
+          },
         ],
       },
-      ...(unbasedLive ? [] : [{ title: "Drawdown (%)", height: 80, zero: true, digits: 1, series: [{ name: "drawdown", points: P.map((p) => ({ t: p.t, v: -p.ddPct })), color: "var(--v-down)", fill: true }] }]),
-      { title: "Margin used ($)", height: 90, zero: true, series: [{ name: "margin", points: s("margin"), fill: true }] },
+      ...(unbasedLive
+        ? []
+        : [
+            {
+              title: "Drawdown (%)",
+              height: 80,
+              zero: true,
+              digits: 1,
+              series: [
+                {
+                  name: "drawdown",
+                  points: P.map((p) => ({ t: p.t, v: -p.ddPct })),
+                  color: "var(--v-down)",
+                  fill: true,
+                },
+              ],
+            },
+          ]),
+      {
+        title: "Margin used ($)",
+        height: 90,
+        zero: true,
+        series: [{ name: "margin", points: s("margin"), fill: true }],
+      },
       {
         title: "Open book",
         height: 110,
@@ -373,15 +494,25 @@ export function StatisticsPage() {
   const T = r.total;
   const tl = r.timeline;
   const typeParts = (r.types as Row[]).map((x) => ({ label: x.key, value: x.n }));
-  const hourBars = (r.hourOfDay as Row[]).map((x) => ({ k: x.key, v: x.usd, tip: `${x.key}:00 UTC · ${x.n} orders · return PF ${returnPfText(x)} · ${fmt.usd(x.usd)}` }));
-  const dailyBars = (r.daily as Row[]).map((x) => ({ k: x.key.slice(5), v: x.usd, tip: `${x.key} · ${x.n} orders · return PF ${returnPfText(x)} · ${fmt.usd(x.usd)}` }));
+  const hourBars = (r.hourOfDay as Row[]).map((x) => ({
+    k: x.key,
+    v: x.usd,
+    tip: `${x.key}:00 UTC · ${x.n} orders · return PF ${returnPfText(x)} · ${fmt.usd(x.usd)}`,
+  }));
+  const dailyBars = (r.daily as Row[]).map((x) => ({
+    k: x.key.slice(5),
+    v: x.usd,
+    tip: `${x.key} · ${x.n} orders · return PF ${returnPfText(x)} · ${fmt.usd(x.usd)}`,
+  }));
   const heat = new Map<string, Any>((r.heat as Any[]).map((c) => [`${c.d}|${c.h}`, c]));
   // full colour at the largest |net| of a cell
   const heatSpan = Math.max(1e-9, ...(r.heat as Any[]).map((c) => Math.abs(c.net)));
   const balanceNote =
     d.balanceFrom === "account equity"
       ? "reconstructed from current account equity; external funding and other activity are not reconciled"
-      : unbasedLive ? "account balance baseline unavailable; ledger net change only" : "";
+      : unbasedLive
+        ? "account balance baseline unavailable; ledger net change only"
+        : "";
   return (
     <>
       <ErrorNote error={error} />
@@ -392,53 +523,162 @@ export function StatisticsPage() {
       >
         <div className="v2-grid v2-cols-6">
           <Kpi
-            label={unbasedLive ? "Ledger net (window)" : r.source === "live" ? "Ledger balance (reconstructed)" : "Closed-trade balance"}
+            label={
+              unbasedLive
+                ? "Ledger net (window)"
+                : r.source === "live"
+                  ? "Ledger balance (reconstructed)"
+                  : "Closed-trade balance"
+            }
             value={fmt.usd(unbasedLive ? T.usd : T.usdEnd)}
-            sub={unbasedLive ? balanceNote : `${hours > 0 ? "window start" : "start"} ${fmt.usd(hours > 0 ? (r.balanceStart ?? r.balance0) : r.balance0)} · ${fmt.usd(T.usd)}${balanceNote ? ` · ${balanceNote}` : ""}`}
+            sub={
+              unbasedLive
+                ? balanceNote
+                : `${hours > 0 ? "window start" : "start"} ${fmt.usd(hours > 0 ? (r.balanceStart ?? r.balance0) : r.balance0)} · ${fmt.usd(T.usd)}${balanceNote ? ` · ${balanceNote}` : ""}`
+            }
             className={tone(T.usd)}
           />
-          <Kpi label={r.source === "live" ? "Ledger return PF" : r.source === "paper" ? "Owned paper return PF" : "Model return PF before allocation"} value={returnPfText(T)} sub={`${T.pfBasis === "unavailable" ? `unit-return evidence unavailable for ${fmt.num(T.unknownReturns)} closes · ` : ""}${r.source === "paper" ? "nominal paper cash PF" : "cash PF diagnostic"} ${cashPfText(T)} · ${r.source === "paper" ? "recorded WR" : "WR"} ${pct(T.wr)}`} className={pfTone(returnPf(T))} />
-          <Kpi label="Orders · positions" value={`${T.n} · ${T.positions}`} sub={`${r.source === "paper" ? "recorded: " : ""}${T.wins} won · ${T.losses} lost · ${fmt.pf(T.tph)}/h`} />
-          <Kpi label={unbasedLive ? "Ledger drawdown ($)" : "Equity drawdown"} value={unbasedLive ? fmt.usd(tl.maxDd) : `${tl.maxDdPct.toFixed(2)}%`} sub={unbasedLive ? `account drawdown % unavailable · under water ${fmt.h(tl.maxDdH)}` : `${fmt.usd(tl.maxDd)} · under water ${fmt.h(tl.maxDdH)}`} className={!unbasedLive && tl.maxDdPct > 20 ? "v2-down" : ""} />
+          <Kpi
+            label={
+              r.source === "live"
+                ? "Ledger return PF"
+                : r.source === "paper"
+                  ? "Owned paper return PF"
+                  : "Model return PF before allocation"
+            }
+            value={returnPfText(T)}
+            sub={`${T.pfBasis === "unavailable" ? `unit-return evidence unavailable for ${fmt.num(T.unknownReturns)} closes · ` : ""}${r.source === "paper" ? "nominal paper cash PF" : "cash PF diagnostic"} ${cashPfText(T)} · ${r.source === "paper" ? "recorded WR" : "WR"} ${pct(T.wr)}`}
+            className={pfTone(returnPf(T))}
+          />
+          <Kpi
+            label="Orders · positions"
+            value={`${T.n} · ${T.positions}`}
+            sub={`${r.source === "paper" ? "recorded: " : ""}${T.wins} won · ${T.losses} lost · ${fmt.pf(T.tph)}/h`}
+          />
+          <Kpi
+            label={unbasedLive ? "Ledger drawdown ($)" : "Equity drawdown"}
+            value={unbasedLive ? fmt.usd(tl.maxDd) : `${tl.maxDdPct.toFixed(2)}%`}
+            sub={
+              unbasedLive
+                ? `account drawdown % unavailable · under water ${fmt.h(tl.maxDdH)}`
+                : `${fmt.usd(tl.maxDd)} · under water ${fmt.h(tl.maxDdH)}`
+            }
+            className={!unbasedLive && tl.maxDdPct > 20 ? "v2-down" : ""}
+          />
           <Kpi label="DDT (closes)" value={fmt.h(T.ddt)} sub={`green hours ${pct(T.gh)}`} />
-          <Kpi label="Peak book" value={`${tl.positionsMax} pos`} sub={`${tl.ordersMax} orders · ${tl.setsMax} sets · margin ${fmt.usd(tl.marginMax)}`} />
+          <Kpi
+            label="Peak book"
+            value={`${tl.positionsMax} pos`}
+            sub={`${tl.ordersMax} orders · ${tl.setsMax} sets · margin ${fmt.usd(tl.marginMax)}`}
+          />
         </div>
-        {r.source === "sim" && <p className="v2-muted">Return PF uses settled post-Base accepted modeled records before account allocation. The reconstructed dollar book is a separate sizing calculation; this return sample does not establish funded paper or venue execution PF.</p>}
-        {r.source === "paper" && <p className="v2-muted">All {fmt.num(d.paperEvidence?.requested)} recorded closes remain in this window: {fmt.num(d.paperEvidence?.verifiedOwnership)} have matching positive measured paper allocation, {fmt.num(d.paperEvidence?.unknownOwnership)} lack verified ownership. Missing ownership or owned-book unit-return evidence makes the whole primary owned-paper PF unavailable; it never removes an old losing close. Recorded-unit PF (nominal diagnostic only): <b>{unitStatsPfText(d.paperEvidence?.recordedReturns)}</b>. Cash PF, dollar balances, net and curves throughout this report retain nominal paper history, which can differ from the held book; they do not measure owned-book cash performance. Paper evidence is not venue fills, and this aggregate cannot substitute for each exact lane's strict promotion window.</p>}
+        {r.source === "sim" && (
+          <p className="v2-muted">
+            Return PF uses settled post-Base accepted modeled records before account allocation. The
+            reconstructed dollar book is a separate sizing calculation; this return sample does not
+            establish funded paper or venue execution PF.
+          </p>
+        )}
+        {r.source === "paper" && (
+          <p className="v2-muted">
+            All {fmt.num(d.paperEvidence?.requested)} recorded closes remain in this window:{" "}
+            {fmt.num(d.paperEvidence?.verifiedOwnership)} have matching positive measured paper
+            allocation, {fmt.num(d.paperEvidence?.unknownOwnership)} lack verified ownership.
+            Missing ownership or owned-book unit-return evidence makes the whole primary owned-paper
+            PF unavailable; it never removes an old losing close. Recorded-unit PF (nominal
+            diagnostic only): <b>{unitStatsPfText(d.paperEvidence?.recordedReturns)}</b>. Cash PF,
+            dollar balances, net and curves throughout this report retain nominal paper history,
+            which can differ from the held book; they do not measure owned-book cash performance.
+            Paper evidence is not venue fills, and this aggregate cannot substitute for each exact
+            lane's strict promotion window.
+          </p>
+        )}
       </Panel>
       {r.source === "live" && (
-        <Panel title="Exchange account" sub={`${accountSource(d.account)}${d.account?.at ? ` · ${fmt.ago(d.account.at)}` : ""} · return PF above uses owned ledger net returns after costs; fees or fills may be estimated`}>
+        <Panel
+          title="Exchange account"
+          sub={`${accountSource(d.account)}${d.account?.at ? ` · ${fmt.ago(d.account.at)}` : ""} · return PF above uses owned ledger net returns after costs; fees or fills may be estimated`}
+        >
           <div className="v2-grid v2-cols-4">
             <Kpi label="Wallet balance" value={fmt.usd(d.account?.wallet)} />
-            <Kpi label="Account equity" value={fmt.usd(d.account?.equity)} sub={`available margin ${fmt.usd(d.account?.availableMargin)}`} />
-            <Kpi label="Open net" value={fmt.usd(d.account?.openNet)} className={tone(d.account?.openNet)} />
-            <Kpi label="Exchange realized" value={fmt.usd(d.account?.realized)} className={tone(d.account?.realized)} sub="account-reported total; exchange reporting period" />
+            <Kpi
+              label="Account equity"
+              value={fmt.usd(d.account?.equity)}
+              sub={`available margin ${fmt.usd(d.account?.availableMargin)}`}
+            />
+            <Kpi
+              label="Open net"
+              value={fmt.usd(d.account?.openNet)}
+              className={tone(d.account?.openNet)}
+            />
+            <Kpi
+              label="Exchange realized"
+              value={fmt.usd(d.account?.realized)}
+              className={tone(d.account?.realized)}
+              sub="account-reported total; exchange reporting period"
+            />
           </div>
         </Panel>
       )}
       {r.source === "live" && (
-        <Panel title="Owned execution close history" sub={`latest ${d.closes?.length ?? 0} of ${T.n} closes in this window · the same net returns used by ledger return PF; includes cost estimates when fills are unavailable`} flush>
+        <Panel
+          title="Owned execution close history"
+          sub={`latest ${d.closes?.length ?? 0} of ${T.n} closes in this window · the same net returns used by ledger return PF; includes cost estimates when fills are unavailable`}
+          flush
+        >
           {(d.closes ?? []).length ? (
             <div className="v2-table-wrap">
               <table className="v2-table">
-                <thead><tr><th>opened UTC</th><th>closed UTC</th><th>symbol</th><th>side</th><th className="num">entry</th><th className="num">matched notional $</th><th className="num">net return</th><th className="num">net P&L $</th><th>reason</th></tr></thead>
-                <tbody>{d.closes.map((x: Any, i: number) => (
-                  <tr key={`${x.sym}|${x.side}|${x.entryT}|${x.exitT}|${i}`}>
-                    <td>{fmt.time(x.entryT)}</td><td>{fmt.time(x.exitT)}</td><td>{x.sym}</td><td>{x.side > 0 ? "long" : "short"}</td>
-                    <td className="num">{fmt.num(x.entry, 4)}</td><td className="num">{fmt.usd(x.notional)}</td>
-                    <td className={`num ${tone(x.r)}`}>{fmt.frac(x.r)}</td><td className={`num ${tone(x.pnl)}`}>{fmt.usd(x.pnl)}</td><td>{x.reason}</td>
+                <thead>
+                  <tr>
+                    <th>opened UTC</th>
+                    <th>closed UTC</th>
+                    <th>symbol</th>
+                    <th>side</th>
+                    <th className="num">entry</th>
+                    <th className="num">matched notional $</th>
+                    <th className="num">net return</th>
+                    <th className="num">net P&L $</th>
+                    <th>reason</th>
                   </tr>
-                ))}</tbody>
+                </thead>
+                <tbody>
+                  {d.closes.map((x: Any, i: number) => (
+                    <tr key={`${x.sym}|${x.side}|${x.entryT}|${x.exitT}|${i}`}>
+                      <td>{fmt.time(x.entryT)}</td>
+                      <td>{fmt.time(x.exitT)}</td>
+                      <td>{x.sym}</td>
+                      <td>{x.side > 0 ? "long" : "short"}</td>
+                      <td className="num">{fmt.num(x.entry, 4)}</td>
+                      <td className="num">{fmt.usd(x.notional)}</td>
+                      <td className={`num ${tone(x.r)}`}>{fmt.frac(x.r)}</td>
+                      <td className={`num ${tone(x.pnl)}`}>{fmt.usd(x.pnl)}</td>
+                      <td>{x.reason}</td>
+                    </tr>
+                  ))}
+                </tbody>
               </table>
             </div>
-          ) : <Empty>No owned execution closes in this window.</Empty>}
+          ) : (
+            <Empty>No owned execution closes in this window.</Empty>
+          )}
         </Panel>
       )}
-      <Panel title={unbasedLive ? "Ledger P&L reconstruction" : "Closed-trade reconstruction"} sub={unbasedLive ? "Owned ledger net change from zero at the window start; no account balance or equity level is inferred. Mark to market and margin are modeled from closed trades." : "balance, mark to market, drawdown and margin reconstructed from closes; external funding and other activity are not reconciled; current open exchange positions appear in the account snapshot"}>
+      <Panel
+        title={unbasedLive ? "Ledger P&L reconstruction" : "Closed-trade reconstruction"}
+        sub={
+          unbasedLive
+            ? "Owned ledger net change from zero at the window start; no account balance or equity level is inferred. Mark to market and margin are modeled from closed trades."
+            : "balance, mark to market, drawdown and margin reconstructed from closes; external funding and other activity are not reconciled; current open exchange positions appear in the account snapshot"
+        }
+      >
         {multi && <MultiChart panels={multi} />}
       </Panel>
       <div className="v2-grid v2-cols-2">
-        <Panel title="Types" sub="Normal · Trailing · Axis · DCA · DCA Active · Signals">
+        <Panel
+          title="Types"
+          sub="Normal · Trailing · Historic Exit · Axis · DCA · DCA Active · Signals"
+        >
           <div style={{ display: "flex", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
             <ArcShare parts={typeParts} size={140} center={`${T.n}`} />
             <div style={{ flex: 1, minWidth: 260 }}>
@@ -446,7 +686,10 @@ export function StatisticsPage() {
             </div>
           </div>
         </Panel>
-        <Panel title="Sub-configs" sub="Block raised vs unit volume, Block Active level, DCA vs DCA Active, Axis">
+        <Panel
+          title="Sub-configs"
+          sub="Block raised vs unit volume, Block Active level, DCA vs DCA Active, Axis"
+        >
           {!r.detail.blockDetail && (
             <p className="v2-muted">
               {r.source === "live"
@@ -457,14 +700,23 @@ export function StatisticsPage() {
           <GroupTable rows={r.subTypes} label="sub-config" source={r.source} />
         </Panel>
       </div>
-      <Panel title="With and without" sub="the execution presets computed on the same tapes: each sub-strategy on vs off (PF, net, drawdown time)">
+      <Panel
+        title="With and without"
+        sub="the execution presets computed on the same tapes: each sub-strategy on vs off (PF, net, drawdown time)"
+      >
         <WithWithout rows={r.withWithout} presets={r.presets} />
       </Panel>
       <div className="v2-grid v2-cols-2">
-        <Panel title="Ranges" sub="Normal / Trailing groups: Micro · Minimal · Minimal plus · Short · General · Long · Wide">
+        <Panel
+          title="Ranges"
+          sub="Normal / Trailing groups: Micro · Minimal · Minimal plus · Short · General · Long · Wide"
+        >
           <GroupTable rows={r.ranges} label="range" source={r.source} />
         </Panel>
-        <Panel title="Strategy groups" sub="Signals and Historic Exit are evaluated independently of Normal / Trailing ranges">
+        <Panel
+          title="Strategy groups"
+          sub="Signals and Historic Exit are evaluated independently of Normal / Trailing ranges"
+        >
           <GroupTable rows={r.strategyGroups} label="strategy group" source={r.source} />
         </Panel>
         <Panel title="Timeframe lanes">
@@ -487,7 +739,10 @@ export function StatisticsPage() {
           <SignedBars data={dailyBars} />
         </Panel>
       </div>
-      <Panel title="Weekday × hour" sub="net % of one unit, closes in that hour of that weekday (UTC)">
+      <Panel
+        title="Weekday × hour"
+        sub="net % of one unit, closes in that hour of that weekday (UTC)"
+      >
         <HeatGrid
           rows={WEEKDAYS}
           cols={Array.from({ length: 24 }, (_, h) => String(h).padStart(2, "0"))}
@@ -495,7 +750,9 @@ export function StatisticsPage() {
           span={heatSpan}
           cell={(row, col) => {
             const c = heat.get(`${WEEKDAYS.indexOf(row)}|${Number(col)}`);
-            return c ? { v: c.net, tip: `${row} ${col}:00 · ${c.n} closes · ${c.net.toFixed(2)}%` } : null;
+            return c
+              ? { v: c.net, tip: `${row} ${col}:00 · ${c.n} closes · ${c.net.toFixed(2)}%` }
+              : null;
           }}
         />
       </Panel>
@@ -510,7 +767,10 @@ export function StatisticsPage() {
         {r.configs.length > 0 && (
           <p className="v2-muted" style={{ marginTop: 6 }}>
             <Pill>{r.configCount ?? r.configs.length}</Pill> configs with closes in the window
-            {(r.configCount ?? r.configs.length) > r.configs.length ? ` · ${r.configs.length} listed (the best and the worst by $)` : ""}.
+            {(r.configCount ?? r.configs.length) > r.configs.length
+              ? ` · ${r.configs.length} listed (the best and the worst by $)`
+              : ""}
+            .
           </p>
         )}
       </Panel>

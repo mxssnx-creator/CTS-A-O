@@ -20,6 +20,8 @@ test("the standard core runner installs offline evidence before test imports and
         BINGX_X01_API_KEY: "fixture-only",
         CTS_CORE_LIVE: "1",
         CTS_CORE_TEST_CONCURRENCY: "1",
+        CTS_CORE_MEM_SOFT_MB: "2500",
+        CTS_CORE_MEM_HARD_MB: "1200",
       },
     });
   };
@@ -28,6 +30,7 @@ test("the standard core runner installs offline evidence before test imports and
       import assert from 'node:assert/strict'; import {test} from 'node:test'; import net from 'node:net';
       assert.equal(globalThis[Symbol.for('cts.core.offline.guard')].nonlocalTransportDenied,true);
       assert.equal(process.env.BINGX_X01_API_KEY,undefined); assert.equal(process.env.CTS_CORE_LIVE,'0');
+      assert.equal(process.env.CTS_CORE_MEM_SOFT_MB,'1'); assert.equal(process.env.CTS_CORE_MEM_HARD_MB,'1');
       test('guarded before imports',()=>assert.throws(()=>net.connect({host:'198.51.100.1',port:443}),{code:'CTS_OFFLINE_NETWORK_DENIED'}));
     `);
     assert.equal(pass.error, undefined);

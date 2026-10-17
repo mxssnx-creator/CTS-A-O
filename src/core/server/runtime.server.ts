@@ -253,6 +253,7 @@ import {
   emptyExitStrategyDiagnostics,
   exitHistoryFingerprint,
   exitStrategyPairs,
+  exitStrategyProtectsBoundedGen,
   exitStrategyProtectsGen,
   heldExitProtect,
   type ExitStrategyDiagnostics,
@@ -3459,7 +3460,7 @@ export class CoreRuntime {
             }
           }
           if (history === null) {
-            const g = exitStrategyProtectsGen(
+            const g = exitStrategyProtectsBoundedGen(
               uStage,
               exitPairs,
               s.exitStrategy,
@@ -3469,14 +3470,19 @@ export class CoreRuntime {
               exitDiagnostics,
             );
             let yields = 0;
-            history = await this.drive(
-              "Exit history",
-              g,
-              () => {
-                if (++yields % 64 === 0) this.setStage("Tapes", 0, 1, labelBase);
-              },
-              gen,
-            );
+            try {
+              history = await this.drive(
+                "Exit history",
+                g,
+                () => {
+                  if (++yields % 64 === 0) this.setStage("Tapes", 0, 1, labelBase);
+                },
+                gen,
+              );
+            } finally {
+              // drive can abandon a suspended generator on cancellation or memory pressure.
+              g.return({});
+            }
             Object.assign(exitProtects, history);
           }
           if (history !== null)
@@ -5702,11 +5708,32 @@ export class CoreRuntime {
       dca: s.dca,
     };
     const lookH = Math.max(wf.longH, wf.preH);
+    // Preserve Normal/Signal cohorts while separately supplying Exit's causal fit/holdout and native lane warmup.
+    // lookback=0 retains each lane's configured history; positive lookbacks extend only lanes needing more history.
+    const exitLaneDays =
+      (s.exitStrategy.lookbackH + 24 + (tacticWarmupBars(s.tactics) * s.tfMin) / 60) / 24;
+    const exitLaneSettings =
+      s.exitStrategy.enabled && s.exitStrategy.lookbackH > 0
+        ? {
+            ...s,
+            tfDays: Object.fromEntries(
+              s.tfs.map((tf) => [
+                String(tf),
+                Math.max(s.tfDays[String(tf)] ?? s.historyDays, exitLaneDays),
+              ]),
+            ),
+          }
+        : s;
+    const exitHistoryH =
+      Math.max(...s.tfs.map((tf) => exitLaneSettings.tfDays[String(tf)] ?? s.historyDays)) * 24;
     const endT = Math.floor(Date.now() / H) * H;
     const startT = endT - days * 24 * H;
     // history: warm-up day + long window + tactics warm-up + the backtest days
-    const wantBars =
+    const ordinaryWantBars =
       Math.ceil(((24 + lookH + days * 24) * 60) / s.tfMin) + tacticWarmupBars(s.tactics) + 10;
+    const wantBars = s.exitStrategy.enabled
+      ? Math.max(ordinaryWantBars, Math.ceil(((exitHistoryH + days * 24) * 60) / s.tfMin) + 10)
+      : ordinaryWantBars;
     let candles: Map<string, CandleSeries>;
     // the engine's own data only when the preset trades the same universe (count, ranking, timeframe)
     const sameUniverse =
@@ -5811,10 +5838,16 @@ export class CoreRuntime {
     }
     this.checkBacktest(job);
     // every lane over its own history before the backtest window plus the window itself
-    const bars = laneSeriesFrom(candles, s, days).map((b) =>
-      tailBars(b, Math.ceil((wantBars * s.tfMin) / b.tfMin)),
+    // CandleSeries.tail is a zero-copy view. The ordinary source keeps exactly its original fetch span, including
+    // the first partial resampling bucket, even when Exit needed additional older candles.
+    const ordinaryCandles = s.exitStrategy.enabled
+      ? new Map([...candles].map(([sym, cs]) => [sym, cs.tail(ordinaryWantBars)]))
+      : candles;
+    const bars = laneSeriesFrom(ordinaryCandles, s, days).map((b) =>
+      tailBars(b, Math.ceil((ordinaryWantBars * s.tfMin) / b.tfMin)),
     );
     const u = makeUniverse(bars);
+    let simulationUniverse = u;
     // Base on the window BEFORE the backtest (causal), unless a fixed focus set is traded
     job.stage = "Base";
     let main: Set<string>;
@@ -5888,6 +5921,174 @@ export class CoreRuntime {
         (x) => (job.progress = 0.6 + (0.3 * x.done) / Math.max(1, x.total)),
         job,
       );
+    // Historic Exit qualifies independently of Base/range admission, as on the continuous runtime. Fit before the
+    // simulated window, then build only those exact Exit configs on a dedicated, range-free tape path.
+    if (s.exitStrategy.enabled) {
+      const exitU = makeUniverse(laneSeriesFrom(candles, exitLaneSettings, days));
+      // A sparse ordinary market must not erase a separately initialized Exit market's timestamps.
+      // Otherwise retain ordinary metadata so adding Exit never changes another strategy's simulation window.
+      if (!u.bars.length && exitU.bars.length) simulationUniverse = exitU;
+      const exitPairs = exitStrategyPairs(allCombos(baseFocus(s), s.disabledKinds, s.tfs), exitU);
+      const validation: ExitStrategyValidation = {
+        cost: s.cost,
+        minPf: s.exitStrategy.minPf,
+        minTrades: s.exitStrategy.minValidationTrades,
+        maxDdr: s.exitStrategy.maxDdr,
+        minSl: s.protectFloor.minSl,
+        minTrail: s.protectFloor.minTrail,
+      };
+      let exitProtects: Record<string, Protect[]> = {};
+      let sharedExitBars: Bars[] | null = null;
+      const sharedBars = () => (sharedExitBars ??= shareBars(exitU.series));
+      const clearMemos = () => {
+        for (const cache of exitU.caches) cache.clear();
+      };
+      try {
+        if (exitPairs.length) {
+          job.stage = "Exit history";
+          const parts = slices(exitPairs, Math.ceil(exitPairs.length / EXIT_HISTORY_MAX_PAIRS));
+          const viaWorkers = await this.onWorkers(job, "Exit history", async (cores, signal) => {
+            const n = Math.min(cores, parts.length, 8);
+            job.stage = `Exit history · ${n} cores`;
+            const replies = await runOnWorkers<import("./pool.server.ts").ExitStrategyReply>(
+              parts.map((pairs) => ({
+                type: "exit-hist",
+                bars: sharedBars(),
+                pairs,
+                settings: s.exitStrategy,
+                tactics: s.tactics,
+                cutT: startT,
+                validation,
+              })),
+              n,
+              15 * 60_000,
+              undefined,
+              true,
+              signal,
+            );
+            this.checkBacktest(job);
+            const fitted: Record<string, Protect[]> = {};
+            replies.forEach((reply, i) => {
+              const own = new Set(parts[i]);
+              if (
+                !reply?.pairProtects ||
+                typeof reply.pairProtects !== "object" ||
+                Array.isArray(reply.pairProtects) ||
+                Object.entries(reply.pairProtects).some(
+                  ([pair, protects]) => !own.has(pair) || !Array.isArray(protects),
+                )
+              )
+                throw new Error("unexpected preset Exit history worker reply");
+              Object.assign(fitted, reply.pairProtects);
+            });
+            exitProtects = fitted;
+          });
+          if (!viaWorkers) {
+            job.stage = "Exit history";
+            for (const pairs of parts) {
+              this.checkBacktest(job);
+              try {
+                Object.assign(
+                  exitProtects,
+                  await this.sliced(
+                    exitStrategyProtectsGen(
+                      exitU,
+                      pairs,
+                      s.exitStrategy,
+                      s.tactics,
+                      startT,
+                      validation,
+                    ),
+                    () => undefined,
+                    job,
+                  ),
+                );
+              } finally {
+                clearMemos();
+              }
+            }
+          }
+          this.checkBacktest(job);
+          const qualified = exitPairs.filter((pair) => exitProtects[pair]?.length);
+          if (qualified.length) {
+            job.stage = "Exit tapes";
+            const tapeParts = slices(qualified, Math.ceil(qualified.length / 2));
+            const exitFloors = {
+              minSl: validation.minSl,
+              minTrail: validation.minTrail,
+              pairProtects: exitProtects,
+            };
+            let exitTapes: ConfigTape[] = [];
+            const builtOnWorkers = await this.onWorkers(
+              job,
+              "Exit tapes",
+              async (cores, signal) => {
+                const n = Math.min(cores, tapeParts.length, 8);
+                job.stage = `Exit tapes · ${n} cores`;
+                const ownFloors = floorsForPairs(exitFloors);
+                const replies = await runOnWorkers<{ tapes: ConfigTape[] }>(
+                  tapeParts.map((pairs) => ({
+                    type: "tapes",
+                    bars: sharedBars(),
+                    pairs,
+                    protects: [],
+                    cost: s.cost,
+                    tactics: s.tactics,
+                    adjust,
+                    floors: ownFloors(pairs),
+                  })),
+                  n,
+                  15 * 60_000,
+                  undefined,
+                  true,
+                  signal,
+                );
+                this.checkBacktest(job);
+                exitTapes = replies.flatMap((reply) => reply.tapes);
+              },
+            );
+            if (!builtOnWorkers) {
+              job.stage = "Exit tapes";
+              for (const pairs of tapeParts) {
+                this.checkBacktest(job);
+                try {
+                  exitTapes.push(
+                    ...(await this.sliced(
+                      buildTapesGen(
+                        exitU,
+                        [],
+                        s.cost,
+                        undefined,
+                        new Set(pairs),
+                        s.tactics,
+                        adjust,
+                        floorsForPairs(exitFloors)(pairs),
+                      ),
+                      () => undefined,
+                      job,
+                    )),
+                  );
+                } finally {
+                  clearMemos();
+                }
+              }
+            }
+            this.checkBacktest(job);
+            const ids = new Set<string>();
+            for (const tape of exitTapes) {
+              if (tape.kind !== "exit" || ids.has(tape.id))
+                throw new Error("invalid or duplicate preset Exit tape");
+              ids.add(tape.id);
+            }
+            tapes = tapes.concat(exitTapes);
+          }
+        }
+      } finally {
+        // Cancellation cannot retain historical indicator arrays or continue into a local fallback/publication.
+        clearMemos();
+        sharedExitBars = null;
+      }
+    }
     // Signals: scored on the window before the backtest, the best N trade their 15 Normal + 15 Trailing configs
     const sig = signalSettings(s.signals);
     const sigCombos = signalCombos(sig, s.tfs);
@@ -5949,7 +6150,7 @@ export class CoreRuntime {
     this.checkBacktest(job);
     job.stage = "Simulation";
     const sim = await this.sliced(
-      walkForwardGen(u, tapes, {
+      walkForwardGen(simulationUniverse, tapes, {
         ...wf,
         startT,
         simH: days * 24,
@@ -5982,7 +6183,7 @@ export class CoreRuntime {
       days,
       at: Date.now(),
       from: startT,
-      to: Math.min(endT, u.nowT),
+      to: Math.min(endT, simulationUniverse.nowT),
       tfMin: s.tfMin,
       pf: knownBasis ? st.pf : null,
       pfBasis: st.pfBasis,
@@ -6031,7 +6232,7 @@ export class CoreRuntime {
     // the diagrams over the window (balance, equity, drawdown, open book, P&L per type) and the info line
     // (positions per hour, PF of the last 12 / 25 / 75 positions, DDT), cached per preset
     try {
-      const to = Math.min(endT, u.nowT);
+      const to = Math.min(endT, simulationUniverse.nowT);
       const series = backtestSeries(sim.trades, candles, s, startT, to, days);
       this.checkBacktestRevision(job);
       this.setPresetSeries(p.id, series);

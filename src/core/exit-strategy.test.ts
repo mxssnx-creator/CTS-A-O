@@ -4,14 +4,17 @@ import { DEFAULT_SETTINGS, DEFAULT_TOGGLES } from "./config.ts";
 import { checkSettings } from "./settings-check.ts";
 import {
   capExitCandidates,
+  EXIT_HISTORY_MAX_PAIRS,
   emptyExitStrategyDiagnostics,
   exitHistoryFingerprint,
   exitProtectCandidates,
   exitStrategyPairs,
+  exitStrategyProtectsBoundedGen,
   exitStrategyProtectsGen,
   heldExitProtect,
 } from "./exit-strategy.ts";
 import { barsFromCandles, syntheticCandles } from "./market/bars.ts";
+import { INDICATIONS } from "./indications/registry.ts";
 import {
   makeUniverse,
   configId,
@@ -449,6 +452,126 @@ describe("independent historic exit strategy", () => {
     } finally {
       rt.stop();
     }
+  });
+
+  it("bounds local Exit cache lifetime by chunk without changing configs, diagnostics or cancellation", () => {
+    const bars = barsFromCandles(
+      "A-USDT",
+      15,
+      syntheticCandles("A-USDT", 15, 900, Date.UTC(2026, 8, 1), 42),
+    );
+    const pairs = INDICATIONS.filter((x) => !x.id.startsWith("sig-"))
+      .slice(0, EXIT_HISTORY_MAX_PAIRS + 1)
+      .map((x) => `follow|${x.id}@m15`);
+    assert.equal(pairs.length, EXIT_HISTORY_MAX_PAIRS + 1);
+    const settings = {
+      ...DEFAULT_SETTINGS.exitStrategy,
+      lookbackH: 72,
+      minEntries: 2,
+      minValidationTrades: 2,
+      minPf: 1.05,
+      maxDdr: 0,
+      holdH: 1,
+      maxConfigsPerPair: 6,
+    };
+    const validation = { cost: 0.002, minPf: 1.05, minTrades: 2, minSl: 0, minTrail: 0 };
+    const memos = (u: ReturnType<typeof makeUniverse>) =>
+      u.caches.reduce(
+        (n, cache) => n + (cache as unknown as { m: Map<string, unknown> }).m.size,
+        0,
+      );
+    const originalU = makeUniverse([bars]);
+    const originalDiagnostics = emptyExitStrategyDiagnostics();
+    const original = finish(
+      exitStrategyProtectsGen(
+        originalU,
+        pairs,
+        settings,
+        null,
+        originalU.nowT,
+        validation,
+        originalDiagnostics,
+      ),
+    );
+    const boundedU = makeUniverse([bars]);
+    const boundedDiagnostics = emptyExitStrategyDiagnostics();
+    const clears: number[] = [];
+    const clear = boundedU.caches[0].clear.bind(boundedU.caches[0]);
+    boundedU.caches[0].clear = () => {
+      clears.push(memos(boundedU));
+      clear();
+    };
+    const bounded = finish(
+      exitStrategyProtectsBoundedGen(
+        boundedU,
+        pairs,
+        settings,
+        null,
+        boundedU.nowT,
+        validation,
+        boundedDiagnostics,
+      ),
+    );
+    assert.deepEqual(
+      bounded,
+      original,
+      "clearing indicator caches cannot change fitted/qualified configs",
+    );
+    assert.deepEqual(boundedDiagnostics, originalDiagnostics);
+    assert.ok(boundedDiagnostics.evaluated > 0, "the comparison includes candidate simulations");
+    assert.equal(clears.length, 2, "seventeen pairs release at sixteen and at the final pair");
+    assert.ok(
+      clears.every((n) => n > 0),
+      "each release actually frees populated indicator caches",
+    );
+    assert.equal(memos(boundedU), 0);
+    for (const cancel of ["return", "throw"] as const) {
+      const u = makeUniverse([bars]);
+      const g = exitStrategyProtectsBoundedGen(u, pairs, settings, null, u.nowT, validation);
+      for (let i = 0; i < 100 && memos(u) === 0; i++) assert.equal(g.next().done, false);
+      assert.ok(memos(u) > 0, "cancellation interrupts a populated chunk");
+      if (cancel === "return") g.return({});
+      else assert.throws(() => g.throw(new Error("cancel Exit fit")), /cancel Exit fit/);
+      assert.equal(memos(u), 0, `${cancel} releases the suspended chunk immediately`);
+      assert.equal(g.next().done, true, "canceled fitting cannot start another pair");
+    }
+  });
+
+  it("fingerprints the exact pair inventory while ignoring pair ordering and duplicates", () => {
+    const u = makeUniverse([
+      barsFromCandles("A-USDT", 15, syntheticCandles("A-USDT", 15, 200, Date.UTC(2026, 8, 1), 42)),
+    ]);
+    const follow = "follow|ema-9-21@m15";
+    const revert = "revert|ema-9-21@m15";
+    const otherInd = "follow|rsi-mom-14-20@m15";
+    const fingerprint = (pairs: Iterable<string>) => exitHistoryFingerprint(u, pairs, u.nowT);
+    assert.notEqual(fingerprint([follow]), fingerprint([revert]), "same candles, different bot");
+    assert.notEqual(
+      fingerprint([follow]),
+      fingerprint([otherInd]),
+      "same candles, different indication",
+    );
+    assert.notEqual(
+      fingerprint([follow]),
+      fingerprint([follow, revert]),
+      "newly enabled pairs invalidate the cache",
+    );
+    assert.notEqual(
+      fingerprint([follow, revert]),
+      fingerprint([revert]),
+      "disabled pairs invalidate the cache",
+    );
+    assert.equal(fingerprint([follow, revert]), fingerprint([revert, follow, revert, follow]));
+    assert.equal(
+      fingerprint([follow, revert]),
+      fingerprint(
+        (function* () {
+          yield revert;
+          yield follow;
+        })(),
+      ),
+      "a single-use iterable retains both pair identities and their candle series",
+    );
   });
 
   it("fits candidates only before the causal cut and validates each side on later closes", () => {

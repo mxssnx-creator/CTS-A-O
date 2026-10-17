@@ -52,6 +52,10 @@ export function coreTestInvocation(argv = [], sourceEnv = process.env, root = RO
     CTS_CORE_COMPARE: "0",
     CTS_CORE_LIVE: "0",
     CTS_CORE_SLOW: slow ? "1" : "0",
+    // Synthetic correctness fixtures inject memory pressure explicitly. Shared host workloads must not choose
+    // their fallback level or start an unrelated backoff; production guard thresholds remain unchanged.
+    CTS_CORE_MEM_SOFT_MB: "1",
+    CTS_CORE_MEM_HARD_MB: "1",
     NODE_OPTIONS: `--require ${JSON.stringify(guard)}${sourceEnv.NODE_OPTIONS ? ` ${sourceEnv.NODE_OPTIONS}` : ""}`,
   });
   return {

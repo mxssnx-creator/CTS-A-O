@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { CoreRuntime as BaseRuntime } from "./runtime.server.ts";
 import { trackRuntimes } from "../test-support.ts";
 import { CoreDb } from "./db.server.ts";
-import { MEM_FALLBACK_MAX } from "./memguard.server.ts";
+import { MEM_FALLBACK_MAX, memSoftMb, memHardMb } from "./memguard.server.ts";
 import { abortWorkers, closePool, runOnWorkers, workersAvailable } from "./pool.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import { MICRO_RANGE } from "../minimal-coord.ts";
@@ -25,8 +25,14 @@ class CoreRuntime extends BaseRuntime {
 }
 afterEach(() => tracked.disposeAll());
 
+// Guard lifecycle checks need a real compute, not the whole indication/config catalog. The explicit Micro
+// fallback case below supplies its own range grid and retains its Micro/Minimal assertions.
 const small = {
-  symbols: 3,
+  symbols: 1,
+  focus: ["follow|ema-21-55"],
+  pinned: [],
+  signals: { enabled: false },
+  exitStrategy: { enabled: false },
   historyDays: 6,
   tfDays: { "1": 2, "5": 3, "15": 6, "30": 6 },
   mainTop: 8,
@@ -46,12 +52,19 @@ const until = async (cond: () => boolean, ms = 120_000) => {
     await sleep(20);
   }
 };
+// Restore the runner's synthetic baseline after injected pressure, including the momentary-hard recovery.
+// Deleting it restored ambient production thresholds and let unrelated host workloads block these fixtures.
+const baselineSoft = process.env.CTS_CORE_MEM_SOFT_MB;
+const baselineHard = process.env.CTS_CORE_MEM_HARD_MB;
+function thresholds(soft: string | undefined, hard: string | undefined) {
+  if (soft === undefined) delete process.env.CTS_CORE_MEM_SOFT_MB;
+  else process.env.CTS_CORE_MEM_SOFT_MB = soft;
+  if (hard === undefined) delete process.env.CTS_CORE_MEM_HARD_MB;
+  else process.env.CTS_CORE_MEM_HARD_MB = hard;
+}
 /** memory levels from the thresholds (the host's reading is cached for a second) */
 async function pressure(soft: number | null, hard: number | null) {
-  if (soft === null) delete process.env.CTS_CORE_MEM_SOFT_MB;
-  else process.env.CTS_CORE_MEM_SOFT_MB = String(soft);
-  if (hard === null) delete process.env.CTS_CORE_MEM_HARD_MB;
-  else process.env.CTS_CORE_MEM_HARD_MB = String(hard);
+  thresholds(soft === null ? baselineSoft : String(soft), hard === null ? baselineHard : String(hard));
   await sleep(1100);
 }
 type Inner = {
@@ -64,6 +77,18 @@ type Inner = {
 };
 
 describe("memory guard in the runtime", { timeout: 300_000 }, () => {
+  it("retains production default thresholds independently of the synthetic runner baseline", () => {
+    const soft = process.env.CTS_CORE_MEM_SOFT_MB;
+    const hard = process.env.CTS_CORE_MEM_HARD_MB;
+    try {
+      thresholds(undefined, undefined);
+      assert.equal(memSoftMb(), 2500);
+      assert.equal(memHardMb(), 1200);
+    } finally {
+      thresholds(soft, hard);
+    }
+  });
+
   it("soft pressure collects at most once per 30 s (not on every one-second tick)", async () => {
     const g = globalThis as { gc?: () => void };
     const prev = g.gc;
@@ -137,8 +162,7 @@ describe("memory guard in the runtime", { timeout: 300_000 }, () => {
       rt.start();
       await until(() => rt.memFallback >= 1, 60_000);
       // the dip is over (the host's reading is cached for a second: the cycles meanwhile see the same reading)
-      delete process.env.CTS_CORE_MEM_SOFT_MB;
-      delete process.env.CTS_CORE_MEM_HARD_MB;
+      thresholds(baselineSoft, baselineHard);
       await until(() => rt.status.computes >= 1, 240_000);
       assert.equal(rt.status.mem?.computeLevel, 1, "computed one level lighter, not two");
     } finally {

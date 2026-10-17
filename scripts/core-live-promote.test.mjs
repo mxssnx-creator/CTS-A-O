@@ -45,9 +45,17 @@ function fixture() {
   const run = (args = []) => {
     const childEnv = { ...process.env, CTS_CORE_LIVE: "0", CTS_CORE_WORKERS: "0", CTS_CORE_COMPARE: "0" };
     for (const name of Object.keys(childEnv)) if (/^(BINGX|BINANCE|BYBIT|OKX)/i.test(name) || name === "NODE_OPTIONS") delete childEnv[name];
-    return spawnSync(process.execPath, ["--require", guard, "--max-old-space-size=256", "--experimental-strip-types", "--no-warnings", script,
+    // Cold TypeScript imports share CPU/memory with the other offline test processes. Bound bootstrap separately
+    // from the promotion evidence checks below; a killed bootstrap is never accepted as a fail-closed result.
+    const result = spawnSync(process.execPath, ["--require", guard, "--max-old-space-size=256", "--experimental-strip-types", "--no-warnings", script,
       "--ref-db", dbPath, "--patch", patchPath, "--state", statePath, ...args],
-    { env: childEnv, encoding: "utf8", timeout: 10_000 });
+    { env: childEnv, encoding: "utf8", timeout: 30_000 });
+    const diagnostics = JSON.stringify({ args, status: result.status, signal: result.signal,
+      error: result.error && { code: result.error.code, message: result.error.message },
+      stdout: result.stdout, stderr: result.stderr });
+    assert.equal(result.error, undefined, `promotion CLI failed to start or finish: ${diagnostics}`);
+    assert.equal(result.signal, null, `promotion CLI was terminated: ${diagnostics}`);
+    return result;
   };
   const proofArgs = ["--evidence", evidencePath, "--reference-id", evidence.referenceId];
   return { dir, dbPath, patchPath, statePath, evidencePath, evidence, run, proofArgs,
