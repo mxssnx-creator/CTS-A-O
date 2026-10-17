@@ -166,6 +166,7 @@ describe("session reports: return PF primary, simulated provenance", () => {
     assert.match(md, /additional per-config entry last-N check is off \(wf\.lastN = 0\)/);
     assert.match(md, /Config-evaluation history is 1 h \(max of longH and preH\)/);
     assert.match(md, /Replay-only selection-window override: 1 h; it does not change normal runtime settings/);
+    assert.match(md, /normal runtime settings\. The additional per-config entry last-N check/);
     assert.match(md, /Replay-only minimum green-hour fraction for config selection: 100% of the selection window/);
     assert.match(md, /Causal simulated post-Base execution-PF gate: last 25 closes per config/);
     assert.doesNotMatch(md, /Native liveLastN is not replayed/);

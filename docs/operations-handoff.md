@@ -43,6 +43,16 @@ as GitHub commit `de6a1acb3917ef8739b034ac11329f535f067dcb` on
 `fix-base-range-report-20261017`; GitHub verified the published branch. No
 deployment or live trading change was made.
 
+## Matched Block ratio check — 17 October
+
+The paired six-hour systemwide replay is recorded in
+[the Block ratio comparison](simulations/systemwide-block-ratio-comparison-20261017.md),
+with complete hourly and range/lane/type reports for both runs. On the same
+nine-symbol feed and gates, ratio 0.2 improved Return PF 2.83→2.86, sized cash
+PF 0.66→0.74, funded orders 3,711→3,759, net −$0.21→−$0.14 and max equity
+drawdown 7.72%→6.64%. The same 02:00 hour remained negative, so neither result
+qualifies as consistently profitable and no live default was promoted.
+
 ## Relate indication and Micro verification
 
 Implementation branch: `feat/relate-indication-20261016`. Remote safety
