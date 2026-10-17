@@ -1,6 +1,6 @@
 # Signals Coordination expanded offline replay
 
-Run: 2026-10-17T01:48:37.970Z. Retrospective offline simulation on the same frozen candle cache as the 2026-10-17 baseline; it is not a forward or live-account result.
+Run: 2026-10-17T01:52:30.449Z. Retrospective offline simulation on the same frozen candle cache as the 2026-10-17 baseline; it is not a forward or live-account result.
 
 ## Scope
 

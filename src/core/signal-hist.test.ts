@@ -104,6 +104,21 @@ describe("signal historic trailing configs", () => {
     assert.ok(configs.length > 0, "permissive Short floor admits calculated historic configs");
     assert.ok(configs.every((protect) => protect.tag === "sh"));
     assert.equal(diagnostics.qualified, configs.length);
+
+    const disabledDiagnostics = emptySignalHistDiagnostics();
+    const disabledGen = signalHistProtectsGen(
+      u,
+      [pair],
+      sig,
+      DEFAULT_TACTICS,
+      u.nowT,
+      { cost: 0.002, minPf: 0, minTrades: 1, maxDdr: 1000, rangeMinPf: {} },
+      disabledDiagnostics,
+    );
+    let disabledResult = disabledGen.next();
+    while (!disabledResult.done) disabledResult = disabledGen.next();
+    assert.deepEqual(disabledResult.value[pair] ?? [], [], "disabled coordinator ranges never fall back to untagged configs");
+    assert.equal(disabledDiagnostics.qualified, 0);
   });
 
   it("the MFE of each entry: from the next bar's open over the hold, long on highs, short on lows (hand-computed)", () => {
