@@ -250,6 +250,8 @@ const CASES: Record<string, Case> = {
   "live.ratio": num(0.1, 500),
   // 0 = no per-position cap
   "live.maxNotionalUsd": num(1, 5000, { also: [0] }),
+  "live.maxPositionX": num(0, 50),
+  "live.maxExposureX": num(0, 500),
   "live.rebalancePct": num(0, 1),
   "live.marginMode": oneOf(["cross", "isolated"]),
   "live.positionMode": oneOf(["hedge", "oneway"]),
@@ -259,6 +261,8 @@ const CASES: Record<string, Case> = {
   // 0 = no cap; else 10 … 2000 in steps of 10
   "signals.count": num(10, 2000, { int: true, also: [0, 100], bad: [15] }),
   "signals.sourcesMode": oneOf(["deny", "allow"]),
+  "signals.rangeVolumeFactors.short": volumeFactor,
+  "signals.rangeVolumeFactors.medium": volumeFactor,
   "signals.lanes": oneOf([[15], [1, 5, 15, 30]], [[], [2], [60]]),
   "signals.normal.tp": list(0.002, 0.2, { max: 64 }),
   "signals.normal.slOfTp": list(0.2, 5, { max: 64 }),

@@ -502,7 +502,7 @@ describe("bug-hunt regressions", () => {
     old.kvSet("settings", { grid: { ...DEFAULT_SETTINGS.grid, micro: { ...DEFAULT_SETTINGS.grid.micro, tp: [...FORMER_MICRO_TP] } } });
     const a = new CoreRuntime(old, undefined, { market: "synthetic" });
     assert.deepEqual((a.settings.grid.micro as unknown as { tp: number[] }).tp, [...MICRO_TP]);
-    assert.equal(old.kvGet("wfCapsV"), 26);
+    assert.equal(old.kvGet("wfCapsV"), 28, "all migrations advance the record to the current schema");
     const mine = new CoreDb(":memory:");
     mine.kvSet("wfCapsV", 24);
     mine.kvSet("settings", { grid: { ...DEFAULT_SETTINGS.grid, micro: { ...DEFAULT_SETTINGS.grid.micro, tp: [0.003] } } });
@@ -527,7 +527,7 @@ describe("bug-hunt regressions", () => {
     assert.deepEqual(a.settings.signals.normal, DEFAULT_SIGNALS.normal);
     assert.deepEqual(a.settings.signals.trailing, DEFAULT_SIGNALS.trailing);
     assert.equal(a.settings.signals.minTrail, DEFAULT_SIGNALS.minTrail);
-    assert.equal(old.kvGet("wfCapsV"), 26);
+    assert.equal(old.kvGet("wfCapsV"), 28, "the Signal migration also applies the current cap migration");
     const preset = old.kvGet<Array<{ settings: { signals: typeof former } }>>("presets")![0];
     assert.deepEqual(preset.settings.signals.normal, DEFAULT_SIGNALS.normal);
     assert.deepEqual(preset.settings.signals.trailing, DEFAULT_SIGNALS.trailing);

@@ -6640,7 +6640,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
 function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
   const saved = db.kvGet<Partial<WalkForwardOptions>>("wf") ?? {};
   const v = db.kvGet<number>("wfCapsV") ?? 0;
-  if (v >= 27) return saved;
+  if (v >= 28) return saved;
   // each step runs only for a database older than it: a choice made after a step is never overwritten
   const out = { ...saved };
   const st = db.kvGet<Partial<CoreSettings>>("settings");
@@ -6918,9 +6918,31 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
       if (changed) db.kvSet("presets", presets);
     }
   }
+  if (v < 28) {
+    // Replay-tested gross cap default: migrate the previous 0.25× / 2× factory pair to 0.25× / 0.75×.
+    // Explicit alternative cap pairs and disabled exposure scaling remain untouched.
+    const moveFormerCap = (settings: { live?: { maxPositionX?: number; maxExposureX?: number; exposureScaler?: boolean } } | undefined) => {
+      const live = settings?.live;
+      if (live?.exposureScaler !== false && live?.maxPositionX === 0.25 && live?.maxExposureX === 2)
+        live.maxExposureX = 0.75;
+    };
+    moveFormerCap(st);
+    const presets = db.kvGet<Preset[]>("presets");
+    if (Array.isArray(presets)) {
+      let changed = false;
+      for (const p of presets) {
+        const live = p.settings?.live;
+        if (live?.exposureScaler !== false && live?.maxPositionX === 0.25 && live?.maxExposureX === 2) {
+          live.maxExposureX = 0.75;
+          changed = true;
+        }
+      }
+      if (changed) db.kvSet("presets", presets);
+    }
+  }
   db.kvSet("wf", pickWf(out));
   if (st) db.kvSet("settings", st);
-  db.kvSet("wfCapsV", 27);
+  db.kvSet("wfCapsV", 28);
   return out;
 }
 

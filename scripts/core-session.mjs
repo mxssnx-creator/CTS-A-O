@@ -1204,7 +1204,7 @@ if (!capsSet(liveCaps)) {
 const caps = {
   on: capsOn,
   maxPositionX: capsOn ? capNum("maxPositionX", "max-position-x", 0.25) : 0,
-  maxExposureX: capsOn ? capNum("maxExposureX", "max-exposure-x", 2) : 0,
+  maxExposureX: capsOn ? capNum("maxExposureX", "max-exposure-x", 0.75) : 0,
   source: !capsOn
     ? "off (--caps off)"
     : arg("max-position-x") !== undefined || arg("max-exposure-x") !== undefined
@@ -1866,7 +1866,7 @@ function buildSizingReplay() {
     // the fixed per-position cap (positionCapOf): 0 = none, unset = 5 × the configured unit (none when unknown)
     maxNotionalUsd:
       L.maxNotionalUsd === 0 ? Infinity : num(L.maxNotionalUsd, L.notionalUsd > 0 ? L.notionalUsd * 5 : Infinity),
-    maxExposureX: L.exposureScaler === false ? 0 : num(L.maxExposureX, 2),
+    maxExposureX: L.exposureScaler === false ? 0 : num(L.maxExposureX, 0.75),
     maxRiskPct: num(L.maxRiskPct, 0.35),
     maxBackstopLossPct: num(L.maxBackstopLossPct, 0.5),
     top,

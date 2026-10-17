@@ -123,7 +123,7 @@ describe("session reports: return PF primary, simulated provenance", () => {
   it("uses the balance-relative live cap defaults when a saved settings object has no caps", () => {
     const { data } = replay({ caps: true, live: {} });
     assert.equal(data.total.caps.maxPositionX, 0.25);
-    assert.equal(data.total.caps.maxExposureX, 2);
+    assert.equal(data.total.caps.maxExposureX, 0.75);
     assert.match(data.total.caps.source, /x01 defaults/);
   });
 

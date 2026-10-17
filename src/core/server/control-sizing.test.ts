@@ -294,7 +294,7 @@ describe("control orders: increases, stop repair, ownership", () => {
     const { rt } = fakeRt(db);
     // exposure cap 2 USD: 10 USD at S0 scales to 0.2 units, and the venue's 0.5-unit minimum (5 USD) would take the
     // gross past the cap — rounded up it does not fit, so the target is dropped and reported, never sent
-    rt.settings.live = { ...rt.settings.live, maxExposureX: 0.2 };
+    rt.settings.live = { ...rt.settings.live, maxPositionX: 50, maxExposureX: 0.2 };
     rt.paper.positions = [lane("a", "S0-USDT", 1, 10, 1)];
     await step(rt, ex);
     assert.equal(ctl(rt).targets.find((t) => t.key === "S0-USDT|1"), undefined);
@@ -304,7 +304,7 @@ describe("control orders: increases, stop repair, ownership", () => {
       "the drop is reported with its reason",
     );
     // the same minimum fits a 5 USD cap (0.5 units): the venue minimum is sent as it is, never undercut
-    rt.settings.live = { ...rt.settings.live, maxExposureX: 0.5 };
+    rt.settings.live = { ...rt.settings.live, maxPositionX: 50, maxExposureX: 0.5 };
     await step(rt, ex);
     assert.equal(ctl(rt).targets.find((t) => t.key === "S0-USDT|1")?.qty, 0.5);
     assert.equal(ex.positions.get("S0-USDT|LONG"), 0.5);

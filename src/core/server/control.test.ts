@@ -1537,7 +1537,7 @@ describe("volume factor: sizes follow volume × factor up to the per-position ca
       rt.settings = {
         ...rt.settings,
         sizing: { mode: "minQty" as never, pct: 0.02 },
-        live: { ...rt.settings.live, ratio, maxNotionalUsd: 1e9, maxPositionX: 0.5 },
+        live: { ...rt.settings.live, ratio, maxNotionalUsd: 1e9, maxPositionX: 0.5, maxExposureX: 2 },
       };
       rt.paper.positions = [
         { cfg: "a", sym: "S1-USDT", side: 1, entry: 17, stop: 16, vol: 1 },

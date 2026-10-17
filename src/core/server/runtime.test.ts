@@ -1073,6 +1073,8 @@ describe("progress reporting", { timeout: 600_000 }, () => {
 describe("sizing default migration", () => {
   it("moves only the former defaults to balance-relative sizing and neutral range volume", () => {
     const legacySettings = structuredClone(DEFAULT_SETTINGS);
+    legacySettings.live.maxPositionX = 0.25;
+    legacySettings.live.maxExposureX = 2;
     legacySettings.sizing = { mode: "minQty", pct: 0.02 };
     if (!legacySettings.grid.micro) throw new Error("default Micro range missing");
     legacySettings.grid.micro.volumeFactor = 2.5;
@@ -1085,18 +1087,31 @@ describe("sizing default migration", () => {
     assert.equal(typeof rt.settings.grid.micro === "object" ? rt.settings.grid.micro.volumeFactor : undefined, 1);
     assert.equal(rt.wf.coord?.hedgeVolumeFactor, 1.6);
     assert.equal((rt.wf.coord as unknown as Record<string, unknown>)?.s2VolumeFactor, undefined);
-    assert.equal(db.kvGet<number>("wfCapsV"), 27);
+    assert.equal(db.kvGet<number>("wfCapsV"), 28);
 
     const customDb = new CoreDb(":memory:");
     customDb.kvSet("wfCapsV", 26);
     const customSettings = structuredClone(DEFAULT_SETTINGS);
+    customSettings.live.maxPositionX = 0.25;
+    customSettings.live.maxExposureX = 1.25;
     customSettings.sizing = { mode: "equityPct", pct: 0.004 };
     if (!customSettings.grid.micro) throw new Error("default Micro range missing");
     customSettings.grid.micro.volumeFactor = 2.8;
     customDb.kvSet("settings", customSettings);
     const custom = new CoreRuntime(customDb, undefined, { market: "synthetic" });
     assert.deepEqual(custom.settings.sizing, { mode: "equityPct", pct: 0.004 });
+    assert.equal(custom.settings.live.maxExposureX, 1.25);
     assert.equal(typeof custom.settings.grid.micro === "object" ? custom.settings.grid.micro.volumeFactor : undefined, 2.8);
+
+    const capDb = new CoreDb(":memory:");
+    capDb.kvSet("wfCapsV", 27);
+    const formerCapSettings = structuredClone(DEFAULT_SETTINGS);
+    formerCapSettings.live.maxPositionX = 0.25;
+    formerCapSettings.live.maxExposureX = 2;
+    capDb.kvSet("settings", formerCapSettings);
+    const upgradedCap = new CoreRuntime(capDb, undefined, { market: "synthetic" });
+    assert.equal(upgradedCap.settings.live.maxExposureX, 0.75, "v27 databases receive the new gross cap default");
+    assert.equal(capDb.kvGet<number>("wfCapsV"), 28);
   });
 });
 

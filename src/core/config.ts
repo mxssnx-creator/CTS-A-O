@@ -441,7 +441,7 @@ export interface LiveSettings {
   /**
    * account exposure factor: the positions' gross notional (long and short both counted) stays within this multiple
    * of the account equity — every target is scaled by the same factor, so the relations between positions stay
-   * (default 2; 0 / unset = off)
+   * (default 0.75; 0 / unset = off)
    */
   maxExposureX?: number;
   /**
@@ -614,7 +614,7 @@ export const DEFAULT_SETTINGS: CoreSettings = {
     ratio: 1,
     maxNotionalUsd: 200,
     maxPositionX: 0.25,
-    maxExposureX: 2,
+    maxExposureX: 0.75,
     rebalancePct: 0.25,
     marginMode: "cross",
     positionMode: "hedge",
