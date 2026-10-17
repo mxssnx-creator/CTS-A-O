@@ -1138,3 +1138,42 @@ The tracked encoded fixture reconstructs source-feed SHA-256
 Finish the hosted checks and complete both final22 cases before selecting any
 prospective exclusions. No merge, live deployment/reload or exclusion was
 performed; existing PF/sample and own-position protection gates remain.
+
+
+## Separate frozen market and indication verification scopes — 2026-10-17
+
+Keep these two source identities and hosted jobs separate when continuing:
+
+| Scope | Checkout / source | Hosted verification status at this checkpoint |
+|---|---|---|
+| Frozen 20/22-symbol market study | `CTS-A-O-study`, local HEAD `413cfe3643d76eda3afc7cef3a220e3238b27cd1`; calculation-source SHA-256 `bc7216bd7ab6000b7651a5d83054a16887854097a31847e7701b9a92754693f7` | [Run 39077361130](https://github.com/mxssnx-creator/CTS-A-O/actions/runs/39077361130), job `117527184101`: complete regular core audit still running; market scoring has not begun. |
+| Combined indication edge repairs | `CTS-A-O-verified`, branch `fix/indication-edge-cases-20261017`; source SHA-256 `e1b28d07657b104fb9710233e3141b51d4ee3bbb9265b6027a8e8787972cc890` | [Run 39078415117](https://github.com/mxssnx-creator/CTS-A-O/actions/runs/39078415117), job `117530252028`: install, TypeScript, development build and script checks passed; regular core audit running, slow checks pending. |
+
+The combined verification's tested code snapshot is local
+`6788c54f15e604c0c3fc4fd71d5a9864879f3cba`, tree
+`5390a488be3fe14631ad11d10160376ec8e95b64`, published as remote
+`6132c439b2de1cb57bbe2dfebee73d1d0cafbe5f`. Its subsequent documentation
+checkpoint is `9c0721f0f0d70c26ee8e434211cf6aa1318c70d3`. The prior-period
+gap correction from `1c12548` is cherry-picked as
+`f92ecedb6faf3e1ebea6136ff2b9877284bda3e6`; the volume-profile coverage and
+Supertrend entry-warmup repair from `c11a3691782071960cadd0febc1be41273142840`
+is cherry-picked as `f626afd5d14ca69b0c00c9cb25979118479cb966`. See
+[`the indication source audit`](simulations/expanded-postbase-indication-audit-20261017.md)
+for exact findings and overlapping focused-test evidence. Those repairs were
+not substituted into the frozen market study. They require their own source
+freeze and matching replay before any changed-performance claim.
+
+Commit `413cfe3` changes the read-only review helper's engine-validation versus
+Signal-activity scope, outside the frozen calculation-source manifest. Its
+script SHA-256 is
+`8427aa7cd48685aa4cf16e3747113e6d92ae1b532cdc327cfab2bcea5530a9d9`;
+12/12 focused review tests passed. Keep that reporting verification separate
+from engine-source and market-return evidence.
+
+Finish each hosted regular/slow audit under its own recorded source, then
+retain complete or failed artifacts. The frozen market run must complete all
+four matched cases before its hourly comparison or prospective exclusions.
+No current completed 20/22-symbol execution result, merge, live deployment,
+reload, exclusion or profitability claim is established. This handoff-only
+commit remains local; do not push the edge branch merely to publish this note,
+because that would start a duplicate complete CI run.

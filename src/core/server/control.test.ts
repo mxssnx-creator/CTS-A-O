@@ -66,6 +66,7 @@ function expected(
   held?: ReadonlyMap<string, number>,
 ) {
   const s = rt.settings.live;
+  assert.equal(s.maxPositionX ?? 0, 0, "this stress oracle models the explicitly uncapped account fixture");
   // lane orders of a position closed outside the system (manually or by a stop) do not count any more
   // the newest live state (in memory; the database copy trails it by up to ~1 s)
   const suppressed = liveKv<Record<string, unknown>>(rt.db, "controlSuppressed") ?? {};
@@ -88,7 +89,8 @@ function expected(
     {
       notionalUsd: s.notionalUsd,
       ratio: s.ratio,
-      maxNotionalUsd: s.maxNotionalUsd,
+      // The retired live.maxNotionalUsd field is ignored; these stress fixtures have no balance-relative cap.
+      maxNotionalUsd: Infinity,
       maxPositions: s.maxPositions,
       rebalancePct: s.rebalancePct,
       heldKeys: new Set(
@@ -532,6 +534,7 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
       type: "LIMIT",
     });
     const { rt, prices } = fakeRt(new CoreDb(":memory:"));
+    let crossedRetiredUsdCap = false;
     for (let i = 0; i < 400; i++) {
       if (r() < 0.6) rt.paper.positions = randomLanes(r, prices);
       const st = await step(rt, ex);
@@ -539,8 +542,11 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
       // a second step right after converges fully (the first may leave orphans it cancels next time)
       await step(rt, ex);
       checkInvariants(ex, rt, prices, true);
+      crossedRetiredUsdCap ||= [...ex.positions].some(([key, qty]) => !key.startsWith("S9-") &&
+        qty * prices.find((p) => p.sym === key.split("|")[0])!.last > rt.settings.live.maxNotionalUsd);
       if (r() < 0.1) ex.triggerRandomStop();
     }
+    assert.equal(crossedRetiredUsdCap, true, "uncapped native holdings can exceed the retired fixed USD limit");
   });
 
   it("a position closed manually keeps processing, is NOT put back, and a new lane order opens it again", async () => {
@@ -1121,7 +1127,7 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     assert.ok(ex.positions.has("S2-USDT|LONG"), "held lane kept");
   });
 
-  it("unknown account equity or a missing price never closes a held position", async () => {
+  it("unknown account balance or a missing price never closes a held position", async () => {
     const ex = new SimExchange(rng(6));
     const { rt, prices } = fakeRt(new CoreDb(":memory:"));
     rt.paper.positions = [{ cfg: "a", sym: "S2-USDT", side: 1, entry: 24, stop: 23, vol: 1 }];
@@ -1139,16 +1145,18 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
       rt.tickersAt = Date.now();
       return prices;
     };
-    // equity-% sizing with the equity unknown: kept, nothing new opens
+    // The legacy equityPct mode sizes from wallet balance. An unknown balance cannot fund a new position.
     rt.settings.sizing = { mode: "equityPct", pct: 0.02 } as never;
     const noEq = Object.assign(Object.create(Object.getPrototypeOf(ex)), ex, {
       equity: async () => null,
     });
     rt.paper.positions.push({ cfg: "b", sym: "S3-USDT", side: 1, entry: 31, stop: 30, vol: 3 });
     const st = await step(rt, noEq);
-    assert.match(st.reason, /equity unknown/);
-    assert.equal(ex.positions.get("S2-USDT|LONG"), held, "kept while the equity is unknown");
+    assert.match(st.reason, /account balance unknown — not sizing/);
+    assert.equal(ex.positions.get("S2-USDT|LONG"), held, "kept while the account balance is unknown");
     assert.equal(ex.positions.has("S3-USDT|LONG"), false);
+    assert.ok(ex.orders.some((o) => o.venueSymbol === "S2-USDT" && o.positionSide === "LONG" &&
+      o.type === "STOP_MARKET" && o.clientOrderId?.startsWith("CTSBV2_")), "held ownership remains protected");
   });
 });
 

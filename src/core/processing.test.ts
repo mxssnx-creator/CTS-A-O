@@ -18,7 +18,7 @@ import { breakAnchorTf, isBreakRelInd } from "./indications/break-config.ts";
 import { SeriesCache } from "./indications/cache.ts";
 import { MarketSource } from "./indications/market.ts";
 import { barsFromCandles, syntheticCandles } from "./market/bars.ts";
-import type { StrategyToggles } from "./domain/types.ts";
+import type { Candle, StrategyToggles } from "./domain/types.ts";
 
 // the same synthetic market on every run: it otherwise ends at the current minute, and whether that minute's market
 // seats any DCA / Axis config decided how many toggle combinations trade (a run at the wrong minute failed)
@@ -77,6 +77,38 @@ function richCandles(sym: string, tf: number, n: number, end: number, seed: numb
   return cs;
 }
 
+/** Quiet participation and an established trend are a separate regime from the rich fixture's large shocks.
+ * Small, distinct return oscillations keep the three-symbol market/residual regression nondegenerate. */
+function channelReclaimMarket(end: number, mirrored: boolean): SeriesCache {
+  const n = 180;
+  const at = 150;
+  const candles = Array.from({ length: 3 }, (_, member) => {
+    const out: Candle[] = [];
+    let price = 100;
+    for (let i = 0; i < n; i++) {
+      const o = price;
+      const change = 0.00015 + (member === 0 ? 0.00005 * Math.sin(i * 0.7) : 0.00007 * Math.sin(i * 0.43 + member));
+      const c = o * (1 + change);
+      out.push({ t: end - (n - i) * 5 * 60_000, o, h: c * 1.0008, l: o * 0.9992, c, v: 1_000 });
+      price = c;
+    }
+    return out;
+  });
+  const own = candles[0];
+  const priorLow = Math.min(...own.slice(at - 8, at).map((x) => x.l));
+  const o = own[at].o;
+  const c = o * 1.0002;
+  own[at] = { ...own[at], l: priorLow - o * 0.00025, c, h: c + o * 0.00008 };
+  const series = candles.map((cs, j) => {
+    const K = cs[0].c * cs[0].c;
+    const input = mirrored ? cs.map((x) => ({ ...x, o: K / x.o, c: K / x.c, h: K / x.l, l: K / x.h })) : cs;
+    return barsFromCandles(`RECLAIM-${j}-USDT`, 5, input);
+  });
+  const k = new SeriesCache(series[0]);
+  k.setMarket(new MarketSource(series));
+  return k;
+}
+
 describe("every indication works", () => {
   const END = Date.UTC(2026, 9, 1);
   const series = [
@@ -94,14 +126,21 @@ describe("every indication works", () => {
     k.setMarket(market);
     return k;
   };
+  const reclaimMarkets = [channelReclaimMarket(END, false), channelReclaimMarket(END, true)];
+  function* coverageCaches() {
+    for (const b of series) yield cacheOf(b);
+    yield* reclaimMarkets;
+  }
 
   it("returns a state per bar for every indication, without throwing, and fires on the test series", () => {
     const silent: string[] = [];
     const bad: string[] = [];
     for (const x of engine) {
       let fired = 0;
-      for (const b of series) {
-        const st = indicationState(x.id, cacheOf(b));
+      // Each supplemental regime keeps its own market universe, so it cannot alter the broad fixture's reference.
+      for (const k of coverageCaches()) {
+        const b = k.b;
+        const st = indicationState(x.id, k);
         if (!st) continue;
         if (st.length !== b.n) bad.push(`${x.id}: ${st.length} states for ${b.n} bars`);
         for (let i = 0; i < st.length; i++) if (st[i] !== 0 && st[i] !== 1 && st[i] !== -1) bad.push(`${x.id}: state ${st[i]}`);
@@ -110,8 +149,19 @@ describe("every indication works", () => {
       if (!fired) silent.push(x.id);
     }
     assert.deepEqual(bad.slice(0, 10), []);
-    // every indication fires on 3 × 3000 bars of regime-switching data (a silent one would never be evaluated)
+    // Every indication fires in a representative synthetic regime (a silent one would never be evaluated).
     assert.deepEqual(silent, [], `silent: ${silent.join(", ")}`);
+  });
+
+  it("guarded combined-trend DD48 reclaim fires in a multi-symbol quiet market and its mirror", () => {
+    const id = "break-mc-rel-reclaim8-5x15-dd48-guarded";
+    for (const [j, k] of reclaimMarkets.entries()) {
+      assert.equal(k.b.tfMin, breakAnchorTf(id));
+      assert.equal(k.market()!.syms, 3, "exercise actual market-relative gates, not the single-symbol fallback");
+      const state = indicationState(id, k)!;
+      assert.equal(state[150], j === 0 ? 1 : -1, "completed lower/upper wick sweep recovers with both trends aligned");
+      assert.ok(state.subarray(0, 150).every((x) => x === 0), "the trend alone is not a failed-break event");
+    }
   });
 
   it("regression: a double-smoothed indication (TSI) is not NaN for good; ema seeds after a NaN prefix", async () => {

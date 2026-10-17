@@ -1,0 +1,27 @@
+name: Prepare isolated core verification
+description: Use the pinned Node runtime, prepare owned paths and install the lockfile dependencies.
+inputs:
+  log-dir:
+    description: Evidence directory relative to the checked-out repository.
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Use the verified runtime version
+      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      with:
+        node-version: "24.19.0"
+    - name: Prepare evidence paths
+      shell: bash
+      env:
+        CORE_SETUP_LOG_DIR: ${{ inputs.log-dir }}
+      run: |
+        mkdir -p "$CORE_SETUP_LOG_DIR"
+        sudo install -d -o "$(id -un)" -g "$(id -gn)" /workspace/scratch
+        git rev-parse HEAD > "$CORE_SETUP_LOG_DIR/commit.txt"
+        git rev-parse 'HEAD^{tree}' > "$CORE_SETUP_LOG_DIR/tree.txt"
+    - name: Install frozen dependencies
+      shell: bash
+      env:
+        CORE_SETUP_LOG_DIR: ${{ inputs.log-dir }}
+      run: npm ci > "$CORE_SETUP_LOG_DIR/npm-ci.log" 2>&1

@@ -443,22 +443,42 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     // (with the preset comparison: the loop stays responsive through everything a compute runs)
     t.after(compareOn());
     const rt = mk();
+    // Preserve the first compute's timings before the second one replaces status.phases / status.loop.
+    // Two snapshots outside the timer callback keep the responsiveness probe's per-tick overhead unchanged.
+    const timing = () => ({
+      compute: rt.status.computes,
+      loop: structuredClone(rt.status.loop),
+      phases: structuredClone(rt.status.phases),
+    });
     let worst = 0;
+    let worstAt = "";
     let last = performance.now();
     const iv = setInterval(() => {
       const now = performance.now();
-      worst = Math.max(worst, now - last - 10);
+      const delay = now - last - 10;
+      if (delay > worst) {
+        worst = delay;
+        worstAt = `${rt.status.state} / ${rt.status.stage} / ${rt.status.label}`;
+      }
       last = now;
     }, 10);
+    const started = performance.now();
     rt.start();
+    const startMs = performance.now() - started;
     await until(() => rt.status.computes >= 1);
+    const firstCompute = timing();
     // a second compute starts by compacting the first one's tapes (slimTapes): in one piece it held the loop for
     // seconds on a desk (x02, 7 Oct) — it runs in slices like every other phase
+    const patched = performance.now();
     rt.updateSettings({ gates: { ...rt.settings.gates, minPf: rt.settings.gates.minPf + 0.05 } });
+    const patchMs = performance.now() - patched;
     await until(() => rt.status.computes >= 2);
+    const secondCompute = timing();
     clearInterval(iv);
     rt.stop();
-    assert.ok(worst < 250, `worst stall ${worst.toFixed(0)} ms`);
+    const latency = { worstMs: Math.round(worst), worstAt, startMs, patchMs, computes: rt.status.computes, perCompute: [firstCompute, secondCompute], stalls: rt.status.stalls };
+    t.diagnostic(`runtime responsiveness ${JSON.stringify(latency)}`);
+    assert.ok(worst < 250, `worst stall ${worst.toFixed(0)} ms: ${JSON.stringify(latency)}`);
     if (rt.status.tapesReleased) assert.ok(rt.status.phases.Slim, "the compaction ran as its own sliced phase");
     for (const [k, v] of Object.entries(rt.status.phases))
       assert.ok(v.maxSliceMs < 250, `${k} slice ${v.maxSliceMs.toFixed(0)} ms`);

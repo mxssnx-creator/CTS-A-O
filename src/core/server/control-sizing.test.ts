@@ -314,16 +314,26 @@ describe("control orders: increases, stop repair, ownership", () => {
   });
 
   it("the live status says when the volume factor has no effect, and from which factor it would size", async () => {
-    const ex = new SimExchange();
+    const ex = new SimExchange().withEquity(100);
     const { rt } = fakeRt(new CoreDb(":memory:"));
-    // unit 10 × factor 10 = 100 USD, cap 40: every position capped; the factor sizes only below 40 / (10 × 1) = 4
-    rt.settings.live = { ...rt.settings.live, ratio: 10 };
+    // unit 10 × factor 10 = 100 USD, cap 0.4 × balance 100 = 40: the factor sizes only below 4.
+    rt.settings.live = { ...rt.settings.live, ratio: 10, maxPositionX: 0.4, maxNotionalUsd: 1 };
     rt.paper.positions = [lane("a", "S0-USDT", 1, 10, 1), lane("b", "S1-USDT", 1, 17, 1)];
     const st = await step(rt, ex);
     assert.match(st.reason, /volume factor 10 has no effect.*cap 40\.00 USD.*below 4\.00/);
-    assert.equal(liveKv<{ ratioMatters: number }>(rt.db, "controlSizing")?.ratioMatters, 4);
+    const sizing = liveKv<{ ratioMatters: number; posCap: number; balance: number; capped: number }>(rt.db, "controlSizing")!;
+    assert.equal(sizing.ratioMatters, 4);
+    assert.equal(sizing.posCap, 40);
+    assert.equal(sizing.balance, 100);
+    assert.equal(sizing.capped, 2);
     rt.settings.live = { ...rt.settings.live, ratio: 2 };
     assert.doesNotMatch((await step(rt, ex)).reason, /no effect/);
+    // Retiring the optional ratio cap must restore uncapped targets; the old 1 USD field cannot keep it active.
+    rt.settings.live = { ...rt.settings.live, ratio: 10, maxPositionX: 0 };
+    assert.doesNotMatch((await step(rt, ex)).reason, /no effect/);
+    assert.equal(liveKv<{ posCap: number; capped: number }>(rt.db, "controlSizing")?.posCap, Infinity);
+    assert.equal(liveKv<{ capped: number }>(rt.db, "controlSizing")?.capped, 0);
+    assert.ok(ctl(rt).targets.every((t) => t.notional > 90), "retired fixed USD limits do not cap the 100 USD targets");
   });
 
   it("the hint names a budget that scales every position (it cancels the volume factor too), not only the cap", async () => {

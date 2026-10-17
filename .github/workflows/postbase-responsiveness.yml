@@ -1,0 +1,62 @@
+name: Post-Base responsiveness diagnosis
+
+on:
+  push:
+    branches:
+      - fix/postbase-responsive-profile-20261017
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cts-ao-responsive-profile-20261017
+  cancel-in-progress: false
+
+jobs:
+  synthetic-profile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      MALLOC_ARENA_MAX: "2"
+      MALLOC_MMAP_THRESHOLD_: "1048576"
+      CTS_CORE_STATE: "off"
+      CTS_CORE_AUTOSTART: "0"
+      CTS_CORE_LIVE: "0"
+      CTS_CORE_WORKERS: "1"
+      CTS_CORE_COMPARE: "0"
+      CTS_CORE_VARIANTS: "0"
+      CTS_CORE_TEST_CONCURRENCY: "1"
+    steps:
+      - name: Check out the exact source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: ./.github/actions/setup-core
+        with:
+          log-dir: runs/ci-postbase-responsive-20261017
+      - name: Build the application and packaged worker offline
+        shell: bash
+        env:
+          NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
+        run: npm run build:dev > runs/ci-postbase-responsive-20261017/build-worker.log 2>&1
+      - name: Diagnose the unchanged 250ms responsiveness bound
+        shell: bash
+        run: |
+          for profile_run in 1 2 3; do
+            node --experimental-strip-types --no-warnings --input-type=module <<'JS' > "runs/ci-postbase-responsive-20261017/admission-$profile_run.json"
+          import {studyMemorySnapshot,studyAdmissionDecision,studyJson} from './scripts/core-22-symbol-study.mjs';
+          const decision=studyAdmissionDecision(studyMemorySnapshot());
+          console.log(studyJson(decision));
+          if(!decision.admitted) process.exitCode=1;
+          JS
+            timeout --signal=TERM --kill-after=30s 5m node scripts/test-core.mjs --test-name-pattern='keeps the event loop responsive during a compute' src/core/server/runtime.test.ts > "runs/ci-postbase-responsive-20261017/runtime-$profile_run.log" 2>&1
+          done
+      - name: Preserve complete or failed diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cts-ao-responsiveness-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 30
+          if-no-files-found: error
+          path: runs/ci-postbase-responsive-20261017/

@@ -1,0 +1,240 @@
+{
+  "schema": "cts-expanded-study-complete-core-failure-v1",
+  "githubRunId": "39077361130",
+  "jobId": "117527184101",
+  "githubCommit": "f75026f0d675e95fdf0a5d94e1de2aadf2f4ccb3",
+  "sourceManifestSha256": "bc7216bd7ab6000b7651a5d83054a16887854097a31847e7701b9a92754693f7",
+  "complete": false,
+  "classification": "Regular offline core audit finished with nine failures; slow checks and all market replays were skipped. No strategy score.",
+  "strategyScoringStarted": false,
+  "slowChecks": "skipped",
+  "marketReplays": "skipped",
+  "core": {
+    "tests": 2097,
+    "suites": 334,
+    "pass": 2086,
+    "fail": 9,
+    "cancelled": 0,
+    "skipped": 2,
+    "durationMs": 2440894.088435,
+    "inventoryFiles": 178,
+    "concurrency": 1
+  },
+  "hostedChecks": {
+    "install": "passed",
+    "typecheck": "passed",
+    "build": "passed",
+    "coreWorkerPackaged": true,
+    "scriptTests": {
+      "tests": 57,
+      "passed": 57,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 0
+    }
+  },
+  "archive": {
+    "fileName": "cts-ao-audit-failed-39077361130.zip",
+    "sha256": "df25f2d3628dd59c0729c870c24b70230506d0f3a410aa60f45c3cd80b625578",
+    "bytes": 85927
+  },
+  "files": [
+    {
+      "path": "npm-ci.log",
+      "bytes": 487,
+      "sha256": "2724aafd84f252f8a80ab2d0ae9d162e371ecc6bce753e1697e57a94a05e2910"
+    },
+    {
+      "path": "typecheck.log",
+      "bytes": 44,
+      "sha256": "e7769dc53fea11794cb1b23694df18f2183ab1dd6cd51ade556a445bfad4fe3d"
+    },
+    {
+      "path": "build-dev.log",
+      "bytes": 14864,
+      "sha256": "fdfabc6423e1126955e55bc52cd1e06911ee9e6fb71b6b78605be2954a0b75c9"
+    },
+    {
+      "path": "script-tests.log",
+      "bytes": 6294,
+      "sha256": "a124cb08bd825b1853b9cae22626d0eaaa32334bce79fec2075fca251e78e558"
+    },
+    {
+      "path": "core-tests.log",
+      "bytes": 253696,
+      "sha256": "cea0d33b7483729b00182c32f1d2ed98fa421f35bb64af5383691444c6451ad2"
+    }
+  ],
+  "failures": [
+    {
+      "location": "src/core/adjust.test.ts:111:3",
+      "test": "adjusted protects and paused sets reach tapes and execution",
+      "durationMs": 0.557286
+    },
+    {
+      "location": "src/core/completeness.test.ts:513:3",
+      "test": "every leaf is referenced by its last path segment or its full path",
+      "durationMs": 7.165949
+    },
+    {
+      "location": "src/core/processing.test.ts:98:3",
+      "test": "returns a state per bar for every indication, without throwing, and fires on the test series",
+      "durationMs": 3262.132787
+    },
+    {
+      "location": "src/core/server/control-audit.test.ts:220:3",
+      "test": "the backstop is re-priced when lanes with a wider stop join (new stop first, old one cancelled)",
+      "durationMs": 6.461852
+    },
+    {
+      "location": "src/core/server/control-sizing.test.ts:316:3",
+      "test": "the live status says when the volume factor has no effect, and from which factor it would size",
+      "durationMs": 3.543195
+    },
+    {
+      "location": "src/core/server/control.test.ts:522:3",
+      "test": "converges to the targets on every step over 400 random steps and never touches foreign positions",
+      "durationMs": 27.630923
+    },
+    {
+      "location": "src/core/server/control.test.ts:1124:3",
+      "test": "unknown account equity or a missing price never closes a held position",
+      "durationMs": 3.165663
+    },
+    {
+      "location": "src/core/server/runtime.test.ts:442:3",
+      "test": "keeps the event loop responsive during a compute",
+      "durationMs": 75631.503856
+    },
+    {
+      "location": "src/core/signal-trailing-only.test.ts:387:3",
+      "test": "a no-TP lane cancels an aggregate target while capped siblings keep their own exact target",
+      "durationMs": 0.618707
+    }
+  ],
+  "slowestSuites": [
+    {
+      "suite": "runtime coordination",
+      "durationMs": 936440.190859,
+      "status": "failed",
+      "sourceFiles": [
+        "src/core/server/runtime.test.ts"
+      ]
+    },
+    {
+      "suite": "every type and range reaches the Real stage and the paper book",
+      "durationMs": 258740.507203,
+      "status": "passed",
+      "sourceFiles": [
+        "src/core/book-coverage.test.ts"
+      ]
+    },
+    {
+      "suite": "processing through the stages, every strategy type, every toggle combination",
+      "durationMs": 210764.963144,
+      "status": "passed",
+      "sourceFiles": [
+        "src/core/processing.test.ts"
+      ]
+    },
+    {
+      "suite": "Block matrix at the Real stage",
+      "durationMs": 192369.912215,
+      "status": "passed",
+      "sourceFiles": [
+        "src/core/sim/block-matrix.test.ts"
+      ]
+    },
+    {
+      "suite": "self-healing",
+      "durationMs": 135935.870476,
+      "status": "passed",
+      "sourceFiles": [
+        "src/core/server/heal.test.ts"
+      ]
+    },
+    {
+      "suite": "Base-stage validated count",
+      "durationMs": 91084.058428,
+      "status": "passed",
+      "sourceFiles": [
+        "src/core/server/base-count.test.ts"
+      ]
+    },
+    {
+      "suite": "progress reporting",
+      "durationMs": 73031.448303,
+      "status": "passed",
+      "sourceFiles": [
+        "src/core/regression.test.ts",
+        "src/core/server/runtime.test.ts"
+      ]
+    },
+    {
+      "suite": "fast loops",
+      "durationMs": 70661.479598,
+      "status": "passed",
+      "sourceFiles": [
+        "src/core/server/fast.test.ts"
+      ]
+    },
+    {
+      "suite": "server function contract: every field a page reads is returned",
+      "durationMs": 56027.313908,
+      "status": "passed",
+      "sourceFiles": [
+        "src/core/api-contract.test.ts"
+      ]
+    },
+    {
+      "suite": "memory guard in the runtime",
+      "durationMs": 44042.049864,
+      "status": "passed",
+      "sourceFiles": [
+        "src/core/server/memguard-runtime.test.ts"
+      ]
+    },
+    {
+      "suite": "memory fallback: carried range on new bars",
+      "durationMs": 41932.384424,
+      "status": "passed",
+      "sourceFiles": [
+        "src/core/server/memguard-carried.test.ts"
+      ]
+    },
+    {
+      "suite": "trading end to end: engine \u2192 paper book \u2192 live control \u2192 venue",
+      "durationMs": 38869.980386,
+      "status": "passed",
+      "sourceFiles": [
+        "src/core/server/trading-e2e.test.ts"
+      ]
+    },
+    {
+      "suite": "stuck requests never stop the live step",
+      "durationMs": 38212.355832,
+      "status": "passed",
+      "sourceFiles": [
+        "src/core/exchange/stuck-requests.test.ts"
+      ]
+    },
+    {
+      "suite": "pipeline",
+      "durationMs": 33150.243272,
+      "status": "passed",
+      "sourceFiles": [
+        "src/core/pipeline/core.test.ts"
+      ]
+    },
+    {
+      "suite": "worker pool",
+      "durationMs": 32483.000145,
+      "status": "passed",
+      "sourceFiles": [
+        "src/core/server/pool.test.ts"
+      ]
+    }
+  ],
+  "timingBasis": "Top15 unindented named suite completion records matched to an unindented suite start; nested records and failure recap excluded. Times are not additive independent wall time or equal to file runtime. Source-file paths are locators in the verified source checkout.",
+  "privacy": "Exact public CI fixture logs; no signed artifact URLs, private accounts or venue-owned execution evidence."
+}

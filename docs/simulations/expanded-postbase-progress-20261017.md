@@ -3,10 +3,10 @@
 Initial source checkpoint: `b1a0e714d268574d5ab5c21d89f1a99279596cf3` on
 `fix/postbase-expanded-study-20261017`,
 [PR #164](https://github.com/mxssnx-creator/CTS-A-O/pull/164).
-Preload and Base admission corrections were followed by a hosted launch at
-commit `0d66c763772ec5305e8a164a9e8fe54155b92096`; its resource preflight
-exposed an unknown root-cgroup reading before scoring. The scanner correction
-and a newly sealed retry remain open. The four complete 20/22 results are pending;
+After preload, Base admission and cgroup-root corrections, hosted run
+39077361130 completed the regular core audit with nine failures. Its slow
+checks and all market replays were skipped. Isolated failure repairs and
+another source freeze remain open. The four complete 20/22 results are pending;
 this checkpoint establishes no new market PF, order count or hourly success.
 No live deployment, reload or exchange order was performed.
 
@@ -227,3 +227,30 @@ hashes are tracked in that evidence directory and indexed by
 `expanded-postbase-validation-20261017.json`. Fixing the scanner changes the
 source identity; verify it and reseal fresh protocols rather than reuse the
 blocked attempt. Guards and profitability thresholds were not relaxed.
+
+## Full hosted regular audit completed with nine failures
+
+[Run 39077361130 evidence](postbase-ci-audit-failed-39077361130/README.md)
+preserves the five exact hosted logs and their hashes. The frozen source was
+`bc7216bd7ab6000b7651a5d83054a16887854097a31847e7701b9a92754693f7`,
+published as commit `f75026f0d675e95fdf0a5d94e1de2aadf2f4ccb3`.
+Install, TypeScript, client/server/core-worker build and 57 script regressions
+passed. The complete regular audit recorded 2,097 tests across 334 suites:
+2,086 passed, nine failed, none cancelled and two skipped, in
+2,440,894.088435ms (40m41s). This is not a passing full-suite result.
+
+The slow checks and every 20/22-symbol replay were skipped after that failure;
+no scoring occurred. The nine checks cover adjustment/pause propagation,
+settings completeness, indication fixture coverage, control backstop and
+sizing/status/ownership expectations, event-loop responsiveness, and an
+isolated no-TP lane fixture. Exact names and locations are preserved in the
+evidence manifest, without declaring any issue fixed. The report also lists
+the 15 slowest top-level suites for a prospective CI sharding plan; these
+timings do not change the meaning of a failing assertion.
+
+The separate edge-repair verification, run 39078415117 on source
+`e1b28d07657b104fb9710233e3141b51d4ee3bbb9265b6027a8e8787972cc890`,
+remains active at this checkpoint. Its outcome must be observed separately.
+Failure corrections are being consolidated in the verified checkout for a
+future v5 freeze before the first market score. No merge, deployment/reload,
+exclusion, improved PF or hourly-success result is claimed.

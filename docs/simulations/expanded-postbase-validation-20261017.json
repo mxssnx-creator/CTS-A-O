@@ -68,7 +68,7 @@
       "logSha256": "3bf29e0128498feebd991400cc0e797379e888e0279b38094907de1ef7756611"
     }
   ],
-  "scope": "Targeted source checks and hosted install/typecheck/build/55 regressions passed. Scanner correction independently reviewed; four v4 protocols resealed with unchanged economic/feed settings. Full regular/slow core suites and complete20/22 market comparisons remain pending the next hosted run; no pruning or profitability result is claimed.",
+  "scope": "Frozen source bc7216 hosted regular core audit 39077361130 completed with 2,086 pass / 9 fail / 2 skip / 0 cancel across 2,097 tests and 334 suites; slow checks and all market replays were skipped, with no scoring. Hosted install/typecheck/build and 57 script tests passed. Separate combined edge source e1b28d verification 39078415117 remains active; failure repairs and v5 consolidation require completed verification and a fresh protocol freeze. No profitability, exclusion or deployment claim.",
   "firstTypecheck": "Three test-only typing errors were corrected in f0108a4; subsequent complete typecheck exited0. No production formula/gate change.",
   "hostedAttempts": [
     {
@@ -135,6 +135,44 @@
       "preparedBeforeScoring": true,
       "preparedCases": 4,
       "marketAcquisitionRequests": 0
+    },
+    {
+      "githubRunId": "39077361130",
+      "jobId": "117527184101",
+      "githubCommit": "f75026f0d675e95fdf0a5d94e1de2aadf2f4ccb3",
+      "sourceManifestSha256": "bc7216bd7ab6000b7651a5d83054a16887854097a31847e7701b9a92754693f7",
+      "complete": false,
+      "scored": false,
+      "status": "regular-core-failed",
+      "evidence": "docs/simulations/postbase-ci-audit-failed-39077361130/manifest.json",
+      "archiveSha256": "df25f2d3628dd59c0729c870c24b70230506d0f3a410aa60f45c3cd80b625578",
+      "core": {
+        "tests": 2097,
+        "suites": 334,
+        "pass": 2086,
+        "fail": 9,
+        "cancelled": 0,
+        "skipped": 2,
+        "durationMs": 2440894.088435,
+        "inventoryFiles": 178,
+        "concurrency": 1
+      },
+      "checks": {
+        "install": "passed",
+        "typecheck": "passed",
+        "build": "passed",
+        "coreWorkerPackaged": true,
+        "scriptTests": {
+          "tests": 57,
+          "passed": 57,
+          "failed": 0,
+          "cancelled": 0,
+          "skipped": 0
+        }
+      },
+      "slowChecks": "skipped",
+      "marketReplays": "skipped",
+      "failuresResolved": false
     }
   ],
   "latestSourceManifestSha256": "bc7216bd7ab6000b7651a5d83054a16887854097a31847e7701b9a92754693f7",

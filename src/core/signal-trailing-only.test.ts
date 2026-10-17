@@ -405,7 +405,8 @@ describe("Signals: additional independent Trailing only sets", () => {
       { ...basePosition, cfg: unbounded.id, target: 0, trailOnly: true, trailFree: false },
     ];
     const rt = {
-      settings: { grid: { trailFree: true } },
+      // Contributions retain the Signal range's volume policy as well as the global engine trail switch.
+      settings: { ...DEFAULT_SETTINGS, grid: { ...DEFAULT_SETTINGS.grid, trailFree: true } },
       paper: { positions },
     } as unknown as CoreRuntime;
     const lanes = laneContributions(rt, new Map([[SYM, 100]]));

@@ -481,12 +481,16 @@ function uiSources(): Map<string, string> {
 const NOT_SHOWN: Record<string, string> = {
   tfMin: "fixed at the 1m base (normalizeLanes forces 1); the lanes are chosen with `tfs`",
   historyDays: "derived: the longest lane history of tfDays (normalizeLanes)",
+  paperNotional:
+    "legacy fixed-notional paper sizing retained for stored settings/replay; the page edits the balance-based sizing.pct unit",
   "block.signalsOwn":
     "measured default (a signal's Block level from its own closes, PR #65); not an operator lever",
   "grid.baseTargets":
     "positive coordination pinned in code (positive-defaults.test.ts); a patch or the warnings switch it",
   "live.liveGroupLastN":
     "off by default after the replay on x01's record (docs/live-group-validation.md); patch only",
+  "live.maxNotionalUsd":
+    "retired fixed-USD position ceiling: migration32 clears it and positionCapOf ignores it; the page exposes optional balance-relative budgets",
   "signals.sourcesMode":
     "deny / allow reading of the source list (6 Oct); patch only so far — GAP: not on the page (reported)",
   "signals.baseGate":

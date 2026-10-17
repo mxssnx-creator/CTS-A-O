@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { adjustProtect, evaluateAdjust, pausedSets, setKeyOf, DEFAULT_ADJUST, type AdjustState } from "./adjust.ts";
-import { buildTapes, execDecision } from "./sim/walkforward.ts";
+import { buildTapes, execDecision, makeTape } from "./sim/walkforward.ts";
 import { makeUniverse } from "./pipeline/pipeline.ts";
 import { barsFromCandles, syntheticCandles } from "./market/bars.ts";
 import { parseFill } from "./server/live.server.ts";
@@ -120,14 +120,9 @@ describe("auto-adjust", () => {
       0,
       "no trail stays no trail",
     );
-    const tape = {
-      id: cfg,
-      kind: "trailing",
-      n: 0,
-      exitT: new Float64Array(0),
-      gp: new Float64Array(1),
-      gl: new Float64Array(1),
-    } as never;
+    // Execution reads the tape's own pair/protection before its adjust pause; keep this empty fixture complete.
+    const tape = makeTape(cfg, "follow", "rsi-mom-14-25",
+      { tp: 0.05, sl: 0.05, trail: 0.025, hold: 24 }, "trailing", [], [], [], []);
     const o = {
       toggles: {
         normal: true,

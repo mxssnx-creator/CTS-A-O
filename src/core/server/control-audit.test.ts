@@ -168,8 +168,8 @@ describe("control orders: audit regressions", () => {
     );
   });
 
-  it("F2 capped retry on 'minimum order amount' must stay under maxNotionalUsd", async () => {
-    const ex = new SimExchange(rng(1));
+  it("F2 capped retry on 'minimum order amount' must stay under the balance-relative position cap", async () => {
+    const ex = new SimExchange(rng(1)).withEquity(100);
     const orig = ex.order.bind(ex);
     let first = true;
     ex.order = async (p) => {
@@ -180,13 +180,14 @@ describe("control orders: audit regressions", () => {
       return orig(p);
     };
     const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.settings.live = { ...rt.settings.live, maxPositionX: 0.4 };
     rt.paper.positions = [lane("a", "S1-USDT", 1)];
     await step(rt, ex);
     const q = ex.positions.get("S1-USDT|LONG") ?? 0;
     assert.ok(q * 17 <= 40 * 1.0001, `opened ${q} × 17 = ${(q * 17).toFixed(2)} USDT, cap 40`);
   });
 
-  it("F2b the minimum-amount retry stays under the equity-multiple position cap (maxPositionX), like the targets", async () => {
+  it("F2b the minimum-amount retry stays under the balance-multiple position cap (maxPositionX), like the targets", async () => {
     const ex = new SimExchange(rng(21));
     (ex as ExchangeClient).account = async () => ({
       equity: 20,
@@ -201,7 +202,7 @@ describe("control orders: audit regressions", () => {
     ex.order = async (p) => {
       if (p.type === "MARKET" && first) {
         first = false;
-        // 1.5 × 17 = 25.5 USDT: under the fixed 40 USDT cap, over the 1 × equity = 20 USDT cap
+        // 1.5 × 17 = 25.5 USDT exceeds the explicit 1 × wallet balance = 20 USDT cap.
         throw new ExchangeRejected("The minimum order amount is 1.5 S1", 101400);
       }
       return orig(p);
@@ -213,16 +214,17 @@ describe("control orders: audit regressions", () => {
     const q = ex.positions.get("S1-USDT|LONG") ?? 0;
     assert.ok(
       q * 17 <= 20 * 1.0001,
-      `opened ${q} × 17 = ${(q * 17).toFixed(2)} USDT, cap 1 × equity = 20`,
+      `opened ${q} × 17 = ${(q * 17).toFixed(2)} USDT, cap 1 × balance = 20`,
     );
   });
 
   it("the backstop is re-priced when lanes with a wider stop join (new stop first, old one cancelled)", async () => {
     // AT-USDT: the position sat at its cap, so the joining lanes changed no quantity and no action ran — the old,
     // tighter backstop stayed and filled before any lane stop
-    const ex = new SimExchange(rng(22));
+    const ex = new SimExchange(rng(22)).withEquity(100);
     const { rt } = fakeRt(new CoreDb(":memory:"));
-    rt.settings.live = { ...rt.settings.live, maxNotionalUsd: 10 };
+    // The live cap is 0.1 × the verified 100 USD wallet balance. The retired USD ceiling is ignored.
+    rt.settings.live = { ...rt.settings.live, maxPositionX: 0.1, maxNotionalUsd: 1 };
     rt.paper.positions = [lane("a", "S1-USDT", 1)]; // 3 % lane stop → backstop 3.6 % below 17
     await step(rt, ex);
     const stopLog = () => ex.log.filter((p) => p.type === "STOP_MARKET");
@@ -232,6 +234,7 @@ describe("control orders: audit regressions", () => {
     assert.equal(stopsOf().length, 1);
     assert.ok(Math.abs(stopsOf()[0] - 17 * (1 - 0.036)) < 1e-3, `first stop ${stopsOf()[0]}`);
     const q = ex.positions.get("S1-USDT|LONG")!;
+    assert.ok(q * 17 <= 10 && q * 17 > 9.98, "quantity sits at the explicit 10 USD balance-relative cap");
     // unchanged lanes: nothing re-placed
     await step(rt, ex);
     assert.equal(stopsOf().length, 1, "no churn while the lanes are unchanged");
