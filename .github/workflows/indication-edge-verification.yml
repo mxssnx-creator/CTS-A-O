@@ -1,0 +1,83 @@
+name: Indication edge case verification
+
+on:
+  push:
+    branches:
+      - fix/indication-edge-cases-20261017
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cts-ao-indication-edge-cases-20261017
+  cancel-in-progress: false
+
+jobs:
+  offline-verification:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      MALLOC_ARENA_MAX: "2"
+      MALLOC_MMAP_THRESHOLD_: "1048576"
+      CTS_CORE_STATE: "off"
+      CTS_CORE_AUTOSTART: "0"
+      CTS_CORE_LIVE: "0"
+      CTS_CORE_WORKERS: "1"
+      CTS_CORE_COMPARE: "0"
+      CTS_CORE_VARIANTS: "0"
+      CTS_CORE_TEST_CONCURRENCY: "1"
+    steps:
+      - name: Check out the exact source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Use the verified runtime version
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24.19.0"
+      - name: Prepare evidence paths and source provenance
+        shell: bash
+        run: |
+          mkdir -p runs/indication-edge-verify-20261017
+          sudo install -d -o "$(id -un)" -g "$(id -gn)" /workspace/scratch
+          git rev-parse HEAD > runs/indication-edge-verify-20261017/commit.txt
+          git rev-parse 'HEAD^{tree}' > runs/indication-edge-verify-20261017/tree.txt
+          node --experimental-strip-types --no-warnings --input-type=module <<'JS' > runs/indication-edge-verify-20261017/source-manifest.json
+          import {studySources,studyJson,studyHash} from './scripts/core-22-symbol-study.mjs';
+          const sources=studySources();
+          console.log(studyJson({node:process.version,sourceSha256:studyHash(studyJson(sources)),sources,strategyScoring:false,scope:'Offline synthetic regression verification; no market performance claim.'}));
+          JS
+      - name: Install frozen dependencies
+        shell: bash
+        run: npm ci > runs/indication-edge-verify-20261017/npm-ci.log 2>&1
+      - name: Verify TypeScript and packaged build
+        shell: bash
+        env:
+          NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
+        run: |
+          npm run typecheck -- --pretty false > runs/indication-edge-verify-20261017/typecheck.log 2>&1
+          npm run build:dev > runs/indication-edge-verify-20261017/build-dev.log 2>&1
+      - name: Verify replay and reporting regressions
+        shell: bash
+        run: >-
+          node --require ./scripts/lib/core-test-offline-guard.cjs --experimental-strip-types --no-warnings
+          --test --test-concurrency=1 scripts/core-22-symbol-data.test.mjs scripts/core-22-symbol-study.test.mjs
+          scripts/core-expanded-study-review.test.mjs scripts/core-session.test.mjs scripts/lib/session-settings.test.mjs
+          > runs/indication-edge-verify-20261017/script-tests.log 2>&1
+      - name: Verify all core test files serially offline
+        shell: bash
+        timeout-minutes: 95
+        run: timeout --signal=TERM --kill-after=30s 90m npm run test:core > runs/indication-edge-verify-20261017/core-tests.log 2>&1
+      - name: Verify optional runtime stress and preset backtest
+        shell: bash
+        timeout-minutes: 50
+        run: timeout --signal=TERM --kill-after=30s 45m npm run test:core:slow > runs/indication-edge-verify-20261017/core-slow-tests.log 2>&1
+      - name: Preserve verification evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cts-ao-indication-edge-verify-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 30
+          if-no-files-found: error
+          path: runs/indication-edge-verify-20261017/

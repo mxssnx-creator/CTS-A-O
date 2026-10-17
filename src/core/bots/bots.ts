@@ -3,7 +3,7 @@
 import type { BotType, Side, Tactics } from "../domain/types.ts";
 import type { SeriesCache } from "../indications/cache.ts";
 import { tacticKeyFor, withTactics } from "../indications/filters.ts";
-import { indicationState, laneOf } from "../indications/registry.ts";
+import { entryWarmupBarsOf, indicationState, laneOf } from "../indications/registry.ts";
 
 export interface BotSpec {
   type: BotType;
@@ -144,18 +144,20 @@ export function botTrigger(type: BotType, k: SeriesCache): Int8Array | null {
 export function comboSignal(bot: BotType, ind: string, k: SeriesCache): Int8Array | null {
   return k.memo(`combo:${bot}:${ind}`, () => {
     const st = indicationState(ind, k);
+    const firstEntry = entryWarmupBarsOf(ind);
     if (bot === "follow" || bot === "revert") {
       if (!st) return null;
       const dir = bot === "follow" ? 1 : -1;
       const out = new Int8Array(k.b.n);
-      for (let i = 1; i < st.length; i++)
+      // Compare the original prior direction: zeroing its warmup prefix would manufacture an onset at the floor.
+      for (let i = Math.max(1, firstEntry); i < st.length; i++)
         if (st[i] !== 0 && st[i] !== st[i - 1]) out[i] = st[i] * dir;
       return out;
     }
     const trig = botTrigger(bot, k)!;
     if (!st) return trig;
     const out = new Int8Array(trig.length);
-    for (let i = 0; i < trig.length; i++) if (trig[i] !== 0 && st[i] === trig[i]) out[i] = trig[i];
+    for (let i = firstEntry; i < trig.length; i++) if (trig[i] !== 0 && st[i] === trig[i]) out[i] = trig[i];
     return out;
   });
 }
@@ -186,13 +188,15 @@ function runEntries(bot: "follow" | "revert", ind: string, k: SeriesCache, key: 
     if (!st) return null;
     const dir = bot === "follow" ? 1 : -1;
     const n = st.length;
+    const firstEntry = Math.max(1, entryWarmupBarsOf(ind));
     // every bar of every run as a candidate, then the tactics
     const every = new Int8Array(n);
-    for (let i = 1; i < n; i++) if (st[i] !== 0) every[i] = st[i] * dir;
+    for (let i = firstEntry; i < n; i++) if (st[i] !== 0) every[i] = st[i] * dir;
     const kept = withTactics(every, k, key, `${bot}:${ind}:every`);
     const out = new Int8Array(n);
     let taken = false;
-    for (let i = 1; i < n; i++) {
+    // onRun intentionally permits the first eligible filtered bar of a held run after readiness, not just a flip.
+    for (let i = firstEntry; i < n; i++) {
       // a new run starts where the state changes
       if (st[i] !== st[i - 1]) taken = false;
       if (!taken && kept[i] !== 0) {

@@ -368,11 +368,14 @@ export function periodLevels(
   for (let i = 0; i < n; i++) {
     const id = Math.floor(t[i] / periodMs);
     if (id !== pid) {
-      if (pid >= 0) {
+      if (pid >= 0 && id === pid + 1) {
         lastV = vv > 0 ? pv / vv : NaN;
         lastH = ph;
         lastL = pl;
         lastC = pc;
+      } else {
+        // The previous calendar period is unavailable after a whole-period gap; older levels are stale.
+        lastV = lastH = lastL = lastC = NaN;
       }
       pid = id;
       po = o[i];

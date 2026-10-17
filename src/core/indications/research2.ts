@@ -121,6 +121,40 @@ function rmin(x: F64, p: number): F64 {
   return out;
 }
 
+/** Prior-window volume profile, bounded to 400 bins covering its whole observed price range. */
+export function valueAreaProfile(
+  h: F64,
+  l: F64,
+  v: F64,
+  from: number,
+  to: number,
+  minimumBin: number,
+): { lo: number; hi: number; bin: number; vol: F64 } | null {
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (let j = from; j < to; j++) {
+    if (l[j] < lo) lo = l[j];
+    if (h[j] > hi) hi = h[j];
+  }
+  const requested = Math.ceil((hi - lo) / minimumBin);
+  const nb = Math.min(400, requested);
+  if (nb < 5) return null;
+  const capped = requested > nb;
+  // Reducing only the bin count silently discarded high-price bars. Widen the capped bins instead;
+  // ordinary uncapped bins keep their existing width, indices and arithmetic.
+  const bin = capped ? (hi - lo) / nb : minimumBin;
+  const vol = new Float64Array(nb);
+  for (let j = from; j < to; j++) {
+    const first = Math.max(0, Math.floor((l[j] - lo) / bin));
+    // A zero-range candle exactly at the domain's high still belongs to its last bin.
+    const b0 = Math.min(nb - 1, first);
+    const b1 = Math.min(nb - 1, Math.floor((h[j] - lo) / bin));
+    const share = v[j] / (b1 - b0 + 1);
+    for (let b = b0; b <= b1; b++) vol[b] += share;
+  }
+  return { lo, hi, bin, vol };
+}
+
 /** confirmed swing pivots: a pivot at bar t is known from bar t + w on. `hi[i]` = index of the newest pivot high known at i */
 function pivots(
   k: SeriesCache,
@@ -542,22 +576,10 @@ export function research2Specs(): IndicationSpec[] {
       const a = k.atr(14);
       return ev(n, (i) => {
         if (i < p.look + 3 || !fin(a[i]) || !(a[i] > 0)) return 0;
-        const bin = 0.15 * a[i];
-        let lo = Infinity;
-        let hi = -Infinity;
-        for (let j = i - p.look; j < i - 1; j++) {
-          if (l[j] < lo) lo = l[j];
-          if (h[j] > hi) hi = h[j];
-        }
-        const nb = Math.min(400, Math.ceil((hi - lo) / bin));
-        if (nb < 5) return 0;
-        const vol = new Float64Array(nb);
-        for (let j = i - p.look; j < i - 1; j++) {
-          const b0 = Math.max(0, Math.floor((l[j] - lo) / bin));
-          const b1 = Math.min(nb - 1, Math.floor((h[j] - lo) / bin));
-          const share = v[j] / (b1 - b0 + 1);
-          for (let b = b0; b <= b1; b++) vol[b] += share;
-        }
+        const profile = valueAreaProfile(h, l, v, i - p.look, i - 1, 0.15 * a[i]);
+        if (!profile) return 0;
+        const { lo, bin, vol } = profile;
+        const nb = vol.length;
         let poc = 0;
         let total = 0;
         for (let b = 0; b < nb; b++) {

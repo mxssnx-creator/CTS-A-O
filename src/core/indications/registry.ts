@@ -25,6 +25,8 @@ export { SIGNAL_SOURCES, signalId };
 
 export interface IndicationSpec extends IndicationDef {
   fn: (k: SeriesCache) => Int8Array;
+  /** First primary-source bar index eligible for entries; the underlying direction/filter state stays intact. */
+  entryWarmupBars?: number;
 }
 
 const sgn = (x: number) => (x > 0 ? 1 : x < 0 ? -1 : 0);
@@ -1067,6 +1069,11 @@ const laneMemo = new Map<string, Lane>();
 export const laneInd = (base: string, tf: number, combined = false) =>
   `${base}@m${tf}${combined ? "c" : ""}`;
 
+/** Entry-only readiness of the actual primary source, including its explicit lane or Signal alias. */
+export function entryWarmupBarsOf(ind: string): number {
+  return INDICATION_BY_ID.get(laneOf(ind).base)?.entryWarmupBars ?? 0;
+}
+
 /** Factors (× tf) of the higher ladder timeframes a combined lane must agree with. */
 export const higherFactors = (tf: number, ladder: readonly number[] = TF_LADDER) =>
   ladder.filter((h) => h > tf && h % tf === 0).map((h) => h / tf);
@@ -1104,6 +1111,7 @@ for (const id of COMBINED_BASE) {
     { ...base.params, htf: 4 },
     (k) => mtfState(id, k, [4])!,
   );
+  if (base.entryWarmupBars !== undefined) c.entryWarmupBars = base.entryWarmupBars;
   (INDICATIONS as IndicationSpec[]).push(c);
   (INDICATION_BY_ID as Map<string, IndicationSpec>).set(c.id, c);
 }
@@ -1158,6 +1166,7 @@ for (const src of SIGNAL_SOURCES) {
       { ...base.params },
       base.fn,
     );
+    if (base.entryWarmupBars !== undefined) c.entryWarmupBars = base.entryWarmupBars;
     (INDICATIONS as IndicationSpec[]).push(c);
     (INDICATION_BY_ID as Map<string, IndicationSpec>).set(c.id, c);
   }

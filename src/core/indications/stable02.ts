@@ -716,15 +716,16 @@ export function stable02Specs(): IndicationSpec[] {
   for (const e of S2_ENTRIES)
     for (const range of ["short", "medium"] as const) {
       const [params, fn] = e[range];
-      out.push(
-        spec(
-          e.kind,
-          s2EntryId(e.id, range),
-          `S2 ${e.label}${range === "medium" ? " (slow)" : ""}`,
-          params,
-          fn,
-        ),
+      const entry = spec(
+        e.kind,
+        s2EntryId(e.id, range),
+        `S2 ${e.label}${range === "medium" ? " (slow)" : ""}`,
+        params,
+        fn,
       );
+      // Supertrend retains its direction before entry readiness, so callers can compare the real prior state.
+      if (e.id === "st-trail") entry.entryWarmupBars = S2_WARMUP;
+      out.push(entry);
     }
   return [...out, ...S2_INDICATIONS];
 }
