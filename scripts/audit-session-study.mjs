@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 // Independent, read-only reconciliation of frozen session raw dumps and their allocation report.
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { createReadStream, writeFileSync, mkdirSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
+import { readSessionDump, writeJsonFile } from './lib/session-dump.mjs';
 
 const H = 3_600_000;
 const EPS_USD = 1e-9;
@@ -50,6 +52,8 @@ function modeledUnit(x) {
 }
 
 export function auditSessionStudy(raw, data, { purpose = 'development', protocol = null, protocolSha256 = null } = {}) {
+  if (raw.arraySidecars?.trades || data.arraySidecars?.sizedOrders)
+    throw new Error('Load execution and allocation sidecars before auditing; unloaded arrays are not empty results');
   if (!['development', 'selection', 'final'].includes(purpose)) throw new Error('Purpose must be development, selection or final');
   const startT = raw.window?.startT, endT = raw.window?.endT;
   if (!finite(startT) || !finite(endT) || endT <= startT) throw new Error('Missing raw execution window');
@@ -201,15 +205,30 @@ export function renderSessionStudyAudit(a) {
   return lines.join('\n') + '\n';
 }
 
+async function hashFile(file) {
+  const h = createHash('sha256');
+  for await (const chunk of createReadStream(file)) h.update(chunk);
+  return h.digest('hex');
+}
+
+/** Independently reconcile allocated closes without retaining unused config-history rows. */
+export async function auditSessionStudyFiles(rawFile, dataFile, { purpose = 'development', protocolFile } = {}) {
+  const raw = await readSessionDump(rawFile, { loadTapeTrades: false, loadValidation: false, verifyUnloaded: true });
+  const data = await readSessionDump(dataFile, { verifyUnloaded: true });
+  const protocolBytes = protocolFile ? await readFile(protocolFile) : null;
+  const a = auditSessionStudy(raw, data, { purpose, protocol: protocolBytes ? JSON.parse(protocolBytes) : null,
+    protocolSha256: protocolBytes ? hash(protocolBytes) : null });
+  a.provenance.inputSha256 = { raw: await hashFile(rawFile), allocationReport: await hashFile(dataFile),
+    protocol: protocolBytes ? hash(protocolBytes) : null };
+  return a;
+}
+
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2), arg = (key) => { const i = args.indexOf(`--${key}`); return i < 0 ? undefined : args[i + 1]; };
   if (!arg('raw') || !arg('data') || !arg('out')) throw new Error('Usage: node scripts/audit-session-study.mjs --raw raw.json --data html/data.json --out docs/simulations/audit-stem [--purpose development|selection|final] [--protocol protocol.json]');
-  const rawBytes = readFileSync(arg('raw')), dataBytes = readFileSync(arg('data'));
-  const protocolBytes = arg('protocol') ? readFileSync(arg('protocol')) : null;
-  const audit = auditSessionStudy(JSON.parse(rawBytes), JSON.parse(dataBytes), { purpose: arg('purpose') ?? 'development', protocol: protocolBytes ? JSON.parse(protocolBytes) : null, protocolSha256: protocolBytes ? hash(protocolBytes) : null });
-  audit.provenance.inputSha256 = { raw: hash(rawBytes), allocationReport: hash(dataBytes), protocol: protocolBytes ? hash(protocolBytes) : null };
+  const audit = await auditSessionStudyFiles(arg('raw'), arg('data'), { purpose: arg('purpose') ?? 'development', protocolFile: arg('protocol') });
   mkdirSync(dirname(arg('out')), { recursive: true });
-  writeFileSync(`${arg('out')}.json`, JSON.stringify(audit, null, 2) + '\n');
+  await writeJsonFile(`${arg('out')}.json`, audit);
   writeFileSync(`${arg('out')}.md`, renderSessionStudyAudit(audit));
   process.stdout.write(JSON.stringify({ out: arg('out'), checksOk: audit.checksOk, closes: audit.total.closes, pf: audit.total.exactPf, hours: audit.hours.length, pruningAssessmentAllowed: audit.pruning.assessmentAllowed, candidates: audit.pruning.candidates.length }) + '\n');
   process.exitCode = audit.checksOk ? 0 : 1;

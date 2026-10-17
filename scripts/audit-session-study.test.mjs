@@ -1,6 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { auditSessionStudy, renderSessionStudyAudit } from './audit-session-study.mjs';
+import { auditSessionStudy, auditSessionStudyFiles, renderSessionStudyAudit } from './audit-session-study.mjs';
+import { mkdtemp, readFile, writeFile, appendFile, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { writeSessionDump } from './lib/session-dump.mjs';
 
 const H = 3_600_000;
 function fixture({ n = 3, allLosing = false, unknownUnit = false, missingAllocations = false } = {}) {
@@ -31,6 +35,32 @@ function fixture({ n = 3, allLosing = false, unknownUnit = false, missingAllocat
 }
 
 describe('frozen session independent audit', () => {
+  it('rejects unloaded trade and allocation placeholders as incomplete evidence', () => {
+    const { raw, data } = fixture();
+    assert.throws(() => auditSessionStudy({ ...raw, arraySidecars: { trades: {} } }, data), /Load execution and allocation sidecars/);
+    assert.throws(() => auditSessionStudy(raw, { ...data, arraySidecars: { sizedOrders: {} } }), /Load execution and allocation sidecars/);
+  });
+  it('reconciles legacy and chunked files identically and verifies unloaded history chunks', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'cts-study-audit-chunks-'));
+    try {
+      const { raw, data } = fixture();
+      raw.tapeTrades = [{ id: raw.trades[0].cfg, trades: [[1, 2, .02], [3, 4, -.01]] }];
+      raw.validation = [{ t: raw.window.startT, checks: [{ id: raw.trades[0].cfg, pass: true }] }];
+      const legacy = join(dir, 'legacy.json'), chunked = join(dir, 'chunked.json'), report = join(dir, 'data.json'), allocationChunks = join(dir, 'allocation.json');
+      await writeFile(legacy, JSON.stringify(raw)); await writeFile(report, JSON.stringify(data));
+      await writeSessionDump(chunked, raw, { maxChunkBytes: 1024, arrayFields: ['trades'] });
+      const a = await auditSessionStudyFiles(legacy, report), b = await auditSessionStudyFiles(chunked, report);
+      assert.equal(a.checksOk, true); assert.equal(b.checksOk, true);
+      assert.deepEqual(a.total, b.total); assert.deepEqual(a.cohorts, b.cohorts); assert.deepEqual(a.hours, b.hours);
+      assert.equal(a.provenance.inputSha256.allocationReport, b.provenance.inputSha256.allocationReport);
+      await writeSessionDump(allocationChunks, data, { maxChunkBytes: 1024, arrayFields: ['sizedOrders'] });
+      const c = await auditSessionStudyFiles(chunked, allocationChunks);
+      assert.deepEqual(a.total, c.total); assert.deepEqual(a.cohorts, c.cohorts); assert.deepEqual(a.hours, c.hours);
+      const manifest = JSON.parse(await readFile(chunked, 'utf8'));
+      await appendFile(join(dir, manifest.validationSidecar.chunks[0].path), ' ');
+      await assert.rejects(auditSessionStudyFiles(chunked, report), /byte size mismatch/);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
   it('keeps funded unit PF, weighted cash, cohorts, directions and every hour separate', () => {
     const { raw, data } = fixture();
     const a = auditSessionStudy(raw, data);

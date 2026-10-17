@@ -1,6 +1,8 @@
 // Hourly validation of the causal D1 windows (scripts/core-session.mjs --wf {"recordValidation":true} dumps): per range, the configs that reach the validation check each hour, the ones validated, their PF before and after validation, and the realized orders and PF of the run.
 //   node --experimental-strip-types scripts/eval-validation.mjs <dir with val-YYYY-MM-DD.json dumps>
-import { readFileSync, readdirSync } from "node:fs";
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
+import { readSessionDump } from "./lib/session-dump.mjs";
 const dir = process.argv[2];
 const files = readdirSync(dir).filter((f) => /^val-2026-10-\d\d\.json$/.test(f)).sort();
 const RANGE = { mc: "Micro", mp: "Minimal plus", mn: "Minimal", sh: "Short", gn: "General", lg: "Long" };
@@ -10,7 +12,7 @@ const pf = (gp, gl) => (gl < 1e-12 ? (gp > 0 ? 9 : 0) : gp / gl);
 const agg = Object.fromEntries(ranges.map((r) => [r, { before: [], after: [], pfB: [], pfA: [], trades: [], base: [], basePass: [] }]));
 let hours = 0;
 for (const f of files) {
-  const d = JSON.parse(readFileSync(dir + "/" + f, "utf8"));
+  const d = await readSessionDump(join(dir, f), { loadTapeTrades: false, verifyUnloaded: true });
   for (const st of d.validation) {
     hours++;
     const per = Object.fromEntries(ranges.map((r) => [r, { n: 0, v: 0, gpB: 0, glB: 0, gpA: 0, glA: 0 }]));

@@ -20,6 +20,12 @@ function fixture(fn) {
   } finally { rmSync(root, { recursive: true, force: true }); }
 }
 describe("frozen full-engine session study", () => {
+  it("rejects unloaded execution placeholders rather than certifying an empty result", () => fixture(({root,file,raw}) => {
+    for (const field of ['trades','openEnd']) {
+      raw.arraySidecars = { [field]: { schema: 'cts-session-array-v1', items: 100 } };
+      assert.throws(()=>validateFrozenSessionResult(raw,file,root),/Load execution sidecars/);
+    }
+  }));
   it("checks the actual normalized runtime before compute and records empty evidence honestly", () => fixture(({root,file,p,rt,raw,feed}) => {
     validateFrozenSessionRuntime(rt,file,feed,p.window.evaluationFromT,p.window.endT,root);
     const evidence = validateFrozenSessionResult(raw,file,root); assert.equal(evidence.id,"holdout"); assert.equal(raw.trades.length,0);

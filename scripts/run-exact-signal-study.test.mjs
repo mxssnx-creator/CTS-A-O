@@ -1,15 +1,18 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, appendFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
-import { FEED_SHA256, SYMBOLS, studyCase, sessionArguments, assertProtocolPair, assertSelectionConclusion, assertEconomicSource, foldDesk, studyExecutionEnvironment } from "./run-exact-signal-study.mjs";
+import { FEED_SHA256, SYMBOLS, studyCase, sessionArguments, reportArguments, assertProtocolPair, assertSelectionConclusion, assertEconomicSource, foldDesk, studyExecutionEnvironment, STUDY_NODE_FLAGS, rawEvidenceOf } from "./run-exact-signal-study.mjs";
+import { writeSessionDump } from "./lib/session-dump.mjs";
 
 test("research disables both optional report variants and background preset comparisons regardless of parent environment", () => {
   const env = studyExecutionEnvironment({ CTS_CORE_COMPARE: "1", CTS_CORE_VARIANTS: "1", CTS_CORE_AUTOSTART: "1", CTS_CORE_WORKERS: "32", PRESERVED: "yes" });
   assert.equal(env.CTS_CORE_COMPARE, "0"); assert.equal(env.CTS_CORE_VARIANTS, "0"); assert.equal(env.CTS_CORE_AUTOSTART, "0");
   assert.equal(env.CTS_CORE_WORKERS, "4"); assert.equal(env.PRESERVED, "yes"); assert.equal(env.CTS_CORE_LIVE, "0");
+  assert.equal(env.NODE_OPTIONS, undefined);
+  assert.ok(STUDY_NODE_FLAGS.includes("--max-old-space-size=8192"));
 });
 
 test("fixed chronological folds preserve20/22symbols and six evaluated prehistory hours", () => {
@@ -39,6 +42,23 @@ test("simulation keeps exact source bounds/account and full progress while split
   for (const [key, wanted] of [["--symbols", "22"], ["--pre", "6"], ["--run", "24"], ["--selection-hours", "6"], ["--balance", "10"], ["--pct", "0.001"], ["--leverage", "10"], ["--live-since", x.start]]) assert.equal(value(key), wanted);
   for (const flag of ["--signal-progress", "--dump-only", "--tape-trades", "--frozen-session"]) assert.ok(args.includes(flag));
   assert.ok(!args.includes("--all-on") && !args.includes("--lookahead"));
+  assert.ok(!args.includes("--chunk-allocations"));
+  const report = reportArguments({ protocol: "protocol", evidence: "evidence" });
+  for (const flag of ["--replay", "--signal-progress", "--chunk-allocations", "--frozen-session"]) assert.ok(report.includes(flag));
+  assert.ok(!report.includes("--dump-only"));
+});
+test("completed-study report provenance verifies full allocation sidecars and rejects changed rows", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "cts-study-report-proof-")), file = join(dir, "data.json");
+  try {
+    await writeSessionDump(file, { total: { closes: 1 }, sizedOrders: [{ cfg: "cfg", profit: 0.01 }], sizedOpenOrders: [] },
+      { arrayFields: ["sizedOrders", "sizedOpenOrders"], maxChunkBytes: 1024 });
+    const proof = await rawEvidenceOf(file);
+    assert.deepEqual(Object.keys(proof.sidecars).sort(), ["sizedOpenOrders", "sizedOrders"]);
+    assert.equal(proof.sidecars.sizedOrders.items, 1); assert.equal(proof.sidecars.sizedOpenOrders.items, 0);
+    const header = JSON.parse(readFileSync(file, "utf8"));
+    appendFileSync(join(dir, header.arraySidecars.sizedOrders.chunks[0].path), " ");
+    await assert.rejects(rawEvidenceOf(file));
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 test("development arms reject even one changed range, gate or walk-forward setting", () => {
   const p = { actualSettings: { cost: 0.0015, signals: { count: 0 }, live: { enabled: false, maxPositions: 100 }, grid: { micro: { tp: [1, 2], sl: [1] } } }, actualWf: { preH: 6, longH: 6, causalBase: true, lastN: 25 }, symbols: ["BTC-USDT"], window: {}, account: {}, feed: {} };
@@ -62,4 +82,19 @@ test("economic source proof rejects drift and unsealed new files", () => {
     writeFileSync(join(root, "src/core/strategy.ts"), "changed"); assert.throws(() => assertEconomicSource(root, manifest, "corrected"));
     writeFileSync(join(root, "src/core/strategy.ts"), "frozen"); writeFileSync(join(root, "src/core/unsealed.ts"), "new"); assert.throws(() => assertEconomicSource(root, manifest, "corrected"));
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+test("completed-study provenance verifies every lossless raw sidecar and rejects a changed chunk", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "cts-study-raw-proof-")), file = join(dir, "raw.json");
+  try {
+    await writeSessionDump(file, { trades: [{ cfg: "cfg", r: 0.01 }], tapeTrades: [{ id: "cfg", trades: [["BTC-USDT", 1, 0, 60_000, 0.01]] }],
+      validation: [{ t: 0, real: ["cfg"], checks: [{ cfg: "cfg", ok: true }] }] }, { arrayFields: ["trades"], maxChunkBytes: 1024 });
+    const proof = await rawEvidenceOf(file);
+    assert.equal(proof.format, "json-with-lossless-sidecars");
+    assert.deepEqual(Object.keys(proof.sidecars).sort(), ["tapeTrades", "trades", "validation"]);
+    assert.equal(proof.sidecars.tapeTrades.rows, 1); assert.equal(proof.sidecars.validation.rows, 1); assert.equal(proof.sidecars.trades.items, 1);
+    assert.ok(proof.totalStoredBytes > proof.manifest.bytes);
+    const header = JSON.parse(readFileSync(file, "utf8"));
+    appendFileSync(join(dir, header.arraySidecars.trades.chunks[0].path), " ");
+    await assert.rejects(rawEvidenceOf(file));
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });

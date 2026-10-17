@@ -4,6 +4,7 @@
 //   --raw runs/.../raw.json --book runs/.../session/data.json \
 //   --protocol runs/.../protocol.json --out /absolute/deliverables
 import { readFile, mkdir, writeFile } from "node:fs/promises";
+import { createReadStream } from "node:fs";
 import { createHash } from "node:crypto";
 import { resolve, join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -22,6 +23,7 @@ import {
   returnEvidenceText,
 } from "./lib/return-evidence.mjs";
 import { profitFactor } from "../src/core/metrics/stats.ts";
+import { readSessionDump } from "./lib/session-dump.mjs";
 
 const H = 3_600_000;
 const primitive = (value) =>
@@ -115,11 +117,14 @@ export async function main(argv = process.argv.slice(2)) {
   const args = parameters(argv);
   const input = {};
   for (const key of ["raw", "book", "protocol"]) {
-    const bytes = await readFile(args[key]);
+    const physicalHash = createHash("sha256");
+    let physicalBytes = 0;
+    for await (const chunk of createReadStream(args[key])) { physicalHash.update(chunk); physicalBytes += chunk.length; }
     input[key] = {
-      data: JSON.parse(bytes),
-      sha256: createHash("sha256").update(bytes).digest("hex"),
-      bytes: bytes.length,
+      data: key === "protocol" ? JSON.parse(await readFile(args[key], "utf8")) : await readSessionDump(args[key],
+        key === "raw" ? { loadTapeTrades: false, loadValidation: false, verifyUnloaded: true } : {}),
+      sha256: physicalHash.digest("hex"),
+      bytes: physicalBytes,
     };
   }
   const report = signalWindowReport(input.raw.data, input.book.data, input.protocol.data);

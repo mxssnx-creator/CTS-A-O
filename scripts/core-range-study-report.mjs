@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { studyJson, studySha256 } from "./lib/range-study.mjs";
 import { studyConfigDetails } from "./lib/range-study-evidence.mjs";
+import { readSessionDump } from "./lib/session-dump.mjs";
 import { verifyStudySource } from "./core-range-study.mjs";
 import { readStored } from "./lib/session-feed.mjs";
 import { CandleSeries } from "../src/core/market/candle-series.ts";
@@ -160,7 +161,12 @@ function causalTapeEvidence(raw) {
     ranges: [...ranges.values()].map((x) => ({ ...x, latestEntryUtc: iso(x.latestEntryT), hoursBeforeStartOfLatestEntry: x.latestEntryT === null ? null : (start - x.latestEntryT) / H })),
     shortForwardClosedOpportunities: short, runtimeStepCandidates: raw.stepsByRange, runtimeSkipsByRange: raw.engine.skipsByRange };
 }
-export function rangeStudyReport(protocolFile, docFile) {
+/** Reconstruct causal evidence from every retained history, including checksummed sidecars. */
+export async function causalTapeEvidenceFromFile(file) {
+  const raw = await readSessionDump(file, { verifyUnloaded: true });
+  return { raw, evidence: causalTapeEvidence(raw) };
+}
+export async function rangeStudyReport(protocolFile, docFile) {
   const dir = path.dirname(path.resolve(protocolFile)), out = path.join(dir, "development-report");
   if (fs.existsSync(out) || fs.existsSync(docFile)) throw new Error("Preserve existing report artifacts");
   const p = read(protocolFile), sealFile = path.join(dir, "source-freeze.json"), seal = read(sealFile); verifyStudySource(seal, sha(protocolFile));
@@ -170,10 +176,11 @@ export function rangeStudyReport(protocolFile, docFile) {
     const feedFile = path.join(dir, fold.id, "feed.json"), feed = read(feedFile);
     market.push(...marketSanity(feed, p, fold)); horizons.push(reconstructHorizon(feed, p, fold, read(path.join(dir, "settings-P0.json")).settings));
     for (const profile of p.profiles) {
-      const caseId = `${fold.id}-${profile.id}`, caseDir = path.join(dir, caseId), rawFile = path.join(caseDir, "raw.json"), e = read(path.join(caseDir, "evidence-summary.json")), result = read(path.join(caseDir, "run-result.json")), raw = read(rawFile);
+      const caseId = `${fold.id}-${profile.id}`, caseDir = path.join(dir, caseId), rawFile = path.join(caseDir, "raw.json"), e = read(path.join(caseDir, "evidence-summary.json")), result = read(path.join(caseDir, "run-result.json"));
+      const { raw, evidence: causalEvidence } = await causalTapeEvidenceFromFile(rawFile);
       if (sha(rawFile) !== e.provenance.rawSha256 || sha(path.join(caseDir, "book/data.json")) !== e.provenance.normalizedBookSha256) throw new Error("Frozen evidence input hash mismatch");
       if (e.hourly.length !== 144) throw new Error("Every case must retain all144 hourly cells");
-      all.push({ caseId, fold: fold.id, profile: profile.id, e, result }); causal.push({ caseId, ...causalTapeEvidence(raw) });
+      all.push({ caseId, fold: fold.id, profile: profile.id, e, result }); causal.push({ caseId, ...causalEvidence });
       failures.push(...e.failedChecks.map((x) => ({ caseId, ...x })));
       hourly.push(...read(path.join(caseDir, "hourly.json")).rows.map((x) => ({ caseId, fold: fold.id, profile: profile.id, ...x })));
       const initial = new Map(raw.validation.find((x) => x.t === fold.tradeStartT).checks.map((x) => [x[0], x[1]]));
@@ -228,4 +235,4 @@ export function rangeStudyReport(protocolFile, docFile) {
   return { out, document: docFile, selectedAny: selection.some((x) => x.selectedProfile), rows: rows.length, hourly: hourly.length, portfolio: 6, failures: failures.length };
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) console.log(studyJson(process.argv[2] === "portfolio-only"
-  ? writePortfolioSupplement(path.resolve(process.argv[3]), process.argv[4]) : rangeStudyReport(process.argv[2], process.argv[3])));
+  ? writePortfolioSupplement(path.resolve(process.argv[3]), process.argv[4]) : await rangeStudyReport(process.argv[2], process.argv[3])));

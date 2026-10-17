@@ -53,6 +53,8 @@ export function validateFrozenSessionRuntime(rt, protocolPath, feedPath, evaluat
 
 /** Empty/losing results are valid evidence; incomplete universes and degraded runs are not. */
 export function validateFrozenSessionResult(raw, protocolPath, root = defaultRoot) {
+  if (raw.arraySidecars?.trades || raw.arraySidecars?.openEnd)
+    throw new Error('Load execution sidecars before validating the frozen session; unloaded arrays are not empty evidence');
   const sealed = readSessionStudy(protocolPath, root), p = sealed.protocol;
   const expected = studyExactJson([...p.symbols].sort());
   if (studyExactJson([...(raw.symbols ?? [])].sort()) !== expected || studyExactJson([...(raw.engine?.universe ?? [])].sort()) !== expected)

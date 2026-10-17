@@ -12,6 +12,8 @@ export const STUDY_EXECUTION_ENV = Object.freeze({ CTS_CORE_STATE: "off", CTS_CO
   CTS_CORE_WORKERS: "4", CTS_CORE_LIVE: "0", CTS_CORE_MEM_SOFT_MB: "2500", CTS_CORE_MEM_HARD_MB: "1200",
   MALLOC_ARENA_MAX: "2", MALLOC_MMAP_THRESHOLD_: "1048576" });
 export const studyExecutionEnvironment = (base = {}) => ({ ...base, ...STUDY_EXECUTION_ENV });
+// Bound only the isolated main child; workerExecArgv remains independently controlled by the production pool.
+export const STUDY_NODE_FLAGS = Object.freeze(["--max-old-space-size=8192", "--expose-gc", "--experimental-strip-types"]);
 export const SYMBOLS = ["BTC", "ETH", "BNB", "SOL", "XRP", "DOGE", "ADA", "AVAX", "LINK", "LTC", "DOT", "ATOM", "APT", "NEAR", "SUI", "TRX", "UNI", "FIL", "ETC", "ARB", "OP", "XLM"].map((s) => `${s}-USDT`);
 export const STUDY_CASES = Object.freeze({
   baseline20: { purpose: "development", baseline: true, count: 20, evaluationFrom: "2026-10-12T03:00:00.000Z", start: "2026-10-12T09:00:00.000Z", end: "2026-10-12T15:00:00.000Z", runH: 6 },
@@ -81,6 +83,15 @@ export function verifyFeed(file) {
     throw new Error("Public archive manifest lacks complete exact symbol/checksum/coverage evidence");
   return { path: path.resolve(file), sha256: actual, bytes: fs.statSync(file).size, symbols: 22, oneMinuteBars: 665280 };
 }
+/** A main-file checksum alone cannot certify a lossless sidecar-backed dump. */
+export async function rawEvidenceOf(file) {
+  const { verifySessionDumpSidecars } = await import("./lib/session-dump.mjs");
+  const main = fs.readFileSync(file), sidecars = await verifySessionDumpSidecars(file);
+  return { format: Object.keys(sidecars).length ? "json-with-lossless-sidecars" : "legacy-json",
+    manifest: { bytes: main.length, sha256: sha(main) }, sidecars,
+    totalStoredBytes: main.length + Object.values(sidecars).reduce((sum, x) => sum + x.bytes, 0),
+    everyReferencedSidecarVerified: true };
+}
 
 function commonReporter(root) {
   const visit = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((x) => x.isDirectory() ? visit(path.join(dir, x.name))
@@ -117,6 +128,11 @@ export function sessionArguments(spec, { feed, desk, protocol, evidence }) {
     "--balance", "10", "--pct", "0.001", "--leverage", "10", "--signal-progress", "--dump-only", "--tape-trades",
     "--dump", path.join(evidence, "raw.json"), "--quiet", "true", "--max-wait-min", "25", "--paper-wait-s", "300"];
 }
+export function reportArguments({ protocol, evidence }) {
+  return ["--replay", path.join(evidence, "raw.json"), "--frozen-session", protocol,
+    "--signal-progress", "--chunk-allocations", "--out", path.join(evidence, "report"),
+    "--html", path.join(evidence, "html"), "--writeup", path.join(evidence, "summary.md"), "--quiet", "true"];
+}
 async function main() {
   const args = process.argv.slice(2), arg = (key, fallback) => { const i = args.indexOf(`--${key}`); return i < 0 ? fallback : args[i + 1]; };
   if (args.includes("--help")) { console.log("run-exact-signal-study --case baseline20|corrected20|dev20-entry5|dev20-entry15|selection22|final22 --feed FILE --out DIR [--selection-audit FILE] [--source-check-only] | --verify-feed FILE"); return; }
@@ -126,7 +142,7 @@ async function main() {
   fs.mkdirSync(path.join(out, "evidence"), { recursive: true });
   const evidence = path.join(out, "evidence"), deadline = Date.now() + 36 * 60_000;
   const env = studyExecutionEnvironment(process.env);
-  const node = ["--expose-gc", "--experimental-strip-types"];
+  const node = STUDY_NODE_FLAGS;
   const commands = [];
   const run = (label, file, argv, cwd = root, allowFailure = false) => new Promise((resolve, reject) => {
     const log = path.join(evidence, `${label}.log`), fd = fs.openSync(log, "wx"), start = Date.now();
@@ -179,21 +195,23 @@ async function main() {
       economicBaseline: proof.baselineEconomicCommit, economicCorrected: proof.correctedEconomicCommit, patchSha256: proof.patchSha256,
       sourceSha256: protocol.source.sha256, protocolSha256: sha(fs.readFileSync(chosen.protocol)), selectionConclusion,
       researchPolicy: spec.entryLastN ? { scope: "Development-only additional exact-config causal entry check; no automatic selection, pruning or promotion", lastN: spec.entryLastN, lastNMinPf: 1.2 } : null,
-      resourcePolicy: { workers: 4, variants: false, backgroundPresetComparisons: false, availableMemoryHardReserveMb: 1200, availableMemorySoftReserveMb: 2500,
+      resourcePolicy: { workers: 4, mainChildHeapLimitMb: 8192, heapLimitViaNodeOptions: false, variants: false, backgroundPresetComparisons: false, availableMemoryHardReserveMb: 1200, availableMemorySoftReserveMb: 2500,
         hostMemoryMb: Math.round(os.totalmem() / 1048576), cpuParallelism: os.availableParallelism(), requiredMemoryFallback: 0, maxDriverMinutes: 36 },
       phases: "Separate dump-only process with tape trades and Signal progress, then common reporter/allocation replay, then independent auditor", commands };
     write(path.join(out, "launcher.json"), launch);
     await run("simulation", path.join(sourceRoot, "scripts/core-session.mjs"), sessionArguments(spec, { feed: feed.path, desk: chosen.desk, protocol: chosen.protocol, evidence }), sourceRoot);
-    const renderCode = await run("report", path.join(sourceRoot, "scripts/core-session.mjs"), ["--replay", path.join(evidence, "raw.json"),
-      "--frozen-session", chosen.protocol, "--signal-progress", "--out", path.join(evidence, "report"), "--html", path.join(evidence, "html"),
-      "--writeup", path.join(evidence, "summary.md"), "--quiet", "true"], sourceRoot, true);
+    const renderCode = await run("report", path.join(sourceRoot, "scripts/core-session.mjs"), reportArguments({ protocol: chosen.protocol, evidence }), sourceRoot, true);
     const auditCode = await run("audit", path.join(root, "scripts/audit-session-study.mjs"), ["--raw", path.join(evidence, "raw.json"),
       "--data", path.join(evidence, "html/data.json"), "--out", path.join(evidence, "audit"), "--purpose", spec.purpose, "--protocol", chosen.protocol], root, true);
     const audit = json(path.join(evidence, "audit.json")), report = json(path.join(evidence, "html/data.json"));
     if (renderCode || auditCode || audit.checksOk !== true || report.checksOk !== true) throw new Error("Strict common report or independent audit failed; all artifacts retained");
+    const rawEvidence = await rawEvidenceOf(path.join(evidence, "raw.json"));
+    const reportEvidence = await rawEvidenceOf(path.join(evidence, "html/data.json"));
     launch.status = "complete"; launch.result = { fundedCloses: audit.total.closes, returnPf: audit.total.exactPf, state: audit.total.state,
       greenHours: audit.account.greenHours, hours: audit.window.hours, checks: audit.checks.length, pruningAssessmentAllowed: audit.pruning.assessmentAllowed,
-      sourceSha256: protocol.source.sha256, rawSha256: sha(fs.readFileSync(path.join(evidence, "raw.json"))), auditSha256: sha(fs.readFileSync(path.join(evidence, "audit.json"))) };
+      sourceSha256: protocol.source.sha256, rawSha256: rawEvidence.manifest.sha256, rawEvidence,
+      reportSha256: reportEvidence.manifest.sha256, reportEvidence,
+      auditSha256: sha(fs.readFileSync(path.join(evidence, "audit.json"))) };
     write(path.join(out, "launcher.json"), launch);
     if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `## ${spec.id}\n\nOffline model: ${audit.total.closes} funded settled closes; Return PF ${audit.total.noLoss ? "no losses (finite gate score, not exact PF)" : audit.total.exactPf ?? audit.total.state}; positive hours ${audit.account.greenHours}/${audit.window.hours}. ${audit.checks.length} audit checks passed. Full hourly/type/range/side and raw evidence are artifacts. No live trades or promotion.\n`);
     console.log(JSON.stringify({ case: spec.id, status: "complete", ...launch.result }));

@@ -17,6 +17,8 @@ on:
       - scripts/audit-session-study.test.mjs
       - scripts/lib/session-study.mjs
       - scripts/lib/session-study.test.mjs
+      - scripts/lib/session-dump.mjs
+      - scripts/lib/session-dump.test.mjs
       - scripts/core-session.mjs
       - scripts/core-session.test.mjs
       - src/core/**
@@ -26,6 +28,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: exact-signal-study-${{ github.event.pull_request.number || github.ref }}
@@ -96,8 +99,16 @@ jobs:
             scripts/build-public-eval-feed.test.mjs \
             scripts/run-exact-signal-study.test.mjs \
             scripts/lib/session-study.test.mjs \
+            scripts/lib/session-dump.test.mjs \
             scripts/audit-session-study.test.mjs \
             scripts/core-session.test.mjs \
+            scripts/session-dump-consumers.test.mjs \
+            scripts/losing-configs.test.mjs \
+            scripts/core-signal-window-report.test.mjs \
+            scripts/eval-session-consumers.test.mjs \
+            scripts/eval-unit-basis.test.mjs \
+            scripts/eval-validation.test.mjs \
+            scripts/eval-gate.test.mjs \
             2>&1 | tee runs/exact-signal-study-ci/checks/logs/reports-tests.log
       - name: Targeted independent-config tests
         env:
@@ -138,16 +149,41 @@ jobs:
       - name: Install locked dependencies
         run: |
           mkdir -p runs/eval-22-20261017/logs
-          npm ci --ignore-scripts 2>&1 | tee runs/eval-22-20261017/logs/install.log
+          npm ci --ignore-scripts 2>&1 | tee runs/eval-22-20261017/logs/install-current.log
+      - name: Check availability of immutable verified public source
+        id: source-availability
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from 'node:fs';
+          const url = `https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}/actions/runs/39075908889/artifacts?name=exact-signal-study-feed`;
+          const response = await fetch(url, { signal: AbortSignal.timeout(30000), headers: { authorization: `Bearer ${process.env.GH_TOKEN}`, accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' } });
+          if (![200, 404, 410].includes(response.status)) throw new Error(`Source availability API failed: HTTP ${response.status}`);
+          const body = response.status === 200 ? await response.json() : { artifacts: [] };
+          if (!Array.isArray(body.artifacts)) throw new Error('Invalid source availability response');
+          const available = body.artifacts.some((x) => x.name === 'exact-signal-study-feed' && x.expired === false);
+          appendFileSync(process.env.GITHUB_OUTPUT, `available=${available}\n`);
+          console.log(`Verified-source artifact available: ${available}; candle bytes will be checked against the frozen SHA256.`);
+          NODE
+      - name: Restore immutable public source when available
+        if: steps.source-availability.outputs.available == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: exact-signal-study-feed
+          path: runs/eval-22-20261017
+          run-id: '39075908889'
+          github-token: ${{ github.token }}
       - name: Rebuild frozen public source
+        if: steps.source-availability.outputs.available == 'false'
         run: |
           node --experimental-strip-types scripts/build-public-eval-feed.mjs \
             --out runs/eval-22-20261017 --concurrency 4 \
-            2>&1 | tee runs/eval-22-20261017/logs/collector.log
+            2>&1 | tee runs/eval-22-20261017/logs/collector-current.log
       - name: Verify frozen feed and source evidence
         run: |
           node scripts/run-exact-signal-study.mjs --verify-feed runs/eval-22-20261017/feed.json \
-            2>&1 | tee runs/eval-22-20261017/logs/verification.log
+            2>&1 | tee runs/eval-22-20261017/logs/verification-current.log
       - name: Preserve full source, archives and checksums
         if: always()
         uses: actions/upload-artifact@v4
@@ -196,6 +232,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: exact-signal-study-${{ matrix.case }}
+          # Preserve raw manifests and all relative lossless tape/validation/trade chunks together.
           path: |
             runs/exact-signal-study-ci/${{ matrix.case }}/evidence/**
             runs/exact-signal-study-ci/${{ matrix.case }}/frozen/**
@@ -246,6 +283,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: exact-signal-study-final22
+          # Preserve raw manifests and all relative lossless tape/validation/trade chunks together.
           path: |
             runs/exact-signal-study-ci/final22/evidence/**
             runs/exact-signal-study-ci/final22/frozen/**

@@ -11,6 +11,7 @@ import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync, existsSy
 import { admit, availMb } from "./lib/mem-admission.mjs";
 import { join } from "node:path";
 import { positiveTypesReport } from "./lib/positive-types-report.mjs";
+import { readSessionDump } from "./lib/session-dump.mjs";
 
 const arg = (k, d) => {
   const i = process.argv.indexOf(`--${k}`);
@@ -74,7 +75,7 @@ const r = spawnSync(
     "--heap-growing-percent=50",
     "--experimental-strip-types",
     "--no-warnings",
-    "scripts/core-session.mjs",
+    process.env.CTS_EVAL_SESSION || "scripts/core-session.mjs",
     "--feed",
     FEED,
     "--end-at",
@@ -103,7 +104,7 @@ if (r.status !== 0 || !existsSync(DUMP)) {
 const sec = (Date.now() - t0) / 1000;
 
 // 3. the trades: by family, and by the hour they exited
-const raw = JSON.parse(readFileSync(DUMP, "utf8"));
+const raw = await readSessionDump(DUMP, { loadTapeTrades: false, loadValidation: false, verifyUnloaded: true });
 const report = positiveTypesReport(raw);
 const f2 = (x) => (x === Infinity ? "∞" : Number.isFinite(x) ? x.toFixed(2) : "unavailable");
 
