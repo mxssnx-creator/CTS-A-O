@@ -38,20 +38,10 @@ Break/Micro/Relate/range/walk-forward/pipeline regression bundle passed
 passed. The current-source replay hashes and matched baseline / 70% outcomes
 are recorded in the detailed report. The cache contains only nine real
 symbols, and no live venue execution or deployment was tested. Exact source
-checkpoint `5372a70` (`feat: bound Break post-Base replay controls`) was
-published as GitHub commit `de6a1acb3917ef8739b034ac11329f535f067dcb` on
-`fix-base-range-report-20261017`; GitHub confirmed the branch head after
-publication. No deployment or live trading change was made.
-
-## Matched Block ratio check — 17 October
-
-The paired six-hour systemwide replay is recorded in
-[the Block ratio comparison](simulations/systemwide-block-ratio-comparison-20261017.md),
-with complete hourly and range/lane/type reports for both runs. On the same
-nine-symbol feed and gates, ratio 0.2 improved Return PF 2.83→2.86, sized cash
-PF 0.66→0.74, funded orders 3,711→3,759, net −$0.21→−$0.14 and max equity
-drawdown 7.72%→6.64%. The same 02:00 hour remained negative, so neither result
-qualifies as consistently profitable and no live default was promoted.
+checkpoint `5372a70` (`feat: bound Break post-Base replay controls`) is mirrored
+as GitHub commit `de6a1acb3917ef8739b034ac11329f535f067dcb` on
+`fix-base-range-report-20261017`; GitHub verified the published branch. No
+deployment or live trading change was made.
 
 ## Relate indication and Micro verification
 
