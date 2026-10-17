@@ -24,6 +24,7 @@ import {
 } from "./pipeline/pipeline.ts";
 import { barsFromCandles, headBars, resample, syntheticCandles, tailBars } from "./market/bars.ts";
 import { isRelateInd } from "./indications/relate.ts";
+import { breakAnchorTf, isBreakRelInd } from "./indications/break-config.ts";
 import { DEFAULT_PROTECT, DEFAULT_SETTINGS } from "./config.ts";
 import { defaultWalkForward, kindOfInd, makeTape, selectDurable } from "./sim/walkforward.ts";
 import type { Trade } from "./domain/types.ts";
@@ -62,12 +63,21 @@ describe("lane encoding", () => {
 });
 
 describe("lane combos", () => {
-  it("ordinary combos use every lane; Relate uses its anchor lane; none uses 4 independent lanes", () => {
+  it("ordinary combos use every lane; Relate and Break use anchor lanes; none uses 4 independent lanes", () => {
     const plain = allCombos();
     const lanes = allCombos(undefined, undefined, [1, 5, 15, 30]);
     const none = plain.filter((c) => c.ind === "none").length;
-    const relate = plain.filter((c) => isRelateInd(laneOf(c.ind).base)).length;
-    assert.equal(lanes.length, (plain.length - none - relate) * 7 + relate + none * 4);
+    const anchored = plain.filter((c) => {
+      const base = laneOf(c.ind).base;
+      return isRelateInd(base) || isBreakRelInd(base);
+    });
+    const relate = plain.filter((c) => isRelateInd(laneOf(c.ind).base));
+    const breaking = plain.filter((c) => isBreakRelInd(laneOf(c.ind).base));
+    assert.equal(lanes.length, (plain.length - none - anchored.length) * 7 + anchored.length + none * 4);
+    assert.equal(lanes.filter((c) => isBreakRelInd(laneOf(c.ind).base)).length, breaking.length);
+    assert.equal(lanes.filter((c) => isRelateInd(laneOf(c.ind).base)).length, relate.length);
+    for (const c of lanes.filter((x) => isBreakRelInd(laneOf(x.ind).base)))
+      assert.equal(laneOf(c.ind).tf, breakAnchorTf(laneOf(c.ind).base), c.ind);
     // a focus pair selects that combo in every lane; a lane pair only that lane
     const f = `${plain[20].bot}|${plain[20].ind}`;
     assert.equal(allCombos([f], undefined, [1, 5, 15, 30]).length, 7);
