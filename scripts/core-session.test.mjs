@@ -21,7 +21,7 @@ import {
 const H = 3_600_000;
 const M = 60_000;
 const script = new URL("./core-session.mjs", import.meta.url).pathname;
-function replay({ caps = false, weighted = false, invalidReturn = false, qualification, thresholds, variants, presets, exhaustedCap = false, noBase = false, legacyRangeRows = false, baseNoLoss = false, signalCoverage = false } = {}) {
+function replay({ caps = false, weighted = false, invalidReturn = false, qualification, thresholds, variants, presets, exhaustedCap = false, noBase = false, legacyRangeRows = false, baseNoLoss = false, signalCoverage = false, liveValidation } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "cts-session-report-"));
   try {
     const raw = {
@@ -59,6 +59,7 @@ function replay({ caps = false, weighted = false, invalidReturn = false, qualifi
       raw.closes = { "TEST-USDT": Array.from({ length: 60 }, (_, i) => [H + i * M, 100]) };
     }
     if (qualification) raw.qualification = qualification;
+    if (liveValidation) raw.engine.liveValidation = liveValidation;
     if (variants) raw.variants = variants;
     if (presets) raw.presets = presets;
     if (thresholds) {
@@ -193,15 +194,26 @@ describe("session reports: return PF primary, simulated provenance", () => {
     assert.match(md, /median Base gate PF score.*pooled PF ∞ \(no loss\), median gate score 4\.00/);
     assert.match(md, /candidate pool \(pre-validation\)/);
     assert.match(md, /post-Base validated \/ seated/);
-    assert.match(md, /simulated executed \(all types\)/);
+    assert.match(md, /post-gate virtual closes \(pre-funding\)/);
+    assert.match(md, /funded settled orders and their PF are reported separately/);
     assert.match(md, /additional per-config entry last-N check is off \(wf\.lastN = 0\)/);
     assert.match(md, /Config-evaluation history is 1 h \(max of longH and preH\)/);
     assert.match(md, /Replay-only selection-window override: 1 h; it does not change normal runtime settings/);
     assert.match(md, /normal runtime settings\. The additional per-config entry last-N check/);
     assert.match(md, /Replay-only minimum green-hour fraction for config selection: 100% of the selection window/);
-    assert.match(md, /Causal simulated post-Base execution-PF gate: last 25 closes per config/);
+    assert.match(md, /Separate post-Base paper Live-entry replay: last 25 closes per config/);
     assert.doesNotMatch(md, /Native liveLastN is not replayed/);
     assert.match(html, /pooled PF ∞ \(no loss\)/);
+  });
+
+  it("reports the paper Live last-N gate separately from walk-forward order results", () => {
+    const { md } = replay({ liveValidation: {
+      lastN: 3, minPf: 1.1, since: H, judged: 4, passing: 3, paused: 1, skipped: 7,
+      onExchange: 0, exchangeCloses: 0, groupLastN: 0, groups: [],
+    } });
+    assert.match(md, /## Post-Base paper Live gate/);
+    assert.match(md, /4 config windows had enough closes to be judged: 3 passed and 1 were paused; 7 new entry candidates were rejected/);
+    assert.match(md, /hourly order and PF tables above describe the causal walk-forward simulation/);
   });
 
   it("keeps equal current range counts labeled as independent measurements", () => {

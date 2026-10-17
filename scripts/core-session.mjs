@@ -1128,6 +1128,9 @@ async function runEngine() {
       realSignal,
       realEngine: selected.length - realSignal,
       signals: rt.status.signals ?? null,
+      // expose the separate post-Base paper-entry gate; the historical walk-forward trades above are a different stage
+      liveValidation: rt.status.liveValidation ?? null,
+      paperSkips: rt.status.paperSkips ?? null,
       rssMaxMb: Math.round(rssMax / 1e6),
       computes: rt.status.computes,
       universe: [...uni],
@@ -2735,6 +2738,18 @@ lines.push(
     }).join(" | ")} |`;
   }),
 );
+if (E.liveValidation) {
+  const live = E.liveValidation;
+  const since = Number.isFinite(live.since) ? new Date(live.since).toISOString() : "not recorded";
+  lines.push(
+    ``,
+    `## Post-Base paper Live gate`,
+    ``,
+    `The paper entry stage independently checks each selected config's own last ${live.lastN} settled post-Base execution closes since ${since} against the stricter of its range PF floor and the Live PF floor. At the final paper step, ${live.judged} config windows had enough closes to be judged: ${live.passing} passed and ${live.paused} were paused; ${live.skipped} new entry candidates were rejected by this gate. Exchange closes used: ${live.onExchange ?? 0}. Group last-N: ${live.groupLastN ?? 0}.`,
+    ``,
+    `The hourly order and PF tables above describe the causal walk-forward simulation. They are not rewritten by this later paper-stage gate; this section reports the gate's separate progress and skips.`,
+  );
+}
 // stage funnel, hour by hour: unit PF (every order at one unit, after the cost) of the closes at each stage
 if (raw.funnel) {
   const F = raw.funnel;
@@ -2760,20 +2775,20 @@ if (raw.funnel) {
     ["pool Trailing", (i) => F.poolTrailing[i]],
     ["pool Trailing only", (i) => F.poolTrailingOnly[i]],
     ["post-Base validated / seated", (i) => F.seated[i]],
-    ["simulated executed (all types)", (i) => unit(exAt(i))],
-    ["executed Normal", (i) => unit(exAt(i).filter(kindIs("normal")))],
-    ["executed Trailing", (i) => unit(exAt(i).filter(kindIs("trailing")))],
-    ["executed Trailing only", (i) => unit(exAt(i).filter(kindIs("trailing-only")))],
-    ["executed Block-raised", (i) => unit(exAt(i).filter(isRaised))],
-    ["executed Signals", (i) => unit(exAt(i).filter(isSig))],
+    ["post-gate virtual closes (pre-funding)", (i) => unit(exAt(i))],
+    ["virtual Normal", (i) => unit(exAt(i).filter(kindIs("normal")))],
+    ["virtual Trailing", (i) => unit(exAt(i).filter(kindIs("trailing")))],
+    ["virtual Trailing only", (i) => unit(exAt(i).filter(kindIs("trailing-only")))],
+    ["virtual Block-raised", (i) => unit(exAt(i).filter(isRaised))],
+    ["virtual Signals", (i) => unit(exAt(i).filter(isSig))],
   ];
   const tot = (f) => sum(Array.from({ length: F.nH }, (_, i) => f(i)));
   const k = F.counts ?? {};
   lines.push(
     ``,
-    `## Stage funnel, hour by hour (orders closed · unit PF)`,
+    `## Stage funnel, hour by hour (post-gate virtual closes · one-unit PF)`,
     ``,
-    `Base (each pair at its default protect and its ranges' cells): ${k.basePairs ?? "?"} engine pairs evaluated, ${k.basePassed ?? "?"} passed (any range)${E.signals?.representativeBaseGate ? "; gated Signal pairs are included in the status totals" : "; Signal pairs are measured separately"}. Later stages: *candidate pool* = every config of the Base-passed pairs (${k.poolConfigs ?? "?"} tapes; diagnostic, before config validation), Normal / Trailing / Trailing only apart; *post-Base validated / seated* = configs that passed config evaluation (${k.seatedConfigs ?? "?"}); *simulated execution* = orders that passed the causal config, coordination, caps and Block gates. Unit PF is every close at one unit after the ${((raw.settings?.cost ?? 0.002) * 100).toFixed(2)} % cost. Config-evaluation history is ${raw.settings?.wf?.longH ?? raw.settings?.wf?.preH ?? "unknown"} h (max of longH and preH); Base history is reported separately.${raw.settings?.replaySelectionHours != null ? ` Replay-only selection-window override: ${raw.settings.replaySelectionHours} h; it does not change normal runtime settings.` : ""} ${raw.settings?.wf?.lastN > 0 ? `Additional causal config entry check: each candidate needs the prior ${raw.settings.wf.lastN} closes of its exact config at PF ≥ max(${raw.settings.wf.lastNMinPf}, its range floor); no future closes are used.` : "The additional per-config entry last-N check is off (wf.lastN = 0); configEval still validates configs before seating."}${raw.settings?.live?.replaySinceT != null ? ` Causal simulated post-Base execution-PF gate: last ${raw.settings.live.liveLastN} closes per config${raw.settings.live.liveGroupLastN ? ` and last ${raw.settings.live.liveGroupLastN} pooled closes per range` : ""}, from ${new Date(raw.settings.live.replaySinceT).toISOString()}; future exits are excluded.` : "Native liveLastN is not replayed unless --live-since is set."}${k.causalBase ? "" : " Base and the candidate pool use the full history (in-sample for the run); seated / executed are causal."}`,
+    `Base (each pair at its default protect and its ranges' cells): ${k.basePairs ?? "?"} engine pairs evaluated, ${k.basePassed ?? "?"} passed (any range)${E.signals?.representativeBaseGate ? "; gated Signal pairs are included in the status totals" : "; Signal pairs are measured separately"}. Later stages: *candidate pool* = every config of the Base-passed pairs (${k.poolConfigs ?? "?"} tapes; diagnostic, before config validation), Normal / Trailing / Trailing only apart; *post-Base validated / seated* = configs that passed config evaluation (${k.seatedConfigs ?? "?"}); *post-gate virtual closes* = simulated trades that passed the causal config, coordination, caps and Block gates, before account funding/allocation. This count can include zero-allocated trades; funded settled orders and their PF are reported separately above. One-unit PF is every virtual close normalized to one unit after the ${((raw.settings?.cost ?? 0.002) * 100).toFixed(2)} % cost. Config-evaluation history is ${raw.settings?.wf?.longH ?? raw.settings?.wf?.preH ?? "unknown"} h (max of longH and preH); Base history is reported separately.${raw.settings?.replaySelectionHours != null ? ` Replay-only selection-window override: ${raw.settings.replaySelectionHours} h; it does not change normal runtime settings.` : ""} ${raw.settings?.wf?.lastN > 0 ? `Additional causal config entry check: each candidate needs the prior ${raw.settings.wf.lastN} closes of its exact config at PF ≥ max(${raw.settings.wf.lastNMinPf}, its range floor); no future closes are used.` : "The additional per-config entry last-N check is off (wf.lastN = 0); configEval still validates configs before seating."}${raw.settings?.live?.replaySinceT != null ? ` Separate post-Base paper Live-entry replay: last ${raw.settings.live.liveLastN} closes per config${raw.settings.live.liveGroupLastN ? ` and last ${raw.settings.live.liveGroupLastN} pooled closes per range` : ""}, from ${new Date(raw.settings.live.replaySinceT).toISOString()}; see the Live gate section for judged and rejected counts.` : "Native liveLastN is not replayed unless --live-since is set."}${k.causalBase ? "" : " Base and the candidate pool use the full history (in-sample for the run); seated / executed are causal."}`,
     ``,
     `| hour (UTC) | ${COLS.map(([c]) => c).join(" | ")} |`,
     `|---|${COLS.map(() => "---:").join("|")}|`,

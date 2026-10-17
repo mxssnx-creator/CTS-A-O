@@ -122,6 +122,22 @@ describe("independent configs (seatPer config)", () => {
       const bad = tape(id(9), 70);
       assert.equal(ids(select([bad, tape(id(2), 0, 0.03)], t, indep)).includes(id(9)), false);
     });
+
+    it(`${name}: validation and entry last-N are isolated to each config`, () => {
+      const good = tape(id(1), 5);
+      const losingSibling = tape(id(2), 100);
+      const o = { ...indep, validLastN: 15, lastN: 15, lastNMinPf: 1.2, rangeGate: undefined };
+      const alone = ids(select([good], t, o));
+      const withSibling = ids(select([good, losingSibling], t, o));
+      assert.deepEqual(alone, [id(1)]);
+      assert.ok(withSibling.includes(id(1)), "the losing sibling does not fail this config's validation window");
+
+      const mine = (tapes: ReturnType<typeof tape>[]) =>
+        walkForward(u, tapes, o)
+          .trades.filter((x) => x.cfg === id(1))
+          .map((x) => `${x.entryT}|${x.exitT}|${x.r}`);
+      assert.deepEqual(mine([good, losingSibling]), mine([good]), "entry last-N uses only the selected config's tape");
+    });
   }
 
   it("DCA / Axis are judged on their own results, not against the pair's base", () => {
