@@ -47,6 +47,7 @@ import { columnarStore, pruneFeed, RANK_TF, readStored } from "./lib/session-fee
 import { closesIn } from "./lib/candles.mjs";
 import { captureSignalProgress } from "./lib/signal-progress.mjs";
 import { BOOK_NOTIONAL_EPS_USD, normalizedBookNotional } from "./lib/book-notional.mjs";
+import { sessionSettingsEvidence } from "./lib/session-settings.mjs";
 import { sessionAllocation, sessionCashPnl, sessionUnitNotional, sessionOwnedReturns, sessionVirtualReturns } from "./lib/session-owned-returns.mjs";
 import {
   SESSION_EXECUTION_RETURNS,
@@ -104,7 +105,7 @@ const { profitFactor, modeledUnitReturn: unitR } = await import("../src/core/met
 const { closedPositions, openTimeline, positionEpisodes } = await import("../src/core/positions.ts");
 const { laneLabel, laneOf, isSignalInd, signalSourceOf } = await import("../src/core/indications/registry.ts");
 const { rangeOfId, RANGE_LABEL } = await import("../src/core/minimal-coord.ts");
-const { kindOfInd, configEval, tapeExecutable, ddtLimitH, EVAL_GATES, walkForward, selectionScoreAt } = await import(
+const { kindOfInd, configEval, baseAllowsTape, tapeExecutable, ddtLimitH, EVAL_GATES, walkForward, selectionScoreAt } = await import(
   "../src/core/sim/walkforward.ts"
 );
 const { signalActiveHas } = await import("../src/core/signals.ts");
@@ -844,8 +845,8 @@ async function runEngine() {
       gp = so.gp;
       gl = so.gl;
     } else {
-      // the walk-forward seats a config only when its pair passed Base (wf.basePassed) — counted apart, as "type off"
-      const baseOk = !rt.wf.basePassed || rt.wf.basePassed.has(`${tp.bot}|${tp.ind}`);
+      // Diagnostic allSets tapes retain their full calculation, while admission uses the qualified pair/range.
+      const baseOk = baseAllowsTape(tp, rt.wf);
       const ex2 = tapeExecutable(tp, rt.wf) && baseOk;
       const ev = ex2
         ? configEval(tp, startT, rt.wf)
@@ -963,11 +964,12 @@ async function runEngine() {
   }
   // Base: every engine pair at its default protect (full history; in-sample for the run unless causal Base is on),
   // before the gate and the pairs that passed it (any range) — closes inside the run
-  // every engine pair's Base statistic, its gate result and the ranges its sets are built in (the dump's basePairs: the
+  // every engine pair's Base statistic, its gate result and its qualified ranges (the dump's basePairs: the
   // survival per range and the filter's quality per window — a range's survivors are the pairs whose tags hold it)
   // (the stored Base runs are slim — no trades — so Base is reported as counts, not per hour)
   const { basePairRows } = await import("../src/core/pipeline/pipeline.ts");
-  const basePairs = basePairRows(rt.pipeline?.s1 ?? [], rt.basePairTags ?? {});
+  const basePairs = basePairRows(rt.pipeline?.s1 ?? [], rt.wf.basePassedRanges ?? rt.basePairTags ?? {})
+    .map((row) => ({ ...row, builtTags: [...(rt.basePairTags?.[row.pair] ?? [])] }));
   {
     funnel.counts = {
       basePairs: basePairs.length,
@@ -1006,6 +1008,18 @@ async function runEngine() {
     qualification: { ...SESSION_QUALIFICATION },
     executionReturns: { ...SESSION_EXECUTION_RETURNS },
     settings: {
+      // Credentials stay in the connection store; private reference execution rows are redacted if present.
+      // Full grids and normalized lanes preserve exact frozen replay controls.
+      ...sessionSettingsEvidence(s, rt.wf),
+      provenance: {
+        settingsAt: rt.status.settingsAt ?? null,
+        evaluationFromT: evaluationFromT ?? null,
+        indicatorStartT: rt.lastUniverse?.indicatorStartT ?? rt.lastUniverse?.startT ?? null,
+        tradeStartT: startT,
+        tradeEndT: endT,
+        causalBase: !!rt.wf.causalBase,
+        selectionHours: Math.max(rt.wf.preH, rt.wf.longH),
+      },
       symbolsAsked: symbols,
       // the report book's settings (a --replay / --render uses them unless the flags say otherwise)
       book: { balance: balance0, sizing, notional, leverage },
@@ -3060,7 +3074,7 @@ const data = clean({
     pf: "primary: positive net order returns ÷ absolute negative net order returns on the same funded settled-order sample, after modeled costs; recorded Block/coordination execution multiples removed, ladder/tape leg semantics retained; see evidence.returns for source completeness",
     cashPf: "normalized base-$1 PF: every funded settled order gets the same $1 notional and its canonical unit return (stored r with Block/coordination multiple removed); therefore this must match Return PF apart from rounding",
     cashPfDiagnostic: "actual sized-dollar PF: gross realized cash gains ÷ losses from ((1 + execution-weighted return) − 1) × the order's funded unit notional; Block/coordination and ladder volume are already in r and are not multiplied twice; unequal funded sizes can make this differ from the normalized PF",
-    net: "Σ r × unit of the closed orders, $ (r already holds the 0.2 % round-trip cost, the Block multiple and the DCA legs)",
+    net: "Σ r × unit of the closed orders, $ (r already holds the modeled round-trip cost, the Block multiple and the DCA legs)",
     ddt: "drawdown time, h: the longest time the closed-order curve stayed below a previous peak (an unrecovered one counts to the end of the window)",
     ddr: "drawdown ratio: the closed-order curve's max drawdown ÷ its net ($); – when net ≤ 0",
     maxDdPct: "group: max drawdown of its own closed curve ÷ (start balance + curve peak); total: the equity curve (open orders marked to market every minute)",

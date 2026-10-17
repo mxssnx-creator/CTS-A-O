@@ -669,8 +669,8 @@ export function baseSetsGates<G extends Gates>(g: G): G {
 
 /**
  * Every engine pair of a compute's Base (the session dump's basePairs): its statistic at the default protect, whether
- * it passed (any range) and the ranges its sets are built in (`tags`, "" = Wide: the compute's pairTags — the ranges it
- * passed while grid.baseRanges is on and grid.allSets off, the defaults; else every range its indication applies to).
+ * it passed (any range) and its admitted ranges (`tags`, "" = Wide). Callers supply the qualified range map before
+ * optional diagnostic construction; an explicit empty map entry retained for held exits is not a pass.
  * A range's survivors are counted by these tags: a Micro indication that passed only on its Minimal cells builds and
  * trades Minimal, and counted by `passed` alone it read as a Micro survivor.
  */
@@ -695,7 +695,7 @@ export function basePairRows(
       n: r.full?.n ?? 0,
       pf: (r.full?.n ?? 0) > 0 ? (r.full?.pf ?? null) : null,
       net: r.full?.net ?? 0,
-      passed: !!tags,
+      passed: (tags?.length ?? 0) > 0,
       tags: [...(tags ?? [])],
     });
   }

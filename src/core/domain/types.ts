@@ -413,12 +413,16 @@ export interface Trade {
   vol?: number;
   /** Block level at execution (broker) or DCA legs added (sim) */
   level?: number;
-  /** Block volume multiplier applied at execution (r includes it); r / mult is the unit result */
+  /** External execution multiplier (Block × relation × type factor); r / mult is the underlying strategy return. */
   mult?: number;
-  /** part of mult from Stable-02 relation volume; execution volume excludes it when auditing Block sizing */
+  /** part of mult from coordination volume (Stable-02 relation volume). */
   coordVol?: number;
-  /** part of mult from the negative-hour hedge volume factor; independent of Stable-02 relation volume */
+  /** additional type / combined-lane factor in mult; removed from Block reporting and audit. */
+  volFactor?: number;
+  /** Negative-hour hedge volume factor captured at entry. */
   hedgeVol?: number;
+  /** Independent range sizing factor captured at entry. */
+  rangeVol?: number;
   /** taken by the negative-hour hedge (a signal outside the ranked set, while the book was losing) */
   hedge?: boolean;
   /** Block type overall: the extra volume each source added as its own position (part of mult) */
@@ -457,10 +461,13 @@ export interface OpenPosition {
    * marked-open order's r already carries it (r = Σ legs), so it is never multiplied into r again.
    */
   w?: number;
-  /** Stable-02 relation-volume factor captured at entry and retained while this position is held. */
+  /** execution factors retained at entry for exact closes after settings change or restart */
   coordVol?: number;
-  /** Negative-hour hedge volume factor captured at entry and retained while this position is held. */
+  volFactor?: number;
+  /** Negative-hour hedge volume factor captured at entry. */
   hedgeVol?: number;
+  /** Independent range sizing factor captured at entry. */
+  rangeVol?: number;
   /** Opt-in Block audit trace captured at entry and retained while this position is held. */
   blockLevels?: Partial<Record<string, number>>;
   blockEffectiveLevels?: Partial<Record<string, number>>;
@@ -593,7 +600,7 @@ export interface Gates {
   /**
    * stage minimum PF per target range, in place of `minPf` for that range's configs (every PF gate a config passes:
    * the Main and Real windows, the pre-historic window, the validation last-N, the entry last-N and the symbol gate).
-   * Short, Wide and the signals keep `minPf`. Values 1.05–3.
+   * Wide and untagged signals keep `minPf`; tagged ranges use their own configured floor. Values 1.05–3.
    */
   rangeMinPf?: Partial<Record<RangeMinPfKey, number>>;
   /**

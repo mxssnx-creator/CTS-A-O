@@ -13,7 +13,6 @@ import { auditState } from "./audit.ts";
 import { walkForward, kindExecutable, type WalkForwardOptions } from "./sim/walkforward.ts";
 import { allCombos } from "./pipeline/pipeline.ts";
 import { INDICATIONS, indicationState, laneOf, isSignalInd } from "./indications/registry.ts";
-import { isMicroInd } from "./indications/micro.ts";
 import { isRelateInd, relateAnchorTf } from "./indications/relate.ts";
 import { breakAnchorTf, isBreakRelInd } from "./indications/break-config.ts";
 import { SeriesCache } from "./indications/cache.ts";

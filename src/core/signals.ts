@@ -19,6 +19,11 @@ import {
   type SignalClusterSettings,
   type SignalSettings,
 } from "./signal-config.ts";
+import {
+  isSignalCoordinationInd,
+  SIGNAL_COORDINATION_RATIOS,
+  signalCoordinationId,
+} from "./signal-coordination.ts";
 
 export {
   DEFAULT_SIGNALS,
@@ -44,6 +49,24 @@ export function signalCombos(
       if (!sig.ranges[range]) continue;
       for (const tf of lanes)
         out.push({ bot: "follow", ind: laneInd(signalId(src.name, range), tf) });
+    }
+  }
+  const coord = sig.coordination;
+  if (coord.enabled) {
+    const sources = SIGNAL_SOURCES
+      .filter((src) => allow ? sig.sources[src.name] === true : sig.sources[src.name] !== false)
+      .map((src) => src.name);
+    if (sources.length >= coord.minSources) {
+      const inputs: Array<{ mask: 1 | 2 | 3; short: boolean; medium: boolean }> = [];
+      if (sig.ranges.short) inputs.push({ mask: 1, short: true, medium: false });
+      if (sig.ranges.medium) inputs.push({ mask: 2, short: false, medium: true });
+      if (sig.ranges.short && sig.ranges.medium) inputs.push({ mask: 3, short: true, medium: true });
+      for (const input of inputs) {
+        for (const ratio of SIGNAL_COORDINATION_RATIOS) {
+          const id = signalCoordinationId(sources, ratio, coord.minSources, input.mask);
+          for (const tf of lanes) out.push({ bot: "follow", ind: laneInd(id, tf) });
+        }
+      }
     }
   }
   return out;
@@ -205,8 +228,8 @@ export function activeSignals(
   const rank = sig.rank ?? "drawdown";
   const byDd = rank === "drawdown" || rank === "lowdd";
   // one row per unit; a pooled (pre-split) record is one unit holding both directions' keys
-  const rows: Array<{ key: string; keys: string[]; score: number; pf: number }> = [];
-  const judge = (keys: string[], st: SignalSideStat) => {
+  const rows: Array<{ key: string; keys: string[]; score: number; pf: number; coordination: boolean }> = [];
+  const judge = (keys: string[], st: SignalSideStat, coordination: boolean) => {
     if (st.n < sig.minTrades || !recentOk(st)) return;
     if (byDd) {
       // drawdown-aware: profitable, positive in enough 4-hour blocks, ranked by net ÷ max drawdown
@@ -219,24 +242,32 @@ export function activeSignals(
         keys,
         score: rank === "lowdd" ? st.net / (dd * dd) : st.net / dd,
         pf: st.pf,
+        coordination,
       });
-    } else rows.push({ key: keys[0], keys, score: st.net, pf: st.pf });
+    } else rows.push({ key: keys[0], keys, score: st.net, pf: st.pf, coordination });
   };
   for (const r of runs) {
     if (!r.ind.includes("sig-")) continue;
     const by = typeof r.bySym === "string" ? (JSON.parse(r.bySym) as Record<string, St>) : r.bySym;
+    const coordination = isSignalCoordinationInd(r.ind);
     for (const [sym, st] of Object.entries(by ?? {})) {
       const L = sigActiveKey(r.bot, r.ind, sym, 1, r.kind);
       const S = sigActiveKey(r.bot, r.ind, sym, -1, r.kind);
       if (st.sides) {
-        if (st.sides["1"]) judge([L], st.sides["1"]);
-        if (st.sides["-1"]) judge([S], st.sides["-1"]);
-      } else judge([L, S], st);
+        if (st.sides["1"]) judge([L], st.sides["1"], coordination);
+        if (st.sides["-1"]) judge([S], st.sides["-1"], coordination);
+      } else judge([L, S], st, coordination);
     }
   }
-  rows.sort((a, b) => b.score - a.score || b.pf - a.pf || (a.key < b.key ? -1 : 1));
-  // signals.count 0 = no cap: every validated signal unit is active (operator: process freely, many orders)
-  return new Set((sig.count > 0 ? rows.slice(0, sig.count) : rows).flatMap((x) => x.keys));
+  const sort = (a: typeof rows[number], b: typeof rows[number]) =>
+    b.score - a.score || b.pf - a.pf || (a.key < b.key ? -1 : 1);
+  const classic = rows.filter((x) => !x.coordination).sort(sort);
+  const coordinated = rows.filter((x) => x.coordination).sort(sort);
+  // Each family has a distinct active-unit cap, in both the initial ranking and the causal hourly ranking.
+  return new Set([
+    ...(sig.count > 0 ? classic.slice(0, sig.count) : classic),
+    ...(sig.coordination.count > 0 ? coordinated.slice(0, sig.coordination.count) : coordinated),
+  ].flatMap((x) => x.keys));
 }
 
 /** One unit's ranking record (a symbol's pooled stats, or one direction of them). */
@@ -294,11 +325,12 @@ export interface AcceptTape {
  * the run's active candidates only, fed to the guard as they close.
  */
 /** the pooled acceptance group of every signal candidate on one side (direction acceptance) */
-export function sideAcceptKey(side: number): string {
-  return side > 0 ? "side|1" : "side|-1";
+export function sideAcceptKey(side: number, coordination = false): string {
+  const prefix = coordination ? "coord-side" : "side";
+  return side > 0 ? `${prefix}|1` : `${prefix}|-1`;
 }
 /** a direction acceptance group (judged on the fed closes of the run's active candidates, never the tape record) */
-export const isSideAcceptKey = (k: string) => k === "side|1" || k === "side|-1";
+export const isSideAcceptKey = (k: string) => /^(?:coord-)?side\|(?:1|-1)$/.test(k);
 
 /** True once ~8 ms of work passed since the last true (then it starts over): where a filling generator yields. */
 function sliceClock(ms = 8): () => boolean {
@@ -655,7 +687,7 @@ export class SignalGuard {
    * every closed signal candidate in exit order with its direction (loss-cluster guard: judged per side — a cluster
    * of losing shorts never pauses the longs)
    */
-  private closed: Array<{ t: number; r: number; side: number }> = [];
+  private closed: Array<{ t: number; r: number; side: number; population: "signals" | "coordination" }> = [];
   /**
    * signal entries already counted ("group#onset" → exit of their first close): the k configs of one entry share it
    * and count once in the loss cluster and the acceptance counts. Pruned by time (an entry's configs all close within
@@ -680,11 +712,12 @@ export class SignalGuard {
   /**
    * `side`: the close's direction (1 / −1; 0 = unknown, then it counts only for a side-less cluster check); `onset`:
    * the signal entry it belongs to (indication × symbol × direction × entry time) — the loss cluster judges each entry
-   * once, on its first close (one entry's k configs losing together are one loss, not k)
+   * once, on its first close (one entry's k configs losing together are one loss, not k); `population` isolates
+   * classic sources from coordination ratios.
    */
-  add(key: string, r: number, exitT?: number, side = 0, onset?: string) {
-    if (exitT !== undefined && this.firstOnset("cluster", onset, exitT)) {
-      this.closed.push({ t: exitT, r, side: side > 0 ? 1 : side < 0 ? -1 : 0 });
+  add(key: string, r: number, exitT?: number, side = 0, onset?: string, population: "signals" | "coordination" = "signals") {
+    if (exitT !== undefined && this.firstOnset(`cluster:${population}`, onset, exitT)) {
+      this.closed.push({ t: exitT, r, side: side > 0 ? 1 : side < 0 ? -1 : 0, population });
       // trimmed by time, never by count: the cluster window (≤ 720 min) must always see every close inside it
       if (this.closed.length > 20_000) trimBefore(this.closed, exitT - CLUSTER_KEEP_MS);
     }
@@ -764,7 +797,7 @@ export class SignalGuard {
    * count), so the simulation, the paper book, the live step and the audit replay decide alike. Candidates keep
    * being computed and fed while paused (the internal calculations never stop).
    */
-  clustered(t: number, c: SignalClusterSettings, side = 0): boolean {
+  clustered(t: number, c: SignalClusterSettings, side = 0, population: "signals" | "coordination" = "signals"): boolean {
     if (!c.enabled) return false;
     const from = t - c.windowMin * 60_000;
     const sd = side > 0 ? 1 : side < 0 ? -1 : 0;
@@ -775,6 +808,7 @@ export class SignalGuard {
       const x = this.closed[i];
       if (x.t > t) continue;
       if (x.t <= from) break;
+      if (x.population !== population) continue;
       if (sd && x.side !== sd) continue;
       n++;
       sum += x.r;

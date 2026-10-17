@@ -25,6 +25,7 @@ import { mergeSignals, SIGNAL_SOURCES, type SignalSettings } from "./signal-conf
 import { coordSettings, defaultWalkForward, type WalkForwardOptions } from "./sim/walkforward.ts";
 import { positiveCoordWarnings, SIGNAL_EVAL_MIN_PF } from "./positive.ts";
 import { MICRO_RANGE } from "./minimal-coord.ts";
+import { INDICATION_KINDS } from "./domain/types.ts";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 type Obj = Record<string, unknown>;
@@ -260,6 +261,19 @@ const CASES: Record<string, Case> = {
   "live.liveGroupLastN": num(0, 2000),
   // 0 = no cap; else 10 … 2000 in steps of 10
   "signals.count": num(10, 2000, { int: true, also: [0, 100], bad: [15] }),
+  "signals.coordination.enabled": {
+    ...oneOf([false, true], ["false", 0, 1, null]),
+    with: [["signals.coordination.count", 100]],
+  },
+  "signals.coordination.minSources": num(2, 100, { int: true }),
+  "signals.coordination.count": num(10, 2000, { int: true, also: [0, 100], bad: [15] }),
+  "signals.coordination.volumeFactor": num(1, 22, { int: true }),
+  ...Object.fromEntries(
+    INDICATION_KINDS.map((kind) => [
+      `signals.combinedVolumeFactors.${kind}`,
+      num(1, 22, { int: true }),
+    ]),
+  ),
   "signals.sourcesMode": oneOf(["deny", "allow"]),
   "signals.rangeVolumeFactors.short": volumeFactor,
   "signals.rangeVolumeFactors.medium": volumeFactor,
@@ -480,6 +494,7 @@ const NOT_SHOWN: Record<string, string> = {
 };
 /** signal sources are listed from the SIGNAL_SOURCES catalog on the page, not by name */
 const SOURCE_PREFIX = "signals.sources.";
+const COMBINED_VOLUME_PREFIX = "signals.combinedVolumeFactors.";
 
 describe("settings completeness: every leaf is on the Settings page or listed as not shown", () => {
   const ui = uiSources();
@@ -499,7 +514,8 @@ describe("settings completeness: every leaf is on the Settings page or listed as
     const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const missing: string[] = [];
     for (const k of LEAVES.keys()) {
-      if (k in NOT_SHOWN || k.startsWith(SOURCE_PREFIX)) continue;
+      if (k in NOT_SHOWN || k.startsWith(SOURCE_PREFIX) || k.startsWith(COMBINED_VOLUME_PREFIX))
+        continue;
       const seg = k.split(".").at(-1)!;
       // tfDays.<tf>: the keys are numbers, the group name is what the page reads
       const word = /^\d+$/.test(seg) ? k.split(".").at(-2)! : seg;
@@ -520,6 +536,14 @@ describe("settings completeness: every leaf is on the Settings page or listed as
       [],
       "a default source switch the page cannot show",
     );
+  });
+
+  it("combined indication factors: the page lists every indication kind and defaults it to neutral volume", () => {
+    assert.match(text, /INDICATION_KINDS\.map/);
+    for (const kind of INDICATION_KINDS) {
+      assert.equal(DEFAULT_SETTINGS.signals.combinedVolumeFactors[kind], 1, kind);
+      assert.ok(LEAVES.has(`${COMBINED_VOLUME_PREFIX}${kind}`), kind);
+    }
   });
 
   it("the not-shown list is not stale: each entry is a leaf and really absent from the page", () => {

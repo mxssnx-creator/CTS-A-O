@@ -4,6 +4,11 @@ import type { Stats } from "../domain/types.ts";
 
 const H = 3_600_000;
 
+/** Settled exit bars ending exactly on a clock hour belong to the hour that just completed. */
+export function settledHourT(exitT: number): number {
+  return Math.floor((exitT - 1) / H) * H;
+}
+
 /** Minimal trade shape for stats. `r` is net return on notional (fraction). */
 export interface TradeLike {
   r: number;
@@ -13,7 +18,7 @@ export interface TradeLike {
 
 export interface UnitReturnLike {
   r: number;
-  /** External execution weighting (Block × coordination); intrinsic ladder returns remain part of the config. */
+  /** External execution weighting (Block × relation × type factor); intrinsic ladder returns stay part of the config. */
   mult?: number;
   /** Verified persisted unit return. Explicit null means legacy/unknown, never an implicit multiplier of one. */
   unitR?: number | null;
@@ -131,7 +136,7 @@ export const EMPTY_STATS: Stats = Object.freeze({
 export function hourlyNet(trades: readonly TradeLike[]): Map<number, { net: number; n: number }> {
   const m = new Map<number, { net: number; n: number }>();
   for (const t of trades) {
-    const k = Math.floor((t.exitT - 1) / H) * H;
+    const k = settledHourT(t.exitT);
     const e = m.get(k);
     if (e) {
       e.net += t.r * 100;
@@ -174,7 +179,7 @@ export function statsOf(trades: readonly TradeLike[], nowT?: number): Stats {
     const tr = trades[i];
     const r = tr.r;
     if (ordered) {
-      const k = Math.floor((tr.exitT - 1) / H) * H;
+      const k = settledHourT(tr.exitT);
       if (k === hK) hNet += r * 100;
       else if (!(k < hK)) {
         if (hours > 0) {
