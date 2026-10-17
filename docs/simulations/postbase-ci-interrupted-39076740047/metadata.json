@@ -1,0 +1,196 @@
+{
+  "schema": "cts-expanded-study-hosted-failed-launch-v1",
+  "githubRunId": "39076740047",
+  "githubRunAttempt": "1",
+  "githubCommit": "0d66c763772ec5305e8a164a9e8fe54155b92096",
+  "sourceManifestSha256": "20a6f8109c15c547c5ee1acb235aa2959134f59ff84466f36a684711b9fef0fe",
+  "node": "v24.19.0",
+  "complete": false,
+  "classification": "Hosted launch blocked at resource admission before strategy scoring; not a completed trading simulation.",
+  "startedAt": "2026-10-17T22:52:17.257Z",
+  "finishedAt": "2026-10-17T22:52:21.421Z",
+  "strategyScoringStarted": false,
+  "marketAcquisitionRequests": 0,
+  "preparedBeforeScoring": true,
+  "sourceChanged": false,
+  "prepared": [
+    {
+      "key": "baseline20",
+      "caseId": "baseline-20",
+      "feedSha256": "b70c3f0aff8b1d5b98f01ad2acac840c8560be2fa832e0c95615f8abf051c521",
+      "protocolSha256": "94735486e8b0694807cbdbdb2f4993b9ebfeab1955fae9859a4ca14e98e1aafa",
+      "runtimeSettingsSha256": "5878691d6d2482eb6e94a89cc337deb150e9833406e11c42b9215510fa966ec1",
+      "sourceSha256": "20a6f8109c15c547c5ee1acb235aa2959134f59ff84466f36a684711b9fef0fe"
+    },
+    {
+      "key": "reclaim20",
+      "caseId": "reclaim8-20",
+      "feedSha256": "b70c3f0aff8b1d5b98f01ad2acac840c8560be2fa832e0c95615f8abf051c521",
+      "protocolSha256": "f821a54eb4251074bfbf777892801ef481fb3c4acf09b26c2d45048e925b68af",
+      "runtimeSettingsSha256": "456217037b4da6b13813c9d97cf82ac9fd8bd5eb0720f31ae8732114e6c8f856",
+      "sourceSha256": "20a6f8109c15c547c5ee1acb235aa2959134f59ff84466f36a684711b9fef0fe"
+    },
+    {
+      "key": "baseline22",
+      "caseId": "baseline-22",
+      "feedSha256": "c171ecef6289163fad45214651804a6e3e4b008eb52e816fb2eb0d49b3e0026a",
+      "protocolSha256": "53d5565e321b1f89577c93111f8f78d921dff5541d4914217cb7219fd5bbae99",
+      "runtimeSettingsSha256": "cd4fa9ba62ce04df7f2da68bed0b1b4ebb10f15f9a0f240a424b855a8083eae0",
+      "sourceSha256": "20a6f8109c15c547c5ee1acb235aa2959134f59ff84466f36a684711b9fef0fe"
+    },
+    {
+      "key": "reclaim22",
+      "caseId": "reclaim8-22",
+      "feedSha256": "c171ecef6289163fad45214651804a6e3e4b008eb52e816fb2eb0d49b3e0026a",
+      "protocolSha256": "b10a54e9ac7d2e90e537cdccadb2df52b0d37ca2c11d05b1fa76c186654741d8",
+      "runtimeSettingsSha256": "74eb2684ed9a5b299de2da54f6816d3edc3349ed57739403c7d548f61555e22c",
+      "sourceSha256": "20a6f8109c15c547c5ee1acb235aa2959134f59ff84466f36a684711b9fef0fe"
+    }
+  ],
+  "admission": {
+    "admitted": false,
+    "at": "2026-10-17T22:52:21.414Z",
+    "availableMiB": null,
+    "cgroup": [
+      {
+        "availableMiB": null,
+        "inactiveFileMiB": 1297.93359375,
+        "known": true,
+        "limitMiB": null,
+        "path": "/sys/fs/cgroup/system.slice/hosted-compute-agent.service",
+        "unlimited": true,
+        "usedMiB": 1721.09375
+      },
+      {
+        "availableMiB": null,
+        "inactiveFileMiB": 3203,
+        "known": true,
+        "limitMiB": null,
+        "path": "/sys/fs/cgroup/system.slice",
+        "unlimited": true,
+        "usedMiB": 4174.1015625
+      },
+      {
+        "availableMiB": null,
+        "inactiveFileMiB": 3228.80859375,
+        "known": false,
+        "limitMiB": null,
+        "path": "/sys/fs/cgroup",
+        "unlimited": false,
+        "usedMiB": null
+      }
+    ],
+    "errors": [
+      "Unknown cgroup memory limit/current/inactive_file at /sys/fs/cgroup"
+    ],
+    "hostAvailableMiB": 14543.03515625,
+    "known": false,
+    "minimumAvailableMiB": 4096,
+    "phase": "preflight",
+    "reason": "Memory availability is unknown; repair host/cgroup readings and prepare a new attempt",
+    "unit": "MiB"
+  },
+  "launcherExitCode": 1,
+  "checks": [
+    {
+      "command": "npm ci",
+      "status": "passed",
+      "log": "npm-ci.log",
+      "evidence": "Workflow advanced after dependency installation; log reports423 packages added and0 vulnerabilities."
+    },
+    {
+      "command": "npm run typecheck -- --pretty false",
+      "status": "passed",
+      "log": "typecheck.log"
+    },
+    {
+      "command": "npm run build:dev",
+      "status": "passed",
+      "log": "build-dev.log",
+      "workerPackaged": true
+    },
+    {
+      "command": "Serial offline five-file data/study/review/session/settings regressions",
+      "status": "passed",
+      "log": "script-tests.log",
+      "tests": 55,
+      "passed": 55,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "command": "Decode frozen public feed and prepare all four cases",
+      "status": "passed",
+      "log": "decode.log",
+      "sourceFeedSha256": "02ad14fd7d7ba3e89dee99026962a2ec66d8145d6beb36b17ab42a89a7d2004e",
+      "sourceFeedBytes": 39528851,
+      "preparedCases": 4
+    },
+    {
+      "command": "First baseline20 replay launch",
+      "status": "blocked",
+      "log": "run-baseline20.log",
+      "exitCode": 1,
+      "stage": "resource-admission",
+      "scored": false
+    }
+  ],
+  "files": [
+    {
+      "path": "orchestration.json",
+      "sourcePath": "runs/ci-attempt-39076740047/ci-postbase-logs-20261017/orchestration.json",
+      "bytes": 10199,
+      "sha256": "3d44764dfdf3583a1799dabe8b731ecac4ae6df16656da8ae2025fd800b59699"
+    },
+    {
+      "path": "orchestrator.log",
+      "sourcePath": "runs/ci-attempt-39076740047/ci-postbase-logs-20261017/orchestrator.log",
+      "bytes": 786,
+      "sha256": "70f83aced6792ec35f3e7c2b1c1f011ef53d4dc7f0af36d87cd09deff520e29d"
+    },
+    {
+      "path": "run-baseline20.log",
+      "sourcePath": "runs/ci-attempt-39076740047/ci-postbase-logs-20261017/run-baseline20.log",
+      "bytes": 1681,
+      "sha256": "1f201d756a93e79c06c2f3491e3b608e1f25275b661f6dc63ffef8162e1b9f55"
+    },
+    {
+      "path": "run-result.json",
+      "sourcePath": "runs/ci-attempt-39076740047/ci-postbase-dev20-baseline-20261017/baseline-20/run-result.json",
+      "bytes": 1680,
+      "sha256": "6e0c20df6d96fe891984d41906f970604d3764bb9e04e215aa76c922988e505a"
+    },
+    {
+      "path": "npm-ci.log",
+      "sourcePath": "runs/ci-attempt-39076740047/ci-postbase-logs-20261017/npm-ci.log",
+      "bytes": 487,
+      "sha256": "82c4fdeb6f8b4c2f8cb6a27780cb27837c6b32f95a809309011b53a439856cdd"
+    },
+    {
+      "path": "typecheck.log",
+      "sourcePath": "runs/ci-attempt-39076740047/ci-postbase-logs-20261017/typecheck.log",
+      "bytes": 44,
+      "sha256": "e7769dc53fea11794cb1b23694df18f2183ab1dd6cd51ade556a445bfad4fe3d"
+    },
+    {
+      "path": "build-dev.log",
+      "sourcePath": "runs/ci-attempt-39076740047/ci-postbase-logs-20261017/build-dev.log",
+      "bytes": 14864,
+      "sha256": "7b826eb4cbe8df7b4575847f88ace415255ba59f0f10d5a6a363148d25e9a012"
+    },
+    {
+      "path": "script-tests.log",
+      "sourcePath": "runs/ci-attempt-39076740047/ci-postbase-logs-20261017/script-tests.log",
+      "bytes": 6046,
+      "sha256": "3107d13520ca052ba4747abc63c79a7dbf9fedb7461909ec6c764a0e3756dca4"
+    },
+    {
+      "path": "decode.log",
+      "sourcePath": "runs/ci-attempt-39076740047/ci-postbase-logs-20261017/decode.log",
+      "bytes": 241,
+      "sha256": "a1f55aa5a4eed6d2b0ce3c5c7372758b6818f37776ef4e454b04d3452fd6b3c8"
+    }
+  ],
+  "privacy": "Original compact logs/provenance only; no signed artifact URLs, credentials, private ledgers or scored market outcomes."
+}

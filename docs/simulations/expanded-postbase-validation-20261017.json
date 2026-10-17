@@ -1,0 +1,148 @@
+{
+  "recordedAt": "2026-10-17T23:00:32.175359+00:00",
+  "localCheckpoint": "f0108a40daf30de03707491eeb28801b2a84eced",
+  "productionFixCheckpoint": "079598b",
+  "sourceManifestSha256": "20a6f8109c15c547c5ee1acb235aa2959134f59ff84466f36a684711b9fef0fe",
+  "checks": [
+    {
+      "command": "npm run typecheck",
+      "exitCode": 0,
+      "log": "runs/postbase-final-typecheck-20261017-v2.log",
+      "logSha256": "ae791f9f57ffbb3c0a592b6a34e25250c1f7f6f13fde4d05f77a0d4e7681f89a"
+    },
+    {
+      "command": "npm run build:dev",
+      "exitCode": 0,
+      "log": "runs/postbase-final-build-20261017.log",
+      "logSha256": "a54d1fe488fa550c1f997d63daf00a5b621372286382498bd4ece76088603e14"
+    },
+    {
+      "command": "node scripts/test-core.mjs --test-name-pattern=offline replay startup|preserves the exact Wide pass [Base cohort and replay startup test files]",
+      "exitCode": 0,
+      "log": "runs/postbase-type-fixture-tests-20261017.log",
+      "logSha256": "bab60c8c5a0befe45de10af0728f66844d6ce66ac1825e54a9e0beca520c08f2"
+    },
+    {
+      "command": "Serial offline five-file data/study/review/session/settings regression",
+      "files": [
+        "scripts/core-22-symbol-data.test.mjs",
+        "scripts/core-22-symbol-study.test.mjs",
+        "scripts/core-expanded-study-review.test.mjs",
+        "scripts/core-session.test.mjs",
+        "scripts/lib/session-settings.test.mjs"
+      ],
+      "exitCode": 0,
+      "tests": 55,
+      "passed": 55,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "durationMs": 62384.87849,
+      "log": "runs/postbase-final-scripts-20261017.log",
+      "logSha256": "fdb83aaabac2e78f411f7808de21a926fc343d73a1aaab6710218d168f493c26"
+    },
+    {
+      "command": "Focused Micro market-relation tests",
+      "file": "src/core/indications/micro-rel.test.ts",
+      "productionCommit": "9a81414",
+      "exitCode": 0,
+      "tests": 9,
+      "passed": 9,
+      "failed": 0,
+      "heapLimitMiB": 512,
+      "durationSeconds": 1.65,
+      "evidence": "Owned implementation-agent tool session25296; independent code review found no blocker."
+    },
+    {
+      "command": "npm run typecheck",
+      "exitCode": 0,
+      "productionCommit": "9a81414",
+      "log": "runs/postbase-final-typecheck-20261017-v3.log",
+      "logSha256": "ae791f9f57ffbb3c0a592b6a34e25250c1f7f6f13fde4d05f77a0d4e7681f89a"
+    },
+    {
+      "command": "npm run build:dev",
+      "exitCode": 0,
+      "productionCommit": "9a81414",
+      "log": "runs/postbase-final-build-20261017-v3.log",
+      "logSha256": "3bf29e0128498feebd991400cc0e797379e888e0279b38094907de1ef7756611"
+    }
+  ],
+  "scope": "Targeted source checks and hosted install/typecheck/build/55 regressions passed. Scanner correction independently reviewed; four v4 protocols resealed with unchanged economic/feed settings. Full regular/slow core suites and complete20/22 market comparisons remain pending the next hosted run; no pruning or profitability result is claimed.",
+  "firstTypecheck": "Three test-only typing errors were corrected in f0108a4; subsequent complete typecheck exited0. No production formula/gate change.",
+  "hostedAttempts": [
+    {
+      "githubRunId": "39076740047",
+      "githubRunAttempt": "1",
+      "githubCommit": "0d66c763772ec5305e8a164a9e8fe54155b92096",
+      "sourceManifestSha256": "20a6f8109c15c547c5ee1acb235aa2959134f59ff84466f36a684711b9fef0fe",
+      "complete": false,
+      "scored": false,
+      "status": "blocked-before-scoring",
+      "evidence": "docs/simulations/postbase-ci-interrupted-39076740047/metadata.json",
+      "checks": [
+        {
+          "command": "npm ci",
+          "status": "passed",
+          "log": "npm-ci.log",
+          "evidence": "Workflow advanced after dependency installation; log reports423 packages added and0 vulnerabilities."
+        },
+        {
+          "command": "npm run typecheck -- --pretty false",
+          "status": "passed",
+          "log": "typecheck.log"
+        },
+        {
+          "command": "npm run build:dev",
+          "status": "passed",
+          "log": "build-dev.log",
+          "workerPackaged": true
+        },
+        {
+          "command": "Serial offline five-file data/study/review/session/settings regressions",
+          "status": "passed",
+          "log": "script-tests.log",
+          "tests": 55,
+          "passed": 55,
+          "failed": 0,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        {
+          "command": "Decode frozen public feed and prepare all four cases",
+          "status": "passed",
+          "log": "decode.log",
+          "sourceFeedSha256": "02ad14fd7d7ba3e89dee99026962a2ec66d8145d6beb36b17ab42a89a7d2004e",
+          "sourceFeedBytes": 39528851,
+          "preparedCases": 4
+        },
+        {
+          "command": "First baseline20 replay launch",
+          "status": "blocked",
+          "log": "run-baseline20.log",
+          "exitCode": 1,
+          "stage": "resource-admission",
+          "scored": false
+        }
+      ],
+      "admission": {
+        "hostAvailableMiB": 14543.03515625,
+        "minimumAvailableMiB": 4096,
+        "known": false,
+        "reason": "Memory availability is unknown; repair host/cgroup readings and prepare a new attempt",
+        "rootCgroupKnown": false
+      },
+      "preparedBeforeScoring": true,
+      "preparedCases": 4,
+      "marketAcquisitionRequests": 0
+    }
+  ],
+  "latestSourceManifestSha256": "bc7216bd7ab6000b7651a5d83054a16887854097a31847e7701b9a92754693f7",
+  "v4Protocols": {
+    "index": "docs/simulations/expanded-postbase-v4-index-20261017.json",
+    "prepared": 4,
+    "scored": 0,
+    "economicAndFeedParityWithV3": true,
+    "sourceChange": "Confirmed hierarchy-root resource scanner only; economic sources unchanged."
+  }
+}

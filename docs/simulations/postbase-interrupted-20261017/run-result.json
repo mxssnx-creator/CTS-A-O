@@ -1,0 +1,22 @@
+{
+  "id": "baseline-20",
+  "complete": false,
+  "engine": {
+    "exitCode": null,
+    "signal": null,
+    "timedOut": false,
+    "completed": false,
+    "outcome": "Child close event was not captured because the original launcher had no interruption handler."
+  },
+  "error": "Stopped after runtime memory-pressure abort and partial-universe fallback; excluded from strategy comparisons.",
+  "classification": "incomplete resource/completeness failure; no scored result",
+  "protocolSha256": "33ff13d6e9eac03907be363e69439957d5a87f895d3ea90482d612dc9cb8a8ef",
+  "engineLogSha256": "989e5470e30d20a91fcd2af1079da3d52e6816aa457b1c9c53df14f6c058e14c",
+  "recordedAt": "2026-10-17T22:14:49.126597+00:00",
+  "cleanupEvidence": "Owned exec session 71331 returned exit130 after Ctrl-C. Removed only its worktree-local stale lock.",
+  "launcher": {
+    "exitCode": 130,
+    "interruption": "Owned tool session stopped with Ctrl-C; returned exit130."
+  },
+  "recordCorrection": "Exit130 is the measured launcher/tool-session result, not a captured engine child exit code."
+}

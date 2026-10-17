@@ -1,6 +1,10 @@
 /** Keep the registered first-class indication name visible in every type selector. */
 export function indicationKindLabel(kind: string): string {
-  return kind === "tactic" ? "Tactic" : kind === "relate" ? "Relate" : kind === "break" ? "Break" : kind;
+  if (kind === "tactic") return "Tactic";
+  if (kind === "signal-coordination") return "Signals Coordination";
+  if (kind === "relate") return "Relate";
+  if (kind === "break") return "Break";
+  return kind;
 }
 
 /** Registry labels may already name their kind (Tactic does); keep option names concise. */
@@ -11,7 +15,11 @@ export function indicationOptionLabel(definition: { kind: string; label: string 
 
 /** Simulated/paper configs retain their strategy; aggregate live ledger rows cannot recover a missing type. */
 export function configStrategyLabel(row: { type?: string; kind?: string }, source: string): string {
-  if (source === "live") return row.type === "Signals" ? "Signals · type unavailable" : "Type unavailable";
+  if (source === "live") return row.type === "Signals Coordination"
+    ? "Signals Coordination · type unavailable"
+    : row.type === "Signals" ? "Signals · type unavailable" : "Type unavailable";
+  if (row.type === "Signals Coordination")
+    return row.kind ? `Signals Coordination · ${row.kind}` : "Signals Coordination · type unavailable";
   if (row.type !== "Signals") return row.type ?? "Type unavailable";
   return row.kind ? `Signals · ${row.kind}` : "Signals · type unavailable";
 }

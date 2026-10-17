@@ -1,0 +1,13 @@
+[CI step start] decode.log 2026-10-17T22:52:17.258Z
+[CI step finished] decode.log exit=0 seconds=0.192
+[CI step start] prepare-baseline20.log 2026-10-17T22:52:17.478Z
+[CI step finished] prepare-baseline20.log exit=0 seconds=0.917
+[CI step start] prepare-reclaim20.log 2026-10-17T22:52:18.431Z
+[CI step finished] prepare-reclaim20.log exit=0 seconds=0.909
+[CI step start] prepare-baseline22.log 2026-10-17T22:52:19.375Z
+[CI step finished] prepare-baseline22.log exit=0 seconds=0.957
+[CI step start] prepare-reclaim22.log 2026-10-17T22:52:20.363Z
+[CI step finished] prepare-reclaim22.log exit=0 seconds=0.956
+[CI step start] run-baseline20.log 2026-10-17T22:52:21.360Z
+[CI step finished] run-baseline20.log exit=1 seconds=0.06
+Error: CI step failed or interrupted: run-baseline20.log (1)

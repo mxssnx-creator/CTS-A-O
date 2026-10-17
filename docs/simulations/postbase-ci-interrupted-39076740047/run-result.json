@@ -1,0 +1,55 @@
+{
+  "admission": [
+    {
+      "admitted": false,
+      "at": "2026-10-17T22:52:21.414Z",
+      "availableMiB": null,
+      "cgroup": [
+        {
+          "availableMiB": null,
+          "inactiveFileMiB": 1297.93359375,
+          "known": true,
+          "limitMiB": null,
+          "path": "/sys/fs/cgroup/system.slice/hosted-compute-agent.service",
+          "unlimited": true,
+          "usedMiB": 1721.09375
+        },
+        {
+          "availableMiB": null,
+          "inactiveFileMiB": 3203,
+          "known": true,
+          "limitMiB": null,
+          "path": "/sys/fs/cgroup/system.slice",
+          "unlimited": true,
+          "usedMiB": 4174.1015625
+        },
+        {
+          "availableMiB": null,
+          "inactiveFileMiB": 3228.80859375,
+          "known": false,
+          "limitMiB": null,
+          "path": "/sys/fs/cgroup",
+          "unlimited": false,
+          "usedMiB": null
+        }
+      ],
+      "errors": [
+        "Unknown cgroup memory limit/current/inactive_file at /sys/fs/cgroup"
+      ],
+      "hostAvailableMiB": 14543.03515625,
+      "known": false,
+      "minimumAvailableMiB": 4096,
+      "phase": "preflight",
+      "reason": "Memory availability is unknown; repair host/cgroup readings and prepare a new attempt",
+      "unit": "MiB"
+    }
+  ],
+  "complete": false,
+  "error": "Error: Memory availability is unknown; repair host/cgroup readings and prepare a new attempt",
+  "finishedAt": "2026-10-17T22:52:21.415Z",
+  "id": "baseline-20",
+  "protocolSha256": "94735486e8b0694807cbdbdb2f4993b9ebfeab1955fae9859a4ca14e98e1aafa",
+  "stage": "resource-admission",
+  "startedAt": "2026-10-17T22:52:21.413Z",
+  "status": "blocked"
+}

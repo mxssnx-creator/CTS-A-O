@@ -59,6 +59,8 @@ export interface AuditInput {
   /** the stage sets of the compute that built the tapes ("bot|ind" pairs) */
   stages?: {
     passed: ReadonlySet<string>;
+    /** Pairs constructed for measurement only; these never authorize new entries. */
+    measured?: ReadonlySet<string>;
     main: ReadonlySet<string>;
     held: ReadonlySet<string>;
     mainTop: number;
@@ -78,10 +80,10 @@ export interface AuditInput {
       vol?: number;
       /** ladder weight (Axis): part of vol, not of the Block multiple */
       w?: number;
-      /** Stable-02 relation-volume factor captured at entry. */
       coordVol?: number;
-      /** Negative-hour hedge volume factor captured at entry. */
+      volFactor?: number;
       hedgeVol?: number;
+      rangeVol?: number;
       /** Overall: the extra volume of every raising source */
       legs?: Partial<Record<string, number>>;
     }>;
@@ -131,12 +133,12 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
         `${st.passed.size - missing.length} / ${st.passed.size}${missing.length ? ` · missing ${missing.slice(0, 3).join(", ")}` : ""}`,
       );
     }
-    const allow = new Set<string>([...st.passed, ...st.held, ...(st.pinned ?? [])]);
+    const allow = new Set<string>([...st.passed, ...st.held, ...(st.pinned ?? []), ...(st.measured ?? [])]);
     const stray = [...st.main].filter((k) => !allow.has(k));
     add(
-      "stages: Main ⊆ Base-validated ∪ held",
+      "stages: Main ⊆ Base-validated ∪ held ∪ measured",
       stray.length === 0,
-      `${st.main.size} Main · ${stray.length} stray${stray.length ? ` (${stray.slice(0, 3).join(", ")})` : ""}`,
+      `${st.main.size} Main · ${st.measured?.size ?? 0} measurement-only · ${stray.length} stray${stray.length ? ` (${stray.slice(0, 3).join(", ")})` : ""}`,
     );
     if (inp.sim) {
       let badEngine = 0;
@@ -254,7 +256,7 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
         continue;
       }
       const rangeVol = rangeVolumeFactorFor(tp, sim.opts);
-      const mult = (x.mult ?? 1) / ((x.coordVol ?? 1) * (x.hedgeVol ?? 1) * rangeVol);
+      const mult = (x.mult ?? 1) / ((x.coordVol ?? 1) * (x.hedgeVol ?? 1) * (x.volFactor ?? 1) * (x.rangeVol ?? rangeVol));
       if (!close(d.vol, mult)) {
         volMismatch++;
         if (firstBad.length < 3) firstBad.push(`${x.cfg}@${x.sym} vol ${mult} ≠ ${d.vol}`);
@@ -274,7 +276,7 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
       const over = trades.filter((x) => {
         const tp = byId.get(x.cfg);
         const rangeVol = tp && sim ? rangeVolumeFactorFor(tp, sim.opts) : 1;
-        const m = (x.mult ?? 1) / ((x.coordVol ?? 1) * (x.hedgeVol ?? 1) * rangeVol);
+        const m = (x.mult ?? 1) / ((x.coordVol ?? 1) * (x.hedgeVol ?? 1) * (x.volFactor ?? 1) * (x.rangeVol ?? rangeVol));
         if (m < 1 - 1e-9) return true;
         if (!overall) return m > cap + 1e-9;
         const legs = Object.values(x.legs ?? {}).map((v) => v ?? 0);
@@ -295,7 +297,7 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
       const scaled = trades.filter((x) => {
         const tp = byId.get(x.cfg);
         const rangeVol = tp && sim ? rangeVolumeFactorFor(tp, sim.opts) : 1;
-        return !close((x.mult ?? 1) / ((x.coordVol ?? 1) * (x.hedgeVol ?? 1) * rangeVol), 1);
+        return !close((x.mult ?? 1) / ((x.coordVol ?? 1) * (x.hedgeVol ?? 1) * (x.volFactor ?? 1) * (x.rangeVol ?? rangeVol)), 1);
       }).length;
       add("block: off → volume 1", scaled === 0, `${scaled} scaled`);
     }
@@ -490,7 +492,7 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
       (x) => {
         const tp = ids.has(x.cfg) ? byId.get(x.cfg) : undefined;
         const rangeVol = tp && sim ? rangeVolumeFactorFor(tp, sim.opts) : 1;
-        const blockVol = positionMult(x) / ((x.coordVol ?? 1) * (x.hedgeVol ?? 1) * rangeVol);
+        const blockVol = positionMult(x) / ((x.coordVol ?? 1) * (x.hedgeVol ?? 1) * (x.volFactor ?? 1) * (x.rangeVol ?? rangeVol));
         return (
           blockVol < 1 - 1e-9 ||
           blockVol > maxMult + 1e-9 ||
@@ -499,7 +501,7 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
       },
     ).length;
     add(
-      "paper: position volume within [1, max multiple]",
+      "paper: Block / relation volume within [1, max multiple]",
       badVol === 0,
       `${badVol} of ${p.positions.length}`,
     );

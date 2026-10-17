@@ -52,6 +52,7 @@
 // Causal: bar i reads bars 0..i only (the market at bar i: the universe's bars with open time ≤ its own). With grid.micro.ownInds (default on) the Micro range trades only these, and
 // they trade only Micro cells.
 import type { SeriesCache } from "./cache.ts";
+import type { Bars } from "../domain/types.ts";
 import { MARKET_ACT_P, type MarketRef } from "./market.ts";
 import type { IndicationSpec } from "./registry.ts";
 
@@ -247,6 +248,8 @@ export const MICRO_REL = { win: 60, min: 40 } as const;
 export interface MicroRel {
   /** the market at this series' bars */
   m: MarketRef;
+  /** Number of contiguous, finite positive-close bars ending here (a gap starts again at one). */
+  contiguousBars: Uint32Array;
   /** beta of the symbol's bar log returns on the market's over the last win bars (bar i included) */
   beta: Float64Array;
   /** volatility (sd) of the market's bar log returns over the same bars */
@@ -257,8 +260,11 @@ export interface MicroRel {
   sde: Float64Array;
 }
 
-/** the symbol's log return into bar i */
-const lr = (c: Float64Array, i: number) => (i >= 1 ? Math.log(c[i] / c[i - 1]) : NaN);
+/** The symbol's one-bar return; a missing candle cannot become a multi-bar return in a one-bar fit. */
+const lr = (b: Bars, i: number) =>
+  i >= 1 && b.t[i] - b.t[i - 1] === b.tfMin * 60_000 &&
+  Number.isFinite(b.c[i]) && Number.isFinite(b.c[i - 1]) && b.c[i] > 0 && b.c[i - 1] > 0
+    ? Math.log(b.c[i] / b.c[i - 1]) : NaN;
 
 /**
  * The series' relation to its market: rolling beta and volatilities over the last MICRO_REL.win bars (pairs where
@@ -270,8 +276,9 @@ export function microRel(k: SeriesCache): MicroRel | null {
   if (!m || m.syms < 2) return null;
   return k.memo(`mc:rel:${MICRO_REL.win}`, () => {
     const n = k.b.n;
-    const c = k.b.c;
+    const b = k.b;
     const W = MICRO_REL.win;
+    const contiguousBars = new Uint32Array(n);
     const beta = new Float64Array(n).fill(NaN);
     const sdm = new Float64Array(n).fill(NaN);
     const sds = new Float64Array(n).fill(NaN);
@@ -284,7 +291,7 @@ export function microRel(k: SeriesCache): MicroRel | null {
     let sxy = 0;
     const add = (i: number, s: number) => {
       const x = m.ret[i];
-      const y = lr(c, i);
+      const y = lr(b, i);
       if (!fin(x, y)) return;
       cnt += s;
       sx += s * x;
@@ -294,6 +301,9 @@ export function microRel(k: SeriesCache): MicroRel | null {
       sxy += s * x * y;
     };
     for (let i = 0; i < n; i++) {
+      if (Number.isFinite(b.t[i]) && Number.isFinite(b.c[i]) && b.c[i] > 0)
+        contiguousBars[i] = i > 0 && b.t[i] - b.t[i - 1] === b.tfMin * 60_000
+          ? contiguousBars[i - 1] + 1 : 1;
       add(i, 1);
       if (i >= W) add(i - W, -1);
       if (cnt < MICRO_REL.min) continue;
@@ -308,7 +318,7 @@ export function microRel(k: SeriesCache): MicroRel | null {
       sds[i] = Math.sqrt(vy);
       sde[i] = Math.sqrt(Math.max(0, vy - (cv * cv) / vx));
     }
-    return { m, beta, sdm, sds, sde };
+    return { m, contiguousBars, beta, sdm, sds, sde };
   });
 }
 
@@ -322,20 +332,21 @@ export function microRel(k: SeriesCache): MicroRel | null {
  */
 export function residZ(k: SeriesCache, r: MicroRel, n: number, i: number): number {
   const j = i - n;
-  if (j < 0 || !fin(r.beta[j], r.sde[j], r.m.idx[i], r.m.idx[j]) || !(r.sde[j] > 1e-12)) return NaN;
+  if (j < 0 || r.contiguousBars[i] < n + 1 || !fin(r.beta[j], r.sde[j], r.m.idx[i], r.m.idx[j]) || !(r.sde[j] > 1e-12)) return NaN;
   return (Math.log(k.b.c[i] / k.b.c[j]) - r.beta[j] * (r.m.idx[i] - r.m.idx[j])) / (r.sde[j] * Math.sqrt(n));
 }
 
 /** The market's move over the last n bars in units of its bar volatility × √n (volatility from bar i − n). */
 export function marketZ(r: MicroRel, n: number, i: number): number {
   const j = i - n;
-  if (j < 0 || !fin(r.sdm[j], r.m.idx[i], r.m.idx[j]) || !(r.sdm[j] > 1e-12)) return NaN;
+  if (j < 0 || r.contiguousBars[i] < n + 1 || !fin(r.sdm[j], r.m.idx[i], r.m.idx[j]) || !(r.sdm[j] > 1e-12)) return NaN;
   return (r.m.idx[i] - r.m.idx[j]) / (r.sdm[j] * Math.sqrt(n));
 }
 
 /**
  * RSI(2) of the market index (Wilder, on the market's bar log returns; a bar without a market return counts as no
- * move). Mirrors exactly: the mirrored market's RSI is 100 − RSI. NaN in warm-up or without a relation.
+ * move). An own-series timestamp gap restarts the two-return seed. Mirrors exactly: the mirrored market's RSI
+ * is 100 − RSI. NaN in warm-up or without a relation.
  */
 export function marketRsi2(k: SeriesCache): Float64Array {
   return k.memo("mc:mrsi2", () => {
@@ -348,14 +359,20 @@ export function marketRsi2(k: SeriesCache): Float64Array {
     let sd = 0;
     let au = 0;
     let ad = 0;
+    let warm = 0;
     for (let i = 1; i < n; i++) {
+      if (r.contiguousBars[i] < 2) {
+        su = sd = au = ad = warm = 0;
+        continue;
+      }
       const x = Number.isFinite(r.m.ret[i]) ? r.m.ret[i] : 0;
       const u = x > 0 ? x : 0;
       const d = x < 0 ? -x : 0;
-      if (i <= p) {
+      if (warm < p) {
         su += u;
         sd += d;
-        if (i < p) continue;
+        warm++;
+        if (warm < p) continue;
         au = su / p;
         ad = sd / p;
       } else {
@@ -370,6 +387,7 @@ export function marketRsi2(k: SeriesCache): Float64Array {
 
 /** the symbol's activity over the market's at bar i: (v / SMA60(v)) ÷ the market activity (NaN in warm-up) */
 function relActivity(k: SeriesCache, r: MicroRel, i: number): number {
+  if (r.contiguousBars[i] < MARKET_ACT_P) return NaN;
   const vs = k.volSma(MARKET_ACT_P)[i];
   const a = r.m.act[i];
   return fin(vs, a) && vs > 0 && a > 0 ? k.b.v[i] / vs / a : NaN;
@@ -408,10 +426,9 @@ function mturnEv(k: SeriesCache, lo: number): Int8Array {
   const r = microRel(k);
   if (!r) return new Int8Array(k.b.n);
   const mr = marketRsi2(k);
-  const c = k.b.c;
   return events(k.b.n, (i) => {
     if (i < 1 || !fin(mr[i - 1], r.m.ret[i])) return 0;
-    const s = lr(c, i);
+    const s = lr(k.b, i);
     if (mr[i - 1] < lo && r.m.ret[i] > 0 && s > 0) return 1;
     if (mr[i - 1] > 100 - lo && r.m.ret[i] < 0 && s < 0) return -1;
     return 0;
@@ -425,10 +442,9 @@ function mturnEv(k: SeriesCache, lo: number): Int8Array {
 function actIdioEv(k: SeriesCache, x: number, zb: number): Int8Array {
   const r = microRel(k);
   if (!r) return new Int8Array(k.b.n);
-  const c = k.b.c;
   return events(k.b.n, (i) => {
     if (i < 1 || !(relActivity(k, r, i) > x) || !(r.sds[i - 1] > 1e-12)) return 0;
-    const z = lr(c, i) / r.sds[i - 1];
+    const z = lr(k.b, i) / r.sds[i - 1];
     return z > zb ? -1 : z < -zb ? 1 : 0;
   });
 }
@@ -440,11 +456,10 @@ function actIdioEv(k: SeriesCache, x: number, zb: number): Int8Array {
 function actMktEv(k: SeriesCache, y: number): Int8Array {
   const r = microRel(k);
   if (!r) return new Int8Array(k.b.n);
-  const c = k.b.c;
   return events(k.b.n, (i) => {
     if (i < 1 || !fin(r.m.act[i], r.m.ret[i], r.sdm[i - 1]) || !(r.m.act[i] > y) || !(r.sdm[i - 1] > 1e-12)) return 0;
     const z = r.m.ret[i] / r.sdm[i - 1];
-    const s = lr(c, i);
+    const s = lr(k.b, i);
     return z > 1 && s < 0 ? 1 : z < -1 && s > 0 ? -1 : 0;
   });
 }
@@ -457,7 +472,7 @@ function relFilter(
 ): Int8Array {
   const r = microRel(k);
   if (!r) return new Int8Array(k.b.n);
-  return events(k.b.n, (i) => (ev[i] !== 0 && keep(r, i, ev[i]) ? ev[i] : 0));
+  return events(k.b.n, (i) => (ev[i] !== 0 && r.contiguousBars[i] >= 2 && keep(r, i, ev[i]) ? ev[i] : 0));
 }
 
 /** Market-relation thresholds of the AND combinations. */
@@ -816,7 +831,8 @@ const rexhEv = (k: SeriesCache, n: number) =>
     if (!r) return new Int8Array(N);
     const act = actOf(k);
     return events(N, (i) => {
-      if (!fin(act[i]) || !(act[i] >= 2)) return 0;
+      // actOf compares with the previous 60 volumes, so the current bar needs 60 contiguous predecessors.
+      if (r.contiguousBars[i] <= MARKET_ACT_P || !fin(act[i]) || !(act[i] >= 2)) return 0;
       const rz = residZ(k, r, n, i);
       const mz = marketZ(r, n, i);
       if (!fin(rz, mz)) return 0;

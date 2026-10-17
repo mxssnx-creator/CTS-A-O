@@ -11,6 +11,7 @@
 import type { LiveGate } from "./live-validation.ts";
 import { acceptKey, engineSideKey, sideAcceptKey, type ExchangeAccept } from "./signals.ts";
 import { isSignalInd } from "./indications/registry.ts";
+import { isSignalCoordinationInd } from "./signal-coordination.ts";
 import { kindOfId } from "./pipeline/pipeline.ts";
 import { rangeOfId } from "./minimal-coord.ts";
 import { modeledUnitReturn } from "./metrics/stats.ts";
@@ -287,10 +288,11 @@ export function exchangeAcceptIndex(
     const ind = x.cfg.split("|")[1] ?? "";
     const kind = kindOfId(x.cfg);
     if (isSignalInd(ind)) {
+      const coordination = isSignalCoordinationInd(ind);
       const onset =
         x.entryT === undefined ? undefined : `${ind}|${x.sym}|${x.side > 0 ? 1 : -1}|${x.entryT}`;
       add(acceptKey(ind, x.sym, x.side, kind), x.exitT, x.r, onset);
-      add(sideAcceptKey(x.side), x.exitT, x.r, onset);
+      add(sideAcceptKey(x.side, coordination), x.exitT, x.r, onset);
     } else {
       const tag = rangeOfId(x.cfg) || undefined;
       add(engineSideKey(kind, tag, x.side), x.exitT, x.r);

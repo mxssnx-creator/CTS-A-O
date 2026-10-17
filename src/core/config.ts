@@ -13,7 +13,7 @@ import type {
 import { DEFAULT_SIGNALS, type SignalSettings } from "./signal-config.ts";
 import { DEFAULT_SIZING, type SizingSettings } from "./sizing.ts";
 import type { PromotedLaneProof } from "./live-promote.ts";
-import { BREAK_CONFIG_IDS, breakAnchorTf, isBreakMicroInd } from "./indications/break-config.ts";
+import { BREAK_DEFAULT_MICRO_CONFIG_IDS, breakAnchorTf } from "./indications/break-config.ts";
 
 /** Hard ceiling for unique positions on the exchange. Strategy/config orders do not consume extra slots. */
 export const MAX_EXCHANGE_POSITIONS = 100;
@@ -524,8 +524,7 @@ export const FAMILY_FOCUS_13OCT: readonly string[] = ["cfl-trend-50", "htfpb-4",
 );
 
 /** The updated 60 Micro Break identities, each selected on its fastest eligible anchor lane by default. */
-export const BREAK_MICRO_FOCUS_17OCT: readonly string[] = BREAK_CONFIG_IDS.flatMap((id) => {
-  if (!isBreakMicroInd(id)) return [];
+export const BREAK_MICRO_FOCUS_17OCT: readonly string[] = BREAK_DEFAULT_MICRO_CONFIG_IDS.flatMap((id) => {
   const tf = breakAnchorTf(id);
   return tf === null ? [] : [`follow|${id}@m${tf}`];
 });
