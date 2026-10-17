@@ -228,6 +228,7 @@ import {
   emptySignalHistDiagnostics,
   heldHistProtects,
   signalHistProtectsGen,
+  signalHistValidationOf,
   type SignalHistDiagnostics,
 } from "../signal-hist.ts";
 import { DEFAULT_SIGNALS, signalRangeOf, type SignalAccept, type SignalSettings } from "../signal-config.ts";
@@ -3107,12 +3108,7 @@ export class CoreRuntime {
     const sigHist: Record<string, Protect[]> = {};
     const retainedSignalIds = new Set<string>();
     const signalHistDiagnostics = emptySignalHistDiagnostics();
-    const signalHistValidation = {
-      cost: s.cost,
-      minPf: setsGates.minPf,
-      minTrades: setsGates.minTrades,
-      maxDdr: setsGates.maxDdr,
-    };
+    const signalHistValidation = signalHistValidationOf(s.cost, s.gates);
     try {
       if (sig.enabled && sig.hist.enabled && sigPairs.size) {
         if (gen !== this.gen) return;

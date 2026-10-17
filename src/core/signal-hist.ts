@@ -9,7 +9,8 @@
 // Causal: only entries whose whole hold ended before `cutT` (the stage cut: the run start of a causal evaluation, now
 // on a desk) are read. The values are rounded to a 0.25 % grid, so the configs of a signal stay the same from compute
 // to compute while its history moves little (a config id is its distances).
-import type { Bars, Protect } from "./domain/types.ts";
+import type { Bars, Gates, Protect } from "./domain/types.ts";
+import { minPfOf } from "./minimal-coord.ts";
 import type { Tactics } from "./domain/types.ts";
 import type { SignalSettings } from "./signal-config.ts";
 import { entrySignal } from "./bots/bots.ts";
@@ -34,6 +35,19 @@ export interface SignalHistValidation {
   minPf: number;
   minTrades: number;
   maxDdr?: number;
+}
+
+/** Signals retain the configured stage PF floor; the lower engine Wide prefilter cannot relax it. */
+export function signalHistValidationOf(
+  cost: number,
+  gates: Pick<Gates, "minPf" | "rangeMinPf" | "baseSetsMinPf" | "minTrades" | "maxDdr">,
+): SignalHistValidation {
+  return {
+    cost,
+    minPf: Math.max(minPfOf(gates, undefined), gates.baseSetsMinPf ?? gates.minPf),
+    minTrades: gates.minTrades,
+    maxDdr: gates.maxDdr,
+  };
 }
 
 export interface SignalHistDiagnostics {

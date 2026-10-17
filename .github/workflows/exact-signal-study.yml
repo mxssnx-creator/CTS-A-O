@@ -1,0 +1,256 @@
+name: Exact Signal study
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/exact-signal-study.yml
+      - scripts/run-exact-signal-study.mjs
+      - scripts/run-exact-signal-study.test.mjs
+      - scripts/studies/baseline-2860c3f.patch
+      - scripts/studies/baseline-2860c3f.json
+      - docs/simulations/exact-signal-22-study-20261017.md
+      - scripts/build-public-eval-feed.mjs
+      - scripts/build-public-eval-feed.test.mjs
+      - scripts/lib/public-eval-feed.mjs
+      - scripts/freeze-session-study.mjs
+      - scripts/audit-session-study.mjs
+      - scripts/audit-session-study.test.mjs
+      - scripts/lib/session-study.mjs
+      - scripts/lib/session-study.test.mjs
+      - scripts/core-session.mjs
+      - scripts/core-session.test.mjs
+      - src/core/**
+      - package.json
+      - package-lock.json
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: exact-signal-study-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+# Standard public Ubuntu runners only. No account credentials, live orders or deployment.
+env:
+  CTS_CORE_STATE: 'off'
+  CTS_CORE_AUTOSTART: '0'
+  CTS_CORE_VARIANTS: '0'
+  CTS_CORE_WORKERS: '4'
+  CTS_CORE_LIVE: '0'
+  CTS_CORE_MEM_SOFT_MB: '2500'
+  CTS_CORE_MEM_HARD_MB: '1200'
+  MALLOC_ARENA_MAX: '2'
+  MALLOC_MMAP_THRESHOLD_: '1048576'
+  DATABASE_URL: ''
+  TZ: UTC
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  checks:
+    name: Offline checks and production build
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install locked dependencies
+        run: |
+          mkdir -p runs/exact-signal-study-ci/checks/logs
+          npm ci --ignore-scripts 2>&1 | tee runs/exact-signal-study-ci/checks/logs/install.log
+      - name: Typecheck
+        run: npm run typecheck 2>&1 | tee runs/exact-signal-study-ci/checks/logs/typecheck.log
+      - name: Build without database access
+        env:
+          DATABASE_URL: ''
+        run: npm run build 2>&1 | tee runs/exact-signal-study-ci/checks/logs/build.log
+      - name: Verify packaged core worker
+        run: |
+          node --input-type=module <<'NODE' 2>&1 | tee runs/exact-signal-study-ci/checks/logs/worker.log
+          import assert from 'node:assert/strict';
+          import { stat } from 'node:fs/promises';
+          import { join } from 'node:path';
+          import { coreWorkerOutputDirs, CORE_WORKER_FILENAME } from './scripts/build-core-worker.mjs';
+          const outputs = await coreWorkerOutputDirs();
+          assert.ok(outputs.length, 'No built Nitro Node server output found');
+          for (const directory of outputs) {
+            const file = join(directory, CORE_WORKER_FILENAME);
+            assert.ok((await stat(file)).isFile(), `Missing packaged worker: ${file}`);
+            console.log(`Verified ${file}`);
+          }
+          NODE
+      - name: Targeted report, collector and audit tests
+        env:
+          NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
+        run: |
+          node --require ./scripts/lib/core-test-offline-guard.cjs --experimental-strip-types --test --test-concurrency=1 \
+            scripts/build-public-eval-feed.test.mjs \
+            scripts/run-exact-signal-study.test.mjs \
+            scripts/lib/session-study.test.mjs \
+            scripts/audit-session-study.test.mjs \
+            scripts/core-session.test.mjs \
+            2>&1 | tee runs/exact-signal-study-ci/checks/logs/reports-tests.log
+      - name: Targeted independent-config tests
+        env:
+          NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
+        run: |
+          node --require ./scripts/lib/core-test-offline-guard.cjs --experimental-strip-types --test --test-concurrency=1 \
+            src/core/signal-accept-index.test.ts \
+            src/core/signal-hist.test.ts \
+            src/core/pipeline/base-pair-rows.test.ts \
+            src/core/server/cost-default-runtime.test.ts \
+            src/core/server/fee-provenance.test.ts \
+            src/core/signals-independence.test.ts \
+            src/core/sim/independence.test.ts \
+            2>&1 | tee runs/exact-signal-study-ci/checks/logs/core-tests.log
+      - name: Preserve check logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exact-signal-study-checks
+          path: runs/exact-signal-study-ci/checks/logs/
+          if-no-files-found: warn
+          retention-days: 7
+          compression-level: 1
+
+  data:
+    name: Acquire and verify frozen public candles
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install locked dependencies
+        run: |
+          mkdir -p runs/eval-22-20261017/logs
+          npm ci --ignore-scripts 2>&1 | tee runs/eval-22-20261017/logs/install.log
+      - name: Rebuild frozen public source
+        run: |
+          node --experimental-strip-types scripts/build-public-eval-feed.mjs \
+            --out runs/eval-22-20261017 --concurrency 4 \
+            2>&1 | tee runs/eval-22-20261017/logs/collector.log
+      - name: Verify frozen feed and source evidence
+        run: |
+          node scripts/run-exact-signal-study.mjs --verify-feed runs/eval-22-20261017/feed.json \
+            2>&1 | tee runs/eval-22-20261017/logs/verification.log
+      - name: Preserve full source, archives and checksums
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exact-signal-study-feed
+          path: runs/eval-22-20261017/
+          if-no-files-found: warn
+          retention-days: 7
+          compression-level: 1
+
+  research:
+    name: Research ${{ matrix.case }}
+    needs: data
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        case: [baseline20, corrected20, dev20-entry5, dev20-entry15, selection22]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install locked dependencies
+        run: |
+          mkdir -p runs/exact-signal-study-ci/${{ matrix.case }}/logs
+          npm ci --ignore-scripts 2>&1 | tee runs/exact-signal-study-ci/${{ matrix.case }}/logs/install.log
+      - uses: actions/download-artifact@v4
+        with:
+          name: exact-signal-study-feed
+          path: runs/eval-22-20261017
+      - name: Run frozen research case
+        run: |
+          node scripts/run-exact-signal-study.mjs \
+            --case '${{ matrix.case }}' \
+            --feed runs/eval-22-20261017/feed.json \
+            --out runs/exact-signal-study-ci/${{ matrix.case }} \
+            2>&1 | tee runs/exact-signal-study-ci/${{ matrix.case }}/logs/study.log
+      - name: Preserve sealed research evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exact-signal-study-${{ matrix.case }}
+          path: |
+            runs/exact-signal-study-ci/${{ matrix.case }}/evidence/**
+            runs/exact-signal-study-ci/${{ matrix.case }}/frozen/**
+            runs/exact-signal-study-ci/${{ matrix.case }}/launcher.json
+            runs/exact-signal-study-ci/${{ matrix.case }}/source-proof.json
+            runs/exact-signal-study-ci/${{ matrix.case }}/failure.json
+            runs/exact-signal-study-ci/${{ matrix.case }}/logs/**
+          if-no-files-found: warn
+          retention-days: 7
+          compression-level: 1
+
+  final:
+    name: Untouched 22-symbol final window
+    needs: [checks, research]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install locked dependencies
+        run: |
+          mkdir -p runs/exact-signal-study-ci/final22/logs
+          npm ci --ignore-scripts 2>&1 | tee runs/exact-signal-study-ci/final22/logs/install.log
+      - uses: actions/download-artifact@v4
+        with:
+          name: exact-signal-study-feed
+          path: runs/eval-22-20261017
+      - name: Load completed selection evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: exact-signal-study-selection22
+          path: runs/exact-signal-study-ci/selection22
+      - name: Run untouched final case
+        run: |
+          node scripts/run-exact-signal-study.mjs \
+            --case final22 \
+            --feed runs/eval-22-20261017/feed.json \
+            --selection-audit runs/exact-signal-study-ci/selection22/evidence/audit.json \
+            --out runs/exact-signal-study-ci/final22 \
+            2>&1 | tee runs/exact-signal-study-ci/final22/logs/study.log
+      - name: Preserve sealed final evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exact-signal-study-final22
+          path: |
+            runs/exact-signal-study-ci/final22/evidence/**
+            runs/exact-signal-study-ci/final22/frozen/**
+            runs/exact-signal-study-ci/final22/launcher.json
+            runs/exact-signal-study-ci/final22/source-proof.json
+            runs/exact-signal-study-ci/final22/failure.json
+            runs/exact-signal-study-ci/final22/logs/**
+          if-no-files-found: warn
+          retention-days: 7
+          compression-level: 1

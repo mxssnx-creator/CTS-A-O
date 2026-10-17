@@ -59,4 +59,18 @@ Performance checks record elapsed time, peak RSS, compute/coverage telemetry
 and worker/fallback state with one replay at a time and four workers. Safe
 optimizations must preserve causal decisions and exact config identities.
 
+The shared local eight-GiB pool caused two aborted baseline attempts; neither
+counts as evidence. A local corrected replay uses two workers. Isolated public
+GitHub runners use four workers per job, with each comparison arm matched on
+that runner policy; local/CI elapsed times are not directly comparable.
+
+Two additional development-only policies are fixed before seeing any 22-symbol
+outcomes: exact-config entry `lastN=5` or `lastN=15`, each with
+`lastNMinPf=1.2`. They retain the same Base/config/history/cost/sizing settings
+and tighten a currently disabled entry check. They test faster causal rejection
+of deteriorating configs, without targeting individual clock hours. These are
+research arms; no default or live setting is changed by their results. The
+initial 22-symbol all-ranges and final checks retain the control policy. A
+later selected research policy needs new forward/held-out evidence.
+
 Results and measured limitations will be appended after the frozen runs.

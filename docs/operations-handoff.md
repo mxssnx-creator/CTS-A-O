@@ -2,6 +2,67 @@
 
 Updated 2026-10-17, Europe/Vienna. Repository: `mxssnx-creator/CTS-A-O`.
 
+## Latest checkpoint: exact Signals and performance — 17 October
+
+Economic source checkpoint `dbd1b9c`; independent auditor checkpoint `d3ec0c5`.
+Draft PR [163](https://github.com/mxssnx-creator/CTS-A-O/pull/163) is backed up;
+its current remote tree matches local `d3ec0c5`. Main remains `d1364e5`.
+No live settings, venue orders or deployment were changed in this pass.
+
+Fixed Signal activation, acceptance and Last-N histories to retain each exact
+protection config × symbol × direction. Previously an empty sibling divided
+a good config's sample, and opposite-side results could qualify a losing side.
+Live activation also no longer bypasses its check when engine selection is
+absent. Paper seats, hedge checks, reporting and UI retain exact identities;
+held configs remain exit-only. Fresh Signal count is unlimited (0); explicit
+nonzero custom counts remain respected. Named side/cluster coordination remains
+separate. No PF/sample gate was lowered.
+
+Canonical modeled default cost is now **0.15%**: 0.05% taker and 0.025%
+slippage per side. Migration v34 changes only the explicitly saved former
+factory tuple, including matching preset settings. Custom costs, explicit new
+choices, measured venue commissions and historical caches retain provenance.
+Range distances retain the fixed 0.20% construction basis, so this cost update
+does not silently shrink the grid.
+
+The earlier cost comparison below was confounded: its 0.20% replay used 2%
+equity sizing and its 0.15% replay used 0.1%. It is not cost-only evidence.
+The archived positive replay used **336h** config-evaluation history, not 48h;
+its high pass rate cannot certify the requested six-hour history policy.
+`simulations/cost-015-and-positive-replay-audit-20261017.md` records the corrected
+claims. Reports now separate actual first-step selections from the later paper
+snapshot and preserve the actual source venue.
+
+Acceptance performance: unique sorted exact config tapes build final prefixes
+directly; duplicate/pooled/unsorted inputs retain the generic stable path.
+A 440,000-close, 22,000-group fixture retained identical prefix hashes while
+wall time changed 1,491→531 ms, CPU 1,702→485 ms and peak RSS 259→177 MB.
+These are fixture measurements, not a full-system throughput or PF claim.
+
+Verification: Signal independence 13/13; causal/hedge/worker-local parity
+18/18; repaired guard/seat fixtures 10/10; callers/acceptance/UI 60/60;
+audit/report variants 49/49; seating/memory/trailing 4/4; Signal progress 3/3.
+Acceptance optimization targeted tests 29/29 plus reference checks 6/6.
+Report/frozen-protocol/source collector tests 30/30; independent auditor 4/4.
+Final TypeScript typecheck and diff checks passed. Earlier broad Signal run had
+three stale fixtures subsequently repaired; do not call that original run a
+complete pass.
+
+New public dataset: 22 genuine Binance USD-M symbols, 665,280 minute candles,
+Sep 26→Oct 17 00:00 UTC, 462/462 archives and official checksums verified;
+zero gaps/duplicates. This is a different venue from earlier BingX evidence.
+Source hashes, chronological 20/22-symbol splits, exact economics and pruning
+policy are fixed in `simulations/exact-signal-22-study-20261017.md`.
+
+Two local baseline attempts were cancelled after shared-memory pressure caused
+fallback/aborts; logs are retained under
+`runs/exact-signal-study-20261017/dev20-baseline/attempt*-memory-aborted.log`.
+Neither is a completed 20-symbol test or profitability result. The eight-GiB
+pool was concurrently saturated by unrelated jobs. An isolated standard GitHub
+runner workflow is being prepared; full 20/22 results and production build are
+still pending. Keep all ranges enabled until a full, nondegraded 22×24h audit
+and do not promote from unit tests or fixture performance.
+
 ## Systemwide PF scope and cash basis — 17 October
 
 Systemwide test and simulation benchmarks now explicitly follow the validated
