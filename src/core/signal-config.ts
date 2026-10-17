@@ -563,6 +563,8 @@ export interface SignalSettings {
    */
   sourcesMode?: "deny" | "allow";
   ranges: { short: boolean; medium: boolean };
+  /** Per-signal-range execution multipliers; applied to the balance-based unit before the account caps. */
+  rangeVolumeFactors: { short: number; medium: number };
   /** timeframe lanes signals run on (of the engine's lanes) */
   lanes: number[];
   normal: { tp: number[]; slOfTp: number[] };
@@ -683,6 +685,7 @@ export const DEFAULT_SIGNALS: SignalSettings = {
     "r-rvi": false,
   },
   ranges: { short: true, medium: true },
+  rangeVolumeFactors: { short: 1, medium: 1 },
   // 15m lane: raw signal PF 0.89 (15m) vs 0.76 (5m) vs 0.67 (1m) (docs/signals-validation.md); the 30m lane lost on
   // all three causal 50-symbol windows (3 Oct / 2 Oct / 23 Sep, PR #65) — the 15m lane carries the edge
   lanes: [15],
@@ -782,6 +785,7 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
     ...DEFAULT_SIGNALS,
     ...(s ?? {}),
     ranges: { ...DEFAULT_SIGNALS.ranges, ...(s?.ranges ?? {}) },
+    rangeVolumeFactors: { ...DEFAULT_SIGNALS.rangeVolumeFactors, ...(s?.rangeVolumeFactors ?? {}) },
     normal: { ...DEFAULT_SIGNALS.normal, ...(s?.normal ?? {}) },
     trailing: { ...DEFAULT_SIGNALS.trailing, ...(s?.trailing ?? {}) },
     trailingOnly: { ...DEFAULT_SIGNALS.trailingOnly, ...(s?.trailingOnly ?? {}) },
@@ -881,6 +885,14 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
     Number.isFinite(Number(v)) ? Math.min(0.1, Math.max(0, Number(v))) : d;
   out.minSl = fl(out.minSl, DEFAULT_SIGNALS.minSl);
   out.minTrail = fl(out.minTrail, DEFAULT_SIGNALS.minTrail);
+  const volumeFactor = (v: unknown) => {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return 1;
+    const bounded = Math.min(5, Math.max(0.2, n));
+    return bounded === 2.5 ? 2.5 : Math.round(bounded * 5) / 5;
+  };
+  out.rangeVolumeFactors.short = volumeFactor(out.rangeVolumeFactors.short);
+  out.rangeVolumeFactors.medium = volumeFactor(out.rangeVolumeFactors.medium);
   const vh = Number(out.validateH);
   out.validateH = Number.isFinite(vh) ? Math.min(72, Math.max(2, Math.round(vh))) : 24;
   out.guard.lastN = Math.min(
@@ -888,6 +900,13 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
     Math.max(2, Math.round(Number(out.guard.lastN) || DEFAULT_SIGNALS.guard.lastN)),
   );
   return out;
+}
+
+/** The independent short/medium range encoded at the end of a signal id, before any timeframe suffix. */
+export function signalRangeOf(ind: string): "short" | "medium" | null {
+  const base = ind.split("@", 1)[0];
+  if (!base.startsWith("sig-")) return null;
+  return base.endsWith("-s") ? "short" : base.endsWith("-m") ? "medium" : null;
 }
 
 /** A partial signals patch applied onto current settings (nested groups merged, lists replaced). */

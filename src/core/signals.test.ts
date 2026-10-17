@@ -26,6 +26,7 @@ import {
 import { allCombos, symStat } from "./pipeline/pipeline.ts";
 import { checkSettings } from "./settings-check.ts";
 import { DEFAULT_SETTINGS } from "./config.ts";
+import { signalRangeOf } from "./signal-config.ts";
 import {
   capsOf,
   defaultWalkForward,
@@ -62,6 +63,9 @@ describe("signals: sources and combos", () => {
     }
     const id = `${signalId("ema-cross", "short")}@m15`;
     assert.ok(isSignalInd(id));
+    assert.equal(signalRangeOf(id), "short");
+    assert.equal(signalRangeOf(`${signalId("ema-cross", "medium")}@m15`), "medium");
+    assert.equal(signalRangeOf("rsi-mom-14-20@m15"), null);
     assert.equal(signalSourceOf(id), "ema-cross");
     assert.equal(laneOf(id).tf, 15);
     assert.ok(!isSignalInd("ema-9-21@m15"));
@@ -506,6 +510,15 @@ describe("signals: settings", () => {
     assert.deepEqual(m.normal, DEFAULT_SIGNALS.normal);
     assert.deepEqual(DEFAULT_SETTINGS.signals, DEFAULT_SIGNALS);
   });
+
+  it("validates and merges short and medium Signal volume factors independently", () => {
+    assert.deepEqual(DEFAULT_SIGNALS.rangeVolumeFactors, { short: 1, medium: 1 });
+    const patched = mergeSignals(on, { rangeVolumeFactors: { short: 1.4 } } as never);
+    assert.deepEqual(patched.rangeVolumeFactors, { short: 1.4, medium: 1 });
+    assert.equal(signalSettings({ rangeVolumeFactors: { short: 2.5, medium: 1 } }).rangeVolumeFactors.short, 2.5);
+    assert.throws(() => checkSettings({ signals: { ...on, rangeVolumeFactors: { short: 0.3, medium: 1 } } }), /0\.2 steps/);
+    assert.throws(() => checkSettings({ signals: { ...on, rangeVolumeFactors: { short: 1, medium: 5.2 } } }), /out of range/);
+  });
 });
 
 describe("unlimited orders", () => {
@@ -726,32 +739,17 @@ describe("coordination tactics", () => {
       cooldown: "off",
       conflict: false,
       confirm: true,
-      s2VolumeFactor: 1,
       hedgeVolumeFactor: 1,
     });
     assert.equal(coordSettings({ cooldown: "x" as never }).cooldown, "off");
     assert.equal(coordSettings({ hourLock: -3 }).hourLock, 0);
   });
 
-  it("independent coordination volume factors default neutral and clamp to the 0.2 ladder", () => {
-    assert.deepEqual(
-      [coordSettings().s2VolumeFactor, coordSettings().hedgeVolumeFactor],
-      [1, 1],
-    );
-    assert.deepEqual(
-      [coordSettings({ s2VolumeFactor: 2.4, hedgeVolumeFactor: 0.4 }).s2VolumeFactor,
-        coordSettings({ s2VolumeFactor: 2.4, hedgeVolumeFactor: 0.4 }).hedgeVolumeFactor],
-      [2.4, 0.4],
-    );
-    assert.deepEqual(
-      [coordSettings({ s2VolumeFactor: 0.1, hedgeVolumeFactor: 5.4 }).s2VolumeFactor,
-        coordSettings({ s2VolumeFactor: 0.1, hedgeVolumeFactor: 5.4 }).hedgeVolumeFactor],
-      [0.2, 5],
-    );
-    assert.deepEqual(
-      [coordSettings({ s2VolumeFactor: 2.31 }).s2VolumeFactor, coordSettings({ hedgeVolumeFactor: 2.31 }).hedgeVolumeFactor],
-      [2.4, 2.4],
-    );
+  it("keeps the optional losing-hour hedge volume factor independent and on the 0.2 ladder", () => {
+    assert.equal(coordSettings().hedgeVolumeFactor, 1);
+    assert.equal(coordSettings({ hedgeVolumeFactor: 0.4 }).hedgeVolumeFactor, 0.4);
+    assert.equal(coordSettings({ hedgeVolumeFactor: 5.4 }).hedgeVolumeFactor, 5);
+    assert.equal(coordSettings({ hedgeVolumeFactor: 2.31 }).hedgeVolumeFactor, 2.4);
   });
 
   it("signal confirmation: a signal needs an engine position on its symbol and direction", () => {

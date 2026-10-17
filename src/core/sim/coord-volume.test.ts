@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import { DEFAULT_SIGNALS } from "../signal-config.ts";
-import { defaultWalkForward, makeTape, walkForward } from "./walkforward.ts";
+import { defaultWalkForward, makeTape, rangeVolumeFactorFor, walkForward } from "./walkforward.ts";
 import type { Trade } from "../domain/types.ts";
 
 const H = 3_600_000;
@@ -48,28 +48,68 @@ const base = {
 };
 
 describe("coordination volume factors", () => {
-  it("scales Stable-02's configured relation increment while respecting its cap and the Block ceiling", () => {
+  it("keeps Signal short and medium range volume factors independent from engine ranges", () => {
+    const factors = { short: 1.8, medium: 0.6 };
+    assert.equal(rangeVolumeFactorFor({ ind: "sig-ema-cross-s@m15", protect: P }, { signalRangeVolumeFactors: factors }), 1.8);
+    assert.equal(rangeVolumeFactorFor({ ind: "sig-ema-cross-m@m15", protect: P }, { signalRangeVolumeFactors: factors }), 0.6);
+    assert.equal(rangeVolumeFactorFor({ ind: "rsi-mom-14-20@m15", protect: { ...P, tag: "sh" } }, {
+      rangeVolumeFactors: { sh: 1.4 }, signalRangeVolumeFactors: factors,
+    }), 1.4);
+    assert.equal(rangeVolumeFactorFor({ ind: "sig-ema-cross-s@m15", protect: P }, { signalRangeVolumeFactors: { short: 2.5, medium: 1 } }), 2.5);
+  });
+
+  it("applies the matching Signal range factor to its own Normal and Trailing execution", () => {
+    const shortInd = "sig-ema-cross-s@m15";
+    const mediumInd = "sig-ema-cross-m@m15";
+    const shortCfg = `follow|${shortInd}|tp1|sl1|tr0|h32`;
+    const mediumCfg = `follow|${mediumInd}|tp1|sl1|tr0.005|h32`;
+    const shortTrades = Array.from({ length: 30 }, (_, i) => result(shortCfg, NOW - 100 * H + i * H, 0.01));
+    const mediumTrades = Array.from({ length: 30 }, (_, i) => result(mediumCfg, NOW - 100 * H + i * H, 0.01));
+    shortTrades.push(result(shortCfg, START + 5 * M, 0.01));
+    mediumTrades.push(result(mediumCfg, START + 5 * M, 0.01));
+    const tapes = [
+      makeTape(shortCfg, "follow", shortInd, P, "normal", [SYM], shortTrades, [], []),
+      makeTape(mediumCfg, "follow", mediumInd, { ...P, trail: 0.005 }, "trailing", [SYM], mediumTrades, [], []),
+    ];
+    const run = walkForward(u, tapes, {
+      ...base,
+      signalRank: {
+        ...DEFAULT_SIGNALS,
+        count: 0,
+        minTrades: 1,
+        rank: "net",
+        validate: false,
+        guard: { ...DEFAULT_SIGNALS.guard, enabled: false },
+        cluster: { ...DEFAULT_SIGNALS.cluster, enabled: false },
+      },
+      signalAccept: { ...DEFAULT_SIGNALS.accept, enabled: false },
+      signalSideAccept: { ...DEFAULT_SIGNALS.sideAccept, enabled: false },
+      coord: { ...base.coord!, enabled: false },
+      signalRangeVolumeFactors: { short: 1.8, medium: 0.6 },
+    });
+    assert.equal(run.trades.find((x) => x.cfg === shortCfg)?.mult, 1.8);
+    assert.equal(run.trades.find((x) => x.cfg === mediumCfg)?.mult, 0.6);
+  });
+
+  it("uses the configured relation increment while respecting its cap and the Block ceiling", () => {
     const cfg = "follow|rsi-mom-14-20@m15|tp1|sl1|tr0|h32";
     const trades = Array.from({ length: 30 }, (_, i) => result(cfg, NOW - 100 * H + i * H, 0.01));
     for (const h of [5, 3, 1]) trades.push(result(cfg, NOW - h * H + 10 * M, 0.01));
     const tape = makeTape(cfg, "follow", "rsi-mom-14-20@m15", P, "normal", [SYM], trades, [], []);
-    const run = (s2VolumeFactor: number) =>
+    const run = (s2Increase: number) =>
       walkForward(u, [tape], {
         ...base,
         coord: {
           ...base.coord!,
           enabled: true,
           s2RelVolume: true,
-          s2Increase: 0.05,
-          s2VolumeFactor,
+          s2Increase,
         },
       });
-    const neutral = run(1);
-    const raised = run(2);
-    const capped = run(4);
-    assert.equal(neutral.trades[1].coordVol, 1.3);
-    assert.equal(raised.trades[1].coordVol, 1.6);
-    assert.equal(capped.trades[1].coordVol, 1.8, "the Stable-02 relation multiplier remains capped at 1.8×");
+    const configured = run(0.05);
+    const capped = run(0.5);
+    assert.equal(configured.trades[1].coordVol, 1.3);
+    assert.equal(capped.trades[1].coordVol, 1.8, "relation volume remains capped at 1.8×");
     assert.ok(capped.trades.every((x) => (x.mult ?? 1) <= 8 + 1e-9), "the existing Block total ceiling remains in force");
   });
 

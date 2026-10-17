@@ -105,7 +105,7 @@ export interface Protect {
  * them on another range rather than ignoring them.
  */
 export interface RangeGrid {
-  /** execution volume relative to the normal factor (0.2–5 in 0.2 steps; 2.5 is also allowed for Micro's default) */
+  /** execution volume relative to the balance-based base unit (0.2–5 in 0.2 steps; explicit 2.5 remains supported) */
   volumeFactor?: number;
   /** targets of this range (fractions of price; Micro: net of the round-trip cost unless `tpNetOfCost` is false) */
   tp: readonly number[];

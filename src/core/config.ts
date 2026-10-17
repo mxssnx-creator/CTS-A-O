@@ -257,7 +257,7 @@ export interface CoreSettings {
   paperNotional: number;
   /** paper starting balance, USD (fixed % of equity sizing compounds from it) */
   paperBalance: number;
-  /** order sizing: fixed % of equity per order unit (default 2 %) or a fixed notional */
+  /** order sizing: fixed % of account equity per order unit (default 0.1 %) or a fixed notional */
   sizing: SizingSettings;
   toggles: StrategyToggles;
   /** entry tactics (session, volatility, trend strength, cooldown); each can be switched off */
@@ -441,7 +441,7 @@ export interface LiveSettings {
   /**
    * account exposure factor: the positions' gross notional (long and short both counted) stays within this multiple
    * of the account equity — every target is scaled by the same factor, so the relations between positions stay
-   * (0 / unset = off)
+   * (default 2; 0 / unset = off)
    */
   maxExposureX?: number;
   /**
@@ -460,7 +460,7 @@ export interface LiveSettings {
    * backstop distance) stays within it, whatever the volume factor — the guard against losing the account. Unset = off.
    */
   maxBackstopLossPct?: number;
-  /** per-position cap as a multiple of the equity (with maxNotionalUsd the smaller one holds; 0 / unset = off) */
+  /** per-position cap as a multiple of equity (default 0.25; combined with maxNotionalUsd, the smaller cap holds) */
   maxPositionX?: number;
   /** account margin per symbol: cross (shared) or isolated */
   marginMode: "cross" | "isolated";
@@ -613,6 +613,8 @@ export const DEFAULT_SETTINGS: CoreSettings = {
     laneOrders: false,
     ratio: 1,
     maxNotionalUsd: 200,
+    maxPositionX: 0.25,
+    maxExposureX: 2,
     rebalancePct: 0.25,
     marginMode: "cross",
     positionMode: "hedge",

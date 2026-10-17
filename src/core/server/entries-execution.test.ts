@@ -143,7 +143,8 @@ describe("entries mode: actual MARKET execution quantities", () => {
     const { rt, state, step } = fixture();
     Object.assign(rt.settings.live, { notionalUsd: 10, maxNotionalUsd: 0, maxPositionX: 0,
       maxExposureX: 0, maxRiskPct: 0, maxBackstopLossPct: 0, minFreeMargin: 0 });
-    assert.equal(rt.settings.grid.micro && rt.settings.grid.micro.volumeFactor, 2.5);
+    rt.settings.grid.micro = { ...rt.settings.grid.micro, volumeFactor: 2.5 } as never;
+    assert.equal((rt.settings.grid.micro as unknown as { volumeFactor: number }).volumeFactor, 2.5);
     await step([micro]);
     const entry = state.sent.find((p) => p.type === "MARKET" && p.side === "BUY")!;
     assert.equal(Number(entry.quantity), 2.5, "$10 normal size × Micro's 2.5 factor at $10 per unit");
@@ -184,7 +185,7 @@ describe("entries mode: actual MARKET execution quantities", () => {
       maxExposureX: 0, maxRiskPct: 0, maxBackstopLossPct: 0, minFreeMargin: 0 });
     await step([signal]);
     let entry = state.sent.find((p) => p.type === "MARKET" && p.side === "BUY")!;
-    assert.equal(Number(entry.quantity), 2.24, "10 × 1.4 × 1.6 at $10 per unit; Signal does not take range sizing");
+    assert.equal(Number(entry.quantity), 2.24, "10 × 1.4 × 1.6 at $10 per unit; Signal range factor is neutral");
 
     const capped = fixture();
     Object.assign(capped.rt.settings.live, { notionalUsd: 10, maxNotionalUsd: 0, maxPositionX: 0.1,
@@ -192,6 +193,25 @@ describe("entries mode: actual MARKET execution quantities", () => {
     await capped.step([signal]);
     entry = capped.state.sent.find((p) => p.type === "MARKET" && p.side === "BUY")!;
     assert.equal(Number(entry.quantity), 1, "the 10 USD per-position cap still bounds coordinated sizing");
+  });
+
+  it("Signal short and medium range factors scale Entries orders before caps", async () => {
+    for (const { range, suffix } of ([{ range: "short", suffix: "s" }, { range: "medium", suffix: "m" }] as const)) {
+      const signal: LiveIntent = {
+        ...intent,
+        cfg: `follow|sig-ema-cross-${suffix}@m15|tp1|sl1|tr0|h32`,
+        coordVol: 1.4,
+        hedge: true,
+        hedgeVol: 1.6,
+      };
+      const { rt, state, step } = fixture();
+      Object.assign(rt.settings.live, { notionalUsd: 10, maxNotionalUsd: 0, maxPositionX: 0,
+        maxExposureX: 0, maxRiskPct: 0, maxBackstopLossPct: 0, minFreeMargin: 0 });
+      rt.settings.signals.rangeVolumeFactors[range] = 1.5;
+      await step([signal]);
+      const entry = state.sent.find((p) => p.type === "MARKET" && p.side === "BUY")!;
+      assert.equal(Number(entry.quantity), 3.36, `$10 × ${range} 1.5 × relation 1.4 × hedge 1.6`);
+    }
   });
 
   it("applies the range factor before the same per-position equity cap", async () => {

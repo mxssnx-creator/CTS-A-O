@@ -74,7 +74,7 @@ describe("range settings are complete and the same for every range", () => {
     }
   });
 
-  it("range volume factors use the 0.2 ladder, keep Micro at 2.5×, and default the other ranges to neutral", () => {
+  it("range volume factors use the 0.2 ladder and default every range to neutral", () => {
     for (const name of ALL) {
       for (const volumeFactor of [0.2, 1, 2.5, 5])
         checkSettings(withRange(name, { ...cell(TP[name]), volumeFactor }));
@@ -88,11 +88,11 @@ describe("range settings are complete and the same for every range", () => {
       );
     }
     const defaults = rangeVolumeFactorsOf(DEFAULT_SETTINGS.grid);
-    assert.deepEqual(defaults, { wide: 1, mc: 2.5, mn: 1, mp: 1, sh: 1, gn: 1, lg: 1 });
+    assert.deepEqual(defaults, { wide: 1, mc: 1, mn: 1, mp: 1, sh: 1, gn: 1, lg: 1 });
     assert.equal(
       rangeVolumeFactorsOf({ micro: { tp: [], slOfTp: [], trailOfTp: [] } }).mc,
-      2.5,
-      "an older saved grid without an explicit factor resolves to Micro's default",
+      1,
+      "an older saved grid without an explicit factor resolves to the neutral range default",
     );
     checkSettings({
       ...DEFAULT_SETTINGS,

@@ -11,7 +11,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
   };
   const volumeFactor = (v: unknown, name: string) => {
     num(v, 0.2, 5, name);
-    // Range increments are 0.2; 2.5 is also a valid explicit value for Micro's required default.
+    // Range increments are 0.2; retain 2.5 as a supported explicit setting for saved/custom configs.
     if (v !== undefined && typeof v === "number" && Math.abs(v - 2.5) > 1e-8 && Math.abs(v * 5 - Math.round(v * 5)) > 1e-8)
       throw new Error(`${name} must use 0.2 steps`);
   };
@@ -665,6 +665,12 @@ export function checkSettings(s: Partial<CoreSettings>) {
       bool(g.ranges.medium, "medium range");
       if (g.ranges.short === false && g.ranges.medium === false)
         throw new Error("signals: at least one range");
+    }
+    if (g.rangeVolumeFactors !== undefined) {
+      if (!g.rangeVolumeFactors || typeof g.rangeVolumeFactors !== "object")
+        throw new Error("signal range volume factors: short and medium ratios");
+      volumeFactor(g.rangeVolumeFactors.short, "Signal short volume factor");
+      volumeFactor(g.rangeVolumeFactors.medium, "Signal medium volume factor");
     }
     if (g.lanes !== undefined) {
       if (

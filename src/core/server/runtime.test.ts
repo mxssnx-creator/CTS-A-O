@@ -4,6 +4,7 @@ import { allCombos, microLaneFloor } from "../pipeline/pipeline.ts";
 import { afterEach, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { baseFocus, CoreRuntime as BaseRuntime, sanitizeWf } from "./runtime.server.ts";
+import { DEFAULT_SETTINGS } from "../config.ts";
 import { auditStateGen, type AuditInput } from "../audit.ts";
 import { CoreDb } from "./db.server.ts";
 import { SIGNAL_SOURCES } from "../signal-config.ts";
@@ -1066,6 +1067,36 @@ describe("progress reporting", { timeout: 600_000 }, () => {
     for (const f of forced) assert.ok(rt2.candles.has(f), f);
     assert.equal(rt2.status.prehistoric?.total, 6);
     assert.ok((rt2.status.prehistoric?.loaded ?? 0) <= (rt2.status.prehistoric?.total ?? 0));
+  });
+});
+
+describe("sizing default migration", () => {
+  it("moves only the former defaults to balance-relative sizing and neutral range volume", () => {
+    const legacySettings = structuredClone(DEFAULT_SETTINGS);
+    legacySettings.sizing = { mode: "minQty", pct: 0.02 };
+    if (!legacySettings.grid.micro) throw new Error("default Micro range missing");
+    legacySettings.grid.micro.volumeFactor = 2.5;
+    const db = new CoreDb(":memory:");
+    db.kvSet("wfCapsV", 26);
+    db.kvSet("settings", legacySettings);
+    db.kvSet("wf", { coord: { enabled: true, s2VolumeFactor: 2.4, hedgeVolumeFactor: 1.6 } } as never);
+    const rt = new CoreRuntime(db, undefined, { market: "synthetic" });
+    assert.deepEqual(rt.settings.sizing, { mode: "equityPct", pct: 0.001 });
+    assert.equal(typeof rt.settings.grid.micro === "object" ? rt.settings.grid.micro.volumeFactor : undefined, 1);
+    assert.equal(rt.wf.coord?.hedgeVolumeFactor, 1.6);
+    assert.equal((rt.wf.coord as unknown as Record<string, unknown>)?.s2VolumeFactor, undefined);
+    assert.equal(db.kvGet<number>("wfCapsV"), 27);
+
+    const customDb = new CoreDb(":memory:");
+    customDb.kvSet("wfCapsV", 26);
+    const customSettings = structuredClone(DEFAULT_SETTINGS);
+    customSettings.sizing = { mode: "equityPct", pct: 0.004 };
+    if (!customSettings.grid.micro) throw new Error("default Micro range missing");
+    customSettings.grid.micro.volumeFactor = 2.8;
+    customDb.kvSet("settings", customSettings);
+    const custom = new CoreRuntime(customDb, undefined, { market: "synthetic" });
+    assert.deepEqual(custom.settings.sizing, { mode: "equityPct", pct: 0.004 });
+    assert.equal(typeof custom.settings.grid.micro === "object" ? custom.settings.grid.micro.volumeFactor : undefined, 2.8);
   });
 });
 

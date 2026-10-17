@@ -21,7 +21,7 @@ import {
 const H = 3_600_000;
 const M = 60_000;
 const script = new URL("./core-session.mjs", import.meta.url).pathname;
-function replay({ caps = false, weighted = false, invalidReturn = false, qualification, thresholds, variants, presets, exhaustedCap = false } = {}) {
+function replay({ caps = false, weighted = false, cashVsUnit = false, signalCoordination = false, rangeType = false, invalidReturn = false, qualification, thresholds, variants, presets, exhaustedCap = false, coverage, signalProgress, live = { maxPositionX: 0.75, maxExposureX: 7 } } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "cts-session-report-"));
   try {
     const raw = {
@@ -29,7 +29,7 @@ function replay({ caps = false, weighted = false, invalidReturn = false, qualifi
       settings: {
         preH: 1, runH: 1, tactics: "off", signals: false, toggles: {}, block: {},
         wf: {}, gates: { minPf: 1.1 }, lanes: [1], cost: 0, focus: 0, disabledKinds: [], ranges: {},
-        live: { maxPositionX: 0.75, maxExposureX: 7 },
+        live,
         book: { balance: 100, notional: 5, sizing: { mode: "equityPct", pct: 0.25 }, leverage: 10 },
       },
       window: { startT: H, endT: 2 * H },
@@ -47,6 +47,28 @@ function replay({ caps = false, weighted = false, invalidReturn = false, qualifi
       raw.settings.book.sizing = { mode: "fixed" };
       raw.executionReturns = { version: 1, encoding: "tape-return-times-execution-mult" };
     }
+    if (cashVsUnit) {
+      raw.trades[0] = { ...raw.trades[0], r: 0.1, mult: 1, vol: 1 };
+      raw.trades[1] = { ...raw.trades[1], r: -0.8, mult: 10, vol: 10 };
+      raw.executionReturns = { version: 1, encoding: "tape-return-times-execution-mult" };
+    }
+    if (signalCoordination) {
+      raw.settings.signals = { enabled: true, ranges: { short: true, medium: true } };
+      raw.trades = [
+        { cfg: "follow|sig-ema-cross-s@m15|tp1|sl1|tr0|h32", sym: "TEST-USDT", side: 1, entryT: H + M, exitT: H + 2 * M, entry: 100, exit: 110, r: 0.1, reason: "tp", vol: 1, mult: 1, kind: "normal" },
+        { cfg: "follow|sig-ema-cross-m@m15|tp1|sl1|tr0.005|h32", sym: "TEST-USDT", side: -1, entryT: H + 3 * M, exitT: H + 4 * M, entry: 100, exit: 96, r: -0.04, reason: "sl", vol: 1, mult: 1, kind: "trailing" },
+      ];
+      raw.executionReturns = { version: 1, encoding: "tape-return-times-execution-mult" };
+    }
+    if (rangeType) {
+      raw.trades = [
+        { cfg: "combo|ema-9-21@m1|mc|normal-win", sym: "TEST-USDT", side: 1, entryT: H + M, exitT: H + 2 * M, entry: 100, exit: 110, r: 0.1, reason: "tp", vol: 1, mult: 1, kind: "normal" },
+        { cfg: "combo|ema-9-21@m1|mc|normal-loss", sym: "TEST-USDT", side: -1, entryT: H + 3 * M, exitT: H + 4 * M, entry: 100, exit: 102, r: -0.02, reason: "sl", vol: 1, mult: 1, kind: "normal" },
+        { cfg: "combo|ema-9-21@m15|mn|trailing-loss", sym: "TEST-USDT", side: 1, entryT: H + 5 * M, exitT: H + 6 * M, entry: 100, exit: 104, r: -0.04, reason: "trail", vol: 1, mult: 1, kind: "trailing" },
+      ];
+      raw.closes = { "TEST-USDT": Array.from({ length: 60 }, () => [H, 100]) };
+      raw.executionReturns = { version: 1, encoding: "tape-return-times-execution-mult" };
+    }
     if (invalidReturn) raw.trades[0].mult = 0;
     if (exhaustedCap) {
       raw.settings.book = { balance: 1, notional: 0.1, sizing: { mode: "fixed" }, leverage: 10 };
@@ -61,6 +83,8 @@ function replay({ caps = false, weighted = false, invalidReturn = false, qualifi
     if (qualification) raw.qualification = qualification;
     if (variants) raw.variants = variants;
     if (presets) raw.presets = presets;
+    if (coverage) raw.engine.coverage = coverage;
+    if (signalProgress) raw.signalProgress = signalProgress;
     if (thresholds) {
       raw.engine.baseByRange = [{ tag: "sh", range: "Short", enabled: true, passed: 2, evaluated: 3, pfPassedPooled: 1.2 }];
       raw.tapeAgg = { evalAfterBase: { "Short|normal": thresholds } };
@@ -96,6 +120,38 @@ function summaryOf(html) {
 }
 
 describe("session reports: return PF primary, simulated provenance", () => {
+  it("uses the balance-relative live cap defaults when a saved settings object has no caps", () => {
+    const { data } = replay({ caps: true, live: {} });
+    assert.equal(data.total.caps.maxPositionX, 0.25);
+    assert.equal(data.total.caps.maxExposureX, 2);
+    assert.match(data.total.caps.source, /x01 defaults/);
+  });
+
+  it("reconciles fresh engine sets separately from held-only and Signal tapes", () => {
+    const { data, report } = replay({
+      coverage: {
+        expectedCombos: 2,
+        evaluated: 2,
+        kindsAll: ["break", "signal"],
+        byKind: { break: { evaluated: 1, passed: 1 }, signal: { evaluated: 1, passed: 1 } },
+        toggles: { normal: true, trailing: false, dca: false, dcaActive: false, axis: false },
+        ranges: { mc: true },
+        noSets: [],
+        sets: [{ ind: "break", tag: "mc", kind: "normal", grid: 1, built: 1, kept: 1, few: 0, skip: {} }],
+        tapes: {
+          "normal|mc": { configs: 2, activeConfigs: 1, engineConfigs: 2, freshEngineConfigs: 1, heldOnlyEngineConfigs: 1, carriedEngineConfigs: 0, signalConfigs: 0, closes: 0 },
+          "normal|wide": { configs: 1, activeConfigs: 1, engineConfigs: 0, freshEngineConfigs: 0, heldOnlyEngineConfigs: 0, carriedEngineConfigs: 0, signalConfigs: 1, closes: 0 },
+        },
+      },
+      signalProgress: { configs: [{ built: true }] },
+    });
+    assert.equal(data.checksOk, true);
+    assert.ok(data.checks.find((x) => x.name === "coverage: strategy type normal fresh engine tapes match kept sets")?.ok);
+    assert.ok(data.checks.find((x) => x.name === "coverage: range mc fresh engine tapes match kept sets")?.ok);
+    assert.ok(data.checks.find((x) => x.name === "coverage: built Signal configs match Signal tapes")?.ok);
+    assert.ok(data.checks.find((x) => x.name === "coverage: engine, held-only, carried, and Signal tape inventory reconciles")?.ok);
+  });
+
   it("zeros floating-point cap residue before cash/unit allocation and records the original ghost amount", () => {
     const { data, report, md, writeup, html } = replay({ caps: true, exhaustedCap: true });
     const ghost = data.sizedOrders.find((x) => x.cfg.endsWith("|ghost"));
@@ -123,7 +179,7 @@ describe("session reports: return PF primary, simulated provenance", () => {
     assert.ok(data.checks.find((x) => x.name === "hour × type: funded type columns add up to funded orders closed, every hour")?.ok);
     assert.ok(data.checks.find((x) => x.name === "hour × type: type columns add up to virtual closes, every hour")?.ok);
     assert.match(md, /\| hour \(UTC\) \| funded orders closed \| virtual closes \|/);
-    assert.match(md, /\| 01:00 \| 2 \| 3 \| 2 · – · 0 % · \$0\.00/);
+    assert.match(md, /\| 01:00 \| 2 \| 3 \| 2 · – · 0\.00 pp · 0 % · \$0\.00/);
     assert.match(md, /2 funded orders · 3 virtual closes/);
     assert.match(md, /Virtual diagnostic:.*3 closes · Return PF ∞ \(no loss\)/);
     assert.match(writeup, /Separate virtual diagnostic: 3 closes/);
@@ -143,15 +199,15 @@ describe("session reports: return PF primary, simulated provenance", () => {
     assert.equal(data.typeHours[0].pf, 2.5);
     assert.equal(data.evidence.actualExecution, false);
     assert.equal(data.evidence.pfBasis, "net-returns");
-    assert.match(md, /Return PF 2\.50.*cash PF diagnostic 2\.22/);
-    assert.match(md, /\| Return PF \| cash PF diagnostic \|/);
-    assert.match(writeup, /\| Return PF \| cash PF diagnostic \|/);
-    assert.match(writeup, /2\.50 \| 2\.22/);
+    assert.match(md, /unit-return PF 2\.50.*sized cash PF 2\.22/);
+    assert.match(md, /\| unit-return PF \| unit net \(pp\) \| sized cash PF \|/);
+    assert.match(writeup, /\| unit-return PF \| unit net \(pp\) \| sized cash PF \|/);
+    assert.match(writeup, /2\.50 \| \+30\.00 pp \| 2\.22/);
     assert.match(md, /no exchange execution proof/);
     assert.doesNotMatch(md, /PF \$|ate the edge|sizing.*flattered/);
     const summary = summaryOf(html);
-    assert.match(summary, /Return PF<\/div>\s*<div class="v[^"]*">2\.50/);
-    assert.match(summary, /cash PF diagnostic 2\.22/);
+    assert.match(summary, /Unit-return PF<\/div>\s*<div class="v[^"]*">2\.50/);
+    assert.match(summary, /sized cash PF 2\.22/);
     assert.match(summary, /no exchange execution proof/);
   });
 
@@ -161,8 +217,8 @@ describe("session reports: return PF primary, simulated provenance", () => {
     assert.equal(data.total.uncapped.pf, data.total.pf);
     assert.equal(data.total.uncapped.gpR, data.total.gpR);
     assert.equal(data.total.uncapped.glR, data.total.glR);
-    assert.match(md, /Without the caps:[^\n]*Return PF 2\.50.*cash PF diagnostic 2\.22/);
-    assert.match(summaryOf(html), /Without the caps:[^\n]*Return PF 2\.50.*cash PF diagnostic 2\.22/);
+    assert.match(md, /Without the caps:[^\n]*unit-return PF 2\.50.*sized cash PF 2\.22/);
+    assert.match(summaryOf(html), /Without the caps:[^\n]*unit-return PF 2\.50.*sized cash PF 2\.22/);
   });
 
   it("removes the execution volume multiple from primary PF while retaining sized cash results", () => {
@@ -178,8 +234,56 @@ describe("session reports: return PF primary, simulated provenance", () => {
     assert.equal(data.evidence.returns.state, "recorded");
     assert.match(data.evidence.returns.note, /ladder\/tape leg semantics remain/);
     assert.equal(data.total.cashPf, 5, "cash result retains the raised winning order");
-    assert.match(md, /Return PF 2\.50/);
-    assert.match(summaryOf(html), /Return PF<\/div>\s*<div class="v[^"]*">2\.50/);
+    assert.match(md, /unit-return PF 2\.50/);
+    assert.match(summaryOf(html), /Unit-return PF<\/div>\s*<div class="v[^"]*">2\.50/);
+  });
+
+  it("shows positive unit PF and negative sized cash as separate metrics", () => {
+    const { data, report, md, writeup, html } = replay({ cashVsUnit: true, caps: true });
+    assert.equal(data.total.orders, 2);
+    assert.equal(data.total.pf, 1.25);
+    assert.ok(Math.abs(data.total.netU - 0.02) < 1e-9);
+    assert.ok(data.total.net < 0, `sized cash net must remain negative, got ${data.total.net}`);
+    assert.ok(data.total.cashPf < 1);
+    assert.equal(report.total.pf, 1.25);
+    assert.ok(report.total.net < 0);
+    assert.match(md, /unit-return PF 1\.25 · unit net \+2\.00 pp · sized cash PF/);
+    assert.match(md, /net cash [-−]\$/);
+    assert.match(writeup, /1\.25 \| \+2\.00 pp \| [0-9.]+ \| [-−]\$/);
+    assert.match(summaryOf(html), /Unit-return PF<\/div>\s*<div class="v[^"]*">1\.25/);
+    assert.match(summaryOf(html), /net cash.*[-−]\$/);
+  });
+
+  it("reports each Signal source, short/medium range, lane, type and exact config separately", () => {
+    const { data, report, md, html } = replay({ signalCoordination: true });
+    assert.equal(data.checksOk, true);
+    assert.deepEqual(Object.keys(report.signalRanges), ["short", "medium"]);
+    assert.deepEqual(report.signalCoordinations.map((r) => r.key).sort(), [
+      "ema-cross|medium|15m|trailing",
+      "ema-cross|short|15m|normal",
+    ]);
+    assert.equal(report.signalConfigs.length, 2);
+    assert.ok(data.checks.find((x) => x.name === "Σ Signal coordination unit net = Signal unit net")?.ok);
+    assert.ok(data.checks.find((x) => x.name === "Σ exact Signal config unit net = Signal unit net")?.ok);
+    assert.match(md, /ema-cross \| medium \| 15m \| Trailing/);
+    assert.match(md, /ema-cross \| short \| 15m \| Normal/);
+    assert.match(html, /Per coordination: source × range × lane × type/);
+  });
+
+  it("reports actual outcomes by protect range × Normal / Trailing and reconciles the partitions", () => {
+    const { data, report, md, html } = replay({ rangeType: true });
+    assert.equal(data.checksOk, true);
+    assert.deepEqual(report.rangeTypes.map((r) => r.key), ["Micro|Normal", "Minimal|Trailing"]);
+    assert.equal(report.rangeTypes[0].n, 2);
+    assert.equal(report.rangeTypes[0].pf, 5);
+    assert.equal(report.rangeTypes[1].n, 1);
+    assert.equal(report.rangeTypes[1].pf, 0);
+    assert.ok(data.checks.find((x) => x.name === "Σ range × type net = total net")?.ok);
+    assert.ok(data.checks.find((x) => x.name === "Micro: range × type orders reconcile")?.ok);
+    assert.ok(data.checks.find((x) => x.name === "Trailing: range × type unit net reconciles")?.ok);
+    assert.match(md, /\| Micro \| Normal \| 2 \|/);
+    assert.match(md, /\| Minimal \| Trailing \| 1 \|/);
+    assert.match(html, /By protect range and strategy type/);
   });
 
   it("does not report a fabricated primary PF when an execution multiplier is invalid", () => {
@@ -193,8 +297,8 @@ describe("session reports: return PF primary, simulated provenance", () => {
     assert.equal(data.evidence.returns.unknownReturns, 1);
     assert.equal(data.evidence.returns.state, "unavailable");
     assert.equal(data.checksOk, false, "unknown primary returns do not become a passing verified report");
-    assert.match(md, /Return PF unavailable/);
-    assert.match(summaryOf(html), /Return PF<\/div>\s*<div class="v[^"]*">unavailable/);
+    assert.match(md, /unit-return PF unavailable/);
+    assert.match(summaryOf(html), /Unit-return PF<\/div>\s*<div class="v[^"]*">unavailable/);
   });
 });
 

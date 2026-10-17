@@ -98,6 +98,7 @@ import {
 import { S2Coord } from "./s2coord.ts";
 import { botFamilyOf } from "../bot-stats.ts";
 import { INDICATION_BY_ID, isSignalInd, laneOf, signalSourceOf } from "../indications/registry.ts";
+import { signalRangeOf } from "../signal-config.ts";
 import { isMicroInd, microIndFits, type MicroIndRule } from "../indications/micro.ts";
 import {
   acceptKey,
@@ -146,8 +147,6 @@ export interface CoordSettings {
   s2Pause?: number;
   /** volume added per passing relation. Default 0.4. */
   s2Increase?: number;
-  /** Multiplier on s2Increase (0.2–5 by 0.2); 1 keeps the configured per-relation increase unchanged. */
-  s2VolumeFactor?: number;
   /** Stable-02 relation volume: winning relations add volume (0.4 each, ≤ 1.8×), re-evaluated every 2 h */
   s2RelVolume?: boolean;
   /**
@@ -172,7 +171,6 @@ export const DEFAULT_COORD: CoordSettings = {
   cooldown: "off",
   conflict: false,
   confirm: true,
-  s2VolumeFactor: 1,
   hedgeVolumeFactor: 1,
 };
 
@@ -199,7 +197,6 @@ export function coordSettings(c?: Partial<CoordSettings> | null): CoordSettings 
     s2Steps: c?.s2Steps,
     s2Pause: c?.s2Pause,
     s2Increase: c?.s2Increase,
-    s2VolumeFactor: volumeFactor(c?.s2VolumeFactor),
     s2RelVolume: c?.s2RelVolume === true,
     hedge: c?.hedge === true,
     hedgeMinPf: numOr(c?.hedgeMinPf, HEDGE_DEFAULTS.minPf, 1, 5),
@@ -268,6 +265,8 @@ export function coordBlock(
 export interface WalkForwardOptions {
   /** execution sizing multiplier relative to the normal factor, per strategy target range */
   rangeVolumeFactors?: RangeVolumeFactors;
+  /** execution sizing multiplier relative to the normal factor, per independent Signal range */
+  signalRangeVolumeFactors?: { short: number; medium: number };
   preH: number;
   simH: number;
   stepH: number;
@@ -672,6 +671,7 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     // range cells: their own, higher last-N gate (grid.rangeGate)
     rangeGate: rangeGateOf(s.grid),
     rangeVolumeFactors: rangeVolumeFactorsOf(s.grid),
+    signalRangeVolumeFactors: s.signals.rangeVolumeFactors,
     rangeSeats: s.grid?.rangeSeats === true,
     // unlimited working orders on one symbol (0 = no limit)
     maxPerSymbol: 0,
@@ -757,6 +757,8 @@ export interface ConfigTape {
    * pair alone, a held cell kept opening orders after Base had dropped it.
    */
   heldOnly?: boolean;
+  /** Kept from the preceding compute during a memory fallback instead of being rebuilt in this compute. */
+  carried?: boolean;
   /**
    * First time the tape's series can produce a trade (its lane's history start + a day of indicator warm-up).
    * Selection windows start here at the earliest: a lane with a shorter history (1m: days) is judged on what
@@ -3796,8 +3798,14 @@ export type ExecDecision =
   | { ok: false; why: string };
 
 /** Range sizing sits outside the Block / coordination stack and does not change unit-return qualification. */
-export function rangeVolumeFactorFor(tp: Pick<ConfigTape, "ind" | "protect">, o: Pick<WalkForwardOptions, "rangeVolumeFactors">): number {
-  if (isSignalInd(tp.ind)) return 1;
+export function rangeVolumeFactorFor(
+  tp: Pick<ConfigTape, "ind" | "protect">,
+  o: Pick<WalkForwardOptions, "rangeVolumeFactors" | "signalRangeVolumeFactors">,
+): number {
+  if (isSignalInd(tp.ind)) {
+    const range = signalRangeOf(tp.ind);
+    return range ? o.signalRangeVolumeFactors?.[range] ?? 1 : 1;
+  }
   const key = tp.protect.tag ?? "wide";
   return o.rangeVolumeFactors?.[key] ?? RANGE_VOLUME_FACTOR_DEFAULTS[key];
 }
@@ -4800,7 +4808,7 @@ export function* walkForwardGen(
           windowN: o.coord.s2Steps ?? 6,
           pauseN: o.coord.s2Pause ?? o.coord.s2Steps ?? 6,
           relVolume: !!o.coord.s2RelVolume,
-          ratio: (o.coord.s2Increase ?? 0.4) * (o.coord.s2VolumeFactor ?? 1),
+          ratio: o.coord.s2Increase ?? 0.4,
           minPf: 1.25,
           maxMult: 1.8,
           evalH: 2,

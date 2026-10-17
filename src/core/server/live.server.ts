@@ -13,6 +13,7 @@ import { createHash } from "node:crypto";
 import { isSignalInd } from "../indications/registry.ts";
 import { signalActiveHas } from "../signals.ts";
 import { rangeOfId, rangeVolumeFactorsOf } from "../minimal-coord.ts";
+import { signalRangeOf } from "../signal-config.ts";
 import { kindOfId, parseConfigId } from "../pipeline/pipeline.ts";
 import { positionMult, runSubset, type WalkForwardResult } from "../sim/walkforward.ts";
 import type { CoreRuntime, LiveIntent } from "./runtime.server.ts";
@@ -1393,8 +1394,11 @@ async function runStepNow(
     };
     for (const e of plan.entries) {
       if (!alive()) break;
-      const signal = isSignalInd(e.cfg.split("|")[1] ?? "");
-      const rangeFactor = signal ? 1 : rangeVolumeFactors[rangeOfId(e.cfg) || "wide"] ?? 1;
+      const ind = e.cfg.split("|")[1] ?? "";
+      const signalRange = isSignalInd(ind) ? signalRangeOf(ind) : null;
+      const rangeFactor = signalRange
+        ? rt.settings.signals.rangeVolumeFactors[signalRange] ?? 1
+        : rangeVolumeFactors[rangeOfId(e.cfg) || "wide"] ?? 1;
       // Apply the per-range multiplier before the same per-position, account, and aggregate-risk checks as normal size.
       const coordFactor = e.coordVol ?? 1;
       const hedgeFactor = e.hedge ? (e.hedgeVol ?? 1) : 1;

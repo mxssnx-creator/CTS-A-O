@@ -28,10 +28,10 @@ export const RANGE_LABEL: Record<RangeTag | "", string> = {
 /** Every range tag, smallest targets first. */
 export const RANGE_TAGS: readonly RangeTag[] = ["mc", "mn", "mp", "sh", "gn", "lg"];
 
-/** Execution volume by target range. Micro's explicit 2.5× default is 250% of normal range volume. */
+/** Execution volume by target range. The balance-relative default uses neutral volume in every range. */
 export const RANGE_VOLUME_FACTOR_DEFAULTS: Readonly<Record<"wide" | RangeTag, number>> = {
   wide: 1,
-  mc: 2.5,
+  mc: 1,
   mn: 1,
   mp: 1,
   sh: 1,
@@ -221,7 +221,7 @@ export const FORMER_MICRO_TP: readonly number[] = [0.001, 0.0015, 0.002, 0.0025,
  */
 export const MICRO_SL: readonly number[] = steps(1, 5, 0.25);
 export const MICRO_RANGE: CoordRange = {
-  volumeFactor: 2.5,
+  volumeFactor: 1,
   tp: MICRO_TP,
   slOfTp: MICRO_SL,
   trailOfTp: TRAIL_CONFIGS,

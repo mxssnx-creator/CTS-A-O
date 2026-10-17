@@ -1,4 +1,4 @@
-// Order sizing. equityPct (default): every order's unit notional is a fixed share of the equity at its entry —
+// Order sizing. equityPct (default): every order's unit notional is a fixed share of the account equity at its entry —
 // realized equity, compounding from the starting balance, so a drawdown shrinks the next orders and a profit grows
 // them. fixed: every order's unit notional is the same amount. The Block volume multiplies the unit (the 8× stack
 // cap applies upstream); a trade's P&L = r × unit, where r already carries its volume.
@@ -6,12 +6,12 @@
 // lot); the Block volume multiplies it. Paper and simulation size it like equityPct (pct of the realized equity).
 export interface SizingSettings {
   mode: "equityPct" | "fixed" | "minQty";
-  /** equityPct: share of equity per order unit (0.02 = 2 %) */
+  /** equityPct: share of account equity per order unit (0.001 = 0.1 %) */
   pct: number;
 }
 
-/** Default: always the exchange minimum quantity per live order unit (with the maximum leverage, see live.leverage). */
-export const DEFAULT_SIZING: SizingSettings = { mode: "minQty", pct: 0.02 };
+/** Default base unit: 0.1% of actual account equity at entry; exchange minimums and configured caps still apply. */
+export const DEFAULT_SIZING: SizingSettings = { mode: "equityPct", pct: 0.001 };
 
 export function sizingSettings(s?: Partial<SizingSettings> | null): SizingSettings {
   const mode =

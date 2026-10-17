@@ -226,10 +226,10 @@ import {
   signalHistProtectsGen,
   type SignalHistDiagnostics,
 } from "../signal-hist.ts";
-import { DEFAULT_SIGNALS, type SignalAccept, type SignalSettings } from "../signal-config.ts";
+import { DEFAULT_SIGNALS, signalRangeOf, type SignalAccept, type SignalSettings } from "../signal-config.ts";
 import { PriceStream, type StreamStats } from "./stream.server.ts";
 import { isSignalInd, laneOf, signalSourceOf } from "../indications/registry.ts";
-import { orderKey, sizeBook, sizeBookGen, sizingSettings } from "../sizing.ts";
+import { DEFAULT_SIZING, orderKey, sizeBook, sizeBookGen, sizingSettings } from "../sizing.ts";
 import { presetSeries, type PresetSeries } from "../statistics.ts";
 import { modeledUnitReturn as unitReturn, modeledUnitStatsOf as unitStatsOf } from "../metrics/stats.ts";
 import { promoteLaneKey, validPromotedLaneProof } from "../live-promote.ts";
@@ -5915,9 +5915,12 @@ export class CoreRuntime {
       const recordedHedgeVol = held ? prev?.hedgeVol ?? 1 : appliedHedgeVol;
       const coordVol = held ? prev?.coordVol ?? 1 : cv;
       // The configured range factor is captured only on entry; a settings edit cannot resize a held position.
-      const rangeVol = held || sigCfg(op.cfg)
+      const signalRange = sigCfg(op.cfg) ? signalRangeOf(op.cfg.split("|")[1] ?? "") : null;
+      const rangeVol = held
         ? 1
-        : (this.wf.rangeVolumeFactors?.[rangeOfId(op.cfg) || "wide"] ?? 1);
+        : signalRange
+          ? (this.wf.signalRangeVolumeFactors?.[signalRange] ?? 1)
+          : (this.wf.rangeVolumeFactors?.[rangeOfId(op.cfg) || "wide"] ?? 1);
       openKeys.add(openDupKey(op));
       positions.push({
         ...op,
@@ -6637,7 +6640,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
 function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
   const saved = db.kvGet<Partial<WalkForwardOptions>>("wf") ?? {};
   const v = db.kvGet<number>("wfCapsV") ?? 0;
-  if (v >= 26) return saved;
+  if (v >= 27) return saved;
   // each step runs only for a database older than it: a choice made after a step is never overwritten
   const out = { ...saved };
   const st = db.kvGet<Partial<CoreSettings>>("settings");
@@ -6888,9 +6891,36 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
       if (changed) db.kvSet("presets", presets);
     }
   }
+  if (v < 27) {
+    // Base sizing now uses 0.1% of verified account equity. Upgrade only the exact former factory default; a
+    // custom size stays intact. Micro's old 2.5× factory multiplier also returns to neutral, while chosen factors
+    // other than that exact default remain. Stable-02 is a branch label, so discard the unshipped extra field.
+    const sz = st?.sizing as { mode?: string; pct?: number } | undefined;
+    if (sz?.mode === "minQty" && sz.pct === 0.02) st!.sizing = structuredClone(DEFAULT_SIZING);
+    const c = out.coord as (typeof out.coord & Record<string, unknown>) | undefined;
+    if (c) delete c.s2VolumeFactor;
+    const resetMicroDefault = (g: { micro?: { volumeFactor?: number } | false } | undefined) => {
+      const micro = g?.micro;
+      if (micro && micro.volumeFactor === 2.5) micro.volumeFactor = 1;
+    };
+    resetMicroDefault(st?.grid);
+    const presets = db.kvGet<Preset[]>("presets");
+    if (Array.isArray(presets)) {
+      let changed = false;
+      for (const p of presets) {
+        const grid = p.settings?.grid as { micro?: { volumeFactor?: number } | false } | undefined;
+        const micro = grid?.micro;
+        if (micro && micro.volumeFactor === 2.5) {
+          micro.volumeFactor = 1;
+          changed = true;
+        }
+      }
+      if (changed) db.kvSet("presets", presets);
+    }
+  }
   db.kvSet("wf", pickWf(out));
   if (st) db.kvSet("settings", st);
-  db.kvSet("wfCapsV", 26);
+  db.kvSet("wfCapsV", 27);
   return out;
 }
 
@@ -7341,7 +7371,9 @@ export function withCarried(
   const carried = prev.filter(
     (t) => !isSignalInd(t.ind) && !!t.protect.tag && tags.has(t.protect.tag) && !ids.has(t.id),
   );
-  return carried.length ? [...built, ...carried] : built;
+  // Mark shallow copies so reports can distinguish them from the current compute's built sets. The large typed-array
+  // tape columns remain shared; only metadata is copied.
+  return carried.length ? [...built, ...carried.map((t) => ({ ...t, carried: true }))] : built;
 }
 
 /**
