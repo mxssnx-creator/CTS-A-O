@@ -414,8 +414,10 @@ export interface Trade {
   level?: number;
   /** Block volume multiplier applied at execution (r includes it); r / mult is the unit result */
   mult?: number;
-  /** part of mult from coordination volume (Stable-02 relation volume); mult / coordVol is the Block volume */
+  /** part of mult from Stable-02 relation volume; execution volume excludes it when auditing Block sizing */
   coordVol?: number;
+  /** part of mult from the negative-hour hedge volume factor; independent of Stable-02 relation volume */
+  hedgeVol?: number;
   /** taken by the negative-hour hedge (a signal outside the ranked set, while the book was losing) */
   hedge?: boolean;
   /** Block type overall: the extra volume each source added as its own position (part of mult) */
@@ -454,6 +456,10 @@ export interface OpenPosition {
    * marked-open order's r already carries it (r = Σ legs), so it is never multiplied into r again.
    */
   w?: number;
+  /** Stable-02 relation-volume factor captured at entry and retained while this position is held. */
+  coordVol?: number;
+  /** Negative-hour hedge volume factor captured at entry and retained while this position is held. */
+  hedgeVol?: number;
   /** Opt-in Block audit trace captured at entry and retained while this position is held. */
   blockLevels?: Partial<Record<string, number>>;
   blockEffectiveLevels?: Partial<Record<string, number>>;
