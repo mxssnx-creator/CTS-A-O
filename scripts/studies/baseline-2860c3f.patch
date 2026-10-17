@@ -136,14 +136,33 @@ index 96a58a9..adccd26 100644
 +      ? !sigActive || signalActiveHas(sigActive, c.bot, c.ind, l.sym, l.side, c.kind)
 +      : selected.has(l.cfg);
 diff --git a/src/core/server/runtime.server.ts b/src/core/server/runtime.server.ts
-index 3ccd599..991bbb6 100644
+index fd4aba5..991bbb6 100644
 --- a/src/core/server/runtime.server.ts
 +++ b/src/core/server/runtime.server.ts
 @@ -225 +224,0 @@ import {
 -  signalSeatSymbols,
 @@ -231 +229,0 @@ import {
 -  signalHistValidationOf,
-@@ -3111 +3109,6 @@ export class CoreRuntime {
+@@ -2291,3 +2289,2 @@ export class CoreRuntime {
+-        // Live starts progressively. A bounded replay must first load its whole fixed universe: intermediate
+-        // simulations retain books/tapes and repeat work before the requested cross-symbol cohort even exists.
+-        const batch = this.replay ? target : Math.max(5, Math.ceil(target / 4));
++        // progressive start: load a batch, compute it completely, start realtime for it, then the next batch
++        const batch = Math.max(5, Math.ceil(target / 4));
+@@ -2341,12 +2337,0 @@ export class CoreRuntime {
+-        if (this.replay) {
+-          const unloaded = ranked.filter((sym) => !this.candles.has(sym));
+-          if (unloaded.length) {
+-            // An unavailable or short history is still pending, never a smaller valid replay universe. Keep the
+-            // successful loads and retry only missing symbols; the cycle must not compute the partial cohort.
+-            this.prehistPending = true;
+-            this.dirty = true;
+-            this.status.symbols = [...this.candles.keys()];
+-            this.touchPrehist();
+-            throw new Error(`Replay history incomplete: ${this.candles.size}/${target} symbols loaded; retrying ${unloaded.length} before compute`);
+-          }
+-        }
+@@ -3124 +3109,6 @@ export class CoreRuntime {
 -    const signalHistValidation = signalHistValidationOf(s.cost, s.gates);
 +    const signalHistValidation = {
 +      cost: s.cost,
@@ -151,22 +170,22 @@ index 3ccd599..991bbb6 100644
 +      minTrades: setsGates.minTrades,
 +      maxDdr: setsGates.maxDdr,
 +    };
-@@ -4627,3 +4630,2 @@ export class CoreRuntime {
+@@ -4640,3 +4630,2 @@ export class CoreRuntime {
 -      const [bot, ind, sym, side, kind, config] = k.split("|");
 -      const cfg = config?.startsWith("cfg=") ? decodeURIComponent(config.slice(4)) : undefined;
 -      active.push({ bot, ind, sym, side: side === "-1" ? -1 : 1, ...(kind ? { kind } : {}), ...(cfg ? { cfg } : {}) });
 +      const [bot, ind, sym, side, kind] = k.split("|");
 +      active.push({ bot, ind, sym, side: side === "-1" ? -1 : 1, ...(kind ? { kind } : {}) });
-@@ -4631 +4633 @@ export class CoreRuntime {
+@@ -4644 +4633 @@ export class CoreRuntime {
 -    active.sort((a, b) => (a.bot + a.ind + a.sym).localeCompare(b.bot + b.ind + b.sym) || b.side - a.side || (a.kind ?? "").localeCompare(b.kind ?? "") || (a.cfg ?? "").localeCompare(b.cfg ?? ""));
 +    active.sort((a, b) => (a.bot + a.ind + a.sym).localeCompare(b.bot + b.ind + b.sym) || b.side - a.side || (a.kind ?? "").localeCompare(b.kind ?? ""));
-@@ -4710 +4712 @@ export class CoreRuntime {
+@@ -4723 +4712 @@ export class CoreRuntime {
 -        (!this.wf.signalActive || signalActiveHas(this.wf.signalActive, tp.bot, tp.ind, lane.sym, lane.side, tp.kind, tp.id))));
 +        (!this.wf.signalActive || signalActiveHas(this.wf.signalActive, tp.bot, tp.ind, lane.sym, lane.side, tp.kind))));
-@@ -5655 +5657 @@ export class CoreRuntime {
+@@ -5668 +5657 @@ export class CoreRuntime {
 -        sigActiveKey(op.cfg.split("|")[0], op.cfg.split("|")[1] ?? "", op.sym, op.side, kindOfId(op.cfg), op.cfg),
 +        sigActiveKey(op.cfg.split("|")[0], op.cfg.split("|")[1] ?? "", op.sym, op.side, kindOfId(op.cfg)),
-@@ -5687,5 +5689,2 @@ export class CoreRuntime {
+@@ -5700,5 +5689,2 @@ export class CoreRuntime {
 -    // Each Signal protection config needs its own active symbol/direction evidence before taking a paper seat.
 -    // Held configs are kept separately below to manage their existing exits only.
 -    const { engine: selTapes, signal: signalCandidates } = splitSignalTapes(this.tapes, this.wf);
@@ -174,15 +193,15 @@ index 3ccd599..991bbb6 100644
 -    const sigTapes = signalActive ? signalCandidates.filter((tp) => !tp.heldOnly && signalSeatSymbols(tp, signalActive).size > 0) : [];
 +    // signal configs are not selected into seats: every config of an active signal runs (Real gate per symbol)
 +    const { engine: selTapes, signal: sigTapes } = splitSignalTapes(this.tapes, this.wf);
-@@ -6600,2 +6599,2 @@ export interface SetListings {
+@@ -6613,2 +6599,2 @@ export interface SetListings {
 -  /** Signal units active at the paper step include their exact protection config; Base/discovery rows omit cfg. */
 -  active: Array<{ bot: string; ind: string; sym: string; side: 1 | -1; kind?: string; cfg?: string }>;
 +  /** signal units active at the paper step (full pair × symbol × side × type); Base/discovery rows omit kind */
 +  active: Array<{ bot: string; ind: string; sym: string; side: 1 | -1; kind?: string }>;
-@@ -6738 +6737 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
+@@ -6751 +6737 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
 -  if (v >= 34) return saved;
 +  if (v >= 33) return saved;
-@@ -7092,19 +7090,0 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
+@@ -7105,19 +7090,0 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
 -  if (v < 34) {
 -    // Move only the explicitly stored former factory cost and fee tuple. Partial/custom models retain
 -    // their provenance; measured exchange fills and their commissions are never rewritten.
@@ -202,7 +221,7 @@ index 3ccd599..991bbb6 100644
 -      if (changed) db.kvSet("presets", presets);
 -    }
 -  }
-@@ -7113 +7093 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
+@@ -7126 +7093 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
 -  db.kvSet("wfCapsV", 34);
 +  db.kvSet("wfCapsV", 33);
 diff --git a/src/core/signal-config.ts b/src/core/signal-config.ts

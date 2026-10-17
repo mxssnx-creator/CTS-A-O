@@ -36,6 +36,7 @@ env:
   CTS_CORE_STATE: 'off'
   CTS_CORE_AUTOSTART: '0'
   CTS_CORE_VARIANTS: '0'
+  CTS_CORE_COMPARE: '0'
   CTS_CORE_WORKERS: '4'
   CTS_CORE_LIVE: '0'
   CTS_CORE_MEM_SOFT_MB: '2500'
@@ -108,6 +109,7 @@ jobs:
             src/core/pipeline/base-pair-rows.test.ts \
             src/core/server/cost-default-runtime.test.ts \
             src/core/server/fee-provenance.test.ts \
+            src/core/server/replay-backfill.test.ts \
             src/core/signals-independence.test.ts \
             src/core/sim/independence.test.ts \
             2>&1 | tee runs/exact-signal-study-ci/checks/logs/core-tests.log

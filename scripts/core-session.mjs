@@ -62,6 +62,8 @@ import {
 
 process.env.CTS_CORE_STATE = "off";
 process.env.CTS_CORE_AUTOSTART = "0";
+// Run the requested strategy grid without the separate background preset benchmark; explicit diagnostics can opt in.
+process.env.CTS_CORE_COMPARE ??= "0";
 const argv = process.argv.slice(2);
 if (argv.includes("--help") || argv.includes("-h")) {
   process.stdout.write(

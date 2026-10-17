@@ -8,6 +8,10 @@ import { spawn, execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 export const FEED_SHA256 = "84e29bb4e729e6f4e213ba1c8e6eb8c1a11ecbc0a8b3f65e958a4563040f8019";
+export const STUDY_EXECUTION_ENV = Object.freeze({ CTS_CORE_STATE: "off", CTS_CORE_AUTOSTART: "0", CTS_CORE_VARIANTS: "0", CTS_CORE_COMPARE: "0",
+  CTS_CORE_WORKERS: "4", CTS_CORE_LIVE: "0", CTS_CORE_MEM_SOFT_MB: "2500", CTS_CORE_MEM_HARD_MB: "1200",
+  MALLOC_ARENA_MAX: "2", MALLOC_MMAP_THRESHOLD_: "1048576" });
+export const studyExecutionEnvironment = (base = {}) => ({ ...base, ...STUDY_EXECUTION_ENV });
 export const SYMBOLS = ["BTC", "ETH", "BNB", "SOL", "XRP", "DOGE", "ADA", "AVAX", "LINK", "LTC", "DOT", "ATOM", "APT", "NEAR", "SUI", "TRX", "UNI", "FIL", "ETC", "ARB", "OP", "XLM"].map((s) => `${s}-USDT`);
 export const STUDY_CASES = Object.freeze({
   baseline20: { purpose: "development", baseline: true, count: 20, evaluationFrom: "2026-10-12T03:00:00.000Z", start: "2026-10-12T09:00:00.000Z", end: "2026-10-12T15:00:00.000Z", runH: 6 },
@@ -121,8 +125,7 @@ async function main() {
   if (fs.existsSync(path.join(out, "launcher.json")) || fs.existsSync(path.join(out, "failure.json"))) throw new Error("Preserve the previous attempt; use a fresh output directory");
   fs.mkdirSync(path.join(out, "evidence"), { recursive: true });
   const evidence = path.join(out, "evidence"), deadline = Date.now() + 36 * 60_000;
-  const env = { ...process.env, CTS_CORE_STATE: "off", CTS_CORE_AUTOSTART: "0", CTS_CORE_VARIANTS: "0", CTS_CORE_WORKERS: "4",
-    CTS_CORE_MEM_SOFT_MB: "2500", CTS_CORE_MEM_HARD_MB: "1200", MALLOC_ARENA_MAX: "2", MALLOC_MMAP_THRESHOLD_: "1048576" };
+  const env = studyExecutionEnvironment(process.env);
   const node = ["--expose-gc", "--experimental-strip-types"];
   const commands = [];
   const run = (label, file, argv, cwd = root, allowFailure = false) => new Promise((resolve, reject) => {
@@ -176,7 +179,7 @@ async function main() {
       economicBaseline: proof.baselineEconomicCommit, economicCorrected: proof.correctedEconomicCommit, patchSha256: proof.patchSha256,
       sourceSha256: protocol.source.sha256, protocolSha256: sha(fs.readFileSync(chosen.protocol)), selectionConclusion,
       researchPolicy: spec.entryLastN ? { scope: "Development-only additional exact-config causal entry check; no automatic selection, pruning or promotion", lastN: spec.entryLastN, lastNMinPf: 1.2 } : null,
-      resourcePolicy: { workers: 4, variants: false, availableMemoryHardReserveMb: 1200, availableMemorySoftReserveMb: 2500,
+      resourcePolicy: { workers: 4, variants: false, backgroundPresetComparisons: false, availableMemoryHardReserveMb: 1200, availableMemorySoftReserveMb: 2500,
         hostMemoryMb: Math.round(os.totalmem() / 1048576), cpuParallelism: os.availableParallelism(), requiredMemoryFallback: 0, maxDriverMinutes: 36 },
       phases: "Separate dump-only process with tape trades and Signal progress, then common reporter/allocation replay, then independent auditor", commands };
     write(path.join(out, "launcher.json"), launch);

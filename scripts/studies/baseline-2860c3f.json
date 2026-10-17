@@ -1,11 +1,11 @@
 {
   "schema": "cts-exact-signal-baseline-economic-source-v1",
   "baselineEconomicCommit": "2860c3fd8ce6e5a277e7d164453e10fe0ba6eef1",
-  "correctedEconomicCommit": "7b554b95c910e4a00a82894945acde29c12d3a3f",
+  "correctedEconomicCommit": "fdabcdb3f9daf17160873f98962dc265f9142159",
   "scope": "Every non-test src/core file; common current scripts/core-session and scripts/lib instrumentation retained",
   "patch": "baseline-2860c3f.patch",
   "patchFormat": "git unified=0; apply --unidiff-zero after full corrected source hash verification",
-  "patchSha256": "40482c809038f79a002fa1603c7165b9e7fde1206cb522c3d5a62b8285238274",
+  "patchSha256": "186dcd07dfd1922c2e1a92ac9da06583020eed6fbd6363d7b866cf2ef5dbfbd2",
   "files": [
     {
       "path": "src/core/adjust.ts",
@@ -330,7 +330,7 @@
     {
       "path": "src/core/server/runtime.server.ts",
       "baselineSha256": "a571764a63e2c861bd225cefed73e6382b4cc711af09d70e67332397c0635c2f",
-      "correctedSha256": "e3f13cc29510900df5074a8a669d48ae69ca33dcc87946f102ca1c0fc0a94a0c"
+      "correctedSha256": "3e847e0bb8d498ba31fa3c9427f5a888a65ee58b3a2d72305a09857f77f4c020"
     },
     {
       "path": "src/core/server/stall-probe.server.ts",

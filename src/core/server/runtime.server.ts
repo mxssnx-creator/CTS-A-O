@@ -2288,8 +2288,9 @@ export class CoreRuntime {
         const missing = ranked
           .filter((x) => !this.candles.has(x))
           .slice(0, Math.max(0, target - this.candles.size));
-        // progressive start: load a batch, compute it completely, start realtime for it, then the next batch
-        const batch = Math.max(5, Math.ceil(target / 4));
+        // Live starts progressively. A bounded replay must first load its whole fixed universe: intermediate
+        // simulations retain books/tapes and repeat work before the requested cross-symbol cohort even exists.
+        const batch = this.replay ? target : Math.max(5, Math.ceil(target / 4));
         const syms = missing.slice(0, batch);
         const more = missing.length > syms.length;
         this.prehistTotal = Math.min(target, this.candles.size + missing.length);
@@ -2337,6 +2338,18 @@ export class CoreRuntime {
           () => gen === this.gen,
         );
         if (gen !== this.gen) return false;
+        if (this.replay) {
+          const unloaded = ranked.filter((sym) => !this.candles.has(sym));
+          if (unloaded.length) {
+            // An unavailable or short history is still pending, never a smaller valid replay universe. Keep the
+            // successful loads and retry only missing symbols; the cycle must not compute the partial cohort.
+            this.prehistPending = true;
+            this.dirty = true;
+            this.status.symbols = [...this.candles.keys()];
+            this.touchPrehist();
+            throw new Error(`Replay history incomplete: ${this.candles.size}/${target} symbols loaded; retrying ${unloaded.length} before compute`);
+          }
+        }
         // the earlier batches' new bars: until the last batch is in, every cycle takes this branch and the market
         // loop waits, so their bars froze at their load and their tapes took no entry for the whole start (this
         // batch's own symbols are current: pullNewBars skips them)

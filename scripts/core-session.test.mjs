@@ -21,6 +21,21 @@ import {
 const H = 3_600_000;
 const M = 60_000;
 const script = new URL("./core-session.mjs", import.meta.url).pathname;
+describe("session CLI background comparison policy", () => {
+  it("defaults off before runtime startup and preserves explicit diagnostic opt-in", () => {
+    for (const requested of [undefined, "0", "1"]) {
+      const env = { ...process.env };
+      if (requested === undefined) delete env.CTS_CORE_COMPARE;
+      else env.CTS_CORE_COMPARE = requested;
+      const result = spawnSync(process.execPath, ["--experimental-strip-types", "--input-type=module", "--eval",
+        `process.argv=[process.execPath,${JSON.stringify(script)},"--help"];process.once("exit",()=>process.stdout.write("\\nSESSION_COMPARE="+process.env.CTS_CORE_COMPARE+"\\n"));await import(${JSON.stringify(new URL("./core-session.mjs", import.meta.url).href)});`],
+      { env, encoding: "utf8", timeout: 10_000 });
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stdout, /Usage: node/);
+      assert.ok(result.stdout.includes(`SESSION_COMPARE=${requested ?? "0"}\n`));
+    }
+  });
+});
 function replay({ caps = false, weighted = false, invalidReturn = false, qualification, thresholds, variants, presets, exhaustedCap = false, noBase = false, legacyRangeRows = false, baseNoLoss = false, signalCoverage = false, liveValidation, selectionPhases = false, marketData } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "cts-session-report-"));
   try {

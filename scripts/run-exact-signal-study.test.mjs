@@ -4,7 +4,13 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
-import { FEED_SHA256, SYMBOLS, studyCase, sessionArguments, assertProtocolPair, assertSelectionConclusion, assertEconomicSource, foldDesk } from "./run-exact-signal-study.mjs";
+import { FEED_SHA256, SYMBOLS, studyCase, sessionArguments, assertProtocolPair, assertSelectionConclusion, assertEconomicSource, foldDesk, studyExecutionEnvironment } from "./run-exact-signal-study.mjs";
+
+test("research disables both optional report variants and background preset comparisons regardless of parent environment", () => {
+  const env = studyExecutionEnvironment({ CTS_CORE_COMPARE: "1", CTS_CORE_VARIANTS: "1", CTS_CORE_AUTOSTART: "1", CTS_CORE_WORKERS: "32", PRESERVED: "yes" });
+  assert.equal(env.CTS_CORE_COMPARE, "0"); assert.equal(env.CTS_CORE_VARIANTS, "0"); assert.equal(env.CTS_CORE_AUTOSTART, "0");
+  assert.equal(env.CTS_CORE_WORKERS, "4"); assert.equal(env.PRESERVED, "yes"); assert.equal(env.CTS_CORE_LIVE, "0");
+});
 
 test("fixed chronological folds preserve20/22symbols and six evaluated prehistory hours", () => {
   for (const id of ["baseline20", "corrected20", "dev20-entry5", "dev20-entry15", "selection22", "final22"]) {
