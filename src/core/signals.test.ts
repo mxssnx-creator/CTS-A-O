@@ -726,9 +726,32 @@ describe("coordination tactics", () => {
       cooldown: "off",
       conflict: false,
       confirm: true,
+      s2VolumeFactor: 1,
+      hedgeVolumeFactor: 1,
     });
     assert.equal(coordSettings({ cooldown: "x" as never }).cooldown, "off");
     assert.equal(coordSettings({ hourLock: -3 }).hourLock, 0);
+  });
+
+  it("independent coordination volume factors default neutral and clamp to the 0.2 ladder", () => {
+    assert.deepEqual(
+      [coordSettings().s2VolumeFactor, coordSettings().hedgeVolumeFactor],
+      [1, 1],
+    );
+    assert.deepEqual(
+      [coordSettings({ s2VolumeFactor: 2.4, hedgeVolumeFactor: 0.4 }).s2VolumeFactor,
+        coordSettings({ s2VolumeFactor: 2.4, hedgeVolumeFactor: 0.4 }).hedgeVolumeFactor],
+      [2.4, 0.4],
+    );
+    assert.deepEqual(
+      [coordSettings({ s2VolumeFactor: 0.1, hedgeVolumeFactor: 5.4 }).s2VolumeFactor,
+        coordSettings({ s2VolumeFactor: 0.1, hedgeVolumeFactor: 5.4 }).hedgeVolumeFactor],
+      [0.2, 5],
+    );
+    assert.deepEqual(
+      [coordSettings({ s2VolumeFactor: 2.31 }).s2VolumeFactor, coordSettings({ hedgeVolumeFactor: 2.31 }).hedgeVolumeFactor],
+      [2.4, 2.4],
+    );
   });
 
   it("signal confirmation: a signal needs an engine position on its symbol and direction", () => {
