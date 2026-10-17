@@ -246,7 +246,7 @@ export function BlockSources(props: {
 
 /**
  * Signals processing: proven sources in a short and a medium range, the best N active (by Base, per symbol),
- * each with its own 15 Normal + 15 Trailing configs run independently per symbol and direction, and the last-N
+ * each with its own 42 Normal + 35 Trailing configs run independently per symbol and direction, and the last-N
  * guard that disables a config while its recent results average below zero.
  */
 export function SignalsSettings(props: {
@@ -258,6 +258,7 @@ export function SignalsSettings(props: {
   const guard = { ...DEFAULT_SIGNALS.guard, ...(g.guard ?? {}) };
   const cluster = { ...DEFAULT_SIGNALS.cluster, ...(g.cluster ?? {}) };
   const ranges = { ...DEFAULT_SIGNALS.ranges, ...(g.ranges ?? {}) };
+  const rangeVolumeFactors = { ...DEFAULT_SIGNALS.rangeVolumeFactors, ...(g.rangeVolumeFactors ?? {}) };
   const normal = { ...DEFAULT_SIGNALS.normal, ...(g.normal ?? {}) };
   const trailing = { ...DEFAULT_SIGNALS.trailing, ...(g.trailing ?? {}) };
   const trailingOnly = { ...DEFAULT_SIGNALS.trailingOnly, ...(g.trailingOnly ?? {}) };
@@ -404,7 +405,7 @@ export function SignalsSettings(props: {
             step={0.05}
             min={0}
             max={0.1}
-            value={g.minTrail ?? 0.005}
+            value={g.minTrail ?? DEFAULT_SIGNALS.minTrail}
             onChange={(v) => set(["minTrail"], v)}
           />
         </Field>
@@ -458,6 +459,12 @@ export function SignalsSettings(props: {
               </span>
             ))}
           </div>
+        </Field>
+        <Field label="Short range volume factor × normal" hint="Applied to this signal range's balance-based order unit before account, position and risk caps; 1 = neutral.">
+          <VolumeFactorInput value={rangeVolumeFactors.short} onChange={(v) => set(["rangeVolumeFactors", "short"], v)} />
+        </Field>
+        <Field label="Medium range volume factor × normal" hint="Applied to this signal range's balance-based order unit before account, position and risk caps; 1 = neutral.">
+          <VolumeFactorInput value={rangeVolumeFactors.medium} onChange={(v) => set(["rangeVolumeFactors", "medium"], v)} />
         </Field>
         <Field label="Timeframe lanes" hint="of the engine's lanes">
           <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
@@ -700,7 +707,7 @@ export function SignalsSettings(props: {
       <div className="v2-grid v2-cols-4">
         <Field
           label="Exit model"
-          hint="percent grid above, ATR exits (Stable-02: stop × ATR(14) at entry, target × stop), or both"
+          hint="percent grid above, ATR exits (S2: stop × ATR(14) at entry, target × stop), or both"
         >
           <select
             className="v2-select"
@@ -981,6 +988,7 @@ export function List(props: {
 }
 
 type RangeSpec = {
+  volumeFactor?: number;
   tp: readonly number[];
   slOfTp: readonly number[];
   trailOfTp: readonly number[];
@@ -1010,6 +1018,34 @@ function stepValues(from: number, to: number, step: number, digits: number, max:
   const out: number[] = [];
   for (let x = from; x <= to + step * 1e-6 && out.length < max; x += step) out.push(+x.toFixed(digits));
   return out;
+}
+
+/** The 0.2 ladder, plus the explicitly supported 2.5× value. */
+const RANGE_VOLUME_FACTOR_CHOICES = [...new Set([...stepValues(0.2, 5, 0.2, 1, 25), 2.5])].sort((a, b) => a - b);
+const COORD_VOLUME_FACTOR_CHOICES = stepValues(0.2, 5, 0.2, 1, 25);
+
+function VolumeFactorInput(props: { value: number; onChange: (v: number) => void }) {
+  return (
+    <select className="v2-select" value={String(props.value)} onChange={(e) => props.onChange(Number(e.target.value))}>
+      {RANGE_VOLUME_FACTOR_CHOICES.map((v) => (
+        <option key={v} value={String(v)}>
+          {v.toFixed(1)}× · {Math.round(v * 100)}%{v === 1 ? " (neutral)" : ""}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function CoordVolumeFactorInput(props: { value: number; onChange: (v: number) => void }) {
+  return (
+    <select className="v2-select" value={String(props.value)} onChange={(e) => props.onChange(Number(e.target.value))}>
+      {COORD_VOLUME_FACTOR_CHOICES.map((v) => (
+        <option key={v} value={String(v)}>
+          {v.toFixed(1)}× · {Math.round(v * 100)}%{v === 1 ? " (neutral)" : ""}
+        </option>
+      ))}
+    </select>
+  );
 }
 
 /** A list edited as min / max / step (an irregular list keeps its values until one of the three changes). */
@@ -1058,6 +1094,7 @@ export function RangeEditor(props: {
   const p = (f: string) => ["grid", props.k, f];
   const enable = () =>
     props.set(["grid", props.k], {
+      volumeFactor: props.defaults.volumeFactor ?? 1,
       tp: [...props.defaults.tp],
       slOfTp: [...props.defaults.slOfTp],
       trailOfTp: [...props.defaults.trailOfTp],
@@ -1091,6 +1128,9 @@ export function RangeEditor(props: {
       </div>
       {on && (
         <div className="v2-grid v2-cols-3">
+          <Field label="Volume factor × normal" hint="Multiplies the base order unit (default 0.1% of account balance); 1 = neutral. Optional balance-relative budgets apply only when enabled.">
+            <VolumeFactorInput value={s.volumeFactor ?? props.defaults.volumeFactor ?? 1} onChange={(v) => props.set(p("volumeFactor"), v)} />
+          </Field>
           <StepList
             label={`${props.title} TP (%${net ? ", net after the position cost" : ""}) min · max · step`}
             pct
@@ -1359,6 +1399,9 @@ export function MinimalPlusRange(props: {
           </div>
           <StepList label="Plus TP (%) min · max · step (informational)" pct lo={0.002} hi={0.2} value={base.tp} onChange={(v) => put({ tp: v })} />
           <StepList label="Plus SL × TP min · max · step (informational)" lo={0.2} hi={5} value={base.slOfTp} onChange={(v) => put({ slOfTp: v })} />
+          <Field label="Volume factor × normal" hint="Multiplies the base order unit (default 0.1% of account balance); 1 = neutral. Optional balance-relative budgets apply only when enabled.">
+            <VolumeFactorInput value={base.volumeFactor ?? 1} onChange={(v) => put({ volumeFactor: v })} />
+          </Field>
           <Field label="Plus trail × TP (informational)" hint="0 = no trail · cells come from the last-N gate">
             <List value={base.trailOfTp} onChange={(v) => put({ trailOfTp: v })} />
           </Field>
@@ -1855,30 +1898,15 @@ export function SettingsPage() {
             <Num pct min={0} max={0.02} value={s.cost} onChange={(v) => set(["cost"], v)} />
           </Field>
           <Field
-            label="Order sizing"
-            hint="minimum quantity: every live order unit is the symbol's exchange minimum (paper sizes it by % of equity) · % of equity compounds with the balance"
-          >
-            <select
-              className="v2-select"
-              aria-label="Order sizing"
-              value={s.sizing?.mode ?? "minQty"}
-              onChange={(e) => set(["sizing", "mode"], e.target.value)}
-            >
-              <option value="minQty">Minimum quantity per order</option>
-              <option value="equityPct">% of equity per order</option>
-              <option value="fixed">Fixed notional</option>
-            </select>
-          </Field>
-          <Field
-            label="% of equity per order"
-            hint="per order unit; Block volume multiplies it (≤ 8×)"
+            label="Base order unit (% of balance)"
+            hint="each order unit is this share of account wallet balance at entry and compounds with realized balance; range and strategy volume factors multiply it"
           >
             <Num
               pct
               step={0.1}
               min={0.001}
               max={0.25}
-              value={s.sizing?.pct ?? 0.02}
+              value={s.sizing?.pct ?? 0.001}
               onChange={(v) => set(["sizing", "pct"], v)}
             />
           </Field>
@@ -1888,14 +1916,6 @@ export function SettingsPage() {
               min={1}
               max={100_000_000}
               onChange={(v) => set(["paperBalance"], v)}
-            />
-          </Field>
-          <Field label="Paper notional ($)" hint="fixed sizing only · 1 – 1000000">
-            <Num
-              value={s.paperNotional}
-              min={1}
-              max={1_000_000}
-              onChange={(v) => set(["paperNotional"], v)}
             />
           </Field>
           <Field
@@ -2538,7 +2558,7 @@ export function SettingsPage() {
             </Field>
             <Field
               label="Increase per relation"
-              hint="volume added per passing relation (also the Stable-02 relation-volume default) · 0.05 – 1"
+              hint="volume added per passing relation (also the S2 relation-volume default) · 0.05 – 1"
             >
               <Num
                 step={0.05}
@@ -2610,7 +2630,7 @@ export function SettingsPage() {
               label="Mode"
               hint={
                 s.axis?.mode === "desk"
-                  ? "desk: signal side, resting rungs at axis ∓ k × spacing, desk SL / TP (Stable-02)"
+                  ? "desk: signal side, resting rungs at axis ∓ k × spacing, desk SL / TP (S2)"
                   : "revert: back toward the axis, base leg at the next open"
               }
             >
@@ -2620,7 +2640,7 @@ export function SettingsPage() {
                 onChange={(e) => set(["axis", "mode"], e.target.value)}
               >
                 <option value="revert">revert (mean reversion)</option>
-                <option value="desk">desk (Stable-02 ladder)</option>
+                <option value="desk">desk (S2 ladder)</option>
               </select>
             </Field>
             <Field
@@ -2772,7 +2792,7 @@ export function SettingsPage() {
                     onChange={(v) => set(["axis", "expiry"], v)}
                   />
                 </Field>
-                <Field label="Hybrid trailing %" hint="0.4 – 2.4 (Stable-02 trail)">
+                <Field label="Hybrid trailing %" hint="0.4 – 2.4 (S2 trail)">
                   <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                     <Switch
                       label="axis hybrid"
@@ -2870,6 +2890,9 @@ export function SettingsPage() {
           sub="wide targets, short range, and a minimal range under it — every combination is its own tape (max 20,000 variants)"
         >
           <div className="v2-grid" style={{ gap: 8 }}>
+            <Field label="Wide volume factor × normal" hint="Multiplies the base order unit (default 0.1% of account balance); 1 = neutral. Optional balance-relative budgets apply only when enabled.">
+              <VolumeFactorInput value={s.grid.volumeFactor ?? 1} onChange={(v) => set(["grid", "volumeFactor"], v)} />
+            </Field>
             <Field label="TP (%)" hint="empty = no wide targets (the position-cost ranges cover them; the default)">
               <List pct allowEmpty value={s.grid.tp} onChange={(v) => set(["grid", "tp"], v)} />
             </Field>
@@ -3417,27 +3440,27 @@ export function SettingsPage() {
                   />
                 </Field>
                 <Field
-                  label="Stable-02 windows"
+                  label="S2 windows"
                   hint="a symbol whose last 6 closes lost (or PF < 1) takes no entries for its next 6 closes"
                 >
                   <Switch
-                    label="Stable-02 last-N windows"
+                    label="S2 last-N windows"
                     checked={!!c.s2Windows}
                     onChange={(v) => setC("s2Windows", v)}
                   />
                 </Field>
                 <Field
-                  label="Stable-02 relation volume"
+                  label="S2 relation volume"
                   hint="winning relations add 0.4× volume each (≤ 1.8×), re-judged every 2 h"
                 >
                   <Switch
-                    label="Stable-02 relation volume"
+                    label="S2 relation volume"
                     checked={!!c.s2RelVolume}
                     onChange={(v) => setC("s2RelVolume", v)}
                   />
                 </Field>
                 <Field
-                  label="Stable-02 window (closes)"
+                  label="S2 window (closes)"
                   hint="closes judged per symbol window · default 6 · 1 – 100"
                 >
                   <Num
@@ -3449,7 +3472,7 @@ export function SettingsPage() {
                   />
                 </Field>
                 <Field
-                  label="Stable-02 pause (closes)"
+                  label="S2 pause (closes)"
                   hint="closes a losing symbol waits · default = the window (6) · 1 – 100"
                 >
                   <Num
@@ -3461,7 +3484,7 @@ export function SettingsPage() {
                   />
                 </Field>
                 <Field
-                  label="Stable-02 volume per relation"
+                  label="S2 volume per relation"
                   hint="added per winning relation (≤ 1.8× in total) · default 0.4"
                 >
                   <Num
@@ -3480,6 +3503,15 @@ export function SettingsPage() {
                     label="Negative-hour hedge"
                     checked={!!c.hedge}
                     onChange={(v) => setC("hedge", v)}
+                  />
+                </Field>
+                <Field
+                  label="Hedge volume factor"
+                  hint="scales only hedge-selected Signal entries · 0.2–5× in 0.2 steps · 1× is neutral; position and account caps still apply"
+                >
+                  <CoordVolumeFactorInput
+                    value={c.hedgeVolumeFactor ?? 1}
+                    onChange={(v) => setC("hedgeVolumeFactor", v)}
                   />
                 </Field>
                 <Field
@@ -3744,7 +3776,7 @@ export function SettingsPage() {
             ) : null}
             <Field
               label="Exposure scaler"
-              hint="on: the positions' gross notional stays within the exposure multiple (every position scaled by one factor, and the top-config fill budgeted to it) · off: no exposure limit — the position cap, stop-risk and worst-case budgets still apply"
+              hint="on: total gross notional stays within the balance multiple (every position scaled by one factor, and the top-config fill budgeted to it) · off: no gross exposure limit"
             >
               <Switch
                 label="Exposure scaler"
@@ -3752,9 +3784,18 @@ export function SettingsPage() {
                 onChange={(v) => set(["live", "exposureScaler"], v)}
               />
             </Field>
+            <Field label="Max position × balance" hint="optional cap per symbol + direction, as a multiple of wallet balance · default off · 0 = off">
+              <Num
+                step={0.05}
+                min={0}
+                max={50}
+                value={s.live.maxPositionX ?? 0}
+                onChange={(v) => set(["live", "maxPositionX"], v)}
+              />
+            </Field>
             <Field
-              label="Stop-risk budget (% of equity)"
-              hint="every stop hit at once costs at most this share of equity: the positions' Σ notional × stop distance stays within it, every target scaled by one factor · 0 = off · 0 – 100"
+              label="Stop-risk budget (% of balance)"
+              hint="every stop hit at once costs at most this share of wallet balance: the positions' Σ notional × stop distance stays within it, every target scaled by one factor · 0 = off · 0 – 100"
             >
               <Num
                 pct
@@ -3766,8 +3807,8 @@ export function SettingsPage() {
               />
             </Field>
             <Field
-              label="Worst-case loss budget (% of equity)"
-              hint="every exchange backstop filled at once costs at most this share of equity (Σ notional × backstop distance), whatever the volume factor · 0 = off · 0 – 100"
+              label="Worst-case loss budget (% of balance)"
+              hint="every exchange backstop filled at once costs at most this share of wallet balance (Σ notional × backstop distance), whatever the volume factor · 0 = off · 0 – 100"
             >
               <Num
                 pct
@@ -3778,7 +3819,7 @@ export function SettingsPage() {
                 onChange={(v) => set(["live", "maxBackstopLossPct"], v)}
               />
             </Field>
-            <Field label="Max exposure × equity" hint="gross notional cap as a multiple of the equity · 0 = off">
+            <Field label="Max exposure × balance" hint="optional gross notional cap across all open positions as a multiple of wallet balance · default off · 0 = off">
               <Num
                 min={0}
                 max={500}
@@ -3788,7 +3829,7 @@ export function SettingsPage() {
             </Field>
             <Field
               label="Control ratio (volume factor)"
-              hint="Overall mode only: multiplies lane volume by 0.1 – 500. Equity-% units follow verified account equity; fixed units and exchange-minimum lots use their configured basis. Position, exposure and risk caps bound the result. Entries does not use this ratio."
+              hint="Overall mode only: multiplies lane volume by 0.1 – 500. Balance-% units follow verified account wallet balance; fixed units and exchange-minimum lots use their configured basis. Optional balance-relative budgets can bound the result. Entries does not use this ratio."
             >
               <Num
                 step={0.1}
@@ -3796,15 +3837,6 @@ export function SettingsPage() {
                 max={500}
                 value={s.live.ratio ?? 1}
                 onChange={(v) => set(["live", "ratio"], v)}
-              />
-            </Field>
-            <Field label="Max $ per position" hint="cap per symbol + direction · 0 = no cap (volume from the factors and relations) · 1 – 5000">
-              <Num
-                zeroOk
-                min={1}
-                max={5000}
-                value={s.live.maxNotionalUsd ?? 200}
-                onChange={(v) => set(["live", "maxNotionalUsd"], v)}
               />
             </Field>
             <Field

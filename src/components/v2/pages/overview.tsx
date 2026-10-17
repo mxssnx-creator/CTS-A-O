@@ -100,7 +100,7 @@ function ConnStrip(props: { d: Any }) {
   const st = props.d.live ?? {};
   const sizing = props.d.settings?.sizing;
   const sizeBase = sizing?.mode === "equityPct"
-    ? `${fmt.num(sizing.pct * 100, 2)}% of account equity`
+    ? `${fmt.num(sizing.pct * 100, 2)}% of account balance`
     : sizing?.mode === "minQty" && live.mode !== "entries" ? "exchange minimum lot" : `${fmt.usd(live.notionalUsd)} configured notional`;
   const ls = liveState(!!live.enabled, st);
   const held = (st.control?.held ?? []) as Array<{ key: string; qty: number }>;
@@ -147,7 +147,7 @@ function ConnStrip(props: { d: Any }) {
             <div className="v2-lines">
               <Line
                 k="size"
-                v={`${sizeBase}${live.mode === "entries" ? " per signal · no Control ratio" : ` × lane volume × ${live.ratio ?? 1}`} · ${live.maxNotionalUsd === 0 ? "no cap" : `cap $${live.maxNotionalUsd ?? "–"}`}`}
+                v={`${sizeBase}${live.mode === "entries" ? " per signal · no Control ratio" : ` × lane volume × ${live.ratio ?? 1}`} · no fixed USD ceiling${live.maxPositionX ? ` · position ≤ ${live.maxPositionX}× balance` : ""}${live.maxExposureX ? ` · gross ≤ ${live.maxExposureX}× balance` : ""}`}
               />
               <Line
                 k="max positions"

@@ -136,8 +136,8 @@ const H = 3_600_000;
 const M = 60_000;
 let balance0 = Number(arg("balance", 10));
 let notional = Number(arg("notional", 5)); // fixed sizing: USD per order volume unit
-// default sizing: a fixed % of equity per order (compounding from the start balance)
-let sizing = { mode: arg("sizing", "equityPct") === "fixed" ? "fixed" : "equityPct", pct: Number(arg("pct", 0.02)) };
+// default sizing: a fixed % of realized account balance per order (compounding from the start balance)
+let sizing = { mode: arg("sizing", "equityPct") === "fixed" ? "fixed" : "equityPct", pct: Number(arg("pct", 0.001)) };
 let leverage = Number(arg("leverage", 10));
 
 // ── 1. the engine run (or a replay of a dumped one) ──────────────────────────────────────────────────────────
@@ -1238,8 +1238,8 @@ const cost = raw.settings.cost;
 const minActive = raw.settings.block?.minActiveLevel ?? 2;
 const blockActiveOn = !!raw.settings.toggles?.blockActive;
 // the live caps the report book applies when it sizes entries (as live sizes them): every position (symbol × side)
-// at most maxPositionX × equity notional, the gross (long and short both counted) at most maxExposureX × equity.
-// From the dump (settings.live, v2), else the dumped run's desk file, else x01's (0.75 / 7); flags override;
+// at most maxPositionX × realized balance notional, the gross (long and short both counted) at most maxExposureX × balance.
+// From the dump (settings.live, v2), else the dumped run's desk file, else uncapped balance-volume defaults; flags override;
 // --caps off sizes without them
 const capsOn = arg("caps", "on") !== "off";
 let liveCaps = raw.settings.live ?? null;
@@ -1260,18 +1260,18 @@ const capNum = (k, flagK, d) => {
 // a source without either cap set: x01's
 const capsSet = (c) => Number(c?.maxPositionX) > 0 || Number(c?.maxExposureX) > 0;
 if (!capsSet(liveCaps)) {
-  capsSource = `x01 defaults (${liveCaps ? "no live caps in the settings" : "not in the dump"})`;
+  capsSource = `balance-volume defaults (${liveCaps ? "no balance caps in the settings" : "not in the dump"})`;
   liveCaps = null;
 }
 const caps = {
   on: capsOn,
-  maxPositionX: capsOn ? capNum("maxPositionX", "max-position-x", 0.75) : 0,
-  maxExposureX: capsOn ? capNum("maxExposureX", "max-exposure-x", 7) : 0,
+  maxPositionX: capsOn ? capNum("maxPositionX", "max-position-x", 0) : 0,
+  maxExposureX: capsOn ? capNum("maxExposureX", "max-exposure-x", 0) : 0,
   source: !capsOn
     ? "off (--caps off)"
     : arg("max-position-x") !== undefined || arg("max-exposure-x") !== undefined
       ? "flags"
-      : (capsSource ?? "x01 defaults (not in the dump)"),
+      : (capsSource ?? "balance-volume defaults (not in the dump)"),
 };
 // open orders at the end (dumps v2; an upper bound, see openEndRule): sized like entries, they hold cap room and
 // are marked to market to the end
@@ -1279,7 +1279,7 @@ const openEnd = (raw.openEnd ?? []).filter((o) => o.entryT >= startT && o.entryT
 const openEndRecorded = Array.isArray(raw.openEnd);
 /**
  * Size the book causally with the live caps: in time order (exits before entries at one instant), the entries of
- * one instant are sized together from the realized equity: unit = pct × equity (or the fixed notional), wanted
+ * one instant are sized together from the realized balance: unit = pct × balance (or the fixed notional), wanted
  * notional = unit × volume. Per position (symbol × side) the instant's entries share the room the position cap
  * leaves (each scaled by the same factor, as live scales a position's lanes), then the gross cap scales every entry
  * of the instant by one factor (as live scales every target). An entry left with no room gets 0 ("capped"); caps 0
@@ -1930,16 +1930,15 @@ function buildSizingReplay() {
   const ref = {
     id: "ref",
     label: "reference (desk)",
-    unitUsd: Number(arg("replay-unit", 2)),
+    unitUsd: Number(arg("replay-unit", balance0 * sizing.pct)),
     minUsd: Number(arg("replay-min", 2)),
     ratio: num(L.ratio, 1),
-    maxPositionX: num(L.maxPositionX, 0.25),
-    // the fixed per-position cap (positionCapOf): 0 = none, unset = 5 × the configured unit (none when unknown)
-    maxNotionalUsd:
-      L.maxNotionalUsd === 0 ? Infinity : num(L.maxNotionalUsd, L.notionalUsd > 0 ? L.notionalUsd * 5 : Infinity),
-    maxExposureX: L.exposureScaler === false ? 0 : num(L.maxExposureX, 7),
-    maxRiskPct: num(L.maxRiskPct, 0.35),
-    maxBackstopLossPct: num(L.maxBackstopLossPct, 0.5),
+    maxPositionX: num(L.maxPositionX, 0),
+    // Fixed USD position ceilings are retired; balance-relative volume factors size orders.
+    maxNotionalUsd: Infinity,
+    maxExposureX: L.exposureScaler === false ? 0 : num(L.maxExposureX, 0),
+    maxRiskPct: num(L.maxRiskPct, 0),
+    maxBackstopLossPct: num(L.maxBackstopLossPct, 0),
     top,
     rebalancePct: num(L.rebalancePct, 0.25),
     maxPositions: num(L.maxPositions, 12),
@@ -2581,7 +2580,7 @@ const report = {
     balance0,
     notional,
     sizing,
-    // the unit before the caps (pct × realized equity at entry) and as executed (after the caps)
+    // the unit before the caps (pct × realized balance at entry) and as executed (after the caps)
     unitMin: unitsWanted.length ? minOf(unitsWanted) : 0,
     unitMax: unitsWanted.length ? maxOf(unitsWanted) : 0,
     unitEffMin: units.length ? minOf(units) : 0,
@@ -2647,7 +2646,7 @@ const realText =
     ? `Real seats: ${E.realEngine} engine configs + ${E.realSignal} signal configs (every config of the active signals)`
     : `Real seats ${E.real} (engine seats + every config of the active signals; split not recorded in this dump)`;
 const capsText = caps.on
-  ? `position cap ${caps.maxPositionX}× equity per symbol × side, gross cap ${caps.maxExposureX}× equity (${caps.source})`
+  ? `position cap ${caps.maxPositionX}× balance per symbol × side, gross cap ${caps.maxExposureX}× balance (${caps.source})`
   : "no caps (--caps off)";
 const capLine = !caps.on
   ? `**Caps:** off (--caps off): the book is sized without the live caps.`
@@ -2667,7 +2666,7 @@ const lines = [
   ``,
   `${sessionMarketDataLabel(raw.settings.marketDataSource)}. Timeframe lanes ${report.settings.lanes.join(" / ")} min set (independent + combined; traded: ${LANES.join(", ") || "none"}), strategies ${strategiesOn.join(", ") || "none"}${blockText}${sigOn ? ", signals" : ""}. ` +
     `Signals use the same ${preH} h minimal evaluated history; no additional Signal warmup was loaded. ` +
-    `Balance ${usd(balance0)}; ${sizing.mode === "fixed" ? `each order volume unit = ${usd(notional)} notional` : `each order volume unit = ${(sizing.pct * 100).toFixed(1)} % of the realized equity at entry (${usd(report.settings.unitMin)}–${usd(report.settings.unitMax)} before the caps)`} at ${leverage}×; ${(cost * 100).toFixed(2)} % round-trip cost on every close. ` +
+    `Balance ${usd(balance0)}; ${sizing.mode === "fixed" ? `each order volume unit = ${usd(notional)} notional` : `each order volume unit = ${(sizing.pct * 100).toFixed(1)} % of the realized account balance at entry (${usd(report.settings.unitMin)}–${usd(report.settings.unitMax)} before volume factors)`} at ${leverage}×; ${(cost * 100).toFixed(2)} % round-trip cost on every close. ` +
   `Window ${new Date(startT).toISOString().slice(0, 16)} → ${new Date(endT).toISOString().slice(0, 16)} UTC. ${baseSummaryText(E)}${E.baseBuilt ? ` (+${E.baseBuilt} built for measurement, grid.allSets — not validated)` : ""} — per range, passed / evaluated pairs · median Base gate PF score of passed pairs (no-loss pooled PF called out): ${baseRangeText(E)}; Main ${E.mainPairs} pairs, ${E.tapes} tapes, ${realText}, compute ${Math.round(E.computeMs / 1000)} s. PF benchmarks below use only funded settled orders executed by post-Base validated configs; pre-validation candidate-pool PF is a diagnostic. ${raw.settings.wf?.causalBase ? "Causal: Base / Main / Real ranked on the history before the run." : "Look-ahead: Base / Main / Real ranked on every bar up to the end (the run is partly in-sample)."}`,
   ``,
   `**Simulated result (live sizing replay, ${capsText}):** balance ${usd(balance0)} → ${usd(T.balanceEnd)} (${f2(T.netPct * 100)} %, closed orders) · equity at end ${usd(T.equityEnd)} (${openText}) · Return PF ${pfStr(T.gpR, T.glR, T.orders)} · cash PF (base $1) ${pfStr(T.gpR, T.glR, T.orders)} · sized $ PF diagnostic ${pfStr(T.gp, T.gl, T.orders)} · ${T.positions} positions / ${T.orders} funded orders · ${T.virtual.n} virtual closes (${T.zeroAllocatedOrders} zero allocations) · WR ${f2(T.wr * 100)} % · DDT (closed trades, $) ${f2(T.ddtH)} h · DDR ${T.ddr === null ? "– (net ≤ 0)" : f2(T.ddr)} · equity max drawdown ${usd(T.equityMaxDd)} (${f2(T.equityMaxDdPct * 100)} %) · margin used max ${usd(T.marginMax)} · open avg ${f2(T.avgOpenPositions)} pos / ${f2(T.avgOpenOrders)} orders (peak ${T.maxOpenPositions} / ${T.maxOpenOrders})${feasText}`,
@@ -3742,7 +3741,7 @@ function clientMain(D) {
   <div class="card"><h3>Gross notional per hour</h3><div class="cap">Σ target notional (long and short), hour average of the samples; reference bold</div><div class="chart" id="cSzGross"></div></div>
   <div class="card"><h3>Exchange orders per hour</h3><div class="cap">Opens + increases + reduces + closes the planner sends, per hour of the run</div><div class="chart" id="cSzOrders"></div></div>
   <div class="card"><h3>Positions at the per-position cap</h3><div class="cap">Average positions whose lanes asked for more than the cap (a higher volume factor sizes them no further)</div><div class="chart" id="cSzCapped"></div></div>
-  <div class="card"><h3>Worst-case loss, max</h3><div class="cap">Σ notional × backstop distance, % of equity (every exchange stop at once)</div><div class="chart" id="cSzWorst"></div></div>
+  <div class="card"><h3>Worst-case loss, max</h3><div class="cap">Σ notional × backstop distance, % of account balance (every exchange stop at once)</div><div class="chart" id="cSzWorst"></div></div>
 </div>
 <h3>Per variant</h3><div class="tw" id="tSizing"></div>
 <h3>Reference, hour by hour</h3><div class="tw tall" id="tSizingHours"></div>`,
@@ -3767,7 +3766,7 @@ function clientMain(D) {
     <span class="chip">signals ${S.signals ? "on" : "off"} · last ${S.wf.signalValidLastN}</span>
     <span class="chip">Block ${esc(S.block.mode)} · L${S.block.minActiveLevel}+ active · ratio ${S.block.ratio} · total max ${S.block.maxMult}× (base + all sources)</span>
     <span class="chip">tactics ${esc(S.tactics)}</span>
-    <span class="chip">unit ${S.sizing.mode === "fixed" ? usd(S.notional) + " fixed" : n2(S.sizing.pct * 100, 1) + " % of equity (compounding)"} · ${S.leverage}× · cost ${n2(S.cost * 100)} %</span>
+    <span class="chip">unit ${S.sizing.mode === "fixed" ? usd(S.notional) + " fixed" : n2(S.sizing.pct * 100, 1) + " % of account balance (compounding)"} · ${S.leverage}× · cost ${n2(S.cost * 100)} %</span>
   </div>
 </header>
 <nav class="toc">
@@ -3792,10 +3791,10 @@ function clientMain(D) {
   ${kpi("Green hours", T.greenHours + " / " + T.fullHours, T.redHours + " red · " + T.flatHours + " flat" + (T.partialHour ? " · last hour partial" : ""))}
   ${kpi("Signals", sigTotal ? susd(sigTotal.net) : "–", sigTotal ? sigTotal.n + " simulated orders · Return PF " + pfTxt(sigTotal.gpR, sigTotal.glR, sigTotal.n) : "no signal orders", sigTotal ? cls(sigTotal.net) : "")}
 </div>
-${T.ruinT ? `<p class="warn"><b>Equity reached $0 at ${dt(T.ruinT)} UTC</b> (lowest ${usd(T.eqMin)}): at this sizing (${S.sizing.mode === "fixed" ? usd(S.notional) + " per unit" : n2(S.sizing.pct * 100, 1) + " % of equity per unit"} × the Block multiple, no position caps) an account would have been liquidated there. The book below keeps the engine's orders as they were; orders entered after it are sized at $0. The separate virtual PF records those unallocated closes; the primary PF only uses funded settled orders.</p>` : ""}
+${T.ruinT ? `<p class="warn"><b>Equity reached $0 at ${dt(T.ruinT)} UTC</b> (lowest ${usd(T.eqMin)}): at this sizing (${S.sizing.mode === "fixed" ? usd(S.notional) + " per unit" : n2(S.sizing.pct * 100, 1) + " % of account balance per unit"} × the Block multiple, no position caps) an account would have been liquidated there. The book below keeps the engine's orders as they were; orders entered after it are sized at $0. The separate virtual PF records those unallocated closes; the primary PF only uses funded settled orders.</p>` : ""}
 ${T.feasible === false ? `<p class="warn"><b>Infeasible: margin exceeded equity</b> for ${T.marginOver.minutes} min (first ${dt(T.marginOver.firstT)} UTC, max margin ÷ equity ${n2(T.marginOver.maxRatio)}×).</p>` : ""}
 <p class="note"><b>Separate virtual diagnostic:</b> ${T.virtual ? `${T.virtual.n} closes · Return PF ${pfTxt(T.virtual.gpR, T.virtual.glR, T.virtual.n)} before funding allocation; ${T.zeroAllocatedOrders} zero allocations, ${T.unknownAllocations} unknown allocations.` : "not recorded"} Position episodes, entry requests and open-order counts describe the native virtual book; settled order counts and PF use the owned cohort.</p>
-<p class="note"><b>Simulated live sizing replay:</b> ${T.caps && T.caps.on ? `position cap ${T.caps.maxPositionX}× equity per symbol × side, gross cap ${T.caps.maxExposureX}× equity (${esc(T.caps.source)})` : "no caps"} — ${T.caps ? T.caps.capped : 0} orders capped to $0, ${T.caps ? T.caps.scaled : 0} scaled down.${T.uncapped ? ` <b>Without the caps:</b> balance ${usd(S.balance0)} → ${usd(T.uncapped.balanceEnd)} · Return PF ${pfTxt(T.uncapped.gpR ?? T.gpR, T.uncapped.glR ?? T.glR, T.uncapped.n ?? T.orders)} · cash PF (base $1) ${pfTxt(T.uncapped.gpR ?? T.gpR, T.uncapped.glR ?? T.glR, T.uncapped.n ?? T.orders)} · sized $ PF diagnostic ${pfTxt(T.uncapped.gp, T.uncapped.gl, T.uncapped.n ?? T.orders)} · equity max drawdown ${usd(T.uncapped.equityMaxDd)} (${pct(T.uncapped.equityMaxDdPct)}) · margin max ${usd(T.uncapped.marginMax)}.` : ""}
+<p class="note"><b>Simulated live sizing replay:</b> ${T.caps && T.caps.on ? `position cap ${T.caps.maxPositionX}× balance per symbol × side, gross cap ${T.caps.maxExposureX}× balance (${esc(T.caps.source)})` : "no caps"} — ${T.caps ? T.caps.capped : 0} orders capped to $0, ${T.caps ? T.caps.scaled : 0} scaled down.${T.uncapped ? ` <b>Without the caps:</b> balance ${usd(S.balance0)} → ${usd(T.uncapped.balanceEnd)} · Return PF ${pfTxt(T.uncapped.gpR ?? T.gpR, T.uncapped.glR ?? T.glR, T.uncapped.n ?? T.orders)} · cash PF (base $1) ${pfTxt(T.uncapped.gpR ?? T.gpR, T.uncapped.glR ?? T.glR, T.uncapped.n ?? T.orders)} · sized $ PF diagnostic ${pfTxt(T.uncapped.gp, T.uncapped.gl, T.uncapped.n ?? T.orders)} · equity max drawdown ${usd(T.uncapped.equityMaxDd)} (${pct(T.uncapped.equityMaxDdPct)}) · margin max ${usd(T.uncapped.marginMax)}.` : ""}
 ${T.openEnd && T.openEnd.recorded ? `Open at the end: ${T.openEnd.positions} positions / ${T.openEnd.orders} orders, MTM ${susd(T.openEnd.mtm)} (${String(T.openEnd.rule ?? "").startsWith("exact") ? "exact: executed by the engine, marked to market" : "upper bound: tape-level open positions of the executed configs, one unit of volume"}), in the end equity ${usd(T.equityEnd)}.` : "Open positions at the end: not recorded in this dump."}</p>
 <p class="note">PF benchmark scope: funded settled orders executed by Base-qualified, post-Base validated configs; pre-validation/unfiltered candidate PF is diagnostic only. ${esc(baseSummaryText(D.engine))} (per range, passed / evaluated pairs · median Base gate PF score of passed pairs: ${esc(baseRangeText(D.engine))}) · Main ${D.engine.mainPairs} pairs · ${D.engine.tapes.toLocaleString("en-US")} tapes · ${D.engine.realSignal !== undefined ? `Real seats: ${D.engine.realEngine} engine configs + ${D.engine.realSignal} signal configs` : `Real seats ${D.engine.real} (engine seats + every config of the active signals)`} · compute ${Math.round(D.engine.computeMs / 1000)} s · peak RSS ${D.engine.rssMaxMb} MB${D.runSeconds ? " · session " + Math.round(D.runSeconds / 60) + " min" : ""}. Generated ${esc(D.at)}.
 Consistency checks: <b class="${D.checksOk ? "ok" : "bad"}">${D.checks.filter((c) => c.ok).length} of ${D.checks.length} pass</b> (see <a href="#checks">Checks</a>).</p>

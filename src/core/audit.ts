@@ -5,11 +5,12 @@
 //   stages     Base passed ≤ evaluated; Real selection ⊆ Main tapes
 //   replay     every executed trade, replayed in entry order through the Real-stage rules (toggles, last-N,
 //              Block over its sources in Shared / Additive, Block Active) with the Block feed as it stood at
-//              that entry, must be allowed and carry exactly the recorded Block level and volume
+//              that entry, must be allowed and carry exactly the recorded Block level and volume after removing
+//              the independent range-sizing and coordination multipliers
 //   caps       open positions never exceed max open / per symbol / per side at any instant; no duplicate
 //              (config, symbol) open at once
 //   numbers    stats, hourly rows and per-kind totals add up to the trade list; every trade pays the cost
-//   paper      paper equity = closed results + open mark-to-market; volumes within [1, max multiple]
+//   paper      paper equity = closed results + open mark-to-market; Block volume within [1, max multiple]
 import { isSignalInd } from "./indications/registry.ts";
 import { signalActiveHas } from "./signals.ts";
 import { kindOfId } from "./pipeline/pipeline.ts";
@@ -21,6 +22,7 @@ import {
   capsOf,
   sigCfg,
   execDecision,
+  rangeVolumeFactorFor,
   signalSetAt,
   tapeExecutable,
   positionMult,
@@ -76,6 +78,10 @@ export interface AuditInput {
       vol?: number;
       /** ladder weight (Axis): part of vol, not of the Block multiple */
       w?: number;
+      /** Stable-02 relation-volume factor captured at entry. */
+      coordVol?: number;
+      /** Negative-hour hedge volume factor captured at entry. */
+      hedgeVol?: number;
       /** Overall: the extra volume of every raising source */
       legs?: Partial<Record<string, number>>;
     }>;
@@ -247,7 +253,8 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
         if (firstBad.length < 3) firstBad.push(`${x.cfg}@${x.sym} ${d.why}`);
         continue;
       }
-      const mult = (x.mult ?? 1) / (x.coordVol ?? 1);
+      const rangeVol = rangeVolumeFactorFor(tp, sim.opts);
+      const mult = (x.mult ?? 1) / ((x.coordVol ?? 1) * (x.hedgeVol ?? 1) * rangeVol);
       if (!close(d.vol, mult)) {
         volMismatch++;
         if (firstBad.length < 3) firstBad.push(`${x.cfg}@${x.sym} vol ${mult} ≠ ${d.vol}`);
@@ -265,7 +272,9 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
       const overall = o.block.mode === "overall";
       const cap = blockStackCap(o.block);
       const over = trades.filter((x) => {
-        const m = x.mult ?? 1;
+        const tp = byId.get(x.cfg);
+        const rangeVol = tp && sim ? rangeVolumeFactorFor(tp, sim.opts) : 1;
+        const m = (x.mult ?? 1) / ((x.coordVol ?? 1) * (x.hedgeVol ?? 1) * rangeVol);
         if (m < 1 - 1e-9) return true;
         if (!overall) return m > cap + 1e-9;
         const legs = Object.values(x.legs ?? {}).map((v) => v ?? 0);
@@ -283,7 +292,11 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
         `${over} outside · total max ${cap}`,
       );
     } else {
-      const scaled = trades.filter((x) => !close((x.mult ?? 1) / (x.coordVol ?? 1), 1)).length;
+      const scaled = trades.filter((x) => {
+        const tp = byId.get(x.cfg);
+        const rangeVol = tp && sim ? rangeVolumeFactorFor(tp, sim.opts) : 1;
+        return !close((x.mult ?? 1) / ((x.coordVol ?? 1) * (x.hedgeVol ?? 1) * rangeVol), 1);
+      }).length;
       add("block: off → volume 1", scaled === 0, `${scaled} scaled`);
     }
 
@@ -472,12 +485,18 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
     // Every Block source shares the configured total cap. Intrinsic Axis ladder volume remains separate.
     const blk = sim?.opts.block;
     const maxMult = blk ? blockStackCap(blk) : Infinity;
-    // the Block multiple only: an Axis ladder's weight (filled rungs) is volume the simulation books on top of it
+    // Strip the independently configured range factor and Axis ladder weight before checking the Block stack.
     const badVol = p.positions.filter(
-      (x) =>
-        positionMult(x) < 1 - 1e-9 ||
-        positionMult(x) > maxMult + 1e-9 ||
-        Object.values(x.legs ?? {}).some((v) => (v ?? 0) > maxMult - 1 + 1e-9),
+      (x) => {
+        const tp = ids.has(x.cfg) ? byId.get(x.cfg) : undefined;
+        const rangeVol = tp && sim ? rangeVolumeFactorFor(tp, sim.opts) : 1;
+        const blockVol = positionMult(x) / ((x.coordVol ?? 1) * (x.hedgeVol ?? 1) * rangeVol);
+        return (
+          blockVol < 1 - 1e-9 ||
+          blockVol > maxMult + 1e-9 ||
+          Object.values(x.legs ?? {}).some((v) => (v ?? 0) > maxMult - 1 + 1e-9)
+        );
+      },
     ).length;
     add(
       "paper: position volume within [1, max multiple]",

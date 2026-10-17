@@ -166,8 +166,14 @@ describe("memory fallback: partial processing carries a range, never switches it
     const built = [tp("a|ind|sh1", "ind", "sh"), tp("a|ind|mc3", "ind", "mc")];
     const ids = (xs: Array<{ id: string }>) => xs.map((x) => x.id).sort();
     // Micro carried: its previous tapes join, except one rebuilt anyway; the Short one is the rebuilt copy only
-    assert.deepEqual(ids(withCarried(built, prev, fallbackCarriedTags(1)) as never), ["a|ind|mc1", "a|ind|mc3", "a|ind|sh1"]);
-    assert.deepEqual(ids(withCarried(built, prev, fallbackCarriedTags(2)) as never), ["a|ind|mc1", "a|ind|mc3", "a|ind|mn1", "a|ind|sh1"]);
+    const micro = withCarried(built, prev, fallbackCarriedTags(1)) as Array<{ id: string; carried?: boolean }>;
+    const microById = new Map(micro.map((x) => [x.id, x]));
+    assert.deepEqual(ids(micro), ["a|ind|mc1", "a|ind|mc3", "a|ind|sh1"]);
+    assert.equal(microById.get("a|ind|mc1")?.carried, true, "retained tape provenance is explicit for coverage");
+    assert.equal(microById.get("a|ind|mc3")?.carried, undefined, "a rebuilt ID is counted as a fresh tape");
+    assert.equal((prev[0] as { carried?: boolean }).carried, undefined, "the prior tape object is not mutated");
+    const both = withCarried(built, prev, fallbackCarriedTags(2)) as Array<{ id: string }>;
+    assert.deepEqual(ids(both), ["a|ind|mc1", "a|ind|mc3", "a|ind|mn1", "a|ind|sh1"]);
     assert.equal(withCarried(built, prev, fallbackCarriedTags(0)), built);
   });
 });

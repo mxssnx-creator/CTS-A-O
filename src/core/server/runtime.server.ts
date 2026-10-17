@@ -229,10 +229,10 @@ import {
   signalHistProtectsGen,
   type SignalHistDiagnostics,
 } from "../signal-hist.ts";
-import type { SignalAccept, SignalSettings } from "../signal-config.ts";
+import { DEFAULT_SIGNALS, signalRangeOf, type SignalAccept, type SignalSettings } from "../signal-config.ts";
 import { PriceStream, type StreamStats } from "./stream.server.ts";
 import { isSignalInd, laneOf, signalSourceOf } from "../indications/registry.ts";
-import { orderKey, sizeBook, sizeBookGen, sizingSettings } from "../sizing.ts";
+import { DEFAULT_SIZING, orderKey, sizeBook, sizeBookGen, sizingSettings } from "../sizing.ts";
 import { presetSeries, type PresetSeries } from "../statistics.ts";
 import { modeledUnitReturn as unitReturn, modeledUnitStatsOf as unitStatsOf } from "../metrics/stats.ts";
 import { primaryPfLabel, unitStatsReport } from "../reporting-stats.ts";
@@ -3466,6 +3466,7 @@ export class CoreRuntime {
       ? await tapesFor(sigPairs, signalProtects(sig), sigStrat, "signal tapes", {
           minSl: sig.minSl,
           minTrail: sig.minTrail,
+          signalReferenceGrid: true,
           entry: sig.filter.trendH > 0 || sig.filter.volFloor > 0 ? sig.filter : null,
           pairProtects: sigHist,
           heldIds,
@@ -3485,6 +3486,7 @@ export class CoreRuntime {
         floors: {
           minSl: sig.minSl,
           minTrail: sig.minTrail,
+          signalReferenceGrid: true,
           entry: sig.filter.trendH > 0 || sig.filter.volFloor > 0 ? sig.filter : null,
           pairProtects: sigHist,
           heldIds,
@@ -5067,7 +5069,7 @@ export class CoreRuntime {
         (x) => (job.progress = 0.6 + (0.3 * x.done) / Math.max(1, x.total)),
         job,
       );
-    // Signals: scored on the window before the backtest, the best N trade their 15 Normal + 15 Trailing configs
+    // Signals: scored on the window before the backtest, the best N trade their 42 Normal + 35 Trailing configs
     const sig = signalSettings(s.signals);
     const sigCombos = signalCombos(sig, s.tfs);
     let sigActive: Set<string> | undefined;
@@ -5113,6 +5115,7 @@ export class CoreRuntime {
             buildTapesGen(u, signalProtects(sig), s.cost, undefined, sigPairs, s.tactics, adjust, {
               minSl: sig.minSl,
               minTrail: sig.minTrail,
+              signalReferenceGrid: true,
               // the entry filter (trend / volatility floor) the compute builds the signal tapes with
               entry: sig.filter.trendH > 0 || sig.filter.volFloor > 0 ? sig.filter : null,
             }),
@@ -5628,9 +5631,7 @@ export class CoreRuntime {
     // confirmation as in the simulation: an engine candidate (taken or not) open at the entry, not only a position
     const coordWhy = coordBlock(this.wf.coord, op, hourNet, at, confirmPool);
     // a hedge-only signal trades while the book is losing (this or the previous hour), without confirmation
-    const hedging =
-      this.hedgeKeys.size > 0 &&
-      this.hedgeKeys.has(sigActiveKey(op.cfg.split("|")[0], op.cfg.split("|")[1] ?? "", op.sym, op.side, kindOfId(op.cfg)));
+    const hedging = this.isHedgeEntry(op);
     if (hedging) {
       const losing =
         (!this.wf.coord?.hedgePrevOnly && (hourNet.get(hk) ?? 0) < 0) ||
@@ -5647,6 +5648,21 @@ export class CoreRuntime {
       if (sourceUnstable(srcClosed.get(src), op.entryT, sg)) return "sourceUnstable";
     }
     return null;
+  }
+
+  private isHedgeEntry(op: { cfg: string; sym: string; side: number }): boolean {
+    return (
+      sigCfg(op.cfg) &&
+      this.hedgeKeys.has(
+        sigActiveKey(op.cfg.split("|")[0], op.cfg.split("|")[1] ?? "", op.sym, op.side, kindOfId(op.cfg)),
+      )
+    );
+  }
+
+  /** Stable-02 adds volume to the current Block size but cannot exceed its configured stack ceiling. */
+  private s2EntryVolume(blockVol: number): number {
+    const factor = this.wf.coord?.enabled ? this.sim?.s2?.factor : undefined;
+    return factor && factor > 0 ? Math.min(1 + factor, Math.max(1, blockStackCap(this.wf.block) / blockVol)) : 1;
   }
 
   /** The paper step run to completion (tests). The cycle drives stepPaperGen so the live tick runs between slices. */
@@ -5987,9 +6003,18 @@ export class CoreRuntime {
       perSide.set(`${cls}|${op.side}`, sd + 1);
       openBy.set(cls, (openBy.get(cls) ?? 0) + 1);
       // new entries take the relation volume the simulation ended with (within the Block maximum)
-      const stackCap = blockStackCap(this.wf.block);
-      const cv =
-        !held && s2End?.factor ? Math.min(1 + s2End.factor, Math.max(1, stackCap / d.vol)) : 1;
+      const cv = !held && s2End?.factor ? this.s2EntryVolume(d.vol) : 1;
+      const hedge = !held && this.isHedgeEntry(op);
+      const appliedHedgeVol = hedge ? this.wf.coord?.hedgeVolumeFactor ?? 1 : 1;
+      const recordedHedgeVol = held ? prev?.hedgeVol ?? 1 : appliedHedgeVol;
+      const coordVol = held ? prev?.coordVol ?? 1 : cv;
+      // The configured range factor is captured only on entry; a settings edit cannot resize a held position.
+      const signalRange = sigCfg(op.cfg) ? signalRangeOf(op.cfg.split("|")[1] ?? "") : null;
+      const rangeVol = held
+        ? 1
+        : signalRange
+          ? (this.wf.signalRangeVolumeFactors?.[signalRange] ?? 1)
+          : (this.wf.rangeVolumeFactors?.[rangeOfId(op.cfg) || "wide"] ?? 1);
       openKeys.add(openDupKey(op));
       positions.push({
         ...op,
@@ -5997,7 +6022,9 @@ export class CoreRuntime {
         heldAt: prevByKey.get(posId(op))?.heldAt ?? Date.now(),
         // execution multiple × ladder weight (Axis: every filled rung is volume, as the simulation books it); the
         // live lane asks for this volume, and paper marks mtm (per unit) × it
-        vol: positionVolume(d.vol * cv, op),
+        vol: positionVolume(d.vol * cv * appliedHedgeVol * rangeVol, op),
+        ...(coordVol !== 1 ? { coordVol } : {}),
+        ...(recordedHedgeVol !== 1 ? { hedgeVol: recordedHedgeVol } : {}),
         level: d.level,
         ...(d.legs ? { legs: d.legs } : {}),
         ...(d.blockLevels ? { blockLevels: d.blockLevels, blockEffectiveLevels: d.blockEffectiveLevels,
@@ -6453,6 +6480,8 @@ export class CoreRuntime {
           skip(tp, "laneBar");
           continue;
         }
+        const hedge = this.isHedgeEntry({ cfg: tp.id, sym: p.sym, side: p.side });
+        const coordVol = this.s2EntryVolume(d.vol);
         out.push({
           cfg: tp.id,
           sym: p.sym,
@@ -6461,6 +6490,8 @@ export class CoreRuntime {
           protect: p.protect ?? tp.protect,
           barT,
           kind: tp.kind,
+          ...(coordVol !== 1 ? { coordVol } : {}),
+          ...(hedge ? { hedge: true, hedgeVol: this.wf.coord?.hedgeVolumeFactor ?? 1 } : {}),
         });
       }
     }
@@ -6549,6 +6580,12 @@ export interface LiveIntent {
   barT: number;
   /** sub-strategy of the set (trailing / DCA / Axis exits are managed by the simulation) */
   kind?: string;
+  /** Stable-02 relation-volume multiplier captured by the current simulation (neutral = omitted). */
+  coordVol?: number;
+  /** This is a hedge-only Signal selected from past negative hours. */
+  hedge?: boolean;
+  /** Hedge-only size multiplier captured with the intent (neutral = omitted). */
+  hedgeVol?: number;
 }
 
 /** CoreRuntime.listings: what the last paper step validated and keeps active, for paged listings (coreListing). */
@@ -6697,7 +6734,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
 function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
   const saved = db.kvGet<Partial<WalkForwardOptions>>("wf") ?? {};
   const v = db.kvGet<number>("wfCapsV") ?? 0;
-  if (v >= 28) return saved;
+  if (v >= 33) return saved;
   // each step runs only for a database older than it: a choice made after a step is never overwritten
   const out = { ...saved };
   const st = db.kvGet<Partial<CoreSettings>>("settings");
@@ -6914,16 +6951,12 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
     if (sig.rank === "lowdd") delete sig.rank;
   }
   if (v < 27) {
+    // Mainline exchange migration: remove legacy symbol caps; deliberate smaller position caps survive.
     const migrateExchangeSettings = (settings: SettingsPatch | undefined) => {
       if (!settings?.live) return false;
       const live = settings.live as unknown as Record<string, unknown>;
-      // Former unlimited and shipped-12 live defaults inherit the 100-slot exchange ceiling. Preserve other
-      // deliberate lower caps, and remove the old symbol-count limiter from settings and presets.
       let changed = false;
-      if (live.maxPositions === 0 || live.maxPositions === 12) {
-        delete live.maxPositions;
-        changed = true;
-      }
+      if (live.maxPositions === 0 || live.maxPositions === 12) { delete live.maxPositions; changed = true; }
       if (Object.hasOwn(live, "maxSymbols")) changed = true;
       delete live.maxSymbols;
       return changed;
@@ -6940,9 +6973,124 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
     // The updated 60 Micro Break identities join the default focus; preserve a user-selected focus unchanged.
     st.focus = [...DEFAULT_SETTINGS.focus];
   }
+  if (v < 29) {
+    // Expand Signal grids for installs already through the mainline v28 migrations; custom fields stay untouched.
+    const same = (a: unknown, b: readonly number[]) => JSON.stringify(a) === JSON.stringify(b);
+    const migrateSignalGrid = (signals: Partial<SignalSettings> | undefined): boolean => {
+      if (!signals) return false;
+      let changed = false;
+      if (signals.normal) {
+        if (same(signals.normal.tp, [0.025, 0.03, 0.04, 0.05, 0.06])) { signals.normal.tp = [...DEFAULT_SIGNALS.normal.tp]; changed = true; }
+        if (same(signals.normal.slOfTp, [1.5, 2, 3])) { signals.normal.slOfTp = [...DEFAULT_SIGNALS.normal.slOfTp]; changed = true; }
+      }
+      if (signals.trailing) {
+        if (same(signals.trailing.tp, [0.03, 0.04, 0.05, 0.06, 0.08])) { signals.trailing.tp = [...DEFAULT_SIGNALS.trailing.tp]; changed = true; }
+        if (same(signals.trailing.trailOfTp, [0.4, 0.6, 0.8])) { signals.trailing.trailOfTp = [...DEFAULT_SIGNALS.trailing.trailOfTp]; changed = true; }
+      }
+      if (signals.minTrail === 0.005) { signals.minTrail = DEFAULT_SIGNALS.minTrail; changed = true; }
+      return changed;
+    };
+    migrateSignalGrid(sig);
+    const presets = db.kvGet<Preset[]>("presets");
+    if (Array.isArray(presets)) {
+      let changed = false;
+      for (const preset of presets) {
+        const signals = preset.settings?.signals;
+        if (signals?.count === 100) { delete signals.count; changed = true; }
+        if (signals?.maxPositions === 100) { delete signals.maxPositions; changed = true; }
+        if (signals?.rank === "lowdd") { delete signals.rank; changed = true; }
+        changed = migrateSignalGrid(signals) || changed;
+        const focus = preset.settings?.focus;
+        if (focus && JSON.stringify(focus) === JSON.stringify(PREVIOUS_DEFAULT_FOCUS_17OCT)) {
+          preset.settings!.focus = [...DEFAULT_SETTINGS.focus];
+          changed = true;
+        }
+      }
+      if (changed) db.kvSet("presets", presets);
+    }
+  }
+  if (v < 30) {
+    // Migrate only the former factory sizing/volume settings; preserve chosen factors and balance sizing.
+    const resetMicroDefault = (g: { micro?: { volumeFactor?: number } | false } | undefined) => {
+      const micro = g?.micro;
+      if (micro && micro.volumeFactor === 2.5) { micro.volumeFactor = 1; return true; }
+      return false;
+    };
+    resetMicroDefault(st?.grid);
+    const coord = out.coord as (typeof out.coord & Record<string, unknown>) | undefined;
+    if (coord) delete coord.s2VolumeFactor;
+    if (st?.sizing?.mode === "minQty" && st.sizing.pct === 0.02) st.sizing = structuredClone(DEFAULT_SIZING);
+    const presets = db.kvGet<Preset[]>("presets");
+    if (Array.isArray(presets)) {
+      let changed = false;
+      for (const preset of presets) {
+        changed = resetMicroDefault(preset.settings?.grid) || changed;
+        if (preset.settings?.sizing?.mode === "minQty" && preset.settings.sizing.pct === 0.02) {
+          preset.settings.sizing = structuredClone(DEFAULT_SIZING); changed = true;
+        }
+      }
+      if (changed) db.kvSet("presets", presets);
+    }
+  }
+  if (v < 31) {
+    // Convert only the former factory exposure-cap pair; deliberate limits remain intact.
+    const moveFormerCap = (settings: SettingsPatch | undefined) => {
+      const live = settings?.live;
+      if (live?.exposureScaler !== false && live?.maxPositionX === 0.25 && live?.maxExposureX === 2) live.maxExposureX = 0.75;
+    };
+    moveFormerCap(st);
+    const presets = db.kvGet<Preset[]>("presets");
+    if (Array.isArray(presets)) {
+      let changed = false;
+      for (const preset of presets) {
+        const live = preset.settings?.live;
+        if (live?.exposureScaler !== false && live?.maxPositionX === 0.25 && live?.maxExposureX === 2) { live.maxExposureX = 0.75; changed = true; }
+      }
+      if (changed) db.kvSet("presets", presets);
+    }
+  }
+  if (v < 32) {
+    // Retire fixed-dollar ceilings and only the former factory ratio pair.
+    const migrateLive = (settings: SettingsPatch | undefined) => {
+      const live = settings?.live;
+      if (!live) return false;
+      let changed = live.maxNotionalUsd !== 0;
+      live.maxNotionalUsd = 0;
+      if (live.maxPositionX === 0.25 && live.maxExposureX === 0.75) {
+        live.maxPositionX = 0;
+        live.maxExposureX = 0;
+        changed = true;
+      }
+      return changed;
+    };
+    migrateLive(st);
+    const presets = db.kvGet<Preset[]>("presets");
+    if (Array.isArray(presets)) {
+      let changed = false;
+      for (const preset of presets) changed = migrateLive(preset.settings) || changed;
+      if (changed) db.kvSet("presets", presets);
+    }
+  }
+  if (v < 33) {
+    // Balance-relative sizing is the saved mode; legacy modes move to the neutral 0.1% default.
+    const migrateSizing = (settings: SettingsPatch | undefined) => {
+      const sizing = settings?.sizing as { mode?: string } | undefined;
+      if (sizing && sizing.mode !== "equityPct") settings!.sizing = structuredClone(DEFAULT_SIZING);
+    };
+    migrateSizing(st);
+    const presets = db.kvGet<Preset[]>("presets");
+    if (Array.isArray(presets)) {
+      let changed = false;
+      for (const preset of presets) {
+        const sizing = preset.settings?.sizing as { mode?: string } | undefined;
+        if (sizing && sizing.mode !== "equityPct") { preset.settings!.sizing = structuredClone(DEFAULT_SIZING); changed = true; }
+      }
+      if (changed) db.kvSet("presets", presets);
+    }
+  }
   db.kvSet("wf", pickWf(out));
   if (st) db.kvSet("settings", st);
-  db.kvSet("wfCapsV", 28);
+  db.kvSet("wfCapsV", 33);
   return out;
 }
 
@@ -7396,7 +7544,9 @@ export function withCarried(
   const carried = prev.filter(
     (t) => !isSignalInd(t.ind) && !!t.protect.tag && tags.has(t.protect.tag) && !ids.has(t.id),
   );
-  return carried.length ? [...built, ...carried] : built;
+  // Mark shallow copies so reports can distinguish them from the current compute's built sets. The large typed-array
+  // tape columns remain shared; only metadata is copied.
+  return carried.length ? [...built, ...carried.map((t) => ({ ...t, carried: true }))] : built;
 }
 
 /**

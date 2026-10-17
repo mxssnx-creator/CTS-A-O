@@ -313,7 +313,7 @@ describe("bug-hunt regressions", () => {
     db.kvSet("wfCapsV", 26);
     db.kvSet("settings", {
       live: { maxPositions: 12, ...({ maxSymbols: 2 } as Record<string, unknown>) },
-      signals: { maxPositions: 100 },
+      signals: { maxPositions: 80 },
     });
     db.kvSet("presets", [
       {
@@ -325,9 +325,9 @@ describe("bug-hunt regressions", () => {
     const rt = new CoreRuntime(db, undefined, { market: "synthetic" });
     assert.equal(rt.settings.live.maxPositions, 100, "former shipped 12 becomes the 100 exchange ceiling");
     assert.equal("maxSymbols" in rt.settings.live, false);
-    assert.equal(rt.settings.signals.maxPositions, 100, "v27 leaves the separately chosen signal evaluation cap intact");
+    assert.equal(rt.settings.signals.maxPositions, 80, "v27 leaves the separately chosen signal evaluation cap intact");
     assert.equal(DEFAULT_SIGNALS.maxPositions, 250);
-    assert.equal(db.kvGet<number>("wfCapsV"), 28);
+    assert.equal(db.kvGet<number>("wfCapsV"), 33);
     const presets = db.kvGet<Array<{ settings: { live?: Record<string, unknown> } }>>("presets") ?? [];
     assert.equal(presets[0].settings.live?.maxPositions, undefined, "legacy unlimited preset inherits default");
     assert.equal("maxSymbols" in (presets[0].settings.live ?? {}), false);
@@ -349,7 +349,7 @@ describe("bug-hunt regressions", () => {
     assert.deepEqual(a.settings.signals.lanes, DEFAULT_SIGNALS.lanes);
     assert.equal(a.settings.signals.exits, "pct");
     assert.equal(a.settings.signals.holdH, 48);
-    assert.deepEqual(a.settings.signals.normal.slOfTp, [1.5, 2, 3]);
+    assert.deepEqual(a.settings.signals.normal.slOfTp, DEFAULT_SIGNALS.normal.slOfTp);
     assert.equal(a.settings.signals.perSymbol, DEFAULT_SIGNALS.perSymbol);
     const mine = new CoreDb(":memory:");
     mine.kvSet("wfCapsV", 9);
@@ -527,7 +527,7 @@ describe("bug-hunt regressions", () => {
     old.kvSet("settings", { grid: { ...DEFAULT_SETTINGS.grid, micro: { ...DEFAULT_SETTINGS.grid.micro, tp: [...FORMER_MICRO_TP] } } });
     const a = new CoreRuntime(old, undefined, { market: "synthetic" });
     assert.deepEqual((a.settings.grid.micro as unknown as { tp: number[] }).tp, [...MICRO_TP]);
-    assert.equal(old.kvGet("wfCapsV"), 28);
+    assert.equal(old.kvGet("wfCapsV"), 33);
     const mine = new CoreDb(":memory:");
     mine.kvSet("wfCapsV", 24);
     mine.kvSet("settings", { grid: { ...DEFAULT_SETTINGS.grid, micro: { ...DEFAULT_SETTINGS.grid.micro, tp: [0.003] } } });
@@ -553,7 +553,7 @@ describe("bug-hunt regressions", () => {
     previousDefault.kvSet("settings", { focus: [...PREVIOUS_DEFAULT_FOCUS_17OCT] });
     const upgraded = new CoreRuntime(previousDefault, undefined, { market: "synthetic" });
     assert.deepEqual(upgraded.settings.focus, DEFAULT_SETTINGS.focus);
-    assert.equal(previousDefault.kvGet<number>("wfCapsV"), 28);
+    assert.equal(previousDefault.kvGet<number>("wfCapsV"), 33);
 
     const customFocus = ["follow|rsi-mom-14-20"];
     const chosen = new CoreDb(":memory:");
@@ -584,6 +584,49 @@ describe("bug-hunt regressions", () => {
     assert.equal(positionsFull(open, "C", 1, true, 0), false, "0 = no limit");
     assert.equal(positionsFull(open, "C", 1, false, 1), true, "engine positions are counted apart");
     assert.equal(positionsFull(open, "C", 1, false, 2), false);
+  });
+
+  it("v29: expanded Signal grids migrate after mainline v28 and preserve custom fields", () => {
+    const former = {
+      normal: { tp: [0.025, 0.03, 0.04, 0.05, 0.06], slOfTp: [1.5, 2, 3] },
+      trailing: { tp: [0.03, 0.04, 0.05, 0.06, 0.08], trailOfTp: [0.4, 0.6, 0.8], slOfTp: 3 },
+      minTrail: 0.005,
+    };
+    const old = new CoreDb(":memory:");
+    old.kvSet("wfCapsV", 28);
+    old.kvSet("settings", { signals: structuredClone(former) });
+    old.kvSet("presets", [{
+      id: "former-signal-grid", label: "Former signal grid", info: "", kind: "saved", at: 1,
+      settings: {
+        signals: { ...structuredClone(former), count: 100, maxPositions: 100, rank: "lowdd" },
+        focus: [...DEFAULT_SETTINGS.focus],
+      }, wf: {}, metrics: {},
+    }]);
+    const upgraded = new CoreRuntime(old, undefined, { market: "synthetic" });
+    assert.deepEqual(upgraded.settings.signals.normal, DEFAULT_SIGNALS.normal);
+    assert.deepEqual(upgraded.settings.signals.trailing, DEFAULT_SIGNALS.trailing);
+    assert.equal(upgraded.settings.signals.minTrail, DEFAULT_SIGNALS.minTrail);
+    assert.equal(old.kvGet<number>("wfCapsV"), 33);
+    const preset = old.kvGet<Array<{ settings: { signals: typeof former & { maxPositions?: number }; focus?: string[] } }>>("presets")![0];
+    assert.deepEqual(preset.settings.signals.normal, DEFAULT_SIGNALS.normal);
+    assert.deepEqual(preset.settings.signals.trailing, DEFAULT_SIGNALS.trailing);
+    assert.equal(preset.settings.signals.minTrail, DEFAULT_SIGNALS.minTrail);
+    assert.equal(preset.settings.signals.maxPositions, undefined, "the retired Signal default does not become an order cap");
+    assert.deepEqual(preset.settings.focus, DEFAULT_SETTINGS.focus);
+
+    const chosen = new CoreDb(":memory:");
+    chosen.kvSet("wfCapsV", 28);
+    chosen.kvSet("settings", { signals: {
+      normal: { tp: [0.02], slOfTp: [1.5, 2, 3] },
+      trailing: { tp: [0.03, 0.04, 0.05, 0.06, 0.08], trailOfTp: [0.2, 0.5], slOfTp: 3 },
+      minTrail: 0.004,
+    } });
+    const preserved = new CoreRuntime(chosen, undefined, { market: "synthetic" }).settings.signals;
+    assert.deepEqual(preserved.normal.tp, [0.02]);
+    assert.deepEqual(preserved.normal.slOfTp, DEFAULT_SIGNALS.normal.slOfTp);
+    assert.deepEqual(preserved.trailing.tp, DEFAULT_SIGNALS.trailing.tp);
+    assert.deepEqual(preserved.trailing.trailOfTp, [0.2, 0.5]);
+    assert.equal(preserved.minTrail, 0.004);
   });
 
   it("v14: validated research sources stored as off follow the new default; other choices stay", () => {
