@@ -36,6 +36,7 @@ describe("signals end to end: sources mode allow", { timeout: 600_000 }, () => {
           enabled: true,
           count: 10,
           minTrades: 1,
+          coordination: { ...DEFAULT_SIGNALS.coordination, enabled: false },
           sourcesMode: "allow",
           sources: Object.fromEntries(ALLOW.map((s) => [s, true])),
         }),

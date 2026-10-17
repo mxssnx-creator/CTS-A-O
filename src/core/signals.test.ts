@@ -23,6 +23,7 @@ import {
   signalId,
   signalSourceOf,
 } from "./indications/registry.ts";
+import { isSignalCoordinationInd } from "./signal-coordination.ts";
 import { allCombos, symStat } from "./pipeline/pipeline.ts";
 import { checkSettings } from "./settings-check.ts";
 import { DEFAULT_SETTINGS } from "./config.ts";
@@ -44,8 +45,10 @@ import {
   sourceUnstable,
   type ConfigTape,
 } from "./sim/walkforward.ts";
-import { CoreRuntime } from "./server/runtime.server.ts";
+import { CoreRuntime, signalCoordinationProtects } from "./server/runtime.server.ts";
 import { CoreDb } from "./server/db.server.ts";
+import { modeledUnitStatsOf } from "./metrics/stats.ts";
+import { closedPositions } from "./positions.ts";
 
 const on = signalSettings({ enabled: true });
 const why = (d: object) => ("why" in d ? d.why : "");
@@ -76,8 +79,8 @@ describe("signals: sources and combos", () => {
     assert.equal(signalCombos({ ...DEFAULT_SIGNALS, enabled: false }, [1, 5, 15, 30]).length, 0);
     assert.equal(DEFAULT_SIGNALS.enabled, true, "on by default");
     const c = signalCombos(on, [1, 5, 15, 30]);
-    // sources × 2 ranges × default lanes 15 / 30 (short ranges included)
-    assert.equal(c.length, ENABLED * 2 * DEFAULT_SIGNALS.lanes.length);
+    // Classic sources × 2 parameter ranges + 5 ratio bands × 3 input mixes, each on default lanes 15 / 30.
+    assert.equal(c.length, (ENABLED * 2 + 15) * DEFAULT_SIGNALS.lanes.length);
     assert.ok(c.every((x) => x.bot === "follow" && isSignalInd(x.ind)));
     // a source off, a range off, a lane the engine does not run
     const off = signalSettings({
@@ -86,7 +89,40 @@ describe("signals: sources and combos", () => {
       ranges: { short: true, medium: false },
       lanes: [5, 60],
     });
-    assert.equal(signalCombos(off, [1, 5, 15, 30]).length, ENABLED - 1);
+    assert.equal(signalCombos(off, [1, 5, 15, 30]).length, ENABLED - 1 + 5);
+  });
+
+  it("coordinator exit ranges only build their selected grid tags", () => {
+    const normalOnly = signalCoordinationProtects(DEFAULT_SETTINGS.grid, DEFAULT_SETTINGS.cost, {
+      short: false,
+      normal: true,
+      long: false,
+    });
+    assert.ok(normalOnly.length > 0);
+    assert.ok(normalOnly.every((p) => p.tag === "gn"));
+    const shortAndLong = signalCoordinationProtects(DEFAULT_SETTINGS.grid, DEFAULT_SETTINGS.cost, {
+      short: true,
+      normal: false,
+      long: true,
+    });
+    assert.ok(shortAndLong.some((p) => p.tag === "sh"));
+    assert.ok(shortAndLong.some((p) => p.tag === "lg"));
+    assert.ok(shortAndLong.every((p) => p.tag === "sh" || p.tag === "lg"));
+  });
+
+  it("expands Normal and Trailing hold candidates from the runtime-passing 48 h cells", () => {
+    const protects = signalCoordinationProtects(
+      DEFAULT_SETTINGS.grid,
+      DEFAULT_SETTINGS.cost,
+      DEFAULT_SETTINGS.signals.coordination.ranges,
+    );
+    const normal = protects.filter((p) => p.trail === 0);
+    const trailing = protects.filter((p) => p.trail > 0);
+    assert.equal(protects.length, 2100);
+    assert.equal(normal.length, 750, "300 existing + 450 new Normal protections");
+    assert.equal(trailing.length, 1350, "900 existing + 450 new 48 h Trailing protections");
+    assert.deepEqual([...new Set(normal.map((p) => p.hold))].sort((a, b) => a - b), [48, 64, 96, 128, 192]);
+    assert.deepEqual([...new Set(trailing.map((p) => p.hold))].sort((a, b) => a - b), [64, 96, 192]);
   });
 
   it("builds all 42 Normal + 35 capped Trailing configs beside nine independent Trailing only sets", () => {
@@ -584,9 +620,22 @@ describe("signals: engine", { timeout: 400_000 }, () => {
     rt.stop();
     const st = rt.status.signals!;
     assert.ok(st.enabled);
-    assert.equal(st.combos, ENABLED * 2 * DEFAULT_SIGNALS.lanes.length);
-    assert.ok(st.active > 0 && st.active <= 10, `active ${st.active}`);
+    assert.equal(st.combos, (ENABLED * 2 + 15) * DEFAULT_SIGNALS.lanes.length);
+    assert.ok(st.active > 0 && st.active <= 110, `active ${st.active}`);
+    assert.ok((st.coordinationActive ?? 0) <= DEFAULT_SIGNALS.coordination.count);
+    assert.ok((st.active ?? 0) - (st.coordinationActive ?? 0) <= 10, "classic signal cap is independent");
+    assert.ok((st.coordinationPairs ?? 0) > 0 && (st.coordinationConfigs ?? 0) > 0);
     const sigTapes = rt.tapes.filter((t) => isSignalInd(t.ind));
+    const coordTapes = sigTapes.filter((t) => t.ind.startsWith("sig-coord-"));
+    assert.ok(coordTapes.length > 0, "coordinator tapes are built");
+    assert.ok(coordTapes.every((t) => t.protect.tag === "gn" || t.protect.tag === "lg"), "grid-off Short exits are excluded");
+    const coordTrades = rt.sim!.trades.filter((t) => isSignalCoordinationInd(t.cfg.split("|")[1] ?? ""));
+    const coordStats = modeledUnitStatsOf(coordTrades);
+    assert.equal(st.coordinationOrders, coordTrades.length);
+    assert.equal(st.coordinationTrades, coordTrades.length);
+    assert.equal(st.coordinationPf, coordStats.pf);
+    assert.equal(st.coordinationNet, coordStats.net);
+    assert.equal(st.coordinationPositions, closedPositions(coordTrades));
     // every config of every active signal runs (not selected into seats): all of them in the paper selection
     const sel = new Set(rt.paper.selected);
     const activePairs = new Set(
@@ -594,14 +643,15 @@ describe("signals: engine", { timeout: 400_000 }, () => {
     );
     for (const t of sigTapes)
       if (activePairs.has(`${t.bot}|${t.ind}`)) assert.ok(sel.has(t.id), t.id);
-    // 42 Normal + 35 capped Trailing + nine Trailing-only configs per percent-mode signal pair; ATR adds 18 in ATR /
-    // both mode. Historic configs are additional only when their independent sample qualifies.
-    const pct = st.pairs * signalProtects(signalSettings({ enabled: true })).length;
+    // Each source pair retains its full percent/ATR protection grid, while every coordinator has its own
+    // enabled range grid. Historic configs are additional only when their independent sample qualifies.
+    const coordProtections = signalCoordinationProtects(rt.settings.grid, rt.settings.cost, rt.settings.signals.coordination.ranges);
+    const sourcePairs = st.pairs - (st.coordinationPairs ?? 0);
+    const pct = sourcePairs * signalProtects(signalSettings({ enabled: true })).length + (st.coordinationPairs ?? 0) * coordProtections.length;
     const full = st.configs;
-    assert.ok(
-      full >= pct,
-      `signal configs retain the full configured grid: ${full} configs vs ${pct} percent configs`,
-    );
+    assert.ok(st.historic, "history calculations report their eligibility diagnostics");
+    assert.ok(st.historic.qualified <= st.historic.candidates);
+    assert.ok(full >= pct, `signal configs retain the full configured source/coordinator grids: ${full} vs ${pct}`);
     assert.ok(
       sigTapes.length <= full && sigTapes.length >= full * 0.9,
       `${sigTapes.length} of ${full}`,

@@ -55,6 +55,7 @@ describe("four frozen research Signal catalog candidates", () => {
       sourcesMode: "allow",
       sources: Object.fromEntries(NAMES.map((n) => [n, true])),
       lanes: [5, 15],
+      coordination: { ...DEFAULT_SIGNALS.coordination, enabled: false },
     });
     const combos = signalCombos(settings, [5, 15]);
     assert.equal(combos.length, 16);

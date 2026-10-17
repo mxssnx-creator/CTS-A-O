@@ -94,7 +94,6 @@ import {
   fetchHistory,
   fetchKlines,
   fetchTickers,
-  pickUniverse,
   forceSymbols,
   normSymbol,
   rankUniverse,
@@ -114,7 +113,6 @@ import {
   mainByLane,
   parseConfigId,
   passesBase,
-  basePassTags,
   baseRangeCounts,
   baseGateSensitivity,
   baseRangeWhy,
@@ -146,7 +144,6 @@ import {
   defaultWalkForward,
   selectAt,
   selectDurable,
-  selectFixed,
   selectFixedGen,
   withProbe,
   execDecision,
@@ -175,6 +172,7 @@ import {
   floorsForPairs,
   mergeBuildStats,
   DEFAULT_RANGE_FIT,
+  protectGrid,
   type WalkForwardOptions,
   type WalkForwardResult,
   lowerBound,
@@ -207,8 +205,14 @@ import {
 } from "../live-validation.ts";
 import { exchangeAcceptIndex, executionRecordKey, liveRecords, ownedPaperExecutionRecords, postBaseExecutionRecords, type LiveRecord } from "../live-record.ts";
 import { signalActiveHas, type ExchangeAccept } from "../signals.ts";
+import {
+  isSignalCoordinationInd,
+  parseSignalCoordinationId,
+  signalCoordinationHistory,
+  signalCoordinationRanges,
+} from "../signal-coordination.ts";
+import { volumeFactorForIndication } from "../volume-factor.ts";
 
-import os from "node:os";
 import { isDeepStrictEqual } from "node:util";
 import { type BlockBook, blockBookOf, blockStackCap } from "../sim/block.ts";
 import { trailBar } from "../sim/backtest.ts";
@@ -226,8 +230,10 @@ import {
 import {
   emptySignalHistDiagnostics,
   heldHistProtects,
+  heldCoordinationProtects,
   signalHistProtectsGen,
   type SignalHistDiagnostics,
+  type SignalHistValidation,
 } from "../signal-hist.ts";
 import { DEFAULT_SIGNALS, signalRangeOf, type SignalAccept, type SignalSettings } from "../signal-config.ts";
 import { PriceStream, type StreamStats } from "./stream.server.ts";
@@ -373,6 +379,9 @@ export interface RuntimeStatus {
   /** memory guard: the host's available memory and this process, the compute fallback level, the last abort */
   mem?: {
     availMb: number;
+    /** Host cap and cgroup estimate basis/credit, retained in replay evidence. */
+    hostAvailMb?: number;
+    cgroup?: MemInfo["cgroup"];
     rssMb: number;
     level: MemLevel;
     fallback: number;
@@ -407,6 +416,16 @@ export interface RuntimeStatus {
     active: number;
     pairs: number;
     configs: number;
+    coordinationPairs?: number;
+    coordinationConfigs?: number;
+    coordinationActive?: number;
+    coordinationTrades?: number;
+    coordinationPf?: number;
+    coordinationNet?: number;
+    coordinationPositions?: number;
+    coordinationOrders?: number;
+    coordinationPeakPositions?: number;
+    coordinationPeakOrders?: number;
     /** Pair discovery is independent configuration evaluation, not a passed return-PF gate. */
     discoveryPairs?: number;
     representativePassed?: number;
@@ -443,7 +462,7 @@ export interface RuntimeStatus {
   /** counts of the listings of the last paper step (CoreRuntime.listings; the pages page through coreListing) */
   listings?: { paperStep: number; at: number; validated: number; active: number; proven: number | null; byRange: Array<{ range: string; validated: number; pf: number | null }> };
   /** the preset comparison after the paper step (comparePresets): running, presets done / total, when it last finished */
-  compare?: { running: boolean; done: number; total: number; at?: number; error?: string };
+  compare?: { running: boolean; done: number; total: number; at?: number; error?: string; deferred?: string; retryAt?: number };
   /**
    * Base-gate sensitivity from the same Base results: how many pairs would pass under each variation of the gate
    * (PF, minimum closes, DDR) and at what median PF. No recompute — it answers "what would validate more sets at
@@ -725,6 +744,8 @@ export class CoreRuntime {
   private tickTimer: ReturnType<typeof setTimeout> | null = null;
   /** the market is a replayed window (see the constructor option) */
   private replay = false;
+  /** Offline cold start loads the complete frozen universe before its first compute. */
+  private readonly completeReplayUniverse: boolean;
   private ticking = false;
   private liveStartedAt = 0;
   private liveSlowNoted = false;
@@ -869,9 +890,14 @@ export class CoreRuntime {
       priceStream?: (() => PriceStream) | null;
       /** a replayed market (a fixed window of a feed): no wall clock to wait for between computes */
       replay?: boolean;
+      /** Offline unconnected replays only: load the complete universe before the first compute. */
+      completeReplayUniverse?: boolean;
       evaluationFromT?: number;
     } = {},
   ) {
+    if (opts.completeReplayUniverse && (!opts.replay || opts.conn))
+      throw new Error("completeReplayUniverse is available for unconnected replays only");
+    this.completeReplayUniverse = opts.completeReplayUniverse === true;
     if (opts.evaluationFromT !== undefined) {
       if (!opts.replay || opts.conn || !Number.isFinite(opts.evaluationFromT) || opts.evaluationFromT < 0)
         throw new Error("evaluationFromT is a finite nonnegative boundary for unconnected replays only");
@@ -1177,6 +1203,7 @@ export class CoreRuntime {
   private fastArgs: {
     main: { protects: readonly Protect[]; dcaFor: unknown; floors: EntryFloors };
     sig: { protects: readonly Protect[]; dcaFor: unknown; floors: EntryFloors };
+    coord: { protects: readonly Protect[]; dcaFor: unknown; floors: EntryFloors };
     adjust: AdjustState | null;
   } | null = null;
   /** a paper step (full or realtime) owns the book */
@@ -1227,18 +1254,18 @@ export class CoreRuntime {
     const s = this.settings;
     try {
       const byId = this.tapeIndex();
-      const ids = { main: new Set<string>(), sig: new Set<string>() };
-      const pairs = { main: new Set<string>(), sig: new Set<string>() };
+      const ids = { main: new Set<string>(), sig: new Set<string>(), coord: new Set<string>() };
+      const pairs = { main: new Set<string>(), sig: new Set<string>(), coord: new Set<string>() };
       for (const id of this.paper.selected ?? []) {
         const tp = byId.get(id);
         if (!tp) continue;
-        // Break-only mode keeps the new path scoped; a 5m/15m config runs only at its own candle close.
+        // Keep realtime work scoped to the configured mode and run each selected lane only at its candle close.
         if (!fastEntryLaneDue(tp.ind, bar, s.tfMin, FAST_ENTRY_MODE)) continue;
-        const k = isSignalInd(tp.ind) ? "sig" : "main";
+        const k = isSignalCoordinationInd(tp.ind) ? "coord" : isSignalInd(tp.ind) ? "sig" : "main";
         ids[k].add(id);
         pairs[k].add(`${tp.bot}|${tp.ind}`);
       }
-      if (!ids.main.size && !ids.sig.size) {
+      if (!ids.main.size && !ids.sig.size && !ids.coord.size) {
         this.fastBarDone = bar;
         return;
       }
@@ -1257,7 +1284,7 @@ export class CoreRuntime {
       // every series (the short ones too): the worker's market reference is the main thread's (Universe.series)
       const shared = shareBars(u.series);
       const msgs: Array<Record<string, unknown>> = [];
-      for (const k of ["main", "sig"] as const)
+      for (const k of ["main", "sig", "coord"] as const)
         if (ids[k].size)
           msgs.push({
             type: "tapes",
@@ -1277,7 +1304,7 @@ export class CoreRuntime {
         this.fastBarDone = bar;
         this.status.fast = {
           at: Date.now(), bar, ms: Math.round(performance.now() - t0), delayMs: Math.max(0, Date.now() - barEnd),
-          seated: ids.main.size + ids.sig.size, open: this.paper.positions.length, added: 0,
+          seated: ids.main.size + ids.sig.size + ids.coord.size, open: this.paper.positions.length, added: 0,
           error: "closed candle aged out during processing; late entry suppressed",
         };
         return;
@@ -1306,7 +1333,7 @@ export class CoreRuntime {
         bar,
         ms: Math.round(performance.now() - t0),
         delayMs: Math.max(0, Date.now() - barEnd),
-        seated: ids.main.size + ids.sig.size,
+        seated: ids.main.size + ids.sig.size + ids.coord.size,
         open: n,
         added: this.paper.positions.length - before,
         error: null,
@@ -1533,6 +1560,7 @@ export class CoreRuntime {
   stop() {
     this.cancelBacktests("backtest canceled: runtime stopped");
     this.baseConfigRunner.cancel("stopped");
+    this.cancelCompare("runtime stopped");
     this.stopTick();
     this.stopped = true;
     this.gen++;
@@ -1623,6 +1651,7 @@ export class CoreRuntime {
     if (stale) {
       this.db.event("warn", "watchdog: loop stale, starting a new generation");
       this.baseConfigRunner.cancel("newGeneration");
+      this.cancelCompare("new generation");
       this.gen++;
       this.busy = false;
       this.dirty = true;
@@ -1823,6 +1852,7 @@ export class CoreRuntime {
     // to them alone (or a patch that changes nothing, e.g. one re-applied on a restart) keeps the running compute —
     // marking it stale threw away its tapes, and a desk whose compute outlasts the patch interval never stepped paper
     const recompute = this.resetUniverse || computeKey(this.settings, this.wf) !== prevCompute;
+    if (recompute) this.cancelCompare("settings changed");
     this.db.event(
       "info",
       !recompute
@@ -1986,14 +2016,17 @@ export class CoreRuntime {
 
   async cycle() {
     if (this.busy || this.stopped) return;
+    const gen = this.gen;
     this.busy = true;
     // the previous compute's preset comparison finishes first (never beside a compute: memory, the cores)
     if (this.comparing) await this.comparing;
+    // A stop/restart or watchdog replacement owns the new generation and its busy flag. A cycle already waiting
+    // for Compare must not adopt that generation and run beside the scheduled replacement.
+    if (gen !== this.gen) return;
     if (this.stopped) {
       this.busy = false;
       return;
     }
-    const gen = this.gen;
     const t0 = performance.now();
     let compareGen: number | null = null;
     this.inCycle = true;
@@ -2099,7 +2132,7 @@ export class CoreRuntime {
       this.status.error = null;
       // the preset comparison of this compute runs once the cycle has ended (its book is out, the next cycle is
       // scheduled): the next cycle waits for it before it starts, so the two never overlap
-      if (computed && !stale && !this.stopped) compareGen = gen;
+      if (!stale && !this.stopped && (computed || (this.compareInput && Date.now() >= this.compareRetryAt))) compareGen = gen;
       if (this.snapshotPath && Date.now() - this.lastSnapshot > 10 * 60_000) {
         this.lastSnapshot = Date.now();
         // in the background: the loop (and the live tick) keeps running while the pages are copied
@@ -2286,8 +2319,9 @@ export class CoreRuntime {
         const missing = ranked
           .filter((x) => !this.candles.has(x))
           .slice(0, Math.max(0, target - this.candles.size));
-        // progressive start: load a batch, compute it completely, start realtime for it, then the next batch
-        const batch = Math.max(5, Math.ceil(target / 4));
+        // Connected desks progressively start realtime after each batch. A frozen offline replay loads all
+        // symbols first, avoiding repeated full computations on intermediate partial universes.
+        const batch = this.completeReplayUniverse ? target : Math.max(5, Math.ceil(target / 4));
         const syms = missing.slice(0, batch);
         const more = missing.length > syms.length;
         this.prehistTotal = Math.min(target, this.candles.size + missing.length);
@@ -2720,6 +2754,8 @@ export class CoreRuntime {
     }
     this.status.mem = {
       availMb: m.availMb,
+      hostAvailMb: m.hostAvailMb,
+      cgroup: m.cgroup,
       rssMb: m.rssMb,
       level: m.level,
       fallback: this.memFallback,
@@ -2856,6 +2892,7 @@ export class CoreRuntime {
     if (!u.bars.length) return;
     // causal evaluation: the stages see only the history before the simulated run (its start, as walkForward sets it)
     const runStartT = Math.floor((u.nowT - wf.simH * H) / H) * H;
+    const rangeFitCutT = wf.causalBase ? runStartT : undefined;
     if (this.evaluationFromT !== undefined && (!wf.causalBase || this.evaluationFromT >= runStartT))
       throw new Error("Replay evaluationFromT requires a causal Base window before the trading start");
     const uStage = wf.causalBase ? makeUniverse(allBars.map((b) => headBars(b, runStartT)), this.evaluationFromT) : u;
@@ -3043,12 +3080,8 @@ export class CoreRuntime {
     for (const id of this.paper.selected) held.add(id.split("|").slice(0, 2).join("|"));
     // sets with open positions stay in the continuous stages until the position is closed
     for (const p of this.paper.positions) held.add(p.cfg.split("|").slice(0, 2).join("|"));
-    for (const k of held) {
-      main.add(k);
-      // An absent pairTags entry means “no Base range filter” to the tape builder. A held pair that failed Base
-      // must therefore carry an explicit empty entry: preserve only its exact held ids, as held-only tapes.
-      if (!Object.hasOwn(pairTags, k)) pairTags[k] = [];
-    }
+    for (const k of held) main.add(k);
+    restrictHeldBasePairs(pairTags, held);
     // a held config keeps its tape: a held pair that passed Base only in other ranges computes only those ranges'
     // cells (pairTags), and a config whose range is missing would lose its tape — its open position then vanished
     // from the paper book with no close (and live flattened it). Only that config is kept, not every cell of its
@@ -3080,15 +3113,37 @@ export class CoreRuntime {
     // Signals processing: the active signals and every signal pair still holding a position take the signal
     // configs, never the engine's protect grid
     const sig = signalSettings(s.signals);
+    const heldCoordinationRanges = this.paper.positions.flatMap((p) =>
+      isSignalCoordinationInd(p.cfg.split("|")[1] ?? "") && rangeOfId(p.cfg)
+        ? [rangeOfId(p.cfg)!]
+        : [],
+    );
+    const coordRanges = signalCoordinationRanges(sig.coordination.ranges, heldCoordinationRanges);
+    const coordProtects = signalCoordinationProtects(s.grid, s.cost, coordRanges);
     // The full-history ranking is status-only; the simulation ranks each type causally from its own tapes.
-    let sigActive = sig.enabled ? activeSignals(pipeline.s1, sig) : new Set<string>();
-    const configuredSignals = signalCombos(sig, s.tfs).filter((c) =>
+    let sigActive = sig.enabled
+      ? activeSignals(pipeline.s1.filter((r) => !isSignalCoordinationInd(r.ind) || coordProtects.length > 0), sig)
+      : new Set<string>();
+    const heldLegacyCoordination = new Set(this.paper.positions.flatMap((p) => {
+      const parsed = parseConfigId(p.cfg);
+      return parsed && parseSignalCoordinationId(parsed.ind)?.version === 1
+        ? [`${parsed.bot}|${parsed.ind}`]
+        : [];
+    }));
+    const configuredSignals = [...signalCombos(sig, s.tfs), ...[...heldLegacyCoordination].map((pair) => {
+      const [bot, ind] = pair.split("|");
+      return { bot: bot as import("../domain/types.ts").BotType, ind };
+    })].filter((c) =>
       seriesOf(uStage, c.ind).length > 0 &&
+      (!isSignalCoordinationInd(c.ind) || coordProtects.length > 0) &&
       (!evalFams || evalFams.some((f) => evalFamilyMatch(f, c.bot, c.ind, []))));
     const representativePass = (r: ComboRun) => passesBase(r.full, setsGates);
     const sigPairs = signalEvaluationPairs(configuredSignals, pipeline.s1, sig, representativePass);
     const representativePassed = signalEvaluationPairs(configuredSignals, pipeline.s1, { ...sig, baseGate: true }, representativePass);
     const signalBaseGate = sig.enabled && sig.baseGate !== false;
+    // Preserve the original cumulative-threshold tape only for v1 positions that are already open.
+    // V1 identities are intentionally excluded from normal discovery and new-entry ranking.
+    for (const pair of heldLegacyCoordination) sigPairs.add(pair);
     this.status.baseEvaluated =
       pipeline.s1.filter((r) => !isSignalInd(r.ind)).length +
       (signalBaseGate ? new Set(pipeline.s1.filter((r) => isSignalInd(r.ind)).map((r) => `${r.bot}|${r.ind}`)).size : 0);
@@ -3100,18 +3155,16 @@ export class CoreRuntime {
         main.delete(k);
         sigPairs.add(k);
       }
+    const coordinationPairs = new Set([...sigPairs].filter((pair) => isSignalCoordinationInd(pair.slice(pair.indexOf("|") + 1))));
+    const sourcePairs = new Set([...sigPairs].filter((pair) => !coordinationPairs.has(pair)));
     this.status.mainPairs = main.size;
     // each signal's historic trailing configs (signal-hist.ts) from the stage's history (causal: before the run start),
     // computed between ticks; a held historic config whose distances moved since keeps its own tape
     const sigHist: Record<string, Protect[]> = {};
     const retainedSignalIds = new Set<string>();
     const signalHistDiagnostics = emptySignalHistDiagnostics();
-    const signalHistValidation = {
-      cost: s.cost,
-      minPf: setsGates.minPf,
-      minTrades: setsGates.minTrades,
-      maxDdr: setsGates.maxDdr,
-    };
+    const signalHistValidation = signalHistValidationOf(s, coordProtects);
+    const standard = signalProtects(sig);
     try {
       if (sig.enabled && sig.hist.enabled && sigPairs.size) {
         if (gen !== this.gen) return;
@@ -3179,21 +3232,25 @@ export class CoreRuntime {
             if (++k % 64 === 0) this.setStage("Tapes", 0, 1, histLabel);
           }, gen);
         }
-        Object.assign(sigHist, hist);
+        Object.assign(sigHist, signalCoordinationHistory(hist, coordinationPairs, coordProtects));
       }
-      // Removed/disabled trailing configs retain exactly their open tape, including when historic additions are off.
-      // A recovered-only config manages that position's exit and cannot use its old positive sample to re-enter.
-      const standard = signalProtects(sig);
-      const held = heldHistProtects(this.paper.positions.map((p) => p.cfg), sigPairs, standard);
-      for (const [pair, ps] of Object.entries(held)) {
-        const [bot, ind] = pair.split("|");
-        const list = (sigHist[pair] ??= []);
-        const current = new Set([...standard, ...list].map((p) => configId(bot as import("../domain/types.ts").BotType, ind, laneProtect(p, ind))));
-        for (const h of ps) {
-          const id = configId(bot as import("../domain/types.ts").BotType, ind, laneProtect(h, ind));
-          if (!current.has(id)) {
-            list.push(h);
-            retainedSignalIds.add(id);
+      // Removed/disabled configs retain exactly their open tape. Source Signals and each coordinator keep their own
+      // current grid, so a source's wide cells cannot replace a coordination range (or vice versa).
+      for (const [pairs, currentProtects] of [[sourcePairs, standard], [coordinationPairs, coordProtects]] as const) {
+        const openConfigs = this.paper.positions.map((p) => p.cfg);
+        const held = pairs === coordinationPairs
+          ? heldCoordinationProtects(openConfigs, pairs, currentProtects)
+          : heldHistProtects(openConfigs, pairs, currentProtects);
+        for (const [pair, ps] of Object.entries(held)) {
+          const [bot, ind] = pair.split("|");
+          const list = (sigHist[pair] ??= []);
+          const current = new Set([...currentProtects, ...list].map((p) => configId(bot as import("../domain/types.ts").BotType, ind, laneProtect(p, ind))));
+          for (const h of ps) {
+            const id = configId(bot as import("../domain/types.ts").BotType, ind, laneProtect(h, ind));
+            if (!current.has(id)) {
+              list.push(h);
+              retainedSignalIds.add(id);
+            }
           }
         }
       }
@@ -3205,12 +3262,17 @@ export class CoreRuntime {
       for (const c of uStage.caches) c.clear();
       if (u !== uStage) for (const c of u.caches) c.clear();
     }
+    const sourceHistConfigs = [...sourcePairs].reduce((n, pair) => n + (sigHist[pair]?.length ?? 0), 0);
+    const coordinationHistConfigs = [...coordinationPairs].reduce((n, pair) => n + (sigHist[pair]?.length ?? 0), 0);
     this.status.signals = {
       enabled: sig.enabled,
       combos: pipeline.s1.filter((r) => isSignalInd(r.ind)).length,
       active: sigActive.size,
       pairs: sigPairs.size,
-      configs: sigPairs.size * signalProtects(sig).length + Object.values(sigHist).reduce((a, x) => a + x.length, 0),
+      configs: sourcePairs.size * standard.length + sourceHistConfigs + coordinationPairs.size * coordProtects.length + coordinationHistConfigs,
+      coordinationPairs: coordinationPairs.size,
+      coordinationConfigs: coordinationPairs.size * coordProtects.length + coordinationHistConfigs,
+      coordinationActive: [...sigActive].filter((key) => isSignalCoordinationInd(key.split("|")[1] ?? "")).length,
       discoveryPairs: wf.signalBasePassed.size,
       representativePassed: representativePassed.size,
       representativeBaseGate: sig.baseGate !== false,
@@ -3310,6 +3372,7 @@ export class CoreRuntime {
       what: string,
       floors: EntryFloors,
     ): Promise<ConfigTape[] | null> => {
+      const signalStage = what.startsWith("signal");
       let workerTapes: ConfigTape[] | null = null;
       if (workersAvailable() && !this.workersBroken && pairs.size) {
         const n = poolSize();
@@ -3326,7 +3389,7 @@ export class CoreRuntime {
         order.forEach((k, i) => parts[i % parts.length].push(k));
         // each message carries its own pairs' share of the floors (Base ranges, targets, held ids, own configs)
         const floorsOf = floorsForPairs(floors);
-        const stage = what === "signal tapes" ? "Signals" : "Tapes";
+        const stage = signalStage ? "Signals" : "Tapes";
         // the pairs of this compute (a large universe: tens of thousands of tapes from them)
         const tapeLabel = `${what} on ${n} cores · ${pairs.size} pairs`;
         this.setStage(stage, 0, 1, tapeLabel);
@@ -3383,7 +3446,7 @@ export class CoreRuntime {
           if (floors.buildStats) for (const r of res) mergeBuildStats(floors.buildStats, r.buildStats ?? []);
           workerTapes = [];
           for (const b of buckets) for (const t of b) workerTapes.push(t);
-          this.status.phases[what === "strategy tapes" ? "Tapes" : what === "carried tapes" ? "Carried tapes" : "Signal tapes"] = {
+          this.status.phases[what === "strategy tapes" ? "Tapes" : what === "carried tapes" ? "Carried tapes" : what === "signal coordination tapes" ? "Signal coordination tapes" : "Signal tapes"] = {
             ms: performance.now() - tt,
             maxSliceMs: 0,
             slowest: `${n} cores · ${parts.filter((p) => p.length).length} replies`,
@@ -3401,7 +3464,7 @@ export class CoreRuntime {
         buildTapesGen(wu, protects, s.cost, dcaFor, pairs, s.tactics, adjustNow, floors),
         (p) =>
           this.setStage(
-            what === "signal tapes" ? "Signals" : "Tapes",
+            signalStage ? "Signals" : "Tapes",
             p.done,
             p.total,
             `${what === "strategy tapes" ? "strategy tapes (normal · trailing · DCA · DCA Active)" : what} · ${pairs.size} pairs`,
@@ -3409,8 +3472,7 @@ export class CoreRuntime {
         gen,
       );
     };
-    // a pair computes the cells it passed in Base; a held pair that failed Base has an explicit empty entry, so only
-    // its exact held configs are rebuilt and cannot regain every range by being absent from the filter
+    // a pair computes its Base-passed ranges; a failed held pair rebuilds only its exact retained configs
     // partial processing (memory): while the new tapes are built, the previous set keeps only what live can act on
     // during the compute — and, under a memory fallback, the ranges this compute does not rebuild (carried, carryTags)
     this.setStage("Tapes", 0, 1, "preparing: slimming the previous tapes");
@@ -3418,7 +3480,7 @@ export class CoreRuntime {
     // every set's completeness: grid cells per indication × range × type, built / kept / not built and why
     const buildStats = new Map<string, TapeBuildStat>();
     const built = await tapesFor(main, wf.protects, dcaOpt, "strategy tapes", {
-      ...protectFloors(s),
+      ...protectFloors(s, rangeFitCutT),
       pairTags: this.basePairTags,
       pairTps,
       heldIds,
@@ -3441,7 +3503,7 @@ export class CoreRuntime {
           carriedHeld.dcaProtects.length ? { ...dcaOpt, protects: carriedHeld.dcaProtects, axis: undefined } : undefined,
           "carried tapes",
           {
-            ...protectFloors(s),
+            ...protectFloors(s, rangeFitCutT),
             pairTags: this.basePairTags,
             pairTps,
             heldIds,
@@ -3462,33 +3524,65 @@ export class CoreRuntime {
             noDca: !sig.strategies.dca,
           }
         : undefined;
-    const sigTapes = sigPairs.size
-      ? await tapesFor(sigPairs, signalProtects(sig), sigStrat, "signal tapes", {
+    const pairProtectsOf = (pairs: ReadonlySet<string>) => Object.fromEntries(
+      [...pairs].flatMap((pair) => sigHist[pair]?.length ? [[pair, sigHist[pair]!]] : []),
+    );
+    const sourceHist = pairProtectsOf(sourcePairs);
+    const coordHist = pairProtectsOf(coordinationPairs);
+    const coordStrat = sigStrat ? { ...sigStrat, protects: coordProtects } : undefined;
+    const sourceTapes = sourcePairs.size
+      ? await tapesFor(sourcePairs, standard, sigStrat, "signal tapes", {
           minSl: sig.minSl,
           minTrail: sig.minTrail,
           signalReferenceGrid: true,
           entry: sig.filter.trendH > 0 || sig.filter.volFloor > 0 ? sig.filter : null,
-          pairProtects: sigHist,
+          pairProtects: sourceHist,
+          heldIds,
+          heldOnlyIds: retainedSignalIds,
+        })
+      : [];
+    if (!sourceTapes || gen !== this.gen) return;
+    const coordTapes = coordinationPairs.size
+      ? await tapesFor(coordinationPairs, coordProtects, coordStrat, "signal coordination tapes", {
+          minSl: sig.minSl,
+          minTrail: sig.minTrail,
+          signalReferenceGrid: true,
+          entry: sig.filter.trendH > 0 || sig.filter.volFloor > 0 ? sig.filter : null,
+          pairProtects: coordHist,
           heldIds,
           heldOnlyIds: retainedSignalIds,
         })
       : [];
     sharedWuMemo = null;
-    if (!sigTapes || gen !== this.gen) return;
+    if (!coordTapes || gen !== this.gen) return;
+    const sigTapes = [...sourceTapes, ...coordTapes];
     // the realtime entry step rebuilds the seated configs with exactly these arguments (fastStep) — every range's
     // cells, a carried one's included (it builds only the seated ids: under a memory fallback the seated Micro /
     // Minimal configs took no new entry between computes)
     this.fastArgs = {
-      main: { protects: this.wf.protects, dcaFor: { ...dcaOpt, protects: this.wf.dcaProtects }, floors: { ...protectFloors(s), pairTags: this.basePairTags, pairTps, heldIds, microOwnInds: microOwnInds(s.grid) } },
+      main: { protects: this.wf.protects, dcaFor: { ...dcaOpt, protects: this.wf.dcaProtects }, floors: { ...protectFloors(s, rangeFitCutT), pairTags: this.basePairTags, pairTps, heldIds, microOwnInds: microOwnInds(s.grid) } },
       sig: {
-        protects: signalProtects(sig),
+        protects: standard,
         dcaFor: sigStrat,
         floors: {
           minSl: sig.minSl,
           minTrail: sig.minTrail,
           signalReferenceGrid: true,
           entry: sig.filter.trendH > 0 || sig.filter.volFloor > 0 ? sig.filter : null,
-          pairProtects: sigHist,
+          pairProtects: sourceHist,
+          heldIds,
+          heldOnlyIds: retainedSignalIds,
+        },
+      },
+      coord: {
+        protects: coordProtects,
+        dcaFor: coordStrat,
+        floors: {
+          minSl: sig.minSl,
+          minTrail: sig.minTrail,
+          signalReferenceGrid: true,
+          entry: sig.filter.trendH > 0 || sig.filter.volFloor > 0 ? sig.filter : null,
+          pairProtects: coordHist,
           heldIds,
           heldOnlyIds: retainedSignalIds,
         },
@@ -3568,7 +3662,10 @@ export class CoreRuntime {
       this.hedgeKeys = new Set((sim.hedgeEnd ?? []).filter((k) => !sigActive.has(k)));
       for (const k of this.hedgeKeys) sigActive.add(k);
       this.wf.signalActive = sigActive;
-      if (this.status.signals) this.status.signals.active = sigActive.size;
+      if (this.status.signals) {
+        this.status.signals.active = sigActive.size;
+        this.status.signals.coordinationActive = [...sigActive].filter((key) => isSignalCoordinationInd(key.split("|")[1] ?? "")).length;
+      }
     } else this.wf.signalActive = wf.signalActive;
     // stage sets of this compute, for the self-audit (Base-validated → Main config sets → Real → trades)
     this.stageSets = {
@@ -3598,6 +3695,9 @@ export class CoreRuntime {
         yield 0;
         const st = unitStatsReport(unitStatsOf(xs), xs.length);
         const tl = openTimeline(xs, sim.startT, sim.endT);
+        const coord = xs.filter((x) => isSignalCoordinationInd(x.cfg.split("|")[1] ?? ""));
+        const coordStats = unitStatsOf(coord);
+        const coordTimeline = openTimeline(coord, sim.startT, sim.endT);
         yield 0;
         return {
           disabled: sig.guard.enabled ? g.disabledKeys(sig.guard.lastN).length : 0,
@@ -3611,6 +3711,13 @@ export class CoreRuntime {
           orders: xs.length,
           peakPositions: tl.maxPositions,
           peakOrders: tl.maxOrders,
+          coordinationTrades: coord.length,
+          coordinationPf: coordStats.pf,
+          coordinationNet: coordStats.net,
+          coordinationPositions: closedPositions(coord),
+          coordinationOrders: coord.length,
+          coordinationPeakPositions: coordTimeline.maxPositions,
+          coordinationPeakOrders: coordTimeline.maxOrders,
         };
       };
       Object.assign(sigStatus, await this.drive("Signal status", sigSummary(), () => undefined, gen));
@@ -3634,7 +3741,7 @@ export class CoreRuntime {
     );
     // every preset on the same tapes (the Compare page): after the paper step, so the book never waits for a UI table
     // (CTS_CORE_COMPARE=0 on live desks and session runs: no comparison at all)
-    this.compareInput = process.env.CTS_CORE_COMPARE !== "0" ? { tapes, wf, wu, startT: sim.startT, endT: sim.endT } : null;
+    this.compareInput = process.env.CTS_CORE_COMPARE !== "0" ? { tapes, wf, wu, startT: sim.startT, endT: sim.endT, gen, key: computeKey(this.settings, this.wf) } : null;
     this.computeSummary = `PF ${primaryPfLabel(sim.stats)} · DDT ${sim.stats.ddt.toFixed(1)}h · green ${Math.round(sim.stats.gh * 100)}% · validate last ${wf.validLastN ?? 0} · live last ${wf.lastN}`;
     // the paper step on the new tapes follows in this cycle (it was "Real 100 %" again after Compare — backwards)
     this.setStage("Paper", 0, 1, `paper step next · ${this.computeSummary}`);
@@ -3666,7 +3773,7 @@ export class CoreRuntime {
         dcaOpt: { protects: countDcaProtects, dca: wf.dca, axis: s.axis },
         common: { evaluationFromT: this.evaluationFromT, bars: sharedU, cost: s.cost, tactics: s.tactics,
           options: { gates: s.gates, cost: s.cost, cutT: wf.causalBase ? runStartT : u.nowT, fromT: uStage.startT },
-          floors: { ...protectFloors(s), pairTags: countTags, countFitProtects: countProtects, microOwnInds: microOwnInds(s.grid) },
+          floors: { ...protectFloors(s, rangeFitCutT), pairTags: countTags, countFitProtects: countProtects, microOwnInds: microOwnInds(s.grid) },
         },
       };
       this.baseConfigRunner.request({ ...input, key: baseConfigJobKey(input), settingsAt });
@@ -3715,7 +3822,26 @@ export class CoreRuntime {
     wu: ReturnType<typeof makeUniverse>;
     startT: number;
     endT: number;
+    gen: number;
+    key: string;
   } | null = null;
+  private compareAbort: AbortController | null = null;
+  private compareRetryAt = 0;
+  private cancelCompare(reason: string) {
+    const pending = this.compareAbort || this.compareInput;
+    this.compareAbort?.abort(new Error(`Compare canceled: ${reason}`));
+    this.compareInput = null;
+    this.compareRetryAt = 0;
+    if (pending && this.status.compare)
+      this.status.compare = { ...this.status.compare, running: false, deferred: `Compare canceled: ${reason}`, retryAt: undefined };
+  }
+  /** Uses the tighter host/cgroup reading, independently of the foreground compute's guard. */
+  private compareAvailableBytes(): number { return memInfo().availMb * 1048576; }
+  private compareOnWorkers(
+    messages: Array<Record<string, unknown>>, size: number, progress: (fraction: number) => void, signal: AbortSignal,
+  ) {
+    return runOnWorkers<{ results: Array<{ name: string } & Record<string, unknown>> }>(messages, size, 15 * 60_000, progress, false, signal);
+  }
 
   /**
    * Every preset on the compute's tapes, side by side (with / without Block, DCA and Active) for the Compare page:
@@ -3726,87 +3852,135 @@ export class CoreRuntime {
     const input = this.compareInput;
     this.compareInput = null;
     if (!input) return;
+    const current = () => input.gen === gen && gen === this.gen && input.key === computeKey(this.settings, this.wf);
+    if (!current()) return;
     const { tapes, wf, wu, startT, endT } = input;
+    const previous = this.status.compare;
+    const names = Object.keys(STRATEGY_PRESETS);
+    const defer = (reason: string) => {
+      // Keep only the latest snapshot; a stop/settings change must never resurrect an old job.
+      if (!current() || this.stopped) return;
+      if (!this.compareInput) this.compareInput = input;
+      this.compareRetryAt = Date.now() + 5000;
+      this.status.compare = { ...previous, running: false, done: previous?.done ?? 0, total: previous?.total ?? names.length,
+        deferred: reason, retryAt: this.compareRetryAt };
+    };
+    const estimate = compareTapeBytes(tapes);
+    const workerPath = names.length > 0 && workersAvailable() && !this.workersBroken;
+    let n = compareWorkers(workerPath ? poolSize() : 1, estimate, this.compareAvailableBytes(), workerPath);
+    if (names.length && n === 0) { defer("Compare deferred: insufficient memory for packing and walk-forward state"); return; }
+    const controller = new AbortController();
+    this.compareAbort = controller;
+    const checkMemory = () => {
+      if (this.compareAvailableBytes() < memHardMb() * 1048576 && !controller.signal.aborted)
+        controller.abort(new CompareMemoryDeferred("Compare deferred: memory fell below the hard reserve"));
+      controller.signal.throwIfAborted();
+    };
+    const monitor = setInterval(() => { try { checkMemory(); } catch { /* the owned job observes its aborted signal */ } }, 1000);
+    monitor.unref?.();
+    const guarded = function* <T, R>(work: Generator<T, R>): Generator<T, R> {
+      try {
+        for (;;) { checkMemory(); const r = work.next(); if (r.done) return r.value; yield r.value; }
+      } finally { work.return?.(undefined as R); }
+    };
     const compareAt = (done: number, total: number) => {
+      checkMemory();
       this.status.compare = { running: true, done, total, at: this.status.compare?.at };
       this.status.heartbeat = Date.now();
     };
     const presets: Record<string, unknown> = {};
-    const names = Object.keys(STRATEGY_PRESETS);
     const tc = performance.now();
     let maxSlice = 0;
-    // on the worker cores when available: the presets are dealt round-robin, each worker walks its share
-    let viaWorkers = false;
-    if (names.length && workersAvailable() && !this.workersBroken) {
-      // one shared buffer + one metadata string for every worker (cloning the tape objects per worker stalled
-      // the event loop for seconds at 40+ symbols)
-      const packed = await this.drive("Pack tapes", packTapesGen(tapes), () => undefined, gen);
-      if (gen !== this.gen) return;
-      // each worker walks every tape once per preset: on a large book fewer workers at once keep the memory
-      // inside the machine (the presets queue on the pool)
-      const n = compareWorkers(poolSize(), packed.sab.byteLength);
-      const parts: string[][] = Array.from({ length: n }, () => []);
-      names.forEach((nm, i) => parts[i % n].push(nm));
-      compareAt(0, names.length);
-      try {
-        const res = await runOnWorkers<{
-          results: Array<{ name: string } & Record<string, unknown>>;
-        }>(
-          parts
-            .filter((p) => p.length)
-            .map((pp) => ({
-              type: "compare",
-              nowT: wu.nowT,
-              baseTf: wu.baseTf,
-              packed,
-              wf,
-              presets: pp.map((name) => ({ name, toggles: STRATEGY_PRESETS[name].toggles })),
-            })),
-          n,
-          15 * 60_000,
-          (fraction) => {
-            if (gen === this.gen) compareAt(fraction, 1);
-          },
-        );
+    try {
+      // on the worker cores when available: the presets are dealt round-robin, each worker walks its share
+      let viaWorkers = false;
+      if (workerPath) {
+        // one shared buffer + one metadata string for every worker (cloning the tape objects per worker stalled
+        // the event loop for seconds at 40+ symbols)
+        const packed = await this.drive("Pack tapes", guarded(packTapesGen(tapes)), () => undefined, gen);
         if (gen !== this.gen) return;
-        for (const x of res.flatMap((r) => r.results)) {
-          const { name, ...rest } = x;
-          presets[name] = {
-            label: STRATEGY_PRESETS[name].label,
-            toggles: STRATEGY_PRESETS[name].toggles,
-            ...rest,
-          };
+        // each worker walks every tape once per preset: on a large book fewer workers at once keep the memory
+        // inside the machine (the presets queue on the pool)
+        // Recheck after packing; another runtime may have consumed the original admission headroom.
+        // memInfo can reuse a one-second reading. Rechecking must never increase the original admission
+        // using headroom already spent on the packed copy.
+        n = Math.min(n, compareWorkers(poolSize(), estimate, this.compareAvailableBytes(), false));
+        if (n === 0) throw new CompareMemoryDeferred("Compare deferred: insufficient memory after packing");
+        const parts: string[][] = Array.from({ length: n }, () => []);
+        names.forEach((nm, i) => parts[i % n].push(nm));
+        compareAt(0, names.length);
+        try {
+          const res = await this.compareOnWorkers(
+            parts
+              .filter((p) => p.length)
+              .map((pp) => ({
+                type: "compare",
+                nowT: wu.nowT,
+                baseTf: wu.baseTf,
+                packed,
+                wf,
+                presets: pp.map((name) => ({ name, toggles: STRATEGY_PRESETS[name].toggles })),
+              })),
+            n,
+            (fraction) => {
+              // A worker event listener must not throw: abort its owned call through the signal instead.
+              if (gen === this.gen) try { compareAt(fraction, 1); } catch (err) { if (!controller.signal.aborted) controller.abort(err); }
+            },
+            controller.signal,
+          );
+          checkMemory();
+          if (!current()) return;
+          for (const x of res.flatMap((r) => r.results)) {
+            const { name, ...rest } = x;
+            presets[name] = {
+              label: STRATEGY_PRESETS[name].label,
+              toggles: STRATEGY_PRESETS[name].toggles,
+              ...rest,
+            };
+          }
+          viaWorkers = true;
+        } catch (err) {
+          if (gen !== this.gen) return;
+          if (controller.signal.aborted) throw controller.signal.reason;
+          if (isWorkersAbort(err)) throw new CompareMemoryDeferred("Compare deferred: worker pool stopped under memory pressure");
+          this.workersFailed(err, "Compare");
         }
-        viaWorkers = true;
-      } catch (err) {
-        if (gen !== this.gen) return;
-        this.workersFailed(err, "Compare");
       }
+      for (let i = 0; i < (viaWorkers ? 0 : names.length); i++) {
+        const name = names[i];
+        compareAt(i, names.length);
+        const r = await this.drive(
+          "Compare",
+          guarded(walkForwardGen(wu, tapes, { ...wf, toggles: STRATEGY_PRESETS[name].toggles })),
+          () => undefined,
+          gen,
+        );
+        maxSlice = Math.max(maxSlice, this.status.phases.Compare?.maxSliceMs ?? 0);
+        presets[name] = {
+          label: STRATEGY_PRESETS[name].label,
+          toggles: STRATEGY_PRESETS[name].toggles,
+          stats: r.stats,
+          hourly: r.hourly,
+          byKind: r.byKind,
+          skips: r.skips,
+          blocks: r.blocks,
+          stable: r.stable,
+        };
+      }
+      checkMemory();
+      if (!current()) return;
+      this.status.phases.Compare = { ms: performance.now() - tc, maxSliceMs: maxSlice };
+      this.db.kvSet("presetSims", { at: Date.now(), startT, endT, presets });
+      this.compareRetryAt = 0;
+      this.status.compare = { running: false, done: names.length, total: names.length, at: Date.now() };
+    } catch (err) {
+      if (err instanceof CompareMemoryDeferred) { defer(err.message); return; }
+      if (controller.signal.aborted && (this.stopped || !current())) return;
+      throw err;
+    } finally {
+      clearInterval(monitor);
+      if (this.compareAbort === controller) this.compareAbort = null;
     }
-    for (let i = 0; i < (viaWorkers ? 0 : names.length); i++) {
-      const name = names[i];
-      compareAt(i, names.length);
-      const r = await this.drive(
-        "Compare",
-        walkForwardGen(wu, tapes, { ...wf, toggles: STRATEGY_PRESETS[name].toggles }),
-        () => undefined,
-        gen,
-      );
-      maxSlice = Math.max(maxSlice, this.status.phases.Compare?.maxSliceMs ?? 0);
-      presets[name] = {
-        label: STRATEGY_PRESETS[name].label,
-        toggles: STRATEGY_PRESETS[name].toggles,
-        stats: r.stats,
-        hourly: r.hourly,
-        byKind: r.byKind,
-        skips: r.skips,
-        blocks: r.blocks,
-        stable: r.stable,
-      };
-    }
-    this.status.phases.Compare = { ms: performance.now() - tc, maxSliceMs: maxSlice };
-    this.db.kvSet("presetSims", { at: Date.now(), startT, endT, presets });
-    this.status.compare = { running: false, done: names.length, total: names.length, at: Date.now() };
   }
 
   /** Write rows in small transactions, yielding between them. */
@@ -5035,7 +5209,7 @@ export class CoreRuntime {
     const adjust = s.adjust?.enabled ? this.adjustState() : null;
     // the engine's tape rules: only the ranges and targets a pair passed in Base, and the Micro indication rule (the
     // floors alone built every range and target of every pair, and Micro cells for every indication)
-    const floors: EntryFloors = { ...protectFloors(s), pairTags, pairTps, microOwnInds: microOwnInds(s.grid) };
+    const floors: EntryFloors = { ...protectFloors(s, startT), pairTags, pairTps, microOwnInds: microOwnInds(s.grid) };
     let tapes: ConfigTape[] = [];
     // pairs in the engine's combo order, cut into contiguous slices → identical tape order to one process
     // (lane combos included: the pairs are lane ids when the settings carry timeframe lanes)
@@ -5071,7 +5245,10 @@ export class CoreRuntime {
       );
     // Signals: scored on the window before the backtest, the best N trade their 42 Normal + 35 Trailing configs
     const sig = signalSettings(s.signals);
-    const sigCombos = signalCombos(sig, s.tfs);
+    const coordProtects = signalCoordinationProtects(s.grid, s.cost, sig.coordination.ranges);
+    const sigCombos = signalCombos(sig, s.tfs).filter((c) =>
+      !isSignalCoordinationInd(c.ind) || coordProtects.length > 0,
+    );
     let sigActive: Set<string> | undefined;
     if (sigCombos.length) {
       const look = makeUniverse(
@@ -5109,20 +5286,58 @@ export class CoreRuntime {
         (!signalFamilies || signalFamilies.some((f) => evalFamilyMatch(f, c.bot, c.ind, []))));
       const sigPairs = signalEvaluationPairs(initialized, runs, sig,
         (r) => passesBase(r.full, baseSetsGates(s.gates)));
-      if (sigPairs.size)
-        tapes = tapes.concat(
-          await this.sliced(
-            buildTapesGen(u, signalProtects(sig), s.cost, undefined, sigPairs, s.tactics, adjust, {
-              minSl: sig.minSl,
-              minTrail: sig.minTrail,
-              signalReferenceGrid: true,
-              // the entry filter (trend / volatility floor) the compute builds the signal tapes with
-              entry: sig.filter.trendH > 0 || sig.filter.volFloor > 0 ? sig.filter : null,
+      if (sigPairs.size) {
+        const coordinationPairs = new Set([...sigPairs].filter((pair) => isSignalCoordinationInd(pair.slice(pair.indexOf("|") + 1))));
+        const sourcePairs = new Set([...sigPairs].filter((pair) => !coordinationPairs.has(pair)));
+        const history = sig.hist.enabled
+          ? await this.sliced(
+              signalHistProtectsGen(
+                u,
+                sigPairs,
+                sig,
+                s.tactics,
+                startT,
+                signalHistValidationOf(s, coordProtects),
+              ),
+              () => undefined,
+              job,
+            )
+          : {};
+        const taggedHistory = signalCoordinationHistory(history, coordinationPairs, coordProtects);
+        const historyOf = (pairs: ReadonlySet<string>) => Object.fromEntries(
+          [...pairs].flatMap((pair) => taggedHistory[pair]?.length ? [[pair, taggedHistory[pair]!]] : []),
+        );
+        const entryFloors = {
+          minSl: sig.minSl,
+          minTrail: sig.minTrail,
+          signalReferenceGrid: true,
+          entry: sig.filter.trendH > 0 || sig.filter.volFloor > 0 ? sig.filter : null,
+        };
+        const sigStrat = sig.strategies.dca || sig.strategies.axis
+          ? { ...dcaOpt, axis: sig.strategies.axis ? s.axis : undefined, noDca: !sig.strategies.dca }
+          : undefined;
+        const coordStrat = sigStrat ? { ...sigStrat, protects: coordProtects } : undefined;
+        if (sourcePairs.size) {
+          tapes = tapes.concat(await this.sliced(
+            buildTapesGen(u, signalProtects(sig), s.cost, sigStrat, sourcePairs, s.tactics, adjust, {
+              ...entryFloors,
+              pairProtects: historyOf(sourcePairs),
             }),
             () => undefined,
             job,
-          ),
-        );
+          ));
+        }
+        if (coordinationPairs.size) {
+          tapes = tapes.concat(await this.sliced(
+            buildTapesGen(u, coordProtects, s.cost, coordStrat, coordinationPairs, s.tactics, adjust, {
+              ...entryFloors,
+              pairProtects: historyOf(coordinationPairs),
+            }),
+            () => undefined,
+            job,
+          ));
+        }
+      }
     }
     this.checkBacktest(job);
     job.stage = "Simulation";
@@ -5870,7 +6085,9 @@ export class CoreRuntime {
     const lvGroupMin =
       this.settings.live.liveMinPf ??
       ((g: string) => {
-        const tag = RANGE_TAGS.find((t) => RANGE_LABEL[t] === g);
+        const prefix = "Signals Coordination · ";
+        const label = g.startsWith(prefix) ? g.slice(prefix.length) : g;
+        const tag = RANGE_TAGS.find((t) => RANGE_LABEL[t] === label);
         return minPfOf(this.settings.gates, tag);
       });
     // the group gates as of a time (each distinct entry time of the step once)
@@ -6003,6 +6220,8 @@ export class CoreRuntime {
       perSide.set(`${cls}|${op.side}`, sd + 1);
       openBy.set(cls, (openBy.get(cls) ?? 0) + 1);
       // new entries take the relation volume the simulation ended with (within the Block maximum)
+      const vf = held ? 1 : volumeFactorForIndication(tp.ind, this.wf.indicationVolumeFactors);
+      const positionVf = held ? (prev?.volFactor ?? 1) : vf;
       const cv = !held && s2End?.factor ? this.s2EntryVolume(d.vol) : 1;
       const hedge = !held && this.isHedgeEntry(op);
       const appliedHedgeVol = hedge ? this.wf.coord?.hedgeVolumeFactor ?? 1 : 1;
@@ -6015,6 +6234,7 @@ export class CoreRuntime {
         : signalRange
           ? (this.wf.signalRangeVolumeFactors?.[signalRange] ?? 1)
           : (this.wf.rangeVolumeFactors?.[rangeOfId(op.cfg) || "wide"] ?? 1);
+      const recordedRangeVol = held ? prev?.rangeVol ?? 1 : rangeVol;
       openKeys.add(openDupKey(op));
       positions.push({
         ...op,
@@ -6022,9 +6242,11 @@ export class CoreRuntime {
         heldAt: prevByKey.get(posId(op))?.heldAt ?? Date.now(),
         // execution multiple × ladder weight (Axis: every filled rung is volume, as the simulation books it); the
         // live lane asks for this volume, and paper marks mtm (per unit) × it
-        vol: positionVolume(d.vol * cv * appliedHedgeVol * rangeVol, op),
+        vol: positionVolume(d.vol * cv * vf * appliedHedgeVol * rangeVol, op),
+        ...(positionVf !== 1 ? { volFactor: positionVf } : {}),
         ...(coordVol !== 1 ? { coordVol } : {}),
         ...(recordedHedgeVol !== 1 ? { hedgeVol: recordedHedgeVol } : {}),
+        ...(recordedRangeVol !== 1 ? { rangeVol: recordedRangeVol } : {}),
         level: d.level,
         ...(d.legs ? { legs: d.legs } : {}),
         ...(d.blockLevels ? { blockLevels: d.blockLevels, blockEffectiveLevels: d.blockEffectiveLevels,
@@ -6102,7 +6324,16 @@ export class CoreRuntime {
         if (x.exitT < since) break;
         // the tape order's r and vol already carry the ladder (Σ legs): scaled by the execution multiple only
         const v = positionMult(p);
-        trades.push({ ...x, r: x.r * v, vol: (x.vol ?? 1) * v, mult: v });
+        trades.push({
+          ...x,
+          r: x.r * v,
+          vol: (x.vol ?? 1) * v,
+          mult: v,
+          ...(p.coordVol !== undefined ? { coordVol: p.coordVol } : {}),
+          ...(p.volFactor !== undefined ? { volFactor: p.volFactor } : {}),
+          ...(p.hedgeVol !== undefined ? { hedgeVol: p.hedgeVol } : {}),
+          ...(p.rangeVol !== undefined ? { rangeVol: p.rangeVol } : {}),
+        });
         inSim.add(k);
         break;
       }
@@ -6490,6 +6721,7 @@ export class CoreRuntime {
           protect: p.protect ?? tp.protect,
           barT,
           kind: tp.kind,
+          volFactor: volumeFactorForIndication(tp.ind, this.wf.indicationVolumeFactors),
           ...(coordVol !== 1 ? { coordVol } : {}),
           ...(hedge ? { hedge: true, hedgeVol: this.wf.coord?.hedgeVolumeFactor ?? 1 } : {}),
         });
@@ -6578,6 +6810,8 @@ export interface LiveIntent {
   side: 1 | -1;
   protect: Protect;
   barT: number;
+  /** Extra multiplier relative to a normal order; 1 = neutral. */
+  volFactor?: number;
   /** sub-strategy of the set (trailing / DCA / Axis exits are managed by the simulation) */
   kind?: string;
   /** Stable-02 relation-volume multiplier captured by the current simulation (neutral = omitted). */
@@ -7162,12 +7396,21 @@ async function mapLimit<T>(
 /** Hard floors of the engine configs' stop and trailing distance (Settings → Protect grid). */
 /**
  * Workers for the preset comparison: each one holds its own walk-forward state over every tape (about the size of
- * the packed tapes again). At most as many as the free memory carries after a reserve, at least one.
+ * the packed tapes again). Admission includes the new packed copy before allocating it. Zero means defer.
  */
-export function compareWorkers(pool: number, tapeBytes: number, freeBytes = os.freemem()): number {
+export function compareWorkers(pool: number, tapeBytes: number, freeBytes = memInfo().availMb * 1048576, needsPackedCopy = true): number {
+  if (![pool, tapeBytes, freeBytes].every(Number.isFinite) || pool < 1 || tapeBytes < 0) return 0;
   const per = Math.max(256e6, tapeBytes * 1.1);
-  const fit = Math.floor(Math.max(0, freeBytes - 1e9) / per);
-  return Math.max(1, Math.min(pool, fit));
+  const reserve = Math.max(1e9, memHardMb() * 1048576);
+  const fit = Math.floor(Math.max(0, freeBytes - reserve - (needsPackedCopy ? tapeBytes : 0)) / per);
+  return Math.max(0, Math.min(Math.floor(pool), fit));
+}
+class CompareMemoryDeferred extends Error {}
+/** Packed columns plus conservative metadata/open-position space; computed without allocating a SAB. */
+export function compareTapeBytes(tapes: readonly ConfigTape[]): number {
+  let bytes = 8;
+  for (const t of tapes) bytes = Math.ceil(bytes / 8) * 8 + tapeBytes(t.n) + 2048 + ((t.open?.length ?? 0) + (t.pending?.length ?? 0)) * 512;
+  return bytes;
 }
 
 /**
@@ -7180,6 +7423,71 @@ export function microOwnInds(g: CoreSettings["grid"] | undefined): MicroIndRule 
 
 /** every range tag a protect grid can carry */
 export const ALL_RANGE_TAGS = ["mc", "mn", "mp", "sh", "gn", "lg"] as const;
+
+/** Historic signal configs use the eventual stage PF floors; coordinator variants also keep each enabled range's own floor. */
+function signalHistValidationOf(
+  settings: CoreSettings,
+  coordinatorProtects: readonly Protect[],
+): SignalHistValidation {
+  const tags = new Set<"sh" | "gn" | "lg">();
+  for (const protect of coordinatorProtects)
+    if (protect.tag === "sh" || protect.tag === "gn" || protect.tag === "lg") tags.add(protect.tag);
+  return {
+    cost: settings.cost,
+    minPf: settings.gates.minPf,
+    minTrades: settings.gates.minTrades,
+    maxDdr: settings.gates.maxDdr,
+    rangeMinPf: Object.fromEntries([...tags].map((tag) => [tag, minPfOf(settings.gates, tag)])),
+  };
+}
+
+/** Position-cost exit configs for Signals Coordination, restricted to the selected Short / Normal(General) / Long ranges. */
+export function signalCoordinationProtects(
+  grid: CoreSettings["grid"],
+  cost: number,
+  ranges: SignalSettings["coordination"]["ranges"],
+): Protect[] {
+  const selected = signalCoordinationRanges(ranges);
+  const selectedGrid: CoreSettings["grid"] = {
+    ...grid,
+    tp: [],
+    slOfTp: [],
+    trailOfTp: [],
+    short: selected.short ? grid.short : false,
+    general: selected.normal ? grid.general : false,
+    long: selected.long ? grid.long : false,
+    minimal: false,
+    micro: false,
+    minimalPlus: false,
+  };
+  const tags = (p: Protect) => p.tag === "sh" || p.tag === "gn" || p.tag === "lg";
+  const standard = protectGrid(15, selectedGrid, cost).filter(tags);
+  // The original grid yields 4,500 Normal configs across the 15 current coordinator identities. Add untrailed
+  // 12 h, 32 h and 48 h holds, plus 48 h Trailing holds. The 48 h cells are retained because they produce
+  // runtime Strategy Base passes on the frozen IS replay; shorter/longer additions without passes are omitted.
+  const normalRange = (range: typeof grid.short) => range ? { ...range, trailOfTp: [0] } : false;
+  const normalExtension = protectGrid(15, {
+    ...selectedGrid,
+    holdH: [12, 32, 48],
+    short: selected.short ? normalRange(grid.short) : false,
+    general: selected.normal ? normalRange(grid.general) : false,
+    long: selected.long ? normalRange(grid.long) : false,
+  }, cost).filter((p) => tags(p) && p.trail === 0);
+  const trailingExtension = protectGrid(15, {
+    ...selectedGrid,
+    holdH: [48],
+  }, cost).filter((p) => tags(p) && p.trail > 0);
+  const seen = new Set(standard.map((p) => `${p.tp}|${p.sl}|${p.trail}|${p.hold}|${p.tag ?? ""}`));
+  return [
+    ...standard,
+    ...[...normalExtension, ...trailingExtension].filter((p) => {
+      const key = `${p.tp}|${p.sl}|${p.trail}|${p.hold}|${p.tag ?? ""}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }),
+  ];
+}
 /** computes kept in status.baseHistory */
 export const BASE_HISTORY_N = 48;
 
@@ -7280,7 +7588,15 @@ export function basePass(
   return { passed, pairTags, pairTps, added };
 }
 
-function protectFloors(s: CoreSettings): EntryFloors {
+/** A failed pair retained for its open configs has no eligible ranges; an absent entry means unrestricted. */
+export function restrictHeldBasePairs(
+  pairTags: Record<string, readonly string[]>,
+  heldPairs: ReadonlySet<string>,
+): void {
+  for (const pair of heldPairs) if (!Object.hasOwn(pairTags, pair)) pairTags[pair] = [];
+}
+
+function protectFloors(s: CoreSettings, rangeFitCutT?: number): EntryFloors {
   const fit = s.grid?.rangeFit;
   return {
     minSl: s.protectFloor?.minSl ?? DEFAULT_SETTINGS.protectFloor.minSl,
@@ -7288,6 +7604,7 @@ function protectFloors(s: CoreSettings): EntryFloors {
     // range cells fitted to the indication's horizon only when the fit is on; every computed tape is kept (the
     // gates decide the seats; a tape that cannot seat yet still shows in the evaluation and statistics)
     rangeFit: fit && fit.enabled !== false ? { ...DEFAULT_RANGE_FIT, ...fit } : null,
+    ...(rangeFitCutT === undefined ? {} : { rangeFitCutT }),
     rangeMinN: 0,
     rangeMinTf: rangeMinTfOf(s.grid ?? {}),
   };
