@@ -16,6 +16,7 @@ import {
   baseRangeProtects,
   basePassTags,
   baseRangeCounts,
+  basePairRows,
   baseRangeWhy,
   cellStats,
   runCombo,
@@ -219,7 +220,7 @@ test("desk presets: measured on three windows, positive, valid settings, never t
     assert.ok(p.id.startsWith("desk-"), p.id);
     assert.equal("live" in p.settings, false, p.id);
     checkSettings(p.settings as never);
-    assert.ok(p.metrics.pf >= 1.3, `${p.id} PF ${p.metrics.pf}`);
+    assert.ok(p.metrics.pf !== null && p.metrics.pf >= 1.3, `${p.id} PF ${p.metrics.pf}`);
     assert.ok(p.metrics.net > 0, p.id);
     assert.equal(p.metrics.checks?.length, 3, p.id);
     assert.ok(RESEARCH_PRESETS.some((r) => r.id === p.id), `${p.id} listed`);
@@ -460,6 +461,18 @@ test("sets per range after Base count only the pairs a range builds sets for; a 
   assert.equal(by.gn.passed, 0);
   // a plain indication takes the base timeframe
   assert.equal(rangeAppliesTo("rsi-mom-14-20", "sh", { ...o, baseTf: 1 }), false);
+});
+
+test("empty Base samples keep their close count but have no measured PF", () => {
+  const empty = { n: 0, pf: 0, net: 0, mdd: 0 } as never;
+  const run = { bot: "follow" as const, ind: "rsi-mom-14-20@m15", full: empty };
+  const rows = baseRangeCounts([run], { minPf: 1.1, minTrades: 12 }, ["mc"]);
+  assert.equal(rows[0].evaluated, 1);
+  assert.equal(rows[0].pfMedian, null);
+  assert.equal(rows[0].passed, 0);
+  assert.deepEqual(basePairRows([run], {}), [
+    { pair: "follow|rsi-mom-14-20@m15", n: 0, pf: null, net: 0, passed: false, tags: [] },
+  ]);
 });
 
 test("a pair computes only the cells of the ranges it passed; a pair without Base tags computes every cell", () => {

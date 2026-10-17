@@ -602,6 +602,9 @@ async function runEngine() {
     seenSyms.add(tp.syms);
     for (const x of tp.syms) uni.add(x);
   }
+  // A fully rejected Base run has no tapes, but Base still processed its universe. Use the
+  // report compute's Universe so zero admissions are not mislabeled as zero symbols processed.
+  if (!uni.size) for (const b of rt.lastUniverse?.bars ?? []) if (b.sym) uni.add(b.sym);
   if (uni.size !== rt.candles.size)
     process.stderr.write(`  WARNING: the reported compute covered ${uni.size} of ${rt.candles.size} loaded symbols\n`);
   process.stderr.write(
@@ -2027,6 +2030,11 @@ const sum = (xs, f) => xs.reduce((a, x) => a + f(x), 0);
 const checks = [];
 const check = (name, expected, actual, ok = near(expected, actual)) => checks.push({ name, expected, actual, ok });
 check("funded ownership is known for every nonzero primary slice", 0, tot.unknownAllocations);
+check(
+  "primary return PF has complete unit evidence",
+  0,
+  (tot.unknownReturns ?? 0) + (tot.unknownReturnTotals ?? 0),
+);
 check("Σ hourly virtual orders = total virtual orders", trades.length, sum(hours, (h) => h.virtual.n));
 check("Σ hourly net = total net", tot.net, sum(hours, (h) => h.net));
 check("Σ hourly owned orders closed = total owned orders", tot.n, sum(hours, (h) => h.orders));
@@ -2258,9 +2266,13 @@ if (cov) {
     ["dca-active", tg.dca && tg.dcaActive],
     ["axis", tg.axis],
   ].filter(([, on]) => on);
+  const tapeRows = Object.values(cov.tapes ?? {});
+  const hasSeatableTapeCounts = tapeRows.every((v) => Number.isFinite(v.activeConfigs));
   for (const [t] of typesOn) {
-    const n = Object.entries(cov.tapes).filter(([k]) => k.startsWith(`${t}|`)).reduce((a, [, v]) => a + v.configs, 0);
-    check(`coverage: strategy type ${t} has config sets`, 1, n > 0 ? 1 : 0, n > 0);
+    if (!hasSeatableTapeCounts || !Array.isArray(cov.sets)) continue;
+    const expected = cov.sets.filter((x) => x.kind === t).reduce((a, x) => a + x.kept, 0);
+    const actual = Object.entries(cov.tapes).filter(([k]) => k.startsWith(`${t}|`)).reduce((a, [, v]) => a + v.activeConfigs, 0);
+    check(`coverage: strategy type ${t} active tapes match kept sets`, expected, actual);
   }
   if (raw.settings.signals?.enabled !== false && raw.settings.signals?.trailingOnly?.enabled) {
     const n = Object.entries(cov.tapes).filter(([k]) => k.startsWith("trailing-only|")).reduce((a, [, v]) => a + v.configs, 0);
@@ -2268,9 +2280,11 @@ if (cov) {
   }
   for (const [tag, on] of Object.entries(cov.ranges ?? {})) {
     if (!on) continue;
-    const active = Object.entries(cov.tapes).filter(([k]) => k.endsWith(`|${tag}`)).reduce((a, [, v]) => a + v.activeConfigs, 0);
-    const kept = (cov.sets ?? []).filter((x) => x.tag === tag).reduce((a, x) => a + x.kept, 0);
-    check(`coverage: range ${tag} active tapes match kept sets`, kept, active);
+    if (hasSeatableTapeCounts && Array.isArray(cov.sets)) {
+      const active = Object.entries(cov.tapes).filter(([k]) => k.endsWith(`|${tag}`)).reduce((a, [, v]) => a + v.activeConfigs, 0);
+      const kept = cov.sets.filter((x) => x.tag === tag).reduce((a, x) => a + x.kept, 0);
+      check(`coverage: range ${tag} active tapes match kept sets`, kept, active);
+    }
   }
   if (raw.settings.signals)
     check("coverage: signal combos evaluated", 1, (cov.byKind.signal?.evaluated ?? 0) > 0 ? 1 : 0);
@@ -2298,15 +2312,15 @@ if (cov) {
     }
   }
   // Execution is conditional on a causal seat producing a run entry. Empty ranges are valid when Base or the later
-  // validation admitted no configs; compare actual orders with the executor's per-step taken count instead of
-  // treating a correctly rejected sample as a failed consistency check.
+  // validation admitted no configs; a no-trade sample must not fail a strategy-activity assertion.
   const takenByRange = {};
   for (const step of raw.stepsByRange ?? [])
     for (const [tag, v] of Object.entries(step.byRange ?? {}))
       takenByRange[tag] = (takenByRange[tag] ?? 0) + (v.taken ?? 0);
-  for (const [t] of typesOn) {
+  if (cov.tapes) for (const [t] of typesOn) {
     const n = trades.filter((x) => (x.kind ?? "normal") === t).length + openEnd.filter((x) => (x.kind ?? "normal") === t).length;
-    check(`execution: strategy type ${t} executed orders`, 1, n > 0 ? 1 : 0, n > 0);
+    const configs = Object.entries(cov.tapes).filter(([k]) => k.startsWith(`${t}|`)).reduce((a, [, v]) => a + v.configs, 0);
+    check(`execution: strategy type ${t} output has config tapes`, 0, Number(n > 0 && configs === 0));
   }
   const byTag = new Map();
   for (const x of [...trades, ...openEnd]) {

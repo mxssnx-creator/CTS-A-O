@@ -8,7 +8,7 @@ const { walkForward } = await import("./sim/walkforward.ts");
 const { unitStatsOf, statsOf } = await import("./metrics/stats.ts");
 const { presetSeries } = await import("./statistics.ts");
 const { upsertPreset } = await import("./presets.ts");
-const { connInput, corePresetsData, corePresetSeriesData, corePresetSeriesInput } = await import("./api-data.ts");
+const { connInput, corePresetsData, corePresetSeriesData, corePresetSeriesInput, coreSimData } = await import("./api-data.ts");
 import type { Trade } from "./domain/types.ts";
 
 type Any = any;
@@ -36,7 +36,7 @@ test("saved preset archives cannot expose weighted PF and new saves retain canon
   const runtime = fixture(), sim = runtime.sim!;
   sim.stats = statsOf(sim.trades, END); // retained weighted aggregate must not become a new saved primary result
   const measured = runtime.savePreset("QA verified measured");
-  assert.ok(Math.abs(measured.metrics.pf - 1.36) < 1e-10);
+  assert.ok(Math.abs(measured.metrics.pf! - 1.36) < 1e-10);
   assert.equal(measured.metrics.pfBasis, "unit-net-returns");
   assert.equal(measured.metrics.noLoss, false);
   assert.ok(Math.abs(measured.metrics.gp! - 1.36) < 1e-10);
@@ -123,6 +123,30 @@ test("old backtest and diagram archives cannot claim primary PF or passing unit 
   assert.ok(Math.abs(freshView.series.info.pf - 1.36) < 1e-10);
   assert.ok(Math.abs(freshView.series.info.cash.pf - 0.2) < 1e-10);
   assert.equal(JSON.stringify({ backtests: runtime.db.kvGet("presetBacktests"), series: runtime.db.kvGet("presetSeries") }), before);
+});
+
+test("zero-close current, saved-preset and simulation reports expose PF as unavailable", async () => {
+  const runtime = fixture();
+  runtime.sim!.trades = [];
+  runtime.sim!.openAtEnd = [];
+  runtime.sim!.stats = statsOf([], END);
+
+  const current = await corePresetsData(connInput()) as Any;
+  assert.equal(current.current.n, 0);
+  assert.equal(current.current.pf, null);
+  assert.equal(current.current.pfBasis, "unavailable");
+  assert.equal(current.current.pfConvention, "unavailable");
+  assert.equal(current.current.stable, null);
+  assert.equal(current.current.settledStats.pf, null);
+
+  const saved = runtime.savePreset("QA empty sample");
+  assert.equal(saved.metrics.pf, null);
+  assert.equal(saved.metrics.pfBasis, "unavailable");
+  assert.equal(saved.metrics.pfConvention, "unavailable");
+  const report = await coreSimData(connInput()) as Any;
+  assert.equal(report.sim.stats.n, 0);
+  assert.equal(report.sim.stats.pf, null);
+  assert.equal(report.sim.stats.pfBasis, "unavailable");
 });
 
 test("Presets unknown unit evidence keeps its losing outcome and cannot become a scored zero or passing record", async () => {
