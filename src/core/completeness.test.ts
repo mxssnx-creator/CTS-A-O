@@ -481,6 +481,10 @@ function uiSources(): Map<string, string> {
 const NOT_SHOWN: Record<string, string> = {
   tfMin: "fixed at the 1m base (normalizeLanes forces 1); the lanes are chosen with `tfs`",
   historyDays: "derived: the longest lane history of tfDays (normalizeLanes)",
+  paperNotional:
+    "legacy fixed-sizing fallback for historical records; the page configures balance-percent sizing instead",
+  "live.maxNotionalUsd":
+    "legacy disabled USD ceiling (only zero is accepted); the page offers optional balance-relative limits instead",
   "block.signalsOwn":
     "measured default (a signal's Block level from its own closes, PR #65); not an operator lever",
   "grid.baseTargets":

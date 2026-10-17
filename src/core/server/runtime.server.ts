@@ -52,6 +52,7 @@ import {
   abortWorkers,
   isWorkersAbort,
   poolSize,
+  retireOwnedIdleWorkers,
   runOnWorkers,
   shareBars,
   slices,
@@ -1931,6 +1932,11 @@ export class CoreRuntime {
     this.emitProgress(changed || restart);
   }
 
+  /** A fresh subphase resets its local bar even when it shares a stage name; overall job progress stays monotonic. */
+  private startStage(stage: "Tapes" | "Signals", label: string) {
+    this.setStage(stage, 0, 1, label, true);
+  }
+
   /**
    * Progress is reported at most 4 × a second, and a throttled report is sent 250 ms later (the last fraction of a
    * stage was dropped, leaving the UI on e.g. "Signals 0 %" until the next stage); a new stage is reported at once.
@@ -2845,6 +2851,9 @@ export class CoreRuntime {
 
   async compute(gen = this.gen) {
     const t0 = performance.now();
+    // Foreground workers are no longer needed once every tape is received. Release only this compute's idle
+    // threads before the in-process Real allocation; another runtime can claim a worker at every message handoff.
+    const computeWorkerOwner = {};
     this.dirty = false;
     this.settingsStale = false;
     this.status.state = "computing";
@@ -2973,6 +2982,7 @@ export class CoreRuntime {
           (fraction) => {
             if (gen === this.gen) this.setStage("Base", fraction, 1, baseLabel);
           },
+          false, undefined, computeWorkerOwner,
         );
         if (gen !== this.gen) return;
         // a reply of another shape (a worker file newer / older than this module) is refused: in-process
@@ -3024,7 +3034,7 @@ export class CoreRuntime {
     // after Main up to the tapes (saving the results, the Base rows, the signals' historic configs, slimming the tapes):
     // the job reports it as the start of Tapes, so its bar and heartbeat move (the watchdog abandons a compute whose
     // heartbeat stands still for minutes)
-    this.setStage("Tapes", 0, 1, "preparing: saving the Base / Main results", true);
+    this.startStage("Tapes", "preparing: saving the Base / Main results");
     await this.persistPipeline(pipeline, gen);
     this.pipeline = pipeline;
     this.lastUniverse = u;
@@ -3171,7 +3181,7 @@ export class CoreRuntime {
         if (this.memPressured) throw new Error(this.memLastAbort ?? "memory pressure: compute aborted");
         const cutT = wf.causalBase ? runStartT : u.nowT;
         const histLabel = `preparing: signal historic configs · ${sigPairs.size} pairs`;
-        this.setStage("Tapes", 0, 1, histLabel);
+        this.startStage("Tapes", histLabel);
         let hist: Record<string, Protect[]> | null = null;
         if (workersAvailable() && !this.workersBroken) {
           const order = [...sigPairs];
@@ -3187,6 +3197,7 @@ export class CoreRuntime {
               parts.map((pairs) => ({ type: "signal-hist", evaluationFromT: this.evaluationFromT, bars: sharedU, pairs, sig, tactics: s.tactics, cutT, validation: signalHistValidation })),
               n, 15 * 60_000,
               (fraction) => { if (gen === this.gen) this.setStage("Tapes", fraction, 1, label); },
+              false, undefined, computeWorkerOwner,
             );
             if (gen !== this.gen) return;
             if (this.memPressured) throw new Error(this.memLastAbort ?? "memory pressure: compute aborted");
@@ -3217,7 +3228,7 @@ export class CoreRuntime {
         if (hist === null) {
           // No workers or an ordinary worker failure: the same generator, with the compute's generation/memory
           // checks and heartbeat. A memory-guard abort is rethrown by workersFailed, never retried in-process.
-          this.setStage("Tapes", 0, 1, histLabel);
+          this.startStage("Tapes", histLabel);
           const g = signalHistProtectsGen(
             uStage,
             sigPairs,
@@ -3392,7 +3403,7 @@ export class CoreRuntime {
         const stage = signalStage ? "Signals" : "Tapes";
         // the pairs of this compute (a large universe: tens of thousands of tapes from them)
         const tapeLabel = `${what} on ${n} cores · ${pairs.size} pairs`;
-        this.setStage(stage, 0, 1, tapeLabel);
+        this.startStage(stage, tapeLabel);
         const tt = performance.now();
         const eluT = nodePerf.eventLoopUtilization();
         try {
@@ -3416,6 +3427,7 @@ export class CoreRuntime {
             (fraction) => {
               if (gen === this.gen) this.setStage(stage, fraction, 1, tapeLabel);
             },
+            false, undefined, computeWorkerOwner,
           );
           if (gen !== this.gen) return null;
           const rank = new Map(order.map((k, i) => [k, i]));
@@ -3459,6 +3471,7 @@ export class CoreRuntime {
       }
       if (workerTapes) return workerTapes;
       if (!pairs.size) return [];
+      this.startStage(signalStage ? "Signals" : "Tapes", `${what} · ${pairs.size} pairs`);
       return await this.drive(
         "Tapes",
         buildTapesGen(wu, protects, s.cost, dcaFor, pairs, s.tactics, adjustNow, floors),
@@ -3475,7 +3488,7 @@ export class CoreRuntime {
     // a pair computes its Base-passed ranges; a failed held pair rebuilds only its exact retained configs
     // partial processing (memory): while the new tapes are built, the previous set keeps only what live can act on
     // during the compute — and, under a memory fallback, the ranges this compute does not rebuild (carried, carryTags)
-    this.setStage("Tapes", 0, 1, "preparing: slimming the previous tapes");
+    this.startStage("Tapes", "preparing: slimming the previous tapes");
     await this.slimTapes(carryTags, gen);
     // every set's completeness: grid cells per indication × range × type, built / kept / not built and why
     const buildStats = new Map<string, TapeBuildStat>();
@@ -3555,6 +3568,11 @@ export class CoreRuntime {
       : [];
     sharedWuMemo = null;
     if (!coordTapes || gen !== this.gen) return;
+    // Await physical exit, not just removal from the pool. Transferred tape arenas remain main-owned; only worker
+    // heaps/caches are released. Ownership is rechecked synchronously by the pool, so foreign reuse is preserved.
+    await retireOwnedIdleWorkers(computeWorkerOwner);
+    if (gen !== this.gen) return;
+    if (this.memPressured) throw new Error(this.memLastAbort ?? "memory pressure: compute aborted");
     const sigTapes = [...sourceTapes, ...coordTapes];
     // the realtime entry step rebuilds the seated configs with exactly these arguments (fastStep) — every range's
     // cells, a carried one's included (it builds only the seated ids: under a memory fallback the seated Micro /

@@ -46,51 +46,61 @@ type CountChunk = Pick<BaseConfigChunkMessage, "protects" | "kinds" | "dcaOpt"> 
   axisWindow?: { offset: number; limit: number };
   configured: number;
 };
-function chunksFor(job: BaseConfigJob, pair: string): CountChunk[] {
+type CountPlanBase = {
+  protects: BaseConfigJob["protects"];
+  regular: BaseConfigJob["protects"];
+  plainKinds: string[];
+  dcaKinds: string[];
+  dcaOpt: BaseConfigJob["dcaOpt"];
+  size: number;
+  dcaPer: number;
+  regularChunks: number;
+  wideAxis: number;
+};
+type CountPlan = { base: CountPlanBase; dcaChunks: number; axis: number; totalChunks: number; configured: number };
+
+function planBase(job: BaseConfigJob): CountPlanBase {
   const regular = job.protects.filter((p) => job.kinds.includes(protectKind(p)));
   // A large universe lowers the cell count per slice; there is always a yield between cells/jobs.
   const bars = job.common.bars.reduce((n, b) => n + b.n, 0);
   const size = Math.max(1, Math.min(32, Math.floor(8_000_000 / Math.max(1, bars * 2))));
-  const chunks: CountChunk[] = [];
-  for (let i = 0; i < regular.length; i += size) {
-    const protects = regular.slice(i, i + size);
-    chunks.push({ protects, kinds: job.kinds.filter(isPlainKind), configured: protects.length });
-  }
-  if (!job.dcaOpt) return chunks;
-  const tags = job.common.floors.pairTags?.[pair];
-  const wide = !(job.dcaOpt.axis?.perRange && tags && !tags.includes(""));
   const dcaKinds = job.kinds.filter((k) => k === "dca" || k === "dca-active");
-  if (wide && !job.dcaOpt.noDca && dcaKinds.length) {
-    const per = Math.max(1, Math.floor(size / dcaKinds.length));
-    for (let i = 0; i < job.dcaOpt.protects.length; i += per) {
-      const dca = job.dcaOpt.protects.slice(i, i + per);
-      chunks.push({
-        protects: [],
-        kinds: dcaKinds,
-        dcaOpt: { ...job.dcaOpt, protects: dca, axis: undefined },
-        configured: dca.length * dcaKinds.length,
-      });
-    }
-  }
-  if (job.dcaOpt.axis && job.kinds.includes("axis")) {
-    const n =
-      (wide ? axisVariants(job.dcaOpt.axis, job.dcaOpt.protects).length : 0) +
-      (job.dcaOpt.axis.perRange && tags
+  return { protects: job.protects, regular, plainKinds: job.kinds.filter(isPlainKind), dcaKinds, dcaOpt: job.dcaOpt,
+    size, dcaPer: Math.max(1, Math.floor(size / Math.max(1, dcaKinds.length))), regularChunks: Math.ceil(regular.length / size),
+    wideAxis: job.dcaOpt?.axis && job.kinds.includes("axis") ? axisVariants(job.dcaOpt.axis, job.dcaOpt.protects).length : 0 };
+}
+
+function planFor(job: BaseConfigJob, pair: string, base: CountPlanBase): CountPlan {
+  const tags = job.common.floors.pairTags?.[pair];
+  const wide = !(job.dcaOpt?.axis?.perRange && tags && !tags.includes(""));
+  const dca = job.dcaOpt && wide && !job.dcaOpt.noDca && base.dcaKinds.length ? job.dcaOpt.protects.length : 0;
+  const axis = job.dcaOpt?.axis && job.kinds.includes("axis")
+    ? (wide ? base.wideAxis : 0) + (job.dcaOpt.axis.perRange && tags
         ? axisRangeVariants(job.dcaOpt.axis, job.protects, tags, job.common.floors.pairTps?.[pair])
             .length
-        : 0);
-    for (let offset = 0; offset < n; offset += size) {
-      const limit = Math.min(size, n - offset);
-      chunks.push({
-        protects: job.protects,
-        kinds: ["axis"],
-        dcaOpt: job.dcaOpt,
-        axisWindow: { offset, limit },
-        configured: limit,
-      });
-    }
+        : 0) : 0;
+  const dcaChunks = Math.ceil(dca / base.dcaPer);
+  return { base, dcaChunks, axis, totalChunks: base.regularChunks + dcaChunks + Math.ceil(axis / base.size),
+    configured: base.regular.length + dca * base.dcaKinds.length + axis };
+}
+
+/** Materialize only the next bounded message, preserving regular → DCA → Axis order and exact windows. */
+function chunkAt(plan: CountPlan, index: number): CountChunk | undefined {
+  const b = plan.base;
+  if (index < b.regularChunks) {
+    const protects = b.regular.slice(index * b.size, (index + 1) * b.size);
+    return { protects, kinds: b.plainKinds, configured: protects.length };
   }
-  return chunks;
+  index -= b.regularChunks;
+  if (index < plan.dcaChunks) {
+    const dca = b.dcaOpt!.protects.slice(index * b.dcaPer, (index + 1) * b.dcaPer);
+    return { protects: [], kinds: b.dcaKinds, dcaOpt: { ...b.dcaOpt!, protects: dca, axis: undefined },
+      configured: dca.length * b.dcaKinds.length };
+  }
+  const offset = (index - plan.dcaChunks) * b.size;
+  if (offset >= plan.axis) return undefined;
+  const limit = Math.min(b.size, plan.axis - offset);
+  return { protects: b.protects, kinds: ["axis"], dcaOpt: b.dcaOpt, axisWindow: { offset, limit }, configured: limit };
 }
 
 /** Includes the exact causal bar values, settings, grid and qualified full pair identities, without copying bars. */
@@ -153,6 +163,8 @@ export class BaseConfigJobRunner {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private running = false;
   private chunkIndex = 0;
+  private planBase: CountPlanBase | null = null;
+  private plans = new Map<string, CountPlan>();
   private readonly deps: {
     foreground: () => boolean;
     ready: () => boolean;
@@ -191,7 +203,14 @@ export class BaseConfigJobRunner {
     this.seenPair = "";
     this.seen = [];
     this.chunkIndex = 0;
-    const scope = job.pairs.map((pair) => chunksFor(job, pair));
+    this.clearPlans();
+    let totalChunks = 0;
+    let plannedConfigured = 0;
+    for (const pair of job.pairs) {
+      const plan = this.plan(job, pair);
+      totalChunks += plan.totalChunks;
+      plannedConfigured += plan.configured;
+    }
     const { cutT, fromT, cost } = job.common.options;
     this.snapshot = {
       summary: {
@@ -212,12 +231,9 @@ export class BaseConfigJobRunner {
         admittedPairKeys: [...(job.admittedPairKeys ?? [])],
         totalPairs: job.pairs.length,
         donePairs: 0,
-        totalChunks: scope.reduce((n, chunks) => n + chunks.length, 0),
+        totalChunks,
         doneChunks: 0,
-        plannedConfigured: scope.reduce(
-          (n, chunks) => n + chunks.reduce((m, c) => m + c.configured, 0),
-          0,
-        ),
+        plannedConfigured,
         configured: 0,
         evaluated: 0,
         pfPassed: 0,
@@ -228,7 +244,7 @@ export class BaseConfigJobRunner {
       rows: [],
     };
     this.publish();
-    if (["complete", "disabled"].includes(this.snapshot.summary.state)) this.job = null;
+    if (["complete", "disabled"].includes(this.snapshot.summary.state)) { this.job = null; this.clearPlans(); }
     else this.schedule();
   }
   cancel(reason: string): void {
@@ -238,6 +254,7 @@ export class BaseConfigJobRunner {
     this.timer = null;
     this.seenPair = "";
     this.seen = [];
+    this.clearPlans();
     if (this.snapshot && this.snapshot.summary.state !== "cancelled") {
       this.snapshot.summary.state = "cancelled";
       this.snapshot.summary.reason = reason;
@@ -248,6 +265,22 @@ export class BaseConfigJobRunner {
     if (!this.snapshot) return;
     this.snapshot.summary.updatedAt = Date.now();
     this.deps.publish(this.snapshot);
+  }
+  private clearPlans(): void {
+    this.planBase = null;
+    this.plans.clear();
+  }
+  private plan(job: BaseConfigJob, pair: string): CountPlan {
+    // Only per-range Axis planning depends on pair tags/targets; the source snapshot and all other inputs are shared.
+    const key = job.dcaOpt?.axis?.perRange
+      ? JSON.stringify([job.common.floors.pairTags?.[pair], job.common.floors.pairTps?.[pair]]) : "shared";
+    let plan = this.plans.get(key);
+    if (!plan) {
+      this.planBase ??= planBase(job);
+      plan = planFor(job, pair, this.planBase);
+      this.plans.set(key, plan);
+    }
+    return plan;
   }
   private schedule(delay = 25): void {
     if (
@@ -278,6 +311,7 @@ export class BaseConfigJobRunner {
       state.summary.error = "Base counts paused by memory guard; unevaluated cells remain unknown";
       state.summary.reason = "memoryPressure";
       this.job = null;
+      this.clearPlans();
       this.publish();
       return;
     }
@@ -286,6 +320,7 @@ export class BaseConfigJobRunner {
       state.summary.error = "Base count workers unavailable; no foreground fallback";
       state.summary.reason = "workersUnavailable";
       this.job = null;
+      this.clearPlans();
       this.publish();
       return;
     }
@@ -294,9 +329,9 @@ export class BaseConfigJobRunner {
       // Completed slices carry only identities across requests, never trade arrays or mutable simulator caches.
       const pairIndex = state.summary.donePairs;
       const pair = job.pairs[pairIndex];
-      const chunks = pair ? chunksFor(job, pair) : [];
+      const plan = pair ? this.plan(job, pair) : undefined;
       const chunkIndex = this.chunkIndex;
-      const chunk = chunks[chunkIndex];
+      const chunk = plan ? chunkAt(plan, chunkIndex) : undefined;
       if (!pair) {
         state.summary.state = "complete";
         if (!state.summary.configured && !state.summary.reason) state.summary.reason = "noConfigs";
@@ -351,7 +386,7 @@ export class BaseConfigJobRunner {
       this.seen = [...seen, ...reply.seen];
       state.summary.doneChunks++;
       this.chunkIndex++;
-      if (chunkIndex + 1 === chunks.length) {
+      if (chunkIndex + 1 === plan!.totalChunks) {
         state.summary.donePairs++;
         this.chunkIndex = 0;
         this.seenPair = "";
@@ -374,6 +409,7 @@ export class BaseConfigJobRunner {
       this.running = false;
       if (epoch === this.epoch && ["complete", "error", "disabled"].includes(state.summary.state)) {
         this.job = null;
+        this.clearPlans();
         this.seenPair = "";
         this.seen = [];
       }

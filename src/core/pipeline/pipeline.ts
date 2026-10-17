@@ -52,16 +52,19 @@ import {
 } from "../indications/registry.ts";
 import { signalCombos, signalSettings } from "../signals.ts";
 import { optimizeLastN } from "../lastn/optimizer.ts";
-import { ddrFails, profitFactor, scoreStats, statsOf } from "../metrics/stats.ts";
+import { ddrFails, scoreStats, statsOf } from "../metrics/stats.ts";
 import {
   ATR_PERIOD,
   LANE_MIN,
   REF_TF,
   bothSides,
   mergeSideTrades,
+  nextEntryIndex,
   simulate,
+  splitSides,
 } from "../sim/backtest.ts";
 import { buildPortfolio, type Portfolio } from "./portfolio.ts";
+import { baseCellAccumulator } from "./base-cell-stats.ts";
 
 export interface Universe {
   bars: Bars[];
@@ -123,6 +126,8 @@ export function makeUniverse(bars: Bars[], evaluationFromT?: number): Universe {
   };
 }
 
+type EvaluationSignalMemo = WeakMap<Bars, WeakMap<Int8Array, { fromT: number; signal: Int8Array }>>;
+const evaluationSignals = new WeakMap<Pick<Universe, "evaluationFromT">, EvaluationSignalMemo>();
 /** Preserve warmed indicator/onset state, while admitting entries only at opens on/after the replay boundary. */
 export function evaluationSignal(
   u: Pick<Universe, "evaluationFromT">,
@@ -131,11 +136,21 @@ export function evaluationSignal(
 ): Int8Array {
   const fromT = u.evaluationFromT;
   if (fromT === undefined) return sig;
+  // Bars/signals are immutable during a Universe job. Keep the clipped identity across its protection cells so
+  // splitSides/nextEntryIndex reuse their weak caches. A new job never inherits a clip from reused/mutated inputs.
+  let byBars = evaluationSignals.get(u);
+  if (!byBars) evaluationSignals.set(u, (byBars = new WeakMap()));
+  let bySignal = byBars.get(b);
+  if (!bySignal) byBars.set(b, (bySignal = new WeakMap()));
+  const hit = bySignal.get(sig);
+  if (hit?.fromT === fromT) return hit.signal;
   const out = sig.slice();
   for (let i = 0; i < out.length; i++) {
     const entryT = i + 1 < b.n ? b.t[i + 1] : b.t[i] + b.tfMin * 60_000;
     if (entryT < fromT) out[i] = 0;
   }
+  // One cut per immutable input, rather than retaining every replay window requested over a long-lived series.
+  bySignal.set(sig, { fromT, signal: out });
   return out;
 }
 
@@ -1153,67 +1168,27 @@ export function cellStats(
   const id = configId(bot, ind, p);
   const series = seriesOf(u, ind);
   if (!series.length) return null;
-  // each trade's return and times (simulate's sink: no Trade object per trade), in runCombo's push order
-  let rr = new Float64Array(256);
-  let en = new Float64Array(256);
-  let ex = new Float64Array(256);
-  let n = 0;
-  const sink = (r: number, entryT: number, exitT: number) => {
-    if (n === rr.length) {
-      const grow = (a: Float64Array) => {
-        const b = new Float64Array(a.length * 2);
-        b.set(a);
-        return b;
-      };
-      rr = grow(rr);
-      en = grow(en);
-      ex = grow(ex);
-    }
-    rr[n] = r;
-    en[n] = entryT;
-    ex[n] = exitT;
-    n++;
-  };
+  // Synchronous cells reuse one job-scoped buffer. Each series/direction supplies an already chronological run.
+  const cell = baseCellAccumulator(u);
   for (const s of series) {
     const rawSignal = entrySignal(bot, ind, u.caches[s], tactics);
     if (!rawSignal) return null;
     const sig = evaluationSignal(u, u.bars[s], rawSignal);
-    bothSides(sig, (sg) =>
+    for (const sg of splitSides(sig)) {
+      // A last-bar signal can only be pending. Base reads settled closes, so an empty entry run needs no simulator
+      // result or close callback; the exact signal index is shared with the nonempty protection cells.
+      if (nextEntryIndex(sg)[0] + 1 >= u.bars[s].n) continue;
+      cell.beginRun();
       simulate(id, u.bars[s], sg, p, {
         cost,
         cooldown,
         atr: p.atr ? u.caches[s].atrEma(ATR_PERIOD) : undefined,
-        sink,
-      }),
-    );
+        fixedPathScope: u,
+        sink: cell.push,
+      });
+    }
   }
-  if (!n) return { n: 0, pf: statsOf([]).pf, net: 0, mdd: 0 };
-  // statsOf's order (exit, then entry; stable) and its arithmetic for n / PF / net / max drawdown
-  const idx = Array.from({ length: n }, (_, i) => i).sort((a, b) => ex[a] - ex[b] || en[a] - en[b]);
-  let gp = 0;
-  let gl = 0;
-  let sum = 0;
-  let cum = 0;
-  let peak = 0;
-  let mdd = 0;
-  for (const i of idx) {
-    const r = rr[i];
-    if (r > 0) gp += r;
-    else gl -= r;
-    sum += r;
-    cum += r;
-    if (cum < peak) {
-      if (peak - cum > mdd) mdd = peak - cum;
-    } else peak = cum;
-  }
-  return {
-    n,
-    pf: profitFactor(gp, gl),
-    net: sum * 100,
-    mdd: mdd * 100,
-    gp: gp * 100,
-    gl: gl * 100,
-  };
+  return cell.stats();
 }
 
 export function runCombo(

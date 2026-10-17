@@ -4929,7 +4929,7 @@ export function* walkForwardGen(
   // the tapes end at the run's end: their positions still open there are orders of the run too (marked to market),
   // or the run would count only the orders that closed in time — a bias toward configs that exit fast
   const markOpen = stopT === endT;
-  const sigCands: Array<{ e: number; i: number; tp: ConfigTape; key: string; op?: OpenPosition }> =
+  const sigCands: Array<{ e: number; i: number; tp: ConfigTape; key: string; op?: OpenPosition } | undefined> =
     [];
   let built = 0;
   // one key string per pair × symbol × direction, shared by every config of the pair and every candidate (a string
@@ -4970,7 +4970,8 @@ export function* walkForwardGen(
         else inactiveSig(op.side);
       }
   }
-  sigCands.sort((a, b) => a.e - b.e);
+  // All slots are populated through this sort. Processed slots are then released behind the forward-only cursor.
+  sigCands.sort((a, b) => a!.e - b!.e);
   let sp = 0;
   let held = new Set<string>();
   // re-evaluating more often than one bar cannot change anything: the step is at least one bar
@@ -5061,8 +5062,9 @@ export function* walkForwardGen(
           if (op.entryT >= t && op.entryT < t + stepH * H && op.entryT < stopT)
             cands.push({ tr: markedOpenTrade(tp, op, stopT), tp });
     }
-    while (sp < sigCands.length && sigCands[sp].e < t + stepH * H) {
-      const c = sigCands[sp++];
+    while (sp < sigCands.length && sigCands[sp]!.e < t + stepH * H) {
+      const c = sigCands[sp]!;
+      sigCands[sp++] = undefined;
       if (o.signalRank && !stepOpts.signalActive?.has(c.key)) {
         inactiveSig(c.op ? c.op.side : c.tp.side[c.i]);
         continue;
@@ -5221,6 +5223,10 @@ export function* walkForwardGen(
       open.push(x.exitT, x);
       counts.add(x, 1);
     }
+    // Every candidate belongs to exactly one disjoint entry window. Keep its feed object in feed/vopen, but its
+    // long deduplication key and materialized Trade are no longer needed after that window has been processed.
+    seen.clear();
+    cands.length = 0;
     steps.push({
       t,
       main: eligible,

@@ -3,7 +3,7 @@
 // that has tapes trades in the Real stage, every type trades on both sides, the stages are reported in order, the
 // audit is clean, and the paper step accounts for every tape position it was offered (opened, or counted under a
 // reason in status.paperSkips — none is dropped silently). The signal funnel counts the candidates of inactive units.
-import { before, describe, it } from "node:test";
+import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { CoreDb } from "./server/db.server.ts";
 import { CoreRuntime } from "./server/runtime.server.ts";
@@ -11,7 +11,7 @@ import { isSignalInd } from "./indications/registry.ts";
 import { MICRO_RANGE, rangeOfId } from "./minimal-coord.ts";
 import { kindOfId } from "./pipeline/pipeline.ts";
 import { DEFAULT_SETTINGS } from "./config.ts";
-import { H } from "./test-support.ts";
+import { H, trackRuntimes } from "./test-support.ts";
 
 // the paper step adopts positions entered at the current hour: the synthetic market ends now
 process.env.CTS_CORE_SYNTHETIC_END = String(Math.floor(Date.now() / H) * H);
@@ -29,8 +29,10 @@ describe(
   { timeout: 1_800_000 },
   () => {
     let rt: CoreRuntime;
+    const tracked = trackRuntimes();
+    after(() => tracked.disposeAll());
     before(async () => {
-      rt = new CoreRuntime(
+      rt = tracked.track(new CoreRuntime(
         new CoreDb(":memory:"),
         {
           // every range on (Micro's 17 stop ratios included) is the heaviest compute: three symbols
@@ -69,7 +71,7 @@ describe(
           },
         } as never,
         { market: "synthetic" },
-      );
+      ));
       // reachability, not results: the gates that judge a config's or a group's record (last-N, engine direction
       // acceptance, the symbol gate) are off — on a random synthetic market they refuse a whole range at random
       rt.updateSettings(

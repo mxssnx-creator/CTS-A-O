@@ -92,7 +92,7 @@ export function poolSize(): number {
 // threads for every call made the allocator keep each thread's freed memory: the server grew to ~7 GB RSS with a
 // ~0.7 GB heap. Reuse keeps the thread count and their arenas bounded (MALLOC_ARENA_MAX=2 caps them further).
 const IDLE_MS = 120_000;
-type Slot = { w: Worker; busy: boolean; ver: number };
+type Slot = { w: Worker; busy: boolean; ver: number; lastOwner?: object };
 /** The bundled server can contain this module in boot and SSR chunks. Every scheduling field shares one owner. */
 type SharedPool = {
   slots: Slot[];
@@ -226,6 +226,20 @@ export function poolWorkers(): number {
   return pool().slots.length;
 }
 
+function validateOwner(owner: unknown): asserts owner is object {
+  if (owner === null || (typeof owner !== "object" && typeof owner !== "function"))
+    throw new TypeError("Worker owner must be a non-null object or function");
+}
+
+/** Retire only idle slots still last claimed by this owner; newer claims are never interrupted or retired. */
+export async function retireOwnedIdleWorkers(owner: object): Promise<number> {
+  validateOwner(owner);
+  const slots = pool().slots.filter((slot) => !slot.busy && slot.lastOwner === owner);
+  // Selection and removal happen before yielding, so another call cannot acquire a slot being retired.
+  await Promise.all(slots.map(drop));
+  return slots.length;
+}
+
 /**
  * Abort every running message now (memory pressure): busy workers are terminated — their memory is released at
  * once — and each waiting routine call rejects with `reason`. Idle workers are dropped too. Returns how many were busy.
@@ -288,12 +302,15 @@ export async function runOnWorkers<R>(
   priority = false,
   /** Cancel only this call, including a wholly queued priority call. */
   signal?: AbortSignal,
+  /** Optional group identity for explicitly retiring this owner's idle workers after a heavy phase. */
+  owner?: object,
 ): Promise<R[]> {
   signal?.throwIfAborted();
+  if (owner !== undefined) validateOwner(owner);
   activity.inFlight++;
   activity.at = Date.now();
   try {
-    return await runOnWorkersNow<R>(messages, size, timeoutMs, onProgress, priority, signal);
+    return await runOnWorkersNow<R>(messages, size, timeoutMs, onProgress, priority, signal, owner);
   } finally {
     activity.inFlight--;
     activity.at = Date.now();
@@ -313,6 +330,7 @@ async function runOnWorkersNow<R>(
   onProgress?: (fraction: number) => void,
   priority = false,
   signal?: AbortSignal,
+  owner: object = {},
 ): Promise<R[]> {
   signal?.throwIfAborted();
   const p = pool();
@@ -349,7 +367,7 @@ async function runOnWorkersNow<R>(
       try {
         // Acquisition can throw synchronously while spawning: it must stop and drain this call's other lanes too.
         // Own a reserved worker before the await continuation, including the moment a waiter is handed its worker.
-        slot = await acquire(priority, queued, (slot) => running.add(slot));
+        slot = await acquire(priority, queued, (slot) => { slot.lastOwner = owner; running.add(slot); });
         // (null: aborted while waiting, or this call failed meanwhile)
         if (!slot) return fail(abortedError(p.abortReason ?? "worker aborted"));
         if (failed) return;
