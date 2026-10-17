@@ -610,16 +610,16 @@ describe("signals: engine", { timeout: 400_000 }, () => {
     );
     for (const t of sigTapes)
       if (activePairs.has(`${t.bot}|${t.ind}`)) assert.ok(sel.has(t.id), t.id);
-    // 15 Normal + 15 Trailing + 18 ATR per signal pair, and each pair's historic trailing configs (status.configs);
-    // configs the stop / trailing floors make identical on a fast lane run once
+    // 15 Normal + 15 Trailing + 18 ATR per source pair plus every enabled coordinator range grid. Historic trailing
+    // configs are added only when their matured MFE sample passes the current history gates; a short synthetic sample
+    // may legitimately produce none.
     const coordProtections = signalCoordinationProtects(rt.settings.grid, rt.settings.cost, rt.settings.signals.coordination.ranges);
     const sourcePairs = st.pairs - (st.coordinationPairs ?? 0);
     const pct = sourcePairs * signalProtects(signalSettings({ enabled: true })).length + (st.coordinationPairs ?? 0) * coordProtections.length;
     const full = st.configs;
-    assert.ok(
-      full > pct,
-      `historic trailing configs: ${full} configs vs ${pct} percent / ATR ones`,
-    );
+    assert.ok(st.historic, "history calculations report their eligibility diagnostics");
+    assert.ok(st.historic.qualified <= st.historic.candidates);
+    assert.ok(full >= pct, `history config construction cannot remove standard configs: ${full} vs ${pct}`);
     assert.ok(
       sigTapes.length <= full && sigTapes.length >= full * 0.9,
       `${sigTapes.length} of ${full}`,
