@@ -40,6 +40,53 @@ test("canonical unit returns, exact close-index allocations, zero funding and en
   assert.equal(r.accountingComplete, true);
 });
 
+test("hourly engine validations and Signal ranking activity retain separate source scopes and unknown samples", () => {
+  const f = evidence([trade(CFG, 0, 0, 0.01)]);
+  f.summary.hourly[0].validation = { steps: 1, checked: 7, passed: 3, seatedConfigs: 2 };
+  f.raw.stepsByRange = [{ t: 0, byRange: { mc: { tapes: 20, validated: 2, candidates: 6, taken: 1 }, sig: { tapes: 9, validated: 4, candidates: 6, taken: 2 } } }];
+  f.summary.hourly[1].rangeProgress = { sig: { tapes: 9, validated: 0, candidates: 0, taken: 0 } };
+  delete f.summary.hourly[3].validation;
+  f.summary.hourly[4].rangeProgress = { sig: { tapes: 9, validated: 1.5, candidates: -1 } };
+  const before = json(f), r = reduce(f);
+  assert.equal(json(f), before, "read-only extraction must preserve raw evidence");
+  assert.equal(r.total.n, 1); assert.equal(r.total.net, 0.01);
+  assert.equal(r.hours[0].engineValidation.scope, "engine-configs-only");
+  assert.equal(r.hours[0].engineValidation.checked, 7); assert.equal(r.hours[0].engineValidation.passed, 3);
+  assert.equal(r.hours[0].engineValidation.seatedConfigs, 2);
+  assert.deepEqual(r.hours[0].validation, r.hours[0].engineValidation);
+  assert.equal(r.hours[0].signalActivity.activeGroups, 4);
+  assert.equal(r.hours[0].signalActivity.candidates, 6); assert.equal(r.hours[0].signalActivity.taken, 2);
+  assert.match(r.hours[0].signalActivity.basis, /not per-config validation passes/);
+  assert.equal(r.hours[1].signalActivity.activeGroups, 0); assert.equal(r.hours[1].signalActivity.taken, 0);
+  assert.equal(r.hours[2].signalActivity, null, "missing Signal stage is unknown, not zero activity");
+  assert.equal(r.hours[3].engineValidation, null, "missing engine checks remain unknown");
+  assert.equal(r.hours[4].signalActivity.activeGroups, null); assert.equal(r.hours[4].signalActivity.candidates, null);
+});
+
+test("review labels run-start all-cell and post-Base gate denominators separately and displays24 parallel hourly rows", () => {
+  const f = evidence([trade(CFG, 0, 0, 0.01)]);
+  // These are the actual raw field shapes: configs counts every engine tape, evaluatedN counts only
+  // Base/type-admitted cells, and evalAfterBase retains Base-qualified cells including type rejects.
+  f.raw.tapeAgg.evalFails = { Micro: { configs: 10, evaluatedN: 6, passed: 3, "base off": 2, "type off": 2, net: 3 } };
+  f.raw.tapeAgg.evalAfterBase = { "Micro|normal": { configs: 8, passed: 3, "type off": 2, net: 3 } };
+  f.summary.hourly[0].validation = { steps: 1, checked: 6, passed: 3, seatedConfigs: 2 };
+  f.summary.hourly[0].rangeProgress = { sig: { tapes: 9, validated: 4, candidates: 6, taken: 2 } };
+  const reduced = reduce(f), r = buildExpandedReview(casesFixture());
+  Object.assign(r.windows[0].baseline, { hours: reduced.hours, configGateRejections: reduced.configGateRejections, afterBaseConfigGates: reduced.afterBaseConfigGates });
+  const markdown = expandedReviewMarkdown(r);
+  assert.match(markdown, /engine config validations passed/);
+  assert.match(markdown, /Sampled peak RSS MB \(500ms\)/);
+  assert.match(markdown, /\|Baseline\|Micro\|10\/6\/3\|net: 3, type off: 2, base off: 2\|/);
+  assert.match(markdown, /\|Baseline\|Micro\\\|normal\|8\/3\|net: 3, type off: 2\|/);
+  assert.match(markdown, /\|1970-01-01T00:00:00\.000Z\|6\/3\/2\|2\/1\/—\|9\/4\/6\/2\|—\/—\/—\/—\|/);
+  const tables = markdown.split("| UTC hour | Baseline engine checked/passed/seated configs").slice(1);
+  assert.equal(tables.length, 2);
+  for (const table of tables) assert.equal(table.split("Reclaim8-only candidate contribution:")[0].split("\n").filter((line) => /^\|\d{4}-/.test(line)).length, 24);
+  delete f.raw.tapeAgg;
+  const missing = reduce(f);
+  assert.equal(missing.configGateRejections, null); assert.equal(missing.afterBaseConfigGates, null);
+});
+
 test("hourly, config and reclaim win rates include exactly flat funded closes and retain unknown denominators", () => {
   const cfg = "follow|break-mc-rel-reclaim8-5-dd24-balanced@m5|tp0.4|sl1|tr0|h192|mc";
   const f = evidence([trade(cfg, 0, 0, 0.02), trade(cfg, 1, 0, -0.01), trade(cfg, 2, 0, 0)]);

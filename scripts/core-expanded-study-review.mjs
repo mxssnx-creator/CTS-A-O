@@ -34,6 +34,9 @@ function finish(b) {
     cashNoLoss: cashKnown && b.n > 0 && b.cashGp > 0 && b.cashGl === 0, known };
 }
 const utcHour = (exitT, startT) => Math.ceil((exitT - startT) / H) - 1;
+const count = (x) => Number.isSafeInteger(x) && x >= 0 ? x : null;
+const ENGINE_VALIDATION_BASIS = "Engine configs only: selectFixedGen checks and selected engine config identities; excludes the separate Signal ranking/entry path.";
+const SIGNAL_ACTIVITY_BASIS = "Signal tapes and active ranking groups, then virtual candidates and accepted entries before shared-book funding. Source byRange.sig.validated counts active ranking groups, not per-config validation passes.";
 function description(cfg) {
   const [bot, ind] = cfg.split("|"), lane = ind?.match(/@m\d+c?$/)?.[0] ?? "@m1";
   return { cfg, bot, ind, lane, indicationLane: `${bot}|${ind}`, reclaim8: /-reclaim8-/.test(ind ?? "") };
@@ -87,12 +90,21 @@ export function reduceStudyCase(raw, book, summary) {
   const stages = summary.hourly ?? [];
   return { window: raw.window, total: aggregate, reclaim8: finish(reclaim), zeroAllocations, unknownAllocations,
     accountingComplete: unknownAllocations === 0 && aggregate.known && !aggregate.unknownCash && finite(aggregate.cashNet),
-    hours: hours.map((x, i) => ({ ...x, validation: stages[i]?.validation ?? null, stages: stages[i]?.stages ?? null })), scopes,
+    hours: hours.map((x, i) => {
+      const row = stages[i], rangeProgress = raw.stepsByRange?.find((step) => step.t === x.startT)?.byRange ?? row?.rangeProgress ?? null;
+      const validation = row?.validation, signal = rangeProgress?.sig;
+      const engineValidation = validation ? { scope: "engine-configs-only", basis: ENGINE_VALIDATION_BASIS,
+        steps: count(validation.steps), checked: count(validation.checked), passed: count(validation.passed), seatedConfigs: count(validation.seatedConfigs) } : null;
+      const signalActivity = signal ? { scope: "signal-ranking-groups-and-virtual-entries", basis: SIGNAL_ACTIVITY_BASIS,
+        tapes: count(signal.tapes), activeGroups: count(signal.validated), candidates: count(signal.candidates), taken: count(signal.taken) } : null;
+      return { ...x, engineValidation, validation: engineValidation, signalActivity, rangeProgress, stages: row?.stages ?? null };
+    }), scopes,
     positiveHours: hours.filter((x) => x.net > 0).length, negativeHours: hours.filter((x) => x.net < 0).length, flatHours: hours.filter((x) => x.net === 0).length,
     positiveCashHours: hours.filter((x) => x.cashNet > 0).length, negativeCashHours: hours.filter((x) => x.cashNet < 0).length,
     progression: summary.progression ?? {}, continuousValidation: summary.continuousValidation ?? {},
     baseRejections: raw.engine?.baseWhy ?? summary.progression?.baseRejections ?? [],
-    configGateRejections: raw.tapeAgg?.evalFails ?? summary.progression?.strategyGateFailures ?? {},
+    configGateRejections: raw.tapeAgg?.evalFails ?? summary.progression?.strategyGateFailures ?? null,
+    afterBaseConfigGates: raw.tapeAgg?.evalAfterBase ?? summary.progression?.afterBaseStrategyGates ?? null,
     entryRejections: raw.engine?.skips ?? summary.progression?.entryRejections ?? {},
     performance: summary.performance ?? {}, equityDrawdown: summary.equityDrawdown ?? {}, endpointMarks: { open: raw.openEnd?.length ?? 0, excluded: true } };
 }
@@ -173,22 +185,37 @@ const pf = (x) => x.noLoss ? "no losses" : number(x.pf);
 const rate = (x) => number(finite(x.winRate) ? x.winRate * 100 : null, 2);
 export function expandedReviewMarkdown(r) {
   const rows = ["# Expanded post-Base study review", "", "Funded settled modeled closes use canonical unit returns after costs. Wins/losses use the exact return sign; flat means exactly zero. Win rate is wins divided by all funded closes, including flats, and is unavailable for empty or unknown-return samples. Sized cash results and endpoint equity remain separate. Every UTC trading hour is retained.", ""];
+  rows.push(ENGINE_VALIDATION_BASIS, "", SIGNAL_ACTIVITY_BASIS, "", "A missing stage sample is shown as —; a recorded zero remains 0. Sampled peak RSS is the session process RSS sampled every 500ms. This sampling can miss peaks between readings.", "");
   for (const w of r.windows) {
-    rows.push(`## ${w.role} — ${w.symbols} symbols`, "", "| Policy | Funded orders | Wins/losses/flat | Win rate % | Return PF | Sized net $ | Unit net | Positive/negative/flat hours | Max equity DD % | Compute ms | Peak RSS MB |", "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
+    rows.push(`## ${w.role} — ${w.symbols} symbols`, "", "| Policy | Funded orders | Wins/losses/flat | Win rate % | Return PF | Sized net $ | Unit net | Positive/negative/flat hours | Max equity DD % | Compute ms | Sampled peak RSS MB (500ms) |", "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
     for (const [label, x] of [["Baseline", w.baseline], ["Reclaim8 candidate", w.candidate]]) rows.push(`|${label}|${x.total.n}|${x.total.wins}/${x.total.losses}/${x.total.breakeven}|${rate(x.total)}|${pf(x.total)}|${number(x.total.cashNet, 6)}|${number(x.total.net, 6)}|${x.positiveHours}/${x.negativeHours}/${x.flatHours}|${number(finite(x.equityDrawdown.maxPct) ? x.equityDrawdown.maxPct * 100 : null)}|${number(x.performance.computeMs, 0)}|${number(x.performance.peakRssMb, 0)}|`);
-    rows.push("", "| UTC hour | Baseline orders | PF | Sized net $ | Candidate orders | PF | Sized net $ | Win rate % baseline/candidate | Wins/losses/flat baseline; candidate | Baseline/candidate config validations passed |", "|---|---:|---:|---:|---:|---:|---:|---:|---|---:|");
-    for (let i = 0; i < 24; i++) { const a = w.baseline.hours[i], b = w.candidate.hours[i]; rows.push(`|${new Date(a.startT).toISOString()}|${a.n}|${pf(a)}|${number(a.cashNet, 6)}|${b.n}|${pf(b)}|${number(b.cashNet, 6)}|${rate(a)}/${rate(b)}|${a.wins}/${a.losses}/${a.breakeven}; ${b.wins}/${b.losses}/${b.breakeven}|${a.validation?.passed ?? "—"}/${b.validation?.passed ?? "—"}|`); }
+    rows.push("", "| UTC hour | Baseline orders | PF | Sized net $ | Candidate orders | PF | Sized net $ | Win rate % baseline/candidate | Wins/losses/flat baseline; candidate | Baseline/candidate engine config validations passed |", "|---|---:|---:|---:|---:|---:|---:|---:|---|---:|");
+    for (let i = 0; i < 24; i++) { const a = w.baseline.hours[i], b = w.candidate.hours[i]; rows.push(`|${new Date(a.startT).toISOString()}|${a.n}|${pf(a)}|${number(a.cashNet, 6)}|${b.n}|${pf(b)}|${number(b.cashNet, 6)}|${rate(a)}/${rate(b)}|${a.wins}/${a.losses}/${a.breakeven}; ${b.wins}/${b.losses}/${b.breakeven}|${a.engineValidation?.passed ?? "—"}/${b.engineValidation?.passed ?? "—"}|`); }
+    rows.push("", "| UTC hour | Baseline engine checked/passed/seated configs | Candidate engine checked/passed/seated configs | Baseline Signal tapes/active groups/candidates/taken | Candidate Signal tapes/active groups/candidates/taken |", "|---|---:|---:|---:|---:|");
+    const counts = (row, keys) => keys.map((key) => row?.[key] ?? "—").join("/");
+    for (let i = 0; i < 24; i++) { const a = w.baseline.hours[i], b = w.candidate.hours[i]; rows.push(`|${new Date(a.startT).toISOString()}|${counts(a.engineValidation, ["checked", "passed", "seatedConfigs"])}|${counts(b.engineValidation, ["checked", "passed", "seatedConfigs"])}|${counts(a.signalActivity, ["tapes", "activeGroups", "candidates", "taken"])}|${counts(b.signalActivity, ["tapes", "activeGroups", "candidates", "taken"])}|`); }
     rows.push("", `Reclaim8-only candidate contribution: ${w.candidate.reclaim8.n} funded closes; ${w.candidate.reclaim8.wins}/${w.candidate.reclaim8.losses}/${w.candidate.reclaim8.breakeven} wins/losses/flat; win rate ${rate(w.candidate.reclaim8)}%; PF ${pf(w.candidate.reclaim8)}; sized net $${number(w.candidate.reclaim8.cashNet, 6)}. ${w.note}`, "", "Base rejection reasons, config first failures, entry rejections, stage progress, exact identities and positive contributions during portfolio losing hours are retained in review.json.", "");
     rows.push("| Policy | Base range | Evaluated / passed | First rejects: closes / net / PF / DDR |", "|---|---|---:|---|");
     for (const [label, x] of [["Baseline", w.baseline], ["Candidate", w.candidate]]) for (const b of x.baseRejections) rows.push(`|${label}|${b.tag || "wide"}|${b.evaluated ?? "—"}/${b.passed ?? "—"}|${["closes", "net", "pf", "ddr"].map((key) => b.first?.[key] ?? 0).join(" / ")}|`);
-    rows.push("", "| Policy | Config range | Evaluated / passed | First gate rejects |", "|---|---|---:|---|");
-    const gates = ["closes", "net", "pf", "ddt", "ddr", "pre", "lastN", "rangeGate", "lcb", "green", "stable", "type off", "pair not Base-passed"];
-    for (const [label, x] of [["Baseline", w.baseline], ["Candidate", w.candidate]]) for (const [range, b] of Object.entries(x.configGateRejections)) rows.push(`|${label}|${range}|${b.evaluatedN ?? "—"}/${b.passed ?? "—"}|${gates.filter((key) => b[key] > 0).map((key) => `${key}: ${b[key]}`).join(", ") || "none"}|`);
+    rows.push("", "Run-start engine diagnostics: all tape cells include Base/type-rejected cells; config-evaluated cells reached configEval after Base and type admission. The separate post-Base table retains only Base-qualified cells, including any rejected by type admission.", "", "| Policy | Engine config range | All tape cells / config-evaluated / passed | First gate rejects (all tape cells) |", "|---|---|---:|---|");
+    const gates = ["closes", "net", "pf", "ddt", "ddr", "pre", "lastN", "rangeGate", "lcb", "green", "stable", "type off", "base off", "pair not Base-passed"];
+    const rejects = (b) => gates.filter((key) => b[key] > 0).map((key) => `${key}: ${b[key]}`).join(", ") || (count(b.configs) !== null && b.configs === b.passed ? "none" : "—");
+    for (const [label, x] of [["Baseline", w.baseline], ["Candidate", w.candidate]]) {
+      if (x.configGateRejections === null) rows.push(`|${label}|—|—/—/—|—|`);
+      else for (const [range, b] of Object.entries(x.configGateRejections ?? {})) rows.push(`|${label}|${range}|${b.configs ?? "—"}/${b.evaluatedN ?? "—"}/${b.passed ?? "—"}|${rejects(b)}|`);
+    }
+    rows.push("", "| Policy | Base-qualified engine range/type | Base-qualified cells / passed | First gate rejects (Base-qualified cells) |", "|---|---|---:|---|");
+    for (const [label, x] of [["Baseline", w.baseline], ["Candidate", w.candidate]]) {
+      if (x.afterBaseConfigGates === null) rows.push(`|${label}|—|—/—|—|`);
+      else for (const [range, b] of Object.entries(x.afterBaseConfigGates ?? {})) rows.push(`|${label}|${range.replaceAll("|", "\\|")}|${b.configs ?? "—"}/${b.passed ?? "—"}|${rejects(b)}|`);
+    }
     rows.push("");
   }
   rows.push("## Prospective exclusion candidates", "", `${r.exclusions.qualifying.length} matching scopes meet the prewritten rule. No exclusion was applied; config and indication scopes can overlap.`, "", "| Policy | Scope | Exact identity | Dev/final orders | Dev/final PF | Dev/final negative/active hours | Positive contributions in losing hours |", "|---|---|---|---:|---:|---:|---:|");
   for (const x of r.exclusions.qualifying) rows.push(`|${x.policy}|${x.scope}|${x.key.replaceAll("|", "\\|")}|${x.development.n}/${x.final.n}|${pf(x.development)}/${pf(x.final)}|${x.development.negativeHours}/${x.development.activeHours}; ${x.final.negativeHours}/${x.final.activeHours}|${x.development.positiveContributionsInPortfolioLosingHours.length}/${x.final.positiveContributionsInPortfolioLosingHours.length}|`);
-  rows.push("", r.exclusions.note, ""); return rows.join("\n");
+  rows.push("", r.exclusions.note, "");
+  if (r.generator) rows.push(`Read-only review generator SHA-256: ${r.generator.sha256}. Node ${r.generator.node}; generated ${r.generator.at}.`, "");
+  return rows.join("\n");
 }
 
 export function expandedReviewMain(argv) {
@@ -200,6 +227,7 @@ export function expandedReviewMain(argv) {
   const cases = {};
   for (const key of CASES) cases[key] = loadCompletedCase(arg(key));
   const review = buildExpandedReview(cases);
+  review.generator = { path: path.relative(ROOT, fileURLToPath(import.meta.url)), sha256: reviewHash(fs.readFileSync(fileURLToPath(import.meta.url))), node: process.version, at: new Date().toISOString(), strategyScoring: false };
   fs.mkdirSync(output, { recursive: true });
   for (const [name, data] of [["review.json", json(review)], ["review.md", expandedReviewMarkdown(review)], ["prospective-exclusion-candidates.json", json(review.exclusions)]]) fs.writeFileSync(path.join(output, name), data, { flag: "wx" });
   console.log(json({ complete: true, output, prospectiveScopes: review.exclusions.qualifying.length, configurationsChanged: false }));
