@@ -116,26 +116,36 @@ describe("coordination volume factors", () => {
   it("applies the hedge factor only to Signal entries selected from losing hours", () => {
     const engineInd = "rsi-mom-14-20@m15";
     const activeInd = "sig-ema-cross-s@m15";
-    const hedgeInd = "sig-sar-s@m15";
+    const hedgeInd = "sig-sar-s@m15c";
     const engine = `follow|${engineInd}|tp1|sl1|tr0|h32`;
     const active = `follow|${activeInd}|tp1|sl1|tr0|h32`;
     const hedge = `follow|${hedgeInd}|tp1|sl1|tr0|h32`;
     const engineTrades = Array.from({ length: 30 }, (_, i) => result(engine, NOW - 80 * H + i * H, 0.01));
     engineTrades.push(result(engine, START + 5 * M, -0.05));
+    engineTrades.push(result(engine, START + 40 * M, 0.02));
+    engineTrades.push(result(engine, START + 2 * H + 5 * M, -0.05));
     const activeTrades = Array.from({ length: 30 }, (_, i) => result(active, NOW - 80 * H + i * H, 0.02));
     activeTrades.push(result(active, START + H + 5 * M, 0.01));
     const hedgeTrades = Array.from({ length: 20 }, (_, i) => result(hedge, NOW - 40 * H + i * H, -0.01));
     // This positive close lands in the book's losing hour and makes the source eligible at the next hour.
     hedgeTrades.push(result(hedge, START + 25 * M, 0.02));
     hedgeTrades.push(result(hedge, START + H + 15 * M, 0.01));
+    hedgeTrades.push(result(hedge, START + 2 * H + 25 * M, 0.02));
+    hedgeTrades.push(result(hedge, START + 3 * H + 15 * M, 0.01));
     const tapes = [
       makeTape(engine, "follow", engineInd, P, "normal", [SYM], engineTrades, [], []),
       makeTape(active, "follow", activeInd, P, "normal", [SYM], activeTrades, [], []),
       makeTape(hedge, "follow", hedgeInd, P, "normal", [SYM], hedgeTrades, [], []),
     ];
-    const run = (hedgeVolumeFactor: number) =>
+    const run = (hedgeVolumeFactor: number, combinedFactors = false) =>
       walkForward(u, tapes, {
         ...base,
+        ...(combinedFactors ? {
+          toggles: { ...base.toggles, block: true },
+          block: { ...base.block, maxLevel: 1, ratio: 0.2, signalsOwn: true },
+          indicationVolumeFactors: { coordination: 8, combined: { sar: 3 } },
+          signalRangeVolumeFactors: { short: 1.8, medium: 1 },
+        } : {}),
         coord: {
           ...base.coord!,
           enabled: true,
@@ -144,6 +154,7 @@ describe("coordination volume factors", () => {
           hedgeMinN: 1,
           hedgeMinPf: 1.1,
           hedgeVolumeFactor,
+          ...(combinedFactors ? { s2RelVolume: true, s2Increase: 0.05 } : {}),
         },
         signalValidLastN: undefined,
         signalRank: {
@@ -168,5 +179,15 @@ describe("coordination volume factors", () => {
     assert.equal(raisedTrade!.mult, 1.6);
     assert.equal(raisedTrade!.hedgeVol, 1.6);
     assert.ok(raisedTrade!.cfg.startsWith("follow|sig-"));
+
+    const combined = run(1.6, true).trades.find((x) => x.hedge && (x.coordVol ?? 1) > 1);
+    assert.ok(combined, "the same causal hedge entry executes with all sizing sources enabled");
+    assert.equal(combined.hedgeVol, 1.6);
+    assert.equal(combined.volFactor, 3);
+    assert.equal(combined.rangeVol, 1.8);
+    assert.ok((combined.coordVol ?? 1) > 1, "settled history supplies the relation multiplier");
+    assert.equal(combined.level, 1, "the config's recent settled winner supplies one Block level");
+    assert.ok(Math.abs(combined.mult! - 1.2 * combined.coordVol! * 3 * 1.6 * 1.8) < 1e-12);
+    assert.ok(Math.abs(combined.r / combined.mult! - 0.01) < 1e-12, "unit returns exclude every external sizing factor");
   });
 });

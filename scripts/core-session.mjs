@@ -478,7 +478,11 @@ async function runEngine() {
       signals: { enabled: signalsOn },
     },
     // a replayed window (--end-at / --end-ago / --to-now) reads no live price: no public price stream (priceStream null)
-    { market: "bingx", ...(cutT ? { replay: true, priceStream: null, evaluationFromT, feed: { ...replayFeed(cutT), ...(feedFile || recordFile ? { tickers: fetchTickers } : {}) } } : {}) },
+    { market: "bingx", ...(cutT ? { replay: true, priceStream: null, evaluationFromT,
+      // A frozen offline benchmark must calculate its complete requested universe once. Production keeps
+      // progressive loading so an initial live batch can trade while the remaining history downloads.
+      ...(feedFile ? { completeReplayUniverse: true } : {}),
+      feed: { ...replayFeed(cutT), ...(feedFile || recordFile ? { tickers: fetchTickers } : {}) } } : {}) },
   );
   // Historical replay otherwise inherits a wall-clock liveSince and cannot learn from simulated execution closes.
   // Restrict the override to a bounded offline window; ordinary runtime and live defaults are unchanged.

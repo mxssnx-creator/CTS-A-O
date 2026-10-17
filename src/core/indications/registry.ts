@@ -13,6 +13,11 @@ import { research4Specs } from "./research4.ts";
 import { microSpecs } from "./micro.ts";
 import { rangeFamilySpecs } from "./range-families.ts";
 import { tacticSpecs } from "./tactic.ts";
+import {
+  isSignalCoordinationInd,
+  signalCoordinationSourceLabel,
+  signalCoordinationState,
+} from "../signal-coordination.ts";
 import { relateSpecs } from "./relate.ts";
 import { breakSpecs } from "./break.ts";
 
@@ -1082,6 +1087,8 @@ export function indicationState(id: string, k: SeriesCache): Int8Array | null {
     return f.length ? mtfState(lane.base, k, f) : indicationState(lane.base, k);
   }
   if (id === "none") return null;
+  if (isSignalCoordinationInd(id))
+    return k.memo(`ind:${id}`, () => signalCoordinationState(id, k, indicationState));
   const s = INDICATION_BY_ID.get(id);
   if (!s) throw new Error(`unknown indication ${id}`);
   return k.memo(`ind:${id}`, () => s.fn(k));
@@ -1130,10 +1137,12 @@ export function mtfState(id: string, k: SeriesCache, factors: readonly number[])
 // (the lane's base is a prefix of the id: the id's own prefix answers, with no lane parse)
 export const isSignalInd = (ind: string) => ind.startsWith("sig-");
 /** Source name of a signal indication ("sig-ema-cross-s@m5" → "ema-cross"). */
-export const signalSourceOf = (ind: string) =>
-  laneOf(ind)
-    .base.replace(/^sig-/, "")
-    .replace(/-[sm]$/, "");
+export const signalSourceOf = (ind: string) => {
+  const base = laneOf(ind).base;
+  return isSignalCoordinationInd(base)
+    ? signalCoordinationSourceLabel(base)
+    : base.replace(/^sig-/, "").replace(/-[sm]$/, "");
+};
 
 for (const src of SIGNAL_SOURCES) {
   for (const range of ["short", "medium"] as const) {
