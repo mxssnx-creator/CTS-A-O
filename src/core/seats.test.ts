@@ -3,7 +3,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { DEFAULT_SETTINGS, GENERAL_RANGE, LONG_RANGE, MINIMAL_RANGE, SHORT_RANGE } from "./config.ts";
-import { LANE_MIN, laneProtect, mainByLane } from "./pipeline/pipeline.ts";
+import { LANE_MIN, allCombos, laneProtect, mainByLane, microLaneFloor } from "./pipeline/pipeline.ts";
 import {
   defaultWalkForward,
   makeTape,
@@ -327,7 +327,7 @@ describe("bug-hunt regressions", () => {
     assert.equal("maxSymbols" in rt.settings.live, false);
     assert.equal(rt.settings.signals.maxPositions, 100, "v27 leaves the separately chosen signal evaluation cap intact");
     assert.equal(DEFAULT_SIGNALS.maxPositions, 250);
-    assert.equal(db.kvGet<number>("wfCapsV"), 27);
+    assert.equal(db.kvGet<number>("wfCapsV"), 28);
     const presets = db.kvGet<Array<{ settings: { live?: Record<string, unknown> } }>>("presets") ?? [];
     assert.equal(presets[0].settings.live?.maxPositions, undefined, "legacy unlimited preset inherits default");
     assert.equal("maxSymbols" in (presets[0].settings.live ?? {}), false);
@@ -504,9 +504,9 @@ describe("bug-hunt regressions", () => {
   });
 
   it("v24: the range families PROTOCOL-8 kept join the default focus; a stored former default moves, a chosen focus stays", async () => {
-    const { FAMILY_FOCUS_13OCT, FORMER_FOCUS_13OCT } = await import("./config.ts");
+    const { FAMILY_FOCUS_13OCT, FORMER_FOCUS_13OCT, PREVIOUS_DEFAULT_FOCUS_17OCT } = await import("./config.ts");
     assert.equal(FAMILY_FOCUS_13OCT.length, 21);
-    assert.deepEqual(DEFAULT_SETTINGS.focus, [...FORMER_FOCUS_13OCT, ...FAMILY_FOCUS_13OCT]);
+    assert.deepEqual(PREVIOUS_DEFAULT_FOCUS_17OCT, [...FORMER_FOCUS_13OCT, ...FAMILY_FOCUS_13OCT]);
     const old = new CoreDb(":memory:");
     old.kvSet("wfCapsV", 23);
     old.kvSet("settings", { focus: [...FORMER_FOCUS_13OCT] });
@@ -527,12 +527,40 @@ describe("bug-hunt regressions", () => {
     old.kvSet("settings", { grid: { ...DEFAULT_SETTINGS.grid, micro: { ...DEFAULT_SETTINGS.grid.micro, tp: [...FORMER_MICRO_TP] } } });
     const a = new CoreRuntime(old, undefined, { market: "synthetic" });
     assert.deepEqual((a.settings.grid.micro as unknown as { tp: number[] }).tp, [...MICRO_TP]);
-    assert.equal(old.kvGet("wfCapsV"), 27);
+    assert.equal(old.kvGet("wfCapsV"), 28);
     const mine = new CoreDb(":memory:");
     mine.kvSet("wfCapsV", 24);
     mine.kvSet("settings", { grid: { ...DEFAULT_SETTINGS.grid, micro: { ...DEFAULT_SETTINGS.grid.micro, tp: [0.003] } } });
     const b = new CoreRuntime(mine, undefined, { market: "synthetic" });
     assert.deepEqual((b.settings.grid.micro as unknown as { tp: number[] }).tp, [0.003]);
+  });
+
+  it("v28: updated 60 Micro Break identities join default focus and old default selections migrate", async () => {
+    const { BREAK_MICRO_FOCUS_17OCT, PREVIOUS_DEFAULT_FOCUS_17OCT } = await import("./config.ts");
+    assert.equal(BREAK_MICRO_FOCUS_17OCT.length, 60);
+    assert.equal(new Set(BREAK_MICRO_FOCUS_17OCT).size, 60);
+    assert.deepEqual(DEFAULT_SETTINGS.focus, [...PREVIOUS_DEFAULT_FOCUS_17OCT, ...BREAK_MICRO_FOCUS_17OCT]);
+    for (const id of BREAK_MICRO_FOCUS_17OCT) assert.ok(DEFAULT_SETTINGS.focus.includes(id), id);
+    const defaultCombos = allCombos(DEFAULT_SETTINGS.focus, DEFAULT_SETTINGS.disabledKinds, DEFAULT_SETTINGS.tfs, microLaneFloor(DEFAULT_SETTINGS.grid));
+    assert.deepEqual(
+      defaultCombos.filter((c) => c.ind.includes("break-mc-rel-")).map((c) => `${c.bot}|${c.ind}`).sort(),
+      [...BREAK_MICRO_FOCUS_17OCT].sort(),
+      "every updated Micro ID is processed once on its eligible anchor lane",
+    );
+
+    const previousDefault = new CoreDb(":memory:");
+    previousDefault.kvSet("wfCapsV", 27);
+    previousDefault.kvSet("settings", { focus: [...PREVIOUS_DEFAULT_FOCUS_17OCT] });
+    const upgraded = new CoreRuntime(previousDefault, undefined, { market: "synthetic" });
+    assert.deepEqual(upgraded.settings.focus, DEFAULT_SETTINGS.focus);
+    assert.equal(previousDefault.kvGet<number>("wfCapsV"), 28);
+
+    const customFocus = ["follow|rsi-mom-14-20"];
+    const chosen = new CoreDb(":memory:");
+    chosen.kvSet("wfCapsV", 27);
+    chosen.kvSet("settings", { focus: customFocus });
+    const preserved = new CoreRuntime(chosen, undefined, { market: "synthetic" });
+    assert.deepEqual(preserved.settings.focus, customFocus, "explicitly chosen focus is preserved");
   });
 
   it("signal simulation positions: 250 per direction, separate from exchange slots, orders unlimited", () => {
