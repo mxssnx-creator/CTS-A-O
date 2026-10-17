@@ -544,10 +544,10 @@ export async function coreTradingData(data: ReturnType<typeof connInput>) {
 /**
  * The Overall control positions the current paper book asks for (shown even while Live is off): the lanes the live
  * step would send (live.kinds / source / plainOnly / excludeRanges, the selected engine configs and active signals,
- * top configs), the same sizing (unit from the last verified equity read; minimum-quantity sizing per
- * symbol; position mode; per-position cap; exchange minimum). Without an exchange read the held
- * positions come from the live step's last control status. Unknown or stale account equity blocks previews
- * requiring an equity read; the paper balance never funds a live account. The account-wide scalers (gross exposure, stop risk, worst case) are applied as the live step applies
+ * top configs), the same sizing (unit from the last verified wallet-balance read; minimum-quantity sizing per
+ * symbol; position mode; the 100-slot exchange position ceiling; exchange minimum). Without an exchange read the
+ * held positions come from the live step's last control status. Unknown or stale account balance blocks previews
+ * requiring a balance read; the paper balance never funds a live account. The account-wide scalers (gross exposure, stop risk, worst case) are applied as the live step applies
  * them, drops included, so the preview shows the sizes the desk would send.
  */
 async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {

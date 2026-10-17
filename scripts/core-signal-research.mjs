@@ -8,7 +8,6 @@ import { barsFromCandles, resample } from "../src/core/market/bars.ts";
 import { SeriesCache } from "../src/core/indications/cache.ts";
 import { INDICATION_BY_ID, laneInd } from "../src/core/indications/registry.ts";
 import { DEFAULT_SIGNALS, SIGNAL_SOURCES, signalId } from "../src/core/signal-config.ts";
-import { signalProtects } from "../src/core/signals.ts";
 import { configId, laneProtect, protectKind } from "../src/core/pipeline/pipeline.ts";
 import { adjustProtect } from "../src/core/adjust.ts";
 import { filterEntries } from "../src/core/sim/walkforward.ts";
@@ -24,18 +23,26 @@ const stable = (x) => JSON.stringify(x, Object.keys(x).sort());
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+// The 2026-10-15 research protocol is frozen. New production Signal defaults must not
+// silently rewrite the grid or floors used to produce its historical evidence.
+const FROZEN_PROTECTS_SHA256 =
+  "c496c433f64a70f75a6287a1c471f8a68794ef3b0e5dbe261cc5fd0a6adc95e1";
+const FROZEN_SIGNAL_FLOORS = Object.freeze({ minSl: 0.005, minTrail: 0.005 });
 
-/** Enforce runtime-grid parity and the predeclared formulas before any market outcomes are calculated. */
+/** Enforce the fixed research grid and predeclared formulas before market outcomes are calculated. */
 export function researchCells(protocol) {
   if (protocol.schema !== "cts-signal-new-sources-research-v1")
     throw new Error("Unknown Signal protocol schema");
-  const protects = signalProtects({ ...DEFAULT_SIGNALS, exits: "pct" });
-  if (JSON.stringify(protects) !== JSON.stringify(protocol.protects))
-    throw new Error("Frozen protects differ from runtime signalProtects");
+  const protects = protocol.protects;
+  if (
+    !Array.isArray(protects) ||
+    sha256(JSON.stringify(protects)) !== FROZEN_PROTECTS_SHA256
+  )
+    throw new Error("Frozen protects differ from the predeclared research grid");
   if (protocol.model.roundTripCost !== 0.002) throw new Error("Frozen cost must remain 0.002");
-  const floors = { minSl: DEFAULT_SIGNALS.minSl, minTrail: DEFAULT_SIGNALS.minTrail };
-  if (stable(protocol.preOutcomeModelClarification?.signalFloors ?? {}) !== stable(floors))
-    throw new Error("Frozen Signal floors differ from runtime defaults");
+  const floors = protocol.preOutcomeModelClarification?.signalFloors;
+  if (stable(floors ?? {}) !== stable(FROZEN_SIGNAL_FLOORS))
+    throw new Error("Frozen Signal floors differ from the predeclared research floors");
   if (
     stable(protocol.preOutcomeModelClarification?.signalFilter ?? {}) !==
     stable(DEFAULT_SIGNALS.filter)
@@ -391,7 +398,7 @@ export function runResearch(
       source: "entrySignal(follow, fullind, DEFAULT_TACTICS)",
       tactics: DEFAULT_TACTICS,
       cooldownBars: tacticCooldown(DEFAULT_TACTICS),
-      grid: "signalProtects(DEFAULT_SIGNALS pct) +laneProtect +adjustProtect(default Signal floors); dedup effective IDs",
+      grid: "frozen protocol protects +laneProtect +adjustProtect(frozen Signal floors); dedup effective IDs",
       requestedConfigSideCells: cells.reduce((n, c) => n + c.requestedAliases.length, 0),
       effectiveConfigSideCells: cells.length,
       signalEntryFilter: protocol.preOutcomeModelClarification?.signalFilter,

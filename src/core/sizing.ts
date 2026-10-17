@@ -1,17 +1,17 @@
-// Order sizing. equityPct (default): every order's unit notional is a fixed share of the equity at its entry —
-// realized equity, compounding from the starting balance, so a drawdown shrinks the next orders and a profit grows
+// Order sizing. equityPct (default legacy key): every order's unit notional is a fixed share of the account balance at
+// its entry — realized balance, compounding from the starting balance, so a drawdown shrinks the next orders and a profit grows
 // them. fixed: every order's unit notional is the same amount. The Block volume multiplies the unit (the 8× stack
 // cap applies upstream); a trade's P&L = r × unit, where r already carries its volume.
 // minQty: every live order unit is the exchange minimum of its symbol (minimum notional / price, rounded up to the
 // lot); the Block volume multiplies it. Paper and simulation size it like equityPct (pct of the realized equity).
 export interface SizingSettings {
   mode: "equityPct" | "fixed" | "minQty";
-  /** equityPct: share of equity per order unit (0.02 = 2 %) */
+  /** equityPct: share of account balance per order unit (0.001 = 0.1 %) */
   pct: number;
 }
 
-/** Default: always the exchange minimum quantity per live order unit (with the maximum leverage, see live.leverage). */
-export const DEFAULT_SIZING: SizingSettings = { mode: "minQty", pct: 0.02 };
+/** Default base unit: 0.1% of account balance at entry; volume factors scale it, with exchange minimums still applying. */
+export const DEFAULT_SIZING: SizingSettings = { mode: "equityPct", pct: 0.001 };
 
 export function sizingSettings(s?: Partial<SizingSettings> | null): SizingSettings {
   const mode =
@@ -23,10 +23,10 @@ export function sizingSettings(s?: Partial<SizingSettings> | null): SizingSettin
   };
 }
 
-/** Unit notional of an order entered at `equity` (fixed mode: `fixedNotional`). */
-export function unitNotional(s: SizingSettings, equity: number, fixedNotional: number): number {
-  if (s.mode !== "fixed" && (!Number.isFinite(equity) || equity <= 0)) return 0;
-  const notional = s.mode === "fixed" ? fixedNotional : s.pct * equity;
+/** Unit notional of an order entered at `balance` (fixed mode: `fixedNotional`). */
+export function unitNotional(s: SizingSettings, balance: number, fixedNotional: number): number {
+  if (s.mode !== "fixed" && (!Number.isFinite(balance) || balance <= 0)) return 0;
+  const notional = s.mode === "fixed" ? fixedNotional : s.pct * balance;
   return Number.isFinite(notional) && notional > 0 ? notional : 0;
 }
 

@@ -265,9 +265,9 @@ export interface CoreSettings {
   armTop: number;
   /** notional per paper order unit in fixed sizing, USD */
   paperNotional: number;
-  /** paper starting balance, USD (fixed % of equity sizing compounds from it) */
+  /** paper starting balance, USD (balance-percent sizing compounds from it) */
   paperBalance: number;
-  /** order sizing: fixed % of equity per order unit (default 2 %) or a fixed notional */
+  /** order sizing: fixed % of account balance per order unit (default 0.1 %) or a legacy fixed notional mode */
   sizing: SizingSettings;
   toggles: StrategyToggles;
   /** entry tactics (session, volatility, trend strength, cooldown); each can be switched off */
@@ -291,7 +291,7 @@ export interface CoreSettings {
   /** independent protect variants computed in Base */
   grid: ProtectGridSpec;
   live: LiveSettings;
-  /** Signals processing: proven signal sources, the best N active, 15 Normal + 15 Trailing configs each */
+  /** Signals processing: proven signal sources, the best N active, 42 Normal + 35 Trailing configs each by default */
   signals: SignalSettings;
 }
 
@@ -364,7 +364,7 @@ export interface LiveSettings {
    * every config either way.
    */
   top?: number | "fill";
-  /** overall: cap per (symbol, direction) position, USD */
+  /** Legacy setting. USD position ceilings are disabled; balance-relative sizing and optional ratio budgets apply. */
   maxNotionalUsd: number;
   /** overall: adjust an existing position only when the target differs by more than this share */
   rebalancePct: number;
@@ -443,8 +443,8 @@ export interface LiveSettings {
   liveGroupLastN?: number;
   /**
    * account exposure factor: the positions' gross notional (long and short both counted) stays within this multiple
-   * of the account equity — every target is scaled by the same factor, so the relations between positions stay
-   * (0 / unset = off)
+   * of the account balance — every target is scaled by the same factor, so the relations between positions stay
+   * (default off; 0 / unset = off)
    */
   maxExposureX?: number;
   /**
@@ -453,17 +453,17 @@ export interface LiveSettings {
    */
   exposureScaler?: boolean;
   /**
-   * stop-risk budget, fraction of equity: the positions' summed notional × stop distance (what every stop hit at
+   * stop-risk budget, fraction of balance: the positions' summed notional × stop distance (what every stop hit at
    * once would cost) stays within it — every target is scaled by the same factor. The drawdown bound that the
    * volume factor and the exposure cap leave open (0 / unset = off)
    */
   maxRiskPct?: number;
   /**
-   * worst-case loss budget (fraction of equity): what every exchange backstop filled at once would cost (Σ notional ×
+   * worst-case loss budget (fraction of balance): what every exchange backstop filled at once would cost (Σ notional ×
    * backstop distance) stays within it, whatever the volume factor — the guard against losing the account. Unset = off.
    */
   maxBackstopLossPct?: number;
-  /** per-position cap as a multiple of the equity (with maxNotionalUsd the smaller one holds; 0 / unset = off) */
+  /** optional per-position cap as a multiple of account balance (default off; legacy USD cap is ignored) */
   maxPositionX?: number;
   /** account margin per symbol: cross (shared) or isolated */
   marginMode: "cross" | "isolated";
@@ -572,6 +572,8 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   // Short 9–14×, General 15–22×, Long 23–32× (step 1). They replace the wide targets (3 / 5 / 8 %), which General and
   // Long cover.
   grid: {
+    // untagged Wide configs use the normal volume unless their own factor is changed
+    volumeFactor: 1,
     tp: [],
     slOfTp: [1, 2],
     trailOfTp: [0, 0.5],
@@ -622,7 +624,9 @@ export const DEFAULT_SETTINGS: CoreSettings = {
     // take-profit beyond the outer target, every lane's partial exit by the system; true = "partials" (lane orders)
     laneOrders: false,
     ratio: 1,
-    maxNotionalUsd: 200,
+    maxNotionalUsd: 0,
+    maxPositionX: 0,
+    maxExposureX: 0,
     rebalancePct: 0.25,
     marginMode: "cross",
     positionMode: "hedge",

@@ -28,6 +28,35 @@ export const RANGE_LABEL: Record<RangeTag | "", string> = {
 /** Every range tag, smallest targets first. */
 export const RANGE_TAGS: readonly RangeTag[] = ["mc", "mn", "mp", "sh", "gn", "lg"];
 
+/** Execution volume by target range. The balance-relative default uses neutral volume in every range. */
+export const RANGE_VOLUME_FACTOR_DEFAULTS: Readonly<Record<"wide" | RangeTag, number>> = {
+  wide: 1,
+  mc: 1,
+  mn: 1,
+  mp: 1,
+  sh: 1,
+  gn: 1,
+  lg: 1,
+};
+
+export type RangeVolumeFactors = Partial<Record<"wide" | RangeTag, number>>;
+
+/** Resolved sizing factors for every strategy target range, including the untagged Wide grid. */
+export function rangeVolumeFactorsOf(g?: Partial<ProtectGridSpec> | null): RangeVolumeFactors {
+  const factor = (r: { volumeFactor?: number } | false | undefined, key: "wide" | RangeTag) =>
+    r && typeof r === "object" && r.volumeFactor !== undefined ? r.volumeFactor : RANGE_VOLUME_FACTOR_DEFAULTS[key];
+  const plus = g?.minimalPlus;
+  return {
+    wide: g?.volumeFactor ?? RANGE_VOLUME_FACTOR_DEFAULTS.wide,
+    mc: factor(g?.micro, "mc"),
+    mn: factor(g?.minimal, "mn"),
+    mp: factor(plus === false ? false : plus, "mp"),
+    sh: factor(g?.short, "sh"),
+    gn: factor(g?.general, "gn"),
+    lg: factor(g?.long, "lg"),
+  };
+}
+
 /** Range of a config id ("" = the wide grid). */
 export function rangeOfId(id: string | undefined): RangeTag | "" {
   const m = id ? /\|(mc|mp|mn|sh|gn|lg)(?=\||$)/.exec(id) : null;
@@ -120,6 +149,7 @@ export const EVAL_MIN_SL = 0.005;
  */
 export const MINIMAL_SL: readonly number[] = steps(1.5, 3, 0.25);
 export const MINIMAL_RANGE: CoordRange = {
+  volumeFactor: 1,
   tp: costTps(4, 8, 0.5),
   slOfTp: MINIMAL_SL,
   trailOfTp: TRAIL_CONFIGS,
@@ -132,6 +162,7 @@ export const MINIMAL_RANGE: CoordRange = {
 export const SHORT_SL: readonly number[] = steps(1, 2.5, 0.25);
 /** Short: 9–14× cost (1.8–2.8 %), step 1× (8× belongs to Minimal). Stops 1–2.5× the target, trailing cells too. */
 export const SHORT_RANGE: CoordRange = {
+  volumeFactor: 1,
   tp: costTps(9, 14, 1),
   slOfTp: SHORT_SL,
   trailOfTp: TRAIL_CONFIGS,
@@ -149,6 +180,7 @@ export const WIDE_TARGET_SL: readonly number[] = steps(0.25, 1.5, 0.25);
 
 /** General: 15–22× cost (3.0–4.4 %), step 1× (13 Oct, was 16–22 step 2). Stops 0.25–1.5× the target (WIDE_TARGET_SL). */
 export const GENERAL_RANGE: CoordRange = {
+  volumeFactor: 1,
   tp: costTps(15, 22, 1),
   slOfTp: WIDE_TARGET_SL,
   trailOfTp: TRAIL_CONFIGS,
@@ -159,6 +191,7 @@ export const GENERAL_RANGE: CoordRange = {
 
 /** Long: 23–32× cost (4.6–6.4 %), step 1× (13 Oct, was 24–32 step 2). Stops 0.25–1.5× the target (WIDE_TARGET_SL). */
 export const LONG_RANGE: CoordRange = {
+  volumeFactor: 1,
   tp: costTps(23, 32, 1),
   slOfTp: WIDE_TARGET_SL,
   trailOfTp: TRAIL_CONFIGS,
@@ -188,6 +221,7 @@ export const FORMER_MICRO_TP: readonly number[] = [0.001, 0.0015, 0.002, 0.0025,
  */
 export const MICRO_SL: readonly number[] = steps(1, 5, 0.25);
 export const MICRO_RANGE: CoordRange = {
+  volumeFactor: 1,
   tp: MICRO_TP,
   slOfTp: MICRO_SL,
   trailOfTp: TRAIL_CONFIGS,
@@ -338,6 +372,7 @@ export const MINIMAL_PLUS_TRAIL = TRAIL_CONFIGS;
 export const MINIMAL_PLUS_TRAIL_SL = 2.5;
 
 export const MINIMAL_PLUS_RANGE: CoordRange = {
+  volumeFactor: 1,
   tp: MINIMAL_PLUS_TP,
   slOfTp: MINIMAL_PLUS_SL,
   trailOfTp: MINIMAL_PLUS_TRAIL,

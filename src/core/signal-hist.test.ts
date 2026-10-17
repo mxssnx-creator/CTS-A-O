@@ -247,9 +247,9 @@ describe("signal historic trailing configs", () => {
     assert.deepEqual(heldHistProtects([histId], new Set(), signalProtects(sig)), {});
   });
 
-  it("on by default beside the 30 capped percent configs and nine Trailing only sets", () => {
+  it("on by default beside the 77 percent configs and nine Trailing only sets", () => {
     assert.equal(DEFAULT_SIGNALS.hist.enabled, true);
-    assert.equal(signalProtects(signalSettings({ enabled: true })).length, 39);
+    assert.equal(signalProtects(signalSettings({ enabled: true })).length, 86);
   });
 });
 

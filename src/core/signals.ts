@@ -3,7 +3,7 @@
 //   combos     every enabled source × range (short / medium) × signal lane, entered on the source's own onsets
 //   active     the best N signals (full source indication × type × symbol × direction); causal records rank every
 //              type and direction independently, while Base-only discovery records have no type evidence
-//   configs    each signal: 15 Normal, 15 target-capped Trailing and 9 independent Trailing only sets by default;
+//   configs    each signal: 42 Normal, 35 target-capped Trailing and 9 independent Trailing only sets by default;
 //              every stop × trailing range is expressed on the 15m reference and scaled per lane
 //   guard      every config runs independently per symbol and direction; a config set (source × type × symbol ×
 //              direction, each of its configs on its own) is disabled while the average of its last N (8) closed
@@ -50,7 +50,7 @@ export function signalCombos(
 }
 
 /**
- * The configs of every signal (15m reference; lanes scale them): percent exits = 15 Normal + 15 capped Trailing,
+ * The configs of every signal (15m reference; lanes scale them): percent exits = 42 Normal + 35 capped Trailing,
  * ATR exits = every stop × target-ratio cell without trail and once per trail value, by `sig.exits`.
  * Enabled Trailing only sets add every independent hard-stop × peak-trail cell, without any target.
  */

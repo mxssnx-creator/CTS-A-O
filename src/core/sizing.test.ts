@@ -77,10 +77,10 @@ describe("sizing: packed event order", () => {
 });
 
 describe("sizing", () => {
-  it("defaults: minimum quantity live (paper 2 % of equity per order), paper balance 1,000", () => {
-    assert.deepEqual(DEFAULT_SIZING, { mode: "minQty", pct: 0.02 });
-    // paper / simulation size the minimum-quantity mode like % of equity
-    assert.equal(unitNotional(DEFAULT_SIZING, 1000, 6), 20);
+  it("defaults to 0.1 % of account equity per order unit", () => {
+    assert.deepEqual(DEFAULT_SIZING, { mode: "equityPct", pct: 0.001 });
+    assert.equal(unitNotional(DEFAULT_SIZING, 1000, 6), 1);
+    assert.equal(unitNotional(DEFAULT_SIZING, 10, 6), 0.01);
     assert.equal(sizingSettings({ mode: "minQty" }).mode, "minQty");
     assert.deepEqual(DEFAULT_SETTINGS.sizing, DEFAULT_SIZING);
     assert.equal(DEFAULT_SETTINGS.paperBalance, 1000);
@@ -94,7 +94,7 @@ describe("sizing", () => {
   });
 
   it("each order takes its unit from the realized equity at its entry (a loss shrinks the next)", () => {
-    const opt = { balance: 1000, sizing: DEFAULT_SIZING, fixedNotional: 100 };
+    const opt = { balance: 1000, sizing: sizingSettings({ mode: "equityPct", pct: 0.02 }), fixedNotional: 100 };
     const trades = [
       tr("a", 0, 1, -0.1), // unit 20 → −2
       tr("b", 2, 3, 0.1), // equity 998 → unit 19.96 → +1.996
@@ -116,7 +116,7 @@ describe("sizing", () => {
   });
 
   it("a close at the same instant as an entry is counted first", () => {
-    const opt = { balance: 1000, sizing: DEFAULT_SIZING, fixedNotional: 100 };
+    const opt = { balance: 1000, sizing: sizingSettings({ mode: "equityPct", pct: 0.02 }), fixedNotional: 100 };
     const t = [tr("a", 0, 1, 0.5), tr("b", 1, 2, 0)];
     assert.equal(sizeBook(t, [], opt).units.get(orderKey(t[1])), 0.02 * 1010);
   });
@@ -196,7 +196,7 @@ describe("sizing", () => {
 
 describe("sizing: long and short of one config are separate orders", () => {
   it("a long and a short entered on the same bar each keep their own unit", () => {
-    const opt = { balance: 1000, sizing: DEFAULT_SIZING, fixedNotional: 100 };
+    const opt = { balance: 1000, sizing: sizingSettings({ mode: "equityPct", pct: 0.02 }), fixedNotional: 100 };
     const long = { ...tr("a", 0, 2, 0.1), side: 1 };
     const short = { ...tr("a", 0, 1, -0.1), side: -1 };
     const later = tr("b", 1.5, 3, 0);

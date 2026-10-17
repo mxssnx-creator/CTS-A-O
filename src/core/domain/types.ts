@@ -106,6 +106,8 @@ export interface Protect {
  * them on another range rather than ignoring them.
  */
 export interface RangeGrid {
+  /** execution volume relative to the balance-based base unit (0.2–5 in 0.2 steps; explicit 2.5 remains supported) */
+  volumeFactor?: number;
   /** targets of this range (fractions of price; Micro: net of the round-trip cost unless `tpNetOfCost` is false) */
   tp: readonly number[];
   /** stop as a multiple of the target */
@@ -413,8 +415,10 @@ export interface Trade {
   level?: number;
   /** Block volume multiplier applied at execution (r includes it); r / mult is the unit result */
   mult?: number;
-  /** part of mult from coordination volume (Stable-02 relation volume); mult / coordVol is the Block volume */
+  /** part of mult from Stable-02 relation volume; execution volume excludes it when auditing Block sizing */
   coordVol?: number;
+  /** part of mult from the negative-hour hedge volume factor; independent of Stable-02 relation volume */
+  hedgeVol?: number;
   /** taken by the negative-hour hedge (a signal outside the ranked set, while the book was losing) */
   hedge?: boolean;
   /** Block type overall: the extra volume each source added as its own position (part of mult) */
@@ -453,6 +457,10 @@ export interface OpenPosition {
    * marked-open order's r already carries it (r = Σ legs), so it is never multiplied into r again.
    */
   w?: number;
+  /** Stable-02 relation-volume factor captured at entry and retained while this position is held. */
+  coordVol?: number;
+  /** Negative-hour hedge volume factor captured at entry and retained while this position is held. */
+  hedgeVol?: number;
   /** Opt-in Block audit trace captured at entry and retained while this position is held. */
   blockLevels?: Partial<Record<string, number>>;
   blockEffectiveLevels?: Partial<Record<string, number>>;
@@ -608,6 +616,8 @@ export interface Gates {
 export type RangeMinPfKey = "micro" | "minimal" | "short" | "general" | "long";
 
 export interface ProtectGridSpec {
+  /** execution volume relative to the normal factor for untagged Wide configs (0.2–5 in 0.2 steps; default 1) */
+  volumeFactor?: number;
   tp: readonly number[];
   /** SL as a multiple of TP (max ratio e.g. 2 or 2.5) */
   slOfTp: readonly number[];
@@ -707,6 +717,8 @@ export interface ProtectGridSpec {
         enabled?: boolean;
         lastN?: number;
         minPf?: number;
+        /** execution volume relative to the normal factor for Minimal plus (0.2–5 in 0.2 steps; default 1) */
+        volumeFactor?: number;
         tp: readonly number[];
         slOfTp: readonly number[];
         trailOfTp: readonly number[];

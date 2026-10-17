@@ -133,6 +133,12 @@ export interface LiveIntentLite {
    * it, so entries mode skips it (overall mode mirrors every paper exit)
    */
   managed?: boolean;
+  /** Stable-02 relation-volume multiplier captured by the runtime's validated intent. */
+  coordVol?: number;
+  /** This entry belongs to the negative-hour hedge-only Signal set. */
+  hedge?: boolean;
+  /** Hedge-only size multiplier captured with the intent. */
+  hedgeVol?: number;
 }
 
 export interface LivePlan {
@@ -420,7 +426,7 @@ export interface ControlTarget {
   volEff?: number;
   /**
    * the per-position cap cut the lanes' size (unit × vol × ratio above it): a higher volume factor no longer sizes
-   * this position up — only a higher cap (maxPositionX / maxNotionalUsd) does
+   * this position up — only a higher explicit balance-relative maxPositionX does
    */
   capped?: boolean;
   /** set when every contributing lane is the same tracked range ("|mp", "|mc", "|mn" or "|sh") */
@@ -429,13 +435,13 @@ export interface ControlTarget {
 
 /**
  * Account exposure factor: when the targets' gross notional (long and short counted apart, both in full) exceeds
- * `maxX` × equity, every target is scaled by the same factor — the relations between positions (volume factors,
+ * `maxX` × account balance, every target is scaled by the same factor — the relations between positions (volume factors,
  * Block multiples, ratios, long vs short) stay as they are. A scaled quantity is snapped to the exchange (never
- * below its minimum for a target that was open). No equity or maxX ≤ 0: unchanged.
+ * below its minimum for a target that was open). No account balance or maxX ≤ 0: unchanged.
  */
 export function scaleToExposure(
   targets: ControlTarget[],
-  equity: number | null | undefined,
+  balance: number | null | undefined,
   maxX: number | undefined,
   snap: (sym: string, qty: number, px: number) => number,
   /** keys held now: never dropped (a held position at the exchange minimum stays) */
@@ -443,14 +449,14 @@ export function scaleToExposure(
 ): { factor: number; gross: number; cap: number; dropped: string[] } | null {
   // the exposure is the stop-risk budget with every unit of notional costing 1: the same drops (in rank order, a new
   // target whose exchange minimum no longer fits under the cap is left out) and the same water-fill as the risk
-  // scalers — so a round-up to the venue minimum can never take the gross past maxX × equity
-  const r = scaleToRisk(targets, equity, maxX, snap, held, () => 1);
+  // scalers — so a round-up to the venue minimum can never take the gross past maxX × balance
+  const r = scaleToRisk(targets, balance, maxX, snap, held, () => 1);
   return r && { factor: r.factor, gross: r.risk, cap: r.cap, dropped: r.dropped };
 }
 
 /**
  * Stop-risk budget: when the targets' summed notional × planned loss distance (every lane at its own stop at once;
- * `riskDist`, else the backstop `stopDist`) exceeds maxRiskPct × equity, the targets are scaled by one factor
+ * `riskDist`, else the backstop `stopDist`) exceeds maxRiskPct × account balance, the targets are scaled by one factor
  * (relations between positions kept).
  *
  * Positions at the exchange minimum cannot shrink, so the drops are decided FIRST: in rank order (the list is ranked
@@ -463,7 +469,7 @@ export function scaleToExposure(
  */
 export function scaleToRisk(
   targets: ControlTarget[],
-  equity: number | null | undefined,
+  balance: number | null | undefined,
   maxRiskPct: number | undefined,
   snap: (sym: string, qty: number, px: number) => number,
   /** keys held now: never dropped (a position at the exchange minimum that cannot shrink stays) */
@@ -471,10 +477,10 @@ export function scaleToRisk(
   /** the loss priced per position: its lanes' own stops (default) or the exchange backstop (the worst case) */
   dist: (t: ControlTarget) => number = (t) => t.riskDist ?? t.stopDist,
 ): { factor: number; risk: number; cap: number; dropped: string[] } | null {
-  if (!(maxRiskPct && maxRiskPct > 0) || !(equity && equity > 0)) return null;
+  if (!(maxRiskPct && maxRiskPct > 0) || !(balance && balance > 0)) return null;
   const riskOf = (t: ControlTarget) => Math.abs(t.notional) * dist(t);
   const risk = targets.reduce((a, t) => a + riskOf(t), 0);
-  const cap = maxRiskPct * equity;
+  const cap = maxRiskPct * balance;
   if (!(risk > cap)) return { factor: 1, risk, cap, dropped: [] };
   // 1) drops: in rank order, a new target is admitted while its risk at its minimum fits what the budget has left
   // (the held ones take theirs first); one that does not fit is left out and the next is still tried
@@ -577,11 +583,11 @@ export function admitWithinBudgets(
  * The three account budgets in the live step's order — gross exposure (maxExposureX), stop risk at the lanes' own
  * stops (maxRiskPct), worst case at the exchange backstops (maxBackstopLossPct) — with the drops decided across all
  * three at once (admitWithinBudgets) and then each scaler's factor on the survivors. A budget that is off (0) or an
- * unknown equity: that scaler is null (nothing dropped for it). Each result's `dropped` lists that budget's drops.
+ * unknown balance: that scaler is null (nothing dropped for it). Each result's `dropped` lists that budget's drops.
  */
 export function scaleToBudgets(
   targets: ControlTarget[],
-  equity: number | null | undefined,
+  balance: number | null | undefined,
   caps: { maxExposureX?: number; maxRiskPct?: number; maxBackstopLossPct?: number },
   snap: (sym: string, qty: number, px: number) => number,
   held?: ReadonlySet<string>,
@@ -590,7 +596,7 @@ export function scaleToBudgets(
   risk: ReturnType<typeof scaleToRisk>;
   worst: ReturnType<typeof scaleToRisk>;
 } {
-  const eq = equity && equity > 0 ? equity : 0;
+  const eq = balance && balance > 0 ? balance : 0;
   const capOf = (pct: number | undefined) => (eq > 0 && pct && pct > 0 ? pct * eq : Infinity);
   const dropped =
     eq > 0
@@ -605,17 +611,17 @@ export function scaleToBudgets(
           held,
         )
       : [[], [], []];
-  const exposure = scaleToExposure(targets, equity, caps.maxExposureX, snap, held);
-  const risk = scaleToRisk(targets, equity, caps.maxRiskPct, snap, held);
-  const worst = scaleToRisk(targets, equity, caps.maxBackstopLossPct, snap, held, (t) => t.stopDist);
+  const exposure = scaleToExposure(targets, balance, caps.maxExposureX, snap, held);
+  const risk = scaleToRisk(targets, balance, caps.maxRiskPct, snap, held);
+  const worst = scaleToRisk(targets, balance, caps.maxBackstopLossPct, snap, held, (t) => t.stopDist);
   const withDrops = <R extends { dropped: string[] } | null>(r: R, d: string[]): R =>
     r ? { ...r, dropped: [...d, ...r.dropped] } : r;
   return { exposure: withDrops(exposure, dropped[0]), risk: withDrops(risk, dropped[1]), worst: withDrops(worst, dropped[2]) };
 }
 
-/** The per-position cap: the fixed USD cap and the equity multiple, the smaller one (Infinity when neither). */
-export function positionCapFor(fixed: number, equity: number | null | undefined, maxPositionX: number | undefined): number {
-  const x = maxPositionX && maxPositionX > 0 && equity && equity > 0 ? maxPositionX * equity : Infinity;
+/** Optional per-position limit: the legacy fixed amount and balance multiple, the smaller one (Infinity if neither). */
+export function positionCapFor(fixed: number, balance: number | null | undefined, maxPositionX: number | undefined): number {
+  const x = maxPositionX && maxPositionX > 0 && balance && balance > 0 ? maxPositionX * balance : Infinity;
   return Math.min(fixed, x);
 }
 

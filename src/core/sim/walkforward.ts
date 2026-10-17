@@ -8,7 +8,10 @@ import {
   rangeGateOf,
   minPfOf,
   rangeGated,
+  rangeVolumeFactorsOf,
+  RANGE_VOLUME_FACTOR_DEFAULTS,
   type CoordTag,
+  type RangeVolumeFactors,
   rangeOfId,
   distanceAtFloor,
   trailAtFloor,
@@ -95,6 +98,7 @@ import {
 import { S2Coord } from "./s2coord.ts";
 import { botFamilyOf } from "../bot-stats.ts";
 import { INDICATION_BY_ID, isSignalInd, laneOf, signalSourceOf } from "../indications/registry.ts";
+import { signalRangeOf } from "../signal-config.ts";
 import { isMicroInd, microIndFits, type MicroIndRule } from "../indications/micro.ts";
 import {
   acceptKey,
@@ -153,6 +157,8 @@ export interface CoordSettings {
   /** hedge selection: PF of a signal in the book's losing hours (default 1.3) and results needed (default 5) */
   hedgeMinPf?: number;
   hedgeMinN?: number;
+  /** Multiplier applied only to hedge-selected Signal entries (0.2–5 by 0.2); 1 is neutral. */
+  hedgeVolumeFactor?: number;
   /** hedge only after a losing previous hour (default false: also while the current hour is negative) */
   hedgePrevOnly?: boolean;
 }
@@ -165,6 +171,7 @@ export const DEFAULT_COORD: CoordSettings = {
   cooldown: "off",
   conflict: false,
   confirm: true,
+  hedgeVolumeFactor: 1,
 };
 
 /** strict negative-hour hedge selection (the loose PF 1.3 / 5 lost on 8 days, docs/signals-validation.md) */
@@ -173,6 +180,7 @@ const numOr = (v: unknown, d: number, lo: number, hi: number) =>
   v === null || v === undefined || v === "" || !Number.isFinite(Number(v))
     ? d
     : Math.min(hi, Math.max(lo, Number(v)));
+const volumeFactor = (v: unknown) => Number((Math.round(numOr(v, 1, 0.2, 5) * 5) / 5).toFixed(1));
 
 export function coordSettings(c?: Partial<CoordSettings> | null): CoordSettings {
   const hl = Number(c?.hourLock);
@@ -193,6 +201,7 @@ export function coordSettings(c?: Partial<CoordSettings> | null): CoordSettings 
     hedge: c?.hedge === true,
     hedgeMinPf: numOr(c?.hedgeMinPf, HEDGE_DEFAULTS.minPf, 1, 5),
     hedgeMinN: numOr(c?.hedgeMinN, HEDGE_DEFAULTS.minN, 1, 100),
+    hedgeVolumeFactor: volumeFactor(c?.hedgeVolumeFactor),
     hedgePrevOnly: c?.hedgePrevOnly === true,
   };
 }
@@ -254,6 +263,10 @@ export function coordBlock(
 }
 
 export interface WalkForwardOptions {
+  /** execution sizing multiplier relative to the normal factor, per strategy target range */
+  rangeVolumeFactors?: RangeVolumeFactors;
+  /** execution sizing multiplier relative to the normal factor, per independent Signal range */
+  signalRangeVolumeFactors?: { short: number; medium: number };
   preH: number;
   simH: number;
   stepH: number;
@@ -495,6 +508,7 @@ export interface WalkForwardOptions {
 }
 
 export const DEFAULT_GRID: ProtectGridSpec = {
+  volumeFactor: 1,
   tp: [0.026, 0.035, 0.05, 0.07],
   slOfTp: [1, 1.5, 2, 2.5],
   trailOfTp: [0, 0.5],
@@ -656,6 +670,8 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     engineSideAccept: { ...ENGINE_SIDE_ACCEPT },
     // range cells: their own, higher last-N gate (grid.rangeGate)
     rangeGate: rangeGateOf(s.grid),
+    rangeVolumeFactors: rangeVolumeFactorsOf(s.grid),
+    signalRangeVolumeFactors: s.signals.rangeVolumeFactors,
     rangeSeats: s.grid?.rangeSeats === true,
     // unlimited working orders on one symbol (0 = no limit)
     maxPerSymbol: 0,
@@ -741,6 +757,8 @@ export interface ConfigTape {
    * pair alone, a held cell kept opening orders after Base had dropped it.
    */
   heldOnly?: boolean;
+  /** Kept from the preceding compute during a memory fallback instead of being rebuilt in this compute. */
+  carried?: boolean;
   /**
    * First time the tape's series can produce a trade (its lane's history start + a day of indicator warm-up).
    * Selection windows start here at the earliest: a lane with a shorter history (1m: days) is judged on what
@@ -1378,6 +1396,8 @@ export interface EntryFilter {
 export type EntryFloors = {
   minSl: number;
   minTrail: number;
+  /** Standard Signal protections use 15m reference distances; apply the trail floor after lane scaling. */
+  signalReferenceGrid?: boolean;
   /** Background Base evaluation: the same simulations, counted and immediately discarded. Never used for trading. */
   baseConfigCounter?: BaseConfigCounter;
   countOnly?: boolean;
@@ -1807,13 +1827,16 @@ export function* buildTapesGen(
         continue;
       }
       const lane = laneProtect(p0, c.ind);
-      // Signal trails below their configured floor are disabled, not widened by adjustProtect. Check after lane
-      // scaling, when fast timeframes can shrink an otherwise valid reference trail. An existing position still
-      // rebuilds its exact tape so its protection cannot disappear mid-trade.
+      // Historical Signal protections are qualified at their exact lane distances; a too-short one stays disabled
+      // instead of being widened after qualification. Standard Signal protections are specified at the 15m
+      // reference, so the caller marks that grid for floor adjustment after lane scaling (aliases then deduplicate
+      // by effective id below). An existing position still rebuilds its exact tape so protection cannot vanish.
       const laneId = configId(c.bot, c.ind, lane);
       const heldLane = floors?.heldIds?.has(laneId) || floors?.heldOnlyIds?.has(laneId);
+      const historicalProtect = own?.includes(p0) ?? false;
       if (
         isSignalInd(c.ind) &&
+        (!floors?.signalReferenceGrid || historicalProtect) &&
         p0.trail > 0 &&
         lane.trail * (lane.trailStep ?? 1) + 1e-12 < (floors?.minTrail ?? 0) &&
         !heldLane
@@ -3830,6 +3853,19 @@ export type ExecDecision =
     }
   | { ok: false; why: string };
 
+/** Range sizing sits outside the Block / coordination stack and does not change unit-return qualification. */
+export function rangeVolumeFactorFor(
+  tp: Pick<ConfigTape, "ind" | "protect">,
+  o: Pick<WalkForwardOptions, "rangeVolumeFactors" | "signalRangeVolumeFactors">,
+): number {
+  if (isSignalInd(tp.ind)) {
+    const range = signalRangeOf(tp.ind);
+    return range ? o.signalRangeVolumeFactors?.[range] ?? 1 : 1;
+  }
+  const key = tp.protect.tag ?? "wide";
+  return o.rangeVolumeFactors?.[key] ?? RANGE_VOLUME_FACTOR_DEFAULTS[key];
+}
+
 /** The crowding group of a config: its range tag, "wide" without one, "sig" for a signal. */
 export const crowdRangeOf = (cfg: string): string =>
   isSignalInd(cfg.split("|")[1] ?? "") ? "sig" : rangeOfId(cfg) || "wide";
@@ -5122,12 +5158,16 @@ export function* walkForwardGen(
       // Stable-02 relation volume on top of the Block volume (the stack stays within the Block maximum)
       const stackCap = blockStackCap(o.block);
       const cv = s2 ? Math.min(s2.volume(tr.entryT), Math.max(1, stackCap / dec.vol)) : 1;
+      const hedgeVol = hedging ? o.coord?.hedgeVolumeFactor ?? 1 : 1;
+      const rangeVol = rangeVolumeFactorFor(tp, o);
+      const executionMult = dec.vol * cv * hedgeVol * rangeVol;
       const x: Trade = {
         ...tr,
-        r: tr.r * dec.vol * cv,
-        vol: (tr.vol ?? 1) * dec.vol * cv,
-        mult: dec.vol * cv,
+        r: tr.r * executionMult,
+        vol: (tr.vol ?? 1) * executionMult,
+        mult: executionMult,
         ...(cv !== 1 ? { coordVol: cv } : {}),
+        ...(hedgeVol !== 1 ? { hedgeVol } : {}),
         ...(hedging ? { hedge: true } : {}),
         level: tp.kind.startsWith("dca") || tp.kind === "axis" ? tr.level : dec.level,
         ...(dec.legs ? { legs: dec.legs } : {}),

@@ -1,5 +1,5 @@
 // Historic trailing configs of a signal (operator, 13 Oct: "Signals run with multiple trailing configs related to the
-// historic calcs in their spec"). Every signal has the same 15 Normal + 15 Trailing percent configs; these add
+// historic calcs in their spec"). Every signal has the same 42 Normal + 35 Trailing percent configs; these add
 // Trailing configs of its OWN, from what its own entries did before: the maximum favourable move each historic entry
 // reached within the hold (MFE, after the entry at the next bar's open, as the simulator enters), pooled over the
 // symbols and both sides of the signal's lane. Its MFE quantiles become targets; each target trails at every share

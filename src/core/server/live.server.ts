@@ -12,7 +12,8 @@ import { sizingSettings, unitNotional } from "../sizing.ts";
 import { createHash } from "node:crypto";
 import { isSignalInd } from "../indications/registry.ts";
 import { signalActiveHas } from "../signals.ts";
-import { rangeOfId } from "../minimal-coord.ts";
+import { rangeOfId, rangeVolumeFactorsOf } from "../minimal-coord.ts";
+import { signalRangeOf } from "../signal-config.ts";
 import { kindOfId, parseConfigId } from "../pipeline/pipeline.ts";
 import { positionMult, runSubset, type WalkForwardResult } from "../sim/walkforward.ts";
 import type { CoreRuntime, LiveIntent } from "./runtime.server.ts";
@@ -236,7 +237,7 @@ export interface ExchangeClient {
     side: "LONG" | "SHORT" | "BOTH",
     leverage: number,
   ): Promise<void>;
-  /** account equity (USDT) for fixed-%-of-equity sizing; null = unknown, never the paper balance */
+  /** legacy numeric account-balance reader (USDT); null = unknown, never the paper balance */
   equity?(): Promise<number | null>;
   /** balance snapshot (open PnL, realized, margin); absent on a simulated exchange */
   account?(): Promise<bx.AccountSnapshot | null>;
@@ -452,18 +453,19 @@ export function bingxClient(connId: LiveSettings["connId"]): ExchangeClient {
 }
 
 /**
- * Notional of one live order unit: fixed % of the same account snapshot that funds the risk budgets, or the fixed
- * notional. Equity-only clients are read at most every 30 s; a failed refresh keeps a successful read for at most
- * 75 s, never indefinitely. null in the %-of-equity mode while the equity is unknown (never read,
- * or the exchange reports none): nothing opens or grows then — never sized from the paper balance on a real
+ * Notional of one live order unit: fixed % of account wallet balance, or the fixed notional. Account snapshots are
+ * read at most every 30 s; a failed refresh keeps a successful read for at most 75 s, never indefinitely. null in the
+ * %-of-balance mode while wallet balance is unknown: nothing opens or grows then — never sized from the paper balance on a real
  * account. A client without an equity read (paper / simulated exchange) sizes from the paper balance.
- * The per-position cap (maxNotionalUsd) still applies.
+ * Optional account-balance ratio budgets still apply; legacy fixed-USD position ceilings are ignored.
  */
 const EQUITY_MAX_AGE = ACCOUNT_MS + 15_000;
-const equityCache = new Map<string, { at: number; goodAt: number; eq: number | null }>();
-let observedEquity = new WeakMap<CoreRuntime, { connId: string; at: number; eq: number | null; paper: boolean }>();
+const balanceCache = new Map<string, { at: number; goodAt: number; balance: number | null }>();
+let observedAccount = new WeakMap<CoreRuntime, { connId: string; at: number; balance: number | null; equity: number | null; paper: boolean }>();
 const usableEquity = (eq: number | null | undefined): number | null =>
   typeof eq === "number" && Number.isFinite(eq) && eq > 0 ? eq : null;
+const usableBalance = (balance: number | null | undefined): number | null =>
+  typeof balance === "number" && Number.isFinite(balance) && balance > 0 ? balance : null;
 export async function liveUnit(
   rt: CoreRuntime,
   ex: ExchangeClient,
@@ -472,72 +474,82 @@ export async function liveUnit(
   const s = rt.settings.live;
   const sz = sizingSettings(rt.settings.sizing);
   const paper = !ex.account && !ex.equity;
-  const observe = (eq: number | null, at = Date.now()) => {
-    if (!Number.isFinite(at) || Date.now() - at > EQUITY_MAX_AGE) eq = null;
-    observedEquity.set(rt, { connId: s.connId, at, eq, paper });
+  const observe = (balance: number | null, equity: number | null, at = Date.now()) => {
+    if (!Number.isFinite(at) || Date.now() - at > EQUITY_MAX_AGE) {
+      balance = null;
+      equity = null;
+    }
+    observedAccount.set(rt, { connId: s.connId, at, balance, equity, paper });
     if (sz.mode !== "equityPct") return s.notionalUsd;
-    return eq === null ? null : unitNotional(sz, eq, s.notionalUsd);
+    return balance === null ? null : unitNotional(sz, balance, s.notionalUsd);
   };
   // Overall mode already read this snapshot. Reading equity again could size at yesterday's high balance while
   // the budgets use today's smaller account (and left minQty/fixed previews showing the paper balance).
   if (snapshot !== undefined && ex.account)
-    return observe(usableEquity(snapshot?.equity), snapshot?.at ?? accountCache.get(ex.fingerprint())?.at ?? Date.now());
-  if (paper) return observe(usableEquity(rt.settings.paperBalance));
+    return observe(usableBalance(snapshot?.wallet), usableEquity(snapshot?.equity), snapshot?.at ?? accountCache.get(ex.fingerprint())?.at ?? Date.now());
+  if (paper) {
+    const balance = usableBalance(rt.settings.paperBalance);
+    return observe(balance, balance ?? null);
+  }
   if (sz.mode !== "equityPct") return s.notionalUsd;
   if (ex.account) {
     try {
       const account = await ex.account();
-      return observe(usableEquity(account?.equity), account?.at ?? accountCache.get(ex.fingerprint())?.at ?? Date.now());
+      return observe(usableBalance(account?.wallet), usableEquity(account?.equity), account?.at ?? accountCache.get(ex.fingerprint())?.at ?? Date.now());
     } catch {
-      return observe(null);
+      return observe(null, null);
     }
   }
   const k = ex.fingerprint();
-  let c = equityCache.get(k);
+  let c = balanceCache.get(k);
   if (!c || Date.now() - c.at > 30_000) {
-    let eq: number | null = null;
+    let balance: number | null = null;
     let goodAt = 0;
     try {
-      eq = usableEquity(await ex.equity!());
-      if (eq !== null) goodAt = Date.now();
+      // Legacy numeric-only clients expose their account balance through the old `equity` method.
+      balance = usableBalance(await ex.equity!());
+      if (balance !== null) goodAt = Date.now();
     } catch {
       if (c && Date.now() - c.goodAt <= EQUITY_MAX_AGE) {
-        eq = c.eq;
+        balance = c.balance;
         goodAt = c.goodAt;
       }
     }
-    c = { at: Date.now(), goodAt, eq };
-    equityCache.set(k, c);
+    c = { at: Date.now(), goodAt, balance };
+    balanceCache.set(k, c);
   }
-  return observe(Date.now() - c.goodAt <= EQUITY_MAX_AGE ? c.eq : null, c.goodAt || c.at);
+  const balance = Date.now() - c.goodAt <= EQUITY_MAX_AGE ? c.balance : null;
+  return observe(balance, balance, c.goodAt || c.at);
 }
 
 /**
  * The unit the control preview shows: this runtime's latest account snapshot, including fixed/minQty modes.
- * Unknown/stale account equity never becomes a paper balance. Paper is used only for an explicitly simulated
+ * Unknown/stale account balance never becomes a paper balance. Paper is used only for an explicitly simulated
  * exchange with no account/equity reader. Minimum-quantity sizing sizes each symbol at its exchange minimum lot.
  */
 export function liveUnitPeek(rt: CoreRuntime): {
   unit: number;
-  from: "equity" | "paper" | "fixed" | "minQty" | "unknown";
+  from: "balance" | "paper" | "fixed" | "minQty" | "unknown";
+  balance: number | null;
   equity: number | null;
 } {
   const s = rt.settings.live;
   const sz = sizingSettings(rt.settings.sizing);
-  const seen = observedEquity.get(rt);
+  const seen = observedAccount.get(rt);
   const current = seen && seen.connId === s.connId && Date.now() - seen.at <= EQUITY_MAX_AGE ? seen : null;
-  const equity = current?.eq ?? null;
-  if (sz.mode === "minQty") return { unit: s.notionalUsd, from: "minQty", equity };
-  if (sz.mode !== "equityPct") return { unit: s.notionalUsd, from: "fixed", equity };
-  if (equity !== null)
-    return { unit: unitNotional(sz, equity, s.notionalUsd), from: current?.paper ? "paper" : "equity", equity };
-  return { unit: 0, from: "unknown", equity: null };
+  const balance = current?.balance ?? null;
+  const equity = current?.equity ?? null;
+  if (sz.mode === "minQty") return { unit: s.notionalUsd, from: "minQty", balance, equity };
+  if (sz.mode !== "equityPct") return { unit: s.notionalUsd, from: "fixed", balance, equity };
+  if (balance !== null)
+    return { unit: unitNotional(sz, balance, s.notionalUsd), from: current?.paper ? "paper" : "balance", balance, equity };
+  return { unit: 0, from: "unknown", balance: null, equity };
 }
 
 /** The control sizing of the live settings for one lane unit — shared by the live step and the preview. */
-/** The per-position notional cap: 0 = none (volume from the factors and relations alone). */
-export function positionCapOf(s: Pick<LiveSettings, "maxNotionalUsd" | "notionalUsd">): number {
-  return s.maxNotionalUsd === 0 ? Infinity : (s.maxNotionalUsd ?? s.notionalUsd * 5);
+/** Legacy USD ceilings are intentionally ignored; only optional balance-relative limits can constrain sizing. */
+export function positionCapOf(_s: Pick<LiveSettings, "maxNotionalUsd" | "notionalUsd">): number {
+  return Infinity;
 }
 
 export function controlSettingsOf(s: LiveSettings, unit: number) {
@@ -721,8 +733,8 @@ const cleared = (k: string) => backoff.delete(k);
 /** tests: forget every backoff */
 export function resetLiveBackoff() {
   backoff.clear();
-  equityCache.clear();
-  observedEquity = new WeakMap();
+  balanceCache.clear();
+  observedAccount = new WeakMap();
   for (const l of allLocals) {
     l.entriesSent.clear();
     l.rateLimitLogged = 0;
@@ -1204,6 +1216,9 @@ async function runStepNow(
         sl: Math.max(i.protect.sl, s.minStopPct ?? 0.01),
         barT: i.barT,
         managed: i.protect.trail > 0 || (i.kind !== undefined && i.kind !== "normal"),
+        coordVol: i.coordVol,
+        hedge: i.hedge,
+        hedgeVol: i.hedgeVol,
       })),
     });
     status.enabled = plan.enabled;
@@ -1332,18 +1347,18 @@ async function runStepNow(
       return finish();
     }
     const fresh = new Map(ticks.map((t) => [t.sym, t.last]));
-    // equity-% sizing, never above the per-position real-money cap; unknown equity → no entries
+    // balance-% sizing, never above an explicitly configured balance-ratio cap; unknown balance → no entries
     const raw = await liveUnit(rt, bingxClient(s.connId), account);
-    const equity = liveUnitPeek(rt).equity;
+    const balance = liveUnitPeek(rt).balance;
     const maxExposureX = s.exposureScaler === false ? 0 : s.maxExposureX ?? 0;
-    const needsEquity = (s.maxPositionX ?? 0) > 0 || maxExposureX > 0 || (s.maxRiskPct ?? 0) > 0 || (s.maxBackstopLossPct ?? 0) > 0;
-    if (raw === null || (needsEquity && equity === null)) {
-      status.skipped.push({ sym: "*", why: "account equity unknown — no entries this step" });
+    const needsBalance = (s.maxPositionX ?? 0) > 0 || maxExposureX > 0 || (s.maxRiskPct ?? 0) > 0 || (s.maxBackstopLossPct ?? 0) > 0;
+    if (raw === null || (needsBalance && balance === null)) {
+      status.skipped.push({ sym: "*", why: "account balance unknown — no entries this step" });
       return finish();
     }
-    // Entries intentionally uses one fixed/equity-% unit per intent; live.ratio is an Overall-only control.
-    const cap = positionCapFor(positionCapOf(s), equity, s.maxPositionX);
-    const unit = Math.min(raw, cap);
+    // Entries intentionally uses one fixed/balance-% unit per intent; live.ratio is an Overall-only control.
+    const cap = positionCapFor(positionCapOf(s), balance, s.maxPositionX);
+    const rangeVolumeFactors = rangeVolumeFactorsOf(rt.settings.grid);
     const accountFresh = account && (account.at === undefined ||
       (Number.isFinite(account.at) && Date.now() - account.at <= EQUITY_MAX_AGE));
     const floor = s.minFreeMargin ?? 0;
@@ -1375,7 +1390,7 @@ async function runStepNow(
         else pendingMargin += reserved.notional;
       }
       const addition = entryBudgetUse(`${e.sym}|${e.side}`, qty, stopDist);
-      const blocked = accountGrowthBlock(used, addition, equity, {
+      const blocked = accountGrowthBlock(used, addition, balance, {
         maxExposureX, maxRiskPct: s.maxRiskPct, maxBackstopLossPct: s.maxBackstopLossPct,
       });
       if (blocked) return blocked;
@@ -1391,6 +1406,16 @@ async function runStepNow(
     };
     for (const e of plan.entries) {
       if (!alive()) break;
+      const ind = e.cfg.split("|")[1] ?? "";
+      const signalRange = isSignalInd(ind) ? signalRangeOf(ind) : null;
+      const rangeFactor = signalRange
+        ? rt.settings.signals.rangeVolumeFactors[signalRange] ?? 1
+        : rangeVolumeFactors[rangeOfId(e.cfg) || "wide"] ?? 1;
+      // Apply the per-range multiplier before the same per-position, account, and aggregate-risk checks as normal size.
+      const coordFactor = e.coordVol ?? 1;
+      const hedgeFactor = e.hedge ? (e.hedgeVol ?? 1) : 1;
+      // Coordination multipliers are captured when the intent is validated; all account and position caps still gate size.
+      const unit = Math.min(raw * rangeFactor * coordFactor * hedgeFactor, cap);
       const promotion = rt.livePromotionGate?.(e);
       rt.status.livePromotion = promotionStatus([{ cfg: e.cfg, sym: e.sym, side: e.side,
         ...(promotion ?? { required: true, ok: false, n: 0, pf: null, state: "execution-insufficient" }) }]);
@@ -1759,11 +1784,17 @@ export function laneContributions(
 ): ControlContribution[] {
   // a lane whose stop was crossed at tick time no longer asks for its volume (its stop executes live now)
   const out: ControlContribution[] = [];
+  const rangeVolumeFactors = rangeVolumeFactorsOf(rt.settings.grid);
   for (const p of positions) {
     if (p.stopHit) continue;
     const ls = laneStringsOf(p);
     const id = ls.id;
-    const vol = p.vol ?? 1;
+    const ind = p.cfg.split("|")[1] ?? "";
+    const signalRange = isSignalInd(ind) ? signalRangeOf(ind) : null;
+    const rangeFactor = signalRange
+      ? rt.settings.signals.rangeVolumeFactors[signalRange] ?? 1
+      : rangeVolumeFactors[rangeOfId(p.cfg) || "wide"] ?? 1;
+    const vol = (p.vol ?? 1) * rangeFactor;
     // the backstop sits at the current price minus this distance: measure it from the current price, so a stop
     // trailed far past the entry does not widen the backstop by its whole run (|entry − stop| did)
     const px = prices?.get(p.sym) ?? 0;
@@ -2852,17 +2883,16 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       return isHeld;
     });
     rt.status.livePromotion = promotionStatus([...promotionEvidence.values()]);
-    // one lane volume unit: fixed % of the account equity (or the fixed notional); unknown equity → nothing is
+    // one lane volume unit: fixed % of account balance (or the fixed notional); unknown balance → nothing is
     // sized: held positions are kept as they are (closes of lanes that ended still run), nothing opens or grows
     phase("sizing");
     const unitRaw = await liveUnit(rt, ex, acct);
-    // the equity caps (per-position, exposure, risk budget) need the equity: unknown equity sizes nothing (a failed
-    // balance read must not lift every cap at once — held positions stay, nothing opens or grows)
+    // account-balance ratio budgets need a fresh wallet balance; unknown balance never lifts a cap
     // the exposure scaler switched off: maxExposureX bounds nothing (neither the fill budget nor the targets)
     const maxExposureX = s.exposureScaler === false ? 0 : (s.maxExposureX ?? 0);
-    const eqCapped = (s.maxPositionX ?? 0) > 0 || maxExposureX > 0 || (s.maxRiskPct ?? 0) > 0 || (s.maxBackstopLossPct ?? 0) > 0;
-    const equityNow = liveUnitPeek(rt).equity;
-    const unit = eqCapped && equityNow === null ? null : unitRaw;
+    const balanceCapped = (s.maxPositionX ?? 0) > 0 || maxExposureX > 0 || (s.maxRiskPct ?? 0) > 0 || (s.maxBackstopLossPct ?? 0) > 0;
+    const balanceNow = liveUnitPeek(rt).balance;
+    const unit = balanceCapped && balanceNow === null ? null : unitRaw;
     // symbols / sides with a foreign position or order are never touched: their lanes take no share of the budgets
     const lanesOwn = lanes.filter((l) => !isForeign(foreign, `${l.sym}|${l.side}`));
     // minimum-quantity sizing: one unit = the symbol's exchange minimum (its lot), the Block volume in whole lots
@@ -2872,7 +2902,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     let liveLanes = lanesOwn;
     const top = s.top;
     if (top === "fill" || (typeof top === "number" && top > 0)) {
-      const eq = equityNow ?? 0;
+      const eq = balanceNow ?? 0;
       // the budget the scalers will allow: the exposure cap, and the risk budget at the lanes' mean planned loss
       // (a fill to the exposure cap alone kept ~8× more configs than the risk budget funds, all squeezed to minimums)
       let lw = 0;
@@ -2918,7 +2948,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       liveKvSet(rt.db, "controlTopKept", r.cfgs);
       liveKvSet(rt.db, "controlTop", { at: Date.now(), top, kept: r.kept, of: r.of, budget, lanes: r.lanes.length });
     }
-    const posCapNow = positionCapFor(positionCapOf(s), equityNow, s.maxPositionX);
+    const posCapNow = positionCapFor(positionCapOf(s), balanceNow, s.maxPositionX);
     // held now, and the keys opened moments ago that the position read does not show yet (lagging): a fresh open is
     // ranked as held, so the position cap or a budget scaler never displaces it (and closes it the next step)
     const heldNow = new Set<string>(held.keys());
@@ -2991,7 +3021,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       // equity — the cap that keeps a high volume factor from risking the account
       ({ exposure, risk, worst } = scaleToBudgets(
         targets,
-        equityNow,
+        balanceNow,
         { maxExposureX, maxRiskPct: s.maxRiskPct, maxBackstopLossPct: s.maxBackstopLossPct },
         snapVenue,
         heldNow,
@@ -3032,7 +3062,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         at: Date.now(),
         ratio,
         posCap: posCapNow,
-        equity: equityNow,
+        balance: balanceNow,
         targets: targets.length,
         capped,
         raised: targets.filter((t) => t.raised).length,
@@ -3066,7 +3096,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         Ls.sizingWarnAt = Date.now();
         rt.db.event(
           "warn",
-          `live: volume factor ${sizing.ratio} has no effect — all ${capped} positions sit at the per-position cap ${sizing.posCap.toFixed(2)} USD (raise maxPositionX / maxNotionalUsd or lower the factor to size by volume${starts > 0 ? `; it starts to matter below ${starts.toFixed(2)}` : ""})`,
+          `live: volume factor ${sizing.ratio} has no effect — all ${capped} positions sit at the optional balance-relative position limit (raise maxPositionX or lower the factor to size by volume${starts > 0 ? `; it starts to matter below ${starts.toFixed(2)}` : ""})`,
         );
       }
     }
@@ -3089,7 +3119,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       ? `opening paused${typeof s.openPaused === "string" ? `: ${s.openPaused}` : ""}`
       : null;
     const openBlock =
-      notReady ?? (unit === null ? "account equity unknown — not sizing" : null) ?? marginLow ?? paused;
+      notReady ?? (unit === null ? "account balance unknown — not sizing" : null) ?? marginLow ?? paused;
     // the room above the floor for this step: the account snapshot can be up to ~75 s old (client cache + exchange
     // read cache), so the margin of own opens in that time is taken off as well (counted twice at worst — safe side)
     const Lm = local(rt);
@@ -3196,7 +3226,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         const q = pending.unresolved || pending.wasFlat ? pending.sentQty : Math.max(0, pending.sentQty - row.qty);
         if (q > 0) used.push(budgetUse(row.k, q, true));
       }
-      const why = accountGrowthBlock(used, budgetUse(key, qty, true), equityNow, {
+      const why = accountGrowthBlock(used, budgetUse(key, qty, true), balanceNow, {
         maxExposureX, maxRiskPct: s.maxRiskPct, maxBackstopLossPct: s.maxBackstopLossPct,
       });
       if (why) throw holdOn(why);
@@ -3916,7 +3946,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             // sent: the position is kept as it is (never closed for it).
             qty = bx.snapQtyDown(a.qty, spec);
             const have = held.get(a.key) ?? 0;
-            const capUsd = positionCapFor(positionCapOf(s), equityNow, s.maxPositionX);
+            const capUsd = positionCapFor(positionCapOf(s), balanceNow, s.maxPositionX);
             if (!(qty > 0) || qty < Math.max(spec?.minQty ?? 0, vmin) - 1e-12 || qty * px < minUsd - 1e-9)
               throw holdOn("increase under the exchange minimum — kept");
             if ((have + qty) * px > Math.max(capUsd, minUsd) * 1.0001)
@@ -4005,7 +4035,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             // number we cannot corroborate, and a misread must not open a position the cap would never allow. When
             // the contract's own minimum really has moved, the next spec refresh carries it and the target path
             // sizes to it (bounded by the per-position cap, minRaiseBlock) instead.
-            const cap = positionCapFor(positionCapOf(s), equityNow, s.maxPositionX);
+            const cap = positionCapFor(positionCapOf(s), balanceNow, s.maxPositionX);
             const after = (a.kind === "increase" ? (held.get(a.key) ?? 0) : 0) + up;
             if (
               !(err instanceof bx.ExchangeRejected) ||

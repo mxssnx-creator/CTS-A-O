@@ -12,23 +12,27 @@ import { controlTargets } from "./live.ts";
 import { checkSettings } from "../settings-check.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 
-describe("position cap off and snapshot restore", () => {
-  it("maxNotionalUsd 0 = no per-position cap: the volume factor sizes alone", () => {
+describe("USD ceilings are removed and snapshot restore", () => {
+  it("ignores legacy maxNotionalUsd values; the volume factor sizes positions without a fixed-dollar ceiling", () => {
     assert.equal(positionCapOf({ maxNotionalUsd: 0, notionalUsd: 1 }), Infinity);
-    assert.equal(positionCapOf({ maxNotionalUsd: 25, notionalUsd: 1 }), 25);
+    assert.equal(positionCapOf({ maxNotionalUsd: 25, notionalUsd: 1 }), Infinity);
     assert.doesNotThrow(() =>
       checkSettings({ live: { ...DEFAULT_SETTINGS.live, maxNotionalUsd: 0 } } as never),
+    );
+    assert.throws(
+      () => checkSettings({ live: { ...DEFAULT_SETTINGS.live, maxNotionalUsd: 25 } } as never),
+      /fixed USD per-position ceilings are disabled/,
     );
     const lanes = [
       { id: "a", cfg: "follow|rsi-mom-14-20@m15|tp1|sl1|tr0|h32|1", sym: "A-USDT", side: 1 as const, vol: 8, sl: 0.02 },
       { id: "b", cfg: "follow|rsi-mom-14-20@m15|tp1|sl1|tr0|h32|2", sym: "A-USDT", side: 1 as const, vol: 4, sl: 0.02 },
     ];
     const prices = new Map([["A-USDT", 1]]);
-    const capped = controlTargets(lanes, prices, controlSettingsOf({ ...DEFAULT_SETTINGS.live, maxNotionalUsd: 25 }, 10));
+    const legacy = controlTargets(lanes, prices, controlSettingsOf({ ...DEFAULT_SETTINGS.live, maxNotionalUsd: 25 }, 10));
     const free = controlTargets(lanes, prices, controlSettingsOf({ ...DEFAULT_SETTINGS.live, maxNotionalUsd: 0 }, 10));
-    const q = (r: typeof capped) => r.targets.find((t) => t.key === "A-USDT|1")?.qty ?? 0;
-    assert.ok(q(capped) <= 25 * 2 + 1e-9, `capped ${q(capped)}`);
-    assert.ok(q(free) >= 120 - 1e-9, `uncapped: 10 × (8 + 4) = 120, got ${q(free)}`);
+    const q = (r: typeof legacy) => r.targets.find((t) => t.key === "A-USDT|1")?.qty ?? 0;
+    assert.equal(q(legacy), q(free), "legacy dollar values cannot cap configured volume");
+    assert.ok(q(free) >= 120 - 1e-9, `volume sizing: 10 × (8 + 4) = 120, got ${q(free)}`);
   });
 
   it("a snapshot without paper_trades.first_at restores (the new column stays empty); new rows record it", () => {

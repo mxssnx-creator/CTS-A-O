@@ -563,6 +563,8 @@ export interface SignalSettings {
    */
   sourcesMode?: "deny" | "allow";
   ranges: { short: boolean; medium: boolean };
+  /** Per-signal-range execution multipliers; applied to the balance-based unit before the account caps. */
+  rangeVolumeFactors: { short: number; medium: number };
   /** timeframe lanes signals run on (of the engine's lanes) */
   lanes: number[];
   normal: { tp: number[]; slOfTp: number[] };
@@ -592,7 +594,7 @@ export interface SignalSettings {
    * recent 24 h of that history must be positive (a signal that stopped working is not started)
    */
   validate: boolean;
-  /** hard floors of every signal config's stop and trailing distance (fractions; 0.005 = 0.5 %) */
+  /** hard floors of every signal config's stop / trail (fractions; minTrail defaults to 0.002 = 0.2 %) */
   minSl: number;
   minTrail: number;
   /** only stable sources trade (see SignalSourceGate) */
@@ -682,15 +684,16 @@ export const DEFAULT_SIGNALS: SignalSettings = {
     "r-rvi": false,
   },
   ranges: { short: true, medium: true },
+  rangeVolumeFactors: { short: 1, medium: 1 },
   // 15m lane: raw signal PF 0.89 (15m) vs 0.76 (5m) vs 0.67 (1m) (docs/signals-validation.md); the 30m lane lost on
   // all three causal 50-symbol windows (3 Oct / 2 Oct / 23 Sep, PR #65) — the 15m lane carries the edge
   lanes: [15],
-  // 5 targets × 3 stop ratios = 15 Normal configs (medium to high)
-  normal: { tp: [0.025, 0.03, 0.04, 0.05, 0.06], slOfTp: [1.5, 2, 3] },
-  // 5 targets × 3 trail widths = 15 Trailing configs, stops at 3 × target (slOfTp 3; medium to higher)
+  // 7 targets × 6 stop ratios = 42 Normal configs; include 1 % / 1.5 % targets and tighter risk ratios.
+  normal: { tp: [0.01, 0.015, 0.025, 0.03, 0.04, 0.05, 0.06], slOfTp: [0.5, 0.75, 1, 1.5, 2, 3] },
+  // 7 targets × 5 trail widths = 35 capped Trailing configs, stops at 3 × target.
   trailing: {
-    tp: [0.03, 0.04, 0.05, 0.06, 0.08],
-    trailOfTp: [0.4, 0.6, 0.8],
+    tp: [0.01, 0.015, 0.03, 0.04, 0.05, 0.06, 0.08],
+    trailOfTp: [0.2, 0.3, 0.4, 0.6, 0.8],
     slOfTp: 3,
   },
   trailingOnly: {
@@ -700,8 +703,8 @@ export const DEFAULT_SIGNALS: SignalSettings = {
     trailStep: 1,
   },
   holdH: 48,
-  // both exit models: 30 percent + 18 ATR configs per signal (1.6× the percent-only tapes)
-  // percent exits: with targets of 2.5–8 % (cost drag ≤ 8 % of the target) and 15m / 30m lanes the signal orders were
+  // both exit models: 77 percent + 18 ATR configs per signal (1.23× the percent-only tapes)
+  // percent exits: with targets of 1–8 % (cost drag ≤ 20 % of the smallest target) and 15m / 30m lanes the signal orders were
   // positive in 4 of 4 windows (PF 1.13 / 2.28 / 2.93 / 4.93); ATR exits lost in 2 of 3
   exits: "pct",
   // Stable-02 defaults: SL 0.7 × ATR (its default), 1.15 (SHORT_SL_ATR), 1.5 · TP 1 / 1.6 / 2.2 R (2.2 its default)
@@ -714,7 +717,7 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   },
   // operator, 13 Oct: signals run multiple trailing configs from their own historic calcs — the median and upper
   // quartile of the move their entries reached as targets, trailed at ¼ / ½ / ¾ of it, stops 1× / 2× (up to 12 configs
-  // per signal beside its 30 percent ones; each validated on its own)
+  // per signal beside its 77 percent ones; each validated on its own)
   hist: {
     enabled: true,
     quantiles: [0.5, 0.75],
@@ -735,7 +738,7 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   validate: true,
   validateH: 24,
   minSl: 0.005,
-  minTrail: 0.005,
+  minTrail: 0.002,
   // off: pausing a source after its executed orders lost cost net at every tested setting (continuous 8 days,
   // 43 sources: no gate PF 1.53 net 3470 · best gate 2 d / 67 % PF 1.50 net 2671; docs/signals-validation.md)
   sourceGate: { enabled: false, days: 2, minShare: 0.5, minTrades: 5 },
@@ -780,6 +783,7 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
     ...DEFAULT_SIGNALS,
     ...(s ?? {}),
     ranges: { ...DEFAULT_SIGNALS.ranges, ...(s?.ranges ?? {}) },
+    rangeVolumeFactors: { ...DEFAULT_SIGNALS.rangeVolumeFactors, ...(s?.rangeVolumeFactors ?? {}) },
     normal: { ...DEFAULT_SIGNALS.normal, ...(s?.normal ?? {}) },
     trailing: { ...DEFAULT_SIGNALS.trailing, ...(s?.trailing ?? {}) },
     trailingOnly: { ...DEFAULT_SIGNALS.trailingOnly, ...(s?.trailingOnly ?? {}) },
@@ -879,6 +883,14 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
     Number.isFinite(Number(v)) ? Math.min(0.1, Math.max(0, Number(v))) : d;
   out.minSl = fl(out.minSl, DEFAULT_SIGNALS.minSl);
   out.minTrail = fl(out.minTrail, DEFAULT_SIGNALS.minTrail);
+  const volumeFactor = (v: unknown) => {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return 1;
+    const bounded = Math.min(5, Math.max(0.2, n));
+    return bounded === 2.5 ? 2.5 : Math.round(bounded * 5) / 5;
+  };
+  out.rangeVolumeFactors.short = volumeFactor(out.rangeVolumeFactors.short);
+  out.rangeVolumeFactors.medium = volumeFactor(out.rangeVolumeFactors.medium);
   const vh = Number(out.validateH);
   out.validateH = Number.isFinite(vh) ? Math.min(72, Math.max(2, Math.round(vh))) : 24;
   out.guard.lastN = Math.min(
@@ -886,6 +898,13 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
     Math.max(2, Math.round(Number(out.guard.lastN) || DEFAULT_SIGNALS.guard.lastN)),
   );
   return out;
+}
+
+/** The independent short/medium range encoded at the end of a signal id, before any timeframe suffix. */
+export function signalRangeOf(ind: string): "short" | "medium" | null {
+  const base = ind.split("@", 1)[0];
+  if (!base.startsWith("sig-")) return null;
+  return base.endsWith("-s") ? "short" : base.endsWith("-m") ? "medium" : null;
 }
 
 /** A partial signals patch applied onto current settings (nested groups merged, lists replaced). */

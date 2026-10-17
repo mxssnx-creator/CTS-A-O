@@ -1123,7 +1123,7 @@ export function mtfState(id: string, k: SeriesCache, factors: readonly number[])
 
 // ── signal sources ──────────────────────────────────────────────────────────
 // Proven classic signals, each in a short and a medium parameter range. A signal fires on its source's own
-// state onsets ("follow"); it is processed as source × symbol with its own grid of 15 Normal and 15 Trailing
+// state onsets ("follow"); it is processed as source × symbol with its own grid of 42 Normal and 35 Trailing
 // configs (see src/core/signals.ts), separately from the engine's bot × indication combos. The specs reuse
 // the registry's computations under their own ids ("sig-…"), so the lanes, stages and live execution apply
 // unchanged while signal sets never collide with engine sets.

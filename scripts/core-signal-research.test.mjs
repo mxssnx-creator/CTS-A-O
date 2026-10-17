@@ -72,7 +72,7 @@ const totals = (returns) => {
 };
 
 describe("four-source frozen independent Signal research", () => {
-  it("uses the exact 1248 runtime protects and2496 full config-side identities, including target0 sets", () => {
+  it("uses the exact 1248 frozen research protects and 2496 config-side identities, including target0 sets", () => {
     const cells = researchCells(protocol);
     assert.equal(
       cells.reduce((n, c) => n + c.requestedAliases.length, 0),
@@ -363,6 +363,7 @@ describe("four-source frozen independent Signal research", () => {
       null,
       {
         ...p.preOutcomeModelClarification.signalFloors,
+        signalReferenceGrid: true,
         entry: p.preOutcomeModelClarification.signalFilter,
       },
     );
