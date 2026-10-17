@@ -9,6 +9,7 @@ import { parseConfigId, kindOfId } from "./pipeline/pipeline.ts";
 import { rangeOfId, RANGE_LABEL } from "./minimal-coord.ts";
 import { liveGroupOf } from "./live-validation.ts";
 import { INDICATION_BY_ID, isSignalInd, laneLabel, laneOf } from "./indications/registry.ts";
+import { isSignalCoordinationInd } from "./signal-coordination.ts";
 import type { Stats, StratKind } from "./domain/types.ts";
 
 const H = 3_600_000;
@@ -31,6 +32,7 @@ export interface StatTrade {
   /** Persisted unit net return; explicit null marks a legacy close whose execution weighting is unknown. */
   unitR?: number | null;
   coordVol?: number;
+  volFactor?: number;
   /** Block type overall: the extra volume of every raising source */
   legs?: Partial<Record<string, number>>;
 }
@@ -252,7 +254,7 @@ export function groupBy(
   return rows.sort((a, b) => b.n - a.n);
 }
 
-export const TYPE_ORDER = ["Normal", "Trailing", "Trailing only", "Axis", "DCA", "DCA Active", "Signals"] as const;
+export const TYPE_ORDER = ["Normal", "Trailing", "Trailing only", "Axis", "DCA", "DCA Active", "Signals", "Signals Coordination"] as const;
 export const KIND_LABEL: Record<StratKind, string> = {
   normal: "Normal",
   trailing: "Trailing",
@@ -264,13 +266,22 @@ export const KIND_LABEL: Record<StratKind, string> = {
 
 const indOf = (cfg: string) => cfg.split("|")[1] ?? "";
 export const kindOfTrade = (x: StatTrade): StratKind => x.kind ?? kindOfId(x.cfg);
-/** Block volume of a trade (coordination volume taken out); 1 = not raised */
-export const blockMult = (x: StatTrade) => (x.mult ?? 1) / (x.coordVol ?? 1);
+/** Block volume of a trade (relation and extra type factors taken out); 1 = not raised */
+export const blockMult = (x: StatTrade) => (x.mult ?? 1) / (x.coordVol ?? 1) / (x.volFactor ?? 1);
 
 /** Main type of a trade: Signals, or its sub-strategy. */
 export function typeOf(x: StatTrade): string {
-  return isSignalInd(indOf(x.cfg)) ? "Signals" : KIND_LABEL[kindOfTrade(x)];
+  const ind = indOf(x.cfg);
+  return isSignalCoordinationInd(ind)
+    ? "Signals Coordination"
+    : isSignalInd(ind)
+      ? "Signals"
+      : KIND_LABEL[kindOfTrade(x)];
 }
+
+const indKindOf = (ind: string) => isSignalCoordinationInd(ind)
+  ? "signal-coordination"
+  : INDICATION_BY_ID.get(laneOf(ind).base)?.kind ?? (isSignalInd(ind) ? "signal" : "none");
 
 /**
  * Sub-types: Block-raised (volume above 1), at a Block Active level (level ≥ min active level, raised) or a plain
@@ -523,9 +534,9 @@ export function buildStatistics(i: StatisticsInput): StatisticsReport {
       lane: laneLabel(ind) || "plain",
       kind: KIND_LABEL[first ? kindOfTrade(first) : kindOfId(r.key)],
       type: first ? typeOf(first) : "Normal",
-      // signal configs carry no range tag: their own group, never counted as Wide
+      // source signals and range-tagged coordination configs each retain their own live/statistics group
       range: liveGroupOf(r.key),
-      indKind: INDICATION_BY_ID.get(laneOf(ind).base)?.kind ?? (isSignalInd(ind) ? "signal" : "none"),
+      indKind: indKindOf(ind),
       tp: p?.protect.tp ?? 0,
       ...(p && rangeOfId(r.key) === "mc" ? { tpNet: +(p.protect.tp - i.cost).toFixed(6) } : {}),
       sl: p?.protect.sl ?? 0,
@@ -584,11 +595,16 @@ export function buildStatistics(i: StatisticsInput): StatisticsReport {
       "Axis",
       "Base (no Block detail)",
     ]),
-    ranges: groupBy(trades, (x) => liveGroupOf(x.cfg), unit, [...Object.values(RANGE_LABEL), "Signals"]),
+    ranges: groupBy(trades, (x) => liveGroupOf(x.cfg), unit, [
+      ...Object.values(RANGE_LABEL),
+      "Signals",
+      "Signals Coordination",
+      ...(["sh", "gn", "lg"] as const).map((tag) => `Signals Coordination · ${RANGE_LABEL[tag]}`),
+    ]),
     lanes: groupBy(trades, (x) => laneLabel(indOf(x.cfg)) || "plain", unit),
     indKinds: groupBy(
       trades,
-      (x) => INDICATION_BY_ID.get(laneOf(indOf(x.cfg)).base)?.kind ?? (isSignalInd(indOf(x.cfg)) ? "signal" : "none"),
+      (x) => indKindOf(indOf(x.cfg)),
       unit,
     ),
     bots: groupBy(trades, (x) => x.cfg.split("|")[0] ?? "", unit),
@@ -623,6 +639,8 @@ export { profitFactor };
 /** A row of the live ledger (live_orders) with its fill (live_fills), by own client id. */
 export interface LedgerRow {
   coid: string;
+  /** Exact config written with the entry; used to preserve type and range in merged live positions. */
+  cfg?: string | null;
   sym: string;
   side: number;
   kind: string;
@@ -676,11 +694,11 @@ export function feeOf(x: { fee?: number | null; feeKnown?: number | boolean | nu
 
 /** @param modelCost the round-trip cost charged to an unmeasured fill (the desk's settings.cost; 0.2 % by default) */
 export function liveTrades(rows: readonly LedgerRow[], tagLen: number, modelCost = 0.002): Array<StatTrade & { notional: number }> {
-  const open = new Map<string, { qty: number; cost: number; fees: number; t: number; range: string }>();
+  const open = new Map<string, { qty: number; cost: number; fees: number; t: number; range: string; cfg: string }>();
   const out: Array<StatTrade & { notional: number }> = [];
   // `q` of the position `p` realized at `px`, with its share of the opening fees and the exit's own fee
   const closeOf = (
-    p: { qty: number; cost: number; fees: number; t: number; range: string },
+    p: { qty: number; cost: number; fees: number; t: number; range: string; cfg: string },
     x: LedgerRow,
     q: number,
     px: number,
@@ -693,7 +711,7 @@ export function liveTrades(rows: readonly LedgerRow[], tagLen: number, modelCost
     const pnl = side * (px - entry) * q - p.fees * (q / p.qty) - fee;
     return {
       // a signal position: "live|sig-SYM|…" (a signal indication: liveGroupOf → Signals); a range: "live|SYM|…|<tag>"
-      cfg: p.range === "@sig" ? `live|sig-${x.sym}|tp0|sl0|tr0|h0` : `live|${x.sym}|tp0|sl0|tr0|h0${p.range}`,
+      cfg: p.cfg || (p.range === "@sig" ? `live|sig-${x.sym}|tp0|sl0|tr0|h0` : `live|${x.sym}|tp0|sl0|tr0|h0${p.range}`),
       sym: x.sym,
       side,
       entryT: p.t,
@@ -731,10 +749,11 @@ export function liveTrades(rows: readonly LedgerRow[], tagLen: number, modelCost
     if (x.kind === "O" || x.kind === "I" || x.kind === "E") {
       // an open means the key held nothing of ours: whatever is still counted there is dropped
       if (x.kind === "O") open.delete(k);
-      const p = open.get(k) ?? { qty: 0, cost: 0, fees: 0, t: x.at, range: "" };
+      const p = open.get(k) ?? { qty: 0, cost: 0, fees: 0, t: x.at, range: "", cfg: "" };
       if (!p.qty) {
         p.t = x.at;
         p.range = RANGE_OF_LETTER[x.coid.slice(tagLen, tagLen + 1).toUpperCase()] ?? "";
+        p.cfg = x.cfg ?? "";
       }
       p.qty += x.qty;
       p.cost += x.qty * px;

@@ -1014,6 +1014,7 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
     const { liveTag } = await import("./server/live.ts");
     const rows = r.db.all<{
       coid: string;
+      cfg: string | null;
       sym: string;
       side: number;
       kind: string;
@@ -1026,7 +1027,7 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
       fee: number | null;
       feeKnown: number | null;
     }>(
-      "SELECT o.coid, o.sym, o.side, o.kind, o.qty, o.px, o.status, o.msg, o.at, f.fill_px, f.fee, f.fee_known AS feeKnown FROM live_orders o LEFT JOIN live_fills f ON f.coid = o.coid ORDER BY o.at",
+      "SELECT o.coid, o.cfg, o.sym, o.side, o.kind, o.qty, o.px, o.status, o.msg, o.at, f.fill_px, f.fee, f.fee_known AS feeKnown FROM live_orders o LEFT JOIN live_fills f ON f.coid = o.coid ORDER BY o.at",
     );
     const tag = liveTag(r.settings.live.connId);
     trades = liveTrades(

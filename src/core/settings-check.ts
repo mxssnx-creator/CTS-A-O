@@ -1,5 +1,6 @@
 // Range checks for a settings patch, shared by the Settings page, the preset dialog and presets (pure: testable).
 import { GRID_VARIANTS_MAX, MAX_EXCHANGE_POSITIONS, type CoreSettings } from "./config.ts";
+import { INDICATION_KINDS } from "./domain/types.ts";
 import { validPromotedLaneProof } from "./live-promote.ts";
 
 /** Range checks for a settings patch (Settings page and preset dialog alike). */
@@ -731,6 +732,41 @@ export function checkSettings(s: Partial<CoreSettings>) {
       num(g.cluster.minLosses, 1, 1000, "loss-cluster min losses");
       num(g.cluster.lossShare, 0.3, 1, "loss-cluster loss share");
       int(g.cluster.minLosses, "loss-cluster min losses");
+    }
+    if (g.coordination) {
+      const c = g.coordination;
+      bool(c.enabled, "signals coordination");
+      num(c.minSources, 2, 100, "signals coordination minimum sources");
+      int(c.minSources, "signals coordination minimum sources");
+      num(c.volumeFactor, 1, 22, "signals coordination volume factor");
+      int(c.volumeFactor, "signals coordination volume factor");
+      if (c.count !== undefined && c.count !== 0) {
+        num(c.count, 10, 2000, "active coordination units");
+        if (c.count % 10 !== 0) throw new Error("active coordination units: steps of 10");
+      }
+      if (c.ranges) {
+        bool(c.ranges.short, "coordination Short range");
+        bool(c.ranges.normal, "coordination Normal range");
+        bool(c.ranges.long, "coordination Long range");
+        if (c.enabled && c.ranges.short === false && c.ranges.normal === false && c.ranges.long === false)
+          throw new Error("signals coordination: at least one exit range");
+      }
+    }
+    if (g.combinedVolumeFactors !== undefined) {
+      if (
+        typeof g.combinedVolumeFactors !== "object" ||
+        g.combinedVolumeFactors === null ||
+        Array.isArray(g.combinedVolumeFactors)
+      )
+        throw new Error(
+          "combined indication volume factors: one 1–22 whole-number value per indication kind",
+        );
+      for (const [kind, value] of Object.entries(g.combinedVolumeFactors)) {
+        if (!INDICATION_KINDS.includes(kind as (typeof INDICATION_KINDS)[number]))
+          throw new Error(`unknown combined indication kind ${kind}`);
+        num(value, 1, 22, `combined ${kind} volume factor`);
+        int(value, `combined ${kind} volume factor`);
+      }
     }
     if (g.accept) {
       bool(g.accept.enabled, "signal PF acceptance");

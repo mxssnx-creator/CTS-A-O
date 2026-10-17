@@ -1,6 +1,7 @@
-Four additional Signal catalog candidates were frozen before market evaluation in
-[the research protocol](signal-research-protocol-20261015.json). All start disabled. The original 96 catalog
-sources and 63 enabled defaults remain intact. A formula citation establishes provenance, not profitability.
+Four additional Signal catalog candidates were defined in the original [research protocol](signal-research-protocol-20261015.json).
+The [corrected v2 protocol](signal-research-protocol-20261016.json) preserves those formulas and fixes runtime lane-trail
+eligibility; the original performance report is withdrawn pending a rerun. All candidates start disabled. The original
+96 catalog sources and 63 enabled defaults remain intact. A formula citation establishes provenance, not profitability.
 
 | Source                      | Frozen short / medium settings                          | Calculation and provenance                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | --------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

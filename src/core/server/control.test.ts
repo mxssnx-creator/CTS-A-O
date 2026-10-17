@@ -5,6 +5,7 @@ import { beforeEach, describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 import { CoreDb } from "./db.server.ts";
 import {
+  liveLaneFilter,
   laneContributions,
   ISOLATED_MAX_LEVERAGE,
   liveKv,
@@ -1540,6 +1541,13 @@ describe("volume factor: sizes follow volume × factor up to the per-position ca
         [t.notional, !!t.capped],
       ]),
     );
+
+  it("plainOnly ignores the configured indication factor but still excludes a Block raise", () => {
+    const { sendable } = liveLaneFilter({ ...DEFAULT_SETTINGS.live, plainOnly: true }, null, null);
+    const cfg = "follow|sig-coord-v1-r60-n3-i1-b1|tp1|sl1|tr0|h32";
+    assert.equal(sendable({ cfg, vol: 8, blockVol: 1 }), true);
+    assert.equal(sendable({ cfg, vol: 16, blockVol: 2 }), false);
+  });
 
   it("below the cap a larger factor or volume is a larger position; at the cap it is flagged capped", () => {
     // factor 1, cap $8.3: $2 / $4 / $8.3 (6 units = $12, capped)

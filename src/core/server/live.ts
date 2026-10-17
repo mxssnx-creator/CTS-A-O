@@ -8,6 +8,7 @@ import { exchangePositionLimit, type LiveSettings } from "../config.ts";
 import { sigCfg } from "../sim/walkforward.ts";
 import { rangeOfId } from "../minimal-coord.ts";
 import type { RangeTag } from "../domain/types.ts";
+import { isSignalCoordinationInd } from "../signal-coordination.ts";
 
 export const LIVE_TAG: Record<LiveSettings["connId"], string> = {
   "bingx-x01": "CTSBX1_",
@@ -45,6 +46,11 @@ export type EntryKind = "E" | "U" | "M" | "N" | "H" | "G" | "L" | "Q";
  * their own letter their live closes landed in Wide), else "E" (the wide grid or a mix).
  */
 export function entryCoidKind(cfg: string | undefined): EntryKind {
+  const ind = cfg?.split("|")[1] ?? "";
+  if (isSignalCoordinationInd(ind)) {
+    const range = rangeOfId(cfg);
+    if (range) return RANGE_COID[range];
+  }
   if (cfg && sigCfg(cfg)) return "Q";
   const r = rangeOfId(cfg);
   return r ? RANGE_COID[r] : "E";
@@ -128,6 +134,8 @@ export interface LiveIntentLite {
   sl: number;
   /** open time of the bar the signal was decided on (the symbol's own newest bar) */
   barT: number;
+  /** Extra multiplier relative to a normal order; 1 = neutral. */
+  volFactor?: number;
   /**
    * the simulation manages the exit (trailing stop, DCA / Axis legs, …): a static exchange SL / TP cannot mirror
    * it, so entries mode skips it (overall mode mirrors every paper exit)
@@ -240,6 +248,8 @@ export interface ControlContribution {
   side: 1 | -1;
   /** Block volume multiple of this lane's position (1 = plain) */
   vol: number;
+  /** The existing Block / relation volume with the additional indication factor removed. */
+  blockVol?: number;
   /** Optional Block allocation in minimum-lane units; source children share their parent's bounded total. */
   laneUnits?: number;
   /** stop distance of the lane's protect (fraction) */

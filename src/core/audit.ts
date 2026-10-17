@@ -76,6 +76,8 @@ export interface AuditInput {
       vol?: number;
       /** ladder weight (Axis): part of vol, not of the Block multiple */
       w?: number;
+      coordVol?: number;
+      volFactor?: number;
       /** Overall: the extra volume of every raising source */
       legs?: Partial<Record<string, number>>;
     }>;
@@ -247,7 +249,7 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
         if (firstBad.length < 3) firstBad.push(`${x.cfg}@${x.sym} ${d.why}`);
         continue;
       }
-      const mult = (x.mult ?? 1) / (x.coordVol ?? 1);
+      const mult = (x.mult ?? 1) / (x.coordVol ?? 1) / (x.volFactor ?? 1);
       if (!close(d.vol, mult)) {
         volMismatch++;
         if (firstBad.length < 3) firstBad.push(`${x.cfg}@${x.sym} vol ${mult} ≠ ${d.vol}`);
@@ -265,7 +267,7 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
       const overall = o.block.mode === "overall";
       const cap = blockStackCap(o.block);
       const over = trades.filter((x) => {
-        const m = x.mult ?? 1;
+        const m = (x.mult ?? 1) / (x.volFactor ?? 1);
         if (m < 1 - 1e-9) return true;
         if (!overall) return m > cap + 1e-9;
         const legs = Object.values(x.legs ?? {}).map((v) => v ?? 0);
@@ -283,7 +285,9 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
         `${over} outside · total max ${cap}`,
       );
     } else {
-      const scaled = trades.filter((x) => !close((x.mult ?? 1) / (x.coordVol ?? 1), 1)).length;
+      const scaled = trades.filter(
+        (x) => !close((x.mult ?? 1) / (x.coordVol ?? 1) / (x.volFactor ?? 1), 1),
+      ).length;
       add("block: off → volume 1", scaled === 0, `${scaled} scaled`);
     }
 
@@ -475,12 +479,12 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
     // the Block multiple only: an Axis ladder's weight (filled rungs) is volume the simulation books on top of it
     const badVol = p.positions.filter(
       (x) =>
-        positionMult(x) < 1 - 1e-9 ||
-        positionMult(x) > maxMult + 1e-9 ||
+        positionMult(x) / (x.coordVol ?? 1) / (x.volFactor ?? 1) < 1 - 1e-9 ||
+        positionMult(x) / (x.volFactor ?? 1) > maxMult + 1e-9 ||
         Object.values(x.legs ?? {}).some((v) => (v ?? 0) > maxMult - 1 + 1e-9),
     ).length;
     add(
-      "paper: position volume within [1, max multiple]",
+      "paper: Block / relation volume within [1, max multiple]",
       badVol === 0,
       `${badVol} of ${p.positions.length}`,
     );
