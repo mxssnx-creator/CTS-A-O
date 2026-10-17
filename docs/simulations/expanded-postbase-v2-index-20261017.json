@@ -1,5 +1,5 @@
 {
-  "status": "All four protocols frozen before scoring; no results yet.",
+  "status": "Superseded before scoring by confirmed Micro relation gap correction9a81414. All four protocols and source/settings/feed hashes retained; none of their cases ran.",
   "protocols": [
     {
       "directory": "runs/postbase-dev20-baseline-20261017-v2",

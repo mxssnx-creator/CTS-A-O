@@ -2,7 +2,7 @@
   "recordedAt": "2026-10-17T22:28:13.060333+00:00",
   "localCheckpoint": "f0108a40daf30de03707491eeb28801b2a84eced",
   "productionFixCheckpoint": "079598b",
-  "sourceManifestSha256": "00e2be91da9101434275761c82b07d3ca8fc04721886e894463c551c558076d0",
+  "sourceManifestSha256": "20a6f8109c15c547c5ee1acb235aa2959134f59ff84466f36a684711b9fef0fe",
   "checks": [
     {
       "command": "npm run typecheck",
@@ -40,8 +40,34 @@
       "durationMs": 62384.87849,
       "log": "runs/postbase-final-scripts-20261017.log",
       "logSha256": "fdb83aaabac2e78f411f7808de21a926fc343d73a1aaab6710218d168f493c26"
+    },
+    {
+      "command": "Focused Micro market-relation tests",
+      "file": "src/core/indications/micro-rel.test.ts",
+      "productionCommit": "9a81414",
+      "exitCode": 0,
+      "tests": 9,
+      "passed": 9,
+      "failed": 0,
+      "heapLimitMiB": 512,
+      "durationSeconds": 1.65,
+      "evidence": "Owned implementation-agent tool session25296; independent code review found no blocker."
+    },
+    {
+      "command": "npm run typecheck",
+      "exitCode": 0,
+      "productionCommit": "9a81414",
+      "log": "runs/postbase-final-typecheck-20261017-v3.log",
+      "logSha256": "ae791f9f57ffbb3c0a592b6a34e25250c1f7f6f13fde4d05f77a0d4e7681f89a"
+    },
+    {
+      "command": "npm run build:dev",
+      "exitCode": 0,
+      "productionCommit": "9a81414",
+      "log": "runs/postbase-final-build-20261017-v3.log",
+      "logSha256": "3bf29e0128498feebd991400cc0e797379e888e0279b38094907de1ef7756611"
     }
   ],
-  "scope": "Focused correctness checks,55 fresh serial offline script regressions, and complete client/server/worker compilation. Not a whole-repository suite pass. Four expanded market replays remain pending resource admission.",
+  "scope": "Source and targeted regression/compilation checks passed. Expanded20/22 market comparisons remain unscored; local shared headroom unstable below hardfloor, so an isolated GitHub runner is being prepared with the identical public-data cache and unchanged guards.",
   "firstTypecheck": "Three test-only typing errors were corrected in f0108a4; subsequent complete typecheck exited0. No production formula/gate change."
 }

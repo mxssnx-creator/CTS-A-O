@@ -1,0 +1,90 @@
+name: Frozen expanded post-Base replay
+
+on:
+  push:
+    branches:
+      - fix/postbase-expanded-study-20261017
+    paths:
+      - .github/workflows/expanded-postbase-study.yml
+      - scripts/core-expanded-study-ci.mjs
+      - research/fixtures/postbase-20261017/**
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cts-ao-expanded-postbase-20261017
+  cancel-in-progress: false
+
+jobs:
+  offline-replay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      MALLOC_ARENA_MAX: "2"
+      MALLOC_MMAP_THRESHOLD_: "1048576"
+      CTS_CORE_STATE: "off"
+      CTS_CORE_AUTOSTART: "0"
+      CTS_CORE_LIVE: "0"
+      CTS_CORE_WORKERS: "1"
+      CTS_CORE_COMPARE: "0"
+      CTS_CORE_VARIANTS: "0"
+    steps:
+      - name: Check out the exact pushed source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Use the verified runtime version
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24.19.0"
+      - name: Prepare isolated runner paths
+        shell: bash
+        run: |
+          mkdir -p runs/ci-postbase-logs-20261017
+          sudo install -d -o "$(id -un)" -g "$(id -gn)" /workspace/scratch
+      - name: Install the frozen dependencies
+        shell: bash
+        run: npm ci > runs/ci-postbase-logs-20261017/npm-ci.log 2>&1
+      - name: Verify TypeScript and packaged worker build
+        shell: bash
+        env:
+          NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
+        run: |
+          npm run typecheck -- --pretty false > runs/ci-postbase-logs-20261017/typecheck.log 2>&1
+          npm run build:dev > runs/ci-postbase-logs-20261017/build-dev.log 2>&1
+      - name: Verify the replay and reporting regressions serially
+        shell: bash
+        run: >-
+          node --require ./scripts/lib/core-test-offline-guard.cjs --experimental-strip-types --no-warnings
+          --test --test-concurrency=1 scripts/core-22-symbol-data.test.mjs scripts/core-22-symbol-study.test.mjs
+          scripts/core-expanded-study-review.test.mjs scripts/core-session.test.mjs scripts/lib/session-settings.test.mjs
+          > runs/ci-postbase-logs-20261017/script-tests.log 2>&1
+      - name: Decode fixed candles, freeze all cases and run serial offline replays
+        shell: bash
+        run: >-
+          node --require ./scripts/lib/core-test-offline-guard.cjs --experimental-strip-types --no-warnings
+          scripts/core-expanded-study-ci.mjs 2>&1 | tee runs/ci-postbase-logs-20261017/orchestrator.log
+      - name: Preserve complete or failed replay evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cts-ao-expanded-postbase-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 30
+          compression-level: 6
+          if-no-files-found: warn
+          include-hidden-files: false
+          path: |
+            runs/ci-postbase-dev20-baseline-20261017/
+            runs/ci-postbase-dev20-reclaim8-20261017/
+            runs/ci-postbase-val22-baseline-20261017/
+            runs/ci-postbase-val22-reclaim8-20261017/
+            runs/ci-postbase-review-20261017/
+            runs/ci-postbase-logs-20261017/
+            !**/.private/**
+            !**/.env*
+            !**/*credentials*
+            !**/*.sqlite
+            !**/*.sqlite-*
+            !**/*.db

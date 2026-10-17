@@ -160,3 +160,16 @@ frozen before scoring; their index and source/settings/feed hashes are in
 `expanded-postbase-v2-index-20261017.json`. Shared memory headroom subsequently
 fell below 700 MiB, so the expanded market replays remain pending strict
 resource admission. No fallback, incomplete cohort or pruning result is claimed.
+
+## Micro relation gap correction before scoring
+
+A 100-bar deterministic reproduction confirmed that a missing target candle
+could enter a multi-bar jump as a one-bar return while a contiguous peer kept
+the market return finite. In that fixture beta was 6.0201529 instead of the
+valid-pair fit 1.0941893. Commit 9a81414 excludes the invalid return, protects
+movement windows across gaps, restarts RSI warmup, and rewarms own activity.
+The rolling 60-bar/minimum 40-valid-pair fit and gapless arithmetic are retained.
+Storage adds one shared Uint32 counter per bar, never one per config. All 9
+focused offline tests passed under a 512 MiB heap cap; independent review found
+no blockers. The unused v2 protocols are retained and superseded before any
+market scoring; all four arms are being resealed as v3.

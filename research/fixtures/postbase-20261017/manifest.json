@@ -1,0 +1,229 @@
+{
+  "chunks": [
+    {
+      "decodedBytes": 390000,
+      "decodedSha256": "9e147c5f3401f128dd57632db0ae03c7414334000071abcc14cca9c4eb3e448c",
+      "index": 0,
+      "path": "feed.json.gz.part-000.b64",
+      "textBytes": 520001,
+      "textSha256": "de0e927374279fa5cc84cc1b9e70cbbece4359484ac0c4f2173dc7aee388c2d0"
+    },
+    {
+      "decodedBytes": 390000,
+      "decodedSha256": "e17986d1e01c466369a6c148b292d57896f92515c55c60afd5dab36fb4f93bb8",
+      "index": 1,
+      "path": "feed.json.gz.part-001.b64",
+      "textBytes": 520001,
+      "textSha256": "67cf899721d1dc8fb1fb5b7cbc06baec92b4d132b68d4ffa44e01c28e7d38499"
+    },
+    {
+      "decodedBytes": 390000,
+      "decodedSha256": "6cbc92f6c36159c4c93d0d2fb7d18d95c8e4d3429b4d5e40d79c19badda28aaf",
+      "index": 2,
+      "path": "feed.json.gz.part-002.b64",
+      "textBytes": 520001,
+      "textSha256": "7337bdd5b1ee140f6ed0a6cb232f72af52090d71aaffcf2b0b8ca563d148856e"
+    },
+    {
+      "decodedBytes": 390000,
+      "decodedSha256": "450054a397f8d792d58b65acba0992d82e2bae17863948908eca59d1cde4da13",
+      "index": 3,
+      "path": "feed.json.gz.part-003.b64",
+      "textBytes": 520001,
+      "textSha256": "21e8e935c5baf9fa0184a112106939c94a13a321b92bbc8819deb77389c49197"
+    },
+    {
+      "decodedBytes": 390000,
+      "decodedSha256": "9b917e0ae6550f1078ec71ac1f560d69fa0bbf92a9f481dcdd0ae6394aadf6e6",
+      "index": 4,
+      "path": "feed.json.gz.part-004.b64",
+      "textBytes": 520001,
+      "textSha256": "a2b7eff074fd0a2a06fbab31f4e0de7f44663c233e476012ea06c276c75b3ede"
+    },
+    {
+      "decodedBytes": 390000,
+      "decodedSha256": "3c06131e476d2d362154a2e88c4d5776b439b775882076132b88f46ddabe151f",
+      "index": 5,
+      "path": "feed.json.gz.part-005.b64",
+      "textBytes": 520001,
+      "textSha256": "bbac1bbad9d0eefade0f9f313cbfea10f95c71f71703df76ab4a4e724f8ec069"
+    },
+    {
+      "decodedBytes": 390000,
+      "decodedSha256": "747383bfe2def80353a8283d7b87445929f7a876bedc7ac34f94b76ec2ea8d6a",
+      "index": 6,
+      "path": "feed.json.gz.part-006.b64",
+      "textBytes": 520001,
+      "textSha256": "7cee56023eecbf02f5c04e7c906f162984f6f797729456c756fad18ea884066f"
+    },
+    {
+      "decodedBytes": 390000,
+      "decodedSha256": "3c9dde9bfa8fc9f40e5cbc376e94cf760f6dd70604bcd74a1ecf7cbf3086e020",
+      "index": 7,
+      "path": "feed.json.gz.part-007.b64",
+      "textBytes": 520001,
+      "textSha256": "8176e13e3df944da009ee31ce50c87f736da0b85d16cd3a44cda9c3f70e82440"
+    },
+    {
+      "decodedBytes": 390000,
+      "decodedSha256": "12f93401a50272eee07ef276982d882b1a23408502740e922e0592b5d77762ea",
+      "index": 8,
+      "path": "feed.json.gz.part-008.b64",
+      "textBytes": 520001,
+      "textSha256": "f655ea471519ccf96be74af965269c86e19ce605f5370744e0073cfc8e12e028"
+    },
+    {
+      "decodedBytes": 390000,
+      "decodedSha256": "964822a823af44a18a739ff553b0c590bab840e08b2c95f6fc7dd51410738885",
+      "index": 9,
+      "path": "feed.json.gz.part-009.b64",
+      "textBytes": 520001,
+      "textSha256": "46ed84132bb430cc83a608d44ca2909792a0b2bf8192b63e2742eb6d87503535"
+    },
+    {
+      "decodedBytes": 390000,
+      "decodedSha256": "efbbd4058e62079e058baf2a3825d4cce8ec69bd8491d57785a674fbec09c9b2",
+      "index": 10,
+      "path": "feed.json.gz.part-010.b64",
+      "textBytes": 520001,
+      "textSha256": "b5f70328676c22ac1aa564ec7cccb394e3391097f7f98228ca2d89ea266705a9"
+    },
+    {
+      "decodedBytes": 390000,
+      "decodedSha256": "f4e50dfed3b2ec5cd3a195080d2a4fab2f45e98ee03691beefef028b0a90979f",
+      "index": 11,
+      "path": "feed.json.gz.part-011.b64",
+      "textBytes": 520001,
+      "textSha256": "7dbe7cc4c576e19cfd1c36414c8cd3c33a4e91ce3ed0f8ce1853d41fc0e61860"
+    },
+    {
+      "decodedBytes": 390000,
+      "decodedSha256": "1f97d264b49bf30065cab1cd778e929891dad7a75cc939cd698e502bbf0c3080",
+      "index": 12,
+      "path": "feed.json.gz.part-012.b64",
+      "textBytes": 520001,
+      "textSha256": "c132c26addd4a15382f7901ca7deceb32aac745d588c7dcc613c2b31fe2e1b94"
+    },
+    {
+      "decodedBytes": 390000,
+      "decodedSha256": "1be51248eab5fcfb6fa10893f8de2ad2c3a38f4e72eed0bd828d111d5e49e0a0",
+      "index": 13,
+      "path": "feed.json.gz.part-013.b64",
+      "textBytes": 520001,
+      "textSha256": "4e9d0c65584696ef55e45cf2edd9b515403583a41eb7720d1dc59447621c93ab"
+    },
+    {
+      "decodedBytes": 390000,
+      "decodedSha256": "e1a67cc287d234a186fe8bcebd3644bf8b9609c4cccc7f9e53bbe6093875309e",
+      "index": 14,
+      "path": "feed.json.gz.part-014.b64",
+      "textBytes": 520001,
+      "textSha256": "eb912bc08950b8027b4d265a25e76852589631b7a62403533dbe30b64339cd50"
+    },
+    {
+      "decodedBytes": 390000,
+      "decodedSha256": "5c822851ab1a7364f3a4859965ddffb2628b540dd39b0482e4ae57ce596ed365",
+      "index": 15,
+      "path": "feed.json.gz.part-015.b64",
+      "textBytes": 520001,
+      "textSha256": "84a8cdd473b63b38bf506c558f74b523bfff6bc6d28e8b5c2c1cc5226df6104c"
+    },
+    {
+      "decodedBytes": 390000,
+      "decodedSha256": "fd78d62e102dd2af884fd8a7fb1455922f8bc2e1eeafe8ee6a57e6c77193e774",
+      "index": 16,
+      "path": "feed.json.gz.part-016.b64",
+      "textBytes": 520001,
+      "textSha256": "99d2a4c421d0888e256155815e1601123c9ad75d2951038af3d73e9c987c2cb5"
+    },
+    {
+      "decodedBytes": 390000,
+      "decodedSha256": "0f9450103c5800b8da67aac8d6ec5a3ef156a3568a5c18dc98afbddf8a3d739a",
+      "index": 17,
+      "path": "feed.json.gz.part-017.b64",
+      "textBytes": 520001,
+      "textSha256": "4aa0dcba3dd013ee47a2472fb151673c79d7b792a318d9952b38072453b8a43a"
+    },
+    {
+      "decodedBytes": 390000,
+      "decodedSha256": "4b90ea87f161324638f95911430bba89c1444303ca004f9bf1aa50e4837a7e3f",
+      "index": 18,
+      "path": "feed.json.gz.part-018.b64",
+      "textBytes": 520001,
+      "textSha256": "45b8466418df7d13619c3ab036a02dae9fb58267fd0edc5bc813b035a0a6b46d"
+    },
+    {
+      "decodedBytes": 136998,
+      "decodedSha256": "af9b8b73c5af7abd06bfbee1a4348f2a929c7a98c9eb2723b2834b4e953182b6",
+      "index": 19,
+      "path": "feed.json.gz.part-019.b64",
+      "textBytes": 182665,
+      "textSha256": "e384147a6cdea078e8ca257a21d948a6360ab421f8541445b39785a8e17b2a74"
+    }
+  ],
+  "encoding": {
+    "chunkBytesMax": 390000,
+    "chunkEncoding": "base64",
+    "compression": "gzip",
+    "textFormat": "One ASCII base64 line followed by LF; decode chunks separately and concatenate decoded bytes in chunks-array order."
+  },
+  "feed": {
+    "bytes": 39528851,
+    "fileName": "feed.json",
+    "sha256": "02ad14fd7d7ba3e89dee99026962a2ec66d8145d6beb36b17ab42a89a7d2004e"
+  },
+  "gzip": {
+    "bytes": 7546998,
+    "fileName": "feed.json.gz",
+    "mtime": 0,
+    "sha256": "1373d0a7fab7528d0528573385e19dfecf6f4ab353194231c639103af29aadcd"
+  },
+  "schema": "cts-public-cached-feed-fixture-v1",
+  "source": {
+    "credentials": false,
+    "datasetContent": "Public numerical OHLCV facts only; no accounts, credentials, private ledgers or strategy outcomes. No separate data-license grant is added by this fixture.",
+    "endpoint": "https://open-api.bingx.com/openApi/swap/v3/quote/klines",
+    "marketManifest": "docs/simulations/symbols22-data-20261017/market-manifest.json",
+    "marketManifestSha256": "05e03f8d119e43e460fede8b4174e631d466b4ac3042cbf6499daca09d7f6fdf",
+    "method": "GET",
+    "protocol": "docs/simulations/symbols22-data-20261017/protocol.json",
+    "protocolSha256": "07a9fbb84612c2789e51f7dc24a62fcc5fa51da869d9b6daa79d4f4e85e178a1",
+    "provenance": "docs/simulations/symbols22-data-20261017/README.md",
+    "provider": "BingX",
+    "publicDataOnly": true,
+    "requestBody": null,
+    "symbolCount": 22,
+    "symbols": [
+      "AVAX-USDT",
+      "LINK-USDT",
+      "LTC-USDT",
+      "SUI-USDT",
+      "NEAR-USDT",
+      "DOT-USDT",
+      "ATOM-USDT",
+      "APT-USDT",
+      "BTC-USDT",
+      "ETH-USDT",
+      "SOL-USDT",
+      "XRP-USDT",
+      "BNB-USDT",
+      "DOGE-USDT",
+      "ADA-USDT",
+      "BCH-USDT",
+      "TRX-USDT",
+      "ETC-USDT",
+      "OP-USDT",
+      "ARB-USDT",
+      "FIL-USDT",
+      "UNI-USDT"
+    ],
+    "window": {
+      "bounds": "Completed candle-open timestamps in [startT,endT); source archive length does not expand any PF window.",
+      "endAt": "2026-10-17T21:00:00Z",
+      "endT": 1792270800000,
+      "sourceHours": 397,
+      "startAt": "2026-10-01T08:00:00Z",
+      "startT": 1790841600000
+    }
+  }
+}
