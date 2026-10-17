@@ -4,6 +4,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DEFAULT_SETTINGS } from "../src/core/config.ts";
+import { ENGINE_SIDE_ACCEPT } from "../src/core/sim/walkforward.ts";
 
 export const REPLAY_STUDY_PROFILES = Object.freeze([
   "full",
@@ -12,6 +13,9 @@ export const REPLAY_STUDY_PROFILES = Object.freeze([
   "entry5strict",
   "entry25strict",
   "entry25plain",
+  "entry5side",
+  "entry5direction",
+  "entry5proven",
 ]);
 
 // Predeclared research-only additions from verified-replay-20261018-research-focus.json.
@@ -56,15 +60,21 @@ export function buildReplayStudyProfile(profile) {
   if (profile === "expanded") settings.focus.push(...EXPANDED_RESEARCH_FOCUS);
   // Predeclared development refinements only; production defaults and range PF floors remain intact.
   if (profile === "entry25plain") settings.toggles.block = false;
+  if (profile === "entry5proven") settings.gates.warmup = false;
+  const entry5 = ["entry5strict", "entry5side", "entry5direction", "entry5proven"].includes(
+    profile,
+  );
   // Let the production freezer materialize every other WF default and normalize required data lanes.
   const wf = {
     preH: 6,
     simH: 6,
     longH: 6,
     causalBase: true,
-    lastN: profile === "full" ? 0 : profile === "entry5strict" ? 5 : 25,
-    lastNMinPf: profile === "entry5strict" || profile === "entry25strict" ? 1.2 : 1,
+    lastN: profile === "full" ? 0 : entry5 ? 5 : 25,
+    lastNMinPf: entry5 || profile === "entry25strict" ? 1.2 : 1,
   };
+  if (profile === "entry5side") wf.engineSideAccept = { ...ENGINE_SIDE_ACCEPT, enabled: true };
+  if (profile === "entry5direction") wf.sideGateN = 10;
   return { settings, wf };
 }
 

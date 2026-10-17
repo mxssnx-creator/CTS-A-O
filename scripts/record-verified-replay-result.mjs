@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 const args = process.argv.slice(2);
 const value = (key) => { const i = args.indexOf(key); return i < 0 ? null : args[i + 1]; };
 const profile = value("--profile"), purpose = value("--purpose") ?? "development";
-if (!["full", "entry25", "expanded", "entry5strict", "entry25strict", "entry25plain"].includes(profile) || !["development", "final"].includes(purpose))
+if (!["full", "entry25", "expanded", "entry5strict", "entry25strict", "entry25plain", "entry5side", "entry5direction", "entry5proven"].includes(profile) || !["development", "final"].includes(purpose))
   throw new Error("Supply a registered replay --profile and --purpose development|final");
 const statusPath = "runs/frozen-session-launcher-status.json";
 if (!existsSync(statusPath)) throw new Error("Replay did not start; no performance result");

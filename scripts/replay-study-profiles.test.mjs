@@ -9,6 +9,7 @@ import { DEFAULT_SETTINGS } from "../src/core/config.ts";
 import { BOT_BY_TYPE } from "../src/core/bots/bots.ts";
 import { INDICATION_BY_ID, laneOf } from "../src/core/indications/registry.ts";
 import { allCombos, microLaneFloor } from "../src/core/pipeline/pipeline.ts";
+import { ENGINE_SIDE_ACCEPT } from "../src/core/sim/walkforward.ts";
 import {
   buildReplayStudyProfile,
   EXPANDED_RESEARCH_FOCUS,
@@ -89,6 +90,32 @@ describe("public replay study profiles", () => {
     }
   });
 
+  it("inherits entry5strict and changes only each declared causal context flag", () => {
+    const strict = buildReplayStudyProfile("entry5strict");
+    assert.deepEqual(ENGINE_SIDE_ACCEPT, { enabled: false, minPf: 1.05, hours: 24, minTrades: 30 });
+    assert.deepEqual(buildReplayStudyProfile("entry5side"), {
+      settings: strict.settings,
+      wf: { ...strict.wf, engineSideAccept: { ...ENGINE_SIDE_ACCEPT, enabled: true } },
+    });
+    assert.deepEqual(buildReplayStudyProfile("entry5direction"), {
+      settings: strict.settings,
+      wf: { ...strict.wf, sideGateN: 10 },
+    });
+    assert.deepEqual(buildReplayStudyProfile("entry5proven"), {
+      settings: { ...strict.settings, gates: { ...strict.settings.gates, warmup: false } },
+      wf: strict.wf,
+    });
+    for (const profile of ["entry5side", "entry5direction", "entry5proven"]) {
+      const seed = buildReplayStudyProfile(profile);
+      assert.deepEqual([seed.wf.lastN, seed.wf.lastNMinPf], [5, 1.2]);
+      assert.equal(seed.settings.focus.length, 97);
+      assert.equal(seed.settings.pinned.length, 24);
+      assert.deepEqual(seed.settings.grid, strict.settings.grid);
+      assert.deepEqual(seed.settings.gates.rangeMinPf, strict.settings.gates.rangeMinPf);
+      assert.deepEqual(seed.settings.live, strict.settings.live);
+    }
+  });
+
   it("registers all 54 unique additions and constructs each exact eligible bot and lane", () => {
     assert.equal(EXPANDED_RESEARCH_FOCUS.length, 54);
     assert.equal(new Set(EXPANDED_RESEARCH_FOCUS).size, 54);
@@ -116,7 +143,8 @@ describe("public replay study profiles", () => {
 
   it("returns isolated deep clones and leaves defaults and exported declarations unchanged", () => {
     const before = structuredClone(DEFAULT_SETTINGS),
-      additions = [...EXPANDED_RESEARCH_FOCUS];
+      additions = [...EXPANDED_RESEARCH_FOCUS],
+      sideAcceptance = structuredClone(ENGINE_SIDE_ACCEPT);
     for (const profile of REPLAY_STUDY_PROFILES) {
       const seed = buildReplayStudyProfile(profile);
       assert.equal(seed.settings.live.enabled, false);
@@ -127,9 +155,11 @@ describe("public replay study profiles", () => {
       seed.settings.focus.push("private|saved-account-config");
       seed.settings.pinned.length = 0;
       seed.wf.lastNMinPf = 999;
+      if (seed.wf.engineSideAccept) seed.wf.engineSideAccept.minPf = 999;
       assert.equal(buildReplayStudyProfile(profile).settings.live.enabled, false);
     }
     assert.deepEqual(DEFAULT_SETTINGS, before);
+    assert.deepEqual(ENGINE_SIDE_ACCEPT, sideAcceptance);
     assert.deepEqual(EXPANDED_RESEARCH_FOCUS, additions);
     assert.ok(Object.isFrozen(EXPANDED_RESEARCH_FOCUS));
     assert.ok(Object.isFrozen(REPLAY_STUDY_PROFILES));
@@ -189,6 +219,9 @@ describe("public replay study profiles", () => {
             entry5strict: true,
             entry25strict: true,
             entry25plain: true,
+            entry5side: true,
+            entry5direction: true,
+            entry5proven: true,
           }[profile],
         );
       }
@@ -260,13 +293,16 @@ describe("public replay study profiles", () => {
         return { settings: protocol.actualSettings, wf: protocol.actualWf };
       };
       const entry25 = freeze("entry25");
+      let strict;
       for (const [profile, lastN, lastNMinPf, block] of [
         ["entry5strict", 5, 1.2, true],
         ["entry25strict", 25, 1.2, true],
         ["entry25plain", 25, 1, false],
       ]) {
+        const actual = freeze(profile);
+        if (profile === "entry5strict") strict = actual;
         assert.deepEqual(
-          freeze(profile),
+          actual,
           {
             settings: { ...entry25.settings, toggles: { ...entry25.settings.toggles, block } },
             wf: { ...entry25.wf, lastN, lastNMinPf, toggles: { ...entry25.wf.toggles, block } },
@@ -274,6 +310,18 @@ describe("public replay study profiles", () => {
           profile,
         );
       }
+      assert.deepEqual(freeze("entry5side"), {
+        settings: strict.settings,
+        wf: { ...strict.wf, engineSideAccept: { ...ENGINE_SIDE_ACCEPT, enabled: true } },
+      });
+      assert.deepEqual(freeze("entry5direction"), {
+        settings: strict.settings,
+        wf: { ...strict.wf, sideGateN: 10 },
+      });
+      assert.deepEqual(freeze("entry5proven"), {
+        settings: { ...strict.settings, gates: { ...strict.settings.gates, warmup: false } },
+        wf: { ...strict.wf, gates: { ...strict.wf.gates, warmup: false } },
+      });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

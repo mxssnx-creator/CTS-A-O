@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 import { assessReplayCandidate } from "./assess-replay-candidate.mjs";
-import { DEVELOPMENT_PROFILES, REFINEMENT_PROFILES, DEVELOPMENT_SYMBOLS, DEVELOPMENT_WINDOW, selectReplayCandidate } from "./select-replay-candidate.mjs";
+import { DEVELOPMENT_PROFILES, REFINEMENT_PROFILES, CONTEXT_PROFILES, DEVELOPMENT_SYMBOLS, DEVELOPMENT_WINDOW, selectReplayCandidate } from "./select-replay-candidate.mjs";
 
 const COMMIT = "1".repeat(40), SOURCE = "a".repeat(64), H = 3_600_000;
 const FEED = "f".repeat(64);
@@ -87,6 +87,25 @@ describe("predeclared refinement cohort", () => {
     const result = refine(input);
     assert.equal(result.validationOk, false);
     assert.ok(hasFailure(result, "profile-study-identity"));
+  });
+});
+
+describe("predeclared context cohort", () => {
+  it("accepts exactly the three causal context arms and preserves ranking and promotion rules", () => {
+    const input = CONTEXT_PROFILES.map(profile => compact(profile));
+    const result = selectReplayCandidate(input, { expectedCommit: COMMIT, group: "context" });
+    assert.equal(result.validationOk, true, JSON.stringify(result.failures));
+    assert.equal(result.selected, "entry5direction");
+    assert.equal(result.group, "context");
+    assert.equal(result.automaticPromotion, false);
+    assert.equal(result.defaultsChanged, false);
+    assert.equal(select(input).validationOk, false);
+    input[0] = compact("entry5strict");
+    assert.equal(selectReplayCandidate(input, { expectedCommit: COMMIT, group: "context" }).validationOk, false);
+  });
+  it("rejects inherited property names as undeclared groups without throwing", () => {
+    for (const group of ["__proto__", "constructor", "toString"])
+      assert.equal(selectReplayCandidate(inputs(), { expectedCommit: COMMIT, group }).validationOk, false);
   });
 });
 
@@ -261,18 +280,19 @@ describe("predeclared development replay candidate selector", () => {
 });
 
 describe("development selection CLI", () => {
-  it("honors the refinement group and emits its selected profile for the final job", () => {
+  for (const [group, profiles, expected] of [["refinement", REFINEMENT_PROFILES, "entry25plain"], ["context", CONTEXT_PROFILES, "entry5direction"]])
+  it(`honors the ${group} group and emits its selected profile for the final job`, () => {
     const dir = mkdtempSync(join(tmpdir(), "replay-refinement-"));
     try {
       const input = join(dir, "three.json"), out = join(dir, "decision.json"), githubOutput = join(dir, "github-output");
-      writeFileSync(input, JSON.stringify(REFINEMENT_PROFILES.map(profile => compact(profile))));
-      const run = spawnSync(process.execPath, ["scripts/select-replay-candidate.mjs", "--inputs", input, "--out", out, "--group", "refinement"],
+      writeFileSync(input, JSON.stringify(profiles.map(profile => compact(profile))));
+      const run = spawnSync(process.execPath, ["scripts/select-replay-candidate.mjs", "--inputs", input, "--out", out, "--group", group],
         { encoding: "utf8", env: { ...process.env, GITHUB_SHA: COMMIT, GITHUB_OUTPUT: githubOutput } });
       assert.equal(run.status, 0, run.stderr);
       const decision = JSON.parse(readFileSync(out, "utf8"));
-      assert.equal(decision.group, "refinement");
-      assert.equal(decision.selected, "entry25plain");
-      assert.equal(readFileSync(githubOutput, "utf8"), "selected=entry25plain\n");
+      assert.equal(decision.group, group);
+      assert.equal(decision.selected, expected);
+      assert.equal(readFileSync(githubOutput, "utf8"), `selected=${expected}\n`);
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
   it("writes a validated JSON decision and a simple selected GitHub output from compact evidence only", () => {

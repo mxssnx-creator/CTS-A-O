@@ -6,7 +6,8 @@ import { fileURLToPath } from "node:url";
 
 export const DEVELOPMENT_PROFILES = Object.freeze(["full", "entry25", "expanded"]);
 export const REFINEMENT_PROFILES = Object.freeze(["entry5strict", "entry25strict", "entry25plain"]);
-export const DEVELOPMENT_PROFILE_GROUPS = Object.freeze({ initial: DEVELOPMENT_PROFILES, refinement: REFINEMENT_PROFILES });
+export const CONTEXT_PROFILES = Object.freeze(["entry5side", "entry5direction", "entry5proven"]);
+export const DEVELOPMENT_PROFILE_GROUPS = Object.freeze({ initial: DEVELOPMENT_PROFILES, refinement: REFINEMENT_PROFILES, context: CONTEXT_PROFILES });
 export const DEVELOPMENT_SYMBOLS = Object.freeze(["BTC-USDT", "ETH-USDT", "BNB-USDT", "SOL-USDT", "XRP-USDT", "DOGE-USDT", "ADA-USDT", "AVAX-USDT",
   "LINK-USDT", "LTC-USDT", "DOT-USDT", "ATOM-USDT", "APT-USDT", "NEAR-USDT", "SUI-USDT", "TRX-USDT", "UNI-USDT", "FIL-USDT", "ETC-USDT", "ARB-USDT"]);
 export const DEVELOPMENT_FEED_SCOPE = Object.freeze({ schema: "cts-verified-public-feed-v1", collector: "binance-usdm-public-archives",
@@ -37,7 +38,7 @@ export function selectReplayCandidate(inputs, { expectedCommit, group = "initial
   const checks = [], check = (id, ok, actual = null, expected = true, profile = null) =>
     checks.push({ id, profile, ok: ok === true, actual: actual ?? null, expected });
   const rows = Array.isArray(inputs) ? inputs : [];
-  const profiles = DEVELOPMENT_PROFILE_GROUPS[group] ?? [];
+  const profiles = Object.hasOwn(DEVELOPMENT_PROFILE_GROUPS, group) ? DEVELOPMENT_PROFILE_GROUPS[group] : [];
   check("predeclared-profile-group", profiles.length === 3, group, Object.keys(DEVELOPMENT_PROFILE_GROUPS));
   check("current-commit", hash(expectedCommit, 40), expectedCommit, "full current Git commit SHA");
   check("exact-three-profiles", Array.isArray(inputs) && rows.length === 3 && profiles.length === 3 && profiles.every((profile) => rows.filter((x) => x?.profile === profile).length === 1),
@@ -123,7 +124,7 @@ export function selectReplayCandidate(inputs, { expectedCommit, group = "initial
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const args = process.argv.slice(2), usage = "Usage: node scripts/select-replay-candidate.mjs --inputs three-results.json --out decision.json [--commit CURRENT_SHA] [--group initial|refinement]";
+  const args = process.argv.slice(2), usage = "Usage: node scripts/select-replay-candidate.mjs --inputs three-results.json --out decision.json [--commit CURRENT_SHA] [--group initial|refinement|context]";
   if (args.length === 1 && args[0] === "--help") process.stdout.write(usage + "\nExpected commit defaults to GITHUB_SHA. GITHUB_OUTPUT receives one validated profile from the requested predeclared group, or an empty value.\n");
   else {
     const options = {};
