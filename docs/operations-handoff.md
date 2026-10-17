@@ -2,6 +2,57 @@
 
 Updated 2026-10-17, Europe/Vienna. Repository: `mxssnx-creator/CTS-A-O`.
 
+## Break post-Base 12 h replay follow-up — 17 October
+
+Detailed report: [break-postbase-12h-20261017.md](simulations/break-postbase-12h-20261017.md).
+
+The corrected offline replay used 12 h of evaluated history plus 12 h of
+simulated trading. The first 9×12 draft accidentally let config selection use
+the default 336 h longH; that evidence is superseded for this request. The
+replay launcher now preflights the complete normalized settings before scoring
+and uses a bounded replay-only 12 h selection window. Production's 24 h
+minimum longH and saved/live settings are unchanged. Historical native live
+last-N settings are not simulator gates; the report no longer labels them as
+such.
+
+On the matched 9-symbol cached feed, the legacy 4-ID set passed 4/12 Base
+Micro pairs, validated 696/3,128 post-Base configs at pooled Return PF 4.104,
+then executed 1,563 simulated orders at PF 0.342. Updated Break passed 4/60,
+validated 728/2,176 at PF 10.345, and executed 726 orders at PF 3.272 with
++$5.201 net and 2.71% equity maximum drawdown. Its hourly outcome was 3
+positive, 6 flat and 3 negative hours; realized PF fell below 1 at 18:00,
+19:00 and 23:00 UTC. The update improved aggregate quality while reducing
+orders; it did not meet the every-active-hour goal.
+
+An exploratory in-sample 70% green-hour config floor produced 616/2,176
+validated configs at PF 13.391 and 566 simulated orders at PF 4.904, net
++$6.496. It reduced the 18:00 loss from 228 to 108 orders but kept the same
+3/6/3 hourly outcome. This remains a test candidate only; do not promote or
+retune it on the same window. A 3×4 config-floor/entry-last-N grid found no
+hourly or aggregate execution improvement.
+
+Verification: 18 matrix replays plus two current-source confirmation replays
+passed 56/56 consistency checks each; session-report tests 15/15; the focused
+Break/Micro/Relate/range/walk-forward/pipeline regression bundle passed
+116/116 across 28 suites; TypeScript typecheck, Node syntax and diff checks
+passed. The current-source replay hashes and matched baseline / 70% outcomes
+are recorded in the detailed report. The cache contains only nine real
+symbols, and no live venue execution or deployment was tested. Exact source
+checkpoint `5372a70` (`feat: bound Break post-Base replay controls`) is mirrored
+as GitHub commit `de6a1acb3917ef8739b034ac11329f535f067dcb` on
+`fix-base-range-report-20261017`; GitHub verified the published branch. No
+deployment or live trading change was made.
+
+## Matched Block ratio check — 17 October
+
+The paired six-hour systemwide replay is recorded in
+[the Block ratio comparison](simulations/systemwide-block-ratio-comparison-20261017.md),
+with complete hourly and range/lane/type reports for both runs. On the same
+nine-symbol feed and gates, ratio 0.2 improved Return PF 2.83→2.86, sized cash
+PF 0.66→0.74, funded orders 3,711→3,759, net −$0.21→−$0.14 and max equity
+drawdown 7.72%→6.64%. The same 02:00 hour remained negative, so neither result
+qualifies as consistently profitable and no live default was promoted.
+
 ## Relate indication and Micro verification
 
 Implementation branch: `feat/relate-indication-20261016`. Remote safety

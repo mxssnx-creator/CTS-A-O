@@ -7,7 +7,7 @@ import { indicationState } from "../src/core/indications/registry.ts";
 import { entrySignal } from "../src/core/bots/bots.ts";
 import { sideSignal, simulate } from "../src/core/sim/backtest.ts";
 import { buildTapes, filterEntries } from "../src/core/sim/walkforward.ts";
-import { makeUniverse } from "../src/core/pipeline/pipeline.ts";
+import { laneProtect, makeUniverse } from "../src/core/pipeline/pipeline.ts";
 import { DEFAULT_TACTICS } from "../src/core/config.ts";
 import { tacticCooldown } from "../src/core/indications/filters.ts";
 import { maskEntries } from "./core-tactic-research.mjs";
@@ -100,6 +100,15 @@ describe("four-source frozen independent Signal research", () => {
       48,
       "one-minute floor collisions are declared aliases, not extra independent winning configurations",
     );
+    const belowCurrentLaneFloor = cells.filter((cell) => {
+      const lane = laneProtect(cell.requestedAliases[0].referenceProtect, cell.ind);
+      return (
+        lane.trail > 0 &&
+        lane.trail * (lane.trailStep ?? 1) + 1e-12 < protocol.preOutcomeModelClarification.signalFloors.minTrail
+      );
+    });
+    assert.equal(new Set(belowCurrentLaneFloor.map((cell) => cell.cfg)).size, 64);
+    assert.equal(belowCurrentLaneFloor.length, 128, "each disabled config has independent long and short rows");
   });
 
   it("fails before scoring if frozen parameters, protects, cost, source universe or bars differ", () => {
@@ -336,7 +345,7 @@ describe("four-source frozen independent Signal research", () => {
     assert.match(md, /Entire IS-qualified pool/);
   });
 
-  it("matches the actual Signal tape builder's floors, entry filter and effective config deduplication", () => {
+  it("preserves the frozen floor-policy grid and identifies trails later disabled by the runtime", () => {
     const { market, p } = fixture();
     const cells = researchCells(p).filter(
       (c) => c.source === "r-laguerre" && c.range === "short" && c.tf === 1,
@@ -357,25 +366,54 @@ describe("four-source frozen independent Signal research", () => {
         entry: p.preOutcomeModelClarification.signalFilter,
       },
     );
-    assert.equal(tapes.length, 36);
-    assert.equal(report.oos.length, tapes.length * 2);
+    const protocolByConfig = new Map(cells.map((cell) => [cell.cfg, cell]));
+    const runtimeByConfig = new Map(tapes.map((tape) => [tape.id, tape]));
+    assert.equal(protocolByConfig.size, 36, "the frozen protocol retains all distinct floor-adjusted cells");
+    assert.equal(runtimeByConfig.size, 31, "the current runtime disables lane-scaled short trails");
+    const disabledByRuntime = [...protocolByConfig.values()].filter((cell) => !runtimeByConfig.has(cell.cfg));
+    assert.equal(disabledByRuntime.length, 5);
+    for (const cell of disabledByRuntime) {
+      const lane = laneProtect(cell.requestedAliases[0].referenceProtect, cell.ind);
+      assert.ok(lane.trail > 0);
+      assert.ok(
+        lane.trail * (lane.trailStep ?? 1) + 1e-12 < p.preOutcomeModelClarification.signalFloors.minTrail,
+        `${cell.cfg} must be below the runtime's post-lane trail floor`,
+      );
+      assert.equal(cell.protect.trail, p.preOutcomeModelClarification.signalFloors.minTrail);
+    }
+    for (const [id, tape] of runtimeByConfig) assert.deepEqual(tape.protect, protocolByConfig.get(id).protect);
+    assert.equal(report.oos.length, cells.length, "the frozen historical study preserves both directions for every cell");
+    const k = new SeriesCache(b);
+    const entries = maskEntries(
+      filterEntries(
+        entrySignal("follow", cells[0].ind, k, DEFAULT_TACTICS),
+        k.b,
+        k,
+        p.preOutcomeModelClarification.signalFilter,
+      ),
+      k.b,
+      p.data.splitT,
+    );
     for (const row of report.oos) {
-      const tape = tapes.find((tp) => tp.id === row.cfg);
-      assert.ok(tape, row.id);
-      assert.deepEqual(row.protect, tape.protect);
-      const returns = [];
-      for (let i = 0; i < tape.r.length; i++)
-        if (tape.side[i] === row.side) returns.push(tape.r[i]);
-      const expected = totals(returns);
+      const cell = cells.find((candidate) => candidate.id === row.id);
+      assert.ok(cell, row.id);
+      assert.deepEqual(row.protect, cell.protect);
+      const tape = runtimeByConfig.get(row.cfg);
+      if (tape) assert.deepEqual(row.protect, tape.protect);
+      const sim = simulate(cell.cfg, k.b, sideSignal(entries, row.side), cell.protect, {
+        cost: 0.002,
+        cooldown: tacticCooldown(DEFAULT_TACTICS),
+      });
+      const expected = totals(sim.trades.map((t) => t.r));
       assert.equal(row.closed.n, expected.n);
       assert.equal(row.closed.gp, expected.gp);
       assert.equal(row.closed.gl, expected.gl);
-      const open = tape.open.filter((pos) => pos.side === row.side);
-      assert.equal(row.openAtEnd, open.length);
+      assert.equal(row.openAtEnd, sim.open ? 1 : 0);
       assert.equal(
         row.endpointMarks.netReturnSum,
-        open.reduce((sum, pos) => sum + pos.mtm, 0),
+        sim.open?.mtm ?? 0,
       );
     }
+    k.clear();
   });
 });

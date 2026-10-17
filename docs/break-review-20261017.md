@@ -1,5 +1,14 @@
 # Break review — 17 October 2026
 
+## Later 12-hour post-Base follow-up
+
+The corrected 12-hour-history + 12-hour-trade PF comparison, hourly stage funnel
+and post-Base gate ablations are in
+[the 12-hour post-Base replay report](simulations/break-postbase-12h-20261017.md).
+That follow-up caught and corrected a 336-hour config-selection window in the
+first 9×12 run. The 24-hour studies below remain separate historical windows
+and are not replaced by the 12-hour result.
+
 Validated source diff: `fix: score Break market relations prior-only`, verified locally as `dd5a2e3`.
 Applied to the PR #155 branch `feat/break-micro-short-channel-20261017`, whose pre-change files match the tested local parent tree.
 

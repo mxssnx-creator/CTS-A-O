@@ -13,6 +13,10 @@ The public eight-symbol cache was previously used for Tactic research. This new-
 - Entries use the complete Signal identity, `entrySignal(follow, DEFAULT_TACTICS)`, existing cooldown and the default Signal ATR/price filter of 0.003. Every simulated return deducts 0.2% roundtrip modeled cost. Funding, additional slippage, account budgets and executed-live feedback are excluded.
 - IS arrays are physically truncated before calculation. Every exact config-side with at least 30 settled closes, PF ≥1.1 and positive net, also passing PF ≥1.1 including endpoint marks, freezes before any OOS calculation. OOS starts with fresh positions and causal pre-context. Endpoint marks use the final completed lane close and its actual timestamp.
 
+## Current-runtime scope note — 17 October 2026
+
+The frozen run and its pinned source checkpoint used the protocol's lane-scale-then-floor policy. The current Signal tape builder now disables a trailing configuration when its lane-scaled trail is below the 0.5% minimum instead of widening that trail. Across this frozen grid, that current runtime rule removes 64 config IDs (128 long/short rows) from the active set. This historical report remains unchanged and valid for its recorded protocol, but its 688-config selection and PF are not current-runtime qualification evidence. A fresh post-change study needs the original candle cache, which is not part of this repository.
+
 ## Complete cohorts
 
 | Frozen OOS cohort | Effective rows | Settled closes | Return PF | PF including marks |
@@ -41,7 +45,7 @@ Pools contain overlapping independent configuration copies. Their gross positive
 
 ## Verification and reproduction
 
-Eight guarded synthetic runner tests passed, including all 32 source/range/lane prefix checks, poisoned-future selection invariance, physical IS isolation, complete qualified membership, no-target behavior, direct simulator parity and actual Signal tape-builder floor/filter/dedup parity. The independent runner review approved the protocol implementation before the first outcome.
+Eight guarded synthetic runner tests passed at the pinned implementation checkpoint, including all 32 source/range/lane prefix checks, poisoned-future selection invariance, physical IS isolation, complete qualified membership, no-target behavior, direct simulator parity and Signal tape-builder parity. The later runtime trail-floor change is documented above; the current regression test verifies the five affected Laguerre short-1m configs are excluded by today's builder while preserving this frozen run's historical policy. The independent runner review approved the protocol implementation before the first outcome.
 
 Independent post-run reconciliation reproduced all 688 selected identities and the row/cohort/mark sums in all eight breakdown dimensions. A direct replay of the first prescribed AVAX Laguerre 1-minute cell exercised 66 long and 58 short closes; every return exactly matched `side × (exit − entry) / entry − 0.002`, with correct direction labels and zero discrepancy.
 
