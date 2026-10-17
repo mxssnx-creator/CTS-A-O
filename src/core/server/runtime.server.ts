@@ -379,6 +379,9 @@ export interface RuntimeStatus {
   /** memory guard: the host's available memory and this process, the compute fallback level, the last abort */
   mem?: {
     availMb: number;
+    /** Host cap and cgroup estimate basis/credit, retained in replay evidence. */
+    hostAvailMb?: number;
+    cgroup?: MemInfo["cgroup"];
     rssMb: number;
     level: MemLevel;
     fallback: number;
@@ -2013,14 +2016,17 @@ export class CoreRuntime {
 
   async cycle() {
     if (this.busy || this.stopped) return;
+    const gen = this.gen;
     this.busy = true;
     // the previous compute's preset comparison finishes first (never beside a compute: memory, the cores)
     if (this.comparing) await this.comparing;
+    // A stop/restart or watchdog replacement owns the new generation and its busy flag. A cycle already waiting
+    // for Compare must not adopt that generation and run beside the scheduled replacement.
+    if (gen !== this.gen) return;
     if (this.stopped) {
       this.busy = false;
       return;
     }
-    const gen = this.gen;
     const t0 = performance.now();
     let compareGen: number | null = null;
     this.inCycle = true;
@@ -2748,6 +2754,8 @@ export class CoreRuntime {
     }
     this.status.mem = {
       availMb: m.availMb,
+      hostAvailMb: m.hostAvailMb,
+      cgroup: m.cgroup,
       rssMb: m.rssMb,
       level: m.level,
       fallback: this.memFallback,

@@ -12,9 +12,21 @@ import { freemem } from "node:os";
 import { readFileSync } from "node:fs";
 
 export type MemLevel = "ok" | "soft" | "hard";
-export interface MemInfo {
-  /** memory the host can still give (MemAvailable), MB */
+export interface CgroupMemoryEstimate {
+  version: 1 | 2;
+  basis: "clean-file-estimate" | "inactive-file";
+  limitMb: number;
+  usedMb: number;
+  /** Headroom before cache credit, clamped at zero; an over-limit debt still reduces availMb. */
+  rawAvailMb: number;
+  cacheCreditMb: number;
   availMb: number;
+}
+export interface MemInfo {
+  /** The tighter host/cgroup available-memory estimate, MB. */
+  availMb: number;
+  hostAvailMb?: number;
+  cgroup?: CgroupMemoryEstimate;
   /** this process, MB (its workers included: they are threads) */
   rssMb: number;
   heapMb: number;
@@ -42,13 +54,15 @@ export function memLevel(availMb: number, soft = memSoftMb(), hard = memHardMb()
 }
 
 /**
- * Memory the process's own cgroup can still give, MB: its limit minus what it uses, the reclaimable page cache
- * (inactive files) counted as free — null without a limit. The host's MemAvailable is not the binding number in a
- * container: x01's cgroup is limited to 14.3 GB on a 16 GB host, so the guard read ~2 GB more than there was and the
+ * Available-memory estimate for the process's own cgroup: its limit minus what it uses, with eligible file cache
+ * credited. Complete v2 counters exclude mapped, dirty, writeback, shmem and unevictable memory; missing or invalid
+ * counters retain the inactive-file estimate. These counters do not prove immediate reclaimability: extra folio
+ * references or pins can delay removal even for clean, unmapped files. The host's MemAvailable is not the binding
+ * number in a container: x01's cgroup is limited to 14.3 GB on a 16 GB host, so the guard read ~2 GB more than there was and the
  * kernel killed the desk (6 Oct, three times) before the guard ever reached its hard level. cgroup v2 (memory.max /
  * memory.current) and v1 (memory.limit_in_bytes / memory.usage_in_bytes) are both read.
  */
-export function cgroupAvailMb(read: (path: string) => string | null = readOr): number | null {
+export function cgroupMemoryEstimate(read: (path: string) => string | null = readOr): CgroupMemoryEstimate | null {
   const cg = read("/proc/self/cgroup");
   if (!cg) return null;
   const num = (x: string | null) => {
@@ -59,28 +73,61 @@ export function cgroupAvailMb(read: (path: string) => string | null = readOr): n
     const m = txt ? new RegExp(`^${key} (\\d+)$`, "m").exec(txt) : null;
     return m ? Number(m[1]) : 0;
   };
+  const safeBytes = (txt: string | null): number | null => {
+    if (txt == null || !/^\d+$/.test(txt.trim())) return null;
+    const n = Number(txt.trim());
+    return Number.isSafeInteger(n) && n >= 0 ? n : null;
+  };
+  const safeStat = (txt: string | null, key: string): number | null => {
+    const matches = [...(txt ?? "").matchAll(new RegExp(`^${key}[ \\t]+([^\\n]*)$`, "gm"))];
+    return matches.length === 1 ? safeBytes(matches[0][1]) : null;
+  };
   const v1 = /^\d+:(?:[^:]*,)?memory(?:,[^:]*)?:(.*)$/m.exec(cg);
   const v2 = /^0::(.*)$/m.exec(cg);
   let limit = NaN;
   let used = NaN;
-  let inactive = 0;
+  let credit = 0;
+  let version: 1 | 2 = 1;
+  let basis: CgroupMemoryEstimate["basis"] = "inactive-file";
   if (v1) {
     const d = `/sys/fs/cgroup/memory${v1[1] === "/" ? "" : v1[1]}`;
     limit = num(read(`${d}/memory.limit_in_bytes`));
     used = num(read(`${d}/memory.usage_in_bytes`));
     const st = read(`${d}/memory.stat`);
-    inactive = statOf(st, "total_inactive_file") || statOf(st, "inactive_file");
+    credit = statOf(st, "total_inactive_file") || statOf(st, "inactive_file");
   }
   if (!(limit > 0) && v2) {
+    version = 2;
     const d = `/sys/fs/cgroup${v2[1] === "/" ? "" : v2[1]}`;
     const max = read(`${d}/memory.max`);
-    limit = max?.trim() === "max" ? NaN : num(max);
-    used = num(read(`${d}/memory.current`));
-    inactive = statOf(read(`${d}/memory.stat`), "inactive_file");
+    limit = safeBytes(max) ?? NaN;
+    used = safeBytes(read(`${d}/memory.current`)) ?? NaN;
+    const st = read(`${d}/memory.stat`);
+    const keys = ["file", "shmem", "active_file", "inactive_file", "file_mapped", "file_dirty", "file_writeback", "unevictable"] as const;
+    const values = keys.map((key) => safeStat(st, key));
+    credit = safeStat(st, "inactive_file") ?? 0;
+    if (values.every((value) => value !== null)) {
+      const [file, shmem, active, inactive, mapped, dirty, writeback, unevictable] = values as number[];
+      const regular = Math.max(0, file - shmem);
+      // min(regular, active + inactive), without overflowing even when each counter is a valid safe integer.
+      credit = Math.min(regular, inactive);
+      credit += Math.min(regular - credit, active);
+      // Subtracting overlapping exclusions again under-credits cache, which is intentional.
+      for (const excluded of [mapped, dirty, writeback, unevictable]) credit = Math.max(0, credit - excluded);
+      basis = "clean-file-estimate";
+    }
   }
   // no limit (or the kernel's "unlimited" sentinel, ~2^63)
   if (!(limit > 0) || !(used >= 0) || limit >= 2 ** 60) return null;
-  return Math.max(0, Math.round((limit - Math.max(0, used - inactive)) / 1048576));
+  credit = Math.min(used, Math.max(0, credit));
+  return { version, basis, limitMb: Math.round(limit / 1048576), usedMb: Math.round(used / 1048576),
+    rawAvailMb: Math.max(0, Math.round((limit - used) / 1048576)), cacheCreditMb: Math.round(credit / 1048576),
+    availMb: Math.max(0, Math.round((limit - (used - credit)) / 1048576)) };
+}
+
+/** Backward-compatible scalar estimate; memInfo also records its basis and cache credit. */
+export function cgroupAvailMb(read: (path: string) => string | null = readOr): number | null {
+  return cgroupMemoryEstimate(read)?.availMb ?? null;
 }
 
 function readOr(path: string): string | null {
@@ -105,11 +152,13 @@ export function memInfo(now = Date.now()): MemInfo {
   }
   const host = avail ?? Math.round(freemem() / 1048576);
   // the tighter of the host's and the cgroup's (the cgroup limit is what the kernel kills by in a container)
-  const cg = cgroupAvailMb();
-  const availMb = cg == null ? host : Math.min(host, cg);
+  const cgroup = cgroupMemoryEstimate();
+  const availMb = cgroup == null ? host : Math.min(host, cgroup.availMb);
   const mu = process.memoryUsage();
   cached = {
     availMb,
+    hostAvailMb: host,
+    ...(cgroup ? { cgroup } : {}),
     rssMb: Math.round(mu.rss / 1048576),
     heapMb: Math.round(mu.heapUsed / 1048576),
     heapTotalMb: Math.round(mu.heapTotal / 1048576),

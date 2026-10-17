@@ -148,7 +148,7 @@ function spawn(): Slot {
 function drop(slot: Slot) {
   const p = pool();
   p.slots = p.slots.filter((x) => x !== slot);
-  void slot.w.terminate().catch(() => undefined);
+  return slot.w.terminate().catch(() => undefined);
 }
 
 /** a queued message's hand-off: a worker, or null when its call stopped waiting (failed / aborted) */
@@ -329,13 +329,15 @@ async function runOnWorkersNow<R>(
   const running = new Set<Slot>();
   const queued = new Set<Waiter>();
   const cancellations = new Set<(err: Error) => void>();
+  const stopping = new Set<Promise<unknown>>();
+  const stopOwned = (slot: Slot) => { stopping.add(drop(slot)); };
   const fail = (err: unknown) => {
     if (failed) return;
     failed = err instanceof Error ? err : new Error(String(err));
     unqueue(queued);
     for (const cancel of [...cancellations]) cancel(failed);
     // (a Base part holds its worker for minutes: terminated now, not finished)
-    for (const x of running) drop(x);
+    for (const x of running) stopOwned(x);
   };
   const progress = (f: number) => {
     if (onProgress && !failed) onProgress(f);
@@ -343,19 +345,20 @@ async function runOnWorkersNow<R>(
   const lane = async () => {
     while (!failed && next < messages.length) {
       const i = next++;
-      // borrow a worker for this one message (queued when the pool is at its cap)
-      // Own a reserved worker before the await continuation: an abort in that gap must distinguish it from a
-      // genuinely queued priority call, including the moment a waiter is handed its worker.
-      const slot = await acquire(priority, queued, (slot) => running.add(slot));
-      // (null: aborted while waiting, or this call failed meanwhile)
-      if (!slot) return fail(abortedError(p.abortReason ?? "worker aborted"));
-      if (failed) { running.delete(slot); return release(slot); }
+      let slot: Slot | null = null;
       try {
-        const w = slot.w;
+        // Acquisition can throw synchronously while spawning: it must stop and drain this call's other lanes too.
+        // Own a reserved worker before the await continuation, including the moment a waiter is handed its worker.
+        slot = await acquire(priority, queued, (slot) => running.add(slot));
+        // (null: aborted while waiting, or this call failed meanwhile)
+        if (!slot) return fail(abortedError(p.abortReason ?? "worker aborted"));
+        if (failed) return;
+        const activeSlot = slot;
+        const w = activeSlot.w;
         out[i] = await new Promise<R>((resolve, reject) => {
           const timer = setTimeout(() => {
             cleanup();
-            drop(slot);
+            stopOwned(activeSlot);
             reject(new Error("worker timed out"));
           }, timeoutMs);
           const onMsg = (m: {
@@ -411,11 +414,17 @@ async function runOnWorkersNow<R>(
           w.postMessage({ ...messages[i], id: i });
         });
       } catch (err) {
-        running.delete(slot);
+        if (slot) {
+          running.delete(slot);
+          // A worker error/exit drops the slot before this continuation; retain its termination barrier too.
+          if (!p.slots.includes(slot)) stopOwned(slot);
+        }
         fail(err);
       } finally {
-        running.delete(slot);
-        release(slot);
+        if (slot) {
+          running.delete(slot);
+          release(slot);
+        }
       }
     }
   };
@@ -430,7 +439,9 @@ async function runOnWorkersNow<R>(
   if (signal?.aborted) cancelOwn();
   try {
     // (every lane has settled before the call rejects: in flight for the watchdog and the memory guard until then)
-    await Promise.all(Array.from({ length: Math.max(1, Math.min(size, messages.length)) }, lane));
+    await Promise.all(Array.from({ length: Math.max(1, Math.min(size, messages.length)) }, () => lane().catch(fail)));
+    // A local fallback must not overlap threads this call has stopped. Other owners' workers are never awaited.
+    await Promise.all(stopping);
   } finally {
     p.aborters.delete(abort);
     signal?.removeEventListener("abort", cancelOwn);

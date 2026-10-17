@@ -13,7 +13,7 @@ const runtimes: CoreRuntime[] = [];
 afterEach(async () => { for (const rt of runtimes.splice(0)) rt.dispose(); await closePool(); });
 
 type Inner = {
-  gen: number; stopped: boolean; memPressured: boolean; memFallback: number; workersBroken: boolean;
+  gen: number; stopped: boolean; busy: boolean; memPressured: boolean; memFallback: number; workersBroken: boolean;
   compareInput: Record<string, unknown> | null; compareRetryAt: number;
   dirty: boolean; resetUniverse: boolean; paperStepped: boolean; comparing: Promise<void> | null;
   cycle(): Promise<void>; syncMarket(gen: number): Promise<boolean>; schedule(ms: number): void;
@@ -163,3 +163,34 @@ test("watchdog generation replacement releases only its obsolete Compare job", a
   assert.equal(inner.gen, generation + 1); assert.equal(inner.compareInput, null);
   assert.equal(rt.status.compare?.running, false); assert.deepEqual(rt.db.kvGet("presetSims"), prior);
 });
+
+for (const restart of ["watchdog", "stop/start"] as const) {
+  test(`${restart} does not let a cycle waiting for Compare adopt the replacement generation`, async () => {
+    const { rt, inner } = fixture(); let started!: () => void;
+    const ready = new Promise<void>((resolve) => { started = resolve; });
+    inner.compareOnWorkers = async (_messages, _size, _progress, signal) => {
+      started(); return await new Promise((_, reject) => signal.addEventListener("abort", () => reject(signal.reason), { once: true }));
+    };
+    inner.comparing = inner.comparePresets().finally(() => { inner.comparing = null; });
+    await ready;
+    let marketCalls = 0, releaseMarket!: () => void;
+    const marketGate = new Promise<void>((resolve) => { releaseMarket = resolve; });
+    inner.syncMarket = async () => { marketCalls++; await marketGate; return false; };
+    inner.schedule = () => undefined;
+    inner.dirty = false; inner.resetUniverse = false; inner.paperStepped = true;
+    const waiting = inner.cycle();
+    assert.equal(inner.busy, true);
+    const generation = inner.gen;
+    if (restart === "watchdog") {
+      rt.status.state = "running"; rt.status.heartbeat = Date.now() - 240_000;
+      rt.ensureAlive();
+    } else { rt.stop(); rt.start(); }
+    assert.equal(inner.gen, generation + 1);
+    const replacement = inner.cycle();
+    try {
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.equal(marketCalls, 1, "only the replacement cycle may enter the market/compute path");
+      assert.equal(inner.busy, true, "the superseded cycle must not clear its replacement's busy flag");
+    } finally { releaseMarket(); await Promise.all([waiting, replacement]); }
+  });
+}
