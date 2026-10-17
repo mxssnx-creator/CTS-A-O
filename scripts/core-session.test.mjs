@@ -28,7 +28,7 @@ function replay({ caps = false, weighted = false, invalidReturn = false, qualifi
       at: "2026-10-14T00:00:00.000Z", symbols: ["TEST-USDT"],
       settings: {
         preH: 1, runH: 1, tactics: "off", signals: false, toggles: {}, block: {},
-        wf: {}, gates: { minPf: 1.1 }, lanes: [1], cost: 0, focus: 0, disabledKinds: [], ranges: {},
+        wf: { longH: 1 }, gates: { minPf: 1.1 }, lanes: [1], cost: 0, focus: 0, disabledKinds: [], ranges: {},
         live: { maxPositionX: 0.75, maxExposureX: 7 },
         book: { balance: 100, notional: 5, sizing: { mode: "equityPct", pct: 0.25 }, leverage: 10 },
       },
@@ -67,6 +67,8 @@ function replay({ caps = false, weighted = false, invalidReturn = false, qualifi
     }
     if (baseNoLoss) {
       raw.settings.ranges.micro = true;
+      raw.settings.replaySelectionHours = 1;
+      raw.settings.replayMinGreen = 1;
       raw.settings.live = { ...raw.settings.live, liveLastN: 25, liveGroupLastN: 0, replaySinceT: H };
       raw.trades = [
         { cfg: "follow|break-mc-rel-don8-5-dd24-balanced@m5|tp0.7|sl2.5|tr0.75|h1|mc", sym: "TEST-USDT", side: 1, entryT: H + M, exitT: H + 2 * M, entry: 100, exit: 102, r: 0.02, reason: "tp", vol: 1, mult: 1, kind: "normal" },
@@ -155,12 +157,18 @@ describe("session reports: return PF primary, simulated provenance", () => {
     const { data, md, html } = replay({ baseNoLoss: true });
     assert.equal(data.total.orders, 1);
     assert.equal(data.total.pf, 4, "the JSON gate-score convention remains finite");
+    assert.equal(data.settings.wf.longH, 1, "reports preserve the actual config-selection history");
     assert.match(md, /\| Micro \| ∞ \(no loss\) \| 1 of 3 \| 1\.10 \| ∞ \(no loss\) \| 1 of 2 \| ∞ \(no loss\) \| 1 \|/);
     assert.match(md, /median Base gate PF score.*pooled PF ∞ \(no loss\), median gate score 4\.00/);
     assert.match(md, /candidate pool \(pre-validation\)/);
     assert.match(md, /post-Base validated \/ seated/);
     assert.match(md, /simulated executed \(all types\)/);
-    assert.match(md, /Causal post-Base entry gate: last 25 closes per config/);
+    assert.match(md, /additional per-config entry last-N check is off \(wf\.lastN = 0\)/);
+    assert.match(md, /Config-evaluation history is 1 h \(max of longH and preH\)/);
+    assert.match(md, /Replay-only selection-window override: 1 h; it does not change normal runtime settings/);
+    assert.match(md, /Replay-only minimum green-hour fraction for config selection: 100% of the selection window/);
+    assert.match(md, /Causal simulated post-Base execution-PF gate: last 25 closes per config/);
+    assert.doesNotMatch(md, /Native liveLastN is not replayed/);
     assert.match(html, /pooled PF ∞ \(no loss\)/);
   });
 

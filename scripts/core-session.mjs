@@ -23,7 +23,9 @@
 //   --explain f.html    an explanation section (HTML fragment) placed at the top of the --html page
 //   --record-feed f.json  keep the candles and tickers read (needs --end-at); --feed f.json replays them offline
 //   --evaluation-from ISO with --feed: older bars warm indicators only; performance entries start at this time
-//   --live-since ISO with --feed: replay causal post-Base live validation from this point in the simulated window
+//   --selection-hours H with --feed --end-at --evaluation-from: replay-only Base/config selection lookback override
+//   --live-since ISO with --feed: replay the causal post-Base modeled-execution PF gate from this window time
+//   --min-green R with the same replay bounds: replay-only minimum profitable-hour fraction for config selection
 //   --signal-progress    capture every Signal protection cell/stage and exact shared-book order allocations
 //   --dump-only         with --dump: stop after the raw session is written (no report: the evaluation runs); the dump
 //                       then carries no tape trades unless --tape-trades
@@ -413,6 +415,14 @@ async function runEngine() {
     : (/^\d+(?:\.\d+)?$/.test(liveSinceArg) ? Number(liveSinceArg) : Date.parse(liveSinceArg));
   if (liveSinceArg !== undefined && (!feedFile || !cutT || !Number.isFinite(liveSinceT) || liveSinceT < cutT - runH * H || liveSinceT >= cutT))
     throw new Error("--live-since needs an offline --feed and a timestamp inside the simulated trade window");
+  const selectionHoursArg = arg("selection-hours");
+  const replaySelectionHours = selectionHoursArg === undefined ? null : Number(selectionHoursArg);
+  if (selectionHoursArg !== undefined && (!feedFile || !cutT || !Number.isFinite(evaluationFromT) || !Number.isInteger(replaySelectionHours) || replaySelectionHours < 1 || replaySelectionHours > 1440))
+    throw new Error("--selection-hours needs a positive whole-hour value (≤1440), an offline --feed, --end-at and --evaluation-from");
+  const minGreenArg = arg("min-green");
+  const replayMinGreen = minGreenArg === undefined ? null : Number(minGreenArg);
+  if (minGreenArg !== undefined && (!feedFile || !cutT || !Number.isFinite(evaluationFromT) || !Number.isFinite(replayMinGreen) || replayMinGreen < 0.5 || replayMinGreen > 1))
+    throw new Error("--min-green needs a fraction from 0.5 to 1 and an offline --feed, --end-at and --evaluation-from");
   if (evaluationFromT !== undefined && (!feedFile || !cutT || !Number.isFinite(evaluationFromT) || evaluationFromT >= cutT))
     throw new Error("--evaluation-from needs an offline --feed, an explicit end and a valid earlier ISO timestamp");
   function replayFeed(cut) {
@@ -434,8 +444,8 @@ async function runEngine() {
     // a replayed window (--end-at / --end-ago / --to-now) reads no live price: no public price stream (priceStream null)
     { market: "bingx", ...(cutT ? { replay: true, priceStream: null, evaluationFromT, feed: { ...replayFeed(cutT), ...(feedFile || recordFile ? { tickers: fetchTickers } : {}) } } : {}) },
   );
-  // A retrospective run otherwise inherits a wall-clock liveSince and cannot learn from historical simulated closes.
-  // This explicit override is limited to offline sessions and leaves ordinary runtime defaults untouched.
+  // Historical replay otherwise inherits a wall-clock liveSince and cannot learn from simulated execution closes.
+  // Restrict the override to a bounded offline window; ordinary runtime and live defaults are unchanged.
   if (liveSinceT !== null) rt.db.kvSet("liveSince", liveSinceT);
   let wfAll = {};
   const deskFile = arg("desk");
@@ -479,6 +489,11 @@ async function runEngine() {
   // end, as the live desk does — the run is then partly in-sample)
   const wfExtra = { causalBase: !flag("lookahead"), ...wfAll, ...JSON.parse(arg("wf", "{}")) };
   rt.updateSettings({}, { preH, simH: runH, ...wfExtra });
+  // Production sanitizeWf keeps longH >= 24 h. This narrow override is accepted only for a bounded offline replay,
+  // so an explicitly requested shorter research window can be reproduced without changing saved/live defaults.
+  if (replaySelectionHours !== null) rt.wf = { ...rt.wf, longH: replaySelectionHours };
+  // Keep stricter hour-consistency research bounds out of persisted production settings and native live execution.
+  if (replayMinGreen !== null) rt.wf = { ...rt.wf, gates: { ...rt.wf.gates, minGreen: replayMinGreen } };
   if (arg("frozen-block-study")) {
     const { validateFrozenBlockRuntime } = await import("./lib/block-comparison.mjs");
     validateFrozenBlockRuntime(rt, arg("frozen-block-study"), arg("study-fold"), feedFile, evaluationFromT, cutT);
@@ -497,7 +512,7 @@ async function runEngine() {
   rt.start();
   if (liveSinceT !== null)
     process.stderr.write(
-      `post-Base replay gate starts ${new Date(liveSinceT).toISOString()} · config last-N ${rt.settings.live.liveLastN ?? 0} · group last-N ${rt.settings.live.liveGroupLastN ?? 0}\n`,
+      `post-Base modeled-execution replay gate starts ${new Date(liveSinceT).toISOString()} · config last-N ${rt.settings.live.liveLastN ?? 0} · group last-N ${rt.settings.live.liveGroupLastN ?? 0}\n`,
     );
   process.stderr.write(
     `session: ${symbols} symbols · ${preH}h pre-historic · ${runH}h simulated · tactics ${tacticsMode} · ` +
@@ -981,6 +996,8 @@ async function runEngine() {
       preH,
       runH,
       evaluationFromT: evaluationFromT ?? null,
+      replaySelectionHours,
+      replayMinGreen,
       marketDataSource: feedFile ? "offline-cached-feed" : recordFile ? "recorded-public-bingx" : "public-bingx",
       tactics: tacticsMode,
       tacticsSet: s.tactics,
@@ -988,10 +1005,10 @@ async function runEngine() {
       desk: deskFile ?? null,
       deskWhy: desk?.why ?? null,
       allOn: flag("all-on"),
-      wfPatch: wfExtra,
+      wfPatch: { ...wfExtra, ...(replaySelectionHours !== null ? { replaySelectionHours } : {}), ...(replayMinGreen !== null ? { replayMinGreen } : {}) },
       wf: Object.fromEntries(
         [
-          "preH", "simH", "stepH", "causalBase", "portfolio", "lastN", "lastNMinPf", "validLastN", "signalValidLastN", "maxPerSymbol",
+          "preH", "simH", "longH", "stepH", "causalBase", "portfolio", "lastN", "lastNMinPf", "validLastN", "signalValidLastN", "maxPerSymbol",
           "maxPerSide", "maxOpen", "maxPositions", "signalMaxPositions", "signalMaxOpen", "guardPct", "coord", "mode",
           "familySeats", "laneSeats", "symGate",
         ].map((k) => [k, rt.wf[k] ?? null]),
@@ -2707,13 +2724,20 @@ if (raw.funnel) {
     ``,
     `## Stage funnel, hour by hour (orders closed · unit PF)`,
     ``,
-    `Base (each pair at its default protect and its ranges' cells): ${k.basePairs ?? "?"} engine pairs evaluated, ${k.basePassed ?? "?"} passed (any range)${E.signals?.representativeBaseGate ? "; gated Signal pairs are included in the status totals" : "; Signal pairs are measured separately"}. Later stages: *candidate pool* = every config of the Base-passed pairs (${k.poolConfigs ?? "?"} tapes; diagnostic, before config validation), Normal / Trailing / Trailing only apart; *post-Base validated / seated* = configs that passed config evaluation (${k.seatedConfigs ?? "?"}); *simulated execution* = orders that passed the run's gates, caps and Block volume. Unit PF is every close at one unit after the ${((raw.settings?.cost ?? 0.002) * 100).toFixed(2)} % cost.${raw.settings?.live?.replaySinceT != null ? ` Causal post-Base entry gate: last ${raw.settings.live.liveLastN} closes per config${raw.settings.live.liveGroupLastN ? ` and last ${raw.settings.live.liveGroupLastN} pooled closes per range` : ""}, from ${new Date(raw.settings.live.replaySinceT).toISOString()}; no future exits are included.` : "Historical post-Base live gates are not applied to the replay unless --live-since is set."}${k.causalBase ? "" : " Base and the candidate pool use the full history (in-sample for the run); seated / executed are causal."}`,
+    `Base (each pair at its default protect and its ranges' cells): ${k.basePairs ?? "?"} engine pairs evaluated, ${k.basePassed ?? "?"} passed (any range)${E.signals?.representativeBaseGate ? "; gated Signal pairs are included in the status totals" : "; Signal pairs are measured separately"}. Later stages: *candidate pool* = every config of the Base-passed pairs (${k.poolConfigs ?? "?"} tapes; diagnostic, before config validation), Normal / Trailing / Trailing only apart; *post-Base validated / seated* = configs that passed config evaluation (${k.seatedConfigs ?? "?"}); *simulated execution* = orders that passed the causal config, coordination, caps and Block gates. Unit PF is every close at one unit after the ${((raw.settings?.cost ?? 0.002) * 100).toFixed(2)} % cost. Config-evaluation history is ${raw.settings?.wf?.longH ?? raw.settings?.wf?.preH ?? "unknown"} h (max of longH and preH); Base history is reported separately.${raw.settings?.replaySelectionHours != null ? ` Replay-only selection-window override: ${raw.settings.replaySelectionHours} h; it does not change normal runtime settings.` : ""}${raw.settings?.wf?.lastN > 0 ? ` Additional causal config entry check: each candidate needs the prior ${raw.settings.wf.lastN} closes of its exact config at PF ≥ max(${raw.settings.wf.lastNMinPf}, its range floor); no future closes are used.` : "The additional per-config entry last-N check is off (wf.lastN = 0); configEval still validates configs before seating."}${raw.settings?.live?.replaySinceT != null ? ` Causal simulated post-Base execution-PF gate: last ${raw.settings.live.liveLastN} closes per config${raw.settings.live.liveGroupLastN ? ` and last ${raw.settings.live.liveGroupLastN} pooled closes per range` : ""}, from ${new Date(raw.settings.live.replaySinceT).toISOString()}; future exits are excluded.` : "Native liveLastN is not replayed unless --live-since is set."}${k.causalBase ? "" : " Base and the candidate pool use the full history (in-sample for the run); seated / executed are causal."}`,
     ``,
     `| hour (UTC) | ${COLS.map(([c]) => c).join(" | ")} |`,
     `|---|${COLS.map(() => "---:").join("|")}|`,
     ...Array.from({ length: F.nH }, (_, i) => `| ${hm(startT + i * H)} | ${COLS.map(([, f]) => cell(f(i))).join(" | ")} |`),
     `| **total** | ${COLS.map(([, f]) => `**${cell(tot(f))}**`).join(" | ")} |`,
   );
+  if (raw.settings?.replayMinGreen != null)
+    lines.push(
+      "",
+      "Replay-only minimum green-hour fraction for config selection: " +
+        Math.round(raw.settings.replayMinGreen * 100) +
+        "% of the selection window. This bounded offline override does not change normal runtime settings.",
+    );
 }
 const stratRow = ([k, v]) =>
   `| ${k} | ${v.n} | ${v.wins} / ${v.losses} | ${pfStr(v.gpR, v.glR, v.n)} | ${pfStr(v.gp, v.gl, v.n)} | ${usd(v.net)} | ${v.n ? f2(v.wr * 100) + " %" : "–"} | ${v.n ? f2(v.ddtH ?? 0) : "–"} |`;
