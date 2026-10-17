@@ -213,7 +213,6 @@ import {
 } from "../signal-coordination.ts";
 import { volumeFactorForIndication } from "../volume-factor.ts";
 
-import os from "node:os";
 import { isDeepStrictEqual } from "node:util";
 import { type BlockBook, blockBookOf, blockStackCap } from "../sim/block.ts";
 import { trailBar } from "../sim/backtest.ts";
@@ -460,7 +459,7 @@ export interface RuntimeStatus {
   /** counts of the listings of the last paper step (CoreRuntime.listings; the pages page through coreListing) */
   listings?: { paperStep: number; at: number; validated: number; active: number; proven: number | null; byRange: Array<{ range: string; validated: number; pf: number | null }> };
   /** the preset comparison after the paper step (comparePresets): running, presets done / total, when it last finished */
-  compare?: { running: boolean; done: number; total: number; at?: number; error?: string };
+  compare?: { running: boolean; done: number; total: number; at?: number; error?: string; deferred?: string; retryAt?: number };
   /**
    * Base-gate sensitivity from the same Base results: how many pairs would pass under each variation of the gate
    * (PF, minimum closes, DDR) and at what median PF. No recompute — it answers "what would validate more sets at
@@ -1558,6 +1557,7 @@ export class CoreRuntime {
   stop() {
     this.cancelBacktests("backtest canceled: runtime stopped");
     this.baseConfigRunner.cancel("stopped");
+    this.cancelCompare("runtime stopped");
     this.stopTick();
     this.stopped = true;
     this.gen++;
@@ -1648,6 +1648,7 @@ export class CoreRuntime {
     if (stale) {
       this.db.event("warn", "watchdog: loop stale, starting a new generation");
       this.baseConfigRunner.cancel("newGeneration");
+      this.cancelCompare("new generation");
       this.gen++;
       this.busy = false;
       this.dirty = true;
@@ -1848,6 +1849,7 @@ export class CoreRuntime {
     // to them alone (or a patch that changes nothing, e.g. one re-applied on a restart) keeps the running compute —
     // marking it stale threw away its tapes, and a desk whose compute outlasts the patch interval never stepped paper
     const recompute = this.resetUniverse || computeKey(this.settings, this.wf) !== prevCompute;
+    if (recompute) this.cancelCompare("settings changed");
     this.db.event(
       "info",
       !recompute
@@ -2124,7 +2126,7 @@ export class CoreRuntime {
       this.status.error = null;
       // the preset comparison of this compute runs once the cycle has ended (its book is out, the next cycle is
       // scheduled): the next cycle waits for it before it starts, so the two never overlap
-      if (computed && !stale && !this.stopped) compareGen = gen;
+      if (!stale && !this.stopped && (computed || (this.compareInput && Date.now() >= this.compareRetryAt))) compareGen = gen;
       if (this.snapshotPath && Date.now() - this.lastSnapshot > 10 * 60_000) {
         this.lastSnapshot = Date.now();
         // in the background: the loop (and the live tick) keeps running while the pages are copied
@@ -2882,6 +2884,7 @@ export class CoreRuntime {
     if (!u.bars.length) return;
     // causal evaluation: the stages see only the history before the simulated run (its start, as walkForward sets it)
     const runStartT = Math.floor((u.nowT - wf.simH * H) / H) * H;
+    const rangeFitCutT = wf.causalBase ? runStartT : undefined;
     if (this.evaluationFromT !== undefined && (!wf.causalBase || this.evaluationFromT >= runStartT))
       throw new Error("Replay evaluationFromT requires a causal Base window before the trading start");
     const uStage = wf.causalBase ? makeUniverse(allBars.map((b) => headBars(b, runStartT)), this.evaluationFromT) : u;
@@ -3469,7 +3472,7 @@ export class CoreRuntime {
     // every set's completeness: grid cells per indication × range × type, built / kept / not built and why
     const buildStats = new Map<string, TapeBuildStat>();
     const built = await tapesFor(main, wf.protects, dcaOpt, "strategy tapes", {
-      ...protectFloors(s),
+      ...protectFloors(s, rangeFitCutT),
       pairTags: this.basePairTags,
       pairTps,
       heldIds,
@@ -3492,7 +3495,7 @@ export class CoreRuntime {
           carriedHeld.dcaProtects.length ? { ...dcaOpt, protects: carriedHeld.dcaProtects, axis: undefined } : undefined,
           "carried tapes",
           {
-            ...protectFloors(s),
+            ...protectFloors(s, rangeFitCutT),
             pairTags: this.basePairTags,
             pairTps,
             heldIds,
@@ -3549,7 +3552,7 @@ export class CoreRuntime {
     // cells, a carried one's included (it builds only the seated ids: under a memory fallback the seated Micro /
     // Minimal configs took no new entry between computes)
     this.fastArgs = {
-      main: { protects: this.wf.protects, dcaFor: { ...dcaOpt, protects: this.wf.dcaProtects }, floors: { ...protectFloors(s), pairTags: this.basePairTags, pairTps, heldIds, microOwnInds: microOwnInds(s.grid) } },
+      main: { protects: this.wf.protects, dcaFor: { ...dcaOpt, protects: this.wf.dcaProtects }, floors: { ...protectFloors(s, rangeFitCutT), pairTags: this.basePairTags, pairTps, heldIds, microOwnInds: microOwnInds(s.grid) } },
       sig: {
         protects: standard,
         dcaFor: sigStrat,
@@ -3730,7 +3733,7 @@ export class CoreRuntime {
     );
     // every preset on the same tapes (the Compare page): after the paper step, so the book never waits for a UI table
     // (CTS_CORE_COMPARE=0 on live desks and session runs: no comparison at all)
-    this.compareInput = process.env.CTS_CORE_COMPARE !== "0" ? { tapes, wf, wu, startT: sim.startT, endT: sim.endT } : null;
+    this.compareInput = process.env.CTS_CORE_COMPARE !== "0" ? { tapes, wf, wu, startT: sim.startT, endT: sim.endT, gen, key: computeKey(this.settings, this.wf) } : null;
     this.computeSummary = `PF ${primaryPfLabel(sim.stats)} · DDT ${sim.stats.ddt.toFixed(1)}h · green ${Math.round(sim.stats.gh * 100)}% · validate last ${wf.validLastN ?? 0} · live last ${wf.lastN}`;
     // the paper step on the new tapes follows in this cycle (it was "Real 100 %" again after Compare — backwards)
     this.setStage("Paper", 0, 1, `paper step next · ${this.computeSummary}`);
@@ -3762,7 +3765,7 @@ export class CoreRuntime {
         dcaOpt: { protects: countDcaProtects, dca: wf.dca, axis: s.axis },
         common: { evaluationFromT: this.evaluationFromT, bars: sharedU, cost: s.cost, tactics: s.tactics,
           options: { gates: s.gates, cost: s.cost, cutT: wf.causalBase ? runStartT : u.nowT, fromT: uStage.startT },
-          floors: { ...protectFloors(s), pairTags: countTags, countFitProtects: countProtects, microOwnInds: microOwnInds(s.grid) },
+          floors: { ...protectFloors(s, rangeFitCutT), pairTags: countTags, countFitProtects: countProtects, microOwnInds: microOwnInds(s.grid) },
         },
       };
       this.baseConfigRunner.request({ ...input, key: baseConfigJobKey(input), settingsAt });
@@ -3811,7 +3814,26 @@ export class CoreRuntime {
     wu: ReturnType<typeof makeUniverse>;
     startT: number;
     endT: number;
+    gen: number;
+    key: string;
   } | null = null;
+  private compareAbort: AbortController | null = null;
+  private compareRetryAt = 0;
+  private cancelCompare(reason: string) {
+    const pending = this.compareAbort || this.compareInput;
+    this.compareAbort?.abort(new Error(`Compare canceled: ${reason}`));
+    this.compareInput = null;
+    this.compareRetryAt = 0;
+    if (pending && this.status.compare)
+      this.status.compare = { ...this.status.compare, running: false, deferred: `Compare canceled: ${reason}`, retryAt: undefined };
+  }
+  /** Uses the tighter host/cgroup reading, independently of the foreground compute's guard. */
+  private compareAvailableBytes(): number { return memInfo().availMb * 1048576; }
+  private compareOnWorkers(
+    messages: Array<Record<string, unknown>>, size: number, progress: (fraction: number) => void, signal: AbortSignal,
+  ) {
+    return runOnWorkers<{ results: Array<{ name: string } & Record<string, unknown>> }>(messages, size, 15 * 60_000, progress, false, signal);
+  }
 
   /**
    * Every preset on the compute's tapes, side by side (with / without Block, DCA and Active) for the Compare page:
@@ -3822,87 +3844,135 @@ export class CoreRuntime {
     const input = this.compareInput;
     this.compareInput = null;
     if (!input) return;
+    const current = () => input.gen === gen && gen === this.gen && input.key === computeKey(this.settings, this.wf);
+    if (!current()) return;
     const { tapes, wf, wu, startT, endT } = input;
+    const previous = this.status.compare;
+    const names = Object.keys(STRATEGY_PRESETS);
+    const defer = (reason: string) => {
+      // Keep only the latest snapshot; a stop/settings change must never resurrect an old job.
+      if (!current() || this.stopped) return;
+      if (!this.compareInput) this.compareInput = input;
+      this.compareRetryAt = Date.now() + 5000;
+      this.status.compare = { ...previous, running: false, done: previous?.done ?? 0, total: previous?.total ?? names.length,
+        deferred: reason, retryAt: this.compareRetryAt };
+    };
+    const estimate = compareTapeBytes(tapes);
+    const workerPath = names.length > 0 && workersAvailable() && !this.workersBroken;
+    let n = compareWorkers(workerPath ? poolSize() : 1, estimate, this.compareAvailableBytes(), workerPath);
+    if (names.length && n === 0) { defer("Compare deferred: insufficient memory for packing and walk-forward state"); return; }
+    const controller = new AbortController();
+    this.compareAbort = controller;
+    const checkMemory = () => {
+      if (this.compareAvailableBytes() < memHardMb() * 1048576 && !controller.signal.aborted)
+        controller.abort(new CompareMemoryDeferred("Compare deferred: memory fell below the hard reserve"));
+      controller.signal.throwIfAborted();
+    };
+    const monitor = setInterval(() => { try { checkMemory(); } catch { /* the owned job observes its aborted signal */ } }, 1000);
+    monitor.unref?.();
+    const guarded = function* <T, R>(work: Generator<T, R>): Generator<T, R> {
+      try {
+        for (;;) { checkMemory(); const r = work.next(); if (r.done) return r.value; yield r.value; }
+      } finally { work.return?.(undefined as R); }
+    };
     const compareAt = (done: number, total: number) => {
+      checkMemory();
       this.status.compare = { running: true, done, total, at: this.status.compare?.at };
       this.status.heartbeat = Date.now();
     };
     const presets: Record<string, unknown> = {};
-    const names = Object.keys(STRATEGY_PRESETS);
     const tc = performance.now();
     let maxSlice = 0;
-    // on the worker cores when available: the presets are dealt round-robin, each worker walks its share
-    let viaWorkers = false;
-    if (names.length && workersAvailable() && !this.workersBroken) {
-      // one shared buffer + one metadata string for every worker (cloning the tape objects per worker stalled
-      // the event loop for seconds at 40+ symbols)
-      const packed = await this.drive("Pack tapes", packTapesGen(tapes), () => undefined, gen);
-      if (gen !== this.gen) return;
-      // each worker walks every tape once per preset: on a large book fewer workers at once keep the memory
-      // inside the machine (the presets queue on the pool)
-      const n = compareWorkers(poolSize(), packed.sab.byteLength);
-      const parts: string[][] = Array.from({ length: n }, () => []);
-      names.forEach((nm, i) => parts[i % n].push(nm));
-      compareAt(0, names.length);
-      try {
-        const res = await runOnWorkers<{
-          results: Array<{ name: string } & Record<string, unknown>>;
-        }>(
-          parts
-            .filter((p) => p.length)
-            .map((pp) => ({
-              type: "compare",
-              nowT: wu.nowT,
-              baseTf: wu.baseTf,
-              packed,
-              wf,
-              presets: pp.map((name) => ({ name, toggles: STRATEGY_PRESETS[name].toggles })),
-            })),
-          n,
-          15 * 60_000,
-          (fraction) => {
-            if (gen === this.gen) compareAt(fraction, 1);
-          },
-        );
+    try {
+      // on the worker cores when available: the presets are dealt round-robin, each worker walks its share
+      let viaWorkers = false;
+      if (workerPath) {
+        // one shared buffer + one metadata string for every worker (cloning the tape objects per worker stalled
+        // the event loop for seconds at 40+ symbols)
+        const packed = await this.drive("Pack tapes", guarded(packTapesGen(tapes)), () => undefined, gen);
         if (gen !== this.gen) return;
-        for (const x of res.flatMap((r) => r.results)) {
-          const { name, ...rest } = x;
-          presets[name] = {
-            label: STRATEGY_PRESETS[name].label,
-            toggles: STRATEGY_PRESETS[name].toggles,
-            ...rest,
-          };
+        // each worker walks every tape once per preset: on a large book fewer workers at once keep the memory
+        // inside the machine (the presets queue on the pool)
+        // Recheck after packing; another runtime may have consumed the original admission headroom.
+        // memInfo can reuse a one-second reading. Rechecking must never increase the original admission
+        // using headroom already spent on the packed copy.
+        n = Math.min(n, compareWorkers(poolSize(), estimate, this.compareAvailableBytes(), false));
+        if (n === 0) throw new CompareMemoryDeferred("Compare deferred: insufficient memory after packing");
+        const parts: string[][] = Array.from({ length: n }, () => []);
+        names.forEach((nm, i) => parts[i % n].push(nm));
+        compareAt(0, names.length);
+        try {
+          const res = await this.compareOnWorkers(
+            parts
+              .filter((p) => p.length)
+              .map((pp) => ({
+                type: "compare",
+                nowT: wu.nowT,
+                baseTf: wu.baseTf,
+                packed,
+                wf,
+                presets: pp.map((name) => ({ name, toggles: STRATEGY_PRESETS[name].toggles })),
+              })),
+            n,
+            (fraction) => {
+              // A worker event listener must not throw: abort its owned call through the signal instead.
+              if (gen === this.gen) try { compareAt(fraction, 1); } catch (err) { if (!controller.signal.aborted) controller.abort(err); }
+            },
+            controller.signal,
+          );
+          checkMemory();
+          if (!current()) return;
+          for (const x of res.flatMap((r) => r.results)) {
+            const { name, ...rest } = x;
+            presets[name] = {
+              label: STRATEGY_PRESETS[name].label,
+              toggles: STRATEGY_PRESETS[name].toggles,
+              ...rest,
+            };
+          }
+          viaWorkers = true;
+        } catch (err) {
+          if (gen !== this.gen) return;
+          if (controller.signal.aborted) throw controller.signal.reason;
+          if (isWorkersAbort(err)) throw new CompareMemoryDeferred("Compare deferred: worker pool stopped under memory pressure");
+          this.workersFailed(err, "Compare");
         }
-        viaWorkers = true;
-      } catch (err) {
-        if (gen !== this.gen) return;
-        this.workersFailed(err, "Compare");
       }
+      for (let i = 0; i < (viaWorkers ? 0 : names.length); i++) {
+        const name = names[i];
+        compareAt(i, names.length);
+        const r = await this.drive(
+          "Compare",
+          guarded(walkForwardGen(wu, tapes, { ...wf, toggles: STRATEGY_PRESETS[name].toggles })),
+          () => undefined,
+          gen,
+        );
+        maxSlice = Math.max(maxSlice, this.status.phases.Compare?.maxSliceMs ?? 0);
+        presets[name] = {
+          label: STRATEGY_PRESETS[name].label,
+          toggles: STRATEGY_PRESETS[name].toggles,
+          stats: r.stats,
+          hourly: r.hourly,
+          byKind: r.byKind,
+          skips: r.skips,
+          blocks: r.blocks,
+          stable: r.stable,
+        };
+      }
+      checkMemory();
+      if (!current()) return;
+      this.status.phases.Compare = { ms: performance.now() - tc, maxSliceMs: maxSlice };
+      this.db.kvSet("presetSims", { at: Date.now(), startT, endT, presets });
+      this.compareRetryAt = 0;
+      this.status.compare = { running: false, done: names.length, total: names.length, at: Date.now() };
+    } catch (err) {
+      if (err instanceof CompareMemoryDeferred) { defer(err.message); return; }
+      if (controller.signal.aborted && (this.stopped || !current())) return;
+      throw err;
+    } finally {
+      clearInterval(monitor);
+      if (this.compareAbort === controller) this.compareAbort = null;
     }
-    for (let i = 0; i < (viaWorkers ? 0 : names.length); i++) {
-      const name = names[i];
-      compareAt(i, names.length);
-      const r = await this.drive(
-        "Compare",
-        walkForwardGen(wu, tapes, { ...wf, toggles: STRATEGY_PRESETS[name].toggles }),
-        () => undefined,
-        gen,
-      );
-      maxSlice = Math.max(maxSlice, this.status.phases.Compare?.maxSliceMs ?? 0);
-      presets[name] = {
-        label: STRATEGY_PRESETS[name].label,
-        toggles: STRATEGY_PRESETS[name].toggles,
-        stats: r.stats,
-        hourly: r.hourly,
-        byKind: r.byKind,
-        skips: r.skips,
-        blocks: r.blocks,
-        stable: r.stable,
-      };
-    }
-    this.status.phases.Compare = { ms: performance.now() - tc, maxSliceMs: maxSlice };
-    this.db.kvSet("presetSims", { at: Date.now(), startT, endT, presets });
-    this.status.compare = { running: false, done: names.length, total: names.length, at: Date.now() };
   }
 
   /** Write rows in small transactions, yielding between them. */
@@ -5131,7 +5201,7 @@ export class CoreRuntime {
     const adjust = s.adjust?.enabled ? this.adjustState() : null;
     // the engine's tape rules: only the ranges and targets a pair passed in Base, and the Micro indication rule (the
     // floors alone built every range and target of every pair, and Micro cells for every indication)
-    const floors: EntryFloors = { ...protectFloors(s), pairTags, pairTps, microOwnInds: microOwnInds(s.grid) };
+    const floors: EntryFloors = { ...protectFloors(s, startT), pairTags, pairTps, microOwnInds: microOwnInds(s.grid) };
     let tapes: ConfigTape[] = [];
     // pairs in the engine's combo order, cut into contiguous slices → identical tape order to one process
     // (lane combos included: the pairs are lane ids when the settings carry timeframe lanes)
@@ -7318,12 +7388,21 @@ async function mapLimit<T>(
 /** Hard floors of the engine configs' stop and trailing distance (Settings → Protect grid). */
 /**
  * Workers for the preset comparison: each one holds its own walk-forward state over every tape (about the size of
- * the packed tapes again). At most as many as the free memory carries after a reserve, at least one.
+ * the packed tapes again). Admission includes the new packed copy before allocating it. Zero means defer.
  */
-export function compareWorkers(pool: number, tapeBytes: number, freeBytes = os.freemem()): number {
+export function compareWorkers(pool: number, tapeBytes: number, freeBytes = memInfo().availMb * 1048576, needsPackedCopy = true): number {
+  if (![pool, tapeBytes, freeBytes].every(Number.isFinite) || pool < 1 || tapeBytes < 0) return 0;
   const per = Math.max(256e6, tapeBytes * 1.1);
-  const fit = Math.floor(Math.max(0, freeBytes - 1e9) / per);
-  return Math.max(1, Math.min(pool, fit));
+  const reserve = Math.max(1e9, memHardMb() * 1048576);
+  const fit = Math.floor(Math.max(0, freeBytes - reserve - (needsPackedCopy ? tapeBytes : 0)) / per);
+  return Math.max(0, Math.min(Math.floor(pool), fit));
+}
+class CompareMemoryDeferred extends Error {}
+/** Packed columns plus conservative metadata/open-position space; computed without allocating a SAB. */
+export function compareTapeBytes(tapes: readonly ConfigTape[]): number {
+  let bytes = 8;
+  for (const t of tapes) bytes = Math.ceil(bytes / 8) * 8 + tapeBytes(t.n) + 2048 + ((t.open?.length ?? 0) + (t.pending?.length ?? 0)) * 512;
+  return bytes;
 }
 
 /**
@@ -7509,7 +7588,7 @@ export function restrictHeldBasePairs(
   for (const pair of heldPairs) if (!Object.hasOwn(pairTags, pair)) pairTags[pair] = [];
 }
 
-function protectFloors(s: CoreSettings): EntryFloors {
+function protectFloors(s: CoreSettings, rangeFitCutT?: number): EntryFloors {
   const fit = s.grid?.rangeFit;
   return {
     minSl: s.protectFloor?.minSl ?? DEFAULT_SETTINGS.protectFloor.minSl,
@@ -7517,6 +7596,7 @@ function protectFloors(s: CoreSettings): EntryFloors {
     // range cells fitted to the indication's horizon only when the fit is on; every computed tape is kept (the
     // gates decide the seats; a tape that cannot seat yet still shows in the evaluation and statistics)
     rangeFit: fit && fit.enabled !== false ? { ...DEFAULT_RANGE_FIT, ...fit } : null,
+    ...(rangeFitCutT === undefined ? {} : { rangeFitCutT }),
     rangeMinN: 0,
     rangeMinTf: rangeMinTfOf(s.grid ?? {}),
   };

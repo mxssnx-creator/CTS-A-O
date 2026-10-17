@@ -82,6 +82,7 @@ import {
   type UnitStats,
 } from "../metrics/stats.ts";
 import { ATR_PERIOD, simulate, splitSides } from "./backtest.ts";
+import { headBars } from "../market/bars.ts";
 import { symbolDirections } from "./symbol-directions.ts";
 import { simulateDca } from "./dca.ts";
 import { simulateAxis, simulateAxisDesk, snapTpRatio } from "./axis.ts";
@@ -1425,6 +1426,8 @@ export type EntryFloors = {
   entry?: EntryFilter | null;
   /** range cells fitted to each indication's horizon (rangeFit); unset = every range cell on every indication */
   rangeFit?: RangeFit | null;
+  /** Explicit causal fit boundary: only candles closed by this time may select range targets. */
+  rangeFitCutT?: number;
   /** range tapes with fewer closes can never take a seat and are not kept (3, or the range gate's last N) */
   rangeMinN?: number;
   /** shortest lane (minutes) per range tag: a range cell is not computed on a faster lane (rangeMinTfOf) */
@@ -1592,10 +1595,13 @@ export function indHorizonBars(ind: string): number {
   return 14;
 }
 
-/** Median per-minute volatility (std of log returns / √tf) over the universe's series. */
-export function universeSigma1m(bars: readonly Bars[]): number {
+/** Median per-minute volatility; an explicit fit cut excludes every candle that has not closed by that time. */
+export function universeSigma1m(bars: readonly Bars[], cutT?: number): number {
+  if (cutT !== undefined && (!Number.isFinite(cutT) || cutT < 0))
+    throw new Error("rangeFitCutT must be a finite nonnegative completed-candle boundary");
   const xs: number[] = [];
-  for (const b of bars) {
+  for (const source of bars) {
+    const b = cutT === undefined ? source : headBars(source, cutT);
     const n = b.n ?? b.c.length;
     if (n < 30) continue;
     let s = 0;
@@ -1717,7 +1723,7 @@ export function* buildTapesGen(
   const syms = u.bars.map((b) => b.sym);
   const out: ConfigTape[] = [];
   // range cells fitted to each indication's horizon, and range tapes that could never seat dropped
-  const sigma1m = floors?.rangeFit ? universeSigma1m(u.bars) : 0;
+  const sigma1m = floors?.rangeFit ? universeSigma1m(u.bars, floors.rangeFitCutT) : 0;
   const rangeMinN = Math.max(0, floors?.rangeMinN ?? 0);
   const bs = floors?.buildStats;
   const onlyIds = floors?.onlyIds;
