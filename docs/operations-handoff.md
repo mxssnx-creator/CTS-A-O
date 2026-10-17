@@ -975,3 +975,13 @@ The offline session uses the cached candle feed through 2026-10-15 04:00 UTC and
 - Checks: 383 focused strategy/Block/Signal/promotion tests and 143 balance/sizing tests passed; typecheck also passes after the report changes. The offline session itself completed in 12 seconds; its consistency report is 55/64 because the aforementioned ranges and Signals have no configs/orders in six hours.
 
 GitHub state at this checkpoint: PR #142 is merged into current `main`; there are no open issues. Draft PR #132 remains unrelated and was not merged.
+
+## Break indication audit closure — 2026-10-17
+
+Detailed source-fix replay and hour table: [`simulations/break-post-fix-9x12-20261017.md`](simulations/break-post-fix-9x12-20261017.md).
+
+The indication audit fixed two real defects: market returns now require contiguous per-symbol closes, and market activity restarts its 60-bar warmup after a candle gap; a fresh opposite channel break cancels an older pending Break retest in the other direction. Market drawdown work was moved out of the per-bar inner loop. Break identities route only to their declared anchor lane, and the current lane audit covers Break and Relate.
+
+The repeated corrected 9-symbol 12h-history/12h-trade replay passed 56/56 consistency checks for each matched arm and reproduced the previous result exactly: legacy Break 1,563 orders at return PF 0.342; updated Micro Break 726 orders at return PF 3.272. Updated hourly outcomes remain 3 positive, 6 flat and 3 negative; the 18:00, 19:00 and 23:00 UTC hours remain below PF 1. Thus the hourly-success target is still unmet. The replay uses the previously examined window and does not count as out-of-sample evidence.
+
+The full offline core run traversed 170 test files and reported two stale test expectations. Both were corrected and focused reruns pass: Break/Micro/Relate/lane 38/38; corrected Base/Main processing assertion 1/1; seat/default migration 29/29; empty prehistory 7/7; session PF/accounting 23/23. The 128-toggle matrix passed in the full run. Typecheck, `build:dev` including the packaged core worker, and `git diff --check` pass. The monolithic full suite was not rerun after these test-only corrections; do not report it as wholly green.
