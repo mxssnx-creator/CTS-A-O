@@ -132,6 +132,32 @@ function priorExtreme(x: Float64Array, width: number, maximum: boolean): Float64
   return out;
 }
 
+function setMarketDrawdown(
+  i: number,
+  window: number,
+  peak: Float64Array,
+  trough: Float64Array,
+  market: MarketRef,
+  retPrefix: Float64Array,
+  retSqPrefix: Float64Array,
+  retCount: Uint32Array,
+  minCount: number,
+  longOut: Float32Array,
+  shortOut: Float32Array,
+): void {
+  const from = Math.max(0, i - window);
+  const count = retCount[i] - retCount[from];
+  if (count < minCount) return;
+  const sum = retPrefix[i] - retPrefix[from];
+  const sumSq = retSqPrefix[i] - retSqPrefix[from];
+  const mean = sum / count;
+  const variance = Math.max(0, sumSq / count - mean * mean);
+  const scale = Math.sqrt(variance) * Math.sqrt(window);
+  if (!(scale > 1e-12) || !finite3(peak[i], trough[i], market.idx[i])) return;
+  longOut[i] = clamp0((peak[i] - market.idx[i]) / scale);
+  shortOut[i] = clamp0((market.idx[i] - trough[i]) / scale);
+}
+
 /** Trend on this lane, or on a higher lane mapped from its last completed candle. */
 function trendOn(k: SeriesCache, tf: number): Int8Array {
   const n = k.b.n;
@@ -317,26 +343,12 @@ function rawContext(k: SeriesCache, market: MarketRef | null): SharedContext {
           : NaN;
         if (priorMarket > 0 && Number.isFinite(recentMarket)) out.marketActivityPart[i] = recentMarket / priorMarket;
 
-        const calcMarketDd = (window: number, peak: Float64Array, trough: Float64Array, minCount: number) => {
-          const from = Math.max(0, i - window);
-          const count = marketRetCount[i] - marketRetCount[from];
-          if (count < minCount) return;
-          const sum = marketRetPrefix[i] - marketRetPrefix[from];
-          const sumSq = marketRetSqPrefix[i] - marketRetSqPrefix[from];
-          const mean = sum / count;
-          const variance = Math.max(0, sumSq / count - mean * mean);
-          const scale = Math.sqrt(variance) * Math.sqrt(window);
-          if (!(scale > 1e-12) || !finite3(peak[i], trough[i], market.idx[i])) return;
-          if (window === WINDOW) {
-            out.marketDd24Long[i] = clamp0((peak[i] - market.idx[i]) / scale);
-            out.marketDd24Short[i] = clamp0((market.idx[i] - trough[i]) / scale);
-          } else {
-            out.marketDd48Long[i] = clamp0((peak[i] - market.idx[i]) / scale);
-            out.marketDd48Short[i] = clamp0((market.idx[i] - trough[i]) / scale);
-          }
-        };
-        calcMarketDd(WINDOW, marketPeak, marketTrough, 15);
-        calcMarketDd(LONG_WINDOW, marketPeak48, marketTrough48, 30);
+        setMarketDrawdown(i, WINDOW, marketPeak, marketTrough, market,
+          marketRetPrefix, marketRetSqPrefix, marketRetCount, 15,
+          out.marketDd24Long, out.marketDd24Short);
+        setMarketDrawdown(i, LONG_WINDOW, marketPeak48, marketTrough48, market,
+          marketRetPrefix, marketRetSqPrefix, marketRetCount, 30,
+          out.marketDd48Long, out.marketDd48Short);
 
         const j = i - REL_MOVE;
         if (j >= 0 && relCount >= 30 && finite2(market.idx[i], market.idx[j])) {
@@ -386,8 +398,10 @@ function rawContext(k: SeriesCache, market: MarketRef | null): SharedContext {
 
     const upCross = b.c[i] > dn.hi[i] && !(b.c[i - 1] > dn.hi[i - 1]);
     const downCross = b.c[i] < dn.lo[i] && !(b.c[i - 1] < dn.lo[i - 1]);
-    if (upCross) { lastUp = i; levelUp = dn.hi[i]; retestUpUsed = false; }
-    if (downCross) { lastDn = i; levelDn = dn.lo[i]; retestDnUsed = false; }
+    // A fresh break in the opposite direction invalidates the pending retest. Otherwise a rebound through an old
+    // level could emit a stale long/short after the market has already broken the other side of the range.
+    if (upCross) { lastUp = i; levelUp = dn.hi[i]; retestUpUsed = false; lastDn = -1; }
+    if (downCross) { lastDn = i; levelDn = dn.lo[i]; retestDnUsed = false; lastUp = -1; }
     if (lastUp >= 0 && !retestUpUsed && i - lastUp >= 1 && i - lastUp <= 8 &&
         b.l[i] <= levelUp * 1.001 && b.c[i] > levelUp && b.c[i] > b.o[i] && location >= 0.6) {
       out.retest[i] = 1;
@@ -408,8 +422,8 @@ function rawContext(k: SeriesCache, market: MarketRef | null): SharedContext {
     const downCross8 = b.c[i] < dn8.lo[i] && !(b.c[i - 1] < dn8.lo[i - 1]);
     if (up8 && !(b.c[i - 1] > dn8.hi[i - 1])) out.don8[i] = 1;
     else if (down8 && !(b.c[i - 1] < dn8.lo[i - 1])) out.don8[i] = -1;
-    if (upCross8) { lastUp8 = i; levelUp8 = dn8.hi[i]; retestUp8Used = false; }
-    if (downCross8) { lastDn8 = i; levelDn8 = dn8.lo[i]; retestDn8Used = false; }
+    if (upCross8) { lastUp8 = i; levelUp8 = dn8.hi[i]; retestUp8Used = false; lastDn8 = -1; }
+    if (downCross8) { lastDn8 = i; levelDn8 = dn8.lo[i]; retestDn8Used = false; lastUp8 = -1; }
     if (lastUp8 >= 0 && !retestUp8Used && i - lastUp8 >= 1 && i - lastUp8 <= 8 &&
         b.l[i] <= levelUp8 * 1.001 && b.c[i] > levelUp8 && b.c[i] > b.o[i] && location >= 0.6) {
       out.retest8[i] = 1;

@@ -1396,8 +1396,9 @@ export type EntryFloors = {
   /** shortest lane (minutes) per range tag: a range cell is not computed on a faster lane (rangeMinTfOf) */
   rangeMinTf?: Partial<Record<string, number>>;
   /**
-   * per pair ("bot|ind"), the ranges it passed in Base ("" = the wide grid): only their cells are computed. A pair
-   * not listed (held for an open position) computes every cell.
+   * per pair ("bot|ind"), the ranges it passed in Base ("" = the wide grid): only their cells are computed. An
+   * absent entry keeps the legacy unfiltered behavior; an explicit empty list rejects new cells but allows exact
+   * ids in heldIds to be rebuilt as held-only tapes.
    */
   pairTags?: Record<string, readonly string[]>;
   /**
@@ -1668,6 +1669,17 @@ export function* buildTapesGen(
         return { bot: bot as BotType, ind };
       })
     : allCombos();
+  const heldRangeTagsByPair = new Map<string, Set<string>>();
+  for (const id of floors?.heldIds ?? []) {
+    const tag = rangeOfId(id);
+    if (!tag) continue;
+    const first = id.indexOf("|");
+    const second = first < 0 ? -1 : id.indexOf("|", first + 1);
+    const pair = second < 0 ? id : id.slice(0, second);
+    let tags = heldRangeTagsByPair.get(pair);
+    if (!tags) heldRangeTagsByPair.set(pair, (tags = new Set()));
+    tags.add(tag);
+  }
   const syms = u.bars.map((b) => b.sym);
   const out: ConfigTape[] = [];
   // range cells fitted to each indication's horizon, and range tapes that could never seat dropped
@@ -1783,7 +1795,9 @@ export function* buildTapesGen(
       floors?.rangeFit,
     );
     const laneTf = laneOf(c.ind).tf ?? u.bars[series[0]]?.tfMin ?? 1;
-    const tagsOk = floors?.pairTags?.[`${c.bot}|${c.ind}`];
+    const pairKey = `${c.bot}|${c.ind}`;
+    const tagsOk = floors?.pairTags?.[pairKey];
+    const heldRangeTags = heldRangeTagsByPair.get(pairKey) ?? new Set<string>();
     const microInd = isMicroInd(laneOf(c.ind).base);
     const own = floors?.pairProtects?.[`${c.bot}|${c.ind}`];
     for (const p0 of own?.length ? [...protects, ...own] : protects) {
@@ -1909,8 +1923,9 @@ export function* buildTapesGen(
     if (dcaOpt) {
       // Axis per range: the Wide ladders (DCA and Axis) only for a pair that passed Base for Wide — a pair that
       // passed only in a range gets that range's ladders instead of being judged as Wide
-      const wideOk = !(dcaOpt.axis?.perRange && tagsOk && !tagsOk.includes(""));
-      for (const p0 of dcaOpt.noDca || !wideOk ? [] : dcaOpt.protects) {
+      const failedBase = tagsOk !== undefined && tagsOk.length === 0;
+      const wideOk = !failedBase && !(dcaOpt.axis?.perRange && tagsOk && !tagsOk.includes(""));
+      for (const p0 of dcaOpt.noDca ? [] : dcaOpt.protects) {
         for (const active of [false, true]) {
           const kind: StratKind = active ? "dca-active" : "dca";
           if (floors?.countKinds && !floors.countKinds.includes(kind)) {
@@ -1926,6 +1941,13 @@ export function* buildTapesGen(
           }
           const st = bs ? statOf(c.ind, p0.tag, kind) : null;
           if (st) st.grid++;
+          const held = floors?.heldIds?.has(id) ?? false;
+          if (!wideOk && !held) {
+            floors?.baseConfigCounter?.record(c.bot, c.ind, p, kind, [], "baseRange");
+            if (st) st.skip.baseRange = (st.skip.baseRange ?? 0) + 1;
+            done++;
+            continue;
+          }
           if (built.has(id)) {
             floors?.baseConfigCounter?.record(c.bot, c.ind, p, kind, [], "duplicate");
             if (st) st.skip.duplicate = (st.skip.duplicate ?? 0) + 1;
@@ -1933,9 +1955,11 @@ export function* buildTapesGen(
             continue;
           }
           built.add(id);
-          if (st) {
+          if (st && wideOk) {
             st.built++;
             statKept(st, p);
+          } else if (st) {
+            st.skip.baseRange = (st.skip.baseRange ?? 0) + 1;
           }
           const trades: Trade[] = [];
           const open: OpenPosition[] = [];
@@ -1949,8 +1973,11 @@ export function* buildTapesGen(
               if (res.pending) pending.push({ sym: u.bars[s].sym, side: res.pending });
             }
           floors?.baseConfigCounter?.record(c.bot, c.ind, p, kind, trades);
-          if (!floors?.countOnly)
-            out.push(atFrom(makeTape(id, c.bot, c.ind, p, kind, syms, trades, open, pending)));
+          if (!floors?.countOnly) {
+            const tp = atFrom(makeTape(id, c.bot, c.ind, p, kind, syms, trades, open, pending));
+            if (!wideOk) tp.heldOnly = true;
+            out.push(tp);
+          }
           done++;
           yield { done, total };
         }
@@ -1973,7 +2000,7 @@ export function* buildTapesGen(
         // the set's relative widening (they never read p.sl, so without this every adjust step was a no-op — bug
         // hunt, 13 Oct). The revert variants are the Wide (untagged) ladders: the wide floors are theirs
         const revFloor = { minSl: deskFloor.minSl, slMult: af?.slMult };
-        for (const { p0, ax, tag } of wideOk ? variants : []) {
+        for (const { p0, ax, tag } of variants) {
           if (!axisInWindow()) {
             done++;
             continue;
@@ -1991,6 +2018,13 @@ export function* buildTapesGen(
           }
           const st = bs ? statOf(c.ind, p0.tag, "axis") : null;
           if (st) st.grid++;
+          const held = floors?.heldIds?.has(id) ?? false;
+          if (!wideOk && !held) {
+            floors?.baseConfigCounter?.record(c.bot, c.ind, p0l, "axis", [], "baseRange");
+            if (st) st.skip.baseRange = (st.skip.baseRange ?? 0) + 1;
+            done++;
+            continue;
+          }
           if (built.has(id)) {
             floors?.baseConfigCounter?.record(c.bot, c.ind, p0l, "axis", [], "duplicate");
             if (st) st.skip.duplicate = (st.skip.duplicate ?? 0) + 1;
@@ -1998,9 +2032,11 @@ export function* buildTapesGen(
             continue;
           }
           built.add(id);
-          if (st) {
+          if (st && wideOk) {
             st.built++;
             statKept(st, p0l);
+          } else if (st) {
+            st.skip.baseRange = (st.skip.baseRange ?? 0) + 1;
           }
           const trades: Trade[] = [];
           const open: OpenPosition[] = [];
@@ -2056,22 +2092,35 @@ export function* buildTapesGen(
               if (res.pending) pending.push({ sym: u.bars[s].sym, side: res.pending });
             }
           floors?.baseConfigCounter?.record(c.bot, c.ind, p, "axis", trades);
-          if (!floors?.countOnly)
-            out.push(atFrom(makeTape(id, c.bot, c.ind, p, "axis", syms, trades, open, pending)));
+          if (!floors?.countOnly) {
+            const tp = atFrom(makeTape(id, c.bot, c.ind, p, "axis", syms, trades, open, pending));
+            if (!wideOk) tp.heldOnly = true;
+            out.push(tp);
+          }
           done++;
           yield { done, total };
         }
-        // Axis per range: desk ladders whose targets stay inside each passed range's target band
-        if (dcaOpt.axis.perRange && tagsOk)
+        // Axis per range: desk ladders whose targets stay inside each passed range's target band. Include held
+        // ranges from a pair's otherwise empty Base entry so an open ladder keeps its own exit tape.
+        const axisRangeTags = tagsOk
+          ? [...new Set([...tagsOk.filter(Boolean), ...heldRangeTags])]
+          : null;
+        if (dcaOpt.axis.perRange && axisRangeTags)
           for (const rv of axisRangeVariants(
             dcaOpt.axis,
             protects,
-            tagsOk,
+            axisRangeTags,
             floors?.pairTps?.[`${c.bot}|${c.ind}`],
           )) {
             if (!axisInWindow()) continue;
             const p0l = laneProtect(rv.p0, c.ind);
             const id = configId(c.bot, c.ind, p0l, "axis").replace(/\|axis$/, `${rv.tag}|axis`);
+            const held = floors?.heldIds?.has(id) ?? false;
+            const filtered = tagsOk !== undefined && !tagsOk.includes(rv.p0.tag ?? "");
+            if (filtered && !held) {
+              floors?.baseConfigCounter?.record(c.bot, c.ind, p0l, "axis", [], "baseRange");
+              continue;
+            }
             if (notOnly(id) || built.has(id)) {
               floors?.baseConfigCounter?.record(
                 c.bot,
@@ -2129,10 +2178,11 @@ export function* buildTapesGen(
                   );
               }
             floors?.baseConfigCounter?.record(c.bot, c.ind, p0l, "axis", trades);
-            if (!floors?.countOnly)
-              out.push(
-                atFrom(makeTape(id, c.bot, c.ind, p0l, "axis", syms, trades, open, pending)),
-              );
+            if (!floors?.countOnly) {
+              const tp = atFrom(makeTape(id, c.bot, c.ind, p0l, "axis", syms, trades, open, pending));
+              if (filtered) tp.heldOnly = true;
+              out.push(tp);
+            }
             yield { done, total };
           }
       }

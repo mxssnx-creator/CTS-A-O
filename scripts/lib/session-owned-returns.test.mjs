@@ -63,6 +63,19 @@ it("missing and malformed allocation evidence cannot invent funded cash while kn
   const zero = new Map([[x.id, 0]]);
   assert.equal(sessionUnitNotional(x, zero, key), 0);
   assert.equal(sessionCashPnl({ ...x, r: Infinity }, zero, key), 0);
-  assert.equal(sessionCashPnl(x, new Map([[x.id, 3]]), key), 0.24);
+  assert.ok(Math.abs(sessionCashPnl(x, new Map([[x.id, 3]]), key) - 0.24) < 1e-12);
+  assert.ok(Math.abs(sessionCashPnl({ ...x, r: 1e-20, vol: 1 }, new Map([[x.id, 3]]), key) / 3e-20 - 1) < 1e-12,
+    "base-one cash change retains tiny returns instead of cancelling 1 + r back to 1");
   assert.ok(Number.isNaN(sessionCashPnl({ ...x, r: 1e308 }, new Map([[x.id, 3]]), key)));
+});
+
+it("cash PF scales the base-one return by funded unit notional without multiplying execution volume twice", () => {
+  const win = { id: "win", r: 0.08, mult: 2, vol: 2 };
+  const loss = { id: "loss", r: -0.02, mult: 1, vol: 1 };
+  const allocations = new Map([["win", 3], ["loss", 3]]);
+  assert.ok(Math.abs(sessionCashPnl(win, allocations, key) - 0.24) < 1e-12,
+    "(1 + 0.08 − 1) × $3; the 2× execution volume is already in r");
+  assert.ok(Math.abs(sessionCashPnl(loss, allocations, key) + 0.06) < 1e-12);
+  assert.ok(Math.abs(sessionCashPnl(win, new Map([["win", 6]]), key) - 0.48) < 1e-12,
+    "a $6 base notional scales base-one cash P&L linearly");
 });

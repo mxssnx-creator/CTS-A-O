@@ -10,6 +10,7 @@ import {
   DEFAULT_PROTECT,
   DEFAULT_SETTINGS,
   FORMER_FOCUS_13OCT,
+  PREVIOUS_DEFAULT_FOCUS_17OCT,
   GENERAL_RANGE,
   MAX_BACKTEST_DAYS,
   GRID_VARIANTS_MAX,
@@ -3042,7 +3043,12 @@ export class CoreRuntime {
     for (const id of this.paper.selected) held.add(id.split("|").slice(0, 2).join("|"));
     // sets with open positions stay in the continuous stages until the position is closed
     for (const p of this.paper.positions) held.add(p.cfg.split("|").slice(0, 2).join("|"));
-    for (const k of held) main.add(k);
+    for (const k of held) {
+      main.add(k);
+      // An absent pairTags entry means “no Base range filter” to the tape builder. A held pair that failed Base
+      // must therefore carry an explicit empty entry: preserve only its exact held ids, as held-only tapes.
+      if (!Object.hasOwn(pairTags, k)) pairTags[k] = [];
+    }
     // a held config keeps its tape: a held pair that passed Base only in other ranges computes only those ranges'
     // cells (pairTags), and a config whose range is missing would lose its tape — its open position then vanished
     // from the paper book with no close (and live flattened it). Only that config is kept, not every cell of its
@@ -3403,7 +3409,8 @@ export class CoreRuntime {
         gen,
       );
     };
-    // a pair computes the cells of the ranges it passed in Base (a held pair, not in pairTags, computes all)
+    // a pair computes the cells it passed in Base; a held pair that failed Base has an explicit empty entry, so only
+    // its exact held configs are rebuilt and cannot regain every range by being absent from the filter
     // partial processing (memory): while the new tapes are built, the previous set keeps only what live can act on
     // during the compute — and, under a memory fallback, the ranges this compute does not rebuild (carried, carryTags)
     this.setStage("Tapes", 0, 1, "preparing: slimming the previous tapes");
@@ -6690,7 +6697,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
 function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
   const saved = db.kvGet<Partial<WalkForwardOptions>>("wf") ?? {};
   const v = db.kvGet<number>("wfCapsV") ?? 0;
-  if (v >= 27) return saved;
+  if (v >= 28) return saved;
   // each step runs only for a database older than it: a choice made after a step is never overwritten
   const out = { ...saved };
   const st = db.kvGet<Partial<CoreSettings>>("settings");
@@ -6929,9 +6936,13 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
       if (changed) db.kvSet("presets", presets);
     }
   }
+  if (v < 28 && st && JSON.stringify(st.focus) === JSON.stringify(PREVIOUS_DEFAULT_FOCUS_17OCT)) {
+    // The updated 60 Micro Break identities join the default focus; preserve a user-selected focus unchanged.
+    st.focus = [...DEFAULT_SETTINGS.focus];
+  }
   db.kvSet("wf", pickWf(out));
   if (st) db.kvSet("settings", st);
-  db.kvSet("wfCapsV", 27);
+  db.kvSet("wfCapsV", 28);
   return out;
 }
 

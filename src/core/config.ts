@@ -13,6 +13,7 @@ import type {
 import { DEFAULT_SIGNALS, type SignalSettings } from "./signal-config.ts";
 import { DEFAULT_SIZING, type SizingSettings } from "./sizing.ts";
 import type { PromotedLaneProof } from "./live-promote.ts";
+import { BREAK_CONFIG_IDS, breakAnchorTf, isBreakMicroInd } from "./indications/break-config.ts";
 
 /** Hard ceiling for unique positions on the exchange. Strategy/config orders do not consume extra slots. */
 export const MAX_EXCHANGE_POSITIONS = 100;
@@ -522,6 +523,16 @@ export const FAMILY_FOCUS_13OCT: readonly string[] = ["cfl-trend-50", "htfpb-4",
   (id) => [`follow|${id}@m15`, `follow|${id}@m15c`, `follow|${id}@m30`],
 );
 
+/** The updated 60 Micro Break identities, each selected on its fastest eligible anchor lane by default. */
+export const BREAK_MICRO_FOCUS_17OCT: readonly string[] = BREAK_CONFIG_IDS.flatMap((id) => {
+  if (!isBreakMicroInd(id)) return [];
+  const tf = breakAnchorTf(id);
+  return tf === null ? [] : [`follow|${id}@m${tf}`];
+});
+
+/** The complete default focus before the 60 Micro Break identities joined it. */
+export const PREVIOUS_DEFAULT_FOCUS_17OCT: readonly string[] = [...FORMER_FOCUS_13OCT, ...FAMILY_FOCUS_13OCT];
+
 export const DEFAULT_SETTINGS: CoreSettings = {
   tfMin: 1,
   tfs: [1, 5, 15, 30],
@@ -549,7 +560,7 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   sizing: DEFAULT_SIZING,
   toggles: DEFAULT_TOGGLES,
   tactics: DEFAULT_TACTICS,
-  focus: [...FORMER_FOCUS_13OCT, ...FAMILY_FOCUS_13OCT],
+  focus: [...PREVIOUS_DEFAULT_FOCUS_17OCT, ...BREAK_MICRO_FOCUS_17OCT],
   pinned: [...PROVEN_WIDE_TRAIL_PAIRS],
   disabledKinds: [],
   block: DEFAULT_BLOCK,
