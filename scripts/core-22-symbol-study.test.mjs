@@ -47,6 +47,72 @@ test("strict study memory admission uses known host and ancestor headroom, credi
   assert.equal(studyAdmissionDecision({ known: false, availableMiB: 100000 }).admitted, false);
 });
 
+const ABSENT = Symbol("confirmed ENOENT");
+function hostedMemoryFixture(extra = {}) {
+  const root = "/sys/fs/cgroup", slice = root + "/system.slice", own = slice + "/hosted-compute-agent.service";
+  const files = {
+    "/proc/meminfo": "MemAvailable: 14892068 kB\n", "/proc/self/cgroup": "0::/system.slice/hosted-compute-agent.service\n",
+    "/proc/self/mountinfo": "30 25 0:28 / /sys/fs/cgroup rw,nosuid,nodev,noexec,relatime - cgroup2 cgroup rw\n",
+    [root + "/memory.max"]: ABSENT, [root + "/memory.current"]: ABSENT, [root + "/cgroup.type"]: ABSENT,
+    [root + "/cgroup.controllers"]: "cpuset cpu io memory hugetlb pids\n", [root + "/memory.stat"]: "inactive_file 3385651200\n",
+    ...Object.fromEntries([own, slice].flatMap((dir) => [[dir + "/memory.max", "max\n"], [dir + "/memory.current", String(1000 * 2 ** 20)], [dir + "/memory.stat", `inactive_file ${100 * 2 ** 20}\n`], [dir + "/cgroup.type", "domain\n"]])), ...extra,
+  };
+  return (file) => {
+    if (files[file] === ABSENT) { const error = new Error("No such file"); error.code = "ENOENT"; throw error; }
+    if (files[file] instanceof Error) throw files[file];
+    return files[file] ?? null;
+  };
+}
+
+test("hosted CI root without non-root-only memory files is known host-bound, with all real ancestor caps retained", () => {
+  const snapshot = studyMemorySnapshot(hostedMemoryFixture());
+  assert.equal(snapshot.known, true); assert.equal(snapshot.cgroup.length, 3);
+  assert.equal(snapshot.availableMiB, snapshot.hostAvailableMiB);
+  assert.equal(studyAdmissionDecision(snapshot).admitted, true);
+  assert.equal(snapshot.cgroup[2].scope, "hierarchy-root");
+  assert.equal(snapshot.cgroup[2].rootEvidence.type, "absent");
+  assert.equal(snapshot.cgroup[2].rootEvidence.cgroup2RootMount, true);
+  const parentLimited = studyMemorySnapshot(hostedMemoryFixture({
+    "/sys/fs/cgroup/system.slice/memory.max": String(2048 * 2 ** 20), "/sys/fs/cgroup/system.slice/memory.current": String(1500 * 2 ** 20),
+  }));
+  assert.equal(parentLimited.availableMiB, 648); assert.equal(studyAdmissionDecision(parentLimited).admitted, false);
+  const rootLimited = studyMemorySnapshot(hostedMemoryFixture({
+    "/sys/fs/cgroup/memory.max": String(8192 * 2 ** 20), "/sys/fs/cgroup/memory.current": String(7000 * 2 ** 20),
+    "/sys/fs/cgroup/memory.stat": `inactive_file ${1000 * 2 ** 20}\n`, "/sys/fs/cgroup/cgroup.type": "domain\n",
+  }));
+  assert.equal(rootLimited.cgroup[2].scope, "memory-controller");
+  assert.equal(rootLimited.availableMiB, 2192); assert.equal(studyAdmissionDecision(rootLimited).admitted, false);
+});
+
+test("root exemption needs proven ENOENT, real hierarchy evidence and readable controller accounting", () => {
+  const denied = new Error("Permission denied"); denied.code = "EACCES";
+  const failures = [
+    { "/sys/fs/cgroup/memory.max": denied },
+    { "/sys/fs/cgroup/memory.current": denied },
+    { "/sys/fs/cgroup/memory.max": null },
+    { "/sys/fs/cgroup/memory.current": "123" },
+    { "/sys/fs/cgroup/memory.max": "malformed" },
+    { "/sys/fs/cgroup/cgroup.type": "domain\n" },
+    { "/sys/fs/cgroup/cgroup.type": null },
+    { "/sys/fs/cgroup/cgroup.controllers": null },
+    { "/sys/fs/cgroup/cgroup.controllers": "cpu io\n" },
+    { "/sys/fs/cgroup/memory.stat": "inactive_file invalid\n" },
+    { "/proc/self/mountinfo": null },
+    { "/proc/self/mountinfo": "30 25 0:28 /delegated /sys/fs/cgroup rw - cgroup2 cgroup rw\n" },
+    { "/proc/self/cgroup": "7:cpu,memory:/legacy\n0::/system.slice/hosted-compute-agent.service\n" },
+    { "/sys/fs/cgroup/system.slice/memory.max": ABSENT, "/sys/fs/cgroup/system.slice/memory.current": ABSENT },
+    { "/sys/fs/cgroup/system.slice/memory.current": "1.5" },
+    { "/sys/fs/cgroup/system.slice/memory.stat": null },
+  ];
+  for (const fixture of failures) {
+    const snapshot = studyMemorySnapshot(hostedMemoryFixture(fixture));
+    assert.equal(snapshot.known, false, JSON.stringify(Object.keys(fixture)));
+    assert.equal(snapshot.availableMiB, null); assert.equal(studyAdmissionDecision(snapshot).admitted, false);
+  }
+  const unreadable = studyMemorySnapshot(hostedMemoryFixture({ "/sys/fs/cgroup/memory.max": denied }));
+  assert.equal(unreadable.cgroup[2].interfaces.max, "unreadable");
+});
+
 test("shared nonblocking flock rejects a second study and releases without stale ownership", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cts-study-lock-")), file = path.join(dir, "resource.lock");
   let first, next;

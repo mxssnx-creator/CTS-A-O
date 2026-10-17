@@ -15,11 +15,11 @@ import {
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const EXPECTED_NODE = "v24.19.0";
-const EXPECTED_SOURCE = "20a6f8109c15c547c5ee1acb235aa2959134f59ff84466f36a684711b9fef0fe";
+const EXPECTED_SOURCE = "bc7216bd7ab6000b7651a5d83054a16887854097a31847e7701b9a92754693f7";
 const EXPECTED_FEED = "02ad14fd7d7ba3e89dee99026962a2ec66d8145d6beb36b17ab42a89a7d2004e";
 const EXPECTED_FEED_BYTES = 39_528_851;
 const FIXTURE = path.join(ROOT, "research/fixtures/postbase-20261017/manifest.json");
-const INDEX = path.join(ROOT, "docs/simulations/expanded-postbase-v3-index-20261017.json");
+const INDEX = path.join(ROOT, "docs/simulations/expanded-postbase-v4-index-20261017.json");
 const LOGS = path.join(ROOT, "runs/ci-postbase-logs-20261017");
 const INPUT = path.join(ROOT, "runs/ci-postbase-input-20261017");
 const REVIEW = path.join(ROOT, "runs/ci-postbase-review-20261017");
@@ -112,7 +112,7 @@ function verifyFixedInputs() {
     sources = studySources();
   demand(
     index.sourceSha256 === EXPECTED_SOURCE && same(index.sources, sources),
-    "Current source files differ from the frozen v3 index",
+    "Current source files differ from the frozen v4 index",
   );
   demand(
     studyHash(studyJson(sources)) === EXPECTED_SOURCE,
@@ -127,7 +127,7 @@ function verifyFixedInputs() {
   );
   demand(
     Array.isArray(index.protocols) && index.protocols.length === 4,
-    "Exactly four frozen v3 case definitions are required",
+    "Exactly four frozen v4 case definitions are required",
   );
   for (const c of CASES) {
     const expected = index.protocols.find((p) => p.case === c.caseId);
@@ -412,7 +412,7 @@ export async function expandedStudyCiMain(argv = process.argv.slice(2)) {
     verifyFixedInputs();
     demand(
       state.prepared.length === 4,
-      "All four equivalent v3 protocols must be sealed before any score",
+      "All four equivalent v4 protocols must be sealed before any score",
     );
     state.preparedBeforeScoring = true;
     state.status = "all-four-prepared";

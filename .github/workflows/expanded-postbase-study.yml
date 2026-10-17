@@ -29,6 +29,7 @@ jobs:
       CTS_CORE_WORKERS: "1"
       CTS_CORE_COMPARE: "0"
       CTS_CORE_VARIANTS: "0"
+      CTS_CORE_TEST_CONCURRENCY: "1"
     steps:
       - name: Check out the exact pushed source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -61,6 +62,14 @@ jobs:
           --test --test-concurrency=1 scripts/core-22-symbol-data.test.mjs scripts/core-22-symbol-study.test.mjs
           scripts/core-expanded-study-review.test.mjs scripts/core-session.test.mjs scripts/lib/session-settings.test.mjs
           > runs/ci-postbase-logs-20261017/script-tests.log 2>&1
+      - name: Audit the complete core test inventory serially offline
+        shell: bash
+        timeout-minutes: 95
+        run: timeout --signal=TERM --kill-after=30s 90m npm run test:core > runs/ci-postbase-logs-20261017/core-tests.log 2>&1
+      - name: Verify the synthetic runtime stress and preset backtest
+        shell: bash
+        timeout-minutes: 50
+        run: timeout --signal=TERM --kill-after=30s 45m npm run test:core:slow > runs/ci-postbase-logs-20261017/core-slow-tests.log 2>&1
       - name: Decode fixed candles, freeze all cases and run serial offline replays
         shell: bash
         run: >-

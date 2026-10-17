@@ -18,26 +18,58 @@ export const studyHash = (x) => createHash("sha256").update(x).digest("hex");
 const read = (file) => { const b = fs.readFileSync(file); return { data: JSON.parse(b), sha256: studyHash(b), bytes: b.length }; };
 const writeNew = (file, data) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, studyJson(data), { flag: "wx" }); };
 const same = (a, b) => studyJson(a) === studyJson(b);
-const readText = (file) => { try { return fs.readFileSync(file, "utf8"); } catch { return null; } };
+const readText = (file) => fs.readFileSync(file, "utf8");
 const writeStatus = (file, data) => { fs.writeFileSync(file + ".tmp", studyJson(data)); fs.renameSync(file + ".tmp", file); };
 
-/** Both host and every visible cgroup-v2 ancestor must be known; no wait or unknown-reading bypass. */
+/** Both host and each limiting cgroup-v2 ancestor must be known; true hierarchy root has no own limit files. */
 export function studyMemorySnapshot(readFile = readText, at = new Date().toISOString()) {
-  const meminfo = readFile("/proc/meminfo") ?? "", hostMatch = /^MemAvailable:\s+(\d+)\s+kB$/m.exec(meminfo);
+  const control = (file) => {
+    try {
+      const value = readFile(file);
+      if (typeof value === "string") return { status: "present", text: value };
+      // Fixture readers may preserve an observed errno. Bare null remains unknown, never evidence of absence.
+      if (value?.status === "absent" && value.code === "ENOENT") return { status: "absent", text: null, code: "ENOENT" };
+      return { status: "unknown", text: null, code: value?.code ?? null };
+    } catch (error) { return { status: error?.code === "ENOENT" ? "absent" : "unreadable", text: null, code: error?.code ?? null }; }
+  };
+  const meminfo = control("/proc/meminfo").text ?? "", hostMatch = /^MemAvailable:\s+(\d+)\s+kB$/m.exec(meminfo);
   const hostAvailableMiB = hostMatch ? Number(hostMatch[1]) / 1024 : null;
-  const membership = /^0::(\/[^\n]*)$/m.exec(readFile("/proc/self/cgroup") ?? ""), hierarchy = [], errors = [];
+  const cgroups = control("/proc/self/cgroup").text ?? "", membership = /^0::(\/[^\n]*)$/m.exec(cgroups), hierarchy = [], errors = [];
   if (!Number.isFinite(hostAvailableMiB) || hostAvailableMiB < 0) errors.push("Host MemAvailable is unknown");
+  if (/^\d+:(?:[^:]*,)?memory(?:,[^:]*)?:/m.test(cgroups)) errors.push("Legacy memory-controller membership cannot be certified by the cgroup-v2 scanner");
   if (!membership || membership[1].split("/").includes("..")) errors.push("Cgroup-v2 membership is unknown");
   else {
     const parts = membership[1].split("/").filter(Boolean);
     for (let depth = parts.length; depth >= 0; depth--) {
-      const dir = path.join("/sys/fs/cgroup", ...parts.slice(0, depth)), limitText = readFile(path.join(dir, "memory.max"))?.trim(), usedText = readFile(path.join(dir, "memory.current"))?.trim();
+      const dir = path.join("/sys/fs/cgroup", ...parts.slice(0, depth));
+      const maxFile = control(path.join(dir, "memory.max")), currentFile = control(path.join(dir, "memory.current")), statFile = control(path.join(dir, "memory.stat"));
+      const limitText = maxFile.text?.trim(), usedText = currentFile.text?.trim();
       const used = /^\d+$/.test(usedText ?? "") ? Number(usedText) : NaN;
-      const inactiveMatch = /^inactive_file\s+(\d+)$/m.exec(readFile(path.join(dir, "memory.stat")) ?? ""), inactive = inactiveMatch ? Number(inactiveMatch[1]) : NaN;
+      const inactiveMatch = /^inactive_file\s+(\d+)$/m.exec(statFile.text ?? ""), inactive = inactiveMatch ? Number(inactiveMatch[1]) : NaN;
+      const interfaces = { max: maxFile.status, current: currentFile.status, stat: statFile.status };
+      if (depth === 0 && maxFile.status === "absent" && currentFile.status === "absent") {
+        const typeFile = control(path.join(dir, "cgroup.type")), controllersFile = control(path.join(dir, "cgroup.controllers")), mountFile = control("/proc/self/mountinfo");
+        const controllers = controllersFile.text?.trim().split(/\s+/).filter(Boolean) ?? [];
+        const decode = (s) => s.replace(/\\([0-7]{3})/g, (_, octal) => String.fromCharCode(Number.parseInt(octal, 8)));
+        const rootMount = (mountFile.text ?? "").split("\n").some((line) => {
+          const [before, after] = line.split(" - "), fields = before?.split(/\s+/);
+          return after?.split(/\s+/)[0] === "cgroup2" && fields?.length >= 6 && decode(fields[3]) === "/" && decode(fields[4]) === dir;
+        });
+        // Linux exposes memory.max/current and cgroup.type only on non-root cgroups. A namespaced/delegated
+        // root still has cgroup.type and must retain its real limits. ENOENT is required; EACCES is unknown.
+        // https://www.kernel.org/doc/html/latest/admin-guide/cgroup-v2.html#memory-interface-files
+        const rootKnown = rootMount && typeFile.status === "absent" && controllersFile.status === "present" && controllers.includes("memory") && controllers.every((x) => /^[a-z][a-z0-9_]*$/.test(x)) && Number.isSafeInteger(inactive) && inactive >= 0;
+        if (rootKnown) {
+          hierarchy.push({ path: dir, known: true, unlimited: true, limitMiB: null, usedMiB: null, inactiveFileMiB: inactive / 2 ** 20, availableMiB: null,
+            scope: "hierarchy-root", basis: "Confirmed cgroup2 hierarchy root has no own memory cap; host MemAvailable and every non-root ancestor limit remain binding.", interfaces,
+            rootEvidence: { cgroup2RootMount: rootMount, type: typeFile.status, controllers, stat: statFile.status } });
+          continue;
+        }
+      }
       const unlimited = limitText === "max", limit = /^\d+$/.test(limitText ?? "") ? Number(limitText) : NaN;
       const known = Number.isSafeInteger(used) && used >= 0 && Number.isSafeInteger(inactive) && inactive >= 0 && (unlimited || Number.isSafeInteger(limit) && limit > 0);
       if (!known) errors.push(`Unknown cgroup memory limit/current/inactive_file at ${dir}`);
-      hierarchy.push({ path: dir, known, unlimited, limitMiB: !unlimited && Number.isFinite(limit) ? limit / 2 ** 20 : null, usedMiB: Number.isFinite(used) ? used / 2 ** 20 : null, inactiveFileMiB: Number.isFinite(inactive) ? inactive / 2 ** 20 : null, availableMiB: known && !unlimited ? Math.max(0, limit - Math.max(0, used - inactive)) / 2 ** 20 : null });
+      hierarchy.push({ path: dir, known, unlimited, limitMiB: !unlimited && Number.isFinite(limit) ? limit / 2 ** 20 : null, usedMiB: Number.isFinite(used) ? used / 2 ** 20 : null, inactiveFileMiB: Number.isFinite(inactive) ? inactive / 2 ** 20 : null, availableMiB: known && !unlimited ? Math.max(0, limit - Math.max(0, used - inactive)) / 2 ** 20 : null, scope: "memory-controller", interfaces });
     }
   }
   const finite = hierarchy.filter((x) => x.known && !x.unlimited).map((x) => x.availableMiB);

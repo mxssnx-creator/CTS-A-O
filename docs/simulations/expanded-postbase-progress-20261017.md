@@ -1,10 +1,12 @@
 # Expanded post-Base study checkpoint — 17 October 2026
 
-Source checkpoint: `b1a0e714d268574d5ab5c21d89f1a99279596cf3` on
+Initial source checkpoint: `b1a0e714d268574d5ab5c21d89f1a99279596cf3` on
 `fix/postbase-expanded-study-20261017`,
 [PR #164](https://github.com/mxssnx-creator/CTS-A-O/pull/164).
-Replay preload/admission corrections are still being completed after the
-failed first attempt. The four complete 20/22-symbol results are pending;
+Preload and Base admission corrections were followed by a hosted launch at
+commit `0d66c763772ec5305e8a164a9e8fe54155b92096`; its resource preflight
+exposed an unknown root-cgroup reading before scoring. The scanner correction
+and a newly sealed retry remain open. The four complete 20/22 results are pending;
 this checkpoint establishes no new market PF, order count or hourly success.
 No live deployment, reload or exchange order was performed.
 
@@ -99,12 +101,18 @@ paths. Root typecheck and `build:dev` passed. This does not claim one wholly
 green rerun of every repository test.
 
 The acquisition's six focused data tests and scoped ESLint passed. The
-completed-evidence review helper passed eight synthetic tests, scoped ESLint
+completed-evidence review helper initially passed eight synthetic tests, scoped ESLint
 with zero warnings, Node syntax/help and whitespace checks. It tests
 canonical unit returns, positive native allocation identity, unknown loss
 retention, zero/dust ownership, endpoint exclusion, all-four completion,
 source/feed/settings hash checks and exact prospective exclusion scopes.
 It has not read or scored the pending final-day results.
+
+The later exact-sign win-rate extension passed ten review tests. Total,
+hourly, config and reclaim scopes distinguish wins, losses, exact breakeven
+and unknown returns. Win rate includes flat funded closes in its denominator;
+empty or unknown-return samples remain unavailable. These are accounting
+fixture checks, separate from measured profitable hours.
 
 ## Replay recipe after preload/admission fixes are verified
 
@@ -173,3 +181,49 @@ Storage adds one shared Uint32 counter per bar, never one per config. All 9
 focused offline tests passed under a 512 MiB heap cap; independent review found
 no blockers. The unused v2 protocols are retained and superseded before any
 market scoring; all four arms are being resealed as v3.
+
+## Confirmed hierarchy-root scanner correction and v4 freeze
+
+The first hosted attempt, run39076740047, passed installation, typecheck,
+the packaged build and55 offline regressions, then stopped before scoring.
+Linux's true cgroup hierarchy root has no memory.max/current interfaces;
+the scanner had treated that documented shape as an unknown memory limit.
+Commit b48e7dd distinguishes ENOENT from unreadable files and recognizes
+only a structurally confirmed hierarchy root. Host availability, every real
+finite ancestor cap, the4096MiB minimum, shared lock and runtime guards remain
+binding. Twenty launcher tests passed and independent review found no blocker.
+
+All four v4 protocols were freshly materialized before scoring. The
+`expanded-postbase-v4-index-20261017.json` records source manifest
+`bc7216bd7ab6000b7651a5d83054a16887854097a31847e7701b9a92754693f7`.
+Feeds, complete runtime settings/WF, grids, costs, sizing, gates, warmup and
+windows match v3 exactly; only the launcher source provenance changed.
+The failed hosted evidence and original v3 index remain preserved.
+
+The next isolated workflow additionally runs all178 core test files serially,
+then the two optional synthetic runtime stress/backtest tests, before any
+replay. Their bounded steps retain full logs and stop on failure; no current
+full-suite or market result is claimed before those steps finish.
+
+## Hosted verification passed; first launch blocked before scoring
+
+[Hosted run 39076740047](postbase-ci-interrupted-39076740047/README.md)
+installed the frozen dependencies, passed complete TypeScript and the
+client/server/core-worker development build, and passed the same serial
+55-test offline regression set with zero failures, cancellations or skips.
+The encoded public fixture reconstructed the exact source feed hash. All
+four development/final baseline/reclaim8 protocols were prepared before any
+score, with source-manifest SHA-256
+`20a6f8109c15c547c5ee1acb235aa2959134f59ff84466f36a684711b9fef0fe`.
+
+The first baseline20 launch exited 1 at resource admission: host availability
+was 14,543MiB against a 4,096MiB floor, but the scanner treated the cgroup
+root's unavailable limit/current counters as unknown. Child nodes reported
+unlimited limits. No strategy scoring or engine trade dump began, so all
+20/22-symbol execution metrics and the prospective removal review remain
+pending. This is distinct from the earlier local memory-fallback/SIGINT130
+attempt. The compact original logs, complete blocked result and per-file
+hashes are tracked in that evidence directory and indexed by
+`expanded-postbase-validation-20261017.json`. Fixing the scanner changes the
+source identity; verify it and reseal fresh protocols rather than reuse the
+blocked attempt. Guards and profitability thresholds were not relaxed.

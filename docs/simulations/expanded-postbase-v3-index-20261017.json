@@ -1,5 +1,5 @@
 {
-  "status": "All four protocols frozen before scoring after Micro gap correction. No market results yet.",
+  "status": "Superseded before scoring: hosted run39076740047 stopped at memory preflight; scanner-only correction is frozen in v4.",
   "sourceSha256": "20a6f8109c15c547c5ee1acb235aa2959134f59ff84466f36a684711b9fef0fe",
   "sources": [
     {
@@ -737,5 +737,6 @@
         "replayPreloadAll": true
       }
     }
-  ]
+  ],
+  "supersededBy": "expanded-postbase-v4-index-20261017.json"
 }
