@@ -27,3 +27,4 @@ runs/
 # Lossless compressed replay evidence is committed; the expanded local result is reproducible.
 /docs/sims/exit-validation-20261017-default24h-result.json
 /docs/sims/exit-validation-20261017-cache-regression-result.json
+/docs/sims/exit-validation-20261018-runtime-regression-result.json

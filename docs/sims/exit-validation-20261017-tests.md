@@ -1,5 +1,16 @@
 # Exit implementation verification
 
+Latest published test-source checkpoint, with the matched-main readiness fix:
+`8a56851dfa7dfebe707127b523a30e72a397538f`, tree
+`741552b48e679790b5899a214c14bb608255771e`. Its full command exited 1 at the
+strict server-error assertion; the page and settings assertions passed.
+The traced fixture lifecycle correction is verified independently. Final review
+also found a runtime parity gap: completed-bar protection could be skipped while
+price stayed unchanged. Its boundary-aware correction passes seven focused
+regressions, scoped lint, and independent review. Frozen runtime SHA-256:
+`93a0c1a3c68d090ccfb6c7c9c07ce4515d4de0a4be9099dca28d230c65a6adb7`.
+Fresh typecheck/build/replay and the full test gate follow on this source.
+
 Processing-fixture checkpoint:
 `2303ee765c566f48b65fa7df05dc52c555f2e1f9`, tree
 `4b27345eabc0daa0f3894d89bab1575b1836cda3`.
@@ -19,22 +30,28 @@ core processing fixture exhausted a 400-second setup watchdog before any of its
 cells. That failed attempt is retained; a bounded representative fixture is
 verified before restarting the full command. It passes 6/6 tests in 201.9 seconds:
 setup completes in 155.6 seconds and all 128 toggle combinations pass in 35.4
-seconds. A fresh plain full command is now running on the exact checkpoint
-above then failed one phone Overview assertion: its readiness probe could match
+seconds. A subsequent complete-command attempt failed one phone Overview
+assertion: its readiness probe could match
 one digit in the navigation/body before main content rendered, whereas the
 assertion requires five digits in main. The follow-up requires main to exist
 and contain at least five digits within the unchanged 60-second wait. The final
 number, error, overflow and server-error assertions are unchanged. No production
-UI code changed. The next full run is pending this test-only checkpoint.
-Partial stages are recorded
-separately and are not presented as a completed full gate.
+UI code changed. The next full attempt passed the desktop, phone and settings
+checks, then failed the strict server-error check. Method/path-only tracing
+proved that closing the setup Compare page aborted an in-flight finite
+`coreStatus` GET, causing the framework to log `ECONNRESET` as an unhandled 500.
+Closing only the established SSE stream passed. The fixture now waits for finite
+same-origin requests to settle before closing pages, with a bounded deadline;
+SSE and external assets are excluded. The strict error assertions remain active.
+Partial stages are recorded separately and are not presented as a completed full gate.
 
 | Check | Result |
 |---|---|
 | Earlier completed script stage | 455 passed, 0 failed, 8 missing-template checks skipped |
 | Earlier app/components stage | 78 passed, 0 failed, 0 skipped |
-| Latest complete-command attempt | Script stage: 454 passed, 1 phone readiness assertion failed, 8 template skips; exit 1 |
-| Fresh `npm test` | Pending matched-main readiness checkpoint |
+| Latest complete-command attempt | Script stage: 454 passed, 1 server-error assertion failed on fixture cancellation, 8 template skips; exit 1 |
+| Fresh `npm test` | Pending fresh typecheck/build/replay of the completed-flat-bar correction |
+| Actual runtime tick + shared protection regression | 7/7 passed, including all six Exit family/direction combinations, independent 1m/5m timing, duplicate guards, adjusted TP close and ordinary trailing |
 | `npm run test:core:slow` | Pending, after the normal gate |
 | Exit parity with two actual worker threads | 1/1 passed; exact configs and every diagnostic count match local calculation |
 | Bounded processing fixture | 6/6 passed, including every original assertion and all 128 toggle masks |
@@ -65,11 +82,10 @@ Full production-grid cell identity/cardinality is tested separately by
 owned runtime/worker resources. Independent read review found no weakened
 original assertion or economic gate.
 
-The final browser functional fixture passed all four assertions both alone and
-inside the normal test gate: every desktop/phone page, real computed comparison
-rows, settings edits/saves, and no unhandled server errors. The initial readiness
-probe now consumes its complete streamed SSR response. No server-error assertion
-was weakened. Built Statistics was also visually checked at desktop and mobile
+The browser functional fixture checks every desktop/phone page, real computed
+comparison rows, settings edits/saves, and unhandled server errors. The initial
+readiness probe now consumes its complete streamed SSR response. No server-error
+assertion was weakened. Built Statistics was also visually checked at desktop and mobile
 sizes: independent Strategy groups, Normal/Trailing range partitions, Historic
 Exit caption, zero horizontal overflow, no app exceptions or local request failures.
 External Google Fonts and existing Grok branding requests were unavailable in
@@ -85,6 +101,9 @@ this environment and are recorded separately from app failures.
   Static SL remains fixed; adaptive and trailing stops ratchet without loosening;
   TP changes are bounded and causal. Held IDs, carry/restart state, partial/full
   reductions and duplicate-bar protection are covered by regression checks.
+  The real tick now revisits flat-price symbols at their earliest protected lane
+  boundary, including ordinary trailing. Cached deadlines keep idle work
+  O(symbol groups); fixed Normal groups retain the price-change shortcut.
 - Worker and local history calculations share a 16-pair bound. Exact indication
   inventory participates in cache identity. The bounded local fallback preserves
   exact configurations and diagnostics while releasing caches on completion,

@@ -31,9 +31,9 @@ node --expose-gc --max-old-space-size=512 --experimental-strip-types --no-warnin
 
 Protocols contain complete settings and source hashes; changed sources stop scoring. The original attempt is retained as evidence of the earlier source and requires that source snapshot for reproduction.
 
-**The final-source regression passed exact economic equality.** It repeats the same reused 794-pair, 24-hour sample after the cache-fingerprint, bounded-cache-cleanup and saved-preset Exit correctness fixes. It is not an additional alpha sample. Every settled trade, open mark, per-config/per-step check, hourly/family return, skip and qualification diagnostic matches the original exactly. Only timing/provenance metadata is excluded. Both canonical economic hashes are `cebdce48a2ca9c9876c014485ac4630118f34468693bd35ef18caf1e83ad08c3`. The losing endpoint result remains **PF 0.774226, −14.416 return points**. Model time was **38.1 seconds**, model maximum RSS **246.5 MiB**, and maximum RSS including the full exact comparison **297.9 MiB**.
+**The preceding cache/preset checkpoint regression passed exact economic equality.** It repeats the same reused 794-pair, 24-hour sample after the cache-fingerprint, bounded-cache-cleanup and saved-preset Exit correctness fixes. It is not an additional alpha sample. Every settled trade, open mark, per-config/per-step check, hourly/family return, skip and qualification diagnostic matches the original exactly. Only timing/provenance metadata is excluded. Both canonical economic hashes are `cebdce48a2ca9c9876c014485ac4630118f34468693bd35ef18caf1e83ad08c3`. The losing endpoint result remains **PF 0.774226, −14.416 return points**. Model time was **38.1 seconds**, model maximum RSS **246.5 MiB**, and maximum RSS including the full exact comparison **297.9 MiB**.
 
-The new regression protocol permits exactly two changed production source files and archives their exact final content. The unchanged original runner is reused through declared infrastructure-only source bindings. Runtime cache invalidation and saved-preset enrollment are established by their separate focused tests; the direct replay verifies unchanged economics under their final imported source. Current final-source reproduction uses:
+That regression protocol permits exactly two changed production source files and archives their exact checkpoint content. The unchanged original runner is reused through declared infrastructure-only source bindings. Runtime cache invalidation and saved-preset enrollment are established by their separate focused tests; the direct replay verifies unchanged economics under their imported source. Reproducing the preceding checkpoint requires its recorded hashes and uses:
 
 ```sh
 node --expose-gc --max-old-space-size=512 --experimental-strip-types --no-warnings scripts/exit-validation-20261017-cache-regression.mjs --run
@@ -41,12 +41,14 @@ node --expose-gc --max-old-space-size=512 --experimental-strip-types --no-warnin
 
 Its full report is `exit-validation-20261017-cache-regression.md`, with a matching protocol, exact comparison JSON, lossless result gzip and compressed changed-source archive. Every original frozen protocol/result remains unchanged.
 
+A separate `exit-validation-20261018-runtime-regression` wrapper is prepared for the later completed-flat-bar `runtime.tick` correction. It is not yet sealed or scored. The direct replay does not execute the live runtime tick path; the actual-tick regression covers that fix. The new replay will check unchanged economic results under the newly frozen imported runtime source, preserving every preceding source-bound artifact.
+
 | Attempt | Protocol SHA-256 |
 |---|---|
 | Original 6 h | `26341ddcc00c6990d91c02c048f2e6a9d0fd45905d856bdd0c2caf172025e6bd` |
 | Corrected 6 h | `d7fbb10e90998d58596f1a8ea8fa284d50a4b6c51cb39fea40fa16cdfdb21491` |
 | Corrected 168 h | `7a1247f9f5eaadf3d663ef7333b78076361b4c069f63c493a3af66f75e88c09d` |
 | Corrected default 794 pairs, 24 h trading | `679862904ce7f5197a8ce9ce998dfb876f5162b3723bd128973b9f427fe896cf` |
-| Final-source regression of the same 794-pair sample | `57d220904b462fe4457068012e719eb61e48f82c3087742a3be7faa26fc36d34` |
+| Preceding cache/preset source regression of the same 794-pair sample | `57d220904b462fe4457068012e719eb61e48f82c3087742a3be7faa26fc36d34` |
 
 Each matching result JSON includes all six independent set/direction slices per hour, initial per-config seat evaluations, every modeled settled order, open endpoint marks and rejection diagnostics. The 794-pair result also has a lossless `.json.gz` equivalent for compact persistence. Public input provenance is inherited from the existing cached feed and is not an independent audit of its original venue collection. These reused short forward windows cannot establish durable or consistently positive market returns.

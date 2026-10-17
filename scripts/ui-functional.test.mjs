@@ -126,6 +126,29 @@ function freePort() {
   });
 }
 
+async function withClosed(resource, run) {
+  let failed = false;
+  let failure;
+  let result;
+  try {
+    result = await run(resource);
+  } catch (error) {
+    failed = true;
+    failure = error;
+  } finally {
+    try {
+      await resource.close();
+    } catch (error) {
+      if (!failed) {
+        failed = true;
+        failure = error;
+      }
+    }
+  }
+  if (failed) throw failure;
+  return result;
+}
+
 describe(
   "UI functional: every page on computed numbers, desktop and phone",
   { skip: SKIP, timeout: 1_200_000 },
@@ -136,19 +159,51 @@ describe(
     let browser;
     let activity = "before hook";
     let fixtureStarted = 0;
-    const observeRequests = (page) =>
+    const observeRequests = (page) => {
+      const pending = new Set();
+      const label = (request) => `${request.method()} ${new URL(request.url()).pathname}`;
+      let changed = Date.now();
+      page.on("request", (request) => {
+        const url = new URL(request.url());
+        if (url.origin !== base || url.pathname === "/api/core/events") return;
+        pending.add(request);
+        changed = Date.now();
+      });
+      const finished = (request) => {
+        if (pending.delete(request)) changed = Date.now();
+      };
+      page.on("requestfinished", finished);
+      page.on("requestfailed", finished);
       page.on("requestfailed", (request) => {
         const url = new URL(request.url());
         console.log(
           `[ui requestfailed] ${activity}: ${request.method()} ${url.pathname} ${request.failure()?.errorText ?? "unknown"}`,
         );
       });
+      // Data can render before the shell's concurrent status refresh finishes. Closing then aborts
+      // an otherwise healthy finite RPC and makes the framework log an unhandled ECONNRESET.
+      // Let finite replies and the 400ms event debounce settle; the live SSE stream stays open.
+      return async () => {
+        const deadline = Date.now() + 30_000;
+        while (pending.size > 0 || Date.now() - changed < 500) {
+          assert.ok(
+            Date.now() < deadline,
+            `finite requests did not settle: ${[...pending].map(label).join(", ")}`,
+          );
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+      };
+    };
 
     before(async () => {
       const started = Date.now();
       fixtureStarted = started;
       let phase = "starting synthetic dev server";
       let ready;
+      let settleReady;
+      let failed = false;
+      let closeFailed = false;
+      let closeError;
       const enter = (next) => {
         phase = next;
         activity = next;
@@ -228,12 +283,14 @@ describe(
         // Comparisons finish after Paper publishes computes >= 1. Wait for their real persisted table,
         // rather than treating the legitimate not-yet-computed empty state as a page failure.
         ready = await browser.newPage();
-        observeRequests(ready);
+        settleReady = observeRequests(ready);
         await ready.goto(`${base}/v2/compare`, { waitUntil: "domcontentloaded", timeout: 120_000 });
         enter("Compare loaded; waiting for the real computed comparison table");
         await ready.locator("main .v2-table tbody tr").first().waitFor({ timeout: 180_000 });
+        await settleReady();
         enter("real compute and Compare finished; checking every page");
       } catch (error) {
+        failed = true;
         const visible = ready
           ? await ready
               .locator("body")
@@ -246,13 +303,24 @@ describe(
             `visible runtime/page state:\n${visible.slice(0, 3000)}\nserver log:\n${log.slice(-6000)}`,
         );
       } finally {
-        await ready?.close().catch(() => undefined);
+        try {
+          await ready?.close();
+        } catch (error) {
+          if (!failed) {
+            closeFailed = true;
+            closeError = error;
+          }
+        }
       }
+      if (closeFailed) throw closeError;
     });
 
     after(async () => {
-      await browser?.close();
-      child?.kill("SIGTERM");
+      try {
+        await browser?.close();
+      } finally {
+        child?.kill("SIGTERM");
+      }
     });
 
     for (const [vpName, viewport] of [
@@ -260,98 +328,106 @@ describe(
       ["phone", { width: 390, height: 844 }],
     ]) {
       test(`${vpName}: every page renders numbers, logs no error and never scrolls sideways`, async () => {
-        const ctx = await browser.newContext({ viewport });
-        const bad = [];
-        for (const path of pages) {
-          activity = `${vpName} ${path}`;
-          console.log(`[ui-fixture] ${vpName}: ${path} +${Date.now() - fixtureStarted}ms`);
-          const page = await ctx.newPage();
-          observeRequests(page);
-          const errs = [];
-          page.on("console", (m) => {
-            // a resource of another host (web fonts behind this machine's proxy) is not the app's error
-            const from = m.location()?.url ?? "";
-            const foreign =
-              /^Failed to load resource/.test(m.text()) && from && !from.startsWith(base);
-            if (
-              m.type() === "error" &&
-              !foreign &&
-              !/favicon|DevTools|Download the React DevTools/i.test(m.text())
-            )
-              errs.push(m.text().slice(0, 200));
-          });
-          page.on("pageerror", (e) => errs.push(`uncaught: ${String(e).slice(0, 200)}`));
-          // The app keeps its event stream open; page data readiness is the content check below.
-          await page.goto(base + path, { waitUntil: "domcontentloaded", timeout: 120_000 });
-          // Match the assertion's exact scope and threshold. Body/first-digit readiness can precede the
-          // main loading state's replacement during hydration and let the assertion race real page data.
-          await page
-            .waitForFunction(
-              () => {
-                const main = document.querySelector("main");
-                return main !== null && (main.innerText.match(/\d/g) ?? []).length >= 5;
-              },
-              null,
-              { timeout: 60_000 },
-            )
-            .catch(() => undefined);
-          const r = await page.evaluate(() => {
-            const main = document.querySelector("main") ?? document.body;
-            const text = main.innerText;
-            return {
-              digits: (text.match(/\d/g) ?? []).length,
-              errorText:
-                /Something went wrong|Internal Server Error|Cannot read properties|is not a function/.test(
-                  text,
-                ),
-              overflow: document.documentElement.scrollWidth - window.innerWidth,
-              visible: text.slice(0, 2000),
-            };
-          });
-          if (r.digits < 5 || r.errorText || r.overflow > 1)
-            console.log(`[ui state] ${vpName} ${path}: ${JSON.stringify(r)}`);
-          if (r.digits < 5) bad.push(`${path}: renders no numbers (${r.digits} digits)`);
-          if (r.errorText) bad.push(`${path}: shows an error`);
-          if (r.overflow > 1) bad.push(`${path}: scrolls sideways by ${r.overflow}px`);
-          for (const e of errs) bad.push(`${path}: ${e}`);
-          await page.close();
-        }
-        await ctx.close();
-        assert.deepEqual(bad, [], bad.join("\n"));
+        await withClosed(await browser.newContext({ viewport }), async (ctx) => {
+          const bad = [];
+          for (const path of pages) {
+            activity = `${vpName} ${path}`;
+            console.log(`[ui-fixture] ${vpName}: ${path} +${Date.now() - fixtureStarted}ms`);
+            const errs = [];
+            await withClosed(await ctx.newPage(), async (page) => {
+              const settleRequests = observeRequests(page);
+              page.on("console", (m) => {
+                // a resource of another host (web fonts behind this machine's proxy) is not the app's error
+                const from = m.location()?.url ?? "";
+                const foreign =
+                  /^Failed to load resource/.test(m.text()) && from && !from.startsWith(base);
+                if (
+                  m.type() === "error" &&
+                  !foreign &&
+                  !/favicon|DevTools|Download the React DevTools/i.test(m.text())
+                )
+                  errs.push(m.text().slice(0, 200));
+              });
+              page.on("pageerror", (e) => errs.push(`uncaught: ${String(e).slice(0, 200)}`));
+              // The app keeps its event stream open; page data readiness is the content check below.
+              await page.goto(base + path, { waitUntil: "domcontentloaded", timeout: 120_000 });
+              // Match the assertion's exact scope and threshold. Body/first-digit readiness can precede the
+              // main loading state's replacement during hydration and let the assertion race real page data.
+              await page
+                .waitForFunction(
+                  () => {
+                    const main = document.querySelector("main");
+                    return main !== null && (main.innerText.match(/\d/g) ?? []).length >= 5;
+                  },
+                  null,
+                  { timeout: 60_000 },
+                )
+                .catch(() => undefined);
+              await settleRequests();
+              const r = await page.evaluate(() => {
+                const main = document.querySelector("main") ?? document.body;
+                const text = main.innerText;
+                return {
+                  digits: (text.match(/\d/g) ?? []).length,
+                  errorText:
+                    /Something went wrong|Internal Server Error|Cannot read properties|is not a function/.test(
+                      text,
+                    ),
+                  overflow: document.documentElement.scrollWidth - window.innerWidth,
+                  visible: text.slice(0, 2000),
+                };
+              });
+              if (r.digits < 5 || r.errorText || r.overflow > 1)
+                console.log(`[ui state] ${vpName} ${path}: ${JSON.stringify(r)}`);
+              if (r.digits < 5) bad.push(`${path}: renders no numbers (${r.digits} digits)`);
+              if (r.errorText) bad.push(`${path}: shows an error`);
+              if (r.overflow > 1) bad.push(`${path}: scrolls sideways by ${r.overflow}px`);
+            });
+            for (const e of errs) bad.push(`${path}: ${e}`);
+          }
+          assert.deepEqual(bad, [], bad.join("\n"));
+        });
       });
     }
 
     test("Settings: saving unchanged settings succeeds without an error", async () => {
       activity = "settings save";
-      const page = await browser.newPage({ viewport: { width: 1366, height: 900 } });
-      observeRequests(page);
       const errs = [];
-      page.on("pageerror", (e) => errs.push(String(e)));
-      await page.goto(`${base}/v2/settings`, { waitUntil: "domcontentloaded", timeout: 120_000 });
-      const save = page.getByRole("button", { name: /^save/i }).first();
-      await save.waitFor({ state: "visible", timeout: 60_000 });
-      assert.ok(await save.count(), "a Save button");
-      // nothing changed: nothing to save
-      assert.ok(await save.isDisabled(), "Save is disabled while the settings are unchanged");
-      // an edit enables it, the save answers without an error, and the edit undone saves back
-      const box = page.locator('main [role="switch"]:not([disabled])').first();
-      assert.ok(await box.count(), "a switch to edit");
-      const saveNow = async () => {
-        assert.ok(await save.isEnabled(), "Save is enabled after an edit");
-        const resp = page.waitForResponse((r) => r.request().method() === "POST", {
-          timeout: 30_000,
-        });
-        await save.click();
-        const r = await resp;
-        assert.ok(r.status() < 400, `save answered ${r.status()}`);
-        await page.waitForTimeout(500);
-      };
-      await box.click();
-      await saveNow();
-      await box.click();
-      await saveNow();
+      await withClosed(
+        await browser.newPage({ viewport: { width: 1366, height: 900 } }),
+        async (page) => {
+          const settleRequests = observeRequests(page);
+          page.on("pageerror", (e) => errs.push(String(e)));
+          await page.goto(`${base}/v2/settings`, {
+            waitUntil: "domcontentloaded",
+            timeout: 120_000,
+          });
+          const save = page.getByRole("button", { name: /^save/i }).first();
+          await save.waitFor({ state: "visible", timeout: 60_000 });
+          assert.ok(await save.count(), "a Save button");
+          // nothing changed: nothing to save
+          assert.ok(await save.isDisabled(), "Save is disabled while the settings are unchanged");
+          // an edit enables it, the save answers without an error, and the edit undone saves back
+          const box = page.locator('main [role="switch"]:not([disabled])').first();
+          assert.ok(await box.count(), "a switch to edit");
+          const saveNow = async () => {
+            assert.ok(await save.isEnabled(), "Save is enabled after an edit");
+            const resp = page.waitForResponse((r) => r.request().method() === "POST", {
+              timeout: 30_000,
+            });
+            await save.click();
+            const r = await resp;
+            assert.ok(r.status() < 400, `save answered ${r.status()}`);
+            await page.waitForTimeout(500);
+          };
+          await box.click();
+          await saveNow();
+          await box.click();
+          await saveNow();
+          await settleRequests();
+        },
+      );
       assert.deepEqual(errs, []);
-      await page.close();
     });
 
     test("the dev server logged no unhandled errors", () => {

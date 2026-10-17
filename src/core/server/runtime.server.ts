@@ -1272,7 +1272,7 @@ export class CoreRuntime {
     positions: unknown;
     units: Float64Array;
     cost: number;
-    groups: Array<{ sym: string; idx: number[]; px: number; sum: number }>;
+    groups: Array<{ sym: string; idx: number[]; px: number; sum: number; nextBarT: number }>;
   } | null = null;
   private tickBook() {
     const positions = this.paper.positions;
@@ -1280,11 +1280,14 @@ export class CoreRuntime {
     const cost = this.settings.cost;
     const m = this.tickMemo;
     if (m && m.positions === positions && m.units === units && m.cost === cost) return m;
-    const by = new Map<string, { sym: string; idx: number[]; px: number; sum: number }>();
+    const by = new Map<
+      string,
+      { sym: string; idx: number[]; px: number; sum: number; nextBarT: number }
+    >();
     for (let i = 0; i < positions.length; i++) {
       const sym = positions[i].sym;
       let g = by.get(sym);
-      if (!g) by.set(sym, (g = { sym, idx: [], px: NaN, sum: 0 }));
+      if (!g) by.set(sym, (g = { sym, idx: [], px: NaN, sum: 0, nextBarT: Infinity }));
       g.idx.push(i);
     }
     this.tickMemo = { positions, units, cost, groups: [...by.values()] };
@@ -1531,9 +1534,8 @@ export class CoreRuntime {
         this.streamKey = key;
         this.stream.follow(syms);
       }
-      // open positions marked to market at the newest price (stream, else the newest closed bar), per symbol: only
-      // a symbol whose price moved since the last tick is marked again (an unchanged price moves no mark and crosses
-      // no stop) — every position on every 100 ms tick was the main thread's largest steady cost
+      // Revisit a symbol only when its price moved or a protected lane completed a bar. Flat completed bars still
+      // update Exit's volatility/TP state and trailing peaks; cache the next boundary instead of scanning every tick.
       const cost = this.settings.cost;
       let open = 0;
       let newHits: Record<string, { at: number; stop: number; px?: number }> | null = null;
@@ -1547,31 +1549,43 @@ export class CoreRuntime {
         const px = this.stream?.price(g.sym) ?? this.candles.get(g.sym)?.lastC();
         // no price: these positions keep their marks and add nothing to the open result (as before)
         if (!px) continue;
-        if (px !== g.px) {
+        const priceChanged = px !== g.px;
+        if (priceChanged || nowMs >= g.nextBarT) {
           let sum = 0;
+          g.nextBarT = Infinity;
           for (const pi of g.idx) {
             const p = positions[pi];
             if (!(p.entry > 0)) continue;
-            // a trailing position's stop follows its lane bars between computes, as the simulation trails it
-            if (!p.stopHit && (p.trail || p.exitProtection)) {
-              if (tickTrail(p, px, nowMs, this.laneMs(p.cfg))) trailMoved = true;
-            }
-            // a price through the stop stops the position now (the live control drops its lane at once); the paper
-            // book records the exit when the bar closes, at the stop, as the simulation does
-            if (!p.stopHit) {
-              const lvl = crossedExit(
-                p,
-                px,
-                isSignalInd(p.cfg.split("|")[1] ?? "") ? false : trailFree,
-              );
-              if (lvl > 0) {
-                p.stopHit = Date.now();
-                p.hitPx = lvl;
-                (newHits ??= {})[posId(p)] = { at: p.stopHit, stop: p.stop, px: lvl };
+            const protectTf =
+              !p.stopHit && (p.exitProtection || (p.trail ?? 0) > 0) ? this.laneMs(p.cfg) : 0;
+            const barDue =
+              protectTf > 0 && (p.tkBar === undefined || nowMs >= (p.tkBar + 1) * protectTf);
+            if (priceChanged || barDue) {
+              // A trailing position's stop follows its lane bars between computes, as the simulation trails it.
+              if (!p.stopHit && (p.trail || p.exitProtection)) {
+                if (tickTrail(p, px, nowMs, protectTf || this.laneMs(p.cfg))) trailMoved = true;
               }
+              // Check the updated controls on this tick too: a completed bar can ratchet a stop through the close.
+              if (!p.stopHit) {
+                const lvl = crossedExit(
+                  p,
+                  px,
+                  isSignalInd(p.cfg.split("|")[1] ?? "") ? false : trailFree,
+                );
+                if (lvl > 0) {
+                  p.stopHit = Date.now();
+                  p.hitPx = lvl;
+                  (newHits ??= {})[posId(p)] = { at: p.stopHit, stop: p.stop, px: lvl };
+                }
+              }
+              const at = p.stopHit ? (p.hitPx ?? p.stop) : px;
+              p.mtm = (p.side * (at - p.entry)) / p.entry - cost;
             }
-            const at = p.stopHit ? (p.hitPx ?? p.stop) : px;
-            p.mtm = (p.side * (at - p.entry)) / p.entry - cost;
+            if (protectTf > 0 && !p.stopHit)
+              g.nextBarT = Math.min(
+                g.nextBarT,
+                ((p.tkBar ?? Math.floor(nowMs / protectTf)) + 1) * protectTf,
+              );
             // an open order's result is its unit result × its Block volume (as its closed r will be)
             sum += p.mtm * (p.vol ?? 1) * book.units[pi];
           }

@@ -43,15 +43,33 @@ Typecheck and lint pass. The fresh plain `npm test` on test-source checkpoint
 one phone Overview assertion sampled zero digits in main, and eight template
 checks skipped. The old readiness probe could finish from one navigation/body
 digit before main existed. Its follow-up now requires main with five digits,
-matching the unchanged final assertion, within the same 60 seconds. Lint passes;
-the next complete command is pending the test-only checkpoint. No production UI
-code changed. Production remains identical to the validated build/replay
-checkpoint `9fb5e4c1e68e2e63945139c7d1cad3f1217f6158`.
+matching the unchanged final assertion, within the same 60 seconds. Lint passes.
+The next complete command ran on exact test-source checkpoint
+`8a56851dfa7dfebe707127b523a30e72a397538f`, tree
+`741552b48e679790b5899a214c14bb608255771e`. Desktop, phone and settings passed,
+but the command exited 1 at the strict server-error assertion. Method/path-only
+tracing proved setup Compare teardown cancelled an in-flight finite `coreStatus`
+GET, logged by the framework as an unhandled `ECONNRESET` 500. SSE-only closure
+passed. A bounded finite-request drain before closing test pages is being
+verified; strict assertions remain active. No production UI code changed.
+The independently reviewed teardown correction is ready. A final runtime review
+also found that the price-change-only tick shortcut could skip completed-bar
+Exit protection during flat prices. A cached lane-boundary correction covers
+Exit and ordinary trailing, preserving O(symbol groups) idle checks and the
+fixed Normal price-only path. Seven actual-tick/shared-protection tests pass,
+including all six Exit family/direction combinations, independent 1m/5m timing,
+duplicate guards, TP close persistence, equity and trailing reversal. Scoped lint
+and independent source review pass. Frozen runtime SHA-256 is
+`93a0c1a3c68d090ccfb6c7c9c07ce4515d4de0a4be9099dca28d230c65a6adb7`;
+fresh typecheck/build/replay and the full gate follow on this source.
+The preceding validated build/replay checkpoint is
+`9fb5e4c1e68e2e63945139c7d1cad3f1217f6158`; the new runtime source will receive
+its own exact source checkpoint and replay regression.
 Script/component stages are bounded to two files concurrently; synthetic tests
 have deterministic memory headroom while dedicated pressure tests still verify
 fallback and abort behavior. Chromium is installed and built desktop/mobile UI
-checks pass. The browser fixture passes all four checks over all desktop/phone
-pages, settings saves and strict server-error assertions. Its readiness probe now
+checks pass. The browser fixture covers all desktop/phone pages, settings saves
+and strict server-error assertions. Its readiness probe now
 consumes the full streamed SSR response instead of abandoning its body. Eight
 preset tests verify exact ordered trades against direct local/worker calculation,
 native history, sparse 30m execution, unchanged Normal results and cancellation.
@@ -75,9 +93,10 @@ diagnostic PF is 0.774226 and net is -14.416 points. Only 8/24 hours have profit
 settled closes. This is not evidence of consistently positive total returns.
 All rejects and losses remain in the evidence. The run took 44.7 seconds and
 243.4 MiB maximum RSS with 16-pair fit/build chunks and one unified default WF.
-The original frozen results are retained; a source-compatible regression replay
-will separately record the cache/preset integration fixes without retuning the
-same scored window. No live deployment or venue execution occurred.
+The original frozen results are retained. The final-source regression replay
+matches every trade, mark, configuration evaluation and diagnostic exactly,
+without retuning the scored window. It took 38.1 seconds and 246.5 MiB model peak
+RSS (297.9 MiB including comparison). No live deployment or venue execution occurred.
 
 ## 16 October Historic Exit strategy validation
 
