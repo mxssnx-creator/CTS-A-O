@@ -84,21 +84,21 @@ describe("pre-historic stats: hand-computed cases", () => {
     );
   });
 
-  it("empty input: zeros everywhere, no NaN", () => {
+  it("empty input: primary return statistics are unavailable, activity counts stay zero", () => {
     const s = prehistStats([], 0, 10 * H);
     const want: PrehistStats = {
-      pf: 0,
-      pfBasis: "unit-net-returns",
+      pf: null,
+      pfBasis: "unavailable",
       unknownReturns: 0,
-      gp: 0,
-      gl: 0,
-      noLoss: false,
-      pfConvention: "gross-return-ratio",
-      ddtH: 0,
+      gp: null,
+      gl: null,
+      noLoss: null,
+      pfConvention: "unavailable",
+      ddtH: null,
       n: 0,
-      wr: 0,
-      greenHours: 0,
-      net: 0,
+      wr: null,
+      greenHours: null,
+      net: null,
       avgOpen: 0,
       maxOpen: 0,
       positions: 0,
