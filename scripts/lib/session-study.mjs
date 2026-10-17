@@ -16,6 +16,13 @@ export function studyCanonical(value) {
 }
 export const studyExactJson = (value) => JSON.stringify(studyCanonical(value));
 
+/** The requested research window must agree with the normalized runtime before any compute can start. */
+export function validateFrozenSessionTiming(p) {
+  const expected = { preH: p.window?.preH, simH: p.window?.runH, longH: p.window?.preH };
+  if (Object.entries(expected).some(([key, value]) => !Number.isFinite(value) || value <= 0 || p.actualWf?.[key] !== value))
+    throw new Error("Frozen session walk-forward timing differs from its declared window");
+}
+
 /** Seal economic source and the common report instrumentation separately for each arm. */
 export function sessionStudySourceFiles(root = defaultRoot) {
   const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? walk(resolve(dir, e.name)) : /\.(?:ts|tsx|mjs|cjs)$/.test(e.name) && !/\.test\.[^.]+$/.test(e.name) && e.name !== "test-support.ts" ? [resolve(dir, e.name)] : []);
@@ -28,6 +35,7 @@ export function readSessionStudy(protocolPath, root = defaultRoot) {
     throw new Error("Invalid frozen session study identity/symbols");
   if (!p.window || !Number.isFinite(p.window.evaluationFromT) || !Number.isFinite(p.window.tradeStartT) || !Number.isFinite(p.window.endT) || p.window.tradeStartT - p.window.evaluationFromT !== p.window.preH * H || p.window.endT - p.window.tradeStartT !== p.window.runH * H)
     throw new Error("Invalid frozen session study windows");
+  validateFrozenSessionTiming(p);
   if (!p.feed?.sha256 || !p.actualSettings || !p.actualWf || !Array.isArray(p.source?.files) || !p.source.files.length || studySha256(studyExactJson(p.source.files)) !== p.source.sha256)
     throw new Error("Missing frozen session settings/feed/source seal");
   for (const f of p.source.files) {
@@ -62,9 +70,11 @@ export function validateFrozenSessionResult(raw, protocolPath, root = defaultRoo
   if (p.account && (raw.settings?.book?.balance !== p.account.balance || raw.settings?.book?.leverage !== p.account.leverage || studyExactJson(raw.settings?.book?.sizing) !== studyExactJson(p.account.sizing)))
     throw new Error("Report funding/sizing differs from the frozen study account");
   const mem = raw.engine?.mem;
-  if (!mem || (mem.computeLevel ?? 0) !== 0 || (mem.fallback ?? 0) !== 0 || (mem.aborts ?? 0) !== 0)
+  if (!mem || !['computeLevel', 'fallback', 'aborts'].every((k) => mem[k] === 0))
     throw new Error("Degraded or unrecorded memory coverage cannot certify a completed study");
-  if (!raw.engine?.coverage) throw new Error("Study is missing its processing coverage evidence");
+  const coverage = raw.engine?.coverage;
+  if (!coverage || !Number.isFinite(coverage.expectedCombos) || coverage.expectedCombos <= 0 || coverage.evaluated !== coverage.expectedCombos)
+    throw new Error("Study is missing complete processing coverage evidence");
   for (const x of [...(raw.trades ?? []), ...(raw.openEnd ?? [])]) {
     if (!p.symbols.includes(x.sym) || x.entryT < p.window.tradeStartT || x.entryT > p.window.endT || (x.exitT !== undefined && x.exitT > p.window.endT))
       throw new Error("Study trade lies outside its frozen symbol/time scope");

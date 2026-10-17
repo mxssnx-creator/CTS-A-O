@@ -324,8 +324,9 @@ export class SignalAcceptIndex {
   }
   /**
    * Fills the record in time-bounded slices. A unique exact config's exit-sorted tape already contains every
-   * symbol/direction group in order, so it writes final prefixes directly. Pooled, duplicate or unordered inputs
-   * retain the generic stable sort and onset de-duplication below.
+   * symbol/direction group in order, so it writes final prefixes directly. A tape may repeat a symbol for every
+   * timeframe; those aliases share one group exactly as they do in the generic path. Pooled, duplicate or
+   * unordered inputs retain the generic stable sort and onset de-duplication below.
    */
   *fill(tapes: readonly AcceptTape[]): Generator<number, void> {
     // time-boxed: a yield every ~8 ms of work (a count of closes left 1–2.6 s slices on x02, 7 Oct profile)
@@ -350,11 +351,26 @@ export class SignalAcceptIndex {
     }
     const fallback: AcceptTape[] = [];
     for (const tp of sigTapes) {
-      if (!tp.id?.trim() || identities.get(identityOf(tp)) !== 1 || new Set(tp.syms).size !== tp.syms.length) {
+      if (!tp.id?.trim() || identities.get(identityOf(tp)) !== 1) {
         fallback.push(tp);
         continue;
       }
-      const counts = new Int32Array(tp.syms.length * 2);
+      // makeTape's symbol table contains the universe's symbol once per timeframe. Canonicalize table slots by
+      // their exact symbol string, preserving the generic acceptKey identity rather than inventing a new alias.
+      const symbols: string[] = [];
+      const symbolIndex = new Map<string, number>();
+      const aliases = new Int32Array(tp.syms.length);
+      for (let i = 0; i < tp.syms.length; i++) {
+        const sym = tp.syms[i];
+        let canonical = symbolIndex.get(sym);
+        if (canonical === undefined) {
+          canonical = symbols.length;
+          symbolIndex.set(sym, canonical);
+          symbols.push(sym);
+        }
+        aliases[i] = canonical;
+      }
+      const counts = new Int32Array(symbols.length * 2);
       const slots: number[] = [];
       let ordered = true;
       let previous = -Infinity;
@@ -366,7 +382,7 @@ export class SignalAcceptIndex {
           break;
         }
         previous = t;
-        const slot = sym * 2 + (tp.side[i] > 0 ? 1 : 0);
+        const slot = aliases[sym] * 2 + (tp.side[i] > 0 ? 1 : 0);
         if (counts[slot]++ === 0) slots.push(slot);
         if ((i & 8191) === 8191 && clock()) yield 0;
       }
@@ -384,7 +400,7 @@ export class SignalAcceptIndex {
           cn: new Int32Array(n + 1), next: 0, seen: tp.entryT ? new Set() : null };
       }
       for (let i = 0; i < tp.n; i++) {
-        const x = cols[tp.symI[i] * 2 + (tp.side[i] > 0 ? 1 : 0)]!;
+        const x = cols[aliases[tp.symI[i]] * 2 + (tp.side[i] > 0 ? 1 : 0)]!;
         const j = x.next++;
         const r = +tp.r[i];
         x.t[j] = tp.exitT[i];
@@ -398,7 +414,7 @@ export class SignalAcceptIndex {
       }
       for (const slot of slots) {
         const { t, gp, gl, cn } = cols[slot]!;
-        this.groups.set(acceptKey(tp.ind, tp.syms[slot >> 1], slot % 2 ? 1 : -1, tp.kind, tp.id), { t, gp, gl, cn });
+        this.groups.set(acceptKey(tp.ind, symbols[slot >> 1], slot % 2 ? 1 : -1, tp.kind, tp.id), { t, gp, gl, cn });
       }
       if (clock()) yield 0;
     }

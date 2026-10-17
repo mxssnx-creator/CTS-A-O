@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { archiveDates, parseArchiveCsv, sha256Bytes, validateCoverage, verifyArchiveChecksum } from "./lib/public-eval-feed.mjs";
+import { archiveDates, archiveStartT, parseArchiveCsv, sha256Bytes, validateCoverage, verifyArchiveChecksum } from "./lib/public-eval-feed.mjs";
 
 const from = Date.parse("2026-10-16T00:00:00Z");
 const row = (t, extra = {}) => {
@@ -52,4 +52,14 @@ test("UTC archive days use inclusive-exclusive bounds", () => {
   assert.equal(archiveDates(Date.parse("2026-09-26T00:00Z"), Date.parse("2026-10-17T00:00Z")).length, 21);
   assert.deepEqual(archiveDates(from, from + 86_400_000), ["2026-10-16"]);
   assert.throws(() => archiveDates(from + 60_000, from + 86_400_000));
+});
+
+
+test("collector start defaults preserve legacy scope and accept the full-native-history UTC bound", () => {
+  const to = Date.parse("2026-10-17T00:00:00Z");
+  assert.equal(archiveStartT(), Date.parse("2026-09-26T00:00:00Z"));
+  assert.equal(archiveDates(archiveStartT(), to).length, 21);
+  assert.equal(archiveDates(archiveStartT("2026-09-24"), to).length, 23);
+  for (const bad of ["2026-02-30", "2026-09-24T00:00:00Z", "2026-9-24", "", "2026-10-17", "2026-10-18", "2026-09-24+01:00"])
+    assert.throws(() => archiveStartT(bad, to));
 });

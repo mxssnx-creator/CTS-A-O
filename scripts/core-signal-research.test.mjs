@@ -345,7 +345,7 @@ describe("four-source frozen independent Signal research", () => {
     assert.match(md, /Entire IS-qualified pool/);
   });
 
-  it("preserves the frozen floor-policy grid and identifies trails later disabled by the runtime", () => {
+  it("preserves the frozen reference grid and distinguishes exact lane-floor exclusions", () => {
     const { market, p } = fixture();
     const cells = researchCells(p).filter(
       (c) => c.source === "r-laguerre" && c.range === "short" && c.tf === 1,
@@ -353,7 +353,7 @@ describe("four-source frozen independent Signal research", () => {
     const report = runResearch(market, p, { cells });
     const b = barsFromCandles("FIXTURE-USDT", 1, market["FIXTURE-USDT"]);
     const u = makeUniverse([b], p.data.splitT);
-    const tapes = buildTapes(
+    const runtimeTapes = (signalReferenceGrid) => buildTapes(
       u,
       p.protects,
       0.002,
@@ -363,14 +363,18 @@ describe("four-source frozen independent Signal research", () => {
       null,
       {
         ...p.preOutcomeModelClarification.signalFloors,
-        signalReferenceGrid: true,
+        signalReferenceGrid,
         entry: p.preOutcomeModelClarification.signalFilter,
       },
     );
+    const tapes = runtimeTapes(false);
     const protocolByConfig = new Map(cells.map((cell) => [cell.cfg, cell]));
     const runtimeByConfig = new Map(tapes.map((tape) => [tape.id, tape]));
+    const referenceByConfig = new Map(runtimeTapes(true).map((tape) => [tape.id, tape]));
     assert.equal(protocolByConfig.size, 36, "the frozen protocol retains all distinct floor-adjusted cells");
-    assert.equal(runtimeByConfig.size, 31, "the current runtime disables lane-scaled short trails");
+    assert.equal(referenceByConfig.size, 36, "the reference grid applies the frozen floors before alias deduplication");
+    for (const [id, tape] of referenceByConfig) assert.deepEqual(tape.protect, protocolByConfig.get(id).protect);
+    assert.equal(runtimeByConfig.size, 31, "exact lane-distance protections disable short trails instead of changing their qualified distances");
     const disabledByRuntime = [...protocolByConfig.values()].filter((cell) => !runtimeByConfig.has(cell.cfg));
     assert.equal(disabledByRuntime.length, 5);
     for (const cell of disabledByRuntime) {

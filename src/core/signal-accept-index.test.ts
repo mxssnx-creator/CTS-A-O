@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { describe, it } from "node:test";
 import { acceptKey, SignalAcceptIndex, type AcceptTape } from "./signals.ts";
+import { makeTape } from "./sim/walkforward.ts";
 
 const H = 3_600_000;
 type Columns = { t: Float64Array; gp: Float64Array; gl: Float64Array; cn: Int32Array };
@@ -88,5 +89,60 @@ describe("exact Signal acceptance prefix fast path", () => {
     const aliased = { ...original, syms: ["A-USDT", "A-USDT"] };
     assert.equal(digest(new SignalAcceptIndex([aliased])), digest(generic([aliased])));
     assert.equal(digest(new SignalAcceptIndex([original, { ...original, heldOnly: true }])), digest(generic([original])));
+  });
+
+  it("builds the real makeTape repeated-timeframe symbol table without sorting scratch groups", () => {
+    const original = tape();
+    const syms = ["A-USDT", "B-USDT", "A-USDT", "B-USDT", "A-USDT", "B-USDT", "A-USDT", "B-USDT"];
+    const trades = Array.from({ length: original.n }, (_, i) => ({ cfg: original.id!,
+      sym: original.syms[original.symI[i]], side: original.side[i] as 1 | -1,
+      entryT: original.entryT![i], exitT: original.exitT[i], r: original.r[i],
+      entry: 100, exit: 101, bars: 1, mfe: 0, mae: 0, reason: "tp" as const, kind: "normal" as const }));
+    const actual = makeTape(original.id!, "follow", original.ind, { tp: .01, sl: .01, trail: 0, hold: 32 },
+      "normal", syms, trades, [], []);
+    assert.deepEqual([...new Set(actual.symI)], [6, 7], "makeTape uses the final alias of each symbol");
+    const sort = Uint32Array.prototype.sort;
+    let sortedGroups = 0;
+    let direct: SignalAcceptIndex;
+    try {
+      Uint32Array.prototype.sort = function (compare) { sortedGroups++; return sort.call(this, compare); };
+      direct = new SignalAcceptIndex([actual]);
+    } finally {
+      Uint32Array.prototype.sort = sort;
+    }
+    assert.equal(sortedGroups, 0, "repeated timeframe aliases must use the direct-prefix path");
+    assert.equal(digest(direct!), digest(generic([actual])));
+    assert.equal(columns(direct!).size, 4, "aliases share their exact symbol and direction group");
+  });
+
+  it("merges interleaved timeframe aliases before counting an onset and preserves every prefix byte", () => {
+    const names = Array.from({ length: 20 }, (_, i) => `SYM${i}-USDT`);
+    const syms = Array.from({ length: 4 }, () => names).flat();
+    const n = 2048;
+    const original: AcceptTape = { id: "actual-shaped", ind: "sig-ema-cross-fast-s@m15", kind: "trailing",
+      n, syms, symI: Uint16Array.from({ length: n }, (_, i) => i % syms.length),
+      side: Int8Array.from({ length: n }, (_, i) => (Math.floor(i / syms.length) % 2) * 2 - 1),
+      exitT: Float64Array.from({ length: n }, (_, i) => H + Math.floor(i / 7) * 60_000),
+      entryT: Float64Array.from({ length: n }, (_, i) => Math.floor(i / 160) * 60_000),
+      r: Float64Array.from({ length: n }, (_, i) => (((i * 17) % 19) - 8) / 1000) };
+    const direct = new SignalAcceptIndex([original]), reference = generic([original]);
+    assert.equal(columns(direct).size, 40);
+    assert.equal(digest(direct), digest(reference));
+    for (const key of columns(direct).keys()) {
+      assert.deepEqual([...columns(direct).get(key)!.cn], [...columns(reference).get(key)!.cn]);
+      for (const t of [H, 2 * H, 4 * H, 6 * H])
+        for (const hours of [.5, 1, 6]) assert.deepEqual(direct.stats(key, t, hours), reference.stats(key, t, hours));
+    }
+  });
+
+  it("does not change generic unknown, nonfinite, signed-zero or tiny return handling", () => {
+    const original = tape();
+    const exceptional: AcceptTape = { ...original, syms: ["A-USDT", "A-USDT"],
+      r: [NaN, Infinity, -Infinity, -0, 0, Number.MIN_VALUE, -Number.MIN_VALUE, .005, undefined as unknown as number, -.01, .01, NaN],
+      entryT: [NaN, Infinity, -Infinity, -0, 0, H, H, H, undefined as unknown as number, 2 * H, 2 * H, 3 * H] };
+    const direct = new SignalAcceptIndex([exceptional]), reference = generic([exceptional]);
+    assert.equal(digest(direct), digest(reference));
+    for (const key of columns(direct).keys())
+      for (const t of [H, 2 * H, 3 * H, 4 * H]) assert.deepEqual(direct.stats(key, t, 6), reference.stats(key, t, 6));
   });
 });

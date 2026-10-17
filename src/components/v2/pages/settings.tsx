@@ -7,6 +7,7 @@ import { signalConfigCounts } from "../signal-units";
 import { signalProgressCounts } from "../progression";
 import {
   DEFAULT_BLOCK,
+  DEFAULT_SETTINGS,
   GATE_PRESETS,
   MAX_DDT_CHOICES,
   GENERAL_RANGE,
@@ -1082,6 +1083,7 @@ export function StepList(props: {
 /** One protect range beside the wide grid: switch, TP / SL ranges (min / max / step), trails, own floors. */
 export function RangeEditor(props: {
   grid: Record<string, unknown>;
+  cost?: number;
   k: "short" | "minimal" | "general" | "long" | "micro";
   title: string;
   info: string;
@@ -1108,6 +1110,10 @@ export function RangeEditor(props: {
     });
   // Micro's targets are net of the round-trip cost by default: the price target is tp + cost
   const net = props.k === "micro" && s.tpNetOfCost !== false;
+  const costText = props.cost === undefined ? "the configured round-trip cost" : `${fmt.num(props.cost * 100, 3)} % round-trip cost`;
+  const stopFloorText = !(s.minSlNet && s.minSlNet > 0) ? "disabled; Min SL applies"
+    : props.cost === undefined ? "this net value plus the configured round-trip cost"
+    : `${fmt.num(s.minSlNet * 100, 3)} % net + ${fmt.num(props.cost * 100, 3)} % cost = ${fmt.num((s.minSlNet + props.cost) * 100, 3)} %`;
   const cells = s.tp.length * s.slOfTp.length * s.trailOfTp.length;
   // the engine's own defaults (pipeline.ts baseCells): best = range ?? grid ?? true; ownBase = range ?? the range's
   // default (RANGE_OWN_BASE: Micro and Minimal on) ?? best
@@ -1151,7 +1157,7 @@ export function RangeEditor(props: {
           {props.k === "micro" && (
             <Field
               label="TP net of the position cost"
-              hint="on: TP is the profit per winning order after the round-trip cost; the price target is TP + cost (0.1 % net at a 0.2 % cost = 0.3 %)"
+              hint={`on: TP is the profit per winning order after ${costText}; the price target is the configured net TP plus that cost`}
             >
               <Switch label="TP net of cost" checked={net} onChange={(v) => props.set(p("tpNetOfCost"), v)} />
             </Field>
@@ -1159,7 +1165,7 @@ export function RangeEditor(props: {
           {props.k === "micro" && (
             <Field
               label="Min SL net of the position cost (%)"
-              hint="Micro's stop floor, calculated from the cost: this value plus the round-trip position cost (0.2 % + 0.2 % = 0.4 % today; a higher measured live cost raises it). It stands in for Min SL and the evaluation floor below, so no Micro cell is evaluated or traded with a tighter stop. Live, the exchange's own minimum stop distance per symbol still applies on top · 0 = off (Min SL applies)"
+              hint={`Micro's stop floor is ${stopFloorText}. It stands in for Min SL and the evaluation floor below, so no Micro cell is evaluated or traded with a tighter stop. Live, the exchange's own minimum stop distance per symbol still applies on top · 0 = off (Min SL applies)`}
             >
               <Num
                 pct
@@ -1259,7 +1265,7 @@ export function RangeEditor(props: {
           {props.k === "micro" && (
             <Field
               label="Smallest net target (× cost)"
-              hint="Micro net targets below this multiple of the round-trip cost are not computed: at a 0.10 % net target with a 0.20 % cost the cost is two thirds of the 0.30 % price target, so one tick of slippage flips the order's sign · 0 = every target"
+              hint={`Micro net targets below this multiple of ${costText} are not computed; a small net target relative to costs leaves little room for additional slippage · 0 = every target`}
             >
               <Num
                 step={0.25}
@@ -1317,42 +1323,43 @@ export function MinimalRange(props: { grid: Record<string, unknown> | object; se
   );
 }
 
-/** General range: 14–22× position cost (2.8–4.4 %), step 2×, SL 0.5–1× TP, two trail widths. */
+/** General price targets, stop ratios and floors follow the configured default grid. */
 export function GeneralRange(props: { grid: Record<string, unknown> | object; set: (path: string[], v: unknown) => void }) {
   return (
     <RangeEditor
       grid={props.grid as Record<string, unknown>}
       k="general"
       title="General range"
-      info="TP 14–22× the 0.2 % position cost (2.8–4.4 %), step 2× (14× belongs to Short), SL 0.5–1× the target. Orders tracked as G."
+      info={`Default TP ${fmt.num(GENERAL_RANGE.tp[0] * 100, 1)}–${fmt.num(GENERAL_RANGE.tp.at(-1)! * 100, 1)}% price distance, SL ${fmt.num(GENERAL_RANGE.slOfTp[0], 2)}–${fmt.num(GENERAL_RANGE.slOfTp.at(-1)!, 2)}× the target (stop floor ${fmt.num(GENERAL_RANGE.minSl! * 100, 1)}%, trail floor ${fmt.num(GENERAL_RANGE.minTrail! * 100, 1)}%). The editable values below define the current grid; evaluation subtracts the configured round-trip cost. Orders tracked as G.`}
       defaults={GENERAL_RANGE}
       set={props.set}
     />
   );
 }
 
-/** Long range: 22–32× position cost (4.4–6.4 %), step 2×, SL 0.5–1× TP, two trail widths. */
+/** Long price targets, stop ratios and floors follow the configured default grid. */
 export function LongRange(props: { grid: Record<string, unknown> | object; set: (path: string[], v: unknown) => void }) {
   return (
     <RangeEditor
       grid={props.grid as Record<string, unknown>}
       k="long"
       title="Long range"
-      info="TP 22–32× the 0.2 % position cost (4.4–6.4 %), step 2× (22× belongs to General), SL 0.5–1× the target. Orders tracked as L."
+      info={`Default TP ${fmt.num(LONG_RANGE.tp[0] * 100, 1)}–${fmt.num(LONG_RANGE.tp.at(-1)! * 100, 1)}% price distance, SL ${fmt.num(LONG_RANGE.slOfTp[0], 2)}–${fmt.num(LONG_RANGE.slOfTp.at(-1)!, 2)}× the target (stop floor ${fmt.num(LONG_RANGE.minSl! * 100, 1)}%, trail floor ${fmt.num(LONG_RANGE.minTrail! * 100, 1)}%). The editable values below define the current grid; evaluation subtracts the configured round-trip cost. Orders tracked as L.`}
       defaults={LONG_RANGE}
       set={props.set}
     />
   );
 }
 
-/** Micro range: net 0.1–0.4 % after the position cost (price targets 0.3–0.6 % at 0.2 %), SL 1–5× step 0.25. */
-export function MicroRange(props: { grid: Record<string, unknown> | object; set: (path: string[], v: unknown) => void }) {
+/** Micro net targets add the current position cost; SL 1–5× the resulting price target, step 0.25. */
+export function MicroRange(props: { grid: Record<string, unknown> | object; cost?: number; set: (path: string[], v: unknown) => void }) {
   return (
     <RangeEditor
       grid={props.grid as Record<string, unknown>}
+      cost={props.cost}
       k="micro"
       title="Micro range"
-      info="Default TP 0.1–0.4% net after the round-trip position cost (price targets 0.3–0.6% at a 0.2% cost), SL 1–5× the price target, step 0.25. Current targets, stop floors and enabled state are shown below; the net-target setting adds the configured cost. Enabled by default; each computed cell must pass its own admission gates. Orders tracked as U."
+      info={`Default TP ${fmt.num(MICRO_RANGE.tp[0] * 100, 2)}–${fmt.num(MICRO_RANGE.tp.at(-1)! * 100, 2)}% net after the configured round-trip position cost, SL 1–5× the price target, step 0.25. Current targets, stop floors and enabled state are shown below; the net-target setting adds the configured cost. Enabled by default; each computed cell must pass its own admission gates. Orders tracked as U.`}
       defaults={MICRO_RANGE}
       set={props.set}
     />
@@ -1520,14 +1527,14 @@ export function RangeFit(props: {
 }
 
 /** Every protect range with its switch (Settings and the preset dialog). */
-export function ProtectRanges(props: { grid: object; set: (path: string[], v: unknown) => void }) {
+export function ProtectRanges(props: { grid: object; cost?: number; set: (path: string[], v: unknown) => void }) {
   return (
     <>
       <MinimalRange grid={props.grid} set={props.set} />
       <ShortRange grid={props.grid} set={props.set} />
       <GeneralRange grid={props.grid} set={props.set} />
       <LongRange grid={props.grid} set={props.set} />
-      <MicroRange grid={props.grid} set={props.set} />
+      <MicroRange grid={props.grid} cost={props.cost} set={props.set} />
       <MinimalPlusRange grid={props.grid as never} set={props.set} />
       <RangeGate grid={props.grid as never} set={props.set} />
       <RangeFit grid={props.grid as never} set={props.set} />
@@ -2097,7 +2104,7 @@ export function SettingsPage() {
             </Field>
             <Field
               label="Base sets min PF"
-              hint="the PF from which Base builds and evaluates a pair's config sets (one floor for every range). Each set still has to clear its own stage / range minimum before it can trade, so this only widens what is computed · 0.5 – 1.5"
+              hint="Base's prefilter PF for untagged Wide / fallback config sets. Tagged ranges retain their configured minimums, and stricter indication floors still apply. Every computed set must pass its own later stage / range gates before entry · 0.5 – 1.5"
             >
               <Num
                 step={0.01}
@@ -2175,7 +2182,7 @@ export function SettingsPage() {
       <div className="v2-grid v2-cols-2">
         <Panel
           title="Position cost"
-          sub="as charged on the exchange, per side — the engine deducts 2 × (taker + slippage) on every closed position"
+          sub="modeled per-side fees and slippage — the round-trip model is 2 × (taker + slippage); measured venue fills remain authoritative"
         >
           <div className="v2-grid v2-cols-3">
             <Field label="Taker fee (%)" hint="BingX standard 0.05">
@@ -2184,10 +2191,10 @@ export function SettingsPage() {
                 step={0.001}
                 min={0}
                 max={0.01}
-                value={s.fees?.taker ?? 0.0005}
+                value={s.fees?.taker ?? DEFAULT_SETTINGS.fees.taker}
                 onChange={(v) => {
                   set(["fees", "taker"], v);
-                  set(["cost"], +(2 * (v + (s.fees?.slippage ?? 0.0005))).toFixed(5));
+                  set(["cost"], +(2 * (v + (s.fees?.slippage ?? DEFAULT_SETTINGS.fees.slippage))).toFixed(5));
                 }}
               />
             </Field>
@@ -2197,7 +2204,7 @@ export function SettingsPage() {
                 step={0.001}
                 min={0}
                 max={0.01}
-                value={s.fees?.maker ?? 0.0002}
+                value={s.fees?.maker ?? DEFAULT_SETTINGS.fees.maker}
                 onChange={(v) => set(["fees", "maker"], v)}
               />
             </Field>
@@ -2207,17 +2214,17 @@ export function SettingsPage() {
                 step={0.001}
                 min={0}
                 max={0.02}
-                value={s.fees?.slippage ?? 0.0005}
+                value={s.fees?.slippage ?? DEFAULT_SETTINGS.fees.slippage}
                 onChange={(v) => {
                   set(["fees", "slippage"], v);
-                  set(["cost"], +(2 * ((s.fees?.taker ?? 0.0005) + v)).toFixed(5));
+                  set(["cost"], +(2 * ((s.fees?.taker ?? DEFAULT_SETTINGS.fees.taker) + v)).toFixed(5));
                 }}
               />
             </Field>
           </div>
           <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)", marginTop: 6 }}>
-            Round trip deducted per position: <strong>{((s.cost ?? 0) * 100).toFixed(3)} %</strong>.
-            With auto-cost on, it is raised to the measured live cost once 40+ fills were measured.
+            Round trip deducted per position: <strong>{((s.cost ?? DEFAULT_SETTINGS.cost) * 100).toFixed(3)} %</strong>.
+            With auto-cost on, a measured cost from at least 40 fills and 20 fee measurements can raise the model.
           </div>
         </Panel>
         <Panel
@@ -3042,7 +3049,7 @@ export function SettingsPage() {
                 </div>
               </div>
             </div>
-            <ProtectRanges grid={s.grid} set={set} />
+            <ProtectRanges grid={s.grid} cost={s.cost} set={set} />
           </div>
         </Panel>
       </div>
@@ -3239,7 +3246,7 @@ export function SettingsPage() {
             </Field>
             <Field
               label="Symbol gate"
-              hint="Real, per symbol: veto = a proven loser on the symbol does not open · proven = the symbol must already clear min PF · per side = judged on that direction only · off = no symbol gate"
+              hint={`Real engine configs, on their own symbol history: veto judges positive net and minimum PF after the Symbol gate sample is reached. ${s.gates.warmup !== false ? "Sample warm-up is on: proven permits no own closes yet, then judges net and PF from the first close, even below that sample." : "Sample warm-up is off: proven requires the Symbol gate sample plus positive net and minimum PF."} Per side judges that direction independently · off = no symbol gate`}
             >
               <select
                 className="v2-select"
@@ -3306,7 +3313,7 @@ export function SettingsPage() {
             </Field>
             <Field
               label="Symbol gate sample"
-              hint="closes a config needs on the symbol before the symbol gate judges it · 1 – 50"
+              hint={`Own-symbol closes required before veto modes judge the result. ${s.gates.warmup !== false ? "With Sample warm-up on, proven modes permit zero own closes and judge from the first close; this sample does not block them." : "With Sample warm-up off, proven modes require this many closes and a passing result."} Per-side modes count only that direction · 1 – 50`}
             >
               <Num
                 value={wf.symMinN ?? 2}

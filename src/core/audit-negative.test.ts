@@ -271,7 +271,7 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
       }),
     },
   ],
-  "stages: Main ⊆ Base-validated ∪ held": [
+  "stages: Main ⊆ Base-validated ∪ held ∪ measured": [
     {
       run: "overall",
       what: "a Main pair neither validated nor held",

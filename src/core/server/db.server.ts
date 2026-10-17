@@ -437,6 +437,7 @@ const DURABLE_KEYS = new Set([
   "presets",
   "presetBacktests",
   "presetSeries",
+  "modeledCostMigrationArchive",
   "activePreset",
   "liveModes",
   "controlStatus",

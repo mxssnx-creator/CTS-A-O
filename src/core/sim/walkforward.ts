@@ -81,6 +81,7 @@ import {
   type UnitStats,
 } from "../metrics/stats.ts";
 import { ATR_PERIOD, simulate, splitSides } from "./backtest.ts";
+import { headBars } from "../market/bars.ts";
 import { simulateDca } from "./dca.ts";
 import { simulateAxis, simulateAxisDesk, snapTpRatio } from "./axis.ts";
 import { adjustProtect, setKeyOf, type AdjustState } from "../adjust.ts";
@@ -353,6 +354,10 @@ export interface WalkForwardOptions {
    * open position stays to manage it, but opens nothing new). Unset = no Base restriction (tests, research tools).
    */
   basePassed?: ReadonlySet<string>;
+  /** Engine pair → admitted range tags ("" = Wide), before diagnostic allSets expansion. */
+  basePassedRanges?: Readonly<Record<string, readonly string[]>>;
+  /** Qualified pairs whose existing builder policy admits independent untagged DCA/Axis ladders. */
+  baseWideLadderPairs?: ReadonlySet<string>;
   /**
    * signal pairs ("bot|ind") that passed their Base gate in the current compute: a held signal pair keeps its tapes
    * to manage its positions but opens nothing new. Unset = no restriction.
@@ -1411,6 +1416,8 @@ export type EntryFloors = {
   entry?: EntryFilter | null;
   /** range cells fitted to each indication's horizon (rangeFit); unset = every range cell on every indication */
   rangeFit?: RangeFit | null;
+  /** Only candles completed by this causal boundary may select range targets. */
+  rangeFitCutT?: number;
   /** range tapes with fewer closes can never take a seat and are not kept (3, or the range gate's last N) */
   rangeMinN?: number;
   /** shortest lane (minutes) per range tag: a range cell is not computed on a faster lane (rangeMinTfOf) */
@@ -1578,10 +1585,13 @@ export function indHorizonBars(ind: string): number {
   return 14;
 }
 
-/** Median per-minute volatility (std of log returns / √tf) over the universe's series. */
-export function universeSigma1m(bars: readonly Bars[]): number {
+/** Median per-minute volatility, optionally restricted to candles completed by the fit boundary. */
+export function universeSigma1m(bars: readonly Bars[], cutT?: number): number {
+  if (cutT !== undefined && (!Number.isFinite(cutT) || cutT < 0))
+    throw new Error("rangeFitCutT must be a finite nonnegative completed-candle boundary");
   const xs: number[] = [];
-  for (const b of bars) {
+  for (const source of bars) {
+    const b = cutT === undefined ? source : headBars(source, cutT);
     const n = b.n ?? b.c.length;
     if (n < 30) continue;
     let s = 0;
@@ -1703,7 +1713,7 @@ export function* buildTapesGen(
   const syms = u.bars.map((b) => b.sym);
   const out: ConfigTape[] = [];
   // range cells fitted to each indication's horizon, and range tapes that could never seat dropped
-  const sigma1m = floors?.rangeFit ? universeSigma1m(u.bars) : 0;
+  const sigma1m = floors?.rangeFit ? universeSigma1m(u.bars, floors.rangeFitCutT) : 0;
   const rangeMinN = Math.max(0, floors?.rangeMinN ?? 0);
   const bs = floors?.buildStats;
   const onlyIds = floors?.onlyIds;
@@ -2315,6 +2325,22 @@ export function kindExecutable(kind: StratKind, tg: StrategyToggles): boolean {
   }
 }
 
+/** Diagnostic tape construction never expands the engine's Base-qualified pair/range cohort. */
+export function baseAllowsTape(
+  tp: Pick<ConfigTape, "bot" | "ind" | "protect" | "kind">,
+  o: Pick<WalkForwardOptions, "basePassed" | "basePassedRanges" | "baseWideLadderPairs">,
+  /** Inverted research entries retain the source seat's qualification while executing its mirror tape. */
+  pair = `${tp.bot}|${tp.ind}`,
+): boolean {
+  if (o.basePassed && !o.basePassed.has(pair)) return false;
+  const ranges = o.basePassedRanges?.[pair];
+  if (o.basePassedRanges && !ranges?.length) return false;
+  // Untagged DCA/Axis follows its independent builder policy; it never qualifies a plain Wide or tagged cell.
+  if (!tp.protect.tag && (tp.kind === "dca" || tp.kind === "dca-active" || tp.kind === "axis") && o.baseWideLadderPairs?.has(pair))
+    return true;
+  return !o.basePassedRanges || ranges!.includes(tp.protect.tag ?? "");
+}
+
 /**
  * Every Axis set the settings ask for, each its own tape: every mode (`modes`, else `mode`) × range type × ladder
  * depth, desk sets also plain and hybrid (`hybrids`, else `hybrid`); revert with fixed exits: one set per protect.
@@ -2922,7 +2948,7 @@ export function selectAt(
   const botOk = o.bots.length ? new Set<string>(o.bots) : null;
   for (const tp of tapes) {
     if (botOk && !botOk.has(tp.bot)) continue;
-    if (o.basePassed && !o.basePassed.has(`${tp.bot}|${tp.ind}`)) continue;
+    if (!baseAllowsTape(tp, o)) continue;
     const a = lowerBound(tp.exitT, fromLong);
     const b = lowerBound(tp.exitT, t);
     if (b - a < minLong) continue;
@@ -2990,7 +3016,7 @@ export function selectDurable(
   const basePf = new Map<string, number>();
   for (const tp of tapes) {
     if (botOk && !botOk.has(tp.bot)) continue;
-    if (o.basePassed && !o.basePassed.has(`${tp.bot}|${tp.ind}`)) continue;
+    if (!baseAllowsTape(tp, o)) continue;
     // the window a tape can be judged on: the long window, clipped to where its lane's data begins (at least
     // the pre-calc window, so a lane with too little history is not judged on a sliver)
     const from = Math.min(t - o.preH * H, Math.max(from0, tp.fromT ?? from0));
@@ -3153,7 +3179,7 @@ export function configEval(tp: ConfigTape, t: number, o: WalkForwardOptions): Co
     a,
     b,
     win(tp, a, b),
-    (o.gates.maxDdtH * Math.max(o.longH, o.preH)) / 72,
+    ddtLimitH(o, tp, t, Math.max(o.longH, o.preH)),
   );
 }
 
@@ -3290,6 +3316,8 @@ function selSig(o: WalkForwardOptions): string {
   return [
     o.bots.join(","),
     objId(o.basePassed),
+    objId(o.basePassedRanges),
+    objId(o.baseWideLadderPairs),
     JSON.stringify(o.toggles ?? null),
     o.signalOwnBase ? 1 : 0,
     o.seatPer ?? "",
@@ -3312,7 +3340,7 @@ function selInfoOf(
   const fam = familyOf(tp.kind);
   return {
     tp,
-    inScope: !(botOk && !botOk.has(tp.bot)) && !(o.basePassed && !o.basePassed.has(pairKey)),
+    inScope: !(botOk && !botOk.has(tp.bot)) && baseAllowsTape(tp, o),
     canSeat: !tp.heldOnly && tapeExecutable(tp, o),
     base: fam === "base",
     pairKey,
@@ -3848,8 +3876,11 @@ function signalContextOf(tp: ConfigTape, sym: string, side: number): Uint32Array
   const slot = si * 2 + (side > 0 ? 1 : 0);
   let indices = contexts.get(slot);
   if (!indices) {
+    // A universe has one slot per symbol × timeframe. makeTape maps a symbol to its last slot, while recovered
+    // tapes can retain another matching slot. Every slot with the same symbol belongs to this exact context.
+    const symbols = Uint8Array.from(tp.syms, (s) => s === sym ? 1 : 0);
     const own: number[] = [];
-    for (let i = 0; i < tp.n; i++) if (tp.symI[i] === si && tp.side[i] === side) own.push(i);
+    for (let i = 0; i < tp.n; i++) if (symbols[tp.symI[i]] && tp.side[i] === side) own.push(i);
     contexts.set(slot, (indices = Uint32Array.from(own)));
   }
   return indices;
@@ -3973,6 +4004,9 @@ export function execDecision(
 ): ExecDecision {
   const tg = o.toggles;
   if (tp.heldOnly) return { ok: false, why: "heldOnly" };
+  const pair = `${tp.bot}|${tp.ind}`;
+  if (!isSignalInd(tp.ind) && !baseAllowsTape(tp, o, o.invertSeats ? mirrorId(pair) ?? pair : pair))
+    return { ok: false, why: "base" };
   if (!tapeExecutable(tp, o)) return { ok: false, why: "toggle" };
   if (o.excludeRanges?.length && tp.protect.tag && o.excludeRanges.includes(tp.protect.tag))
     return { ok: false, why: "rangeOff" };

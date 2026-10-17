@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 import { execFileSync } from "node:child_process";
-import { sessionStudySourceFiles, studyCanonical, studyExactJson, studySha256 } from "./lib/session-study.mjs";
+import { sessionStudySourceFiles, studyCanonical, studyExactJson, studySha256, validateFrozenSessionTiming } from "./lib/session-study.mjs";
 
 const args = process.argv.slice(2), arg = (k, d) => { const i = args.indexOf(`--${k}`); return i < 0 ? d : args[i + 1]; };
 if (args.includes("--help")) {
@@ -36,7 +36,7 @@ const make = (settings, wf = {}) => {
   const rt = new CoreRuntime(db, { symbols: symbols.length, signals: { enabled: true } }, { market: "bingx", replay: true, priceStream: null, evaluationFromT, feed: { history: async () => [], klines: async () => [], tickers: async () => [] } });
   rt.db.kvSet("liveSince", tradeStartT);
   rt.updateSettings(settings); rt.updateSettings({ symbols: symbols.length });
-  rt.updateSettings({}, { preH, simH: runH, ...wf, causalBase: true });
+  rt.updateSettings({}, { ...wf, preH, simH: runH, causalBase: true });
   rt.wf = { ...rt.wf, longH: preH };
   return { rt, db };
 };
@@ -63,6 +63,7 @@ const protocol = {
   account: { balance: 10, leverage: 10, sizing: actualSettings.sizing },
   policy: { qualification: "No PF/sample/DD/Last-N thresholds relaxed. All configured ranges remain enabled for initial 22-symbol evaluation.", scoring: "Post-Base qualified engine execution; independently qualified exact Signal configs separately; combined funded account separately.", directions: "Both directions enabled; realized counts reported, never fabricated.", evidence: "Offline model only; no venue fills or live promotion." },
 };
+validateFrozenSessionTiming(protocol);
 mkdirSync(out, { recursive: true });
 const deskPath = resolve(out, "desk.json"), protocolPath = resolve(out, "protocol.json");
 writeFileSync(deskPath, JSON.stringify({ settings: actualSettings, wf: actualWf, why: protocol.policy }, null, 2) + "\n");

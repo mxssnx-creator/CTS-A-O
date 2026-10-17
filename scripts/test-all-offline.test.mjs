@@ -9,16 +9,18 @@ import { testAllInvocation } from "./lib/test-all-invocation.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const marker = "globalThis[Symbol.for('cts.core.offline.guard')]";
-function fixture(t) {
+function fixture(t, { memoryTimeout = false } = {}) {
   const root = mkdtempSync(join(tmpdir(), "cts-test-all-offline-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   for (const dir of ["scripts/lib", "src/core/server"]) mkdirSync(join(root, dir), { recursive: true });
-  for (const name of ["scripts/test-all.mjs", "scripts/test-core.mjs", "scripts/lib/test-all-invocation.mjs", "scripts/lib/core-test-offline-guard.cjs"])
+  for (const name of ["scripts/test-all.mjs", "scripts/test-all-verdict.mjs", "scripts/test-core.mjs", "scripts/lib/test-all-invocation.mjs", "scripts/lib/core-test-offline-guard.cjs"])
     copyFileSync(join(ROOT, name), join(root, name));
   const legacy = readFileSync(join(ROOT, "scripts/test-preload.mjs"), "utf8");
   writeFileSync(join(root, "scripts/test-preload.mjs"), `if (!${marker}) throw Error('legacy preload ran before portable guard');\n${legacy}`);
   // Deterministic headroom isolates the runner governor; no host allocation or market/exchange code runs here.
-  writeFileSync(join(root, "src/core/server/memguard.server.ts"), "export const cgroupAvailMb = () => 10000;\n");
+  writeFileSync(join(root, "src/core/server/memguard.server.ts"), memoryTimeout
+    ? "let elapsed = 0; const start = Date.now(); Date.now = () => start + elapsed; export const cgroupAvailMb = () => { elapsed += 600001; return 0; };\n"
+    : "export const cgroupAvailMb = () => 10000;\n");
   writeFileSync(join(root, "src/core/proof.ts"), "export function fixtureValue(input: boolean) {\n  if (input) return 7;\n  return 9;\n}\n");
   writeFileSync(join(root, "scripts/fixture.test.mjs"), `
 import {test} from 'node:test';
@@ -45,7 +47,7 @@ test('lightweight all-runner offline proof', async () => {
 `);
   return root;
 }
-function runAll(root, { mode, slow, end, killBelow = 1600 } = {}) {
+function runAll(root, { mode, slow, end, killBelow = 1600, minFree = 0, files = ["scripts/fixture.test.mjs"], only } = {}) {
   const env = { ...process.env, BINGX_API_KEY: "fixture-only", CTS_CORE_LIVE: "1", CTS_TEST_NETWORK: "1", FIXTURE_MODE: mode ?? "pass" };
   delete env.NODE_TEST_CONTEXT;
   delete env.NODE_OPTIONS;
@@ -55,7 +57,7 @@ function runAll(root, { mode, slow, end, killBelow = 1600 } = {}) {
   if (slow !== undefined) { env.CTS_CORE_SLOW = slow; env.EXPECT_SLOW = slow === "1" ? "1" : "0"; }
   if (end !== undefined) { env.CTS_CORE_SYNTHETIC_END = end; env.EXPECT_END = end; }
   const result = spawnSync(process.execPath, ["--experimental-strip-types", "--no-warnings", join(root, "scripts/test-all.mjs"),
-    "--files", "scripts/fixture.test.mjs", "--min-free", "0", "--kill-below", String(killBelow), "--out", "report", "--logs", join(root, "logs")],
+    "--files", files.join(","), ...(only ? ["--only", only] : []), "--min-free", String(minFree), "--kill-below", String(killBelow), "--out", "report", "--logs", join(root, "logs")],
   { cwd: root, env, encoding: "utf8", timeout: 20000 });
   assert.equal(result.error, undefined, result.error?.message);
   const reports = readdirSync(join(root, "report")).filter((name) => name.endsWith(".json"));
@@ -101,9 +103,51 @@ test("real all-runner retains a fixture's failing exit status and failure report
 
 test("real all-runner retains its memory kill governor and reports the killed file", (t) => {
   const root = fixture(t);
-  const { result, report } = runAll(root, { mode: "hold", killBelow: 10001 });
+  writeFileSync(join(root, "scripts/z-queued.test.mjs"), "throw Error('the memory-blocked queue must never execute');\n");
+  const { result, report } = runAll(root, { mode: "hold", killBelow: 10001, files: ["scripts/fixture.test.mjs", "scripts/z-queued.test.mjs"] });
   assert.equal(result.status, 1, result.stderr + result.stdout);
   assert.equal(report.totals.filesFailed, 1);
   assert.equal(report.files[0].status, "killed");
   assert.match(report.files[0].reason, /memory: container had 10000 MB available/);
+  assert.equal(report.totals.filesNotRun, 1);
+  assert.equal(report.files[1].status, "not-run");
+});
+
+test("a memory admission timeout fails verification once and records the entire unrun queue", (t) => {
+  const root = fixture(t, { memoryTimeout: true });
+  writeFileSync(join(root, "scripts/z-queued.test.mjs"), "throw Error('resource-blocked queued file must never execute');\n");
+  const { result, report } = runAll(root, { minFree: 1, files: ["scripts/fixture.test.mjs", "scripts/z-queued.test.mjs", "scripts/missing.test.mjs"] });
+  assert.equal(result.status, 1, result.stderr + result.stdout);
+  assert.equal(report.verdict.complete, false);
+  assert.equal(report.totals.files, 3);
+  assert.equal(report.totals.filesSkipped, 1);
+  assert.equal(report.totals.filesMissing, 1);
+  assert.equal(report.totals.filesNotRun, 1);
+  assert.equal(report.totals.tests, 0);
+  assert.equal(report.durationMs, 600001, "one deterministic admission window, not one per queued file");
+  assert.equal(report.files.find((row) => row.file === "scripts/z-queued.test.mjs").status, "not-run");
+  assert.deepEqual(readdirSync(join(root, "logs")), [], "neither blocked file starts a child process");
+});
+
+test("missing requested files and an empty selection cannot report successful verification", (t) => {
+  const missingRoot = fixture(t);
+  const missing = runAll(missingRoot, { files: ["scripts/not-present.test.mjs"] });
+  assert.equal(missing.result.status, 1, missing.result.stderr + missing.result.stdout);
+  assert.equal(missing.report.totals.filesMissing, 1);
+  assert.equal(missing.report.verdict.complete, false);
+  const emptyRoot = fixture(t);
+  const empty = runAll(emptyRoot, { files: [], only: "no-test-matches-this" });
+  assert.equal(empty.result.status, 1, empty.result.stderr + empty.result.stdout);
+  assert.equal(empty.report.totals.files, 0);
+  assert.match(empty.report.verdict.issues[0], /No test files/);
+});
+
+test("completed TAP opt-in skips remain separate from unrun file coverage", (t) => {
+  const root = fixture(t);
+  writeFileSync(join(root, "scripts/fixture.test.mjs"), "import {test} from 'node:test'; test('explicit opt-in', {skip:'requires an opt-in'}, () => {});\n");
+  const { result, report } = runAll(root);
+  assert.equal(result.status, 0, result.stderr + result.stdout);
+  assert.equal(report.totals.skipped, 1);
+  assert.equal(report.totals.filesSkipped, 0);
+  assert.equal(report.verdict.complete, true);
 });

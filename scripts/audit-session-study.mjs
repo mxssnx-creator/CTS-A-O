@@ -31,6 +31,7 @@ function summarize(rows, gateScore = 4) {
   const noLoss = available && gp > 0 && gl === 0;
   const state = !rows.length ? 'empty' : !available ? 'unknown' : noLoss ? 'no-loss' : gp + gl === 0 ? 'flat' : 'measured';
   return { closes: rows.length, symbols: new Set(rows.map((x) => x.sym)).size,
+    entryGroups: new Set(rows.map((x) => JSON.stringify([x.sym, x.side, x.entryT]))).size,
     configs: new Set(rows.map((x) => x.cfg)).size, unknownReturns, unknownCash, state,
     unitGp: available ? gp : null, unitGl: available ? gl : null, unitNet: available ? gp - gl : null,
     exactPf: state === 'measured' ? gp / gl : state === 'flat' ? 0 : null,
@@ -59,8 +60,8 @@ export function auditSessionStudy(raw, data, { purpose = 'development', protocol
   const check = (name, ok, actual = null, expected = null) => checks.push({ name, ok, actual, expected });
   const gateScore = raw.qualification?.noLossGateScore ?? data.evidence?.qualification?.noLossGateScore ?? 4;
   const allocations = data.sizedOrders;
-  const funded = [], excluded = { zeroAllocations: 0, unknownAllocations: 0, dustAllocations: 0 };
-  let unitMismatches = 0, cashMismatches = 0;
+  const funded = [], excluded = { zeroAllocations: 0, unknownAllocations: 0, dustAllocations: 0, invalidAllocations: 0 };
+  let unitMismatches = 0, cashMismatches = 0, contradictoryUnitEvidence = 0;
   if (Array.isArray(allocations)) {
     check('all virtual closes retain exact allocation rows', allocations.length === (raw.trades?.length ?? 0), allocations.length, raw.trades?.length ?? 0);
     const indices = new Set();
@@ -70,11 +71,21 @@ export function auditSessionStudy(raw, data, { purpose = 'development', protocol
         throw new Error('Allocation closeIndex/identity is missing, duplicated or mismatched');
       indices.add(a.closeIndex);
       if (!finite(a.allocatedNotional)) { excluded.unknownAllocations++; continue; }
+      const volume = tr.vol === undefined ? 1 : tr.vol;
+      const expectedNotional = a.unitNotional * volume;
+      if (!finite(a.unitNotional) || a.unitNotional < 0 || !finite(volume) || volume <= 0 ||
+          !finite(expectedNotional) || a.allocatedNotional < 0 ||
+          Math.abs(expectedNotional - a.allocatedNotional) > 1e-12 * Math.max(1, expectedNotional, a.allocatedNotional) ||
+          (a.allocatedNotional > EPS_USD && a.unitNotional === 0)) {
+        excluded.invalidAllocations++; continue;
+      }
       if (a.allocatedNotional === 0) { excluded.zeroAllocations++; continue; }
       if (a.allocatedNotional <= EPS_USD) { excluded.dustAllocations++; continue; }
       if (tr.entryT < startT || tr.entryT >= endT || tr.exitT < tr.entryT || tr.exitT > endT || !raw.symbols.includes(tr.sym))
         throw new Error('Funded settled row lies outside the execution sample');
       const unitR = modeledUnit(tr);
+      if (finite(tr.unitR) && finite(tr.r) && finite(tr.mult) && tr.mult > 0 &&
+          Math.abs(tr.unitR - tr.r / tr.mult) > 1e-12 * Math.max(1, Math.abs(tr.unitR), Math.abs(tr.r / tr.mult))) contradictoryUnitEvidence++;
       if (!((unitR === null && a.unitR === null) || (finite(unitR) && finite(a.unitR) && Math.abs(unitR - a.unitR) <= 1e-12))) unitMismatches++;
       const sizedPnl = finite(a.unitNotional) && finite(tr.r) ? tr.r * a.unitNotional : null;
       if (!(finite(sizedPnl) && finite(a.sizedPnl) && Math.abs(sizedPnl - a.sizedPnl) <= 1e-12)) cashMismatches++;
@@ -82,8 +93,10 @@ export function auditSessionStudy(raw, data, { purpose = 'development', protocol
     }
   } else check('exact allocation rows recorded (--signal-progress)', false);
   check('all unit returns agree with exact allocation rows', unitMismatches === 0, unitMismatches, 0);
+  check('explicit unit evidence agrees with recorded sized return and multiplier', contradictoryUnitEvidence === 0, contradictoryUnitEvidence, 0);
   check('cash is weighted exactly once on every funded close', cashMismatches === 0, cashMismatches, 0);
-  const fundingKnown = Array.isArray(allocations) && !excluded.unknownAllocations && !excluded.dustAllocations;
+  check('allocated notional equals nonnegative unit funding times positive trade volume', excluded.invalidAllocations === 0, excluded.invalidAllocations, 0);
+  const fundingKnown = Array.isArray(allocations) && !excluded.unknownAllocations && !excluded.dustAllocations && !excluded.invalidAllocations;
   const sampleSummary = (xs) => fundingKnown ? summarize(xs, gateScore) : { ...summarize(xs, gateScore), closes: null, state: 'unknown', exactPf: null, unitGp: null, unitGl: null, unitNet: null };
   const total = sampleSummary(funded);
   check('funded close count reconciles to report', Array.isArray(allocations) && total.closes === data.total?.fundedOrders, total.closes, data.total?.fundedOrders ?? null);
@@ -94,12 +107,21 @@ export function auditSessionStudy(raw, data, { purpose = 'development', protocol
   check('cash net reconciles to report', finite(data.total?.net) && finite(total.sizedNetUsd) && Math.abs(total.sizedNetUsd - data.total.net) <= 2e-6, total.sizedNetUsd, data.total?.net ?? null);
   const engineRows = funded.filter((x) => cohortOf(x) === 'Engine');
   const basePairs = new Map((raw.basePairs ?? []).map((x) => [x.pair, x]));
-  const baseProof = { tested: engineRows.length, passed: 0, failed: 0, missing: 0 };
+  const baseProof = { tested: engineRows.length, passed: 0, failed: 0, missing: 0, taggedRangesTested: 0, taggedRangesFailed: 0, taggedRangesUnknown: 0 };
   for (const x of engineRows) {
     const pair = x.cfg.split('|').slice(0, 2).join('|'), row = basePairs.get(pair);
     if (!row) baseProof.missing++; else if (!row.passed) baseProof.failed++; else baseProof.passed++;
+    // Tagged protections must have passed their own Base range, not a winning sibling range. Untagged
+    // ladder configurations keep their separate post-Base strategy validation and are not tagged-range proof.
+    const tag = /\|(mc|mn|mp|sh|gn|lg)(?:\||$)/.exec(x.cfg)?.[1];
+    if (tag) {
+      baseProof.taggedRangesTested++;
+      if (!Array.isArray(row?.tags)) baseProof.taggedRangesUnknown++;
+      else if (!row.tags.includes(tag)) baseProof.taggedRangesFailed++;
+    }
   }
   check('funded engine orders belong to recorded Base-passed pairs', !baseProof.missing && !baseProof.failed, baseProof);
+  check('tagged engine protections passed their own recorded Base range', !baseProof.taggedRangesFailed && !baseProof.taggedRangesUnknown, baseProof);
   const metadataMatches = !!raw.study && ['sourceSha256', 'feedSha256', 'protocolSha256'].every((k) => /^[a-f0-9]{64}$/.test(raw.study[k] ?? '')) && same(raw.study, data.study);
   check('raw/report frozen study provenance agrees', metadataMatches);
   if (protocol) {
@@ -107,7 +129,14 @@ export function auditSessionStudy(raw, data, { purpose = 'development', protocol
     check('protocol identity and source match', metadataMatches && protocol.id === raw.study.id && protocol.feed?.sha256 === raw.study.feedSha256 && protocol.source?.sha256 === raw.study.sourceSha256);
     check('protocol exact symbols match', same([...(protocol.symbols ?? [])].sort(), [...raw.symbols].sort()));
     check('protocol execution window matches', protocol.window?.tradeStartT === startT && protocol.window?.endT === endT);
+    const live = protocol.actualSettings?.live, caps = data.total?.caps;
+    check('raw and funded report caps match the frozen account policy', !!live && !!caps &&
+      ['maxPositionX', 'maxExposureX'].every((k) => finite(live[k]) && live[k] >= 0 && raw.settings?.live?.[k] === live[k] && caps[k] === live[k]) &&
+      (!(live.maxPositionX > 0 || live.maxExposureX > 0) || caps.on === true));
+    check('raw modeled cost matches the frozen model', finite(protocol.actualSettings?.cost) && raw.settings?.cost === protocol.actualSettings.cost);
   }
+  const basePolicyVerified = protocol?.actualWf?.causalBase === true && protocol?.actualSettings?.grid?.baseRanges === true && protocol?.actualSettings?.grid?.allSets === false;
+  check('frozen policy uses causal Base and independently qualified ranges', basePolicyVerified);
   const hours = [];
   for (let t = startT; t < endT; t += H) {
     const to = Math.min(t + H, endT), xs = funded.filter((x) => x.exitT > t && x.exitT <= to);
@@ -121,7 +150,12 @@ export function auditSessionStudy(raw, data, { purpose = 'development', protocol
   // Close exactly at start belongs to no trading-hour cohort and is invalid for a new entry sample.
   check('hourly funded count reconciles', hours.reduce((n, x) => n + x.combined.closes, 0) === total.closes);
   const mem = raw.engine?.mem;
-  const fullCoverage = !!raw.engine?.coverage && same([...(raw.engine?.universe ?? [])].sort(), [...raw.symbols].sort()) && !!mem && (mem.computeLevel ?? 0) === 0 && (mem.fallback ?? 0) === 0 && (mem.aborts ?? 0) === 0 && data.checksOk === true;
+  const coverage = raw.engine?.coverage;
+  check('complete exact symbol universe processed', same([...(raw.engine?.universe ?? [])].sort(), [...raw.symbols].sort()));
+  check('all requested Base combinations evaluated', !!coverage && finite(coverage.expectedCombos) && coverage.expectedCombos > 0 && coverage.evaluated === coverage.expectedCombos);
+  check('explicit memory telemetry records no degradation or aborted computes', !!mem && ['computeLevel', 'fallback', 'aborts'].every((k) => mem[k] === 0));
+  check('allocation report consistency checks passed', data.checksOk === true);
+  const fullCoverage = checks.every((x) => x.ok);
   const selectionComplete = purpose === 'selection' && raw.symbols.length === 22 && endT - startT === 24 * H && metadataMatches && fullCoverage && checks.every((x) => x.ok);
   const middle = startT + (endT - startT) / 2;
   const cellGroups = new Map();
@@ -159,8 +193,9 @@ export function auditSessionStudy(raw, data, { purpose = 'development', protocol
     hours, cells,
     eligibility: { base: { evaluated: raw.engine?.baseEvaluated ?? null, passed: raw.engine?.basePassed ?? null, byRange: raw.engine?.baseByRange ?? [], firstFailure: raw.engine?.baseWhy ?? [], fundedEngineMembership: baseProof },
       configuredInventory: { engineTapes: raw.engine?.coverage?.engineTapes ?? null, signalTapes: raw.engine?.coverage?.signalTapes ?? null, buildSets: raw.engine?.coverage?.sets ?? null },
+      basePolicyVerified,
       configRunStart: { t: startT, evaluated: runStart.evaluated ?? null, passed: runStart.passed ?? null, firstFailureByRange: raw.tapeAgg?.evalFails ?? {}, afterBase: raw.tapeAgg?.evalAfterBase ?? {} },
-      gateProofLimitation: 'Arithmetic and Base pair membership independently checked. Later exact config verdicts are runtime-recorded scope; hourly aggregate flow is not reconstructed per-entry gate proof.',
+      gateProofLimitation: 'Arithmetic, Base pair membership and tagged protection-range membership independently checked. Untagged ladder and later exact config verdicts are runtime-recorded scope; hourly aggregate flow is not reconstructed per-entry gate proof.',
       firstStepSelection: raw.engine?.realFirstStep ?? null, paperAfterCompute: raw.engine?.paperSelectionAfterCompute ?? null,
       hourlyFlow: raw.stepsByRange ?? [], flowDefinition: 'Engine validated=configs in that step; Signal validated=active exact units; candidates/taken are pre-funding modeled events, not settled fills',
       executionSkips: raw.engine?.skips ?? {}, skipsByRange: raw.engine?.skipsByRange ?? {} },
@@ -183,11 +218,12 @@ export function renderSessionStudyAudit(a) {
   const lines = ['# Frozen session reconciliation', '', `Study: ${a.provenance.study?.id ?? 'unsealed'} · ${a.purpose} · offline modeled execution only.`, '',
     `${a.window.symbols.length} symbols, ${iso(a.window.startT)} → ${iso(a.window.endT)} (${a.window.hours}h).`, '',
     `Reconciliation: ${a.checksOk ? 'PASS' : 'INCOMPLETE / FAILED'}; pruning assessment: ${a.pruning.assessmentAllowed ? 'eligible selection window' : 'not allowed'}.`, '',
-    '| Cohort | Funded settled closes | Unit PF | Sized net $ |', '|---|---:|---|---:|'];
-  for (const x of [{ key: 'Combined', ...a.total }, ...a.cohorts]) lines.push(`| ${x.key} | ${x.closes} | ${pfText(x)} | ${money(x.sizedNetUsd)} |`);
+    '| Cohort | Funded settled closes | Entry groups | Unit PF | Sized net $ |', '|---|---:|---:|---|---:|'];
+  for (const x of [{ key: 'Combined', ...a.total }, ...a.cohorts]) lines.push(`| ${x.key} | ${x.closes} | ${x.entryGroups} | ${pfText(x)} | ${money(x.sizedNetUsd)} |`);
+  lines.push('', 'Entry groups count distinct symbol × direction × entry timestamps. Multiple protection/config closes can share one event; these counts do not establish statistical independence.');
   for (const [name, rows] of [['Type', a.byType], ['Range', a.byRange], ['Direction', a.byDirection]]) {
-    lines.push('', `## ${name}`, '', '| Group | Closes | Symbols | Unit PF | Sized net $ |', '|---|---:|---:|---|---:|');
-    for (const x of rows) lines.push(`| ${x.key} | ${x.closes} | ${x.symbols} | ${pfText(x)} | ${money(x.sizedNetUsd)} |`);
+    lines.push('', `## ${name}`, '', '| Group | Closes | Entry groups | Symbols | Unit PF | Sized net $ |', '|---|---:|---:|---:|---|---:|');
+    for (const x of rows) lines.push(`| ${x.key} | ${x.closes} | ${x.entryGroups} | ${x.symbols} | ${pfText(x)} | ${money(x.sizedNetUsd)} |`);
   }
   lines.push('', '## Hourly funded execution (UTC)', '', '| Hour | Engine closes | Engine PF | Signal closes | Signal PF | Combined PF | Sized net $ |', '|---|---:|---|---:|---|---|---:|');
   for (const h of a.hours) lines.push(`| ${h.from.slice(0, 16).replace('T', ' ')} | ${h.engine.closes} | ${pfText(h.engine)} | ${h.signals.closes} | ${pfText(h.signals)} | ${pfText(h.combined)} | ${money(h.combined.sizedNetUsd)} |`);

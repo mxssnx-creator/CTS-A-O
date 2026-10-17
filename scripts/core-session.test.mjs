@@ -156,9 +156,11 @@ function replay({ caps = false, weighted = false, invalidReturn = false, qualifi
       "--replay", join(dir, "raw.json"), "--caps", caps ? "on" : "off", "--out", join(dir, "report"),
       ...(exhaustedCap ? ["--signal-progress"] : []),
       "--html", join(dir, "html"), "--writeup", join(dir, "writeup.md"), "--quiet", "true"], {
-      encoding: "utf8", timeout: 15_000, env: { ...process.env, CTS_CORE_VARIANTS: "0" },
+      // Bound a stuck child without turning shared-runner startup contention into an accounting failure.
+      // Replay performance is measured separately on frozen sessions, not by this two-trade report fixture.
+      encoding: "utf8", timeout: 60_000, env: { ...process.env, CTS_CORE_VARIANTS: "0" },
     });
-    assert.equal(result.status, invalidReturn ? 1 : 0, result.stderr || result.stdout);
+    assert.equal(result.status, invalidReturn ? 1 : 0, [result.error?.message, result.stderr, result.stdout].filter(Boolean).join("\n"));
     return {
       data: JSON.parse(readFileSync(join(dir, "html/data.json"), "utf8")),
       report: JSON.parse(readFileSync(join(dir, "report.json"), "utf8")),
@@ -185,10 +187,10 @@ describe("session reports: return PF primary, simulated provenance", () => {
   it("prints CLI help without starting a simulated session", () => {
     const result = spawnSync(process.execPath, ["--experimental-strip-types", "--no-warnings", script, "--help"], {
       encoding: "utf8",
-      timeout: 5_000,
+      timeout: 20_000,
       env: { ...process.env, CTS_CORE_VARIANTS: "0" },
     });
-    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.equal(result.status, 0, [result.error?.message, result.stderr, result.stdout].filter(Boolean).join("\n"));
     assert.match(result.stdout, /Usage: node .*core-session\.mjs/);
     assert.doesNotMatch(result.stdout, /computing Base|session: \d+ symbols/);
   });

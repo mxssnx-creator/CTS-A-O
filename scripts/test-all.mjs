@@ -10,10 +10,11 @@
 // - Before a file starts the container must have --min-free MB available (the same reading as the runtime's memory
 //   guard, cgroupAvailMb); it waits up to 10 minutes, else the file is recorded as skipped with the reason. While a file
 //   runs, it is killed if the available memory falls under --kill-below MB, so a desk sharing the container is never
-//   endangered.
+//   endangered. An admission timeout or memory kill stops the queue and records every remaining file as not run.
 // - Coverage: V8 precise coverage of every process (NODE_V8_COVERAGE), merged across files into line and function
 //   coverage per src/core module; modules no test loads are listed at 0 %.
-// - Writes <out>/report-<date>.json and .md (default docs/tests). Exit 1 when any file failed or was killed.
+// - Writes <out>/report-<date>.json and .md (default docs/tests). Exit 1 for failed, killed, unrun or missing files,
+//   including memory-admission skips and empty selection. Intentional TAP test-level skips remain separate.
 import { spawn } from "node:child_process";
 import {
   mkdirSync,
@@ -29,6 +30,7 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { cgroupAvailMb } from "../src/core/server/memguard.server.ts";
 import { testAllInvocation } from "./lib/test-all-invocation.mjs";
+import { testAllVerdict } from "./test-all-verdict.mjs";
 
 const ROOT = resolve(fileURLToPath(import.meta.url), "../..");
 const args = process.argv.slice(2);
@@ -125,6 +127,7 @@ const files = [
     (a, b) =>
       heavyRank(a) - heavyRank(b) || (prevDur(a) ?? 0) - (prevDur(b) ?? 0) || a.localeCompare(b),
   );
+const requestedFiles = FILES.length ? [...new Set(FILES)] : files;
 
 function prevDur(f) {
   prevDur.cache ??= (() => {
@@ -293,8 +296,16 @@ function coverageTable() {
 // ---- run -------------------------------------------------------------------------------------------------------
 mkdirSync(OUT, { recursive: true });
 mkdirSync(LOGS, { recursive: true });
-const results = [];
+const selectedFiles = new Set(files);
+const results = requestedFiles.filter((file) => !selectedFiles.has(file)).map((file) => ({
+  file, status: "missing", reason: "requested test file was not discovered or was excluded by --only", ms: 0,
+}));
 const t0 = Date.now();
+function stopQueueAfter(index, reason) {
+  const remaining = files.slice(index + 1);
+  for (const file of remaining) results.push({ file, status: "not-run", reason, ms: 0 });
+  console.log(`Resource block stopped the queue; ${remaining.length} remaining file(s) were not run.`);
+}
 console.log(
   `test-all: ${files.length} files · coverage ${COVERAGE ? "on" : "off"} · min free ${MIN_FREE} MB · kill below ${KILL_BELOW} MB`,
 );
@@ -311,7 +322,8 @@ for (const [i, file] of files.entries()) {
       ms: 0,
     });
     console.log(`${tag} SKIPPED (memory ${head.avail} MB)`);
-    continue;
+    stopQueueAfter(i, `queue stopped after memory admission failed for ${file}`);
+    break;
   }
   const covDir = COVERAGE && !noCov(file) ? mkdtempSync(join(tmpdir(), "cts-cov-")) : null;
   const heavy = heavyRank(file) >= 0;
@@ -372,6 +384,10 @@ for (const [i, file] of files.entries()) {
     mergeCoverage(covDir);
     rmSync(covDir, { recursive: true, force: true });
   }
+  if (killed?.startsWith("memory:")) {
+    stopQueueAfter(i, `queue stopped after ${file} was killed for insufficient memory`);
+    break;
+  }
 }
 
 const coverage = COVERAGE ? coverageTable() : [];
@@ -385,9 +401,12 @@ const totals = results.reduce(
     skipped: a.skipped + (r.skipped ?? 0),
     filesFailed: a.filesFailed + (r.status === "fail" || r.status === "killed" ? 1 : 0),
     filesSkipped: a.filesSkipped + (r.status === "skipped" ? 1 : 0),
+    filesMissing: a.filesMissing + (r.status === "missing" ? 1 : 0),
+    filesNotRun: a.filesNotRun + (r.status === "not-run" ? 1 : 0),
   }),
-  { files: 0, tests: 0, pass: 0, fail: 0, cancelled: 0, skipped: 0, filesFailed: 0, filesSkipped: 0 },
+  { files: 0, tests: 0, pass: 0, fail: 0, cancelled: 0, skipped: 0, filesFailed: 0, filesSkipped: 0, filesMissing: 0, filesNotRun: 0 },
 );
+const verdict = testAllVerdict(requestedFiles, results);
 const covSum = coverage.reduce(
   (a, m) => ({ lines: a.lines + m.lines, covered: a.covered + m.linesCovered }),
   { lines: 0, covered: 0 },
@@ -397,6 +416,7 @@ const report = {
   node: process.version,
   durationMs: Date.now() - t0,
   totals,
+  verdict,
   coverage: COVERAGE
     ? {
         linePct: covSum.lines ? +((100 * covSum.covered) / covSum.lines).toFixed(1) : 0,
@@ -411,7 +431,10 @@ writeFileSync(`${base}.json`, JSON.stringify(report, null, 1));
 const md = [
   `# Test report ${DATE}`,
   "",
-  `${totals.files} files · ${totals.tests} tests · **${totals.pass} pass · ${totals.fail} fail · ${totals.cancelled} cancelled** · ${totals.skipped} skipped · files failed ${totals.filesFailed} · files skipped ${totals.filesSkipped} · ${(report.durationMs / 60_000).toFixed(1)} min · Node ${process.version}`,
+  `${totals.files} files · ${totals.tests} tests · **${totals.pass} pass · ${totals.fail} fail · ${totals.cancelled} cancelled** · ${totals.skipped} test-level skipped · files failed ${totals.filesFailed} · files skipped ${totals.filesSkipped} · files missing ${totals.filesMissing} · files not run ${totals.filesNotRun} · ${(report.durationMs / 60_000).toFixed(1)} min · Node ${process.version}`,
+  "",
+  `Requested-file verification: **${verdict.complete ? "complete" : "incomplete"}** (exit ${verdict.exitCode}).`,
+  ...(verdict.issues.length ? ["", ...verdict.issues.map((issue) => `- ${issue}`), ""] : []),
   COVERAGE
     ? `\nLine coverage of src/core: **${report.coverage.linePct} %** (${covSum.covered} of ${covSum.lines} code lines). Run without coverage (V8 block coverage slows their full computes past their own limits): ${results
         .filter((r) => r.coverage === false && r.status !== "skipped")
@@ -453,7 +476,8 @@ const md = [
 ].join("\n");
 writeFileSync(`${base}.md`, md);
 console.log(
-  `\n${totals.pass}/${totals.tests} tests pass · ${totals.fail} fail · ${totals.cancelled} cancelled · files failed ${totals.filesFailed} · skipped ${totals.filesSkipped}${COVERAGE ? ` · line coverage ${report.coverage.linePct} %` : ""}`,
+  `\n${totals.pass}/${totals.tests} tests pass · ${totals.fail} fail · ${totals.cancelled} cancelled · files failed ${totals.filesFailed} · files skipped ${totals.filesSkipped} · files missing ${totals.filesMissing} · files not run ${totals.filesNotRun} · verification ${verdict.complete ? "complete" : "incomplete"}${COVERAGE ? ` · line coverage ${report.coverage.linePct} %` : ""}`,
 );
+for (const issue of verdict.issues) console.log(`INCOMPLETE: ${issue}`);
 console.log(`report: ${relative(ROOT, base)}.md / .json · logs: ${LOGS}`);
-process.exit(totals.filesFailed ? 1 : 0);
+process.exit(verdict.exitCode);

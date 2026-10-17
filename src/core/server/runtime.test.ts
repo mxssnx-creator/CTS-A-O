@@ -1113,7 +1113,7 @@ describe("sizing default migration", () => {
     assert.equal(typeof rt.settings.grid.micro === "object" ? rt.settings.grid.micro.volumeFactor : undefined, 1);
     assert.equal(rt.wf.coord?.hedgeVolumeFactor, 1.6);
     assert.equal((rt.wf.coord as unknown as Record<string, unknown>)?.s2VolumeFactor, undefined);
-    assert.equal(db.kvGet<number>("wfCapsV"), 34);
+    assert.equal(db.kvGet<number>("wfCapsV"), 35);
 
     const customDb = new CoreDb(":memory:");
     customDb.kvSet("wfCapsV", 26);
@@ -1142,7 +1142,7 @@ describe("sizing default migration", () => {
     assert.equal(upgradedCap.settings.live.maxPositionX, 0);
     assert.equal(upgradedCap.settings.live.maxNotionalUsd, 0);
     assert.deepEqual(upgradedCap.settings.sizing, { mode: "equityPct", pct: 0.001 });
-    assert.equal(capDb.kvGet<number>("wfCapsV"), 34);
+    assert.equal(capDb.kvGet<number>("wfCapsV"), 35);
   });
 });
 

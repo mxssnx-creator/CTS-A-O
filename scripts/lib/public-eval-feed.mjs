@@ -4,6 +4,17 @@ export const MINUTE_MS = 60_000;
 export const DAY_MS = 86_400_000;
 export const sha256Bytes = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
+/** Optional collector lower bound; legacy collection keeps its original UTC-day default. */
+export function archiveStartT(value = "2026-09-26", toT = Date.parse("2026-10-17T00:00:00Z")) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value))
+    throw new Error("--from must be a UTC date in YYYY-MM-DD form");
+  const fromT = Date.parse(`${value}T00:00:00Z`);
+  if (!Number.isSafeInteger(fromT) || new Date(fromT).toISOString().slice(0, 10) !== value ||
+      !Number.isSafeInteger(toT) || toT % DAY_MS || fromT >= toT)
+    throw new Error("--from must be a valid UTC day before the fixed collection end");
+  return fromT;
+}
+
 export function archiveDates(fromT, toT) {
   if (!Number.isSafeInteger(fromT) || !Number.isSafeInteger(toT) ||
       fromT % DAY_MS || toT % DAY_MS || toT <= fromT)

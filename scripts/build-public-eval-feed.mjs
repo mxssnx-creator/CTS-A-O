@@ -1,16 +1,16 @@
 #!/usr/bin/env node
 // Genuine public Binance USD-M daily archives. No account, credentials, live orders or synthesized candles.
-// node --experimental-strip-types scripts/build-public-eval-feed.mjs [--out runs/eval-22-20261017] [--concurrency 4]
+// node --experimental-strip-types scripts/build-public-eval-feed.mjs [--out runs/eval-22-20261017] [--concurrency 4] [--from YYYY-MM-DD]
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { archiveDates, DAY_MS, parseArchiveCsv, sha256Bytes, validateCoverage, verifyArchiveChecksum } from "./lib/public-eval-feed.mjs";
+import { archiveDates, archiveStartT, DAY_MS, parseArchiveCsv, sha256Bytes, validateCoverage, verifyArchiveChecksum } from "./lib/public-eval-feed.mjs";
 
 const argv = process.argv.slice(2), arg = (key, fallback) => {
   const i = argv.indexOf(`--${key}`); return i < 0 ? fallback : argv[i + 1];
 };
 const symbols = ["BTC", "ETH", "BNB", "SOL", "XRP", "DOGE", "ADA", "AVAX", "LINK", "LTC", "DOT", "ATOM", "APT", "NEAR", "SUI", "TRX", "UNI", "FIL", "ETC", "ARB", "OP", "XLM"].map((x) => `${x}-USDT`);
-const fromT = Date.parse("2026-09-26T00:00:00Z"), toT = Date.parse("2026-10-17T00:00:00Z");
+const toT = Date.parse("2026-10-17T00:00:00Z"), fromT = archiveStartT(arg("from", "2026-09-26"), toT);
 const out = path.resolve(arg("out", "runs/eval-22-20261017"));
 const concurrency = Number(arg("concurrency", 4));
 if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 4) throw new Error("concurrency must be 1..4");

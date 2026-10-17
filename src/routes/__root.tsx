@@ -14,7 +14,7 @@ export const Route = createRootRoute({
       { name: "theme-color", content: "#0f62fe" },
       {
         name: "description",
-        content: "CTS-A-O — honest crypto futures research desk: every indication × bot × config on real BingX data, walk-forward, 0.2% cost.",
+        content: "CTS-A-O futures research desk: indication and strategy evaluation, walk-forward simulation, configurable trading costs.",
       },
     ],
     links: [

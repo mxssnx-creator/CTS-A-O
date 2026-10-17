@@ -142,6 +142,7 @@ import {
 } from "../pipeline/pipeline.ts";
 import {
   buildTapesGen,
+  baseAllowsTape,
   kindExecutable,
   defaultWalkForward,
   selectAt,
@@ -833,7 +834,7 @@ export class CoreRuntime {
   private errorsInRow = 0;
   /** memory guard (memguard.server.ts): compute fallback level 0–2 and the clean computes since the last step */
   memFallback = 0;
-  /** ranges each pair passed in the last Base ("" = the default protect / wide grid) */
+  /** Tape-construction ranges; diagnostic allSets may expand beyond wf.basePassedRanges. */
   basePairTags: Record<string, string[]> = {};
   private memClean = 0;
   private memPressured = false;
@@ -1749,6 +1750,10 @@ export class CoreRuntime {
     next.gates.minPf = Math.min(1.5, Math.max(1.05, next.gates.minPf));
     next.gates.maxDdtH = Math.min(35, Math.max(2, next.gates.maxDdtH));
     this.settings = next;
+    // A stricter ladder policy applies immediately. Relaxing it waits for fresh Base qualification.
+    let baseWideLadderPairs = this.wf.baseWideLadderPairs;
+    if (next.axis.perRange && baseWideLadderPairs && [...baseWideLadderPairs].some((pair) => !this.wf.basePassedRanges?.[pair]?.includes("")))
+      baseWideLadderPairs = new Set([...baseWideLadderPairs].filter((pair) => this.wf.basePassedRanges?.[pair]?.includes("")));
     // the per-compute gates (active signals, guards, signal caps, adjust pauses) carry over until the next
     // compute sets them again — dropping them left paper / live ungated for a whole compute
     const carry = {
@@ -1764,6 +1769,8 @@ export class CoreRuntime {
       signalMaxPositions: this.wf.signalMaxPositions,
       // the Base gates of the last compute: without them every pair took seats until the next compute finished
       basePassed: this.wf.basePassed,
+      basePassedRanges: this.wf.basePassedRanges,
+      baseWideLadderPairs,
       signalBasePassed: this.wf.signalBasePassed,
       family: this.wf.family,
       paused: this.wf.paused,
@@ -2207,6 +2214,7 @@ export class CoreRuntime {
   // ── market ────────────────────────────────────────────────────────────
   private async syncMarket(gen: number): Promise<boolean> {
     const s = this.settings;
+    const fixedReplay = this.replay && !this.conn;
     const want = Math.round((s.historyDays * 24 * 60) / s.tfMin);
     // a symbol is usable with most of the requested history (small history settings must not stall the loop)
     const minBars = Math.max(50, Math.min(200, Math.floor(want * 0.8)));
@@ -2214,8 +2222,8 @@ export class CoreRuntime {
     if (this.candles.size === 0) {
       this.status.state = "backfill";
       this.loadCandlesFromDb();
-      // a partial cache is not a finished universe: keep backfillKey unset so the missing symbols are fetched
-      if (this.candles.size >= s.symbols) this.backfillKey = uniKey;
+      // A partial cache is not finished. Fixed replays also verify the ranked membership before using a full cache.
+      if (!fixedReplay && this.candles.size >= s.symbols) this.backfillKey = uniKey;
     }
     // candles of another timeframe (an older version / snapshot, or a hot reload across the base timeframe
     // change) are never read as base bars: drop them and backfill at the base timeframe
@@ -2282,18 +2290,33 @@ export class CoreRuntime {
           s.forceSymbols,
           s.symbols,
         );
+        if (gen !== this.gen) return false;
+        if (fixedReplay) {
+          const expected = new Set(ranked);
+          const unexpected = [...this.candles.keys()].filter((sym) => !expected.has(sym));
+          if (unexpected.length) {
+            // A restored cache can contain another universe. Never silently add its symbols to a fixed replay
+            // or remove their retained position protections to make the requested count appear correct.
+            this.prehistTotal = this.universeTarget();
+            this.prehistPending = true;
+            this.status.symbols = [...this.candles.keys()];
+            this.touchPrehist();
+            throw new Error(`Replay universe mismatch: unexpected cached symbols ${unexpected.join(", ")} outside the requested ${this.universeTarget()}-symbol universe; ` +
+              "use a separate empty replay database or a matching snapshot (cached candles and holdings retained)");
+          }
+        }
         // the universe of this run: the symbol count, or every forced symbol when there are more of them
         // (forceSymbols keeps them all) — the cap was s.symbols, which dropped forced symbols beyond it
         const target = ranked.length;
-        const missing = ranked
-          .filter((x) => !this.candles.has(x))
-          .slice(0, Math.max(0, target - this.candles.size));
-        // Live starts progressively. A bounded replay must first load its whole fixed universe: intermediate
-        // simulations retain books/tapes and repeat work before the requested cross-symbol cohort even exists.
-        const batch = this.replay ? target : Math.max(5, Math.ceil(target / 4));
+        const loaded = (sym: string) => fixedReplay ? (this.candles.get(sym)?.n ?? 0) >= minBars : this.candles.has(sym);
+        const absent = ranked.filter((x) => !loaded(x));
+        const missing = fixedReplay ? absent : absent.slice(0, Math.max(0, target - this.candles.size));
+        // Live desks compute each loaded batch before continuing. A fixed unconnected replay loads its complete
+        // target first: partial-universe computes waste work and can seed paper/coordination from another sample.
+        const batch = fixedReplay ? Math.max(1, target) : Math.max(5, Math.ceil(target / 4));
         const syms = missing.slice(0, batch);
         const more = missing.length > syms.length;
-        this.prehistTotal = Math.min(target, this.candles.size + missing.length);
+        this.prehistTotal = fixedReplay ? this.universeTarget() : Math.min(target, this.candles.size + missing.length);
         for (const x of missing)
           if (!this.prehistSyms.has(x)) this.prehistSyms.set(x, { state: "queued" });
         for (const x of syms) this.prehistSyms.set(x, { state: "loading" });
@@ -2338,16 +2361,14 @@ export class CoreRuntime {
           () => gen === this.gen,
         );
         if (gen !== this.gen) return false;
-        if (this.replay) {
-          const unloaded = ranked.filter((sym) => !this.candles.has(sym));
-          if (unloaded.length) {
-            // An unavailable or short history is still pending, never a smaller valid replay universe. Keep the
-            // successful loads and retry only missing symbols; the cycle must not compute the partial cohort.
+        if (fixedReplay) {
+          const unavailable = ranked.filter((sym) => !loaded(sym));
+          if (unavailable.length || target < this.universeTarget()) {
             this.prehistPending = true;
-            this.dirty = true;
             this.status.symbols = [...this.candles.keys()];
             this.touchPrehist();
-            throw new Error(`Replay history incomplete: ${this.candles.size}/${target} symbols loaded; retrying ${unloaded.length} before compute`);
+            throw new Error(`Replay universe incomplete: ${target - unavailable.length}/${this.universeTarget()} symbols loaded` +
+              (unavailable.length ? `; missing ${unavailable.join(", ")}` : ""));
           }
         }
         // the earlier batches' new bars: until the last batch is in, every cycle takes this branch and the market
@@ -2871,6 +2892,7 @@ export class CoreRuntime {
     if (!u.bars.length) return;
     // causal evaluation: the stages see only the history before the simulated run (its start, as walkForward sets it)
     const runStartT = Math.floor((u.nowT - wf.simH * H) / H) * H;
+    const rangeFitCutT = wf.causalBase ? runStartT : undefined;
     if (this.evaluationFromT !== undefined && (!wf.causalBase || this.evaluationFromT >= runStartT))
       throw new Error("Replay evaluationFromT requires a causal Base window before the trading start");
     const uStage = wf.causalBase ? makeUniverse(allBars.map((b) => headBars(b, runStartT)), this.evaluationFromT) : u;
@@ -3032,10 +3054,10 @@ export class CoreRuntime {
     const famNarrow = !!evalFams && familiesNarrowBase(evalFams);
     // each pair at the default protect and at one cell of each enabled range: the ranges and targets it passes are the
     // ones whose configs it computes (basePass — the preset backtest judges by the same rule)
-    const { passed, pairTags, pairTps, added: baseBuilt } = basePass(pipeline.s1, s, applies, famNarrow ? evalFams : null);
+    const { passed, qualified, qualifiedTags, wideLadderPairs, pairTags, pairTps, added: baseBuilt } = basePass(pipeline.s1, s, applies, famNarrow ? evalFams : null);
     this.basePairTags = pairTags;
     // the count of pairs that passed Base (validated); the pairs grid.allSets adds for measurement are reported apart
-    this.status.basePassed = passed.length - baseBuilt;
+    this.status.basePassed = qualified.length;
     this.status.baseBuilt = baseBuilt;
     this.status.baseEvaluated = pipeline.s1.filter((r) => !isSignalInd(r.ind)).length;
     // every timeframe lane gets its share of Main, so each lane is processed through to the end stages
@@ -3071,7 +3093,7 @@ export class CoreRuntime {
     // not passed Base in.
     const heldIds = new Set<string>([...this.paper.selected, ...this.paper.positions.map((p) => p.cfg)]);
     // pinned pairs are evaluated in Base like every other pair (baseFocus): they reach Main only when they pass
-    const passedKeys = new Set(passed.map((r) => `${r.bot}|${r.ind}`));
+    const passedKeys = new Set(qualified.map((r) => `${r.bot}|${r.ind}`));
     for (const k of s.pinned ?? []) if (passedKeys.has(k)) main.add(k);
     // contrarian execution (wf.invertSeats, an evaluation knob): each engine pair's mirror (follow ↔ revert, the same
     // entries on the other side) computes the same cells, so a seat's entries can execute on its mirror's tape; a
@@ -3090,6 +3112,10 @@ export class CoreRuntime {
     // only pairs that passed Base take a seat; held pairs stay in Main to manage their open positions
     wf.basePassed = passedKeys;
     this.wf.basePassed = passedKeys;
+    wf.basePassedRanges = qualifiedTags;
+    this.wf.basePassedRanges = qualifiedTags;
+    wf.baseWideLadderPairs = wideLadderPairs;
+    this.wf.baseWideLadderPairs = wideLadderPairs;
     wf.family = evalFams && !famNarrow ? evalFams.map((f) => f.label) : undefined;
     this.wf.family = wf.family;
     // Signals processing: the active signals and every signal pair still holding a position take the signal
@@ -3280,7 +3306,7 @@ export class CoreRuntime {
       ).filter((x) => enabled(x.tag));
       // Base totals include Signal representatives only when their representative Base gate is enabled; the Signals
       // range row remains an independent diagnostic either way.
-      this.status.basePassed = passed.length - baseBuilt + (signalBaseGate ? representativePassed.size : 0);
+      this.status.basePassed = qualified.length + (signalBaseGate ? representativePassed.size : 0);
       // continuity: the passed count per compute (last BASE_HISTORY_N), per range
       const hist = this.status.baseHistory ?? [];
       hist.push({
@@ -3428,7 +3454,7 @@ export class CoreRuntime {
     // every set's completeness: grid cells per indication × range × type, built / kept / not built and why
     const buildStats = new Map<string, TapeBuildStat>();
     const built = await tapesFor(main, wf.protects, dcaOpt, "strategy tapes", {
-      ...protectFloors(s),
+      ...protectFloors(s, rangeFitCutT),
       pairTags: this.basePairTags,
       pairTps,
       heldIds,
@@ -3451,7 +3477,7 @@ export class CoreRuntime {
           carriedHeld.dcaProtects.length ? { ...dcaOpt, protects: carriedHeld.dcaProtects, axis: undefined } : undefined,
           "carried tapes",
           {
-            ...protectFloors(s),
+            ...protectFloors(s, rangeFitCutT),
             pairTags: this.basePairTags,
             pairTps,
             heldIds,
@@ -3489,7 +3515,7 @@ export class CoreRuntime {
     // cells, a carried one's included (it builds only the seated ids: under a memory fallback the seated Micro /
     // Minimal configs took no new entry between computes)
     this.fastArgs = {
-      main: { protects: this.wf.protects, dcaFor: { ...dcaOpt, protects: this.wf.dcaProtects }, floors: { ...protectFloors(s), pairTags: this.basePairTags, pairTps, heldIds, microOwnInds: microOwnInds(s.grid) } },
+      main: { protects: this.wf.protects, dcaFor: { ...dcaOpt, protects: this.wf.dcaProtects }, floors: { ...protectFloors(s, rangeFitCutT), pairTags: this.basePairTags, pairTps, heldIds, microOwnInds: microOwnInds(s.grid) } },
       sig: {
         protects: signalProtects(sig),
         dcaFor: sigStrat,
@@ -3582,7 +3608,8 @@ export class CoreRuntime {
     } else this.wf.signalActive = wf.signalActive;
     // stage sets of this compute, for the self-audit (Base-validated → Main config sets → Real → trades)
     this.stageSets = {
-      passed: new Set(passed.map((r) => `${r.bot}|${r.ind}`)),
+      passed: passedKeys,
+      measured: new Set(passed.map((r) => `${r.bot}|${r.ind}`).filter((k) => !passedKeys.has(k))),
       main: new Set(main),
       held,
       pinned: new Set(s.pinned ?? []),
@@ -3676,7 +3703,7 @@ export class CoreRuntime {
         dcaOpt: { protects: countDcaProtects, dca: wf.dca, axis: s.axis },
         common: { evaluationFromT: this.evaluationFromT, bars: sharedU, cost: s.cost, tactics: s.tactics,
           options: { gates: s.gates, cost: s.cost, cutT: wf.causalBase ? runStartT : u.nowT, fromT: uStage.startT },
-          floors: { ...protectFloors(s), pairTags: countTags, countFitProtects: countProtects, microOwnInds: microOwnInds(s.grid) },
+          floors: { ...protectFloors(s, rangeFitCutT), pairTags: countTags, countFitProtects: countProtects, microOwnInds: microOwnInds(s.grid) },
         },
       };
       this.baseConfigRunner.request({ ...input, key: baseConfigJobKey(input), settingsAt });
@@ -4152,7 +4179,7 @@ export class CoreRuntime {
   }
 
   /** measured live round-trip cost from recorded fills (fees + adverse slippage), null below 20 round trips */
-  liveCost(): { rt: number; fills: number; fee: number; slip: number } | null {
+  liveCost(): { rt: number; fills: number; measuredFeeFills: number; fee: number; slip: number } | null {
     const rows = this.db.all<{
       side: number;
       kind: string;
@@ -4185,7 +4212,7 @@ export class CoreRuntime {
       slip += Math.max(0, (dir * (r.fill_px - r.ref_px)) / r.ref_px);
     }
     slip /= rows.length;
-    return { rt: 2 * (fee + slip), fills: rows.length, fee, slip };
+    return { rt: 2 * (fee + slip), fills: rows.length, measuredFeeFills: withFee.length, fee, slip };
   }
 
   /** One adjuster pass on the executed (Real) positions; a change triggers a recompute with the new ranges. */
@@ -4719,6 +4746,7 @@ export class CoreRuntime {
     if (selected && this.promotionSelectedMemo?.selected !== selected)
       this.promotionSelectedMemo = { selected, ids: new Set(selected) };
     const eligible = selected && this.promotionSelectedMemo?.ids.has(lane.cfg) && tp && !tp.heldOnly &&
+      (isSignalInd(ind) || baseAllowsTape(tp, this.wf)) &&
       (!isSignalInd(ind) || ((!this.wf.signalBasePassed || this.wf.signalBasePassed.has(`${tp.bot}|${tp.ind}`)) &&
         (!this.wf.signalActive || signalActiveHas(this.wf.signalActive, tp.bot, tp.ind, lane.sym, lane.side, tp.kind, tp.id))));
     return eligible ? gate : { ...gate, ok: false, state: "ineligible" };
@@ -4844,6 +4872,9 @@ export class CoreRuntime {
     lookBars: Bars[],
   ): Promise<{
     main: Set<string>;
+    qualified: Set<string>;
+    qualifiedTags: Record<string, string[]>;
+    wideLadderPairs: Set<string>;
     pairTags: Record<string, string[]>;
     pairTps: Record<string, Record<string, readonly number[]>>;
   }> {
@@ -4896,8 +4927,12 @@ export class CoreRuntime {
     }
     // in combo order (as the engine's S1), whichever path computed them
     const runs = combos.flatMap((c) => byPair.get(`${c.bot}|${c.ind}`) ?? []);
-    const { passed, pairTags, pairTps } = basePass(runs, s);
-    return { main: mainByLane(passed, s.mainTop), pairTags, pairTps };
+    const { passed, qualified, qualifiedTags, wideLadderPairs, pairTags, pairTps } = basePass(runs, s);
+    return {
+      main: mainByLane(passed, s.mainTop),
+      qualified: new Set(qualified.map((r) => `${r.bot}|${r.ind}`)),
+      qualifiedTags, wideLadderPairs, pairTags, pairTps,
+    };
   }
 
   private async runPresetBacktest(
@@ -5012,41 +5047,37 @@ export class CoreRuntime {
       tailBars(b, Math.ceil((wantBars * s.tfMin) / b.tfMin)),
     );
     const u = makeUniverse(bars);
-    // Base on the window BEFORE the backtest (causal), unless a fixed focus set is traded
+    // Every preset, including fixed-focus research, qualifies on Base history before its backtest window.
     job.stage = "Base";
-    let main: Set<string>;
-    // the ranges and targets each pair passed in Base (a fixed focus set has no Base: every cell of its pairs)
-    let pairTags: Record<string, string[]> | undefined;
-    let pairTps: Record<string, Record<string, readonly number[]>> | undefined;
     // the engine's Micro lane floor (Micro's own was applied under both rules: with Minimal on Micro's indications a
     // Micro pair on a faster lane never reached its Minimal cells)
     const combos = allCombos(s.focus, s.disabledKinds, s.tfs, microLaneFloor(s.grid));
-    if (wf.mode === "fixed" && s.focus.length)
-      main = new Set(combos.map((c) => `${c.bot}|${c.ind}`));
-    else {
-      const lookBars = bars.map((b) => {
-        let z = 0;
-        while (z < b.n && b.t[z] < startT) z++;
-        return {
-          ...b,
-          n: z,
-          t: b.t.slice(0, z),
-          o: b.o.slice(0, z),
-          h: b.h.slice(0, z),
-          l: b.l.slice(0, z),
-          c: b.c.slice(0, z),
-          v: b.v.slice(0, z),
-        };
-      });
-      ({ main, pairTags, pairTps } = await this.presetBase(job, s, combos, lookBars));
-    }
+    const lookBars = bars.map((b) => {
+      let z = 0;
+      while (z < b.n && b.t[z] < startT) z++;
+      return {
+        ...b,
+        n: z,
+        t: b.t.slice(0, z),
+        o: b.o.slice(0, z),
+        h: b.h.slice(0, z),
+        l: b.l.slice(0, z),
+        c: b.c.slice(0, z),
+        v: b.v.slice(0, z),
+      };
+    });
+    const base = await this.presetBase(job, s, combos, lookBars);
+    const { main, pairTags, pairTps } = base;
+    wf.basePassed = base.qualified;
+    wf.basePassedRanges = base.qualifiedTags;
+    wf.baseWideLadderPairs = base.wideLadderPairs;
     this.checkBacktest(job);
     job.stage = "Tapes";
     const dcaOpt = { protects: wf.dcaProtects, dca: wf.dca, axis: s.axis };
     const adjust = s.adjust?.enabled ? this.adjustState() : null;
     // the engine's tape rules: only the ranges and targets a pair passed in Base, and the Micro indication rule (the
     // floors alone built every range and target of every pair, and Micro cells for every indication)
-    const floors: EntryFloors = { ...protectFloors(s), pairTags, pairTps, microOwnInds: microOwnInds(s.grid) };
+    const floors: EntryFloors = { ...protectFloors(s, startT), pairTags, pairTps, microOwnInds: microOwnInds(s.grid) };
     let tapes: ConfigTape[] = [];
     // pairs in the engine's combo order, cut into contiguous slices → identical tape order to one process
     // (lane combos included: the pairs are lane ids when the settings carry timeframe lanes)
@@ -6748,7 +6779,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
 function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
   const saved = db.kvGet<Partial<WalkForwardOptions>>("wf") ?? {};
   const v = db.kvGet<number>("wfCapsV") ?? 0;
-  if (v >= 34) return saved;
+  if (v >= 35) return saved;
   // each step runs only for a database older than it: a choice made after a step is never overwritten
   const out = { ...saved };
   const st = db.kvGet<Partial<CoreSettings>>("settings");
@@ -7102,6 +7133,9 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
       if (changed) db.kvSet("presets", presets);
     }
   }
+  const costSettingsBefore = structuredClone(st);
+  const costPresetsBefore = db.kvGet<Preset[]>("presets");
+  let factoryCostChanged = false;
   if (v < 34) {
     // Move only the explicitly stored former factory cost and fee tuple. Partial/custom models retain
     // their provenance; measured exchange fills and their commissions are never rewritten.
@@ -7113,7 +7147,7 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
       settings.fees = { ...fees, slippage: DEFAULT_SETTINGS.fees.slippage };
       return true;
     };
-    migrateModeledCost(st);
+    factoryCostChanged = migrateModeledCost(st);
     const presets = db.kvGet<Preset[]>("presets");
     if (Array.isArray(presets)) {
       let changed = false;
@@ -7121,9 +7155,42 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
       if (changed) db.kvSet("presets", presets);
     }
   }
+  const currentFactoryCost = (st?.cost ?? DEFAULT_SETTINGS.cost) === DEFAULT_SETTINGS.cost &&
+    (st?.fees?.taker ?? DEFAULT_SETTINGS.fees.taker) === DEFAULT_SETTINGS.fees.taker &&
+    (st?.fees?.maker ?? DEFAULT_SETTINGS.fees.maker) === DEFAULT_SETTINGS.fees.maker &&
+    (st?.fees?.slippage ?? DEFAULT_SETTINGS.fees.slippage) === DEFAULT_SETTINGS.fees.slippage;
+  if (v < 35 && (factoryCostChanged || (v < 34 && costSettingsBefore?.cost === undefined) ||
+    (v === 34 && currentFactoryCost))) {
+    // Backtests inherit the runtime cost rather than a preset's excluded cost fields. Pre-v35 caches do not
+    // record that economic revision. A v34 factory/default model may already have moved, so its cached
+    // provenance is also unknown. Preserve the complete audit copy before retiring only derived evidence.
+    const series = db.kvGet<Record<string, PresetSeries>>("presetSeries");
+    const backtests = db.kvGet<Record<string, PresetBacktest[]>>("presetBacktests");
+    const presets = db.kvGet<Preset[]>("presets");
+    const hasEvidence = Object.keys(series ?? {}).length > 0 || Object.keys(backtests ?? {}).length > 0 ||
+      (presets ?? []).some((preset) => preset.metrics);
+    if (hasEvidence) {
+      if (!db.kvGet("modeledCostMigrationArchive")) db.kvSet("modeledCostMigrationArchive", {
+        at: Date.now(), fromVersion: v, toVersion: 35,
+        reason: "Modeled cost changed or pre-v35 cached economic provenance is unavailable; re-evaluate before reuse.",
+        settings: costSettingsBefore, wf: saved, presets: costPresetsBefore, presetSeries: series, presetBacktests: backtests,
+      });
+      if (!db.flushState()) throw new Error("modeled cost migration audit backup could not be persisted; cached evidence was retained");
+      db.kvSet("presetSeries", {});
+      db.kvSet("presetBacktests", {});
+      if (presets) {
+        for (const preset of presets) if (preset.metrics) preset.metrics = {
+          ...preset.metrics, pfBasis: "unavailable",
+          source: `${preset.metrics.source ?? "Historical preset results"} — modeled cost changed or is unverified; run a new backtest`,
+        };
+        db.kvSet("presets", presets);
+      }
+      db.event("warn", "Modeled cost migration archived prior preset evidence and retired derived backtests; re-evaluation required");
+    }
+  }
   db.kvSet("wf", pickWf(out));
   if (st) db.kvSet("settings", st);
-  db.kvSet("wfCapsV", 34);
+  db.kvSet("wfCapsV", 35);
   return out;
 }
 
@@ -7253,7 +7320,11 @@ export function basePass(
   /** evaluation families (CTS_CORE_FAMILY): only their bots and ranges pass; null = every family (the desk) */
   evalFams: readonly EvalFamily[] | null = null,
 ): {
+  /** Build cohort, including explicitly requested diagnostic allSets additions. */
   passed: ComboRun[];
+  qualified: ComboRun[];
+  qualifiedTags: Record<string, string[]>;
+  wideLadderPairs: Set<string>;
   pairTags: Record<string, string[]>;
   pairTps: Record<string, Record<string, readonly number[]>>;
   added: number;
@@ -7284,9 +7355,14 @@ export function basePass(
     }
     return true;
   });
+  const qualified = [...passed];
+  const qualifiedTags = Object.fromEntries(Object.entries(pairTags).map(([pair, tags]) => [pair, [...tags]]));
+  const wideLadderPairs = new Set(qualified.map((r) => `${r.bot}|${r.ind}`)
+    .filter((pair) => !s.axis.perRange || qualifiedTags[pair].includes("")));
   // grid.allSets (measurement): every indication builds its complete config sets — its best pair at Base (bot ×
   // lane, passed or not) and every pair that passed build every range they apply to, every target × stop × trail
-  // × hold; the evaluation alone decides the seats. (Every pair's whole grid: ~12 M Micro tapes on 8 symbols.)
+  // × hold; seating still requires the original Base-qualified pair/range and the config's own evaluation.
+  // (Every pair's whole grid: ~12 M Micro tapes on 8 symbols.)
   // (`added`: the pairs allSets builds for measurement that did not pass Base — never counted as passed)
   let added = 0;
   if (s.grid?.allSets === true) {
@@ -7310,10 +7386,10 @@ export function basePass(
       }
     }
   }
-  return { passed, pairTags, pairTps, added };
+  return { passed, qualified, qualifiedTags, wideLadderPairs, pairTags, pairTps, added };
 }
 
-function protectFloors(s: CoreSettings): EntryFloors {
+function protectFloors(s: CoreSettings, rangeFitCutT?: number): EntryFloors {
   const fit = s.grid?.rangeFit;
   return {
     minSl: s.protectFloor?.minSl ?? DEFAULT_SETTINGS.protectFloor.minSl,
@@ -7321,6 +7397,7 @@ function protectFloors(s: CoreSettings): EntryFloors {
     // range cells fitted to the indication's horizon only when the fit is on; every computed tape is kept (the
     // gates decide the seats; a tape that cannot seat yet still shows in the evaluation and statistics)
     rangeFit: fit && fit.enabled !== false ? { ...DEFAULT_RANGE_FIT, ...fit } : null,
+    ...(rangeFitCutT === undefined ? {} : { rangeFitCutT }),
     rangeMinN: 0,
     rangeMinTf: rangeMinTfOf(s.grid ?? {}),
   };

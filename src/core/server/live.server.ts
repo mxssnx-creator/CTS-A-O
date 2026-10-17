@@ -1924,9 +1924,14 @@ export function recordLanes(
   rt: Pick<CoreRuntime, "db" | "settings">,
   x: Omit<LaneStepInput, "cost" | "now"> & { now?: number },
 ): LaneTrade[] {
-  const lc = rt.db.kvGet<{ fee?: number }>("liveCost");
-  // the measured round trip only once fees are measured (a stored zero is the unmeasured state, not a fee-free venue)
-  const cost = lc && typeof lc.fee === "number" && lc.fee > 0 ? 2 * lc.fee : rt.settings.cost;
+  const lc = rt.db.kvGet<{ fee?: number; fills?: number; measuredFeeFills?: number }>("liveCost");
+  // Positive historical measurements retain their meaning. A measured zero requires the current receipt sample
+  // provenance; a legacy zero placeholder (even beside a total fill count) cannot declare a fee-free venue.
+  const measuredZero = lc?.fee === 0 && typeof lc.fills === "number" && Number.isInteger(lc.fills) && lc.fills >= 40 &&
+    typeof lc.measuredFeeFills === "number" && Number.isInteger(lc.measuredFeeFills) &&
+    lc.measuredFeeFills >= 20 && lc.measuredFeeFills <= lc.fills;
+  const measured = lc && typeof lc.fee === "number" && Number.isFinite(lc.fee) && (lc.fee > 0 || measuredZero);
+  const cost = measured ? 2 * lc.fee! : rt.settings.cost;
   // (attributeLanes never changes the record it reads; the next one is built fresh, sharing the unchanged lanes)
   const prev = liveKvView<Record<string, LaneOpen>>(rt.db, "liveLaneOpen") ?? {};
   const { open, closed } = attributeLanes(prev, { ...x, cost, now: x.now ?? Date.now() });

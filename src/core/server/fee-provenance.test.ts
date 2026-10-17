@@ -183,7 +183,7 @@ it("measured live cost includes confirmed free fills while legacy zero rows rema
     assert.equal(rt.liveCost(), null);
     for (let i = 0; i < 20; i++)
       rt.db.run("UPDATE live_fills SET fee_known=1 WHERE coid=?", String(i));
-    assert.deepEqual(rt.liveCost(), { rt: 0, fills: 40, fee: 0, slip: 0 });
+    assert.deepEqual(rt.liveCost(), { rt: 0, fills: 40, measuredFeeFills: 20, fee: 0, slip: 0 });
     assert.equal(rt.settings.cost, RT_COST, "measuring actual fees never changes modeled study cost");
   } finally {
     rt.dispose();

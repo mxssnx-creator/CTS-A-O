@@ -1,0 +1,196 @@
+name: Verified PF replay
+
+on:
+  push:
+    branches: [cts-ao/verified-pf-replay-20261018]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: verified-pf-replay-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CTS_CORE_STATE: 'off'
+  CTS_CORE_AUTOSTART: '0'
+  CTS_CORE_LIVE: '0'
+  CTS_CORE_COMPARE: '0'
+  CTS_CORE_VARIANTS: '0'
+  CTS_CORE_WORKERS: '1'
+  MALLOC_ARENA_MAX: '2'
+  MALLOC_MMAP_THRESHOLD_: '1048576'
+  DATABASE_URL: ''
+  TZ: UTC
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  checks:
+    name: Complete offline tests and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run typecheck
+      - run: npm run build
+      - name: Install the browser required by the existing UI functional suite
+        run: npx playwright install --with-deps chromium
+      - name: Every test file, with strict completion verdict
+        run: |
+          node --experimental-strip-types --no-warnings scripts/test-all.mjs \
+            --no-coverage --min-free 3500 --kill-below 1600 \
+            --out runs/verified-pf-ci/tests --logs runs/verified-pf-ci/test-logs
+      - name: Publish test completion summary
+        if: always()
+        run: |
+          node --input-type=module <<'JS'
+          import { existsSync, readFileSync, readdirSync } from 'node:fs';
+          const dir = 'runs/verified-pf-ci/tests';
+          if (!existsSync(dir)) { console.log('Full test report unavailable; checks incomplete.'); process.exit(0); }
+          const name = readdirSync(dir).filter(x => /^report-.*\.json$/.test(x)).sort().at(-1);
+          if (!name) { console.log('Full test report unavailable; checks incomplete.'); process.exit(0); }
+          const r = JSON.parse(readFileSync(`${dir}/${name}`));
+          console.log(JSON.stringify({ schema: 'cts-ci-test-summary-v1', commit: process.env.GITHUB_SHA,
+            totals: r.totals, verdict: r.verdict,
+            incompleteFiles: r.files.filter(x => x.status !== 'pass').map(x => ({ file: x.file, status: x.status, reason: x.reason, failed: x.failed })) }));
+          JS
+
+  research:
+    name: Frozen 20 symbols - ${{ matrix.profile }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    outputs:
+      full: ${{ steps.result.outputs.full }}
+      entry25: ${{ steps.result.outputs.entry25 }}
+      expanded: ${{ steps.result.outputs.expanded }}
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        profile: [full, entry25, expanded]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Collect complete indicator prehistory from official public archives
+        run: node --experimental-strip-types scripts/build-public-eval-feed.mjs --from 2026-09-24 --out runs/public-source --concurrency 4
+      - name: Verify public source checksums and exact coverage
+        run: node --experimental-strip-types scripts/verify-public-replay-feed.mjs --dir runs/public-source --out runs/public-source/feed-evidence.json
+      - name: Build factory configuration and freeze the exact runtime
+        env:
+          PROFILE: ${{ matrix.profile }}
+          NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
+        run: |
+          node --experimental-strip-types scripts/replay-study-profiles.mjs --profile "$PROFILE" --out runs/verified-pf-ci/seed.json
+          node --experimental-strip-types scripts/freeze-session-study.mjs \
+            --root "$GITHUB_WORKSPACE" --feed runs/public-source/feed.json \
+            --symbols BTC-USDT,ETH-USDT,BNB-USDT,SOL-USDT,XRP-USDT,DOGE-USDT,ADA-USDT,AVAX-USDT,LINK-USDT,LTC-USDT,DOT-USDT,ATOM-USDT,APT-USDT,NEAR-USDT,SUI-USDT,TRX-USDT,UNI-USDT,FIL-USDT,ETC-USDT,ARB-USDT \
+            --evaluation-from 2026-10-12T03:00:00Z --end-at 2026-10-12T15:00:00Z \
+            --pre 6 --run 6 --id "verified-$PROFILE-dev20" \
+            --out runs/verified-pf-ci/frozen --settings runs/verified-pf-ci/seed.json
+      - name: Run and independently reconcile the complete frozen replay
+        run: |
+          node --experimental-strip-types scripts/run-frozen-session.mjs \
+            --root "$GITHUB_WORKSPACE" --job runs/verified-pf-ci/frozen \
+            --wait-min 2 --deadline-min 35
+      - name: Record compact research results
+        id: result
+        if: always()
+        run: node scripts/record-verified-replay-result.mjs --profile "${{ matrix.profile }}" --purpose development
+
+  select:
+    name: Select only a complete qualified development result
+    needs: [checks, research]
+    if: always() && needs.checks.result == 'success' && needs.research.result == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      selected: ${{ steps.select.outputs.selected }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Compare the three predeclared development arms
+        id: select
+        env:
+          DEVELOPMENT_RESULTS: ${{ toJSON(needs.research.outputs) }}
+        run: |
+          mkdir -p runs/verified-pf-ci
+          node --input-type=module <<'JS'
+          import { writeFileSync } from 'node:fs';
+          const outputs = JSON.parse(process.env.DEVELOPMENT_RESULTS);
+          const inputs = ['full', 'entry25', 'expanded'].map(key => {
+            if (!outputs[key]) throw new Error(`Missing completed ${key} result`);
+            return JSON.parse(outputs[key]);
+          });
+          writeFileSync('runs/verified-pf-ci/development-inputs.json', JSON.stringify(inputs));
+          JS
+          node scripts/select-replay-candidate.mjs --inputs runs/verified-pf-ci/development-inputs.json --out runs/verified-pf-ci/selection.json
+          cat runs/verified-pf-ci/selection.json
+
+  final:
+    name: Untouched 22-symbol / 24-hour confirmation
+    needs: select
+    if: needs.select.outputs.selected != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      PROFILE: ${{ needs.select.outputs.selected }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Collect complete indicator prehistory from official public archives
+        run: node --experimental-strip-types scripts/build-public-eval-feed.mjs --from 2026-09-24 --out runs/public-source --concurrency 4
+      - name: Verify public source checksums and exact coverage
+        run: node --experimental-strip-types scripts/verify-public-replay-feed.mjs --dir runs/public-source --out runs/public-source/feed-evidence.json
+      - name: Freeze the selected profile before opening the final window
+        env:
+          NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
+        run: |
+          node --experimental-strip-types scripts/replay-study-profiles.mjs --profile "$PROFILE" --out runs/verified-pf-ci/seed.json
+          node --input-type=module <<'JS'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          const path = 'runs/verified-pf-ci/seed.json';
+          const seed = JSON.parse(readFileSync(path));
+          seed.wf.simH = 24;
+          writeFileSync(path, JSON.stringify(seed));
+          JS
+          node --experimental-strip-types scripts/freeze-session-study.mjs \
+            --root "$GITHUB_WORKSPACE" --feed runs/public-source/feed.json \
+            --symbols BTC-USDT,ETH-USDT,BNB-USDT,SOL-USDT,XRP-USDT,DOGE-USDT,ADA-USDT,AVAX-USDT,LINK-USDT,LTC-USDT,DOT-USDT,ATOM-USDT,APT-USDT,NEAR-USDT,SUI-USDT,TRX-USDT,UNI-USDT,FIL-USDT,ETC-USDT,ARB-USDT,OP-USDT,XLM-USDT \
+            --evaluation-from 2026-10-15T15:00:00Z --end-at 2026-10-16T21:00:00Z \
+            --pre 6 --run 24 --id "verified-$PROFILE-final22" \
+            --out runs/verified-pf-ci/frozen --settings runs/verified-pf-ci/seed.json
+      - name: Run the untouched final and reconcile independently
+        run: |
+          node --experimental-strip-types scripts/run-frozen-session.mjs \
+            --root "$GITHUB_WORKSPACE" --job runs/verified-pf-ci/frozen --purpose final \
+            --wait-min 2 --deadline-min 75
+      - name: Record final confirmation or failure
+        if: always()
+        run: node scripts/record-verified-replay-result.mjs --profile "$PROFILE" --purpose final

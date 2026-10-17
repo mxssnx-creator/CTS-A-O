@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { DEFAULT_SETTINGS, RT_COST, type SettingsPatch } from "../config.ts";
 import { liveTrades, type LedgerRow } from "../statistics.ts";
 import { CoreDb } from "./db.server.ts";
@@ -12,12 +15,13 @@ import {
 const formerModel = { cost: 0.002, fees: { taker: 0.0005, maker: 0.0002, slippage: 0.0005 } };
 const runtimes: CoreRuntime[] = [];
 afterEach(() => { for (const runtime of runtimes.splice(0)) runtime.dispose(); });
-function fixture(settings?: SettingsPatch, version = 33, presets?: unknown[]) {
+function fixture(settings?: SettingsPatch, version = 33, presets?: unknown[], seed?: (db: CoreDb) => void) {
   const db = new CoreDb(":memory:");
   db.kvSet("wfCapsV", version);
   db.kvSet("ddtMax35", true);
   if (settings) db.kvSet("settings", settings);
   if (presets) db.kvSet("presets", presets);
+  seed?.(db);
   const runtime = new CoreRuntime(db, undefined, { market: "synthetic", priceStream: null });
   runtime.stop();
   runtimes.push(runtime);
@@ -71,13 +75,94 @@ describe("modeled position cost defaults and migration", () => {
     assert.equal(runtime.settings.cost, RT_COST);
     assert.deepEqual(runtime.settings.fees, DEFAULT_SETTINGS.fees);
     assert.equal(runtime.settings.symbols, 7);
-    assert.equal(db.kvGet<number>("wfCapsV"), 34);
+    assert.equal(db.kvGet<number>("wfCapsV"), 35);
     const presets = db.kvGet<Array<{ id: string; settings: SettingsPatch; wf: unknown; metrics: unknown }>>("presets")!;
     assert.deepEqual(presets[0], {
-      id: "factory", settings: { cost: RT_COST, fees: DEFAULT_SETTINGS.fees }, wf: { lastN: 25 }, metrics: { pf: 1.3 },
+      id: "factory", settings: { cost: RT_COST, fees: DEFAULT_SETTINGS.fees }, wf: { lastN: 25 },
+      metrics: { pf: 1.3, pfBasis: "unavailable", source: "Historical preset results — modeled cost changed or is unverified; run a new backtest" },
     });
     assert.deepEqual(presets[1].settings, custom);
     assert.deepEqual(presets[2].settings, { symbols: 11 });
+  });
+
+  it("archives affected preset evidence before selective retirement, preserving presets and execution ledgers", () => {
+    const presets = [{ id: "saved", settings: { symbols: 8 }, wf: { lastN: 25 }, metrics: { pf: 1.4, pfBasis: "unit-net-returns", source: "old result" } }];
+    const series = { saved: { days: 6, info: { pf: 1.4 } }, research: { days: 2, info: { pf: 1.2 } } };
+    const backtests = { saved: [{ days: 6, pf: 1.4, pass: true }], research: [{ days: 2, pf: 1.2 }] };
+    const { db, runtime } = fixture(structuredClone(formerModel), 33, structuredClone(presets), (db) => {
+      db.kvSet("presetSeries", series);
+      db.kvSet("presetBacktests", backtests);
+      db.kvSet("activePreset", { id: "saved" });
+      db.run("INSERT INTO live_fills(coid,sym,side,kind,qty,ref_px,fill_px,fee,fee_known,at) VALUES ('own','A',1,'O',2,100,100,0,1,1)");
+      db.run("INSERT INTO paper_trades(cfg,sym,side,entry_t,exit_t,r,unit_r) VALUES ('cfg','A',1,1,2,-0.01,-0.01)");
+    });
+    const archive = db.kvGet<{ settings: unknown; presets: unknown; presetSeries: unknown; presetBacktests: unknown; fromVersion: number }>("modeledCostMigrationArchive")!;
+    assert.equal(archive.fromVersion, 33);
+    assert.deepEqual(archive.settings, formerModel);
+    assert.deepEqual(archive.presets, presets);
+    assert.deepEqual(archive.presetSeries, series);
+    assert.deepEqual(archive.presetBacktests, backtests);
+    assert.deepEqual(runtime.presetBacktests(), {});
+    assert.equal(runtime.presetSeries("saved"), null);
+    assert.deepEqual(db.kvGet("activePreset"), { id: "saved" });
+    const kept = db.kvGet<typeof presets>("presets")![0];
+    assert.equal(kept.id, "saved");
+    assert.deepEqual(kept.settings, presets[0].settings);
+    assert.deepEqual(kept.wf, presets[0].wf);
+    assert.equal(kept.metrics.pf, 1.4, "historical numeric evidence remains in the preset and audit backup");
+    assert.equal(kept.metrics.pfBasis, "unavailable", "historical evidence cannot certify current costs");
+    assert.equal(db.get<{ fee: number; fee_known: number }>("SELECT fee,fee_known FROM live_fills WHERE coid='own'")!.fee_known, 1);
+    assert.equal(db.get<{ r: number }>("SELECT r FROM paper_trades WHERE cfg='cfg'")!.r, -0.01);
+  });
+
+  it("retires inherited-default and already-v34 factory caches once but preserves unchanged custom models", () => {
+    for (const [settings, version, retire] of [
+      [undefined, 33, true], [structuredClone(DEFAULT_SETTINGS), 34, true],
+      [{ ...formerModel, cost: 0.0021 }, 33, false], [{ ...formerModel, cost: 0.0021 }, 34, false],
+      [{ cost: RT_COST, fees: { ...DEFAULT_SETTINGS.fees, slippage: 0.0004 } }, 34, false],
+      [{ cost: 0.002 }, 33, false], [structuredClone(DEFAULT_SETTINGS), 35, false],
+    ] as Array<[SettingsPatch | undefined, number, boolean]>) {
+      const cached = { old: [{ pf: 1.7, days: 4 }] };
+      const { db, runtime } = fixture(settings, version, undefined, (db) => db.kvSet("presetBacktests", cached));
+      assert.deepEqual(runtime.presetBacktests(), retire ? {} : cached, `version ${version}, cost ${settings?.cost}`);
+      assert.equal(db.kvGet("modeledCostMigrationArchive") !== undefined, retire);
+      assert.equal(db.kvGet("wfCapsV"), 35);
+    }
+  });
+
+  it("persists its audit backup and leaves new v35 evidence intact on restart", () => {
+    const dir = mkdtempSync(join(tmpdir(), "cts-cost-migration-"));
+    try {
+      const statePath = join(dir, "state.json");
+      const db = new CoreDb(":memory:", { statePath });
+      db.kvSet("wfCapsV", 33);
+      db.kvSet("ddtMax35", true);
+      db.kvSet("settings", formerModel);
+      db.kvSet("presetBacktests", { before: [{ pf: 1.2 }] });
+      const first = new CoreRuntime(db, undefined, { market: "synthetic", priceStream: null });
+      first.stop(); runtimes.push(first);
+      const archive = db.kvGet("modeledCostMigrationArchive");
+      db.kvSet("presetBacktests", { after: [{ pf: 1.3 }] });
+      assert.equal(db.flushState(), true);
+      assert.deepEqual(JSON.parse(readFileSync(statePath, "utf8")).modeledCostMigrationArchive, archive);
+      const restoredDb = new CoreDb(":memory:", { statePath });
+      const restored = new CoreRuntime(restoredDb, undefined, { market: "synthetic", priceStream: null });
+      restored.stop(); runtimes.push(restored);
+      assert.deepEqual(restored.presetBacktests(), { after: [{ pf: 1.3 }] });
+      assert.deepEqual(restoredDb.kvGet("modeledCostMigrationArchive"), archive);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it("retains cached evidence when its configured audit backup cannot be persisted", () => {
+    const db = new CoreDb(":memory:");
+    db.kvSet("wfCapsV", 33);
+    db.kvSet("settings", formerModel);
+    const cache = { old: [{ pf: 1.6 }] };
+    db.kvSet("presetBacktests", cache);
+    db.flushState = () => false;
+    assert.throws(() => new CoreRuntime(db, undefined, { market: "synthetic", priceStream: null }), /audit backup could not be persisted/);
+    assert.deepEqual(db.kvGet("presetBacktests"), cache);
+    assert.equal(db.kvGet("wfCapsV"), 33);
   });
 
   it("preserves custom cost, custom fee components and partial saved provenance", () => {

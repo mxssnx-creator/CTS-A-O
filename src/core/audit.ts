@@ -59,6 +59,8 @@ export interface AuditInput {
   /** the stage sets of the compute that built the tapes ("bot|ind" pairs) */
   stages?: {
     passed: ReadonlySet<string>;
+    /** Diagnostic build pairs that have not qualified for admission. */
+    measured?: ReadonlySet<string>;
     main: ReadonlySet<string>;
     held: ReadonlySet<string>;
     mainTop: number;
@@ -131,12 +133,12 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
         `${st.passed.size - missing.length} / ${st.passed.size}${missing.length ? ` · missing ${missing.slice(0, 3).join(", ")}` : ""}`,
       );
     }
-    const allow = new Set<string>([...st.passed, ...st.held, ...(st.pinned ?? [])]);
+    const allow = new Set<string>([...st.passed, ...st.held, ...(st.pinned ?? []), ...(st.measured ?? [])]);
     const stray = [...st.main].filter((k) => !allow.has(k));
     add(
-      "stages: Main ⊆ Base-validated ∪ held",
+      "stages: Main ⊆ Base-validated ∪ held ∪ measured",
       stray.length === 0,
-      `${st.main.size} Main · ${stray.length} stray${stray.length ? ` (${stray.slice(0, 3).join(", ")})` : ""}`,
+      `${st.main.size} Main · ${st.measured?.size ?? 0} measurement-only · ${stray.length} stray${stray.length ? ` (${stray.slice(0, 3).join(", ")})` : ""}`,
     );
     if (inp.sim) {
       let badEngine = 0;

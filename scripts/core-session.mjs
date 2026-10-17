@@ -62,7 +62,7 @@ import {
 
 process.env.CTS_CORE_STATE = "off";
 process.env.CTS_CORE_AUTOSTART = "0";
-// Run the requested strategy grid without the separate background preset benchmark; explicit diagnostics can opt in.
+// The requested replay does not need the separate background preset comparison benchmark.
 process.env.CTS_CORE_COMPARE ??= "0";
 const argv = process.argv.slice(2);
 if (argv.includes("--help") || argv.includes("-h")) {
@@ -915,7 +915,7 @@ async function runEngine() {
     add(bi, n, w, gp, gl);
     if (n >= 5 && (!bi.best || gp - gl > bi.best.net)) bi.best = { id: tp.id, n, gp, gl, pf: profitFactor(gp, gl), net: gp - gl };
     const ck = p
-      ? `${rl}|tp ${(p.tp * 100).toFixed(3)}%${r === "mc" ? ` (net ${((p.tp - (rt.settings.cost ?? 0.002)) * 100).toFixed(3)}%)` : ""}|sl ${(p.sl / p.tp).toFixed(2)}×|tr ${p.trail ? (p.trail / p.tp).toFixed(2) + "×" : "off"}`
+      ? `${rl}|tp ${(p.tp * 100).toFixed(3)}%${r === "mc" ? ` (net ${((p.tp - rt.settings.cost) * 100).toFixed(3)}%)` : ""}|sl ${(p.sl / p.tp).toFixed(2)}×|tr ${p.trail ? (p.trail / p.tp).toFixed(2) + "×" : "off"}`
       : `${rl}|–|–|–`;
     if (!cells.has(ck)) cells.set(ck, { ...acc(), range: rl, tp: p?.tp, sl: p?.sl, trail: p?.trail });
     add(cells.get(ck), n, w, gp, gl);
@@ -974,7 +974,7 @@ async function runEngine() {
   // survival per range and the filter's quality per window — a range's survivors are the pairs whose tags hold it)
   // (the stored Base runs are slim — no trades — so Base is reported as counts, not per hour)
   const { basePairRows } = await import("../src/core/pipeline/pipeline.ts");
-  const basePairs = basePairRows(rt.pipeline?.s1 ?? [], rt.basePairTags ?? {});
+  const basePairs = basePairRows(rt.pipeline?.s1 ?? [], rt.wf.basePassedRanges ?? rt.basePairTags ?? {});
   {
     funnel.counts = {
       basePairs: basePairs.length,
@@ -2831,7 +2831,7 @@ if (raw.funnel) {
     ``,
     `## Stage funnel, hour by hour (post-gate virtual closes · one-unit PF)`,
     ``,
-    `Base (each pair at its default protect and its ranges' cells): ${k.basePairs ?? "?"} engine pairs evaluated, ${k.basePassed ?? "?"} passed (any range)${E.signals?.representativeBaseGate ? "; gated Signal pairs are included in the status totals" : "; Signal pairs are measured separately"}. Later stages: *candidate pool* = every config of the Base-passed pairs (${k.poolConfigs ?? "?"} tapes; diagnostic, before config validation), Normal / Trailing / Trailing only apart; *post-Base config passes* = ${k.seatedConfigs ?? "?"} distinct configs passed at least one causal config-evaluation step across the window (a config can pass again in a later hour; the hourly row below counts those repeat pass instances). At run start, use the separate config-evaluation denominator/pass count and first simulated-step selection when recorded; the later paper/current selection is a separate snapshot; *post-gate virtual closes* = simulated trades that passed the causal config, coordination, caps and Block gates, before account funding/allocation. This count can include zero-allocated trades; funded settled orders and their PF are reported separately above. One-unit PF is every virtual close normalized to one unit after the ${((raw.settings?.cost ?? 0.002) * 100).toFixed(2)} % cost. Config-evaluation history is ${configEvaluationHistoryH ?? "unknown"} h (max of longH and preH); Base history is reported separately.${raw.settings?.replaySelectionHours != null ? ` Replay-only selection-window override: ${raw.settings.replaySelectionHours} h; it does not change normal runtime settings.` : ""} ${raw.settings?.wf?.lastN > 0 ? `Additional causal config entry check: each candidate needs the prior ${raw.settings.wf.lastN} closes of its exact config at PF ≥ max(${raw.settings.wf.lastNMinPf}, its range floor); no future closes are used.` : "The additional per-config entry last-N check is off (wf.lastN = 0); configEval still validates configs before seating."}${raw.settings?.live?.replaySinceT != null ? ` Separate post-Base paper Live-entry replay: last ${raw.settings.live.liveLastN} closes per config${raw.settings.live.liveGroupLastN ? ` and last ${raw.settings.live.liveGroupLastN} pooled closes per range` : ""}, from ${new Date(raw.settings.live.replaySinceT).toISOString()}; see the Live gate section for judged and rejected counts.` : "Native liveLastN is not replayed unless --live-since is set."}${k.causalBase ? "" : " Base and the candidate pool use the full history (in-sample for the run); seated / executed are causal."}`,
+    `Base (each pair at its default protect and its ranges' cells): ${k.basePairs ?? "?"} engine pairs evaluated, ${k.basePassed ?? "?"} passed (any range)${E.signals?.representativeBaseGate ? "; gated Signal pairs are included in the status totals" : "; Signal pairs are measured separately"}. Later stages: *candidate pool* = every config of the Base-passed pairs (${k.poolConfigs ?? "?"} tapes; diagnostic, before config validation), Normal / Trailing / Trailing only apart; *post-Base config passes* = ${k.seatedConfigs ?? "?"} distinct configs passed at least one causal config-evaluation step across the window (a config can pass again in a later hour; the hourly row below counts those repeat pass instances). At run start, use the separate config-evaluation denominator/pass count and first simulated-step selection when recorded; the later paper/current selection is a separate snapshot; *post-gate virtual closes* = simulated trades that passed the causal config, coordination, caps and Block gates, before account funding/allocation. This count can include zero-allocated trades; funded settled orders and their PF are reported separately above. One-unit PF is every virtual close normalized to one unit after the ${Number.isFinite(raw.settings?.cost) ? (raw.settings.cost * 100).toFixed(2) + " %" : "unrecorded modeled"} cost. Config-evaluation history is ${configEvaluationHistoryH ?? "unknown"} h (max of longH and preH); Base history is reported separately.${raw.settings?.replaySelectionHours != null ? ` Replay-only selection-window override: ${raw.settings.replaySelectionHours} h; it does not change normal runtime settings.` : ""} ${raw.settings?.wf?.lastN > 0 ? `Additional causal config entry check: each candidate needs the prior ${raw.settings.wf.lastN} closes of its exact config at PF ≥ max(${raw.settings.wf.lastNMinPf}, its range floor); no future closes are used.` : "The additional per-config entry last-N check is off (wf.lastN = 0); configEval still validates configs before seating."}${raw.settings?.live?.replaySinceT != null ? ` Separate post-Base paper Live-entry replay: last ${raw.settings.live.liveLastN} closes per config${raw.settings.live.liveGroupLastN ? ` and last ${raw.settings.live.liveGroupLastN} pooled closes per range` : ""}, from ${new Date(raw.settings.live.replaySinceT).toISOString()}; see the Live gate section for judged and rejected counts.` : "Native liveLastN is not replayed unless --live-since is set."}${k.causalBase ? "" : " Base and the candidate pool use the full history (in-sample for the run); seated / executed are causal."}`,
     ``,
     `| hour (UTC) | ${COLS.map(([c]) => c).join(" | ")} |`,
     `|---|${COLS.map(() => "---:").join("|")}|`,
@@ -3108,7 +3108,7 @@ const data = clean({
     pf: "primary: positive net order returns ÷ absolute negative net order returns on the same funded settled-order sample, after modeled costs; recorded Block/coordination execution multiples removed, ladder/tape leg semantics retained; see evidence.returns for source completeness",
     cashPf: "normalized base-$1 PF: every funded settled order gets the same $1 notional and its canonical unit return (stored r with Block/coordination multiple removed); therefore this must match Return PF apart from rounding",
     cashPfDiagnostic: "actual sized-dollar PF: gross realized cash gains ÷ losses from ((1 + execution-weighted return) − 1) × the order's funded unit notional; Block/coordination and ladder volume are already in r and are not multiplied twice; unequal funded sizes can make this differ from the normalized PF",
-    net: `Σ r × unit of the closed orders, $ (r already holds the recorded ${((raw.settings.cost ?? 0.002) * 100).toFixed(2)} % round-trip cost, the Block multiple and the DCA legs)`,
+    net: `Σ r × unit of the closed orders, $ (r already holds the recorded ${Number.isFinite(raw.settings?.cost) ? (raw.settings.cost * 100).toFixed(2) + " %" : "unrecorded modeled"} round-trip cost, the Block multiple and the DCA legs)`,
     ddt: "drawdown time, h: the longest time the closed-order curve stayed below a previous peak (an unrecovered one counts to the end of the window)",
     ddr: "drawdown ratio: the closed-order curve's max drawdown ÷ its net ($); – when net ≤ 0",
     maxDdPct: "group: max drawdown of its own closed curve ÷ (start balance + curve peak); total: the equity curve (open orders marked to market every minute)",
