@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 import { assessReplayCandidate } from "./assess-replay-candidate.mjs";
-import { DEVELOPMENT_PROFILES, DEVELOPMENT_SYMBOLS, DEVELOPMENT_WINDOW, selectReplayCandidate } from "./select-replay-candidate.mjs";
+import { DEVELOPMENT_PROFILES, REFINEMENT_PROFILES, DEVELOPMENT_SYMBOLS, DEVELOPMENT_WINDOW, selectReplayCandidate } from "./select-replay-candidate.mjs";
 
 const COMMIT = "1".repeat(40), SOURCE = "a".repeat(64), H = 3_600_000;
 const FEED = "f".repeat(64);
@@ -18,9 +18,10 @@ function summary(closes, gp, gl, cash = .2) {
 }
 
 // Exercise the real assessor-to-CI compact contract, rather than inventing assessment flags/metric shapes.
-function compact(profile, { pf = 1.2, drawdown = .05, closes = 120, empty = false, noLoss = false } = {}) {
+function compact(profile, { pf = 1.2, drawdown = .05, closes = 120, empty = false, noLoss = false, cashNet } = {}) {
   const n = empty ? 0 : closes, gl = empty || noLoss ? 0 : .1, gp = empty ? 0 : noLoss ? .12 : pf * gl;
-  const cash = empty ? 0 : gp - gl;
+  const cash = cashNet ?? (empty ? 0 : gp - gl), reportedCash = cashNet === undefined ? cash : +cash.toFixed(6);
+  const markedEnd = cashNet === undefined ? 10 + cash : +(10 + cash).toFixed(6);
   const total = summary(n, gp, gl, cash), engine = { key: "Engine", ...total };
   const protocol = { schema: "cts-session-study-v1", id: `verified-${profile}-dev20`,
     source: { sha256: SOURCE, checkpoint: COMMIT }, feed: { sha256: FEED }, symbols: [...DEVELOPMENT_SYMBOLS], window: { ...DEVELOPMENT_WINDOW },
@@ -31,7 +32,7 @@ function compact(profile, { pf = 1.2, drawdown = .05, closes = 120, empty = fals
   const startT = DEVELOPMENT_WINDOW.tradeStartT, endT = DEVELOPMENT_WINDOW.endT;
   const data = { study, symbols: protocol.symbols, window: { startT, endT, preStartT: DEVELOPMENT_WINDOW.evaluationFromT, preH: 6, runH: 6 }, checksOk: true, checks: [{ name: "report arithmetic", ok: true }],
     settings: { balance0: 10, cost: .0015 }, total: { fundedOrders: n, gpR: gp, glR: gl, pf: total.exactPf, pfBasis: "unit-net-returns", noLoss: total.noLoss,
-      unknownReturns: 0, unknownReturnTotals: 0, net: cash, equityEnd: 10 + cash, feasible: true, marginOver: { minutes: 0, firstT: null, maxRatio: .2 },
+      unknownReturns: 0, unknownReturnTotals: 0, net: reportedCash, equityEnd: markedEnd, feasible: true, marginOver: { minutes: 0, firstT: null, maxRatio: .2 },
       eqMin: 10 * (1 - drawdown), ruinT: null, equityMaxDdPct: drawdown, caps: { on: true, maxPositionX: .75, maxExposureX: 7 } } };
   const reportSha256 = sha(data);
   const audit = { schema: "cts-session-study-audit-v1", purpose: "development", checksOk: true,
@@ -41,7 +42,7 @@ function compact(profile, { pf = 1.2, drawdown = .05, closes = 120, empty = fals
     cells: empty ? [] : [{ key: "exact-engine-config", ...total, cohort: "Engine", firstHalf: summary(n / 2, gp / 2, gl / 2, cash / 2), secondHalf: summary(n / 2, gp / 2, gl / 2, cash / 2) }],
     hours: Array.from({ length: 6 }, (_, i) => ({ t: startT + i * H, engine: summary(n / 6, gp / 6, gl / 6, cash / 6) })),
     eligibility: { basePolicyVerified: true }, performance: { mem: { computeLevel: 0, fallback: 0, aborts: 0 }, coverage: { expectedCombos: 100, evaluated: 100 } },
-    account: { startingBalance: 10, unknownAllocations: 0, closedNetUsd: cash, markedEndingEquity: 10 + cash, equityMaxDdPct: drawdown } };
+    account: { startingBalance: 10, unknownAllocations: 0, closedNetUsd: reportedCash, markedEndingEquity: markedEnd, equityMaxDdPct: drawdown } };
   const assessment = assessReplayCandidate(audit, data, { protocol, protocolSha256, reportSha256 });
   const feedEvidence = { schema: "cts-verified-public-feed-v1", sha256: FEED, collector: "binance-usdm-public-archives",
     from: "2026-09-24T00:00:00.000Z", to: "2026-10-17T00:00:00.000Z", symbols: [...DEVELOPMENT_SYMBOLS, "OP-USDT", "XLM-USDT"],
@@ -53,6 +54,41 @@ function compact(profile, { pf = 1.2, drawdown = .05, closes = 120, empty = fals
 const inputs = () => DEVELOPMENT_PROFILES.map((profile) => compact(profile));
 const select = (rows) => selectReplayCandidate(rows, { expectedCommit: COMMIT });
 const hasFailure = (decision, suffix) => decision.failures.some((x) => x.id === suffix || x.id.endsWith(`.${suffix}`));
+
+describe("predeclared refinement cohort", () => {
+  const rows = () => REFINEMENT_PROFILES.map((profile) => compact(profile));
+  const refine = (input, group = "refinement") => selectReplayCandidate(input, { expectedCommit: COMMIT, group });
+  it("qualifies and ranks actual assessor outputs for the declared refinement arms", () => {
+    const input = rows(), result = refine(input);
+    assert.equal(result.validationOk, true, JSON.stringify(result.failures));
+    assert.equal(result.selected, "entry25plain");
+    assert.equal(result.group, "refinement");
+    assert.equal(result.automaticPromotion, false);
+    assert.equal(result.defaultsChanged, false);
+  });
+  it("keeps complete losing refinement outcomes and leaves the final closed", () => {
+    const result = refine(REFINEMENT_PROFILES.map((profile) => compact(profile, { pf: .8 })));
+    assert.equal(result.validationOk, true, JSON.stringify(result.failures));
+    assert.equal(result.selected, null);
+    assert.equal(result.results.length, 3);
+  });
+  it("rejects both directions of group mixing and unknown profile groups", () => {
+    for (const [input, group] of [[inputs(), "refinement"], [rows(), "initial"], [rows(), "other"]]) {
+      const result = refine(input, group);
+      assert.equal(result.validationOk, false);
+      assert.equal(result.selected, null);
+      assert.ok(hasFailure(result, "exact-three-profiles"));
+    }
+    const mixed = rows(); mixed[1] = compact("entry25");
+    assert.equal(refine(mixed).validationOk, false);
+  });
+  it("cannot substitute a renamed initial study for a refinement protocol identity", () => {
+    const input = rows(); input[0].study.id = "verified-full-dev20";
+    const result = refine(input);
+    assert.equal(result.validationOk, false);
+    assert.ok(hasFailure(result, "profile-study-identity"));
+  });
+});
 
 describe("predeclared development replay candidate selector", () => {
   it("accepts actual assessor qualifying outputs without mutating inputs or authorizing promotion", () => {
@@ -98,6 +134,16 @@ describe("predeclared development replay candidate selector", () => {
     assert.equal(result.status, "no-qualifying-profile");
     assert.equal(result.selected, null);
     assert.equal(result.results.every((x) => x.failedCriteria.length > 0), true);
+  });
+  it("uses the actual assessor's exact tiny cash metric when its report rounds to zero", () => {
+    for (const cashNet of [.4e-6, -.4e-6]) {
+      const rows = [compact("full", { cashNet }), compact("entry25", { pf: .9 }), compact("expanded", { pf: .9 })];
+      assert.equal(rows[0].assessment.metrics.combined.closedNetUsd, cashNet);
+      assert.equal(rows[0].assessment.metrics.combined.reportedClosedNetUsd === 0, true, "zero and displayed negative zero cannot decide exact cash profitability");
+      const result = select(rows);
+      assert.equal(result.validationOk, true, JSON.stringify(result.failures));
+      assert.equal(result.selected, cashNet > 0 ? "full" : null);
+    }
   });
   it("accepts the verified extended feed's unknown-in-advance SHA and retains its public scope", () => {
     const result = select(inputs());
@@ -215,6 +261,20 @@ describe("predeclared development replay candidate selector", () => {
 });
 
 describe("development selection CLI", () => {
+  it("honors the refinement group and emits its selected profile for the final job", () => {
+    const dir = mkdtempSync(join(tmpdir(), "replay-refinement-"));
+    try {
+      const input = join(dir, "three.json"), out = join(dir, "decision.json"), githubOutput = join(dir, "github-output");
+      writeFileSync(input, JSON.stringify(REFINEMENT_PROFILES.map(profile => compact(profile))));
+      const run = spawnSync(process.execPath, ["scripts/select-replay-candidate.mjs", "--inputs", input, "--out", out, "--group", "refinement"],
+        { encoding: "utf8", env: { ...process.env, GITHUB_SHA: COMMIT, GITHUB_OUTPUT: githubOutput } });
+      assert.equal(run.status, 0, run.stderr);
+      const decision = JSON.parse(readFileSync(out, "utf8"));
+      assert.equal(decision.group, "refinement");
+      assert.equal(decision.selected, "entry25plain");
+      assert.equal(readFileSync(githubOutput, "utf8"), "selected=entry25plain\n");
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
   it("writes a validated JSON decision and a simple selected GitHub output from compact evidence only", () => {
     const dir = mkdtempSync(join(tmpdir(), "replay-selection-"));
     try {

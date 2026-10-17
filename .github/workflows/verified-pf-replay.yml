@@ -10,7 +10,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: verified-pf-replay-${{ github.ref }}
+  group: verified-pf-replay-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: true
 
 env:
@@ -72,14 +72,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     outputs:
-      full: ${{ steps.result.outputs.full }}
-      entry25: ${{ steps.result.outputs.entry25 }}
-      expanded: ${{ steps.result.outputs.expanded }}
+      entry5strict: ${{ steps.result.outputs.entry5strict }}
+      entry25strict: ${{ steps.result.outputs.entry25strict }}
+      entry25plain: ${{ steps.result.outputs.entry25plain }}
     strategy:
       fail-fast: false
       max-parallel: 3
       matrix:
-        profile: [full, entry25, expanded]
+        profile: [entry5strict, entry25strict, entry25plain]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -129,7 +129,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Compare the three predeclared development arms
+      - name: Compare the three predeclared refinement arms
         id: select
         env:
           DEVELOPMENT_RESULTS: ${{ toJSON(needs.research.outputs) }}
@@ -138,13 +138,13 @@ jobs:
           node --input-type=module <<'JS'
           import { writeFileSync } from 'node:fs';
           const outputs = JSON.parse(process.env.DEVELOPMENT_RESULTS);
-          const inputs = ['full', 'entry25', 'expanded'].map(key => {
+          const inputs = ['entry5strict', 'entry25strict', 'entry25plain'].map(key => {
             if (!outputs[key]) throw new Error(`Missing completed ${key} result`);
             return JSON.parse(outputs[key]);
           });
           writeFileSync('runs/verified-pf-ci/development-inputs.json', JSON.stringify(inputs));
           JS
-          node scripts/select-replay-candidate.mjs --inputs runs/verified-pf-ci/development-inputs.json --out runs/verified-pf-ci/selection.json
+          node scripts/select-replay-candidate.mjs --inputs runs/verified-pf-ci/development-inputs.json --out runs/verified-pf-ci/selection.json --group refinement
           cat runs/verified-pf-ci/selection.json
 
   final:

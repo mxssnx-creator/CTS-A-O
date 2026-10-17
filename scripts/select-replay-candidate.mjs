@@ -5,6 +5,8 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const DEVELOPMENT_PROFILES = Object.freeze(["full", "entry25", "expanded"]);
+export const REFINEMENT_PROFILES = Object.freeze(["entry5strict", "entry25strict", "entry25plain"]);
+export const DEVELOPMENT_PROFILE_GROUPS = Object.freeze({ initial: DEVELOPMENT_PROFILES, refinement: REFINEMENT_PROFILES });
 export const DEVELOPMENT_SYMBOLS = Object.freeze(["BTC-USDT", "ETH-USDT", "BNB-USDT", "SOL-USDT", "XRP-USDT", "DOGE-USDT", "ADA-USDT", "AVAX-USDT",
   "LINK-USDT", "LTC-USDT", "DOT-USDT", "ATOM-USDT", "APT-USDT", "NEAR-USDT", "SUI-USDT", "TRX-USDT", "UNI-USDT", "FIL-USDT", "ETC-USDT", "ARB-USDT"]);
 export const DEVELOPMENT_FEED_SCOPE = Object.freeze({ schema: "cts-verified-public-feed-v1", collector: "binance-usdm-public-archives",
@@ -31,17 +33,19 @@ const metricFields = { engine: ["fundedCloses", "symbols", "returnPf", "firstHal
  * Null PF may describe empty/no-loss noncandidates; a zero-close engine may also have null chronological halves.
  * Missing account telemetry, counts or nonempty chronological evidence is incomplete.
  */
-export function selectReplayCandidate(inputs, { expectedCommit } = {}) {
+export function selectReplayCandidate(inputs, { expectedCommit, group = "initial" } = {}) {
   const checks = [], check = (id, ok, actual = null, expected = true, profile = null) =>
     checks.push({ id, profile, ok: ok === true, actual: actual ?? null, expected });
   const rows = Array.isArray(inputs) ? inputs : [];
+  const profiles = DEVELOPMENT_PROFILE_GROUPS[group] ?? [];
+  check("predeclared-profile-group", profiles.length === 3, group, Object.keys(DEVELOPMENT_PROFILE_GROUPS));
   check("current-commit", hash(expectedCommit, 40), expectedCommit, "full current Git commit SHA");
-  check("exact-three-profiles", Array.isArray(inputs) && rows.length === 3 && DEVELOPMENT_PROFILES.every((profile) => rows.filter((x) => x?.profile === profile).length === 1),
-    rows.map((x) => x?.profile ?? null), DEVELOPMENT_PROFILES);
+  check("exact-three-profiles", Array.isArray(inputs) && rows.length === 3 && profiles.length === 3 && profiles.every((profile) => rows.filter((x) => x?.profile === profile).length === 1),
+    rows.map((x) => x?.profile ?? null), profiles);
   const results = rows.map((row, index) => {
     const profile = row?.profile, study = row?.study, a = row?.assessment, m = a?.metrics;
     const own = (id, ok, actual = null, expected = true) => check(`${index}.${id}`, ok, actual, expected, profile ?? null);
-    own("profile", DEVELOPMENT_PROFILES.includes(profile), profile, DEVELOPMENT_PROFILES);
+    own("profile", profiles.includes(profile), profile, profiles);
     own("completed", row?.status === "complete", row?.status, "complete");
     own("strict-audit", row?.auditChecksOk === true, row?.auditChecksOk);
     own("current-source-commit", hash(row?.commit, 40) && row.commit === expectedCommit && study?.sourceCheckpoint === expectedCommit,
@@ -106,7 +110,7 @@ export function selectReplayCandidate(inputs, { expectedCommit } = {}) {
     (a.profile < b.profile ? -1 : a.profile > b.profile ? 1 : 0)) : [];
   return { schema: "cts-development-replay-selection-v1", validationOk: valid,
     status: !valid ? "incomplete-or-mismatched" : ranked.length ? "selected-for-final-check" : "no-qualifying-profile",
-    selected: ranked[0]?.profile ?? null, automaticPromotion: false, defaultsChanged: false, selectionScope: "predeclared development only",
+    selected: ranked[0]?.profile ?? null, group, automaticPromotion: false, defaultsChanged: false, selectionScope: "predeclared development only",
     expectedCommit: expectedCommit ?? null, sourceSha256: valid ? sourceSeals[0] : null, feedSha256: valid ? feedSeals[0] : null,
     feedEvidence: valid ? rows[0].feedEvidence : null, requiredFeedScope: DEVELOPMENT_FEED_SCOPE,
     window: DEVELOPMENT_WINDOW, symbols: DEVELOPMENT_SYMBOLS,
@@ -119,18 +123,18 @@ export function selectReplayCandidate(inputs, { expectedCommit } = {}) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const args = process.argv.slice(2), usage = "Usage: node scripts/select-replay-candidate.mjs --inputs three-results.json --out decision.json [--commit CURRENT_SHA]";
-  if (args.length === 1 && args[0] === "--help") process.stdout.write(usage + "\nExpected commit defaults to GITHUB_SHA. GITHUB_OUTPUT, when set, receives selected=full|entry25|expanded or an empty value.\n");
+  const args = process.argv.slice(2), usage = "Usage: node scripts/select-replay-candidate.mjs --inputs three-results.json --out decision.json [--commit CURRENT_SHA] [--group initial|refinement]";
+  if (args.length === 1 && args[0] === "--help") process.stdout.write(usage + "\nExpected commit defaults to GITHUB_SHA. GITHUB_OUTPUT receives one validated profile from the requested predeclared group, or an empty value.\n");
   else {
     const options = {};
     for (let i = 0; i < args.length; i += 2) {
-      if (!["--inputs", "--out", "--commit"].includes(args[i]) || !args[i + 1] || args[i + 1].startsWith("--") || options[args[i]]) throw new Error(usage);
+      if (!["--inputs", "--out", "--commit", "--group"].includes(args[i]) || !args[i + 1] || args[i + 1].startsWith("--") || options[args[i]]) throw new Error(usage);
       options[args[i]] = args[i + 1];
     }
     if (!options["--inputs"] || !options["--out"]) throw new Error(usage);
     const input = resolve(options["--inputs"]), output = resolve(options["--out"]), githubOutput = process.env.GITHUB_OUTPUT && resolve(process.env.GITHUB_OUTPUT);
     if (input === output || githubOutput === input || githubOutput === output) throw new Error("Decision and GitHub outputs must not overwrite development input evidence");
-    const result = selectReplayCandidate(JSON.parse(readFileSync(input, "utf8")), { expectedCommit: options["--commit"] ?? process.env.GITHUB_SHA });
+    const result = selectReplayCandidate(JSON.parse(readFileSync(input, "utf8")), { expectedCommit: options["--commit"] ?? process.env.GITHUB_SHA, group: options["--group"] ?? "initial" });
     mkdirSync(dirname(output), { recursive: true }); writeFileSync(output, JSON.stringify(result, null, 2) + "\n");
     if (githubOutput) appendFileSync(githubOutput, `selected=${result.selected ?? ""}\n`);
     process.stdout.write(JSON.stringify({ out: output, validationOk: result.validationOk, selected: result.selected, status: result.status, failures: result.failures }) + "\n");

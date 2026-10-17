@@ -58,6 +58,8 @@ function seal(f) {
 function assess(f, options = {}) { return assessReplayCandidate(f.audit, f.data, { ...seal(f).options, ...options }); }
 const engineOf = (f) => f.audit.cohorts[0];
 const failed = (result, id) => result.failedCriteria.some((x) => x.id === id);
+// Exact serialization used by core-session's html/data.json producer, not rounded audit evidence.
+const report6 = (value) => JSON.parse(JSON.stringify(value, (_, x) => typeof x === "number" && Number.isFinite(x) ? +x.toFixed(6) : x));
 
 describe("frozen replay research candidate assessment", () => {
   it("qualifies consistent measured evidence without changing inputs or authorizing promotion", () => {
@@ -84,6 +86,75 @@ describe("frozen replay research candidate assessment", () => {
     const ratioFour = assess(fixture({ enginePf: 4 }));
     assert.equal(ratioFour.metrics.engine.returnPf, 4);
     assert.equal(ratioFour.researchCandidate, true, "a measured ratio of four is distinct from the no-loss score");
+  });
+
+  it("accepts actual six-decimal report rounding while preserving full-precision audit returns", () => {
+    const f = fixture({ enginePf: 1.23456789 });
+    f.data.total.net = f.audit.total.sizedNetUsd = .20000037;
+    f.audit.account.startingBalance = f.protocol.account.balance = 10.00000037;
+    f.data.settings.balance0 = 10.00000037;
+    const exactReturns = structuredClone(f.audit.total);
+    f.data = report6(f.data);
+    f.audit.account.closedNetUsd = f.data.total.net; // Audit account fields are copied from the serialized report.
+    assert.notEqual(f.data.total.pf, f.audit.total.exactPf);
+    assert.notEqual(f.data.total.gpR, f.audit.total.unitGp);
+    assert.notEqual(f.data.total.net, f.audit.total.sizedNetUsd);
+    const result = assess(f);
+    assert.equal(result.researchCandidate, true, JSON.stringify(result.failedCriteria));
+    assert.deepEqual(f.audit.total, exactReturns);
+    assert.equal(result.metrics.combined.returnPf, exactReturns.exactPf);
+    assert.equal(result.metrics.combined.closedNetUsd, exactReturns.sizedNetUsd);
+    assert.equal(result.metrics.combined.reportedClosedNetUsd, .2);
+  });
+
+  it("scores tiny positive or negative cash from exact audited allocations rather than rounded report zero", () => {
+    for (const exactCash of [.4e-6, -.4e-6]) {
+      const f = fixture();
+      f.audit.total.sizedNetUsd = f.data.total.net = exactCash;
+      f.audit.cohorts.forEach((x) => { x.sizedNetUsd = exactCash / f.audit.cohorts.length; });
+      f.data = report6(f.data);
+      f.audit.account.closedNetUsd = f.data.total.net;
+      assert.equal(f.data.total.net, 0);
+      const result = assess(f);
+      assert.equal(failed(result, "combined-cash-net"), exactCash < 0);
+      assert.equal(result.researchCandidate, exactCash > 0, JSON.stringify(result.failedCriteria));
+      assert.equal(result.metrics.combined.closedNetUsd, exactCash);
+      assert.equal(result.metrics.combined.reportedClosedNetUsd, 0);
+    }
+  });
+
+  for (const [field, exactField, id] of [["pf", "exactPf", "combined-pf"], ["gpR", "unitGp", "combined-pf"],
+    ["glR", "unitGl", "combined-pf"], ["net", "sizedNetUsd", "combined-cash-net"]]) {
+    it(`rejects ${field} report mismatch beyond the half-unit serialization bound`, () => {
+      const f = fixture({ enginePf: 1.23456789 });
+      f.data.total[field] = f.audit.total[exactField] + .501e-6;
+      if (field === "net") f.audit.account.closedNetUsd = f.data.total.net;
+      assert.equal(failed(assess(f), id), true);
+    });
+  }
+
+  it("does not relax exact combined or engine PF floors when report rounding reaches the boundary", () => {
+    const combined = fixture({ combinedPf: 1.05 - 1e-8 });
+    combined.data = report6(combined.data);
+    assert.equal(combined.data.total.pf, 1.05);
+    assert.equal(combined.audit.total.exactPf < 1.05, true);
+    assert.equal(failed(assess(combined), "combined-pf"), true);
+    const engine = fixture({ enginePf: 1.10 - 1e-8 });
+    engine.data = report6(engine.data);
+    assert.equal(engineOf(engine).exactPf < 1.10, true);
+    assert.equal(failed(assess(engine), "engine-pf"), true);
+  });
+
+  it("retains strict full-precision audit arithmetic and raw protocol balance identity", () => {
+    const f = fixture();
+    f.audit.cells[0].unitGp += .1e-6;
+    assert.equal(failed(assess(f), "engine-halves-evidence"), true);
+    const balance = fixture();
+    balance.protocol.account.balance += .1e-6;
+    assert.equal(failed(assess(balance), "starting-balance"), true);
+    const duplicate = fixture();
+    duplicate.audit.account.closedNetUsd += .1e-6;
+    assert.equal(failed(assess(duplicate), "combined-cash-net"), true, "duplicate report/account values share the same serialized basis");
   });
 
   it("accepts exactly 24 final trading hours after six evaluated prehistory hours", () => {
@@ -317,6 +388,11 @@ describe("frozen replay research candidate assessment", () => {
       const result = assessReplayCandidate(null, produced);
       assert.equal(result.criteria.find((x) => x.id === "margin-shortfall").ok, true, "read the producer's object instead of a mirrored scalar fixture");
       assert.equal(result.researchCandidate, false, "two report-fixture closes are not qualifying market evidence");
+      const f = fixture();
+      f.audit.total = summary(2, raw.trades[0].r, -raw.trades[1].r, produced.total.net);
+      const precision = assessReplayCandidate(f.audit, produced);
+      assert.equal(produced.total.pf, +f.audit.total.exactPf.toFixed(6));
+      assert.equal(failed(precision, "combined-pf"), false, "the actual producer's rounded PF/GP/GL reconcile to exact unit returns");
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 });

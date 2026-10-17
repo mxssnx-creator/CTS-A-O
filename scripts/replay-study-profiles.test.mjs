@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 import { DEFAULT_SETTINGS } from "../src/core/config.ts";
@@ -64,6 +64,29 @@ describe("public replay study profiles", () => {
       wf: entry25.wf,
     });
     assert.equal(new Set(expanded.settings.focus).size, expanded.settings.focus.length);
+  });
+
+  it("changes only the declared entry gate or Block toggle in each refinement", () => {
+    const entry25 = buildReplayStudyProfile("entry25");
+    for (const [profile, lastN, lastNMinPf, block] of [
+      ["entry5strict", 5, 1.2, true],
+      ["entry25strict", 25, 1.2, true],
+      ["entry25plain", 25, 1, false],
+    ]) {
+      const seed = buildReplayStudyProfile(profile);
+      assert.deepEqual(
+        seed,
+        {
+          settings: { ...entry25.settings, toggles: { ...entry25.settings.toggles, block } },
+          wf: { ...entry25.wf, lastN, lastNMinPf },
+        },
+        profile,
+      );
+      assert.equal(seed.settings.focus.length, 97);
+      assert.equal(seed.settings.pinned.length, 24);
+      assert.deepEqual(seed.settings.focus, entry25.settings.focus);
+      assert.equal(seed.settings.toggles.blockActive, false);
+    }
   });
 
   it("registers all 54 unique additions and constructs each exact eligible bot and lane", () => {
@@ -157,7 +180,99 @@ describe("public replay study profiles", () => {
         );
         const summary = JSON.parse(child.stdout);
         assert.equal(summary.live, false);
-        assert.equal(summary.researchOnly, profile === "expanded");
+        assert.equal(
+          summary.researchOnly,
+          {
+            full: false,
+            entry25: false,
+            expanded: true,
+            entry5strict: true,
+            entry25strict: true,
+            entry25plain: true,
+          }[profile],
+        );
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("preserves the exact refinement differences through the stopped production freezer", () => {
+    const dir = mkdtempSync(join(tmpdir(), "cts-refinement-freeze-"));
+    const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+    try {
+      const feed = join(dir, "feed.json");
+      writeFileSync(feed, "{}\n"); // The freezer hashes this fixture and never starts market computation.
+      const freeze = (profile) => {
+        const seed = join(dir, `${profile}.json`),
+          out = join(dir, profile);
+        writeFileSync(seed, JSON.stringify(buildReplayStudyProfile(profile)));
+        const child = spawnSync(
+          process.execPath,
+          [
+            "--experimental-strip-types",
+            "--no-warnings",
+            join(root, "scripts/freeze-session-study.mjs"),
+            "--root",
+            root,
+            "--settings",
+            seed,
+            "--feed",
+            feed,
+            "--symbols",
+            "AAA-USDT,BBB-USDT",
+            "--evaluation-from",
+            "2026-09-01T00:00:00Z",
+            "--end-at",
+            "2026-09-01T12:00:00Z",
+            "--pre",
+            "6",
+            "--run",
+            "6",
+            "--id",
+            `synthetic-${profile}`,
+            "--out",
+            out,
+          ],
+          {
+            cwd: root,
+            encoding: "utf8",
+            timeout: 30_000,
+            env: {
+              ...process.env,
+              CTS_CORE_STATE: "off",
+              CTS_CORE_AUTOSTART: "0",
+              CTS_CORE_LIVE: "0",
+              CTS_CORE_COMPARE: "0",
+              CTS_CORE_WORKERS: "1",
+            },
+          },
+        );
+        assert.equal(
+          child.status,
+          0,
+          [child.error?.message, child.stderr].filter(Boolean).join("\n"),
+        );
+        const protocol = JSON.parse(readFileSync(join(out, "protocol.json"), "utf8"));
+        const desk = JSON.parse(readFileSync(join(out, "desk.json"), "utf8"));
+        assert.deepEqual(desk.settings, protocol.actualSettings);
+        assert.deepEqual(desk.wf, protocol.actualWf);
+        return { settings: protocol.actualSettings, wf: protocol.actualWf };
+      };
+      const entry25 = freeze("entry25");
+      for (const [profile, lastN, lastNMinPf, block] of [
+        ["entry5strict", 5, 1.2, true],
+        ["entry25strict", 25, 1.2, true],
+        ["entry25plain", 25, 1, false],
+      ]) {
+        assert.deepEqual(
+          freeze(profile),
+          {
+            settings: { ...entry25.settings, toggles: { ...entry25.settings.toggles, block } },
+            wf: { ...entry25.wf, lastN, lastNMinPf, toggles: { ...entry25.wf.toggles, block } },
+          },
+          profile,
+        );
       }
     } finally {
       rmSync(dir, { recursive: true, force: true });

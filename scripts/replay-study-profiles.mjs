@@ -5,7 +5,14 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DEFAULT_SETTINGS } from "../src/core/config.ts";
 
-export const REPLAY_STUDY_PROFILES = Object.freeze(["full", "entry25", "expanded"]);
+export const REPLAY_STUDY_PROFILES = Object.freeze([
+  "full",
+  "entry25",
+  "expanded",
+  "entry5strict",
+  "entry25strict",
+  "entry25plain",
+]);
 
 // Predeclared research-only additions from verified-replay-20261018-research-focus.json.
 // The baseline factory focus and pins stay intact; every addition selects one exact registered lane.
@@ -47,14 +54,16 @@ export function buildReplayStudyProfile(profile) {
   Object.assign(settings.sizing, { mode: "equityPct", pct: 0.001 });
   Object.assign(settings.signals, { enabled: true, count: 0 });
   if (profile === "expanded") settings.focus.push(...EXPANDED_RESEARCH_FOCUS);
+  // Predeclared development refinements only; production defaults and range PF floors remain intact.
+  if (profile === "entry25plain") settings.toggles.block = false;
   // Let the production freezer materialize every other WF default and normalize required data lanes.
   const wf = {
     preH: 6,
     simH: 6,
     longH: 6,
     causalBase: true,
-    lastN: profile === "full" ? 0 : 25,
-    lastNMinPf: 1,
+    lastN: profile === "full" ? 0 : profile === "entry5strict" ? 5 : 25,
+    lastNMinPf: profile === "entry5strict" || profile === "entry25strict" ? 1.2 : 1,
   };
   return { settings, wf };
 }
@@ -71,14 +80,14 @@ export function replayStudyProfileOptions(args) {
     options[key] = value;
   }
   if (!options.profile || !options.out)
-    throw new Error("Supply --profile full|entry25|expanded and --out FILE");
+    throw new Error(`Supply --profile ${REPLAY_STUDY_PROFILES.join("|")} and --out FILE`);
   return options;
 }
 
 function main(args) {
   if (args.length === 1 && args[0] === "--help") {
     console.log(
-      "node --experimental-strip-types scripts/replay-study-profiles.mjs --profile full|entry25|expanded --out FILE\nCreates a factory-derived settings/WF seed. Pass FILE to freeze-session-study.mjs --settings before running. Expanded is a predeclared research-only focus expansion; no live execution is enabled.",
+      `node --experimental-strip-types scripts/replay-study-profiles.mjs --profile ${REPLAY_STUDY_PROFILES.join("|")} --out FILE\nCreates a factory-derived settings/WF seed. Pass FILE to freeze-session-study.mjs --settings before running. Expanded and entry refinements are predeclared research-only profiles; no live execution is enabled.`,
     );
     return;
   }
@@ -95,7 +104,7 @@ function main(args) {
       pinned: seed.settings.pinned.length,
       live: false,
       lastN: seed.wf.lastN,
-      researchOnly: profile === "expanded",
+      researchOnly: !["full", "entry25"].includes(profile),
     }),
   );
 }

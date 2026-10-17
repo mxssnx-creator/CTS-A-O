@@ -6,8 +6,8 @@ import { spawnSync } from "node:child_process";
 const args = process.argv.slice(2);
 const value = (key) => { const i = args.indexOf(key); return i < 0 ? null : args[i + 1]; };
 const profile = value("--profile"), purpose = value("--purpose") ?? "development";
-if (!["full", "entry25", "expanded"].includes(profile) || !["development", "final"].includes(purpose))
-  throw new Error("Supply --profile full|entry25|expanded and --purpose development|final");
+if (!["full", "entry25", "expanded", "entry5strict", "entry25strict", "entry25plain"].includes(profile) || !["development", "final"].includes(purpose))
+  throw new Error("Supply a registered replay --profile and --purpose development|final");
 const statusPath = "runs/frozen-session-launcher-status.json";
 if (!existsSync(statusPath)) throw new Error("Replay did not start; no performance result");
 const status = JSON.parse(readFileSync(statusPath));
@@ -37,9 +37,17 @@ if (feedEvidence.schema !== "cts-verified-public-feed-v1" || feedEvidence.sha256
 const compact = { profile, feedEvidence, status: "complete", commit: process.env.GITHUB_SHA, study, auditChecksOk: true,
   assessment: { researchCandidate: assessment.researchCandidate, metrics: assessment.metrics,
     failedCriteria: assessment.failedCriteria, automaticPromotion: false, defaultsChanged: false } };
+const capitalIds = new Set(["ending-equity", "feasible", "margin-shortfall", "positive-equity", "no-ruin", "max-drawdown"]);
+const cellView = ({ cfg, side, cohort, range, closes, entryGroups, symbols, state, noLoss, exactPf, unitNet, sizedNetUsd, firstHalf, secondHalf }) =>
+  ({ cfg, side, cohort, range, closes, entryGroups, symbols, state, noLoss, exactPf, unitNet, sizedNetUsd,
+    firstHalfUnitNet: firstHalf.unitNet, secondHalfUnitNet: secondHalf.unitNet });
+const cells = a.cells.filter(x => x.cohort === "Engine");
+const weakest = field => cells.filter(x => Number.isFinite(x[field])).sort((x, y) => x[field] - y[field]).slice(0, 10).map(cellView);
 console.log("CTS_REPLAY_RESULT=" + JSON.stringify({ schema: "cts-verified-replay-ci-v1", ...compact,
   total: a.total, cohorts: a.cohorts, ranges: a.byRange, types: a.byType, directions: a.byDirection,
   hours: a.hours, account: a.account, performance: a.performance, base: a.eligibility.base,
-  configRunStart: a.eligibility.configRunStart }));
+  configRunStart: a.eligibility.configRunStart,
+  capitalEvidence: assessment.criteria.filter(x => capitalIds.has(x.id)),
+  diagnosticCells: { automaticPruning: false, lowestCash: weakest("sizedNetUsd"), lowestUnitNet: weakest("unitNet") } }));
 if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `${profile}=${JSON.stringify(compact)}\n`);
 if (purpose === "final" && !assessment.researchCandidate) process.exitCode = 1;

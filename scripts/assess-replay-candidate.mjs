@@ -9,6 +9,11 @@ const H = 3_600_000;
 const finite = (x) => typeof x === "number" && Number.isFinite(x);
 const count = (x) => Number.isInteger(x) && x >= 0;
 const near = (a, b) => finite(a) && finite(b) && Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(a), Math.abs(b));
+// core-session.mjs clean() serializes html/data.json with +value.toFixed(6).
+// Only comparisons crossing that report/full-precision boundary receive half a decimal unit,
+// plus IEEE representation error. Audit arithmetic and qualification floors remain exact.
+const nearReport6 = (reported, exact) => finite(reported) && finite(exact) &&
+  Math.abs(reported - exact) <= .5e-6 + 4 * Number.EPSILON * Math.max(1, Math.abs(reported), Math.abs(exact));
 const canonical = (x) => Array.isArray(x) ? x.map(canonical) : x && typeof x === "object"
   ? Object.fromEntries(Object.keys(x).sort().map((key) => [key, canonical(x[key])])) : x;
 const same = (a, b) => JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
@@ -121,13 +126,14 @@ export function assessReplayCandidate(audit, data, { protocol = null, reportSha2
     { combined: combined?.closes, report: total?.fundedOrders, engine: engine?.closes });
   check("combined-pf", "Combined book has measured finite Return PF at least 1.05", measuredPf(combined) && combined.exactPf >= p.combinedPf &&
     total?.pfBasis === "unit-net-returns" && total?.noLoss === false && total?.unknownReturns === 0 && total?.unknownReturnTotals === 0 &&
-    near(total?.gpR, combined.unitGp) && near(total?.glR, combined.unitGl) && near(total?.pf, combined.exactPf),
+    nearReport6(total?.gpR, combined.unitGp) && nearReport6(total?.glR, combined.unitGl) && nearReport6(total?.pf, combined.exactPf),
     { state: combined?.state, noLoss: combined?.noLoss, pf: combined?.exactPf, reportPf: total?.pf }, p.combinedPf);
-  check("combined-cash-net", "Combined funded closed cash net is positive and reconciled", finite(total?.net) && total.net > 0 && near(total.net, account?.closedNetUsd) &&
-    near(total.net, combined?.sizedNetUsd), { report: total?.net, account: account?.closedNetUsd, audited: combined?.sizedNetUsd }, "> 0");
+  check("combined-cash-net", "Exact combined funded closed cash net is positive and reconciles to the report", finite(combined?.sizedNetUsd) && combined.sizedNetUsd > 0 &&
+    near(total?.net, account?.closedNetUsd) && nearReport6(total?.net, combined.sizedNetUsd),
+    { report: total?.net, account: account?.closedNetUsd, audited: combined?.sizedNetUsd }, "> 0");
   const balance = account?.startingBalance;
   check("starting-balance", "Starting balance is positive and matches report and protocol", finite(balance) && balance > 0 &&
-    near(balance, data?.settings?.balance0) && near(balance, protocol?.account?.balance), { audit: balance, report: data?.settings?.balance0, protocol: protocol?.account?.balance });
+    nearReport6(data?.settings?.balance0, balance) && near(balance, protocol?.account?.balance), { audit: balance, report: data?.settings?.balance0, protocol: protocol?.account?.balance });
   check("ending-equity", "Marked ending equity is at least starting balance", finite(balance) && balance > 0 && finite(total?.equityEnd) && total.equityEnd >= balance &&
     near(total.equityEnd, account?.markedEndingEquity), { startingBalance: balance, markedEndingEquity: total?.equityEnd }, ">= starting balance");
   check("feasible", "Modeled account is explicitly feasible", total?.feasible === true, total?.feasible);
@@ -149,7 +155,7 @@ export function assessReplayCandidate(audit, data, { protocol = null, reportSha2
     researchCandidate, status: researchCandidate ? "research-candidate" : "not-qualified", automaticPromotion: false, defaultsChanged: false,
     policy: p, metrics: { engine: { fundedCloses: engine?.closes ?? null, symbols: engine?.symbols ?? null, returnPf: engine?.exactPf ?? null,
       entryGroups: engine?.entryGroups ?? null, firstHalfUnitNet: firstHalf, secondHalfUnitNet: secondHalf, greenHours: green, redHours: red, flatActiveHours: flat },
-      combined: { returnPf: combined?.exactPf ?? null, closedNetUsd: total?.net ?? null },
+      combined: { returnPf: combined?.exactPf ?? null, closedNetUsd: combined?.sizedNetUsd ?? null, reportedClosedNetUsd: total?.net ?? null },
       account: { startingBalance: balance ?? null, markedEndingEquity: total?.equityEnd ?? null, minimumEquity: total?.eqMin ?? null, maximumDrawdown: total?.equityMaxDdPct ?? null } },
     requirementsRemaining: audit?.purpose === "final"
       ? ["Compare this untouched final evidence with the declared development policy; passing criteria alone never authorizes promotion."]
