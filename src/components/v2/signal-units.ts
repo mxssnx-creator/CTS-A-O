@@ -8,6 +8,8 @@ export interface SignalUnit {
   side: number;
   /** Absent only for a legacy Base / discovery unit. */
   kind?: string | null;
+  /** Exact protection config; absent for Base / discovery evidence. */
+  cfg?: string | null;
 }
 
 export function signalTypeLabel(kind?: string | null): string {
@@ -38,8 +40,8 @@ export function signalTrailGapRatio(value: { trailStep?: number; cfg?: string; k
   return Number.isFinite(recorded) && recorded > 0 ? recorded : 1;
 }
 
-/** Every independently ranked unit retains a distinct row, including its full pair, direction and type. */
+/** Every independently ranked unit retains a distinct row, including its full pair, direction, type and protection config. */
 export function signalUnitRowKey(unit: SignalUnit): string {
-  return JSON.stringify([unit.bot, unit.ind, unit.sym, unit.side > 0 ? 1 : -1, unit.kind ?? null]);
+  return JSON.stringify([unit.bot, unit.ind, unit.sym, unit.side > 0 ? 1 : -1, unit.kind ?? null, unit.cfg ?? null]);
 }
 

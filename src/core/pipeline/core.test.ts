@@ -190,6 +190,47 @@ describe("last-N", () => {
     assert.ok(res.rows.length > 5);
   });
 
+  it("reports gateOpen as of nowT and never lets future closes qualify it", () => {
+    const xs: Trade[] = [];
+    let i = 0;
+    for (let cyc = 0; cyc < 12; cyc++) {
+      for (let j = 0; j < 25; j++) xs.push(tr(i++, -0.012));
+      for (let j = 0; j < 25; j++) xs.push(tr(i++, 0.01));
+    }
+    // The first close in the later winning block lands exactly at 26 h: four prior losses
+    // plus this larger win pass N=5, while the same sample just before the close does not.
+    xs[25] = tr(25, 0.06);
+    const gates = { ...DEFAULT_GATES, maxDdtH: 1e9, maxDdr: 0 };
+    const historical = optimizeLastN("x", xs, { gates, grid: [5, 10], nowT: 5 * H });
+    assert.equal(historical.bestN, 5, "the optimizer still selects its in-sample N");
+    assert.equal(historical.gateOpen, false, "the first five completed closes are losses");
+
+    const atClose = optimizeLastN("x", xs, { gates, grid: [5, 10], nowT: 26 * H });
+    assert.equal(atClose.gateOpen, true, "a passing close exactly at nowT is included in the current last-N");
+    const beforeClose = optimizeLastN("x", xs, { gates, grid: [5, 10], nowT: 26 * H - 1 });
+    assert.equal(beforeClose.gateOpen, false, "future closes after nowT are excluded");
+  });
+
+  it("keeps optimizer statistics and gate decisions stable when simultaneous closes are permuted", () => {
+    const xs = Array.from({ length: 60 }, (_, k) => tr(k, k < 20 ? -0.012 : 0.01));
+    const loss = { ...tr(30, -0.03), sym: "AAA" };
+    const win = { ...tr(30, 0.04), sym: "BBB" };
+    const gates = { ...DEFAULT_GATES, maxDdtH: 1e9 };
+    const a = optimizeLastN("x", [...xs, loss, win], { gates, grid: [5, 10], nowT: 80 * H });
+    const b = optimizeLastN("x", [...xs, win, loss], { gates, grid: [5, 10], nowT: 80 * H });
+    assert.deepEqual(a, b);
+  });
+
+  it("marks N=0 as an open, ungated baseline instead of reusing historical IS/OOS PF", () => {
+    const res = optimizeLastN("x", [tr(0, -0.01)], {
+      gates: { ...DEFAULT_GATES, maxDdtH: 1e9 },
+      grid: [5],
+      nowT: 0,
+    });
+    assert.equal(res.bestN, 0, "no candidate window has enough closes");
+    assert.equal(res.gateOpen, true, "N=0 means the baseline has no Last-N gate");
+  });
+
   it("a pure loser never succeeds", () => {
     const xs = Array.from({ length: 200 }, (_, k) => tr(k, k % 3 === 0 ? 0.01 : -0.01));
     const res = optimizeLastN("x", xs, { gates: DEFAULT_GATES });

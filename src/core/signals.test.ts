@@ -10,6 +10,7 @@ import {
   mergeSignals,
   signalCombos,
   signalProtects,
+  signalSeatSymbols,
   signalSettings,
   SignalGuard,
   sigActiveKey,
@@ -139,7 +140,7 @@ describe("signals: sources and combos", () => {
 
 describe("signals: active ranking and guard", () => {
   it("the best N by per-symbol net (then PF), with a minimum of trades", () => {
-    type Run = Parameters<typeof activeSignals>[0][number];
+    type Run = Parameters<typeof activeSignals>[0] extends Iterable<infer R> ? R : never;
     const runs: Run[] = [
       {
         bot: "follow",
@@ -169,7 +170,7 @@ describe("signals: active ranking and guard", () => {
   });
 
   it("drawdown ranking: net ÷ max drawdown, only signals positive in enough 4-hour blocks", () => {
-    type Run = Parameters<typeof activeSignals>[0][number];
+    type Run = Parameters<typeof activeSignals>[0] extends Iterable<infer R> ? R : never;
     const runs: Run[] = [
       // big net, deep drawdown: recovery 10 / 5 = 2
       {
@@ -230,7 +231,7 @@ describe("signals: active ranking and guard", () => {
   });
 
   it("automatic validation: a signal that lost over the latest 24 h does not start", () => {
-    type Run = Parameters<typeof activeSignals>[0][number];
+    type Run = Parameters<typeof activeSignals>[0] extends Iterable<infer R> ? R : never;
     const st = (recentNet: number, recentN = 3) => ({
       n: 9,
       net: 6,
@@ -295,7 +296,7 @@ describe("signals: active ranking and guard", () => {
   it("the Real gate refuses inactive signals and guarded sets", () => {
     const o = {
       ...defaultWalkForward(DEFAULT_SETTINGS),
-      signalActive: new Set([sigActiveKey("follow", "sig-ema-cross-s@m15", "A", 1, "normal")]),
+      signalActive: new Set([sigActiveKey("follow", "sig-ema-cross-s@m15", "A", 1, "normal", "x")]),
       signalGuardN: 8,
     };
     const tp = {
@@ -404,7 +405,7 @@ describe("signal guard window", () => {
 describe("signals: guards through the feed (as the simulation runs them)", () => {
   const base = () => ({
     ...defaultWalkForward(DEFAULT_SETTINGS),
-    signalActive: new Set([sigActiveKey("follow", "sig-ema-cross-s@m15", "A", 1, "normal")]),
+    signalActive: new Set([sigActiveKey("follow", "sig-ema-cross-s@m15", "A", 1, "normal", tp.id)]),
   });
   const tp = {
     id: "follow|sig-ema-cross-s@m15|tp2|sl2|tr0|h96",
@@ -479,8 +480,8 @@ describe("signals: guards through the feed (as the simulation runs them)", () =>
 });
 
 describe("signals: settings", () => {
-  it("active count: 0 = no cap, else 10–2000 in steps of 10, default 100 (per-side units: the measured 50 × 2)", () => {
-    assert.equal(DEFAULT_SIGNALS.count, 100);
+  it("active count: 0 = no cap, else 10–2000 in steps of 10, default unlimited (exact config units)", () => {
+    assert.equal(DEFAULT_SIGNALS.count, 0);
     assert.equal(SIGNAL_COUNT_CHOICES[0], 0, "no cap is a choice");
     assert.equal(SIGNAL_COUNT_CHOICES[1], 10);
     assert.equal(SIGNAL_COUNT_CHOICES.at(-1), 2000);
@@ -587,13 +588,10 @@ describe("signals: engine", { timeout: 400_000 }, () => {
     assert.equal(st.combos, ENABLED * 2 * DEFAULT_SIGNALS.lanes.length);
     assert.ok(st.active > 0 && st.active <= 10, `active ${st.active}`);
     const sigTapes = rt.tapes.filter((t) => isSignalInd(t.ind));
-    // every config of every active signal runs (not selected into seats): all of them in the paper selection
+    // Each exact config with an active symbol/direction takes its own seat; sibling protects supply no seat.
     const sel = new Set(rt.paper.selected);
-    const activePairs = new Set(
-      [...rt.wf.signalActive!].map((k) => k.split("|").slice(0, 2).join("|")),
-    );
     for (const t of sigTapes)
-      if (activePairs.has(`${t.bot}|${t.ind}`)) assert.ok(sel.has(t.id), t.id);
+      if (signalSeatSymbols(t, rt.wf.signalActive!).size) assert.ok(sel.has(t.id), t.id);
     // 42 Normal + 35 capped Trailing + nine Trailing-only configs per percent-mode signal pair; ATR adds 18 in ATR /
     // both mode. Historic configs are additional only when their independent sample qualifies.
     const pct = st.pairs * signalProtects(signalSettings({ enabled: true })).length;
@@ -636,7 +634,7 @@ describe("signals: engine", { timeout: 400_000 }, () => {
     for (const x of rt.sim!.trades.filter((x) => isSignalInd(x.cfg.split("|")[1] ?? "")))
       assert.ok(
         signalSetAt(steps, x.entryT)!.has(
-          sigActiveKey(x.cfg.split("|")[0], x.cfg.split("|")[1], x.sym, x.side, x.kind),
+          sigActiveKey(x.cfg.split("|")[0], x.cfg.split("|")[1], x.sym, x.side, x.kind, x.cfg),
         ),
         x.cfg,
       );
@@ -692,15 +690,15 @@ describe("signals: causal per-step activation", () => {
   it("ranks only on results closed before t (no look-ahead)", () => {
     const early = activeSignalsAt([ta, tb], 48 * H, sig, 48);
     // keys carry the direction (every fixture close is a long)
-    assert.ok(early.has(`follow|${a.ind}|S|1|normal`));
+    assert.ok(early.has(sigActiveKey("follow", a.ind, "S", 1, "normal", ta.id)));
     assert.ok(
-      !early.has(`follow|${a.ind}|S|-1|normal`),
+      !early.has(sigActiveKey("follow", a.ind, "S", -1, "normal", ta.id)),
       "no short closes: the short is not active",
     );
-    assert.ok(!early.has(`follow|${b.ind}|S|1|normal`), "b has only losses before 48 h");
+    assert.ok(!early.has(sigActiveKey("follow", b.ind, "S", 1, "normal", tb.id)), "b has only losses before 48 h");
     const late = activeSignalsAt([ta, tb], 100 * H, sig, 48);
-    assert.ok(late.has(`follow|${b.ind}|S|1|normal`));
-    assert.ok(!late.has(`follow|${a.ind}|S|1|normal`), "a only lost in the last 48 h");
+    assert.ok(late.has(sigActiveKey("follow", b.ind, "S", 1, "normal", tb.id)));
+    assert.ok(!late.has(sigActiveKey("follow", a.ind, "S", 1, "normal", ta.id)), "a only lost in the last 48 h");
     // results after t never count
     assert.deepEqual([...activeSignalsAt([ta, tb], 2 * H, sig, 48)], []);
   });
@@ -926,7 +924,7 @@ describe("negative-hour hedge", () => {
     const idx = signalIndex([ta, tb]);
     const loose = { minN: 5, minPf: 1.3 };
     const got = hedgeSignalsAt(idx, 30 * H, neg, 48, loose);
-    assert.deepEqual([...got], [`follow|${a.ind}|S|1|normal`]);
+    assert.deepEqual([...got], [sigActiveKey("follow", a.ind, "S", 1, "normal", ta.id)]);
     // hours not yet complete at t never count
     assert.equal(hedgeSignalsAt(idx, 12 * H, neg, 48, loose).size, 0);
     assert.equal(hedgeSignalsAt(idx, 30 * H, new Set(), 48, loose).size, 0);
@@ -1154,20 +1152,21 @@ describe("signal seats in the session report", () => {
   it("a signal tape is seated only on the symbols its pair is active on (keyed pair × symbol × direction)", async () => {
     const { signalSeatSymbols } = await import("./signals.ts");
     const tp = {
+      id: "follow|sig-swing-m@m15|tp3|sl6|tr0|h192",
       bot: "follow",
       ind: "sig-swing-m@m15",
       syms: ["AAA-USDT", "BBB-USDT", "CCC-USDT"],
     };
     // Causal active keys include the strategy type: BBB short and CCC long of this Normal pair, AAA of another.
     const active = new Set([
-      sigActiveKey("follow", "sig-swing-m@m15", "BBB-USDT", -1, "normal"),
-      sigActiveKey("follow", "sig-swing-m@m15", "CCC-USDT", 1, "normal"),
+      sigActiveKey("follow", "sig-swing-m@m15", "BBB-USDT", -1, "normal", tp.id),
+      sigActiveKey("follow", "sig-swing-m@m15", "CCC-USDT", 1, "normal", tp.id),
       sigActiveKey("follow", "sig-kama-m@m15", "AAA-USDT", 1, "normal"),
     ]);
     assert.deepEqual([...signalSeatSymbols(tp, active)].sort(), [1, 2]);
     // an active pair on none of the tape's symbols seats nothing (keyed by the pair alone it seated all three)
     assert.equal(
-      signalSeatSymbols(tp, new Set([sigActiveKey("follow", "sig-swing-m@m15", "ZZZ-USDT", 1, "normal")]))
+      signalSeatSymbols(tp, new Set([sigActiveKey("follow", "sig-swing-m@m15", "ZZZ-USDT", 1, "normal", tp.id)]))
         .size,
       0,
     );

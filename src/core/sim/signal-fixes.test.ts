@@ -110,9 +110,11 @@ describe("one signal entry counts once", () => {
     // entry 1: 20 configs, 15 won 1 %, 5 lost 1 %; entry 2: 20 configs, all won
     for (let k = 0; k < 20; k++) feedBooks(close(`c${k}`, k < 15 ? 0.01 : -0.01, 0, H + k), null, g);
     for (let k = 0; k < 20; k++) feedBooks(close(`c${k}`, 0.01, 2 * H, 3 * H + k), null, g);
-    const s = g.acceptStats(acceptKey("sig-ema-cross-s@m15", "A", 1, "normal"), 4 * H, 48);
-    assert.equal(s.n, 2);
-    assert.ok(Math.abs(s.pf - 7) < 1e-9, String(s.pf));
+    const winner = g.acceptStats(acceptKey("sig-ema-cross-s@m15", "A", 1, "normal", "c0"), 4 * H, 48);
+    const mixed = g.acceptStats(acceptKey("sig-ema-cross-s@m15", "A", 1, "normal", "c19"), 4 * H, 48);
+    assert.deepEqual(winner, { n: 2, pf: Infinity });
+    assert.deepEqual(mixed, { n: 2, pf: 1 });
+    assert.equal(g.acceptStats(acceptKey("sig-ema-cross-s@m15", "A", 1, "normal"), 4 * H, 48).n, 0);
     const side = g.acceptStats(sideAcceptKey(1), 4 * H, 48);
     assert.equal(side.n, 2);
     assert.ok(Math.abs(side.pf - 7) < 1e-9, String(side.pf));
@@ -205,7 +207,7 @@ describe("signal confirmation judges engine candidates", () => {
     signalCluster: undefined,
     signalAccept: undefined,
     signalSideAccept: undefined,
-    signalActive: new Set([sigActiveKey("follow", "sig-ema-cross-s@m15", SYM, 1, "normal")]),
+    signalActive: new Set([sigActiveKey("follow", "sig-ema-cross-s@m15", SYM, 1, "normal", "follow|sig-ema-cross-s@m15|tp1|sl1|tr0|h32")]),
     maxOpen: 1,
   };
   const u = { bars: [], caches: [], startT: T0, endT: NOW, splitT: T0, nowT: NOW, baseTf: 60 } as never;
@@ -296,7 +298,7 @@ describe("the signal funnel", () => {
       signalAccept: undefined,
       signalSideAccept: undefined,
       // only the long unit is active
-      signalActive: new Set([sigActiveKey("follow", ind, SYM, 1, "normal")]),
+      signalActive: new Set([sigActiveKey("follow", ind, SYM, 1, "normal", id)]),
     };
     const u = { bars: [], caches: [], startT: T0, endT: NOW, splitT: T0, nowT: NOW, baseTf: 60 } as never;
     const r = walkForward(u, [tp], o);

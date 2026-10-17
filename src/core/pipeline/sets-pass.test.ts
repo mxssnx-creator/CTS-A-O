@@ -29,6 +29,17 @@ describe("setsPassTags: the Base pass the sets see", () => {
     assert.ok(setsPassTags(r, gates, applies, ALL).includes(""));
   });
 
+  it("a tagged Base cell uses its configured range minimum, not the PF 1 wide prefilter", () => {
+    const middle = { n: 200, pf: 1.15, net: 5, mdd: 1 };
+    const r = {
+      bot: "follow",
+      ind: "ema-21-55@m15",
+      full: bad,
+      ranges: { mn: middle, gn: middle, lg: middle },
+    } as never;
+    assert.deepEqual(setsPassTags(r, gates, applies, ALL), ["mn"]);
+  });
+
   it("a pair failing every cell has no sets at all", () => {
     const r = { bot: "follow", ind: "mc-trsi2-10@m5", full: bad, ranges: { mc: bad, mn: bad } } as never;
     assert.deepEqual(setsPassTags(r, gates, applies, ALL), []);

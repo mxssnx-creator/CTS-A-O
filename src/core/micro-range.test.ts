@@ -43,7 +43,7 @@ test("Micro cells: price targets net + cost, every stop and trailing share appli
   const tps: number[] = [];
   forEachMicro(grid(), (tp, k, tr) => {
     if (k === 1 && tr === 0) tps.push(tp);
-  });
+  }, 0.002); // This existing grid fixture pins its historical cost explicitly.
   assert.deepEqual(tps, [0.004, 0.005, 0.006, 0.007, 0.008, 0.009, 0.01]);
   const cells = protectGrid(15, grid(), 0.002).filter((p) => p.tag === "mc");
   // 7 targets x 17 stop ratios (1.0 … 5.0) x 4 trails (0, ¼, ½, ¾ of the target; 13 Oct), 476 distinct: at 2–5× cost

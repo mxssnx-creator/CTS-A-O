@@ -74,7 +74,7 @@ export function captureSignalProgress(rt, sim, startT, endT) {
         addReturnEvidence(hourly.get(hourlyKey(info, side, hour)).evidence, r, null);
         row.symbols.add(tp.syms[tp.symI[i]]);
         const active = activeAt(entryT);
-        if (signalActiveHas(active, tp.bot, tp.ind, tp.syms[tp.symI[i]], side, tp.kind))
+        if (signalActiveHas(active, tp.bot, tp.ind, tp.syms[tp.symI[i]], side, tp.kind, tp.id))
           addReturnEvidence(row.unitActiveCandidates, r, null);
       }
     }

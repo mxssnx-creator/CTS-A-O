@@ -1,6 +1,6 @@
 /**
  * Minimal Coord.
- * Position-cost ranges, independent of the wide protect grid. TP in multiples of the 0.2 % round-trip cost:
+ * Position-cost ranges, independent of the wide protect grid. TP retains a fixed 0.2 % construction basis:
  *   Minimal  4–8×   (0.8–1.6 %, step 1×)
  *   Short    8–14×  (1.6–2.8 %, step 1×)
  *   General  14–22× (2.8–4.4 %, step 2×)
@@ -11,6 +11,7 @@
  */
 import type { Gates, MicroGrid, MinimalGrid, ProtectGridSpec, RangeMinPfKey, RangeTag } from "./domain/types.ts";
 import type { MicroIndRule } from "./indications/micro.ts";
+import { RT_COST } from "./model-cost.ts";
 
 export const MINIMAL_COORD = "Minimal Coord.";
 
@@ -63,8 +64,8 @@ export function rangeOfId(id: string | undefined): RangeTag | "" {
   return m ? (m[1] as RangeTag) : "";
 }
 
-/** Round-trip cost these ranges are built on: 0.1% per side. */
-const COST = 0.002;
+/** Fixed historical range-construction basis; changing modeled costs must not silently shrink configured distances. */
+const RANGE_COST_BASIS = 0.002;
 
 /**
  * One range's settings. The type lives in domain/types.ts as `RangeGrid` + `MicroGrid` so the Settings surface and
@@ -124,9 +125,9 @@ export function rangeMinTfOf(g: {
  */
 export const TRAIL_CONFIGS = [0, 0.25, 0.5, 0.75] as const;
 
-/** TP multiples of the round-trip cost, lo..hi by step (whole multiples). */
+/** TP multiples of the fixed range-construction basis, lo..hi by step (whole multiples). */
 export const costTps = (lo: number, hi: number, step: number): number[] =>
-  steps(lo, hi, step).map((n) => +(COST * n).toFixed(4));
+  steps(lo, hi, step).map((n) => +(RANGE_COST_BASIS * n).toFixed(4));
 
 /**
  * Minimal: 4–8× cost (0.8–1.6 %), step 0.5× (13 Oct, was 1×). Stops 1.5–3× the target, step 0.25 (MINIMAL_SL).
@@ -154,8 +155,8 @@ export const MINIMAL_RANGE: CoordRange = {
   slOfTp: MINIMAL_SL,
   trailOfTp: TRAIL_CONFIGS,
   trailSlOfTp: 1,
-  minSl: +(COST * 3).toFixed(4),
-  minTrail: +(COST * 1.5).toFixed(4),
+  minSl: +(RANGE_COST_BASIS * 3).toFixed(4),
+  minTrail: +(RANGE_COST_BASIS * 1.5).toFixed(4),
 };
 
 /** Short's stop ratios: 1–2.5× the target, step 0.25 (13 Oct, was 1 / 1.5 / 2). */
@@ -167,8 +168,8 @@ export const SHORT_RANGE: CoordRange = {
   slOfTp: SHORT_SL,
   trailOfTp: TRAIL_CONFIGS,
   trailSlOfTp: 1,
-  minSl: +(COST * 3).toFixed(4),
-  minTrail: +COST.toFixed(4),
+  minSl: +(RANGE_COST_BASIS * 3).toFixed(4),
+  minTrail: +RANGE_COST_BASIS.toFixed(4),
 };
 
 /**
@@ -185,8 +186,8 @@ export const GENERAL_RANGE: CoordRange = {
   slOfTp: WIDE_TARGET_SL,
   trailOfTp: TRAIL_CONFIGS,
   trailSlOfTp: 0.25,
-  minSl: +(COST * 5).toFixed(4),
-  minTrail: +(COST * 2).toFixed(4),
+  minSl: +(RANGE_COST_BASIS * 5).toFixed(4),
+  minTrail: +(RANGE_COST_BASIS * 2).toFixed(4),
 };
 
 /** Long: 23–32× cost (4.6–6.4 %), step 1× (13 Oct, was 24–32 step 2). Stops 0.25–1.5× the target (WIDE_TARGET_SL). */
@@ -196,8 +197,8 @@ export const LONG_RANGE: CoordRange = {
   slOfTp: WIDE_TARGET_SL,
   trailOfTp: TRAIL_CONFIGS,
   trailSlOfTp: 0.25,
-  minSl: +(COST * 8).toFixed(4),
-  minTrail: +(COST * 3).toFixed(4),
+  minSl: +(RANGE_COST_BASIS * 8).toFixed(4),
+  minTrail: +(RANGE_COST_BASIS * 3).toFixed(4),
 };
 
 /**
@@ -240,7 +241,7 @@ export const MICRO_RANGE: CoordRange = {
  * The price target of a Micro cell: with tpNetOfCost (default on) the configured net target plus the round-trip cost
  * (0.1 % net at a 0.2 % cost → 0.3 %), else the configured value.
  */
-export function microPriceTp(tp: number, range: Pick<CoordRange, "tpNetOfCost"> | false | undefined, cost = COST): number {
+export function microPriceTp(tp: number, range: Pick<CoordRange, "tpNetOfCost"> | false | undefined, cost = RT_COST): number {
   const c = Number.isFinite(cost) && cost > 0 ? cost : 0;
   return +(range && range.tpNetOfCost === false ? tp : tp + c).toFixed(6);
 }
@@ -251,7 +252,7 @@ export function microPriceTp(tp: number, range: Pick<CoordRange, "tpNetOfCost"> 
  */
 export function microNetTps(
   range: Pick<CoordRange, "tp" | "minNetOfCost"> | false | undefined,
-  cost = COST,
+  cost = RT_COST,
 ): number[] {
   if (!range) return [];
   const c = Number.isFinite(cost) && cost > 0 ? cost : 0;
@@ -260,7 +261,7 @@ export function microNetTps(
 }
 
 /** "0.30 % (net 0.10 %)" for a Micro price target at this cost; other ranges: "0.30 %". */
-export function rangeTpLabel(tp: number, tag: string | null | undefined, cost = COST): string {
+export function rangeTpLabel(tp: number, tag: string | null | undefined, cost = RT_COST): string {
   const pct = (x: number) => `${(x * 100).toFixed(2)} %`;
   return tag === "mc" ? `${pct(tp)} (net ${pct(tp - cost)})` : pct(tp);
 }
@@ -328,7 +329,7 @@ export function trailAtFloor(activation: number, minTrail: number, step: number,
 
 
 /** Micro's stop floor from `minSlNet`: the net floor plus the round-trip cost (undefined = not set). */
-export function microSlFloor(range: Pick<CoordRange, "minSlNet"> | false | undefined, cost = COST): number | undefined {
+export function microSlFloor(range: Pick<CoordRange, "minSlNet"> | false | undefined, cost = RT_COST): number | undefined {
   if (!range || range.minSlNet == null || !Number.isFinite(range.minSlNet)) return undefined;
   const c = Number.isFinite(cost) && cost > 0 ? cost : 0;
   return +(range.minSlNet + c).toFixed(6);
@@ -350,7 +351,7 @@ export function forEachMicro(
     /** the range's own evaluation stop floor, when it sets one */
     slEval?: number,
   ) => void,
-  cost = COST,
+  cost = RT_COST,
 ): void {
   const range = g.micro;
   if (!range) return;
@@ -365,7 +366,7 @@ export function forEachMicro(
 }
 
 /** 2×–5× position cost, step 0.25. Stops 0.5×–3× in steps of 0.25. Off unless a setting enables it. */
-export const MINIMAL_PLUS_TP = steps(2, 5, 0.25).map((n) => +(COST * n).toFixed(4));
+export const MINIMAL_PLUS_TP = steps(2, 5, 0.25).map((n) => +(RANGE_COST_BASIS * n).toFixed(4));
 export const MINIMAL_PLUS_SL = steps(0.5, 3, 0.25);
 export const MINIMAL_PLUS_TRAIL = TRAIL_CONFIGS;
 /** Trailing cells use a higher stop than the short range (2×): at least 2.5× the target. */
@@ -377,8 +378,8 @@ export const MINIMAL_PLUS_RANGE: CoordRange = {
   slOfTp: MINIMAL_PLUS_SL,
   trailOfTp: MINIMAL_PLUS_TRAIL,
   trailSlOfTp: MINIMAL_PLUS_TRAIL_SL,
-  minSl: +(COST * 0.5).toFixed(4),
-  minTrail: +(COST * 0.5).toFixed(4),
+  minSl: +(RANGE_COST_BASIS * 0.5).toFixed(4),
+  minTrail: +(RANGE_COST_BASIS * 0.5).toFixed(4),
 };
 
 export interface MinimalPlusSettings {

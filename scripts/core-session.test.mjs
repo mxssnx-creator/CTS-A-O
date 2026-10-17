@@ -21,7 +21,7 @@ import {
 const H = 3_600_000;
 const M = 60_000;
 const script = new URL("./core-session.mjs", import.meta.url).pathname;
-function replay({ caps = false, weighted = false, invalidReturn = false, qualification, thresholds, variants, presets, exhaustedCap = false, noBase = false, legacyRangeRows = false, baseNoLoss = false, signalCoverage = false, liveValidation } = {}) {
+function replay({ caps = false, weighted = false, invalidReturn = false, qualification, thresholds, variants, presets, exhaustedCap = false, noBase = false, legacyRangeRows = false, baseNoLoss = false, signalCoverage = false, liveValidation, selectionPhases = false, marketData } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "cts-session-report-"));
   try {
     const raw = {
@@ -57,6 +57,21 @@ function replay({ caps = false, weighted = false, invalidReturn = false, qualifi
         { cfg: "follow|ema-9-21@m1|ghost", sym: "TEST-USDT", side: 1, entryT: H + 2 * M, exitT: H + 15 * M, entry: 100, exit: 110, r: 0.1, vol: 1, mult: 1, kind: "normal" },
       ];
       raw.closes = { "TEST-USDT": Array.from({ length: 60 }, (_, i) => [H + i * M, 100]) };
+    }
+    if (marketData) {
+      raw.settings.marketDataSource = marketData.source;
+      raw.settings.marketDataDetails = marketData.details;
+    }
+    if (selectionPhases) {
+      raw.engine.real = 9;
+      raw.engine.realEngine = 8;
+      raw.engine.realSignal = 1;
+      raw.engine.realPhase = "paper-current-after-compute";
+      raw.engine.realFirstStep = { t: H, ids: ["first-a", "first-b"], configs: 2, engineConfigs: 2, signalConfigs: 0 };
+      raw.engine.paperSelectionAfterCompute = { t: 2 * H, ids: ["current-a"], configs: 1, engineConfigs: 1,
+        signalConfigs: 0, phase: "paper-current-after-compute", capturedAt: "2026-10-14T00:00:00.000Z", compute: 1, complete: true };
+      raw.engine.configEvalPhase = { phase: "run-start", t: H, evaluated: 3, passed: 2 };
+      raw.tapeAgg = { evalStats: { configs: 3, evaluated: 3, passed: 2, signalTapes: 0, signalActive: 0 }, evalRule: { preH: 336 } };
     }
     if (qualification) raw.qualification = qualification;
     if (liveValidation) raw.engine.liveValidation = liveValidation;
@@ -163,6 +178,47 @@ describe("session reports: return PF primary, simulated provenance", () => {
     assert.doesNotMatch(result.stdout, /computing Base|session: \d+ symbols/);
   });
 
+  it("keeps first simulated-step seats distinct from the later paper selection in every output", () => {
+    const { data, report, md, writeup, html } = replay({ selectionPhases: true });
+    for (const d of [data, report]) {
+      assert.deepEqual(d.engine.realFirstStep.ids, ["first-a", "first-b"]);
+      assert.equal(d.engine.realFirstStep.t, H);
+      assert.equal(d.engine.realFirstStep.engineConfigs, 2);
+      assert.equal(d.engine.paperSelectionAfterCompute.engineConfigs, 1);
+      assert.equal(d.engine.configEvalPhase.t, H);
+      assert.equal(d.engine.configEvalPhase.passed, 2);
+      assert.equal(d.engine.realEngine, 8, "legacy snapshot is retained without reinterpreting its phase");
+    }
+    for (const text of [md, writeup, summaryOf(html)]) {
+      assert.match(text, /First simulated step at 1970-01-01T01:00:00.000Z: 2 engine configs selected/);
+      assert.match(text, /Paper selection after compute as of 1970-01-01T02:00:00.000Z: 1 engine configs/);
+      assert.doesNotMatch(text, /initial[^\n]*8 engine/i);
+    }
+    assert.equal(data.configEvaluationHistoryH, 336, "recorded actual history takes precedence over an incomplete legacy WF snapshot");
+    assert.match(writeup, /separately recorded 336 h selection lookback/);
+    assert.match(writeup, /Config evaluation at run start \| 3 engine configs \| 2 passed/);
+    assert.match(writeup, /First simulated-step selection \| – \| 2 engine configs/);
+  });
+
+  it("reports offline source metadata and never invents a provider for legacy dumps", () => {
+    const details = { provider: "Binance USD-M archives", venueParity: "Distinct source from BingX; not venue-owned execution evidence", sha256: "source-checksum" };
+    const current = replay({ marketData: { source: "offline-cached-feed", details } });
+    assert.deepEqual(current.report.settings.marketDataDetails, details);
+    assert.deepEqual(current.data.settings.marketDataDetails, details);
+    for (const text of [current.md, current.writeup, summaryOf(current.html)]) {
+      assert.match(text, /Offline replay from the supplied cached candle feed/);
+      assert.match(text, /no market-data requests; source: Binance USD-M archives/);
+      assert.match(text, /Distinct source from BingX/);
+      assert.doesNotMatch(text, /Simulated orders on real BingX 1m market data/);
+    }
+    const legacy = replay();
+    for (const text of [legacy.md, legacy.writeup, summaryOf(legacy.html)]) {
+      assert.match(text, /Market-data source not recorded/);
+      assert.match(text, /initial selection not recorded/);
+      assert.doesNotMatch(text, /Simulated orders on real BingX 1m market data/);
+    }
+  });
+
   it("reports an empty Base run as unavailable PF with passing consistency checks", () => {
     const { data, md } = replay({ noBase: true });
     assert.equal(data.total.orders, 0);
@@ -191,9 +247,9 @@ describe("session reports: return PF primary, simulated provenance", () => {
     assert.equal(data.total.pf, 4, "the JSON gate-score convention remains finite");
     assert.equal(data.settings.wf.longH, 1, "reports preserve the actual config-selection history");
     assert.match(md, /\| Micro \| ∞ \(no loss\) \| 1 of 3 \| 1\.10 \| ∞ \(no loss\) \| 1 of 2 \| ∞ \(no loss\) \| 1 \|/);
-    assert.match(md, /median Base gate PF score.*pooled PF ∞ \(no loss\), median gate score 4\.00/);
+    assert.match(md, /Micro min PF.*pooled PF ∞ \(no loss\), median gate score 4\.00/);
     assert.match(md, /candidate pool \(pre-validation\)/);
-    assert.match(md, /post-Base validated \/ seated/);
+    assert.match(md, /post-Base config-pass instances \(hourly; may repeat\)/);
     assert.match(md, /post-gate virtual closes \(pre-funding\)/);
     assert.match(md, /funded settled orders and their PF are reported separately/);
     assert.match(md, /additional per-config entry last-N check is off \(wf\.lastN = 0\)/);
@@ -219,7 +275,7 @@ describe("session reports: return PF primary, simulated provenance", () => {
   it("keeps equal current range counts labeled as independent measurements", () => {
     const { md, writeup, html } = replay({ noBase: true });
     for (const text of [md, writeup, summaryOf(html)]) {
-      assert.match(text, /Wide 0\/1 · Micro 0\/1/);
+      assert.match(text, /Wide min PF – · 0\/1 · Micro min PF – · 0\/1/);
       assert.doesNotMatch(text, /no per-range split/);
     }
   });
@@ -281,12 +337,12 @@ describe("session reports: return PF primary, simulated provenance", () => {
     assert.equal(data.typeHours[0].pf, 2.5);
     assert.equal(data.evidence.actualExecution, false);
     assert.equal(data.evidence.pfBasis, "net-returns");
-    assert.equal(data.evidence.statisticsScope.primary, "funded-settled simulated execution orders");
-    assert.equal(data.evidence.statisticsScope.benchmark, "executed orders from the post-Base validated cohort");
-    assert.match(md, /PF benchmarks below use only funded settled orders executed by post-Base validated configs/);
+    assert.equal(data.evidence.statisticsScope.primary, "all funded settled simulated book orders, including separately qualified Signals");
+    assert.equal(data.evidence.statisticsScope.benchmark, "engine-only funded settled orders from the post-Base validated Base cohort; Signal orders are reported separately");
+    assert.match(md, /Base-to-execution benchmark is engine-only, and Signal PF is separate/);
     assert.match(md, /Diagnostic: every config over the run window/);
     assert.match(md, /This all-candidate table is diagnostic only: it is not the PF benchmark/);
-    assert.match(writeup, /PF benchmark scope: funded settled orders executed by Base-qualified, post-Base validated configs/);
+    assert.match(writeup, /Base-to-execution benchmark below isolates engine orders from Base-qualified pairs whose configs passed post-Base validation/);
     assert.match(md, /Return PF 2\.50.*cash PF \(base \$1\) 2\.50.*sized \$ PF diagnostic 2\.22/);
     assert.match(md, /\| Return PF \| cash PF \(base \$1\) \| sized \$ PF diagnostic \|/);
     assert.match(writeup, /\| Return PF \| cash PF \(base \$1\) \| sized \$ PF diagnostic \|/);

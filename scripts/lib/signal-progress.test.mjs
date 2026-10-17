@@ -12,7 +12,7 @@ it("captures every configured cell separately from actual tapes, active units an
   const id = configId("follow", ind, protect);
   const tape = { id, ind, bot: "follow", kind: "trailing-only", protect, n: 3, r: [0.01, 0.02, -0.01],
     entryT: [H / 2, H + 1, H + 3], exitT: [H, H + 2, H + 4], side: [1, 1, -1], syms: ["TEST-USDT"], symI: [0, 0, 0] };
-  const key = sigActiveKey("follow", ind, "TEST-USDT", 1, "trailing-only");
+  const key = sigActiveKey("follow", ind, "TEST-USDT", 1, "trailing-only", id);
   const sim = { signalSteps: [{ t: H, keys: [key] }], signalActiveEnd: [key], trades: [
     { cfg: id, side: 1, r: 0.06, mult: 3 },
   ] };

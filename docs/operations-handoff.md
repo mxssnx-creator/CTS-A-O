@@ -2,6 +2,67 @@
 
 Updated 2026-10-17, Europe/Vienna. Repository: `mxssnx-creator/CTS-A-O`.
 
+## Latest checkpoint: exact Signals and performance — 17 October
+
+Economic source checkpoint `dbd1b9c`; independent auditor checkpoint `d3ec0c5`.
+Draft PR [163](https://github.com/mxssnx-creator/CTS-A-O/pull/163) is backed up;
+its current remote tree matches local `d3ec0c5`. Main remains `d1364e5`.
+No live settings, venue orders or deployment were changed in this pass.
+
+Fixed Signal activation, acceptance and Last-N histories to retain each exact
+protection config × symbol × direction. Previously an empty sibling divided
+a good config's sample, and opposite-side results could qualify a losing side.
+Live activation also no longer bypasses its check when engine selection is
+absent. Paper seats, hedge checks, reporting and UI retain exact identities;
+held configs remain exit-only. Fresh Signal count is unlimited (0); explicit
+nonzero custom counts remain respected. Named side/cluster coordination remains
+separate. No PF/sample gate was lowered.
+
+Canonical modeled default cost is now **0.15%**: 0.05% taker and 0.025%
+slippage per side. Migration v34 changes only the explicitly saved former
+factory tuple, including matching preset settings. Custom costs, explicit new
+choices, measured venue commissions and historical caches retain provenance.
+Range distances retain the fixed 0.20% construction basis, so this cost update
+does not silently shrink the grid.
+
+The earlier cost comparison below was confounded: its 0.20% replay used 2%
+equity sizing and its 0.15% replay used 0.1%. It is not cost-only evidence.
+The archived positive replay used **336h** config-evaluation history, not 48h;
+its high pass rate cannot certify the requested six-hour history policy.
+`simulations/cost-015-and-positive-replay-audit-20261017.md` records the corrected
+claims. Reports now separate actual first-step selections from the later paper
+snapshot and preserve the actual source venue.
+
+Acceptance performance: unique sorted exact config tapes build final prefixes
+directly; duplicate/pooled/unsorted inputs retain the generic stable path.
+A 440,000-close, 22,000-group fixture retained identical prefix hashes while
+wall time changed 1,491→531 ms, CPU 1,702→485 ms and peak RSS 259→177 MB.
+These are fixture measurements, not a full-system throughput or PF claim.
+
+Verification: Signal independence 13/13; causal/hedge/worker-local parity
+18/18; repaired guard/seat fixtures 10/10; callers/acceptance/UI 60/60;
+audit/report variants 49/49; seating/memory/trailing 4/4; Signal progress 3/3.
+Acceptance optimization targeted tests 29/29 plus reference checks 6/6.
+Report/frozen-protocol/source collector tests 30/30; independent auditor 4/4.
+Final TypeScript typecheck and diff checks passed. Earlier broad Signal run had
+three stale fixtures subsequently repaired; do not call that original run a
+complete pass.
+
+New public dataset: 22 genuine Binance USD-M symbols, 665,280 minute candles,
+Sep 26→Oct 17 00:00 UTC, 462/462 archives and official checksums verified;
+zero gaps/duplicates. This is a different venue from earlier BingX evidence.
+Source hashes, chronological 20/22-symbol splits, exact economics and pruning
+policy are fixed in `simulations/exact-signal-22-study-20261017.md`.
+
+Two local baseline attempts were cancelled after shared-memory pressure caused
+fallback/aborts; logs are retained under
+`runs/exact-signal-study-20261017/dev20-baseline/attempt*-memory-aborted.log`.
+Neither is a completed 20-symbol test or profitability result. The eight-GiB
+pool was concurrently saturated by unrelated jobs. An isolated standard GitHub
+runner workflow is being prepared; full 20/22 results and production build are
+still pending. Keep all ranges enabled until a full, nondegraded 22×24h audit
+and do not promote from unit tests or fixture performance.
+
 ## Systemwide PF scope and cash basis — 17 October
 
 Systemwide test and simulation benchmarks now explicitly follow the validated
@@ -1011,3 +1072,67 @@ The verified source/test/replay tree is `d219f35c96e94393778e7147b4d1d6e2f66a012
 Post-rebase verification: `npm run typecheck -- --pretty false` passed. The focused config-independence/history/volume matrix passed 48 tests; the exhaustive Signal discovery/config suites passed 40 tests across 17 suites; return-PF/statistics/reporting tests passed 27/27; and the offline-guarded session-report/qualification suite passed 18/18. These checks cover independent per-config selectors, separate Signal Normal/Trailing qualification, no sibling seat or trade sharing, minimal Signal history, range-specific volume factors, report scope after Base and later gates, PF/volume labeling, and the actual exhaustive grid through workers and local calculations. The full core suite has not been rerun after rebase.
 
 The bounded engine replay is [`the six-hour report`](sims/trailing-systemwide-6h-window-20261017-summary.md), with [`full tables and hourly details`](sims/trailing-systemwide-6h-window-20261017.md). It uses four cached-feed symbols, 6h of evaluated history and 6h simulated (2026-10-14 09:00–15:00 / 15:00–21:00 UTC), config Last-N 25, min return-PF 1.1, and minimal Signal history. The source processed 854 engine config pairs for Base (4 passed), and separately measured 504 Signal representative pairs (2 passed the diagnostic gate, excluded from engine Base totals); Main had 4 pairs and Real had 12 engine configs / 0 Signal configs. The executed post-Base cohort closed 273 orders at Return PF 0.63, sized cash-PF diagnostic 0.93, 0.43% marked-equity max drawdown and 2/6 green hours; engine orders alone were PF 1.40 (241), while Signals were PF 0.10 (32). All 66 report consistency checks passed. This confirms processing and accounting on this window, while showing the desired positive-hour/PF outcome was not achieved. It is a short, previously examined cached-feed sample; do not tune on this same window or treat it as live evidence. No live orders or deployment were made.
+
+## Last-N as-of and tie-order audit — 2026-10-17
+
+The optimizer's reported `gateOpen` is now evaluated from closes settled at or before `nowT`; future closes cannot satisfy the current N sample. An N=0 selection is reported as ungated. Optimizer tape and result ordering now use stable exit-time, entry-time, config, symbol, side and return tie-breaks so simultaneous closes cannot make DDT/gate results depend on worker/input order. Pooled live-group Last-N samples likewise use a stable config/tape-index tie-break at the N cutoff.
+
+Regression checks verify a passing close changes `gateOpen` exactly at its close timestamp, later closes are excluded, simultaneous optimizer inputs produce identical statistics/verdicts under permutation, and pooled live cutoff ties are stable. Both complete affected files passed: pipeline/live-validation 31/31. Typecheck, production build (including SSR/core worker) and `git diff --check` passed. The attempted full core run was stopped while a CPU-heavy book-coverage fixture was still running; its final summary/exit status was unavailable, so it is not counted as a full-suite pass. No market replay or exchange execution was run for this code-only correction; it does not establish higher PF/order volume or live profitability.
+
+## Range-specific PF floors and Base-to-execution rerun — 17 October
+
+Tested source checkpoint: `d561e4b` (`fix: enforce range PF floors through Base eval`).
+
+The configured defaults now apply by Base range: Wide/fallback 1.00, Micro
+1.05, Minimal 1.10, Short 1.10, General 1.20 and Long 1.30. `baseSetsMinPf`
+only affects untagged Wide/fallback cells; tagged range floors remain active
+through Base qualification and set construction. Report scope also separates
+the Base-qualified engine execution benchmark from independently qualified
+Signal orders and the all-funded combined account.
+
+The matched cached-feed six-hour replay confirms Base passed 4/854 engine
+pairs (Micro 1/700 at floor 1.05; Minimal 4/854 at floor 1.10; other configured
+ranges passed none). Config evaluation at run start passed 24/376 with pooled
+validation PF 6.511 for Micro and 4.578 for Minimal; 12 engine configs were
+seated. Engine execution produced 241 settled orders at PF 1.404, including
+Micro 168 at 2.152 and Minimal 64 at 0.624. Separate Signals produced 32
+orders at PF 0.095; the combined 273-order book was PF 0.634 and 2/6 hours
+were green. High pre-execution PF did not persist through every execution
+range, so this sample does not support promotion or a profitability claim.
+Full report: [range-floor rerun](simulations/trailing-range-floor-rerun-20261017.md).
+
+A funnel-label ambiguity was fixed after inspecting the generated report:
+walk-forward hourly config-pass counts may repeat the same config in later
+hours, while the 801 run-window total is distinct configs passing at least one
+step. The report now labels hourly pass instances and points readers to the
+separate run-start 24/376 evaluation and 12 Real seats. The regenerated replay checks passed
+66/66; the range/sets subset passed 35/35 and the complete focused bundle passed
+73/73; TypeScript typecheck, production build, Node syntax and `git diff --check`
+passed. No live orders, settings changes or deployment were made.
+
+## 0.15% cost and positive replay audit — 2026-10-17
+
+The requested 0.15% round-trip cost was tested in a matched full-engine replay
+using a desk snapshot (0.05% taker plus 0.025% modeled slippage per side); the
+production cost default remains 0.20%. On the same four-symbol 24-hour cached
+window, 37-pair focus, 48h prehistory, corrected range floors, coordination,
+and 0.75×/7× book caps, the 0.20% run produced 572 closes at Return/base-$1 PF
+0.483424, sized-dollar PF 0.600055, −$0.295683, and 7/6/11 green/red/flat
+hours. At 0.15%, 1,327 closes produced Return/base-$1 PF 0.712008,
+sized-dollar PF 1.391965, +$0.093060, and 11/7/6 hours. Marked equity ended
+at $9.961860 with 682 still-open orders marked −$0.131200. Range failures
+remain: Short PF 0 (54 closes), General PF 0.003512 (121), Long PF 0 (59).
+High Base passage is not carried through those execution cohorts. The 0.15%
+replay passed 66/66 consistency checks; focused PF/accounting tests passed
+34/34. Full details and the screenshot reconciliation are in
+[`simulations/cost-015-and-positive-replay-audit-20261017.md`](simulations/cost-015-and-positive-replay-audit-20261017.md).
+
+The saved older 0.20% positive replay independently reconciles to 2,184 funded
+closes, Return/base-$1 PF 4.723109 and sized-dollar PF 2.024519. Its 2,169
+engine + 15 Signal closes do not match the screenshot's separate “Signals 43 / PF
+51.27” row; the screenshot hour summary also differs from the saved raw dump.
+The archived positive result is retained for its own cohort, not treated as
+20-symbol or corrected-current-floor proof. The only full-engine cached market
+feed available here contains four symbols. A 40-symbol lean 1-minute research
+study is not a full-engine 20-symbol substitute. No live settings, live orders,
+or production cost defaults changed.

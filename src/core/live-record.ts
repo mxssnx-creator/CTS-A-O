@@ -253,7 +253,7 @@ export function exchangeAcceptIndex(
   }>,
 ): ExchangeAccept & { size: number } {
   // Engine acceptance keeps one net sample per config entry, completed at its last close. Signals instead keep
-  // each settled close's return and count the source onset once across its parallel protect configs: pooling them
+  // each settled close's return in its exact protection config and count its onset once: pooling them
   // into a net episode would hide mixed-sign close slices, while counting configs would inflate minTrades.
   type Close = {
     cfg: string;
@@ -289,7 +289,7 @@ export function exchangeAcceptIndex(
     if (isSignalInd(ind)) {
       const onset =
         x.entryT === undefined ? undefined : `${ind}|${x.sym}|${x.side > 0 ? 1 : -1}|${x.entryT}`;
-      add(acceptKey(ind, x.sym, x.side, kind), x.exitT, x.r, onset);
+      add(acceptKey(ind, x.sym, x.side, kind, x.cfg), x.exitT, x.r, onset);
       add(sideAcceptKey(x.side), x.exitT, x.r, onset);
     } else {
       const tag = rangeOfId(x.cfg) || undefined;

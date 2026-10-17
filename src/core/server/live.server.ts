@@ -157,12 +157,11 @@ export function liveLaneFilter(
   const validLane = (l: Pick<ControlContribution, "cfg" | "vol" | "sym" | "side">) => {
     if (!sendable(l)) return false;
     if (promotion && !promotion(l)) return false;
-    if (!selected) return true;
     const c = cfgInfo(l.cfg);
-    // the active signal set is keyed per side: a source's longs and shorts are activated on their own records
+    // A Signal needs its exact config × symbol × direction evidence even without an engine selection filter.
     return c.isSig
-      ? !sigActive || signalActiveHas(sigActive, c.bot, c.ind, l.sym, l.side, c.kind)
-      : selected.has(l.cfg);
+      ? !sigActive || signalActiveHas(sigActive, c.bot, c.ind, l.sym, l.side, c.kind, l.cfg)
+      : !selected || selected.has(l.cfg);
   };
   return { sendable, validLane, closedConfig };
 }
