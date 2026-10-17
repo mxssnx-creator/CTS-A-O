@@ -4,6 +4,7 @@ import { breakFocusCoverage, configStrategyLabel, indicationKindLabel, indicatio
 
 test("registered first-class indication kinds have named UI labels without changing other identities", () => {
   assert.equal(indicationKindLabel("tactic"), "Tactic");
+  assert.equal(indicationKindLabel("signal-coordination"), "Signals Coordination");
   assert.equal(indicationKindLabel("relate"), "Relate");
   assert.equal(indicationKindLabel("break"), "Break");
   assert.equal(indicationKindLabel("rsi"), "rsi");
@@ -16,11 +17,14 @@ test("Signal configs show each actual strategy type in simulation and paper", ()
   for (const source of ["sim", "paper"])
     for (const kind of ["Normal", "Trailing", "Trailing only", "DCA", "DCA Active", "Axis"])
       assert.equal(configStrategyLabel({ type: "Signals", kind }, source), `Signals · ${kind}`);
+  for (const source of ["sim", "paper"])
+    assert.equal(configStrategyLabel({ type: "Signals Coordination", kind: "Trailing" }, source), "Signals Coordination · Trailing");
   assert.equal(configStrategyLabel({ type: "Trailing", kind: "Trailing" }, "sim"), "Trailing");
 });
 
 test("live aggregate rows never turn a guessed strategy into an executed type", () => {
   assert.equal(configStrategyLabel({ type: "Signals", kind: "Normal" }, "live"), "Signals · type unavailable");
+  assert.equal(configStrategyLabel({ type: "Signals Coordination", kind: "Normal" }, "live"), "Signals Coordination · type unavailable");
   assert.equal(configStrategyLabel({ type: "Normal", kind: "Normal" }, "live"), "Type unavailable");
   assert.equal(configStrategyLabel({ type: "Signals" }, "paper"), "Signals · type unavailable");
 });

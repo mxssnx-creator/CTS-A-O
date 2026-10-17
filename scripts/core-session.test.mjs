@@ -163,6 +163,27 @@ describe("session reports: return PF primary, simulated provenance", () => {
     assert.doesNotMatch(result.stdout, /computing Base|session: \d+ symbols/);
   });
 
+  it("rejects replay preload without a cached feed and both explicit replay boundaries before startup", () => {
+    const dir = mkdtempSync(join(tmpdir(), "cts-session-preload-"));
+    try {
+      const feed = join(dir, "feed.json");
+      writeFileSync(feed, JSON.stringify({ tickers: [], candles: {} }));
+      for (const args of [
+        ["--end-at", "2026-10-17T21:00:00Z"],
+        ["--feed", feed, "--end-at", "2026-10-17T21:00:00Z"],
+        ["--feed", feed, "--evaluation-from", "2026-10-15T21:00:00Z"],
+      ]) {
+        const result = spawnSync(process.execPath, ["--experimental-strip-types", "--no-warnings", script, "--replay-preload-all", ...args], {
+          encoding: "utf8", timeout: 5_000,
+          env: { ...process.env, CTS_CORE_VARIANTS: "0", NODE_OPTIONS: `--require ${new URL("./lib/core-test-offline-guard.cjs", import.meta.url).pathname}` },
+        });
+        assert.notEqual(result.status, 0, result.stdout);
+        assert.match(result.stderr, /needs an offline --feed|need --end-at/);
+        assert.doesNotMatch(result.stderr, /session: \d+ symbols|computing Base/);
+      }
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
   it("reports an empty Base run as unavailable PF with passing consistency checks", () => {
     const { data, md } = replay({ noBase: true });
     assert.equal(data.total.orders, 0);

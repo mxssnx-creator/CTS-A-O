@@ -1,0 +1,330 @@
+{
+  "frozenAt": "2026-10-17T21:54:39.848Z",
+  "schema": "cts-public-22-symbol-market-v2",
+  "endpoint": "https://open-api.bingx.com/openApi/swap/v3/quote/klines",
+  "symbols": [
+    "AVAX-USDT",
+    "LINK-USDT",
+    "LTC-USDT",
+    "SUI-USDT",
+    "NEAR-USDT",
+    "DOT-USDT",
+    "ATOM-USDT",
+    "APT-USDT",
+    "BTC-USDT",
+    "ETH-USDT",
+    "SOL-USDT",
+    "XRP-USDT",
+    "BNB-USDT",
+    "DOGE-USDT",
+    "ADA-USDT",
+    "BCH-USDT",
+    "TRX-USDT",
+    "ETC-USDT",
+    "OP-USDT",
+    "ARB-USDT",
+    "FIL-USDT",
+    "UNI-USDT"
+  ],
+  "startT": 1790841600000,
+  "endT": 1792270800000,
+  "sourceHours": 397,
+  "bounds": "Completed 1m candle-open timestamps in [startT,endT); source archive only; performance boundaries are frozen separately by the replay protocol.",
+  "intendedPrimaryReplay": {
+    "evaluatedPrehistoryHours": 24,
+    "indicatorWarmupHours": 205,
+    "development": {
+      "symbols": [
+        "AVAX-USDT",
+        "LINK-USDT",
+        "LTC-USDT",
+        "SUI-USDT",
+        "NEAR-USDT",
+        "DOT-USDT",
+        "ATOM-USDT",
+        "APT-USDT",
+        "BTC-USDT",
+        "ETH-USDT",
+        "SOL-USDT",
+        "XRP-USDT",
+        "BNB-USDT",
+        "DOGE-USDT",
+        "ADA-USDT",
+        "BCH-USDT",
+        "TRX-USDT",
+        "ETC-USDT",
+        "OP-USDT",
+        "ARB-USDT"
+      ],
+      "tradeStart": "2026-10-15T21:00:00Z",
+      "endAt": "2026-10-16T21:00:00Z"
+    },
+    "validation": {
+      "symbols": [
+        "AVAX-USDT",
+        "LINK-USDT",
+        "LTC-USDT",
+        "SUI-USDT",
+        "NEAR-USDT",
+        "DOT-USDT",
+        "ATOM-USDT",
+        "APT-USDT",
+        "BTC-USDT",
+        "ETH-USDT",
+        "SOL-USDT",
+        "XRP-USDT",
+        "BNB-USDT",
+        "DOGE-USDT",
+        "ADA-USDT",
+        "BCH-USDT",
+        "TRX-USDT",
+        "ETC-USDT",
+        "OP-USDT",
+        "ARB-USDT",
+        "FIL-USDT",
+        "UNI-USDT"
+      ],
+      "tradeStart": "2026-10-16T21:00:00Z",
+      "endAt": "2026-10-17T21:00:00Z"
+    }
+  },
+  "acquisition": {
+    "method": "GET",
+    "credentials": false,
+    "requestBody": null,
+    "interval": "1m",
+    "limit": 1440,
+    "minRequestStartIntervalMs": 1100,
+    "timeoutMs": 15000,
+    "maxAttempts": 3
+  },
+  "universeAmendment": {
+    "originalSymbols": [
+      "AVAX-USDT",
+      "LINK-USDT",
+      "LTC-USDT",
+      "SUI-USDT",
+      "NEAR-USDT",
+      "DOT-USDT",
+      "ATOM-USDT",
+      "APT-USDT",
+      "BTC-USDT",
+      "ETH-USDT",
+      "SOL-USDT",
+      "XRP-USDT",
+      "BNB-USDT",
+      "DOGE-USDT",
+      "ADA-USDT",
+      "BCH-USDT",
+      "TRX-USDT",
+      "TON-USDT",
+      "OP-USDT",
+      "ARB-USDT",
+      "FIL-USDT",
+      "UNI-USDT"
+    ],
+    "removed": "TON-USDT",
+    "added": "ETC-USDT",
+    "position": 17,
+    "reason": "Original acquisition failed with109425; public contracts metadata has no TON-USDT. ETC-USDT is a predetermined liquid-contract fallback selected solely for availability before outcome scoring.",
+    "contractsSha256": "213970e60f6057bb54d3285bb231661787444233a50ea4366647596e3fbd788b",
+    "verifiedContracts": [
+      {
+        "symbol": "AVAX-USDT",
+        "contractId": "100009",
+        "status": 1,
+        "apiStateOpen": true,
+        "launchTime": 1632412800000,
+        "displayName": "AVAX-USDT"
+      },
+      {
+        "symbol": "LINK-USDT",
+        "contractId": "103",
+        "status": 1,
+        "apiStateOpen": true,
+        "launchTime": 1604851200000,
+        "displayName": "LINK-USDT"
+      },
+      {
+        "symbol": "LTC-USDT",
+        "contractId": "100006",
+        "status": 1,
+        "apiStateOpen": true,
+        "launchTime": 1622476800000,
+        "displayName": "LTC-USDT"
+      },
+      {
+        "symbol": "SUI-USDT",
+        "contractId": "100245",
+        "status": 1,
+        "apiStateOpen": true,
+        "launchTime": 1683043200000,
+        "displayName": "SUI-USDT"
+      },
+      {
+        "symbol": "NEAR-USDT",
+        "contractId": "100029",
+        "status": 1,
+        "apiStateOpen": true,
+        "launchTime": 1636041600000,
+        "displayName": "NEAR-USDT"
+      },
+      {
+        "symbol": "DOT-USDT",
+        "contractId": "100008",
+        "status": 1,
+        "apiStateOpen": true,
+        "launchTime": 1632326400000,
+        "displayName": "DOT-USDT"
+      },
+      {
+        "symbol": "ATOM-USDT",
+        "contractId": "100030",
+        "status": 1,
+        "apiStateOpen": true,
+        "launchTime": 1636041600000,
+        "displayName": "ATOM-USDT"
+      },
+      {
+        "symbol": "APT-USDT",
+        "contractId": "100164",
+        "status": 1,
+        "apiStateOpen": true,
+        "launchTime": 1666108800000,
+        "displayName": "APT-USDT"
+      },
+      {
+        "symbol": "BTC-USDT",
+        "contractId": "100",
+        "status": 1,
+        "apiStateOpen": true,
+        "launchTime": 1586275200000,
+        "displayName": "BTC-USDT"
+      },
+      {
+        "symbol": "ETH-USDT",
+        "contractId": "101",
+        "status": 1,
+        "apiStateOpen": true,
+        "launchTime": 1586275200000,
+        "displayName": "ETH-USDT"
+      },
+      {
+        "symbol": "SOL-USDT",
+        "contractId": "100028",
+        "status": 1,
+        "apiStateOpen": true,
+        "launchTime": 1635955200000,
+        "displayName": "SOL-USDT"
+      },
+      {
+        "symbol": "XRP-USDT",
+        "contractId": "100005",
+        "status": 1,
+        "apiStateOpen": true,
+        "launchTime": 1622476800000,
+        "displayName": "XRP-USDT"
+      },
+      {
+        "symbol": "BNB-USDT",
+        "contractId": "100085",
+        "status": 1,
+        "apiStateOpen": true,
+        "launchTime": 1647014400000,
+        "displayName": "BNB-USDT"
+      },
+      {
+        "symbol": "DOGE-USDT",
+        "contractId": "100035",
+        "status": 1,
+        "apiStateOpen": true,
+        "launchTime": 1636387200000,
+        "displayName": "DOGE-USDT"
+      },
+      {
+        "symbol": "ADA-USDT",
+        "contractId": "100004",
+        "status": 1,
+        "apiStateOpen": true,
+        "launchTime": 1622476800000,
+        "displayName": "ADA-USDT"
+      },
+      {
+        "symbol": "BCH-USDT",
+        "contractId": "100002",
+        "status": 1,
+        "apiStateOpen": true,
+        "launchTime": 1589299200000,
+        "displayName": "BCH-USDT"
+      },
+      {
+        "symbol": "TRX-USDT",
+        "contractId": "100039",
+        "status": 1,
+        "apiStateOpen": true,
+        "launchTime": 1636992000000,
+        "displayName": "TRX-USDT"
+      },
+      {
+        "symbol": "ETC-USDT",
+        "contractId": "100105",
+        "status": 1,
+        "apiStateOpen": true,
+        "launchTime": 1649779200000,
+        "displayName": "ETC-USDT"
+      },
+      {
+        "symbol": "OP-USDT",
+        "contractId": "100141",
+        "status": 1,
+        "apiStateOpen": true,
+        "launchTime": 1654012800000,
+        "displayName": "OP-USDT"
+      },
+      {
+        "symbol": "ARB-USDT",
+        "contractId": "100241",
+        "status": 1,
+        "apiStateOpen": true,
+        "launchTime": 1679500800000,
+        "displayName": "ARB-USDT"
+      },
+      {
+        "symbol": "FIL-USDT",
+        "contractId": "100033",
+        "status": 1,
+        "apiStateOpen": true,
+        "launchTime": 1636387200000,
+        "displayName": "FIL-USDT"
+      },
+      {
+        "symbol": "UNI-USDT",
+        "contractId": "100032",
+        "status": 1,
+        "apiStateOpen": true,
+        "launchTime": 1636387200000,
+        "displayName": "UNI-USDT"
+      }
+    ]
+  },
+  "reuse": {
+    "directory": "/workspace/scratch/7b916fb11a8d/cts-ao/runs/symbols22-24h-20261017",
+    "preservedPriorAttempt": {
+      "protocol.json": {
+        "bytes": 1536,
+        "sha256": "6d55dbb5acec0ddd0ca2473694b1ec22dffde012411850f6b21c3a8db01aa4ae"
+      },
+      "acquisition-failure.json": {
+        "bytes": 3374,
+        "sha256": "e0f859264d3e25c0ddc73908382c9e653f7fc4f3ba9163b5ae618f3e52e13f96"
+      },
+      "requests.json": {
+        "bytes": 141902,
+        "sha256": "bd926b7891941b0b47eb12274307303932f8fa2b2b91f7311f080266329f101e"
+      }
+    },
+    "rule": "Each reused public page must pass exact OHLCV bounds/continuity validation and its copied byte hash is recorded. No strategy outcomes are read."
+  },
+  "selection": "Fixed original ordered universe with one availability-only correction; first20 is the fixed development subset. No outcome-based symbol replacement.",
+  "usage": "Public market data only; no account, order, runtime or live-promotion API. Freeze configuration/gates/source independently before simulation scoring."
+}

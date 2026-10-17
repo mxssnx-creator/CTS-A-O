@@ -76,11 +76,13 @@ import {
   profitFactor,
   scoreStats,
   statsOf,
+  settledHourT,
   modeledUnitReturn as unitReturn,
   modeledUnitStatsOf as unitStatsOf,
   type UnitStats,
 } from "../metrics/stats.ts";
 import { ATR_PERIOD, simulate, splitSides } from "./backtest.ts";
+import { symbolDirections } from "./symbol-directions.ts";
 import { simulateDca } from "./dca.ts";
 import { simulateAxis, simulateAxisDesk, snapTpRatio } from "./axis.ts";
 import { adjustProtect, setKeyOf, type AdjustState } from "../adjust.ts";
@@ -96,6 +98,7 @@ import {
   type BlockSource,
 } from "./block.ts";
 import { S2Coord } from "./s2coord.ts";
+import { isSignalCoordinationInd } from "../signal-coordination.ts";
 import { botFamilyOf } from "../bot-stats.ts";
 import { INDICATION_BY_ID, isSignalInd, laneOf, signalSourceOf } from "../indications/registry.ts";
 import { signalRangeOf } from "../signal-config.ts";
@@ -118,7 +121,10 @@ import type {
   SignalClusterSettings,
   SignalSettings,
   SignalSourceGate,
+  SignalVolumeFactors,
 } from "../signal-config.ts";
+import { signalVolumeFactorsOf } from "../signal-config.ts";
+import { volumeFactorForIndication } from "../volume-factor.ts";
 
 const H = 3_600_000;
 
@@ -353,6 +359,10 @@ export interface WalkForwardOptions {
    * open position stays to manage it, but opens nothing new). Unset = no Base restriction (tests, research tools).
    */
   basePassed?: ReadonlySet<string>;
+  /** Exact engine pair → admitted range tags ("" = Wide), before diagnostic allSets expansion. */
+  basePassedRanges?: Readonly<Record<string, readonly string[]>>;
+  /** Qualified pairs whose builder policy admits independent untagged DCA/Axis, before allSets expansion. */
+  baseWideLadderPairs?: ReadonlySet<string>;
   /**
    * signal pairs ("bot|ind") that passed their Base gate in the current compute: a held signal pair keeps its tapes
    * to manage its positions but opens nothing new. Unset = no restriction.
@@ -463,6 +473,8 @@ export interface WalkForwardOptions {
   signalMaxOpen?: number;
   /** max open signal POSITIONS (distinct symbol × direction, long and short counted apart); 0 / unset = no limit */
   signalMaxPositions?: number;
+  /** Extra per-type execution multipliers; derived from signals settings, not a walk-forward user override. */
+  indicationVolumeFactors?: SignalVolumeFactors;
   toggles: StrategyToggles;
   block: BlockConfig;
   /** Explicit diagnostic source-level capture; off by default and independent of execution decisions. */
@@ -645,6 +657,7 @@ export const ENGINE_SIDE_ACCEPT: SignalAccept = {
 
 export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
   return {
+    indicationVolumeFactors: signalVolumeFactorsOf(s.signals),
     preH: 20,
     simH: 48,
     stepH: 1,
@@ -1040,6 +1053,13 @@ function symbolIndex(syms: readonly string[]): Map<string, number> {
   return c.index;
 }
 
+/** Chronological order shared by runtime tape construction and offline evaluators.
+ * Returning 0 for an exact timestamp tie intentionally preserves the source order via stable Array#sort.
+ */
+export function compareTapeTrades(a: Trade, b: Trade): number {
+  return a.exitT - b.exitT || a.entryT - b.entryT;
+}
+
 export function makeTape(
   id: string,
   bot: BotType,
@@ -1051,7 +1071,7 @@ export function makeTape(
   open: OpenPosition[],
   pending: ConfigTape["pending"],
 ): ConfigTape {
-  trades.sort((a, b) => a.exitT - b.exitT || a.entryT - b.entryT);
+  trades.sort(compareTapeTrades);
   const n = trades.length;
   const symIdx = symbolIndex(syms);
   const buf = new ArrayBuffer(tapeBytes(n));
@@ -1170,15 +1190,15 @@ export function openDupKey(
 }
 
 /**
- * A paper position's volume: its execution multiple (Block × relation volume) × its ladder weight (an Axis ladder
- * with two filled rungs is 2 units, as the simulation books it). Paper marks it as mtm (per unit) × volume × unit,
- * and the live lane asks for this volume.
+ * A paper position's volume: external execution multiple (Block × relation × indication factor) × its ladder weight
+ * (an Axis ladder with two filled rungs is 2 units, as the simulation books it). Paper marks mtm (per unit) × volume
+ * × unit, and the live lane asks for this volume.
  */
 export const positionVolume = (mult: number, op: { w?: number }): number => mult * (op.w ?? 1);
 
 /**
- * The execution multiple of a paper position (its volume without the ladder weight): what a tape order's r — which
- * already carries the ladder (Σ legs) — is scaled by when the position closes, and what a held position keeps.
+ * The external execution multiple of a paper position (its volume without the ladder weight): what a tape order's r —
+ * which already carries the ladder (Σ legs) — is scaled by when the position closes, and what a held position keeps.
  */
 export const positionMult = (p: { vol?: number; w?: number }): number => (p.vol ?? 1) / (p.w ?? 1);
 
@@ -1347,8 +1367,6 @@ export function winDd(
   if (dipped && nowT - peakT > ddt) ddt = nowT - peakT;
   return { ddtH: ddt / H, mdd };
 }
-const winDdt = (tp: ConfigTape, a: number, b: number, nowT: number) => winDd(tp, a, b, nowT).ddtH;
-
 /** winDd over the closes at `idx` (ascending exit order): one direction's last closes, which interleave the other's. */
 export function winDdIdx(
   tp: Pick<ConfigTape, "entryT" | "exitT" | "r">,
@@ -1805,6 +1823,7 @@ export function* buildTapesGen(
     // long and short run independently: each direction on its own side-filtered signal (its own position slot), so
     // an open long never drops a short signal (and vice versa); a one-sided signal runs once, as before
     const sides: Array<Int8Array[] | null> = sigs.map((x) => (x ? splitSides(x) : null));
+    const orderedSides = symbolDirections(series, (s) => sides[s]!);
     // short-lane floors can map two grid configs onto one: each config id is built once
     const built = floors?.countSeen ?? new Set<string>();
     const fitted = fittedRangeTps(
@@ -1905,25 +1924,24 @@ export function* buildTapesGen(
       const trades: Trade[] = [];
       const open: OpenPosition[] = [];
       const pending: ConfigTape["pending"] = [];
-      for (const s of series)
-        for (const sg of sides[s]!) {
-          const res = simulate(id, u.bars[s], sg, p, {
-            cost,
-            cooldown,
-            atr: p.atr ? u.caches[s].atrEma(ATR_PERIOD) : undefined,
-          });
-          for (const tr of res.trades) {
-            tr.kind = kind;
-            trades.push(tr);
-          }
-          if (res.open) open.push(res.open);
-          if (res.pending)
-            pending.push(
-              res.pendingProtect
-                ? { sym: u.bars[s].sym, side: res.pending, protect: res.pendingProtect }
-                : { sym: u.bars[s].sym, side: res.pending },
-            );
+      for (const { symbol: s, direction: sg } of orderedSides) {
+        const res = simulate(id, u.bars[s], sg, p, {
+          cost,
+          cooldown,
+          atr: p.atr ? u.caches[s].atrEma(ATR_PERIOD) : undefined,
+        });
+        for (const tr of res.trades) {
+          tr.kind = kind;
+          trades.push(tr);
         }
+        if (res.open) open.push(res.open);
+        if (res.pending)
+          pending.push(
+            res.pendingProtect
+              ? { sym: u.bars[s].sym, side: res.pending, protect: res.pendingProtect }
+              : { sym: u.bars[s].sym, side: res.pending },
+          );
+      }
       // a range tape with fewer closes than its gate needs can never take a seat: not kept (memory) — unless it is
       // held: its open position needs the tape for its exit (dropped, the position was carried without one), so it
       // is kept held-only (no new seat)
@@ -1987,14 +2005,13 @@ export function* buildTapesGen(
           const trades: Trade[] = [];
           const open: OpenPosition[] = [];
           const pending: ConfigTape["pending"] = [];
-          for (const s of series)
-            for (const sg of sides[s]!) {
-              const res = simulateDca(id, u.bars[s], sg, p, dcaOpt.dca, active, cost, cooldown);
-              for (const tr of res.trades) trades.push(tr);
-              // a ladder open at the last close is carried (marked open in the simulation, held in paper / live)
-              if (res.open) open.push(res.open);
-              if (res.pending) pending.push({ sym: u.bars[s].sym, side: res.pending });
-            }
+          for (const { symbol: s, direction: sg } of orderedSides) {
+            const res = simulateDca(id, u.bars[s], sg, p, dcaOpt.dca, active, cost, cooldown);
+            for (const tr of res.trades) trades.push(tr);
+            // a ladder open at the last close is carried (marked open in the simulation, held in paper / live)
+            if (res.open) open.push(res.open);
+            if (res.pending) pending.push({ sym: u.bars[s].sym, side: res.pending });
+          }
           floors?.baseConfigCounter?.record(c.bot, c.ind, p, kind, trades);
           if (!floors?.countOnly) {
             const tp = atFrom(makeTape(id, c.bot, c.ind, p, kind, syms, trades, open, pending));
@@ -2064,40 +2081,16 @@ export function* buildTapesGen(
           const trades: Trade[] = [];
           const open: OpenPosition[] = [];
           const pending: ConfigTape["pending"] = [];
-          for (const s of series)
-            for (const sg of sides[s]!) {
-              const k = u.caches[s];
-              const centerS = k.ema(
-                Math.max(
-                  2,
-                  Math.round(ax.centerMin ? ax.centerMin / (u.bars[s].tfMin || 1) : ax.center),
-                ),
-              );
-              if (ax.mode === "desk") {
-                const res = simulateAxisDesk(
-                  id,
-                  u.bars[s],
-                  sg,
-                  p,
-                  ax,
-                  centerS,
-                  k.atr(14),
-                  cost,
-                  cooldown,
-                  deskFloor,
-                );
-                for (const tr of res.trades) trades.push(tr);
-                // open desk positions carry their average entry, stop and target (paper / live get a concrete stop)
-                if (res.open) open.push(res.open);
-                if (res.pending)
-                  pending.push(
-                    res.pendingProtect
-                      ? { sym: u.bars[s].sym, side: res.pending, protect: res.pendingProtect }
-                      : { sym: u.bars[s].sym, side: res.pending },
-                  );
-                continue;
-              }
-              const res = simulateAxis(
+          for (const { symbol: s, direction: sg } of orderedSides) {
+            const k = u.caches[s];
+            const centerS = k.ema(
+              Math.max(
+                2,
+                Math.round(ax.centerMin ? ax.centerMin / (u.bars[s].tfMin || 1) : ax.center),
+              ),
+            );
+            if (ax.mode === "desk") {
+              const res = simulateAxisDesk(
                 id,
                 u.bars[s],
                 sg,
@@ -2107,13 +2100,36 @@ export function* buildTapesGen(
                 k.atr(14),
                 cost,
                 cooldown,
-                revFloor,
+                deskFloor,
               );
               for (const tr of res.trades) trades.push(tr);
-              // revert positions open at the last close as well (marked open at run end, held in paper, mirrored live)
+              // open desk positions carry their average entry, stop and target (paper / live get a concrete stop)
               if (res.open) open.push(res.open);
-              if (res.pending) pending.push({ sym: u.bars[s].sym, side: res.pending });
+              if (res.pending)
+                pending.push(
+                  res.pendingProtect
+                    ? { sym: u.bars[s].sym, side: res.pending, protect: res.pendingProtect }
+                    : { sym: u.bars[s].sym, side: res.pending },
+                );
+              continue;
             }
+            const res = simulateAxis(
+              id,
+              u.bars[s],
+              sg,
+              p,
+              ax,
+              centerS,
+              k.atr(14),
+              cost,
+              cooldown,
+              revFloor,
+            );
+            for (const tr of res.trades) trades.push(tr);
+            // revert positions open at the last close as well (marked open at run end, held in paper, mirrored live)
+            if (res.open) open.push(res.open);
+            if (res.pending) pending.push({ sym: u.bars[s].sym, side: res.pending });
+          }
           floors?.baseConfigCounter?.record(c.bot, c.ind, p, "axis", trades);
           if (!floors?.countOnly) {
             const tp = atFrom(makeTape(id, c.bot, c.ind, p, "axis", syms, trades, open, pending));
@@ -2164,42 +2180,41 @@ export function* buildTapesGen(
             const trades: Trade[] = [];
             const open: OpenPosition[] = [];
             const pending: ConfigTape["pending"] = [];
-            for (const s of series)
-              for (const sg of sides[s]!) {
-                const k = u.caches[s];
-                const centerS = k.ema(
-                  Math.max(
-                    2,
-                    Math.round(
-                      rv.ax.centerMin ? rv.ax.centerMin / (u.bars[s].tfMin || 1) : rv.ax.center,
-                    ),
+            for (const { symbol: s, direction: sg } of orderedSides) {
+              const k = u.caches[s];
+              const centerS = k.ema(
+                Math.max(
+                  2,
+                  Math.round(
+                    rv.ax.centerMin ? rv.ax.centerMin / (u.bars[s].tfMin || 1) : rv.ax.center,
                   ),
+                ),
+              );
+              const res = simulateAxisDesk(
+                id,
+                u.bars[s],
+                sg,
+                p0l,
+                rv.ax,
+                centerS,
+                k.atr(14),
+                cost,
+                cooldown,
+                rf,
+              );
+              for (const tr of res.trades) trades.push(tr);
+              if (res.open) open.push(res.open);
+              if (res.pending)
+                pending.push(
+                  res.pendingProtect
+                    ? {
+                        sym: u.bars[s].sym,
+                        side: res.pending,
+                        protect: { ...res.pendingProtect, tag: rv.p0.tag },
+                      }
+                    : { sym: u.bars[s].sym, side: res.pending },
                 );
-                const res = simulateAxisDesk(
-                  id,
-                  u.bars[s],
-                  sg,
-                  p0l,
-                  rv.ax,
-                  centerS,
-                  k.atr(14),
-                  cost,
-                  cooldown,
-                  rf,
-                );
-                for (const tr of res.trades) trades.push(tr);
-                if (res.open) open.push(res.open);
-                if (res.pending)
-                  pending.push(
-                    res.pendingProtect
-                      ? {
-                          sym: u.bars[s].sym,
-                          side: res.pending,
-                          protect: { ...res.pendingProtect, tag: rv.p0.tag },
-                        }
-                      : { sym: u.bars[s].sym, side: res.pending },
-                  );
-              }
+            }
             floors?.baseConfigCounter?.record(c.bot, c.ind, p0l, "axis", trades);
             if (!floors?.countOnly) {
               const tp = atFrom(makeTape(id, c.bot, c.ind, p0l, "axis", syms, trades, open, pending));
@@ -2313,6 +2328,23 @@ export function kindExecutable(kind: StratKind, tg: StrategyToggles): boolean {
     case "axis":
       return tg.axis !== false;
   }
+}
+
+/** Diagnostic construction never expands the engine's Base-qualified pair/range cohort. */
+export function baseAllowsTape(
+  tp: Pick<ConfigTape, "bot" | "ind" | "protect" | "kind">,
+  o: Pick<WalkForwardOptions, "basePassed" | "basePassedRanges" | "baseWideLadderPairs">,
+  /** An inverted research seat executes its mirror's tape but retains the source seat's qualification. */
+  pair = `${tp.bot}|${tp.ind}`,
+): boolean {
+  if (o.basePassed && !o.basePassed.has(pair)) return false;
+  const ranges = o.basePassedRanges?.[pair];
+  if (o.basePassedRanges && !ranges?.length) return false;
+  // With Axis perRange off, an admitted pair's independent untagged ladders are not the plain Wide config.
+  // This explicit builder permission never qualifies a plain/trailing Wide cell or another tagged range.
+  if (!tp.protect.tag && (tp.kind === "dca" || tp.kind === "dca-active" || tp.kind === "axis") && o.baseWideLadderPairs?.has(pair))
+    return true;
+  return !o.basePassedRanges || ranges!.includes(tp.protect.tag ?? "");
 }
 
 /**
@@ -2619,6 +2651,8 @@ export function feedBooks(e: BlockFeedEntry, book: BlockBook | null, guard?: Sig
   if (book && (!book.acceptedOnly || e.accepted === true)) book.add(e);
   // keyed by the candidate's config (the same key execDecision checks); the exit time feeds the loss-cluster guard
   if (guard && e.ind && isSignalInd(e.ind)) {
+    const coordination = isSignalCoordinationInd(e.ind);
+    const population = coordination ? "coordination" : "signals";
     // the signal entry the close belongs to: its k configs count once in the loss cluster and the acceptance counts
     const onset =
       e.entryT !== undefined ? `${e.ind}|${e.sym}|${e.side > 0 ? 1 : -1}|${e.entryT}` : undefined;
@@ -2628,9 +2662,10 @@ export function feedBooks(e: BlockFeedEntry, book: BlockBook | null, guard?: Sig
       e.exitT,
       e.side,
       onset,
+      population,
     );
     guard.addAccept(acceptKey(e.ind, e.sym, e.side, e.type ?? "normal"), e.r, e.exitT, onset);
-    guard.addAccept(sideAcceptKey(e.side), e.r, e.exitT, onset);
+    guard.addAccept(sideAcceptKey(e.side, coordination), e.r, e.exitT, onset);
   }
 }
 
@@ -2648,7 +2683,7 @@ function greenShare(tp: ConfigTape, a: number, b: number): number {
   let hours = 0;
   let green = 0;
   for (let i = a; i < b; i++) {
-    const h = Math.floor(tp.exitT[i] / H);
+    const h = settledHourT(tp.exitT[i]) / H;
     if (h !== curH) {
       // the hour before closes (no closure per call: this runs for every validated tape on every step)
       if (curH >= 0) {
@@ -2922,7 +2957,7 @@ export function selectAt(
   const botOk = o.bots.length ? new Set<string>(o.bots) : null;
   for (const tp of tapes) {
     if (botOk && !botOk.has(tp.bot)) continue;
-    if (o.basePassed && !o.basePassed.has(`${tp.bot}|${tp.ind}`)) continue;
+    if (!baseAllowsTape(tp, o)) continue;
     const a = lowerBound(tp.exitT, fromLong);
     const b = lowerBound(tp.exitT, t);
     if (b - a < minLong) continue;
@@ -2990,7 +3025,7 @@ export function selectDurable(
   const basePf = new Map<string, number>();
   for (const tp of tapes) {
     if (botOk && !botOk.has(tp.bot)) continue;
-    if (o.basePassed && !o.basePassed.has(`${tp.bot}|${tp.ind}`)) continue;
+    if (!baseAllowsTape(tp, o)) continue;
     // the window a tape can be judged on: the long window, clipped to where its lane's data begins (at least
     // the pre-calc window, so a lane with too little history is not judged on a sliver)
     const from = Math.min(t - o.preH * H, Math.max(from0, tp.fromT ?? from0));
@@ -3084,12 +3119,12 @@ export const EVAL_GATES = [
   "closes",
   "net",
   "pf",
-  "ddt",
-  "ddr",
   "pre",
+  "lcb",
   "lastN",
   "rangeGate",
-  "lcb",
+  "ddt",
+  "ddr",
   "green",
   "stable",
 ] as const;
@@ -3153,8 +3188,15 @@ export function configEval(tp: ConfigTape, t: number, o: WalkForwardOptions): Co
     a,
     b,
     win(tp, a, b),
-    (o.gates.maxDdtH * Math.max(o.longH, o.preH)) / 72,
+    Math.max(o.gates.minDdtH ?? 0, (o.gates.maxDdtH * Math.max(o.longH, o.preH)) / 72),
   );
+}
+
+/** Signals have an independently tuned validation sample; every Strategy Base path must use the same sample. */
+function validLastNOf(tp: Pick<ConfigTape, "ind">, o: Pick<WalkForwardOptions, "validLastN" | "signalValidLastN">): number {
+  return isSignalInd(tp.ind) && o.signalValidLastN !== undefined
+    ? o.signalValidLastN
+    : o.validLastN ?? 0;
 }
 
 function configEvalAt(
@@ -3184,19 +3226,18 @@ function configEvalAt(
       : w.pf) < minPf
   )
     return no("pf");
-  const dd = winDd(tp, a, b, t);
-  if (dd.ddtH > Math.min(ddtMax, ddtLimitH(o, tp, t, Math.max(o.longH, o.preH)))) return no("ddt");
-  if (ddrFails(dd.mdd * 100, w.net, o.gates.maxDdr)) return no("ddr");
   if (o.preGate) {
     const pre = win(tp, lowerBound(tp.exitT, t - o.preH * H), b);
     if (pre.n >= 3 && (pre.pf < minPf || pre.net < 0)) return no("pre");
   }
+  const lcb = lcbFast(tp, a, b);
+  if (!(lcb > 0)) return no("lcb");
   // best-set validation: last validLastN closes clear min PF and the drawdown-time gate; a range cell its range gate
   if (
     !lastNOk(
       tp,
       t,
-      o.validLastN ?? 0,
+      validLastNOf(tp, o),
       minPf,
       o.gates.maxDdtH,
       o.gates.maxDdr ?? 0,
@@ -3223,8 +3264,9 @@ function configEvalAt(
     )
   )
     return no("rangeGate");
-  const lcb = lcbFast(tp, a, b);
-  if (!(lcb > 0)) return no("lcb");
+  const dd = winDd(tp, a, b, t);
+  if (dd.ddtH > Math.min(ddtMax, ddtLimitH(o, tp, t, Math.max(o.longH, o.preH)))) return no("ddt");
+  if (ddrFails(dd.mdd * 100, w.net, o.gates.maxDdr)) return no("ddr");
   const gh = greenShare(tp, a, b);
   // a variant that is red most hours is not what we run, even if a few large wins clear PF (gates.minGreen)
   if (gh < (o.gates.minGreen ?? 0.5)) return no("green");
@@ -3290,6 +3332,8 @@ function selSig(o: WalkForwardOptions): string {
   return [
     o.bots.join(","),
     objId(o.basePassed),
+    objId(o.basePassedRanges),
+    objId(o.baseWideLadderPairs),
     JSON.stringify(o.toggles ?? null),
     o.signalOwnBase ? 1 : 0,
     o.seatPer ?? "",
@@ -3312,7 +3356,7 @@ function selInfoOf(
   const fam = familyOf(tp.kind);
   return {
     tp,
-    inScope: !(botOk && !botOk.has(tp.bot)) && !(o.basePassed && !o.basePassed.has(pairKey)),
+    inScope: !(botOk && !botOk.has(tp.bot)) && baseAllowsTape(tp, o),
     canSeat: !tp.heldOnly && tapeExecutable(tp, o),
     base: fam === "base",
     pairKey,
@@ -3397,7 +3441,7 @@ function configPassAt(
     !lastNOk(
       tp,
       t,
-      o.validLastN ?? 0,
+      validLastNOf(tp, o),
       minPf,
       o.gates.maxDdtH,
       o.gates.maxDdr ?? 0,
@@ -3703,14 +3747,14 @@ export function withProbe<T extends { picks: Selection[]; eligible: number }>(
 function validOk(
   tp: ConfigTape,
   t: number,
-  o: Pick<WalkForwardOptions, "validLastN" | "gates" | "rangeGate">,
+  o: Pick<WalkForwardOptions, "validLastN" | "signalValidLastN" | "gates" | "rangeGate">,
 ): boolean {
   const prior = lossPriorOf(tp, o.gates);
   if (
     !lastNOk(
       tp,
       t,
-      o.validLastN ?? 0,
+      validLastNOf(tp, o),
       minPfOf(o.gates, tp.protect.tag, tp.ind),
       o.gates.maxDdtH,
       o.gates.maxDdr ?? 0,
@@ -3912,6 +3956,9 @@ export function execDecision(
 ): ExecDecision {
   const tg = o.toggles;
   if (tp.heldOnly) return { ok: false, why: "heldOnly" };
+  const pair = `${tp.bot}|${tp.ind}`;
+  if (!isSignalInd(tp.ind) && !baseAllowsTape(tp, o, o.invertSeats ? mirrorId(pair) ?? pair : pair))
+    return { ok: false, why: "base" };
   if (!tapeExecutable(tp, o)) return { ok: false, why: "toggle" };
   if (o.excludeRanges?.length && tp.protect.tag && o.excludeRanges.includes(tp.protect.tag))
     return { ok: false, why: "rangeOff" };
@@ -3938,7 +3985,8 @@ export function execDecision(
     )
       return { ok: false, why: "signalGuard" };
     // the loss cluster of this direction only (a cluster of losing shorts never pauses the longs)
-    if (o.signalCluster?.enabled && ctx.guard?.clustered(entryT, o.signalCluster, ctx.side))
+    const coordination = isSignalCoordinationInd(tp.ind);
+    if (o.signalCluster?.enabled && ctx.guard?.clustered(entryT, o.signalCluster, ctx.side, coordination ? "coordination" : "signals"))
       return { ok: false, why: "signalCluster" };
     if (
       o.signalAccept?.enabled &&
@@ -3954,7 +4002,7 @@ export function execDecision(
       ctx.guard &&
       !o.probe?.perRange &&
       !o.probe?.perCell &&
-      !ctx.guard.accepts(sideAcceptKey(ctx.side), entryT, o.signalSideAccept)
+      !ctx.guard.accepts(sideAcceptKey(ctx.side, coordination), entryT, o.signalSideAccept)
     )
       return { ok: false, why: "signalSide" };
     // the validation an engine config needs for its seat (min PF, DDT and DDR), on the signal's own last N
@@ -3964,7 +4012,7 @@ export function execDecision(
       !validOk(
         tp,
         entryT,
-        o.signalValidLastN === undefined ? o : { ...o, validLastN: o.signalValidLastN },
+        o,
       )
     )
       return { ok: false, why: "signalValid" };
@@ -4789,6 +4837,9 @@ export function* walkForwardGen(
   o: WalkForwardOptions,
 ): Generator<number, WalkForwardResult> {
   const byId = new Map(tapes.map((t) => [t.id, t]));
+  const indicationVolumeFactors = new Map(
+    tapes.map((tp) => [tp.id, volumeFactorForIndication(tp.ind, o.indicationVolumeFactors)]),
+  );
   // contrarian execution: seats whose mirror (follow ↔ revert) has no tape, step by step
   let invertMissing = 0;
   // signals: not selected into seats; every config of an active signal is a candidate on its own symbol and
@@ -5158,16 +5209,19 @@ export function* walkForwardGen(
       // Stable-02 relation volume on top of the Block volume (the stack stays within the Block maximum)
       const stackCap = blockStackCap(o.block);
       const cv = s2 ? Math.min(s2.volume(tr.entryT), Math.max(1, stackCap / dec.vol)) : 1;
+      const vf = indicationVolumeFactors.get(tp.id) ?? 1;
       const hedgeVol = hedging ? o.coord?.hedgeVolumeFactor ?? 1 : 1;
       const rangeVol = rangeVolumeFactorFor(tp, o);
-      const executionMult = dec.vol * cv * hedgeVol * rangeVol;
+      const executionMult = dec.vol * cv * vf * hedgeVol * rangeVol;
       const x: Trade = {
         ...tr,
         r: tr.r * executionMult,
         vol: (tr.vol ?? 1) * executionMult,
         mult: executionMult,
         ...(cv !== 1 ? { coordVol: cv } : {}),
+        ...(vf !== 1 ? { volFactor: vf } : {}),
         ...(hedgeVol !== 1 ? { hedgeVol } : {}),
+        ...(rangeVol !== 1 ? { rangeVol } : {}),
         ...(hedging ? { hedge: true } : {}),
         level: tp.kind.startsWith("dca") || tp.kind === "axis" ? tr.level : dec.level,
         ...(dec.legs ? { legs: dec.legs } : {}),
@@ -5208,7 +5262,7 @@ export function* walkForwardGen(
   yield -1;
   const perHour = new Map<number, { gp: number; gl: number; net: number; n: number }>();
   for (const x of trades) {
-    const k = Math.floor((x.exitT - 1) / H) * H;
+    const k = settledHourT(x.exitT);
     const e = perHour.get(k) ?? { gp: 0, gl: 0, net: 0, n: 0 };
     const r = unitReturn(x);
     if (r > 0) e.gp += r;

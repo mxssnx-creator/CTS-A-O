@@ -24,7 +24,7 @@ import {
 } from "./core-signal-research.mjs";
 
 const protocol = JSON.parse(
-  readFileSync(new URL("../docs/signal-research-protocol-20261015.json", import.meta.url)),
+  readFileSync(new URL("../docs/signal-research-protocol-20261016.json", import.meta.url)),
 );
 const MIN = 60_000;
 const START = Math.floor(1_790_000_000_000 / (30 * MIN)) * 30 * MIN;
@@ -72,14 +72,14 @@ const totals = (returns) => {
 };
 
 describe("four-source frozen independent Signal research", () => {
-  it("uses the exact 1248 frozen research protects and 2496 config-side identities, including target0 sets", () => {
+  it("uses the frozen runtime-parity v2 grid independently of newer production defaults", () => {
     const cells = researchCells(protocol);
     assert.equal(
       cells.reduce((n, c) => n + c.requestedAliases.length, 0),
-      2496,
+      2320,
     );
-    assert.equal(cells.length, 2448);
-    assert.equal(new Set(cells.map((c) => c.cfg)).size, 1224);
+    assert.equal(cells.length, 2320);
+    assert.equal(new Set(cells.map((c) => c.cfg)).size, 1160);
     assert.equal(new Set(cells.map((c) => c.ind)).size, 32);
     const counts = Object.fromEntries(
       ["normal", "trailing", "trailing-only"].map((kind) => [
@@ -87,7 +87,7 @@ describe("four-source frozen independent Signal research", () => {
         cells.filter((c) => c.kind === kind).length,
       ]),
     );
-    assert.deepEqual(counts, { normal: 960, trailing: 960, "trailing-only": 528 });
+    assert.deepEqual(counts, { normal: 960, trailing: 928, "trailing-only": 432 });
     for (const c of cells.filter((c) => c.kind === "trailing-only")) {
       assert.equal(c.protect.tp, 0);
       assert.equal(c.protect.trailOnly, true);
@@ -95,11 +95,16 @@ describe("four-source frozen independent Signal research", () => {
       assert.match(c.cfg, /\|to(?:\||$)/);
     }
     for (const c of cells) assert.equal(c.protect.hold * c.tf, 48 * 60);
-    assert.equal(
-      cells.filter((c) => c.requestedAliases.length > 1).length,
-      48,
-      "one-minute floor collisions are declared aliases, not extra independent winning configurations",
+    assert.ok(
+      cells.every(
+        (c) =>
+          c.protect.trail === 0 ||
+          c.protect.trail * (c.protect.trailStep ?? 1) + 1e-12 >=
+            protocol.preOutcomeModelClarification.signalFloors.minTrail,
+      ),
+      "a trail below the lane-scaled minimum is disabled by the runtime, not widened into a new config",
     );
+    assert.equal(cells.filter((c) => c.requestedAliases.length > 1).length, 0);
     const belowCurrentLaneFloor = cells.filter((cell) => {
       const lane = laneProtect(cell.requestedAliases[0].referenceProtect, cell.ind);
       return (
@@ -107,11 +112,22 @@ describe("four-source frozen independent Signal research", () => {
         lane.trail * (lane.trailStep ?? 1) + 1e-12 < protocol.preOutcomeModelClarification.signalFloors.minTrail
       );
     });
-    assert.equal(new Set(belowCurrentLaneFloor.map((cell) => cell.cfg)).size, 64);
-    assert.equal(belowCurrentLaneFloor.length, 128, "each disabled config has independent long and short rows");
+    assert.equal(new Set(belowCurrentLaneFloor.map((cell) => cell.cfg)).size, 0);
+    assert.equal(belowCurrentLaneFloor.length, 0, "below-floor lane configs remain excluded from the frozen v2 grid");
   });
 
   it("fails before scoring if frozen parameters, protects, cost, source universe or bars differ", () => {
+    assert.throws(
+      () =>
+        researchCells(
+          JSON.parse(
+            readFileSync(
+              new URL("../docs/signal-research-protocol-20261015.json", import.meta.url),
+            ),
+          ),
+        ),
+      /superseded.*v2/,
+    );
     for (const changed of [
       (p) => {
         p.candidates[0].short.g = 0.9;
@@ -345,7 +361,7 @@ describe("four-source frozen independent Signal research", () => {
     assert.match(md, /Entire IS-qualified pool/);
   });
 
-  it("preserves the frozen floor-policy grid and identifies trails later disabled by the runtime", () => {
+  it("preserves the frozen v2 floor-policy grid and matches runtime-disabled trails", () => {
     const { market, p } = fixture();
     const cells = researchCells(p).filter(
       (c) => c.source === "r-laguerre" && c.range === "short" && c.tf === 1,
@@ -369,10 +385,10 @@ describe("four-source frozen independent Signal research", () => {
     );
     const protocolByConfig = new Map(cells.map((cell) => [cell.cfg, cell]));
     const runtimeByConfig = new Map(tapes.map((tape) => [tape.id, tape]));
-    assert.equal(protocolByConfig.size, 36, "the frozen protocol retains all distinct floor-adjusted cells");
+    assert.equal(protocolByConfig.size, 31, "the corrected frozen protocol excludes below-floor trails before adjustment");
     assert.equal(runtimeByConfig.size, 31, "the current runtime disables lane-scaled short trails");
     const disabledByRuntime = [...protocolByConfig.values()].filter((cell) => !runtimeByConfig.has(cell.cfg));
-    assert.equal(disabledByRuntime.length, 5);
+    assert.equal(disabledByRuntime.length, 0, "frozen v2 and runtime construct the same effective cells");
     for (const cell of disabledByRuntime) {
       const lane = laneProtect(cell.requestedAliases[0].referenceProtect, cell.ind);
       assert.ok(lane.trail > 0);

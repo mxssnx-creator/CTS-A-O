@@ -1,0 +1,161 @@
+{
+  "at": "2026-10-17T21:50:39.732Z",
+  "error": "Error: Public OHLCV response code 109425: TON-USDT not exist, please verify it in api: /openApi/swap/v2/quote/contracts",
+  "completeSymbols": [
+    "AVAX-USDT",
+    "LINK-USDT",
+    "LTC-USDT",
+    "SUI-USDT",
+    "NEAR-USDT",
+    "DOT-USDT",
+    "ATOM-USDT",
+    "APT-USDT",
+    "BTC-USDT",
+    "ETH-USDT",
+    "SOL-USDT",
+    "XRP-USDT",
+    "BNB-USDT",
+    "DOGE-USDT",
+    "ADA-USDT",
+    "BCH-USDT",
+    "TRX-USDT"
+  ],
+  "quality": {
+    "AVAX-USDT": {
+      "bars": 23820,
+      "hourlyBars": 397,
+      "first": 1790841600000,
+      "last": 1792270740000,
+      "gaps": 0,
+      "futureBars": 0
+    },
+    "LINK-USDT": {
+      "bars": 23820,
+      "hourlyBars": 397,
+      "first": 1790841600000,
+      "last": 1792270740000,
+      "gaps": 0,
+      "futureBars": 0
+    },
+    "LTC-USDT": {
+      "bars": 23820,
+      "hourlyBars": 397,
+      "first": 1790841600000,
+      "last": 1792270740000,
+      "gaps": 0,
+      "futureBars": 0
+    },
+    "SUI-USDT": {
+      "bars": 23820,
+      "hourlyBars": 397,
+      "first": 1790841600000,
+      "last": 1792270740000,
+      "gaps": 0,
+      "futureBars": 0
+    },
+    "NEAR-USDT": {
+      "bars": 23820,
+      "hourlyBars": 397,
+      "first": 1790841600000,
+      "last": 1792270740000,
+      "gaps": 0,
+      "futureBars": 0
+    },
+    "DOT-USDT": {
+      "bars": 23820,
+      "hourlyBars": 397,
+      "first": 1790841600000,
+      "last": 1792270740000,
+      "gaps": 0,
+      "futureBars": 0
+    },
+    "ATOM-USDT": {
+      "bars": 23820,
+      "hourlyBars": 397,
+      "first": 1790841600000,
+      "last": 1792270740000,
+      "gaps": 0,
+      "futureBars": 0
+    },
+    "APT-USDT": {
+      "bars": 23820,
+      "hourlyBars": 397,
+      "first": 1790841600000,
+      "last": 1792270740000,
+      "gaps": 0,
+      "futureBars": 0
+    },
+    "BTC-USDT": {
+      "bars": 23820,
+      "hourlyBars": 397,
+      "first": 1790841600000,
+      "last": 1792270740000,
+      "gaps": 0,
+      "futureBars": 0
+    },
+    "ETH-USDT": {
+      "bars": 23820,
+      "hourlyBars": 397,
+      "first": 1790841600000,
+      "last": 1792270740000,
+      "gaps": 0,
+      "futureBars": 0
+    },
+    "SOL-USDT": {
+      "bars": 23820,
+      "hourlyBars": 397,
+      "first": 1790841600000,
+      "last": 1792270740000,
+      "gaps": 0,
+      "futureBars": 0
+    },
+    "XRP-USDT": {
+      "bars": 23820,
+      "hourlyBars": 397,
+      "first": 1790841600000,
+      "last": 1792270740000,
+      "gaps": 0,
+      "futureBars": 0
+    },
+    "BNB-USDT": {
+      "bars": 23820,
+      "hourlyBars": 397,
+      "first": 1790841600000,
+      "last": 1792270740000,
+      "gaps": 0,
+      "futureBars": 0
+    },
+    "DOGE-USDT": {
+      "bars": 23820,
+      "hourlyBars": 397,
+      "first": 1790841600000,
+      "last": 1792270740000,
+      "gaps": 0,
+      "futureBars": 0
+    },
+    "ADA-USDT": {
+      "bars": 23820,
+      "hourlyBars": 397,
+      "first": 1790841600000,
+      "last": 1792270740000,
+      "gaps": 0,
+      "futureBars": 0
+    },
+    "BCH-USDT": {
+      "bars": 23820,
+      "hourlyBars": 397,
+      "first": 1790841600000,
+      "last": 1792270740000,
+      "gaps": 0,
+      "futureBars": 0
+    },
+    "TRX-USDT": {
+      "bars": 23820,
+      "hourlyBars": 397,
+      "first": 1790841600000,
+      "last": 1792270740000,
+      "gaps": 0,
+      "futureBars": 0
+    }
+  }
+}
