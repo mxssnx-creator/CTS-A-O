@@ -1,0 +1,47 @@
+{
+  "recordedAt": "2026-10-17T22:28:13.060333+00:00",
+  "localCheckpoint": "f0108a40daf30de03707491eeb28801b2a84eced",
+  "productionFixCheckpoint": "079598b",
+  "sourceManifestSha256": "00e2be91da9101434275761c82b07d3ca8fc04721886e894463c551c558076d0",
+  "checks": [
+    {
+      "command": "npm run typecheck",
+      "exitCode": 0,
+      "log": "runs/postbase-final-typecheck-20261017-v2.log",
+      "logSha256": "ae791f9f57ffbb3c0a592b6a34e25250c1f7f6f13fde4d05f77a0d4e7681f89a"
+    },
+    {
+      "command": "npm run build:dev",
+      "exitCode": 0,
+      "log": "runs/postbase-final-build-20261017.log",
+      "logSha256": "a54d1fe488fa550c1f997d63daf00a5b621372286382498bd4ece76088603e14"
+    },
+    {
+      "command": "node scripts/test-core.mjs --test-name-pattern=offline replay startup|preserves the exact Wide pass [Base cohort and replay startup test files]",
+      "exitCode": 0,
+      "log": "runs/postbase-type-fixture-tests-20261017.log",
+      "logSha256": "bab60c8c5a0befe45de10af0728f66844d6ce66ac1825e54a9e0beca520c08f2"
+    },
+    {
+      "command": "Serial offline five-file data/study/review/session/settings regression",
+      "files": [
+        "scripts/core-22-symbol-data.test.mjs",
+        "scripts/core-22-symbol-study.test.mjs",
+        "scripts/core-expanded-study-review.test.mjs",
+        "scripts/core-session.test.mjs",
+        "scripts/lib/session-settings.test.mjs"
+      ],
+      "exitCode": 0,
+      "tests": 55,
+      "passed": 55,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "durationMs": 62384.87849,
+      "log": "runs/postbase-final-scripts-20261017.log",
+      "logSha256": "fdb83aaabac2e78f411f7808de21a926fc343d73a1aaab6710218d168f493c26"
+    }
+  ],
+  "scope": "Focused correctness checks,55 fresh serial offline script regressions, and complete client/server/worker compilation. Not a whole-repository suite pass. Four expanded market replays remain pending resource admission.",
+  "firstTypecheck": "Three test-only typing errors were corrected in f0108a4; subsequent complete typecheck exited0. No production formula/gate change."
+}

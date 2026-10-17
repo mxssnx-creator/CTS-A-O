@@ -112,7 +112,8 @@ describe("diagnostic allSets retains the Base-qualified cohort", () => {
   }
 
   it("preserves the exact Wide pass with perRange on and invalidates cached ladder permission independently", () => {
-    const wide = { ...run(IND, { mn: bad, sh: bad }), full: good };
+    const wide = run(IND, { mn: bad, sh: bad });
+    wide.full = { ...wide.full, ...good };
     const out = basePass([wide], { ...s, axis: { ...s.axis, perRange: true } }, { enabled: (tag) => ["", "mn", "sh"].includes(tag) });
     assert.ok(out.wideLadderPairs.has(pair(IND)));
     const tp = tape(IND, undefined, "axis"), tapes = [tp], o = { ...options(), toggles: { ...s.toggles, axis: true } };

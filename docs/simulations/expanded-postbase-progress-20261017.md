@@ -149,3 +149,14 @@ of active hours in both. It also reports positive contributions during
 portfolio losing hours. No exclusion is applied; a selected removal list
 needs a new prospective replay and cannot claim an after-prune PF from the
 already scored final day.
+
+## Final source checks and resealed protocols
+
+The independent untagged DCA/Axis admission regression is fixed in 079598b.
+Complete TypeScript and client/server/worker build checks passed after test-only
+fixture typing corrections. A fresh serial offline script run passed 55/55
+tests with no failures, cancellations or skips. The four v2 protocols are
+frozen before scoring; their index and source/settings/feed hashes are in
+`expanded-postbase-v2-index-20261017.json`. Shared memory headroom subsequently
+fell below 700 MiB, so the expanded market replays remain pending strict
+resource admission. No fallback, incomplete cohort or pruning result is claimed.

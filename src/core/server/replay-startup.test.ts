@@ -37,6 +37,8 @@ const sync = (rt: CoreRuntime) =>
   (rt as unknown as { gen: number; syncMarket(gen: number): Promise<boolean> }).syncMarket(
     (rt as unknown as { gen: number }).gen,
   );
+const pending = (rt: CoreRuntime) =>
+  (rt as unknown as { prehistPending: boolean }).prehistPending;
 
 describe("offline replay startup", () => {
   it("loads the entire forced universe before its first compute while retaining four concurrent loads", async () => {
@@ -57,7 +59,7 @@ describe("offline replay startup", () => {
       assert.deepEqual([...rt.candles.keys()], symbols);
       assert.deepEqual(data.requested, symbols);
       assert.equal(data.maxInFlight(), 4, "preloading retains the existing bounded loader");
-      assert.equal(rt.prehistPending, false);
+      assert.equal(pending(rt), false);
       for (const cs of rt.candles.values()) {
         assert.equal(cs.n, 300);
         assert.equal(cs.lastT(), endT - M, "the supplied completed-bar cutoff is preserved");
@@ -81,7 +83,7 @@ describe("offline replay startup", () => {
         await sync(rt);
         assert.equal(rt.replayPreloadAll, false);
         assert.equal(rt.candles.size, 5);
-        assert.equal(rt.prehistPending, true);
+        assert.equal(pending(rt), true);
         assert.deepEqual(data.requested, symbols.slice(0, 5));
       } finally {
         rt.dispose();

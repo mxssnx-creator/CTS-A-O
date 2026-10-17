@@ -1,0 +1,2161 @@
+{
+  "status": "All four protocols frozen before scoring; no results yet.",
+  "protocols": [
+    {
+      "directory": "runs/postbase-dev20-baseline-20261017-v2",
+      "protocolSha256": "8a5727478f2be9933072ecd944c9716e79b45eb53c1a29889dab45651e890c05",
+      "case": "baseline-20",
+      "window": {
+        "endT": 1792184400000,
+        "evaluationFromT": 1792011600000,
+        "indicatorStartT": 1791273600000,
+        "indicatorWarmupH": 205,
+        "longH": 24,
+        "preH": 24,
+        "runH": 24,
+        "selectionH": 24,
+        "tradeStartT": 1792098000000
+      },
+      "symbols": [
+        "AVAX-USDT",
+        "LINK-USDT",
+        "LTC-USDT",
+        "SUI-USDT",
+        "NEAR-USDT",
+        "DOT-USDT",
+        "ATOM-USDT",
+        "APT-USDT",
+        "BTC-USDT",
+        "ETH-USDT",
+        "SOL-USDT",
+        "XRP-USDT",
+        "BNB-USDT",
+        "DOGE-USDT",
+        "ADA-USDT",
+        "BCH-USDT",
+        "TRX-USDT",
+        "ETC-USDT",
+        "OP-USDT",
+        "ARB-USDT"
+      ],
+      "variant": "baseline",
+      "feedSha256": "b70c3f0aff8b1d5b98f01ad2acac840c8560be2fa832e0c95615f8abf051c521",
+      "runtimeSettingsSha256": "5878691d6d2482eb6e94a89cc337deb150e9833406e11c42b9215510fa966ec1",
+      "focusCount": 97,
+      "sourceFiles": [
+        {
+          "path": "package-lock.json",
+          "sha256": "c96b64262d7f2cdfee89d0bef895b679f4598f006b81f345033745f4ea73edfc"
+        },
+        {
+          "path": "package.json",
+          "sha256": "ef9e008301ad4e0ea8bae727bdadfd7e044da6ca8ffc473bf5013cd422dbf0ad"
+        },
+        {
+          "path": "scripts/core-22-symbol-study.mjs",
+          "sha256": "c2a5c355cfa1bc20df3aef9e80f82bc0df3229af27bb4dc75478c1a8b9988578"
+        },
+        {
+          "path": "scripts/core-session.mjs",
+          "sha256": "e8de3114c02aa952493cc6118258e065e4f9af63d5cfc8313ccef07739c5f516"
+        },
+        {
+          "path": "scripts/lib/block-comparison-evidence.mjs",
+          "sha256": "dce9c749086ecf5bc3489feffa70e59c0cbdd9661049e6813a7382e744ad4531"
+        },
+        {
+          "path": "scripts/lib/block-comparison.mjs",
+          "sha256": "684e094ecad45fd8a258046d3593cda41fd407c315fe893356aa75bcc1040103"
+        },
+        {
+          "path": "scripts/lib/book-notional.mjs",
+          "sha256": "ba79608369b165cd6037f421bad4dbc366f123e7475e58775c4642a93f45cf49"
+        },
+        {
+          "path": "scripts/lib/candles.mjs",
+          "sha256": "14985016fdd8d1f1bdfe47672c00d43cf779ce1b80b2fae8a0b723f46ac5992c"
+        },
+        {
+          "path": "scripts/lib/core-test-offline-guard.cjs",
+          "sha256": "9294c2c6b937c80e6e01aa30e65f84ff9605e630603a3d7f9f10c388435c9eaf"
+        },
+        {
+          "path": "scripts/lib/eval-orders.mjs",
+          "sha256": "818f2ff7012073d7d58cd52807f4bc3f0d4a229305b66d17af41cf56abbe38b3"
+        },
+        {
+          "path": "scripts/lib/eval-stress.mjs",
+          "sha256": "4479ea5c4b5a9598239eea676f1077953942f8a1e6ad6cb12cdeb74e23dbdc78"
+        },
+        {
+          "path": "scripts/lib/eval-variants.mjs",
+          "sha256": "715279a2482592241ac8f92fa0334f5d119922bcc697e88c1d4dd59f90d07356"
+        },
+        {
+          "path": "scripts/lib/eval-windows.mjs",
+          "sha256": "3fc4e18da6ab8da7033837f1d52ed5ab9eaa0aa8f1e44843c8cd61fc8c86994e"
+        },
+        {
+          "path": "scripts/lib/mem-admission.mjs",
+          "sha256": "1f6c3eac6930d887e7a40416783c091f40b47ee72e55c0d03234113032be69e1"
+        },
+        {
+          "path": "scripts/lib/ownership-halt.mjs",
+          "sha256": "f469476c840a9b13e7d5fd27daa1c933fabb62d4b9a9c952314bc644faf44ad0"
+        },
+        {
+          "path": "scripts/lib/pf-search-evidence.mjs",
+          "sha256": "cf0c9b7584ccae170c14049d4777e2148cab135f40d88c2852f2f5e53defe299"
+        },
+        {
+          "path": "scripts/lib/positive-types-report.mjs",
+          "sha256": "e162b4db99ecf66f4b86cfd4523da99ea203c858ebc09d2e6f47a1af834395b7"
+        },
+        {
+          "path": "scripts/lib/range-study-evidence.mjs",
+          "sha256": "02ec5ff93f4d9364267f497f45fdeaecf0f5c1ac775808c96019725e764aa07e"
+        },
+        {
+          "path": "scripts/lib/range-study.mjs",
+          "sha256": "aa84f276583fa7863c9d0d95b382df589fd59b682d2efac772d86e8d817dea66"
+        },
+        {
+          "path": "scripts/lib/replay-evidence.mjs",
+          "sha256": "59eb5a567859c98b431e4012a8f074dbc7292693d5c7aab07088ce15a71c8a07"
+        },
+        {
+          "path": "scripts/lib/research-series.mjs",
+          "sha256": "da97905832707d297053e899ca12863bfca41fc69df5163acc311eca092ed119"
+        },
+        {
+          "path": "scripts/lib/return-evidence.mjs",
+          "sha256": "a316f44fe4a3a115a449b65d3dc11c40c806a1af73f3ab6f88561e2b67b10b7b"
+        },
+        {
+          "path": "scripts/lib/safe-network-interfaces.cjs",
+          "sha256": "ec0806c50c019b9c1cf3b21cc2da102b1692ef8619577a86c705908057612659"
+        },
+        {
+          "path": "scripts/lib/session-feed.mjs",
+          "sha256": "82e3e3963185ac6c0e08daab6ca54212ddd72919d14eda32a9659271b1973478"
+        },
+        {
+          "path": "scripts/lib/session-owned-returns.mjs",
+          "sha256": "83c0e7bd82ca08ed928e5c97420e2470446e2d4642c088b4d0aab193eaff070f"
+        },
+        {
+          "path": "scripts/lib/session-qualification.mjs",
+          "sha256": "cfcb4f7f866b809837664b8ef749bf44b33ea2cdca4244871d65f42ca2a7e122"
+        },
+        {
+          "path": "scripts/lib/session-settings.mjs",
+          "sha256": "b3e30942540cdd8e87359174d1c0f81a2f5ebfdc4704feda7411e7c0f5f91efc"
+        },
+        {
+          "path": "scripts/lib/signal-market.mjs",
+          "sha256": "561528ad226632ef1298c11e4cfdac26bc6581c549a3b4530a23a16d4c71be13"
+        },
+        {
+          "path": "scripts/lib/signal-progress.mjs",
+          "sha256": "eee6af09523c43c09c4aadfc4947de7dfa490db2e5d946842f9bd27e8d9d5689"
+        },
+        {
+          "path": "scripts/lib/signal-window-report.mjs",
+          "sha256": "a5ce12bfa50fa3ece5f57ba25cff9d5db5f28724dc46c9e068ac2af2cda30d5b"
+        },
+        {
+          "path": "scripts/lib/test-all-invocation.mjs",
+          "sha256": "e8ed6fbe26219a1d92b721faca1ae05cbb1dfaf76eb38e32d1a7e173f38803ec"
+        },
+        {
+          "path": "scripts/lib/walkforward-comparison-report.mjs",
+          "sha256": "68cc5f639626ce21232a3ff326659c62f9668fcceb3e3c557585fb69ea19709e"
+        },
+        {
+          "path": "scripts/lib/walkforward-hourly-report.mjs",
+          "sha256": "22b93b27d1fdbf2d81fe4fa80a58bb6674a8d19e40edde95f7e7dfed307fba6e"
+        },
+        {
+          "path": "src/core/adjust.ts",
+          "sha256": "227318e975a6b27765cbaebdb1d8b3d2055b8237b5ee2d8cb33227fc33889f98"
+        },
+        {
+          "path": "src/core/api-data.ts",
+          "sha256": "0943f44ba52d68dfe4874412647603d85cffe077f121080e4f29574c32309824"
+        },
+        {
+          "path": "src/core/api.ts",
+          "sha256": "f7c500832b8a731c34f7c480b8404f7669f1e96025138eb9d9b7a44b53e07cfe"
+        },
+        {
+          "path": "src/core/audit.ts",
+          "sha256": "76db6b2a92f1b3630a360e211c9c69efd5142651365f71c679b3cc268359696f"
+        },
+        {
+          "path": "src/core/base-config-counts.ts",
+          "sha256": "36dfc247c580c8d0c76de503a3aee163233368b751908c71f96806213493bc35"
+        },
+        {
+          "path": "src/core/bot-stats.ts",
+          "sha256": "4f3d60b28cddacb8329168896c123dd18b27a2ed3e2dee4fc68aa5faf828a1fe"
+        },
+        {
+          "path": "src/core/bots/bots.ts",
+          "sha256": "a428710169d04268d21dec7be207251ab691ec80e01de254ea5e5aaab7dac266"
+        },
+        {
+          "path": "src/core/config.ts",
+          "sha256": "82cee991cdab4e553acd504ddf6772144377c0f6452b0aec3daf9952a2955954"
+        },
+        {
+          "path": "src/core/domain/types.ts",
+          "sha256": "45a18d07df401f85a88d2a2459b43b38ed5921bbdefcc0cf185a3d1b9a5362ed"
+        },
+        {
+          "path": "src/core/eval-family.ts",
+          "sha256": "72405e472974f8b1a1f9450fbd764fa5ebc00703b8a0d61ec715685311e4a9c2"
+        },
+        {
+          "path": "src/core/evals/evaluator.ts",
+          "sha256": "886988ab3755eb7c8b212917428adaebb548cdde9cb100e0b8d4248959e5f212"
+        },
+        {
+          "path": "src/core/exchange/bingx.server.ts",
+          "sha256": "848d329eafac974572ed41863cbc73dd17ee91e17618dfc5729d9382f81b8c82"
+        },
+        {
+          "path": "src/core/indications/break-config.ts",
+          "sha256": "4c163759a58fc985d0fca4721cdea6cccf0454a36feec79aed2755f09d1afafb"
+        },
+        {
+          "path": "src/core/indications/break.ts",
+          "sha256": "d119a91055dced95a749c81c4e929899ccd8a63da07da95cfbdfc3d32913506b"
+        },
+        {
+          "path": "src/core/indications/cache.ts",
+          "sha256": "2d52685a850b420326eb2cbcee4cda6a3f57680497b5cd89dee30900cfb07b84"
+        },
+        {
+          "path": "src/core/indications/filters.ts",
+          "sha256": "a9cd343316f0858f172c1b933ffd11b3d767d59d8e8ad450c18de33dd52f39ac"
+        },
+        {
+          "path": "src/core/indications/market.ts",
+          "sha256": "5ada84de0e1556c3d13317e385e1b3e9378bcc9851f2bd6ce0ee7a1fd6b2a081"
+        },
+        {
+          "path": "src/core/indications/micro.ts",
+          "sha256": "9fe9c043d8c44ad91922433db461a73586dc867a4cf0057bd5f6cf39fc96d663"
+        },
+        {
+          "path": "src/core/indications/range-families.ts",
+          "sha256": "7727bf1f3b92786dcdb92d87c9308df08e7aa9323b6db559b5e32166917bcc2d"
+        },
+        {
+          "path": "src/core/indications/registry.ts",
+          "sha256": "994e6148a1d082f794000056bf2a8fdd58c9f6cf9958ac6b098b074e0a257b7f"
+        },
+        {
+          "path": "src/core/indications/relate.ts",
+          "sha256": "e5cb00c35f6968fea8a83f3eb830389f295fd31199b76d5f57a28ef4364e4991"
+        },
+        {
+          "path": "src/core/indications/research.ts",
+          "sha256": "fabfbbc2f03ca04204cacb5b668f921fe1e30aa59ed5d0ce8470e9dbbf916ead"
+        },
+        {
+          "path": "src/core/indications/research2.ts",
+          "sha256": "8b9cba9d970bf5b1bd0661fc38f24e77f481befb5a06952e672b6662cc6289c5"
+        },
+        {
+          "path": "src/core/indications/research3.ts",
+          "sha256": "3eba19e75ef751dc3d98c1ff6019d49819b3359c3f625b0228c4b5c8f752eedd"
+        },
+        {
+          "path": "src/core/indications/research4.ts",
+          "sha256": "37ea0b5e205c3a3d2a0dac975700236b8f411eb0633d1eac4a5c05386058488d"
+        },
+        {
+          "path": "src/core/indications/stable02.ts",
+          "sha256": "78a1215c16495af37325a2d0be7226b216e582e57f0af17cfa73ff273b11ce87"
+        },
+        {
+          "path": "src/core/indications/tactic.ts",
+          "sha256": "73465e133f643d5a061cd9c27ed54cf86489a4a9b763d24a91eb27b012f3d1b3"
+        },
+        {
+          "path": "src/core/lastn/optimizer.ts",
+          "sha256": "bf5ac8b16a66d488c366c5ba6dcffccb6595109eecb4291e153c58302e139ec9"
+        },
+        {
+          "path": "src/core/live-diff.ts",
+          "sha256": "988cd14119a3e0e9707a351fedb11e71d344a5075719262e1e58ec44037c40b7"
+        },
+        {
+          "path": "src/core/live-promote.ts",
+          "sha256": "2019db00f91fb39a186480b5ca2749a8f6097b2f1c271072e226e50eb6d0582d"
+        },
+        {
+          "path": "src/core/live-record.ts",
+          "sha256": "0f8231f4ab0f2d20a027d2862a719e2c86f3925b445296d0842e0734401ed497"
+        },
+        {
+          "path": "src/core/live-validation.ts",
+          "sha256": "ff3b8f462bbaaa8e500b5df866a03f1f5527644246633fc32b249deb35dbeef6"
+        },
+        {
+          "path": "src/core/loss-limit.ts",
+          "sha256": "ec3f42db368392c1c665e6eb6ca1f0d7d6809471cbd729cbf229b5c48e2f6589"
+        },
+        {
+          "path": "src/core/market/bars.ts",
+          "sha256": "bd9faec5d566e954a1477866b4e817226643bb945b82257505a37861c489cf71"
+        },
+        {
+          "path": "src/core/market/bingx.ts",
+          "sha256": "8d2402afc7ef7732e9aec96241cc999edf0cc76c3a34898a335261bb51b8439f"
+        },
+        {
+          "path": "src/core/market/candle-series.ts",
+          "sha256": "11a1ad9871449c3d08e2efd55fd5f9c3ccc7577dd91f25995ca586ebcdd493c9"
+        },
+        {
+          "path": "src/core/market/shared-feed.ts",
+          "sha256": "70e1183e0a90e51a803fd334ab278dedac5da184d8c74fcdacf1bd8a89f6c065"
+        },
+        {
+          "path": "src/core/math/indicators.ts",
+          "sha256": "948c163cd7d9e18acc57a4757c698115c034ef1d657e033b1d2e1536e60ccd93"
+        },
+        {
+          "path": "src/core/metrics/stats.ts",
+          "sha256": "22c10235edf01a4112374f71ef460d4c18c3befa5bfb613cae1ea62e37f5657d"
+        },
+        {
+          "path": "src/core/minimal-coord.ts",
+          "sha256": "18a05b02b71a9a37f589513c6eef82514f638519e2606da89e65694572db86d7"
+        },
+        {
+          "path": "src/core/pipeline/pipeline.ts",
+          "sha256": "3b8022b6e5145d464f89bf695a8dd779d5fafc3e609c80af793c5016f912243b"
+        },
+        {
+          "path": "src/core/pipeline/portfolio.ts",
+          "sha256": "f5b618fd1f91aa50eaf70efbf80bf7f0dd4f2c2cd328f995ba6be1bd2e45866e"
+        },
+        {
+          "path": "src/core/positions.ts",
+          "sha256": "4cef45d39f431c4a4577b1c90863c97a2d2899ae9bf40035c6c2fea5342a5afb"
+        },
+        {
+          "path": "src/core/positive.ts",
+          "sha256": "2c7c7eab700bb0786f4d12eb376c6c731c433111181de1feb87d7abd5e09b77d"
+        },
+        {
+          "path": "src/core/prehist.ts",
+          "sha256": "24bbb71085b7fdf6a91803195d402d679638fb9847e50003f0fff6edaac22b34"
+        },
+        {
+          "path": "src/core/presets.desk.ts",
+          "sha256": "926e9f01dbc5366780aba03436046da30699107f6fd568d8635957be08d5265a"
+        },
+        {
+          "path": "src/core/presets.live.ts",
+          "sha256": "6800cfb12914483ad1cc8e1c660a96203b71cecb5983fb638ed123d4562b8298"
+        },
+        {
+          "path": "src/core/presets.research.ts",
+          "sha256": "a4e2e3c3dee502dfa90769e6d0661c2dbd3d407d251822bad25b877da8af984a"
+        },
+        {
+          "path": "src/core/presets.ts",
+          "sha256": "e5445abda21d38035ddb9c36b7697ba029ef1c0e620e1e316e82c068c121a027"
+        },
+        {
+          "path": "src/core/progress.ts",
+          "sha256": "ea5f7c45236c79af64dbc2310074b06da239761b099881404e0d11749fea2aec"
+        },
+        {
+          "path": "src/core/proven-wide-trail.ts",
+          "sha256": "903cca426a696f96f0fc406e5a10c67096bae4c2191aaef82cdd152d86d13a00"
+        },
+        {
+          "path": "src/core/reporting-stats.ts",
+          "sha256": "48ae1b035cb9f3d9cea31404d0574df63e9038256ba024c550791e2738b136b6"
+        },
+        {
+          "path": "src/core/server/base-config-job.server.ts",
+          "sha256": "1ee671fa8ebb5db597af9370db74a8824254e6185cb3bbbaead2e56d9caf714e"
+        },
+        {
+          "path": "src/core/server/boot.server.ts",
+          "sha256": "f73832b39bb2436def245ef17f36a5aa5140ca153f01000dc0d05239ea5abb20"
+        },
+        {
+          "path": "src/core/server/db.server.ts",
+          "sha256": "6ade4908d39e5b35d14c13f20e5c46546c2cf5c7af17f69c9a26636577490bdd"
+        },
+        {
+          "path": "src/core/server/lane-orders.ts",
+          "sha256": "9f34fef11ba0b959bb54297508a34fbfae36cd31b1b70f9c9d6c833f3871931f"
+        },
+        {
+          "path": "src/core/server/live.server.ts",
+          "sha256": "32d0a2d4c153f6c094a90336e1a7569c3ffb2ed1efdeb9ddbef8fbcb0bda6e66"
+        },
+        {
+          "path": "src/core/server/live.ts",
+          "sha256": "21d6b7d5a49b2dca6ccb312298c9e0df5397f000f0cc6cde9063ca3d111e9ed8"
+        },
+        {
+          "path": "src/core/server/loop-budget.ts",
+          "sha256": "70eca6c3203ba6b765ff88c880b914b38e053ac475848bf178d1418fc286815b"
+        },
+        {
+          "path": "src/core/server/memguard.server.ts",
+          "sha256": "688b856c956d169adb33e8f1a689433e5e7586557fc1b9e91e2cf3ec3d73c3f3"
+        },
+        {
+          "path": "src/core/server/paper-rows.ts",
+          "sha256": "2725e808119a39f813c514c16f74f6179be978c5cf2950df45f06739c02d18cc"
+        },
+        {
+          "path": "src/core/server/partition.ts",
+          "sha256": "7a4a3861a015f64dd2fae2a51c1fd04af7877c5e9326ac0162c2027286b9c16a"
+        },
+        {
+          "path": "src/core/server/pool.server.ts",
+          "sha256": "857b9c176c3de6e31054e2eda642447e40482d1218af4d3b43ab88c7c4d402b8"
+        },
+        {
+          "path": "src/core/server/runtime.server.ts",
+          "sha256": "cc043d2211cc45c2288cb7f7559a32fe054524d3474792a1f5db8cbdf3493d54"
+        },
+        {
+          "path": "src/core/server/stall-probe.server.ts",
+          "sha256": "473a6182b692b89a70096c8517329c80937906ed7d2e17a59432abcaff57d45e"
+        },
+        {
+          "path": "src/core/server/stream.server.ts",
+          "sha256": "6c294f2c9a77edd75302b1f3ea236bc485117cee3453f095288fe251b75a91ba"
+        },
+        {
+          "path": "src/core/server/tapes.worker.ts",
+          "sha256": "294c46b50620afed5141e7cdd19fb0af733026c08a22920b1ec1c60605381cc9"
+        },
+        {
+          "path": "src/core/session-window.ts",
+          "sha256": "a2553900c9eedcf8ea2c3a2c71046825e7def284bc3a1c62990deca0002a35d3"
+        },
+        {
+          "path": "src/core/settings-check.ts",
+          "sha256": "49b7458548ee5c6d16a107845f1dc162005dfa51b3a1466830c77f6de07e1ea7"
+        },
+        {
+          "path": "src/core/signal-config.ts",
+          "sha256": "6f93f22833c4c153a23a7d0b29f07c0c092146e86363722f5a4242242e3be9f5"
+        },
+        {
+          "path": "src/core/signal-coordination.ts",
+          "sha256": "9b80aa116d35676bc329a205f4b1f8dbf37376c906926caacfe17300b7d64819"
+        },
+        {
+          "path": "src/core/signal-hist.ts",
+          "sha256": "42710bae95ec896de2ef091d1516e05a3ba2da9a647a638c46d8056f94cd1f33"
+        },
+        {
+          "path": "src/core/signals.ts",
+          "sha256": "b690c6738c27658a97f57ab84600b82a12259722db00424ecb08788a48c37a06"
+        },
+        {
+          "path": "src/core/sim/axis.ts",
+          "sha256": "8548c9ed45a517fd478adce7c83bf4fea0435926b14f4704e3fa16cabc53d35e"
+        },
+        {
+          "path": "src/core/sim/backtest.ts",
+          "sha256": "7196b262b58faff2f5dae68d89552004a2c055e0b3b1dac4027a19c6ee263017"
+        },
+        {
+          "path": "src/core/sim/block.ts",
+          "sha256": "455f2ad68610ac6a45aeddd56742fe726511f30b330b239eadaeb744723bce5a"
+        },
+        {
+          "path": "src/core/sim/dca.ts",
+          "sha256": "1e74c2d82c93484557119b184fdb3a28d3c7577a7851199ae12381f1a7a1aef6"
+        },
+        {
+          "path": "src/core/sim/report-variants.ts",
+          "sha256": "eaeded6f47182d4bddbad223708b88b1f727fdf739ae1635b6e8d0b796f5eae6"
+        },
+        {
+          "path": "src/core/sim/s2coord.ts",
+          "sha256": "db2657e83f5949c9ba10d80511dcec1fdc7691f2f33d8ac248d396c546f4d722"
+        },
+        {
+          "path": "src/core/sim/symbol-directions.ts",
+          "sha256": "680d7b150c029153d83b3f7894da7d7e6f96f1fef8fdb1dfa7510f6ee8f85c99"
+        },
+        {
+          "path": "src/core/sim/walkforward.ts",
+          "sha256": "43593c803082060342bf399d24b0f3c9cd72cb25ec46a3899b37ea2da8df305f"
+        },
+        {
+          "path": "src/core/sizing.ts",
+          "sha256": "e5a30ae9fd89654dda45e5d7a9665506166eae78b961604ffae335778dd24190"
+        },
+        {
+          "path": "src/core/statistics.ts",
+          "sha256": "64cde3939f038ee922295d64732c7e924a792abd9fef0da56ee8272685928da3"
+        },
+        {
+          "path": "src/core/test-support.ts",
+          "sha256": "1764dbeabd9001ba82f71d6ddb5818aeaa31dad661ba0e33a684807e28f63387"
+        },
+        {
+          "path": "src/core/volume-factor.ts",
+          "sha256": "455801361a0a50c5a43c6b108f872ac6a505a491d37710e2d998636fc3d7e76c"
+        }
+      ],
+      "book": {
+        "balance": 1000,
+        "leverage": 10,
+        "pct": 0.001
+      },
+      "budget": {
+        "admission": {
+          "basis": "Require measured host and ancestor-cgroup headroom before each child, crediting only measured inactive_file as the production guard does. V8 heap is a ceiling; actual peak is recorded, and runtime memory guards remain enabled with every fallback rejected.",
+          "minimumAvailableMiB": 4096,
+          "sharedLock": "/workspace/scratch/.cts-ao-compute.lock",
+          "timeoutBypass": false,
+          "unknown": "reject",
+          "wait": false
+        },
+        "concurrency": 1,
+        "heapMb": 4096,
+        "timeoutMinutes": 180,
+        "workers": 1
+      },
+      "execution": {
+        "replayPreloadAll": true
+      }
+    },
+    {
+      "directory": "runs/postbase-dev20-reclaim8-20261017-v2",
+      "protocolSha256": "5345443c0471a6c32cb93b4fc554923ba39f8ce05393bf6de4a7445c2d00a70c",
+      "case": "reclaim8-20",
+      "window": {
+        "endT": 1792184400000,
+        "evaluationFromT": 1792011600000,
+        "indicatorStartT": 1791273600000,
+        "indicatorWarmupH": 205,
+        "longH": 24,
+        "preH": 24,
+        "runH": 24,
+        "selectionH": 24,
+        "tradeStartT": 1792098000000
+      },
+      "symbols": [
+        "AVAX-USDT",
+        "LINK-USDT",
+        "LTC-USDT",
+        "SUI-USDT",
+        "NEAR-USDT",
+        "DOT-USDT",
+        "ATOM-USDT",
+        "APT-USDT",
+        "BTC-USDT",
+        "ETH-USDT",
+        "SOL-USDT",
+        "XRP-USDT",
+        "BNB-USDT",
+        "DOGE-USDT",
+        "ADA-USDT",
+        "BCH-USDT",
+        "TRX-USDT",
+        "ETC-USDT",
+        "OP-USDT",
+        "ARB-USDT"
+      ],
+      "variant": "reclaim8",
+      "feedSha256": "b70c3f0aff8b1d5b98f01ad2acac840c8560be2fa832e0c95615f8abf051c521",
+      "runtimeSettingsSha256": "456217037b4da6b13813c9d97cf82ac9fd8bd5eb0720f31ae8732114e6c8f856",
+      "focusCount": 109,
+      "sourceFiles": [
+        {
+          "path": "package-lock.json",
+          "sha256": "c96b64262d7f2cdfee89d0bef895b679f4598f006b81f345033745f4ea73edfc"
+        },
+        {
+          "path": "package.json",
+          "sha256": "ef9e008301ad4e0ea8bae727bdadfd7e044da6ca8ffc473bf5013cd422dbf0ad"
+        },
+        {
+          "path": "scripts/core-22-symbol-study.mjs",
+          "sha256": "c2a5c355cfa1bc20df3aef9e80f82bc0df3229af27bb4dc75478c1a8b9988578"
+        },
+        {
+          "path": "scripts/core-session.mjs",
+          "sha256": "e8de3114c02aa952493cc6118258e065e4f9af63d5cfc8313ccef07739c5f516"
+        },
+        {
+          "path": "scripts/lib/block-comparison-evidence.mjs",
+          "sha256": "dce9c749086ecf5bc3489feffa70e59c0cbdd9661049e6813a7382e744ad4531"
+        },
+        {
+          "path": "scripts/lib/block-comparison.mjs",
+          "sha256": "684e094ecad45fd8a258046d3593cda41fd407c315fe893356aa75bcc1040103"
+        },
+        {
+          "path": "scripts/lib/book-notional.mjs",
+          "sha256": "ba79608369b165cd6037f421bad4dbc366f123e7475e58775c4642a93f45cf49"
+        },
+        {
+          "path": "scripts/lib/candles.mjs",
+          "sha256": "14985016fdd8d1f1bdfe47672c00d43cf779ce1b80b2fae8a0b723f46ac5992c"
+        },
+        {
+          "path": "scripts/lib/core-test-offline-guard.cjs",
+          "sha256": "9294c2c6b937c80e6e01aa30e65f84ff9605e630603a3d7f9f10c388435c9eaf"
+        },
+        {
+          "path": "scripts/lib/eval-orders.mjs",
+          "sha256": "818f2ff7012073d7d58cd52807f4bc3f0d4a229305b66d17af41cf56abbe38b3"
+        },
+        {
+          "path": "scripts/lib/eval-stress.mjs",
+          "sha256": "4479ea5c4b5a9598239eea676f1077953942f8a1e6ad6cb12cdeb74e23dbdc78"
+        },
+        {
+          "path": "scripts/lib/eval-variants.mjs",
+          "sha256": "715279a2482592241ac8f92fa0334f5d119922bcc697e88c1d4dd59f90d07356"
+        },
+        {
+          "path": "scripts/lib/eval-windows.mjs",
+          "sha256": "3fc4e18da6ab8da7033837f1d52ed5ab9eaa0aa8f1e44843c8cd61fc8c86994e"
+        },
+        {
+          "path": "scripts/lib/mem-admission.mjs",
+          "sha256": "1f6c3eac6930d887e7a40416783c091f40b47ee72e55c0d03234113032be69e1"
+        },
+        {
+          "path": "scripts/lib/ownership-halt.mjs",
+          "sha256": "f469476c840a9b13e7d5fd27daa1c933fabb62d4b9a9c952314bc644faf44ad0"
+        },
+        {
+          "path": "scripts/lib/pf-search-evidence.mjs",
+          "sha256": "cf0c9b7584ccae170c14049d4777e2148cab135f40d88c2852f2f5e53defe299"
+        },
+        {
+          "path": "scripts/lib/positive-types-report.mjs",
+          "sha256": "e162b4db99ecf66f4b86cfd4523da99ea203c858ebc09d2e6f47a1af834395b7"
+        },
+        {
+          "path": "scripts/lib/range-study-evidence.mjs",
+          "sha256": "02ec5ff93f4d9364267f497f45fdeaecf0f5c1ac775808c96019725e764aa07e"
+        },
+        {
+          "path": "scripts/lib/range-study.mjs",
+          "sha256": "aa84f276583fa7863c9d0d95b382df589fd59b682d2efac772d86e8d817dea66"
+        },
+        {
+          "path": "scripts/lib/replay-evidence.mjs",
+          "sha256": "59eb5a567859c98b431e4012a8f074dbc7292693d5c7aab07088ce15a71c8a07"
+        },
+        {
+          "path": "scripts/lib/research-series.mjs",
+          "sha256": "da97905832707d297053e899ca12863bfca41fc69df5163acc311eca092ed119"
+        },
+        {
+          "path": "scripts/lib/return-evidence.mjs",
+          "sha256": "a316f44fe4a3a115a449b65d3dc11c40c806a1af73f3ab6f88561e2b67b10b7b"
+        },
+        {
+          "path": "scripts/lib/safe-network-interfaces.cjs",
+          "sha256": "ec0806c50c019b9c1cf3b21cc2da102b1692ef8619577a86c705908057612659"
+        },
+        {
+          "path": "scripts/lib/session-feed.mjs",
+          "sha256": "82e3e3963185ac6c0e08daab6ca54212ddd72919d14eda32a9659271b1973478"
+        },
+        {
+          "path": "scripts/lib/session-owned-returns.mjs",
+          "sha256": "83c0e7bd82ca08ed928e5c97420e2470446e2d4642c088b4d0aab193eaff070f"
+        },
+        {
+          "path": "scripts/lib/session-qualification.mjs",
+          "sha256": "cfcb4f7f866b809837664b8ef749bf44b33ea2cdca4244871d65f42ca2a7e122"
+        },
+        {
+          "path": "scripts/lib/session-settings.mjs",
+          "sha256": "b3e30942540cdd8e87359174d1c0f81a2f5ebfdc4704feda7411e7c0f5f91efc"
+        },
+        {
+          "path": "scripts/lib/signal-market.mjs",
+          "sha256": "561528ad226632ef1298c11e4cfdac26bc6581c549a3b4530a23a16d4c71be13"
+        },
+        {
+          "path": "scripts/lib/signal-progress.mjs",
+          "sha256": "eee6af09523c43c09c4aadfc4947de7dfa490db2e5d946842f9bd27e8d9d5689"
+        },
+        {
+          "path": "scripts/lib/signal-window-report.mjs",
+          "sha256": "a5ce12bfa50fa3ece5f57ba25cff9d5db5f28724dc46c9e068ac2af2cda30d5b"
+        },
+        {
+          "path": "scripts/lib/test-all-invocation.mjs",
+          "sha256": "e8ed6fbe26219a1d92b721faca1ae05cbb1dfaf76eb38e32d1a7e173f38803ec"
+        },
+        {
+          "path": "scripts/lib/walkforward-comparison-report.mjs",
+          "sha256": "68cc5f639626ce21232a3ff326659c62f9668fcceb3e3c557585fb69ea19709e"
+        },
+        {
+          "path": "scripts/lib/walkforward-hourly-report.mjs",
+          "sha256": "22b93b27d1fdbf2d81fe4fa80a58bb6674a8d19e40edde95f7e7dfed307fba6e"
+        },
+        {
+          "path": "src/core/adjust.ts",
+          "sha256": "227318e975a6b27765cbaebdb1d8b3d2055b8237b5ee2d8cb33227fc33889f98"
+        },
+        {
+          "path": "src/core/api-data.ts",
+          "sha256": "0943f44ba52d68dfe4874412647603d85cffe077f121080e4f29574c32309824"
+        },
+        {
+          "path": "src/core/api.ts",
+          "sha256": "f7c500832b8a731c34f7c480b8404f7669f1e96025138eb9d9b7a44b53e07cfe"
+        },
+        {
+          "path": "src/core/audit.ts",
+          "sha256": "76db6b2a92f1b3630a360e211c9c69efd5142651365f71c679b3cc268359696f"
+        },
+        {
+          "path": "src/core/base-config-counts.ts",
+          "sha256": "36dfc247c580c8d0c76de503a3aee163233368b751908c71f96806213493bc35"
+        },
+        {
+          "path": "src/core/bot-stats.ts",
+          "sha256": "4f3d60b28cddacb8329168896c123dd18b27a2ed3e2dee4fc68aa5faf828a1fe"
+        },
+        {
+          "path": "src/core/bots/bots.ts",
+          "sha256": "a428710169d04268d21dec7be207251ab691ec80e01de254ea5e5aaab7dac266"
+        },
+        {
+          "path": "src/core/config.ts",
+          "sha256": "82cee991cdab4e553acd504ddf6772144377c0f6452b0aec3daf9952a2955954"
+        },
+        {
+          "path": "src/core/domain/types.ts",
+          "sha256": "45a18d07df401f85a88d2a2459b43b38ed5921bbdefcc0cf185a3d1b9a5362ed"
+        },
+        {
+          "path": "src/core/eval-family.ts",
+          "sha256": "72405e472974f8b1a1f9450fbd764fa5ebc00703b8a0d61ec715685311e4a9c2"
+        },
+        {
+          "path": "src/core/evals/evaluator.ts",
+          "sha256": "886988ab3755eb7c8b212917428adaebb548cdde9cb100e0b8d4248959e5f212"
+        },
+        {
+          "path": "src/core/exchange/bingx.server.ts",
+          "sha256": "848d329eafac974572ed41863cbc73dd17ee91e17618dfc5729d9382f81b8c82"
+        },
+        {
+          "path": "src/core/indications/break-config.ts",
+          "sha256": "4c163759a58fc985d0fca4721cdea6cccf0454a36feec79aed2755f09d1afafb"
+        },
+        {
+          "path": "src/core/indications/break.ts",
+          "sha256": "d119a91055dced95a749c81c4e929899ccd8a63da07da95cfbdfc3d32913506b"
+        },
+        {
+          "path": "src/core/indications/cache.ts",
+          "sha256": "2d52685a850b420326eb2cbcee4cda6a3f57680497b5cd89dee30900cfb07b84"
+        },
+        {
+          "path": "src/core/indications/filters.ts",
+          "sha256": "a9cd343316f0858f172c1b933ffd11b3d767d59d8e8ad450c18de33dd52f39ac"
+        },
+        {
+          "path": "src/core/indications/market.ts",
+          "sha256": "5ada84de0e1556c3d13317e385e1b3e9378bcc9851f2bd6ce0ee7a1fd6b2a081"
+        },
+        {
+          "path": "src/core/indications/micro.ts",
+          "sha256": "9fe9c043d8c44ad91922433db461a73586dc867a4cf0057bd5f6cf39fc96d663"
+        },
+        {
+          "path": "src/core/indications/range-families.ts",
+          "sha256": "7727bf1f3b92786dcdb92d87c9308df08e7aa9323b6db559b5e32166917bcc2d"
+        },
+        {
+          "path": "src/core/indications/registry.ts",
+          "sha256": "994e6148a1d082f794000056bf2a8fdd58c9f6cf9958ac6b098b074e0a257b7f"
+        },
+        {
+          "path": "src/core/indications/relate.ts",
+          "sha256": "e5cb00c35f6968fea8a83f3eb830389f295fd31199b76d5f57a28ef4364e4991"
+        },
+        {
+          "path": "src/core/indications/research.ts",
+          "sha256": "fabfbbc2f03ca04204cacb5b668f921fe1e30aa59ed5d0ce8470e9dbbf916ead"
+        },
+        {
+          "path": "src/core/indications/research2.ts",
+          "sha256": "8b9cba9d970bf5b1bd0661fc38f24e77f481befb5a06952e672b6662cc6289c5"
+        },
+        {
+          "path": "src/core/indications/research3.ts",
+          "sha256": "3eba19e75ef751dc3d98c1ff6019d49819b3359c3f625b0228c4b5c8f752eedd"
+        },
+        {
+          "path": "src/core/indications/research4.ts",
+          "sha256": "37ea0b5e205c3a3d2a0dac975700236b8f411eb0633d1eac4a5c05386058488d"
+        },
+        {
+          "path": "src/core/indications/stable02.ts",
+          "sha256": "78a1215c16495af37325a2d0be7226b216e582e57f0af17cfa73ff273b11ce87"
+        },
+        {
+          "path": "src/core/indications/tactic.ts",
+          "sha256": "73465e133f643d5a061cd9c27ed54cf86489a4a9b763d24a91eb27b012f3d1b3"
+        },
+        {
+          "path": "src/core/lastn/optimizer.ts",
+          "sha256": "bf5ac8b16a66d488c366c5ba6dcffccb6595109eecb4291e153c58302e139ec9"
+        },
+        {
+          "path": "src/core/live-diff.ts",
+          "sha256": "988cd14119a3e0e9707a351fedb11e71d344a5075719262e1e58ec44037c40b7"
+        },
+        {
+          "path": "src/core/live-promote.ts",
+          "sha256": "2019db00f91fb39a186480b5ca2749a8f6097b2f1c271072e226e50eb6d0582d"
+        },
+        {
+          "path": "src/core/live-record.ts",
+          "sha256": "0f8231f4ab0f2d20a027d2862a719e2c86f3925b445296d0842e0734401ed497"
+        },
+        {
+          "path": "src/core/live-validation.ts",
+          "sha256": "ff3b8f462bbaaa8e500b5df866a03f1f5527644246633fc32b249deb35dbeef6"
+        },
+        {
+          "path": "src/core/loss-limit.ts",
+          "sha256": "ec3f42db368392c1c665e6eb6ca1f0d7d6809471cbd729cbf229b5c48e2f6589"
+        },
+        {
+          "path": "src/core/market/bars.ts",
+          "sha256": "bd9faec5d566e954a1477866b4e817226643bb945b82257505a37861c489cf71"
+        },
+        {
+          "path": "src/core/market/bingx.ts",
+          "sha256": "8d2402afc7ef7732e9aec96241cc999edf0cc76c3a34898a335261bb51b8439f"
+        },
+        {
+          "path": "src/core/market/candle-series.ts",
+          "sha256": "11a1ad9871449c3d08e2efd55fd5f9c3ccc7577dd91f25995ca586ebcdd493c9"
+        },
+        {
+          "path": "src/core/market/shared-feed.ts",
+          "sha256": "70e1183e0a90e51a803fd334ab278dedac5da184d8c74fcdacf1bd8a89f6c065"
+        },
+        {
+          "path": "src/core/math/indicators.ts",
+          "sha256": "948c163cd7d9e18acc57a4757c698115c034ef1d657e033b1d2e1536e60ccd93"
+        },
+        {
+          "path": "src/core/metrics/stats.ts",
+          "sha256": "22c10235edf01a4112374f71ef460d4c18c3befa5bfb613cae1ea62e37f5657d"
+        },
+        {
+          "path": "src/core/minimal-coord.ts",
+          "sha256": "18a05b02b71a9a37f589513c6eef82514f638519e2606da89e65694572db86d7"
+        },
+        {
+          "path": "src/core/pipeline/pipeline.ts",
+          "sha256": "3b8022b6e5145d464f89bf695a8dd779d5fafc3e609c80af793c5016f912243b"
+        },
+        {
+          "path": "src/core/pipeline/portfolio.ts",
+          "sha256": "f5b618fd1f91aa50eaf70efbf80bf7f0dd4f2c2cd328f995ba6be1bd2e45866e"
+        },
+        {
+          "path": "src/core/positions.ts",
+          "sha256": "4cef45d39f431c4a4577b1c90863c97a2d2899ae9bf40035c6c2fea5342a5afb"
+        },
+        {
+          "path": "src/core/positive.ts",
+          "sha256": "2c7c7eab700bb0786f4d12eb376c6c731c433111181de1feb87d7abd5e09b77d"
+        },
+        {
+          "path": "src/core/prehist.ts",
+          "sha256": "24bbb71085b7fdf6a91803195d402d679638fb9847e50003f0fff6edaac22b34"
+        },
+        {
+          "path": "src/core/presets.desk.ts",
+          "sha256": "926e9f01dbc5366780aba03436046da30699107f6fd568d8635957be08d5265a"
+        },
+        {
+          "path": "src/core/presets.live.ts",
+          "sha256": "6800cfb12914483ad1cc8e1c660a96203b71cecb5983fb638ed123d4562b8298"
+        },
+        {
+          "path": "src/core/presets.research.ts",
+          "sha256": "a4e2e3c3dee502dfa90769e6d0661c2dbd3d407d251822bad25b877da8af984a"
+        },
+        {
+          "path": "src/core/presets.ts",
+          "sha256": "e5445abda21d38035ddb9c36b7697ba029ef1c0e620e1e316e82c068c121a027"
+        },
+        {
+          "path": "src/core/progress.ts",
+          "sha256": "ea5f7c45236c79af64dbc2310074b06da239761b099881404e0d11749fea2aec"
+        },
+        {
+          "path": "src/core/proven-wide-trail.ts",
+          "sha256": "903cca426a696f96f0fc406e5a10c67096bae4c2191aaef82cdd152d86d13a00"
+        },
+        {
+          "path": "src/core/reporting-stats.ts",
+          "sha256": "48ae1b035cb9f3d9cea31404d0574df63e9038256ba024c550791e2738b136b6"
+        },
+        {
+          "path": "src/core/server/base-config-job.server.ts",
+          "sha256": "1ee671fa8ebb5db597af9370db74a8824254e6185cb3bbbaead2e56d9caf714e"
+        },
+        {
+          "path": "src/core/server/boot.server.ts",
+          "sha256": "f73832b39bb2436def245ef17f36a5aa5140ca153f01000dc0d05239ea5abb20"
+        },
+        {
+          "path": "src/core/server/db.server.ts",
+          "sha256": "6ade4908d39e5b35d14c13f20e5c46546c2cf5c7af17f69c9a26636577490bdd"
+        },
+        {
+          "path": "src/core/server/lane-orders.ts",
+          "sha256": "9f34fef11ba0b959bb54297508a34fbfae36cd31b1b70f9c9d6c833f3871931f"
+        },
+        {
+          "path": "src/core/server/live.server.ts",
+          "sha256": "32d0a2d4c153f6c094a90336e1a7569c3ffb2ed1efdeb9ddbef8fbcb0bda6e66"
+        },
+        {
+          "path": "src/core/server/live.ts",
+          "sha256": "21d6b7d5a49b2dca6ccb312298c9e0df5397f000f0cc6cde9063ca3d111e9ed8"
+        },
+        {
+          "path": "src/core/server/loop-budget.ts",
+          "sha256": "70eca6c3203ba6b765ff88c880b914b38e053ac475848bf178d1418fc286815b"
+        },
+        {
+          "path": "src/core/server/memguard.server.ts",
+          "sha256": "688b856c956d169adb33e8f1a689433e5e7586557fc1b9e91e2cf3ec3d73c3f3"
+        },
+        {
+          "path": "src/core/server/paper-rows.ts",
+          "sha256": "2725e808119a39f813c514c16f74f6179be978c5cf2950df45f06739c02d18cc"
+        },
+        {
+          "path": "src/core/server/partition.ts",
+          "sha256": "7a4a3861a015f64dd2fae2a51c1fd04af7877c5e9326ac0162c2027286b9c16a"
+        },
+        {
+          "path": "src/core/server/pool.server.ts",
+          "sha256": "857b9c176c3de6e31054e2eda642447e40482d1218af4d3b43ab88c7c4d402b8"
+        },
+        {
+          "path": "src/core/server/runtime.server.ts",
+          "sha256": "cc043d2211cc45c2288cb7f7559a32fe054524d3474792a1f5db8cbdf3493d54"
+        },
+        {
+          "path": "src/core/server/stall-probe.server.ts",
+          "sha256": "473a6182b692b89a70096c8517329c80937906ed7d2e17a59432abcaff57d45e"
+        },
+        {
+          "path": "src/core/server/stream.server.ts",
+          "sha256": "6c294f2c9a77edd75302b1f3ea236bc485117cee3453f095288fe251b75a91ba"
+        },
+        {
+          "path": "src/core/server/tapes.worker.ts",
+          "sha256": "294c46b50620afed5141e7cdd19fb0af733026c08a22920b1ec1c60605381cc9"
+        },
+        {
+          "path": "src/core/session-window.ts",
+          "sha256": "a2553900c9eedcf8ea2c3a2c71046825e7def284bc3a1c62990deca0002a35d3"
+        },
+        {
+          "path": "src/core/settings-check.ts",
+          "sha256": "49b7458548ee5c6d16a107845f1dc162005dfa51b3a1466830c77f6de07e1ea7"
+        },
+        {
+          "path": "src/core/signal-config.ts",
+          "sha256": "6f93f22833c4c153a23a7d0b29f07c0c092146e86363722f5a4242242e3be9f5"
+        },
+        {
+          "path": "src/core/signal-coordination.ts",
+          "sha256": "9b80aa116d35676bc329a205f4b1f8dbf37376c906926caacfe17300b7d64819"
+        },
+        {
+          "path": "src/core/signal-hist.ts",
+          "sha256": "42710bae95ec896de2ef091d1516e05a3ba2da9a647a638c46d8056f94cd1f33"
+        },
+        {
+          "path": "src/core/signals.ts",
+          "sha256": "b690c6738c27658a97f57ab84600b82a12259722db00424ecb08788a48c37a06"
+        },
+        {
+          "path": "src/core/sim/axis.ts",
+          "sha256": "8548c9ed45a517fd478adce7c83bf4fea0435926b14f4704e3fa16cabc53d35e"
+        },
+        {
+          "path": "src/core/sim/backtest.ts",
+          "sha256": "7196b262b58faff2f5dae68d89552004a2c055e0b3b1dac4027a19c6ee263017"
+        },
+        {
+          "path": "src/core/sim/block.ts",
+          "sha256": "455f2ad68610ac6a45aeddd56742fe726511f30b330b239eadaeb744723bce5a"
+        },
+        {
+          "path": "src/core/sim/dca.ts",
+          "sha256": "1e74c2d82c93484557119b184fdb3a28d3c7577a7851199ae12381f1a7a1aef6"
+        },
+        {
+          "path": "src/core/sim/report-variants.ts",
+          "sha256": "eaeded6f47182d4bddbad223708b88b1f727fdf739ae1635b6e8d0b796f5eae6"
+        },
+        {
+          "path": "src/core/sim/s2coord.ts",
+          "sha256": "db2657e83f5949c9ba10d80511dcec1fdc7691f2f33d8ac248d396c546f4d722"
+        },
+        {
+          "path": "src/core/sim/symbol-directions.ts",
+          "sha256": "680d7b150c029153d83b3f7894da7d7e6f96f1fef8fdb1dfa7510f6ee8f85c99"
+        },
+        {
+          "path": "src/core/sim/walkforward.ts",
+          "sha256": "43593c803082060342bf399d24b0f3c9cd72cb25ec46a3899b37ea2da8df305f"
+        },
+        {
+          "path": "src/core/sizing.ts",
+          "sha256": "e5a30ae9fd89654dda45e5d7a9665506166eae78b961604ffae335778dd24190"
+        },
+        {
+          "path": "src/core/statistics.ts",
+          "sha256": "64cde3939f038ee922295d64732c7e924a792abd9fef0da56ee8272685928da3"
+        },
+        {
+          "path": "src/core/test-support.ts",
+          "sha256": "1764dbeabd9001ba82f71d6ddb5818aeaa31dad661ba0e33a684807e28f63387"
+        },
+        {
+          "path": "src/core/volume-factor.ts",
+          "sha256": "455801361a0a50c5a43c6b108f872ac6a505a491d37710e2d998636fc3d7e76c"
+        }
+      ],
+      "book": {
+        "balance": 1000,
+        "leverage": 10,
+        "pct": 0.001
+      },
+      "budget": {
+        "admission": {
+          "basis": "Require measured host and ancestor-cgroup headroom before each child, crediting only measured inactive_file as the production guard does. V8 heap is a ceiling; actual peak is recorded, and runtime memory guards remain enabled with every fallback rejected.",
+          "minimumAvailableMiB": 4096,
+          "sharedLock": "/workspace/scratch/.cts-ao-compute.lock",
+          "timeoutBypass": false,
+          "unknown": "reject",
+          "wait": false
+        },
+        "concurrency": 1,
+        "heapMb": 4096,
+        "timeoutMinutes": 180,
+        "workers": 1
+      },
+      "execution": {
+        "replayPreloadAll": true
+      }
+    },
+    {
+      "directory": "runs/postbase-val22-baseline-20261017-v2",
+      "protocolSha256": "53d6303e856b8f58da0a2d03d39929274f73ac54bc187e17b390184a97f5f48b",
+      "case": "baseline-22",
+      "window": {
+        "endT": 1792270800000,
+        "evaluationFromT": 1792098000000,
+        "indicatorStartT": 1791360000000,
+        "indicatorWarmupH": 205,
+        "longH": 24,
+        "preH": 24,
+        "runH": 24,
+        "selectionH": 24,
+        "tradeStartT": 1792184400000
+      },
+      "symbols": [
+        "AVAX-USDT",
+        "LINK-USDT",
+        "LTC-USDT",
+        "SUI-USDT",
+        "NEAR-USDT",
+        "DOT-USDT",
+        "ATOM-USDT",
+        "APT-USDT",
+        "BTC-USDT",
+        "ETH-USDT",
+        "SOL-USDT",
+        "XRP-USDT",
+        "BNB-USDT",
+        "DOGE-USDT",
+        "ADA-USDT",
+        "BCH-USDT",
+        "TRX-USDT",
+        "ETC-USDT",
+        "OP-USDT",
+        "ARB-USDT",
+        "FIL-USDT",
+        "UNI-USDT"
+      ],
+      "variant": "baseline",
+      "feedSha256": "c171ecef6289163fad45214651804a6e3e4b008eb52e816fb2eb0d49b3e0026a",
+      "runtimeSettingsSha256": "cd4fa9ba62ce04df7f2da68bed0b1b4ebb10f15f9a0f240a424b855a8083eae0",
+      "focusCount": 97,
+      "sourceFiles": [
+        {
+          "path": "package-lock.json",
+          "sha256": "c96b64262d7f2cdfee89d0bef895b679f4598f006b81f345033745f4ea73edfc"
+        },
+        {
+          "path": "package.json",
+          "sha256": "ef9e008301ad4e0ea8bae727bdadfd7e044da6ca8ffc473bf5013cd422dbf0ad"
+        },
+        {
+          "path": "scripts/core-22-symbol-study.mjs",
+          "sha256": "c2a5c355cfa1bc20df3aef9e80f82bc0df3229af27bb4dc75478c1a8b9988578"
+        },
+        {
+          "path": "scripts/core-session.mjs",
+          "sha256": "e8de3114c02aa952493cc6118258e065e4f9af63d5cfc8313ccef07739c5f516"
+        },
+        {
+          "path": "scripts/lib/block-comparison-evidence.mjs",
+          "sha256": "dce9c749086ecf5bc3489feffa70e59c0cbdd9661049e6813a7382e744ad4531"
+        },
+        {
+          "path": "scripts/lib/block-comparison.mjs",
+          "sha256": "684e094ecad45fd8a258046d3593cda41fd407c315fe893356aa75bcc1040103"
+        },
+        {
+          "path": "scripts/lib/book-notional.mjs",
+          "sha256": "ba79608369b165cd6037f421bad4dbc366f123e7475e58775c4642a93f45cf49"
+        },
+        {
+          "path": "scripts/lib/candles.mjs",
+          "sha256": "14985016fdd8d1f1bdfe47672c00d43cf779ce1b80b2fae8a0b723f46ac5992c"
+        },
+        {
+          "path": "scripts/lib/core-test-offline-guard.cjs",
+          "sha256": "9294c2c6b937c80e6e01aa30e65f84ff9605e630603a3d7f9f10c388435c9eaf"
+        },
+        {
+          "path": "scripts/lib/eval-orders.mjs",
+          "sha256": "818f2ff7012073d7d58cd52807f4bc3f0d4a229305b66d17af41cf56abbe38b3"
+        },
+        {
+          "path": "scripts/lib/eval-stress.mjs",
+          "sha256": "4479ea5c4b5a9598239eea676f1077953942f8a1e6ad6cb12cdeb74e23dbdc78"
+        },
+        {
+          "path": "scripts/lib/eval-variants.mjs",
+          "sha256": "715279a2482592241ac8f92fa0334f5d119922bcc697e88c1d4dd59f90d07356"
+        },
+        {
+          "path": "scripts/lib/eval-windows.mjs",
+          "sha256": "3fc4e18da6ab8da7033837f1d52ed5ab9eaa0aa8f1e44843c8cd61fc8c86994e"
+        },
+        {
+          "path": "scripts/lib/mem-admission.mjs",
+          "sha256": "1f6c3eac6930d887e7a40416783c091f40b47ee72e55c0d03234113032be69e1"
+        },
+        {
+          "path": "scripts/lib/ownership-halt.mjs",
+          "sha256": "f469476c840a9b13e7d5fd27daa1c933fabb62d4b9a9c952314bc644faf44ad0"
+        },
+        {
+          "path": "scripts/lib/pf-search-evidence.mjs",
+          "sha256": "cf0c9b7584ccae170c14049d4777e2148cab135f40d88c2852f2f5e53defe299"
+        },
+        {
+          "path": "scripts/lib/positive-types-report.mjs",
+          "sha256": "e162b4db99ecf66f4b86cfd4523da99ea203c858ebc09d2e6f47a1af834395b7"
+        },
+        {
+          "path": "scripts/lib/range-study-evidence.mjs",
+          "sha256": "02ec5ff93f4d9364267f497f45fdeaecf0f5c1ac775808c96019725e764aa07e"
+        },
+        {
+          "path": "scripts/lib/range-study.mjs",
+          "sha256": "aa84f276583fa7863c9d0d95b382df589fd59b682d2efac772d86e8d817dea66"
+        },
+        {
+          "path": "scripts/lib/replay-evidence.mjs",
+          "sha256": "59eb5a567859c98b431e4012a8f074dbc7292693d5c7aab07088ce15a71c8a07"
+        },
+        {
+          "path": "scripts/lib/research-series.mjs",
+          "sha256": "da97905832707d297053e899ca12863bfca41fc69df5163acc311eca092ed119"
+        },
+        {
+          "path": "scripts/lib/return-evidence.mjs",
+          "sha256": "a316f44fe4a3a115a449b65d3dc11c40c806a1af73f3ab6f88561e2b67b10b7b"
+        },
+        {
+          "path": "scripts/lib/safe-network-interfaces.cjs",
+          "sha256": "ec0806c50c019b9c1cf3b21cc2da102b1692ef8619577a86c705908057612659"
+        },
+        {
+          "path": "scripts/lib/session-feed.mjs",
+          "sha256": "82e3e3963185ac6c0e08daab6ca54212ddd72919d14eda32a9659271b1973478"
+        },
+        {
+          "path": "scripts/lib/session-owned-returns.mjs",
+          "sha256": "83c0e7bd82ca08ed928e5c97420e2470446e2d4642c088b4d0aab193eaff070f"
+        },
+        {
+          "path": "scripts/lib/session-qualification.mjs",
+          "sha256": "cfcb4f7f866b809837664b8ef749bf44b33ea2cdca4244871d65f42ca2a7e122"
+        },
+        {
+          "path": "scripts/lib/session-settings.mjs",
+          "sha256": "b3e30942540cdd8e87359174d1c0f81a2f5ebfdc4704feda7411e7c0f5f91efc"
+        },
+        {
+          "path": "scripts/lib/signal-market.mjs",
+          "sha256": "561528ad226632ef1298c11e4cfdac26bc6581c549a3b4530a23a16d4c71be13"
+        },
+        {
+          "path": "scripts/lib/signal-progress.mjs",
+          "sha256": "eee6af09523c43c09c4aadfc4947de7dfa490db2e5d946842f9bd27e8d9d5689"
+        },
+        {
+          "path": "scripts/lib/signal-window-report.mjs",
+          "sha256": "a5ce12bfa50fa3ece5f57ba25cff9d5db5f28724dc46c9e068ac2af2cda30d5b"
+        },
+        {
+          "path": "scripts/lib/test-all-invocation.mjs",
+          "sha256": "e8ed6fbe26219a1d92b721faca1ae05cbb1dfaf76eb38e32d1a7e173f38803ec"
+        },
+        {
+          "path": "scripts/lib/walkforward-comparison-report.mjs",
+          "sha256": "68cc5f639626ce21232a3ff326659c62f9668fcceb3e3c557585fb69ea19709e"
+        },
+        {
+          "path": "scripts/lib/walkforward-hourly-report.mjs",
+          "sha256": "22b93b27d1fdbf2d81fe4fa80a58bb6674a8d19e40edde95f7e7dfed307fba6e"
+        },
+        {
+          "path": "src/core/adjust.ts",
+          "sha256": "227318e975a6b27765cbaebdb1d8b3d2055b8237b5ee2d8cb33227fc33889f98"
+        },
+        {
+          "path": "src/core/api-data.ts",
+          "sha256": "0943f44ba52d68dfe4874412647603d85cffe077f121080e4f29574c32309824"
+        },
+        {
+          "path": "src/core/api.ts",
+          "sha256": "f7c500832b8a731c34f7c480b8404f7669f1e96025138eb9d9b7a44b53e07cfe"
+        },
+        {
+          "path": "src/core/audit.ts",
+          "sha256": "76db6b2a92f1b3630a360e211c9c69efd5142651365f71c679b3cc268359696f"
+        },
+        {
+          "path": "src/core/base-config-counts.ts",
+          "sha256": "36dfc247c580c8d0c76de503a3aee163233368b751908c71f96806213493bc35"
+        },
+        {
+          "path": "src/core/bot-stats.ts",
+          "sha256": "4f3d60b28cddacb8329168896c123dd18b27a2ed3e2dee4fc68aa5faf828a1fe"
+        },
+        {
+          "path": "src/core/bots/bots.ts",
+          "sha256": "a428710169d04268d21dec7be207251ab691ec80e01de254ea5e5aaab7dac266"
+        },
+        {
+          "path": "src/core/config.ts",
+          "sha256": "82cee991cdab4e553acd504ddf6772144377c0f6452b0aec3daf9952a2955954"
+        },
+        {
+          "path": "src/core/domain/types.ts",
+          "sha256": "45a18d07df401f85a88d2a2459b43b38ed5921bbdefcc0cf185a3d1b9a5362ed"
+        },
+        {
+          "path": "src/core/eval-family.ts",
+          "sha256": "72405e472974f8b1a1f9450fbd764fa5ebc00703b8a0d61ec715685311e4a9c2"
+        },
+        {
+          "path": "src/core/evals/evaluator.ts",
+          "sha256": "886988ab3755eb7c8b212917428adaebb548cdde9cb100e0b8d4248959e5f212"
+        },
+        {
+          "path": "src/core/exchange/bingx.server.ts",
+          "sha256": "848d329eafac974572ed41863cbc73dd17ee91e17618dfc5729d9382f81b8c82"
+        },
+        {
+          "path": "src/core/indications/break-config.ts",
+          "sha256": "4c163759a58fc985d0fca4721cdea6cccf0454a36feec79aed2755f09d1afafb"
+        },
+        {
+          "path": "src/core/indications/break.ts",
+          "sha256": "d119a91055dced95a749c81c4e929899ccd8a63da07da95cfbdfc3d32913506b"
+        },
+        {
+          "path": "src/core/indications/cache.ts",
+          "sha256": "2d52685a850b420326eb2cbcee4cda6a3f57680497b5cd89dee30900cfb07b84"
+        },
+        {
+          "path": "src/core/indications/filters.ts",
+          "sha256": "a9cd343316f0858f172c1b933ffd11b3d767d59d8e8ad450c18de33dd52f39ac"
+        },
+        {
+          "path": "src/core/indications/market.ts",
+          "sha256": "5ada84de0e1556c3d13317e385e1b3e9378bcc9851f2bd6ce0ee7a1fd6b2a081"
+        },
+        {
+          "path": "src/core/indications/micro.ts",
+          "sha256": "9fe9c043d8c44ad91922433db461a73586dc867a4cf0057bd5f6cf39fc96d663"
+        },
+        {
+          "path": "src/core/indications/range-families.ts",
+          "sha256": "7727bf1f3b92786dcdb92d87c9308df08e7aa9323b6db559b5e32166917bcc2d"
+        },
+        {
+          "path": "src/core/indications/registry.ts",
+          "sha256": "994e6148a1d082f794000056bf2a8fdd58c9f6cf9958ac6b098b074e0a257b7f"
+        },
+        {
+          "path": "src/core/indications/relate.ts",
+          "sha256": "e5cb00c35f6968fea8a83f3eb830389f295fd31199b76d5f57a28ef4364e4991"
+        },
+        {
+          "path": "src/core/indications/research.ts",
+          "sha256": "fabfbbc2f03ca04204cacb5b668f921fe1e30aa59ed5d0ce8470e9dbbf916ead"
+        },
+        {
+          "path": "src/core/indications/research2.ts",
+          "sha256": "8b9cba9d970bf5b1bd0661fc38f24e77f481befb5a06952e672b6662cc6289c5"
+        },
+        {
+          "path": "src/core/indications/research3.ts",
+          "sha256": "3eba19e75ef751dc3d98c1ff6019d49819b3359c3f625b0228c4b5c8f752eedd"
+        },
+        {
+          "path": "src/core/indications/research4.ts",
+          "sha256": "37ea0b5e205c3a3d2a0dac975700236b8f411eb0633d1eac4a5c05386058488d"
+        },
+        {
+          "path": "src/core/indications/stable02.ts",
+          "sha256": "78a1215c16495af37325a2d0be7226b216e582e57f0af17cfa73ff273b11ce87"
+        },
+        {
+          "path": "src/core/indications/tactic.ts",
+          "sha256": "73465e133f643d5a061cd9c27ed54cf86489a4a9b763d24a91eb27b012f3d1b3"
+        },
+        {
+          "path": "src/core/lastn/optimizer.ts",
+          "sha256": "bf5ac8b16a66d488c366c5ba6dcffccb6595109eecb4291e153c58302e139ec9"
+        },
+        {
+          "path": "src/core/live-diff.ts",
+          "sha256": "988cd14119a3e0e9707a351fedb11e71d344a5075719262e1e58ec44037c40b7"
+        },
+        {
+          "path": "src/core/live-promote.ts",
+          "sha256": "2019db00f91fb39a186480b5ca2749a8f6097b2f1c271072e226e50eb6d0582d"
+        },
+        {
+          "path": "src/core/live-record.ts",
+          "sha256": "0f8231f4ab0f2d20a027d2862a719e2c86f3925b445296d0842e0734401ed497"
+        },
+        {
+          "path": "src/core/live-validation.ts",
+          "sha256": "ff3b8f462bbaaa8e500b5df866a03f1f5527644246633fc32b249deb35dbeef6"
+        },
+        {
+          "path": "src/core/loss-limit.ts",
+          "sha256": "ec3f42db368392c1c665e6eb6ca1f0d7d6809471cbd729cbf229b5c48e2f6589"
+        },
+        {
+          "path": "src/core/market/bars.ts",
+          "sha256": "bd9faec5d566e954a1477866b4e817226643bb945b82257505a37861c489cf71"
+        },
+        {
+          "path": "src/core/market/bingx.ts",
+          "sha256": "8d2402afc7ef7732e9aec96241cc999edf0cc76c3a34898a335261bb51b8439f"
+        },
+        {
+          "path": "src/core/market/candle-series.ts",
+          "sha256": "11a1ad9871449c3d08e2efd55fd5f9c3ccc7577dd91f25995ca586ebcdd493c9"
+        },
+        {
+          "path": "src/core/market/shared-feed.ts",
+          "sha256": "70e1183e0a90e51a803fd334ab278dedac5da184d8c74fcdacf1bd8a89f6c065"
+        },
+        {
+          "path": "src/core/math/indicators.ts",
+          "sha256": "948c163cd7d9e18acc57a4757c698115c034ef1d657e033b1d2e1536e60ccd93"
+        },
+        {
+          "path": "src/core/metrics/stats.ts",
+          "sha256": "22c10235edf01a4112374f71ef460d4c18c3befa5bfb613cae1ea62e37f5657d"
+        },
+        {
+          "path": "src/core/minimal-coord.ts",
+          "sha256": "18a05b02b71a9a37f589513c6eef82514f638519e2606da89e65694572db86d7"
+        },
+        {
+          "path": "src/core/pipeline/pipeline.ts",
+          "sha256": "3b8022b6e5145d464f89bf695a8dd779d5fafc3e609c80af793c5016f912243b"
+        },
+        {
+          "path": "src/core/pipeline/portfolio.ts",
+          "sha256": "f5b618fd1f91aa50eaf70efbf80bf7f0dd4f2c2cd328f995ba6be1bd2e45866e"
+        },
+        {
+          "path": "src/core/positions.ts",
+          "sha256": "4cef45d39f431c4a4577b1c90863c97a2d2899ae9bf40035c6c2fea5342a5afb"
+        },
+        {
+          "path": "src/core/positive.ts",
+          "sha256": "2c7c7eab700bb0786f4d12eb376c6c731c433111181de1feb87d7abd5e09b77d"
+        },
+        {
+          "path": "src/core/prehist.ts",
+          "sha256": "24bbb71085b7fdf6a91803195d402d679638fb9847e50003f0fff6edaac22b34"
+        },
+        {
+          "path": "src/core/presets.desk.ts",
+          "sha256": "926e9f01dbc5366780aba03436046da30699107f6fd568d8635957be08d5265a"
+        },
+        {
+          "path": "src/core/presets.live.ts",
+          "sha256": "6800cfb12914483ad1cc8e1c660a96203b71cecb5983fb638ed123d4562b8298"
+        },
+        {
+          "path": "src/core/presets.research.ts",
+          "sha256": "a4e2e3c3dee502dfa90769e6d0661c2dbd3d407d251822bad25b877da8af984a"
+        },
+        {
+          "path": "src/core/presets.ts",
+          "sha256": "e5445abda21d38035ddb9c36b7697ba029ef1c0e620e1e316e82c068c121a027"
+        },
+        {
+          "path": "src/core/progress.ts",
+          "sha256": "ea5f7c45236c79af64dbc2310074b06da239761b099881404e0d11749fea2aec"
+        },
+        {
+          "path": "src/core/proven-wide-trail.ts",
+          "sha256": "903cca426a696f96f0fc406e5a10c67096bae4c2191aaef82cdd152d86d13a00"
+        },
+        {
+          "path": "src/core/reporting-stats.ts",
+          "sha256": "48ae1b035cb9f3d9cea31404d0574df63e9038256ba024c550791e2738b136b6"
+        },
+        {
+          "path": "src/core/server/base-config-job.server.ts",
+          "sha256": "1ee671fa8ebb5db597af9370db74a8824254e6185cb3bbbaead2e56d9caf714e"
+        },
+        {
+          "path": "src/core/server/boot.server.ts",
+          "sha256": "f73832b39bb2436def245ef17f36a5aa5140ca153f01000dc0d05239ea5abb20"
+        },
+        {
+          "path": "src/core/server/db.server.ts",
+          "sha256": "6ade4908d39e5b35d14c13f20e5c46546c2cf5c7af17f69c9a26636577490bdd"
+        },
+        {
+          "path": "src/core/server/lane-orders.ts",
+          "sha256": "9f34fef11ba0b959bb54297508a34fbfae36cd31b1b70f9c9d6c833f3871931f"
+        },
+        {
+          "path": "src/core/server/live.server.ts",
+          "sha256": "32d0a2d4c153f6c094a90336e1a7569c3ffb2ed1efdeb9ddbef8fbcb0bda6e66"
+        },
+        {
+          "path": "src/core/server/live.ts",
+          "sha256": "21d6b7d5a49b2dca6ccb312298c9e0df5397f000f0cc6cde9063ca3d111e9ed8"
+        },
+        {
+          "path": "src/core/server/loop-budget.ts",
+          "sha256": "70eca6c3203ba6b765ff88c880b914b38e053ac475848bf178d1418fc286815b"
+        },
+        {
+          "path": "src/core/server/memguard.server.ts",
+          "sha256": "688b856c956d169adb33e8f1a689433e5e7586557fc1b9e91e2cf3ec3d73c3f3"
+        },
+        {
+          "path": "src/core/server/paper-rows.ts",
+          "sha256": "2725e808119a39f813c514c16f74f6179be978c5cf2950df45f06739c02d18cc"
+        },
+        {
+          "path": "src/core/server/partition.ts",
+          "sha256": "7a4a3861a015f64dd2fae2a51c1fd04af7877c5e9326ac0162c2027286b9c16a"
+        },
+        {
+          "path": "src/core/server/pool.server.ts",
+          "sha256": "857b9c176c3de6e31054e2eda642447e40482d1218af4d3b43ab88c7c4d402b8"
+        },
+        {
+          "path": "src/core/server/runtime.server.ts",
+          "sha256": "cc043d2211cc45c2288cb7f7559a32fe054524d3474792a1f5db8cbdf3493d54"
+        },
+        {
+          "path": "src/core/server/stall-probe.server.ts",
+          "sha256": "473a6182b692b89a70096c8517329c80937906ed7d2e17a59432abcaff57d45e"
+        },
+        {
+          "path": "src/core/server/stream.server.ts",
+          "sha256": "6c294f2c9a77edd75302b1f3ea236bc485117cee3453f095288fe251b75a91ba"
+        },
+        {
+          "path": "src/core/server/tapes.worker.ts",
+          "sha256": "294c46b50620afed5141e7cdd19fb0af733026c08a22920b1ec1c60605381cc9"
+        },
+        {
+          "path": "src/core/session-window.ts",
+          "sha256": "a2553900c9eedcf8ea2c3a2c71046825e7def284bc3a1c62990deca0002a35d3"
+        },
+        {
+          "path": "src/core/settings-check.ts",
+          "sha256": "49b7458548ee5c6d16a107845f1dc162005dfa51b3a1466830c77f6de07e1ea7"
+        },
+        {
+          "path": "src/core/signal-config.ts",
+          "sha256": "6f93f22833c4c153a23a7d0b29f07c0c092146e86363722f5a4242242e3be9f5"
+        },
+        {
+          "path": "src/core/signal-coordination.ts",
+          "sha256": "9b80aa116d35676bc329a205f4b1f8dbf37376c906926caacfe17300b7d64819"
+        },
+        {
+          "path": "src/core/signal-hist.ts",
+          "sha256": "42710bae95ec896de2ef091d1516e05a3ba2da9a647a638c46d8056f94cd1f33"
+        },
+        {
+          "path": "src/core/signals.ts",
+          "sha256": "b690c6738c27658a97f57ab84600b82a12259722db00424ecb08788a48c37a06"
+        },
+        {
+          "path": "src/core/sim/axis.ts",
+          "sha256": "8548c9ed45a517fd478adce7c83bf4fea0435926b14f4704e3fa16cabc53d35e"
+        },
+        {
+          "path": "src/core/sim/backtest.ts",
+          "sha256": "7196b262b58faff2f5dae68d89552004a2c055e0b3b1dac4027a19c6ee263017"
+        },
+        {
+          "path": "src/core/sim/block.ts",
+          "sha256": "455f2ad68610ac6a45aeddd56742fe726511f30b330b239eadaeb744723bce5a"
+        },
+        {
+          "path": "src/core/sim/dca.ts",
+          "sha256": "1e74c2d82c93484557119b184fdb3a28d3c7577a7851199ae12381f1a7a1aef6"
+        },
+        {
+          "path": "src/core/sim/report-variants.ts",
+          "sha256": "eaeded6f47182d4bddbad223708b88b1f727fdf739ae1635b6e8d0b796f5eae6"
+        },
+        {
+          "path": "src/core/sim/s2coord.ts",
+          "sha256": "db2657e83f5949c9ba10d80511dcec1fdc7691f2f33d8ac248d396c546f4d722"
+        },
+        {
+          "path": "src/core/sim/symbol-directions.ts",
+          "sha256": "680d7b150c029153d83b3f7894da7d7e6f96f1fef8fdb1dfa7510f6ee8f85c99"
+        },
+        {
+          "path": "src/core/sim/walkforward.ts",
+          "sha256": "43593c803082060342bf399d24b0f3c9cd72cb25ec46a3899b37ea2da8df305f"
+        },
+        {
+          "path": "src/core/sizing.ts",
+          "sha256": "e5a30ae9fd89654dda45e5d7a9665506166eae78b961604ffae335778dd24190"
+        },
+        {
+          "path": "src/core/statistics.ts",
+          "sha256": "64cde3939f038ee922295d64732c7e924a792abd9fef0da56ee8272685928da3"
+        },
+        {
+          "path": "src/core/test-support.ts",
+          "sha256": "1764dbeabd9001ba82f71d6ddb5818aeaa31dad661ba0e33a684807e28f63387"
+        },
+        {
+          "path": "src/core/volume-factor.ts",
+          "sha256": "455801361a0a50c5a43c6b108f872ac6a505a491d37710e2d998636fc3d7e76c"
+        }
+      ],
+      "book": {
+        "balance": 1000,
+        "leverage": 10,
+        "pct": 0.001
+      },
+      "budget": {
+        "admission": {
+          "basis": "Require measured host and ancestor-cgroup headroom before each child, crediting only measured inactive_file as the production guard does. V8 heap is a ceiling; actual peak is recorded, and runtime memory guards remain enabled with every fallback rejected.",
+          "minimumAvailableMiB": 4096,
+          "sharedLock": "/workspace/scratch/.cts-ao-compute.lock",
+          "timeoutBypass": false,
+          "unknown": "reject",
+          "wait": false
+        },
+        "concurrency": 1,
+        "heapMb": 4096,
+        "timeoutMinutes": 180,
+        "workers": 1
+      },
+      "execution": {
+        "replayPreloadAll": true
+      }
+    },
+    {
+      "directory": "runs/postbase-val22-reclaim8-20261017-v2",
+      "protocolSha256": "469dd040b5aa194fc3ee9e6b1fbd6fd61b4ef834d3c9cee2046d01c137f75eab",
+      "case": "reclaim8-22",
+      "window": {
+        "endT": 1792270800000,
+        "evaluationFromT": 1792098000000,
+        "indicatorStartT": 1791360000000,
+        "indicatorWarmupH": 205,
+        "longH": 24,
+        "preH": 24,
+        "runH": 24,
+        "selectionH": 24,
+        "tradeStartT": 1792184400000
+      },
+      "symbols": [
+        "AVAX-USDT",
+        "LINK-USDT",
+        "LTC-USDT",
+        "SUI-USDT",
+        "NEAR-USDT",
+        "DOT-USDT",
+        "ATOM-USDT",
+        "APT-USDT",
+        "BTC-USDT",
+        "ETH-USDT",
+        "SOL-USDT",
+        "XRP-USDT",
+        "BNB-USDT",
+        "DOGE-USDT",
+        "ADA-USDT",
+        "BCH-USDT",
+        "TRX-USDT",
+        "ETC-USDT",
+        "OP-USDT",
+        "ARB-USDT",
+        "FIL-USDT",
+        "UNI-USDT"
+      ],
+      "variant": "reclaim8",
+      "feedSha256": "c171ecef6289163fad45214651804a6e3e4b008eb52e816fb2eb0d49b3e0026a",
+      "runtimeSettingsSha256": "74eb2684ed9a5b299de2da54f6816d3edc3349ed57739403c7d548f61555e22c",
+      "focusCount": 109,
+      "sourceFiles": [
+        {
+          "path": "package-lock.json",
+          "sha256": "c96b64262d7f2cdfee89d0bef895b679f4598f006b81f345033745f4ea73edfc"
+        },
+        {
+          "path": "package.json",
+          "sha256": "ef9e008301ad4e0ea8bae727bdadfd7e044da6ca8ffc473bf5013cd422dbf0ad"
+        },
+        {
+          "path": "scripts/core-22-symbol-study.mjs",
+          "sha256": "c2a5c355cfa1bc20df3aef9e80f82bc0df3229af27bb4dc75478c1a8b9988578"
+        },
+        {
+          "path": "scripts/core-session.mjs",
+          "sha256": "e8de3114c02aa952493cc6118258e065e4f9af63d5cfc8313ccef07739c5f516"
+        },
+        {
+          "path": "scripts/lib/block-comparison-evidence.mjs",
+          "sha256": "dce9c749086ecf5bc3489feffa70e59c0cbdd9661049e6813a7382e744ad4531"
+        },
+        {
+          "path": "scripts/lib/block-comparison.mjs",
+          "sha256": "684e094ecad45fd8a258046d3593cda41fd407c315fe893356aa75bcc1040103"
+        },
+        {
+          "path": "scripts/lib/book-notional.mjs",
+          "sha256": "ba79608369b165cd6037f421bad4dbc366f123e7475e58775c4642a93f45cf49"
+        },
+        {
+          "path": "scripts/lib/candles.mjs",
+          "sha256": "14985016fdd8d1f1bdfe47672c00d43cf779ce1b80b2fae8a0b723f46ac5992c"
+        },
+        {
+          "path": "scripts/lib/core-test-offline-guard.cjs",
+          "sha256": "9294c2c6b937c80e6e01aa30e65f84ff9605e630603a3d7f9f10c388435c9eaf"
+        },
+        {
+          "path": "scripts/lib/eval-orders.mjs",
+          "sha256": "818f2ff7012073d7d58cd52807f4bc3f0d4a229305b66d17af41cf56abbe38b3"
+        },
+        {
+          "path": "scripts/lib/eval-stress.mjs",
+          "sha256": "4479ea5c4b5a9598239eea676f1077953942f8a1e6ad6cb12cdeb74e23dbdc78"
+        },
+        {
+          "path": "scripts/lib/eval-variants.mjs",
+          "sha256": "715279a2482592241ac8f92fa0334f5d119922bcc697e88c1d4dd59f90d07356"
+        },
+        {
+          "path": "scripts/lib/eval-windows.mjs",
+          "sha256": "3fc4e18da6ab8da7033837f1d52ed5ab9eaa0aa8f1e44843c8cd61fc8c86994e"
+        },
+        {
+          "path": "scripts/lib/mem-admission.mjs",
+          "sha256": "1f6c3eac6930d887e7a40416783c091f40b47ee72e55c0d03234113032be69e1"
+        },
+        {
+          "path": "scripts/lib/ownership-halt.mjs",
+          "sha256": "f469476c840a9b13e7d5fd27daa1c933fabb62d4b9a9c952314bc644faf44ad0"
+        },
+        {
+          "path": "scripts/lib/pf-search-evidence.mjs",
+          "sha256": "cf0c9b7584ccae170c14049d4777e2148cab135f40d88c2852f2f5e53defe299"
+        },
+        {
+          "path": "scripts/lib/positive-types-report.mjs",
+          "sha256": "e162b4db99ecf66f4b86cfd4523da99ea203c858ebc09d2e6f47a1af834395b7"
+        },
+        {
+          "path": "scripts/lib/range-study-evidence.mjs",
+          "sha256": "02ec5ff93f4d9364267f497f45fdeaecf0f5c1ac775808c96019725e764aa07e"
+        },
+        {
+          "path": "scripts/lib/range-study.mjs",
+          "sha256": "aa84f276583fa7863c9d0d95b382df589fd59b682d2efac772d86e8d817dea66"
+        },
+        {
+          "path": "scripts/lib/replay-evidence.mjs",
+          "sha256": "59eb5a567859c98b431e4012a8f074dbc7292693d5c7aab07088ce15a71c8a07"
+        },
+        {
+          "path": "scripts/lib/research-series.mjs",
+          "sha256": "da97905832707d297053e899ca12863bfca41fc69df5163acc311eca092ed119"
+        },
+        {
+          "path": "scripts/lib/return-evidence.mjs",
+          "sha256": "a316f44fe4a3a115a449b65d3dc11c40c806a1af73f3ab6f88561e2b67b10b7b"
+        },
+        {
+          "path": "scripts/lib/safe-network-interfaces.cjs",
+          "sha256": "ec0806c50c019b9c1cf3b21cc2da102b1692ef8619577a86c705908057612659"
+        },
+        {
+          "path": "scripts/lib/session-feed.mjs",
+          "sha256": "82e3e3963185ac6c0e08daab6ca54212ddd72919d14eda32a9659271b1973478"
+        },
+        {
+          "path": "scripts/lib/session-owned-returns.mjs",
+          "sha256": "83c0e7bd82ca08ed928e5c97420e2470446e2d4642c088b4d0aab193eaff070f"
+        },
+        {
+          "path": "scripts/lib/session-qualification.mjs",
+          "sha256": "cfcb4f7f866b809837664b8ef749bf44b33ea2cdca4244871d65f42ca2a7e122"
+        },
+        {
+          "path": "scripts/lib/session-settings.mjs",
+          "sha256": "b3e30942540cdd8e87359174d1c0f81a2f5ebfdc4704feda7411e7c0f5f91efc"
+        },
+        {
+          "path": "scripts/lib/signal-market.mjs",
+          "sha256": "561528ad226632ef1298c11e4cfdac26bc6581c549a3b4530a23a16d4c71be13"
+        },
+        {
+          "path": "scripts/lib/signal-progress.mjs",
+          "sha256": "eee6af09523c43c09c4aadfc4947de7dfa490db2e5d946842f9bd27e8d9d5689"
+        },
+        {
+          "path": "scripts/lib/signal-window-report.mjs",
+          "sha256": "a5ce12bfa50fa3ece5f57ba25cff9d5db5f28724dc46c9e068ac2af2cda30d5b"
+        },
+        {
+          "path": "scripts/lib/test-all-invocation.mjs",
+          "sha256": "e8ed6fbe26219a1d92b721faca1ae05cbb1dfaf76eb38e32d1a7e173f38803ec"
+        },
+        {
+          "path": "scripts/lib/walkforward-comparison-report.mjs",
+          "sha256": "68cc5f639626ce21232a3ff326659c62f9668fcceb3e3c557585fb69ea19709e"
+        },
+        {
+          "path": "scripts/lib/walkforward-hourly-report.mjs",
+          "sha256": "22b93b27d1fdbf2d81fe4fa80a58bb6674a8d19e40edde95f7e7dfed307fba6e"
+        },
+        {
+          "path": "src/core/adjust.ts",
+          "sha256": "227318e975a6b27765cbaebdb1d8b3d2055b8237b5ee2d8cb33227fc33889f98"
+        },
+        {
+          "path": "src/core/api-data.ts",
+          "sha256": "0943f44ba52d68dfe4874412647603d85cffe077f121080e4f29574c32309824"
+        },
+        {
+          "path": "src/core/api.ts",
+          "sha256": "f7c500832b8a731c34f7c480b8404f7669f1e96025138eb9d9b7a44b53e07cfe"
+        },
+        {
+          "path": "src/core/audit.ts",
+          "sha256": "76db6b2a92f1b3630a360e211c9c69efd5142651365f71c679b3cc268359696f"
+        },
+        {
+          "path": "src/core/base-config-counts.ts",
+          "sha256": "36dfc247c580c8d0c76de503a3aee163233368b751908c71f96806213493bc35"
+        },
+        {
+          "path": "src/core/bot-stats.ts",
+          "sha256": "4f3d60b28cddacb8329168896c123dd18b27a2ed3e2dee4fc68aa5faf828a1fe"
+        },
+        {
+          "path": "src/core/bots/bots.ts",
+          "sha256": "a428710169d04268d21dec7be207251ab691ec80e01de254ea5e5aaab7dac266"
+        },
+        {
+          "path": "src/core/config.ts",
+          "sha256": "82cee991cdab4e553acd504ddf6772144377c0f6452b0aec3daf9952a2955954"
+        },
+        {
+          "path": "src/core/domain/types.ts",
+          "sha256": "45a18d07df401f85a88d2a2459b43b38ed5921bbdefcc0cf185a3d1b9a5362ed"
+        },
+        {
+          "path": "src/core/eval-family.ts",
+          "sha256": "72405e472974f8b1a1f9450fbd764fa5ebc00703b8a0d61ec715685311e4a9c2"
+        },
+        {
+          "path": "src/core/evals/evaluator.ts",
+          "sha256": "886988ab3755eb7c8b212917428adaebb548cdde9cb100e0b8d4248959e5f212"
+        },
+        {
+          "path": "src/core/exchange/bingx.server.ts",
+          "sha256": "848d329eafac974572ed41863cbc73dd17ee91e17618dfc5729d9382f81b8c82"
+        },
+        {
+          "path": "src/core/indications/break-config.ts",
+          "sha256": "4c163759a58fc985d0fca4721cdea6cccf0454a36feec79aed2755f09d1afafb"
+        },
+        {
+          "path": "src/core/indications/break.ts",
+          "sha256": "d119a91055dced95a749c81c4e929899ccd8a63da07da95cfbdfc3d32913506b"
+        },
+        {
+          "path": "src/core/indications/cache.ts",
+          "sha256": "2d52685a850b420326eb2cbcee4cda6a3f57680497b5cd89dee30900cfb07b84"
+        },
+        {
+          "path": "src/core/indications/filters.ts",
+          "sha256": "a9cd343316f0858f172c1b933ffd11b3d767d59d8e8ad450c18de33dd52f39ac"
+        },
+        {
+          "path": "src/core/indications/market.ts",
+          "sha256": "5ada84de0e1556c3d13317e385e1b3e9378bcc9851f2bd6ce0ee7a1fd6b2a081"
+        },
+        {
+          "path": "src/core/indications/micro.ts",
+          "sha256": "9fe9c043d8c44ad91922433db461a73586dc867a4cf0057bd5f6cf39fc96d663"
+        },
+        {
+          "path": "src/core/indications/range-families.ts",
+          "sha256": "7727bf1f3b92786dcdb92d87c9308df08e7aa9323b6db559b5e32166917bcc2d"
+        },
+        {
+          "path": "src/core/indications/registry.ts",
+          "sha256": "994e6148a1d082f794000056bf2a8fdd58c9f6cf9958ac6b098b074e0a257b7f"
+        },
+        {
+          "path": "src/core/indications/relate.ts",
+          "sha256": "e5cb00c35f6968fea8a83f3eb830389f295fd31199b76d5f57a28ef4364e4991"
+        },
+        {
+          "path": "src/core/indications/research.ts",
+          "sha256": "fabfbbc2f03ca04204cacb5b668f921fe1e30aa59ed5d0ce8470e9dbbf916ead"
+        },
+        {
+          "path": "src/core/indications/research2.ts",
+          "sha256": "8b9cba9d970bf5b1bd0661fc38f24e77f481befb5a06952e672b6662cc6289c5"
+        },
+        {
+          "path": "src/core/indications/research3.ts",
+          "sha256": "3eba19e75ef751dc3d98c1ff6019d49819b3359c3f625b0228c4b5c8f752eedd"
+        },
+        {
+          "path": "src/core/indications/research4.ts",
+          "sha256": "37ea0b5e205c3a3d2a0dac975700236b8f411eb0633d1eac4a5c05386058488d"
+        },
+        {
+          "path": "src/core/indications/stable02.ts",
+          "sha256": "78a1215c16495af37325a2d0be7226b216e582e57f0af17cfa73ff273b11ce87"
+        },
+        {
+          "path": "src/core/indications/tactic.ts",
+          "sha256": "73465e133f643d5a061cd9c27ed54cf86489a4a9b763d24a91eb27b012f3d1b3"
+        },
+        {
+          "path": "src/core/lastn/optimizer.ts",
+          "sha256": "bf5ac8b16a66d488c366c5ba6dcffccb6595109eecb4291e153c58302e139ec9"
+        },
+        {
+          "path": "src/core/live-diff.ts",
+          "sha256": "988cd14119a3e0e9707a351fedb11e71d344a5075719262e1e58ec44037c40b7"
+        },
+        {
+          "path": "src/core/live-promote.ts",
+          "sha256": "2019db00f91fb39a186480b5ca2749a8f6097b2f1c271072e226e50eb6d0582d"
+        },
+        {
+          "path": "src/core/live-record.ts",
+          "sha256": "0f8231f4ab0f2d20a027d2862a719e2c86f3925b445296d0842e0734401ed497"
+        },
+        {
+          "path": "src/core/live-validation.ts",
+          "sha256": "ff3b8f462bbaaa8e500b5df866a03f1f5527644246633fc32b249deb35dbeef6"
+        },
+        {
+          "path": "src/core/loss-limit.ts",
+          "sha256": "ec3f42db368392c1c665e6eb6ca1f0d7d6809471cbd729cbf229b5c48e2f6589"
+        },
+        {
+          "path": "src/core/market/bars.ts",
+          "sha256": "bd9faec5d566e954a1477866b4e817226643bb945b82257505a37861c489cf71"
+        },
+        {
+          "path": "src/core/market/bingx.ts",
+          "sha256": "8d2402afc7ef7732e9aec96241cc999edf0cc76c3a34898a335261bb51b8439f"
+        },
+        {
+          "path": "src/core/market/candle-series.ts",
+          "sha256": "11a1ad9871449c3d08e2efd55fd5f9c3ccc7577dd91f25995ca586ebcdd493c9"
+        },
+        {
+          "path": "src/core/market/shared-feed.ts",
+          "sha256": "70e1183e0a90e51a803fd334ab278dedac5da184d8c74fcdacf1bd8a89f6c065"
+        },
+        {
+          "path": "src/core/math/indicators.ts",
+          "sha256": "948c163cd7d9e18acc57a4757c698115c034ef1d657e033b1d2e1536e60ccd93"
+        },
+        {
+          "path": "src/core/metrics/stats.ts",
+          "sha256": "22c10235edf01a4112374f71ef460d4c18c3befa5bfb613cae1ea62e37f5657d"
+        },
+        {
+          "path": "src/core/minimal-coord.ts",
+          "sha256": "18a05b02b71a9a37f589513c6eef82514f638519e2606da89e65694572db86d7"
+        },
+        {
+          "path": "src/core/pipeline/pipeline.ts",
+          "sha256": "3b8022b6e5145d464f89bf695a8dd779d5fafc3e609c80af793c5016f912243b"
+        },
+        {
+          "path": "src/core/pipeline/portfolio.ts",
+          "sha256": "f5b618fd1f91aa50eaf70efbf80bf7f0dd4f2c2cd328f995ba6be1bd2e45866e"
+        },
+        {
+          "path": "src/core/positions.ts",
+          "sha256": "4cef45d39f431c4a4577b1c90863c97a2d2899ae9bf40035c6c2fea5342a5afb"
+        },
+        {
+          "path": "src/core/positive.ts",
+          "sha256": "2c7c7eab700bb0786f4d12eb376c6c731c433111181de1feb87d7abd5e09b77d"
+        },
+        {
+          "path": "src/core/prehist.ts",
+          "sha256": "24bbb71085b7fdf6a91803195d402d679638fb9847e50003f0fff6edaac22b34"
+        },
+        {
+          "path": "src/core/presets.desk.ts",
+          "sha256": "926e9f01dbc5366780aba03436046da30699107f6fd568d8635957be08d5265a"
+        },
+        {
+          "path": "src/core/presets.live.ts",
+          "sha256": "6800cfb12914483ad1cc8e1c660a96203b71cecb5983fb638ed123d4562b8298"
+        },
+        {
+          "path": "src/core/presets.research.ts",
+          "sha256": "a4e2e3c3dee502dfa90769e6d0661c2dbd3d407d251822bad25b877da8af984a"
+        },
+        {
+          "path": "src/core/presets.ts",
+          "sha256": "e5445abda21d38035ddb9c36b7697ba029ef1c0e620e1e316e82c068c121a027"
+        },
+        {
+          "path": "src/core/progress.ts",
+          "sha256": "ea5f7c45236c79af64dbc2310074b06da239761b099881404e0d11749fea2aec"
+        },
+        {
+          "path": "src/core/proven-wide-trail.ts",
+          "sha256": "903cca426a696f96f0fc406e5a10c67096bae4c2191aaef82cdd152d86d13a00"
+        },
+        {
+          "path": "src/core/reporting-stats.ts",
+          "sha256": "48ae1b035cb9f3d9cea31404d0574df63e9038256ba024c550791e2738b136b6"
+        },
+        {
+          "path": "src/core/server/base-config-job.server.ts",
+          "sha256": "1ee671fa8ebb5db597af9370db74a8824254e6185cb3bbbaead2e56d9caf714e"
+        },
+        {
+          "path": "src/core/server/boot.server.ts",
+          "sha256": "f73832b39bb2436def245ef17f36a5aa5140ca153f01000dc0d05239ea5abb20"
+        },
+        {
+          "path": "src/core/server/db.server.ts",
+          "sha256": "6ade4908d39e5b35d14c13f20e5c46546c2cf5c7af17f69c9a26636577490bdd"
+        },
+        {
+          "path": "src/core/server/lane-orders.ts",
+          "sha256": "9f34fef11ba0b959bb54297508a34fbfae36cd31b1b70f9c9d6c833f3871931f"
+        },
+        {
+          "path": "src/core/server/live.server.ts",
+          "sha256": "32d0a2d4c153f6c094a90336e1a7569c3ffb2ed1efdeb9ddbef8fbcb0bda6e66"
+        },
+        {
+          "path": "src/core/server/live.ts",
+          "sha256": "21d6b7d5a49b2dca6ccb312298c9e0df5397f000f0cc6cde9063ca3d111e9ed8"
+        },
+        {
+          "path": "src/core/server/loop-budget.ts",
+          "sha256": "70eca6c3203ba6b765ff88c880b914b38e053ac475848bf178d1418fc286815b"
+        },
+        {
+          "path": "src/core/server/memguard.server.ts",
+          "sha256": "688b856c956d169adb33e8f1a689433e5e7586557fc1b9e91e2cf3ec3d73c3f3"
+        },
+        {
+          "path": "src/core/server/paper-rows.ts",
+          "sha256": "2725e808119a39f813c514c16f74f6179be978c5cf2950df45f06739c02d18cc"
+        },
+        {
+          "path": "src/core/server/partition.ts",
+          "sha256": "7a4a3861a015f64dd2fae2a51c1fd04af7877c5e9326ac0162c2027286b9c16a"
+        },
+        {
+          "path": "src/core/server/pool.server.ts",
+          "sha256": "857b9c176c3de6e31054e2eda642447e40482d1218af4d3b43ab88c7c4d402b8"
+        },
+        {
+          "path": "src/core/server/runtime.server.ts",
+          "sha256": "cc043d2211cc45c2288cb7f7559a32fe054524d3474792a1f5db8cbdf3493d54"
+        },
+        {
+          "path": "src/core/server/stall-probe.server.ts",
+          "sha256": "473a6182b692b89a70096c8517329c80937906ed7d2e17a59432abcaff57d45e"
+        },
+        {
+          "path": "src/core/server/stream.server.ts",
+          "sha256": "6c294f2c9a77edd75302b1f3ea236bc485117cee3453f095288fe251b75a91ba"
+        },
+        {
+          "path": "src/core/server/tapes.worker.ts",
+          "sha256": "294c46b50620afed5141e7cdd19fb0af733026c08a22920b1ec1c60605381cc9"
+        },
+        {
+          "path": "src/core/session-window.ts",
+          "sha256": "a2553900c9eedcf8ea2c3a2c71046825e7def284bc3a1c62990deca0002a35d3"
+        },
+        {
+          "path": "src/core/settings-check.ts",
+          "sha256": "49b7458548ee5c6d16a107845f1dc162005dfa51b3a1466830c77f6de07e1ea7"
+        },
+        {
+          "path": "src/core/signal-config.ts",
+          "sha256": "6f93f22833c4c153a23a7d0b29f07c0c092146e86363722f5a4242242e3be9f5"
+        },
+        {
+          "path": "src/core/signal-coordination.ts",
+          "sha256": "9b80aa116d35676bc329a205f4b1f8dbf37376c906926caacfe17300b7d64819"
+        },
+        {
+          "path": "src/core/signal-hist.ts",
+          "sha256": "42710bae95ec896de2ef091d1516e05a3ba2da9a647a638c46d8056f94cd1f33"
+        },
+        {
+          "path": "src/core/signals.ts",
+          "sha256": "b690c6738c27658a97f57ab84600b82a12259722db00424ecb08788a48c37a06"
+        },
+        {
+          "path": "src/core/sim/axis.ts",
+          "sha256": "8548c9ed45a517fd478adce7c83bf4fea0435926b14f4704e3fa16cabc53d35e"
+        },
+        {
+          "path": "src/core/sim/backtest.ts",
+          "sha256": "7196b262b58faff2f5dae68d89552004a2c055e0b3b1dac4027a19c6ee263017"
+        },
+        {
+          "path": "src/core/sim/block.ts",
+          "sha256": "455f2ad68610ac6a45aeddd56742fe726511f30b330b239eadaeb744723bce5a"
+        },
+        {
+          "path": "src/core/sim/dca.ts",
+          "sha256": "1e74c2d82c93484557119b184fdb3a28d3c7577a7851199ae12381f1a7a1aef6"
+        },
+        {
+          "path": "src/core/sim/report-variants.ts",
+          "sha256": "eaeded6f47182d4bddbad223708b88b1f727fdf739ae1635b6e8d0b796f5eae6"
+        },
+        {
+          "path": "src/core/sim/s2coord.ts",
+          "sha256": "db2657e83f5949c9ba10d80511dcec1fdc7691f2f33d8ac248d396c546f4d722"
+        },
+        {
+          "path": "src/core/sim/symbol-directions.ts",
+          "sha256": "680d7b150c029153d83b3f7894da7d7e6f96f1fef8fdb1dfa7510f6ee8f85c99"
+        },
+        {
+          "path": "src/core/sim/walkforward.ts",
+          "sha256": "43593c803082060342bf399d24b0f3c9cd72cb25ec46a3899b37ea2da8df305f"
+        },
+        {
+          "path": "src/core/sizing.ts",
+          "sha256": "e5a30ae9fd89654dda45e5d7a9665506166eae78b961604ffae335778dd24190"
+        },
+        {
+          "path": "src/core/statistics.ts",
+          "sha256": "64cde3939f038ee922295d64732c7e924a792abd9fef0da56ee8272685928da3"
+        },
+        {
+          "path": "src/core/test-support.ts",
+          "sha256": "1764dbeabd9001ba82f71d6ddb5818aeaa31dad661ba0e33a684807e28f63387"
+        },
+        {
+          "path": "src/core/volume-factor.ts",
+          "sha256": "455801361a0a50c5a43c6b108f872ac6a505a491d37710e2d998636fc3d7e76c"
+        }
+      ],
+      "book": {
+        "balance": 1000,
+        "leverage": 10,
+        "pct": 0.001
+      },
+      "budget": {
+        "admission": {
+          "basis": "Require measured host and ancestor-cgroup headroom before each child, crediting only measured inactive_file as the production guard does. V8 heap is a ceiling; actual peak is recorded, and runtime memory guards remain enabled with every fallback rejected.",
+          "minimumAvailableMiB": 4096,
+          "sharedLock": "/workspace/scratch/.cts-ao-compute.lock",
+          "timeoutBypass": false,
+          "unknown": "reject",
+          "wait": false
+        },
+        "concurrency": 1,
+        "heapMb": 4096,
+        "timeoutMinutes": 180,
+        "workers": 1
+      },
+      "execution": {
+        "replayPreloadAll": true
+      }
+    }
+  ]
+}
