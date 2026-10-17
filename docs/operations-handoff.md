@@ -38,7 +38,15 @@ including the actual 128 toggle combinations, in 201.9 seconds (155.6-second
 setup, 35.4-second toggle run). Independent review confirms every original
 assertion, indication/lane, range/type, DCA/Axis/Signals configuration, gate and
 cost remains covered. No production formula, economic gate or timeout changed.
-A fresh complete plain `npm test` is pending this fixture's final typecheck.
+Typecheck and lint pass. The fresh plain `npm test` on test-source checkpoint
+`2303ee765c566f48b65fa7df05dc52c555f2e1f9` exited 1 at the script stage: 454 passed,
+one phone Overview assertion sampled zero digits in main, and eight template
+checks skipped. The old readiness probe could finish from one navigation/body
+digit before main existed. Its follow-up now requires main with five digits,
+matching the unchanged final assertion, within the same 60 seconds. Lint passes;
+the next complete command is pending the test-only checkpoint. No production UI
+code changed. Production remains identical to the validated build/replay
+checkpoint `9fb5e4c1e68e2e63945139c7d1cad3f1217f6158`.
 Script/component stages are bounded to two files concurrently; synthetic tests
 have deterministic memory headroom while dedicated pressure tests still verify
 fallback and abort behavior. Chromium is installed and built desktop/mobile UI

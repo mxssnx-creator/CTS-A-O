@@ -264,7 +264,7 @@ describe(
         const bad = [];
         for (const path of pages) {
           activity = `${vpName} ${path}`;
-          console.log(`[ui-fixture] ${vpName}: ${path}`);
+          console.log(`[ui-fixture] ${vpName}: ${path} +${Date.now() - fixtureStarted}ms`);
           const page = await ctx.newPage();
           observeRequests(page);
           const errs = [];
@@ -283,10 +283,14 @@ describe(
           page.on("pageerror", (e) => errs.push(`uncaught: ${String(e).slice(0, 200)}`));
           // The app keeps its event stream open; page data readiness is the content check below.
           await page.goto(base + path, { waitUntil: "domcontentloaded", timeout: 120_000 });
-          // the page's data arrives after the first render: wait for digits in the main content
+          // Match the assertion's exact scope and threshold. Body/first-digit readiness can precede the
+          // main loading state's replacement during hydration and let the assertion race real page data.
           await page
             .waitForFunction(
-              () => /\d/.test(document.querySelector("main")?.innerText ?? document.body.innerText),
+              () => {
+                const main = document.querySelector("main");
+                return main !== null && (main.innerText.match(/\d/g) ?? []).length >= 5;
+              },
               null,
               { timeout: 60_000 },
             )
@@ -301,8 +305,11 @@ describe(
                   text,
                 ),
               overflow: document.documentElement.scrollWidth - window.innerWidth,
+              visible: text.slice(0, 2000),
             };
           });
+          if (r.digits < 5 || r.errorText || r.overflow > 1)
+            console.log(`[ui state] ${vpName} ${path}: ${JSON.stringify(r)}`);
           if (r.digits < 5) bad.push(`${path}: renders no numbers (${r.digits} digits)`);
           if (r.errorText) bad.push(`${path}: shows an error`);
           if (r.overflow > 1) bad.push(`${path}: scrolls sideways by ${r.overflow}px`);

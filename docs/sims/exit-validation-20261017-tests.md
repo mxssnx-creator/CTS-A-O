@@ -1,5 +1,9 @@
 # Exit implementation verification
 
+Processing-fixture checkpoint:
+`2303ee765c566f48b65fa7df05dc52c555f2e1f9`, tree
+`4b27345eabc0daa0f3894d89bab1575b1836cda3`.
+
 Production source checkpoint: `9fb5e4c1e68e2e63945139c7d1cad3f1217f6158`, tree
 `d4cd5bc4c3e6441f7bf26e170be2bd41c522d8c6`, on
 [PR #149](https://github.com/mxssnx-creator/CTS-A-O/pull/149).
@@ -15,14 +19,22 @@ core processing fixture exhausted a 400-second setup watchdog before any of its
 cells. That failed attempt is retained; a bounded representative fixture is
 verified before restarting the full command. It passes 6/6 tests in 201.9 seconds:
 setup completes in 155.6 seconds and all 128 toggle combinations pass in 35.4
-seconds. Partial stages are recorded
+seconds. A fresh plain full command is now running on the exact checkpoint
+above then failed one phone Overview assertion: its readiness probe could match
+one digit in the navigation/body before main content rendered, whereas the
+assertion requires five digits in main. The follow-up requires main to exist
+and contain at least five digits within the unchanged 60-second wait. The final
+number, error, overflow and server-error assertions are unchanged. No production
+UI code changed. The next full run is pending this test-only checkpoint.
+Partial stages are recorded
 separately and are not presented as a completed full gate.
 
 | Check | Result |
 |---|---|
-| `npm test`: scripts | 455 passed, 0 failed, 8 missing-template checks skipped |
-| `npm test`: app/components | 78 passed, 0 failed, 0 skipped |
-| `npm test`: core | First attempt stopped after processing-fixture setup timeout; fresh run pending |
+| Earlier completed script stage | 455 passed, 0 failed, 8 missing-template checks skipped |
+| Earlier app/components stage | 78 passed, 0 failed, 0 skipped |
+| Latest complete-command attempt | Script stage: 454 passed, 1 phone readiness assertion failed, 8 template skips; exit 1 |
+| Fresh `npm test` | Pending matched-main readiness checkpoint |
 | `npm run test:core:slow` | Pending, after the normal gate |
 | Exit parity with two actual worker threads | 1/1 passed; exact configs and every diagnostic count match local calculation |
 | Bounded processing fixture | 6/6 passed, including every original assertion and all 128 toggle masks |
