@@ -268,7 +268,11 @@ export function passesBase(
   st: { n: number; pf: number; net: number; mdd?: number },
   g: { minPf: number; minTrades: number; maxDdr?: number },
 ): boolean {
-  // a floor below PF 1 (the sets pre-filter, Gates.baseSetsMinPf) cannot also ask for a positive net
+  // Fail closed on invalid source/aggregate returns even when the optional drawdown ratio is disabled.
+  // A nonfinite numerator or gross-loss underflow must not turn into a high-PF winning Base pass.
+  if (!(Number.isSafeInteger(st.n) && Number.isFinite(st.pf) && Number.isFinite(st.net))) return false;
+  if (st.mdd !== undefined && !(Number.isFinite(st.mdd) && st.mdd >= 0)) return false;
+  // A floor below PF 1 (the sets pre-filter, Gates.baseSetsMinPf) cannot also ask for a positive net.
   if (!(st.n >= g.minTrades && (st.net > 0 || g.minPf < 1) && st.pf >= g.minPf)) return false;
   // max drawdown ratio: drawdown ÷ net of the Base window (off at 0); unknown evidence cannot pass an active gate.
   return !ddrFails(st.mdd, st.net, g.maxDdr);
@@ -1037,10 +1041,11 @@ export function baseRangeWhy(
       const need = own || !tag ? minPf : Math.max(minPfOf(g, "", r.ind), minPf);
       // the gates exactly as passesBase reads them
       const miss: BaseGate[] = [];
-      if (!(st.n >= g.minTrades)) miss.push("closes");
-      if (!(st.net > 0 || need < 1)) miss.push("net");
-      if (!(st.pf >= need)) miss.push("pf");
-      if (ddrFails(st.mdd, st.net, g.maxDdr)) miss.push("ddr");
+      if (!(Number.isSafeInteger(st.n) && st.n >= g.minTrades)) miss.push("closes");
+      if (!(Number.isFinite(st.net) && (st.net > 0 || need < 1))) miss.push("net");
+      if (!(Number.isFinite(st.pf) && st.pf >= need)) miss.push("pf");
+      if ((st.mdd !== undefined && !(Number.isFinite(st.mdd) && st.mdd >= 0)) ||
+          ddrFails(st.mdd, st.net, g.maxDdr)) miss.push("ddr");
       if (!miss.length) {
         row.passed++;
         continue;
