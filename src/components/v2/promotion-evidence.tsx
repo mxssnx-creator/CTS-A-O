@@ -1,4 +1,4 @@
-import { rangeOfId, RANGE_LABEL } from "@/core/minimal-coord";
+import { liveGroupOf } from "@/core/live-validation";
 import { promotionWindowPfText } from "./progression";
 import { Empty, fmt, Kpi, Panel, Pill } from "./ui";
 
@@ -30,9 +30,9 @@ export function PromotionEvidence({ status }: { status?: Any }) {
       </div>
       <p className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>Reported {fmt.ago(status.at)} · totals cover all evaluated identities; at most {fmt.num(rows.length)} detail rows shown. Owned paper is simulated execution with recorded allocation, not venue fills. Nominal lane attribution is unverified and cannot establish live profitability. Passing these proof gates does not waive the remaining entry, risk or readiness gates.</p>
       {rows.length ? <div className="v2-table-wrap"><table className="v2-table">
-        <thead><tr><th>Full config · range</th><th>Symbol · direction</th><th>Post-Base accepted PF (before allocation)</th><th>Owned execution evidence</th><th>Minimums</th><th>Proof status</th></tr></thead>
+        <thead><tr><th>Full config · group</th><th>Symbol · direction</th><th>Post-Base accepted PF (before allocation)</th><th>Owned execution evidence</th><th>Minimums</th><th>Proof status</th></tr></thead>
         <tbody>{rows.map((r: Any) => <tr key={JSON.stringify([r.cfg, r.sym, r.side])}>
-          <td className="v2-mono">{r.cfg}<div className="v2-muted">{RANGE_LABEL[rangeOfId(r.cfg)]}</div></td>
+          <td className="v2-mono">{r.cfg}<div className="v2-muted">{liveGroupOf(r.cfg)}</div></td>
           <td>{r.sym} · {r.side > 0 ? "long" : "short"}</td>
           <td><b>{promotionWindowPfText(r.model)}</b> · {fmt.num(r.model?.n)} closes<div className="v2-muted">{fmt.time(r.model?.fromT)} → {fmt.time(r.model?.toT)}</div></td>
           <td>{sourceLabel(r.execution?.source)} · <b>{promotionWindowPfText(r.execution)}</b> · {fmt.num(r.execution?.n)} closes<div className="v2-muted">{fmt.time(r.execution?.fromT)} → {fmt.time(r.execution?.toT)}</div></td>

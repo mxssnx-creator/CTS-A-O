@@ -7,7 +7,7 @@
 //     --patch runs/x01-desk.json --state runs/x01-promote.json \
 //     [--evidence verified-promotion.json --reference-id x02] [--last-n 30] [--min-n 20] [--on-pf 1.2] [--off-pf 1.0]
 //
-// Evidence contract and exported types: src/core/live-promote.ts (cts-live-promotion/v1). The original bytes are
+// Evidence contract and exported types: src/core/live-promote.ts (cts-live-promotion/v2). The original bytes are
 // SHA-256-bound into every resulting lane proof. Producer-supplied validUntilT is explicit; no default expiry is
 // invented. The reader verifies structure/arithmetic/completeness declarations, not authenticity of an external
 // producer: an actual owned-execution exporter must supply the original fill and settled-slice provenance.

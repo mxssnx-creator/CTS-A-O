@@ -1,8 +1,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
-  DEFAULT_PROMOTE, PROMOTE_EVIDENCE_SCHEMA, PROMOTE_RANGES, promoteDecide, promoteLaneKey,
-  promoteLive, promoteRangeOf, validPromotedLaneProof,
+  DEFAULT_PROMOTE, PROMOTE_EVIDENCE_SCHEMA, PROMOTE_GROUPS, PROMOTE_RANGES, promoteDecide, promoteLaneKey,
+  promoteLive, promoteGroupOf, promoteRangeOf, validPromotedLaneProof,
 } from "./live-promote.ts";
 import type { PromoteEvidence, PromoteEvidenceLane, PromoteOpts } from "./live-promote.ts";
 import { kindOfId } from "./pipeline/pipeline.ts";
@@ -11,6 +11,7 @@ const NOW = 1_800_000_000_000;
 const SH = "sweep|trend-adx@m15c|tp6|sl4.5|tr0|h64|sh";
 const TO = "sweep|trend-adx@m15c|tp0|sl4.5|tr2|h64|sh|to";
 const WIDE = "follow|rsi-mom-14-20@m15|tp1|sl1|tr0|h32";
+const EXIT = "follow|ema-9-21@m15|tp1|sl1|tr0|h32|hxL0";
 const SIG = "follow|sig-ema-cross-s@m15|tp1|sl1|tr0|h32";
 const AXIS = "pivot|cci-40-200@x4|tp5|sl5|tr0|h24|axis";
 const O: PromoteOpts = { lastN: 10, minN: 6, onPf: 1.2, offPf: 1.0 };
@@ -23,7 +24,7 @@ function lane(cfg = SH, modelR: number[] = WIN, executionR: number[] = WIN, sym 
   const base = (i: number) => ({ ...id, id: `slice-${i}`, entryT: NOW - 800_000 + i * 10_000,
     exitT: NOW - 799_000 + i * 10_000, eligibilityId: "qualified-1" });
   const window = { complete: true as const, fromT: NOW - 1_000_000, toT: NOW, asOf: NOW };
-  return { ...id, source: cfg.split("|")[1], range: promoteRangeOf(cfg)!, kind: kindOfId(cfg) as PromoteEvidenceLane["kind"],
+  return { ...id, source: cfg.split("|")[1], group: promoteGroupOf(cfg)!, kind: kindOfId(cfg) as PromoteEvidenceLane["kind"],
     eligibility: { id: "qualified-1", stage: "after-base", passed: true, at: NOW - 2_000_000 },
     model: { ...window, basis: "unit-net-returns", closes: modelR.map((unitR, i) => ({ ...base(i), unitR })) },
     execution: { ...window, basis: "owned-net-returns", executionSource: "verified-venue", closes: executionR.map((netReturn, i) => ({ ...base(i),
@@ -38,7 +39,7 @@ const decide = (e: unknown = evidence(), prev: Record<string, boolean> = {}, o =
 const off = (e: unknown, prev: Record<string, boolean> = {}) => {
   const d = decide(e, prev);
   assert.equal(d.promotedLanes.length, 0);
-  assert.ok(PROMOTE_RANGES.every((r) => !d.on[r]));
+  assert.ok(PROMOTE_GROUPS.every((r) => !d.on[r]));
   return d;
 };
 
@@ -47,6 +48,8 @@ describe("strict exact-lane reference promotion", () => {
     assert.deepEqual(DEFAULT_PROMOTE, { lastN: 30, minN: 20, onPf: 1.2, offPf: 1.0 });
     for (const range of PROMOTE_RANGES) assert.equal(promoteRangeOf(range === "wide" ? WIDE : SH.replace(/\|sh$/, `|${range}`)), range);
     assert.equal(promoteRangeOf(TO), "sh");
+    assert.equal(promoteRangeOf(EXIT), null, "Historic Exit is never assigned the Wide range");
+    assert.equal(promoteGroupOf(EXIT), "exit");
     assert.equal(promoteRangeOf(SIG), null);
     assert.equal(promoteRangeOf(AXIS), null);
     assert.equal(promoteRangeOf(`${AXIS}|sh`), null);
@@ -68,6 +71,17 @@ describe("strict exact-lane reference promotion", () => {
     assert.equal(d.byIdentity[promoteLaneKey(e.lanes[0])], true);
     off(evidence([lane(SH, LOSE, WIN)]));
     off(evidence([lane(SH, WIN, LOSE)]));
+  });
+
+  it("promotes Historic Exit only in its own group and exact-lane allowlist", () => {
+    const exit = lane(EXIT);
+    const d = decide(evidence([exit]));
+    assert.equal(d.on.exit, true);
+    assert.ok(PROMOTE_RANGES.every((r) => !d.on[r]));
+    assert.deepEqual(d.promotedLanes.map(promoteLaneKey), [promoteLaneKey(exit)]);
+    const live = promoteLive({ excludeRanges: [] as string[] }, d);
+    assert.deepEqual(live.excludeRanges, [...PROMOTE_RANGES]);
+    assert.deepEqual(live.promotedLanes.map(promoteLaneKey), [promoteLaneKey(exit)]);
   });
 
   it("cannot borrow a winner across protect, range, lane, type, symbol or side aliases", () => {
@@ -194,11 +208,16 @@ describe("strict exact-lane reference promotion", () => {
       (e.lanes[0][tape].closes[0] as unknown as Record<string, unknown>)[key as string] = value;
       off(e);
     }
-    for (const [key, value] of [["range", "mn"], ["kind", "trailing-only"], ["source", "trend-adx@m5"]]) {
+    for (const [key, value] of [["group", "mn"], ["kind", "trailing-only"], ["source", "trend-adx@m5"]]) {
       const e = evidence();
       (e.lanes[0] as unknown as Record<string, unknown>)[key] = value;
       off(e);
     }
+    const legacyRangeLane = evidence();
+    (legacyRangeLane.lanes[0] as unknown as Record<string, unknown>).range = "sh";
+    off(legacyRangeLane);
+    const historicWithRange = evidence([lane(`${EXIT}|sh`)]);
+    off(historicWithRange);
   });
 
   it("rejects expired/future/mismatched windows, out-of-window closes and pre-qualification entries", () => {

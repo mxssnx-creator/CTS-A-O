@@ -1,0 +1,2 @@
+# Reproducible public quote cache for the isolated offline replay.
+research/fixtures/postbase-20261017/*.b64 -diff linguist-generated=true

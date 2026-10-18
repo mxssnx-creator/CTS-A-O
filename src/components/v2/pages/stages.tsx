@@ -28,6 +28,8 @@ export function StagesPage() {
   const selected = (d.paper.selected ?? []) as string[];
   const sigSel = selected.filter((id) => (id.split("|")[1] ?? "").includes("sig-")).length;
   const realSel = selected.length - sigSel;
+  const exits = d.status?.exitStrategies;
+  const exitHistory = exits?.history ?? {};
   return (
     <>
       <ErrorNote error={error} />
@@ -42,7 +44,8 @@ export function StagesPage() {
             <p>
               Every indication × bot type is evaluated at Base; {d.wf.tapes} independent
               strategy tapes (Normal, capped Trailing, trailing-only, DCA, DCA Active and Axis across the configured protection variants)
-              are built for later validation or measurement. A computed tape is not an admitted or funded order.
+              are built for later validation or measurement. Historic Exit fits every initialized engine pair from pre-run history, independently of Base admission and range tags.
+              A computed tape is not an admitted or funded order.
             </p>
           </div>
           <div className="v2-stage">
@@ -66,7 +69,7 @@ export function StagesPage() {
                 : ""}{" "}
               (PF and DDT) before a seat. End stage and
               live re-check last-N {d.wf.lastN ? d.wf.lastN : "off"} (PF and DDT), then Block.
-              Additional strategies (Trailing, DCA, Axis) pass the same gates.
+              Additional strategies (Historic Exit, Trailing, DCA, Axis) pass the same gates.
             </p>
           </div>
           <div className="v2-stage">
@@ -85,6 +88,44 @@ export function StagesPage() {
       </Panel>
 
       <PromotionEvidence status={d.status?.livePromotion} />
+
+      <Panel
+        title="Historic Exit sets"
+        sub="candidate distances fit completed-bar prehistory and pass a later holdout before the Real simulation; each Exit config family and direction keeps independent configs"
+      >
+        {exits ? (
+          <div className="v2-lines">
+            <Line
+              k="Build / execution"
+              v={`${exits.enabled ? "on" : "off"} / ${tg.exit !== false ? "on" : "off"}`}
+            />
+            <Line k="Initialized engine pairs" v={fmt.num(exits.pairs)} />
+            <Line k="Current configs (includes held lanes)" v={fmt.num(exits.configs)} />
+            <Line
+              k="Candidates / holdout evaluations / qualified"
+              v={`${fmt.num(exitHistory.candidates)} / ${fmt.num(exitHistory.evaluated)} / ${fmt.num(exitHistory.qualified)}`}
+            />
+            <Line
+              k="Capped / insufficient history or entries"
+              v={`${fmt.num(exitHistory.capped)} / ${fmt.num((exitHistory.noPrehistory ?? 0) + (exitHistory.insufficientEntries ?? 0))}`}
+            />
+            <Line
+              k="Holdout rejects: short / PF / drawdown"
+              v={`${fmt.num(exitHistory.insufficientTrades)} / ${fmt.num(exitHistory.pfRejected)} / ${fmt.num(exitHistory.ddrRejected)}`}
+            />
+            <Line
+              k="Position exits"
+              v={
+                d.settings.live.laneOrders
+                  ? "lane orders · each lane has its own partial stop / target"
+                  : "overall control · coordinates the combined position; lane completions can reduce it"
+              }
+            />
+          </div>
+        ) : (
+          <Empty>Historic Exit status is not available yet</Empty>
+        )}
+      </Panel>
 
       <Panel
         title="Timeframe lanes"
@@ -248,17 +289,17 @@ export function StagesPage() {
 const PAGE = 50;
 
 /**
- * The last paper step's listings (coreListing, built once per step): the engine configs it validated, per range with
- * that range's PF taken together on the validation windows, the signal units active, and the engine configs proven live.
+ * The last paper step's listings (coreListing, built once per step): validated Normal / Trailing ranges and independent
+ * strategy groups such as Historic Exit, with pooled validation PFs, active signal units, and proven live configs.
  */
 function SetListings(props: { minPf: number }) {
   const [kind, setKind] = useState<"validated" | "active" | "proven">("validated");
-  const [range, setRange] = useState("");
+  const [group, setGroup] = useState("");
   const [page, setPage] = useState(0);
   const { data } = usePoll(
-    () => coreListing({ data: { kind, range: range || undefined, offset: page * PAGE, limit: PAGE } }),
+    () => coreListing({ data: { kind, group: group || undefined, offset: page * PAGE, limit: PAGE } }),
     10000,
-    [kind, range, page],
+    [kind, group, page],
   );
   const d = data as Any;
   const pages = d?.total ? Math.ceil(d.total / PAGE) : 0;
@@ -278,13 +319,13 @@ function SetListings(props: { minPf: number }) {
             setPage(0);
           }}
         />
-        {kind === "validated" && Array.isArray(d?.byRange) && (
+        {kind === "validated" && Array.isArray(d?.byGroup) && (
           <Seg
-            value={range}
-            label="range"
-            options={[{ value: "", label: "All" }, ...d.byRange.map((x: Any) => ({ value: x.range, label: `${x.range} ${x.validated} · PF ${fmt.pf(x.pf)}` }))]}
+            value={group}
+            label="group"
+            options={[{ value: "", label: "All" }, ...d.byGroup.map((x: Any) => ({ value: x.group, label: `${x.group} ${x.validated} · PF ${fmt.pf(x.pf)}` }))]}
             onChange={(v) => {
-              setRange(v);
+              setGroup(v);
               setPage(0);
             }}
           />
@@ -303,7 +344,7 @@ function SetListings(props: { minPf: number }) {
               {kind === "validated" ? (
                 <tr>
                   <th>Config</th>
-                  <th>Range</th>
+                  <th>Range / strategy group</th>
                   <th className="num">PF</th>
                   <th className="num">Closes</th>
                   <th className="num">Net</th>
@@ -333,7 +374,7 @@ function SetListings(props: { minPf: number }) {
                         {x.id}
                       </Link>
                     </td>
-                    <td>{x.range}</td>
+                    <td>{x.group}</td>
                     <td className={`num ${pfTone(x.pf, props.minPf)}`}>{fmt.pf(x.pf)}</td>
                     <td className="num">{x.n}</td>
                     <td className={`num ${tone(x.net)}`}>{fmt.pct(x.net)}</td>

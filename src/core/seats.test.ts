@@ -224,7 +224,7 @@ describe("stage audit", () => {
     });
     const failed = bad.checks.filter((c) => !c.ok).map((c) => c.name);
     assert.ok(failed.includes("stages: every validated pair has config sets"));
-    assert.ok(failed.includes("stages: Main ⊆ Base-validated ∪ held"));
+    assert.ok(failed.includes("stages: Main ⊆ Base-validated ∪ held ∪ measured"));
   });
 });
 

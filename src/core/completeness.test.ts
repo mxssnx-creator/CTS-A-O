@@ -25,6 +25,7 @@ import { mergeSignals, SIGNAL_SOURCES, type SignalSettings } from "./signal-conf
 import { coordSettings, defaultWalkForward, type WalkForwardOptions } from "./sim/walkforward.ts";
 import { positiveCoordWarnings, SIGNAL_EVAL_MIN_PF } from "./positive.ts";
 import { MICRO_RANGE } from "./minimal-coord.ts";
+import { INDICATION_KINDS } from "./domain/types.ts";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 type Obj = Record<string, unknown>;
@@ -150,6 +151,21 @@ const CASES: Record<string, Case> = {
   "gates.rangeMinPf.general": num(1.05, 3),
   "gates.rangeMinPf.long": num(1.05, 3),
   "gates.minTrades": num(1, 500),
+  "exitStrategy.lookbackH": num(0, 720),
+  "exitStrategy.trainFraction": num(0.5, 0.8),
+  "exitStrategy.minEntries": num(5, 1000, { int: true }),
+  "exitStrategy.minValidationTrades": num(2, 500, { int: true }),
+  "exitStrategy.minPf": num(1.05, 10),
+  "exitStrategy.maxDdr": num(0, 10),
+  "exitStrategy.holdH": num(0.5, 96),
+  "exitStrategy.maxConfigsPerPair": num(6, 128, { int: true }),
+  "exitStrategy.quantiles": list(0.2, 0.95, { max: 4 }),
+  "exitStrategy.stopQuantiles": list(0.2, 0.95, { max: 4 }),
+  "exitStrategy.minTp": { ...num(0.001, 0.5), with: [["exitStrategy.maxTp", 1]] },
+  "exitStrategy.maxTp": { ...num(0.002, 1), with: [["exitStrategy.minTp", 0.001]] },
+  "exitStrategy.maxSl": num(0.005, 1),
+  "exitStrategy.trailShares": list(0.1, 0.95, { max: 4 }),
+  "exitStrategy.stopMultiples": list(0.25, 5, { max: 4 }),
   "gates.quorum": num(0, 1),
   "gates.baseSetsMinPf": num(0.5, 1.5),
   "gates.lastNFloor": num(0, 100, { int: true }),
@@ -260,6 +276,19 @@ const CASES: Record<string, Case> = {
   "live.liveGroupLastN": num(0, 2000),
   // 0 = no cap; else 10 … 2000 in steps of 10
   "signals.count": num(10, 2000, { int: true, also: [0, 100], bad: [15] }),
+  "signals.coordination.enabled": {
+    ...oneOf([false, true], ["false", 0, 1, null]),
+    with: [["signals.coordination.count", 100]],
+  },
+  "signals.coordination.minSources": num(2, 100, { int: true }),
+  "signals.coordination.count": num(10, 2000, { int: true, also: [0, 100], bad: [15] }),
+  "signals.coordination.volumeFactor": num(1, 22, { int: true }),
+  ...Object.fromEntries(
+    INDICATION_KINDS.map((kind) => [
+      `signals.combinedVolumeFactors.${kind}`,
+      num(1, 22, { int: true }),
+    ]),
+  ),
   "signals.sourcesMode": oneOf(["deny", "allow"]),
   "signals.rangeVolumeFactors.short": volumeFactor,
   "signals.rangeVolumeFactors.medium": volumeFactor,
@@ -467,6 +496,10 @@ function uiSources(): Map<string, string> {
 const NOT_SHOWN: Record<string, string> = {
   tfMin: "fixed at the 1m base (normalizeLanes forces 1); the lanes are chosen with `tfs`",
   historyDays: "derived: the longest lane history of tfDays (normalizeLanes)",
+  paperNotional:
+    "legacy fixed-sizing fallback for historical records; the page configures balance-percent sizing instead",
+  "live.maxNotionalUsd":
+    "legacy disabled USD ceiling (only zero is accepted); the page offers optional balance-relative limits instead",
   "block.signalsOwn":
     "measured default (a signal's Block level from its own closes, PR #65); not an operator lever",
   "grid.baseTargets":
@@ -480,6 +513,7 @@ const NOT_SHOWN: Record<string, string> = {
 };
 /** signal sources are listed from the SIGNAL_SOURCES catalog on the page, not by name */
 const SOURCE_PREFIX = "signals.sources.";
+const COMBINED_VOLUME_PREFIX = "signals.combinedVolumeFactors.";
 
 describe("settings completeness: every leaf is on the Settings page or listed as not shown", () => {
   const ui = uiSources();
@@ -499,7 +533,8 @@ describe("settings completeness: every leaf is on the Settings page or listed as
     const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const missing: string[] = [];
     for (const k of LEAVES.keys()) {
-      if (k in NOT_SHOWN || k.startsWith(SOURCE_PREFIX)) continue;
+      if (k in NOT_SHOWN || k.startsWith(SOURCE_PREFIX) || k.startsWith(COMBINED_VOLUME_PREFIX))
+        continue;
       const seg = k.split(".").at(-1)!;
       // tfDays.<tf>: the keys are numbers, the group name is what the page reads
       const word = /^\d+$/.test(seg) ? k.split(".").at(-2)! : seg;
@@ -520,6 +555,14 @@ describe("settings completeness: every leaf is on the Settings page or listed as
       [],
       "a default source switch the page cannot show",
     );
+  });
+
+  it("combined indication factors: the page lists every indication kind and defaults it to neutral volume", () => {
+    assert.match(text, /INDICATION_KINDS\.map/);
+    for (const kind of INDICATION_KINDS) {
+      assert.equal(DEFAULT_SETTINGS.signals.combinedVolumeFactors[kind], 1, kind);
+      assert.ok(LEAVES.has(`${COMBINED_VOLUME_PREFIX}${kind}`), kind);
+    }
   });
 
   it("the not-shown list is not stale: each entry is a leaf and really absent from the page", () => {

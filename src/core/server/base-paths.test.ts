@@ -7,13 +7,13 @@ import { after, afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { Worker } from "node:worker_threads";
 import { CoreRuntime } from "./runtime.server.ts";
-import { trackRuntimes } from "../test-support.ts";
+import { pinSyntheticEnd, trackRuntimes } from "../test-support.ts";
 import { CoreDb } from "./db.server.ts";
 import { closePool } from "./pool.server.ts";
 import { allCombos, microLaneFloor } from "../pipeline/pipeline.ts";
 import { DEFAULT_SETTINGS, MINIMAL_RANGE } from "../config.ts";
 
-process.env.CTS_CORE_SYNTHETIC_END = String(Math.floor(Date.now() / 3_600_000) * 3_600_000);
+pinSyntheticEnd();
 after(() => closePool());
 
 // Micro on its own indications and Minimal running them too (x01's grid: rule "minimal"), small grids
@@ -84,7 +84,13 @@ describe("engine Base: the worker and the in-process path", { timeout: 600_000 }
 
 describe("engine tapes on the worker cores", { timeout: 600_000 }, () => {
   it("each tape message carries only its own pairs' floors (every message cloned every pair's)", async () => {
-    type Floors = { pairTags?: Record<string, unknown>; pairTps?: Record<string, unknown>; heldIds?: ReadonlySet<string> };
+    type Floors = {
+      pairTags?: Record<string, unknown>;
+      pairTps?: Record<string, unknown>;
+      pairProtects?: Record<string, unknown>;
+      heldIds?: ReadonlySet<string>;
+      heldOnlyIds?: ReadonlySet<string>;
+    };
     const sent: Array<{ pairs: string[]; floors: Floors }> = [];
     const post = Worker.prototype.postMessage;
     Worker.prototype.postMessage = function (this: Worker, m: unknown, transfer?: never) {
@@ -102,6 +108,8 @@ describe("engine tapes on the worker cores", { timeout: 600_000 }, () => {
       Worker.prototype.postMessage = post;
     }
     assert.match(rt.status.workers ?? "", /cores/);
+    assert.match(rt.status.phases["Exit history"]?.slowest ?? "", /workers/,
+      "the default Exit phase must keep using workers before range tapes are built");
     const tagged = new Set(sent.flatMap((m) => Object.keys(m.floors.pairTags ?? {})));
     assert.ok(sent.length >= 2 && tagged.size >= 2, `${sent.length} tape messages, ${tagged.size} pairs with Base ranges`);
     for (const m of sent) {
@@ -109,7 +117,9 @@ describe("engine tapes on the worker cores", { timeout: 600_000 }, () => {
       const keys: Array<[string, string[]]> = [
         ["pairTags", Object.keys(m.floors.pairTags ?? {})],
         ["pairTps", Object.keys(m.floors.pairTps ?? {})],
+        ["pairProtects", Object.keys(m.floors.pairProtects ?? {})],
         ["heldIds", [...(m.floors.heldIds ?? [])].map((id) => id.split("|").slice(0, 2).join("|"))],
+        ["heldOnlyIds", [...(m.floors.heldOnlyIds ?? [])].map((id) => id.split("|").slice(0, 2).join("|"))],
       ];
       for (const [what, ks] of keys)
         for (const k of ks) assert.ok(own.has(k), `${what}: ${k} rides along a message for ${m.pairs.join(", ")}`);

@@ -271,7 +271,7 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
       }),
     },
   ],
-  "stages: Main ⊆ Base-validated ∪ held": [
+  "stages: Main ⊆ Base-validated ∪ held ∪ measured": [
     {
       run: "overall",
       what: "a Main pair neither validated nor held",
@@ -281,7 +281,7 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
       }),
     },
   ],
-  "stages: engine trades come from Main config sets": [
+  "stages: engine trades come from Main or independent Exit config sets": [
     {
       run: "overall",
       what: "an engine pair that traded dropped from Main",
@@ -550,7 +550,7 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
       corrupt: (i) => ({ ...i, paper: { ...i.paper!, equity: i.paper!.equity + 1 } }),
     },
   ],
-  "paper: position volume within [1, max multiple]": [
+  "paper: Block / relation volume within [1, max multiple]": [
     {
       run: "overall",
       what: "a position's source leg at the max multiple",

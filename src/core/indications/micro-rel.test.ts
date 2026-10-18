@@ -9,7 +9,7 @@ import { baseRangeProtects, makeUniverse, rangeAppliesTo, rangeBaseStats, runCom
 import { DEFAULT_PROTECT, DEFAULT_SETTINGS } from "../config.ts";
 import { MICRO_RANGE, rangeMinTfOf } from "../minimal-coord.ts";
 import { MARKET_ACT_P, MarketSource } from "./market.ts";
-import { isMicroInd, isMicroRelation, microRel, microSpecs } from "./micro.ts";
+import { isMicroInd, isMicroRelation, marketRsi2, marketZ, MICRO_REL, microRel, microSpecs, residZ } from "./micro.ts";
 import { indicationState, laneInd } from "./registry.ts";
 import { SeriesCache } from "./cache.ts";
 import type { Bars, Candle } from "../domain/types.ts";
@@ -58,6 +58,31 @@ const from = (b: Bars, k: number): Bars => {
 };
 
 const near = (a: number, b: number) => (Number.isNaN(a) ? Number.isNaN(b) : Math.abs(a - b) <= 1e-12 * Math.max(1, Math.abs(b)));
+
+function tinyRelationPair(gap: boolean) {
+  const at = 70;
+  const make = (sym: string, n: number, target: boolean): Bars => {
+    const b: Bars = { sym, tfMin: 1, n, t: new Float64Array(n), o: new Float64Array(n),
+      h: new Float64Array(n), l: new Float64Array(n), c: new Float64Array(n), v: new Float64Array(n) };
+    let price = 100;
+    for (let i = 0; i < n; i++) {
+      const peer = Math.sin(i * 0.37) * 0.001 + Math.cos(i * 0.11) * 0.0004;
+      const move = target ? i === at ? 0.2 : 1.2 * peer + Math.cos(i * 0.53) * 0.00015 : peer;
+      b.t[i] = (i + (gap && target && i >= at ? 1 : 0)) * 60_000;
+      b.o[i] = price;
+      price *= Math.exp(move);
+      b.c[i] = price;
+      b.h[i] = Math.max(b.o[i], price) * 1.001;
+      b.l[i] = Math.min(b.o[i], price) * 0.999;
+      b.v[i] = target && i >= at ? i % 3 === 0 ? 4_000 : 400 : 1_000;
+    }
+    return b;
+  };
+  const b = make("TARGET", 160, true), peer = make("PEER", 161, false);
+  const k = new SeriesCache(b);
+  k.setMarket(new MarketSource([b, peer]));
+  return { at, b, peer, k };
+}
 
 describe("market reference", () => {
   it("per timeframe: mean bar log return, cumulative index and mean activity, aligned by open time", () => {
@@ -170,6 +195,82 @@ describe("market reference", () => {
 });
 
 describe("Micro market relations", () => {
+  it("excludes a symbol's cross-gap return while retaining the rolling valid-pair/minimum policy", () => {
+    const { at, b, k } = tinyRelationPair(true), r = microRel(k)!;
+    assert.equal(b.t[at] - b.t[at - 1], 120_000);
+    assert.ok(Number.isFinite(r.m.ret[at]), "a contiguous peer still contributes a real one-bar market return");
+    assert.ok(Number.isFinite(r.beta[at]), "59 valid pairs remain; a gap does not impose an unrelated 60-bar fit reset");
+    const fit = (end: number, omitGap: boolean) => {
+      let n = 0, sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0;
+      for (let j = Math.max(1, end - MICRO_REL.win + 1); j <= end; j++) {
+        if (omitGap && b.t[j] - b.t[j - 1] !== 60_000) continue;
+        const x = r.m.ret[j], y = Math.log(b.c[j] / b.c[j - 1]);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+        n++; sx += x; sy += y; sxx += x * x; syy += y * y; sxy += x * y;
+      }
+      const vx = sxx / n - (sx / n) ** 2, vy = syy / n - (sy / n) ** 2, cov = sxy / n - sx / n * sy / n;
+      return { n, beta: cov / vx, sde: Math.sqrt(Math.max(0, vy - cov * cov / vx)) };
+    };
+    assert.equal(fit(at, true).n, 59);
+    assert.ok(Math.abs(fit(at, false).beta - fit(at, true).beta) > 1, "the regression fixture exposes the old contamination");
+    for (let i = at; i < b.n; i++) {
+      const expected = fit(i, true);
+      assert.ok(near(r.beta[i], expected.beta), `correct pair eviction at ${i}`);
+      assert.ok(near(r.sde[i], expected.sde), `residual variance at ${i}`);
+    }
+  });
+
+  it("blocks cross-gap movement/activity windows, rewarms market RSI and keeps causal prefixes", () => {
+    const { at, b, peer, k } = tinyRelationPair(true), r = microRel(k)!, mrsi = marketRsi2(k);
+    for (const n of [3, 6, 12]) {
+      for (let i = at; i < at + n; i++) {
+        assert.ok(Number.isNaN(residZ(k, r, n, i)), `${n}-bar own movement cannot bridge the timestamp gap`);
+        assert.ok(Number.isNaN(marketZ(r, n, i)), `${n}-bar market movement uses the same complete own window`);
+      }
+      assert.ok(Number.isFinite(residZ(k, r, n, at + n)), "a wholly contiguous movement window resumes");
+      assert.ok(Number.isFinite(marketZ(r, n, at + n)));
+    }
+    assert.ok(Number.isNaN(mrsi[at]) && Number.isNaN(mrsi[at + 1]), "two new aligned market returns must seed RSI after the gap");
+    assert.ok(Number.isFinite(mrsi[at + 2]));
+    for (const spec of microSpecs().filter((x) => isMicroRelation(x.id))) {
+      const state = spec.fn(k);
+      assert.equal(state[at], 0, `${spec.id} cannot treat the post-gap multi-bar close move as an entry bar`);
+      if (/^mc-(act-idio|ivwapd)-/.test(spec.id))
+        assert.ok(state.slice(at, at + 59).every((x) => x === 0), `${spec.id} needs its own 60 contiguous volumes`);
+      if (spec.id.startsWith("mc-rexh-"))
+        assert.ok(state.slice(at, at + 60).every((x) => x === 0), `${spec.id} needs 60 contiguous prior volumes`);
+      const cutT = b.t[at + 12], prefix = new SeriesCache(cutAt(b, cutT));
+      prefix.setMarket(new MarketSource([cutAt(b, cutT), cutAt(peer, cutT)]));
+      assert.deepEqual(spec.fn(prefix), state.slice(0, prefix.b.n), `${spec.id} future bars cannot repair an earlier gap`);
+    }
+  });
+
+  it("preserves the exact former fit and market RSI on valid gapless bars", () => {
+    const { b, k } = tinyRelationPair(false), r = microRel(k)!;
+    let cnt = 0, sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0;
+    const add = (i: number, sign: number) => {
+      const x = r.m.ret[i], y = i >= 1 ? Math.log(b.c[i] / b.c[i - 1]) : NaN;
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+      cnt += sign; sx += sign * x; sy += sign * y; sxx += sign * x * x; syy += sign * y * y; sxy += sign * x * y;
+    };
+    let su = 0, sd = 0, au = 0, ad = 0;
+    const oldRsi = new Float64Array(b.n).fill(NaN);
+    for (let i = 0; i < b.n; i++) {
+      add(i, 1); if (i >= MICRO_REL.win) add(i - MICRO_REL.win, -1);
+      if (cnt >= MICRO_REL.min) {
+        const mx = sx / cnt, my = sy / cnt, vx = sxx / cnt - mx * mx, vy = syy / cnt - my * my, cv = sxy / cnt - mx * my;
+        assert.equal(r.beta[i], cv / vx);
+        assert.equal(r.sde[i], Math.sqrt(Math.max(0, vy - cv * cv / vx)));
+      } else assert.ok(Number.isNaN(r.beta[i]));
+      if (i < 1) continue;
+      const x = Number.isFinite(r.m.ret[i]) ? r.m.ret[i] : 0, u = x > 0 ? x : 0, d = x < 0 ? -x : 0;
+      if (i <= 2) { su += u; sd += d; if (i < 2) continue; au = su / 2; ad = sd / 2; }
+      else { au = (au + u) / 2; ad = (ad + d) / 2; }
+      oldRsi[i] = ad === 0 ? au === 0 ? 50 : 100 : 100 - 100 / (1 + au / ad);
+    }
+    assert.deepEqual(marketRsi2(k), oldRsi);
+  });
+
   it("are causal: a universe cut at any time gives the same market and the same events up to the cut", () => {
     const syms = ["AAA", "BBB", "CCC", "DDD", "EEE"];
     const full = barsOf(basket(5, 1500, 7), 5, syms);

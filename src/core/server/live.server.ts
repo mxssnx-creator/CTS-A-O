@@ -69,16 +69,22 @@ import {
 } from "./live.ts";
 
 /**
- * Whether live.excludeRanges leaves this lane's config out. A range is a target band of the engine's Normal and
- * Trailing configs: "wide" is the untagged default-protect grid. Signal configs, and the untagged Axis / DCA ladders,
+ * Whether live.excludeRanges leaves this lane's config out. A range is a target band of Normal / Trailing configs:
+ * "wide" is their untagged default-protect grid. Historic Exit, Signal, Axis and DCA configs are range-independent,
  * carry no range tag either but are not the Wide grid — signals are narrowed by live.source, Axis / DCA by
  * live.kinds — so excluding "wide" never stops them (it did: x01's "wide" exclusion silenced every signal lane).
  */
 export function rangeExcluded(cfg: string, exRanges: ReadonlySet<string>): boolean {
   const c = cfgInfo(cfg);
+  if (c.kind === "exit") return false;
   if (c.tag) return exRanges.has(c.tag);
   if (c.isSig) return false;
-  if (c.kind !== "normal" && c.kind !== "trailing" && c.kind !== "trailing-only") return false;
+  if (
+    c.kind !== "normal" &&
+    c.kind !== "trailing" &&
+    c.kind !== "trailing-only"
+  )
+    return false;
   return exRanges.has("wide");
 }
 
@@ -88,6 +94,7 @@ export function rangeExcluded(cfg: string, exRanges: ReadonlySet<string>): boole
  */
 export function configExcluded(cfg: string, exConfigs: ReadonlySet<string>): boolean {
   const c = cfgInfo(cfg);
+  if (c.kind === "exit") return exConfigs.has(`${c.bot}|exit`);
   return !c.isSig && exConfigs.has(`${c.bot}|${c.tag || "wide"}`);
 }
 
@@ -126,8 +133,11 @@ export function liveLaneFilter(
   proven: ReadonlySet<string> | null = null,
   promotion?: (l: Pick<ControlContribution, "cfg" | "sym" | "side">) => boolean,
 ): {
-  sendable: (l: Pick<ControlContribution, "cfg" | "vol"> & Partial<Pick<ControlContribution, "sym" | "side">>) => boolean;
-  validLane: (l: Pick<ControlContribution, "cfg" | "vol" | "sym" | "side">) => boolean;
+  sendable: (
+    l: Pick<ControlContribution, "cfg" | "vol" | "blockVol"> &
+      Partial<Pick<ControlContribution, "sym" | "side">>,
+  ) => boolean;
+  validLane: (l: Pick<ControlContribution, "cfg" | "vol" | "blockVol" | "sym" | "side">) => boolean;
   /** live.excludeConfigs names the lane's family: its lanes never add volume, and a held key of them is closed */
   closedConfig: (l: Pick<ControlContribution, "cfg">) => boolean;
 } {
@@ -137,14 +147,20 @@ export function liveLaneFilter(
   const exRanges = s.excludeRanges?.length ? new Set<string>(s.excludeRanges) : null;
   // engine families left out of live (bot|range, live.excludeConfigs)
   const exConfigs = s.excludeConfigs?.length ? new Set<string>(s.excludeConfigs) : null;
-  const referenceProofs = s.promotedLanes ? new Map(s.promotedLanes.map((p) => [promoteLaneKey(p), p])) : null;
-  const closedConfig = (l: Pick<ControlContribution, "cfg">) => !!exConfigs && configExcluded(l.cfg, exConfigs);
-  const sendable = (l: Pick<ControlContribution, "cfg" | "vol"> & Partial<Pick<ControlContribution, "sym" | "side">>) => {
+  const referenceProofs = s.promotedLanes
+    ? new Map(s.promotedLanes.map((p) => [promoteLaneKey(p), p]))
+    : null;
+  const closedConfig = (l: Pick<ControlContribution, "cfg">) =>
+    !!exConfigs && configExcluded(l.cfg, exConfigs);
+  const sendable = (
+    l: Pick<ControlContribution, "cfg" | "vol" | "blockVol"> &
+      Partial<Pick<ControlContribution, "sym" | "side">>,
+  ) => {
     const c = cfgInfo(l.cfg);
     if (liveKinds && !liveKinds.has(c.kind)) return false;
     if (exRanges && rangeExcluded(l.cfg, exRanges)) return false;
     if (closedConfig(l)) return false;
-    if (s.plainOnly && (l.vol ?? 1) > 1 + 1e-9) return false;
+    if (s.plainOnly && (l.blockVol ?? l.vol ?? 1) > 1 + 1e-9) return false;
     if (src !== "all" && c.isSig !== (src === "signals")) return false;
     if (!c.isSig && s.promotedLanes !== undefined) {
       const proof = l.sym && l.side ? referenceProofs?.get(promoteLaneKey({ cfg: l.cfg, sym: l.sym, side: l.side })) : undefined;
@@ -154,7 +170,7 @@ export function liveLaneFilter(
     if (proven && !c.isSig && !proven.has(l.cfg)) return false;
     return true;
   };
-  const validLane = (l: Pick<ControlContribution, "cfg" | "vol" | "sym" | "side">) => {
+  const validLane = (l: Pick<ControlContribution, "cfg" | "vol" | "blockVol" | "sym" | "side">) => {
     if (!sendable(l)) return false;
     if (promotion && !promotion(l)) return false;
     const c = cfgInfo(l.cfg);
@@ -204,8 +220,25 @@ export function liveReadiness(
     if (hit) r = hit;
     else {
       const { sendable } = liveLaneFilter(s, null, null);
-      const sub = runSubset({ ...sim, openAtEnd: [] }, (t) => !narrowed || sendable({ cfg: t.cfg, sym: t.sym, side: t.side, vol: t.mult ?? 1 }), minPf);
-      r = { pf: sub.stats.pf, n: sub.stats.n, stable: sub.stable, unknownReturns: sub.stats.unknownReturns };
+      const sub = runSubset(
+        { ...sim, openAtEnd: [] },
+        (t) =>
+          !narrowed ||
+          sendable({
+            cfg: t.cfg,
+            sym: t.sym,
+            side: t.side,
+            vol: t.mult ?? 1,
+            blockVol: (t.mult ?? 1) / (t.volFactor ?? 1),
+          }),
+        minPf,
+      );
+      r = {
+        pf: sub.stats.pf,
+        n: sub.stats.n,
+        stable: sub.stable,
+        unknownReturns: sub.stats.unknownReturns,
+      };
       m.set(key, r);
     }
   } else return { ok: false, why: "settled post-Base accepted-return basis unavailable; recompute before live readiness" };
@@ -1214,6 +1247,7 @@ async function runStepNow(
         // never a stop closer than the minimum (a lane's scaled stop on 1m can be a fraction of a percent)
         sl: Math.max(i.protect.sl, s.minStopPct ?? 0.01),
         barT: i.barT,
+        volFactor: i.volFactor,
         managed: i.protect.trail > 0 || (i.kind !== undefined && i.kind !== "normal"),
         coordVol: i.coordVol,
         hedge: i.hedge,
@@ -1432,16 +1466,25 @@ async function runStepNow(
       // so the entry is sent at it — while it is at most MIN_RAISE_UNIT_X times our notional and still fits the
       // per-position cap (and the equity caps of the last read). Past either the symbol is too large for this
       // account: skipped with the reason (minRaiseBlock).
+      const intentFactor = Number.isFinite(e.volFactor)
+        ? Math.min(22, Math.max(1, Math.round(e.volFactor!)))
+        : 1;
+      const intentUnit = Math.min(unit * intentFactor, cap);
       const minNotional = bx.exchangeMinNotional(spec, px);
       const blockedMin =
-        minNotional > unit * MIN_RAISE_UNIT_X
-          ? `exchange minimum $${minNotional.toFixed(2)} is over ${MIN_RAISE_UNIT_X}x the notional $${unit.toFixed(2)}`
+        minNotional > intentUnit * MIN_RAISE_UNIT_X
+          ? `exchange minimum $${minNotional.toFixed(2)} is over ${MIN_RAISE_UNIT_X}x the notional $${intentUnit.toFixed(2)}`
           : minRaiseBlock(minNotional, cap);
       if (blockedMin) {
         status.skipped.push({ sym: e.sym, why: blockedMin });
         continue;
       }
-      const sized = bx.snapQtyExchange(unit / px, px, spec, venueMins(rt).get(e.sym)?.qty ?? 0);
+      const sized = bx.snapQtyExchange(
+        intentUnit / px,
+        px,
+        spec,
+        venueMins(rt).get(e.sym)?.qty ?? 0,
+      );
       let qty = sized.qty;
       if (!(qty > 0)) {
         status.skipped.push({ sym: e.sym, why: "size rounds to zero" });
@@ -1833,7 +1876,17 @@ export function laneContributions(
     const multiplier = positionMult(p);
     const unitsKnown = Number.isFinite(intrinsic) && intrinsic > 0 && Number.isFinite(multiplier) && multiplier > 0;
     const c = (lid: string, v: number, legacy: string): ControlContribution => {
-      const x: ControlContribution = { id: lid, cfg: p.cfg, sym: p.sym, side: p.side, vol: v, sl, risk, chase };
+      const x: ControlContribution = {
+        id: lid,
+        cfg: p.cfg,
+        sym: p.sym,
+        side: p.side,
+        vol: v,
+        blockVol: v / (p.volFactor ?? 1),
+        sl,
+        risk,
+        chase,
+      };
       if (externalUnits) x.laneUnits = unitsKnown ? v / intrinsic : NaN;
       if (tgt !== undefined) x.tgt = tgt;
       if (stopPx !== undefined) x.stopPx = stopPx;

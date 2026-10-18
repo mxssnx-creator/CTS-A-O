@@ -1,4 +1,5 @@
 import { signalSettings, type SignalSettings } from "../../core/signal-config.ts";
+import { signalProtects } from "../../core/signals.ts";
 
 export interface SignalUnit {
   bot: string;
@@ -14,18 +15,28 @@ export interface SignalUnit {
 
 export function signalTypeLabel(kind?: string | null): string {
   if (!kind) return "Base / discovery";
-  return ({ normal: "Normal", trailing: "Trailing with TP", "trailing-only": "Trailing only · no TP", dca: "DCA", "dca-active": "DCA Active", axis: "Axis" } as Record<string, string>)[kind] ?? kind;
+  return ({ normal: "Normal", trailing: "Trailing with TP", "trailing-only": "Trailing only · no TP", exit: "Historic Exit", dca: "DCA", "dca-active": "DCA Active", axis: "Axis" } as Record<string, string>)[kind] ?? kind;
+}
+
+/** Read the canonical Exit suffix without importing the server-side config pipeline into the browser. */
+export function historicExitLabel(value: { cfg?: string; key?: string; id?: string }): string | null {
+  const suffix = /\|hx([LS])?([012])?$/.exec(value.cfg ?? value.key ?? value.id ?? "");
+  if (!suffix) return null;
+  const family = suffix[2] === "0" ? "Static SL" : suffix[2] === "1" ? "Adaptive SL" : suffix[2] === "2" ? "Trailing" : null;
+  const side = suffix[1] === "L" ? "Long" : suffix[1] === "S" ? "Short" : null;
+  return ["Historic Exit", family, side].filter(Boolean).join(" · ");
 }
 
 /** Match the engine's normalized percent/ATR grids and the independent no-TP grid. */
 export function signalConfigCounts(input?: Partial<SignalSettings> | null) {
   const s = signalSettings(input);
-  const normal = s.normal.tp.length * s.normal.slOfTp.length;
-  const trailing = s.trailing.tp.length * s.trailing.trailOfTp.length;
-  const pct = s.exits === "atr" ? 0 : normal + trailing;
-  const atr = s.exits === "pct" ? 0 : s.atr.sl.length * s.atr.tpRatio.length * (1 + s.atr.trail.length);
-  const trailingOnly = s.trailingOnly.enabled ? s.trailingOnly.sl.length * s.trailingOnly.trail.length : 0;
-  return { normal, trailing, pct, atr, trailingOnly, total: pct + atr + trailingOnly };
+  const protects = signalProtects(s);
+  const normal = protects.filter((p) => !p.atr && !p.trailOnly && p.trail === 0).length;
+  const trailing = protects.filter((p) => !p.atr && !p.trailOnly && p.trail > 0).length;
+  const atr = protects.filter((p) => !!p.atr).length;
+  const trailingOnly = protects.filter((p) => p.trailOnly).length;
+  const pct = normal + trailing;
+  return { normal, trailing, pct, atr, trailingOnly, total: protects.length };
 }
 
 /** TP zero alone is not proof of no-TP mode: aggregate live rows also use zero for missing config detail. */

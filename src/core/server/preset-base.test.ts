@@ -195,9 +195,11 @@ describe("preset backtest tapes", { timeout: 900_000 }, () => {
   const fits = (t: ConfigTape) => (micro(t) ? t.protect.tag === "mc" || t.protect.tag === "mn" : t.protect.tag !== "mc");
   const label = (t: ConfigTape) => `${t.bot}|${t.ind} ${t.protect.tag ?? "wide"}`;
 
-  it("a fixed focus set keeps the Micro rule: Micro cells for Micro's indications only", async () => {
-    const { tapes } = await backtest("fixed");
-    assert.ok(tapes.some((t) => !micro(t)) && tapes.some(micro), "both pairs built tapes");
+  it("a fixed focus set passes Base before building only its admitted ranges, keeping the Micro rule", async () => {
+    const { tapes, base } = await backtest("fixed");
+    assert.ok(base && base.main.size > 0 && tapes.length > 0, "fixed focus computes Base and builds its qualified cohort");
+    assert.ok(tapes.every((t) => base.main.has(`${t.bot}|${t.ind}`)));
+    assert.deepEqual([...new Set(tapes.filter((t) => !base.pairTags[`${t.bot}|${t.ind}`]?.includes(t.protect.tag ?? "")).map(label))], []);
     assert.deepEqual([...new Set(tapes.filter((t) => !fits(t)).map(label))], []);
   });
 

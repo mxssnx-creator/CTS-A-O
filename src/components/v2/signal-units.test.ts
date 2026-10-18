@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { hasNoTakeProfit, signalConfigCounts, signalTrailGapRatio, signalTypeLabel, signalUnitRowKey } from "./signal-units.ts";
+import { hasNoTakeProfit, historicExitLabel, signalConfigCounts, signalTrailGapRatio, signalTypeLabel, signalUnitRowKey } from "./signal-units.ts";
 import { DEFAULT_SIGNALS, signalSettings } from "../../core/signal-config.ts";
 import { signalProtects } from "../../core/signals.ts";
 
@@ -32,7 +32,27 @@ test("legacy discovery rows are explicit and never labeled as a qualified Normal
   assert.equal(signalTypeLabel("trailing"), "Trailing with TP");
   assert.equal(signalTypeLabel("trailing-only"), "Trailing only · no TP");
   assert.equal(signalTypeLabel("dca-active"), "DCA Active");
+  assert.equal(signalTypeLabel("exit"), "Historic Exit");
   assert.equal(signalTypeLabel("future-type"), "future-type");
+});
+
+test("Historic Exit labels preserve every family and direction without assigning a range or changing the kind", () => {
+  const base = "follow|rsi@m5|tp1.2|sl0.8|tr0.3|h32";
+  for (const [code, family] of [["0", "Static SL"], ["1", "Adaptive SL"], ["2", "Trailing"]]) {
+    for (const [direction, side] of [["L", "Long"], ["S", "Short"]]) {
+      const row = { key: `${base}|hx${direction}${code}`, kind: "exit" };
+      assert.equal(historicExitLabel(row), `Historic Exit · ${family} · ${side}`);
+      assert.equal(row.kind, "exit", "display text must retain the independent execution/filter kind");
+    }
+  }
+  assert.equal(historicExitLabel({ cfg: `${base}|hxL0` }), "Historic Exit · Static SL · Long");
+  assert.equal(historicExitLabel({ id: `${base}|hxS2` }), "Historic Exit · Trailing · Short");
+  assert.equal(historicExitLabel({ key: `${base}|hx` }), "Historic Exit", "legacy identity cannot invent a family or direction");
+  assert.equal(historicExitLabel({ key: `${base}|hxL` }), "Historic Exit · Long");
+  assert.equal(historicExitLabel({ key: `${base}|hx1` }), "Historic Exit · Adaptive SL");
+  for (const suffix of ["", "|mc", "|to", "|hxL3", "|hxLS0", "|hxL0|extra", "|hxL0|dca"])
+    assert.equal(historicExitLabel({ key: `${base}${suffix}` }), null);
+  assert.equal(historicExitLabel({}), null);
 });
 
 test("Signal UI counts match the engine and include no-TP sets independently of percent/ATR selection", () => {

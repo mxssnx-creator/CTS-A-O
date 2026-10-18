@@ -22,11 +22,21 @@ import { DEFAULT_PROTECT } from "../config.ts";
 import type { Bars } from "../domain/types.ts";
 import type { MicroIndRule } from "../indications/micro.ts";
 import { emptySignalHistDiagnostics, signalHistProtectsGen } from "../signal-hist.ts";
-import type { BaseConfigChunkMessage, SignalHistMessage } from "./pool.server.ts";
+import {
+  EXIT_HISTORY_MAX_PAIRS,
+  emptyExitStrategyDiagnostics,
+  exitStrategyProtectsGen,
+} from "../exit-strategy.ts";
+import type {
+  BaseConfigChunkMessage,
+  ExitStrategyMessage,
+  SignalHistMessage,
+} from "./pool.server.ts";
 import { BaseConfigCounter } from "../base-config-counts.ts";
 
 type Msg = { evaluationFromT?: number } & (
   | ({ id: number } & SignalHistMessage)
+  | ({ id: number } & ExitStrategyMessage)
   | ({ id: number } & BaseConfigChunkMessage)
   | {
       id: number;
@@ -221,7 +231,15 @@ parentPort!.on("message", (m: Msg) => {
     if (m.type === "signal-hist") {
       if (m.pairs.length > 2) throw new Error("Signal history messages carry at most two pairs");
       const diagnostics = emptySignalHistDiagnostics();
-      const g = signalHistProtectsGen(u, m.pairs, m.sig, m.tactics, m.cutT, m.validation, diagnostics);
+      const g = signalHistProtectsGen(
+        u,
+        m.pairs,
+        m.sig,
+        m.tactics,
+        m.cutT,
+        m.validation,
+        diagnostics,
+      );
       const total = m.pairs.reduce(
         (n, pair) => n + seriesOf(u, pair.split("|")[1] ?? "").length,
         0,
@@ -236,6 +254,41 @@ parentPort!.on("message", (m: Msg) => {
         }
         // The generator yields before each series. Count only completed series, so the heartbeat never claims
         // 100 % while the last one still computes; the pool marks the completed reply whole.
+        const done = yielded++;
+        if (Date.now() - last >= 400) {
+          last = Date.now();
+          parentPort!.postMessage({ id: m.id, progress: done, total });
+        }
+      }
+    }
+    if (m.type === "exit-hist") {
+      if (m.pairs.length > EXIT_HISTORY_MAX_PAIRS)
+        throw new Error(`Exit history messages carry at most ${EXIT_HISTORY_MAX_PAIRS} pairs`);
+      const diagnostics = emptyExitStrategyDiagnostics();
+      const g = exitStrategyProtectsGen(
+        u,
+        m.pairs,
+        m.settings,
+        m.tactics,
+        m.cutT,
+        m.validation,
+        diagnostics,
+      );
+      // Exit history also yields once per candidate so the in-process fallback can remain responsive. This upper bound
+      // covers those yields without reporting more than 100 % before every pair's validation has finished.
+      const total = m.pairs.reduce(
+        (n, pair) =>
+          n + seriesOf(u, pair.split("|")[1] ?? "").length + m.settings.maxConfigsPerPair,
+        0,
+      );
+      let yielded = 0;
+      let last = 0;
+      for (;;) {
+        const r = g.next();
+        if (r.done) {
+          parentPort!.postMessage({ id: m.id, ok: true, pairProtects: r.value, diagnostics });
+          return;
+        }
         const done = yielded++;
         if (Date.now() - last >= 400) {
           last = Date.now();

@@ -219,6 +219,18 @@ describe("acceptance groups on the exchange record", async () => {
     assert.equal(ex.stats(engineSideKey("trailing", "sh", -1), 11 * H, 24).n, 0);
   });
 
+  it("keeps each Historic Exit config-set acceptance record independent", () => {
+    const rows = [
+      { cfg: "follow|ema-9-21@m15|tp3|sl4|tr0|h32|hxL0", sym: "S1-USDT", side: -1, exitT: 10 * H + 60_000, r: -0.01 },
+      { cfg: "follow|ema-9-21@m15|tp3|sl4|tr0|h32|hxL0", sym: "S2-USDT", side: -1, exitT: 10 * H + 120_000, r: -0.01 },
+      { cfg: "follow|ema-9-21@m15|tp3|sl4|tr1|h32|hxL2", sym: "S3-USDT", side: -1, exitT: 10 * H + 180_000, r: 0.01 },
+    ];
+    const sets = exchangeAcceptIndex(rows);
+    assert.equal(sets.stats(engineSideKey("exit", undefined, -1, undefined, "static-sl"), 11 * H, 24).n, 2);
+    assert.equal(sets.stats(engineSideKey("exit", undefined, -1, undefined, "trailing"), 11 * H, 24).n, 1);
+    assert.equal(sets.stats(engineSideKey("exit", undefined, -1, undefined, "adaptive-sl"), 11 * H, 24).n, 0);
+  });
+
   it("engine direction acceptance: the exchange's losses refuse the group the simulation accepts", () => {
     const idx = new EngineSideIndex(); // no simulated record: the simulation alone accepts (too few candidates)
     assert.equal(idx.accepts(key, 11 * H, o), true);

@@ -22,6 +22,7 @@ import {
 } from "../sim/walkforward.ts";
 import { DEFAULT_PROTECT, DEFAULT_SETTINGS, STRATEGY_PRESETS } from "../config.ts";
 import { signalHistProtects } from "../signal-hist.ts";
+import { emptyExitStrategyDiagnostics, exitStrategyProtectsGen } from "../exit-strategy.ts";
 import { DEFAULT_SIGNALS, signalSettings } from "../signal-config.ts";
 import {
   closePool,
@@ -32,6 +33,8 @@ import {
   slices,
   type SignalHistMessage,
   type SignalHistReply,
+  type ExitStrategyMessage,
+  type ExitStrategyReply,
 } from "./pool.server.ts";
 
 const END = Date.UTC(2026, 8, 20);
@@ -45,7 +48,22 @@ describe("worker pool", { timeout: 300_000 }, () => {
   const wf = defaultWalkForward(s);
   const combos = allCombos().slice(0, 60);
   const pairs = combos.map((c) => `${c.bot}|${c.ind}`);
-  const dcaOpt = { protects: wf.dcaProtects, dca: wf.dca, axis: s.axis };
+  // Worker parity exercises transport, ordering and strategy variants; the production range grid grows independently.
+  // Freeze a representative bounded fixture instead of multiplying every new grid cell by all 60 pairs and 8 replays.
+  const parityProtects = [
+    { ...DEFAULT_PROTECT },
+    { ...DEFAULT_PROTECT, trail: 0.005 },
+    ...["mn", "sh"].flatMap((tag) => [false, true].map((trailing) => {
+      const p = wf.protects.find((p) => p.tag === tag && (p.trail > 0) === trailing);
+      assert.ok(p, `${tag ?? "Wide"} ${trailing ? "Trailing" : "Normal"} fixture exists`);
+      return p;
+    })),
+  ];
+  const dcaOpt = {
+    protects: wf.dcaProtects.slice(0, 2),
+    dca: wf.dca,
+    axis: { ...s.axis, ranges: ["atr", "fib"] as ("atr" | "fib")[], levelsSet: [2, 3] },
+  };
 
   it("engine Base (lanes, round-robin over workers) equals the in-process Base exactly", async () => {
     const cs = syntheticCandles("L", 1, 6000, END);
@@ -69,7 +87,10 @@ describe("worker pool", { timeout: 300_000 }, () => {
   });
 
   it("preset Compare (simulated trading) on workers equals the in-process walk-forward", async () => {
-    const tapes = buildTapes(u, wf.protects, s.cost, dcaOpt, new Set(pairs), s.tactics);
+    const tapes = buildTapes(u, parityProtects, s.cost, dcaOpt, new Set(pairs), s.tactics);
+    assert.ok(tapes.length <= pairs.length * 16, "worker parity fixture stays bounded as production defaults expand");
+    assert.deepEqual([...new Set(tapes.map((t) => t.kind))].sort(), ["axis", "dca", "dca-active", "normal", "trailing"]);
+    assert.deepEqual([...new Set(tapes.filter((t) => t.kind === "normal").map((t) => t.protect.tag ?? "wide"))].sort(), ["mn", "sh", "wide"]);
     const names = Object.keys(STRATEGY_PRESETS).slice(0, 4);
     // (a small synthetic fixture: seats from 3 closes, so the comparison has trades to compare)
     const o = { ...wf, simH: 48, validLastN: 0, lastN: 0, gates: { ...wf.gates, minTrades: 3 } };
@@ -101,7 +122,7 @@ describe("worker pool", { timeout: 300_000 }, () => {
       }
     const tapes = buildTapes(
       u,
-      wf.protects,
+      parityProtects,
       s.cost,
       dcaOpt,
       new Set(pairs.slice(0, 10)),
@@ -217,7 +238,7 @@ describe("worker pool", { timeout: 300_000 }, () => {
   it("tapes match the in-process ones exactly, in the same order", async () => {
     const local = buildTapes(
       u,
-      wf.protects.slice(0, 6),
+      parityProtects,
       s.cost,
       dcaOpt,
       new Set(pairs),
@@ -229,7 +250,7 @@ describe("worker pool", { timeout: 300_000 }, () => {
         type: "tapes",
         bars,
         pairs: pp,
-        protects: wf.protects.slice(0, 6),
+        protects: parityProtects,
         cost: s.cost,
         dcaOpt,
         tactics: s.tactics,
@@ -241,7 +262,10 @@ describe("worker pool", { timeout: 300_000 }, () => {
     assert.equal(remote.length, local.length);
     // no caller floors: the worker's own completeness record must not turn into floors (a missing minSl made every
     // worker stop NaN: "…|slNaN|…")
-    assert.deepEqual(remote.filter((t) => /NaN/.test(t.id)).map((t) => t.id), []);
+    assert.deepEqual(
+      remote.filter((t) => /NaN/.test(t.id)).map((t) => t.id),
+      [],
+    );
     for (let i = 0; i < local.length; i++) {
       assert.equal(remote[i].id, local[i].id);
       assert.equal(remote[i].n, local[i].n);
@@ -261,7 +285,12 @@ describe("worker pool", { timeout: 300_000 }, () => {
       pairTps: { "x|a": { mn: [0.008] }, "y|c": { sh: [0.02] } },
       pairProtects: { "x|b": [P], "y|d": [P] },
       // "x|ab|…" is pair x|ab: not taken for x|a by its prefix
-      heldIds: new Set(["x|a|tp0.8|sl0.4|tr0|h8|mn", "x|b|tp1|sl0.5|tr0|h8", "y|c|tp2|sl1|tr0|h8|sh", "x|ab|tp1|sl0.5|tr0|h8"]),
+      heldIds: new Set([
+        "x|a|tp0.8|sl0.4|tr0|h8|mn",
+        "x|b|tp1|sl0.5|tr0|h8",
+        "y|c|tp2|sl1|tr0|h8|sh",
+        "x|ab|tp1|sl0.5|tr0|h8",
+      ]),
     };
     const cut = floorsForPairs(floors)(["x|a", "x|b"]);
     assert.deepEqual(cut.pairTags, { "x|a": ["mn"], "x|b": [""] });
@@ -273,7 +302,10 @@ describe("worker pool", { timeout: 300_000 }, () => {
     // a pair with no entry stays without one (no Base ranges listed: it computes every cell)
     assert.deepEqual(floorsForPairs(floors)(["z|e"]).pairTags, {});
     // floors without the per-pair maps get none
-    assert.deepEqual(floorsForPairs({ minSl: 0.004, minTrail: 0.002 })(["x|a"]), { minSl: 0.004, minTrail: 0.002 });
+    assert.deepEqual(floorsForPairs({ minSl: 0.004, minTrail: 0.002 })(["x|a"]), {
+      minSl: 0.004,
+      minTrail: 0.002,
+    });
   });
 
   it("a held pair that failed Base keeps only its held tape, never every range", () => {
@@ -320,8 +352,13 @@ describe("worker pool", { timeout: 300_000 }, () => {
   it("tapes built on workers from each message's floors equal the in-process ones from the whole floors", async () => {
     // two cells each of two Minimal and two Short targets, a pair's own config beside them
     const pick = (tag: string) => {
-      const tps = [...new Set(wf.protects.filter((p) => p.tag === tag).map((p) => p.tp))].slice(0, 2);
-      return tps.flatMap((tp) => wf.protects.filter((p) => p.tag === tag && p.tp === tp).slice(0, 2));
+      const tps = [...new Set(wf.protects.filter((p) => p.tag === tag).map((p) => p.tp))].slice(
+        0,
+        2,
+      );
+      return tps.flatMap((tp) =>
+        wf.protects.filter((p) => p.tag === tag && p.tp === tp).slice(0, 2),
+      );
     };
     const protects = [...pick("mn"), ...pick("sh")];
     const mnTp = protects[0].tp;
@@ -336,17 +373,40 @@ describe("worker pool", { timeout: 300_000 }, () => {
       if (i % 5 === 0) pairProtects[k] = [own];
     });
     // held: the Short configs of the Minimal-only pairs (built held-only, outside their Base ranges)
-    const all = buildTapes(u, protects, s.cost, undefined, new Set(pairs), s.tactics, null, { minSl: 0.004, minTrail: 0.002 });
+    const all = buildTapes(u, protects, s.cost, undefined, new Set(pairs), s.tactics, null, {
+      minSl: 0.004,
+      minTrail: 0.002,
+    });
     const heldIds = new Set(
-      all.filter((t) => t.protect.tag === "sh" && pairs.indexOf(`${t.bot}|${t.ind}`) % 3 === 0).map((t) => t.id),
+      all
+        .filter((t) => t.protect.tag === "sh" && pairs.indexOf(`${t.bot}|${t.ind}`) % 3 === 0)
+        .map((t) => t.id),
     );
     assert.ok(heldIds.size > 0);
     const floors = { minSl: 0.004, minTrail: 0.002, pairTags, pairTps, pairProtects, heldIds };
-    const local = buildTapes(u, protects, s.cost, undefined, new Set(pairs), s.tactics, null, floors);
+    const local = buildTapes(
+      u,
+      protects,
+      s.cost,
+      undefined,
+      new Set(pairs),
+      s.tactics,
+      null,
+      floors,
+    );
     const localIds = new Set(local.map((t) => t.id));
-    assert.ok(all.some((t) => !localIds.has(t.id)), "the floors filter cells");
-    assert.ok(local.some((t) => heldIds.has(t.id)), "held configs keep their tapes");
-    assert.ok(local.some((t) => t.protect.trail === own.trail && !t.protect.tag), "a pair's own config is built");
+    assert.ok(
+      all.some((t) => !localIds.has(t.id)),
+      "the floors filter cells",
+    );
+    assert.ok(
+      local.some((t) => heldIds.has(t.id)),
+      "held configs keep their tapes",
+    );
+    assert.ok(
+      local.some((t) => t.protect.trail === own.trail && !t.protect.tag),
+      "a pair's own config is built",
+    );
     const floorsOf = floorsForPairs(floors);
     const res = await runOnWorkers<{ tapes: typeof local }>(
       slices(pairs, 4).map((pp) => ({
@@ -372,16 +432,25 @@ describe("worker pool", { timeout: 300_000 }, () => {
   it("with the caller's floors, the workers' completeness record (merged) equals the in-process one", async () => {
     const floors = { minSl: 0.004, minTrail: 0.002 };
     const localStats = new Map<string, TapeBuildStat>();
-    const local = buildTapes(u, wf.protects.slice(0, 6), s.cost, dcaOpt, new Set(pairs), s.tactics, null, {
-      ...floors,
-      buildStats: localStats,
-    });
+    const local = buildTapes(
+      u,
+      parityProtects,
+      s.cost,
+      dcaOpt,
+      new Set(pairs),
+      s.tactics,
+      null,
+      {
+        ...floors,
+        buildStats: localStats,
+      },
+    );
     const res = await runOnWorkers<{ tapes: typeof local; buildStats?: TapeBuildStat[] }>(
       slices(pairs, 4).map((pp) => ({
         type: "tapes",
         bars,
         pairs: pp,
-        protects: wf.protects.slice(0, 6),
+        protects: parityProtects,
         cost: s.cost,
         dcaOpt,
         tactics: s.tactics,
@@ -399,7 +468,17 @@ describe("worker pool", { timeout: 300_000 }, () => {
     const norm = (m: Map<string, TapeBuildStat>) =>
       [...m.entries()]
         .sort((a, b) => (a[0] < b[0] ? -1 : 1))
-        .map(([k, x]) => [k, x.grid, x.built, x.kept, x.few, JSON.stringify(x.skip), x.tps.length, x.sls.length, x.trails.length]);
+        .map(([k, x]) => [
+          k,
+          x.grid,
+          x.built,
+          x.kept,
+          x.few,
+          JSON.stringify(x.skip),
+          x.tps.length,
+          x.sls.length,
+          x.trails.length,
+        ]);
     assert.ok(localStats.size > 0);
     assert.deepEqual(norm(merged), norm(localStats));
   });
@@ -424,48 +503,123 @@ describe("worker pool", { timeout: 300_000 }, () => {
       (f) => seen.push(f),
     );
     assert.ok(seen.length > 0, "progress reported");
-    for (let i = 1; i < seen.length; i++) assert.ok(seen[i] >= seen[i - 1], `backwards at ${i}: ${seen[i - 1]} → ${seen[i]}`);
+    for (let i = 1; i < seen.length; i++)
+      assert.ok(seen[i] >= seen[i - 1], `backwards at ${i}: ${seen[i - 1]} → ${seen[i]}`);
     assert.ok(seen.every((f) => f >= 0 && f <= 1));
     assert.equal(seen[seen.length - 1], 1);
   });
 
   it("Signal history workers equal the local generator across source ranges, lanes, cuts and minimum samples", async () => {
-    const histBars = ["A", "B"].flatMap((sym, i) => [15, 30].map((tf) =>
-      barsFromCandles(`${sym}-USDT`, tf, syntheticCandles(sym, tf, 2000, END, 3 + i * 2))));
+    const histBars = ["A", "B"].flatMap((sym, i) =>
+      [15, 30].map((tf) =>
+        barsFromCandles(`${sym}-USDT`, tf, syntheticCandles(sym, tf, 2000, END, 3 + i * 2)),
+      ),
+    );
     const hu = makeUniverse(histBars);
     const pairs = [
-      "follow|sig-ema-cross-s@m15", "follow|sig-ema-cross-m@m15",
-      "follow|sig-ema-cross-s@m30", "follow|sig-ema-cross-m@m30",
+      "follow|sig-ema-cross-s@m15",
+      "follow|sig-ema-cross-m@m15",
+      "follow|sig-ema-cross-s@m30",
+      "follow|sig-ema-cross-m@m30",
     ];
-    const sig = signalSettings({ enabled: true, holdH: 6, hist: { ...DEFAULT_SIGNALS.hist, minN: 4, lookbackH: 72 } });
+    const sig = signalSettings({
+      enabled: true,
+      holdH: 6,
+      hist: { ...DEFAULT_SIGNALS.hist, minN: 4, lookbackH: 72 },
+    });
     const shared = shareBars(hu.series);
     const whole = signalHistProtects(makeUniverse(histBars), pairs, sig, null, hu.nowT);
-    assert.deepEqual(Object.keys(whole), pairs, "every source range and lane has its own measured configs");
-    assert.notDeepEqual(whole[pairs[0]], whole[pairs[1]], "short and medium have distinct historical entries");
+    assert.deepEqual(
+      Object.keys(whole),
+      pairs,
+      "every source range and lane has its own measured configs",
+    );
+    assert.notDeepEqual(
+      whole[pairs[0]],
+      whole[pairs[1]],
+      "short and medium have distinct historical entries",
+    );
     const cuts = [hu.nowT, hu.nowT - 24 * 3_600_000];
     for (const cutT of cuts) {
       const local = signalHistProtects(makeUniverse(histBars), pairs, sig, null, cutT);
       const parts = slices(pairs, Math.ceil(pairs.length / 2));
       const progress: number[] = [];
-      const messages: SignalHistMessage[] = parts.map((pairs) => ({ type: "signal-hist", bars: shared, pairs, sig, tactics: null, cutT }));
+      const messages: SignalHistMessage[] = parts.map((pairs) => ({
+        type: "signal-hist",
+        bars: shared,
+        pairs,
+        sig,
+        tactics: null,
+        cutT,
+      }));
       assert.ok(messages.every((m) => m.pairs.length <= 2));
       const res = await runOnWorkers<SignalHistReply>(messages, 2, 60_000, (p) => progress.push(p));
       const remote = Object.assign({}, ...res.map((r) => r.pairProtects));
       assert.deepEqual(remote, local);
-      res.forEach((r, i) => assert.ok(Object.keys(r.pairProtects).every((p) => parts[i].includes(p)), "a reply carries only its own pairs"));
+      res.forEach((r, i) =>
+        assert.ok(
+          Object.keys(r.pairProtects).every((p) => parts[i].includes(p)),
+          "a reply carries only its own pairs",
+        ),
+      );
       assert.equal(progress.at(-1), 1);
       assert.ok(progress.every((p, i) => p >= 0 && p <= 1 && (!i || p >= progress[i - 1])));
     }
-    assert.notDeepEqual(signalHistProtects(makeUniverse(histBars), pairs, sig, null, cuts[1]), whole, "the causal cut changes the historical sample");
+    assert.notDeepEqual(
+      signalHistProtects(makeUniverse(histBars), pairs, sig, null, cuts[1]),
+      whole,
+      "the causal cut changes the historical sample",
+    );
     const cutT = cuts[1];
-    const future = histBars.map((b) => ({ ...b, h: b.h.map((v, i) => b.t[i] >= cutT ? v * 100 : v), l: b.l.map((v, i) => b.t[i] >= cutT ? v / 100 : v) }));
-    const [causal] = await runOnWorkers<SignalHistReply>([{ type: "signal-hist", bars: shareBars(future), pairs: pairs.slice(0, 2), sig, tactics: null, cutT }], 1);
-    assert.deepEqual(causal.pairProtects, signalHistProtects(makeUniverse(histBars), pairs.slice(0, 2), sig, null, cutT), "future extremes cannot change a historical config");
-    const [few, shortLookback, disabled] = await runOnWorkers<SignalHistReply>([
-      { type: "signal-hist", bars: shared, pairs: pairs.slice(0, 2), sig: { ...sig, hist: { ...sig.hist, minN: 1_000_000 } }, cutT },
-      { type: "signal-hist", bars: shared, pairs: pairs.slice(0, 2), sig: { ...sig, hist: { ...sig.hist, lookbackH: .001 } }, cutT },
-      { type: "signal-hist", bars: shared, pairs: pairs.slice(0, 2), sig: { ...sig, hist: { ...sig.hist, enabled: false } }, cutT },
-    ], 2);
+    const future = histBars.map((b) => ({
+      ...b,
+      h: b.h.map((v, i) => (b.t[i] >= cutT ? v * 100 : v)),
+      l: b.l.map((v, i) => (b.t[i] >= cutT ? v / 100 : v)),
+    }));
+    const [causal] = await runOnWorkers<SignalHistReply>(
+      [
+        {
+          type: "signal-hist",
+          bars: shareBars(future),
+          pairs: pairs.slice(0, 2),
+          sig,
+          tactics: null,
+          cutT,
+        },
+      ],
+      1,
+    );
+    assert.deepEqual(
+      causal.pairProtects,
+      signalHistProtects(makeUniverse(histBars), pairs.slice(0, 2), sig, null, cutT),
+      "future extremes cannot change a historical config",
+    );
+    const [few, shortLookback, disabled] = await runOnWorkers<SignalHistReply>(
+      [
+        {
+          type: "signal-hist",
+          bars: shared,
+          pairs: pairs.slice(0, 2),
+          sig: { ...sig, hist: { ...sig.hist, minN: 1_000_000 } },
+          cutT,
+        },
+        {
+          type: "signal-hist",
+          bars: shared,
+          pairs: pairs.slice(0, 2),
+          sig: { ...sig, hist: { ...sig.hist, lookbackH: 0.001 } },
+          cutT,
+        },
+        {
+          type: "signal-hist",
+          bars: shared,
+          pairs: pairs.slice(0, 2),
+          sig: { ...sig, hist: { ...sig.hist, enabled: false } },
+          cutT,
+        },
+      ],
+      2,
+    );
     assert.deepEqual(few.pairProtects, {});
     assert.deepEqual(shortLookback.pairProtects, {});
     assert.deepEqual(disabled.pairProtects, {});
@@ -476,24 +630,126 @@ describe("worker pool", { timeout: 300_000 }, () => {
     process.env.CTS_CORE_WORKERS = "2";
     try {
       await closePool();
-      const histBars = shareBars([barsFromCandles("A-USDT", 15, syntheticCandles("A", 15, 2000, END, 3))]);
-      const sig = signalSettings({ enabled: true, holdH: 6, hist: { ...DEFAULT_SIGNALS.hist, minN: 4, lookbackH: 72 } });
-      const make = (pairs: string[]): SignalHistMessage => ({ type: "signal-hist", bars: histBars, pairs, sig, tactics: null, cutT: END });
+      const histBars = shareBars([
+        barsFromCandles("A-USDT", 15, syntheticCandles("A", 15, 2000, END, 3)),
+      ]);
+      const sig = signalSettings({
+        enabled: true,
+        holdH: 6,
+        hist: { ...DEFAULT_SIGNALS.hist, minN: 4, lookbackH: 72 },
+      });
+      const make = (pairs: string[]): SignalHistMessage => ({
+        type: "signal-hist",
+        bars: histBars,
+        pairs,
+        sig,
+        tactics: null,
+        cutT: END,
+      });
       const a = "follow|sig-ema-cross-s@m15";
       const b = "follow|sig-ema-cross-m@m15";
       const pending = runOnWorkers<SignalHistReply>([make([a]), make([b])], 2);
-      assert.equal(poolWorkers(), 2, "two real history messages borrow two worker cores from one capped pool");
+      assert.equal(
+        poolWorkers(),
+        2,
+        "two real history messages borrow two worker cores from one capped pool",
+      );
       const res = await pending;
       assert.deepEqual(Object.keys(res[0].pairProtects), [a]);
       assert.deepEqual(Object.keys(res[1].pairProtects), [b]);
       const [again] = await runOnWorkers<SignalHistReply>([make([b])], 1);
-      assert.deepEqual(again.pairProtects, res[1].pairProtects, "reuse never leaks the other pair's history");
+      assert.deepEqual(
+        again.pairProtects,
+        res[1].pairProtects,
+        "reuse never leaks the other pair's history",
+      );
       await assert.rejects(runOnWorkers([{ ...make([a, b, a]) }], 1), /at most two pairs/);
       const [recovered] = await runOnWorkers<SignalHistReply>([make([a])], 1);
       assert.deepEqual(recovered.pairProtects, res[0].pairProtects);
     } finally {
-      if (previous === undefined) delete process.env.CTS_CORE_WORKERS; else process.env.CTS_CORE_WORKERS = previous;
+      if (previous === undefined) delete process.env.CTS_CORE_WORKERS;
+      else process.env.CTS_CORE_WORKERS = previous;
       await closePool();
     }
+  });
+
+  it("Historic Exit workers match local chronological fit and holdout results across independent pairs", async () => {
+    const histBars = ["A", "B"].flatMap((sym, i) =>
+      [15, 30].map((tf) =>
+        barsFromCandles(`${sym}-USDT`, tf, syntheticCandles(sym, tf, 2000, END, 3 + i * 2)),
+      ),
+    );
+    const hu = makeUniverse(histBars);
+    const pairs = [
+      "follow|sig-ema-cross-s@m15",
+      "follow|sig-ema-cross-m@m15",
+      "follow|sig-ema-cross-s@m30",
+      "follow|sig-ema-cross-m@m30",
+    ];
+    const settings = {
+      ...DEFAULT_SETTINGS.exitStrategy,
+      lookbackH: 360,
+      minEntries: 4,
+      minValidationTrades: 2,
+      holdH: 3,
+      maxConfigsPerPair: 8,
+    };
+    const validation = { cost: 0.002, minPf: 1.05, minTrades: 2, minSl: 0, minTrail: 0 };
+    const diagnostics = emptyExitStrategyDiagnostics();
+    const localGen = exitStrategyProtectsGen(
+      hu,
+      pairs,
+      settings,
+      null,
+      hu.nowT,
+      validation,
+      diagnostics,
+    );
+    let localStep = localGen.next();
+    while (!localStep.done) localStep = localGen.next();
+    const local = localStep.value;
+    const shared = shareBars(hu.series);
+    const [oneChunk] = await runOnWorkers<ExitStrategyReply>(
+      [
+        {
+          type: "exit-hist",
+          bars: shared,
+          pairs,
+          settings,
+          tactics: null,
+          cutT: hu.nowT,
+          validation,
+        },
+      ],
+      1,
+      60_000,
+    );
+    assert.ok(pairs.length > 2, "runtime-sized chunks must not disable the worker pool");
+    assert.deepEqual(oneChunk.pairProtects, local);
+    assert.deepEqual(oneChunk.diagnostics, diagnostics);
+    const parts = slices(pairs, 2);
+    const messages: ExitStrategyMessage[] = parts.map((part) => ({
+      type: "exit-hist",
+      bars: shared,
+      pairs: part,
+      settings,
+      tactics: null,
+      cutT: hu.nowT,
+      validation,
+    }));
+    assert.ok(messages.every((m) => m.pairs.length <= 2));
+    const remoteReplies = await runOnWorkers<ExitStrategyReply>(messages, 2, 60_000);
+    const remote = Object.assign({}, ...remoteReplies.map((r) => r.pairProtects));
+    assert.deepEqual(remote, local);
+    const remoteDiagnostics = Object.fromEntries(
+      (Object.keys(diagnostics) as Array<keyof typeof diagnostics>).map((key) => [
+        key,
+        remoteReplies.reduce((sum, reply) => sum + (reply.diagnostics?.[key] ?? 0), 0),
+      ]),
+    );
+    for (const key of Object.keys(diagnostics) as Array<keyof typeof diagnostics>)
+      assert.equal(remoteDiagnostics[key], diagnostics[key], key);
+    assert.ok(diagnostics.candidates > 0, "fit data creates independent candidates");
+    assert.ok(diagnostics.evaluated > 0, "later held-out data validates every candidate");
   });
 });

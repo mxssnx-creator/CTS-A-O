@@ -286,7 +286,7 @@ export function PresetSettingsDialog(props: {
             <Timeframes tfs={s.tfs} tfDays={s.tfDays} set={set} />
           </Section>
           <Section title="Signals">
-            <SignalsSettings signals={s.signals} set={set} />
+            <SignalsSettings signals={s.signals} set={set} grid={s.grid} />
           </Section>
           <Section title="Gates">
             <div className="v2-grid v2-cols-4">
