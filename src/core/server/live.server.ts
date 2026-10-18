@@ -351,7 +351,8 @@ const executionMsg = (resp: unknown, sentQty: number, positionSeen = false): str
   const status = String(o?.status ?? "").toUpperCase();
   const terminal = /^(FILLED|CANCELLED|CANCELED|REJECTED|EXPIRED)$/.test(status);
   // MARKET accepted without fill fields is unresolved, not an open/closed full-sized venue position.
-  return pendingExecution(resp) || (!terminal && replyQty(o) === null)
+  const measuredQty = replyQty(o);
+  return pendingExecution(resp) || (!terminal && (measuredQty === null || measuredQty === 0))
     ? PENDING_EXECUTION + JSON.stringify({ oid: String(o?.orderId ?? ""), sentQty, positionSeen })
     : null;
 };
