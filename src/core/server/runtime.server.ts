@@ -6085,10 +6085,7 @@ export class CoreRuntime {
     let simulationUniverse = u;
     // Base on the window BEFORE the backtest (causal), unless a fixed focus set is traded
     job.stage = "Base";
-    let main: Set<string>;
     // The ranges and targets each pair passed in Base.
-    let pairTags: Record<string, string[]> | undefined;
-    let pairTps: Record<string, Record<string, readonly number[]>> | undefined;
     // the engine's Micro lane floor (Micro's own was applied under both rules: with Minimal on Micro's indications a
     // Micro pair on a faster lane never reached its Minimal cells)
     const combos = allCombos(s.focus, s.disabledKinds, s.tfs, microLaneFloor(s.grid));
@@ -6107,7 +6104,7 @@ export class CoreRuntime {
       };
     });
     const base = await this.presetBase(job, s, combos, lookBars);
-    ({ main, pairTags, pairTps } = base);
+    const { main, pairTags, pairTps } = base;
     wf.basePassed = base.qualified;
     wf.basePassedRanges = base.qualifiedTags;
     wf.baseWideLadderPairs = base.wideLadderPairs;
