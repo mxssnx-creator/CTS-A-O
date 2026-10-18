@@ -1081,6 +1081,7 @@ describe("paper book across a restart", () => {
       stop: 0.98,
       target: 1.02,
       mtm: 0.004,
+      exitProtection: undefined,
       vol: 2,
       level: 3,
     };
@@ -1111,6 +1112,7 @@ describe("paper book across a restart", () => {
         stop: 0.98,
         target: 1.02,
         mtm: 0.004,
+        exitProtection: undefined,
       };
       const a = new CoreDb(":memory:", { statePath: join(dir, "state.json") });
       a.kvSet("paperBook", { at: Date.now(), startedAt: 1234, selected: [pos.cfg], positions: [pos] });
