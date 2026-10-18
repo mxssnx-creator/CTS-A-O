@@ -7,6 +7,8 @@ export interface BaseCellStat {
   mdd: number;
   gp?: number;
   gl?: number;
+  /** Invalid/overflowed executed returns: never qualify the Base cell. */
+  invalid?: true;
 }
 
 /**
@@ -125,7 +127,12 @@ export class BaseCellAccumulator {
         if (peak - cum > mdd) mdd = peak - cum;
       } else peak = cum;
     }
-    return { n, pf: profitFactor(gp, gl), net: sum * 100, mdd: mdd * 100, gp: gp * 100, gl: gl * 100 };
+    const pf = profitFactor(gp, gl);
+    // A malformed fill, fee or extreme numerical overflow cannot become an apparently winning Base cell.
+    // Preserve the settled sample count for diagnostics, but never expose a qualifying PF or net return.
+    if (![gp, gl, sum, cum, peak, mdd, pf, sum * 100, mdd * 100, gp * 100, gl * 100].every(Number.isFinite))
+      return { n, pf: 0, net: 0, mdd: 0, gp: 0, gl: 0, invalid: true };
+    return { n, pf, net: sum * 100, mdd: mdd * 100, gp: gp * 100, gl: gl * 100 };
   }
 }
 
