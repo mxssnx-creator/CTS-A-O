@@ -1,15 +1,51 @@
 # CTS-A-O operations handoff
 
-Updated 2026-10-17, UTC. Repository: `mxssnx-creator/CTS-A-O`.
+Updated 2026-10-18, UTC. Repository: `mxssnx-creator/CTS-A-O`.
 
-## Latest checkpoint: exact Signals, complete studies and performance — 17 October
+## Latest checkpoint: equity drawdown audit — 18 October
+
+PR [167](https://github.com/mxssnx-creator/CTS-A-O/pull/167) merged as
+`1e529098b6a799e8acdbc123366196016643cf65`, tree
+`dcbd75157e899c65f25b5bffb9946c2d128f452c`. Subsequent main integrations
+advanced the base to `2ac457c9af4e38df4e07f880a65ba247d8b7ebc7`, tree
+`73126c63b4f2b2519e5742c2cceb0622fc251e72`; backup
+`backup/main-before-equity-dd-20261018-current` preserves that base. The
+drawdown audit and its exact tested head are recorded in PR 170.
+This continuation fixes Statistics/backtest equity marks and drawdown measurement only;
+strategy, cost, PF, qualification, position sizing and execution code are
+unchanged. Historical PF and hourly outcomes below remain the frozen record;
+the recent 22-symbol final window's PF 1.4597 still had 99.461% maximum equity
+drawdown and is not capital-feasible.
+
+Statistics, backtest charts and the live-test report previously used a
+one-minute candle's close at its open timestamp, before that candle had
+completed. They now use only the latest fully closed bar at or before the mark
+time. The Statistics timeline previously computed DD
+from chart samples (up to 600 points), which could skip an intermediate equity
+peak or trough. It now tracks peak-to-trough dollars, peak-relative percentage
+and underwater duration at every minute and trade event; chart point count only
+controls rendering. Active exposure is aggregated by symbol, and margin remains
+an independent feasibility/readout metric, never an input to equity DD. A
+deterministic 90-day, 22-symbol, 10,000-order synthetic profile completed in
+59 ms with the local test fixture; this is an algorithm check, not a production
+benchmark.
+
+Focused Statistics/API/PF tests pass **49/49**, session-report tests pass
+**28/28**, and TypeScript typecheck and production build pass. The equity regression verifies a
+peak/trough between chart points and confirms leverage changes margin without
+changing equity DD. An API regression verifies a mark from a bar only after its
+close. PF and the executed trade cohort are unchanged. The prior frozen market
+results remain the economic benchmark; the 6-hour PF 2.374852 result recorded
+later in this handoff was from a separate historical window and is not proof
+that this reporting correction improved strategy returns.
+
+## Historical checkpoint: exact Signals, complete studies and performance — 17 October
 
 Source [PR 163](https://github.com/mxssnx-creator/CTS-A-O/pull/163) is merged:
 source merge `df34e931da4d9726e73feca1c0fbbf15fc7cb448`, exact tested tree
-`1e0edfdd6d87e5ed43db464c1b4fb50a047ebf5e`. Risk PR 166 is also merged;
-current main `09d800cc56946d1da120a03f96e2f382e7763d88`, tree
-`225c65cb81eec46fd851c37e2663038733274865` equals local `0297eef`. Backup
-`backup/main-before-report-cache-20261017` preserves this current main. Backup
+`1e0edfdd6d87e5ed43db464c1b4fb50a047ebf5e`. Risk PR 166 merged as
+`09d800cc56946d1da120a03f96e2f382e7763d88`, tree
+`225c65cb81eec46fd851c37e2663038733274865`. Backup
 `backup/main-before-exact-signal-20261017` preserves `d1364e5`.
 Economic checkpoint is `fdabcdb`; bounded capture/reader checkpoint `0b8c145`;
 final source documentation checkpoint `3bcf204`. No live settings, venue orders,
@@ -58,7 +94,11 @@ passed all eight jobs: production build, worker packaging, typecheck,
 All four current 20-symbol economic/allocation/account fingerprints match the original
 runs exactly. Both 22-symbol audits passed 16/16, including every chunk, funded cohort,
 unit/cash arithmetic, hourly result and settings/source provenance. Full 22-symbol
-coverage used no fallback, degraded compute or aborts.
+coverage used no fallback, degraded compute or aborts. Follow-up CI
+[39080618483](https://github.com/mxssnx-creator/CTS-A-O/actions/runs/39080618483)
+passed all eight jobs on PR 167, including the repeated six frozen replay cases;
+endpoint tests also passed in
+[39080618393](https://github.com/mxssnx-creator/CTS-A-O/actions/runs/39080618393).
 
 | Model/window | Funded engine closes | Unit PF | Closed cash $ | Cash-positive hours | Capital feasible |
 |---|---:|---:|---:|---:|---|
@@ -85,8 +125,10 @@ and uncapped allocations. No arithmetic association or iteration order changed.
 Patch `249d57a` (integration `069cb36`) passes 27/27 report tests and independent
 review. All 468,368 orders, 63,360 symbol-minute marks and 18 old/new slices
 match; all new full passes match applicable recorded results at six decimals.
-Full end-to-end improvement awaits the new isolated CI run. The failed 240s
-old-loop profile and stopped retry are preserved, not passing benchmarks. The 8,192 MiB V8 allowance applies to worker
+The full eight-job replay/build CI passed on PR 167. A full end-to-end report
+speedup was not established because the old-loop profiling attempt hit its
+240-second watchdog and its retry was stopped; these are preserved as failed
+attempts, not passing benchmarks. The 8,192 MiB V8 allowance applies to worker
 isolates too, not a whole-process/runner cap. Isolated research used four CPU,
 16 GiB runners; this does not resize the shared local eight-GiB environment.
 

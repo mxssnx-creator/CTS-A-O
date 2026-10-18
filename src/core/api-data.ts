@@ -982,7 +982,7 @@ export const coreStatisticsInput = (d?: {
 
 export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsInput>) {
   const r = await rt(data.conn);
-  const { buildStatistics } = await import("./statistics.ts");
+  const { buildStatistics, minuteCloseAtOrBefore } = await import("./statistics.ts");
   const { sizeBook, orderKey } = await import("./sizing.ts");
   // the execution presets are simulated on the run's tapes: they compare with the simulated source only
   const presets =
@@ -1126,12 +1126,7 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
   const price = (sym: string, t: number) => {
     const m = closes.get(sym);
     if (!m) return null;
-    const t0 = Math.floor(t / 60_000) * 60_000;
-    for (let k = 0; k < 5; k++) {
-      const v = m.get(t0 - k * 60_000);
-      if (v !== undefined) return v;
-    }
-    return null;
+    return minuteCloseAtOrBefore(m, t);
   };
   const report = buildStatistics({
     source: data.source,

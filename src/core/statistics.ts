@@ -21,6 +21,16 @@ import { RT_COST } from "./model-cost.ts";
 const H = 3_600_000;
 const M = 60_000;
 
+/** Latest one-minute candle close available at `t` (candle timestamps are their open times). */
+export function minuteCloseAtOrBefore(closes: ReadonlyMap<number, number>, t: number): number | null {
+  const lastClosedOpen = Math.floor(t / M) * M - M;
+  for (let k = 0; k < 5; k++) {
+    const value = closes.get(lastClosedOpen - k * M);
+    if (value !== undefined) return value;
+  }
+  return null;
+}
+
 /** The trade fields the statistics read (simulated trades carry all of them; paper closes only some). */
 export interface StatTrade {
   cfg: string;
@@ -68,7 +78,7 @@ export interface TimelineOpts {
   balance: number;
   /** unit notional (USD) of an order */
   unit: (x: StatTrade) => number;
-  /** close price of a symbol at or before t (null = unknown: the order is held at its entry) */
+  /** latest fully closed one-minute price at t (null = unknown: no MTM is added for that symbol) */
   price: (sym: string, t: number) => number | null;
   cost: number;
   leverage: number;
@@ -90,13 +100,60 @@ export interface Timeline {
   setsMax: number;
 }
 
-/** Balance / equity / margin / open book over [startT, endT], swept in time order (no per-step rescans). */
+/**
+ * Balance / equity / margin / open book over [startT, endT]. Equity-risk extrema are measured at each minute
+ * (and each trade event); `points` only controls chart sampling. Margin is tracked separately and never enters DD.
+ * Active orders are aggregated by symbol so a 90-day window does not rescan every order at every minute.
+ */
 export function timeline(trades: readonly StatTrade[], o: TimelineOpts): Timeline {
   const span = Math.max(M, o.endT - o.startT);
   const stepMs = Math.max(M, Math.ceil(span / Math.max(2, o.points ?? 600) / M) * M);
   const byEntry = [...trades].sort((a, b) => a.entryT - b.entryT);
   const byExit = [...trades].sort((a, b) => a.exitT - b.exitT);
-  const open = new Set<StatTrade>();
+  type OpenOrder = { sym: string; pos: string; cfg: string; slope: number; intercept: number; margin: number };
+  type Exposure = { slope: number; intercept: number; margin: number; orders: number };
+  const open = new Map<StatTrade, OpenOrder>();
+  const exposure = new Map<string, Exposure>();
+  const posCounts = new Map<string, number>();
+  const cfgCounts = new Map<string, number>();
+  let margin = 0;
+  const addCount = (map: Map<string, number>, key: string, delta: number) => {
+    const next = (map.get(key) ?? 0) + delta;
+    if (next) map.set(key, next);
+    else map.delete(key);
+  };
+  const changeOpen = (x: StatTrade, direction: 1 | -1) => {
+    if (direction > 0) {
+      const notional = o.unit(x) * (x.vol ?? 1);
+      const slope = x.entry > 0 ? (x.side * notional) / x.entry : 0;
+      const intercept = x.entry > 0 ? -x.side * notional - o.cost * notional : 0;
+      const m = notional / Math.max(1, o.leverage);
+      const row = { sym: x.sym, pos: `${x.sym}|${x.side > 0 ? 1 : -1}`, cfg: x.cfg, slope, intercept, margin: m };
+      open.set(x, row);
+      const e = exposure.get(x.sym) ?? { slope: 0, intercept: 0, margin: 0, orders: 0 };
+      e.slope += slope;
+      e.intercept += intercept;
+      e.margin += m;
+      e.orders++;
+      exposure.set(x.sym, e);
+      addCount(posCounts, row.pos, 1);
+      addCount(cfgCounts, row.cfg, 1);
+      margin += m;
+      return;
+    }
+    const row = open.get(x);
+    if (!row) return;
+    const e = exposure.get(row.sym)!;
+    e.slope -= row.slope;
+    e.intercept -= row.intercept;
+    e.margin -= row.margin;
+    e.orders--;
+    if (!e.orders) exposure.delete(row.sym);
+    addCount(posCounts, row.pos, -1);
+    addCount(cfgCounts, row.cfg, -1);
+    margin -= row.margin;
+    open.delete(x);
+  };
   let ei = 0;
   let xi = 0;
   let realized = 0;
@@ -106,7 +163,7 @@ export function timeline(trades: readonly StatTrade[], o: TimelineOpts): Timelin
     realized += x.r * o.unit(x);
   }
   while (ei < byEntry.length && byEntry[ei].entryT <= o.startT) {
-    if (byEntry[ei].exitT > o.startT) open.add(byEntry[ei]);
+    if (byEntry[ei].exitT > o.startT) changeOpen(byEntry[ei], 1);
     ei++;
   }
   const out: TimelinePoint[] = [];
@@ -119,28 +176,33 @@ export function timeline(trades: readonly StatTrade[], o: TimelineOpts): Timelin
   let ordersMax = 0;
   let positionsMax = 0;
   let setsMax = 0;
-  for (let t = o.startT; ; t = Math.min(o.endT, t + stepMs)) {
-    while (ei < byEntry.length && byEntry[ei].entryT <= t) {
-      const x = byEntry[ei++];
-      if (x.exitT > t) open.add(x);
-    }
+  let nextMinute = Math.min(o.endT, o.startT + M);
+  let nextPlot = Math.min(o.endT, o.startT + stepMs);
+  let t = o.startT;
+  let initialSample = true;
+  for (;;) {
+    const entryT = byEntry[ei]?.entryT ?? Infinity;
+    const exitT = byExit[xi]?.exitT ?? Infinity;
+    const isInitial = initialSample;
+    const sampleT = initialSample
+      ? o.startT
+      : Math.min(nextMinute, nextPlot, entryT > t ? entryT : Infinity, exitT > t ? exitT : Infinity, o.endT);
+    initialSample = false;
+    t = sampleT;
+    // Settle first, then admit same-time entries only when they remain open after this instant.
     while (xi < byExit.length && byExit[xi].exitT <= t) {
       const x = byExit[xi++];
       realized += x.r * o.unit(x);
-      open.delete(x);
+      changeOpen(x, -1);
+    }
+    while (ei < byEntry.length && byEntry[ei].entryT <= t) {
+      const x = byEntry[ei++];
+      if (x.exitT > t) changeOpen(x, 1);
     }
     let mtm = 0;
-    let margin = 0;
-    const pos = new Set<string>();
-    const sets = new Set<string>();
-    for (const x of open) {
-      const u = o.unit(x);
-      const vol = x.vol ?? 1;
-      const p = o.price(x.sym, t);
-      if (p !== null && x.entry > 0) mtm += ((x.side * (p - x.entry)) / x.entry - o.cost) * u * vol;
-      margin += (u * vol) / Math.max(1, o.leverage);
-      pos.add(`${x.sym}|${x.side > 0 ? 1 : -1}`);
-      sets.add(x.cfg);
+    for (const [sym, e] of exposure) {
+      const p = o.price(sym, t);
+      if (p !== null) mtm += e.slope * p + e.intercept;
     }
     const balance = o.balance + realized;
     const equity = balance + mtm;
@@ -155,19 +217,14 @@ export function timeline(trades: readonly StatTrade[], o: TimelineOpts): Timelin
     maxDdH = Math.max(maxDdH, (t - peakT) / H);
     marginMax = Math.max(marginMax, margin);
     ordersMax = Math.max(ordersMax, open.size);
-    positionsMax = Math.max(positionsMax, pos.size);
-    setsMax = Math.max(setsMax, sets.size);
-    out.push({
-      t,
-      balance,
-      equity,
-      margin,
-      sets: sets.size,
-      positions: pos.size,
-      orders: open.size,
-      ddPct,
-    });
+    positionsMax = Math.max(positionsMax, posCounts.size);
+    setsMax = Math.max(setsMax, cfgCounts.size);
+    if (isInitial || t === nextPlot || t === o.endT) {
+      out.push({ t, balance, equity, margin, sets: cfgCounts.size, positions: posCounts.size, orders: open.size, ddPct });
+      if (t === nextPlot && nextPlot < o.endT) nextPlot = Math.min(o.endT, nextPlot + stepMs);
+    }
     if (t >= o.endT) break;
+    if (t === nextMinute && nextMinute < o.endT) nextMinute = Math.min(o.endT, nextMinute + M);
   }
   return {
     points: out,
