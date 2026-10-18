@@ -3,6 +3,7 @@ name: Trailing correctness
 on:
   push:
     branches: [fix/signal-trailing-stop-cap-20261018]
+    paths: ['src/**', 'scripts/**', 'package*.json', '.github/workflows/trailing-correctness.yml']
   workflow_dispatch:
 
 permissions:
@@ -11,6 +12,10 @@ permissions:
 concurrency:
   group: trailing-correctness-${{ github.ref }}
   cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
   verify:
@@ -49,11 +54,9 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
-      - name: Verify trailing and protection regression tests offline
-        shell: bash
+      - name: Verify pipeline, all simulation families, Signals and native protection offline
         run: |
-          set -o pipefail
-          node --require ./scripts/lib/core-test-offline-guard.cjs --experimental-strip-types --no-warnings --test --test-concurrency=1 src/core/sim/backtest.test.ts src/core/sim/trail-tick.test.ts src/core/sim/both-sides.test.ts src/core/sim/exit-protection.test.ts src/core/signal-hist.test.ts src/core/signals.test.ts src/core/pipeline/base-cell-stats.test.ts src/core/sim/gating.test.ts 2>&1 | tee runs/trailing-audit/tests.log
+          node --require ./scripts/lib/core-test-offline-guard.cjs --experimental-strip-types --no-warnings --test --test-concurrency=1 src/core/pipeline/*.test.ts src/core/sim/*.test.ts src/core/signal*.test.ts src/core/server/entries-execution.test.ts src/core/exchange/min-exchange.test.ts src/components/v2/signal-units.test.ts 2>&1 | tee runs/trailing-audit/tests.log
       - name: Typecheck
         run: npm run typecheck -- --pretty false 2>&1 | tee runs/trailing-audit/typecheck.log
       - name: Lint
