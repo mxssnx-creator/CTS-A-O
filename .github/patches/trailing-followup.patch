@@ -1,0 +1,11 @@
+--- a/src/core/server/entries-execution.test.ts
++++ b/src/core/server/entries-execution.test.ts
+@@ -133,7 +133,7 @@
+     Object.assign(rt.settings.live, { notionalUsd: 10, maxPositionX: 0, maxExposureX: 0,
+       maxRiskPct: 0, maxBackstopLossPct: 0, minFreeMargin: 0 });
+     const result = await step([signal]);
+-    assert.equal(result.placed, 1);
++    assert.equal(result.placed, 1, JSON.stringify(result));
+     const stops = state.sent.filter((p) => p.type === "STOP_MARKET");
+     assert.equal(stops.length, 1);
+     const fill = Number(state.entry.order.avgPrice);
