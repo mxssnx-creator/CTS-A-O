@@ -88,8 +88,11 @@ function statsWithUnitReturns(
 }
 
 export function profitFactor(gp: number, gl: number): number {
-  if (gl <= 0) return gp > 0 ? PF_NO_LOSS : 0;
-  return gp / gl;
+  // Unknown or overflowed gross amounts are not a no-loss winner and cannot qualify a strategy.
+  if (!(Number.isFinite(gp) && Number.isFinite(gl) && gp >= 0 && gl >= 0)) return NaN;
+  if (gl === 0) return gp > 0 ? PF_NO_LOSS : 0;
+  const pf = gp / gl;
+  return Number.isFinite(pf) ? pf : NaN;
 }
 
 /**
