@@ -4288,11 +4288,32 @@ export function hedgeSignalsAt(
   windowH: number,
   opt: { minN: number; minPf: number } = HEDGE_DEFAULTS,
 ): Set<string> {
+  const gen = hedgeSignalsAtGen(groups, t, negHours, windowH, opt);
+  for (;;) {
+    const r = gen.next();
+    if (r.done) return r.value;
+  }
+}
+
+/** Runtime form of hedge selection; large signal indexes yield while keeping the synchronous API above. */
+export function* hedgeSignalsAtGen(
+  groups: readonly SignalGroup[],
+  t: number,
+  negHours: ReadonlySet<number>,
+  windowH: number,
+  opt: { minN: number; minPf: number } = HEDGE_DEFAULTS,
+): Generator<number, Set<string>> {
   const out = new Set<string>();
   if (!negHours.size) return out;
   const endB = Math.floor(t / H);
   const fromB = endB - windowH;
+  let work = 0;
+  let sliceAt = performance.now();
   for (const g of groups) {
+    if (++work % 32 === 0 && performance.now() - sliceAt >= 8) {
+      yield -1;
+      sliceAt = performance.now();
+    }
     let lo = 0;
     let hi = g.h.length;
     while (lo < hi) {
@@ -5114,15 +5135,36 @@ export function* walkForwardGen(
       if (o.coord?.enabled && o.coord.hedge) {
         const neg = new Set<number>();
         for (const [h, v] of hourNet) if (v < 0 && h < Math.floor(t / H)) neg.add(h);
-        for (const k of hedgeSignalsAt(sigIdx, t, neg, Math.max(o.longH, o.preH), {
+        for (const k of yield* hedgeSignalsAtGen(sigIdx, t, neg, Math.max(o.longH, o.preH), {
           minN: o.coord.hedgeMinN ?? HEDGE_DEFAULTS.minN,
           minPf: o.coord.hedgeMinPf ?? HEDGE_DEFAULTS.minPf,
         }))
           if (!act.has(k)) hedgeKeys.add(k);
       }
-      const all = hedgeKeys.size ? new Set([...act, ...hedgeKeys]) : act;
+      const all = hedgeKeys.size ? new Set<string>() : act;
+      const keys: string[] = [];
+      let activeWork = 0;
+      let activeSliceAt = performance.now();
+      for (const key of act) {
+        if (hedgeKeys.size) all.add(key);
+        keys.push(key);
+        if (++activeWork % 32 === 0 && performance.now() - activeSliceAt >= 8) {
+          yield -1;
+          activeSliceAt = performance.now();
+        }
+      }
+      for (const key of hedgeKeys) {
+        const duplicate = all.has(key);
+        if (hedgeKeys.size && !duplicate) all.add(key);
+        if (!duplicate) keys.push(key);
+        if (++activeWork % 32 === 0 && performance.now() - activeSliceAt >= 8) {
+          yield -1;
+          activeSliceAt = performance.now();
+        }
+        if (duplicate) continue;
+      }
       stepOpts = { ...o, signalActive: all };
-      signalSteps.push({ t, keys: [...all] });
+      signalSteps.push({ t, keys });
       yield -1; // (a slice: the ranking and the step's executions are separate pieces of work)
     }
     // fixed mode in slices (the selection scores every tape)
