@@ -109,7 +109,11 @@ export function signalProtects(sig: SignalSettings): Protect[] {
         out.push({ tp: 0, sl, trail, hold, trailOnly: true, trailStep: only.trailStep });
   // A short trail is an inactive configuration, not a tighter distance that should be silently widened later.
   // The tape builder repeats this check after lane scaling because fast lanes can shrink a valid reference trail.
-  return out.filter(
+  const ratios = sig.trailRatios?.length ? [...new Set(sig.trailRatios)] : [1];
+  const variants = out.flatMap((p) => p.trail > 0
+    ? ratios.map((ratio) => ratio === 1 ? p : { ...p, trailStep: (p.trailStep ?? 1) * ratio })
+    : [p]);
+  return variants.filter(
     (p) => !(p.trail > 0 && p.trail * (p.trailStep ?? 1) + 1e-12 < sig.minTrail),
   );
 }

@@ -350,9 +350,7 @@ const pct = (x: number) => Math.round(x * 1e6) / 10000;
 const atrTag = (p: Protect) =>
   p.atr ? `|atr${p.atr.sl}x${p.atr.tpRatio}${p.atr.trail ? `t${p.atr.trail}` : ""}` : "";
 export function configId(bot: BotType, ind: string, p: Protect, kind?: StratKind): string {
-  const mode = p.trailOnly
-    ? `|to${p.trailStep !== undefined && p.trailStep !== 1 ? `|ts${p.trailStep}` : ""}`
-    : "";
+  const mode = `${p.trailOnly ? "|to" : ""}${p.trail > 0 && p.trailStep !== undefined && p.trailStep !== 1 ? `|ts${p.trailStep}` : ""}${p.trail > 0 && p.trailFree ? "|tf1" : ""}`;
   const exit =
     p.exitType === "historic" || kind === "exit"
       ? `|hx${p.exitSide === 1 ? "L" : p.exitSide === -1 ? "S" : ""}${
@@ -402,8 +400,11 @@ export const isTrailingKind = (kind: string): boolean =>
 const fromPct = (s: string) => +(Number(s) / 100).toFixed(6);
 
 export function parseConfigId(id: string): { bot: BotType; ind: string; protect: Protect } | null {
-  const mode = /\|to(?:\|ts([\d.]+))?(?=\||$)/.exec(id);
-  const plainId = mode ? id.slice(0, mode.index) + id.slice(mode.index + mode[0].length) : id;
+  const mode = /\|to(?=\||$)/.exec(id);
+  const ratio = /\|ts([\d.]+)(?=\||$)/.exec(id);
+  const free = /\|tf1(?=\||$)/.exec(id);
+  // Remove each token once; duplicates or malformed tokens remain and fail the strict grammar below.
+  const plainId = id.replace(/\|to(?=\||$)/, "").replace(/\|ts[\d.]+(?=\||$)/, "").replace(/\|tf1(?=\||$)/, "");
   const m =
     // (the Axis variant tag — "|ax-atr2", "|axd-fib3h" from axisVariants — is matched and ignored: without the group
     // every managed / desk Axis id failed to parse and its report rows showed tp / sl / trail / hold 0)
@@ -428,8 +429,17 @@ export function parseConfigId(id: string): { bot: BotType; ind: string; protect:
     if (m[13] === "1") protect.exitSet = "adaptive-sl";
     if (m[13] === "2") protect.exitSet = "trailing";
   }
+  if (ratio) {
+    const step = Number(ratio[1]);
+    if (!(Number.isFinite(step) && step > 0 && protect.trail > 0)) return null;
+    protect.trailStep = step;
+  }
+  if (free) {
+    if (!(protect.trail > 0) || mode) return null;
+    protect.trailFree = true;
+  }
   if (mode) {
-    const step = mode[1] === undefined ? 1 : Number(mode[1]);
+    const step = protect.trailStep ?? 1;
     if (
       protect.tp !== 0 ||
       !(protect.trail > 0) ||

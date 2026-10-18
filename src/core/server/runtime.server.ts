@@ -242,6 +242,7 @@ import { volumeFactorForIndication } from "../volume-factor.ts";
 import { isDeepStrictEqual } from "node:util";
 import { type BlockBook, blockBookOf, blockStackCap } from "../sim/block.ts";
 import { trailBar } from "../sim/backtest.ts";
+import { enforceSignalPosition } from "../sim/trailing.ts";
 import { advanceExitProtection, createExitProtection } from "../sim/exit-protection.ts";
 import {
   activeSignals,
@@ -628,6 +629,7 @@ export function crossedStop(p: { side: number; stop: number }, px: number): bool
  */
 /** A paper position's trail state while the tick follows it (its lane bar, and that bar's high and low so far). */
 export interface TickTrail {
+  cfg?: string;
   side: number;
   entry: number;
   stop: number;
@@ -650,16 +652,18 @@ export interface TickTrail {
  * then exited a reversal at an old level. Returns whether the stop moved.
  */
 export function tickTrail(p: TickTrail, px: number, now: number, tfMs: number): boolean {
-  if ((!p.exitProtection && !(p.trail && p.trail > 0)) || !(px > 0) || !(tfMs > 0)) return false;
+  const repaired = enforceSignalPosition(p);
+  if ((!p.exitProtection && !(p.trail && p.trail > 0)) || !(Number.isFinite(px) && px > 0) ||
+    !(Number.isFinite(tfMs) && tfMs > 0) || !Number.isFinite(now)) return repaired;
   const bar = Math.floor(now / tfMs);
   if (p.tkBar === undefined) {
     p.tkBar = bar;
     p.tkHi = px;
     p.tkLo = px;
     p.tkClose = px;
-    return false;
+    return repaired;
   }
-  if (bar < p.tkBar) return false;
+  if (bar < p.tkBar) return repaired;
   if (bar > p.tkBar) {
     const moved = p.exitProtection
       ? advanceExitProtection(p, {
@@ -673,12 +677,12 @@ export function tickTrail(p: TickTrail, px: number, now: number, tfMs: number): 
     p.tkHi = px;
     p.tkLo = px;
     p.tkClose = px;
-    return moved;
+    return moved || repaired;
   }
   if (px > (p.tkHi ?? px)) p.tkHi = px;
   if (px < (p.tkLo ?? px)) p.tkLo = px;
   p.tkClose = px;
-  return false;
+  return repaired;
 }
 
 /**
@@ -1189,7 +1193,14 @@ export class CoreRuntime {
     );
     for (const p of this.paper.positions) {
       const own = parseConfigId(p.cfg)?.protect;
-      if (!p.exitProtection && own) p.exitProtection = createExitProtection(own, p.entry);
+      if (!p.exitProtection && own) {
+        const protection = createExitProtection(own, p.entry);
+        if (protection) p.exitProtection = protection;
+      }
+      if (own?.trail && own.trail > 0) {
+        p.trail ??= own.trail;
+        p.trailDist ??= own.trail * (own.trailStep ?? 1);
+      }
       if (own?.trailOnly) {
         p.trailOnly = true;
         p.trailFree = false;
@@ -1197,6 +1208,7 @@ export class CoreRuntime {
         p.trail ??= own.trail;
         p.trailDist ??= own.trail * (own.trailStep ?? 1);
       }
+      enforceSignalPosition(p);
     }
     this.paper.selected = Array.isArray(book.selected) ? book.selected : [];
     if (typeof book.startedAt === "number" && book.startedAt > 0)
@@ -1666,6 +1678,7 @@ export class CoreRuntime {
               protectTf > 0 && (p.tkBar === undefined || nowMs >= (p.tkBar + 1) * protectTf);
             if (priceChanged || barDue) {
               // A trailing position's stop follows its lane bars between computes, as the simulation trails it.
+              if (enforceSignalPosition(p)) trailMoved = true;
               if (!p.stopHit && (p.trail || p.exitProtection)) {
                 if (tickTrail(p, px, nowMs, protectTf || this.laneMs(p.cfg))) trailMoved = true;
               }

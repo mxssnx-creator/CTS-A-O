@@ -18,6 +18,7 @@ import {
 } from "../minimal-coord.ts";
 import type { RangeTag } from "../domain/types.ts";
 import { createExitProtection } from "./exit-protection.ts";
+import { capSignalProtect, isSignalConfig } from "./trailing.ts";
 // Walk-forward trade simulation ("simulated trade runs") — the Base → Main → Real → Live coordination.
 //
 //   Base  every indication × bot type × protect × sub-strategy (normal, trailing, DCA, DCA Active) has a
@@ -1235,7 +1236,8 @@ export function pendingAsOpen(
   for (const pe of tp.pending) {
     const px = priceOf(pe.sym);
     if (!(px && px > 0)) continue;
-    const q = pe.protect ?? tp.protect;
+    const requested = pe.protect ?? tp.protect;
+    const q = isSignalConfig(tp.id) ? capSignalProtect(requested) : requested;
     const side = pe.side;
     const exitProtection = createExitProtection(q, px);
     out.push({
@@ -1721,9 +1723,10 @@ export function* buildTapesGen(
     const key =
       kind === "exit" ? setKeyOf(configId(bot as BotType, ind, p)) : `${bot}|${ind}|${kind}`;
     const e = adjust?.[key];
-    if (!p.tag) return adjustProtect(adjustProtect(p, floors), e);
-    if (!e || ((e.slMult ?? 1) === 1 && (e.trailMult ?? 1) === 1)) return p;
-    return adjustProtect(p, { minSl: 0, minTrail: 0, slMult: e.slMult, trailMult: e.trailMult });
+    const adjusted = !p.tag ? adjustProtect(adjustProtect(p, floors), e)
+      : !e || ((e.slMult ?? 1) === 1 && (e.trailMult ?? 1) === 1) ? p
+      : adjustProtect(p, { minSl: 0, minTrail: 0, slMult: e.slMult, trailMult: e.trailMult });
+    return isSignalInd(ind) ? capSignalProtect(adjusted) : adjusted;
   };
   const cooldown = tacticCooldown(tactics);
   // Main candidates are "bot|ind" pairs (lane indications included); without them every plain combo

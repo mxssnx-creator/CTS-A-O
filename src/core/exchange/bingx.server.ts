@@ -447,6 +447,8 @@ export function stopPxExchange(
   dist: number,
   spec?: ContractSpec | null,
   learned = 0,
+  /** Optional maximum loss distance. Return zero when no price tick satisfies both venue clearance and this cap. */
+  maxDist = Infinity,
 ): number {
   if (!(px > 0)) return 0;
   const d = Math.max(dist, minStopDist(px, spec, learned));
@@ -456,6 +458,24 @@ export function stopPxExchange(
   const raw = side === 1 ? px * (1 - d) : px * (1 + d);
   const out = Number((side === 1 ? Math.floor(raw / tick) * tick : Math.ceil(raw / tick) * tick).toFixed(prec));
   if (out <= 0) return 0;
+  if (maxDist !== Infinity) {
+    if (!(Number.isFinite(maxDist) && maxDist > 0 && maxDist < 1 && Number.isFinite(d)) ||
+      d > maxDist + 1e-12) return 0;
+    // The ordinary snap rounds AWAY, which can exceed a hard loss cap by a tick. Its boundary must round
+    // TOWARD entry. Scale by an integer rather than divide by an approximate 10**-precision tick: engines
+    // can represent that tick on opposite sides of an exact decimal and floor an extra tick (10.2 -> 9.9959).
+    const scale = 10 ** prec;
+    const units = px * (1 - side * maxDist) * scale;
+    const nearest = Math.round(units);
+    const tolerance = Math.min(1e-6, 8 * Number.EPSILON * Math.max(1, Math.abs(units)));
+    const capUnits = Math.abs(units - nearest) <= tolerance
+      ? nearest : side === 1 ? Math.ceil(units) : Math.floor(units);
+    const boundary = capUnits / scale;
+    const capped = side === 1 ? Math.max(out, boundary) : Math.min(out, boundary);
+    const actual = side * (px - capped) / px;
+    return Number.isFinite(capped) && capped > 0 && actual > 0 && actual <= maxDist + 1e-12 &&
+      actual + 1e-12 >= minStopDist(px, spec, learned) ? capped : 0;
+  }
   // a price whose precision cannot hold the clearance (a sub-tick price): one whole tick off the mark
   const need = side === 1 ? px - tick * STOP_TICK_BUFFER : px + tick * STOP_TICK_BUFFER;
   if (side === 1 && out >= px) return Number(Math.max(tick, need).toFixed(prec));

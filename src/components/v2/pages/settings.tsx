@@ -685,6 +685,9 @@ export function SignalsSettings(props: {
           />
         </Field>
       </div>
+      <Field label="Signal peak-gap ratios" hint="Independent trailing configurations: ratio × activation gives the gap from the favorable peak. Stops, activation and peak gaps are capped at 2% of entry; no change to fixed Normal TP/SL or qualification gates.">
+        <List value={g.trailRatios ?? [1]} onChange={(v) => set(["trailRatios"], v)} />
+      </Field>
       <div className="v2-grid v2-cols-2">
         <Field
           label={`Normal: targets (%) × stop ratios → ${counts.normal} configs`}

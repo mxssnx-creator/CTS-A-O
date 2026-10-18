@@ -37,7 +37,7 @@ export function signalConfigCounts(input?: Partial<SignalSettings> | null) {
   // Show every configured no-TP cell, including requests that the minimum trail floor refuses.
   // Keep the active count separate so UI configuration does not claim those cells actually execute.
   const activeTrailingOnly = protects.filter((p) => p.trailOnly).length;
-  const trailingOnly = s.trailingOnly.enabled ? s.trailingOnly.sl.length * s.trailingOnly.trail.length : 0;
+  const trailingOnly = s.trailingOnly.enabled ? s.trailingOnly.sl.length * s.trailingOnly.trail.length * (s.trailRatios?.length ?? 1) : 0;
   const inactiveTrailingOnly = Math.max(0, trailingOnly - activeTrailingOnly);
   const pct = normal + trailing;
   return {

@@ -406,7 +406,9 @@ export function heldSignalProtect(id: string): { pair: string; protect: Protect 
     sl: 0,
     trail: 0,
     hold: Math.max(2, Math.round((x.protect.hold * tf) / REF_TF)),
-    ...(x.protect.trailOnly ? { trailOnly: true, trailStep: x.protect.trailStep ?? 1 } : {}),
+    ...(x.protect.trailOnly ? { trailOnly: true } : {}),
+    ...(x.protect.trailStep !== undefined ? { trailStep: x.protect.trailStep } : {}),
+    ...(x.protect.trailFree ? { trailFree: true } : {}),
   };
   for (const f of fields) {
     if (f === "tp" && p.trailOnly) continue;
@@ -498,7 +500,9 @@ export function heldCoordinationProtects(
       trail: 0,
       hold: Math.max(2, Math.round((x.protect.hold * (laneOf(x.ind).tf ?? REF_TF)) / REF_TF)),
       ...(x.protect.tag ? { tag: x.protect.tag } : {}),
-      ...(x.protect.trailOnly ? { trailOnly: true, trailStep: x.protect.trailStep ?? 1 } : {}),
+      ...(x.protect.trailOnly ? { trailOnly: true } : {}),
+      ...(x.protect.trailStep !== undefined ? { trailStep: x.protect.trailStep } : {}),
+      ...(x.protect.trailFree ? { trailFree: true } : {}),
     };
     let valid = true;
     for (const field of ["tp", "sl", "trail"] as const) {

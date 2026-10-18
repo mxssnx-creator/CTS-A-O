@@ -68,11 +68,10 @@ describe("signal historic trailing configs", () => {
   });
 
   it("tags historic coordinator configs only for ranges that clear their own PF floor", () => {
-    const b = barsFromCandles(
-      "A-USDT",
-      15,
-      syntheticCandles("A-USDT", 15, 3000, Date.UTC(2026, 9, 1), 3),
-    );
+    // Controlled profitable excursions fit inside the new 2% stop. This tests tagging, not random-market luck.
+    const cycle: number[][] = [[100,100,100,100],[100,104,99.9,103],[103,105,102,104],[104,104,101,102],
+      [102,103,100,100],[100,100,100,100],[100,100,100,100],[100,100,100,100]];
+    const b = rows(Array.from({length: 800}, (_,i) => cycle[i % cycle.length] as [number,number,number,number]));
     const u = makeUniverse([b]);
     const ind =
       signalCoordinationId(
@@ -82,6 +81,8 @@ describe("signal historic trailing configs", () => {
         1,
       ) + "@m15";
     const pair = "follow|" + ind;
+    const signals = Int8Array.from({length: b.n}, (_,i) => i % cycle.length === 0 ? 1 : 0);
+    u.caches[0].memo(`combo:follow:${ind}`, () => signals);
     const sig = {
       ...DEFAULT_SIGNALS,
       hist: { ...DEFAULT_SIGNALS.hist, lookbackH: 0, minN: 1 },
@@ -91,7 +92,7 @@ describe("signal historic trailing configs", () => {
       u,
       [pair],
       sig,
-      DEFAULT_TACTICS,
+      null,
       u.nowT,
       {
         cost: 0.002,
@@ -114,7 +115,7 @@ describe("signal historic trailing configs", () => {
       u,
       [pair],
       sig,
-      DEFAULT_TACTICS,
+      null,
       u.nowT,
       { cost: 0.002, minPf: 0, minTrades: 1, maxDdr: 1000, rangeMinPf: {} },
       disabledDiagnostics,

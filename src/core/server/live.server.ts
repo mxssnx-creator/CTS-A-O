@@ -15,6 +15,7 @@ import { signalActiveHas } from "../signals.ts";
 import { rangeOfId, rangeVolumeFactorsOf } from "../minimal-coord.ts";
 import { signalRangeOf } from "../signal-config.ts";
 import { kindOfId, parseConfigId } from "../pipeline/pipeline.ts";
+import { signalStopAt, isSignalConfig, SIGNAL_STOP_MAX } from "../sim/trailing.ts";
 import { positionMult, runSubset, type WalkForwardResult } from "../sim/walkforward.ts";
 import type { CoreRuntime, LiveIntent } from "./runtime.server.ts";
 import type { CoreDb } from "./db.server.ts";
@@ -1490,8 +1491,13 @@ async function runStepNow(
         status.skipped.push({ sym: e.sym, why: "size rounds to zero" });
         continue;
       }
-      const stopPx = bx.stopPxExchange(px, e.side, e.sl, spec, venueMins(rt).get(e.sym)?.stop ?? 0);
+      const signalEntry = isSignalConfig(e.cfg);
+      const stopPx = bx.stopPxExchange(px, e.side, signalEntry ? Math.min(e.sl, SIGNAL_STOP_MAX) : e.sl, spec, venueMins(rt).get(e.sym)?.stop ?? 0, signalEntry ? SIGNAL_STOP_MAX : Infinity);
       const stopDist = Math.max(0, e.side * (px - stopPx) / px);
+      if (signalEntry && (!(Number.isFinite(stopPx) && stopPx > 0) || stopDist > SIGNAL_STOP_MAX + 1e-12)) {
+        status.skipped.push({ sym: e.sym, why: "Signal venue stop minimum exceeds the 2% entry cap" });
+        continue;
+      }
       const admission = minRaiseBlock(qty * px, cap) ?? checkEntryBudget(e, qty, stopDist);
       if (admission) {
         status.skipped.push({ sym: e.sym, why: admission });
@@ -1555,7 +1561,7 @@ async function runStepNow(
         continue;
       }
       // the stop at a distance the venue accepts (its own tick, at least), the target by precision alone
-      const sl = bx.stopPxExchange(entryPx, e.side, e.sl, spec, venueMins(rt).get(e.sym)?.stop ?? 0);
+      const sl = bx.stopPxExchange(entryPx, e.side, signalEntry ? Math.min(e.sl, SIGNAL_STOP_MAX) : e.sl, spec, venueMins(rt).get(e.sym)?.stop ?? 0, signalEntry ? SIGNAL_STOP_MAX : Infinity);
       const tp = bx.snapPx(e.side === 1 ? entryPx * (1 + e.tp) : entryPx * (1 - e.tp), spec);
       let protectedOk = true;
       for (const [kind, type, stopPrice] of [
@@ -1577,6 +1583,10 @@ async function runStepNow(
             clientOrderID: cc,
           });
         try {
+          if (kind === "T" && !(e.tp > 0)) continue;
+          if (kind === "S" && signalEntry &&
+            (!(Number.isFinite(sp) && sp > 0) || e.side * (entryPx - sp) / entryPx > SIGNAL_STOP_MAX + 1e-12))
+            throw new Error("Signal actual-fill stop cannot meet the 2% entry cap");
           try {
             await placeExit(c, sp);
           } catch (err) {
@@ -1584,10 +1594,12 @@ async function runStepNow(
             // opened, so one retry here is the difference between a protected entry and a round trip paid for nothing.
             const msg = err instanceof Error ? err.message : String(err);
             if (kind !== "S" || !bx.stopTooClose(msg)) throw err;
-            const wider = bx.widenStopDist(e.sl, px, spec);
+            const wider = bx.widenStopDist(signalEntry ? Math.min(e.sl, SIGNAL_STOP_MAX) : e.sl, entryPx, spec);
             learnVenueMin(rt, e.sym, "stop", wider);
             record(c, e.cfg, e.sym, e.side, kind, qty, sp, "error", key);
-            sp = bx.stopPxExchange(px, e.side, wider, spec, wider);
+            sp = bx.stopPxExchange(entryPx, e.side, wider, spec, wider, signalEntry ? SIGNAL_STOP_MAX : Infinity);
+            if (signalEntry && (!(Number.isFinite(sp) && sp > 0) || e.side * (entryPx - sp) / entryPx > SIGNAL_STOP_MAX + 1e-12))
+              throw new Error("Signal stop retry would exceed the 2% entry cap");
             c = makeCoid(s.connId, kind);
             await placeExit(c, sp);
             rt.db.event(
@@ -1828,6 +1840,9 @@ export function laneContributions(
   const out: ControlContribution[] = [];
   const rangeVolumeFactors = rangeVolumeFactorsOf(rt.settings.grid);
   for (const p of positions) {
+    // Preserve the immutable position identity used by laneStringsOf's hot-path cache.
+    // Projection is read-only; legacy wide Signal stops are bounded without cloning every lane per tick.
+    const stop = isSignalConfig(p.cfg) ? signalStopAt(p.entry, p.side, p.stop) : p.stop;
     if (p.stopHit) continue;
     const ls = laneStringsOf(p);
     const id = ls.id;
@@ -1841,9 +1856,9 @@ export function laneContributions(
     // trailed far past the entry does not widen the backstop by its whole run (|entry − stop| did)
     const px = prices?.get(p.sym) ?? 0;
     const sl =
-      px > 0 && p.stop > 0
-        ? Math.max(0.001, (p.side * (px - p.stop)) / px)
-        : Math.abs(p.entry - p.stop) / p.entry || 0.05;
+      px > 0 && stop > 0
+        ? Math.max(0.001, (p.side * (px - stop)) / px)
+        : Math.abs(p.entry - stop) / p.entry || 0.05;
     // Budgets use current equity: giving back unrealized profit is a current account loss too. A late live
     // adoption must reserve mark→stop, even when the paper stop has already moved beyond its original entry.
     const risk = sl;
@@ -1858,7 +1873,7 @@ export function laneContributions(
     // never remove a Signal target. Explicit per-config modes also survive a settings reload.
     const trailFree = p.trailFree ?? (!cfgInfo(p.cfg).isSig && rt.settings.grid?.trailFree === true);
     const tgt = !trailOnly && p.target > 0 && !(trailFree && p.trailOn) ? p.target : undefined;
-    const stopPx = p.stop > 0 ? p.stop : undefined;
+    const stopPx = stop > 0 ? stop : undefined;
     let legsN = 0;
     let legsSum = 0;
     if (p.legs)

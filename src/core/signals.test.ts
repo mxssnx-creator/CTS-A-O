@@ -651,10 +651,11 @@ describe("signals: engine", { timeout: 400_000 }, () => {
     assert.ok(st.historic, "history calculations report their eligibility diagnostics");
     assert.ok(st.historic.qualified <= st.historic.candidates);
     assert.ok(full >= pct, `signal configs retain the full configured source/coordinator grids: ${full} vs ${pct}`);
-    assert.ok(
-      sigTapes.length <= full && sigTapes.length >= full * 0.9,
-      `${sigTapes.length} of ${full}`,
-    );
+    // The hard 2% policy intentionally aliases wider requests to the same physical stop.
+    // Configured counts are not executable counts; duplicate protections must never inflate orders.
+    assert.ok(sigTapes.length > 0 && sigTapes.length <= full, `${sigTapes.length} of ${full}`);
+    assert.equal(new Set(sigTapes.map((tp) => tp.id)).size, sigTapes.length);
+    assert.ok(sigTapes.every((tp) => tp.protect.sl <= 0.02 + 1e-12));
     // stop floors (0.5 % by default) and each lane's trailing floor hold on engine and signal configs, % and ATR exits;
     // a range cell (minimal / short / general / long …) keeps its own minimum (at least the position cost)
     for (const t of rt.tapes) {
@@ -667,7 +668,8 @@ describe("signals: engine", { timeout: 400_000 }, () => {
         continue;
       }
       assert.ok(t.protect.sl >= 0.005 - 1e-9, `${t.id} sl ${t.protect.sl}`);
-      const signalTrailFloor = isSignalInd(t.ind) ? DEFAULT_SIGNALS.minTrail : DEFAULT_SETTINGS.grid.minTrail;
+      const signalTrailFloor = t.kind === "exit" ? rt.settings.protectFloor.minTrail
+        : isSignalInd(t.ind) ? DEFAULT_SIGNALS.minTrail : DEFAULT_SETTINGS.grid.minTrail;
       assert.ok(t.protect.trail === 0 || t.protect.trail >= signalTrailFloor - 1e-9, `${t.id} trail ${t.protect.trail}`);
       if (t.protect.atr) assert.ok((t.protect.atr.minSl ?? 0) >= 0.005 - 1e-9, `${t.id} atr floor`);
     }
