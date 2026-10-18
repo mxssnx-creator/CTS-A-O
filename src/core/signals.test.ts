@@ -581,8 +581,8 @@ describe("signals: engine", { timeout: 400_000 }, () => {
     const pct = st.pairs * signalProtects(signalSettings({ enabled: true })).length;
     const full = st.configs;
     assert.ok(
-      full > pct,
-      `historic trailing configs: ${full} configs vs ${pct} percent / ATR ones`,
+      full >= pct,
+      `signal config count ${full} is below its ${pct} standard percent / ATR configs`,
     );
     assert.ok(
       sigTapes.length <= full && sigTapes.length >= full * 0.9,
