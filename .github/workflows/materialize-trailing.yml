@@ -1,0 +1,110 @@
+name: Verify and publish trailing patch
+
+on:
+  push:
+    branches: [fix/signal-trailing-stop-cap-20261018]
+    paths: [.github/workflows/materialize-trailing.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: materialize-trailing-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify-and-publish:
+    if: github.ref == 'refs/heads/fix/signal-trailing-stop-cap-20261018'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CTS_CORE_LIVE: '0'
+      CTS_CORE_AUTOSTART: '0'
+      CTS_CORE_STATE: 'off'
+      CTS_CORE_WORKERS: '1'
+      CTS_CORE_COMPARE: '0'
+      CTS_CORE_VARIANTS: '0'
+      MALLOC_ARENA_MAX: '2'
+      MALLOC_MMAP_THRESHOLD_: '1048576'
+      DATABASE_URL: ''
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - name: Decode the reviewed patch, verify SHA-256 and restrict its paths
+        run: |
+          mkdir -p runs/trailing-publish
+          python - <<'PY'
+          import pathlib, base64, lzma, hashlib, subprocess
+          chunks = [pathlib.Path(f'.github/patches/trailing-20261018.{i:02d}') for i in range(4)]
+          encoded = ''.join(p.read_text().strip() for p in chunks)
+          patch = lzma.decompress(base64.b64decode(encoded, validate=True))
+          expected = '984d2e4028abc14abc116a9e4a7f2f0707f97c20844e9f5ed1787f9cc99d23da'
+          assert hashlib.sha256(patch).hexdigest() == expected, 'Patch transport hash mismatch'
+          paths = []
+          for line in patch.decode().splitlines():
+              if line.startswith('diff --git '):
+                  a, b = line.split()[2:]
+                  assert a.startswith('a/') and b.startswith('b/') and a[2:] == b[2:]
+                  name = b[2:]
+                  assert name.startswith(('src/', 'scripts/perf/', 'docs/simulations/')) and '..' not in pathlib.PurePosixPath(name).parts
+                  paths.append(name)
+          assert len(paths) == 25 and len(set(paths)) == 25
+          output = pathlib.Path('runs/trailing-publish/reviewed.patch')
+          output.write_bytes(patch)
+          subprocess.run(['git', 'apply', '--check', str(output)], check=True)
+          subprocess.run(['git', 'apply', '--index', str(output)], check=True)
+          subprocess.run(['git', 'diff', '--cached', '--check'], check=True)
+          pathlib.Path('runs/trailing-publish/patch-sha256.txt').write_text(expected + '\n')
+          print('Verified reviewed patch:', len(patch), 'bytes across', len(paths), 'files')
+          PY
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Typecheck exact staged source
+        run: npm run typecheck -- --pretty false 2>&1 | tee runs/trailing-publish/typecheck.log
+      - name: Lint exact staged source
+        run: npm run lint 2>&1 | tee runs/trailing-publish/lint.log
+      - name: Offline trailing, execution and accounting regressions
+        run: |
+          node --require ./scripts/lib/core-test-offline-guard.cjs --experimental-strip-types --no-warnings --test --test-concurrency=1 src/core/sim/signal-stop-policy.test.ts src/core/sim/backtest.test.ts src/core/sim/trail-tick.test.ts src/core/sim/both-sides.test.ts src/core/sim/exit-protection.test.ts src/core/sim/fixed-price-path.test.ts src/core/signal-trailing-only.test.ts src/core/server/entries-execution.test.ts src/core/pipeline/base-cell-stats.test.ts src/core/sim/gating.test.ts src/components/v2/signal-units.test.ts 2>&1 | tee runs/trailing-publish/tests.log
+      - name: Build app and packaged worker
+        run: npm run build:dev 2>&1 | tee runs/trailing-publish/build.log
+      - name: Publish validated source only to this feature branch
+        env:
+          GH_PUSH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import os, subprocess, base64, pathlib
+          branch = 'fix/signal-trailing-stop-cap-20261018'
+          assert os.environ['GITHUB_REF'] == 'refs/heads/' + branch
+          env = os.environ.copy()
+          token = env.pop('GH_PUSH_TOKEN')
+          env.update(GIT_CONFIG_COUNT='1', GIT_CONFIG_KEY_0='http.https://github.com/.extraheader', GIT_CONFIG_VALUE_0='AUTHORIZATION: basic ' + base64.b64encode(('x-access-token:' + token).encode()).decode())
+          def git(*args):
+              return subprocess.check_output(['git', *args], env=env, text=True).strip()
+          git('fetch', 'origin', 'refs/heads/' + branch)
+          assert git('rev-parse', 'FETCH_HEAD') == os.environ['GITHUB_SHA'], 'Remote branch changed: refuse to overwrite another session'
+          git('config', 'user.name', 'github-actions[bot]')
+          git('config', 'user.email', '41898282+github-actions[bot]@users.noreply.github.com')
+          git('rm', *[f'.github/patches/trailing-20261018.{i:02d}' for i in range(4)])
+          git('commit', '-m', 'Enforce Signal 2% stops and independent causal peak trailing')
+          head = git('rev-parse', 'HEAD')
+          git('push', 'origin', 'HEAD:refs/heads/' + branch)
+          pathlib.Path('runs/trailing-publish/published-commit.txt').write_text(head + '\n')
+          print('Published tested feature source:', head)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trailing-publish-${{ github.run_id }}
+          path: runs/trailing-publish/
+          retention-days: 30
+          compression-level: 6
