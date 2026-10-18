@@ -4,6 +4,7 @@ import { allCombos, microLaneFloor } from "../pipeline/pipeline.ts";
 import { afterEach, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { baseFocus, CoreRuntime as BaseRuntime, sanitizeWf } from "./runtime.server.ts";
+import { DEFAULT_SETTINGS } from "../config.ts";
 import { auditStateGen, type AuditInput } from "../audit.ts";
 import { CoreDb } from "./db.server.ts";
 import { SIGNAL_SOURCES } from "../signal-config.ts";
@@ -156,18 +157,19 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
       // the group check is off by default: no group verdicts
       assert.equal(rt.status.liveValidation?.groupLastN, 0);
       assert.deepEqual(rt.status.liveValidation?.groups, []);
-      // Block raises volume on some trades and never beyond the cap
-      const mults = rt.sim!.trades.map((t) => t.mult ?? 1);
+      // Block raises volume on some trades and never beyond the cap; extra indication factors are independent.
+      const blockMults = rt.sim!.trades.map((t) => (t.mult ?? 1) / (t.volFactor ?? 1));
       assert.ok(
-        mults.some((m) => m > 1),
+        blockMults.some((m) => m > 1),
         "some Block-raised trades",
       );
       // shared / additive: within maxMult; Overall: each source within maxMult, the stack within 8×
       if ((block as { mode?: string }).mode === "overall") {
-        assert.ok(Math.max(...mults) <= 8 + 1e-9);
+        assert.ok(Math.max(...blockMults) <= 8 + 1e-9);
         for (const t of rt.sim!.trades)
-          for (const v of Object.values(t.legs ?? {})) assert.ok((v ?? 0) <= 1.5 + 1e-9, `leg ${v}`);
-      } else assert.ok(Math.max(...mults) <= 2.5 + 1e-9);
+          for (const v of Object.values(t.legs ?? {}))
+            assert.ok((v ?? 0) <= 1.5 + 1e-9, `leg ${v}`);
+      } else assert.ok(Math.max(...blockMults) <= 2.5 + 1e-9);
       // the audit catches tampering: a wrong volume, a lost trade, a wrong equity
       const t0 = rt.sim!.trades[0];
       t0.mult = (t0.mult ?? 1) + 0.5;
@@ -373,12 +375,12 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     rt.start();
     await until(() => rt.status.state === "computing");
     // a desk re-applying its patch file: live limits, and a patch that changes nothing compute-related
-    rt.updateSettings({ live: { ...rt.settings.live, maxPositions: 0, maxNotionalUsd: 200, openPaused: "test" } });
+    rt.updateSettings({ live: { ...rt.settings.live, maxPositions: 0, maxNotionalUsd: 0, openPaused: "test" } });
     rt.updateSettings({ disabledKinds: [...(rt.settings.disabledKinds ?? [])] }, {});
     await until(() => rt.status.computes >= 1 && rt.status.state === "running", 180_000);
     const r = rt as unknown as { paperStepped: boolean; dirty: boolean };
     assert.equal(r.paperStepped, true, "the compute's tapes are stepped, not thrown away");
-    assert.equal(rt.settings.live.maxPositions, 0);
+    assert.equal(rt.settings.live.maxPositions, 100, "live admission retains the exchange ceiling");
     assert.equal(rt.settings.live.openPaused, "test");
     // a compute-relevant change still recomputes
     rt.updateSettings({ toggles: { ...rt.settings.toggles, dcaActive: !rt.settings.toggles.dcaActive } });
@@ -819,6 +821,32 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
 
   it("never runs two cycles at once, however often a recompute is requested", async () => {
     const rt = mk();
+    const inner = rt as unknown as Record<string, unknown>;
+    let computes = 0;
+    let activeComputes = 0;
+    let maxActiveComputes = 0;
+    // This case tests cycle scheduling, not pipeline throughput. Keep the first compute open while kicks arrive,
+    // then let the follow-up cycle finish without rebuilding the whole 4-symbol, 18-day synthetic portfolio.
+    inner.syncMarket = async () => false;
+    inner.paperStepped = true;
+    inner.compute = async () => {
+      const state = rt as unknown as { dirty: boolean; settingsStale: boolean };
+      state.dirty = false;
+      state.settingsStale = false;
+      rt.status.state = "computing";
+      activeComputes++;
+      maxActiveComputes = Math.max(maxActiveComputes, activeComputes);
+      const n = ++computes;
+      await new Promise((resolve) => setTimeout(resolve, n === 1 ? 800 : 10));
+      rt.status.computes++;
+      activeComputes--;
+    };
+    inner.paperIdle = async () => {};
+    inner.stepPaperGen = function* () {};
+    inner.runAdjust = () => {};
+    inner.runAuditAsync = async () => {};
+    inner.buildListings = () => {};
+    inner.comparePresets = async () => {};
     let running = 0;
     let maxRunning = 0;
     const orig = rt.cycle.bind(rt);
@@ -837,11 +865,11 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
       rt.kick();
       await new Promise((r) => setTimeout(r, 30));
     }
-    await until(() => rt.status.computes >= 2 && rt.status.state === "running", 240_000);
+    await until(() => rt.status.computes >= 2 && rt.status.state === "running", 10_000);
     rt.stop();
-    // an overlapping call returns immediately at the busy guard; real work never overlaps
-    assert.ok(rt.status.computes >= 2);
-    assert.ok(maxRunning <= 2, `overlap ${maxRunning}`);
+    assert.equal(rt.status.computes, 2, "the busy-cycle kicks produce one follow-up compute");
+    assert.equal(maxActiveComputes, 1, "computes never overlap");
+    assert.equal(maxRunning, 1, "the next cycle starts after the current one finishes");
   });
 });
 
@@ -1069,6 +1097,56 @@ describe("progress reporting", { timeout: 600_000 }, () => {
   });
 });
 
+describe("sizing default migration", () => {
+  it("moves only the former defaults to balance-relative sizing and neutral range volume", () => {
+    const legacySettings = structuredClone(DEFAULT_SETTINGS);
+    legacySettings.live.maxPositionX = 0.25;
+    legacySettings.live.maxExposureX = 2;
+    legacySettings.sizing = { mode: "minQty", pct: 0.02 };
+    if (!legacySettings.grid.micro) throw new Error("default Micro range missing");
+    legacySettings.grid.micro.volumeFactor = 2.5;
+    const db = new CoreDb(":memory:");
+    db.kvSet("wfCapsV", 26);
+    db.kvSet("settings", legacySettings);
+    db.kvSet("wf", { coord: { enabled: true, s2VolumeFactor: 2.4, hedgeVolumeFactor: 1.6 } } as never);
+    const rt = new CoreRuntime(db, undefined, { market: "synthetic" });
+    assert.deepEqual(rt.settings.sizing, { mode: "equityPct", pct: 0.001 });
+    assert.equal(typeof rt.settings.grid.micro === "object" ? rt.settings.grid.micro.volumeFactor : undefined, 1);
+    assert.equal(rt.wf.coord?.hedgeVolumeFactor, 1.6);
+    assert.equal((rt.wf.coord as unknown as Record<string, unknown>)?.s2VolumeFactor, undefined);
+    assert.equal(db.kvGet<number>("wfCapsV"), 34);
+
+    const customDb = new CoreDb(":memory:");
+    customDb.kvSet("wfCapsV", 26);
+    const customSettings = structuredClone(DEFAULT_SETTINGS);
+    customSettings.live.maxPositionX = 0.25;
+    customSettings.live.maxExposureX = 1.25;
+    customSettings.sizing = { mode: "equityPct", pct: 0.004 };
+    if (!customSettings.grid.micro) throw new Error("default Micro range missing");
+    customSettings.grid.micro.volumeFactor = 2.8;
+    customDb.kvSet("settings", customSettings);
+    const custom = new CoreRuntime(customDb, undefined, { market: "synthetic" });
+    assert.deepEqual(custom.settings.sizing, { mode: "equityPct", pct: 0.004 });
+    assert.equal(custom.settings.live.maxExposureX, 1.25);
+    assert.equal(typeof custom.settings.grid.micro === "object" ? custom.settings.grid.micro.volumeFactor : undefined, 2.8);
+
+    const capDb = new CoreDb(":memory:");
+    capDb.kvSet("wfCapsV", 27);
+    const formerCapSettings = structuredClone(DEFAULT_SETTINGS);
+    formerCapSettings.live.maxNotionalUsd = 200;
+    formerCapSettings.live.maxPositionX = 0.25;
+    formerCapSettings.live.maxExposureX = 2;
+    formerCapSettings.sizing = { mode: "fixed", pct: 0.02 };
+    capDb.kvSet("settings", formerCapSettings);
+    const upgradedCap = new CoreRuntime(capDb, undefined, { market: "synthetic" });
+    assert.equal(upgradedCap.settings.live.maxExposureX, 0, "v27 factory caps are disabled so balance volume factors size positions");
+    assert.equal(upgradedCap.settings.live.maxPositionX, 0);
+    assert.equal(upgradedCap.settings.live.maxNotionalUsd, 0);
+    assert.deepEqual(upgradedCap.settings.sizing, { mode: "equityPct", pct: 0.001 });
+    assert.equal(capDb.kvGet<number>("wfCapsV"), 34);
+  });
+});
+
 describe("paper book across a restart", () => {
   it("a new runtime on the same store continues the open positions, the selection and the book start", () => {
     const db = new CoreDb(":memory:");
@@ -1113,6 +1191,9 @@ describe("paper book across a restart", () => {
         target: 1.02,
         mtm: 0.004,
         exitProtection: undefined,
+        vol: 16,
+        coordVol: 2,
+        volFactor: 8,
       };
       const a = new CoreDb(":memory:", { statePath: join(dir, "state.json") });
       a.kvSet("paperBook", { at: Date.now(), startedAt: 1234, selected: [pos.cfg], positions: [pos] });
