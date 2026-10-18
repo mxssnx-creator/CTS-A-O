@@ -1,0 +1,38 @@
+name: Small account verification
+on:
+  push:
+    branches: [fix/small-account-sizing-20261018]
+    paths: [.github/workflows/small-account-verification.yml]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Package exact tracked source and isolated verification runtime
+        shell: bash
+        run: |
+          mkdir -p /tmp/cts-sizing-snapshot
+          git archive HEAD | gzip > /tmp/cts-sizing-snapshot/source.tar.gz
+          git rev-parse HEAD > /tmp/cts-sizing-snapshot/source-sha.txt
+          tar -czf /tmp/cts-sizing-snapshot/dependencies.tar.gz node_modules
+          cp "$(command -v node)" /tmp/cts-sizing-snapshot/node
+          git fetch --depth=1 origin main
+          git archive FETCH_HEAD | gzip > /tmp/cts-sizing-snapshot/main.tar.gz
+          git rev-parse FETCH_HEAD > /tmp/cts-sizing-snapshot/main-sha.txt
+          sha256sum /tmp/cts-sizing-snapshot/* > /tmp/cts-sizing-snapshot/SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: small-account-source-runtime
+          path: /tmp/cts-sizing-snapshot/
+          retention-days: 3
+          compression-level: 0
