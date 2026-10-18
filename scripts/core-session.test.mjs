@@ -642,8 +642,8 @@ describe("session reports: return PF primary, simulated provenance", () => {
     assert.doesNotMatch(md, /PF \$|ate the edge|sizing.*flattered/);
     const summary = summaryOf(html);
     assert.match(summary, /Return PF<\/div>\s*<div class="v[^"]*">2\.50/);
-    assert.match(summary, /Cash PF \(base \$1\)<\/div>\s*<div class="v[^\"]*">2\.50/);
-    assert.match(summary, /Sized \$ PF diagnostic<\/div>\s*<div class="v[^\"]*">2\.22/);
+    assert.match(summary, /Cash PF \(base \$1\)<\/div>\s*<div class="v[^"]*">2\.50/);
+    assert.match(summary, /Sized \$ PF diagnostic<\/div>\s*<div class="v[^"]*">2\.22/);
     assert.match(summary, /no exchange execution proof/);
     assert.match(html, /cum sized \$ PF diagnostic/);
   });

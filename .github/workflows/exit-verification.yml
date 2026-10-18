@@ -1,0 +1,41 @@
+name: Exit verification
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - feat/historic-exit-strategy-20261016
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: exit-verification-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Install the headless browser used by the functional test
+        run: npx playwright install --with-deps chromium
+      - run: npm run typecheck -- --pretty false
+      - run: npm run lint
+      - name: Build the production app and worker
+        run: env -u DATABASE_URL npm run build
+      - name: Run the complete default suite
+        run: npm test
+      - name: Run the two longer runtime checks
+        run: npm run test:core:slow
