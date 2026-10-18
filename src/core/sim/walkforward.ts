@@ -4468,12 +4468,12 @@ export function sourceUnstable(
  * over the signal's configs, then ranked by the same rules as the Base ranking (activeSignals: drawdown /
  * consistency / latest-24 h validation, the best `count`).
  */
-export function activeSignalsAt(
+export function* activeSignalsAtGen(
   sigTapes: readonly ConfigTape[] | SignalGroup[],
   t: number,
   sig: SignalSettings,
   windowH: number,
-): Set<string> {
+): Generator<number, Set<string>> {
   const groups =
     sigTapes.length && "h" in sigTapes[0]
       ? (sigTapes as SignalGroup[])
@@ -4493,7 +4493,9 @@ export function activeSignalsAt(
     }
     return lo;
   };
+  let work = 0;
   for (const g of groups) {
+    if (++work % 32 === 0) yield -1;
     const a = hb(g.h, fromB);
     const b = hb(g.h, endB);
     if (a >= b) continue;
@@ -4510,6 +4512,7 @@ export function activeSignalsAt(
     let blk = NaN;
     let blkSum = 0;
     for (let j = a; j < b; j++) {
+      if (++work % 512 === 0) yield -1;
       cum += g.net[j];
       if (cum > peak) peak = cum;
       if (peak - cum > dd) dd = peak - cum;
@@ -4554,6 +4557,20 @@ export function activeSignalsAt(
     }),
     sig,
   );
+}
+
+/** Synchronous compatibility helper for tests and non-runtime callers. */
+export function activeSignalsAt(
+  sigTapes: readonly ConfigTape[] | SignalGroup[],
+  t: number,
+  sig: SignalSettings,
+  windowH: number,
+): Set<string> {
+  const gen = activeSignalsAtGen(sigTapes, t, sig, windowH);
+  for (;;) {
+    const next = gen.next();
+    if (next.done) return next.value;
+  }
 }
 
 /**
@@ -4961,13 +4978,15 @@ export function* walkForwardGen(
       : null;
   // executed signal orders per source, in exit order (source stability gate)
   const srcClosed = new Map<string, Array<{ exitT: number; r: number }>>();
-  const settle = (t: number) => {
+  const settle = function* (t: number): Generator<number, void> {
+    let work = 0;
     while (vopen.size && vopen.peekT() <= t) {
       const fx = vopen.pop()!;
       if (fx.cfg && !sigCfg(fx.cfg)) engineOpen.add(fx.sym, fx.side, -1);
       feed.push(fx);
       feedBooks(fx, book, guard, direction);
       if (!fx.open) s2?.close(fx);
+      if (++work % 128 === 0) yield -1;
     }
     while (open.size && open.peekT() <= t) {
       const x = open.pop()!;
@@ -4980,6 +4999,7 @@ export function* walkForwardGen(
         if (!l) srcClosed.set(src, (l = []));
         l.push({ exitT: x.exitT, r: x.r });
       }
+      if (++work % 128 === 0) yield -1;
     }
   };
 
@@ -5011,6 +5031,7 @@ export function* walkForwardGen(
     };
     const slots: Array<string | undefined> = [];
     for (let i = 0; i < tp.n; i++) {
+      if (++built % 1024 === 0) yield -1;
       const e = tp.entryT[i];
       if (e < startT || e >= stopT) continue;
       const slot = tp.symI[i] * 2 + (tp.side[i] > 0 ? 1 : 0);
@@ -5063,9 +5084,9 @@ export function* walkForwardGen(
   let hedgeKeys = new Set<string>();
   for (let t = startT; t < stopT; t += stepH * H) {
     // every order closed before the step counts for this step's decisions (hedge hours, coordination state)
-    settle(t);
+    yield* settle(t);
     if (o.signalRank && sigTapes.length) {
-      const act = activeSignalsAt(sigIdx, t, o.signalRank, Math.max(o.longH, o.preH));
+      const act = yield* activeSignalsAtGen(sigIdx, t, o.signalRank, Math.max(o.longH, o.preH));
       hedgeKeys = new Set();
       if (o.coord?.enabled && o.coord.hedge) {
         const neg = new Set<number>();
@@ -5110,6 +5131,7 @@ export function* walkForwardGen(
       const stepEnd = t + stepH * H;
       const exitCap = stepEnd + maxHoldOf(tp);
       for (let i = lowerBound(tp.exitT, t); i < tp.n; i++) {
+        if (++built % 1024 === 0) yield -1;
         if (tp.exitT[i] >= exitCap) break;
         const e = tp.entryT[i];
         if (e >= t && e < stepEnd && e < stopT) cands.push({ tr: tradeAt(tp, i), tp });
@@ -5120,6 +5142,7 @@ export function* walkForwardGen(
             cands.push({ tr: markedOpenTrade(tp, op, stopT), tp });
     }
     while (sp < sigCands.length && sigCands[sp].e < t + stepH * H) {
+      if (++built % 1024 === 0) yield -1;
       const c = sigCands[sp++];
       if (o.signalRank && !stepOpts.signalActive?.has(c.key)) {
         inactiveSig(c.op ? c.op.side : c.tp.side[c.i]);
@@ -5151,7 +5174,7 @@ export function* walkForwardGen(
     for (const { tr, tp } of cands) {
       // a busy step is worked through in slices
       if (++ci % 300 === 0) yield -1;
-      settle(tr.entryT);
+      yield* settle(tr.entryT);
       // Keep the full candidate feed for guards/confirmation; accepted-order Block reads only the later marker.
       const fk = `${tr.cfg}|${tr.sym}|${tr.side}|${tr.entryT}`;
       let fx = seen.get(fk);
@@ -5347,7 +5370,7 @@ export function* walkForwardGen(
   const stable = runStable(stats, blocks, o.gates.minPf);
   const { protects: _p, dcaProtects: _d, ...rest } = o;
   // the end-of-run state paper / live continue from: every order closed by the end counts
-  settle(stopT);
+  yield* settle(stopT);
   // candidates still open at the end close the feed, in exit order (they never reached the books)
   while (vopen.size) feed.push(vopen.pop()!);
   return {
