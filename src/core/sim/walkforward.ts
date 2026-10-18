@@ -5082,7 +5082,7 @@ export function* walkForwardGen(
     const slots: Array<string | undefined> = [];
     for (let i = 0; i < tp.n; i++) {
       if (++built % 32 === 0 && performance.now() - builtSliceAt >= 8) {
-        yield -1;
+        yield profile("collect signal tape entries");
         builtSliceAt = performance.now();
       }
       const e = tp.entryT[i];
@@ -5126,7 +5126,7 @@ export function* walkForwardGen(
         sigIdx = r.value;
         break;
       }
-      yield profile("build signal index");
+      yield r.value;
     }
     // a pair held only for its open positions (outside signalBasePassed) opens nothing new: it never takes one of
     // the `count` active slots (it took them from the pairs that may trade, which then never traded)
