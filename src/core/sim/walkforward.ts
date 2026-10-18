@@ -128,6 +128,44 @@ import { volumeFactorForIndication } from "../volume-factor.ts";
 
 const H = 3_600_000;
 
+/** Stable merge sort that lets the server yield during large multi-symbol replay orderings. */
+export function* stableSortGen<T>(values: T[], compare: (a: T, b: T) => number): Generator<number, void> {
+  const n = values.length;
+  if (n < 2) return;
+  const scratch = new Array<T>(n);
+  let source = values;
+  let target = scratch;
+  let work = 0;
+  for (let width = 1; width < n; width *= 2) {
+    for (let left = 0; left < n; left += width * 2) {
+      const mid = Math.min(left + width, n);
+      const right = Math.min(left + width * 2, n);
+      let a = left;
+      let b = mid;
+      let out = left;
+      while (a < mid && b < right) {
+        target[out++] = compare(source[a], source[b]) <= 0 ? source[a++] : source[b++];
+        if (++work >= 512) { work = 0; yield -1; }
+      }
+      while (a < mid) {
+        target[out++] = source[a++];
+        if (++work >= 512) { work = 0; yield -1; }
+      }
+      while (b < right) {
+        target[out++] = source[b++];
+        if (++work >= 512) { work = 0; yield -1; }
+      }
+    }
+    [source, target] = [target, source];
+  }
+  if (source !== values) {
+    for (let i = 0; i < n; i++) {
+      values[i] = source[i];
+      if (++work >= 512) { work = 0; yield -1; }
+    }
+  }
+}
+
 /**
  * Coordination tactics: portfolio-level rules on the realized results of the executed orders (causal: only orders
  * closed before an entry count) and on the positions open at that moment. Each can be switched on or off.
@@ -4990,7 +5028,7 @@ export function* walkForwardGen(
         else inactiveSig(op.side);
       }
   }
-  sigCands.sort((a, b) => a.e - b.e);
+  yield* stableSortGen(sigCands, (a, b) => a.e - b.e);
   let sp = 0;
   let held = new Set<string>();
   // re-evaluating more often than one bar cannot change anything: the step is at least one bar
@@ -5091,7 +5129,7 @@ export function* walkForwardGen(
     }
     // best first: at the same entry time the better candidate takes a capped slot first
     const prio = bestFirst(picks, stepOpts);
-    cands.sort(
+    yield* stableSortGen(cands,
       (a, b) =>
         a.tr.entryT - b.tr.entryT ||
         prio(a.tp, a.tr.sym, a.tr.side) - prio(b.tp, b.tr.sym, b.tr.side) ||
@@ -5254,7 +5292,7 @@ export function* walkForwardGen(
     yield t;
   }
 
-  trades.sort((a, b) => a.exitT - b.exitT);
+  yield* stableSortGen(trades, (a, b) => a.exitT - b.exitT);
   yield -1; // (summary slices, not simulated steps)
   const allOutcomes = openAtEnd.length ? [...trades, ...openAtEnd] : trades;
   const stats = unitStatsOf(allOutcomes, stopT);

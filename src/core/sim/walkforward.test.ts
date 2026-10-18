@@ -8,6 +8,7 @@ import {
   makeTape,
   selectDurable,
   selectFixed,
+  stableSortGen,
 } from "./walkforward.ts";
 import { DEFAULT_SETTINGS, DEFAULT_TOGGLES } from "../config.ts";
 import type { Trade } from "../domain/types.ts";
@@ -71,6 +72,24 @@ const o = {
     minActiveLevel: 1,
   },
 };
+
+describe("cooperative simulation ordering", () => {
+  it("matches stable Array.sort order while yielding across large input", () => {
+    const input = Array.from({ length: 4097 }, (_, seq) => ({ key: (seq * 7919) % 97, seq }));
+    const compare = (a: (typeof input)[number], b: (typeof input)[number]) => a.key - b.key;
+    const expected = [...input].sort(compare);
+    const actual = [...input];
+    const sort = stableSortGen(actual, compare);
+    let yields = 0;
+    for (;;) {
+      const next = sort.next();
+      if (next.done) break;
+      yields++;
+    }
+    assert.ok(yields > 0, "large sorts expose cooperative yield points");
+    assert.deepEqual(actual, expected, "ordering and tie stability match the previous native sort");
+  });
+});
 
 describe("durable selection", () => {
   it("keeps configs positive across sub-windows and rejects a single burst", () => {
