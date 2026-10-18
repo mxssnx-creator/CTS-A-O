@@ -138,8 +138,10 @@ export class SeriesCache {
    * from, `factor` this series' aggregation of that timeframe (1 = a universe series, a higher view: its factor).
    */
   setMarket(src: MarketSource | null, tf: number = this.b.tfMin, factor = 1) {
+    if (this.mk?.src === src && this.mk.tf === tf && this.mk.factor === factor) return;
     this.mk = src ? { src, tf, factor } : null;
-    this.m.delete("mkt");
+    // Cached relation states and higher views may already depend on the previous market source.
+    this.m.clear();
   }
   /**
    * The equal-weight market of this series' timeframe, aligned to its bars by open time: per-bar log return,

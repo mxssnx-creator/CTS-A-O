@@ -46,6 +46,7 @@ export const INDICATION_KINDS = [
   "ichimoku",
   "smooth",
   "tactic",
+  "relate",
 ] as const;
 export type IndicationKind = (typeof INDICATION_KINDS)[number];
 
@@ -129,6 +130,8 @@ export interface ExitProtectionState {
  * them on another range rather than ignoring them.
  */
 export interface RangeGrid {
+  /** execution volume relative to the balance-based base unit (0.2–5 in 0.2 steps; explicit 2.5 remains supported) */
+  volumeFactor?: number;
   /** targets of this range (fractions of price; Micro: net of the round-trip cost unless `tpNetOfCost` is false) */
   tp: readonly number[];
   /** stop as a multiple of the target */
@@ -437,10 +440,16 @@ export interface Trade {
   vol?: number;
   /** Block level at execution (broker) or DCA legs added (sim) */
   level?: number;
-  /** Block volume multiplier applied at execution (r includes it); r / mult is the unit result */
+  /** External execution multiplier (Block × relation × type factor); r / mult is the underlying strategy return. */
   mult?: number;
-  /** part of mult from coordination volume (Stable-02 relation volume); mult / coordVol is the Block volume */
+  /** part of mult from coordination volume (Stable-02 relation volume). */
   coordVol?: number;
+  /** additional type / combined-lane factor in mult; removed from Block reporting and audit. */
+  volFactor?: number;
+  /** Negative-hour hedge volume factor captured at entry. */
+  hedgeVol?: number;
+  /** Independent range sizing factor captured at entry. */
+  rangeVol?: number;
   /** taken by the negative-hour hedge (a signal outside the ranked set, while the book was losing) */
   hedge?: boolean;
   /** Block type overall: the extra volume each source added as its own position (part of mult) */
@@ -481,6 +490,13 @@ export interface OpenPosition {
    * marked-open order's r already carries it (r = Σ legs), so it is never multiplied into r again.
    */
   w?: number;
+  /** execution factors retained at entry for exact closes after settings change or restart */
+  coordVol?: number;
+  volFactor?: number;
+  /** Negative-hour hedge volume factor captured at entry. */
+  hedgeVol?: number;
+  /** Independent range sizing factor captured at entry. */
+  rangeVol?: number;
   /** Opt-in Block audit trace captured at entry and retained while this position is held. */
   blockLevels?: Partial<Record<string, number>>;
   blockEffectiveLevels?: Partial<Record<string, number>>;
@@ -541,7 +557,7 @@ export interface LastNResult {
   oos: Stats;
   oosRows: LastNRow[];
   success: boolean;
-  /** gate currently open for the next trade (using bestN on the full tape) */
+  /** gate open for the next trade as of its decision time; N=0 means the ungated baseline was selected */
   gateOpen: boolean;
 }
 
@@ -613,13 +629,13 @@ export interface Gates {
   /**
    * stage minimum PF per target range, in place of `minPf` for that range's configs (every PF gate a config passes:
    * the Main and Real windows, the pre-historic window, the validation last-N, the entry last-N and the symbol gate).
-   * Short, Wide and the signals keep `minPf`. Values 1.05–3.
+   * Tagged ranges use their configured floor; Wide and untagged Signals keep `minPf`. Values 1.05–3.
    */
   rangeMinPf?: Partial<Record<RangeMinPfKey, number>>;
   /**
-   * Base: the PF a pair needs on its Base cell to have its sets computed (every cell × strategy type). Unset = the
-   * stage minimum (as before). Lower (e.g. 0.9) computes many more sets — each set is still judged on its own at the
-   * stage / range minimum before it can trade; only the pre-filter on the pair is wider. 0.5–1.5.
+   * Base: fallback PF floor for the untagged / Wide Base cell. Unset = the stage minimum. A tagged cell still uses its
+   * rangeMinPf when configured. Lowering this floor widens only Wide set construction; it never weakens tagged ranges.
+   * 0.5–1.5.
    */
   baseSetsMinPf?: number;
   /**
@@ -636,6 +652,8 @@ export interface Gates {
 export type RangeMinPfKey = "micro" | "minimal" | "short" | "general" | "long";
 
 export interface ProtectGridSpec {
+  /** execution volume relative to the normal factor for untagged Wide configs (0.2–5 in 0.2 steps; default 1) */
+  volumeFactor?: number;
   tp: readonly number[];
   /** SL as a multiple of TP (max ratio e.g. 2 or 2.5) */
   slOfTp: readonly number[];
@@ -735,6 +753,8 @@ export interface ProtectGridSpec {
         enabled?: boolean;
         lastN?: number;
         minPf?: number;
+        /** execution volume relative to the normal factor for Minimal plus (0.2–5 in 0.2 steps; default 1) */
+        volumeFactor?: number;
         tp: readonly number[];
         slOfTp: readonly number[];
         trailOfTp: readonly number[];

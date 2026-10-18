@@ -1,9 +1,28 @@
 # CTS-A-O work and tasks
 
-Updated 16 October 2026, Europe/Vienna. Repository: `mxssnx-creator/CTS-A-O`.
-Current release PR: [#140](https://github.com/mxssnx-creator/CTS-A-O/pull/140).
-Latest pushed combined production/test checkpoint: `08cd452e16b37acac9799450066088ebceaa1314` (CP10), tree `214927a2683e2ba2e69d8fcd4e6249c72effe71d`.
+Updated 17 October 2026, Europe/Vienna. Repository: `mxssnx-creator/CTS-A-O`.
+Current follow-up PR: [#155](https://github.com/mxssnx-creator/CTS-A-O/pull/155), branch `feat/break-micro-short-channel-20261017`. PR #153, which added the initial Break family and realtime refresh, merged at `3a6d67e77b5c730192b1db8dcaa6d4e82ffe03e0`. Current main: `b6094a4395a79689804c0956c1c826e0de0b0017`, tree `a204a4ee9e4de0248e24eebedd94a1669574c7aa`. Previous production/test release checkpoint: `08cd452e16b37acac9799450066088ebceaa1314` (CP10), tree `214927a2683e2ba2e69d8fcd4e6249c72effe71d`.
 Its direct parent is CP9 `da5fe490`, then CP8 `e6914363`, whose two-parent integration preserves CP7 `c6ed5e9` and main PR #139 merge `fc2ec3b3`. CP8 is also backed up as `backup/pre-backtest-lifecycle-20261016`; exact CP9 is backed up as `backup/pre-preset-invalidation-20261016`. Queue/lifecycle and selective preset invalidation corrections are pushed. The CP9 full regular run was deliberately interrupted after the stale-result race was confirmed. CP10 focused verification, independent review and all seven offline release checks pass. Final evidence is saved successfully. The final documentation-only release checkpoint preserves those tested computational bytes; PR #140 records its exact commit and merge state.
+
+## Relate indication work — Micro range support
+
+| Task | Status | Acceptance evidence |
+|---|---|---|
+| Add independently configurable Relate indications | Implemented on `feat/relate-indication-20261016` | 40 exact IDs: seven nonempty 1/5/15m subsets × Trend/Adaptive × Guarded/Balanced, with 28 standard identities and 12 Micro aliases. Each uses its own anchor lane and PF gate. |
+| Micro, Minimal and Short routing | Implemented and tested | Micro aliases use the existing 5m minimum lane; standard 5m relations reach Minimal, standard 15m relations reach Short, and Micro aliases obey `grid.micro.ownInds` / `grid.minimal.microInds`. |
+| Trend, drawdown and activity calculations | Implemented and tested | Completed-bar higher-timeframe alignment; causal ATR-normalized symbol/market drawdown; last-bar, recent-part and recent-change activity ratios; market-wide activity cap; gap warmup and market-cache invalidation. |
+| Regression, UI, typecheck and build | PRs #146 and #151 merged; `main` verified | Original Relate checkpoint `ec0c489fc590a693fc67ca294401e66d328bda78`; main exchange-slot commit `f659a266590722d1de6a33eb900c02ab90aa020b` is integrated. At Relate verification, main was `10d50c5bb1f16fced70a5b5067a9f3bf6dcd8201`, tree `03703031a535c4dc5d027abf4c1b761719237664`; PR #152 later advanced the docs baseline to `83585ef6b12c215fa0ee6a0dd2f8cfacba35b6cf`, tree `d843e839f7bab4992f355576f528cdf9c9673ab8`. Merged-tree focused core: 138/138 across 10 files; UI: 10/10; typecheck/build pass. Hard-pressure: 1/1. PR #151 restored the complete scheduler test after PR #146's test blob was truncated; regression rerun on main: 1/1 in 1.2s. ESLint has 0 errors and 4 existing code warnings. Full processing/runtime stress and broad scripts remain incomplete; see operations handoff. |
+| Performance and strategy evidence | Functional/performance evidence only | Synthetic benchmark: 40 IDs × 10 symbols, 1,973,360 config-bar visits in 210ms; +15.16MB ArrayBuffer after GC. No new held-out Micro result or profitability claim; feature is not promoted or deployed. |
+
+## Break indication and realtime-refresh work
+
+| Task | Status | Acceptance evidence |
+|---|---|---|
+| Add relational Break sources | Initial family merged in PR #153; Micro short-channel follow-up on `feat/break-micro-short-channel-20261017` | 144 unique IDs: 84 standard and 60 Micro. Five sources (including Micro-only 8-bar Donchian/retest) × eligible 1/5/15m subsets × 24/48-bar drawdown windows × Guarded/Balanced profiles. Every identity retains its own anchor lane and order key. |
+| Causal calculations and qualification | Implemented and functionally tested | Completed-bar HTF trends, prior-only channel/volatility features, gap warmup, independent price/market drawdown horizons, last/part/change activity ratios, market-relative filters and 1.10 return-PF minimum through Base, selection and live eligibility. |
+| Realtime refresh and UI | Implemented and functionally tested | Break-only fast refresh is scoped to selected Break configs and each config's own lane close; a 100 ms live tick checks new bars, exchange candle polling allows 2 seconds for publication, stale signals over 15 seconds are suppressed, and refreshed tapes feed Entries and Overall. UI exposes Break focus and exact Base-count coverage. |
+| Tests, typecheck, lint and build | Tested source checkpoint `f5e50d97199c1c977fe81fdd7077cd6b68cbfdb6`, tree `b140f5bb2c0dbd63a4b121263a498f56c5f734ed` | Focused Break/Relate/Micro/pipeline bundle 43/43; Break-only 8/8; UI 7/7; realtime timing/freshness/tape-helper 3/3; typecheck and development build/worker package pass; scoped ESLint 0 errors and 4 warnings. |
+| Strategy/live evidence | Not established | Matched cached-feed 9-symbol replay: old four-ID set and updated 60-ID set both had 0 passing Base pairs, 0 orders and unavailable PF/win rate in all six hours. Base compute/RSS: 412 ms/368 MB old, 1,272 ms/413 MB updated. No held-out profitability, authenticated fills, deployment or live reload. See [replay report](simulations/break-micro-live-replay-20261017.md); do not treat functional tests as profitability evidence. |
 
 ## Current release: independent Overall Block and execution correctness
 

@@ -21,6 +21,15 @@ const run = (trades, openAtEnd = [], extra = {}) => ({
 const near = (a, b) => assert.ok(Math.abs(a - b) < 1e-12, `${a} ≠ ${b}`);
 
 describe("walk-forward hourly reporting", () => {
+  it("assigns before/exact/after-boundary exits and the final end to the shared settled hours", () => {
+    const closed = [H - 1, H, H + 1, 2 * H].map((exitT, i) => trade([0.02, -0.01, -0.01, 0.03][i], 1, exitT));
+    const result = walkForwardHourlyReport(run(closed));
+    assert.deepEqual(result.hourly.map(({ t, n }) => [t, n]), [[0, 2], [H, 2]]);
+    assert.deepEqual(result.hourly.map(({ trades }) => trades.map((x) => x.exitT)), [[H - 1, H], [H + 1, 2 * H]]);
+    assert.equal(result.hourly.reduce((n, h) => n + h.n, 0), result.stats.n);
+    assert.equal(result.stats.n, 4);
+  });
+
   it("the CLI renders the helper's actual clipped window and exposes matching machine-readable hourly counts", () => {
     const dir = mkdtempSync(join(tmpdir(), "cts-hourly-report-"));
     try {

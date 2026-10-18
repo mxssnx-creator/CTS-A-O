@@ -36,6 +36,7 @@ describe("signals end to end: sources mode allow", { timeout: 600_000 }, () => {
           enabled: true,
           count: 10,
           minTrades: 1,
+          coordination: { ...DEFAULT_SIGNALS.coordination, enabled: false },
           sourcesMode: "allow",
           sources: Object.fromEntries(ALLOW.map((s) => [s, true])),
         }),
@@ -75,7 +76,7 @@ describe("signals end to end: sources mode allow", { timeout: 600_000 }, () => {
     const trades = sim.trades.filter((x) => isSignalInd(x.cfg.split("|")[1] ?? ""));
     for (const x of trades) {
       const [bot, ind] = x.cfg.split("|");
-      assert.ok(signalSetAt(steps, x.entryT)!.has(sigActiveKey(bot, ind, x.sym, x.side, x.kind)), x.cfg);
+      assert.ok(signalSetAt(steps, x.entryT)!.has(sigActiveKey(bot, ind, x.sym, x.side, x.kind, x.cfg)), x.cfg);
     }
     const f = sim.signalFunnel!;
     assert.ok(f, "funnel reported");

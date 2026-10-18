@@ -34,6 +34,9 @@ export function coreTestInvocation(argv = [], sourceEnv = process.env, root = RO
   const concurrency = Number(sourceEnv.CTS_CORE_TEST_CONCURRENCY ?? 1);
   if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 8)
     throw new Error("CTS_CORE_TEST_CONCURRENCY must be an integer from 1 to 8");
+  const testWorkers = String(sourceEnv.CTS_CORE_TEST_WORKERS ?? "1");
+  if (testWorkers !== "1" && testWorkers !== "2")
+    throw new Error("CTS_CORE_TEST_WORKERS must be 1 or 2");
   const selected = files.length
     ? files
     : slow
@@ -48,7 +51,7 @@ export function coreTestInvocation(argv = [], sourceEnv = process.env, root = RO
   Object.assign(env, {
     MALLOC_ARENA_MAX: "2",
     MALLOC_MMAP_THRESHOLD_: "1048576",
-    CTS_CORE_WORKERS: "1",
+    CTS_CORE_WORKERS: testWorkers,
     CTS_CORE_COMPARE: "0",
     CTS_CORE_LIVE: "0",
     CTS_CORE_SLOW: slow ? "1" : "0",
@@ -64,6 +67,7 @@ export function coreTestInvocation(argv = [], sourceEnv = process.env, root = RO
     env,
     files: selected,
     concurrency,
+    workers: Number(testWorkers),
     args: [
       "--require",
       guard,
@@ -89,7 +93,7 @@ async function main() {
     /* best effort outside Linux/procfs */
   }
   console.log(
-    `[core-tests] offline Node transport guard; ${invocation.files.length} files; concurrency ${invocation.concurrency}`,
+    `[core-tests] offline Node transport guard; ${invocation.files.length} files; concurrency ${invocation.concurrency}; compute workers ${invocation.workers}`,
   );
   const child = spawn(invocation.command, invocation.args, {
     cwd: invocation.cwd,

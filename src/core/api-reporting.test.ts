@@ -75,14 +75,14 @@ test("a flat measured live close retains actual notional for reconstructed drawd
   r.settings.paperNotional = 5;
   r.settings.cost = 0;
   const entryT = END - H;
-  const exitT = entryT + 2 * 60_000;
+  const exitT = entryT + 3 * 60_000;
   const tag = liveTag(r.settings.live.connId);
   for (const [kind, at] of [["O", entryT], ["X", exitT]] as const) {
     const coid = `${tag}Uflat-${kind}`;
     r.db.run("INSERT INTO live_orders (coid,cfg,sym,side,kind,qty,px,status,at) VALUES (?,?,?,?,?,?,?,?,?)", coid, "owned-flat", "QA-FLAT-USDT", 1, kind, 1, 100, "ok", at);
     r.db.run("INSERT INTO live_fills (coid,sym,side,kind,qty,ref_px,fill_px,fee,fee_known,at) VALUES (?,?,?,?,?,?,?,?,?,?)", coid, "QA-FLAT-USDT", 1, kind, 1, 100, 100, 0, 1, at);
   }
-  r.candles.set("QA-FLAT-USDT", CandleSeries.fromCandles([100, 90, 100].map((price, i) => ({ t: entryT + i * 60_000, o: price, h: price, l: price, c: price, v: 1 }))));
+  r.candles.set("QA-FLAT-USDT", CandleSeries.fromCandles([100, 90, 100, 100].map((price, i) => ({ t: entryT + i * 60_000, o: price, h: price, l: price, c: price, v: 1 }))));
   const result = await coreStatisticsData(coreStatisticsInput({ source: "live", hours: 6 })) as Any;
   assert.equal(result.closes.length, 1);
   assert.equal(result.closes[0].notional, 100);

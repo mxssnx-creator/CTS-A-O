@@ -18,6 +18,8 @@ const intent: LiveIntent = { cfg: "combo|ema-9-21@m1|entry", sym: "S0-USDT", sid
 type Reply = { order: { orderId?: string; status?: string; executedQty?: number; avgPrice?: number; commission?: number; updateTime?: number } };
 function fixture(db = new CoreDb(":memory:")) {
   const rt = fakeRt(db).rt;
+  // Settings are mutable runtime state; keep factor edits in each fixture from leaking across the test suite.
+  rt.settings = { ...rt.settings, grid: structuredClone(rt.settings.grid), live: { ...rt.settings.live } };
   rt.settings.live = { ...rt.settings.live, mode: "entries", requireReady: false, syncMs: 0 };
   rt.status.lastBarT = 1;
   const state = {
@@ -133,6 +135,136 @@ describe("entries mode: actual MARKET execution quantities", () => {
     assert.equal(Number(entry.quantity), 1, "100 equity×.1 cap =10 USD / price10, rather than the requested100 USD");
   });
 
+  it("applies an indication factor to the normal unit before live account caps", async () => {
+    const { rt, state, step } = fixture();
+    Object.assign(rt.settings.live, {
+      notionalUsd: 10,
+      maxNotionalUsd: 0,
+      maxPositionX: 0,
+      maxExposureX: 0,
+      maxRiskPct: 0,
+      maxBackstopLossPct: 0,
+      minFreeMargin: 0,
+    });
+    state.entry.order = { orderId: "entry", status: "FILLED", executedQty: 8, avgPrice: 10 };
+    await step([{ ...intent, volFactor: 8 }]);
+    const entry = state.sent.find((p) => p.type === "MARKET" && p.side === "BUY")!;
+    assert.equal(Number(entry.quantity), 8, "normal $10 × factor 8 = $80, priced at $10 per unit");
+  });
+
+  it("still applies the live per-position cap after multiplying the normal unit", async () => {
+    const { rt, state, step } = fixture();
+    Object.assign(rt.settings.live, {
+      notionalUsd: 10,
+      maxNotionalUsd: 0,
+      maxPositionX: 0.5,
+      maxExposureX: 0,
+      maxRiskPct: 0,
+      maxBackstopLossPct: 0,
+      minFreeMargin: 0,
+    });
+    state.entry.order = { orderId: "entry", status: "FILLED", executedQty: 5, avgPrice: 10 };
+    await step([{ ...intent, volFactor: 8 }]);
+    const entry = state.sent.find((p) => p.type === "MARKET" && p.side === "BUY")!;
+    assert.equal(
+      Number(entry.quantity),
+      5,
+      "the $80 scaled unit is bounded to $50 by equity × maxPositionX",
+    );
+  });
+
+  it("Micro's range factor sizes an Entries order at 250% of normal", async () => {
+    const micro: LiveIntent = {
+      ...intent,
+      cfg: "follow|ema-9-21@m1|tp1|sl1|tr0|h32|mc",
+    };
+    const { rt, state, step } = fixture();
+    Object.assign(rt.settings.live, { notionalUsd: 10, maxNotionalUsd: 0, maxPositionX: 0,
+      maxExposureX: 0, maxRiskPct: 0, maxBackstopLossPct: 0, minFreeMargin: 0 });
+    rt.settings.grid.micro = { ...rt.settings.grid.micro, volumeFactor: 2.5 } as never;
+    assert.equal((rt.settings.grid.micro as unknown as { volumeFactor: number }).volumeFactor, 2.5);
+    await step([micro]);
+    const entry = state.sent.find((p) => p.type === "MARKET" && p.side === "BUY")!;
+    assert.equal(Number(entry.quantity), 2.5, "$10 normal size × Micro's 2.5 factor at $10 per unit");
+  });
+
+  for (const { name, cfg, factor } of [
+    { name: "Wide", cfg: intent.cfg, factor: 1.4 },
+    { name: "General", cfg: "combo|ema-9-21@m1|tp1|sl1|tr0|h32|gn", factor: 1.6 },
+    { name: "Long", cfg: "combo|ema-9-21@m1|tp1|sl1|tr0|h32|lg", factor: 2.2 },
+  ]) {
+    it(`${name} range factor reaches the native Entries quantity`, async () => {
+      const { rt, state, step } = fixture();
+      Object.assign(rt.settings.live, { notionalUsd: 10, maxNotionalUsd: 0, maxPositionX: 0,
+        maxExposureX: 0, maxRiskPct: 0, maxBackstopLossPct: 0, minFreeMargin: 0 });
+      if (name === "Wide") rt.settings.grid.volumeFactor = factor;
+      else {
+        const key = name === "General" ? "general" : "long";
+        const range = rt.settings.grid[key];
+        assert.ok(range);
+        Object.assign(range, { volumeFactor: factor });
+      }
+      await step([{ ...intent, cfg }]);
+      const entry = state.sent.find((p) => p.type === "MARKET" && p.side === "BUY")!;
+      assert.equal(Number(entry.quantity), factor, `$10 normal size × ${factor} for ${name}`);
+    });
+  }
+
+  it("captured Stable-02 and hedge factors scale Signal size before account caps", async () => {
+    const signal: LiveIntent = {
+      ...intent,
+      cfg: "follow|sig-ema-cross-s@m15|tp1|sl1|tr0|h32",
+      coordVol: 1.4,
+      hedge: true,
+      hedgeVol: 1.6,
+    };
+    const { rt, state, step } = fixture();
+    Object.assign(rt.settings.live, { notionalUsd: 10, maxNotionalUsd: 0, maxPositionX: 0,
+      maxExposureX: 0, maxRiskPct: 0, maxBackstopLossPct: 0, minFreeMargin: 0 });
+    await step([signal]);
+    let entry = state.sent.find((p) => p.type === "MARKET" && p.side === "BUY")!;
+    assert.equal(Number(entry.quantity), 2.24, "10 × 1.4 × 1.6 at $10 per unit; Signal range factor is neutral");
+
+    const capped = fixture();
+    Object.assign(capped.rt.settings.live, { notionalUsd: 10, maxNotionalUsd: 0, maxPositionX: 0.1,
+      maxExposureX: 0, maxRiskPct: 0, maxBackstopLossPct: 0, minFreeMargin: 0 });
+    await capped.step([signal]);
+    entry = capped.state.sent.find((p) => p.type === "MARKET" && p.side === "BUY")!;
+    assert.equal(Number(entry.quantity), 1, "the 10 USD per-position cap still bounds coordinated sizing");
+  });
+
+  it("Signal short and medium range factors scale Entries orders before caps", async () => {
+    for (const { range, suffix } of ([{ range: "short", suffix: "s" }, { range: "medium", suffix: "m" }] as const)) {
+      const signal: LiveIntent = {
+        ...intent,
+        cfg: `follow|sig-ema-cross-${suffix}@m15|tp1|sl1|tr0|h32`,
+        coordVol: 1.4,
+        hedge: true,
+        hedgeVol: 1.6,
+      };
+      const { rt, state, step } = fixture();
+      Object.assign(rt.settings.live, { notionalUsd: 10, maxNotionalUsd: 0, maxPositionX: 0,
+        maxExposureX: 0, maxRiskPct: 0, maxBackstopLossPct: 0, minFreeMargin: 0 });
+      rt.settings.signals.rangeVolumeFactors[range] = 1.5;
+      await step([signal]);
+      const entry = state.sent.find((p) => p.type === "MARKET" && p.side === "BUY")!;
+      assert.equal(Number(entry.quantity), 3.36, `$10 × ${range} 1.5 × relation 1.4 × hedge 1.6`);
+    }
+  });
+
+  it("applies the range factor before the same per-position equity cap", async () => {
+    const micro: LiveIntent = {
+      ...intent,
+      cfg: "follow|ema-9-21@m1|tp1|sl1|tr0|h32|mc",
+    };
+    const { rt, state, step } = fixture();
+    Object.assign(rt.settings.live, { notionalUsd: 10, maxNotionalUsd: 0, maxPositionX: 0.1,
+      maxExposureX: 0, maxRiskPct: 0, maxBackstopLossPct: 0, minFreeMargin: 0 });
+    await step([micro]);
+    const entry = state.sent.find((p) => p.type === "MARKET" && p.side === "BUY")!;
+    assert.equal(Number(entry.quantity), 1, "2.5× $10 is bounded back to 10% of the $100 account");
+  });
+
   for (const gate of ["gross", "risk", "backstop", "margin"] as const) {
     it(`${gate} includes unfilled entry reservations before another independent symbol's native POST`, async () => {
       const { rt, state, step } = fixture();
@@ -156,7 +288,7 @@ describe("entries mode: actual MARKET execution quantities", () => {
     state.equity = null;
     const result = await step();
     assert.equal(state.sent.length, 0);
-    assert.ok(result.skipped.some((p) => /account equity unknown/.test(p.why)));
+    assert.ok(result.skipped.some((p) => /account balance unknown/.test(p.why)));
   });
 
   it("a known partial and its pending remainder are reserved once, allowing another exact-fit entry", async () => {

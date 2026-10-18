@@ -204,7 +204,7 @@ describe("live record judges before the simulation", () => {
 
 describe("acceptance groups on the exchange record", async () => {
   const { exchangeAcceptIndex } = await import("./live-record.ts");
-  const { EngineSideIndex, SignalGuard, engineSideKey, sideAcceptKey } = await import("./signals.ts");
+  const { EngineSideIndex, SignalGuard, acceptKey, engineSideKey, sideAcceptKey } = await import("./signals.ts");
   const H = 3_600_000;
   const o = { enabled: true, minPf: 1.05, hours: 24, minTrades: 3 };
   // engine Short-range trailing longs: three exchange closes, all losses
@@ -255,6 +255,18 @@ describe("acceptance groups on the exchange record", async () => {
     assert.ok(Math.abs(per.stats(key, 11 * H, 24).pf - 0.01 / 0.015) < 1e-9);
     // the entry is not counted before its last close
     assert.equal(per.stats(key, 10 * H + 2 * 60_000, 24).n, 0);
+  });
+
+  it("Signal exchange acceptance keeps exact protection configs independent", () => {
+    const ind = "sig-rsi-s@m15";
+    const won = `follow|${ind}|tp1|sl1|tr0|h32`;
+    const lost = `follow|${ind}|tp2|sl1|tr0|h32`;
+    const index = exchangeAcceptIndex([won, lost].flatMap((cfg) => rows.map((x) => ({
+      ...x, cfg, r: cfg === won ? 0.03 : -0.01,
+    }))));
+    assert.deepEqual(index.stats(acceptKey(ind, "S1-USDT", 1, "normal", won), 11 * H, 24), { n: 3, pf: Infinity });
+    assert.deepEqual(index.stats(acceptKey(ind, "S1-USDT", 1, "normal", lost), 11 * H, 24), { n: 3, pf: 0 });
+    assert.deepEqual(index.stats(acceptKey(ind, "S1-USDT", 1, "normal"), 11 * H, 24), { n: 0, pf: 0 });
   });
 
   it("signal side acceptance reads the exchange's signal closes", () => {

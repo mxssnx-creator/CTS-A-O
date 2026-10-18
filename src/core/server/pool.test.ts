@@ -308,6 +308,47 @@ describe("worker pool", { timeout: 300_000 }, () => {
     });
   });
 
+  it("a held pair that failed Base keeps only its held tape, never every range", () => {
+    const { bot, ind } = combos[0];
+    const pair = `${bot}|${ind}`;
+    const protect = DEFAULT_PROTECT;
+    const all = buildTapes(u, [protect], s.cost, undefined, new Set([pair]), s.tactics);
+    assert.equal(all.length, 1);
+    const heldId = all[0].id;
+
+    const heldFloors = { minSl: 0, minTrail: 0, pairTags: { [pair]: [] }, heldIds: new Set([heldId]) };
+    const held = buildTapes(u, [protect], s.cost, undefined, new Set([pair]), s.tactics, null, heldFloors);
+    assert.deepEqual(held.map((t) => t.id), [heldId]);
+    assert.equal(held[0].heldOnly, true);
+
+    const rejected = buildTapes(u, [protect], s.cost, undefined, new Set([pair]), s.tactics, null, {
+      minSl: 0,
+      minTrail: 0,
+      pairTags: { [pair]: [] },
+    });
+    assert.deepEqual(rejected, []);
+
+    const dcaOpt = {
+      protects: [protect],
+      dca: wf.dca,
+      axis: { ...DEFAULT_SETTINGS.axis, perRange: true, ranges: ["atr" as const], levelsSet: [2] },
+    };
+    const withLadders = buildTapes(u, [protect], s.cost, dcaOpt, new Set([pair]), s.tactics);
+    const heldLadders = new Set([
+      withLadders.find((t) => t.kind === "dca")?.id,
+      withLadders.find((t) => t.kind === "axis")?.id,
+    ].filter((id): id is string => !!id));
+    assert.equal(heldLadders.size, 2);
+    const rebuiltLadders = buildTapes(u, [protect], s.cost, dcaOpt, new Set([pair]), s.tactics, null, {
+      minSl: 0,
+      minTrail: 0,
+      pairTags: { [pair]: [] },
+      heldIds: heldLadders,
+    });
+    assert.deepEqual([...rebuiltLadders.map((t) => t.id)].sort(), [...heldLadders].sort());
+    assert.ok(rebuiltLadders.every((t) => t.heldOnly));
+  });
+
   it("tapes built on workers from each message's floors equal the in-process ones from the whole floors", async () => {
     // two cells each of two Minimal and two Short targets, a pair's own config beside them
     const pick = (tag: string) => {

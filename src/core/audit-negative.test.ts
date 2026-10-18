@@ -12,6 +12,7 @@ import { modeledUnitStatsOf } from "./metrics/stats.ts";
 import {
   defaultWalkForward,
   makeTape,
+  rangeVolumeFactorFor,
   sigCfg,
   walkForward,
   type ConfigTape,
@@ -77,7 +78,7 @@ const TAPES = tapesOf(7);
 const PAIRS = new Set(TAPES.map((t) => `${t.bot}|${t.ind}`));
 const ACTIVE = new Set(
   TAPES.filter((tp) => tp.ind === SIGNAL).flatMap((tp) =>
-    SYMS.flatMap((sym) => [1, -1].map((side) => sigActiveKey(tp.bot, tp.ind, sym, side, tp.kind))),
+    SYMS.flatMap((sym) => [1, -1].map((side) => sigActiveKey(tp.bot, tp.ind, sym, side, tp.kind, tp.id))),
   ),
 );
 const base = defaultWalkForward(DEFAULT_SETTINGS);
@@ -270,7 +271,7 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
       }),
     },
   ],
-  "stages: Main ⊆ Base-validated ∪ held": [
+  "stages: Main ⊆ Base-validated ∪ held ∪ measured": [
     {
       run: "overall",
       what: "a Main pair neither validated nor held",
@@ -299,7 +300,7 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
       what: "a traded signal × symbol × side missing from the compute's active set",
       corrupt: (i) => {
         const x = i.sim!.trades.find((t) => sigCfg(t.cfg))!;
-        const drop = sigActiveKey("follow", SIGNAL, x.sym, x.side, x.kind);
+        const drop = sigActiveKey("follow", SIGNAL, x.sym, x.side, x.kind, x.cfg);
         return {
           ...i,
           stages: { ...i.stages!, signalActive: new Set([...ACTIVE].filter((k) => k !== drop)) },
@@ -390,15 +391,19 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
   "block: volume within [1, max multiple]": [
     {
       run: "shared",
-      what: "a multiple above max (its coordination part raised with it: the Block part the replay judges is unchanged)",
+      what: "a Block multiple above max after removing independent sizing factors",
       corrupt: (i) => {
         const k = i.sim!.trades.findIndex((x) => (x.mult ?? 1) >= 1);
         const x = i.sim!.trades[k];
-        const blockPart = (x.mult ?? 1) / (x.coordVol ?? 1);
-        const mult = i.sim!.opts.block.maxMult + 1;
-        return withTrade(i, k, { mult, coordVol: mult / blockPart });
+        const rangeVol = rangeVolumeFactorFor(tapeOf(x), i.sim!.opts);
+        const independentFactors = (x.coordVol ?? 1) * (x.hedgeVol ?? 1) * rangeVol;
+        const mult = (i.sim!.opts.block.maxMult + 1) * independentFactors;
+        return withTrade(i, k, { mult });
       },
-      alsoFails: UNIT_AND_COST_MULT_FAILS,
+      alsoFails: {
+        [REPLAY]: "the recorded Block multiple now exceeds the cap and no longer matches replay",
+        ...UNIT_AND_COST_MULT_FAILS,
+      },
     },
   ],
   "block: off → volume 1": [
@@ -407,7 +412,7 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
       what: "a Block multiple of 2 with Block off",
       corrupt: (i) => withTrade(i, plainIdx(i.sim!, true), { mult: 2 }),
       alsoFails: {
-        [REPLAY]: "both judge mult ÷ coordVol: with Block off the replayed volume is 1",
+        [REPLAY]: "both judge mult ÷ coordination volume: with Block off the replayed volume is 1",
         ...UNIT_AND_COST_MULT_FAILS,
       },
     },
@@ -545,7 +550,7 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
       corrupt: (i) => ({ ...i, paper: { ...i.paper!, equity: i.paper!.equity + 1 } }),
     },
   ],
-  "paper: position volume within [1, max multiple]": [
+  "paper: Block / relation volume within [1, max multiple]": [
     {
       run: "overall",
       what: "a position's source leg at the max multiple",

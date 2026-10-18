@@ -13,13 +13,23 @@ import type {
 import { DEFAULT_SIGNALS, type SignalSettings } from "./signal-config.ts";
 import { DEFAULT_SIZING, type SizingSettings } from "./sizing.ts";
 import type { PromotedLaneProof } from "./live-promote.ts";
+import { BREAK_CONFIG_IDS, BREAK_DEFAULT_MICRO_CONFIG_IDS, breakAnchorTf, isBreakMicroInd } from "./indications/break-config.ts";
+import { RT_COST } from "./model-cost.ts";
+export { RT_COST } from "./model-cost.ts";
 
-/** Round-trip position cost: 0.1% per side, doubled = 0.2% of notional per closed trade. */
-export const RT_COST = 0.002;
+/** Hard ceiling for unique positions on the exchange. Strategy/config orders do not consume extra slots. */
+export const MAX_EXCHANGE_POSITIONS = 100;
+
+/** Normalize legacy, unset, or oversized exchange limits without allowing the account cap to be bypassed. */
+export function exchangePositionLimit(value?: number): number {
+  const requested = Number.isFinite(value) ? Math.floor(value!) : MAX_EXCHANGE_POSITIONS;
+  return requested <= 0 ? MAX_EXCHANGE_POSITIONS : Math.min(requested, MAX_EXCHANGE_POSITIONS);
+}
+
 /** Profit factor reported when a sample has wins and no losses. */
 export const PF_NO_LOSS = 4;
 
-/** Base-stage protect (15m bars): 2.6% target, 1.5× stop, 8h max hold. Wide targets clear the 0.2% cost. */
+/** Base-stage protect (15m bars): 2.6% target, 1.5× stop, 8h max hold. Wide targets clear the modeled cost. */
 export const DEFAULT_PROTECT: Protect = { tp: 0.026, sl: 0.039, trail: 0, hold: 32 };
 
 /** Main-stage refinement grid (fractions). SL is expressed relative to TP; trail relative to TP (0 = off). */
@@ -64,15 +74,13 @@ export const DEFAULT_GATES: Gates = {
   // max drawdown ratio: a config's largest drawdown ÷ its net over the window (docs/block-sweep.md, DDR sweep:
   // 12 windows — PF 1.232 → 1.244, drawdown −9 %, 85 % of the orders kept; 0.5 = low drawdown, −39 % orders)
   maxDdr: 1,
-  // stage minimum PF per target range (operator, 3 October): the longer targets need more margin to hold out of
-  // sample — General and Long passed at 1.05 and lost live (forward PF 0.96 / 0.76)
-  rangeMinPf: { micro: 1.05, minimal: 1.08, general: 1.12, long: 1.18 },
+  // stage minimum PF per target range: require progressively more return margin for longer targets.
+  // These are the defaults at Base and at post-Base config evaluation; short inherits the 1.1 stage floor.
+  rangeMinPf: { micro: 1.05, minimal: 1.1, short: 1.1, general: 1.2, long: 1.3 },
   minTrades: 12,
   quorum: 0.6,
-  // Base computes a pair's config sets from PF 1 up (operator, 5 Oct: "it is about the stage Base eval for sets with
-  // PF 1+ — that unfiltered sets come out under PF 1 is normal; keep all processing and validate the better ones by
-  // PF and DDT"). Every set is still judged at its own stage / range minimum before it can trade, so this only
-  // widens what is built and evaluated, never what trades.
+  // Base keeps the wide/default set prefilter at PF 1.0. Configured per-range PF floors still apply at Base to each
+  // tagged cell and again at config evaluation; this widens only the untagged prefilter, never a range gate.
   baseSetsMinPf: 1,
   // a check with too few closes to compute counts as valid until it has enough, then is judged normally
   warmup: true,
@@ -273,9 +281,9 @@ export interface CoreSettings {
   armTop: number;
   /** notional per paper order unit in fixed sizing, USD */
   paperNotional: number;
-  /** paper starting balance, USD (fixed % of equity sizing compounds from it) */
+  /** paper starting balance, USD (balance-percent sizing compounds from it) */
   paperBalance: number;
-  /** order sizing: fixed % of equity per order unit (default 2 %) or a fixed notional */
+  /** order sizing: fixed % of account balance per order unit (default 0.1 %) or a legacy fixed notional mode */
   sizing: SizingSettings;
   toggles: StrategyToggles;
   /** entry tactics (session, volatility, trend strength, cooldown); each can be switched off */
@@ -299,7 +307,7 @@ export interface CoreSettings {
   /** independent protect variants computed in Base */
   grid: ProtectGridSpec;
   live: LiveSettings;
-  /** Signals processing: proven signal sources, the best N active, 15 Normal + 15 Trailing configs each */
+  /** Signals processing: proven signal sources, the best N active, 42 Normal + 35 Trailing configs each by default */
   signals: SignalSettings;
 }
 
@@ -351,6 +359,7 @@ export interface LiveSettings {
   enabled: boolean;
   connId: "bingx-x01" | "bingx-vst-01" | "bingx-vst-02";
   notionalUsd: number;
+  /** Maximum occupied exchange slots (symbol × direction), shared across every strategy and order; hard ceiling 100. */
   maxPositions: number;
   /**
    * overall — control orders: ONE position per (symbol, direction), sized from every lane holding it
@@ -404,7 +413,7 @@ export interface LiveSettings {
    * every config either way.
    */
   top?: number | "fill";
-  /** overall: cap per (symbol, direction) position, USD */
+  /** Legacy setting. USD position ceilings are disabled; balance-relative sizing and optional ratio budgets apply. */
   maxNotionalUsd: number;
   /** overall: adjust an existing position only when the target differs by more than this share */
   rebalancePct: number;
@@ -474,14 +483,6 @@ export interface LiveSettings {
    */
   excludeConfigs?: readonly string[];
   /**
-   * overall: the live control sends orders on at most this many distinct symbols (0 / unset = every symbol the
-   * universe has). Symbols already held come first, then the rest in the order the ranked targets arrive, so the
-   * cap never closes a held position and never reshuffles which symbols trade from step to step. The engine keeps
-   * computing and paper-trading the whole universe — this is how a desk evaluates more symbols at Base than it
-   * trades on the exchange.
-   */
-  maxSymbols?: number;
-  /**
    * group live validation: until a config has its own `liveLastN` closes, its live group (Signals, or its target
    * range: Minimal, Short, General, Long, Wide …) decides — the group's last `liveGroupLastN` live closes pooled over
    * its selected configs must hold PF ≥ liveMinPf for the group's configs to open new entries. Held positions are
@@ -492,8 +493,8 @@ export interface LiveSettings {
   liveGroupLastN?: number;
   /**
    * account exposure factor: the positions' gross notional (long and short both counted) stays within this multiple
-   * of the account equity — every target is scaled by the same factor, so the relations between positions stay
-   * (0 / unset = off)
+   * of the account balance — every target is scaled by the same factor, so the relations between positions stay
+   * (default off; 0 / unset = off)
    */
   maxExposureX?: number;
   /**
@@ -502,17 +503,17 @@ export interface LiveSettings {
    */
   exposureScaler?: boolean;
   /**
-   * stop-risk budget, fraction of equity: the positions' summed notional × stop distance (what every stop hit at
+   * stop-risk budget, fraction of balance: the positions' summed notional × stop distance (what every stop hit at
    * once would cost) stays within it — every target is scaled by the same factor. The drawdown bound that the
    * volume factor and the exposure cap leave open (0 / unset = off)
    */
   maxRiskPct?: number;
   /**
-   * worst-case loss budget (fraction of equity): what every exchange backstop filled at once would cost (Σ notional ×
+   * worst-case loss budget (fraction of balance): what every exchange backstop filled at once would cost (Σ notional ×
    * backstop distance) stays within it, whatever the volume factor — the guard against losing the account. Unset = off.
    */
   maxBackstopLossPct?: number;
-  /** per-position cap as a multiple of the equity (with maxNotionalUsd the smaller one holds; 0 / unset = off) */
+  /** optional per-position cap as a multiple of account balance (default off; legacy USD cap is ignored) */
   maxPositionX?: number;
   /** account margin per symbol: cross (shared) or isolated */
   marginMode: "cross" | "isolated";
@@ -578,6 +579,15 @@ export const FAMILY_FOCUS_13OCT: readonly string[] = [
   "rgm-20",
 ].flatMap((id) => [`follow|${id}@m15`, `follow|${id}@m15c`, `follow|${id}@m30`]);
 
+/** The updated 60 Micro Break identities, each selected on its fastest eligible anchor lane by default. */
+export const BREAK_MICRO_FOCUS_17OCT: readonly string[] = BREAK_DEFAULT_MICRO_CONFIG_IDS.flatMap((id) => {
+  const tf = breakAnchorTf(id);
+  return tf === null ? [] : [`follow|${id}@m${tf}`];
+});
+
+/** The complete default focus before the 60 Micro Break identities joined it. */
+export const PREVIOUS_DEFAULT_FOCUS_17OCT: readonly string[] = [...FORMER_FOCUS_13OCT, ...FAMILY_FOCUS_13OCT];
+
 export const DEFAULT_SETTINGS: CoreSettings = {
   tfMin: 1,
   tfs: [1, 5, 15, 30],
@@ -589,8 +599,8 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   cycleMs: 250,
   tickMs: 100,
   cost: RT_COST,
-  // BingX standard tier: 0.05 % taker / 0.02 % maker per side; + 0.05 % slippage per side → 0.20 % round trip
-  fees: { taker: 0.0005, maker: 0.0002, slippage: 0.0005 },
+  // Model per side: 0.05 % taker + 0.025 % slippage → 0.15 % round trip; measured venue fees stay authoritative.
+  fees: { taker: 0.0005, maker: 0.0002, slippage: 0.00025 },
   adjust: DEFAULT_ADJUST,
   exitStrategy: {
     enabled: true,
@@ -623,7 +633,7 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   sizing: DEFAULT_SIZING,
   toggles: DEFAULT_TOGGLES,
   tactics: DEFAULT_TACTICS,
-  focus: [...FORMER_FOCUS_13OCT, ...FAMILY_FOCUS_13OCT],
+  focus: [...PREVIOUS_DEFAULT_FOCUS_17OCT, ...BREAK_MICRO_FOCUS_17OCT],
   pinned: [...PROVEN_WIDE_TRAIL_PAIRS],
   disabledKinds: [],
   block: DEFAULT_BLOCK,
@@ -631,10 +641,12 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   axis: DEFAULT_AXIS,
   // Evidence (docs/research-*.md, 90 days, holdout): wider targets and SL 2–2.5 × TP scored best; min SL / min trail
   // distances were neutral; trailing slightly worse than none, so it stays one variant among others.
-  // TP ranges in multiples of the 0.2 % position cost (13 Oct: every TP × SL × Trail): Minimal 4–8× (step 0.5),
+  // TP ranges retain their fixed 0.2 % construction basis (13 Oct: every TP × SL × Trail): Minimal 4–8× (step 0.5),
   // Short 9–14×, General 15–22×, Long 23–32× (step 1). They replace the wide targets (3 / 5 / 8 %), which General and
   // Long cover.
   grid: {
+    // untagged Wide configs use the normal volume unless their own factor is changed
+    volumeFactor: 1,
     tp: [],
     slOfTp: [1, 2],
     trailOfTp: [0, 0.5],
@@ -678,15 +690,16 @@ export const DEFAULT_SETTINGS: CoreSettings = {
     enabled: false,
     connId: "bingx-vst-02",
     notionalUsd: 6,
-    // control positions (symbol × direction) on the exchange: as many as the paper book holds (0 = no limit,
-    // the default — operator: process freely, many orders; the exposure / stop-risk / worst-case budgets size them)
-    maxPositions: 0,
+    // Final Live Exchange admission: at most 100 occupied symbol-direction positions across all lanes and strategies.
+    maxPositions: MAX_EXCHANGE_POSITIONS,
     mode: "overall",
     // control orders "overall" by default (operator, 7 Oct): per position one stop at the outer stop range and one
     // take-profit beyond the outer target, every lane's partial exit by the system; true = "partials" (lane orders)
     laneOrders: false,
     ratio: 1,
-    maxNotionalUsd: 200,
+    maxNotionalUsd: 0,
+    maxPositionX: 0,
+    maxExposureX: 0,
     rebalancePct: 0.25,
     marginMode: "cross",
     positionMode: "hedge",

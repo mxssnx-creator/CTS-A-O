@@ -304,7 +304,7 @@ function SetListings(props: { minPf: number }) {
   const d = data as Any;
   const pages = d?.total ? Math.ceil(d.total / PAGE) : 0;
   return (
-    <Panel title="Validated and active sets" sub="the last paper step's seats, independently ranked signal pair × type × symbol × direction units and proven configs">
+    <Panel title="Validated and active sets" sub="the last paper step's seats, independently ranked signal config × symbol × direction units and proven configs">
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         <Seg
           value={kind}
@@ -354,6 +354,7 @@ function SetListings(props: { minPf: number }) {
               ) : kind === "active" ? (
                 <tr>
                   <th>Signal · range · lane</th>
+                  <th>Protection config</th>
                   <th>Type</th>
                   <th>Symbol</th>
                   <th>Side</th>
@@ -385,6 +386,7 @@ function SetListings(props: { minPf: number }) {
                     <td>
                       {x.bot} · {x.ind}
                     </td>
+                    <td className="v2-mono">{x.cfg ?? "Base / discovery"}</td>
                     <td>{signalTypeLabel(x.kind)}</td>
                     <td>{x.sym}</td>
                     <td>{x.side > 0 ? "long" : "short"}</td>

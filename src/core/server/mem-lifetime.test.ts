@@ -311,7 +311,7 @@ describe("signal acceptance record", () => {
       let ix = inds.get(tp.ind);
       if (ix === undefined) inds.set(tp.ind, (ix = inds.size));
       for (let i = 0; i < tp.n; i++) {
-        const k = acceptKey(tp.ind, tp.syms[tp.symI[i]], tp.side[i], tp.kind);
+        const k = acceptKey(tp.ind, tp.syms[tp.symI[i]], tp.side[i], tp.kind, tp.id);
         (groups.get(k) ?? groups.set(k, []).get(k)!).push({ t: tp.exitT[i], r: tp.r[i], e: tp.entryT ? tp.entryT[i] : 0, ii: tp.entryT ? ix : -1 });
       }
     }

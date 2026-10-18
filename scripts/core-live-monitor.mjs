@@ -77,7 +77,9 @@ for (const s of desks) {
   let ex = null;
   try {
     if (allErr) throw new Error(allErr);
-    ex = await ownResults({ conn, tag: T, from: fromOf(s), modelCost: s.modelCost ?? 0.002, all: all.filter((o) => Number(o.time) >= fromOf(s)) });
+    ex = await ownResults({ conn, tag: T, from: fromOf(s),
+      ...(s.modelCost == null ? {} : { modelCost: s.modelCost }),
+      all: all.filter((o) => Number(o.time) >= fromOf(s)) });
   } catch (err) {
     problems.push(`${T}: exchange history unavailable (${err instanceof Error ? err.message : err})`);
   }

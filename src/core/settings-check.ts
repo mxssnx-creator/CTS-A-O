@@ -1,5 +1,6 @@
 // Range checks for a settings patch, shared by the Settings page, the preset dialog and presets (pure: testable).
-import { GRID_VARIANTS_MAX, type CoreSettings } from "./config.ts";
+import { GRID_VARIANTS_MAX, MAX_EXCHANGE_POSITIONS, type CoreSettings } from "./config.ts";
+import { INDICATION_KINDS } from "./domain/types.ts";
 import { validPromotedLaneProof } from "./live-promote.ts";
 
 /** Range checks for a settings patch (Settings page and preset dialog alike). */
@@ -8,6 +9,12 @@ export function checkSettings(s: Partial<CoreSettings>) {
     if (v === undefined) return;
     if (typeof v !== "number" || !Number.isFinite(v) || v < lo || v > hi)
       throw new Error(`${name} out of range`);
+  };
+  const volumeFactor = (v: unknown, name: string) => {
+    num(v, 0.2, 5, name);
+    // Range increments are 0.2; retain 2.5 as a supported explicit setting for saved/custom configs.
+    if (v !== undefined && typeof v === "number" && Math.abs(v - 2.5) > 1e-8 && Math.abs(v * 5 - Math.round(v * 5)) > 1e-8)
+      throw new Error(`${name} must use 0.2 steps`);
   };
   num(s.symbols, 1, 120, "symbols");
   if (
@@ -36,14 +43,15 @@ export function checkSettings(s: Partial<CoreSettings>) {
     throw new Error("grid base targets: on / off");
   if (s.grid?.wideMinTf !== undefined)
     num(s.grid.wideMinTf, 0, 240, "grid.wideMinTf (Wide shortest lane, minutes)");
+  volumeFactor(s.grid?.volumeFactor, "Wide volume factor");
   num(s.refineTop, 1, 100, "refineTop");
   num(s.evalTop, 1, 400, "evalTop");
   num(s.paperNotional, 1, 1_000_000, "paperNotional");
   num(s.paperBalance, 1, 100_000_000, "paper balance");
   if (s.sizing) {
-    if (s.sizing.mode !== undefined && !["equityPct", "fixed", "minQty"].includes(s.sizing.mode))
-      throw new Error("sizing: minQty, equityPct or fixed");
-    num(s.sizing.pct, 0.001, 0.25, "sizing % of equity per order");
+    if (s.sizing.mode !== undefined && s.sizing.mode !== "equityPct")
+      throw new Error("sizing: only account-balance percentage sizing is supported");
+    num(s.sizing.pct, 0.001, 0.25, "sizing % of balance per order");
   }
   const int = (v: unknown, name: string) => {
     if (v !== undefined && !Number.isInteger(v)) throw new Error(`${name} must be a whole number`);
@@ -109,7 +117,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
   }
   if (s.live) {
     num(s.live.notionalUsd, 1, 500, "notionalUsd");
-    num(s.live.maxPositions, 0, 10_000, "maxPositions"); // 0 = no limit
+    num(s.live.maxPositions, 1, MAX_EXCHANGE_POSITIONS, "maxPositions");
     if (
       s.live.connId !== undefined &&
       !["bingx-x01", "bingx-vst-01", "bingx-vst-02"].includes(s.live.connId)
@@ -172,10 +180,6 @@ export function checkSettings(s: Partial<CoreSettings>) {
           "live excluded configs: bot|range families or bot|exit, e.g. follow|mn, revert|wide or follow|exit",
         );
     }
-    if (s.live.maxSymbols !== undefined) {
-      num(s.live.maxSymbols, 0, 1000, "live max symbols"); // 0 = every symbol
-      int(s.live.maxSymbols, "live max symbols");
-    }
     if (s.live.top !== undefined && s.live.top !== "fill")
       num(s.live.top, 0, 100_000, "top configs");
     if (s.live.signalWeight !== undefined) num(s.live.signalWeight, 0, 30, "signal volume weight");
@@ -184,11 +188,11 @@ export function checkSettings(s: Partial<CoreSettings>) {
     if (s.live.liveGroupLastN !== undefined)
       num(s.live.liveGroupLastN, 0, 2000, "live group last N");
     if (s.live.maxExposureX !== undefined)
-      num(s.live.maxExposureX, 0, 500, "max exposure × equity");
+      num(s.live.maxExposureX, 0, 500, "max exposure × balance");
     if (s.live.exposureScaler !== undefined && typeof s.live.exposureScaler !== "boolean")
       throw new Error("exposureScaler: true or false");
     if (s.live.maxRiskPct !== undefined)
-      num(s.live.maxRiskPct, 0, 1, "stop-risk budget (fraction of equity)");
+      num(s.live.maxRiskPct, 0, 1, "stop-risk budget (fraction of balance)");
     if (s.live.maxChase !== undefined)
       num(s.live.maxChase, 0, 5, "maximum chase (fraction of a lane's target distance)");
     if (
@@ -202,11 +206,11 @@ export function checkSettings(s: Partial<CoreSettings>) {
     if (s.live.maxVenueOrders !== undefined)
       int(s.live.maxVenueOrders, "venue TP/SL orders at most");
     if (s.live.maxBackstopLossPct !== undefined)
-      num(s.live.maxBackstopLossPct, 0, 1, "worst-case loss budget (fraction of equity)");
-    if (s.live.maxPositionX !== undefined) num(s.live.maxPositionX, 0, 50, "position cap × equity");
-    // 0 = no per-position cap (volume from the factors and relations alone)
-    if (s.live.maxNotionalUsd !== 0)
-      num(s.live.maxNotionalUsd, 1, 5000, "max notional per position");
+      num(s.live.maxBackstopLossPct, 0, 1, "worst-case loss budget (fraction of balance)");
+    if (s.live.maxPositionX !== undefined) num(s.live.maxPositionX, 0, 50, "position limit × balance");
+    // Absolute per-position dollar ceilings were removed; accept only the legacy disabled value.
+    if (s.live.maxNotionalUsd !== undefined && s.live.maxNotionalUsd !== 0)
+      throw new Error("fixed USD per-position ceilings are disabled; size with account-balance volume factors");
     num(s.live.rebalancePct, 0, 1, "rebalance threshold");
     if (s.live.marginMode !== undefined && !["cross", "isolated"].includes(s.live.marginMode))
       throw new Error("margin mode must be cross or isolated");
@@ -513,6 +517,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
     // the levers every range shares (RangeGrid): checked the same way for Micro, Minimal, Short, General and Long
     const rangeShared = (r: unknown, name: string) => {
       const g = r as {
+        volumeFactor?: unknown;
         trailSlOfTp?: unknown;
         minSl?: unknown;
         minTrail?: unknown;
@@ -521,6 +526,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
         ownBase?: unknown;
         baseBest?: unknown;
       };
+      volumeFactor(g.volumeFactor, `${name} volume factor`);
       // 0.2 like the stop ratios: General / Long trail at every stop of their 0.25–1.5 ladder (13 Oct)
       num(g.trailSlOfTp, 0.2, 5, `${name} trailing stop ×TP`);
       num(g.minSl, 0, 0.2, `${name} min SL`);
@@ -627,6 +633,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
     const plus = s.grid.minimalPlus;
     let plusN = 0;
     if (plus) {
+      volumeFactor(plus.volumeFactor, "minimal plus volume factor");
       if (plus.enabled !== undefined && typeof plus.enabled !== "boolean")
         throw new Error("minimal plus: on / off");
       num(plus.lastN, 50, 500, "minimal plus last N");
@@ -714,6 +721,12 @@ export function checkSettings(s: Partial<CoreSettings>) {
       if (g.ranges.short === false && g.ranges.medium === false)
         throw new Error("signals: at least one range");
     }
+    if (g.rangeVolumeFactors !== undefined) {
+      if (!g.rangeVolumeFactors || typeof g.rangeVolumeFactors !== "object")
+        throw new Error("signal range volume factors: short and medium ratios");
+      volumeFactor(g.rangeVolumeFactors.short, "Signal short volume factor");
+      volumeFactor(g.rangeVolumeFactors.medium, "Signal medium volume factor");
+    }
     if (g.lanes !== undefined) {
       if (
         !Array.isArray(g.lanes) ||
@@ -793,6 +806,41 @@ export function checkSettings(s: Partial<CoreSettings>) {
       num(g.cluster.minLosses, 1, 1000, "loss-cluster min losses");
       num(g.cluster.lossShare, 0.3, 1, "loss-cluster loss share");
       int(g.cluster.minLosses, "loss-cluster min losses");
+    }
+    if (g.coordination) {
+      const c = g.coordination;
+      bool(c.enabled, "signals coordination");
+      num(c.minSources, 2, 100, "signals coordination minimum sources");
+      int(c.minSources, "signals coordination minimum sources");
+      num(c.volumeFactor, 1, 22, "signals coordination volume factor");
+      int(c.volumeFactor, "signals coordination volume factor");
+      if (c.count !== undefined && c.count !== 0) {
+        num(c.count, 10, 2000, "active coordination units");
+        if (c.count % 10 !== 0) throw new Error("active coordination units: steps of 10");
+      }
+      if (c.ranges) {
+        bool(c.ranges.short, "coordination Short range");
+        bool(c.ranges.normal, "coordination Normal range");
+        bool(c.ranges.long, "coordination Long range");
+        if (c.enabled && c.ranges.short === false && c.ranges.normal === false && c.ranges.long === false)
+          throw new Error("signals coordination: at least one exit range");
+      }
+    }
+    if (g.combinedVolumeFactors !== undefined) {
+      if (
+        typeof g.combinedVolumeFactors !== "object" ||
+        g.combinedVolumeFactors === null ||
+        Array.isArray(g.combinedVolumeFactors)
+      )
+        throw new Error(
+          "combined indication volume factors: one 1–22 whole-number value per indication kind",
+        );
+      for (const [kind, value] of Object.entries(g.combinedVolumeFactors)) {
+        if (!INDICATION_KINDS.includes(kind as (typeof INDICATION_KINDS)[number]))
+          throw new Error(`unknown combined indication kind ${kind}`);
+        num(value, 1, 22, `combined ${kind} volume factor`);
+        int(value, `combined ${kind} volume factor`);
+      }
     }
     if (g.accept) {
       bool(g.accept.enabled, "signal PF acceptance");

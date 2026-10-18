@@ -20,7 +20,16 @@ export function sessionCashPnl(row, allocations, keyOf) {
   const allocation = sessionAllocation(row, allocations, keyOf);
   if (allocation === "zero") return 0;
   if (allocation === "unknown" || typeof row.r !== "number" || !Number.isFinite(row.r)) return NaN;
-  const value = row.r * allocations.get(keyOf(row));
+  // Cash PF uses the usual base-one return convention: an order starts at 1,
+  // ends at 1 + its execution-weighted net return, and its cash change is the
+  // difference, scaled by the funded unit notional. `r` already contains
+  // Block/coordination and ladder volume, so multiplying `row.vol` again
+  // would count the same exposure twice. Keep the algebraic `r` form to avoid
+  // losing tiny returns to `(1 + r) - 1` floating-point cancellation.
+  const endingValueOnOne = 1 + row.r;
+  const computedBaseOneReturn = endingValueOnOne - 1;
+  const baseOneReturn = computedBaseOneReturn === 0 && row.r !== 0 ? row.r : computedBaseOneReturn;
+  const value = baseOneReturn * allocations.get(keyOf(row));
   return Number.isFinite(value) ? value : NaN;
 }
 

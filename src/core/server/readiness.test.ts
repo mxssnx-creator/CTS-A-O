@@ -3,6 +3,7 @@
 // opened nothing). Promotion now uses only settled accepted orders; endpoint marks remain a separate diagnostic.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { sigActiveKey } from "../signals.ts";
 import { liveReadiness } from "./live.server.ts";
 import { defaultWalkForward, makeTape, runSubset, walkForward, type WalkForwardOptions } from "../sim/walkforward.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
@@ -145,7 +146,7 @@ describe("live readiness: judged on what the desk sends", () => {
       symGate: undefined,
       coord: { enabled: false, hourLock: 0, cooldown: "off", conflict: false, confirm: false },
       simH: 6,
-    signalActive: new Set(["follow|sig-ema-cross-s@m15|AAA-USDT|1|normal"]),
+    signalActive: new Set([sigActiveKey("follow", "sig-ema-cross-s@m15", "AAA-USDT", 1, "normal", SIG)]),
     };
     const u = { bars: [], caches: [], startT: T0, endT: NOW, splitT: T0, nowT: NOW, baseTf: 60 } as never;
     const r = walkForward(u, [tp], o);

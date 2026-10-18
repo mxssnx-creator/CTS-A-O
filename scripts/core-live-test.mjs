@@ -248,7 +248,7 @@ async function indicationStats() {
   const price = (sym, t) => {
     const cs = candlesNow.get(sym);
     if (!cs) return null;
-    const t0 = Math.floor(t / 60_000) * 60_000;
+    const t0 = Math.floor(t / 60_000) * 60_000 - 60_000;
     for (let i = 0; i < 5; i++) {
       const v = closeAt(cs, t0 - i * 60_000);
       if (v !== undefined) return v;
@@ -345,7 +345,7 @@ function engineLine() {
     // the realtime entry step (CTS_CORE_FAST_ENTRIES): its last bar, how long it took, and what the book took
     `${
       st.fast
-        ? ` · realtime ${new Date(st.fast.bar).toISOString().slice(11, 16)} ${st.fast.ms} ms, ${st.fast.seated} seated, ${st.fast.open} open, +${st.fast.added}${st.fast.error ? ` (error: ${st.fast.error})` : ""}`
+        ? ` · realtime ${new Date(st.fast.bar).toISOString().slice(11, 16)} ${st.fast.ms} ms / ${(st.fast.delayMs ?? 0) / 1000}s close delay, ${st.fast.seated} seated, ${st.fast.open} open, +${st.fast.added}${st.fast.error ? ` (error: ${st.fast.error})` : ""}`
         : ""
     }`
   );

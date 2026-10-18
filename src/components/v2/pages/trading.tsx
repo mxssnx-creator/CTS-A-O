@@ -22,7 +22,7 @@ export function TradingPage() {
   const sigSel = selected.filter((id) => (id.split("|")[1] ?? "").includes("sig-")).length;
   const realSel = selected.length - sigSel;
   const liveUnit = d.sizing?.mode === "equityPct"
-    ? `${fmt.num(d.sizing.pct * 100, 2)}% of account equity`
+    ? `${fmt.num(d.sizing.pct * 100, 2)}% of account balance`
     : d.sizing?.mode === "minQty"
       ? "exchange minimum lot"
       : `${fmt.usd(d.liveSettings?.notionalUsd)} fixed notional`;
@@ -38,7 +38,7 @@ export function TradingPage() {
           label="Paper P&L"
           value={fmt.usd(d.equity)}
           className={tone(d.equity)}
-          sub={`balance ${fmt.usd(d.balance)} · equity ${fmt.usd(d.accountEquity)} · start ${fmt.usd(d.startBalance)} · ${d.sizing?.mode === "fixed" ? "fixed notional" : `${fmt.num((d.sizing?.pct ?? 0.02) * 100, 1)}% of equity per order`}`}
+        sub={`balance ${fmt.usd(d.balance)} · equity ${fmt.usd(d.accountEquity)} · start ${fmt.usd(d.startBalance)} · ${d.sizing?.mode === "fixed" ? "fixed notional" : `${fmt.num((d.sizing?.pct ?? 0.02) * 100, 1)}% of balance per order`}`}
         />
         <Kpi
           label="Paper open positions / orders"
@@ -258,7 +258,7 @@ export function TradingPage() {
 
       <Panel
         title="Control orders · Overall"
-        sub={`${d.liveSettings?.connId ?? ""} keys: ${{ own: "own", x01: "x01 keys (VST host)", generic: "generic BINGX_API_KEY", none: "none — configure credentials for this connection" }[d.liveKeys as string] ?? "?"} · one position per symbol + direction, sized from every lane holding it · ${(d.liveSettings?.mode ?? "overall") === "overall" ? `Live mode: overall · ${liveUnit} × lane volume × ${d.liveSettings?.ratio ?? 1}` : `Live mode: entries · Overall preview only; entries use ${entryUnit} per signal without the Control ratio`}, ${d.liveSettings?.maxNotionalUsd === 0 ? "no per-position cap" : `cap $${d.liveSettings?.maxNotionalUsd ?? (d.liveSettings?.notionalUsd ?? 6) * 5}`}${d.liveSettings?.maxPositionX ? ` (at most ${d.liveSettings.maxPositionX}× equity)` : ""}, adjust beyond ±${Math.round((d.liveSettings?.rebalancePct ?? 0.25) * 100)}%`}
+        sub={`${d.liveSettings?.connId ?? ""} keys: ${{ own: "own", x01: "x01 keys (VST host)", generic: "generic BINGX_API_KEY", none: "none — configure credentials for this connection" }[d.liveKeys as string] ?? "?"} · one position per symbol + direction, sized from every lane holding it · ${(d.liveSettings?.mode ?? "overall") === "overall" ? `Live mode: overall · ${liveUnit} × lane volume × ${d.liveSettings?.ratio ?? 1}` : `Live mode: entries · Overall preview only; entries use ${entryUnit} per signal without the Control ratio`} · balance-relative sizing${d.liveSettings?.maxPositionX ? ` · position limit ${d.liveSettings.maxPositionX}× balance` : ""}${d.liveSettings?.maxExposureX ? ` · gross limit ${d.liveSettings.maxExposureX}× balance` : ""} · adjust beyond ±${Math.round((d.liveSettings?.rebalancePct ?? 0.25) * 100)}%`}
         right={
           d.control ? (
             <Pill kind={d.control.reconnected ? "bad" : d.control.unchanged ? undefined : "acc"}>
@@ -341,19 +341,16 @@ export function TradingPage() {
             {d.controlPreview.unitFrom === "minQty"
               ? "one lane unit: the exchange minimum lot per unit (per symbol)"
               : `one lane unit $${fmt.num(d.controlPreview.unit, 2)} · ${
-                  d.controlPreview.unitFrom === "equity"
-                    ? "from the account equity"
+                  d.controlPreview.unitFrom === "balance"
+                    ? "from account balance"
                     : d.controlPreview.unitFrom === "fixed"
                       ? "fixed notional"
                       : d.controlPreview.unitFrom === "paper"
                         ? "simulated exchange balance"
-                        : "exchange equity unavailable"
+                      : "exchange balance unavailable"
                 }`}
             {d.controlPreview.top
               ? ` · top configs: ${d.controlPreview.top.kept} of ${d.controlPreview.top.of} kept`
-              : ""}
-            {d.controlPreview.symbolCapDropped
-              ? ` · ${d.controlPreview.symbolCapDropped} positions over the symbol cap (${d.liveSettings?.maxSymbols})`
               : ""}
             {" · after account exposure / risk scalers"}
           </div>

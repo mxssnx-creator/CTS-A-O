@@ -68,17 +68,26 @@ const ids = (r: { picks: Array<{ id: string }> }) => r.picks.map((p) => p.id).so
 
 describe("per-range stage min PF", () => {
   it("minPfOf: a range's own value, else the stage minimum; untagged keeps the stage minimum", () => {
-    const g = { minPf: 1.05, rangeMinPf: { micro: 1.05, minimal: 1.08, general: 1.12, long: 1.18 } };
-    assert.equal(minPfOf(g, "gn"), 1.12);
-    assert.equal(minPfOf(g, "lg"), 1.18);
-    assert.equal(minPfOf(g, "mn"), 1.08);
-    assert.equal(minPfOf(g, "mp"), 1.08);
+    const g = { minPf: 1.1, rangeMinPf: { micro: 1.05, minimal: 1.1, short: 1.1, general: 1.2, long: 1.3 } };
+    assert.equal(minPfOf(g, "gn"), 1.2);
+    assert.equal(minPfOf(g, "lg"), 1.3);
+    assert.equal(minPfOf(g, "mn"), 1.1);
+    assert.equal(minPfOf(g, "mp"), 1.1);
     assert.equal(minPfOf(g, "mc"), 1.05);
-    assert.equal(minPfOf(g, "sh"), 1.05);
-    assert.equal(minPfOf(g, undefined), 1.05);
+    assert.equal(minPfOf(g, "sh"), 1.1);
+    assert.equal(minPfOf(g, undefined), 1.1);
     assert.equal(minPfOf({ minPf: 1.1 }, "lg"), 1.1);
     // never below the Base floor
     assert.equal(minPfOf({ minPf: 1.05, rangeMinPf: { long: 0.9 } }, "lg"), 1.05);
+  });
+
+  it("the configured defaults apply the intended stage floor to each range", () => {
+    const g = DEFAULT_SETTINGS.gates;
+    assert.deepEqual(g.rangeMinPf, { micro: 1.05, minimal: 1.1, short: 1.1, general: 1.2, long: 1.3 });
+    assert.deepEqual(
+      ["mc", "mn", "mp", "sh", "gn", "lg", undefined].map((tag) => minPfOf(g, tag)),
+      [1.05, 1.1, 1.1, 1.1, 1.2, 1.3, g.minPf],
+    );
   });
 
   for (const [name, select] of Object.entries({ fixed: selectFixed, hourly: selectAt })) {

@@ -38,6 +38,8 @@ import {
   microIndRule,
 } from "../minimal-coord.ts";
 import { isMicroInd, microIndFits, type MicroIndRule } from "../indications/micro.ts";
+import { isRelateInd, relateAnchorTf } from "../indications/relate.ts";
+import { breakAnchorTf, isBreakRelInd } from "../indications/break-config.ts";
 import { SeriesCache } from "../indications/cache.ts";
 import { MarketSource } from "../indications/market.ts";
 import {
@@ -50,16 +52,19 @@ import {
 } from "../indications/registry.ts";
 import { signalCombos, signalSettings } from "../signals.ts";
 import { optimizeLastN } from "../lastn/optimizer.ts";
-import { ddrFails, profitFactor, scoreStats, statsOf } from "../metrics/stats.ts";
+import { ddrFails, scoreStats, statsOf } from "../metrics/stats.ts";
 import {
   ATR_PERIOD,
   LANE_MIN,
   REF_TF,
   bothSides,
   mergeSideTrades,
+  nextEntryIndex,
   simulate,
+  splitSides,
 } from "../sim/backtest.ts";
 import { buildPortfolio, type Portfolio } from "./portfolio.ts";
+import { baseCellAccumulator } from "./base-cell-stats.ts";
 
 export interface Universe {
   bars: Bars[];
@@ -121,6 +126,8 @@ export function makeUniverse(bars: Bars[], evaluationFromT?: number): Universe {
   };
 }
 
+type EvaluationSignalMemo = WeakMap<Bars, WeakMap<Int8Array, { fromT: number; signal: Int8Array }>>;
+const evaluationSignals = new WeakMap<Pick<Universe, "evaluationFromT">, EvaluationSignalMemo>();
 /** Preserve warmed indicator/onset state, while admitting entries only at opens on/after the replay boundary. */
 export function evaluationSignal(
   u: Pick<Universe, "evaluationFromT">,
@@ -129,11 +136,21 @@ export function evaluationSignal(
 ): Int8Array {
   const fromT = u.evaluationFromT;
   if (fromT === undefined) return sig;
+  // Bars/signals are immutable during a Universe job. Keep the clipped identity across its protection cells so
+  // splitSides/nextEntryIndex reuse their weak caches. A new job never inherits a clip from reused/mutated inputs.
+  let byBars = evaluationSignals.get(u);
+  if (!byBars) evaluationSignals.set(u, (byBars = new WeakMap()));
+  let bySignal = byBars.get(b);
+  if (!bySignal) byBars.set(b, (bySignal = new WeakMap()));
+  const hit = bySignal.get(sig);
+  if (hit?.fromT === fromT) return hit.signal;
   const out = sig.slice();
   for (let i = 0; i < out.length; i++) {
     const entryT = i + 1 < b.n ? b.t[i + 1] : b.t[i] + b.tfMin * 60_000;
     if (entryT < fromT) out[i] = 0;
   }
+  // One cut per immutable input, rather than retaining every replay window requested over a long-lived series.
+  bySignal.set(sig, { fromT, signal: out });
   return out;
 }
 
@@ -294,7 +311,11 @@ export function allCombos(
                 microMinTf > 0 &&
                 isMicroInd(laneOf(ind).base) &&
                 (laneOf(ind).tf ?? 0) < microMinTf
-              ),
+              ) &&
+              (!isRelateInd(laneOf(ind).base) ||
+                (!laneOf(ind).combined && laneOf(ind).tf === relateAnchorTf(laneOf(ind).base))) &&
+              (!isBreakRelInd(laneOf(ind).base) ||
+                (!laneOf(ind).combined && laneOf(ind).tf === breakAnchorTf(laneOf(ind).base))),
           )
           .map((ind) => ({ bot: c.bot, ind })),
       )
@@ -684,8 +705,8 @@ export function basePassTags(
 }
 
 /**
- * The gates Base computes a pair's sets on: the stage gates, or with Gates.baseSetsMinPf one floor for every range (a
- * wider pre-filter; each set is still judged at its own stage / range minimum before it can trade).
+ * The gates Base computes a pair's sets on: `baseSetsMinPf` replaces the fallback / Wide floor, while each tagged
+ * range retains its configured rangeMinPf. This widens only the untagged prefilter; it never weakens a range gate.
  */
 /** The Base pass of one range cell, exactly as basePassTags judges it (the sets gates, the range's own minimum). */
 export function rangeCellPass(
@@ -699,24 +720,24 @@ export function rangeCellPass(
 export function baseSetsGates<G extends Gates>(g: G): G {
   return g.baseSetsMinPf === undefined
     ? g
-    : { ...g, minPf: g.baseSetsMinPf, rangeMinPf: undefined };
+    : { ...g, minPf: g.baseSetsMinPf };
 }
 
 /**
  * Every engine pair of a compute's Base (the session dump's basePairs): its statistic at the default protect, whether
- * it passed (any range) and the ranges its sets are built in (`tags`, "" = Wide: the compute's pairTags — the ranges it
- * passed while grid.baseRanges is on and grid.allSets off, the defaults; else every range its indication applies to).
+ * it passed (any range) and its admitted ranges (`tags`, "" = Wide). Callers supply the qualified range map before
+ * optional diagnostic construction; an explicit empty map entry retained for held exits is not a pass.
  * A range's survivors are counted by these tags: a Micro indication that passed only on its Minimal cells builds and
  * trades Minimal, and counted by `passed` alone it read as a Micro survivor.
  */
 export function basePairRows(
   s1: ReadonlyArray<Pick<ComboRun, "bot" | "ind" | "full">>,
   pairTags: Readonly<Record<string, readonly string[]>>,
-): Array<{ pair: string; n: number; pf: number; net: number; passed: boolean; tags: string[] }> {
+): Array<{ pair: string; n: number; pf: number | null; net: number; passed: boolean; tags: string[] }> {
   const out: Array<{
     pair: string;
     n: number;
-    pf: number;
+    pf: number | null;
     net: number;
     passed: boolean;
     tags: string[];
@@ -728,9 +749,9 @@ export function basePairRows(
     out.push({
       pair,
       n: r.full?.n ?? 0,
-      pf: r.full?.pf ?? 0,
+      pf: (r.full?.n ?? 0) > 0 ? (r.full?.pf ?? null) : null,
       net: r.full?.net ?? 0,
-      passed: !!tags,
+      passed: (tags?.length ?? 0) > 0,
       tags: [...(tags ?? [])],
     });
   }
@@ -804,7 +825,7 @@ export interface BaseRangeCount {
   passed: number;
   /** the minimum PF the range is held to */
   minPf: number;
-  /** median PF of the evaluated sets / of the passed sets (null without any) */
+  /** Median measured PF among evaluated nonempty sets / passed sets (null without any measured PF). */
   pfMedian: number | null;
   pfPassedMedian: number | null;
   /** mean PF of the passed sets (null without any): the validated average, read against `minPf` */
@@ -857,7 +878,8 @@ export function baseRangeCounts(
       // range's. ownCells records how many rows carry the range's own distances, so a report can say which it is.
       if (own) ownCells++;
       const st = own ?? r.full;
-      pf.push(st.pf);
+      // EMPTY_STATS carries pf: 0 for gate arithmetic, but an empty close sample has no measured PF.
+      if (st.n > 0) pf.push(st.pf);
       const ownMin = minPfOf(g, tag, r.ind);
       appliedMin = Math.min(appliedMin, ownMin);
       const ok = own
@@ -1187,67 +1209,27 @@ export function cellStats(
   const id = configId(bot, ind, p);
   const series = seriesOf(u, ind);
   if (!series.length) return null;
-  // each trade's return and times (simulate's sink: no Trade object per trade), in runCombo's push order
-  let rr = new Float64Array(256);
-  let en = new Float64Array(256);
-  let ex = new Float64Array(256);
-  let n = 0;
-  const sink = (r: number, entryT: number, exitT: number) => {
-    if (n === rr.length) {
-      const grow = (a: Float64Array) => {
-        const b = new Float64Array(a.length * 2);
-        b.set(a);
-        return b;
-      };
-      rr = grow(rr);
-      en = grow(en);
-      ex = grow(ex);
-    }
-    rr[n] = r;
-    en[n] = entryT;
-    ex[n] = exitT;
-    n++;
-  };
+  // Synchronous cells reuse one job-scoped buffer. Each series/direction supplies an already chronological run.
+  const cell = baseCellAccumulator(u);
   for (const s of series) {
     const rawSignal = entrySignal(bot, ind, u.caches[s], tactics);
     if (!rawSignal) return null;
     const sig = evaluationSignal(u, u.bars[s], rawSignal);
-    bothSides(sig, (sg) =>
+    for (const sg of splitSides(sig)) {
+      // A last-bar signal can only be pending. Base reads settled closes, so an empty entry run needs no simulator
+      // result or close callback; the exact signal index is shared with the nonempty protection cells.
+      if (nextEntryIndex(sg)[0] + 1 >= u.bars[s].n) continue;
+      cell.beginRun();
       simulate(id, u.bars[s], sg, p, {
         cost,
         cooldown,
         atr: p.atr ? u.caches[s].atrEma(ATR_PERIOD) : undefined,
-        sink,
-      }),
-    );
+        fixedPathScope: u,
+        sink: cell.push,
+      });
+    }
   }
-  if (!n) return { n: 0, pf: statsOf([]).pf, net: 0, mdd: 0 };
-  // statsOf's order (exit, then entry; stable) and its arithmetic for n / PF / net / max drawdown
-  const idx = Array.from({ length: n }, (_, i) => i).sort((a, b) => ex[a] - ex[b] || en[a] - en[b]);
-  let gp = 0;
-  let gl = 0;
-  let sum = 0;
-  let cum = 0;
-  let peak = 0;
-  let mdd = 0;
-  for (const i of idx) {
-    const r = rr[i];
-    if (r > 0) gp += r;
-    else gl -= r;
-    sum += r;
-    cum += r;
-    if (cum < peak) {
-      if (peak - cum > mdd) mdd = peak - cum;
-    } else peak = cum;
-  }
-  return {
-    n,
-    pf: profitFactor(gp, gl),
-    net: sum * 100,
-    mdd: mdd * 100,
-    gp: gp * 100,
-    gl: gl * 100,
-  };
+  return cell.stats();
 }
 
 export function runCombo(
@@ -1480,9 +1462,10 @@ export function baseRuns(
       if (onStep && (done === total || done % step === 0)) onStep(done, total);
     }
     // bot triggers are reused by every indication: kept; the indication's own series are released
-    if (release) for (const k of u.caches) k.clear(["bot:"]);
+    if (release) for (const k of u.caches) k.clear(["bot:", "break:shared:"]);
     else for (const c of g) forgetCombo(u, c.bot, c.ind);
   }
+  if (release) for (const k of u.caches) k.clear(["bot:"]);
   return out;
 }
 

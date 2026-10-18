@@ -1,5 +1,5 @@
 // Historic trailing configs of a signal (operator, 13 Oct: "Signals run with multiple trailing configs related to the
-// historic calcs in their spec"). Every signal has the same 15 Normal + 15 Trailing percent configs; these add
+// historic calcs in their spec"). Every signal has the same 42 Normal + 35 Trailing percent configs; these add
 // Trailing configs of its OWN, from what its own entries did before: the maximum favourable move each historic entry
 // reached within the hold (MFE, after the entry at the next bar's open, as the simulator enters), pooled over the
 // symbols and both sides of the signal's lane. Its MFE quantiles become targets; each target trails at every share
@@ -9,7 +9,8 @@
 // Causal: only entries whose whole hold ended before `cutT` (the stage cut: the run start of a causal evaluation, now
 // on a desk) are read. The values are rounded to a 0.25 % grid, so the configs of a signal stay the same from compute
 // to compute while its history moves little (a config id is its distances).
-import type { Bars, Protect } from "./domain/types.ts";
+import type { Bars, Gates, Protect } from "./domain/types.ts";
+import { minPfOf } from "./minimal-coord.ts";
 import type { Tactics } from "./domain/types.ts";
 import type { SignalSettings } from "./signal-config.ts";
 import { entrySignal } from "./bots/bots.ts";
@@ -17,6 +18,7 @@ import { laneOf } from "./indications/registry.ts";
 import {
   configId,
   evaluationSignal,
+  kindOfId,
   laneProtect,
   parseConfigId,
   REF_TF,
@@ -28,12 +30,43 @@ import { tacticCooldown } from "./indications/filters.ts";
 import { bothSides, simulate } from "./sim/backtest.ts";
 import { filterEntries } from "./sim/walkforward.ts";
 import { adjustProtect } from "./adjust.ts";
+import { isSignalCoordinationInd } from "./signal-coordination.ts";
 
 export interface SignalHistValidation {
   cost: number;
   minPf: number;
   minTrades: number;
   maxDdr?: number;
+  /** Coordinator historic configs qualify independently against each enabled exit range's stage PF floor. */
+  rangeMinPf?: Partial<Record<"sh" | "gn" | "lg", number>>;
+}
+
+/** Range-tagged coordinator identities that clear their own PF floor; undefined keeps classic untagged history behavior. */
+export function signalHistPassingRanges(
+  pf: number,
+  minPf: number,
+  rangeMinPf?: SignalHistValidation["rangeMinPf"],
+): Array<"sh" | "gn" | "lg" | undefined> {
+  if (rangeMinPf === undefined) return pf >= minPf ? [undefined] : [];
+  const ranges = Object.entries(rangeMinPf).filter(
+    (entry): entry is ["sh" | "gn" | "lg", number] =>
+      (entry[0] === "sh" || entry[0] === "gn" || entry[0] === "lg") &&
+      Number.isFinite(entry[1]),
+  );
+  return ranges.filter(([, threshold]) => pf >= threshold).map(([tag]) => tag);
+}
+
+/** Signals retain the configured stage PF floor; the lower engine Wide prefilter cannot relax it. */
+export function signalHistValidationOf(
+  cost: number,
+  gates: Pick<Gates, "minPf" | "rangeMinPf" | "baseSetsMinPf" | "minTrades" | "maxDdr">,
+): SignalHistValidation {
+  return {
+    cost,
+    minPf: Math.max(minPfOf(gates, undefined), gates.baseSetsMinPf ?? gates.minPf),
+    minTrades: gates.minTrades,
+    maxDdr: gates.maxDdr,
+  };
 }
 
 export interface SignalHistDiagnostics {
@@ -332,9 +365,23 @@ export function* signalHistProtectsGen(
               if (diagnostics) diagnostics.ddrRejected++;
               continue;
             }
+            const passingRanges = signalHistPassingRanges(
+              st.pf,
+              validation.minPf,
+              isSignalCoordinationInd(ind) ? (validation.rangeMinPf ?? {}) : undefined,
+            );
+            if (!passingRanges.length) {
+              if (diagnostics) diagnostics.pfRejected++;
+              continue;
+            }
+            for (const tag of passingRanges) {
+              ps.push(tag ? { ...p, tag } : p);
+              if (diagnostics) diagnostics.qualified++;
+            }
+          } else {
+            ps.push(p);
+            if (diagnostics) diagnostics.qualified++;
           }
-          if (diagnostics) diagnostics.qualified++;
-          ps.push(p);
         }
     }
     if (ps.length) out[pair] = ps;
@@ -425,6 +472,54 @@ export function heldHistProtects(
     if (!h || !sigPairs.has(h.pair) || standard.some((q) => same(q, h.protect))) continue;
     const list = (out[h.pair] ??= []);
     if (!list.some((p) => same(p, h.protect))) list.push(h.protect);
+  }
+  return out;
+}
+
+/**
+ * Exact open coordinator configs survive an exit-range toggle or a changed grid. Rebuild their reference protect from
+ * the persisted lane config, keep its range tag, and let the tape builder mark the recovered config held-only.
+ */
+export function heldCoordinationProtects(
+  openCfgs: Iterable<string>,
+  pairs: ReadonlySet<string>,
+  current: readonly Protect[],
+): Record<string, Protect[]> {
+  const out: Record<string, Protect[]> = {};
+  for (const id of openCfgs) {
+    const x = parseConfigId(id);
+    if (!x || !isSignalCoordinationInd(x.ind) || x.protect.atr) continue;
+    const pair = `${x.bot}|${x.ind}`;
+    if (!pairs.has(pair)) continue;
+    const kind = kindOfId(id);
+    const p: Protect = {
+      tp: 0,
+      sl: 0,
+      trail: 0,
+      hold: Math.max(2, Math.round((x.protect.hold * (laneOf(x.ind).tf ?? REF_TF)) / REF_TF)),
+      ...(x.protect.tag ? { tag: x.protect.tag } : {}),
+      ...(x.protect.trailOnly ? { trailOnly: true, trailStep: x.protect.trailStep ?? 1 } : {}),
+    };
+    let valid = true;
+    for (const field of ["tp", "sl", "trail"] as const) {
+      if (field === "tp" && p.trailOnly) continue;
+      const ref = invertLaneField(x.protect[field], (value) =>
+        laneProtect({ ...p, [field]: value }, x.ind)[field],
+      );
+      if (ref === null) {
+        valid = false;
+        break;
+      }
+      p[field] = ref;
+    }
+    if (!valid) continue;
+    const expected = configId(x.bot, x.ind, laneProtect(p, x.ind), kind);
+    const withoutAxisVariant = id.replace(/\|axd?-[a-z0-9]+(?=\|axis$)/, "");
+    if (expected !== withoutAxisVariant) continue;
+    const idOf = (q: Protect) => configId(x.bot, x.ind, laneProtect(q, x.ind), kind);
+    if (current.some((q) => idOf(q) === expected)) continue;
+    const list = (out[pair] ??= []);
+    if (!list.some((q) => idOf(q) === expected)) list.push(p);
   }
   return out;
 }

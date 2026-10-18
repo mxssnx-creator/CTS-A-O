@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 import { CoreDb } from "./db.server.ts";
-import { liveKv, liveUnit, liveUnitPeek, resetLiveBackoff, stepLive, type ExchangeClient } from "./live.server.ts";
+import { laneContributions, liveKv, liveUnit, liveUnitPeek, resetLiveBackoff, stepLive, type ExchangeClient } from "./live.server.ts";
 import { SimExchange, fakeRt, lane } from "../test-support.ts";
 import { unitNotional, type SizingSettings } from "../sizing.ts";
 import { ExchangeRejected } from "../exchange/bingx.server.ts";
@@ -30,9 +30,41 @@ describe("live account sizing: one actual balance for sizing, budgets and previe
       equity: async () => { duplicateReads++; return 10_000; },
     });
     await stepLive(core(rt), [], 1, ex);
-    assert.equal(ex.positions.get("S0-USDT|LONG"), 2, "100 equity × 10 % × factor 2 / price 10");
+    assert.equal(ex.positions.get("S0-USDT|LONG"), 2, "100 balance × 10 % × factor 2 / price 10");
     assert.equal(duplicateReads, 0);
-    assert.deepEqual(liveUnitPeek(core(rt)), { unit: 10, from: "equity", equity: 100 });
+    assert.deepEqual(liveUnitPeek(core(rt)), { unit: 10, from: "balance", balance: 100, equity: 100 });
+  });
+
+  it("sizes and applies ratio caps from wallet balance, not unrealized equity", async () => {
+    const rt = setup();
+    rt.settings.sizing = { mode: "equityPct", pct: 0.25 };
+    rt.settings.live = { ...rt.settings.live, maxPositionX: 0.1, maxNotionalUsd: 5000 };
+    rt.paper.positions = [lane("a", "S0-USDT", 1, 10)];
+    const ex = new SimExchange().withEquity(100);
+    ex.account = async () => ({
+      equity: 100,
+      wallet: 40,
+      unrealized: 60,
+      realized: 0,
+      usedMargin: 0,
+      availableMargin: 40,
+    });
+    await stepLive(core(rt), [], 1, ex);
+    assert.equal(ex.positions.get("S0-USDT|LONG"), 0.4, "per-position limit is 0.1 × $40 wallet, not 0.1 × $100 equity or the $5,000 legacy cap");
+    assert.deepEqual(liveUnitPeek(core(rt)), { unit: 10, from: "balance", balance: 40, equity: 100 });
+  });
+
+  it("applies range volume factors consistently to held positions and control previews", () => {
+    const rt = setup();
+    rt.settings.grid.micro = { ...rt.settings.grid.micro, volumeFactor: 2.5 } as never;
+    rt.settings.signals.rangeVolumeFactors = { ...rt.settings.signals.rangeVolumeFactors, short: 1.8 };
+    rt.paper.positions = [
+      lane("follow|ema-9-21@m1|tp1|sl1|tr0|h32|mc", "MICRO-USDT", 1, 10, 2),
+      lane("follow|sig-ema-cross-s@m15|tp1|sl1|tr0|h32", "SIGNAL-USDT", 1, 10, 2),
+    ];
+    const contributions = laneContributions(core(rt));
+    assert.equal(contributions.find((x) => x.sym === "MICRO-USDT")?.vol, 5);
+    assert.equal(contributions.find((x) => x.sym === "SIGNAL-USDT")?.vol, 3.6);
   });
 
   it("an account-only client uses actual equity, and fixed/minimum sizing previews keep that equity too", async () => {
@@ -53,16 +85,16 @@ describe("live account sizing: one actual balance for sizing, budgets and previe
   it("an unread real balance stays unknown in the preview; only explicit simulated clients use paper", async () => {
     const rt = setup();
     rt.settings.sizing = { mode: "equityPct", pct: 0.1 };
-    assert.deepEqual(liveUnitPeek(core(rt)), { unit: 0, from: "unknown", equity: null });
+    assert.deepEqual(liveUnitPeek(core(rt)), { unit: 0, from: "unknown", balance: null, equity: null });
     assert.equal(await liveUnit(core(rt), new SimExchange()), rt.settings.paperBalance * 0.1);
     assert.equal(liveUnitPeek(core(rt)).from, "paper");
     const failed = new SimExchange().withEquity(50);
     failed.account = async () => { throw new Error("unavailable"); };
     assert.equal(await liveUnit(core(rt), failed), null);
-    assert.deepEqual(liveUnitPeek(core(rt)), { unit: 0, from: "unknown", equity: null });
+    assert.deepEqual(liveUnitPeek(core(rt)), { unit: 0, from: "unknown", balance: null, equity: null });
   });
 
-  it("zero, negative and nonfinite account balances never become order sizes", async () => {
+  it("zero, negative and nonfinite wallet balances never become order sizes", async () => {
     const rt = setup();
     rt.settings.sizing = { mode: "equityPct", pct: 0.1 };
     for (const eq of [0, -1, NaN, Infinity, -Infinity]) {
@@ -108,8 +140,8 @@ describe("live account sizing: one actual balance for sizing, budgets and previe
     assert.equal(ex.opens("S0-USDT").length, 0, "a stale margin snapshot cannot fund a guarded order either");
   });
 
-  it("the worst-case budget alone still requires known, finite account equity", async () => {
-    for (const equity of [null, 0, Infinity]) {
+  it("the worst-case budget alone still requires known, finite account balance", async () => {
+    for (const balance of [null, 0, Infinity]) {
       resetLiveBackoff();
       const rt = setup();
       rt.settings.sizing.mode = "minQty";
@@ -117,10 +149,10 @@ describe("live account sizing: one actual balance for sizing, budgets and previe
       rt.paper.positions = [lane("a", "S0-USDT", 1, 10)];
       const ex = new SimExchange().withEquity(100);
       const snap = await ex.account!();
-      ex.account = async () => ({ ...snap!, equity });
+      ex.account = async () => ({ ...snap!, wallet: balance });
       const status = await stepLive(core(rt), [], 1, ex);
-      assert.equal(ex.opens("S0-USDT").length, 0, `no unbudgeted open with equity ${equity}`);
-      assert.match(status.reason, /equity unknown/);
+      assert.equal(ex.opens("S0-USDT").length, 0, `no unbudgeted open with balance ${balance}`);
+      assert.match(status.reason, /balance unknown/);
     }
   });
 

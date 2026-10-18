@@ -126,7 +126,7 @@ export async function coreListingData(data: ReturnType<typeof coreListingInput>)
     const all = idx ? idx.map((i) => L.validated[i]) : L.validated;
     rows = q ? all.filter((x) => x.id.toLowerCase().includes(q)) : all;
   } else if (data.kind === "active") {
-    rows = q ? L.active.filter((x) => `${x.bot}|${x.ind}|${x.sym}|${x.side}|${x.kind ?? "discovery"}`.toLowerCase().includes(q)) : L.active;
+    rows = q ? L.active.filter((x) => `${x.bot}|${x.ind}|${x.sym}|${x.side}|${x.kind ?? "discovery"}|${x.cfg ?? ""}`.toLowerCase().includes(q)) : L.active;
   } else rows = (L.proven ?? []).filter((id) => !q || id.toLowerCase().includes(q)).map((id) => ({ id }));
   return ser({
     ready: true,
@@ -432,7 +432,7 @@ export async function coreSimData(data: ReturnType<typeof connInput>) {
   const archive = r.db.kvGet<{ presets?: Record<string, { stats?: Record<string, unknown>; [key: string]: unknown }>; [key: string]: unknown }>("presetSims") ?? null;
   // Old archives contain aggregate size-weighted numbers but no orders. Preserve them only as sized diagnostics.
   const presets = archive ? { ...archive, presets: Object.fromEntries(Object.entries(archive.presets ?? {}).map(([key, value]) => {
-    if (value.stats?.pfBasis === "unit-net-returns" && value.stats.unknownReturns === 0) return [key, value];
+    if (Number(value.stats?.n) > 0 && value.stats?.pfBasis === "unit-net-returns" && value.stats.unknownReturns === 0) return [key, value];
     const stats = { ...value.stats, pfBasis: "unavailable", unknownReturns: Number(value.stats?.n ?? 0),
       pf: null, gp: null, gl: null, net: null, avg: null, mdd: null, ddt: null, ddtNow: null, expectancy: null,
       sqn: null, recovery: null, greenHours: null, gh: null, worstHour: null };
@@ -548,10 +548,10 @@ export async function coreTradingData(data: ReturnType<typeof connInput>) {
 /**
  * The Overall control positions the current paper book asks for (shown even while Live is off): the lanes the live
  * step would send (live.kinds / source / plainOnly / excludeRanges, the selected engine configs and active signals,
- * top configs), the same sizing (unit from the last verified equity read; minimum-quantity sizing per
- * symbol; position mode; per-position cap; exchange minimum) and live.maxSymbols. Without an exchange read the held
- * positions come from the live step's last control status. Unknown or stale account equity blocks previews
- * requiring an equity read; the paper balance never funds a live account. The account-wide scalers (gross exposure, stop risk, worst case) are applied as the live step applies
+ * top configs), the same sizing (unit from the last verified wallet-balance read; minimum-quantity sizing per
+ * symbol; position mode; the 100-slot exchange position ceiling; exchange minimum). Without an exchange read the
+ * held positions come from the live step's last control status. Unknown or stale account balance blocks previews
+ * requiring a balance read; the paper balance never funds a live account. The account-wide scalers (gross exposure, stop risk, worst case) are applied as the live step applies
  * them, drops included, so the preview shows the sizes the desk would send.
  */
 async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
@@ -582,7 +582,7 @@ async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
       unitFrom: u.from,
       blocked: "Waiting for a current exchange equity read; no live size is inferred from the paper balance",
       top: null,
-      symbolCapDropped: 0,
+      exchangeSlots: [],
     };
   }
   // An equity-blocked preview has no targets: do not delay the account UI on unused venue metadata.
@@ -593,17 +593,21 @@ async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
   const prices = new Map<string, number>();
   for (const [sym, cs] of r.candles) if (cs.n) prices.set(sym, cs.c[cs.n - 1]);
   const lotUsd = (sym: string, px: number) => bx.minQtyExchange(px, specs.get(sym) ?? null) * px;
-  // positions the exchange holds (the live step's last read): their lanes stay while held, they come first under maxSymbols
-  const status = liveKv<{ held?: Array<{ key: string; qty: number }> }>(
+  // Positions and unresolved entries from the live step's last exchange read occupy slots even if their lanes vanish.
+  const status = liveKv<{
+    held?: Array<{ key: string; qty: number }>;
+    exchangeSlots?: string[];
+  }>(
     r.db as never,
     "controlStatus",
   );
-  const heldKeys = new Set((status?.held ?? []).filter((h) => h.qty > 0).map((h) => h.key));
+  const ownedHeldKeys = new Set((status?.held ?? []).filter((h) => h.qty > 0).map((h) => h.key));
+  const exchangeSlots = new Set([...(status?.exchangeSlots ?? []), ...ownedHeldKeys]);
   const selected = r.paper.selected ? new Set(r.paper.selected) : null;
   const { validLane } = liveLaneFilter(s, selected, r.wf?.signalActive, null,
     (lane) => r.livePromotionGate(lane).ok);
   let lanes = laneContributions(r, prices).filter(
-    (l) => validLane(l) || heldKeys.has(`${l.sym}|${l.side}`),
+    (l) => validLane(l) || ownedHeldKeys.has(`${l.sym}|${l.side}`),
   );
   const posCap = positionCapFor(positionCapOf(s), eq, s.maxPositionX);
   // top configs ("fill" or a number), with the live step's budget: exposure cap, risk and worst-case budgets
@@ -659,10 +663,10 @@ async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
     lanes,
     prices,
     {
-      ...controlSettingsOf(s, u.unit, r.settings.signals.maxPositions),
+      ...controlSettingsOf(s, u.unit),
       maxNotionalUsd: posCap,
       ...(minQty ? { unitOf: lotUsd } : {}),
-      heldKeys,
+      heldKeys: exchangeSlots,
     },
     (sym, q, px) => bx.snapQtyExchange(q, px, specs.get(sym) ?? null, venueMinQty(r as never, sym)),
   );
@@ -674,7 +678,7 @@ async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
     eq,
     { maxExposureX: expoX, maxRiskPct: s.maxRiskPct, maxBackstopLossPct: s.maxBackstopLossPct },
     snapPlan,
-    heldKeys,
+    exchangeSlots,
   );
   for (const [k, why] of [
     ...(exposure?.dropped ?? []).map((k) => [k, "gross exposure cap"] as const),
@@ -682,26 +686,13 @@ async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
     ...(worst?.dropped ?? []).map((k) => [k, "worst-case budget"] as const),
   ])
     plan.skipped.push({ sym: k.split("|")[0], why });
-  // live.maxSymbols: held symbols first, then the ranked targets
-  const maxSyms = s.maxSymbols ?? 0;
-  let symbolCapDropped = 0;
-  if (maxSyms > 0) {
-    const allowed = new Set([...heldKeys].map((k) => k.split("|")[0]));
-    for (const t of plan.targets) {
-      if (allowed.size >= maxSyms) break;
-      allowed.add(t.sym);
-    }
-    const keep = plan.targets.filter((t) => allowed.has(t.sym));
-    symbolCapDropped = plan.targets.length - keep.length;
-    plan.targets = keep;
-  }
   return {
     ...plan,
     unit: u.unit,
     unitFrom: u.from,
     blocked: null,
     top: topKept,
-    symbolCapDropped,
+    exchangeSlots: [...exchangeSlots],
   };
 }
 
@@ -776,7 +767,7 @@ export async function saveCoreSettingsData(data: ReturnType<typeof saveCoreSetti
 
 /** Research presets (fixed, measured) + presets saved from the engine, with their results. */
 function presetPrimaryView(value: Row, fields: readonly string[]): Row {
-  if (value.pfBasis === "unit-net-returns" && value.unknownReturns === 0 && typeof value.pf === "number" && Number.isFinite(value.pf)) return value;
+  if (Number(value.n) > 0 && value.pfBasis === "unit-net-returns" && value.unknownReturns === 0 && typeof value.pf === "number" && Number.isFinite(value.pf)) return value;
   return {
     ...value,
     ...Object.fromEntries(fields.map((key) => [key, null])),
@@ -790,7 +781,7 @@ function presetPrimaryView(value: Row, fields: readonly string[]): Row {
 }
 
 function presetStatsView(stats: WalkForwardResult["stats"] | ReturnStatsReport, n: number, sample: string): Row {
-  const known = stats.pfBasis === "unit-net-returns" && stats.unknownReturns === 0;
+  const known = n > 0 && stats.pfBasis === "unit-net-returns" && stats.unknownReturns === 0;
   const noLoss = known ? typeof stats.gp === "number" && stats.gp > 0 && stats.gl === 0 : null;
   return presetPrimaryView({ ...stats, n, sample, noLoss, pfConvention: !known ? "unavailable" : noLoss ? "no-loss-sentinel" : "gross-return-ratio" },
     ["pf", "gp", "gl", "net", "avg", "mdd", "ddt", "ddtNow", "expectancy", "sqn", "recovery", "greenHours", "gh", "worstHour"]);
@@ -991,7 +982,7 @@ export const coreStatisticsInput = (d?: {
 
 export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsInput>) {
   const r = await rt(data.conn);
-  const { buildStatistics } = await import("./statistics.ts");
+  const { buildStatistics, minuteCloseAtOrBefore } = await import("./statistics.ts");
   const { sizeBook, orderKey } = await import("./sizing.ts");
   // the execution presets are simulated on the run's tapes: they compare with the simulated source only
   const presets =
@@ -1027,6 +1018,7 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
     const { liveTag } = await import("./server/live.ts");
     const rows = r.db.all<{
       coid: string;
+      cfg: string | null;
       sym: string;
       side: number;
       kind: string;
@@ -1039,7 +1031,7 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
       fee: number | null;
       feeKnown: number | null;
     }>(
-      "SELECT o.coid, o.sym, o.side, o.kind, o.qty, o.px, o.status, o.msg, o.at, f.fill_px, f.fee, f.fee_known AS feeKnown FROM live_orders o LEFT JOIN live_fills f ON f.coid = o.coid ORDER BY o.at",
+      "SELECT o.coid, o.cfg, o.sym, o.side, o.kind, o.qty, o.px, o.status, o.msg, o.at, f.fill_px, f.fee, f.fee_known AS feeKnown FROM live_orders o LEFT JOIN live_fills f ON f.coid = o.coid ORDER BY o.at",
     );
     const tag = liveTag(r.settings.live.connId);
     trades = liveTrades(
@@ -1134,12 +1126,7 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
   const price = (sym: string, t: number) => {
     const m = closes.get(sym);
     if (!m) return null;
-    const t0 = Math.floor(t / 60_000) * 60_000;
-    for (let k = 0; k < 5; k++) {
-      const v = m.get(t0 - k * 60_000);
-      if (v !== undefined) return v;
-    }
-    return null;
+    return minuteCloseAtOrBefore(m, t);
   };
   const report = buildStatistics({
     source: data.source,

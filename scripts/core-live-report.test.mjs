@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { closableQty, historyWith, netByTag } from "./core-live-report.mjs";
 import { buildStatistics, liveTrades } from "../src/core/statistics.ts";
+import { RT_COST } from "../src/core/model-cost.ts";
 
 const o = (coid, side, positionSide, qty, symbol = "SAND-USDT") => ({
   clientOrderId: coid,
@@ -207,8 +208,26 @@ describe("exchange and UI ledger compare identical settled owned close samples",
     assert.ok(Math.abs(x.pf - ui.report.total.pf) < 1e-12);
     assert.ok(Math.abs(x.closesNet - ui.report.total.usd) < 1e-12);
     assert.equal(x.costs.modelRoundTrip, .004);
+    assert.equal(x.costs.modelSource, "explicit-model");
     assert.equal(x.costs.estimatedFeeOrders, 5);
     assert.equal(x.byKind.General.net, -4, "raw venue profit/commission remains separate from modeled close money");
+  });
+
+  it("labels an omitted-cost estimate without inventing historical cost or changing measured commissions", async () => {
+    const { ownResults } = await import("./core-live-report.mjs");
+    const missing = rows.map((x) => ({ ...x, fee: null }));
+    const estimated = await ownResults({ tag: "TEST_", from: t, to: t + 4, all: exchangeRows(missing) });
+    const historical = await ownResults({ tag: "TEST_", from: t, to: t + 4, all: exchangeRows(missing), modelCost: .002 });
+    assert.equal(estimated.costs.modelRoundTrip, RT_COST);
+    assert.equal(estimated.costs.modelSource, "current-default-estimate");
+    assert.equal(estimated.costs.estimatedFeeOrders, 5);
+    assert.equal(historical.costs.modelRoundTrip, .002);
+    assert.equal(historical.costs.modelSource, "explicit-model");
+    assert.notEqual(estimated.closesNet, historical.closesNet);
+    const measured = await ownResults({ tag: "TEST_", from: t, to: t + 4, all: exchangeRows(rows) });
+    const measuredHistorical = await ownResults({ tag: "TEST_", from: t, to: t + 4, all: exchangeRows(rows), modelCost: .002 });
+    assert.equal(measured.costs.estimatedFeeOrders, 0);
+    assert.deepEqual(measured.closes, measuredHistorical.closes);
   });
 
   it("preserves finite explicit zero commissions while missing or legacy zero evidence retains the configured estimate", async () => {

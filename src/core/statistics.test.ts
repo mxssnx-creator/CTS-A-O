@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildStatistics, presetSeries, subTypeOf, timeline, typeOf, withWithout, type StatTrade } from "./statistics.ts";
+import { buildStatistics, minuteCloseAtOrBefore, presetSeries, subTypeOf, timeline, typeOf, withWithout, type StatTrade } from "./statistics.ts";
 import { statsOf, unitStatsOf } from "./metrics/stats.ts";
 
 const H = 3_600_000;
@@ -51,6 +51,29 @@ test("timeline: balance steps at each close, equity marks open orders, margin an
   assert.equal(tl.ordersMax, 2);
 });
 
+test("equity drawdown uses every minute and trade event, independently of margin and chart downsampling", () => {
+  const trades = [tr({ entryT: T0, exitT: T0 + 4 * H, r: -0.2 })];
+  const price = (_sym: string, t: number) =>
+    t < T0 + H ? 100 : t < T0 + 2 * H ? 110 : t < T0 + 3 * H ? 100 : 80;
+  const args = { startT: T0, endT: T0 + 4 * H, balance: 1000, unit: () => 100, price, cost: 0, points: 2 };
+  const lowLeverage = timeline(trades, { ...args, leverage: 2 });
+  const highLeverage = timeline(trades, { ...args, leverage: 20 });
+  assert.equal(lowLeverage.stepMs, 2 * H, "chart remains downsampled");
+  assert.equal(lowLeverage.points.length, 3);
+  assert.ok(Math.abs(lowLeverage.peak - 1010) < 1e-8, `minute peak ${lowLeverage.peak}`);
+  assert.ok(Math.abs(lowLeverage.maxDd - 30) < 1e-8, `minute equity drawdown ${lowLeverage.maxDd}`);
+  assert.ok(Math.abs(lowLeverage.maxDdPct - (30 / 1010) * 100) < 1e-8);
+  assert.ok(Math.abs(lowLeverage.maxDd - highLeverage.maxDd) < 1e-8);
+  assert.ok(lowLeverage.marginMax > highLeverage.marginMax);
+});
+
+test("minute close lookup never reads the candle that is still forming", () => {
+  const closes = new Map([[T0, 101], [T0 + 60_000, 102]]);
+  assert.equal(minuteCloseAtOrBefore(closes, T0 + 60_000), 101);
+  assert.equal(minuteCloseAtOrBefore(closes, T0 + 2 * 60_000), 102);
+  assert.equal(minuteCloseAtOrBefore(closes, T0), null);
+});
+
 test("types and sub-types: Block raised / Active level, DCA vs DCA Active, Axis, Signals", () => {
   assert.equal(typeOf(tr({ kind: "trailing" })), "Trailing");
   assert.equal(typeOf(tr({ cfg: "follow|rsi-mom-14-20@m15|tp3|sl3|tr0|h64|hxL" })), "Historic Exit");
@@ -61,6 +84,9 @@ test("types and sub-types: Block raised / Active level, DCA vs DCA Active, Axis,
   assert.deepEqual(subTypeOf(tr({ mult: 1.2, level: 1 }), 2), ["Block raised", "Block below Active level"]);
   // coordination volume alone is not a Block raise
   assert.deepEqual(subTypeOf(tr({ mult: 1.5, coordVol: 1.5 }), 2), ["Base (unit volume)"]);
+  // indication volume factors are not reported as Block raises either
+  assert.deepEqual(subTypeOf(tr({ mult: 8, volFactor: 8 }), 2), ["Base (unit volume)"]);
+  assert.deepEqual(subTypeOf(tr({ mult: 3, coordVol: 1.5, hedgeVol: 2 }), 2), ["Base (unit volume)"]);
   assert.deepEqual(subTypeOf(tr({ kind: "axis" }), 2), ["Axis"]);
   assert.deepEqual(subTypeOf(tr({}), 2), ["Base (no Block detail)"]);
 });
@@ -247,7 +273,7 @@ test("live closes: an exchange stop-out (flat marker F, qty 0) ends the position
     row("CTSBV2_Ea2", "O", 2, 200, T + 2),
     row("CTSBV2_Ca3", "X", 2, 210, T + 3),
   ];
-  const xs = liveTrades(rows, "CTSBV2_".length);
+  const xs = liveTrades(rows, "CTSBV2_".length, 0.002); // This fixture pins its historical 0.20% model.
   assert.equal(xs.length, 1);
   // the second position alone: entry 200 (not the ghost's blended 166.7), opened at T + 2, +5 %
   assert.equal(xs[0].entry, 200);
@@ -256,7 +282,7 @@ test("live closes: an exchange stop-out (flat marker F, qty 0) ends the position
   // close 2 × 210 × 0.001 = 0.42 — on a gross +20 over a notional of 400: r = (20 − 0.82) / 400
   assert.ok(Math.abs(xs[0].r - 0.04795) < 1e-12, `r ${xs[0].r}`);
   // without the F marker an own open ("O") still starts a fresh position
-  const ys = liveTrades([rows[0], rows[2], rows[3]], "CTSBV2_".length);
+  const ys = liveTrades([rows[0], rows[2], rows[3]], "CTSBV2_".length, 0.002);
   assert.equal(ys.length, 1);
   assert.equal(ys[0].entry, 200);
 });
@@ -287,7 +313,7 @@ test("live closes: a position the exchange closed (its stop, its take-profit) is
     row("F-USDT", "CTSBV2_Ea8", "O", 1, 100, T + 11),
     row("F-USDT", "flat-5", "F", 0, 0, T + 12, "flat on the exchange"),
   ];
-  const xs = liveTrades(rows, "CTSBV2_".length);
+  const xs = liveTrades(rows, "CTSBV2_".length, 0.002); // This fixture pins its historical 0.20% model.
   assert.deepEqual(
     xs.map((x) => [x.sym, +x.r.toFixed(9), x.reason]),
     // Every unmeasured exit pays the model fee share, including the exchange's protective orders.
@@ -446,7 +472,7 @@ test("an unmeasured fill is charged the model round-trip fee share, never zero",
     { coid: "CTSBV2_Ua1", sym: "SOL-USDT", side: 1, kind: "O", qty: 1, px: 100, status: "ok", at: T, fillPx: 100, fee: null },
     { coid: "CTSBV2_Ca2", sym: "SOL-USDT", side: 1, kind: "X", qty: 1, px: 110, status: "ok", at: T + 1, fillPx: 110, fee: 0.05 },
   ];
-  const xs = liveTrades(rows, "CTSBV2_".length);
+  const xs = liveTrades(rows, "CTSBV2_".length, 0.002); // This fixture pins its historical 0.20% model.
   assert.equal(xs.length, 1);
   // +10 gross, −0.1 model fee on the open, −0.05 measured on the close → 9.85 on a notional of 100
   assert.ok(Math.abs(xs[0].r - 0.0985) < 1e-12, `r ${xs[0].r}`);

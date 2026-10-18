@@ -11,10 +11,17 @@ import {
   quantileSorted,
   signalHistProtects,
   signalHistProtectsGen,
+  signalHistPassingRanges,
   signalHistHoldH,
+  signalHistValidationOf,
   signalMfe,
 } from "./signal-hist.ts";
+import { DEFAULT_SETTINGS } from "./config.ts";
+import { closePool, runOnWorkers, type SignalHistReply } from "./server/pool.server.ts";
 import { DEFAULT_SIGNALS, signalSettings } from "./signal-config.ts";
+import { SIGNAL_SOURCES } from "./signal-config.ts";
+import { signalCoordinationId } from "./signal-coordination.ts";
+import { DEFAULT_TACTICS } from "./config.ts";
 import { signalProtects } from "./signals.ts";
 import { configId, laneProtect, makeUniverse } from "./pipeline/pipeline.ts";
 import { buildTapes } from "./sim/walkforward.ts";
@@ -49,6 +56,75 @@ function rows(xs: ReadonlyArray<readonly [number, number, number, number]>): Bar
 }
 
 describe("signal historic trailing configs", () => {
+  it("applies the independent PF floor of each coordinator exit range", () => {
+    assert.deepEqual(signalHistPassingRanges(1.3, 1.1), [undefined], "classic Signals keep their untagged floor");
+    assert.deepEqual(
+      signalHistPassingRanges(1.3, 1.1, { sh: 1.05, gn: 1.25, lg: 1.35 }),
+      ["sh", "gn"],
+      "only the ranges whose own PF floor passes receive the historic config",
+    );
+    assert.deepEqual(signalHistPassingRanges(1.3, 1.1, {}), [], "no enabled coordinator ranges means no tagged history");
+    assert.deepEqual(signalHistPassingRanges(1.02, 1.1, { sh: 1.05, gn: 1.25, lg: 1.35 }), []);
+  });
+
+  it("tags historic coordinator configs only for ranges that clear their own PF floor", () => {
+    const b = barsFromCandles(
+      "A-USDT",
+      15,
+      syntheticCandles("A-USDT", 15, 3000, Date.UTC(2026, 9, 1), 3),
+    );
+    const u = makeUniverse([b]);
+    const ind =
+      signalCoordinationId(
+        SIGNAL_SOURCES.slice(0, 3).map((source) => source.name),
+        0.65,
+        3,
+        1,
+      ) + "@m15";
+    const pair = "follow|" + ind;
+    const sig = {
+      ...DEFAULT_SIGNALS,
+      hist: { ...DEFAULT_SIGNALS.hist, lookbackH: 0, minN: 1 },
+    };
+    const diagnostics = emptySignalHistDiagnostics();
+    const gen = signalHistProtectsGen(
+      u,
+      [pair],
+      sig,
+      DEFAULT_TACTICS,
+      u.nowT,
+      {
+        cost: 0.002,
+        minPf: 0,
+        minTrades: 1,
+        maxDdr: 1000,
+        rangeMinPf: { sh: 0, gn: 1e9, lg: 1e9 },
+      },
+      diagnostics,
+    );
+    let result = gen.next();
+    while (!result.done) result = gen.next();
+    const configs = result.value[pair] ?? [];
+    assert.ok(configs.length > 0, "permissive Short floor admits calculated historic configs");
+    assert.ok(configs.every((protect) => protect.tag === "sh"));
+    assert.equal(diagnostics.qualified, configs.length);
+
+    const disabledDiagnostics = emptySignalHistDiagnostics();
+    const disabledGen = signalHistProtectsGen(
+      u,
+      [pair],
+      sig,
+      DEFAULT_TACTICS,
+      u.nowT,
+      { cost: 0.002, minPf: 0, minTrades: 1, maxDdr: 1000, rangeMinPf: {} },
+      disabledDiagnostics,
+    );
+    let disabledResult = disabledGen.next();
+    while (!disabledResult.done) disabledResult = disabledGen.next();
+    assert.deepEqual(disabledResult.value[pair] ?? [], [], "disabled coordinator ranges never fall back to untagged configs");
+    assert.equal(disabledDiagnostics.qualified, 0);
+  });
+
   it("the MFE of each entry: from the next bar's open over the hold, long on highs, short on lows (hand-computed)", () => {
     const b = rows([
       [100, 101, 99, 100], // 0: long signal
@@ -162,6 +238,47 @@ describe("signal historic trailing configs", () => {
     assert.deepEqual(signalHistProtects(u, [pair], sig, null, u.bars[0].t[0]), {});
   });
 
+  it("historic preparation retains stage PF and stricter custom floors on local and worker paths", async () => {
+    // A deterministic threshold fixture, not a strategy search: both single-protect configs have enough closes.
+    // The same nonzero cost applies to the measured tape and both historical preparation paths.
+    const cost = 0.0001;
+    const bars = [3, 5].map((seed) => barsFromCandles(`${seed}-USDT`, 15,
+      syntheticCandles(`${seed}-USDT`, 15, 600, Date.UTC(2026, 9, 1), seed)));
+    const u = makeUniverse(bars);
+    const sig = signalSettings({ enabled: true, holdH: 1, filter: { trendH: 0, volFloor: 0 },
+      hist: { ...DEFAULT_SIGNALS.hist, quantiles: [0.5], slOfTp: [1], trailOfTp: [0.5] } });
+    const low = "follow|sig-rsi-mid-s@m15";
+    const middle = "follow|sig-donchian-s@m15";
+    const pairs = [low, middle];
+    const candidates = signalHistProtects(u, pairs, sig, null, u.nowT);
+    const pfOf = (pair: string) => {
+      const [tp] = buildTapes(u, candidates[pair], cost, undefined, new Set([pair]), null, undefined,
+        { minSl: sig.minSl, minTrail: sig.minTrail });
+      assert.ok(tp && tp.n >= Math.max(sig.hist.minN, DEFAULT_SETTINGS.gates.minTrades));
+      return tp.gp[tp.n] / tp.gl[tp.n];
+    };
+    const lowPf = pfOf(low), middlePf = pfOf(middle);
+    assert.ok(lowPf > 1 && lowPf < 1.1, `boundary fixture PF ${lowPf}`);
+    assert.ok(middlePf > 1.1 && middlePf < 1.3, `stricter-floor fixture PF ${middlePf}`);
+    const stage = signalHistValidationOf(cost, { ...DEFAULT_SETTINGS.gates, minPf: 1.1, baseSetsMinPf: 1, maxDdr: 0 });
+    const stricter = signalHistValidationOf(cost, { ...DEFAULT_SETTINGS.gates, minPf: 1.1, baseSetsMinPf: 1.3, maxDdr: 0 });
+    assert.equal(stage.minPf, 1.1);
+    assert.equal(stricter.minPf, 1.3);
+    assert.equal(signalHistValidationOf(cost, { ...DEFAULT_SETTINGS.gates, minPf: 1.5, baseSetsMinPf: 1.3 }).minPf, 1.5);
+    const oldPrefilter = signalHistProtects(u, pairs, sig, null, u.nowT, { ...stage, minPf: 1 });
+    assert.deepEqual(Object.keys(oldPrefilter).sort(), [...pairs].sort(), "the former engine Wide floor admitted both");
+    try {
+      for (const validation of [stage, stricter]) {
+        const local = signalHistProtects(u, pairs, sig, null, u.nowT, validation);
+        assert.deepEqual(Object.keys(local), validation.minPf === 1.1 ? [middle] : []);
+        const [remote] = await runOnWorkers<SignalHistReply>([{ type: "signal-hist", bars, pairs, sig,
+          tactics: null, cutT: u.nowT, validation }], 1, 60_000);
+        assert.deepEqual(remote.pairProtects, local, "workers enforce the identical serialized validation contract");
+        assert.ok((remote.diagnostics?.pfRejected ?? 0) >= 1);
+      }
+    } finally { await closePool(); }
+  });
+
   it("the tape builder builds a pair's own configs for that pair only, each its own tape", () => {
     const sym = (s: string, seed: number) =>
       barsFromCandles(s, 15, syntheticCandles(s, 15, 1500, Date.UTC(2026, 9, 1), seed));
@@ -247,9 +364,9 @@ describe("signal historic trailing configs", () => {
     assert.deepEqual(heldHistProtects([histId], new Set(), signalProtects(sig)), {});
   });
 
-  it("on by default beside the 30 capped percent configs and nine Trailing only sets", () => {
+  it("on by default beside the 77 percent configs and nine Trailing only sets", () => {
     assert.equal(DEFAULT_SIGNALS.hist.enabled, true);
-    assert.equal(signalProtects(signalSettings({ enabled: true })).length, 39);
+    assert.equal(signalProtects(signalSettings({ enabled: true })).length, 86);
   });
 });
 

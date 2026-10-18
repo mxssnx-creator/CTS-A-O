@@ -8,7 +8,6 @@ import { barsFromCandles, resample } from "../src/core/market/bars.ts";
 import { SeriesCache } from "../src/core/indications/cache.ts";
 import { INDICATION_BY_ID, laneInd } from "../src/core/indications/registry.ts";
 import { DEFAULT_SIGNALS, SIGNAL_SOURCES, signalId } from "../src/core/signal-config.ts";
-import { signalProtects } from "../src/core/signals.ts";
 import { configId, laneProtect, protectKind } from "../src/core/pipeline/pipeline.ts";
 import { adjustProtect } from "../src/core/adjust.ts";
 import { filterEntries } from "../src/core/sim/walkforward.ts";
@@ -24,18 +23,28 @@ const stable = (x) => JSON.stringify(x, Object.keys(x).sort());
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+// The 2026-10-15 research protocol is frozen. New production Signal defaults must not
+// silently rewrite the grid or floors used to produce its historical evidence.
+const FROZEN_PROTECTS_SHA256 =
+  "c496c433f64a70f75a6287a1c471f8a68794ef3b0e5dbe261cc5fd0a6adc95e1";
+const FROZEN_SIGNAL_FLOORS = Object.freeze({ minSl: 0.005, minTrail: 0.005 });
 
-/** Enforce runtime-grid parity and the predeclared formulas before any market outcomes are calculated. */
+/** Enforce the fixed research grid and predeclared formulas before market outcomes are calculated. */
 export function researchCells(protocol) {
-  if (protocol.schema !== "cts-signal-new-sources-research-v1")
-    throw new Error("Unknown Signal protocol schema");
-  const protects = signalProtects({ ...DEFAULT_SIGNALS, exits: "pct" });
-  if (JSON.stringify(protects) !== JSON.stringify(protocol.protects))
-    throw new Error("Frozen protects differ from runtime signalProtects");
+  if (protocol.schema !== "cts-signal-new-sources-research-v2")
+    throw new Error(
+      "Unknown or superseded Signal protocol schema; use the runtime-parity v2 protocol",
+    );
+  const protects = protocol.protects;
+  if (
+    !Array.isArray(protects) ||
+    sha256(JSON.stringify(protects)) !== FROZEN_PROTECTS_SHA256
+  )
+    throw new Error("Frozen protects differ from the predeclared research grid");
   if (protocol.model.roundTripCost !== 0.002) throw new Error("Frozen cost must remain 0.002");
-  const floors = { minSl: DEFAULT_SIGNALS.minSl, minTrail: DEFAULT_SIGNALS.minTrail };
-  if (stable(protocol.preOutcomeModelClarification?.signalFloors ?? {}) !== stable(floors))
-    throw new Error("Frozen Signal floors differ from runtime defaults");
+  const floors = protocol.preOutcomeModelClarification?.signalFloors;
+  if (stable(floors ?? {}) !== stable(FROZEN_SIGNAL_FLOORS))
+    throw new Error("Frozen Signal floors differ from the predeclared research floors");
   if (
     stable(protocol.preOutcomeModelClarification?.signalFilter ?? {}) !==
     stable(DEFAULT_SIGNALS.filter)
@@ -53,6 +62,13 @@ export function researchCells(protocol) {
         const ind = laneInd(signalId(candidate.name, range), tf);
         for (let i = 0; i < protects.length; i++) {
           const requestedProtect = laneProtect(protects[i], ind);
+          // Match buildTapesGen: a signal trail that falls below its configured minimum after lane scaling is
+          // disabled, not widened back to the floor by adjustProtect. The runtime checks this before adjustment.
+          if (
+            requestedProtect.trail > 0 &&
+            requestedProtect.trail * (requestedProtect.trailStep ?? 1) + 1e-12 < floors.minTrail
+          )
+            continue;
           const protect = adjustProtect(requestedProtect, floors);
           const cfg = configId("follow", ind, protect);
           for (const side of [1, -1]) {
@@ -83,7 +99,16 @@ export function researchCells(protocol) {
       }
     }
   }
-  return [...effective.values()];
+  const cells = [...effective.values()];
+  const frozenGrid = protocol.runtimeParityCorrection?.grid;
+  if (
+    !frozenGrid ||
+    cells.length !== frozenGrid.configSideIdentities ||
+    new Set(cells.map((cell) => cell.cfg)).size !== frozenGrid.distinctProtectionConfigs ||
+    new Set(cells.map((cell) => cell.ind)).size !== frozenGrid.indicatorIdentities
+  )
+    throw new Error("Corrected runtime Signal grid differs from the v2 protocol");
+  return cells;
 }
 
 export function validateProtocolMarket(market, protocol) {
@@ -391,7 +416,7 @@ export function runResearch(
       source: "entrySignal(follow, fullind, DEFAULT_TACTICS)",
       tactics: DEFAULT_TACTICS,
       cooldownBars: tacticCooldown(DEFAULT_TACTICS),
-      grid: "signalProtects(DEFAULT_SIGNALS pct) +laneProtect +adjustProtect(default Signal floors); dedup effective IDs",
+      grid: "frozen protocol protects +laneProtect +adjustProtect(frozen Signal floors); dedup effective IDs",
       requestedConfigSideCells: cells.reduce((n, c) => n + c.requestedAliases.length, 0),
       effectiveConfigSideCells: cells.length,
       signalEntryFilter: protocol.preOutcomeModelClarification?.signalFilter,
@@ -437,7 +462,7 @@ async function sourceEvidence(protocolPath) {
 export function renderMarkdown(report, reportHash) {
   const row = (name, x) =>
     `| ${name} | ${x.closed.n} | ${x.closed.pf.toFixed(4)}${x.closed.noLoss ? "*" : ""} | ${x.closed.netReturnPoints.toFixed(3)} | ${x.openAtEnd} | ${x.withEndpointMarks.pf.toFixed(4)}${x.withEndpointMarks.noLoss ? "*" : ""} |`;
-  return `# Four-source Signal chronological research\n\nRetrospective offline simulation on a cache previously used for Tactic research. This is not untouched global evidence, account ROI or live execution PF. Sources remain default-disabled; no promotion or retuning.\n\n${report.protocol.data.symbols.join(", ")}; ${new Date(report.data.startT).toISOString()} to ${new Date(report.data.endT).toISOString()} exclusive. Seven warmup days, 53 IS days, 30 OOS days; split ${new Date(report.selection.splitT).toISOString()}. The 39 requested protection cells per source/range/lane produce ${report.method.requestedConfigSideCells} config-side requests and ${report.method.effectiveConfigSideCells} distinct effective rows after runtime floors. Requested-to-effective aliases are retained and duplicates simulated once. Actual reference, lane-scaled and effective protects are retained per row.\n\nIS data is physically truncated before calculation and performance entries begin after warmup. Every qualifying config-side freezes before any OOS calculation. ${report.selection.qualifiedIds.length} qualified using at least 30 settled closes, PF >= 1.1 and positive net, with endpoint-marked PF >= 1.1 and positive net. OOS uses fresh positions and pre-context; no selection uses OOS results. All unqualified configurations remain in separate diagnostics.\n\nDefault entry filters and cooldown, including the Signal ATR/price floor of 0.003, are used. Every return deducts 0.2% roundtrip modeled cost; funding, additional slippage, account budgets and actual fills are not modeled. Runtime activation, acceptance and feedback adjustment are outside this independent research scope. All PF/gross sums use independent unit net returns. No-loss PF uses score ${PF_NO_LOSS}, marked *; exactRatio is null. Endpoint open marks use the final completed lane close and its actual timestamp, separately from settled closes. Pools contain overlapping independent configuration copies and cannot be interpreted as a capital-constrained portfolio.\n\n| OOS cohort | Settled closes | Return PF | Net return points | Endpoint opens | PF including marks |\n|---|---:|---:|---:|---:|---:|\n${row("All configs (diagnostic)", report.cohorts.allConfigsDiagnostic)}\n${row("Entire IS-qualified pool", report.cohorts.isQualifiedPool)}\n${row("IS-unqualified configs (diagnostic)", report.cohorts.isUnqualifiedDiagnostic)}\n\nJSON retains every IS/OOS config-side row, actual protects, gross return sums, no-loss convention, sample bounds/hashes and cohort source/range/lane/type/side/symbol/hour/day breakdowns. Empty and losing rows are preserved. Return points are sums of trade percentages, not account profit.\n\nProtocol SHA256: ${report.evidence.protocolSha256}. Cache SHA256: ${report.evidence.cacheSha256}. Source SHA256: ${report.evidence.sourceSha256}. Frozen selection SHA256: ${report.selection.selectionSha256}. Report SHA256: ${reportHash}.\n`;
+  return `# Four-source Signal chronological research\n\nRetrospective offline simulation on a cache previously used for Tactic research. This is not untouched global evidence, account ROI or live execution PF. Sources remain default-disabled; no promotion or retuning.\n\n${report.protocol.data.symbols.join(", ")}; ${new Date(report.data.startT).toISOString()} to ${new Date(report.data.endT).toISOString()} exclusive. Seven warmup days, 53 IS days, 30 OOS days; split ${new Date(report.selection.splitT).toISOString()}. The 39 requested protection cells per source/range/lane produce ${report.method.requestedConfigSideCells} config-side requests and ${report.method.effectiveConfigSideCells} distinct effective rows under the frozen protocol's lane-scaling and stop-floor policy. Requested-to-effective aliases are retained and duplicates simulated once. Actual reference, lane-scaled and effective protects are retained per row.\n\n**Runtime update (17 October 2026):** the current tape builder disables a trail if lane scaling puts it below the 0.5% Signal minimum; it no longer widens such a trail. That later rule excludes 64 configs (128 direction rows) from this frozen protocol grid, so these retrospective results describe the pinned study policy, not the current active Signal grid.\n\nIS data is physically truncated before calculation and performance entries begin after warmup. Every qualifying config-side freezes before any OOS calculation. ${report.selection.qualifiedIds.length} qualified using at least 30 settled closes, PF >= 1.1 and positive net, with endpoint-marked PF >= 1.1 and positive net. OOS uses fresh positions and pre-context; no selection uses OOS results. All unqualified configurations remain in separate diagnostics.\n\nDefault entry filters and cooldown, including the Signal ATR/price floor of 0.003, are used. Every return deducts 0.2% roundtrip modeled cost; funding, additional slippage, account budgets and actual fills are not modeled. Runtime activation, acceptance and feedback adjustment are outside this independent research scope. All PF/gross sums use independent unit net returns. No-loss PF uses score ${PF_NO_LOSS}, marked *; exactRatio is null. Endpoint open marks use the final completed lane close and its actual timestamp, separately from settled closes. Pools contain overlapping independent configuration copies and cannot be interpreted as a capital-constrained portfolio.\n\n| OOS cohort | Settled closes | Return PF | Net return points | Endpoint opens | PF including marks |\n|---|---:|---:|---:|---:|---:|\n${row("All configs (diagnostic)", report.cohorts.allConfigsDiagnostic)}\n${row("Entire IS-qualified pool", report.cohorts.isQualifiedPool)}\n${row("IS-unqualified configs (diagnostic)", report.cohorts.isUnqualifiedDiagnostic)}\n\nJSON retains every IS/OOS config-side row, actual protects, gross return sums, no-loss convention, sample bounds/hashes and cohort source/range/lane/type/side/symbol/hour/day breakdowns. Empty and losing rows are preserved. Return points are sums of trade percentages, not account profit.\n\nProtocol SHA256: ${report.evidence.protocolSha256}. Cache SHA256: ${report.evidence.cacheSha256}. Source SHA256: ${report.evidence.sourceSha256}. Frozen selection SHA256: ${report.selection.selectionSha256}. Report SHA256: ${reportHash}.\n`;
 }
 
 async function main() {
@@ -452,7 +477,7 @@ async function main() {
     options[args[i].slice(2)] = args[i + 1];
   }
   if (!options.out) throw new Error("--out is required");
-  const protocolPath = resolve(options.protocol ?? "docs/signal-research-protocol-20261015.json");
+  const protocolPath = resolve(options.protocol ?? "docs/signal-research-protocol-20261016.json");
   const protocolBytes = await readFile(protocolPath);
   const protocol = JSON.parse(protocolBytes);
   const cells = researchCells(protocol);

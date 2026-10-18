@@ -95,7 +95,9 @@ const openEnd=[{...common,entryT:from+18000000,mtmR:-.04,mult:4,unitR:null}];
 writeFileSync(a("dump"),JSON.stringify({trades,openEnd,basePairs:[{pair,passed:true,tags:["gn"],pf:2,n:20}],engine:{mem:{computeLevel:0},baseByRange:[],baseWhy:[]}}));`);
     const r = spawnSync(process.execPath, ["--experimental-strip-types", "--no-warnings", fileURLToPath(new URL("./eval-gate.mjs", import.meta.url)),
       "--label", "unknown", "--feed", feed, "--jobs", "1", "--expect-mb", "1", "--from", "2026-10-01T00:00:00Z", "--to", "2026-10-02T00:00:00Z"],
-    { cwd: dir, encoding: "utf8", env: { ...process.env, CTS_EVAL_SESSION: session, CTS_EVAL_RESERVE_MB: "0" }, timeout: 30000 });
+    // The child only writes a tiny fixed fixture; production admission/kill policy
+    // is independently exercised by mem-admission.test.mjs.
+    { cwd: dir, encoding: "utf8", env: { ...process.env, CTS_EVAL_SESSION: session, CTS_EVAL_RESERVE_MB: "0", CTS_EVAL_KILL_BELOW_MB: "0" }, timeout: 30000 });
     assert.equal(r.status, 0, r.stderr + r.stdout);
     const out = JSON.parse(readFileSync(join(dir, "runs/eval/gate/unknown.json"), "utf8"));
     assert.equal(out.trades.length, 3);

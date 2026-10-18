@@ -16,6 +16,7 @@ import {
   baseRangeProtects,
   basePassTags,
   baseRangeCounts,
+  basePairRows,
   baseRangeWhy,
   cellStats,
   runCombo,
@@ -219,7 +220,7 @@ test("desk presets: measured on three windows, positive, valid settings, never t
     assert.ok(p.id.startsWith("desk-"), p.id);
     assert.equal("live" in p.settings, false, p.id);
     checkSettings(p.settings as never);
-    assert.ok(p.metrics.pf >= 1.3, `${p.id} PF ${p.metrics.pf}`);
+    assert.ok(p.metrics.pf !== null && p.metrics.pf >= 1.3, `${p.id} PF ${p.metrics.pf}`);
     assert.ok(p.metrics.net > 0, p.id);
     assert.equal(p.metrics.checks?.length, 3, p.id);
     assert.ok(RESEARCH_PRESETS.some((r) => r.id === p.id), `${p.id} listed`);
@@ -462,6 +463,18 @@ test("sets per range after Base count only the pairs a range builds sets for; a 
   assert.equal(rangeAppliesTo("rsi-mom-14-20", "sh", { ...o, baseTf: 1 }), false);
 });
 
+test("empty Base samples keep their close count but have no measured PF", () => {
+  const empty = { n: 0, pf: 0, net: 0, mdd: 0 } as never;
+  const run = { bot: "follow" as const, ind: "rsi-mom-14-20@m15", full: empty };
+  const rows = baseRangeCounts([run], { minPf: 1.1, minTrades: 12 }, ["mc"]);
+  assert.equal(rows[0].evaluated, 1);
+  assert.equal(rows[0].pfMedian, null);
+  assert.equal(rows[0].passed, 0);
+  assert.deepEqual(basePairRows([run], {}), [
+    { pair: "follow|rsi-mom-14-20@m15", n: 0, pf: null, net: 0, passed: false, tags: [] },
+  ]);
+});
+
 test("a pair computes only the cells of the ranges it passed; a pair without Base tags computes every cell", () => {
   const t0 = Date.UTC(2026, 8, 20);
   const u = makeUniverse([barsFromCandles("A-USDT", 15, syntheticCandles("A", 15, 200, t0))]);
@@ -611,7 +624,7 @@ test("a held config keeps its own tape, not every cell of its range", () => {
   assert.deepEqual(build({ pairTags: { [pair]: ["mn"] } }).filter((id) => id.includes("|gn")), []);
 });
 
-test("Base sets floor: a lower floor computes more pairs' sets; the stage gate is unchanged without it", () => {
+test("Base sets floor: lowering Wide never weakens a configured range floor", () => {
   const st = (pf: number, net: number) => ({ n: 40, pf, net, mdd: 1 }) as never;
   // the default floor is PF 1 (operator, 5 Oct: Base computes a pair's sets from PF 1 up)
   assert.equal(DEFAULT_SETTINGS.gates.baseSetsMinPf, 1);
@@ -620,16 +633,15 @@ test("Base sets floor: a lower floor computes more pairs' sets; the stage gate i
     baseSetsMinPf: undefined,
     minPf: 1.05,
     minTrades: 10,
-    maxDdr: 0, // isolate the PF floor; an enabled DDR gate correctly rejects a negative net
+    maxDdr: 0,
     rangeMinPf: { long: 1.18 },
   };
   assert.equal(baseSetsGates(g), g, "unset: the stage gates");
   const wide = baseSetsGates({ ...g, baseSetsMinPf: 0.9 });
   assert.equal(wide.minPf, 0.9);
-  assert.equal(wide.rangeMinPf, undefined, "one floor for every range");
-  // PF 0.95 (net negative) computes its sets under a 0.9 floor, not under the stage gate
-  assert.deepEqual(basePassTags({ full: st(0.95, -2) }, wide, ["sh", "lg"]), ["", "sh", "lg"]);
-  assert.deepEqual(basePassTags({ full: st(0.95, -2) }, { ...wide, maxDdr: 1 }, ["sh", "lg"]), [], "a lower PF floor never bypasses an enabled DDR gate");
+  assert.deepEqual(wide.rangeMinPf, { long: 1.18 }, "tagged range floors remain active");
+  // PF 0.95 (net negative) computes Wide and Short sets under their 0.9 fallback; Long still needs 1.18.
+  assert.deepEqual(basePassTags({ full: st(0.95, -2) }, wide, ["sh", "lg"]), ["", "sh"]);
   assert.deepEqual(basePassTags({ full: st(0.95, -2) }, g, ["sh", "lg"]), []);
   // at the stage gate a positive net is still required
   assert.deepEqual(basePassTags({ full: st(1.1, -1) }, g, ["sh"]), []);

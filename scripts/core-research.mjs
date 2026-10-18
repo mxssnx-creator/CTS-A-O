@@ -196,7 +196,7 @@ md.push(
 );
 md.push("");
 md.push(
-  `${U.bars.length} symbols · ${days.toFixed(0)} days of real BingX data · train ${new Date(U.startT).toISOString().slice(0, 10)} → ${new Date(split).toISOString().slice(0, 10)} · test → ${new Date(U.nowT).toISOString().slice(0, 10)} · cost 0.2% round trip · ${INDICATIONS.length} indications × ${bots.join("/")}`,
+  `${U.bars.length} symbols · ${days.toFixed(0)} days of real BingX data · train ${new Date(U.startT).toISOString().slice(0, 10)} → ${new Date(split).toISOString().slice(0, 10)} · test → ${new Date(U.nowT).toISOString().slice(0, 10)} · cost ${(RT_COST * 100).toFixed(2)}% round trip · ${INDICATIONS.length} indications × ${bots.join("/")}`,
 );
 md.push("");
 md.push(

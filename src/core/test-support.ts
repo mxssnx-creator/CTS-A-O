@@ -539,7 +539,7 @@ export function fakeRt(db: CoreDb = new CoreDb(":memory:"), symbols = 12) {
         enabled: true,
         mode: "overall" as const,
         notionalUsd: 10,
-        maxPositions: 8,
+        maxPositions: 100,
         maxNotionalUsd: 40,
         ratio: 1,
         rebalancePct: 0.25,

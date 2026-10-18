@@ -23,6 +23,8 @@ export interface SimOptions {
    * the record (Base's range cells) allocates no object per trade
    */
   sink?: (r: number, entryT: number, exitT: number) => void;
+  /** Immutable compute/job identity: permits sink-only fixed-exit price indexing within this snapshot. */
+  fixedPathScope?: object;
 }
 
 export interface SimResult {
@@ -85,6 +87,88 @@ export function atrProtect(a: AtrProtect, hold: number): Protect {
   return { tp: +(sl * a.tpRatio).toFixed(4), sl, trail, hold, atr: { ...a } };
 }
 
+interface FixedPricePath {
+  size: number;
+  low: Float64Array;
+  high: Float64Array;
+}
+
+// Only explicitly immutable jobs opt in. Generic/mutable callers keep the scanner; a new job cannot inherit
+// stale extrema if it reuses a Bars object. Share prices only, never a config's entries or exits. Exact Bars
+// identity keeps causal heads and different n extents separate, even with shared backing arrays.
+const fixedPaths = new WeakMap<object, WeakMap<Bars, FixedPricePath | null>>();
+
+function fixedPricePath(scope: object, b: Bars): FixedPricePath | null {
+  let paths = fixedPaths.get(scope);
+  if (!paths) {
+    paths = new WeakMap();
+    fixedPaths.set(scope, paths);
+  }
+  const hit = paths.get(b);
+  if (hit !== undefined) return hit;
+  const { n, t, o, h, l, c } = b;
+  if (
+    !Number.isInteger(n) ||
+    n < 1 ||
+    !(b.tfMin > 0) ||
+    !Number.isFinite(b.tfMin) ||
+    [t, o, h, l, c].some((x) => x.length < n)
+  ) {
+    paths.set(b, null);
+    return null;
+  }
+  // Malformed/nonfinite input retains the original scanner, including its comparison behavior around NaN.
+  for (let i = 0; i < n; i++) {
+    if (
+      !Number.isFinite(t[i]) ||
+      !Number.isFinite(o[i]) ||
+      !Number.isFinite(h[i]) ||
+      !Number.isFinite(l[i]) ||
+      !Number.isFinite(c[i]) ||
+      !(l[i] > 0) ||
+      l[i] > Math.min(o[i], c[i]) ||
+      h[i] < Math.max(o[i], c[i])
+    ) {
+      paths.set(b, null);
+      return null;
+    }
+  }
+  let size = 1;
+  while (size < n) size *= 2;
+  // Two arrays of 2 * nextPowerOfTwo(n) Float64 values: less than 64*n bytes, independent of the grid size.
+  const low = new Float64Array(size * 2).fill(Infinity);
+  const high = new Float64Array(size * 2).fill(-Infinity);
+  low.set(l.subarray(0, n), size);
+  high.set(h.subarray(0, n), size);
+  for (let i = size - 1; i > 0; i--) {
+    low[i] = Math.min(low[i * 2], low[i * 2 + 1]);
+    high[i] = Math.max(high[i * 2], high[i * 2 + 1]);
+  }
+  const path = { size, low, high };
+  paths.set(b, path);
+  return path;
+}
+
+/** First bar in the inclusive interval touching either fixed barrier; search left before right. */
+function firstFixedTouch(
+  path: FixedPricePath,
+  from: number,
+  to: number,
+  low: number,
+  high: number,
+  node = 1,
+  left = 0,
+  right = path.size - 1,
+): number {
+  if (right < from || left > to || (path.low[node] > low && path.high[node] < high)) return -1;
+  if (left === right) return left;
+  const mid = Math.floor((left + right) / 2);
+  const first = firstFixedTouch(path, from, to, low, high, node * 2, left, mid);
+  return first >= 0
+    ? first
+    : firstFixedTouch(path, from, to, low, high, node * 2 + 1, mid + 1, right);
+}
+
 export function simulate(
   cfg: string,
   bars: Bars,
@@ -120,6 +204,22 @@ export function simulate(
   const nx = nextEntryIndex(sig);
 
   const sink = opt.sink;
+  const fixedPath =
+    sink &&
+    opt.fixedPathScope &&
+    !p.atr &&
+    p.trail === 0 &&
+    Number.isInteger(p.hold) &&
+    p.hold >= 1 &&
+    Number.isFinite(p.tp) &&
+    p.tp >= 0 &&
+    Number.isFinite(p.sl) &&
+    p.sl >= 0 &&
+    Number.isFinite(cost) &&
+    Number.isInteger(cooldown) &&
+    cooldown >= 0
+      ? fixedPricePath(opt.fixedPathScope, bars)
+      : null;
   const close = (i: number, exit: number, reason: Trade["reason"], exitT: number) => {
     const r = (side * (exit - entry)) / entry - cost;
     if (sink) {
@@ -148,6 +248,22 @@ export function simulate(
 
   for (let i = 0; i < n; i++) {
     if (inPos && i >= entryI) {
+      if (fixedPath && Number.isFinite(stop) && Number.isFinite(target)) {
+        const end = Math.min(n - 1, entryI + p.hold - 1);
+        const touched =
+          side === 1
+            ? l[i] <= stop || (target > 0 && h[i] >= target)
+            : h[i] >= stop || (target > 0 && l[i] <= target);
+        // Immediate exits and one-bar holds need no tree search.
+        if (!touched && i < end) {
+          const low = side === 1 ? stop : target > 0 ? target : -Infinity;
+          const high = side === -1 ? stop : target > 0 ? target : Infinity;
+          const first = firstFixedTouch(fixedPath, i + 1, end, low, high);
+          // Sink callers cannot observe the skipped MFE/MAE. Keep the exit/cooldown/open lifecycle below shared
+          // with the scanner: on the chosen bar stop still precedes target, and barriers precede the hold exit.
+          i = first >= 0 ? first : end;
+        }
+      }
       const gap = i > entryI;
       const barEnd = t[i] + bars.tfMin * 60_000;
       if (side === 1) {

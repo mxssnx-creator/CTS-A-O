@@ -11,11 +11,12 @@
 //        [--feed runs/eval/feed.json] [--jobs 2]
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync, appendFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync, appendFileSync } from "node:fs";
 import { unitR, windowOrders } from "./lib/eval-orders.mjs";
 import { guardedStressStats, unitReturnEvidence } from "./lib/eval-stress.mjs";
 import { admitter, availMb, guardChild, watchHwm } from "./lib/mem-admission.mjs";
 import { join } from "node:path";
+import { readSessionDump, removeSessionDump } from "./lib/session-dump.mjs";
 
 const arg = (k, d) => {
   const i = process.argv.indexOf(`--${k}`);
@@ -108,7 +109,7 @@ function spawnChild(f, w, dump) {
   return new Promise((resolve) => {
     // (a 50 % heap growing step, no --expose-gc: see scripts/eval-gate.mjs)
     const args = [
-      "--max-old-space-size=3072", "--heap-growing-percent=50", "--experimental-strip-types", "--no-warnings", "scripts/core-session.mjs",
+      "--max-old-space-size=3072", "--heap-growing-percent=50", "--experimental-strip-types", "--no-warnings", process.env.CTS_EVAL_SESSION || "scripts/core-session.mjs",
       "--feed", FEED, "--end-at", new Date(w.to).toISOString(), "--run", String(WIN_H), "--pre", String(PRE), "--symbols", String(SYMBOLS),
       "--signals", f.kind === "sig" ? "on" : "off", "--toggles", TOGGLES, "--dump", dump, "--dump-only", "--quiet",
     ];
@@ -161,7 +162,7 @@ async function processFamily(f) {
       log(`FAIL ${f.label} window ${k + 1}: no dump (exit ${r.code}) ${r.err.replace(/\s+/g, " ").slice(-200)}`);
       return;
     }
-    const raw = JSON.parse(readFileSync(dump, "utf8"));
+    const raw = await readSessionDump(dump, { loadTapeTrades: false, loadValidation: false, verifyUnloaded: true });
     // a trade belongs to the window its entry falls in (the windows overlap in their pre-history only)
     // and the orders still open at the window's end, marked (scripts/lib/eval-orders.mjs): without them a family's
     // losers short of their stop were dropped while its winners counted
@@ -189,7 +190,7 @@ async function processFamily(f) {
     if (memLevel > 0) log(`${f.label} window ${k + 1}: MEMORY FALLBACK level ${memLevel} (${memLevel >= 2 ? "Micro and Minimal" : "Micro"} left out)`);
     const unknownReturns = mine.filter((t) => !Number.isFinite(unitR(t))).length;
     perWindow.push({ from: new Date(w.from).toISOString(), to: new Date(w.to).toISOString(), trades: mine.length, unknownReturns, pfBasis: unknownReturns ? "unavailable" : "unit-net-returns", memLevel });
-    unlinkSync(dump);
+    await removeSessionDump(dump);
   }
   // Unknown unit evidence invalidates the affected family/period, never just the unknown rows within it.
   const statsFor = (xs) => guardedStressStats(xs, (all) => botStatsFromRows(all).families.find((x) => x.family === f.label) ?? null);

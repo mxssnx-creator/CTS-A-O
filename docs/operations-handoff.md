@@ -1,84 +1,564 @@
 # CTS-A-O operations handoff
 
-## 18 October Exit continuation
+Updated 2026-10-18, UTC. Repository: `mxssnx-creator/CTS-A-O`.
 
-Current source/test checkpoint on draft [PR #149](https://github.com/mxssnx-creator/CTS-A-O/pull/149):
-`df44a2709dada4e31d771fbaff54491ee116d63e`, tree
-`77f9f7bb0d899713b26cd9c191f9fc88cb0cb8e1`. Exit remains separate from
-Normal/Trailing ranges with six independent family/direction identities,
-causal lane-native TP/SL/trailing protection, chronological qualification,
-partial/full close coordination and bounded parallel history fitting.
+## Latest checkpoint: equity drawdown audit — 18 October
 
-The final review fixed two concrete issues before the next complete gate:
-browser teardown waits for finite same-origin requests, while retaining strict
-server-error assertions; runtime ticks advance Exit and ordinary trailing at
-completed lane boundaries even when prices remain flat. Tick deadlines are
-cached per symbol, retaining O(symbol groups) idle checks and the price-only
-path for fixed Normal groups. The actual runtime tick regressions pass 7/7.
-Full typecheck, lint (0 errors, 17 pre-existing warnings), production build
-including worker, and the latest source-bound replay pass. The replay matches
-all prior economic output exactly and measures 240.6 MiB model RSS, 305.1 MiB
-including comparison.
+PR [167](https://github.com/mxssnx-creator/CTS-A-O/pull/167) merged as
+`1e529098b6a799e8acdbc123366196016643cf65`, tree
+`dcbd75157e899c65f25b5bffb9946c2d128f452c`. Subsequent main integrations
+advanced the base to `2ac457c9af4e38df4e07f880a65ba247d8b7ebc7`, tree
+`73126c63b4f2b2519e5742c2cceb0622fc251e72`; backup
+`backup/main-before-equity-dd-20261018-current` preserves that base. The
+drawdown audit and its exact tested head are recorded in PR 170.
+This continuation fixes Statistics/backtest equity marks and drawdown measurement only;
+strategy, cost, PF, qualification, position sizing and execution code are
+unchanged. Historical PF and hourly outcomes below remain the frozen record;
+the recent 22-symbol final window's PF 1.4597 still had 99.461% maximum equity
+drawdown and is not capital-feasible.
 
-The latest local plain `npm test` cannot launch the UI browser because this
-scratch host lacks Chromium. No UI assertions were weakened; browser page tests
-were cancelled by that before-hook. The branch adds a read-only GitHub Actions
-verification workflow that installs Playwright Chromium, then runs typecheck,
-lint, build, plain `npm test` and the dedicated slow tests. The command must
-pass before merging. Eight absent-template checks may skip; they require the
-missing `.grok/app-env.json` and `.grok/skills/og` packages. The two runtime
-slow cases remain enabled.
+Statistics, backtest charts and the live-test report previously used a
+one-minute candle's close at its open timestamp, before that candle had
+completed. They now use only the latest fully closed bar at or before the mark
+time. The Statistics timeline previously computed DD
+from chart samples (up to 600 points), which could skip an intermediate equity
+peak or trough. It now tracks peak-to-trough dollars, peak-relative percentage
+and underwater duration at every minute and trade event; chart point count only
+controls rendering. Active exposure is aggregated by symbol, and margin remains
+an independent feasibility/readout metric, never an input to equity DD. A
+deterministic 90-day, 22-symbol, 10,000-order synthetic profile completed in
+59 ms with the local test fixture; this is an algorithm check, not a production
+benchmark.
 
-The broader 794-pair, four-symbol reused-history replay produced 109 settled
-modeled orders at unit-return PF 19.554, and 206 open marks. Its combined
-endpoint diagnostic is losing (PF 0.774226, net -14.416 return points); only
-8/24 hours had profitable settled closes. This is not consistent-profit
-evidence. Back up and reevaluate older Exit-enabled preset caches before use.
-No live account, deployment or exchange orders were accessed or changed.
+Focused Statistics/API/PF tests pass **49/49**, session-report tests pass
+**28/28**, and TypeScript typecheck and production build pass. The equity regression verifies a
+peak/trough between chart points and confirms leverage changes margin without
+changing equity DD. An API regression verifies a mark from a bar only after its
+close. PF and the executed trade cohort are unchanged. The prior frozen market
+results remain the economic benchmark; the 6-hour PF 2.374852 result recorded
+later in this handoff was from a separate historical window and is not proof
+that this reporting correction improved strategy returns.
 
-Updated 2026-10-16, Europe/Vienna. Repository: `mxssnx-creator/CTS-A-O`.
+## Historical checkpoint: exact Signals, complete studies and performance — 17 October
 
-## 16 October Historic Exit strategy validation
+Source [PR 163](https://github.com/mxssnx-creator/CTS-A-O/pull/163) is merged:
+source merge `df34e931da4d9726e73feca1c0fbbf15fc7cb448`, exact tested tree
+`1e0edfdd6d87e5ed43db464c1b4fb50a047ebf5e`. Risk PR 166 merged as
+`09d800cc56946d1da120a03f96e2f382e7763d88`, tree
+`225c65cb81eec46fd851c37e2663038733274865`. Backup
+`backup/main-before-exact-signal-20261017` preserves `d1364e5`.
+Economic checkpoint is `fdabcdb`; bounded capture/reader checkpoint `0b8c145`;
+final source documentation checkpoint `3bcf204`. No live settings, venue orders,
+running instance, database or deployment were changed. No browser render QA
+or exchange-fill verification was performed in this pass.
 
-Initial feature source commit: `869b7fec6d50991da2902c24ca811f7ba3cf526d`, tree
-`c38a9df43bf11e453e16b8dd554b01a6612c806c`, based on main
-`ec30c30c80c9d5531e368ac7de5084d41ac79d23`. Follow-up regression fixes and
-their validation are recorded below on draft [PR #149](https://github.com/mxssnx-creator/CTS-A-O/pull/149).
+### Correctness and performance changes
 
-Historic Exit now has independent long/short and tactic configurations. It fits
-only on closed pre-cut history, evaluates each side on later completed-bar
-holdout history, caps and fairly schedules candidate groups, and keeps exact
-held identities through lane restart. Runtime work uses the shared bar pool
-with bounded pair chunks, local/worker parity, and a one-entry fingerprinted
-result cache. Live order coordination preserves partial fills and per-lane
-protection when reducing or fully closing a position. Research presets
-explicitly keep this new strategy disabled so their frozen settings remain
-unchanged.
+Exact Signal protection config × symbol × direction survives activation,
+acceptance, Last-N, paper/live seating, hedge checks, audit, reporting and UI.
+Empty siblings no longer dilute a good config, opposite-side results cannot
+qualify a losing side, and absent engine selection no longer bypasses live
+activation. Held configs remain exit-only. Fresh Signal count 0 is unlimited;
+explicit custom counts remain respected. No PF/sample/DD gates were lowered.
+Historical preparation takes the stricter Stage/custom Base-set PF floor.
+Empty held-only Base results explicitly fail.
 
-Offline validation on the initial source tree:
+Canonical modeled round-trip cost is 0.15%. Migration v34 changes only the
+exact former factory fee/slippage tuple, including matching preset settings;
+custom/measured costs retain provenance. Range construction stays at 0.20%.
+The earlier 0.20% versus 0.15% study also changed sizing 2%→0.1%, so it is not
+a cost-only experiment. The old positive replay evaluated 336h, not 48h, and
+cannot certify six evaluated hours. See the cost/positive-replay audit.
 
-- Focused core run across exit strategy, worker pool, live promotion, lane
-  orders and runtime coordination: 66 tests, 64 passed, 2 slow tests skipped,
-  0 failed. The new exit-specific worker/local parity and fill/close scenarios
-  passed.
-- `npm run typecheck -- --pretty false`: passed.
-- `npm run lint`: 0 errors, 17 warnings after follow-up cleanup.
-- `npm run build:dev`: passed, including the core worker bundle.
-- `git diff --check`: passed.
+Bounded replay loads every requested symbol before first computation and blocks
+partial/failed/short coverage; live startup stays progressive. Session CLI
+background preset comparisons default off, explicit diagnostic opt-in retained.
+Unique exact acceptance tapes build prefix results directly; generic duplicate,
+pooled and unsorted fallback remains. The acceptance fixture preserved its hash
+while changing 1,491→531 ms wall, 1,702→485 ms CPU and 259→177 MB RSS.
 
-Follow-up regression checks passed 27/27 tests after correcting the effective
-1m signal tape count, the DDR gate fixture, and missing-tape walk-forward status.
-The exhaustive all-range paper-book fixture also passed in isolation: 5/5 checks,
-with the synthetic compute completing in 140 seconds.
+Session evidence is lossless, ordered and SHA256-sealed in ≤8 MiB JSONL chunks.
+Tapes are exported lazily; trade/validation/allocation readers and Python bridge
+support flat and chunked forms. Missing/unhydrated evidence fails explicitly.
+Report HTML omits unused embedded allocation arrays while exact JSON retains
+all rows. Current corrected20 HTML is 3,239,840 bytes versus 78,770,915; this is
+not a claim that total archived storage shrank. A 12-million-row stress case
+exceeding Node's old string limit wrote/verified at 347 MiB RSS. Regenerable
+synthetic chunks were removed after preserving their measured proof.
 
-The full `npm test` suite remains unverified. A broad core run reported the
-resource-heavy all-range fixture as failed and exited 143 during concurrent
-synthetic compute; the fixture passed all five checks when rerun alone. A later standard
-`npm test` attempt was stopped by auto-review when it detected a possible HTTPS
-request to BingX whose payload and credential use could not be established. That
-network path was not retried or routed around. No live account state, deployment,
-reload or venue execution was changed or verified, and these simulation tests do
-not establish profitability.
+### Completed, independently reconciled studies
+
+CI [39077484680](https://github.com/mxssnx-creator/CTS-A-O/actions/runs/39077484680)
+passed all eight jobs: production build, worker packaging, typecheck,
+193/193 targeted tests, four 20-symbol cases and both 22×24h windows.
+All four current 20-symbol economic/allocation/account fingerprints match the original
+runs exactly. Both 22-symbol audits passed 16/16, including every chunk, funded cohort,
+unit/cash arithmetic, hourly result and settings/source provenance. Full 22-symbol
+coverage used no fallback, degraded compute or aborts. Follow-up CI
+[39080618483](https://github.com/mxssnx-creator/CTS-A-O/actions/runs/39080618483)
+passed all eight jobs on PR 167, including the repeated six frozen replay cases;
+endpoint tests also passed in
+[39080618393](https://github.com/mxssnx-creator/CTS-A-O/actions/runs/39080618393).
+
+| Model/window | Funded engine closes | Unit PF | Closed cash $ | Cash-positive hours | Capital feasible |
+|---|---:|---:|---:|---:|---|
+| 20-symbol baseline/current | 126,380 | 0.765632477 | -1.543603 | 4/6 | No |
+| 20-symbol entry Last-N 5 | 87,179 | 1.267875180 | +12.395141 | 4/6 | No |
+| 20-symbol entry Last-N 15 | 94,903 | 1.112511245 | +9.261089 | 5/6 | No |
+| 22-symbol selection | 127,501 | 0.748210087 | -27.709200 | 10/24 | No |
+| 22-symbol untouched final | 127,210 | 1.459701913 | +15.408821 | 16/24 | No |
+
+These five source policies use actual position/gross ratios 0/0 (uncapped),
+separate from the final exchange cap of 100 Symbol × Direction positions. Final 22-symbol
+peak modeled margin is $269.20924 on $10 starting equity; marked DD 99.461%,
+minimum equity $0.062921. Both directions traded, but final long PF 0.868962
+versus short 3.970918. Signals and trailing-only funded samples remain empty.
+A no-loss sentinel or empty cohort is never a measured passing finite PF.
+
+Current corrected20 capture runtime is **185→62 s**, peak RSS
+**11,555→3,123 MB**. Entry5 is 177→59 s / 11,169→3,081 MB; Entry15 is
+198→57 s / 10,370→3,196 MB. These exclude report/audit durations; direct strategy
+compute did not uniformly improve. Selection22 simulation/report/audit wall
+was 192.850/259.333/22.763 s; final 89.378/77.018/11.218 s. All three report minute-book passes now cache immutable order units/volume/keys
+and each symbol price once per minute. Snapshot caches stay separate for capped
+and uncapped allocations. No arithmetic association or iteration order changed.
+Patch `249d57a` (integration `069cb36`) passes 27/27 report tests and independent
+review. All 468,368 orders, 63,360 symbol-minute marks and 18 old/new slices
+match; all new full passes match applicable recorded results at six decimals.
+The full eight-job replay/build CI passed on PR 167. A full end-to-end report
+speedup was not established because the old-loop profiling attempt hit its
+240-second watchdog and its retry was stopped; these are preserved as failed
+attempts, not passing benchmarks. The 8,192 MiB V8 allowance applies to worker
+isolates too, not a whole-process/runner cap. Isolated research used four CPU,
+16 GiB runners; this does not resize the shared local eight-GiB environment.
+
+Six hours are evaluated prehistory; older candles initialize indicators only
+behind `evaluationFromT`. Source is 22 fixed genuine Binance USD-M symbols,
+665,280 native 1-minute bars, Sep 26→Oct 17 00:00 exclusive, 462/462 official archive
+checksums verified, no gaps/duplicates. Feed SHA256:
+`84e29bb4e729e6f4e213ba1c8e6eb8c1a11ecbc0a8b3f65e958a4563040f8019`.
+This source differs from earlier BingX evidence. Do not fit individual losing
+hours. The completed selection found **zero eligible pruning proposals** under
+the frozen ≥50 closes / ≥3 symbols / losses in both halves rule. All ranges stay
+enabled; no defaults or live promotion follow from these experiments.
+
+Signals did activate: all 1,473 selection / 1,111 final execution attempts have an
+explicit first-failure reason before funding. Selection: own-history 1,150,
+confirmation 223, cluster 51, own-PF 49. Final: own-history 763, side 271, own-PF 43,
+cluster 34. Own-history combines sample/PF/DD checks; recorded artifacts do not
+split its failures. Preparation snapshots and representative Base counts are
+not admitted executions. There is no unexplained activation/funding drop in
+these windows; no Signal passed all configured causal entry gates.
+
+### Account-risk holdout and endpoint marks
+
+[PR 166](https://github.com/mxssnx-creator/CTS-A-O/pull/166) is merged.
+CI 39077541410 passed all six jobs. All four independent account-risk audits
+passed, including matching frozen economics/caps, complete evidence provenance,
+funded config membership, hourly cash and all 1,440 minute equity/margin values.
+Each arm has position notional ratio 0.75 and gross ratio 7 or 1, unchanged
+strategy universe, causal entry Last-N 0/5/15 and live disabled. The sole
+prespecified candidate is entry5-gross1; a diagnostic cannot replace it after
+scoring. All four policies fail the frozen profitability criteria.
+
+| Risk arm | Funded closes | Unit PF | Closed cash $ | End marked equity $ | Maximum DD | Cash-green hours |
+|---|---:|---:|---:|---:|---:|---:|
+| Control, entry0 / gross7 | 789,873 | 0.691260716 | -1.018721 | 8.472082 | 19.0931% | 14/24 |
+| Entry5 / gross7 | 595,448 | 0.834692837 | -0.880353 | 8.540239 | 18.6287% | 16/24 |
+| Candidate entry5 / gross1 | 604,153 | 0.824573475 | -0.093895 | 9.829475 | 2.3357% | 16/24 |
+| Entry15 / gross1 | 680,439 | 0.711549623 | -0.145745 | 9.782792 | 2.5763% | 16/24 |
+
+All four are feasible within the configured aggregate-parent model, with no
+modeled margin shortfall and both directions executed. Signals remain empty.
+The two entry5 arms have identical ordered virtual-return hashes: their funded
+cohort differences arise from final account caps. Gross1 reduced marked drawdown,
+but none qualifies for live/default promotion. The minimum candidate marked
+equity was $9.809587. Full outcomes and all 96 hourly rows are in the risk report.
+
+A pre-existing DCA endpoint report mismatch affects 146 of 420 open DCA orders;
+274 single-leg DCA and 22,388 non-DCA match. Engine equal-notional leg marks sum
+to −$18.38877698447657; the unchanged arithmetic-entry minute account sums
+to −$18.390983089577958, delta +$0.002206105101386. Additive amendment checkpoint
+`e6c9caa` preserves every original field and frozen seal, explicitly adds engine
+and book mark bases, and reconciles book marks to original equity−balance.
+Its 16 tests and readback of 126,380 settled and 22,808 open rows pass; unchanged settled,
+allocation, hourly and curve hashes are preserved. It does not reconstruct
+causal leg fills: raw evidence lacks each leg's price/time/size ledger. Never
+replace arithmetic entry with a harmonic entry retroactively. See the endpoint
+amendment doc/proof; original inputs remain immutable.
+
+Complete hourly/range/type/side/provenance tables:
+
+- `simulations/completed-study-summary-20261017.md`
+- `simulations/development20-results-20261017.md`
+- `simulations/source22-results-20261017.md`
+- `simulations/risk-entry-results-20261017.md`
+- `simulations/endpoint-mark-amendment.md`
+- `simulations/minute-report-cache-20261017.md`
+- `simulations/session-evidence-format.md`
+
+Earlier resource failures remain preserved: first22 stopped at 18/22, exit 143
+with 15.3 GiB RSS and background comparisons; replacement22 computed then hit
+Node's 512 MiB string limit; first four risk captures hit the default ~4 GiB heap.
+None of those failed captures is funded performance evidence. The successful
+bounded retries supersede completion claims, without deleting failure records.
+Public source, original/replacement 20-symbol archives and independent proofs
+are durably preserved. Saving the largest new 22/risk raw archives timed out
+without receipts; their finalization outcome is uncertain. Do not automatically
+retry those writes: the Library skill prohibits retrying uncertain finalization.
+Full verified ZIPs remain local and in GitHub Actions with seven-day retention.
+Future source/risk workflow uploads now request 90-day retention; this does not
+extend the earlier artifacts retroactively.
+A separate compact bundle preserves complete audit proofs, frozen protocols,
+settings, source/ZIP hashes and the full endpoint report revision. It is saved as
+`CTS-A-O-verified-audit-and-endpoint-evidence-2026-10-17.zip`
+(20,280,672 bytes; SHA256
+`73fdb7ddee83d5d4faef0bf1d2d00453427700c190f70a3a3db8ab2657c0d29d`).
+The performance proof is included; end-to-end CI timing remains pending.
+Git-backed source/docs stay in the repository. Do not touch unrelated local
+jobs or `/workspace/startup.sh`, which belongs to another checkout.
+
+## Systemwide PF scope and cash basis — 17 October
+
+Systemwide test and simulation benchmarks now explicitly follow the validated
+cohort: Base minimum-PF-qualified pairs → post-Base configs validated/seated →
+funded settled orders actually executed. The evaluated/passed counts and each
+later-stage count remain visible. Headline, hourly, range and strategy PF use
+the executed cohort. The all-candidate/pre-validation PF table is labeled as a
+diagnostic and is excluded from benchmark ranking and qualification. This is a
+standing rule for future CTS-A-O work; do not optimize against an unfiltered
+candidate aggregate.
+
+Cash PF is the normalized base-$1 PF: each funded settled order contributes its
+canonical unit return at equal $1 notional and should match Return PF. Actual
+sized-dollar PF is separate because funded notionals differ. Cash P&L uses
+`(1 + execution-weighted return) − 1`, then scales by funded unit notional; tiny
+nonzero returns survive floating-point cancellation, and Block, coordination
+and ladder volume are not applied twice. No profitability claim or live setting
+change follows from this reporting fix.
+
+The default replay is the cached six-hour evaluated prehistory plus six-hour
+simulation. Its scored orders are already post-Base Real-stage executions;
+the latest code change makes that cohort explicit in JSON evidence, Markdown,
+write-up and HTML, and labels all-candidate tables diagnostic-only. Focused
+verification and replay results are recorded in the audit below.
+
+## Updated Micro defaults and runtime audit — 17 October
+
+The 60 updated Micro Break IDs are now in the default focus, bringing it to 97
+unique bot/indication pairs. Migration v28 upgrades only a saved prior-default
+focus; a user-customized focus is preserved. The regression checks verify all
+60 IDs are unique, eligible for processing and migrated without overwriting a
+custom selection.
+
+The audit found and fixed two correctness issues. A Base-failed held pair had
+been omitted from `pairTags`, which meant “no Base filter” and could rebuild
+every strategy range. The runtime now passes an explicit empty Base result and
+the builder retains only exact held configs as held-only tapes, including DCA
+and Axis ladders. A separate report check combined Signal tapes with engine
+Base sets; the output now keeps combined totals while checking each population
+against its own denominator.
+
+Fast offline audit: nine cached symbols, six evaluated history hours plus six
+simulated hours ending 2026-10-15 04:00 UTC, one worker, Signals enabled. All
+66/66 report consistency checks pass. Base evaluated 854 engine pairs and
+passed 53; 295 engine configs seated and 7,946 funded orders executed. The 60
+Micro identities are present in the default focus and all 980 requested engine
+and signal combos were processed. The signal trail screen qualified 0/126
+pairs in this short window (124 had insufficient entries; eight candidates
+were evaluated, four lacked the close minimum and four failed PF).
+
+Result is not profitable: Return PF and normalized base-$1 PF were both 1.90,
+while sized-dollar PF was 0.75; net was −$0.17 from $10, with 48 positions,
+10,692 virtual closes (2,746 zero allocations), 7.09% maximum equity drawdown,
+and two of six hours positive. Size weighting therefore turned a positive unit
+PF into a negative cash result. The six hourly rows, all PF definitions, and
+coverage details are in
+[the detailed 6+6 audit report](simulations/systemwide-postbase-6h-20261017/report.md).
+Engine peak RSS was 851 MB with full compute level, no memory fallback and no
+aborts; the replay did not change live settings or place venue orders. No
+profitability or live-promotion claim follows from this sample.
+
+Focused verification on this checkpoint: the combined PF/report, worker pool,
+Micro/default migration, seating, Break and stage bundle passes 76/76; TypeScript
+typecheck, Node syntax and `git diff --check` pass. A full core suite was
+running concurrently in the shared workspace; its completion status was
+unavailable, so it is not counted as a completed pass.
+
+## Break retest and market-gap correction — 17 October
+
+Tested source checkpoint: local commit
+`9b615befb9704e9f536a3a176673919abb296992`, tree
+`ae42df80a9106eef60c1cee560faa2ded96b6476`, based on merged main
+`9604431e5ab912f989aaa4282d344ec3bf87e89f`. GitHub mirror commit
+`853f4526658654b18380fe547f51d2289de56b57` contains the same tested source
+tree.
+
+The Break retest state now cancels a pending long or short retest when a fresh
+opposite Donchian cross occurs, for both regular and 8-bar channels. Market
+returns now require immediately contiguous candles, and market-volume activity
+restarts its 60-bar warmup after a gap. The shared market drawdown calculation
+was factored without changing its formula. Regression coverage exercises both
+reversal directions, gapped activity warmup, market-index continuity and Break
+anchor-lane routing.
+
+The default fast offline recheck used six evaluated prehistory hours plus six
+simulated hours on the cached nine-symbol feed (through 2026-10-15 04:00 UTC),
+Block ratio 0.2, Signals off, and a six-hour causal selection window. It
+reproduced the saved ratio-0.2 report exactly apart from compute-time and
+formatting text: 53/665 Base pairs passed, 49 engine configs seated, 3,759
+funded orders, Return PF 2.86, sized cash PF 0.74, net -$0.14, and 6.64% max
+equity drawdown. Five of six hours were cash-positive; 02:00 UTC lost $0.31 on
+1,845 orders (cash PF 0.43). The simulation's $10 start balance differs from
+the older positive $1,000 replay, so dollar totals are not directly comparable.
+
+The earlier 0/60 Break-only smoke had zero Base-passing pairs because its
+minimum close-count gate was unmet; PF was unavailable, not measured as zero.
+The expanded Micro run above has orders. The older positive systemwide replay
+used four symbols, 15-minute trading, Signals enabled and a different Base
+cohort: 792 funded orders, Return PF 2.37, cash PF 2.22 and +$4.42, with 4/6
+positive hours. These are different cohorts and settings, so the positive
+result does not contradict the current loss. No gates were relaxed, no live
+settings were changed, and no venue orders or deployment were used.
+
+Verification on the tested source: 31/31 focused guarded core tests pass across
+Break, market/Micro relations and lane routing; TypeScript typecheck passes;
+`npm run build:dev` passes and packages the core worker; the replay's
+consistency checks pass 64/64. The full repository core suite and live venue
+execution were not run for this patch; profitability is not established by the
+six-hour smoke.
+
+## Break post-Base 12 h replay follow-up — 17 October
+
+Detailed report: [break-postbase-12h-20261017.md](simulations/break-postbase-12h-20261017.md).
+
+The corrected offline replay used 12 h of evaluated history plus 12 h of
+simulated trading. The first 9×12 draft accidentally let config selection use
+the default 336 h longH; that evidence is superseded for this request. The
+replay launcher now preflights the complete normalized settings before scoring
+and uses a bounded replay-only 12 h selection window. Production's 24 h
+minimum longH and saved/live settings are unchanged. Historical native live
+last-N settings are not simulator gates; the report no longer labels them as
+such.
+
+On the matched 9-symbol cached feed, the legacy 4-ID set passed 4/12 Base
+Micro pairs, validated 696/3,128 post-Base configs at pooled Return PF 4.104,
+then executed 1,563 simulated orders at PF 0.342. Updated Break passed 4/60,
+validated 728/2,176 at PF 10.345, and executed 726 orders at PF 3.272 with
++$5.201 net and 2.71% equity maximum drawdown. Its hourly outcome was 3
+positive, 6 flat and 3 negative hours; realized PF fell below 1 at 18:00,
+19:00 and 23:00 UTC. The update improved aggregate quality while reducing
+orders; it did not meet the every-active-hour goal.
+
+An exploratory in-sample 70% green-hour config floor produced 616/2,176
+validated configs at PF 13.391 and 566 simulated orders at PF 4.904, net
++$6.496. It reduced the 18:00 loss from 228 to 108 orders but kept the same
+3/6/3 hourly outcome. This remains a test candidate only; do not promote or
+retune it on the same window. A 3×4 config-floor/entry-last-N grid found no
+hourly or aggregate execution improvement.
+
+Verification: 18 matrix replays plus two current-source confirmation replays
+passed 56/56 consistency checks each; session-report tests 15/15; the focused
+Break/Micro/Relate/range/walk-forward/pipeline regression bundle passed
+116/116 across 28 suites; TypeScript typecheck, Node syntax and diff checks
+passed. The current-source replay hashes and matched baseline / 70% outcomes
+are recorded in the detailed report. The cache contains only nine real
+symbols, and no live venue execution or deployment was tested. Exact source
+checkpoint `5372a70` (`feat: bound Break post-Base replay controls`) is mirrored
+as GitHub commit `de6a1acb3917ef8739b034ac11329f535f067dcb` on
+`fix-base-range-report-20261017`; GitHub verified the published branch. No
+deployment or live trading change was made.
+
+## Matched Block ratio check — 17 October
+
+The paired six-hour systemwide replay is recorded in
+[the Block ratio comparison](simulations/systemwide-block-ratio-comparison-20261017.md),
+with complete hourly and range/lane/type reports for both runs. On the same
+nine-symbol feed and gates, ratio 0.2 improved Return PF 2.83→2.86, sized cash
+PF 0.66→0.74, funded orders 3,711→3,759, net −$0.21→−$0.14 and max equity
+drawdown 7.72%→6.64%. The same 02:00 hour remained negative, so neither result
+qualifies as consistently profitable and no live default was promoted.
+
+## Relate indication and Micro verification
+
+Implementation branch: `feat/relate-indication-20261016`. Remote safety
+checkpoint `backup/pre-relate-20261016` preserves main
+`ec30c30c80c9d5531e368ac7de5084d41ac79d23`. Main subsequently advanced to
+`f659a266590722d1de6a33eb900c02ab90aa020b` with the independent Live exchange
+slot-admission fix; remote backup `backup/pre-relate-main-update-20261016`
+preserves that exact commit. The main tree was merged locally as `4ca2877`; the only
+conflict was a gating-test fixture, resolved to the current positive-DDR sample.
+The Relate work was merged by PR
+[#146](https://github.com/mxssnx-creator/CTS-A-O/pull/146) at
+`8750e259beafdf9d7ac98bc8a66c4ca6f2b878a1`. PR
+[#151](https://github.com/mxssnx-creator/CTS-A-O/pull/151) then restored the
+complete scheduler regression after a truncated test blob was detected and
+merged at `10d50c5bb1f16fced70a5b5067a9f3bf6dcd8201`; that was main at the
+Relate verification. PR #152 later advanced the docs baseline to
+`83585ef6b12c215fa0ee6a0dd2f8cfacba35b6cf`, tree
+`d843e839f7bab4992f355576f528cdf9c9673ab8`, the base for PR #153.
+
+Original Relate source checkpoint: `ec0c489fc590a693fc67ca294401e66d328bda78`,
+tree `494bb1047d1db9dc19339412cc3bd0d12375c919`; GitHub mirrored it at
+`c748089523bec47f72fff49d51a5113f652ba41a` with the identical tree.
+
+Relate has 40 stable exact identities: seven nonempty subsets of 1/5/15m × two
+modes (Trend and Adaptive) × two drawdown/activity profiles, with 28 standard
+IDs plus 12 Micro aliases. Each config runs once on its fastest/anchor lane;
+higher-timeframe checks use completed bars. Micro aliases require the existing
+5m Micro lane floor, keeping the known weak 1m Micro lane out. Standard 5m
+identities remain eligible for Minimal and standard 15m identities for Short,
+subject to each range's own lane and Base rules. Per-config memoized typed-array
+calculations cover causal trend, ATR-normalized symbol and market drawdown,
+last-bar/recent-part/activity-change ratios, and market activity. Relate shares
+the independent Tactic/Relate Base measurement and 1.10 return-PF floor.
+
+Current verification:
+
+- Before the main update, guarded focused core regressions passed 141/141 across
+  12 files and 30 suites; platform/UI tests passed 78/78 across 8 files and 16
+  suites. These cover every Relate ID, Micro routing, causal 1/5/15m alignment,
+  gap reset, completed higher bars, drawdown/activity guards, Base range cells,
+  128 processing-toggle combinations and worker counts.
+- On merged tree `73e5d82`, `npm run typecheck -- --pretty false` and
+  `npm run build:dev` pass. The build packages the 24.65kB Relate client chunk
+  and core worker bundle.
+- ESLint on changed code files: 0 errors and 4 existing unused-variable
+  warnings in `runtime.server.ts` and `walkforward.ts` (the two Markdown files
+  are outside ESLint's configured file types). New Relate files are clean.
+  `git diff --check` passes.
+- Merged-tree targeted verification after the main update: 138/138 guarded
+  offline core tests pass across 10 files, covering Relate/Tactic/Micro,
+  completed higher bars, lane/range routing, pipeline causality, signal discovery,
+  seats and gating. The focused UI suite passes 10/10 across two files.
+- Hard-pressure memory guard: 1/1 passed. The former cycle-serialization test
+  timed out after performing two full 4-symbol, 18-day synthetic portfolio
+  runs; it now uses a controlled compute barrier, verifies one follow-up compute
+  with no overlap, and passes 1/1 in under one second. This is a scheduler test,
+  not a full runtime/processing stress run.
+- A prior guarded 10-file run passed 181 tests and cancelled 3 processing cases
+  after `processing.test.ts` hit its 400-second internal warm-up wait under
+  concurrent load. Its 128-toggle matrix and two related processing cases remain
+  incomplete.
+- Synthetic indicator benchmark: 40 IDs × 10 symbols (1,973,360 config-bar
+  visits over 126,670 source bars) completed in 210ms; after GC, ArrayBuffer
+  growth was 15.16MB, heap growth 0.36MB and RSS growth 26.13MB. This measures
+  calculation cost only, not strategy performance.
+
+An earlier complete guarded core run on this source before fixture corrections
+finished with 1,950 pass, 7 fail, 2 skipped, across 169 files. Every Relate
+test passed. Four stale test expectations were corrected (Base fixtures now
+state/disable the active DDR gate as intended; Signal counts reflect
+lane-scaled `minTrail` filtering), and upstream PR #145 supplies the missing
+report-page helper. The memguard hard-pressure assertion passes in a
+targeted rerun. The former cycle-serialization timeout was traced to the test
+running two full portfolio computations for a scheduling-only assertion; the
+focused deterministic scheduler regression now passes. The full runtime and
+processing suites have not been rerun after that test-scope change. Heavy
+concurrent test processes used the shared host; none were killed. The full core
+suite was not repeated.
+
+The broad raw script-test command `node --test 'scripts/**/*.test.mjs'` was
+stopped by automatic approval review because it could contact BingX endpoints.
+It was not retried or routed around the block. The review result does not
+establish whether a request was issued before termination; I made no manual
+exchange calls or live-execution attempt. Safe focused/UI and guarded offline core tests above pass;
+the broad script stage remains unverified pending an approved network-isolated
+environment. The saved public market feed is historical and was not rescored;
+no new held-out Micro performance, positive profitability, live execution or
+deployment claim is established. Do not promote or deploy Relate from these
+synthetic tests.
+
+## Break relational indications and realtime refresh
+
+Follow-up branch: `feat/break-micro-short-channel-20261017`; PR
+[#155](https://github.com/mxssnx-creator/CTS-A-O/pull/155). PR #153, which
+added the initial Break family and live refresh, is merged at
+`3a6d67e77b5c730192b1db8dcaa6d4e82ffe03e0`. The exact tested local source
+commit for this Micro extension is `f5e50d97199c1c977fe81fdd7077cd6b68cbfdb6` (tree
+`b140f5bb2c0dbd63a4b121263a498f56c5f734ed`), based on main
+`83585ef6b12c215fa0ee6a0dd2f8cfacba35b6cf` (tree
+`d843e839f7bab4992f355576f528cdf9c9673ab8`).
+
+The family has 144 exact identities: 84 standard and 60 Micro. Five sources
+(Donchian, squeeze, retest, 8-bar Donchian and 8-bar retest) are crossed with
+eligible 1/5/15m trend subsets, independent 24/48-bar drawdown windows and
+Guarded/Balanced activity/market profiles. The short-channel sources are
+Micro-only; every identity keeps its own fastest selected lane and order key.
+Completed higher bars, gap warmup, prior-only channel/volatility features,
+symbol/market drawdowns, activity-part/change ratios and market-relative
+filters are exercised by the family tests. Break retains its 1.10 return-PF
+floor through Base, selection and live eligibility.
+
+Realtime refresh is Break-only by default; explicit `CTS_CORE_FAST_ENTRIES=1`
+selects all indication types and `=off` disables the fast path. The 100 ms live
+tick checks for a newly closed base bar; the market poll allows 2 seconds for
+exchange candle publication. A higher-lane config refreshes only on its own
+close. A priority worker rebuilds only selected IDs from a bounded tail and
+publishes refreshed tapes to Entries and Overall. Signals older than 15 seconds
+are suppressed. This is a code path with timing/freshness tests, not proof of
+an authenticated live run; no venue order was sent.
+
+The matched cached-feed replay uses 9 symbols, a six-hour Base-entry window and
+a separate six-hour trade window. The unchanged qualification gates are 12
+Base closes and return PF ≥ 1.10. The old four-ID Micro set evaluated 20 engine
+pairs; the updated 60-ID Micro set evaluated 60. Neither arm had a passing Base
+pair or placed any orders. PF and win rate are unavailable, not zero; all six
+hourly buckets were flat. Base compute/RSS were 412 ms / 368 MB for the old set
+and 1,272 ms / 413 MB for the updated set. Full inputs, settings hashes and
+hourly outputs are recorded in
+[`simulations/break-micro-live-replay-20261017.md`](simulations/break-micro-live-replay-20261017.md).
+The short sample therefore does not meet the request for more orders, higher
+PF or positive hourly success; these configs are not performance-qualified.
+
+Verification:
+
+- On exact source `f5e50d9`, the focused Break/Relate/Micro/pipeline bundle
+  passes 43/43; Break-only tests pass 8/8; UI tests pass 7/7; realtime timing,
+  freshness and tape-helper tests pass 3/3.
+- `npm run typecheck -- --pretty false`, `npm run build:dev` and core-worker
+  packaging pass. Scoped ESLint has 0 errors and four unused-variable warnings
+  in `runtime.server.ts` and `scripts/core-session.mjs`.
+- `git diff --check` and `node --check scripts/core-session.mjs` pass.
+
+This is functional and matched-window simulation evidence only. It is not
+held-out profitability evidence. No authenticated exchange execution,
+deployment or live reload was verified. Full processing/runtime stress and the
+venue-contacting broad script suite remain open. Do not promote Break based on
+these results.
+
+
+Validated source diff: `fix: score Break market relations prior-only`, verified locally as `dd5a2e3`. Applied to PR #155 branch `feat/break-micro-short-channel-20261017`. The rolling market beta, volatility and
+residual baselines now exclude the bar being scored; a hand-calculated test
+checks both z-scores. The hot path also avoids per-config trend Maps and
+variadic finite-check arrays. Replay coverage now compares seatable tapes with
+kept config sets, excluding held-only position-carry tapes.
+
+The full review is in [`docs/break-review-20261017.md`](break-review-20261017.md).
+It includes a matched offline 9-symbol, 24-hour-prehistory/24-hour-trade replay,
+hour/config loss diagnosis and two adjacent-window Trailing ablations. The old
+4-ID set returned PF 0.174 on 1,593 orders; the updated 60-ID Micro set returned
+PF 0.447 on 11,851 orders in the matched window, with net cash −$43.10. The next
+day returned PF 0.325 on 31,149 orders. These do not meet the requested positive
+PF or hourly-success goals. Only nine real symbol feeds are cached, so a
+12-symbol result is unavailable; the busiest replay peaked at 803 MB RSS.
+
+Focused indication/market/Micro/pipeline/range tests pass 97/97; Break-specific
+tests pass 9/9. Typecheck, development build and worker packaging pass. Replay
+checks pass 55/55 on both traded windows and 53/53 on each Trailing-off run.
+The Oct 11–12 no-seat replay placed no orders as expected; its old harness
+incorrectly failed because it equated an empty admitted-tape set with zero
+symbols processed and demanded active strategy configs. PR #155's reporting
+correction fixes this zero-admission path and the primary PF evidence check.
+The repeated 9-symbol 6h+6h no-trade comparison now reports PF unavailable and
+passes 53/53 consistency checks on both arms. Full hourly details are in
+[`docs/simulations/break-postfix-empty-run-20261017.md`](simulations/break-postfix-empty-run-20261017.md).
+Source fix: `cae2ec669b2d69ecbeb664d9853715a2dcfb9efb`. Empty samples are
+unavailable throughout sim, connection, prehistoric and preset APIs; runtime
+logs no longer print 0.00, and no-loss sentinel scores are labeled. The
+67/67 focused suite, typecheck and development build with worker packaging pass.
+No live execution or deployment was attempted. Keep current strategy defaults;
+do not promote from these samples.
 
 ## Continuation check — systemwide PF and volume audit
 
@@ -585,7 +1065,7 @@ The frozen replay is **56/62 checks, not an all-green execution result**. Engine
 
 Report-book ownership is determined after uniform USD roundoff normalization. `BOOK_NOTIONAL_EPS_USD=1e-9`, matching existing live monetary-comparison precision, zeros finite nonnegative allocated total notional at or below that tolerance before units/cash/book updates. Raw allocations and the pre-normalization book remain retained. Tiny positive floating cap residues cannot become funded trade counts. No engine, source, PF gate, costs or return was changed by this book-only repair. Final shared owned book: **26,098 settled close slices, return PF 0.9016968601, cash PF 0.7599364745**, net **−$26.63299385**, balance **$973.36700615**, equity **$943.502663**, max equity drawdown approximately **9.4313%**, from $1,000. The 34,054 virtual pre-sizing walk-forward records (PF 0.823968) are a separate diagnostic. Earlier strict-positive/dust ownership counts and PF are superseded.
 
-The operator additionally requested web research and new short/medium sources. The four-candidate definitions, exact 39-cell protection grid, fixed eight-symbol cache, seven warmup/53 IS/30 OOS days and PF 1.1/minimum 30 IS screening were frozen before scoring in `docs/signal-research-protocol-20261015.json`. Laguerre, rolling ATR Chandelier and internal Klinger reuse documented existing adaptations; RVI follows the official weighted formula. The full 688 IS-selected config-side pool returned OOS PF **1.4383917333** on **95,610 settled closes**, or **1.3526231032** including 2,617 endpoint marks. Every selected row is long; all 1,224 short rows were calculated and none qualified. The losing selected 1m cohort (PF 0.884358) remains included. All 2,448 effective rows together lose (PF 0.855695). The study and exact repeat are byte-identical, and an independent audit reconciled membership/gross sums and actual long/short return arithmetic. See `docs/signal-research-results-20261015.md`. All four research sources remain default-disabled: the catalog has 100 sources, with the original 63 enabled. This reused cache is retrospective chronological holdout evidence, not a new global untouched sample or live proof.
+The four-source Signal research result is withdrawn pending a corrected rerun. Its grid widened some fast-lane trailing configs below `minTrail`; runtime disables those configs after lane scaling. The corrected research runner now matches that behavior and verifies parity against `buildTapes`, yielding 2,320 config-side rows across 1,160 distinct protection configs. The referenced market cache is absent from this checkout, so no corrected PF or selection result is available. Archived performance figures in `docs/signal-research-results-20261015.md` are retained for traceability only and are not verified strategy performance. The four research sources remain default-disabled; this reused cache was retrospective chronological evidence, not an untouched global sample or live proof.
 
 The default core test command and `test-all` now install a portable before-import offline Node transport guard, clear exchange/proxy credentials and propagate guard-first workers, including CJS watchdogs. It is a bounded Node test surface, not an OS sandbox. Failed child status, explicit slow-test policy, coverage/headroom/governor behavior and pinned synthetic dates are preserved; nested test-runner context is cleared. A delayed eval-gate mock now explicitly disables its own memory kill floor while keeping production guards unchanged. Generated `runs/` source snapshots are excluded from ESLint; active source is linted once. Final checks include script tests **396 passed/8 opt-in skipped**, platform **76 passed**, typecheck pass, lint **0 errors/22 existing warnings**, production build pass, and desktop/mobile production UI/SQLite checks (122 decoded API responses, no app/decode/capture errors; independent no-TP/source controls and measured/no-loss/unknown PF verified). External Fonts/Grok requests were blocked for offline QA.
 
@@ -704,10 +1184,236 @@ The exact external resource `imperative-greeting-fox` was absent from source, co
 
 The offline session uses the cached candle feed through 2026-10-15 04:00 UTC and exactly six evaluated prehistory hours. Signals receive no additional warmup. The feed is historical and was about 38 hours old at the replay; this is a smoke check, not a current-market or profitability claim. Full hourly, per-type, range, lane, sizing and Block-multiplier tables are in [`docs/sims/systemwide-pf-volume-audit-20261016.md`](sims/systemwide-pf-volume-audit-20261016.md).
 
-- 6-hour session: 792 funded closes, Return PF 2.374852, cash PF diagnostic 2.223031, realized +$4.418713 from $1,000, end equity $1,000.703278, max equity drawdown 2.8717%, and 4/6 positive hours. Long had 60 losing orders; Short had 732 orders at PF 5.938047. The result is not positive in every hour.
+- 6-hour session: 792 funded closes, Return PF 2.374852, sized-dollar PF diagnostic 2.223031, realized +$4.418713 from $1,000, end equity $1,000.703278, max equity drawdown 2.8717%, and 4/6 positive hours. Long had 60 losing orders; Short had 732 orders at PF 5.938047. The result is not positive in every hour.
 - Range coverage: Micro executed 792 closes at PF 2.37. Minimal, Short, General and Long had no executed sets. Signals built 4,914 requested configs but had no active/executed units under the unchanged 24–48h gates. Keep these outcomes empty; do not relax gates using this short sample.
 - Volume: ×1 had 342 closes at Return PF 30.806253 / cash PF 31.595471 / +$5.143369. ×1.5–2 had 450 closes at Return PF 1.116727 / cash PF 0.789638 / -$0.724656. The overall 936-close virtual Return PF is 2.578589; funding/caps reduce the owned sample to 792. Volume changes cash outcomes, not unit-return PF on an unchanged cohort.
 - The report generator now carries the source mode into saved dumps, labels cached-feed replay accurately in both reports, and marks Signal history as the same minimal evaluated window. The local startup now resolves the repository root, uses the cgroup-bounded memory budget and available CPUs, and keeps the local app synthetic with autostart/live disabled.
 - Checks: 383 focused strategy/Block/Signal/promotion tests and 143 balance/sizing tests passed; typecheck also passes after the report changes. The offline session itself completed in 12 seconds; its consistency report is 55/64 because the aforementioned ranges and Signals have no configs/orders in six hours.
 
 GitHub state at this checkpoint: PR #142 is merged into current `main`; there are no open issues. Draft PR #132 remains unrelated and was not merged.
+
+## Signals Coordination (Type) — 2026-10-16
+
+Implementation is on `feat/signals-coordination-20261016` (draft PR [#148](https://github.com/mxssnx-creator/CTS-A-O/pull/148)). The initial implementation added five independent domination thresholds (60%, 65%, 70%, 75%, 80%); the 2026-10-17 expansion documented below extends the set through 100% at 5-point steps. Ratios run independently across enabled source pools and Short-only, Medium-only and combined source parameter inputs. Each source contributes at most one directional vote per bar; conflicting Short/Medium variants abstain, and quiet sources do not dilute the ratio. The default minimum is three active votes. Each threshold/input mix/lane remains a separate indication and strategy-PF identity, with a separate active-unit cap from classic Signals.
+
+Coordinator protection configs are built only for the selected Short, Normal/General and Long exit ranges. Historical signal protection calculations are attached to each available range tag, and open coordinator configs retain their exact lane distances and range tag across range/grid changes. The backtest, worker tape build, realtime fast-entry path, simulation guard, live exchange acceptance, order tracking and statistics all handle the coordinator identity. Exchange client-order IDs retain the selected range letter; persisted config IDs retain the ratio/input/source pool and protect tag.
+
+Verification uses synthetic fixtures only. The runtime smoke built all 15 coordinator pairs for the selected lane and reported 12,960 coordinator range/history configs; none met the active validation gate, so coordinator orders were zero and return PF was 0 (no hourly sample). This is not market evidence and does not show positive results or hourly success. The implementation uses the existing historical-calculation path when runtime candle history is available, but no fresh held-out coordinator replay or live execution check was performed. Do not relax the PF/sample gates based on the synthetic smoke.
+
+Code verification: `npm run typecheck`, `npm run build:dev`, and lint for the new coordinator module/tests passed. Focused signal/statistics tests passed 109/109; range/gating tests passed 38/38; API reporting, execution quantity, and journal tests passed 55/55. The long runtime coordination suite completed successfully, including stop/restart, held-position, order-close and concurrency checks. An earlier combined run had one failure because it had already loaded the old range-floor test fixture before its correction; the corrected range/gating suite passes on a fresh process.
+
+No exchange credentials were used and no live orders were placed. Preserve the existing return-PF and execution-proof requirements before any live promotion.
+
+### Main integration and follow-up verification — 2026-10-17
+
+The Signals Coordination branch now includes current `main` through `b6094a4` (Break and Relate indications). Merge resolution retains the coordination kind and its own worker bucket while keeping the realtime candle-close/mode gate and delay reporting. All three indication kinds have named UI labels and remain registered.
+
+Post-merge checks: `npm run typecheck`, `npm run build:dev`, and `npm run lint` passed (0 lint errors, 21 existing warnings). Focused offline core runs passed 112 cases across 11 files and 399 cases across seven overlapping accounting, execution, statistics, completeness, and coordination files. UI tests passed 11/11; corrected Signal research-grid tests passed 8/8. These runs used the core offline transport guard and fixture data. The monolithic `npm test` was not completed: automatic review had blocked its broad core stage over potential BingX traffic, so it was not retried. The corrected market PF remains unavailable until the missing historical candle cache is restored.
+
+### Offline coordinator OOS replay — 2026-10-17
+
+The exact frozen candle cache was recovered from a sibling workspace and verified against the protocol SHA-256. The coordinator replay scored the default 63-source pool, all 15 ratio × input-mask identities, all three exit ranges, both sides and normal/trailing types on a 36-protection representative sample of the 1,200-protection runtime grid; five IS-validated historic MFE templates yielded 15 range-tagged configs. See [`docs/sims/signals-coordination-trade-sim-20261017.md`](sims/signals-coordination-trade-sim-20261017.md) for the full matrix.
+
+The IS-qualified pool returned OOS unit PF 1.277 on 37,869 overlapping config-side close observations (PF 1.270 including endpoint marks). The all-config OOS diagnostic was negative (PF 0.978); only 277/631 active hours were green (43.9%). This is retrospective, previously reused data and not an account-level portfolio, live order count, execution PF or forward proof. The 8× factor leaves unit PF unchanged and scales both gains and losses; no live promotion or settings change was made from this replay.
+
+The 8-file offline verification rerun after correcting the synthetic history availability assertion passed 422/422; typecheck passed. The history path remains conditional on its matured-entry/PF/drawdown gates, so a synthetic window may correctly produce no historic config.
+
+### Expanded coordinator grid and range-specific historical gates — 2026-10-17
+
+Draft PR [#148](https://github.com/mxssnx-creator/CTS-A-O/pull/148) extends the domination identities through 100% at 5-point intervals (60, 65, 70, 75, 80, 85, 90, 95 and 100). Settings display the complete ratio list. Historic coordinator protection calculations now retain a Short, Normal or Long range tag only when that range independently clears its configured stage PF floor; classic untagged Signal history retains its previous global floor. History calculation calls now pass the same final gates used by runtime settings. The 8× coordinator sizing multiplier and neutral 1× defaults for other combined indication types remain size-only settings; they do not alter unit PF.
+
+The expanded replay used the frozen cache SHA-256 `09efe84ff135bad1458995ac36df9bb209e1d56fab671375d171b3c76abdefa4`, all 1,200 runtime protections, 27 ratio/input-mask identities, both sides, and normal/trailing exits. It scored 64,850 config-side rows including 50 historic sides. The IS-qualified OOS pool was 2,590,578 overlapping independent config-side closes at return PF 1.260086 and +774,087.5 unit-return points; including endpoint marks, PF was 1.256923 and net +766,777. The full unfiltered config pool was weaker at PF 1.013205. Across 720 OOS clock hours, 706 were active, 289 (40.9%) were green; the median active-hour PF was 0.315 and the worst hour returned -133,326.4 points across 28,814 overlapping simulated closes. Per-ratio/mask, range, strategy type, hourly and prior-run comparisons are in [`docs/sims/signals-coordination-trade-sim-20261017-expanded.md`](sims/signals-coordination-trade-sim-20261017-expanded.md).
+
+The runner independently checks the complete grid size, all 27 identities, cache hash, IS/OOS boundaries and exact reproduction of all 1,080 prior standard sample rows (zero count/PF/net mismatches). This is retrospective, overlapping unit-return research; it is neither an account-level portfolio simulation nor live/forward validation. The poor hourly consistency and losing unfiltered pool are retained in the report. Size-only 8× and 22× point figures do not include capital constraints, simultaneous exposure, liquidation, funding or realistic execution and must not be read as account returns. Existing accounting and position-stack tests cover software paths, but this replay does not verify venue fills, account position reconciliation or live orders. No live settings or exchange orders were changed.
+
+Final checks for this update: the focused signal/settings/accounting/position/statistics suites passed 547/547; the Stage/Base evaluation and worker-pool suite passed 53/53; the post-fix historical-range and Stage-consistency rerun passed 17/17. Typecheck and the development Vite/SSR/core-worker build passed. ESLint passed on all changed TypeScript and replay files with no warnings after removing three unused imports in the touched runtime module. The broader `npm run test:core` stage was not launched because the repository's prior automatic review blocked its BingX-capable transport; it was not bypassed or retried.
+
+### Stable coordinator bands v2 — correction — 2026-10-17
+
+This entry supersedes the preceding nine-ratio expansion description. The required configuration is five independent bands across three source-input masks (**15 coordinator identities**): 60–65%, 65–70%, 70–75%, 75–80%, and **80–100%**. The last band includes the full remainder through unanimity. Settings, generated identities, runtime voting, statistics labels and the replay use these five bands. New IDs use v2; old v1 threshold IDs remain readable and are retained only while an existing position needs its original exit tape.
+
+Stage/Base replay selection is range-aware: Short PF ≥1.10, Normal ≥1.12, Long ≥1.18, with the same floor required on settled and endpoint-marked IS returns. The frozen replay covered all 1,200 protections per identity and both directions: **36,032 config sides**, 9,990 IS-qualified sides, and 1,626,887 overlapping qualified OOS closes at PF **1.390** (+705,225.2 unit-return points). Range PFs were Short 1.302, Normal 1.327, Long 1.443; Normal/Trailing PFs were 1.388/1.391. The unfiltered pool was PF 1.005. Only 307/696 active OOS hours were green (44.1%), so hourly success is not established. The earlier v1 positive result is not comparable because v1 used cumulative thresholds. Details: [`signals-coordination-trade-sim-20261017-expanded.md`](sims/signals-coordination-trade-sim-20261017-expanded.md) and [`signals-coordination-stability-v2-20261017.md`](sims/signals-coordination-stability-v2-20261017.md).
+
+Current code checks passed: **75/75** focused signal/coordinator/history/volume tests; TypeScript typecheck; development client + SSR + core-worker build; changed-file ESLint and replay syntax checks. No live exchange orders were sent. The coordinator is marked stable for the verified offline band and accounting behavior; live execution and Exit-strategy market performance remain outside this certification. Future promotion continues to use per-config PF after Base and each range's own gate, and must keep execution PF, order throughput and hourly consistency as separate evidence.
+
+## Break indication audit closure — 2026-10-17
+
+Detailed source-fix replay and hour table: [`simulations/break-post-fix-9x12-20261017.md`](simulations/break-post-fix-9x12-20261017.md).
+
+The indication audit fixed two real defects: market returns now require contiguous per-symbol closes, and market activity restarts its 60-bar warmup after a candle gap; a fresh opposite channel break cancels an older pending Break retest in the other direction. Market drawdown work was moved out of the per-bar inner loop. Break identities route only to their declared anchor lane, and the current lane audit covers Break and Relate.
+
+The repeated corrected 9-symbol 12h-history/12h-trade replay passed 56/56 consistency checks for each matched arm and reproduced the previous result exactly: legacy Break 1,563 orders at return PF 0.342; updated Micro Break 726 orders at return PF 3.272. Updated hourly outcomes remain 3 positive, 6 flat and 3 negative; the 18:00, 19:00 and 23:00 UTC hours remain below PF 1. Thus the hourly-success target is still unmet. The replay uses the previously examined window and does not count as out-of-sample evidence.
+
+The full offline core run traversed 170 test files and reported two stale test expectations. Both were corrected and focused reruns pass: Break/Micro/Relate/lane 38/38; corrected Base/Main processing assertion 1/1; seat/default migration 29/29; empty prehistory 7/7; session PF/accounting 23/23. The 128-toggle matrix passed in the full run. Typecheck, `build:dev` including the packaged core worker, and `git diff --check` pass. The monolithic full suite was not rerun after these test-only corrections; do not report it as wholly green.
+
+## Balance sizing, caps and Signal ranges — 2026-10-17
+
+Correction: the earlier coordination-factor follow-up treated “Stable-02” as a strategy coordinator. It is a branch name. The erroneous independent `s2VolumeFactor` setting and its earlier sweep were removed; existing S2 relation sizing (`s2Increase`) and the separate negative-hour Signal hedge factor remain. See [`the corrected coordination report`](sims/trailing-config-coordination-factors-20261017.md).
+
+The base order unit is 0.1% of realized wallet balance, not a fixed order notional. Engine-range and Signal short/medium volume factors default to neutral 1×. The old Micro factory factor 2.5× migrates to 1× while custom saved factors are retained. Fixed-USD per-position ceilings are retired and ignored. Per-position and gross-exposure ratio budgets default to 0/off; if explicitly enabled, they are multiples of wallet balance, not equity or USD ceilings. Migration clears legacy USD ceilings, disables only the former factory ratio pair, and converts saved fixed/minimum-quantity sizing modes to balance-percent sizing while preserving custom balance ratios and volume factors.
+
+Two adjacent cached-feed 24-hour replays used the same eight symbols, 48 hours of prehistory, $10 start balance, 10× leverage and 0.20% modeled round-trip cost. The interim 0.25× / 2× caps reduced drawdown versus 0.75× / 7× but left the adjacent day negative. A broader same-tape cap sweep selected 0.25× position / 0.75× gross: Oct 13–14 produced 4,861 funded closes, Return PF 1.013, cash PF 1.327, +$0.05343 cash and $10.02288 marked equity; Oct 12–13 produced 25,950 closes, Return PF 0.924, cash PF 1.349, +$0.12277 cash and $10.04716 marked equity. Max equity drawdown was 0.80% / 2.09%, with 12 / 8 / 4 and 8 / 16 / 0 green / red / flat hours. This improves the two sampled equity curves; it does not prove stable PF or positive results every hour. The unit Return PF remains below 1 on the second day.
+
+A 0.05% equity sizing trial and a same-tape 0.6× trial on Minimal, General and Long did not improve both cash outcomes. These ranges remain neutral rather than being tuned on two adjacent windows. Signals were positive in aggregate in the sampled windows, particularly Trailing, while Normal was sparse and losses in engine General/Long and Minimal remain unresolved. Full metrics and the 127/127 replay consistency checks are in [`the balance sizing and cap report`](sims/trailing-balance-sizing-cap-replay-20261017.md). Those results used the then-active caps and do not measure the new uncapped balance-volume default.
+
+A later no-cap sizing replay (`raw-24h.json`, cached four-symbol tape, $10 start, 0.1% balance unit) showed unit-return PF 7.36 and funded cash PF 11.71 across only 18 funded orders; ending marked equity was $9.94, so it did not show net positive equity. The 0.1% base unit is $0.01 before range/coordination factors and venue minimums. Its report's completeness check was 114/115 because the source engine dump records a memory fallback; disabling report-time sizing variants does not repair that source-run gate. This is an offline sizing replay of old recorded trades, not a fresh engine rerun, and is insufficient evidence for high order volume, stable hourly profit or live promotion.
+
+No live orders were placed and no deployment was made. The replay data are retrospective and do not validate live fills, new market regimes or positive performance in every hour/range/configuration.
+
+Verification follow-up: the 169-file core run exercised stage processing, Signal config identity and execution, account sizing, realtime progress, paper/live control, and restart recovery. Its first pass exposed six compatibility regressions: two old migration tests expected schema v26 instead of the current v28, the Settings completeness table omitted the four new cap/Signal-factor leaves, two cap-isolation fixtures inherited the new gross-cap default, and a gate fixture omitted drawdown evidence. Those cases were corrected; focused settings/control/gating checks passed 334/334, legacy migration tests 2/2, and v27→v28 cap migration 1/1. The repeat full `npm run test:core` passed **1,977 tests, 0 failed, 2 skipped, across 325 suites (169 files)**. Typecheck, the development client/SSR/core-worker build, and `git diff --check` passed after the fixes.
+
+Post-restore verification: a repository stash/rebase merge was resolved while retaining the balance changes and mainline reporting fixes. The full core suite was stopped during that merge and has not been rerun end to end. Current checks completed after resolution: TypeScript typecheck; client/SSR/core-worker development build; account sizing and live range-factor tests (13/13); Entries execution tests serially (41/41); v10/v27/v28/v29 migration tests (4/4); balance sizing migration (1/1); isolated runtime self-audit (1/1); Signal discovery (4/4); session PF/CLI checks (2/2); and diff checks. A parallel multi-file test invocation produced post-test SQLite cleanup errors; its Entries suite passed when rerun serially. No live orders were placed.
+
+## Independent config Last-N and short replay — 2026-10-17
+
+The verified source/test/replay tree is `d219f35c96e94393778e7147b4d1d6e2f66a0121` (local commit `badb725540d883af03b601fb37acc25de551dea0`), published as PR #161 head `c499f3230e8fba686cfdbef3db04dcb9efb3b4d0` and merged into `main` as `9295c69e1ae56763cc4b7b65ed30082ed7a4e238` on 2026-10-17. It is based on merged PR #160. A schema-version collision from rebasing onto mainline v28 was corrected: expanded Signal/default migrations now run from v29 through v33, preserve custom saved settings, and keep the mainline v26-v28 migrations intact. Signal protection grids remain exhaustive; full config identities and per-config Last-N gates remain independent across ranges, lanes, types, directions and protection modes. The exchange position ceiling of 100 remains a Symbol+Direction live-stage limit; config/order seats remain independent of it.
+
+Post-rebase verification: `npm run typecheck -- --pretty false` passed. The focused config-independence/history/volume matrix passed 48 tests; the exhaustive Signal discovery/config suites passed 40 tests across 17 suites; return-PF/statistics/reporting tests passed 27/27; and the offline-guarded session-report/qualification suite passed 18/18. These checks cover independent per-config selectors, separate Signal Normal/Trailing qualification, no sibling seat or trade sharing, minimal Signal history, range-specific volume factors, report scope after Base and later gates, PF/volume labeling, and the actual exhaustive grid through workers and local calculations. The full core suite has not been rerun after rebase.
+
+The bounded engine replay is [`the six-hour report`](sims/trailing-systemwide-6h-window-20261017-summary.md), with [`full tables and hourly details`](sims/trailing-systemwide-6h-window-20261017.md). It uses four cached-feed symbols, 6h of evaluated history and 6h simulated (2026-10-14 09:00–15:00 / 15:00–21:00 UTC), config Last-N 25, min return-PF 1.1, and minimal Signal history. The source processed 854 engine config pairs for Base (4 passed), and separately measured 504 Signal representative pairs (2 passed the diagnostic gate, excluded from engine Base totals); Main had 4 pairs and Real had 12 engine configs / 0 Signal configs. The executed post-Base cohort closed 273 orders at Return PF 0.63, sized cash-PF diagnostic 0.93, 0.43% marked-equity max drawdown and 2/6 green hours; engine orders alone were PF 1.40 (241), while Signals were PF 0.10 (32). All 66 report consistency checks passed. This confirms processing and accounting on this window, while showing the desired positive-hour/PF outcome was not achieved. It is a short, previously examined cached-feed sample; do not tune on this same window or treat it as live evidence. No live orders or deployment were made.
+
+## Last-N as-of and tie-order audit — 2026-10-17
+
+The optimizer's reported `gateOpen` is now evaluated from closes settled at or before `nowT`; future closes cannot satisfy the current N sample. An N=0 selection is reported as ungated. Optimizer tape and result ordering now use stable exit-time, entry-time, config, symbol, side and return tie-breaks so simultaneous closes cannot make DDT/gate results depend on worker/input order. Pooled live-group Last-N samples likewise use a stable config/tape-index tie-break at the N cutoff.
+
+Regression checks verify a passing close changes `gateOpen` exactly at its close timestamp, later closes are excluded, simultaneous optimizer inputs produce identical statistics/verdicts under permutation, and pooled live cutoff ties are stable. Both complete affected files passed: pipeline/live-validation 31/31. Typecheck, production build (including SSR/core worker) and `git diff --check` passed. The attempted full core run was stopped while a CPU-heavy book-coverage fixture was still running; its final summary/exit status was unavailable, so it is not counted as a full-suite pass. No market replay or exchange execution was run for this code-only correction; it does not establish higher PF/order volume or live profitability.
+
+## Range-specific PF floors and Base-to-execution rerun — 17 October
+
+Tested source checkpoint: `d561e4b` (`fix: enforce range PF floors through Base eval`).
+
+The configured defaults now apply by Base range: Wide/fallback 1.00, Micro
+1.05, Minimal 1.10, Short 1.10, General 1.20 and Long 1.30. `baseSetsMinPf`
+only affects untagged Wide/fallback cells; tagged range floors remain active
+through Base qualification and set construction. Report scope also separates
+the Base-qualified engine execution benchmark from independently qualified
+Signal orders and the all-funded combined account.
+
+The matched cached-feed six-hour replay confirms Base passed 4/854 engine
+pairs (Micro 1/700 at floor 1.05; Minimal 4/854 at floor 1.10; other configured
+ranges passed none). Config evaluation at run start passed 24/376 with pooled
+validation PF 6.511 for Micro and 4.578 for Minimal; 12 engine configs were
+seated. Engine execution produced 241 settled orders at PF 1.404, including
+Micro 168 at 2.152 and Minimal 64 at 0.624. Separate Signals produced 32
+orders at PF 0.095; the combined 273-order book was PF 0.634 and 2/6 hours
+were green. High pre-execution PF did not persist through every execution
+range, so this sample does not support promotion or a profitability claim.
+Full report: [range-floor rerun](simulations/trailing-range-floor-rerun-20261017.md).
+
+A funnel-label ambiguity was fixed after inspecting the generated report:
+walk-forward hourly config-pass counts may repeat the same config in later
+hours, while the 801 run-window total is distinct configs passing at least one
+step. The report now labels hourly pass instances and points readers to the
+separate run-start 24/376 evaluation and 12 Real seats. The regenerated replay checks passed
+66/66; the range/sets subset passed 35/35 and the complete focused bundle passed
+73/73; TypeScript typecheck, production build, Node syntax and `git diff --check`
+passed. No live orders, settings changes or deployment were made.
+
+## 0.15% cost and positive replay audit — 2026-10-17
+
+The requested 0.15% round-trip cost was tested in a matched full-engine replay
+using a desk snapshot (0.05% taker plus 0.025% modeled slippage per side); the
+production cost default remains 0.20%. On the same four-symbol 24-hour cached
+window, 37-pair focus, 48h prehistory, corrected range floors, coordination,
+and 0.75×/7× book caps, the 0.20% run produced 572 closes at Return/base-$1 PF
+0.483424, sized-dollar PF 0.600055, −$0.295683, and 7/6/11 green/red/flat
+hours. At 0.15%, 1,327 closes produced Return/base-$1 PF 0.712008,
+sized-dollar PF 1.391965, +$0.093060, and 11/7/6 hours. Marked equity ended
+at $9.961860 with 682 still-open orders marked −$0.131200. Range failures
+remain: Short PF 0 (54 closes), General PF 0.003512 (121), Long PF 0 (59).
+High Base passage is not carried through those execution cohorts. The 0.15%
+replay passed 66/66 consistency checks; focused PF/accounting tests passed
+34/34. Full details and the screenshot reconciliation are in
+[`simulations/cost-015-and-positive-replay-audit-20261017.md`](simulations/cost-015-and-positive-replay-audit-20261017.md).
+
+The saved older 0.20% positive replay independently reconciles to 2,184 funded
+closes, Return/base-$1 PF 4.723109 and sized-dollar PF 2.024519. Its 2,169
+engine + 15 Signal closes do not match the screenshot's separate “Signals 43 / PF
+51.27” row; the screenshot hour summary also differs from the saved raw dump.
+The archived positive result is retained for its own cohort, not treated as
+20-symbol or corrected-current-floor proof. The only full-engine cached market
+feed available here contains four symbols. A 40-symbol lean 1-minute research
+study is not a full-engine 20-symbol substitute. No live settings, live orders,
+or production cost defaults changed.
+## Expanded 20/22-symbol post-Base study — checkpoint 2026-10-17
+
+Current branch `fix/postbase-expanded-study-20261017`,
+[PR #164](https://github.com/mxssnx-creator/CTS-A-O/pull/164); committed
+source checkpoint `b1a0e714d268574d5ab5c21d89f1a99279596cf3`.
+The [progress checkpoint](simulations/expanded-postbase-progress-20261017.md)
+contains the full reproduction recipe, preserved failure and verification
+details. The [frozen protocol](simulations/expanded-postbase-protocol-20261017.md)
+specifies 20-symbol development and 22-symbol final 24h comparisons, each
+with exactly 24h evaluated history, separate 205h indicator warmup, explicit
+0.15% modeled cost and unchanged independent PF/sample gates. The 12 new
+reclaim8 Break identities are opt-in; the original 60 default Micro IDs remain.
+
+Source corrections separate diagnostic Base construction from genuinely
+admitted pair/range identities, preserve their later-stage and Live floors,
+and require causal Base even for fixed-focus preset replays. The first
+`runs/postbase-dev20-baseline-20261017-v1/baseline-20/` attempt remains
+incomplete: a partial-universe calculation hit the memory reserve and
+fallback path, then its owned process was interrupted (SIGINT, exit 130).
+Its protocol, command, log and `run-result.json` are preserved. Preload and
+admission corrections and new sealed replay attempts remain open; no complete
+20/22-symbol PF, orders or hourly result is claimed. Do not reuse that failed
+attempt as a benchmark or call the source fixes profitability evidence.
+
+The full public archive is saved and verified:
+`cts-ao-22-symbol-public-20261017.tar.gz`, 15,868,857 bytes, SHA-256
+`252bc0c3c43e66a7e2252450376b3c9cf1f475e11bcee15d79ebf0bdc3589938`.
+It contains the 22-symbol feed, 374 raw public pages and acquisition/failure
+provenance, with no credentials or private account records. The tracked
+[data manifest](simulations/symbols22-data-20261017/README.md) records source
+bounds and per-file hashes. The
+[prior comparison audit](simulations/prior-comparison-audit-20261017.md)
+records the old 336h selection and mixed sizing/cost/cohort differences.
+
+The new read-only review helper and its eight synthetic tests verify
+complete four-case envelopes, exact native allocation/unit-return accounting,
+hash/settings parity and the prewritten prospective removal rule. Root
+typecheck and development build passed; focused source-test evidence and
+resolved stale fixtures are listed in the progress report without summing
+overlapping runs. No configs have been removed. Complete both 22-symbol cases
+before producing an exclusion list; any selected list requires another
+prospective replay. No live deployment, reload or venue order was performed.
+
+
+## Hosted full-audit and v4 replay checkpoint — 2026-10-17
+
+Local source checkpoint `acba877` was published in
+[PR #164](https://github.com/mxssnx-creator/CTS-A-O/pull/164) as remote commit
+`f75026f0d675e95fdf0a5d94e1de2aadf2f4ccb3`, matching tree
+`6909bf864945b0ed36aa4243175ef51bdbd29db1`. The cgroup hierarchy-root scanner
+correction preserves unknown-reading rejection and the 4,096MiB admission
+floor. The four newly sealed v4 protocols retain exactly the v3 economic
+settings, feeds, ordered symbols, warmup, windows, sizing and gates; their
+source-manifest SHA-256 is
+`bc7216bd7ab6000b7651a5d83054a16887854097a31847e7701b9a92754693f7`.
+See `docs/simulations/expanded-postbase-v4-index-20261017.json` for all four
+protocol and runtime-settings hashes. No strategy outcome caused this reseal.
+
+The failed hosted launch39076740047 is preserved in commit `b48e7dd` under
+[`postbase-ci-interrupted-39076740047`](simulations/postbase-ci-interrupted-39076740047/README.md).
+It passed install, typecheck, build and 55 offline script tests, decoded the
+fixed public feed and prepared every case, then stopped before scoring on the
+root-cgroup reading. It establishes no market PF or execution count.
+
+The replacement
+[hosted run39077361130](https://github.com/mxssnx-creator/CTS-A-O/actions/runs/39077361130),
+job `117527184101`, was active at this checkpoint; runtime setup, TypeScript
+and the development build were verified. Its workflow requires the complete
+178-file core audit and two slow synthetic checks before launching the four
+serial offline replays. Those gates, the baseline/reclaim8 comparisons on
+20/22 symbols, and the final hourly/exclusion review remain pending; no
+current result is claimed. Preserve failure logs if any gate fails, and use
+the exact pushed source and newly frozen protocols for any retry.
+
+The public-data archive remains saved and hash-verified:
+`cts-ao-22-symbol-public-20261017.tar.gz`, 15,868,857 bytes, SHA-256
+`252bc0c3c43e66a7e2252450376b3c9cf1f475e11bcee15d79ebf0bdc3589938`.
+The tracked encoded fixture reconstructs source-feed SHA-256
+`02ad14fd7d7ba3e89dee99026962a2ec66d8145d6beb36b17ab42a89a7d2004e`.
+Finish the hosted checks and complete both final22 cases before selecting any
+prospective exclusions. No merge, live deployment/reload or exclusion was
+performed; existing PF/sample and own-position protection gates remain.

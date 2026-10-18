@@ -1,5 +1,6 @@
 // Signals processing settings and sources (pure, no engine imports: shared by the engine, config and the UI).
 // The engine side (combos, configs, active ranking, guard) is in signals.ts.
+import { INDICATION_KINDS, type IndicationKind } from "./domain/types.ts";
 
 /**
  * Proven classic signals, each in a short and a medium parameter range (registry ids of the computations they
@@ -501,6 +502,19 @@ export interface SignalClusterSettings {
   lossShare: number;
 }
 
+/** Independent majority-vote coordinators, one ID per input-range mix and domination threshold. */
+export interface SignalCoordinationSettings {
+  enabled: boolean;
+  /** Minimum number of active, non-conflicting source votes on a bar. */
+  minSources: number;
+  /** Active pair × type × symbol × direction cap, applied separately from classic signals. */
+  count: number;
+  /** Extra multiplier relative to a normal order (8 = 800%); applied after Block and relation volume. */
+  volumeFactor: number;
+  /** Exit ranges: Normal here maps to the existing General range in the grid. */
+  ranges: { short: boolean; normal: boolean; long: boolean };
+}
+
 /**
  * Source stability gate: a source's signals pause while its own executed signal orders of the latest `days`
  * (24-hour buckets back from each entry) are unstable — at least `minTrades` of them and negative in sum, or
@@ -553,7 +567,7 @@ export interface SignalHistTrail {
 
 export interface SignalSettings {
   enabled: boolean;
-  /** active signal units (full source indication × type × symbol × direction); 10–200 step 10 */
+  /** active config units (source indication × protect × type × symbol × direction); 0 = unlimited */
   count: number;
   /** sources switched on (by name); missing = on (sourcesMode "deny") or off (sourcesMode "allow") */
   sources: Record<string, boolean>;
@@ -563,6 +577,8 @@ export interface SignalSettings {
    */
   sourcesMode?: "deny" | "allow";
   ranges: { short: boolean; medium: boolean };
+  /** Per-signal-range execution multipliers; applied to the balance-based unit before the account caps. */
+  rangeVolumeFactors: { short: number; medium: number };
   /** timeframe lanes signals run on (of the engine's lanes) */
   lanes: number[];
   normal: { tp: number[]; slOfTp: number[] };
@@ -578,6 +594,9 @@ export interface SignalSettings {
   guard: { enabled: boolean; lastN: number };
   /** loss-cluster guard: pause signal executions while many signals just lost together (see SignalGuard) */
   cluster: SignalClusterSettings;
+  coordination: SignalCoordinationSettings;
+  /** Per-indication multiplier for combined higher-timeframe lanes (`@m…c`); defaults stay neutral at 1×. */
+  combinedVolumeFactors: Record<IndicationKind, number>;
   /** Base minimum per signal to be ranked: closed trades on that symbol */
   minTrades: number;
   /**
@@ -592,7 +611,7 @@ export interface SignalSettings {
    * recent 24 h of that history must be positive (a signal that stopped working is not started)
    */
   validate: boolean;
-  /** hard floors of every signal config's stop and trailing distance (fractions; 0.005 = 0.5 %) */
+  /** hard floors of every signal config's stop / trail (fractions; minTrail defaults to 0.002 = 0.2 %) */
   minSl: number;
   minTrail: number;
   /** only stable sources trade (see SignalSourceGate) */
@@ -627,15 +646,29 @@ export interface SignalSettings {
    */
   baseGate?: boolean;
   maxOpen: number;
-  /** max open signal positions (symbol × direction, long and short apart); 0 = no limit */
+  /** Signal-simulation positions (symbol × direction, long and short apart); independent of the live exchange cap. */
   maxPositions: number;
+}
+
+/** Execution multipliers consumed by the simulation, paper book and live order sizing. */
+export interface SignalVolumeFactors {
+  /** Signals Coordination multiplier relative to a normal order. */
+  coordination: number;
+  /** Per-kind multipliers used only on combined `@m…c` timeframe lanes. */
+  combined: Readonly<Partial<Record<IndicationKind, number>>>;
+}
+
+export function signalVolumeFactorsOf(settings: SignalSettings): SignalVolumeFactors {
+  return {
+    coordination: settings.coordination.volumeFactor,
+    combined: settings.combinedVolumeFactors,
+  };
 }
 
 export const DEFAULT_SIGNALS: SignalSettings = {
   enabled: true,
-  // Preserve the existing 100-unit cap. Causal qualification now counts type as well as pair, symbol and direction;
-  // the earlier per-direction measurement predates this explicit type independence.
-  count: 100,
+  // Every independently qualified config context may process; explicit nonzero counts retain ranked selection.
+  count: 0,
   sourcesMode: "deny",
   // research sources: 8 are on (positive net in 7 of 8 replay windows and lower drawdown than the older sources alone:
   // regime breakout, regression channel, session trend, fractal breakout, AO saucer, inside-bar break, NR7 break,
@@ -683,15 +716,16 @@ export const DEFAULT_SIGNALS: SignalSettings = {
     "r-rvi": false,
   },
   ranges: { short: true, medium: true },
+  rangeVolumeFactors: { short: 1, medium: 1 },
   // 15m lane: raw signal PF 0.89 (15m) vs 0.76 (5m) vs 0.67 (1m) (docs/signals-validation.md); the 30m lane lost on
   // all three causal 50-symbol windows (3 Oct / 2 Oct / 23 Sep, PR #65) — the 15m lane carries the edge
   lanes: [15],
-  // 5 targets × 3 stop ratios = 15 Normal configs (medium to high)
-  normal: { tp: [0.025, 0.03, 0.04, 0.05, 0.06], slOfTp: [1.5, 2, 3] },
-  // 5 targets × 3 trail widths = 15 Trailing configs, stops at 3 × target (slOfTp 3; medium to higher)
+  // 7 targets × 6 stop ratios = 42 Normal configs; include 1 % / 1.5 % targets and tighter risk ratios.
+  normal: { tp: [0.01, 0.015, 0.025, 0.03, 0.04, 0.05, 0.06], slOfTp: [0.5, 0.75, 1, 1.5, 2, 3] },
+  // 7 targets × 5 trail widths = 35 capped Trailing configs, stops at 3 × target.
   trailing: {
-    tp: [0.03, 0.04, 0.05, 0.06, 0.08],
-    trailOfTp: [0.4, 0.6, 0.8],
+    tp: [0.01, 0.015, 0.03, 0.04, 0.05, 0.06, 0.08],
+    trailOfTp: [0.2, 0.3, 0.4, 0.6, 0.8],
     slOfTp: 3,
   },
   trailingOnly: {
@@ -701,8 +735,8 @@ export const DEFAULT_SIGNALS: SignalSettings = {
     trailStep: 1,
   },
   holdH: 48,
-  // both exit models: 30 percent + 18 ATR configs per signal (1.6× the percent-only tapes)
-  // percent exits: with targets of 2.5–8 % (cost drag ≤ 8 % of the target) and 15m / 30m lanes the signal orders were
+  // both exit models: 77 percent + 18 ATR configs per signal (1.23× the percent-only tapes)
+  // percent exits: with targets of 1–8 % (cost drag ≤ 20 % of the smallest target) and 15m / 30m lanes the signal orders were
   // positive in 4 of 4 windows (PF 1.13 / 2.28 / 2.93 / 4.93); ATR exits lost in 2 of 3
   exits: "pct",
   // Stable-02 defaults: SL 0.7 × ATR (its default), 1.15 (SHORT_SL_ATR), 1.5 · TP 1 / 1.6 / 2.2 R (2.2 its default)
@@ -715,7 +749,7 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   },
   // operator, 13 Oct: signals run multiple trailing configs from their own historic calcs — the median and upper
   // quartile of the move their entries reached as targets, trailed at ¼ / ½ / ¾ of it, stops 1× / 2× (up to 12 configs
-  // per signal beside its 30 percent ones; each validated on its own)
+  // per signal beside its 77 percent ones; each validated on its own)
   hist: {
     enabled: true,
     quantiles: [0.5, 0.75],
@@ -726,8 +760,19 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   },
   guard: { enabled: true, lastN: 8 },
   cluster: { enabled: true, windowMin: 60, minLosses: 8, lossShare: 0.6 },
+  coordination: {
+    enabled: true,
+    minSources: 3,
+    count: 100,
+    volumeFactor: 8,
+    ranges: { short: true, normal: true, long: true },
+  },
+  combinedVolumeFactors: Object.fromEntries(INDICATION_KINDS.map((kind) => [kind, 1])) as Record<
+    IndicationKind,
+    number
+  >,
   // minTrades counts two things, and each is named where it is used: the activation (signals.ts activeSignals) takes the
-  // raw Base trades of a symbol and side; the acceptance groups (acceptOnWindow) count the signal ENTRIES of their window
+  // own config trades of a symbol and side; the acceptance groups (acceptOnWindow) count the signal ENTRIES of their window
   minTrades: 3,
   // causal validation (8 days, with signal confirmation): lowdd PF 1.49 dd 490 · drawdown 1.49 / 521 · net 1.17 / 2565
   rank: "lowdd",
@@ -736,25 +781,25 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   validate: true,
   validateH: 24,
   minSl: 0.005,
-  minTrail: 0.005,
+  minTrail: 0.002,
   // off: pausing a source after its executed orders lost cost net at every tested setting (continuous 8 days,
   // 43 sources: no gate PF 1.53 net 3470 · best gate 2 d / 67 % PF 1.50 net 2671; docs/signals-validation.md)
   sourceGate: { enabled: false, days: 2, minShare: 0.5, minTrades: 5 },
-  // orders (every order and partial) are unlimited; POSITIONS (symbol × direction, long and short apart) are capped
-  // at 100 for signals, apart from the engine's own cap (4 windows: signal net +10903 / worst drawdown 2501 at 32
-  // orders per symbol, +26524 / 5663 at 120; docs/signals-validation.md)
+  // Orders (every order and partial) are unlimited. Signal simulation permits 250 open positions per direction,
+  // separately from live exchange admission (100 total slots across all strategies).
   perSymbol: 0,
   maxOpen: 0,
-  maxPositions: 100,
+  maxPositions: 250,
   // off: signals run Normal + Trailing; DCA / Axis sets per signal are selectable (not validated as better)
   strategies: { dca: false, axis: false },
   // signals have their own switch: the engine's Normal off / Block Active skip left them ~16 closes in a day on x01
   ownBase: true,
   // volatility floor 0.3 %: the expected move must be worth the 0.2 % round trip (worst drawdown 523 vs 660)
   filter: { trendH: 0, volFloor: 0.003 },
-  // the acceptance is the edge (off: unit PF 0.4–0.7); thresholds barely matter (pooled closes are nearly all wins or
+  // the historical source-pooled acceptance was the edge (off: unit PF 0.4–0.7); thresholds barely mattered (pooled closes are nearly all wins or
   // all losses: PF 1.05 / 1.5 / 2 / 3 gave identical results on 3 Oct / 2 Oct / 23 Sep, PR #65); the operator's
-  // setting: PF 1.3 over 48 h
+  // setting: PF 1.3 over 48 h. Current qualification uses each exact config's own record; historical pooled evidence
+  // does not certify this independent-config correction. Sparse windows retain acceptOnWindow semantics.
   accept: { enabled: true, minPf: 1.3, hours: 48, minTrades: 6 },
   // on (a positive coordination, docs/positive-coordinations.md; x01 runs it): the pooled side record split cleanly
   // (48 h, 5 Oct: long PF 3–44, short PF 0.1–0.3 per 12 h); the operator's signal evaluation: PF 1.3, as the acceptance
@@ -782,6 +827,7 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
     ...DEFAULT_SIGNALS,
     ...(s ?? {}),
     ranges: { ...DEFAULT_SIGNALS.ranges, ...(s?.ranges ?? {}) },
+    rangeVolumeFactors: { ...DEFAULT_SIGNALS.rangeVolumeFactors, ...(s?.rangeVolumeFactors ?? {}) },
     normal: { ...DEFAULT_SIGNALS.normal, ...(s?.normal ?? {}) },
     trailing: { ...DEFAULT_SIGNALS.trailing, ...(s?.trailing ?? {}) },
     trailingOnly: { ...DEFAULT_SIGNALS.trailingOnly, ...(s?.trailingOnly ?? {}) },
@@ -792,6 +838,15 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
     hist: { ...DEFAULT_SIGNALS.hist, ...(s?.hist ?? {}) },
     guard: { ...DEFAULT_SIGNALS.guard, ...(s?.guard ?? {}) },
     cluster: { ...DEFAULT_SIGNALS.cluster, ...(s?.cluster ?? {}) },
+    coordination: {
+      ...DEFAULT_SIGNALS.coordination,
+      ...(s?.coordination ?? {}),
+      ranges: { ...DEFAULT_SIGNALS.coordination.ranges, ...(s?.coordination?.ranges ?? {}) },
+    },
+    combinedVolumeFactors: {
+      ...DEFAULT_SIGNALS.combinedVolumeFactors,
+      ...(s?.combinedVolumeFactors ?? {}),
+    },
     sourceGate: { ...DEFAULT_SIGNALS.sourceGate, ...(s?.sourceGate ?? {}) },
     strategies: { ...DEFAULT_SIGNALS.strategies, ...(s?.strategies ?? {}) },
     filter: { ...DEFAULT_SIGNALS.filter, ...(s?.filter ?? {}) },
@@ -844,6 +899,33 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
   );
   out.strategies.dca = out.strategies.dca === true;
   out.strategies.axis = out.strategies.axis === true;
+  out.coordination.enabled = out.coordination.enabled !== false;
+  out.coordination.minSources = Math.min(
+    SIGNAL_SOURCES.length,
+    Math.max(2, Math.round(Number(out.coordination.minSources) || DEFAULT_SIGNALS.coordination.minSources)),
+  );
+  const coordinationCount = Number(out.coordination.count);
+  out.coordination.count = !Number.isFinite(coordinationCount)
+    ? DEFAULT_SIGNALS.coordination.count
+    : coordinationCount <= 0
+      ? 0
+      : Math.min(2000, Math.max(10, Math.round(coordinationCount / 10) * 10));
+  out.coordination.ranges.short = out.coordination.ranges.short !== false;
+  out.coordination.ranges.normal = out.coordination.ranges.normal !== false;
+  out.coordination.ranges.long = out.coordination.ranges.long !== false;
+  const factor = (value: unknown, fallback: number) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? Math.min(22, Math.max(1, Math.round(n))) : fallback;
+  };
+  out.coordination.volumeFactor = factor(
+    out.coordination.volumeFactor,
+    DEFAULT_SIGNALS.coordination.volumeFactor,
+  );
+  for (const kind of INDICATION_KINDS)
+    out.combinedVolumeFactors[kind] = factor(
+      out.combinedVolumeFactors[kind],
+      DEFAULT_SIGNALS.combinedVolumeFactors[kind],
+    );
   out.ownBase = out.ownBase !== false;
   if (!["pct", "atr", "both"].includes(out.exits)) out.exits = DEFAULT_SIGNALS.exits;
   const a = out.atr;
@@ -881,6 +963,14 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
     Number.isFinite(Number(v)) ? Math.min(0.1, Math.max(0, Number(v))) : d;
   out.minSl = fl(out.minSl, DEFAULT_SIGNALS.minSl);
   out.minTrail = fl(out.minTrail, DEFAULT_SIGNALS.minTrail);
+  const volumeFactor = (v: unknown) => {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return 1;
+    const bounded = Math.min(5, Math.max(0.2, n));
+    return bounded === 2.5 ? 2.5 : Math.round(bounded * 5) / 5;
+  };
+  out.rangeVolumeFactors.short = volumeFactor(out.rangeVolumeFactors.short);
+  out.rangeVolumeFactors.medium = volumeFactor(out.rangeVolumeFactors.medium);
   const vh = Number(out.validateH);
   out.validateH = Number.isFinite(vh) ? Math.min(72, Math.max(2, Math.round(vh))) : 24;
   out.guard.lastN = Math.min(
@@ -888,6 +978,13 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
     Math.max(2, Math.round(Number(out.guard.lastN) || DEFAULT_SIGNALS.guard.lastN)),
   );
   return out;
+}
+
+/** The independent short/medium range encoded at the end of a signal id, before any timeframe suffix. */
+export function signalRangeOf(ind: string): "short" | "medium" | null {
+  const base = ind.split("@", 1)[0];
+  if (!base.startsWith("sig-")) return null;
+  return base.endsWith("-s") ? "short" : base.endsWith("-m") ? "medium" : null;
 }
 
 /** A partial signals patch applied onto current settings (nested groups merged, lists replaced). */
@@ -908,6 +1005,15 @@ export function mergeSignals(
     hist: { ...a.hist, ...(p.hist ?? {}) },
     guard: { ...a.guard, ...(p.guard ?? {}) },
     cluster: { ...a.cluster, ...(p.cluster ?? {}) },
+    coordination: {
+      ...a.coordination,
+      ...(p.coordination ?? {}),
+      ranges: { ...a.coordination.ranges, ...(p.coordination?.ranges ?? {}) },
+    },
+    combinedVolumeFactors: {
+      ...a.combinedVolumeFactors,
+      ...(p.combinedVolumeFactors ?? {}),
+    },
     filter: { ...a.filter, ...(p.filter ?? {}) },
     accept: { ...a.accept, ...(p.accept ?? {}) },
     sideAccept: { ...a.sideAccept, ...(p.sideAccept ?? {}) },
