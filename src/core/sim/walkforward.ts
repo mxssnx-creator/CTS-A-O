@@ -140,6 +140,10 @@ export function* stableSortGen<T>(values: T[], compare: (a: T, b: T) => number):
   const shouldYield = () => {
     return ++work % yieldEvery === 0;
   };
+  const profileSortYield = () => ({
+    stage: "Simulation",
+    label: `stable sort ${n} items · ${work} moves`,
+  }) as unknown as number;
   for (let width = 1; width < n; width *= 2) {
     for (let left = 0; left < n; left += width * 2) {
       const mid = Math.min(left + width, n);
@@ -149,15 +153,15 @@ export function* stableSortGen<T>(values: T[], compare: (a: T, b: T) => number):
       let out = left;
       while (a < mid && b < right) {
         target[out++] = compare(source[a], source[b]) <= 0 ? source[a++] : source[b++];
-        if (shouldYield()) yield -1;
+        if (shouldYield()) yield profileSortYield();
       }
       while (a < mid) {
         target[out++] = source[a++];
-        if (shouldYield()) yield -1;
+        if (shouldYield()) yield profileSortYield();
       }
       while (b < right) {
         target[out++] = source[b++];
-        if (shouldYield()) yield -1;
+        if (shouldYield()) yield profileSortYield();
       }
     }
     [source, target] = [target, source];
@@ -165,7 +169,7 @@ export function* stableSortGen<T>(values: T[], compare: (a: T, b: T) => number):
   if (source !== values) {
     for (let i = 0; i < n; i++) {
       values[i] = source[i];
-      if (shouldYield()) yield -1;
+      if (shouldYield()) yield profileSortYield();
     }
   }
 }
