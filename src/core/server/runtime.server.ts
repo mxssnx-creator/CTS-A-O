@@ -661,7 +661,12 @@ export function carryTrail(
         }
       : {}),
     ...(prev.tkBar !== undefined
-      ? { tkBar: prev.tkBar, tkHi: prev.tkHi, tkLo: prev.tkLo, tkClose: prev.tkClose }
+      ? {
+          tkBar: prev.tkBar,
+          tkHi: prev.tkHi,
+          tkLo: prev.tkLo,
+          ...(prev.tkClose !== undefined ? { tkClose: prev.tkClose } : {}),
+        }
       : {}),
   };
 }
