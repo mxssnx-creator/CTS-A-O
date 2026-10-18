@@ -130,7 +130,10 @@ export class BaseCellAccumulator {
     const pf = profitFactor(gp, gl);
     // A malformed fill, fee or extreme numerical overflow cannot become an apparently winning Base cell.
     // Preserve the settled sample count for diagnostics, but never expose a qualifying PF or net return.
-    if (![gp, gl, sum, cum, peak, mdd, pf, sum * 100, mdd * 100, gp * 100, gl * 100].every(Number.isFinite))
+    if (!(Number.isFinite(gp) && Number.isFinite(gl) && Number.isFinite(sum) &&
+      Number.isFinite(cum) && Number.isFinite(peak) && Number.isFinite(mdd) && Number.isFinite(pf) &&
+      Number.isFinite(sum * 100) && Number.isFinite(mdd * 100) &&
+      Number.isFinite(gp * 100) && Number.isFinite(gl * 100)))
       return { n, pf: 0, net: 0, mdd: 0, gp: 0, gl: 0, invalid: true };
     return { n, pf, net: sum * 100, mdd: mdd * 100, gp: gp * 100, gl: gl * 100 };
   }
