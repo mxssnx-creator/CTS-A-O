@@ -27,10 +27,12 @@ export function historicExitLabel(value: { cfg?: string; key?: string; id?: stri
   return ["Historic Exit", family, side].filter(Boolean).join(" · ");
 }
 
-/** Match the engine's normalized percent/ATR grids and the independent no-TP grid. */
+/** Count configured cells for the UI, including cells the engine later filters below its trail floor. */
 export function signalConfigCounts(input?: Partial<SignalSettings> | null) {
   const s = signalSettings(input);
-  const protects = signalProtects(s);
+  // The settings panel reports the requested grid. Runtime eligibility applies minTrail after this count, so
+  // show those configured cells instead of making them disappear from the user's configuration summary.
+  const protects = signalProtects({ ...s, minTrail: 0 });
   const normal = protects.filter((p) => !p.atr && !p.trailOnly && p.trail === 0).length;
   const trailing = protects.filter((p) => !p.atr && !p.trailOnly && p.trail > 0).length;
   const atr = protects.filter((p) => !!p.atr).length;
