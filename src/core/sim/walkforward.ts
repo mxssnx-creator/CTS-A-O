@@ -5064,7 +5064,7 @@ export function* walkForwardGen(
   // per candidate: ~1 M of them, 0.1–0.2 GB through the Real stage); the same values as sigActiveKey per candidate
   const pairKeys = new Map<string, Map<string, [string | undefined, string | undefined]>>();
   for (const tp of sigTapes) {
-    if (++built % 200 === 0) yield -1; // (a slice, not a simulated step)
+    if (++built % 200 === 0) yield profile("walk signal tape configs");
     // keyed per direction (sigActiveKey): long and short of a signal on a symbol are active apart
     const take = (sym: string, side: number) =>
       o.signalRank ||
@@ -5098,7 +5098,7 @@ export function* walkForwardGen(
       let openSliceAt = performance.now();
       for (const op of tp.open) {
         if (++openWork % 32 === 0 && performance.now() - openSliceAt >= 8) {
-          yield -1;
+          yield profile("walk open signal candidates");
           openSliceAt = performance.now();
         }
         if (op.entryT < startT || op.entryT >= stopT) continue;
@@ -5167,7 +5167,7 @@ export function* walkForwardGen(
         if (hedgeKeys.size) all.add(key);
         keys.push(key);
         if (++activeWork % 32 === 0 && performance.now() - activeSliceAt >= 8) {
-          yield -1;
+          yield profile("copy active signal keys");
           activeSliceAt = performance.now();
         }
       }
@@ -5176,14 +5176,14 @@ export function* walkForwardGen(
         if (hedgeKeys.size && !duplicate) all.add(key);
         if (!duplicate) keys.push(key);
         if (++activeWork % 32 === 0 && performance.now() - activeSliceAt >= 8) {
-          yield -1;
+          yield profile("merge hedge signal keys");
           activeSliceAt = performance.now();
         }
         if (duplicate) continue;
       }
       stepOpts = { ...o, signalActive: all };
       signalSteps.push({ t, keys });
-      yield -1; // (a slice: the ranking and the step's executions are separate pieces of work)
+      yield profile("signal ranking complete");
     }
     // fixed mode in slices (the selection scores every tape)
     const sel = o.mode === "fixed" ? yield* selectFixedGen(selTapes, t, o) : null;
@@ -5205,7 +5205,7 @@ export function* walkForwardGen(
     let pickSliceAt = performance.now();
     for (const p of picks) {
       if (++pi % 16 === 0 && performance.now() - pickSliceAt >= 8) {
-        yield -1;
+        yield profile("collect selected tapes");
         pickSliceAt = performance.now();
       }
       // contrarian execution (wf.invertSeats): the seat's entries on its mirror's tape
@@ -5221,7 +5221,7 @@ export function* walkForwardGen(
       const exitCap = stepEnd + maxHoldOf(tp);
       for (let i = lowerBound(tp.exitT, t); i < tp.n; i++) {
         if (++built % 32 === 0 && performance.now() - builtSliceAt >= 8) {
-          yield -1;
+          yield profile("collect selected tape entries");
           builtSliceAt = performance.now();
         }
         if (tp.exitT[i] >= exitCap) break;
@@ -5236,7 +5236,7 @@ export function* walkForwardGen(
     yield profile("engine candidates collected");
     while (sp < sigCands.length && sigCands[sp].e < t + stepH * H) {
       if (++built % 32 === 0 && performance.now() - builtSliceAt >= 8) {
-        yield -1;
+        yield profile("collect active signal entries");
         builtSliceAt = performance.now();
       }
       const c = sigCands[sp++];
@@ -5268,7 +5268,7 @@ export function* walkForwardGen(
     for (const p of picks) {
       rangeRow(stepRange(p.id)).validated++;
       if (++rangeWork % 32 === 0 && performance.now() - rangeSliceAt >= 8) {
-        yield -1;
+        yield profile("record validated range counts");
         rangeSliceAt = performance.now();
       }
     }
@@ -5280,7 +5280,7 @@ export function* walkForwardGen(
     for (const { tr } of cands) {
       rangeRow(stepRange(tr.cfg)).candidates++;
       if (++rangeWork % 32 === 0 && performance.now() - rangeSliceAt >= 8) {
-        yield -1;
+        yield profile("record candidate range counts");
         rangeSliceAt = performance.now();
       }
     }
@@ -5289,7 +5289,7 @@ export function* walkForwardGen(
       // Candidate gates may be expensive (coordination, book checks and execution sizing). A count-only
       // yield lets dense steps monopolize the event loop, so slice by elapsed work instead.
       if (performance.now() - candidateSliceAt >= 8) {
-        yield -1;
+        yield profile("execute candidate gates");
         candidateSliceAt = performance.now();
       }
       yield* settle(tr.entryT);
@@ -5435,11 +5435,11 @@ export function* walkForwardGen(
   }
 
   yield* stableSortGen(trades, (a, b) => a.exitT - b.exitT);
-  yield -1; // (summary slices, not simulated steps)
+  yield profile("summarize sorted trades");
   const allOutcomes = openAtEnd.length ? [...trades, ...openAtEnd] : trades;
   const stats = unitStatsOf(allOutcomes, stopT);
   const sizedStats = statsOf(allOutcomes, stopT);
-  yield -1;
+  yield profile("summarize unit and sized stats");
   const perHour = new Map<number, { gp: number; gl: number; net: number; n: number }>();
   for (const x of trades) {
     const k = settledHourT(x.exitT);
@@ -5459,9 +5459,9 @@ export function* walkForwardGen(
       n: e.n,
       pf: profitFactor(e.gp, e.gl),
     }));
-  yield -1;
+  yield profile("summarize hourly stats");
   const blocks = runBlocks(trades, startT, stopT);
-  yield -1;
+  yield profile("summarize blocks");
   const group = (key: (t: Trade) => string) => {
     const m = new Map<string, Trade[]>();
     for (const tr of trades) {
