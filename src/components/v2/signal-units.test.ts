@@ -75,6 +75,9 @@ test("Signal UI counts match the engine and include no-TP sets independently of 
   });
   assert.equal(signalConfigCounts(custom).trailingOnly, 2);
   assert.equal(signalConfigCounts(custom).total, 4, "UI shows every requested cell, including the two below-floor trails");
+  assert.equal(signalConfigCounts(custom).activeTrailingOnly, 0);
+  assert.equal(signalConfigCounts(custom).inactiveTrailingOnly, 2);
+  assert.equal(signalConfigCounts(custom).activeTotal, 2, "UI must not label below-floor cells as executable");
   assert.equal(signalProtects(custom).length, 2, "engine excludes both no-TP cells below minTrail");
   assert.ok(signalProtects(custom).every((p) => !p.trailOnly));
 });
