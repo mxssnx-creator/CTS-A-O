@@ -323,6 +323,8 @@ export interface ExitStrategySettings {
   minValidationTrades: number;
   /** minimum held-out net return profit factor for this independent Exit candidate */
   minPf: number;
+  /** minimum share of green active UTC exit hours in a sufficiently populated held-out sample; 0 disables */
+  minGreenHourShare: number;
   /** maximum held-out drawdown / net ratio; 0 disables this additional cap */
   maxDdr: number;
   /** maximum hold horizon; shortened when the fit segment is small */
@@ -609,6 +611,7 @@ export const DEFAULT_SETTINGS: CoreSettings = {
     minEntries: 30,
     minValidationTrades: 12,
     minPf: 1.1,
+    minGreenHourShare: 0.5,
     maxDdr: 1,
     holdH: 24,
     maxConfigsPerPair: 24,

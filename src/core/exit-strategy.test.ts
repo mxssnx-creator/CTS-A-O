@@ -7,6 +7,7 @@ import {
   EXIT_HISTORY_MAX_PAIRS,
   emptyExitStrategyDiagnostics,
   exitHistoryFingerprint,
+  passesExitHourlyConsistency,
   exitProtectCandidates,
   exitStrategyPairs,
   exitStrategyProtectsBoundedGen,
@@ -36,6 +37,13 @@ function finish<T>(g: Generator<void, T>): T {
 }
 
 describe("independent historic exit strategy", () => {
+  it("requires validation returns to be green across enough active hours", () => {
+    assert.equal(passesExitHourlyConsistency({ hours: 8, greenHours: 5 }, 0.5), true);
+    assert.equal(passesExitHourlyConsistency({ hours: 8, greenHours: 3 }, 0.5), false);
+    assert.equal(passesExitHourlyConsistency({ hours: 5, greenHours: 0 }, 0.5), true);
+    assert.equal(passesExitHourlyConsistency({ hours: 8, greenHours: 0 }, 0), true);
+  });
+
   it("caps config sets fairly across independent tactics and directions", () => {
     assert.deepEqual(
       capExitCandidates(
@@ -886,6 +894,13 @@ describe("independent historic exit strategy", () => {
           exitStrategy: { ...DEFAULT_SETTINGS.exitStrategy, maxDdr: 11 },
         }),
       /max drawdown \/ net ratio/,
+    );
+    assert.throws(
+      () =>
+        checkSettings({
+          exitStrategy: { ...DEFAULT_SETTINGS.exitStrategy, minGreenHourShare: 1.1 },
+        }),
+      /minimum green-hour share/,
     );
   });
 });

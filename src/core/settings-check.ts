@@ -239,6 +239,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
     num(e.minEntries, 5, 1000, "historic exit fit entries");
     num(e.minValidationTrades, 2, 500, "historic exit validation closes");
     num(e.minPf, 1.05, 10, "historic exit validation PF");
+    num(e.minGreenHourShare, 0, 1, "historic exit minimum green-hour share");
     num(e.maxDdr, 0, 10, "historic exit max drawdown / net ratio");
     num(e.holdH, 0.5, 96, "historic exit maximum hold (hours)");
     num(e.maxConfigsPerPair, 6, 128, "historic exit configs per pair");
