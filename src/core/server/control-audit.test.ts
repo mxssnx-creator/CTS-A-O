@@ -222,7 +222,9 @@ describe("control orders: audit regressions", () => {
     // tighter backstop stayed and filled before any lane stop
     const ex = new SimExchange(rng(22));
     const { rt } = fakeRt(new CoreDb(":memory:"));
-    rt.settings.live = { ...rt.settings.live, maxNotionalUsd: 10 };
+    // Legacy USD ceilings are ignored; use the supported balance-relative cap for this $10 limit.
+    rt.settings.live = { ...rt.settings.live, maxPositionX: 0.25 };
+    ex.withEquity(40);
     rt.paper.positions = [lane("a", "S1-USDT", 1)]; // 3 % lane stop → backstop 3.6 % below 17
     await step(rt, ex);
     const stopLog = () => ex.log.filter((p) => p.type === "STOP_MARKET");
@@ -999,9 +1001,11 @@ describe("control exits: partial fills, the exchange minimum, an already-flat si
     assert.deepEqual(parseFill(half), { px: 17, fee: 0.001, qty: 0.25 });
     assert.equal(executedQty(half, 0.5), 0.25, "a partial fill");
     assert.equal(executedQty(half, 0.1), 0.1, "never more than was sent");
-    // no executed quantity in the reply: what was sent is what filled (a MARKET order the exchange accepted)
-    assert.equal(executedQty({ order: { avgPrice: "17" } }, 0.5), 0.5);
-    assert.equal(executedQty(undefined, 0.5), 0.5);
+    // A successful MARKET acknowledgement alone is not fill evidence; only explicit quantity or FILLED status is.
+    assert.equal(executedQty({ order: { avgPrice: "17" } }, 0.5), 0);
+    assert.equal(executedQty({ order: { avgPrice: "17", status: "ACCEPTED" } }, 0.5), 0);
+    assert.equal(executedQty({ order: { avgPrice: "17", status: "FILLED" } }, 0.5), 0.5);
+    assert.equal(executedQty(undefined, 0.5), 0);
   });
 
   it("a partial close keeps our own quantity and the protective stop; the next step closes the rest", async () => {
