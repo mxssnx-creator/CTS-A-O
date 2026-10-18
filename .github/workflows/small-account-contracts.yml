@@ -1,0 +1,38 @@
+name: Small account public contract snapshot
+on:
+  push:
+    branches: [fix/small-account-sizing-20261018]
+    paths: [.github/workflows/small-account-contracts.yml]
+permissions:
+  contents: read
+jobs:
+  contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Read public contract metadata only
+        shell: bash
+        run: |
+          mkdir -p /tmp/cts-contracts
+          python - <<'PY'
+          import json, pathlib, datetime, urllib.request
+          out=pathlib.Path('/tmp/cts-contracts')
+          for name,host in [('main','https://open-api.bingx.com'),('vst','https://open-api-vst.bingx.com')]:
+              url=host+'/openApi/swap/v2/quote/contracts'
+              try:
+                  raw=urllib.request.urlopen(url,timeout=30).read()
+                  data=json.loads(raw)
+                  (out/(name+'.json')).write_bytes(raw)
+                  (out/(name+'-source.json')).write_text(json.dumps({'url':url,'capturedAt':datetime.datetime.now(datetime.timezone.utc).isoformat(),'accountSpecific':False}))
+                  rows=data.get('data',[])
+                  for row in rows:
+                      if row.get('symbol') in ['BTC-USDT','ETH-USDT','SOL-USDT','XRP-USDT']:
+                          print(name,json.dumps(row))
+              except Exception as e:
+                  (out/(name+'-failure.json')).write_text(json.dumps({'url':url,'error':str(e)}))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: small-account-contract-metadata
+          path: /tmp/cts-contracts/
+          retention-days: 7
