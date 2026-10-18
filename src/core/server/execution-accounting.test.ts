@@ -25,8 +25,12 @@ describe("execution accounting integrity", () => {
       assert.equal(executedQty({ order: { avgPrice: 100, executedQty: q } }, 1), 0);
     assert.equal(executedQty({ order: { status: "NEW" } }, 1), 0);
     assert.equal(executedQty({ order: { status: "CANCELLED" } }, 1), 0);
-    assert.equal(executedQty({ order: { avgPrice: 100, status: "FILLED" } }, 1), 1, "documented missing-field fallback for an accepted fill");
-    assert.equal(executedQty(undefined, 1), 1, "legacy accepted simulated replies remain compatible");
+    assert.equal(executedQty({ order: { avgPrice: 100, status: "FILLED" } }, 1), 1,
+      "explicit FILLED status supports a missing-quantity venue reply");
+    assert.equal(executedQty(undefined, 1), 0, "an empty acknowledgement is never evidence of a filled unit");
+    assert.equal(executedQty({ order: { orderId: "accepted", avgPrice: 100 } }, 1), 0,
+      "an acknowledged MARKET with no fill status or quantity is not owned yet");
+    assert.equal(executedQty({ order: { orderId: "accepted", status: "ACCEPTED" } }, 1), 0);
   });
 
   it("an unfilled accepted entry owns zero, submits no phantom stop, and settles the same order without duplicates", async () => {
