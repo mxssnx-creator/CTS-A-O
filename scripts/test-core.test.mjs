@@ -4,8 +4,16 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
+import { coreTestInvocation } from "./test-core.mjs";
 
 const runner = resolve("scripts/test-core.mjs");
+
+test("core runner enables GC tracing only for explicit diagnostic invocations", () => {
+  const normal = coreTestInvocation(["src/core/server/runtime.test.ts"], { CTS_CORE_TEST_CONCURRENCY: "1" });
+  const traced = coreTestInvocation(["src/core/server/runtime.test.ts"], { CTS_CORE_TEST_CONCURRENCY: "1", CTS_CORE_TRACE_GC: "1" });
+  assert.equal(normal.args.includes("--trace-gc"), false);
+  assert.equal(traced.args.includes("--trace-gc"), true);
+});
 
 test("the standard core runner installs offline evidence before test imports and preserves failed-test status", () => {
   const dir = mkdtempSync(join(tmpdir(), "cts-core-runner-"));

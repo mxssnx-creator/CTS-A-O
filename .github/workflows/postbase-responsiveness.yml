@@ -50,7 +50,7 @@ jobs:
           console.log(studyJson(decision));
           if(!decision.admitted) process.exitCode=1;
           JS
-            NODE_OPTIONS=--trace-gc-nvp timeout --signal=TERM --kill-after=30s 5m node scripts/test-core.mjs --test-name-pattern='keeps the event loop responsive during a compute' src/core/server/runtime.test.ts > "runs/ci-postbase-responsive-20261017/runtime-$profile_run.log" 2>&1
+            CTS_CORE_TRACE_GC=1 timeout --signal=TERM --kill-after=30s 5m node scripts/test-core.mjs --test-name-pattern='keeps the event loop responsive during a compute' src/core/server/runtime.test.ts > "runs/ci-postbase-responsive-20261017/runtime-$profile_run.log" 2>&1
           done
       - name: Preserve complete or failed diagnostics
         if: always()

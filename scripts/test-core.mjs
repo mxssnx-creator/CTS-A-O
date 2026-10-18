@@ -68,6 +68,7 @@ export function coreTestInvocation(argv = [], sourceEnv = process.env, root = RO
       "--heap-growing-percent=50",
       "--experimental-strip-types",
       "--no-warnings",
+      ...(sourceEnv.CTS_CORE_TRACE_GC === "1" ? ["--trace-gc"] : []),
       "--test",
       `--test-concurrency=${concurrency}`,
       ...(slow ? ["--test-name-pattern=stress: a storm|backtests a preset over"] : []),
