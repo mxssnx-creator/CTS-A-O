@@ -28,6 +28,8 @@ describe("trade statistics", () => {
     assert.equal(profitFactor(3, 1), 3);
     assert.equal(profitFactor(3, 0), PF_NO_LOSS);
     assert.equal(profitFactor(0, 0), 0);
+    for (const [gp, gl] of [[NaN, 0], [Infinity, 0], [1, NaN], [1, Infinity], [1, -1], [-1, 1], [1, Number.MIN_VALUE]])
+      assert.ok(Number.isNaN(profitFactor(gp, gl)), "unknown or overflowed PF cannot be called profitable");
   });
 
   it("the sample statistics of four trades (+2, −1, +3, −2 %)", () => {
