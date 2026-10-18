@@ -6,7 +6,19 @@ import { BaseConfigCounts } from "../base-config-counts";
 import { unitStatsPfText } from "../accounting";
 import { pooledBasePfText } from "../progression";
 import { PromotionEvidence } from "../promotion-evidence";
-import { Empty, ErrorNote, fmt, Line, liveState, Panel, pfTone, Pill, Seg, tone, usePoll } from "../ui";
+import {
+  Empty,
+  ErrorNote,
+  fmt,
+  Line,
+  liveState,
+  Panel,
+  pfTone,
+  Pill,
+  Seg,
+  tone,
+  usePoll,
+} from "../ui";
 
 type Any = any;
 
@@ -42,34 +54,38 @@ export function StagesPage() {
             <div className="t">1 · Base</div>
             <div className="n">{fmt.num(c.base)}</div>
             <p>
-              Every indication × bot type is evaluated at Base; {d.wf.tapes} independent
-              strategy tapes (Normal, capped Trailing, trailing-only, DCA, DCA Active and Axis across the configured protection variants)
-              are built for later validation or measurement. Historic Exit fits every initialized engine pair from pre-run history, independently of Base admission and range tags.
-              A computed tape is not an admitted or funded order.
+              Every indication × bot type is evaluated at Base; {d.wf.tapes} independent strategy
+              tapes (Normal, capped Trailing, trailing-only, DCA, DCA Active and Axis across the
+              configured protection variants) are built for later validation or measurement.
+              Historic Exit has a separate Bot-free source set; each source first passes its own
+              Base PF gate, then its candidates fit and validate on pre-run history. A computed tape
+              is not an admitted or funded order.
             </p>
           </div>
           <div className="v2-stage">
             <div className="t">2 · Main</div>
             <div className="n">{fmt.num(c.main)}</div>
             <p>
-              In-sample return PF meets each range's effective floor (global {g.minPf}, with range overrides), DDT ≤ max({g.minDdtH ?? 0} h, {g.maxDdtH} h per 72 h), ≥{" "}
-              {g.minTrades} trades; pair must be
-              parameter-robust. Refined on the protect grid.
+              In-sample return PF meets each range's effective floor (global {g.minPf}, with range
+              overrides), DDT ≤ max({g.minDdtH ?? 0} h, {g.maxDdtH} h per 72 h), ≥ {g.minTrades}{" "}
+              trades; pair must be parameter-robust. Refined on the protect grid.
             </p>
           </div>
           <div className="v2-stage">
             <div className="t">3 · Real</div>
             <div className="n">{realSel}</div>
             <p>
-              {sigSel || d.status?.signals?.enabled ? `${realSel} engine · ${sigSel} signal configs. ` : ""}
+              {sigSel || d.status?.signals?.enabled
+                ? `${realSel} engine · ${sigSel} signal configs. `
+                : ""}
               Pre-historic window {d.wf.preH}h, validate last-N{" "}
               {d.wf.validLastN ? d.wf.validLastN : "off"}
               {d.wf.signalValidLastN !== undefined && d.wf.signalValidLastN !== d.wf.validLastN
                 ? ` (signals ${d.wf.signalValidLastN || "off"})`
                 : ""}{" "}
-              (PF and DDT) before a seat. End stage and
-              live re-check last-N {d.wf.lastN ? d.wf.lastN : "off"} (PF and DDT), then Block.
-              Additional strategies (Historic Exit, Trailing, DCA, Axis) pass the same gates.
+              (PF and DDT) before a seat. End stage and live re-check last-N{" "}
+              {d.wf.lastN ? d.wf.lastN : "off"} (PF and DDT), then Block. Additional strategies
+              (Historic Exit, Trailing, DCA, Axis) pass the same gates.
             </p>
           </div>
           <div className="v2-stage">
@@ -91,7 +107,7 @@ export function StagesPage() {
 
       <Panel
         title="Historic Exit sets"
-        sub="candidate distances fit completed-bar prehistory and pass a later holdout before the Real simulation; each Exit config family and direction keeps independent configs"
+        sub="five independent protection families over Bot-free indication, Tactic, and relation sources; each direction, timeframe lane, and source has its own Base → prehistory fit → holdout progression"
       >
         {exits ? (
           <div className="v2-lines">
@@ -99,7 +115,24 @@ export function StagesPage() {
               k="Build / execution"
               v={`${exits.enabled ? "on" : "off"} / ${tg.exit !== false ? "on" : "off"}`}
             />
-            <Line k="Initialized engine pairs" v={fmt.num(exits.pairs)} />
+            <Line k="Independent Exit source lanes discovered" v={fmt.num(exits.pairs)} />
+            <Line
+              k="Standalone Base evaluated / passed / rejected"
+              v={`${fmt.num(exits.baseEvaluated ?? exitHistory.baseEvaluated)} / ${fmt.num(exits.basePassed ?? exitHistory.basePassed)} / ${fmt.num(exits.baseRejected ?? exitHistory.baseRejected)}`}
+            />
+            <Line
+              k="Independent protection families"
+              v={`${fmt.num(exits.families ?? 5)} · Static SL, Adaptive SL, Trailing, Breakeven, Trailing only`}
+            />
+            <Line
+              k="Tactic / relation lane sources"
+              v={`${fmt.num(exits.tactics)} / ${fmt.num(exits.relations)} · ${
+                [...(exits.timeframes ?? [])]
+                  .sort((a: number, b: number) => a - b)
+                  .map((tf: number) => `${tf}m`)
+                  .join(", ") || "—"
+              }`}
+            />
             <Line k="Current configs (includes held lanes)" v={fmt.num(exits.configs)} />
             <Line
               k="Candidates / holdout evaluations / qualified"
@@ -297,14 +330,18 @@ function SetListings(props: { minPf: number }) {
   const [group, setGroup] = useState("");
   const [page, setPage] = useState(0);
   const { data } = usePoll(
-    () => coreListing({ data: { kind, group: group || undefined, offset: page * PAGE, limit: PAGE } }),
+    () =>
+      coreListing({ data: { kind, group: group || undefined, offset: page * PAGE, limit: PAGE } }),
     10000,
     [kind, group, page],
   );
   const d = data as Any;
   const pages = d?.total ? Math.ceil(d.total / PAGE) : 0;
   return (
-    <Panel title="Validated and active sets" sub="the last paper step's seats, independently ranked signal config × symbol × direction units and proven configs">
+    <Panel
+      title="Validated and active sets"
+      sub="the last paper step's seats, independently ranked signal config × symbol × direction units and proven configs"
+    >
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         <Seg
           value={kind}
@@ -323,7 +360,13 @@ function SetListings(props: { minPf: number }) {
           <Seg
             value={group}
             label="group"
-            options={[{ value: "", label: "All" }, ...d.byGroup.map((x: Any) => ({ value: x.group, label: `${x.group} ${x.validated} · PF ${fmt.pf(x.pf)}` }))]}
+            options={[
+              { value: "", label: "All" },
+              ...d.byGroup.map((x: Any) => ({
+                value: x.group,
+                label: `${x.group} ${x.validated} · PF ${fmt.pf(x.pf)}`,
+              })),
+            ]}
             onChange={(v) => {
               setGroup(v);
               setPage(0);
@@ -400,13 +443,21 @@ function SetListings(props: { minPf: number }) {
             </tbody>
           </table>
           <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6 }}>
-            <button className="v2-btn" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>
+            <button
+              className="v2-btn"
+              disabled={page === 0}
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+            >
               Previous
             </button>
             <span>
               {fmt.num(d.total)} · page {pages ? page + 1 : 0} of {pages}
             </span>
-            <button className="v2-btn" disabled={page + 1 >= pages} onClick={() => setPage((p) => p + 1)}>
+            <button
+              className="v2-btn"
+              disabled={page + 1 >= pages}
+              onClick={() => setPage((p) => p + 1)}
+            >
               Next
             </button>
           </div>

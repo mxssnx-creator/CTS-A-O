@@ -358,7 +358,11 @@ export function configId(bot: BotType, ind: string, p: Protect, kind?: StratKind
               ? "1"
               : p.exitSet === "trailing"
                 ? "2"
-                : ""
+                : p.exitSet === "breakeven"
+                  ? "3"
+                  : p.exitSet === "trailing-only"
+                    ? "4"
+                    : ""
         }`
       : "";
   const base = `${bot}|${ind}|tp${pct(p.tp)}|sl${pct(p.sl)}|tr${pct(p.trail)}|h${p.hold}${atrTag(p)}${p.tag ? `|${p.tag}` : ""}${mode}${exit}`;
@@ -373,7 +377,7 @@ export function configId(bot: BotType, ind: string, p: Protect, kind?: StratKind
 
 export function kindOfId(id: string): StratKind {
   const core = id.replace(/\|(?:mp|mc|mn|sh|gn|lg)(?=\||$)/g, "");
-  if (/\|hx(?:[LS])?[012]?$/.test(core)) return "exit";
+  if (/\|hx(?:[LS])?[0-4]?$/.test(core)) return "exit";
   if (core.endsWith("|axis")) return "axis";
   if (core.endsWith("|dcaA")) return "dca-active";
   if (core.endsWith("|dca")) return "dca";
@@ -403,7 +407,7 @@ export function parseConfigId(id: string): { bot: BotType; ind: string; protect:
   const m =
     // (the Axis variant tag — "|ax-atr2", "|axd-fib3h" from axisVariants — is matched and ignored: without the group
     // every managed / desk Axis id failed to parse and its report rows showed tp / sl / trail / hold 0)
-    /^([a-z]+)\|([a-z0-9.@-]+)\|tp([\d.]+)\|sl([\d.]+)\|tr([\d.]+)\|h(\d+)(?:\|atr([\d.]+)x([\d.]+)(?:t([\d.]+))?)?(\|mc|\|mp|\|mn|\|sh|\|gn|\|lg)?(?:\|axd?-[a-z0-9]+)?(\|hx([LS])?([012])?)?(\|dcaA?|\|axis)?$/.exec(
+    /^([a-z]+)\|([a-z0-9.@-]+)\|tp([\d.]+)\|sl([\d.]+)\|tr([\d.]+)\|h(\d+)(?:\|atr([\d.]+)x([\d.]+)(?:t([\d.]+))?)?(\|mc|\|mp|\|mn|\|sh|\|gn|\|lg)?(?:\|axd?-[a-z0-9]+)?(\|hx([LS])?([0-4])?)?(\|dcaA?|\|axis)?$/.exec(
       plainId,
     );
   if (!m) return null;
@@ -423,6 +427,8 @@ export function parseConfigId(id: string): { bot: BotType; ind: string; protect:
     if (m[13] === "0") protect.exitSet = "static-sl";
     if (m[13] === "1") protect.exitSet = "adaptive-sl";
     if (m[13] === "2") protect.exitSet = "trailing";
+    if (m[13] === "3") protect.exitSet = "breakeven";
+    if (m[13] === "4") protect.exitSet = "trailing-only";
   }
   if (mode) {
     const step = mode[1] === undefined ? 1 : Number(mode[1]);
@@ -718,9 +724,7 @@ export function rangeCellPass(
 }
 
 export function baseSetsGates<G extends Gates>(g: G): G {
-  return g.baseSetsMinPf === undefined
-    ? g
-    : { ...g, minPf: g.baseSetsMinPf };
+  return g.baseSetsMinPf === undefined ? g : { ...g, minPf: g.baseSetsMinPf };
 }
 
 /**
@@ -733,7 +737,14 @@ export function baseSetsGates<G extends Gates>(g: G): G {
 export function basePairRows(
   s1: ReadonlyArray<Pick<ComboRun, "bot" | "ind" | "full">>,
   pairTags: Readonly<Record<string, readonly string[]>>,
-): Array<{ pair: string; n: number; pf: number | null; net: number; passed: boolean; tags: string[] }> {
+): Array<{
+  pair: string;
+  n: number;
+  pf: number | null;
+  net: number;
+  passed: boolean;
+  tags: string[];
+}> {
   const out: Array<{
     pair: string;
     n: number;
@@ -1204,7 +1215,8 @@ export function cellStats(
   cost: number,
   tactics?: Tactics | null,
 ): RangeBaseStat | null {
-  const cooldown = tacticCooldown(tactics);
+  // Historic Exit is a standalone indication source; engine Bot tactics/cooldown do not thin its entry history.
+  const cooldown = bot === "exit" ? 0 : tacticCooldown(tactics);
   const p = laneProtect(protect, ind);
   const id = configId(bot, ind, p);
   const series = seriesOf(u, ind);
@@ -1264,7 +1276,8 @@ export function* runComboSteps(
   tactics?: Tactics | null,
   laneScaled = false,
 ): Generator<void, ComboRun | null> {
-  const cooldown = tacticCooldown(tactics);
+  // Historic Exit is a standalone indication source; engine Bot tactics/cooldown do not thin its entry history.
+  const cooldown = bot === "exit" ? 0 : tacticCooldown(tactics);
   if (!laneScaled) protect = laneProtect(protect, ind);
   const id = configId(bot, ind, protect);
   const trades: Trade[] = [];
@@ -1439,21 +1452,22 @@ export function baseRuns(
       if (r) {
         // signal pairs never use range cells (they take their own configs): no range runs for them
         const tps: Record<string, number[]> = {};
-        const ranges = isSignalInd(c.ind)
-          ? undefined
-          : rangeBaseStats(
-              u,
-              c.bot as BotType,
-              c.ind,
-              rangeProtects,
-              cost,
-              tactics,
-              rangeMinTf,
-              microOwnInds,
-              pass,
-              u.baseTf,
-              tps,
-            );
+        const ranges =
+          isSignalInd(c.ind) || c.bot === "exit"
+            ? undefined
+            : rangeBaseStats(
+                u,
+                c.bot as BotType,
+                c.ind,
+                rangeProtects,
+                cost,
+                tactics,
+                rangeMinTf,
+                microOwnInds,
+                pass,
+                u.baseTf,
+                tps,
+              );
         if (ranges) r.ranges = ranges;
         if (Object.keys(tps).length) r.rangeTps = tps;
         out.push(packed ? { ...slim(r), bySym: JSON.stringify(r.bySym) } : slim(r));
@@ -1474,6 +1488,8 @@ export function* runPipeline(
   s: CoreSettings,
   /** Base computed elsewhere (worker threads): S1 is taken as given */
   pre?: { s1: ComboRun[] },
+  /** Independent synthetic sources, such as Historic Exit, participate in S1 without joining the Bot grid. */
+  additionalCombos: readonly Combo[] = [],
 ): Generator<PipelineProgress, PipelineOutput> {
   const timings: Record<string, number> = {};
   const cost = s.cost;
@@ -1486,6 +1502,7 @@ export function* runPipeline(
     : [
         ...allCombos(s.focus, s.disabledKinds, s.tfs, microLaneFloor(s.grid)),
         ...signalCombos(signalSettings(s.signals), s.tfs ?? []),
+        ...additionalCombos,
       ];
   const s1: ComboRun[] = pre ? [...pre.s1] : [];
   for (let i = 0; i < combos.length; i++) {
@@ -1501,7 +1518,7 @@ export function* runPipeline(
       // a slice boundary between series (same progress; the driver checks its time budget here)
       yield { stage: "S1", done: i, total: combos.length, label: `${c.bot} × ${c.ind}` };
     }
-    if (r && !isSignalInd(c.ind)) {
+    if (r && !isSignalInd(c.ind) && c.bot !== "exit") {
       const g = s.grid ?? {};
       const microOwn = microIndRule(g);
       const tps: Record<string, number[]> = {};
@@ -1530,7 +1547,9 @@ export function* runPipeline(
 
   // S2
   t0 = performance.now();
-  const leaders = s1.filter((r) => r.is.n >= 4 && !isSignalInd(r.ind)).slice(0, s.refineTop);
+  const leaders = s1
+    .filter((r) => r.bot !== "exit" && r.is.n >= 4 && !isSignalInd(r.ind))
+    .slice(0, s.refineTop);
   const runs = new Map<string, ComboRun>();
   const s2: ComboRun[] = [];
   const grid = REFINE_GRID;

@@ -136,11 +136,11 @@ describe("memory released after use, results unchanged", { timeout: 900_000 }, (
                 localCalls = 0;
               const preparing = (label: string) =>
                 phase === "Exit history"
-                  ? label.startsWith("preparing: historic exit candidates")
+                  ? label.startsWith("preparing: independent Exit fit")
                   : label.startsWith("preparing: signal historic configs");
               const onWorkers = (label: string) =>
                 phase === "Exit history"
-                  ? label.startsWith("historic exit candidates") && / on \d+ workers$/.test(label)
+                  ? label.startsWith("independent Exit fit") && / on \d+ workers$/.test(label)
                   : label.startsWith("signal historic configs on");
               R.setStage = (stage, done, total, label = "", restart) => {
                 setStage0(stage, done, total, label, restart);

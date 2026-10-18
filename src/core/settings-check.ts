@@ -13,7 +13,12 @@ export function checkSettings(s: Partial<CoreSettings>) {
   const volumeFactor = (v: unknown, name: string) => {
     num(v, 0.2, 5, name);
     // Range increments are 0.2; retain 2.5 as a supported explicit setting for saved/custom configs.
-    if (v !== undefined && typeof v === "number" && Math.abs(v - 2.5) > 1e-8 && Math.abs(v * 5 - Math.round(v * 5)) > 1e-8)
+    if (
+      v !== undefined &&
+      typeof v === "number" &&
+      Math.abs(v - 2.5) > 1e-8 &&
+      Math.abs(v * 5 - Math.round(v * 5)) > 1e-8
+    )
       throw new Error(`${name} must use 0.2 steps`);
   };
   num(s.symbols, 1, 120, "symbols");
@@ -207,10 +212,13 @@ export function checkSettings(s: Partial<CoreSettings>) {
       int(s.live.maxVenueOrders, "venue TP/SL orders at most");
     if (s.live.maxBackstopLossPct !== undefined)
       num(s.live.maxBackstopLossPct, 0, 1, "worst-case loss budget (fraction of balance)");
-    if (s.live.maxPositionX !== undefined) num(s.live.maxPositionX, 0, 50, "position limit × balance");
+    if (s.live.maxPositionX !== undefined)
+      num(s.live.maxPositionX, 0, 50, "position limit × balance");
     // Absolute per-position dollar ceilings were removed; accept only the legacy disabled value.
     if (s.live.maxNotionalUsd !== undefined && s.live.maxNotionalUsd !== 0)
-      throw new Error("fixed USD per-position ceilings are disabled; size with account-balance volume factors");
+      throw new Error(
+        "fixed USD per-position ceilings are disabled; size with account-balance volume factors",
+      );
     num(s.live.rebalancePct, 0, 1, "rebalance threshold");
     if (s.live.marginMode !== undefined && !["cross", "isolated"].includes(s.live.marginMode))
       throw new Error("margin mode must be cross or isolated");
@@ -234,6 +242,21 @@ export function checkSettings(s: Partial<CoreSettings>) {
     const e = s.exitStrategy;
     if (e.enabled !== undefined && typeof e.enabled !== "boolean")
       throw new Error("historic exit strategy: on / off");
+    if (e.timeframes !== undefined) {
+      if (
+        !Array.isArray(e.timeframes) ||
+        e.timeframes.length < 1 ||
+        e.timeframes.length > 4 ||
+        e.timeframes.some((tf) => ![1, 5, 15, 30].includes(tf)) ||
+        new Set(e.timeframes).size !== e.timeframes.length
+      )
+        throw new Error("historic exit timeframes: choose 1–4 unique lanes from 1, 5, 15, 30");
+      // Exit lanes are filtered against the initialized universe at runtime. Retaining a selected
+      // lane while the system lane list changes lets operators switch system lanes back on later.
+    }
+    for (const key of ["includeTactics", "includeRelations", "includeCombined"] as const)
+      if (e[key] !== undefined && typeof e[key] !== "boolean")
+        throw new Error(`historic exit ${key}: on / off`);
     num(e.lookbackH, 0, 720, "historic exit lookback (hours)");
     num(e.trainFraction, 0.5, 0.8, "historic exit fit fraction");
     num(e.minEntries, 5, 1000, "historic exit fit entries");
@@ -823,7 +846,12 @@ export function checkSettings(s: Partial<CoreSettings>) {
         bool(c.ranges.short, "coordination Short range");
         bool(c.ranges.normal, "coordination Normal range");
         bool(c.ranges.long, "coordination Long range");
-        if (c.enabled && c.ranges.short === false && c.ranges.normal === false && c.ranges.long === false)
+        if (
+          c.enabled &&
+          c.ranges.short === false &&
+          c.ranges.normal === false &&
+          c.ranges.long === false
+        )
           throw new Error("signals coordination: at least one exit range");
       }
     }

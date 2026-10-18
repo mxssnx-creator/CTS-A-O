@@ -615,12 +615,46 @@ const FIELDS: Record<Fn, string[]> = {
   ],
   corePresets: [
     // pages/presets.tsx PresetsPage, PresetCard, Backtests; overview.tsx PresetBar
-    ...under("current", ["pf", "n", "gh", "wr", "stable", "pfBasis", "unknownReturns", "gp", "gl", "noLoss", "pfConvention", "sample", "endpointMarks", "settledStats"]),
-    ...under("current.settledStats", ["pf", "n", "pfBasis", "unknownReturns", "gp", "gl", "noLoss", "pfConvention", "sample"]),
+    ...under("current", [
+      "pf",
+      "n",
+      "gh",
+      "wr",
+      "stable",
+      "pfBasis",
+      "unknownReturns",
+      "gp",
+      "gl",
+      "noLoss",
+      "pfConvention",
+      "sample",
+      "endpointMarks",
+      "settledStats",
+    ]),
+    ...under("current.settledStats", [
+      "pf",
+      "n",
+      "pfBasis",
+      "unknownReturns",
+      "gp",
+      "gl",
+      "noLoss",
+      "pfConvention",
+      "sample",
+    ]),
     "queued",
     "maxDays",
     "saved",
-    ...under("saved[].metrics", ["pf", "n", "pfBasis", "unknownReturns", "gp", "gl", "noLoss", "pfConvention"]),
+    ...under("saved[].metrics", [
+      "pf",
+      "n",
+      "pfBasis",
+      "unknownReturns",
+      "gp",
+      "gl",
+      "noLoss",
+      "pfConvention",
+    ]),
     "backtests",
     ...under("gates", ["minPf", "maxDdtH"]),
     ...under("research[]", ["id", "label", "kind", "settings", "wf"]),
@@ -740,7 +774,21 @@ const FIELDS: Record<Fn, string[]> = {
       "dNet",
       "dDdt",
     ]),
-    ...under("report.presets[]", ["label", "n", "wr", "pf", "pfBasis", "unknownReturns", "gp", "gl", "noLoss", "pfConvention", "net", "ddt", "gh"]),
+    ...under("report.presets[]", [
+      "label",
+      "n",
+      "wr",
+      "pf",
+      "pfBasis",
+      "unknownReturns",
+      "gp",
+      "gl",
+      "noLoss",
+      "pfConvention",
+      "net",
+      "ddt",
+      "gh",
+    ]),
     ...under("report.configs[]", [
       "key",
       "bot",
@@ -802,13 +850,18 @@ const OPTIONAL: Partial<Record<Fn, Record<string, string>>> = {
       "counted only when the signal book / paper book / guard has them (SignalsSettings checks !== undefined)",
     ),
     "baseWhy[]": "no rejected representative ranges until Base has evaluated them",
-    "livePromotion.lanes[]": "strict live-entry proof is absent until its first evaluation; API null is explicit",
+    "livePromotion.lanes[]":
+      "strict live-entry proof is absent until its first evaluation; API null is explicit",
   },
   coreConns: {
     "conns[].live.enabled": "live is null for a connection without a runtime (the page shows off)",
     "conns[].sim.pf": "sim is null for a connection without a runtime or before its first compute",
     "conns[].paper.equity": "paper is null for a connection without a runtime",
-    ...unset("conns[].sim", RETURN_PROVENANCE, "sim is null without a completed runtime; known summaries carry explicit unit/gross evidence"),
+    ...unset(
+      "conns[].sim",
+      RETURN_PROVENANCE,
+      "sim is null without a completed runtime; known summaries carry explicit unit/gross evidence",
+    ),
   },
   coreOverview: {
     live: "the live step's status: null until its first run",
@@ -869,7 +922,8 @@ const OPTIONAL: Partial<Record<Fn, Record<string, string>>> = {
     "control.held": "as control.reconnected",
     "control.exchangeSlots": "as control.reconnected",
     "control.actions": "as control.reconnected",
-    "liveCost.rt": "null until 40 live fills, and until 20 of them carry a measured fee (a fill with no commission is unmeasured)",
+    "liveCost.rt":
+      "null until 40 live fills, and until 20 of them carry a measured fee (a fill with no commission is unmeasured)",
     "liveCost.fills": "as liveCost.rt",
     "liveCost.fee": "as liveCost.rt",
     "liveCost.slip": "as liveCost.rt",
@@ -950,7 +1004,8 @@ const OPTIONAL: Partial<Record<Fn, Record<string, string>>> = {
     "job.progress": "as job",
     "job.error": "as job",
     "saved[]": "no preset saved yet (fields as research[])",
-    "saved[].metrics.endpointMarks": "absent on legacy saved records; new writes disclose mark count",
+    "saved[].metrics.endpointMarks":
+      "absent on legacy saved records; new writes disclose mark count",
     "research[].info": "a preset without a note",
     "research[].metrics.greenDays": "only research measured over days",
     "research[].metrics.runs": "only research with repeated runs",
@@ -1032,11 +1087,36 @@ const OPTIONAL: Partial<Record<Fn, Record<string, string>>> = {
     "series.info.ddr": "as series.t",
     "series.info.pf": "as series.t",
     "series.info.netPct": "as series.t",
-    ...unset("series.info", ["n", "pfBasis", "unknownReturns", "gp", "gl", "noLoss", "pfConvention", "sample", "cash", "cashPositionLast"], "new verified unit-return metadata; legacy archives remain unavailable"),
+    ...unset(
+      "series.info",
+      [
+        "n",
+        "pfBasis",
+        "unknownReturns",
+        "gp",
+        "gl",
+        "noLoss",
+        "pfConvention",
+        "sample",
+        "cash",
+        "cashPositionLast",
+      ],
+      "new verified unit-return metadata; legacy archives remain unavailable",
+    ),
   },
   coreStatistics: {
     "report.strategyGroups[]": "the selected window may have no Signal or Historic Exit closes",
-    ...unset("paperEvidence", ["requested", "verifiedOwnership", "unknownOwnership", "cashBasis", ...under("recordedReturns", ["n", "pf", ...RETURN_PROVENANCE])], "only paper statistics has owned-versus-recorded evidence; sim/live return explicit null"),
+    ...unset(
+      "paperEvidence",
+      [
+        "requested",
+        "verifiedOwnership",
+        "unknownOwnership",
+        "cashBasis",
+        ...under("recordedReturns", ["n", "pf", ...RETURN_PROVENANCE]),
+      ],
+      "only paper statistics has owned-versus-recorded evidence; sim/live return explicit null",
+    ),
     conn: "null for a runtime built without a connection (tests); runtimeFor always passes one",
     why: "only when report is null",
     "report.balanceStart": "only with a window (hours > 0); the page falls back to balance0",
@@ -1125,16 +1205,40 @@ function assertJson(label: string, x: unknown) {
 it("with/without statistics contract preserves PF provenance and nullable deltas", async () => {
   const { buildStatistics } = await import("./statistics.ts");
   const { unitStatsOf } = await import("./metrics/stats.ts");
-  const stats = (returns: number[]) => unitStatsOf(returns.map((r, i) => ({ entryT: i + 1, exitT: i + 2, r })));
+  const stats = (returns: number[]) =>
+    unitStatsOf(returns.map((r, i) => ({ entryT: i + 1, exitT: i + 2, r })));
   const measuredFive = stats([0.05, -0.01]);
-  for (const [withStats, expectedDelta] of [[stats([0.01]), null], [stats([0.04, -0.01]), -1], [stats([]), null], [{ n: 3, pf: 4 }, null]] as const) {
-    const report = buildStatistics({ source: "sim", trades: [], startT: 0, endT: 4, balance: 100, unit: () => 100, price: () => null, cost: 0.002, leverage: 1, minActiveLevel: 2,
-      presets: { normal: { stats: measuredFive }, "normal-trailing": { stats: withStats } } });
+  for (const [withStats, expectedDelta] of [
+    [stats([0.01]), null],
+    [stats([0.04, -0.01]), -1],
+    [stats([]), null],
+    [{ n: 3, pf: 4 }, null],
+  ] as const) {
+    const report = buildStatistics({
+      source: "sim",
+      trades: [],
+      startT: 0,
+      endT: 4,
+      balance: 100,
+      unit: () => 100,
+      price: () => null,
+      cost: 0.002,
+      leverage: 1,
+      minActiveLevel: 2,
+      presets: { normal: { stats: measuredFive }, "normal-trailing": { stats: withStats } },
+    });
     const response = { balanceFrom: "paper start balance", paperEvidence: null, report };
     checkContract("coreStatistics", response, { allEmpty: true });
     assertJson("nullable comparison PF", response);
     assert.equal(report.withWithout[0].dPf, expectedDelta);
-    assert.equal(report.withWithout[0].with.pfConvention, "gp" in withStats ? withStats.gp > 0 && withStats.gl === 0 ? "no-loss-sentinel" : "gross-return-ratio" : "unavailable");
+    assert.equal(
+      report.withWithout[0].with.pfConvention,
+      "gp" in withStats
+        ? withStats.gp > 0 && withStats.gl === 0
+          ? "no-loss-sentinel"
+          : "gross-return-ratio"
+        : "unavailable",
+    );
     assert.equal(report.withWithout[0].with.gp, "gp" in withStats ? withStats.gp : null);
     assert.equal(report.withWithout[0].with.gl, "gl" in withStats ? withStats.gl : null);
     assert.equal(report.presets[1].pfConvention, report.withWithout[0].with.pfConvention);
@@ -1145,6 +1249,18 @@ const small = {
   symbols: 3,
   historyDays: 18,
   tfDays: { "1": 3, "5": 6, "15": 18, "30": 18 },
+  tfs: [1],
+  focus: [
+    "follow|ema-9-21@m1",
+    "revert|ema-9-21@m1",
+    "sweep|ema-9-21@m1",
+    "follow|rsi-9-21@m1",
+    "revert|rsi-9-21@m1",
+    "sweep|rsi-9-21@m1",
+  ],
+  // Historic Exit has its own runtime and family coverage in exit-strategy.test.ts. Keep this API shape fixture
+  // focused on the surface contract so it does not repeat the full 1/5/15m historical candidate fit.
+  exitStrategy: { enabled: false },
   mainTop: 12,
   refineTop: 4,
   evalTop: 8,
@@ -1158,12 +1274,15 @@ const small = {
     cooldownBars: 4,
   },
   gates: { minPf: 1.05, minTrades: 3, maxDdr: 0 },
-  signals: signalSettings({
-    exits: "pct",
-    sources: Object.fromEntries(
-      SIGNAL_SOURCES.filter((x) => x.name.startsWith("s2-")).map((x) => [x.name, false]),
-    ),
-  }),
+  signals: {
+    ...signalSettings({
+      exits: "pct",
+      sources: Object.fromEntries(
+        SIGNAL_SOURCES.filter((x) => x.name.startsWith("s2-")).map((x) => [x.name, false]),
+      ),
+    }),
+    enabled: false,
+  },
 };
 
 const until = async (cond: () => boolean, ms = 300_000) => {
@@ -1254,9 +1373,22 @@ describe(
 
     it("coreOverview", async () => {
       const d = await read("coreOverview", () => api.coreOverviewData(api.connInput({})));
-      const p = d.paper as { balance: number; accountEquity: number; equity: number; trades: { pnl: number } };
-      assert.equal(p.balance, rt.settings.paperBalance + p.trades.pnl, "balance includes realized closes only");
-      assert.equal(p.accountEquity, rt.settings.paperBalance + p.equity, "equity includes open mark to market");
+      const p = d.paper as {
+        balance: number;
+        accountEquity: number;
+        equity: number;
+        trades: { pnl: number };
+      };
+      assert.equal(
+        p.balance,
+        rt.settings.paperBalance + p.trades.pnl,
+        "balance includes realized closes only",
+      );
+      assert.equal(
+        p.accountEquity,
+        rt.settings.paperBalance + p.equity,
+        "equity includes open mark to market",
+      );
     });
 
     it("coreResults (Base, Evaluated by rank, a matrix cell) and coreMatrix", async () => {
@@ -1325,14 +1457,29 @@ describe(
 
     it("coreTrading", async () => {
       const d = await read("coreTrading", () => api.coreTradingData(api.connInput({})));
-      assert.equal(d.balance, rt.settings.paperBalance + Number(d.realized), "paper balance excludes open MTM");
-      assert.equal(d.accountEquity, rt.settings.paperBalance + Number(d.equity), "paper account equity includes open MTM");
+      assert.equal(
+        d.balance,
+        rt.settings.paperBalance + Number(d.realized),
+        "paper balance excludes open MTM",
+      );
+      assert.equal(
+        d.accountEquity,
+        rt.settings.paperBalance + Number(d.equity),
+        "paper account equity includes open MTM",
+      );
       const preview = d.controlPreview as { blocked?: string; targets: unknown[] };
-      if (preview.blocked) assert.deepEqual(preview.targets, [], "unknown account equity produces no fictitious live sizes");
+      if (preview.blocked)
+        assert.deepEqual(
+          preview.targets,
+          [],
+          "unknown account equity produces no fictitious live sizes",
+        );
     });
 
     it("coreListing: the paper step's validated groups, a group's own rows, paged; active units; bad input refused", async () => {
-      const all = (await read("coreListing", () => api.coreListingData(api.coreListingInput({ kind: "validated", limit: 5 })))) as {
+      const all = (await read("coreListing", () =>
+        api.coreListingData(api.coreListingInput({ kind: "validated", limit: 5 })),
+      )) as {
         total: number;
         rows: Array<{ id: string; group: string; range: string; score: number }>;
         byGroup: Array<{ group: string; validated: number }>;
@@ -1340,27 +1487,51 @@ describe(
       assert.ok(all.total > 0 && all.rows.length <= 5, `${all.total} validated`);
       // the listing is the paper step's seats, best score first
       assert.equal(all.total, rt.listings!.validated.length);
-      for (let i = 1; i < all.rows.length; i++) assert.ok(all.rows[i - 1].score >= all.rows[i].score);
+      for (let i = 1; i < all.rows.length; i++)
+        assert.ok(all.rows[i - 1].score >= all.rows[i].score);
       // each range or independent strategy group reads its own rows
       const r0 = all.byGroup[0];
-      const one = (await api.coreListingData(api.coreListingInput({ kind: "validated", group: r0.group, limit: 500 }))) as typeof all;
+      const one = (await api.coreListingData(
+        api.coreListingInput({ kind: "validated", group: r0.group, limit: 500 }),
+      )) as typeof all;
       assert.equal(one.total, r0.validated);
       assert.ok(one.rows.every((x) => x.group === r0.group));
-      assert.equal(all.byGroup.reduce((a, x) => a + x.validated, 0), all.total);
+      assert.equal(
+        all.byGroup.reduce((a, x) => a + x.validated, 0),
+        all.total,
+      );
       // paging: page 2 continues page 1
-      const p2 = (await api.coreListingData(api.coreListingInput({ kind: "validated", offset: 5, limit: 5 }))) as typeof all;
+      const p2 = (await api.coreListingData(
+        api.coreListingInput({ kind: "validated", offset: 5, limit: 5 }),
+      )) as typeof all;
       if (all.total > 5) assert.notEqual(p2.rows[0]?.id, all.rows[0].id);
-      const act = (await api.coreListingData(api.coreListingInput({ kind: "active" }))) as { total: number };
+      const act = (await api.coreListingData(api.coreListingInput({ kind: "active" }))) as {
+        total: number;
+      };
       assert.equal(act.total, rt.listings!.active.length);
       const savedActive = rt.listings!.active;
       try {
-        const unit = { bot: "follow", ind: "sig-ema-cross-s@m5", sym: "AAA-USDT", side: 1 as const };
-        rt.listings!.active = [{ ...unit, kind: "normal" }, { ...unit, kind: "trailing" }];
-        const typed = (await api.coreListingData(api.coreListingInput({ kind: "active", q: "trailing" }))) as {
+        const unit = {
+          bot: "follow",
+          ind: "sig-ema-cross-s@m5",
+          sym: "AAA-USDT",
+          side: 1 as const,
+        };
+        rt.listings!.active = [
+          { ...unit, kind: "normal" },
+          { ...unit, kind: "trailing" },
+        ];
+        const typed = (await api.coreListingData(
+          api.coreListingInput({ kind: "active", q: "trailing" }),
+        )) as {
           total: number;
           rows: Array<{ ind: string; kind: string }>;
         };
-        assert.equal(typed.total, 1, "type filtering never returns another independent Signal type");
+        assert.equal(
+          typed.total,
+          1,
+          "type filtering never returns another independent Signal type",
+        );
         assert.equal(typed.rows[0].kind, "trailing");
         assert.equal(typed.rows[0].ind, unit.ind, "full range and lane identity survives the API");
       } finally {
@@ -1378,48 +1549,124 @@ describe(
       const saved = rt.baseConfigs;
       try {
         const counter = new BaseConfigCounter({
-          gates: { minPf: 1.1, minTrades: 2, maxDdr: 0 }, cost: 0.002, fromT: 0, cutT: 100,
+          gates: { minPf: 1.1, minTrades: 2, maxDdr: 0 },
+          cost: 0.002,
+          fromT: 0,
+          cutT: 100,
         });
-        const sample = [{ entryT: 10, exitT: 20, r: 0.022 }, { entryT: 30, exitT: 40, r: -0.02 }];
+        const sample = [
+          { entryT: 10, exitT: 20, r: 0.022 },
+          { entryT: 30, exitT: 40, r: -0.02 },
+        ];
         const protect = { tp: 0.02, sl: 0.02, trail: 0, hold: 32 };
         counter.record("follow", "tactic-trend-s@m5", protect, "normal", sample);
         counter.record("follow", "tactic-trend-s@m5", { ...protect, tp: 0.03 }, "normal", sample);
-        counter.record("follow", "tactic-trend-s@m5", { ...protect, trail: 0.01, tag: "sh" }, "trailing", sample);
+        counter.record(
+          "follow",
+          "tactic-trend-s@m5",
+          { ...protect, trail: 0.01, tag: "sh" },
+          "trailing",
+          sample,
+        );
         counter.record("follow", "tactic-trend-m@m15", { ...protect, tag: "gn" }, "normal", sample);
         const rows = counter.rows();
-        const sum = (key: "configured" | "evaluated" | "pfPassed" | "passed") => rows.reduce((n, row) => n + row[key], 0);
+        const sum = (key: "configured" | "evaluated" | "pfPassed" | "passed") =>
+          rows.reduce((n, row) => n + row[key], 0);
         rt.baseConfigs = {
           summary: {
-            state: "partial", key: "contract-fixture", settingsAt: 1, cutT: 100, fromT: 0,
-            cost: 0.002, floorPf: 1.1, population: "focusedIndicationCandidates",
-            totalPairs: 2, admittedPairs: 1, admittedPairKeys: ["follow|tactic-trend-s@m5"],
-            donePairs: 1, totalChunks: 4, doneChunks: 2, updatedAt: 50, plannedConfigured: 4,
-            configured: sum("configured"), evaluated: sum("evaluated"), pfPassed: sum("pfPassed"), passed: sum("passed"),
-          }, rows,
+            state: "partial",
+            key: "contract-fixture",
+            settingsAt: 1,
+            cutT: 100,
+            fromT: 0,
+            cost: 0.002,
+            floorPf: 1.1,
+            population: "focusedIndicationCandidates",
+            totalPairs: 2,
+            admittedPairs: 1,
+            admittedPairKeys: ["follow|tactic-trend-s@m5"],
+            donePairs: 1,
+            totalChunks: 4,
+            doneChunks: 2,
+            updatedAt: 50,
+            plannedConfigured: 4,
+            configured: sum("configured"),
+            evaluated: sum("evaluated"),
+            pfPassed: sum("pfPassed"),
+            passed: sum("passed"),
+          },
+          rows,
         };
         const snapshot = rt.baseConfigs;
         assert.ok(snapshot);
-        const result = await api.coreListingData(api.coreListingInput({ kind: "baseConfigs", limit: 1 })) as unknown as {
-          ready: boolean; total: number; rows: typeof rows; summary: typeof snapshot.summary;
+        const result = (await api.coreListingData(
+          api.coreListingInput({ kind: "baseConfigs", limit: 1 }),
+        )) as unknown as {
+          ready: boolean;
+          total: number;
+          rows: typeof rows;
+          summary: typeof snapshot.summary;
         };
         assert.equal(result.ready, true);
-        assert.equal(result.total, 3, "rows count exact indication/range/type groups, not representative pairs");
+        assert.equal(
+          result.total,
+          3,
+          "rows count exact indication/range/type groups, not representative pairs",
+        );
         assert.equal(result.rows.length, 1);
-        assert.deepEqual(result.summary, snapshot.summary, "partial status and the frozen measurement basis survive paging");
-        assert.strictEqual(rt.baseConfigs, snapshot, "reading a listing does not replace the cached measurement");
-        for (const field of ["bot", "ind", "tag", "kind", "configured", "evaluated", "pfPassed", "passed", "minPf", "floorPf", "closes", "notEvaluated", "cost", "fromT", "cutT"])
-          assert.notEqual(result.rows[0][field as keyof typeof rows[number]], undefined, field);
-        const filtered = await api.coreListingData(api.coreListingInput({ kind: "baseConfigs", q: "TRAILING", range: "Short" })) as unknown as typeof result;
+        assert.deepEqual(
+          result.summary,
+          snapshot.summary,
+          "partial status and the frozen measurement basis survive paging",
+        );
+        assert.strictEqual(
+          rt.baseConfigs,
+          snapshot,
+          "reading a listing does not replace the cached measurement",
+        );
+        for (const field of [
+          "bot",
+          "ind",
+          "tag",
+          "kind",
+          "configured",
+          "evaluated",
+          "pfPassed",
+          "passed",
+          "minPf",
+          "floorPf",
+          "closes",
+          "notEvaluated",
+          "cost",
+          "fromT",
+          "cutT",
+        ])
+          assert.notEqual(result.rows[0][field as keyof (typeof rows)[number]], undefined, field);
+        const filtered = (await api.coreListingData(
+          api.coreListingInput({ kind: "baseConfigs", q: "TRAILING", range: "Short" }),
+        )) as unknown as typeof result;
         assert.equal(filtered.total, 1);
         assert.equal(filtered.rows[0].ind, "tactic-trend-s@m5");
         assert.equal(filtered.rows[0].kind, "trailing");
-        const wide = await api.coreListingData(api.coreListingInput({ kind: "baseConfigs", range: "Wide" })) as unknown as typeof result;
+        const wide = (await api.coreListingData(
+          api.coreListingInput({ kind: "baseConfigs", range: "Wide" }),
+        )) as unknown as typeof result;
         assert.equal(wide.total, 1);
-        assert.equal(wide.rows[0].configured, 2, "every configured protection cell remains counted");
+        assert.equal(
+          wide.rows[0].configured,
+          2,
+          "every configured protection cell remains counted",
+        );
         rt.baseConfigs = null;
-        const unknown = await api.coreListingData(api.coreListingInput({ kind: "baseConfigs" })) as { ready: boolean; summary: unknown; rows: unknown[] };
+        const unknown = (await api.coreListingData(
+          api.coreListingInput({ kind: "baseConfigs" }),
+        )) as { ready: boolean; summary: unknown; rows: unknown[] };
         assert.equal(unknown.ready, false);
-        assert.equal(unknown.summary, null, "uncomputed results never become a completed zero-pass claim");
+        assert.equal(
+          unknown.summary,
+          null,
+          "uncomputed results never become a completed zero-pass claim",
+        );
         assert.deepEqual(unknown.rows, []);
       } finally {
         rt.baseConfigs = saved;
@@ -1578,7 +1825,7 @@ describe(
 
     it("coreStatistics: live with no verified exchange equity has a zero ledger basis, never the paper balance", async () => {
       assert.notEqual(rt.settings.paperBalance, 0, "the fixture has a funded paper account");
-      const live = await api.coreStatisticsData(api.coreStatisticsInput({ source: "live" })) as {
+      const live = (await api.coreStatisticsData(api.coreStatisticsInput({ source: "live" }))) as {
         balanceFrom: string;
         report: { balance0: number };
       };

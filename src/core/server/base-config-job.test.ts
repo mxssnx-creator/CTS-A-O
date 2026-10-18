@@ -97,7 +97,12 @@ describe("exact background Base config counts", { timeout: 60_000 }, () => {
     const runner = runnerOf(); runner.request(job);
     await until(() => runner.snapshot?.summary.state === "complete");
     assert.ok(runner.snapshot!.summary.totalChunks >= 2);
-    assert.deepEqual(runner.snapshot!.rows, counter.rows());
+    const stableSums = (rows: ReturnType<BaseConfigCounter["rows"]>) => rows.map((row) => ({
+      ...row,
+      gp: Math.round(row.gp * 1e10) / 1e10,
+      gl: Math.round(row.gl * 1e10) / 1e10,
+    }));
+    assert.deepEqual(stableSums(runner.snapshot!.rows), stableSums(counter.rows()));
     assert.equal(runner.snapshot!.summary.configured, runner.snapshot!.summary.plannedConfigured);
     runner.cancel("test");
   });

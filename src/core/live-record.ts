@@ -32,45 +32,78 @@ export interface OwnedPaperClose {
 
 /** Settled, post-Base execution results only; callers must never pass open-at-end marks or raw config tapes. */
 export function postBaseExecutionRecords(trades: readonly Trade[]): Map<string, LiveRecord> {
-  return identityRecords(trades.map((t) => ({ cfg: t.cfg, sym: t.sym, side: t.side, exitT: t.exitT, r: modeledUnitReturn(t) })));
+  return identityRecords(
+    trades.map((t) => ({
+      cfg: t.cfg,
+      sym: t.sym,
+      side: t.side,
+      exitT: t.exitT,
+      r: modeledUnitReturn(t),
+    })),
+  );
 }
 
 /** Legacy/dust/unallocated rows stay chronological unknowns; they cannot qualify older winning closes. */
-export function ownedPaperExecutionRecords(rows: readonly OwnedPaperClose[]): Map<string, LiveRecord> {
-  return identityRecords(rows.map((t) => ({ ...t,
-    r: typeof t.ownedNotionalUsd === "number" && Number.isFinite(t.ownedNotionalUsd) && t.ownedNotionalUsd > 1e-9
-      ? t.unitR : null,
-  })));
+export function ownedPaperExecutionRecords(
+  rows: readonly OwnedPaperClose[],
+): Map<string, LiveRecord> {
+  return identityRecords(
+    rows.map((t) => ({
+      ...t,
+      r:
+        typeof t.ownedNotionalUsd === "number" &&
+        Number.isFinite(t.ownedNotionalUsd) &&
+        t.ownedNotionalUsd > 1e-9
+          ? t.unitR
+          : null,
+    })),
+  );
 }
 
-function identityRecords(rows: ReadonlyArray<{ cfg: string; sym: string; side: number; exitT: number; r: number | null }>): Map<string, LiveRecord> {
+function identityRecords(
+  rows: ReadonlyArray<{ cfg: string; sym: string; side: number; exitT: number; r: number | null }>,
+): Map<string, LiveRecord> {
   const cfgs = new Map<string, string>();
   const named = (s: unknown): s is string => typeof s === "string" && s.trim().length > 0;
   // Ambiguous DB identities never alias a valid short or disappear in favor of earlier wins. A single latest
   // unknown marker per possible identity is sufficient to hold its current window without a corrupt-row fanout.
   const known = new Map<string, { cfg: string; sym: string; side: number }>();
-  for (const r of rows) if (named(r.cfg) && named(r.sym)) {
-    for (const side of r.side === 1 || r.side === -1 ? [r.side] : [1, -1])
-      known.set(executionRecordKey(r.cfg, r.sym, side), { cfg: r.cfg, sym: r.sym, side });
-  }
-  const ambiguous = new Map<string, { cfg: string; sym: string; side: number; exitT: number; r: null }>();
+  for (const r of rows)
+    if (named(r.cfg) && named(r.sym)) {
+      for (const side of r.side === 1 || r.side === -1 ? [r.side] : [1, -1])
+        known.set(executionRecordKey(r.cfg, r.sym, side), { cfg: r.cfg, sym: r.sym, side });
+    }
+  const ambiguous = new Map<
+    string,
+    { cfg: string; sym: string; side: number; exitT: number; r: null }
+  >();
   const exact = rows.filter((r) => named(r.cfg) && named(r.sym) && (r.side === 1 || r.side === -1));
   for (const r of rows) {
     if (named(r.cfg) && named(r.sym) && (r.side === 1 || r.side === -1)) continue;
     for (const [key, identity] of known) {
-      if (named(r.cfg) && r.cfg !== identity.cfg || named(r.sym) && r.sym !== identity.sym ||
-        (r.side === 1 || r.side === -1) && r.side !== identity.side) continue;
+      if (
+        (named(r.cfg) && r.cfg !== identity.cfg) ||
+        (named(r.sym) && r.sym !== identity.sym) ||
+        ((r.side === 1 || r.side === -1) && r.side !== identity.side)
+      )
+        continue;
       const previous = ambiguous.get(key);
-      if (!previous || !Number.isFinite(r.exitT) || (Number.isFinite(previous.exitT) && r.exitT > previous.exitT))
+      if (
+        !previous ||
+        !Number.isFinite(r.exitT) ||
+        (Number.isFinite(previous.exitT) && r.exitT > previous.exitT)
+      )
         ambiguous.set(key, { ...identity, exitT: r.exitT, r: null });
     }
   }
   exact.push(...ambiguous.values());
-  const records = liveRecords(exact.map((r) => {
-    const key = executionRecordKey(r.cfg, r.sym, r.side);
-    cfgs.set(key, r.cfg);
-    return { cfg: key, exitT: r.exitT, r: r.r };
-  }));
+  const records = liveRecords(
+    exact.map((r) => {
+      const key = executionRecordKey(r.cfg, r.sym, r.side);
+      cfgs.set(key, r.cfg);
+      return { cfg: key, exitT: r.exitT, r: r.r };
+    }),
+  );
   // Group reporting still derives the range from the actual config, never the serialized composite key.
   for (const [key, record] of records) record.id = cfgs.get(key)!;
   return records;
@@ -107,7 +140,14 @@ export interface LaneTrade {
 
 export interface LaneStepInput {
   /** the lanes that asked for volume on the exchange this step (after every filter): id, cfg, sym, side */
-  lanes: ReadonlyArray<{ id?: string; cfg: string; sym: string; side: 1 | -1; key?: string; lk?: string }>;
+  lanes: ReadonlyArray<{
+    id?: string;
+    cfg: string;
+    sym: string;
+    side: 1 | -1;
+    key?: string;
+    lk?: string;
+  }>;
   /** control keys (`sym|side`) held on the exchange after this step's orders */
   heldAfter: ReadonlySet<string>;
   /** fill price of this step's open / increase per key, and of its reduce / close */
@@ -182,7 +222,12 @@ export function attributeLanes(
       continue;
     }
     if (x.external.has(key)) {
-      close(id, o, x.external.get(key) ?? x.prices.get(o.sym) ?? 0, x.externalWhy?.get(key) ?? "stop");
+      close(
+        id,
+        o,
+        x.external.get(key) ?? x.prices.get(o.sym) ?? 0,
+        x.externalWhy?.get(key) ?? "stop",
+      );
       continue;
     }
     if (live.has(id)) {
@@ -210,9 +255,12 @@ export interface LiveRecord {
   unknown?: Uint32Array;
 }
 
-export function liveRecords(rows: ReadonlyArray<{ cfg: string; exitT: number; r: number | null }>): Map<string, LiveRecord> {
+export function liveRecords(
+  rows: ReadonlyArray<{ cfg: string; exitT: number; r: number | null }>,
+): Map<string, LiveRecord> {
   const by = new Map<string, Array<{ t: number; r: number | null }>>();
-  for (const x of rows) (by.get(x.cfg) ?? by.set(x.cfg, []).get(x.cfg)!).push({ t: x.exitT, r: x.r });
+  for (const x of rows)
+    (by.get(x.cfg) ?? by.set(x.cfg, []).get(x.cfg)!).push({ t: x.exitT, r: x.r });
   const out = new Map<string, LiveRecord>();
   for (const [id, xs] of by) {
     xs.sort((a, b) => a.t - b.t);
@@ -234,7 +282,9 @@ export function liveRecords(rows: ReadonlyArray<{ cfg: string; exitT: number; r:
 
 /** The exchange record's verdict once it holds N closes; the simulated one until then. */
 export function preferExchange(exchange: LiveGate | null | undefined, sim: LiveGate): LiveGate {
-  return exchange && exchange.pf !== null ? { ...exchange, source: "exchange" } : { ...sim, source: "sim" };
+  return exchange && exchange.pf !== null
+    ? { ...exchange, source: "exchange" }
+    : { ...sim, source: "sim" };
 }
 
 /**
@@ -295,8 +345,19 @@ export function exchangeAcceptIndex(
       add(sideAcceptKey(x.side, coordination), x.exitT, x.r, onset);
     } else {
       const tag = rangeOfId(x.cfg) || undefined;
-      const code = /\|hx(?:[LS])?([012])?$/.exec(x.cfg)?.[1];
-      const exitSet = code === "0" ? "static-sl" : code === "1" ? "adaptive-sl" : code === "2" ? "trailing" : undefined;
+      const code = /\|hx(?:[LS])?([0-4])?$/.exec(x.cfg)?.[1];
+      const exitSet =
+        code === "0"
+          ? "static-sl"
+          : code === "1"
+            ? "adaptive-sl"
+            : code === "2"
+              ? "trailing"
+              : code === "3"
+                ? "breakeven"
+                : code === "4"
+                  ? "trailing-only"
+                  : undefined;
       add(engineSideKey(kind, tag, x.side, undefined, exitSet), x.exitT, x.r);
       add(engineSideKey(kind, tag, x.side, ind, exitSet), x.exitT, x.r);
     }

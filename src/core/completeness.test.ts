@@ -148,14 +148,20 @@ const CASES: Record<string, Case> = {
   "gates.maxDdr": num(0, 20),
   "gates.rangeMinPf.micro": num(1.05, 3),
   "gates.rangeMinPf.minimal": num(1.05, 3),
+  "gates.rangeMinPf.short": num(1.05, 3),
   "gates.rangeMinPf.general": num(1.05, 3),
   "gates.rangeMinPf.long": num(1.05, 3),
   "gates.minTrades": num(1, 500),
+  "exitStrategy.timeframes": oneOf(
+    [[1], [1, 5, 15], [1, 5, 15, 30]],
+    [[], [0], [1, 7], [1, 1], [1, 5, 15, 30, 60]],
+  ),
   "exitStrategy.lookbackH": num(0, 720),
   "exitStrategy.trainFraction": num(0.5, 0.8),
   "exitStrategy.minEntries": num(5, 1000, { int: true }),
   "exitStrategy.minValidationTrades": num(2, 500, { int: true }),
   "exitStrategy.minPf": num(1.05, 10),
+  "exitStrategy.minGreenHourShare": num(0, 1),
   "exitStrategy.maxDdr": num(0, 10),
   "exitStrategy.holdH": num(0.5, 96),
   "exitStrategy.maxConfigsPerPair": num(6, 128, { int: true }),
@@ -427,15 +433,32 @@ describe("settings completeness: every leaf of DEFAULT_SETTINGS is range-checked
   it("Trailing only permits the complete 8 × 8 protection grid and refuses either oversized range", () => {
     const sl = Array.from({ length: 8 }, (_, i) => 0.002 + i * 0.001);
     const trail = Array.from({ length: 8 }, (_, i) => 0.002 + i * 0.001);
-    assert.doesNotThrow(() => checkSettings(withLeaves([
-      ["signals.trailingOnly.sl", sl], ["signals.trailingOnly.trail", trail],
-    ])));
-    assert.equal(rejects(withLeaves([
-      ["signals.trailingOnly.sl", [...sl, 0.02]], ["signals.trailingOnly.trail", trail],
-    ])), true);
-    assert.equal(rejects(withLeaves([
-      ["signals.trailingOnly.sl", sl], ["signals.trailingOnly.trail", [...trail, 0.02]],
-    ])), true);
+    assert.doesNotThrow(() =>
+      checkSettings(
+        withLeaves([
+          ["signals.trailingOnly.sl", sl],
+          ["signals.trailingOnly.trail", trail],
+        ]),
+      ),
+    );
+    assert.equal(
+      rejects(
+        withLeaves([
+          ["signals.trailingOnly.sl", [...sl, 0.02]],
+          ["signals.trailingOnly.trail", trail],
+        ]),
+      ),
+      true,
+    );
+    assert.equal(
+      rejects(
+        withLeaves([
+          ["signals.trailingOnly.sl", sl],
+          ["signals.trailingOnly.trail", [...trail, 0.02]],
+        ]),
+      ),
+      true,
+    );
   });
 
   it("the unchecked list is exactly what checkSettings lets through", () => {
@@ -769,12 +792,9 @@ describe("presets: valid and keeping the positive coordinations", () => {
     assert.deepEqual(asPinned, UNDOCUMENTED);
   });
 
-  it(
-    "every preset that turns a positive coordination off is documented in docs/positive-coordinations.md",
-    () => {
-      assert.deepEqual(Object.keys(UNDOCUMENTED), []);
-    },
-  );
+  it("every preset that turns a positive coordination off is documented in docs/positive-coordinations.md", () => {
+    assert.deepEqual(Object.keys(UNDOCUMENTED), []);
+  });
 
   it("the checks catch a preset that switches a coordination off (the helper is not vacuous)", () => {
     const bad = [
