@@ -8005,7 +8005,8 @@ export function backtestSeries(
   const sized = sizeBook(trades, [], { balance, sizing: s.sizing, fixedNotional: s.paperNotional });
   const unit = (x: { cfg: string; sym: string; side: number; entryT: number }) =>
     sized.units.get(orderKey(x)) ?? s.paperNotional;
-  const price = (sym: string, t: number) => candles.get(sym)?.closeAtOrBefore(t) ?? null;
+  // Candle timestamps are opens; the candle opening at t is still forming, so mark with the prior close.
+  const price = (sym: string, t: number) => candles.get(sym)?.closeAtOrBefore(t - 60_000) ?? null;
   return presetSeries(trades as never, {
     startT,
     endT,

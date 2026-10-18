@@ -248,7 +248,7 @@ async function indicationStats() {
   const price = (sym, t) => {
     const cs = candlesNow.get(sym);
     if (!cs) return null;
-    const t0 = Math.floor(t / 60_000) * 60_000;
+    const t0 = Math.floor(t / 60_000) * 60_000 - 60_000;
     for (let i = 0; i < 5; i++) {
       const v = closeAt(cs, t0 - i * 60_000);
       if (v !== undefined) return v;

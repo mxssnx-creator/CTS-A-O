@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildStatistics, presetSeries, subTypeOf, timeline, typeOf, withWithout, type StatTrade } from "./statistics.ts";
+import { buildStatistics, minuteCloseAtOrBefore, presetSeries, subTypeOf, timeline, typeOf, withWithout, type StatTrade } from "./statistics.ts";
 import { statsOf, unitStatsOf } from "./metrics/stats.ts";
 
 const H = 3_600_000;
@@ -49,6 +49,29 @@ test("timeline: balance steps at each close, equity marks open orders, margin an
   assert.equal(at(4).orders, 0);
   assert.ok(tl.maxDd > 0);
   assert.equal(tl.ordersMax, 2);
+});
+
+test("equity drawdown uses every minute and trade event, independently of margin and chart downsampling", () => {
+  const trades = [tr({ entryT: T0, exitT: T0 + 4 * H, r: -0.2 })];
+  const price = (_sym: string, t: number) =>
+    t < T0 + H ? 100 : t < T0 + 2 * H ? 110 : t < T0 + 3 * H ? 100 : 80;
+  const args = { startT: T0, endT: T0 + 4 * H, balance: 1000, unit: () => 100, price, cost: 0, points: 2 };
+  const lowLeverage = timeline(trades, { ...args, leverage: 2 });
+  const highLeverage = timeline(trades, { ...args, leverage: 20 });
+  assert.equal(lowLeverage.stepMs, 2 * H, "chart remains downsampled");
+  assert.equal(lowLeverage.points.length, 3);
+  assert.ok(Math.abs(lowLeverage.peak - 1010) < 1e-8, `minute peak ${lowLeverage.peak}`);
+  assert.ok(Math.abs(lowLeverage.maxDd - 30) < 1e-8, `minute equity drawdown ${lowLeverage.maxDd}`);
+  assert.ok(Math.abs(lowLeverage.maxDdPct - (30 / 1010) * 100) < 1e-8);
+  assert.ok(Math.abs(lowLeverage.maxDd - highLeverage.maxDd) < 1e-8);
+  assert.ok(lowLeverage.marginMax > highLeverage.marginMax);
+});
+
+test("minute close lookup never reads the candle that is still forming", () => {
+  const closes = new Map([[T0, 101], [T0 + 60_000, 102]]);
+  assert.equal(minuteCloseAtOrBefore(closes, T0 + 60_000), 101);
+  assert.equal(minuteCloseAtOrBefore(closes, T0 + 2 * 60_000), 102);
+  assert.equal(minuteCloseAtOrBefore(closes, T0), null);
 });
 
 test("types and sub-types: Block raised / Active level, DCA vs DCA Active, Axis, Signals", () => {
