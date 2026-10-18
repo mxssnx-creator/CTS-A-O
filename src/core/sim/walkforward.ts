@@ -3542,7 +3542,7 @@ export function* selectFixedGen(
   for (let i = 0; i < tapes.length; i++) {
     const tp = tapes[i];
     if (performance.now() - t0 > 8) {
-      yield -1;
+      yield { stage: "Simulation", label: `fixed selection after tape ${i - 1}` } as unknown as number;
       t0 = performance.now();
     }
     let info = infos[i];
