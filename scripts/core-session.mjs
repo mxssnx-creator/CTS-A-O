@@ -50,6 +50,7 @@ import { captureSignalProgress } from "./lib/signal-progress.mjs";
 import { iterateSessionTapeTrades, iterateSessionValidation, readSessionDump, writeJsonFile, writeSessionDump } from "./lib/session-dump.mjs";
 import { BOOK_NOTIONAL_EPS_USD, normalizedBookNotional } from "./lib/book-notional.mjs";
 import { sessionAllocation, sessionCashPnl, sessionUnitNotional, sessionOwnedReturns, sessionVirtualReturns } from "./lib/session-owned-returns.mjs";
+import { createMinuteBookCache } from "./lib/session-minute-book.mjs";
 import {
   SESSION_EXECUTION_RETURNS,
   SESSION_QUALIFICATION,
@@ -1483,6 +1484,13 @@ const hourOfEntry = (t) => startT + Math.floor((t - startT) / H) * H;
 
 // every order the equity carries: the closed orders, and the positions still open at the end (exit = never)
 const inBook = [...trades, ...openEnd.map((o) => ({ ...o, exitT: Infinity, openAtEnd: true }))].sort((a, b) => a.entryT - b.entryT);
+// Allocations are complete and immutable here. Retain each order and the exact
+// sum order; cache only repeated key/unit/volume and last-closed price lookups.
+const minuteBook = createMinuteBookCache(inBook, {
+  keyOf: orderKey,
+  unitOf: (x, key) => sessionUnitNotional(x, sized.units, () => key),
+  priceOf: px,
+});
 // minute-by-minute equity: realized (closed by t) + open orders marked to market at t
 let realized = 0;
 let peak = balance0;
@@ -1528,18 +1536,19 @@ for (let h = startT; h < endT; h += H) {
     let oaeMtm = 0;
     const oaePos = new Set();
     for (const x of open) {
-      const p = px(x.sym, t);
+      const cached = minuteBook.order(x);
+      const p = minuteBook.price(x.sym, t);
       // vol = volume units held (DCA legs × Block multiple); r and the margin scale with it
-      const vol = x.vol ?? 1;
-      const d = p !== null ? ((x.side * (p - x.entry)) / x.entry - cost) * unit(x) * vol : 0;
+      const vol = cached.volume;
+      const d = p !== null ? ((x.side * (p - x.entry)) / x.entry - cost) * cached.unit * vol : 0;
       if (p !== null) mtm += d;
       else mtmMissing++;
-      margin += (unit(x) * vol) / leverage;
-      posKeys.add(`${x.sym}|${x.side}`);
+      margin += (cached.unit * vol) / leverage;
+      posKeys.add(cached.positionKey);
       if (x.openAtEnd) {
         oaeN++;
         oaeMtm += d;
-        oaePos.add(`${x.sym}|${x.side}`);
+        oaePos.add(cached.positionKey);
       }
     }
     const eq = balance0 + realized + mtm;
@@ -1908,6 +1917,9 @@ function curveStats(xs0, nowT = endT) {
  * realized net, return PF and separate cash PF, minute equity drawdown, margin max, end equity.
  */
 function equityPass(unitFn, allocations) {
+  // Each comparison pass owns its sizing snapshot and price cache. Do not
+  // reuse the headline/capped allocations for the uncapped comparison.
+  const minuteBook = createMinuteBookCache(inBook, { keyOf: orderKey, unitOf: unitFn, priceOf: px });
   const owned = ownedReturns(trades, allocations);
   let gp = 0;
   let gl = 0;
@@ -1934,8 +1946,9 @@ function equityPass(unitFn, allocations) {
     let mtm = 0;
     let margin = 0;
     for (const x of op) {
-      const p = px(x.sym, t);
-      const v = unitFn(x) * (x.vol ?? 1);
+      const cached = minuteBook.order(x);
+      const p = minuteBook.price(x.sym, t);
+      const v = cached.unit * cached.volume;
       if (p !== null) mtm += ((x.side * (p - x.entry)) / x.entry - cost) * v;
       margin += v / leverage;
     }

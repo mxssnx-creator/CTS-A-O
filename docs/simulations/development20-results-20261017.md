@@ -198,3 +198,48 @@ All new evidence is preserved under `runs/exact-signal-study-ci-v2/<case>/`: the
 | dev20-entry15 | 12116619642 | `0323711b5dda403df37fd285feca0e400839865b0a2308ac12e89215b4d01b59` |
 
 The resource improvement does not repair the uncapped portfolio’s financial infeasibility or supply missing Signal execution evidence. No promotion or research pruning follows from these development reruns.
+
+## Lossless sidecar rerun: v3 independent verification
+
+[Actions run 39077484680](https://github.com/mxssnx-creator/CTS-A-O/actions/runs/39077484680), remote head `c62701343668b5b87f2bfd5644eb46ff0f44b4f5`, completed all four development reports with 16 strict checks each. The frozen protocols identify common checkpoint `c03204f17daddc43a398311f8bce872a9517d1ff`; their exact executed source seals are recorded below. Economic corrected source remains `fdabcdb3f9daf17160873f98962dc265f9142159`.
+
+The v3 changes store large trade, tape, validation and allocation arrays in ordered JSONL sidecars. Independent Python verification parsed bounded headers, streamed every referenced chunk and verified its byte length, SHA256, item/row counts and global ordinals. Nested empty items and duplicate config identities retain their original order. The raw and report allocation rows join by global close/open index and exact config, symbol, direction and timestamps. No tape or validation array was hydrated during this independent verification. Header size is recorded rather than truncated; the explicit bound is 384 MiB and each sidecar chunk is limited to 8 MiB.
+
+All four cases preserve their **exact old-v2 ordered funded unit-return and allocation/cash fingerprints**, full normalized frozen desks, runtime report settings and complete account total objects. Every primary settled PF, funded order count, engine/Signal split, hourly result and financial infeasibility finding above remains unchanged. Signals still have no funded closes in these four sessions. Entry-5 remains an uncapped model with PF above 1.2 and infeasible funding; it is not a passing live account result. No configuration pruning or promotion follows from these reruns.
+
+| Case | V2 → v3 raw run seconds | V2 → v3 peak RSS MB | V2 → v3 strategy compute seconds | V3 raw / report header bytes |
+|---|---:|---:|---:|---:|
+| baseline20 | 150 → 151 | 3,492 → 3,451 | 55.470 → 54.759 | 41,612,602 / 3,146,589 |
+| corrected20 | 49 → 62 | 3,315 → 3,123 | 43.409 → 55.447 | 41,661,773 / 3,151,369 |
+| dev20-entry5 | 59 → 59 | 3,074 → 3,081 | 54.821 → 54.476 | 39,141,683 / 3,147,219 |
+| dev20-entry15 | 57 → 57 | 2,998 → 3,196 | 51.850 → 52.186 | 39,578,201 / 3,148,221 |
+
+Raw run seconds above are the dump's runtime measurement; the driver separately records simulation-process, report and audit durations in `launcher.json`. Storage verification and report work have costs, and these executions do not show a uniform speedup over v2. The command-line 8192 MiB V8 heap allowance can apply to worker isolates too; it is not a whole-process 8 GiB memory cap. Peak RSS is the observed runtime measurement.
+
+### Endpoint DCA mark basis discrepancy
+
+Independent reconciliation found a pre-existing difference between exported engine endpoint marks and the report's minute-close account marks. For corrected20/baseline20, 146 DCA open orders differ; the other 22,662 endpoint orders match. The engine export sums to −$18.388776984475456, while the independently recomputed account minute mark is −$18.390983089576835, a +$0.002206105101379 engine-minus-account difference. The old-v2 export has the identical sum and discrepancy.
+
+The DCA simulator computes the mean of each equal-notional leg's return (`src/core/sim/dca.ts`, lines 172–187), while exposing the arithmetic mean entry. The report's minute book computes return at that mean entry and multiplies by the full volume (`scripts/core-session.mjs`, minute mark pass); exported endpoint allocations use the engine `mtmR`. For example, AVAX long config `follow|rsi-mom-10-25@m1|tp0.9|sl0.84|tr0|h480|dca` has arithmetic entry 10.87016, final closed-minute price 10.677, funded unit $0.010243564097310462, volume 24 and external multiplier 8. Exported engine cash is −$0.00467030455834303; the account minute mark is −$0.004737381481998851. This is a per-leg return/average-entry basis difference, with the same allocation sample, price instant and modeled costs.
+
+The independent audit retains both mark bases and verifies account equity against the minute-close account marks. Settled PF and cash are verified on settled funded rows, and endpoint marks stay outside their sample. Endpoint contribution exports need a report-level consistency correction with explicit preservation of engine marks; fully reconstructing a ladder's own minute economics would additionally need leg entry/size timing. The much larger account margin/equity feasibility failures above remain unresolved by this small contribution discrepancy.
+
+| Case | Engine endpoint MTM export | Minute-close account MTM | Engine minus account |
+|---|---:|---:|---:|
+| baseline20 | -18.388776984475 | -18.390983089577 | 0.002206105101 |
+| corrected20 | -18.388776984475 | -18.390983089577 | 0.002206105101 |
+| dev20-entry5 | -9.605914536061 | -9.606887535141 | 0.000972999080 |
+| dev20-entry15 | -11.464897290615 | -11.465922986900 | 0.001025696285 |
+
+### V3 evidence preservation
+
+Each case is preserved under `runs/exact-signal-study-ci-v3/<case>/`: the exact GitHub `artifact.zip`, safe extraction integrity record, sealed protocol/desk, raw/report headers and all referenced JSONL chunks, launcher and CI audit. `independent-stream-audit.json` records full storage/math verification; `independent-economic-parity.json` adds exact v2 settings/account comparisons. The four-case aggregate is `runs/exact-signal-study-ci-v3/development-economic-parity.json`. The detailed 146-row DCA comparison is `corrected20/endpoint-mark-basis-diagnostic.json`.
+
+| Case | Artifact ID | Verified ZIP SHA256 | Frozen protocol SHA256 |
+|---|---:|---|---|
+| baseline20 | 12117901749 | `8649eed839b00e62dbe9e2eeb277c97d8f34a804cc7e5ad688b636a3cd313177` | `75863ab0e359bf3159b0c46b4fd8b422c77c8602bb3f033dafca88ec704caa1b` |
+| corrected20 | 12117631470 | `20751ec2bdb7f519b141c5df6baeea39c579b56e5ca0f1cef81057daff0c4688` | `9adb76c198c79484360ca4cab70dda5006f322b355255a0f6ba3e0da9832a8b8` |
+| dev20-entry5 | 12117069601 | `47c539483079c462c0f3514c9a38c1c02911189bd619fd0e65c6f403da0b6308` | `f86d16f586fd86a158f4c1d1a62df9d744d38a0e4d73e093336d5f22f0fda27f` |
+| dev20-entry15 | 12117318558 | `a6e1c07853249916a23f66fc329b31d13458ed3c4f5a6f2df282d793a69fe752` | `82fe218c1d5b6c430d8284255a3537398730e608c622dfb4857b2b47b3cab0ee` |
+
+Exact v3 source seal for corrected20/entry-5/entry-15: `d3d99408adc40db8839f55503fd73628d3867ae0a61aa61d8846634767d8292f`. Baseline source seal: `63284228860f5bb9d57b2b7d0cccd105171e6c87f53ff63fe8d454504d55786e`.

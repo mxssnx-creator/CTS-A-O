@@ -11,6 +11,8 @@ import { statsOf } from "../src/core/metrics/stats.ts";
 import { rangeCellPass } from "../src/core/pipeline/pipeline.ts";
 import { ALL_RANGE_TAGS, basePass } from "../src/core/server/runtime.server.ts";
 import { readSessionDump, writeSessionDump } from "./lib/session-dump.mjs";
+import { createMinuteBookCache } from "./lib/session-minute-book.mjs";
+import { sessionUnitNotional } from "./lib/session-owned-returns.mjs";
 import {
   SESSION_QUALIFICATION,
   recordSessionMinimum,
@@ -23,6 +25,105 @@ import {
 const H = 3_600_000;
 const M = 60_000;
 const script = new URL("./core-session.mjs", import.meta.url).pathname;
+
+describe("immutable minute book lookup cache", () => {
+  it("caches each order and each minute-symbol including zero and missing prices", () => {
+    const a = { cfg: "a", sym: "A", side: 1, vol: 0 }, b = { cfg: "b", sym: "B", side: -1 };
+    let keys = 0, units = 0;
+    const calls = [];
+    const cache = createMinuteBookCache([a, b, a], {
+      keyOf: (x) => { keys++; return x.cfg; },
+      unitOf: (x, key) => { units++; assert.equal(key, x.cfg); return x === a ? 0 : NaN; },
+      priceOf: (sym, t) => { calls.push([sym, t]); return sym === "A" ? 0 : sym === "B" ? null : undefined; },
+    });
+    assert.equal(keys, 2); assert.equal(units, 2);
+    assert.deepEqual(cache.order(a), { key: "a", unit: 0, volume: 0, positionKey: "A|1" });
+    assert.ok(Number.isNaN(cache.order(b).unit)); assert.equal(cache.order(b).volume, 1);
+    assert.equal(cache.order(b).positionKey, "B|-1"); assert.ok(Object.isFrozen(cache.order(a)));
+    for (let i = 0; i < 3; i++) {
+      assert.equal(cache.price("A", M), 0); assert.equal(cache.price("B", M), null); assert.equal(cache.price("C", M), undefined);
+    }
+    assert.deepEqual(calls, [["A", M], ["B", M], ["C", M]]);
+    cache.price("A", 2 * M); cache.price("A", M);
+    assert.equal(calls.length, 5, "a changed minute, including moving backward, invalidates prior prices");
+    assert.throws(() => cache.order({}), /not prepared/);
+  });
+
+  it("keeps the production minute loop's order, volume, missing-price and unknown-allocation arithmetic", () => {
+    const source = readFileSync(script, "utf8"), begin = source.indexOf("// minute-by-minute equity:");
+    const from = source.indexOf("    let mtm = 0;", begin), to = source.indexOf("    const eq = balance0 + realized + mtm;", from);
+    assert.ok(begin > 0 && from > begin && to > from);
+    const body = source.slice(from, to);
+    const evaluate = runInNewContext(`(function(open,t,cost,leverage,minuteBook){let mtmMissing=0;${body};return {mtm,margin,posKeys:[...posKeys],oaeN,oaeMtm,oaePos:[...oaePos],mtmMissing};})`);
+    const orders = [
+      { cfg: "long", sym: "A", side: 1, entry: 100, vol: 3 },
+      { cfg: "short", sym: "A", side: -1, entry: 100, openAtEnd: true },
+      { cfg: "fraction", sym: "B", side: -1, entry: 50, vol: .2, openAtEnd: true },
+      { cfg: "zero", sym: "Z", side: 1, entry: 1 },
+      { cfg: "missing-zero", sym: "MISSING", side: 1, entry: 1 },
+      { cfg: "missing", sym: "MISSING", side: -1, entry: 1, openAtEnd: true },
+    ];
+    const allocations = new Map([["long", 2], ["short", 1], ["fraction", 5], ["zero", 0], ["missing-zero", 0], ["missing", 2]]);
+    const price = (sym) => ({ A: 110, B: 45, Z: 0 })[sym] ?? null;
+    const direct = { order: (x) => ({ unit: sessionUnitNotional(x, allocations, (o) => o.cfg), volume: x.vol ?? 1, positionKey: `${x.sym}|${x.side}` }), price };
+    let priceCalls = 0;
+    const cached = createMinuteBookCache(orders, { keyOf: (x) => x.cfg,
+      unitOf: (x, key) => sessionUnitNotional(x, allocations, () => key),
+      priceOf: (sym, t) => { priceCalls++; return price(sym, t); } });
+    const run = (cache) => evaluate(orders, M, .0015, 10, cache);
+    const expected = run(direct), got = run(cached);
+    assert.deepEqual(got, expected);
+    assert.equal(got.mtmMissing, 2, "known-zero orders still retain their missing-mark counter");
+    assert.equal(got.oaeN, 3); assert.deepEqual([...got.posKeys], ["A|1", "A|-1", "B|-1", "Z|1", "MISSING|1", "MISSING|-1"]);
+    assert.equal(priceCalls, 4, "two same-symbol directions reuse the identical last-closed price");
+    const unknown = { cfg: "unknown", sym: "A", side: 1, entry: 100 };
+    const bad = createMinuteBookCache([unknown], { keyOf: (x) => x.cfg,
+      unitOf: (x, key) => sessionUnitNotional(x, allocations, () => key), priceOf: price });
+    const missing = evaluate([unknown], M, .0015, 10, bad);
+    assert.ok(Number.isNaN(missing.mtm)); assert.ok(Number.isNaN(missing.margin));
+  });
+
+  it("keeps secondary capped and uncapped minute passes independent with the legacy multiplication order", () => {
+    const source = readFileSync(script, "utf8"), begin = source.indexOf("function equityPass(");
+    const from = source.indexOf("    let mtm = 0;", begin), to = source.indexOf("    const eq = balance0 + rl + mtm;", from);
+    assert.ok(begin > 0 && from > begin && to > from);
+    const evaluate = runInNewContext(`(function(op,t,cost,leverage,minuteBook){${source.slice(from, to)};return {mtm,margin};})`);
+    const orders = [{ cfg: "L", sym: "A", side: 1, entry: 100, vol: .2 },
+      { cfg: "S", sym: "A", side: -1, entry: 100, vol: 3 },
+      { cfg: "Z", sym: "MISSING", side: 1, entry: 1 },
+      { cfg: "M", sym: "MISSING", side: -1, entry: 1 }];
+    const price = (sym) => sym === "A" ? 110 : null;
+    const legacy = (units) => {
+      let mtm = 0, margin = 0;
+      for (const x of orders) {
+        const p = price(x.sym), v = units.get(x.cfg) * (x.vol ?? 1);
+        if (p !== null) mtm += ((x.side * (p - x.entry)) / x.entry - .0015) * v;
+        margin += v / 10;
+      }
+      return { mtm, margin };
+    };
+    const capped = new Map([["L", 2], ["S", .25], ["Z", 0], ["M", .5]]);
+    const uncapped = new Map([["L", 5], ["S", 3], ["Z", 0], ["M", 7]]);
+    const results = [];
+    for (const allocations of [capped, uncapped]) {
+      let snapshots = 0, marks = 0;
+      const cache = createMinuteBookCache(orders, { keyOf: (x) => x.cfg,
+        unitOf: (x) => { snapshots++; return allocations.get(x.cfg); },
+        priceOf: (sym) => { marks++; return price(sym); } });
+      for (const t of [M, M, 2 * M]) {
+        const got = evaluate(orders, t, .0015, 10, cache);
+        assert.deepEqual({ ...got }, legacy(allocations));
+        results.push(got.mtm);
+      }
+      assert.equal(snapshots, orders.length); assert.equal(marks, 4);
+    }
+    assert.notEqual(results[0], results[3], "uncapped must not reuse the capped unit snapshot");
+    const missing = createMinuteBookCache([orders[3]], { keyOf: (x) => x.cfg, unitOf: () => NaN, priceOf: price });
+    const unknown = evaluate([orders[3]], M, .0015, 10, missing);
+    assert.equal(unknown.mtm, 0, "a missing price still takes the legacy null branch");
+    assert.ok(Number.isNaN(unknown.margin), "unknown allocation cannot become a zero margin");
+  });
+});
 
 function sidecarReplayRaw() {
   const cfgs = ["combo|ema-9-21@m1|win", "combo|ema-9-21@m1|loss"];

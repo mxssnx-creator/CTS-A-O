@@ -2,138 +2,179 @@
 
 Updated 2026-10-17, UTC. Repository: `mxssnx-creator/CTS-A-O`.
 
-## Latest checkpoint: exact Signals and performance — 17 October
+## Latest checkpoint: exact Signals, complete studies and performance — 17 October
 
-Economic source checkpoint `fdabcdb`; tested capture/reader checkpoint `0b8c145`.
-The complete 82-file economic source manifest remains unchanged by this latest
-storage/report fix. Draft PR [163](https://github.com/mxssnx-creator/CTS-A-O/pull/163)
-is backed up; the latest capture checkpoint is prepared for its next CI run.
-Main was verified at `d1364e5` before publication.
-No live settings, venue orders or deployment were changed in this pass.
+Source [PR 163](https://github.com/mxssnx-creator/CTS-A-O/pull/163) is merged:
+source merge `df34e931da4d9726e73feca1c0fbbf15fc7cb448`, exact tested tree
+`1e0edfdd6d87e5ed43db464c1b4fb50a047ebf5e`. Risk PR 166 is also merged;
+current main `09d800cc56946d1da120a03f96e2f382e7763d88`, tree
+`225c65cb81eec46fd851c37e2663038733274865` equals local `0297eef`. Backup
+`backup/main-before-report-cache-20261017` preserves this current main. Backup
+`backup/main-before-exact-signal-20261017` preserves `d1364e5`.
+Economic checkpoint is `fdabcdb`; bounded capture/reader checkpoint `0b8c145`;
+final source documentation checkpoint `3bcf204`. No live settings, venue orders,
+running instance, database or deployment were changed. No browser render QA
+or exchange-fill verification was performed in this pass.
 
-Fixed Signal activation, acceptance and Last-N histories to retain each exact
-protection config × symbol × direction. Previously an empty sibling divided
-a good config's sample, and opposite-side results could qualify a losing side.
-Live activation also no longer bypasses its check when engine selection is
-absent. Paper seats, hedge checks, reporting and UI retain exact identities;
-held configs remain exit-only. Fresh Signal count is unlimited (0); explicit
-nonzero custom counts remain respected. Named side/cluster coordination remains
-separate. No PF/sample gate was lowered.
+### Correctness and performance changes
 
-Canonical modeled default cost is now **0.15%**: 0.05% taker and 0.025%
-slippage per side. Migration v34 changes only the explicitly saved former
-factory tuple, including matching preset settings. Custom costs, explicit new
-choices, measured venue commissions and historical caches retain provenance.
-Range distances retain the fixed 0.20% construction basis, so this cost update
-does not silently shrink the grid.
+Exact Signal protection config × symbol × direction survives activation,
+acceptance, Last-N, paper/live seating, hedge checks, audit, reporting and UI.
+Empty siblings no longer dilute a good config, opposite-side results cannot
+qualify a losing side, and absent engine selection no longer bypasses live
+activation. Held configs remain exit-only. Fresh Signal count 0 is unlimited;
+explicit custom counts remain respected. No PF/sample/DD gates were lowered.
+Historical preparation takes the stricter Stage/custom Base-set PF floor.
+Empty held-only Base results explicitly fail.
 
-The earlier cost comparison below was confounded: its 0.20% replay used 2%
-equity sizing and its 0.15% replay used 0.1%. It is not cost-only evidence.
-The archived positive replay used **336h** config-evaluation history, not 48h;
-its high pass rate cannot certify the requested six-hour history policy.
-`simulations/cost-015-and-positive-replay-audit-20261017.md` records the corrected
-claims. Reports now separate actual first-step selections from the later paper
-snapshot and preserve the actual source venue.
+Canonical modeled round-trip cost is 0.15%. Migration v34 changes only the
+exact former factory fee/slippage tuple, including matching preset settings;
+custom/measured costs retain provenance. Range construction stays at 0.20%.
+The earlier 0.20% versus 0.15% study also changed sizing 2%→0.1%, so it is not
+a cost-only experiment. The old positive replay evaluated 336h, not 48h, and
+cannot certify six evaluated hours. See the cost/positive-replay audit.
 
-Acceptance performance: unique sorted exact config tapes build final prefixes
-directly; duplicate/pooled/unsorted inputs retain the generic stable path.
-A 440,000-close, 22,000-group fixture retained identical prefix hashes while
-wall time changed 1,491→531 ms, CPU 1,702→485 ms and peak RSS 259→177 MB.
-These are fixture measurements, not a full-system throughput or PF claim.
+Bounded replay loads every requested symbol before first computation and blocks
+partial/failed/short coverage; live startup stays progressive. Session CLI
+background preset comparisons default off, explicit diagnostic opt-in retained.
+Unique exact acceptance tapes build prefix results directly; generic duplicate,
+pooled and unsorted fallback remains. The acceptance fixture preserved its hash
+while changing 1,491→531 ms wall, 1,702→485 ms CPU and 259→177 MB RSS.
 
-Verification: Signal independence 13/13; causal/hedge/worker-local parity
-18/18; repaired guard/seat fixtures 10/10; callers/acceptance/UI 60/60;
-audit/report variants 49/49; seating/memory/trailing 4/4; Signal progress 3/3.
-Acceptance optimization targeted tests 29/29 plus reference checks 6/6.
-Report/frozen-protocol/source collector tests 30/30; independent auditor 4/4.
-Final TypeScript typecheck and diff checks passed. Earlier broad Signal run had
-three stale fixtures subsequently repaired; do not call that original run a
-complete pass.
+Session evidence is lossless, ordered and SHA256-sealed in ≤8 MiB JSONL chunks.
+Tapes are exported lazily; trade/validation/allocation readers and Python bridge
+support flat and chunked forms. Missing/unhydrated evidence fails explicitly.
+Report HTML omits unused embedded allocation arrays while exact JSON retains
+all rows. Current corrected20 HTML is 3,239,840 bytes versus 78,770,915; this is
+not a claim that total archived storage shrank. A 12-million-row stress case
+exceeding Node's old string limit wrote/verified at 347 MiB RSS. Regenerable
+synthetic chunks were removed after preserving their measured proof.
 
-New public dataset: 22 genuine Binance USD-M symbols, 665,280 minute candles,
-Sep 26→Oct 17 00:00 UTC, 462/462 archives and official checksums verified;
-zero gaps/duplicates. This is a different venue from earlier BingX evidence.
-Source hashes, chronological 20/22-symbol splits, exact economics and pruning
-policy are fixed in `simulations/exact-signal-22-study-20261017.md`.
+### Completed, independently reconciled studies
 
-Local baseline attempts were cancelled after shared-memory pressure caused
-fallback/aborts; logs are retained under
-`runs/exact-signal-study-20261017/dev20-baseline/attempt*-memory-aborted.log`.
-None is a completed 20-symbol test or profitability result. The eight-GiB
-pool was concurrently saturated by unrelated jobs. Studies now run on isolated
-public standard GitHub runners (four CPU, 16 GiB each), without live credentials.
+CI [39077484680](https://github.com/mxssnx-creator/CTS-A-O/actions/runs/39077484680)
+passed all eight jobs: production build, worker packaging, typecheck,
+193/193 targeted tests, four 20-symbol cases and both 22×24h windows.
+All four current 20-symbol economic/allocation/account fingerprints match the original
+runs exactly. Both 22-symbol audits passed 16/16, including every chunk, funded cohort,
+unit/cash arithmetic, hourly result and settings/source provenance. Full 22-symbol
+coverage used no fallback, degraded compute or aborts.
 
-Four actual development cases completed in CI run `39074495099`: controls both
-126,380 funded closes/PF 0.765632; Last-N 5 has 87,179/PF 1.267875; Last-N 15
-has 94,903/PF 1.112511. Signals are empty in all four. All four account models
-are **infeasible**, with actual position/gross risk settings **0/0 (uncapped)**;
-entry variants still have 53–55% marked drawdown. Baseline/corrected funded
-identity/unit-return fingerprints match exactly (`9d25e733…620ea70`). Full
-hourly/type/side/flow details are in
-`simulations/development20-results-20261017.md`. No profitable/live promotion
-or coverage claim follows from those results.
+| Model/window | Funded engine closes | Unit PF | Closed cash $ | Cash-positive hours | Capital feasible |
+|---|---:|---:|---:|---:|---|
+| 20-symbol baseline/current | 126,380 | 0.765632477 | -1.543603 | 4/6 | No |
+| 20-symbol entry Last-N 5 | 87,179 | 1.267875180 | +12.395141 | 4/6 | No |
+| 20-symbol entry Last-N 15 | 94,903 | 1.112511245 | +9.261089 | 5/6 | No |
+| 22-symbol selection | 127,501 | 0.748210087 | -27.709200 | 10/24 | No |
+| 22-symbol untouched final | 127,210 | 1.459701913 | +15.408821 | 16/24 | No |
 
-The first 22×24h job was externally stopped at 18/22 symbols, exit 143, without
-a final artifact. Its trace shows 15.3 GiB RSS and unrequested background
-preset comparisons; a kernel OOM or paper-book leak is not established. Fix
-`fdabcdb` loads the full bounded replay universe before computing, blocks
-partial computations on unavailable/short histories, and defaults the session
-CLI's separate preset benchmark off (explicit diagnostic opt-in is retained).
-Live startup remains progressive. Replay/live/retry tests pass 4/4, existing
-live regressions 2/2, and CLI/launcher tests 28/28. CI run `39075908889` passes
-the production build, worker packaging, typecheck and **112/112** targeted
-tests.
-All four replacement 20-symbol cases have now completed and independently
-preserve every ordered unit-return and allocation/cash row, settings/WF and
-account summary. Corrected20 improved **185→49 seconds, 11,555→3,315 MB peak
-RSS**. Entry5 improved 177→59 seconds/11,169→3,074 MB; Entry15 improved
-198→57 seconds/10,370→2,998 MB. Strategy compute time was not uniformly faster;
-these gains avoid repeated partial work and unrequested comparisons. All
-financial infeasibility and empty Signal outcomes remain unchanged.
+These five source policies use actual position/gross ratios 0/0 (uncapped),
+separate from the final exchange cap of 100 Symbol × Direction positions. Final 22-symbol
+peak modeled margin is $269.20924 on $10 starting equity; marked DD 99.461%,
+minimum equity $0.062921. Both directions traded, but final long PF 0.868962
+versus short 3.970918. Signals and trailing-only funded samples remain empty.
+A no-loss sentinel or empty cohort is never a measured passing finite PF.
 
-The replacement selection22 computation completed all symbols and all 24h
-in 129 seconds through paper readiness (78.956s compute, last RSS 5,559 MB),
-then failed at monolithic export with Node's 512-MiB string-size limit. The
-four separate risk arms completed computation but failed capture at the
-default approximately 4-GiB V8 heap. **None has a funded 22-symbol/account
-result**, so no pruning, holdout or live-promotion conclusion exists.
+Current corrected20 capture runtime is **185→62 s**, peak RSS
+**11,555→3,123 MB**. Entry5 is 177→59 s / 11,169→3,081 MB; Entry15 is
+198→57 s / 10,370→3,196 MB. These exclude report/audit durations; direct strategy
+compute did not uniformly improve. Selection22 simulation/report/audit wall
+was 192.850/259.333/22.763 s; final 89.378/77.018/11.218 s. All three report minute-book passes now cache immutable order units/volume/keys
+and each symbol price once per minute. Snapshot caches stay separate for capped
+and uncapped allocations. No arithmetic association or iteration order changed.
+Patch `249d57a` (integration `069cb36`) passes 27/27 report tests and independent
+review. All 468,368 orders, 63,360 symbol-minute marks and 18 old/new slices
+match; all new full passes match applicable recorded results at six decimals.
+Full end-to-end improvement awaits the new isolated CI run. The failed 240s
+old-loop profile and stopped retry are preserved, not passing benchmarks. The 8,192 MiB V8 allowance applies to worker
+isolates too, not a whole-process/runner cap. Isolated research used four CPU,
+16 GiB runners; this does not resize the shared local eight-GiB environment.
 
-Checkpoint `0b8c145` now stores every tape, validation, execution and optional
-allocation row in bounded checksummed chunks, generates tape rows lazily,
-and avoids a second unused allocation copy inside report HTML. All eight JS
-readers and the Python losing-config report understand both legacy and chunked
-files. Unloaded placeholders explicitly fail frozen validation/audit rather
-than becoming zero results; temporary cleanup retains unrelated files.
-See `simulations/session-evidence-format.md`. A 12-million-row stress case
-exceeding the old string limit wrote and verified completely at 347 MiB peak
-RSS. Helper tests 41/41, CLI tests 24/24, raw/report audit+protocol tests 12/12,
-and actual reader/parity/corruption suites passed; final typecheck/diff checks
-passed. One broad fixture originally hit the actual shared-host memory guard;
-its deterministic test-only correction passed the focused rerun. Do not call
-the original broad run an all-pass result. New complete 20/22 CI studies are
-still required after the capture change. Isolated test children explicitly
-allow an 8-GiB main heap; production worker/memory policy is unchanged.
+Six hours are evaluated prehistory; older candles initialize indicators only
+behind `evaluationFromT`. Source is 22 fixed genuine Binance USD-M symbols,
+665,280 native 1-minute bars, Sep 26→Oct 17 00:00 exclusive, 462/462 official archive
+checksums verified, no gaps/duplicates. Feed SHA256:
+`84e29bb4e729e6f4e213ba1c8e6eb8c1a11ecbc0a8b3f65e958a4563040f8019`.
+This source differs from earlier BingX evidence. Do not fit individual losing
+hours. The completed selection found **zero eligible pruning proposals** under
+the frozen ≥50 closes / ≥3 symbols / losses in both halves rule. All ranges stay
+enabled; no defaults or live promotion follow from these experiments.
 
-Historical Signal preparation now retains the stricter of configured Stage
-PF and custom Base-set PF rather than inheriting a lower range floor. Empty
-held-only Base results are reported as failed. Those corrections do not lower
-samples, PF, drawdown gates or configured strategy/order limits.
+Signals did activate: all 1,473 selection / 1,111 final execution attempts have an
+explicit first-failure reason before funding. Selection: own-history 1,150,
+confirmation 223, cluster 51, own-PF 49. Final: own-history 763, side 271, own-PF 43,
+cluster 34. Own-history combines sample/PF/DD checks; recorded artifacts do not
+split its failures. Preparation snapshots and representative Base counts are
+not admitted executions. There is no unexplained activation/funding drop in
+these windows; no Signal passed all configured causal entry gates.
 
-Separate draft [PR 166](https://github.com/mxssnx-creator/CTS-A-O/pull/166),
-initial remote `e344b406`, matches local `f168743` and targets the feature branch.
-It freezes four new 22×24h risk arms with position notional cap 0.75× balance,
-gross cap 7×/1× and causal entry Last-N 0/5/15. Sole prespecified candidate:
-`entry5-gross1`. Its criteria include primary Engine and combined PF >1.2,
-at least 1,000 settled closes, both sides, 16/24 cash-positive hours, positive
-equity, no modeled margin shortfall and marked DD ≤10%. Signals remain
-separately measured and empty Signals remain uncertified. Run `39075929197`
-passed its policy contract, but all four first captures failed as described
-above. Retry drivers now verify every raw/report chunk, retain fresh run-scoped
-evidence, and reuse only the strictly verified immutable public source. These account
-changes differ from the uncapped development cases and must be disclosed.
+### Account-risk holdout and endpoint marks
 
-Keep all ranges enabled until a full, nondegraded 22×24h audit; no pruning,
-defaults, deployment or live action is authorized by research acceptance alone.
+[PR 166](https://github.com/mxssnx-creator/CTS-A-O/pull/166) is merged.
+CI 39077541410 passed all six jobs. All four independent account-risk audits
+passed, including matching frozen economics/caps, complete evidence provenance,
+funded config membership, hourly cash and all 1,440 minute equity/margin values.
+Each arm has position notional ratio 0.75 and gross ratio 7 or 1, unchanged
+strategy universe, causal entry Last-N 0/5/15 and live disabled. The sole
+prespecified candidate is entry5-gross1; a diagnostic cannot replace it after
+scoring. All four policies fail the frozen profitability criteria.
+
+| Risk arm | Funded closes | Unit PF | Closed cash $ | End marked equity $ | Maximum DD | Cash-green hours |
+|---|---:|---:|---:|---:|---:|---:|
+| Control, entry0 / gross7 | 789,873 | 0.691260716 | -1.018721 | 8.472082 | 19.0931% | 14/24 |
+| Entry5 / gross7 | 595,448 | 0.834692837 | -0.880353 | 8.540239 | 18.6287% | 16/24 |
+| Candidate entry5 / gross1 | 604,153 | 0.824573475 | -0.093895 | 9.829475 | 2.3357% | 16/24 |
+| Entry15 / gross1 | 680,439 | 0.711549623 | -0.145745 | 9.782792 | 2.5763% | 16/24 |
+
+All four are feasible within the configured aggregate-parent model, with no
+modeled margin shortfall and both directions executed. Signals remain empty.
+The two entry5 arms have identical ordered virtual-return hashes: their funded
+cohort differences arise from final account caps. Gross1 reduced marked drawdown,
+but none qualifies for live/default promotion. The minimum candidate marked
+equity was $9.809587. Full outcomes and all 96 hourly rows are in the risk report.
+
+A pre-existing DCA endpoint report mismatch affects 146 of 420 open DCA orders;
+274 single-leg DCA and 22,388 non-DCA match. Engine equal-notional leg marks sum
+to −$18.38877698447657; the unchanged arithmetic-entry minute account sums
+to −$18.390983089577958, delta +$0.002206105101386. Additive amendment checkpoint
+`e6c9caa` preserves every original field and frozen seal, explicitly adds engine
+and book mark bases, and reconciles book marks to original equity−balance.
+Its 16 tests and readback of 126,380 settled and 22,808 open rows pass; unchanged settled,
+allocation, hourly and curve hashes are preserved. It does not reconstruct
+causal leg fills: raw evidence lacks each leg's price/time/size ledger. Never
+replace arithmetic entry with a harmonic entry retroactively. See the endpoint
+amendment doc/proof; original inputs remain immutable.
+
+Complete hourly/range/type/side/provenance tables:
+
+- `simulations/completed-study-summary-20261017.md`
+- `simulations/development20-results-20261017.md`
+- `simulations/source22-results-20261017.md`
+- `simulations/risk-entry-results-20261017.md`
+- `simulations/endpoint-mark-amendment.md`
+- `simulations/minute-report-cache-20261017.md`
+- `simulations/session-evidence-format.md`
+
+Earlier resource failures remain preserved: first22 stopped at 18/22, exit 143
+with 15.3 GiB RSS and background comparisons; replacement22 computed then hit
+Node's 512 MiB string limit; first four risk captures hit the default ~4 GiB heap.
+None of those failed captures is funded performance evidence. The successful
+bounded retries supersede completion claims, without deleting failure records.
+Public source, original/replacement 20-symbol archives and independent proofs
+are durably preserved. Saving the largest new 22/risk raw archives timed out
+without receipts; their finalization outcome is uncertain. Do not automatically
+retry those writes: the Library skill prohibits retrying uncertain finalization.
+Full verified ZIPs remain local and in GitHub Actions with seven-day retention.
+Future source/risk workflow uploads now request 90-day retention; this does not
+extend the earlier artifacts retroactively.
+A separate compact bundle preserves complete audit proofs, frozen protocols,
+settings, source/ZIP hashes and the full endpoint report revision. It is saved as
+`CTS-A-O-verified-audit-and-endpoint-evidence-2026-10-17.zip`
+(20,280,672 bytes; SHA256
+`73fdb7ddee83d5d4faef0bf1d2d00453427700c190f70a3a3db8ab2657c0d29d`).
+The performance proof is included; end-to-end CI timing remains pending.
+Git-backed source/docs stay in the repository. Do not touch unrelated local
+jobs or `/workspace/startup.sh`, which belongs to another checkout.
 
 ## Systemwide PF scope and cash basis — 17 October
 
