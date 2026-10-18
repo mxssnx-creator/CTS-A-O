@@ -2904,7 +2904,8 @@ function beatsBase<T extends { pair: string; window: { pf: number } }>(
   });
 }
 const noteBase = (m: Map<string, number>, tp: ConfigTape, w: { n: number; pf: number }) => {
-  if (w.n < 3 || familyOf(tp.kind, tp.protect.exitSet, tp.protect.exitSide) !== "base") return;
+  if (w.n < 3 || !Number.isFinite(w.pf) ||
+    familyOf(tp.kind, tp.protect.exitSet, tp.protect.exitSide) !== "base") return;
   const k = `${tp.bot}|${tp.ind}`;
   m.set(k, Math.max(m.get(k) ?? -Infinity, w.pf));
 };
@@ -3650,7 +3651,7 @@ export function* selectFixedGen(
     const n = b - a;
     const pf = profitFactor(gp, gl);
     // the base is evaluated whatever the toggles: DCA / Axis still have to beat it with Normal off
-    if (needBase && info.base && n >= 3)
+    if (needBase && info.base && n >= 3 && Number.isFinite(pf))
       basePf.set(info.pairKey, Math.max(basePf.get(info.pairKey) ?? -Infinity, pf));
     // a held-only tape serves its open position, it takes no new seat
     if (!info.canSeat) continue;
