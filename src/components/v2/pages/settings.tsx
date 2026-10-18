@@ -713,7 +713,7 @@ export function SignalsSettings(props: {
         </Field>
       </div>
       <div className="v2-grid v2-cols-4">
-        <Field label={`Trailing only · TP None → ${counts.trailingOnly} configs`} hint="independent of percent / ATR exits; each full source, range, lane, symbol and direction qualifies this type separately">
+        <Field label={`Trailing only · TP None → ${counts.trailingOnly} configured (${counts.activeTrailingOnly} eligible)`} hint="independent of percent / ATR exits; trails below the minimum are shown as configured but do not run; qualification is independent for each source, range, lane, symbol and direction">
           <Switch label="Signal trailing-only sets" checked={trailingOnly.enabled} onChange={(v) => set(["trailingOnly", "enabled"], v)} />
         </Field>
         <Field label="Trailing only: hard SL (%)" hint="stop from entry, at the 15m reference and scaled per lane">
@@ -803,7 +803,7 @@ export function SignalsSettings(props: {
         </Field>
       </div>
       <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
-        {counts.total} percent / ATR / trailing-only configs per signal ({counts.pct} percent + {counts.atr} ATR + {counts.trailingOnly} trailing only, TP None), each run independently per full source, range, lane, type, symbol and direction. Master Trailing controls execution of both trailing types; disabled sets still retain held-position protection.
+        {counts.total} configured percent / ATR / trailing-only cells per signal ({counts.pct} eligible percent + {counts.atr} eligible ATR + {counts.trailingOnly} trailing only, TP None); {counts.activeTotal} currently meet the reference trail floor{counts.inactiveTrailingOnly ? ` · ${counts.inactiveTrailingOnly} trailing-only cells below minTrail are inactive` : ""}. Eligible cells qualify independently per full source, range, lane, type, symbol and direction. Master Trailing controls execution of both trailing types; disabled sets still retain held-position protection.
       </div>
       <div style={{ borderTop: "1px solid var(--v-border)", paddingTop: 10 }}>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
