@@ -136,6 +136,10 @@ export function* stableSortGen<T>(values: T[], compare: (a: T, b: T) => number):
   let source = values;
   let target = scratch;
   let work = 0;
+  const yieldEvery = n >= 2048 ? 128 : 512;
+  const shouldYield = () => {
+    return ++work % yieldEvery === 0;
+  };
   for (let width = 1; width < n; width *= 2) {
     for (let left = 0; left < n; left += width * 2) {
       const mid = Math.min(left + width, n);
@@ -145,15 +149,15 @@ export function* stableSortGen<T>(values: T[], compare: (a: T, b: T) => number):
       let out = left;
       while (a < mid && b < right) {
         target[out++] = compare(source[a], source[b]) <= 0 ? source[a++] : source[b++];
-        if (++work >= 512) { work = 0; yield -1; }
+        if (shouldYield()) yield -1;
       }
       while (a < mid) {
         target[out++] = source[a++];
-        if (++work >= 512) { work = 0; yield -1; }
+        if (shouldYield()) yield -1;
       }
       while (b < right) {
         target[out++] = source[b++];
-        if (++work >= 512) { work = 0; yield -1; }
+        if (shouldYield()) yield -1;
       }
     }
     [source, target] = [target, source];
@@ -161,7 +165,7 @@ export function* stableSortGen<T>(values: T[], compare: (a: T, b: T) => number):
   if (source !== values) {
     for (let i = 0; i < n; i++) {
       values[i] = source[i];
-      if (++work >= 512) { work = 0; yield -1; }
+      if (shouldYield()) yield -1;
     }
   }
 }
