@@ -3,6 +3,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
+  baseAllowsTape,
   defaultWalkForward,
   execDecision,
   makeTape,
@@ -108,6 +109,31 @@ describe("gating: nothing unvalidated executes", () => {
     assert.equal(execDecision(eng12, at, { ...o, gates: { ...o.gates, warmup: false } }, ctx).ok, false);
     assert.equal(execDecision(eng12, at, o, ctx).ok, false);
     assert.equal(execDecision(only(ENG, "rsi-mom-14-20@m15", 12), at, o, ctx).ok, false);
+  });
+
+  it("carries each exact Base-qualified range through seat and entry without admitting failed siblings", () => {
+    const pair = "follow|rsi-mom-14-20@m15";
+    const other = "follow|ema-21-55@m15";
+    const baseTape = tape(ENG, "rsi-mom-14-20@m15", 10);
+    for (const tag of ["mc", "mn", "mp", "sh", "gn", "lg"] as const) {
+      const accepted = { ...baseTape, protect: { ...baseTape.protect, tag } };
+      const o = {
+        ...base,
+        basePassed: new Set([pair]),
+        basePassedRanges: { [pair]: [tag] },
+      };
+      assert.equal(baseAllowsTape(accepted, o), true, `${tag}: passed Base tag stays admitted`);
+      assert.deepEqual(selectFixed([accepted], NOW - 3 * H, o).picks.map((x) => x.id), [ENG],
+        `${tag}: qualified config keeps its seat`);
+      assert.equal(execDecision(accepted, at, o, { sym: "AAA-USDT", side: 1 }).ok, true,
+        `${tag}: qualified config reaches execution after last-N gates`);
+      const sibling = { ...baseTape, protect: { ...baseTape.protect, tag: tag === "mn" ? "gn" as const : "mn" as const } };
+      assert.equal(baseAllowsTape(sibling, o), false, `${tag}: failed sibling cannot enter`);
+      assert.equal(selectFixed([sibling], NOW - 3 * H, o).picks.length, 0);
+      assert.equal(execDecision(sibling, at, o, { sym: "AAA-USDT", side: 1 }).ok, false);
+      assert.equal(baseAllowsTape(accepted, { ...o, basePassed: new Set([other]) }), false,
+        "an unrelated successful pair cannot qualify this pair");
+    }
   });
 
   it("only pairs that passed Base take a seat", () => {
