@@ -35,7 +35,13 @@ const small = {
   grid: { short: false as const },
   // runtime mechanics, not the entry tactics (tactics.test / processing.test cover them): no entry filter, so
   // every synthetic minute has trades to audit
-  tactics: { session: false, volRegime: false, trendStrength: false, cooldown: false, cooldownBars: 4 },
+  tactics: {
+    session: false,
+    volRegime: false,
+    trendStrength: false,
+    cooldown: false,
+    cooldownBars: 4,
+  },
   // the synthetic feed has no edge: lenient gates so Base passes pairs and there are tapes, seats and trades to
   // publish and audit (the gates themselves: gating.test, walkforward.test, lastn-calc.test)
   gates: { minPf: 1.05, minTrades: 3, maxDdr: 0 },
@@ -134,7 +140,17 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
             dcaActive: false,
             axis: true,
           },
-          block: { mode: "shared", steps: 0, pause: 0, ratio: 0.2, maxLevel: 3, minActiveLevel: 1, maxMult: 2.5, ...block },
+          block: {
+            mode: "shared",
+            steps: 0,
+            pause: 0,
+            ratio: 0.2,
+            maxLevel: 3,
+            minActiveLevel: 1,
+            maxMult: 2.5,
+            ...("active" in block ? { historySource: "real-candidates" } : {}),
+            ...block,
+          },
         } as never,
         { market: "synthetic" },
       );
@@ -198,13 +214,15 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
 
   it("never reads candles of another timeframe as 1m base bars (hot reload / old snapshot)", async () => {
     const rt = mk();
-    rt.candles.set("OLD-USDT", CandleSeries.fromCandles(syntheticCandles("OLD", 15, 800, Date.now())));
+    rt.candles.set(
+      "OLD-USDT",
+      CandleSeries.fromCandles(syntheticCandles("OLD", 15, 800, Date.now())),
+    );
     rt.start();
     await until(() => rt.status.computes >= 1 && rt.status.state === "running");
     rt.stop();
     assert.ok(!rt.candles.has("OLD-USDT"));
-    for (const cs of rt.candles.values())
-      assert.equal(cs.t[cs.n - 1] - cs.t[cs.n - 2], 60_000);
+    for (const cs of rt.candles.values()) assert.equal(cs.t[cs.n - 1] - cs.t[cs.n - 2], 60_000);
     assert.ok(
       rt.db.all<{ msg: string }>("SELECT msg FROM events").some((e) => /not 1m bars/.test(e.msg)),
     );
@@ -253,6 +271,7 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
       rt
         .pipeline!.s1.filter(
           (r) =>
+            r.bot !== "exit" &&
             r.full.pf >= rt.settings.gates.minPf &&
             r.full.net > 0 &&
             r.full.n >= rt.settings.gates.minTrades,
@@ -318,7 +337,8 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     assert.equal(rt.status.source, "synthetic");
     assert.ok(rt.pipeline && rt.sim && rt.tapes.length > 0);
     assert.ok(Number(rt.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM results")?.n) > 300);
-    for (const k of ["Pipeline", "Persist", "Tapes", "Simulation", "Paper"]) assert.ok(rt.status.phases[k], k);
+    for (const k of ["Pipeline", "Persist", "Tapes", "Simulation", "Paper"])
+      assert.ok(rt.status.phases[k], k);
     // the preset comparison follows the cycle (the book never waits for it; the next compute waits for it)
     await until(() => rt.status.compare?.running === false && (rt.status.compare?.done ?? 0) > 0);
     assert.ok(rt.db.kvGet("presetSims"));
@@ -375,7 +395,9 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     rt.start();
     await until(() => rt.status.state === "computing");
     // a desk re-applying its patch file: live limits, and a patch that changes nothing compute-related
-    rt.updateSettings({ live: { ...rt.settings.live, maxPositions: 0, maxNotionalUsd: 0, openPaused: "test" } });
+    rt.updateSettings({
+      live: { ...rt.settings.live, maxPositions: 0, maxNotionalUsd: 0, openPaused: "test" },
+    });
     rt.updateSettings({ disabledKinds: [...(rt.settings.disabledKinds ?? [])] }, {});
     await until(() => rt.status.computes >= 1 && rt.status.state === "running", 180_000);
     const r = rt as unknown as { paperStepped: boolean; dirty: boolean };
@@ -383,7 +405,9 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     assert.equal(rt.settings.live.maxPositions, 100, "live admission retains the exchange ceiling");
     assert.equal(rt.settings.live.openPaused, "test");
     // a compute-relevant change still recomputes
-    rt.updateSettings({ toggles: { ...rt.settings.toggles, dcaActive: !rt.settings.toggles.dcaActive } });
+    rt.updateSettings({
+      toggles: { ...rt.settings.toggles, dcaActive: !rt.settings.toggles.dcaActive },
+    });
     assert.equal(r.dirty || rt.status.state === "computing", true);
     rt.stop();
   });
@@ -459,7 +483,8 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     clearInterval(iv);
     rt.stop();
     assert.ok(worst < 250, `worst stall ${worst.toFixed(0)} ms`);
-    if (rt.status.tapesReleased) assert.ok(rt.status.phases.Slim, "the compaction ran as its own sliced phase");
+    if (rt.status.tapesReleased)
+      assert.ok(rt.status.phases.Slim, "the compaction ran as its own sliced phase");
     for (const [k, v] of Object.entries(rt.status.phases))
       assert.ok(v.maxSliceMs < 250, `${k} slice ${v.maxSliceMs.toFixed(0)} ms`);
   });
@@ -482,19 +507,25 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     await until(() => rt.status.computes >= 1 && rt.status.state === "running", 240_000);
     rt.stop();
     // Base evaluates exactly the focus set plus the pinned pairs in every lane (4 timeframes + 3 combined) — and, with
-    // Micro on by default (operator, 13 Oct), Micro's own indications on its lanes (baseFocus); only pairs passing the
-    // Base gate (PF ≥ min) continue to tapes (+ the signal sources, processed alongside)
+    // Micro on by default (operator, 13 Oct), Micro's own indications on its lanes (baseFocus), the independent Exit
+    // source pairs, and the Signal sources. Exit has its own exact Base counter; only qualified configs take tapes.
     const sigCombos = signalCombos(signalSettings(rt.settings.signals), rt.settings.tfs).length;
     const focus = baseFocus(rt.settings);
-    assert.ok(p.settings.focus!.every((k) => focus.includes(k)), "the preset's focus is evaluated");
+    assert.ok(
+      p.settings.focus!.every((k) => focus.includes(k)),
+      "the preset's focus is evaluated",
+    );
     assert.equal(
       rt.status.baseEvaluated,
-      allCombos(focus, rt.settings.disabledKinds, rt.settings.tfs, microLaneFloor(rt.settings.grid)).length +
+      allCombos(focus, rt.settings.disabledKinds, rt.settings.tfs, microLaneFloor(rt.settings.grid))
+        .length +
+        (rt.status.exitStrategies?.baseEvaluated ?? 0) +
         (rt.settings.signals.enabled && rt.settings.signals.baseGate !== false ? sigCombos : 0),
     );
     assert.ok(
       rt.tapes.every((t) => {
         if (isSignalInd(t.ind)) return true;
+        if (t.kind === "exit") return true; // Exit has its own Base gate and Bot-free source inventory.
         const base = `${t.bot}|${laneOf(t.ind).base}`;
         const pair = `${t.bot}|${t.ind}`;
         return focus.includes(base) || focus.includes(pair);
@@ -509,101 +540,106 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     assert.ok(!rt.savedPresets().some((x) => x.id === saved.id));
   });
 
-  slow("stress: a storm of mixed operations always ends in a clean compute with the last settings", async () => {
-    const rt = mk();
-    rt.start();
-    await until(() => rt.status.state === "computing");
-    let seed = 42;
-    const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32;
-    const toggles = ["normal", "trailing", "block", "blockActive", "dca", "dcaActive"] as const;
-    for (let i = 0; i < 60; i++) {
-      const x = rnd();
-      if (x < 0.15)
-        rt.applyPreset(RESEARCH_PRESETS[Math.floor(rnd() * RESEARCH_PRESETS.length)].id);
-      else if (x < 0.35)
-        rt.updateSettings({
-          toggles: { ...rt.settings.toggles, [toggles[Math.floor(rnd() * 6)]]: rnd() < 0.5 },
-        });
-      else if (x < 0.5)
-        rt.updateSettings({
-          tactics: {
-            ...rt.settings.tactics,
-            volRegime: rnd() < 0.5,
-            session: rnd() < 0.3,
-            cooldown: rnd() < 0.3,
+  slow(
+    "stress: a storm of mixed operations always ends in a clean compute with the last settings",
+    async () => {
+      const rt = mk();
+      rt.start();
+      await until(() => rt.status.state === "computing");
+      let seed = 42;
+      const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32;
+      const toggles = ["normal", "trailing", "block", "blockActive", "dca", "dcaActive"] as const;
+      for (let i = 0; i < 60; i++) {
+        const x = rnd();
+        if (x < 0.15)
+          rt.applyPreset(RESEARCH_PRESETS[Math.floor(rnd() * RESEARCH_PRESETS.length)].id);
+        else if (x < 0.35)
+          rt.updateSettings({
+            toggles: { ...rt.settings.toggles, [toggles[Math.floor(rnd() * 6)]]: rnd() < 0.5 },
+          });
+        else if (x < 0.5)
+          rt.updateSettings({
+            tactics: {
+              ...rt.settings.tactics,
+              volRegime: rnd() < 0.5,
+              session: rnd() < 0.3,
+              cooldown: rnd() < 0.3,
+            },
+          });
+        else if (x < 0.6)
+          rt.updateSettings(
+            {
+              focus:
+                rnd() < 0.5
+                  ? []
+                  : ["follow|rsi-mom-14-25", "follow|bb-walk@x4", "revert|cci-40-200@x4"],
+            },
+            { mode: (["fixed", "durable", "hourly"] as const)[Math.floor(rnd() * 3)] },
+          );
+        else if (x < 0.7)
+          rt.updateSettings(
+            {},
+            { lastN: rnd() < 0.5 ? 0 : 12, maxPerSymbol: 1 + Math.floor(rnd() * 3) },
+          );
+        else if (x < 0.78) rt.stop();
+        else if (x < 0.9) rt.start();
+        else if (x < 0.95) rt.kick();
+        else rt.requestResync();
+        await new Promise((r) => setTimeout(r, rnd() * 60));
+      }
+      // final, known settings
+      rt.updateSettings(
+        {
+          tfMin: 15,
+          focus: [],
+          tactics: { ...rt.settings.tactics, volRegime: true, session: false, cooldown: false },
+          toggles: {
+            normal: true,
+            trailing: true,
+            block: true,
+            blockActive: true,
+            dca: true,
+            dcaActive: false,
+            axis: true,
           },
-        });
-      else if (x < 0.6)
-        rt.updateSettings(
-          {
-            focus:
-              rnd() < 0.5
-                ? []
-                : ["follow|rsi-mom-14-25", "follow|bb-walk@x4", "revert|cci-40-200@x4"],
-          },
-          { mode: (["fixed", "durable", "hourly"] as const)[Math.floor(rnd() * 3)] },
-        );
-      else if (x < 0.7)
-        rt.updateSettings(
-          {},
-          { lastN: rnd() < 0.5 ? 0 : 12, maxPerSymbol: 1 + Math.floor(rnd() * 3) },
-        );
-      else if (x < 0.78) rt.stop();
-      else if (x < 0.9) rt.start();
-      else if (x < 0.95) rt.kick();
-      else rt.requestResync();
-      await new Promise((r) => setTimeout(r, rnd() * 60));
-    }
-    // final, known settings
-    rt.updateSettings(
-      {
-        tfMin: 15,
-        focus: [],
-        tactics: { ...rt.settings.tactics, volRegime: true, session: false, cooldown: false },
-        toggles: {
-          normal: true,
-          trailing: true,
-          block: true,
-          blockActive: true,
-          dca: true,
-          dcaActive: false,
-          axis: true,
         },
-      },
-      { mode: "durable", lastN: 12 },
-    );
-    rt.start();
-    const at = rt.status.settingsAt;
-    // the wait is on the state (the final settings applied, the runtime running, nothing pending), not on a count of
-    // computes: the full-focus compute of this storm is 27,428 Base combos, 90–130 s on 4 cores, and a follow-up
-    // compute runs after it when a setting changed mid-compute. 280 s failed under load (the 11 Oct run reached
-    // running at 251 s with the desk and the evaluation on the same VM); 900 s is the ceiling.
-    await until(
-      () =>
-        rt.status.appliedSettingsAt >= at && rt.status.state === "running" && !rt.status.pending,
-      900_000,
-    );
-    rt.stop();
-    assert.equal(rt.status.error ?? null, null);
-    assert.ok(rt.sim && rt.tapes.length > 0);
-    assert.equal(rt.sim!.opts.toggles.dcaActive, false);
-    assert.equal(rt.wf.mode, "durable");
-    // every paper position passes the execution rules of the current settings
-    // (Overall: every source its own Block, each within maxMult, the stack within 8×)
-    const b = rt.settings.block;
-    const cap = b.mode === "overall" ? 8 : b.maxMult;
-    const { kindOfId } = await import("../pipeline/pipeline.ts");
-    for (const p of rt.paper.positions) {
-      // the Block multiple is what the stack caps. A DCA / Axis position's `vol` also carries its ladder weight
-      // (a 3-leg ladder at a 3× Block multiple holds 9 units), so the cap is asserted on `mult` there.
-      const ladder = kindOfId(p.cfg).startsWith("dca") || kindOfId(p.cfg) === "axis";
-      const mult = (p as { mult?: number }).mult ?? p.vol ?? 1;
-      assert.ok(mult >= 1 - 1e-9 && mult <= cap + 1e-9, `${p.cfg} mult ${mult}`);
-      if (!ladder) assert.ok((p.vol ?? 1) >= 1 && (p.vol ?? 1) <= cap + 1e-9, `${p.cfg} vol ${p.vol}`);
-      for (const v of Object.values(p.legs ?? {})) assert.ok((v ?? 0) <= b.maxMult - 1 + 1e-9, `leg ${v}`);
-    }
-    assert.ok(rt.status.phases.Pipeline && rt.status.phases.Tapes && rt.status.phases.Simulation);
-  });
+        { mode: "durable", lastN: 12 },
+      );
+      rt.start();
+      const at = rt.status.settingsAt;
+      // the wait is on the state (the final settings applied, the runtime running, nothing pending), not on a count of
+      // computes: the full-focus compute of this storm is 27,428 Base combos, 90–130 s on 4 cores, and a follow-up
+      // compute runs after it when a setting changed mid-compute. 280 s failed under load (the 11 Oct run reached
+      // running at 251 s with the desk and the evaluation on the same VM); 900 s is the ceiling.
+      await until(
+        () =>
+          rt.status.appliedSettingsAt >= at && rt.status.state === "running" && !rt.status.pending,
+        900_000,
+      );
+      rt.stop();
+      assert.equal(rt.status.error ?? null, null);
+      assert.ok(rt.sim && rt.tapes.length > 0);
+      assert.equal(rt.sim!.opts.toggles.dcaActive, false);
+      assert.equal(rt.wf.mode, "durable");
+      // every paper position passes the execution rules of the current settings
+      // (Overall: every source its own Block, each within maxMult, the stack within 8×)
+      const b = rt.settings.block;
+      const cap = b.mode === "overall" ? 8 : b.maxMult;
+      const { kindOfId } = await import("../pipeline/pipeline.ts");
+      for (const p of rt.paper.positions) {
+        // the Block multiple is what the stack caps. A DCA / Axis position's `vol` also carries its ladder weight
+        // (a 3-leg ladder at a 3× Block multiple holds 9 units), so the cap is asserted on `mult` there.
+        const ladder = kindOfId(p.cfg).startsWith("dca") || kindOfId(p.cfg) === "axis";
+        const mult = (p as { mult?: number }).mult ?? p.vol ?? 1;
+        assert.ok(mult >= 1 - 1e-9 && mult <= cap + 1e-9, `${p.cfg} mult ${mult}`);
+        if (!ladder)
+          assert.ok((p.vol ?? 1) >= 1 && (p.vol ?? 1) <= cap + 1e-9, `${p.cfg} vol ${p.vol}`);
+        for (const v of Object.values(p.legs ?? {}))
+          assert.ok((v ?? 0) <= b.maxMult - 1 + 1e-9, `leg ${v}`);
+      }
+      assert.ok(rt.status.phases.Pipeline && rt.status.phases.Tapes && rt.status.phases.Simulation);
+    },
+  );
 
   slow("backtests a preset over the last days in the background and keeps the result", async () => {
     const rt = mk();
@@ -628,8 +664,10 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     assert.ok(s, "diagrams cached");
     assert.equal(s.days, 2);
     assert.ok(s.t.length > 10 && s.t.length <= 401);
-    for (const k of ["balance", "equity", "ddPct", "positions", "orders"] as const) assert.equal(s[k].length, s.t.length, k);
-    for (const k of Object.keys(s.kinds) as Array<keyof typeof s.kinds>) assert.equal(s.kinds[k].length, s.t.length, k);
+    for (const k of ["balance", "equity", "ddPct", "positions", "orders"] as const)
+      assert.equal(s[k].length, s.t.length, k);
+    for (const k of Object.keys(s.kinds) as Array<keyof typeof s.kinds>)
+      assert.equal(s.kinds[k].length, s.t.length, k);
     assert.equal(b.posPerHour, s.info.posPerHour);
     assert.ok(s.info.posPerHour >= 0 && s.info.ddtH >= 0);
     assert.ok(s.info.positions <= b.n);
@@ -652,7 +690,12 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     assert.equal(queuedResult.pfBasis, "unit-net-returns");
     assert.equal(queuedResult.unknownReturns, 0);
     assert.ok(queuedResult.pf !== null && Number.isFinite(queuedResult.pf));
-    assert.equal(queuedResult.pass, queuedResult.n > 0 && queuedResult.pf >= queuedResult.minPf && queuedResult.ddtH <= queuedResult.maxDdtH);
+    assert.equal(
+      queuedResult.pass,
+      queuedResult.n > 0 &&
+        queuedResult.pf >= queuedResult.minPf &&
+        queuedResult.ddtH <= queuedResult.maxDdtH,
+    );
     assert.equal(rt.presetSeries(p.id)?.days, 2);
     // The maximum is enforced while still computing the actual clamped 30-day result.
     rt.startPresetBacktest(p.id, 99);
@@ -774,7 +817,9 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     rt.stop();
     const sim = rt.sim!;
     // a closed tape trade inside the simulated window, held as a paper position before this step
-    const tp = rt.tapes.find((t) => t.n > 0 && t.exitT[t.n - 1] >= sim.startT && t.entryT[t.n - 1] >= sim.startT);
+    const tp = rt.tapes.find(
+      (t) => t.n > 0 && t.exitT[t.n - 1] >= sim.startT && t.entryT[t.n - 1] >= sim.startT,
+    );
     assert.ok(tp, "a tape with a close in the window");
     const i = tp!.n - 1;
     const op = {
@@ -889,7 +934,13 @@ describe("progress reporting", { timeout: 600_000 }, () => {
   const record = (rt: CoreRuntime) => {
     const rec: Rec[] = [];
     const R = rt as unknown as {
-      setStage: (stage: string, done: number, total: number, label?: string, restart?: boolean) => void;
+      setStage: (
+        stage: string,
+        done: number,
+        total: number,
+        label?: string,
+        restart?: boolean,
+      ) => void;
     };
     const orig = R.setStage.bind(rt);
     R.setStage = (stage, done, total, label = "", restart = false) => {
@@ -909,139 +960,182 @@ describe("progress reporting", { timeout: 600_000 }, () => {
   };
 
   for (const abortBeforePaper of [false, true])
-  it(abortBeforePaper
-    ? "a memory-aborted job reports its termination and the retry completes every stage before publishing Paper"
-    : "a job reports every stage in order, each monotonic, and ends at Realtime 100 % / running after its paper step", async (t) => {
-    // (with the preset comparison, which runs after the job and must not show up as one of its stages)
-    t.after(compareOn());
-    // Progress mechanics need a deterministic fixture budget: a different process on the shared host may cross
-    // the production memory thresholds and legitimately abort the first job before Paper. The guard remains
-    // enabled with this fixture's budget; memguard-runtime.test.ts exercises measured soft/hard host pressure.
-    const previousSoft = process.env.CTS_CORE_MEM_SOFT_MB;
-    const previousHard = process.env.CTS_CORE_MEM_HARD_MB;
-    process.env.CTS_CORE_MEM_SOFT_MB = "1";
-    process.env.CTS_CORE_MEM_HARD_MB = "1";
-    const { memInfo, MEM_READ_MS } = await import("./memguard.server.ts");
-    await new Promise((resolve) => setTimeout(resolve, MEM_READ_MS + 10));
-    memInfo(); // refresh the preceding fixture's cached reading under this fixture's budget
-    t.after(async () => {
-      if (previousSoft === undefined) delete process.env.CTS_CORE_MEM_SOFT_MB;
-      else process.env.CTS_CORE_MEM_SOFT_MB = previousSoft;
-      if (previousHard === undefined) delete process.env.CTS_CORE_MEM_HARD_MB;
-      else process.env.CTS_CORE_MEM_HARD_MB = previousHard;
-      await new Promise((resolve) => setTimeout(resolve, MEM_READ_MS + 10));
-      memInfo();
-    });
-    const { JOB_STAGES, DONE_STAGE } = await import("../progress.ts");
-    const { onCoreEvent } = await import("./runtime.server.ts");
-    const rt = mk();
-    const rec = record(rt);
-    if (abortBeforePaper) {
-      // Drive a real full compute, then inject the already-covered hard-pressure outcome at its final boundary.
-      // This closes the first job at Real without a Paper publication; only its real retry may publish a book.
-      const R = rt as unknown as {
-        memPressured: boolean;
-        setStage(stage: string, done: number, total: number, label?: string, restart?: boolean): void;
-      };
-      const originalStage = R.setStage.bind(rt);
-      let injected = false;
-      R.setStage = (stage, ...args) => {
-        if (!injected && stage === "Paper") {
-          injected = true;
-          R.memPressured = true;
-          throw new Error("memory pressure: progress fixture before Paper");
+    it(
+      abortBeforePaper
+        ? "a memory-aborted job reports its termination and the retry completes every stage before publishing Paper"
+        : "a job reports every stage in order, each monotonic, and ends at Realtime 100 % / running after its paper step",
+      async (t) => {
+        // (with the preset comparison, which runs after the job and must not show up as one of its stages)
+        t.after(compareOn());
+        // Progress mechanics need a deterministic fixture budget: a different process on the shared host may cross
+        // the production memory thresholds and legitimately abort the first job before Paper. The guard remains
+        // enabled with this fixture's budget; memguard-runtime.test.ts exercises measured soft/hard host pressure.
+        const previousSoft = process.env.CTS_CORE_MEM_SOFT_MB;
+        const previousHard = process.env.CTS_CORE_MEM_HARD_MB;
+        process.env.CTS_CORE_MEM_SOFT_MB = "1";
+        process.env.CTS_CORE_MEM_HARD_MB = "1";
+        const { memInfo, MEM_READ_MS } = await import("./memguard.server.ts");
+        await new Promise((resolve) => setTimeout(resolve, MEM_READ_MS + 10));
+        memInfo(); // refresh the preceding fixture's cached reading under this fixture's budget
+        t.after(async () => {
+          if (previousSoft === undefined) delete process.env.CTS_CORE_MEM_SOFT_MB;
+          else process.env.CTS_CORE_MEM_SOFT_MB = previousSoft;
+          if (previousHard === undefined) delete process.env.CTS_CORE_MEM_HARD_MB;
+          else process.env.CTS_CORE_MEM_HARD_MB = previousHard;
+          await new Promise((resolve) => setTimeout(resolve, MEM_READ_MS + 10));
+          memInfo();
+        });
+        const { JOB_STAGES, DONE_STAGE } = await import("../progress.ts");
+        const { onCoreEvent } = await import("./runtime.server.ts");
+        const rt = mk();
+        const rec = record(rt);
+        if (abortBeforePaper) {
+          // Drive a real full compute, then inject the already-covered hard-pressure outcome at its final boundary.
+          // This closes the first job at Real without a Paper publication; only its real retry may publish a book.
+          const R = rt as unknown as {
+            memPressured: boolean;
+            setStage(
+              stage: string,
+              done: number,
+              total: number,
+              label?: string,
+              restart?: boolean,
+            ): void;
+          };
+          const originalStage = R.setStage.bind(rt);
+          let injected = false;
+          R.setStage = (stage, ...args) => {
+            if (!injected && stage === "Paper") {
+              injected = true;
+              R.memPressured = true;
+              throw new Error("memory pressure: progress fixture before Paper");
+            }
+            originalStage(stage, ...args);
+          };
         }
-        originalStage(stage, ...args);
-      };
-    }
-    const atCompute: Array<{ computes: number; paperCompute: number; seats: number }> = [];
-    const atPaper: Array<{ computes: number; paperCompute: number; stage: string; overall: number }> = [];
-    const off = onCoreEvent((e) => {
-      if (e.type === "compute")
-        atCompute.push({ computes: e.computes, paperCompute: rt.status.paperCompute ?? 0, seats: rt.paper.selected.length });
-      if (e.type === "paper")
-        atPaper.push({ computes: e.computes, paperCompute: rt.status.paperCompute ?? 0, stage: e.stage, overall: e.overall });
-    });
-    try {
-      rt.start();
-      await until(() => (rt.status.paperCompute ?? 0) >= 1 && rt.status.state === "running");
-      // the finished job: Realtime 100 %, the paper step on this compute (the session waits for exactly this)
-      assert.equal(rt.status.stage, DONE_STAGE);
-      assert.equal(rt.status.progress, 1);
-      assert.equal(rt.status.overall, 1);
-      assert.equal(rt.status.paperCompute, rt.status.computes);
-      assert.ok((rt.status.paperSteps ?? 0) >= 1);
-      assert.match(rt.status.label, /seats/);
-      assert.ok((rt.status.computeStartedAt ?? 0) > 0);
-    } finally {
-      off();
-      rt.stop();
-    }
-    // the compute event comes before its paper step: computes counts it, paperCompute does not yet (a session that
-    // dumped on computes read the seats of the step before — "Real seats 0")
-    assert.ok(atCompute.length >= 1);
-    assert.ok(atCompute[0].paperCompute < atCompute[0].computes, JSON.stringify(atCompute[0]));
-    assert.ok(atPaper.length >= 1);
-    assert.equal(atPaper[0].paperCompute, atPaper[0].computes);
-    assert.equal(atPaper[0].stage, DONE_STAGE);
-    assert.equal(atPaper[0].overall, 1);
+        const atCompute: Array<{ computes: number; paperCompute: number; seats: number }> = [];
+        const atPaper: Array<{
+          computes: number;
+          paperCompute: number;
+          stage: string;
+          overall: number;
+        }> = [];
+        const off = onCoreEvent((e) => {
+          if (e.type === "compute")
+            atCompute.push({
+              computes: e.computes,
+              paperCompute: rt.status.paperCompute ?? 0,
+              seats: rt.paper.selected.length,
+            });
+          if (e.type === "paper")
+            atPaper.push({
+              computes: e.computes,
+              paperCompute: rt.status.paperCompute ?? 0,
+              stage: e.stage,
+              overall: e.overall,
+            });
+        });
+        try {
+          rt.start();
+          await until(() => (rt.status.paperCompute ?? 0) >= 1 && rt.status.state === "running");
+          // the finished job: Realtime 100 %, the paper step on this compute (the session waits for exactly this)
+          assert.equal(rt.status.stage, DONE_STAGE);
+          assert.equal(rt.status.progress, 1);
+          assert.equal(rt.status.overall, 1);
+          assert.equal(rt.status.paperCompute, rt.status.computes);
+          assert.ok((rt.status.paperSteps ?? 0) >= 1);
+          assert.match(rt.status.label, /seats/);
+          assert.ok((rt.status.computeStartedAt ?? 0) > 0);
+        } finally {
+          off();
+          rt.stop();
+        }
+        // the compute event comes before its paper step: computes counts it, paperCompute does not yet (a session that
+        // dumped on computes read the seats of the step before — "Real seats 0")
+        assert.ok(atCompute.length >= 1);
+        assert.ok(atCompute[0].paperCompute < atCompute[0].computes, JSON.stringify(atCompute[0]));
+        assert.ok(atPaper.length >= 1);
+        assert.equal(atPaper[0].paperCompute, atPaper[0].computes);
+        assert.equal(atPaper[0].stage, DONE_STAGE);
+        assert.equal(atPaper[0].overall, 1);
 
-    const order = new Map(JOB_STAGES.map(([st], i) => [st, i]));
-    assert.ok(rec.every((r) => r.progress >= 0 && r.progress <= 1 && r.overall >= 0 && r.overall <= 1));
-    // jobs end at Realtime; the first one holds the backfill and the first compute
-    const jobs: Rec[][] = [[]];
-    for (const r of rec) {
-      if (r.stage === DONE_STAGE) jobs.push([]);
-      else jobs[jobs.length - 1].push(r);
-    }
-    const finished = rec.filter((r) => r.stage === DONE_STAGE);
-    const diagnostic = JSON.stringify({
-      jobs: jobs.map((job) => [...new Set(job.map((r) => r.stage))]),
-      completions: finished.map((r) => r.label),
-      memoryAborts: rt.status.mem?.aborts,
-    });
-    assert.equal(finished.length, abortBeforePaper ? 2 : 1, diagnostic);
-    if (abortBeforePaper) {
-      assert.match(finished[0].label, /compute aborted at Real \(memory\).*retrying lighter/, diagnostic);
-      assert.ok(!jobs[0].some((r) => r.stage === "Paper"), diagnostic);
-      assert.equal(rt.status.mem?.aborts, 1, diagnostic);
-      assert.equal(atCompute.length, 1, "the aborted attempt never publishes a compute");
-      assert.equal(atPaper.length, 1, "only the completed retry publishes Paper");
-    } else assert.equal(rt.status.mem?.aborts, 0, diagnostic);
-    // Every required completion invariant is checked on the completed job; the aborted job is checked above
-    // and still participates in all monotonic/order assertions below. Backfill belongs to the initial attempt.
-    assert.ok(jobs[0].some((r) => r.stage === "backfill"), diagnostic);
-    const first = jobs[abortBeforePaper ? 1 : 0];
-    const stages = new Set(first.map((r) => r.stage));
-    for (const st of ["Base", "Main", "Tapes", "Real", "Paper"]) assert.ok(stages.has(st), `stage ${st} reported; ${diagnostic}`);
-    // the preset comparison is not a job stage: it runs after the job, once the book is out
-    assert.ok(!stages.has("Compare"), "Compare is not part of the job");
-    for (const job of jobs.filter((j) => j.length)) {
-      for (let i = 1; i < job.length; i++) {
-        const a = job[i - 1];
-        const b = job[i];
-        // the job's bar never moves back, and the stages come in the job's order
-        assert.ok(b.overall >= a.overall, `overall back ${a.stage} ${a.overall} → ${b.stage} ${b.overall}`);
-        assert.ok((order.get(b.stage) ?? -1) >= (order.get(a.stage) ?? -1), `stage back ${a.stage} → ${b.stage}`);
-        // within a stage the fraction never moves back (a restart starts it over)
-        if (a.stage === b.stage && !b.restart)
-          assert.ok(b.progress >= a.progress, `${b.stage} back ${a.progress} → ${b.progress}`);
-      }
-      // computing, not "running", while a compute stage reports
-      for (const r of job.filter((x) => x.stage !== "backfill" && x.stage !== "Paper")) assert.equal(r.state, "computing", r.stage);
-    }
-    // the Real total is the steps the simulation takes: never past it, and it ends exactly there
-    const real = first.filter((r) => r.stage === "Real" && r.done > 0);
-    assert.ok(real.length > 0);
-    assert.ok(real.every((r) => r.done <= r.total), `Real past 100 %: ${real.map((r) => `${r.done}/${r.total}`).join(" ")}`);
-    assert.equal(real[real.length - 1].done, real[real.length - 1].total);
-    // Main ends complete before the tapes (it reported "Real 100 %" there before)
-    const main = first.filter((r) => r.stage === "Main");
-    assert.equal(main[main.length - 1].progress, 1);
-    // the paper step reaches 100 % before the job closes
-    const paper = first.filter((r) => r.stage === "Paper");
-    assert.equal(paper[paper.length - 1].progress, 1);
-  });
+        const order = new Map(JOB_STAGES.map(([st], i) => [st, i]));
+        assert.ok(
+          rec.every((r) => r.progress >= 0 && r.progress <= 1 && r.overall >= 0 && r.overall <= 1),
+        );
+        // jobs end at Realtime; the first one holds the backfill and the first compute
+        const jobs: Rec[][] = [[]];
+        for (const r of rec) {
+          if (r.stage === DONE_STAGE) jobs.push([]);
+          else jobs[jobs.length - 1].push(r);
+        }
+        const finished = rec.filter((r) => r.stage === DONE_STAGE);
+        const diagnostic = JSON.stringify({
+          jobs: jobs.map((job) => [...new Set(job.map((r) => r.stage))]),
+          completions: finished.map((r) => r.label),
+          memoryAborts: rt.status.mem?.aborts,
+        });
+        assert.equal(finished.length, abortBeforePaper ? 2 : 1, diagnostic);
+        if (abortBeforePaper) {
+          assert.match(
+            finished[0].label,
+            /compute aborted at Real \(memory\).*retrying lighter/,
+            diagnostic,
+          );
+          assert.ok(!jobs[0].some((r) => r.stage === "Paper"), diagnostic);
+          assert.equal(rt.status.mem?.aborts, 1, diagnostic);
+          assert.equal(atCompute.length, 1, "the aborted attempt never publishes a compute");
+          assert.equal(atPaper.length, 1, "only the completed retry publishes Paper");
+        } else assert.equal(rt.status.mem?.aborts, 0, diagnostic);
+        // Every required completion invariant is checked on the completed job; the aborted job is checked above
+        // and still participates in all monotonic/order assertions below. Backfill belongs to the initial attempt.
+        assert.ok(
+          jobs[0].some((r) => r.stage === "backfill"),
+          diagnostic,
+        );
+        const first = jobs[abortBeforePaper ? 1 : 0];
+        const stages = new Set(first.map((r) => r.stage));
+        for (const st of ["Base", "Main", "Tapes", "Real", "Paper"])
+          assert.ok(stages.has(st), `stage ${st} reported; ${diagnostic}`);
+        // the preset comparison is not a job stage: it runs after the job, once the book is out
+        assert.ok(!stages.has("Compare"), "Compare is not part of the job");
+        for (const job of jobs.filter((j) => j.length)) {
+          for (let i = 1; i < job.length; i++) {
+            const a = job[i - 1];
+            const b = job[i];
+            // the job's bar never moves back, and the stages come in the job's order
+            assert.ok(
+              b.overall >= a.overall,
+              `overall back ${a.stage} ${a.overall} → ${b.stage} ${b.overall}`,
+            );
+            assert.ok(
+              (order.get(b.stage) ?? -1) >= (order.get(a.stage) ?? -1),
+              `stage back ${a.stage} → ${b.stage}`,
+            );
+            // within a stage the fraction never moves back (a restart starts it over)
+            if (a.stage === b.stage && !b.restart)
+              assert.ok(b.progress >= a.progress, `${b.stage} back ${a.progress} → ${b.progress}`);
+          }
+          // computing, not "running", while a compute stage reports
+          for (const r of job.filter((x) => x.stage !== "backfill" && x.stage !== "Paper"))
+            assert.equal(r.state, "computing", r.stage);
+        }
+        // the Real total is the steps the simulation takes: never past it, and it ends exactly there
+        const real = first.filter((r) => r.stage === "Real" && r.done > 0);
+        assert.ok(real.length > 0);
+        assert.ok(
+          real.every((r) => r.done <= r.total),
+          `Real past 100 %: ${real.map((r) => `${r.done}/${r.total}`).join(" ")}`,
+        );
+        assert.equal(real[real.length - 1].done, real[real.length - 1].total);
+        // Main ends complete before the tapes (it reported "Real 100 %" there before)
+        const main = first.filter((r) => r.stage === "Main");
+        assert.equal(main[main.length - 1].progress, 1);
+        // the paper step reaches 100 % before the job closes
+        const paper = first.filter((r) => r.stage === "Paper");
+        assert.equal(paper[paper.length - 1].progress, 1);
+      },
+    );
 
   it("the backfill reports batch #/# of the run and symbols of the universe, forced symbols included", async () => {
     const tickers = Array.from({ length: 20 }, (_, i) => ({
@@ -1053,7 +1147,8 @@ describe("progress reporting", { timeout: 600_000 }, () => {
     const end = Math.floor(Date.now() / 60_000) * 60_000 - 60_000;
     const feed = {
       tickers: async () => tickers,
-      history: async (sym: string, tf: number, bars: number) => syntheticCandles(sym.replace("-USDT", ""), tf, bars, end),
+      history: async (sym: string, tf: number, bars: number) =>
+        syntheticCandles(sym.replace("-USDT", ""), tf, bars, end),
       klines: async () => [],
     };
     const mkFeed = (patch: Record<string, unknown>) =>
@@ -1063,7 +1158,9 @@ describe("progress reporting", { timeout: 600_000 }, () => {
         { market: "bingx", feed },
       );
     const sync = (rt: CoreRuntime) =>
-      (rt as unknown as { syncMarket: (gen: number) => Promise<boolean> }).syncMarket(rt.generation);
+      (rt as unknown as { syncMarket: (gen: number) => Promise<boolean> }).syncMarket(
+        rt.generation,
+      );
 
     // 12 symbols with one forced symbol outside the ranking: 12 in batches of 5 → 3 batches
     const rt = mkFeed({ symbols: 12, forceSymbols: ["ZZZ-USDT"] });
@@ -1075,7 +1172,11 @@ describe("progress reporting", { timeout: 600_000 }, () => {
     assert.equal(rt.universeTarget(), 12);
     assert.equal(rt.status.prehistoric?.total, 12);
     const bf = rec.filter((r) => r.stage === "backfill");
-    for (const b of [1, 2, 3]) assert.ok(bf.some((r) => r.label.includes(`batch ${b}/3`)), `batch ${b}/3 in ${bf.map((r) => r.label).join(" | ")}`);
+    for (const b of [1, 2, 3])
+      assert.ok(
+        bf.some((r) => r.label.includes(`batch ${b}/3`)),
+        `batch ${b}/3 in ${bf.map((r) => r.label).join(" | ")}`,
+      );
     for (const r of bf) {
       const m = /symbols (\d+)\/(\d+)/.exec(r.label);
       assert.ok(m && Number(m[1]) <= Number(m[2]) && Number(m[2]) === 12, r.label);
@@ -1108,10 +1209,15 @@ describe("sizing default migration", () => {
     const db = new CoreDb(":memory:");
     db.kvSet("wfCapsV", 26);
     db.kvSet("settings", legacySettings);
-    db.kvSet("wf", { coord: { enabled: true, s2VolumeFactor: 2.4, hedgeVolumeFactor: 1.6 } } as never);
+    db.kvSet("wf", {
+      coord: { enabled: true, s2VolumeFactor: 2.4, hedgeVolumeFactor: 1.6 },
+    } as never);
     const rt = new CoreRuntime(db, undefined, { market: "synthetic" });
     assert.deepEqual(rt.settings.sizing, { mode: "equityPct", pct: 0.001 });
-    assert.equal(typeof rt.settings.grid.micro === "object" ? rt.settings.grid.micro.volumeFactor : undefined, 1);
+    assert.equal(
+      typeof rt.settings.grid.micro === "object" ? rt.settings.grid.micro.volumeFactor : undefined,
+      1,
+    );
     assert.equal(rt.wf.coord?.hedgeVolumeFactor, 1.6);
     assert.equal((rt.wf.coord as unknown as Record<string, unknown>)?.s2VolumeFactor, undefined);
     assert.equal(db.kvGet<number>("wfCapsV"), 34);
@@ -1128,7 +1234,12 @@ describe("sizing default migration", () => {
     const custom = new CoreRuntime(customDb, undefined, { market: "synthetic" });
     assert.deepEqual(custom.settings.sizing, { mode: "equityPct", pct: 0.004 });
     assert.equal(custom.settings.live.maxExposureX, 1.25);
-    assert.equal(typeof custom.settings.grid.micro === "object" ? custom.settings.grid.micro.volumeFactor : undefined, 2.8);
+    assert.equal(
+      typeof custom.settings.grid.micro === "object"
+        ? custom.settings.grid.micro.volumeFactor
+        : undefined,
+      2.8,
+    );
 
     const capDb = new CoreDb(":memory:");
     capDb.kvSet("wfCapsV", 27);
@@ -1139,7 +1250,11 @@ describe("sizing default migration", () => {
     formerCapSettings.sizing = { mode: "fixed", pct: 0.02 };
     capDb.kvSet("settings", formerCapSettings);
     const upgradedCap = new CoreRuntime(capDb, undefined, { market: "synthetic" });
-    assert.equal(upgradedCap.settings.live.maxExposureX, 0, "v27 factory caps are disabled so balance volume factors size positions");
+    assert.equal(
+      upgradedCap.settings.live.maxExposureX,
+      0,
+      "v27 factory caps are disabled so balance volume factors size positions",
+    );
     assert.equal(upgradedCap.settings.live.maxPositionX, 0);
     assert.equal(upgradedCap.settings.live.maxNotionalUsd, 0);
     assert.deepEqual(upgradedCap.settings.sizing, { mode: "equityPct", pct: 0.001 });
@@ -1163,7 +1278,12 @@ describe("paper book across a restart", () => {
       vol: 2,
       level: 3,
     };
-    db.kvSet("paperBook", { at: Date.now(), startedAt: 1234, selected: [pos.cfg], positions: [pos] });
+    db.kvSet("paperBook", {
+      at: Date.now(),
+      startedAt: 1234,
+      selected: [pos.cfg],
+      positions: [pos],
+    });
     const rt = new CoreRuntime(db, small, { market: "synthetic" });
     assert.equal(rt.paper.positions.length, 1);
     assert.deepEqual(rt.paper.positions[0], pos);
@@ -1196,18 +1316,35 @@ describe("paper book across a restart", () => {
         volFactor: 8,
       };
       const a = new CoreDb(":memory:", { statePath: join(dir, "state.json") });
-      a.kvSet("paperBook", { at: Date.now(), startedAt: 1234, selected: [pos.cfg], positions: [pos] });
-      assert.equal(a.snapshot(join(dir, "core.sqlite")), true);
-      const b = new CoreRuntime(new CoreDb(":memory:", { statePath: join(dir, "state.json") }), small, {
-        market: "synthetic",
+      a.kvSet("paperBook", {
+        at: Date.now(),
+        startedAt: 1234,
+        selected: [pos.cfg],
+        positions: [pos],
       });
-      assert.equal(b.paper.positions.length, 0, "not in the state file: unknown before the restore");
+      assert.equal(a.snapshot(join(dir, "core.sqlite")), true);
+      const b = new CoreRuntime(
+        new CoreDb(":memory:", { statePath: join(dir, "state.json") }),
+        small,
+        {
+          market: "synthetic",
+        },
+      );
+      assert.equal(
+        b.paper.positions.length,
+        0,
+        "not in the state file: unknown before the restore",
+      );
       b.start();
       try {
         assert.deepEqual(b.paper.positions, [pos]);
         assert.deepEqual(b.paper.selected, [pos.cfg]);
         assert.equal(b.paper.startedAt, 1234);
-        assert.ok(b.db.all<{ msg: string }>("SELECT msg FROM events").some((e) => /paper book continued from the snapshot: 1 open/.test(e.msg)));
+        assert.ok(
+          b.db
+            .all<{ msg: string }>("SELECT msg FROM events")
+            .some((e) => /paper book continued from the snapshot: 1 open/.test(e.msg)),
+        );
       } finally {
         b.stop();
       }

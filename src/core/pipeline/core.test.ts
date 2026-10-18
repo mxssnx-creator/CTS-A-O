@@ -338,9 +338,9 @@ describe("pipeline", () => {
       assert.ok(r.lastN && r.lastN.is.net > 0 && r.lastN.is.pf >= s.gates.minPf);
     }
     assert.ok(a.portfolio.members.length <= 3);
-    // cost is applied: no trade can earn more than its move minus 0.2%
+    // cost is applied exactly once, at the configured modeled round-trip rate
     for (const t of a.tapes.values().next().value ?? []) {
-      assert.ok(Math.abs(t.r - (t.side * (t.exit - t.entry)) / t.entry + 0.002) < 1e-12);
+      assert.ok(Math.abs(t.r - (t.side * (t.exit - t.entry)) / t.entry + s.cost) < 1e-12);
     }
   });
 });

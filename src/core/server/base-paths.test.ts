@@ -56,7 +56,9 @@ async function basePairs(inProcess: boolean): Promise<string[]> {
   await until(() => rt.status.computes >= 1);
   rt.stop();
   assert.match(rt.status.workers ?? "", inProcess ? /in-process/ : /cores/);
-  return rt.pipeline!.s1.map((r) => `${r.bot}|${r.ind}`).sort();
+  // This test compares the ordinary engine Base grid. The independent Historic Exit source is intentionally
+  // appended to S1, and is covered by its own source/worker assertions below.
+  return rt.pipeline!.s1.filter((r) => r.bot !== "exit").map((r) => `${r.bot}|${r.ind}`).sort();
 }
 
 describe("engine Base: the worker and the in-process path", { timeout: 600_000 }, () => {

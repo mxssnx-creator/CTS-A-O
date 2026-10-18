@@ -4,6 +4,7 @@ import { DEFAULT_SETTINGS, DEFAULT_TOGGLES } from "./config.ts";
 import { checkSettings } from "./settings-check.ts";
 import {
   capExitCandidates,
+  EXIT_BOT,
   EXIT_HISTORY_MAX_PAIRS,
   emptyExitStrategyDiagnostics,
   exitHistoryFingerprint,
@@ -12,16 +13,20 @@ import {
   exitStrategyPairs,
   exitStrategyProtectsBoundedGen,
   exitStrategyProtectsGen,
+  qualifyExitBase,
   heldExitProtect,
 } from "./exit-strategy.ts";
-import { barsFromCandles, syntheticCandles } from "./market/bars.ts";
+import { barsFromCandles, resample, syntheticCandles } from "./market/bars.ts";
 import { INDICATIONS } from "./indications/registry.ts";
+import { relateAnchorTf } from "./indications/relate.ts";
+import { breakAnchorTf } from "./indications/break-config.ts";
 import {
   makeUniverse,
   configId,
   kindOfId,
   laneProtect,
   parseConfigId,
+  baseRuns,
 } from "./pipeline/pipeline.ts";
 import { buildTapes, defaultWalkForward, execDecision, kindExecutable } from "./sim/walkforward.ts";
 import { liveLaneFilter, rangeExcluded } from "./server/live.server.ts";
@@ -69,7 +74,7 @@ describe("independent historic exit strategy", () => {
     );
   });
 
-  it("fits independent, higher TP and historical SL config families without a range target", () => {
+  it("fits five independent Exit protection families without a range target", () => {
     const candidates = exitProtectCandidates(
       [0.01, 0.02, 0.03, 0.04],
       [0.002, 0.004, 0.006, 0.008],
@@ -84,10 +89,18 @@ describe("independent historic exit strategy", () => {
       },
       { cost: 0.002, minPf: 1.05, minTrades: 2, minSl: 0.005, minTrail: 0.002 },
     );
-    assert.deepEqual(Object.keys(candidates).sort(), ["adaptive-sl", "static-sl", "trailing"]);
+    assert.deepEqual(Object.keys(candidates).sort(), [
+      "adaptive-sl",
+      "breakeven",
+      "static-sl",
+      "trailing",
+      "trailing-only",
+    ]);
     assert.ok(candidates["static-sl"].length);
     assert.ok(candidates["adaptive-sl"].length);
+    assert.ok(candidates.breakeven.length);
     assert.ok(candidates.trailing.length);
+    assert.ok(candidates["trailing-only"].length);
     for (const [set, protects] of Object.entries(candidates))
       for (const protect of protects) {
         assert.equal(protect.exitSet, set);
@@ -96,15 +109,26 @@ describe("independent historic exit strategy", () => {
           undefined,
           "Historic Exit targets do not inherit Normal / Trailing range tags",
         );
-        assert.ok(protect.tp >= DEFAULT_SETTINGS.exitStrategy.minTp);
+        assert.ok(
+          protect.exitSet === "trailing-only"
+            ? protect.tp === 0 && protect.trailOnly === true && protect.sl > 0
+            : protect.tp >= DEFAULT_SETTINGS.exitStrategy.minTp,
+        );
       }
     assert.ok(
       candidates.trailing.every((protect) => protect.trail > 0 && protect.trail < protect.tp),
     );
+    assert.ok(candidates.breakeven.every((protect) => protect.trail === 0));
+    assert.ok(
+      candidates["trailing-only"].every(
+        (protect) =>
+          protect.tp === 0 && protect.trailOnly && protect.sl > 0 && (protect.trailStep ?? 0) > 0,
+      ),
+    );
     assert.ok(candidates["static-sl"].every((protect) => protect.trail === 0));
   });
 
-  it("includes every initialized engine indication without applying Base admission", () => {
+  it("deduplicates configured indication sources into Bot-free Exit pairs", () => {
     const bars = barsFromCandles(
       "A-USDT",
       15,
@@ -114,17 +138,137 @@ describe("independent historic exit strategy", () => {
     assert.deepEqual(
       exitStrategyPairs(
         [
-          { bot: "follow", ind: "ema-9-21@m15" },
-          { bot: "follow", ind: "ema-9-21@m15" },
-          { bot: "revert", ind: "rsi-9-21@m15" },
-          { bot: "follow", ind: "sig-ema-cross-s@m15" },
-          { bot: "follow", ind: "ema-9-21@m30" },
+          { ind: "ema-9-21@m15" },
+          { ind: "ema-9-21@m15" },
+          { ind: "rsi-9-21@m15" },
+          { ind: "sig-ema-cross-s@m15" },
+          { ind: "ema-9-21@m30" },
         ],
         u,
+        {
+          timeframes: [15],
+          includeTactics: false,
+          includeRelations: false,
+          includeCombined: false,
+        },
       ),
-      ["follow|ema-9-21@m15", "revert|rsi-9-21@m15"],
-      "Exit sees all initialized engine pairs, deduplicates them, and excludes signal-only or unavailable lanes",
+      ["exit|ema-9-21@m15", "exit|rsi-9-21@m15"],
+      "Exit sources are deduplicated across Bots, signal-only inputs and unavailable lanes are excluded",
     );
+  });
+
+  it("expands single, combined, Tactic, Relate, Break-relation and activity-profile sources on 1/5/15m", () => {
+    const oneMinute = syntheticCandles("A-USDT", 1, 60 * 60, Date.UTC(2026, 8, 1), 12);
+    const bars = [1, 5, 15].map((tf) => ({
+      ...barsFromCandles("A-USDT", tf, resample(oneMinute, 1, tf)),
+      lanes: [1, 5, 15],
+    }));
+    const u = makeUniverse(bars);
+    const settings = {
+      timeframes: [1, 5, 15],
+      includeTactics: true,
+      includeRelations: true,
+      includeCombined: true,
+    };
+    const pairs = exitStrategyPairs([{ ind: "ema-9-21@m15" }], u, settings);
+    const ids = new Set(pairs);
+    assert.ok(pairs.every((pair) => pair.startsWith(`${EXIT_BOT}|`)));
+    for (const suffix of [
+      "ema-9-21@m1",
+      "ema-9-21@m5",
+      "ema-9-21@m15",
+      "ema-9-21@m1c",
+      "ema-9-21@m5c",
+    ])
+      assert.ok(ids.has(`${EXIT_BOT}|${suffix}`), `independent source lane ${suffix}`);
+    const tacticBases = INDICATIONS.filter((x) => x.kind === "tactic").map((x) => x.id);
+    assert.ok(tacticBases.length > 0);
+    for (const base of tacticBases)
+      for (const suffix of [`@m1`, `@m5`, `@m15`, `@m1c`, `@m5c`])
+        assert.ok(ids.has(`${EXIT_BOT}|${base}${suffix}`), `independent Tactic ${base}${suffix}`);
+    const relationBases = INDICATIONS.filter(
+      (x) =>
+        x.kind === "relate" || x.id.startsWith("break-rel-") || x.id.startsWith("break-mc-rel-"),
+    );
+    assert.ok(relationBases.length > 0);
+    for (const relation of relationBases) {
+      const lane = relation.id.startsWith("relate-")
+        ? relateAnchorTf(relation.id)
+        : breakAnchorTf(relation.id);
+      assert.ok(lane, `relation ${relation.id} has an explicit anchor lane`);
+      assert.ok(ids.has(`${EXIT_BOT}|${relation.id}@m${lane}`), `anchored relation ${relation.id}`);
+      assert.equal(
+        ids.has(`${EXIT_BOT}|${relation.id}@m${lane}c`),
+        false,
+        "relations keep their explicit relation subsets instead of a duplicate MTF alias",
+      );
+    }
+    assert.ok(relationBases.some((x) => x.id.includes("balanced")));
+    assert.ok(
+      relationBases.some((x) => x.id.includes("guarded")),
+      "activity-part / last-activity profile variants retain distinct IDs",
+    );
+    const singlesOnly = exitStrategyPairs([{ ind: "ema-9-21@m15" }], u, {
+      ...settings,
+      includeCombined: false,
+      includeTactics: false,
+      includeRelations: false,
+    });
+    assert.equal(
+      singlesOnly.some((pair) => pair.endsWith("c")),
+      false,
+    );
+    assert.equal(
+      singlesOnly.some(
+        (pair) =>
+          pair.includes("tactic-") || pair.includes("relate-") || pair.includes("break-rel-"),
+      ),
+      false,
+    );
+  });
+
+  it("applies the Normal Base PF, sample and drawdown gate to standalone Exit sources", () => {
+    const good = { n: 20, pf: 1.2, net: 0.2, mdd: 0.04 };
+    const weak = { n: 20, pf: 1.08, net: 0.1, mdd: 0.02 };
+    const qualified = qualifyExitBase(
+      [
+        { bot: EXIT_BOT, ind: "ema-9-21@m1", full: good },
+        { bot: EXIT_BOT, ind: "tactic-trend-s@m1", full: weak },
+        { bot: "follow", ind: "ema-9-21@m1", full: good },
+        { bot: EXIT_BOT, ind: "rsi-9-21@m1", full: { ...good, n: 3 } },
+      ],
+      { minPf: 1.05 },
+      { minPf: 1.05, minTrades: 10, maxDdr: 1 },
+    );
+    assert.deepEqual([...qualified.evaluated].sort(), [
+      "exit|ema-9-21@m1",
+      "exit|rsi-9-21@m1",
+      "exit|tactic-trend-s@m1",
+    ]);
+    assert.deepEqual([...qualified.passed], ["exit|ema-9-21@m1"]);
+    assert.equal(
+      qualified.rejected,
+      2,
+      "a Tactic cannot pass below PF 1.1 and insufficient Base trades fail",
+    );
+    const baseBars = barsFromCandles(
+      "BASE-USDT",
+      1,
+      syntheticCandles("BASE-USDT", 1, 600, Date.UTC(2026, 8, 1), 2),
+    );
+    const baseRun = baseRuns(
+      makeUniverse([baseBars]),
+      [{ bot: EXIT_BOT, ind: "ema-9-21@m1" }],
+      DEFAULT_SETTINGS.cost,
+      { ...DEFAULT_SETTINGS.tactics, cooldown: true },
+      false,
+      false,
+      undefined,
+      [{ tp: 0.01, sl: 0.01, trail: 0, hold: 10, tag: "sh" }],
+    )[0];
+    assert.ok(baseRun);
+    assert.equal(baseRun.bot, EXIT_BOT);
+    assert.equal(baseRun.ranges, undefined, "Exit Base does not inherit Normal range cells");
   });
 
   it("keeps independent exit-set identity and direction through lane restart recovery", () => {
@@ -135,17 +279,24 @@ describe("independent historic exit strategy", () => {
       "rsi-mom-14-20@m30",
     ]) {
       for (const side of [1, -1] as const) {
-        for (const exitSet of ["static-sl", "adaptive-sl", "trailing"] as const) {
+        for (const exitSet of [
+          "static-sl",
+          "adaptive-sl",
+          "trailing",
+          "breakeven",
+          "trailing-only",
+        ] as const) {
           const ref: Protect = {
-            tp: 0.025,
+            tp: exitSet === "trailing-only" ? 0 : 0.025,
             sl: 0.04,
-            trail: exitSet === "trailing" ? 0.0075 : 0,
+            trail: exitSet === "trailing" ? 0.0075 : exitSet === "trailing-only" ? 0.025 : 0,
+            ...(exitSet === "trailing-only" ? { trailOnly: true, trailStep: 0.5 } : {}),
             hold: 64,
             exitType: "historic",
             exitSide: side,
             exitSet,
           };
-          const id = configId("follow", ind, laneProtect(ref, ind));
+          const id = configId(EXIT_BOT, ind, laneProtect(ref, ind));
           assert.equal(kindOfId(id), "exit");
           const parsed = parseConfigId(id);
           assert.equal(parsed?.protect.exitType, "historic");
@@ -154,9 +305,9 @@ describe("independent historic exit strategy", () => {
           assert.equal(parsed?.protect.tag, undefined);
           const held = heldExitProtect(id);
           assert.ok(held, id);
-          assert.equal(held.pair, `follow|${ind}`);
+          assert.equal(held.pair, `${EXIT_BOT}|${ind}`);
           assert.equal(held.protect.exitSet, exitSet);
-          assert.equal(configId("follow", ind, laneProtect(held.protect, ind)), id);
+          assert.equal(configId(EXIT_BOT, ind, laneProtect(held.protect, ind)), id);
         }
       }
     }
@@ -389,7 +540,7 @@ describe("independent historic exit strategy", () => {
     assert.equal(disabled.why, "toggle");
   });
 
-  it("runtime fits an initialized engine pair even when Base admits no pairs", async () => {
+  it("runtime refuses Exit fitting when the Normal Base gate admits no pairs", async () => {
     process.env.CTS_CORE_SYNTHETIC_END = String(Date.UTC(2026, 8, 30, 12));
     const grid = {
       ...DEFAULT_SETTINGS.grid,
@@ -447,15 +598,19 @@ describe("independent historic exit strategy", () => {
       assert.ok(rt.status.computes >= 1 && rt.audit, "runtime completes the Exit history compute");
       assert.ok(rt.pipeline?.s1.some((run) => run.bot === "follow" && run.ind === "ema-9-21@m15"));
       assert.equal(rt.status.basePassed, 0, "the high Base sample floor admits no pair");
-      assert.ok(
+      const exitStatus = rt.status.exitStrategies;
+      assert.ok(exitStatus, "independent Exit diagnostics are reported");
+      assert.ok(exitStatus.pairs > 0, "independent Exit sources are still discovered");
+      assert.ok((exitStatus.baseRejected ?? 0) > 0, "each Exit source is measured against Base");
+      assert.equal(
         rt.status.phases["Exit history"],
-        "Historic Exit gets its own fit and holdout phase",
+        undefined,
+        "unqualified Exit sources are not fitted",
       );
-      assert.ok(
-        rt.tapes
-          .filter((tape) => tape.kind === "exit")
-          .every((tape) => tape.protect.tag === undefined),
-        "any runtime Exit tape remains outside all range tags",
+      assert.equal(
+        rt.tapes.filter((tape) => tape.kind === "exit").length,
+        0,
+        "Base failures cannot get Exit tapes",
       );
     } finally {
       rt.stop();
@@ -670,13 +825,15 @@ describe("independent historic exit strategy", () => {
     for (const p of a[pair] ?? []) {
       assert.ok(p.exitSide === 1 || p.exitSide === -1);
       assert.ok(
-        p.exitSet === "static-sl" || p.exitSet === "adaptive-sl" || p.exitSet === "trailing",
+        ["static-sl", "adaptive-sl", "trailing", "breakeven", "trailing-only"].includes(
+          p.exitSet ?? "",
+        ),
       );
     }
     assert.ok((a[pair] ?? []).every((p) => p.exitType === "historic" && p.tag === undefined));
   });
 
-  it("qualifies all three independent exits on a planted trend/turn history with profitable orders", () => {
+  it("qualifies all five independent exits on a Bot-free planted trend/turn history", () => {
     const tf = 15;
     const step = tf * 60_000;
     const start = Date.UTC(2026, 8, 1);
@@ -697,7 +854,7 @@ describe("independent historic exit strategy", () => {
       price = close;
     }
     const u = makeUniverse([barsFromCandles("A-USDT", tf, candles)]);
-    const pair = "follow|ema-9-21@m15";
+    const pair = `${EXIT_BOT}|ema-9-21@m15`;
     const settings = {
       ...DEFAULT_SETTINGS.exitStrategy,
       lookbackH: 240,
@@ -707,7 +864,7 @@ describe("independent historic exit strategy", () => {
       minPf: 1.05,
       maxDdr: 0,
       holdH: 3,
-      maxConfigsPerPair: 12,
+      maxConfigsPerPair: 24,
       minTp: 0.006,
       maxTp: 0.05,
       maxSl: 0.1,
@@ -731,13 +888,15 @@ describe("independent historic exit strategy", () => {
       )[pair] ?? [];
     assert.equal(
       diagnostics.qualified,
-      6,
-      "each of three tactics qualifies long and short independently",
+      protects.length,
+      "every retained candidate passed the independent holdout gates",
     );
     assert.deepEqual([...new Set(protects.map((protect) => protect.exitSet))].sort(), [
       "adaptive-sl",
+      "breakeven",
       "static-sl",
       "trailing",
+      "trailing-only",
     ]);
     assert.ok(
       new Set(protects.map((protect) => protect.tp)).size > 1,
@@ -766,7 +925,7 @@ describe("independent historic exit strategy", () => {
     }
   });
 
-  it("builds three independent historical Exit tapes and simulates each configured side", () => {
+  it("builds five independent historical Exit tapes and simulates each configured side", () => {
     const bars = barsFromCandles(
       "A-USDT",
       15,
@@ -774,7 +933,7 @@ describe("independent historic exit strategy", () => {
     );
     const u = makeUniverse([bars]);
     const ind = "ema-9-21@m15";
-    const pair = `follow|${ind}`;
+    const pair = `${EXIT_BOT}|${ind}`;
     const protects: Protect[] = [
       {
         tp: 0.03,
@@ -803,17 +962,37 @@ describe("independent historic exit strategy", () => {
         exitSide: 1,
         exitSet: "trailing",
       },
+      {
+        tp: 0.03,
+        sl: 0.06,
+        trail: 0,
+        hold: 192,
+        exitType: "historic",
+        exitSide: 1,
+        exitSet: "breakeven",
+      },
+      {
+        tp: 0,
+        sl: 0.06,
+        trail: 0.03,
+        trailStep: 0.5,
+        trailOnly: true,
+        hold: 192,
+        exitType: "historic",
+        exitSide: 1,
+        exitSet: "trailing-only",
+      },
     ];
     const tapes = buildTapes(u, [], 0.002, undefined, new Set([pair]), null, undefined, {
       minSl: 0,
       minTrail: 0,
       pairProtects: { [pair]: protects },
     }).filter((x) => x.kind === "exit");
-    assert.equal(tapes.length, 3);
-    assert.equal(new Set(tapes.map((tape) => tape.id)).size, 3);
+    assert.equal(tapes.length, 5);
+    assert.equal(new Set(tapes.map((tape) => tape.id)).size, 5);
     assert.deepEqual(
       tapes.map((tape) => parseConfigId(tape.id)?.protect.exitSet),
-      ["static-sl", "adaptive-sl", "trailing"],
+      ["static-sl", "adaptive-sl", "trailing", "breakeven", "trailing-only"],
     );
     for (const tape of tapes) {
       assert.ok(tape.n > 0);
@@ -832,7 +1011,7 @@ describe("independent historic exit strategy", () => {
     );
     const u = makeUniverse([bars]);
     const ind = "ema-9-21@m15";
-    const pair = `follow|${ind}`;
+    const pair = `${EXIT_BOT}|${ind}`;
     const exit: Protect = {
       tp: 0.03,
       sl: 0.06,

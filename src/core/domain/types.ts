@@ -69,7 +69,8 @@ export const BOT_TYPES = [
   "follow",
   "revert",
 ] as const;
-export type BotType = (typeof BOT_TYPES)[number];
+/** `exit` is a synthetic, bot-free direction-onset source used only by Historic Exit. */
+export type BotType = (typeof BOT_TYPES)[number] | "exit";
 
 /** Protective exit config. All distances are fractions of entry price. */
 export interface Protect {
@@ -107,7 +108,8 @@ export interface Protect {
 }
 
 /** Historic Exit config families share the Exit strategy kind, but keep separate fits and execution identities. */
-export type ExitConfigSet = "static-sl" | "adaptive-sl" | "trailing";
+export type ExitConfigSet =
+  "static-sl" | "adaptive-sl" | "trailing" | "breakeven" | "trailing-only";
 
 /** Bounded causal state of one Historic Exit position; anchors keep the qualified config identity stable. */
 export interface ExitProtectionState {

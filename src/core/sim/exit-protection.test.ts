@@ -10,9 +10,10 @@ import {
 import { carryTrail, tickTrail } from "../server/runtime.server.ts";
 
 const protect = (set: ExitConfigSet): Protect => ({
-  tp: 0.1,
+  tp: set === "trailing-only" ? 0 : 0.1,
   sl: 0.2,
-  trail: set === "trailing" ? 0.03 : 0,
+  trail: set === "trailing" || set === "trailing-only" ? 0.03 : 0,
+  ...(set === "trailing-only" ? { trailOnly: true, trailStep: 0.5 } : {}),
   hold: 100,
   exitType: "historic",
   exitSide: 1,
@@ -24,7 +25,7 @@ const position = (set: ExitConfigSet, side = 1): ExitProtectionPosition => {
     side,
     entry: 100,
     stop: 100 * (1 - side * p.sl),
-    target: 100 * (1 + side * p.tp),
+    ...(p.tp > 0 ? { target: 100 * (1 + side * p.tp) } : {}),
     peak: 100,
     trailOn: false,
     trail: p.trail,
@@ -79,6 +80,38 @@ describe("causal per-position Exit protection", () => {
         if (set === "trailing")
           assert.ok(p.trailOn && p.trailDist! >= 0.03 * 0.65 && p.trailDist! <= 0.03 * 1.35);
       }
+    }
+  });
+
+  it("moves breakeven to entry and runs a target-free trailing stop in both directions", () => {
+    for (const side of [1, -1]) {
+      const be = position("breakeven", side);
+      const stop0 = be.stop;
+      const beBar =
+        side > 0
+          ? { t: 60_000, high: 105, low: 100, close: 104 }
+          : { t: 60_000, high: 100, low: 95, close: 96 };
+      advanceExitProtection(be, beBar);
+      assert.equal(be.stop, 100, `${side}: breakeven never crosses behind entry`);
+      assert.ok(side * (be.stop - stop0) > 0);
+
+      const trailing = position("trailing-only", side);
+      assert.equal(trailing.target, undefined, "trailing-only has no profit target");
+      const trailBar =
+        side > 0
+          ? { t: 60_000, high: 105, low: 100, close: 104 }
+          : { t: 60_000, high: 100, low: 95, close: 96 };
+      advanceExitProtection(trailing, trailBar);
+      assert.equal(trailing.target, undefined, "updates cannot introduce a target");
+      assert.equal(trailing.trailOn, true);
+      assert.ok(side * (trailing.stop - 100) > 0, `${side}: favorable move ratchets the trail`);
+      const stop1 = trailing.stop;
+      const adverse =
+        side > 0
+          ? { t: 120_000, high: 104, low: 102, close: 102.5 }
+          : { t: 120_000, high: 98, low: 96, close: 97.5 };
+      advanceExitProtection(trailing, adverse);
+      assert.ok(side * (trailing.stop - stop1) >= 0, `${side}: target-free trail never loosens`);
     }
   });
 

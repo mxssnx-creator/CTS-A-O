@@ -13,7 +13,12 @@ import type {
 import { DEFAULT_SIGNALS, type SignalSettings } from "./signal-config.ts";
 import { DEFAULT_SIZING, type SizingSettings } from "./sizing.ts";
 import type { PromotedLaneProof } from "./live-promote.ts";
-import { BREAK_CONFIG_IDS, BREAK_DEFAULT_MICRO_CONFIG_IDS, breakAnchorTf, isBreakMicroInd } from "./indications/break-config.ts";
+import {
+  BREAK_CONFIG_IDS,
+  BREAK_DEFAULT_MICRO_CONFIG_IDS,
+  breakAnchorTf,
+  isBreakMicroInd,
+} from "./indications/break-config.ts";
 import { RT_COST } from "./model-cost.ts";
 export { RT_COST } from "./model-cost.ts";
 
@@ -313,6 +318,14 @@ export interface CoreSettings {
 
 export interface ExitStrategySettings {
   enabled: boolean;
+  /** Standalone lanes evaluated by Historic Exit, independent of configured Bot types and Base focus lanes. */
+  timeframes: number[];
+  /** Include the Tactic indication source family independently of Bot focus. */
+  includeTactics: boolean;
+  /** Include all Relate subsets, modes and guarded/balanced activity profiles independently of Bot focus. */
+  includeRelations: boolean;
+  /** Evaluate each selected single-timeframe source plus its completed higher-timeframe confirmation lane. */
+  includeCombined: boolean;
   /** prehistory horizon before the causal run cut; 0 uses all available prehistory */
   lookbackH: number;
   /** oldest fraction fits MFE candidates; the newer remainder is reserved for independent validation */
@@ -582,13 +595,18 @@ export const FAMILY_FOCUS_13OCT: readonly string[] = [
 ].flatMap((id) => [`follow|${id}@m15`, `follow|${id}@m15c`, `follow|${id}@m30`]);
 
 /** The updated 60 Micro Break identities, each selected on its fastest eligible anchor lane by default. */
-export const BREAK_MICRO_FOCUS_17OCT: readonly string[] = BREAK_DEFAULT_MICRO_CONFIG_IDS.flatMap((id) => {
-  const tf = breakAnchorTf(id);
-  return tf === null ? [] : [`follow|${id}@m${tf}`];
-});
+export const BREAK_MICRO_FOCUS_17OCT: readonly string[] = BREAK_DEFAULT_MICRO_CONFIG_IDS.flatMap(
+  (id) => {
+    const tf = breakAnchorTf(id);
+    return tf === null ? [] : [`follow|${id}@m${tf}`];
+  },
+);
 
 /** The complete default focus before the 60 Micro Break identities joined it. */
-export const PREVIOUS_DEFAULT_FOCUS_17OCT: readonly string[] = [...FORMER_FOCUS_13OCT, ...FAMILY_FOCUS_13OCT];
+export const PREVIOUS_DEFAULT_FOCUS_17OCT: readonly string[] = [
+  ...FORMER_FOCUS_13OCT,
+  ...FAMILY_FOCUS_13OCT,
+];
 
 export const DEFAULT_SETTINGS: CoreSettings = {
   tfMin: 1,
@@ -606,6 +624,10 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   adjust: DEFAULT_ADJUST,
   exitStrategy: {
     enabled: true,
+    timeframes: [1, 5, 15],
+    includeTactics: true,
+    includeRelations: true,
+    includeCombined: true,
     lookbackH: 168,
     trainFraction: 0.6,
     minEntries: 30,

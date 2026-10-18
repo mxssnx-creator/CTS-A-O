@@ -5,13 +5,22 @@ import type { Bars, BotType, ExitConfigSet, Protect, Stats, Tactics } from "./do
 import type { ComboRun } from "./pipeline/pipeline.ts";
 import type { ExitStrategySettings } from "./config.ts";
 import { entrySignal } from "./bots/bots.ts";
-import { isSignalInd, laneOf } from "./indications/registry.ts";
+import {
+  INDICATIONS,
+  higherFactors,
+  isSignalInd,
+  laneInd,
+  laneOf,
+} from "./indications/registry.ts";
+import { isRelateInd, relateAnchorTf } from "./indications/relate.ts";
+import { breakAnchorTf, isBreakRelInd } from "./indications/break-config.ts";
 import { ddrFails, statsOf } from "./metrics/stats.ts";
 import {
   configId,
   evaluationSignal,
   laneProtect,
   parseConfigId,
+  passesBase,
   REF_TF,
   seriesOf,
   type Universe,
@@ -24,6 +33,7 @@ import { adjustProtect } from "./adjust.ts";
 const H = 3_600_000;
 /** The shared runtime/worker contract bounds per-message indicator-cache lifetime. */
 export const EXIT_HISTORY_MAX_PAIRS = 16;
+export const EXIT_BOT = "exit" as const;
 
 export interface ExitStrategyValidation {
   cost: number;
@@ -39,6 +49,9 @@ export interface ExitStrategyValidation {
 
 export interface ExitStrategyDiagnostics {
   pairs: number;
+  baseEvaluated: number;
+  basePassed: number;
+  baseRejected: number;
   noPrehistory: number;
   insufficientEntries: number;
   candidates: number;
@@ -53,6 +66,9 @@ export interface ExitStrategyDiagnostics {
 
 export const emptyExitStrategyDiagnostics = (): ExitStrategyDiagnostics => ({
   pairs: 0,
+  baseEvaluated: 0,
+  basePassed: 0,
+  baseRejected: 0,
   noPrehistory: 0,
   insufficientEntries: 0,
   candidates: 0,
@@ -76,16 +92,85 @@ export function passesExitHourlyConsistency(
 const rounded = (x: number) => +x.toFixed(4);
 const sideKey = (side: 1 | -1) => (side === 1 ? "long" : "short");
 
-/** Every initialized engine pair is eligible for independent Exit history, regardless of Base PF or range tags. */
+/**
+ * Build bot-free Exit relations. Focused indications are deduplicated across Bots, then expanded onto the Exit
+ * timeframe lanes. Tactic and Relate indications are added as their own source families, including every relation
+ * subset and activity profile even when no Bot is focused on them.
+ */
 export function exitStrategyPairs(
-  runs: Iterable<Pick<ComboRun, "bot" | "ind">>,
+  runs: Iterable<Pick<ComboRun, "ind">>,
   u: Universe,
+  settings?: Pick<
+    ExitStrategySettings,
+    "timeframes" | "includeTactics" | "includeRelations" | "includeCombined"
+  >,
+  disabledKinds: readonly string[] = [],
 ): string[] {
+  const bases = new Set<string>();
+  const disabled = new Set(disabledKinds);
+  const addBase = (id: string) => {
+    const base = laneOf(id).base;
+    if (!base || base === "none" || isSignalInd(base)) return;
+    const kind = INDICATIONS.find((x) => x.id === base)?.kind;
+    if (kind && disabled.has(kind)) return;
+    bases.add(base);
+  };
+  for (const run of runs) addBase(run.ind);
+  for (const spec of INDICATIONS) {
+    if (spec.kind === "tactic" && settings?.includeTactics !== false) addBase(spec.id);
+    if ((spec.kind === "relate" || isBreakRelInd(spec.id)) && settings?.includeRelations !== false)
+      addBase(spec.id);
+  }
+
+  const available = [...new Set(u.bars.map((b) => b.tfMin))].sort((a, b) => a - b);
+  const tfs = (settings?.timeframes?.length ? settings.timeframes : [1, 5, 15])
+    .filter((tf) => available.includes(tf))
+    .sort((a, b) => a - b);
   const pairs = new Set<string>();
-  for (const run of runs) if (!isSignalInd(run.ind)) pairs.add(`${run.bot}|${run.ind}`);
-  return [...pairs]
-    .filter((pair) => seriesOf(u, pair.slice(pair.indexOf("|") + 1)).length > 0)
-    .sort();
+  const addLane = (base: string, tf: number, combined = false) => {
+    const ind = laneInd(base, tf, combined);
+    if (seriesOf(u, ind).length) pairs.add(`${EXIT_BOT}|${ind}`);
+  };
+  for (const base of [...bases].sort()) {
+    if (isRelateInd(base)) {
+      const tf = relateAnchorTf(base);
+      if (tf !== null && tfs.includes(tf)) addLane(base, tf);
+      continue;
+    }
+    if (isBreakRelInd(base)) {
+      const tf = breakAnchorTf(base);
+      if (tf !== null && tfs.includes(tf)) addLane(base, tf);
+      continue;
+    }
+    for (const tf of tfs) {
+      addLane(base, tf);
+      if (settings?.includeCombined !== false && higherFactors(tf, tfs).length)
+        addLane(base, tf, true);
+    }
+  }
+  return [...pairs].sort();
+}
+
+/** Apply the Normal system's Base return-PF gate to standalone Exit pairs. */
+export function qualifyExitBase(
+  runs: Iterable<{
+    bot: string;
+    ind: string;
+    full: Pick<Stats, "n" | "pf" | "net" | "mdd">;
+  }>,
+  settings: Pick<ExitStrategySettings, "minPf">,
+  gates: { minPf: number; minTrades: number; maxDdr?: number },
+): { evaluated: Set<string>; passed: Set<string>; rejected: number } {
+  const evaluated = new Set<string>();
+  const passed = new Set<string>();
+  for (const run of runs) {
+    if (run.bot !== EXIT_BOT) continue;
+    const pair = `${EXIT_BOT}|${run.ind}`;
+    evaluated.add(pair);
+    const minPf = Math.max(gates.minPf, settings.minPf, 1.1);
+    if (passesBase(run.full, { ...gates, minPf })) passed.add(pair);
+  }
+  return { evaluated, passed, rejected: evaluated.size - passed.size };
 }
 
 /** Deterministically spread a per-pair cap across independent tactic and direction groups. */
@@ -230,6 +315,8 @@ export function exitProtectCandidates(
     "static-sl": [],
     "adaptive-sl": [],
     trailing: [],
+    breakeven: [],
+    "trailing-only": [],
   };
   const seen = new Set<string>();
   const adverseStops = settings.stopQuantiles
@@ -247,7 +334,7 @@ export function exitProtectCandidates(
       exitSide: side,
       exitSet,
     };
-    const key = `${exitSet}|${p.tp}|${p.sl}|${p.trail}|${p.hold}|${sideKey(side)}`;
+    const key = `${exitSet}|${p.tp}|${p.sl}|${p.trail}|${p.trailStep ?? 1}|${p.hold}|${sideKey(side)}`;
     if (seen.has(key)) return;
     seen.add(key);
     bySet[exitSet].push(p);
@@ -260,6 +347,7 @@ export function exitProtectCandidates(
     for (const stopMultiple of settings.stopMultiples) {
       const sl = Math.min(settings.maxSl, Math.max(validation.minSl, tp * stopMultiple));
       add("static-sl", tp, sl, 0);
+      add("breakeven", tp, sl, 0);
     }
     for (let i = 0; i < settings.stopQuantiles.length; i++) {
       const sl = Math.min(settings.maxSl, Math.max(validation.minSl, adverseStops[i] ?? 0));
@@ -270,12 +358,43 @@ export function exitProtectCandidates(
       }
     }
   }
+  // The fitted MFE quantile is the no-TP trail activation distance; trailShare independently controls the gap.
+  for (const q of settings.quantiles) {
+    const activation = rounded(
+      Math.min(settings.maxTp, Math.max(settings.minTp, quantileSorted(mfe, q))),
+    );
+    if (!(activation > 0) || !Number.isFinite(activation)) continue;
+    for (let i = 0; i < settings.stopQuantiles.length; i++) {
+      const sl = Math.min(settings.maxSl, Math.max(validation.minSl, adverseStops[i] ?? 0));
+      if (!(sl > 0 && sl >= validation.minSl && sl <= settings.maxSl)) continue;
+      for (const share of settings.trailShares) {
+        const trail = Math.max(activation, validation.minTrail);
+        if (!(trail > 0)) continue;
+        const p: Protect = {
+          tp: 0,
+          sl: rounded(sl),
+          trail: rounded(trail),
+          trailStep: share,
+          trailOnly: true,
+          hold,
+          exitType: "historic",
+          exitSide: side,
+          exitSet: "trailing-only",
+        };
+        const key = `trailing-only|${p.sl}|${p.trail}|${p.trailStep}|${p.hold}|${sideKey(side)}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          bySet["trailing-only"].push(p);
+        }
+      }
+    }
+  }
   return bySet;
 }
 
 /**
  * For each initialized engine pair, fit TP/SL candidates only on older prehistory and validate on its later part.
- * Three range-independent Exit sets × both directions receive independent fits, identities and holdout evaluations.
+ * Five range-independent Exit sets × both directions receive independent fits, identities and holdout evaluations.
  */
 export function* exitStrategyProtectsGen(
   u: Universe,
@@ -363,7 +482,13 @@ export function* exitStrategyProtectsGen(
           validation,
         );
     }
-    for (const exitSet of ["static-sl", "adaptive-sl", "trailing"] as const)
+    for (const exitSet of [
+      "static-sl",
+      "adaptive-sl",
+      "trailing",
+      "breakeven",
+      "trailing-only",
+    ] as const)
       for (const side of [1, -1] as const) {
         const candidates = candidatesBySide[side]?.[exitSet];
         if (candidates?.length) groups.push(candidates);

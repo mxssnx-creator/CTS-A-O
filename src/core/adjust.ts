@@ -34,7 +34,7 @@ export interface SetAdjust {
 export type AdjustState = Record<string, SetAdjust>;
 
 const kindOf = (cfg: string): StratKind =>
-  /\|hx(?:[LS])?[012]?$/.test(cfg)
+  /\|hx(?:[LS])?[0-4]?$/.test(cfg)
     ? "exit"
     : cfg.endsWith("|axis")
       ? "axis"
@@ -71,7 +71,7 @@ export function setKeyOf(cfg: string): string {
   const [bot, ind] = cfg.split("|");
   const kind = kindOf(cfg);
   if (kind === "exit") {
-    const code = /\|hx(?:[LS])?([012])?$/.exec(cfg)?.[1];
+    const code = /\|hx(?:[LS])?([0-4])?$/.exec(cfg)?.[1];
     const set =
       code === "0"
         ? "static-sl"
@@ -79,7 +79,11 @@ export function setKeyOf(cfg: string): string {
           ? "adaptive-sl"
           : code === "2"
             ? "trailing"
-            : "legacy";
+            : code === "3"
+              ? "breakeven"
+              : code === "4"
+                ? "trailing-only"
+                : "legacy";
     const side = /\|hx([LS])/.exec(cfg)?.[1];
     return `${bot}|${ind}|exit|${set}${side ? `|${side === "L" ? "long" : "short"}` : ""}`;
   }

@@ -2,6 +2,30 @@
 
 Updated 2026-10-18, UTC. Repository: `mxssnx-creator/CTS-A-O`.
 
+## Independent Historic Exit implementation — 18 October
+
+Exit Strategies now have a dedicated bot-free path through the normal causal
+Base → Main → Real pipeline. The path enumerates existing configured sources
+and adds Tactic, Relate, Break-relation and activity-profile sources
+independently of Bot selection. It supports standalone 1 / 5 / 15 minute
+lanes, higher-timeframe combinations, five protection families (static and
+adaptive stop-loss, trailing stop, breakeven and trailing-only), causal fit
+and validation windows, and the normal risk/execution gates. Settings,
+runtime diagnostics, session evidence, recovery and the settings/stages UI
+expose this lane explicitly. The Exit cohort must also pass its own Normal
+Base PF, sample and drawdown gates before fitting or execution.
+
+The 12-symbol 24 h prehistory + 24 h replay is fully recorded in
+`docs/sims/independent-exit-12sym-20261018-summary.md`. It enumerated 1,026
+bot-free pairs (50 Tactic and 196 relation variants), admitted 54 through
+Base, tested 192 protection candidates and qualified 7 configs. Its 12
+funded Exit closes returned PF 0.253 / −$0.366, with 1/6 active Exit hours
+green. The complete uncapped 10× account lost $1,169.03 (PF 0.639), had 8/24
+green hours and exceeded equity. This confirms the independent execution
+path, not a profitable strategy or a live-ready sizing policy. No live
+settings, venue orders, running instance, database or deployment were
+changed. Do not tune on or promote from this replay.
+
 ## Latest checkpoint: equity drawdown audit — 18 October
 
 PR [167](https://github.com/mxssnx-creator/CTS-A-O/pull/167) merged as

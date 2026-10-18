@@ -18,10 +18,15 @@ const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x
 
 /** Legacy Historic Exit ids without a tactic retain their original fixed protection behavior. */
 export function createExitProtection(p: Protect, entry: number): ExitProtectionState | undefined {
-  if (p.exitType !== "historic" || !p.exitSet || !(entry > 0 && p.tp > 0 && p.sl > 0)) return;
+  if (
+    p.exitType !== "historic" ||
+    !p.exitSet ||
+    !(entry > 0 && p.sl > 0 && (p.tp > 0 || (p.trailOnly && p.trail > 0)))
+  )
+    return;
   return {
     set: p.exitSet,
-    baseTp: p.tp,
+    baseTp: p.tp > 0 ? p.tp : p.trail,
     baseSl: p.sl,
     baseTrail: p.trail,
     baseTrailDist: p.trail * (p.trailStep ?? 1),
@@ -73,19 +78,27 @@ export function advanceExitProtection(
   s.lastBarT = bar.t;
   const volatility = clamp(s.rangeEma / s.baseSl, 0.25, 2);
   const trend = clamp(s.moveEma / Math.max(s.rangeEma, 1e-9), -1, 1);
-  const distance = s.baseTp * clamp(1 + 0.2 * (volatility - 1) + 0.25 * trend, 0.75, 1.5);
-  const desired = p.entry * (1 + p.side * distance);
-  // Never place a freshly tightened target behind the just-completed close: preserve the previous reachable target.
-  if (p.side > 0 ? desired > bar.close : desired < bar.close) p.target = desired;
+  if (s.set !== "trailing-only" && p.target !== undefined) {
+    const distance = s.baseTp * clamp(1 + 0.2 * (volatility - 1) + 0.25 * trend, 0.75, 1.5);
+    const desired = p.entry * (1 + p.side * distance);
+    // Never place a freshly tightened target behind the just-completed close: preserve the previous reachable target.
+    if (p.side > 0 ? desired > bar.close : desired < bar.close) p.target = desired;
+  }
   if (p.side > 0) p.peak = Math.max(p.peak, bar.high);
   else p.peak = Math.min(p.peak, bar.low);
   const profit = (p.side * (bar.close - p.entry)) / p.entry;
-  if (s.set !== "static-sl" && profit >= s.baseTp * 0.25) {
+  if (
+    (s.set === "adaptive-sl" || s.set === "trailing" || s.set === "trailing-only") &&
+    profit >= s.baseTp * 0.25
+  ) {
     const lock = Math.min(s.baseTp * 0.5, profit * 0.35);
     const stop = p.entry * (1 + p.side * lock);
     p.stop = p.side > 0 ? Math.max(p.stop, stop) : Math.min(p.stop, stop);
+  } else if (s.set === "breakeven" && profit >= s.baseTp * 0.25) {
+    const stop = p.entry;
+    p.stop = p.side > 0 ? Math.max(p.stop, stop) : Math.min(p.stop, stop);
   }
-  if (s.set === "trailing" && s.baseTrail > 0) {
+  if ((s.set === "trailing" || s.set === "trailing-only") && s.baseTrail > 0) {
     p.trail = s.baseTrail * clamp(0.9 + 0.1 * volatility, 0.75, 1.25);
     p.trailDist = s.baseTrailDist * clamp(0.8 + 0.2 * volatility, 0.65, 1.35);
     if ((p.side * (p.peak - p.entry)) / p.entry >= p.trail) {
@@ -105,4 +118,8 @@ export function advanceExitProtection(
 
 /** Used by persisted-state validation and future policy migrations. */
 export const isExitConfigSet = (set: unknown): set is ExitConfigSet =>
-  set === "static-sl" || set === "adaptive-sl" || set === "trailing";
+  set === "static-sl" ||
+  set === "adaptive-sl" ||
+  set === "trailing" ||
+  set === "breakeven" ||
+  set === "trailing-only";
