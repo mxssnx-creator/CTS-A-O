@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { checkSettings } from "./settings-check.ts";
 import { DEFAULT_SETTINGS, GRID_VARIANTS_MAX, RT_COST, SHORT_RANGE } from "./config.ts";
+import { RANGE_COST_BASIS } from "./minimal-coord.ts";
 import { simulate } from "./sim/backtest.ts";
 import { barsFromCandles } from "./market/bars.ts";
 import { CandleSeries } from "./market/candle-series.ts";
@@ -364,8 +365,8 @@ describe("protect grid", () => {
   it("position-cost ranges replace the wide targets, every TP × SL × Trail per range, cap held", () => {
     const g = DEFAULT_SETTINGS.grid;
     assert.ok(g.short && g.minimal && g.general && g.long);
-    const mult = (xs: readonly number[]) => xs.map((x) => +(x / RT_COST).toFixed(6));
-    // 13 Oct (operator: "more configs for all range types, all TP × SL × Trail"): contiguous targets
+    const mult = (xs: readonly number[]) => xs.map((x) => +(x / RANGE_COST_BASIS).toFixed(6));
+    // The fixed 0.20 % construction basis is independent of modeled round-trip cost (now 0.15 %): contiguous targets.
     assert.deepEqual(mult(g.minimal.tp), [4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 8]);
     assert.deepEqual(mult(g.short.tp), [9, 10, 11, 12, 13, 14]);
     assert.deepEqual(mult(g.general.tp), [15, 16, 17, 18, 19, 20, 21, 22]);
