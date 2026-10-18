@@ -52,7 +52,7 @@ describe("execution accounting integrity", () => {
       assert.equal(written?.qty, 0, "the write-ahead journal never claims the requested quantity before a reply");
       assert.equal(written?.status, "pending");
       assert.ok(written?.msg.includes("execution-pending"));
-      return { order: { orderId: "pending-entry", avgPrice: 100, executedQty: 0, status: "NEW" } };
+      return { order: { orderId: "pending-entry", avgPrice: 100 } }; // accepted, but the venue supplies no fill evidence
     };
     Object.assign(ex, { orderStatus: async () => {
       polls++;
