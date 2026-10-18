@@ -34,9 +34,17 @@ export function signalConfigCounts(input?: Partial<SignalSettings> | null) {
   const normal = protects.filter((p) => !p.atr && !p.trailOnly && p.trail === 0).length;
   const trailing = protects.filter((p) => !p.atr && !p.trailOnly && p.trail > 0).length;
   const atr = protects.filter((p) => !!p.atr).length;
-  const trailingOnly = protects.filter((p) => p.trailOnly).length;
+  // Show every configured no-TP cell, including requests that the minimum trail floor refuses.
+  // Keep the active count separate so UI configuration does not claim those cells actually execute.
+  const activeTrailingOnly = protects.filter((p) => p.trailOnly).length;
+  const trailingOnly = s.trailingOnly.enabled ? s.trailingOnly.sl.length * s.trailingOnly.trail.length : 0;
+  const inactiveTrailingOnly = Math.max(0, trailingOnly - activeTrailingOnly);
   const pct = normal + trailing;
-  return { normal, trailing, pct, atr, trailingOnly, total: protects.length };
+  return {
+    normal, trailing, pct, atr, trailingOnly, activeTrailingOnly, inactiveTrailingOnly,
+    total: protects.length + inactiveTrailingOnly,
+    activeTotal: protects.length,
+  };
 }
 
 /** TP zero alone is not proof of no-TP mode: aggregate live rows also use zero for missing config detail. */
