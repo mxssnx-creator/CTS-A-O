@@ -65,7 +65,7 @@ export function rangeOfId(id: string | undefined): RangeTag | "" {
 }
 
 /** Fixed historical range-construction basis; changing modeled costs must not silently shrink configured distances. */
-const RANGE_COST_BASIS = 0.002;
+export const RANGE_COST_BASIS = 0.002;
 
 /**
  * One range's settings. The type lives in domain/types.ts as `RangeGrid` + `MicroGrid` so the Settings surface and

@@ -214,6 +214,9 @@ describe("auto-adjust", () => {
     );
     const tape = {
       id: cfg,
+      bot: "follow",
+      ind: "rsi-mom-14-25",
+      protect: { tp: 0.05, sl: 0.012, trail: 0.006, hold: 24 },
       kind: "trailing",
       n: 0,
       exitT: new Float64Array(0),
