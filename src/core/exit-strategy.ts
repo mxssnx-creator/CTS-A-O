@@ -1,7 +1,7 @@
 // Independently qualified, prehistory-derived exit configs for initialized engine indications.
 // Candidate MFE is fitted on the older segment only; every protect is then judged on the later completed-bar holdout.
 import { createHash } from "node:crypto";
-import type { Bars, BotType, ExitConfigSet, Protect, Tactics } from "./domain/types.ts";
+import type { Bars, BotType, ExitConfigSet, Protect, Stats, Tactics } from "./domain/types.ts";
 import type { ComboRun } from "./pipeline/pipeline.ts";
 import type { ExitStrategySettings } from "./config.ts";
 import { entrySignal } from "./bots/bots.ts";
@@ -33,6 +33,8 @@ export interface ExitStrategyValidation {
   /** Same global floors applied by the tape builder to untagged engine cells. */
   minSl: number;
   minTrail: number;
+  /** Require hourly consistency only when the holdout has enough active UTC hours to measure it. */
+  minGreenHourShare?: number;
 }
 
 export interface ExitStrategyDiagnostics {
@@ -44,6 +46,7 @@ export interface ExitStrategyDiagnostics {
   evaluated: number;
   insufficientTrades: number;
   pfRejected: number;
+  greenHourRejected: number;
   ddrRejected: number;
   qualified: number;
 }
@@ -57,9 +60,18 @@ export const emptyExitStrategyDiagnostics = (): ExitStrategyDiagnostics => ({
   evaluated: 0,
   insufficientTrades: 0,
   pfRejected: 0,
+  greenHourRejected: 0,
   ddrRejected: 0,
   qualified: 0,
 });
+
+/** A sparse holdout has no useful hourly ratio; otherwise require the configured share of positive exit hours. */
+export function passesExitHourlyConsistency(
+  stats: Pick<Stats, "hours" | "greenHours">,
+  minShare: number,
+): boolean {
+  return minShare <= 0 || stats.hours < 6 || stats.greenHours / stats.hours >= minShare;
+}
 
 const rounded = (x: number) => +x.toFixed(4);
 const sideKey = (side: 1 | -1) => (side === 1 ? "long" : "short");
@@ -381,6 +393,16 @@ export function* exitStrategyProtectsGen(
       diagnostics.evaluated++;
       if (stats.n < Math.max(settings.minValidationTrades, validation.minTrades)) {
         diagnostics.insufficientTrades++;
+        continue;
+      }
+      // Avoid qualifying candidates whose pooled edge comes from a small cluster of winning hours.
+      // Sparse holdouts (<6 active hours) retain the existing PF/DDR gates because hourly ratios are noisy there.
+      const minGreenHourShare = Math.max(
+        settings.minGreenHourShare ?? 0,
+        validation.minGreenHourShare ?? 0,
+      );
+      if (!passesExitHourlyConsistency(stats, minGreenHourShare)) {
+        diagnostics.greenHourRejected++;
         continue;
       }
       if (!(stats.net > 0 && stats.pf >= Math.max(settings.minPf, validation.minPf))) {

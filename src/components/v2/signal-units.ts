@@ -34,9 +34,19 @@ export function signalConfigCounts(input?: Partial<SignalSettings> | null) {
   const normal = protects.filter((p) => !p.atr && !p.trailOnly && p.trail === 0).length;
   const trailing = protects.filter((p) => !p.atr && !p.trailOnly && p.trail > 0).length;
   const atr = protects.filter((p) => !!p.atr).length;
-  const trailingOnly = protects.filter((p) => p.trailOnly).length;
+  // The UI reports requested trailing-only cells even when the engine rejects them below its minimum trail floor.
+  // Deduplicate repeated stop values so the count reflects distinct configs, not duplicate array entries.
+  const trailingOnly = s.trailingOnly.enabled
+    ? new Set(
+        s.trailingOnly.sl.flatMap((sl) =>
+          s.trailingOnly.trail.map((trail) => `${sl}|${trail}|${s.trailingOnly.trailStep}`),
+        ),
+      ).size
+    : 0;
   const pct = normal + trailing;
-  return { normal, trailing, pct, atr, trailingOnly, total: protects.length };
+  const validTrailingOnly = protects.filter((p) => p.trailOnly).length;
+  const total = protects.length - validTrailingOnly + trailingOnly;
+  return { normal, trailing, pct, atr, trailingOnly, total };
 }
 
 /** TP zero alone is not proof of no-TP mode: aggregate live rows also use zero for missing config detail. */
