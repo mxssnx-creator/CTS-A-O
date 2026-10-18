@@ -5053,14 +5053,21 @@ export function* walkForwardGen(
       if (take(tp.syms[tp.symI[i]], tp.side[i])) sigCands.push({ e, i, tp, key });
       else inactiveSig(tp.side[i]);
     }
-    if (markOpen)
+    if (markOpen) {
+      let openWork = 0;
+      let openSliceAt = performance.now();
       for (const op of tp.open) {
+        if (++openWork % 32 === 0 && performance.now() - openSliceAt >= 8) {
+          yield -1;
+          openSliceAt = performance.now();
+        }
         if (op.entryT < startT || op.entryT >= stopT) continue;
         const key = keyOf(op.sym, op.side);
         sigFunnel.candidates++;
         if (take(op.sym, op.side)) sigCands.push({ e: op.entryT, i: -1, tp, key, op });
         else inactiveSig(op.side);
       }
+    }
   }
   yield* stableSortGen(sigCands, (a, b) => a.e - b.e);
   let sp = 0;
@@ -5135,8 +5142,12 @@ export function* walkForwardGen(
     held = new Set(picks.map((p) => p.id));
     const cands: Array<{ tr: Trade; tp: ConfigTape }> = [];
     let pi = 0;
+    let pickSliceAt = performance.now();
     for (const p of picks) {
-      if (++pi % 500 === 0) yield -1;
+      if (++pi % 16 === 0 && performance.now() - pickSliceAt >= 8) {
+        yield -1;
+        pickSliceAt = performance.now();
+      }
       // contrarian execution (wf.invertSeats): the seat's entries on its mirror's tape
       const tid = o.invertSeats ? mirrorId(p.id) : p.id;
       const tp = tid ? byId.get(tid) : undefined;
