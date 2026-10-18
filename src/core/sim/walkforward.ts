@@ -131,6 +131,14 @@ import { volumeFactorForIndication } from "../volume-factor.ts";
 
 const H = 3_600_000;
 
+/** One fail-closed PF gate for Base, selection and last-N (no fabricated wins from NaN/overflow). */
+function qualifiedPf(gp: number, gl: number, floor: number): boolean {
+  if (!(Number.isFinite(gp) && Number.isFinite(gl) && gp >= 0 && gl >= 0 && Number.isFinite(floor))) return false;
+  const pf = profitFactor(gp, gl);
+  return Number.isFinite(pf) && pf >= floor;
+}
+
+
 /**
  * Coordination tactics: portfolio-level rules on the realized results of the executed orders (causal: only orders
  * closed before an entry count) and on the positions open at that moment. Each can be switched on or off.
@@ -3324,18 +3332,16 @@ function configEvalAt(
   };
   const no = (fail: EvalGate): ConfigEval => ({ ok: false, fail, ...base });
   const minPf = minPfOf(o.gates, tp.protect.tag, tp.ind);
-  if (w.n < Math.max(3, o.gates.minTrades ?? 0)) return no("closes");
-  if (w.net <= 0) return no("net");
+  if (!Number.isSafeInteger(w.n) || w.n < Math.max(3, o.gates.minTrades ?? 0)) return no("closes");
+  if (!(Number.isFinite(w.net) && w.net > 0)) return no("net");
   const prior = lossPriorOf(tp, o.gates);
-  if (
-    (prior > 0 && w.gp !== undefined && w.gl !== undefined
-      ? profitFactor(w.gp, w.gl + prior)
-      : w.pf) < minPf
-  )
+  if (!(Number.isFinite(w.pf) && w.pf >= minPf &&
+    (prior <= 0 || (w.gp !== undefined && w.gl !== undefined && qualifiedPf(w.gp, w.gl + prior, minPf)))))
     return no("pf");
   if (o.preGate) {
     const pre = win(tp, lowerBound(tp.exitT, t - o.preH * H), b);
-    if (pre.n >= 3 && (pre.pf < minPf || pre.net < 0)) return no("pre");
+    if (pre.n >= 3 && !(Number.isFinite(pre.pf) && pre.pf >= minPf &&
+      Number.isFinite(pre.net) && pre.net >= 0)) return no("pre");
   }
   const lcb = lcbFast(tp, a, b);
   if (!(lcb > 0)) return no("lcb");
@@ -3529,16 +3535,18 @@ function configPassAt(
 ): boolean {
   const minPf = info.minPf;
   const prior = info.prior;
-  if (n < Math.max(3, o.gates.minTrades ?? 0)) return false;
-  if (net <= 0) return false;
-  if ((prior > 0 ? profitFactor(gp, gl + prior) : pf) < minPf) return false;
+  if (!Number.isSafeInteger(n) || n < Math.max(3, o.gates.minTrades ?? 0)) return false;
+  if (!(Number.isFinite(net) && net > 0)) return false;
+  if (!(Number.isFinite(pf) && pf >= minPf &&
+    (prior <= 0 || qualifiedPf(gp, gl + prior, minPf)))) return false;
   if (o.preGate) {
     const pa = lowerBound(tp.exitT, t - o.preH * H);
     const pn = b - pa;
     if (pn >= 3) {
       const pgp = tp.gp[b] - tp.gp[pa];
       const pgl = tp.gl[b] - tp.gl[pa];
-      if (profitFactor(pgp, pgl) < minPf || (tp.rs[b] - tp.rs[pa]) * 100 < 0) return false;
+      const pnet = (tp.rs[b] - tp.rs[pa]) * 100;
+      if (!qualifiedPf(pgp, pgl, minPf) || !(Number.isFinite(pnet) && pnet >= 0)) return false;
     }
   }
   const lcb = lcbFast(tp, a, b);
@@ -3923,7 +3931,7 @@ export function lastNOk(
     n = b;
   }
   if (!warmup) short = false;
-  if (profitFactor(tp.gp[b] - tp.gp[b - n], tp.gl[b] - tp.gl[b - n] + prior) < minPf) return false;
+  if (!qualifiedPf(tp.gp[b] - tp.gp[b - n], tp.gl[b] - tp.gl[b - n] + prior, minPf)) return false;
   // the same closes have to come back inside the drawdown-time gate and keep their drawdown ratio — not judged on a
   // sample shorter than the gate asks for (the drawdown of 8 of 50 closes is not that config's drawdown)
   if (!short && (maxDdtH > 0 || maxDdr !== 0)) {
@@ -3978,7 +3986,7 @@ export function lastNSideOk(
     if (r > 0) gp += r;
     else gl -= r;
   }
-  if (profitFactor(gp, gl + prior) < minPf) return false;
+  if (!qualifiedPf(gp, gl + prior, minPf) || !Number.isFinite(net)) return false;
   if (!short && (maxDdtH > 0 || maxDdr !== 0)) {
     idx.reverse();
     const dd = winDdIdx(tp, idx, entryT);
@@ -4040,7 +4048,7 @@ function signalLastNOk(
     net += r;
     if (r > 0) gp += r; else gl -= r;
   }
-  if (profitFactor(gp, gl + prior) < minPf) return false;
+  if (!qualifiedPf(gp, gl + prior, minPf) || !Number.isFinite(net)) return false;
   if ((!short || !warmup) && (maxDdtH > 0 || maxDdr !== 0)) {
     const dd = winDdIdx(tp, idx, entryT);
     if (maxDdtH > 0 && dd.ddtH > maxDdtH) return false;
