@@ -1,14 +1,6 @@
 # Exit implementation verification
 
-Latest published test-source checkpoint, with the matched-main readiness fix:
-`8a56851dfa7dfebe707127b523a30e72a397538f`, tree
-`741552b48e679790b5899a214c14bb608255771e`. Its full command exited 1 at the
-strict server-error assertion; the page and settings assertions passed.
-The traced fixture lifecycle correction is verified independently. Final review
-also found a runtime parity gap: completed-bar protection could be skipped while
-price stayed unchanged. Its boundary-aware correction passes seven focused
-regressions, scoped lint, and independent review. Frozen runtime SHA-256:
-`93a0c1a3c68d090ccfb6c7c9c07ce4515d4de0a4be9099dca28d230c65a6adb7`.
+Latest production/test-source checkpoint: `df44a2709dada4e31d771fbaff54491ee116d63e`, tree `77f9f7bb0d899713b26cd9c191f9fc88cb0cb8e1`. Fresh full typecheck, lint, production build (including packaged worker) and sealed replay pass. Frozen runtime SHA-256: `93a0c1a3c68d090ccfb6c7c9c07ce4515d4de0a4be9099dca28d230c65a6adb7`.
 Fresh typecheck/build/replay and the full test gate follow on this source.
 
 Processing-fixture checkpoint:
@@ -50,7 +42,7 @@ Partial stages are recorded separately and are not presented as a completed full
 | Earlier completed script stage | 455 passed, 0 failed, 8 missing-template checks skipped |
 | Earlier app/components stage | 78 passed, 0 failed, 0 skipped |
 | Latest complete-command attempt | Script stage: 454 passed, 1 server-error assertion failed on fixture cancellation, 8 template skips; exit 1 |
-| Fresh `npm test` | Pending fresh typecheck/build/replay of the completed-flat-bar correction |
+| Fresh local `npm test` | Exit 1 because this scratch host has no Chromium binary; the UI before-hook could not start a browser, so UI page assertions were cancelled. |\n| GitHub browser-enabled verification | Added; provisions Chromium, then runs typecheck, lint, build, `npm test` and dedicated slow tests on the pushed source |
 | Actual runtime tick + shared protection regression | 7/7 passed, including all six Exit family/direction combinations, independent 1m/5m timing, duplicate guards, adjusted TP close and ordinary trailing |
 | `npm run test:core:slow` | Pending, after the normal gate |
 | Exit parity with two actual worker threads | 1/1 passed; exact configs and every diagnostic count match local calculation |
@@ -119,10 +111,11 @@ The dense excursion fixture improved from 156.77 ms to 15.59 ms with exact
 reference equivalence and O(hold) deque storage. This is a calculation benchmark,
 not a claim that the entire application is ten times faster.
 
-The [final-source regression](exit-validation-20261017-cache-regression.md) retains
+The [latest source regression](exit-validation-20261018-runtime-regression.md) retains
 all 794 configured pairs and compares every economic field with the frozen
-reused-history run. It took 38.1 seconds with 246.5 MiB model peak RSS; the exact
-comparison raised process peak RSS to 297.9 MiB. All trades, open marks,
+reused-history run. It took 12.399 seconds with 240.6 MiB model peak RSS; the exact
+comparison raised process peak RSS to 305.1 MiB. Direct replay does not exercise runtime ticks;
+the actual-tick regression separately covers flat-bar protection. All trades, open marks,
 config/step evaluations, hourly/family returns and rejection diagnostics match.
 
 There were 109 settled modeled orders at unit-return PF 19.554, but the 206 open

@@ -1,102 +1,42 @@
 # CTS-A-O operations handoff
 
-Updated 2026-10-18, Europe/Vienna. Repository: `mxssnx-creator/CTS-A-O`.
+## 18 October Exit continuation
 
-## 17 October Exit continuation — checkpoint pending complete test gate
+Current source/test checkpoint on draft [PR #149](https://github.com/mxssnx-creator/CTS-A-O/pull/149):
+`df44a2709dada4e31d771fbaff54491ee116d63e`, tree
+`77f9f7bb0d899713b26cd9c191f9fc88cb0cb8e1`. Exit remains separate from
+Normal/Trailing ranges with six independent family/direction identities,
+causal lane-native TP/SL/trailing protection, chronological qualification,
+partial/full close coordination and bounded parallel history fitting.
 
-Historic Exit is a separate strategy kind with independent static-SL, adaptive-SL
-and trailing config families and directions. Its fitted distances are native to
-the indication's lane; range scaling, range admission and remove-only engine
-tactics cannot suppress these families. PF, sample, drawdown and subsequent
-entry/seat gates remain active. Held IDs stay stable. A shared completed-bar
-policy actively adjusts TP, retains a fixed-SL option, and ratchets adaptive or
-trailing stops without loosening them; its bounded heuristic is tested in both
-simulation and tick processing, including carry/restart and duplicate bars.
+The final review fixed two concrete issues before the next complete gate:
+browser teardown waits for finite same-origin requests, while retaining strict
+server-error assertions; runtime ticks advance Exit and ordinary trailing at
+completed lane boundaries even when prices remain flat. Tick deadlines are
+cached per symbol, retaining O(symbol groups) idle checks and the price-only
+path for fixed Normal groups. The actual runtime tick regressions pass 7/7.
+Full typecheck, lint (0 errors, 17 pre-existing warnings), production build
+including worker, and the latest source-bound replay pass. The replay matches
+all prior economic output exactly and measures 240.6 MiB model RSS, 305.1 MiB
+including comparison.
 
-Corrected the runtime/worker Exit chunk mismatch (16 versus 2), separate
-family/direction feedback lookup, early-history cancellation cleanup, the
-Micro range-floor discovery leak and the historical cache's missing exact
-indication inventory. The local history fallback now releases indicator caches
-after each 16-pair chunk, including generator cancellation, with exact output
-and diagnostic parity. Saved-preset backtests now fit and build Exit independently
-before their forward window, retain native lane history, and preserve the original
-Normal/Signals evaluation cohort. Rolling excursion calculations preserve the
-reference result while using O(hold) storage; the measured dense fixture improved
-from 156.77 ms to 15.59 ms. The worker parity fixture now uses representative
-Normal/Trailing/range/DCA/Axis cells rather than over 159,000 tapes; its comparison
-passes in 3.58 seconds. Production caps and gates were not weakened.
+The latest local plain `npm test` cannot launch the UI browser because this
+scratch host lacks Chromium. No UI assertions were weakened; browser page tests
+were cancelled by that before-hook. The branch adds a read-only GitHub Actions
+verification workflow that installs Playwright Chromium, then runs typecheck,
+lint, build, plain `npm test` and the dedicated slow tests. The command must
+pass before merging. Eight absent-template checks may skip; they require the
+missing `.grok/app-env.json` and `.grok/skills/og` packages. The two runtime
+slow cases remain enabled.
 
-Current focused checks include 44 invariant/range cases, 18 excursion/Exit
-cases, 7 final raw-entry/worker/active-protection cases, 6 promotion CLI cases
-and 5 component-label cases, all passing. Typecheck, lint and production build
-pass (lint has 17 existing warnings). The final plain `npm test` attempt passed
-455 script tests (8 absent-template skips) and 78 component tests, then its core
-processing fixture hit a 400-second setup watchdog before its 128 cases ran.
-That active calculation inherited 2,656 production grid cells. The bounded
-fixture uses at most 96 existing representative cells and passes all 6 tests,
-including the actual 128 toggle combinations, in 201.9 seconds (155.6-second
-setup, 35.4-second toggle run). Independent review confirms every original
-assertion, indication/lane, range/type, DCA/Axis/Signals configuration, gate and
-cost remains covered. No production formula, economic gate or timeout changed.
-Typecheck and lint pass. The fresh plain `npm test` on test-source checkpoint
-`2303ee765c566f48b65fa7df05dc52c555f2e1f9` exited 1 at the script stage: 454 passed,
-one phone Overview assertion sampled zero digits in main, and eight template
-checks skipped. The old readiness probe could finish from one navigation/body
-digit before main existed. Its follow-up now requires main with five digits,
-matching the unchanged final assertion, within the same 60 seconds. Lint passes.
-The next complete command ran on exact test-source checkpoint
-`8a56851dfa7dfebe707127b523a30e72a397538f`, tree
-`741552b48e679790b5899a214c14bb608255771e`. Desktop, phone and settings passed,
-but the command exited 1 at the strict server-error assertion. Method/path-only
-tracing proved setup Compare teardown cancelled an in-flight finite `coreStatus`
-GET, logged by the framework as an unhandled `ECONNRESET` 500. SSE-only closure
-passed. A bounded finite-request drain before closing test pages is being
-verified; strict assertions remain active. No production UI code changed.
-The independently reviewed teardown correction is ready. A final runtime review
-also found that the price-change-only tick shortcut could skip completed-bar
-Exit protection during flat prices. A cached lane-boundary correction covers
-Exit and ordinary trailing, preserving O(symbol groups) idle checks and the
-fixed Normal price-only path. Seven actual-tick/shared-protection tests pass,
-including all six Exit family/direction combinations, independent 1m/5m timing,
-duplicate guards, TP close persistence, equity and trailing reversal. Scoped lint
-and independent source review pass. Frozen runtime SHA-256 is
-`93a0c1a3c68d090ccfb6c7c9c07ce4515d4de0a4be9099dca28d230c65a6adb7`;
-fresh typecheck/build/replay and the full gate follow on this source.
-The preceding validated build/replay checkpoint is
-`9fb5e4c1e68e2e63945139c7d1cad3f1217f6158`; the new runtime source will receive
-its own exact source checkpoint and replay regression.
-Script/component stages are bounded to two files concurrently; synthetic tests
-have deterministic memory headroom while dedicated pressure tests still verify
-fallback and abort behavior. Chromium is installed and built desktop/mobile UI
-checks pass. The browser fixture covers all desktop/phone pages, settings saves
-and strict server-error assertions. Its readiness probe now
-consumes the full streamed SSR response instead of abandoning its body. Eight
-preset tests verify exact ordered trades against direct local/worker calculation,
-native history, sparse 30m execution, unchanged Normal results and cancellation.
-Earlier failures and partial runs are not represented as one green full run.
+The broader 794-pair, four-symbol reused-history replay produced 109 settled
+modeled orders at unit-return PF 19.554, and 206 open marks. Its combined
+endpoint diagnostic is losing (PF 0.774226, net -14.416 return points); only
+8/24 hours had profitable settled closes. This is not consistent-profit
+evidence. Back up and reevaluate older Exit-enabled preset caches before use.
+No live account, deployment or exchange orders were accessed or changed.
 
-Older cached preset results with Exit enabled were computed without Exit. This
-source correction does not certify them: back up and re-evaluate those caches
-before any live reload or reliance on their PF. No running instance or its state
-has been accessed during this continuation.
-
-Frozen reused public-history results are in
-[`sims/exit-validation-20261017-summary.md`](sims/exit-validation-20261017-summary.md).
-Six evaluated prehistory hours are insufficient for default independent sample
-floors. With the default 168-hour lookback and six forward hours, 28 Exit configs
-qualify and six initially seat; two winning closes are accompanied by four
-losing open marks (marked diagnostic PF 0.015815). The broader 794-pair, four-symbol
-check uses 168 evaluated prehistory hours and 24 trading hours: 1,236 independent
-configs qualify, 132 initially seat, and 109 modeled orders settle at unit-return
-PF 19.554. Its 206 open marks total -53.574 return points; settled plus marked
-diagnostic PF is 0.774226 and net is -14.416 points. Only 8/24 hours have profitable
-settled closes. This is not evidence of consistently positive total returns.
-All rejects and losses remain in the evidence. The run took 44.7 seconds and
-243.4 MiB maximum RSS with 16-pair fit/build chunks and one unified default WF.
-The original frozen results are retained. The final-source regression replay
-matches every trade, mark, configuration evaluation and diagnostic exactly,
-without retuning the scored window. It took 38.1 seconds and 246.5 MiB model peak
-RSS (297.9 MiB including comparison). No live deployment or venue execution occurred.
+Updated 2026-10-16, Europe/Vienna. Repository: `mxssnx-creator/CTS-A-O`.
 
 ## 16 October Historic Exit strategy validation
 

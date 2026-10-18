@@ -41,7 +41,7 @@ node --expose-gc --max-old-space-size=512 --experimental-strip-types --no-warnin
 
 Its full report is `exit-validation-20261017-cache-regression.md`, with a matching protocol, exact comparison JSON, lossless result gzip and compressed changed-source archive. Every original frozen protocol/result remains unchanged.
 
-A separate `exit-validation-20261018-runtime-regression` wrapper is prepared for the later completed-flat-bar `runtime.tick` correction. It is not yet sealed or scored. The direct replay does not execute the live runtime tick path; the actual-tick regression covers that fix. The new replay will check unchanged economic results under the newly frozen imported runtime source, preserving every preceding source-bound artifact.
+The `exit-validation-20261018-runtime-regression` wrapper was sealed against runtime source `93a0c1a3c68d090ccfb6c7c9c07ce4515d4de0a4be9099dca28d230c65a6adb7` and the unchanged Exit source. It passed exact equality against every economic field in the preceding regression: 109 settled orders, 206 endpoint marks, every configuration and hourly diagnostic. Protocol SHA-256 is `f31b21388edbbb586e4efa341dc1cce2fd4262d536c7677c59b1ef8de7bcd7b5`; model time was 12.399 s and model peak RSS 240.6 MiB (305.1 MiB including comparison). This reused-window replay does not independently exercise runtime tick behavior; seven actual runtime-tick regressions cover flat-bar updates.
 
 | Attempt | Protocol SHA-256 |
 |---|---|
@@ -49,6 +49,6 @@ A separate `exit-validation-20261018-runtime-regression` wrapper is prepared for
 | Corrected 6 h | `d7fbb10e90998d58596f1a8ea8fa284d50a4b6c51cb39fea40fa16cdfdb21491` |
 | Corrected 168 h | `7a1247f9f5eaadf3d663ef7333b78076361b4c069f63c493a3af66f75e88c09d` |
 | Corrected default 794 pairs, 24 h trading | `679862904ce7f5197a8ce9ce998dfb876f5162b3723bd128973b9f427fe896cf` |
-| Preceding cache/preset source regression of the same 794-pair sample | `57d220904b462fe4457068012e719eb61e48f82c3087742a3be7faa26fc36d34` |
+| Preceding cache/preset source regression of the same 794-pair sample | `57d220904b462fe4457068012e719eb61e48f82c3087742a3be7faa26fc36d34` |\n| Latest runtime-tick source regression | `f31b21388edbbb586e4efa341dc1cce2fd4262d536c7677c59b1ef8de7bcd7b5` |
 
 Each matching result JSON includes all six independent set/direction slices per hour, initial per-config seat evaluations, every modeled settled order, open endpoint marks and rejection diagnostics. The 794-pair result also has a lossless `.json.gz` equivalent for compact persistence. Public input provenance is inherited from the existing cached feed and is not an independent audit of its original venue collection. These reused short forward windows cannot establish durable or consistently positive market returns.
