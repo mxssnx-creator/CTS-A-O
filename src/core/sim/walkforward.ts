@@ -4315,7 +4315,7 @@ export function* hedgeSignalsAtGen(
   let sliceAt = performance.now();
   for (const g of groups) {
     if (++work % 32 === 0 && performance.now() - sliceAt >= 8) {
-      yield -1;
+      yield { stage: "Simulation", label: "hedge signal group ranking" } as unknown as number;
       sliceAt = performance.now();
     }
     let lo = 0;
@@ -4390,6 +4390,7 @@ export function* signalIndexGen(
   // slices by trades, not tapes (a signal tape holds thousands: 100 tapes were one 0.8 s step at 21 symbols); the
   // key and its bucket map are resolved once per symbol × side slot of the tape, not per trade (same insertion order)
   let work = 0;
+  let sliceAt = performance.now();
   for (const tp of sigTapes) {
     if (tp.heldOnly) continue;
     done++;
@@ -4421,17 +4422,22 @@ export function* signalIndexGen(
       if (r > 0) x[1] += r;
       else x[2] -= r;
       x[3] += 1 / k;
+      if (++work % 512 === 0 && performance.now() - sliceAt >= 8) {
+        yield { stage: "Simulation", label: `signal index tape ${done} · trade ${i}` } as unknown as number;
+        sliceAt = performance.now();
+      }
     }
-    work += tp.n + 1;
     if (work >= 20_000) {
       work = 0;
-      yield done;
+      yield { stage: "Simulation", label: `signal index completed tape ${done}` } as unknown as number;
+      sliceAt = performance.now();
     }
   }
   const out: SignalGroup[] = [];
   let built = 0;
   for (const [key, m] of acc) {
-    if (++built % 200 === 0) yield done;
+    if (++built % 200 === 0)
+      yield { stage: "Simulation", label: `signal index groups ${built}` } as unknown as number;
     const mt = meta.get(key)!;
     const hs = [...m.keys()].sort((x, y) => x - y);
     const g: SignalGroup = {
@@ -4522,8 +4528,12 @@ export function* activeSignalsAtGen(
     return lo;
   };
   let work = 0;
+  let sliceAt = performance.now();
   for (const g of groups) {
-    if (++work % 32 === 0) yield -1;
+    if (++work % 32 === 0 && performance.now() - sliceAt >= 8) {
+      yield { stage: "Simulation", label: `active signal group ${work}` } as unknown as number;
+      sliceAt = performance.now();
+    }
     const a = hb(g.h, fromB);
     const b = hb(g.h, endB);
     if (a >= b) continue;
@@ -4540,7 +4550,10 @@ export function* activeSignalsAtGen(
     let blk = NaN;
     let blkSum = 0;
     for (let j = a; j < b; j++) {
-      if (++work % 512 === 0) yield -1;
+      if (++work % 32 === 0 && performance.now() - sliceAt >= 8) {
+        yield { stage: "Simulation", label: `active signal history bucket ${work}` } as unknown as number;
+        sliceAt = performance.now();
+      }
       cum += g.net[j];
       if (cum > peak) peak = cum;
       if (peak - cum > dd) dd = peak - cum;
@@ -4982,6 +4995,8 @@ export function* walkForwardGen(
   // direction — the executed orders alone refused most signals (an engine candidate a cap or gate held back never
   // confirmed one)
   const engineOpen = new EngineOpenCount();
+  // Runtime-only diagnostic labels identify which synchronous slice exceeds the responsive-loop budget.
+  const profile = (label: string) => ({ stage: "Simulation", label }) as unknown as number;
   // an evaluation family's run: the families whose configs execute (o.family)
   const families = o.family ? new Set(o.family) : null;
   // signal candidates before any gate, and those of a unit not active at their step
@@ -5015,7 +5030,7 @@ export function* walkForwardGen(
       feedBooks(fx, book, guard, direction);
       if (!fx.open) s2?.close(fx);
       if (performance.now() - sliceAt >= 8) {
-        yield -1;
+        yield profile("settle virtual orders");
         sliceAt = performance.now();
       }
     }
@@ -5031,7 +5046,7 @@ export function* walkForwardGen(
         l.push({ exitT: x.exitT, r: x.r });
       }
       if (performance.now() - sliceAt >= 8) {
-        yield -1;
+        yield profile("settle executed orders");
         sliceAt = performance.now();
       }
     }
@@ -5111,7 +5126,7 @@ export function* walkForwardGen(
         sigIdx = r.value;
         break;
       }
-      yield -1;
+      yield profile("build signal index");
     }
     // a pair held only for its open positions (outside signalBasePassed) opens nothing new: it never takes one of
     // the `count` active slots (it took them from the pairs that may trade, which then never traded)
@@ -5120,7 +5135,6 @@ export function* walkForwardGen(
   }
   let stepOpts: WalkForwardOptions = o;
   // Diagnostic progress markers let the runtime identify a long synchronous substep in its 250 ms profile.
-  const profile = (label: string) => ({ stage: "Simulation", label }) as unknown as number;
   // every step's record per range (StepLog.byRange): the tapes of each range, counted once
   const stepRange = (cfg: string) => (sigCfg(cfg) ? "sig" : rangeOfId(cfg));
   const tapesByRange: Record<string, number> = {};
