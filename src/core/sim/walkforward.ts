@@ -3516,7 +3516,6 @@ export function* selectFixedGen(
   o: WalkForwardOptions,
 ): Generator<number, { picks: Selection[]; eligible: number; checks?: ValidationCheck[] }> {
   const from = t - Math.max(o.longH, o.preH) * H;
-  let seen = 0;
   const botOk = o.bots.length ? new Set<string>(o.bots) : null;
   const best = new Map<string, Selection>();
   const checks: ValidationCheck[] | null = o.recordValidation ? [] : null;
@@ -3538,7 +3537,7 @@ export function* selectFixedGen(
   let t0 = performance.now();
   for (let i = 0; i < tapes.length; i++) {
     const tp = tapes[i];
-    if (++seen % 32 === 0 && performance.now() - t0 > 8) {
+    if (performance.now() - t0 > 8) {
       yield -1;
       t0 = performance.now();
     }
@@ -4979,14 +4978,17 @@ export function* walkForwardGen(
   // executed signal orders per source, in exit order (source stability gate)
   const srcClosed = new Map<string, Array<{ exitT: number; r: number }>>();
   const settle = function* (t: number): Generator<number, void> {
-    let work = 0;
+    let sliceAt = performance.now();
     while (vopen.size && vopen.peekT() <= t) {
       const fx = vopen.pop()!;
       if (fx.cfg && !sigCfg(fx.cfg)) engineOpen.add(fx.sym, fx.side, -1);
       feed.push(fx);
       feedBooks(fx, book, guard, direction);
       if (!fx.open) s2?.close(fx);
-      if (++work % 128 === 0) yield -1;
+      if (performance.now() - sliceAt >= 8) {
+        yield -1;
+        sliceAt = performance.now();
+      }
     }
     while (open.size && open.peekT() <= t) {
       const x = open.pop()!;
@@ -4999,7 +5001,10 @@ export function* walkForwardGen(
         if (!l) srcClosed.set(src, (l = []));
         l.push({ exitT: x.exitT, r: x.r });
       }
-      if (++work % 128 === 0) yield -1;
+      if (performance.now() - sliceAt >= 8) {
+        yield -1;
+        sliceAt = performance.now();
+      }
     }
   };
 
@@ -5010,6 +5015,7 @@ export function* walkForwardGen(
   const sigCands: Array<{ e: number; i: number; tp: ConfigTape; key: string; op?: OpenPosition }> =
     [];
   let built = 0;
+  let builtSliceAt = performance.now();
   // one key string per pair × symbol × direction, shared by every config of the pair and every candidate (a string
   // per candidate: ~1 M of them, 0.1–0.2 GB through the Real stage); the same values as sigActiveKey per candidate
   const pairKeys = new Map<string, Map<string, [string | undefined, string | undefined]>>();
@@ -5031,7 +5037,10 @@ export function* walkForwardGen(
     };
     const slots: Array<string | undefined> = [];
     for (let i = 0; i < tp.n; i++) {
-      if (++built % 1024 === 0) yield -1;
+      if (++built % 32 === 0 && performance.now() - builtSliceAt >= 8) {
+        yield -1;
+        builtSliceAt = performance.now();
+      }
       const e = tp.entryT[i];
       if (e < startT || e >= stopT) continue;
       const slot = tp.symI[i] * 2 + (tp.side[i] > 0 ? 1 : 0);
@@ -5074,6 +5083,8 @@ export function* walkForwardGen(
     if (passed) sigIdx = sigIdx.filter((g) => passed.has(g.pair));
   }
   let stepOpts: WalkForwardOptions = o;
+  // Diagnostic progress markers let the runtime identify a long synchronous substep in its 250 ms profile.
+  const profile = (label: string) => ({ stage: "Simulation", label }) as unknown as number;
   // every step's record per range (StepLog.byRange): the tapes of each range, counted once
   const stepRange = (cfg: string) => (sigCfg(cfg) ? "sig" : rangeOfId(cfg));
   const tapesByRange: Record<string, number> = {};
@@ -5085,6 +5096,7 @@ export function* walkForwardGen(
   for (let t = startT; t < stopT; t += stepH * H) {
     // every order closed before the step counts for this step's decisions (hedge hours, coordination state)
     yield* settle(t);
+    yield profile("settlement complete");
     if (o.signalRank && sigTapes.length) {
       const act = yield* activeSignalsAtGen(sigIdx, t, o.signalRank, Math.max(o.longH, o.preH));
       hedgeKeys = new Set();
@@ -5104,6 +5116,7 @@ export function* walkForwardGen(
     }
     // fixed mode in slices (the selection scores every tape)
     const sel = o.mode === "fixed" ? yield* selectFixedGen(selTapes, t, o) : null;
+    yield profile("seat selection complete");
     const { picks, eligible } = withProbe(
       o.mode === "durable"
         ? selectDurable(selTapes, t, o, held)
@@ -5114,6 +5127,7 @@ export function* walkForwardGen(
       t,
       o,
     );
+    yield profile("probe and seat checks complete");
     held = new Set(picks.map((p) => p.id));
     const cands: Array<{ tr: Trade; tp: ConfigTape }> = [];
     let pi = 0;
@@ -5131,7 +5145,10 @@ export function* walkForwardGen(
       const stepEnd = t + stepH * H;
       const exitCap = stepEnd + maxHoldOf(tp);
       for (let i = lowerBound(tp.exitT, t); i < tp.n; i++) {
-        if (++built % 1024 === 0) yield -1;
+        if (++built % 32 === 0 && performance.now() - builtSliceAt >= 8) {
+          yield -1;
+          builtSliceAt = performance.now();
+        }
         if (tp.exitT[i] >= exitCap) break;
         const e = tp.entryT[i];
         if (e >= t && e < stepEnd && e < stopT) cands.push({ tr: tradeAt(tp, i), tp });
@@ -5141,8 +5158,12 @@ export function* walkForwardGen(
           if (op.entryT >= t && op.entryT < t + stepH * H && op.entryT < stopT)
             cands.push({ tr: markedOpenTrade(tp, op, stopT), tp });
     }
+    yield profile("engine candidates collected");
     while (sp < sigCands.length && sigCands[sp].e < t + stepH * H) {
-      if (++built % 1024 === 0) yield -1;
+      if (++built % 32 === 0 && performance.now() - builtSliceAt >= 8) {
+        yield -1;
+        builtSliceAt = performance.now();
+      }
       const c = sigCands[sp++];
       if (o.signalRank && !stepOpts.signalActive?.has(c.key)) {
         inactiveSig(c.op ? c.op.side : c.tp.side[c.i]);
@@ -5158,22 +5179,44 @@ export function* walkForwardGen(
         prio(a.tp, a.tr.sym, a.tr.side) - prio(b.tp, b.tr.sym, b.tr.side) ||
         a.tr.cfg.localeCompare(b.tr.cfg),
     );
+    yield profile("candidate ordering complete");
     let taken = 0;
     let skipped = 0;
     let net = 0;
-    let ci = 0;
+    let candidateSliceAt = performance.now();
     const byRange: NonNullable<StepLog["byRange"]> = {};
     const rangeRow = (k: string) =>
       (byRange[k] ??= { tapes: tapesByRange[k] ?? 0, validated: 0, candidates: 0, taken: 0 });
     for (const k of Object.keys(tapesByRange)) rangeRow(k);
-    for (const p of picks) rangeRow(stepRange(p.id)).validated++;
+    let rangeSliceAt = performance.now();
+    let rangeWork = 0;
+    for (const p of picks) {
+      rangeRow(stepRange(p.id)).validated++;
+      if (++rangeWork % 32 === 0 && performance.now() - rangeSliceAt >= 8) {
+        yield -1;
+        rangeSliceAt = performance.now();
+      }
+    }
     // signals: the active units of the step (pair × symbol × side) are their validated set
     if (o.signalRank && sigTapes.length)
       rangeRow("sig").validated = stepOpts.signalActive?.size ?? 0;
-    for (const { tr } of cands) rangeRow(stepRange(tr.cfg)).candidates++;
+    rangeWork = 0;
+    rangeSliceAt = performance.now();
+    for (const { tr } of cands) {
+      rangeRow(stepRange(tr.cfg)).candidates++;
+      if (++rangeWork % 32 === 0 && performance.now() - rangeSliceAt >= 8) {
+        yield -1;
+        rangeSliceAt = performance.now();
+      }
+    }
+    yield profile("candidate range accounting complete");
     for (const { tr, tp } of cands) {
-      // a busy step is worked through in slices
-      if (++ci % 300 === 0) yield -1;
+      // Candidate gates may be expensive (coordination, book checks and execution sizing). A count-only
+      // yield lets dense steps monopolize the event loop, so slice by elapsed work instead.
+      if (performance.now() - candidateSliceAt >= 8) {
+        yield -1;
+        candidateSliceAt = performance.now();
+      }
       yield* settle(tr.entryT);
       // Keep the full candidate feed for guards/confirmation; accepted-order Block reads only the later marker.
       const fk = `${tr.cfg}|${tr.sym}|${tr.side}|${tr.entryT}`;
@@ -5302,6 +5345,7 @@ export function* walkForwardGen(
       open.push(x.exitT, x);
       counts.add(x, 1);
     }
+    yield profile("candidate execution complete");
     steps.push({
       t,
       main: eligible,
