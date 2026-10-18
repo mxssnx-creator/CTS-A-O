@@ -48,6 +48,23 @@ describe("Base cell chronological statistics buffer", () => {
     for (const runs of cases) assert.deepEqual(collect(cell, runs), oracle(runs));
   });
 
+  it("fails closed for nonfinite returns and overflowed return-PF cells", () => {
+    const rejected = { n: 2, pf: 0, net: 0, mdd: 0, gp: 0, gl: 0, invalid: true };
+    for (const bad of [NaN, Infinity, -Infinity]) {
+      const got = collect(new BaseCellAccumulator(), [[[0.02, 0, 1], [bad, 1, 2]]]);
+      assert.deepEqual(got, rejected, `invalid return ${bad} cannot qualify`);
+    }
+    for (const rows of [
+      [[1e308, 0, 1], [-1, 1, 2]], // gross-profit and net percentage overflow
+      [[1, 0, 1], [-Number.MIN_VALUE, 1, 2]], // PF quotient overflow
+    ] satisfies Row[][]) {
+      const got = collect(new BaseCellAccumulator(), [rows]);
+      assert.deepEqual(got, rejected, "finite inputs whose primary totals overflow cannot qualify");
+    }
+    assert.deepEqual(collect(new BaseCellAccumulator(), [[[0.02, 0, 1], [-0.01, 1, 2]]]),
+      oracle([[[0.02, 0, 1], [-0.01, 1, 2]]]), "ordinary Base outcomes retain exact parity");
+  });
+
   it("grows, reuses and clears buffers without changing prior returned cells", () => {
     const cell = new BaseCellAccumulator();
     const runs = Array.from({ length: 7 }, (_, j) => Array.from({ length: 211 }, (_, i): Row => [
