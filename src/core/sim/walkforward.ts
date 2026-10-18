@@ -4672,21 +4672,75 @@ export function splitSignalTapes(
   tapes: readonly ConfigTape[],
   o: Pick<WalkForwardOptions, "signalActive" | "signalRank">,
 ): { engine: readonly ConfigTape[]; signal: ConfigTape[] } {
-  const engine = engineTapesOf(tapes);
+  const gen = splitSignalTapesGen(tapes, o);
+  for (;;) {
+    const r = gen.next();
+    if (r.done) return r.value;
+  }
+}
+
+/** Runtime form that can yield while partitioning large per-symbol config grids. */
+export function* splitSignalTapesGen(
+  tapes: readonly ConfigTape[],
+  o: Pick<WalkForwardOptions, "signalActive" | "signalRank">,
+): Generator<number, { engine: readonly ConfigTape[]; signal: ConfigTape[] }> {
+  let engine: readonly ConfigTape[] | null | undefined;
+  const cached = engineTapesMemo.get(tapes);
+  if (cached?.n === tapes.length) engine = cached.engine;
+  else {
+    let hasSignal = false;
+    let work = 0;
+    let sliceAt = performance.now();
+    for (const t of tapes) {
+      if (isSignalInd(t.ind)) hasSignal = true;
+      if (++work % 32 === 0 && performance.now() - sliceAt >= 8) {
+        yield { stage: "Simulation", label: "scan signal tape identities" } as unknown as number;
+        sliceAt = performance.now();
+      }
+    }
+    if (hasSignal) {
+      const onlyEngine: ConfigTape[] = [];
+      work = 0;
+      sliceAt = performance.now();
+      for (const t of tapes) {
+        if (!isSignalInd(t.ind)) onlyEngine.push(t);
+        if (++work % 32 === 0 && performance.now() - sliceAt >= 8) {
+          yield { stage: "Simulation", label: "build engine tape list" } as unknown as number;
+          sliceAt = performance.now();
+        }
+      }
+      engine = onlyEngine;
+    } else engine = null;
+    engineTapesMemo.set(tapes, { n: tapes.length, engine });
+  }
   if (!engine) return { engine: tapes, signal: [] };
   // ranked per step: every signal tape is a candidate, the step's active set gates it
-  if (o.signalRank)
-    return {
-      engine,
-      signal: tapes.filter((t) => isSignalInd(t.ind)),
-    };
+  if (o.signalRank) {
+    const signal: ConfigTape[] = [];
+    let work = 0;
+    let sliceAt = performance.now();
+    for (const t of tapes) {
+      if (isSignalInd(t.ind)) signal.push(t);
+      if (++work % 32 === 0 && performance.now() - sliceAt >= 8) {
+        yield { stage: "Simulation", label: "partition ranked signal tapes" } as unknown as number;
+        sliceAt = performance.now();
+      }
+    }
+    return { engine, signal };
+  }
   const pairs = new Set([...(o.signalActive ?? [])].map((k) => k.split("|").slice(0, 2).join("|")));
-  return {
-    engine,
-    signal: o.signalActive
-      ? tapes.filter((t) => isSignalInd(t.ind) && pairs.has(`${t.bot}|${t.ind}`))
-      : [],
-  };
+  if (!o.signalActive) return { engine, signal: [] };
+  const signal: ConfigTape[] = [];
+  let work = 0;
+  let sliceAt = performance.now();
+  for (const t of tapes) {
+    if (isSignalInd(t.ind) && pairs.has(`${t.bot}|${t.ind}`)) signal.push(t);
+    if (++work % 32 === 0 && performance.now() - sliceAt >= 8) {
+      yield { stage: "Simulation", label: "partition active signal tapes" } as unknown as number;
+      sliceAt = performance.now();
+    }
+  }
+  return { engine, signal };
 }
 
 /** one set per recorded step, built once (read-only: every caller only asks `has`) */
@@ -4932,15 +4986,24 @@ export function* walkForwardGen(
   tapes: readonly ConfigTape[],
   o: WalkForwardOptions,
 ): Generator<number, WalkForwardResult> {
-  const byId = new Map(tapes.map((t) => [t.id, t]));
-  const indicationVolumeFactors = new Map(
-    tapes.map((tp) => [tp.id, volumeFactorForIndication(tp.ind, o.indicationVolumeFactors)]),
-  );
+  const profile = (label: string) => ({ stage: "Simulation", label }) as unknown as number;
+  const byId = new Map<string, ConfigTape>();
+  const indicationVolumeFactors = new Map<string, number>();
+  let setupWork = 0;
+  let setupSliceAt = performance.now();
+  for (const tp of tapes) {
+    byId.set(tp.id, tp);
+    indicationVolumeFactors.set(tp.id, volumeFactorForIndication(tp.ind, o.indicationVolumeFactors));
+    if (++setupWork % 32 === 0 && performance.now() - setupSliceAt >= 8) {
+      yield profile("index replay tapes");
+      setupSliceAt = performance.now();
+    }
+  }
   // contrarian execution: seats whose mirror (follow ↔ revert) has no tape, step by step
   let invertMissing = 0;
   // signals: not selected into seats; every config of an active signal is a candidate on its own symbol and
   // direction (the Real gate checks active + guard per config × symbol × direction)
-  const { engine: selTapes, signal: sigTapes } = splitSignalTapes(tapes, o);
+  const { engine: selTapes, signal: sigTapes } = yield* splitSignalTapesGen(tapes, o);
   const endT = u.nowT;
   const startT = o.startT ?? Math.floor((endT - o.simH * H) / H) * H;
   // without an explicit start the run reaches the newest bar (the last partial hour included)
@@ -4996,7 +5059,6 @@ export function* walkForwardGen(
   // confirmed one)
   const engineOpen = new EngineOpenCount();
   // Runtime-only diagnostic labels identify which synchronous slice exceeds the responsive-loop budget.
-  const profile = (label: string) => ({ stage: "Simulation", label }) as unknown as number;
   // an evaluation family's run: the families whose configs execute (o.family)
   const families = o.family ? new Set(o.family) : null;
   // signal candidates before any gate, and those of a unit not active at their step
