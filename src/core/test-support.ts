@@ -215,6 +215,7 @@ export class SimExchange implements ExchangeClient {
     const sym = String(p.symbol);
     const ps = String(p.positionSide) as "LONG" | "SHORT";
     const key = `${sym}|${ps}`;
+    let marketReply: unknown;
     if (p.type === "MARKET") {
       const into = (ps === "LONG" && p.side === "BUY") || (ps === "SHORT" && p.side === "SELL");
       if (into && this.refuse.has(sym)) throw new ExchangeRejected("simulated refusal", 1);
@@ -229,7 +230,10 @@ export class SimExchange implements ExchangeClient {
         px: this.px.get(sym) ?? NaN,
         t: Date.now(),
       });
-      this.hist({ venueSymbol: sym, positionSide: ps, clientOrderId: p.clientOrderID === undefined ? "" : String(p.clientOrderID) }, "FILLED", this.px.get(sym) ?? NaN, into ? q : cur - next, String(p.side));
+      const executed = into ? q : cur - next;
+      this.hist({ venueSymbol: sym, positionSide: ps, clientOrderId: p.clientOrderID === undefined ? "" : String(p.clientOrderID) }, "FILLED", this.px.get(sym) ?? NaN, executed, String(p.side));
+      // Synthetic exchange explicitly confirms filled quantity; production must never infer it from an empty reply.
+      marketReply = { order: { status: "FILLED", executedQty: executed, avgPrice: this.px.get(sym) ?? 0 } };
       if (next > 0) this.positions.set(key, next);
       else this.positions.delete(key);
     } else {
@@ -271,7 +275,7 @@ export class SimExchange implements ExchangeClient {
       return { order: { orderId: id } };
     }
     if (this.r() < this.timeoutAfterFillRate) throw new Error("simulated timeout after fill");
-    return undefined;
+    return marketReply;
   }
   async cancel(_sym: string, id: string) {
     const o = this.orders.find((x) => x.id === id);
