@@ -53,6 +53,7 @@ test("timeline: balance steps at each close, equity marks open orders, margin an
 
 test("types and sub-types: Block raised / Active level, DCA vs DCA Active, Axis, Signals", () => {
   assert.equal(typeOf(tr({ kind: "trailing" })), "Trailing");
+  assert.equal(typeOf(tr({ cfg: "follow|rsi-mom-14-20@m15|tp3|sl3|tr0|h64|hxL" })), "Historic Exit");
   assert.equal(typeOf(tr({ cfg: "follow|sig-cci-m@m15|tp3|sl3|tr0|h64" })), "Signals");
   assert.equal(typeOf(tr({ cfg: "follow|x|tp3|sl3|tr0|h64|dcaA" })), "DCA Active");
   assert.deepEqual(subTypeOf(tr({ mult: 1 }), 2), ["Base (unit volume)"]);
@@ -60,9 +61,29 @@ test("types and sub-types: Block raised / Active level, DCA vs DCA Active, Axis,
   assert.deepEqual(subTypeOf(tr({ mult: 1.2, level: 1 }), 2), ["Block raised", "Block below Active level"]);
   // coordination volume alone is not a Block raise
   assert.deepEqual(subTypeOf(tr({ mult: 1.5, coordVol: 1.5 }), 2), ["Base (unit volume)"]);
+  // indication volume factors are not reported as Block raises either
+  assert.deepEqual(subTypeOf(tr({ mult: 8, volFactor: 8 }), 2), ["Base (unit volume)"]);
   assert.deepEqual(subTypeOf(tr({ mult: 3, coordVol: 1.5, hedgeVol: 2 }), 2), ["Base (unit volume)"]);
   assert.deepEqual(subTypeOf(tr({ kind: "axis" }), 2), ["Axis"]);
   assert.deepEqual(subTypeOf(tr({}), 2), ["Base (no Block detail)"]);
+});
+
+test("preset diagrams include cumulative Historic Exit P&L", () => {
+  const s = presetSeries(
+    [tr({ cfg: "follow|rsi-mom-14-20@m15|tp3|sl3|tr1|h64|hxL", r: 0.025 })],
+    {
+      startT: T0,
+      endT: T0 + 2 * H,
+      balance: 1000,
+      unit: () => 100,
+      price: () => 100,
+      cost: 0.002,
+      leverage: 10,
+      days: 1 / 12,
+      points: 2,
+    },
+  );
+  assert.equal(s.kinds["Historic Exit"].at(-1), 2.5);
 });
 
 test("the report groups every dimension and compares presets with and without each sub-strategy", () => {
@@ -101,7 +122,7 @@ test("the report groups every dimension and compares presets with and without ea
   assert.equal(r.types.find((x) => x.key === "DCA")?.n, 1);
   assert.equal(r.subTypes.find((x) => x.key === "Block Active level")?.n, 1);
   assert.equal(r.configs.length, 3);
-  assert.equal(r.configs.find((c) => c.range === "Short")?.tp, 0.008);
+  assert.equal(r.configs.find((c) => c.group === "Short")?.tp, 0.008);
   // every hour of the day is a row (3 with closes), every UTC day of the window too
   assert.equal(r.hourOfDay.length, 24);
   assert.deepEqual(
@@ -341,10 +362,14 @@ test("preset diagrams and info: positions per hour, PF of the last 12 / 25 / 75 
     assert.ok(s.info.ddtH > 0);
 });
 
-test("ranges: a signal config is its own group, never counted as Wide", () => {
+test("ranges are Normal / Trailing only; Signals and Historic Exit use independent strategy groups", () => {
   const r = buildStatistics({
     source: "sim",
-    trades: [tr({}), tr({ cfg: "follow|sig-cci-m@m15|tp3|sl3|tr0|h64", exitT: T0 + 2 * H })],
+    trades: [
+      tr({}),
+      tr({ cfg: "follow|sig-cci-m@m15|tp3|sl3|tr0|h64", exitT: T0 + 2 * H }),
+      tr({ cfg: "follow|rsi-mom-14-20@m15|tp1|sl1|tr0|h32|hxL0", kind: "exit", exitT: T0 + 3 * H }),
+    ],
     startT: T0,
     endT: T0 + 4 * H,
     balance: 100,
@@ -357,12 +382,11 @@ test("ranges: a signal config is its own group, never counted as Wide", () => {
   });
   assert.deepEqual(
     r.ranges.map((x) => [x.key, x.n]),
-    [
-      ["Wide", 1],
-      ["Signals", 1],
-    ],
+    [["Wide", 1]],
   );
-  assert.equal(r.configs.find((c) => c.key.includes("sig-"))?.range, "Signals");
+  assert.deepEqual(r.strategyGroups.map((x) => [x.key, x.n]), [["Signals", 1], ["Historic Exit", 1]]);
+  assert.equal(r.configs.find((c) => c.key.includes("sig-"))?.group, "Signals");
+  assert.equal(r.configs.find((c) => c.key.includes("hxL0"))?.group, "Historic Exit");
 });
 
 test("preset diagrams use settled unit PF and keep cash episode PF explicitly diagnostic", () => {

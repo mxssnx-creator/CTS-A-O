@@ -1,5 +1,5 @@
 import { PF_NO_LOSS } from "../../src/core/config.ts";
-import { hourlyNet, statsOf, modeledUnitReturn as unitReturn, modeledUnitStatsOf as unitStatsOf } from "../../src/core/metrics/stats.ts";
+import { hourlyNet, settledHourT, statsOf, modeledUnitReturn as unitReturn, modeledUnitStatsOf as unitStatsOf } from "../../src/core/metrics/stats.ts";
 
 const H = 3_600_000;
 const pfConvention = `Shared engine no-loss sentinel ${PF_NO_LOSS}; no finite measured ratio when GP > 0 and GL = 0.`;
@@ -52,7 +52,7 @@ export function walkForwardHourlyReport(run) {
     const kind = raw.kind ?? "normal";
     if (!rawByKind.has(kind)) rawByKind.set(kind, []);
     rawByKind.get(kind).push(raw);
-    const h = Math.floor((raw.exitT - 1) / H) * H;
+    const h = settledHourT(raw.exitT);
     if (!rawByHour.has(h)) {
       rawByHour.set(h, []);
     }

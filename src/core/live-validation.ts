@@ -6,6 +6,8 @@ import type { ConfigTape } from "./sim/walkforward.ts";
 import { profitFactor } from "./metrics/stats.ts";
 import { isSignalInd } from "./indications/registry.ts";
 import { RANGE_LABEL, rangeOfId } from "./minimal-coord.ts";
+import { isSignalCoordinationInd } from "./signal-coordination.ts";
+import { kindOfId } from "./pipeline/pipeline.ts";
 
 export interface LiveGate {
   ok: boolean;
@@ -166,11 +168,17 @@ export function liveGate(
 }
 
 /**
- * The live group of a config: signals apart, every engine config by its target range (Micro … Long, Wide = no range
- * tag) — the categories the desk reports its forward results in.
+ * Signals Coordination ranges and Historic Exit retain independent report groups; other engine configs use ranges.
  */
 export function liveGroupOf(cfg: string): string {
-  return isSignalInd(cfg.split("|")[1] ?? "") ? "Signals" : RANGE_LABEL[rangeOfId(cfg)];
+  const ind = cfg.split("|")[1] ?? "";
+  if (isSignalCoordinationInd(ind)) {
+    const tag = rangeOfId(cfg);
+    return `Signals Coordination${tag ? ` · ${RANGE_LABEL[tag]}` : ""}`;
+  }
+  if (isSignalInd(ind)) return "Signals";
+  if (kindOfId(cfg) === "exit") return "Historic Exit";
+  return RANGE_LABEL[rangeOfId(cfg)];
 }
 
 /**

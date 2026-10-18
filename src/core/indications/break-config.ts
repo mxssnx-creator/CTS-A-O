@@ -11,11 +11,12 @@ export const BREAK_SUBSETS = [
 ] as const;
 
 export const BREAK_CORES = [
-  { id: "don", label: "Donchian break", microOnly: false },
-  { id: "squeeze", label: "Squeeze expansion", microOnly: false },
-  { id: "retest", label: "Break retest", microOnly: false },
-  { id: "don8", label: "Micro Donchian 8 break", microOnly: true },
-  { id: "retest8", label: "Micro 8-bar retest", microOnly: true },
+  { id: "don", label: "Donchian break", microOnly: false, optIn: false },
+  { id: "squeeze", label: "Squeeze expansion", microOnly: false, optIn: false },
+  { id: "retest", label: "Break retest", microOnly: false, optIn: false },
+  { id: "don8", label: "Micro Donchian 8 break", microOnly: true, optIn: false },
+  { id: "retest8", label: "Micro 8-bar retest", microOnly: true, optIn: false },
+  { id: "reclaim8", label: "Micro 8-bar failed-break reclaim", microOnly: true, optIn: true },
 ] as const;
 export type BreakCore = (typeof BREAK_CORES)[number]["id"];
 
@@ -84,7 +85,7 @@ export function breakAnchorTf(base: string): number | null {
   return anchorById.get(base) ?? null;
 }
 
-/** Seven trend subsets × three standard sources, plus two short-channel Micro sources, each with two DD windows/profiles. */
+/** Seven trend subsets × three standard sources, plus three short-channel Micro sources, each with two DD windows/profiles. */
 export const BREAK_CONFIG_IDS = BREAK_SUBSETS.flatMap((tfs) =>
   BREAK_CORES.flatMap((core) =>
     BREAK_DRAWDOWN_WINDOWS.flatMap((ddWindow) =>
@@ -92,6 +93,14 @@ export const BREAK_CONFIG_IDS = BREAK_SUBSETS.flatMap((tfs) =>
         ...(!core.microOnly ? [breakConfigId(core.id, tfs, ddWindow.id, profile.id, false)] : []),
         ...(Math.min(...tfs) >= 5 ? [breakConfigId(core.id, tfs, ddWindow.id, profile.id, true)] : []),
       ]),
+    ),
+  ),
+);
+/** Preserve the frozen 60 default Micro identities; experimental sources require an explicit selection. */
+export const BREAK_DEFAULT_MICRO_CONFIG_IDS = BREAK_SUBSETS.flatMap((tfs) =>
+  Math.min(...tfs) < 5 ? [] : BREAK_CORES.flatMap((core) =>
+    core.optIn ? [] : BREAK_DRAWDOWN_WINDOWS.flatMap((ddWindow) =>
+      BREAK_PROFILES.map((profile) => breakConfigId(core.id, tfs, ddWindow.id, profile.id, true)),
     ),
   ),
 );

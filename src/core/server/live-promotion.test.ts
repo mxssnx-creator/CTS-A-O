@@ -83,6 +83,43 @@ describe("strict live promotion uses two settled independent evidence axes", () 
     assert.equal(r.livePromotionGate(lane, NOW).state, "ineligible", "historic winners cannot override current selection");
   });
 
+  it("a stale selected measurement config cannot promote outside its current Base-qualified pair/range", () => {
+    const r = install(fixture()); owned(r, [.02, -.01, .02]);
+    const pair = `follow|rsi-mom-14-25@m15`;
+    r.wf.basePassed = new Set([pair]);
+    r.wf.basePassedRanges = { [pair]: [""] };
+    assert.equal(r.livePromotionGate(lane, NOW).ok, true);
+    r.wf.basePassedRanges = { [pair]: ["mn"] };
+    assert.equal(r.livePromotionGate(lane, NOW).state, "ineligible", "a winning sibling range cannot admit Wide");
+    r.wf.basePassedRanges = { [pair]: [""] };
+    r.wf.basePassed = new Set();
+    assert.equal(r.livePromotionGate(lane, NOW).state, "ineligible", "diagnostic construction is not Base qualification");
+  });
+
+  it("native promotion preserves explicit independent untagged ladder admission without qualifying plain Wide or failed pairs", () => {
+    for (const kind of ["dca", "dca-active", "axis"] as const) {
+      const cfg = `${CFG}|${kind}`, identity = { ...lane, cfg }, pair = "follow|rsi-mom-14-25@m15";
+      const trades = [.02, -.01, .02].map((v, i) => close(v, i, { cfg, kind }));
+      const r = install(fixture(), trades);
+      owned(r, [.02, -.01, .02], { cfg });
+      r.tapes = [makeTape(cfg, "follow", "rsi-mom-14-25@m15", DEFAULT_PROTECT, kind, [SYM], trades, [], [])];
+      r.paper.selected = [cfg];
+      r.wf.basePassed = new Set([pair]);
+      r.wf.basePassedRanges = { [pair]: ["mn"] };
+      r.wf.baseWideLadderPairs = new Set([pair]);
+      assert.equal(r.livePromotionGate(identity, NOW).ok, true, kind);
+      r.updateSettings({ axis: { perRange: true } });
+      assert.equal(r.livePromotionGate(identity, NOW).state, "ineligible", "a stricter perRange toggle immediately tightens carried ladder eligibility");
+      r.updateSettings({ axis: { perRange: false } });
+      assert.equal(r.livePromotionGate(identity, NOW).state, "ineligible", "relaxing the policy waits for fresh computation");
+      r.wf.baseWideLadderPairs = new Set();
+      assert.equal(r.livePromotionGate(identity, NOW).state, "ineligible", "perRange on requires its exact Wide pass");
+      r.wf.baseWideLadderPairs = new Set([pair]);
+      r.wf.basePassed = new Set();
+      assert.equal(r.livePromotionGate(identity, NOW).state, "ineligible", "a failed pair never borrows ladder permission");
+    }
+  });
+
   it("retains unknown, zero and dust funding inside the chronological last-N window", () => {
     for (const notional of [null, 0, 1e-12]) {
       const r = install(fixture());
@@ -230,6 +267,27 @@ describe("native live boundary preserves held protection without unproven growth
 });
 
 describe("paper entry allocation provenance", () => {
+  it("a lower explicit Live PF cannot relax the post-Base range floor for paper entries", () => {
+    const t = Math.floor(Date.now() / H) * H, cfg = `${CFG}|mn`;
+    const r = install(fixture(), [.006, -.01, .006].map((v, i) => close(v, i, {
+      cfg, entryT: t - 2 * H + i * 1000, exitT: t - H + i * 1000,
+    })));
+    r.settings.gates.rangeMinPf = { ...r.settings.gates.rangeMinPf, minimal: 1.35 };
+    r.settings.live.liveMinPf = 1.1;
+    r.wf.rangeGate = undefined;
+    r.db.kvSet("liveSince", t - 3 * H);
+    const raw = Array.from({ length: 30 }, (_, i) => close(.02, i, {
+      cfg, entryT: t - 3 * H + i * 60_000, exitT: t - 2 * H + i * 60_000,
+    }));
+    const open = { cfg, sym: SYM, side: 1, entryI: 0, entryT: t, entry: 100,
+      stop: 96.1, target: 102.6, peak: 100, trailOn: false, mtm: 0 } as OpenPosition;
+    r.tapes = [makeTape(cfg, "follow", "rsi-mom-14-25@m15", { ...DEFAULT_PROTECT, tag: "mn" }, "normal", [SYM], raw, [open], [])];
+    (r as unknown as { stepPaper(): void }).stepPaper();
+    assert.equal(r.paper.positions.length, 0, "PF 1.2 does not clear the exact Minimal floor of 1.35");
+    assert.equal(r.status.paperSkips?.liveValidation, 1, JSON.stringify(r.status.paperSkips));
+    assert.equal(r.status.liveValidation?.paused, 1);
+  });
+
   it("continues eligible paper learning before live proof and freezes only the newly measured allocation", () => {
     const r = install(fixture(), []), t = Math.floor(Date.now() / H) * H;
     const raw = Array.from({ length: 30 }, (_, i) => close(.02, i, { entryT: t - 3 * H + i * 60_000, exitT: t - 2 * H + i * 60_000 }));

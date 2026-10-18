@@ -2,13 +2,28 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { PF_NO_LOSS } from "../config.ts";
-import { profitFactor, scoreStats, statsOf } from "./stats.ts";
+import { hourlyNet, profitFactor, scoreStats, settledHourT, statsOf } from "./stats.ts";
 
 const H = 3_600_000;
 // four trades, one per hour, returns +2 %, −1 %, +3 %, −2 % of notional
 const trades = [0.02, -0.01, 0.03, -0.02].map((r, i) => ({ r, entryT: (i + 1) * H - 1000, exitT: (i + 1) * H }));
 
 describe("trade statistics", () => {
+  it("uses the completed exit-bar hour just before, exactly at, and after each hourly boundary", () => {
+    const exits = [H - 1, H, H + 1, 2 * H];
+    assert.deepEqual(exits.map(settledHourT), [0, 0, H, H]);
+    const rows = exits.map((exitT, i) => ({ entryT: 1, exitT, r: [0.02, -0.01, -0.01, 0.03][i] }));
+    const hours = hourlyNet(rows);
+    assert.deepEqual([...hours].map(([t, x]) => [t, x.n]), [[0, 2], [H, 2]]);
+    const ordered = statsOf(rows, 2 * H);
+    const unordered = statsOf([...rows].reverse(), 2 * H);
+    assert.equal(ordered.hours, 2);
+    assert.equal(ordered.greenHours, 2);
+    assert.equal(unordered.hours, ordered.hours);
+    assert.equal(unordered.greenHours, ordered.greenHours);
+    assert.equal([...hours.values()].reduce((n, x) => n + x.n, 0), rows.length);
+  });
+
   it("profit factor: gross profit over gross loss; no loss is the capped PF; nothing is zero", () => {
     assert.equal(profitFactor(3, 1), 3);
     assert.equal(profitFactor(3, 0), PF_NO_LOSS);

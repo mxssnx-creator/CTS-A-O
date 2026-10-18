@@ -103,7 +103,7 @@ export const coreStatistics = createServerFn({ method: "GET" })
   .validator(coreStatisticsInput)
   .handler(({ data }) => coreStatisticsData(data));
 
-/** One page of the last paper step's listings: validated engine configs (per range), active signal units, proven configs. */
+/** One page of the last paper step's listings: validated ranges / strategy groups, active signal units, proven configs. */
 export const coreListing = createServerFn({ method: "GET" })
   .validator(coreListingInput)
   .handler(({ data }) => coreListingData(data));

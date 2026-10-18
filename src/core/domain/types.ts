@@ -98,6 +98,30 @@ export interface Protect {
    * own minimum stop / trail), and its orders carry their own tracking kind.
    */
   tag?: RangeTag;
+  /** Historical exit candidate, selected on a chronological fit window and validated on its later holdout. */
+  exitType?: "historic";
+  /** Historical exits are independent by direction. 1 = long, -1 = short. */
+  exitSide?: 1 | -1;
+  /** Independently evaluated Historic Exit config family; encoded in its lane id. */
+  exitSet?: ExitConfigSet;
+}
+
+/** Historic Exit config families share the Exit strategy kind, but keep separate fits and execution identities. */
+export type ExitConfigSet = "static-sl" | "adaptive-sl" | "trailing";
+
+/** Bounded causal state of one Historic Exit position; anchors keep the qualified config identity stable. */
+export interface ExitProtectionState {
+  set: ExitConfigSet;
+  baseTp: number;
+  baseSl: number;
+  baseTrail: number;
+  baseTrailDist: number;
+  previousClose: number;
+  rangeEma: number;
+  moveEma: number;
+  samples: number;
+  /** last completed lane bar applied; duplicate/rebuilt bars cannot adjust twice */
+  lastBarT: number;
 }
 
 /**
@@ -196,12 +220,15 @@ export interface StrategyConfig {
 export type ExitReason = "tp" | "sl" | "trail" | "time" | "disarm" | "be";
 
 /** Sub-strategy that produced a trade. */
-export type StratKind = "normal" | "trailing" | "trailing-only" | "dca" | "dca-active" | "axis";
+export type StratKind =
+  "normal" | "trailing" | "trailing-only" | "exit" | "dca" | "dca-active" | "axis";
 
 /** Strategy toggles. Intern calculations always cover every kind; toggles only filter execution. */
 export interface StrategyToggles {
   normal: boolean;
   trailing: boolean;
+  /** independently qualified historic exit configs */
+  exit?: boolean;
   block: boolean;
   /** Block Active: execute only positions at Block level >= minActiveLevel (skip normal / lower levels) */
   blockActive: boolean;
@@ -413,12 +440,16 @@ export interface Trade {
   vol?: number;
   /** Block level at execution (broker) or DCA legs added (sim) */
   level?: number;
-  /** Block volume multiplier applied at execution (r includes it); r / mult is the unit result */
+  /** External execution multiplier (Block × relation × type factor); r / mult is the underlying strategy return. */
   mult?: number;
-  /** part of mult from Stable-02 relation volume; execution volume excludes it when auditing Block sizing */
+  /** part of mult from coordination volume (Stable-02 relation volume). */
   coordVol?: number;
-  /** part of mult from the negative-hour hedge volume factor; independent of Stable-02 relation volume */
+  /** additional type / combined-lane factor in mult; removed from Block reporting and audit. */
+  volFactor?: number;
+  /** Negative-hour hedge volume factor captured at entry. */
   hedgeVol?: number;
+  /** Independent range sizing factor captured at entry. */
+  rangeVol?: number;
   /** taken by the negative-hour hedge (a signal outside the ranked set, while the book was losing) */
   hedge?: boolean;
   /** Block type overall: the extra volume each source added as its own position (part of mult) */
@@ -449,6 +480,8 @@ export interface OpenPosition {
   /** The position's own exit mode, retained across compute/restart instead of reading a mutable global grid. */
   trailFree?: boolean;
   trailOnly?: boolean;
+  /** Per-position Historic Exit adaptation, serialized with the held paper book. */
+  exitProtection?: ExitProtectionState;
   /** mark-to-market return incl. cost at the last close, per unit of volume (from the average entry) */
   mtm: number;
   /**
@@ -457,10 +490,13 @@ export interface OpenPosition {
    * marked-open order's r already carries it (r = Σ legs), so it is never multiplied into r again.
    */
   w?: number;
-  /** Stable-02 relation-volume factor captured at entry and retained while this position is held. */
+  /** execution factors retained at entry for exact closes after settings change or restart */
   coordVol?: number;
-  /** Negative-hour hedge volume factor captured at entry and retained while this position is held. */
+  volFactor?: number;
+  /** Negative-hour hedge volume factor captured at entry. */
   hedgeVol?: number;
+  /** Independent range sizing factor captured at entry. */
+  rangeVol?: number;
   /** Opt-in Block audit trace captured at entry and retained while this position is held. */
   blockLevels?: Partial<Record<string, number>>;
   blockEffectiveLevels?: Partial<Record<string, number>>;
@@ -593,7 +629,7 @@ export interface Gates {
   /**
    * stage minimum PF per target range, in place of `minPf` for that range's configs (every PF gate a config passes:
    * the Main and Real windows, the pre-historic window, the validation last-N, the entry last-N and the symbol gate).
-   * A tagged range uses its own floor when present; Wide and Signals use `minPf`. Values 1.05–3.
+   * Tagged ranges use their configured floor; Wide and untagged Signals keep `minPf`. Values 1.05–3.
    */
   rangeMinPf?: Partial<Record<RangeMinPfKey, number>>;
   /**

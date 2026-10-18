@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { Bars } from "../domain/types.ts";
 import { minPfOf } from "../minimal-coord.ts";
+import { BREAK_MICRO_FOCUS_17OCT, DEFAULT_SETTINGS } from "../config.ts";
 import { allCombos, makeUniverse, rangeAppliesTo } from "../pipeline/pipeline.ts";
 import { orderCfgKey } from "../sim/walkforward.ts";
 import { SeriesCache } from "./cache.ts";
@@ -9,6 +10,7 @@ import { isMicroInd } from "./micro.ts";
 import { INDICATION_BY_ID, indicationState, laneOf } from "./registry.ts";
 import {
   BREAK_CONFIG_IDS,
+  BREAK_DEFAULT_MICRO_CONFIG_IDS,
   BREAK_CORES,
   BREAK_DRAWDOWN_WINDOWS,
   BREAK_PROFILES,
@@ -61,14 +63,40 @@ function breakoutBars(sym: string, tf: number, n: number, direction: 1 | -1 = 1,
   }, volumeAt);
 }
 
+function reclaimBars(direction: 1 | -1, tf = 5): Bars {
+  const b = bars(`RECLAIM-${direction}-${tf}`, tf, 180, () => direction * 0.00015);
+  const i = 150;
+  const atr = new SeriesCache(b).atr(14)[i - 1];
+  if (direction === 1) {
+    const priorLow = Math.min(...b.l.slice(i - 8, i));
+    b.l[i] = priorLow - atr * 0.15;
+    b.c[i] = b.o[i] + atr * 0.1;
+    b.h[i] = b.c[i] + atr * 0.05;
+  } else {
+    const priorHigh = Math.max(...b.h.slice(i - 8, i));
+    b.h[i] = priorHigh + atr * 0.15;
+    b.c[i] = b.o[i] - atr * 0.1;
+    b.l[i] = b.c[i] - atr * 0.05;
+  }
+  return b;
+}
+
+function reclaimContext(b: Bars): { reclaim8: Int8Array; don8: Int8Array } {
+  const cache = new SeriesCache(b);
+  breakSpecs().find((x) => x.id === `break-mc-rel-reclaim8-${b.tfMin}-dd24-balanced`)!.fn(cache);
+  return cache.memo("break:shared:context:v1", () => {
+    throw new Error("Break shared context was not memoized");
+  });
+}
+
 describe("Break indication family", () => {
   it("registers every breakout source, timeframe subset, profile and eligible Micro alias", () => {
     const specs = breakSpecs();
-    assert.equal(specs.length, 144);
-    assert.equal(BREAK_CONFIG_IDS.length, 144);
-    assert.equal(new Set(BREAK_CONFIG_IDS).size, 144);
+    assert.equal(specs.length, 156);
+    assert.equal(BREAK_CONFIG_IDS.length, 156);
+    assert.equal(new Set(BREAK_CONFIG_IDS).size, 156);
     assert.equal(BREAK_SUBSETS.length, 7);
-    assert.equal(BREAK_CORES.length, 5);
+    assert.equal(BREAK_CORES.length, 6);
     assert.equal(BREAK_PROFILES.length, 2);
     assert.deepEqual(BREAK_DRAWDOWN_WINDOWS.map((x) => x.bars), [24, 48]);
     assert.deepEqual([...new Set(specs.map((x) => x.params.drawdownBars))].sort(), [24, 48]);
@@ -76,7 +104,7 @@ describe("Break indication family", () => {
     for (const spec of specs) {
       assert.equal(INDICATION_BY_ID.get(spec.id)?.kind, "break", spec.id);
       assert.equal(spec.kind, "break", spec.id);
-      assert.equal(breakAnchorTf(spec.id), Number(spec.id.match(/^break-(?:mc-)?rel-(?:don|squeeze|retest|don8|retest8)-(1|5|15)(?:x(?:5|15))*-dd(?:24|48)-(?:guarded|balanced)$/)?.[1]));
+      assert.equal(breakAnchorTf(spec.id), Number(spec.id.match(/^break-(?:mc-)?rel-(?:don|squeeze|retest|don8|retest8|reclaim8)-(1|5|15)(?:x(?:5|15))*-dd(?:24|48)-(?:guarded|balanced)$/)?.[1]));
       assert.equal(isBreakMicroInd(spec.id), spec.id.startsWith("break-mc-rel-"));
       assert.equal(isMicroInd(spec.id), spec.id.startsWith("break-mc-rel-"));
     }
@@ -85,8 +113,8 @@ describe("Break indication family", () => {
   it("routes each config only on its anchor lane and honors the Micro floor", () => {
     const focus = BREAK_CONFIG_IDS.map((id) => `follow|${id}`);
     const combos = allCombos(focus, [], [1, 5, 15, 30], 5);
-    assert.equal(combos.length, 144);
-    assert.equal(new Set(combos.map((x) => x.ind)).size, 144);
+    assert.equal(combos.length, 156);
+    assert.equal(new Set(combos.map((x) => x.ind)).size, 156);
     for (const combo of combos) {
       const lane = laneOf(combo.ind);
       assert.equal(lane.combined, false, combo.ind);
@@ -124,6 +152,115 @@ describe("Break indication family", () => {
     assert.notEqual(orderCfgKey(don), orderCfgKey(squeeze));
   });
 
+  it("registers reclaim as twelve opt-in Micro configs without changing the sixty default Break identities", () => {
+    const optional = breakSpecs().filter((x) => x.id.includes("-rel-reclaim8-"));
+    const expected = ["5", "15", "5x15"].flatMap((tf) => ["24", "48"].flatMap((dd) =>
+      ["guarded", "balanced"].map((profile) => `break-mc-rel-reclaim8-${tf}-dd${dd}-${profile}`),
+    ));
+    assert.deepEqual(optional.map((x) => x.id).sort(), expected.sort());
+    assert.equal(BREAK_DEFAULT_MICRO_CONFIG_IDS.length, 60);
+    assert.deepEqual(BREAK_DEFAULT_MICRO_CONFIG_IDS, BREAK_CONFIG_IDS.filter((x) => isBreakMicroInd(x) && !x.includes("-rel-reclaim8-")));
+    assert.equal(BREAK_MICRO_FOCUS_17OCT.length, 60);
+    assert.ok(DEFAULT_SETTINGS.focus.every((x) => !x.includes("-rel-reclaim8-")), "registration cannot promote a new source into existing defaults");
+    const combos = allCombos(expected.map((id) => `follow|${id}`), [], [1, 5, 15, 30], 5);
+    assert.equal(combos.length, 12);
+    for (const combo of combos) {
+      const lane = laneOf(combo.ind);
+      assert.equal(lane.tf, breakAnchorTf(lane.base));
+      assert.ok(lane.tf === 5 || lane.tf === 15);
+      const key = `follow|${combo.ind}|normal|tp0.5|sl0.2`;
+      assert.equal(orderCfgKey(key), key);
+      assert.notEqual(orderCfgKey(key), orderCfgKey(key.replace("reclaim8", "retest8")));
+    }
+  });
+
+  it("reclaims prior eight-bar edges with mirrored completed long and short sweeps", () => {
+    for (const direction of [1, -1] as const) {
+      for (const tf of [5, 15]) {
+        const b = reclaimBars(direction, tf);
+        const context = reclaimContext(b);
+        assert.equal(context.reclaim8[150], direction, `${tf}m mirrored reclaim source`);
+        assert.equal(context.don8[150], 0, "returning inside the swept edge is distinct from a sustained channel break");
+        const id = `break-mc-rel-reclaim8-${tf}-dd24-balanced`;
+        const state = breakSpecs().find((x) => x.id === id)!.fn(new SeriesCache(b));
+        assert.equal(state[150], direction, `${id} keeps the existing independent trend/activity/drawdown gates`);
+        const prefix = cut(b, 151);
+        assert.deepEqual(reclaimContext(prefix).reclaim8, context.reclaim8.slice(0, 151), "raw event never reads a future candle");
+        for (const spec of breakSpecs().filter((x) => x.id.includes("-rel-reclaim8-") && breakAnchorTf(x.id) === tf)) {
+          assert.deepEqual(spec.fn(new SeriesCache(prefix)), spec.fn(new SeriesCache(b)).slice(0, 151), `${spec.id} prefix remains causal`);
+        }
+      }
+    }
+  });
+
+  it("rejects sustained breaks, oversized wick penetration and incomplete reclaim bodies", () => {
+    for (const direction of [1, -1] as const) {
+      const sustained = reclaimBars(direction);
+      const at = 150;
+      const priorAtr = new SeriesCache(sustained).atr(14)[at - 1];
+      const edge = direction === 1 ? Math.min(...sustained.l.slice(at - 8, at)) : Math.max(...sustained.h.slice(at - 8, at));
+      sustained.c[at] = edge - direction * priorAtr * 0.05;
+      sustained.o[at] = edge + direction * priorAtr * 0.2;
+      assert.equal(reclaimContext(sustained).reclaim8[at], 0, "close outside the prior edge cannot reclaim it");
+
+      const touch = reclaimBars(direction);
+      if (direction === 1) touch.l[at] = edge;
+      else touch.h[at] = edge;
+      assert.equal(reclaimContext(touch).reclaim8[at], 0, "touching the channel edge has no positive sweep penetration");
+
+      const oversized = reclaimBars(direction);
+      if (direction === 1) oversized.l[at] = edge - priorAtr * 1.5001;
+      else oversized.h[at] = edge + priorAtr * 1.5001;
+      assert.equal(reclaimContext(oversized).reclaim8[at], 0, "penetration uses prior ATR, so the wick cannot normalize its own excess");
+
+      const wrongBody = reclaimBars(direction);
+      wrongBody.o[at] = wrongBody.c[at] + direction * priorAtr * 0.01;
+      assert.equal(reclaimContext(wrongBody).reclaim8[at], 0, "the body must agree with the reclaim direction");
+
+      const weakClose = reclaimBars(direction);
+      if (direction === 1) weakClose.h[at] = weakClose.l[at] + (weakClose.c[at] - weakClose.l[at]) / 0.64;
+      else weakClose.l[at] = weakClose.h[at] - (weakClose.h[at] - weakClose.c[at]) / 0.64;
+      assert.equal(reclaimContext(weakClose).reclaim8[at], 0, "the close must finish within its directional 35% of the range");
+    }
+  });
+
+  it("retains independent profile activity qualification and shares one bounded source context", () => {
+    const b = reclaimBars(1);
+    b.v[150] = 600;
+    const cache = new SeriesCache(b);
+    const guarded = breakSpecs().find((x) => x.id === "break-mc-rel-reclaim8-5-dd24-guarded")!;
+    const balanced = breakSpecs().find((x) => x.id === "break-mc-rel-reclaim8-5-dd24-balanced")!;
+    assert.equal(guarded.fn(cache)[150], 0, "Guarded independently rejects activity below its unchanged minimum");
+    assert.equal(balanced.fn(cache)[150], 1, "Balanced independently retains its unchanged lower threshold");
+    const shared = cache.memo<{ reclaim8: Int8Array }>("break:shared:context:v1", () => {
+      throw new Error("Break shared context was not memoized");
+    });
+    for (const spec of breakSpecs().filter((x) => x.id.includes("-rel-reclaim8-") && breakAnchorTf(x.id) === 5)) {
+      const first = spec.fn(cache);
+      assert.deepEqual(spec.fn(cache), first, `${spec.id} repeated calculation keeps identical output`);
+      assert.equal(cache.memo("break:shared:context:v1", () => null), shared, "all profiles/subsets reuse one source context");
+    }
+    assert.equal(shared.reclaim8.byteLength, b.n, "the source adds only one Int8 array per lane context");
+    cache.clear(["bot:"]);
+    const rebuilt = balanced.fn(cache);
+    assert.equal(rebuilt[150], 1, "releasing the shared context preserves fresh calculation results");
+    assert.notEqual(cache.memo("break:shared:context:v1", () => null), shared, "the source context follows the existing Base release lifetime");
+  });
+
+  it("rewarms reclaim history after gaps and cannot carry a previous sweep into a new state", () => {
+    const normal = reclaimBars(1);
+    const gap = reclaimBars(1);
+    for (let i = 149; i < gap.n; i++) gap.t[i] += stepMs(5);
+    assert.equal(reclaimContext(normal).reclaim8[150], 1);
+    assert.equal(reclaimContext(gap).reclaim8[150], 0, "a prior-segment channel/ATR cannot qualify a post-gap sweep");
+    const opposite = reclaimBars(-1);
+    const normalContext = reclaimContext(normal);
+    const oppositeContext = reclaimContext(opposite);
+    assert.equal(oppositeContext.reclaim8[150], -1);
+    assert.equal(normalContext.reclaim8[151], 0, "a reclaim is a same-bar event with no pending continuation");
+    assert.equal(oppositeContext.reclaim8[151], 0, "opposite direction cannot inherit another bar's reclaim");
+  });
+
   it("emits causal long and short Break states and waits for completed higher bars", () => {
     const specs = breakSpecs();
     for (const tfs of BREAK_SUBSETS) {
@@ -133,6 +270,7 @@ describe("Break indication family", () => {
       const dn = new SeriesCache(breakoutBars(`DN-${tfs.join("x")}`, tf, n, -1));
       for (const core of BREAK_CORES) {
         if (core.microOnly && tf < 5) continue;
+        if (core.id === "reclaim8") continue; // A sustained breakout does not contain a failed-break reclaim.
         const id = `break-${core.microOnly ? "mc-" : ""}rel-${core.id}-${tfs.join("x")}-dd24-balanced`;
         const spec = specs.find((x) => x.id === id)!;
         const upState = spec.fn(up);

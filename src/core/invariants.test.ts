@@ -386,7 +386,12 @@ describe("live control targets (server/live.ts controlTargets)", () => {
 
 // ── statistics against a direct sum ──────────────────────────────────────────────────────────────────────────────
 const SYMS = ["A-USDT", "B-USDT", "C-USDT"];
-const CFGS = [...ENGINE_CFG, ...SIGNAL_CFG];
+const RANGE_CFG = [...ENGINE_CFG, "follow|bb-walk@x4|tp1|sl2|tr1|h32|sh"];
+const EXIT_CFG = [
+  "follow|rsi-mom-14-20@m15|tp3|sl1|tr0|h48|hxL0",
+  "revert|cci-14-200@x4|tp4|sl2|tr1|h48|hxS2",
+];
+const CFGS = [...RANGE_CFG, ...SIGNAL_CFG, ...EXIT_CFG];
 function tradesOf(r: R, n: number, t0 = Date.UTC(2026, 8, 20)): StatTrade[] {
   return Array.from({ length: n }, () => {
     const entryT = t0 + Math.floor(r() * 72 * 60) * 60_000;
@@ -559,6 +564,8 @@ describe("statistics agree with a direct sum (metrics/stats.ts, statistics.ts)",
       assert.ok(close(rep.total.net, d.net, 1e-8) && close(rep.total.pf, unitReturns.pf), at);
       const usd = sumOf(inWin, (x) => x.r * 10);
       assert.ok(close(rep.total.usd, usd, 1e-8), at);
+      const rangeTrades = inWin.filter((x) => RANGE_CFG.includes(x.cfg));
+      const strategyTrades = inWin.filter((x) => SIGNAL_CFG.includes(x.cfg) || EXIT_CFG.includes(x.cfg));
       for (const [name, rows] of Object.entries({
         sides: rep.sides,
         symbols: rep.symbols,
@@ -567,7 +574,7 @@ describe("statistics agree with a direct sum (metrics/stats.ts, statistics.ts)",
         hourOfDay: rep.hourOfDay,
         daily: rep.daily,
         types: rep.types,
-        ranges: rep.ranges,
+        rangesAndStrategyGroups: [...rep.ranges, ...rep.strategyGroups],
         lanes: rep.lanes,
       })) {
         assert.equal(
@@ -591,6 +598,25 @@ describe("statistics agree with a direct sum (metrics/stats.ts, statistics.ts)",
           ),
           `${at}: ${name} usd`,
         );
+      }
+      for (const [name, rows, own] of [
+        ["ranges", rep.ranges, rangeTrades],
+        ["strategyGroups", rep.strategyGroups, strategyTrades],
+      ] as const) {
+        const expected = direct(own);
+        assert.equal(sumOf(rows, (x) => x.n), expected.n, `${at}: ${name} n`);
+        assert.equal(sumOf(rows, (x) => x.wins), expected.wins, `${at}: ${name} wins`);
+        assert.ok(close(sumOf(rows, (x) => x.net), expected.net, 1e-8), `${at}: ${name} net`);
+        assert.ok(close(sumOf(rows, (x) => x.usd), sumOf(own, (x) => x.r * 10), 1e-8), `${at}: ${name} usd`);
+      }
+      for (const [key, cfgs] of [["Signals", SIGNAL_CFG], ["Historic Exit", EXIT_CFG]] as const) {
+        const own = inWin.filter((x) => cfgs.includes(x.cfg));
+        const row = rep.strategyGroups.find((x) => x.key === key);
+        assert.equal(row?.n ?? 0, own.length, `${at}: independent ${key} n`);
+        if (own.length) {
+          const expected = direct(own.map((x) => ({ ...x, r: x.r / x.mult! })));
+          assert.ok(row?.pf !== null && row?.pf !== undefined && close(row.pf, expected.pf), `${at}: independent ${key} PF`);
+        }
       }
       assert.equal(
         sumOf(rep.heat, (x) => x.n),

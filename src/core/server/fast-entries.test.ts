@@ -6,6 +6,8 @@ import { CoreRuntime } from "./runtime.server.ts";
 import { fastBarFresh, fastEntryLaneDue, fastEntryMode, mergeFastTapes } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
 import { SIGNAL_SOURCES, signalSettings } from "../signal-config.ts";
+import { laneInd } from "../indications/registry.ts";
+import { signalCoordinationId } from "../signal-coordination.ts";
 import type { OpenPosition } from "../domain/types.ts";
 
 process.env.CTS_CORE_SYNTHETIC_END ??= String(Math.floor(Date.now() / 3_600_000) * 3_600_000);
@@ -57,6 +59,16 @@ describe("realtime entry step", { timeout: 1_200_000 }, () => {
     assert.equal(fastEntryLaneDue("break-rel-don-15-dd24-guarded@m15", t0 + 14 * 60_000, 1, "break"), true);
     assert.equal(fastEntryLaneDue("trend-ema@m1", t0, 1, "break"), false);
     assert.equal(fastEntryLaneDue("trend-ema@m1", t0, 1, "all"), true);
+    const coordinator = laneInd(
+      signalCoordinationId(["ema-cross", "macd-cross", "rsi-reversal"], 0.6, 3, 3),
+      15,
+    );
+    assert.equal(fastEntryLaneDue(coordinator, t0 + 14 * 60_000, 1, "break"), false);
+    assert.equal(
+      fastEntryLaneDue(coordinator, t0 + 14 * 60_000, 1, "all"),
+      true,
+      "the all-entry mode schedules a coordinator refresh on its own 15m close",
+    );
   });
 
   it("publishes refreshed pending tapes without replacing unrelated identities", () => {

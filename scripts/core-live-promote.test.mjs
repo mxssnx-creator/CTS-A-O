@@ -34,20 +34,28 @@ function fixture() {
   const base = (i) => ({ ...identity, id: `slice-${i}`, entryT: asOf - 100_000 + i * 1000,
     exitT: asOf - 99_000 + i * 1000, eligibilityId: "after-base-1" });
   const returns = Array.from({ length: 20 }, (_, i) => i % 2 ? -0.01 : 0.02);
-  const lane = { ...identity, source: "trend-adx@m15c", range: "sh", kind: "trailing-only",
+  const lane = { ...identity, source: "trend-adx@m15c", group: "sh", kind: "trailing-only",
     eligibility: { id: "after-base-1", stage: "after-base", passed: true, at: asOf - 2_000_000 },
     model: { ...window, complete: true, basis: "unit-net-returns", closes: returns.map((unitR, i) => ({ ...base(i), unitR })) },
     execution: { ...window, complete: true, basis: "owned-net-returns", executionSource: "verified-venue", closes: returns.map((netReturn, i) => ({ ...base(i),
       ownedQty: 1, entryNotional: 100, entryFillIds: ["owned-entry"], exitFillIds: [`owned-exit-${i}`],
       grossPnl: netReturn * 100 + 0.2, fees: 0.2, funding: 0, netPnl: netReturn * 100, netReturn })) } };
-  const evidence = { schema: "cts-live-promotion/v1", referenceId: "cts-ao-reference", complete: true,
+  const evidence = { schema: "cts-live-promotion/v2", referenceId: "cts-ao-reference", complete: true,
     ...window, validUntilT: asOf + 60_000, lanes: [lane] };
   const run = (args = []) => {
     const childEnv = { ...process.env, CTS_CORE_LIVE: "0", CTS_CORE_WORKERS: "0", CTS_CORE_COMPARE: "0" };
     for (const name of Object.keys(childEnv)) if (/^(BINGX|BINANCE|BYBIT|OKX)/i.test(name) || name === "NODE_OPTIONS") delete childEnv[name];
-    return spawnSync(process.execPath, ["--require", guard, "--max-old-space-size=256", "--experimental-strip-types", "--no-warnings", script,
+    // Cold TypeScript imports share CPU/memory with the other offline test processes. Bound bootstrap separately
+    // from the promotion evidence checks below; a killed bootstrap is never accepted as a fail-closed result.
+    const result = spawnSync(process.execPath, ["--require", guard, "--max-old-space-size=256", "--experimental-strip-types", "--no-warnings", script,
       "--ref-db", dbPath, "--patch", patchPath, "--state", statePath, ...args],
-    { env: childEnv, encoding: "utf8", timeout: 10_000 });
+    { env: childEnv, encoding: "utf8", timeout: 30_000 });
+    const diagnostics = JSON.stringify({ args, status: result.status, signal: result.signal,
+      error: result.error && { code: result.error.code, message: result.error.message },
+      stdout: result.stdout, stderr: result.stderr });
+    assert.equal(result.error, undefined, `promotion CLI failed to start or finish: ${diagnostics}`);
+    assert.equal(result.signal, null, `promotion CLI was terminated: ${diagnostics}`);
+    return result;
   };
   const proofArgs = ["--evidence", evidencePath, "--reference-id", evidence.referenceId];
   return { dir, dbPath, patchPath, statePath, evidencePath, evidence, run, proofArgs,

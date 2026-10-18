@@ -1,5 +1,6 @@
 // Range checks for a settings patch, shared by the Settings page, the preset dialog and presets (pure: testable).
 import { GRID_VARIANTS_MAX, MAX_EXCHANGE_POSITIONS, type CoreSettings } from "./config.ts";
+import { INDICATION_KINDS } from "./domain/types.ts";
 import { validPromotedLaneProof } from "./live-promote.ts";
 
 /** Range checks for a settings patch (Settings page and preset dialog alike). */
@@ -136,12 +137,25 @@ export function checkSettings(s: Partial<CoreSettings>) {
       int(s.live.engineProofN, "engine proof closes");
     }
     if (s.live.engineProofPf !== undefined) num(s.live.engineProofPf, 0, 10, "engine proof PF");
-    if (s.live.promotedLanes !== undefined && (!Array.isArray(s.live.promotedLanes) ||
-      s.live.promotedLanes.some((lane) => !lane || !validPromotedLaneProof(lane, lane.asOf))))
-      throw new Error("promoted lanes: exact, complete after-Base and owned-execution proofs required");
+    if (
+      s.live.promotedLanes !== undefined &&
+      (!Array.isArray(s.live.promotedLanes) ||
+        s.live.promotedLanes.some((lane) => !lane || !validPromotedLaneProof(lane, lane.asOf)))
+    )
+      throw new Error(
+        "promoted lanes: exact, complete after-Base and owned-execution proofs required",
+      );
     if (s.live.kinds !== undefined) {
       if (!Array.isArray(s.live.kinds)) throw new Error("live kinds: a list of strategy kinds");
-      const ok = new Set(["normal", "trailing", "trailing-only", "dca", "dca-active", "axis"]);
+      const ok = new Set([
+        "normal",
+        "trailing",
+        "trailing-only",
+        "exit",
+        "dca",
+        "dca-active",
+        "axis",
+      ]);
       for (const k of s.live.kinds)
         if (!ok.has(k))
           throw new Error(`live kinds: ${k} is not a strategy kind (${[...ok].join(", ")})`);
@@ -156,14 +170,14 @@ export function checkSettings(s: Partial<CoreSettings>) {
         throw new Error(`live excluded ranges: a list of ${ok.join(", ")}`);
     }
     if (s.live.excludeConfigs !== undefined) {
-      // a family: bot|range, e.g. follow|mn (the range tags of excludeRanges, and "wide" for the untagged grid)
-      const re = /^[a-z]+\|(wide|mc|mn|mp|sh|gn|lg)$/;
+      // a family: bot|range for Normal / Trailing, or bot|exit for all Historic Exit sets
+      const re = /^[a-z]+\|(wide|mc|mn|mp|sh|gn|lg|exit)$/;
       if (
         !Array.isArray(s.live.excludeConfigs) ||
         s.live.excludeConfigs.some((f) => typeof f !== "string" || !re.test(f))
       )
         throw new Error(
-          "live excluded configs: a list of bot|range families, e.g. follow|mn or revert|wide",
+          "live excluded configs: bot|range families or bot|exit, e.g. follow|mn, revert|wide or follow|exit",
         );
     }
     if (s.live.top !== undefined && s.live.top !== "fill")
@@ -216,6 +230,48 @@ export function checkSettings(s: Partial<CoreSettings>) {
   if (s.toggles)
     for (const [k, v] of Object.entries(s.toggles))
       if (typeof v !== "boolean") throw new Error(`toggle ${k} must be boolean`);
+  if (s.exitStrategy) {
+    const e = s.exitStrategy;
+    if (e.enabled !== undefined && typeof e.enabled !== "boolean")
+      throw new Error("historic exit strategy: on / off");
+    num(e.lookbackH, 0, 720, "historic exit lookback (hours)");
+    num(e.trainFraction, 0.5, 0.8, "historic exit fit fraction");
+    num(e.minEntries, 5, 1000, "historic exit fit entries");
+    num(e.minValidationTrades, 2, 500, "historic exit validation closes");
+    num(e.minPf, 1.05, 10, "historic exit validation PF");
+    num(e.maxDdr, 0, 10, "historic exit max drawdown / net ratio");
+    num(e.holdH, 0.5, 96, "historic exit maximum hold (hours)");
+    num(e.maxConfigsPerPair, 6, 128, "historic exit configs per pair");
+    num(e.minTp, 0.001, 0.5, "historic exit minimum TP");
+    num(e.maxTp, 0.002, 1, "historic exit maximum TP");
+    num(e.maxSl, 0.005, 1, "historic exit maximum SL");
+    if (e.minTp !== undefined && e.maxTp !== undefined && e.minTp >= e.maxTp)
+      throw new Error("historic exit TP floor must be below its cap");
+    int(e.minEntries, "historic exit fit entries");
+    int(e.minValidationTrades, "historic exit validation closes");
+    int(e.maxConfigsPerPair, "historic exit configs per pair");
+    const list = (xs: unknown, lo: number, hi: number, name: string) => {
+      if (xs === undefined) return;
+      if (!Array.isArray(xs) || xs.length < 1 || xs.length > 4)
+        throw new Error(`${name}: 1–4 values`);
+      for (const x of xs) num(x, lo, hi, name);
+    };
+    list(e.quantiles, 0.2, 0.95, "historic exit MFE quantile");
+    list(e.stopQuantiles, 0.2, 0.95, "historic exit MAE quantile");
+    list(e.trailShares, 0.1, 0.95, "historic exit trail share");
+    list(e.stopMultiples, 0.25, 5, "historic exit stop multiple");
+    const q = e.quantiles?.length ?? 2;
+    const stopQ = e.stopQuantiles?.length ?? 2;
+    const gridN = Math.max(
+      q * (e.stopMultiples?.length ?? 2),
+      q * stopQ,
+      q * stopQ * (e.trailShares?.length ?? 2),
+    );
+    if (gridN > 16)
+      throw new Error(
+        `historic exit config grid too large (${gridN}, max 16 per config family and direction)`,
+      );
+  }
   if (s.tactics) {
     for (const k of [
       "session",
@@ -253,7 +309,10 @@ export function checkSettings(s: Partial<CoreSettings>) {
   if (s.block) {
     num(s.block.ratio, 0, 2, "block ratio");
     num(s.block.sharedRatio, 0, 2, "block Shared ratio");
-    if (s.block.historySource !== undefined && !["accepted-orders", "real-candidates"].includes(s.block.historySource))
+    if (
+      s.block.historySource !== undefined &&
+      !["accepted-orders", "real-candidates"].includes(s.block.historySource)
+    )
       throw new Error("block history source: accepted-orders or real-candidates");
     num(s.block.maxLevel, 1, 12, "block max level");
     num(s.block.minActiveLevel, 1, 12, "block active level");
@@ -747,6 +806,41 @@ export function checkSettings(s: Partial<CoreSettings>) {
       num(g.cluster.minLosses, 1, 1000, "loss-cluster min losses");
       num(g.cluster.lossShare, 0.3, 1, "loss-cluster loss share");
       int(g.cluster.minLosses, "loss-cluster min losses");
+    }
+    if (g.coordination) {
+      const c = g.coordination;
+      bool(c.enabled, "signals coordination");
+      num(c.minSources, 2, 100, "signals coordination minimum sources");
+      int(c.minSources, "signals coordination minimum sources");
+      num(c.volumeFactor, 1, 22, "signals coordination volume factor");
+      int(c.volumeFactor, "signals coordination volume factor");
+      if (c.count !== undefined && c.count !== 0) {
+        num(c.count, 10, 2000, "active coordination units");
+        if (c.count % 10 !== 0) throw new Error("active coordination units: steps of 10");
+      }
+      if (c.ranges) {
+        bool(c.ranges.short, "coordination Short range");
+        bool(c.ranges.normal, "coordination Normal range");
+        bool(c.ranges.long, "coordination Long range");
+        if (c.enabled && c.ranges.short === false && c.ranges.normal === false && c.ranges.long === false)
+          throw new Error("signals coordination: at least one exit range");
+      }
+    }
+    if (g.combinedVolumeFactors !== undefined) {
+      if (
+        typeof g.combinedVolumeFactors !== "object" ||
+        g.combinedVolumeFactors === null ||
+        Array.isArray(g.combinedVolumeFactors)
+      )
+        throw new Error(
+          "combined indication volume factors: one 1–22 whole-number value per indication kind",
+        );
+      for (const [kind, value] of Object.entries(g.combinedVolumeFactors)) {
+        if (!INDICATION_KINDS.includes(kind as (typeof INDICATION_KINDS)[number]))
+          throw new Error(`unknown combined indication kind ${kind}`);
+        num(value, 1, 22, `combined ${kind} volume factor`);
+        int(value, `combined ${kind} volume factor`);
+      }
     }
     if (g.accept) {
       bool(g.accept.enabled, "signal PF acceptance");

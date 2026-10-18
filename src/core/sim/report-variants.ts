@@ -44,6 +44,7 @@ export interface VariantSpec {
 const TOGGLE_LABEL: Record<keyof StrategyToggles, string> = {
   normal: "Normal",
   trailing: "Trailing",
+  exit: "Historic Exit",
   block: "Block",
   blockActive: "Block Active",
   dca: "DCA",
@@ -54,6 +55,7 @@ const TOGGLE_LABEL: Record<keyof StrategyToggles, string> = {
 const TOGGLE_KINDS: Partial<Record<keyof StrategyToggles, string[]>> = {
   normal: ["normal", "trailing", "trailing-only"],
   trailing: ["trailing", "trailing-only"],
+  exit: ["exit"],
   dca: ["dca", "dca-active"],
   dcaActive: ["dca-active"],
   axis: ["axis"],

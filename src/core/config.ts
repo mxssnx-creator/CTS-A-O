@@ -13,7 +13,7 @@ import type {
 import { DEFAULT_SIGNALS, type SignalSettings } from "./signal-config.ts";
 import { DEFAULT_SIZING, type SizingSettings } from "./sizing.ts";
 import type { PromotedLaneProof } from "./live-promote.ts";
-import { BREAK_CONFIG_IDS, breakAnchorTf, isBreakMicroInd } from "./indications/break-config.ts";
+import { BREAK_CONFIG_IDS, BREAK_DEFAULT_MICRO_CONFIG_IDS, breakAnchorTf, isBreakMicroInd } from "./indications/break-config.ts";
 import { RT_COST } from "./model-cost.ts";
 export { RT_COST } from "./model-cost.ts";
 
@@ -55,7 +55,15 @@ import {
   RANGE_GATE,
   SHORT_RANGE,
 } from "./minimal-coord.ts";
-export { GENERAL_RANGE, LONG_RANGE, MICRO_RANGE, MINIMAL_PLUS_RANGE, MINIMAL_RANGE, RANGE_GATE, SHORT_RANGE };
+export {
+  GENERAL_RANGE,
+  LONG_RANGE,
+  MICRO_RANGE,
+  MINIMAL_PLUS_RANGE,
+  MINIMAL_RANGE,
+  RANGE_GATE,
+  SHORT_RANGE,
+};
 
 export const DEFAULT_GATES: Gates = {
   minPf: 1.1,
@@ -89,6 +97,7 @@ export const DEFAULT_GATES: Gates = {
 export const DEFAULT_TOGGLES: StrategyToggles = {
   normal: true,
   trailing: true,
+  exit: true,
   block: true,
   blockActive: false,
   dca: true,
@@ -115,7 +124,14 @@ export const DEFAULT_TACTICS: Tactics = {
  * base and every source, 7 volume steps (one step = one more unit: one exchange minimum lot live), no pause.
  */
 export const DEFAULT_BLOCK: BlockConfig = {
-  sources: { config: false, overall: true, symbol: true, direction: true, indication: true, type: false },
+  sources: {
+    config: false,
+    overall: true,
+    symbol: true,
+    direction: true,
+    indication: true,
+    type: false,
+  },
   mode: "overall",
   historySource: "accepted-orders",
   ratio: 0.5,
@@ -251,6 +267,8 @@ export interface CoreSettings {
   fees: { taker: number; maker: number; slippage: number };
   /** live-feedback auto-adjuster (last N positions per strategy config set) */
   adjust: AdjustSettings;
+  /** prehistory-derived exit candidates; each candidate and direction is validated and carried independently */
+  exitStrategy: ExitStrategySettings;
   gates: Gates;
   /** stage-1 winners refined in stage 2 */
   refineTop: number;
@@ -293,15 +311,48 @@ export interface CoreSettings {
   signals: SignalSettings;
 }
 
+export interface ExitStrategySettings {
+  enabled: boolean;
+  /** prehistory horizon before the causal run cut; 0 uses all available prehistory */
+  lookbackH: number;
+  /** oldest fraction fits MFE candidates; the newer remainder is reserved for independent validation */
+  trainFraction: number;
+  /** mature entry moves required in the fit segment, per direction */
+  minEntries: number;
+  /** completed, held-out closes required before a candidate can qualify, per direction */
+  minValidationTrades: number;
+  /** minimum held-out net return profit factor for this independent Exit candidate */
+  minPf: number;
+  /** maximum held-out drawdown / net ratio; 0 disables this additional cap */
+  maxDdr: number;
+  /** maximum hold horizon; shortened when the fit segment is small */
+  holdH: number;
+  /** upper bound across independent Exit config families and both directions for each pair */
+  maxConfigsPerPair: number;
+  /** MFE quantiles estimate each adjustable TP directly from the fit history */
+  quantiles: number[];
+  /** MAE quantiles estimate recalibrated SL distances for adaptive-SL and trailing families */
+  stopQuantiles: number[];
+  /** minimum and maximum fitted TP (fractions of entry price) */
+  minTp: number;
+  maxTp: number;
+  /** maximum fitted SL (fractions of entry price) */
+  maxSl: number;
+  /** trailing distance as a share of the selected target */
+  trailShares: number[];
+  /** static stop distance as a multiple of the selected target */
+  stopMultiples: number[];
+}
+
 /** A settings patch: every group (grid, gates, live, block …) may be partial — it is merged into the current values. */
 export type SettingsPatch = {
   [K in keyof CoreSettings]?: K extends "tfDays"
     ? CoreSettings[K]
     : CoreSettings[K] extends readonly unknown[]
-    ? CoreSettings[K]
-    : CoreSettings[K] extends object
-      ? Partial<CoreSettings[K]>
-      : CoreSettings[K];
+      ? CoreSettings[K]
+      : CoreSettings[K] extends object
+        ? Partial<CoreSettings[K]>
+        : CoreSettings[K];
 };
 
 export interface LiveSettings {
@@ -395,8 +446,8 @@ export interface LiveSettings {
   /** Reference promotion is an exact, expiring proof allowlist; [] holds managed engine lanes on paper. */
   promotedLanes?: readonly PromotedLaneProof[];
   /**
-   * overall: the strategy kinds whose configs reach the exchange ("normal", "trailing", "dca", "dca-active",
-   * "axis"). Unset / empty = every kind. The engine keeps computing, validating and paper-trading all of them —
+   * overall: the strategy kinds whose configs reach the exchange ("normal", "trailing", "trailing-only", "exit",
+   * "dca", "dca-active", "axis"). Unset / empty = every kind. The engine keeps computing, validating and paper-trading all of them —
    * this only narrows what the live control sends. A position already held is still managed and closed, whatever
    * its kind, so nothing is left orphaned when the list changes.
    */
@@ -418,15 +469,16 @@ export interface LiveSettings {
    * narrows only what the live control sends: the engine keeps computing and paper-trading every range, so a range
    * left out keeps its own paper record and can be let back in on evidence. A held position of a range left out is
    * still managed by its lanes until they exit (never force-closed, never orphaned) — only new ones do not open.
-   * A range is a target band of the Normal / Trailing configs: signal configs and the Axis / DCA ladders carry no
-   * range tag but are never "wide" — `source` and `kinds` narrow those (rangeExcluded in live.server.ts).
+   * Ranges apply to Normal / Trailing engine grids only. Historic Exit owns its target/stop fit and config sets;
+   * signal configs and the Axis / DCA ladders carry no range tag either. `source` and `kinds` narrow those.
    */
   excludeRanges?: readonly string[];
   /**
    * overall: engine configs of these families do NOT reach the exchange, and a held position of one is CLOSED — its
    * lanes never ask for volume again, held or not (the operator's stop, unlike excludeRanges, which keeps a held lane
    * until its paper position exits). A family is `bot|range`: the bot "follow" or "revert", the range "wide" (untagged)
-   * or a range tag ("mc", "mn", "mp", "sh", "gn", "lg") — e.g. "follow|mn" = every engine follow config of Minimal.
+   * or a range tag ("mc", "mn", "mp", "sh", "gn", "lg"); `bot|exit` excludes every Historic Exit config set.
+   * Example: "follow|mn" = every Normal / Trailing follow config of Minimal.
    * Signal configs have no family here (live.source narrows them). Unset / empty = none.
    */
   excludeConfigs?: readonly string[];
@@ -517,13 +569,18 @@ export const FORMER_FOCUS_13OCT: readonly string[] = [
  * PF D1a 0.475 → 0.53, D1b 0.374 → 0.45, holdout 0.362 → 0.37 and 0.368 → 0.38, orders 57,107 → 70,649
  * (PF-SEARCH.md section 19).
  */
-export const FAMILY_FOCUS_13OCT: readonly string[] = ["cfl-trend-50", "htfpb-4", "htfpb-8", "orb-us", "rel-str-12", "rel-str-48", "rgm-20"].flatMap(
-  (id) => [`follow|${id}@m15`, `follow|${id}@m15c`, `follow|${id}@m30`],
-);
+export const FAMILY_FOCUS_13OCT: readonly string[] = [
+  "cfl-trend-50",
+  "htfpb-4",
+  "htfpb-8",
+  "orb-us",
+  "rel-str-12",
+  "rel-str-48",
+  "rgm-20",
+].flatMap((id) => [`follow|${id}@m15`, `follow|${id}@m15c`, `follow|${id}@m30`]);
 
 /** The updated 60 Micro Break identities, each selected on its fastest eligible anchor lane by default. */
-export const BREAK_MICRO_FOCUS_17OCT: readonly string[] = BREAK_CONFIG_IDS.flatMap((id) => {
-  if (!isBreakMicroInd(id)) return [];
+export const BREAK_MICRO_FOCUS_17OCT: readonly string[] = BREAK_DEFAULT_MICRO_CONFIG_IDS.flatMap((id) => {
   const tf = breakAnchorTf(id);
   return tf === null ? [] : [`follow|${id}@m${tf}`];
 });
@@ -545,6 +602,24 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   // Model per side: 0.05 % taker + 0.025 % slippage → 0.15 % round trip; measured venue fees stay authoritative.
   fees: { taker: 0.0005, maker: 0.0002, slippage: 0.00025 },
   adjust: DEFAULT_ADJUST,
+  exitStrategy: {
+    enabled: true,
+    lookbackH: 168,
+    trainFraction: 0.6,
+    minEntries: 30,
+    minValidationTrades: 12,
+    minPf: 1.1,
+    maxDdr: 1,
+    holdH: 24,
+    maxConfigsPerPair: 24,
+    quantiles: [0.6, 0.8],
+    stopQuantiles: [0.5, 0.75],
+    minTp: 0.006,
+    maxTp: 0.2,
+    maxSl: 0.25,
+    trailShares: [0.33, 0.66],
+    stopMultiples: [1, 2],
+  },
   gates: DEFAULT_GATES,
   refineTop: 24,
   // 0 = every Base-validated pair gets its strategy config sets (pseudo positions)
@@ -883,3 +958,7 @@ export const STRATEGY_PRESETS: Record<string, { label: string; toggles: Strategy
     },
   },
 };
+
+// Historic Exit is independent of Normal / Trailing: only the all-on presets opt into its execution.
+for (const [name, preset] of Object.entries(STRATEGY_PRESETS))
+  preset.toggles.exit = name === "all-on" || name === "all-on+axis";

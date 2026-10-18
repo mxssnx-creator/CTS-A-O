@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- this preload is intentionally CommonJS for Node preload hooks. */
 // The preview sandbox can deny uv_interface_addresses even though binding 0.0.0.0 is allowed. Vite only uses this
 // lookup to print interface URLs; let the all-interface listener start and keep real interface data when available.
 /* eslint @typescript-eslint/no-require-imports: off -- loaded from NODE_OPTIONS with --require */

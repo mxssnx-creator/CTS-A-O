@@ -1,4 +1,4 @@
-// Break's relational grid: three causal breakout setups × every 1/5/15-minute trend subset × two drawdown windows ×
+// Break's relational grid: independent causal breakout/reclaim setups × eligible 1/5/15-minute trend subsets × two drawdown windows ×
 // two independent activity/risk profiles. Micro aliases are separate identities, anchored at 5m or 15m so the
 // default Micro lane floor remains intact. Shared features stay in one small cache across Break configs during Base,
 // then are released with the rest of the indicator cache.
@@ -19,6 +19,7 @@ import {
 
 export {
   BREAK_CONFIG_IDS,
+  BREAK_DEFAULT_MICRO_CONFIG_IDS,
   BREAK_CORES,
   BREAK_DRAWDOWN_WINDOWS,
   BREAK_PROFILES,
@@ -41,6 +42,7 @@ type SharedContext = {
   squeeze: Int8Array;
   retest: Int8Array;
   retest8: Int8Array;
+  reclaim8: Int8Array;
   priceDd24Long: Float32Array;
   priceDd24Short: Float32Array;
   priceDd48Long: Float32Array;
@@ -192,6 +194,7 @@ function blankContext(n: number, market: MarketRef | null): SharedContext {
     squeeze: new Int8Array(n),
     retest: new Int8Array(n),
     retest8: new Int8Array(n),
+    reclaim8: new Int8Array(n),
     priceDd24Long: f(),
     priceDd24Short: f(),
     priceDd48Long: f(),
@@ -420,6 +423,19 @@ function rawContext(k: SeriesCache, market: MarketRef | null): SharedContext {
     const down8 = b.c[i] < dn8.lo[i] && b.c[i] < b.o[i] && location <= 0.35;
     const upCross8 = b.c[i] > dn8.hi[i] && !(b.c[i - 1] > dn8.hi[i - 1]);
     const downCross8 = b.c[i] < dn8.lo[i] && !(b.c[i - 1] < dn8.lo[i - 1]);
+    // Same-bar failed-break reclaim: the channel and volatility baseline exclude the scored candle.
+    // This source has no pending setup to carry across a gap or an opposite break. Each completed sweep
+    // must independently recover its prior channel edge, keep a directional body and close near its extreme.
+    const priorAtr = atr[i - 1];
+    const rangeAtr = range / priorAtr;
+    if (priorAtr > 0 && Number.isFinite(rangeAtr) && rangeAtr > 0) {
+      const lowerPenetration = (dn8.lo[i] - b.l[i]) / priorAtr;
+      const upperPenetration = (b.h[i] - dn8.hi[i]) / priorAtr;
+      if (lowerPenetration > 0 && lowerPenetration <= 1.5 &&
+          b.c[i] > dn8.lo[i] && b.c[i] > b.o[i] && location >= 0.65) out.reclaim8[i] = 1;
+      else if (upperPenetration > 0 && upperPenetration <= 1.5 &&
+          b.c[i] < dn8.hi[i] && b.c[i] < b.o[i] && location <= 0.35) out.reclaim8[i] = -1;
+    }
     if (up8 && !(b.c[i - 1] > dn8.hi[i - 1])) out.don8[i] = 1;
     else if (down8 && !(b.c[i - 1] < dn8.lo[i - 1])) out.don8[i] = -1;
     if (upCross8) { lastUp8 = i; levelUp8 = dn8.hi[i]; retestUp8Used = false; lastDn8 = -1; }
@@ -494,7 +510,9 @@ function relationState(
         ? x.squeeze
         : core === "retest8"
           ? x.retest8
-          : x.retest;
+          : core === "reclaim8"
+            ? x.reclaim8
+            : x.retest;
   const market = k.market();
   for (let i = WARMUP - 1; i < n; i++) {
     const dir = events[i];
@@ -551,7 +569,8 @@ const spec = (
       tf15: tfs.includes(15) ? 1 : 0,
       core: BREAK_CORES.findIndex((x) => x.id === core),
       profile: BREAK_PROFILES.findIndex((x) => x.id === profileId),
-      donPeriod: core === "don8" || core === "retest8" ? 8 : 20,
+      donPeriod: core === "don8" || core === "retest8" || core === "reclaim8" ? 8 : 20,
+      ...(core === "reclaim8" ? { reclaimMaxAtr: 1.5, reclaimCloseLocation: 0.65 } : {}),
       squeezeLookback: 60,
       retestBars: 8,
       drawdownBars: Number(ddWindow),

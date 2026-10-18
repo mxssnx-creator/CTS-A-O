@@ -123,12 +123,12 @@ const SIGNAL_STATUS = ["enabled", "combos", "active", "configs"];
 /** Every field each page reads, per server function. */
 const FIELDS: Record<Fn, string[]> = {
   coreListing: [
-    // pages/stages.tsx SetListings (the last paper step's validated sets, per range)
+    // pages/stages.tsx SetListings (the last paper step's validated sets, per range / strategy group)
     "ready",
     "total",
     "proofOn",
-    ...under("byRange[]", ["range", "validated", "pf"]),
-    ...under("rows[]", ["id", "range", "pf", "n", "net", "ddt", "score"]),
+    ...under("byGroup[]", ["group", "validated", "pf"]),
+    ...under("rows[]", ["id", "group", "range", "pf", "n", "net", "ddt", "score"]),
   ],
   coreStatus: [
     // shell.tsx (header: state pill, progressText, liveState, bar time, symbols)
@@ -700,6 +700,7 @@ const FIELDS: Record<Fn, string[]> = {
       "types",
       "subTypes",
       "ranges",
+      "strategyGroups",
       "lanes",
       "indKinds",
       "bots",
@@ -745,7 +746,7 @@ const FIELDS: Record<Fn, string[]> = {
       "bot",
       "ind",
       "type",
-      "range",
+      "group",
       "lane",
       "indKind",
       "tp",
@@ -1034,6 +1035,7 @@ const OPTIONAL: Partial<Record<Fn, Record<string, string>>> = {
     ...unset("series.info", ["n", "pfBasis", "unknownReturns", "gp", "gl", "noLoss", "pfConvention", "sample", "cash", "cashPositionLast"], "new verified unit-return metadata; legacy archives remain unavailable"),
   },
   coreStatistics: {
+    "report.strategyGroups[]": "the selected window may have no Signal or Historic Exit closes",
     ...unset("paperEvidence", ["requested", "verifiedOwnership", "unknownOwnership", "cashBasis", ...under("recordedReturns", ["n", "pf", ...RETURN_PROVENANCE])], "only paper statistics has owned-versus-recorded evidence; sim/live return explicit null"),
     conn: "null for a runtime built without a connection (tests); runtimeFor always passes one",
     why: "only when report is null",
@@ -1329,22 +1331,22 @@ describe(
       if (preview.blocked) assert.deepEqual(preview.targets, [], "unknown account equity produces no fictitious live sizes");
     });
 
-    it("coreListing: the paper step's validated sets, a range's own rows, paged; active units; bad input refused", async () => {
+    it("coreListing: the paper step's validated groups, a group's own rows, paged; active units; bad input refused", async () => {
       const all = (await read("coreListing", () => api.coreListingData(api.coreListingInput({ kind: "validated", limit: 5 })))) as {
         total: number;
-        rows: Array<{ id: string; range: string; score: number }>;
-        byRange: Array<{ range: string; validated: number }>;
+        rows: Array<{ id: string; group: string; range: string; score: number }>;
+        byGroup: Array<{ group: string; validated: number }>;
       };
       assert.ok(all.total > 0 && all.rows.length <= 5, `${all.total} validated`);
       // the listing is the paper step's seats, best score first
       assert.equal(all.total, rt.listings!.validated.length);
       for (let i = 1; i < all.rows.length; i++) assert.ok(all.rows[i - 1].score >= all.rows[i].score);
-      // a range reads its own rows: every row of the range, none of another
-      const r0 = all.byRange[0];
-      const one = (await api.coreListingData(api.coreListingInput({ kind: "validated", range: r0.range, limit: 500 }))) as typeof all;
+      // each range or independent strategy group reads its own rows
+      const r0 = all.byGroup[0];
+      const one = (await api.coreListingData(api.coreListingInput({ kind: "validated", group: r0.group, limit: 500 }))) as typeof all;
       assert.equal(one.total, r0.validated);
-      assert.ok(one.rows.every((x) => x.range === r0.range));
-      assert.equal(all.byRange.reduce((a, x) => a + x.validated, 0), all.total);
+      assert.ok(one.rows.every((x) => x.group === r0.group));
+      assert.equal(all.byGroup.reduce((a, x) => a + x.validated, 0), all.total);
       // paging: page 2 continues page 1
       const p2 = (await api.coreListingData(api.coreListingInput({ kind: "validated", offset: 5, limit: 5 }))) as typeof all;
       if (all.total > 5) assert.notEqual(p2.rows[0]?.id, all.rows[0].id);

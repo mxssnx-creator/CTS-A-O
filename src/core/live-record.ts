@@ -11,6 +11,7 @@
 import type { LiveGate } from "./live-validation.ts";
 import { acceptKey, engineSideKey, sideAcceptKey, type ExchangeAccept } from "./signals.ts";
 import { isSignalInd } from "./indications/registry.ts";
+import { isSignalCoordinationInd } from "./signal-coordination.ts";
 import { kindOfId } from "./pipeline/pipeline.ts";
 import { rangeOfId } from "./minimal-coord.ts";
 import { modeledUnitReturn } from "./metrics/stats.ts";
@@ -238,7 +239,7 @@ export function preferExchange(exchange: LiveGate | null | undefined, sim: LiveG
 
 /**
  * The exchange closes as acceptance groups: a signal close enters its signal × symbol × side group and its side's pooled
- * group, an engine close its type family × range × side group — the keys the simulation's acceptance judges. A group
+ * group, a Normal / Trailing close its type × range × side group, and an Exit close its tactic × side group — the keys the simulation judges. A group
  * sees the closes before t only (exit < t). Parallel signal configs share one onset count; every settled close stays
  * in return PF, as in SignalAcceptIndex / SignalGuard.
  */
@@ -287,14 +288,17 @@ export function exchangeAcceptIndex(
     const ind = x.cfg.split("|")[1] ?? "";
     const kind = kindOfId(x.cfg);
     if (isSignalInd(ind)) {
+      const coordination = isSignalCoordinationInd(ind);
       const onset =
         x.entryT === undefined ? undefined : `${ind}|${x.sym}|${x.side > 0 ? 1 : -1}|${x.entryT}`;
       add(acceptKey(ind, x.sym, x.side, kind, x.cfg), x.exitT, x.r, onset);
-      add(sideAcceptKey(x.side), x.exitT, x.r, onset);
+      add(sideAcceptKey(x.side, coordination), x.exitT, x.r, onset);
     } else {
       const tag = rangeOfId(x.cfg) || undefined;
-      add(engineSideKey(kind, tag, x.side), x.exitT, x.r);
-      add(engineSideKey(kind, tag, x.side, ind), x.exitT, x.r);
+      const code = /\|hx(?:[LS])?([012])?$/.exec(x.cfg)?.[1];
+      const exitSet = code === "0" ? "static-sl" : code === "1" ? "adaptive-sl" : code === "2" ? "trailing" : undefined;
+      add(engineSideKey(kind, tag, x.side, undefined, exitSet), x.exitT, x.r);
+      add(engineSideKey(kind, tag, x.side, ind, exitSet), x.exitT, x.r);
     }
   }
   for (const l of by.values()) {
