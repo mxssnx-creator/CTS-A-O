@@ -469,6 +469,41 @@ describe("order sides, hedge mode (overall control): LONG and SHORT alike", { ti
       );
     });
 
+    // control for OW-9, to nothing: the same sale on the hedge venue takes all of ours on its side, and the other side's lane
+    // still opens on its own position side (a hedge freeze holds the side the sale fell on, not the symbol)
+    it(`H-9 ${side}, to nothing: merged with someone else's quantity on ${ps}, their sale takes all of ours, the ${opp} lane opens on ${opp} and nothing closes the whole side`, async () => {
+      const tick = clock();
+      const ex = new Venue();
+      const { rt } = rtOf({ notionalUsd: 4 * mark });
+      const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+      rt.paper.positions = [lane("combo|ema-9-21@m15|a", sym, s, mark, 0.02)];
+      await step();
+      assert.equal(ex.positions.get(`${sym}|${ps}`), 4, "our own quantity on the side");
+      ex.orders = ex.orders.filter((o) => o.type !== STOP);
+      ex.foreignFill(`${sym}|${ps}`, 2, true, mark);
+      tick(61_000);
+      await step();
+      ex.foreignFill(`${sym}|${ps}`, 4, false, mark);
+      rt.paper.positions = [
+        rt.paper.positions[0],
+        lane("combo|ema-9-21@m15|b", sym, (-s) as 1 | -1, mark, 0.02, undefined, 2),
+      ];
+      const n = ex.log.length;
+      tick(61_000);
+      await step();
+      const sent = ex.log.slice(n);
+      assert.deepEqual(
+        sent.filter((p) => p.closePosition === "true").map((p) => `${p.type} ${p.side}`),
+        [],
+        "closePosition orders sent",
+      );
+      assert.equal(sent.filter((p) => p.positionSide === ps).length, 0, "orders on the merged side in that step");
+      assert.ok(
+        sent.some((p) => p.type === "MARKET" && p.positionSide === opp),
+        "the other side's lane opens on its own side",
+      );
+    });
+
     // item 9 (hedge side): a merged position is bounded — its take-profit goes, nothing closes the whole side
     it(`H-M ${side}: merged with someone else's quantity on ${ps}, the own take-profit is cancelled and nothing closes the whole side`, async () => {
       const tick = clock();
@@ -801,6 +836,49 @@ describe("order sides, hedge mode (overall control): LONG and SHORT alike", { ti
         [],
         "orders sent on the merged symbol in that step",
       );
+    });
+  }
+
+  // item 9, the attribution takes all of ours: the other owner's sale leaves the net at their quantity alone, so the attribution
+  // takes all four of ours and none is left. That key is frozen in that step (e25a9a2), and the freeze holds the symbol: a lane
+  // on the other side would otherwise open on the same net and trade the other owner's quantity
+  for (const s of [1, -1] as const) {
+    const side = s === 1 ? "long" : "short";
+    const other = s === 1 ? "short" : "long";
+    const sym = s === 1 ? "S1-USDT" : "S2-USDT";
+    const mark = s === 1 ? 10 : 20;
+    it(`OW-9 ${side}, to nothing: one-way merged, the attribution takes all four of ours, a ${other} lane active — no order on the symbol in that step`, async () => {
+      const tick = clock();
+      const ex = new OneWayVenue();
+      // four units of ours at either mark
+      const { rt } = rtOf({ positionMode: "oneway", notionalUsd: 4 * mark });
+      const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+      rt.paper.positions = [lane("combo|ema-9-21@m15|a", sym, s, mark, 0.02)];
+      await step();
+      assert.equal(Math.abs(ex.net.get(sym) ?? 0), 4, `our own quantity ${ex.net.get(sym)}`);
+      ex.orders = ex.orders.filter((o) => o.type !== STOP);
+      // someone else adds 2 units: the key merges and the estimate of their part is those 2 units
+      ex.foreignOpen(sym, 2, s === 1);
+      tick(61_000);
+      await step();
+      // then they sell 4 by hand: the venue shows their 2 alone, so the attribution takes all 4 of ours
+      ex.foreignOpen(sym, 4, s !== 1);
+      assert.equal(ex.net.get(sym), s === 1 ? 2 : -2, `the net after their sale ${ex.net.get(sym)}`);
+      // a lane on the other side is active on the symbol: its open would trade the same net
+      rt.paper.positions = [
+        rt.paper.positions[0],
+        lane("combo|ema-9-21@m15|b", sym, (-s) as 1 | -1, mark, 0.02, undefined, 2),
+      ];
+      const n = ex.log.length;
+      tick(61_000);
+      await step();
+      const sent = ex.log.slice(n);
+      assert.deepEqual(
+        sent.filter((p) => p.symbol === sym).map((p) => `${p.type} ${p.side}`),
+        [],
+        "orders sent on the symbol in that step",
+      );
+      assert.equal(ex.net.get(sym), s === 1 ? 2 : -2, "the other owner's quantity is unchanged");
     });
   }
 

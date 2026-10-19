@@ -2632,7 +2632,9 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         } else {
           held.delete(k);
           merged.delete(k);
-          if (!independent) foreign.add(k);
+          // one-way: freeze the symbol, as the cap's own-zero branch does — the BOTH net holds the other owner's part, and an
+          // open of the other side in this step would trade on that same net
+          if (!independent) foreign.add(posOneway ? asym : k);
         }
         const found = !cf
           ? null
