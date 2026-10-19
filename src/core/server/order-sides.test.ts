@@ -2,11 +2,14 @@
 // Hedge mode through the overall control on a simulated venue (the Venue of control-orders.test.ts): the open, the stop
 // and the take-profit name their side and position side; a bounded close of one lane sends its own quantity on its own
 // key and touches no other key; a manual position on one side freezes nothing on the other; a side closed by its stop
-// leaves the other side's orders alone; a stop that filled while the desk was away is recognised. Entries mode: a foreign
-// position freezes only its own side (planLive), and an entry's exit orders name their side. A take-profit refused for
-// being too close is retried under both wordings the venue may use (plan item 6). One-way (BOTH) cells cover the defects
-// where the position side is BOTH (plan items 7, 9, 10, 11, and the BOTH read in the flat check, item 12's family); each
-// one-way cell has its hedge control. A cell marked expectedFail fails for the defect named in its title, and only that.
+// leaves the other side's orders alone; a stop that filled while the desk was away is recognised. Entries mode: a
+// foreign position freezes only its own side (planLive); a foreign order freezes the side its position side names,
+// and one with no position side freezes the whole symbol (the E-5 order cells); an entry's exit orders name their
+// side. A take-profit refused for being too close is retried under both wordings the venue may use (plan item 6).
+// One-way (BOTH) cells cover the defects where the position side is BOTH (plan items 7, 9, 10, 11, and the BOTH read
+// in the flat check, item 12's family); each one-way cell has its hedge control. No cell is marked expectedFail: each
+// one passes, and the pending I-6 take-profit cell is it.todo. A cell for a defect not yet fixed fails for the defect
+// its title names, and only that.
 import { afterEach, beforeEach, describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 import { CoreDb } from "./db.server.ts";
@@ -896,8 +899,8 @@ describe("order sides, entries mode and exit orders (pure)", () => {
     });
   }
 
-  // the overall control's ownership (controlOwnership, hedge): a foreign position marks only its own side's key — the
-  // contrast of E-5 (planLive marks the whole symbol)
+  // the overall control's ownership (controlOwnership, hedge): a foreign position marks only its own side's key, as
+  // planLive does in hedge mode (the E-5 cells above)
   for (const f of [1, -1] as const) {
     const fName = f === 1 ? "LONG" : "SHORT";
     it(`E-5 control: overall ownership marks only the foreign ${fName} key (S1-USDT|${f}), not the symbol`, () => {
@@ -1006,7 +1009,10 @@ describe("order sides, closes read from the venue history (pure)", () => {
           Date.now(),
         );
         assert.equal(n, 1, "the close row is re-priced");
-        const r = db.all<{ exit: number; px_src: string }>("SELECT exit, px_src FROM live_lane_trades WHERE id = 't1'");
+        const r = db.all<{ exit: number; px_src: string }>(
+          // relation: all rows — the fixture reads back every row it wrote
+          "SELECT exit, px_src FROM live_lane_trades WHERE id = 't1'",
+        );
         assert.equal(r[0].px_src, "history");
         assert.ok(near(r[0].exit, fill, 1e-9), `exit ${r[0].exit} at the fill ${fill}`);
       });
