@@ -77,10 +77,10 @@ describe("sizing: packed event order", () => {
 });
 
 describe("sizing", () => {
-  it("defaults to 0.1 % of account equity per order unit", () => {
-    assert.deepEqual(DEFAULT_SIZING, { mode: "equityPct", pct: 0.001 });
-    assert.equal(unitNotional(DEFAULT_SIZING, 1000, 6), 1);
-    assert.equal(unitNotional(DEFAULT_SIZING, 10, 6), 0.01);
+  it("defaults to 0.2 % of account balance per order unit", () => {
+    assert.deepEqual(DEFAULT_SIZING, { mode: "equityPct", pct: 0.002 });
+    assert.equal(unitNotional(DEFAULT_SIZING, 1000, 6), 2);
+    assert.equal(unitNotional(DEFAULT_SIZING, 10, 6), 0.02);
     assert.equal(sizingSettings({ mode: "minQty" }).mode, "minQty");
     assert.deepEqual(DEFAULT_SETTINGS.sizing, DEFAULT_SIZING);
     assert.equal(DEFAULT_SETTINGS.paperBalance, 1000);

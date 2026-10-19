@@ -288,7 +288,7 @@ export interface CoreSettings {
   paperNotional: number;
   /** paper starting balance, USD (balance-percent sizing compounds from it) */
   paperBalance: number;
-  /** order sizing: fixed % of account balance per order unit (default 0.1 %) or a legacy fixed notional mode */
+  /** order sizing: fixed % of account balance per order unit (default 0.2 %) or a legacy fixed notional mode */
   sizing: SizingSettings;
   toggles: StrategyToggles;
   /** entry tactics (session, volatility, trend strength, cooldown); each can be switched off */

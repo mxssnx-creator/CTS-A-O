@@ -3482,7 +3482,7 @@ export class CoreRuntime {
     // + the warm-up the active tactics need (e.g. the 2-week volatility rank) before their first valid signal
     // (in each series' own bars: a 30m lane needs 30× fewer bars than the 1m lane for the same time)
     const tailOf = (tf: number) =>
-      Math.round(((24 + Math.max(wf.preH, wf.longH) + wf.simH) * 60) / tf) +
+      Math.round(((24 + Math.max(wf.preH, wf.longH, wf.symH ?? 0) + wf.simH) * 60) / tf) +
       tacticWarmupBars(s.tactics);
     const wu = makeUniverse(
       allBars.map((b) => tailBars(b, tailOf(b.tfMin))),
@@ -8688,7 +8688,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
 function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
   const saved = db.kvGet<Partial<WalkForwardOptions>>("wf") ?? {};
   const v = db.kvGet<number>("wfCapsV") ?? 0;
-  if (v >= 34) return saved;
+  if (v >= 35) return saved;
   // each step runs only for a database older than it: a choice made after a step is never overwritten
   const out = { ...saved };
   const st = db.kvGet<Partial<CoreSettings>>("settings");
@@ -9076,7 +9076,7 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
     }
   }
   if (v < 33) {
-    // Balance-relative sizing is the saved mode; legacy modes move to the neutral 0.1% default.
+    // Balance-relative sizing is the saved mode; legacy modes move to the neutral 0.2% default.
     const migrateSizing = (settings: SettingsPatch | undefined) => {
       const sizing = settings?.sizing as { mode?: string } | undefined;
       if (sizing && sizing.mode !== "equityPct") settings!.sizing = structuredClone(DEFAULT_SIZING);
@@ -9119,9 +9119,25 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
       if (changed) db.kvSet("presets", presets);
     }
   }
+  if (v < 35) {
+    // Raise only the prior factory balance sizing default; keep deliberately chosen percentages unchanged.
+    const migrateSizingDefault = (settings: SettingsPatch | undefined) => {
+      const sizing = settings?.sizing;
+      if (sizing?.mode !== "equityPct" || sizing.pct !== 0.001) return false;
+      sizing.pct = DEFAULT_SIZING.pct;
+      return true;
+    };
+    migrateSizingDefault(st);
+    const presets = db.kvGet<Preset[]>("presets");
+    if (Array.isArray(presets)) {
+      let changed = false;
+      for (const preset of presets) changed = migrateSizingDefault(preset.settings) || changed;
+      if (changed) db.kvSet("presets", presets);
+    }
+  }
   db.kvSet("wf", pickWf(out));
   if (st) db.kvSet("settings", st);
-  db.kvSet("wfCapsV", 34);
+  db.kvSet("wfCapsV", 35);
   return out;
 }
 

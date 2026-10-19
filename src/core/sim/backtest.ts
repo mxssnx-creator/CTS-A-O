@@ -178,6 +178,9 @@ export function simulate(
 ): SimResult {
   const { n, t, o, h, l, c, sym } = bars;
   const cost = opt.cost;
+  // Never manufacture positive returns through a missing, negative or invalid fee deduction.
+  if (!(Number.isFinite(cost) && cost >= 0))
+    throw new RangeError("simulation round-trip cost must be a finite, nonnegative fraction of notional");
   const cooldown = opt.cooldown ?? 0;
   const trades: Trade[] = [];
   let inPos = false;

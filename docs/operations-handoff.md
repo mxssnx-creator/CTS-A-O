@@ -2,6 +2,37 @@
 
 Updated 2026-10-18, UTC. Repository: `mxssnx-creator/CTS-A-O`.
 
+## Local checkpoint: bounded broad history and Last-N validation — 18 October
+
+General walk-forward warm-up is now 6 hours and broad config selection is 24
+hours. Seat validation continues to use its per-config Last-N sample (15
+closes); the separate entry Last-N gate remains off per the measured evidence
+below. Symbol-specific history (`symH`) is included when trimming runtime tape
+history so that a longer requested symbol window is not silently truncated.
+Per-symbol and per-side order caps remain unlimited (`0`).
+
+An explicit `--focus all` on `core-session` now overrides a frozen settings
+snapshot, rather than being overwritten by its saved focus. This was found when
+the supposed all-focus replay still evaluated only the saved 36-pair subset.
+The expanded default-focus rerun used a frozen snapshot with its narrow focus
+removed (97 default pairs / 147 runtime combos), 9 symbols, 24 hours of
+prehistory and 6 evaluated hours from the same offline feed. All **56/56**
+report checks passed. Base passed **7/147** pairs; **1,388** configs passed at
+least one post-Base evaluation; the replay closed **483** orders at return PF
+**3.54**. At the tested 2% balance fraction the equity drawdown reached
+253.44% and margin exceeded equity, so that sizing is infeasible. A 0.2%
+fraction kept 483 orders and return PF 3.54, with equity drawdown 26.23%, but
+still exceeded equity margin by 3.32×. These are separate risk sensitivity
+runs, not a production sizing change, and the 6-hour result is not proof of
+durable profitability. The all-718-pair experiment hit the local memory guard
+after three retries and is incomplete; no counts from it are treated as
+passing.
+
+Verification: `scripts/core-session.test.mjs` passes **29/29**, gating and
+stage-consistency tests pass **15/15**, TypeScript typecheck and
+`git diff --check` pass. The bounded runtime replay completes in 6 seconds. The new
+checkpoint is local and not pushed or merged.
+
 ## Independent Historic Exit implementation — 18 October
 
 Exit Strategies now have a dedicated bot-free path through the normal causal
@@ -1274,7 +1305,7 @@ The full offline core run traversed 170 test files and reported two stale test e
 
 Correction: the earlier coordination-factor follow-up treated “Stable-02” as a strategy coordinator. It is a branch name. The erroneous independent `s2VolumeFactor` setting and its earlier sweep were removed; existing S2 relation sizing (`s2Increase`) and the separate negative-hour Signal hedge factor remain. See [`the corrected coordination report`](sims/trailing-config-coordination-factors-20261017.md).
 
-The base order unit is 0.1% of realized wallet balance, not a fixed order notional. Engine-range and Signal short/medium volume factors default to neutral 1×. The old Micro factory factor 2.5× migrates to 1× while custom saved factors are retained. Fixed-USD per-position ceilings are retired and ignored. Per-position and gross-exposure ratio budgets default to 0/off; if explicitly enabled, they are multiples of wallet balance, not equity or USD ceilings. Migration clears legacy USD ceilings, disables only the former factory ratio pair, and converts saved fixed/minimum-quantity sizing modes to balance-percent sizing while preserving custom balance ratios and volume factors.
+The base order unit is 0.2% of realized wallet balance, not a fixed order notional. Engine-range and Signal short/medium volume factors default to neutral 1×. The old Micro factory factor 2.5× migrates to 1× while custom saved factors are retained. Fixed-USD per-position ceilings are retired and ignored. Per-position and gross-exposure ratio budgets default to 0/off; if explicitly enabled, they are multiples of wallet balance, not equity or USD ceilings. Migration clears legacy USD ceilings, disables only the former factory ratio pair, and converts saved fixed/minimum-quantity sizing modes to balance-percent sizing while preserving custom balance ratios and volume factors.
 
 Two adjacent cached-feed 24-hour replays used the same eight symbols, 48 hours of prehistory, $10 start balance, 10× leverage and 0.20% modeled round-trip cost. The interim 0.25× / 2× caps reduced drawdown versus 0.75× / 7× but left the adjacent day negative. A broader same-tape cap sweep selected 0.25× position / 0.75× gross: Oct 13–14 produced 4,861 funded closes, Return PF 1.013, cash PF 1.327, +$0.05343 cash and $10.02288 marked equity; Oct 12–13 produced 25,950 closes, Return PF 0.924, cash PF 1.349, +$0.12277 cash and $10.04716 marked equity. Max equity drawdown was 0.80% / 2.09%, with 12 / 8 / 4 and 8 / 16 / 0 green / red / flat hours. This improves the two sampled equity curves; it does not prove stable PF or positive results every hour. The unit Return PF remains below 1 on the second day.
 

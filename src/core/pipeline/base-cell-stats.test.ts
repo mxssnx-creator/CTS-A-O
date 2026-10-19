@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { BaseCellAccumulator, baseCellAccumulator } from "./base-cell-stats.ts";
-import { cellStats, makeUniverse, runCombo } from "./pipeline.ts";
+import { cellStats, makeUniverse, passesBase, runCombo } from "./pipeline.ts";
 import { barsFromCandles, syntheticCandles } from "../market/bars.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import { statsOf, type TradeLike } from "../metrics/stats.ts";
@@ -46,6 +46,38 @@ describe("Base cell chronological statistics buffer", () => {
       [[[0.01, 6, NaN], [-0.02, 1, 10]], [[0.03, 4, Infinity]]],
     ];
     for (const runs of cases) assert.deepEqual(collect(cell, runs), oracle(runs));
+  });
+
+  it("fails closed for nonfinite returns and overflowed return-PF cells", () => {
+    const rejected = { n: 2, pf: 0, net: 0, mdd: 0, gp: 0, gl: 0, invalid: true };
+    for (const bad of [NaN, Infinity, -Infinity]) {
+      const got = collect(new BaseCellAccumulator(), [[[0.02, 0, 1], [bad, 1, 2]]]);
+      assert.deepEqual(got, rejected, `invalid return ${bad} cannot qualify`);
+    }
+    for (const rows of [
+      [[1e308, 0, 1], [-1, 1, 2]], // gross-profit and net percentage overflow
+      [[1, 0, 1], [-Number.MIN_VALUE, 1, 2]], // PF quotient overflow
+    ] satisfies Row[][]) {
+      const got = collect(new BaseCellAccumulator(), [rows]);
+      assert.deepEqual(got, rejected, "finite inputs whose primary totals overflow cannot qualify");
+    }
+    assert.deepEqual(collect(new BaseCellAccumulator(), [[[0.02, 0, 1], [-0.01, 1, 2]]]),
+      oracle([[[0.02, 0, 1], [-0.01, 1, 2]]]), "ordinary Base outcomes retain exact parity");
+  });
+
+  it("refuses nonfinite PF, net and drawdown in every Base pass, even with DDR disabled", () => {
+    const g = { minPf: 1.1, minTrades: 2, maxDdr: 0 };
+    const st = { n: 2, pf: 2, net: 1, mdd: 0.5 };
+    assert.equal(passesBase(st, g), true);
+    assert.equal(passesBase({ n: 2, pf: 2, net: 1 }, g), true, "disabled DDR keeps legacy missing-drawdown cells");
+    for (const n of [NaN, Infinity, -Infinity, 1.5])
+      assert.equal(passesBase({ ...st, n }, g), false, "count must be an actual settled trade count");
+    for (const pf of [NaN, Infinity, -Infinity])
+      assert.equal(passesBase({ ...st, pf }, g), false, "unmeasured PF cannot qualify");
+    for (const net of [NaN, Infinity, -Infinity])
+      assert.equal(passesBase({ ...st, net }, g), false, "invalid net return cannot qualify");
+    for (const mdd of [NaN, Infinity, -Infinity, -0.5])
+      assert.equal(passesBase({ ...st, mdd }, g), false, "invalid MDD cannot be bypassed by disabling DDR");
   });
 
   it("grows, reuses and clears buffers without changing prior returned cells", () => {

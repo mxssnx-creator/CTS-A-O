@@ -330,18 +330,15 @@ function cumulativeFillFee(
 
 
 /**
- * The explicit executed quantity, including zero, independently of fill price and never above the quantity sent.
- * Missing fields retain the legacy accepted-MARKET fallback; a stated nonfilled state never uses that fallback.
+ * An exchange acknowledgement is not a fill. Only explicit executed quantity or an authoritative FILLED status
+ * can establish ownership; an unknown acknowledgement remains pending until venue reconciliation.
  */
 export function executedQty(resp: unknown, sentQty: number): number {
   const sent = Number.isFinite(sentQty) && sentQty > 0 ? sentQty : 0;
   const o = orderReply(resp);
   const q = replyQty(o);
   if (q !== null) return Math.min(sent, q);
-  // Legacy accepted MARKET replies omit execution fields; keep their documented fallback. A stated nonfilled
-  // state (NEW / partial / cancelled / rejected) never acquires the requested quantity through that fallback.
-  if (pendingExecution(resp) || /^(CANCELLED|CANCELED|REJECTED|EXPIRED)$/i.test(String(o?.status ?? ""))) return 0;
-  return sent;
+  return String(o?.status ?? "").toUpperCase() === "FILLED" ? sent : 0;
 }
 
 interface PendingExecution {
@@ -349,8 +346,16 @@ interface PendingExecution {
   unresolved?: boolean; late?: Record<string, unknown>;
 }
 const PENDING_EXECUTION = "execution-pending ";
-const executionMsg = (resp: unknown, sentQty: number, positionSeen = false): string | null => pendingExecution(resp)
-  ? PENDING_EXECUTION + JSON.stringify({ oid: String(orderReply(resp)?.orderId ?? ""), sentQty, positionSeen }) : null;
+const executionMsg = (resp: unknown, sentQty: number, positionSeen = false): string | null => {
+  const o = orderReply(resp);
+  const status = String(o?.status ?? "").toUpperCase();
+  const terminal = /^(FILLED|CANCELLED|CANCELED|REJECTED|EXPIRED)$/.test(status);
+  // MARKET accepted without fill fields is unresolved, not an open/closed full-sized venue position.
+  const measuredQty = replyQty(o);
+  return pendingExecution(resp) || (!terminal && (measuredQty === null || measuredQty === 0))
+    ? PENDING_EXECUTION + JSON.stringify({ oid: String(o?.orderId ?? ""), sentQty, positionSeen })
+    : null;
+};
 const pendingOf = (msg?: string | null): PendingExecution | null => {
   if (!msg?.startsWith(PENDING_EXECUTION)) return null;
   try {

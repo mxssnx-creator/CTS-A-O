@@ -26,6 +26,15 @@ const H = 3_600_000;
 const M = 60_000;
 const script = new URL("./core-session.mjs", import.meta.url).pathname;
 
+describe("session CLI settings precedence", () => {
+  it("applies --focus all after a frozen --settings focus", () => {
+    const source = readFileSync(script, "utf8");
+    const settingsPatch = source.indexOf('const settingsExtra = JSON.parse(arg("settings", "{}"));');
+    const focusOverride = source.indexOf('if (arg("focus") === "all") rt.updateSettings({ focus: [] });');
+    assert.ok(settingsPatch >= 0 && focusOverride > settingsPatch, "explicit all-focus override must win over the settings snapshot");
+  });
+});
+
 describe("immutable minute book lookup cache", () => {
   it("caches each order and each minute-symbol including zero and missing prices", () => {
     const a = { cfg: "a", sym: "A", side: 1, vol: 0 }, b = { cfg: "b", sym: "B", side: -1 };

@@ -122,6 +122,22 @@ describe("last-N validation and window numbers", () => {
     assert.ok(passed > checked * 0.05 && passed < checked * 0.95, `${passed} of ${checked} passed`);
   });
 
+  it("last-N PF refuses corrupted or overflowed prefix aggregates rather than treating NaN as a pass", () => {
+    const base = randomTrades(rng(63), 1)[0];
+    const xs = [1, 2, 3, 4].map((i) => ({ ...base, entryT: T0 + i * H - H, exitT: T0 + i * H, r: 0.01 }));
+    const tp = tapeOf(xs);
+    const at = T0 + 5 * H;
+    assert.equal(lastNOk(tp, at, 3, 1.1), true, "finite positive closes pass");
+    for (const bad of [NaN, Infinity]) {
+      const gp = tp.gp.slice();
+      gp[gp.length - 1] = bad;
+      assert.equal(lastNOk({ ...tp, gp }, at, 3, 1.1), false, "bad gross-profit evidence never qualifies");
+      const gl = tp.gl.slice();
+      gl[gl.length - 1] = bad;
+      assert.equal(lastNOk({ ...tp, gl }, at, 3, 1.1), false, "bad gross-loss evidence never qualifies");
+    }
+  });
+
   it("a close exactly at the entry time counts; one a millisecond later does not", () => {
     const base = randomTrades(rng(3), 1)[0];
     const mk = (exitT: number, ret: number) => ({ ...base, entryT: exitT - H, exitT, r: ret });
