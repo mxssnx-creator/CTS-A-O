@@ -208,6 +208,55 @@ describe("paper book, order sides, on the real runtime (items 1 and a, d)", { ti
     assert.ok(Math.abs(row!.r - short.r) < 1e-12, `the row's r ${row!.r}, the SHORT's own ${short.r}`);
   });
 
+  // item 1, the mirror: a LONG held from the tape whose SHORT row of the same entry exits first. The scan takes the held
+  // side's row only, so the LONG's own close is booked, and each side of the entry is booked once.
+  const MIRROR = memo(() => {
+    const cfg = `${ENG}-mirror`;
+    const sym = "S3-USDT";
+    const E = base();
+    const short = tradeOf(cfg, sym, -1, E, E + H, 100, 102, -0.02, "sl");
+    const long = tradeOf(cfg, sym, 1, E, E + 2 * H, 100, 102, 0.02, "tp");
+    paperStep([tapeOf(cfg, sym, [short, long], [])], [{ ...short }], [openOf(cfg, sym, 1, E, 100, 98, 102)]);
+    const b = book();
+    const mine = b.paper.trades.filter((x) => x.cfg === cfg && x.sym === sym && x.entryT === E);
+    const row =
+      b.db.get<{ r: number; exit_t: number; reason: string }>(
+        "SELECT r, exit_t, reason FROM paper_book_trades WHERE cfg = ? AND sym = ? AND side = ? AND entry_t = ?",
+        cfg,
+        sym,
+        1,
+        E,
+      ) ?? undefined;
+    return { long, mine, row };
+  });
+
+  it("[item 1, mirror] the held LONG books its own close, at its own exit and with its own r", () => {
+    const { long, mine } = MIRROR();
+    const own = mine.find((x) => x.side === 1);
+    assert.ok(
+      own,
+      `the held LONG has no close of its own; the book holds ${JSON.stringify(mine.map((x) => [x.side, x.exitT, x.r]))}`,
+    );
+    assert.equal(own!.exitT, long.exitT, "the LONG's own exit time");
+    assert.ok(Math.abs(own!.r - long.r) < 1e-12, `the LONG's own r ${long.r}, booked ${own!.r}`);
+  });
+
+  it("[item 1, mirror] the held LONG is booked once, and the SHORT of the same entry once too", () => {
+    const { mine } = MIRROR();
+    const longs = mine.filter((x) => x.side === 1).length;
+    const shorts = mine.filter((x) => x.side === -1).length;
+    assert.equal(longs, 1, `the LONG close is booked ${longs} times`);
+    assert.equal(shorts, 1, `the SHORT close is booked ${shorts} times`);
+  });
+
+  it("[item 1, mirror] the LONG's row in paper_book_trades is its own close (the book's record)", () => {
+    const { long, row } = MIRROR();
+    assert.ok(row, "the held LONG has a paper_book_trades row");
+    assert.equal(row!.reason, long.reason, `the row's reason ${row!.reason}`);
+    assert.equal(row!.exit_t, long.exitT, "the row's exit time");
+    assert.ok(Math.abs(row!.r - long.r) < 1e-12, `the row's r ${row!.r}, the LONG's own ${long.r}`);
+  });
+
   // a: a LONG and a SHORT of one config, symbol and entry, both held from the tape: each keeps its side, prices and key
   const ADOPT = memo(() => {
     const cfg = `${ENG}-adopt`;
