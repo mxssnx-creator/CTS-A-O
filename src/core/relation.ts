@@ -294,7 +294,7 @@ export interface Relation {
     usd: number;
     /** ended by an order not ours ("hand") */
     hand: { n: number; usd: number };
-    /** ended with the cause not proven ("flat": an unverified stop or take-profit, or a price without a cause) */
+    /** ended with the cause not proven ("flat": the unverified marker, booked at the market) */
     flat: { n: number; usd: number };
     list: RelationPosition[];
   } | null;
@@ -519,9 +519,9 @@ export function relationOf(i: RelationInput): Relation {
 /**
  * The real positions: the own ledger's closes (statistics.liveTrades), one position per symbol × side episode (its
  * reduces and its close), closed in [from, to]. A position an order not ours ended ("hand") is money, not the desk's result:
- * left out of the PF and counted apart. So is one whose cause is not proven ("flat", the unverified marker or a price
- * without a cause — statistics.ts keeps it out of every PF the same way). Beside each, its matched lanes (closed on
- * that symbol × side while it ran).
+ * left out of the PF and counted apart. So is one whose cause is not proven ("flat", the unverified marker booked at the
+ * market — statistics.ts keeps it out of every PF the same way). Beside each, its matched lanes (closed on that symbol ×
+ * side while it ran).
  */
 function positionsOf(
   trades: readonly RelPositionTrade[],
