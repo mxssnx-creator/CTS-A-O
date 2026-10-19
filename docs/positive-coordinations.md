@@ -57,7 +57,7 @@ desk prints a warning at start and on every patch that leaves one of them off (`
 | Signal confirmation: a signal enters only while an engine candidate (taken or not, since 6 Oct — see below) is open on its symbol in its direction | `wf.coord = { enabled: true, confirm: true }` | 8 causal days × 12 symbols: signal PF 1.32 → 1.58, drawdown halved (signals-validation.md). x01 paper, 15 h on 5 Oct: confirmed signal trades PF 7.29 (595, +27.5 %), unconfirmed PF 0.57 (333, −10.4 %) |
 | Hour lock, losing-hour cooldown, opposite-entry blocking | `coord.hourLock 0`, `cooldown "off"`, `conflict false` | each cost net on every variant (signals-validation.md) |
 | Signal acceptance (source × symbol × direction × type) | `signals.accept = { enabled: true, minPf: 1.3, hours: 48, minTrades: 6 }` | without acceptance signal units PF 0.4–0.7; the operator's evaluation is PF 1.3 |
-| Signal direction acceptance (each side's signals pooled — the run's active candidates, counted per signal entry since 6 Oct) | `signals.sideAccept = { enabled: true, minPf: 1.3, hours: 24, minTrades: 20 }` | x01, 48 h on 5 Oct: long PF 3–44, short PF 0.1–0.3 per 12 h |
+| Signal direction acceptance (each side's signals pooled — the run's active candidates, counted per signal entry since 6 Oct) — **operator: OFF by default and on x01, 19 Oct** ("always both sides by default"; override, see the section below) | `signals.sideAccept = { enabled: false, minPf: 1.3, hours: 24, minTrades: 20 }` — code default off since 19 Oct (on before) | x01, 48 h on 5 Oct: long PF 3–44, short PF 0.1–0.3 per 12 h (the record that split the sides; no new comparison run for the 19 Oct override) |
 | Signals trade their own base | `signals.ownBase: true` | the engine's Normal off / Block Active skip left signals ~16 closes a day |
 | Signal volatility floor | `signals.filter.volFloor: 0.003` | the move must be worth the 0.2 % round trip (worst drawdown 523 vs 660) |
 | Engine direction acceptance (type family × range × side) — **operator: OFF by default and on x01, 19 Oct** (override, see the section below) | `wf.engineSideAccept = { enabled: false, minPf: 1.05, hours: 24, minTrades: 30 }` — code default off since 19 Oct (on 6 Oct evening – 19 Oct) | x01 paper replay, 5 Oct: opened shorts PF 1.25 / held 0.51; everything opened PF 1.70 vs 1.0. Same tapes, 12 symbols, 6 h + 6 h, 5–6 Oct: OFF let in 187 shorts at PF 0.05 (net −2,222 % in trade units), the window's PF 3.62 → 1.82 |
@@ -361,6 +361,24 @@ Same candles, 12 symbols, 3 h + 3 h, desk of the brief with only Minimal's grid 
 5,460 and 1,678 → 4,098 at PF 0.61 → 0.61 and 0.51 → 0.53: twice the orders at the same PF, twice the loss. The code
 default (main) and the desk stay as they are; Minimal now also runs Micro's indications (`grid.minimal.microInds`,
 operator 6 Oct) — measured next.
+
+## Signal direction acceptance OFF by default (operator, 19 Oct) — "always both sides by default"
+
+The operator's words: "Always both sides ny default", after the x01 live desk opened only shorts. The signals' own
+direction gate (`signals.sideAccept`, PF 1.3 over 24 h, ≥ 20 trades per side) paused the long side in a rally just as
+the engine gate did (see the section below), so it is off by default and on x01. Together with the engine gate off,
+both directions open unless a setting pauses one.
+
+**No new causal comparison was run for this override.** The 5 Oct record that split the sides (48 h: long PF 3–44,
+short PF 0.1–0.3 per 12 h) is kept above as the measurement it overrides.
+
+What changed: `DEFAULT_SIGNALS.sideAccept.enabled` → `false` (src/core/signal-config.ts); the warning that fired on
+`enabled: false` now fires only for an enabled gate below PF 1.3 (src/core/positive.ts); the pinning assertion in
+positive-defaults.test.ts; the x01 live desk `docs/sims/sim24h-2026-10-06/x01-desk.json` → `enabled: false`. The
+historical experiment desks (sig12h, sigstop, exit-validation) keep their recorded `enabled: true`: they are measured
+runs, not live settings.
+
+Parameters (PF 1.3, 24 h, 20 trades) are kept so one flag re-enables the gate.
 
 ## Engine direction acceptance OFF by default and on x01 (operator, 19 Oct) — an explicit override
 
