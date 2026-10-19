@@ -1508,5 +1508,39 @@ describe("order sides, closes read from the venue history (pure)", () => {
       assert.equal(r[0].px_src, "bar", JSON.stringify(r[0]));
       assert.equal(r[0].reason, "stop", JSON.stringify(r[0]));
     });
+    // the control of that gate: the same unflagged close by hand on the hedge row names its side, so the gate admits it and
+    // it re-prices the close as "hand" at its fill
+    const handFill = s === 1 ? 9.7 : 20.3;
+    it(`OW-11 ${side}, hedge: a close by hand on the ${s === 1 ? "LONG" : "SHORT"} row (not ours, unflagged) re-prices the close as "hand" (the control of the one-way gate)`, () => {
+      const db = new CoreDb(":memory:");
+      const rt = { db, settings: { live: { connId } } };
+      const exitT = Date.now() - 60_000;
+      seed(db, exitT);
+      const n = reconcileLaneCloses(
+        rt,
+        [
+          {
+            symbol: "S1-USDT",
+            positionSide: s === 1 ? "LONG" : "SHORT",
+            side: exitSide,
+            type: "MARKET",
+            status: "FILLED",
+            clientOrderId: "",
+            avgPrice: handFill,
+            executedQty: 1,
+            updateTime: exitT,
+          },
+        ],
+        Date.now(),
+      );
+      assert.equal(n, 1, "the close by hand is re-priced on the hedge row");
+      const r = db.all<{ exit: number; px_src: string; reason: string }>(
+        // relation: all rows — the fixture reads back every row it wrote
+        "SELECT exit, px_src, reason FROM live_lane_trades WHERE id = 't1'",
+      );
+      assert.equal(r[0].px_src, "history");
+      assert.equal(r[0].reason, "hand", JSON.stringify(r[0]));
+      assert.ok(near(r[0].exit, handFill, 1e-9), `exit ${r[0].exit} at the fill ${handFill}`);
+    });
   }
 });
