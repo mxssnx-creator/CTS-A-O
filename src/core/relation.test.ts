@@ -329,6 +329,37 @@ describe("relationOf: one window, own lanes against the paper book's own record 
     assert.ok(Math.abs(pos.list[0].systemMeanR! - 1) < 1e-9);
   });
 
+  it("a position whose cause is not proven (flat: an unverified stop) is left out of the positions PF, counted apart, LONG and SHORT", () => {
+    const T = T0;
+    for (const side of [1, -1] as const) {
+      // the won position gains 2 on its notional of 100; the unverified one loses 10 (its stop, the bars reached neither level)
+      const win = 100 + 2 * side;
+      const loss = 100 - 10 * side;
+      const ledger = [
+        { coid: "CTSX01S_Qa1", sym: "S1-USDT", side, kind: "O", qty: 1, px: 100, status: "ok", msg: null, at: T, fillPx: 100, fee: 0.05 },
+        { coid: "CTSX01S_Ca2", sym: "S1-USDT", side, kind: "X", qty: 1, px: win, status: "ok", msg: null, at: T + H, fillPx: win, fee: 0.05 },
+        { coid: "CTSX01S_Qa3", sym: "S2-USDT", side, kind: "O", qty: 1, px: 100, status: "ok", msg: null, at: T, fillPx: 100, fee: 0.05 },
+        { coid: "flat-u", sym: "S2-USDT", side, kind: "F", qty: 0, px: loss, status: "ok", msg: `flat on the exchange (unverified ${loss})`, at: T + 2 * H },
+      ];
+      const rel = relationOf({
+        system: [],
+        lanes: [],
+        trades: liveTrades(ledger, "CTSX01S_".length),
+        from: T - 1,
+        to: T + 4 * H,
+        coverageFrom: 0,
+      });
+      const pos = rel.positions!;
+      assert.equal(pos.n, 1, `side ${side}: only the won position is an own position`);
+      assert.deepEqual(pos.list.map((p) => p.side), [side]);
+      assert.ok(Math.abs(pos.usd - (2 - 0.1)) < 1e-9, `side ${side}: usd ${pos.usd}`);
+      assert.equal(pos.hand.n, 0);
+      assert.equal(pos.flat.n, 1, `side ${side}: the unproven close counted apart`);
+      // its money: the gross loss, the opening fee and the exit's model share (the venue's exit reports no commission)
+      assert.ok(Math.abs(pos.flat.usd - (side * (loss - 100) - 0.05 - loss * 0.001)) < 1e-9, `side ${side}: flat usd ${pos.flat.usd}`);
+    }
+  });
+
   it("db.trim keeps every paper book close an exchange lane has (and a Block leg's), trims the rest", () => {
     const db = new CoreDb(":memory:");
     const N = 50_000 + 6;
@@ -430,7 +461,7 @@ describe("relationCheck: the standing guard (alarm only)", () => {
     const um = relationCheck(relWith(30, () => 0.01, () => 0.01, unv));
     assert.ok(um.alarms.some((a) => a.kind === "unmatched"));
     const rel = relWith(30, () => 0.01, () => 0.01);
-    rel.positions = { n: 2, pf: 0.5, usd: -1, hand: { n: 0, usd: 0 }, list: [] };
+    rel.positions = { n: 2, pf: 0.5, usd: -1, hand: { n: 0, usd: 0 }, flat: { n: 0, usd: 0 }, list: [] };
     assert.ok(relationCheck(rel).alarms.some((a) => a.kind === "unit-disagree"));
     assert.match(relationLine(rel, relationCheck(rel)), /ALARM unit-disagree/);
   });

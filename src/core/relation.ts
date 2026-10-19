@@ -284,12 +284,18 @@ export interface Relation {
   worst: RelationLane[];
   /** exchange stop-outs of lanes the system closed in profit */
   stopMismatch: number;
-  /** the real positions (own fills, USD), positions ended by an order not ours left out; null without a ledger */
+  /**
+   * the real positions (own fills, USD), positions ended by an order not ours or whose cause is not proven left out;
+   * null without a ledger
+   */
   positions: {
     n: number;
     pf: number;
     usd: number;
+    /** ended by an order not ours ("hand") */
     hand: { n: number; usd: number };
+    /** ended with the cause not proven ("flat": an unverified stop or take-profit, or a price without a cause) */
+    flat: { n: number; usd: number };
     list: RelationPosition[];
   } | null;
 }
@@ -513,7 +519,9 @@ export function relationOf(i: RelationInput): Relation {
 /**
  * The real positions: the own ledger's closes (statistics.liveTrades), one position per symbol × side episode (its
  * reduces and its close), closed in [from, to]. A position an order not ours ended ("hand") is money, not the desk's result:
- * left out of the PF and counted apart. Beside each, its matched lanes (closed on that symbol × side while it ran).
+ * left out of the PF and counted apart. So is one whose cause is not proven ("flat", the unverified marker or a price
+ * without a cause — statistics.ts keeps it out of every PF the same way). Beside each, its matched lanes (closed on
+ * that symbol × side while it ran).
  */
 function positionsOf(
   trades: readonly RelPositionTrade[],
@@ -521,17 +529,22 @@ function positionsOf(
   to: number,
   matched: ReadonlyArray<{ l: RelLaneRow; rSys: number }>,
 ): NonNullable<Relation["positions"]> {
-  const by = new Map<string, { sym: string; side: number; entryT: number; exitT: number; usd: number; hand: boolean }>();
+  const by = new Map<
+    string,
+    { sym: string; side: number; entryT: number; exitT: number; usd: number; hand: boolean; flat: boolean }
+  >();
   for (const x of trades) {
     const k = `${x.sym}|${x.side}|${x.entryT}`;
-    const p = by.get(k) ?? { sym: x.sym, side: x.side, entryT: x.entryT, exitT: x.exitT, usd: 0, hand: false };
+    const p = by.get(k) ?? { sym: x.sym, side: x.side, entryT: x.entryT, exitT: x.exitT, usd: 0, hand: false, flat: false };
     p.usd += x.r * x.notional;
     p.exitT = Math.max(p.exitT, x.exitT);
     if (x.reason === "hand") p.hand = true;
+    else if (x.reason === "flat") p.flat = true;
     by.set(k, p);
   }
   const list: RelationPosition[] = [];
   const hand = { n: 0, usd: 0 };
+  const flat = { n: 0, usd: 0 };
   let gp = 0;
   let gl = 0;
   let usd = 0;
@@ -540,6 +553,11 @@ function positionsOf(
     if (p.hand) {
       hand.n++;
       hand.usd += p.usd;
+      continue;
+    }
+    if (p.flat) {
+      flat.n++;
+      flat.usd += p.usd;
       continue;
     }
     const ls = matched.filter(
@@ -560,7 +578,7 @@ function positionsOf(
     if (p.usd > 0) gp += p.usd;
     else gl -= p.usd;
   }
-  return { n: list.length, pf: list.length ? profitFactor(gp, gl) : 0, usd, hand, list };
+  return { n: list.length, pf: list.length ? profitFactor(gp, gl) : 0, usd, hand, flat, list };
 }
 
 // ── the report ────────────────────────────────────────────────
@@ -598,10 +616,11 @@ export function relationMd(rel: Relation): string {
     line(rel.total),
     ...rel.byRange.map(line),
     "",
-    "### Per real position (own fills, USD; positions an order not ours ended are left out)",
+    "### Per real position (own fills, USD; positions an order not ours ended, or with a cause not proven, are left out)",
     pos
       ? `Positions ${pos.n} · PF ${pfOf({ n: pos.n, pf: pos.pf, net: 0 })} · net $${f(pos.usd, 2)} — per lane (every own lane): ` +
-        `${rel.ownLanes.n} lanes PF ${pfOf(rel.ownLanes)}. Ended by an order not ours: ${pos.hand.n} ($${f(pos.hand.usd, 2)}).`
+        `${rel.ownLanes.n} lanes PF ${pfOf(rel.ownLanes)}. Ended by an order not ours: ${pos.hand.n} ($${f(pos.hand.usd, 2)}).` +
+        (pos.flat.n ? ` Cause not proven (flat): ${pos.flat.n} ($${f(pos.flat.usd, 2)}).` : "")
       : "No ledger.",
     ...(pos && pos.list.length
       ? [
