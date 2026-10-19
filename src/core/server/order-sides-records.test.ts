@@ -418,13 +418,13 @@ async function closedAtTarget(side: 1 | -1, stop: number, tp: number, bars: Arra
 }
 
 describe("the take-profit a flat marker is priced at: a new position's own take-profit (live.server.ts stepLive, tpPxOf)", { timeout: 60_000 }, () => {
-  it("(e) take-profit LONG: a position closed at its take-profit 10.5 with no history is booked at that take-profit, not unverified (plan item 15, expected to fail at ce8a7f8: booked unverified at 10)", async () => {
+  it("(e) take-profit LONG: a position closed at its take-profit 10.5 with no history is booked at that take-profit, not unverified (plan item 15)", async () => {
     // the bars reach the take-profit (high 10.6) and not the stop (low 9.9 against 9.5)
     const m = await closedAtTarget(1, 9.5, 10.5, [{ h: 10.6, l: 9.9 }]);
     assert.deepEqual([m.px, m.msg], [10.5, "flat on the exchange (target 10.5)"]);
   });
 
-  it("(e) take-profit SHORT: a position closed at its take-profit 9.5 with no history is booked at that take-profit, not unverified (plan item 15, expected to fail at ce8a7f8: booked unverified at 10)", async () => {
+  it("(e) take-profit SHORT: a position closed at its take-profit 9.5 with no history is booked at that take-profit, not unverified (plan item 15)", async () => {
     // the mirror: the bars reach the take-profit (low 9.4) and not the stop (high 10.1 against 10.5)
     const m = await closedAtTarget(-1, 10.5, 9.5, [{ h: 10.1, l: 9.4 }]);
     assert.deepEqual([m.px, m.msg], [9.5, "flat on the exchange (target 9.5)"]);

@@ -2044,6 +2044,9 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       }
       return px;
     };
+    // the take-profit each flat marker of this step is priced at, read before the marker is written: the marker is the
+    // key's latest row and clears tpPxOf, as it clears stopPxOf (stopAtFlat above)
+    const tpAtFlat = new Map<string, number | null>();
     // own close orders resting on a key at this step's read: its stop(s) and its take-profit(s)
     const restingOf = (k: string) => {
       const [rsym, rsd] = k.split("|");
@@ -2110,7 +2113,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       else {
         const left = restingOf(k);
         const stopPx = stopAtFlat.has(k) ? (stopAtFlat.get(k) ?? null) : stopPxOf(k);
-        const tpPx = tpPxOf(k);
+        const tpPx = tpAtFlat.has(k) ? (tpAtFlat.get(k) ?? null) : tpPxOf(k);
         const inferred = closedBy({ ...left, stopPx, tpPx, px });
         if (inferred.why === "hand") by = { why: "hand", px: null, src: "ticker" };
         else {
@@ -2140,6 +2143,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       if (q > 0 && !onExchange.has(k) && !recent.has(k)) {
         flatKeys.push(k);
         stopAtFlat.set(k, stopPxOf(k));
+        tpAtFlat.set(k, tpPxOf(k));
         const [sym, sd] = k.split("|");
         // a local row (never sent): an id outside the own tag, so no exchange-id check ever looks for it
         const fid = `flat-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e9).toString(36)}`;
