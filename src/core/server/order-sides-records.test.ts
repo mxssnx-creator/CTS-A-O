@@ -79,7 +79,7 @@ describe("flat markers: the reason each one books (statistics.ts liveLedger)", (
   for (const s of SIDES) {
     it(`(b) ${s.name}: "flat on the exchange (unverified ${s.loss})" is not an own stop-out: it books "flat", out of PF (plan item 14)`, () => {
       const [x] = closesOf([opened(s.side), flatOf(s.side, s.loss, `flat on the exchange (unverified ${s.loss})`)]);
-      // statistics.ts:460-462 keeps "flat" (a cause not proven) out of every PF, as "hand"; the unverified close is that case
+      // statistics.ts:460-463 keeps "flat" (a cause not proven) out of every PF, as "hand"; the unverified close is that case
       assert.equal(x.reason, "flat", `reason ${x.reason}`);
     });
 
