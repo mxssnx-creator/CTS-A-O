@@ -88,6 +88,8 @@ judge each direction on its own record:
   (simulation, paper, pending entries). The engine's `maxPositions` keeps counting both (a measured preset value).
 - **Block sources `symbol` and `indication` per direction** (`direction` already was; `overall` and `type` pool by
   definition).
+- **The Block config source stays pooled by default:** `block.sideKeys` (default off) keeps its level and pause across
+  both directions until the comparison in "Block Overall: corrected rules" below is recorded here.
 - **Stable-02 symbol windows per direction** (`S2Coord`, found by the 6 Oct regression suite): the last-N window and
   the rolling 24-result PF are kept per symbol × direction, so losing shorts never hold back the symbol's longs. The
   coordination stays on (`coord.s2Windows` unchanged); only its key gained the side. The relation volume is unchanged
@@ -548,6 +550,7 @@ switchable, each option off by default:
 | `block.levelMinWin` | 0: a positive sum is a level — 7 losses and one big win are level 8 | e.g. 0.5: a level also needs half its closes won | one outlier is not a streak |
 | `block.poolSignals` | true: signal candidates feed the pooled sources engine entries are judged on | `false`: the engine's candidates only | signals have their own record (`signalsOwn`) |
 | `block.poolDedupe` | false: every config's candidate counts | `true`: an identical close (one entry under two indication names) counts once | double counting |
+| `block.sideKeys` | false: the config source's level and pause pool both directions | `true`: the config source's level and pause per direction | 6 Oct: long and short run independently. Acts only while `sources.config` is on (DEFAULT_BLOCK has it off, so the default changes no engine entry). Comparison: recipe `blk-cfg-*`, not yet run; no default changes until its result is recorded here |
 
 Fixed outright (not a policy; identical at the default `maxMult` 8, so no golden moves): `maxMult` caps the **total**
 stack in every type — Overall capped only each leg and hard-coded the stack at 8× (block.ts, the walk-forward and paper
