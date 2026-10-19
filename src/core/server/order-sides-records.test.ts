@@ -1,11 +1,12 @@
 // Order sides in the records and the PF: a LONG (side 1) and a SHORT (side -1) of one config are two positions, and each
 // side's closes, flat markers, reconciled exits, validation record and gate keep their own side. Layer: the ledger's
 // closes and P&L (statistics.ts liveLedger), the lane closes (live-record.ts attributeLanes), the live record and its
-// gate (live-record.ts liveRecords, live-validation.ts liveGate / liveEntryOk), the stop a flat marker is priced at (one
-// control step of live.server.ts on the simulated venue, stopPxOf) and the lane exits reconciled to the venue's fills
-// (live.server.ts reconcileLaneCloses). Plan items: 13 (the live gate pools LONG and SHORT closes), 14 ("(unverified X)"
-// reads as a stop-out), 15 (a stale stop prices a new position). Group (d) runs with live.sideGates on (its cells pass
-// the option); its control cells run with the option off and pin the pooled verdict, which stays as it was.
+// gate (live-record.ts liveRecords, live-validation.ts liveGate / liveEntryOk), the stop and the take-profit a flat
+// marker is priced at (one control step of live.server.ts on the simulated venue, stopPxOf and tpPxOf) and the lane
+// exits reconciled to the venue's fills (live.server.ts reconcileLaneCloses). Plan items: 13 (the live gate pools LONG
+// and SHORT closes), 14 ("(unverified X)" reads as a stop-out), 15 (a stale stop or take-profit prices a new position).
+// Group (d) runs with live.sideGates on (its cells pass the option); its control cells run with the option off and pin
+// the pooled verdict, which stays as it was.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { CoreDb } from "./db.server.ts";
