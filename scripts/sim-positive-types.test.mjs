@@ -1,5 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { POSITION_COST_STRESS_RT } from "../src/core/model-cost.ts";
 import { positiveTypesReport } from "./lib/positive-types-report.mjs";
 
 const H = 3_600_000,
@@ -49,7 +50,9 @@ describe("positive family simulation unit-return reporting", () => {
     near(report.byFamily[0].pf, 1.36);
     near(report.familyStats[0].pfStored, 1.36);
     near(report.familyStats[0].pf02, 1.36);
-    near(report.familyStats[0].pf04, 0.0116 / 0.012);
+    // the fixture's exits embed 0.2 % of cost; the stress run deducts the rest of POSITION_COST_STRESS_RT
+    const stressExtra = POSITION_COST_STRESS_RT - 0.002;
+    near(report.familyStats[0].pf04, (0.0136 - stressExtra) / (0.01 + stressExtra));
     near(report.sizedSimulation.pf, 0.2);
     near(report.sizedSimulation.net, -5.44);
     assert.equal(report.total.n, 2);
