@@ -233,6 +233,12 @@ describe("live.sideGates: the engine proof, the simulated fallback and the setti
     for (const v of ["yes", 1, null])
       assert.throws(() => checkSettings({ live: { ...DEFAULT_SETTINGS.live, sideGates: v } } as never), /side gates/);
   });
+
+  it("(d) control: DEFAULT_SETTINGS leaves live.sideGates unset: the default keeps one pooled record (pass)", () => {
+    assert.equal(DEFAULT_SETTINGS.live.sideGates, undefined, "unset by default");
+    // the default reads as the pooled path (the runtime's `sideGates === true` is false for it)
+    assert.equal(liveRecords(alternating(-0.02, 0.01), { bySide: DEFAULT_SETTINGS.live.sideGates === true }).size, 1);
+  });
 });
 
 // ── the stop a flat marker is priced at (live.server.ts stepLive, stopPxOf) ───────────────────────────────────────────
