@@ -2204,8 +2204,9 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         // our part gone: someone else's ("independent" trades its own beside it); history unreadable: not touched
         if (!gone || !independent) foreign.add(posOneway ? vsym : k);
         if (gone) {
-          // the stop it carried, read before this marker clears it (as the flat loop above does)
+          // the stop and the take-profit it carried, read before this marker clears them (as the flat loop above does)
           stopAtFlat.set(k, stopPxOf(k));
+          tpAtFlat.set(k, tpPxOf(k));
           const fid = `flat-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e9).toString(36)}`;
           record(fid, { key: k, sym: vsym, side: Number(vsd) }, "F", 0, 0, "ok", "own exit filled while away — the position there is not ours");
           ledger.set(k, 0);

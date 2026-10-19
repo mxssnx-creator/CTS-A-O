@@ -287,9 +287,10 @@ async function closedOutside(side: 1 | -1, oldStop: number, newStop: number | nu
  * A relaunch: the desk was down, its previous step (30 min ago) saw the side held. The own stop of the position it opened
  * 3 h ago filled 1 h ago; someone else holds the side now. The venue history since the previous step does not show the
  * fill (it precedes that step), so only the desk's own stop price can book the close. The 1-minute bars of the last 30
- * minutes are `bars`. `side` is the side of the position: 1 LONG, -1 SHORT.
+ * minutes are `bars`. `side` is the side of the position: 1 LONG, -1 SHORT. With `tp` the position's take-profit filled
+ * instead of its stop (the stop stays on the record, untouched, and the history row is the take-profit's fill).
  */
-async function closedOnRelaunch(side: 1 | -1, ownStop: number, bars: Array<Pick<Candle, "h" | "l">>) {
+async function closedOnRelaunch(side: 1 | -1, ownStop: number, bars: Array<Pick<Candle, "h" | "l">>, tp: number | null = null) {
   resetLiveBackoff();
   const ex = new SimExchange();
   const { rt } = fakeRt(new CoreDb(":memory:"));
@@ -311,6 +312,7 @@ async function closedOnRelaunch(side: 1 | -1, ownStop: number, bars: Array<Pick<
     );
   put(`${tag}Ea1`, "O", 1, 10, at - 3 * H);
   put(`${tag}Sa2`, "S", 0, ownStop, at - 3 * H + 1);
+  if (tp !== null) put(`${tag}Ta3`, "T", 0, tp, at - 3 * H + 2);
   rt.db.kvSet("controlStatus", {
     at: at - H / 2,
     connHash: stateHash([ex.fingerprint()]),
@@ -330,11 +332,11 @@ async function closedOnRelaunch(side: 1 | -1, ownStop: number, bars: Array<Pick<
     symbol: "S0-USDT",
     positionSide: ps,
     side: side === 1 ? "SELL" : "BUY",
-    type: "STOP_MARKET",
+    type: tp === null ? "STOP_MARKET" : "TAKE_PROFIT_MARKET",
     status: "FILLED",
-    avgPrice: ownStop,
+    avgPrice: tp ?? ownStop,
     executedQty: 1,
-    clientOrderId: `${tag}Sa2`,
+    clientOrderId: tp === null ? `${tag}Sa2` : `${tag}Ta3`,
     updateTime: at - H,
   });
   const candles: Candle[] = bars.map((b, i) => ({ t: at - (30 - i) * 60_000, o: 10, h: b.h, l: b.l, c: 10, v: 1 }));
@@ -378,6 +380,18 @@ describe("the stop a flat marker is priced at: a new position's own stop only (l
   it("(e) relaunch SHORT: our stop filled while the desk was away and the history read finds nothing: the close is booked at that stop 10.5", async () => {
     const m = await closedOnRelaunch(-1, 10.5, [{ h: 10.6, l: 9.9 }]);
     assert.deepEqual([m.px, m.msg], [10.5, "own exit filled while away — the position there is not ours (stop 10.5)"]);
+  });
+
+  it("(e) relaunch take-profit LONG: our take-profit filled while the desk was away with the stop untouched, and the history read finds nothing: the close is booked at that take-profit 10.5", async () => {
+    // the bars reach the take-profit (high 10.6) and not the stop (low 9.9 against 9.5)
+    const m = await closedOnRelaunch(1, 9.5, [{ h: 10.6, l: 9.9 }], 10.5);
+    assert.deepEqual([m.px, m.msg], [10.5, "own exit filled while away — the position there is not ours (target 10.5)"]);
+  });
+
+  it("(e) relaunch take-profit SHORT: our take-profit filled while the desk was away with the stop untouched, and the history read finds nothing: the close is booked at that take-profit 9.5", async () => {
+    // the mirror: the bars reach the take-profit (low 9.4) and not the stop (high 10.1 against 10.5)
+    const m = await closedOnRelaunch(-1, 10.5, [{ h: 10.1, l: 9.4 }], 9.5);
+    assert.deepEqual([m.px, m.msg], [9.5, "own exit filled while away — the position there is not ours (target 9.5)"]);
   });
 });
 
