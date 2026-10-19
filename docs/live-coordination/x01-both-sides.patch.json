@@ -1,0 +1,10 @@
+{
+  "at": "2026-10-19T12:00:00.000Z",
+  "why": "x01 signals: open both directions (operator, 19 Oct: the desk opened only shorts). Cause: signals.sideAccept pools each direction's closes over the last 24 h and blocks a side whose pooled PF is under 1.3 (sig:signalSide). In the falling-market replay the longs pooled below 1.3, so every long was blocked. This patch turns that per-direction acceptance off so each side trades. PREPARED ONLY: not applied, desk not started. It switches off a positive coordination (docs/positive-coordinations.md): the operator must confirm, and the causal comparison that beats it must be recorded there first.",
+  "reason": "x01 signals: both directions open (signals.sideAccept off)",
+  "settings": {
+    "signals": {
+      "sideAccept": { "enabled": false }
+    }
+  }
+}
