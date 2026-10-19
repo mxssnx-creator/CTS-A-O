@@ -2,7 +2,7 @@
 // its side and its key (cfg|sym|side|entryT); the trailing stop only moves favourably; a stop or a target exits at its
 // level; a closed position books the r of its own side. Two plan items are pinned here: item 1, the paper step's tape
 // scan matched a held position by config, symbol and entry time only, now by its side too (the heldSide check in the
-// scan); and item 2, the Stable-02 pause (entryHeldBack, runtime.server.ts:5246-5248) compares the bare symbol with
+// scan); and item 2, the Stable-02 pause (entryHeldBack, runtime.server.ts:5266-5268) compares the bare symbol with
 // keys that are sym|±1 while coord.s2Side is off (the default), and the entry's own symbol × direction when it is on.
 import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
