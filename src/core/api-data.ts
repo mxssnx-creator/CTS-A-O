@@ -992,7 +992,8 @@ async function liveSession(r: Awaited<ReturnType<typeof rt>>) {
   let realized = 0;
   let n = 0;
   const hand = { n: 0, usd: 0 };
-  // own quantity the exchange ended at a verified price, cause unproven: in the realized money, counted apart
+  // own quantity the exchange ended with its cause not proven (a flat marker: the unverified one at the market, or one
+  // priced from the lane exit or the bar close): in the realized money, counted apart
   const flat = { n: 0, usd: 0 };
   for (const x of trades) {
     if (since !== null && x.exitT < since) continue;

@@ -359,7 +359,10 @@ export interface StatisticsReport {
   total: GroupRow & { usdEnd: number; mdd: number; expectancy: number; sqn: number; tph: number };
   /** live closes an order not ours made: in the balance, not in any PF or breakdown */
   hand: { n: number; usd: number };
-  /** live closes at a verified price whose cause is not proven (a flat marker without its own price): as hand */
+  /**
+   * live closes whose cause is not proven: a flat marker priced from the lane exit or the venue, or the unverified
+   * marker booked at the market; kept in the balance and out of every PF, counted apart from hand
+   */
   flat: { n: number; usd: number };
   /** positions open at the window's end (marked to market in the timeline, never a close) */
   open: { n: number; positions: number; notional: number };
@@ -454,8 +457,8 @@ export function buildStatistics(i: StatisticsInput): StatisticsReport {
   // a live close an order not ours made ("hand", relation.ts) is money, not a result: in the balance (the timeline
   // reads every trade), left out of every PF and breakdown, and counted apart
   const inWindow = i.trades.filter((x) => x.exitT > i.startT && x.exitT <= i.endT);
-  // a live close whose cause is not proven ("flat": priced at a verified price, the order that ended it unknown) is
-  // counted the same way, apart from hand
+  // a live close whose cause is not proven ("flat": the unverified marker at the market, or a marker priced from the lane
+  // exit or the venue, the order that ended it unknown) is counted the same way, apart from hand
   const apart = (x: StatTrade) => x.reason === "hand" || x.reason === "flat";
   const trades = inWindow.filter((x) => !apart(x));
   const unit = i.unit;
