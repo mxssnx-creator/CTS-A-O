@@ -577,6 +577,34 @@ describe("order sides, hedge mode (overall control): LONG and SHORT alike", { ti
     });
   }
 
+  // one-way, the exit read while the side is flat (live.server.ts restingOf): a position closed outside the desk while
+  // its own stop and take-profit still rest is closed by hand. restingOf read a BOTH order as not LONG and skipped a
+  // long's own orders, so the close was inferred as the stop (the level nearer the price), and with no bars to prove it,
+  // booked unverified at the ticker. The short reads BOTH as SHORT, its own lane, so the short's cell is its control.
+  for (const s of [1, -1] as const) {
+    const side = s === 1 ? "long" : "short";
+    const sym = s === 1 ? "S1-USDT" : "S2-USDT";
+    const mark = s === 1 ? 10 : 20;
+    it(`OW-13 ${side}: one-way: a close by hand while the position's own stop and take-profit rest is booked by hand, not by its stop`, async () => {
+      const tick = clock();
+      const ex = new OneWayVenue();
+      const { rt } = rtOf({ positionMode: "oneway" });
+      const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+      rt.paper.positions = [lane("combo|ema-9-21@m15|a", sym, s, mark, 0.02, 0.05)];
+      await step();
+      assert.equal(ex.orders.length, 2, "own stop and take-profit placed");
+      // the venue closes the position outside the desk and leaves our two orders resting (no history row of a close)
+      tick(11 * 60_000);
+      ex.net.delete(sym);
+      await step();
+      const events = rt.db.all<{ msg: string }>("SELECT msg FROM events").map((e) => e.msg);
+      assert.ok(
+        events.some((m) => m.includes(`${sym}|${s} was closed by hand`)),
+        `the close is not booked by hand: ${JSON.stringify(events.filter((m) => m.includes("was closed")))}`,
+      );
+    });
+  }
+
   // item 9: one-way merged with someone else's quantity: a lost stop of the merged side is re-placed with closePosition,
   // which closes the other owner's quantity with ours when it triggers (the control H-9 is the hedge side)
   for (const s of [1, -1] as const) {

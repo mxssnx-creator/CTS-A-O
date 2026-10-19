@@ -2062,14 +2062,29 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     // the take-profit each flat marker of this step is priced at, read before the marker is written: the marker is the
     // key's latest row and clears tpPxOf, as it clears stopPxOf (stopAtFlat above)
     const tpAtFlat = new Map<string, number | null>();
-    // own close orders resting on a key at this step's read: its stop(s) and its take-profit(s)
+    // the position key (`${venueSymbol}|1` long, `|-1` short) an own order belongs to. Hedge mode: its position side.
+    // One-way: the order names no side (BOTH; the book reads it as none), so the key its own record was sent for, else
+    // the symbol's one net position (one-way holds one position per symbol); neither: null — never a guess
+    const keyOfOwn = (o: { venueSymbol: string; positionSide?: string; clientOrderId?: string }, bk: BookView): string | null => {
+      const ps = String(o.positionSide ?? "").toUpperCase();
+      if (!posOneway) return `${o.venueSymbol}|${ps === "SHORT" ? -1 : 1}`;
+      if (ps === "LONG" || ps === "SHORT") return `${o.venueSymbol}|${ps === "LONG" ? 1 : -1}`;
+      const [rsym, rsd] = (ctlByUpper().get((o.clientOrderId ?? "").toUpperCase())?.k ?? "").split("|");
+      if (rsym === o.venueSymbol && (rsd === "1" || rsd === "-1")) return `${rsym}|${rsd}`;
+      const net = bk.positions.find((p) => p.venueSymbol === o.venueSymbol);
+      return net ? `${o.venueSymbol}|${net.side === "long" ? 1 : -1}` : null;
+    };
+    // own close orders resting on a key at this step's read: its stop(s) and its take-profit(s). One-way: the order is
+    // the key's when keyOfOwn says so (a BOTH order is its lane's, as the other one-way reads have it); hedge: its side
     const restingOf = (k: string) => {
       const [rsym, rsd] = k.split("|");
       const out = { stopLeft: false, tpLeft: false };
       if (ordersStale) return out;
       for (const o of book.orders) {
         if (o.venueSymbol !== rsym || !isOwnCoid(o.clientOrderId, s.connId)) continue;
-        if (o.positionSide && (o.positionSide === "LONG") !== (Number(rsd) === 1)) continue;
+        if (posOneway) {
+          if (keyOfOwn(o, book) !== k) continue;
+        } else if (o.positionSide && (o.positionSide === "LONG") !== (Number(rsd) === 1)) continue;
         const kind = ownCoidKind(o.clientOrderId, s.connId);
         if (kind === "T") out.tpLeft = true;
         else if (isBackstopKind(kind)) out.stopLeft = true;
@@ -2417,18 +2432,6 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       } catch {
         return { status: "unknown" } as const;
       }
-    };
-    // the position key (`${venueSymbol}|1` long, `|-1` short) an own order belongs to. Hedge mode: its position side.
-    // One-way: the order names no side (BOTH; the book reads it as none), so the key its own record was sent for, else
-    // the symbol's one net position (one-way holds one position per symbol); neither: null — never a guess
-    const keyOfOwn = (o: { venueSymbol: string; positionSide?: string; clientOrderId?: string }, bk: BookView): string | null => {
-      const ps = String(o.positionSide ?? "").toUpperCase();
-      if (!posOneway) return `${o.venueSymbol}|${ps === "SHORT" ? -1 : 1}`;
-      if (ps === "LONG" || ps === "SHORT") return `${o.venueSymbol}|${ps === "LONG" ? 1 : -1}`;
-      const [rsym, rsd] = (ctlByUpper().get((o.clientOrderId ?? "").toUpperCase())?.k ?? "").split("|");
-      if (rsym === o.venueSymbol && (rsd === "1" || rsd === "-1")) return `${rsym}|${rsd}`;
-      const net = bk.positions.find((p) => p.venueSymbol === o.venueSymbol);
-      return net ? `${o.venueSymbol}|${net.side === "long" ? 1 : -1}` : null;
     };
     // a lane order the venue filled reduced the position without an order of ours: the own-quantity ledger follows
     // (a local row — never sent — so the ledger keeps matching what the exchange holds of ours)
