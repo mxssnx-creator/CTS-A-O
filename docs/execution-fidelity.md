@@ -37,7 +37,8 @@ ended by an order not ours and is counted apart.
    query. The source scan in `relation.test.ts` fails on any other `FROM` / `JOIN live_lane_trades`.
 2. **Count rows that are not own apart.** Never drop them silently. botStats reports `hand` / `unverified` /
    `restart`. relationOf reports them under `counts.excluded`. statistics books a position an order not ours ended
-   as reason `hand`: it stays in the balance and is left out of every PF.
+   as reason `hand`, and a position whose cause is not proven (the unverified marker, or a flat marker priced from the
+   lane exit or the venue) as reason `flat`: both stay in the balance and are left out of every PF, counted apart.
 3. **Manual quantity is never own.** Own quantity is only what own fills prove. The operator's position is never
    closed or re-stopped, and never shapes own exits (liquidation clamp, closePosition). In hedge mode an exit is
    bounded to the own quantity.
@@ -50,8 +51,8 @@ ended by an order not ours and is counted apart.
    - A lane whose paper position is still open is `systemOpen`. A paper position that left the book without a close
      is `systemDropped`.
 5. **Two units, side by side.** Per lane (trade %, the matched lanes) and per real position (USD, own fills via
-   `statistics.liveTrades`, positions ended by an order not ours left out). The check raises an alarm when the two
-   disagree about PF 1.
+   `statistics.liveTrades`, positions ended by an order not ours or whose cause is not proven, left out). The check
+   raises an alarm when the two disagree about PF 1.
 6. **One sign and an exact decomposition.** gap = exchange − system: negative means the exchange did worse. The
    prices are E_s (sim entry), E_h (book adoption, `held_px`), E_e (exchange join), X_s (system exit) and X_e
    (exchange exit). For a single-leg lane:
