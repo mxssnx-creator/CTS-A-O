@@ -2151,7 +2151,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       for (const k of [...held.keys()]) {
         if (!((ledger.get(k) ?? 0) > 0) || recent.has(k)) continue;
         const [vsym, vsd] = k.split("|");
-        const vps = Number(vsd) === 1 ? "LONG" : "SHORT";
+        // one-way: the venue's one position per symbol is BOTH (the history rows name it so); hedge: the key's side
+        const vps = posOneway ? "BOTH" : Number(vsd) === 1 ? "LONG" : "SHORT";
         if (
           book.orders.some(
             (o) => o.venueSymbol === vsym && isOwnCoid(o.clientOrderId, s.connId) && (!o.positionSide || o.positionSide === vps),
@@ -2176,7 +2177,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
                   if (kd !== "T" && !isBackstopKind(kd)) return false;
                   if (!/^(STOP|TAKE_PROFIT)/.test(String(o.type ?? "").toUpperCase())) return false;
                   if (String(o.positionSide ?? "").toUpperCase() !== vps) return false;
-                  if (String(o.side ?? "").toUpperCase() !== (vps === "LONG" ? "SELL" : "BUY")) return false;
+                  if (String(o.side ?? "").toUpperCase() !== (Number(vsd) === 1 ? "SELL" : "BUY")) return false;
                   if (!String(o.status ?? "").toUpperCase().includes("FILLED")) return false;
                   const at = Number(o.updateTime ?? o.time ?? 0);
                   return !(at > 0) || at >= openAt;
