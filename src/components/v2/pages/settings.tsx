@@ -2382,7 +2382,7 @@ export function SettingsPage() {
             </Field>
             <Field
               label="Max stack"
-              hint="volume cap of a raised position (default 8×) · Overall: each source up to max − 1 extra, the stack ≤ 8×"
+              hint="total volume cap of a raised position (default 8×) · Overall: the whole stack of every source's leg within it"
             >
               <Num
                 step={0.1}

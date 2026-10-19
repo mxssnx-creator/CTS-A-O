@@ -60,7 +60,7 @@ import { ATR_PERIOD, simulate, splitSides } from "./backtest.ts";
 import { simulateDca } from "./dca.ts";
 import { simulateAxis, simulateAxisDesk, snapTpRatio } from "./axis.ts";
 import { adjustProtect, setKeyOf, type AdjustState } from "../adjust.ts";
-import { BlockBook, blockBookOf, blockDecide, bookLevels, sourceKey, type BlockSource } from "./block.ts";
+import { BlockBook, blockBookOf, blockDecide, blockStackCap, bookLevels, sourceKey, type BlockSource } from "./block.ts";
 import { S2Coord } from "./s2coord.ts";
 import { botFamilyOf } from "../bot-stats.ts";
 import { INDICATION_BY_ID, isSignalInd, laneOf, signalSourceOf } from "../indications/registry.ts";
@@ -2229,7 +2229,7 @@ export function bookFor(o: { toggles: { block?: boolean }; sideGateN?: number; b
 /** Feed one closed candidate into the Block book and, for a signal, into the signal guard. */
 export function feedBooks(e: BlockFeedEntry, book: BlockBook | null, guard?: SignalGuard | null) {
   if (e.open) return; // not closed: its mark is no result
-  book?.add(e);
+  book?.add(e, !!e.ind && isSignalInd(e.ind));
   // keyed by the candidate's config (the same key execDecision checks); the exit time feeds the loss-cluster guard
   if (guard && e.ind && isSignalInd(e.ind)) {
     // the signal entry the close belongs to: its k configs count once in the loss cluster and the acceptance counts
@@ -4601,7 +4601,7 @@ export function* walkForwardGen(
       // the sources that raised it pause once it closes positive (the feed entry carries them into the book)
       if (dec.vol > 1 && dec.src?.length) fx.bsrc = dec.src;
       // Stable-02 relation volume on top of the Block volume (the stack stays within the Block maximum)
-      const stackCap = o.block.mode === "overall" ? 8 : o.block.maxMult;
+      const stackCap = blockStackCap(o.block);
       const cv = s2 ? Math.min(s2.volume(tr.entryT), Math.max(1, stackCap / dec.vol)) : 1;
       const x: Trade = {
         ...tr,

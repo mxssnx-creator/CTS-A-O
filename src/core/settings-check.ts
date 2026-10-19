@@ -278,6 +278,12 @@ export function checkSettings(s: Partial<CoreSettings>) {
       for (const w of s.block.windowCandidates) num(w, 1, 500, "block window candidate");
     }
     if (s.block.windowLookback !== undefined) num(s.block.windowLookback, 30, 5000, "block window lookback");
+    if (s.block.stepFloor !== undefined && typeof s.block.stepFloor !== "boolean")
+      throw new Error("block step floor: on / off");
+    if (s.block.windowHours !== undefined) num(s.block.windowHours, 0, 168, "block activity window (hours, 0 = off)");
+    if (s.block.levelMinWin !== undefined) num(s.block.levelMinWin, 0, 1, "block level win share (0 = off)");
+    for (const k of ["poolSignals", "poolDedupe"] as const)
+      if (s.block[k] !== undefined && typeof s.block[k] !== "boolean") throw new Error(`block ${k}: on / off`);
     num(s.block.increase, 0.05, 1, "block increase");
     const span = (pair: unknown, lo: number, hi: number, name: string) => {
       if (pair === undefined) return;

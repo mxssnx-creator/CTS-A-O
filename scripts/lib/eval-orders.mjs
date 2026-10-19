@@ -25,3 +25,42 @@ export function unitR(t) {
   const m = Number(t.mult);
   return Number.isFinite(m) && m > 0 ? t.r / m : t.r;
 }
+
+const pf4 = (rs) => {
+  let gp = 0;
+  let gl = 0;
+  for (const r of rs) {
+    if (r > 0) gp += r;
+    else gl -= r;
+  }
+  return gl > 1e-12 ? +(gp / gl).toFixed(4) : null;
+};
+
+/**
+ * What Block did to a set of orders (stored basis: r sized by its multiple, `mult` beside it). The eval's own PF is
+ * unit (unitR), which cannot see Block at all: an eval with Block on and off scored the same per-order edge. This adds
+ * the volume-weighted PF (what the book earns with Block's sizes) and the unit PF of the raised and the unraised orders
+ * apart (does Block raise the better entries?). null = no losing order (or no order) in that group.
+ * @param {Array<{ r: number, mult?: number }>} orders
+ */
+export function blockSplit(orders) {
+  const raised = [];
+  const unraised = [];
+  let multSum = 0;
+  for (const t of orders) {
+    const m = Number.isFinite(Number(t.mult)) && Number(t.mult) > 0 ? Number(t.mult) : 1;
+    multSum += m;
+    if (m > 1 + 1e-9) raised.push(t);
+    else unraised.push(t);
+  }
+  return {
+    n: orders.length,
+    raised: raised.length,
+    meanMult: orders.length ? +(multSum / orders.length).toFixed(4) : null,
+    pfVol: pf4(orders.map((t) => t.r)),
+    pfUnit: pf4(orders.map(unitR)),
+    raisedPfUnit: pf4(raised.map(unitR)),
+    raisedPfVol: pf4(raised.map((t) => t.r)),
+    unraisedPfUnit: pf4(unraised.map(unitR)),
+  };
+}

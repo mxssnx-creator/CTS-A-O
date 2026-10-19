@@ -205,7 +205,7 @@ import { OWN_CLOSE_SQL } from "../relation.ts";
 import type { ExchangeAccept } from "../signals.ts";
 
 import os from "node:os";
-import { type BlockBook, blockBookOf } from "../sim/block.ts";
+import { type BlockBook, blockBookOf, blockStackCap } from "../sim/block.ts";
 import { trailBar } from "../sim/backtest.ts";
 import {
   activeSignals,
@@ -4336,8 +4336,10 @@ export class CoreRuntime {
     const key = `${n}|${minPf}|${this.db.version("paper_book_trades")}|${this.db.version("live_lane_trades")}`;
     if (this.proofMemo?.key === key) return this.proofMemo.out;
     const ex = this.exchangeRecords(0);
+    // judged at one unit (r / its execution multiple), as the exchange record is: a Block-raised paper close weighed
+    // its multiple against an exchange close of one unit
     const rows = this.db.all<{ cfg: string; exit_t: number | null; r: number }>(
-      "SELECT cfg, exit_t, r FROM paper_book_trades WHERE reason != 'dropped' AND r IS NOT NULL",
+      "SELECT cfg, exit_t, r / COALESCE(NULLIF(mult, 0), NULLIF(vol, 0), 1) AS r FROM paper_book_trades WHERE reason != 'dropped' AND r IS NOT NULL",
     );
     const paper = liveRecords(rows.filter((x) => x.exit_t !== null).map((x) => ({ cfg: x.cfg, exitT: x.exit_t!, r: x.r })));
     const out = { ...engineProven(paper, ex, now, n, minPf), n, minPf };
@@ -5592,7 +5594,7 @@ export class CoreRuntime {
       perSide.set(`${cls}|${op.side}`, sd + 1);
       openBy.set(cls, (openBy.get(cls) ?? 0) + 1);
       // new entries take the relation volume the simulation ended with (within the Block maximum)
-      const stackCap = this.wf.block.mode === "overall" ? 8 : this.wf.block.maxMult;
+      const stackCap = blockStackCap(this.wf.block);
       const cv =
         !held && s2End?.factor ? Math.min(1 + s2End.factor, Math.max(1, stackCap / d.vol)) : 1;
       openKeys.add(openDupKey(op));
@@ -5697,19 +5699,20 @@ export class CoreRuntime {
         const k = orderKey(p);
         if (openNow.has(k)) continue;
         const x = tradeOf.get(k);
+        // (mult: the execution multiple r is sized by — r / mult is the unit return the exchange record is in)
         rows.push(
           // (with the prices of the executable record: the price at adoption, the sim's entry and exit)
           x
-            ? [p.cfg, p.sym, p.side, p.entryT, x.exitT, x.r, x.vol ?? 1, x.reason ?? "close", p.heldAt ?? null, now, p.heldPx ?? null, x.entry, x.exit]
+            ? [p.cfg, p.sym, p.side, p.entryT, x.exitT, x.r, x.vol ?? 1, x.reason ?? "close", p.heldAt ?? null, now, p.heldPx ?? null, x.entry, x.exit, x.mult ?? 1]
             : // left the book without a close on record (retired, dropped from its tape): its last mark, flagged
-              [p.cfg, p.sym, p.side, p.entryT, now, (p.mtm ?? 0) * (p.vol ?? 1), p.vol ?? 1, "dropped", p.heldAt ?? null, now, p.heldPx ?? null, p.entry, null],
+              [p.cfg, p.sym, p.side, p.entryT, now, (p.mtm ?? 0) * (p.vol ?? 1), p.vol ?? 1, "dropped", p.heldAt ?? null, now, p.heldPx ?? null, p.entry, null, positionMult(p)],
         );
       }
       if (rows.length)
         this.db.tx(() => {
           for (const r of rows)
             this.db.run(
-              "INSERT OR IGNORE INTO paper_book_trades (cfg, sym, side, entry_t, exit_t, r, vol, reason, held_at, at, held_px, entry, exit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              "INSERT OR IGNORE INTO paper_book_trades (cfg, sym, side, entry_t, exit_t, r, vol, reason, held_at, at, held_px, entry, exit, mult) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
               ...r,
             );
         });

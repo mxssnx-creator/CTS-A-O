@@ -1,13 +1,14 @@
 // Lane orders end to end in Overall mode (control orders): every lane is an independent order on its (symbol,
 // direction) position — a lane that joins grows the position by exactly its share, one that leaves shrinks it by its
-// share, the last one closes it; Block type Overall legs are lane orders of their own and add up to the position's
-// volume; long and short of one symbol are separate positions (hedge mode); every own position carries its own stop
-// at every step and no own order rests on a flat side.
+// share, the last one closes it; Block type Overall legs are contributions of their own (own ids) and add up to the
+// position's volume — one config's position, judged whole by live.plainOnly, and one lane (one stop, one take-profit,
+// sized by the whole volume) under live.laneOrders (lane-orders.test.ts); long and short of one symbol are separate
+// positions (hedge mode); every own position carries its own stop at every step and no own order rests on a flat side.
 import { beforeEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { liveTag } from "./live.ts";
 import { CoreDb } from "./db.server.ts";
-import { laneContributions, resetLiveBackoff, stepLive, type ExchangeClient } from "./live.server.ts";
+import { laneContributions, liveLaneFilter, liveReadiness, resetLiveBackoff, stepLive, type ExchangeClient } from "./live.server.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import { ExchangeRejected } from "../exchange/bingx.server.ts";
@@ -166,7 +167,7 @@ describe("lane orders: independent, partial, Block Overall legs", { timeout: 120
     invariants("a+b+c");
 
     rt.paper.positions = [b, c, d];
-    // the legs are lane orders of their own, together exactly the position's volume
+    // the legs are contributions of their own, together exactly the position's volume
     const lanes = laneContributions(rt as unknown as CoreRuntime).filter((l) => l.sym === "S2-USDT");
     assert.equal(lanes.length, 3, "base + 2 legs");
     assert.ok(Math.abs(lanes.reduce((s, l) => s + l.vol, 0) - 2.5) < 1e-9);
@@ -186,6 +187,34 @@ describe("lane orders: independent, partial, Block Overall legs", { timeout: 120
     await step();
     assert.equal(ex.positions.size, 0, "the last lanes leave: everything closed");
     assert.equal(ex.orders.length, 0, "no own order left");
+  });
+
+  it("live.plainOnly judges the whole position: no lane of a Block Overall position is sent, in the step or the readiness", () => {
+    const rt = rtOf();
+    const base = { cfg: "combo|ema-9-21@m15|d", sym: "S2-USDT", side: 1 as const, entry: 20, stop: 19.6, entryT: 4 };
+    // Overall: base 1 + overall leg 1 + symbol leg 0.5 — every contribution asks for one unit or less
+    const ov = { ...base, vol: 2.5, legs: { overall: 1, symbol: 0.5 } };
+    const plain = { ...base, cfg: "combo|ema-9-21@m15|e", vol: 1, entryT: 5 };
+    rt.paper.positions = [ov, plain];
+    const lanes = laneContributions(rt as unknown as CoreRuntime);
+    assert.ok(lanes.filter((l) => l.cfg === ov.cfg).every((l) => l.vol <= 1 + 1e-9), "each Overall lane ≤ 1 unit");
+    const { sendable } = liveLaneFilter({ plainOnly: true }, null, null);
+    assert.deepEqual(
+      lanes.filter((l) => sendable(l)).map((l) => l.cfg),
+      [plain.cfg],
+      "only the plain position's lane is sent",
+    );
+    assert.equal(lanes.filter((l) => liveLaneFilter({}, null, null).sendable(l)).length, 4, "plainOnly off: every lane");
+    // the readiness check judges the same orders (each order's whole multiple)
+    const t = (cfg: string, r: number, mult: number, i: number) =>
+      ({ cfg, sym: "S2-USDT", side: 1, entryT: i * H, exitT: i * H + 1, entry: 20, exit: 20, r, reason: "tp", bars: 1, mfe: 0, mae: 0, mult }) as never;
+    const trades = [
+      ...Array.from({ length: 20 }, (_, i) => t(ov.cfg, -0.01 * 2.5, 2.5, i)),
+      ...Array.from({ length: 20 }, (_, i) => t(plain.cfg, i % 3 ? 0.01 : -0.005, 1, i)),
+    ];
+    const sim = { stats: { pf: 0.5, n: 40 }, stable: true, startT: 0, endT: 21 * H, trades, openAtEnd: [] };
+    assert.equal(liveReadiness(sim as never, {}, 1.05).ok, false, "the whole run: PF 0.5");
+    assert.deepEqual(liveReadiness(sim as never, { plainOnly: true }, 1.05), { ok: true, why: "" }, "the plain orders only");
   });
 
   it("regression: a stop that fired on the exchange inside the sync window is seen before a joining lane is sized", async () => {

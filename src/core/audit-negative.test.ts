@@ -358,7 +358,7 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
       },
     },
   ],
-  "block: every source within max multiple, stack ≤ 8×": [
+  "block: every source and the stack within max multiple": [
     {
       run: "overall",
       what: "one source's leg at the max multiple (each source may add max − 1)",
@@ -367,6 +367,17 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
         const x = i.sim!.trades[k];
         const src = Object.keys(x.legs!)[0];
         return withTrade(i, k, { legs: { ...x.legs, [src]: i.sim!.opts.block.maxMult } });
+      },
+    },
+    {
+      run: "overall",
+      what: "an Overall stack above the max multiple (maxMult caps the total, not only each leg; its coordination part raised with it)",
+      corrupt: (i) => {
+        const k = i.sim!.trades.findIndex((x) => x.legs && Object.keys(x.legs).length);
+        const x = i.sim!.trades[k];
+        const blockPart = (x.mult ?? 1) / (x.coordVol ?? 1);
+        const mult = Math.min(8, i.sim!.opts.block.maxMult) + 0.5;
+        return withTrade(i, k, { mult, coordVol: mult / blockPart });
       },
     },
   ],

@@ -51,4 +51,12 @@ describe("control completeness (keyFunnel)", () => {
       "S|1": "not selected / signal unit inactive",
     });
   });
+
+  it("positionSize min: a key whose sent lanes Block raised says Block does nothing on the exchange", () => {
+    const funnel = new Map([f("A|1", { paper: 3, sent: 3, raised: 2 }), f("B|1", { paper: 1, sent: 1 })]);
+    const min = keyFunnel(funnel, [{ key: "A|1" }, { key: "B|1" }], [], { sizeMin: true });
+    assert.match(min.find((k) => k.key === "A|1")!.blockNote ?? "", /Block raised 2 position\(s\); live\.positionSize "min"/);
+    assert.equal(min.find((k) => k.key === "B|1")!.blockNote, undefined, "nothing raised: no note");
+    assert.equal(keyFunnel(funnel, [{ key: "A|1" }], []).find((k) => k.key === "A|1")!.blockNote, undefined, "lane sizing: none");
+  });
 });

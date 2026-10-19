@@ -33,7 +33,7 @@ export function StagesPage() {
         <div className="v2-funnel">
           <div className="v2-stage">
             <div className="t">1 · Base</div>
-            <div className="n">{fmt.num(c.base)}</div>
+            <div className="n">{fmt.num(d.status?.baseEvaluated ?? c.base)}</div>
             <p>
               Every indication × bot type with the base protect, plus {d.wf.tapes} independent
               strategy tapes (normal, trailing, DCA, DCA Active × {d.wf.protects} protect variants).

@@ -427,7 +427,7 @@ export function OverviewPage() {
           <div className="v2-funnel">
             <div className="v2-stage">
               <div className="t">Base</div>
-              <div className="n">{fmt.num(c.base)}</div>
+              <div className="n">{fmt.num(d.status?.baseEvaluated ?? c.base)}</div>
               <p>combos computed · {d.wf.tapes} strategy tapes</p>
             </div>
             <div className="v2-stage">

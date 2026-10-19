@@ -356,6 +356,32 @@ export interface BlockConfig {
   pause?: number;
   /** volume steps: the raise moves in this many equal steps up to maxMult (0 = continuous) */
   steps?: number;
+  /**
+   * with steps: any raise adds at least one step (true, the default — today's rule) or rounds to the nearest step
+   * (false: a raise under half a step adds nothing). With 7 steps to 8× a step is a full unit, so at the default an
+   * Overall leg of ratio × level = 0.1 still adds one whole unit (proposal pending a causal eval:
+   * docs/positive-coordinations.md, "Block Overall: corrected rules")
+   */
+  stepFloor?: boolean;
+  /**
+   * pooled sources' activity-scaled window: each pooled source's window is its own closes in its last windowHours
+   * hours ÷ maxLevel (never below `window`), so its top level spans about windowHours of that source whatever its
+   * rate (the overall pool closes far more often than one symbol's). 0 / unset = off (`window` for every source).
+   */
+  windowHours?: number;
+  /** a level also needs this share (0–1) of winning closes in its tail; 0 / unset = off (a positive sum is enough) */
+  levelMinWin?: number;
+  /**
+   * signal candidates feed the pooled sources (overall, symbol, direction, indication, type) the engine's entries are
+   * judged on. true / unset = yes (today's); false = the pooled sources hold the engine's candidates only (a signal's
+   * own config source is unaffected; with signalsOwn the signals never read the pool either)
+   */
+  poolSignals?: boolean;
+  /**
+   * identical closes (same symbol, side, entry, exit and result — one entry under two indication names) count once in
+   * the pooled sources. Default off (each config's candidate counts)
+   */
+  poolDedupe?: boolean;
   /** volume added per passing relation. Default 0.4. */
   increase?: number;
   /** allowed min/max for the Block knobs. The active value stays inside. */
