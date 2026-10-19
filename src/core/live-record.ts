@@ -178,8 +178,16 @@ export function recordKeyOf(cfg: string, side?: 1 | -1): string {
 }
 
 /**
+ * The side of a close, a lane or an entry on the per-side path (live.sideGates): +1 (LONG) or -1 (SHORT). Any other
+ * value (0, null, undefined) belongs to neither side.
+ */
+export function sideOfRow(s: number | null | undefined): 1 | -1 | undefined {
+  return s === 1 || s === -1 ? s : undefined;
+}
+
+/**
  * The records of the closes, by config. With `bySide` (live.sideGates) one record per config and side, keyed
- * cfg|1 / cfg|-1; a close with no side of its own (0 or null) belongs to neither side and is left out.
+ * cfg|1 / cfg|-1; a close with no side of its own (sideOfRow: not +1 or -1) belongs to neither side and is left out.
  */
 export function liveRecords(
   rows: ReadonlyArray<{ cfg: string; exitT: number; r: number; side?: number | null }>,
@@ -188,12 +196,8 @@ export function liveRecords(
   const bySide = o?.bySide === true;
   const by = new Map<string, { cfg: string; side?: 1 | -1; xs: Array<{ t: number; r: number }> }>();
   for (const x of rows) {
-    let side: 1 | -1 | undefined;
-    if (bySide) {
-      const s = x.side ?? 0;
-      if (!(s > 0 || s < 0)) continue;
-      side = s > 0 ? 1 : -1;
-    }
+    const side = bySide ? sideOfRow(x.side) : undefined;
+    if (bySide && side === undefined) continue;
     const key = recordKeyOf(x.cfg, side);
     let b = by.get(key);
     if (!b) by.set(key, (b = { cfg: x.cfg, side, xs: [] }));

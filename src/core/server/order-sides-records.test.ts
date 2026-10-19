@@ -12,7 +12,7 @@ import { CoreDb } from "./db.server.ts";
 import { reconcileLaneCloses, resetLiveBackoff, stepLive } from "./live.server.ts";
 import { liveTag, stateHash } from "./live.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
-import { attributeLanes, laneKeyOf, liveRecords, type LiveRecord } from "../live-record.ts";
+import { attributeLanes, laneKeyOf, liveRecords, sideOfRow, type LiveRecord } from "../live-record.ts";
 import { engineProven, liveEntryOk, liveGate, sideTapeOf } from "../live-validation.ts";
 import { liveLedger, type LedgerRow } from "../statistics.ts";
 import { CandleSeries } from "../market/candle-series.ts";
@@ -147,6 +147,21 @@ describe("live validation per side (live-record.ts liveRecords, live-validation.
     assert.equal(liveEntryOk(gateOf(alternating(-0.02, 0.01), -1, false), undefined), false, "pooled PF 0.5");
     // the pooled last 10 are PF 5 (five LONG wins of 5 %, five SHORT losses of 1 %): admitted
     assert.equal(liveEntryOk(gateOf(alternating(0.05, -0.01), -1, false), undefined), true, "pooled PF 5");
+  });
+
+  it("(d) live.sideGates: a side is +1 or -1 only, so a close with side 0, null or 2 is in neither record", () => {
+    const noSide = [
+      { cfg: CFG, exitT: T, r: -0.02, side: 0 },
+      { cfg: CFG, exitT: T + 1, r: -0.02, side: null },
+      { cfg: CFG, exitT: T + 2, r: -0.02 },
+      { cfg: CFG, exitT: T + 3, r: -0.02, side: 2 },
+    ];
+    assert.equal(liveRecords(noSide, { bySide: true }).size, 0, "no side of its own: in neither record");
+    assert.equal(liveRecords(noSide).size, 1, "the pooled record keeps every close");
+    assert.deepEqual(
+      [1, -1, 0, 2, null, undefined].map((s) => sideOfRow(s)),
+      [1, -1, undefined, undefined, undefined, undefined],
+    );
   });
 });
 

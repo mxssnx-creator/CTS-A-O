@@ -21,6 +21,7 @@ import {
   attributeLanes,
   laneKeyOf,
   recordKeyOf,
+  sideOfRow,
   type LaneOpen,
   type LaneStepInput,
   type LaneTrade,
@@ -181,12 +182,13 @@ export function liveLaneFilter(
     return true;
   };
   // the engine proof: an engine config not proven by its own closes trades on paper only. With live.sideGates the proof
-  // is per side (keys cfg|1 / cfg|-1): a lane is judged on its own side, a lane without one on either
+  // is per side (keys cfg|1 / cfg|-1): a lane is judged on its own side (+1 / -1), a lane with no side on either
   const engineOk = (l: Pick<ControlContribution, "cfg"> & { side?: number }) => {
     if (!proven || cfgInfo(l.cfg).isSig) return true;
     if (s.sideGates !== true) return proven.has(l.cfg);
-    if (l.side === undefined) return proven.has(recordKeyOf(l.cfg, 1)) || proven.has(recordKeyOf(l.cfg, -1));
-    return proven.has(recordKeyOf(l.cfg, l.side > 0 ? 1 : -1));
+    const side = sideOfRow(l.side);
+    if (side === undefined) return proven.has(recordKeyOf(l.cfg, 1)) || proven.has(recordKeyOf(l.cfg, -1));
+    return proven.has(recordKeyOf(l.cfg, side));
   };
   // the signal proof: a signal unit (indicator × side) not proven by its own closes trades on paper only
   const signalOk = (l: Pick<ControlContribution, "cfg"> & { side?: number }) => {

@@ -207,6 +207,7 @@ import {
   liveRecords,
   preferExchange,
   recordKeyOf,
+  sideOfRow,
   type LiveRecord,
 } from "../live-record.ts";
 import { OWN_CLOSE_SQL } from "../relation.ts";
@@ -5459,14 +5460,20 @@ export class CoreRuntime {
     // the exchange's own record of each config (live-record.ts) judges it once it holds N closes; the simulated
     // forward closes only until then. live.sideGates: each side is judged on its own record and its own closes
     const lvBySide = this.settings.live.sideGates === true;
-    // the side a judgement is made on (undefined = the pooled record of both sides, as before)
-    const lvSideOf = (s?: number): 1 | -1 | undefined => (lvBySide && s !== undefined ? (s > 0 ? 1 : -1) : undefined);
+    // the side a judgement is made on (undefined = the pooled record of both sides, as before; with live.sideGates an
+    // entry that is neither +1 nor -1 has no side of its own, see lvOf)
+    const lvSideOf = (s?: number): 1 | -1 | undefined => (lvBySide ? sideOfRow(s) : undefined);
+    // an entry with no side of its own (live.sideGates) belongs to neither side: liveRecords leaves its closes out of
+    // both records, so it has no closes of its own to judge it by. Not judged, as a config with fewer than N closes is
+    // not; its group gate is keyed group|side and no such key is set for it, so the entry gate admits it
+    const lvNoSide: LiveGate = { ok: true, n: 0, pf: null };
     // the sides a count runs over (live.sideGates: each side apart)
     const lvSides: ReadonlyArray<1 | -1 | undefined> = lvBySide ? [1, -1] : [undefined];
     const lvEx = lvN > 0 ? this.exchangeRecords(lvSince) : new Map<string, LiveRecord>();
     // judged as of `at`: a paper entry as of its entry time (the closes after it are not known when it enters — with
     // now, up to a step of later closes decided it), the entries planner as of now
     const lvOf = (x: ConfigTape, at = lvNow, side?: 1 | -1) => {
+      if (lvBySide && side === undefined) return lvNoSide;
       const mk = `${x.id}|${at}${side === undefined ? "" : `|${side}`}`;
       let g = lvMemo.get(mk);
       // without an explicit live floor every config is held to its own range's minimum (as at the stages)
