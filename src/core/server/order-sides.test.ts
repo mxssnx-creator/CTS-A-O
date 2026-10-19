@@ -836,6 +836,14 @@ describe("order sides, hedge mode (overall control): LONG and SHORT alike", { ti
         [],
         "orders sent on the merged symbol in that step",
       );
+      // our leftover is held, not closed: the symbol is frozen while the other owner's quantity is on the net, and no order
+      // closes it in this step (the event must not say one was sent)
+      const left = rt.db
+        .all<{ msg: string }>("SELECT msg FROM events WHERE msg LIKE '%of ours left%'")
+        .map((r) => r.msg);
+      assert.equal(left.length, 1, JSON.stringify(left));
+      assert.ok(left[0].includes("held, not closed"), left[0]);
+      assert.ok(!left[0].includes("closed now"), left[0]);
     });
   }
 

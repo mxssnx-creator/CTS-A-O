@@ -2657,10 +2657,13 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     // keys holding someone else's quantity now: their leverage and margin mode are never changed
     const foreignQty = new Set(Object.keys(foreignNow));
     // the keys own-first attribution end here: their lanes are booked closed outside and held back like any outside
-    // close; what is left of ours is closed by the plan (its lanes no longer ask for it)
+    // close; what is left of ours is closed by the plan (its lanes no longer ask for it), except on a one-way key merged
+    // with someone else's quantity: its symbol is frozen, so that leftover is held, not closed, until the freeze lifts
     for (const [k, x] of attributed) {
       const [asym] = k.split("|");
       const by = noteExternal(k, prices.get(asym) ?? 0, true, x.found);
+      // one-way and frozen (merged, or the symbol frozen in this step): the plan sends nothing for the leftover
+      const leftHeld = posOneway && (merged.has(k) || foreign.has(asym));
       let n = 0;
       for (const l of allLanes)
         if (l.id && `${l.sym}|${l.side}` === k) {
@@ -2672,7 +2675,11 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         `live: ${k} holds ${x.ex} where ${+(x.ex + x.shortfall).toFixed(8)} were expected — ${x.explained} by our own ${
           by.why === "target" ? "take-profit" : "stop"
         }, ${x.unexplained} by an order not ours (${by.why}), taken from our quantity first; ${x.own} of ours left${
-          x.own > 0 ? " — closed now with a quantity-bounded order" : ""
+          x.own > 0
+            ? leftHeld
+              ? " — held, not closed: the symbol is frozen while the other owner's quantity is on the net"
+              : " — closed now with a quantity-bounded order"
+            : ""
         }; ${n} lane order(s) held back (at most ${SUPPRESS_MAX_MS / 60_000} min). Should the other part have been reduced instead, our leftover stays inside it untouched.`,
       );
     }
