@@ -763,6 +763,47 @@ describe("order sides, hedge mode (overall control): LONG and SHORT alike", { ti
     });
   }
 
+  // item 9, the attribution: a one-way key whose own part the outside-reduction attribution finds short (not the cap) is
+  // frozen in that same step. Without the freeze the stop repair, which iterates held, sends a closePosition stop on the BOTH
+  // net, and that net holds the other owner's part too
+  for (const s of [1, -1] as const) {
+    const side = s === 1 ? "long" : "short";
+    const sym = s === 1 ? "S1-USDT" : "S2-USDT";
+    const mark = s === 1 ? 10 : 20;
+    it(`OW-9 ${side}, reduction: one-way merged by a venue reduction the attribution explains, its stop lost, no closePosition order and no order on the symbol in that step`, async () => {
+      const tick = clock();
+      const ex = new OneWayVenue();
+      // four units of ours at either mark
+      const { rt } = rtOf({ positionMode: "oneway", notionalUsd: 4 * mark });
+      const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+      rt.paper.positions = [lane("combo|ema-9-21@m15|a", sym, s, mark, 0.02)];
+      await step();
+      assert.equal(Math.abs(ex.net.get(sym) ?? 0), 4, `our own quantity ${ex.net.get(sym)}`);
+      ex.orders = ex.orders.filter((o) => o.type !== STOP);
+      // someone else adds 2 units: the key merges (the cap) and the estimate of their part is those 2 units
+      ex.foreignOpen(sym, 2, s === 1);
+      tick(61_000);
+      await step();
+      // then someone closes 3 units by hand: the venue shows 3, below our 4 and beside their 2 — the attribution takes 3
+      // of ours (the cap does not, since the ledger still holds 4), which leaves 1 of ours and their 2 merged
+      ex.foreignOpen(sym, 3, s !== 1);
+      const n = ex.log.length;
+      tick(61_000);
+      await step();
+      const sent = ex.log.slice(n);
+      assert.deepEqual(
+        sent.filter((p) => p.closePosition === "true").map((p) => `${p.type} ${p.side}`),
+        [],
+        "closePosition orders sent on the merged side",
+      );
+      assert.deepEqual(
+        sent.filter((p) => p.symbol === sym).map((p) => `${p.type} ${p.side}`),
+        [],
+        "orders sent on the merged symbol in that step",
+      );
+    });
+  }
+
   // item 12 (live.server.ts:2479-2480): a lane order (V) of a one-way short that filled while the desk looks — its fill is
   // booked on the key of the position side it names. BOTH reads as LONG there, so the short's fill is booked on the long
   // key. The hedge short is the control; the one-way long is not written here (its V order is cancelled as an orphan first,

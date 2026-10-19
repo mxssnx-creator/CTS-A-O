@@ -2616,7 +2616,12 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         ledger.set(k, r.own);
         if (r.own > 0) {
           held.set(k, Math.min(r.own, exk));
-          if (exk > r.own * (1 + MERGED_TOL) + 1e-9) merged.add(k);
+          if (exk > r.own * (1 + MERGED_TOL) + 1e-9) {
+            merged.add(k);
+            // one-way: freeze the symbol here as the cap's merged branch above does — the BOTH net holds the other owner's
+            // part too, so no closePosition or other order goes to it in this step
+            if (posOneway) foreign.add(asym);
+          }
         } else {
           held.delete(k);
           merged.delete(k);
