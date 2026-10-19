@@ -419,7 +419,7 @@ export function TradingPage() {
       {(d.liveFlats ?? []).length > 0 && (
         <Panel
           title="Flat markers"
-          sub="the exchange ended an own position (its stop, its target, or an order not ours): booked at the attributed price, else a verified one (flat), never dropped"
+          sub="the exchange ended an own position (its stop, its target, an order not ours, or unverified: the bars reached neither level): booked at the attributed price, else the 1m close (flat); an unverified one at the ticker, never dropped"
           flush
         >
           <div className="v2-table-wrap">

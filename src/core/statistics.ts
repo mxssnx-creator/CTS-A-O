@@ -360,8 +360,8 @@ export interface StatisticsReport {
   /** live closes an order not ours made: in the balance, not in any PF or breakdown */
   hand: { n: number; usd: number };
   /**
-   * live closes whose cause is not proven: a flat marker priced from the lane exit or the venue, or the unverified
-   * marker booked at the market; kept in the balance and out of every PF, counted apart from hand
+   * live closes whose cause is not proven: a flat marker priced from the attributed lane exit or the 1m close at its
+   * time, or the unverified marker booked at the ticker; kept in the balance, out of every PF, counted apart from hand
    */
   flat: { n: number; usd: number };
   /** positions open at the window's end (marked to market in the timeline, never a close) */
@@ -457,8 +457,9 @@ export function buildStatistics(i: StatisticsInput): StatisticsReport {
   // a live close an order not ours made ("hand", relation.ts) is money, not a result: in the balance (the timeline
   // reads every trade), left out of every PF and breakdown, and counted apart
   const inWindow = i.trades.filter((x) => x.exitT > i.startT && x.exitT <= i.endT);
-  // a live close whose cause is not proven ("flat": the unverified marker at the market, or a marker priced from the lane
-  // exit or the venue, the order that ended it unknown) is counted the same way, apart from hand
+  // a live close whose cause is not proven ("flat": the unverified marker at the ticker, or a marker priced from the
+  // attributed lane exit or the 1m close at its time, the order that ended it unknown) is counted the same way, apart
+  // from hand
   const apart = (x: StatTrade) => x.reason === "hand" || x.reason === "flat";
   const trades = inWindow.filter((x) => !apart(x));
   const unit = i.unit;
@@ -667,8 +668,8 @@ export type LiveClose = StatTrade & { notional: number; coid?: string; pxFrom?: 
 
 /**
  * The own ledger as closes, the positions still open, and the flat markers that could not be priced.
- * `flatPx`: the verifiable price of a flat marker that holds none (px 0) — the attributed lane exit, the venue's history,
- * or the bar close at the marker's time — with where it came from. A marker priced that way is booked with reason
+ * `flatPx`: the verifiable price of a flat marker that holds none (px 0) — the attributed lane exit, else the 1m bar
+ * close at the marker's time — with where it came from. A marker priced that way is booked with reason
  * "flat": its cause is not proven (stop, target or an order not ours), so like "hand" it stays in the balance and out of
  * every PF. Without a price the position ends unbooked and is counted under `unpriced` (never dropped silently).
  */
