@@ -38,6 +38,7 @@ function desk(seed = 1, live: Record<string, unknown> = {}) {
 }
 const laneRows = (rt: { db: CoreDb }) =>
   rt.db.all<{ reason: string; px_src: string | null; exit: number; r: number }>(
+    // relation: all rows — the fixture reads back every row it wrote
     "SELECT reason, px_src, exit, r FROM live_lane_trades ORDER BY exit_t",
   );
 const keyOrders = (ex: SimExchange, k = K) => {
@@ -124,6 +125,7 @@ describe("R-c: by hand without a price → the ticker, then the venue's history 
     ];
     assert.equal(reconcileLaneCloses(rt as never, hist), 2);
     const got = rt.db.all<{ id: string; reason: string; px_src: string; exit: number; r: number }>(
+      // relation: all rows — the fixture reads back every row it wrote
       "SELECT id, reason, px_src, exit, r FROM live_lane_trades ORDER BY id",
     );
     assert.deepEqual(got.map((x) => [x.id, x.reason, x.px_src, x.exit]), [
