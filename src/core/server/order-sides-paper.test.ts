@@ -6,11 +6,11 @@
 // behind coord.s2Side (off by default).
 import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { CoreRuntime, crossedExit, tickTrail, type TickTrail } from "./runtime.server.ts";
+import { CoreRuntime, crossedExit, sanitizeWf, tickTrail, type TickTrail } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
 import { SIGNAL_SOURCES, signalSettings } from "../signal-config.ts";
 import { fakeRt, pinSyntheticEnd, trackRuntimes } from "../test-support.ts";
-import { DEFAULT_COORD, makeTape, type ConfigTape } from "../sim/walkforward.ts";
+import { coordSettings, DEFAULT_COORD, makeTape, type ConfigTape, type CoordSettings } from "../sim/walkforward.ts";
 import { simulate } from "../sim/backtest.ts";
 import { S2Coord } from "../sim/s2coord.ts";
 import type { Bars, OpenPosition, Protect, Trade } from "../domain/types.ts";
@@ -405,9 +405,11 @@ describe("Stable-02 paused keys, one side each (item 2)", () => {
   }
   const snap = s2.snapshot(T);
   const { rt: fake } = fakeRt();
-  Object.assign(fake, { wf: { guardPct: 0, coord: { ...DEFAULT_COORD } }, hedgeKeys: new Set<string>(), sim: { s2: snap } });
-  const heldBack = (sym: string, side: 1 | -1) =>
-    (CoreRuntime.prototype as unknown as HeldBack).entryHeldBack.call(
+  Object.assign(fake, { hedgeKeys: new Set<string>(), sim: { s2: snap } });
+  /** the paper book's entry check on one candidate under the given coordination settings */
+  const heldBackWith = (coord: CoordSettings, sym: string, side: 1 | -1) => {
+    Object.assign(fake, { wf: { guardPct: 0, coord } });
+    return (CoreRuntime.prototype as unknown as HeldBack).entryHeldBack.call(
       fake,
       { cfg: ENG, sym, side, entryT: T },
       new Map<number, number>(),
@@ -416,6 +418,10 @@ describe("Stable-02 paused keys, one side each (item 2)", () => {
       null,
       [],
     );
+  };
+  // the cells below run with coord.s2Side on; the control cells further down run the default (off)
+  const ON: CoordSettings = { ...DEFAULT_COORD, s2Side: true };
+  const heldBack = (sym: string, side: 1 | -1) => heldBackWith(ON, sym, side);
 
   it("fixture: S2Coord pauses one side of each symbol, keyed sym|±1", () => {
     assert.deepEqual([...snap.paused].sort(), ["S1-USDT|1", "S2-USDT|-1"]);
@@ -431,5 +437,25 @@ describe("Stable-02 paused keys, one side each (item 2)", () => {
   });
   it("[item 2] a LONG on S2-USDT, the other side, is allowed", () => {
     assert.equal(heldBack("S2-USDT", 1), null, "the unpaused LONG side");
+  });
+  it("[item 2] control: with coord.s2Side off (the default) the paused LONG is allowed, the old result", () => {
+    assert.equal(heldBackWith(DEFAULT_COORD, "S1-USDT", 1), null, "the bare symbol matches no sym|±1 key");
+  });
+  it("[item 2] control: with coord.s2Side off (the default) the paused SHORT is allowed, the old result", () => {
+    assert.equal(heldBackWith(DEFAULT_COORD, "S2-USDT", -1), null, "the bare symbol matches no sym|±1 key");
+  });
+  it("[item 2] control: with coord.s2Side off the other-side cells are allowed too", () => {
+    assert.equal(heldBackWith(DEFAULT_COORD, "S1-USDT", -1), null, "the unpaused SHORT side");
+    assert.equal(heldBackWith(DEFAULT_COORD, "S2-USDT", 1), null, "the unpaused LONG side");
+  });
+  it("[item 2] coord.s2Side is normalised: only a true boolean turns it on, and an unset one adds no key", () => {
+    assert.equal(coordSettings({ s2Side: true }).s2Side, true, "a true boolean is on");
+    assert.equal(coordSettings({ s2Side: "yes" as never }).s2Side, undefined, "anything else is off");
+    assert.equal("s2Side" in coordSettings({}), false, "the default's normalised object gains no key");
+    assert.equal(
+      sanitizeWf({ coord: { ...DEFAULT_COORD, s2Side: true } }).coord?.s2Side,
+      true,
+      "the settings path keeps it",
+    );
   });
 });

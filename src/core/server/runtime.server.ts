@@ -5240,9 +5240,12 @@ export class CoreRuntime {
       if (!losing) return "hedgeIdle";
       if (coordWhy && coordWhy !== "confirm") return coordWhy;
     } else if (coordWhy) return coordWhy;
-    // Stable-02 coordination: symbols the simulation ended holding back take no new entries
+    // Stable-02 coordination: symbols the simulation ended holding back take no new entries. The paused keys are
+    // sym|±1 (S2Coord): with coord.s2Side the entry's own symbol × direction is the key; off, the bare symbol
+    // (as before)
     const s2End = this.wf.coord?.enabled ? this.sim?.s2 : undefined;
-    if (s2End?.paused.includes(op.sym)) return "s2Window";
+    const s2Key = this.wf.coord?.s2Side ? `${op.sym}|${op.side > 0 ? 1 : -1}` : op.sym;
+    if (s2End?.paused.includes(s2Key)) return "s2Window";
     const sg = this.wf.signalSourceGate;
     if (sg?.enabled && sigCfg(op.cfg)) {
       const src = signalSourceOf(op.cfg.split("|")[1] ?? "");

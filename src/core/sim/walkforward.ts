@@ -123,6 +123,13 @@ export interface CoordSettings {
   hedgeMinN?: number;
   /** hedge only after a losing previous hour (default false: also while the current hour is negative) */
   hedgePrevOnly?: boolean;
+  /**
+   * Stable-02 pause per side: the paper book refuses an entry while its symbol × direction is paused (`sym|±1`, the
+   * keys S2Coord holds and the simulation's blocked(sym, side) judges). Off (default): the paper book compares the bare
+   * symbol with those keys, which never match, so the pause never refuses a paper entry. Default off until a causal
+   * eval decides it (docs/positive-coordinations.md).
+   */
+  s2Side?: boolean;
 }
 
 // causal validation, 8 days × 12 symbols (docs/signals-validation.md): confirmation PF 1.32 → 1.58, drawdown halved;
@@ -162,6 +169,8 @@ export function coordSettings(c?: Partial<CoordSettings> | null): CoordSettings 
     hedgeMinPf: numOr(c?.hedgeMinPf, HEDGE_DEFAULTS.minPf, 1, 5),
     hedgeMinN: numOr(c?.hedgeMinN, HEDGE_DEFAULTS.minN, 1, 100),
     hedgePrevOnly: c?.hedgePrevOnly === true,
+    // (a key only when on: the normalised object of the default is unchanged)
+    ...(c?.s2Side === true ? { s2Side: true } : {}),
   };
 }
 
