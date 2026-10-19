@@ -235,10 +235,16 @@ describe("live.sideGates: the engine proof, the simulated fallback and the setti
       assert.throws(() => checkSettings({ live: { ...DEFAULT_SETTINGS.live, sideGates: v } } as never), /side gates/);
   });
 
-  it("(d) control: DEFAULT_SETTINGS leaves live.sideGates unset: the default keeps one pooled record (pass)", () => {
+  it("(d) control: DEFAULT_SETTINGS leaves live.sideGates unset: the default is one pooled record per config, holding both sides' closes (pass)", () => {
     assert.equal(DEFAULT_SETTINGS.live.sideGates, undefined, "unset by default");
     // the default reads as the pooled path (the runtime's `sideGates === true` is false for it)
-    assert.equal(liveRecords(alternating(-0.02, 0.01), { bySide: DEFAULT_SETTINGS.live.sideGates === true }).size, 1);
+    const recs = liveRecords(alternating(-0.02, 0.01), { bySide: DEFAULT_SETTINGS.live.sideGates === true });
+    assert.deepEqual([...recs.keys()], [CFG], "one record, keyed by the config alone");
+    const rec = recs.get(CFG)!;
+    assert.equal(rec.side, undefined, "not kept per side");
+    assert.equal(rec.exitT.length, 20, "the LONG and the SHORT closes are both in it");
+    // ten LONG losses of 2 % and ten SHORT wins of 1 %: the gains are 10 × 1 %, the losses 10 × 2 %
+    assert.ok(near(rec.gp[20], 0.1) && near(rec.gl[20], 0.2), `gains ${rec.gp[20]} losses ${rec.gl[20]}`);
   });
 });
 
