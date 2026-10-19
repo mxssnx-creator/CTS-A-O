@@ -840,8 +840,8 @@ export function SignalsSettings(props: {
       </div>
       <div className="v2-grid v2-cols-4">
         <Field
-          label={`Trailing only · TP None → ${counts.trailingOnly} configs`}
-          hint="independent of percent / ATR exits; each full source, range, lane, symbol and direction qualifies this type separately"
+          label={`Trailing only · TP None → ${counts.trailingOnly} configured (${counts.activeTrailingOnly} eligible)`}
+          hint="independent of percent / ATR exits; trails below the minimum are shown as configured but do not run; qualification is independent for each source, range, lane, symbol and direction"
         >
           <Switch
             label="Signal trailing-only sets"
@@ -980,10 +980,7 @@ export function SignalsSettings(props: {
         </Field>
       </div>
       <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
-        {counts.total} percent / ATR / trailing-only configs per signal ({counts.pct} percent +{" "}
-        {counts.atr} ATR + {counts.trailingOnly} trailing only, TP None), each run independently per
-        full source, range, lane, type, symbol and direction. Master Trailing controls execution of
-        both trailing types; disabled sets still retain held-position protection.
+        {counts.total} configured percent / ATR / trailing-only cells per signal ({counts.pct} eligible percent + {counts.atr} eligible ATR + {counts.trailingOnly} trailing only, TP None); {counts.activeTotal} currently meet the reference trail floor{counts.inactiveTrailingOnly ? ` · ${counts.inactiveTrailingOnly} trailing-only cells below minTrail are inactive` : ""}. Eligible cells qualify independently per full source, range, lane, type, symbol and direction. Master Trailing controls execution of both trailing types; disabled sets still retain held-position protection.
       </div>
       <div style={{ borderTop: "1px solid var(--v-border)", paddingTop: 10 }}>
         <div
@@ -1545,7 +1542,7 @@ export function RangeEditor(props: {
         <div className="v2-grid v2-cols-3">
           <Field
             label="Volume factor × normal"
-            hint="Multiplies the base order unit (default 0.1% of account balance); 1 = neutral. Optional balance-relative budgets apply only when enabled."
+            hint="Multiplies the base order unit (default 0.2% of account balance); 1 = neutral. Optional balance-relative budgets apply only when enabled."
           >
             <VolumeFactorInput
               value={s.volumeFactor ?? props.defaults.volumeFactor ?? 1}
@@ -1900,7 +1897,7 @@ export function MinimalPlusRange(props: {
           />
           <Field
             label="Volume factor × normal"
-            hint="Multiplies the base order unit (default 0.1% of account balance); 1 = neutral. Optional balance-relative budgets apply only when enabled."
+            hint="Multiplies the base order unit (default 0.2% of account balance); 1 = neutral. Optional balance-relative budgets apply only when enabled."
           >
             <VolumeFactorInput
               value={base.volumeFactor ?? 1}
@@ -2500,7 +2497,7 @@ export function SettingsPage() {
               step={0.1}
               min={0.001}
               max={0.25}
-              value={s.sizing?.pct ?? 0.001}
+              value={s.sizing?.pct ?? 0.002}
               onChange={(v) => set(["sizing", "pct"], v)}
             />
           </Field>
@@ -3843,7 +3840,7 @@ export function SettingsPage() {
           <div className="v2-grid" style={{ gap: 8 }}>
             <Field
               label="Wide volume factor × normal"
-              hint="Multiplies the base order unit (default 0.1% of account balance); 1 = neutral. Optional balance-relative budgets apply only when enabled."
+              hint="Multiplies the base order unit (default 0.2% of account balance); 1 = neutral. Optional balance-relative budgets apply only when enabled."
             >
               <VolumeFactorInput
                 value={s.grid.volumeFactor ?? 1}

@@ -6,7 +6,7 @@
 // strategy, DDT, and orders / positions.
 //
 //   node --experimental-strip-types scripts/core-session.mjs [--symbols 12] [--pre 6] [--run 6] [--balance 10]
-//        [--pct 0.02 | --sizing fixed --notional 5] [--leverage 10] [--tactics default|off|all] [--signals on|off]
+//        [--pct 0.002 | --sizing fixed --notional 5] [--leverage 10] [--tactics default|off|all] [--signals on|off]
 //        [--out docs/session]
 //
 // Settings (applied in this order, each on top of the previous):
@@ -176,10 +176,7 @@ const M = 60_000;
 let balance0 = Number(arg("balance", 10));
 let notional = Number(arg("notional", 5)); // fixed sizing: USD per order volume unit
 // default sizing: a fixed % of realized account balance per order (compounding from the start balance)
-let sizing = {
-  mode: arg("sizing", "equityPct") === "fixed" ? "fixed" : "equityPct",
-  pct: Number(arg("pct", 0.001)),
-};
+let sizing = { mode: arg("sizing", "equityPct") === "fixed" ? "fixed" : "equityPct", pct: Number(arg("pct", 0.002)) };
 let leverage = Number(arg("leverage", 10));
 
 // ── 1. the engine run (or a replay of a dumped one) ──────────────────────────────────────────────────────────
@@ -703,11 +700,12 @@ async function runEngine() {
       signalValidLastN: 10,
     };
   }
-  if (arg("focus") === "all") rt.updateSettings({ focus: [] });
   if (arg("min-pf") !== undefined) rt.updateSettings({ gates: { minPf: Number(arg("min-pf")) } });
   // any settings patch, e.g. --settings '{"block":{"maxLevel":6,"minActiveLevel":1}}'
   const settingsExtra = JSON.parse(arg("settings", "{}"));
   if (Object.keys(settingsExtra).length) rt.updateSettings(settingsExtra);
+  // An explicit CLI focus selection wins over a frozen --settings snapshot.
+  if (arg("focus") === "all") rt.updateSettings({ focus: [] });
   // strategy toggles, e.g. --toggles '{"normal":false}'
   const togglesExtra = JSON.parse(arg("toggles", "{}"));
   if (Object.keys(togglesExtra).length)

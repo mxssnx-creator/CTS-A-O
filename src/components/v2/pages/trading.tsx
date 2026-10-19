@@ -38,7 +38,7 @@ export function TradingPage() {
           label="Paper P&L"
           value={fmt.usd(d.equity)}
           className={tone(d.equity)}
-        sub={`balance ${fmt.usd(d.balance)} · equity ${fmt.usd(d.accountEquity)} · start ${fmt.usd(d.startBalance)} · ${d.sizing?.mode === "fixed" ? "fixed notional" : `${fmt.num((d.sizing?.pct ?? 0.02) * 100, 1)}% of balance per order`}`}
+        sub={`balance ${fmt.usd(d.balance)} · equity ${fmt.usd(d.accountEquity)} · start ${fmt.usd(d.startBalance)} · ${d.sizing?.mode === "fixed" ? "fixed notional" : `${fmt.num((d.sizing?.pct ?? 0.002) * 100, 1)}% of balance per order`}`}
         />
         <Kpi
           label="Paper open positions / orders"

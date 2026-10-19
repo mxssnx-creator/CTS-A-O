@@ -131,6 +131,14 @@ import { volumeFactorForIndication } from "../volume-factor.ts";
 
 const H = 3_600_000;
 
+/** One fail-closed PF gate for Base, selection and last-N (no fabricated wins from NaN/overflow). */
+function qualifiedPf(gp: number, gl: number, floor: number): boolean {
+  if (!(Number.isFinite(gp) && Number.isFinite(gl) && gp >= 0 && gl >= 0 && Number.isFinite(floor))) return false;
+  const pf = profitFactor(gp, gl);
+  return Number.isFinite(pf) && pf >= floor;
+}
+
+
 /**
  * Coordination tactics: portfolio-level rules on the realized results of the executed orders (causal: only orders
  * closed before an entry count) and on the positions open at that moment. Each can be switched on or off.
@@ -670,7 +678,8 @@ export const ENGINE_SIDE_ACCEPT: SignalAccept = {
 export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
   return {
     indicationVolumeFactors: signalVolumeFactorsOf(s.signals),
-    preH: 20,
+    // Keep the general replay warm-up short; config qualification uses its explicit Last-N close window below.
+    preH: 6,
     simH: 48,
     stepH: 1,
     // Real seats per strategy family: 0 = no limit — every config that passes the evaluation (PF, DDT, DDR,
@@ -713,7 +722,8 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
       // from Block's volume steps / pause they read 7 / 0, and a pause of 0 is no Stable-02 pause at all
       s2Increase: s.block?.increase,
     },
-    longH: 336,
+    // Bound broad history-based qualification. Per-symbol history can request a longer window via symH.
+    longH: 24,
     robustFrac: 0.6,
     rank: "lcb",
     bots: [],
@@ -2939,7 +2949,8 @@ function beatsBase<T extends { pair: string; window: { pf: number } }>(
   });
 }
 const noteBase = (m: Map<string, number>, tp: ConfigTape, w: { n: number; pf: number }) => {
-  if (w.n < 3 || familyOf(tp.kind, tp.protect.exitSet, tp.protect.exitSide) !== "base") return;
+  if (w.n < 3 || !Number.isFinite(w.pf) ||
+    familyOf(tp.kind, tp.protect.exitSet, tp.protect.exitSide) !== "base") return;
   const k = `${tp.bot}|${tp.ind}`;
   m.set(k, Math.max(m.get(k) ?? -Infinity, w.pf));
 };
@@ -3429,18 +3440,16 @@ function configEvalAt(
   };
   const no = (fail: EvalGate): ConfigEval => ({ ok: false, fail, ...base });
   const minPf = minPfForTape(tp, o);
-  if (w.n < minTradesForTape(tp, o, o.gates.minTrades ?? 0)) return no("closes");
-  if (w.net <= 0) return no("net");
+  if (!Number.isSafeInteger(w.n) || w.n < minTradesForTape(tp, o, o.gates.minTrades ?? 0)) return no("closes");
+  if (!(Number.isFinite(w.net) && w.net > 0)) return no("net");
   const prior = lossPriorOf(tp, o.gates);
-  if (
-    (prior > 0 && w.gp !== undefined && w.gl !== undefined
-      ? profitFactor(w.gp, w.gl + prior)
-      : w.pf) < minPf
-  )
+  if (!(Number.isFinite(w.pf) && w.pf >= minPf &&
+    (prior <= 0 || (w.gp !== undefined && w.gl !== undefined && qualifiedPf(w.gp, w.gl + prior, minPf)))))
     return no("pf");
   if (o.preGate) {
     const pre = win(tp, lowerBound(tp.exitT, t - o.preH * H), b);
-    if (pre.n >= 3 && (pre.pf < minPf || pre.net < 0)) return no("pre");
+    if (pre.n >= 3 && !(Number.isFinite(pre.pf) && pre.pf >= minPf &&
+      Number.isFinite(pre.net) && pre.net >= 0)) return no("pre");
   }
   const lcb = lcbFast(tp, a, b);
   if (!(lcb > 0)) return no("lcb");
@@ -3639,16 +3648,18 @@ function configPassAt(
 ): boolean {
   const minPf = info.minPf;
   const prior = info.prior;
-  if (n < minTradesForTape(tp, o, o.gates.minTrades ?? 0)) return false;
-  if (net <= 0) return false;
-  if ((prior > 0 ? profitFactor(gp, gl + prior) : pf) < minPf) return false;
+  if (!Number.isSafeInteger(n) || n < minTradesForTape(tp, o, o.gates.minTrades ?? 0)) return false;
+  if (!(Number.isFinite(net) && net > 0)) return false;
+  if (!(Number.isFinite(pf) && pf >= minPf &&
+    (prior <= 0 || qualifiedPf(gp, gl + prior, minPf)))) return false;
   if (o.preGate) {
     const pa = lowerBound(tp.exitT, t - o.preH * H);
     const pn = b - pa;
     if (pn >= 3) {
       const pgp = tp.gp[b] - tp.gp[pa];
       const pgl = tp.gl[b] - tp.gl[pa];
-      if (profitFactor(pgp, pgl) < minPf || (tp.rs[b] - tp.rs[pa]) * 100 < 0) return false;
+      const pnet = (tp.rs[b] - tp.rs[pa]) * 100;
+      if (!qualifiedPf(pgp, pgl, minPf) || !(Number.isFinite(pnet) && pnet >= 0)) return false;
     }
   }
   const lcb = lcbFast(tp, a, b);
@@ -3752,7 +3763,7 @@ export function* selectFixedGen(
     const n = b - a;
     const pf = profitFactor(gp, gl);
     // the base is evaluated whatever the toggles: DCA / Axis still have to beat it with Normal off
-    if (needBase && info.base && n >= 3)
+    if (needBase && info.base && n >= 3 && Number.isFinite(pf))
       basePf.set(info.pairKey, Math.max(basePf.get(info.pairKey) ?? -Infinity, pf));
     // a held-only tape serves its open position, it takes no new seat
     if (!info.canSeat) continue;
@@ -4043,7 +4054,7 @@ export function lastNOk(
     n = b;
   }
   if (!warmup) short = false;
-  if (profitFactor(tp.gp[b] - tp.gp[b - n], tp.gl[b] - tp.gl[b - n] + prior) < minPf) return false;
+  if (!qualifiedPf(tp.gp[b] - tp.gp[b - n], tp.gl[b] - tp.gl[b - n] + prior, minPf)) return false;
   // the same closes have to come back inside the drawdown-time gate and keep their drawdown ratio — not judged on a
   // sample shorter than the gate asks for (the drawdown of 8 of 50 closes is not that config's drawdown)
   if (!short && (maxDdtH > 0 || maxDdr !== 0)) {
@@ -4098,7 +4109,7 @@ export function lastNSideOk(
     if (r > 0) gp += r;
     else gl -= r;
   }
-  if (profitFactor(gp, gl + prior) < minPf) return false;
+  if (!qualifiedPf(gp, gl + prior, minPf) || !Number.isFinite(net)) return false;
   if (!short && (maxDdtH > 0 || maxDdr !== 0)) {
     idx.reverse();
     const dd = winDdIdx(tp, idx, entryT);
@@ -4162,7 +4173,7 @@ function signalLastNOk(
     if (r > 0) gp += r;
     else gl -= r;
   }
-  if (profitFactor(gp, gl + prior) < minPf) return false;
+  if (!qualifiedPf(gp, gl + prior, minPf) || !Number.isFinite(net)) return false;
   if ((!short || !warmup) && (maxDdtH > 0 || maxDdr !== 0)) {
     const dd = winDdIdx(tp, idx, entryT);
     if (maxDdtH > 0 && dd.ddtH > maxDdtH) return false;

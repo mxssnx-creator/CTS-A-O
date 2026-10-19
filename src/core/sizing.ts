@@ -6,12 +6,12 @@
 // lot); the Block volume multiplies it. Paper and simulation size it like equityPct (pct of the realized equity).
 export interface SizingSettings {
   mode: "equityPct" | "fixed" | "minQty";
-  /** equityPct: share of account balance per order unit (0.001 = 0.1 %) */
+  /** equityPct: share of account balance per order unit (0.002 = 0.2 %) */
   pct: number;
 }
 
-/** Default base unit: 0.1% of account balance at entry; volume factors scale it, with exchange minimums still applying. */
-export const DEFAULT_SIZING: SizingSettings = { mode: "equityPct", pct: 0.001 };
+/** Default base unit: 0.2% of account balance at entry; volume factors scale it, with exchange minimums still applying. */
+export const DEFAULT_SIZING: SizingSettings = { mode: "equityPct", pct: 0.002 };
 
 export function sizingSettings(s?: Partial<SizingSettings> | null): SizingSettings {
   const mode =

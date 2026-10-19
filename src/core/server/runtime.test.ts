@@ -1213,14 +1213,11 @@ describe("sizing default migration", () => {
       coord: { enabled: true, s2VolumeFactor: 2.4, hedgeVolumeFactor: 1.6 },
     } as never);
     const rt = new CoreRuntime(db, undefined, { market: "synthetic" });
-    assert.deepEqual(rt.settings.sizing, { mode: "equityPct", pct: 0.001 });
-    assert.equal(
-      typeof rt.settings.grid.micro === "object" ? rt.settings.grid.micro.volumeFactor : undefined,
-      1,
-    );
+    assert.deepEqual(rt.settings.sizing, { mode: "equityPct", pct: 0.002 });
+    assert.equal(typeof rt.settings.grid.micro === "object" ? rt.settings.grid.micro.volumeFactor : undefined, 1);
     assert.equal(rt.wf.coord?.hedgeVolumeFactor, 1.6);
     assert.equal((rt.wf.coord as unknown as Record<string, unknown>)?.s2VolumeFactor, undefined);
-    assert.equal(db.kvGet<number>("wfCapsV"), 34);
+    assert.equal(db.kvGet<number>("wfCapsV"), 35);
 
     const customDb = new CoreDb(":memory:");
     customDb.kvSet("wfCapsV", 26);
@@ -1257,8 +1254,19 @@ describe("sizing default migration", () => {
     );
     assert.equal(upgradedCap.settings.live.maxPositionX, 0);
     assert.equal(upgradedCap.settings.live.maxNotionalUsd, 0);
-    assert.deepEqual(upgradedCap.settings.sizing, { mode: "equityPct", pct: 0.001 });
-    assert.equal(capDb.kvGet<number>("wfCapsV"), 34);
+    assert.deepEqual(upgradedCap.settings.sizing, { mode: "equityPct", pct: 0.002 });
+    assert.equal(capDb.kvGet<number>("wfCapsV"), 35);
+
+    const previousDefaultDb = new CoreDb(":memory:");
+    previousDefaultDb.kvSet("wfCapsV", 34);
+    const previousDefault = structuredClone(DEFAULT_SETTINGS);
+    previousDefault.sizing = { mode: "equityPct", pct: 0.001 };
+    previousDefaultDb.kvSet("settings", previousDefault);
+    const upgradedDefault = new CoreRuntime(previousDefaultDb, undefined, { market: "synthetic" });
+    assert.deepEqual(upgradedDefault.settings.sizing, { mode: "equityPct", pct: 0.002 });
+    assert.equal(previousDefaultDb.kvGet<number>("wfCapsV"), 35);
+    upgradedDefault.dispose();
+
   });
 });
 
