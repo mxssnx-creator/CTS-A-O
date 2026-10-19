@@ -1312,7 +1312,8 @@ export const isLiquidationType = (type: unknown) => /LIQUID|ADL|DELEVERAG/i.test
  * the caller checks the levels against the bars (verifyClose). A close by hand makes the venue CANCEL the position's own
  * stop and take-profit, so a stop that left the book is no proof it filled (x02, 7 Oct 13:50: 20 positions a close-all
  * took in profit were booked at their stops — 1,210 lanes at −23 % to −30 % each). Lane stops and take-profits (V, Y)
- * are each lane's own exit and the desk's own market orders its own moves: neither is the side's outside close.
+ * are each lane's own exit and the desk's own market orders its own moves: neither is the side's outside close. A one-way
+ * (BOTH) row is the symbol's one position and counts for the side its order closes.
  */
 export function outsideCloseOf(
   orders: ReadonlyArray<Record<string, unknown>>,
@@ -1327,7 +1328,9 @@ export function outsideCloseOf(
   let liqQty = 0;
   let liqNotional = 0;
   for (const o of orders) {
-    if (String(o.positionSide ?? "").toUpperCase() !== ps) continue;
+    // a one-way (BOTH) row is the symbol's one position: it belongs to the side its order closes (the side check below)
+    const pos = String(o.positionSide ?? "").toUpperCase();
+    if (pos !== ps && pos !== "BOTH") continue;
     if (String(o.side ?? "").toUpperCase() !== closing) continue;
     if (!String(o.status ?? "").toUpperCase().includes("FILLED")) continue;
     const px = Number(o.avgPrice);
@@ -1453,7 +1456,9 @@ export function closeFillsOf(
   const acc = { own: [0, 0], liq: [0, 0], foreign: [0, 0] };
   let why: "stop" | "target" = "stop";
   for (const o of orders) {
-    if (String(o.positionSide ?? "").toUpperCase() !== ps) continue;
+    // a one-way (BOTH) row is the symbol's one position: it belongs to the side its order closes (the side check below)
+    const pos = String(o.positionSide ?? "").toUpperCase();
+    if (pos !== ps && pos !== "BOTH") continue;
     if (String(o.side ?? "").toUpperCase() !== closing) continue;
     if (!String(o.status ?? "").toUpperCase().includes("FILLED")) continue;
     const px = Number(o.avgPrice);
