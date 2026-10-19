@@ -470,8 +470,9 @@ describe("order sides, hedge mode (overall control): LONG and SHORT alike", { ti
     });
 
     // control for OW-9, reduction: the same venue sale on the hedge venue takes 3 of ours from a merged side. The side is not
-    // frozen (hedge), its stop is re-placed bounded to our one unit left, and the event keeps the hedge wording "closed now"
-    it(`H-9 ${side}, reduction: merged with someone else's quantity on ${ps}, their sale takes 3 of ours, the stop is re-placed bounded — no closePosition order`, async () => {
+    // frozen (hedge), the one unit of ours left is closed now by one quantity-bounded MARKET order (no stop is sent in that
+    // step), and the event keeps the hedge wording "closed now"
+    it(`H-9 ${side}, reduction: merged with someone else's quantity on ${ps}, their sale takes 3 of ours, the one left is closed by one quantity-bounded MARKET — no closePosition order`, async () => {
       const tick = clock();
       const ex = new Venue();
       const { rt } = rtOf({ notionalUsd: 4 * mark });
@@ -494,6 +495,13 @@ describe("order sides, hedge mode (overall control): LONG and SHORT alike", { ti
         [],
         "closePosition orders sent on the merged side",
       );
+      // the one unit left of ours: one MARKET order on the side, bounded to that unit (no stop is placed in this step)
+      const closes = sent.filter((p) => p.positionSide === ps);
+      assert.equal(closes.length, 1, `orders on ${ps} in that step: ${JSON.stringify(sent)}`);
+      assert.equal(closes[0].type, "MARKET", JSON.stringify(closes[0]));
+      assert.equal(closes[0].side, exitSide, "the closing side");
+      assert.equal(Number(closes[0].quantity), 1, `our one unit left, sent ${closes[0].quantity}`);
+      assert.equal(closes[0].closePosition, undefined, "bounded to the own quantity");
       const left = rt.db
         .all<{ msg: string }>("SELECT msg FROM events WHERE msg LIKE '%of ours left%'")
         .map((r) => r.msg);
