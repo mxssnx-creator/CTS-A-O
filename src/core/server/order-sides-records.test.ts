@@ -348,6 +348,25 @@ describe("live.sideGates: a lane or an entry with no side of its own (g)", () =>
     assert.equal(liveLaneFilter({ sideGates: true }, null, null, null, longOnly).sendable({ ...sig, side: -1 }), false, "a SHORT lane is still judged on its own side");
   });
 
+  // the active signal set (validLane): a side-less signal lane is active on either of its symbol's sides on the per-side
+  // path. validLane's type names only +1 / -1, so the lane is cast (the lane filter takes any number, as lane() above)
+  type ValidLane = Parameters<ReturnType<typeof liveLaneFilter>["validLane"]>[0];
+  const sigLane = (side: number) => ({ cfg: "b|sig-ema|x", vol: 1, sym: SYM, side }) as ValidLane;
+  it("(g) live.sideGates: a side-0 signal lane is valid when its LONG or its SHORT is active on its symbol, as signalOk judges it; a LONG or a SHORT lane needs its own", () => {
+    const on = (active: string[]) => liveLaneFilter({ sideGates: true }, new Set([CFG]), new Set(active), null, null);
+    assert.equal(on([`b|sig-ema|${SYM}|1`]).validLane(sigLane(0)), true, "its LONG is active");
+    assert.equal(on([`b|sig-ema|${SYM}|-1`]).validLane(sigLane(0)), true, "its SHORT is active");
+    assert.equal(on([]).validLane(sigLane(0)), false, "neither is active");
+    assert.equal(on([`b|sig-ema|${SYM}|-1`]).validLane(sigLane(1)), false, "a LONG lane with only its SHORT active");
+    assert.equal(on([`b|sig-ema|${SYM}|1`]).validLane(sigLane(-1)), false, "a SHORT lane with only its LONG active");
+  });
+
+  it("(g) control: ungated, a side-0 signal lane is read as a SHORT: valid with its SHORT active, not with only its LONG (pass)", () => {
+    const off = (active: string[]) => liveLaneFilter({}, new Set([CFG]), new Set(active), null, null);
+    assert.equal(off([`b|sig-ema|${SYM}|-1`]).validLane(sigLane(0)), true, "the SHORT is active");
+    assert.equal(off([`b|sig-ema|${SYM}|1`]).validLane(sigLane(0)), false, "only the LONG is active");
+  });
+
   it("(g) live.sideGates: a close whose side is not +1 or -1 is in no signal unit (signalUnitOf); ungated, a side-2 close keeps the LONG unit it always had", () => {
     const cfg = "b|sig-ema|x";
     assert.equal(signalUnitOf(cfg, 0), null, "side 0, ungated: no unit");

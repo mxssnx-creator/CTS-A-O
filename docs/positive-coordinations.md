@@ -618,8 +618,9 @@ variant beats the as-is setting and Block off in D1a and D1b — recorded here.
   on, the pooled controls with it off, the engine proof per side, the simulated fallback (`sideTapeOf`, and its memo),
   the no-side rule, the settings boolean, the unset default, the group gate's key and per-side verdicts
   (`liveGroupKeyOf`, `liveGroupGates`) and the proven key's config and side (`splitRecordKey`). Group g of the same file:
-  a side-0 lane judged on either side (`liveLaneFilter`), a side-less entry admitted, and the signal readers
-  (`signalOk`, `signalUnitOf`, `signalProven`) reading a side that is not +1 or -1 as no side.
+  a side-0 lane judged on either side (`liveLaneFilter`: its engine proof, and its active signal key in `validLane`),
+  a side-less entry admitted, and the signal readers (`signalOk`, `signalUnitOf`, `signalProven`) reading a side that
+  is not +1 or -1 as no side.
   Not pinned by a cell: `groupsAt` in runtime.server.ts (a closure of the paper-step compute; it needs the whole-runtime
   harness), the status counts that carry the side, the Proven live page and `coreListingData` (checked by reading and by
   tsc). Left as it is: the lane identity readers `laneKeyOf` (src/core/live-record.ts) and `laneStringsOf`

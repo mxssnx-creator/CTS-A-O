@@ -209,10 +209,14 @@ export function liveLaneFilter(
     if (!sendable(l)) return false;
     if (!selected) return true;
     const c = cfgInfo(l.cfg);
-    // the active signal set is keyed per side: a source's longs and shorts are activated on their own records
-    return c.isSig
-      ? !sigActive || sigActive.has(sigActiveKey(c.bot, c.ind, l.sym, l.side))
-      : selected.has(l.cfg);
+    if (!c.isSig) return selected.has(l.cfg);
+    // the active signal set is keyed per side: a source's longs and shorts are activated on their own records. With
+    // live.sideGates a lane with no side of its own is active on either side (as signalOk judges it)
+    if (!sigActive) return true;
+    if (s.sideGates === true && sideOfRow(l.side) === undefined) {
+      return [1, -1].some((side) => sigActive.has(sigActiveKey(c.bot, c.ind, l.sym, side)));
+    }
+    return sigActive.has(sigActiveKey(c.bot, c.ind, l.sym, l.side));
   };
   return { sendable, validLane, closedConfig, unproven };
 }
