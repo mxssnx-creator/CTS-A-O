@@ -587,3 +587,22 @@ the book earns with Block's sizes) against `pfUnit`, and `raisedPfUnit` against 
 the raised orders trade better). The eval's own PF columns are unit and identical for every Block variant that takes
 the same orders, so the decision reads `pfVol` per half (`summary.block.d1a` / `.d1b`). A default changes only when a
 variant beats the as-is setting and Block off in D1a and D1b — recorded here.
+
+## live.sideGates: live validation per side (plan item 13) — default off, no comparison recorded yet
+
+- **Key and default.** `live.sideGates` (boolean; `LiveSettings.sideGates` in `src/core/config.ts`). `DEFAULT_SETTINGS`
+  does not set it. Unset, the code runs as it did before the option: one pooled record per config, no new work and no
+  new output field. `src/core/server/order-sides-records.test.ts` (group d) pins the unset default.
+- **What it changes when on.** The exchange record, the simulated forward closes, the engine proof and the group gates
+  are kept per config and side, and an entry is judged on its own side: a SHORT is not refused by the LONG closes of
+  its config, nor a LONG by the SHORT ones. A close or an entry with no side of its own (neither +1 nor -1) belongs to
+  neither side. It changes entry decisions.
+- **How it is set.** Through the settings save or a desk patch's settings. `checkSettings` (`src/core/settings-check.ts`)
+  refuses anything but true or false. A preset does not carry the live stage (`src/core/api-data.ts`), so no preset turns
+  it on. There is no switch on the Settings page: a switch would make it a choice before a comparison is recorded here.
+- **Pinned by.** Group d of `src/core/server/order-sides-records.test.ts`: the record and the entry gate with the option
+  on, the pooled controls with it off, the engine proof per side, the simulated fallback (`sideTapeOf`, and its memo),
+  the no-side rule, the settings boolean and the unset default. Not pinned by a cell: the per-side group gates
+  (`liveGroupKeyOf`, `groupsAt` in runtime.server.ts) and the status counts that carry the side.
+- **Stays off** until a causal comparison on the paper or the live book, recorded in this section, says otherwise. Until
+  then the default is the pooled record, which is the code as it was before the option.
