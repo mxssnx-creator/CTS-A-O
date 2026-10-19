@@ -2666,7 +2666,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     const foreignQty = new Set(Object.keys(foreignNow));
     // the keys own-first attribution end here: their lanes are booked closed outside and held back like any outside
     // close; what is left of ours is closed by the plan (its lanes no longer ask for it), except on a one-way key merged
-    // with someone else's quantity: its symbol is frozen, so that leftover is held, not closed, until the freeze lifts
+    // with someone else's quantity, or whose symbol is frozen in this step: that leftover is held, not closed, until the
+    // freeze lifts
     for (const [k, x] of attributed) {
       const [asym] = k.split("|");
       const by = noteExternal(k, prices.get(asym) ?? 0, true, x.found);
