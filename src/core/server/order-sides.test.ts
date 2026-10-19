@@ -1079,7 +1079,7 @@ describe("order sides, closes read from the venue history (pure)", () => {
     it(`OW-10 ${side}, hedge: a close by hand (not ours) is the ${side} side's outside close`, () => {
       assert.deepEqual(outsideCloseOf([hedge], s, connId), { why: "hand", px: 10.3 });
     });
-    it(`OW-10 ${side}, one-way: a close by hand (BOTH, not ours) is the side's outside close — outsideCloseOf skips BOTH rows`, () => {
+    it(`OW-10 ${side}, one-way: a close by hand (BOTH, not ours) is the side's outside close (outsideCloseOf reads a BOTH row by the side its order closes)`, () => {
       assert.deepEqual(outsideCloseOf([oneway], s, connId), { why: "hand", px: 10.3 });
     });
     it(`OW-10 ${side}, one-way: the close fills (closeFillsOf) count the BOTH fill as the side's foreign close`, () => {
