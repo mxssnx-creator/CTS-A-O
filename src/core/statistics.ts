@@ -645,7 +645,8 @@ const RANGE_OF_LETTER: Record<string, string> = {
  * position — a ghost left open would otherwise absorb the next position's fills and skew its P&L.
  * A position an order not ours closed (the flat marker's "(hand <price>)") is booked with reason "hand": its money is
  * real, its result is not the desk's (relation.ts) — buildStatistics leaves it out of every PF and keeps it in the
- * balance.
+ * balance. A position the exchange ended on a stop or take-profit the bars cannot prove (the marker's "(unverified
+ * <price>)") is booked "flat": its cause is not proven, so it too is left out of every PF, not counted as an own stop-out.
  */
 // a fill's fee: the venue's commission when it was measured (above zero); an unmeasured fill (no commission in its reply,
 // NULL in the database) is charged the model round trip's fee share (modelCost / 2 of its notional), never zero.
@@ -711,16 +712,18 @@ export function liveLedger(
   for (const x of [...rows].sort((a, b) => a.at - b.at)) {
     if (x.status !== "ok") continue;
     const k = `${x.sym}|${x.side > 0 ? 1 : -1}`;
-    // flat on the exchange (a stop-out, a take-profit, or closed by hand): the position is gone — realized at the
-    // close the desk attributed to it when the marker holds one
+    // flat on the exchange (a stop-out, a take-profit, closed by hand, or unverified — the bars reached neither its stop
+    // nor its take-profit alone): the position is gone — realized at the close the desk attributed to it when the
+    // marker holds one. An unverified close has no proven cause: booked "flat", out of every PF, not an own stop-out
     if (x.kind === "F") {
       const p = open.get(k);
       open.delete(k);
       if (p && p.qty > 0 && x.px > 0) {
-        const why = /\((stop|target|hand) /.exec(x.msg ?? "")?.[1];
+        const why = /\((stop|target|hand|unverified) /.exec(x.msg ?? "")?.[1];
         // the exchange's exit fill reports no commission here: it pays the model share, as an unmeasured open does
         const fee = feeOf({ fee: null, qty: p.qty }, x.px, modelCost);
-        out.push(closeOf(p, x, p.qty, x.px, fee, why === "target" ? "tp" : why === "hand" ? "hand" : "sl"));
+        const reason = why === "target" ? "tp" : why === "hand" ? "hand" : why === "unverified" ? "flat" : "sl";
+        out.push(closeOf(p, x, p.qty, x.px, fee, reason));
       } else if (p && p.qty > 0) {
         const side: 1 | -1 = x.side > 0 ? 1 : -1;
         const v = opts.flatPx?.(x.sym, side, x.at) ?? null;
