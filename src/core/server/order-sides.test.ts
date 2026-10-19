@@ -1191,4 +1191,105 @@ describe("order sides, closes read from the venue history (pure)", () => {
       });
     }
   }
+
+  // item 11: a one-way (BOTH) row closes a lane only when it is a close — an own stop or take-profit, or an order the venue
+  // flags reduce-only or closePosition. The desk's own entry of the other side is a market of the same order side with
+  // neither flag, so it is never the lane's close (it would re-price the close at its own entry price)
+  for (const s of [1, -1] as const) {
+    const side = s === 1 ? "long" : "short";
+    const exitSide = s === 1 ? "SELL" : "BUY";
+    const entry = s === 1 ? 10 : 20;
+    const stopFill = s === 1 ? 9.7 : 20.4;
+    const openFill = s === 1 ? 10.4 : 19.6;
+    const exitFill = s === 1 ? 9.8 : 20.2;
+    const seed = (db: CoreDb, exitT: number) =>
+      db.run(
+        "INSERT INTO live_lane_trades (id, exit_t, cfg, sym, side, entry_t, entry, exit, r, reason, px_src) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "t1",
+        exitT,
+        "combo|ema-9-21@m15|a",
+        "S1-USDT",
+        s,
+        exitT - 3_600_000,
+        entry,
+        s === 1 ? 9.9 : 20.1,
+        0,
+        "stop",
+        "bar",
+      );
+    it(`OW-11 ${side}, one-way: the desk's own opening market of the other side (same order side, no close flag), filled 10 s after the lane's stop, does not re-price the close`, () => {
+      const db = new CoreDb(":memory:");
+      const rt = { db, settings: { live: { connId } } };
+      const exitT = Date.now() - 60_000;
+      seed(db, exitT);
+      const n = reconcileLaneCloses(
+        rt,
+        [
+          {
+            symbol: "S1-USDT",
+            positionSide: "BOTH",
+            side: exitSide,
+            type: STOP,
+            status: "FILLED",
+            clientOrderId: `${liveTag(connId)}Sx1`,
+            avgPrice: stopFill,
+            executedQty: 1,
+            updateTime: exitT,
+          },
+          {
+            symbol: "S1-USDT",
+            positionSide: "BOTH",
+            side: exitSide,
+            type: "MARKET",
+            status: "FILLED",
+            clientOrderId: `${liveTag(connId)}E1`,
+            avgPrice: openFill,
+            executedQty: 1,
+            updateTime: exitT + 10_000,
+          },
+        ],
+        Date.now(),
+      );
+      assert.equal(n, 1, "the close row is re-priced by its stop");
+      const r = db.all<{ exit: number; px_src: string; reason: string }>(
+        // relation: all rows — the fixture reads back every row it wrote
+        "SELECT exit, px_src, reason FROM live_lane_trades WHERE id = 't1'",
+      );
+      assert.equal(r[0].px_src, "history");
+      assert.equal(r[0].reason, "stop", JSON.stringify(r[0]));
+      assert.ok(near(r[0].exit, stopFill, 1e-9), `exit ${r[0].exit} at the stop's fill ${stopFill}, not the opening market at ${openFill}`);
+    });
+    it(`OW-11 ${side}, one-way: a lane's own market exit that the venue flags reduce-only re-prices the close at its fill`, () => {
+      const db = new CoreDb(":memory:");
+      const rt = { db, settings: { live: { connId } } };
+      const exitT = Date.now() - 60_000;
+      seed(db, exitT);
+      const n = reconcileLaneCloses(
+        rt,
+        [
+          {
+            symbol: "S1-USDT",
+            positionSide: "BOTH",
+            side: exitSide,
+            type: "MARKET",
+            reduceOnly: "true",
+            status: "FILLED",
+            clientOrderId: `${liveTag(connId)}X1`,
+            avgPrice: exitFill,
+            executedQty: 1,
+            updateTime: exitT,
+          },
+        ],
+        Date.now(),
+      );
+      assert.equal(n, 1, "the close row is re-priced by its reduce-only exit");
+      const r = db.all<{ exit: number; px_src: string; reason: string }>(
+        // relation: all rows — the fixture reads back every row it wrote
+        "SELECT exit, px_src, reason FROM live_lane_trades WHERE id = 't1'",
+      );
+      assert.equal(r[0].px_src, "history");
+      assert.equal(r[0].reason, "exit", JSON.stringify(r[0]));
+      assert.ok(near(r[0].exit, exitFill, 1e-9), `exit ${r[0].exit} at the exit's fill ${exitFill}`);
+    });
+  }
 });

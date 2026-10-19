@@ -1796,6 +1796,8 @@ export function reconcileLaneCloses(
   if (!rows.length || !history.length) return 0;
   const connId = rt.settings.live.connId;
   const closingOf = new Map<string, Array<{ t: number; q: number; px: number; why: LaneTrade["reason"] }>>();
+  // a venue flag that reads on: the history row carries it as a boolean or as its text
+  const flagOn = (v: unknown) => v === true || String(v ?? "").toLowerCase() === "true";
   for (const o of history) {
     const ps = String(o.positionSide ?? "").toUpperCase();
     const osd = String(o.side ?? "").toUpperCase();
@@ -1810,6 +1812,11 @@ export function reconcileLaneCloses(
     if (!(q > 0) || !(px > 0) || !(t > 0)) continue;
     const coid = String(o.clientOrderId ?? "");
     const type = String(o.type ?? "").toUpperCase();
+    // a one-way (BOTH) row counts only when it is a close: an own stop or take-profit, or an order the venue flags
+    // reduce-only or closePosition. The desk's own entry of the other side carries neither flag, so it never
+    // re-prices a close
+    const ownExit = isOwnCoid(coid, connId) && (type.startsWith("STOP") || type.startsWith("TAKE_PROFIT"));
+    if (ps === "BOTH" && !ownExit && !flagOn(o.reduceOnly) && !flagOn(o.closePosition)) continue;
     let why: LaneTrade["reason"];
     if (isOwnCoid(coid, connId)) why = type.startsWith("TAKE_PROFIT") ? "target" : type.startsWith("STOP") ? "stop" : "exit";
     else why = isLiquidationType(o.type) ? "liq" : "hand";
