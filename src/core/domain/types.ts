@@ -388,6 +388,11 @@ export interface BlockConfig {
    * true = on; false / unset = off (both directions pooled, as before). The symbol, indication and direction sources
    * are per direction already, and the overall and type sources pool by definition (6 Oct: long and short run
    * independently, docs/positive-coordinations.md). Off changes nothing.
+   * It acts only while the config source is on (sources.config). DEFAULT_BLOCK sets sources.config false, so under the
+   * defaults it changes no engine entry. A settings block.sources replaces DEFAULT_BLOCK.sources whole, and a sources
+   * object without `config` reads it as on, so a comparison arm sets config: true in full. A signal's own config level
+   * is per direction with this option whatever sources.config says (signalsOwn, on by default, turns the config source
+   * on for signal tapes).
    */
   sideKeys?: boolean;
   /** volume added per passing relation. Default 0.4. */

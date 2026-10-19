@@ -580,6 +580,10 @@ $E --label blk-minwin    --settings '{"block":{"levelMinWin":0.5}}' --toggles "$
 $E --label blk-poolsig   --settings '{"block":{"poolSignals":false}}' --toggles "$ON"
 $E --label blk-dedupe    --settings '{"block":{"poolDedupe":true}}' --toggles "$ON"
 $E --label blk-all       --settings '{"block":{"stepFloor":false,"windowHours":6,"levelMinWin":0.5,"poolSignals":false,"poolDedupe":true}}' --toggles "$ON"
+# block.sideKeys acts only while the config source is on, and a settings block.sources replaces the whole object, so
+# both arms give all six sources with config true. Compare blk-cfg-sidekeys with blk-cfg-pooled; blk-off is the reference.
+$E --label blk-cfg-pooled   --settings '{"block":{"sources":{"config":true,"overall":true,"symbol":true,"direction":true,"indication":true,"type":false}}}' --toggles "$ON"
+$E --label blk-cfg-sidekeys --settings '{"block":{"sideKeys":true,"sources":{"config":true,"overall":true,"symbol":true,"direction":true,"indication":true,"type":false}}}' --toggles "$ON"
 ```
 
 Read `summary.block` of each output (runs/eval/gate/<label>.json; the log prints it as "Block: … raised"): `pfVol` (what
