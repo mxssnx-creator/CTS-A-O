@@ -267,6 +267,14 @@ const BACKTEST_LIMIT_MS = 15 * 60_000;
 const WORKERS_RETRY_MS = 10 * 60_000;
 /** paper book rows written per transaction (one slice) */
 const PAPER_ROWS = 500;
+/** the sides a live count runs over with live.sideGates (each side apart), and without it (the pooled record) */
+const LV_SIDES_APART: ReadonlyArray<1 | -1 | undefined> = [1, -1];
+const LV_SIDES_POOLED: ReadonlyArray<1 | -1 | undefined> = [undefined];
+/**
+ * The side a live judgement is made on: an entry's own side with live.sideGates (sideOfRow: an entry that is neither
+ * +1 nor -1 has none), undefined (the pooled record of both sides, as before) without it.
+ */
+const lvSideOfEntry = (bySide: boolean, s?: number): 1 | -1 | undefined => (bySide ? sideOfRow(s) : undefined);
 export { MAX_BACKTEST_DAYS };
 
 export type RuntimeState =
@@ -5458,25 +5466,22 @@ export class CoreRuntime {
     const lvSince = this.liveSince();
     const lvNow = Date.now();
     const lvMemo = new Map<string, LiveGate>();
-    // the per-side copies of the simulated tapes (live.sideGates), built once per tape within this compute
-    const lvSideTapes: SideTapeMemo = new Map();
     // the exchange's own record of each config (live-record.ts) judges it once it holds N closes; the simulated
     // forward closes only until then. live.sideGates: each side is judged on its own record and its own closes
     const lvBySide = this.settings.live.sideGates === true;
-    // the side a judgement is made on (undefined = the pooled record of both sides, as before; with live.sideGates an
-    // entry that is neither +1 nor -1 has no side of its own, see lvOf)
-    const lvSideOf = (s?: number): 1 | -1 | undefined => (lvBySide ? sideOfRow(s) : undefined);
-    // an entry with no side of its own (live.sideGates) belongs to neither side: liveRecords leaves its closes out of
-    // both records, so it has no closes of its own to judge it by. Not judged, as a config with fewer than N closes is
-    // not; its group gate is keyed group|side and no such key is set for it, so the entry gate admits it
-    const lvNoSide: LiveGate = { ok: true, n: 0, pf: null };
-    // the sides a count runs over (live.sideGates: each side apart)
-    const lvSides: ReadonlyArray<1 | -1 | undefined> = lvBySide ? [1, -1] : [undefined];
+    // the per-side copies of the simulated tapes (live.sideGates), built once per tape within this compute. Unset, no
+    // map is made: the pooled path allocates none of the per-side state (lvOf, the sides below, lvSideOfEntry)
+    const lvSideTapes: SideTapeMemo | undefined = lvBySide ? new Map() : undefined;
+    // the sides a count runs over (live.sideGates: each side apart; the pooled record otherwise)
+    const lvSides = lvBySide ? LV_SIDES_APART : LV_SIDES_POOLED;
     const lvEx = lvN > 0 ? this.exchangeRecords(lvSince) : new Map<string, LiveRecord>();
     // judged as of `at`: a paper entry as of its entry time (the closes after it are not known when it enters — with
     // now, up to a step of later closes decided it), the entries planner as of now
-    const lvOf = (x: ConfigTape, at = lvNow, side?: 1 | -1) => {
-      if (lvBySide && side === undefined) return lvNoSide;
+    const lvOf = (x: ConfigTape, at = lvNow, side?: 1 | -1): LiveGate => {
+      // an entry with no side of its own (live.sideGates) belongs to neither side: liveRecords leaves its closes out of
+      // both records, so it has no closes of its own to judge it by. Not judged, as a config with fewer than N closes is
+      // not; its group gate is keyed group|side and no such key is set for it, so the entry gate admits it
+      if (lvBySide && side === undefined) return { ok: true, n: 0, pf: null };
       const mk = `${x.id}|${at}${side === undefined ? "" : `|${side}`}`;
       let g = lvMemo.get(mk);
       // without an explicit live floor every config is held to its own range's minimum (as at the stages)
@@ -5542,7 +5547,7 @@ export class CoreRuntime {
     this.liveEntryGate =
       lvN > 0
         ? (tp, s) => {
-            const side = lvSideOf(s);
+            const side = lvSideOfEntry(lvBySide, s);
             return liveEntryOk(lvOf(tp, lvNow, side), lvGroups.get(liveGroupKeyOf(liveGroupOf(tp.id), side)));
           }
         : null;
@@ -5578,7 +5583,7 @@ export class CoreRuntime {
           continue;
         }
         // the entry's own side (live.sideGates; undefined = the pooled record, as before)
-        const lvSide = lvSideOf(op.side);
+        const lvSide = lvSideOfEntry(lvBySide, op.side);
         // the live validation after the simulation's own rules: a config it pauses keeps the crowd seat the
         // simulation gave it (judged first, its seat went to a config the simulation had crowded out)
         if (
