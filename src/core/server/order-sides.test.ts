@@ -1400,5 +1400,80 @@ describe("order sides, closes read from the venue history (pure)", () => {
       assert.equal(r[0].reason, "exit", JSON.stringify(r[0]));
       assert.ok(near(r[0].exit, exitFill, 1e-9), `exit ${r[0].exit} at the exit's fill ${exitFill}`);
     });
+    // a liquidation is a close whatever flags the venue sets on its row: the engine took the position, so the lane's close is
+    // the liquidation fill ("liq"). The hedge row of the same liquidation is the control (it names its own side)
+    const liqFill = s === 1 ? 9.6 : 20.5;
+    const liqRow = (positionSide: string) => ({
+      symbol: "S1-USDT",
+      positionSide,
+      side: exitSide,
+      type: "LIQUIDATION",
+      status: "FILLED",
+      clientOrderId: "",
+      avgPrice: liqFill,
+      executedQty: 1,
+    });
+    it(`OW-11 ${side}, one-way: a liquidation of the position (BOTH, not ours, unflagged) re-prices the close at its fill as "liq"`, () => {
+      const db = new CoreDb(":memory:");
+      const rt = { db, settings: { live: { connId } } };
+      const exitT = Date.now() - 60_000;
+      seed(db, exitT);
+      const n = reconcileLaneCloses(rt, [{ ...liqRow("BOTH"), updateTime: exitT }], Date.now());
+      assert.equal(n, 1, "the close is re-priced by the liquidation fill");
+      const r = db.all<{ exit: number; px_src: string; reason: string }>(
+        // relation: all rows — the fixture reads back every row it wrote
+        "SELECT exit, px_src, reason FROM live_lane_trades WHERE id = 't1'",
+      );
+      assert.equal(r[0].px_src, "history");
+      assert.equal(r[0].reason, "liq", JSON.stringify(r[0]));
+      assert.ok(near(r[0].exit, liqFill, 1e-9), `exit ${r[0].exit} at the liquidation fill ${liqFill}`);
+    });
+    it(`OW-11 ${side}, hedge: a liquidation of the ${s === 1 ? "LONG" : "SHORT"} position re-prices the close at its fill as "liq" (the control of the one-way liquidation cell)`, () => {
+      const db = new CoreDb(":memory:");
+      const rt = { db, settings: { live: { connId } } };
+      const exitT = Date.now() - 60_000;
+      seed(db, exitT);
+      const n = reconcileLaneCloses(rt, [{ ...liqRow(s === 1 ? "LONG" : "SHORT"), updateTime: exitT }], Date.now());
+      assert.equal(n, 1, "the close is re-priced by the liquidation fill");
+      const r = db.all<{ exit: number; px_src: string; reason: string }>(
+        // relation: all rows — the fixture reads back every row it wrote
+        "SELECT exit, px_src, reason FROM live_lane_trades WHERE id = 't1'",
+      );
+      assert.equal(r[0].px_src, "history");
+      assert.equal(r[0].reason, "liq", JSON.stringify(r[0]));
+      assert.ok(near(r[0].exit, liqFill, 1e-9), `exit ${r[0].exit} at the liquidation fill ${liqFill}`);
+    });
+    // the operator's decision: an unflagged market close by hand on a one-way account is not re-priced until the venue's echo
+    // of its flags is confirmed (the lane keeps its bar or ticker price); outsideCloseOf still counts it, as recorded in core-v2
+    it(`OW-11 ${side}, one-way: a close by hand the venue does not flag (BOTH, MARKET, not ours) does not re-price the close`, () => {
+      const db = new CoreDb(":memory:");
+      const rt = { db, settings: { live: { connId } } };
+      const exitT = Date.now() - 60_000;
+      seed(db, exitT);
+      const n = reconcileLaneCloses(
+        rt,
+        [
+          {
+            symbol: "S1-USDT",
+            positionSide: "BOTH",
+            side: exitSide,
+            type: "MARKET",
+            status: "FILLED",
+            clientOrderId: "",
+            avgPrice: exitFill,
+            executedQty: 1,
+            updateTime: exitT,
+          },
+        ],
+        Date.now(),
+      );
+      assert.equal(n, 0, "the unflagged close by hand is not re-priced");
+      const r = db.all<{ exit: number; px_src: string; reason: string }>(
+        // relation: all rows — the fixture reads back every row it wrote
+        "SELECT exit, px_src, reason FROM live_lane_trades WHERE id = 't1'",
+      );
+      assert.equal(r[0].px_src, "bar", JSON.stringify(r[0]));
+      assert.equal(r[0].reason, "stop", JSON.stringify(r[0]));
+    });
   }
 });

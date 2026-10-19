@@ -165,16 +165,19 @@ when the target moves more than `rebalancePct`.
   in a clean compute with the last settings.
 
 **One-way order history: open decisions (19 Oct review).** `reconcileLaneCloses` (live.server.ts) counts a one-way
-(BOTH) history row as a lane's close only when it is one: an own stop or take-profit, or a row the venue flags
-`reduceOnly` or `closePosition`. The desk's own entry of the other side is a market of the same order side with neither
-flag, so it no longer re-prices a lane's close at its own price (cells OW-11 in `order-sides.test.ts`). Open, not
-confirmed: the repo holds no recorded `allOrders` row that shows the venue echoes those two flags. If it does not, an own
-one-way market exit is not re-priced (the lane keeps its bar or ticker price, as before commit 0bf0c1b); stop and
-take-profit fills still are. No wrong price is booked, but the market exit stays unverified until one real row confirms
-the echo. Open, unchanged: `outsideCloseOf` and `closeFillsOf` (live.ts) still count a non-own BOTH row by the side its
-order closes. A manual or other-system market that opens the opposite side of the symbol is then booked as this side's
-outside close at its own fill price, which is a wrong price. Their one-way cells (OW-10) carry no flags on the close
-rows, so a flag rule there needs the operator's decision on those cells.
+(BOTH) history row as a lane's close only when it is one: an own stop or take-profit, a row the venue flags
+`reduceOnly` or `closePosition`, or a liquidation or auto-deleverage fill (the venue's engine took the position, whatever
+flags its row carries). The desk's own entry of the other side is a market of the same order side with neither flag, so
+it no longer re-prices a lane's close at its own price (cells OW-11 in `order-sides.test.ts`). Open, not confirmed: the
+repo holds no recorded `allOrders` row that shows the venue echoes the two flags. If it does not, an own one-way market
+exit is not re-priced (the lane keeps its bar or ticker price, as before commit 0bf0c1b); stop and take-profit fills still
+are. An unflagged close by hand (BOTH, MARKET, not ours) is not re-priced either. That is the operator's decision until
+its echo is confirmed, so such a close keeps its bar or ticker price, which is not its fill price. Open, unchanged:
+`outsideCloseOf` and `closeFillsOf` (live.ts) still count a non-own BOTH row by the side its order closes, unflagged
+manual closes included, so the two readers disagree on those rows. A manual or other-system market that opens the
+opposite side of the symbol is then booked as this side's outside close at its own fill price, which is a wrong price.
+Their one-way cells (OW-10) carry no flags on the close rows, so a flag rule there needs the operator's decision on those
+cells.
 
 Running against **VST x02** needs `BINGX_X02_API_KEY` and `BINGX_X02_SECRET` in the host environment, plus
 `CTS_CORE_LIVE=1`.

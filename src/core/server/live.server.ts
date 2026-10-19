@@ -1812,11 +1812,19 @@ export function reconcileLaneCloses(
     if (!(q > 0) || !(px > 0) || !(t > 0)) continue;
     const coid = String(o.clientOrderId ?? "");
     const type = String(o.type ?? "").toUpperCase();
-    // a one-way (BOTH) row counts only when it is a close: an own stop or take-profit, or an order the venue flags
-    // reduce-only or closePosition. The desk's own entry of the other side carries neither flag, so it never
-    // re-prices a close
+    // a one-way (BOTH) row counts only when it is a close: an own stop or take-profit, an order the venue flags
+    // reduce-only or closePosition, or a liquidation / auto-deleverage fill (the engine took the position, so it closed
+    // it whatever flags the row carries). The desk's own entry of the other side carries none of these, so it never
+    // re-prices a close. An unflagged close by hand is left out too, until the venue's echo of its flags is confirmed
     const ownExit = isOwnCoid(coid, connId) && (type.startsWith("STOP") || type.startsWith("TAKE_PROFIT"));
-    if (ps === "BOTH" && !ownExit && !flagOn(o.reduceOnly) && !flagOn(o.closePosition)) continue;
+    if (
+      ps === "BOTH" &&
+      !ownExit &&
+      !isLiquidationType(o.type) &&
+      !flagOn(o.reduceOnly) &&
+      !flagOn(o.closePosition)
+    )
+      continue;
     let why: LaneTrade["reason"];
     if (isOwnCoid(coid, connId)) why = type.startsWith("TAKE_PROFIT") ? "target" : type.startsWith("STOP") ? "stop" : "exit";
     else why = isLiquidationType(o.type) ? "liq" : "hand";
