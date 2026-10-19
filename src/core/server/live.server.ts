@@ -197,8 +197,16 @@ export function liveLaneFilter(
     if (!signalProven) return true;
     const c = cfgInfo(l.cfg);
     if (!c.isSig) return true;
-    const side = s.sideGates === true ? sideOfRow(l.side) : l.side === undefined ? undefined : l.side > 0 ? 1 : -1;
-    if (side === undefined) return signalProven.has(`${c.ind}|1`) || signalProven.has(`${c.ind}|-1`);
+    const side =
+      s.sideGates === true
+        ? sideOfRow(l.side)
+        : l.side === undefined
+          ? undefined
+          : l.side > 0
+            ? 1
+            : -1;
+    if (side === undefined)
+      return signalProven.has(`${c.ind}|1`) || signalProven.has(`${c.ind}|-1`);
     return signalProven.has(`${c.ind}|${side}`);
   };
   const sendable = (l: Pick<ControlContribution, "cfg" | "vol"> & { side?: number }) =>

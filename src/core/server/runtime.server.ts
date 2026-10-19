@@ -274,7 +274,8 @@ const LV_SIDES_POOLED: ReadonlyArray<1 | -1 | undefined> = [undefined];
  * The side a live judgement is made on: an entry's own side with live.sideGates (sideOfRow: an entry that is neither
  * +1 nor -1 has none), undefined (the pooled record of both sides, as before) without it.
  */
-const lvSideOfEntry = (bySide: boolean, s?: number): 1 | -1 | undefined => (bySide ? sideOfRow(s) : undefined);
+const lvSideOfEntry = (bySide: boolean, s?: number): 1 | -1 | undefined =>
+  bySide ? sideOfRow(s) : undefined;
 export { MAX_BACKTEST_DAYS };
 
 export type RuntimeState =
@@ -400,7 +401,15 @@ export interface RuntimeStatus {
   /** after the Base PF evaluation, per range type (Wide, Micro … Long, Signals): sets evaluated / passed and PF */
   baseByRange?: Array<BaseRangeCount & { range: string; enabled: boolean }>;
   /** counts of the listings of the last paper step (CoreRuntime.listings; the pages page through coreListing) */
-  listings?: { paperStep: number; at: number; validated: number; active: number; proven: number | null; byRange: Array<{ range: string; validated: number; pf: number | null }>; provenBySide?: true };
+  listings?: {
+    paperStep: number;
+    at: number;
+    validated: number;
+    active: number;
+    proven: number | null;
+    byRange: Array<{ range: string; validated: number; pf: number | null }>;
+    provenBySide?: true;
+  };
   /** the preset comparison after the paper step (comparePresets): running, presets done / total, when it last finished */
   compare?: { running: boolean; done: number; total: number; at?: number; error?: string };
   /**
@@ -4414,7 +4423,12 @@ export class CoreRuntime {
     const paper = rows
       .filter((x) => x.exit_t !== null)
       .map((x) => ({ id: String(x.entry_t), cfg: x.cfg, sym: x.sym, side: x.side, exitT: x.exit_t!, r: x.r }));
-    const out = { ...signalProven(paper, this.exchangeRows(0), now, { n, minPf, minEvents, bySide }), n, minPf, minEvents };
+    const out = {
+      ...signalProven(paper, this.exchangeRows(0), now, { n, minPf, minEvents, bySide }),
+      n,
+      minPf,
+      minEvents,
+    };
     const prev = this.sigProofMemo?.out;
     if (!prev || prev.proven.size !== out.proven.size || prev.judged !== out.judged)
       this.db.event(

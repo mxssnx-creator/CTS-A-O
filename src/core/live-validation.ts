@@ -318,7 +318,11 @@ export function signalProven(
 ): { proven: Set<string>; judged: number } {
   if (!(o.n > 0)) return { proven: new Set(), judged: 0 };
   const bySide = o.bySide === true;
-  return lastNProven({ paper: signalTapes(paper, bySide), exchange: signalTapes(exchange, bySide) }, now, o);
+  return lastNProven(
+    { paper: signalTapes(paper, bySide), exchange: signalTapes(exchange, bySide) },
+    now,
+    o,
+  );
 }
 
 /**
