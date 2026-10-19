@@ -1781,8 +1781,11 @@ export function reconcileLaneCloses(
   const closingOf = new Map<string, Array<{ t: number; q: number; px: number; why: LaneTrade["reason"] }>>();
   for (const o of history) {
     const ps = String(o.positionSide ?? "").toUpperCase();
-    if (ps !== "LONG" && ps !== "SHORT") continue;
-    if (String(o.side ?? "").toUpperCase() !== (ps === "LONG" ? "SELL" : "BUY")) continue;
+    const osd = String(o.side ?? "").toUpperCase();
+    if (ps !== "LONG" && ps !== "SHORT" && ps !== "BOTH") continue;
+    // a one-way (BOTH) row is the symbol's one position: the side it closes is the one its order side closes
+    const isLong = ps === "BOTH" ? osd === "SELL" : ps === "LONG";
+    if (osd !== (isLong ? "SELL" : "BUY")) continue;
     if (!String(o.status ?? "").toUpperCase().includes("FILLED")) continue;
     const q = Number(o.executedQty);
     const px = Number(o.avgPrice);
@@ -1793,7 +1796,7 @@ export function reconcileLaneCloses(
     let why: LaneTrade["reason"];
     if (isOwnCoid(coid, connId)) why = type.startsWith("TAKE_PROFIT") ? "target" : type.startsWith("STOP") ? "stop" : "exit";
     else why = isLiquidationType(o.type) ? "liq" : "hand";
-    const k = `${String(o.symbol ?? "")}|${ps === "LONG" ? 1 : -1}`;
+    const k = `${String(o.symbol ?? "")}|${isLong ? 1 : -1}`;
     (closingOf.get(k) ?? closingOf.set(k, []).get(k)!).push({ t, q, px, why });
   }
   let n = 0;
