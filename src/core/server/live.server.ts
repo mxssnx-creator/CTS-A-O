@@ -2385,6 +2385,18 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         return { status: "unknown" } as const;
       }
     };
+    // the position key (`${venueSymbol}|1` long, `|-1` short) an own order belongs to. Hedge mode: its position side.
+    // One-way: the order names no side (BOTH; the book reads it as none), so the key its own record was sent for, else
+    // the symbol's one net position (one-way holds one position per symbol); neither: null — never a guess
+    const keyOfOwn = (o: { venueSymbol: string; positionSide?: string; clientOrderId?: string }, bk: BookView): string | null => {
+      const ps = String(o.positionSide ?? "").toUpperCase();
+      if (!posOneway) return `${o.venueSymbol}|${ps === "SHORT" ? -1 : 1}`;
+      if (ps === "LONG" || ps === "SHORT") return `${o.venueSymbol}|${ps === "LONG" ? 1 : -1}`;
+      const [rsym, rsd] = (ctlByUpper().get((o.clientOrderId ?? "").toUpperCase())?.k ?? "").split("|");
+      if (rsym === o.venueSymbol && (rsd === "1" || rsd === "-1")) return `${rsym}|${rsd}`;
+      const net = bk.positions.find((p) => p.venueSymbol === o.venueSymbol);
+      return net ? `${o.venueSymbol}|${net.side === "long" ? 1 : -1}` : null;
+    };
     // a lane order the venue filled reduced the position without an order of ours: the own-quantity ledger follows
     // (a local row — never sent — so the ledger keeps matching what the exchange holds of ours)
     const laneFilled = (lo: LaneOrder, px: number, which: "s" | "t") =>
@@ -2451,9 +2463,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       const missingBackstops = [...held.keys()].filter(
         (k) =>
           !book.orders.some(
-            (o) =>
-              `${o.venueSymbol}|${o.positionSide === "SHORT" ? -1 : 1}` === k &&
-              isBackstopKind(ownCoidKind(o.clientOrderId, s.connId)),
+            (o) => keyOfOwn(o, book) === k && isBackstopKind(ownCoidKind(o.clientOrderId, s.connId)),
           ),
       ).length;
       const ownCount = book.orders.filter((o) => isOwnCoid(o.clientOrderId, s.connId)).length;
@@ -2498,10 +2508,13 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         }
         const g = await goneOf(o.venueSymbol, o.id);
         if (g.status === "filled") {
-          const k = `${o.venueSymbol}|${o.positionSide === "SHORT" ? -1 : 1}`;
-          const lo = { id: o.clientOrderId ?? "", key: k, sym: o.venueSymbol, side: (o.positionSide === "SHORT" ? -1 : 1) as 1 | -1, qty: 0, at: 0 };
-          const row = ctlByUpper().get((o.clientOrderId ?? "").toUpperCase());
-          laneFilled({ ...lo, qty: row?.qty ?? 0 }, g.px, ownCoidKind(o.clientOrderId, s.connId) === "V" ? "s" : "t");
+          // the key the lane order belonged to; none known (one-way, no record, no position): not booked on a guess
+          const k = keyOfOwn(o, book);
+          if (k) {
+            const lo = { id: o.clientOrderId ?? "", key: k, sym: o.venueSymbol, side: Number(k.split("|")[1]) as 1 | -1, qty: 0, at: 0 };
+            const row = ctlByUpper().get((o.clientOrderId ?? "").toUpperCase());
+            laneFilled({ ...lo, qty: row?.qty ?? 0 }, g.px, ownCoidKind(o.clientOrderId, s.connId) === "V" ? "s" : "t");
+          }
         }
       }
       if (left.length && left.length <= LANE_ORDERS_PER_STEP) liveKvSet(rt.db, "laneOrders", {});
@@ -4297,9 +4310,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           (k) =>
             (own.get(k) ?? 0) > 0 &&
             !b2.orders.some(
-              (o) =>
-                `${o.venueSymbol}|${o.positionSide === "SHORT" ? -1 : 1}` === k &&
-                isBackstopKind(ownCoidKind(o.clientOrderId, s.connId)),
+              (o) => keyOfOwn(o, b2) === k && isBackstopKind(ownCoidKind(o.clientOrderId, s.connId)),
             ),
         ).length;
         const Lc = local(rt);

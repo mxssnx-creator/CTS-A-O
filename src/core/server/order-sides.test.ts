@@ -611,6 +611,52 @@ describe("order sides, hedge mode (overall control): LONG and SHORT alike", { ti
       assert.equal(ex.log.slice(n).length, 0, "nothing re-sent");
     });
   }
+
+  // item 12 family (venue cap, lane mode: live.server.ts lane planning and the trims): the own backstop of a short is on
+  // the short's key. Read as LONG (BOTH is none of SHORT), it counted the short as one backstop missing: one slot less
+  // for its lane orders, and lane orders trimmed one step early. The hedge short is the control of each cell.
+  for (const mode of ["hedge", "oneway"] as const) {
+    const sym = "S2-USDT";
+    // lanes without a target: one stop each, so the count is the backstop plus the lanes
+    const shortLanes = (n: number) =>
+      Array.from({ length: n }, (_, i) =>
+        lane(`combo|ema-9-21@m15|${String.fromCharCode(97 + i)}`, sym, -1, 20, 0.02 + i * 0.002, undefined, i + 1),
+      );
+    const venue = () => (mode === "hedge" ? new Venue() : new OneWayVenue());
+    it(`OW-12 short, ${mode}, venue cap: the short's backstop counts on its own key, so its seventh lane gets the slot`, async () => {
+      const tick = clock();
+      const ex = venue();
+      const { rt } = rtOf({ positionMode: mode, laneOrders: true, maxVenueOrders: 13 });
+      const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+      rt.paper.positions = shortLanes(5);
+      await step();
+      assert.equal(ex.orders.length, 6, `the backstop and five lanes: ${JSON.stringify(ex.orders.map((o) => o.type))}`);
+      rt.paper.positions = shortLanes(7);
+      tick(20_000);
+      await step();
+      assert.equal(ex.orders.length, 8, `seven lanes and the backstop under 13 − 5 reserved: ${JSON.stringify(ex.orders.map((o) => o.type))}`);
+    });
+    it(`OW-12 short, ${mode}, venue cap: a count at the trim line is not trimmed for the short's backstop`, async () => {
+      const tick = clock();
+      const ex = venue();
+      const { rt } = rtOf({ positionMode: mode, laneOrders: true, maxVenueOrders: 20 });
+      const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+      rt.paper.positions = shortLanes(8);
+      await step();
+      assert.equal(ex.orders.length, 9, "the backstop and eight lanes");
+      rt.settings.live = { ...rt.settings.live, maxVenueOrders: 12 };
+      let cancels = 0;
+      const cancel = ex.cancel.bind(ex);
+      ex.cancel = async (s: string, id: string) => {
+        cancels++;
+        return cancel(s, id);
+      };
+      tick(20_000);
+      await step();
+      assert.equal(cancels, 0, "nothing trimmed: nine orders against 12 − 5 reserved, the backstop among them");
+      assert.equal(ex.orders.length, 9);
+    });
+  }
 });
 
 // ── pure layer cells: the decisions that name the position side ──────────────────────────────────────────────────────
