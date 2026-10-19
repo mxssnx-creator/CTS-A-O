@@ -294,7 +294,7 @@ export interface Relation {
     usd: number;
     /** ended by an order not ours ("hand") */
     hand: { n: number; usd: number };
-    /** ended with the cause not proven ("flat": the unverified marker, booked at the market) */
+    /** ended with the cause not proven ("flat": the unverified marker, booked at the ticker) */
     flat: { n: number; usd: number };
     list: RelationPosition[];
   } | null;

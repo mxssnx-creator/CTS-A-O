@@ -2097,7 +2097,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     // a key the exchange closed outside this system: by its stop, its take-profit, by hand or by a liquidation — from
     // the venue's own history when it shows it (`found`). Without it: both own close orders still resting → by hand (at
     // the market); otherwise only a level the bars since the previous step reached is believed (verifyClose) — neither
-    // or both reached → "unverified" at the market, never an own close. The price the live record closes its lanes at,
+    // or both reached → "unverified" at the ticker, never an own close. The price the live record closes its lanes at,
     // the reason and the price's source.
     const noteExternal = (
       k: string,
@@ -2365,7 +2365,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
                 : by.why === "liq"
                   ? `by a liquidation of the venue${by.px ? ` (${by.px})` : ""}`
                   : by.why === "unverified"
-                    ? `outside the desk — its order history unreadable and the bars reached neither its stop nor its take-profit alone: booked unverified at the market${by.px ? ` (${by.px})` : ""}`
+                    ? `outside the desk — its order history unreadable and the bars reached neither its stop nor its take-profit alone: booked unverified at the ticker${by.px ? ` (${by.px})` : ""}`
                     : `by its exchange stop${by.px ? ` (${by.px}${by.src === "bar" ? ", the bars reached it" : ""})` : ""}`
           }` +
             ` — processing continues; ${n} lane order(s) held back so the same position is not reopened, until they` +
