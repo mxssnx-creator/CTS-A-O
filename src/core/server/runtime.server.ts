@@ -201,6 +201,7 @@ import {
   sideTapeOf,
   type LiveGate,
   type LiveValidationStatus,
+  type SideTapeMemo,
 } from "../live-validation.ts";
 import {
   exchangeAcceptIndex,
@@ -5457,6 +5458,8 @@ export class CoreRuntime {
     const lvSince = this.liveSince();
     const lvNow = Date.now();
     const lvMemo = new Map<string, LiveGate>();
+    // the per-side copies of the simulated tapes (live.sideGates), built once per tape within this compute
+    const lvSideTapes: SideTapeMemo = new Map();
     // the exchange's own record of each config (live-record.ts) judges it once it holds N closes; the simulated
     // forward closes only until then. live.sideGates: each side is judged on its own record and its own closes
     const lvBySide = this.settings.live.sideGates === true;
@@ -5482,7 +5485,7 @@ export class CoreRuntime {
         const ex = lvEx.get(recordKeyOf(x.id, side));
         g = preferExchange(
           ex ? liveGate(ex, lvSince, at, lvN, minPf) : null,
-          liveGate(side === undefined ? x : sideTapeOf(x, side), lvSince, at, lvN, minPf),
+          liveGate(side === undefined ? x : sideTapeOf(x, side, lvSideTapes), lvSince, at, lvN, minPf),
         );
         lvMemo.set(mk, g);
       }
@@ -5511,7 +5514,7 @@ export class CoreRuntime {
           (function* () {
             for (const id of sel) {
               const x = byId.get(id);
-              if (x) yield s === undefined ? x : sideTapeOf(x, s);
+              if (x) yield s === undefined ? x : sideTapeOf(x, s, lvSideTapes);
             }
           })(),
           lvSince,

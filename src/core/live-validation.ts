@@ -50,17 +50,32 @@ export function liveGate(
   return { ok: pf >= minPf, n, pf };
 }
 
+/** One side's columns of a tape: exit times ascending, gain / loss prefix sums (makeTape's shape). */
+export interface SideColumns {
+  exitT: Float64Array;
+  gp: Float64Array;
+  gl: Float64Array;
+}
+/**
+ * The per-side copies sideTapeOf built, by tape object. The caller owns it and drops it with its compute (one memo
+ * per compute), so the copies are not kept on the tapes between computes.
+ */
+export type SideTapeMemo = Map<object, Map<1 | -1, SideColumns>>;
 /**
  * One side of a config's simulated tape as a tape of its own (exit order kept, the same gain / loss sums makeTape
- * keeps): a config judged on its own side's closes (live.sideGates). Built once per tape object and kept with it.
+ * keeps): a config judged on its own side's closes (live.sideGates). With a `memo` each side is built once per tape
+ * within it; without one, every call builds its own copy.
  */
-const sideTapes = new WeakMap<object, Map<1 | -1, { exitT: Float64Array; gp: Float64Array; gl: Float64Array }>>();
 export function sideTapeOf(
   tp: Pick<ConfigTape, "id" | "exitT" | "r" | "side">,
   side: 1 | -1,
+  memo?: SideTapeMemo,
 ): Pick<ConfigTape, "id" | "exitT" | "gp" | "gl"> {
-  let m = sideTapes.get(tp);
-  if (!m) sideTapes.set(tp, (m = new Map()));
+  let m = memo?.get(tp);
+  if (!m) {
+    m = new Map();
+    memo?.set(tp, m);
+  }
   let s = m.get(side);
   if (!s) {
     const n = tp.exitT.length;

@@ -13,7 +13,7 @@ import { reconcileLaneCloses, resetLiveBackoff, stepLive } from "./live.server.t
 import { liveTag, stateHash } from "./live.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
 import { attributeLanes, laneKeyOf, liveRecords, sideOfRow, type LiveRecord } from "../live-record.ts";
-import { engineProven, liveEntryOk, liveGate, sideTapeOf } from "../live-validation.ts";
+import { engineProven, liveEntryOk, liveGate, sideTapeOf, type SideTapeMemo } from "../live-validation.ts";
 import { liveLedger, type LedgerRow } from "../statistics.ts";
 import { CandleSeries } from "../market/candle-series.ts";
 import type { Candle, Trade } from "../domain/types.ts";
@@ -216,6 +216,15 @@ describe("live.sideGates: the engine proof, the simulated fallback and the setti
   it("(d) control: the pooled simulated tape judges the config as one, on its last 3 (pass)", () => {
     // the pooled last 3 are SHORT −1 %, LONG +5 %, SHORT −1 %: PF 2.5
     assert.equal(liveGate(tape, 0, NOW, 3, MIN_PF).ok, true);
+  });
+
+  it("(d) sideTapeOf builds a side once per memo; without one each call builds its own copy", () => {
+    const memo: SideTapeMemo = new Map();
+    const a = sideTapeOf(tape, -1, memo);
+    assert.equal(sideTapeOf(tape, -1, memo).exitT, a.exitT, "the memo's copy is reused");
+    assert.notEqual(sideTapeOf(tape, -1).exitT, a.exitT, "no memo: a copy of its own");
+    assert.deepEqual([...sideTapeOf(tape, -1).exitT], [...a.exitT], "the same closes");
+    assert.equal(memo.size, 1, "one tape in the memo");
   });
 
   it("(d) live.sideGates is a boolean: true and false are accepted, anything else is refused by the settings path", () => {
