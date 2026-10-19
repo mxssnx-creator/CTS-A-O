@@ -73,7 +73,8 @@ export function StagesPage() {
                 : ls.blocked
                   ? `blocked: ${ls.blocked}`
                   : (d.live?.reason ?? "armed")}
-              . Own CTSB tags only; a foreign side is skipped in hedge mode, the whole symbol in one-way mode or for a foreign order with no position side.
+              . Own CTSB tags only; a foreign side is skipped in hedge mode, the whole symbol in
+              one-way mode or for a foreign order with no position side.
             </p>
           </div>
         </div>
