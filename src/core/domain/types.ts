@@ -382,6 +382,14 @@ export interface BlockConfig {
    * the pooled sources. Default off (each config's candidate counts)
    */
   poolDedupe?: boolean;
+  /**
+   * the config source judged per direction: its level counts only the closes of the entry's own direction, and a raised
+   * win pauses only that direction's entries of the config (the closes of the other direction never raise or hold it).
+   * true = on; false / unset = off (both directions pooled, as before). The symbol, indication and direction sources
+   * are per direction already, and the overall and type sources pool by definition (6 Oct: long and short run
+   * independently, docs/positive-coordinations.md). Off changes nothing.
+   */
+  sideKeys?: boolean;
   /** volume added per passing relation. Default 0.4. */
   increase?: number;
   /** allowed min/max for the Block knobs. The active value stays inside. */

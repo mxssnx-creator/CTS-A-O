@@ -2061,11 +2061,26 @@ export function tapeExecutable(
   return kindExecutable(tp.kind, o.toggles);
 }
 
-/** Block level from the config's own closes before `entryT`: independent last-n windows, n = 1..maxLevel. */
-export function blockLevel(tp: ConfigTape, entryT: number, b: BlockConfig): number {
+/**
+ * Block level from the config's own closes before `entryT`: independent last-n windows, n = 1..maxLevel. With
+ * BlockConfig.sideKeys and the entry's `side`, only the closes of that direction count (the last maxLevel of them);
+ * otherwise (off, or no side) both directions pool, as before.
+ */
+export function blockLevel(tp: ConfigTape, entryT: number, b: BlockConfig, side = 0): number {
   const end = lowerBound(tp.exitT, entryT + 1);
   let level = 0;
   let sum = 0;
+  if (b.sideKeys && side) {
+    const want = side > 0 ? 1 : -1;
+    let n = 0;
+    for (let i = end - 1; i >= 0 && n < b.maxLevel; i--) {
+      if ((tp.side[i] > 0 ? 1 : -1) !== want) continue;
+      n++;
+      sum += tp.r[i];
+      if (sum > 0) level++;
+    }
+    return level;
+  }
   for (let n = 1; n <= b.maxLevel && n <= end; n++) {
     sum += tp.r[end - n];
     if (sum > 0) level++;
@@ -3598,10 +3613,10 @@ export function execDecision(
   const blk = own ? { ...o.block, sources: OWN_SOURCES } : o.block;
   const book = own ? null : ctx?.book;
   const d = blockDecide(
-    { config: blockLevel(tp, entryT, blk), ...bookLevels(book, t, blk.maxLevel) },
+    { config: blockLevel(tp, entryT, blk, t.side), ...bookLevels(book, t, blk.maxLevel) },
     blk,
     !!tg.blockActive,
-    (src) => !!book?.paused(sourceKey(src, t)),
+    (src) => !!book?.paused(sourceKey(src, t, !!blk.sideKeys)),
   );
   // Block Active: only entries at the minimum level or above are opened — every lower entry is skipped; a signal's
   // own base trades at its unit then

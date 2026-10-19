@@ -3,7 +3,7 @@
 // counted once it has closed before the entry (causal). Judging candidates rather than executed positions keeps
 // Block Active from locking itself out (no execution → no level → no execution) and keeps the Block volume from
 // feeding back into its own level.
-//   config     the config set's own closed positions
+//   config     the config set's own closed positions (per direction with sideKeys: long and short apart)
 //   overall    all Real candidates
 //   symbol     candidates on the same symbol and side (long and short judged apart)
 //   direction  candidates on the same side
@@ -67,6 +67,8 @@ export interface BlockBookOpts {
   poolSignals?: boolean;
   /** BlockConfig.poolDedupe: identical closes count once in the pooled sources */
   poolDedupe?: boolean;
+  /** BlockConfig.sideKeys: the config source's pause is kept per direction (the caller reads its level per direction) */
+  sideKeys?: boolean;
 }
 
 const HOUR_MS = 3_600_000;
@@ -100,14 +102,18 @@ export interface BlockBookEntry {
   entryT?: number;
 }
 
-/** Book key of a source for one position (config: the config set itself). */
+/**
+ * Book key of a source for one position (config: the config set itself). `sideKeys` (BlockConfig.sideKeys): the config
+ * source is keyed per direction too, so its pause and its level are its own direction's.
+ */
 export function sourceKey(
   s: BlockSource,
   t: { sym: string; side: number; kind: string; type?: string; cfg?: string },
+  sideKeys = false,
 ): string {
   switch (s) {
     case "config":
-      return `c:${t.cfg ?? ""}`;
+      return sideKeys ? `c:${t.cfg ?? ""}|${t.side > 0 ? 1 : -1}` : `c:${t.cfg ?? ""}`;
     case "overall":
       return "all";
     // long and short run independently: a symbol's / an indication type's shorts never raise or hold its longs
@@ -139,11 +145,14 @@ export class BlockBook {
   /** signal closes enter the pooled sources (true, today's) */
   readonly poolSignals: boolean;
   readonly poolDedupe: boolean;
+  /** the config source's pause is keyed per direction (BlockConfig.sideKeys; false = today's) */
+  readonly sideKeys: boolean;
   private seenCloses = new Set<string>();
   private keep: number;
   constructor(pause = 0, window = 1, opts: BlockBookOpts = {}) {
     this.poolSignals = opts.poolSignals !== false;
     this.poolDedupe = !!opts.poolDedupe;
+    this.sideKeys = !!opts.sideKeys;
     this.pause = Math.max(0, Math.floor(pause || 0));
     this.window = Math.max(1, Math.floor(window || 1));
     this.windowHours = opts.windowHours && opts.windowHours > 0 ? opts.windowHours : 0;
@@ -170,7 +179,7 @@ export class BlockBook {
    * kept out of the pooled sources still counts down its config's pause.
    */
   add(t: BlockBookEntry, signal = false, pooled = this.pooledClose(t, signal)) {
-    const keys = BLOCK_SOURCES.map((s) => sourceKey(s, t));
+    const keys = BLOCK_SOURCES.map((s) => sourceKey(s, t, this.sideKeys));
     const timed = this.windowHours > 0;
     for (const k of keys) {
       if (!pooled && !k.startsWith("c:")) continue;
@@ -204,7 +213,7 @@ export class BlockBook {
     }
     // a raised position that closed positive pauses the sources that raised it
     if (this.pause > 0 && t.r > 0 && t.bsrc?.length)
-      for (const s of t.bsrc) this.pauseLeft.set(sourceKey(s, t), this.pause);
+      for (const s of t.bsrc) this.pauseLeft.set(sourceKey(s, t, this.sideKeys), this.pause);
   }
   /** The judging window of a source: `window`, or (windowHours) its closes in its last windowHours ÷ maxLevel. */
   windowOf(key: string, maxLevel: number): number {
@@ -368,6 +377,7 @@ const bookOpts = (b: BlockConfig): BlockBookOpts => ({
   levelMinWin: b.levelMinWin,
   poolSignals: b.poolSignals,
   poolDedupe: b.poolDedupe,
+  sideKeys: b.sideKeys,
 });
 
 export const DEFAULT_WINDOW_CANDIDATES: readonly number[] = [5, 10, 15, 25, 35];

@@ -5,8 +5,8 @@
 // (c) a trailing stop moves only favourably; (d) a ladder add goes in the adverse direction; (e) Block: one direction's
 // level or pause never changes the other direction's decision (long and short run independently, 6 Oct in
 // docs/positive-coordinations.md). A cell another test already states exactly is not repeated here.
-// EXPECTED FAIL cells are plan items 3 (Block config level and pause keyed without side) and 4 (seat cool-off counts
-// both directions): they fail at the current head and pass once the key or the count carries the side.
+// Plan item 3 (Block config level and pause, block.sideKeys) runs its cells with the option on; each has an option-off
+// control that pins the default result.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { simulate } from "./backtest.ts";
@@ -620,15 +620,17 @@ const closeOf = (side: Side, exitT: number, r: number): Trade => ({
 });
 const cfgTape = (trades: Trade[]) =>
   makeTape("x", "magnet", IND.id, { tp: 0.02, sl: 0.02, trail: 0, hold: 32 }, "normal", ["A"], trades, [], []);
-const blockBase = () => ({
+/** the Block base for a block config: BB (block.sideKeys unset) unless another is given */
+const blockBase = (block: BlockConfig = BB) => ({
   ...defaultWalkForward(DEFAULT_SETTINGS),
   lastN: 0,
   symGate: undefined,
   normalBaseMinPf: 0,
   seatQuietH: 0,
-  block: BB,
+  block,
   toggles: { ...DEFAULT_TOGGLES, normal: true, block: true, blockActive: false },
 });
+const BB_SIDE: BlockConfig = { ...BB, sideKeys: true };
 /** three winning closes of one direction, the last 1.5 h before the entry at 2 h: the config's level 3 */
 const winsAt = (side: Side) => [closeOf(side, 0.5 * H, 0.02), closeOf(side, 1.0 * H, 0.02), closeOf(side, 1.5 * H, 0.02)];
 
@@ -645,16 +647,36 @@ describe("order sides: Block config source (the config's own closes, per directi
       assert.equal(book.paused(sourceKey("config", { sym: "A", side: s, kind: IND.kind, cfg: "x" })), true);
     });
 
-    it(`EXPECTED FAIL item 3, Block config ${name} (e): the opposite direction's wins never raise this direction's config level (walkforward.ts:2056-2065)`, () => {
+    it(`Block config ${name} (e) control, block.sideKeys unset: the opposite direction's wins raise this direction's config level, pooled as before`, () => {
       const res = execDecision(cfgTape(winsAt(opposite(s))), 2 * H, blockBase(), { sym: "A", side: s });
-      assert.deepEqual(res, { ok: true, level: 0, vol: 1 });
+      assert.deepEqual(res, { ok: true, level: 3, vol: 1.6, src: ["config"] });
     });
 
-    it(`EXPECTED FAIL item 3, Block config ${name} (e): an opposite raised win does not pause this direction's config (block.ts:109-110, 206-207)`, () => {
+    it(`Block config ${name} (e) control, block.sideKeys unset: an opposite raised win pauses this direction's config, pooled as before`, () => {
       const book = new BlockBook(2);
       book.add({ sym: "A", side: opposite(s), kind: IND.kind, r: 0.02, cfg: "x", bsrc: ["config"] });
       const res = execDecision(cfgTape(winsAt(s)), 2 * H, blockBase(), { sym: "A", side: s, book });
+      assert.deepEqual(res, { ok: true, level: 0, vol: 1 });
+    });
+
+    it(`Block config ${name} (e), block.sideKeys on: the opposite direction's wins never raise this direction's config level`, () => {
+      const res = execDecision(cfgTape(winsAt(opposite(s))), 2 * H, blockBase(BB_SIDE), { sym: "A", side: s });
+      assert.deepEqual(res, { ok: true, level: 0, vol: 1 });
+    });
+
+    it(`Block config ${name} (e), block.sideKeys on: an opposite raised win does not pause this direction's config`, () => {
+      const book = new BlockBook(2, 1, { sideKeys: true });
+      book.add({ sym: "A", side: opposite(s), kind: IND.kind, r: 0.02, cfg: "x", bsrc: ["config"] });
+      const res = execDecision(cfgTape(winsAt(s)), 2 * H, blockBase(BB_SIDE), { sym: "A", side: s, book });
       assert.deepEqual(res.ok ? [true, res.level] : [false], [true, 3]);
+    });
+
+    it(`Block config ${name} (e) control, block.sideKeys on: an opposite raised win pauses the opposite direction's config only`, () => {
+      const book = new BlockBook(2, 1, { sideKeys: true });
+      book.add({ sym: "A", side: opposite(s), kind: IND.kind, r: 0.02, cfg: "x", bsrc: ["config"] });
+      const t = { sym: "A", side: s, kind: IND.kind, cfg: "x" };
+      assert.equal(book.paused(sourceKey("config", { ...t, side: opposite(s) }, true)), true, "the opposite direction is paused");
+      assert.equal(book.paused(sourceKey("config", t, true)), false, "this direction is not paused");
     });
   }
 });
