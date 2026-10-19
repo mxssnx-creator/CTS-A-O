@@ -612,6 +612,34 @@ describe("order sides, hedge mode (overall control): LONG and SHORT alike", { ti
     });
   }
 
+  // item 16, the lag branch of the same orphan check: a fresh open the book does not show yet (the read lags after an open)
+  // keeps its own stop and take-profit. The lagging set and the check read BOTH as SHORT, so a one-way long's own orders
+  // were not seen as lagging. The hedge side is the control.
+  for (const mode of ["hedge", "oneway"] as const) {
+    for (const s of [1, -1] as const) {
+      const side = s === 1 ? "long" : "short";
+      const sym = s === 1 ? "S1-USDT" : "S2-USDT";
+      const mark = s === 1 ? 10 : 20;
+      it(`OW-16 ${side}, ${mode}: a fresh open the book does not show yet keeps its own stop and take-profit resting`, async () => {
+        const tick = clock();
+        const ex = mode === "hedge" ? new Venue() : new OneWayVenue();
+        const { rt } = rtOf({ positionMode: mode });
+        const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+        rt.paper.positions = [lane("combo|ema-9-21@m15|a", sym, s, mark, 0.02, 0.05)];
+        await step();
+        assert.equal(ex.orders.length, 2, "own stop and take-profit placed");
+        // the read does not show the position yet: hedge hides its side, one-way has no net position on the symbol
+        if (mode === "hedge") ex.hide.add(`${sym}|${s === 1 ? "LONG" : "SHORT"}`);
+        else (ex as OneWayVenue).net.delete(sym);
+        tick(5_000);
+        const n = ex.log.length;
+        await step();
+        assert.equal(ex.orders.length, 2, `after the lagging step: ${JSON.stringify(ex.orders.map((o) => o.type))}`);
+        assert.equal(ex.log.slice(n).length, 0, "nothing cancelled or re-sent");
+      });
+    }
+  }
+
   // item 12 family (venue cap, lane mode: live.server.ts lane planning and the trims): the own backstop of a short is on
   // the short's key. Read as LONG (BOTH is none of SHORT), it counted the short as one backstop missing: one slot less
   // for its lane orders, and lane orders trimmed one step early. The hedge short is the control of each cell.

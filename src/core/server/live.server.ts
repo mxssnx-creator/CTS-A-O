@@ -2212,6 +2212,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     for (const r of ctlRows.values())
       if (r.kind === "O" || r.kind === "I" || r.kind === "X" || r.kind === "R" || r.kind === "F")
         lastRow.set(r.k, r);
+    // an order that names no side: BOTH (one-way; the history rows and some venues say so) or none (the book reads it so)
+    const noSideOf = (ps: string | undefined) => !ps || ps.toUpperCase() === "BOTH";
     const lagging = new Set<string>();
     if (!ordersStale)
       for (const [k, r] of lastRow) {
@@ -2228,7 +2230,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             (o) =>
               o.venueSymbol === lsym &&
               isOwnCoid(o.clientOrderId, s.connId) &&
-              (!o.positionSide || (o.positionSide === "LONG") === (Number(lsd) === 1)),
+              (noSideOf(o.positionSide) || (o.positionSide === "LONG") === (Number(lsd) === 1)),
           )
         )
           lagging.add(k);
@@ -3223,13 +3225,14 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       const onLagging = ([1, -1] as const).some(
         (sd) =>
           lagging.has(`${o.venueSymbol}|${sd}`) &&
-          (!o.positionSide || (o.positionSide === "LONG") === (sd === 1)),
+          (noSideOf(o.positionSide) || (o.positionSide === "LONG") === (sd === 1)),
       );
       if (onLagging) continue;
+      // a one-way order (BOTH) belongs to the symbol's one net position, whichever side it is on: it is not flat
       const flat = !book.positions.some(
         (p) =>
           p.venueSymbol === o.venueSymbol &&
-          (!o.positionSide || (p.side === "long") === (o.positionSide === "LONG")),
+          (noSideOf(o.positionSide) || (p.side === "long") === (o.positionSide === "LONG")),
       );
       const ownGone =
         !oneway && !!o.positionSide && ledger.get(`${o.venueSymbol}|${o.positionSide === "LONG" ? 1 : -1}`) === 0;
