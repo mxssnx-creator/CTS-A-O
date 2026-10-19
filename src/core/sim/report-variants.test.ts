@@ -82,8 +82,13 @@ describe("walk-forward variants", () => {
     assert.equal(vs.find((v) => v.id === "sig:confirm")!.status, "run");
   });
 
-  it("engine direction acceptance (on by default): the off row and each parameter around the as-run one", () => {
-    const vs = walkForwardVariants(base, { kinds, signalTapes: 0 });
+  it("engine direction acceptance (off by default, operator 19 Oct): the flip row; parameter rows only while it is on", () => {
+    const dflt = walkForwardVariants(base, { kinds, signalTapes: 0 });
+    const flip = dflt.find((v) => v.id === "sig:engineSide")!;
+    assert.equal(flip.label, "Engine direction acceptance on");
+    assert.equal(flip.opts!.engineSideAccept!.enabled, true);
+    assert.equal(dflt.filter((v) => v.id.startsWith("sig:engineSide-")).length, 0);
+    const vs = walkForwardVariants({ ...base, engineSideAccept: { enabled: true, minPf: 1.05, hours: 24, minTrades: 30 } }, { kinds, signalTapes: 0 });
     const off = vs.find((v) => v.id === "sig:engineSide")!;
     assert.equal(off.label, "Engine direction acceptance off");
     assert.equal(off.opts!.engineSideAccept!.enabled, false);

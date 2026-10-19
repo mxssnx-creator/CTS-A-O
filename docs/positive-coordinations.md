@@ -13,7 +13,7 @@ desk prints a warning at start and on every patch that leaves one of them off (`
 | Signal direction acceptance (each side's signals pooled — the run's active candidates, counted per signal entry since 6 Oct) | `signals.sideAccept = { enabled: true, minPf: 1.3, hours: 24, minTrades: 20 }` | x01, 48 h on 5 Oct: long PF 3–44, short PF 0.1–0.3 per 12 h |
 | Signals trade their own base | `signals.ownBase: true` | the engine's Normal off / Block Active skip left signals ~16 closes a day |
 | Signal volatility floor | `signals.filter.volFloor: 0.003` | the move must be worth the 0.2 % round trip (worst drawdown 523 vs 660) |
-| Engine direction acceptance (type family × range × side) — **operator: ON, 6 Oct evening** (see below) | `wf.engineSideAccept = { enabled: true, minPf: 1.05, hours: 24, minTrades: 30 }` — code default on since 6 Oct evening (off earlier that day) | x01 paper replay, 5 Oct: opened shorts PF 1.25 / held 0.51; everything opened PF 1.70 vs 1.0. Same tapes, 12 symbols, 6 h + 6 h, 5–6 Oct: OFF let in 187 shorts at PF 0.05 (net −2,222 % in trade units), the window's PF 3.62 → 1.82 |
+| Engine direction acceptance (type family × range × side) — **operator: OFF as default, 19 Oct** (see below; was ON from 6 Oct evening) | `wf.engineSideAccept = { enabled: false, minPf: 1.05, hours: 24, minTrades: 30 }` — code default off since 19 Oct (on 6 Oct evening – 19 Oct) | x01 paper replay, 5 Oct: opened shorts PF 1.25 / held 0.51; everything opened PF 1.70 vs 1.0. Same tapes, 12 symbols, 6 h + 6 h, 5–6 Oct: OFF let in 187 shorts at PF 0.05 (net −2,222 % in trade units), the window's PF 3.62 → 1.82 |
 | Normal and Trailing enabled and running, Block Active off | `toggles.normal: true`, `trailing: true`, `blockActive: false` (code default) | operator, 5 Oct: with Block Active (minimum level 5) only Block-raised entries opened — a 2 h Micro run traded Axis alone |
 | Axis on x01 | `toggles.axis: true` | profitable on both sides on x01 (24 h: long PF 1.37, short PF 1.19) |
 | DCA off on x01 | `toggles.dca: false` | lost in every last-N variant of the x01 simulation (PF 0.60–0.81) |
@@ -25,6 +25,23 @@ desk prints a warning at start and on every patch that leaves one of them off (`
 | Allocator caps for every long-running process | `MALLOC_ARENA_MAX=2 MALLOC_MMAP_THRESHOLD_=1048576` | without them x01 held 11 GB RSS on a 2.6 GB heap |
 
 ## Operator overrides of a measured coordination
+
+19 Oct — **engine direction acceptance off, forced off and the code default off** (operator: "Force it off and off as
+default"; the same request as "Open long and short directions always"). The comparison on record does NOT beat the
+coordination, and it is recorded here as the operator's decision, shown the cost first. Same window, same tapes (the
+session run ending 2026-10-19 14:00 UTC, 12 symbols, 24 h pre-historic + 24 h run, defaults, feed in the session
+scratchpad): the session's own variant table (`sig:engineSide`):
+
+| engine direction acceptance | orders | PF | net (Σ trade %) |
+|---|---:|---:|---:|
+| on (as run; the coordination) | 52 | **2.59** | **+455.9 %** |
+| off (the override) | 177 | 1.13 | +260.4 % |
+| window 3 h / 12 h / 48 h, PF 1.2 / 1.3 | 129 / 117 / 124, 45 / 44 | 0.74 / 0.77 / 1.10, 1.90 / 1.73 | −437.5 / −295.2 / +136.1, +258.9 / +209.3 |
+
+Earlier record: 6 Oct 24 h on 30 symbols, PF 1.19 off → 2.59 on. So on both windows OFF lowered PF and net, and let in
+more orders at PF near 1. The code default `ENGINE_SIDE_ACCEPT` is now off; the Settings switch stays and sets it on
+again. The parameters (24 h, PF 1.05, 30 closes) are kept as the switch's values. The desk warning ("engine direction
+acceptance is off") prints on every start while it is off, by the rule above.
 
 6 Oct — **engine direction acceptance off; Long and Short always run both directions.** The comparison above does NOT
 beat the coordination: on the same tapes switching it off let in 187 shorts at PF 0.05 and took the window from PF 3.62

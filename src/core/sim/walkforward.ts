@@ -550,8 +550,13 @@ export function dcaProtectGrid(tfMin: number, dca?: Partial<DcaConfig> | null, m
   }));
 }
 
-/** engine direction acceptance as on by default (operator, 6 Oct): PF 1.05 over 24 h, at least 30 closes */
-export const ENGINE_SIDE_ACCEPT: SignalAccept = { enabled: true, minPf: 1.05, hours: 24, minTrades: 30 };
+/**
+ * engine direction acceptance, OFF by default: operator override, 19 Oct ("Long and Short always run both directions").
+ * The measured cost is recorded in docs/positive-coordinations.md: the 24 h run ending 2026-10-19 14:00 UTC (12 symbols)
+ * PF 2.59 / net +455.9 % with it on (52 orders), PF 1.13 / +260.4 % with it off (177 orders). Parameters kept for the
+ * switch: PF 1.05 over 24 h, at least 30 closes.
+ */
+export const ENGINE_SIDE_ACCEPT: SignalAccept = { enabled: false, minPf: 1.05, hours: 24, minTrades: 30 };
 
 export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
   return {
