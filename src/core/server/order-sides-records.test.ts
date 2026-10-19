@@ -384,9 +384,10 @@ describe("the stop a flat marker is priced at: a new position's own stop only (l
 /**
  * One control step on a desk whose key S0 holds a position of this side, opened 3 h ago at 10 with its own stop and its
  * own take-profit, and no order history: the venue shows the side flat, so the position closed outside this system. The
- * 1-minute bars of the last 30 minutes are `bars`. Returns the flat marker the step wrote.
+ * 1-minute bars of the last 30 minutes are `bars`. `stopRests`: the venue leaves the stop on the book after the take-profit
+ * filled. Returns the flat marker the step wrote.
  */
-async function closedAtTarget(side: 1 | -1, stop: number, tp: number, bars: Array<Pick<Candle, "h" | "l">>) {
+async function closedAtTarget(side: 1 | -1, stop: number, tp: number, bars: Array<Pick<Candle, "h" | "l">>, stopRests = false) {
   resetLiveBackoff();
   const { rt } = fakeRt(new CoreDb(":memory:"));
   const tag = liveTag(rt.settings.live.connId);
@@ -407,9 +408,21 @@ async function closedAtTarget(side: 1 | -1, stop: number, tp: number, bars: Arra
   put(`${tag}Ea1`, "O", 1, 10, at - 3 * H);
   put(`${tag}Sa2`, "S", 0, stop, at - 3 * H + 1);
   put(`${tag}Ta3`, "T", 0, tp, at - 3 * H + 2);
+  const ex = new SimExchange();
+  if (stopRests)
+    ex.orders.push({
+      id: "stop-resting",
+      venueSymbol: "S0-USDT",
+      symbol: "S0-USDT",
+      clientOrderId: `${tag}Sa2`,
+      positionSide: side === 1 ? "LONG" : "SHORT",
+      type: "STOP_MARKET",
+      stopPrice: stop,
+      qty: 1,
+    });
   const candles: Candle[] = bars.map((b, i) => ({ t: at - (30 - i) * 60_000, o: 10, h: b.h, l: b.l, c: 10, v: 1 }));
   Object.assign(rt, { candles: new Map([["S0-USDT", CandleSeries.fromCandles(candles)]]) });
-  await stepLive(rt as unknown as CoreRuntime, [], 1, new SimExchange());
+  await stepLive(rt as unknown as CoreRuntime, [], 1, ex);
   const flats = rt.db.all<{ px: number; msg: string | null }>(
     "SELECT px, msg FROM live_orders WHERE cfg = ? AND kind = 'F' ORDER BY at, rowid",
     `control|${key}`,
@@ -427,6 +440,16 @@ describe("the take-profit a flat marker is priced at: a new position's own take-
   it("(e) take-profit SHORT: a position closed at its take-profit 9.5 with no history is booked at that take-profit, not unverified (plan item 15)", async () => {
     // the mirror: the bars reach the take-profit (low 9.4) and not the stop (high 10.1 against 10.5)
     const m = await closedAtTarget(-1, 10.5, 9.5, [{ h: 10.1, l: 9.4 }]);
+    assert.deepEqual([m.px, m.msg], [9.5, "flat on the exchange (target 9.5)"]);
+  });
+
+  it("(e) take-profit with the stop still resting LONG: a take-profit that filled while the venue left our stop on the book, no history: booked at the take-profit 10.5 (plan item 15)", async () => {
+    const m = await closedAtTarget(1, 9.5, 10.5, [{ h: 10.6, l: 9.9 }], true);
+    assert.deepEqual([m.px, m.msg], [10.5, "flat on the exchange (target 10.5)"]);
+  });
+
+  it("(e) take-profit with the stop still resting SHORT: a take-profit that filled while the venue left our stop on the book, no history: booked at the take-profit 9.5 (plan item 15)", async () => {
+    const m = await closedAtTarget(-1, 10.5, 9.5, [{ h: 10.1, l: 9.4 }], true);
     assert.deepEqual([m.px, m.msg], [9.5, "flat on the exchange (target 9.5)"]);
   });
 });
