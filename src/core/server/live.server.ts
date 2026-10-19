@@ -2075,7 +2075,10 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       return net ? `${o.venueSymbol}|${net.side === "long" ? 1 : -1}` : null;
     };
     // own close orders resting on a key at this step's read: its stop(s) and its take-profit(s). One-way: the order is
-    // the key's when keyOfOwn says so (a BOTH order is its lane's, as the other one-way reads have it); hedge: its side
+    // the key's when keyOfOwn says so. keyOfOwn is the lane convention: a BOTH order belongs to its own lane (its
+    // control record's key, else the symbol's one net position), as its backstop count, lane fill and no-backstop
+    // reads take it. noSideOf (the lagging set, the orphan flat tests) counts a BOTH order on either side instead.
+    // Hedge: its side
     const restingOf = (k: string) => {
       const [rsym, rsd] = k.split("|");
       const out = { stopLeft: false, tpLeft: false };
