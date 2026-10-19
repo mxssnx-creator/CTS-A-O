@@ -1,5 +1,5 @@
-// Micro indications ("mc-…"): fast reversal entries for the Micro range (net targets 0.1–0.4 % after the round-trip
-// cost, price targets 0.3–0.6 % at the 0.2 % cost). A Micro target is one to three times the cost, so only entries
+// Micro indications ("mc-…"): fast reversal entries for the Micro range. Active net targets use the 0.2% PositionCost baseline
+// basis; price targets add the current configured execution cost. A Micro target is cost-sensitive, so only entries
 // with a high hit rate on a short pullback can clear it: each fires on the one bar its stretch shows (RSI(2) extreme,
 // a close outside a wide Bollinger band that turns back, a rejected spike, a run of same-direction closes, a large
 // distance from the rolling VWAP or mean) and points back against the stretch.

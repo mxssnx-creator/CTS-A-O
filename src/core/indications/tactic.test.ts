@@ -112,8 +112,11 @@ describe("Tactic is a first-class independent indication kind", () => {
         mfe: 0,
         mae: 0,
       });
+      // Put the training closes inside the 24 h Main window but before the 6 h simulation. Spreading them across
+      // 120 h left only four observations in the actual selection window; putting them inside the simulation
+      // window made them execute and tested duplicate handling instead of independent Tactic selection.
       const trades = Array.from({ length: 100 }, (_, i) =>
-        trade(i % 20 === 19 ? -0.01 : 0.01, now - (120 - i) * H),
+        trade(i % 20 === 19 ? -0.01 : 0.01, now - 24 * H + i * 10 * 60_000),
       );
       trades.push(trade(0.01, now - H));
       return makeTape(cfg, "follow", ind, p, "normal", ["A"], trades, [], []);

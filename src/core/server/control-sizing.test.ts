@@ -314,10 +314,11 @@ describe("control orders: increases, stop repair, ownership", () => {
   });
 
   it("the live status says when the volume factor has no effect, and from which factor it would size", async () => {
-    const ex = new SimExchange();
+    const ex = new SimExchange().withEquity(10);
     const { rt } = fakeRt(new CoreDb(":memory:"));
-    // unit 10 × factor 10 = 100 USD, cap 40: every position capped; the factor sizes only below 40 / (10 × 1) = 4
-    rt.settings.live = { ...rt.settings.live, ratio: 10 };
+    // unit 10 × factor 10 = 100 USD, the supported 4× equity cap is 40: the factor sizes only below 4.
+    // Legacy fixed-USD ceilings are intentionally ignored by live sizing.
+    rt.settings.live = { ...rt.settings.live, ratio: 10, maxPositionX: 4, maxNotionalUsd: 0 };
     rt.paper.positions = [lane("a", "S0-USDT", 1, 10, 1), lane("b", "S1-USDT", 1, 17, 1)];
     const st = await step(rt, ex);
     assert.match(st.reason, /volume factor 10 has no effect.*cap 40\.00 USD.*below 4\.00/);

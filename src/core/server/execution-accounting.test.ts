@@ -225,6 +225,31 @@ describe("execution accounting integrity", () => {
     assert.equal(rows.find((x) => x.kind === "X")?.qty, opened * .25);
   });
 
+  it("a protective short close books only its actual partial fill and leaves the remainder owned", async () => {
+    const rt = fakeRt(new CoreDb(":memory:")).rt;
+    rt.paper.positions = [lane("a", "S0-USDT", -1, 10)];
+    const ex = new SimExchange();
+    const place = ex.order.bind(ex);
+    let opened = 0;
+    ex.order = async (p) => {
+      if (p.type === "STOP_MARKET") throw new ExchangeRejected("stop permission denied", 109400);
+      if (p.type !== "MARKET") return place(p);
+      const into = p.positionSide === "SHORT" && p.side === "SELL";
+      const q = Number(p.quantity) * (into ? 1 : .25);
+      if (into) opened = q;
+      await place({ ...p, quantity: q });
+      return { order: { avgPrice: into ? 10 : 10.1, executedQty: q, status: "FILLED" } };
+    };
+    const result = await stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+    assert.equal(result.closed, 0, "an incomplete protective close is never counted as a fully closed position");
+    assert.equal(ex.positions.get("S0-USDT|SHORT"), opened * .75);
+    const rows = rt.db.all<{ k: string; kind: string; status: string; qty: number }>(
+      "SELECT substr(cfg, 9) AS k, kind, status, qty FROM live_orders ORDER BY at, rowid",
+    );
+    assert.equal(ownLedger(rows).get("S0-USDT|-1"), opened * .75);
+    assert.equal(rows.find((x) => x.kind === "X")?.qty, opened * .25);
+  });
+
   it("a protective close accepted with zero fills is not sent again while its execution remains pending", async () => {
     mock.timers.enable({ apis: ["Date"], now: 1_790_000_000_000 });
     const rt = fakeRt(new CoreDb(":memory:")).rt;

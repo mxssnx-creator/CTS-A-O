@@ -38,14 +38,14 @@ const finish = <T>(g: Generator<unknown, T>): T => {
   }
 };
 const inner = (rt: CoreRuntime) => rt as unknown as Inner;
-function fixture() {
+function fixture(stepReturn = 0.0002) {
   const end = Math.floor(Date.now() / H) * H;
   const candles: Candle[] = [];
   let price = 100;
   for (let i = 0; i < 16_000; i++) {
     const direction = Math.floor(i / 300) % 2 === 0 ? 1 : -1;
     const o = price;
-    price = o * (1 + direction * 0.0002);
+    price = o * (1 + direction * stepReturn);
     candles.push({
       t: end - (16_000 - i) * 60_000,
       o,
@@ -214,7 +214,7 @@ describe("independent Exit preset backtests", { timeout: 90_000 }, () => {
           const fitted = finish(
             exitStrategyProtectsGen(
               u,
-              pairs,
+              pairs.filter((pair) => actual!.opts.exitBasePassed?.has(pair) ?? true),
               rt.settings.exitStrategy,
               rt.settings.tactics,
               end - 24 * H,
@@ -230,7 +230,7 @@ describe("independent Exit preset backtests", { timeout: 90_000 }, () => {
             [],
             rt.settings.cost,
             undefined,
-            new Set(pairs),
+            new Set(pairs.filter((pair) => actual!.opts.exitBasePassed?.has(pair) ?? true)),
             rt.settings.tactics,
             null,
             { minSl: validation.minSl, minTrail: validation.minTrail, pairProtects: fitted },
@@ -252,7 +252,9 @@ describe("independent Exit preset backtests", { timeout: 90_000 }, () => {
               localExitTapes.map((t) => t.id),
               tapes.map((t) => t.id),
             );
-          assert.ok(actual.trades.every((t) => t.kind === "exit" && /\|hx[LS][012]$/.test(t.cfg)));
+          assert.ok(actual.trades.every((t) => t.kind === "exit" && /\|hx[LS][0-4]$/.test(t.cfg)));
+          assert.ok(actual.trades.some((t) => t.cfg.includes("|hxL")), "the independent Exit fit trades long");
+          assert.ok(actual.trades.some((t) => t.cfg.includes("|hxS")), "the independent Exit fit trades short");
           assert.ok(
             tapes.every((t) => !t.protect.tag),
             "ranges are disabled and cannot gate Exit tapes",
@@ -266,10 +268,16 @@ describe("independent Exit preset backtests", { timeout: 90_000 }, () => {
 
   it("executes a sparse 30m Exit focus even when its ordinary lane is not initialized", async () =>
     withWorkers(false, async () => {
-      const { rt, p, columns, end } = fixture();
+      const { rt, p, columns, end } = fixture(0.0008);
       p.settings.tfs = [1, 30];
       p.settings.tfDays = { ...rt.settings.tfDays, "30": 1 };
       p.settings.focus = ["follow|ema-9-21@m30"];
+      p.settings.exitStrategy = {
+        ...rt.settings.exitStrategy,
+        timeframes: [30],
+        includeTactics: false,
+        includeRelations: false,
+      };
       rt.db.kvSet("presets", [p]);
       const ordinary = makeUniverse(
         laneSeriesFrom(

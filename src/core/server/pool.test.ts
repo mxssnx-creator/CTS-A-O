@@ -5,6 +5,7 @@ import { barsFromCandles, syntheticCandles } from "../market/bars.ts";
 import {
   allCombos,
   baseRuns,
+  configId,
   makeUniverse,
   runCombo,
   type ComboRun,
@@ -14,6 +15,7 @@ import {
   buildTapes,
   defaultWalkForward,
   floorsForPairs,
+  makeTape,
   mergeBuildStats,
   packTapes,
   unpackTapes,
@@ -93,23 +95,79 @@ describe("worker pool", { timeout: 300_000 }, () => {
     assert.deepEqual([...new Set(tapes.filter((t) => t.kind === "normal").map((t) => t.protect.tag ?? "wide"))].sort(), ["mn", "sh", "wide"]);
     const names = Object.keys(STRATEGY_PRESETS).slice(0, 4);
     // (a small synthetic fixture: seats from 3 closes, so the comparison has trades to compare)
-    const o = { ...wf, simH: 48, validLastN: 0, lastN: 0, gates: { ...wf.gates, minTrades: 3 } };
+    const o = {
+      ...wf,
+      simH: 240,
+      validLastN: 0,
+      lastN: 0,
+      preGate: false,
+      symGate: "off" as const,
+      rangeGate: { ...wf.rangeGate!, enabled: false },
+      gates: {
+        ...wf.gates,
+        minTrades: 3,
+        minPf: 1.05,
+        minDdtH: 0,
+        maxDdr: 0,
+        minGreen: 0,
+        rangeMinPf: { micro: 1.05, minimal: 1.05, short: 1.05, general: 1.05, long: 1.05 },
+      },
+    };
+    const H = 3_600_000;
+    const start = Math.floor((u.nowT - o.simH * H) / H) * H;
+    const probeId = configId("follow", "ema-9-21@m15", {
+      tp: 0.013,
+      sl: 0.019,
+      trail: 0,
+      hold: 13,
+    });
+    const row = (entryT: number) => ({
+      cfg: probeId,
+      sym: "A-USDT",
+      side: 1 as const,
+      entryT,
+      exitT: entryT + H,
+      entry: 100,
+      exit: 102,
+      r: 0.02,
+      reason: "tp" as const,
+      bars: 4,
+      mfe: 0,
+      mae: 0,
+    });
+    // Keep this transport parity test about worker/local simulation equality, not whether this fixed old feed happens
+    // to produce a qualified tape. Three settled wins train an explicit Normal candidate; three more are in Real.
+    const tapesWithExecution = [
+      ...tapes,
+      makeTape(
+        probeId,
+        "follow",
+        "ema-9-21@m15",
+        { tp: 0.013, sl: 0.019, trail: 0, hold: 13 },
+        "normal",
+        ["A-USDT"],
+        [row(start - 4 * H), row(start - 3 * H), row(start - 2 * H),
+          row(start + H), row(start + 3 * H), row(start + 5 * H)],
+        [],
+        [],
+      ),
+    ];
     const local = names.map(
-      (name) => walkForward(u, tapes, { ...o, toggles: STRATEGY_PRESETS[name].toggles }).stats,
+      (name) => walkForward(u, tapesWithExecution, { ...o, toggles: STRATEGY_PRESETS[name].toggles }).stats,
     );
     const res = await runOnWorkers<{ results: Array<{ name: string; stats: (typeof local)[0] }> }>(
       [names.slice(0, 2), names.slice(2)].map((pp) => ({
         type: "compare",
         nowT: u.nowT,
         baseTf: u.baseTf,
-        packed: packTapes(tapes),
+        packed: packTapes(tapesWithExecution),
         wf: o,
         presets: pp.map((name) => ({ name, toggles: STRATEGY_PRESETS[name].toggles })),
       })),
       2,
     );
     const remote = new Map(res.flatMap((r) => r.results).map((x) => [x.name, x.stats]));
-    assert.ok(local.some((st) => st.n > 0));
+    assert.ok(local.some((st) => st.n > 0), "deterministic Normal probe trades in the Real window");
     names.forEach((name, i) => assert.deepEqual(remote.get(name), local[i], name));
   });
 

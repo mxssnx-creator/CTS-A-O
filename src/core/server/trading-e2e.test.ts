@@ -124,14 +124,15 @@ describe(
       rt.stop();
       rt.settings.live = { ...engineRt.settings.live };
       const a = configId("follow", "rsi-mom-14-25@m15", DEFAULT_PROTECT);
-      const b = configId("revert", "ema-21-55@m15", DEFAULT_PROTECT);
+      const b = configId("follow", "sig-ema-cross-s@m15", DEFAULT_PROTECT);
       const declared: Identity[] = [
-        { cfg: a, sym: "SYN0-USDT", side: 1 },
         { cfg: a, sym: "SYN1-USDT", side: 1 },
+        { cfg: a, sym: "SYN2-USDT", side: 1 },
         { cfg: b, sym: "SYN2-USDT", side: -1 },
+        { cfg: b, sym: "SYN0-USDT", side: 1 },
         { cfg: b, sym: "SYN0-USDT", side: -1 },
       ];
-      hedgePair = { sym: "SYN0-USDT", long: declared[0], short: declared[3] };
+      hedgePair = { sym: "SYN0-USDT", long: declared[3], short: declared[4] };
       const now = Date.now();
       const n = Math.max(50, 2 * rt.livePromotionGate(declared[0]).minN!);
       const model = syntheticExecutionRun(declared, [-.008, .012], n, now);
@@ -139,7 +140,7 @@ describe(
       rt.sim = Object.assign(walkForward(u, [], { ...rt.wf, simH: 24 }), model);
       rt.tapes = [
         makeTape(a, "follow", "rsi-mom-14-25@m15", DEFAULT_PROTECT, "normal", prices.map((p) => p.sym), model.trades.filter((t) => t.cfg === a), [], []),
-        makeTape(b, "revert", "ema-21-55@m15", DEFAULT_PROTECT, "normal", prices.map((p) => p.sym), model.trades.filter((t) => t.cfg === b), [], []),
+        makeTape(b, "follow", "sig-ema-cross-s@m15", DEFAULT_PROTECT, "normal", prices.map((p) => p.sym), model.trades.filter((t) => t.cfg === b), [], []),
       ];
       rt.paper.selected = [a, b];
       rt.paper.startedAt = model.startT;

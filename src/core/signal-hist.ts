@@ -31,6 +31,7 @@ import { bothSides, simulate } from "./sim/backtest.ts";
 import { filterEntries } from "./sim/walkforward.ts";
 import { adjustProtect } from "./adjust.ts";
 import { isSignalCoordinationInd } from "./signal-coordination.ts";
+import { POSITION_COST_RT } from "./model-cost.ts";
 
 export interface SignalHistValidation {
   cost: number;
@@ -95,8 +96,8 @@ export const emptySignalHistDiagnostics = (): SignalHistDiagnostics => ({
 
 /** the grid historic targets, stops and trails are rounded to (0.25 % of price) */
 export const HIST_STEP = 0.0025;
-/** the smallest historic target: five round trips of the 0.2 % cost */
-export const HIST_MIN_TP = 0.01;
+/** the smallest historic target: five round trips of the 0.2% PositionCost baseline */
+export const HIST_MIN_TP = POSITION_COST_RT * 5;
 
 /** Hold horizon admitted by the available causal sample; short histories reserve 75 % for matured PF evidence. */
 export function signalHistHoldH(configHoldH: number, availableH: number, laneTf: number): number {

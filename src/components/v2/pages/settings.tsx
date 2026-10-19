@@ -1569,7 +1569,7 @@ export function RangeEditor(props: {
           {props.k === "micro" && (
             <Field
               label="TP net of the position cost"
-              hint="on: TP is the profit per winning order after the round-trip cost; the price target is TP + cost (0.1 % net at a 0.2 % cost = 0.3 %)"
+              hint="on: TP is the profit per winning order after the round-trip cost; the price target is TP + the configured cost (0.20 % net + the default 0.15 % cost = 0.35 %)"
             >
               <Switch
                 label="TP net of cost"
@@ -1581,7 +1581,7 @@ export function RangeEditor(props: {
           {props.k === "micro" && (
             <Field
               label="Min SL net of the position cost (%)"
-              hint="Micro's stop floor, calculated from the cost: this value plus the round-trip position cost (0.2 % + 0.2 % = 0.4 % today; a higher measured live cost raises it). It stands in for Min SL and the evaluation floor below, so no Micro cell is evaluated or traded with a tighter stop. Live, the exchange's own minimum stop distance per symbol still applies on top · 0 = off (Min SL applies)"
+              hint="Micro's stop floor: this net floor plus the configured round-trip cost (0.20 % + the default 0.15 % = 0.35 %). It stands in for Min SL and the evaluation floor below, so no Micro cell is evaluated or traded with a tighter stop. Live, the exchange's own minimum stop distance per symbol still applies on top · 0 = off (Min SL applies)"
             >
               <Num
                 pct
@@ -1710,7 +1710,7 @@ export function RangeEditor(props: {
           {props.k === "micro" && (
             <Field
               label="Smallest net target (× cost)"
-              hint="Micro net targets below this multiple of the round-trip cost are not computed: at a 0.10 % net target with a 0.20 % cost the cost is two thirds of the 0.30 % price target, so one tick of slippage flips the order's sign · 0 = every target"
+              hint="Micro net targets below this multiple of the round-trip cost are not computed. Net targets add the configured execution cost to form the price target · 0 = every target"
             >
               <Num
                 step={0.25}
@@ -1753,7 +1753,7 @@ export function ShortRange(props: {
       grid={props.grid as Record<string, unknown>}
       k="short"
       title="Short range"
-      info="Default TP 9–14× the 0.2% reference position cost (1.8–2.8%), step 1× (8× belongs to Minimal). SL 1–2.5× the target, trailing cells too. The editable values below define the current grid; evaluation subtracts the configured actual cost. Orders tracked as H."
+      info="Default TP 9–14× PositionCost at 0.2% per round trip (1.8–2.8%), step 1× (8× belongs to Minimal). SL 1–2.5× the target, trailing cells too. The editable values below define the current grid; evaluation subtracts the configured execution cost. Orders tracked as H."
       defaults={SHORT_RANGE}
       set={props.set}
     />
@@ -1770,7 +1770,7 @@ export function MinimalRange(props: {
       grid={props.grid as Record<string, unknown>}
       k="minimal"
       title="Minimal range"
-      info="Default TP 4–8× the 0.2% reference position cost (0.8–1.6%), step 0.5×, SL 1.5–3× the target (stop floor 0.6%, trail floor 0.3%), trailing cells too; every indication including Micro's. The editable values below define the current grid; evaluation subtracts the configured actual cost. Orders tracked as N."
+      info="Default TP 4–8× PositionCost at 0.2% per round trip (0.8–1.6%), step 0.5×, SL 1.5–3× the target (stop floor 0.6%, trail floor 0.3%), trailing cells too; every indication including Micro's. The editable values below define the current grid; evaluation subtracts the configured execution cost. Orders tracked as N."
       defaults={MINIMAL_RANGE}
       set={props.set}
     />
@@ -1821,7 +1821,7 @@ export function MicroRange(props: {
       grid={props.grid as Record<string, unknown>}
       k="micro"
       title="Micro range"
-      info="Default TP 0.1–0.4% net after the round-trip position cost (price targets 0.3–0.6% at a 0.2% cost), SL 1–5× the price target, step 0.25. Current targets, stop floors and enabled state are shown below; the net-target setting adds the configured cost. Enabled by default; each computed cell must pass its own admission gates. Orders tracked as U."
+      info="Default net TP values use the frozen 0.2% range reference (0.2–0.8% net); price targets add the configured execution cost (0.35–0.95% at the default 0.15%). SL 1–5× the price target, step 0.25. Current targets, stop floors and enabled state are shown below; each computed cell must pass its own admission gates. Orders tracked as U."
       defaults={MICRO_RANGE}
       set={props.set}
     />
