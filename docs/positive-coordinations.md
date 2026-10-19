@@ -92,6 +92,13 @@ judge each direction on its own record:
   the rolling 24-result PF are kept per symbol × direction, so losing shorts never hold back the symbol's longs. The
   coordination stays on (`coord.s2Windows` unchanged); only its key gained the side. The relation volume is unchanged
   (it already judges `side:` and `leg:` relations apart).
+  - **Stable-02 pause per side (`coord.s2Side`, default off).** The simulation pauses a symbol × direction
+    (`S2Coord.blocked(sym, side)`, keys `sym|±1`, judged by `s2.blocked(tr.sym, tr.side)` in walkforward.ts). The paper
+    step and the live intents (`pendingEntries`) both refuse entries through `entryHeldBack` (runtime.server.ts:5246-5248),
+    which refuses a paused entry only when `coord.s2Side` is on. Off (the default; `DEFAULT_COORD` has no `s2Side` key),
+    it compares the bare symbol with those keys, which never match, so the default paper and live book does not enforce
+    the pause the simulation applies. Adopting `s2Side` needs a causal on/off comparison on the paper book, recorded
+    here; until then the control cells in `src/core/server/order-sides-paper.test.ts` pin the default as allowed.
 - Keys that could now collide carry the side: the run's dupe check, the Block feed candidate key, the paper position
   id (persisted stop hits written before are still read). `WalkForwardResult` adds `bySide` and `skipsBySide`.
 - Unchanged by design: the Stable-02 confluence rule (the documented exception), the signals' own direction
