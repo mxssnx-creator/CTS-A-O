@@ -409,7 +409,10 @@ describe("Signals: additional independent Trailing only sets", () => {
       { ...basePosition, cfg: unbounded.id, target: 0, trailOnly: true, trailFree: false },
     ];
     const rt = {
-      settings: { grid: { trailFree: true } },
+      settings: {
+        grid: { trailFree: true },
+        signals: { rangeVolumeFactors: { short: 1, medium: 1 } },
+      },
       paper: { positions },
     } as unknown as CoreRuntime;
     const lanes = laneContributions(rt, new Map([[SYM, 100]]));

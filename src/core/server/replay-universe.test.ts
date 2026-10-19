@@ -44,14 +44,14 @@ describe("complete frozen replay universe", () => {
     }
   });
 
-  for (const mode of [undefined, false]) {
-    it(`retains the five-symbol progressive first batch when completeReplayUniverse is ${String(mode)}`, async () => {
+  for (const [mode, count] of [[undefined, 12], [false, 5]] as const) {
+    it(`loads ${count} symbols on the first backfill when completeReplayUniverse is ${String(mode)}`, async () => {
       const { runtime, requested, internals } = fixture(mode);
       try {
         await internals.syncMarket(internals.gen);
-        assert.equal(runtime.candles.size, 5);
-        assert.equal(requested.length, 5);
-        assert.equal(internals.prehistPending, true);
+        assert.equal(runtime.candles.size, count);
+        assert.equal(requested.length, count);
+        assert.equal(internals.prehistPending, count === 5);
         assert.equal(runtime.status.computes, 0);
       } finally {
         runtime.dispose();

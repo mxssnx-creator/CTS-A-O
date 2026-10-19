@@ -667,7 +667,12 @@ describe("signals: engine", { timeout: 400_000 }, () => {
         continue;
       }
       assert.ok(t.protect.sl >= 0.005 - 1e-9, `${t.id} sl ${t.protect.sl}`);
-      const signalTrailFloor = isSignalInd(t.ind) ? DEFAULT_SIGNALS.minTrail : DEFAULT_SETTINGS.grid.minTrail;
+      // Historic Exit uses its separately configured protection floor, not the engine grid floor.
+      const signalTrailFloor = isSignalInd(t.ind)
+        ? DEFAULT_SIGNALS.minTrail
+        : t.protect.exitType === "historic"
+          ? DEFAULT_SETTINGS.protectFloor.minTrail
+          : DEFAULT_SETTINGS.grid.minTrail;
       assert.ok(t.protect.trail === 0 || t.protect.trail >= signalTrailFloor - 1e-9, `${t.id} trail ${t.protect.trail}`);
       if (t.protect.atr) assert.ok((t.protect.atr.minSl ?? 0) >= 0.005 - 1e-9, `${t.id} atr floor`);
     }

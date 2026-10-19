@@ -13,7 +13,8 @@ import { bothSides, simulate } from "../src/core/sim/backtest.ts";
 import { profitFactor, statsOf } from "../src/core/metrics/stats.ts";
 import { DEFAULT_TACTICS, PF_NO_LOSS } from "../src/core/config.ts";
 
-export const COST = 0.002;
+import { POSITION_COST_RT } from "../src/core/model-cost.ts";
+export const COST = POSITION_COST_RT;
 export const LANES = Object.freeze([
   { tf: 1, combined: false }, { tf: 1, combined: true },
   { tf: 5, combined: false }, { tf: 5, combined: true },

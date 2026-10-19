@@ -23,6 +23,7 @@ import {
   type CoreSettings,
   type SettingsPatch,
 } from "../config.ts";
+import { roundTripCostFromFees } from "../model-cost.ts";
 import {
   gateMinimalPlus,
   microIndRule,
@@ -1103,7 +1104,7 @@ export class CoreRuntime {
     if ((opts.completeReplayUniverse || opts.replayPreloadAll) && (!opts.replay || opts.conn))
       throw new Error("completeReplayUniverse is available for unconnected replays only");
     this.completeReplayUniverse =
-      !!opts.replay && !opts.conn && (opts.completeReplayUniverse ?? opts.replayPreloadAll ?? false);
+      !!opts.replay && !opts.conn && (opts.completeReplayUniverse ?? opts.replayPreloadAll ?? true);
     this.replayPreloadAll = this.completeReplayUniverse;
     if (opts.evaluationFromT !== undefined) {
       if (
@@ -2100,7 +2101,7 @@ export class CoreRuntime {
     // limits on the MERGED settings (a patch alone could bypass them across several saves)
     // position cost follows its components when they are edited (taker fee + slippage per side, × 2)
     if (patch.fees && patch.cost === undefined)
-      next.cost = +(2 * (next.fees.taker + next.fees.slippage)).toFixed(5);
+      next.cost = +roundTripCostFromFees(next.fees).toFixed(5);
     const variants = gridVariants(next.grid);
     // a high ceiling, not a working limit (operator: process freely): it only catches a grid that would not fit in
     // memory at all
@@ -3201,6 +3202,27 @@ export class CoreRuntime {
     let stepT = t0;
     let maxStep = 0;
     const label = (v: unknown) => {
+      if (name === "Simulation" && typeof v === "number") {
+        if (v >= 0) return "complete simulation step";
+        const simulationSlices: Record<number, string> = {
+          [-2]: "settle simulated order books",
+          [-3]: "expand signal tape candidates",
+          [-4]: "build signal rank index",
+          [-5]: "rank signal units",
+          [-6]: "assemble engine tape candidates",
+          [-7]: "merge signal candidates",
+          [-8]: "sort step candidates",
+          [-9]: "run candidate entry gates",
+          [-10]: "finalize trade summaries",
+          [-11]: "settle final orders",
+          [-12]: "drain final candidate feed",
+          [-13]: "sort signal candidates",
+          [-14]: "fixed seat selection",
+          [-15]: "causal signal ranking",
+          [-16]: "negative-hour hedge qualification",
+        };
+        return simulationSlices[v] ?? (v < 0 ? "simulation helper" : "");
+      }
       const x = v as { stage?: string; label?: string } | null;
       return x && typeof x === "object" ? `${x.stage ?? ""} ${x.label ?? ""}`.trim() : "";
     };
@@ -5314,7 +5336,12 @@ export class CoreRuntime {
       slip += Math.max(0, (dir * (r.fill_px - r.ref_px)) / r.ref_px);
     }
     slip /= rows.length;
-    return { rt: 2 * (fee + slip), fills: rows.length, fee, slip };
+    return {
+      rt: roundTripCostFromFees({ taker: fee, slippage: slip }),
+      fills: rows.length,
+      fee,
+      slip,
+    };
   }
 
   /** One adjuster pass on the executed (Real) positions; a change triggers a recompute with the new ranges. */
@@ -7731,7 +7758,7 @@ export class CoreRuntime {
     for (const { op, held } of cands) if (held) openKeys.add(openDupKey(op));
     const crowdSeats: OpenPosition[] = [];
     for (const { tp, op, held } of cands) {
-      if (++slice % 300 === 0) yield slice;
+      if (++slice % 32 === 0) yield slice;
       if (!held && openKeys.has(openDupKey(op))) {
         pSkip("duplicate");
         continue;

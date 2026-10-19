@@ -97,12 +97,18 @@ describe("exact background Base config counts", { timeout: 60_000 }, () => {
     const runner = runnerOf(); runner.request(job);
     await until(() => runner.snapshot?.summary.state === "complete");
     assert.ok(runner.snapshot!.summary.totalChunks >= 2);
-    const stableSums = (rows: ReturnType<BaseConfigCounter["rows"]>) => rows.map((row) => ({
-      ...row,
-      gp: Math.round(row.gp * 1e10) / 1e10,
-      gl: Math.round(row.gl * 1e10) / 1e10,
-    }));
-    assert.deepEqual(stableSums(runner.snapshot!.rows), stableSums(counter.rows()));
+    const actual = runner.snapshot!.rows;
+    const expected = counter.rows();
+    assert.equal(actual.length, expected.length);
+    for (let i = 0; i < actual.length; i++) {
+      const { gp: actualGp, gl: actualGl, ...actualCounts } = actual[i];
+      const { gp: expectedGp, gl: expectedGl, ...expectedCounts } = expected[i];
+      assert.deepEqual(actualCounts, expectedCounts, `Axis count row ${i}`);
+      // The worker's bounded chunks and the direct full-grid counter add fractional returns in different groupings;
+      // allow only floating-point summation noise while keeping every count, pass, time boundary and config exact.
+      assert.ok(Math.abs(actualGp - expectedGp) <= 1e-9, `Axis row ${i} gross profit ${actualGp} vs ${expectedGp}`);
+      assert.ok(Math.abs(actualGl - expectedGl) <= 1e-9, `Axis row ${i} gross loss ${actualGl} vs ${expectedGl}`);
+    }
     assert.equal(runner.snapshot!.summary.configured, runner.snapshot!.summary.plannedConfigured);
     runner.cancel("test");
   });

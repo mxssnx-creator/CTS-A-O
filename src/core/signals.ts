@@ -53,14 +53,15 @@ export function signalCombos(
   }
   const coord = sig.coordination;
   if (coord.enabled) {
-    const sources = SIGNAL_SOURCES
-      .filter((src) => allow ? sig.sources[src.name] === true : sig.sources[src.name] !== false)
-      .map((src) => src.name);
+    const sources = SIGNAL_SOURCES.filter((src) =>
+      allow ? sig.sources[src.name] === true : sig.sources[src.name] !== false,
+    ).map((src) => src.name);
     if (sources.length >= coord.minSources) {
       const inputs: Array<{ mask: 1 | 2 | 3; short: boolean; medium: boolean }> = [];
       if (sig.ranges.short) inputs.push({ mask: 1, short: true, medium: false });
       if (sig.ranges.medium) inputs.push({ mask: 2, short: false, medium: true });
-      if (sig.ranges.short && sig.ranges.medium) inputs.push({ mask: 3, short: true, medium: true });
+      if (sig.ranges.short && sig.ranges.medium)
+        inputs.push({ mask: 3, short: true, medium: true });
       for (const input of inputs) {
         for (const ratio of SIGNAL_COORDINATION_RATIOS) {
           const id = signalCoordinationId(sources, ratio, coord.minSources, input.mask);
@@ -109,9 +110,7 @@ export function signalProtects(sig: SignalSettings): Protect[] {
         out.push({ tp: 0, sl, trail, hold, trailOnly: true, trailStep: only.trailStep });
   // A short trail is an inactive configuration, not a tighter distance that should be silently widened later.
   // The tape builder repeats this check after lane scaling because fast lanes can shrink a valid reference trail.
-  return out.filter(
-    (p) => !(p.trail > 0 && p.trail * (p.trailStep ?? 1) + 1e-12 < sig.minTrail),
-  );
+  return out.filter((p) => !(p.trail > 0 && p.trail * (p.trailStep ?? 1) + 1e-12 < sig.minTrail));
 }
 
 /** Signal pairs ("bot|ind") with at least `minTrades` Base trades on some symbol: the candidates to rank. */
@@ -165,7 +164,14 @@ export function signalEvaluationPairs<
  * config evidence; causal ranking and hedge records include the exact cfg suffix. Every context uses its own closes.
  * Every lookup of the active set (simulation, paper, pending entries, the live lane filter) builds its key here.
  */
-export const sigActiveKey = (bot: string, ind: string, sym: string, side: number, kind?: string, cfg?: string) =>
+export const sigActiveKey = (
+  bot: string,
+  ind: string,
+  sym: string,
+  side: number,
+  kind?: string,
+  cfg?: string,
+) =>
   `${bot}|${ind}|${sym}|${side > 0 ? 1 : -1}${kind ? `|${kind}` : ""}${cfg ? `|cfg=${encodeURIComponent(cfg)}` : ""}`;
 
 /** Exact qualification; production callers always supply cfg and never fall back to broad discovery keys. */
@@ -181,8 +187,14 @@ export function signalActiveHas(
   // Base/discovery keys establish that a pair was calculated. They contain no
   // strategy-type result and cannot authorize an unmeasured recovered type.
   // A malformed recovered direction must not normalize into a valid short key.
-  return (side === 1 || side === -1) && typeof kind === "string" && kind.trim().length > 0 &&
-    typeof cfg === "string" && cfg.trim().length > 0 && active.has(sigActiveKey(bot, ind, sym, side, kind, cfg));
+  return (
+    (side === 1 || side === -1) &&
+    typeof kind === "string" &&
+    kind.trim().length > 0 &&
+    typeof cfg === "string" &&
+    cfg.trim().length > 0 &&
+    active.has(sigActiveKey(bot, ind, sym, side, kind, cfg))
+  );
 }
 
 /**
@@ -193,32 +205,46 @@ export function signalActiveHas(
  * A symbol's stats carry `sides` ({"1": long, "-1": short}: Base's per-side record): each side is judged on its own.
  * Stats without `sides` (a record made before the split) are one pooled unit that activates both directions.
  */
+type ActiveSignalRun = {
+  bot: string;
+  ind: string;
+  /** Absent only on Base/discovery records, before strategy tapes exist. */
+  kind?: string;
+  /** Exact protection identity, present on causal config qualification records. */
+  cfg?: string;
+  bySym:
+    | Record<
+        string,
+        {
+          n: number;
+          net: number;
+          pf: number;
+          dd?: number;
+          okShare?: number;
+          recentN?: number;
+          recentNet?: number;
+          sides?: Partial<Record<"1" | "-1", SignalSideStat>>;
+        }
+      >
+    | string;
+};
+
 export function activeSignals(
-  runs: Iterable<{
-    bot: string;
-    ind: string;
-    /** Absent only on Base/discovery records, before strategy tapes exist. */
-    kind?: string;
-    /** Exact protection identity, present on causal config qualification records. */
-    cfg?: string;
-    bySym:
-      | Record<
-          string,
-          {
-            n: number;
-            net: number;
-            pf: number;
-            dd?: number;
-            okShare?: number;
-            recentN?: number;
-            recentNet?: number;
-            sides?: Partial<Record<"1" | "-1", SignalSideStat>>;
-          }
-        >
-      | string;
-  }>,
+  runs: Iterable<ActiveSignalRun | null>,
   sig: SignalSettings,
 ): Set<string> {
+  const gen = activeSignalsGen(runs, sig);
+  for (;;) {
+    const r = gen.next();
+    if (r.done) return r.value;
+  }
+}
+
+/** Time-sliced form used by the runtime's causal per-hour ranking. Null rows are bounded-work checkpoints. */
+export function* activeSignalsGen(
+  runs: Iterable<ActiveSignalRun | null>,
+  sig: SignalSettings,
+): Generator<number, Set<string>> {
   type St = SignalSideStat & { sides?: Partial<Record<"1" | "-1", SignalSideStat>> };
   // The latest validation window must have positive own-config results when measured. No empty sibling protect
   // can divide this context's count; discovery/status records without recent fields retain their existing meaning.
@@ -229,7 +255,13 @@ export function activeSignals(
   const rank = sig.rank ?? "drawdown";
   const byDd = rank === "drawdown" || rank === "lowdd";
   // one row per unit; a pooled (pre-split) record is one unit holding both directions' keys
-  const rows: Array<{ key: string; keys: string[]; score: number; pf: number; coordination: boolean }> = [];
+  const rows: Array<{
+    key: string;
+    keys: string[];
+    score: number;
+    pf: number;
+    coordination: boolean;
+  }> = [];
   const judge = (keys: string[], st: SignalSideStat, coordination: boolean) => {
     if (st.n < sig.minTrades || !recentOk(st)) return;
     if (byDd) {
@@ -247,7 +279,12 @@ export function activeSignals(
       });
     } else rows.push({ key: keys[0], keys, score: st.net, pf: st.pf, coordination });
   };
+  let visited = 0;
   for (const r of runs) {
+    if (!r) {
+      yield -1;
+      continue;
+    }
     if (!r.ind.includes("sig-")) continue;
     const by = typeof r.bySym === "string" ? (JSON.parse(r.bySym) as Record<string, St>) : r.bySym;
     const coordination = isSignalCoordinationInd(r.ind);
@@ -259,16 +296,19 @@ export function activeSignals(
         if (st.sides["-1"]) judge([S], st.sides["-1"], coordination);
       } else judge([L, S], st, coordination);
     }
+    if (++visited % 8 === 0) yield -1;
   }
-  const sort = (a: typeof rows[number], b: typeof rows[number]) =>
+  const sort = (a: (typeof rows)[number], b: (typeof rows)[number]) =>
     b.score - a.score || b.pf - a.pf || (a.key < b.key ? -1 : 1);
   const classic = rows.filter((x) => !x.coordination).sort(sort);
   const coordinated = rows.filter((x) => x.coordination).sort(sort);
   // Each family has a distinct active-unit cap, in both the initial ranking and the causal hourly ranking.
-  return new Set([
-    ...(sig.count > 0 ? classic.slice(0, sig.count) : classic),
-    ...(sig.coordination.count > 0 ? coordinated.slice(0, sig.coordination.count) : coordinated),
-  ].flatMap((x) => x.keys));
+  return new Set(
+    [
+      ...(sig.count > 0 ? classic.slice(0, sig.count) : classic),
+      ...(sig.coordination.count > 0 ? coordinated.slice(0, sig.coordination.count) : coordinated),
+    ].flatMap((x) => x.keys),
+  );
 }
 
 /** One unit's ranking record (a symbol's pooled stats, or one direction of them). */
@@ -382,7 +422,11 @@ export class SignalAcceptIndex {
     }
     const fallback: AcceptTape[] = [];
     for (const tp of sigTapes) {
-      if (!tp.id?.trim() || identities.get(identityOf(tp)) !== 1 || new Set(tp.syms).size !== tp.syms.length) {
+      if (
+        !tp.id?.trim() ||
+        identities.get(identityOf(tp)) !== 1 ||
+        new Set(tp.syms).size !== tp.syms.length
+      ) {
         fallback.push(tp);
         continue;
       }
@@ -393,7 +437,13 @@ export class SignalAcceptIndex {
       for (let i = 0; i < tp.n; i++) {
         const sym = tp.symI[i];
         const t = tp.exitT[i];
-        if (!Number.isInteger(sym) || sym < 0 || sym >= tp.syms.length || !Number.isFinite(t) || t < previous) {
+        if (
+          !Number.isInteger(sym) ||
+          sym < 0 ||
+          sym >= tp.syms.length ||
+          !Number.isFinite(t) ||
+          t < previous
+        ) {
           ordered = false;
           break;
         }
@@ -406,14 +456,27 @@ export class SignalAcceptIndex {
         fallback.push(tp);
         continue;
       }
-      const cols: Array<{
-        t: Float64Array; gp: Float64Array; gl: Float64Array; cn: Int32Array;
-        next: number; seen: Set<number> | null;
-      } | undefined> = new Array(counts.length);
+      const cols: Array<
+        | {
+            t: Float64Array;
+            gp: Float64Array;
+            gl: Float64Array;
+            cn: Int32Array;
+            next: number;
+            seen: Set<number> | null;
+          }
+        | undefined
+      > = new Array(counts.length);
       for (const slot of slots) {
         const n = counts[slot];
-        cols[slot] = { t: new Float64Array(n), gp: new Float64Array(n + 1), gl: new Float64Array(n + 1),
-          cn: new Int32Array(n + 1), next: 0, seen: tp.entryT ? new Set() : null };
+        cols[slot] = {
+          t: new Float64Array(n),
+          gp: new Float64Array(n + 1),
+          gl: new Float64Array(n + 1),
+          cn: new Int32Array(n + 1),
+          next: 0,
+          seen: tp.entryT ? new Set() : null,
+        };
       }
       for (let i = 0; i < tp.n; i++) {
         const x = cols[tp.symI[i] * 2 + (tp.side[i] > 0 ? 1 : 0)]!;
@@ -430,7 +493,12 @@ export class SignalAcceptIndex {
       }
       for (const slot of slots) {
         const { t, gp, gl, cn } = cols[slot]!;
-        this.groups.set(acceptKey(tp.ind, tp.syms[slot >> 1], slot % 2 ? 1 : -1, tp.kind, tp.id), { t, gp, gl, cn });
+        this.groups.set(acceptKey(tp.ind, tp.syms[slot >> 1], slot % 2 ? 1 : -1, tp.kind, tp.id), {
+          t,
+          gp,
+          gl,
+          cn,
+        });
       }
       if (clock()) yield 0;
     }
@@ -599,7 +667,7 @@ export function engineSideKey(
   exitSet?: ExitConfigSet,
 ): string {
   const family = sideFamilyOf(kind, exitSet);
-  const range = kind === "exit" ? "independent" : tag ?? "wide";
+  const range = kind === "exit" ? "independent" : (tag ?? "wide");
   return `${family}|${range}|${side > 0 ? 1 : -1}${ind ? `|${ind}` : ""}`;
 }
 /**
@@ -770,7 +838,12 @@ export class SignalGuard {
    * every closed signal candidate in exit order with its direction (loss-cluster guard: judged per side — a cluster
    * of losing shorts never pauses the longs)
    */
-  private closed: Array<{ t: number; r: number; side: number; population: "signals" | "coordination" }> = [];
+  private closed: Array<{
+    t: number;
+    r: number;
+    side: number;
+    population: "signals" | "coordination";
+  }> = [];
   /**
    * signal entries already counted ("group#onset" → exit of their first close): the k configs of one entry share it
    * and count once in the loss cluster and the acceptance counts. Pruned by time (an entry's configs all close within
@@ -798,7 +871,14 @@ export class SignalGuard {
    * once, on its first close (one entry's k configs losing together are one loss, not k); `population` isolates
    * classic sources from coordination ratios.
    */
-  add(key: string, r: number, exitT?: number, side = 0, onset?: string, population: "signals" | "coordination" = "signals") {
+  add(
+    key: string,
+    r: number,
+    exitT?: number,
+    side = 0,
+    onset?: string,
+    population: "signals" | "coordination" = "signals",
+  ) {
     if (exitT !== undefined && this.firstOnset(`cluster:${population}`, onset, exitT)) {
       this.closed.push({ t: exitT, r, side: side > 0 ? 1 : side < 0 ? -1 : 0, population });
       // trimmed by time, never by count: the cluster window (≤ 720 min) must always see every close inside it
@@ -880,7 +960,12 @@ export class SignalGuard {
    * count), so the simulation, the paper book, the live step and the audit replay decide alike. Candidates keep
    * being computed and fed while paused (the internal calculations never stop).
    */
-  clustered(t: number, c: SignalClusterSettings, side = 0, population: "signals" | "coordination" = "signals"): boolean {
+  clustered(
+    t: number,
+    c: SignalClusterSettings,
+    side = 0,
+    population: "signals" | "coordination" = "signals",
+  ): boolean {
     if (!c.enabled) return false;
     const from = t - c.windowMin * 60_000;
     const sd = side > 0 ? 1 : side < 0 ? -1 : 0;

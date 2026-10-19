@@ -109,6 +109,7 @@ import { isMicroInd, microIndFits, type MicroIndRule } from "../indications/micr
 import {
   acceptKey,
   activeSignals,
+  activeSignalsGen,
   EngineSideIndex,
   engineSideKey,
   engineSideKeyFor,
@@ -133,11 +134,11 @@ const H = 3_600_000;
 
 /** One fail-closed PF gate for Base, selection and last-N (no fabricated wins from NaN/overflow). */
 function qualifiedPf(gp: number, gl: number, floor: number): boolean {
-  if (!(Number.isFinite(gp) && Number.isFinite(gl) && gp >= 0 && gl >= 0 && Number.isFinite(floor))) return false;
+  if (!(Number.isFinite(gp) && Number.isFinite(gl) && gp >= 0 && gl >= 0 && Number.isFinite(floor)))
+    return false;
   const pf = profitFactor(gp, gl);
   return Number.isFinite(pf) && pf >= floor;
 }
-
 
 /**
  * Coordination tactics: portfolio-level rules on the realized results of the executed orders (causal: only orders
@@ -2949,8 +2950,12 @@ function beatsBase<T extends { pair: string; window: { pf: number } }>(
   });
 }
 const noteBase = (m: Map<string, number>, tp: ConfigTape, w: { n: number; pf: number }) => {
-  if (w.n < 3 || !Number.isFinite(w.pf) ||
-    familyOf(tp.kind, tp.protect.exitSet, tp.protect.exitSide) !== "base") return;
+  if (
+    w.n < 3 ||
+    !Number.isFinite(w.pf) ||
+    familyOf(tp.kind, tp.protect.exitSet, tp.protect.exitSide) !== "base"
+  )
+    return;
   const k = `${tp.bot}|${tp.ind}`;
   m.set(k, Math.max(m.get(k) ?? -Infinity, w.pf));
 };
@@ -3443,13 +3448,20 @@ function configEvalAt(
   if (!Number.isSafeInteger(w.n) || w.n < minTradesForTape(tp, o, o.gates.minTrades ?? 0)) return no("closes");
   if (!(Number.isFinite(w.net) && w.net > 0)) return no("net");
   const prior = lossPriorOf(tp, o.gates);
-  if (!(Number.isFinite(w.pf) && w.pf >= minPf &&
-    (prior <= 0 || (w.gp !== undefined && w.gl !== undefined && qualifiedPf(w.gp, w.gl + prior, minPf)))))
+  if (!(
+    Number.isFinite(w.pf) &&
+    w.pf >= minPf &&
+    (prior <= 0 ||
+      (w.gp !== undefined && w.gl !== undefined && qualifiedPf(w.gp, w.gl + prior, minPf)))
+  ))
     return no("pf");
   if (o.preGate) {
     const pre = win(tp, lowerBound(tp.exitT, t - o.preH * H), b);
-    if (pre.n >= 3 && !(Number.isFinite(pre.pf) && pre.pf >= minPf &&
-      Number.isFinite(pre.net) && pre.net >= 0)) return no("pre");
+    if (
+      pre.n >= 3 &&
+      !(Number.isFinite(pre.pf) && pre.pf >= minPf && Number.isFinite(pre.net) && pre.net >= 0)
+    )
+      return no("pre");
   }
   const lcb = lcbFast(tp, a, b);
   if (!(lcb > 0)) return no("lcb");
@@ -3650,8 +3662,8 @@ function configPassAt(
   const prior = info.prior;
   if (!Number.isSafeInteger(n) || n < minTradesForTape(tp, o, o.gates.minTrades ?? 0)) return false;
   if (!(Number.isFinite(net) && net > 0)) return false;
-  if (!(Number.isFinite(pf) && pf >= minPf &&
-    (prior <= 0 || qualifiedPf(gp, gl + prior, minPf)))) return false;
+  if (!(Number.isFinite(pf) && pf >= minPf && (prior <= 0 || qualifiedPf(gp, gl + prior, minPf))))
+    return false;
   if (o.preGate) {
     const pa = lowerBound(tp.exitT, t - o.preH * H);
     const pn = b - pa;
@@ -4630,15 +4642,37 @@ export function hedgeSignalsAt(
   windowH: number,
   opt: { minN: number; minPf: number } = HEDGE_DEFAULTS,
 ): Set<string> {
+  const gen = hedgeSignalsAtGen(groups, t, negHours, windowH, opt);
+  for (;;) {
+    const r = gen.next();
+    if (r.done) return r.value;
+  }
+}
+
+/** Time-sliced hedge qualification used by the walk-forward runtime. */
+export function* hedgeSignalsAtGen(
+  groups: readonly SignalIndexRow[],
+  t: number,
+  negHours: ReadonlySet<number>,
+  windowH: number,
+  opt: { minN: number; minPf: number } = HEDGE_DEFAULTS,
+): Generator<number, Set<string>> {
   const out = new Set<string>();
   if (!negHours.size) return out;
-  for (const row of signalWindowRows(groups, t, windowH, 24, negHours))
+  let visited = 0;
+  for (const row of signalWindowRows(groups, t, windowH, 24, negHours)) {
+    if (!row) {
+      yield -16;
+      continue;
+    }
     for (const [sym, st] of Object.entries(row.bySym))
       for (const side of [1, -1] as const) {
         const own = st.sides?.[side > 0 ? "1" : "-1"];
         if (own && own.n >= opt.minN && own.net > 0 && own.pf >= opt.minPf)
           out.add(sigActiveKey(row.bot, row.ind, sym, side, row.kind, row.cfg));
       }
+    if (++visited % 8 === 0) yield -16;
+  }
   return out;
 }
 
@@ -4688,7 +4722,7 @@ function* signalWindowRows(
   windowH: number,
   recentH: number,
   negHours?: ReadonlySet<number>,
-): Generator<SignalWindowRow> {
+): Generator<SignalWindowRow | null> {
   const endB = Math.floor(t / H);
   const fromB = endB - windowH;
   const recentB = endB - recentH;
@@ -4734,7 +4768,9 @@ function* signalWindowRows(
     };
     const a = lowerBound(tp.exitT, fromB * H);
     const b = lowerBound(tp.exitT, endB * H);
+    let scanned = 0;
     for (let i = a; i < b; i++) {
+      if (++scanned % 2048 === 0) yield null;
       const h = Math.floor(tp.exitT[i] / H);
       if (negHours && !negHours.has(h)) continue;
       const slot = tp.symI[i] * 2 + (tp.side[i] > 0 ? 1 : 0);
@@ -4841,6 +4877,20 @@ export function activeSignalsAt(
       ? (sigTapes as SignalIndexRow[])
       : signalIndex(sigTapes as readonly ConfigTape[]);
   return activeSignals(signalWindowRows(index, t, windowH, sig.validateH ?? 24), sig);
+}
+
+function* activeSignalsAtGen(
+  index: readonly SignalIndexRow[],
+  t: number,
+  sig: SignalSettings,
+  windowH: number,
+): Generator<number, Set<string>> {
+  const gen = activeSignalsGen(signalWindowRows(index, t, windowH, sig.validateH ?? 24), sig);
+  for (;;) {
+    const r = gen.next();
+    if (r.done) return r.value;
+    yield -15;
+  }
 }
 
 /**
@@ -5152,6 +5202,19 @@ export function runSubset(
   return { stats, stable: runStable(stats, runBlocks(closed, r.startT, r.endT), minPf) };
 }
 
+function* selectFixedRuntimeGen(
+  tapes: readonly ConfigTape[],
+  t: number,
+  o: WalkForwardOptions,
+): Generator<number, { picks: Selection[]; eligible: number; checks?: ValidationCheck[] }> {
+  const gen = selectFixedGen(tapes, t, o);
+  for (;;) {
+    const r = gen.next();
+    if (r.done) return r.value;
+    yield -14;
+  }
+}
+
 export function* walkForwardGen(
   u: Universe,
   tapes: readonly ConfigTape[],
@@ -5245,13 +5308,15 @@ export function* walkForwardGen(
       : null;
   // executed signal orders per source, in exit order (source stability gate)
   const srcClosed = new Map<string, Array<{ exitT: number; r: number }>>();
-  const settle = (t: number) => {
+  const settle = function* (t: number): Generator<number, void> {
+    let settled = 0;
     while (vopen.size && vopen.peekT() <= t) {
       const fx = vopen.pop()!;
       if (fx.cfg && !sigCfg(fx.cfg)) engineOpen.add(fx.sym, fx.side, -1);
       feed.push(fx);
       feedBooks(fx, book, guard, direction);
       if (!fx.open) s2?.close(fx);
+      if (++settled % 32 === 0) yield -2;
     }
     while (open.size && open.peekT() <= t) {
       const x = open.pop()!;
@@ -5264,6 +5329,7 @@ export function* walkForwardGen(
         if (!l) srcClosed.set(src, (l = []));
         l.push({ exitT: x.exitT, r: x.r });
       }
+      if (++settled % 32 === 0) yield -2;
     }
   };
 
@@ -5279,7 +5345,7 @@ export function* walkForwardGen(
   // per candidate: ~1 M of them, 0.1–0.2 GB through the Real stage); the same values as sigActiveKey per candidate
   const pairKeys = new Map<string, Map<string, [string | undefined, string | undefined]>>();
   for (const tp of sigTapes) {
-    if (++built % 200 === 0) yield -1; // (a slice, not a simulated step)
+    if (++built % 200 === 0) yield -3; // (a slice, not a simulated step)
     // keyed per direction (sigActiveKey): long and short of a signal on a symbol are active apart
     const take = (sym: string, side: number) =>
       o.signalRank ||
@@ -5314,7 +5380,9 @@ export function* walkForwardGen(
       }
   }
   // All slots are populated through this sort. Processed slots are then released behind the forward-only cursor.
+  yield -3;
   sigCands.sort((a, b) => a!.e - b!.e);
+  yield -13;
   let sp = 0;
   let held = new Set<string>();
   // re-evaluating more often than one bar cannot change anything: the step is at least one bar
@@ -5331,7 +5399,7 @@ export function* walkForwardGen(
         sigIdx = r.value;
         break;
       }
-      yield -1;
+      yield -4;
     }
     // a pair held only for its open positions (outside signalBasePassed) opens nothing new: it never takes one of
     // the `count` active slots (it took them from the pairs that may trade, which then never traded)
@@ -5350,14 +5418,14 @@ export function* walkForwardGen(
   let hedgeKeys = new Set<string>();
   for (let t = startT; t < stopT; t += stepH * H) {
     // every order closed before the step counts for this step's decisions (hedge hours, coordination state)
-    settle(t);
+    yield* settle(t);
     if (o.signalRank && sigTapes.length) {
-      const act = activeSignalsAt(sigIdx, t, o.signalRank, Math.max(o.longH, o.preH));
+      const act = yield* activeSignalsAtGen(sigIdx, t, o.signalRank, Math.max(o.longH, o.preH));
       hedgeKeys = new Set();
       if (o.coord?.enabled && o.coord.hedge) {
         const neg = new Set<number>();
         for (const [h, v] of hourNet) if (v < 0 && h < Math.floor(t / H)) neg.add(h);
-        for (const k of hedgeSignalsAt(sigIdx, t, neg, Math.max(o.longH, o.preH), {
+        for (const k of yield* hedgeSignalsAtGen(sigIdx, t, neg, Math.max(o.longH, o.preH), {
           minN: o.coord.hedgeMinN ?? HEDGE_DEFAULTS.minN,
           minPf: o.coord.hedgeMinPf ?? HEDGE_DEFAULTS.minPf,
         }))
@@ -5366,10 +5434,10 @@ export function* walkForwardGen(
       const all = hedgeKeys.size ? new Set([...act, ...hedgeKeys]) : act;
       stepOpts = { ...o, signalActive: all };
       signalSteps.push({ t, keys: [...all] });
-      yield -1; // (a slice: the ranking and the step's executions are separate pieces of work)
+      yield -5; // (a slice: the ranking and the step's executions are separate pieces of work)
     }
     // fixed mode in slices (the selection scores every tape)
-    const sel = o.mode === "fixed" ? yield* selectFixedGen(selTapes, t, o) : null;
+    const sel = o.mode === "fixed" ? yield* selectFixedRuntimeGen(selTapes, t, o) : null;
     const { picks, eligible } = withProbe(
       o.mode === "durable"
         ? selectDurable(selTapes, t, o, held)
@@ -5384,7 +5452,7 @@ export function* walkForwardGen(
     const cands: Array<{ tr: Trade; tp: ConfigTape }> = [];
     let pi = 0;
     for (const p of picks) {
-      if (++pi % 500 === 0) yield -1;
+      if (++pi % 32 === 0) yield -6;
       // contrarian execution (wf.invertSeats): the seat's entries on its mirror's tape
       const tid = o.invertSeats ? mirrorId(p.id) : p.id;
       const tp = tid ? byId.get(tid) : undefined;
@@ -5406,6 +5474,7 @@ export function* walkForwardGen(
           if (op.entryT >= t && op.entryT < t + stepH * H && op.entryT < stopT)
             cands.push({ tr: markedOpenTrade(tp, op, stopT), tp });
     }
+    let mergedSignals = 0;
     while (sp < sigCands.length && sigCands[sp]!.e < t + stepH * H) {
       const c = sigCands[sp]!;
       sigCands[sp++] = undefined;
@@ -5414,6 +5483,7 @@ export function* walkForwardGen(
         continue;
       }
       cands.push({ tr: c.op ? markedOpenTrade(c.tp, c.op, stopT) : tradeAt(c.tp, c.i), tp: c.tp });
+      if (++mergedSignals % 32 === 0) yield -7;
     }
     // best first: at the same entry time the better candidate takes a capped slot first
     const prio = bestFirst(picks, stepOpts);
@@ -5423,6 +5493,7 @@ export function* walkForwardGen(
         prio(a.tp, a.tr.sym, a.tr.side) - prio(b.tp, b.tr.sym, b.tr.side) ||
         a.tr.cfg.localeCompare(b.tr.cfg),
     );
+    yield -8;
     let taken = 0;
     let skipped = 0;
     let net = 0;
@@ -5437,9 +5508,10 @@ export function* walkForwardGen(
       rangeRow("sig").validated = stepOpts.signalActive?.size ?? 0;
     for (const { tr } of cands) rangeRow(stepRange(tr.cfg)).candidates++;
     for (const { tr, tp } of cands) {
-      // a busy step is worked through in slices
-      if (++ci % 300 === 0) yield -1;
-      settle(tr.entryT);
+      // Entry gates can touch several relation / acceptance books per candidate. A 300-order batch
+      // produced 800 ms main-thread slices on the 12-symbol replay, so hand control back in smaller batches.
+      if (++ci % 32 === 0) yield -9;
+      yield* settle(tr.entryT);
       // Keep the full candidate feed for guards/confirmation; accepted-order Block reads only the later marker.
       const fk = `${tr.cfg}|${tr.sym}|${tr.side}|${tr.entryT}`;
       let fx = seen.get(fk);
@@ -5596,11 +5668,11 @@ export function* walkForwardGen(
   }
 
   trades.sort((a, b) => a.exitT - b.exitT);
-  yield -1; // (summary slices, not simulated steps)
+  yield -10; // (summary slices, not simulated steps)
   const allOutcomes = openAtEnd.length ? [...trades, ...openAtEnd] : trades;
   const stats = unitStatsOf(allOutcomes, stopT);
   const sizedStats = statsOf(allOutcomes, stopT);
-  yield -1;
+  yield -10;
   const perHour = new Map<number, { gp: number; gl: number; net: number; n: number }>();
   for (const x of trades) {
     const k = settledHourT(x.exitT);
@@ -5620,9 +5692,9 @@ export function* walkForwardGen(
       n: e.n,
       pf: profitFactor(e.gp, e.gl),
     }));
-  yield -1;
+  yield -10;
   const blocks = runBlocks(trades, startT, stopT);
-  yield -1;
+  yield -10;
   const group = (key: (t: Trade) => string) => {
     const m = new Map<string, Trade[]>();
     for (const tr of trades) {
@@ -5637,22 +5709,47 @@ export function* walkForwardGen(
       return { id, n: s.n, net: s.net, pf: s.pf };
     })
     .sort((a, b) => b.net - a.net);
+  yield -10;
   const byKind: WalkForwardResult["byKind"] = {};
   for (const [k, xs] of group((t) => t.kind ?? "normal")) {
     const s = unitStatsOf(xs);
     byKind[k] = { n: s.n, net: s.net, pf: s.pf };
   }
+  yield -10;
   const sideStat = (sd: number) => {
     const s = unitStatsOf(trades.filter((x) => x.side === sd));
     return { n: s.n, net: s.net, pf: s.pf };
   };
   const bySide = { long: sideStat(1), short: sideStat(-1) };
+  yield -10;
   const stable = runStable(stats, blocks, o.gates.minPf);
   const { protects: _p, dcaProtects: _d, ...rest } = o;
   // the end-of-run state paper / live continue from: every order closed by the end counts
-  settle(stopT);
+  yield -11;
+  yield* settle(stopT);
   // candidates still open at the end close the feed, in exit order (they never reached the books)
-  while (vopen.size) feed.push(vopen.pop()!);
+  let drained = 0;
+  while (vopen.size) {
+    feed.push(vopen.pop()!);
+    if (++drained % 32 === 0) yield -12;
+  }
+  const hasHedgeEnd = !!(o.coord?.enabled && o.coord.hedge && sigIdx.length);
+  const hedgeLossHours = new Set(
+    [...hourNet].filter(([h, v]) => v < 0 && h < Math.floor(stopT / H)).map(([h]) => h),
+  );
+  const hedgeEndKeys = hasHedgeEnd
+    ? [
+        ...(yield* hedgeSignalsAtGen(sigIdx, stopT, hedgeLossHours, Math.max(o.longH, o.preH), {
+          minN: o.coord?.hedgeMinN ?? HEDGE_DEFAULTS.minN,
+          minPf: o.coord?.hedgeMinPf ?? HEDGE_DEFAULTS.minPf,
+        })),
+      ]
+    : undefined;
+  const signalActiveEnd = o.signalRank
+    ? sigTapes.length
+      ? [...(yield* activeSignalsAtGen(sigIdx, stopT, o.signalRank, Math.max(o.longH, o.preH)))]
+      : []
+    : undefined;
   return {
     startT,
     endT: stopT,
@@ -5676,31 +5773,7 @@ export function* walkForwardGen(
     stable,
     feed,
     ...(s2 ? { s2: s2.snapshot(stopT) } : {}),
-    ...(o.coord?.enabled && o.coord.hedge && sigIdx.length
-      ? {
-          hedgeEnd: [
-            ...hedgeSignalsAt(
-              sigIdx,
-              stopT,
-              new Set(
-                [...hourNet].filter(([h, v]) => v < 0 && h < Math.floor(stopT / H)).map(([h]) => h),
-              ),
-              Math.max(o.longH, o.preH),
-              {
-                minN: o.coord.hedgeMinN ?? HEDGE_DEFAULTS.minN,
-                minPf: o.coord.hedgeMinPf ?? HEDGE_DEFAULTS.minPf,
-              },
-            ),
-          ],
-        }
-      : {}),
-    ...(o.signalRank
-      ? {
-          signalSteps,
-          signalActiveEnd: sigTapes.length
-            ? [...activeSignalsAt(sigIdx, stopT, o.signalRank, Math.max(o.longH, o.preH))]
-            : [],
-        }
-      : {}),
+    ...(hasHedgeEnd ? { hedgeEnd: hedgeEndKeys ?? [] } : {}),
+    ...(o.signalRank ? { signalSteps, signalActiveEnd: signalActiveEnd ?? [] } : {}),
   };
 }

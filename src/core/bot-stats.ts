@@ -1,4 +1,5 @@
 import { signalSourceOf } from "./indications/registry.ts";
+import { POSITION_COST_RT, POSITION_COST_STRESS_RT } from "./model-cost.ts";
 
 // Per-bot exchange statistics: every config's closed trade on the exchange (live_lane_trades), judged against the frozen
 // criteria in docs/bot-stability-criteria.md. Pure functions: the desk's status and any statistics view read the same
@@ -7,8 +8,8 @@ import { signalSourceOf } from "./indications/registry.ts";
 // one event, so events are the independent sample.
 
 /** the model round trip the stored returns are judged at (0.2 %) and the stress round trip (0.4 %) */
-export const COST_RT = 0.002;
-export const STRESS_RT = 0.004;
+export const COST_RT = POSITION_COST_RT;
+export const STRESS_RT = POSITION_COST_STRESS_RT;
 /** frozen sample floors (docs/bot-stability-criteria.md) */
 export const MIN_TRADES = 150;
 export const MIN_EVENTS = 30;

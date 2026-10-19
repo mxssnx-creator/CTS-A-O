@@ -26,7 +26,7 @@ const { CoreDb } = await load(root, "src/core/server/db.server.ts");
 const settingsFile = arg("settings");
 const supplied = settingsFile ? JSON.parse(readFileSync(settingsFile, "utf8")) : null;
 const seed = structuredClone(supplied?.settings ?? supplied ?? DEFAULT_SETTINGS);
-Object.assign(seed, { symbols: symbols.length, forceSymbols: symbols, symbolRank: "market", cost: 0.0015, fees: { taker: 0.0005, maker: 0.0002, slippage: 0.00025 } });
+Object.assign(seed, { symbols: symbols.length, forceSymbols: symbols, symbolRank: "market", cost: DEFAULT_SETTINGS.cost, fees: { ...DEFAULT_SETTINGS.fees } });
 seed.paperBalance = 10;
 seed.sizing = { ...seed.sizing, mode: "equityPct", pct: 0.001 };
 seed.signals = { ...seed.signals, enabled: true, count: 0 };

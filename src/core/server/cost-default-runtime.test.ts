@@ -2,8 +2,12 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import { DEFAULT_SETTINGS, RT_COST, type SettingsPatch } from "../config.ts";
 import { liveTrades, type LedgerRow } from "../statistics.ts";
+import { DEFAULT_MODEL_FEES, roundTripCostFromFees } from "../model-cost.ts";
 import { CoreDb } from "./db.server.ts";
 import { CoreRuntime } from "./runtime.server.ts";
+import { LANE_MIN } from "../sim/backtest.ts";
+import { HIST_MIN_TP } from "../signal-hist.ts";
+import { POSITION_COST_RT, POSITION_COST_STRESS_RT } from "../model-cost.ts";
 import {
   GENERAL_RANGE, LONG_RANGE, MICRO_RANGE, MICRO_TP, MINIMAL_PLUS_RANGE, MINIMAL_RANGE, SHORT_RANGE,
   forEachMicro, microNetTps, microPriceTp, microSlFloor, rangeTpLabel,
@@ -29,10 +33,23 @@ describe("modeled position cost defaults and migration", () => {
     const { runtime } = fixture();
     assert.equal(RT_COST, 0.0015);
     assert.equal(DEFAULT_SETTINGS.cost, RT_COST);
-    assert.deepEqual(DEFAULT_SETTINGS.fees, { taker: 0.0005, maker: 0.0002, slippage: 0.00025 });
-    assert.equal(2 * (DEFAULT_SETTINGS.fees.taker + DEFAULT_SETTINGS.fees.slippage), RT_COST);
+    assert.deepEqual(DEFAULT_SETTINGS.fees, DEFAULT_MODEL_FEES);
+    assert.equal(roundTripCostFromFees(DEFAULT_SETTINGS.fees), RT_COST);
     assert.equal(runtime.settings.cost, RT_COST);
     assert.deepEqual(runtime.settings.fees, DEFAULT_SETTINGS.fees);
+    assert.equal(LANE_MIN.tp, +(RT_COST * 3).toFixed(6), "short-lane ATR target floor follows the modeled transaction cost");
+    assert.equal(POSITION_COST_RT, 0.002);
+    assert.equal(POSITION_COST_STRESS_RT, 0.004);
+    assert.equal(HIST_MIN_TP, POSITION_COST_RT * 5, "the historic Signal floor follows the PositionCost baseline");
+  });
+
+  it("fee-only edits derive one round-trip model value; an explicit cost stays authoritative", () => {
+    const { runtime } = fixture();
+    const changedFees = { ...DEFAULT_MODEL_FEES, taker: 0.0006 };
+    runtime.updateSettings({ fees: changedFees });
+    assert.equal(runtime.settings.cost, roundTripCostFromFees(changedFees));
+    runtime.updateSettings({ cost: 0.0021, fees: DEFAULT_MODEL_FEES });
+    assert.equal(runtime.settings.cost, 0.0021);
   });
 
   it("omitted Micro helper costs use the model default while configured range distances keep their fixed basis", () => {

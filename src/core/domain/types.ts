@@ -180,8 +180,7 @@ export interface MicroGrid extends RangeGrid {
   tpNetOfCost?: boolean;
   /**
    * Micro only: the smallest NET target the range computes, as a multiple of the round-trip cost (0 / unset = every
-   * target). At net 0.10 % with a 0.20 % cost the cost is two thirds of the 0.30 % price target, so one tick of
-   * extra slippage flips the order's sign; a floor of 1 keeps only net targets at or above the cost itself.
+   * target). A floor of 1 keeps only net targets at or above the configured round-trip cost itself.
    */
   minNetOfCost?: number;
   /**
@@ -686,7 +685,8 @@ export interface ProtectGridSpec {
   /** Long range: 22-32x position cost, step 2x (tagged "lg"). */
   long?: false | RangeGrid;
   /**
-   * Micro range: NET targets 0.10%-0.40% after the round-trip cost (price targets 0.30%-0.60% at the 0.2% cost),
+   * Micro range: net targets use the frozen range reference basis (default 0.20%-0.80%); price targets add settings.cost
+   * (default 0.15%, so 0.35%-0.95%),
    * stops 1x-5x the price target step 0.25 (MICRO_SL, 17 ratios), both trailing distances. Tagged "mc" so the orders are not mixed
    * with the minimal range. Every lever of `RangeGrid` plus the three Micro-only ones.
    */

@@ -88,7 +88,7 @@ function expected(
     {
       notionalUsd: s.notionalUsd,
       ratio: s.ratio,
-      maxNotionalUsd: s.maxNotionalUsd,
+      maxNotionalUsd: Number.POSITIVE_INFINITY, // legacy USD ceiling is intentionally ignored by the live planner
       maxPositions: s.maxPositions,
       rebalancePct: s.rebalancePct,
       heldKeys: new Set(
@@ -877,6 +877,7 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
           if (p.reduceOnly === "true")
             assert.ok(Math.abs(cur + q) <= Math.abs(cur) + 1e-9, "reduce-only never increases");
           net.set(sym, +(cur + q).toFixed(6));
+          return { order: { status: "FILLED", executedQty: String(p.quantity), avgPrice: "17" } };
         } else
           stops.push({
             id: `s${stops.length}`,
@@ -1008,9 +1009,11 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     // S2 trades at 24 on the ticker; the market fill slips to 25
     (ex as unknown as { order: (p: Record<string, string | number>) => Promise<unknown> }).order =
       async (p: Record<string, string | number>) => {
-        await base(p);
+        const reply = await base(p) as { order?: Record<string, unknown> } | undefined;
         if (p.type === "STOP_MARKET") stops.push(Number(p.stopPrice));
-        return p.type === "MARKET" ? { order: { avgPrice: "25", commission: "0" } } : undefined;
+        return p.type === "MARKET"
+          ? { order: { ...reply?.order, status: "FILLED", executedQty: String(p.quantity), avgPrice: "25", commission: "0" } }
+          : reply;
       };
     const { rt } = fakeRt(new CoreDb(":memory:"));
     rt.paper.positions = [
@@ -1146,7 +1149,7 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     });
     rt.paper.positions.push({ cfg: "b", sym: "S3-USDT", side: 1, entry: 31, stop: 30, vol: 3 });
     const st = await step(rt, noEq);
-    assert.match(st.reason, /equity unknown/);
+    assert.match(st.reason, /account balance unknown/);
     assert.equal(ex.positions.get("S2-USDT|LONG"), held, "kept while the equity is unknown");
     assert.equal(ex.positions.has("S3-USDT|LONG"), false);
   });

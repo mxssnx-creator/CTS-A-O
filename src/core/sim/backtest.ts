@@ -6,6 +6,7 @@
 // - ATR protects (Protect.atr) are resolved into distances at every entry from ATR(14) of the signal bar.
 import type { AtrProtect, Bars, OpenPosition, Protect, Side, Trade } from "../domain/types.ts";
 import { atrEma } from "../math/indicators.ts";
+import { RT_COST } from "../model-cost.ts";
 import {
   advanceExitProtection,
   createExitProtection,
@@ -38,8 +39,8 @@ export interface SimResult {
 
 /** Protect values are tuned on this timeframe; lanes scale them (volatility √t, hold in equal time). */
 export const REF_TF = 15;
-/** Floors of a short lane's scaled protect (fractions of price): target 3 × 0.2 % cost, stop, trail. */
-export const LANE_MIN = { tp: 0.006, sl: 0.005, trail: 0.0025 } as const;
+/** Floors of a short lane's scaled protect: target 3 × modeled round-trip cost, stop and trail. */
+export const LANE_MIN = { tp: +(RT_COST * 3).toFixed(6), sl: 0.005, trail: 0.0025 } as const;
 
 // ── ATR exits (Stable-02 model) ─────────────────────────────────────────────────────────────────────────
 /** ATR(14) of the Stable-02 desk (EMA of the true range) */

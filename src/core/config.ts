@@ -14,12 +14,10 @@ import { DEFAULT_SIGNALS, type SignalSettings } from "./signal-config.ts";
 import { DEFAULT_SIZING, type SizingSettings } from "./sizing.ts";
 import type { PromotedLaneProof } from "./live-promote.ts";
 import {
-  BREAK_CONFIG_IDS,
   BREAK_DEFAULT_MICRO_CONFIG_IDS,
   breakAnchorTf,
-  isBreakMicroInd,
 } from "./indications/break-config.ts";
-import { RT_COST } from "./model-cost.ts";
+import { DEFAULT_MODEL_FEES, RT_COST } from "./model-cost.ts";
 export { RT_COST } from "./model-cost.ts";
 
 /** Hard ceiling for unique positions on the exchange. Strategy/config orders do not consume extra slots. */
@@ -619,8 +617,8 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   cycleMs: 250,
   tickMs: 100,
   cost: RT_COST,
-  // Model per side: 0.05 % taker + 0.025 % slippage → 0.15 % round trip; measured venue fees stay authoritative.
-  fees: { taker: 0.0005, maker: 0.0002, slippage: 0.00025 },
+  // Modeled round trip is derived from the shared per-side fee and slippage assumptions.
+  fees: { ...DEFAULT_MODEL_FEES },
   adjust: DEFAULT_ADJUST,
   exitStrategy: {
     enabled: true,

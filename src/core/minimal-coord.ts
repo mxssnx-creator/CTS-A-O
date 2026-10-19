@@ -1,17 +1,18 @@
 /**
  * Minimal Coord.
- * Position-cost ranges, independent of the wide protect grid. TP retains a fixed 0.2 % construction basis:
+ * Position-cost ranges, independent of the wide protect grid. TP multiples use the named 0.2 % reference basis
+ * (kept stable across changes to the modeled execution cost):
  *   Minimal  4–8×   (0.8–1.6 %, step 1×)
  *   Short    8–14×  (1.6–2.8 %, step 1×)
  *   General  14–22× (2.8–4.4 %, step 2×)
  *   Long     22–32× (4.4–6.4 %, step 2×)
  * A boundary multiple (8, 14, 22) belongs to the lower range, so no cell is computed twice.
- * Micro (net 0.1–0.4 % after the position cost: price targets 0.3–0.6 % at the 0.2 % cost) and Minimal plus stay
+ * Micro net targets use that reference basis; their price targets add the configured execution cost. Minimal plus stay
  * optional. Wide targets stay in the main grid.
  */
 import type { Gates, MicroGrid, MinimalGrid, ProtectGridSpec, RangeMinPfKey, RangeTag } from "./domain/types.ts";
 import type { MicroIndRule } from "./indications/micro.ts";
-import { RT_COST } from "./model-cost.ts";
+import { POSITION_COST_RT, RT_COST } from "./model-cost.ts";
 
 export const MINIMAL_COORD = "Minimal Coord.";
 
@@ -65,7 +66,7 @@ export function rangeOfId(id: string | undefined): RangeTag | "" {
 }
 
 /** Fixed historical range-construction basis; changing modeled costs must not silently shrink configured distances. */
-export const RANGE_COST_BASIS = 0.002;
+export const RANGE_COST_BASIS = POSITION_COST_RT;
 
 /**
  * One range's settings. The type lives in domain/types.ts as `RangeGrid` + `MicroGrid` so the Settings surface and
@@ -202,8 +203,9 @@ export const LONG_RANGE: CoordRange = {
 };
 
 /**
- * Micro (operator, 13 Oct: "Micro range 2–5×"): price targets 2–5× the round-trip position cost, step 0.5× — NET targets
- * 1–4× cost after it (tpNetOfCost), i.e. 0.2–0.8 % net, 0.4–1.0 % price at the 0.2 % cost (before: 0.10–0.40 % net), every stop ratio 1–5× (step 0.25, MICRO_SL's 17 ratios) of the price target, plain and both trailing distances.
+ * Micro (operator, 13 Oct: "Micro range 2–5×"): price targets are the reference-basis net target plus configured cost;
+ * the 1–4× reference-basis net targets are 0.2–0.8 %, and default-cost price targets are 0.35–0.95 %. Every stop
+ * ratio is 1–5× (step 0.25, MICRO_SL's 17 ratios) of the price target, plain and both trailing distances.
  * Traded only by the Micro indications (ownInds); the Base PF evaluation decides which cells run. Before (price
  * targets 0.20–0.40 %): no cell above PF 1 — a 0.2 % target nets nothing after the 0.2 % cost, a 0.4 % one needs a
  * win rate above 75 % at a 1× stop, and the one-bar reversal events have no gross edge on the 1m lane. With the net
@@ -229,11 +231,10 @@ export const MICRO_RANGE: CoordRange = {
   /** Trailing cells keep the stated stop ratio from 1×. */
   trailSlOfTp: 1,
   minSl: EVAL_MIN_SL,
-  // at least half the round trip (13 Oct, with the ¼ trail share: 0.075 % on a 0.3 % target trailed inside a bar's
-  // noise); every other range's trail floor is 0.2 % or more
-  minTrail: 0.001,
+  // at least half the 0.2% PositionCost (13 Oct, with the ¼ trail share); every other range's trail floor is 0.2 % or more
+  minTrail: +(RANGE_COST_BASIS * 0.5).toFixed(4),
   tpNetOfCost: true,
-  /** the stop floor: 0.2 % beyond the round-trip cost (0.4 % at the 0.2 % cost), in place of the blanket 0.5 % */
+  /** the stop floor net of configured cost; at defaults 0.20 % net + 0.15 % cost = 0.35 % price distance */
   minSlNet: 0.002,
 };
 

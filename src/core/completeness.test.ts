@@ -533,6 +533,16 @@ const NOT_SHOWN: Record<string, string> = {
     "deny / allow reading of the source list (6 Oct); patch only so far — GAP: not on the page (reported)",
   "signals.baseGate":
     "signals judged on their own exits (Base gate off, measured 3 Oct); patch only",
+  "exitStrategy.trainFraction": "the automatic historic Exit fitter uses the fixed causal split; not operator editable",
+  "exitStrategy.minEntries": "the automatic historic Exit fitter enforces its minimum sample; not operator editable",
+  "exitStrategy.minValidationTrades": "the automatic historic Exit fitter enforces its validation sample; not operator editable",
+  "exitStrategy.maxConfigsPerPair": "the Exit fitter bounds generated configurations; not operator editable",
+  "exitStrategy.stopQuantiles": "the Exit fitter derives stop candidates from historical excursions; not operator editable",
+  "exitStrategy.minTp": "the Exit fitter clamps generated targets to its validated range; not operator editable",
+  "exitStrategy.maxTp": "the Exit fitter clamps generated targets to its validated range; not operator editable",
+  "exitStrategy.maxSl": "the Exit fitter caps generated stop distance; not operator editable",
+  "exitStrategy.trailShares": "the Exit fitter derives trailing candidates from historical excursions; not operator editable",
+  "exitStrategy.stopMultiples": "the Exit fitter derives stop candidates from historical excursions; not operator editable",
 };
 /** signal sources are listed from the SIGNAL_SOURCES catalog on the page, not by name */
 const SOURCE_PREFIX = "signals.sources.";
