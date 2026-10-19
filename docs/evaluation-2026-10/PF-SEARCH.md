@@ -360,5 +360,6 @@ A read-only analysis of the executed orders (f120 dumps, D1 and holdout; tools i
   losers short of the stop were dropped while their targets counted: the signals' 1.16 / 2.01 is an upper bound. Fixed:
   eval-gate and eval-families count them, marked at the window's last close (`scripts/lib/eval-orders.mjs`).
 
-Levers built for the causal comparison, off by default: `wf.seatQuietH` (seat cool-off), `wf.invertSeats` (contrarian
-execution on the mirror tape, evaluation only), and the existing `wf.entryCrowd` cap. Their runs: section 21.
+Levers built for the causal comparison, off by default: `wf.seatQuietH` (seat cool-off), `wf.seatSideCooloff` (seat
+cool-off per direction; acts only with `wf.seatQuietH` on), `wf.invertSeats` (contrarian execution on the mirror tape,
+evaluation only), and the existing `wf.entryCrowd` cap. Their runs: section 21.
