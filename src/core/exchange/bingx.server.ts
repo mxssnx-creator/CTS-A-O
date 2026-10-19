@@ -552,6 +552,10 @@ export interface BookPosition {
   margin?: number;
   /** the liquidation price the exchange reports for it (0 / unset: none reported) */
   liq?: number;
+  /** average entry price, mark price and leverage the exchange reports (display only; 0 / unset: none) */
+  entry?: number;
+  mark?: number;
+  leverage?: number;
 }
 export interface BookOrder {
   id: string;
@@ -561,6 +565,8 @@ export interface BookOrder {
   /** LONG / SHORT (hedge mode) — tells which position an own stop belongs to */
   positionSide?: "LONG" | "SHORT";
   type?: string;
+  /** a conditional order's trigger price (stop / take-profit; display only) */
+  stopPrice?: number;
 }
 
 /** Account equity in USDT (swap wallet balance + unrealized P&L); null when the reply carries none. */
@@ -699,6 +705,9 @@ async function readBook(network: Network, conn: ConnId, withOrders = true): Prom
       upnl: n(r.unrealizedProfit),
       margin: n(r.initialMargin),
       liq: n(r.liquidationPrice),
+      entry: n(r.avgPrice ?? r.entryPrice),
+      mark: n(r.markPrice),
+      leverage: n(r.leverage),
     });
   }
   const ordRows = (
@@ -719,6 +728,7 @@ async function readBook(network: Network, conn: ConnId, withOrders = true): Prom
             ? ("LONG" as const)
             : undefined, // BOTH (one-way) → undefined = any
       type: r.type ? String(r.type) : undefined,
+      ...(n(r.stopPrice) > 0 ? { stopPrice: n(r.stopPrice) } : {}),
     }));
   return { positions, orders };
 }

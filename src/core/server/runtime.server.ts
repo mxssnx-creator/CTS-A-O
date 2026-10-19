@@ -303,6 +303,8 @@ export interface RuntimeStatus {
   overall?: number;
   /** when the running (or last) compute started (epoch ms; with lastComputeMs an ETA) */
   computeStartedAt?: number;
+  /** when the current stage started (epoch ms); `heartbeat` is its last progress report */
+  stageAt?: number;
   /** paper steps completed, and the compute (status.computes) the last one stepped on — 0 = none yet */
   paperSteps?: number;
   paperCompute?: number;
@@ -1778,6 +1780,8 @@ export class CoreRuntime {
     let p = total > 0 ? done / total : 0;
     p = Number.isFinite(p) ? Math.min(1, Math.max(0, p)) : 0;
     if (!changed && !restart) p = Math.max(p, this.status.progress);
+    // when this stage (re)started: the UI shows how long a stage has run and how old its last report is
+    if (changed || restart || !this.status.stageAt) this.status.stageAt = Date.now();
     this.status.stage = stage;
     this.status.progress = p;
     this.status.label = label;

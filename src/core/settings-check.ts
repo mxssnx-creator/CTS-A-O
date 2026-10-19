@@ -186,8 +186,17 @@ export function checkSettings(s: Partial<CoreSettings>) {
     if (s.live.maxChase !== undefined) num(s.live.maxChase, 0, 5, "maximum chase (fraction of a lane's target distance)");
     if (s.live.foreignSides !== undefined && s.live.foreignSides !== "avoid" && s.live.foreignSides !== "independent")
       throw new Error('foreign sides: "avoid" or "independent"');
-    if (s.live.positionSize !== undefined && s.live.positionSize !== "lanes" && s.live.positionSize !== "min")
-      throw new Error('position size: "lanes" or "min"');
+    if (
+      s.live.positionSize !== undefined &&
+      s.live.positionSize !== "lanes" &&
+      s.live.positionSize !== "min" &&
+      s.live.positionSize !== "risk"
+    )
+      throw new Error('position size: "lanes", "min" or "risk"');
+    if (s.live.positionSize === "risk" && s.live.laneOrders === true)
+      throw new Error('position size "risk" needs control orders (laneOrders off): lane orders size every lane one unit');
+    if (s.live.riskPerPositionPct !== undefined)
+      num(s.live.riskPerPositionPct, 0.0005, 0.05, "risk per position (fraction of B)");
     if (s.live.laneOrders !== undefined && typeof s.live.laneOrders !== "boolean")
       throw new Error("laneOrders: true or false");
     if (s.live.maxVenueOrders !== undefined) int(s.live.maxVenueOrders, "venue TP/SL orders at most");

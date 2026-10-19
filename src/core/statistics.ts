@@ -340,6 +340,10 @@ export interface StatisticsReport {
   total: GroupRow & { usdEnd: number; mdd: number; expectancy: number; sqn: number; tph: number };
   /** live closes an order not ours made: in the balance, not in any PF or breakdown */
   hand: { n: number; usd: number };
+  /** live closes at a verified price whose cause is not proven (a flat marker without its own price): as hand */
+  flat: { n: number; usd: number };
+  /** positions open at the window's end (marked to market in the timeline, never a close) */
+  open: { n: number; positions: number; notional: number };
   timeline: Timeline;
   types: GroupRow[];
   subTypes: GroupRow[];
@@ -378,6 +382,11 @@ export interface StatisticsInput {
   presets?: Record<string, PresetSim> | null;
   /** most configs listed (best and worst by result) */
   maxConfigs?: number;
+  /**
+   * positions still open at endT (live: the own ledger's open positions): marked to market in the timeline only,
+   * never a close; `exitT` is ignored
+   */
+  open?: readonly StatTrade[];
 }
 
 const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -426,13 +435,19 @@ export function buildStatistics(i: StatisticsInput): StatisticsReport {
   // a live close an order not ours made ("hand", relation.ts) is money, not a result: in the balance (the timeline
   // reads every trade), left out of every PF and breakdown, and counted apart
   const inWindow = i.trades.filter((x) => x.exitT > i.startT && x.exitT <= i.endT);
-  const trades = inWindow.filter((x) => x.reason !== "hand");
+  // a live close whose cause is not proven ("flat": priced at a verified price, the order that ended it unknown) is
+  // counted the same way, apart from hand
+  const apart = (x: StatTrade) => x.reason === "hand" || x.reason === "flat";
+  const trades = inWindow.filter((x) => !apart(x));
   const unit = i.unit;
   const handTrades = inWindow.filter((x) => x.reason === "hand");
   const hand = { n: handTrades.length, usd: handTrades.reduce((a, x) => a + x.r * unit(x), 0) };
+  const flatTrades = inWindow.filter((x) => x.reason === "flat");
+  const flat = { n: flatTrades.length, usd: flatTrades.reduce((a, x) => a + x.r * unit(x), 0) };
+  const openNow = (i.open ?? []).map((x) => ({ ...x, exitT: Infinity, r: 0 }));
   const all = rowOf("All", trades, unit);
   const s = statsOf([...trades].sort((a, b) => a.exitT - b.exitT));
-  const tl = timeline(i.trades, {
+  const tl = timeline(openNow.length ? [...i.trades, ...openNow] : i.trades, {
     startT: i.startT,
     endT: i.endT,
     balance: i.balance,
@@ -506,6 +521,12 @@ export function buildStatistics(i: StatisticsInput): StatisticsReport {
       tph: s.tph,
     },
     hand,
+    flat,
+    open: {
+      n: openNow.length,
+      positions: new Set(openNow.map((x) => `${x.sym}|${x.side > 0 ? 1 : -1}`)).size,
+      notional: openNow.reduce((a, x) => a + unit(x) * (x.vol ?? 1), 0),
+    },
     timeline: tl,
     types: groupBy(trades, typeOf, unit, TYPE_ORDER),
     subTypes: groupBy(trades, (x) => subTypeOf(x, i.minActiveLevel), unit, [
@@ -615,8 +636,32 @@ export function feeOf(x: { fee?: number | null; qty: number }, px: number, model
 
 /** @param modelCost the round-trip cost charged to an unmeasured fill (the desk's settings.cost; 0.2 % by default) */
 export function liveTrades(rows: readonly LedgerRow[], tagLen: number, modelCost = 0.002): Array<StatTrade & { notional: number }> {
+  return liveLedger(rows, tagLen, modelCost).closed;
+}
+
+/** A live close with its notional (USD) and the own row that closed it (the flat marker's id for an exchange exit). */
+export type LiveClose = StatTrade & { notional: number; coid?: string; pxFrom?: string };
+
+/**
+ * The own ledger as closes, the positions still open, and the flat markers that could not be priced.
+ * `flatPx`: the verifiable price of a flat marker that holds none (px 0) — the attributed lane exit, the venue's history,
+ * or the bar close at the marker's time — with where it came from. A marker priced that way is booked with reason
+ * "flat": its cause is not proven (stop, target or an order not ours), so like "hand" it stays in the balance and out of
+ * every PF. Without a price the position ends unbooked and is counted under `unpriced` (never dropped silently).
+ */
+export function liveLedger(
+  rows: readonly LedgerRow[],
+  tagLen: number,
+  modelCost = 0.002,
+  opts: { flatPx?: (sym: string, side: 1 | -1, at: number) => { px: number; from: string } | null } = {},
+): {
+  closed: LiveClose[];
+  open: Array<{ sym: string; side: 1 | -1; qty: number; entry: number; entryT: number; cfg: string; notional: number }>;
+  unpriced: Array<{ sym: string; side: 1 | -1; at: number; qty: number; notional: number }>;
+} {
   const open = new Map<string, { qty: number; cost: number; fees: number; t: number; range: string }>();
-  const out: Array<StatTrade & { notional: number }> = [];
+  const out: LiveClose[] = [];
+  const unpriced: Array<{ sym: string; side: 1 | -1; at: number; qty: number; notional: number }> = [];
   // `q` of the position `p` realized at `px`, with its share of the opening fees and the exit's own fee
   const closeOf = (
     p: { qty: number; cost: number; fees: number; t: number; range: string },
@@ -625,7 +670,7 @@ export function liveTrades(rows: readonly LedgerRow[], tagLen: number, modelCost
     px: number,
     fee: number,
     reason: string,
-  ): StatTrade & { notional: number } => {
+  ): LiveClose => {
     const entry = p.cost / p.qty;
     const notional = q * entry;
     const side = x.side > 0 ? 1 : -1;
@@ -641,6 +686,7 @@ export function liveTrades(rows: readonly LedgerRow[], tagLen: number, modelCost
       r: notional > 0 ? pnl / notional : 0,
       reason,
       notional,
+      coid: x.coid,
     };
   };
   for (const x of [...rows].sort((a, b) => a.at - b.at)) {
@@ -653,7 +699,16 @@ export function liveTrades(rows: readonly LedgerRow[], tagLen: number, modelCost
       open.delete(k);
       if (p && p.qty > 0 && x.px > 0) {
         const why = /\((stop|target|hand) /.exec(x.msg ?? "")?.[1];
-        out.push(closeOf(p, x, p.qty, x.px, 0, why === "target" ? "tp" : why === "hand" ? "hand" : "sl"));
+        // the exchange's exit fill reports no commission here: it pays the model share, as an unmeasured open does
+        const fee = feeOf({ fee: null, qty: p.qty }, x.px, modelCost);
+        out.push(closeOf(p, x, p.qty, x.px, fee, why === "target" ? "tp" : why === "hand" ? "hand" : "sl"));
+      } else if (p && p.qty > 0) {
+        const side: 1 | -1 = x.side > 0 ? 1 : -1;
+        const v = opts.flatPx?.(x.sym, side, x.at) ?? null;
+        if (v && v.px > 0) {
+          const c = closeOf(p, x, p.qty, v.px, feeOf({ fee: null, qty: p.qty }, v.px, modelCost), "flat");
+          out.push({ ...c, pxFrom: v.from });
+        } else unpriced.push({ sym: x.sym, side, at: x.at, qty: p.qty, notional: p.cost });
       }
       continue;
     }
@@ -691,7 +746,20 @@ export function liveTrades(rows: readonly LedgerRow[], tagLen: number, modelCost
       if (p.qty <= 1e-12) open.delete(k);
     }
   }
-  return out;
+  const stillOpen = [...open].map(([k, p]) => {
+    const [sym, sd] = k.split("|");
+    const side: 1 | -1 = Number(sd) > 0 ? 1 : -1;
+    return {
+      sym,
+      side,
+      qty: p.qty,
+      entry: p.cost / p.qty,
+      entryT: p.t,
+      cfg: p.range === "@sig" ? `live|sig-${sym}|tp0|sl0|tr0|h0` : `live|${sym}|tp0|sl0|tr0|h0${p.range}`,
+      notional: p.cost,
+    };
+  });
+  return { closed: out, open: stillOpen, unpriced };
 }
 
 /** A preset's cached diagrams over its backtest window: one shared time axis, down-sampled. */

@@ -4,7 +4,9 @@ import { coreOverview, corePresets } from "../api-conn";
 import { PresetSettingsDialog } from "../preset-settings";
 import { PrehistoricPanel } from "../prehistoric";
 import { ArcShare, EquityChart, MultiArcGauge, RadialHours, SignedBars } from "../charts";
+import { sizeText } from "@/core/live-labels";
 import {
+  Age,
   Empty,
   ErrorNote,
   fmt,
@@ -82,10 +84,11 @@ function PresetBar() {
   );
 }
 
-const CONN_META: Record<string, { net: string; tag: string }> = {
-  "bingx-x01": { net: "mainnet", tag: "CTSBX1_" },
-  "bingx-vst-01": { net: "testnet", tag: "CTSBV1_" },
-  "bingx-vst-02": { net: "testnet", tag: "CTSBV2_" },
+// the network per connection; the order tag is the server's own (liveTag: CTS_CORE_LIVE_TAG, else the default)
+const CONN_NET: Record<string, string> = {
+  "bingx-x01": "mainnet",
+  "bingx-vst-01": "testnet",
+  "bingx-vst-02": "testnet",
 };
 
 /** Which account the Live stage is aimed at. Id and net stay visible; the rest opens on Details. */
@@ -93,7 +96,7 @@ function ConnStrip(props: { d: Any }) {
   const [open, setOpen] = useState(false);
   const live = props.d.settings?.live ?? {};
   const id = String(live.connId ?? "–");
-  const meta = CONN_META[id] ?? { net: "–", tag: "–" };
+  const meta = { net: CONN_NET[id] ?? "–", tag: String(props.d.liveTag ?? "–") };
   const st = props.d.live ?? {};
   const ls = liveState(!!live.enabled, st);
   const held = (st.control?.held ?? []) as Array<{ key: string; qty: number }>;
@@ -138,10 +141,7 @@ function ConnStrip(props: { d: Any }) {
               <Line k="positions" v={live.positionMode ?? "–"} />
             </div>
             <div className="v2-lines">
-              <Line
-                k="size"
-                v={`$${live.notionalUsd ?? "–"} × ${live.ratio ?? 1} · ${live.maxNotionalUsd === 0 ? "no cap" : `cap $${live.maxNotionalUsd ?? "–"}`}`}
-              />
+              <Line k="size" v={sizeText(live, props.d.settings?.sizing?.mode)} />
               <Line
                 k="max positions"
                 v={live.maxPositions === 0 ? "no limit" : (live.maxPositions ?? "–")}
@@ -150,6 +150,7 @@ function ConnStrip(props: { d: Any }) {
             </div>
             <div className="v2-lines">
               <Line k="held" v={held.length ? `${held.length}` : "0"} />
+              <Line k="control status" v={<Age at={st.control?.at} />} />
               <Line k="placed / closed" v={`${st.placed ?? 0} / ${st.closed ?? 0}`} />
               <Line k="conn #" v={st.control?.connHash ?? "–"} />
             </div>
@@ -164,34 +165,101 @@ function ConnStrip(props: { d: Any }) {
   );
 }
 
-function usdFine(x: unknown) {
-  if (typeof x !== "number" || !Number.isFinite(x)) return "–";
-  const d = Math.abs(x) < 20 ? 4 : 2;
-  return `${x < 0 ? "−" : ""}$${Math.abs(x).toFixed(d)}`;
-}
+const usdFine = fmt.usd4;
 
-/** Live account: open PnL with the margin it uses, and the session net with the book size. */
+/**
+ * The live account as the exchange reports it: wallet, equity, free margin and B = min(wallet, equity) (the base of
+ * every budget), the own positions (own quantity only) and the positions not ours apart, and the own session net from
+ * the own ledger since the desk went live. Nothing here is paper or simulated.
+ */
 function AccountNets(props: { d: Any }) {
   const a = props.d.live?.account;
+  const ss = props.d.liveSession;
+  const rows = (a?.positionsDetail ?? []) as Any[];
+  const own = rows.filter((x) => !x.foreign);
+  const foreign = rows.filter((x) => x.foreign);
   return (
-    <div className="v2-net-pair">
-      <Kpi
-        label="Net · open"
-        value={usdFine(a?.openNet)}
-        className={tone(a?.openNet)}
-        sub={a ? `margin used ${usdFine(a.margin)}` : "margin used –"}
-      />
-      <Kpi
-        label="Net · overall, session"
-        value={usdFine(a?.overall)}
-        className={tone(a?.overall)}
-        sub={
-          a
-            ? `${fmt.num(a.positions)} positions / ${fmt.num(a.orders)} orders`
-            : "positions / orders –"
-        }
-      />
-    </div>
+    <>
+      <div className="v2-grid v2-cols-4">
+        <Kpi
+          label="Account · wallet / equity (USDT)"
+          value={`${usdFine(a?.wallet)} / ${usdFine(a?.equity)}`}
+          sub={
+            <>
+              free margin {usdFine(a?.availableMargin)} · B = min {usdFine(a?.base)} ·{" "}
+              <Age at={a?.readAt} prefix="read" />
+              {a?.carried ? " · carried from an earlier step" : ""}
+            </>
+          }
+        />
+        <Kpi
+          label="Own open · uPnL (exchange)"
+          value={fmt.usdSigned(a?.own?.upnl)}
+          className={tone(a?.own?.upnl)}
+          sub={
+            a?.own
+              ? `${fmt.num(a.own.n)} own positions · margin ${usdFine(a.own.margin)} · own quantity only`
+              : "no account read"
+          }
+        />
+        <Kpi
+          label="Own session net (USD)"
+          value={fmt.usdSigned(ss?.net)}
+          className={tone(ss?.net)}
+          sub={
+            ss
+              ? `realized ${fmt.usdSigned(ss.realized)} (${fmt.num(ss.closes)} closes${ss.flat?.n ? `, ${ss.flat.n} flat-priced` : ""}) + open ${fmt.usdSigned(ss.openUpnl)} · since ${ss.since ? fmt.time(ss.since) : "–"} UTC${ss.feesModelled ? " · fees modelled" : ""}`
+              : "–"
+          }
+        />
+        <Kpi
+          label="Not ours (apart)"
+          value={`${fmt.num(a?.foreign?.n ?? 0)} positions`}
+          className={tone(a?.foreign?.upnl)}
+          sub={`uPnL ${fmt.usdSigned(a?.foreign?.upnl)} · ended by orders not ours: ${fmt.num(ss?.hand?.n ?? 0)} (${fmt.usdSigned(ss?.hand?.usd)}) · never in the own numbers`}
+        />
+      </div>
+      {rows.length > 0 && (
+        <Panel title="Exchange positions" sub={`own ${own.length} · not ours ${foreign.length} · from the last account read`} flush>
+          <div className="v2-table-wrap">
+            <table className="v2-table">
+              <thead>
+                <tr>
+                  <th>position</th>
+                  <th>owner</th>
+                  <th className="num">qty (own / exchange)</th>
+                  <th className="num">entry</th>
+                  <th className="num">mark</th>
+                  <th className="num">uPnL $</th>
+                  <th className="num">margin $</th>
+                  <th className="num">leverage</th>
+                  <th className="num">stop</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((x) => (
+                  <tr key={x.key} className={x.foreign ? "v2-muted" : undefined}>
+                    <td className="v2-mono">
+                      {x.sym} {x.side > 0 ? "long" : "short"}
+                    </td>
+                    <td>{x.foreign ? <Pill>not ours</Pill> : <Pill kind="ok">own</Pill>}</td>
+                    <td className="num">
+                      {fmt.num(x.ownQty, 4)} / {fmt.num(x.qty, 4)}
+                    </td>
+                    <td className="num">{x.entry ? fmt.num(x.entry, 5) : "–"}</td>
+                    <td className="num">{x.mark ? fmt.num(x.mark, 5) : "–"}</td>
+                    <td className={`num ${tone(x.upnl)}`}>{fmt.usdSigned(x.upnl)}</td>
+                    <td className="num">{usdFine(x.margin)}</td>
+                    <td className="num">{x.leverage ? `${fmt.num(x.leverage, 0)}×` : "–"}</td>
+                    <td className="num">{x.stop ? fmt.num(x.stop, 5) : "–"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Panel>
+      )}
+    </>
   );
 }
 
@@ -245,7 +313,7 @@ export function OverviewPage() {
         <Kpi
           label="Positions / Orders"
           value={`${fmt.num(d.sim?.positions)} / ${fmt.num(s?.n)}`}
-          sub={`${fmt.num((s?.n ?? 0) / Math.max(simDays, 0.01))} orders/day · open ${d.paper.book?.positions ?? 0} / ${d.paper.book?.orders ?? 0}`}
+          sub={`sim · ${fmt.num((s?.n ?? 0) / Math.max(simDays, 0.01))} orders/day · paper open ${d.paper.book?.positions ?? 0} / ${d.paper.book?.orders ?? 0}`}
         />
         <Kpi
           label="Green hours"
@@ -259,10 +327,10 @@ export function OverviewPage() {
           sub={`MDD ${fmt.num(s?.mdd, 2)} Σ trade % · worst h ${fmt.pct(s?.worstHour)}`}
         />
         <Kpi
-          label="Paper P&L"
+          label="Paper P&L (virtual)"
           value={fmt.usd(d.paper.equity)}
           className={tone(d.paper.equity)}
-          sub={`balance ${fmt.usd(d.paper.balance)} · ${d.paper.positions} open orders · ${realSel} Real${sigSel || d.status?.signals?.enabled ? ` · ${sigSel} signal` : ""} configs`}
+          sub={`virtual balance ${fmt.usd(d.paper.balance)} · ${d.paper.positions} open orders · ${realSel} Real${sigSel || d.status?.signals?.enabled ? ` · ${sigSel} signal` : ""} configs`}
         />
       </div>
 

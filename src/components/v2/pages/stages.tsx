@@ -81,7 +81,7 @@ export function StagesPage() {
 
       <Panel
         title="Timeframe lanes"
-        sub="1m base, 5m / 15m / 30m derived · m+ = combined (agrees with every higher timeframe) · each lane independent through every stage"
+        sub="1m base, 5m / 15m / 30m derived · m+ = combined (agrees with every higher timeframe) · each lane independent through every stage · sim = the simulated run (Σ trade %), paper = the open paper book (virtual) · a position is one symbol × direction episode: a real position held by several lanes counts in each lane, the total row counts it once"
         flush
       >
         {d.lanes?.length ? (
@@ -93,11 +93,11 @@ export function StagesPage() {
                   <th>Base evaluated</th>
                   <th>Base passed</th>
                   <th>Main tapes</th>
-                  <th>Positions / Orders</th>
-                  <th>PF</th>
-                  <th>Net %</th>
-                  <th>WR</th>
-                  <th>Open pos / orders</th>
+                  <th>Sim positions / orders</th>
+                  <th>Sim PF</th>
+                  <th>Sim net (Σ trade %)</th>
+                  <th>Sim WR</th>
+                  <th>Paper open pos / orders</th>
                 </tr>
               </thead>
               <tbody>
@@ -118,6 +118,19 @@ export function StagesPage() {
                     </td>
                   </tr>
                 ))}
+                <tr className="v2-muted">
+                  <td style={{ fontWeight: 600 }}>all lanes</td>
+                  <td colSpan={3} />
+                  <td>
+                    {fmt.num(d.sim?.positions)} / {fmt.num(d.sim?.stats?.n)}
+                  </td>
+                  <td>{fmt.pf(d.sim?.stats?.pf)}</td>
+                  <td>{fmt.pct(d.sim?.stats?.net)}</td>
+                  <td>{fmt.ratio(d.sim?.stats?.wr)}</td>
+                  <td>
+                    {d.paper?.book?.positions ?? 0} / {d.paper?.book?.orders ?? 0}
+                  </td>
+                </tr>
               </tbody>
             </table>
           </div>

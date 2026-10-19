@@ -5,8 +5,8 @@
 import { beforeEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { CoreDb } from "./db.server.ts";
-import { liveKv, resetLiveBackoff, stepLive, type ExchangeClient } from "./live.server.ts";
-import { controlOwnership, controlTargets, planControl, type ControlTarget } from "./live.ts";
+import { liveKv, liveUnitPeek, resetAccountSeen, resetLiveBackoff, stepLive, type ExchangeClient } from "./live.server.ts";
+import { budgetBase, controlOwnership, controlTargets, planControl, type ControlTarget } from "./live.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
 import { SimExchange, fakeRt, lane, type FakeRt } from "../test-support.ts";
 
@@ -341,5 +341,179 @@ describe("control orders: increases, stop repair, ownership", () => {
     // a budget that holds every position whole: no hint
     rt.settings.live = { ...rt.settings.live, maxBackstopLossPct: 1 };
     assert.doesNotMatch((await step(rt, ex)).reason, /no effect/);
+  });
+});
+
+// Budget base (operator, 14 Oct): every account budget and equity-scaled cap is sized on B = min(wallet, equity) from
+// the account read, so open profit never inflates a budget; the read is cached for every sizing mode, so the preview
+// and the statistics show the account and never the paper balance.
+describe("control sizing: the budget base B = min(wallet, equity)", () => {
+  beforeEach(() => {
+    resetLiveBackoff();
+    resetAccountSeen();
+  });
+
+  it("budgetBase: the smaller of wallet and equity; either alone; null without a read", () => {
+    assert.equal(budgetBase({ equity: 12, wallet: 10 }), 10, "open profit never raises B");
+    assert.equal(budgetBase({ equity: 8, wallet: 10 }), 8, "an open loss lowers B");
+    assert.equal(budgetBase({ equity: null, wallet: 10 }), 10);
+    assert.equal(budgetBase({ equity: 7, wallet: null }), 7);
+    assert.equal(budgetBase({ equity: 0, wallet: -1 }), null);
+    assert.equal(budgetBase(null), null);
+  });
+
+  it("the per-position cap (maxPositionX × B) uses the wallet when open profit lifts the equity above it", async () => {
+    const ex = new SimExchange().withEquity(100);
+    // equity 100 (wallet 50 + 50 open profit): the cap is 0.5 × 50 = 25, not 0.5 × 100 = 50
+    ex.account = async () => ({ equity: 100, wallet: 50, unrealized: 50, realized: 0, usedMargin: 0, availableMargin: 100 });
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.settings.live = { ...rt.settings.live, ratio: 10, maxNotionalUsd: 1000, maxPositionX: 0.5 };
+    rt.paper.positions = [lane("a", "S0-USDT", 1, 10, 1)];
+    await step(rt, ex);
+    const t = ctl(rt).targets.find((x) => x.key === "S0-USDT|1")!;
+    assert.ok(t.notional <= 25 * 1.0001, `notional ${t.notional} over 0.5 × wallet`);
+    assert.ok(t.notional > 20, `notional ${t.notional}`);
+    const st = liveKv<{ account?: { wallet: number; equity: number; base: number; availableMargin: number; readAt: number } }>(rt.db, "liveStatus")!;
+    assert.equal(st.account?.wallet, 50);
+    assert.equal(st.account?.equity, 100);
+    assert.equal(st.account?.base, 50);
+    assert.equal(st.account?.availableMargin, 100);
+    assert.ok((st.account?.readAt ?? 0) > 0);
+  });
+
+  it("%-of-equity sizing takes its unit from B too: open profit never sizes a unit up", async () => {
+    const ex = new SimExchange().withEquity(100);
+    ex.account = async () => ({ equity: 100, wallet: 50, unrealized: 50, realized: 0, usedMargin: 0, availableMargin: 100 });
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.settings.sizing = { mode: "equityPct", pct: 0.1 } as never;
+    rt.settings.live = { ...rt.settings.live, maxNotionalUsd: 1000, ratio: 1 };
+    rt.paper.positions = [lane("a", "S0-USDT", 1, 10, 1)];
+    await step(rt, ex);
+    const t = ctl(rt).targets.find((x) => x.key === "S0-USDT|1")!;
+    assert.ok(Math.abs(t.notional - 5) < 0.02, `notional ${t.notional}: 10 % of B = 50, not of the equity 100`);
+  });
+
+  it("the account read is cached in minimum-quantity sizing too: liveUnitPeek reads it (never the paper balance)", async () => {
+    const ex = new SimExchange().withEquity(6);
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.settings.sizing = { mode: "minQty", pct: 0.02 } as never;
+    rt.paper.positions = [lane("a", "S0-USDT", 1, 10, 1)];
+    await step(rt, ex);
+    const u = liveUnitPeek(rt as unknown as CoreRuntime);
+    assert.equal(u.from, "minQty");
+    assert.equal(u.equity, 6);
+    assert.equal(u.wallet, 6);
+    assert.equal(u.base, 6);
+    assert.ok((u.at ?? 0) > 0);
+  });
+
+  it("a step that ends before its account read carries the last account with its read time", async () => {
+    const ex = new SimExchange().withEquity(9);
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.paper.positions = [lane("a", "S0-USDT", 1, 10, 1)];
+    await step(rt, ex);
+    rt.settings.live = { ...rt.settings.live, enabled: false };
+    await step(rt, ex);
+    const st = liveKv<{ account?: { base: number; carried?: boolean; readAt: number } }>(rt.db, "liveStatus")!;
+    assert.equal(st.account?.base, 9);
+    assert.equal(st.account?.carried, true);
+  });
+});
+
+// Risk-based sizing (operator decision, 14 Oct): each position risks B × 1 % × the volume factor at its stop —
+// notional = B × riskPerPositionPct × ratio / riskDist; the venue minimum only while its risk is ≤ 2 × that.
+describe("control sizing: risk-based (positionSize \"risk\")", () => {
+  beforeEach(() => {
+    resetLiveBackoff();
+    resetAccountSeen();
+  });
+  const prices = new Map([["A-USDT", 10]]);
+  const lanesA = [{ cfg: "e1", sym: "A-USDT", side: 1 as const, vol: 3, sl: 0.02 }];
+  const snapMin = (minQ: number) => (_s: string, q: number) =>
+    q >= minQ ? { qty: Math.round(q * 1000) / 1000, raised: false } : { qty: minQ, raised: true };
+  const cs = (base: number, ratio = 1, cap = 1000) => ({
+    notionalUsd: 10,
+    ratio,
+    maxNotionalUsd: cap,
+    rebalancePct: 0.25,
+    maxPositions: 0,
+    riskSizing: { base, pct: 0.01 },
+  });
+
+  it("notional = B × 1 % × ratio / riskDist, whatever the lanes' volume; the stop risk is B × 1 % × ratio", () => {
+    const r = controlTargets(lanesA, prices, cs(100), snapMin(0.001));
+    const t = r.targets[0];
+    assert.equal(t.riskDist, 0.02);
+    assert.ok(Math.abs(t.notional - 50) < 0.01, `notional ${t.notional}`);
+    assert.ok(Math.abs(t.notional * t.riskDist! - 1) < 0.001, "risks 1 % of B");
+    const r2 = controlTargets(lanesA, prices, cs(100, 2), snapMin(0.001));
+    assert.ok(Math.abs(r2.targets[0].notional - 100) < 0.01, "the volume factor multiplies the risk");
+  });
+
+  it("capped by the per-position cap (min(maxNotionalUsd, maxPositionX × B) is passed in as the cap)", () => {
+    const r = controlTargets(lanesA, prices, cs(100, 4, 80), snapMin(0.001));
+    assert.ok(r.targets[0].notional <= 80 * 1.0001);
+    assert.equal(r.targets[0].capped, true);
+  });
+
+  it("the venue minimum: raised while its risk ≤ 2 × the per-position risk, else skipped with its reason", () => {
+    // B 50: risk 0.50 USD, want 25 USD; minimum 4 (40 USD) risks 0.80 ≤ 1.00 → raised to the minimum
+    const ok = controlTargets(lanesA, prices, cs(50), snapMin(4));
+    assert.equal(ok.targets[0]?.qty, 4);
+    assert.equal(ok.targets[0]?.raised, true);
+    // B 30: risk 0.30, minimum risk 0.80 > 0.60 → skipped, a held key kept as it is
+    const no = controlTargets(lanesA, prices, { ...cs(30), heldKeys: new Set(["A-USDT|1"]) }, snapMin(4));
+    assert.equal(no.targets.length, 0);
+    assert.match(no.skipped[0].why, /^exchange minimum risk 0\.8000 USD over 2 × the per-position risk 0\.3000 USD/);
+    assert.equal(no.skipped[0].keep, "A-USDT|1");
+  });
+
+  it("end to end: the live step sizes on B = min(wallet, equity); unknown B opens nothing", async () => {
+    const ex = new SimExchange().withEquity(200);
+    ex.account = async () => ({ equity: 200, wallet: 100, unrealized: 100, realized: 0, usedMargin: 0, availableMargin: 200 });
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.settings.live = { ...rt.settings.live, positionSize: "risk", riskPerPositionPct: 0.01, ratio: 1, maxNotionalUsd: 1000 };
+    // stop 4 % → risk distance 4 %: 100 × 1 % / 4 % = 25 USD
+    rt.paper.positions = [lane("a", "S0-USDT", 1, 10, 5, 0.04)];
+    await step(rt, ex);
+    const t = ctl(rt).targets.find((x) => x.key === "S0-USDT|1")!;
+    assert.ok(Math.abs(t.notional * t.riskDist! - 1) < 0.02, `risk ${t.notional * t.riskDist!} = 1 % of B (wallet 100)`);
+    assert.ok(ex.positions.get("S0-USDT|LONG")! > 0);
+    // no account read: nothing opens
+    const ex2 = new SimExchange();
+    const { rt: rt2 } = fakeRt(new CoreDb(":memory:"));
+    rt2.settings.live = { ...rt2.settings.live, positionSize: "risk" };
+    rt2.paper.positions = [lane("a", "S0-USDT", 1, 10, 5, 0.04)];
+    await step(rt2, ex2);
+    assert.equal(ex2.positions.size, 0);
+  });
+});
+
+describe("settings check: position size \"risk\" and its risk per position", () => {
+  it("accepts risk with 0.05 % – 5 %, refuses other values and the lane-orders combination", async () => {
+    const { checkSettings } = await import("../settings-check.ts");
+    const { DEFAULT_SETTINGS } = await import("../config.ts");
+    const live = (x: Record<string, unknown>) => ({ ...DEFAULT_SETTINGS, live: { ...DEFAULT_SETTINGS.live, ...x } });
+    assert.doesNotThrow(() => checkSettings(live({ positionSize: "risk", riskPerPositionPct: 0.01 })));
+    assert.throws(() => checkSettings(live({ positionSize: "risky" })), /"lanes", "min" or "risk"/);
+    assert.throws(() => checkSettings(live({ positionSize: "risk", riskPerPositionPct: 0.2 })), /risk per position/);
+    assert.throws(() => checkSettings(live({ positionSize: "risk", laneOrders: true })), /laneOrders off/);
+    assert.equal(DEFAULT_SETTINGS.live.positionSize, undefined, "the code default stays lanes");
+  });
+});
+
+describe("size labels: one wording of the live sizing on every page", () => {
+  it("names the unit per mode and the cap min(maxNotionalUsd, maxPositionX × B)", async () => {
+    const { sizeText, ageOf } = await import("../live-labels.ts");
+    const live = { notionalUsd: 6, ratio: 2, maxNotionalUsd: 200, maxPositionX: 5 };
+    assert.equal(sizeText(live, "minQty"), "venue minimum × lane volume × 2 · cap min($200, 5× B)");
+    assert.equal(sizeText({ ...live, positionSize: "min" }, "minQty"), "venue minimum × 2 per position · cap min($200, 5× B)");
+    assert.equal(sizeText({ ...live, positionSize: "min" }, "fixed"), "$6 × 2 per position · cap min($200, 5× B)");
+    assert.equal(
+      sizeText({ ...live, positionSize: "risk", riskPerPositionPct: 0.01, maxNotionalUsd: 0 }, "minQty"),
+      "risk B × 1% × 2 at the stop (B = min(wallet, equity)) · cap 5× B",
+    );
+    assert.equal(ageOf(null, 1000), null);
+    assert.deepEqual(ageOf(1000, 1000 + 130_000), { ms: 130_000, text: "2m ago", stale: true });
   });
 });

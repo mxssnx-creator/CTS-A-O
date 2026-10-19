@@ -42,7 +42,8 @@ type Row = {
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const pct = (x: number) => `${(x * 100).toFixed(0)}%`;
 
-function GroupTable(props: { rows: Row[]; label: string; empty?: string; dates?: boolean }) {
+function GroupTable(props: { rows: Row[]; label: string; empty?: string; dates?: boolean; fine?: boolean }) {
+  const usd = props.fine ? fmt.usd4 : fmt.usd;
   if (!props.rows.length) return <Empty>{props.empty ?? "No closes"}</Empty>;
   return (
     <div className="v2-table-wrap">
@@ -75,7 +76,7 @@ function GroupTable(props: { rows: Row[]; label: string; empty?: string; dates?:
               <td className="num">{pct(r.wr)}</td>
               <td className={`num ${pfTone(r.pf)}`}>{fmt.pf(r.pf)}</td>
               <td className={`num ${tone(r.net)}`}>{fmt.pct(r.net)}</td>
-              <td className={`num ${tone(r.usd)}`}>{fmt.usd(r.usd)}</td>
+              <td className={`num ${tone(r.usd)}`}>{usd(r.usd)}</td>
               <td className="num">{fmt.h(r.ddt)}</td>
               <td className="num">{pct(r.gh)}</td>
               <td className="num">{Number.isFinite(r.avgHoldMin) ? `${fmt.num(r.avgHoldMin)}m` : "–"}</td>
@@ -344,38 +345,50 @@ export function StatisticsPage() {
     );
   const T = r.total;
   const tl = r.timeline;
+  // live amounts on a small account: cents of cents shown (4 decimals below $20)
+  const fine = r.source === "live";
+  const usd = fine ? fmt.usd4 : fmt.usd;
   const typeParts = (r.types as Row[]).map((x) => ({ label: x.key, value: x.n }));
-  const hourBars = (r.hourOfDay as Row[]).map((x) => ({ k: x.key, v: x.usd, tip: `${x.key}:00 UTC · ${x.n} orders · PF ${fmt.pf(x.pf)} · ${fmt.usd(x.usd)}` }));
-  const dailyBars = (r.daily as Row[]).map((x) => ({ k: x.key.slice(5), v: x.usd, tip: `${x.key} · ${x.n} orders · PF ${fmt.pf(x.pf)} · ${fmt.usd(x.usd)}` }));
+  const hourBars = (r.hourOfDay as Row[]).map((x) => ({ k: x.key, v: x.usd, tip: `${x.key}:00 UTC · ${x.n} orders · PF ${fmt.pf(x.pf)} · ${usd(x.usd)}` }));
+  const dailyBars = (r.daily as Row[]).map((x) => ({ k: x.key.slice(5), v: x.usd, tip: `${x.key} · ${x.n} orders · PF ${fmt.pf(x.pf)} · ${usd(x.usd)}` }));
   const heat = new Map<string, Any>((r.heat as Any[]).map((c) => [`${c.d}|${c.h}`, c]));
   // full colour at the largest |net| of a cell
   const heatSpan = Math.max(1e-9, ...(r.heat as Any[]).map((c) => Math.abs(c.net)));
   const balanceNote =
-    d.balanceFrom === "account equity"
-      ? "from the account equity"
-      : d.balanceFrom === "paper start balance + live P&L"
-        ? "paper start balance + live P&L"
-        : "";
+    d.balanceFrom === "account wallet"
+      ? "from the account wallet − own closes"
+      : d.balanceFrom === "account equity"
+        ? "from the account equity"
+        : d.balanceFrom === "paper start balance + live P&L"
+          ? "no account read: paper start balance + live P&L"
+          : r.source === "live"
+            ? ""
+            : "virtual start balance";
+  const apart = [
+    r.hand?.n ? `ended by orders not ours ${r.hand.n} (${fmt.usdSigned(r.hand.usd)})` : "",
+    r.flat?.n ? `exchange-ended at a verified price ${r.flat.n} (${fmt.usdSigned(r.flat.usd)})` : "",
+    d.unpriced?.n ? `${d.unpriced.n} flat markers without any price (not booked)` : "",
+  ].filter(Boolean);
   return (
     <>
       <ErrorNote error={error} />
       <Panel
         title="Statistics"
-        sub={`${d.conn ?? ""} · ${r.source === "sim" ? "simulated run (full detail)" : r.source === "live" ? "live orders by own client id (fills, fees)" : "paper book"} · ${fmt.time(r.startT)} → ${fmt.time(r.endT)} UTC`}
+        sub={`${d.conn ?? ""} · ${d.sourceLabel ?? r.source} · ${fmt.time(r.startT)} → ${fmt.time(r.endT)} UTC · USD after fees${d.feesModelled ? " (fees modelled: no fill reported a commission)" : ""} · PF and net % per unit of notional${r.source === "live" ? ` · account read ${fmt.ago(d.accountAt)}` : ""}${r.open?.positions ? ` · ${r.open.positions} own positions open (marked in the chart, not closes)` : ""}`}
         right={controls}
       >
         <div className="v2-grid v2-cols-6">
           <Kpi
             label="Balance"
-            value={fmt.usd(T.usdEnd)}
-            sub={`${hours > 0 ? "window start" : "start"} ${fmt.usd(hours > 0 ? (r.balanceStart ?? r.balance0) : r.balance0)} · ${fmt.usd(T.usd)}${balanceNote ? ` · ${balanceNote}` : ""}`}
+            value={usd(T.usdEnd)}
+            sub={`${hours > 0 ? "window start" : "start"} ${usd(hours > 0 ? (r.balanceStart ?? r.balance0) : r.balance0)} · own results ${fmt.usdSigned(T.usd, fine ? 4 : 2)}${balanceNote ? ` · ${balanceNote}` : ""}${apart.length ? ` · apart: ${apart.join(", ")}` : ""}`}
             className={tone(T.usd)}
           />
           <Kpi label="Profit factor (unit)" value={fmt.pf(T.pf)} sub={`WR ${pct(T.wr)} · SQN ${fmt.pf(T.sqn)}`} className={pfTone(T.pf)} />
           <Kpi label="Orders · positions" value={`${T.n} · ${T.positions}`} sub={`${T.wins} won · ${T.losses} lost · ${fmt.pf(T.tph)}/h`} />
-          <Kpi label="Equity drawdown" value={`${tl.maxDdPct.toFixed(2)}%`} sub={`${fmt.usd(tl.maxDd)} · under water ${fmt.h(tl.maxDdH)}`} className={tl.maxDdPct > 20 ? "v2-down" : ""} />
+          <Kpi label="Equity drawdown" value={`${tl.maxDdPct.toFixed(2)}%`} sub={`${usd(tl.maxDd)} · under water ${fmt.h(tl.maxDdH)}`} className={tl.maxDdPct > 20 ? "v2-down" : ""} />
           <Kpi label="DDT (closes)" value={fmt.h(T.ddt)} sub={`green hours ${pct(T.gh)}`} />
-          <Kpi label="Peak book" value={`${tl.positionsMax} pos`} sub={`${tl.ordersMax} orders · ${tl.setsMax} sets · margin ${fmt.usd(tl.marginMax)}`} />
+          <Kpi label="Peak book" value={`${tl.positionsMax} pos`} sub={`${tl.ordersMax} orders · ${tl.setsMax} sets · margin ${usd(tl.marginMax)} at ${d.leverageFrom ?? "–"}`} />
         </div>
       </Panel>
       <Panel title="Overall" sub="balance, equity marked to market, drawdown, margin used and the open book (sets · positions · orders) on one time axis">
@@ -386,7 +399,7 @@ export function StatisticsPage() {
           <div style={{ display: "flex", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
             <ArcShare parts={typeParts} size={140} center={`${T.n}`} />
             <div style={{ flex: 1, minWidth: 260 }}>
-              <GroupTable rows={r.types} label="type" />
+              <GroupTable fine={fine} rows={r.types} label="type" />
             </div>
           </div>
         </Panel>
@@ -398,7 +411,7 @@ export function StatisticsPage() {
                 : "The paper book keeps no Block / DCA detail per close: switch to the simulated run for the split."}
             </p>
           )}
-          <GroupTable rows={r.subTypes} label="sub-config" />
+          <GroupTable fine={fine} rows={r.subTypes} label="sub-config" />
         </Panel>
       </div>
       <Panel title="With and without" sub="the execution presets computed on the same tapes: each sub-strategy on vs off (PF, net, drawdown time)">
@@ -406,18 +419,18 @@ export function StatisticsPage() {
       </Panel>
       <div className="v2-grid v2-cols-2">
         <Panel title="Ranges" sub="Micro · Minimal · Minimal plus · Short · General · Long · Wide · Signals">
-          <GroupTable rows={r.ranges} label="range" />
+          <GroupTable fine={fine} rows={r.ranges} label="range" />
         </Panel>
         <Panel title="Timeframe lanes">
-          <GroupTable rows={r.lanes} label="lane" />
+          <GroupTable fine={fine} rows={r.lanes} label="lane" />
         </Panel>
         <Panel title="Indication kinds">
-          <GroupTable rows={r.indKinds} label="kind" />
+          <GroupTable fine={fine} rows={r.indKinds} label="kind" />
         </Panel>
         <Panel title="Bots · sides · exit reasons">
-          <GroupTable rows={[...r.bots, ...r.sides]} label="bot / side" />
+          <GroupTable fine={fine} rows={[...r.bots, ...r.sides]} label="bot / side" />
           <div style={{ height: 8 }} />
-          <GroupTable rows={r.reasons} label="exit" />
+          <GroupTable fine={fine} rows={r.reasons} label="exit" />
         </Panel>
       </div>
       <div className="v2-grid v2-cols-2">
@@ -441,7 +454,7 @@ export function StatisticsPage() {
         />
       </Panel>
       <Panel title="Symbols" sub="every symbol traded">
-        <GroupTable rows={r.symbols} label="symbol" dates />
+        <GroupTable fine={fine} rows={r.symbols} label="symbol" dates />
       </Panel>
       <Panel
         title="Configs"

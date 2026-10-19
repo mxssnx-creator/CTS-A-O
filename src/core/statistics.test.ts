@@ -237,20 +237,20 @@ test("live closes: a position the exchange closed (its stop, its take-profit) is
   const xs = liveTrades(rows, "CTSBV2_".length);
   assert.deepEqual(
     xs.map((x) => [x.sym, +x.r.toFixed(9), x.reason]),
-    // (the unmeasured fills pay the model cost: half of the 0.2 % round trip on the open; the desk's own close pays its
-    // half too at its price — the flat marker's exit has no fill, so no exit fee is known)
+    // (the unmeasured fills pay the model cost: half of the 0.2 % round trip on the open and half on the exit at its
+    // price — the exchange's exit reports no commission either, so it pays the model share like the open: no asymmetry)
     [
-      ["A-USDT", -0.021, "sl"],
-      ["B-USDT", -0.021, "sl"],
-      ["C-USDT", -0.021, "sl"],
-      ["D-USDT", 0.029, "tp"],
+      ["A-USDT", -0.02198, "sl"],
+      ["B-USDT", -0.02198, "sl"],
+      ["C-USDT", -0.02198, "sl"],
+      ["D-USDT", 0.02797, "tp"],
       ["E-USDT", 0.00799, "close"],
     ],
   );
-  // PF 0.03699 / 0.063, not the no-loss cap of the desk-moved exit alone
+  // PF 0.03596 / 0.06594, not the no-loss cap of the desk-moved exit alone
   const gp = xs.reduce((a, x) => a + Math.max(0, x.r), 0);
   const gl = xs.reduce((a, x) => a - Math.min(0, x.r), 0);
-  assert.ok(Math.abs(gp / gl - 0.03699 / 0.063) < 1e-9);
+  assert.ok(Math.abs(gp / gl - 0.03596 / 0.06594) < 1e-9);
 });
 
 test("fillKeys / daysOf: every hour and every UTC day of the window", async () => {
@@ -346,4 +346,62 @@ test("an unmeasured fill is charged the model round-trip fee share, never zero",
   assert.equal(xs.length, 1);
   // +10 gross, −0.1 model fee on the open, −0.05 measured on the close → 9.85 on a notional of 100
   assert.ok(Math.abs(xs[0].r - 0.0985) < 1e-12, `r ${xs[0].r}`);
+});
+
+test("live ledger: a flat marker without its price is booked at a verified price as \"flat\" (out of PF), else counted unpriced", async () => {
+  const { liveLedger, buildStatistics: build } = await import("./statistics.ts");
+  const T = 1_790_000_000_000;
+  const row = (sym: string, coid: string, kind: string, qty: number, px: number, at: number) => ({
+    coid, sym, side: 1, kind, qty, px, status: "ok", at, fillPx: kind === "F" ? null : px, fee: 0,
+  });
+  const rows = [
+    row("A-USDT", "CTSBV2_Ea1", "O", 1, 100, T),
+    row("A-USDT", "flat-1", "F", 0, 0, T + 60_000),
+    row("B-USDT", "CTSBV2_Ea2", "O", 2, 50, T),
+    row("B-USDT", "flat-2", "F", 0, 0, T + 60_000),
+    // still open at the end
+    row("C-USDT", "CTSBV2_Ea3", "O", 1, 10, T + 1),
+  ];
+  const led = liveLedger(rows, "CTSBV2_".length, 0.002, {
+    flatPx: (sym) => (sym === "A-USDT" ? { px: 97, from: "lane exit" } : null),
+  });
+  assert.deepEqual(led.closed.map((x) => [x.sym, x.reason, x.pxFrom, x.coid]), [["A-USDT", "flat", "lane exit", "flat-1"]]);
+  // −3 gross, model fees 0.1 + 0.097
+  assert.ok(Math.abs(led.closed[0].r * led.closed[0].notional - -3.197) < 1e-9);
+  assert.deepEqual(led.unpriced.map((x) => [x.sym, x.qty, x.notional]), [["B-USDT", 2, 100]]);
+  assert.deepEqual(led.open.map((x) => [x.sym, x.qty, x.entry]), [["C-USDT", 1, 10]]);
+  // in the balance, out of every PF; counted apart from hand
+  const r = build({
+    source: "live",
+    trades: [...led.closed, { ...led.closed[0], cfg: "live|A-USDT|tp0|sl0|tr0|h0", reason: "close", r: 0.01, exitT: T + 120_000 }],
+    startT: T - 60_000,
+    endT: T + 3_600_000,
+    balance: 100,
+    unit: (x) => (x as { notional?: number }).notional ?? 100,
+    price: () => 10,
+    cost: 0.002,
+    leverage: 5,
+    minActiveLevel: 1,
+    open: led.open.map((x) => ({ ...x, exitT: Infinity, r: 0 })),
+  });
+  assert.equal(r.total.n, 1, "the flat close is not a result");
+  assert.equal(r.flat.n, 1);
+  assert.ok(Math.abs(r.flat.usd - -3.197) < 1e-9);
+  assert.equal(r.open.positions, 1);
+  // the open position is in the timeline: its margin at the given leverage (10 / 5)
+  assert.ok(Math.abs(r.timeline.points.at(-1)!.margin - 2) < 1e-9, `margin ${r.timeline.points.at(-1)!.margin}`);
+  assert.ok(Math.abs(r.timeline.points.at(-1)!.balance - (100 - 3.197 + 1)) < 1e-6, "flat money in the balance");
+});
+
+test("timeline: an open position's mark charges the round trip once — the equity does not jump when it closes", async () => {
+  const { timeline: tlOf } = await import("./statistics.ts");
+  const M = 60_000;
+  const T = 1_790_000_000_000;
+  // r is net of the round trip (0.2 %): closed at an unchanged price r = −0.002
+  const x = { cfg: "live|A|tp0|sl0|tr0|h0", sym: "A", side: 1, entryT: T, exitT: T + 10 * M, entry: 100, r: -0.002 };
+  const t = tlOf([x], { startT: T, endT: T + 20 * M, balance: 100, unit: () => 50, price: () => 100, cost: 0.002, leverage: 10, points: 20 });
+  const before = t.points.find((p) => p.t === T + 9 * M)!;
+  const after = t.points.find((p) => p.t === T + 10 * M)!;
+  assert.ok(Math.abs(before.equity - after.equity) < 1e-9, `${before.equity} → ${after.equity}`);
+  assert.ok(Math.abs(after.equity - 99.9) < 1e-9);
 });

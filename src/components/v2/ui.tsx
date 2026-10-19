@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useConn } from "./conn";
+import { ageOf } from "@/core/live-labels";
 
 /**
  * Poll a server function; data is replaced in place (no reload, no scroll jump).
@@ -165,6 +166,17 @@ export const fmt = {
   usd: (x: unknown) =>
     typeof x === "number" && Number.isFinite(x)
       ? `${x >= 0 ? "" : "−"}$${Math.abs(x).toFixed(2)}`
+      : "–",
+  /** USD with cents of cents below $20 (live amounts on a small account): 4 decimals there, 2 above */
+  usd4: (x: unknown) => {
+    if (typeof x !== "number" || !Number.isFinite(x)) return "–";
+    const d = Math.abs(x) < 20 ? 4 : 2;
+    return `${x < 0 ? "−" : ""}$${Math.abs(x).toFixed(d)}`;
+  },
+  /** a signed USD amount: always "+" or "−" */
+  usdSigned: (x: unknown, d = 4) =>
+    typeof x === "number" && Number.isFinite(x)
+      ? `${x > 0 ? "+" : x < 0 ? "−" : ""}$${Math.abs(x).toFixed(Math.abs(x) < 20 ? d : 2)}`
       : "–",
   h: (x: unknown) => (typeof x === "number" && Number.isFinite(x) ? `${x.toFixed(1)}h` : "–"),
   frac: (x: unknown) =>
@@ -389,5 +401,18 @@ export function Modal(props: {
         {props.footer && <div className="v2-dialog-actions">{props.footer}</div>}
       </div>
     </div>
+  );
+}
+
+/** How old a reading is ("12s ago"), marked stale past STALE_MS (or `staleMs`); "never read" without a time. */
+export function Age(props: { at: unknown; staleMs?: number; prefix?: string }) {
+  const a = ageOf(props.at, Date.now(), props.staleMs);
+  if (!a) return <span className="v2-muted">never read</span>;
+  return (
+    <span className={a.stale ? "v2-warn" : "v2-muted"} title={a.stale ? "stale reading" : undefined}>
+      {props.prefix ? `${props.prefix} ` : ""}
+      {a.text}
+      {a.stale ? " · stale" : ""}
+    </span>
   );
 }

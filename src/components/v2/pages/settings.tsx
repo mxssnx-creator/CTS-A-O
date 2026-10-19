@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { progressText } from "@/core/progress";
+import { sizeText } from "@/core/live-labels";
 import { coreSettings, coreStatus, saveCoreSettings } from "../api-conn";
 import {
   DEFAULT_BLOCK,
@@ -1622,8 +1623,8 @@ export function SettingsPage() {
                 Live is on — after Save, orders go to the MAINNET account with real money.
               </p>
               <p>
-                Up to {s.live.maxPositions > 0 ? s.live.maxPositions : "unlimited"} positions of $
-                {s.live.notionalUsd} each. Takes effect after Save.
+                Up to {s.live.maxPositions > 0 ? s.live.maxPositions : "unlimited"} positions, each sized{" "}
+                {sizeText(s.live, s.sizing?.mode)}. Takes effect after Save.
               </p>
             </>
           ) : ask === "live" ? (
@@ -1636,8 +1637,8 @@ export function SettingsPage() {
               <p>
                 Orders are only sent when the host also has CTS_CORE_LIVE=1 and API keys, and only
                 while the rolling simulated run holds PF ≥ {s.gates.minPf} and is stable. Up to{" "}
-                {s.live.maxPositions > 0 ? s.live.maxPositions : "unlimited"} positions of $
-                {s.live.notionalUsd} each. Takes effect after Save.
+                {s.live.maxPositions > 0 ? s.live.maxPositions : "unlimited"} positions, each sized{" "}
+                {sizeText(s.live, s.sizing?.mode)}. Takes effect after Save.
               </p>
             </>
           ) : (
@@ -3635,8 +3636,42 @@ export function SettingsPage() {
               />
             </Field>
             <Field
+              label="Position size"
+              hint="lanes = the lanes' volume × unit × factor · min = one unit × factor per position (minQty: the venue minimum) · risk = every position risks B × risk per position × factor at its stop (B = min(wallet, equity)); the venue minimum only while it risks ≤ 2 × that"
+            >
+              <select
+                className="v2-select"
+                value={s.live.positionSize ?? "lanes"}
+                onChange={(e) => set(["live", "positionSize"], e.target.value)}
+              >
+                <option value="lanes">lanes (volume × unit × factor)</option>
+                <option value="min">min (one unit × factor)</option>
+                <option value="risk" disabled={s.live.laneOrders === true}>
+                  risk (B × risk % × factor at the stop)
+                </option>
+              </select>
+            </Field>
+            {s.live.positionSize === "risk" ? (
+              <Field
+                label="Risk per position (% of B)"
+                hint="what each position loses at its stop, as a share of B = min(wallet, equity), × the volume factor · 0.05 – 5"
+              >
+                <Num
+                  step={0.05}
+                  min={0.05}
+                  max={5}
+                  value={Math.round((s.live.riskPerPositionPct ?? 0.01) * 10000) / 100}
+                  onChange={(v) => set(["live", "riskPerPositionPct"], v / 100)}
+                />
+              </Field>
+            ) : null}
+            <Field
               label="Control ratio (volume factor)"
-              hint="control volume per lane volume unit · 0.1 – 500 · the per-position cap, the exposure cap and the risk budget bound the size"
+              hint={
+                s.live.positionSize === "risk"
+                  ? "risk multiple: each position risks B × risk per position × this at its stop · 0.1 – 500 · the per-position cap and the account budgets on B bound the size"
+                  : "control volume per lane volume unit · 0.1 – 500 · the per-position cap, the exposure cap and the risk budget bound the size"
+              }
             >
               <Num
                 step={0.1}

@@ -1763,3 +1763,52 @@ describe("live chain at x01 scale (568 configs, 50 symbols, $8.31 equity)", () =
     assert.ok(new Set(targets.map((t) => t.notional.toFixed(2))).size >= 3, "sizes differ");
   });
 });
+
+// The account view (operator, 14 Oct): own positions from the exchange with their entry, mark, uPnL, margin, leverage
+// and stop; positions not ours shown apart and never counted in the own numbers (manual quantity is never own).
+describe("account positions: own and foreign apart", () => {
+  it("own sums take the own share only; a foreign position is counted apart; the stop and venue fields are read", async () => {
+    const { accountPositions } = await import("./live.ts");
+    const book = {
+      positions: [
+        { symbol: "AUSDT", venueSymbol: "A-USDT", side: "long" as const, qty: 2, upnl: 1, margin: 4, entry: 10, mark: 10.5, leverage: 20 },
+        { symbol: "BUSDT", venueSymbol: "B-USDT", side: "short" as const, qty: 1, upnl: -3, margin: 5, entry: 7, mark: 7.2, leverage: 10 },
+        // someone added to our A long: the venue merges both, we opened half of it
+        { symbol: "CUSDT", venueSymbol: "C-USDT", side: "long" as const, qty: 4, upnl: 2, margin: 8 },
+      ],
+      orders: [
+        { venueSymbol: "A-USDT", symbol: "AUSDT", positionSide: "LONG" as const, type: "STOP_MARKET", stopPrice: 9.5 },
+        { venueSymbol: "A-USDT", symbol: "AUSDT", positionSide: "LONG" as const, type: "TAKE_PROFIT_MARKET", stopPrice: 12 },
+      ],
+    };
+    const held = new Map([
+      ["A-USDT|1", 2],
+      ["C-USDT|1", 1],
+    ]);
+    const r = accountPositions(book, held, new Set(["B-USDT|-1"]));
+    const a = r.rows.find((x) => x.key === "A-USDT|1")!;
+    assert.deepEqual(
+      [a.ownQty, a.entry, a.mark, a.leverage, a.stop, a.foreign],
+      [2, 10, 10.5, 20, 9.5, false],
+    );
+    assert.equal(r.rows.find((x) => x.key === "B-USDT|-1")?.foreign, true);
+    assert.equal(r.rows[r.rows.length - 1].key, "B-USDT|-1", "foreign rows listed after the own ones");
+    assert.equal(r.own.n, 2);
+    // A whole (1) + a quarter of C (0.5); B (−3) is not ours
+    assert.ok(Math.abs(r.own.upnl - 1.5) < 1e-9, `own upnl ${r.own.upnl}`);
+    assert.ok(Math.abs(r.own.margin - 6) < 1e-9);
+    assert.deepEqual(r.foreign, { n: 1, upnl: -3, margin: 5 });
+  });
+
+  it("the live step stamps the account with the own share and the foreign position apart", async () => {
+    const ex = new SimExchange().withEquity(50);
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    // a position nobody of ours opened (no own order, no ledger row): foreign
+    ex.positions.set("S5-USDT|LONG", 3);
+    await stepLive(rt as unknown as CoreRuntime, [], 1, ex as unknown as ExchangeClient);
+    const st = liveKv<{ account?: { own?: { n: number }; foreign?: { n: number }; positionsDetail?: Array<{ key: string; foreign: boolean; ownQty: number }> } }>(rt.db, "liveStatus")!;
+    assert.equal(st.account?.own?.n, 0);
+    assert.equal(st.account?.foreign?.n, 1);
+    assert.deepEqual(st.account?.positionsDetail?.map((x) => [x.key, x.foreign, x.ownQty]), [["S5-USDT|1", true, 0]]);
+  });
+});
