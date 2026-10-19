@@ -67,6 +67,8 @@ class Venue extends SimExchange {
  */
 class OneWayVenue extends SimExchange {
   net = new Map<string, number>();
+  /** the book names a one-way BOTH order by no side, as the live bingx book reader does (bingx.server.ts) */
+  noSideBook = false;
   async book() {
     return {
       positions: [...this.net.entries()]
@@ -77,7 +79,12 @@ class OneWayVenue extends SimExchange {
           side: q > 0 ? ("long" as const) : ("short" as const),
           qty: Math.abs(q),
         })),
-      orders: this.orders.map((o) => ({ ...o })),
+      orders: this.orders.map((o) => ({
+        ...o,
+        ...(this.noSideBook && String(o.positionSide) === "BOTH"
+          ? { positionSide: undefined }
+          : {}),
+      })),
     };
   }
   async order(p: Record<string, string | number>): Promise<unknown> {
@@ -578,9 +585,11 @@ describe("order sides, hedge mode (overall control): LONG and SHORT alike", { ti
   }
 
   // one-way, the exit read while the side is flat (live.server.ts restingOf): a position closed outside the desk while
-  // its own stop and take-profit still rest is closed by hand. restingOf read a BOTH order as not LONG and skipped a
-  // long's own orders, so the close was inferred as the stop (the level nearer the price), and with no bars to prove it,
-  // booked unverified at the ticker. The short reads BOTH as SHORT, its own lane, so the short's cell is its control.
+  // its own stop and take-profit still rest is closed by hand. On a venue whose book echoes the one-way BOTH order,
+  // restingOf read it as not LONG and skipped a long's own orders, so the close was inferred as the stop (the level
+  // nearer the price), and with no bars to prove it, booked unverified at the ticker. Live bingx names the order by no
+  // side instead (bingx.server.ts), which the parent read as both keys: its long was right there, and the cells on that
+  // book shape below pin the read.
   for (const s of [1, -1] as const) {
     const side = s === 1 ? "long" : "short";
     const sym = s === 1 ? "S1-USDT" : "S2-USDT";
@@ -602,6 +611,66 @@ describe("order sides, hedge mode (overall control): LONG and SHORT alike", { ti
         events.some((m) => m.includes(`${sym}|${s} was closed by hand`)),
         `the close is not booked by hand: ${JSON.stringify(events.filter((m) => m.includes("was closed")))}`,
       );
+    });
+  }
+
+  // the live bingx book names a one-way order by no side, so restingOf counts it by its own key (keyOfOwn: its control
+  // record's key, else the symbol's one net position). A close by hand is booked by hand, as on the echoing book
+  for (const s of [1, -1] as const) {
+    const side = s === 1 ? "long" : "short";
+    const sym = s === 1 ? "S1-USDT" : "S2-USDT";
+    const mark = s === 1 ? 10 : 20;
+    it(`OW-13 ${side}, oneway, book names no side (live bingx): a close by hand while the position's own stop and take-profit rest is booked by hand`, async () => {
+      const tick = clock();
+      const ex = new OneWayVenue();
+      ex.noSideBook = true;
+      const { rt } = rtOf({ positionMode: "oneway" });
+      const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+      rt.paper.positions = [lane("combo|ema-9-21@m15|a", sym, s, mark, 0.02, 0.05)];
+      await step();
+      assert.equal(ex.orders.length, 2, "own stop and take-profit placed");
+      tick(11 * 60_000);
+      ex.net.delete(sym);
+      await step();
+      const events = rt.db.all<{ msg: string }>("SELECT msg FROM events").map((e) => e.msg);
+      assert.ok(
+        events.some((m) => m.includes(`${sym}|${s} was closed by hand`)),
+        `the close is not booked by hand: ${JSON.stringify(events.filter((m) => m.includes("was closed")))}`,
+      );
+    });
+  }
+
+  // the same book with no control record for the position's own orders and no net position: no key is theirs (keyOfOwn
+  // gives null), so the close is not read as by hand. It is inferred from the stop and take-profit levels and the bars
+  // (closedBy, verifyClose); with no bars the inference is booked unverified at the ticker. This changes the live bingx
+  // result for this case, which the parent booked by hand
+  for (const s of [1, -1] as const) {
+    const side = s === 1 ? "long" : "short";
+    const sym = s === 1 ? "S1-USDT" : "S2-USDT";
+    const mark = s === 1 ? 10 : 20;
+    it(`OW-13 ${side}, oneway, book names no side (live bingx): with no control record and no net position, a close by hand is booked outside the desk, unverified at the ticker`, async () => {
+      const tick = clock();
+      const ex = new OneWayVenue();
+      ex.noSideBook = true;
+      const { rt } = rtOf({ positionMode: "oneway" });
+      const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+      rt.paper.positions = [lane("combo|ema-9-21@m15|a", sym, s, mark, 0.02, 0.05)];
+      await step();
+      assert.equal(ex.orders.length, 2, "own stop and take-profit placed");
+      // the orders lose their control records (the entry's own row keeps the key held), and the net closes by hand
+      for (const o of ex.orders)
+        rt.db.run(
+          "DELETE FROM live_orders WHERE cfg LIKE 'control|%' AND coid = ?",
+          o.clientOrderId ?? "",
+        );
+      tick(11 * 60_000);
+      ex.net.delete(sym);
+      await step();
+      const events = rt.db.all<{ msg: string }>("SELECT msg FROM events").map((e) => e.msg);
+      const closed = events.filter((m) => m.includes(`${sym}|${s} was closed`));
+      assert.equal(closed.length, 1, `the close is booked ${JSON.stringify(closed)}`);
+      assert.ok(closed[0].includes("was closed outside the desk"), closed[0]);
+      assert.ok(closed[0].includes("booked unverified at the ticker"), closed[0]);
     });
   }
 
