@@ -20,6 +20,7 @@ import type { CoreDb } from "./db.server.ts";
 import {
   attributeLanes,
   laneKeyOf,
+  recordKeyOf,
   type LaneOpen,
   type LaneStepInput,
   type LaneTrade,
@@ -138,7 +139,7 @@ export function cfgInfo(cfg: string): CfgInfo {
  * yet = every lane).
  */
 export function liveLaneFilter(
-  s: Pick<LiveSettings, "kinds" | "source" | "excludeRanges" | "excludeConfigs" | "plainOnly">,
+  s: Pick<LiveSettings, "kinds" | "source" | "excludeRanges" | "excludeConfigs" | "plainOnly" | "sideGates">,
   selected: ReadonlySet<string> | null,
   sigActive: { has(k: string): boolean } | null | undefined,
   /** live.engineProofN: the engine configs proven by their own closes (null = the proof is off) */
@@ -179,8 +180,14 @@ export function liveLaneFilter(
     if (src !== "all" && c.isSig !== (src === "signals")) return false;
     return true;
   };
-  // the engine proof: an engine config not proven by its own closes trades on paper only
-  const engineOk = (l: Pick<ControlContribution, "cfg">) => !proven || cfgInfo(l.cfg).isSig || proven.has(l.cfg);
+  // the engine proof: an engine config not proven by its own closes trades on paper only. With live.sideGates the proof
+  // is per side (keys cfg|1 / cfg|-1): a lane is judged on its own side, a lane without one on either
+  const engineOk = (l: Pick<ControlContribution, "cfg"> & { side?: number }) => {
+    if (!proven || cfgInfo(l.cfg).isSig) return true;
+    if (s.sideGates !== true) return proven.has(l.cfg);
+    if (l.side === undefined) return proven.has(recordKeyOf(l.cfg, 1)) || proven.has(recordKeyOf(l.cfg, -1));
+    return proven.has(recordKeyOf(l.cfg, l.side > 0 ? 1 : -1));
+  };
   // the signal proof: a signal unit (indicator × side) not proven by its own closes trades on paper only
   const signalOk = (l: Pick<ControlContribution, "cfg"> & { side?: number }) => {
     if (!signalProven) return true;

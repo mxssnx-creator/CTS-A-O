@@ -179,6 +179,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
     if (s.live.signalsByScore !== undefined && typeof s.live.signalsByScore !== "boolean")
       throw new Error("signalsByScore: true or false");
     if (s.live.liveGroupLastN !== undefined) num(s.live.liveGroupLastN, 0, 2000, "live group last N");
+    if (s.live.sideGates !== undefined && typeof s.live.sideGates !== "boolean")
+      throw new Error("live side gates: true or false");
     if (s.live.maxExposureX !== undefined) num(s.live.maxExposureX, 0, 500, "max exposure × equity");
     if (s.live.exposureScaler !== undefined && typeof s.live.exposureScaler !== "boolean")
       throw new Error("exposureScaler: true or false");

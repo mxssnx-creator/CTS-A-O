@@ -51,6 +51,45 @@ export function liveGate(
 }
 
 /**
+ * One side of a config's simulated tape as a tape of its own (exit order kept, the same gain / loss sums makeTape
+ * keeps): a config judged on its own side's closes (live.sideGates). Built once per tape object and kept with it.
+ */
+const sideTapes = new WeakMap<object, Map<1 | -1, { exitT: Float64Array; gp: Float64Array; gl: Float64Array }>>();
+export function sideTapeOf(
+  tp: Pick<ConfigTape, "id" | "exitT" | "r" | "side">,
+  side: 1 | -1,
+): Pick<ConfigTape, "id" | "exitT" | "gp" | "gl"> {
+  let m = sideTapes.get(tp);
+  if (!m) sideTapes.set(tp, (m = new Map()));
+  let s = m.get(side);
+  if (!s) {
+    const n = tp.exitT.length;
+    let c = 0;
+    for (let i = 0; i < n; i++) if (tp.side[i] === side) c++;
+    const exitT = new Float64Array(c);
+    const gp = new Float64Array(c + 1);
+    const gl = new Float64Array(c + 1);
+    let j = 0;
+    for (let i = 0; i < n; i++) {
+      if (tp.side[i] !== side) continue;
+      const r = tp.r[i];
+      exitT[j] = tp.exitT[i];
+      gp[j + 1] = gp[j] + (r > 0 ? r : 0);
+      gl[j + 1] = gl[j] + (r < 0 ? -r : 0);
+      j++;
+    }
+    s = { exitT, gp, gl };
+    m.set(side, s);
+  }
+  return { id: tp.id, exitT: s.exitT, gp: s.gp, gl: s.gl };
+}
+
+/** A live group's key: the group alone, or the group and its side when live.sideGates judges each side apart. */
+export function liveGroupKeyOf(group: string, side?: 1 | -1): string {
+  return side === undefined ? group : `${group}|${side}`;
+}
+
+/**
  * The live group of a config: signals apart, every engine config by its target range (Micro … Long, Wide = no range
  * tag) — the categories the desk reports its forward results in.
  */
@@ -175,6 +214,8 @@ export function lastNProven(
  * The engine proof (live.engineProofN): the engine configs whose own forward closes prove them — per config the
  * exchange record once it holds n closes, else the paper book's record; proven when its last n closes hold PF ≥ minPf.
  * A config with fewer than n closes is not proven (it trades on paper only). Signal configs are never judged.
+ * The maps are keyed as the caller keyed them: by config, or by config and side with live.sideGates (recordKeyOf),
+ * and the proven keys are those keys.
  */
 export function engineProven(
   paper: ReadonlyMap<string, Pick<ConfigTape, "exitT" | "gp" | "gl">>,
@@ -274,6 +315,8 @@ export function liveEntryOk(own: LiveGate, group: LiveGate | undefined): boolean
 
 export interface LiveGroupStatus {
   group: string;
+  /** the side the group's gate judges (live.sideGates only; unset = both sides pooled) */
+  side?: 1 | -1;
   /** pooled live closes considered (at most the group N) */
   n: number;
   pf: number | null;
@@ -299,4 +342,6 @@ export interface LiveValidationStatus {
   /** group last N (0 = off) and each group's verdict */
   groupLastN?: number;
   groups?: LiveGroupStatus[];
+  /** live.sideGates on: each config is judged per side (the counts are per config and side) */
+  bySide?: true;
 }

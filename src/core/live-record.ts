@@ -160,19 +160,47 @@ export function attributeLanes(
   return { open: next, closed };
 }
 
-/** A config's exchange closes, shaped like a tape for the gates: exit times ascending and gain / loss prefix sums. */
+/**
+ * A config's exchange closes, shaped like a tape for the gates: exit times ascending and gain / loss prefix sums.
+ * `id` is the config; `side` is set on a record kept per side (liveRecords bySide).
+ */
 export interface LiveRecord {
   id: string;
+  side?: 1 | -1;
   exitT: Float64Array;
   gp: Float64Array;
   gl: Float64Array;
 }
 
-export function liveRecords(rows: ReadonlyArray<{ cfg: string; exitT: number; r: number }>): Map<string, LiveRecord> {
-  const by = new Map<string, Array<{ t: number; r: number }>>();
-  for (const x of rows) (by.get(x.cfg) ?? by.set(x.cfg, []).get(x.cfg)!).push({ t: x.exitT, r: x.r });
+/** A record's key in a map: the config alone, or the config and its side (live.sideGates: each side's own record). */
+export function recordKeyOf(cfg: string, side?: 1 | -1): string {
+  return side === undefined ? cfg : `${cfg}|${side}`;
+}
+
+/**
+ * The records of the closes, by config. With `bySide` (live.sideGates) one record per config and side, keyed
+ * cfg|1 / cfg|-1; a close with no side of its own (0 or null) belongs to neither side and is left out.
+ */
+export function liveRecords(
+  rows: ReadonlyArray<{ cfg: string; exitT: number; r: number; side?: number | null }>,
+  o?: { bySide?: boolean },
+): Map<string, LiveRecord> {
+  const bySide = o?.bySide === true;
+  const by = new Map<string, { cfg: string; side?: 1 | -1; xs: Array<{ t: number; r: number }> }>();
+  for (const x of rows) {
+    let side: 1 | -1 | undefined;
+    if (bySide) {
+      const s = x.side ?? 0;
+      if (!(s > 0 || s < 0)) continue;
+      side = s > 0 ? 1 : -1;
+    }
+    const key = recordKeyOf(x.cfg, side);
+    let b = by.get(key);
+    if (!b) by.set(key, (b = { cfg: x.cfg, side, xs: [] }));
+    b.xs.push({ t: x.exitT, r: x.r });
+  }
   const out = new Map<string, LiveRecord>();
-  for (const [id, xs] of by) {
+  for (const [key, { cfg, side, xs }] of by) {
     xs.sort((a, b) => a.t - b.t);
     const exitT = new Float64Array(xs.length);
     const gp = new Float64Array(xs.length + 1);
@@ -182,7 +210,7 @@ export function liveRecords(rows: ReadonlyArray<{ cfg: string; exitT: number; r:
       gp[i + 1] = gp[i] + Math.max(0, v.r);
       gl[i + 1] = gl[i] + Math.max(0, -v.r);
     });
-    out.set(id, { id, exitT, gp, gl });
+    out.set(key, side === undefined ? { id: cfg, exitT, gp, gl } : { id: cfg, side, exitT, gp, gl });
   }
   return out;
 }

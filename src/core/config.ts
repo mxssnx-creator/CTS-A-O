@@ -471,6 +471,15 @@ export interface LiveSettings {
    */
   liveGroupLastN?: number;
   /**
+   * live validation per side (plan item 13; default off, and a causal eval decides it): a config's LONG and SHORT
+   * closes are judged on their own record, not on one pooled record. The exchange record, the simulated forward
+   * closes, the engine proof and the group gates key by config and side, and an entry is judged on its own side
+   * (a SHORT is not refused by the LONG closes of its config, nor a LONG by the SHORT ones). Unset / false: one record
+   * per config for both sides, as before. True changes entry decisions, so it is not a default until a causal
+   * comparison on the paper or live book says so (docs/positive-coordinations.md).
+   */
+  sideGates?: boolean;
+  /**
    * account exposure factor: the positions' gross notional (long and short both counted) stays within this multiple
    * of the account equity — every target is scaled by the same factor, so the relations between positions stay
    * (0 / unset = off)

@@ -4,8 +4,8 @@
 // gate (live-record.ts liveRecords, live-validation.ts liveGate / liveEntryOk), the stop a flat marker is priced at (one
 // control step of live.server.ts on the simulated venue, stopPxOf) and the lane exits reconciled to the venue's fills
 // (live.server.ts reconcileLaneCloses). Plan items: 13 (the live gate pools LONG and SHORT closes), 14 ("(unverified X)"
-// reads as a stop-out), 15 (a stale stop prices a new position). A cell whose title says "expected to fail at 5911116"
-// fails there for the plan item it names, and only that; every other cell passes at that commit.
+// reads as a stop-out), 15 (a stale stop prices a new position). Group (d) runs with live.sideGates on (its cells pass
+// the option); its control cells run with the option off and pin the pooled verdict, which stays as it was.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { CoreDb } from "./db.server.ts";
@@ -13,10 +13,13 @@ import { reconcileLaneCloses, resetLiveBackoff, stepLive } from "./live.server.t
 import { liveTag, stateHash } from "./live.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
 import { attributeLanes, laneKeyOf, liveRecords, type LiveRecord } from "../live-record.ts";
-import { liveEntryOk, liveGate } from "../live-validation.ts";
+import { engineProven, liveEntryOk, liveGate, sideTapeOf } from "../live-validation.ts";
 import { liveLedger, type LedgerRow } from "../statistics.ts";
 import { CandleSeries } from "../market/candle-series.ts";
-import type { Candle } from "../domain/types.ts";
+import type { Candle, Trade } from "../domain/types.ts";
+import { makeTape } from "../sim/walkforward.ts";
+import { DEFAULT_SETTINGS } from "../config.ts";
+import { checkSettings } from "../settings-check.ts";
 import { fakeRt, SimExchange } from "../test-support.ts";
 
 process.env.CTS_CORE_LIVE = "1";
@@ -111,21 +114,22 @@ const alternating = (longR: number, shortR: number) =>
   }));
 /** the record a side is judged by: its own when the record is kept per side, else the config's (pooled) record */
 const recordOf = (recs: Map<string, LiveRecord>, side: 1 | -1) => recs.get(`${CFG}|${side}`) ?? recs.get(CFG);
-const gateOf = (rows: ReturnType<typeof alternating>, side: 1 | -1) =>
-  liveGate(recordOf(liveRecords(rows), side)!, 0, NOW, N, MIN_PF);
+/** a side's gate on the record kept per side (live.sideGates on: the default of these cells) or on the pooled one */
+const gateOf = (rows: ReturnType<typeof alternating>, side: 1 | -1, bySide = true) =>
+  liveGate(recordOf(liveRecords(rows, { bySide }), side)!, 0, NOW, N, MIN_PF);
 
 describe("live validation per side (live-record.ts liveRecords, live-validation.ts liveGate)", () => {
-  it("(d) plan item 13: the record keeps a config's LONG and SHORT closes apart (one record per config and side; expected to fail at 5911116: one pooled record)", () => {
-    assert.equal(liveRecords(alternating(-0.02, 0.01)).size, 2, "one record per config and side");
+  it("(d) plan item 13: with live.sideGates on, the record keeps a config's LONG and SHORT closes apart (one record per config and side)", () => {
+    assert.equal(liveRecords(alternating(-0.02, 0.01), { bySide: true }).size, 2, "one record per config and side");
   });
 
-  it("(d) plan item 13: a SHORT is not refused by the LONG closes of its config — its own 10 closes all win, the pooled 10 lose (expected to fail at 5911116: refused by the pooled record)", () => {
+  it("(d) plan item 13: with live.sideGates on, a SHORT is not refused by the LONG closes of its config (its own 10 closes all win; the pooled 10 lose)", () => {
     // the longs lose 2 % each, the shorts win 1 % each: the pooled last 10 are PF 0.5, the shorts' own PF is no loss
     const g = gateOf(alternating(-0.02, 0.01), -1);
     assert.equal(liveEntryOk(g, undefined), true, `short judged ${JSON.stringify(g)}`);
   });
 
-  it("(d) plan item 13: a SHORT is refused by its own 10 losing closes though the LONG closes of its config win (expected to fail at 5911116: admitted by the pooled record)", () => {
+  it("(d) plan item 13: with live.sideGates on, a SHORT is refused by its own 10 losing closes though the LONG closes of its config win", () => {
     // the longs win 5 % each, the shorts lose 1 % each: the pooled last 10 are PF 5, the shorts' own PF is 0
     const g = gateOf(alternating(0.05, -0.01), -1);
     assert.equal(liveEntryOk(g, undefined), false, `short judged ${JSON.stringify(g)}`);
@@ -134,6 +138,76 @@ describe("live validation per side (live-record.ts liveRecords, live-validation.
   it("(d) a LONG is judged on its own closes both ways (pass: the pooled record gives the same verdict here)", () => {
     assert.equal(liveEntryOk(gateOf(alternating(-0.02, 0.01), 1), undefined), false, "its own 10 losses");
     assert.equal(liveEntryOk(gateOf(alternating(0.05, -0.01), 1), undefined), true, "its own 10 wins");
+  });
+
+  it("(d) control: with live.sideGates off the record stays one pooled record per config, and a SHORT gets the pooled verdict (pass)", () => {
+    assert.equal(liveRecords(alternating(-0.02, 0.01)).size, 1, "one pooled record");
+    assert.equal(liveRecords(alternating(-0.02, 0.01), { bySide: false }).size, 1, "bySide false is the pooled record too");
+    // the pooled last 10 are PF 0.5 (five LONG losses of 2 %, five SHORT wins of 1 %): refused
+    assert.equal(liveEntryOk(gateOf(alternating(-0.02, 0.01), -1, false), undefined), false, "pooled PF 0.5");
+    // the pooled last 10 are PF 5 (five LONG wins of 5 %, five SHORT losses of 1 %): admitted
+    assert.equal(liveEntryOk(gateOf(alternating(0.05, -0.01), -1, false), undefined), true, "pooled PF 5");
+  });
+});
+
+// ── live.sideGates: the engine proof, the simulated fallback and the settings path (engine-proof, sideTapeOf, checkSettings)
+describe("live.sideGates: the engine proof, the simulated fallback and the settings path (d)", () => {
+  // six closes of one engine config, one a minute, alternating LONG (even) and SHORT (odd): the LONG wins 5 %, the SHORT loses 1 %
+  const six = Array.from({ length: 6 }, (_, i) => ({
+    cfg: CFG,
+    sym: SYM,
+    side: i % 2 === 0 ? 1 : -1,
+    exitT: T + i * 60_000,
+    r: i % 2 === 0 ? 0.05 : -0.01,
+  }));
+
+  it("(d) plan item 13: with live.sideGates on, the engine proof keys each side: the LONG is proven, the SHORT is not (its own last 3 lose)", () => {
+    const paper = liveRecords(six, { bySide: true });
+    assert.deepEqual([...engineProven(paper, new Map(), T + 60 * 60_000, 3, 1.2).proven].sort(), [`${CFG}|1`]);
+  });
+
+  it("(d) control: with live.sideGates off the engine proof judges the config as one, on the pooled last 3 (pass)", () => {
+    // the pooled last 3 are SHORT −1 %, LONG +5 %, SHORT −1 %: PF 2.5
+    assert.deepEqual([...engineProven(liveRecords(six), new Map(), T + 60 * 60_000, 3, 1.2).proven], [CFG]);
+  });
+
+  // a simulated tape of the same six closes (the LONG wins 5 %, the SHORT loses 1 %), as the paper step's fallback reads it
+  const P = { tp: 0.01, sl: 0.01, trail: 0, hold: 32 };
+  const trades = Array.from({ length: 6 }, (_, i) =>
+    ({
+      cfg: CFG,
+      sym: SYM,
+      side: i % 2 === 0 ? 1 : -1,
+      entryT: T + i * H,
+      exitT: T + i * H + 30 * 60_000,
+      entry: 100,
+      exit: 100,
+      r: i % 2 === 0 ? 0.05 : -0.01,
+      reason: i % 2 === 0 ? "tp" : "sl",
+      bars: 2,
+      mfe: 0,
+      mae: 0,
+      kind: "normal",
+    }) as Trade,
+  );
+  const tape = makeTape(CFG, "follow", CFG.split("|")[1], P, "normal", [SYM], trades, [], []);
+
+  it("(d) with live.sideGates on, a side's simulated closes judge it alone: the SHORT's last 3 lose, the LONG's win (id kept)", () => {
+    assert.equal(liveGate(sideTapeOf(tape, -1), 0, NOW, 3, MIN_PF).ok, false, "the SHORT's own 3 losses");
+    assert.equal(liveGate(sideTapeOf(tape, 1), 0, NOW, 3, MIN_PF).ok, true, "the LONG's own 3 wins");
+    assert.equal(sideTapeOf(tape, -1).id, CFG);
+  });
+
+  it("(d) control: the pooled simulated tape judges the config as one, on its last 3 (pass)", () => {
+    // the pooled last 3 are SHORT −1 %, LONG +5 %, SHORT −1 %: PF 2.5
+    assert.equal(liveGate(tape, 0, NOW, 3, MIN_PF).ok, true);
+  });
+
+  it("(d) live.sideGates is a boolean: true and false are accepted, anything else is refused by the settings path", () => {
+    for (const v of [true, false])
+      assert.doesNotThrow(() => checkSettings({ live: { ...DEFAULT_SETTINGS.live, sideGates: v } } as never));
+    for (const v of ["yes", 1, null])
+      assert.throws(() => checkSettings({ live: { ...DEFAULT_SETTINGS.live, sideGates: v } } as never), /side gates/);
   });
 });
 

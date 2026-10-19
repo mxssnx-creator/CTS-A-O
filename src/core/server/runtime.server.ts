@@ -196,11 +196,19 @@ import {
   liveEntryOk,
   liveGate,
   liveGroupGates,
+  liveGroupKeyOf,
   liveGroupOf,
+  sideTapeOf,
   type LiveGate,
   type LiveValidationStatus,
 } from "../live-validation.ts";
-import { exchangeAcceptIndex, liveRecords, preferExchange, type LiveRecord } from "../live-record.ts";
+import {
+  exchangeAcceptIndex,
+  liveRecords,
+  preferExchange,
+  recordKeyOf,
+  type LiveRecord,
+} from "../live-record.ts";
 import { OWN_CLOSE_SQL } from "../relation.ts";
 import type { ExchangeAccept } from "../signals.ts";
 
@@ -710,7 +718,7 @@ export class CoreRuntime {
    */
   private memDeferred = false;
   /** the paper step's live validation for new entries (null = off) */
-  private liveEntryGate: ((tp: ConfigTape) => boolean) | null = null;
+  private liveEntryGate: ((tp: ConfigTape, side?: number) => boolean) | null = null;
   /** the last compute's strategy-set completeness (tape builder record: grid cells built / kept / skipped and why) */
   buildStats: TapeBuildStat[] = [];
   /** loop generation: a cycle from an older generation never reschedules or publishes */
@@ -4254,10 +4262,12 @@ export class CoreRuntime {
    * relation.ts), memoized until a new one.
    */
   exchangeRecords(since: number): Map<string, LiveRecord> {
+    // live.sideGates: one record per config and side (recordKeyOf), memoized apart from the pooled one
+    const bySide = this.settings.live.sideGates === true;
     // memoized on the record's write version (no COUNT over the table to learn that nothing changed)
-    const key = `${since}|${this.db.version("live_lane_trades")}`;
+    const key = `${since}|${this.db.version("live_lane_trades")}${bySide ? "|sides" : ""}`;
     if (this.exRecMemo?.key === key) return this.exRecMemo.recs;
-    const recs = liveRecords(this.exchangeRows(since));
+    const recs = liveRecords(this.exchangeRows(since), bySide ? { bySide } : undefined);
     this.exRecMemo = { key, recs };
     return recs;
   }
@@ -4331,17 +4341,25 @@ export class CoreRuntime {
     const n = this.settings.live.engineProofN ?? 0;
     if (!(n > 0)) return null;
     const minPf = this.settings.live.engineProofPf ?? ENGINE_PROOF_PF;
+    // live.sideGates: the proof is per config and side (the records keyed by recordKeyOf)
+    const bySide = this.settings.live.sideGates === true;
+    const sides = bySide ? "|sides" : "";
     // memoized on the two records' write versions: an unchanged book costs no query at all (every live control step
     // asks), a change re-reads the real closes from the partial index paper_book_trades_closed
-    const key = `${n}|${minPf}|${this.db.version("paper_book_trades")}|${this.db.version("live_lane_trades")}`;
+    const key = `${n}|${minPf}|${this.db.version("paper_book_trades")}|${this.db.version("live_lane_trades")}${sides}`;
     if (this.proofMemo?.key === key) return this.proofMemo.out;
     const ex = this.exchangeRecords(0);
     // judged at one unit (r / its execution multiple), as the exchange record is: a Block-raised paper close weighed
     // its multiple against an exchange close of one unit
-    const rows = this.db.all<{ cfg: string; exit_t: number | null; r: number }>(
-      "SELECT cfg, exit_t, r / COALESCE(NULLIF(mult, 0), NULLIF(vol, 0), 1) AS r FROM paper_book_trades WHERE reason != 'dropped' AND r IS NOT NULL",
+    const rows = this.db.all<{ cfg: string; side?: number | null; exit_t: number | null; r: number }>(
+      bySide
+        ? "SELECT cfg, side, exit_t, r / COALESCE(NULLIF(mult, 0), NULLIF(vol, 0), 1) AS r FROM paper_book_trades WHERE reason != 'dropped' AND r IS NOT NULL"
+        : "SELECT cfg, exit_t, r / COALESCE(NULLIF(mult, 0), NULLIF(vol, 0), 1) AS r FROM paper_book_trades WHERE reason != 'dropped' AND r IS NOT NULL",
     );
-    const paper = liveRecords(rows.filter((x) => x.exit_t !== null).map((x) => ({ cfg: x.cfg, exitT: x.exit_t!, r: x.r })));
+    const paper = liveRecords(
+      rows.filter((x) => x.exit_t !== null).map((x) => ({ cfg: x.cfg, exitT: x.exit_t!, r: x.r, side: x.side })),
+      bySide ? { bySide } : undefined,
+    );
     const out = { ...engineProven(paper, ex, now, n, minPf), n, minPf };
     const prev = this.proofMemo?.out;
     if (!prev || prev.proven.size !== out.proven.size || prev.judged !== out.judged)
@@ -5439,18 +5457,26 @@ export class CoreRuntime {
     const lvNow = Date.now();
     const lvMemo = new Map<string, LiveGate>();
     // the exchange's own record of each config (live-record.ts) judges it once it holds N closes; the simulated
-    // forward closes only until then
+    // forward closes only until then. live.sideGates: each side is judged on its own record and its own closes
+    const lvBySide = this.settings.live.sideGates === true;
+    // the side a judgement is made on (undefined = the pooled record of both sides, as before)
+    const lvSideOf = (s?: number): 1 | -1 | undefined => (lvBySide && s !== undefined ? (s > 0 ? 1 : -1) : undefined);
+    // the sides a count runs over (live.sideGates: each side apart)
+    const lvSides: ReadonlyArray<1 | -1 | undefined> = lvBySide ? [1, -1] : [undefined];
     const lvEx = lvN > 0 ? this.exchangeRecords(lvSince) : new Map<string, LiveRecord>();
     // judged as of `at`: a paper entry as of its entry time (the closes after it are not known when it enters — with
     // now, up to a step of later closes decided it), the entries planner as of now
-    const lvOf = (x: ConfigTape, at = lvNow) => {
-      const mk = `${x.id}|${at}`;
+    const lvOf = (x: ConfigTape, at = lvNow, side?: 1 | -1) => {
+      const mk = `${x.id}|${at}${side === undefined ? "" : `|${side}`}`;
       let g = lvMemo.get(mk);
       // without an explicit live floor every config is held to its own range's minimum (as at the stages)
       const minPf = this.settings.live.liveMinPf ?? minPfOf(this.settings.gates, x.protect.tag);
       if (!g) {
-        const ex = lvEx.get(x.id);
-        g = preferExchange(ex ? liveGate(ex, lvSince, at, lvN, minPf) : null, liveGate(x, lvSince, at, lvN, minPf));
+        const ex = lvEx.get(recordKeyOf(x.id, side));
+        g = preferExchange(
+          ex ? liveGate(ex, lvSince, at, lvN, minPf) : null,
+          liveGate(side === undefined ? x : sideTapeOf(x, side), lvSince, at, lvN, minPf),
+        );
         lvMemo.set(mk, g);
       }
       return g;
@@ -5472,29 +5498,44 @@ export class CoreRuntime {
       m = new Map<string, LiveGate>();
       lvGroupsAt.set(at, m);
       if (!(lvGroupN > 0)) return m;
-      const simG = liveGroupGates(
-        (function* () {
-          for (const id of sel) {
-            const x = byId.get(id);
-            if (x) yield x;
-          }
-        })(),
-        lvSince,
-        at,
-        lvGroupN,
-        lvGroupMin,
-      );
-      // the group's exchange closes (every config the desk traded in it) decide once they number N
-      const exG = liveGroupGates(lvEx.values(), lvSince, at, lvGroupN, lvGroupMin);
-      for (const g of new Set([...simG.keys(), ...exG.keys()]))
-        m.set(g, preferExchange(exG.get(g), simG.get(g) ?? { ok: true, n: 0, pf: null }));
+      // live.sideGates: each side's group gate on its own closes, keyed group|side (liveGroupKeyOf)
+      for (const s of lvSides) {
+        const simG = liveGroupGates(
+          (function* () {
+            for (const id of sel) {
+              const x = byId.get(id);
+              if (x) yield s === undefined ? x : sideTapeOf(x, s);
+            }
+          })(),
+          lvSince,
+          at,
+          lvGroupN,
+          lvGroupMin,
+        );
+        // the group's exchange closes (every config the desk traded in it) decide once they number N
+        const exG = liveGroupGates(
+          s === undefined ? lvEx.values() : [...lvEx.values()].filter((r) => r.side === s),
+          lvSince,
+          at,
+          lvGroupN,
+          lvGroupMin,
+        );
+        for (const g of new Set([...simG.keys(), ...exG.keys()]))
+          m.set(liveGroupKeyOf(g, s), preferExchange(exG.get(g), simG.get(g) ?? { ok: true, n: 0, pf: null }));
+      }
       return m;
     };
     const lvGroups = groupsAt(lvNow);
     if (lvGroupN > 0) yield 0;
-    // the same gate for the entries planner (entries mode sends the pending entries of the selected configs)
+    // the same gate for the entries planner (entries mode sends the pending entries of the selected configs), judged
+    // on the entry's own side when live.sideGates is on
     this.liveEntryGate =
-      lvN > 0 ? (tp) => liveEntryOk(lvOf(tp), lvGroups.get(liveGroupOf(tp.id))) : null;
+      lvN > 0
+        ? (tp, s) => {
+            const side = lvSideOf(s);
+            return liveEntryOk(lvOf(tp, lvNow, side), lvGroups.get(liveGroupKeyOf(liveGroupOf(tp.id), side)));
+          }
+        : null;
     let lvSkipped = 0;
     let slice = 0;
     // the same open order from two indications (identical signal, same protect) or two Axis depths is held once, as
@@ -5526,11 +5567,18 @@ export class CoreRuntime {
           pSkip(`${sigCfg(op.cfg) ? "sig:" : ""}heldBack:${back}`);
           continue;
         }
+        // the entry's own side (live.sideGates; undefined = the pooled record, as before)
+        const lvSide = lvSideOf(op.side);
         // the live validation after the simulation's own rules: a config it pauses keeps the crowd seat the
         // simulation gave it (judged first, its seat went to a config the simulation had crowded out)
         if (
           lvN > 0 &&
-          !liveEntryOk(lvOf(tp, op.entryT), (lvGroupsAt.has(op.entryT) ? lvGroupsAt.get(op.entryT)! : groupsAt(op.entryT)).get(liveGroupOf(tp.id)))
+          !liveEntryOk(
+            lvOf(tp, op.entryT, lvSide),
+            (lvGroupsAt.has(op.entryT) ? lvGroupsAt.get(op.entryT)! : groupsAt(op.entryT)).get(
+              liveGroupKeyOf(liveGroupOf(tp.id), lvSide),
+            ),
+          )
         ) {
           lvSkipped++;
           pSkip("liveValidation");
@@ -5821,11 +5869,13 @@ export class CoreRuntime {
       for (const id of sel) {
         const x = byId.get(id);
         if (!x) continue;
-        const g = lvOf(x);
-        if (g.pf === null) continue;
-        judged++;
-        if (g.ok) passing++;
-        if (g.source === "exchange") onExchange++;
+        for (const side of lvSides) {
+          const g = lvOf(x, lvNow, side);
+          if (g.pf === null) continue;
+          judged++;
+          if (g.ok) passing++;
+          if (g.source === "exchange") onExchange++;
+        }
       }
       this.status.liveValidation = {
         lastN: lvN,
@@ -5839,8 +5889,18 @@ export class CoreRuntime {
         exchangeCloses: [...lvEx.values()].reduce((a, r) => a + r.exitT.length, 0),
         groupLastN: lvGroupN,
         groups: [...lvGroups]
-          .map(([group, g]) => ({ group, n: g.n, pf: g.pf, ok: g.ok, source: g.source }))
+          .map(([key, g]) => ({
+            // (live.sideGates: the key is group|side)
+            ...(lvBySide
+              ? { group: key.slice(0, key.lastIndexOf("|")), side: key.endsWith("|1") ? (1 as const) : (-1 as const) }
+              : { group: key }),
+            n: g.n,
+            pf: g.pf,
+            ok: g.ok,
+            source: g.source,
+          }))
           .sort((a, b) => (a.group < b.group ? -1 : a.group > b.group ? 1 : 0)),
+        ...(lvBySide ? { bySide: true as const } : {}),
       };
     }
     this.paperTimings = { select: tSelect, cands: tCands, exec: tExec, n: cands.length, stale };
@@ -5995,7 +6055,7 @@ export class CoreRuntime {
           continue;
         }
         // and the live validation of the paper book (a config losing on its own live closes opens nothing)
-        if (this.liveEntryGate && !this.liveEntryGate(tp)) {
+        if (this.liveEntryGate && !this.liveEntryGate(tp, p.side)) {
           skip(tp, "liveValidation");
           continue;
         }
