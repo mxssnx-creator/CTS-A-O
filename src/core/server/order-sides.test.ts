@@ -589,29 +589,33 @@ describe("order sides, hedge mode (overall control): LONG and SHORT alike", { ti
   // restingOf read it as not LONG and skipped a long's own orders, so the close was inferred as the stop (the level
   // nearer the price), and with no bars to prove it, booked unverified at the ticker. Live bingx names the order by no
   // side instead (bingx.server.ts), which the parent read as both keys: its long was right there, and the cells on that
-  // book shape below pin the read.
-  for (const s of [1, -1] as const) {
-    const side = s === 1 ? "long" : "short";
-    const sym = s === 1 ? "S1-USDT" : "S2-USDT";
-    const mark = s === 1 ? 10 : 20;
-    it(`OW-13 ${side}: one-way: a close by hand while the position's own stop and take-profit rest is booked by hand, not by its stop`, async () => {
-      const tick = clock();
-      const ex = new OneWayVenue();
-      const { rt } = rtOf({ positionMode: "oneway" });
-      const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
-      rt.paper.positions = [lane("combo|ema-9-21@m15|a", sym, s, mark, 0.02, 0.05)];
-      await step();
-      assert.equal(ex.orders.length, 2, "own stop and take-profit placed");
-      // the venue closes the position outside the desk and leaves our two orders resting (no history row of a close)
-      tick(11 * 60_000);
-      ex.net.delete(sym);
-      await step();
-      const events = rt.db.all<{ msg: string }>("SELECT msg FROM events").map((e) => e.msg);
-      assert.ok(
-        events.some((m) => m.includes(`${sym}|${s} was closed by hand`)),
-        `the close is not booked by hand: ${JSON.stringify(events.filter((m) => m.includes("was closed")))}`,
-      );
-    });
+  // book shape below pin the read. The hedge cell of each side is their control: the same close where the orders name
+  // their side (restingOf's hedge guard is unchanged)
+  for (const mode of ["hedge", "oneway"] as const) {
+    for (const s of [1, -1] as const) {
+      const side = s === 1 ? "long" : "short";
+      const sym = s === 1 ? "S1-USDT" : "S2-USDT";
+      const mark = s === 1 ? 10 : 20;
+      it(`OW-13 ${side}, ${mode}: a close by hand while the position's own stop and take-profit rest is booked by hand, not by its stop`, async () => {
+        const tick = clock();
+        const ex = mode === "hedge" ? new Venue() : new OneWayVenue();
+        const { rt } = rtOf({ positionMode: mode });
+        const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+        rt.paper.positions = [lane("combo|ema-9-21@m15|a", sym, s, mark, 0.02, 0.05)];
+        await step();
+        assert.equal(ex.orders.length, 2, "own stop and take-profit placed");
+        // the venue closes the position outside the desk and leaves our two orders resting (no history row of a close)
+        tick(11 * 60_000);
+        if (mode === "hedge") ex.positions.delete(`${sym}|${s === 1 ? "LONG" : "SHORT"}`);
+        else (ex as OneWayVenue).net.delete(sym);
+        await step();
+        const events = rt.db.all<{ msg: string }>("SELECT msg FROM events").map((e) => e.msg);
+        assert.ok(
+          events.some((m) => m.includes(`${sym}|${s} was closed by hand`)),
+          `the close is not booked by hand: ${JSON.stringify(events.filter((m) => m.includes("was closed")))}`,
+        );
+      });
+    }
   }
 
   // the live bingx book names a one-way order by no side, so restingOf counts it by its own key (keyOfOwn: its control
@@ -671,6 +675,37 @@ describe("order sides, hedge mode (overall control): LONG and SHORT alike", { ti
       assert.equal(closed.length, 1, `the close is booked ${JSON.stringify(closed)}`);
       assert.ok(closed[0].includes("was closed outside the desk"), closed[0]);
       assert.ok(closed[0].includes("booked unverified at the ticker"), closed[0]);
+    });
+  }
+
+  // the hedge control of the no-record cells: the same close with no control record on the hedge venue. Its orders
+  // name their side, so restingOf counts them for the key and the close is booked by hand: the no-side read is what
+  // changes it
+  for (const s of [1, -1] as const) {
+    const side = s === 1 ? "long" : "short";
+    const sym = s === 1 ? "S1-USDT" : "S2-USDT";
+    const ps = s === 1 ? "LONG" : "SHORT";
+    const mark = s === 1 ? 10 : 20;
+    it(`OW-13 ${side}, hedge: with no control record and no position, a close by hand is booked by hand (the control of the no-record cells)`, async () => {
+      const tick = clock();
+      const ex = new Venue();
+      const { rt } = rtOf({ positionMode: "hedge" });
+      const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+      rt.paper.positions = [lane("combo|ema-9-21@m15|a", sym, s, mark, 0.02, 0.05)];
+      await step();
+      assert.equal(ex.orders.length, 2, "own stop and take-profit placed");
+      for (const o of ex.orders)
+        rt.db.run(
+          "DELETE FROM live_orders WHERE cfg LIKE 'control|%' AND coid = ?",
+          o.clientOrderId ?? "",
+        );
+      tick(11 * 60_000);
+      ex.positions.delete(`${sym}|${ps}`);
+      await step();
+      const events = rt.db.all<{ msg: string }>("SELECT msg FROM events").map((e) => e.msg);
+      const closed = events.filter((m) => m.includes(`${sym}|${s} was closed`));
+      assert.equal(closed.length, 1, `the close is booked ${JSON.stringify(closed)}`);
+      assert.ok(closed[0].includes("was closed by hand"), closed[0]);
     });
   }
 
