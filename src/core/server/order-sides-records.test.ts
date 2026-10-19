@@ -10,7 +10,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { CoreDb } from "./db.server.ts";
 import { reconcileLaneCloses, resetLiveBackoff, stepLive } from "./live.server.ts";
-import { liveTag } from "./live.ts";
+import { liveTag, stateHash } from "./live.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
 import { attributeLanes, laneKeyOf, liveRecords, type LiveRecord } from "../live-record.ts";
 import { liveEntryOk, liveGate } from "../live-validation.ts";
@@ -179,6 +179,69 @@ async function closedOutside(side: 1 | -1, oldStop: number, newStop: number | nu
   return flats.at(-1)!;
 }
 
+/**
+ * A relaunch: the desk was down, its previous step (30 min ago) saw the LONG side held. The own stop of the position it
+ * opened 3 h ago filled 1 h ago; someone else holds the side now. The venue history since the previous step does not
+ * show the fill (it precedes that step), so only the desk's own stop price can book the close. The 1-minute bars of the
+ * last 30 minutes are `bars`.
+ */
+async function closedOnRelaunch(ownStop: number, bars: Array<Pick<Candle, "h" | "l">>) {
+  resetLiveBackoff();
+  const ex = new SimExchange();
+  const { rt } = fakeRt(new CoreDb(":memory:"));
+  const tag = liveTag(rt.settings.live.connId);
+  const key = "S0-USDT|1";
+  const at = Date.now();
+  const put = (coid: string, kind: string, qty: number, px: number, t: number) =>
+    rt.db.run(
+      "INSERT INTO live_orders (coid, cfg, sym, side, kind, qty, px, status, msg, at) VALUES (?, ?, ?, ?, ?, ?, ?, 'ok', '', ?)",
+      coid,
+      `control|${key}`,
+      "S0-USDT",
+      1,
+      kind,
+      qty,
+      px,
+      t,
+    );
+  put(`${tag}Ea1`, "O", 1, 10, at - 3 * H);
+  put(`${tag}Sa2`, "S", 0, ownStop, at - 3 * H + 1);
+  rt.db.kvSet("controlStatus", {
+    at: at - H / 2,
+    connHash: stateHash([ex.fingerprint()]),
+    targetsHash: "",
+    bookHash: "",
+    planHash: "",
+    reconnected: false,
+    unchanged: false,
+    steps: 1,
+    changes: 0,
+    targets: [],
+    held: [{ key, qty: 1 }],
+    actions: [],
+  });
+  ex.positions.set("S0-USDT|LONG", 1);
+  ex.history.push({
+    symbol: "S0-USDT",
+    positionSide: "LONG",
+    side: "SELL",
+    type: "STOP_MARKET",
+    status: "FILLED",
+    avgPrice: ownStop,
+    executedQty: 1,
+    clientOrderId: `${tag}Sa2`,
+    updateTime: at - H,
+  });
+  const candles: Candle[] = bars.map((b, i) => ({ t: at - (30 - i) * 60_000, o: 10, h: b.h, l: b.l, c: 10, v: 1 }));
+  Object.assign(rt, { candles: new Map([["S0-USDT", CandleSeries.fromCandles(candles)]]) });
+  await stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+  const flats = rt.db.all<{ px: number; msg: string | null }>(
+    "SELECT px, msg FROM live_orders WHERE cfg = ? AND kind = 'F' ORDER BY at, rowid",
+    `control|${key}`,
+  );
+  return flats.at(-1)!;
+}
+
 describe("the stop a flat marker is priced at: a new position's own stop only (live.server.ts stepLive)", { timeout: 60_000 }, () => {
   it("(e) LONG: a new position with no stop row of its own is not closed at the earlier position's stop 9.7 (plan item 15)", async () => {
     const m = await closedOutside(1, 9.7, null, [{ h: 10.1, l: 9.4 }]);
@@ -200,6 +263,11 @@ describe("the stop a flat marker is priced at: a new position's own stop only (l
   it("(e) SHORT control: the position's own stop 10.1 is the one priced (pass)", async () => {
     const m = await closedOutside(-1, 10.3, 10.1, [{ h: 10.6, l: 9.9 }]);
     assert.deepEqual([m.px, m.msg], [10.1, "flat on the exchange (stop 10.1)"]);
+  });
+
+  it("(e) relaunch: our stop filled while the desk was away and the history read finds nothing: the close is booked at that stop 9.5", async () => {
+    const m = await closedOnRelaunch(9.5, [{ h: 10.1, l: 9.4 }]);
+    assert.deepEqual([m.px, m.msg], [9.5, "own exit filled while away — the position there is not ours (stop 9.5)"]);
   });
 });
 
