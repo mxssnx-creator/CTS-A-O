@@ -885,6 +885,8 @@ describe("order sides, hedge mode (overall control): LONG and SHORT alike", { ti
       assert.equal(left.length, 1, JSON.stringify(left));
       assert.ok(left[0].includes("held, not closed"), left[0]);
       assert.ok(!left[0].includes("closed now"), left[0]);
+      // merged (someone else's quantity is on the net): the text makes that claim
+      assert.ok(left[0].includes("the other owner's quantity is on the net"), left[0]);
     });
   }
 

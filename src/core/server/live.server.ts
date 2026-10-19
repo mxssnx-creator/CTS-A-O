@@ -2686,7 +2686,9 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         }, ${x.unexplained} by an order not ours (${by.why}), taken from our quantity first; ${x.own} of ours left${
           x.own > 0
             ? leftHeld
-              ? " — held, not closed: the symbol is frozen while the other owner's quantity is on the net"
+              ? merged.has(k)
+                ? " — held, not closed: the symbol is frozen while the other owner's quantity is on the net"
+                : " — held, not closed: the symbol is frozen (someone else's quantity may be on the net)"
               : " — closed now with a quantity-bounded order"
             : ""
         }; ${n} lane order(s) held back (at most ${SUPPRESS_MAX_MS / 60_000} min). Should the other part have been reduced instead, our leftover stays inside it untouched.`,
