@@ -1235,7 +1235,7 @@ async function runStepNow(
         continue;
       const u = unprotected.get(`${p.venueSymbol}|${p.side === "long" ? 1 : -1}`);
       // the own unprotected quantity only, in both modes: a one-way BOTH position may hold someone else's quantity too, and
-      // the close is reduce-only, so it takes at most the net it is sent against (never the other owner's part)
+      // this bound keeps that part out. A reduce-only close caps the close only at the BOTH net, which holds that part too
       const qty = Math.min(p.qty, u?.qty ?? 0);
       if (!(qty > 0)) continue;
       const c = makeCoid(s.connId, "C");
