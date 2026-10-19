@@ -1,9 +1,9 @@
 // The paper book's order sides, LONG (side 1) and SHORT (side -1), as one matrix. A position held from the tape keeps
 // its side and its key (cfg|sym|side|entryT); the trailing stop only moves favourably; a stop or a target exits at its
-// level; a closed position books the r of its own side. Two plan items are pinned here and fail at 5911116 until they
-// are fixed: item 1, the paper step's tape scan matches a held position by config, symbol and entry time only
-// (runtime.server.ts:5680-5681), and item 2, the Stable-02 pause reads the bare symbol while its keys are sym|±1
-// (runtime.server.ts:5244-5245).
+// level; a closed position books the r of its own side. Two plan items are pinned here: item 1, the paper step's tape
+// scan matched a held position by config, symbol and entry time only (runtime.server.ts:5680-5681), now by its side
+// too; and item 2, the Stable-02 pause reads the bare symbol while its keys are sym|±1 (runtime.server.ts:5244-5245),
+// behind coord.s2Side (off by default).
 import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { CoreRuntime, crossedExit, tickTrail, type TickTrail } from "./runtime.server.ts";

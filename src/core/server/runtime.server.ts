@@ -5677,8 +5677,11 @@ export class CoreRuntime {
       const tp = byId.get(p.cfg);
       if (!tp) continue;
       // the tape is in exit order and an exit is never before its entry: the scan starts at the first exit ≥ it
+      // (the held side's own row only: a LONG and a SHORT of one entry share config, symbol and entry time, and the
+      // other side's row can exit first)
+      const heldSide = p.side > 0 ? 1 : -1;
       for (let i = lowerBound(tp.exitT, p.entryT); i < tp.n; i++) {
-        if (tp.entryT[i] !== p.entryT || tp.syms[tp.symI[i]] !== p.sym) continue;
+        if (tp.entryT[i] !== p.entryT || tp.syms[tp.symI[i]] !== p.sym || tp.side[i] !== heldSide) continue;
         const x = tradeAt(tp, i);
         if (x.exitT < since) break;
         // the tape order's r and vol already carry the ladder (Σ legs): scaled by the execution multiple only
