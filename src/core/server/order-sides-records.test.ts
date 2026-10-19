@@ -381,6 +381,56 @@ describe("the stop a flat marker is priced at: a new position's own stop only (l
   });
 });
 
+/**
+ * One control step on a desk whose key S0 holds a position of this side, opened 3 h ago at 10 with its own stop and its
+ * own take-profit, and no order history: the venue shows the side flat, so the position closed outside this system. The
+ * 1-minute bars of the last 30 minutes are `bars`. Returns the flat marker the step wrote.
+ */
+async function closedAtTarget(side: 1 | -1, stop: number, tp: number, bars: Array<Pick<Candle, "h" | "l">>) {
+  resetLiveBackoff();
+  const { rt } = fakeRt(new CoreDb(":memory:"));
+  const tag = liveTag(rt.settings.live.connId);
+  const key = `S0-USDT|${side}`;
+  const at = Date.now();
+  const put = (coid: string, kind: string, qty: number, px: number, t: number) =>
+    rt.db.run(
+      "INSERT INTO live_orders (coid, cfg, sym, side, kind, qty, px, status, msg, at) VALUES (?, ?, ?, ?, ?, ?, ?, 'ok', '', ?)",
+      coid,
+      `control|${key}`,
+      "S0-USDT",
+      side,
+      kind,
+      qty,
+      px,
+      t,
+    );
+  put(`${tag}Ea1`, "O", 1, 10, at - 3 * H);
+  put(`${tag}Sa2`, "S", 0, stop, at - 3 * H + 1);
+  put(`${tag}Ta3`, "T", 0, tp, at - 3 * H + 2);
+  const candles: Candle[] = bars.map((b, i) => ({ t: at - (30 - i) * 60_000, o: 10, h: b.h, l: b.l, c: 10, v: 1 }));
+  Object.assign(rt, { candles: new Map([["S0-USDT", CandleSeries.fromCandles(candles)]]) });
+  await stepLive(rt as unknown as CoreRuntime, [], 1, new SimExchange());
+  const flats = rt.db.all<{ px: number; msg: string | null }>(
+    "SELECT px, msg FROM live_orders WHERE cfg = ? AND kind = 'F' ORDER BY at, rowid",
+    `control|${key}`,
+  );
+  return flats.at(-1)!;
+}
+
+describe("the take-profit a flat marker is priced at: a new position's own take-profit (live.server.ts stepLive, tpPxOf)", { timeout: 60_000 }, () => {
+  it("(e) take-profit LONG: a position closed at its take-profit 10.5 with no history is booked at that take-profit, not unverified (plan item 15, expected to fail at ce8a7f8: booked unverified at 10)", async () => {
+    // the bars reach the take-profit (high 10.6) and not the stop (low 9.9 against 9.5)
+    const m = await closedAtTarget(1, 9.5, 10.5, [{ h: 10.6, l: 9.9 }]);
+    assert.deepEqual([m.px, m.msg], [10.5, "flat on the exchange (target 10.5)"]);
+  });
+
+  it("(e) take-profit SHORT: a position closed at its take-profit 9.5 with no history is booked at that take-profit, not unverified (plan item 15, expected to fail at ce8a7f8: booked unverified at 10)", async () => {
+    // the mirror: the bars reach the take-profit (low 9.4) and not the stop (high 10.1 against 10.5)
+    const m = await closedAtTarget(-1, 10.5, 9.5, [{ h: 10.1, l: 9.4 }]);
+    assert.deepEqual([m.px, m.msg], [9.5, "flat on the exchange (target 9.5)"]);
+  });
+});
+
 // ── lane exits name their side (live.server.ts reconcileLaneCloses, live-record.ts attributeLanes) ───────────────────
 describe("lane exits name their side: reconciled fills and lane closes (f)", () => {
   it("(f) reconcile: the BUY fill of the SHORT lane's stop is its exit; r is the short's return less the cost; the LONG lane of the symbol is not touched", () => {
