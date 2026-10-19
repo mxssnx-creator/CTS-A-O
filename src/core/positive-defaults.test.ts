@@ -38,17 +38,17 @@ describe("positive coordinations stay on", () => {
     assert.equal(n.sideAccept.minPf, 1.3);
   });
 
-  it("engine direction acceptance is off by default (operator override, 19 Oct: both directions always trade); parameters kept; a desk with it off is warned", () => {
+  it("engine direction acceptance off by default (operator, 11 Oct): PF 1.05 over 24 h, ≥ 30 closes when on; no warning when off", () => {
     assert.deepEqual(defaultWalkForward(DEFAULT_SETTINGS).engineSideAccept, { enabled: false, minPf: 1.05, hours: 24, minTrades: 30 });
-    const off = positiveCoordWarnings({}, { engineSideAccept: { enabled: false, minPf: 1.05, hours: 24, minTrades: 30 } });
-    assert.ok(off.some((w) => w.includes("engine direction acceptance is off")));
-    assert.ok(positiveCoordWarnings({}, defaultWalkForward(DEFAULT_SETTINGS)).some((w) => w.includes("engine direction acceptance is off")));
-    const on = positiveCoordWarnings({}, { engineSideAccept: { enabled: true, minPf: 1.05, hours: 24, minTrades: 30 } });
-    assert.ok(!on.some((w) => w.includes("engine direction")));
+    assert.ok(!positiveCoordWarnings({}, defaultWalkForward(DEFAULT_SETTINGS)).some((w) => w.includes("engine direction")));
+    assert.ok(!positiveCoordWarnings({}, { engineSideAccept: { enabled: false, minPf: 1.05, hours: 24, minTrades: 30 } }).some((w) => w.includes("engine direction")));
   });
 
   it("control orders Overall by default: per position, the partials by the system (operator, 7 Oct)", () => {
     assert.equal(DEFAULT_SETTINGS.live.laneOrders, false);
+    assert.equal(DEFAULT_SETTINGS.live.maxNotionalUsd, 0, "fixed dollar position ceilings are disabled");
+    assert.equal(DEFAULT_SETTINGS.live.maxPositionX, 0, "volume factors size positions by account balance by default");
+    assert.equal(DEFAULT_SETTINGS.live.maxExposureX, 0, "gross exposure caps are opt-in");
     for (const p of [...DESK_PRESETS, ...LIVE_COORD_PRESETS])
       assert.ok(!JSON.stringify(p).includes('"laneOrders":true'), "no preset switches partials on");
   });

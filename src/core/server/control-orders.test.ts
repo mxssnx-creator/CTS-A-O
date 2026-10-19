@@ -11,7 +11,9 @@ import { closedBy, liveTag, outsideCloseOf, tpDistFor, tpFits } from "./live.ts"
 import type { CoreRuntime } from "./runtime.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import { ExchangeRejected } from "../exchange/bingx.server.ts";
-import { SimExchange } from "../test-support.ts";
+import { authorizeSyntheticLanes, SimExchange, syntheticExecutionRun } from "../test-support.ts";
+import type { LiveGate } from "../live-validation.ts";
+import type { LedgerRow } from "../statistics.ts";
 
 process.env.CTS_CORE_LIVE = "1";
 const H = 3_600_000;
@@ -51,6 +53,7 @@ function rtOf(live: Record<string, unknown> = {}, sizing: { mode: string; pct: n
     { sym: "S1-USDT", last: 10 },
     { sym: "S2-USDT", last: 20 },
   ];
+  let positions: Pos[] = [];
   const rt = {
     generation: 1,
     db: new CoreDb(":memory:"),
@@ -77,9 +80,22 @@ function rtOf(live: Record<string, unknown> = {}, sizing: { mode: string; pct: n
         ...live,
       },
     },
-    sim: { stats: { pf: 1.5, n: 50 }, stable: true },
+    // Settled synthetic accepted outcomes and independent owned-paper execution evidence are declared per exact
+    // fixture lane below. A summary alone cannot authorize admission or manufacture missing proof.
+    sim: syntheticExecutionRun([]),
+    livePromotionGate: undefined as ((lane: Pick<Pos, "cfg" | "sym" | "side">, at?: number) => LiveGate) | undefined,
     status: { lastBarT: Math.floor(Date.now() / H) * H },
-    paper: { positions: [] as Pos[] },
+    paper: {
+      get positions(): Pos[] { return positions; },
+      set positions(next: Pos[]) {
+        positions = new Proxy(next, { set(target, property, value) {
+          const changed = Reflect.set(target, property, value);
+          if (property !== "length") authorizeSyntheticLanes(rt, target);
+          return changed;
+        } });
+        authorizeSyntheticLanes(rt, positions);
+      },
+    },
     tickersAt: 0,
     freshTickers: async () => {
       rt.tickersAt = Date.now();
@@ -179,6 +195,23 @@ describe("control orders: complete (stop, take-profit, trailing), long and short
     ];
     assert.equal(outsideCloseOf(none, -1, "bingx-vst-02"), null);
     assert.equal(outsideCloseOf([], 1, "bingx-vst-02"), null);
+  });
+
+  it("outside-close attribution ignores old episodes and is independent of history order", () => {
+    const tag = liveTag("bingx-vst-02");
+    const row = (o: Record<string, unknown>) => ({ positionSide: "LONG", side: "SELL", status: "FILLED", type: "MARKET", executedQty: 1, ...o });
+    const xs = [
+      row({ clientOrderId: `${tag}S1`, type: "STOP_MARKET", avgPrice: 90, time: 100 }),
+      row({ clientOrderId: `${tag}E2`, side: "BUY", avgPrice: 100, time: 200 }),
+      row({ clientOrderId: "", avgPrice: 110, time: 300 }),
+    ];
+    assert.deepEqual(outsideCloseOf(xs, 1, "bingx-vst-02"), { why: "hand", px: 110 });
+    assert.deepEqual(outsideCloseOf([...xs].reverse(), 1, "bingx-vst-02"), { why: "hand", px: 110 });
+    assert.equal(outsideCloseOf(xs, 1, "bingx-vst-02", 400), null);
+    // Two protective fills from two episodes: only the newest fill can describe the current close.
+    const stops = [xs[0], row({ clientOrderId: `${tag}T2`, type: "TAKE_PROFIT_MARKET", avgPrice: 120, time: 500 })];
+    for (const rows of [stops, [...stops].reverse()])
+      assert.deepEqual(outsideCloseOf(rows, 1, "bingx-vst-02"), { why: "target", px: 120 });
   });
 
   it("every position carries its stop and its take-profit on the right sides, long and short; nothing churns", async () => {
@@ -305,6 +338,34 @@ describe("control orders: complete (stop, take-profit, trailing), long and short
         ],
         `keepStop ${keepStop}`,
       );
+      // the ledger's flat markers carry the same exits: the live statistics book both positions at those prices
+      const flats = rt.db.all<{ sym: string; px: number; msg: string }>(
+        "SELECT sym, px, msg FROM live_orders WHERE kind = 'F' ORDER BY sym",
+      );
+      assert.deepEqual(
+        flats.map((r) => [r.sym, r.px, r.msg]),
+        [
+          ["S1-USDT", tp, `flat on the exchange (target ${tp})`],
+          ["S2-USDT", sp, `flat on the exchange (stop ${sp})`],
+        ],
+      );
+      const { liveTrades } = await import("../statistics.ts");
+      const ledger = rt.db.all<LedgerRow & { fill_px: number | null }>(
+        "SELECT o.coid, o.sym, o.side, o.kind, o.qty, o.px, o.status, o.msg, o.at, f.fill_px, f.fee FROM live_orders o LEFT JOIN live_fills f ON f.coid = o.coid ORDER BY o.at",
+      );
+      const booked = liveTrades(
+        ledger.map((x) => ({ ...x, fillPx: x.fill_px })),
+        liveTag(rt.settings.live.connId).length,
+      );
+      assert.deepEqual(
+        booked.map((x) => [x.sym, x.reason]),
+        [
+          ["S1-USDT", "tp"],
+          ["S2-USDT", "sl"],
+        ],
+        `keepStop ${keepStop}: both exchange closes booked`,
+      );
+      assert.ok(booked[0].r > 0 && booked[1].r < 0, "the take-profit wins, the stop loses");
       await step();
       assert.equal(ex.log.filter((p) => p.type === "MARKET").length, opens, "not reopened");
       assert.equal(ex.orders.length, 0, "no own order left on a flat side");

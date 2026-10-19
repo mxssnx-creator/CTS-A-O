@@ -57,10 +57,11 @@ const o = {
   validLastN: 0,
   // the PF / DDT gates alone (the drawdown ratio has its own test below)
   gates: { ...DEFAULT_SETTINGS.gates, minTrades: 12, maxDdr: 0 },
-  // these tests judge the config set's own levels (the default source is direction)
+  // Legacy candidate-history diagnostics judge the config set's raw tape, without accepted-order evidence.
   // shared, continuous, ratio 0.2: the volumes below are 1 + 0.2 · level
   block: {
     ...DEFAULT_SETTINGS.block,
+    historySource: "real-candidates" as const,
     sources: { config: true },
     mode: "shared" as const,
     ratio: 0.2,
@@ -92,7 +93,7 @@ describe("durable selection", () => {
 });
 
 describe("toggles and Block", () => {
-  it("Normal off still executes Block-adjusted entries; Active skips every entry below its min level", () => {
+  it("legacy candidate history: Normal off still executes Block-adjusted entries; Active skips every entry below its min level", () => {
     const tg = { ...DEFAULT_TOGGLES, normal: false, block: true, blockActive: false };
     assert.ok(kindExecutable("normal", tg));
     const t = tape("b", [
@@ -130,7 +131,7 @@ describe("toggles and Block", () => {
     assert.equal(kindExecutable("dca-active", { ...tg, dca: true, dcaActive: true }), true);
   });
 
-  it("Normal off: Normal and Trailing execute only Block-raised; Trailing off is global; DCA / Axis run on", () => {
+  it("legacy candidate history: Normal off: Normal and Trailing execute only Block-raised; Trailing off is global; DCA / Axis run on", () => {
     const tg = { ...DEFAULT_TOGGLES, normal: false, block: true, blockActive: false };
     const t = tape("b", [
       [0, 0.01],
@@ -167,6 +168,24 @@ describe("toggles and Block", () => {
         why: "toggle",
       },
     );
+  });
+
+  it("accepted-order default never borrows raw config wins without an accepted Block book", () => {
+    assert.equal(DEFAULT_SETTINGS.block.historySource, "accepted-orders");
+    const t = tape("b", [[0, 0.01], [2, 0.01], [4, -0.03]]);
+    const block = { ...o.block, historySource: "accepted-orders" as const };
+    assert.equal(blockLevel(t, 3 * H + 1, block), 2, "the diagnostic raw callback has two winning closes");
+    for (const kind of ["normal", "trailing"] as const) {
+      const tp = { ...t, kind };
+      const oo = { ...o, block, lastN: 0,
+        toggles: { ...DEFAULT_TOGGLES, normal: false, block: true, blockActive: false } };
+      assert.deepEqual(execDecision(tp, 3 * H + 1, oo), { ok: false, why: "normalOff" });
+      const normal = { ...oo, toggles: { ...oo.toggles, normal: true } };
+      assert.deepEqual(execDecision(tp, 3 * H + 1, normal), { ok: true, level: 0, vol: 1 });
+      assert.deepEqual(execDecision(tp, 3 * H + 1, {
+        ...normal, toggles: { ...normal.toggles, blockActive: true },
+      }), { ok: false, why: "blockActive" });
+    }
   });
 
   it("Normal off does not stop the base evaluation: DCA / Axis still beat the Normal base and take seats", () => {
@@ -363,10 +382,20 @@ describe("max drawdown ratio (DDR)", () => {
     assert.equal(ddrFails(2, 4, 1), false, "0.5 ≤ 1");
     assert.equal(ddrFails(5, 4, 1), true, "1.25 > 1");
     assert.equal(ddrFails(0, 0, 1), true, "nothing earned fails");
+    assert.equal(ddrFails(undefined, 4, 1), true, "missing drawdown evidence fails closed");
+    assert.equal(ddrFails(Number.NaN, 4, 1), true, "non-finite drawdown fails closed");
+    assert.equal(ddrFails(-1, 4, 1), true, "negative drawdown is invalid evidence");
+    assert.equal(ddrFails(1, -2, 1), true, "a loss cannot pass an active DDR gate");
+    assert.equal(ddrFails(1, 2, Number.NaN), true, "an invalid active limit fails closed");
     const g = { minPf: 1.1, minTrades: 3 };
     assert.ok(passesBase({ n: 10, pf: 1.5, net: 4, mdd: 6 }, g));
     assert.ok(!passesBase({ n: 10, pf: 1.5, net: 4, mdd: 6 }, { ...g, maxDdr: 1 }));
     assert.ok(passesBase({ n: 10, pf: 1.5, net: 4, mdd: 2 }, { ...g, maxDdr: 1 }));
+    assert.ok(!passesBase({ n: 10, pf: 1.5, net: 4 }, { ...g, maxDdr: 1 }), "missing Base MDD cannot pass");
+    assert.ok(
+      !passesBase({ n: 10, pf: 0.75, net: -2, mdd: 1 }, { minPf: 0.5, minTrades: 3, maxDdr: 1 }),
+      "a below-one PF gate cannot turn negative net into a valid DDR denominator",
+    );
     assert.doesNotThrow(() => checkSettings({ gates: { ...DEFAULT_SETTINGS.gates, maxDdr: 1.5 } }));
     assert.throws(() => checkSettings({ gates: { ...DEFAULT_SETTINGS.gates, maxDdr: -1 } }));
     // two configs with the same PF and net: one steady, one that first gives back 3 units

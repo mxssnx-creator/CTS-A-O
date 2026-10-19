@@ -1,0 +1,69 @@
+{
+  "schema": "cts-exit-final-source-economic-regression-v1",
+  "status": "exact economic equality",
+  "originalProtocolSha256": "679862904ce7f5197a8ce9ce998dfb876f5162b3723bd128973b9f427fe896cf",
+  "currentProtocolSha256": "f31b21388edbbb586e4efa341dc1cce2fd4262d536c7677c59b1ef8de7bcd7b5",
+  "previousEconomicSha256": "cebdce48a2ca9c9876c014485ac4630118f34468693bd35ef18caf1e83ad08c3",
+  "currentEconomicSha256": "cebdce48a2ca9c9876c014485ac4630118f34468693bd35ef18caf1e83ad08c3",
+  "ignoredResultMetadata": [
+    "attempt",
+    "classification",
+    "chunkTimings",
+    "completedAt",
+    "protocolSha256",
+    "elapsedMs",
+    "maxRssMiB"
+  ],
+  "settled": {
+    "n": 109,
+    "gp": 0.4126812190290674,
+    "gl": 0.021104476214967173,
+    "netReturnPoints": 39.157674281410024,
+    "exactPf": 19.554203327557413,
+    "pfStatus": "measured",
+    "runtimePfScore": 19.554203327557413,
+    "unknownReturns": 0
+  },
+  "endpointMarks": {
+    "n": 206,
+    "gp": 0.08167192966343136,
+    "gl": 0.6174080358934038,
+    "netReturnPoints": -53.573610622997236,
+    "exactPf": 0.13228193498526494,
+    "pfStatus": "measured",
+    "runtimePfScore": 0.13228193498526494,
+    "unknownReturns": 0
+  },
+  "markedCombinedDiagnostic": {
+    "n": 315,
+    "gp": 0.494353148692499,
+    "gl": 0.638512512108371,
+    "netReturnPoints": -14.415936341587198,
+    "exactPf": 0.774226251354328,
+    "pfStatus": "measured",
+    "runtimePfScore": 0.774226251354328,
+    "unknownReturns": 0
+  },
+  "sourceDifferences": [
+    {
+      "path": "src/core/exit-strategy.ts",
+      "originalSha256": "02c8946a69b25b81c4b07fa55c7ecdc9b16b20a6c52a54752d746414faa9f08c",
+      "finalSha256": "a0296601d21e71da2130cc404815fadaafaf983d7d46ec16bd2a04d936a31543"
+    },
+    {
+      "path": "src/core/server/runtime.server.ts",
+      "originalSha256": "bdcbfa458ac5afda384270d8c29b1549f83501bc533fece1477c3666bef8adfb",
+      "finalSha256": "93a0c1a3c68d090ccfb6c7c9c07ce4515d4de0a4be9099dca28d230c65a6adb7"
+    }
+  ],
+  "resultGzipSha256": "9e440db479ba52650dbe61886fcc0df19aa3a0338c2204ba3671740abdc1a7dc",
+  "resultJsonSha256": "1807089da003c1e01ff3a0295eb56c17b98703a9ce13ee3be92eefc1075b79a0",
+  "maxRssMiBAfterComparison": 305.1,
+  "sourceDifferencesSincePrevious": [
+    {
+      "path": "src/core/server/runtime.server.ts",
+      "previousSha256": "e82dc59f9b6304aa0c9c48041976d82753debf318141850508af538866097e4a",
+      "finalSha256": "93a0c1a3c68d090ccfb6c7c9c07ce4515d4de0a4be9099dca28d230c65a6adb7"
+    }
+  ]
+}

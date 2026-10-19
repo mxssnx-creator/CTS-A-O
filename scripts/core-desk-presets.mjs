@@ -63,6 +63,7 @@ for (const c of candidates) {
     const hours = r.hours.filter((h) => !h.partial);
     per.push({
       ago,
+      modelCost: Number.isFinite(r.settings?.cost) ? r.settings.cost : null,
       from: r.window.startT,
       to: r.window.endT,
       pf: r.total.pf,
@@ -106,10 +107,12 @@ for (const c of candidates) {
 
 const d = (t) => new Date(t).toISOString().slice(0, 16).replace("T", " ");
 const f2 = (x) => (Number.isFinite(x) ? x.toFixed(2) : "–");
+const modeledCosts = [...new Set(results.flatMap((result) => result.per.map((window) =>
+  window.modelCost === null ? "not recorded" : `${(window.modelCost * 100).toFixed(2)} %`)))].join(" / ");
 const md = [
   `# Desk presets — measured on complete simulated sessions`,
   ``,
-  `${symbols} symbols, ${pre} h pre-historic + ${run} h simulated per window, windows ending ${windows.join(" / ")} h ago. Real BingX 1m data, 0.20 % round-trip cost on every close, $10 balance, 2 % of equity per order at 10×. A preset is kept when the windows together clear PF ${minPf} with a positive net and at least two of three windows are positive; experiments are reported only.`,
+  `${symbols} symbols, ${pre} h pre-historic + ${run} h simulated per window, windows ending ${windows.join(" / ")} h ago. Real BingX 1m data, recorded round-trip costs ${modeledCosts || "not recorded"}, $10 balance, 2 % of equity per order at 10×. A preset is kept when the windows together clear PF ${minPf} with a positive net and at least two of three windows are positive; experiments are reported only.`,
   ``,
   `| preset | kept | PF (all) | worst PF | orders / day | WR | net % (sum) | max equity DD % | green hours | positive windows |`,
   `|---|---|---:|---:|---:|---:|---:|---:|---:|---:|`,

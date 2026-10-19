@@ -36,7 +36,7 @@ const tr = (cfg: string, sym: string, side: 1 | -1, eH: number, xH: number, r: n
 
 describe("walk-forward variants", () => {
   const base = { ...defaultWalkForward(DEFAULT_SETTINGS), protects: [], dcaProtects: [] };
-  const kinds = { normal: 10, trailing: 10, dca: 0, "dca-active": 0, axis: 4 };
+  const kinds = { normal: 10, trailing: 10, exit: 0, dca: 0, "dca-active": 0, axis: 4 };
 
   it("flips every toggle once and marks the ones without tapes as recompute", () => {
     const vs = walkForwardVariants(
@@ -45,8 +45,9 @@ describe("walk-forward variants", () => {
     );
     // the strategy toggles (the range-off and crowding rows share the group: ids with a hyphen)
     const types = vs.filter((v) => /^type:[A-Za-z]+$/.test(v.id));
-    assert.equal(types.length, 7);
+    assert.equal(types.length, 8);
     assert.equal(vs.find((v) => v.id === "type:dca")!.status, "recompute");
+    assert.equal(vs.find((v) => v.id === "type:exit")!.status, "na");
     assert.equal(vs.find((v) => v.id === "type:axis")!.status, "run");
     assert.equal(vs.find((v) => v.id === "type:axis")!.opts!.toggles.axis, true);
     // no signal tapes: signals on needs a recompute, confirmation has nothing to act on
@@ -82,13 +83,17 @@ describe("walk-forward variants", () => {
     assert.equal(vs.find((v) => v.id === "sig:confirm")!.status, "run");
   });
 
-  it("engine direction acceptance (off by default, operator 19 Oct): the flip row; parameter rows only while it is on", () => {
-    const dflt = walkForwardVariants(base, { kinds, signalTapes: 0 });
-    const flip = dflt.find((v) => v.id === "sig:engineSide")!;
-    assert.equal(flip.label, "Engine direction acceptance on");
-    assert.equal(flip.opts!.engineSideAccept!.enabled, true);
-    assert.equal(dflt.filter((v) => v.id.startsWith("sig:engineSide-")).length, 0);
-    const vs = walkForwardVariants({ ...base, engineSideAccept: { enabled: true, minPf: 1.05, hours: 24, minTrades: 30 } }, { kinds, signalTapes: 0 });
+  it("engine direction acceptance off by default (operator, 11 Oct): the on row, no parameter rows", () => {
+    assert.equal(base.engineSideAccept!.enabled, false);
+    const vs = walkForwardVariants(base, { kinds, signalTapes: 0 });
+    const on = vs.find((v) => v.id === "sig:engineSide")!;
+    assert.equal(on.label, "Engine direction acceptance on");
+    assert.deepEqual(on.opts!.engineSideAccept, { enabled: true, minPf: 1.05, hours: 24, minTrades: 30 });
+    assert.equal(vs.filter((v) => v.id.startsWith("sig:engineSide-") || v.id.startsWith("sig:engineSidePerInd-")).length, 0);
+  });
+
+  it("engine direction acceptance as run on (the x01 patch): the off row and each parameter around the as-run one", () => {
+    const vs = walkForwardVariants({ ...base, engineSideAccept: { ...base.engineSideAccept!, enabled: true } }, { kinds, signalTapes: 0 });
     const off = vs.find((v) => v.id === "sig:engineSide")!;
     assert.equal(off.label, "Engine direction acceptance off");
     assert.equal(off.opts!.engineSideAccept!.enabled, false);
@@ -122,8 +127,11 @@ describe("walk-forward variants", () => {
     const b = { ...base, toggles: { ...base.toggles, block: true }, block: { ...base.block, excludeRanges: ["gn", "lg"] } };
     const vs = walkForwardVariants(b, { kinds, signalTapes: 0 });
     const rows = vs.filter((v) => v.id.startsWith("block:off-"));
-    assert.deepEqual(rows.map((v) => v.id), ["block:off-mc", "block:off-mn", "block:off-sh"]);
+    // every range Block can exclude, Minimal plus and Wide (the untagged grid) included
+    assert.deepEqual(rows.map((v) => v.id), ["block:off-mc", "block:off-mn", "block:off-mp", "block:off-sh", "block:off-wide"]);
     assert.deepEqual(rows[0].opts!.block.excludeRanges, ["gn", "lg", "mc"]);
+    assert.deepEqual(rows[4].opts!.block.excludeRanges, ["gn", "lg", "wide"]);
+    assert.equal(rows[4].label, "Block off on Wide");
   });
 
   it("measures the active signal ranking: count and rank, never the as-run value", async () => {
@@ -166,6 +174,53 @@ describe("run summary", () => {
     assert.equal(effectOf(vol, s), "volume");
     const fewer = summarizeRun({ trades: [trades[0]] }, T0, T0 + 3 * H);
     assert.equal(effectOf(fewer, s), "orders");
+  });
+
+  it("keeps primary return PF independent of execution volume and keeps weighted curves/fingerprints", () => {
+    const unit = [
+      { ...tr("b|ema|wide", "A", 1, 0, 0.5, 0.01), mult: 1 },
+      { ...tr("b|ema|wide", "B", -1, 0.5, 1.5, -0.005), mult: 1 },
+    ];
+    const scaled = [ { ...unit[0], r: 0.02, mult: 2, vol: 2 }, unit[1] ];
+    const a = summarizeRun({ trades: unit }, T0, T0 + 3 * H);
+    const b = summarizeRun({ trades: scaled }, T0, T0 + 3 * H);
+    assert.equal(a.pf, 2);
+    assert.equal(b.pf, a.pf);
+    assert.equal(b.unitGp, 1);
+    assert.equal(b.unitGl, 0.5);
+    assert.equal(b.pfBasis, "unit-net-returns");
+    assert.equal(b.sizedPf, 4);
+    assert.equal(b.gp, 2);
+    assert.equal(b.gl, 0.5);
+    assert.equal(b.net, 1.5);
+    assert.deepEqual(b.hourNet, [2, -0.5, 0]);
+    assert.equal(b.mdd, 0.5);
+    assert.equal(effectOf(b, a), "volume");
+    assert.equal(b.fpOrders, a.fpOrders);
+    assert.notEqual(b.fp, a.fp);
+  });
+
+  it("discloses the shared no-loss score and retains exact zero gross loss", () => {
+    const s = summarizeRun({ trades: [{ ...tr("b|ema|wide", "A", 1, 0, 0.5, 0.02), mult: 2 }] }, T0, T0 + H);
+    assert.equal(s.unitGp, 1);
+    assert.equal(s.unitGl, 0);
+    assert.equal(s.pf, 4);
+    assert.equal(s.noLoss, true);
+    assert.equal(s.pfConvention, "shared-profitFactor-no-loss-score");
+    const flat = summarizeRun({ trades: [{ ...tr("b|ema|wide", "A", 1, 0, 0.5, 0), mult: 1 }] }, T0, T0 + H);
+    assert.equal(flat.pf, 0);
+    assert.equal(flat.noLoss, false);
+  });
+
+  it("marks the entire primary sample unavailable when one execution return is unknown", () => {
+    const s = summarizeRun({ trades: [{ ...trades[0], mult: 0 }, { ...trades[1], mult: 1 }] }, T0, T0 + 3 * H);
+    assert.equal(s.orders, 2);
+    assert.equal(s.net, 0.5, "weighted net remains available");
+    assert.equal(s.pfBasis, "unavailable");
+    assert.equal(s.unknownReturns, 1);
+    assert.equal(s.unitGp, 0, "does not cherry-pick the known subset");
+    assert.equal(s.unitGl, 0);
+    assert.equal(s.noLoss, false);
   });
 });
 

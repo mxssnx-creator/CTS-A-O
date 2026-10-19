@@ -8,13 +8,16 @@
 //     --name micro --settings runs/micro.json [--symbols 16] [--notional 10] [--hours 6] [--out runs/live-micro]
 //
 // Demo by default: mainnet (bingx-x01) runs only with `--mainnet yes` and a loss limit (`--max-loss` USDT and / or
-// `--max-loss-pct`, a share of the wallet balance re-read at every check; the larger holds): past it
+// `--max-loss-pct`, a share of the wallet balance at the start of this session; each session counts its own loss from
+// its own start; the larger holds): past it
 // the desk stops and closes its own positions (never another system's). Probes never run on mainnet.
 // `--hours 0` = no end time (stops on the loss limit or SIGTERM / SIGINT, which also close the own positions).
 // SIGUSR2 = restart keeping the positions: the control stops, each position keeps its exchange stop, and the next run
 // with the same tag and --out picks them up (the ownership ledger and the live record are restored from the folder).
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { closeAtExact } from "./lib/candles.mjs";
+import { returnBucket, addReturnEvidence, finishReturnEvidence, returnEvidenceText, mergeReturnEvidence } from "./lib/return-evidence.mjs";
 
 const argv = process.argv.slice(2);
 const arg = (k, d) => {
@@ -67,8 +70,12 @@ if (!process.env.CTS_CORE_LIVE_TAG) throw new Error("set CTS_CORE_LIVE_TAG (its 
 
 const { coreRuntime, setProbe } = await import("../src/core/server/runtime.server.ts");
 const { rangeOfId, RANGE_LABEL } = await import("../src/core/minimal-coord.ts");
-const { liveTag } = await import("../src/core/server/live.ts");
-const { lossLimitUsd, lossLimitText, lossBaseline } = await import("../src/core/loss-limit.ts");
+const { liveTag, ownLedger } = await import("../src/core/server/live.ts");
+const { controlRows } = await import("../src/core/server/live.server.ts");
+const { ownershipBreaches, ledgerToHistoryKeys, writeHalt } = await import("./lib/ownership-halt.mjs");
+const { lossLimitUsd, lossLimitText, sessionBaseline, sessionWalletOf, lossGuard, isLossGuardPause } = await import(
+  "../src/core/loss-limit.ts"
+);
 const bxm = await import("../src/core/exchange/bingx.server.ts");
 const { allocatorWarning, memInfo } = await import("../src/core/server/memguard.server.ts");
 const { positiveCoordWarnings } = await import("../src/core/positive.ts");
@@ -83,12 +90,13 @@ const warnPositive = (rt, name) => {
   const w = allocatorWarning();
   if (w) process.stderr.write(`${w}\n`);
 }
-const { profitFactor } = await import("../src/core/metrics/stats.ts");
-const { ownResults, flatten, history } = await import("./core-live-report.mjs");
+const { profitFactor, modeledUnitReturn: unitReturn } = await import("../src/core/metrics/stats.ts");
+const { ownResults, flatten, history, orderIdentity } = await import("./core-live-report.mjs");
 const { kindOfInd } = await import("../src/core/sim/walkforward.ts");
 const { rowOf, timeline } = await import("../src/core/statistics.ts");
 const { isSignalInd, signalSourceOf } = await import("../src/core/indications/registry.ts");
 const { checkMerged, checkSettings } = await import("../src/core/settings-check.ts");
+const { botStatsFromRows } = await import("../src/core/bot-stats.ts");
 /** the checks the settings API runs: a patch out of range is refused whole, as on the Settings page */
 const checkPatch = (p) => {
   checkSettings(p.settings ?? {});
@@ -133,21 +141,30 @@ if (rt.settings.live.connId !== conn)
   throw new Error(`runtime bound to ${rt.settings.live.connId}, not ${conn}: refusing to trade the wrong account`);
 if (probe > 0 || probeCell > 0) setProbe(rt, probe, probeCell);
 const tag = liveTag(conn);
-// the desk's first start (kept in its folder): a restart continues the same run — its paper and exchange results,
-// the loss limit and the closes a coordinator gates on all count from the first start, not from the restart (the
-// loss limit from the last stop at the limit, when there was one: lossBaseline)
+// the desk's first start (kept in its folder): a restart continues the same run — its paper and exchange results and the
+// closes a coordinator gates on count from the first start, not from the restart. The loss limit is NOT the run's: it
+// counts from each session's start (sessionBaseline, systemwide)
 const startFile = join(out, "desk-start.json");
 const startRec = existsSync(startFile) ? JSON.parse(readFileSync(startFile, "utf8")) : {};
 const t0 = Number(startRec.t0) || Date.now();
-// the loss limit's own start: the run's, or the last stop at the limit (lossBaseline) — a relaunch after that stop
-// gets a fresh budget instead of counting the losses that stopped it
-const lossT0 = lossBaseline({ t0, lossStopAt: startRec.lossStopAt });
 // this process's own start: the simulated run vs paper diff compares the hours this process traded forward
 const procT0 = Date.now();
+// the loss limit counts from this SESSION's start (this process's launch), systemwide: a restart or a relaunch starts
+// a new budget; neither the run's first start nor the last stop at the limit moves it (sessionBaseline)
+const lossT0 = sessionBaseline(procT0);
+// the balance the limit is a share of: the wallet read at this session's first check (set once per session below)
+let sessionWallet = null;
 if (!existsSync(startFile)) writeFileSync(startFile, JSON.stringify({ t0, at: new Date(t0).toISOString() }));
 // the latest loss check (status.json): realized + open own net, USDT
 let lastLoss = null;
 rt.db.event("info", `live test ${name}: tag ${tag}, ${hours} h`);
+// the ownership check: what this desk holds per (symbol, side) at the session start (the restored own-quantity ledger);
+// the loss check below replays the tag's fills since this process started on it, and an own fill that takes out more
+// than the desk held there closed or reduced someone else's quantity → the HALT file (scripts/lib/ownership-halt.mjs)
+// stops the supervisor's relaunches (docs/live-coordination/x01-supervise.sh) until a person removes it
+const ownAtStart = ledgerToHistoryKeys(ownLedger([...controlRows(rt).values()]));
+const haltFile = join(out, "HALT");
+let haltWritten = false;
 rt.start();
 process.stderr.write(
   `live test ${name}: tag ${tag} on ${conn}, ${symbols} symbols, ${hours} h` +
@@ -164,10 +181,10 @@ process.stderr.write(
 );
 
 const H = 3_600_000;
-const acc = () => ({ n: 0, w: 0, gp: 0, gl: 0, usd: 0 });
+const acc = returnBucket;
 /**
- * Per indication type over the simulated window: Base (every config, no PF filter), evaluated (configs whose window
- * PF is at least 1.1 with 3+ closes), and the executed book (orders, positions, PF, positive hours, drawdown time,
+ * Per indication type over the simulated window: retained built tapes (no PF filter here), a post-hoc diagnostic
+ * (window PF at least 1.1 with 3+ closes), and the simulated executed book (orders, positions, PF, positive hours, drawdown time,
  * equity drawdown %).
  */
 async function indicationStats() {
@@ -222,20 +239,18 @@ async function indicationStats() {
   }
   const pfOf = (x) => ({ ...x, pf: profitFactor(x.gp, x.gl) });
   const unit = () => rt.settings.paperNotional;
-  const closes = new Map();
-  for (const [sym, cs] of rt.candles) {
-    const m = new Map();
-    for (const c of cs) if (c.t >= a - 600_000) m.set(c.t, c.c);
-    closes.set(sym, m);
-    it = 255;
-    await breathe();
-  }
+  // the candles as they are now (a stored series never changes: an append is a new one): a close is looked up by
+  // binary search (a Map of every close in the window was ~12 MB every 30 min) — a bar from the window's start
+  // (a − 10 min) on, the latest of equal times, as the Map gave
+  const candlesNow = new Map(rt.candles);
+  const fromT = a - 600_000;
+  const closeAt = (cs, t) => (t < fromT ? undefined : closeAtExact(cs, t));
   const price = (sym, t) => {
-    const m = closes.get(sym);
-    if (!m) return null;
-    const t0 = Math.floor(t / 60_000) * 60_000;
+    const cs = candlesNow.get(sym);
+    if (!cs) return null;
+    const t0 = Math.floor(t / 60_000) * 60_000 - 60_000;
     for (let i = 0; i < 5; i++) {
-      const v = m.get(t0 - i * 60_000);
+      const v = closeAt(cs, t0 - i * 60_000);
       if (v !== undefined) return v;
     }
     return null;
@@ -260,12 +275,18 @@ async function indicationStats() {
     if (!isSignalInd(ind)) continue;
     const x = (signals[signalSourceOf(ind)] ??= { configs: 0, closes: 0, gp: 0, gl: 0, executed: 0, egp: 0, egl: 0 });
     x.executed++;
-    if (t.r > 0) x.egp += t.r;
-    else x.egl -= t.r;
+    const r = unitReturn(t);
+    if (!Number.isFinite(r)) { x.unknownExecutedReturns = (x.unknownExecutedReturns ?? 0) + 1; continue; }
+    if (r > 0) x.egp += r;
+    else x.egl -= r;
   }
   for (const x of Object.values(signals)) {
     x.pf = profitFactor(x.gp, x.gl);
-    x.executedPf = profitFactor(x.egp, x.egl);
+    x.unknownExecutedReturns ??= 0;
+    x.executedPf = x.unknownExecutedReturns ? null : profitFactor(x.egp, x.egl);
+    x.executedPfBasis = x.unknownExecutedReturns ? "unavailable" : "unit-net-returns";
+    x.executedNoLoss = !x.unknownExecutedReturns && x.egp > 0 && x.egl <= 0;
+    if (x.unknownExecutedReturns) { x.egp = null; x.egl = null; }
   }
   const executed = {};
   const byKind = new Map();
@@ -281,9 +302,16 @@ async function indicationStats() {
     await breathe();
     const row = rowOf(k, xs, unit);
     const tl = timeline(xs, { startT: a, endT: b, balance: rt.settings.paperBalance, unit, price, cost: rt.settings.cost, leverage: 10, points: 300 });
-    executed[k] = { orders: row.n, positions: row.positions, pf: row.pf, wr: row.wr, net: row.net, greenHours: row.gh, ddtH: row.ddt, equityDdPct: tl.maxDdPct };
+    executed[k] = { orders: row.n, positions: row.positions, pf: row.pf, pfBasis: row.pfBasis, unknownReturns: row.unknownReturns, returnGp: row.returnGp, returnGl: row.returnGl, noLoss: row.noLoss, pfConvention: row.pfConvention, wr: row.wr, net: row.net, netBasis: "recorded-sized-return-sum", greenHours: row.gh, ddtH: row.ddt, equityDdPct: tl.maxDdPct };
   }
   return {
+    evidence: {
+      actualExecution: false,
+      pfBasis: "unit-net-returns",
+      basePopulation: "retained built tapes; not full configured Base cells",
+      evaluated: { kind: "post-hoc window diagnostic", minCloses: 3, minPf: 1.1, runtimeQualification: false },
+      netBasis: "recorded sized return sum; cash/equity retain execution volume",
+    },
     window: { startT: a, endT: b },
     base: Object.fromEntries(Object.entries(base).map(([k, x]) => [k, pfOf(x)])),
     evaluated: Object.fromEntries(Object.entries(evald).map(([k, x]) => [k, pfOf(x)])),
@@ -317,41 +345,55 @@ function engineLine() {
     // the realtime entry step (CTS_CORE_FAST_ENTRIES): its last bar, how long it took, and what the book took
     `${
       st.fast
-        ? ` · realtime ${new Date(st.fast.bar).toISOString().slice(11, 16)} ${st.fast.ms} ms, ${st.fast.seated} seated, ${st.fast.open} open, +${st.fast.added}${st.fast.error ? ` (error: ${st.fast.error})` : ""}`
+        ? ` · realtime ${new Date(st.fast.bar).toISOString().slice(11, 16)} ${st.fast.ms} ms / ${(st.fast.delayMs ?? 0) / 1000}s close delay, ${st.fast.seated} seated, ${st.fast.open} open, +${st.fast.added}${st.fast.error ? ` (error: ${st.fast.error})` : ""}`
         : ""
     }`
   );
 }
+/**
+ * Rows as plain objects with these keys (the SELECT's columns, in order), read one at a time: db.all built every row as
+ * a dictionary-mode object (~720 B a row against ~100 B; a report reads ~20k paper rows, twice). The same values.
+ */
+function rowsOf(sql, keys, ...p) {
+  const out = [];
+  for (const r of rt.db.iterate(sql, ...p)) {
+    const o = {};
+    for (let i = 0; i < keys.length; i++) o[keys[i]] = r[i];
+    out.push(o);
+  }
+  return out;
+}
 async function report(final = false) {
-  const all = rt.db.all(
-    "SELECT cfg, sym, side, entry_t, exit_t, r, pnl, first_at FROM paper_trades WHERE exit_t IS NOT NULL AND exit_t >= ?",
+  const all = rowsOf(
+    "SELECT cfg, sym, side, entry_t, exit_t, r, pnl, first_at, unit_r FROM paper_trades WHERE exit_t IS NOT NULL AND exit_t >= ?",
+    ["cfg", "sym", "side", "entry_t", "exit_t", "r", "pnl", "first_at", "unit_r"],
     t0,
   );
   // the forward record only: the simulated window back-fills the closes of configs selected now (hours ago), which
   // never traded forward; rows from before first_at existed are counted apart (legacy)
-  const trades = all.filter((x) => x.first_at != null && x.first_at - x.exit_t <= FORWARD_MS);
+  // the exchange record per config (one row per config's closed paper position), judged per bot family below
+  const botRows = rt.db.all(
+    "SELECT id, cfg, sym, side, entry, exit, exit_t, r, reason FROM live_lane_trades",
+  );
+  const trades = all.filter((x) => x.first_at != null && x.first_at >= x.exit_t && x.first_at - x.exit_t <= FORWARD_MS);
   const backfilled = all.filter((x) => x.first_at != null && x.first_at - x.exit_t > FORWARD_MS).length;
   const legacy = all.filter((x) => x.first_at == null).length;
+  const invalidDelay = all.filter((x) => x.first_at != null && x.first_at < x.exit_t).length;
   // signal configs are their own category (their exits carry no range tag: they were counted in Wide)
   const catOf = (cfg) => (isSignalInd(cfg.split("|")[1] ?? "") ? "Signals" : RANGE_LABEL[rangeOfId(cfg)]);
   const paper = {};
   for (const x of trades) {
     const k = catOf(x.cfg);
     const a = (paper[k] ??= acc());
-    a.n++;
-    if (x.r > 0) {
-      a.w++;
-      a.gp += x.r;
-    } else a.gl -= x.r;
-    // paper result at the live unit: r × notional
-    a.usd += x.r * notional;
+    // Fixed-notional sized paper diagnostic, not the exchange account's realized cash.
+    addReturnEvidence(a, x.unit_r, typeof x.r === "number" && Number.isFinite(x.r) ? x.r * notional : NaN);
   }
-  for (const a of Object.values(paper)) a.pf = profitFactor(a.gp, a.gl);
+  for (const [k, a] of Object.entries(paper)) paper[k] = finishReturnEvidence(a);
   // the paper book's own record: every position the book really held, closed on its tape (paper_book_trades) — with
   // the delay between its signal's entry and the moment the book first held it (a compute takes 9–20 min: what the
   // book adopts late, or never, is what the exchange trades late, or never)
   const bookRows = rt.db.all(
-    "SELECT cfg, entry_t, exit_t, r, reason, held_at FROM paper_book_trades WHERE exit_t >= ?",
+    "SELECT cfg, entry_t, exit_t, r, unit_r, reason, held_at FROM paper_book_trades WHERE exit_t >= ?",
     t0,
   );
   const book = {};
@@ -363,75 +405,25 @@ async function report(final = false) {
       a.dropped++;
       continue;
     }
-    a.n++;
-    if (x.r > 0) {
-      a.w++;
-      a.gp += x.r;
-    } else a.gl -= x.r;
-    a.usd += x.r * notional;
+    addReturnEvidence(a, x.unit_r, typeof x.r === "number" && Number.isFinite(x.r) ? x.r * notional : NaN);
     if (x.held_at != null) (delays[k] ??= []).push((x.held_at - x.entry_t) / 60_000);
   }
   for (const [k, a] of Object.entries(book)) {
-    a.pf = profitFactor(a.gp, a.gl);
+    Object.assign(a, finishReturnEvidence(a));
     const d = (delays[k] ?? []).sort((x, y) => x - y);
     a.entryDelayMin = d.length ? { median: d[d.length >> 1], p90: d[Math.floor(d.length * 0.9)] } : null;
-  }
-  // sim vs live per range: the simulated run's closes (the expectation the configs were selected on) next to the
-  // forward paper book (the same configs on live prices); the exchange's own results are the monitor's per round
-  const simBy = {};
-  // the same window on both sides: the paper book keeps its trades across restarts (hours before the simulated
-  // run started), so it is cut to the run's window — compared over different spans, the counts and PFs disagreed
-  // (12 simulated Wide closes vs 340 paper ones)
-  let simFrom = Infinity;
-  for (const x of rt.sim?.trades ?? []) if (x.entryT < simFrom) simFrom = x.entryT;
-  const paperInSim = {};
-  for (const x of trades) {
-    if (!(x.exit_t >= simFrom)) continue; // paper rows carry exit_t (exitT never matched: the comparison was empty)
-    const k = catOf(x.cfg);
-    const a = (paperInSim[k] ??= acc());
-    a.n++;
-    if (x.r > 0) {
-      a.w++;
-      a.gp += x.r;
-    } else a.gl -= x.r;
-  }
-  for (const x of rt.sim?.trades ?? []) {
-    const k = catOf(x.cfg);
-    const a = (simBy[k] ??= acc());
-    const r = x.r;
-    a.n++;
-    if (r > 0) {
-      a.w++;
-      a.gp += r;
-    } else a.gl -= r;
-  }
-  const simVsLive = {};
-  for (const k of new Set([...Object.keys(simBy), ...Object.keys(paperInSim)])) {
-    const sim = simBy[k] ?? acc();
-    const live = paperInSim[k] ?? acc();
-    const sPf = profitFactor(sim.gp, sim.gl);
-    const lPf = profitFactor(live.gp, live.gl);
-    simVsLive[k] = {
-      sim: { n: sim.n, pf: sPf, wr: sim.n ? sim.w / sim.n : 0 },
-      live: { n: live.n, pf: lPf, wr: live.n ? live.w / live.n : 0 },
-      pfDiff: live.n ? lPf - sPf : null,
-    };
   }
   // the simulated run split in what it counts: the closed orders and the ones still open at its end, marked to market
   // (7 Oct: closed Signals PF 1.55, Short 1.14 — the run's 0.72 came from ~5,200 open orders after the 02:00 crash)
   const simSplit = {};
   const split = (k, part, r) => {
     const a = (simSplit[k] ??= { closed: acc(), open: acc() })[part];
-    a.n++;
-    if (r > 0) {
-      a.w++;
-      a.gp += r;
-    } else a.gl -= r;
+    addReturnEvidence(a, r);
   };
-  for (const x of rt.sim?.trades ?? []) split(catOf(x.cfg), "closed", x.r);
-  for (const x of rt.sim?.openAtEnd ?? []) split(catOf(x.cfg), "open", x.r);
+  for (const x of rt.sim?.trades ?? []) split(catOf(x.cfg), "closed", unitReturn(x));
+  for (const x of rt.sim?.openAtEnd ?? []) split(catOf(x.cfg), "open", unitReturn(x));
   for (const v of Object.values(simSplit))
-    for (const a of [v.closed, v.open]) a.pf = profitFactor(a.gp, a.gl);
+    for (const part of ["closed", "open"]) v[part] = finishReturnEvidence(v[part]);
   // per protect cell (TP % · SL % · trailing %, from the config id): the paper book on live prices, and the seats
   const cellOf = (cfg) => {
     const m = /\|tp([\d.]+)\|sl([\d.]+)\|tr([\d.]+)/.exec(cfg);
@@ -442,17 +434,13 @@ async function report(final = false) {
     const k = cellOf(x.cfg);
     if (!k) continue;
     const a = (cells[k] ??= { ...acc(), seats: 0 });
-    a.n++;
-    if (x.r > 0) {
-      a.w++;
-      a.gp += x.r;
-    } else a.gl -= x.r;
-    a.usd += x.r * notional;
+    addReturnEvidence(a, x.unit_r, typeof x.r === "number" && Number.isFinite(x.r) ? x.r * notional : NaN);
   }
   for (const id of rt.paper.selected) {
     const k = cellOf(id);
     if (k) (cells[k] ??= { ...acc(), seats: 0 }).seats++;
   }
+  for (const [k, a] of Object.entries(cells)) cells[k] = finishReturnEvidence(a);
   const orders = rt.db.all(
     "SELECT kind, status, COUNT(*) AS n FROM live_orders WHERE at >= ? GROUP BY kind, status",
     t0,
@@ -466,7 +454,7 @@ async function report(final = false) {
   let exchange = null;
   if (final)
     try {
-      exchange = await ownResults({ conn, tag, from: t0 });
+      exchange = await ownResults({ conn, tag, from: t0, modelCost: rt.settings.cost });
     } catch (err) {
       exchange = { error: err instanceof Error ? err.message : String(err) };
     }
@@ -485,6 +473,7 @@ async function report(final = false) {
     // the limit in force at the last check (a balance-relative one moves with the wallet), and how it is set
     maxLoss: lastLoss?.limit ?? (maxLoss || null),
     maxLossSet: { fixed: maxLoss, pctOfWallet: maxLossPct },
+    modelCost: rt.settings.cost,
     name,
     tag,
     conn,
@@ -524,7 +513,7 @@ async function report(final = false) {
       // the realtime entry step's last run (CTS_CORE_FAST_ENTRIES)
       fast: rt.status.fast ?? null,
       real: rt.paper.selected.length,
-      sim: rt.sim ? { pf: rt.sim.stats.pf, n: rt.sim.stats.n, net: rt.sim.stats.net } : null,
+      sim: rt.sim ? { pf: rt.sim.stats.pfBasis === "unit-net-returns" ? rt.sim.stats.pf : null, n: rt.sim.stats.n, net: rt.sim.stats.net, pfBasis: rt.sim.stats.pfBasis ?? "unavailable", unknownReturns: rt.sim.stats.unknownReturns ?? null } : null,
       // per compute phase: total ms, the longest uninterrupted slice and its slowest step (event-loop stalls)
       phases: rt.status.phases,
       // memory guard: available / RSS / level / compute fallback / last abort
@@ -533,10 +522,13 @@ async function report(final = false) {
     paper,
     // the book's own closes (positions it held) with their entry delay — the paper result the exchange can follow
     paperBook: book,
-    simVsLive,
+    simVsPaper: null,
+    // per bot family, the exchange record: trades, independent events, PF stored / at 0.2 % / at 0.4 %, expectancy,
+    // SQN, drawdown, long and short, 8 h block consistency, and the verdict against docs/bot-stability-criteria.md
+    botStats: botStatsFromRows(botRows),
     simSplit,
     // closes not in the forward record: back-filled by the simulated window, and from before first_at existed
-    paperExcluded: { backfilled, legacy },
+    paperExcluded: { backfilled, legacy, invalidDelay },
     // every tape position the last paper step did not open, by reason (stale, notSelected, liveValidation, duplicate,
     // heldBack:*, exec:*, cap:*; "pending:" the entries not sent) — the drops between the simulated run and the book
     paperSkips: rt.status.paperSkips ?? null,
@@ -598,9 +590,11 @@ async function report(final = false) {
   {
     const { liveDiff, liveDiffMd } = await import("../src/core/live-diff.ts");
     const d = liveDiff(
-      rt.db
-        .all("SELECT cfg, sym, side, entry_t, exit_t, r FROM paper_trades WHERE exit_t IS NOT NULL AND exit_t >= ?", t0)
-        .map((x) => ({ cfg: x.cfg, sym: x.sym, side: x.side, entryT: x.entry_t, exitT: x.exit_t, r: x.r })),
+      rowsOf(
+        "SELECT cfg, sym, side, entry_t, exit_t, unit_r AS r FROM paper_trades WHERE exit_t IS NOT NULL AND exit_t >= ?",
+        ["cfg", "sym", "side", "entryT", "exitT", "r"],
+        t0,
+      ),
       rt.db
         .all("SELECT id, cfg, sym, exit_t, r, reason FROM live_lane_trades WHERE exit_t >= ?", t0)
         .map((x) => ({ id: x.id, cfg: x.cfg, sym: x.sym, exitT: x.exit_t, r: x.r, reason: x.reason })),
@@ -621,10 +615,10 @@ async function report(final = false) {
       const d = liveDiff(
         rt.sim.trades
           .filter((x) => x.exitT >= since)
-          .map((x) => ({ cfg: x.cfg, sym: x.sym, side: x.side, entryT: x.entryT, exitT: x.exitT, r: x.r })),
+          .map((x) => ({ cfg: x.cfg, sym: x.sym, side: x.side, entryT: x.entryT, exitT: x.exitT, r: unitReturn(x) })),
         rt.db
           .all(
-            "SELECT cfg, sym, side, entry_t, exit_t, r FROM paper_book_trades WHERE reason != 'dropped' AND exit_t >= ?",
+            "SELECT cfg, sym, side, entry_t, exit_t, unit_r AS r FROM paper_book_trades WHERE reason != 'dropped' AND exit_t >= ?",
             since,
           )
           .map((x) => ({
@@ -650,7 +644,9 @@ async function report(final = false) {
         .replaceAll("(exchange − system", "(paper − sim");
       writeFileSync(join(out, "sim-vs-paper.md"), `${md}\n`);
     } catch (e) {
-      process.stderr.write(`${name}: sim vs paper not written (${e instanceof Error ? e.message : e})\n`);
+      const error = e instanceof Error ? e.message : String(e);
+      doc.simVsPaper = { status: "unavailable", basis: "normalized-return", error };
+      process.stderr.write(`${name}: sim vs paper not written (${error})\n`);
     }
   writeFileSync(join(out, "status.json"), JSON.stringify(doc, null, 2));
   {
@@ -681,13 +677,8 @@ async function report(final = false) {
   // what the simulated run's PF is made of: its closed orders, and the ones still open at its end (marked to market)
   const ss = doc.simSplit ?? {};
   if (Object.keys(ss).length) {
-    const sum = (part) =>
-      Object.values(ss).reduce((t, v) => ({ n: t.n + v[part].n, gp: t.gp + v[part].gp, gl: t.gl + v[part].gl }), {
-        n: 0,
-        gp: 0,
-        gl: 0,
-      });
-    const f = (a) => `${a.n ? profitFactor(a.gp, a.gl).toFixed(2) : "–"} (${a.n})`;
+    const sum = (part) => mergeReturnEvidence(Object.values(ss).map((v) => v[part]));
+    const f = (a) => `${returnEvidenceText(a)} (${a.n})`;
     process.stderr.write(
       `  simulated run: closed PF ${f(sum("closed"))} · open at its end PF ${f(sum("open"))} · per range closed / open: ${Object.entries(
         ss,
@@ -701,10 +692,10 @@ async function report(final = false) {
       .filter(([, a]) => a.n > 0)
       .map(
         ([k, a]) =>
-          `${k} ${a.n} PF ${a.pf.toFixed(2)} $${a.usd.toFixed(2)}${a.entryDelayMin ? ` (entry +${Math.round(a.entryDelayMin.median)} min)` : ""}`,
+          `${k} ${a.n} PF ${returnEvidenceText(a)} $${a.usd === null ? "unavailable" : a.usd.toFixed(2)}${a.entryDelayMin ? ` (entry +${Math.round(a.entryDelayMin.median)} min)` : ""}`,
       )
       .join(" · ") || "none"} · paper sample ${Object.entries(paper)
-      .map(([k, a]) => `${k} ${a.n} PF ${a.pf.toFixed(2)}`)
+      .map(([k, a]) => `${k} ${a.n} PF ${returnEvidenceText(a)}`)
       .join(" · ") || "none"} · exchange ${
       exchange && !exchange.error
         ? Object.entries(exchange.byKind ?? {})
@@ -720,11 +711,12 @@ async function report(final = false) {
             .join(" · ")}`
         : "";
     })()}${(() => {
-      // the sets per range after the Base PF evaluation (passed / evaluated, median PF of the passed)
+      // per range after the Base PF evaluation: the pooled PF of the passed pairs, then passed / evaluated
       const rows = (rt.status.baseByRange ?? []).filter((r) => r.enabled);
+      const pfOf = (r) => r.pfPassedPooled ?? r.pfPassedMedian;
       return rows.length
         ? ` · Base ${rows
-            .map((r) => `${r.range} ${r.passed}/${r.evaluated}${r.pfPassedMedian != null ? ` PF ${r.pfPassedMedian.toFixed(2)}` : ""}`)
+            .map((r) => `${r.range}${pfOf(r) != null ? ` PF ${Number.isFinite(pfOf(r)) ? pfOf(r).toFixed(2) : "∞"}` : ""} (${r.passed}/${r.evaluated} pairs)`)
             .join(" · ")}`
         : "";
     })()}${final ? " (final)" : ""}\n`,
@@ -776,7 +768,7 @@ const stop = async (why) => {
         await new Promise((r) => setTimeout(r, 5000 * (i + 1)));
       }
     }
-  // a stop at the loss limit ends that loss budget: the next launch counts from here (lossBaseline)
+  // a stop at the loss limit is recorded for the operator; the next session counts its own loss from its own start
   if (why === "max loss")
     try {
       writeFileSync(startFile, JSON.stringify({ ...startRec, t0, lossStopAt: Date.now() }));
@@ -805,17 +797,53 @@ if (typeof savedPause === "string" && savedPause.startsWith("loss limit")) {
 let lossBusy = false;
 let lossLastAt = 0;
 const hasLossLimit = maxLoss > 0 || maxLossPct > 0;
+// fails closed: while the limit cannot be checked (the session wallet unread, no successful check for 5 min) opening is
+// paused — positions stay managed — and the next successful check lifts it (bug hunt, 13 Oct: a 0 wallet read disarmed
+// the limit for the whole session, and a failing history read only logged)
+let lossOkAt = Date.now();
+const applyLossGuard = () => {
+  const g = lossGuard({ fixed: maxLoss, pct: maxLossPct, wallet: sessionWallet, lastOkAt: lossOkAt, now: Date.now() });
+  if (g && (!lossPaused || (isLossGuardPause(lossPaused) && lossPaused !== g))) {
+    lossPaused = g;
+    rt.updateSettings({ live: { ...rt.settings.live, openPaused: lossPaused } });
+    rt.db.event("warn", `live test ${name}: ${g} — opening paused, positions still managed`);
+    process.stderr.write(`${name}: ${g} — opening paused, positions still managed\n`);
+  } else if (!g && isLossGuardPause(lossPaused)) {
+    rt.db.event("info", `live test ${name}: loss limit checked again — opening resumes`);
+    lossPaused = null;
+    rt.updateSettings({ live: { ...rt.settings.live, openPaused: false } });
+  }
+};
+if (hasLossLimit) applyLossGuard();
 if (hasLossLimit || mainnet)
   lossTimer = setInterval(async () => {
-    if (lossBusy || (!hasLossLimit && Date.now() - lossLastAt < 300_000)) return;
+    // a check still retrying (a rate-limited history read waits for minutes): the guard still runs every minute
+    if (lossBusy) {
+      if (hasLossLimit) applyLossGuard();
+      return;
+    }
+    if (!hasLossLimit && Date.now() - lossLastAt < 300_000) return;
     lossBusy = true;
     lossLastAt = Date.now();
     try {
       const network = mainnet ? "mainnet" : "testnet";
+      // the session's starting balance, read once (until it is read): the percentage limit is a share of it
+      if (maxLossPct > 0 && sessionWallet === null)
+        try {
+          sessionWallet = sessionWalletOf((await bxm.fetchAccount(network, conn))?.wallet);
+          if (sessionWallet !== null)
+            rt.db.event(
+              "info",
+              `live test ${name}: loss limit ${maxLossPct} % of this session's starting wallet ${sessionWallet.toFixed(2)} USDT (counted from ${new Date(lossT0).toISOString()})`,
+            );
+        } catch (e) {
+          process.stderr.write(`${name}: session wallet unreadable for the loss limit (${e instanceof Error ? e.message : e})\n`);
+        }
       // nothing sent yet: nothing to lose, no exchange reads (they share the account's rate limit)
       const sent = rt.db.get("SELECT COUNT(*) AS n FROM live_orders WHERE status IN ('ok', 'pending')")?.n ?? 0;
       if (!sent) {
         lastLoss = { at: Date.now(), realized: 0, open: 0, openKnown: true, net: 0, idle: true };
+        lossOkAt = Date.now();
         return;
       }
       // the account's order history once, then only what is new (10 min overlap for late updates)
@@ -823,9 +851,27 @@ if (hasLossLimit || mainnet)
       const now = Date.now();
       // only this desk's own orders are kept (the account carries every other system's orders too)
       for (const o of await history(network, conn, from, now))
-        if (String(o.clientOrderId ?? "").toUpperCase().startsWith(tag)) lossSeen.orders.set(String(o.orderId), o);
+        if (String(o.clientOrderId ?? "").toUpperCase().startsWith(tag)) lossSeen.orders.set(orderIdentity(o), o);
       lossSeen.at = now;
-      const r = await ownResults({ conn, tag, from: lossT0 - 60_000, all: [...lossSeen.orders.values()] });
+      // ownership: an own fill that took out more than this desk held on its (symbol, side) → HALT (once)
+      if (!haltWritten) {
+        const br = ownershipBreaches([...lossSeen.orders.values()], tag, { since: procT0, startOwn: ownAtStart });
+        if (br.length) {
+          haltWritten = true;
+          const why = `ownership: ${br.length} own fill(s) took out more than this desk held — ${br
+            .slice(0, 3)
+            .map((b) => `${b.key} ${b.coid} over by ${b.over}`)
+            .join("; ")}`;
+          try {
+            writeHalt(haltFile, why);
+          } catch (e) {
+            process.stderr.write(`${name}: HALT not written to ${haltFile} (${e instanceof Error ? e.message : e})\n`);
+          }
+          rt.db.event("warn", `live test ${name}: ${why} — ${haltFile} written, the supervisor will not relaunch`);
+          process.stderr.write(`${name}: ${why} — ${haltFile} written, the supervisor will not relaunch\n`);
+        }
+      }
+      const r = await ownResults({ conn, tag, from: lossT0 - 60_000, modelCost: rt.settings.cost, all: [...lossSeen.orders.values()] });
       const realized = r.positions.reduce((a, p) => a + p.net, 0);
       // positions only (the open-orders endpoint is the one rate limits pause); unreadable → the realized loss
       // alone still trips the limit
@@ -842,24 +888,19 @@ if (hasLossLimit || mainnet)
         openKnown = false;
         process.stderr.write(`${name}: open P&L unreadable (${e instanceof Error ? e.message : e}) — realized only\n`);
       }
-      // the limit of this check: fixed, or a share of the wallet balance read now (it follows the account)
-      let wallet = null;
-      if (maxLossPct > 0)
-        try {
-          wallet = (await bxm.fetchAccount(network, conn))?.wallet ?? null;
-        } catch (e) {
-          process.stderr.write(`${name}: wallet unreadable for the loss limit (${e instanceof Error ? e.message : e})\n`);
-        }
+      // the limit of this check: fixed, or a share of the SESSION's starting wallet — a balance read later does not move it
+      const wallet = sessionWallet;
       const lim = { fixed: maxLoss, pct: maxLossPct, wallet };
       const limit = lossLimitUsd(lim);
       lastLoss = { at: Date.now(), realized, open, openKnown, net: realized + open, paused: lossPaused, limit, wallet };
       const net = realized + open;
+      lossOkAt = Date.now();
       if (!(limit > 0)) {
         // no loss limit (or a balance-relative one with the balance unread and no fixed part): measured only
       } else if (net <= -limit && onMaxLoss === "stop") {
         rt.db.event("warn", `live test ${name}: own net ${net.toFixed(2)} USDT ≤ -${lossLimitText(lim)} — stopping`);
         await stop("max loss");
-      } else if (net <= -limit && !lossPaused) {
+      } else if (net <= -limit && (!lossPaused || isLossGuardPause(lossPaused))) {
         lossPaused = `loss limit: own net ${net.toFixed(2)} USDT ≤ -${lossLimitText(lim)}`;
         rt.updateSettings({ live: { ...rt.settings.live, openPaused: lossPaused } });
         rt.db.event("warn", `live test ${name}: ${lossPaused} — opening paused, positions still managed`);
@@ -874,6 +915,7 @@ if (hasLossLimit || mainnet)
       process.stderr.write(`${name}: loss check failed (${e instanceof Error ? e.message : e})\n`);
     } finally {
       lossBusy = false;
+      if (hasLossLimit) applyLossGuard();
     }
   }, 60_000);
 if (hours > 0) setTimeout(() => stop("time"), hours * H).unref?.();

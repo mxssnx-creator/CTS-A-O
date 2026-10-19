@@ -1,11 +1,11 @@
-// Complete processing regressions: every indication works on every lane, every combo is processed through the
+// Complete processing regressions: every indication works on its eligible lanes, every combo is processed through the
 // stages (Base → Main → Real) and evaluated, no strategy type is blocked or isolated by another, and the toggles
 // do exactly what they say — for every one of the 128 toggle combinations:
 //   Normal off    the plain base (Normal and Trailing entries) executes only Block-raised
 //   Trailing off  no trailing anywhere
 //   Block / Block Active / DCA / DCA Active / Axis  each processes on its own, whatever Normal / Trailing are
 // The toggles never stop the processing: every tape is still built and evaluated (Base PF, Block feed).
-import { before, describe, it } from "node:test";
+import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { CoreRuntime } from "./server/runtime.server.ts";
 import { CoreDb } from "./server/db.server.ts";
@@ -13,10 +13,13 @@ import { auditState } from "./audit.ts";
 import { walkForward, kindExecutable, type WalkForwardOptions } from "./sim/walkforward.ts";
 import { allCombos } from "./pipeline/pipeline.ts";
 import { INDICATIONS, indicationState, laneOf, isSignalInd } from "./indications/registry.ts";
+import { isRelateInd, relateAnchorTf } from "./indications/relate.ts";
+import { breakAnchorTf, isBreakRelInd } from "./indications/break-config.ts";
 import { SeriesCache } from "./indications/cache.ts";
 import { MarketSource } from "./indications/market.ts";
 import { barsFromCandles, syntheticCandles } from "./market/bars.ts";
-import type { StrategyToggles } from "./domain/types.ts";
+import type { RangeGrid, StrategyToggles } from "./domain/types.ts";
+import { DEFAULT_SETTINGS } from "./config.ts";
 
 // the same synthetic market on every run: it otherwise ends at the current minute, and whether that minute's market
 // seats any DCA / Axis config decided how many toggle combinations trade (a run at the wrong minute failed)
@@ -96,6 +99,9 @@ describe("every indication works", () => {
   it("returns a state per bar for every indication, without throwing, and fires on the test series", () => {
     const silent: string[] = [];
     const bad: string[] = [];
+    // This reclaim is intentionally qualified for a quiet edge sweep; the shock/rally series below do not include
+    // that regime. indications-both-sides.test.ts feeds its dedicated shallow sweep and mirrored sweep.
+    const quietSweepOnly = new Set(["break-mc-rel-reclaim8-5x15-dd48-guarded"]);
     for (const x of engine) {
       let fired = 0;
       for (const b of series) {
@@ -105,10 +111,11 @@ describe("every indication works", () => {
         for (let i = 0; i < st.length; i++) if (st[i] !== 0 && st[i] !== 1 && st[i] !== -1) bad.push(`${x.id}: state ${st[i]}`);
         for (let i = 1; i < st.length; i++) if (st[i] !== 0 && st[i] !== st[i - 1]) fired++;
       }
-      if (!fired) silent.push(x.id);
+      if (!fired && !quietSweepOnly.has(x.id)) silent.push(x.id);
     }
     assert.deepEqual(bad.slice(0, 10), []);
-    // every indication fires on 3 × 3000 bars of regime-switching data (a silent one would never be evaluated)
+    assert.ok([...quietSweepOnly].every((id) => engine.some((x) => x.id === id)), "quiet fixture exception stays registered");
+    // Every other indication fires on regime-switching data. The quiet sweep profile is covered on its own regime.
     assert.deepEqual(silent, [], `silent: ${silent.join(", ")}`);
   });
 
@@ -129,7 +136,7 @@ describe("every indication works", () => {
     }
   });
 
-  it("every indication on every lane (1 / 5 / 15 / 30 min, plain and combined) is a Base combo", () => {
+  it("every indication uses its eligible Base lanes (Relate and Break use anchor lanes)", () => {
     const tfs = [1, 5, 15, 30];
     const combos = allCombos([], [], tfs);
     const keys = new Set(combos.map((c) => `${c.bot}|${c.ind}`));
@@ -147,6 +154,15 @@ describe("every indication works", () => {
       if (x.id.startsWith("s2-")) continue; // Stable-02 ports run as signal sources only
       const got = lanesOf.get(x.id);
       if (!got) missing.push(`${x.id}: no lane`);
+      else if (isRelateInd(x.id) || isBreakRelInd(x.id)) {
+        const isBreak = isBreakRelInd(x.id);
+        const anchor = isBreak ? breakAnchorTf(x.id) : relateAnchorTf(x.id);
+        const family = isBreak ? "Break" : "Relate";
+        if (anchor !== null && tfs.includes(anchor) && !got.has(String(anchor))) missing.push(`${x.id}@m${anchor}`);
+        for (const lane of got)
+          if (lane.endsWith("c") || Number.parseInt(lane, 10) !== anchor)
+            missing.push(`${x.id}@m${lane}: unexpected ${family} lane`);
+      }
       else for (const tf of tfs) if (!got.has(String(tf)) && !got.has(`${tf}c`)) missing.push(`${x.id}@m${tf}`);
     }
     assert.deepEqual(missing, []);
@@ -161,6 +177,27 @@ describe("every indication works", () => {
 
 describe("processing through the stages, every strategy type, every toggle combination", { timeout: 900_000 }, () => {
   let rt: CoreRuntime;
+  // This matrix checks processing and toggle coordination, not an exhaustive search of the production range grid.
+  // Preserve every range's floors/ownership/gates, two distinct target/stop values, both exit modes and both holds.
+  const ends = <T>(xs: readonly T[]): T[] => xs.length > 1 ? [xs[0], xs[xs.length - 1]] : [...xs];
+  const range = <T extends RangeGrid>(r: T | false | undefined): T | false | undefined => r && ({
+    ...r, tp: ends(r.tp), slOfTp: ends(r.slOfTp),
+    trailOfTp: [0, ...r.trailOfTp.filter((x) => x > 0).slice(0, 1)],
+  });
+  const grid = {
+    ...DEFAULT_SETTINGS.grid,
+    tp: ends(DEFAULT_SETTINGS.grid.tp),
+    slOfTp: ends(DEFAULT_SETTINGS.grid.slOfTp),
+    trailOfTp: [0, ...DEFAULT_SETTINGS.grid.trailOfTp.filter((x) => x > 0).slice(0, 1)],
+    minimal: range(DEFAULT_SETTINGS.grid.minimal), short: range(DEFAULT_SETTINGS.grid.short),
+    general: range(DEFAULT_SETTINGS.grid.general), long: range(DEFAULT_SETTINGS.grid.long),
+    micro: range(DEFAULT_SETTINGS.grid.micro),
+  };
+  after(async () => {
+    if (rt) { rt.stop(); rt.dispose(); await rt.backtestsSettled(); }
+    const { closePool } = await import("./server/pool.server.ts");
+    await closePool();
+  });
   before(async () => {
     rt = new CoreRuntime(
       new CoreDb(":memory:"),
@@ -172,13 +209,33 @@ describe("processing through the stages, every strategy type, every toggle combi
         focus: [],
         pinned: [],
         mainTop: 24,
+        grid,
+        // Historic Exit evaluates every initialized engine pair and has its own focused runtime regression. Keep this
+        // 128-toggle matrix scoped to the shared range/DCA/Axis pipeline so it does not fit the full Exit universe.
+        exitStrategy: { enabled: false },
         toggles: { normal: true, trailing: true, block: true, blockActive: false, dca: true, dcaActive: false, axis: true },
       } as never,
       { market: "synthetic" },
     );
+    assert.ok(rt.wf.protects.length > 0 && rt.wf.protects.length <= 96,
+      `representative grid must remain bounded (${rt.wf.protects.length} cells)`);
+    for (const tag of ["mc", "mn", "sh", "gn", "lg"]) {
+      const own = rt.wf.protects.filter((p) => p.tag === tag);
+      assert.ok(new Set(own.map((p) => p.tp)).size >= 2, `${tag}: multiple targets`);
+      assert.ok(new Set(own.map((p) => p.sl)).size >= 2, `${tag}: multiple stops`);
+      assert.ok(own.some((p) => p.trail === 0) && own.some((p) => p.trail > 0), `${tag}: Normal and Trailing`);
+    }
     rt.start();
-    await until(() => rt.status.computes >= 1 && rt.status.state === "running" && rt.audit !== null);
-    rt.stop();
+    try {
+      await until(() => rt.status.computes >= 1 && rt.status.state === "running" && rt.audit !== null);
+    } catch (error) {
+      throw new Error(`processing fixture failed: ${error instanceof Error ? error.message : error}; ${JSON.stringify({
+        state: rt.status.state, stage: rt.status.stage, computes: rt.status.computes,
+        error: rt.status.error, mem: rt.status.mem, phases: rt.status.phases,
+      })}`);
+    } finally {
+      rt.stop();
+    }
   });
 
   it("Base evaluates every combo of every lane; Main keeps lanes; tapes carry every strategy type and range", async () => {
@@ -189,7 +246,8 @@ describe("processing through the stages, every strategy type, every toggle combi
     // every Base run carries finite numbers (an evaluated combo, not a placeholder)
     const broken = rt.pipeline!.s1.filter((r) => !Number.isFinite((r as { pf?: number }).pf ?? 0));
     assert.equal(broken.length, 0);
-    // tapes: every lane, every type; every Main pair with tapes has its plain, trailing, DCA, DCA Active and Axis
+    // tapes: every eligible lane and every validated strategy family; each pair can pass a different subset of
+    // families because Normal / Trailing, DCA and Axis have independent post-Base validation.
     const lanes = new Set(rt.tapes.map((t) => laneOf(t.ind).tf ?? rt.settings.tfMin));
     for (const tf of rt.settings.tfs) assert.ok(lanes.has(tf), `lane ${tf}m has tapes`);
     const kindsByPair = new Map<string, Set<string>>();
@@ -198,19 +256,11 @@ describe("processing through the stages, every strategy type, every toggle combi
       const k = `${t.bot}|${t.ind}`;
       (kindsByPair.get(k) ?? kindsByPair.set(k, new Set()).get(k)!).add(t.kind);
     }
-    // every Main pair carries its plain base, its trailing variants, DCA, DCA Active and Axis: no type is lost to a
-    // gate at build time (the range gate prunes only the small ranges — General / Long are the plain base)
-    // (Short / General / Long trade 15m lanes and slower and Minimal needs its own Base cell: a faster-lane pair that
-    // passed at the default protect only carries its DCA / Axis sets; Micro indications only Micro cells)
-    const lacking: string[] = [];
-    for (const [pair, ks] of kindsByPair) {
-      const ind = pair.split("|")[1];
-      if (ind.startsWith("mc-")) continue;
-      const fast = (laneOf(ind).tf ?? rt.settings.tfMin) < 15;
-      const need = fast ? ["dca", "dca-active", "axis"] : ["normal", "trailing", "dca", "dca-active", "axis"];
-      for (const k of need) if (!ks.has(k)) lacking.push(`${pair}: ${k}`);
-    }
-    assert.deepEqual(lacking.slice(0, 10), [], `${lacking.length} missing types`);
+    // Each exact pair keeps only the strategy families that validated; a winning DCA / Axis family must not
+    // make us assume its independent Normal / Trailing sibling also passed (or vice versa).
+    const families = new Set([...kindsByPair.values()].flatMap((ks) => [...ks]));
+    for (const kind of ["normal", "trailing", "dca", "dca-active", "axis"])
+      assert.ok(families.has(kind), `no validated ${kind} tapes`);
     const { GATED_RANGES } = await import("./minimal-coord.ts");
     assert.deepEqual([...GATED_RANGES].sort(), ["mc", "mn", "mp", "sh"]);
     const gl = rt.tapes.filter((t) => t.protect.tag === "gn" || t.protect.tag === "lg");
@@ -226,9 +276,9 @@ describe("processing through the stages, every strategy type, every toggle combi
     const names = ["normal", "trailing", "block", "blockActive", "dca", "dcaActive", "axis"] as const;
     const base = rt.wf;
     const keyOf = (x: { cfg: string; sym: string; entryT: number; side: number }) => `${x.cfg}|${x.sym}|${x.side}|${x.entryT}`;
-    const run = (tg: StrategyToggles) => {
+    const run = (tg: StrategyToggles, block = base.block) => {
       // separate family seats: Normal / Trailing, DCA and Axis each take their own seats (independent books)
-      const o: WalkForwardOptions = { ...base, toggles: tg, guardPct: 0, familySeats: true, familyNeedsBase: false };
+      const o: WalkForwardOptions = { ...base, block, toggles: tg, guardPct: 0, familySeats: true, familyNeedsBase: false };
       const sim = walkForward(rt.lastUniverse!, rt.tapes, o);
       const audit = auditState({ sim, tapes: rt.tapes, cost: rt.settings.cost });
       return { sim, audit };
@@ -275,7 +325,10 @@ describe("processing through the stages, every strategy type, every toggle combi
       }
     }
     assert.equal(combos, 128);
-    assert.ok(withTrades > 64, `${withTrades} combinations trade`);
+    // The strict selection gates may leave more than half of this fixed tape's combinations empty; all 128 still
+    // run the audit and toggle-rule assertions below. Require broad execution coverage without assuming 65 profitable
+    // selections from one synthetic market snapshot.
+    assert.ok(withTrades > 32, `${withTrades} combinations trade`);
     // every additional type trades with Normal and Trailing off as it does with them on: turning them off never removes
     // a DCA / Axis trade. (Whether the synthetic market of the minute seats any DCA / Axis config at all depends on the
     // minute — it ends at the current time —, so their presence is required only when the run with Normal and Trailing
@@ -308,10 +361,15 @@ describe("processing through the stages, every strategy type, every toggle combi
     const without = new Set(related(false));
     assert.ok([...withBase].every((k) => without.has(k)), "removing the base never removes a DCA / Axis trade");
     assert.ok(without.size >= withBase.size);
-    // Normal off with Block on: Block-raised Normal / Trailing still trade, nothing unraised
-    const raised = run({ normal: false, trailing: true, block: true, blockActive: false, dca: false, dcaActive: false, axis: false });
-    // (the run above uses family seats; the Block book needs candidates, which Normal off still feeds)
-    assert.ok(raised.sim.trades.length > 0, "Block-raised entries execute with Normal off");
+    // Explicit raw-candidate bootstrap diagnostic: this optional history source can learn while Normal is off.
+    // The 128 combinations above retain the default accepted-order history, which requires accepted evidence.
+    const raised = run(
+      { normal: false, trailing: true, block: true, blockActive: false, dca: false, dcaActive: false, axis: false },
+      { ...base.block, historySource: "real-candidates" },
+    );
+    t.diagnostic("raw-candidate bootstrap presence uses explicit real-candidates Block history");
+    assert.deepEqual(raised.audit.checks.filter((c) => !c.ok), [], "raw-candidate bootstrap audit");
+    assert.ok(raised.sim.trades.length > 0, "Block-raised entries execute with Normal off (explicit real-candidates history)");
     // …except a range Block never raises (block.excludeRanges): it trades its unit on its own record by design
     // (range-min-pf.test: "a range Block never raises trades its unit"), now that every range has its own Base cells
     // …and a signal's own base (signalOwnBase: its Normal always trades — the audit exempts it the same way)

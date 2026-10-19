@@ -5,7 +5,13 @@
       "Bash(node --experimental-strip-types scripts/core-live-diff.mjs *)",
       "Bash(git add docs/sims/sim24h-2026-10-06/x01-desk.json)",
       "Bash(git commit *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+
+      "Bash(node --experimental-strip-types --no-warnings scripts/x01-account-check.mjs *)",
+      "Bash(docs/live-coordination/start-x01-signals.sh *)",
+      "Bash(docs/live-coordination/x01-status.sh *)",
+      "Bash(docs/live-coordination/x01-stop.sh)",
+      "Bash(docs/live-coordination/launch.sh restart x01)"
     ]
   }
 }

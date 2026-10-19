@@ -12,6 +12,7 @@ import {
 } from "./walkforward.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import { DEFAULT_SIGNALS } from "../signal-config.ts";
+import { sigActiveKey } from "../signals.ts";
 import type { Trade } from "../domain/types.ts";
 import {
   effectOf,
@@ -114,7 +115,7 @@ const CASES: Array<{ name: string; base: WalkForwardOptions; ctx: VariantContext
         hedge: true,
       },
       signalRank: DEFAULT_SIGNALS,
-      signalActive: new Set([`follow|sig-ema-cross-s@m15|${SYM}|1`]),
+      signalActive: new Set([sigActiveKey("follow", "sig-ema-cross-s@m15", SYM, 1, "normal", SIG)]),
       engineSideAccept: { enabled: true, minPf: 1.05, hours: 3, minTrades: 30 },
       signalAccept: { enabled: true, minPf: 1.3, hours: 48, minTrades: 6 },
       block: { ...code.block, mode: "additive", steps: 4 },
@@ -229,7 +230,8 @@ describe("walk-forward variants: every row runs or says why", () => {
       "block:mode-additive",
       "block:mode-overall",
       "block:steps",
-      "gate:lastN-0",
+      // the entry last-N is off by default (operator, 13 Oct): its rows are the windows, e.g. the former 15
+      "gate:lastN-15",
       "gate:validLastN-0",
       "gate:signalLastN-0",
       "gate:symGate-veto",

@@ -8,8 +8,8 @@ export const JOB_STAGES: ReadonlyArray<readonly [stage: string, lo: number, hi: 
   ["Main", 0.45, 0.5],
   ["Tapes", 0.5, 0.72],
   ["Signals", 0.72, 0.8],
-  ["Real", 0.8, 0.9],
-  ["Compare", 0.9, 0.95],
+  ["Real", 0.8, 0.95],
+  // (the preset comparison runs after the job, once its book is out: status.compare)
   ["Paper", 0.95, 1],
 ];
 

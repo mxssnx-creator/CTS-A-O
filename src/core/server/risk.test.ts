@@ -1,6 +1,6 @@
 // Stop-risk budget and the equity-relative position cap: what every stop hit at once would cost stays within
-// maxRiskPct × equity (targets scaled by one factor, then the weakest new ones left out when positions at the
-// exchange minimum cannot shrink; held positions never dropped).
+// maxRiskPct × equity (targets scaled by one factor; positions at the exchange minimum cannot shrink, so the new ones
+// whose minimum does not fit are left out, in rank order; held positions never dropped).
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { controlTargets, positionCapFor, scaleToRisk, type ControlTarget } from "./live.ts";
@@ -128,7 +128,7 @@ describe("planned loss distance (riskDist)", () => {
     assert.ok(Math.abs((targets[0].riskDist ?? 0) - 0.052) < 1e-9);
   });
 
-  it("a stop trailed past the entry risks nothing (floored at the minimum stop)", () => {
+  it("an explicitly zero-loss contribution still keeps the configured minimum risk floor", () => {
     const { targets } = controlTargets([lane(1, 0.03, 0)], px, cs);
     assert.equal(targets[0].riskDist, 0.01);
     assert.ok(Math.abs(targets[0].stopDist - 0.036) < 1e-9);

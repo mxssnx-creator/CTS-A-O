@@ -67,7 +67,7 @@ const pc = (x) => `${(x * 100).toFixed(2)}%`;
 const md = [
   `# Out-of-time validation — ${tf}m`,
   "",
-  `${U.bars.length} symbols · ${new Date(U.startT).toISOString().slice(0, 10)} → ${new Date(U.nowT).toISOString().slice(0, 10)} · configs fixed by the research on the train half only · cost 0.2% round trip`,
+  `${U.bars.length} symbols · ${new Date(U.startT).toISOString().slice(0, 10)} → ${new Date(U.nowT).toISOString().slice(0, 10)} · configs fixed by the research on the train half only · cost ${(RT_COST * 100).toFixed(2)}% round trip`,
   "",
 ];
 for (const r of rows) {

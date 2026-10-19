@@ -1,16 +1,18 @@
 /**
  * Minimal Coord.
- * Position-cost ranges, independent of the wide protect grid. TP in multiples of the 0.2 % round-trip cost:
+ * Position-cost ranges, independent of the wide protect grid. TP multiples use the named 0.2 % reference basis
+ * (kept stable across changes to the modeled execution cost):
  *   Minimal  4–8×   (0.8–1.6 %, step 1×)
  *   Short    8–14×  (1.6–2.8 %, step 1×)
  *   General  14–22× (2.8–4.4 %, step 2×)
  *   Long     22–32× (4.4–6.4 %, step 2×)
  * A boundary multiple (8, 14, 22) belongs to the lower range, so no cell is computed twice.
- * Micro (net 0.1–0.4 % after the position cost: price targets 0.3–0.6 % at the 0.2 % cost) and Minimal plus stay
+ * Micro net targets use that reference basis; their price targets add the configured execution cost. Minimal plus stay
  * optional. Wide targets stay in the main grid.
  */
 import type { Gates, MicroGrid, MinimalGrid, ProtectGridSpec, RangeMinPfKey, RangeTag } from "./domain/types.ts";
 import type { MicroIndRule } from "./indications/micro.ts";
+import { POSITION_COST_RT, RT_COST } from "./model-cost.ts";
 
 export const MINIMAL_COORD = "Minimal Coord.";
 
@@ -28,14 +30,43 @@ export const RANGE_LABEL: Record<RangeTag | "", string> = {
 /** Every range tag, smallest targets first. */
 export const RANGE_TAGS: readonly RangeTag[] = ["mc", "mn", "mp", "sh", "gn", "lg"];
 
+/** Execution volume by target range. The balance-relative default uses neutral volume in every range. */
+export const RANGE_VOLUME_FACTOR_DEFAULTS: Readonly<Record<"wide" | RangeTag, number>> = {
+  wide: 1,
+  mc: 1,
+  mn: 1,
+  mp: 1,
+  sh: 1,
+  gn: 1,
+  lg: 1,
+};
+
+export type RangeVolumeFactors = Partial<Record<"wide" | RangeTag, number>>;
+
+/** Resolved sizing factors for every strategy target range, including the untagged Wide grid. */
+export function rangeVolumeFactorsOf(g?: Partial<ProtectGridSpec> | null): RangeVolumeFactors {
+  const factor = (r: { volumeFactor?: number } | false | undefined, key: "wide" | RangeTag) =>
+    r && typeof r === "object" && r.volumeFactor !== undefined ? r.volumeFactor : RANGE_VOLUME_FACTOR_DEFAULTS[key];
+  const plus = g?.minimalPlus;
+  return {
+    wide: g?.volumeFactor ?? RANGE_VOLUME_FACTOR_DEFAULTS.wide,
+    mc: factor(g?.micro, "mc"),
+    mn: factor(g?.minimal, "mn"),
+    mp: factor(plus === false ? false : plus, "mp"),
+    sh: factor(g?.short, "sh"),
+    gn: factor(g?.general, "gn"),
+    lg: factor(g?.long, "lg"),
+  };
+}
+
 /** Range of a config id ("" = the wide grid). */
 export function rangeOfId(id: string | undefined): RangeTag | "" {
   const m = id ? /\|(mc|mp|mn|sh|gn|lg)(?=\||$)/.exec(id) : null;
   return m ? (m[1] as RangeTag) : "";
 }
 
-/** Round-trip cost these ranges are built on: 0.1% per side. */
-const COST = 0.002;
+/** Fixed historical range-construction basis; changing modeled costs must not silently shrink configured distances. */
+export const RANGE_COST_BASIS = POSITION_COST_RT;
 
 /**
  * One range's settings. The type lives in domain/types.ts as `RangeGrid` + `MicroGrid` so the Settings surface and
@@ -88,17 +119,21 @@ export function rangeMinTfOf(g: {
   return out;
 }
 
-/** Plain plus two trailing distances. Every range keeps both; one trailing config is not a range. */
-export const TRAIL_CONFIGS = [0, 0.5, 0.75] as const;
+/**
+ * Plain plus three trailing distances: a quarter, half and three quarters of the target (operator, 13 Oct: "all TP ×
+ * SL × Trail" in every range). A trail of the whole target is not a config: it arms only when the move reaches the
+ * target, which fills at that bar (trailFree off), so it is the plain cell again.
+ */
+export const TRAIL_CONFIGS = [0, 0.25, 0.5, 0.75] as const;
 
-/** TP multiples of the round-trip cost, lo..hi by step (whole multiples). */
+/** TP multiples of the fixed range-construction basis, lo..hi by step (whole multiples). */
 export const costTps = (lo: number, hi: number, step: number): number[] =>
-  steps(lo, hi, step).map((n) => +(COST * n).toFixed(4));
+  steps(lo, hi, step).map((n) => +(RANGE_COST_BASIS * n).toFixed(4));
 
 /**
- * Minimal: 4–8× cost (0.8–1.6 %), step 1×. Stops 1.5–3× the target (MINIMAL_SL). Both trailing distances; a trailing cell keeps its
- * own stop ratio from 1× (a forced 2× stop made each loss twice the trailed win: 12 h, 3 October, Trailing PF 1.04 →
- * 1.47 and the engine 1.15 → 1.49 with 1×).
+ * Minimal: 4–8× cost (0.8–1.6 %), step 0.5× (13 Oct, was 1×). Stops 1.5–3× the target, step 0.25 (MINIMAL_SL).
+ * Every trailing distance; a trailing cell keeps its own stop ratio from 1× (a forced 2× stop made each loss twice
+ * the trailed win: 12 h, 3 October, Trailing PF 1.04 → 1.47 and the engine 1.15 → 1.49 with 1×).
  */
 /**
  * The minimum stop of EVERY evaluated config (operator, 5 Oct): 0.5 % of price. A tighter stop sits inside the
@@ -114,49 +149,63 @@ export const EVAL_MIN_SL = 0.005;
  * 0.6 % (was 0.5 %) and the trailing floor 0.3 % (was 0.2 %) — so a trailed Minimal position is not stopped by
  * ordinary noise before its 0.8–1.6 % target.
  */
-export const MINIMAL_SL: readonly number[] = [1.5, 2, 2.5, 3];
+export const MINIMAL_SL: readonly number[] = steps(1.5, 3, 0.25);
 export const MINIMAL_RANGE: CoordRange = {
-  tp: costTps(4, 8, 1),
+  volumeFactor: 1,
+  tp: costTps(4, 8, 0.5),
   slOfTp: MINIMAL_SL,
   trailOfTp: TRAIL_CONFIGS,
   trailSlOfTp: 1,
-  minSl: +(COST * 3).toFixed(4),
-  minTrail: +(COST * 1.5).toFixed(4),
+  minSl: +(RANGE_COST_BASIS * 3).toFixed(4),
+  minTrail: +(RANGE_COST_BASIS * 1.5).toFixed(4),
 };
 
-/** Short: 8–14× cost (1.6–2.8 %), step 1× (8× belongs to Minimal). Stops 1–2× the target, trailing cells too. */
+/** Short's stop ratios: 1–2.5× the target, step 0.25 (13 Oct, was 1 / 1.5 / 2). */
+export const SHORT_SL: readonly number[] = steps(1, 2.5, 0.25);
+/** Short: 9–14× cost (1.8–2.8 %), step 1× (8× belongs to Minimal). Stops 1–2.5× the target, trailing cells too. */
 export const SHORT_RANGE: CoordRange = {
+  volumeFactor: 1,
   tp: costTps(9, 14, 1),
-  slOfTp: [1, 1.5, 2],
+  slOfTp: SHORT_SL,
   trailOfTp: TRAIL_CONFIGS,
   trailSlOfTp: 1,
-  minSl: +(COST * 3).toFixed(4),
-  minTrail: +COST.toFixed(4),
-};
-
-/** General: 14–22× cost (2.8–4.4 %), step 2× (14× belongs to Short). Stops 0.5–1× the target. */
-export const GENERAL_RANGE: CoordRange = {
-  tp: costTps(16, 22, 2),
-  slOfTp: [0.5, 0.75, 1],
-  trailOfTp: TRAIL_CONFIGS,
-  trailSlOfTp: 1,
-  minSl: +(COST * 5).toFixed(4),
-  minTrail: +(COST * 2).toFixed(4),
-};
-
-/** Long: 22–32× cost (4.4–6.4 %), step 2× (22× belongs to General). Stops 0.5–1× the target. */
-export const LONG_RANGE: CoordRange = {
-  tp: costTps(24, 32, 2),
-  slOfTp: [0.5, 0.75, 1],
-  trailOfTp: TRAIL_CONFIGS,
-  trailSlOfTp: 1,
-  minSl: +(COST * 8).toFixed(4),
-  minTrail: +(COST * 3).toFixed(4),
+  minSl: +(RANGE_COST_BASIS * 3).toFixed(4),
+  minTrail: +RANGE_COST_BASIS.toFixed(4),
 };
 
 /**
- * Micro: NET targets 0.10–0.40 % after the round-trip position cost (tpNetOfCost), i.e. price targets 0.30–0.60 % at
- * the 0.2 % cost, every stop ratio 1–5× (step 0.25, MICRO_SL's 17 ratios) of the price target, plain and both trailing distances.
+ * General and Long stop ratios (operator, 13 Oct: "SL ratios from 0.25 to 1.5, step 0.25"): 0.25–1.5× the target,
+ * on the plain and the trailing cells alike (trailSlOfTp 0.25: every TP × SL × Trail is a config). The range's stop
+ * floor (minSl) holds the tightest ratios at the floor.
+ */
+export const WIDE_TARGET_SL: readonly number[] = steps(0.25, 1.5, 0.25);
+
+/** General: 15–22× cost (3.0–4.4 %), step 1× (13 Oct, was 16–22 step 2). Stops 0.25–1.5× the target (WIDE_TARGET_SL). */
+export const GENERAL_RANGE: CoordRange = {
+  volumeFactor: 1,
+  tp: costTps(15, 22, 1),
+  slOfTp: WIDE_TARGET_SL,
+  trailOfTp: TRAIL_CONFIGS,
+  trailSlOfTp: 0.25,
+  minSl: +(RANGE_COST_BASIS * 5).toFixed(4),
+  minTrail: +(RANGE_COST_BASIS * 2).toFixed(4),
+};
+
+/** Long: 23–32× cost (4.6–6.4 %), step 1× (13 Oct, was 24–32 step 2). Stops 0.25–1.5× the target (WIDE_TARGET_SL). */
+export const LONG_RANGE: CoordRange = {
+  volumeFactor: 1,
+  tp: costTps(23, 32, 1),
+  slOfTp: WIDE_TARGET_SL,
+  trailOfTp: TRAIL_CONFIGS,
+  trailSlOfTp: 0.25,
+  minSl: +(RANGE_COST_BASIS * 8).toFixed(4),
+  minTrail: +(RANGE_COST_BASIS * 3).toFixed(4),
+};
+
+/**
+ * Micro (operator, 13 Oct: "Micro range 2–5×"): price targets are the reference-basis net target plus configured cost;
+ * the 1–4× reference-basis net targets are 0.2–0.8 %, and default-cost price targets are 0.35–0.95 %. Every stop
+ * ratio is 1–5× (step 0.25, MICRO_SL's 17 ratios) of the price target, plain and both trailing distances.
  * Traded only by the Micro indications (ownInds); the Base PF evaluation decides which cells run. Before (price
  * targets 0.20–0.40 %): no cell above PF 1 — a 0.2 % target nets nothing after the 0.2 % cost, a 0.4 % one needs a
  * win rate above 75 % at a 1× stop, and the one-bar reversal events have no gross edge on the 1m lane. With the net
@@ -164,7 +213,9 @@ export const LONG_RANGE: CoordRange = {
  * still no cell clears PF 1: the best 0.87 (30m, 0.6 % / 3.5×), the Base cell 0.27–0.58 — Base passes no Micro pair,
  * so the range trades nothing until an entry wins 80–90 % of 0.3–0.6 % targets.
  */
-export const MICRO_TP: readonly number[] = [0.001, 0.0015, 0.002, 0.0025, 0.003, 0.0035, 0.004];
+export const MICRO_TP: readonly number[] = costTps(1, 4, 0.5);
+/** The Micro net targets before 13 Oct (price 1.5–3× cost): the settings migration v25 moves a stored copy. */
+export const FORMER_MICRO_TP: readonly number[] = [0.001, 0.0015, 0.002, 0.0025, 0.003, 0.0035, 0.004];
 /**
  * Micro stop ratios: from 1.0 of the PRICE target upward (operator, 5 Oct — "run SL from ratio 1.0 away,
  * additionally to the position cost situation"). The price target already includes the round-trip cost
@@ -173,15 +224,17 @@ export const MICRO_TP: readonly number[] = [0.001, 0.0015, 0.002, 0.0025, 0.003,
  */
 export const MICRO_SL: readonly number[] = steps(1, 5, 0.25);
 export const MICRO_RANGE: CoordRange = {
+  volumeFactor: 1,
   tp: MICRO_TP,
   slOfTp: MICRO_SL,
   trailOfTp: TRAIL_CONFIGS,
   /** Trailing cells keep the stated stop ratio from 1×. */
   trailSlOfTp: 1,
   minSl: EVAL_MIN_SL,
-  minTrail: 0.0005,
+  // at least half the 0.2% PositionCost (13 Oct, with the ¼ trail share); every other range's trail floor is 0.2 % or more
+  minTrail: +(RANGE_COST_BASIS * 0.5).toFixed(4),
   tpNetOfCost: true,
-  /** the stop floor: 0.2 % beyond the round-trip cost (0.4 % at the 0.2 % cost), in place of the blanket 0.5 % */
+  /** the stop floor net of configured cost; at defaults 0.20 % net + 0.15 % cost = 0.35 % price distance */
   minSlNet: 0.002,
 };
 
@@ -189,7 +242,7 @@ export const MICRO_RANGE: CoordRange = {
  * The price target of a Micro cell: with tpNetOfCost (default on) the configured net target plus the round-trip cost
  * (0.1 % net at a 0.2 % cost → 0.3 %), else the configured value.
  */
-export function microPriceTp(tp: number, range: Pick<CoordRange, "tpNetOfCost"> | false | undefined, cost = COST): number {
+export function microPriceTp(tp: number, range: Pick<CoordRange, "tpNetOfCost"> | false | undefined, cost = RT_COST): number {
   const c = Number.isFinite(cost) && cost > 0 ? cost : 0;
   return +(range && range.tpNetOfCost === false ? tp : tp + c).toFixed(6);
 }
@@ -200,7 +253,7 @@ export function microPriceTp(tp: number, range: Pick<CoordRange, "tpNetOfCost"> 
  */
 export function microNetTps(
   range: Pick<CoordRange, "tp" | "minNetOfCost"> | false | undefined,
-  cost = COST,
+  cost = RT_COST,
 ): number[] {
   if (!range) return [];
   const c = Number.isFinite(cost) && cost > 0 ? cost : 0;
@@ -209,7 +262,7 @@ export function microNetTps(
 }
 
 /** "0.30 % (net 0.10 %)" for a Micro price target at this cost; other ranges: "0.30 %". */
-export function rangeTpLabel(tp: number, tag: string | null | undefined, cost = COST): string {
+export function rangeTpLabel(tp: number, tag: string | null | undefined, cost = RT_COST): string {
   const pct = (x: number) => `${(x * 100).toFixed(2)} %`;
   return tag === "mc" ? `${pct(tp)} (net ${pct(tp - cost)})` : pct(tp);
 }
@@ -239,6 +292,8 @@ export function forEachCoord(
     minSl: number,
     minTrail: number,
     tag: CoordTag,
+    /** this range's own evaluation stop floor, in place of the grid-wide floor */
+    slEval?: number,
   ) => void,
 ): void {
   for (const [tag, range] of [
@@ -255,13 +310,27 @@ export function forEachCoord(
       for (const k of range.slOfTp)
         for (const tr of range.trailOfTp)
           for (const h of g.holdH)
-            emit(tp, tr > 0 ? Math.max(k, trailStop) : k, tr, h, minSl, minTrail, tag);
+            emit(tp, tr > 0 ? Math.max(k, trailStop) : k, tr, h, minSl, minTrail, tag, range.minSlEval);
   }
+}
+
+/** Keep normal distance rounding unless it would put a configured hard minimum below its price precision. */
+export function distanceAtFloor(distance: number, minimum: number, digits: number): number {
+  const rounded = +Math.max(distance, minimum).toFixed(digits);
+  // Ordinary binary roundoff is not a missing price quantum; nearest rounding otherwise stays unchanged.
+  if (rounded + Number.EPSILON * Math.max(Math.abs(rounded), minimum) >= minimum) return rounded;
+  const scale = 10 ** digits;
+  return Math.ceil(minimum * scale) / scale;
+}
+
+/** Round an arming distance without letting its actual trailing gap fall below the configured minimum. */
+export function trailAtFloor(activation: number, minTrail: number, step: number, digits: number): number {
+  return distanceAtFloor(activation, minTrail / step, digits);
 }
 
 
 /** Micro's stop floor from `minSlNet`: the net floor plus the round-trip cost (undefined = not set). */
-export function microSlFloor(range: Pick<CoordRange, "minSlNet"> | false | undefined, cost = COST): number | undefined {
+export function microSlFloor(range: Pick<CoordRange, "minSlNet"> | false | undefined, cost = RT_COST): number | undefined {
   if (!range || range.minSlNet == null || !Number.isFinite(range.minSlNet)) return undefined;
   const c = Number.isFinite(cost) && cost > 0 ? cost : 0;
   return +(range.minSlNet + c).toFixed(6);
@@ -283,7 +352,7 @@ export function forEachMicro(
     /** the range's own evaluation stop floor, when it sets one */
     slEval?: number,
   ) => void,
-  cost = COST,
+  cost = RT_COST,
 ): void {
   const range = g.micro;
   if (!range) return;
@@ -298,19 +367,20 @@ export function forEachMicro(
 }
 
 /** 2×–5× position cost, step 0.25. Stops 0.5×–3× in steps of 0.25. Off unless a setting enables it. */
-export const MINIMAL_PLUS_TP = steps(2, 5, 0.25).map((n) => +(COST * n).toFixed(4));
+export const MINIMAL_PLUS_TP = steps(2, 5, 0.25).map((n) => +(RANGE_COST_BASIS * n).toFixed(4));
 export const MINIMAL_PLUS_SL = steps(0.5, 3, 0.25);
 export const MINIMAL_PLUS_TRAIL = TRAIL_CONFIGS;
 /** Trailing cells use a higher stop than the short range (2×): at least 2.5× the target. */
 export const MINIMAL_PLUS_TRAIL_SL = 2.5;
 
 export const MINIMAL_PLUS_RANGE: CoordRange = {
+  volumeFactor: 1,
   tp: MINIMAL_PLUS_TP,
   slOfTp: MINIMAL_PLUS_SL,
   trailOfTp: MINIMAL_PLUS_TRAIL,
   trailSlOfTp: MINIMAL_PLUS_TRAIL_SL,
-  minSl: +(COST * 0.5).toFixed(4),
-  minTrail: +(COST * 0.5).toFixed(4),
+  minSl: +(RANGE_COST_BASIS * 0.5).toFixed(4),
+  minTrail: +(RANGE_COST_BASIS * 0.5).toFixed(4),
 };
 
 export interface MinimalPlusSettings {
@@ -343,11 +413,15 @@ export function plusVariants(enabled: boolean, cells: number, holdN: number): nu
 
 /**
  * Drop plus-range tapes that do not have `lastN` previous closes at `minPf`.
- * When the range is off, every plus-range tape is dropped.
+ * When the range is off, every plus-range tape is dropped. `before`: only closes before it count (the run start — a
+ * gate on the whole tape kept or dropped a config for the whole run on closes from inside the run; bug hunt, 13 Oct).
  */
-export function gateMinimalPlus<T extends { id: string; n: number; gp: ArrayLike<number>; gl: ArrayLike<number> }>(
+export function gateMinimalPlus<
+  T extends { id: string; n: number; gp: ArrayLike<number>; gl: ArrayLike<number>; exitT?: ArrayLike<number> },
+>(
   tapes: readonly T[],
   plus: { enabled?: boolean; lastN?: number; minPf?: number } | false | null | undefined,
+  before?: number,
 ): T[] {
   const on = !!plus && plus.enabled === true;
   if (!on) return tapes.filter((t) => !t.id.includes("|mp"));
@@ -355,13 +429,25 @@ export function gateMinimalPlus<T extends { id: string; n: number; gp: ArrayLike
   const minPf = Math.max(1.05, plus.minPf ?? 1.35);
   return tapes.filter((t) => {
     if (!t.id.includes("|mp")) return true;
-    if (t.n < lastN) return false;
-    const from = t.n - lastN;
-    const gp = t.gp[t.n] - t.gp[from];
-    const gl = t.gl[t.n] - t.gl[from];
+    // the closes before `before` (exit times ascending)
+    let n = t.n;
+    if (before !== undefined && t.exitT) {
+      let lo = 0;
+      let hi = t.n;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (t.exitT[mid] < before) lo = mid + 1;
+        else hi = mid;
+      }
+      n = lo;
+    }
+    if (n < lastN) return false;
+    const from = n - lastN;
+    const gp = t.gp[n] - t.gp[from];
+    const gl = t.gl[n] - t.gl[from];
     const pf = gl > 1e-12 ? gp / gl : gp > 0 ? 99 : 0;
-    const allGl = t.gl[t.n] - t.gl[0];
-    const allGp = t.gp[t.n] - t.gp[0];
+    const allGl = t.gl[n] - t.gl[0];
+    const allGp = t.gp[n] - t.gp[0];
     const allPf = allGl > 1e-12 ? allGp / allGl : allGp > 0 ? 99 : 0;
     // the last window and the whole tape both have to clear: a hot tail on a losing book does not seat
     return pf + 1e-12 >= minPf && allPf + 1e-12 >= minPf;
@@ -414,10 +500,14 @@ const RANGE_MIN_PF_KEY: Readonly<Record<RangeTag, RangeMinPfKey>> = {
  * The stage minimum PF of a config with this range tag: its range's own value (Gates.rangeMinPf, 1.05–3) or the
  * stage minimum. Untagged configs (Wide, the signals) keep the stage minimum.
  */
-export function minPfOf(gates: Pick<Gates, "minPf" | "rangeMinPf">, tag: string | null | undefined): number {
+export function minPfOf(gates: Pick<Gates, "minPf" | "rangeMinPf">, tag: string | null | undefined, ind?: string): number {
   const key = tag ? RANGE_MIN_PF_KEY[tag as RangeTag] : undefined;
   const v = key ? gates.rangeMinPf?.[key] : undefined;
-  return typeof v === "number" && Number.isFinite(v) ? Math.min(3, Math.max(1.05, v)) : gates.minPf;
+  const min = typeof v === "number" && Number.isFinite(v) ? Math.min(3, Math.max(1.05, v)) : gates.minPf;
+  // First-class Tactic, Relate and relational Break configs share a minimum return PF of 1.1 from Base onward.
+  return ind && (ind.startsWith("tactic-") || ind.startsWith("relate-") || ind.startsWith("break-rel-") || ind.startsWith("break-mc-rel-"))
+    ? Math.max(1.1, min)
+    : min;
 }
 
 /**

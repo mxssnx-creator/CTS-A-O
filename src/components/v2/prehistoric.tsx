@@ -1,5 +1,8 @@
 // Progressive prehistoric start: symbols #/#, progress, results of the complete computation before realtime.
 import { prehistPct, progressText } from "@/core/progress";
+import { RANGE_LABEL } from "@/core/minimal-coord";
+import { hasUnitReturnBasis, unitStatsPfText } from "./accounting";
+import { pooledBasePfText, signalProgressCounts } from "./progression";
 import { fmt, pfTone, Pill } from "./ui";
 
 type Any = any;
@@ -11,6 +14,9 @@ const STATE_COLOR: Record<string, string> = {
   queued: "var(--v-text-3)",
   skipped: "var(--v-down)",
 };
+
+/** The Base pass floor in words: a pass also needs net > 0, so a floor of 1 admits PF > 1 only. */
+const baseFloorText = (min: number) => (min > 1 ? `PF ≥ ${min}, net > 0` : "PF > 1 (net > 0)");
 
 export function PrehistoricPanel(props: {
   status: Any;
@@ -37,6 +43,9 @@ export function PrehistoricPanel(props: {
   // overall progress: symbols ready + the running job's share of the batch being computed (prehistPct)
   const pct = prehistPct(p, st);
   const s = p.stats;
+  const knownReturns = hasUnitReturnBasis(s);
+  const signalCounts = signalProgressCounts(st.signals);
+  const perSymbol = new Map<string, Any>((s?.perSymbol ?? []).map((x: Any) => [x.sym, x]));
   const syms = Object.entries(p.symbols as Record<string, Any>).sort(
     (a, b) => (b[1].n ?? 0) - (a[1].n ?? 0),
   );
@@ -103,10 +112,10 @@ export function PrehistoricPanel(props: {
       </div>
       <div className="v2-grid v2-cols-6" style={{ gap: 8 }}>
         <Stat
-          k="PF"
-          v={fmt.pf(s?.pf)}
+          k="Settled model return PF"
+          v={s ? unitStatsPfText(s) : "–"}
           cls={pfTone(s?.pf, props.minPf)}
-          sub={`min ${props.minPf}`}
+          sub={`post-Base accepted records before allocation · min ${props.minPf}`}
         />
         <Stat
           k="DDT"
@@ -128,30 +137,37 @@ export function PrehistoricPanel(props: {
         <Stat k="Symbols trading" v={`${s?.perSymbol?.length ?? 0}`} sub={`of ${p.ready} ready`} />
       </div>
       <div className="v2-grid v2-cols-6" style={{ gap: 8 }}>
-        <Stat k="Base evaluated" v={fmt.num(st.baseEvaluated ?? c.base)} sub="config sets" />
+        <Stat k="Base evaluated" v={fmt.num(st.baseEvaluated ?? c.base)} sub="pairs" />
         <Stat
           k="Base passed"
           v={fmt.num(st.basePassed)}
-          sub={`PF ≥ ${props.baseSetsMinPf ?? props.minPf} · incl. signal pairs`}
+          sub={`${baseFloorText(props.baseSetsMinPf ?? props.minPf)} · engine${st.signals?.representativeBaseGate ? " + gated signals" : ""}`}
         />
-        <Stat k="Main pairs" v={fmt.num(c.main)} sub="promoted" />
+        <Stat k="Main pairs calculated" v={fmt.num(c.main)} sub="includes measurement or held-only pairs; not execution admission" />
         <Stat k="Sets (tapes)" v={fmt.num(c.sets)} sub="protect × strategy" />
         <Stat k="Real" v={fmt.num(c.real)} sub="selected now" />
         <Stat k="Evals · armed" v={`${c.evals} · ${c.armed}`} sub="continuous evals" />
       </div>
+      {s && !knownReturns && <div className="v2-muted">Unit-return basis unavailable for {fmt.num(s.unknownReturns)} closes. All {fmt.num(s.n)} modeled closes remain counted; this is not a zero-return sample.</div>}
+      {st.signals?.enabled && <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
+        Signals: {fmt.num(signalCounts.discovery)} initialized discovery pairs · {fmt.num(signalCounts.representativePassed)} representative pairs passed Base · {fmt.num(signalCounts.requested)} requested protection configurations (effective IDs can merge identical cells).
+        {st.signals.historic && ` Historic Trailing: ${fmt.num(st.signals.historic.qualified)} qualified of ${fmt.num(st.signals.historic.evaluated)} PF-tested; ${fmt.num(st.signals.historic.insufficientEntries)} pairs lacked complete historic entries.`}
+        {st.signals.representativeBaseGate === false ? " Representative Base gating is off for discovery; each full config/type still faces its own admission and execution gates." : " Representative Base gating is on; discovery and execution remain different samples."}
+      </div>}
       {Array.isArray(st.baseByRange) && st.baseByRange.length > 0 && (
         <div style={{ overflowX: "auto" }}>
           <table className="v2-table" style={{ fontSize: "var(--v-fs-sm)" }}>
             <caption style={{ textAlign: "left", fontWeight: 700, padding: "4px 0" }}>
-              Sets per range after the Base PF evaluation
+              Base representatives per range · historical qualification sample, separate from post-Base and owned execution PF
             </caption>
             <thead>
               <tr>
                 <th>Range</th>
+                <th className="v2-num">Pooled Base return PF of passed</th>
                 <th className="v2-num">Passed / evaluated</th>
                 <th className="v2-num">Min PF</th>
-                <th className="v2-num">PF median (all)</th>
-                <th className="v2-num">PF median (passed)</th>
+                <th className="v2-num">PF score median (all)</th>
+                <th className="v2-num">PF score median (passed)</th>
               </tr>
             </thead>
             <tbody>
@@ -172,6 +188,7 @@ export function PrehistoricPanel(props: {
                       ) : null
                     ) : null}
                   </td>
+                  <td className={`v2-num ${pfTone(r.pfPassedPooled, r.minPf)}`}>{pooledBasePfText(r)}</td>
                   <td className="v2-num">
                     {fmt.num(r.passed)} / {fmt.num(r.evaluated)}
                   </td>
@@ -182,18 +199,27 @@ export function PrehistoricPanel(props: {
               ))}
             </tbody>
           </table>
+          <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>Score medians include the engine's no-loss score 4; that score is not a measured finite PF. The pooled column uses the passed representatives' gross return gains and losses.</div>
         </div>
       )}
+      {Array.isArray(st.baseWhy) && st.baseWhy.length > 0 && <div style={{ overflowX: "auto" }}>
+        <table className="v2-table">
+          <caption style={{ textAlign: "left", fontWeight: 700 }}>Base rejection reasons · first gate missed on the current historical sample</caption>
+          <thead><tr><th>Range</th><th className="v2-num">Evaluated</th><th className="v2-num">Passed</th><th className="v2-num">Too few closes</th><th className="v2-num">Nonpositive net</th><th className="v2-num">PF below floor</th><th className="v2-num">Drawdown ratio</th></tr></thead>
+          <tbody>{st.baseWhy.map((r: Any) => <tr key={r.tag}><td>{RANGE_LABEL[r.tag as keyof typeof RANGE_LABEL] ?? r.tag}</td><td className="v2-num">{fmt.num(r.evaluated)}</td><td className="v2-num">{fmt.num(r.passed)}</td><td className="v2-num">{fmt.num(r.first?.closes)}</td><td className="v2-num">{fmt.num(r.first?.net)}</td><td className="v2-num">{fmt.num(r.first?.pf)}</td><td className="v2-num">{fmt.num(r.first?.ddr)}</td></tr>)}</tbody>
+        </table>
+        <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>One first rejection per failed representative, in gate order. These counts do not describe future executed returns or waive any later gate.</div>
+      </div>}
       <details>
         <summary style={{ cursor: "pointer", fontSize: "var(--v-fs-sm)" }}>
           Per symbol ({syms.length})
         </summary>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
-          {syms.map(([sym, v]) => (
+          {syms.map(([sym, state]) => { const v = { ...state, ...perSymbol.get(sym) }; return (
             <span
               key={sym}
               className="v2-pill"
-              title={`${v.state}${v.bars ? ` · ${v.bars} bars` : ""}${v.n ? ` · ${v.n} trades · PF ${fmt.pf(v.pf)}` : ""}`}
+              title={`${v.state}${v.bars ? ` · ${v.bars} bars` : ""}${v.n ? ` · ${v.n} closes · return PF ${unitStatsPfText(v)}` : ""}`}
               style={{ borderColor: STATE_COLOR[v.state] ?? "var(--v-border)" }}
             >
               <span
@@ -209,11 +235,11 @@ export function PrehistoricPanel(props: {
               {sym.replace("-USDT", "")}
               {v.n ? (
                 <span className={pfTone(v.pf, props.minPf)} style={{ marginLeft: 5 }}>
-                  {fmt.pf(v.pf)}·{v.n}
+                  {unitStatsPfText(v)}·{v.n}
                 </span>
               ) : null}
             </span>
-          ))}
+          ); })}
         </div>
       </details>
     </section>

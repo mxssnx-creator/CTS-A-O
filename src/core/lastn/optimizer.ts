@@ -5,7 +5,7 @@
 // N is chosen on the in-sample half; the out-of-sample half reports what that choice would have earned.
 import { LAST_N_GRID } from "../config.ts";
 import type { Gates, LastNResult, LastNRow, Trade } from "../domain/types.ts";
-import { EMPTY_STATS, profitFactor, scoreStats, statsOf } from "../metrics/stats.ts";
+import { ddrFails, EMPTY_STATS, profitFactor, scoreStats, statsOf } from "../metrics/stats.ts";
 
 const H = 3_600_000;
 
@@ -41,9 +41,25 @@ interface Tape {
   netPre: Float64Array;
 }
 
+function cmpText(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+/** Stable order for simultaneous closes; input/worker iteration order must not affect drawdown gates. */
+function compareExit(a: Trade, b: Trade): number {
+  return (
+    a.exitT - b.exitT ||
+    a.entryT - b.entryT ||
+    cmpText(a.cfg, b.cfg) ||
+    cmpText(a.sym, b.sym) ||
+    a.side - b.side ||
+    a.r - b.r
+  );
+}
+
 function buildTape(trades: readonly Trade[]): Tape {
-  const byExit = [...trades].sort((a, b) => a.exitT - b.exitT || a.entryT - b.entryT);
-  const byEntry = [...trades].sort((a, b) => a.entryT - b.entryT || a.exitT - b.exitT);
+  const byExit = [...trades].sort(compareExit);
+  const byEntry = [...trades].sort((a, b) => a.entryT - b.entryT || compareExit(a, b));
   const m = byExit.length;
   const gpPre = new Float64Array(m + 1);
   const glPre = new Float64Array(m + 1);
@@ -64,6 +80,18 @@ function buildTape(trades: readonly Trade[]): Tape {
   return { byExit, byEntry, closedBefore, gpPre, glPre, netPre };
 }
 
+/** Number of closes with exitT <= t in exit-time order. */
+function closedBy(tape: Tape, t: number): number {
+  let lo = 0;
+  let hi = tape.byExit.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (tape.byExit[mid].exitT <= t) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
 /** Gate decision using the N trades closed in exits[0..p). */
 export function gatePasses(tape: Tape, p: number, nN: number, g: Gates, nowT: number): boolean {
   if (p < nN) return false;
@@ -73,7 +101,7 @@ export function gatePasses(tape: Tape, p: number, nN: number, g: Gates, nowT: nu
   const net = tape.netPre[p] - tape.netPre[a];
   if (net <= 0) return false;
   if (profitFactor(gp, gl) < g.minPf) return false;
-  if (g.maxDdr && g.maxDdr > 0) {
+  if (g.maxDdr !== undefined && g.maxDdr !== 0) {
     let cum = 0;
     let peak = 0;
     let mdd = 0;
@@ -82,7 +110,7 @@ export function gatePasses(tape: Tape, p: number, nN: number, g: Gates, nowT: nu
       if (cum > peak) peak = cum;
       else if (peak - cum > mdd) mdd = peak - cum;
     }
-    if (mdd / net > g.maxDdr) return false;
+    if (ddrFails(mdd, net, g.maxDdr)) return false;
   }
   return windowDdt(tape.byExit, a, p, nowT) <= g.maxDdtH;
 }
@@ -101,7 +129,7 @@ function takenStats(tape: Tape, taken: Uint8Array, from: number, to: number) {
           : tr.entryT >= from && tr.exitT <= to;
     if (taken[k] && inWin) sel.push(tr);
   }
-  sel.sort((a, b) => a.exitT - b.exitT);
+  sel.sort(compareExit);
   return statsOf(sel);
 }
 
@@ -193,9 +221,12 @@ export function optimizeLastN(
     oosS.ddt <= g.maxDdtH &&
     isS.net > 0 &&
     isS.pf >= 1;
-  const gateOpen = bestN
-    ? gatePasses(tape, m, bestN, g, nowT)
-    : baseIs.pf >= g.minPf || baseOos.pf >= g.minPf;
+  // The published "gate open now" verdict is an as-of query. The complete tape may contain
+  // closes after nowT (e.g. replay fixtures or a report evaluated at a historical cut), so
+  // using m here would let future outcomes qualify the current gate.
+  const closedAtNow = closedBy(tape, nowT);
+  // N=0 means the optimizer selected the ungated baseline; there is no Last-N condition to close it.
+  const gateOpen = bestN ? gatePasses(tape, closedAtNow, bestN, g, nowT) : true;
   return {
     cfg,
     total: m,
@@ -219,5 +250,5 @@ export function gatedTrades(trades: readonly Trade[], nN: number, g: Gates): Tra
     if (gatePasses(tape, tape.closedBefore[k], nN, g, tape.byEntry[k].entryT))
       out.push(tape.byEntry[k]);
   }
-  return out.sort((a, b) => a.exitT - b.exitT);
+  return out.sort(compareExit);
 }

@@ -1,0 +1,645 @@
+{
+  "schema": "cts-exit-validation-result-v1",
+  "completedAt": "2026-10-17T22:09:54.110Z",
+  "protocolSha256": "d7fbb10e90998d58596f1a8ea8fa284d50a4b6c51cb39fea40fa16cdfdb21491",
+  "classification": "Retrospective reused cached public market candles; no new or unseen market-performance claim",
+  "window": {
+    "indicatorStartT": 1791968400000,
+    "evaluationFromT": 1792227600000,
+    "tradeStartT": 1792249200000,
+    "endT": 1792270800000,
+    "indicatorWarmupH": 72,
+    "preH": 6,
+    "simH": 6,
+    "fitFraction": 0.6
+  },
+  "diagnostics": {
+    "pairs": 16,
+    "noPrehistory": 0,
+    "insufficientEntries": 16,
+    "candidates": 0,
+    "capped": 0,
+    "evaluated": 0,
+    "insufficientTrades": 0,
+    "pfRejected": 0,
+    "ddrRejected": 0,
+    "qualified": 0
+  },
+  "settingsParity": true,
+  "causalFitWithFutureBarsParity": true,
+  "noDuplicateConfigsOrEntries": true,
+  "settled": {
+    "n": 0,
+    "gp": 0,
+    "gl": 0,
+    "netReturnPoints": 0,
+    "exactPf": null,
+    "pfStatus": "empty",
+    "runtimePfScore": 0,
+    "unknownReturns": 0
+  },
+  "endpointMarks": {
+    "n": 0,
+    "gp": 0,
+    "gl": 0,
+    "netReturnPoints": 0,
+    "exactPf": null,
+    "pfStatus": "empty",
+    "runtimePfScore": 0,
+    "unknownReturns": 0
+  },
+  "families": [
+    {
+      "key": "static-sl|1",
+      "independentlyQualifiedConfigs": 0,
+      "seatsQualifiedAtStart": 0,
+      "n": 0,
+      "gp": 0,
+      "gl": 0,
+      "netReturnPoints": 0,
+      "exactPf": null,
+      "pfStatus": "empty",
+      "runtimePfScore": 0,
+      "unknownReturns": 0
+    },
+    {
+      "key": "static-sl|-1",
+      "independentlyQualifiedConfigs": 0,
+      "seatsQualifiedAtStart": 0,
+      "n": 0,
+      "gp": 0,
+      "gl": 0,
+      "netReturnPoints": 0,
+      "exactPf": null,
+      "pfStatus": "empty",
+      "runtimePfScore": 0,
+      "unknownReturns": 0
+    },
+    {
+      "key": "adaptive-sl|1",
+      "independentlyQualifiedConfigs": 0,
+      "seatsQualifiedAtStart": 0,
+      "n": 0,
+      "gp": 0,
+      "gl": 0,
+      "netReturnPoints": 0,
+      "exactPf": null,
+      "pfStatus": "empty",
+      "runtimePfScore": 0,
+      "unknownReturns": 0
+    },
+    {
+      "key": "adaptive-sl|-1",
+      "independentlyQualifiedConfigs": 0,
+      "seatsQualifiedAtStart": 0,
+      "n": 0,
+      "gp": 0,
+      "gl": 0,
+      "netReturnPoints": 0,
+      "exactPf": null,
+      "pfStatus": "empty",
+      "runtimePfScore": 0,
+      "unknownReturns": 0
+    },
+    {
+      "key": "trailing|1",
+      "independentlyQualifiedConfigs": 0,
+      "seatsQualifiedAtStart": 0,
+      "n": 0,
+      "gp": 0,
+      "gl": 0,
+      "netReturnPoints": 0,
+      "exactPf": null,
+      "pfStatus": "empty",
+      "runtimePfScore": 0,
+      "unknownReturns": 0
+    },
+    {
+      "key": "trailing|-1",
+      "independentlyQualifiedConfigs": 0,
+      "seatsQualifiedAtStart": 0,
+      "n": 0,
+      "gp": 0,
+      "gl": 0,
+      "netReturnPoints": 0,
+      "exactPf": null,
+      "pfStatus": "empty",
+      "runtimePfScore": 0,
+      "unknownReturns": 0
+    }
+  ],
+  "hourly": [
+    {
+      "from": 1792249200000,
+      "to": 1792252800000,
+      "n": 0,
+      "gp": 0,
+      "gl": 0,
+      "netReturnPoints": 0,
+      "exactPf": null,
+      "pfStatus": "empty",
+      "runtimePfScore": 0,
+      "unknownReturns": 0,
+      "families": {
+        "static-sl|1": {
+          "n": 0,
+          "gp": 0,
+          "gl": 0,
+          "netReturnPoints": 0,
+          "exactPf": null,
+          "pfStatus": "empty",
+          "runtimePfScore": 0,
+          "unknownReturns": 0
+        },
+        "static-sl|-1": {
+          "n": 0,
+          "gp": 0,
+          "gl": 0,
+          "netReturnPoints": 0,
+          "exactPf": null,
+          "pfStatus": "empty",
+          "runtimePfScore": 0,
+          "unknownReturns": 0
+        },
+        "adaptive-sl|1": {
+          "n": 0,
+          "gp": 0,
+          "gl": 0,
+          "netReturnPoints": 0,
+          "exactPf": null,
+          "pfStatus": "empty",
+          "runtimePfScore": 0,
+          "unknownReturns": 0
+        },
+        "adaptive-sl|-1": {
+          "n": 0,
+          "gp": 0,
+          "gl": 0,
+          "netReturnPoints": 0,
+          "exactPf": null,
+          "pfStatus": "empty",
+          "runtimePfScore": 0,
+          "unknownReturns": 0
+        },
+        "trailing|1": {
+          "n": 0,
+          "gp": 0,
+          "gl": 0,
+          "netReturnPoints": 0,
+          "exactPf": null,
+          "pfStatus": "empty",
+          "runtimePfScore": 0,
+          "unknownReturns": 0
+        },
+        "trailing|-1": {
+          "n": 0,
+          "gp": 0,
+          "gl": 0,
+          "netReturnPoints": 0,
+          "exactPf": null,
+          "pfStatus": "empty",
+          "runtimePfScore": 0,
+          "unknownReturns": 0
+        }
+      }
+    },
+    {
+      "from": 1792252800000,
+      "to": 1792256400000,
+      "n": 0,
+      "gp": 0,
+      "gl": 0,
+      "netReturnPoints": 0,
+      "exactPf": null,
+      "pfStatus": "empty",
+      "runtimePfScore": 0,
+      "unknownReturns": 0,
+      "families": {
+        "static-sl|1": {
+          "n": 0,
+          "gp": 0,
+          "gl": 0,
+          "netReturnPoints": 0,
+          "exactPf": null,
+          "pfStatus": "empty",
+          "runtimePfScore": 0,
+          "unknownReturns": 0
+        },
+        "static-sl|-1": {
+          "n": 0,
+          "gp": 0,
+          "gl": 0,
+          "netReturnPoints": 0,
+          "exactPf": null,
+          "pfStatus": "empty",
+          "runtimePfScore": 0,
+          "unknownReturns": 0
+        },
+        "adaptive-sl|1": {
+          "n": 0,
+          "gp": 0,
+          "gl": 0,
+          "netReturnPoints": 0,
+          "exactPf": null,
+          "pfStatus": "empty",
+          "runtimePfScore": 0,
+          "unknownReturns": 0
+        },
+        "adaptive-sl|-1": {
+          "n": 0,
+          "gp": 0,
+          "gl": 0,
+          "netReturnPoints": 0,
+          "exactPf": null,
+          "pfStatus": "empty",
+          "runtimePfScore": 0,
+          "unknownReturns": 0
+        },
+        "trailing|1": {
+          "n": 0,
+          "gp": 0,
+          "gl": 0,
+          "netReturnPoints": 0,
+          "exactPf": null,
+          "pfStatus": "empty",
+          "runtimePfScore": 0,
+          "unknownReturns": 0
+        },
+        "trailing|-1": {
+          "n": 0,
+          "gp": 0,
+          "gl": 0,
+          "netReturnPoints": 0,
+          "exactPf": null,
+          "pfStatus": "empty",
+          "runtimePfScore": 0,
+          "unknownReturns": 0
+        }
+      }
+    },
+    {
+      "from": 1792256400000,
+      "to": 1792260000000,
+      "n": 0,
+      "gp": 0,
+      "gl": 0,
+      "netReturnPoints": 0,
+      "exactPf": null,
+      "pfStatus": "empty",
+      "runtimePfScore": 0,
+      "unknownReturns": 0,
+      "families": {
+        "static-sl|1": {
+          "n": 0,
+          "gp": 0,
+          "gl": 0,
+          "netReturnPoints": 0,
+          "exactPf": null,
+          "pfStatus": "empty",
+          "runtimePfScore": 0,
+          "unknownReturns": 0
+        },
+        "static-sl|-1": {
+          "n": 0,
+          "gp": 0,
+          "gl": 0,
+          "netReturnPoints": 0,
+          "exactPf": null,
+          "pfStatus": "empty",
+          "runtimePfScore": 0,
+          "unknownReturns": 0
+        },
+        "adaptive-sl|1": {
+          "n": 0,
+          "gp": 0,
+          "gl": 0,
+          "netReturnPoints": 0,
+          "exactPf": null,
+          "pfStatus": "empty",
+          "runtimePfScore": 0,
+          "unknownReturns": 0
+        },
+        "adaptive-sl|-1": {
+          "n": 0,
+          "gp": 0,
+          "gl": 0,
+          "netReturnPoints": 0,
+          "exactPf": null,
+          "pfStatus": "empty",
+          "runtimePfScore": 0,
+          "unknownReturns": 0
+        },
+        "trailing|1": {
+          "n": 0,
+          "gp": 0,
+          "gl": 0,
+          "netReturnPoints": 0,
+          "exactPf": null,
+          "pfStatus": "empty",
+          "runtimePfScore": 0,
+          "unknownReturns": 0
+        },
+        "trailing|-1": {
+          "n": 0,
+          "gp": 0,
+          "gl": 0,
+          "netReturnPoints": 0,
+          "exactPf": null,
+          "pfStatus": "empty",
+          "runtimePfScore": 0,
+          "unknownReturns": 0
+        }
+      }
+    },
+    {
+      "from": 1792260000000,
+      "to": 1792263600000,
+      "n": 0,
+      "gp": 0,
+      "gl": 0,
+      "netReturnPoints": 0,
+      "exactPf": null,
+      "pfStatus": "empty",
+      "runtimePfScore": 0,
+      "unknownReturns": 0,
+      "families": {
+        "static-sl|1": {
+          "n": 0,
+          "gp": 0,
+          "gl": 0,
+          "netReturnPoints": 0,
+          "exactPf": null,
+          "pfStatus": "empty",
+          "runtimePfScore": 0,
+          "unknownReturns": 0
+        },
+        "static-sl|-1": {
+          "n": 0,
+          "gp": 0,
+          "gl": 0,
+          "netReturnPoints": 0,
+          "exactPf": null,
+          "pfStatus": "empty",
+          "runtimePfScore": 0,
+          "unknownReturns": 0
+        },
+        "adaptive-sl|1": {
+          "n": 0,
+          "gp": 0,
+          "gl": 0,
+          "netReturnPoints": 0,
+          "exactPf": null,
+          "pfStatus": "empty",
+          "runtimePfScore": 0,
+          "unknownReturns": 0
+        },
+        "adaptive-sl|-1": {
+          "n": 0,
+          "gp": 0,
+          "gl": 0,
+          "netReturnPoints": 0,
+          "exactPf": null,
+          "pfStatus": "empty",
+          "runtimePfScore": 0,
+          "unknownReturns": 0
+        },
+        "trailing|1": {
+          "n": 0,
+          "gp": 0,
+          "gl": 0,
+          "netReturnPoints": 0,
+          "exactPf": null,
+          "pfStatus": "empty",
+          "runtimePfScore": 0,
+          "unknownReturns": 0
+        },
+        "trailing|-1": {
+          "n": 0,
+          "gp": 0,
+          "gl": 0,
+          "netReturnPoints": 0,
+          "exactPf": null,
+          "pfStatus": "empty",
+          "runtimePfScore": 0,
+          "unknownReturns": 0
+        }
+      }
+    },
+    {
+      "from": 1792263600000,
+      "to": 1792267200000,
+      "n": 0,
+      "gp": 0,
+      "gl": 0,
+      "netReturnPoints": 0,
+      "exactPf": null,
+      "pfStatus": "empty",
+      "runtimePfScore": 0,
+      "unknownReturns": 0,
+      "families": {
+        "static-sl|1": {
+          "n": 0,
+          "gp": 0,
+          "gl": 0,
+          "netReturnPoints": 0,
+          "exactPf": null,
+          "pfStatus": "empty",
+          "runtimePfScore": 0,
+          "unknownReturns": 0
+        },
+        "static-sl|-1": {
+          "n": 0,
+          "gp": 0,
+          "gl": 0,
+          "netReturnPoints": 0,
+          "exactPf": null,
+          "pfStatus": "empty",
+          "runtimePfScore": 0,
+          "unknownReturns": 0
+        },
+        "adaptive-sl|1": {
+          "n": 0,
+          "gp": 0,
+          "gl": 0,
+          "netReturnPoints": 0,
+          "exactPf": null,
+          "pfStatus": "empty",
+          "runtimePfScore": 0,
+          "unknownReturns": 0
+        },
+        "adaptive-sl|-1": {
+          "n": 0,
+          "gp": 0,
+          "gl": 0,
+          "netReturnPoints": 0,
+          "exactPf": null,
+          "pfStatus": "empty",
+          "runtimePfScore": 0,
+          "unknownReturns": 0
+        },
+        "trailing|1": {
+          "n": 0,
+          "gp": 0,
+          "gl": 0,
+          "netReturnPoints": 0,
+          "exactPf": null,
+          "pfStatus": "empty",
+          "runtimePfScore": 0,
+          "unknownReturns": 0
+        },
+        "trailing|-1": {
+          "n": 0,
+          "gp": 0,
+          "gl": 0,
+          "netReturnPoints": 0,
+          "exactPf": null,
+          "pfStatus": "empty",
+          "runtimePfScore": 0,
+          "unknownReturns": 0
+        }
+      }
+    },
+    {
+      "from": 1792267200000,
+      "to": 1792270800000,
+      "n": 0,
+      "gp": 0,
+      "gl": 0,
+      "netReturnPoints": 0,
+      "exactPf": null,
+      "pfStatus": "empty",
+      "runtimePfScore": 0,
+      "unknownReturns": 0,
+      "families": {
+        "static-sl|1": {
+          "n": 0,
+          "gp": 0,
+          "gl": 0,
+          "netReturnPoints": 0,
+          "exactPf": null,
+          "pfStatus": "empty",
+          "runtimePfScore": 0,
+          "unknownReturns": 0
+        },
+        "static-sl|-1": {
+          "n": 0,
+          "gp": 0,
+          "gl": 0,
+          "netReturnPoints": 0,
+          "exactPf": null,
+          "pfStatus": "empty",
+          "runtimePfScore": 0,
+          "unknownReturns": 0
+        },
+        "adaptive-sl|1": {
+          "n": 0,
+          "gp": 0,
+          "gl": 0,
+          "netReturnPoints": 0,
+          "exactPf": null,
+          "pfStatus": "empty",
+          "runtimePfScore": 0,
+          "unknownReturns": 0
+        },
+        "adaptive-sl|-1": {
+          "n": 0,
+          "gp": 0,
+          "gl": 0,
+          "netReturnPoints": 0,
+          "exactPf": null,
+          "pfStatus": "empty",
+          "runtimePfScore": 0,
+          "unknownReturns": 0
+        },
+        "trailing|1": {
+          "n": 0,
+          "gp": 0,
+          "gl": 0,
+          "netReturnPoints": 0,
+          "exactPf": null,
+          "pfStatus": "empty",
+          "runtimePfScore": 0,
+          "unknownReturns": 0
+        },
+        "trailing|-1": {
+          "n": 0,
+          "gp": 0,
+          "gl": 0,
+          "netReturnPoints": 0,
+          "exactPf": null,
+          "pfStatus": "empty",
+          "runtimePfScore": 0,
+          "unknownReturns": 0
+        }
+      }
+    }
+  ],
+  "configRows": [],
+  "skips": {},
+  "steps": [
+    {
+      "t": 1792249200000,
+      "main": 0,
+      "real": [],
+      "taken": 0,
+      "skipped": 0,
+      "net": 0,
+      "byRange": {},
+      "checks": []
+    },
+    {
+      "t": 1792252800000,
+      "main": 0,
+      "real": [],
+      "taken": 0,
+      "skipped": 0,
+      "net": 0,
+      "byRange": {},
+      "checks": []
+    },
+    {
+      "t": 1792256400000,
+      "main": 0,
+      "real": [],
+      "taken": 0,
+      "skipped": 0,
+      "net": 0,
+      "byRange": {},
+      "checks": []
+    },
+    {
+      "t": 1792260000000,
+      "main": 0,
+      "real": [],
+      "taken": 0,
+      "skipped": 0,
+      "net": 0,
+      "byRange": {},
+      "checks": []
+    },
+    {
+      "t": 1792263600000,
+      "main": 0,
+      "real": [],
+      "taken": 0,
+      "skipped": 0,
+      "net": 0,
+      "byRange": {},
+      "checks": []
+    },
+    {
+      "t": 1792267200000,
+      "main": 0,
+      "real": [],
+      "taken": 0,
+      "skipped": 0,
+      "net": 0,
+      "byRange": {},
+      "checks": []
+    }
+  ],
+  "settledTrades": [],
+  "openAtEnd": [],
+  "elapsedMs": 879,
+  "maxRssMiB": 117.890625
+}

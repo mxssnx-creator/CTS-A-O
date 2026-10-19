@@ -1,0 +1,74 @@
+
+## 21. Base-stage calcs corrected; after-Base and after-validation PF per range (13 Oct, ~18:40Z)
+
+Operator: "PF before stage Base under 1 is normal — good values after validations at Base; make sure calcs and
+processings are completely correct; count of passed matters, and continuous stability." Found and fixed (commit
+63ef6c5, each with a test that fails on the previous commit):
+
+- **Pooled PF of no-loss sets.** `profitFactor` returns the `PF_NO_LOSS` sentinel (4) when the gross loss is 0, and the
+  pooling reconstructed gross sums from (pf, net), giving every no-loss set a phantom loss of net / 3. Pooling now uses
+  the gross loss itself when the set knows it (`grossOfStat`; `cellStats` and the seat evaluation carry gp / gl). Affects
+  the "PF of passed" column at Base and validation; rare at Base (0 of 673 D1 survivor rows at exactly 4).
+- **Passed count under `grid.allSets`.** The measurement pairs were counted as passed (350/920 for 219 real passes).
+  They are `baseBuilt` now, never `basePassed`.
+- **"Cells held back by the Base gate" under allSets.** 22,800 were lane-floor cells (General / Long on 1 m and 5 m
+  lanes) mislabelled `baseRange` because the builder tested the gate before the lane floor. Precedence fixed; the tapes
+  built are unchanged.
+- **Eval basis.** eval-gate scores every order at one unit (`r / mult`) and says so; with Block off (its setting) the
+  figures are unchanged, so every D1 figure in sections 19–20 stands.
+- **Continuity.** `status.baseHistory` keeps the passed count of the last 48 computes per range; the events table is the
+  long record (x01: 362 computes today, Minimal 44 → 46 / 794 drifting with new bars, the other ranges flat; orders per
+  compute 16,485–16,804, armed 4–5).
+
+**12-symbol session after the fixes (6 h + 6 h, defaults, `checks: 62/62 ok`), per range — Base PF of the validated
+pairs (pooled, corrected) → validation PF of the validated sets → executed PF (unit):**
+
+| range | Base PF | pairs validated | validation PF | sets validated | orders PF | orders |
+|---|---:|---:|---:|---:|---:|---:|
+| Wide | 1.38 | 14 of 154 | 3.91 | 1 of 320 | 0.10 | 20 |
+| Micro | 1.44 | 12 of 640 | 2.60 | 244 of 3404 | 0.35 | 815 |
+| Minimal | 1.39 | 44 of 794 | 1.93 | 678 of 9530 | 0.41 | 2309 |
+| Short | 1.42 | 25 of 89 | 1.45 | 90 of 4816 | 1.32 | 199 |
+| General | 1.42 | 35 of 89 | 1.49 | 984 of 9138 | 0.63 | 2290 |
+| Long | 1.54 | 37 of 89 | 1.58 | 2249 of 14256 | 0.87 | 4858 |
+| Signals | 0.81 | 126 of 126 | – | 136 units active | 0.98 | 65 |
+
+After Base and after validation every engine range is above 1.38; the executed book is below 1 in every range but
+Short. The loss is at execution (section 20: entries taken at the configs' equity peaks, crowding), not in the
+calculations. D1 per type × range (16 h and 48 h holds, unit basis): every Normal and Trailing cell of every range has
+orders in every window; none holds PF ≥ 1 across the five windows (best Micro Normal 0.78 pooled). DCA, DCA Active and
+Axis build Wide cells only (`dcaProtectGrid`); the session default runs Axis off, x01 runs it on.
+
+**allSets on this host:** 12 symbols reached 7.4 GB and aborted three times at the lightest memory level beside the
+desk (5.2 GB). Eval-only; not queued again here. **Stability rule:** heavy evals one at a time, never beside the desk
+above ~6 GB (today's 8 desk fallback steps all coincided with evals or the allSets session).
+
+## 22. Live control: the budgets admit the targets that fit (13 Oct, ~19:15Z)
+
+Operator: "Enable live executions" on the 0.50 USDT x01 wallet (minFreeMargin 0, maxPositionX 5; the stop-risk and
+worst-case budgets at 0.5 = 0.249 USD). The desk armed and placed nothing: "without a target: 24 gross exposure cap,
+2 risk budget". Cause (commit b163a40, tests fail on the previous commit): each budget scaler dropped "the weakest new
+target while the survivors cannot fit at their minimum", one scaler after the other. The gross-exposure scaler (cap
+5 USD, every key at its ~2 USD venue minimum) kept the two strongest keys, ZKP and XPL short; the stop-risk scaler
+then dropped XPL first (the weaker — 2.00 USD at its lanes' mean stop of 11.0 % = 0.22 USD, which FIT the budget) and
+ZKP after it (2.06 USD at 12.15 % = 0.250 USD, which did not), and the 24 keys the exposure scaler had dropped were
+never tried against the risk budget at all. Fix: `admitWithinBudgets` — in rank order (held first, their share
+reserved), a new target is admitted when its cost at its exchange minimum fits what EVERY budget (exposure, risk,
+worst case) has left; one that does not fit is left out and the next is still tried (`scaleToBudgets`, used by the
+live step, the plan readout and the sim sizing variants). With it the x01 book admits XPL (and a second key only if
+its stop fits the remaining 0.03 USD: a lane stop ≤ 1.4 %).
+
+Corrected risk statement for this wallet (the earlier "a single stop costs 2–12 % of the wallet" was wrong): one
+venue-minimum position is 2.00 USD on 0.50 USDT equity (cross margin, max leverage); its lanes' stop ≈ 11 % = 0.22 USD
+= 44 % of the equity; the exchange backstop (widest lane × 1.2, capped 20 %) = 0.40 USD = 80 %, under the 0.47 USD
+session loss limit. Operator, 19:17Z: relaunch now with the fix (desk relaunched 19:18:33Z, pid 9551).
+
+## 23. Memory lower systemwide, results identical (14 Oct)
+
+Operator, 13 Oct: "Optimize for lower mem usage systemwide." The record is in docs/performance-latency.md
+("Memory"): runtime.test.ts 7.3 → 1.3 GB, the core suite 2.2–2.4 GB summed, and eval children admitted by memory one at
+a time (the desk keeps a 3 GB reserve; all 8 fallback steps of 13 Oct came while two children ran beside it). The
+x01 desk was at 2.53 GB at +10 min after its 06:02:44Z restart (4.56 GB on every boot before). Every commit reproduces
+the golden digests (`scripts/core-golden.mjs --check`), and old and new eval sessions give identical dumps, so every
+PF, pass count and order figure above stands. One eval setting moved: a `--dump-only` dump carries no tape trades
+unless `--tape-trades` is passed.

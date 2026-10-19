@@ -155,14 +155,35 @@ working ones live on x01" — on for both desks (x02 tests on the demo exchange;
 it sends Signals only). In the crash, wider stops did not survive (paper: stops of 6.4 % lost as the 3 % ones did);
 trailing did better than no trailing at every stop size — the live record decides. Tests: `adjust.test.ts`.
 
-**Promotion from the demo twin (x02 → x01, 7 Oct).** "… then put the working ones live on x01": an engine range
-reaches x01's exchange once x02's own exchange record (live_lane_trades) proves it — its last 30 closes there (at
-least 20) at PF ≥ 1.2 — and leaves again under PF 1.0 (`src/core/live-promote.ts`, `scripts/core-live-promote.mjs`,
-run every 10 minutes). Every range starts off; the decision is x01's `live.excludeRanges` (with `source: "all"` and
-`kinds: normal / trailing` — the Axis / DCA ladders are not ranges and stay off), so a range left out keeps computing,
-paper-trading and auto-adjusting on x01 too. Signals are not managed by it (the readiness check and the live
-validation judge them). First decision (x02, 04:36): Short on (last 30 closes PF 3.40), General off (0.01), Long off
-(0.69). x01's readiness check then reads the Signals and the Short range together. Tests: `live-promote.test.ts`.
+**Promotion from the demo twin (x02 → x01, corrected 15 Oct).** A range-wide PF from `live_lane_trades` cannot
+prove allocated ownership or qualify its siblings. That table is nominal attribution and remains diagnostic.
+`scripts/core-live-promote.mjs` now requires a complete `cts-live-promotion/v2` evidence artifact to qualify each
+exact config × symbol × direction: settled post-Base accepted virtual unit returns before allocation, plus
+independently owned settled execution net returns after fees/funding. Both axes must pass. The promoter defaults
+remain last 30/minimum 20 and on-PF 1.2/off-PF 1.0; the native runtime independently enforces its current stricter
+sample/PF requirements and current eligibility. Unfiltered tapes, endpoint marks, missing returns, dust ownership,
+reused fills, stale references and pooled winning siblings never grant permission.
+
+The producer must provide actual allocation/fill identities, complete chronological windows and explicit expiry;
+the reader verifies structure, arithmetic and completeness declarations, and binds the original bytes by SHA-256.
+It cannot authenticate a fabricated producer or reconstruct funded venue ownership from the nominal table. The
+contract is defined in `src/core/live-promote.ts`; an authenticated actual-execution exporter remains an integration
+prerequisite. Review a concrete local decision with `--dry`, for example:
+
+```sh
+node --experimental-strip-types scripts/core-live-promote.mjs \
+  --ref-db /path/to/reference.sqlite --patch /path/to/target-desk.json \
+  --state /path/to/promotion-state.json --reference-id x02 \
+  --evidence /path/to/verified-promotion.json --dry
+```
+
+Without valid evidence a non-dry invocation writes an empty exact-lane allowlist and leaves managed engine ranges
+off, including ranges previously enabled by legacy pooled state. Existing target kind settings are preserved;
+unset/empty still means every kind. Signals retain their independent kind/activation policy and must also pass
+native exact promotion proof before new live exposure. Paper learning continues while execution evidence is
+insufficient. Held exits and protection continue; held unqualified lanes cannot grow. New owned paper evidence
+requires the allocation recorded at actual paper adoption; legacy unknown allocation/unit returns remain unknown.
+Tests cover the promoter, strict runtime proof, allocation persistence, Control and Entries integration.
 
 **A restart continues the paper book (x02, 7 Oct 04:42).** Deploying (SIGUSR2, then the same command) closed 21
 of x02's 34 exchange positions within a minute of the first compute: the paper book carries the open positions — the
@@ -240,13 +261,17 @@ lane of a 2,000-position book on every 100 ms tick. Changes (behaviour unchanged
 - **No long slice:** the live books catch up with a fresh run over ticks (15 ms each, `catchUp`); the signal and
   engine-side indices fill in ~8 ms slices.
 - **Bars during a compute:** closed bars are pulled every cycle also while a compute runs; the next cycle computes on
-  them.
-- **Realtime entry step** (`CTS_CORE_FAST_ENTRIES=1`, off by default, x02 first): on every newly closed bar the seated
-  configs are rebuilt on a 48 h tail of the current bars in a priority worker (`onlyIds`; one worker beyond the cores
-  for it, never behind the compute's messages) and the paper book takes their new positions with the paper step's
-  own entry rules; a signal on a lane bar that closed now enters at the open that starts (as the simulation does).
-  The full paper step after each compute re-seats and closes. Between computes the book used to take no entry for
-  9–18 min.
+  them. A bar is polled after its close plus a 2 s exchange-publication grace; the feed independently rejects forming
+  candles, so the old two-timeframe wait added avoidable minutes of signal delay.
+- **Realtime entry step** (Break-only by default; `CTS_CORE_FAST_ENTRIES=1` selects every indication, `=off` disables
+  the fast path): on each newly closed Break lane bar, seated configs are rebuilt from the latest closed bars in a
+  priority worker (`onlyIds`; one worker beyond the cores, ahead of queued compute messages). The refreshed tape is
+  published to both Entries and Overall live modes, then the paper book takes new positions through the same entry
+  gates. A 1m Break therefore refreshes within seconds of candle publication; 5m/15m Break refresh only when that
+  lane's own candle closes. No partial-candle signal is invented, so historical and live calculations use the same
+  completed-bar rules. Signals older than 15 s are suppressed instead of chased; replay/backtest mode never runs this
+  live path. `status.fast.delayMs` reports close-to-processing delay. Other indications remain on the full compute
+  path unless all-indication fast entries are explicitly enabled.
 
 ## From here on
 

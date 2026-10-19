@@ -1,8 +1,8 @@
-// Engine direction acceptance: each type family (Normal + Trailing / DCA / Axis) × range × side opens only while its
-// candidates' record over the last whole hours clears the PF — the losing side pauses alone, the others trade.
+// Engine direction acceptance: Normal / Trailing by range, Historic Exit by tactic, DCA and Axis by family.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { defaultWalkForward, execDecision, makeTape } from "./walkforward.ts";
+import { configId } from "../pipeline/pipeline.ts";
+import { crowdRangeOf, defaultWalkForward, execDecision, familyOf, makeTape, selectAt, selectDurable } from "./walkforward.ts";
 import { EngineSideIndex, engineSideKey, SignalGuard } from "../signals.ts";
 import { DEFAULT_SETTINGS, DEFAULT_TOGGLES } from "../config.ts";
 import type { Protect, StratKind, Trade } from "../domain/types.ts";
@@ -48,6 +48,120 @@ describe("engine direction acceptance (engineSideAccept)", () => {
     assert.equal(why(execDecision(plain, T0, o, { guard, sym: "B", side: -1 })), "ok");
   });
 
+  it("keeps Historic Exit tactics outside Normal ranges and independently gates each tactic", () => {
+    const staticExit = makeTape(
+      "exit-static",
+      "follow",
+      "ema-9-21@m15",
+      { ...P, exitType: "historic", exitSide: -1, exitSet: "static-sl" },
+      "exit",
+      ["A"],
+      trades(-1, -0.01, "exit"),
+      [],
+      [],
+    );
+    const trailingExit = makeTape(
+      "exit-trailing",
+      "follow",
+      "ema-9-21@m15",
+      { ...P, trail: 0.004, exitType: "historic", exitSide: -1, exitSet: "trailing" },
+      "exit",
+      ["A"],
+      trades(-1, 0.01, "exit"),
+      [],
+      [],
+    );
+    const idx = new EngineSideIndex();
+    for (const _ of idx.fill([plain, staticExit, trailingExit]));
+    const staticKey = engineSideKey("exit", "mn", -1, undefined, "static-sl");
+    const trailKey = engineSideKey("exit", "lg", -1, undefined, "trailing");
+    assert.equal(staticKey, "exit-static-sl|independent|-1");
+    assert.notEqual(staticKey, "base|wide|-1");
+    assert.equal(idx.stats(staticKey, T0, 24).pf, 0);
+    assert.equal(idx.stats(trailKey, T0, 24).pf, Infinity);
+    assert.equal(idx.stats(engineSideKey("exit", undefined, -1, undefined, "adaptive-sl"), T0, 24).n, 0);
+    const guard = new SignalGuard();
+    guard.engineSide = idx;
+    const g = {
+      ...o,
+      engineSideAccept: acc,
+      toggles: { ...DEFAULT_TOGGLES, normal: false, exit: true, block: false },
+    };
+    assert.equal(why(execDecision(staticExit, T0, g, { guard, sym: "B", side: -1 })), "engineSide");
+    assert.equal(why(execDecision(trailingExit, T0, g, { guard, sym: "B", side: -1 })), "ok");
+  });
+
+  it("keeps Exit config sets and directions on independent selection seats", () => {
+    const at = T0 + 80 * H;
+    const outcomes = (side: 1 | -1, cfg: string, kind: StratKind = "exit") =>
+      Array.from({ length: 12 }, (_, i) => ({
+        ...tr(side, 0.01, at - (12 - i) * H, kind),
+        cfg,
+      }));
+    const exits = (["static-sl", "adaptive-sl", "trailing"] as const).flatMap((exitSet) =>
+      ([1, -1] as const).map((exitSide) => {
+        const protect: Protect = {
+          ...P,
+          trail: exitSet === "trailing" ? 0.004 : 0,
+          exitType: "historic",
+          exitSide,
+          exitSet,
+        };
+        const id = configId("follow", "ema-9-21@m15", protect, "exit");
+        return makeTape(id, "follow", "ema-9-21@m15", protect, "exit", ["A"], outcomes(exitSide, id), [], []);
+      }),
+    );
+    const normal = makeTape(
+      "normal-independent", "follow", "ema-9-21@m15", P, "normal", ["A"], outcomes(1, "normal-independent", "normal"), [], [],
+    );
+    const trailingProtect = { ...P, trail: 0.004 };
+    const trailing = makeTape(
+      "trailing-independent", "follow", "ema-9-21@m15", trailingProtect, "trailing", ["A"],
+      outcomes(1, "trailing-independent", "trailing"), [], [],
+    );
+    const settings = {
+      ...defaultWalkForward(DEFAULT_SETTINGS),
+      longH: 24,
+      preH: 24,
+      durableSplits: 2,
+      durableFrac: 0.5,
+      lastN: 0,
+      validLastN: 0,
+      portfolio: 1,
+      familySeats: false,
+      seatPer: "pair" as const,
+      robustFrac: 0,
+      gates: { ...defaultWalkForward(DEFAULT_SETTINGS).gates, minTrades: 8, minDdtH: 0, maxDdtH: 1_000, maxDdr: 0 },
+      toggles: { ...DEFAULT_TOGGLES, normal: true, trailing: true, exit: true, block: false },
+    };
+    for (const familySeats of [false, true]) {
+      const result = selectAt([normal, trailing, ...exits], at, { ...settings, familySeats });
+      assert.equal(result.picks.length, 8, `all independent seats remain selectable (familySeats=${familySeats})`);
+      assert.equal(new Set(result.picks.map((p) => p.id)).size, 8, "each family is processed once");
+      assert.deepEqual(
+        new Set(result.picks.map((p) => p.id)),
+        new Set([normal, trailing, ...exits].map((p) => p.id)),
+      );
+    }
+    const noBasePass = { ...settings, basePassed: new Set<string>() };
+    const hourlyWithoutBase = selectAt([normal, trailing, ...exits], at, noBasePass);
+    assert.equal(hourlyWithoutBase.picks.length, 6);
+    assert.ok(
+      hourlyWithoutBase.picks.every((pick) => exits.some((candidate) => candidate.id === pick.id)),
+      "Exit configs are judged by their own PF history even when Base admitted no pairs",
+    );
+    const durableWithoutBase = selectDurable([normal, trailing, ...exits], at, noBasePass, new Set());
+    assert.equal(durableWithoutBase.picks.length, 6);
+    assert.ok(
+      durableWithoutBase.picks.every((pick) => exits.some((candidate) => candidate.id === pick.id)),
+      "durable selection applies the same independent Exit admission rule",
+    );
+    assert.equal(familyOf("exit", "static-sl", 1), "exit-static-sl-long");
+    assert.equal(familyOf("exit", "static-sl", -1), "exit-static-sl-short");
+    assert.notEqual(familyOf("exit", "static-sl", 1), familyOf("exit", "adaptive-sl", 1));
+    assert.equal(crowdRangeOf(exits[0].id), "exit");
+  });
+
   it("causal: closes in the entry's own hour are not seen; too few closes in twice the window opens; old hours leave both windows", () => {
     const one = new EngineSideIndex();
     const t = 50 * H;
@@ -84,6 +198,21 @@ describe("engine direction acceptance (engineSideAccept)", () => {
     assert.equal(why(execDecision(sh, T0, x, { guard, sym: "B", side: 1 })), "ok");
     assert.equal(why(execDecision(plain, T0, x, { guard, sym: "B", side: 1 })), "ok");
     assert.equal(why(execDecision(mc, T0, o, { guard, sym: "B", side: 1 })), "ok");
+  });
+
+  it("seat cool-off (seatQuietH): a config that closed within H hours before the entry waits; closes after it never count", () => {
+    // the config's last close at T0 − 2 h; one at T0 + 30 min (after the entry) must not be seen
+    const tp = tape("q", "normal", [tr(1, 0.01, T0 - 6 * H), tr(1, 0.01, T0 - 2 * H), tr(1, 0.01, T0 + 30 * 60_000)]);
+    const q = { ...o, seatQuietH: 4 };
+    assert.equal(why(execDecision(tp, T0, q, { guard, sym: "B", side: 1 })), "seatQuiet", "closed 2 h before: waits");
+    assert.equal(why(execDecision(tp, T0, { ...o, seatQuietH: 2 }, { guard, sym: "B", side: 1 })), "ok", "exactly 2 h: free");
+    // an entry at T0 − 3 h sees only the close at T0 − 6 h (3 h old): free under 2 h, waits under 4 h
+    assert.equal(why(execDecision(tp, T0 - 3 * H, { ...o, seatQuietH: 2 }, { guard, sym: "B", side: 1 })), "ok");
+    assert.equal(why(execDecision(tp, T0 - 3 * H, q, { guard, sym: "B", side: 1 })), "seatQuiet");
+    assert.equal(why(execDecision(tp, T0, o, { guard, sym: "B", side: 1 })), "ok", "off by default");
+    // signals are not cooled off by it
+    const sig = makeTape("s", "follow", "sig-ema-cross-s@m15", P, "normal", ["A"], [tr(1, 0.01, T0 - H)], [], []);
+    assert.notEqual(why(execDecision(sig, T0, q, { guard, sym: "A", side: 1 })), "seatQuiet");
   });
 
   it("perInd: a range's group split by indication — a winning indication trades while the pooled range loses", async () => {

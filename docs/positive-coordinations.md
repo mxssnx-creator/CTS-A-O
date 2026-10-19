@@ -1,5 +1,52 @@
 # Positive coordinations — keep them
 
+**16 Oct correctness amendment: bounded, independently evidenced Block.**
+`maxMult` is the total multiple for a new config entry, including its base and
+all enabled source additions (with the existing absolute 8x bound). Earlier
+per-source-cap descriptions below are historical. Config-source levels and
+pauses now use exact config/symbol/direction evidence; the separately named
+pooled sources keep their scope. Fractional Block source legs retain logical
+identities and share their exact parent's physical exit, including optional
+native lane-order sizing. Pending/partial quantities reserve real capacity.
+Existing holdings keep their entry multiple after a lower cap is configured.
+The numeric ratio/step/cap defaults, unrelated coordination toggles and desk
+patches are unchanged; the accepted-history default is explicitly clarified below.
+These fixes correct identity and cap enforcement; they are not a new claim of
+positive execution PF. The frozen Block protocol and completed retrospective
+results are recorded in the operations handoff.
+
+**16 Oct Overall relation clarification.** New Block settings explicitly learn
+from settled accepted Real virtual orders before funding. Runtime restoration
+merges current defaults, so persisted settings missing the selector also adopt
+accepted orders. Choose explicit `real-candidates` to retain the legacy diagnostic
+across restart; only direct configs without runtime default merging use the
+unset-field legacy fallback. Neither source is venue-fill proof. Symbol × Direction, exact indication/lane ×
+Direction and config × symbol × direction histories and pauses are independent.
+Shared accepts any qualifying relation and an optional separate ratio; Additive
+sums enabled levels. All source legs and relation volume share the total cap.
+At effective ratio 0.2, a qualifying relation at level one requests an addition
+of 0.2 when the shared total cap has enough room, including with seven volume steps;
+Shared uses its explicit override when set.
+Steps retain positive sub-step fractions and round larger additions down.
+Recording floors to six decimal places; sub-micro-unit dust cannot invent a
+raise, and a recorded source addition must never exceed its requested addition.
+Defaults for the common ratio, steps and maximum remain unchanged. Each parent
+close contributes one primary unit-return sample; logical source legs never
+increase close frequency. The ten-arm retrospective comparison and all failed
+or insufficient cohorts are retained in the current handoff. Its populated fold
+has return PF 2.37485 but settled Block results equal Off; Long PF is zero,
+Signal execution is inactive and no arm qualifies both folds. Passing offline
+software checks does not qualify a strategy for promotion.
+
+**14 Oct operator amendment: independent Signals.** The operator explicitly requires independent parameter
+ranges, lanes, trade types and config evaluations, including historical calculations, minimum return-PF gates,
+parallel processing, live execution and statistics. Signal qualification must therefore retain the full indication
+(source, parameter range and lane) and trade type. Earlier source-wide acceptance pooling and type-pooled active
+qualification described below record the previous policy; they do not override this newer instruction. Shared
+direction acceptance and account risk limits remain separate coordinations. Counts deduplicate one onset within
+its independent acceptance group while return PF includes every settled close. This is an operator-directed
+identity change, not new evidence that any configuration has a positive execution PF.
+
 The operator's standing instruction: the coordinations below were validated as positive and stay on in every future
 change (code defaults, presets, x01's settings and patches). A change that turns one off or weakens it needs a new
 causal comparison that beats it, recorded here. `src/core/positive-defaults.test.ts` pins the code defaults, and a
@@ -13,7 +60,7 @@ desk prints a warning at start and on every patch that leaves one of them off (`
 | Signal direction acceptance (each side's signals pooled — the run's active candidates, counted per signal entry since 6 Oct) | `signals.sideAccept = { enabled: true, minPf: 1.3, hours: 24, minTrades: 20 }` | x01, 48 h on 5 Oct: long PF 3–44, short PF 0.1–0.3 per 12 h |
 | Signals trade their own base | `signals.ownBase: true` | the engine's Normal off / Block Active skip left signals ~16 closes a day |
 | Signal volatility floor | `signals.filter.volFloor: 0.003` | the move must be worth the 0.2 % round trip (worst drawdown 523 vs 660) |
-| Engine direction acceptance (type family × range × side) — **operator: OFF as default, 19 Oct** (see below; was ON from 6 Oct evening) | `wf.engineSideAccept = { enabled: false, minPf: 1.05, hours: 24, minTrades: 30 }` — code default off since 19 Oct (on 6 Oct evening – 19 Oct) | x01 paper replay, 5 Oct: opened shorts PF 1.25 / held 0.51; everything opened PF 1.70 vs 1.0. Same tapes, 12 symbols, 6 h + 6 h, 5–6 Oct: OFF let in 187 shorts at PF 0.05 (net −2,222 % in trade units), the window's PF 3.62 → 1.82 |
+| Engine direction acceptance (type family × range × side) — **operator: OFF as default, 11 Oct** (see below; ON 6 Oct evening – 11 Oct) | `wf.engineSideAccept = { enabled: false, minPf: 1.05, hours: 24, minTrades: 30 }` — code default off since 11 Oct | x01 paper replay, 5 Oct: opened shorts PF 1.25 / held 0.51; everything opened PF 1.70 vs 1.0. Same tapes, 12 symbols, 6 h + 6 h, 5–6 Oct: OFF let in 187 shorts at PF 0.05 (net −2,222 % in trade units), the window's PF 3.62 → 1.82 |
 | Normal and Trailing enabled and running, Block Active off | `toggles.normal: true`, `trailing: true`, `blockActive: false` (code default) | operator, 5 Oct: with Block Active (minimum level 5) only Block-raised entries opened — a 2 h Micro run traded Axis alone |
 | Axis on x01 | `toggles.axis: true` | profitable on both sides on x01 (24 h: long PF 1.37, short PF 1.19) |
 | DCA off on x01 | `toggles.dca: false` | lost in every last-N variant of the x01 simulation (PF 0.60–0.81) |
@@ -21,27 +68,20 @@ desk prints a warning at start and on every patch that leaves one of them off (`
 | Sample warm-up: a drawdown that cannot be computed yet is valid until it can | `gates.warmup: true` (code default) | operator, 5 Oct: "if no DDT available because of too few previous positions, calculate as valid until enough exist, then evaluate normally". It waives the DRAWDOWN half (DDT, DDR) of a last-N window shorter than N, a symbol the config has no close on yet, and fewer than two stability blocks. The RESULT half is never waived: a config without its last-N closes still does not clear a last-N PF gate. Measured (12 h / 20 symbols / every range, 5 Oct): waiving the result half as well let 8,427 extra orders through on samples of a few closes and took the window from PF 1.108 (net +2,527 % in trade units) to PF 0.818 (net −14,467 %) — mostly Micro and Minimal cells whose last-50 range gate was waived |
 | Independent configs: every config of every Base-validated pair is its own seat (all strategy types, all cells), evaluated on its own results | `wf.seatPer: "config"` (code default; x01) | one seat per pair × family traded only the best-scored config of each set; independent configs are pinned in independence.test.ts |
 | Base-validated targets: the tape stage builds only the range targets whose Base cells passed | `grid.baseTargets: true` (code default) | two causal windows, 20 symbols, 2 h pre + 2 h run (5 Oct 12:00Z / 06:00Z): identical passed sets (2/2 and 10/10 Micro normal, 0/0 and 8/8 trailing) and identical orders, with 29–36 % fewer Micro sets built, 40–50 % fewer Micro configs evaluated, the evaluated pool's median PF up (0.45 → 0.51, 0.48 → 0.58) and compute 162 → 93 s / 147 → 97 s |
-| Live fill within every budget | kept configs held to the budget; exposure, stop-risk and worst-case budgets | kept whole, the fill overshot ~6× and every position was squeezed to the exchange minimum |
+| Live fill within every budget | kept configs held to the budget; exposure, stop-risk and worst-case budgets — the drops decided across all three at once, in rank order, every target whose exchange minimum fits (`scaleToBudgets`, 13 Oct) | kept whole, the fill overshot ~6× and every position was squeezed to the exchange minimum. 13 Oct 18:55Z, x01 (0.50 USDT wallet): dropping "the weakest while the survivors do not fit", one budget after the other, kept the two strongest keys under the gross cap and dropped both under the risk budget (XPL 2.00 USD at 11 % fit the 0.249 USD budget, ZKP 2.06 USD at 12.15 % did not) — nothing placed, 24 keys never tried; the admission keeps the coordination and fills what fits |
 | Allocator caps for every long-running process | `MALLOC_ARENA_MAX=2 MALLOC_MMAP_THRESHOLD_=1048576` | without them x01 held 11 GB RSS on a 2.6 GB heap |
 
 ## Operator overrides of a measured coordination
 
-19 Oct — **engine direction acceptance off, forced off and the code default off** (operator: "Force it off and off as
-default"; the same request as "Open long and short directions always"). The comparison on record does NOT beat the
-coordination, and it is recorded here as the operator's decision, shown the cost first. Same window, same tapes (the
-session run ending 2026-10-19 14:00 UTC, 12 symbols, 24 h pre-historic + 24 h run, defaults, feed in the session
-scratchpad): the session's own variant table (`sig:engineSide`):
-
-| engine direction acceptance | orders | PF | net (Σ trade %) |
-|---|---:|---:|---:|
-| on (as run; the coordination) | 52 | **2.59** | **+455.9 %** |
-| off (the override) | 177 | 1.13 | +260.4 % |
-| window 3 h / 12 h / 48 h, PF 1.2 / 1.3 | 129 / 117 / 124, 45 / 44 | 0.74 / 0.77 / 1.10, 1.90 / 1.73 | −437.5 / −295.2 / +136.1, +258.9 / +209.3 |
-
-Earlier record: 6 Oct 24 h on 30 symbols, PF 1.19 off → 2.59 on. So on both windows OFF lowered PF and net, and let in
-more orders at PF near 1. The code default `ENGINE_SIDE_ACCEPT` is now off; the Settings switch stays and sets it on
-again. The parameters (24 h, PF 1.05, 30 closes) are kept as the switch's values. The desk warning ("engine direction
-acceptance is off") prints on every start while it is off, by the rule above.
+11 Oct — **x01 Signals live desk: caps disabled, then RESTORED the same day.** On explicit operator instruction the
+caps were first turned off on the x01 Signals eval desk (`docs/live-coordination/signals.patch.json`, tag CTSX01S_),
+which removed the "Live fill within every budget" coordination (measured: kept whole, the fill overshot ~6× and
+positions were squeezed to the exchange minimum) and the worst-case account-loss guard. The operator then re-enabled
+them at the x01 values: `live.maxNotionalUsd 200`, `maxPositionX 1`, `maxExposureX 10` (raised from 7 on the
+operator's instruction), `maxRiskPct 0.5`, `maxBackstopLossPct 0.5`, `exposureScaler true`. The coordination is ON
+for this desk again. The caps-off period (about 01:32 to 02:38 UTC) is not a measured result for the coordination.
+Remaining backstops: the 80 %-of-wallet loss limit (`--max-loss-pct 80`), taken of the wallet at the start of each session
+and counted from each session's start (11 Oct, systemwide: src/core/loss-limit.ts), and the free-margin / last-N floors.
 
 6 Oct — **engine direction acceptance off; Long and Short always run both directions.** The comparison above does NOT
 beat the coordination: on the same tapes switching it off let in 187 shorts at PF 0.05 and took the window from PF 3.62
@@ -168,12 +208,16 @@ check live and make sure all running correctly, fix issues. Run with min vol fac
 the mirror image of x01's narrowed live book: nothing is held back from live, and positivity is decided only by
 the calculations.
 
+This archived run predates the current exchange-slot limit. Current Live admission defaults to 100 occupied
+`(symbol, direction)` slots across strategies, ignores the former `maxSymbols` field, and aggregates every qualifying
+lane on an admitted slot. Strategy and signal evaluation limits remain separate.
+
 | What the desk runs | Setting (`runs/x02/patch.json`) |
 | --- | --- |
 | every range | `grid.micro / minimal / short / general / long` all on, plus the Wide grid |
 | every strategy type | `toggles` normal, trailing, block, dca, dcaActive, axis on (Axis with its full variant set: 2 modes x 2 hybrids x 5 ranges x 3 level counts) |
 | signals with their own sets | `signals.strategies: { dca: true, axis: true }`, `ownBase: true`, the measured-positive sources only |
-| no live narrowing | no `kinds`, no `plainOnly`, no `source`, no `maxSymbols`, `maxPositions: 0`, `maxNotionalUsd: 0` |
+| no live narrowing | no `kinds`, no `plainOnly`, no `source`, no symbol-count cap; current exchange-slot cap is 100, `maxNotionalUsd: 0` |
 | every risk budget off | `maxExposureX / maxRiskPct / maxBackstopLossPct / maxPositionX` all 0 — at the minimum size they could only drop sets, never protect anything (equity 475,622 USDT demo) |
 | the minimum volume factor | `live.ratio: 1` with `notionalUsd 1`: every order is raised to the exchange minimum, so size is the smallest the venue accepts |
 | positivity from the gates alone | per-range PF 1.05, `baseSetsMinPf: 1`, DDT/DDR with the sample warm-up, `liveLastN: 25`, signal acceptance PF 1.3 / 48 h |
@@ -394,3 +438,145 @@ rally: v3b traded 10,673 longs and 41 shorts):
 Both coordinations stay on until the falling window of 6–7 Oct (session `crash1`) and the combined row (acceptance and
 confirmation off together) are measured; the rule above applies (a change must beat the current setting causally).
 
+
+## Post-validation executor gates, five causal D1 windows (11 Oct) — measured, defaults unchanged
+
+Full engine, default settings except the one gate named, five 48 h causal windows (2026-09-29 11:00Z to 10-09 11:00Z),
+executed orders pooled by their own window (`scripts/eval-gate.mjs` method; the numbers are the executor's, not the
+validation's). PF at the stored 0.2 % round trip. The rule of the operator's 11 Oct instruction: a gate is changed only if
+PF remains or rises in every half, else it stays as it is. D1a chooses, D1b is the second half.
+
+| variant | orders | PF D1 | PF D1a | PF D1b | decision |
+|---|---:|---:|---:|---:|---|
+| as run (baseline) | 3,918 | 0.33 | 0.47 | 0.24 | — |
+| last-N execution gate off (`lastN` 0) | 5,187 | 0.33 | 0.37 | 0.27 | kept: D1a falls |
+| symbol PF gate off (`symGate` off) | 4,287 | 0.33 | 0.45 | 0.26 | kept: D1a falls |
+| engine direction acceptance off (`engineSideAccept.enabled` false) | 5,502 | 0.46 | 0.55 | 0.41 | rises in every half; **conflicts with the operator's 6 Oct ON decision above — kept ON pending the operator** |
+| engine direction off + last-N off | 9,110 | 0.54 | 0.49 | 0.58 | kept: D1a falls |
+| engine direction off + symbol gate off | 5,997 | 0.47 | 0.53 | 0.43 | kept: D1a falls |
+
+- The 6 Oct evidence for ON was a 24 h run on 30 symbols (PF unit 1.19 → 2.59); these five windows, with default settings and
+  48 h windows, give the opposite. Both are causal. Which one holds on the forward record is the operator's call.
+- No default was changed by this measurement. The desks' x01 patch sets `engineSideAccept` explicitly, so a code default
+  change would not reach the running desk; a patch change would.
+- Realized PF stays far below the target in every variant (best 0.54). See docs/evaluation-2026-10/PF-SEARCH.md section 11.
+
+## Engine direction acceptance OFF by default (operator, 11 Oct) — supersedes the 6 Oct ON decision
+
+The operator decided on 11 Oct: direction acceptance can stay off by default. Code default `wf.engineSideAccept` is now
+`{ enabled: false, minPf: 1.05, hours: 24, minTrades: 30 }`; its warning is removed; `positive-defaults.test.ts` pins the
+new default. Evidence on 11 Oct, five causal D1 windows (full engine, default settings, executed orders pooled per window):
+orders 3,918 → 5,502 and PF D1 0.33 → 0.46, D1a 0.47 → 0.55, D1b 0.24 → 0.41 (table in the 11 Oct section above). The
+6 Oct evidence (24 h, 30 symbols, PF 1.19 → 2.59) is kept as recorded.
+
+19 Oct, one more measurement on the same default: the session run ending 2026-10-19 14:00 UTC (12 symbols, 24 h pre-historic + 24 h run, defaults; the session's variant table row `sig:engineSide`). Direction acceptance on: PF 2.59, net +455.9 %, 52 orders. Off: PF 1.13, net +260.4 %, 177 orders. Off lowered PF and net on this window too. The default stays off by the operator's 19 Oct instruction ("Force it off and off as default"); the Settings switch sets it on.
+
+The x01 desk's patch (`docs/live-coordination/signals.patch.json`) still sets `engineSideAccept.enabled` true explicitly;
+the running desk keeps that setting until its next relaunch with a changed patch, which the operator approves.
+
+## Last-N gate, direction acceptance off (12 Oct) — measured, default unchanged
+
+Plan step 1 of the operator's 11 Oct request ("adjust last-N gate to keep high PF and high orders numbers"). Five causal D1
+windows, 60 symbols, full engine, direction acceptance off (the code default). Baseline lastN 15 (5,502 orders; PF D1 0.46,
+D1a 0.55, D1b 0.41; reproduces the 11 Oct run). Variants: lastN 0 (off), 5, 10, 25, 40 (table in PF-SEARCH.md section 12).
+
+- lastN 0: 9,110 orders, PF D1 0.54, D1a 0.49 (falls), D1b 0.58. Rejected: D1a falls.
+- lastN 5: 4,963 orders, D1a 0.54, D1b 0.40. Rejected: orders, D1a and D1b fall.
+- lastN 10, 25, 40: D1a rises (0.57, 0.61, 0.60) but D1b falls (0.37 each). Rejected: D1b falls.
+
+No variant passes the acceptance rule, so the default stays lastN 15 and no code or patch changed. The desk keeps its
+settings. Pooled realized PF is still below 0.55 in every variant; the last-N gate alone does not reach the target.
+
+## Last-N gate and symbol gate on the 120-symbol feed (12 Oct) — passes; default not changed, operator decision needed
+
+Five causal D1 windows, 120 symbols (feed120, SHA-256 4541bfdc…), full engine, direction acceptance off. Baseline lastN 15:
+13,556 orders, PF D1 0.3875, D1a 0.3956, D1b 0.3805 (PF-SEARCH.md section 13).
+
+- lastN 0: 18,712 orders, D1a 0.4525, D1b 0.4653. Passes the acceptance rule (orders and both halves rise).
+- symbol gate off: 14,654 orders, D1a 0.3972, D1b 0.3807. Passes, with a D1b margin of 0.0002.
+- lastN 0 with symbol gate off: 20,427 orders, D1a 0.4513, D1b 0.4759. Passes; D1a is below lastN 0 alone.
+
+The same lastN 0 change fails on the 60-symbol feed (section 12: D1a 0.55 → 0.49). The two feeds disagree, so the default
+is left at lastN 15 and symbol gate `provenSide`. The desk patch is not changed. Decision needed from the operator: whether
+the 120-symbol feed governs (the desk moves to 120 symbols with its patch), and if so, lastN 0 as the default.
+
+## Last-N gate on the holdout days (13 Oct) — lastN 0 passes on both feeds; default not changed, operator decision
+
+The pre-D1 causal windows (09-24 13:00 to 09-29 11:00, never used for a choice; PF-SEARCH.md section 14): lastN 0 raises
+orders and PF in both halves on the 60-symbol feed (819 → 1,217 orders, PF 0.36 → 0.45) and on the 120-symbol feed
+(2,641 → 3,723, PF 0.41 → 0.52). Symbol gate off fails the holdout (second half 0.42 → 0.38) and stays on.
+
+Across D1 and the holdout on both feeds, lastN 0 passes three of four measurements; it fails only the 60-symbol D1a half
+(0.55 → 0.49). The default stays lastN 15 until the operator decides; the evidence now favours lastN 0.
+
+## General / Long stop ratios 0.25–1.5 step 0.25 (13 Oct) — operator directive, applied; measured effect
+
+`GENERAL_RANGE.slOfTp` and `LONG_RANGE.slOfTp` = [0.25, 0.5, 0.75, 1, 1.25, 1.5] (commit 0435e5d; a database on the former
+default [0.5, 0.75, 1] migrates at settings v21). Not a coordination switched off: the stop ladder is wider on both sides.
+Measured on feed120 (PF-SEARCH.md section 15): D1 orders 13,556 → 17,364, PF D1a 0.40 → 0.49, D1b 0.3805 equal; holdout
+orders 2,641 → 2,974, PF first half equal, second half 0.42 → 0.39 (General follow). Kept as the operator directed.
+
+## Every TP × SL × Trail in every range (13 Oct) — operator directive, applied; two switches measured, not kept
+
+Dense range grids (commit 5f19adc, PF-SEARCH.md section 16): orders 3.3× on D1 (17,364 → 57,107) and 2.7× on the holdout,
+PF −0.01 (D1a 0.487 → 0.475, D1b 0.381 → 0.374) and −0.02 to −0.04 on the holdout halves. Kept as the operator directed.
+`grid.baseRanges` (new, default on) and `grid.baseTargets` (default on) stay on: off, each lowers a judged half (D1b
+0.37 → 0.31; holdout first half 0.36 → 0.35).
+
+## Strategy-type isolation presets (13 Oct)
+
+Nineteen offered presets switch a strategy type off, or Block Active on, on purpose: each runs one type (or one pair of
+types) alone so the variants matrix and the strategy research can read that type's own record — Normal only, Trailing
+only, Block Active, DCA / DCA Active, Axis, and the five `mx-mom-none-…` research cells built the same way. They are
+comparison presets, not desk settings: no desk patch uses them, and a desk started from one prints the
+`positiveCoordWarnings` line at start. The coordinations themselves (Normal / Trailing on, Block Active off) stay the
+code default.
+
+| preset | coordination left off |
+|---|---|
+| `strategy:normal`, `strategy:trailing`, `strategy:normal-off+block`, `strategy:dca`, `strategy:dca-active`, `strategy:normal+dca-active`, `strategy:trailing+dca`, `strategy:axis`, `strategy:normal+axis`, `strategy:trailing+axis` | Normal / Trailing (one of them, or both, off) |
+| `strategy:block-active`, `strategy:normal-trailing+block-active`, `strategy:block-active+dca-active` | Block Active on |
+| `strategy:trailing+block-active` | Normal off and Block Active on |
+| `mx-mom-none-std-ln12-normal-off+block`, `mx-mom-none-std-ln12-trailing+dca` | Normal / Trailing |
+| `mx-mom-none-std-ln12-block-active+dca-active`, `mx-mom-none-strong-ln12-block-active` | Block Active on |
+| `mx-mom-none-std-ln12-trailing+block-active` | Normal off and Block Active on |
+
+## Micro on and entry last-N off by default (13 Oct) — operator decisions, measured
+
+- `grid.micro = MICRO_RANGE` (commit 129c01e; operator: "include and enable also range Micro for processing completely").
+  Feed120 (PF-SEARCH.md section 17): D1 PF 0.44 → 0.59 (D1a 0.48 → 0.64, D1b 0.37 → 0.49), orders 57k → 134k; holdout
+  0.37 → 0.78 (first half 0.36 → 0.33, second 0.37 → 0.97). A stored grid without a `micro` key takes it through the
+  defaults; `micro: false` keeps it off.
+- `wf.lastN = 0` (operator decision, 13 Oct). The gate dropped candidates trading better than those it kept (D1 0.68 vs
+  0.44, holdout 0.82 vs 0.37; PF-SEARCH.md section 18), and lastN 0 passed three of four earlier measurements (sections
+  12–14). Settings v23 moves a stored 15 to 0. On mainnet the floor (`MAINNET_LAST_N`, 25) still applies unless the host
+  sets `CTS_CORE_MAINNET_WAIVE_FLOORS=1`; the x01 launcher does not.
+- Not kept: Short on 5m lanes (holdout first half 0.36 → 0.27) and the Base drawdown ratio at 2 (D1b 0.374 → 0.366).
+
+## Range families in the default focus (13 Oct) — PROTOCOL-8 run 3, kept
+
+- `FAMILY_FOCUS_13OCT` (21 pairs: `cfl-trend-50`, `htfpb-4`, `htfpb-8`, `orb-us`, `rel-str-12`, `rel-str-48`, `rgm-20` on
+  15m, 15m combined and 30m) joins the 16 former focus pairs. Feed120 against the dense-grid baseline: PF D1a 0.475 → 0.53,
+  D1b 0.374 → 0.45, holdout 0.362 → 0.37 and 0.368 → 0.38, orders 57,107 → 70,649 (PF-SEARCH.md section 19). Settings v24
+  moves a stored focus still on the former default; a focus chosen since stays.
+- Not kept: `tactics.onRun` (D1a 0.475 → 0.47, holdout 0.36 → 0.34 / 0.37 → 0.35).
+- Kept on: the signals' historic trailing configs (D1 signals 820 orders at 1.16 vs 335 at 0.95 without; holdout equal).
+
+## Micro at 2–5× the position cost (operator directive, 13 Oct)
+
+- `MICRO_TP` = net targets 1–4× cost, step 0.5× (0.2–0.8 % net), so the price targets are 2–5× the round-trip cost
+  (0.4–1.0 % at 0.2 %); before: 0.1–0.4 % net (price 1.5–3×). Seven targets as before: 476 distinct cells per hold (was
+  472). Settings v25 moves a stored Micro target list still on the former default; a list chosen since stays. Its causal
+  effect is measured in PF-SEARCH.md section 21.
+
+## x01: two caps overridden for the 0.50 USDT wallet (operator, 13 Oct 18:55Z) — "enable live executions"
+
+On the 0.50 USDT wallet every order was blocked by two of the 11 Oct caps: the free margin (0.50) under the 1 USDT
+floor, and the venue minimum (~2.06 USD) over the position cap (1 × equity = 0.50 USD). The operator chose the override
+over funding the account: **minFreeMargin 0, maxPositionX 5** (`docs/live-coordination/signals.patch.json`). The
+stop-risk and worst-case budgets (`maxRiskPct`, `maxBackstopLossPct`) are fractions of equity and stay at 0.5 (0.25 USD):
+they already admit one minimum position's stop (0.01–0.06 USD), so they were not changed. Consequence, stated to the
+operator: one venue-minimum position at a time at ~4 × the wallet; a single stop costs 2–12 % of it; the 80 % loss limit
+(0.40 USDT) can be reached by roughly 7–30 stops. Unchanged: the loss limit, the engine proof (signals trade live; an
+engine config reaches the exchange only after 25 own closes at PF ≥ 1.2), leverage max, positionSize min. The 11 Oct caps
+remain the setting for a funded wallet; this override is a recorded exception, not a new default.

@@ -10,6 +10,8 @@ import { laneContributions, resetLiveBackoff, stepLive, type ExchangeClient } fr
 import type { CoreRuntime } from "./runtime.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import { ExchangeRejected } from "../exchange/bingx.server.ts";
+import { authorizeSyntheticLanes, syntheticExecutionRun } from "../test-support.ts";
+import type { LiveGate } from "../live-validation.ts";
 
 process.env.CTS_CORE_LIVE = "1";
 const H = 3_600_000;
@@ -85,6 +87,7 @@ function rtOf() {
     { sym: "S1-USDT", last: 10 },
     { sym: "S2-USDT", last: 20 },
   ];
+  let positions: Pos[] = [];
   const rt = {
     generation: 1,
     db: new CoreDb(":memory:"),
@@ -109,9 +112,22 @@ function rtOf() {
         maxBackstopLossPct: 0,
       },
     },
-    sim: { stats: { pf: 1.5, n: 50 }, stable: true },
+    // Settled synthetic accepted outcomes and independent owned-paper execution evidence are declared per exact
+    // fixture lane below. A summary alone cannot authorize admission or manufacture missing proof.
+    sim: syntheticExecutionRun([]),
+    livePromotionGate: undefined as ((lane: Pick<Pos, "cfg" | "sym" | "side">, at?: number) => LiveGate) | undefined,
     status: { lastBarT: Math.floor(Date.now() / H) * H },
-    paper: { positions: [] as Pos[] },
+    paper: {
+      get positions(): Pos[] { return positions; },
+      set positions(next: Pos[]) {
+        positions = new Proxy(next, { set(target, property, value) {
+          const changed = Reflect.set(target, property, value);
+          if (property !== "length") authorizeSyntheticLanes(rt, target);
+          return changed;
+        } });
+        authorizeSyntheticLanes(rt, positions);
+      },
+    },
     tickersAt: 0,
     freshTickers: async () => {
       rt.tickersAt = Date.now();
@@ -153,7 +169,8 @@ describe("lane orders: independent, partial, Block Overall legs", { timeout: 120
     assert.equal(ex.positions.get("S1-USDT|LONG"), 1, "lane a opens its unit");
     invariants("a");
 
-    rt.paper.positions = [a, b];
+    // A newly declared identity added in place receives exact synthetic proof too.
+    rt.paper.positions.push(b);
     await step();
     assert.equal(ex.positions.get("S1-USDT|LONG"), 3, "lane b joins: +2 units");
     invariants("a+b");
@@ -305,10 +322,16 @@ describe("lane orders: independent, partial, Block Overall legs", { timeout: 120
     assert.equal(ex.positions.get("S1-USDT|LONG"), 1);
     // the lane exits; the close executes on the exchange but its reply is lost (a time-out)
     const order = ex.order.bind(ex);
+    const history: Record<string, unknown>[] = [];
     ex.order = async (p: Record<string, string | number>) => {
       await order(p);
-      if (p.type === "MARKET") throw new Error("request timed out");
+      if (p.type === "MARKET") {
+        history.push({ clientOrderId: p.clientOrderID, status: "FILLED", executedQty: p.quantity, avgPrice: 10, updateTime: Date.now() });
+        throw new Error("request timed out");
+      }
     };
+    // A flat book alone is not proof of which order filled: the venue's own history confirms this close.
+    Object.assign(ex, { ordersSince: async () => ({ orders: history }) });
     rt.paper.positions = [];
     await step();
     assert.equal(ex.positions.has("S1-USDT|LONG"), false, "the close executed on the exchange");

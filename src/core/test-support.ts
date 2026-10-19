@@ -3,8 +3,14 @@
 // of carrying their own copies, so a fix to the simulated venue applies to every suite.
 import { CoreDb } from "./server/db.server.ts";
 import type { ExchangeClient } from "./server/live.server.ts";
-import { DEFAULT_SETTINGS } from "./config.ts";
+import { DEFAULT_SETTINGS, type CoreSettings } from "./config.ts";
 import { ExchangeRejected, type AccountSnapshot } from "./exchange/bingx.server.ts";
+import type { Trade } from "./domain/types.ts";
+import { unitStatsOf } from "./metrics/stats.ts";
+import { minPfOf, rangeOfId } from "./minimal-coord.ts";
+import { isSignalInd } from "./indications/registry.ts";
+import { executionRecordKey, ownedPaperExecutionRecords, postBaseExecutionRecords, type OwnedPaperClose } from "./live-record.ts";
+import { ENGINE_PROOF_PF, promotionGate, type LiveGate } from "./live-validation.ts";
 
 export const H = 3_600_000;
 
@@ -15,6 +21,63 @@ export const PINNED_END = Date.UTC(2026, 8, 30, 12);
 export function pinSyntheticEnd(end = PINNED_END) {
   process.env.CTS_CORE_SYNTHETIC_END ??= String(end);
   return Number(process.env.CTS_CORE_SYNTHETIC_END);
+}
+
+/** The part of a CoreRuntime the tracker releases (structural: this module does not load the runtime). */
+export interface Disposable {
+  stop(): void;
+  dispose(): void;
+  backtestsSettled?(): Promise<void>;
+}
+
+/**
+ * The runtimes a test file builds, released together: dispose/cancel → drain owned preset tasks → close the shared
+ * pool. Cancellation must precede worker shutdown so an ordinary worker exit cannot start a local fallback.
+ * Track every runtime a test constructs, started or not: the stall watch starts in the constructor.
+ */
+export function trackRuntimes() {
+  const rts = new Set<Disposable>();
+  return {
+    track<T extends Disposable>(rt: T): T {
+      rts.add(rt);
+      return rt;
+    },
+    async disposeAll() {
+      if (!rts.size) return;
+      const all = [...rts];
+      rts.clear();
+      await releaseAll(all);
+    },
+    /** one runtime now (a test that is done with it before it builds the next) */
+    async release(rt: Disposable) {
+      rts.delete(rt);
+      await releaseAll([rt]);
+    },
+  };
+}
+
+async function releaseAll(all: readonly Disposable[]) {
+  for (const r of all) { r.stop(); r.dispose(); }
+  const { closePool } = await import("./server/pool.server.ts");
+  try {
+    await Promise.all(all.map((r) => r.backtestsSettled?.()));
+  } finally {
+    await closePool();
+  }
+}
+
+/**
+ * The preset comparison on for one test (npm run test:core runs with CTS_CORE_COMPARE=0, as desks and sessions do:
+ * every test compute packed and replayed the tapes once per preset). Call it before the runtime computes; the returned
+ * function restores the previous value. The runtime reads the variable at each compute.
+ */
+export function compareOn(): () => void {
+  const prev = process.env.CTS_CORE_COMPARE;
+  process.env.CTS_CORE_COMPARE = "1";
+  return () => {
+    if (prev === undefined) delete process.env.CTS_CORE_COMPARE;
+    else process.env.CTS_CORE_COMPARE = prev;
+  };
 }
 
 /** A seeded linear congruential source in [0, 1). */
@@ -146,10 +209,13 @@ export class SimExchange implements ExchangeClient {
   async order(p: Record<string, string | number>): Promise<unknown> {
     this.sent++;
     this.log.push(p);
-    if (this.r() < this.rejectRate) throw new Error("simulated reject");
+    // A venue rejection proves no execution. Keep transport timeouts below as unknown outcomes: their fills
+    // must be recovered from order history rather than guessed or retried as though nothing executed.
+    if (this.r() < this.rejectRate) throw new ExchangeRejected("simulated reject", 1);
     const sym = String(p.symbol);
     const ps = String(p.positionSide) as "LONG" | "SHORT";
     const key = `${sym}|${ps}`;
+    let marketReply: unknown;
     if (p.type === "MARKET") {
       const into = (ps === "LONG" && p.side === "BUY") || (ps === "SHORT" && p.side === "SELL");
       if (into && this.refuse.has(sym)) throw new ExchangeRejected("simulated refusal", 1);
@@ -164,7 +230,10 @@ export class SimExchange implements ExchangeClient {
         px: this.px.get(sym) ?? NaN,
         t: Date.now(),
       });
-      this.hist({ venueSymbol: sym, positionSide: ps, clientOrderId: p.clientOrderID === undefined ? "" : String(p.clientOrderID) }, "FILLED", this.px.get(sym) ?? NaN, into ? q : cur - next, String(p.side));
+      const executed = into ? q : cur - next;
+      this.hist({ venueSymbol: sym, positionSide: ps, clientOrderId: p.clientOrderID === undefined ? "" : String(p.clientOrderID) }, "FILLED", this.px.get(sym) ?? NaN, executed, String(p.side));
+      // Synthetic exchange explicitly confirms filled quantity; production must never infer it from an empty reply.
+      marketReply = { order: { status: "FILLED", executedQty: executed, avgPrice: this.px.get(sym) ?? 0 } };
       if (next > 0) this.positions.set(key, next);
       else this.positions.delete(key);
     } else {
@@ -206,7 +275,7 @@ export class SimExchange implements ExchangeClient {
       return { order: { orderId: id } };
     }
     if (this.r() < this.timeoutAfterFillRate) throw new Error("simulated timeout after fill");
-    return undefined;
+    return marketReply;
   }
   async cancel(_sym: string, id: string) {
     const o = this.orders.find((x) => x.id === id);
@@ -346,11 +415,112 @@ export type FakePaperPosition = {
   entry: number;
   stop: number;
   vol: number;
+  level?: number;
+  legs?: Partial<Record<"config" | "overall" | "symbol" | "direction" | "indication" | "type", number>>;
   entryT?: number;
   /** the lane's target price (unset: none) */
   target?: number;
   trailOn?: boolean;
 };
+
+type SyntheticLane = Pick<FakePaperPosition, "cfg" | "sym" | "side">;
+type SyntheticTrade = Trade & { unitR?: number | null };
+
+/** Actual settled synthetic outcomes, rather than a summary that merely claims a known PF. */
+export function syntheticExecutionRun(
+  lanes: readonly SyntheticLane[],
+  returns: readonly (number | null)[] = [-0.01, 0.015],
+  n = 50,
+  now = Date.now(),
+) {
+  if (!returns.length) throw new RangeError("synthetic returns must not be empty");
+  const trades: SyntheticTrade[] = [];
+  for (const lane of lanes) for (let i = 0; i < n; i++) {
+    const r = returns[i % returns.length];
+    const exitT = now - (n - i) * 1_000;
+    trades.push({ ...lane, entryT: exitT - 1_000, exitT, entry: 100,
+      exit: 100 * (1 + lane.side * (r ?? 0)), r: r ?? 0, unitR: r,
+      reason: "time", bars: 1, mfe: Math.max(0, r ?? 0), mae: Math.min(0, r ?? 0) });
+  }
+  trades.sort((a, b) => a.exitT - b.exitT);
+  const stats = unitStatsOf(trades, now);
+  return { trades, openAtEnd: [] as Trade[], startT: now - (n + 2) * 1_000, endT: now,
+    stats, stable: stats.unknownReturns === 0 && stats.net > 0 && stats.pf >= 1.1 };
+}
+
+interface SyntheticFixtureRuntime {
+  settings: Pick<CoreSettings, "gates" | "live">;
+  sim: ReturnType<typeof syntheticExecutionRun>;
+  livePromotionGate?: (lane: SyntheticLane, now?: number) => LiveGate;
+}
+type SyntheticEvidenceOptions = {
+  modelReturns?: readonly (number | null)[];
+  ownedReturns?: readonly (number | null)[];
+  ownedNotionalUsd?: number | null;
+};
+const syntheticEvidence = new WeakMap<SyntheticFixtureRuntime, {
+  lanes: Map<string, { lane: SyntheticLane; options: SyntheticEvidenceOptions }>;
+  managedSim: SyntheticFixtureRuntime["sim"];
+  owned: OwnedPaperClose[];
+}>();
+
+/**
+ * Authorize only identities explicitly declared by a synthetic fixture. Model outcomes and funded owned-paper
+ * outcomes are independent records and are judged by the production strict gate. No venue fills are invented.
+ * An explicitly replaced model (including negative/unknown fixtures) is preserved on later lane declarations.
+ */
+export function authorizeSyntheticLanes(
+  rt: SyntheticFixtureRuntime,
+  lanes: readonly SyntheticLane[],
+  options?: SyntheticEvidenceOptions,
+) {
+  let evidence = syntheticEvidence.get(rt);
+  if (!evidence) {
+    evidence = { lanes: new Map(), managedSim: rt.sim, owned: [] };
+    syntheticEvidence.set(rt, evidence);
+  }
+  for (const lane of lanes) {
+    const key = executionRecordKey(lane.cfg, lane.sym, lane.side);
+    evidence.lanes.set(key, { lane: { ...lane }, options: options ?? evidence.lanes.get(key)?.options ?? {} });
+  }
+  const n = Math.max(50, 2 * Math.max(1, rt.settings.gates.minTrades ?? 0,
+    rt.settings.live.liveLastN ?? 25, rt.settings.live.engineProofN ?? 0));
+  const now = Date.now();
+  const trades: SyntheticTrade[] = [];
+  const owned: OwnedPaperClose[] = [];
+  for (const { lane, options: opt } of evidence.lanes.values()) {
+    trades.push(...syntheticExecutionRun([lane], opt.modelReturns, n, now).trades);
+    const ownedReturns = opt.ownedReturns ?? [-0.008, 0.012];
+    if (!ownedReturns.length) throw new RangeError("synthetic owned returns must not be empty");
+    for (let i = 0; i < n; i++) owned.push({ ...lane, exitT: now - (n - i) * 1_000,
+      unitR: ownedReturns[i % ownedReturns.length], ownedNotionalUsd: opt.ownedNotionalUsd === undefined ? 10 : opt.ownedNotionalUsd });
+  }
+  trades.sort((a, b) => a.exitT - b.exitT);
+  if (rt.sim === evidence.managedSim) {
+    const stats = unitStatsOf(trades, now);
+    rt.sim = { trades, openAtEnd: [], startT: now - (n + 2) * 1_000, endT: now,
+      stats, stable: stats.unknownReturns === 0 && stats.net > 0 && stats.pf >= 1.1 };
+    evidence.managedSim = rt.sim;
+  }
+  evidence.owned = owned;
+  const execution = ownedPaperExecutionRecords(owned);
+  let modelTrades: Trade[] | undefined;
+  let model: ReturnType<typeof postBaseExecutionRecords> = new Map();
+  rt.livePromotionGate = (lane, at = Date.now()) => {
+    const key = executionRecordKey(lane.cfg, lane.sym, lane.side);
+    if (modelTrades !== rt.sim.trades) {
+      modelTrades = rt.sim.trades;
+      model = Array.isArray(modelTrades) ? postBaseExecutionRecords(modelTrades) : new Map();
+    }
+    const minN = Math.max(1, rt.settings.gates.minTrades ?? 0,
+      rt.settings.live.liveLastN ?? 25, rt.settings.live.engineProofN ?? 0);
+    const ind = lane.cfg.split("|")[1] ?? "";
+    const minPf = Math.max(minPfOf(rt.settings.gates, rangeOfId(lane.cfg), ind),
+      rt.settings.live.liveMinPf ?? 0,
+      (rt.settings.live.engineProofN ?? 0) > 0 && !isSignalInd(ind) ? rt.settings.live.engineProofPf ?? ENGINE_PROOF_PF : 0);
+    return promotionGate(model.get(key), execution.get(key), 0, at, minN, minPf);
+  };
+}
 
 /**
  * The part of a runtime the live step reads, in Overall mode with explicit notionals (equity-% sizing is tested
@@ -361,6 +531,7 @@ export function fakeRt(db: CoreDb = new CoreDb(":memory:"), symbols = 12) {
     sym: `S${i}-USDT`,
     last: 10 + i * 7,
   }));
+  let positions: FakePaperPosition[] = [];
   const rt = {
     generation: 1,
     db,
@@ -372,21 +543,35 @@ export function fakeRt(db: CoreDb = new CoreDb(":memory:"), symbols = 12) {
         enabled: true,
         mode: "overall" as const,
         notionalUsd: 10,
-        maxPositions: 8,
+        maxPositions: 100,
         maxNotionalUsd: 40,
         ratio: 1,
         rebalancePct: 0.25,
       } as typeof DEFAULT_SETTINGS.live,
     },
-    sim: { stats: { pf: 1.5, n: 50 }, stable: true },
+    sim: syntheticExecutionRun([]),
+    livePromotionGate: undefined as SyntheticFixtureRuntime["livePromotionGate"],
     status: { lastBarT: Math.floor(Date.now() / H) * H },
-    paper: { positions: [] as FakePaperPosition[] },
+    paper: {
+      // Declaring a lane in this synthetic runtime authorizes exactly that fixture identity. Array pushes are
+      // declarations too; arbitrary queried siblings still have neither model nor owned execution evidence.
+      get positions(): FakePaperPosition[] { return positions; },
+      set positions(next: FakePaperPosition[]) {
+        positions = new Proxy(next, { set(target, property, value) {
+          const result = Reflect.set(target, property, value);
+          if (property !== "length") authorizeSyntheticLanes(rt, target);
+          return result;
+        } });
+        authorizeSyntheticLanes(rt, next);
+      },
+    },
     tickersAt: 0,
     freshTickers: async () => {
       rt.tickersAt = Date.now();
       return prices;
     },
   };
+  authorizeSyntheticLanes(rt, []);
   return { rt, prices };
 }
 export type FakeRt = ReturnType<typeof fakeRt>["rt"];

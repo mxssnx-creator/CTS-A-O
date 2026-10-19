@@ -1,4 +1,4 @@
-// Signals processing: sources, combos, the 15 Normal + 15 Trailing configs, the active ranking, the last-8 guard,
+// Signals processing: sources, combos, the 42 Normal + 35 Trailing configs, the active ranking, the last-8 guard,
 // settings and the engine running with signals on.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -10,6 +10,7 @@ import {
   mergeSignals,
   signalCombos,
   signalProtects,
+  signalSeatSymbols,
   signalSettings,
   SignalGuard,
   sigActiveKey,
@@ -23,9 +24,11 @@ import {
   signalId,
   signalSourceOf,
 } from "./indications/registry.ts";
+import { isSignalCoordinationInd } from "./signal-coordination.ts";
 import { allCombos, symStat } from "./pipeline/pipeline.ts";
 import { checkSettings } from "./settings-check.ts";
 import { DEFAULT_SETTINGS } from "./config.ts";
+import { signalRangeOf } from "./signal-config.ts";
 import {
   capsOf,
   defaultWalkForward,
@@ -43,8 +46,10 @@ import {
   sourceUnstable,
   type ConfigTape,
 } from "./sim/walkforward.ts";
-import { CoreRuntime } from "./server/runtime.server.ts";
+import { CoreRuntime, signalCoordinationProtects } from "./server/runtime.server.ts";
 import { CoreDb } from "./server/db.server.ts";
+import { modeledUnitStatsOf } from "./metrics/stats.ts";
+import { closedPositions } from "./positions.ts";
 
 const on = signalSettings({ enabled: true });
 const why = (d: object) => ("why" in d ? d.why : "");
@@ -62,6 +67,9 @@ describe("signals: sources and combos", () => {
     }
     const id = `${signalId("ema-cross", "short")}@m15`;
     assert.ok(isSignalInd(id));
+    assert.equal(signalRangeOf(id), "short");
+    assert.equal(signalRangeOf(`${signalId("ema-cross", "medium")}@m15`), "medium");
+    assert.equal(signalRangeOf("rsi-mom-14-20@m15"), null);
     assert.equal(signalSourceOf(id), "ema-cross");
     assert.equal(laneOf(id).tf, 15);
     assert.ok(!isSignalInd("ema-9-21@m15"));
@@ -72,8 +80,8 @@ describe("signals: sources and combos", () => {
     assert.equal(signalCombos({ ...DEFAULT_SIGNALS, enabled: false }, [1, 5, 15, 30]).length, 0);
     assert.equal(DEFAULT_SIGNALS.enabled, true, "on by default");
     const c = signalCombos(on, [1, 5, 15, 30]);
-    // sources × 2 ranges × default lanes 15 / 30 (short ranges included)
-    assert.equal(c.length, ENABLED * 2 * DEFAULT_SIGNALS.lanes.length);
+    // Classic sources × 2 parameter ranges + 5 ratio bands × 3 input mixes, each on default lanes 15 / 30.
+    assert.equal(c.length, (ENABLED * 2 + 15) * DEFAULT_SIGNALS.lanes.length);
     assert.ok(c.every((x) => x.bot === "follow" && isSignalInd(x.ind)));
     // a source off, a range off, a lane the engine does not run
     const off = signalSettings({
@@ -82,18 +90,69 @@ describe("signals: sources and combos", () => {
       ranges: { short: true, medium: false },
       lanes: [5, 60],
     });
-    assert.equal(signalCombos(off, [1, 5, 15, 30]).length, ENABLED - 1);
+    assert.equal(signalCombos(off, [1, 5, 15, 30]).length, ENABLED - 1 + 5);
   });
 
-  it("15 Normal + 15 Trailing configs, medium to high targets, trailing stops wider", () => {
+  it("coordinator exit ranges only build their selected grid tags", () => {
+    const normalOnly = signalCoordinationProtects(DEFAULT_SETTINGS.grid, DEFAULT_SETTINGS.cost, {
+      short: false,
+      normal: true,
+      long: false,
+    });
+    assert.ok(normalOnly.length > 0);
+    assert.ok(normalOnly.every((p) => p.tag === "gn"));
+    const shortAndLong = signalCoordinationProtects(DEFAULT_SETTINGS.grid, DEFAULT_SETTINGS.cost, {
+      short: true,
+      normal: false,
+      long: true,
+    });
+    assert.ok(shortAndLong.some((p) => p.tag === "sh"));
+    assert.ok(shortAndLong.some((p) => p.tag === "lg"));
+    assert.ok(shortAndLong.every((p) => p.tag === "sh" || p.tag === "lg"));
+  });
+
+  it("expands Normal and Trailing hold candidates from the runtime-passing 48 h cells", () => {
+    const protects = signalCoordinationProtects(
+      DEFAULT_SETTINGS.grid,
+      DEFAULT_SETTINGS.cost,
+      DEFAULT_SETTINGS.signals.coordination.ranges,
+    );
+    const normal = protects.filter((p) => p.trail === 0);
+    const trailing = protects.filter((p) => p.trail > 0);
+    assert.equal(protects.length, 2100);
+    assert.equal(normal.length, 750, "300 existing + 450 new Normal protections");
+    assert.equal(trailing.length, 1350, "900 existing + 450 new 48 h Trailing protections");
+    assert.deepEqual([...new Set(normal.map((p) => p.hold))].sort((a, b) => a - b), [48, 64, 96, 128, 192]);
+    assert.deepEqual([...new Set(trailing.map((p) => p.hold))].sort((a, b) => a - b), [64, 96, 192]);
+  });
+
+  it("builds all 42 Normal + 35 capped Trailing configs beside nine independent Trailing only sets", () => {
     const p = signalProtects({ ...on, exits: "pct" });
     const normal = p.filter((x) => x.trail === 0);
-    const trailing = p.filter((x) => x.trail > 0);
-    assert.equal(normal.length, 15);
-    assert.equal(trailing.length, 15);
-    assert.equal(new Set(p.map((x) => `${x.tp}|${x.sl}|${x.trail}`)).size, 30, "all distinct");
-    for (const x of p) assert.ok(x.tp >= 0.015 && x.hold > 0);
+    const trailing = p.filter((x) => x.trail > 0 && !x.trailOnly);
+    assert.equal(normal.length, 42);
+    assert.equal(trailing.length, 35);
+    assert.equal(new Set(p.map((x) => `${x.tp}|${x.sl}|${x.trail}`)).size, 86, "all distinct");
+    for (const x of p) assert.ok((x.trailOnly ? x.tp === 0 : x.tp >= 0.01) && x.hold > 0);
+    assert.deepEqual(on.normal.tp, [0.01, 0.015, 0.025, 0.03, 0.04, 0.05, 0.06]);
+    assert.deepEqual(on.normal.slOfTp, [0.5, 0.75, 1, 1.5, 2, 3]);
+    assert.deepEqual(on.trailing.tp, [0.01, 0.015, 0.03, 0.04, 0.05, 0.06, 0.08]);
+    assert.deepEqual(on.trailing.trailOfTp, [0.2, 0.3, 0.4, 0.6, 0.8]);
+    assert.equal(on.minTrail, 0.002, "the 1 % TP × 0.2 trail remains eligible");
     for (const x of trailing) assert.ok(x.sl >= 2 * x.tp - 1e-9, "trailing stops at 2 × target");
+  });
+
+  it("deactivates trails whose effective gap is below the configured minimum", () => {
+    const short = signalSettings({
+      minTrail: 0.005,
+      trailing: { ...on.trailing, tp: [0.01], trailOfTp: [0.1] },
+      trailingOnly: { ...on.trailingOnly, enabled: true, sl: [0.02], trail: [0.002], trailStep: 1 },
+    });
+    const protects = signalProtects(short);
+    assert.ok(protects.some((p) => p.trail === 0), "normal exits remain eligible");
+    assert.ok(protects.every((p) => p.trail === 0 || p.trail * (p.trailStep ?? 1) >= short.minTrail));
+    assert.ok(!protects.some((p) => p.trailOnly), "too-short Trailing only stops are omitted");
+    assert.ok(!protects.some((p) => p.trail === 0.001), "too-short capped trailing stops are omitted");
   });
 
   it("exit models: percent (default), ATR (Stable-02: 9 cells × no trail / trail 0.8 %) or both", () => {
@@ -101,13 +160,13 @@ describe("signals: sources and combos", () => {
     const pct = signalProtects({ ...on, exits: "pct" });
     const atr = signalProtects({ ...on, exits: "atr" });
     const both = signalProtects({ ...on, exits: "both" });
-    assert.equal(pct.length, 30);
-    assert.equal(atr.length, 18);
-    assert.equal(both.length, 48, "1.6 × the percent-only tapes");
-    assert.ok(pct.every((x) => !x.atr) && atr.every((x) => x.atr));
-    assert.equal(atr.filter((x) => x.trail > 0).length, 9);
+    assert.equal(pct.length, 86);
+    assert.equal(atr.length, 27);
+    assert.equal(both.length, 104, "percent + ATR + nine additional Trailing only sets");
+    assert.ok(pct.every((x) => !x.atr) && atr.every((x) => x.atr || x.trailOnly));
+    assert.equal(atr.filter((x) => x.atr && x.trail > 0).length, 9);
     // Stable-02 max hold: 3 × 15m bars
-    assert.ok(atr.every((x) => x.hold === 3));
+    assert.ok(atr.filter((x) => x.atr).every((x) => x.hold === 3));
     assert.equal(
       signalProtects({ ...on, atr: { ...on.atr, holdBars: 0 } }).at(-1)!.hold,
       on.holdH * 4,
@@ -117,7 +176,7 @@ describe("signals: sources and combos", () => {
 
 describe("signals: active ranking and guard", () => {
   it("the best N by per-symbol net (then PF), with a minimum of trades", () => {
-    type Run = Parameters<typeof activeSignals>[0][number];
+    type Run = Parameters<typeof activeSignals>[0] extends Iterable<infer R> ? R : never;
     const runs: Run[] = [
       {
         bot: "follow",
@@ -147,7 +206,7 @@ describe("signals: active ranking and guard", () => {
   });
 
   it("drawdown ranking: net ÷ max drawdown, only signals positive in enough 4-hour blocks", () => {
-    type Run = Parameters<typeof activeSignals>[0][number];
+    type Run = Parameters<typeof activeSignals>[0] extends Iterable<infer R> ? R : never;
     const runs: Run[] = [
       // big net, deep drawdown: recovery 10 / 5 = 2
       {
@@ -177,12 +236,22 @@ describe("signals: active ranking and guard", () => {
     assert.equal(on.rank, "lowdd", "low drawdown is the default");
     assert.deepEqual(
       [...activeSignals(runs, { ...on, rank: "drawdown", count: 10 })],
-      ["follow|sig-b-s@m5|A|1", "follow|sig-b-s@m5|A|-1", "follow|sig-a-s@m5|A|1", "follow|sig-a-s@m5|A|-1"],
+      [
+        "follow|sig-b-s@m5|A|1",
+        "follow|sig-b-s@m5|A|-1",
+        "follow|sig-a-s@m5|A|1",
+        "follow|sig-a-s@m5|A|-1",
+      ],
     );
     // low drawdown: net ÷ drawdown² (6 vs 0.4) and net ≥ drawdown
     assert.deepEqual(
       [...activeSignals(runs, { ...on, rank: "lowdd", count: 10 })],
-      ["follow|sig-b-s@m5|A|1", "follow|sig-b-s@m5|A|-1", "follow|sig-a-s@m5|A|1", "follow|sig-a-s@m5|A|-1"],
+      [
+        "follow|sig-b-s@m5|A|1",
+        "follow|sig-b-s@m5|A|-1",
+        "follow|sig-a-s@m5|A|1",
+        "follow|sig-a-s@m5|A|-1",
+      ],
     );
     const deep: Run = {
       bot: "follow",
@@ -190,11 +259,15 @@ describe("signals: active ranking and guard", () => {
       bySym: { A: { n: 9, net: 3, pf: 1.2, dd: 4, okShare: 0.9 } },
     };
     assert.ok(![...activeSignals([deep], { ...on, rank: "lowdd" })].length, "never recovered");
-    assert.equal([...activeSignals([deep], { ...on, rank: "drawdown" })].length, 2, "one unit, both directions");
+    assert.equal(
+      [...activeSignals([deep], { ...on, rank: "drawdown" })].length,
+      2,
+      "one unit, both directions",
+    );
   });
 
   it("automatic validation: a signal that lost over the latest 24 h does not start", () => {
-    type Run = Parameters<typeof activeSignals>[0][number];
+    type Run = Parameters<typeof activeSignals>[0] extends Iterable<infer R> ? R : never;
     const st = (recentNet: number, recentN = 3) => ({
       n: 9,
       net: 6,
@@ -208,7 +281,10 @@ describe("signals: active ranking and guard", () => {
       { bot: "follow", ind: "sig-a-s@m5", bySym: { A: st(1), B: st(-1), C: st(0, 0) } },
     ];
     assert.equal(on.validate, true);
-    assert.deepEqual([...activeSignals(runs, { ...on, count: 10 })], ["follow|sig-a-s@m5|A|1", "follow|sig-a-s@m5|A|-1"]);
+    assert.deepEqual(
+      [...activeSignals(runs, { ...on, count: 10 })],
+      ["follow|sig-a-s@m5|A|1", "follow|sig-a-s@m5|A|-1"],
+    );
     assert.equal(activeSignals(runs, { ...on, count: 10, validate: false }).size, 6);
   });
 
@@ -256,7 +332,7 @@ describe("signals: active ranking and guard", () => {
   it("the Real gate refuses inactive signals and guarded sets", () => {
     const o = {
       ...defaultWalkForward(DEFAULT_SETTINGS),
-      signalActive: new Set(["follow|sig-ema-cross-s@m15|A|1"]),
+      signalActive: new Set([sigActiveKey("follow", "sig-ema-cross-s@m15", "A", 1, "normal", "x")]),
       signalGuardN: 8,
     };
     const tp = {
@@ -296,6 +372,9 @@ describe("signals trade their own base", () => {
       bot: "follow",
       ind,
       kind,
+      syms: ["A"],
+      symI: new Uint16Array(0),
+      side: new Int8Array(0),
       n: 0,
       exitT: new Float64Array(0),
       entryT: new Float64Array(0),
@@ -314,7 +393,14 @@ describe("signals trade their own base", () => {
     signalValidLastN: 0,
     symGate: undefined,
     signalOwnBase: ownBase,
-    toggles: { ...o0.toggles, normal: false, trailing: true, block: true, blockActive: true, axis: true },
+    toggles: {
+      ...o0.toggles,
+      normal: false,
+      trailing: true,
+      block: true,
+      blockActive: true,
+      axis: true,
+    },
     block: { ...o0.block, minActiveLevel: 5 },
   });
   const ctx = { sym: "A", side: 1 };
@@ -355,7 +441,7 @@ describe("signal guard window", () => {
 describe("signals: guards through the feed (as the simulation runs them)", () => {
   const base = () => ({
     ...defaultWalkForward(DEFAULT_SETTINGS),
-    signalActive: new Set(["follow|sig-ema-cross-s@m15|A|1"]),
+    signalActive: new Set([sigActiveKey("follow", "sig-ema-cross-s@m15", "A", 1, "normal", tp.id)]),
   });
   const tp = {
     id: "follow|sig-ema-cross-s@m15|tp2|sl2|tr0|h96",
@@ -430,8 +516,8 @@ describe("signals: guards through the feed (as the simulation runs them)", () =>
 });
 
 describe("signals: settings", () => {
-  it("active count: 0 = no cap, else 10–2000 in steps of 10, default 100 (per-side units: the measured 50 × 2)", () => {
-    assert.equal(DEFAULT_SIGNALS.count, 100);
+  it("active count: 0 = no cap, else 10–2000 in steps of 10, default unlimited (exact config units)", () => {
+    assert.equal(DEFAULT_SIGNALS.count, 0);
     assert.equal(SIGNAL_COUNT_CHOICES[0], 0, "no cap is a choice");
     assert.equal(SIGNAL_COUNT_CHOICES[1], 10);
     assert.equal(SIGNAL_COUNT_CHOICES.at(-1), 2000);
@@ -461,6 +547,15 @@ describe("signals: settings", () => {
     assert.deepEqual(m.normal, DEFAULT_SIGNALS.normal);
     assert.deepEqual(DEFAULT_SETTINGS.signals, DEFAULT_SIGNALS);
   });
+
+  it("validates and merges short and medium Signal volume factors independently", () => {
+    assert.deepEqual(DEFAULT_SIGNALS.rangeVolumeFactors, { short: 1, medium: 1 });
+    const patched = mergeSignals(on, { rangeVolumeFactors: { short: 1.4 } } as never);
+    assert.deepEqual(patched.rangeVolumeFactors, { short: 1.4, medium: 1 });
+    assert.equal(signalSettings({ rangeVolumeFactors: { short: 2.5, medium: 1 } }).rangeVolumeFactors.short, 2.5);
+    assert.throws(() => checkSettings({ signals: { ...on, rangeVolumeFactors: { short: 0.3, medium: 1 } } }), /0\.2 steps/);
+    assert.throws(() => checkSettings({ signals: { ...on, rangeVolumeFactors: { short: 1, medium: 5.2 } } }), /out of range/);
+  });
 });
 
 describe("unlimited orders", () => {
@@ -469,7 +564,11 @@ describe("unlimited orders", () => {
     assert.equal(w.maxPerSymbol, 0);
     assert.equal(w.maxPerSide, 0);
     assert.equal(w.maxOpen, 0);
-    assert.equal(w.maxPositions, 0, "positions (symbol × direction): no cap either (process freely)");
+    assert.equal(
+      w.maxPositions,
+      0,
+      "positions (symbol × direction): no cap either (process freely)",
+    );
     assert.deepEqual(capsOf(w, false), {
       perSymbol: Infinity,
       maxOpen: Infinity,
@@ -522,24 +621,41 @@ describe("signals: engine", { timeout: 400_000 }, () => {
     rt.stop();
     const st = rt.status.signals!;
     assert.ok(st.enabled);
-    assert.equal(st.combos, ENABLED * 2 * DEFAULT_SIGNALS.lanes.length);
-    assert.ok(st.active > 0 && st.active <= 10, `active ${st.active}`);
+    assert.equal(st.combos, (ENABLED * 2 + 15) * DEFAULT_SIGNALS.lanes.length);
+    assert.ok(st.active > 0 && st.active <= 110, `active ${st.active}`);
+    assert.ok((st.coordinationActive ?? 0) <= DEFAULT_SIGNALS.coordination.count);
+    assert.ok((st.active ?? 0) - (st.coordinationActive ?? 0) <= 10, "classic signal cap is independent");
+    assert.ok((st.coordinationPairs ?? 0) > 0 && (st.coordinationConfigs ?? 0) > 0);
     const sigTapes = rt.tapes.filter((t) => isSignalInd(t.ind));
+    // Each exact config with an active symbol/direction takes its own seat; sibling protects supply no seat.
+    const coordTapes = sigTapes.filter((t) => t.ind.startsWith("sig-coord-"));
+    assert.ok(coordTapes.length > 0, "coordinator tapes are built");
+    assert.ok(coordTapes.every((t) => t.protect.tag === "gn" || t.protect.tag === "lg"), "grid-off Short exits are excluded");
+    const coordTrades = rt.sim!.trades.filter((t) => isSignalCoordinationInd(t.cfg.split("|")[1] ?? ""));
+    const coordStats = modeledUnitStatsOf(coordTrades);
+    assert.equal(st.coordinationOrders, coordTrades.length);
+    assert.equal(st.coordinationTrades, coordTrades.length);
+    assert.equal(st.coordinationPf, coordStats.pf);
+    assert.equal(st.coordinationNet, coordStats.net);
+    assert.equal(st.coordinationPositions, closedPositions(coordTrades));
     // every config of every active signal runs (not selected into seats): all of them in the paper selection
     const sel = new Set(rt.paper.selected);
-    const activePairs = new Set(
-      [...rt.wf.signalActive!].map((k) => k.split("|").slice(0, 2).join("|")),
-    );
     for (const t of sigTapes)
-      if (activePairs.has(`${t.bot}|${t.ind}`)) assert.ok(sel.has(t.id), t.id);
-    // 15 Normal + 15 Trailing + 18 ATR per signal pair; configs the stop / trailing floors make identical on a
-    // fast lane run once
-    const full = st.pairs * signalProtects(signalSettings({ enabled: true })).length;
+      if (signalSeatSymbols(t, rt.wf.signalActive!).size) assert.ok(sel.has(t.id), t.id);
+    // 42 Normal + 35 capped Trailing + nine Trailing-only configs per percent-mode signal pair; ATR adds 18 in ATR /
+    // both mode. Coordinators use their own enabled range grid and historic additions qualify independently.
+    const coordProtections = signalCoordinationProtects(rt.settings.grid, rt.settings.cost, rt.settings.signals.coordination.ranges);
+    const sourcePairs = st.pairs - (st.coordinationPairs ?? 0);
+    const pct = sourcePairs * signalProtects(signalSettings({ enabled: true })).length + (st.coordinationPairs ?? 0) * signalCoordinationProtects(rt.settings.grid, rt.settings.cost, rt.settings.signals.coordination.ranges).length;
+    const full = st.configs;
+    assert.ok(st.historic, "history calculations report their eligibility diagnostics");
+    assert.ok(st.historic.qualified <= st.historic.candidates);
+    assert.ok(full >= pct, `signal configs retain the full configured source/coordinator grids: ${full} vs ${pct}`);
     assert.ok(
       sigTapes.length <= full && sigTapes.length >= full * 0.9,
       `${sigTapes.length} of ${full}`,
     );
-    // stop and trailing floors (0.5 % by default) hold on every lane, engine and signal configs, % and ATR exits;
+    // stop floors (0.5 % by default) and each lane's trailing floor hold on engine and signal configs, % and ATR exits;
     // a range cell (minimal / short / general / long …) keeps its own minimum (at least the position cost)
     for (const t of rt.tapes) {
       if (t.protect.tag) {
@@ -551,14 +667,21 @@ describe("signals: engine", { timeout: 400_000 }, () => {
         continue;
       }
       assert.ok(t.protect.sl >= 0.005 - 1e-9, `${t.id} sl ${t.protect.sl}`);
-      assert.ok(
-        t.protect.trail === 0 || t.protect.trail >= 0.005 - 1e-9,
-        `${t.id} trail ${t.protect.trail}`,
-      );
+      // Historic Exit uses its separately configured protection floor, not the engine grid floor.
+      const signalTrailFloor = isSignalInd(t.ind)
+        ? DEFAULT_SIGNALS.minTrail
+        : t.protect.exitType === "historic"
+          ? DEFAULT_SETTINGS.protectFloor.minTrail
+          : DEFAULT_SETTINGS.grid.minTrail;
+      assert.ok(t.protect.trail === 0 || t.protect.trail >= signalTrailFloor - 1e-9, `${t.id} trail ${t.protect.trail}`);
       if (t.protect.atr) assert.ok((t.protect.atr.minSl ?? 0) >= 0.005 - 1e-9, `${t.id} atr floor`);
     }
     // no engine protect grid on signals, no DCA / Axis
-    assert.ok(sigTapes.every((t) => t.kind === "normal" || t.kind === "trailing"));
+    assert.ok(
+      sigTapes.every(
+        (t) => t.kind === "normal" || t.kind === "trailing" || t.kind === "trailing-only",
+      ),
+    );
     // every simulated signal trade belongs to a signal active on that symbol at its entry (ranked per step on
     // results closed before it); paper / live take the set ranked at the end of the run
     const steps = rt.sim!.signalSteps!;
@@ -566,7 +689,9 @@ describe("signals: engine", { timeout: 400_000 }, () => {
     assert.deepEqual([...rt.wf.signalActive!], rt.sim!.signalActiveEnd);
     for (const x of rt.sim!.trades.filter((x) => isSignalInd(x.cfg.split("|")[1] ?? "")))
       assert.ok(
-        signalSetAt(steps, x.entryT)!.has(sigActiveKey(x.cfg.split("|")[0], x.cfg.split("|")[1], x.sym, x.side)),
+        signalSetAt(steps, x.entryT)!.has(
+          sigActiveKey(x.cfg.split("|")[0], x.cfg.split("|")[1], x.sym, x.side, x.kind, x.cfg),
+        ),
         x.cfg,
       );
     const a = rt.runAudit();
@@ -621,12 +746,15 @@ describe("signals: causal per-step activation", () => {
   it("ranks only on results closed before t (no look-ahead)", () => {
     const early = activeSignalsAt([ta, tb], 48 * H, sig, 48);
     // keys carry the direction (every fixture close is a long)
-    assert.ok(early.has(`follow|${a.ind}|S|1`));
-    assert.ok(!early.has(`follow|${a.ind}|S|-1`), "no short closes: the short is not active");
-    assert.ok(!early.has(`follow|${b.ind}|S|1`), "b has only losses before 48 h");
+    assert.ok(early.has(sigActiveKey("follow", a.ind, "S", 1, "normal", ta.id)));
+    assert.ok(
+      !early.has(sigActiveKey("follow", a.ind, "S", -1, "normal", ta.id)),
+      "no short closes: the short is not active",
+    );
+    assert.ok(!early.has(sigActiveKey("follow", b.ind, "S", 1, "normal", tb.id)), "b has only losses before 48 h");
     const late = activeSignalsAt([ta, tb], 100 * H, sig, 48);
-    assert.ok(late.has(`follow|${b.ind}|S|1`));
-    assert.ok(!late.has(`follow|${a.ind}|S|1`), "a only lost in the last 48 h");
+    assert.ok(late.has(sigActiveKey("follow", b.ind, "S", 1, "normal", tb.id)));
+    assert.ok(!late.has(sigActiveKey("follow", a.ind, "S", 1, "normal", ta.id)), "a only lost in the last 48 h");
     // results after t never count
     assert.deepEqual([...activeSignalsAt([ta, tb], 2 * H, sig, 48)], []);
   });
@@ -665,9 +793,17 @@ describe("coordination tactics", () => {
       cooldown: "off",
       conflict: false,
       confirm: true,
+      hedgeVolumeFactor: 1,
     });
     assert.equal(coordSettings({ cooldown: "x" as never }).cooldown, "off");
     assert.equal(coordSettings({ hourLock: -3 }).hourLock, 0);
+  });
+
+  it("keeps the optional losing-hour hedge volume factor independent and on the 0.2 ladder", () => {
+    assert.equal(coordSettings().hedgeVolumeFactor, 1);
+    assert.equal(coordSettings({ hedgeVolumeFactor: 0.4 }).hedgeVolumeFactor, 0.4);
+    assert.equal(coordSettings({ hedgeVolumeFactor: 5.4 }).hedgeVolumeFactor, 5);
+    assert.equal(coordSettings({ hedgeVolumeFactor: 2.31 }).hedgeVolumeFactor, 2.4);
   });
 
   it("signal confirmation: a signal needs an engine position on its symbol and direction", () => {
@@ -844,7 +980,7 @@ describe("negative-hour hedge", () => {
     const idx = signalIndex([ta, tb]);
     const loose = { minN: 5, minPf: 1.3 };
     const got = hedgeSignalsAt(idx, 30 * H, neg, 48, loose);
-    assert.deepEqual([...got], [`follow|${a.ind}|S|1`]);
+    assert.deepEqual([...got], [sigActiveKey("follow", a.ind, "S", 1, "normal", ta.id)]);
     // hours not yet complete at t never count
     assert.equal(hedgeSignalsAt(idx, 12 * H, neg, 48, loose).size, 0);
     assert.equal(hedgeSignalsAt(idx, 30 * H, new Set(), 48, loose).size, 0);
@@ -901,7 +1037,8 @@ describe("signals: PF acceptance", () => {
         // the candidates of this bar ask at the same time, twice the window as well, and now and then an earlier time
         for (let q = 0; q < 4; q++) {
           const at = rnd() < 0.2 ? Math.max(0, t - Math.floor(rnd() * 8) * 15 * 60_000) : t;
-          for (const hours of [24, 48]) assert.deepEqual(g.acceptStats(key, at, hours), scan(at, hours), `step ${step}`);
+          for (const hours of [24, 48])
+            assert.deepEqual(g.acceptStats(key, at, hours), scan(at, hours), `step ${step}`);
         }
       }
     }
@@ -910,7 +1047,7 @@ describe("signals: PF acceptance", () => {
   it("a group is judged on its window when it has the closes, and is valid while it does not, causally", () => {
     const g = new SignalGuard();
     const key = acceptKey("sig-ema-cross-s@m15", "A-USDT", 1, "normal");
-    assert.equal(key, "ema-cross|A-USDT|1|normal");
+    assert.equal(key, "sig-ema-cross-s@m15|A-USDT|1|normal");
     // no history in the window or in twice the window: nothing to judge — valid (operator, 6 Oct)
     assert.equal(g.accepts(key, 100 * H, A), true, "no history: valid until there is a sample");
     // PF 2.0 (0.02 won 2× vs 0.01 lost) on 4 closes
@@ -925,7 +1062,11 @@ describe("signals: PF acceptance", () => {
     assert.equal(g.accepts(key, 5 * H, A), true);
     assert.equal(g.accepts(key, 5 * H, { ...A, minPf: 3.5 }), false, "PF 3 < 3.5");
     // 4 closes in 48 h and still 4 in 96 h, under a 5-close minimum: no sample to judge — valid
-    assert.equal(g.accepts(key, 5 * H, { ...A, minTrades: 5 }), true, "too few closes in twice the window: valid");
+    assert.equal(
+      g.accepts(key, 5 * H, { ...A, minTrades: 5 }),
+      true,
+      "too few closes in twice the window: valid",
+    );
     // causal: a close after t is not seen at t
     g.addAccept(key, -0.5, 6 * H);
     assert.equal(g.accepts(key, 5 * H, A), true);
@@ -938,11 +1079,19 @@ describe("signals: PF acceptance", () => {
       g.accepts(acceptKey("sig-ema-cross-s@m15", "A-USDT", -1, "normal"), 5 * H, A),
       true,
     );
-    assert.equal(g.acceptStats(acceptKey("sig-ema-cross-s@m15", "A-USDT", -1, "normal"), 5 * H, 48).n, 0, "and it is its own group");
+    assert.equal(
+      g.acceptStats(acceptKey("sig-ema-cross-s@m15", "A-USDT", -1, "normal"), 5 * H, 48).n,
+      0,
+      "and it is its own group",
+    );
     assert.equal(
       g.accepts(acceptKey("sig-ema-cross-m@m30", "A-USDT", 1, "normal"), 5 * H, A),
       true,
-      "lanes and ranges of a source pool",
+      "another lane and parameter range has no judged history yet",
+    );
+    assert.equal(
+      g.acceptStats(acceptKey("sig-ema-cross-m@m30", "A-USDT", 1, "normal"), 5 * H, 48).n,
+      0,
     );
   });
 
@@ -1000,8 +1149,14 @@ describe("hour-window validation: too few closes → twice the hours → still t
     const { acceptOnWindow } = await import("./signals.ts");
     const o = { minPf: 1.3, hours: 24, minTrades: 20 };
     // a full window decides on its own
-    assert.equal(acceptOnWindow(() => ({ n: 25, pf: 1.5 }), o), true);
-    assert.equal(acceptOnWindow(() => ({ n: 25, pf: 0.9 }), o), false);
+    assert.equal(
+      acceptOnWindow(() => ({ n: 25, pf: 1.5 }), o),
+      true,
+    );
+    assert.equal(
+      acceptOnWindow(() => ({ n: 25, pf: 0.9 }), o),
+      false,
+    );
     // a short window widens to 48 h; a losing 48 h with enough closes is refused, a winning one accepted
     const at = (n24: number, n48: number, pf48: number) => (h: number) =>
       h <= 24 ? { n: n24, pf: 0.5 } : { n: n48, pf: pf48 };
@@ -1031,7 +1186,15 @@ describe("hour-window validation: too few closes → twice the hours → still t
     // engine directions: the same rule through EngineSideIndex
     const idx = new EngineSideIndex();
     const exitT = new Float64Array([t0 - 50 * H, t0 - 40 * H, t0 - 30 * H]);
-    const tape = { ind: "trend-ema", kind: "normal", protect: { tag: "sh" }, n: 3, side: new Int8Array([1, 1, 1]), exitT, r: new Float64Array([-0.01, -0.01, -0.01]) };
+    const tape = {
+      ind: "trend-ema",
+      kind: "normal",
+      protect: { tag: "sh" },
+      n: 3,
+      side: new Int8Array([1, 1, 1]),
+      exitT,
+      r: new Float64Array([-0.01, -0.01, -0.01]),
+    };
     for (const _ of idx.fill([tape as never]));
     const key = "base|sh|1";
     // 3 h window: nothing; 6 h: nothing → valid
@@ -1042,12 +1205,26 @@ describe("hour-window validation: too few closes → twice the hours → still t
 });
 
 describe("signal seats in the session report", () => {
-  it("a signal tape is seated only on the symbols its pair is active on (keyed pair × symbol)", async () => {
+  it("a signal tape is seated only on the symbols its pair is active on (keyed pair × symbol × direction)", async () => {
     const { signalSeatSymbols } = await import("./signals.ts");
-    const tp = { bot: "follow", ind: "sig-swing-m@m15", syms: ["AAA-USDT", "BBB-USDT", "CCC-USDT"] };
-    const active = new Set(["follow|sig-swing-m@m15|BBB-USDT", "follow|sig-kama-m@m15|AAA-USDT"]);
-    assert.deepEqual([...signalSeatSymbols(tp, active)], [1]);
+    const tp = {
+      id: "follow|sig-swing-m@m15|tp3|sl6|tr0|h192",
+      bot: "follow",
+      ind: "sig-swing-m@m15",
+      syms: ["AAA-USDT", "BBB-USDT", "CCC-USDT"],
+    };
+    // Causal active keys include the strategy type: BBB short and CCC long of this Normal pair, AAA of another.
+    const active = new Set([
+      sigActiveKey("follow", "sig-swing-m@m15", "BBB-USDT", -1, "normal", tp.id),
+      sigActiveKey("follow", "sig-swing-m@m15", "CCC-USDT", 1, "normal", tp.id),
+      sigActiveKey("follow", "sig-kama-m@m15", "AAA-USDT", 1, "normal"),
+    ]);
+    assert.deepEqual([...signalSeatSymbols(tp, active)].sort(), [1, 2]);
     // an active pair on none of the tape's symbols seats nothing (keyed by the pair alone it seated all three)
-    assert.equal(signalSeatSymbols(tp, new Set(["follow|sig-swing-m@m15|ZZZ-USDT"])).size, 0);
+    assert.equal(
+      signalSeatSymbols(tp, new Set([sigActiveKey("follow", "sig-swing-m@m15", "ZZZ-USDT", 1, "normal", tp.id)]))
+        .size,
+      0,
+    );
   });
 });

@@ -4,19 +4,18 @@
 //      at a time against the desk's own options (the baseline), each summarized to per-hour aggregates and a trade-set
 //      fingerprint, so the report can say which switch changes results and which is a no-op;
 //   2. a live sizing replay — the live control's own sizing functions (topConfigLanes → controlTargets →
-//      scaleToExposure → scaleToRisk ×2 → planControl) applied to the baseline's open positions over time, per sizing
+//      scaleToBudgets: exposure, risk, worst case → planControl) applied to the baseline's open positions over time, per sizing
 //      variant (rebalance threshold, exposure scaler, position cap, risk budgets, volume factor, top configs).
 // Neither builds tapes: tactics that shape tapes at build time are listed as "needs a recompute".
 import type { Trade, StrategyToggles } from "../domain/types.ts";
 import type { WalkForwardOptions, CoordSettings } from "./walkforward.ts";
-import { profitFactor } from "../metrics/stats.ts";
+import { profitFactor, modeledUnitStatsOf as unitStatsOf } from "../metrics/stats.ts";
 import { typeOf } from "../statistics.ts";
 import {
   controlTargets,
   planControl,
   positionCapFor,
-  scaleToExposure,
-  scaleToRisk,
+  scaleToBudgets,
   stateHash,
   topConfigLanes,
   type ControlContribution,
@@ -45,16 +44,18 @@ export interface VariantSpec {
 const TOGGLE_LABEL: Record<keyof StrategyToggles, string> = {
   normal: "Normal",
   trailing: "Trailing",
+  exit: "Historic Exit",
   block: "Block",
   blockActive: "Block Active",
   dca: "DCA",
   dcaActive: "DCA Active",
   axis: "Axis",
 };
-/** the tape kinds a toggle needs to act on anything (turning it on without them changes nothing) */
+/** The tape kinds a toggle needs to affect a run. Missing tapes require a recompute when enabling; disabling is n/a. */
 const TOGGLE_KINDS: Partial<Record<keyof StrategyToggles, string[]>> = {
-  normal: ["normal", "trailing"],
-  trailing: ["trailing"],
+  normal: ["normal", "trailing", "trailing-only"],
+  trailing: ["trailing", "trailing-only"],
+  exit: ["exit"],
   dca: ["dca", "dca-active"],
   dcaActive: ["dca-active"],
   axis: ["axis"],
@@ -62,7 +63,7 @@ const TOGGLE_KINDS: Partial<Record<keyof StrategyToggles, string[]>> = {
 const onOff = (v: unknown) => (v ? "on" : "off");
 
 export interface VariantContext {
-  /** tapes per kind (normal / trailing / dca / dca-active / axis) and signal tapes */
+  /** tapes per kind (normal / trailing / exit / dca / dca-active / axis) and signal tapes */
   kinds: Readonly<Record<string, number>>;
   signalTapes: number;
   /** the compute's tactics (they shape tapes at build time: listed, never run) */
@@ -85,11 +86,19 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
     conflict: false,
     confirm: false,
   };
-  const signalsOn = ctx.signalTapes > 0 && (!!base.signalRank || (base.signalActive?.size ?? 0) > 0);
+  const signalsOn =
+    ctx.signalTapes > 0 && (!!base.signalRank || (base.signalActive?.size ?? 0) > 0);
   const blockOn = tg.block || tg.blockActive;
   const push = (v: Omit<VariantSpec, "status"> & { status?: VariantStatus }) =>
-    out.push({ status: "run", ...v, ...(v.status && v.status !== "run" ? { opts: undefined } : {}) });
-  const withCoord = (c: Partial<CoordSettings>): WalkForwardOptions => ({ ...base, coord: { ...coord, ...c } });
+    out.push({
+      status: "run",
+      ...v,
+      ...(v.status && v.status !== "run" ? { opts: undefined } : {}),
+    });
+  const withCoord = (c: Partial<CoordSettings>): WalkForwardOptions => ({
+    ...base,
+    coord: { ...coord, ...c },
+  });
 
   // strategy types: each toggle flipped
   for (const k of Object.keys(TOGGLE_LABEL) as Array<keyof StrategyToggles>) {
@@ -104,16 +113,35 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
       asRun: onOff(on),
       opts: { ...base, toggles: { ...tg, [k]: !on } },
     };
-    if (!on && have === 0)
-      Object.assign(v, { status: "recompute", why: `no ${need!.join(" / ")} tapes in this compute` });
-    else if (k === "dcaActive" && !tg.dca) Object.assign(v, { status: "na", why: "DCA is off: DCA Active only picks which DCA tapes trade" });
+    if (k === "dcaActive" && !tg.dca)
+      Object.assign(v, {
+        status: "na",
+        why: "DCA is off: DCA Active only picks which DCA tapes trade",
+      });
+    else if (need && have === 0 && on)
+      Object.assign(v, {
+        status: "na",
+        why: `no ${need.join(" / ")} tapes in this compute`,
+      });
+    else if (need && have === 0)
+      Object.assign(v, {
+        status: "recompute",
+        why: `no ${need.join(" / ")} tapes in this compute`,
+      });
     push(v);
   }
   // entry crowding: at most K configs of a range on one symbol × side × bar (best first). 24 h, 6 Oct: one LYN bar
   // entered 229 Micro configs, all stopped — Micro's whole loss
   // (Wide: every untagged config — the default grid, Axis and DCA. One Axis trade executed up to 79 times across its
   // variants on micro20, 369 orders for 28 positions)
-  for (const [tag, name] of [["mc", "Micro"], ["sh", "Short"], ["gn", "General"], ["lg", "Long"], ["sig", "Signals"], ["wide", "Wide (incl. Axis, DCA)"]] as const) {
+  for (const [tag, name] of [
+    ["mc", "Micro"],
+    ["sh", "Short"],
+    ["gn", "General"],
+    ["lg", "Long"],
+    ["sig", "Signals"],
+    ["wide", "Wide (incl. Axis, DCA)"],
+  ] as const) {
     const cur = base.entryCrowd?.[tag] ?? 0;
     for (const k of cur ? [1, 3, 10, 0] : [1, 3, 10]) {
       if (k === cur) continue;
@@ -135,7 +163,8 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
       id: "type:ladder-needs-base",
       group: "types",
       label: "Axis / DCA only beside their pair's seated Normal",
-      change: "an Axis or DCA config takes a seat only while a Normal / Trailing config of its pair holds one",
+      change:
+        "an Axis or DCA config takes a seat only while a Normal / Trailing config of its pair holds one",
       asRun: base.ladderNeedsBase ? "on" : "off",
       ...(ladders > 0
         ? { opts: { ...base, ladderNeedsBase: !base.ladderNeedsBase } }
@@ -145,7 +174,14 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
   // ranges off, one at a time (no new entry from that range; it keeps computing): what live.excludeRanges sends.
   // 24 h, 6 Oct — Micro lost in both measurements (PF 0.35, 0.47) while its Base cells passed at PF 2.9
   const exR = base.excludeRanges ?? [];
-  for (const [tag, name] of [["mc", "Micro"], ["mn", "Minimal"], ["mp", "Minimal plus"], ["sh", "Short"], ["gn", "General"], ["lg", "Long"]] as const) {
+  for (const [tag, name] of [
+    ["mc", "Micro"],
+    ["mn", "Minimal"],
+    ["mp", "Minimal plus"],
+    ["sh", "Short"],
+    ["gn", "General"],
+    ["lg", "Long"],
+  ] as const) {
     if (exR.includes(tag)) continue;
     push({
       id: `type:range-off-${tag}`,
@@ -184,7 +220,9 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
     id: "sig:confirm",
     group: "signals",
     label: `Signal confirmation ${confirmOn ? "off" : "on"}`,
-    change: confirmOn ? "confirmation on → off" : `confirmation off → on${coord.enabled ? "" : " (coordination on)"}`,
+    change: confirmOn
+      ? "confirmation on → off"
+      : `confirmation off → on${coord.enabled ? "" : " (coordination on)"}`,
     asRun: onOff(confirmOn),
     opts: withCoord({ enabled: true, confirm: !confirmOn }),
     ...(signalsOn ? {} : { status: "na" as const, why: "no signal orders to confirm" }),
@@ -209,13 +247,21 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
   // every possibility shown with / without)
   if (esa?.enabled) {
     const alts: Array<[string, Partial<typeof esa>]> = [
-      ...[3, 12, 48].filter((h) => h !== esa.hours).map((h) => [`window ${h} h`, { hours: h }] as [string, Partial<typeof esa>]),
-      ...[1.2, 1.3].filter((x) => x !== esa.minPf).map((x) => [`PF ${x}`, { minPf: x }] as [string, Partial<typeof esa>]),
-      ...[10, 60].filter((n) => n !== esa.minTrades).map((n) => [`${n} closes`, { minTrades: n }] as [string, Partial<typeof esa>]),
+      ...[3, 12, 48]
+        .filter((h) => h !== esa.hours)
+        .map((h) => [`window ${h} h`, { hours: h }] as [string, Partial<typeof esa>]),
+      ...[1.2, 1.3]
+        .filter((x) => x !== esa.minPf)
+        .map((x) => [`PF ${x}`, { minPf: x }] as [string, Partial<typeof esa>]),
+      ...[10, 60]
+        .filter((n) => n !== esa.minTrades)
+        .map((n) => [`${n} closes`, { minTrades: n }] as [string, Partial<typeof esa>]),
     ];
     for (const [what, ch] of alts)
       push({
-        id: `sig:engineSide-${Object.entries(ch).map(([k, v]) => `${k}${v}`).join("")}`,
+        id: `sig:engineSide-${Object.entries(ch)
+          .map(([k, v]) => `${k}${v}`)
+          .join("")}`,
         group: "signals",
         label: `Engine direction acceptance ${what}`,
         change: `engine direction acceptance ${what} (as run: PF ${esa.minPf} · ${esa.hours} h · ${esa.minTrades} closes)`,
@@ -246,11 +292,15 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
     id: "sig:accept",
     group: "signals",
     label: `Signal acceptance ${sa?.enabled ? "off" : "on"}`,
-    change: sa?.enabled ? "per-group signal acceptance on → off" : "off → on (PF ≥ 1.3 over 48 h, ≥ 6 closes)",
+    change: sa?.enabled
+      ? "per-group signal acceptance on → off"
+      : "off → on (PF ≥ 1.3 over 48 h, ≥ 6 closes)",
     asRun: sa?.enabled ? `on (PF ${sa.minPf} · ${sa.hours} h · ${sa.minTrades} closes)` : "off",
     opts: {
       ...base,
-      signalAccept: sa?.enabled ? { ...sa, enabled: false } : { enabled: true, minPf: 1.3, hours: 48, minTrades: 6 },
+      signalAccept: sa?.enabled
+        ? { ...sa, enabled: false }
+        : { enabled: true, minPf: 1.3, hours: 48, minTrades: 6 },
     },
     ...(signalsOn ? {} : { status: "na" as const, why: "no signal orders" }),
   });
@@ -263,7 +313,10 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
       label: "Signal acceptance and confirmation off",
       change: "per-group signal acceptance and signal confirmation on → off, together",
       asRun: "both on",
-      opts: { ...withCoord({ enabled: true, confirm: false }), signalAccept: { ...sa, enabled: false } },
+      opts: {
+        ...withCoord({ enabled: true, confirm: false }),
+        signalAccept: { ...sa, enabled: false },
+      },
       ...(signalsOn ? {} : { status: "na" as const, why: "no signal orders" }),
     });
   // the per-step active ranking: how many signals (pair × symbol) are active and how they are ranked. Measured, not
@@ -301,11 +354,16 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
     id: "coord:all",
     group: "coordination",
     label: coord.enabled ? "Coordination off" : "Coordination on (defaults)",
-    change: coord.enabled ? "every coordination rule off" : "coordination on: confirmation on, the rest off",
+    change: coord.enabled
+      ? "every coordination rule off"
+      : "coordination on: confirmation on, the rest off",
     asRun: onOff(coord.enabled),
     opts: coord.enabled
       ? withCoord({ enabled: false })
-      : { ...base, coord: { enabled: true, hourLock: 0, cooldown: "off", conflict: false, confirm: true } },
+      : {
+          ...base,
+          coord: { enabled: true, hourLock: 0, cooldown: "off", conflict: false, confirm: true },
+        },
   });
   const pre = coord.enabled ? "" : "coordination on · ";
   push({
@@ -350,7 +408,9 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
     change: `${pre}hedge signals while the book loses ${coord.hedge ? "on → off" : "off → on"}`,
     asRun: onOff(coord.enabled && coord.hedge),
     opts: withCoord({ enabled: true, hedge: !coord.hedge }),
-    ...(signalsOn && base.signalRank ? {} : { status: "na" as const, why: "no ranked signals to hedge with" }),
+    ...(signalsOn && base.signalRank
+      ? {}
+      : { status: "na" as const, why: "no ranked signals to hedge with" }),
   });
 
   // Block
@@ -359,7 +419,16 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
   // Block off on one range at a time (its entries at their unit volume): 24 h, 6 Oct — Micro's Block-raised ×8
   // orders traded PF 0.36 while its unit orders did not lose
   const ex = base.block.excludeRanges ?? [];
-  for (const [tag, name] of [["mc", "Micro"], ["mn", "Minimal"], ["sh", "Short"], ["gn", "General"], ["lg", "Long"]] as const) {
+  // every range block.excludeRanges takes: Minimal plus, and Wide (the untagged Normal / Trailing grid) too
+  for (const [tag, name] of [
+    ["mc", "Micro"],
+    ["mn", "Minimal"],
+    ["mp", "Minimal plus"],
+    ["sh", "Short"],
+    ["gn", "General"],
+    ["lg", "Long"],
+    ["wide", "Wide"],
+  ] as const) {
     if (ex.includes(tag)) continue;
     push({
       id: `block:off-${tag}`,
@@ -515,7 +584,8 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
         id: "gate:rangeGate-allRanges",
         group: "gates",
         label: "Range gate on General and Long too",
-        change: "the range gate also judges General and Long cells (as run: Micro, Minimal, Short, Minimal plus)",
+        change:
+          "the range gate also judges General and Long cells (as run: Micro, Minimal, Short, Minimal plus)",
         asRun: "mc · mn · sh · mp",
         opts: { ...base, rangeGate: { ...rg, ranges: ["mc", "mn", "sh", "mp", "gn", "lg"] } },
       });
@@ -527,7 +597,8 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
       id: "gate:lossPrior",
       group: "gates",
       label: "Loss prior on",
-      change: "every evaluation PF (window gates, validation, entry last-N, range gate) counts one virtual stop-out at the config's stop",
+      change:
+        "every evaluation PF (window gates, validation, entry last-N, range gate) counts one virtual stop-out at the config's stop",
       asRun: "off",
       opts: { ...base, gates: { ...base.gates, lossPrior: true } },
     });
@@ -538,7 +609,11 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
         label: "Loss prior on, range gate on its full last N",
         change: "the loss prior together with the range gate judged on its full last-N sample",
         asRun: "off · range gate with floor",
-        opts: { ...base, gates: { ...base.gates, lossPrior: true }, rangeGate: { ...rg, floor: 0 } },
+        opts: {
+          ...base,
+          gates: { ...base.gates, lossPrior: true },
+          rangeGate: { ...rg, floor: 0 },
+        },
       });
   }
   const smn = base.symMinN ?? 2;
@@ -578,8 +653,8 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
   push({
     id: "gate:maxPositions",
     group: "gates",
-    label: mp > 0 ? "Position cap off" : "Position cap 12",
-    change: `max open positions (symbol × side) ${mp || "none"} → ${mp > 0 ? "none" : 12}`,
+    label: mp > 0 ? "Simulation position cap off" : "Simulation position cap 12",
+    change: `strategy simulation positions (symbol × side) ${mp || "none"} → ${mp > 0 ? "none" : 12}`,
     asRun: String(mp || "none"),
     opts: { ...base, maxPositions: mp > 0 ? 0 : 12 },
   });
@@ -615,11 +690,20 @@ export interface VariantSummary {
   /** closed orders in the run */
   orders: number;
   wins: number;
-  /** Σ r × 100 of the closed orders (trade %), gross profit / loss in the same unit */
+  /** Volume-weighted Σ r × 100 and gross profit/loss; retained for net/curve diagnostics, not primary PF. */
   net: number;
   gp: number;
   gl: number;
+  /** Primary PF's exact positive/negative unit-return sums in percentage points (execution mult removed). */
+  unitGp: number;
+  unitGl: number;
   pf: number;
+  pfBasis: "unit-net-returns" | "unavailable";
+  unknownReturns: number;
+  noLoss: boolean;
+  pfConvention: "shared-profitFactor-no-loss-score";
+  /** Execution-volume-weighted trade-return diagnostic; not account cash PF. */
+  sizedPf: number;
   /** max drawdown of the closed Σ trade % curve (by exit), trade % */
   mdd: number;
   /** orders still open at the end: count and their mark (Σ r × 100) */
@@ -649,7 +733,11 @@ const addAgg = (a: SideAgg, r: number) => {
 
 /** Per-hour aggregates and fingerprints of one walk-forward result (its trades can be dropped afterwards). */
 export function summarizeRun(
-  res: { trades: readonly Trade[]; openAtEnd?: readonly Trade[]; skips?: Readonly<Record<string, number>> },
+  res: {
+    trades: readonly Trade[];
+    openAtEnd?: readonly Trade[];
+    skips?: Readonly<Record<string, number>>;
+  },
   startT: number,
   endT: number,
 ): VariantSummary {
@@ -661,6 +749,7 @@ export function summarizeRun(
   const shorts = agg0();
   const byType: Record<string, SideAgg> = {};
   const xs = [...res.trades].sort((a, b) => a.exitT - b.exitT);
+  const primary = unitStatsOf(xs, endT);
   let cum = 0;
   let pk = 0;
   let mdd = 0;
@@ -698,7 +787,14 @@ export function summarizeRun(
     net: tot.net,
     gp: tot.gp,
     gl: tot.gl,
-    pf: profitFactor(tot.gp, tot.gl),
+    unitGp: primary.gp,
+    unitGl: primary.gl,
+    pf: primary.pf,
+    pfBasis: primary.pfBasis,
+    unknownReturns: primary.unknownReturns,
+    noLoss: primary.gp > 0 && primary.gl === 0,
+    pfConvention: "shared-profitFactor-no-loss-score",
+    sizedPf: profitFactor(tot.gp, tot.gl),
     mdd,
     openEnd: res.openAtEnd?.length ?? 0,
     openNet,
@@ -720,7 +816,10 @@ export function summarizeRun(
  * The variant's effect against the baseline: "none" = the identical trade set (every order, result and volume);
  * "volume" = the same orders at other volumes / results; "orders" = a different order set.
  */
-export function effectOf(v: Pick<VariantSummary, "fp" | "fpOrders">, base: Pick<VariantSummary, "fp" | "fpOrders">) {
+export function effectOf(
+  v: Pick<VariantSummary, "fp" | "fpOrders">,
+  base: Pick<VariantSummary, "fp" | "fpOrders">,
+) {
   return v.fp === base.fp ? "none" : v.fpOrders === base.fpOrders ? "volume" : "orders";
 }
 
@@ -761,7 +860,7 @@ export interface SizingSpec {
   top: "fill" | "all" | number;
   /** an existing position is only resized when its target moved by more than this share */
   rebalancePct: number;
-  /** max control positions (symbol × side), 0 = no limit */
+  /** Maximum live exchange slots (symbol × direction); 0 or unset uses the hard 100-slot ceiling. */
   maxPositions: number;
   minStopPct: number;
 }
@@ -852,7 +951,10 @@ export function sizingReplay(
   for (const p of positions) prices.set(p.sym, 1);
   const raise = (q: number) => (q > 0 ? Math.max(q, spec.minUsd) : 0);
   const snapNum = (_s: string, q: number) => raise(q);
-  const snapCt = (_s: string, q: number) => ({ qty: raise(q), raised: q > 0 && q < spec.minUsd * (1 - 1e-9) });
+  const snapCt = (_s: string, q: number) => ({
+    qty: raise(q),
+    raised: q > 0 && q < spec.minUsd * (1 - 1e-9),
+  });
   let open: ReplayPosition[] = [];
   let ei = 0;
   let held = new Map<string, number>();
@@ -922,7 +1024,8 @@ export function sizingReplay(
         top: spec.top,
         budget,
         prefer: prevKept,
-        posCost: (_sym, v) => Math.max(spec.minUsd, Math.min(posCap, v * spec.ratio * spec.unitUsd)),
+        posCost: (_sym, v) =>
+          Math.max(spec.minUsd, Math.min(posCap, v * spec.ratio * spec.unitUsd)),
       });
       liveLanes = r.lanes;
       kept = r.kept;
@@ -952,12 +1055,32 @@ export function sizingReplay(
       else if (x.why.startsWith("max ")) S.maxPos++;
     }
     const heldKeys = new Set(held.keys());
-    scaleToExposure(targets, eq, spec.maxExposureX, snapNum);
-    const risk = scaleToRisk(targets, eq, spec.maxRiskPct, snapNum, heldKeys);
-    const worstR = scaleToRisk(targets, eq, spec.maxBackstopLossPct, snapNum, heldKeys, (x) => x.stopDist);
-    S.dropped += (risk?.dropped.length ?? 0) + (worstR?.dropped.length ?? 0);
+    // the live step's budgets and drops: decided across gross exposure, stop risk and worst case at once (a round-up
+    // to the minimum that fits no budget is dropped, never taken past it)
+    const {
+      exposure: expo,
+      risk,
+      worst: worstR,
+    } = scaleToBudgets(
+      targets,
+      eq,
+      {
+        maxExposureX: spec.maxExposureX,
+        maxRiskPct: spec.maxRiskPct,
+        maxBackstopLossPct: spec.maxBackstopLossPct,
+      },
+      snapNum,
+      heldKeys,
+    );
+    S.dropped +=
+      (expo?.dropped.length ?? 0) + (risk?.dropped.length ?? 0) + (worstR?.dropped.length ?? 0);
     // the exchange orders this step: the planner's minimal actions against the held book
-    const plan = planControl({ targets, held, foreign: new Set(), rebalancePct: spec.rebalancePct });
+    const plan = planControl({
+      targets,
+      held,
+      foreign: new Set(),
+      rebalancePct: spec.rebalancePct,
+    });
     const next = new Map(held);
     const tq = new Map(targets.map((x) => [x.key, x.qty]));
     let o = 0;

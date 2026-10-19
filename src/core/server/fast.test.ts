@@ -47,10 +47,20 @@ describe("fast loops", { timeout: 1_200_000 }, () => {
   });
 
   it("the tick marks open positions to market; cycles without a new bar do not restep the paper book", async () => {
+    // one symbol over six days with the runtime suite's lenient gates and tactics off: the first compute takes ~30 s
+    // (it was ~150–210 s over three symbols and 18 days) and opens paper positions to mark (probed on 11 Oct)
     const rt = new CoreRuntime(
       new CoreDb(":memory:"),
       {
         ...small,
+        symbols: 1,
+        historyDays: 6,
+        tfDays: { "1": 2, "5": 3, "15": 6, "30": 6 },
+        mainTop: 6,
+        refineTop: 3,
+        evalTop: 4,
+        gates: { minPf: 1.05, minTrades: 3, maxDdr: 0 },
+        tactics: { session: false, volRegime: false, trendStrength: false, cooldown: false, cooldownBars: 4 },
         cycleMs: 250,
         tickMs: 50,
         focus: [],
@@ -87,15 +97,16 @@ describe("fast loops", { timeout: 1_200_000 }, () => {
       const t0 = rt.status.tick?.count ?? 0;
       const p = rt.paper.positions[0];
       const cs = rt.candles.get(p.sym)!;
-      const last = cs[cs.length - 1];
+      const last = cs.bar(cs.n - 1);
       // halfway to the target: a price at or through the target (or the stop) is an exit since the tick checks
       // both (marked at that level), so the plain mark is tested inside the band
       const to = p.target > 0 ? p.target : p.entry * (1 + 0.004 * p.side);
       const movedC = p.entry + (to - p.entry) * 0.5;
-      const moved = { ...last, c: movedC };
-      cs[cs.length - 1] = moved;
+      // the last bar at the moved close (a new series: a stored one never changes)
+      const moved = cs.range(0, cs.n - 1).append([{ ...last, c: movedC }], cs.n, 0);
+      rt.candles.set(p.sym, moved);
       await until(() => (rt.status.tick?.count ?? 0) >= t0 + 3);
-      if (rt.status.computes !== c0 || rt.candles.get(p.sym)!.at(-1) !== moved) continue;
+      if (rt.status.computes !== c0 || rt.candles.get(p.sym) !== moved) continue;
       const q = rt.paper.positions.find((x) => x.cfg === p.cfg && x.sym === p.sym)!;
       const want = (p.side * (movedC - p.entry)) / p.entry - rt.settings.cost;
       assert.ok(Math.abs(q.mtm - want) < 1e-9, `mtm ${q.mtm}, want ${want}`);

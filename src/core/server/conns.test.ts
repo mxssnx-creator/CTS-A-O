@@ -99,7 +99,9 @@ describe("connections", { timeout: 120_000 }, () => {
   });
 
   it("a priority call (a backtest someone waits for) is served before queued background work", async () => {
-    const msgs = (n: number) => Array.from({ length: n }, () => ({ type: "ping" }));
+    // messages that succeed and take time ("sleep"): an erroring message now stops its whole call at once (a failed
+    // call no longer holds its workers), so it could not keep the background call busy
+    const msgs = (n: number) => Array.from({ length: n }, () => ({ type: "sleep", ms: 150 }));
     const order: string[] = [];
     const run = (name: string, n: number, priority: boolean) =>
       runOnWorkers(msgs(n), 2, 60_000, undefined, priority)

@@ -2,6 +2,9 @@ import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { coreOverview, corePresets } from "../api-conn";
 import { PresetSettingsDialog } from "../preset-settings";
+import { ExecutionSummary } from "../execution-summary";
+import { hasUnitReturnBasis, unitStatsPfText } from "../accounting";
+import { PromotionEvidence } from "../promotion-evidence";
 import { PrehistoricPanel } from "../prehistoric";
 import { ArcShare, EquityChart, MultiArcGauge, RadialHours, SignedBars } from "../charts";
 import {
@@ -95,6 +98,10 @@ function ConnStrip(props: { d: Any }) {
   const id = String(live.connId ?? "–");
   const meta = CONN_META[id] ?? { net: "–", tag: "–" };
   const st = props.d.live ?? {};
+  const sizing = props.d.settings?.sizing;
+  const sizeBase = sizing?.mode === "equityPct"
+    ? `${fmt.num(sizing.pct * 100, 2)}% of account balance`
+    : sizing?.mode === "minQty" && live.mode !== "entries" ? "exchange minimum lot" : `${fmt.usd(live.notionalUsd)} configured notional`;
   const ls = liveState(!!live.enabled, st);
   const held = (st.control?.held ?? []) as Array<{ key: string; qty: number }>;
   const heldTxt = held.length
@@ -140,7 +147,7 @@ function ConnStrip(props: { d: Any }) {
             <div className="v2-lines">
               <Line
                 k="size"
-                v={`$${live.notionalUsd ?? "–"} × ${live.ratio ?? 1} · ${live.maxNotionalUsd === 0 ? "no cap" : `cap $${live.maxNotionalUsd ?? "–"}`}`}
+                v={`${sizeBase}${live.mode === "entries" ? " per signal · no Control ratio" : ` × lane volume × ${live.ratio ?? 1}`} · no fixed USD ceiling${live.maxPositionX ? ` · position ≤ ${live.maxPositionX}× balance` : ""}${live.maxExposureX ? ` · gross ≤ ${live.maxExposureX}× balance` : ""}`}
               />
               <Line
                 k="max positions"
@@ -164,43 +171,13 @@ function ConnStrip(props: { d: Any }) {
   );
 }
 
-function usdFine(x: unknown) {
-  if (typeof x !== "number" || !Number.isFinite(x)) return "–";
-  const d = Math.abs(x) < 20 ? 4 : 2;
-  return `${x < 0 ? "−" : ""}$${Math.abs(x).toFixed(d)}`;
-}
-
-/** Live account: open PnL with the margin it uses, and the session net with the book size. */
-function AccountNets(props: { d: Any }) {
-  const a = props.d.live?.account;
-  return (
-    <div className="v2-net-pair">
-      <Kpi
-        label="Net · open"
-        value={usdFine(a?.openNet)}
-        className={tone(a?.openNet)}
-        sub={a ? `margin used ${usdFine(a.margin)}` : "margin used –"}
-      />
-      <Kpi
-        label="Net · overall, session"
-        value={usdFine(a?.overall)}
-        className={tone(a?.overall)}
-        sub={
-          a
-            ? `${fmt.num(a.positions)} positions / ${fmt.num(a.orders)} orders`
-            : "positions / orders –"
-        }
-      />
-    </div>
-  );
-}
-
 export function OverviewPage() {
   const { data, error } = usePoll(() => coreOverview(), 4000);
   const d = data as Any;
   if (!d) return <>{error ? <ErrorNote error={error} /> : <Empty>Starting the engine…</Empty>}</>;
   const sim = d.sim;
   const s = sim?.stats;
+  const knownReturns = hasUnitReturnBasis(s);
   const minPf = d.settings.gates.minPf;
   const hours = (sim?.hourly ?? []) as Array<{ t: number; net: number; n: number; pf: number }>;
   let cum = 0;
@@ -228,13 +205,14 @@ export function OverviewPage() {
         maxDdtH={d.settings.gates.maxDdtH}
         baseSetsMinPf={d.settings.gates.baseSetsMinPf}
       />
-      <AccountNets d={d} />
+      <ExecutionSummary account={d.live?.account} />
+      <PromotionEvidence status={d.status?.livePromotion} />
       <div className="v2-grid v2-cols-6">
         <Kpi
-          label="Sim PF"
-          value={fmt.pf(s?.pf)}
+          label="Model return PF"
+          value={s ? unitStatsPfText(s) : "–"}
           className={pfTone(s?.pf, minPf)}
-          sub={`min ${minPf} · neutral 1.00`}
+          sub={`post-Base accepted records before allocation, including endpoint marks · min ${minPf} · separate from funded execution`}
         />
         <Kpi
           label="Sim net (Σ trade %)"
@@ -249,7 +227,7 @@ export function OverviewPage() {
         />
         <Kpi
           label="Green hours"
-          value={s ? `${s.greenHours}/${s.hours}` : "–"}
+          value={knownReturns ? `${fmt.num(s?.greenHours)}/${fmt.num(s?.hours)}` : "–"}
           sub={fmt.ratio(s?.gh)}
           className={s && s.gh >= 0.6 ? "v2-up" : ""}
         />
@@ -262,22 +240,23 @@ export function OverviewPage() {
           label="Paper P&L"
           value={fmt.usd(d.paper.equity)}
           className={tone(d.paper.equity)}
-          sub={`balance ${fmt.usd(d.paper.balance)} · ${d.paper.positions} open orders · ${realSel} Real${sigSel || d.status?.signals?.enabled ? ` · ${sigSel} signal` : ""} configs`}
+          sub={`balance ${fmt.usd(d.paper.balance)} · equity ${fmt.usd(d.paper.accountEquity)} · ${d.paper.positions} open orders · ${realSel} Real${sigSel || d.status?.signals?.enabled ? ` · ${sigSel} signal` : ""} configs`}
         />
       </div>
+      {s && !knownReturns && <div className="v2-muted">Unit-return evidence is unavailable for {fmt.num(s.unknownReturns)} modeled closes. All {fmt.num(s.n)} outcomes remain counted; return charts are unavailable for this sample.</div>}
 
       <div className="v2-grid v2-cols-3">
         <Panel title="Health arcs" sub="each ring against its own target">
-          <MultiArcGauge
+          {knownReturns ? <MultiArcGauge
             size={190}
-            center={fmt.pf(s?.pf)}
-            centerSub="sim PF"
+            center={unitStatsPfText(s)}
+            centerSub="model return PF"
             rings={[
-              { label: `PF vs 2.0`, value: (s?.pf ?? 0) / 2, display: fmt.pf(s?.pf) },
+              { label: `Return PF vs 2.0`, value: (s?.pf ?? 0) / 2, display: unitStatsPfText(s) },
               { label: "Green hours", value: s?.gh ?? 0, display: fmt.ratio(s?.gh) },
               { label: "Win rate", value: s?.wr ?? 0, display: fmt.ratio(s?.wr) },
               {
-                label: "Base passing",
+                label: d.status?.signals?.enabled && d.status.signals.representativeBaseGate === false ? "Engine Base" : "Base passing",
                 value: baseEval ? basePassed / baseEval : 0,
                 display: `${basePassed}/${baseEval}`,
               },
@@ -287,13 +266,13 @@ export function OverviewPage() {
                 display: s ? fmt.h(d.settings.gates.maxDdtH - s.ddt) : "–",
               },
             ]}
-          />
+          /> : <Empty>{s ? "Unit-return basis unavailable" : "No simulated run yet"}</Empty>}
         </Panel>
         <Panel title="Hours" sub="net per hour, outward = profit">
-          {hours.length ? (
+          {knownReturns && hours.length ? (
             <RadialHours hours={hours} size={230} />
           ) : (
-            <Empty>No simulated hours yet</Empty>
+            <Empty>{knownReturns ? "No simulated hours yet" : "Unit-return history unavailable"}</Empty>
           )}
         </Panel>
         <Panel title="Orders by sub-strategy" sub="executed in the simulated run">
@@ -324,7 +303,7 @@ export function OverviewPage() {
             )
           }
         >
-          <EquityChart series={[{ name: "net %", points: curve }]} unit="%" />
+          {knownReturns ? <EquityChart series={[{ name: "net %", points: curve }]} unit="%" /> : <Empty>Unit-return history unavailable</Empty>}
         </Panel>
         <Panel
           title="Net per hour"
@@ -335,14 +314,14 @@ export function OverviewPage() {
             </Link>
           }
         >
-          <SignedBars
+          {knownReturns ? <SignedBars
             unit="%"
             data={hours.map((h) => ({
               k: fmt.hour(h.t),
               v: h.net,
-              tip: `${fmt.hour(h.t)} · ${h.n} closes · PF ${fmt.pf(h.pf)} · ${fmt.pct(h.net)}`,
+              tip: `${fmt.hour(h.t)} · ${h.n} closes · return PF ${unitStatsPfText(h)} · ${fmt.pct(h.net)}`,
             }))}
-          />
+          /> : <Empty>Unit-return history unavailable</Empty>}
         </Panel>
       </div>
 
@@ -373,7 +352,7 @@ export function OverviewPage() {
               <p>
                 {d.paper.eligible} eligible this hour
                 {sigSel || d.status?.signals?.enabled
-                  ? ` · ${sigSel} signal configs (${d.status?.signals?.configs ?? 0} built)`
+                  ? ` · ${sigSel} selected signal configs (${fmt.num(d.status?.signals?.configs)} requested protection configurations)`
                   : ""}
               </p>
             </div>
@@ -412,7 +391,7 @@ export function OverviewPage() {
                       </Link>
                     </td>
                     <td className="num">{r.n}</td>
-                    <td className={`num ${pfTone(r.pf, minPf)}`}>{fmt.pf(r.pf)}</td>
+                    <td className={`num ${pfTone(r.pf, minPf)}`}>{unitStatsPfText(r)}</td>
                     <td className={`num ${tone(r.net)}`}>{fmt.pct(r.net)}</td>
                   </tr>
                 ))}

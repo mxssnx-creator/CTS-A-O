@@ -16,6 +16,11 @@ import {
   baseRangeProtects,
   basePassTags,
   baseRangeCounts,
+  basePairRows,
+  baseRangeWhy,
+  cellStats,
+  runCombo,
+  pairBuildTags,
   baseSetsGates,
   rangeAppliesTo,
   configId,
@@ -31,24 +36,57 @@ import type { Bars, Protect } from "./domain/types.ts";
 
 const grid = (extra: object) => ({ ...DEFAULT_SETTINGS.grid, holdH: [16], ...extra });
 
-test("the position-cost ranges: Minimal 4–8×, Short 8–14×, General 14–22× step 2, Long 22–32× step 2", () => {
+test("the position-cost ranges: Minimal 4–8× step 0.5, Short 9–14×, General 15–22×, Long 23–32× step 1", () => {
   const mult = (r: { tp: readonly number[] }) => r.tp.map((x) => +(x / 0.002).toFixed(6));
-  assert.deepEqual(mult(MINIMAL_RANGE), [4, 5, 6, 7, 8]);
+  assert.deepEqual(mult(MINIMAL_RANGE), [4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 8]);
   // a boundary multiple belongs to the lower range: no cell is computed twice
   assert.deepEqual(mult(SHORT_RANGE), [9, 10, 11, 12, 13, 14]);
-  assert.deepEqual(mult(GENERAL_RANGE), [16, 18, 20, 22]);
-  assert.deepEqual(mult(LONG_RANGE), [24, 26, 28, 30, 32]);
-  // both trailing distances in every range
+  assert.deepEqual(mult(GENERAL_RANGE), [15, 16, 17, 18, 19, 20, 21, 22]);
+  assert.deepEqual(mult(LONG_RANGE), [23, 24, 25, 26, 27, 28, 29, 30, 31, 32]);
+  // stops: Minimal 1.5–3, Short 1–2.5, General / Long 0.25–1.5, step 0.25
+  assert.deepEqual([...MINIMAL_RANGE.slOfTp], [1.5, 1.75, 2, 2.25, 2.5, 2.75, 3]);
+  assert.deepEqual([...SHORT_RANGE.slOfTp], [1, 1.25, 1.5, 1.75, 2, 2.25, 2.5]);
+  for (const r of [GENERAL_RANGE, LONG_RANGE]) assert.deepEqual([...r.slOfTp], [0.25, 0.5, 0.75, 1, 1.25, 1.5]);
+  // three trailing distances in every range (a whole-target trail arms only as the target fills: the plain cell)
   for (const r of [MINIMAL_RANGE, SHORT_RANGE, GENERAL_RANGE, LONG_RANGE])
-    assert.deepEqual([...r.trailOfTp], [0, 0.5, 0.75]);
-  // the default grid builds the four ranges (the wide targets are covered by General and Long)
+    assert.deepEqual([...r.trailOfTp], [0, 0.25, 0.5, 0.75]);
+  // the default grid builds the five ranges, Micro on since 13 Oct (the wide targets are covered by General and Long)
   assert.deepEqual(DEFAULT_SETTINGS.grid.tp, []);
   const cells = protectGrid(15, DEFAULT_SETTINGS.grid);
   const tags = new Set(cells.map((p) => p.tag ?? ""));
-  assert.deepEqual([...tags].sort(), ["gn", "lg", "mn", "sh"]);
+  assert.deepEqual([...tags].sort(), ["gn", "lg", "mc", "mn", "sh"]);
   const tps = new Map<string, Set<number>>();
   for (const p of cells) (tps.get(p.tag!) ?? tps.set(p.tag!, new Set()).get(p.tag!)!).add(p.tp);
-  assert.equal(tps.get("mn")!.size + tps.get("sh")!.size + tps.get("gn")!.size + tps.get("lg")!.size, 20);
+  assert.equal(tps.get("mn")!.size + tps.get("sh")!.size + tps.get("gn")!.size + tps.get("lg")!.size, 33);
+  // Micro: its 7 net targets as price targets (net + the 0.2 % cost)
+  assert.equal(tps.get("mc")!.size, 7);
+});
+
+test("every TP × SL × Trail × hold of every range is its own config, at the range's floors (hand-computed)", () => {
+  const g = DEFAULT_SETTINGS.grid;
+  const cells = protectGrid(15, g);
+  const r4 = (x: number) => +x.toFixed(4);
+  for (const [tag, r] of [["mn", MINIMAL_RANGE], ["sh", SHORT_RANGE], ["gn", GENERAL_RANGE], ["lg", LONG_RANGE]] as const) {
+    const mine = cells.filter((p) => p.tag === tag);
+    // the full product, no cell folded into another
+    assert.equal(mine.length, r.tp.length * r.slOfTp.length * r.trailOfTp.length * g.holdH.length, tag);
+    const keys = new Set(mine.map((p) => `${p.tp}|${p.sl}|${p.trail}|${p.hold}`));
+    for (const tp of r.tp)
+      for (const k of r.slOfTp)
+        for (const tr of r.trailOfTp)
+          for (const h of g.holdH) {
+            // a trailing cell's stop is at least trailSlOfTp × the target; every stop at least the range's floor
+            const kk = tr > 0 ? Math.max(k, r.trailSlOfTp ?? 2) : k;
+            const sl = r4(Math.max(0.005, r.minSl ?? 0, tp * kk));
+            const trail = tr > 0 ? r4(Math.max((r.minTrail ?? 0) / (g.trailStep ?? 1), tp * tr)) : 0;
+            const hold = Math.max(2, Math.round((h * 60) / 15));
+            assert.ok(keys.has(`${tp}|${sl}|${trail}|${hold}`), `${tag} ${tp} × ${k} × ${tr} × ${h}h`);
+          }
+  }
+  // General's tightest cell: 3.0 % target, 0.25× = 0.75 % held at its 1.0 % floor, trailing a quarter (0.75 %)
+  assert.ok(cells.some((p) => p.tag === "gn" && p.tp === 0.03 && p.sl === 0.01 && p.trail === 0.0075));
+  // Long's widest: 6.4 % target, 1.5× = 9.6 % stop, trail three quarters (4.8 %)
+  assert.ok(cells.some((p) => p.tag === "lg" && p.tp === 0.064 && p.sl === 0.096 && p.trail === 0.048));
 });
 
 test("every range tags its cells: minimal mn, short sh, general gn, long lg, micro mc; the wide grid stays untagged", () => {
@@ -182,7 +220,7 @@ test("desk presets: measured on three windows, positive, valid settings, never t
     assert.ok(p.id.startsWith("desk-"), p.id);
     assert.equal("live" in p.settings, false, p.id);
     checkSettings(p.settings as never);
-    assert.ok(p.metrics.pf >= 1.3, `${p.id} PF ${p.metrics.pf}`);
+    assert.ok(p.metrics.pf !== null && p.metrics.pf >= 1.3, `${p.id} PF ${p.metrics.pf}`);
     assert.ok(p.metrics.net > 0, p.id);
     assert.equal(p.metrics.checks?.length, 3, p.id);
     assert.ok(RESEARCH_PRESETS.some((r) => r.id === p.id), `${p.id} listed`);
@@ -336,8 +374,8 @@ test("Base, one middle cell per range (baseBest off): each enabled range against
   const mn = ps[0];
   // the middle TP and the middle stop ratio, no trail, 16 h in 15m bars
   assert.equal(mn.tp, 0.012);
-  // middle of MINIMAL_SL 1.5 / 2 / 2.5 / 3 (index 1): 2× the 1.2 % target
-  assert.equal(mn.sl, 0.024);
+  // middle of MINIMAL_SL 1.5 … 3 step 0.25 (index 3): 2.25× the 1.2 % target
+  assert.equal(mn.sl, 0.027);
   assert.equal(mn.trail, 0);
   assert.equal(mn.hold, 64);
   const st = (pf: number) => ({ n: 40, pf, net: 5, mdd: 1 }) as never;
@@ -425,6 +463,18 @@ test("sets per range after Base count only the pairs a range builds sets for; a 
   assert.equal(rangeAppliesTo("rsi-mom-14-20", "sh", { ...o, baseTf: 1 }), false);
 });
 
+test("empty Base samples keep their close count but have no measured PF", () => {
+  const empty = { n: 0, pf: 0, net: 0, mdd: 0 } as never;
+  const run = { bot: "follow" as const, ind: "rsi-mom-14-20@m15", full: empty };
+  const rows = baseRangeCounts([run], { minPf: 1.1, minTrades: 12 }, ["mc"]);
+  assert.equal(rows[0].evaluated, 1);
+  assert.equal(rows[0].pfMedian, null);
+  assert.equal(rows[0].passed, 0);
+  assert.deepEqual(basePairRows([run], {}), [
+    { pair: "follow|rsi-mom-14-20@m15", n: 0, pf: null, net: 0, passed: false, tags: [] },
+  ]);
+});
+
 test("a pair computes only the cells of the ranges it passed; a pair without Base tags computes every cell", () => {
   const t0 = Date.UTC(2026, 8, 20);
   const u = makeUniverse([barsFromCandles("A-USDT", 15, syntheticCandles("A", 15, 200, t0))]);
@@ -441,6 +491,76 @@ test("a pair computes only the cells of the ranges it passed; a pair without Bas
   assert.deepEqual(tags({ pairTags: { [pair]: ["mn"] } }), ["mn"]);
   assert.deepEqual(tags({ pairTags: { [pair]: ["", "gn"] } }), ["", "gn"]);
   assert.deepEqual(tags({ pairTags: { other: ["mn"] } }), ["", "gn", "mn"]);
+});
+
+test("Base cell stats are runCombo's whole-history stats exactly, for every range's cells (incl. Micro, ATR-free)", () => {
+  const t0 = Date.UTC(2026, 8, 20);
+  const u = makeUniverse([
+    barsFromCandles("A-USDT", 15, syntheticCandles("A", 15, 1500, t0, 3)),
+    barsFromCandles("B-USDT", 15, syntheticCandles("B", 15, 1500, t0, 5)),
+    barsFromCandles("A-USDT", 5, syntheticCandles("A", 5, 3000, t0, 7)),
+  ]);
+  const cells = baseRangeProtects({ ...DEFAULT_SETTINGS.grid, holdH: [16] }, 0.002);
+  let compared = 0;
+  for (const [bot, ind] of [["follow", "rsi-mom-14-20@m15"], ["revert", "z-50-2.5@m15"], ["follow", "mc-rsi2-5@m5"]] as const)
+    for (const p of cells.filter((_, i) => i % 7 === 0)) {
+      const a = cellStats(u, bot, ind, p, 0.002, null);
+      const r = runCombo(u, bot, ind, p, 0.002, 1, null);
+      // (gp / gl as well: the pooled PF after Base sums them, 63ef6c5)
+      assert.deepEqual(
+        a,
+        r ? { n: r.full.n, pf: r.full.pf, net: r.full.net, mdd: r.full.mdd, gp: r.full.gp, gl: r.full.gl } : null,
+        `${bot}|${ind} ${JSON.stringify(p)}`,
+      );
+      compared++;
+    }
+  assert.ok(compared > 50, `${compared} cells compared`);
+});
+
+test("grid.baseRanges: a passed pair builds its passed ranges (default) or every range that applies (off)", () => {
+  const applies = { enabled: (t: string) => t !== "mc" && t !== "mp", minTf: { sh: 15, gn: 15, lg: 15 }, baseTf: 1 };
+  const tags = ["mc", "mn", "mp", "sh", "gn", "lg"];
+  // on: exactly what passed
+  assert.deepEqual(pairBuildTags("rsi-mom-14-20@m15", ["mn"], tags, applies, true), ["mn"]);
+  // off: Wide and every enabled range the 15m lane reaches
+  assert.deepEqual(pairBuildTags("rsi-mom-14-20@m15", ["mn"], tags, applies, false), ["", "mn", "sh", "gn", "lg"]);
+  // a 5m lane is below Short / General / Long's 15m floor: off adds only Wide
+  assert.deepEqual(pairBuildTags("rsi-mom-14-20@m5", ["mn"], tags, applies, false), ["", "mn"]);
+  // nothing passed: nothing built either way
+  assert.deepEqual(pairBuildTags("rsi-mom-14-20@m15", [], tags, applies, false), []);
+  assert.equal(DEFAULT_SETTINGS.grid.baseRanges, true);
+});
+
+test("Base by range, why: the first gate each pair misses and the pairs one gate alone removes (hand-computed)", () => {
+  const st = (n: number, pf: number, net: number, mdd: number) => ({ n, pf, net, mdd }) as never;
+  const g = { minPf: 1, minTrades: 12, maxDdr: 1 };
+  const runs = [
+    // Short: passes
+    { ind: "a@m15", full: st(30, 1.2, 5, 2), ranges: { sh: st(20, 1.3, 4, 2) } },
+    // Short: drawdown 6 ÷ net 4 = 1.5 > 1 only → "only DDR", PF 1.4
+    { ind: "b@m15", full: st(30, 1.2, 5, 2), ranges: { sh: st(20, 1.4, 4, 6) } },
+    // Short: 8 closes and PF 0.9 (net −1): first closes; misses three gates
+    { ind: "c@m15", full: st(30, 1.2, 5, 2), ranges: { sh: st(8, 0.9, -1, 3) } },
+    // Short: PF 0.95 with net −0.5 → first net, misses net and PF
+    { ind: "d@m15", full: st(30, 1.2, 5, 2), ranges: { sh: st(40, 0.95, -0.5, 2) } },
+    // a 5m lane: not eligible for Short
+    { ind: "e@m5", full: st(30, 1.2, 5, 2), ranges: { sh: st(40, 2, 9, 1) } },
+  ];
+  const eligible = (ind: string, tag: string) => tag !== "sh" || !ind.endsWith("@m5");
+  const rows = baseRangeWhy(runs as never, g, ["sh"], eligible);
+  const sh = rows.find((r) => r.tag === "sh")!;
+  assert.equal(sh.evaluated, 4);
+  assert.equal(sh.passed, 1);
+  assert.deepEqual(sh.first, { closes: 1, net: 1, pf: 0, ddr: 1 });
+  assert.deepEqual(sh.only, { closes: 0, net: 0, pf: 0, ddr: 1 });
+  assert.equal(sh.onlyDdrPfMedian, 1.4);
+  // Wide (the default protect): all five pass (mdd 2 ÷ net 5 = 0.4)
+  const wide = rows.find((r) => r.tag === "")!;
+  assert.equal(wide.evaluated, 5);
+  assert.equal(wide.passed, 5);
+  // the counts agree with baseRangeCounts on the same runs
+  const counts = baseRangeCounts(runs as never, g, ["sh"], eligible);
+  assert.equal(counts.find((r) => r.tag === "sh")!.passed, sh.passed);
 });
 
 test("only the range targets Base validated are built (pairTps)", () => {
@@ -504,7 +624,7 @@ test("a held config keeps its own tape, not every cell of its range", () => {
   assert.deepEqual(build({ pairTags: { [pair]: ["mn"] } }).filter((id) => id.includes("|gn")), []);
 });
 
-test("Base sets floor: a lower floor computes more pairs' sets; the stage gate is unchanged without it", () => {
+test("Base sets floor: lowering Wide never weakens a configured range floor", () => {
   const st = (pf: number, net: number) => ({ n: 40, pf, net, mdd: 1 }) as never;
   // the default floor is PF 1 (operator, 5 Oct: Base computes a pair's sets from PF 1 up)
   assert.equal(DEFAULT_SETTINGS.gates.baseSetsMinPf, 1);
@@ -513,14 +633,15 @@ test("Base sets floor: a lower floor computes more pairs' sets; the stage gate i
     baseSetsMinPf: undefined,
     minPf: 1.05,
     minTrades: 10,
+    maxDdr: 0,
     rangeMinPf: { long: 1.18 },
   };
   assert.equal(baseSetsGates(g), g, "unset: the stage gates");
   const wide = baseSetsGates({ ...g, baseSetsMinPf: 0.9 });
   assert.equal(wide.minPf, 0.9);
-  assert.equal(wide.rangeMinPf, undefined, "one floor for every range");
-  // PF 0.95 (net negative) computes its sets under a 0.9 floor, not under the stage gate
-  assert.deepEqual(basePassTags({ full: st(0.95, -2) }, wide, ["sh", "lg"]), ["", "sh", "lg"]);
+  assert.deepEqual(wide.rangeMinPf, { long: 1.18 }, "tagged range floors remain active");
+  // PF 0.95 (net negative) computes Wide and Short sets under their 0.9 fallback; Long still needs 1.18.
+  assert.deepEqual(basePassTags({ full: st(0.95, -2) }, wide, ["sh", "lg"]), ["", "sh"]);
   assert.deepEqual(basePassTags({ full: st(0.95, -2) }, g, ["sh", "lg"]), []);
   // at the stage gate a positive net is still required
   assert.deepEqual(basePassTags({ full: st(1.1, -1) }, g, ["sh"]), []);

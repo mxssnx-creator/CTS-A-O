@@ -3,12 +3,18 @@
 // Every own order carries the tag and a kind letter: U micro, H short, N minimal, M minimal plus, E wide / mixed
 // (opens and increases), S stop, C close / reduce. Orders are grouped by the exchange position id; the kind of a
 // position is the kind of its first own opening order; its result is the sum of the exchange's realized profit
-// and commission over all its orders (stop fills included).
+// and commission over all its orders (stop fills included). Primary PF pools settled owned close-slice returns
+// using the exact same average-cost and fee-allocation helper as the live UI ledger. Whole-episode return PF and
+// reported dollar profit are separate diagnostics; they are not substitutes for the primary close-slice sample.
 //
 //   node --experimental-strip-types scripts/core-live-report.mjs --tag CTSV2U_ [--conn bingx-vst-02] [--hours 24]
 //        [--out runs/live-micro/exchange] [--flatten]   (--flatten closes the tag's open positions at market)
 import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { liveTrades } from "../src/core/statistics.ts";
+import { liveGroupOf } from "../src/core/live-validation.ts";
+import { profitFactor } from "../src/core/metrics/stats.ts";
+import { RT_COST } from "../src/core/model-cost.ts";
 
 const bxm = await import("../src/core/exchange/bingx.server.ts");
 // VST answers "network issue, please retry" (109500) and rate limits (100410) under load: retry with backoff
@@ -32,10 +38,30 @@ const bx = {
   cancelOrder: (...a) => retry(() => bxm.cancelOrder(...a)),
 };
 
-const KIND = { U: "Micro", N: "Minimal", H: "Short", G: "General", L: "Long", M: "Minimal plus", E: "Wide / mixed" };
+const KIND = { U: "Micro", N: "Minimal", H: "Short", G: "General", L: "Long", M: "Minimal plus", E: "Wide / mixed", Q: "Signals" };
 const num = (x) => {
   const v = Number(x);
   return Number.isFinite(v) ? v : 0;
+};
+
+/** Client ids survive rounded/missing venue ids and identify cumulative snapshots of the same order. */
+export function orderIdentity(o) {
+  const coid = String(o.clientOrderId ?? "").trim().toUpperCase();
+  if (coid) return `client:${coid}`;
+  if (o.orderId === undefined || o.orderId === null || o.orderId === "")
+    throw new Error("order history has no stable order identity (completeness unknown)");
+  if (typeof o.orderId === "number" && !Number.isSafeInteger(o.orderId))
+    throw new Error("order history has an unsafe numeric order id without a client id (completeness unknown)");
+  return `venue:${String(o.orderId)}`;
+}
+
+const rememberOrder = (out, o) => {
+  const key = orderIdentity(o);
+  const prev = out.get(key);
+  const qty = num(o.executedQty);
+  const oldQty = num(prev?.executedQty);
+  if (!prev || qty > oldQty || (qty === oldQty && num(o.updateTime || o.time) >= num(prev.updateTime || prev.time)))
+    out.set(key, o);
 };
 
 /** All orders of the account in [from, to], paged by time (the exchange returns at most 500 per call). */
@@ -49,40 +75,48 @@ export async function historyWith(signed, network, conn, from, to) {
   const STEP = 2 * 3_600_000;
   // A full page (500) is split in halves until each part fits: the exchange does not say which 500 of a busier
   // range it returns, so paging on from the newest time skipped orders (a CTS-A burst of cancels and fills hid a
-  // live leg from a close-out on 3 October). One minute is the floor.
+  // live leg from a close-out on 3 October). Split down to a millisecond: silently accepting a full one-minute page
+  // lost fills during bursts and made the resulting PF unreliable. A still-full instant cannot be proven complete.
   const read = async (start, end) => {
     const data = await signed(network, conn, "GET", "/openApi/swap/v2/trade/allOrders", {
       startTime: start,
       endTime: end,
       limit: 500,
     });
-    const xs = data?.orders ?? [];
-    if (xs.length >= 500 && end - start > 60_000) {
+    const xs = Array.isArray(data) ? data : data?.orders;
+    if (!Array.isArray(xs)) throw new Error("order history reply has no orders array (completeness unknown)");
+    if (xs.length >= 500 && end > start) {
       const mid = Math.floor((start + end) / 2);
       await read(start, mid);
       await read(mid + 1, end);
       return;
     }
-    for (const o of xs) out.set(String(o.orderId), o);
+    if (xs.length >= 500) throw new Error(`order history truncated at ${start}: 500 orders at one timestamp`);
+    for (const o of xs) rememberOrder(out, o);
   };
   for (let a = from; a < to; a += STEP) await read(a, Math.min(a + STEP, to));
   return [...out.values()];
 }
 
 /** `all`: the account's orders already read (one read serves every tag of a monitoring round). */
-export async function ownResults({ conn = "bingx-vst-02", tag, from, to = Date.now(), all = null }) {
+export async function ownResults({ conn = "bingx-vst-02", tag, from, to = Date.now(), all = null, modelCost }) {
+  const modelSource = modelCost === undefined ? "current-default-estimate" : "explicit-model";
+  if (modelCost === undefined) modelCost = RT_COST;
+  if (!Number.isFinite(modelCost) || modelCost < 0) throw new Error("modelCost must be finite and nonnegative");
   const network = conn === "bingx-x01" ? "mainnet" : "testnet";
   const T = tag.toUpperCase();
-  const orders = (all ?? (await history(network, conn, from, to))).filter((o) =>
-    String(o.clientOrderId ?? "").toUpperCase().startsWith(T),
-  );
+  const own = new Map();
+  for (const o of all ?? (await history(network, conn, from, to)))
+    if (String(o.clientOrderId ?? "").toUpperCase().startsWith(T)) rememberOrder(own, o);
+  const orders = [...own.values()];
   // positions: per symbol × side, one episode from the first own fill in until the own quantity is back to 0
   // (the exchange's position ids are 19-digit integers that lose precision as JSON numbers)
   const fills = orders
-    .filter((o) => o.status === "FILLED" || num(o.executedQty) > 0)
+    .filter((o) => num(o.executedQty) > 0)
     .sort((a, b) => num(a.updateTime || a.time) - num(b.updateTime || b.time));
   const open = new Map();
   const byPos = [];
+  const ledger = [];
   for (const o of fills) {
     const k = `${o.symbol}|${o.positionSide}`;
     const q = num(o.executedQty);
@@ -94,7 +128,20 @@ export async function ownResults({ conn = "bingx-vst-02", tag, from, to = Date.n
       byPos.push(p);
     }
     const letter = String(o.clientOrderId).toUpperCase().slice(T.length, T.length + 1);
-    if (into && !p.kind && /[UHNME]/.test(letter)) p.kind = letter;
+    if (into && !p.kind && Object.hasOwn(KIND, letter)) p.kind = letter;
+    const at = num(o.updateTime || o.time);
+    const px = num(o.avgPrice) || num(o.cumQuote) / q;
+    const commission = typeof o.commission === "number" ? o.commission
+      : typeof o.commission === "string" && o.commission.trim() !== "" ? Number(o.commission) : null;
+    const feeKnown = commission !== null && Number.isFinite(commission);
+    // Entry fills older than `from` in a supplied history establish inventory and its fees. The primary PF below
+    // admits only closes in (from, to], matching buildStatistics; no future fill may change their average cost.
+    if (at <= to) ledger.push({
+      coid: String(o.clientOrderId).toUpperCase(), sym: o.symbol,
+      side: o.positionSide === "SHORT" ? -1 : 1,
+      kind: into ? (p.qty > 0 ? "I" : "O") : (q < p.qty ? "R" : "X"),
+      qty: q, px, fillPx: px, fee: feeKnown ? commission : null, feeKnown, status: "ok", at,
+    });
     p.last = Math.max(p.last, num(o.updateTime || o.time));
     p.profit += num(o.profit);
     p.fee += num(o.commission);
@@ -108,28 +155,95 @@ export async function ownResults({ conn = "bingx-vst-02", tag, from, to = Date.n
   for (const p of byPos) {
     const kind = KIND[p.kind] ?? "unknown";
     const net = p.profit + p.fee;
-    positions.push({ ...p, kind, net, open: p.qty > 1e-9 });
-    const a = (byKind[kind] ??= { positions: 0, wins: 0, gp: 0, gl: 0, net: 0, fee: 0, profit: 0, notional: 0 });
+    const r = p.notional > 0 ? net / p.notional : null;
+    positions.push({ ...p, kind, net, r, open: p.qty > 1e-9 });
+    const a = (byKind[kind] ??= {
+      positions: 0, closedPositions: 0, openPositions: 0, returnCloses: 0, unpricedPositions: 0,
+      wins: 0, gp: 0, gl: 0, cashGp: 0, cashGl: 0, net: 0, fee: 0, profit: 0, notional: 0,
+      episodeGp: 0, episodeGl: 0, episodeCashGp: 0, episodeCashGl: 0,
+    });
     a.positions++;
-    if (net > 0) {
-      a.wins++;
-      a.gp += net;
-    } else a.gl -= net;
+    // Closed-position PF: an entry fee or a partial realization of a still-open episode is not a closed position.
+    // Its realized dollars remain in net (the account-loss guard needs them), while its PF is judged after it exits.
+    if (p.qty > 1e-9) a.openPositions++;
+    else {
+      a.closedPositions++;
+      if (net > 0) {
+        a.wins++;
+        a.episodeCashGp += net;
+      } else a.episodeCashGl -= net;
+      // An exit without its opening history still carries real dollar P&L, but no defensible return denominator.
+      if (r === null) a.unpricedPositions++;
+      else {
+        if (r > 0) a.episodeGp += r;
+        else a.episodeGl -= r;
+      }
+    }
     a.net += net;
     a.fee += p.fee;
     a.profit += p.profit;
     a.notional += p.notional;
   }
+  const closes = liveTrades(ledger, T.length, modelCost)
+    .filter((x) => x.exitT > from && x.exitT <= to)
+    .map((x) => {
+      const group = liveGroupOf(x.cfg);
+      return { ...x, kind: group === "Wide" ? "Wide / mixed" : group, pnl: x.r * x.notional };
+    });
+  for (const x of closes) {
+    // Every priced close came from one of the episodes above. Unknown opening letters are grouped as Wide by the
+    // shared ledger helper, so their actual return is retained even if the older report could not name the range.
+    const a = (byKind[x.kind] ??= {
+      positions: 0, closedPositions: 0, openPositions: 0, returnCloses: 0, unpricedPositions: 0,
+      wins: 0, gp: 0, gl: 0, cashGp: 0, cashGl: 0, net: 0, fee: 0, profit: 0, notional: 0,
+      episodeGp: 0, episodeGl: 0, episodeCashGp: 0, episodeCashGl: 0,
+    });
+    a.returnCloses++;
+    if (x.r > 0) a.gp += x.r;
+    else a.gl -= x.r;
+    if (x.pnl > 0) a.cashGp += x.pnl;
+    else a.cashGl -= x.pnl;
+  }
   for (const a of Object.values(byKind)) {
-    a.pf = a.gl > 1e-12 ? a.gp / a.gl : a.gp > 0 ? 99 : 0;
+    a.pf = profitFactor(a.gp, a.gl);
+    a.noLoss = a.gp > 0 && a.gl <= 0;
+    a.pfConvention = a.noLoss ? "no-loss-sentinel" : "gross-return-ratio";
+    a.cashPf = a.cashGl > 1e-12 ? a.cashGp / a.cashGl : a.cashGp > 0 ? Infinity : 0;
+    a.episodePf = a.episodeGl > 1e-12 ? a.episodeGp / a.episodeGl : a.episodeGp > 0 ? Infinity : 0;
     // realized cost of the round trips as a share of the opened notional (fees only; slippage is in the profit)
     a.feePct = a.notional > 0 ? (-a.fee / a.notional) * 100 : 0;
   }
+  const totals = Object.values(byKind).reduce(
+    (a, x) => ({ gp: a.gp + x.gp, gl: a.gl + x.gl, cashGp: a.cashGp + x.cashGp, cashGl: a.cashGl + x.cashGl,
+      episodeGp: a.episodeGp + x.episodeGp, episodeGl: a.episodeGl + x.episodeGl }),
+    { gp: 0, gl: 0, cashGp: 0, cashGl: 0, episodeGp: 0, episodeGl: 0 },
+  );
   return {
     tag: T,
     conn,
     from,
     to,
+    pf: profitFactor(totals.gp, totals.gl),
+    noLoss: totals.gp > 0 && totals.gl <= 0,
+    pfConvention: totals.gp > 0 && totals.gl <= 0 ? "no-loss-sentinel" : "gross-return-ratio",
+    cashPf: totals.cashGl > 1e-12 ? totals.cashGp / totals.cashGl : totals.cashGp > 0 ? Infinity : 0,
+    ...totals,
+    pfBasis: "settled-owned-close-net-return",
+    cashPfBasis: "settled-owned-close-net-usdt",
+    n: closes.length,
+    closesNet: closes.reduce((sum, x) => sum + x.pnl, 0),
+    closes,
+    sampleWindow: { fromExclusive: from, toInclusive: to },
+    episodePf: totals.episodeGl > 1e-12 ? totals.episodeGp / totals.episodeGl : totals.episodeGp > 0 ? Infinity : 0,
+    episodePfBasis: "whole-episode-exchange-profit-and-commission-return",
+    costs: {
+      modelRoundTrip: modelCost,
+      modelSource,
+      estimatedFeeOrders: ledger.filter((x) => !(Number.isFinite(x.fee) && (x.fee !== 0 || x.feeKnown === true || x.feeKnown === 1)) && modelCost > 0).length,
+      method: "same average-cost, owned quantity and fee allocation as the live ledger",
+    },
+    netBasis: "realized-order-profit-and-commission",
+    funding: "account-income-only; not attributed to a tracking tag",
     orders: orders.length,
     // every own client id seen on the exchange (the monitor checks them against the desk's ledger)
     orderIds: [...new Set(orders.map((o) => String(o.clientOrderId).toUpperCase()))],
@@ -248,13 +362,15 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const tag = arg("tag");
   if (!tag) throw new Error("--tag is required");
   if (argv.includes("--flatten")) console.log(`closed ${await flatten(conn, tag)} positions`);
-  const r = await ownResults({ conn, tag, from: Date.now() - Number(arg("hours", 24)) * 3_600_000 });
+  const requestedCost = arg("cost", undefined);
+  const r = await ownResults({ conn, tag, from: Date.now() - Number(arg("hours", 24)) * 3_600_000,
+    ...(requestedCost === undefined ? {} : { modelCost: Number(requestedCost) }) });
   const outPath = arg("out");
   if (outPath) writeFileSync(`${outPath}.json`, JSON.stringify(r, null, 2));
   console.log(`${r.tag} on ${r.conn}: ${r.orders} own orders, ${r.positions.length} positions`);
   for (const [k, a] of Object.entries(r.byKind))
     console.log(
-      `  ${k.padEnd(14)} ${String(a.positions).padStart(4)} pos · ${a.wins} won · PF ${a.pf.toFixed(2)} · net ${a.net.toFixed(2)} USDT · fees ${(-a.fee).toFixed(2)} (${a.feePct.toFixed(3)} % of notional)`,
+      `  ${k.padEnd(14)} ${String(a.positions).padStart(4)} pos · ${a.returnCloses} settled closes · return PF ${a.pf.toFixed(2)}${a.noLoss ? " (shared no-loss sentinel)" : ""} · net ${a.net.toFixed(2)} USDT · fees ${(-a.fee).toFixed(2)} (${a.feePct.toFixed(3)} % of notional)`,
     );
   // funding is not in the order results: the account's total over the same window (all systems on the account)
   try {

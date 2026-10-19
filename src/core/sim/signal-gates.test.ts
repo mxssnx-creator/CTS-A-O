@@ -3,15 +3,17 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
+  configEval,
   defaultWalkForward,
   makeTape,
+  selectFixed,
   walkForward,
   type WalkForwardOptions,
 } from "./walkforward.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import type { Trade } from "../domain/types.ts";
 import { signalSettings } from "../signal-config.ts";
-import { acceptKey, SignalAcceptIndex } from "../signals.ts";
+import { acceptKey, SignalAcceptIndex, sigActiveKey } from "../signals.ts";
 
 const H = 3_600_000;
 const T0 = Date.UTC(2026, 8, 1);
@@ -94,10 +96,86 @@ describe("signals: the active ranking", () => {
       [b.id],
       "B trades its in-run entry; A opens nothing new",
     );
-    assert.deepEqual(r.signalActiveEnd, [`follow|${b.ind}|${SYM}|1`]);
+    assert.deepEqual(r.signalActiveEnd, [sigActiveKey("follow", b.ind, SYM, 1, "normal", b.id)]);
     assert.equal(r.skips["sig:signalBase"] ?? 0, 0);
     // A's entry outside the step's active set is counted (the signal funnel, per side), never dropped silently
     assert.equal(r.signalFunnel?.inactive, 1);
+  });
+});
+
+describe("signals: Strategy Base validation window", () => {
+  it("preserves runtime tie order across the pooled Signals last-N boundary", () => {
+    const ind = "sig-ema-cross-s@m15";
+    const id = `follow|${ind}|tp1|sl1|tr0|h32`;
+    const tiedAt = NOW - H;
+    const oldWinners = Array.from({ length: 40 }, (_, i) => trade(id, 0.01, NOW - 80 * H + i * H));
+    // Runtime's stable tape order puts this losing short first in the tied group. Re-sorting ties by side
+    // moves it to the end and incorrectly inserts it into the 25-close validation sample.
+    const tied = [trade(id, -0.3, tiedAt, -1), ...Array.from({ length: 25 }, () => trade(id, 0.01, tiedAt, 1))];
+    const tp = makeTape(id, "follow", ind, P, "normal", [SYM], [...oldWinners, ...tied], [], []);
+    assert.deepEqual(Array.from(tp.side.slice(-26)), [-1, ...Array(25).fill(1)]);
+    assert.ok(Array.from(tp.r.slice(-25)).every((r) => r > 0), "last-N excludes the earlier tied loss");
+
+    const o: WalkForwardOptions = {
+      ...base,
+      longH: 100,
+      preH: 20,
+      validLastN: 15,
+      signalValidLastN: 25,
+      preGate: false,
+      gates: {
+        ...DEFAULT_SETTINGS.gates,
+        minTrades: 12,
+        maxDdtH: 1_000,
+        minDdtH: 0,
+        maxDdr: 0,
+        minGreen: 0,
+        stableBlocks: 0,
+      },
+    };
+    assert.equal(configEval(tp, NOW, o).ok, true);
+    assert.equal(selectFixed([tp], NOW, o).picks.length, 1);
+  });
+
+  it("uses signalValidLastN in both diagnostics and actual Base selection", () => {
+    const ind = "sig-ema-cross-s@m15";
+    const id = `follow|${ind}|tp1|sl1|tr0|h32`;
+    // The whole record is profitable and the last 15 closes win, but the 10 losses immediately before
+    // those wins make the Signals-specific last 25 fail. An engine last-15 setting must not override it.
+    const history = [
+      ...Array.from({ length: 35 }, (_, i) => trade(id, 0.03, NOW - 60 * H + i * H)),
+      ...Array.from({ length: 10 }, (_, i) => trade(id, -0.02, NOW - 25 * H + i * H)),
+      ...Array.from({ length: 15 }, (_, i) => trade(id, 0.01, NOW - 15 * H + i * H)),
+    ];
+    const tp = makeTape(id, "follow", ind, P, "normal", [SYM], history, [], []);
+    const o = {
+      ...base,
+      longH: 100,
+      preH: 20,
+      validLastN: 15,
+      signalValidLastN: 25,
+      preGate: false,
+      rangeGate: undefined,
+      gates: {
+        ...DEFAULT_SETTINGS.gates,
+        minTrades: 12,
+        maxDdtH: 1_000,
+        minDdtH: 0,
+        maxDdr: 0,
+        minGreen: 0,
+        stableBlocks: 0,
+      },
+    };
+
+    const evaluation = configEval(tp, NOW, o);
+    assert.equal(evaluation.ok, false);
+    assert.equal(!evaluation.ok && evaluation.fail, "lastN");
+    assert.equal(selectFixed([tp], NOW, o).picks.length, 0);
+
+    // Engine configs continue to use the engine last-N setting with the same tape history.
+    const engine = makeTape(id.replace(ind, "rsi-mom-14-20@m15"), "follow", "rsi-mom-14-20@m15", P, "normal", [SYM], history.map((x) => ({ ...x, cfg: id.replace(ind, "rsi-mom-14-20@m15") })), [], []);
+    assert.equal(configEval(engine, NOW, o).ok, true);
+    assert.equal(selectFixed([engine], NOW, o).picks.length, 1);
   });
 });
 
@@ -106,7 +184,7 @@ describe("signals: acceptance on the source's record", () => {
   // the m15 lane of the source active on the symbol (the ranking is not under test)
   const o = (): WalkForwardOptions => ({
     ...base,
-    signalActive: new Set([`follow|sig-ema-cross-s@m15|${SYM}|1`]),
+    signalActive: new Set([sigActiveKey("follow", "sig-ema-cross-s@m15", SYM, 1, "normal", "follow|sig-ema-cross-s@m15|tp1|sl1|tr0|h32")]),
     signalAccept: accept,
   });
 
@@ -132,7 +210,7 @@ describe("signals: acceptance on the source's record", () => {
     assert.equal(r2.skips["sig:signalPf"], 1);
   });
 
-  it("pools every lane and range of the source, active or not; closes after the entry never count", () => {
+  it("keeps lanes and parameter ranges independent; closes after the entry never count", () => {
     // the m30 medium lane of the same source won before the run; only the m15 short lane enters in the run
     const other = tape("sig-ema-cross-m@m30", (id) =>
       Array.from({ length: 10 }, (_, i) => trade(id, 0.01, NOW - 30 * H + i * H)),
@@ -142,13 +220,13 @@ describe("signals: acceptance on the source's record", () => {
       walkForward(u, [other, lane], o()).trades.map((x) => x.cfg),
       [lane.id],
     );
-    // causality, shown with losers: ten losing closes before the entry refuse the lane...
+    // Losses of another lane and parameter range never refuse this independent set.
     const early = tape("sig-ema-cross-m@m30", (id) =>
       Array.from({ length: 10 }, (_, i) => trade(id, -0.01, NOW - 30 * H + i * H)),
     );
     const e = walkForward(u, [early, lane], o());
-    assert.equal(e.trades.filter((x) => x.cfg === lane.id).length, 0);
-    assert.equal(e.skips["sig:signalPf"], 1);
+    assert.equal(e.trades.filter((x) => x.cfg === lane.id).length, 1);
+    assert.equal(e.skips["sig:signalPf"] ?? 0, 0);
     // ...the same losers closing only after the entry are never seen: no sample to judge in the window or in twice
     // the window, so the group counts as valid (operator, 6 Oct) and the lane trades
     const late = tape("sig-ema-cross-m@m30", (id) =>
@@ -167,13 +245,13 @@ describe("signals: acceptance on the source's record", () => {
       trade(id, 0.03, NOW - 5 * H, -1),
     ]);
     const idx = new SignalAcceptIndex([tp]);
-    const key = acceptKey(tp.ind, SYM, 1, "normal");
+    const key = acceptKey(tp.ind, SYM, 1, "normal", tp.id);
     // exits 30 min after entry: at NOW the −50 h close is outside 48 h; the short is a group of its own
     assert.deepEqual(idx.stats(key, NOW, 48), { n: 2, pf: 2 });
     // at −5 h: the −50 h and −10 h winners (the −5 h loser closes after it)
     assert.deepEqual(idx.stats(key, NOW - 5 * H, 48), { n: 2, pf: Infinity });
     assert.deepEqual(idx.stats(key, NOW - 5 * H, 24), { n: 1, pf: Infinity });
-    assert.deepEqual(idx.stats(acceptKey(tp.ind, SYM, -1, "normal"), NOW, 48), {
+    assert.deepEqual(idx.stats(acceptKey(tp.ind, SYM, -1, "normal", tp.id), NOW, 48), {
       n: 1,
       pf: Infinity,
     });
