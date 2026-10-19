@@ -22,7 +22,7 @@ import {
 } from "./live.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
-import { ExchangeRejected, stopPxExchange } from "../exchange/bingx.server.ts";
+import { clearRateLimit, ExchangeRejected, stopPxExchange } from "../exchange/bingx.server.ts";
 import { SimExchange } from "../test-support.ts";
 
 process.env.CTS_CORE_LIVE = "1";
@@ -160,6 +160,53 @@ class OneWayLaneFillVenue extends OneWayVenue {
     if (id === this.fillId) this.fillOrder(id);
     return super.cancel(sym, id);
   }
+}
+
+/**
+ * A BingX stand-in for the entries path's own reads and orders (runStepNow calls bx.* directly, so the seam is the
+ * transport, globalThis.fetch). Positions per key: `sym|BOTH` signed in one-way mode, `sym|LONG` / `sym|SHORT` unsigned in
+ * hedge mode. A reduce-only one-way order takes at most the net it is sent against and never opens one. Every call the
+ * entries path makes is answered; any other call is recorded in `unexpected`.
+ */
+class ProtectVenue {
+  pos = new Map<string, number>();
+  sent: Record<string, string>[] = [];
+  unexpected: string[] = [];
+  private setPos(k: string, v: number) {
+    const n = +v.toFixed(6);
+    if (n) this.pos.set(k, n);
+    else this.pos.delete(k);
+  }
+  fetch = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    const u = new URL(String(input));
+    const method = init?.method ?? "GET";
+    const reply = (data: unknown) => new Response(JSON.stringify({ code: 0, msg: "", data }));
+    if (method === "GET" && u.pathname === "/openApi/swap/v2/user/positions")
+      return reply(
+        [...this.pos.entries()].map(([k, q]) => {
+          const [symbol, positionSide] = k.split("|");
+          return { symbol, positionSide, positionAmt: String(q) };
+        }),
+      );
+    if (method === "GET" && u.pathname === "/openApi/swap/v2/trade/openOrders") return reply({ orders: [] });
+    if (method === "GET" && u.pathname === "/openApi/swap/v2/user/balance")
+      return reply({ balance: { asset: "USDT", equity: "100", balance: "100", availableMargin: "100" } });
+    if (method === "POST" && u.pathname === "/openApi/swap/v2/trade/order") {
+      const p = Object.fromEntries(u.searchParams.entries());
+      this.sent.push(p);
+      const k = `${p.symbol}|${p.positionSide}`;
+      const cur = this.pos.get(k) ?? 0;
+      const q = Number(p.quantity);
+      if (p.positionSide === "BOTH") {
+        const sgn = p.side === "BUY" ? 1 : -1;
+        const take = p.reduceOnly === "true" ? (sgn === -Math.sign(cur) ? Math.min(q, Math.abs(cur)) : 0) : q;
+        this.setPos(k, cur + sgn * take);
+      } else this.setPos(k, cur - Math.min(q, cur)); // hedge: a close of the side it names
+      return reply({ order: { orderId: `m${this.sent.length}` } });
+    }
+    this.unexpected.push(`${method} ${u.pathname}`);
+    return new Response(JSON.stringify({ code: 100000, msg: "not answered by the test venue", data: null }));
+  };
 }
 
 type Pos = {
@@ -710,6 +757,67 @@ describe("order sides, hedge mode (overall control): LONG and SHORT alike", { ti
       assert.equal(cancels, 0, "nothing trimmed: nine orders against 12 − 5 reserved, the backstop among them");
       assert.equal(ex.orders.length, 9);
     });
+  }
+});
+
+// item 8: the entries protect pass closes an own entry that has no stop. In one-way mode it closed the whole BOTH position,
+// the manual quantity merged into it too; a close of the own quantity alone (reduce-only in one-way) leaves the rest. The
+// hedge side is the control: its close was always bounded to the own quantity.
+describe("order sides, entries mode: the protect pass closes the own quantity only", { timeout: 60_000 }, () => {
+  const connId = "bingx-vst-02" as const;
+  const saved = { key: process.env.BINGX_X02_API_KEY, secret: process.env.BINGX_X02_SECRET };
+  const realFetch = globalThis.fetch;
+  beforeEach(() => {
+    resetLiveBackoff();
+    clearRateLimit();
+    process.env.BINGX_X02_API_KEY = "test-key";
+    process.env.BINGX_X02_SECRET = "test-secret";
+  });
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+    if (saved.key === undefined) delete process.env.BINGX_X02_API_KEY;
+    else process.env.BINGX_X02_API_KEY = saved.key;
+    if (saved.secret === undefined) delete process.env.BINGX_X02_SECRET;
+    else process.env.BINGX_X02_SECRET = saved.secret;
+  });
+  for (const mode of ["hedge", "oneway"] as const) {
+    for (const s of [1, -1] as const) {
+      const side = s === 1 ? "long" : "short";
+      const ps = s === 1 ? "LONG" : "SHORT";
+      const exitSide = s === 1 ? "SELL" : "BUY";
+      const sym = "S1-USDT";
+      const key = mode === "oneway" ? `${sym}|BOTH` : `${sym}|${ps}`;
+      it(`OW-8 ${side}, ${mode}: an own entry without its stop is closed for its own quantity only, the manual quantity on ${mode === "oneway" ? "the BOTH position" : ps} stays`, async () => {
+        const venue = new ProtectVenue();
+        globalThis.fetch = venue.fetch as unknown as typeof fetch;
+        // one own unit with no stop resting, and someone else's three units merged into the same position
+        venue.pos.set(key, mode === "oneway" ? s * 4 : 4);
+        const { rt } = rtOf({ positionMode: mode, mode: "entries", requireReady: false });
+        rt.db.run(
+          "INSERT INTO live_orders (coid, cfg, sym, side, kind, qty, px, status, msg, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          `${liveTag(connId)}E1`,
+          "combo|ema-9-21@m15|a",
+          sym,
+          s,
+          "E",
+          1,
+          10,
+          "ok",
+          `combo|ema-9-21@m15|a|${sym}|1`,
+          Date.now(),
+        );
+        await stepLive(rt as unknown as CoreRuntime, [], 1);
+        assert.deepEqual(venue.unexpected, [], "every call of the protect pass is answered by the test venue");
+        assert.equal(venue.sent.length, 1, JSON.stringify(venue.sent));
+        assert.equal(venue.sent[0].type, "MARKET");
+        assert.equal(venue.sent[0].side, exitSide);
+        assert.equal(venue.sent[0].positionSide, mode === "oneway" ? "BOTH" : ps);
+        assert.equal(venue.sent[0].reduceOnly, mode === "oneway" ? "true" : undefined, "a one-way close is reduce-only");
+        assert.equal(venue.sent[0].closePosition, undefined, "bounded: never closePosition");
+        assert.equal(Number(venue.sent[0].quantity), 1, `the own quantity only, sent ${venue.sent[0].quantity}`);
+        assert.equal(venue.pos.get(key), mode === "oneway" ? s * 3 : 3, "the manual quantity stays on its position");
+      });
+    }
   }
 });
 
