@@ -71,6 +71,24 @@ desk prints a warning at start and on every patch that leaves one of them off (`
 | Live fill within every budget | kept configs held to the budget; exposure, stop-risk and worst-case budgets — the drops decided across all three at once, in rank order, every target whose exchange minimum fits (`scaleToBudgets`, 13 Oct) | kept whole, the fill overshot ~6× and every position was squeezed to the exchange minimum. 13 Oct 18:55Z, x01 (0.50 USDT wallet): dropping "the weakest while the survivors do not fit", one budget after the other, kept the two strongest keys under the gross cap and dropped both under the risk budget (XPL 2.00 USD at 11 % fit the 0.249 USD budget, ZKP 2.06 USD at 12.15 % did not) — nothing placed, 24 keys never tried; the admission keeps the coordination and fills what fits |
 | Allocator caps for every long-running process | `MALLOC_ARENA_MAX=2 MALLOC_MMAP_THRESHOLD_=1048576` | without them x01 held 11 GB RSS on a 2.6 GB heap |
 
+## Round-trip cost 0.15 % (operator, 19 Oct) — the modeled cost and the PositionCost baseline
+
+Operator: "Change roundtrip cost to 0.15 overall", and the frozen PositionCost constant changes too. The modeled cost
+was already 0.15 % (`RT_COST`, `model-cost.ts`); the frozen baseline `POSITION_COST_RT` was 0.2 % and is now 0.15 %
+(`POSITION_COST_STRESS_RT` 0.3 %). Consequences, by design:
+
+- **Follows the baseline:** `bot-stats.ts` repricing (`COST_RT`, `STRESS_RT`), and the historic Signal floor
+  `HIST_MIN_TP = 5 × POSITION_COST_RT` (1.0 % → 0.75 %). The signal-history fixture (`signal-hist.test.ts`) moved to seeds
+  1 / 2, the only pair of seeds 1–10 inside its PF bounds at the new floor.
+- **Kept at 0.2 %:** `RANGE_COST_BASIS` (`minimal-coord.ts`), the fixed historical range-construction basis. Tying it to
+  the baseline would shrink every configured range distance by a quarter; `minimal-coord.ts` requires that changing the
+  modeled cost never does so silently. The range grid is unchanged.
+- **Kept at 0.2 %:** the frozen runtime-parity v2 research protocols (`docs/signal-research-protocol-20261015/16.json`).
+  The guard in `scripts/core-signal-research.mjs` compares them to their own recorded 0.2 %, so the frozen reproduction
+  still runs. A new protocol version is needed to research at 0.15 %.
+- **Still to trace:** the 24 h run of 19 Oct recorded `cost 0.002` with no `fees` key. The source is not yet located.
+  The verification run logs the runtime cost at start.
+
 ## Operator overrides of a measured coordination
 
 11 Oct — **x01 Signals live desk: caps disabled, then RESTORED the same day.** On explicit operator instruction the

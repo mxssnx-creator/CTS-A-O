@@ -10,7 +10,7 @@ export function roundTripCostFromFees(fees: { taker: number; slippage: number })
 export const RT_COST = roundTripCostFromFees(DEFAULT_MODEL_FEES);
 
 /** Frozen reference basis used by historical range multipliers and the dated bot-stability benchmark. */
-/** PositionCost baseline used by range multiples and PF screening: 0.2% round trip. */
-export const POSITION_COST_RT = 0.002;
+/** PositionCost baseline used by range multiples and PF screening: 0.15% round trip (operator, 19 Oct). */
+export const POSITION_COST_RT = 0.0015;
 /** PositionCost stress threshold used by PF screening: 0.4% round trip. */
 export const POSITION_COST_STRESS_RT = POSITION_COST_RT * 2;
