@@ -180,13 +180,13 @@ async function closedOutside(side: 1 | -1, oldStop: number, newStop: number | nu
 }
 
 describe("the stop a flat marker is priced at: a new position's own stop only (live.server.ts stepLive)", { timeout: 60_000 }, () => {
-  it("(e) LONG: a new position with no stop row of its own is not closed at the earlier position's stop 9.7 (plan item 15, expected to fail at 5911116: priced at 9.7)", async () => {
+  it("(e) LONG: a new position with no stop row of its own is not closed at the earlier position's stop 9.7 (plan item 15)", async () => {
     const m = await closedOutside(1, 9.7, null, [{ h: 10.1, l: 9.4 }]);
     assert.ok(!String(m.msg).includes("(stop"), `booked at a stop it never had: "${m.msg}" at ${m.px}`);
     assert.notEqual(m.px, 9.7);
   });
 
-  it("(e) SHORT: a new position with no stop row of its own is not closed at the earlier stop 10.3 (plan item 15, expected to fail at 5911116: priced at 10.3)", async () => {
+  it("(e) SHORT: a new position with no stop row of its own is not closed at the earlier stop 10.3 (plan item 15)", async () => {
     const m = await closedOutside(-1, 10.3, null, [{ h: 10.6, l: 9.9 }]);
     assert.ok(!String(m.msg).includes("(stop"), `booked at a stop it never had: "${m.msg}" at ${m.px}`);
     assert.notEqual(m.px, 10.3);

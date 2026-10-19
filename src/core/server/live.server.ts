@@ -2005,11 +2005,20 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     const onExchange = new Set(
       book.positions.map((p) => `${p.venueSymbol}|${p.side === "long" ? 1 : -1}`),
     );
+    // the stop the key's current position carried (its last S row since its open; null: none, or a flat marker or a new
+    // open came after it — a new position never inherits the stop of the one before)
     const stopPxOf = (k: string) => {
       let px: number | null = null;
-      for (const r of ctlRows.values()) if (r.k === k && r.kind === "S" && r.status === "ok" && (r.px ?? 0) > 0) px = r.px!;
+      for (const r of ctlRows.values()) {
+        if (r.k !== k) continue;
+        if (r.kind === "O" || r.kind === "F") px = null;
+        else if (r.kind === "S" && r.status === "ok" && (r.px ?? 0) > 0) px = r.px!;
+      }
       return px;
     };
+    // the stop each flat marker of this step is priced at, read before the marker is written: a flat row is the key's
+    // latest row and clears the memory (as an open does), so a marker written first would never find the stop it closed at
+    const stopAtFlat = new Map<string, number | null>();
     // the take-profit the key's current position carried (its last T row since its open; null: none, or cancelled
     // without a new one — a "gone" row)
     const tpPxOf = (k: string) => {
@@ -2086,7 +2095,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       if (found) by = { ...found, src: "history" };
       else {
         const left = restingOf(k);
-        const stopPx = stopPxOf(k);
+        const stopPx = stopAtFlat.has(k) ? (stopAtFlat.get(k) ?? null) : stopPxOf(k);
         const tpPx = tpPxOf(k);
         const inferred = closedBy({ ...left, stopPx, tpPx, px });
         if (inferred.why === "hand") by = { why: "hand", px: null, src: "ticker" };
@@ -2116,6 +2125,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     for (const [k, q] of ledger)
       if (q > 0 && !onExchange.has(k) && !recent.has(k)) {
         flatKeys.push(k);
+        stopAtFlat.set(k, stopPxOf(k));
         const [sym, sd] = k.split("|");
         // a local row (never sent): an id outside the own tag, so no exchange-id check ever looks for it
         const fid = `flat-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e9).toString(36)}`;
