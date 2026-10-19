@@ -10,7 +10,7 @@
 import { afterEach, beforeEach, describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 import { CoreDb } from "./db.server.ts";
-import { entryExitOrder, reconcileLaneCloses, resetLiveBackoff, stepLive } from "./live.server.ts";
+import { entryExitOrder, liveKv, reconcileLaneCloses, resetLiveBackoff, stepLive, type ControlStatus } from "./live.server.ts";
 import {
   closeFillsOf,
   controlOwnership,
@@ -552,6 +552,32 @@ describe("order sides, hedge mode (overall control): LONG and SHORT alike", { ti
         [],
         "closePosition orders sent on the merged side",
       );
+    });
+  }
+
+  // item 9, the estimate and the books of a merged one-way key: our quantity stays in `held` (a key that leaves it reads as
+  // closed outside), so the estimate (controlStatus.foreignQty) is the other owner's part alone, and no flat marker is written
+  for (const s of [1, -1] as const) {
+    const side = s === 1 ? "long" : "short";
+    const sym = s === 1 ? "S1-USDT" : "S2-USDT";
+    const mark = s === 1 ? 10 : 20;
+    it(`OW-9 ${side}, estimate: one-way merged with someone else's 2 units, the other owner's estimate is those 2 units and our side is not booked closed`, async () => {
+      const tick = clock();
+      const ex = new OneWayVenue();
+      const { rt } = rtOf({ positionMode: "oneway" });
+      const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+      rt.paper.positions = [lane("combo|ema-9-21@m15|a", sym, s, mark, 0.02)];
+      await step();
+      ex.orders = ex.orders.filter((o) => o.type !== STOP);
+      ex.foreignOpen(sym, 2, s === 1);
+      for (let i = 0; i < 3; i++) {
+        tick(61_000);
+        await step();
+      }
+      const est = liveKv<ControlStatus>(rt.db, "controlStatus")?.foreignQty?.[`${sym}|${s}`] ?? 0;
+      assert.ok(Math.abs(est - 2) < 1e-6, `the other owner's estimate ${est}, against 2 units held by them`);
+      const flats = rt.db.all<{ msg: string }>("SELECT msg FROM live_orders WHERE kind = 'F'").map((r) => r.msg);
+      assert.deepEqual(flats, [], "no flat marker: the side is not booked closed while it is held");
     });
   }
 

@@ -2260,7 +2260,13 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         // nothing of it is ours (our part closed): "avoid" freezes that side (one-way: the symbol) — our position on the
         // other side of a hedge-mode symbol is still managed; "independent" may open its own beside it
         if (!independent) foreign.add(posOneway ? xsym : x.key);
-      } else merged.add(x.key);
+      } else {
+        merged.add(x.key);
+        // one-way: the one BOTH position holds someone else's quantity beside ours, and no exit order can bound to our part
+        // (closePosition would close theirs too): the symbol is frozen, as cpOf below states — anything foreign there freezes
+        // it. Our quantity stays in `held` (an unheld key would read as closed outside); the freeze keeps its orders off.
+        if (posOneway) foreign.add(xsym);
+      }
       const mk = `foreign-excess|${x.key}|${x.exchange}|${x.own}`;
       const W = local(rt).warnedExcess;
       if (!W.has(mk)) {
@@ -3350,6 +3356,9 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     for (const [key, qty] of ordersStale ? [] : held) {
       if (!alive()) break;
       if (closing.has(key)) continue;
+      // a key of a frozen symbol (one-way, merged with someone else's quantity): no stop is placed on it (planControl
+      // skips the same key for its orders)
+      if (isForeign(foreign, key)) continue;
       const [sym, sd] = key.split("|");
       const side = (Number(sd) === 1 ? 1 : -1) as 1 | -1;
       const positionSide = oneway ? "BOTH" : side === 1 ? "LONG" : "SHORT";
@@ -3468,6 +3477,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     for (const [key, qty] of ordersStale || !pricesFresh || noSpecs ? [] : held) {
       if (!alive()) break;
       if (closing.has(key) || repairClosed.has(key)) continue;
+      // a key of a frozen symbol: its stop is not re-priced (no closePosition order on someone else's quantity)
+      if (isForeign(foreign, key)) continue;
       const t = targetOf.get(key);
       const sym = key.split("|")[0];
       const px = prices.get(sym) ?? 0;
