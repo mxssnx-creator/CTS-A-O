@@ -104,7 +104,8 @@ export interface BlockBookEntry {
 
 /**
  * Book key of a source for one position (config: the config set itself). `sideKeys` (BlockConfig.sideKeys): the config
- * source is keyed per direction too, so its pause and its level are its own direction's.
+ * source is keyed per direction too, so its pause and countdown are its own direction's; its level is read per
+ * direction by blockLevel.
  */
 export function sourceKey(
   s: BlockSource,
