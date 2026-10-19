@@ -9,8 +9,14 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DEFAULT_SETTINGS, STRATEGY_PRESETS } from "../src/core/config.ts";
 import { barsFromCandles, resample } from "../src/core/market/bars.ts";
-import { statsOf } from "../src/core/metrics/stats.ts";
 import { makeUniverse } from "../src/core/pipeline/pipeline.ts";
+import {
+  compareComparisonPf,
+  comparisonAggregate,
+  comparisonPfText,
+  comparisonRunReport,
+  rankableComparison,
+} from "./lib/walkforward-comparison-report.mjs";
 import {
   buildTapes,
   defaultWalkForward,
@@ -46,6 +52,9 @@ for (let st = u.startT + warm * 24 * H; st + 48 * H <= u.nowT; st += 48 * H)
 const rows = [];
 const f2 = (x) => (Number.isFinite(x) ? x.toFixed(2) : "–");
 console.error(`${u.bars.length} symbols ${tf}m · ${windows.length} × 48h runs`);
+console.error(
+  "Primary statistics/ranking: settled one-unit simulated net returns after costs. Sized simulation and endpoint marks are separate diagnostics; no-loss PF is the shared engine score.",
+);
 
 for (const slg of SL_GROUPS) {
   for (const trg of TRAIL) {
@@ -71,33 +80,25 @@ for (const slg of SL_GROUPS) {
             toggles: STRATEGY_PRESETS[preset].toggles,
           };
           const all = [];
-          let pos = 0;
+          const runs = [];
           for (const startT of windows) {
             const r = walkForward(u, tapes, { ...o, startT });
-            all.push(...r.trades);
-            if (r.stats.net > 0) pos++;
+            const report = comparisonRunReport(r);
+            all.push(...report.trades);
+            runs.push(report.detail);
           }
-          all.sort((a, b) => a.exitT - b.exitT);
-          const s = statsOf(all);
+          const s = comparisonAggregate(all, runs);
           const row = {
             sl: slg,
             trail: trg,
             preset,
             lastN,
             lastNMinPf,
-            n: s.n,
-            perDay: s.n / (windows.length * 2),
-            pf: s.pf,
-            net: s.net,
-            gh: s.gh,
-            worstHour: s.worstHour,
-            ddt: s.ddt,
-            positiveRuns: pos,
-            runs: windows.length,
+            ...s,
           };
           rows.push(row);
           console.log(
-            `SL×${slg.join("/")} trail ${trg.join("/")} ${preset.padEnd(14)} N ${String(lastN).padStart(2)} pf≥${lastNMinPf} | n ${String(s.n).padStart(5)} (${row.perDay.toFixed(0)}/d) PF ${f2(s.pf)} net ${f2(s.net).padStart(8)}% gh ${Math.round(s.gh * 100)}% worst ${f2(s.worstHour)} · ${pos}/${windows.length} runs +`,
+            `SL×${slg.join("/")} trail ${trg.join("/")} ${preset.padEnd(14)} N ${String(lastN).padStart(2)} pf≥${lastNMinPf} | n ${String(s.n).padStart(5)} (${f2(row.perDay)}/d) return PF ${comparisonPfText(s)} net ${f2(s.net).padStart(8)}% gh ${Number.isFinite(s.gh) ? Math.round(s.gh * 100) + "%" : "–"} worst ${f2(s.worstHour)} · ${s.positiveRuns ?? "–"}/${windows.length} settled runs + (${s.unavailableRuns} unavailable) | sized simulated PF ${comparisonPfText(s.sizedSimulation)} net ${f2(s.sizedSimulation.net)}%`,
           );
         }
       }
@@ -107,7 +108,7 @@ for (const slg of SL_GROUPS) {
     );
   }
 }
-rows.sort((a, b) => b.pf - a.pf);
+rows.sort(compareComparisonPf);
 const out = arg("out");
 if (out) {
   mkdirSync(dirname(out), { recursive: true });
@@ -120,8 +121,10 @@ if (out) {
     ),
   );
 }
-console.log("\nTop 15 by PF (min 200 orders):");
-for (const r of rows.filter((r) => r.n >= 200).slice(0, 15))
+console.log(
+  "\nTop 15 by settled return PF score (min 200 known-unit closes; no-loss uses the shared score):",
+);
+for (const r of rows.filter((r) => rankableComparison(r, 200)).slice(0, 15))
   console.log(
-    `  SL×${r.sl} trail ${r.trail} ${r.preset} N${r.lastN} pf≥${r.lastNMinPf} → PF ${f2(r.pf)} net ${f2(r.net)}% n ${r.n} (${r.perDay.toFixed(0)}/d) ${r.positiveRuns}/${r.runs} runs +`,
+    `  SL×${r.sl} trail ${r.trail} ${r.preset} N${r.lastN} pf≥${r.lastNMinPf} → return PF ${comparisonPfText(r)} net ${f2(r.net)}% n ${r.n} (${f2(r.perDay)}/d) ${r.positiveRuns}/${r.runs} settled runs +`,
   );

@@ -101,7 +101,7 @@ describe("presets", () => {
     at,
     settings: {},
     wf: {},
-    metrics: { pf, n: 10, perDay: 1, wr: 0.5, net: 1, greenHours: 0.5, period: "", source: "" },
+    metrics: { pf, pfBasis: "unit-net-returns", unknownReturns: 0, gp: pf, gl: 1, n: 10, perDay: 1, wr: 0.5, net: 1, greenHours: 0.5, period: "", source: "" },
   });
 
   it("never carries the Live stage", () => {
@@ -178,5 +178,61 @@ describe("tactic: choppiness regime", () => {
     for (let i = 0; i < 120; i++) assert.equal(out[i], ch[i] < 61.8 ? 1 : 0, `bar ${i}`);
     assert.ok(out.slice(20, 60).every((x) => x === 0), "no entry in the chop");
     assert.ok(out.slice(90, 120).every((x) => x === 1), "entries in the trend");
+  });
+});
+
+describe("tactic: trend strength and the low-ADX indications", () => {
+  // act-chop fires only below ADX 18, mc-qrsi2-5 below 12, r-bb-adx-m below 20: the trend-strength tactic (ADX ≥ 20)
+  // removed every one of their entries (audit, 13 Oct). They keep the other tactics.
+  const END = Date.UTC(2026, 9, 1);
+  const count = (ind: string, tactics: typeof DEFAULT_TACTICS) => {
+    let n = 0;
+    for (const seed of [3, 11, 29, 41]) {
+      const k = new SeriesCache(barsFromCandles("AAA-USDT", 15, syntheticCandles("AAA-USDT", 15, 4000, END, seed)));
+      const s = entrySignal("follow", ind, k, tactics)!;
+      for (const x of s) if (x !== 0) n++;
+    }
+    return n;
+  };
+  it("a low-ADX indication trades under the default tactics, exactly as under its other tactics alone", () => {
+    assert.ok(DEFAULT_TACTICS.trendStrength && DEFAULT_TACTICS.volRegime);
+    const others = { ...DEFAULT_TACTICS, trendStrength: false };
+    for (const ind of ["act-chop", "act-chop@x4@m15", "r-bb-adx-m"]) {
+      const n = count(ind, DEFAULT_TACTICS);
+      assert.ok(n > 0, `${ind}: ${n} entries under the default tactics`);
+      assert.equal(n, count(ind, others), ind);
+    }
+  });
+  it("every other indication still takes the trend-strength tactic", () => {
+    const others = { ...DEFAULT_TACTICS, trendStrength: false };
+    for (const ind of ["ema-9-21", "z-50-2.5"]) assert.ok(count(ind, DEFAULT_TACTICS) < count(ind, others), ind);
+  });
+});
+
+describe("tactic: on the whole state run (tactics.onRun)", () => {
+  const END = Date.UTC(2026, 9, 1);
+  const cache = (seed: number) =>
+    new SeriesCache(barsFromCandles("AAA-USDT", 15, syntheticCandles("AAA-USDT", 15, 3000, END, seed)));
+  it("off by default; without tactics it is the onset rule exactly", () => {
+    assert.equal(DEFAULT_TACTICS.onRun, undefined);
+    const k = cache(5);
+    const none = { session: false, volRegime: false, trendStrength: false, cooldown: false, cooldownBars: 4 };
+    assert.deepEqual([...entrySignal("follow", "ema-9-21", k, { ...none, onRun: true })!], [...entrySignal("follow", "ema-9-21", k, none)!]);
+  });
+  it("one entry per state run, on its first bar the tactics keep; at least the onset rule's entries", () => {
+    for (const seed of [3, 11]) {
+      const k = cache(seed);
+      for (const [bot, ind] of [["follow", "ema-9-21"], ["revert", "trend-st"], ["follow", "rsi-mom-14-20"]] as const) {
+        const onset = entrySignal(bot, ind, k, DEFAULT_TACTICS)!;
+        const run = entrySignal(bot, ind, k, { ...DEFAULT_TACTICS, onRun: true })!;
+        const nz = (a: Int8Array) => a.reduce((s, x) => s + (x !== 0 ? 1 : 0), 0);
+        assert.ok(nz(run) >= nz(onset), `${bot}|${ind} seed ${seed}: run ${nz(run)} < onset ${nz(onset)}`);
+        // every onset entry is also a run entry (the run's first kept bar is its onset when the onset is kept)
+        for (let i = 0; i < onset.length; i++) if (onset[i] !== 0) assert.equal(run[i], onset[i], `${ind} bar ${i}`);
+        // each run entry passes the tactics: the same bar of the every-bar candidate after the filters
+        const adx = k.dmi(14).adx;
+        for (let i = 0; i < run.length; i++) if (run[i] !== 0) assert.ok(adx[i] >= 20, `${ind} bar ${i} ADX ${adx[i]}`);
+      }
+    }
   });
 });

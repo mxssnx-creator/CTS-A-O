@@ -1,95 +1,103 @@
-// Replay the live validation on a desk's forward paper record: for each live group (Signals, or the config's target
-// range) and window N, every forward close is taken only if the group's (or the config's) last N closes that EXITED
-// BEFORE ITS ENTRY held PF ≥ min — what the gate sees when it decides. Prints, per group, all closes against the
-// taken ones, and the total. Copy the desk's core.sqlite first (the desk keeps writing it).
-// usage: node --experimental-strip-types --no-warnings scripts/core-live-group-replay.mjs core.sqlite [N,N,…] [minPf]
-//        N = "all": the whole record before the entry, judged from 200 closes; "cfg:N": per config instead of group
+// Counterfactual PF-filter diagnostic on a copied forward paper record. This is not a replay of the
+// complete Base/live gates or account execution: group mode deliberately pools configs, and warmup is retained.
+// Unit-return qualification requires verified paper_trades.unit_r. Legacy sized r is never guessed or scored.
+// usage: node --experimental-strip-types --no-warnings scripts/core-live-group-replay.mjs core.sqlite [N,N,…] [minPf] [gates.json]
+// N="all": whole prior record, from 200 closes; cfg:N: each full config independently.
 import { DatabaseSync } from "node:sqlite";
+import { readFileSync } from "node:fs";
 
 const { liveGroupOf } = await import("../src/core/live-validation.ts");
-
-const [file, ns = "50,100,200,400,all,cfg:25", minArg = "1.05"] = process.argv.slice(2);
-if (!file) {
-  console.error("usage: core-live-group-replay.mjs core.sqlite [N,N,…] [minPf]");
-  process.exit(2);
-}
-const MIN = Number(minArg);
-// the forward record: closes recorded within 15 min of their exit (a back-filled close is not a live one)
+const { minPfOf, rangeOfId } = await import("../src/core/minimal-coord.ts");
+const { profitFactor } = await import("../src/core/metrics/stats.ts");
+const [file, ns = "50,100,200,400,all,cfg:25", minArg, gatesFile] = process.argv.slice(2);
+if (!file) throw new Error("usage: core-live-group-replay.mjs core.sqlite [N,N,…] [minPf] [gates.json]");
+const saved = gatesFile ? JSON.parse(readFileSync(gatesFile, "utf8")) : {};
+const sourceGates = saved.settings?.gates ?? saved.gates ?? saved;
+const MIN = Number(minArg ?? sourceGates.minPf ?? 1.05);
+if (!Number.isFinite(MIN) || MIN < 0) throw new Error("minPf must be a finite nonnegative number");
+const gates = { ...sourceGates, minPf: MIN };
+const specs = ns.split(",").map((spec) => {
+  const perCfg = spec.startsWith("cfg:");
+  const raw = perCfg ? spec.slice(4) : spec;
+  const n = raw === "all" ? Number.MAX_SAFE_INTEGER : Number(raw);
+  if (!Number.isSafeInteger(n) || n < 1) throw new Error(`invalid close window: ${spec}`);
+  return { perCfg, raw, n, from: raw === "all" ? 200 : n };
+});
 const FORWARD_MS = 15 * 60_000;
 const db = new DatabaseSync(file, { readOnly: true });
-const rows = db
-  .prepare(
-    "SELECT cfg, entry_t, exit_t, r FROM paper_trades WHERE first_at IS NOT NULL AND first_at - exit_t <= ? ORDER BY exit_t",
-  )
-  .all(FORWARD_MS);
+let all;
+try {
+  const hasUnit = db.prepare("PRAGMA table_info(paper_trades)").all().some((x) => x.name === "unit_r");
+  all = db.prepare(`SELECT cfg, entry_t, exit_t, r, first_at, ${hasUnit ? "unit_r" : "NULL AS unit_r"} FROM paper_trades ORDER BY exit_t`).all();
+} finally { db.close(); }
+// Negative recording delays, null/malformed returns and inverted timestamps are not forward-close evidence.
+const rows = all.filter((x) => typeof x.cfg === "string" && x.cfg.length > 0 &&
+  Number.isSafeInteger(x.entry_t) && x.entry_t > 0 && Number.isSafeInteger(x.exit_t) && x.exit_t >= x.entry_t &&
+  Number.isSafeInteger(x.first_at) && x.first_at >= x.exit_t && x.first_at - x.exit_t <= FORWARD_MS &&
+  typeof x.r === "number" && Number.isFinite(x.r));
+const known = (x) => typeof x.unit_r === "number" && Number.isFinite(x.unit_r);
 const hours = rows.length ? (rows.at(-1).exit_t - rows[0].exit_t) / 3_600_000 : 0;
-console.log(`${rows.length} forward closes over ${hours.toFixed(1)} h · min PF ${MIN}`);
-
-const pfOf = (p, l) => (l === 0 ? (p > 0 ? Infinity : 0) : p / l);
-const fmt = (p, l) => `PF ${pfOf(p, l).toFixed(2)} Σr ${((p - l) * 100).toFixed(0)} %`;
-
+console.log(`${rows.length} forward closes over ${hours.toFixed(1)} h · ${rows.filter(known).length} verified unit returns · ${rows.filter((x) => !known(x)).length} unknown unit basis · ${all.length - rows.length} invalid/backfilled excluded`);
+console.log(`Counterfactual diagnostic only; not complete runtime qualification or actual exchange execution. Group mode pools configs. Warmup is retained, not PF-qualified. Global minimum ${MIN}; each config retains its indication/range minimum (Tactic >= 1.1). Unknown returns never qualify or fill a missing window.`);
+const acc = () => ({ p: 0, l: 0, n: 0, unknown: 0 });
+const add = (a, r) => { a.n++; if (r > 0) a.p += r; else a.l -= r; };
+const fmt = (a) => a.unknown ? `return PF unavailable (${a.unknown} unknown unit returns; ${a.n} verified)` : !a.n ? "return PF unavailable (0 verified returns)" :
+  `return PF ${a.p > 0 && a.l <= 0 ? "No losses (engine score convention)" : profitFactor(a.p, a.l).toFixed(2)} Σr ${((a.p - a.l) * 100).toFixed(2)} points (${a.n} verified)`;
 function replay(keyOf, n, from) {
   const by = new Map();
   for (const x of rows) {
     const k = keyOf(x.cfg);
-    let xs = by.get(k);
-    if (!xs) by.set(k, (xs = []));
-    xs.push(x);
+    if (!by.has(k)) by.set(k, []);
+    by.get(k).push(x);
   }
   const out = [];
   for (const [k, xs] of by) {
-    const exits = xs.map((x) => x.exit_t);
-    const a = { p: 0, l: 0, n: xs.length };
-    const t = { p: 0, l: 0, n: 0 };
+    const p = new Float64Array(xs.length + 1);
+    const l = new Float64Array(xs.length + 1);
+    const unknown = new Uint32Array(xs.length + 1);
+    for (let i = 0; i < xs.length; i++) {
+      const r = known(xs[i]) ? xs[i].unit_r : 0;
+      p[i + 1] = p[i] + Math.max(0, r);
+      l[i + 1] = l[i] + Math.max(0, -r);
+      unknown[i + 1] = unknown[i] + (known(xs[i]) ? 0 : 1);
+    }
+    const a = acc();
+    a.unknown = unknown[xs.length];
+    const t = acc();
+    let warmup = 0;
+    let blockedUnknown = 0;
     for (const x of xs) {
-      // closes of the key that exited before this entry
+      if (!known(x)) continue;
+      add(a, x.unit_r);
+      // Only closes strictly before entry can affect the decision. Prefix sums keep "all" O(N log N).
       let lo = 0;
-      let hi = exits.length;
+      let hi = xs.length;
       while (lo < hi) {
         const m = (lo + hi) >> 1;
-        if (exits[m] < x.entry_t) lo = m + 1;
+        if (xs[m].exit_t < x.entry_t) lo = m + 1;
         else hi = m;
       }
-      let ok = true;
-      if (lo >= from) {
-        let p = 0;
-        let l = 0;
-        for (let j = Math.max(0, lo - n); j < lo; j++) {
-          if (xs[j].r > 0) p += xs[j].r;
-          else l -= xs[j].r;
-        }
-        ok = pfOf(p, l) >= MIN;
-      }
-      if (x.r > 0) a.p += x.r;
-      else a.l -= x.r;
-      if (ok) {
-        t.n++;
-        if (x.r > 0) t.p += x.r;
-        else t.l -= x.r;
-      }
+      const start = Math.max(0, lo - n);
+      if (unknown[lo] !== unknown[start]) { blockedUnknown++; continue; }
+      const warming = lo < from;
+      const need = minPfOf(gates, rangeOfId(x.cfg), x.cfg.split("|")[1]);
+      if (!warming && profitFactor(p[lo] - p[start], l[lo] - l[start]) < need) continue;
+      add(t, x.unit_r);
+      if (warming) warmup++;
     }
-    out.push({ k, a, t });
+    out.push({ k, a, t, warmup, blockedUnknown, n: xs.length });
   }
-  return out.sort((x, y) => y.a.n - x.a.n);
+  return out.sort((x, y) => y.n - x.n);
 }
-
-for (const spec of ns.split(",")) {
-  const perCfg = spec.startsWith("cfg:");
-  const raw = perCfg ? spec.slice(4) : spec;
-  const n = raw === "all" ? Number.MAX_SAFE_INTEGER : Number(raw);
-  const from = raw === "all" ? 200 : n;
+for (const { perCfg, raw, n, from } of specs) {
   const res = replay(perCfg ? (c) => c : liveGroupOf, n, from);
-  const tot = res.reduce(
-    (s, x) => ({ ap: s.ap + x.a.p, al: s.al + x.a.l, tp: s.tp + x.t.p, tl: s.tl + x.t.l, tn: s.tn + x.t.n }),
-    { ap: 0, al: 0, tp: 0, tl: 0, tn: 0 },
-  );
-  console.log(
-    `\n${perCfg ? `per config, last ${raw}` : raw === "all" ? "group, whole record (from 200)" : `group, last ${raw}`}: all ${fmt(tot.ap, tot.al)} · gated ${fmt(tot.tp, tot.tl)} · taken ${tot.tn} of ${rows.length}`,
-  );
-  if (!perCfg)
-    for (const x of res)
-      console.log(
-        `  ${x.k.padEnd(8)} ${String(x.a.n).padStart(6)} closes · all ${fmt(x.a.p, x.a.l)} · gated ${fmt(x.t.p, x.t.l)} (${x.t.n} taken)`,
-      );
-  else console.log(`  ${res.length} configs, most closes per config ${Math.max(0, ...res.map((x) => x.a.n))}`);
+  const total = res.reduce((s, x) => ({
+    a: { p: s.a.p + x.a.p, l: s.a.l + x.a.l, n: s.a.n + x.a.n, unknown: s.a.unknown + x.a.unknown },
+    t: { p: s.t.p + x.t.p, l: s.t.l + x.t.l, n: s.t.n + x.t.n, unknown: 0 },
+    warmup: s.warmup + x.warmup, blockedUnknown: s.blockedUnknown + x.blockedUnknown,
+  }), { a: acc(), t: acc(), warmup: 0, blockedUnknown: 0 });
+  console.log(`\n${perCfg ? `per config, last ${raw}` : raw === "all" ? "pooled group, whole prior record (from 200)" : `pooled group, last ${raw}`}: all ${fmt(total.a)} · retained ${fmt(total.t)} · taken ${total.t.n} of ${rows.length}; warmup ${total.warmup}, PF-qualified ${total.t.n - total.warmup}, blocked by unknown history ${total.blockedUnknown}`);
+  if (!perCfg) for (const x of res)
+    console.log(`  ${x.k.padEnd(8)} ${String(x.n).padStart(6)} closes · all ${fmt(x.a)} · retained ${fmt(x.t)} (${x.t.n} taken; ${x.warmup} warmup)`);
+  else console.log(`  ${res.length} configs, most closes per config ${res.reduce((a, x) => Math.max(a, x.n), 0)}`);
 }

@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { barsFromCandles, syntheticCandles, tailBars } from "../market/bars.ts";
 import { SeriesCache } from "../indications/cache.ts";
+import { isMicroInd } from "../indications/micro.ts";
 import { INDICATIONS, indicationState, mtfState } from "../indications/registry.ts";
 import { BOTS, comboSignal } from "../bots/bots.ts";
 import { optimizeLastN, windowDdt, gatedTrades } from "../lastn/optimizer.ts";
@@ -38,7 +39,7 @@ describe("indications", () => {
   const full = barsFromCandles("AAA", 5, syntheticCandles("AAA", 5, 600, END));
   const kFull = new SeriesCache(full);
 
-  it("covers all 10 kinds with unique ids", () => {
+  it("covers every registered indication kind with unique ids", () => {
     const kinds = new Set(INDICATIONS.map((s) => s.kind));
     for (const k of INDICATION_KINDS) assert.ok(kinds.has(k), k);
     assert.equal(new Set(INDICATIONS.map((s) => s.id)).size, INDICATIONS.length);
@@ -76,11 +77,16 @@ describe("indications", () => {
 
   it("produces both directions on a long random walk", () => {
     let both = 0;
-    for (const s of INDICATIONS) {
+    // Relate and relational Break IDs are anchored to one explicit timeframe. This generic test owns one 5m series,
+    // so their lane-correct direction checks live in the corresponding family tests instead.
+    const unanchored = INDICATIONS.filter(
+      (s) => !s.id.startsWith("relate-") && !s.id.startsWith("break-rel-") && !s.id.startsWith("break-mc-rel-"),
+    );
+    for (const s of unanchored) {
       const st = indicationState(s.id, kFull)!;
       if (st.includes(1) && st.includes(-1)) both++;
     }
-    assert.ok(both >= INDICATIONS.length * 0.8, `${both}`);
+    assert.ok(both >= unanchored.length * 0.8, `${both}/${unanchored.length}`);
   });
 });
 
@@ -184,6 +190,47 @@ describe("last-N", () => {
     assert.ok(res.rows.length > 5);
   });
 
+  it("reports gateOpen as of nowT and never lets future closes qualify it", () => {
+    const xs: Trade[] = [];
+    let i = 0;
+    for (let cyc = 0; cyc < 12; cyc++) {
+      for (let j = 0; j < 25; j++) xs.push(tr(i++, -0.012));
+      for (let j = 0; j < 25; j++) xs.push(tr(i++, 0.01));
+    }
+    // The first close in the later winning block lands exactly at 26 h: four prior losses
+    // plus this larger win pass N=5, while the same sample just before the close does not.
+    xs[25] = tr(25, 0.06);
+    const gates = { ...DEFAULT_GATES, maxDdtH: 1e9, maxDdr: 0 };
+    const historical = optimizeLastN("x", xs, { gates, grid: [5, 10], nowT: 5 * H });
+    assert.equal(historical.bestN, 5, "the optimizer still selects its in-sample N");
+    assert.equal(historical.gateOpen, false, "the first five completed closes are losses");
+
+    const atClose = optimizeLastN("x", xs, { gates, grid: [5, 10], nowT: 26 * H });
+    assert.equal(atClose.gateOpen, true, "a passing close exactly at nowT is included in the current last-N");
+    const beforeClose = optimizeLastN("x", xs, { gates, grid: [5, 10], nowT: 26 * H - 1 });
+    assert.equal(beforeClose.gateOpen, false, "future closes after nowT are excluded");
+  });
+
+  it("keeps optimizer statistics and gate decisions stable when simultaneous closes are permuted", () => {
+    const xs = Array.from({ length: 60 }, (_, k) => tr(k, k < 20 ? -0.012 : 0.01));
+    const loss = { ...tr(30, -0.03), sym: "AAA" };
+    const win = { ...tr(30, 0.04), sym: "BBB" };
+    const gates = { ...DEFAULT_GATES, maxDdtH: 1e9 };
+    const a = optimizeLastN("x", [...xs, loss, win], { gates, grid: [5, 10], nowT: 80 * H });
+    const b = optimizeLastN("x", [...xs, win, loss], { gates, grid: [5, 10], nowT: 80 * H });
+    assert.deepEqual(a, b);
+  });
+
+  it("marks N=0 as an open, ungated baseline instead of reusing historical IS/OOS PF", () => {
+    const res = optimizeLastN("x", [tr(0, -0.01)], {
+      gates: { ...DEFAULT_GATES, maxDdtH: 1e9 },
+      grid: [5],
+      nowT: 0,
+    });
+    assert.equal(res.bestN, 0, "no candidate window has enough closes");
+    assert.equal(res.gateOpen, true, "N=0 means the baseline has no Last-N gate");
+  });
+
   it("a pure loser never succeeds", () => {
     const xs = Array.from({ length: 200 }, (_, k) => tr(k, k % 3 === 0 ? 0.01 : -0.01));
     const res = optimizeLastN("x", xs, { gates: DEFAULT_GATES });
@@ -225,7 +272,7 @@ describe("combos", () => {
 
   it("Micro indications are not produced on lanes below Micro's floor (they could pass nothing there)", () => {
     const tfs = [1, 5, 15, 30];
-    const micro = (c: { ind: string }) => c.ind.startsWith("mc-");
+    const micro = (c: { ind: string }) => isMicroInd(c.ind.split("@m")[0]);
     const all = allCombos(undefined, undefined, tfs).filter(micro);
     assert.ok(all.some((c) => c.ind.endsWith("@m1")), "every lane without a floor");
     const pruned = allCombos(undefined, undefined, tfs, 5).filter(micro);
@@ -291,9 +338,9 @@ describe("pipeline", () => {
       assert.ok(r.lastN && r.lastN.is.net > 0 && r.lastN.is.pf >= s.gates.minPf);
     }
     assert.ok(a.portfolio.members.length <= 3);
-    // cost is applied: no trade can earn more than its move minus 0.2%
+    // cost is applied exactly once, at the configured modeled round-trip rate
     for (const t of a.tapes.values().next().value ?? []) {
-      assert.ok(Math.abs(t.r - (t.side * (t.exit - t.entry)) / t.entry + 0.002) < 1e-12);
+      assert.ok(Math.abs(t.r - (t.side * (t.exit - t.entry)) / t.entry + s.cost) < 1e-12);
     }
   });
 });

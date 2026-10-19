@@ -14,7 +14,6 @@ import {
 } from "./exchange/bingx.server.ts";
 import {
   controlTargets,
-  MIN_RAISE_X,
   positionCapFor,
   type ControlContribution,
   type ControlSettings,
@@ -206,8 +205,8 @@ function controlCase(r: R, integer = false): Case {
     ratio: integer ? pick(r, [1, 2, 10]) : pick(r, [0.5, 1, 2, 10, 60]),
     signalWeight: integer ? pick(r, [1, 2]) : pick(r, [0, 1, 2.5]),
     maxNotionalUsd: positionCapFor(fixed, equity, maxPositionX),
+    // The exchange cap is applied after strategy lanes aggregate into symbol-direction positions.
     maxPositions: pick(r, [0, 1, 2, 3, 5, 8]),
-    signalMaxPositions: pick(r, [0, 0, 1, 2]),
     rebalancePct: 0.25,
     positionMode: r() < 0.25 ? "oneway" : "hedge",
     minStopPct: pick(r, [0.005, 0.01, 0.02, 0.25]),
@@ -229,33 +228,30 @@ const run = (k: Case, lanes = k.lanes) =>
     k.specs ? (sym, q, px) => snapQtyExchange(q, px, k.specs!.get(sym)) : undefined,
   );
 
-/** the keys the control aggregates (hedge: symbol × side; oneway: the net side of each symbol) and their class */
-function keysOf(k: Case): Map<string, { signalOnly: boolean }> {
-  const by = new Map<string, { vol: number; engine: boolean }>();
+/** The exchange slots after lane aggregation (hedge: symbol × side; oneway: one net side per symbol). */
+function keysOf(k: Case): Set<string> {
+  const by = new Map<string, number>();
   for (const l of k.lanes) {
     const key = `${l.sym}|${l.side}`;
-    const a = by.get(key) ?? { vol: 0, engine: false };
-    a.vol += Math.max(0, l.vol) * (sigCfg(l.cfg) ? Math.max(0, k.cs.signalWeight ?? 1) : 1);
-    a.engine ||= !sigCfg(l.cfg);
-    by.set(key, a);
+    by.set(
+      key,
+      (by.get(key) ?? 0) +
+        Math.max(0, l.vol) * (sigCfg(l.cfg) ? Math.max(0, k.cs.signalWeight ?? 1) : 1),
+    );
   }
-  const out = new Map<string, { signalOnly: boolean }>();
-  if (k.cs.positionMode !== "oneway") {
-    for (const [key, a] of by) out.set(key, { signalOnly: !a.engine });
-    return out;
-  }
+  if (k.cs.positionMode !== "oneway") return new Set(by.keys());
+  const out = new Set<string>();
   for (const sym of new Set(k.lanes.map((l) => l.sym))) {
     const L = by.get(`${sym}|1`);
     const S = by.get(`${sym}|-1`);
-    const v = (L?.vol ?? 0) - (S?.vol ?? 0);
-    if (Math.abs(v) < 1e-9) continue;
-    out.set(`${sym}|${v > 0 ? 1 : -1}`, { signalOnly: !(L?.engine || S?.engine) });
+    const v = (L ?? 0) - (S ?? 0);
+    if (Math.abs(v) >= 1e-9) out.add(`${sym}|${v > 0 ? 1 : -1}`);
   }
   return out;
 }
 
 describe("live control targets (server/live.ts controlTargets)", () => {
-  it(`never above the position caps or the per-position cap; every key a target or a skip with a reason (${CASES} cases)`, () => {
+  it(`never above the exchange-slot or per-position cap; every key is a target or a reasoned skip (${CASES} cases)`, () => {
     const r = rng(201);
     let targets = 0;
     let raisedAtMin = 0;
@@ -272,21 +268,30 @@ describe("live control targets (server/live.ts controlTargets)", () => {
         const w = s.why.startsWith("exchange minimum") ? "exchange minimum" : s.why;
         why.set(w, (why.get(w) ?? 0) + 1);
       }
-      // the position caps: engine and signal positions together, the signal-only ones within their own cap
-      if (k.cs.maxPositions > 0) assert.ok(res.targets.length <= k.cs.maxPositions, at);
-      const sigTargets = res.targets.filter((t) => keys.get(t.key)?.signalOnly).length;
-      if (k.cs.signalMaxPositions) assert.ok(sigTargets <= k.cs.signalMaxPositions, at);
-      // a cap skip only once the cap is full
+      // All strategy lanes share the exchange capacity after aggregating to unique account positions.
+      const slotKey = (key: string) =>
+        k.cs.positionMode === "oneway" ? key.slice(0, key.lastIndexOf("|")) : key;
+      const heldSlots = new Set(Array.from(k.cs.heldKeys ?? [], slotKey));
+      const targetSlots = new Set(res.targets.map((t) => slotKey(t.key)));
+      const occupied = new Set([
+        ...heldSlots,
+        ...targetSlots,
+      ]);
+      const slotLimit = k.cs.maxPositions > 0 ? k.cs.maxPositions : 100;
+      const newSlots = [...targetSlots].filter((key) => !heldSlots.has(key));
+      assert.ok(
+        newSlots.length <= Math.max(0, slotLimit - heldSlots.size),
+        `${at}: ${newSlots.length} new exchange slots with ${heldSlots.size} already held (limit ${slotLimit})`,
+      );
+      // a cap skip occurs only once all exchange slots are occupied (held keys count too)
       for (const s of res.skipped) {
         assert.ok(typeof s.why === "string" && s.why.length > 0, `${at}: a skip without a reason`);
         assert.ok(
           k.prices.has(s.sym) || s.why === "no fresh price",
           `${at}: ${s.sym} skipped for ${s.why}`,
         );
-        if (s.why === "max control positions (symbol × side)")
-          assert.equal(res.targets.length, k.cs.maxPositions, at);
-        if (s.why === "max signal control positions (symbol × side)")
-          assert.equal(sigTargets, k.cs.signalMaxPositions, at);
+        if (s.why === "max exchange positions (symbol × direction)")
+          assert.ok(occupied.size >= slotLimit, at);
       }
       // every key accounted for exactly once
       assert.equal(
@@ -312,16 +317,17 @@ describe("live control targets (server/live.ts controlTargets)", () => {
           t.qty > 0 && close(t.notional, t.qty * k.prices.get(t.sym)!),
           `${at}: ${JSON.stringify(t)}`,
         );
-        // the per-position cap (the fixed cap and maxPositionX × equity, whichever is smaller); only the exchange
-        // minimum may take a position past it, and then at most MIN_RAISE_X times
-        const bound = t.atMin ? cap * MIN_RAISE_X : cap * 1.0001;
+        // the per-position cap (the fixed cap and maxPositionX × equity, whichever is smaller): the exchange minimum
+        // is rounded up to only while it still fits it (minRaiseBlock), so no target is past the cap
+        const bound = cap * 1.0001;
         assert.ok(
           t.notional <= bound + 1e-9,
           `${at}: ${t.key} notional ${t.notional} over ${bound}`,
         );
-        if (t.atMin) {
+        // a raise to the exchange minimum is taken only within the cap (minRaiseBlock skips the rest): never atMin
+        if (t.raised) {
           raisedAtMin++;
-          assert.equal(t.raised, true, at);
+          assert.ok(!t.atMin, `${at}: a raised target past the cap`);
         }
         if (!t.atMin) {
           assert.ok(t.notional <= k.fixed * 1.0001 + 1e-9, `${at}: over the fixed cap`);
@@ -343,13 +349,12 @@ describe("live control targets (server/live.ts controlTargets)", () => {
       }
     }
     assert.ok(targets > CASES, `${targets} targets: the cases exercise the sizing`);
-    assert.ok(raisedAtMin > 0, "some cases raise a position to the exchange minimum past the cap");
+    assert.ok(raisedAtMin > 0, "some cases raise a position to the exchange minimum within the cap");
     assert.ok(oneway > 50, `${oneway} one-way cases`);
     // every skip reason is exercised
     for (const w of [
       "no fresh price",
-      "max control positions (symbol × side)",
-      "max signal control positions (symbol × side)",
+      "max exchange positions (symbol × direction)",
       "size rounds to zero",
       "exchange minimum",
       "risk budget",
@@ -381,7 +386,12 @@ describe("live control targets (server/live.ts controlTargets)", () => {
 
 // ── statistics against a direct sum ──────────────────────────────────────────────────────────────────────────────
 const SYMS = ["A-USDT", "B-USDT", "C-USDT"];
-const CFGS = [...ENGINE_CFG, ...SIGNAL_CFG];
+const RANGE_CFG = [...ENGINE_CFG, "follow|bb-walk@x4|tp1|sl2|tr1|h32|sh"];
+const EXIT_CFG = [
+  "follow|rsi-mom-14-20@m15|tp3|sl1|tr0|h48|hxL0",
+  "revert|cci-14-200@x4|tp4|sl2|tr1|h48|hxS2",
+];
+const CFGS = [...RANGE_CFG, ...SIGNAL_CFG, ...EXIT_CFG];
 function tradesOf(r: R, n: number, t0 = Date.UTC(2026, 8, 20)): StatTrade[] {
   return Array.from({ length: n }, () => {
     const entryT = t0 + Math.floor(r() * 72 * 60) * 60_000;
@@ -394,6 +404,7 @@ function tradesOf(r: R, n: number, t0 = Date.UTC(2026, 8, 20)): StatTrade[] {
       exitT: entryT + int(r, 1, 600) * 60_000,
       entry: 100,
       r: rr,
+      mult: 1,
       reason: pick(r, ["tp", "sl", "trail", "time"]),
       ...(r() < 0.5 ? { mult: pick(r, [1, 2, 3]), level: int(r, 0, 4) } : {}),
     };
@@ -470,7 +481,9 @@ describe("statistics agree with a direct sum (metrics/stats.ts, statistics.ts)",
       const at = `case ${c}`;
       assert.equal(row.n, d.n, at);
       assert.equal(row.wins, d.wins, at);
-      assert.ok(close(row.net, d.net) && close(row.pf, d.pf), at);
+      const unitReturns = direct(xs.map((x) => ({ ...x, r: x.r / (x.mult ?? 1) })));
+      assert.ok(row.pf !== null, `${at}: all generated return weights are known`);
+      assert.ok(close(row.net, d.net) && close(row.pf, unitReturns.pf), at);
       const usd = sumOf(xs, (x) => x.r * unit(x));
       assert.ok(close(row.usd, usd), at);
       for (const key of [
@@ -505,8 +518,10 @@ describe("statistics agree with a direct sum (metrics/stats.ts, statistics.ts)",
           ),
           at,
         );
-        for (const g of rows)
-          assert.ok(close(g.pf, direct(xs.filter((x) => key(x) === g.key)).pf), `${at}: ${g.key}`);
+        for (const g of rows) {
+          assert.ok(g.pf !== null, `${at}: known return weights for ${g.key}`);
+          assert.ok(close(g.pf, direct(xs.filter((x) => key(x) === g.key).map((x) => ({ ...x, r: x.r / (x.mult ?? 1) }))).pf), `${at}: ${g.key}`);
+        }
       }
       // positions (overlapping orders of one symbol × side) hold every order's result
       assert.ok(
@@ -544,9 +559,13 @@ describe("statistics agree with a direct sum (metrics/stats.ts, statistics.ts)",
       const at = `case ${c}`;
       assert.equal(rep.total.n, d.n, at);
       assert.equal(rep.total.wins, d.wins, at);
-      assert.ok(close(rep.total.net, d.net, 1e-8) && close(rep.total.pf, d.pf), at);
+      const unitReturns = direct(inWin.map((x) => ({ ...x, r: x.r / (x.mult ?? 1) })));
+      assert.ok(rep.total.pf !== null, `${at}: all generated return weights are known`);
+      assert.ok(close(rep.total.net, d.net, 1e-8) && close(rep.total.pf, unitReturns.pf), at);
       const usd = sumOf(inWin, (x) => x.r * 10);
       assert.ok(close(rep.total.usd, usd, 1e-8), at);
+      const rangeTrades = inWin.filter((x) => RANGE_CFG.includes(x.cfg));
+      const strategyTrades = inWin.filter((x) => SIGNAL_CFG.includes(x.cfg) || EXIT_CFG.includes(x.cfg));
       for (const [name, rows] of Object.entries({
         sides: rep.sides,
         symbols: rep.symbols,
@@ -555,7 +574,7 @@ describe("statistics agree with a direct sum (metrics/stats.ts, statistics.ts)",
         hourOfDay: rep.hourOfDay,
         daily: rep.daily,
         types: rep.types,
-        ranges: rep.ranges,
+        rangesAndStrategyGroups: [...rep.ranges, ...rep.strategyGroups],
         lanes: rep.lanes,
       })) {
         assert.equal(
@@ -580,12 +599,69 @@ describe("statistics agree with a direct sum (metrics/stats.ts, statistics.ts)",
           `${at}: ${name} usd`,
         );
       }
+      for (const [name, rows, own] of [
+        ["ranges", rep.ranges, rangeTrades],
+        ["strategyGroups", rep.strategyGroups, strategyTrades],
+      ] as const) {
+        const expected = direct(own);
+        assert.equal(sumOf(rows, (x) => x.n), expected.n, `${at}: ${name} n`);
+        assert.equal(sumOf(rows, (x) => x.wins), expected.wins, `${at}: ${name} wins`);
+        assert.ok(close(sumOf(rows, (x) => x.net), expected.net, 1e-8), `${at}: ${name} net`);
+        assert.ok(close(sumOf(rows, (x) => x.usd), sumOf(own, (x) => x.r * 10), 1e-8), `${at}: ${name} usd`);
+      }
+      for (const [key, cfgs] of [["Signals", SIGNAL_CFG], ["Historic Exit", EXIT_CFG]] as const) {
+        const own = inWin.filter((x) => cfgs.includes(x.cfg));
+        const row = rep.strategyGroups.find((x) => x.key === key);
+        assert.equal(row?.n ?? 0, own.length, `${at}: independent ${key} n`);
+        if (own.length) {
+          const expected = direct(own.map((x) => ({ ...x, r: x.r / x.mult! })));
+          assert.ok(row?.pf !== null && row?.pf !== undefined && close(row.pf, expected.pf), `${at}: independent ${key} PF`);
+        }
+      }
       assert.equal(
         sumOf(rep.heat, (x) => x.n),
         d.n,
         `${at}: heat`,
       );
       assert.equal(rep.configCount, new Set(inWin.map((x) => x.cfg)).size, at);
+    }
+  });
+
+  it(`rowOf / groupBy / buildStatistics retain unknown legacy losing returns without hiding cash (${CASES / 5} cases)`, () => {
+    const r = rng(305);
+    for (let c = 0; c < CASES / 5; c++) {
+      const xs = tradesOf(r, int(r, 2, 60));
+      xs[0] = { ...xs[0], sym: "LEGACY-USDT", r: -0.01 };
+      delete xs[0].mult;
+      const original = structuredClone(xs);
+      const unit = () => 10;
+      const usd = sumOf(xs, (x) => x.r * unit());
+      const row = rowOf("All", xs, unit);
+      const at = `case ${c}`;
+      assert.equal(row.n, xs.length, at);
+      assert.equal(row.unknownReturns, 1, at);
+      assert.equal(row.pf, null, at);
+      assert.equal(row.pfBasis, "unavailable", at);
+      assert.equal(row.noLoss, null, at);
+      assert.ok(close(row.usd, usd), `${at}: known cash loss is retained`);
+      const groups = groupBy(xs, (x) => x.sym, unit);
+      assert.equal(groups.find((x) => x.key === "LEGACY-USDT")?.pf, null, at);
+      for (const g of groups.filter((x) => x.key !== "LEGACY-USDT")) {
+        const own = xs.filter((x) => x.sym === g.key);
+        const expected = direct(own.map((x) => ({ ...x, r: x.r / x.mult! })));
+        assert.equal(g.unknownReturns, 0, at);
+        assert.equal(g.pfBasis, "unit-net-returns", at);
+        assert.ok(g.pf !== null && close(g.pf, expected.pf), `${at}: independent ${g.key}`);
+      }
+      const rep = buildStatistics({ source: "test", trades: xs, startT: Date.UTC(2026, 8, 20),
+        endT: Math.max(...xs.map((x) => x.exitT)) + H, balance: 1000, unit, price: () => 100,
+        cost: 0.002, leverage: 10, minActiveLevel: 2 });
+      assert.equal(rep.total.n, xs.length, at);
+      assert.equal(rep.total.unknownReturns, 1, at);
+      assert.equal(rep.total.pf, null, at);
+      assert.equal(rep.total.pfBasis, "unavailable", at);
+      assert.ok(close(rep.total.usd, usd), `${at}: report keeps the whole cash sample`);
+      assert.deepEqual(xs, original, `${at}: no normalization rewrites legacy provenance`);
     }
   });
 });

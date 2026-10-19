@@ -1,0 +1,50 @@
+name: Endpoint report checks
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/endpoint-report.yml'
+      - 'scripts/lib/endpoint-mark.mjs'
+      - 'scripts/lib/endpoint-mark.test.mjs'
+      - 'scripts/amend-endpoint-report.mjs'
+      - 'scripts/amend-endpoint-report.test.mjs'
+      - 'scripts/lib/session-dump.mjs'
+  pull_request:
+    paths:
+      - '.github/workflows/endpoint-report.yml'
+      - 'scripts/lib/endpoint-mark.mjs'
+      - 'scripts/lib/endpoint-mark.test.mjs'
+      - 'scripts/amend-endpoint-report.mjs'
+      - 'scripts/amend-endpoint-report.test.mjs'
+      - 'scripts/lib/session-dump.mjs'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: endpoint-report-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  endpoint-report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      # The amendment and storage helpers use only Node standard libraries.
+      - name: Check syntax and whitespace
+        run: |
+          node --check scripts/lib/endpoint-mark.mjs
+          node --check scripts/lib/endpoint-mark.test.mjs
+          node --check scripts/amend-endpoint-report.mjs
+          node --check scripts/amend-endpoint-report.test.mjs
+          node --check scripts/lib/session-dump.mjs
+          git diff --check HEAD^ HEAD
+      - name: Test additive endpoint amendment
+        run: node --test scripts/lib/endpoint-mark.test.mjs scripts/amend-endpoint-report.test.mjs

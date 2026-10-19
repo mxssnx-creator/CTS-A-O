@@ -37,6 +37,11 @@ describe("live planner", () => {
     assert.equal(planLive({ ...base, ready: { ok: true, why: "" } }).entries.length, 1);
   });
 
+  it("preserves the configured volume factor on accepted intents", () => {
+    const p = planLive({ ...base, intents: [{ ...intent("BTC-USDT"), volFactor: 8 }] });
+    assert.equal(p.entries[0]?.volFactor, 8);
+  });
+
   it("never touches a symbol with foreign orders or positions", () => {
     const p = planLive({
       ...base,
@@ -93,13 +98,24 @@ describe("entries mode: holding per symbol and direction (C9)", () => {
   const own = makeCoid("bingx-vst-02", "S");
   const book = {
     positions: [{ symbol: "BTC", venueSymbol: "BTC-USDT", side: "long" as const, qty: 1 }],
-    orders: [{ symbol: "BTC", venueSymbol: "BTC-USDT", clientOrderId: own, positionSide: "LONG" as const }],
+    orders: [
+      { symbol: "BTC", venueSymbol: "BTC-USDT", clientOrderId: own, positionSide: "LONG" as const },
+    ],
   };
   const both = [intent("BTC-USDT"), { ...intent("BTC-USDT", "s"), side: -1 as const }];
 
   it("hedge mode: an own long never blocks the short entry on the same symbol", () => {
-    const p = planLive({ ...base, settings: { ...S, maxPositions: 0 }, intents: both, book, ownSyms: new Set(["BTC-USDT"]) });
-    assert.deepEqual(p.entries.map((e) => `${e.sym}|${e.side}`), ["BTC-USDT|-1"]);
+    const p = planLive({
+      ...base,
+      settings: { ...S, maxPositions: 0 },
+      intents: both,
+      book,
+      ownSyms: new Set(["BTC-USDT"]),
+    });
+    assert.deepEqual(
+      p.entries.map((e) => `${e.sym}|${e.side}`),
+      ["BTC-USDT|-1"],
+    );
     assert.match(p.skipped[0].why, /already holding symbol and direction/);
   });
 
@@ -122,7 +138,10 @@ describe("entries mode: holding per symbol and direction (C9)", () => {
       book: { positions: [], orders: book.orders },
       ownSyms: new Set(["BTC-USDT"]),
     });
-    assert.deepEqual(p.entries.map((e) => e.side), [-1]);
+    assert.deepEqual(
+      p.entries.map((e) => e.side),
+      [-1],
+    );
   });
 
   it("the position cap counts (symbol, direction) positions", () => {
@@ -134,7 +153,45 @@ describe("entries mode: holding per symbol and direction (C9)", () => {
       ownSyms: new Set(["BTC-USDT"]),
     });
     assert.equal(p.entries.length, 0);
-    assert.equal(p.skipped.find((x) => x.why === "max positions")?.sym, "BTC-USDT");
+    assert.equal(
+      p.skipped.find((x) => x.why === "max exchange positions (symbol × direction)")?.sym,
+      "BTC-USDT",
+    );
+  });
+
+  it("entries mode enforces 100 occupied exchange slots including pending orders and foreign positions", () => {
+    const pendingSyms = Array.from({ length: 50 }, (_, i) => `P${i}-USDT`);
+    const foreignSyms = Array.from({ length: 50 }, (_, i) => `F${i}-USDT`);
+    const p = planLive({
+      ...base,
+      settings: { ...S, maxPositions: 250 }, // legacy or malformed value cannot exceed the exchange ceiling
+      intents: [intent("NEW1-USDT"), intent("NEW2-USDT")],
+      book: {
+        positions: foreignSyms.map((venueSymbol) => ({
+          symbol: venueSymbol.replace("-", ""),
+          venueSymbol,
+          side: "long" as const,
+          qty: 1,
+        })),
+        orders: pendingSyms.map((venueSymbol, i) => ({
+          symbol: venueSymbol.replace("-", ""),
+          venueSymbol,
+          clientOrderId: `CTSBV2_E${i}`,
+          positionSide: "LONG" as const,
+          type: "MARKET",
+        })),
+      },
+      ownSyms: new Set(pendingSyms),
+    });
+    assert.deepEqual(
+      p.entries,
+      [],
+      "50 pending entries + 50 exchange positions already fill the cap",
+    );
+    assert.equal(
+      p.skipped.filter((x) => x.why === "max exchange positions (symbol × direction)").length,
+      2,
+    );
   });
 });
 

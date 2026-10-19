@@ -3,8 +3,10 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { checkSettings } from "./settings-check.ts";
 import { DEFAULT_SETTINGS, GRID_VARIANTS_MAX, RT_COST, SHORT_RANGE } from "./config.ts";
+import { RANGE_COST_BASIS } from "./minimal-coord.ts";
 import { simulate } from "./sim/backtest.ts";
 import { barsFromCandles } from "./market/bars.ts";
+import { CandleSeries } from "./market/candle-series.ts";
 import { CoreDb, upgradeShared } from "./server/db.server.ts";
 import { auditState } from "./audit.ts";
 import { planLive } from "./server/live.ts";
@@ -92,7 +94,7 @@ describe("no silent caps", () => {
     assert.equal(o.maxPerSide, 0, "per side");
     assert.equal(o.portfolio, 0, "seats");
     assert.equal(o.microSeats ?? 0, 0, "Micro seats");
-    assert.equal(DEFAULT_SETTINGS.live.maxPositions, 0, "control positions");
+    assert.equal(DEFAULT_SETTINGS.live.maxPositions, 100, "exchange positions are capped after lane aggregation");
     assert.equal(DEFAULT_SETTINGS.mainTop, 0, "Main pairs");
     // the grid ceiling is a memory guard, not a working limit
     assert.ok(GRID_VARIANTS_MAX >= 20_000, String(GRID_VARIANTS_MAX));
@@ -360,30 +362,37 @@ describe("protect grid", () => {
       /trail free/,
     );
   });
-  it("position-cost ranges replace the wide targets, trailing stops further out, cap held", () => {
+  it("position-cost ranges replace the wide targets, every TP × SL × Trail per range, cap held", () => {
     const g = DEFAULT_SETTINGS.grid;
     assert.ok(g.short && g.minimal && g.general && g.long);
-    const mult = (xs: readonly number[]) => xs.map((x) => +(x / RT_COST).toFixed(6));
-    assert.deepEqual(mult(g.minimal.tp), [4, 5, 6, 7, 8]);
+    const mult = (xs: readonly number[]) => xs.map((x) => +(x / RANGE_COST_BASIS).toFixed(6));
+    // The fixed 0.20 % construction basis is independent of modeled round-trip cost (now 0.15 %): contiguous targets.
+    assert.deepEqual(mult(g.minimal.tp), [4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 8]);
     assert.deepEqual(mult(g.short.tp), [9, 10, 11, 12, 13, 14]);
-    assert.deepEqual(mult(g.general.tp), [16, 18, 20, 22]);
-    assert.deepEqual(mult(g.long.tp), [24, 26, 28, 30, 32]);
+    assert.deepEqual(mult(g.general.tp), [15, 16, 17, 18, 19, 20, 21, 22]);
+    assert.deepEqual(mult(g.long.tp), [23, 24, 25, 26, 27, 28, 29, 30, 31, 32]);
     assert.deepEqual(g.tp, []);
-    assert.ok(gridVariants(g) <= 400);
+    // (9 × 7 Minimal + 6 × 7 Short + 8 × 6 General + 10 × 6 Long) cells × 4 trails × 2 holds, and Micro (on since
+    // 13 Oct): 7 targets × 17 stops × 4 trails × 2 holds
+    assert.equal(gridVariants(g), 1704 + 952);
+    assert.ok(gridVariants(g) <= GRID_VARIANTS_MAX);
     const cells = protectGrid(15, g);
-    // trailing cells keep their own stop ratios from 1× (a 2× floor folded 1× / 1.5× into 2×); Minimal's four stop
-    // ratios (1.5–3×, 6 Oct): 318 cells
-    assert.ok(cells.length <= 340 && cells.length >= 100, `${cells.length} cells`);
-    // trailing cells: both widths, stop at least the range's trailing floor (1× in every range)
-    for (const [tag, floor] of [["mn", 1], ["sh", 1], ["gn", 1], ["lg", 1]] as const) {
+    // the floors fold no two cells of the four ranges into one: every combination is its own config; Micro's stop floor
+    // (0.2 % net + cost) folds its tightest stops of the smallest targets (952 distinct at 2–5× cost, micro-range.test.ts)
+    assert.equal(cells.filter((p) => p.tag !== "mc").length, 1704);
+    assert.equal(cells.filter((p) => p.tag === "mc").length, 952);
+    // trailing cells: three widths, the stop at least the range's trailing floor (1× Minimal / Short, 0.25× General /
+    // Long: every stop of their ladder)
+    for (const [tag, floor] of [["mn", 1], ["sh", 1], ["gn", 0.25], ["lg", 0.25]] as const) {
       const tr = cells.filter((p) => p.tag === tag && p.trail > 0);
       assert.ok(tr.length > 0, tag);
-      assert.ok(new Set(tr.map((p) => +(p.trail / p.tp).toFixed(3))).size >= 2, `${tag} trail widths`);
+      assert.ok(new Set(tr.map((p) => +(p.trail / p.tp).toFixed(3))).size >= 3, `${tag} trail widths`);
       for (const p of tr) {
         assert.ok(p.sl + 1e-9 >= floor * p.tp, `${tag} stop ${p.sl} not ≥ ${floor}× ${p.tp}`);
-        assert.ok(p.sl + 1e-9 >= p.trail);
         assert.equal(p.trailStep, 1);
       }
+      // a stop of 1× and more is never inside the trail (Minimal / Short keep that)
+      if (floor >= 1) for (const p of tr) assert.ok(p.sl + 1e-9 >= p.trail);
     }
     assert.ok(cells.filter((p) => p.trail === 0).every((p) => p.trailStep === undefined));
     // the tightest ratio is not swallowed by a stop floor: Minimal's 1.5× (6 Oct; 0.8 % target → 1.2 % stop) and
@@ -525,11 +534,24 @@ describe("exchange minimums", () => {
       { ...cs, maxNotionalUsd: 3 },
       (_s, q, px) => snapQtyExchange(q, px, spec),
     );
-    assert.equal(r.targets.length, 1, "the minimum is traded, not skipped");
-    assert.equal(r.targets[0].atMin, true);
-    assert.ok(Math.abs(r.targets[0].notional - 5) < 1e-9, "sized at the 5 USD exchange minimum");
-    assert.deepEqual(r.skipped, []);
-    // only a minimum MIN_RAISE_X past the cap is refused — and then a held position is KEPT, never closed
+    // the exchange minimum is rounded UP to only while it still fits the per-position cap (minRaiseBlock): a 5 USD
+    // minimum over a 3 USD cap is not taken — the target is skipped with its reason, and a held position is KEPT
+    assert.equal(r.targets.length, 0, "the 5 USD minimum does not fit the 3 USD cap: not traded");
+    assert.match(r.skipped[0].why, /^exchange minimum 5\.00 USD is over the position cap 3\.00 USD/);
+    assert.equal(r.skipped[0].keep, "A-USDT|1", "the held position stays as it is");
+    // a minimum that fits the cap is traded at it: raised, and not past the cap (atMin false)
+    const fits = controlTargets(
+      lanes,
+      new Map([["A-USDT", 100]]),
+      { ...cs, maxNotionalUsd: 5 },
+      (_s, q, px) => snapQtyExchange(q, px, spec),
+    );
+    assert.equal(fits.targets.length, 1, "the minimum fits the cap: traded");
+    assert.equal(fits.targets[0].raised, true);
+    assert.equal(fits.targets[0].atMin, undefined);
+    assert.ok(Math.abs(fits.targets[0].notional - 5) < 1e-9, "sized at the 5 USD exchange minimum");
+    assert.deepEqual(fits.skipped, []);
+    // a far-larger minimum is refused the same way — and a held position is KEPT, never closed
     const far = controlTargets(
       lanes,
       new Map([["A-USDT", 100]]),
@@ -655,6 +677,24 @@ it("the live control keeps running through a failed or memory-delayed compute; o
   await rt.tick();
   await new Promise((r) => setTimeout(r, 0));
   assert.equal(calls, 1, "live stepped on settings no compute has taken");
+  // that compute is held back for memory (hard pressure): the live control runs on the current book meanwhile — it
+  // never stops for as long as the pressure lasts (bug hunt, 13 Oct)
+  const prevHard = process.env.CTS_CORE_MEM_HARD_MB;
+  process.env.CTS_CORE_MEM_HARD_MB = "1000000000";
+  try {
+    for (let i = 0; i < 3; i++) {
+      R.busy = false;
+      await rt.cycle();
+    }
+    assert.equal(rt.status.computes, 0, "no compute under hard pressure");
+    R.liveBusy = false;
+    await rt.tick();
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(calls, 2, "live held while the compute waits for memory");
+  } finally {
+    if (prevHard === undefined) delete process.env.CTS_CORE_MEM_HARD_MB;
+    else process.env.CTS_CORE_MEM_HARD_MB = prevHard;
+  }
   rt.stop();
 });
 
@@ -700,23 +740,23 @@ it("overall mode does not compute the pending entries before every live step (on
   rt.stop();
 });
 
-it("the Block book is fed in slices: advance(t, max) feeds at most max entries a call, the lookups after it only what closed since", async () => {
+it("raw candidate direction history is fed in slices without seeding accepted Block history: advance(t, max) feeds at most max entries a call, the lookups after it only what closed since", async () => {
   // x02 profile, 7 Oct: the paper step's first lookup replayed the whole run's feed in one block (1–4 s)
   const { CoreRuntime } = await import("./server/runtime.server.ts");
   const { CoreDb } = await import("./server/db.server.ts");
-  const { BlockBook } = await import("./sim/block.ts");
+  const { CandidateDirectionBook } = await import("./sim/walkforward.ts");
   const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 1 } as never, { market: "synthetic" });
   const R = rt as unknown as Record<string, unknown>;
   rt.wf.sideGateN = 8; // the direction gate reads the book (Block on or off)
   R.sim = { feed: Array.from({ length: 10 }, (_, i) => ({ exitT: i + 1, sym: "AAA-USDT", side: 1, kind: "normal", r: 0.01 })) };
   let fed = 0;
-  const add = BlockBook.prototype.add;
-  BlockBook.prototype.add = function (this: InstanceType<typeof BlockBook>, e: never) {
+  const add = CandidateDirectionBook.prototype.add;
+  CandidateDirectionBook.prototype.add = function (this: InstanceType<typeof CandidateDirectionBook>, e: never) {
     fed++;
     return add.call(this, e);
   };
   try {
-    const books = (R.booksAt as () => ((t: number) => unknown) & { advance: (t: number, max: number) => boolean }).call(rt);
+    const books = (R.booksAt as () => ((t: number) => { book: { tailSum(k: string, n: number): { n: number; sum: number } } | null; direction: InstanceType<typeof CandidateDirectionBook> | null }) & { advance: (t: number, max: number) => boolean }).call(rt);
     assert.equal(books.advance(5, 2), false);
     assert.equal(fed, 2);
     assert.equal(books.advance(5, 2), false);
@@ -727,9 +767,13 @@ it("the Block book is fed in slices: advance(t, max) feeds at most max entries a
     assert.equal(fed, 5, "a lookup after it feeds nothing again");
     books(10);
     assert.equal(fed, 10, "and later ones only what closed since");
+    const context = books(10);
+    assert.equal(context.direction!.tailSum(1, 8).n, 8);
+    assert.ok(Math.abs(context.direction!.tailSum(1, 8).sum - .08) < 1e-12);
+    assert.equal(context.book!.tailSum("all", 8).n, 0, "unaccepted candidates never seed accepted Block history");
   } finally {
-    BlockBook.prototype.add = add;
-    rt.stop();
+    CandidateDirectionBook.prototype.add = add;
+    rt.dispose();
   }
 });
 
@@ -747,9 +791,7 @@ it("a target reached at tick time takes the lane out of the live control at once
   const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 1 } as never, { market: "synthetic" });
   const R = rt as unknown as Record<string, unknown>;
   const sym = "AAA-USDT";
-  (R.candles as Map<string, Array<{ t: number; o: number; h: number; l: number; c: number; v: number }>>).set(sym, [
-    { t: Date.now() - 60_000, o: 100, h: 103, l: 100, c: 103, v: 1 },
-  ]);
+  (R.candles as Map<string, CandleSeries>).set(sym, CandleSeries.fromCandles([{ t: Date.now() - 60_000, o: 100, h: 103, l: 100, c: 103, v: 1 }]));
   rt.paper.positions = [
     { cfg: "follow|ema@m15|tp2|sl5|tr0|h96", sym, side: 1, entry: 100, stop: 95, target: 102, entryT: 1, vol: 1 } as never,
   ];
@@ -924,7 +966,7 @@ describe("progress reporting", () => {
     // a compute without a backfill batch starts at 0, not at the backfill's share
     assert.equal(overallOf("Base", 0, 0, false), 0);
     // out of range fractions are clamped
-    assert.ok(overallOf("Real", 7, 0, true) <= 0.9);
+    assert.ok(overallOf("Real", 7, 0, true) <= 0.95);
   });
 
   it("the backfill line names the batch #/# of the run and the symbols loaded of the universe", async () => {
@@ -1009,4 +1051,134 @@ it("the drawdown-time limit scales with a config's history and never drops below
   // without a floor the scaled limit applies as before
   assert.ok(Math.abs(ddtLimitH(o(0), tp(24), t, 336) - 35 * 24 / 72) < 1e-9);
   assert.ok(Math.abs(ddtLimitH(o(undefined), tp(24), t, 336) - 35 * 24 / 72) < 1e-9);
+});
+
+it("candidate direction gating preserves rejected losses, recovery and downturn independently of accepted Block history", async () => {
+  const { CoreRuntime } = await import("./server/runtime.server.ts");
+  const { DEFAULT_BLOCK, DEFAULT_TOGGLES } = await import("./config.ts");
+  const { INDICATIONS } = await import("./indications/registry.ts");
+  const { blockBookOf } = await import("./sim/block.ts");
+  const { bookFor, candidateDirectionFor, execDecision, feedBooks, makeTape } = await import("./sim/walkforward.ts");
+  type Feed = import("./sim/walkforward.ts").BlockFeedEntry;
+  const ind = INDICATIONS[0].id;
+  const tp = makeTape("x", "magnet", ind, { tp: .02, sl: .02, trail: 0, hold: 32 }, "normal", ["A"], [], [], []);
+  const rows = (r: number, accepted?: boolean, offset = 0): Feed[] => Array.from({ length: 8 }, (_, i) => ({
+    cfg: "candidate", sym: "B", side: 1, kind: "normal", type: "normal", ind, entryT: 0, exitT: offset + i + 1, r,
+    ...(accepted === undefined ? {} : { accepted }),
+  }));
+  const cases = [
+    { name: "rejected losses veto", feed: rows(-.01), ok: false },
+    { name: "rejected wins recover", feed: [...rows(-.01, true), ...rows(.02, false, 8)], ok: true },
+    { name: "rejected losses stop accepted winners", feed: [...rows(.02, true), ...rows(-.01, false, 8)], ok: false },
+  ];
+  for (const side of [1, -1] as const) for (const block of [false, true]) for (const windowAuto of [false, true]) for (const test of cases) {
+    const feed = test.feed.map((row) => ({ ...row, side }));
+    const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 1 } as never, { market: "synthetic" });
+    try {
+      rt.wf = { ...rt.wf, lastN: 0, symGate: undefined, seatQuietH: 0, normalBaseMinPf: 0, sideGateN: 8,
+        engineSideAccept: undefined, signalGuardN: 0, signalCluster: undefined, signalAccept: undefined, signalSideAccept: undefined,
+        toggles: { ...DEFAULT_TOGGLES, normal: true, block, blockActive: false }, block: { ...DEFAULT_BLOCK, windowAuto } };
+      const R = rt as unknown as { sim: unknown; booksAt: () => ((t: number) => {
+        book: ReturnType<typeof bookFor>; direction: ReturnType<typeof candidateDirectionFor>;
+      }) & { advance: (t: number, max: number) => boolean } };
+      R.sim = { feed, trades: [] };
+      const at = R.booksAt();
+      while (!at.advance(20, 2)) { /* the real runtime bounded cursor */ }
+      const runtime = at(20);
+      const book = bookFor(rt.wf), direction = candidateDirectionFor(rt.wf);
+      const acceptedReference = blockBookOf(rt.wf.block, false);
+      for (const row of feed) { feedBooks(row, book, undefined, direction); feedBooks(row, acceptedReference); }
+      for (const context of [runtime, { book, direction }]) {
+        const decision = execDecision(tp, 20, rt.wf, { ...context, sym: "A", side });
+        assert.equal(decision.ok, test.ok, `${test.name}: Block ${block}, auto ${windowAuto}`);
+        if (!decision.ok) assert.equal(decision.why, "sideGate");
+        assert.equal(execDecision(tp, 20, rt.wf, { ...context, sym: "A", side: -side }).ok, true, "opposite direction stays independent");
+        assert.equal(context.direction!.tailSum(side, 8).n, 8);
+        assert.deepEqual(context.direction!.tailSum(side, 8), direction!.tailSum(side, 8));
+        if (context.book) {
+          for (const key of ["all", "d:1", "d:-1", "s:B"])
+            assert.deepEqual({ level: context.book.level(key, 8), tail: context.book.tailSum(key, 8), paused: context.book.paused(key) },
+              { level: acceptedReference.level(key, 8), tail: acceptedReference.tailSum(key, 8), paused: acceptedReference.paused(key) }, "raw learning never contaminates accepted Block history");
+          assert.equal(context.book.window, acceptedReference.window);
+        } else assert.equal(block, false);
+      }
+    } finally { rt.dispose(); }
+  }
+});
+
+it("candidate direction tails preserve supported last-N, unknown counts and explicit empty evidence", async () => {
+  const { DEFAULT_TOGGLES } = await import("./config.ts");
+  const { INDICATIONS } = await import("./indications/registry.ts");
+  const { CandidateDirectionBook, candidateDirectionFor, defaultWalkForward, execDecision, makeTape } = await import("./sim/walkforward.ts");
+  const tp = makeTape("x", "magnet", INDICATIONS[0].id, { tp: .02, sl: .02, trail: 0, hold: 32 }, "normal", ["A"], [], [], []);
+  const o = { ...defaultWalkForward(DEFAULT_SETTINGS), lastN: 0, normalBaseMinPf: 0, sideGateN: 64,
+    toggles: { ...DEFAULT_TOGGLES, normal: true, block: false, blockActive: false } };
+  const direction = candidateDirectionFor(o)!;
+  for (const side of [0, 2, -2, NaN, Infinity, -Infinity]) direction.add({ side, r: .5 });
+  assert.deepEqual(direction.tailSum(1, 64), { n: 0, sum: 0 });
+  assert.deepEqual(direction.tailSum(-1, 64), { n: 0, sum: 0 }, "invalid sides cannot alias Short");
+  const decide = () => execDecision(tp, 1, o, { direction, book: null, sym: "A", side: 1 });
+  assert.equal(candidateDirectionFor({ sideGateN: 0 }), null);
+  assert.equal(decide().ok, true, "a valid empty record is immature");
+  assert.deepEqual(execDecision(tp, 1, o, { book: null, sym: "A", side: 1 }), { ok: false, why: "sideGateUnavailable" });
+  for (let i = 0; i < 63; i++) direction.add({ side: 1, r: -.01 });
+  assert.equal(direction.tailSum(1, 64).n, 63); assert.equal(decide().ok, true, "the denominator remains64, not the immature count");
+  direction.add({ side: 1, r: -.01 }); assert.equal(decide().ok, false, "exactly64 losing candidates veto");
+  for (let i = 0; i < 64; i++) direction.add({ side: 1, r: .02 });
+  assert.equal(direction.tailSum(1, 64).n, 64); assert.equal(decide().ok, true, "all64 old losses roll out");
+  direction.add({ side: 1, r: NaN }); assert.equal(direction.tailSum(1, 64).n, 64); assert.equal(decide().ok, false, "unknown row counts and vetoes");
+  for (const bad of [Infinity, -Infinity]) {
+    const unknown = new CandidateDirectionBook(); unknown.add({ side: 1, r: bad });
+    assert.equal(unknown.tailSum(1, 1).n, 1);
+    assert.deepEqual(execDecision(tp, 1, { ...o, sideGateN: 1 }, { direction: unknown, sym: "A", side: 1 }), { ok: false, why: "sideGate" });
+  }
+  const overflow = new CandidateDirectionBook(); overflow.add({ side: 1, r: 1e308 }); overflow.add({ side: 1, r: 1e308 });
+  assert.deepEqual(execDecision(tp, 1, { ...o, sideGateN: 2 }, { direction: overflow, sym: "A", side: 1 }), { ok: false, why: "sideGate" });
+});
+
+it("closed signal candidates still teach the raw engine direction gate while open marks teach no history", async () => {
+  const { DEFAULT_BLOCK, DEFAULT_TOGGLES } = await import("./config.ts");
+  const { INDICATIONS } = await import("./indications/registry.ts");
+  const { SignalGuard, sideAcceptKey } = await import("./signals.ts");
+  const { bookFor, candidateDirectionFor, defaultWalkForward, execDecision, feedBooks, makeTape } = await import("./sim/walkforward.ts");
+  const o = { ...defaultWalkForward(DEFAULT_SETTINGS), lastN: 0, normalBaseMinPf: 0, sideGateN: 1,
+    toggles: { ...DEFAULT_TOGGLES, normal: true, block: true, blockActive: false }, block: { ...DEFAULT_BLOCK } };
+  const book = bookFor(o)!, direction = candidateDirectionFor(o)!, guard = new SignalGuard();
+  const row = { sym: "B", side: 1, r: -.02, ind: "sig-ema-trend-s@m15", kind: "signal", type: "normal", cfg: "follow|sig-ema-trend-s@m15|candidate", entryT: 1, exitT: 2 };
+  feedBooks(row, book, guard, direction);
+  assert.deepEqual(direction.tailSum(1, 1), { n: 1, sum: -.02 });
+  assert.equal(book.tailSum("all", 64).n, 0); assert.equal(guard.acceptStats(sideAcceptKey(1), 3, 24).n, 1);
+  feedBooks({ ...row, entryT: 3, exitT: 4, r: .5, accepted: true, open: true }, book, guard, direction);
+  assert.deepEqual(direction.tailSum(1, 64), { n: 1, sum: -.02 });
+  assert.equal(book.tailSum("all", 64).n, 0); assert.equal(guard.acceptStats(sideAcceptKey(1), 5, 24).n, 1);
+  const engine = makeTape("x", "magnet", INDICATIONS[0].id, { tp: .02, sl: .02, trail: 0, hold: 32 }, "normal", ["A"], [], [], []);
+  assert.deepEqual(execDecision(engine, 5, o, { book, direction, guard, sym: "A", side: 1 }), { ok: false, why: "sideGate" });
+  const signal = makeTape("s", "follow", row.ind, { tp: .02, sl: .02, trail: 0, hold: 32 }, "normal", ["A"], [], [], []);
+  const decision = execDecision(signal, 5, { ...o, signalOwnBase: true }, { book, direction, guard, sym: "A", side: 1 });
+  assert.ok(decision.ok || !["sideGate", "sideGateUnavailable"].includes(decision.why), "the engine-only gate never vetoes signal entries; their own gates stay intact");
+});
+
+it("pending-entry cached books use rejected candidate losses and recovery without waiving live qualification", async () => {
+  const { CoreRuntime } = await import("./server/runtime.server.ts");
+  const { DEFAULT_TOGGLES } = await import("./config.ts");
+  const { INDICATIONS } = await import("./indications/registry.ts");
+  const { makeTape } = await import("./sim/walkforward.ts");
+  const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 1 } as never, { market: "synthetic" });
+  try {
+    rt.wf = { ...rt.wf, lastN: 0, symGate: undefined, normalBaseMinPf: 0, sideGateN: 8,
+      toggles: { ...DEFAULT_TOGGLES, normal: true, block: false, blockActive: false } };
+    const ind = INDICATIONS[0].id;
+    const tp = makeTape("magnet|" + ind + "|pending", "magnet", ind, { tp: .02, sl: .02, trail: 0, hold: 32 }, "normal", ["A"], [], [], [{ sym: "A", side: 1 }]);
+    const feed = Array.from({ length: 8 }, (_, i) => ({ sym: "B", side: 1, cfg: "candidate", kind: "normal", entryT: 0, exitT: i + 1, r: -.01, accepted: false }));
+    (rt as unknown as { sim: unknown }).sim = { feed, trades: [] };
+    rt.tapes = [tp]; rt.paper.selected = [tp.id];
+    assert.deepEqual(rt.pendingEntries(), []);
+    assert.equal(rt.status.paperSkips?.["pending:exec:sideGate"], 1);
+    feed.push(...Array.from({ length: 8 }, (_, i) => ({ ...feed[0], exitT: i + 9, r: .02 })));
+    assert.deepEqual(rt.pendingEntries(), []);
+    assert.equal(rt.status.paperSkips?.["pending:exec:sideGate"], undefined, "the cached cursor sees rejected winning recovery");
+    assert.equal(rt.status.paperSkips?.["pending:liveValidation"], 1, "recovery does not manufacture model/owned execution qualification");
+    assert.deepEqual(rt.pendingEntries(), []);
+    assert.equal(rt.status.paperSkips?.["pending:liveValidation"], 1, "repeated lookup does not replay old losing candidates");
+  } finally { rt.dispose(); }
 });

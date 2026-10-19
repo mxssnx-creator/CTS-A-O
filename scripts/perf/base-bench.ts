@@ -7,7 +7,7 @@ import { DatabaseSync } from "node:sqlite";
 import fs from "node:fs";
 import { createHash } from "node:crypto";
 import { DEFAULT_SETTINGS } from "../../src/core/config.ts";
-import { allCombos, baseRangeProtects, baseRuns, makeUniverse } from "../../src/core/pipeline/pipeline.ts";
+import { allCombos, baseRangeProtects, baseRuns, makeUniverse, microLaneFloor } from "../../src/core/pipeline/pipeline.ts";
 import { signalCombos } from "../../src/core/signals.ts";
 import { signalSettings } from "../../src/core/signal-config.ts";
 import { microIndRule, rangeMinTfOf } from "../../src/core/minimal-coord.ts";
@@ -36,7 +36,7 @@ for (const sym of syms) {
 const u = makeUniverse(bars);
 const micro = microIndRule(s.grid);
 let combos = [
-  ...allCombos(s.focus ?? [], s.disabledKinds, s.tfs, micro ? (rangeMinTfOf(s.grid ?? {}).mc ?? 0) : 0),
+  ...allCombos(s.focus ?? [], s.disabledKinds, s.tfs, microLaneFloor(s.grid)),
   ...signalCombos(signalSettings(s.signals), s.tfs),
 ];
 const cap = Number(arg("combos", "0"));

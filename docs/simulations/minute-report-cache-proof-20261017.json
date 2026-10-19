@@ -1,0 +1,2478 @@
+{
+  "schema": "cts-minute-book-cache-profile-v2",
+  "createdAt": "2026-10-17T23:44:11.097Z",
+  "base": "c62701343668b5b87f2bfd5644eb46ff0f44b4f5",
+  "baselineUsed": {
+    "kind": "git-ref",
+    "requested": "c62701343668b5b87f2bfd5644eb46ff0f44b4f5",
+    "used": "0297eef541f4ee360e040b55d66786760bab6792",
+    "localFallback": true,
+    "note": "Public producer ref absent locally. Fetch origin c62701343668b5b87f2bfd5644eb46ff0f44b4f5 or pass --baseline-file/--baseline-ref. Exact producer SHA is checked below."
+  },
+  "unchangedSource": {
+    "hourly closed/PF statistics": {
+      "identical": true,
+      "sha256": "8012002e9ea88b0a1e12c41b314cb6e4e39f9e3e557f008d39b79a8dd1dba8eb"
+    },
+    "report rounding": {
+      "identical": true,
+      "sha256": "f54486312ca4deae5bd1462de1fd75c710306c3f779b3900c5e8a7410be878b7"
+    }
+  },
+  "producers": {
+    "selection22": {
+      "file": "/workspace/scratch/ff6263fe65f6/cts-ao-trailing/runs/exact-signal-study-ci-v3/selection22/artifact/source-proof.json",
+      "sha256": "6a95b6a2a455a2f3e63e3d5be9f4ff9ae4a7da3b5466dabb680c1702509d8104",
+      "producerReporterSha256": "c594126151a399a23c30f42e5435c52252dac762307b32b117f8af2ca16f2014",
+      "exactOldSourceMatch": true,
+      "dependencies": {
+        "scripts/lib/session-dump.mjs": "8c0d0c608e2d411bea06bb02947116c3e947c8c47a7999d4ab97b57f5a77d570",
+        "scripts/lib/session-owned-returns.mjs": "83c0e7bd82ca08ed928e5c97420e2470446e2d4642c088b4d0aab193eaff070f",
+        "scripts/lib/book-notional.mjs": "ba79608369b165cd6037f421bad4dbc366f123e7475e58775c4642a93f45cf49",
+        "src/core/sizing.ts": "e5a30ae9fd89654dda45e5d7a9665506166eae78b961604ffae335778dd24190",
+        "src/core/metrics/stats.ts": "7f2f29f22c2c9264ac8cecfd07037b502ce39f3053720599856562d1badf1cf8"
+      }
+    },
+    "final22": {
+      "file": "/workspace/scratch/ff6263fe65f6/cts-ao-trailing/runs/exact-signal-study-ci-v3/final22/artifact/source-proof.json",
+      "sha256": "6a95b6a2a455a2f3e63e3d5be9f4ff9ae4a7da3b5466dabb680c1702509d8104",
+      "producerReporterSha256": "c594126151a399a23c30f42e5435c52252dac762307b32b117f8af2ca16f2014",
+      "exactOldSourceMatch": true,
+      "dependencies": {
+        "scripts/lib/session-dump.mjs": "8c0d0c608e2d411bea06bb02947116c3e947c8c47a7999d4ab97b57f5a77d570",
+        "scripts/lib/session-owned-returns.mjs": "83c0e7bd82ca08ed928e5c97420e2470446e2d4642c088b4d0aab193eaff070f",
+        "scripts/lib/book-notional.mjs": "ba79608369b165cd6037f421bad4dbc366f123e7475e58775c4642a93f45cf49",
+        "src/core/sizing.ts": "e5a30ae9fd89654dda45e5d7a9665506166eae78b961604ffae335778dd24190",
+        "src/core/metrics/stats.ts": "7f2f29f22c2c9264ac8cecfd07037b502ce39f3053720599856562d1badf1cf8"
+      }
+    }
+  },
+  "scope": "Three passes (headline, secondary capped, secondary uncapped): representative actual minute SLICE comparisons (start/middle/end) plus exhaustive cached-order and all-symbol/all-minute price parity. NEW full minute curve compared with original report at its six-decimal precision. No old full-loop parity or full-loop/end-to-end speedup claim. No engine, trading, renderer or frozen-session guard invocation.",
+  "counters": "priceLookups counts direct px binary-search calls, unitCallbacks counts sessionUnitNotional, keyCallbacks counts orderKey. SLICE timing excludes one-time cache setup and includes callback counters; full-new timing includes actual cache setup. Repeated callback instrumentation can affect microprofile timing.",
+  "limitations": "Three representative minute slices do not establish full IEEE754 old/new curve parity. Full NEW curve/account/hourly parity is against recorded six-decimal original report. Closed PF/group statistics are unchanged source, not rerun. Whole-process RSS includes input loading and sidecar checks. Tape/validation chunks remain unopened. This does not change strategy outcome evidence.",
+  "priorAttempts": [
+    "../perf-minute-cache-attempt1-240s/failure.json",
+    "../perf-minute-cache-attempt2-stopped/stopped-by-steering.json"
+  ],
+  "results": [
+    {
+      "window": "selection22",
+      "source": {
+        "base": "c62701343668b5b87f2bfd5644eb46ff0f44b4f5",
+        "baselineUsed": {
+          "kind": "git-ref",
+          "requested": "c62701343668b5b87f2bfd5644eb46ff0f44b4f5",
+          "used": "0297eef541f4ee360e040b55d66786760bab6792",
+          "localFallback": true,
+          "note": "Public producer ref absent locally. Fetch origin c62701343668b5b87f2bfd5644eb46ff0f44b4f5 or pass --baseline-file/--baseline-ref. Exact producer SHA is checked below."
+        },
+        "oldFullSha256": "c594126151a399a23c30f42e5435c52252dac762307b32b117f8af2ca16f2014",
+        "fullSha256": "350a1f8d735e00504ecbc2e768a2f09e7ba56fa9d2a656f41bb256e0a3685a12",
+        "extractedSha256": "bd769fd74a1d7dd6a016d75eff2591f3471c33af0451f737aa908e052c61509f",
+        "helperSha256": "4b9208b0b2dd2a4733f8ff2a8949a8ecf1ec6dde5a8bd1829c84813696ab45a2",
+        "producer": {
+          "file": "/workspace/scratch/ff6263fe65f6/cts-ao-trailing/runs/exact-signal-study-ci-v3/selection22/artifact/source-proof.json",
+          "sha256": "6a95b6a2a455a2f3e63e3d5be9f4ff9ae4a7da3b5466dabb680c1702509d8104",
+          "producerReporterSha256": "c594126151a399a23c30f42e5435c52252dac762307b32b117f8af2ca16f2014",
+          "exactOldSourceMatch": true,
+          "dependencies": {
+            "scripts/lib/session-dump.mjs": "8c0d0c608e2d411bea06bb02947116c3e947c8c47a7999d4ab97b57f5a77d570",
+            "scripts/lib/session-owned-returns.mjs": "83c0e7bd82ca08ed928e5c97420e2470446e2d4642c088b4d0aab193eaff070f",
+            "scripts/lib/book-notional.mjs": "ba79608369b165cd6037f421bad4dbc366f123e7475e58775c4642a93f45cf49",
+            "src/core/sizing.ts": "e5a30ae9fd89654dda45e5d7a9665506166eae78b961604ffae335778dd24190",
+            "src/core/metrics/stats.ts": "7f2f29f22c2c9264ac8cecfd07037b502ce39f3053720599856562d1badf1cf8"
+          }
+        }
+      },
+      "inputs": {
+        "raw": {
+          "file": "/workspace/scratch/ff6263fe65f6/cts-ao-trailing/runs/exact-signal-study-ci-v3/selection22/artifact/evidence/raw.json",
+          "bytes": 59869201,
+          "sha256": "8602eb199eed1802772efcd24e5efcdeda83befa17db1cf37d99c36fa94152b8",
+          "hydratedAndIntegrityVerifiedFields": [
+            "trades"
+          ],
+          "sidecars": {
+            "trades": {
+              "schema": "cts-session-array-v1",
+              "items": 254083,
+              "rows": 254083,
+              "records": 254083,
+              "chunks": [
+                {
+                  "path": "session-items-89a3df82-3fa5-473d-8968-f805a0dc061d/000000.jsonl",
+                  "bytes": 8388569,
+                  "sha256": "ddf8619c68b457af787b96d94466de8751e7c7eb0afc24f07f07ba54cd20868e",
+                  "items": 25387,
+                  "rows": 25387,
+                  "records": 25387
+                },
+                {
+                  "path": "session-items-89a3df82-3fa5-473d-8968-f805a0dc061d/000001.jsonl",
+                  "bytes": 8388291,
+                  "sha256": "42c445e88ba691c1efac393aef78e58adaa2faba8562685b8fba40cc5ea396be",
+                  "items": 23507,
+                  "rows": 23507,
+                  "records": 23507
+                },
+                {
+                  "path": "session-items-89a3df82-3fa5-473d-8968-f805a0dc061d/000002.jsonl",
+                  "bytes": 8388403,
+                  "sha256": "50d7085153e2c8188413c2f5d1d58d59c352ec806d8f8dd3690a91cebd2cc1a0",
+                  "items": 23625,
+                  "rows": 23625,
+                  "records": 23625
+                },
+                {
+                  "path": "session-items-89a3df82-3fa5-473d-8968-f805a0dc061d/000003.jsonl",
+                  "bytes": 8388446,
+                  "sha256": "31871e84648e14d24c14af687a658ba7e47ef8aa31bdcf5d64bb1a82545e77ab",
+                  "items": 23866,
+                  "rows": 23866,
+                  "records": 23866
+                },
+                {
+                  "path": "session-items-89a3df82-3fa5-473d-8968-f805a0dc061d/000004.jsonl",
+                  "bytes": 8388583,
+                  "sha256": "5e6d8ed451d3c9c27dc1dcf71c4da49f736174ba5027011cea741f350030f0ed",
+                  "items": 23676,
+                  "rows": 23676,
+                  "records": 23676
+                },
+                {
+                  "path": "session-items-89a3df82-3fa5-473d-8968-f805a0dc061d/000005.jsonl",
+                  "bytes": 8388566,
+                  "sha256": "7a68140227b1ecce24e5860f769fa149c9a3e3980fdb20390ce0a5d8c6ed59eb",
+                  "items": 24310,
+                  "rows": 24310,
+                  "records": 24310
+                },
+                {
+                  "path": "session-items-89a3df82-3fa5-473d-8968-f805a0dc061d/000006.jsonl",
+                  "bytes": 8388429,
+                  "sha256": "a1fd513c1f39f9180b11580d4e150c7c0839728e6db0a65dc8d4e2d99d4028a5",
+                  "items": 24546,
+                  "rows": 24546,
+                  "records": 24546
+                },
+                {
+                  "path": "session-items-89a3df82-3fa5-473d-8968-f805a0dc061d/000007.jsonl",
+                  "bytes": 8388228,
+                  "sha256": "7b9091a211e0c9c5a7a600fc196048a05737d87e2d641b9e38ce11b52affc7ef",
+                  "items": 24617,
+                  "rows": 24617,
+                  "records": 24617
+                },
+                {
+                  "path": "session-items-89a3df82-3fa5-473d-8968-f805a0dc061d/000008.jsonl",
+                  "bytes": 8388486,
+                  "sha256": "01881f90732039298577c445c17b330c5ee4e566e25c3abaab25769e2582764a",
+                  "items": 24021,
+                  "rows": 24021,
+                  "records": 24021
+                },
+                {
+                  "path": "session-items-89a3df82-3fa5-473d-8968-f805a0dc061d/000009.jsonl",
+                  "bytes": 8388372,
+                  "sha256": "c9756603acc6cf61721fec422dee11c3c4f145925ec68a677853c2718a6110ee",
+                  "items": 24148,
+                  "rows": 24148,
+                  "records": 24148
+                },
+                {
+                  "path": "session-items-89a3df82-3fa5-473d-8968-f805a0dc061d/000010.jsonl",
+                  "bytes": 4239050,
+                  "sha256": "ee0cb91b7edb5a8ac1a0d282c3a0427094ec15c558219ef2b9d9462ed528f8d6",
+                  "items": 12380,
+                  "rows": 12380,
+                  "records": 12380
+                }
+              ],
+              "sha256": "ef57af54d513e00a1bfe1c5097c8be58fcebb210057e1edf4de6f82f3178d9e5"
+            }
+          },
+          "tapeAndValidationSidecarsRead": false
+        },
+        "report": {
+          "file": "/workspace/scratch/ff6263fe65f6/cts-ao-trailing/runs/exact-signal-study-ci-v3/selection22/artifact/evidence/html/data.json",
+          "bytes": 5788234,
+          "sha256": "43bd63986d7547ad8b90eddb3ee85af4230a2cfd8edddc0ece6511a555a9aa3b",
+          "hydratedAndIntegrityVerifiedFields": [
+            "sizedOrders",
+            "sizedOpenOrders"
+          ],
+          "sidecars": {
+            "sizedOrders": {
+              "schema": "cts-session-array-v1",
+              "items": 254083,
+              "rows": 254083,
+              "records": 254083,
+              "chunks": [
+                {
+                  "path": "session-items-1a7f1d74-5394-4f58-a8b9-a9ce7b612e59/000000.jsonl",
+                  "bytes": 8388509,
+                  "sha256": "90b65d42e7e67d88f85ece1af16925723154ab70f2f8a5e7a7d3087b0a483922",
+                  "items": 17109,
+                  "rows": 17109,
+                  "records": 17109
+                },
+                {
+                  "path": "session-items-1a7f1d74-5394-4f58-a8b9-a9ce7b612e59/000001.jsonl",
+                  "bytes": 8388385,
+                  "sha256": "b48668d22fb8fbeabc96a793a389bb2c5ae8b189e099aaeba874128493d7d0d6",
+                  "items": 16292,
+                  "rows": 16292,
+                  "records": 16292
+                },
+                {
+                  "path": "session-items-1a7f1d74-5394-4f58-a8b9-a9ce7b612e59/000002.jsonl",
+                  "bytes": 8388278,
+                  "sha256": "ac02562147fc352f4974e14e1416781371fe9bcd355861741f1c2039ee78750e",
+                  "items": 16143,
+                  "rows": 16143,
+                  "records": 16143
+                },
+                {
+                  "path": "session-items-1a7f1d74-5394-4f58-a8b9-a9ce7b612e59/000003.jsonl",
+                  "bytes": 8388437,
+                  "sha256": "7a06e3e9027a81098a26e4a7a8844a0e8053ef8eef0416c3e450d6dbbefdb9ea",
+                  "items": 16237,
+                  "rows": 16237,
+                  "records": 16237
+                },
+                {
+                  "path": "session-items-1a7f1d74-5394-4f58-a8b9-a9ce7b612e59/000004.jsonl",
+                  "bytes": 8388336,
+                  "sha256": "b73d53fbe46c82a49e2da25b830dde224434d5994352e14e3c49130b5f6c8f38",
+                  "items": 16097,
+                  "rows": 16097,
+                  "records": 16097
+                },
+                {
+                  "path": "session-items-1a7f1d74-5394-4f58-a8b9-a9ce7b612e59/000005.jsonl",
+                  "bytes": 8388530,
+                  "sha256": "7c674466ecfcb07a9d267d55b45f9caf24a2517de2206904d0a79dfc59ad2d52",
+                  "items": 16543,
+                  "rows": 16543,
+                  "records": 16543
+                },
+                {
+                  "path": "session-items-1a7f1d74-5394-4f58-a8b9-a9ce7b612e59/000006.jsonl",
+                  "bytes": 8388601,
+                  "sha256": "337a21728b0f9a3da7a5c25745168f83ae9db5b05571de79f7998406ab18b478",
+                  "items": 17130,
+                  "rows": 17130,
+                  "records": 17130
+                },
+                {
+                  "path": "session-items-1a7f1d74-5394-4f58-a8b9-a9ce7b612e59/000007.jsonl",
+                  "bytes": 8388184,
+                  "sha256": "ce171cc3aaeceafaa4cf680b72c640fd45153d7bd15e745a2a1765d1ccdc0299",
+                  "items": 17130,
+                  "rows": 17130,
+                  "records": 17130
+                },
+                {
+                  "path": "session-items-1a7f1d74-5394-4f58-a8b9-a9ce7b612e59/000008.jsonl",
+                  "bytes": 8388464,
+                  "sha256": "3f3783425f9af5ad35aaf2d339e4571193c111cacb0c68c726d1fe8e252a122c",
+                  "items": 18726,
+                  "rows": 18726,
+                  "records": 18726
+                },
+                {
+                  "path": "session-items-1a7f1d74-5394-4f58-a8b9-a9ce7b612e59/000009.jsonl",
+                  "bytes": 8388511,
+                  "sha256": "09598647fba685c3ca728d0f7133822147fe3b4eca36617213cf1fb010c6eab8",
+                  "items": 19225,
+                  "rows": 19225,
+                  "records": 19225
+                },
+                {
+                  "path": "session-items-1a7f1d74-5394-4f58-a8b9-a9ce7b612e59/000010.jsonl",
+                  "bytes": 8388529,
+                  "sha256": "60571d338b1ec4d18950856ae6e58592c037d66c6e361c7047dc9c5d89e91d34",
+                  "items": 19620,
+                  "rows": 19620,
+                  "records": 19620
+                },
+                {
+                  "path": "session-items-1a7f1d74-5394-4f58-a8b9-a9ce7b612e59/000011.jsonl",
+                  "bytes": 8388481,
+                  "sha256": "7a08c07c510fdbb9b5b8d97746da220a8e372d8f12b5686155bfa70b0f3880a9",
+                  "items": 19512,
+                  "rows": 19512,
+                  "records": 19512
+                },
+                {
+                  "path": "session-items-1a7f1d74-5394-4f58-a8b9-a9ce7b612e59/000012.jsonl",
+                  "bytes": 8388450,
+                  "sha256": "2ffdea36d307492d6b8a9537de6cbbf04be4a799475536292c9f9e78ae4fb856",
+                  "items": 19484,
+                  "rows": 19484,
+                  "records": 19484
+                },
+                {
+                  "path": "session-items-1a7f1d74-5394-4f58-a8b9-a9ce7b612e59/000013.jsonl",
+                  "bytes": 8388466,
+                  "sha256": "62f4edbe229990d3568c447cd37db937f7d09b84c4dfca5cefce5b115d3ea057",
+                  "items": 19416,
+                  "rows": 19416,
+                  "records": 19416
+                },
+                {
+                  "path": "session-items-1a7f1d74-5394-4f58-a8b9-a9ce7b612e59/000014.jsonl",
+                  "bytes": 2347399,
+                  "sha256": "43a801fc08185ec101dc08892bac331949b39a0b97b762a4fc935bfd3525cab3",
+                  "items": 5419,
+                  "rows": 5419,
+                  "records": 5419
+                }
+              ],
+              "sha256": "77147e9de7aff0dc4bb8d7381770327a6438e9d606a7b7e6ec35659ea749c012"
+            },
+            "sizedOpenOrders": {
+              "schema": "cts-session-array-v1",
+              "items": 77773,
+              "rows": 77773,
+              "records": 77773,
+              "chunks": [
+                {
+                  "path": "session-items-50cef7e7-de14-448a-8c3b-f976138d8b0e/000000.jsonl",
+                  "bytes": 8388453,
+                  "sha256": "8ccfc850914f21918d28cfdb0bbba1b46eb3d6c145d6aba8abdcc73fd5ac076a",
+                  "items": 19567,
+                  "rows": 19567,
+                  "records": 19567
+                },
+                {
+                  "path": "session-items-50cef7e7-de14-448a-8c3b-f976138d8b0e/000001.jsonl",
+                  "bytes": 8388585,
+                  "sha256": "48da04a8e17f78d1d45a5cf332347c48c172601cf1245fce7b128b19cf8f9e23",
+                  "items": 20810,
+                  "rows": 20810,
+                  "records": 20810
+                },
+                {
+                  "path": "session-items-50cef7e7-de14-448a-8c3b-f976138d8b0e/000002.jsonl",
+                  "bytes": 8388314,
+                  "sha256": "9f0f5952f0bda318e1a267f4de1e3a3e32e6b870a8fbe5c7440c55340ff5c46b",
+                  "items": 20699,
+                  "rows": 20699,
+                  "records": 20699
+                },
+                {
+                  "path": "session-items-50cef7e7-de14-448a-8c3b-f976138d8b0e/000003.jsonl",
+                  "bytes": 6759766,
+                  "sha256": "7f54c391bb7974df66d1bb6fea743a7e9a7a1bd70caf803454fec0465c0b5f9e",
+                  "items": 16697,
+                  "rows": 16697,
+                  "records": 16697
+                }
+              ],
+              "sha256": "c7428764b7cc630f52d7e7a3eb5d90a1137e1abd8c20ac423b0d88dea43a5353"
+            }
+          },
+          "tapeAndValidationSidecarsRead": false
+        }
+      },
+      "cheapParity": {
+        "allOrderRecords": 331856,
+        "allSymbols": 22,
+        "allMinutePrices": 31680,
+        "exactObjectIsParity": true,
+        "immutableRecords": true
+      },
+      "slices": [
+        {
+          "label": "start",
+          "t": 1791903660000,
+          "openOrders": 17057,
+          "exactIeee754Parity": true,
+          "variants": [
+            {
+              "variant": "old",
+              "wallMs": 64.90710799999943,
+              "cpu": {
+                "user": 93598,
+                "system": 4509
+              },
+              "rssAfter": 1064697856,
+              "counts": {
+                "priceLookups": 17057,
+                "unitCallbacks": 34114,
+                "keyCallbacks": 68228
+              },
+              "hash": "dd491ae2d192e116f73caf8514e6c25b6b98bb2e36682b0e9e1f4165f4f8383c",
+              "result": {
+                "mtm": -0.37772314723318584,
+                "margin": 17.06599999999789,
+                "mtmMissing": 0,
+                "positions": [
+                  "OP-USDT|1",
+                  "UNI-USDT|1",
+                  "LINK-USDT|1",
+                  "ARB-USDT|1",
+                  "DOGE-USDT|1",
+                  "DOT-USDT|1",
+                  "ADA-USDT|1",
+                  "DOT-USDT|-1",
+                  "OP-USDT|-1",
+                  "BTC-USDT|1",
+                  "APT-USDT|1",
+                  "NEAR-USDT|1",
+                  "ETH-USDT|1",
+                  "AVAX-USDT|1",
+                  "SOL-USDT|1",
+                  "SUI-USDT|-1",
+                  "BNB-USDT|1",
+                  "LTC-USDT|-1",
+                  "ETC-USDT|-1",
+                  "XLM-USDT|-1",
+                  "UNI-USDT|-1",
+                  "ADA-USDT|-1",
+                  "XRP-USDT|1",
+                  "APT-USDT|-1",
+                  "AVAX-USDT|-1",
+                  "SOL-USDT|-1",
+                  "XRP-USDT|-1",
+                  "NEAR-USDT|-1",
+                  "DOGE-USDT|-1",
+                  "ARB-USDT|-1",
+                  "ETH-USDT|-1",
+                  "LTC-USDT|1",
+                  "BTC-USDT|-1",
+                  "BNB-USDT|-1",
+                  "TRX-USDT|-1",
+                  "SUI-USDT|1"
+                ],
+                "oaeN": 0,
+                "oaeMtm": 0,
+                "openAtEndPositions": []
+              }
+            },
+            {
+              "variant": "new",
+              "wallMs": 6.8383299999986775,
+              "cpu": {
+                "user": 14292,
+                "system": 902
+              },
+              "rssAfter": 1150427136,
+              "counts": {
+                "priceLookups": 20,
+                "unitCallbacks": 0,
+                "keyCallbacks": 0
+              },
+              "hash": "dd491ae2d192e116f73caf8514e6c25b6b98bb2e36682b0e9e1f4165f4f8383c",
+              "result": {
+                "mtm": -0.37772314723318584,
+                "margin": 17.06599999999789,
+                "mtmMissing": 0,
+                "positions": [
+                  "OP-USDT|1",
+                  "UNI-USDT|1",
+                  "LINK-USDT|1",
+                  "ARB-USDT|1",
+                  "DOGE-USDT|1",
+                  "DOT-USDT|1",
+                  "ADA-USDT|1",
+                  "DOT-USDT|-1",
+                  "OP-USDT|-1",
+                  "BTC-USDT|1",
+                  "APT-USDT|1",
+                  "NEAR-USDT|1",
+                  "ETH-USDT|1",
+                  "AVAX-USDT|1",
+                  "SOL-USDT|1",
+                  "SUI-USDT|-1",
+                  "BNB-USDT|1",
+                  "LTC-USDT|-1",
+                  "ETC-USDT|-1",
+                  "XLM-USDT|-1",
+                  "UNI-USDT|-1",
+                  "ADA-USDT|-1",
+                  "XRP-USDT|1",
+                  "APT-USDT|-1",
+                  "AVAX-USDT|-1",
+                  "SOL-USDT|-1",
+                  "XRP-USDT|-1",
+                  "NEAR-USDT|-1",
+                  "DOGE-USDT|-1",
+                  "ARB-USDT|-1",
+                  "ETH-USDT|-1",
+                  "LTC-USDT|1",
+                  "BTC-USDT|-1",
+                  "BNB-USDT|-1",
+                  "TRX-USDT|-1",
+                  "SUI-USDT|1"
+                ],
+                "oaeN": 0,
+                "oaeMtm": 0,
+                "openAtEndPositions": []
+              }
+            }
+          ]
+        },
+        {
+          "label": "middle",
+          "t": 1791946800000,
+          "openOrders": 29498,
+          "exactIeee754Parity": true,
+          "variants": [
+            {
+              "variant": "old",
+              "wallMs": 242.6665240000002,
+              "cpu": {
+                "user": 382465,
+                "system": 133924
+              },
+              "rssAfter": 1240580096,
+              "counts": {
+                "priceLookups": 29498,
+                "unitCallbacks": 58996,
+                "keyCallbacks": 117992
+              },
+              "hash": "db9baa7a8d164db5b9950562f8b4d51d947c70cd951d2db2bd9dd82901c6fa8a",
+              "result": {
+                "mtm": -17.22203343814936,
+                "margin": 198.37712006370373,
+                "mtmMissing": 0,
+                "positions": [
+                  "TRX-USDT|-1",
+                  "LINK-USDT|1",
+                  "BTC-USDT|1",
+                  "BNB-USDT|1",
+                  "ADA-USDT|1",
+                  "UNI-USDT|-1",
+                  "SOL-USDT|1",
+                  "DOGE-USDT|1",
+                  "DOT-USDT|1",
+                  "XLM-USDT|-1",
+                  "AVAX-USDT|-1",
+                  "ETH-USDT|1",
+                  "AVAX-USDT|1",
+                  "BNB-USDT|-1",
+                  "SOL-USDT|-1",
+                  "XRP-USDT|-1",
+                  "DOGE-USDT|-1",
+                  "BTC-USDT|-1",
+                  "ETH-USDT|-1",
+                  "ADA-USDT|-1",
+                  "LTC-USDT|-1",
+                  "APT-USDT|-1",
+                  "ETC-USDT|-1",
+                  "SUI-USDT|-1",
+                  "XRP-USDT|1",
+                  "DOT-USDT|-1",
+                  "XLM-USDT|1",
+                  "TRX-USDT|1",
+                  "UNI-USDT|1",
+                  "ETC-USDT|1",
+                  "FIL-USDT|-1",
+                  "LTC-USDT|1",
+                  "ATOM-USDT|-1",
+                  "ARB-USDT|-1",
+                  "NEAR-USDT|-1",
+                  "APT-USDT|1",
+                  "FIL-USDT|1",
+                  "ATOM-USDT|1",
+                  "OP-USDT|-1",
+                  "ARB-USDT|1",
+                  "SUI-USDT|1",
+                  "NEAR-USDT|1",
+                  "OP-USDT|1"
+                ],
+                "oaeN": 5838,
+                "oaeMtm": -4.9642015626882285,
+                "openAtEndPositions": [
+                  "SOL-USDT|1",
+                  "TRX-USDT|-1",
+                  "BNB-USDT|1",
+                  "ETH-USDT|1",
+                  "ADA-USDT|1",
+                  "BTC-USDT|1",
+                  "ETC-USDT|1",
+                  "XLM-USDT|1"
+                ]
+              }
+            },
+            {
+              "variant": "new",
+              "wallMs": 28.77303799999936,
+              "cpu": {
+                "user": 49958,
+                "system": 2738
+              },
+              "rssAfter": 1322819584,
+              "counts": {
+                "priceLookups": 22,
+                "unitCallbacks": 0,
+                "keyCallbacks": 0
+              },
+              "hash": "db9baa7a8d164db5b9950562f8b4d51d947c70cd951d2db2bd9dd82901c6fa8a",
+              "result": {
+                "mtm": -17.22203343814936,
+                "margin": 198.37712006370373,
+                "mtmMissing": 0,
+                "positions": [
+                  "TRX-USDT|-1",
+                  "LINK-USDT|1",
+                  "BTC-USDT|1",
+                  "BNB-USDT|1",
+                  "ADA-USDT|1",
+                  "UNI-USDT|-1",
+                  "SOL-USDT|1",
+                  "DOGE-USDT|1",
+                  "DOT-USDT|1",
+                  "XLM-USDT|-1",
+                  "AVAX-USDT|-1",
+                  "ETH-USDT|1",
+                  "AVAX-USDT|1",
+                  "BNB-USDT|-1",
+                  "SOL-USDT|-1",
+                  "XRP-USDT|-1",
+                  "DOGE-USDT|-1",
+                  "BTC-USDT|-1",
+                  "ETH-USDT|-1",
+                  "ADA-USDT|-1",
+                  "LTC-USDT|-1",
+                  "APT-USDT|-1",
+                  "ETC-USDT|-1",
+                  "SUI-USDT|-1",
+                  "XRP-USDT|1",
+                  "DOT-USDT|-1",
+                  "XLM-USDT|1",
+                  "TRX-USDT|1",
+                  "UNI-USDT|1",
+                  "ETC-USDT|1",
+                  "FIL-USDT|-1",
+                  "LTC-USDT|1",
+                  "ATOM-USDT|-1",
+                  "ARB-USDT|-1",
+                  "NEAR-USDT|-1",
+                  "APT-USDT|1",
+                  "FIL-USDT|1",
+                  "ATOM-USDT|1",
+                  "OP-USDT|-1",
+                  "ARB-USDT|1",
+                  "SUI-USDT|1",
+                  "NEAR-USDT|1",
+                  "OP-USDT|1"
+                ],
+                "oaeN": 5838,
+                "oaeMtm": -4.9642015626882285,
+                "openAtEndPositions": [
+                  "SOL-USDT|1",
+                  "TRX-USDT|-1",
+                  "BNB-USDT|1",
+                  "ETH-USDT|1",
+                  "ADA-USDT|1",
+                  "BTC-USDT|1",
+                  "ETC-USDT|1",
+                  "XLM-USDT|1"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "label": "end",
+          "t": 1791990000000,
+          "openOrders": 77773,
+          "exactIeee754Parity": true,
+          "variants": [
+            {
+              "variant": "old",
+              "wallMs": 316.1198280000026,
+              "cpu": {
+                "user": 357233,
+                "system": 217294
+              },
+              "rssAfter": 1423077376,
+              "counts": {
+                "priceLookups": 77773,
+                "unitCallbacks": 155546,
+                "keyCallbacks": 311092
+              },
+              "hash": "7aec4db90ae079221f1d3734fceeb37aaf1fded671a44c453e7a7851438f9383",
+              "result": {
+                "mtm": -9.786819489364708,
+                "margin": 53.51758575157917,
+                "mtmMissing": 0,
+                "positions": [
+                  "SOL-USDT|1",
+                  "TRX-USDT|-1",
+                  "BNB-USDT|1",
+                  "ETH-USDT|1",
+                  "ADA-USDT|1",
+                  "BTC-USDT|1",
+                  "ETC-USDT|1",
+                  "XLM-USDT|1",
+                  "TRX-USDT|1",
+                  "DOGE-USDT|1",
+                  "XRP-USDT|1",
+                  "DOT-USDT|1",
+                  "BTC-USDT|-1",
+                  "APT-USDT|1",
+                  "SUI-USDT|1",
+                  "ARB-USDT|1",
+                  "ATOM-USDT|1",
+                  "UNI-USDT|1",
+                  "AVAX-USDT|1",
+                  "FIL-USDT|1",
+                  "NEAR-USDT|1",
+                  "LTC-USDT|1",
+                  "UNI-USDT|-1",
+                  "NEAR-USDT|-1",
+                  "LINK-USDT|1",
+                  "ETH-USDT|-1",
+                  "DOGE-USDT|-1",
+                  "XLM-USDT|-1",
+                  "BNB-USDT|-1",
+                  "ETC-USDT|-1",
+                  "LTC-USDT|-1",
+                  "OP-USDT|1",
+                  "SUI-USDT|-1",
+                  "XRP-USDT|-1",
+                  "ATOM-USDT|-1",
+                  "SOL-USDT|-1",
+                  "APT-USDT|-1",
+                  "DOT-USDT|-1",
+                  "ADA-USDT|-1",
+                  "AVAX-USDT|-1",
+                  "LINK-USDT|-1",
+                  "FIL-USDT|-1"
+                ],
+                "oaeN": 77773,
+                "oaeMtm": -9.786819489364708,
+                "openAtEndPositions": [
+                  "SOL-USDT|1",
+                  "TRX-USDT|-1",
+                  "BNB-USDT|1",
+                  "ETH-USDT|1",
+                  "ADA-USDT|1",
+                  "BTC-USDT|1",
+                  "ETC-USDT|1",
+                  "XLM-USDT|1",
+                  "TRX-USDT|1",
+                  "DOGE-USDT|1",
+                  "XRP-USDT|1",
+                  "DOT-USDT|1",
+                  "BTC-USDT|-1",
+                  "APT-USDT|1",
+                  "SUI-USDT|1",
+                  "ARB-USDT|1",
+                  "ATOM-USDT|1",
+                  "UNI-USDT|1",
+                  "AVAX-USDT|1",
+                  "FIL-USDT|1",
+                  "NEAR-USDT|1",
+                  "LTC-USDT|1",
+                  "UNI-USDT|-1",
+                  "NEAR-USDT|-1",
+                  "LINK-USDT|1",
+                  "ETH-USDT|-1",
+                  "DOGE-USDT|-1",
+                  "XLM-USDT|-1",
+                  "BNB-USDT|-1",
+                  "ETC-USDT|-1",
+                  "LTC-USDT|-1",
+                  "OP-USDT|1",
+                  "SUI-USDT|-1",
+                  "XRP-USDT|-1",
+                  "ATOM-USDT|-1",
+                  "SOL-USDT|-1",
+                  "APT-USDT|-1",
+                  "DOT-USDT|-1",
+                  "ADA-USDT|-1",
+                  "AVAX-USDT|-1",
+                  "LINK-USDT|-1",
+                  "FIL-USDT|-1"
+                ]
+              }
+            },
+            {
+              "variant": "new",
+              "wallMs": 35.27215200000137,
+              "cpu": {
+                "user": 51523,
+                "system": 0
+              },
+              "rssAfter": 1492365312,
+              "counts": {
+                "priceLookups": 22,
+                "unitCallbacks": 0,
+                "keyCallbacks": 0
+              },
+              "hash": "7aec4db90ae079221f1d3734fceeb37aaf1fded671a44c453e7a7851438f9383",
+              "result": {
+                "mtm": -9.786819489364708,
+                "margin": 53.51758575157917,
+                "mtmMissing": 0,
+                "positions": [
+                  "SOL-USDT|1",
+                  "TRX-USDT|-1",
+                  "BNB-USDT|1",
+                  "ETH-USDT|1",
+                  "ADA-USDT|1",
+                  "BTC-USDT|1",
+                  "ETC-USDT|1",
+                  "XLM-USDT|1",
+                  "TRX-USDT|1",
+                  "DOGE-USDT|1",
+                  "XRP-USDT|1",
+                  "DOT-USDT|1",
+                  "BTC-USDT|-1",
+                  "APT-USDT|1",
+                  "SUI-USDT|1",
+                  "ARB-USDT|1",
+                  "ATOM-USDT|1",
+                  "UNI-USDT|1",
+                  "AVAX-USDT|1",
+                  "FIL-USDT|1",
+                  "NEAR-USDT|1",
+                  "LTC-USDT|1",
+                  "UNI-USDT|-1",
+                  "NEAR-USDT|-1",
+                  "LINK-USDT|1",
+                  "ETH-USDT|-1",
+                  "DOGE-USDT|-1",
+                  "XLM-USDT|-1",
+                  "BNB-USDT|-1",
+                  "ETC-USDT|-1",
+                  "LTC-USDT|-1",
+                  "OP-USDT|1",
+                  "SUI-USDT|-1",
+                  "XRP-USDT|-1",
+                  "ATOM-USDT|-1",
+                  "SOL-USDT|-1",
+                  "APT-USDT|-1",
+                  "DOT-USDT|-1",
+                  "ADA-USDT|-1",
+                  "AVAX-USDT|-1",
+                  "LINK-USDT|-1",
+                  "FIL-USDT|-1"
+                ],
+                "oaeN": 77773,
+                "oaeMtm": -9.786819489364708,
+                "openAtEndPositions": [
+                  "SOL-USDT|1",
+                  "TRX-USDT|-1",
+                  "BNB-USDT|1",
+                  "ETH-USDT|1",
+                  "ADA-USDT|1",
+                  "BTC-USDT|1",
+                  "ETC-USDT|1",
+                  "XLM-USDT|1",
+                  "TRX-USDT|1",
+                  "DOGE-USDT|1",
+                  "XRP-USDT|1",
+                  "DOT-USDT|1",
+                  "BTC-USDT|-1",
+                  "APT-USDT|1",
+                  "SUI-USDT|1",
+                  "ARB-USDT|1",
+                  "ATOM-USDT|1",
+                  "UNI-USDT|1",
+                  "AVAX-USDT|1",
+                  "FIL-USDT|1",
+                  "NEAR-USDT|1",
+                  "LTC-USDT|1",
+                  "UNI-USDT|-1",
+                  "NEAR-USDT|-1",
+                  "LINK-USDT|1",
+                  "ETH-USDT|-1",
+                  "DOGE-USDT|-1",
+                  "XLM-USDT|-1",
+                  "BNB-USDT|-1",
+                  "ETC-USDT|-1",
+                  "LTC-USDT|-1",
+                  "OP-USDT|1",
+                  "SUI-USDT|-1",
+                  "XRP-USDT|-1",
+                  "ATOM-USDT|-1",
+                  "SOL-USDT|-1",
+                  "APT-USDT|-1",
+                  "DOT-USDT|-1",
+                  "ADA-USDT|-1",
+                  "AVAX-USDT|-1",
+                  "LINK-USDT|-1",
+                  "FIL-USDT|-1"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "fullNewOnly": {
+        "counts": {
+          "priceLookups": 31572,
+          "unitCallbacks": 331856,
+          "keyCallbacks": 713440,
+          "realizedPnlCallbacks": 254083
+        },
+        "loop": {
+          "wallMs": 18814.914681,
+          "cpu": {
+            "user": 19043058,
+            "system": 996671
+          },
+          "rssBefore": 1355419648,
+          "rssAfter": 1400930304,
+          "processPeakRssKb": 1439188
+        },
+        "hashes": {
+          "allMinuteOutputs": "0850d0f02535d85fc0507e817142bf2e203d7af99910556447047fc7760ec6b9",
+          "curve": "e04b09565db7a1c9aa68ee5a9e0a91fd98ce6e402899a5c6032706a83c1e0f13",
+          "hourly": "ca9e085e547aeae45dbf886dca03a72a9c0f9fc5c137dc884afc1b288ecdbf12",
+          "account": "febf7e1f2076361c735aa00a905a4390aecb64222289b5e000d2443217dd8bd2",
+          "roundedProjection": "3009efb3e3f0cb671657008f0ad8e19d8b129aa8d8ce1d606ca119bdb61343bb",
+          "recordedProjection": "3009efb3e3f0cb671657008f0ad8e19d8b129aa8d8ce1d606ca119bdb61343bb"
+        },
+        "exactRecordedRoundedParity": true,
+        "metrics": {
+          "eqMin": -29.602125,
+          "ruinT": 1791914760000,
+          "equityMaxDd": 40.623665,
+          "equityMaxDdPct": 3.685843,
+          "equityDdtMaxH": 22.95,
+          "marginMax": 443.333509,
+          "equityEnd": -27.496041,
+          "feasible": false,
+          "marginOver": {
+            "minutes": 1440,
+            "firstT": 1791903660000,
+            "maxRatio": null
+          },
+          "openEndMtm": -9.786819
+        }
+      },
+      "primaryReuse": {
+        "originalSource": {
+          "base": "0297eef541f4ee360e040b55d66786760bab6792",
+          "oldFullSha256": "c594126151a399a23c30f42e5435c52252dac762307b32b117f8af2ca16f2014",
+          "fullSha256": "a6c786fc37f40073a0fc960683f3be72f5ff66478ce8aeb856e917e92c2a97fc",
+          "extractedSha256": "bd769fd74a1d7dd6a016d75eff2591f3471c33af0451f737aa908e052c61509f",
+          "helperSha256": "4b9208b0b2dd2a4733f8ff2a8949a8ecf1ec6dde5a8bd1829c84813696ab45a2",
+          "producer": {
+            "file": "/workspace/scratch/ff6263fe65f6/cts-ao-trailing/runs/exact-signal-study-ci-v3/selection22/artifact/source-proof.json",
+            "sha256": "6a95b6a2a455a2f3e63e3d5be9f4ff9ae4a7da3b5466dabb680c1702509d8104",
+            "producerReporterSha256": "c594126151a399a23c30f42e5435c52252dac762307b32b117f8af2ca16f2014",
+            "exactOldSourceMatch": true,
+            "dependencies": {
+              "scripts/lib/session-dump.mjs": "8c0d0c608e2d411bea06bb02947116c3e947c8c47a7999d4ab97b57f5a77d570",
+              "scripts/lib/session-owned-returns.mjs": "83c0e7bd82ca08ed928e5c97420e2470446e2d4642c088b4d0aab193eaff070f",
+              "scripts/lib/book-notional.mjs": "ba79608369b165cd6037f421bad4dbc366f123e7475e58775c4642a93f45cf49",
+              "src/core/sizing.ts": "e5a30ae9fd89654dda45e5d7a9665506166eae78b961604ffae335778dd24190",
+              "src/core/metrics/stats.ts": "7f2f29f22c2c9264ac8cecfd07037b502ce39f3053720599856562d1badf1cf8"
+            }
+          }
+        },
+        "identicalExtractedBodyAndInputs": true,
+        "originalProcess": {
+          "wallMs": 42660.795222,
+          "cpu": {
+            "user": 46712477,
+            "system": 9304606
+          },
+          "peakRssKb": 1439188
+        }
+      },
+      "secondary": {
+        "basis": "Separate unary unitFn and per-pass caches; recorded caps are both zero, so identical unchanged sizing arguments imply equal allocation values. Uncapped rows are not separately recorded.",
+        "zeroCaps": {
+          "maxPositionX": 0,
+          "maxExposureX": 0
+        },
+        "sizingSourceSha256": "b9cc4f0629121f108c2613b82c1b42a22574283edfbf6b126c0fa17ee15dd409",
+        "passes": [
+          {
+            "pass": "capped",
+            "separateAllocationSnapshot": false,
+            "unaryUnitFnRespected": true,
+            "allOrderUnitsObjectIsEqual": 331856,
+            "slices": [
+              {
+                "label": "start",
+                "t": 1791903660000,
+                "openOrders": 17057,
+                "exactIeee754Parity": true,
+                "variants": [
+                  {
+                    "variant": "old",
+                    "wallMs": 68.80288899999869,
+                    "cpu": {
+                      "user": 69610,
+                      "system": 10748
+                    },
+                    "counts": {
+                      "priceLookups": 17057,
+                      "unitCallbacks": 17057,
+                      "keyCallbacks": 34114
+                    },
+                    "hash": "1b2474a1d202f660481cd39eb528349eb0c5efbfdc19cac89b463799e7a43cc9",
+                    "result": {
+                      "mtm": -0.37772314723318584,
+                      "margin": 17.06599999999789
+                    }
+                  },
+                  {
+                    "variant": "new",
+                    "wallMs": 5.177009000002727,
+                    "cpu": {
+                      "user": 7903,
+                      "system": 0
+                    },
+                    "counts": {
+                      "priceLookups": 20,
+                      "unitCallbacks": 0,
+                      "keyCallbacks": 0
+                    },
+                    "hash": "1b2474a1d202f660481cd39eb528349eb0c5efbfdc19cac89b463799e7a43cc9",
+                    "result": {
+                      "mtm": -0.37772314723318584,
+                      "margin": 17.06599999999789
+                    }
+                  }
+                ]
+              },
+              {
+                "label": "middle",
+                "t": 1791946800000,
+                "openOrders": 29498,
+                "exactIeee754Parity": true,
+                "variants": [
+                  {
+                    "variant": "old",
+                    "wallMs": 98.95765200000096,
+                    "cpu": {
+                      "user": 185136,
+                      "system": 0
+                    },
+                    "counts": {
+                      "priceLookups": 29498,
+                      "unitCallbacks": 29498,
+                      "keyCallbacks": 58996
+                    },
+                    "hash": "fd4b6a573008770bcf17859eade56595f314148afb1b77cf5b6e4d4c01b69dd9",
+                    "result": {
+                      "mtm": -17.222033438149356,
+                      "margin": 198.37712006370373
+                    }
+                  },
+                  {
+                    "variant": "new",
+                    "wallMs": 19.81246000000101,
+                    "cpu": {
+                      "user": 34063,
+                      "system": 0
+                    },
+                    "counts": {
+                      "priceLookups": 22,
+                      "unitCallbacks": 0,
+                      "keyCallbacks": 0
+                    },
+                    "hash": "fd4b6a573008770bcf17859eade56595f314148afb1b77cf5b6e4d4c01b69dd9",
+                    "result": {
+                      "mtm": -17.222033438149356,
+                      "margin": 198.37712006370373
+                    }
+                  }
+                ]
+              },
+              {
+                "label": "end",
+                "t": 1791990000000,
+                "openOrders": 77773,
+                "exactIeee754Parity": true,
+                "variants": [
+                  {
+                    "variant": "old",
+                    "wallMs": 160.69770200000494,
+                    "cpu": {
+                      "user": 229748,
+                      "system": 0
+                    },
+                    "counts": {
+                      "priceLookups": 77773,
+                      "unitCallbacks": 77773,
+                      "keyCallbacks": 155546
+                    },
+                    "hash": "dfc21b424bf42259f679eb16586d565990d2ece4eb8d584c811919f292c782a5",
+                    "result": {
+                      "mtm": -9.786819489364708,
+                      "margin": 53.51758575157917
+                    }
+                  },
+                  {
+                    "variant": "new",
+                    "wallMs": 21.80768999999418,
+                    "cpu": {
+                      "user": 30408,
+                      "system": 0
+                    },
+                    "counts": {
+                      "priceLookups": 22,
+                      "unitCallbacks": 0,
+                      "keyCallbacks": 0
+                    },
+                    "hash": "dfc21b424bf42259f679eb16586d565990d2ece4eb8d584c811919f292c782a5",
+                    "result": {
+                      "mtm": -9.786819489364708,
+                      "margin": 53.51758575157917
+                    }
+                  }
+                ]
+              }
+            ],
+            "fullNewOnly": {
+              "wallMs": 17225.101032,
+              "cpu": {
+                "user": 16758459,
+                "system": 1649659
+              },
+              "rssBefore": 1474560000,
+              "rssAfter": 1609773056,
+              "counts": {
+                "priceLookups": 31572,
+                "unitCallbacks": 331856,
+                "keyCallbacks": 1377152,
+                "realizedPnlCallbacks": 254083
+              },
+              "curveSha256": "f992b68394b4945f7be42dbd2e9e6f26772967b97a5f171a09572b76bc3abfbc",
+              "metricsSha256": "247a987ac43d4cd692a930aed84e49079deda99e328def6370f4c0f2bdd9fe61",
+              "roundedCurveSha256": "d42d3748d6021bc968895a3be196974c51042ec4f2ae8455e6d462049139ecee",
+              "recordedCurveSha256": "d42d3748d6021bc968895a3be196974c51042ec4f2ae8455e6d462049139ecee",
+              "exactRecordedRoundedParity": true,
+              "metrics": {
+                "equityEnd": -27.496041,
+                "equityMaxDd": 40.623665,
+                "equityMaxDdPct": 3.685843,
+                "marginMax": 443.333509,
+                "eqMin": -29.602125,
+                "marginOverMinutes": 1440
+              }
+            },
+            "metricsComparisonBasis": "Original PRIMARY headline risk metrics under zero caps; original secondary capped metrics are not separately stored",
+            "sampledCurveComparisonBasis": "Original PRIMARY recorded sampled curve under zero-cap allocation identity. Original secondary pass did not emit its own curve; v=unit*volume arithmetic can differ in floating bits."
+          },
+          {
+            "pass": "uncapped",
+            "separateAllocationSnapshot": true,
+            "unaryUnitFnRespected": true,
+            "allOrderUnitsObjectIsEqual": 331856,
+            "slices": [
+              {
+                "label": "start",
+                "t": 1791903660000,
+                "openOrders": 17057,
+                "exactIeee754Parity": true,
+                "variants": [
+                  {
+                    "variant": "old",
+                    "wallMs": 35.973595000003115,
+                    "cpu": {
+                      "user": 55509,
+                      "system": 0
+                    },
+                    "counts": {
+                      "priceLookups": 17057,
+                      "unitCallbacks": 17057,
+                      "keyCallbacks": 34114
+                    },
+                    "hash": "1b2474a1d202f660481cd39eb528349eb0c5efbfdc19cac89b463799e7a43cc9",
+                    "result": {
+                      "mtm": -0.37772314723318584,
+                      "margin": 17.06599999999789
+                    }
+                  },
+                  {
+                    "variant": "new",
+                    "wallMs": 4.887468000000808,
+                    "cpu": {
+                      "user": 6086,
+                      "system": 0
+                    },
+                    "counts": {
+                      "priceLookups": 20,
+                      "unitCallbacks": 0,
+                      "keyCallbacks": 0
+                    },
+                    "hash": "1b2474a1d202f660481cd39eb528349eb0c5efbfdc19cac89b463799e7a43cc9",
+                    "result": {
+                      "mtm": -0.37772314723318584,
+                      "margin": 17.06599999999789
+                    }
+                  }
+                ]
+              },
+              {
+                "label": "middle",
+                "t": 1791946800000,
+                "openOrders": 29498,
+                "exactIeee754Parity": true,
+                "variants": [
+                  {
+                    "variant": "old",
+                    "wallMs": 62.9302730000054,
+                    "cpu": {
+                      "user": 95921,
+                      "system": 0
+                    },
+                    "counts": {
+                      "priceLookups": 29498,
+                      "unitCallbacks": 29498,
+                      "keyCallbacks": 58996
+                    },
+                    "hash": "fd4b6a573008770bcf17859eade56595f314148afb1b77cf5b6e4d4c01b69dd9",
+                    "result": {
+                      "mtm": -17.222033438149356,
+                      "margin": 198.37712006370373
+                    }
+                  },
+                  {
+                    "variant": "new",
+                    "wallMs": 19.785212000002502,
+                    "cpu": {
+                      "user": 36067,
+                      "system": 0
+                    },
+                    "counts": {
+                      "priceLookups": 22,
+                      "unitCallbacks": 0,
+                      "keyCallbacks": 0
+                    },
+                    "hash": "fd4b6a573008770bcf17859eade56595f314148afb1b77cf5b6e4d4c01b69dd9",
+                    "result": {
+                      "mtm": -17.222033438149356,
+                      "margin": 198.37712006370373
+                    }
+                  }
+                ]
+              },
+              {
+                "label": "end",
+                "t": 1791990000000,
+                "openOrders": 77773,
+                "exactIeee754Parity": true,
+                "variants": [
+                  {
+                    "variant": "old",
+                    "wallMs": 181.86150500000076,
+                    "cpu": {
+                      "user": 245605,
+                      "system": 0
+                    },
+                    "counts": {
+                      "priceLookups": 77773,
+                      "unitCallbacks": 77773,
+                      "keyCallbacks": 155546
+                    },
+                    "hash": "dfc21b424bf42259f679eb16586d565990d2ece4eb8d584c811919f292c782a5",
+                    "result": {
+                      "mtm": -9.786819489364708,
+                      "margin": 53.51758575157917
+                    }
+                  },
+                  {
+                    "variant": "new",
+                    "wallMs": 51.52176100000361,
+                    "cpu": {
+                      "user": 60358,
+                      "system": 2526
+                    },
+                    "counts": {
+                      "priceLookups": 22,
+                      "unitCallbacks": 0,
+                      "keyCallbacks": 0
+                    },
+                    "hash": "dfc21b424bf42259f679eb16586d565990d2ece4eb8d584c811919f292c782a5",
+                    "result": {
+                      "mtm": -9.786819489364708,
+                      "margin": 53.51758575157917
+                    }
+                  }
+                ]
+              }
+            ],
+            "fullNewOnly": {
+              "wallMs": 13292.360579,
+              "cpu": {
+                "user": 12801264,
+                "system": 1713057
+              },
+              "rssBefore": 1583177728,
+              "rssAfter": 1712365568,
+              "counts": {
+                "priceLookups": 31572,
+                "unitCallbacks": 331856,
+                "keyCallbacks": 1377152,
+                "realizedPnlCallbacks": 254083
+              },
+              "curveSha256": "f992b68394b4945f7be42dbd2e9e6f26772967b97a5f171a09572b76bc3abfbc",
+              "metricsSha256": "247a987ac43d4cd692a930aed84e49079deda99e328def6370f4c0f2bdd9fe61",
+              "roundedCurveSha256": "d42d3748d6021bc968895a3be196974c51042ec4f2ae8455e6d462049139ecee",
+              "recordedCurveSha256": "d42d3748d6021bc968895a3be196974c51042ec4f2ae8455e6d462049139ecee",
+              "exactRecordedRoundedParity": true,
+              "metrics": {
+                "equityEnd": -27.496041,
+                "equityMaxDd": 40.623665,
+                "equityMaxDdPct": 3.685843,
+                "marginMax": 443.333509,
+                "eqMin": -29.602125,
+                "marginOverMinutes": 1440
+              }
+            },
+            "metricsComparisonBasis": "Actual original secondary uncapped risk metrics in total.uncapped",
+            "sampledCurveComparisonBasis": "Original PRIMARY recorded sampled curve under zero-cap allocation identity. Original secondary pass did not emit its own curve; v=unit*volume arithmetic can differ in floating bits."
+          }
+        ],
+        "unchangedClosedStatsSha256": "5a54a7e7e9c2f0900ea0cc6df9fce56001f32a7a9596e177a7fa45faa69c7844",
+        "unchangedMetricMappingSha256": "a80fe52046c8b73b2a00e44e83a7d620ff1a084dc03ded2e4058bbd9a41a073b"
+      },
+      "rows": {
+        "trades": 254083,
+        "openEnd": 77773,
+        "allocations": 331856,
+        "hours": 24,
+        "curve": 289
+      },
+      "process": {
+        "wallMs": 78824.842039,
+        "cpu": {
+          "user": 93149066,
+          "system": 13871921
+        },
+        "peakRssKb": 1680328
+      }
+    },
+    {
+      "window": "final22",
+      "source": {
+        "base": "c62701343668b5b87f2bfd5644eb46ff0f44b4f5",
+        "baselineUsed": {
+          "kind": "git-ref",
+          "requested": "c62701343668b5b87f2bfd5644eb46ff0f44b4f5",
+          "used": "0297eef541f4ee360e040b55d66786760bab6792",
+          "localFallback": true,
+          "note": "Public producer ref absent locally. Fetch origin c62701343668b5b87f2bfd5644eb46ff0f44b4f5 or pass --baseline-file/--baseline-ref. Exact producer SHA is checked below."
+        },
+        "oldFullSha256": "c594126151a399a23c30f42e5435c52252dac762307b32b117f8af2ca16f2014",
+        "fullSha256": "350a1f8d735e00504ecbc2e768a2f09e7ba56fa9d2a656f41bb256e0a3685a12",
+        "extractedSha256": "bd769fd74a1d7dd6a016d75eff2591f3471c33af0451f737aa908e052c61509f",
+        "helperSha256": "4b9208b0b2dd2a4733f8ff2a8949a8ecf1ec6dde5a8bd1829c84813696ab45a2",
+        "producer": {
+          "file": "/workspace/scratch/ff6263fe65f6/cts-ao-trailing/runs/exact-signal-study-ci-v3/final22/artifact/source-proof.json",
+          "sha256": "6a95b6a2a455a2f3e63e3d5be9f4ff9ae4a7da3b5466dabb680c1702509d8104",
+          "producerReporterSha256": "c594126151a399a23c30f42e5435c52252dac762307b32b117f8af2ca16f2014",
+          "exactOldSourceMatch": true,
+          "dependencies": {
+            "scripts/lib/session-dump.mjs": "8c0d0c608e2d411bea06bb02947116c3e947c8c47a7999d4ab97b57f5a77d570",
+            "scripts/lib/session-owned-returns.mjs": "83c0e7bd82ca08ed928e5c97420e2470446e2d4642c088b4d0aab193eaff070f",
+            "scripts/lib/book-notional.mjs": "ba79608369b165cd6037f421bad4dbc366f123e7475e58775c4642a93f45cf49",
+            "src/core/sizing.ts": "e5a30ae9fd89654dda45e5d7a9665506166eae78b961604ffae335778dd24190",
+            "src/core/metrics/stats.ts": "7f2f29f22c2c9264ac8cecfd07037b502ce39f3053720599856562d1badf1cf8"
+          }
+        }
+      },
+      "inputs": {
+        "raw": {
+          "file": "/workspace/scratch/ff6263fe65f6/cts-ao-trailing/runs/exact-signal-study-ci-v3/final22/artifact/evidence/raw.json",
+          "bytes": 42525461,
+          "sha256": "455c54f3ed6c57a02d88d67ac9d2c779938041f9cab02fbf62330267ac311d80",
+          "hydratedAndIntegrityVerifiedFields": [
+            "trades"
+          ],
+          "sidecars": {
+            "trades": {
+              "schema": "cts-session-array-v1",
+              "items": 127210,
+              "rows": 127210,
+              "records": 127210,
+              "chunks": [
+                {
+                  "path": "session-items-ef65e2cc-eaef-4589-8feb-d6587e857693/000000.jsonl",
+                  "bytes": 8388282,
+                  "sha256": "faae385221b62c1d80a4e966a01a754cd3cb9957eb2a96264d3dc5b7306aaa26",
+                  "items": 24040,
+                  "rows": 24040,
+                  "records": 24040
+                },
+                {
+                  "path": "session-items-ef65e2cc-eaef-4589-8feb-d6587e857693/000001.jsonl",
+                  "bytes": 8388294,
+                  "sha256": "d487155b9a32d41f2a300b80493e18ae9a239e35f38ba8cfcd2385ab96a3d20f",
+                  "items": 23683,
+                  "rows": 23683,
+                  "records": 23683
+                },
+                {
+                  "path": "session-items-ef65e2cc-eaef-4589-8feb-d6587e857693/000002.jsonl",
+                  "bytes": 8388591,
+                  "sha256": "36a89b3495607d701feb7e0e457bc33e03d99f5b6218a60342c4f38de87a747b",
+                  "items": 23720,
+                  "rows": 23720,
+                  "records": 23720
+                },
+                {
+                  "path": "session-items-ef65e2cc-eaef-4589-8feb-d6587e857693/000003.jsonl",
+                  "bytes": 8388513,
+                  "sha256": "9f0a83ae7f50bca15d10bf284f2bc2341a2c2068f6d1e6127b9c3900edb466b8",
+                  "items": 23519,
+                  "rows": 23519,
+                  "records": 23519
+                },
+                {
+                  "path": "session-items-ef65e2cc-eaef-4589-8feb-d6587e857693/000004.jsonl",
+                  "bytes": 8388511,
+                  "sha256": "e77de2ce7c9e719252780477679336b71adac56be07318c8cc912bb6dbea40eb",
+                  "items": 23248,
+                  "rows": 23248,
+                  "records": 23248
+                },
+                {
+                  "path": "session-items-ef65e2cc-eaef-4589-8feb-d6587e857693/000005.jsonl",
+                  "bytes": 3285501,
+                  "sha256": "c284eae3f8f426f500984b99408fdf5c36245a8269974002670906e4707b04a7",
+                  "items": 9000,
+                  "rows": 9000,
+                  "records": 9000
+                }
+              ],
+              "sha256": "e769f319743d0bf7897722a0299cc1d6c9ba124bc015c22b54ebcc95e3794888"
+            }
+          },
+          "tapeAndValidationSidecarsRead": false
+        },
+        "report": {
+          "file": "/workspace/scratch/ff6263fe65f6/cts-ao-trailing/runs/exact-signal-study-ci-v3/final22/artifact/evidence/html/data.json",
+          "bytes": 3863779,
+          "sha256": "b6a08158ff07063324237d453eff002d3a771f36e64b9468e2f998c593c8454a",
+          "hydratedAndIntegrityVerifiedFields": [
+            "sizedOrders",
+            "sizedOpenOrders"
+          ],
+          "sidecars": {
+            "sizedOrders": {
+              "schema": "cts-session-array-v1",
+              "items": 127210,
+              "rows": 127210,
+              "records": 127210,
+              "chunks": [
+                {
+                  "path": "session-items-749db802-6b8b-46fd-94e9-d27e7da70844/000000.jsonl",
+                  "bytes": 8388543,
+                  "sha256": "6f921ebaea223feb2df95b7f5c430de51bf55fca9ce7fcb9962af72d323d4642",
+                  "items": 15929,
+                  "rows": 15929,
+                  "records": 15929
+                },
+                {
+                  "path": "session-items-749db802-6b8b-46fd-94e9-d27e7da70844/000001.jsonl",
+                  "bytes": 8388305,
+                  "sha256": "32dab34677dcea294071a48b746125da26a0a1c2b0505b64e77709ed97a08295",
+                  "items": 15489,
+                  "rows": 15489,
+                  "records": 15489
+                },
+                {
+                  "path": "session-items-749db802-6b8b-46fd-94e9-d27e7da70844/000002.jsonl",
+                  "bytes": 8388535,
+                  "sha256": "0847f90f8e4ef6fe518bb722e77f19a0c2453b6c41fa54fbe7f26f330648fa97",
+                  "items": 15941,
+                  "rows": 15941,
+                  "records": 15941
+                },
+                {
+                  "path": "session-items-749db802-6b8b-46fd-94e9-d27e7da70844/000003.jsonl",
+                  "bytes": 8388316,
+                  "sha256": "73a8a316bdca8a97e51e11d8e05f387815bc6a1ef8aa3a5359920382bda770a0",
+                  "items": 16082,
+                  "rows": 16082,
+                  "records": 16082
+                },
+                {
+                  "path": "session-items-749db802-6b8b-46fd-94e9-d27e7da70844/000004.jsonl",
+                  "bytes": 8388121,
+                  "sha256": "45a1e9bc6b4026c77c11f71d4271d29799f4443cc91c096dd4e0768adebf76af",
+                  "items": 16082,
+                  "rows": 16082,
+                  "records": 16082
+                },
+                {
+                  "path": "session-items-749db802-6b8b-46fd-94e9-d27e7da70844/000005.jsonl",
+                  "bytes": 8388439,
+                  "sha256": "458549eedb3c6dc3bbcd9bf02e2a9362b19c39104f2a34164ba8fef8e0aa42a9",
+                  "items": 16106,
+                  "rows": 16106,
+                  "records": 16106
+                },
+                {
+                  "path": "session-items-749db802-6b8b-46fd-94e9-d27e7da70844/000006.jsonl",
+                  "bytes": 8388413,
+                  "sha256": "cee597a9249bd215fe93864b6774025817d6562b060059d889b0a9884a0d77b1",
+                  "items": 16088,
+                  "rows": 16088,
+                  "records": 16088
+                },
+                {
+                  "path": "session-items-749db802-6b8b-46fd-94e9-d27e7da70844/000007.jsonl",
+                  "bytes": 8111610,
+                  "sha256": "51e5c9d4520f3dc2375f3f0ade628539e8ca9088f8f4c95ae5747e7c9bfc6c79",
+                  "items": 15493,
+                  "rows": 15493,
+                  "records": 15493
+                }
+              ],
+              "sha256": "22e078a094b8623087b74fbfb6127b1a776707f1ad923dbe8adb319e4861dfe3"
+            },
+            "sizedOpenOrders": {
+              "schema": "cts-session-array-v1",
+              "items": 9302,
+              "rows": 9302,
+              "records": 9302,
+              "chunks": [
+                {
+                  "path": "session-items-3d24244a-4634-4e41-987a-65b112d83951/000000.jsonl",
+                  "bytes": 4627414,
+                  "sha256": "c0e70a66f69c29d918e11b1564cba1dfa00ca2dcf9e5a56645b773fab027f3ae",
+                  "items": 9302,
+                  "rows": 9302,
+                  "records": 9302
+                }
+              ],
+              "sha256": "c0e70a66f69c29d918e11b1564cba1dfa00ca2dcf9e5a56645b773fab027f3ae"
+            }
+          },
+          "tapeAndValidationSidecarsRead": false
+        }
+      },
+      "cheapParity": {
+        "allOrderRecords": 136512,
+        "allSymbols": 22,
+        "allMinutePrices": 31680,
+        "exactObjectIsParity": true,
+        "immutableRecords": true
+      },
+      "slices": [
+        {
+          "label": "start",
+          "t": 1792098060000,
+          "openOrders": 3362,
+          "exactIeee754Parity": true,
+          "variants": [
+            {
+              "variant": "old",
+              "wallMs": 11.30557299999964,
+              "cpu": {
+                "user": 16693,
+                "system": 0
+              },
+              "rssAfter": 663240704,
+              "counts": {
+                "priceLookups": 3362,
+                "unitCallbacks": 6724,
+                "keyCallbacks": 13448
+              },
+              "hash": "2b059dec567a6f49a41198296c2b4e648de649b2f92bcfbd8fd39330b8529d40",
+              "result": {
+                "mtm": -0.056984545574362146,
+                "margin": 3.3619999999997408,
+                "mtmMissing": 0,
+                "positions": [
+                  "FIL-USDT|1",
+                  "NEAR-USDT|1",
+                  "DOT-USDT|1",
+                  "ARB-USDT|1",
+                  "APT-USDT|1",
+                  "FIL-USDT|-1",
+                  "NEAR-USDT|-1",
+                  "UNI-USDT|-1",
+                  "ETH-USDT|1",
+                  "AVAX-USDT|-1"
+                ],
+                "oaeN": 0,
+                "oaeMtm": 0,
+                "openAtEndPositions": []
+              }
+            },
+            {
+              "variant": "new",
+              "wallMs": 2.6893359999994573,
+              "cpu": {
+                "user": 5007,
+                "system": 1936
+              },
+              "rssAfter": 694657024,
+              "counts": {
+                "priceLookups": 8,
+                "unitCallbacks": 0,
+                "keyCallbacks": 0
+              },
+              "hash": "2b059dec567a6f49a41198296c2b4e648de649b2f92bcfbd8fd39330b8529d40",
+              "result": {
+                "mtm": -0.056984545574362146,
+                "margin": 3.3619999999997408,
+                "mtmMissing": 0,
+                "positions": [
+                  "FIL-USDT|1",
+                  "NEAR-USDT|1",
+                  "DOT-USDT|1",
+                  "ARB-USDT|1",
+                  "APT-USDT|1",
+                  "FIL-USDT|-1",
+                  "NEAR-USDT|-1",
+                  "UNI-USDT|-1",
+                  "ETH-USDT|1",
+                  "AVAX-USDT|-1"
+                ],
+                "oaeN": 0,
+                "oaeMtm": 0,
+                "openAtEndPositions": []
+              }
+            }
+          ]
+        },
+        {
+          "label": "middle",
+          "t": 1792141200000,
+          "openOrders": 3528,
+          "exactIeee754Parity": true,
+          "variants": [
+            {
+              "variant": "old",
+              "wallMs": 11.085431999999855,
+              "cpu": {
+                "user": 16422,
+                "system": 0
+              },
+              "rssAfter": 727916544,
+              "counts": {
+                "priceLookups": 3528,
+                "unitCallbacks": 7056,
+                "keyCallbacks": 14112
+              },
+              "hash": "b37b43d460bbad5dff30701245acc3c1e91b67c012d3c8be33f21bd01b6fe781",
+              "result": {
+                "mtm": -1.7406982872096297,
+                "margin": 32.49963616938025,
+                "mtmMissing": 0,
+                "positions": [
+                  "ETH-USDT|1",
+                  "AVAX-USDT|-1",
+                  "NEAR-USDT|1",
+                  "FIL-USDT|1",
+                  "DOT-USDT|-1",
+                  "BTC-USDT|1",
+                  "UNI-USDT|1",
+                  "LTC-USDT|1",
+                  "SUI-USDT|1",
+                  "ADA-USDT|1",
+                  "DOGE-USDT|1",
+                  "TRX-USDT|-1",
+                  "ATOM-USDT|-1",
+                  "ETH-USDT|-1",
+                  "TRX-USDT|1",
+                  "DOT-USDT|1",
+                  "XRP-USDT|1",
+                  "BNB-USDT|1",
+                  "BTC-USDT|-1",
+                  "ETC-USDT|1",
+                  "LINK-USDT|-1",
+                  "ADA-USDT|-1",
+                  "SOL-USDT|-1",
+                  "XLM-USDT|-1",
+                  "SUI-USDT|-1",
+                  "XRP-USDT|-1",
+                  "UNI-USDT|-1",
+                  "BNB-USDT|-1",
+                  "FIL-USDT|-1",
+                  "NEAR-USDT|-1",
+                  "ARB-USDT|-1",
+                  "SOL-USDT|1",
+                  "XLM-USDT|1",
+                  "AVAX-USDT|1",
+                  "OP-USDT|1",
+                  "ARB-USDT|1",
+                  "ATOM-USDT|1",
+                  "ETC-USDT|-1",
+                  "OP-USDT|-1",
+                  "APT-USDT|1",
+                  "APT-USDT|-1"
+                ],
+                "oaeN": 329,
+                "oaeMtm": -0.06625177559703674,
+                "openAtEndPositions": [
+                  "BTC-USDT|1",
+                  "LTC-USDT|1",
+                  "TRX-USDT|-1",
+                  "TRX-USDT|1",
+                  "ATOM-USDT|1",
+                  "ETC-USDT|1",
+                  "ADA-USDT|1"
+                ]
+              }
+            },
+            {
+              "variant": "new",
+              "wallMs": 5.097700000000259,
+              "cpu": {
+                "user": 7757,
+                "system": 0
+              },
+              "rssAfter": 762376192,
+              "counts": {
+                "priceLookups": 22,
+                "unitCallbacks": 0,
+                "keyCallbacks": 0
+              },
+              "hash": "b37b43d460bbad5dff30701245acc3c1e91b67c012d3c8be33f21bd01b6fe781",
+              "result": {
+                "mtm": -1.7406982872096297,
+                "margin": 32.49963616938025,
+                "mtmMissing": 0,
+                "positions": [
+                  "ETH-USDT|1",
+                  "AVAX-USDT|-1",
+                  "NEAR-USDT|1",
+                  "FIL-USDT|1",
+                  "DOT-USDT|-1",
+                  "BTC-USDT|1",
+                  "UNI-USDT|1",
+                  "LTC-USDT|1",
+                  "SUI-USDT|1",
+                  "ADA-USDT|1",
+                  "DOGE-USDT|1",
+                  "TRX-USDT|-1",
+                  "ATOM-USDT|-1",
+                  "ETH-USDT|-1",
+                  "TRX-USDT|1",
+                  "DOT-USDT|1",
+                  "XRP-USDT|1",
+                  "BNB-USDT|1",
+                  "BTC-USDT|-1",
+                  "ETC-USDT|1",
+                  "LINK-USDT|-1",
+                  "ADA-USDT|-1",
+                  "SOL-USDT|-1",
+                  "XLM-USDT|-1",
+                  "SUI-USDT|-1",
+                  "XRP-USDT|-1",
+                  "UNI-USDT|-1",
+                  "BNB-USDT|-1",
+                  "FIL-USDT|-1",
+                  "NEAR-USDT|-1",
+                  "ARB-USDT|-1",
+                  "SOL-USDT|1",
+                  "XLM-USDT|1",
+                  "AVAX-USDT|1",
+                  "OP-USDT|1",
+                  "ARB-USDT|1",
+                  "ATOM-USDT|1",
+                  "ETC-USDT|-1",
+                  "OP-USDT|-1",
+                  "APT-USDT|1",
+                  "APT-USDT|-1"
+                ],
+                "oaeN": 329,
+                "oaeMtm": -0.06625177559703674,
+                "openAtEndPositions": [
+                  "BTC-USDT|1",
+                  "LTC-USDT|1",
+                  "TRX-USDT|-1",
+                  "TRX-USDT|1",
+                  "ATOM-USDT|1",
+                  "ETC-USDT|1",
+                  "ADA-USDT|1"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "label": "end",
+          "t": 1792184400000,
+          "openOrders": 9302,
+          "exactIeee754Parity": true,
+          "variants": [
+            {
+              "variant": "old",
+              "wallMs": 63.478587999999945,
+              "cpu": {
+                "user": 101637,
+                "system": 30576
+              },
+              "rssAfter": 812269568,
+              "counts": {
+                "priceLookups": 9302,
+                "unitCallbacks": 18604,
+                "keyCallbacks": 37208
+              },
+              "hash": "6f31d40a8c2ff48606d42aaec85ef7b0c18f1e6ce130c1cd55db8d2dfff681de",
+              "result": {
+                "mtm": -8.836187512201926,
+                "margin": 136.39847712260664,
+                "mtmMissing": 0,
+                "positions": [
+                  "BTC-USDT|1",
+                  "LTC-USDT|1",
+                  "TRX-USDT|-1",
+                  "TRX-USDT|1",
+                  "ATOM-USDT|1",
+                  "ETC-USDT|1",
+                  "ADA-USDT|1",
+                  "LINK-USDT|1",
+                  "DOGE-USDT|1",
+                  "XLM-USDT|1",
+                  "ETH-USDT|1",
+                  "SOL-USDT|1",
+                  "XRP-USDT|1",
+                  "BNB-USDT|1",
+                  "BNB-USDT|-1",
+                  "SUI-USDT|1",
+                  "UNI-USDT|1",
+                  "BTC-USDT|-1",
+                  "ARB-USDT|1",
+                  "AVAX-USDT|1",
+                  "APT-USDT|1",
+                  "DOT-USDT|1",
+                  "OP-USDT|1",
+                  "DOGE-USDT|-1",
+                  "ADA-USDT|-1",
+                  "LINK-USDT|-1",
+                  "LTC-USDT|-1",
+                  "XLM-USDT|-1",
+                  "ETC-USDT|-1",
+                  "NEAR-USDT|1",
+                  "SOL-USDT|-1",
+                  "XRP-USDT|-1",
+                  "ETH-USDT|-1",
+                  "AVAX-USDT|-1",
+                  "UNI-USDT|-1",
+                  "ATOM-USDT|-1",
+                  "OP-USDT|-1",
+                  "NEAR-USDT|-1",
+                  "SUI-USDT|-1",
+                  "APT-USDT|-1",
+                  "DOT-USDT|-1",
+                  "ARB-USDT|-1",
+                  "FIL-USDT|-1",
+                  "FIL-USDT|1"
+                ],
+                "oaeN": 9302,
+                "oaeMtm": -8.836187512201926,
+                "openAtEndPositions": [
+                  "BTC-USDT|1",
+                  "LTC-USDT|1",
+                  "TRX-USDT|-1",
+                  "TRX-USDT|1",
+                  "ATOM-USDT|1",
+                  "ETC-USDT|1",
+                  "ADA-USDT|1",
+                  "LINK-USDT|1",
+                  "DOGE-USDT|1",
+                  "XLM-USDT|1",
+                  "ETH-USDT|1",
+                  "SOL-USDT|1",
+                  "XRP-USDT|1",
+                  "BNB-USDT|1",
+                  "BNB-USDT|-1",
+                  "SUI-USDT|1",
+                  "UNI-USDT|1",
+                  "BTC-USDT|-1",
+                  "ARB-USDT|1",
+                  "AVAX-USDT|1",
+                  "APT-USDT|1",
+                  "DOT-USDT|1",
+                  "OP-USDT|1",
+                  "DOGE-USDT|-1",
+                  "ADA-USDT|-1",
+                  "LINK-USDT|-1",
+                  "LTC-USDT|-1",
+                  "XLM-USDT|-1",
+                  "ETC-USDT|-1",
+                  "NEAR-USDT|1",
+                  "SOL-USDT|-1",
+                  "XRP-USDT|-1",
+                  "ETH-USDT|-1",
+                  "AVAX-USDT|-1",
+                  "UNI-USDT|-1",
+                  "ATOM-USDT|-1",
+                  "OP-USDT|-1",
+                  "NEAR-USDT|-1",
+                  "SUI-USDT|-1",
+                  "APT-USDT|-1",
+                  "DOT-USDT|-1",
+                  "ARB-USDT|-1",
+                  "FIL-USDT|-1",
+                  "FIL-USDT|1"
+                ]
+              }
+            },
+            {
+              "variant": "new",
+              "wallMs": 5.769392000000153,
+              "cpu": {
+                "user": 7654,
+                "system": 0
+              },
+              "rssAfter": 840548352,
+              "counts": {
+                "priceLookups": 22,
+                "unitCallbacks": 0,
+                "keyCallbacks": 0
+              },
+              "hash": "6f31d40a8c2ff48606d42aaec85ef7b0c18f1e6ce130c1cd55db8d2dfff681de",
+              "result": {
+                "mtm": -8.836187512201926,
+                "margin": 136.39847712260664,
+                "mtmMissing": 0,
+                "positions": [
+                  "BTC-USDT|1",
+                  "LTC-USDT|1",
+                  "TRX-USDT|-1",
+                  "TRX-USDT|1",
+                  "ATOM-USDT|1",
+                  "ETC-USDT|1",
+                  "ADA-USDT|1",
+                  "LINK-USDT|1",
+                  "DOGE-USDT|1",
+                  "XLM-USDT|1",
+                  "ETH-USDT|1",
+                  "SOL-USDT|1",
+                  "XRP-USDT|1",
+                  "BNB-USDT|1",
+                  "BNB-USDT|-1",
+                  "SUI-USDT|1",
+                  "UNI-USDT|1",
+                  "BTC-USDT|-1",
+                  "ARB-USDT|1",
+                  "AVAX-USDT|1",
+                  "APT-USDT|1",
+                  "DOT-USDT|1",
+                  "OP-USDT|1",
+                  "DOGE-USDT|-1",
+                  "ADA-USDT|-1",
+                  "LINK-USDT|-1",
+                  "LTC-USDT|-1",
+                  "XLM-USDT|-1",
+                  "ETC-USDT|-1",
+                  "NEAR-USDT|1",
+                  "SOL-USDT|-1",
+                  "XRP-USDT|-1",
+                  "ETH-USDT|-1",
+                  "AVAX-USDT|-1",
+                  "UNI-USDT|-1",
+                  "ATOM-USDT|-1",
+                  "OP-USDT|-1",
+                  "NEAR-USDT|-1",
+                  "SUI-USDT|-1",
+                  "APT-USDT|-1",
+                  "DOT-USDT|-1",
+                  "ARB-USDT|-1",
+                  "FIL-USDT|-1",
+                  "FIL-USDT|1"
+                ],
+                "oaeN": 9302,
+                "oaeMtm": -8.836187512201926,
+                "openAtEndPositions": [
+                  "BTC-USDT|1",
+                  "LTC-USDT|1",
+                  "TRX-USDT|-1",
+                  "TRX-USDT|1",
+                  "ATOM-USDT|1",
+                  "ETC-USDT|1",
+                  "ADA-USDT|1",
+                  "LINK-USDT|1",
+                  "DOGE-USDT|1",
+                  "XLM-USDT|1",
+                  "ETH-USDT|1",
+                  "SOL-USDT|1",
+                  "XRP-USDT|1",
+                  "BNB-USDT|1",
+                  "BNB-USDT|-1",
+                  "SUI-USDT|1",
+                  "UNI-USDT|1",
+                  "BTC-USDT|-1",
+                  "ARB-USDT|1",
+                  "AVAX-USDT|1",
+                  "APT-USDT|1",
+                  "DOT-USDT|1",
+                  "OP-USDT|1",
+                  "DOGE-USDT|-1",
+                  "ADA-USDT|-1",
+                  "LINK-USDT|-1",
+                  "LTC-USDT|-1",
+                  "XLM-USDT|-1",
+                  "ETC-USDT|-1",
+                  "NEAR-USDT|1",
+                  "SOL-USDT|-1",
+                  "XRP-USDT|-1",
+                  "ETH-USDT|-1",
+                  "AVAX-USDT|-1",
+                  "UNI-USDT|-1",
+                  "ATOM-USDT|-1",
+                  "OP-USDT|-1",
+                  "NEAR-USDT|-1",
+                  "SUI-USDT|-1",
+                  "APT-USDT|-1",
+                  "DOT-USDT|-1",
+                  "ARB-USDT|-1",
+                  "FIL-USDT|-1",
+                  "FIL-USDT|1"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "fullNewOnly": {
+        "counts": {
+          "priceLookups": 28451,
+          "unitCallbacks": 136512,
+          "keyCallbacks": 390932,
+          "realizedPnlCallbacks": 127210
+        },
+        "loop": {
+          "wallMs": 8742.969446,
+          "cpu": {
+            "user": 9755990,
+            "system": 222722
+          },
+          "rssBefore": 790863872,
+          "rssAfter": 812507136,
+          "processPeakRssKb": 820160
+        },
+        "hashes": {
+          "allMinuteOutputs": "b93ba183c520bdf844c6992d37d18aef5c2c632b9451ca0282f4a0e141c6bc7f",
+          "curve": "d6241dde6d4979735a6d3a2bb12367f2cf37cfdaf27453ab1d5240c58698c3e3",
+          "hourly": "e7c1cbb45aecaf20047a659bf0088b7f56218b6979bdde896ad8777390fc45ad",
+          "account": "85de50454e33aec73bfe1af82550ae1d9dad5d7708989448c99c9295cc46af9f",
+          "roundedProjection": "1970d2a4bd3230350afad819c7bcf705bcadef2e7c109267511cfce964b88455",
+          "recordedProjection": "1970d2a4bd3230350afad819c7bcf705bcadef2e7c109267511cfce964b88455"
+        },
+        "exactRecordedRoundedParity": true,
+        "metrics": {
+          "eqMin": 0.062921,
+          "ruinT": null,
+          "equityMaxDd": 15.894741,
+          "equityMaxDdPct": 0.99461,
+          "equityDdtMaxH": 22.733333,
+          "marginMax": 269.20924,
+          "equityEnd": 16.572633,
+          "feasible": false,
+          "marginOver": {
+            "minutes": 1436,
+            "firstT": 1792098300000,
+            "maxRatio": 1990.928489
+          },
+          "openEndMtm": -8.836188
+        }
+      },
+      "primaryReuse": {
+        "originalSource": {
+          "base": "0297eef541f4ee360e040b55d66786760bab6792",
+          "oldFullSha256": "c594126151a399a23c30f42e5435c52252dac762307b32b117f8af2ca16f2014",
+          "fullSha256": "a6c786fc37f40073a0fc960683f3be72f5ff66478ce8aeb856e917e92c2a97fc",
+          "extractedSha256": "bd769fd74a1d7dd6a016d75eff2591f3471c33af0451f737aa908e052c61509f",
+          "helperSha256": "4b9208b0b2dd2a4733f8ff2a8949a8ecf1ec6dde5a8bd1829c84813696ab45a2",
+          "producer": {
+            "file": "/workspace/scratch/ff6263fe65f6/cts-ao-trailing/runs/exact-signal-study-ci-v3/final22/artifact/source-proof.json",
+            "sha256": "6a95b6a2a455a2f3e63e3d5be9f4ff9ae4a7da3b5466dabb680c1702509d8104",
+            "producerReporterSha256": "c594126151a399a23c30f42e5435c52252dac762307b32b117f8af2ca16f2014",
+            "exactOldSourceMatch": true,
+            "dependencies": {
+              "scripts/lib/session-dump.mjs": "8c0d0c608e2d411bea06bb02947116c3e947c8c47a7999d4ab97b57f5a77d570",
+              "scripts/lib/session-owned-returns.mjs": "83c0e7bd82ca08ed928e5c97420e2470446e2d4642c088b4d0aab193eaff070f",
+              "scripts/lib/book-notional.mjs": "ba79608369b165cd6037f421bad4dbc366f123e7475e58775c4642a93f45cf49",
+              "src/core/sizing.ts": "e5a30ae9fd89654dda45e5d7a9665506166eae78b961604ffae335778dd24190",
+              "src/core/metrics/stats.ts": "7f2f29f22c2c9264ac8cecfd07037b502ce39f3053720599856562d1badf1cf8"
+            }
+          }
+        },
+        "identicalExtractedBodyAndInputs": true,
+        "originalProcess": {
+          "wallMs": 28634.13609,
+          "cpu": {
+            "user": 29953647,
+            "system": 3418796
+          },
+          "peakRssKb": 820160
+        }
+      },
+      "secondary": {
+        "basis": "Separate unary unitFn and per-pass caches; recorded caps are both zero, so identical unchanged sizing arguments imply equal allocation values. Uncapped rows are not separately recorded.",
+        "zeroCaps": {
+          "maxPositionX": 0,
+          "maxExposureX": 0
+        },
+        "sizingSourceSha256": "b9cc4f0629121f108c2613b82c1b42a22574283edfbf6b126c0fa17ee15dd409",
+        "passes": [
+          {
+            "pass": "capped",
+            "separateAllocationSnapshot": false,
+            "unaryUnitFnRespected": true,
+            "metricsComparisonBasis": "Original PRIMARY headline risk metrics under zero caps; original secondary capped metrics are not separately stored",
+            "sampledCurveComparisonBasis": "Original PRIMARY recorded sampled curve under zero-cap allocation identity. Original secondary pass did not emit its own curve; v=unit*volume arithmetic can differ in floating bits.",
+            "allOrderUnitsObjectIsEqual": 136512,
+            "slices": [
+              {
+                "label": "start",
+                "t": 1792098060000,
+                "openOrders": 3362,
+                "exactIeee754Parity": true,
+                "variants": [
+                  {
+                    "variant": "old",
+                    "wallMs": 13.774465000002238,
+                    "cpu": {
+                      "user": 20807,
+                      "system": 0
+                    },
+                    "counts": {
+                      "priceLookups": 3362,
+                      "unitCallbacks": 3362,
+                      "keyCallbacks": 6724
+                    },
+                    "hash": "57d871a5a83c4c8258f74785aec4aeb2aae5b51b2617652b876c425ff6288aa3",
+                    "result": {
+                      "mtm": -0.056984545574362146,
+                      "margin": 3.3619999999997408
+                    }
+                  },
+                  {
+                    "variant": "new",
+                    "wallMs": 8.209726999997656,
+                    "cpu": {
+                      "user": 7118,
+                      "system": 0
+                    },
+                    "counts": {
+                      "priceLookups": 8,
+                      "unitCallbacks": 0,
+                      "keyCallbacks": 0
+                    },
+                    "hash": "57d871a5a83c4c8258f74785aec4aeb2aae5b51b2617652b876c425ff6288aa3",
+                    "result": {
+                      "mtm": -0.056984545574362146,
+                      "margin": 3.3619999999997408
+                    }
+                  }
+                ]
+              },
+              {
+                "label": "middle",
+                "t": 1792141200000,
+                "openOrders": 3528,
+                "exactIeee754Parity": true,
+                "variants": [
+                  {
+                    "variant": "old",
+                    "wallMs": 39.96974699999919,
+                    "cpu": {
+                      "user": 40595,
+                      "system": 6246
+                    },
+                    "counts": {
+                      "priceLookups": 3528,
+                      "unitCallbacks": 3528,
+                      "keyCallbacks": 7056
+                    },
+                    "hash": "23ec68ad3d27f081d58e97703fb1bced9ccb3a71d307db185ea5c487fd6c1c65",
+                    "result": {
+                      "mtm": -1.7406982872096297,
+                      "margin": 32.49963616938025
+                    }
+                  },
+                  {
+                    "variant": "new",
+                    "wallMs": 3.0855630000005476,
+                    "cpu": {
+                      "user": 3249,
+                      "system": 0
+                    },
+                    "counts": {
+                      "priceLookups": 22,
+                      "unitCallbacks": 0,
+                      "keyCallbacks": 0
+                    },
+                    "hash": "23ec68ad3d27f081d58e97703fb1bced9ccb3a71d307db185ea5c487fd6c1c65",
+                    "result": {
+                      "mtm": -1.7406982872096297,
+                      "margin": 32.49963616938025
+                    }
+                  }
+                ]
+              },
+              {
+                "label": "end",
+                "t": 1792184400000,
+                "openOrders": 9302,
+                "exactIeee754Parity": true,
+                "variants": [
+                  {
+                    "variant": "old",
+                    "wallMs": 14.837963999998465,
+                    "cpu": {
+                      "user": 23658,
+                      "system": 0
+                    },
+                    "counts": {
+                      "priceLookups": 9302,
+                      "unitCallbacks": 9302,
+                      "keyCallbacks": 18604
+                    },
+                    "hash": "6acba8dce37f6a69151ff646f844681f778a84184a7190f003b2a0373b2720b1",
+                    "result": {
+                      "mtm": -8.836187512201926,
+                      "margin": 136.39847712260664
+                    }
+                  },
+                  {
+                    "variant": "new",
+                    "wallMs": 7.449124999999185,
+                    "cpu": {
+                      "user": 7224,
+                      "system": 1908
+                    },
+                    "counts": {
+                      "priceLookups": 22,
+                      "unitCallbacks": 0,
+                      "keyCallbacks": 0
+                    },
+                    "hash": "6acba8dce37f6a69151ff646f844681f778a84184a7190f003b2a0373b2720b1",
+                    "result": {
+                      "mtm": -8.836187512201926,
+                      "margin": 136.39847712260664
+                    }
+                  }
+                ]
+              }
+            ],
+            "fullNewOnly": {
+              "wallMs": 3134.365883999999,
+              "cpu": {
+                "user": 3762611,
+                "system": 125101
+              },
+              "rssBefore": 1106460672,
+              "rssAfter": 1118199808,
+              "counts": {
+                "priceLookups": 28451,
+                "unitCallbacks": 136512,
+                "keyCallbacks": 663956,
+                "realizedPnlCallbacks": 127210
+              },
+              "curveSha256": "4e0dae56b344ed9eb5443c26b60eac0e7d889dc063479365f0f83019d999e5ca",
+              "metricsSha256": "67ca30d1adeba1c8d02a9e06dd25cccc8c2f0f7c57f182d26829012f0aff34da",
+              "roundedCurveSha256": "67c81f976989bf9b8a52a4491788ebafb39367e1a8d65e517a7234b8184dbe78",
+              "recordedCurveSha256": "67c81f976989bf9b8a52a4491788ebafb39367e1a8d65e517a7234b8184dbe78",
+              "exactRecordedRoundedParity": true,
+              "metrics": {
+                "equityEnd": 16.572633,
+                "equityMaxDd": 15.894741,
+                "equityMaxDdPct": 0.99461,
+                "marginMax": 269.20924,
+                "eqMin": 0.062921,
+                "marginOverMinutes": 1436
+              }
+            }
+          },
+          {
+            "pass": "uncapped",
+            "separateAllocationSnapshot": true,
+            "unaryUnitFnRespected": true,
+            "metricsComparisonBasis": "Actual original secondary uncapped risk metrics in total.uncapped",
+            "sampledCurveComparisonBasis": "Original PRIMARY recorded sampled curve under zero-cap allocation identity. Original secondary pass did not emit its own curve; v=unit*volume arithmetic can differ in floating bits.",
+            "allOrderUnitsObjectIsEqual": 136512,
+            "slices": [
+              {
+                "label": "start",
+                "t": 1792098060000,
+                "openOrders": 3362,
+                "exactIeee754Parity": true,
+                "variants": [
+                  {
+                    "variant": "old",
+                    "wallMs": 7.6813710000024,
+                    "cpu": {
+                      "user": 10278,
+                      "system": 0
+                    },
+                    "counts": {
+                      "priceLookups": 3362,
+                      "unitCallbacks": 3362,
+                      "keyCallbacks": 6724
+                    },
+                    "hash": "57d871a5a83c4c8258f74785aec4aeb2aae5b51b2617652b876c425ff6288aa3",
+                    "result": {
+                      "mtm": -0.056984545574362146,
+                      "margin": 3.3619999999997408
+                    }
+                  },
+                  {
+                    "variant": "new",
+                    "wallMs": 44.95005300000048,
+                    "cpu": {
+                      "user": 69653,
+                      "system": 18905
+                    },
+                    "counts": {
+                      "priceLookups": 8,
+                      "unitCallbacks": 0,
+                      "keyCallbacks": 0
+                    },
+                    "hash": "57d871a5a83c4c8258f74785aec4aeb2aae5b51b2617652b876c425ff6288aa3",
+                    "result": {
+                      "mtm": -0.056984545574362146,
+                      "margin": 3.3619999999997408
+                    }
+                  }
+                ]
+              },
+              {
+                "label": "middle",
+                "t": 1792141200000,
+                "openOrders": 3528,
+                "exactIeee754Parity": true,
+                "variants": [
+                  {
+                    "variant": "old",
+                    "wallMs": 9.350624999999127,
+                    "cpu": {
+                      "user": 10976,
+                      "system": 0
+                    },
+                    "counts": {
+                      "priceLookups": 3528,
+                      "unitCallbacks": 3528,
+                      "keyCallbacks": 7056
+                    },
+                    "hash": "23ec68ad3d27f081d58e97703fb1bced9ccb3a71d307db185ea5c487fd6c1c65",
+                    "result": {
+                      "mtm": -1.7406982872096297,
+                      "margin": 32.49963616938025
+                    }
+                  },
+                  {
+                    "variant": "new",
+                    "wallMs": 2.1897030000000086,
+                    "cpu": {
+                      "user": 2190,
+                      "system": 0
+                    },
+                    "counts": {
+                      "priceLookups": 22,
+                      "unitCallbacks": 0,
+                      "keyCallbacks": 0
+                    },
+                    "hash": "23ec68ad3d27f081d58e97703fb1bced9ccb3a71d307db185ea5c487fd6c1c65",
+                    "result": {
+                      "mtm": -1.7406982872096297,
+                      "margin": 32.49963616938025
+                    }
+                  }
+                ]
+              },
+              {
+                "label": "end",
+                "t": 1792184400000,
+                "openOrders": 9302,
+                "exactIeee754Parity": true,
+                "variants": [
+                  {
+                    "variant": "old",
+                    "wallMs": 15.512683000000834,
+                    "cpu": {
+                      "user": 16487,
+                      "system": 94
+                    },
+                    "counts": {
+                      "priceLookups": 9302,
+                      "unitCallbacks": 9302,
+                      "keyCallbacks": 18604
+                    },
+                    "hash": "6acba8dce37f6a69151ff646f844681f778a84184a7190f003b2a0373b2720b1",
+                    "result": {
+                      "mtm": -8.836187512201926,
+                      "margin": 136.39847712260664
+                    }
+                  },
+                  {
+                    "variant": "new",
+                    "wallMs": 5.2509270000009565,
+                    "cpu": {
+                      "user": 7144,
+                      "system": 0
+                    },
+                    "counts": {
+                      "priceLookups": 22,
+                      "unitCallbacks": 0,
+                      "keyCallbacks": 0
+                    },
+                    "hash": "6acba8dce37f6a69151ff646f844681f778a84184a7190f003b2a0373b2720b1",
+                    "result": {
+                      "mtm": -8.836187512201926,
+                      "margin": 136.39847712260664
+                    }
+                  }
+                ]
+              }
+            ],
+            "fullNewOnly": {
+              "wallMs": 3538.1241070000033,
+              "cpu": {
+                "user": 4240633,
+                "system": 192987
+              },
+              "rssBefore": 1120759808,
+              "rssAfter": 1129656320,
+              "counts": {
+                "priceLookups": 28451,
+                "unitCallbacks": 136512,
+                "keyCallbacks": 663956,
+                "realizedPnlCallbacks": 127210
+              },
+              "curveSha256": "4e0dae56b344ed9eb5443c26b60eac0e7d889dc063479365f0f83019d999e5ca",
+              "metricsSha256": "67ca30d1adeba1c8d02a9e06dd25cccc8c2f0f7c57f182d26829012f0aff34da",
+              "roundedCurveSha256": "67c81f976989bf9b8a52a4491788ebafb39367e1a8d65e517a7234b8184dbe78",
+              "recordedCurveSha256": "67c81f976989bf9b8a52a4491788ebafb39367e1a8d65e517a7234b8184dbe78",
+              "exactRecordedRoundedParity": true,
+              "metrics": {
+                "equityEnd": 16.572633,
+                "equityMaxDd": 15.894741,
+                "equityMaxDdPct": 0.99461,
+                "marginMax": 269.20924,
+                "eqMin": 0.062921,
+                "marginOverMinutes": 1436
+              }
+            }
+          }
+        ],
+        "unchangedClosedStatsSha256": "5a54a7e7e9c2f0900ea0cc6df9fce56001f32a7a9596e177a7fa45faa69c7844",
+        "unchangedMetricMappingSha256": "a80fe52046c8b73b2a00e44e83a7d620ff1a084dc03ded2e4058bbd9a41a073b"
+      },
+      "rows": {
+        "trades": 127210,
+        "openEnd": 9302,
+        "allocations": 136512,
+        "hours": 24,
+        "curve": 289
+      },
+      "process": {
+        "wallMs": 33295.219857000004,
+        "cpu": {
+          "user": 36670047,
+          "system": 7996502
+        },
+        "peakRssKb": 1166468
+      }
+    }
+  ],
+  "profilerImplementation": {
+    "path": "/workspace/scratch/ff6263fe65f6/cts-ao-report-cache/scripts/profile-minute-book-cache.mjs",
+    "sha256": "f61cd64b70b52b32a4befa939a7eb02223a96d2e9283c379ea5488e7b318e321",
+    "metadataAnnotation": "Post-run explicit comparison-basis labels and independently checked unchanged secondary closed-statistics/return-mapping source hashes; numeric outputs unchanged."
+  }
+}

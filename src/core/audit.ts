@@ -2,31 +2,40 @@
 // compares. Runs after each compute (cheap, O(trades · log)) and on demand; failures are surfaced on the Engine
 // page and in the event log, never silently corrected.
 //
-//   stages     Base passed ≤ evaluated; Real selection ⊆ Main tapes
+//   stages     Base passed ≤ evaluated; Real selection ⊆ Main tapes; Historic Exit is independently validated
 //   replay     every executed trade, replayed in entry order through the Real-stage rules (toggles, last-N,
 //              Block over its sources in Shared / Additive, Block Active) with the Block feed as it stood at
-//              that entry, must be allowed and carry exactly the recorded Block level and volume
+//              that entry, must be allowed and carry exactly the recorded Block level and volume after removing
+//              the independent range-sizing and coordination multipliers
 //   caps       open positions never exceed max open / per symbol / per side at any instant; no duplicate
 //              (config, symbol) open at once
 //   numbers    stats, hourly rows and per-kind totals add up to the trade list; every trade pays the cost
-//   paper      paper equity = closed results + open mark-to-market; volumes within [1, max multiple]
+//   paper      paper equity = closed results + open mark-to-market; Block volume within [1, max multiple]
 import { isSignalInd } from "./indications/registry.ts";
-import { sigActiveKey } from "./signals.ts";
+import { signalActiveHas } from "./signals.ts";
+import { kindOfId } from "./pipeline/pipeline.ts";
 import {
   bookFor,
+  candidateDirectionFor,
   feedBooks,
   signalGuardFor,
   capsOf,
   sigCfg,
   execDecision,
+  rangeVolumeFactorFor,
   signalSetAt,
   tapeExecutable,
   positionMult,
   type ConfigTape,
   type WalkForwardResult,
 } from "./sim/walkforward.ts";
-import { statsOf } from "./metrics/stats.ts";
+import {
+  statsOf,
+  modeledUnitReturn as unitReturn,
+  modeledUnitStatsOf as unitStatsOf,
+} from "./metrics/stats.ts";
 import { orderKey, sizeBookGen, type SizingSettings } from "./sizing.ts";
+import { blockStackCap } from "./sim/block.ts";
 import type { Trade } from "./domain/types.ts";
 
 export interface AuditCheck {
@@ -50,6 +59,8 @@ export interface AuditInput {
   /** the stage sets of the compute that built the tapes ("bot|ind" pairs) */
   stages?: {
     passed: ReadonlySet<string>;
+    /** Pairs constructed for measurement only; these never authorize new entries. */
+    measured?: ReadonlySet<string>;
     main: ReadonlySet<string>;
     held: ReadonlySet<string>;
     mainTop: number;
@@ -69,6 +80,10 @@ export interface AuditInput {
       vol?: number;
       /** ladder weight (Axis): part of vol, not of the Block multiple */
       w?: number;
+      coordVol?: number;
+      volFactor?: number;
+      hedgeVol?: number;
+      rangeVol?: number;
       /** Overall: the extra volume of every raising source */
       legs?: Partial<Record<string, number>>;
     }>;
@@ -118,12 +133,12 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
         `${st.passed.size - missing.length} / ${st.passed.size}${missing.length ? ` · missing ${missing.slice(0, 3).join(", ")}` : ""}`,
       );
     }
-    const allow = new Set<string>([...st.passed, ...st.held, ...(st.pinned ?? [])]);
+    const allow = new Set<string>([...st.passed, ...st.held, ...(st.pinned ?? []), ...(st.measured ?? [])]);
     const stray = [...st.main].filter((k) => !allow.has(k));
     add(
-      "stages: Main ⊆ Base-validated ∪ held",
+      "stages: Main ⊆ Base-validated ∪ held ∪ measured",
       stray.length === 0,
-      `${st.main.size} Main · ${stray.length} stray${stray.length ? ` (${stray.slice(0, 3).join(", ")})` : ""}`,
+      `${st.main.size} Main · ${st.measured?.size ?? 0} measurement-only · ${stray.length} stray${stray.length ? ` (${stray.slice(0, 3).join(", ")})` : ""}`,
     );
     if (inp.sim) {
       let badEngine = 0;
@@ -139,11 +154,12 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
         if (sigCfg(x.cfg)) {
           const act = activeAt(x.entryT);
           // the active set is keyed per side (a source's longs and shorts are activated on their own records)
-          if (act && !act.has(sigActiveKey(bot, ind, x.sym, x.side))) badSignal++;
-        } else if (!st.main.has(pair)) badEngine++;
+          if (act && !signalActiveHas(act, bot, ind, x.sym, x.side, x.kind ?? kindOfId(x.cfg), x.cfg))
+            badSignal++;
+        } else if (!st.main.has(pair) && byId.get(x.cfg)?.kind !== "exit") badEngine++;
       }
       add(
-        "stages: engine trades come from Main config sets",
+        "stages: engine trades come from Main or independent Exit config sets",
         badEngine === 0,
         `${badEngine} outside Main`,
       );
@@ -192,9 +208,15 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
       ? 0
       : trades.filter((x) => {
           const k = kindOf(x);
-          return (k === "normal" || k === "trailing") && !((x.level ?? 0) > 0) && !ownBase(x);
+          return (
+            (k === "normal" || k === "trailing" || k === "trailing-only") &&
+            !((x.level ?? 0) > 0) &&
+            !ownBase(x)
+          );
         }).length;
-    const trailOff = tgl.trailing ? 0 : trades.filter((x) => kindOf(x) === "trailing").length;
+    const trailOff = tgl.trailing
+      ? 0
+      : trades.filter((x) => kindOf(x) === "trailing" || kindOf(x) === "trailing-only").length;
     add(
       "toggles: Normal off → only Block-raised Normal / Trailing; Trailing off → none",
       plainOff === 0 && trailOff === 0,
@@ -209,6 +231,7 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
     const exits = sim.feed ?? [];
     // the same book the simulation fed: with windowAuto the pooled window is chosen by results as the feed closes
     const book = bookFor(o);
+    const direction = candidateDirectionFor(o);
     // acceptance on the tape record the run judged on
     const guard = signalGuardFor(inp.tapes, o);
     let ei = 0;
@@ -219,20 +242,21 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
     const firstBad: string[] = [];
     for (const x of order) {
       if (++ops % 256 === 0) yield ops;
-      while (ei < exits.length && exits[ei].exitT <= x.entryT) feedBooks(exits[ei++], book, guard);
+      while (ei < exits.length && exits[ei].exitT <= x.entryT) feedBooks(exits[ei++], book, guard, direction);
       const tp = byId.get(x.cfg);
       if (!tp) continue;
       checked++;
       const oAt = sim.signalSteps
         ? { ...o, signalActive: signalSetAt(sim.signalSteps, x.entryT) ?? new Set<string>() }
         : o;
-      const d = execDecision(tp, x.entryT, oAt as never, { book, guard, sym: x.sym, side: x.side });
+      const d = execDecision(tp, x.entryT, oAt as never, { book, guard, direction, sym: x.sym, side: x.side });
       if (!d.ok) {
         denied++;
         if (firstBad.length < 3) firstBad.push(`${x.cfg}@${x.sym} ${d.why}`);
         continue;
       }
-      const mult = (x.mult ?? 1) / (x.coordVol ?? 1);
+      const rangeVol = rangeVolumeFactorFor(tp, sim.opts);
+      const mult = (x.mult ?? 1) / ((x.coordVol ?? 1) * (x.hedgeVol ?? 1) * (x.volFactor ?? 1) * (x.rangeVol ?? rangeVol));
       if (!close(d.vol, mult)) {
         volMismatch++;
         if (firstBad.length < 3) firstBad.push(`${x.cfg}@${x.sym} vol ${mult} ≠ ${d.vol}`);
@@ -246,22 +270,35 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
       `${checked} replayed · denied ${denied} · volume ≠ ${volMismatch} · level ≠ ${levelMismatch}${firstBad.length ? ` · ${firstBad.join("; ")}` : ""}`,
     );
     if (o.toggles.block) {
-      // overall: every source is its own position, each capped at max multiple − 1; the stack at 8×
+      // Every source remains an independent position inside the same total stack cap.
       const overall = o.block.mode === "overall";
+      const cap = blockStackCap(o.block);
       const over = trades.filter((x) => {
-        const m = x.mult ?? 1;
+        const tp = byId.get(x.cfg);
+        const rangeVol = tp && sim ? rangeVolumeFactorFor(tp, sim.opts) : 1;
+        const m = (x.mult ?? 1) / ((x.coordVol ?? 1) * (x.hedgeVol ?? 1) * (x.volFactor ?? 1) * (x.rangeVol ?? rangeVol));
         if (m < 1 - 1e-9) return true;
-        if (!overall) return m > o.block.maxMult + 1e-9;
+        if (!overall) return m > cap + 1e-9;
         const legs = Object.values(x.legs ?? {}).map((v) => v ?? 0);
-        return m > 8 + 1e-9 || legs.some((v) => v > o.block.maxMult - 1 + 1e-9);
+        return (
+          m > cap + 1e-9 ||
+          legs.some((v) => v > cap - 1 + 1e-9) ||
+          1 + legs.reduce((a, v) => a + v, 0) > cap + 1e-9
+        );
       }).length;
       add(
-        overall ? "block: every source within max multiple, stack ≤ 8×" : "block: volume within [1, max multiple]",
+        overall
+          ? "block: base plus all sources within max multiple"
+          : "block: volume within [1, max multiple]",
         over === 0,
-        `${over} outside · max ${o.block.maxMult}${overall ? " per source" : ""}`,
+        `${over} outside · total max ${cap}`,
       );
     } else {
-      const scaled = trades.filter((x) => !close((x.mult ?? 1) / (x.coordVol ?? 1), 1)).length;
+      const scaled = trades.filter((x) => {
+        const tp = byId.get(x.cfg);
+        const rangeVol = tp && sim ? rangeVolumeFactorFor(tp, sim.opts) : 1;
+        return !close((x.mult ?? 1) / ((x.coordVol ?? 1) * (x.hedgeVol ?? 1) * (x.volFactor ?? 1) * (x.rangeVol ?? rangeVol)), 1);
+      }).length;
       add("block: off → volume 1", scaled === 0, `${scaled} scaled`);
     }
 
@@ -359,19 +396,36 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
 
     // published numbers add up
     // the run's stats hold the orders still open at its end, marked to market (sim.openAtEnd)
-    const s = statsOf(
+    const s = unitStatsOf(
       [...trades, ...(sim.openAtEnd ?? [])].sort((a, b) => a.exitT - b.exitT),
       sim.endT,
     );
     add(
       "numbers: stats match the trade list",
-      s.n === sim.stats.n && close(s.net, sim.stats.net) && close(s.pf, sim.stats.pf),
-      `n ${sim.stats.n}/${s.n} · net ${sim.stats.net.toFixed(3)}/${s.net.toFixed(3)} · PF ${sim.stats.pf.toFixed(3)}/${s.pf.toFixed(3)}`,
+      s.pfBasis === "unit-net-returns" &&
+        s.unknownReturns === 0 &&
+        s.n === sim.stats.n &&
+        close(s.net, sim.stats.net) &&
+        close(s.pf, sim.stats.pf),
+      `unit-return basis · unknown ${s.unknownReturns} · n ${sim.stats.n}/${s.n} · net ${sim.stats.net.toFixed(3)}/${s.net.toFixed(3)} · PF ${sim.stats.pf.toFixed(3)}/${s.pf.toFixed(3)}`,
     );
+    if (sim.sizedStats) {
+      const sized = statsOf(
+        [...trades, ...(sim.openAtEnd ?? [])].sort((a, b) => a.exitT - b.exitT),
+        sim.endT,
+      );
+      add(
+        "numbers: sized diagnostics match the trade list",
+        sized.n === sim.sizedStats.n &&
+          close(sized.net, sim.sizedStats.net) &&
+          close(sized.pf, sim.sizedStats.pf),
+        `n ${sim.sizedStats.n}/${sized.n} · sized net ${sim.sizedStats.net.toFixed(3)}/${sized.net.toFixed(3)}`,
+      );
+    }
     const hn = sim.hourly.reduce((a, h) => a + h.n, 0);
     const hnet = sim.hourly.reduce((a, h) => a + h.net, 0);
     // the hourly rows are the closed orders' (the open ones have no exit hour yet)
-    const closedNet = trades.reduce((a, x) => a + x.r * 100, 0);
+    const closedNet = trades.reduce((a, x) => a + unitReturn(x) * 100, 0);
     add(
       "numbers: hourly rows add up",
       hn === trades.length && close(hnet, closedNet, 1e-4),
@@ -385,11 +439,19 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
     for (const x of trades) {
       if (++ops % 256 === 0) yield ops;
       const tp = byId.get(x.cfg);
-      if (!tp || tp.kind.startsWith("dca") || tp.kind === "axis" || (x.vol ?? 1) !== (x.mult ?? 1))
-        continue;
+      if (!tp || tp.kind.startsWith("dca") || tp.kind === "axis") continue;
       costChecked++;
-      const unit = x.r / (x.mult ?? 1);
-      if (!close(unit, (x.side * (x.exit - x.entry)) / x.entry - inp.cost, 1e-4)) costBad++;
+      // Modeled closes need explicit volume provenance. Do not let this secondary cost check
+      // treat a missing multiplier as a unit order when the primary PF correctly rejects it.
+      const unit = unitReturn(x);
+      if (
+        !Number.isFinite(x.mult) ||
+        x.mult! <= 0 ||
+        !close(x.vol ?? 1, x.mult!) ||
+        !Number.isFinite(unit) ||
+        !close(unit, (x.side * (x.exit - x.entry)) / x.entry - inp.cost, 1e-4)
+      )
+        costBad++;
     }
     add(
       "numbers: every plain close pays the round-trip cost",
@@ -422,19 +484,24 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
       close(eq, p.equity, 1e-6),
       `${p.equity.toFixed(4)} vs ${eq.toFixed(4)}`,
     );
-    // Overall: every source its own Block (each leg within maxMult − 1), the stack within 8×
+    // Every Block source shares the configured total cap. Intrinsic Axis ladder volume remains separate.
     const blk = sim?.opts.block;
-    const maxMult = blk?.maxMult ?? Infinity;
-    const overall = blk?.mode === "overall";
-    // the Block multiple only: an Axis ladder's weight (filled rungs) is volume the simulation books on top of it
+    const maxMult = blk ? blockStackCap(blk) : Infinity;
+    // Strip the independently configured range factor and Axis ladder weight before checking the Block stack.
     const badVol = p.positions.filter(
-      (x) =>
-        positionMult(x) < 1 - 1e-9 ||
-        positionMult(x) > (overall ? 8 : maxMult) + 1e-9 ||
-        Object.values(x.legs ?? {}).some((v) => (v ?? 0) > maxMult - 1 + 1e-9),
+      (x) => {
+        const tp = ids.has(x.cfg) ? byId.get(x.cfg) : undefined;
+        const rangeVol = tp && sim ? rangeVolumeFactorFor(tp, sim.opts) : 1;
+        const blockVol = positionMult(x) / ((x.coordVol ?? 1) * (x.hedgeVol ?? 1) * (x.volFactor ?? 1) * (x.rangeVol ?? rangeVol));
+        return (
+          blockVol < 1 - 1e-9 ||
+          blockVol > maxMult + 1e-9 ||
+          Object.values(x.legs ?? {}).some((v) => (v ?? 0) > maxMult - 1 + 1e-9)
+        );
+      },
     ).length;
     add(
-      "paper: position volume within [1, max multiple]",
+      "paper: Block / relation volume within [1, max multiple]",
       badVol === 0,
       `${badVol} of ${p.positions.length}`,
     );

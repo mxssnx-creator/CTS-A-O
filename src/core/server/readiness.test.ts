@@ -1,9 +1,9 @@
 // The live readiness check judges what the desk sends: a desk that sends Signals only is held to the Signals' own
 // simulated run, not to engine ranges it never trades (x01, 7 Oct: whole run PF 0.73, its Signals 1.58 — the desk
-// opened nothing). The subset uses the run's own measures: closed orders and the ones open at the end marked to
-// market, the closed ones per 8-hour block for stability.
+// opened nothing). Promotion now uses only settled accepted orders; endpoint marks remain a separate diagnostic.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { sigActiveKey } from "../signals.ts";
 import { liveReadiness } from "./live.server.ts";
 import { defaultWalkForward, makeTape, runSubset, walkForward, type WalkForwardOptions } from "../sim/walkforward.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
@@ -27,6 +27,7 @@ const mk = (cfg: string, r: number, exitT: number, open = false): Trade =>
     entry: 100,
     exit: 100 * (1 + r),
     r,
+    mult: 1,
     reason: r > 0 ? "tp" : "sl",
     bars: 2,
     mfe: 0,
@@ -55,6 +56,35 @@ const engine = [...closes(ENG_LG, 60, 0.004, 0.012, 2), ...closes(ENG_WIDE, 60, 
 const signals = closes(SIG, 60, 0.006, 0.01, 4);
 
 describe("live readiness: judged on what the desk sends", () => {
+  it("rechecks old cached weighted summaries from their unit-return orders without mutating the cache", () => {
+    const trades = [
+      { ...mk(ENG_WIDE, 0.016, T0 + H), mult: 2 },
+      { ...mk(ENG_WIDE, -0.01, T0 + 2 * H), mult: 1 },
+    ];
+    const sim = { ...run(trades), stats: { ...run(trades).stats, pf: 1.6, net: 0.6 }, stable: true };
+    const before = structuredClone(sim);
+    assert.equal(runSubset(sim, () => true, 1.1).stats.pf, 0.8);
+    assert.match(liveReadiness(sim, {}, 1.1).why, /PF 0\.80/);
+    assert.equal(liveReadiness(sim, {}, 1.1).ok, false);
+    assert.deepEqual(sim, before);
+    const good = { ...sim, trades: trades.map((t) => ({ ...t, r: t.r > 0 ? 0.03 : t.r })) };
+    assert.equal(liveReadiness(good, {}, 1.1).ok, true, "verified unit gains can pass the same readiness rules");
+  });
+
+  it("unknown losing returns and unstamped summary-only caches cannot qualify", () => {
+    const known = [...closes(ENG_WIDE, 10, 0.02, 0.01, 5)];
+    const sim = run(known);
+    const unknown = { ...sim, trades: [...known, { ...mk(ENG_WIDE, -1, T0 + 23 * H), unitR: null }] };
+    assert.equal(liveReadiness(unknown, {}, 1.1).ok, false);
+    assert.match(liveReadiness(unknown, {}, 1.1).why, /unknown unit return/);
+    const { mult: _mult, ...legacy } = mk(ENG_WIDE, -.01, T0 + 23 * H);
+    const missing = { ...sim, trades: [...known, legacy] };
+    assert.equal(liveReadiness(missing, {}, 1.1).ok, false);
+    assert.match(liveReadiness(missing, {}, 1.1).why, /1 unknown unit return/);
+    const summary = { ...sim, trades: undefined, stats: { ...sim.stats, pfBasis: undefined } };
+    assert.match(liveReadiness(summary as never, {}, 1.1).why, /basis unavailable/);
+  });
+
   it("a losing engine and winning Signals: not ready for the whole system, ready for a Signals-only desk", () => {
     const sim = run([...engine, ...signals]);
     assert.ok(sim.stats.pf < MIN_PF, `whole run PF ${sim.stats.pf}`);
@@ -78,11 +108,11 @@ describe("live readiness: judged on what the desk sends", () => {
     assert.ok(sub.stable && sub.stats.pf >= MIN_PF);
   });
 
-  it("orders still open at the end count, marked to market", () => {
+  it("orders still open at the end remain a separate mark diagnostic and cannot decide settled readiness", () => {
     const sim = run([...engine, ...signals], [mk(SIG, -0.2, END, true)]);
     const r = liveReadiness(sim, { source: "signals" }, MIN_PF);
-    assert.equal(r.ok, false);
-    assert.match(r.why, /signals: 61 orders/);
+    assert.equal(r.ok, true);
+    assert.ok(runSubset(sim, (t) => t.cfg === SIG, MIN_PF).stats.pf < MIN_PF, "marked diagnostic still retains the loss");
   });
 
   it("a clearly losing 8-hour block of the Signals makes them not stable", () => {
@@ -116,7 +146,7 @@ describe("live readiness: judged on what the desk sends", () => {
       symGate: undefined,
       coord: { enabled: false, hourLock: 0, cooldown: "off", conflict: false, confirm: false },
       simH: 6,
-      signalActive: new Set(["follow|sig-ema-cross-s@m15|AAA-USDT|1"]),
+    signalActive: new Set([sigActiveKey("follow", "sig-ema-cross-s@m15", "AAA-USDT", 1, "normal", SIG)]),
     };
     const u = { bars: [], caches: [], startT: T0, endT: NOW, splitT: T0, nowT: NOW, baseTf: 60 } as never;
     const r = walkForward(u, [tp], o);

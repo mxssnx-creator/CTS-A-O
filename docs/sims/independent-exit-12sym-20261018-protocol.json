@@ -1,0 +1,263 @@
+{
+  "schema": "cts-independent-exit-session-v1",
+  "classification": "Retrospective offline replay of a reused cached public-candle feed; no exchange execution or forward-performance claim",
+  "actualExecution": false,
+  "source": {
+    "path": "/workspace/scratch/74aec7d6017a/CTS-A-O-verified/runs/postbase-base20-20261018-v6/feed-20.json",
+    "sha256": "b70c3f0aff8b1d5b98f01ad2acac840c8560be2fa832e0c95615f8abf051c521",
+    "bytes": 22984533,
+    "sourceProtocolSha256": "92123101f9df7c69348d9a23d36bfc113ce27ad5bfbdd009280594829fd653b5",
+    "provenance": "Reused cached public-candle replay feed; venue provenance was not independently audited"
+  },
+  "feed": {
+    "path": "docs/sims/independent-exit-12sym-20261018-feed.json.gz",
+    "sha256": "39d5d25624ffda3197ba4cd381310c85a5b4b3c3aceb6f18fe1e0f1c1afd4b15",
+    "bytes": 1247516,
+    "rawSha256": "06b5ecdce0df0cc4870ca7f0202050fdc3668d5d346f17785b927e8ad41232df"
+  },
+  "symbols": [
+    "ADA-USDT",
+    "APT-USDT",
+    "ARB-USDT",
+    "ATOM-USDT",
+    "AVAX-USDT",
+    "BCH-USDT",
+    "BNB-USDT",
+    "BTC-USDT",
+    "DOGE-USDT",
+    "DOT-USDT",
+    "ETC-USDT",
+    "ETH-USDT"
+  ],
+  "quality": [
+    {
+      "sym": "ADA-USDT",
+      "tfMin": 1,
+      "bars": 7200,
+      "firstT": 1791752400000,
+      "lastT": 1792184340000,
+      "gaps": 0,
+      "zeroVolumeBars": 0
+    },
+    {
+      "sym": "ADA-USDT",
+      "tfMin": 60,
+      "bars": 120,
+      "firstT": 1791752400000,
+      "lastT": 1792180800000,
+      "gaps": 0,
+      "zeroVolumeBars": 0
+    },
+    {
+      "sym": "APT-USDT",
+      "tfMin": 1,
+      "bars": 7200,
+      "firstT": 1791752400000,
+      "lastT": 1792184340000,
+      "gaps": 0,
+      "zeroVolumeBars": 0
+    },
+    {
+      "sym": "APT-USDT",
+      "tfMin": 60,
+      "bars": 120,
+      "firstT": 1791752400000,
+      "lastT": 1792180800000,
+      "gaps": 0,
+      "zeroVolumeBars": 0
+    },
+    {
+      "sym": "ARB-USDT",
+      "tfMin": 1,
+      "bars": 7200,
+      "firstT": 1791752400000,
+      "lastT": 1792184340000,
+      "gaps": 0,
+      "zeroVolumeBars": 0
+    },
+    {
+      "sym": "ARB-USDT",
+      "tfMin": 60,
+      "bars": 120,
+      "firstT": 1791752400000,
+      "lastT": 1792180800000,
+      "gaps": 0,
+      "zeroVolumeBars": 0
+    },
+    {
+      "sym": "ATOM-USDT",
+      "tfMin": 1,
+      "bars": 7200,
+      "firstT": 1791752400000,
+      "lastT": 1792184340000,
+      "gaps": 0,
+      "zeroVolumeBars": 0
+    },
+    {
+      "sym": "ATOM-USDT",
+      "tfMin": 60,
+      "bars": 120,
+      "firstT": 1791752400000,
+      "lastT": 1792180800000,
+      "gaps": 0,
+      "zeroVolumeBars": 0
+    },
+    {
+      "sym": "AVAX-USDT",
+      "tfMin": 1,
+      "bars": 7200,
+      "firstT": 1791752400000,
+      "lastT": 1792184340000,
+      "gaps": 0,
+      "zeroVolumeBars": 0
+    },
+    {
+      "sym": "AVAX-USDT",
+      "tfMin": 60,
+      "bars": 120,
+      "firstT": 1791752400000,
+      "lastT": 1792180800000,
+      "gaps": 0,
+      "zeroVolumeBars": 0
+    },
+    {
+      "sym": "BCH-USDT",
+      "tfMin": 1,
+      "bars": 7200,
+      "firstT": 1791752400000,
+      "lastT": 1792184340000,
+      "gaps": 0,
+      "zeroVolumeBars": 0
+    },
+    {
+      "sym": "BCH-USDT",
+      "tfMin": 60,
+      "bars": 120,
+      "firstT": 1791752400000,
+      "lastT": 1792180800000,
+      "gaps": 0,
+      "zeroVolumeBars": 0
+    },
+    {
+      "sym": "BNB-USDT",
+      "tfMin": 1,
+      "bars": 7200,
+      "firstT": 1791752400000,
+      "lastT": 1792184340000,
+      "gaps": 0,
+      "zeroVolumeBars": 0
+    },
+    {
+      "sym": "BNB-USDT",
+      "tfMin": 60,
+      "bars": 120,
+      "firstT": 1791752400000,
+      "lastT": 1792180800000,
+      "gaps": 0,
+      "zeroVolumeBars": 0
+    },
+    {
+      "sym": "BTC-USDT",
+      "tfMin": 1,
+      "bars": 7200,
+      "firstT": 1791752400000,
+      "lastT": 1792184340000,
+      "gaps": 0,
+      "zeroVolumeBars": 0
+    },
+    {
+      "sym": "BTC-USDT",
+      "tfMin": 60,
+      "bars": 120,
+      "firstT": 1791752400000,
+      "lastT": 1792180800000,
+      "gaps": 0,
+      "zeroVolumeBars": 0
+    },
+    {
+      "sym": "DOGE-USDT",
+      "tfMin": 1,
+      "bars": 7200,
+      "firstT": 1791752400000,
+      "lastT": 1792184340000,
+      "gaps": 0,
+      "zeroVolumeBars": 0
+    },
+    {
+      "sym": "DOGE-USDT",
+      "tfMin": 60,
+      "bars": 120,
+      "firstT": 1791752400000,
+      "lastT": 1792180800000,
+      "gaps": 0,
+      "zeroVolumeBars": 0
+    },
+    {
+      "sym": "DOT-USDT",
+      "tfMin": 1,
+      "bars": 7200,
+      "firstT": 1791752400000,
+      "lastT": 1792184340000,
+      "gaps": 0,
+      "zeroVolumeBars": 0
+    },
+    {
+      "sym": "DOT-USDT",
+      "tfMin": 60,
+      "bars": 120,
+      "firstT": 1791752400000,
+      "lastT": 1792180800000,
+      "gaps": 0,
+      "zeroVolumeBars": 0
+    },
+    {
+      "sym": "ETC-USDT",
+      "tfMin": 1,
+      "bars": 7200,
+      "firstT": 1791752400000,
+      "lastT": 1792184340000,
+      "gaps": 0,
+      "zeroVolumeBars": 0
+    },
+    {
+      "sym": "ETC-USDT",
+      "tfMin": 60,
+      "bars": 120,
+      "firstT": 1791752400000,
+      "lastT": 1792180800000,
+      "gaps": 0,
+      "zeroVolumeBars": 0
+    },
+    {
+      "sym": "ETH-USDT",
+      "tfMin": 1,
+      "bars": 7200,
+      "firstT": 1791752400000,
+      "lastT": 1792184340000,
+      "gaps": 0,
+      "zeroVolumeBars": 0
+    },
+    {
+      "sym": "ETH-USDT",
+      "tfMin": 60,
+      "bars": 120,
+      "firstT": 1791752400000,
+      "lastT": 1792180800000,
+      "gaps": 0,
+      "zeroVolumeBars": 0
+    }
+  ],
+  "window": {
+    "indicatorStartT": 1791752400000,
+    "evaluationFromT": 1792011600000,
+    "tradeStartT": 1792098000000,
+    "endT": 1792184400000,
+    "indicatorWarmupH": 72,
+    "preH": 24,
+    "simH": 24
+  },
+  "sourceRun": {
+    "parentStudy": "postbase-base20-20261018-v6",
+    "feedCase": "baseline-20"
+  }
+}

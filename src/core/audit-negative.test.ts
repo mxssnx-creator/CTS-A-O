@@ -8,9 +8,11 @@ import { readFileSync } from "node:fs";
 import { auditState, type AuditInput } from "./audit.ts";
 import { DEFAULT_SETTINGS } from "./config.ts";
 import { sigActiveKey } from "./signals.ts";
+import { modeledUnitStatsOf } from "./metrics/stats.ts";
 import {
   defaultWalkForward,
   makeTape,
+  rangeVolumeFactorFor,
   sigCfg,
   walkForward,
   type ConfigTape,
@@ -75,7 +77,9 @@ function tapesOf(seed: number): ConfigTape[] {
 const TAPES = tapesOf(7);
 const PAIRS = new Set(TAPES.map((t) => `${t.bot}|${t.ind}`));
 const ACTIVE = new Set(
-  SYMS.flatMap((sym) => [1, -1].map((side) => sigActiveKey("follow", SIGNAL, sym, side))),
+  TAPES.filter((tp) => tp.ind === SIGNAL).flatMap((tp) =>
+    SYMS.flatMap((sym) => [1, -1].map((side) => sigActiveKey(tp.bot, tp.ind, sym, side, tp.kind, tp.id))),
+  ),
 );
 const base = defaultWalkForward(DEFAULT_SETTINGS);
 const toggles = (x: Partial<StrategyToggles> = {}): StrategyToggles => ({
@@ -234,6 +238,19 @@ type Corruption = {
   alsoFails?: Record<string, string>;
 };
 const REPLAY = "replay: every trade passes the Real rules with its recorded Block volume and level";
+// Changing only the recorded multiplier also changes r / mult. The unit-return summary and hour totals must
+// reject those stale published numbers alongside the volume check; the raw sized diagnostic stays unchanged.
+const UNIT_MULT_FAILS = {
+  "numbers: stats match the trade list":
+    "the recorded multiplier is the denominator of the primary unit return",
+  "numbers: hourly rows add up":
+    "the recorded multiplier changes the reconstructed unit return of that exit hour",
+};
+const UNIT_AND_COST_MULT_FAILS = {
+  ...UNIT_MULT_FAILS,
+  "numbers: every plain close pays the round-trip cost":
+    "the recorded multiplier is required to verify the modeled unit cost result",
+};
 
 /** check name → the corruptions that must make it fail */
 const CORRUPTIONS: Record<string, Corruption[]> = {
@@ -254,7 +271,7 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
       }),
     },
   ],
-  "stages: Main ⊆ Base-validated ∪ held": [
+  "stages: Main ⊆ Base-validated ∪ held ∪ measured": [
     {
       run: "overall",
       what: "a Main pair neither validated nor held",
@@ -264,7 +281,7 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
       }),
     },
   ],
-  "stages: engine trades come from Main config sets": [
+  "stages: engine trades come from Main or independent Exit config sets": [
     {
       run: "overall",
       what: "an engine pair that traded dropped from Main",
@@ -283,7 +300,7 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
       what: "a traded signal × symbol × side missing from the compute's active set",
       corrupt: (i) => {
         const x = i.sim!.trades.find((t) => sigCfg(t.cfg))!;
-        const drop = sigActiveKey("follow", SIGNAL, x.sym, x.side);
+        const drop = sigActiveKey("follow", SIGNAL, x.sym, x.side, x.kind, x.cfg);
         return {
           ...i,
           stages: { ...i.stages!, signalActive: new Set([...ACTIVE].filter((k) => k !== drop)) },
@@ -356,9 +373,10 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
         const k = i.sim!.trades.findIndex((x) => (x.mult ?? 1) <= 2 && !x.coordVol);
         return withTrade(i, k, { mult: (i.sim!.trades[k].mult ?? 1) + 1 });
       },
+      alsoFails: UNIT_AND_COST_MULT_FAILS,
     },
   ],
-  "block: every source within max multiple, stack ≤ 8×": [
+  "block: base plus all sources within max multiple": [
     {
       run: "overall",
       what: "one source's leg at the max multiple (each source may add max − 1)",
@@ -373,13 +391,18 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
   "block: volume within [1, max multiple]": [
     {
       run: "shared",
-      what: "a multiple above max (its coordination part raised with it: the Block part the replay judges is unchanged)",
+      what: "a Block multiple above max after removing independent sizing factors",
       corrupt: (i) => {
         const k = i.sim!.trades.findIndex((x) => (x.mult ?? 1) >= 1);
         const x = i.sim!.trades[k];
-        const blockPart = (x.mult ?? 1) / (x.coordVol ?? 1);
-        const mult = i.sim!.opts.block.maxMult + 1;
-        return withTrade(i, k, { mult, coordVol: mult / blockPart });
+        const rangeVol = rangeVolumeFactorFor(tapeOf(x), i.sim!.opts);
+        const independentFactors = (x.coordVol ?? 1) * (x.hedgeVol ?? 1) * rangeVol;
+        const mult = (i.sim!.opts.block.maxMult + 1) * independentFactors;
+        return withTrade(i, k, { mult });
+      },
+      alsoFails: {
+        [REPLAY]: "the recorded Block multiple now exceeds the cap and no longer matches replay",
+        ...UNIT_AND_COST_MULT_FAILS,
       },
     },
   ],
@@ -389,7 +412,8 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
       what: "a Block multiple of 2 with Block off",
       corrupt: (i) => withTrade(i, plainIdx(i.sim!, true), { mult: 2 }),
       alsoFails: {
-        [REPLAY]: "both judge mult ÷ coordVol: with Block off the replayed volume is 1",
+        [REPLAY]: "both judge mult ÷ coordination volume: with Block off the replayed volume is 1",
+        ...UNIT_AND_COST_MULT_FAILS,
       },
     },
   ],
@@ -472,6 +496,20 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
         })),
     },
   ],
+  "numbers: sized diagnostics match the trade list": [
+    {
+      run: "overall",
+      what: "published sized net off while the primary unit summary remains correct",
+      corrupt: (i) =>
+        withSim(i, (s) => ({ sizedStats: { ...s.sizedStats!, net: s.sizedStats!.net + 1 } })),
+    },
+    {
+      run: "overall",
+      what: "published sized PF off while the primary unit summary remains correct",
+      corrupt: (i) =>
+        withSim(i, (s) => ({ sizedStats: { ...s.sizedStats!, pf: s.sizedStats!.pf * 1.01 } })),
+    },
+  ],
   "numbers: per-kind rows add up": [
     {
       run: "overall",
@@ -491,6 +529,12 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
         return withTrade(i, k, { exit: i.sim!.trades[k].exit * 1.001 });
       },
     },
+    {
+      run: "blockOff",
+      what: "a modeled unit close with missing multiplier provenance",
+      corrupt: (i) => withTrade(i, plainIdx(i.sim!, true), { mult: undefined }),
+      alsoFails: UNIT_MULT_FAILS,
+    },
   ],
   "stages: Real selection ⊆ Main tapes": [
     {
@@ -506,7 +550,7 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
       corrupt: (i) => ({ ...i, paper: { ...i.paper!, equity: i.paper!.equity + 1 } }),
     },
   ],
-  "paper: position volume within [1, max multiple]": [
+  "paper: Block / relation volume within [1, max multiple]": [
     {
       run: "overall",
       what: "a position's source leg at the max multiple",
@@ -539,6 +583,20 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
 };
 
 describe("audit: every check can fail", () => {
+  it("matching conservative zeros cannot certify overflowing primary totals", () => {
+    const trades = [1e308, 1e308, -1].map((r, i) => ({
+      ...RUNS.overall.trades[0],
+      r,
+      mult: 1,
+      entryT: NOW - (4 - i) * H,
+      exitT: NOW - (3 - i) * H,
+    }));
+    const stats = modeledUnitStatsOf(trades, NOW);
+    assert.equal(stats.pfBasis, "unavailable");
+    assert.equal(stats.unknownReturns, 0);
+    const input = withSim(inputOf(RUNS.overall), () => ({ trades, openAtEnd: [], stats }));
+    assert.equal(verdicts(input).get("numbers: stats match the trade list")?.ok, false);
+  });
   it("the table names every check audit.ts can add", () => {
     const src = readFileSync(new URL("./audit.ts", import.meta.url), "utf8");
     const names = new Set(

@@ -59,19 +59,19 @@ function refTrend(k: SeriesCache, ref: SeriesCache, p: number): Int8Array {
 }
 
 const HOUR = 3_600_000;
-/** bars in the volatility-regime rank window (two weeks of 1h bars) */
+/** Completed bars of the indication's own lane (336 hours only on a 1h series). */
 export const VOL_RANK_BARS = 336;
 
 export const FILTERS: Record<string, FilterFn> = {
   none: (s) => s,
   // trend strength
-  adx20: (s, k) => keep(s, (i) => k.dmi(14).adx[i] >= 20),
-  adx25: (s, k) => keep(s, (i) => k.dmi(14).adx[i] >= 25),
-  adxLo20: (s, k) => keep(s, (i) => k.dmi(14).adx[i] < 20),
+  adx20: (s, k) => { const adx = k.dmi(14).adx; return keep(s, (i) => adx[i] >= 20); },
+  adx25: (s, k) => { const adx = k.dmi(14).adx; return keep(s, (i) => adx[i] >= 25); },
+  adxLo20: (s, k) => { const adx = k.dmi(14).adx; return keep(s, (i) => adx[i] < 20); },
   // higher-timeframe trend (EMA200 ≈ the 4h EMA50 on 1h bars) and its slope
-  htf: (s, k) => keep(s, (i, d) => (k.b.c[i] - k.ema(200)[i]) * d > 0),
-  htfAgainst: (s, k) => keep(s, (i, d) => (k.b.c[i] - k.ema(200)[i]) * d < 0),
-  slope50: (s, k) => keep(s, (i, d) => i >= 10 && (k.ema(50)[i] - k.ema(50)[i - 10]) * d > 0),
+  htf: (s, k) => { const e = k.ema(200), c = k.b.c; return keep(s, (i, d) => (c[i] - e[i]) * d > 0); },
+  htfAgainst: (s, k) => { const e = k.ema(200), c = k.b.c; return keep(s, (i, d) => (c[i] - e[i]) * d < 0); },
+  slope50: (s, k) => { const e = k.ema(50); return keep(s, (i, d) => i >= 10 && (e[i] - e[i - 10]) * d > 0); },
   // volatility regime (ATR% percentile over ~2 weeks of bars)
   volHi: (s, k) => keep(s, (i) => pctRank(k, "natr", natr(k), VOL_RANK_BARS)[i] >= 0.5),
   volLo: (s, k) => keep(s, (i) => pctRank(k, "natr", natr(k), VOL_RANK_BARS)[i] < 0.5),
@@ -81,8 +81,8 @@ export const FILTERS: Record<string, FilterFn> = {
     return keep(s, (i) => ch[i] < 61.8);
   },
   // participation
-  volume: (s, k) => keep(s, (i) => k.b.v[i] > 1.5 * k.volSma(20)[i]),
-  quiet: (s, k) => keep(s, (i) => k.b.v[i] < k.volSma(20)[i]),
+  volume: (s, k) => { const v = k.b.v, m = k.volSma(20); return keep(s, (i) => v[i] > 1.5 * m[i]); },
+  quiet: (s, k) => { const v = k.b.v, m = k.volSma(20); return keep(s, (i) => v[i] < m[i]); },
   // session (UTC hour of the bar that closes the signal)
   euUs: (s, k) =>
     keep(s, (i) => {
@@ -95,9 +95,9 @@ export const FILTERS: Record<string, FilterFn> = {
       return h < 7 || h >= 21;
     }),
   // not overextended: within 2 ATR of EMA50
-  stretch2: (s, k) => keep(s, (i) => Math.abs(k.b.c[i] - k.ema(50)[i]) < 2 * k.atr(14)[i]),
+  stretch2: (s, k) => { const c = k.b.c, e = k.ema(50), a = k.atr(14); return keep(s, (i) => Math.abs(c[i] - e[i]) < 2 * a[i]); },
   // RSI room: long not overbought, short not oversold
-  rsiRoom: (s, k) => keep(s, (i, d) => (d > 0 ? k.rsi(14)[i] < 65 : k.rsi(14)[i] > 35)),
+  rsiRoom: (s, k) => { const r = k.rsi(14); return keep(s, (i, d) => (d > 0 ? r[i] < 65 : r[i] > 35)); },
   // market (reference symbol) regime
   btc: (s, k, ref) => (ref ? keep(s, (i, d) => refTrend(k, ref, 50)[i] === d) : s),
   btcAgainst: (s, k, ref) => (ref ? keep(s, (i, d) => refTrend(k, ref, 50)[i] === -d) : s),
@@ -124,6 +124,35 @@ export function tacticKey(t?: Tactics | null): string {
   return [t.session && "euUs", t.volRegime && "volHi", t.trendStrength && "adx20", t.chopRegime && "chop"]
     .filter(Boolean)
     .join("+");
+}
+
+/**
+ * Indications whose own rule fixes a low-ADX regime (they fire only below ADX 12–25). Relate adaptive variants also
+ * include ranging turns. The trend-strength tactic
+ * (ADX ≥ 20) removed every one of their entries (audit, 13 Oct: act-chop@x4, a default focus pair, and mc-qrsi2-5 never
+ * traded), so it is not applied to them; the other tactics still are.
+ */
+export const LOW_ADX_INDS: ReadonlySet<string> = new Set([
+  "act-chop",
+  "mc-qrsi2-5",
+  "r-bb-adx",
+  "r-bb-adx-m",
+  "sig-r-bb-adx-s",
+  "sig-r-bb-adx-m",
+  // Tactic's own regime logic deliberately includes low-ADX mean reversion and adaptive ranging entries.
+  "tactic-mean-reversion-s",
+  "tactic-mean-reversion-m",
+  "tactic-adaptive-s",
+  "tactic-adaptive-m",
+]);
+
+/** The tactics key for one indication: without trend strength for a low-ADX indication (LOW_ADX_INDS). */
+export function tacticKeyFor(t: Tactics | null | undefined, base: string): string {
+  const key = tacticKey(t);
+  const relateAdaptive = base.startsWith("relate-") && base.includes("-adaptive-");
+  return key && (LOW_ADX_INDS.has(base) || relateAdaptive)
+    ? key.split("+").filter((x) => x !== "adx20").join("+")
+    : key;
 }
 
 /** Extra history (bars) the active tactics need before their first valid signal. */

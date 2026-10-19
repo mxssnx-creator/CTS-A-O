@@ -10,6 +10,7 @@ import { DEFAULT_SIGNALS, signalSettings } from "./signal-config.ts";
 import { signalSetAt } from "./sim/walkforward.ts";
 import { sigActiveKey } from "./signals.ts";
 import { isSignalInd, laneOf } from "./indications/registry.ts";
+import { coordSettings } from "./sim/walkforward.ts";
 import { H } from "./test-support.ts";
 
 process.env.CTS_CORE_SYNTHETIC_END = String(Math.floor(Date.now() / H) * H);
@@ -34,14 +35,30 @@ describe("signals end to end: sources mode allow", { timeout: 600_000 }, () => {
         grid: { short: false },
         signals: signalSettings({
           enabled: true,
-          count: 10,
+          count: 0,
           minTrades: 1,
+          rank: "net",
+          minBlockShare: 0,
+          validate: false,
+          filter: { trendH: 0, volFloor: 0 },
+          accept: { ...DEFAULT_SIGNALS.accept, enabled: false },
+          sideAccept: { ...DEFAULT_SIGNALS.sideAccept, enabled: false },
+          coordination: { ...DEFAULT_SIGNALS.coordination, enabled: false },
           sourcesMode: "allow",
           sources: Object.fromEntries(ALLOW.map((s) => [s, true])),
         }),
       } as never,
       { market: "synthetic" },
     );
+    // This fixture proves that active entries reach execution. The normal runtime Signal validity and per-symbol PF
+    // gates are covered independently; they otherwise suppress every short synthetic-window candidate here.
+    rt.updateSettings({}, {
+      lastN: 0,
+      validLastN: 0,
+      signalValidLastN: 0,
+      symGate: "off",
+      coord: coordSettings({ enabled: false }),
+    });
     rt.start();
     const t0 = Date.now();
     while (!(rt.status.computes >= 1 && rt.status.state === "running" && rt.audit !== null)) {
@@ -73,9 +90,17 @@ describe("signals end to end: sources mode allow", { timeout: 600_000 }, () => {
     const sim = rt.sim!;
     const steps = sim.signalSteps!;
     const trades = sim.trades.filter((x) => isSignalInd(x.cfg.split("|")[1] ?? ""));
+    assert.ok(
+      trades.length > 0,
+      `at least one signal candidate reaches a simulated execution; funnel=${JSON.stringify(sim.signalFunnel)} steps=${steps.length} skips=${JSON.stringify(sim.skips)}`,
+    );
+    const tradeSources = new Set(trades.map((x) => srcOf(x.cfg.split("|")[1] ?? "")));
+    assert.ok([...tradeSources].every((source) => ALLOW.includes(source)), `executed sources: ${[...tradeSources]}`);
+    const sides = new Set(trades.map((x) => x.side));
+    assert.ok(sides.has(1) && sides.has(-1), `signal orders execute both directions: ${[...sides]}`);
     for (const x of trades) {
       const [bot, ind] = x.cfg.split("|");
-      assert.ok(signalSetAt(steps, x.entryT)!.has(sigActiveKey(bot, ind, x.sym, x.side)), x.cfg);
+      assert.ok(signalSetAt(steps, x.entryT)!.has(sigActiveKey(bot, ind, x.sym, x.side, x.kind, x.cfg)), x.cfg);
     }
     const f = sim.signalFunnel!;
     assert.ok(f, "funnel reported");

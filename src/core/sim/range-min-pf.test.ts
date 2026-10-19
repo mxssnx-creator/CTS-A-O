@@ -68,17 +68,26 @@ const ids = (r: { picks: Array<{ id: string }> }) => r.picks.map((p) => p.id).so
 
 describe("per-range stage min PF", () => {
   it("minPfOf: a range's own value, else the stage minimum; untagged keeps the stage minimum", () => {
-    const g = { minPf: 1.05, rangeMinPf: { micro: 1.05, minimal: 1.08, general: 1.12, long: 1.18 } };
-    assert.equal(minPfOf(g, "gn"), 1.12);
-    assert.equal(minPfOf(g, "lg"), 1.18);
-    assert.equal(minPfOf(g, "mn"), 1.08);
-    assert.equal(minPfOf(g, "mp"), 1.08);
+    const g = { minPf: 1.1, rangeMinPf: { micro: 1.05, minimal: 1.1, short: 1.1, general: 1.2, long: 1.3 } };
+    assert.equal(minPfOf(g, "gn"), 1.2);
+    assert.equal(minPfOf(g, "lg"), 1.3);
+    assert.equal(minPfOf(g, "mn"), 1.1);
+    assert.equal(minPfOf(g, "mp"), 1.1);
     assert.equal(minPfOf(g, "mc"), 1.05);
-    assert.equal(minPfOf(g, "sh"), 1.05);
-    assert.equal(minPfOf(g, undefined), 1.05);
+    assert.equal(minPfOf(g, "sh"), 1.1);
+    assert.equal(minPfOf(g, undefined), 1.1);
     assert.equal(minPfOf({ minPf: 1.1 }, "lg"), 1.1);
     // never below the Base floor
     assert.equal(minPfOf({ minPf: 1.05, rangeMinPf: { long: 0.9 } }, "lg"), 1.05);
+  });
+
+  it("the configured defaults apply the intended stage floor to each range", () => {
+    const g = DEFAULT_SETTINGS.gates;
+    assert.deepEqual(g.rangeMinPf, { micro: 1.05, minimal: 1.1, short: 1.1, general: 1.2, long: 1.3 });
+    assert.deepEqual(
+      ["mc", "mn", "mp", "sh", "gn", "lg", undefined].map((tag) => minPfOf(g, tag)),
+      [1.05, 1.1, 1.1, 1.1, 1.2, 1.3, g.minPf],
+    );
   });
 
   for (const [name, select] of Object.entries({ fixed: selectFixed, hourly: selectAt })) {
@@ -117,23 +126,28 @@ describe("per-range stage min PF", () => {
     assert.equal(!ln.ok && ln.fail, "lastN");
   });
 
-  it("Normal on with a base PF: the unraised base trades only on a record above it, Block Active then does not skip it", () => {
+  it("Normal base PF governs unraised entries with Active off; Block Active still requires accepted Block evidence", () => {
     const good = tape("gn", 20, 4); // PF 80 / 20 = 4
     const weak = tape("gn", 46, 4); // PF ≈ 1.17
     const o0 = opts();
     const o = {
       ...o0,
       lastN: 50,
-      toggles: { ...o0.toggles, normal: true, block: true, blockActive: true },
+      toggles: { ...o0.toggles, normal: true, block: true, blockActive: false },
       block: { ...o0.block, minActiveLevel: 99 },
     };
     const ctx = { sym: "AAA-USDT", side: 1 };
     const why = (d: object) => ("why" in d ? d.why : "ok");
-    // without the base PF, Block Active skips every entry below its level (as before)
-    assert.equal(why(execDecision(good, NOW, o, ctx)), "blockActive");
+    // Block Active skips every entry below its level, even before adding the base-PF requirement.
+    const active = { ...o, toggles: { ...o.toggles, blockActive: true } };
+    assert.equal(why(execDecision(good, NOW, active, ctx)), "blockActive");
     const gated = { ...o, normalBaseMinPf: 2 };
     assert.equal(why(execDecision(good, NOW, gated, ctx)), "ok");
     assert.equal(why(execDecision(weak, NOW, gated, ctx)), "normalPf");
+    // A passing base PF cannot waive Block Active; rejected raw winners are not accepted Block history.
+    const gatedActive = { ...gated, toggles: { ...gated.toggles, blockActive: true } };
+    assert.equal(why(execDecision(good, NOW, gatedActive, ctx)), "blockActive");
+    assert.equal(why(execDecision(weak, NOW, gatedActive, ctx)), "blockActive");
     // Normal off: the base PF does not open the base (Block-raised only)
     const off = { ...gated, toggles: { ...gated.toggles, normal: false } };
     assert.notEqual(why(execDecision(good, NOW, off, ctx)), "ok");
@@ -157,6 +171,39 @@ describe("per-range stage min PF", () => {
     assert.equal(d.ok && d.vol, 1);
     // another range stays with Block
     assert.notEqual(why(execDecision(tape("mn", 20, 4), NOW, ex, ctx)), "ok");
+  });
+
+  it("block.excludeRanges 'wide' is the untagged Normal / Trailing grid (as live.excludeRanges); signals and Axis are not Wide", () => {
+    const o0 = opts();
+    const o = {
+      ...o0,
+      lastN: 0,
+      toggles: { ...o0.toggles, normal: false, block: true, blockActive: true },
+      block: { ...o0.block, minActiveLevel: 99 },
+    };
+    const ctx = { sym: "AAA-USDT", side: 1 };
+    const why = (d: object) => ("why" in d ? d.why : "ok");
+    const wide = tape(null, 20, 4);
+    // with Block on, Normal off and the Active level out of reach, the untagged config is skipped…
+    assert.notEqual(why(execDecision(wide, NOW, o, ctx)), "ok");
+    // …and with Wide excluded from Block it trades its unit on its own record, as an excluded General config does
+    const ex = { ...o, block: { ...o.block, excludeRanges: ["wide"] } };
+    const d = execDecision(wide, NOW, ex, ctx);
+    assert.equal(why(d), "ok");
+    assert.equal(d.ok && d.vol, 1);
+    // a tagged range is not Wide, and an untagged Axis ladder is not the Wide grid
+    assert.notEqual(why(execDecision(tape("gn", 20, 4), NOW, ex, ctx)), "ok");
+    const axId = `follow|${IND}|tp4|sl1|tr0|h32|ax`;
+    const ax = makeTape(axId, "follow", IND, wide.protect, "axis", ["AAA-USDT"], trades(axId, 20), [], []);
+    assert.equal(why(execDecision(ax, NOW, ex, ctx)), "blockActive");
+  });
+
+  it("settings check: block.excludeRanges takes only the range tags and 'wide'", () => {
+    const b = DEFAULT_SETTINGS.block;
+    assert.doesNotThrow(() => checkSettings({ block: { ...b, excludeRanges: ["gn", "lg", "mp", "wide"] } }));
+    // a range name instead of its tag (or any unknown value) excluded nothing, silently
+    assert.throws(() => checkSettings({ block: { ...b, excludeRanges: ["general"] } }), /block excluded ranges/);
+    assert.throws(() => checkSettings({ block: { ...b, excludeRanges: "gn" as never } }), /block excluded ranges/);
   });
 
   it("the validation last-N uses the range minimum", () => {

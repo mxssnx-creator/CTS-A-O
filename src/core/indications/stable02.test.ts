@@ -562,6 +562,7 @@ function signalFor(id: string, candles: Candle[], ind: IndicatorPack): number[] 
         break;
       }
       case "block-stack": {
+        // (the port counts a doji on neither side, the one deviation; these series have no exact doji)
         const look = 4;
         if (i < look) break;
         let up = 0;
@@ -926,6 +927,23 @@ describe("Stable-02 ports: hand-built onsets", () => {
     ];
     assert.equal(at("s2-block-stack", cs), 1);
     assert.equal(at("s2-block-stack", mirror(cs)), -1);
+  });
+
+  it("block-stack: a doji counts on neither side (the desk counted it up: a long bias the mirror keeps)", () => {
+    // window bars 79–82: down (flat's last), up, doji, up — 2 up, so no stack; the mirror is 2 down, no stack either.
+    // The desk's c ≥ o rule made it 3 up (a long at 82) while the mirror's doji stayed up (2 down: nothing short)
+    const cs = [
+      ...flat(80),
+      bar(80, 100, 100.4, 100),
+      bar(81, 100.4, 100.4, 100),
+      bar(82, 100.4, 100.9, 110),
+    ];
+    assert.equal(at("s2-block-stack", cs), 0);
+    assert.equal(at("s2-block-stack", mirror(cs)), 0);
+    // the same window with the doji a real up bar stacks (the gate above is the up count, not the volume or EMA)
+    const up = [...cs.slice(0, 81), bar(81, 100.4, 100.6, 100), bar(82, 100.6, 100.9, 110)];
+    assert.equal(at("s2-block-stack", up), 1);
+    assert.equal(at("s2-block-stack", mirror(up)), -1);
   });
 
   it("st-trail: a sustained rally flips the Supertrend up (onset), a sell-off flips it down", () => {

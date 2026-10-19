@@ -1,0 +1,1093 @@
+{
+  "schema": "cts-exit-validation-v1",
+  "frozenAt": "2026-10-17T22:05:15.188Z",
+  "classification": "Retrospective reused cached public market candles; no new or unseen market-performance claim",
+  "actualExecution": false,
+  "synthetic": false,
+  "newNetworkRequests": 0,
+  "source": {
+    "path": "/workspace/scratch/7b916fb11a8d/cts-ao/runs/symbols22-study-20261017-v2/feed-20.json",
+    "bytes": 36061737,
+    "sha256": "1aa6df2841d6aefe9a1412dd3eac357b46e5117c653e6b9cd1b0c30d8b861802",
+    "provenance": "Existing cached public-candle replay feed; this harness performs no independent venue provenance audit"
+  },
+  "feed": {
+    "path": "docs/sims/exit-validation-20261017-feed.json.gz",
+    "bytes": 332571,
+    "sha256": "ee3271be1948c6d9a873ca7a1e04549c407f6a06d167df6d488fb6716c7723b4"
+  },
+  "quality": [
+    {
+      "sym": "BTC-USDT",
+      "n": 5040,
+      "firstT": 1791968400000,
+      "lastT": 1792270740000,
+      "gaps": 0,
+      "zeroVolumeBars": 0
+    },
+    {
+      "sym": "ETH-USDT",
+      "n": 5040,
+      "firstT": 1791968400000,
+      "lastT": 1792270740000,
+      "gaps": 0,
+      "zeroVolumeBars": 0
+    },
+    {
+      "sym": "SOL-USDT",
+      "n": 5040,
+      "firstT": 1791968400000,
+      "lastT": 1792270740000,
+      "gaps": 0,
+      "zeroVolumeBars": 0
+    },
+    {
+      "sym": "XRP-USDT",
+      "n": 5040,
+      "firstT": 1791968400000,
+      "lastT": 1792270740000,
+      "gaps": 0,
+      "zeroVolumeBars": 0
+    }
+  ],
+  "symbols": [
+    "BTC-USDT",
+    "ETH-USDT",
+    "SOL-USDT",
+    "XRP-USDT"
+  ],
+  "pairs": [
+    "follow|ema-9-21@m1",
+    "follow|ema-9-21@m5",
+    "follow|ema-9-21@m15",
+    "follow|ema-9-21@m30",
+    "follow|rsi-mom-14-20@m1",
+    "follow|rsi-mom-14-20@m5",
+    "follow|rsi-mom-14-20@m15",
+    "follow|rsi-mom-14-20@m30",
+    "revert|ema-9-21@m1",
+    "revert|ema-9-21@m5",
+    "revert|ema-9-21@m15",
+    "revert|ema-9-21@m30",
+    "revert|rsi-mom-14-20@m1",
+    "revert|rsi-mom-14-20@m5",
+    "revert|rsi-mom-14-20@m15",
+    "revert|rsi-mom-14-20@m30"
+  ],
+  "tfs": [
+    1,
+    5,
+    15,
+    30
+  ],
+  "window": {
+    "indicatorStartT": 1791968400000,
+    "evaluationFromT": 1792227600000,
+    "tradeStartT": 1792249200000,
+    "endT": 1792270800000,
+    "indicatorWarmupH": 72,
+    "preH": 6,
+    "simH": 6,
+    "fitFraction": 0.6
+  },
+  "protocol": "Frozen fixed symbol/indication inventory; no performance-based tuning or removal. TP/SL candidates fit on older evaluated prehistory, qualify on later prehistory closes only; existing post-admission seat and entry gates run causally each hour. Exit admission is independent of Normal/Trailing Base/range admission. Endpoint marks are separate from settled closes. Intrinsic config model is one unit; no account funding, fees beyond modeled round-trip cost, or exchange fills are simulated.",
+  "resourceBudget": {
+    "concurrency": 1,
+    "symbols": 4,
+    "initializedPairs": 16,
+    "barHorizonH": 84,
+    "heapMb": 768
+  },
+  "settings": {
+    "tfMin": 1,
+    "tfs": [
+      1,
+      5,
+      15,
+      30
+    ],
+    "tfDays": {
+      "1": 3,
+      "5": 8,
+      "15": 18,
+      "30": 18
+    },
+    "historyDays": 18,
+    "symbols": 4,
+    "symbolRank": "volatility1h",
+    "cycleMs": 250,
+    "tickMs": 100,
+    "cost": 0.002,
+    "fees": {
+      "taker": 0.0005,
+      "maker": 0.0002,
+      "slippage": 0.0005
+    },
+    "adjust": {
+      "enabled": true,
+      "window": 15,
+      "triggerPf": 1,
+      "recoverPf": 1.2,
+      "slStep": 0.002,
+      "slMax": 0.03,
+      "trailStep": 0.001,
+      "trailMax": 0.02,
+      "pauseH": 12,
+      "autoCost": true
+    },
+    "exitStrategy": {
+      "enabled": true,
+      "lookbackH": 168,
+      "trainFraction": 0.6,
+      "minEntries": 30,
+      "minValidationTrades": 12,
+      "minPf": 1.1,
+      "maxDdr": 1,
+      "holdH": 24,
+      "maxConfigsPerPair": 24,
+      "quantiles": [
+        0.6,
+        0.8
+      ],
+      "stopQuantiles": [
+        0.5,
+        0.75
+      ],
+      "minTp": 0.006,
+      "maxTp": 0.2,
+      "maxSl": 0.25,
+      "trailShares": [
+        0.33,
+        0.66
+      ],
+      "stopMultiples": [
+        1,
+        2
+      ]
+    },
+    "gates": {
+      "minPf": 1.1,
+      "maxDdtH": 35,
+      "minDdtH": 18,
+      "maxDdr": 1,
+      "rangeMinPf": {
+        "micro": 1.05,
+        "minimal": 1.08,
+        "general": 1.12,
+        "long": 1.18
+      },
+      "minTrades": 12,
+      "quorum": 0.6,
+      "baseSetsMinPf": 1,
+      "warmup": true,
+      "lastNFloor": 5
+    },
+    "refineTop": 24,
+    "mainTop": 0,
+    "evalTop": 60,
+    "armTop": 10,
+    "paperNotional": 100,
+    "paperBalance": 1000,
+    "protectFloor": {
+      "minSl": 0.005,
+      "minTrail": 0.005
+    },
+    "sizing": {
+      "mode": "minQty",
+      "pct": 0.02
+    },
+    "toggles": {
+      "normal": false,
+      "trailing": false,
+      "exit": true,
+      "block": false,
+      "blockActive": false,
+      "dca": false,
+      "dcaActive": false,
+      "axis": false
+    },
+    "tactics": {
+      "session": false,
+      "volRegime": true,
+      "trendStrength": true,
+      "chopRegime": false,
+      "cooldown": false,
+      "cooldownBars": 4
+    },
+    "focus": [
+      "follow|ema-9-21@m1",
+      "follow|ema-9-21@m5",
+      "follow|ema-9-21@m15",
+      "follow|ema-9-21@m30",
+      "follow|rsi-mom-14-20@m1",
+      "follow|rsi-mom-14-20@m5",
+      "follow|rsi-mom-14-20@m15",
+      "follow|rsi-mom-14-20@m30",
+      "revert|ema-9-21@m1",
+      "revert|ema-9-21@m5",
+      "revert|ema-9-21@m15",
+      "revert|ema-9-21@m30",
+      "revert|rsi-mom-14-20@m1",
+      "revert|rsi-mom-14-20@m5",
+      "revert|rsi-mom-14-20@m15",
+      "revert|rsi-mom-14-20@m30"
+    ],
+    "pinned": [],
+    "disabledKinds": [],
+    "block": {
+      "sources": {
+        "config": false,
+        "overall": true,
+        "symbol": true,
+        "direction": true,
+        "indication": true,
+        "type": false
+      },
+      "mode": "overall",
+      "historySource": "accepted-orders",
+      "ratio": 0.5,
+      "maxLevel": 8,
+      "minActiveLevel": 2,
+      "maxMult": 8,
+      "pause": 0,
+      "steps": 7,
+      "increase": 0.4,
+      "signalsOwn": true,
+      "ranges": {
+        "levels": [
+          1,
+          8
+        ],
+        "volRatio": [
+          0.1,
+          1
+        ],
+        "steps": [
+          0,
+          6
+        ],
+        "increase": [
+          0.1,
+          0.5
+        ],
+        "pause": [
+          0,
+          6
+        ]
+      }
+    },
+    "dca": {
+      "levels": 2,
+      "step": 0.02,
+      "stopGap": 0.5,
+      "slOfTp": 1
+    },
+    "axis": {
+      "levels": 3,
+      "spacing": 0.7,
+      "ratio": 1,
+      "minDisp": 0.35,
+      "maxDisp": 2.6,
+      "center": 50,
+      "centerMin": 132,
+      "ranges": [
+        "atr",
+        "linear",
+        "geo",
+        "fib"
+      ],
+      "levelsSet": [
+        2,
+        3
+      ],
+      "exits": "managed",
+      "mode": "revert",
+      "slAtr": 0.7,
+      "tpRatio": 2.2,
+      "hybrid": false,
+      "trailPct": 0.8,
+      "expiry": 0
+    },
+    "grid": {
+      "tp": [],
+      "slOfTp": [
+        1,
+        2
+      ],
+      "trailOfTp": [
+        0,
+        0.5
+      ],
+      "minTrail": 0.006,
+      "minSl": 0.01,
+      "holdH": [
+        16,
+        24
+      ],
+      "trailStep": 1,
+      "trailFree": false,
+      "minimal": {
+        "tp": [
+          0.008,
+          0.009,
+          0.01,
+          0.011,
+          0.012,
+          0.013,
+          0.014,
+          0.015,
+          0.016
+        ],
+        "slOfTp": [
+          1.5,
+          1.75,
+          2,
+          2.25,
+          2.5,
+          2.75,
+          3
+        ],
+        "trailOfTp": [
+          0,
+          0.25,
+          0.5,
+          0.75
+        ],
+        "trailSlOfTp": 1,
+        "minSl": 0.006,
+        "minTrail": 0.003
+      },
+      "short": {
+        "tp": [
+          0.018,
+          0.02,
+          0.022,
+          0.024,
+          0.026,
+          0.028
+        ],
+        "slOfTp": [
+          1,
+          1.25,
+          1.5,
+          1.75,
+          2,
+          2.25,
+          2.5
+        ],
+        "trailOfTp": [
+          0,
+          0.25,
+          0.5,
+          0.75
+        ],
+        "trailSlOfTp": 1,
+        "minSl": 0.006,
+        "minTrail": 0.002
+      },
+      "general": {
+        "tp": [
+          0.03,
+          0.032,
+          0.034,
+          0.036,
+          0.038,
+          0.04,
+          0.042,
+          0.044
+        ],
+        "slOfTp": [
+          0.25,
+          0.5,
+          0.75,
+          1,
+          1.25,
+          1.5
+        ],
+        "trailOfTp": [
+          0,
+          0.25,
+          0.5,
+          0.75
+        ],
+        "trailSlOfTp": 0.25,
+        "minSl": 0.01,
+        "minTrail": 0.004
+      },
+      "long": {
+        "tp": [
+          0.046,
+          0.048,
+          0.05,
+          0.052,
+          0.054,
+          0.056,
+          0.058,
+          0.06,
+          0.062,
+          0.064
+        ],
+        "slOfTp": [
+          0.25,
+          0.5,
+          0.75,
+          1,
+          1.25,
+          1.5
+        ],
+        "trailOfTp": [
+          0,
+          0.25,
+          0.5,
+          0.75
+        ],
+        "trailSlOfTp": 0.25,
+        "minSl": 0.016,
+        "minTrail": 0.006
+      },
+      "micro": {
+        "tp": [
+          0.002,
+          0.003,
+          0.004,
+          0.005,
+          0.006,
+          0.007,
+          0.008
+        ],
+        "slOfTp": [
+          1,
+          1.25,
+          1.5,
+          1.75,
+          2,
+          2.25,
+          2.5,
+          2.75,
+          3,
+          3.25,
+          3.5,
+          3.75,
+          4,
+          4.25,
+          4.5,
+          4.75,
+          5
+        ],
+        "trailOfTp": [
+          0,
+          0.25,
+          0.5,
+          0.75
+        ],
+        "trailSlOfTp": 1,
+        "minSl": 0.005,
+        "minTrail": 0.001,
+        "tpNetOfCost": true,
+        "minSlNet": 0.002
+      },
+      "minimalPlus": {
+        "enabled": false,
+        "lastN": 50,
+        "minPf": 1.35,
+        "tp": [
+          0.004,
+          0.0045,
+          0.005,
+          0.0055,
+          0.006,
+          0.0065,
+          0.007,
+          0.0075,
+          0.008,
+          0.0085,
+          0.009,
+          0.0095,
+          0.01
+        ],
+        "slOfTp": [
+          0.5,
+          0.75,
+          1,
+          1.25,
+          1.5,
+          1.75,
+          2,
+          2.25,
+          2.5,
+          2.75,
+          3
+        ],
+        "trailOfTp": [
+          0,
+          0.25,
+          0.5,
+          0.75
+        ],
+        "trailSlOfTp": 2.5,
+        "minSl": 0.001,
+        "minTrail": 0.001,
+        "cells": []
+      },
+      "rangeGate": {
+        "enabled": true,
+        "lastN": 75,
+        "minPf": 1.35
+      },
+      "baseBest": true,
+      "rangeFit": {
+        "enabled": false
+      },
+      "baseTargets": true,
+      "baseRanges": true,
+      "baseTrailCells": false,
+      "allSets": false
+    },
+    "live": {
+      "enabled": false,
+      "connId": "bingx-vst-02",
+      "notionalUsd": 6,
+      "maxPositions": 0,
+      "mode": "overall",
+      "laneOrders": false,
+      "ratio": 1,
+      "maxNotionalUsd": 200,
+      "rebalancePct": 0.25,
+      "marginMode": "cross",
+      "positionMode": "hedge",
+      "leverage": "max",
+      "liveLastN": 25,
+      "liveGroupLastN": 0
+    },
+    "signals": {
+      "enabled": false,
+      "count": 100,
+      "sourcesMode": "deny",
+      "sources": {
+        "aroon": false,
+        "ichi-cloud": false,
+        "bb-walk": false,
+        "r-squeeze": false,
+        "r-donch-vol": false,
+        "r-sweep": false,
+        "r-capit": false,
+        "r-vwap-reclaim": false,
+        "r-cvd-div": false,
+        "r-rsi2": false,
+        "r-bb-adx": false,
+        "r-bbw-expand": false,
+        "r-zdist": false,
+        "r-clv-thrust": false,
+        "r-roofing": false,
+        "r-fisher": false,
+        "r-stc": false,
+        "r-vortex": false,
+        "r-tsi": false,
+        "r-elder": false,
+        "r-camarilla": false,
+        "r-fakeout": false,
+        "r-spring": false,
+        "r-valuearea": false,
+        "r-orb": false,
+        "r-pdhl": false,
+        "r-bos": false,
+        "r-choch": false,
+        "r-fvg": false,
+        "r-engulf": false,
+        "r-pin": false,
+        "r-star": false,
+        "r-streak": false,
+        "r-laguerre": false,
+        "r-chand": false,
+        "r-klinger": false,
+        "r-rvi": false
+      },
+      "ranges": {
+        "short": true,
+        "medium": true
+      },
+      "lanes": [
+        15
+      ],
+      "normal": {
+        "tp": [
+          0.025,
+          0.03,
+          0.04,
+          0.05,
+          0.06
+        ],
+        "slOfTp": [
+          1.5,
+          2,
+          3
+        ]
+      },
+      "trailing": {
+        "tp": [
+          0.03,
+          0.04,
+          0.05,
+          0.06,
+          0.08
+        ],
+        "trailOfTp": [
+          0.4,
+          0.6,
+          0.8
+        ],
+        "slOfTp": 3
+      },
+      "trailingOnly": {
+        "enabled": true,
+        "sl": [
+          0.015,
+          0.03,
+          0.06
+        ],
+        "trail": [
+          0.005,
+          0.01,
+          0.02
+        ],
+        "trailStep": 1
+      },
+      "holdH": 48,
+      "exits": "pct",
+      "atr": {
+        "sl": [
+          0.7,
+          1.15,
+          1.5
+        ],
+        "tpRatio": [
+          1,
+          1.6,
+          2.2
+        ],
+        "trail": [
+          0.8
+        ],
+        "holdBars": 3
+      },
+      "hist": {
+        "enabled": true,
+        "quantiles": [
+          0.5,
+          0.75
+        ],
+        "trailOfTp": [
+          0.25,
+          0.5,
+          0.75
+        ],
+        "slOfTp": [
+          1,
+          2
+        ],
+        "minN": 30,
+        "lookbackH": 0
+      },
+      "guard": {
+        "enabled": true,
+        "lastN": 8
+      },
+      "cluster": {
+        "enabled": true,
+        "windowMin": 60,
+        "minLosses": 8,
+        "lossShare": 0.6
+      },
+      "minTrades": 3,
+      "rank": "lowdd",
+      "minBlockShare": 0.6,
+      "validate": true,
+      "validateH": 24,
+      "minSl": 0.005,
+      "minTrail": 0.005,
+      "sourceGate": {
+        "enabled": false,
+        "days": 2,
+        "minShare": 0.5,
+        "minTrades": 5
+      },
+      "perSymbol": 0,
+      "maxOpen": 0,
+      "maxPositions": 100,
+      "strategies": {
+        "dca": false,
+        "axis": false
+      },
+      "ownBase": true,
+      "filter": {
+        "trendH": 0,
+        "volFloor": 0.003
+      },
+      "accept": {
+        "enabled": true,
+        "minPf": 1.3,
+        "hours": 48,
+        "minTrades": 6
+      },
+      "sideAccept": {
+        "enabled": true,
+        "minPf": 1.3,
+        "hours": 24,
+        "minTrades": 20
+      },
+      "baseGate": false
+    },
+    "forceSymbols": [
+      "BTC-USDT",
+      "ETH-USDT",
+      "SOL-USDT",
+      "XRP-USDT"
+    ]
+  },
+  "wfPatch": {
+    "preH": 6,
+    "simH": 6,
+    "longH": 6,
+    "stepH": 1,
+    "startT": 1792249200000,
+    "recordValidation": true
+  },
+  "sources": [
+    {
+      "path": "package-lock.json",
+      "sha256": "c96b64262d7f2cdfee89d0bef895b679f4598f006b81f345033745f4ea73edfc"
+    },
+    {
+      "path": "package.json",
+      "sha256": "508fd76d65bc1147fabf1a85077cd00222efdc4df9d38af73f5564a072c231b7"
+    },
+    {
+      "path": "scripts/exit-validation-20261017.mjs",
+      "sha256": "0e89e92ffead07d62d382dbec1b4ca53123abd51eb38cc69a3f2b594d4931063"
+    },
+    {
+      "path": "src/core/adjust.ts",
+      "sha256": "c3da5aba81545d11d387bc064e243b99c081e81f387ff786edc0eaaee31359b9"
+    },
+    {
+      "path": "src/core/api-data.ts",
+      "sha256": "a310e68b46c5868c870158cfdedb2e7bbe9546b6f4548ce75bb067ac21206d1b"
+    },
+    {
+      "path": "src/core/api.ts",
+      "sha256": "09d789b37bd2152f6a14d4048b3803e2c20ac67e89a6aaeea1dadc523044dba2"
+    },
+    {
+      "path": "src/core/audit.ts",
+      "sha256": "cdf6d71ce148e32b5baa70d7e797f7fef88d6a957cc5f71e422b140cccc54600"
+    },
+    {
+      "path": "src/core/base-config-counts.ts",
+      "sha256": "36dfc247c580c8d0c76de503a3aee163233368b751908c71f96806213493bc35"
+    },
+    {
+      "path": "src/core/bot-stats.ts",
+      "sha256": "4f3d60b28cddacb8329168896c123dd18b27a2ed3e2dee4fc68aa5faf828a1fe"
+    },
+    {
+      "path": "src/core/bots/bots.ts",
+      "sha256": "a428710169d04268d21dec7be207251ab691ec80e01de254ea5e5aaab7dac266"
+    },
+    {
+      "path": "src/core/config.ts",
+      "sha256": "c64d636b920030d20a9760c2628f40a798ad8f6003171980968cf95fb8c40b64"
+    },
+    {
+      "path": "src/core/domain/types.ts",
+      "sha256": "04456bb1e39acedd9cf471ffec0bea753a5acf736dd674e670388ce9f8937f0f"
+    },
+    {
+      "path": "src/core/eval-family.ts",
+      "sha256": "72405e472974f8b1a1f9450fbd764fa5ebc00703b8a0d61ec715685311e4a9c2"
+    },
+    {
+      "path": "src/core/evals/evaluator.ts",
+      "sha256": "886988ab3755eb7c8b212917428adaebb548cdde9cb100e0b8d4248959e5f212"
+    },
+    {
+      "path": "src/core/exchange/bingx.server.ts",
+      "sha256": "848d329eafac974572ed41863cbc73dd17ee91e17618dfc5729d9382f81b8c82"
+    },
+    {
+      "path": "src/core/exit-strategy.ts",
+      "sha256": "60fa5347c3dacb5e9e6c329de886e6bf4470f0b815d2d198674bde9994505282"
+    },
+    {
+      "path": "src/core/indications/cache.ts",
+      "sha256": "e0f29475a537e8eae767592defb7a9919feacadbfdcc183571a2710e9abba56d"
+    },
+    {
+      "path": "src/core/indications/filters.ts",
+      "sha256": "bea0e37185ec8918eafc4f7c245d878152eebc2f5b5bc1b94c69b4adfd060d03"
+    },
+    {
+      "path": "src/core/indications/market.ts",
+      "sha256": "44020e6ef630e36134ff28a18c0cd8c9a2bb76c0cc1fd00f770a79ea048e6bbf"
+    },
+    {
+      "path": "src/core/indications/micro.ts",
+      "sha256": "cd1b35fc63602e6690c199ac67be0240cfef48033840db5717c41fec7a536324"
+    },
+    {
+      "path": "src/core/indications/range-families.ts",
+      "sha256": "7727bf1f3b92786dcdb92d87c9308df08e7aa9323b6db559b5e32166917bcc2d"
+    },
+    {
+      "path": "src/core/indications/registry.ts",
+      "sha256": "8928bbbfbe4b9aec898879a8806c9c4b2a76e45ce679ea47fb2903e8ce72d2f7"
+    },
+    {
+      "path": "src/core/indications/research.ts",
+      "sha256": "fabfbbc2f03ca04204cacb5b668f921fe1e30aa59ed5d0ce8470e9dbbf916ead"
+    },
+    {
+      "path": "src/core/indications/research2.ts",
+      "sha256": "8b9cba9d970bf5b1bd0661fc38f24e77f481befb5a06952e672b6662cc6289c5"
+    },
+    {
+      "path": "src/core/indications/research3.ts",
+      "sha256": "3eba19e75ef751dc3d98c1ff6019d49819b3359c3f625b0228c4b5c8f752eedd"
+    },
+    {
+      "path": "src/core/indications/research4.ts",
+      "sha256": "37ea0b5e205c3a3d2a0dac975700236b8f411eb0633d1eac4a5c05386058488d"
+    },
+    {
+      "path": "src/core/indications/stable02.ts",
+      "sha256": "78a1215c16495af37325a2d0be7226b216e582e57f0af17cfa73ff273b11ce87"
+    },
+    {
+      "path": "src/core/indications/tactic.ts",
+      "sha256": "73465e133f643d5a061cd9c27ed54cf86489a4a9b763d24a91eb27b012f3d1b3"
+    },
+    {
+      "path": "src/core/lastn/optimizer.ts",
+      "sha256": "bf5ac8b16a66d488c366c5ba6dcffccb6595109eecb4291e153c58302e139ec9"
+    },
+    {
+      "path": "src/core/live-diff.ts",
+      "sha256": "5acc1a266faf7e3e67c526edcffbe617d61e28377900f352e16e10b62e953eaa"
+    },
+    {
+      "path": "src/core/live-promote.ts",
+      "sha256": "e5057f4eb328bddac68ce5e39135fbd0cf0ab52b2d6de80a5d38e966a3dbfbb9"
+    },
+    {
+      "path": "src/core/live-record.ts",
+      "sha256": "7966b5e177e66b9f9a74002c663f511a5f8b93f1b9799cc4a5fbc00c4ba30809"
+    },
+    {
+      "path": "src/core/live-validation.ts",
+      "sha256": "847915420b07f21e77932043acdc07c594f6e1c3e9cdb4fb7d9ab74cbf001240"
+    },
+    {
+      "path": "src/core/loss-limit.ts",
+      "sha256": "ec3f42db368392c1c665e6eb6ca1f0d7d6809471cbd729cbf229b5c48e2f6589"
+    },
+    {
+      "path": "src/core/market/bars.ts",
+      "sha256": "bd9faec5d566e954a1477866b4e817226643bb945b82257505a37861c489cf71"
+    },
+    {
+      "path": "src/core/market/bingx.ts",
+      "sha256": "8d2402afc7ef7732e9aec96241cc999edf0cc76c3a34898a335261bb51b8439f"
+    },
+    {
+      "path": "src/core/market/candle-series.ts",
+      "sha256": "11a1ad9871449c3d08e2efd55fd5f9c3ccc7577dd91f25995ca586ebcdd493c9"
+    },
+    {
+      "path": "src/core/market/shared-feed.ts",
+      "sha256": "70e1183e0a90e51a803fd334ab278dedac5da184d8c74fcdacf1bd8a89f6c065"
+    },
+    {
+      "path": "src/core/math/indicators.ts",
+      "sha256": "948c163cd7d9e18acc57a4757c698115c034ef1d657e033b1d2e1536e60ccd93"
+    },
+    {
+      "path": "src/core/metrics/stats.ts",
+      "sha256": "7f2f29f22c2c9264ac8cecfd07037b502ce39f3053720599856562d1badf1cf8"
+    },
+    {
+      "path": "src/core/minimal-coord.ts",
+      "sha256": "74f00d71c4bca988c1dc770145021f33799d73fcd800b01125391a5726963a24"
+    },
+    {
+      "path": "src/core/pipeline/pipeline.ts",
+      "sha256": "f6be397609c7afd110c32fb1a74eacc6d0f9ed4057ad746aec4f119295130024"
+    },
+    {
+      "path": "src/core/pipeline/portfolio.ts",
+      "sha256": "f5b618fd1f91aa50eaf70efbf80bf7f0dd4f2c2cd328f995ba6be1bd2e45866e"
+    },
+    {
+      "path": "src/core/positions.ts",
+      "sha256": "4cef45d39f431c4a4577b1c90863c97a2d2899ae9bf40035c6c2fea5342a5afb"
+    },
+    {
+      "path": "src/core/positive.ts",
+      "sha256": "2c7c7eab700bb0786f4d12eb376c6c731c433111181de1feb87d7abd5e09b77d"
+    },
+    {
+      "path": "src/core/prehist.ts",
+      "sha256": "24bbb71085b7fdf6a91803195d402d679638fb9847e50003f0fff6edaac22b34"
+    },
+    {
+      "path": "src/core/presets.desk.ts",
+      "sha256": "926e9f01dbc5366780aba03436046da30699107f6fd568d8635957be08d5265a"
+    },
+    {
+      "path": "src/core/presets.live.ts",
+      "sha256": "6800cfb12914483ad1cc8e1c660a96203b71cecb5983fb638ed123d4562b8298"
+    },
+    {
+      "path": "src/core/presets.research.ts",
+      "sha256": "7e92ded8847f0d8200fb216443b5e0828f17f43f80faf06e7b5e55c0003465fb"
+    },
+    {
+      "path": "src/core/presets.ts",
+      "sha256": "8135b08dfb59efdbf81dfb3a71c774c04b1b1db967b21fdb5cf693bd070c81bf"
+    },
+    {
+      "path": "src/core/progress.ts",
+      "sha256": "ea5f7c45236c79af64dbc2310074b06da239761b099881404e0d11749fea2aec"
+    },
+    {
+      "path": "src/core/proven-wide-trail.ts",
+      "sha256": "903cca426a696f96f0fc406e5a10c67096bae4c2191aaef82cdd152d86d13a00"
+    },
+    {
+      "path": "src/core/reporting-stats.ts",
+      "sha256": "8323429ce2978b8aac543ababce588a8cc704a66568f3a67ffc966f5c0aebb0d"
+    },
+    {
+      "path": "src/core/server/base-config-job.server.ts",
+      "sha256": "fce58cb31c8351687e6667255cf1c11d0548695e8e47e042130fba582d7790f2"
+    },
+    {
+      "path": "src/core/server/boot.server.ts",
+      "sha256": "f73832b39bb2436def245ef17f36a5aa5140ca153f01000dc0d05239ea5abb20"
+    },
+    {
+      "path": "src/core/server/db.server.ts",
+      "sha256": "6ade4908d39e5b35d14c13f20e5c46546c2cf5c7af17f69c9a26636577490bdd"
+    },
+    {
+      "path": "src/core/server/lane-orders.ts",
+      "sha256": "9f34fef11ba0b959bb54297508a34fbfae36cd31b1b70f9c9d6c833f3871931f"
+    },
+    {
+      "path": "src/core/server/live.server.ts",
+      "sha256": "9541555acf0da57a92cf6c35bc679af1fb4be4775dfb08e6801cfb1da121d0b4"
+    },
+    {
+      "path": "src/core/server/live.ts",
+      "sha256": "5526e820ac7c813d271216fa9d3d3cc005de85bda73f1cd63c2b651b0c9938b7"
+    },
+    {
+      "path": "src/core/server/loop-budget.ts",
+      "sha256": "70eca6c3203ba6b765ff88c880b914b38e053ac475848bf178d1418fc286815b"
+    },
+    {
+      "path": "src/core/server/memguard.server.ts",
+      "sha256": "688b856c956d169adb33e8f1a689433e5e7586557fc1b9e91e2cf3ec3d73c3f3"
+    },
+    {
+      "path": "src/core/server/paper-rows.ts",
+      "sha256": "2725e808119a39f813c514c16f74f6179be978c5cf2950df45f06739c02d18cc"
+    },
+    {
+      "path": "src/core/server/partition.ts",
+      "sha256": "7a4a3861a015f64dd2fae2a51c1fd04af7877c5e9326ac0162c2027286b9c16a"
+    },
+    {
+      "path": "src/core/server/pool.server.ts",
+      "sha256": "3f69aa95afbbda794376521d6d6646817f9c862e958a2d0ae32f3bdf227c20e5"
+    },
+    {
+      "path": "src/core/server/runtime.server.ts",
+      "sha256": "bdcbfa458ac5afda384270d8c29b1549f83501bc533fece1477c3666bef8adfb"
+    },
+    {
+      "path": "src/core/server/stall-probe.server.ts",
+      "sha256": "473a6182b692b89a70096c8517329c80937906ed7d2e17a59432abcaff57d45e"
+    },
+    {
+      "path": "src/core/server/stream.server.ts",
+      "sha256": "6c294f2c9a77edd75302b1f3ea236bc485117cee3453f095288fe251b75a91ba"
+    },
+    {
+      "path": "src/core/server/tapes.worker.ts",
+      "sha256": "c6c9ff853b9ddfd636499cd643c7e56be3336bc20c5a2af6de18935761fa1c6e"
+    },
+    {
+      "path": "src/core/session-window.ts",
+      "sha256": "a2553900c9eedcf8ea2c3a2c71046825e7def284bc3a1c62990deca0002a35d3"
+    },
+    {
+      "path": "src/core/settings-check.ts",
+      "sha256": "9c5f4fbf410543c174134f37cb5274b43776bf01207434028a47a562d2bb06e3"
+    },
+    {
+      "path": "src/core/signal-config.ts",
+      "sha256": "701cd9e6fcdd0168dfb6dd051b70e2fada3721c104e64dc97c0892b1cde5bf59"
+    },
+    {
+      "path": "src/core/signal-hist.ts",
+      "sha256": "6afb69f58eaa0221de405f919132ed7b2eba90d4265e4e6fa9143d52b0079841"
+    },
+    {
+      "path": "src/core/signals.ts",
+      "sha256": "77bd236ea940abd75a7d81fde36e289ffa9008f64027aed19c1fab10eab930ad"
+    },
+    {
+      "path": "src/core/sim/axis.ts",
+      "sha256": "8548c9ed45a517fd478adce7c83bf4fea0435926b14f4704e3fa16cabc53d35e"
+    },
+    {
+      "path": "src/core/sim/backtest.ts",
+      "sha256": "c9dccc7b4ffb1301fb7d5b951a271279b1515be23b9eb8d5aa4460a877d4e958"
+    },
+    {
+      "path": "src/core/sim/block.ts",
+      "sha256": "455f2ad68610ac6a45aeddd56742fe726511f30b330b239eadaeb744723bce5a"
+    },
+    {
+      "path": "src/core/sim/dca.ts",
+      "sha256": "1e74c2d82c93484557119b184fdb3a28d3c7577a7851199ae12381f1a7a1aef6"
+    },
+    {
+      "path": "src/core/sim/exit-protection.ts",
+      "sha256": "9fc029b3dff95c6feb2d9258c6732735128ab278cf5b8f01af4b5d80b5946bdf"
+    },
+    {
+      "path": "src/core/sim/report-variants.ts",
+      "sha256": "9ece22333d0cf7dbd891f1528ec796b3cf81f4ccf2d4e7842c4ff81f4b00548a"
+    },
+    {
+      "path": "src/core/sim/s2coord.ts",
+      "sha256": "db2657e83f5949c9ba10d80511dcec1fdc7691f2f33d8ac248d396c546f4d722"
+    },
+    {
+      "path": "src/core/sim/walkforward.ts",
+      "sha256": "82d98949968875d8e7fbf4bf927afea1e93f3f540dc4942bcbbb21002ab239b7"
+    },
+    {
+      "path": "src/core/sizing.ts",
+      "sha256": "303b982abf388fa533006c6e73c2e55404d6c92fd8b64a0994b45f51805cfae5"
+    },
+    {
+      "path": "src/core/statistics.ts",
+      "sha256": "f026c14d6f0d4672cdb2720975a2fad83147710675b9e4a264b09c1cb3b890b3"
+    },
+    {
+      "path": "src/core/test-support.ts",
+      "sha256": "14b2c7c24430ee07ae19389244ecaa18ef7d84274d6bcdb134a6da944af3d8f4"
+    }
+  ]
+}

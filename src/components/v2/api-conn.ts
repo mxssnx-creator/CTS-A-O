@@ -26,4 +26,5 @@ export const presetAction = bind(api.presetAction);
 export const corePresetSeries = bind(api.corePresetSeries);
 export const coreControl = bind(api.coreControl);
 export const coreStatistics = bind(api.coreStatistics);
+export const coreListing = bind(api.coreListing);
 export const coreConns = api.coreConns;

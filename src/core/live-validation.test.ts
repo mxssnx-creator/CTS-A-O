@@ -4,20 +4,26 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { liveEntryOk, liveGate, liveGroupGates, liveGroupOf } from "./live-validation.ts";
 import { makeTape } from "./sim/walkforward.ts";
-import type { Trade } from "./domain/types.ts";
+import type { Protect, Trade } from "./domain/types.ts";
 
 const H = 3_600_000;
 const T0 = Date.UTC(2026, 9, 1);
 const P = { tp: 0.01, sl: 0.01, trail: 0, hold: 32 };
 const CFG = "follow|rsi-mom-14-20@m15|tp1|sl1|tr0|h32";
 /** one close per hour from T0 (+ `offMin` minutes), results as given */
-const tape = (rs: number[], cfg = CFG, offMin = 0) =>
+const tape = (
+  rs: number[],
+  cfg = CFG,
+  offMin = 0,
+  kind: "normal" | "exit" = "normal",
+  protect: Protect = P,
+) =>
   makeTape(
     cfg,
     "follow",
     cfg.split("|")[1],
-    P,
-    "normal",
+    protect,
+    kind,
     ["AAA-USDT"],
     rs.map(
       (r, i) =>
@@ -76,12 +82,14 @@ describe("group live validation (range / signals, pooled last N)", () => {
   const LONG_B = "follow|ema-cross-9-21@m5|lg|tp2|sl1|tr0|h32";
   const SHORT_A = "follow|rsi-mom-14-20@m15|sh|tp1|sl1|tr0|h32";
   const SIG = "follow|sig-ema-cross-s@m5|tp1|sl1|tr0|h32";
+  const EXIT = "follow|ema-9-21@m15|tp1|sl1|tr0|h32|hxL0";
 
   it("groups: signals apart, engine configs by their range tag, Wide without one", () => {
     assert.equal(liveGroupOf(LONG_A), "Long");
     assert.equal(liveGroupOf(SHORT_A), "Short");
     assert.equal(liveGroupOf(SIG), "Signals");
     assert.equal(liveGroupOf(CFG), "Wide");
+    assert.equal(liveGroupOf(EXIT), "Historic Exit");
   });
 
   it("pools the configs of a group: judged at N pooled closes although no config has N of its own", () => {
@@ -99,6 +107,17 @@ describe("group live validation (range / signals, pooled last N)", () => {
     assert.ok(Math.abs((long.pf ?? 0) - 8 / 2) < 1e-9, `pf ${long.pf}`);
     assert.deepEqual(g.get("Short"), { ok: true, n: 6, pf: null }, "6 < 10: not judged");
     assert.equal(liveGroupGates(tapes, T0, now, 6, 1.05).get("Short")!.ok, false, "judged at 6: losing");
+  });
+
+  it("selects tied cutoff closes deterministically, independent of tape/worker order", () => {
+    const loss = tape([-0.01], LONG_A);
+    const win = tape([0.01], LONG_B);
+    const a = liveGroupGates([loss, win], T0, now, 1, 1.05).get("Long")!;
+    const b = liveGroupGates([win, loss], T0, now, 1, 1.05).get("Long")!;
+    assert.deepEqual(a, b);
+    assert.equal(a.n, 1);
+    assert.equal(a.pf, 0, "the stable config-identity tie-break picks the same boundary close each time");
+    assert.equal(a.ok, false);
   });
 
   it("each group can be held to its own floor (a range's minimum PF)", () => {
@@ -130,5 +149,19 @@ describe("group live validation (range / signals, pooled last N)", () => {
     assert.equal(liveEntryOk(notJudged, groupOk), true);
     assert.equal(liveEntryOk(notJudged, { ok: true, n: 40, pf: null }), true, "group not judged yet");
     assert.equal(liveEntryOk(notJudged, undefined), true);
+  });
+
+  it("keeps Historic Exit samples out of the Wide range group", () => {
+    const exitTape = tape(
+      [0.01, 0.01],
+      EXIT,
+      0,
+      "exit",
+      { ...P, exitType: "historic", exitSide: 1, exitSet: "static-sl" },
+    );
+    const gates = liveGroupGates([tape([0.01, -0.01], CFG), exitTape], T0, now, 2, 1);
+    assert.deepEqual([...gates.keys()].sort(), ["Historic Exit", "Wide"]);
+    assert.equal(gates.get("Historic Exit")?.n, 2);
+    assert.equal(gates.get("Wide")?.n, 2);
   });
 });

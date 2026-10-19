@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { coreSettings, presetAction } from "./api-conn";
 import { MAX_DDT_CHOICES, MIN_PF_CHOICES, SYMBOL_RANK_CHOICES } from "@/core/config";
 import { INDICATION_KINDS } from "@/core/domain/types";
+import { indicationKindLabel } from "./indication-ui";
 import { ErrorNote, Modal, Pill, Switch } from "./ui";
 import {
   BlockSources,
@@ -285,7 +286,7 @@ export function PresetSettingsDialog(props: {
             <Timeframes tfs={s.tfs} tfDays={s.tfDays} set={set} />
           </Section>
           <Section title="Signals">
-            <SignalsSettings signals={s.signals} set={set} />
+            <SignalsSettings signals={s.signals} set={set} grid={s.grid} />
           </Section>
           <Section title="Gates">
             <div className="v2-grid v2-cols-4">
@@ -363,7 +364,7 @@ export function PresetSettingsDialog(props: {
                 return (
                   <label key={k} style={{ display: "flex", gap: 8, alignItems: "center" }}>
                     <Switch
-                      label={`type ${k}`}
+                      label={`type ${indicationKindLabel(k)}`}
                       checked={on}
                       onChange={(v) =>
                         set(
@@ -374,7 +375,7 @@ export function PresetSettingsDialog(props: {
                         )
                       }
                     />
-                    <span>{k}</span>
+                    <span>{indicationKindLabel(k)}</span>
                   </label>
                 );
               })}

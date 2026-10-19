@@ -5,6 +5,7 @@ import { beforeEach, describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 import { CoreDb } from "./db.server.ts";
 import {
+  liveLaneFilter,
   laneContributions,
   ISOLATED_MAX_LEVERAGE,
   liveKv,
@@ -22,11 +23,19 @@ import {
   planControl,
   stateHash,
   topConfigLanes,
+  type ControlContribution,
 } from "./live.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
-import { noteRateLimit } from "../exchange/bingx.server.ts";
-import { rng, SimExchange, fakeRt, type FakeRt } from "../test-support.ts";
+import { ExchangeRejected, noteRateLimit } from "../exchange/bingx.server.ts";
+import {
+  authorizeSyntheticLanes,
+  rng,
+  SimExchange,
+  fakeRt,
+  syntheticExecutionRun,
+  type FakeRt,
+} from "../test-support.ts";
 
 process.env.CTS_CORE_LIVE = "1";
 
@@ -62,7 +71,12 @@ function expected(
   const suppressed = liveKv<Record<string, unknown>>(rt.db, "controlSuppressed") ?? {};
   return controlTargets(
     rt.paper.positions
-      .filter((p) => !suppressed[`${p.cfg}|${p.sym}|${p.side > 0 ? 1 : -1}|${(p as { entryT?: number }).entryT}`])
+      .filter(
+        (p) =>
+          !suppressed[
+            `${p.cfg}|${p.sym}|${p.side > 0 ? 1 : -1}|${(p as { entryT?: number }).entryT}`
+          ],
+      )
       .map((p) => ({
         cfg: p.cfg,
         sym: p.sym,
@@ -74,7 +88,7 @@ function expected(
     {
       notionalUsd: s.notionalUsd,
       ratio: s.ratio,
-      maxNotionalUsd: s.maxNotionalUsd,
+      maxNotionalUsd: Number.POSITIVE_INFINITY, // legacy USD ceiling is intentionally ignored by the live planner
       maxPositions: s.maxPositions,
       rebalancePct: s.rebalancePct,
       heldKeys: new Set(
@@ -142,7 +156,7 @@ function checkInvariants(
 describe("live Overall control orders", { timeout: 300_000 }, () => {
   // failure backoff and the equity cache are per process and keyed by the connection (the same in every test)
   beforeEach(() => resetLiveBackoff());
-  it("one position cap for engine and signal positions; the signal cap narrows the signal share; lane orders count once", () => {
+  it("one exchange position cap covers engine and signal orders; lane orders count once", () => {
     const prices = new Map(["A", "B", "C", "D", "E"].map((x) => [`${x}-USDT`, 10] as const));
     const eng = "combo|ema-9-21@m15|x";
     const sig = "follow|sig-ema-cross-s@m15|x";
@@ -166,22 +180,66 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
       ["A-USDT|1", "B-USDT|1", "C-USDT|-1", "C-USDT|1"],
     );
     assert.equal(
-      r.skipped.filter((x) => x.why === "max control positions (symbol × side)").length,
+      r.skipped.filter((x) => x.why === "max exchange positions (symbol × direction)").length,
       2,
     );
-    // the signal cap narrows the signal share inside the total: 2 signal positions at most
-    const narrow = controlTargets(lanes, prices, {
-      ...base,
-      maxPositions: 10,
-      signalMaxPositions: 2,
-    });
-    assert.equal(narrow.targets.length, 4, "A, B + two signal positions");
-    assert.equal(
-      narrow.skipped.filter((x) => x.why === "max signal control positions (symbol × side)").length,
-      2,
-    );
-    // no cap: every position
+    // evaluation-side signal limits are not passed to exchange planning
+    assert.equal(controlTargets(lanes, prices, { ...base, maxPositions: 10 }).targets.length, 6);
+    // The exchange ceiling defaults to 100; all six candidate positions fit.
     assert.equal(controlTargets(lanes, prices, { ...base, maxPositions: 0 }).targets.length, 6);
+  });
+
+  it("1500 strategy orders use only 100 exchange slots, with long/short slots distinct", () => {
+    const base = { notionalUsd: 10, ratio: 1, maxNotionalUsd: 25, rebalancePct: 0.25 };
+    const lanes: ControlContribution[] = [];
+    const prices = new Map<string, number>();
+    for (let i = 0; i < 150; i++) {
+      const sym = `S${String(i).padStart(3, "0")}-USDT`;
+      prices.set(sym, 10);
+      for (let order = 0; order < 10; order++)
+        lanes.push({
+          cfg:
+            order % 2
+              ? `follow|sig-ema-cross-s@m15|set-${order}`
+              : `combo|ema-9-21@m15|set-${order}`,
+          sym,
+          side: 1,
+          vol: 1,
+          sl: 0.02,
+        });
+    }
+    const result = controlTargets(lanes, prices, { ...base, maxPositions: 100 });
+    assert.equal(lanes.length, 1500);
+    assert.equal(result.targets.length, 100, "one hundred unique exchange slots");
+    assert.equal(
+      result.targets.reduce((n, target) => n + target.lanes, 0),
+      1000,
+      "ten separate strategy orders remain aggregated on each admitted slot",
+    );
+    assert.ok(result.targets.every((target) => target.lanes === 10));
+    assert.equal(result.skipped.length, 50, "only the fifty new position keys are held back");
+  });
+
+  it("existing and pending exchange keys consume slots even without current strategy lanes", () => {
+    const base = { notionalUsd: 10, ratio: 1, maxNotionalUsd: 25, rebalancePct: 0.25 };
+    const prices = new Map([
+      ["NEW-USDT", 10],
+      ["HELD-USDT", 10],
+    ]);
+    const lanes: ControlContribution[] = [
+      { cfg: "combo|ema-9-21@m15|x", sym: "NEW-USDT", side: 1, vol: 1, sl: 0.02 },
+      { cfg: "combo|ema-9-21@m15|y", sym: "HELD-USDT", side: 1, vol: 1, sl: 0.02 },
+    ];
+    const heldKeys = new Set(Array.from({ length: 100 }, (_, i) => `R${i}-USDT|1`));
+    heldKeys.add("HELD-USDT|1"); // a pending exchange slot whose paper lanes have already gone
+    const result = controlTargets(lanes, prices, { ...base, maxPositions: 100, heldKeys });
+    assert.deepEqual(
+      result.targets.map((target) => target.key),
+      ["HELD-USDT|1"],
+    );
+    assert.ok(
+      result.skipped.some((x) => x.sym === "NEW-USDT" && /max exchange positions/.test(x.why)),
+    );
   });
 
   it("top configs: signals always, engine configs by score — a number of them, or as many as the budget carries", () => {
@@ -598,6 +656,49 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     checkInvariants(ex, rt, prices, true);
   });
 
+  it("a paper book published while a step waits on the exchange goes out on the next step, on a fresh book read", async () => {
+    // the lanes hashed before the book read decide whether it is fresh: a step that then acted on lanes the paper step
+    // published during its awaits sent their orders on a book read (cached) for the old lanes
+    const ex = new SimExchange(rng(12));
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    const fresh: boolean[] = [];
+    const read = ex.book.bind(ex);
+    ex.book = async (f?: { notBefore?: number; maxAgeMs?: number }) => {
+      fresh.push(f?.maxAgeMs === 0);
+      return read();
+    };
+    const lane = (cfg: string, sym: string, px: number, entryT: number) =>
+      ({ cfg, sym, side: 1 as const, entry: px, stop: px * 0.97, vol: 1, entryT }) as never;
+    rt.paper.positions = [lane("a", "S1-USDT", 17, 1)];
+    await step(rt, ex);
+    await step(rt, ex);
+    assert.deepEqual(
+      fresh,
+      [true, false],
+      "new lanes read the book fresh, unchanged lanes may take the cached one",
+    );
+    assert.ok((ex.positions.get("S1-USDT|LONG") ?? 0) > 0);
+    // the paper step publishes a new book (a lane on S2 joins) while the step awaits the tickers
+    const tickers = rt.freshTickers;
+    rt.freshTickers = async () => {
+      rt.paper = { positions: [...rt.paper.positions, lane("b", "S2-USDT", 24, 2)] };
+      authorizeSyntheticLanes(rt, rt.paper.positions);
+      rt.freshTickers = tickers;
+      return tickers();
+    };
+    await step(rt, ex);
+    assert.equal(fresh[2], false, "the step read the book for the lanes it hashed (unchanged)");
+    assert.equal(
+      ex.positions.get("S2-USDT|LONG") ?? 0,
+      0,
+      "the new lane does not go out on that read",
+    );
+    await step(rt, ex);
+    assert.equal(fresh[3], true, "the next step sees the changed lanes and reads the book fresh");
+    assert.ok((ex.positions.get("S2-USDT|LONG") ?? 0) > 0, "and opens the new lane");
+    assert.ok((ex.positions.get("S1-USDT|LONG") ?? 0) > 0, "the held lane stays");
+  });
+
   it("keeps its state in memory: rapid steps write it at most once a second, flushed on shutdown", async () => {
     const { flushLiveKv } = await import("./live.server.ts");
     const r = rng(12);
@@ -633,6 +734,18 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
       type: "LIMIT",
     });
     const { rt, prices } = fakeRt(new CoreDb(":memory:"));
+    let rejects = 0,
+      timeouts = 0;
+    const send = ex.order.bind(ex);
+    ex.order = async (params) => {
+      try {
+        return await send(params);
+      } catch (err) {
+        if (err instanceof ExchangeRejected) rejects++;
+        else if (err instanceof Error && /timeout after fill/.test(err.message)) timeouts++;
+        throw err;
+      }
+    };
     ex.rejectRate = 0.2;
     ex.timeoutAfterFillRate = 0.1;
     for (let i = 0; i < 300; i++) {
@@ -651,6 +764,15 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     try {
       for (let i = 0; i < 3; i++) await step(rt, ex);
       checkInvariants(ex, rt, prices, true);
+      assert.ok(
+        rejects > 0 && timeouts > 0,
+        "both definitive rejects and unknown timeout outcomes were exercised",
+      );
+      assert.equal(
+        rt.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM live_orders WHERE status='pending'")?.n,
+        0,
+        "filled timeouts reconcile through venue history and definitive rejects do not remain unknown",
+      );
     } finally {
       mock.timers.reset();
     }
@@ -695,10 +817,15 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     const ex = new SimExchange(rng(1));
     const { rt, prices } = fakeRt(new CoreDb(":memory:"));
     rt.paper.positions = randomLanes(rng(3), prices);
-    rt.sim = { stats: { pf: 0.9, n: 50 }, stable: true } as never;
+    rt.sim = syntheticExecutionRun(rt.paper.positions, [-0.01, 0.009]);
     let st = await step(rt, ex);
     assert.match(st.reason, /not ready/);
-    rt.sim = { stats: { pf: 1.5, n: 50 }, stable: true } as never;
+    assert.match(
+      st.reason,
+      /PF 0\.90/,
+      "known losing unit returns fail the PF gate, rather than unknown provenance",
+    );
+    rt.sim = syntheticExecutionRun(rt.paper.positions);
     process.env.CTS_CORE_LIVE = "0";
     st = await step(rt, ex);
     assert.match(st.reason, /CTS_CORE_LIVE/);
@@ -750,6 +877,7 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
           if (p.reduceOnly === "true")
             assert.ok(Math.abs(cur + q) <= Math.abs(cur) + 1e-9, "reduce-only never increases");
           net.set(sym, +(cur + q).toFixed(6));
+          return { order: { status: "FILLED", executedQty: String(p.quantity), avgPrice: "17" } };
         } else
           stops.push({
             id: `s${stops.length}`,
@@ -881,9 +1009,11 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     // S2 trades at 24 on the ticker; the market fill slips to 25
     (ex as unknown as { order: (p: Record<string, string | number>) => Promise<unknown> }).order =
       async (p: Record<string, string | number>) => {
-        await base(p);
+        const reply = await base(p) as { order?: Record<string, unknown> } | undefined;
         if (p.type === "STOP_MARKET") stops.push(Number(p.stopPrice));
-        return p.type === "MARKET" ? { order: { avgPrice: "25", commission: "0" } } : undefined;
+        return p.type === "MARKET"
+          ? { order: { ...reply?.order, status: "FILLED", executedQty: String(p.quantity), avgPrice: "25", commission: "0" } }
+          : reply;
       };
     const { rt } = fakeRt(new CoreDb(":memory:"));
     rt.paper.positions = [
@@ -905,13 +1035,18 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     ];
     const [c] = laneContributions(rt as unknown as CoreRuntime, new Map([["T-USDT", 120]]));
     assert.ok(Math.abs(c.sl - 2 / 120) < 1e-9, `sl ${c.sl}`);
-    assert.equal(c.risk, 0, "a stop in profit risks nothing");
+    assert.equal(
+      c.risk,
+      2 / 120,
+      "current equity can still lose the mark-to-stop giveback, including a late live adoption",
+    );
     // short: stop 104 above price 100 → 4 %
     rt.paper.positions = [
       { cfg: "follow|sig-a-s@m5|p", sym: "T-USDT", side: -1, entry: 101, stop: 104, vol: 1 },
     ];
     const [d] = laneContributions(rt as unknown as CoreRuntime, new Map([["T-USDT", 100]]));
     assert.ok(Math.abs(d.sl - 0.04) < 1e-9, `sl ${d.sl}`);
+    assert.equal(d.risk, 0.04, "short risk uses current mark as well");
     // no price: the entry distance stays the fallback
     const [e] = laneContributions(rt as unknown as CoreRuntime);
     assert.ok(Math.abs(e.sl - 3 / 101) < 1e-9);
@@ -970,7 +1105,7 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     ];
     await step(rt, ex);
     assert.ok(ex.positions.has("S2-USDT|LONG") && ex.positions.has("S3-USDT|LONG"));
-    rt.sim = { stats: { pf: 0.8, n: 50 }, stable: true } as never;
+    rt.sim = syntheticExecutionRun(rt.paper.positions, [-0.01, 0.008]);
     // S3's lane ended, S4 is new; S2's stop vanished
     rt.paper.positions = [
       { cfg: "a", sym: "S2-USDT", side: 1, entry: 24, stop: 23, vol: 1 },
@@ -979,6 +1114,11 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     await step(rt, ex);
     const st = await step(rt, ex);
     assert.match(st.reason, /opening blocked: not ready/);
+    assert.match(
+      st.reason,
+      /PF 0\.80/,
+      "protection continues while a known losing return proof blocks opening",
+    );
     assert.equal(ex.positions.has("S3-USDT|LONG"), false, "ended lane closed while not ready");
     assert.equal(ex.positions.has("S4-USDT|LONG"), false, "nothing opens while not ready");
     assert.ok(ex.positions.has("S2-USDT|LONG"), "held lane kept");
@@ -1009,7 +1149,7 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     });
     rt.paper.positions.push({ cfg: "b", sym: "S3-USDT", side: 1, entry: 31, stop: 30, vol: 3 });
     const st = await step(rt, noEq);
-    assert.match(st.reason, /equity unknown/);
+    assert.match(st.reason, /account balance unknown/);
     assert.equal(ex.positions.get("S2-USDT|LONG"), held, "kept while the equity is unknown");
     assert.equal(ex.positions.has("S3-USDT|LONG"), false);
   });
@@ -1405,6 +1545,13 @@ describe("volume factor: sizes follow volume × factor up to the per-position ca
       ]),
     );
 
+  it("plainOnly ignores the configured indication factor but still excludes a Block raise", () => {
+    const { sendable } = liveLaneFilter({ ...DEFAULT_SETTINGS.live, plainOnly: true }, null, null);
+    const cfg = "follow|sig-coord-v1-r60-n3-i1-b1|tp1|sl1|tr0|h32";
+    assert.equal(sendable({ cfg, vol: 8, blockVol: 1 }), true);
+    assert.equal(sendable({ cfg, vol: 16, blockVol: 2 }), false);
+  });
+
   it("below the cap a larger factor or volume is a larger position; at the cap it is flagged capped", () => {
     // factor 1, cap $8.3: $2 / $4 / $8.3 (6 units = $12, capped)
     assert.deepEqual(sizes(1, 8.3), {
@@ -1486,7 +1633,7 @@ describe("volume factor: sizes follow volume × factor up to the per-position ca
       rt.settings = {
         ...rt.settings,
         sizing: { mode: "minQty" as never, pct: 0.02 },
-        live: { ...rt.settings.live, ratio, maxNotionalUsd: 1e9, maxPositionX: 0.5 },
+        live: { ...rt.settings.live, ratio, maxNotionalUsd: 1e9, maxPositionX: 0.5, maxExposureX: 2 },
       };
       rt.paper.positions = [
         { cfg: "a", sym: "S1-USDT", side: 1, entry: 17, stop: 16, vol: 1 },

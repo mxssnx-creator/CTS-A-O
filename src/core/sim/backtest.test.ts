@@ -13,12 +13,19 @@ function mk(rows: Array<[number, number, number, number]>): Candle[] {
 const P: Protect = { tp: 0.01, sl: 0.01, trail: 0, hold: 50 };
 
 describe("cost", () => {
-  it("round-trip cost is 0.2%", () => {
-    assert.equal(RT_COST, 0.002);
+  it("round-trip cost is the authoritative 0.15% per notional", () => {
+    assert.equal(RT_COST, 0.0015);
   });
 });
 
 describe("simulate", () => {
+  it("never simulates with negative or nonfinite cost deductions", () => {
+    const b = barsFromCandles("X", 5, mk([[100, 100, 100, 100], [100, 102, 98, 100]]));
+    for (const cost of [-0.001, NaN, Infinity, -Infinity])
+      assert.throws(() => simulate("c", b, new Int8Array([1, 0]), P, { cost }), /finite, nonnegative/);
+    assert.doesNotThrow(() => simulate("c", b, new Int8Array([1, 0]), P, { cost: 0 }));
+  });
+
   it("enters at the next bar open, never on the signal bar", () => {
     const b = barsFromCandles(
       "X",
@@ -36,7 +43,7 @@ describe("simulate", () => {
     assert.equal(res.trades[0].entry, 105);
     assert.equal(res.trades[0].reason, "tp");
     assert.ok(Math.abs(res.trades[0].exit - 106.05) < 1e-9);
-    assert.ok(Math.abs(res.trades[0].r - (0.01 - 0.002)) < 1e-12);
+    assert.ok(Math.abs(res.trades[0].r - (0.01 - RT_COST)) < 1e-12);
   });
 
   it("is pessimistic when both stop and target are touched in one bar", () => {
@@ -50,7 +57,7 @@ describe("simulate", () => {
     );
     const res = simulate("c", b, new Int8Array([1, 0]), P, { cost: RT_COST });
     assert.equal(res.trades[0].reason, "sl");
-    assert.ok(Math.abs(res.trades[0].r - (-0.01 - 0.002)) < 1e-12);
+    assert.ok(Math.abs(res.trades[0].r - (-0.01 - RT_COST)) < 1e-12);
   });
 
   it("fills a gap through the stop at the open", () => {
@@ -78,7 +85,7 @@ describe("simulate", () => {
     );
     const res = simulate("c", b, new Int8Array([-1, 0]), P, { cost: RT_COST });
     assert.equal(res.trades[0].reason, "tp");
-    assert.ok(Math.abs(res.trades[0].r - 0.008) < 1e-12);
+    assert.ok(Math.abs(res.trades[0].r - (0.01 - RT_COST)) < 1e-12);
   });
 
   it("trail tightens from completed-bar peaks only", () => {

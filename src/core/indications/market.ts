@@ -3,11 +3,11 @@
 // symbol lagging a market move, a residual stretch, an idiosyncratic volume spike) — information a single-symbol
 // indication cannot see.
 //
-//   ret[g]  market log return of grid bar g: the mean, over the series with a bar at that open time and a previous
-//           bar, of log(c / c_prev) (NaN when no series has both)
+//   ret[g]  market log return of grid bar g: the mean, over the series with a bar at that open time and the
+//           immediately preceding contiguous bar, of log(c / c_prev) (NaN when no series has both)
 //   idx[g]  cumulative market log index: Σ ret up to g (0 at the grid's first bar, a NaN return adds nothing)
 //   act[g]  market activity: the mean, over the series with a bar at g, of v / its own rolling 60-bar SMA of v
-//           (the SMA includes the bar; NaN until some series has 60 bars)
+//           (the SMA includes the bar; NaN until some series has 60 contiguous bars)
 //
 // The grid is the union of the open times of the timeframe's series, so every series aligns to it by time; a
 // series without gaps is a contiguous run of the grid and its aligned arrays are views (no copy). Strictly causal:
@@ -90,9 +90,17 @@ export function buildMarket(series: readonly Bars[]): Grid {
     if (!b.n) continue;
     let j = lowerBound(t, b.t[0]);
     let vs = 0;
+    let runStart = 0;
+    const barMs = b.tfMin * 60_000;
     for (let i = 0; i < b.n; i++) {
+      // Missing candles split the return and activity histories. Treating a multi-bar close change as a one-bar
+      // market return distorts market volatility/beta, while carrying the old volume window makes activity stale.
+      if (i === 0 || b.t[i] - b.t[i - 1] !== barMs) {
+        vs = 0;
+        runStart = i;
+      }
       while (t[j] < b.t[i]) j++;
-      if (i >= 1) {
+      if (i >= 1 && b.t[i] - b.t[i - 1] === barMs) {
         const r = Math.log(b.c[i] / b.c[i - 1]);
         if (Number.isFinite(r)) {
           ret[j] += r;
@@ -102,8 +110,9 @@ export function buildMarket(series: readonly Bars[]): Grid {
       // the series' own rolling volume SMA (its last P bars, this one included)
       const v = Number.isFinite(b.v[i]) ? b.v[i] : 0;
       vs += v;
-      if (i >= P) vs -= Number.isFinite(b.v[i - P]) ? b.v[i - P] : 0;
-      if (i >= P - 1 && vs > 0) {
+      const runBars = i - runStart + 1;
+      if (runBars > P) vs -= Number.isFinite(b.v[i - P]) ? b.v[i - P] : 0;
+      if (runBars >= P && vs > 0) {
         act[j] += v / (vs / P);
         na[j]++;
       }

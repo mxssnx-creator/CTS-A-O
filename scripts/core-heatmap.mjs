@@ -2,13 +2,14 @@
 // CTS-A-O — builds the standalone TP × SL × trailing heatmap (one HTML file, data inline, independent of the app)
 // and its line-by-line listing from:
 //   --sim   simulation windows (scripts/core-heatmap-sim.mjs JSON files, pooled)
-//   --live  the live desk's status.json (per-cell paper book on live prices, seats) on the demo connection
+//   --paper the desk's status.json (forward paper book on live prices, not exchange executions); --live is a legacy alias
 //   --exchange  optional exchange report of the desk's tag (scripts/core-live-report.mjs JSON)
 //
-//   node scripts/core-heatmap.mjs --sim runs/hm/sim-w --live /tmp/claude-0/hm/runs/hm/live-heatmap/status.json \
+//   node --experimental-strip-types scripts/core-heatmap.mjs --sim runs/hm/sim-w --paper runs/hm/live-heatmap/status.json \
 //     --exchange runs/hm/exchange-CTSV2M_.json --html docs/heatmap/index.html --md docs/heatmap.md
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
+import { profitFactor } from "../src/core/metrics/stats.ts";
 
 const argv = process.argv.slice(2);
 const arg = (k, d) => {
@@ -16,7 +17,8 @@ const arg = (k, d) => {
   return i >= 0 ? argv[i + 1] : d;
 };
 const simPrefix = arg("sim", "runs/hm/sim-w");
-const livePath = arg("live", "");
+// --live is a legacy input alias; status.json cells always contain the forward paper book.
+const paperPath = arg("paper", arg("live", ""));
 const exPath = arg("exchange", "");
 const htmlOut = arg("html", "docs/heatmap/index.html");
 const mdOut = arg("md", "docs/heatmap.md");
@@ -25,7 +27,37 @@ const TPS = [1, 2, 3, 4, 5, 6, 7, 8];
 const SLS = Array.from({ length: 11 }, (_, i) => +(0.5 + i * 0.25).toFixed(2));
 const TRS = [0, 0.5, 0.75];
 const key = (tp, sl, tr) => `${tp}|${sl}|${tr}`;
-const pf = (gp, gl) => (gl > 1e-12 ? gp / gl : gp > 0 ? 99 : 0);
+const knownSums = (x) => !!x && !x.unavailable && (x.unknownReturns === undefined || x.unknownReturns === 0) &&
+  Number.isFinite(x.n) && x.n >= 0 && Number.isFinite(x.w) && Number.isFinite(x.gp) && x.gp >= 0 && Number.isFinite(x.gl) && x.gl >= 0;
+const poolReturns = (a, x) => {
+  const n = Number.isFinite(x.n) && x.n >= 0 ? x.n : 0;
+  a.n += n;
+  if (!knownSums(x)) {
+    a.unknownReturns = (a.unknownReturns ?? 0) + (Number.isFinite(x.unknownReturns) && x.unknownReturns > 0 ? x.unknownReturns : Math.max(1, n));
+    a.unavailable = true;
+    a.gp = null;
+    a.gl = null;
+    a.w = null;
+  } else if (!a.unavailable) {
+    a.w += x.w;
+    a.gp += x.gp;
+    a.gl += x.gl;
+  }
+};
+const pfFields = (prefix, x) => {
+  const known = knownSums(x);
+  const gp = known ? x.gp : null, gl = known ? x.gl : null;
+  const present = (x?.n ?? 0) > 0;
+  const noLoss = present && known && gp > 0 && gl === 0;
+  return {
+    [`${prefix}Pf`]: present && known ? profitFactor(gp, gl) : null,
+    [`${prefix}ReturnGp`]: gp,
+    [`${prefix}ReturnGl`]: gl,
+    [`${prefix}NoLoss`]: noLoss,
+    [`${prefix}PfConvention`]: !present || !known ? "unavailable" : noLoss ? "no-loss-sentinel" : "gross-return-ratio",
+    [`${prefix}UnknownReturns`]: x?.unknownReturns ?? 0,
+  };
+};
 
 // --- simulation windows
 const sdir = dirname(simPrefix);
@@ -37,41 +69,36 @@ const sim = new Map();
 for (const w of simFiles)
   for (const [part, cells] of [
     ["base", w.base],
-    ["wf", w.wf],
+    ["wf", w.wfUnit],
+    ["wfWeighted", w.wf],
   ])
     for (const [k, x] of Object.entries(cells ?? {})) {
-      const c = sim.get(k) ?? { base: { n: 0, w: 0, gp: 0, gl: 0, tapes: 0, pos: 0, wins: 0 }, wf: { n: 0, w: 0, gp: 0, gl: 0 } };
+      const c = sim.get(k) ?? { base: { n: 0, w: 0, gp: 0, gl: 0, tapes: 0, pos: 0, wins: 0 }, wf: { n: 0, w: 0, gp: 0, gl: 0 }, wfWeighted: { n: 0, w: 0, gp: 0, gl: 0 } };
       const a = c[part];
-      a.n += x.n;
-      a.w += x.w;
-      a.gp += x.gp;
-      a.gl += x.gl;
+      poolReturns(a, x);
       if (part === "base") {
         a.tapes = Math.max(a.tapes, x.tapes);
         if (x.n > 0) {
           a.wins++;
-          if (x.gp > x.gl) a.pos++;
+          if (knownSums(x) && x.gp > x.gl) a.pos++;
         }
       }
       sim.set(k, c);
     }
 
-// --- live desk (paper book on live prices per cell, seats) and the exchange result of its tag
-const live = livePath && existsSync(livePath) ? JSON.parse(readFileSync(livePath, "utf8")) : null;
-const liveCells = new Map();
-for (const [k, x] of Object.entries(live?.cells ?? {})) {
-  // live keys are absolute percents (TP · SL · trailing) from the config id
+// --- forward paper book per cell and a separate aggregate exchange report of the tag
+const paper = paperPath && existsSync(paperPath) ? JSON.parse(readFileSync(paperPath, "utf8")) : null;
+const paperCells = new Map();
+for (const [k, x] of Object.entries(paper?.cells ?? {})) {
+  // paper keys are absolute percents (TP · SL · trailing) from the config id
   const [tp, sl, tr] = k.split("|").map(Number);
   if (!(tp > 0)) continue;
   const kk = key(+tp.toFixed(2), Math.round((sl / tp) * 4) / 4, tr > 0 ? Math.round((tr / tp) * 4) / 4 : 0);
-  const a = liveCells.get(kk) ?? { n: 0, w: 0, gp: 0, gl: 0, usd: 0, seats: 0 };
-  a.n += x.n;
-  a.w += x.w;
-  a.gp += x.gp;
-  a.gl += x.gl;
+  const a = paperCells.get(kk) ?? { n: 0, w: 0, gp: 0, gl: 0, usd: 0, seats: 0 };
+  poolReturns(a, x);
   a.usd += x.usd ?? 0;
   a.seats += x.seats ?? 0;
-  liveCells.set(kk, a);
+  paperCells.set(kk, a);
 }
 const exchange = exPath && existsSync(exPath) ? JSON.parse(readFileSync(exPath, "utf8")) : null;
 
@@ -82,69 +109,92 @@ for (const tr of TRS)
     for (const sl of SLS) {
       const k = key(tp, sl, tr);
       const s = sim.get(k);
-      const l = liveCells.get(k);
+      const l = paperCells.get(k);
       const b = s?.base;
       const f = s?.wf;
+      const weighted = s?.wfWeighted;
       const r = {
         tp,
         sl,
+        executionVerified: false,
         tr,
         slPct: +(tp * sl).toFixed(2),
         trPct: +(tp * tr).toFixed(2),
         simN: b?.n ?? 0,
-        simPf: b ? +pf(b.gp, b.gl).toFixed(3) : null,
-        simNet: b ? +((b.gp - b.gl) * 100 / Math.max(1, b.tapes)).toFixed(2) : null,
-        simWr: b?.n ? +(b.w / b.n).toFixed(3) : null,
+        ...pfFields("sim", b),
+        simNet: knownSums(b) ? +((b.gp - b.gl) * 100 / Math.max(1, b.tapes)).toFixed(2) : null,
+        simWr: b?.n && knownSums(b) ? +(b.w / b.n).toFixed(3) : null,
         simPos: b ? `${b.pos}/${b.wins}` : "–",
         wfN: f?.n ?? 0,
-        wfPf: f?.n ? +pf(f.gp, f.gl).toFixed(3) : null,
-        wfNet: f?.n ? +((f.gp - f.gl) * 100).toFixed(2) : null,
-        liveSeats: l?.seats ?? 0,
-        liveN: l?.n ?? 0,
-        livePf: l?.n ? +pf(l.gp, l.gl).toFixed(3) : null,
-        liveNet: l?.n ? +((l.gp - l.gl) * 100).toFixed(2) : null,
-        liveWr: l?.n ? +(l.w / l.n).toFixed(3) : null,
-        liveUsd: l?.n ? +l.usd.toFixed(3) : null,
+        ...pfFields("wf", f),
+        wfNet: f?.n && knownSums(f) ? +((f.gp - f.gl) * 100).toFixed(2) : null,
+        wfPfBasis: f?.n && knownSums(f) ? "unit-net-return-per-simulated-close" : "unavailable",
+        wfWeightedN: weighted?.n ?? 0,
+        ...pfFields("wfWeighted", weighted),
+        wfWeightedPfBasis: "weighted-simulation-or-legacy-unknown-diagnostic",
+        paperSeats: l?.seats ?? 0,
+        paperN: l?.n ?? 0,
+        ...pfFields("paper", l),
+        paperNet: l?.n && knownSums(l) ? +((l.gp - l.gl) * 100).toFixed(2) : null,
+        paperWr: l?.n && knownSums(l) ? +(l.w / l.n).toFixed(3) : null,
+        paperUsd: l?.n ? +l.usd.toFixed(3) : null,
       };
-      // working: the simulation and the live run both clear PF 1.1 (live with at least 5 closes)
-      r.working = r.simPf !== null && r.simPf >= 1.1 && r.livePf !== null && r.livePf >= 1.1 && r.liveN >= 5;
-      r.simOnly = !r.working && r.simPf !== null && r.simPf >= 1.1 && (r.wfPf ?? 0) >= 1.1;
+      // Paper qualification is a candidate-screening diagnostic, not proof of profitable exchange executions.
+      r.paperQualified = r.simPf !== null && r.simPf >= 1.1 && r.paperPf !== null && r.paperPf >= 1.1 && r.paperN >= 5;
+      r.simOnly = !r.paperQualified && r.simPf !== null && r.simPf >= 1.1 && (r.wfPf ?? 0) >= 1.1;
       rows.push(r);
     }
 
 const meta = {
   generated: new Date().toISOString(),
+  pfBasis: "net-return-per-close-after-model-costs",
+  returnSumUnits: "fraction",
+  noLossGateScore: profitFactor(1, 0),
+  simulation: {
+    basis: "historical-diagnostic-cell-probe",
+    stageQualificationVerified: false,
+    unitWfWindows: simFiles.filter((w) => w.wfUnit && typeof w.wfUnit === "object").length,
+    legacyWfOnlyWindows: simFiles.filter((w) => !w.wfUnit && w.wf).length,
+    note: "The WF cell probe bypasses validation last-N qualification and overrides seating/Block controls; it is not evidence of actual stage qualification.",
+  },
   windows: simFiles.map((w) => ({
     from: new Date(w.startT).toISOString().slice(0, 16).replace("T", " "),
     to: new Date(w.endT).toISOString().slice(0, 16).replace("T", " "),
     symbols: w.symbols?.length ?? 12,
     tapes: w.tapes,
+    evidence: w.evidence ?? null,
   })),
-  live: live
+  paper: paper
     ? {
-        tag: live.tag,
-        conn: live.conn,
-        hours: +live.hours.toFixed(2),
-        at: live.at,
-        symbols: live.symbols ?? [],
-        seats: rows.reduce((a, r) => a + r.liveSeats, 0),
-        closes: rows.reduce((a, r) => a + r.liveN, 0),
-        cellsTrading: rows.filter((r) => r.liveSeats > 0 || r.liveN > 0).length,
+        basis: "forward-paper-return",
+        executionVerified: false,
+        tag: paper.tag,
+        conn: paper.conn,
+        hours: +paper.hours.toFixed(2),
+        at: paper.at,
+        symbols: paper.symbols ?? [],
+        seats: rows.reduce((a, r) => a + r.paperSeats, 0),
+        closes: rows.reduce((a, r) => a + r.paperN, 0),
+        cellsTrading: rows.filter((r) => r.paperSeats > 0 || r.paperN > 0).length,
       }
     : null,
   exchange: exchange
     ? {
+        scope: "tag-aggregate",
+        cellAttributionAvailable: false,
         orders: exchange.orders ?? exchange.n ?? null,
         positions: exchange.positions ?? null,
         net: exchange.net ?? null,
         fees: exchange.fees ?? null,
-        pf: exchange.pf ?? null,
+        reportedPf: exchange.pf ?? null,
+        reportedPfBasis: exchange.pfBasis ?? "unknown",
       }
     : null,
 };
 
 // --- markdown listing
 const f2 = (x) => (x === null || x === undefined ? "–" : Number(x).toFixed(2));
+const pfText = (r, prefix) => r[`${prefix}UnknownReturns`] > 0 ? "Unavailable" : r[`${prefix}NoLoss`] ? "No losses" : f2(r[`${prefix}Pf`]);
 const trName = (tr) => (tr ? `trail ${tr} × TP` : "no trail");
 const md = [
   "# TP × SL × trailing heatmap: every cell line by line",
@@ -157,30 +207,31 @@ const md = [
   "",
   `**Simulation:** ${meta.windows.length} windows × 24 h, 12 symbols, the 15 m reference lane (targets exact). Columns:`,
   "- base: every tape of the cell, all indications × all symbols;",
-  "- WF: the Real-stage walk-forward with the cell probe.",
+  `- WF unit return: diagnostic walk-forward cell probe with qualification bypass (validation last-N disabled and seating/Block overridden), not actual stage qualification. Unit-return results available for ${meta.simulation.unitWfWindows}/${meta.windows.length} windows; legacy weighted/unknown WF values are retained separately as diagnostics and never pooled into the unit-return PF.`,
+  `Return PF is primary. **No losses** denotes the shared no-loss score convention (${meta.noLossGateScore}), not a measured finite PF ratio; even a tiny positive gross loss uses its measured ratio. Gross return sums and no-loss metadata are retained in the embedded JSON. Cash figures are separate diagnostics.`,
   "",
-  meta.live
-    ? `**Live:** ${meta.live.conn}, tag ${meta.live.tag}, ${meta.live.hours} h, every cell seated (${meta.live.cellsTrading} cells traded or held a seat, ${meta.live.closes} closes). Live PF is the desk's per-cell book on live prices. The exchange nets the cells per symbol and side, at the minimum quantity and maximum leverage.`
-    : "**Live:** not run yet.",
+  meta.paper
+    ? `**Forward paper:** ${meta.paper.conn}, tag ${meta.paper.tag}, ${meta.paper.hours} h, every cell seated (${meta.paper.cellsTrading} cells traded or held a seat, ${meta.paper.closes} closes). Paper PF is the desk's per-cell return book on live prices. It contains no settled cash P&L. The attached exchange report is aggregate evidence and cannot verify individual cells.`
+    : "**Forward paper:** not run yet.",
   "",
-  "**Working** = sim PF ≥ 1.1 and live PF ≥ 1.1 with at least 5 live closes. **Sim only** = sim and WF PF ≥ 1.1 but not yet confirmed live.",
+  "**Paper qualified** = sim return PF ≥ 1.1 and forward paper return PF ≥ 1.1 with at least 5 paper closes. **Sim only** = sim and available WF unit return PF ≥ 1.1 without paper qualification. No cell is verified for execution profitability by this report; that requires attributed, settled owned net returns after actual costs.",
   "",
-  "## Working cells",
+  "## Paper qualified cells",
   "",
-  "| TP % | SL × TP | SL % | trailing | sim closes | sim PF | WF PF | live closes | live PF | live net % |",
+  "| TP % | SL × TP | SL % | trailing | sim closes | sim PF | WF unit return PF | paper closes | paper return PF | paper sum return % |",
   "|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|",
   ...rows
-    .filter((r) => r.working)
-    .sort((a, b) => (b.livePf ?? 0) - (a.livePf ?? 0))
-    .map((r) => `| ${r.tp} | ${r.sl} | ${r.slPct} | ${trName(r.tr)} | ${r.simN} | ${f2(r.simPf)} | ${f2(r.wfPf)} | ${r.liveN} | ${f2(r.livePf)} | ${f2(r.liveNet)} |`),
+    .filter((r) => r.paperQualified)
+    .sort((a, b) => (b.paperPf ?? 0) - (a.paperPf ?? 0))
+    .map((r) => `| ${r.tp} | ${r.sl} | ${r.slPct} | ${trName(r.tr)} | ${r.simN} | ${pfText(r, "sim")} | ${pfText(r, "wf")} | ${r.paperN} | ${pfText(r, "paper")} | ${f2(r.paperNet)} |`),
   "",
   "## Every cell",
   "",
-  "| # | TP % | SL × TP | SL % | trailing | trail % | sim closes | sim PF | sim win % | sim positive windows | WF closes | WF PF | WF net % | live seats | live closes | live PF | live win % | live net % | verdict |",
-  "|---:|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
+  "| # | TP % | SL × TP | SL % | trailing | trail % | sim closes | sim PF | sim win % | sim positive windows | WF unit closes | WF unit return PF | WF unit net % | WF weighted/unknown diagnostic closes | WF weighted/unknown diagnostic PF | paper seats | paper closes | paper return PF | paper win % | paper sum return % | verdict |",
+  "|---:|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
   ...rows.map(
     (r, i) =>
-      `| ${i + 1} | ${r.tp} | ${r.sl} | ${r.slPct} | ${trName(r.tr)} | ${r.trPct} | ${r.simN} | ${f2(r.simPf)} | ${r.simWr === null ? "–" : (r.simWr * 100).toFixed(0)} | ${r.simPos} | ${r.wfN} | ${f2(r.wfPf)} | ${f2(r.wfNet)} | ${r.liveSeats} | ${r.liveN} | ${f2(r.livePf)} | ${r.liveWr === null ? "–" : (r.liveWr * 100).toFixed(0)} | ${f2(r.liveNet)} | ${r.working ? "working" : r.simOnly ? "sim only" : "–"} |`,
+      `| ${i + 1} | ${r.tp} | ${r.sl} | ${r.slPct} | ${trName(r.tr)} | ${r.trPct} | ${r.simN} | ${pfText(r, "sim")} | ${r.simWr === null ? "–" : (r.simWr * 100).toFixed(0)} | ${r.simPos} | ${r.wfN} | ${pfText(r, "wf")} | ${f2(r.wfNet)} | ${r.wfWeightedN} | ${pfText(r, "wfWeighted")} | ${r.paperSeats} | ${r.paperN} | ${pfText(r, "paper")} | ${r.paperWr === null ? "–" : (r.paperWr * 100).toFixed(0)} | ${f2(r.paperNet)} | ${r.paperQualified ? "paper qualified" : r.simOnly ? "sim only" : "–"} |`,
   ),
   "",
 ].join("\n");
@@ -274,14 +325,16 @@ footer { color: var(--muted); font-size: 12px; margin-top: 16px; }
 const D = ${data};
 const METRICS = [
   { k: "simPf", label: "Sim PF", kind: "pf" },
-  { k: "wfPf", label: "Walk-forward PF", kind: "pf" },
-  { k: "livePf", label: "Live PF", kind: "pf" },
-  { k: "liveN", label: "Live closes", kind: "count" },
-  { k: "liveNet", label: "Live net %", kind: "net" },
+  { k: "wfPf", label: "WF unit return PF (probe)", kind: "pf" },
+  { k: "wfWeightedPf", label: "Weighted/unknown WF PF (diagnostic)", kind: "pf" },
+  { k: "paperPf", label: "Paper return PF", kind: "pf" },
+  { k: "paperN", label: "Paper closes", kind: "count" },
+  { k: "paperNet", label: "Paper sum return %", kind: "net" },
 ];
-let metric = D.meta.live && D.rows.some((r) => r.liveN > 0) ? "livePf" : "simPf";
+let metric = D.meta.paper && D.rows.some((r) => r.paperN > 0) ? "paperPf" : "simPf";
 let show = "all";
 const fmt = (x, d = 2) => (x === null || x === undefined ? "–" : Number(x).toFixed(d));
+const pfText = (r, k) => !r ? "–" : r[k.slice(0, -2) + "UnknownReturns"] > 0 ? "Unavailable" : r[k.slice(0, -2) + "NoLoss"] ? "No losses" : fmt(r[k]);
 const pfColor = (v) => {
   if (v === null || v === undefined) return null;
   const x = Math.max(-1.5, Math.min(1.5, Math.log2(Math.max(v, 0.01))));
@@ -294,25 +347,26 @@ const cntColor = (v, max) => (!v ? null : "var(--p" + Math.max(1, Math.min(5, Ma
 const isDark = () => document.documentElement.dataset.theme === "dark" || (document.documentElement.dataset.theme !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
 // strong steps: dark fills in light mode (white ink), light fills in dark mode (dark ink)
 const inkOn = (bg) => (/--(p4|p5|n4|n5)\\b/.test(bg) ? (isDark() ? "#0b0b0b" : "#ffffff") : "var(--ink)");
-const visible = (r) => show === "all" || (show === "working" ? r.working : show === "sim" ? r.working || r.simOnly : r.liveN > 0);
+const visible = (r) => show === "all" || (show === "paperQualified" ? r.paperQualified : show === "sim" ? r.paperQualified || r.simOnly : r.paperN > 0);
 function head() {
   const m = D.meta;
   const w = m.windows;
   document.getElementById("sub").textContent =
     "TP 1–8 % × SL 0.5–3 × TP (step 0.25) × trailing (off, 0.5, 0.75 × TP), 264 cells. Simulation: " + w.length +
     " windows × 24 h on 12 symbols (15 m lane, exact targets)" + (w.length ? ", " + w[0].from + " → " + w[w.length - 1].to + " UTC" : "") +
-    (m.live ? ". Live: " + m.live.conn + " (demo), tag " + m.live.tag + ", " + m.live.hours + " h, minimum quantity at maximum leverage." : ". Live run pending.");
-  const working = D.rows.filter((r) => r.working).length;
+    ". WF is a diagnostic cell probe with qualification bypass, not actual stage qualification. Unit WF available for " + m.simulation.unitWfWindows + "/" + w.length + " windows; legacy weighted/unknown values remain separate diagnostics." +
+    (m.paper ? " Forward paper: " + m.paper.conn + ", tag " + m.paper.tag + ", " + m.paper.hours + " h. Paper returns are not account cash PF; no cell has execution-profitability proof." : " Forward paper run pending; execution profitability unverified.");
+  const paperQualified = D.rows.filter((r) => r.paperQualified).length;
   const simOnly = D.rows.filter((r) => r.simOnly).length;
-  const bestLive = D.rows.filter((r) => r.liveN >= 5).sort((a, b) => b.livePf - a.livePf)[0];
+  const bestPaper = D.rows.filter((r) => r.paperN >= 5).sort((a, b) => b.paperPf - a.paperPf)[0];
   const bestSim = D.rows.filter((r) => r.simPf !== null).sort((a, b) => b.simPf - a.simPf)[0];
   const tiles = [
-    [working, "working cells (sim and live PF ≥ 1.1)"],
-    [simOnly, "sim-only cells (sim and WF PF ≥ 1.1)"],
-    [m.live ? m.live.cellsTrading : "–", "cells seated or traded live"],
-    [m.live ? m.live.closes : "–", "live closes (paper book on live prices)"],
-    [bestSim ? bestSim.tp + "% · " + bestSim.sl + "× · " + (bestSim.tr || "no") + " trail" : "–", "best sim cell (PF " + fmt(bestSim && bestSim.simPf) + ")"],
-    [bestLive ? bestLive.tp + "% · " + bestLive.sl + "× · " + (bestLive.tr || "no") + " trail" : "–", "best live cell, ≥ 5 closes (PF " + fmt(bestLive && bestLive.livePf) + ")"],
+    [paperQualified, "paper qualified cells (sim and paper return PF ≥ 1.1)"],
+    [simOnly, "sim-only cells (sim and available WF unit return PF ≥ 1.1)"],
+    [m.paper ? m.paper.cellsTrading : "–", "cells seated or closed on paper"],
+    [m.paper ? m.paper.closes : "–", "forward paper closes; cash PF unavailable"],
+    [bestSim ? bestSim.tp + "% · " + bestSim.sl + "× · " + (bestSim.tr || "no") + " trail" : "–", "best sim cell (PF " + pfText(bestSim, "simPf") + ")"],
+    [bestPaper ? bestPaper.tp + "% · " + bestPaper.sl + "× · " + (bestPaper.tr || "no") + " trail" : "–", "best forward paper cell, ≥ 5 closes (PF " + pfText(bestPaper, "paperPf") + ")"],
   ];
   document.getElementById("tiles").innerHTML = tiles.map(([v, l]) => '<div class="tile"><b>' + v + "</b><span>" + l + "</span></div>").join("");
   const seg = (id, items, cur, set) => {
@@ -321,24 +375,24 @@ function head() {
     el.onclick = (e) => { const b = e.target.closest("button"); if (b) { set(b.dataset.k); render(); } };
   };
   seg("metric", METRICS.map((x) => [x.k, x.label]), metric, (k) => (metric = k));
-  seg("show", [["all", "All cells"], ["working", "Working"], ["sim", "Working + sim only"], ["live", "Traded live"]], show, (k) => (show = k));
+  seg("show", [["all", "All cells"], ["paperQualified", "Paper qualified"], ["sim", "Paper qualified + sim only"], ["paper", "Closed on paper"]], show, (k) => (show = k));
 }
 function legend(kind) {
   const el = document.getElementById("legend");
   if (kind === "count") {
-    el.innerHTML = "<span>fewer</span>" + [1, 2, 3, 4, 5].map((i) => '<i style="background:var(--p' + i + ')"></i>').join("") + "<span>more closes</span>" + '<span class="muted">· grey = no data · green outline = working</span>';
+    el.innerHTML = "<span>fewer</span>" + [1, 2, 3, 4, 5].map((i) => '<i style="background:var(--p' + i + ')"></i>').join("") + "<span>more closes</span>" + '<span class="muted">· grey = no data · green outline = paper qualified</span>';
     return;
   }
   const lab = kind === "net" ? ["loss", "0", "gain"] : ["PF 0.35", "PF 1", "PF 2.8"];
   el.innerHTML = "<span>" + lab[0] + "</span>" + [5, 4, 3, 2, 1].map((i) => '<i style="background:var(--n' + i + ')"></i>').join("") +
     '<i style="background:var(--neutral)"></i>' + [1, 2, 3, 4, 5].map((i) => '<i style="background:var(--p' + i + ')"></i>').join("") +
-    "<span>" + lab[2] + '</span><span class="muted">· grey = no data · green outline = working</span>';
+    "<span>" + lab[2] + '</span><span class="muted">· grey = no data · green outline = paper qualified</span>';
 }
 function render() {
   head();
   const M = METRICS.find((x) => x.k === metric);
   legend(M.kind);
-  const max = Math.max(1, ...D.rows.map((r) => r.liveN));
+  const max = Math.max(1, ...D.rows.map((r) => r.paperN));
   const panels = D.TRS.map((tr) => {
     let h = '<div class="panel"><h3>' + (tr ? "Trailing " + tr + " × TP" : "No trailing") + '</h3><table class="hm"><thead><tr><th>TP \\\\ SL×</th>' +
       D.SLS.map((s) => "<th>" + s + "</th>").join("") + "</tr></thead><tbody>";
@@ -349,10 +403,10 @@ function render() {
         const v = r[metric];
         const on = visible(r);
         const bg = !on ? null : M.kind === "pf" ? pfColor(v) : M.kind === "net" ? netColor(v) : cntColor(v, max);
-        const txt = v === null || v === undefined || (M.kind === "count" && !v) ? "–" : M.kind === "count" ? v : Number(v).toFixed(M.kind === "pf" ? 2 : 1);
+        const txt = M.kind === "pf" ? pfText(r, metric) : v === null || v === undefined || (M.kind === "count" && !v) ? "–" : M.kind === "count" ? v : Number(v).toFixed(1);
         h += bg
-          ? '<td tabindex="0" data-i="' + D.rows.indexOf(r) + '" class="' + (r.working ? "work" : "") + '" style="background:' + bg + ";color:" + inkOn(bg) + '">' + txt + "</td>"
-          : '<td tabindex="0" data-i="' + D.rows.indexOf(r) + '" class="empty">' + (on ? "–" : "") + "</td>";
+          ? '<td tabindex="0" data-i="' + D.rows.indexOf(r) + '" class="' + (r.paperQualified ? "work" : "") + '" style="background:' + bg + ";color:" + inkOn(bg) + '">' + txt + "</td>"
+          : '<td tabindex="0" data-i="' + D.rows.indexOf(r) + '" class="empty">' + (on ? txt : "") + "</td>";
       }
       h += "</tr>";
     }
@@ -363,13 +417,13 @@ function render() {
 }
 const COLS = [
   ["tp", "TP %"], ["sl", "SL × TP"], ["slPct", "SL %"], ["tr", "trail × TP"], ["simN", "sim closes"], ["simPf", "sim PF"],
-  ["simPos", "sim + windows"], ["wfN", "WF closes"], ["wfPf", "WF PF"], ["liveSeats", "live seats"], ["liveN", "live closes"],
-  ["livePf", "live PF"], ["liveWr", "live win %"], ["liveNet", "live net %"], ["verdict", "verdict"],
+  ["simPos", "sim + windows"], ["wfN", "WF unit closes"], ["wfPf", "WF unit return PF"], ["wfWeightedN", "WF weighted/unknown diagnostic closes"], ["wfWeightedPf", "WF weighted/unknown diagnostic PF"], ["paperSeats", "paper seats"], ["paperN", "paper closes"],
+  ["paperPf", "paper return PF"], ["paperWr", "paper win %"], ["paperNet", "paper sum return %"], ["verdict", "verdict"],
 ];
-let sortK = "livePf";
+let sortK = "paperPf";
 let sortDir = -1;
 function rowsTable() {
-  const rs = D.rows.filter(visible).map((r) => ({ ...r, verdict: r.working ? "working" : r.simOnly ? "sim only" : "" }));
+  const rs = D.rows.filter(visible).map((r) => ({ ...r, verdict: r.paperQualified ? "paper qualified" : r.simOnly ? "sim only" : "" }));
   rs.sort((a, b) => {
     const x = a[sortK], y = b[sortK];
     if (x === y) return 0;
@@ -381,8 +435,9 @@ function rowsTable() {
   t.innerHTML = "<thead><tr><th>#</th>" + COLS.map(([k, l]) => '<th data-k="' + k + '" class="' + (k === "verdict" ? "l" : "") + '">' + l + (k === sortK ? (sortDir < 0 ? " ↓" : " ↑") : "") + "</th>").join("") + "</tr></thead><tbody>" +
     rs.map((r, i) => "<tr><td>" + (i + 1) + "</td>" + COLS.map(([k]) => {
       const v = r[k];
-      if (k === "verdict") return '<td class="l ' + (v === "working" ? "ok" : "muted") + '">' + (v || "–") + "</td>";
-      if (k === "liveWr") return "<td>" + (v === null ? "–" : (v * 100).toFixed(0)) + "</td>";
+      if (k === "verdict") return '<td class="l ' + (v === "paper qualified" ? "ok" : "muted") + '">' + (v || "–") + "</td>";
+      if (k.endsWith("Pf")) return "<td>" + pfText(r, k) + "</td>";
+      if (k === "paperWr") return "<td>" + (v === null ? "–" : (v * 100).toFixed(0)) + "</td>";
       if (typeof v === "number" && !Number.isInteger(v)) return "<td>" + v.toFixed(2) + "</td>";
       return "<td>" + (v === null || v === undefined ? "–" : v) + "</td>";
     }).join("") + "</tr>").join("") + "</tbody>";
@@ -398,10 +453,11 @@ const showTip = (td, x, y) => {
   const r = D.rows[+td.dataset.i];
   if (!r) return;
   tip.innerHTML = "<b>TP " + r.tp + " % · SL " + r.sl + " × (" + r.slPct + " %) · " + (r.tr ? "trail " + r.tr + " × (" + r.trPct + " %)" : "no trail") + "</b><br>" +
-    "Sim: " + r.simN + " closes · PF " + fmt(r.simPf) + " · win " + (r.simWr === null ? "–" : (r.simWr * 100).toFixed(0) + " %") + " · positive windows " + r.simPos + "<br>" +
-    "Walk-forward: " + r.wfN + " closes · PF " + fmt(r.wfPf) + " · net " + fmt(r.wfNet) + " %<br>" +
-    "Live: " + r.liveSeats + " seats · " + r.liveN + " closes · PF " + fmt(r.livePf) + " · net " + fmt(r.liveNet) + " %" +
-    (r.working ? '<br><span class="ok">working</span>' : r.simOnly ? "<br>sim only" : "");
+    "Sim: " + r.simN + " closes · PF " + pfText(r, "simPf") + " · win " + (r.simWr === null ? "–" : (r.simWr * 100).toFixed(0) + " %") + " · positive windows " + r.simPos + "<br>" +
+    "Diagnostic WF probe (qualification bypass): " + r.wfN + " unit closes · return PF " + pfText(r, "wfPf") + (r.wfUnknownReturns ? " · " + r.wfUnknownReturns + " unknown returns" : "") + " · unit net " + fmt(r.wfNet) + " %<br>" +
+    "Weighted/unknown WF diagnostic: " + r.wfWeightedN + " closes · PF " + pfText(r, "wfWeightedPf") + "<br>" +
+    "Forward paper: " + r.paperSeats + " seats · " + r.paperN + " closes · return PF " + pfText(r, "paperPf") + " · sum return " + fmt(r.paperNet) + " %" +
+    (r.paperQualified ? '<br><span class="ok">paper qualified</span>' : r.simOnly ? "<br>sim only" : "");
   tip.style.display = "block";
   const w = tip.offsetWidth, h = tip.offsetHeight;
   tip.style.left = Math.max(8, Math.min(innerWidth - w - 8, x + 14)) + "px";
@@ -411,7 +467,7 @@ document.getElementById("panels").addEventListener("mousemove", (e) => { const t
 document.getElementById("panels").addEventListener("mouseleave", () => (tip.style.display = "none"));
 document.getElementById("panels").addEventListener("focusin", (e) => { const td = e.target.closest("td[data-i]"); if (td) { const b = td.getBoundingClientRect(); showTip(td, b.right, b.top); } });
 document.getElementById("panels").addEventListener("focusout", () => (tip.style.display = "none"));
-document.getElementById("foot").textContent = "Generated " + D.meta.generated.slice(0, 16).replace("T", " ") + " UTC by scripts/core-heatmap.mjs (CTS-A-O). Demo account only; PF = gross profit ÷ gross loss after the 0.2 % position cost.";
+document.getElementById("foot").textContent = "Generated " + D.meta.generated.slice(0, 16).replace("T", " ") + " UTC by scripts/core-heatmap.mjs (CTS-A-O). Return PF = gross positive return ÷ gross negative return after model costs. No losses denotes the shared no-loss score convention (" + D.meta.noLossGateScore + "), not a measured finite ratio. WF is a diagnostic cell probe with qualification bypass; these are not actual stage qualification, settled cash results or execution-profitability proof.";
 render();
 </script>
 </body>
@@ -420,5 +476,5 @@ render();
 mkdirSync(dirname(htmlOut), { recursive: true });
 writeFileSync(htmlOut, html);
 process.stderr.write(
-  `heatmap: ${rows.length} cells · ${simFiles.length} sim windows · live ${meta.live ? `${meta.live.closes} closes` : "none"} · working ${rows.filter((r) => r.working).length} → ${htmlOut}, ${mdOut}\n`,
+  `heatmap: ${rows.length} cells · ${simFiles.length} sim windows · paper ${meta.paper ? `${meta.paper.closes} closes` : "none"} · paper qualified ${rows.filter((r) => r.paperQualified).length} → ${htmlOut}, ${mdOut}\n`,
 );

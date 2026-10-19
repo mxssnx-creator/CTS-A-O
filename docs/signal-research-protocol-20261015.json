@@ -1,0 +1,404 @@
+{
+  "schema": "cts-signal-new-sources-research-v1",
+  "frozenAt": "2026-10-15T04:52:43.232Z",
+  "purpose": "Separate retrospective chronological evaluation of four new Signal catalog sources; not a change to the existing six-hour 63-source protocol.",
+  "sourceCommit": "1cd723e646e502a95f97db532672f4b2f4afaba0",
+  "candidates": [
+    {
+      "name": "r-laguerre",
+      "label": "Laguerre RSI turn",
+      "short": {
+        "g": 0.5,
+        "lo": 0.15,
+        "hi": 0.85
+      },
+      "medium": {
+        "g": 0.7,
+        "lo": 0.1,
+        "hi": 0.9
+      },
+      "calculation": "Existing research3 laguerreRsi recurrence and level-reentry onsets unchanged; RSI thresholds are system adaptations."
+    },
+    {
+      "name": "r-chand",
+      "label": "ATR Chandelier channel flip",
+      "short": {
+        "p": 22,
+        "m": 3
+      },
+      "medium": {
+        "p": 44,
+        "m": 3.5
+      },
+      "calculation": "Existing research3 previous-bar rolling high/low plus/minus ATR channel flip unchanged; differs from a since-entry trade stop."
+    },
+    {
+      "name": "r-klinger",
+      "label": "Klinger volume-force cross",
+      "short": {
+        "f": 34,
+        "s": 55,
+        "sig": 13
+      },
+      "medium": {
+        "f": 55,
+        "s": 89,
+        "sig": 21
+      },
+      "calculation": "Existing research3 cumulative volume-force abs(2*dm/cm-1) variant and sign-aligned signal-line crosses unchanged; platform conventions vary."
+    },
+    {
+      "name": "r-rvi",
+      "label": "Relative Vigor Index cross",
+      "short": {
+        "period": 10
+      },
+      "medium": {
+        "period": 20
+      },
+      "calculation": "Four-bar 1,2,2,1 weighted close-open and high-low, period sums ratio, symmetric four-bar signal line; upward cross with positive RVI long, downward cross with negative RVI short."
+    }
+  ],
+  "data": {
+    "cache": "runs/research-tactic-independent-20261014/market-cache.json",
+    "sha256": "09efe84ff135bad1458995ac36df9bb209e1d56fab671375d171b3c76abdefa4",
+    "symbols": [
+      "AVAX-USDT",
+      "LINK-USDT",
+      "LTC-USDT",
+      "SUI-USDT",
+      "NEAR-USDT",
+      "DOT-USDT",
+      "ATOM-USDT",
+      "APT-USDT"
+    ],
+    "startT": 1784237100000,
+    "isStartT": 1784841900000,
+    "splitT": 1789421100000,
+    "endT": 1792013100000,
+    "warmupDays": 7,
+    "isDays": 53,
+    "oosDays": 30,
+    "existingUse": "This public cache has previously been used for Tactic research. The new source formulas have not been scored here. This is retrospective chronological holdout evidence, not an untouched global or forward sample."
+  },
+  "lanes": [
+    1,
+    5,
+    15,
+    30
+  ],
+  "ranges": [
+    "short",
+    "medium"
+  ],
+  "directions": [
+    "long",
+    "short"
+  ],
+  "protects": [
+    {
+      "tp": 0.025,
+      "sl": 0.0375,
+      "trail": 0,
+      "hold": 192
+    },
+    {
+      "tp": 0.025,
+      "sl": 0.05,
+      "trail": 0,
+      "hold": 192
+    },
+    {
+      "tp": 0.025,
+      "sl": 0.075,
+      "trail": 0,
+      "hold": 192
+    },
+    {
+      "tp": 0.03,
+      "sl": 0.045,
+      "trail": 0,
+      "hold": 192
+    },
+    {
+      "tp": 0.03,
+      "sl": 0.06,
+      "trail": 0,
+      "hold": 192
+    },
+    {
+      "tp": 0.03,
+      "sl": 0.09,
+      "trail": 0,
+      "hold": 192
+    },
+    {
+      "tp": 0.04,
+      "sl": 0.06,
+      "trail": 0,
+      "hold": 192
+    },
+    {
+      "tp": 0.04,
+      "sl": 0.08,
+      "trail": 0,
+      "hold": 192
+    },
+    {
+      "tp": 0.04,
+      "sl": 0.12,
+      "trail": 0,
+      "hold": 192
+    },
+    {
+      "tp": 0.05,
+      "sl": 0.075,
+      "trail": 0,
+      "hold": 192
+    },
+    {
+      "tp": 0.05,
+      "sl": 0.1,
+      "trail": 0,
+      "hold": 192
+    },
+    {
+      "tp": 0.05,
+      "sl": 0.15,
+      "trail": 0,
+      "hold": 192
+    },
+    {
+      "tp": 0.06,
+      "sl": 0.09,
+      "trail": 0,
+      "hold": 192
+    },
+    {
+      "tp": 0.06,
+      "sl": 0.12,
+      "trail": 0,
+      "hold": 192
+    },
+    {
+      "tp": 0.06,
+      "sl": 0.18,
+      "trail": 0,
+      "hold": 192
+    },
+    {
+      "tp": 0.03,
+      "sl": 0.09,
+      "trail": 0.012,
+      "hold": 192
+    },
+    {
+      "tp": 0.03,
+      "sl": 0.09,
+      "trail": 0.018,
+      "hold": 192
+    },
+    {
+      "tp": 0.03,
+      "sl": 0.09,
+      "trail": 0.024,
+      "hold": 192
+    },
+    {
+      "tp": 0.04,
+      "sl": 0.12,
+      "trail": 0.016,
+      "hold": 192
+    },
+    {
+      "tp": 0.04,
+      "sl": 0.12,
+      "trail": 0.024,
+      "hold": 192
+    },
+    {
+      "tp": 0.04,
+      "sl": 0.12,
+      "trail": 0.032,
+      "hold": 192
+    },
+    {
+      "tp": 0.05,
+      "sl": 0.15,
+      "trail": 0.02,
+      "hold": 192
+    },
+    {
+      "tp": 0.05,
+      "sl": 0.15,
+      "trail": 0.03,
+      "hold": 192
+    },
+    {
+      "tp": 0.05,
+      "sl": 0.15,
+      "trail": 0.04,
+      "hold": 192
+    },
+    {
+      "tp": 0.06,
+      "sl": 0.18,
+      "trail": 0.024,
+      "hold": 192
+    },
+    {
+      "tp": 0.06,
+      "sl": 0.18,
+      "trail": 0.036,
+      "hold": 192
+    },
+    {
+      "tp": 0.06,
+      "sl": 0.18,
+      "trail": 0.048,
+      "hold": 192
+    },
+    {
+      "tp": 0.08,
+      "sl": 0.24,
+      "trail": 0.032,
+      "hold": 192
+    },
+    {
+      "tp": 0.08,
+      "sl": 0.24,
+      "trail": 0.048,
+      "hold": 192
+    },
+    {
+      "tp": 0.08,
+      "sl": 0.24,
+      "trail": 0.064,
+      "hold": 192
+    },
+    {
+      "tp": 0,
+      "sl": 0.015,
+      "trail": 0.005,
+      "hold": 192,
+      "trailOnly": true,
+      "trailStep": 1
+    },
+    {
+      "tp": 0,
+      "sl": 0.015,
+      "trail": 0.01,
+      "hold": 192,
+      "trailOnly": true,
+      "trailStep": 1
+    },
+    {
+      "tp": 0,
+      "sl": 0.015,
+      "trail": 0.02,
+      "hold": 192,
+      "trailOnly": true,
+      "trailStep": 1
+    },
+    {
+      "tp": 0,
+      "sl": 0.03,
+      "trail": 0.005,
+      "hold": 192,
+      "trailOnly": true,
+      "trailStep": 1
+    },
+    {
+      "tp": 0,
+      "sl": 0.03,
+      "trail": 0.01,
+      "hold": 192,
+      "trailOnly": true,
+      "trailStep": 1
+    },
+    {
+      "tp": 0,
+      "sl": 0.03,
+      "trail": 0.02,
+      "hold": 192,
+      "trailOnly": true,
+      "trailStep": 1
+    },
+    {
+      "tp": 0,
+      "sl": 0.06,
+      "trail": 0.005,
+      "hold": 192,
+      "trailOnly": true,
+      "trailStep": 1
+    },
+    {
+      "tp": 0,
+      "sl": 0.06,
+      "trail": 0.01,
+      "hold": 192,
+      "trailOnly": true,
+      "trailStep": 1
+    },
+    {
+      "tp": 0,
+      "sl": 0.06,
+      "trail": 0.02,
+      "hold": 192,
+      "trailOnly": true,
+      "trailStep": 1
+    }
+  ],
+  "protectionPolicy": "Exact runtime signalProtects and laneProtect scaling: Normal 15, capped Normal+Trailing 15, no-target Trailing-only 9. No derived historical MFE configs in this fixed-grid comparison.",
+  "model": {
+    "roundTripCost": 0.002,
+    "entry": "Current DEFAULT_TACTICS via entrySignal(follow); completed-bar signals enter next open; current cooldown; opposite directions simulated independently.",
+    "capital": "Independent configuration research, without portfolio/account coordination or live fills. No account profit or live execution PF claim."
+  },
+  "selection": {
+    "primary": "Settled unit net-return PF",
+    "minPf": 1.1,
+    "minSettled": 30,
+    "netPositive": true,
+    "endpointMarkedMinPf": 1.1,
+    "group": "Exact source/range/lane/type/protection/direction config; preserve all cells, including losses, unknowns and no-loss provenance.",
+    "policy": "Physically truncate IS data before calculation. Freeze every IS-qualified config-side identity before reading OOS summaries. Evaluate the full selected pool, not an OOS-selected winner; publish all-config diagnostics separately. Fresh OOS positions with pre-context; endpoint marks separately retained."
+  },
+  "promotion": "Research candidates remain default-disabled. No automatic live promotion, threshold changes, symbol replacement or post-OOS retuning.",
+  "sources": [
+    {
+      "url": "https://www.88broker.com/wp-content/uploads/2020/01/timewarp.pdf",
+      "author": "John Ehlers",
+      "basis": "Author paper reprint: Laguerre recurrence; our RSI thresholds are adaptations."
+    },
+    {
+      "url": "https://www.collinseow.com/wp-content/uploads/2010/04/Chuck-LeBeau-ATR-stops.pdf",
+      "author": "Charles LeBeau",
+      "basis": "Author presentation reprint: ATR extreme-following stops; our rolling-channel onset is an adaptation."
+    },
+    {
+      "url": "https://www.tradingview.com/support/solutions/43000589157-klinger-oscillator/",
+      "basis": "Official platform definition; formula conventions differ from preserved internal variant."
+    },
+    {
+      "url": "https://www.metatrader5.com/en/terminal/help/indicators/oscillators/rvi",
+      "basis": "Official platform weighted RVI and signal-line definition."
+    }
+  ],
+  "preOutcomeModelClarification": {
+    "recordedAt": "2026-10-15T05:01:26.133342+00:00",
+    "previousFormattedProtocolSha256": "c9aa67a7e34ee0b18e9dae99e3a3afd69a6e082046b59294405f633b6aba0d1d",
+    "reason": "Before any new-source market outcome was read, source tracing identified the remaining existing Signal floor/filter steps required by the already-frozen exact-runtime grid/entry intent. No parameter, cost, universe, source, split or PF threshold changed.",
+    "protect": "adjustProtect(laneProtect(requestedProtect, fullSignalInd), {minSl:0.005,minTrail:0.005}); preserve requested-to-effective aliases, simulate/select each exact effective config ID once.",
+    "entries": "Use full sig-source-range@lane identity with entrySignal(follow, DEFAULT_TACTICS), then the unchanged DEFAULT_SIGNALS.filter via filterEntries: trendH0,volFloor0.003. Both directions independent; next-open entries.",
+    "signalFloors": {
+      "minSl": 0.005,
+      "minTrail": 0.005
+    },
+    "signalFilter": {
+      "trendH": 0,
+      "volFloor": 0.003
+    },
+    "researchScope": "Entry/protection parity only. No executed-live feedback adjustment, runtime unit activation/acceptance/coordination or account capital allocation in this independent-cell comparison; no live promotion."
+  }
+}

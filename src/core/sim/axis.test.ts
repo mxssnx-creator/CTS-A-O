@@ -95,6 +95,41 @@ describe("axis", () => {
     assert.ok(Math.abs(r.trades[0].exit - 97.5 * 0.99) < 1e-9);
   });
 
+  it("fixed exits: a next open past the axis exits at that open, never at the target below the fill", () => {
+    // long: signal close 98.5 (axis 100); the next bar opens at 100.4 — past the axis target 100. Base 100.4, rung
+    // 99.4, stop 98.406: the target is marketable when placed and fills at the open 100.4 (r = −cost), not at 100
+    const up = barsFromCandles(
+      "X",
+      15,
+      mk([
+        [98.5, 98.6, 98.4, 98.5],
+        [100.4, 100.6, 100.3, 100.5],
+        [100.5, 100.6, 100.4, 100.5],
+      ]),
+    );
+    const r = simulateAxis("c", up, new Int8Array([1, 0, 0]), P, AX, center, atr, 0.002);
+    assert.equal(r.trades.length, 1);
+    assert.equal(r.trades[0].reason, "tp");
+    assert.equal(r.trades[0].entry, 100.4);
+    assert.equal(r.trades[0].exit, 100.4, "the exit is never below the fill");
+    assert.ok(Math.abs(r.trades[0].r + 0.002) < 1e-12, `${r.trades[0].r}`);
+    // short mirror: signal close 101.5, the next open 99.6 below the axis → out at 99.6
+    const dn = barsFromCandles(
+      "X",
+      15,
+      mk([
+        [101.5, 101.6, 101.4, 101.5],
+        [99.6, 99.7, 99.4, 99.5],
+        [99.5, 99.6, 99.4, 99.5],
+      ]),
+    );
+    const s = simulateAxis("c", dn, new Int8Array([-1, 0, 0]), P, AX, center, atr, 0.002);
+    assert.equal(s.trades.length, 1);
+    assert.equal(s.trades[0].reason, "tp");
+    assert.equal(s.trades[0].exit, 99.6);
+    assert.ok(Math.abs(s.trades[0].r + 0.002) < 1e-12, `${s.trades[0].r}`);
+  });
+
   it("uses no future bars (trades on a prefix are identical)", () => {
     const full = barsFromCandles(
       "AAA",

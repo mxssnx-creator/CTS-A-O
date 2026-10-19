@@ -1,11 +1,12 @@
 // Self-healing / recovery tests with an injected market feed (no network).
-import { after, describe, it } from "node:test";
+import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { CoreRuntime, type MarketFeed } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
 import { SIGNAL_SOURCES, signalSettings } from "../signal-config.ts";
 import { syntheticCandles } from "../market/bars.ts";
 import { DEFAULT_ADJUST } from "../config.ts";
+import { trackRuntimes } from "../test-support.ts";
 
 const small = {
   symbols: 3,
@@ -26,17 +27,18 @@ const small = {
     ),
   }),
 };
-/** every runtime a test starts is stopped at the end, even when the test failed (its timers kept the file alive) */
-const started: CoreRuntime[] = [];
+/**
+ * every runtime a test starts is stopped and released after it, even when the test failed (its timers kept the file
+ * alive, and every stopped runtime stayed in memory until the file ended)
+ */
+const tracked = trackRuntimes();
 class TrackedRuntime extends CoreRuntime {
   constructor(...a: ConstructorParameters<typeof CoreRuntime>) {
     super(...a);
-    started.push(this);
+    tracked.track(this);
   }
 }
-after(() => {
-  for (const rt of started) rt.stop();
-});
+afterEach(() => tracked.disposeAll());
 const until = async (cond: () => boolean, ms = 180_000) => {
   const t0 = Date.now();
   while (!cond()) {
@@ -128,7 +130,9 @@ describe("self-healing", { timeout: 600_000 }, () => {
       feed: fakeFeed(st),
     });
     rt.start();
-    await until(() => rt.status.computes >= 1 && rt.status.state === "running");
+    // between cycles: the compute's preset comparison (it runs after the cycle) done, no cycle running
+    const idle = rt as unknown as { busy: boolean; comparing: Promise<void> | null };
+    await until(() => rt.status.computes >= 1 && rt.status.state === "running" && !idle.comparing && !idle.busy);
     // lose the timer
     const priv = rt as unknown as { timer: ReturnType<typeof setTimeout> | null };
     if (priv.timer) clearTimeout(priv.timer);
@@ -136,7 +140,7 @@ describe("self-healing", { timeout: 600_000 }, () => {
     const calls = st.historyCalls;
     // make one symbol 400 bars stale
     const cs = rt.candles.get("AAA-USDT")!;
-    rt.candles.set("AAA-USDT", cs.slice(0, cs.length - 400));
+    rt.candles.set("AAA-USDT", cs.range(0, cs.n - 400));
     await rt.heal();
     assert.match(rt.status.lastHeal, /rescheduling/);
     // wait for the outcome itself (a normal cycle can reach "history fetched, 2 computes" first under load)
@@ -152,7 +156,7 @@ describe("self-healing", { timeout: 600_000 }, () => {
       events.some((m) => /re-backfilled 1 symbol/.test(m)),
       events.join(" | "),
     );
-    assert.ok(Date.now() - rt.candles.get("AAA-USDT")!.at(-1)!.t < 60 * 60_000);
+    assert.ok(Date.now() - rt.candles.get("AAA-USDT")!.lastT()! < 60 * 60_000);
     rt.stop();
   });
 
@@ -266,9 +270,21 @@ describe("self-healing", { timeout: 600_000 }, () => {
       history: async (sym, tf, bars) => syntheticCandles(sym, tf, bars, Date.now() - tf * 60_000),
       klines: async () => [],
     };
+    // 12 symbols in three batches (the batch is max(5, ceil(target / 4)), so the symbol count stays); the history, the lanes
+    // and the engine focus are smaller than `small`: each of the three computes covers the whole universe (148 s on 11 Oct)
     const rt = new TrackedRuntime(
       new CoreDb(":memory:"),
-      { ...small, symbols: 12, symbolRank: "volume" },
+      {
+        ...small,
+        symbols: 12,
+        symbolRank: "volume",
+        historyDays: 6,
+        tfDays: { "1": 2, "5": 3, "15": 6, "30": 6 },
+        mainTop: 6,
+        refineTop: 3,
+        evalTop: 4,
+        focus: ["follow|rsi-mom-14-25"],
+      },
       { market: "bingx", priceStream: null, feed },
     );
     let paperBeforeAll = false;

@@ -287,14 +287,24 @@ describe("control orders: increases, stop repair, ownership", () => {
     assert.ok(!ex.log.some((p) => p.positionSide === "SHORT"), "nothing sent on the foreign side");
   });
 
-  it("C7: the scalers never size under a minimum the venue named", async () => {
+  it("C7: the scalers never size under a minimum the venue named — a minimum that breaks the exposure cap is dropped", async () => {
     const ex = new SimExchange().withEquity(10);
     const db = new CoreDb(":memory:");
     db.kvSet("controlVenueMin", { "S0-USDT": { qty: 0.5 } });
     const { rt } = fakeRt(db);
-    // exposure cap 2 USD: 10 USD at S0 scales to 0.2 — the venue named 0.5 as its minimum
-    rt.settings.live = { ...rt.settings.live, maxExposureX: 0.2 };
+    // exposure cap 2 USD: 10 USD at S0 scales to 0.2 units, and the venue's 0.5-unit minimum (5 USD) would take the
+    // gross past the cap — rounded up it does not fit, so the target is dropped and reported, never sent
+    rt.settings.live = { ...rt.settings.live, maxPositionX: 50, maxExposureX: 0.2 };
     rt.paper.positions = [lane("a", "S0-USDT", 1, 10, 1)];
+    await step(rt, ex);
+    assert.equal(ctl(rt).targets.find((t) => t.key === "S0-USDT|1"), undefined);
+    assert.equal(ex.positions.get("S0-USDT|LONG"), undefined);
+    assert.ok(
+      skippedOf(rt).skipped.some((x) => x.sym === "S0-USDT" && x.why === "gross exposure cap"),
+      "the drop is reported with its reason",
+    );
+    // the same minimum fits a 5 USD cap (0.5 units): the venue minimum is sent as it is, never undercut
+    rt.settings.live = { ...rt.settings.live, maxPositionX: 50, maxExposureX: 0.5 };
     await step(rt, ex);
     assert.equal(ctl(rt).targets.find((t) => t.key === "S0-USDT|1")?.qty, 0.5);
     assert.equal(ex.positions.get("S0-USDT|LONG"), 0.5);
@@ -304,10 +314,11 @@ describe("control orders: increases, stop repair, ownership", () => {
   });
 
   it("the live status says when the volume factor has no effect, and from which factor it would size", async () => {
-    const ex = new SimExchange();
+    const ex = new SimExchange().withEquity(10);
     const { rt } = fakeRt(new CoreDb(":memory:"));
-    // unit 10 × factor 10 = 100 USD, cap 40: every position capped; the factor sizes only below 40 / (10 × 1) = 4
-    rt.settings.live = { ...rt.settings.live, ratio: 10 };
+    // unit 10 × factor 10 = 100 USD, the supported 4× equity cap is 40: the factor sizes only below 4.
+    // Legacy fixed-USD ceilings are intentionally ignored by live sizing.
+    rt.settings.live = { ...rt.settings.live, ratio: 10, maxPositionX: 4, maxNotionalUsd: 0 };
     rt.paper.positions = [lane("a", "S0-USDT", 1, 10, 1), lane("b", "S1-USDT", 1, 17, 1)];
     const st = await step(rt, ex);
     assert.match(st.reason, /volume factor 10 has no effect.*cap 40\.00 USD.*below 4\.00/);

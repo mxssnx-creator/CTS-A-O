@@ -89,3 +89,30 @@ test("a control position of only plus lanes keeps the M tracking tag", () => {
   ).targets;
   assert.equal(micro[0]?.cfg, "|mc");
 });
+
+test("the last-N gate as of the run start: closes inside the run never keep or drop a plus tape", () => {
+  // 120 closes, one per hour; X loses its first 60 and wins its last 60, Y the other way round
+  const mk = (id: string, winFirst: boolean) => {
+    const n = 120;
+    const gp = new Float64Array(n + 1);
+    const gl = new Float64Array(n + 1);
+    const exitT = new Float64Array(n);
+    for (let i = 1; i <= n; i++) {
+      const win = i <= 60 ? winFirst : !winFirst;
+      gp[i] = gp[i - 1] + (win ? 0.03 : 0.005);
+      gl[i] = gl[i - 1] + (win ? 0.005 : 0.03);
+      exitT[i - 1] = i * 3_600_000;
+    }
+    return { id, n, gp, gl, exitT };
+  };
+  const X = mk("follow|a|tp0.6|sl1.2|tr0|h64|mp", false);
+  const Y = mk("follow|b|tp0.6|sl1.2|tr0|h64|mp", true);
+  const plus = { enabled: true, lastN: 50, minPf: 1.35 };
+  // the run starts after close 60: only the first 60 closes count — Y (good before the run) stays, X does not
+  const start = 60.5 * 3_600_000;
+  assert.deepEqual(gateMinimalPlus([X, Y], plus, start).map((t) => t.id.split("|")[1]), ["b"]);
+  // without a start the whole tape decides, in-run closes included (both PF 1 overall: both dropped)
+  assert.deepEqual(gateMinimalPlus([X, Y], plus).map((t) => t.id.split("|")[1]), []);
+  // fewer than lastN closes before the start: not kept
+  assert.equal(gateMinimalPlus([Y], plus, 30.5 * 3_600_000).length, 0);
+});

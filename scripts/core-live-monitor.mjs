@@ -12,6 +12,7 @@
 import { appendFileSync, existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { history, ownResults } from "./core-live-report.mjs";
+import { profitFactor } from "../src/core/metrics/stats.ts";
 
 const bx = await import("../src/core/exchange/bingx.server.ts");
 const argv = process.argv.slice(2);
@@ -76,7 +77,9 @@ for (const s of desks) {
   let ex = null;
   try {
     if (allErr) throw new Error(allErr);
-    ex = await ownResults({ conn, tag: T, from: fromOf(s), all: all.filter((o) => Number(o.time) >= fromOf(s)) });
+    ex = await ownResults({ conn, tag: T, from: fromOf(s),
+      ...(s.modelCost == null ? {} : { modelCost: s.modelCost }),
+      all: all.filter((o) => Number(o.time) >= fromOf(s)) });
   } catch (err) {
     problems.push(`${T}: exchange history unavailable (${err instanceof Error ? err.message : err})`);
   }
@@ -135,7 +138,7 @@ for (const s of desks) {
   }
   const k = ex?.byKind ?? {};
   const sum = (f) => Object.values(k).reduce((a, v) => a + f(v), 0);
-  const pfOf = (gp, gl) => (gl > 1e-12 ? gp / gl : gp > 0 ? Infinity : 0);
+  const pfOf = (gp, gl) => profitFactor(gp, gl);
   const pp = Object.values(s.paper ?? {}).reduce((a, v) => ({ n: a.n + v.n, gp: a.gp + v.gp, gl: a.gl + v.gl }), { n: 0, gp: 0, gl: 0 });
   rows.push({
     tag: T,
@@ -153,7 +156,9 @@ for (const s of desks) {
     net: sum((v) => v.net),
     paperPf: pp.n ? pfOf(pp.gp, pp.gl) : null,
     paperN: pp.n,
-    livePf: sum((v) => v.positions) ? pfOf(sum((v) => v.gp), sum((v) => v.gl)) : null,
+    livePf: ex?.pfBasis === "settled-owned-close-net-return" && sum((v) => v.returnCloses) > 0
+      ? pfOf(sum((v) => v.gp), sum((v) => v.gl)) : null,
+    liveNoLoss: sum((v) => v.gp) > 0 && sum((v) => v.gl) <= 0,
     fee: sum((v) => -v.fee),
     paper: Object.entries(s.paper ?? {})
       .map(([r, a]) => `${r} ${a.n}·${(a.pf ?? 0).toFixed(2)}`)
@@ -170,11 +175,11 @@ const md = [
   `## ${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC — ${rows.length} desks, ${problems.length} problem(s)`,
   ``,
   ...(bookNote ? [`Open orders: ${bookNote}.`, ``] : []),
-  `| desk | alive | h | RSS MB | computes | sim PF | seats | paper PF · closes | live PF | live step | own orders | positions (open) | live net USDT | fees | paper per range (n·PF) | live per range |`,
+  `| desk | alive | h | RSS MB | computes | sim PF | seats | paper PF · closes | live return PF | live step | own orders | positions (open) | live net USDT | fees | paper per range (n·PF) | live per range |`,
   `|---|---|---:|---:|---:|---:|---:|---|---:|---|---:|---:|---:|---:|---|---|`,
   ...rows.map(
     (r) =>
-      `| ${r.tag} ${r.name} | ${r.alive === null ? "?" : r.alive ? "yes" : "no"} | ${f2(r.hours)} | ${r.rss ?? "–"} | ${r.computes} | ${f2(r.simPf)} | ${r.real} | ${r.paperPf === null ? "–" : `${Number.isFinite(r.paperPf) ? f2(r.paperPf) : "∞"} · ${r.paperN}`} | ${r.livePf === null ? "–" : Number.isFinite(r.livePf) ? f2(r.livePf) : "∞"} | ${r.live || "–"} | ${r.orders} | ${r.positions} (${r.open}) | ${f2(r.net)} | ${f2(r.fee)} | ${r.paper || "–"} | ${r.kinds || "–"} |`,
+      `| ${r.tag} ${r.name} | ${r.alive === null ? "?" : r.alive ? "yes" : "no"} | ${f2(r.hours)} | ${r.rss ?? "–"} | ${r.computes} | ${f2(r.simPf)} | ${r.real} | ${r.paperPf === null ? "–" : `${Number.isFinite(r.paperPf) ? f2(r.paperPf) : "∞"} · ${r.paperN}`} | ${r.livePf === null ? "–" : `${f2(r.livePf)}${r.liveNoLoss ? " (no losses; sentinel)" : ""}`} | ${r.live || "–"} | ${r.orders} | ${r.positions} (${r.open}) | ${f2(r.net)} | ${f2(r.fee)} | ${r.paper || "–"} | ${r.kinds || "–"} |`,
   ),
   ``,
   problems.length ? problems.map((x) => `- ${x}`).join("\n") : `No problem found.`,

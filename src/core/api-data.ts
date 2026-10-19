@@ -3,6 +3,52 @@
 import { MAX_BACKTEST_DAYS, type CoreSettings } from "./config.ts";
 import { checkMerged, checkSettings } from "./settings-check.ts";
 import { closedPositions, openBook } from "./positions.ts";
+import { statsOf, modeledUnitStatsOf as unitStatsOf } from "./metrics/stats.ts";
+import { returnGroup, modeledReturnReport as unitReturnReport, unitStatsReport, type ReturnStatsReport } from "./reporting-stats.ts";
+import { runBlocks, runStable, type WalkForwardResult } from "./sim/walkforward.ts";
+
+type ReturnGroup = ReturnType<typeof returnGroup>;
+type PrimarySimSummary = {
+  stats: ReturnStatsReport;
+  sizedStats: WalkForwardResult["sizedStats"];
+  hourly: Array<ReturnGroup & { t: number }>;
+  blocks: Array<ReturnGroup & { t: number }>;
+  byConfig: Array<ReturnGroup & { id: string }>;
+  byKind: Record<string, ReturnGroup>;
+  bySide: { long: ReturnGroup; short: ReturnGroup };
+  stable: boolean | null;
+};
+const primarySimMemo = new WeakMap<object, { trades: WalkForwardResult["trades"]; open: WalkForwardResult["openAtEnd"]; n: number; openN: number; summary: PrimarySimSummary }>();
+/** HMR can retain a pre-upgrade sized summary. Derive the primary basis from its orders without rewriting it. */
+function primarySimSummary(sim: WalkForwardResult): PrimarySimSummary {
+  const cached = primarySimMemo.get(sim);
+  if (cached && cached.trades === sim.trades && cached.open === sim.openAtEnd && cached.n === (sim.trades?.length ?? 0) && cached.openN === (sim.openAtEnd?.length ?? 0)) return cached.summary;
+  const outcomes = [...(sim.trades ?? []), ...(sim.openAtEnd ?? [])];
+  const stats = unitStatsOf(outcomes, sim.endT);
+  if (!Array.isArray(sim.trades)) {
+    stats.pfBasis = "unavailable";
+    stats.unknownReturns = Math.max(1, sim.stats.n);
+  }
+  const group = (key: (t: WalkForwardResult["trades"][number]) => string) => {
+    const groups = new Map<string, WalkForwardResult["trades"]>();
+    for (const t of sim.trades ?? []) { const k = key(t); const xs = groups.get(k) ?? []; xs.push(t); groups.set(k, xs); }
+    return [...groups].map(([key, xs]) => ({ key, ...returnGroup(unitReturnReport(xs, sim.endT)) }));
+  };
+  const rawBlocks = runBlocks(sim.trades ?? [], sim.startT, sim.endT);
+  const blocks = rawBlocks.map((b, i) => ({ t: b.t, ...returnGroup(unitReturnReport((sim.trades ?? []).filter((t) => t.exitT > b.t && t.exitT <= (rawBlocks[i + 1]?.t ?? sim.endT)), sim.endT)) }));
+  const byKind = Object.fromEntries(group((t) => t.kind ?? "normal").map(({ key, ...s }) => [key, s]));
+  const side = (n: number) => returnGroup(unitReturnReport((sim.trades ?? []).filter((t) => t.side === n), sim.endT));
+  const summary: PrimarySimSummary = {
+    stats: unitStatsReport(stats, Array.isArray(sim.trades) ? outcomes.length : sim.stats.n), sizedStats: sim.sizedStats ?? (Array.isArray(sim.trades) ? statsOf(outcomes, sim.endT) : sim.stats),
+    hourly: group((t) => String(Math.floor((t.exitT - 1) / 3_600_000) * 3_600_000))
+      .map(({ key, ...s }) => ({ t: Number(key), ...s })).sort((a, b) => a.t - b.t),
+    blocks, byKind, bySide: { long: side(1), short: side(-1) },
+    byConfig: group((t) => t.cfg).map(({ key, ...s }) => ({ id: key, ...s })).sort((a, b) => (b.net ?? -Infinity) - (a.net ?? -Infinity)),
+    stable: stats.pfBasis === "unavailable" ? null : runStable(stats, rawBlocks, sim.opts?.gates?.minPf ?? 1.05),
+  };
+  primarySimMemo.set(sim, { trades: sim.trades, open: sim.openAtEnd, n: sim.trades?.length ?? 0, openN: sim.openAtEnd?.length ?? 0, summary });
+  return summary;
+}
 
 /** Newest live state (in memory in the live step; the database copy trails it by up to ~1 s). */
 async function liveState<T>(
@@ -32,6 +78,69 @@ type Row = Record<string, unknown>;
 type Json = string | number | boolean | null | Json[] | { [k: string]: Json };
 /** Server-function payloads must be serializable; this also strips typed arrays and undefined. */
 const ser = (x: unknown): Json => JSON.parse(JSON.stringify(x ?? null)) as Json;
+
+/** Input of a listing page: which list, optional range/group and text filter, and the page. */
+export const coreListingInput = (d?: {
+  conn?: string;
+  kind?: string;
+  range?: string;
+  group?: string;
+  q?: string;
+  offset?: number;
+  limit?: number;
+}) => {
+  const kind = d?.kind ?? "validated";
+  if (!["validated", "active", "proven", "baseConfigs"].includes(kind)) throw new Error("kind: validated, active, proven or baseConfigs");
+  if (d?.range !== undefined && (typeof d.range !== "string" || d.range.length > 20)) throw new Error("bad range");
+  if (d?.group !== undefined && (typeof d.group !== "string" || d.group.length > 32)) throw new Error("bad group");
+  if (d?.q !== undefined && (typeof d.q !== "string" || d.q.length > 80)) throw new Error("bad filter");
+  const offset = Math.max(0, Math.floor(Number(d?.offset ?? 0)) || 0);
+  const limit = Math.min(500, Math.max(1, Math.floor(Number(d?.limit ?? 100)) || 100));
+  return { ...connInput(d), kind: kind as "validated" | "active" | "proven" | "baseConfigs", range: d?.range, group: d?.group, q: d?.q?.toLowerCase(), offset, limit };
+};
+
+/**
+ * One page of a listing of the last paper step (CoreRuntime.listings, built once per step): the validated engine
+ * configs (best score first; a range or strategy group reads its own row index), the active signal units or the engine configs proven
+ * live — never a scan of the tapes per request.
+ */
+export async function coreListingData(data: ReturnType<typeof coreListingInput>) {
+  const r = await rt(data.conn);
+  if (data.kind === "baseConfigs") {
+    const snapshot = r.baseConfigs;
+    const { RANGE_LABEL } = await import("./minimal-coord.ts");
+    const rows = (snapshot?.rows ?? []).filter((x) =>
+      (!data.range || x.tag === data.range || (RANGE_LABEL[x.tag as keyof typeof RANGE_LABEL] ?? x.tag) === data.range) &&
+      (!data.q || `${x.bot}|${x.ind}|${x.tag}|${x.kind}`.toLowerCase().includes(data.q)),
+    );
+    return ser({ ready: !!snapshot, kind: data.kind, summary: snapshot?.summary ?? null, total: rows.length,
+      offset: data.offset, limit: data.limit, rows: rows.slice(data.offset, data.offset + data.limit), byRange: [], byGroup: [] });
+  }
+  const L = r.listings;
+  if (!L) return ser({ ready: false, kind: data.kind, total: 0, rows: [], byRange: [], byGroup: [] });
+  const q = data.q;
+  let rows: unknown[];
+  if (data.kind === "validated") {
+    const selectedGroup = data.group ?? data.range;
+    const idx = selectedGroup ? (L.byGroup[selectedGroup]?.rows ?? []) : null;
+    const all = idx ? idx.map((i) => L.validated[i]) : L.validated;
+    rows = q ? all.filter((x) => x.id.toLowerCase().includes(q)) : all;
+  } else if (data.kind === "active") {
+    rows = q ? L.active.filter((x) => `${x.bot}|${x.ind}|${x.sym}|${x.side}|${x.kind ?? "discovery"}|${x.cfg ?? ""}`.toLowerCase().includes(q)) : L.active;
+  } else rows = (L.proven ?? []).filter((id) => !q || id.toLowerCase().includes(q)).map((id) => ({ id }));
+  return ser({
+    ready: true,
+    kind: data.kind,
+    paperStep: L.paperStep,
+    at: L.at,
+    total: rows.length,
+    offset: data.offset,
+    rows: rows.slice(data.offset, data.offset + data.limit),
+    byRange: Object.entries(L.byRange).map(([range, x]) => ({ range, validated: x.rows.length, pf: x.pf })),
+    byGroup: Object.entries(L.byGroup).map(([group, x]) => ({ group, validated: x.rows.length, pf: x.pf })),
+    proofOn: L.proven !== null,
+  });
+}
 
 /** Base-stage rows: stage 1, plus the Base-protect variant of pairs refined in Main (stored as stage ≥ 2). */
 const BASE_ROWS =
@@ -66,9 +175,16 @@ export async function coreStatusData(data: ReturnType<typeof connInput>) {
     // the live step's own state (enabled = armed, reason when blocked); null before its first step
     liveStatus: live ? { enabled: live.enabled, reason: live.reason } : null,
     signals: st.signals,
+    livePromotion: st.livePromotion ?? null,
     baseEvaluated: st.baseEvaluated,
     basePassed: st.basePassed,
+    baseBuilt: st.baseBuilt ?? 0,
     baseByRange: st.baseByRange ?? [],
+    baseWhy: st.baseWhy ?? [],
+    baseGates: st.baseGates ?? [],
+    baseConfigs: st.baseConfigs ?? null,
+    engineProof: st.engineProof ?? null,
+    baseHistory: st.baseHistory ?? [],
   });
 }
 
@@ -76,13 +192,16 @@ export async function coreOverviewData(data: ReturnType<typeof connInput>) {
   const r = await rt(data.conn);
   const db = r.db;
   const sim = r.sim;
+  const primary = sim ? primarySimSummary(sim) : null;
   const pipe = db.kvGet<Row>("pipeline") ?? null;
   const counts = db.get<Row>(
     `SELECT (SELECT COUNT(*) FROM results WHERE ${BASE_ROWS}) AS base, (SELECT COUNT(*) FROM results WHERE stage >= 2) AS main, (SELECT COUNT(*) FROM results WHERE stage = 3) AS evaluated, (SELECT COUNT(*) FROM results WHERE armed = 1) AS armed`,
   );
-  const paperTrades = db.get<Row>(
-    "SELECT COUNT(*) AS n, COALESCE(SUM(pnl), 0) AS pnl, COALESCE(SUM(CASE WHEN r > 0 THEN r ELSE 0 END), 0) AS gp, COALESCE(SUM(CASE WHEN r < 0 THEN -r ELSE 0 END), 0) AS gl FROM paper_trades",
+  const paperRaw = db.get<Row>(
+    "SELECT COUNT(*) AS n, COALESCE(SUM(pnl), 0) AS pnl, COALESCE(SUM(CASE WHEN unit_r > 0 THEN unit_r ELSE 0 END), 0) AS gp, COALESCE(SUM(CASE WHEN unit_r < 0 THEN -unit_r ELSE 0 END), 0) AS gl, COUNT(*) - COUNT(unit_r) AS unknownReturns, COALESCE(SUM(CASE WHEN r > 0 THEN r ELSE 0 END), 0) AS sizedGp, COALESCE(SUM(CASE WHEN r < 0 THEN -r ELSE 0 END), 0) AS sizedGl FROM paper_trades",
   );
+  const paperTrades: Row | null = paperRaw ? { ...paperRaw, gp: Number(paperRaw.unknownReturns) ? null : paperRaw.gp,
+    gl: Number(paperRaw.unknownReturns) ? null : paperRaw.gl, pfBasis: Number(paperRaw.unknownReturns) ? "unavailable" : "unit-net-returns" } : null;
   return ser({
     status: r.status,
     settings: r.settings,
@@ -104,14 +223,15 @@ export async function coreOverviewData(data: ReturnType<typeof connInput>) {
       ? {
           startT: sim.startT,
           endT: sim.endT,
-          stats: sim.stats,
+          stats: primary!.stats,
+          sizedStats: primary!.sizedStats ?? null,
           positions: closedPositions(sim.trades),
-          hourly: sim.hourly,
-          blocks: sim.blocks,
-          byKind: sim.byKind,
+          hourly: primary!.hourly,
+          blocks: primary!.blocks,
+          byKind: primary!.byKind,
           skips: sim.skips,
-          stable: sim.stable,
-          byConfig: sim.byConfig.slice(0, 12),
+          stable: primary!.stable,
+          byConfig: primary!.byConfig.slice(0, 12),
         }
       : null,
     paper: {
@@ -120,7 +240,8 @@ export async function coreOverviewData(data: ReturnType<typeof connInput>) {
       positions: r.paper.positions.length,
       book: openBook(r.paper.positions),
       equity: r.paper.equity,
-      balance: r.paper.balance ?? r.settings.paperBalance + r.paper.equity,
+      balance: r.settings.paperBalance + Number(paperTrades?.pnl ?? 0),
+      accountEquity: r.settings.paperBalance + r.paper.equity,
       startBalance: r.settings.paperBalance,
       sizing: r.settings.sizing,
       trades: paperTrades,
@@ -133,9 +254,13 @@ export async function coreOverviewData(data: ReturnType<typeof connInput>) {
 
 /** Per timeframe lane: Base evaluated / passed, Main tapes, simulated trades (n, PF, net), open paper positions. */
 async function laneSummary(r: Awaited<ReturnType<typeof rt>>) {
-  const { laneLabel } = await import("./indications/registry.ts");
-  const { passesBase } = await import("./pipeline/pipeline.ts");
-  const { statsOf } = await import("./metrics/stats.ts");
+  const { laneLabel, isSignalInd } = await import("./indications/registry.ts");
+  const { basePass } = await import("./server/runtime.server.ts");
+  // Report the same full-indication/range qualification as Base. allSets may build failing pairs for measurement;
+  // suppress that addition in this local read only, so built does not become passed. No runtime settings change.
+  const enginePassed = new Set(basePass(r.pipeline?.s1 ?? [], {
+    ...r.settings, grid: { ...r.settings.grid, allSets: false },
+  }).passed.map((c) => `${c.bot}|${c.ind}`));
   const lab = (ind: string) => laneLabel(ind) || "plain";
   const rows = new Map<
     string,
@@ -156,7 +281,12 @@ async function laneSummary(r: Awaited<ReturnType<typeof rt>>) {
   for (const c of r.pipeline?.s1 ?? []) {
     const x = row(lab(c.ind));
     x.base++;
-    if (passesBase(c.full, r.settings.gates)) x.passed++;
+    // Signals have separate Base/discovery sample rules; use their computed accepted set, never engine PF or a
+    // winning sibling's range/lane. Before that result exists, no Signal is reported as qualified.
+    const pair = `${c.bot}|${c.ind}`;
+    const passed = isSignalInd(c.ind) ? r.wf.signalBasePassed?.has(pair)
+      : enginePassed.has(pair) && (!r.wf.basePassed || r.wf.basePassed.has(pair));
+    if (passed) x.passed++;
   }
   for (const t of r.tapes) row(lab(t.ind)).tapes++;
   const indOf = (cfg: string) => cfg.split("|")[1] ?? "";
@@ -166,17 +296,14 @@ async function laneSummary(r: Awaited<ReturnType<typeof rt>>) {
   return [...rows.values()]
     .sort((a, b) => order.indexOf(a.lane) - order.indexOf(b.lane))
     .map((x) => {
-      const st = statsOf([...x.trades].sort((a, b) => a.exitT - b.exitT) as never);
+      const st = unitReturnReport([...x.trades].sort((a, b) => a.exitT - b.exitT) as never);
       return {
         lane: x.lane,
         base: x.base,
         passed: x.passed,
         tapes: x.tapes,
-        n: st.n,
+        ...returnGroup(st),
         positions: closedPositions(x.trades),
-        pf: st.pf,
-        net: st.net,
-        wr: st.wr,
         open: openBook(x.open),
       };
     });
@@ -302,23 +429,38 @@ export async function coreConfigData(data: ReturnType<typeof coreConfigInput>) {
 export async function coreSimData(data: ReturnType<typeof connInput>) {
   const r = await rt(data.conn);
   const sim = r.sim;
-  const presets = r.db.kvGet<Row>("presetSims") ?? null;
+  const archive = r.db.kvGet<{ presets?: Record<string, { stats?: Record<string, unknown>; [key: string]: unknown }>; [key: string]: unknown }>("presetSims") ?? null;
+  // Old archives contain aggregate size-weighted numbers but no orders. Preserve them only as sized diagnostics.
+  const presets = archive ? { ...archive, presets: Object.fromEntries(Object.entries(archive.presets ?? {}).map(([key, value]) => {
+    if (Number(value.stats?.n) > 0 && value.stats?.pfBasis === "unit-net-returns" && value.stats.unknownReturns === 0) return [key, value];
+    const stats = { ...value.stats, pfBasis: "unavailable", unknownReturns: Number(value.stats?.n ?? 0),
+      pf: null, gp: null, gl: null, net: null, avg: null, mdd: null, ddt: null, ddtNow: null, expectancy: null,
+      sqn: null, recovery: null, greenHours: null, gh: null, worstHour: null };
+    return [key, { ...value, stats, sizedStats: value.stats ?? null, hourly: [], blocks: [], byKind: {}, stable: false }];
+  })) } : null;
   const runs = r.db.all<Row>(
-    "SELECT id, at, start_t, end_t, n, pf, net, gh, tph, ddt, stable FROM sim_runs ORDER BY id DESC LIMIT 60",
-  );
+    "SELECT id, at, start_t, end_t, n, pf, net, gh, tph, ddt, stable, opts FROM sim_runs ORDER BY id DESC LIMIT 60",
+  ).map(({ opts, ...run }) => {
+    let pfBasis = "unavailable";
+    try { if (JSON.parse(String(opts)).pfBasis === "unit-net-returns") pfBasis = "unit-net-returns"; } catch { /* legacy */ }
+    return pfBasis === "unit-net-returns" ? { ...run, pfBasis }
+      : { ...run, pf: null, net: null, stable: 0, pfBasis, sizedPf: run.pf, sizedNet: run.net };
+  });
   if (!sim) return ser({ sim: null, presets, runs });
+  const primary = primarySimSummary(sim);
   return ser({
     sim: {
       startT: sim.startT,
       endT: sim.endT,
-      stats: sim.stats,
+      stats: primary.stats,
+      sizedStats: primary.sizedStats ?? null,
       positions: closedPositions(sim.trades),
-      hourly: sim.hourly,
-      blocks: sim.blocks,
-      byKind: sim.byKind,
+      hourly: primary.hourly,
+      blocks: primary.blocks,
+      byKind: primary.byKind,
       skips: sim.skips,
-      stable: sim.stable,
-      byConfig: sim.byConfig,
+      stable: primary.stable,
+      byConfig: primary.byConfig,
       steps: sim.steps.map((s) => ({
         t: s.t,
         main: s.main,
@@ -383,7 +525,8 @@ export async function coreTradingData(data: ReturnType<typeof connInput>) {
     tradesShown: TRADES_SHOWN,
     selected: r.paper.selected,
     equity: r.paper.equity,
-    balance: r.paper.balance ?? r.settings.paperBalance + r.paper.equity,
+    balance: r.settings.paperBalance + realized,
+    accountEquity: r.settings.paperBalance + r.paper.equity,
     startBalance: r.settings.paperBalance,
     sizing: r.settings.sizing,
     live: (await liveState<Row>(r.db, "liveStatus")) ?? null,
@@ -405,13 +548,14 @@ export async function coreTradingData(data: ReturnType<typeof connInput>) {
 /**
  * The Overall control positions the current paper book asks for (shown even while Live is off): the lanes the live
  * step would send (live.kinds / source / plainOnly / excludeRanges, the selected engine configs and active signals,
- * top configs), the same sizing (unit from the last equity read, else the paper balance; minimum-quantity sizing per
- * symbol; position mode; per-position cap; exchange minimum) and live.maxSymbols. Without an exchange read the held
- * positions come from the live step's last control status, the equity caps from the last equity read (else the
- * paper balance). The account-wide exposure / risk scalers are not applied here.
+ * top configs), the same sizing (unit from the last verified wallet-balance read; minimum-quantity sizing per
+ * symbol; position mode; the 100-slot exchange position ceiling; exchange minimum). Without an exchange read the
+ * held positions come from the live step's last control status. Unknown or stale account balance blocks previews
+ * requiring a balance read; the paper balance never funds a live account. The account-wide scalers (gross exposure, stop risk, worst case) are applied as the live step applies
+ * them, drops included, so the preview shows the sizes the desk would send.
  */
 async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
-  const { controlTargets, liveNetwork, positionCapFor, topConfigLanes } =
+  const { controlTargets, liveNetwork, positionCapFor, topConfigLanes, scaleToBudgets } =
     await import("./server/live.ts");
   const {
     controlSettingsOf,
@@ -423,27 +567,47 @@ async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
     venueMinQty,
   } = await import("./server/live.server.ts");
   const { isSignalInd } = await import("./indications/registry.ts");
-  const bx = await import("./exchange/bingx.server.ts");
   const s = r.settings.live;
+  const u = liveUnitPeek(r);
+  const minQty = u.from === "minQty";
+  const eq = u.equity ?? 0;
+  const maxExposureX = s.exposureScaler === false ? 0 : (s.maxExposureX ?? 0);
+  const equityRequired = (s.maxPositionX ?? 0) > 0 || maxExposureX > 0 ||
+    (s.maxRiskPct ?? 0) > 0 || (s.maxBackstopLossPct ?? 0) > 0;
+  if (u.from === "unknown" || (equityRequired && !(eq > 0))) {
+    return {
+      targets: [],
+      skipped: [],
+      unit: u.unit,
+      unitFrom: u.from,
+      blocked: "Waiting for a current exchange equity read; no live size is inferred from the paper balance",
+      top: null,
+      exchangeSlots: [],
+    };
+  }
+  // An equity-blocked preview has no targets: do not delay the account UI on unused venue metadata.
+  const bx = await import("./exchange/bingx.server.ts");
   const specs = await bx
     .fetchContracts(liveNetwork(s.connId))
     .catch(() => new Map<string, never>());
   const prices = new Map<string, number>();
-  for (const [sym, cs] of r.candles) if (cs.length) prices.set(sym, cs[cs.length - 1].c);
-  const u = liveUnitPeek(r);
-  const minQty = u.from === "minQty";
-  const eq = u.equity ?? r.settings.paperBalance;
+  for (const [sym, cs] of r.candles) if (cs.n) prices.set(sym, cs.c[cs.n - 1]);
   const lotUsd = (sym: string, px: number) => bx.minQtyExchange(px, specs.get(sym) ?? null) * px;
-  // positions the exchange holds (the live step's last read): their lanes stay while held, they come first under maxSymbols
-  const status = liveKv<{ held?: Array<{ key: string; qty: number }> }>(
+  // Positions and unresolved entries from the live step's last exchange read occupy slots even if their lanes vanish.
+  const status = liveKv<{
+    held?: Array<{ key: string; qty: number }>;
+    exchangeSlots?: string[];
+  }>(
     r.db as never,
     "controlStatus",
   );
-  const heldKeys = new Set((status?.held ?? []).filter((h) => h.qty > 0).map((h) => h.key));
+  const ownedHeldKeys = new Set((status?.held ?? []).filter((h) => h.qty > 0).map((h) => h.key));
+  const exchangeSlots = new Set([...(status?.exchangeSlots ?? []), ...ownedHeldKeys]);
   const selected = r.paper.selected ? new Set(r.paper.selected) : null;
-  const { validLane } = liveLaneFilter(s, selected, r.wf?.signalActive);
+  const { validLane } = liveLaneFilter(s, selected, r.wf?.signalActive, null,
+    (lane) => r.livePromotionGate(lane).ok);
   let lanes = laneContributions(r, prices).filter(
-    (l) => validLane(l) || heldKeys.has(`${l.sym}|${l.side}`),
+    (l) => validLane(l) || ownedHeldKeys.has(`${l.sym}|${l.side}`),
   );
   const posCap = positionCapFor(positionCapOf(s), eq, s.maxPositionX);
   // top configs ("fill" or a number), with the live step's budget: exposure cap, risk and worst-case budgets
@@ -492,37 +656,43 @@ async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
     lanes = t.lanes;
     topKept = { kept: t.kept, of: t.of };
   }
+  // a minimum the venue has named is never undercut (the live step sizes with it as well)
+  const snapPlan = (sym: string, q: number, px: number) =>
+    bx.snapQtyExchange(q, px, specs.get(sym) ?? null, venueMinQty(r as never, sym)).qty;
   const plan = controlTargets(
     lanes,
     prices,
     {
-      ...controlSettingsOf(s, u.unit, r.settings.signals.maxPositions),
+      ...controlSettingsOf(s, u.unit),
       maxNotionalUsd: posCap,
       ...(minQty ? { unitOf: lotUsd } : {}),
-      heldKeys,
+      heldKeys: exchangeSlots,
     },
-    // a minimum the venue has named is never undercut (the live step sizes with it as well)
     (sym, q, px) => bx.snapQtyExchange(q, px, specs.get(sym) ?? null, venueMinQty(r as never, sym)),
   );
-  // live.maxSymbols: held symbols first, then the ranked targets
-  const maxSyms = s.maxSymbols ?? 0;
-  let symbolCapDropped = 0;
-  if (maxSyms > 0) {
-    const allowed = new Set([...heldKeys].map((k) => k.split("|")[0]));
-    for (const t of plan.targets) {
-      if (allowed.size >= maxSyms) break;
-      allowed.add(t.sym);
-    }
-    const keep = plan.targets.filter((t) => allowed.has(t.sym));
-    symbolCapDropped = plan.targets.length - keep.length;
-    plan.targets = keep;
-  }
+  // the account-wide scalers, in the live step's order: gross exposure, stop risk, worst case — their drops decided
+  // across all three at once, as the live step does (the drops are shown)
+  const expoX = s.exposureScaler === false ? 0 : (s.maxExposureX ?? 0);
+  const { exposure, risk, worst } = scaleToBudgets(
+    plan.targets,
+    eq,
+    { maxExposureX: expoX, maxRiskPct: s.maxRiskPct, maxBackstopLossPct: s.maxBackstopLossPct },
+    snapPlan,
+    exchangeSlots,
+  );
+  for (const [k, why] of [
+    ...(exposure?.dropped ?? []).map((k) => [k, "gross exposure cap"] as const),
+    ...(risk?.dropped ?? []).map((k) => [k, "risk budget"] as const),
+    ...(worst?.dropped ?? []).map((k) => [k, "worst-case budget"] as const),
+  ])
+    plan.skipped.push({ sym: k.split("|")[0], why });
   return {
     ...plan,
     unit: u.unit,
     unitFrom: u.from,
+    blocked: null,
     top: topKept,
-    symbolCapDropped,
+    exchangeSlots: [...exchangeSlots],
   };
 }
 
@@ -533,11 +703,12 @@ export async function coreMarketData(data: ReturnType<typeof connInput>) {
   // the last 24 h of bars (1440 / tfMin), sampled down to ~96 points
   const bars24 = Math.max(1, Math.round(1440 / Math.max(1, r.settings.tfMin || 1)));
   for (const [sym, cs] of r.candles) {
-    const last = cs.slice(-bars24);
-    const step = Math.max(1, Math.ceil(last.length / 96));
+    const from = Math.max(0, cs.n - bars24);
+    const len = cs.n - from;
+    const step = Math.max(1, Math.ceil(len / 96));
     const out: number[] = [];
     // sampled from the newest bar backwards, so the last point is always the latest close
-    for (let i = last.length - 1; i >= 0; i -= step) out.push(last[i].c);
+    for (let i = len - 1; i >= 0; i -= step) out.push(cs.c[from + i]);
     spark[sym] = out.reverse();
   }
   return ser({ symbols, spark, tfMin: r.settings.tfMin, source: r.status.source });
@@ -595,27 +766,55 @@ export async function saveCoreSettingsData(data: ReturnType<typeof saveCoreSetti
 }
 
 /** Research presets (fixed, measured) + presets saved from the engine, with their results. */
+function presetPrimaryView(value: Row, fields: readonly string[]): Row {
+  if (Number(value.n) > 0 && value.pfBasis === "unit-net-returns" && value.unknownReturns === 0 && typeof value.pf === "number" && Number.isFinite(value.pf)) return value;
+  return {
+    ...value,
+    ...Object.fromEntries(fields.map((key) => [key, null])),
+    pfBasis: "unavailable",
+    unknownReturns: typeof value.unknownReturns === "number" && value.unknownReturns > 0 ? value.unknownReturns : null,
+    noLoss: null,
+    pfConvention: "unavailable",
+    sample: "unavailable",
+    archiveDiagnostics: value,
+  };
+}
+
+function presetStatsView(stats: WalkForwardResult["stats"] | ReturnStatsReport, n: number, sample: string): Row {
+  const known = n > 0 && stats.pfBasis === "unit-net-returns" && stats.unknownReturns === 0;
+  const noLoss = known ? typeof stats.gp === "number" && stats.gp > 0 && stats.gl === 0 : null;
+  return presetPrimaryView({ ...stats, n, sample, noLoss, pfConvention: !known ? "unavailable" : noLoss ? "no-loss-sentinel" : "gross-return-ratio" },
+    ["pf", "gp", "gl", "net", "avg", "mdd", "ddt", "ddtNow", "expectancy", "sqn", "recovery", "greenHours", "gh", "worstHour"]);
+}
+
 export async function corePresetsData(data: ReturnType<typeof connInput>) {
   const r = await rt(data.conn);
   const { ALL_RESEARCH_PRESETS } = await import("./presets.ts");
   const sim = r.sim;
+  const primary = sim ? primarySimSummary(sim) : null;
+  const settled = sim?.trades.filter((trade) => trade.exitT > sim.startT && trade.exitT <= sim.endT);
+  const settledStats = sim ? presetStatsView(unitStatsOf(settled ?? [], sim.endT), settled?.length ?? 0, "settled-closes") : null;
   return ser({
     research: ALL_RESEARCH_PRESETS,
-    saved: r.savedPresets().sort((a, b) => b.at - a.at),
+    saved: r.savedPresets().sort((a, b) => b.at - a.at).map((preset) => ({
+      ...preset,
+      metrics: presetPrimaryView(preset.metrics as unknown as Row, ["pf", "gp", "gl", "net", "wr", "greenHours", "greenDays", "positiveRuns", "ddtH"]),
+    })),
     active: r.db.kvGet("activePreset") ?? null,
-    backtests: r.presetBacktests(),
+    backtests: Object.fromEntries(Object.entries(r.presetBacktests()).map(([id, rows]) => [id, rows.map((row) =>
+      presetPrimaryView(row as unknown as Row, ["pf", "gp", "gl", "net", "successHours", "greenHours", "ddtH", "stable", "pass", "byKind", "settledStats"]),
+    )])),
     job: r.backtestJob,
     queued: r.backtestQueue.length,
     maxDays: MAX_BACKTEST_DAYS,
     gates: r.settings.gates,
     current: sim
       ? {
-          pf: sim.stats.pf,
-          n: sim.stats.n,
-          gh: sim.stats.gh,
-          wr: sim.stats.wr,
-          net: sim.stats.net,
-          stable: sim.stable,
+          ...presetStatsView(primary!.stats, Array.isArray(sim.trades) ? sim.trades.length + (sim.openAtEnd?.length ?? 0) : sim.stats.n, "with-endpoint-marks"),
+          endpointMarks: sim.openAtEnd?.length ?? 0,
+          settledStats,
+          sizedStats: primary!.sizedStats ?? null,
+          stable: primary!.stats.pfBasis === "unit-net-returns" ? primary!.stable : null,
           hours: (sim.endT - sim.startT) / 3_600_000,
         }
       : null,
@@ -631,7 +830,8 @@ export const corePresetSeriesInput = (d: { id: string; conn?: string }) => {
 
 export async function corePresetSeriesData(data: ReturnType<typeof corePresetSeriesInput>) {
   const r = await rt(data.conn);
-  return ser({ series: r.presetSeries(data.id) });
+  const series = r.presetSeries(data.id);
+  return ser({ series: series ? { ...series, info: presetPrimaryView(series.info as unknown as Row, ["pf", "gp", "gl"]) } : null });
 }
 
 /** Input of presetAction. */
@@ -732,6 +932,7 @@ export async function coreConnsData() {
     conns: m.CONN_IDS.map((conn) => {
       const r = m.existingRuntime(conn);
       const keys = keysFor(conn);
+      const sim = r?.sim ? primarySimSummary(r.sim) : null;
       return {
         conn,
         label: CONN_LABEL[conn] ?? conn,
@@ -751,7 +952,7 @@ export async function coreConnsData() {
         error: r?.status.error ?? null,
         symbols: r?.status.symbols.length ?? 0,
         live: r ? { enabled: r.settings.live.enabled, mode: r.settings.live.mode } : null,
-        sim: r?.sim ? { pf: r.sim.stats.pf, n: r.sim.stats.n, net: r.sim.stats.net } : null,
+        sim: sim ? returnGroup(sim.stats) : null,
         paper: r ? { equity: r.paper.equity, balance: r.paper.balance ?? null } : null,
       };
     }),
@@ -781,7 +982,7 @@ export const coreStatisticsInput = (d?: {
 
 export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsInput>) {
   const r = await rt(data.conn);
-  const { buildStatistics } = await import("./statistics.ts");
+  const { buildStatistics, minuteCloseAtOrBefore } = await import("./statistics.ts");
   const { sizeBook, orderKey } = await import("./sizing.ts");
   // the execution presets are simulated on the run's tapes: they compare with the simulated source only
   const presets =
@@ -790,7 +991,7 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
       : null;
   const sim = r.sim;
   let balance = r.settings.paperBalance ?? 1000;
-  let balanceFrom: "paper start balance" | "account equity" | "paper start balance + live P&L" =
+  let balanceFrom: "paper start balance" | "account equity" | "unavailable" =
     "paper start balance";
   let trades: Array<
     Record<string, unknown> & {
@@ -805,6 +1006,7 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
   >;
   let startT: number;
   let endT: number;
+  let paperEvidence: { requested: number; verifiedOwnership: number; unknownOwnership: number; cashBasis: "recorded-paper-history"; recordedReturns: ReturnStatsReport } | null = null;
   if (data.source === "sim") {
     if (!sim) return ser({ report: null, why: "no simulated run yet" });
     trades = sim.trades as never;
@@ -816,29 +1018,36 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
     const { liveTag } = await import("./server/live.ts");
     const rows = r.db.all<{
       coid: string;
+      cfg: string | null;
       sym: string;
       side: number;
       kind: string;
       qty: number;
       px: number;
       status: string;
+      msg: string | null;
       at: number;
       fill_px: number | null;
       fee: number | null;
+      feeKnown: number | null;
     }>(
-      "SELECT o.coid, o.sym, o.side, o.kind, o.qty, o.px, o.status, o.at, f.fill_px, f.fee FROM live_orders o LEFT JOIN live_fills f ON f.coid = o.coid ORDER BY o.at",
+      "SELECT o.coid, o.cfg, o.sym, o.side, o.kind, o.qty, o.px, o.status, o.msg, o.at, f.fill_px, f.fee, f.fee_known AS feeKnown FROM live_orders o LEFT JOIN live_fills f ON f.coid = o.coid ORDER BY o.at",
     );
     const tag = liveTag(r.settings.live.connId);
     trades = liveTrades(
       rows.map((x) => ({ ...x, fillPx: x.fill_px })),
       tag.length,
+      r.settings.cost,
     ).map((x) => ({ ...x, pnl: x.r * x.notional }));
     endT = Date.now();
     startT = trades.length
       ? trades.reduce((m, x) => Math.min(m, x.entryT), Infinity)
       : endT - 3_600_000;
-    // the account's balance before the first ledger close: the last equity read (no exchange call) minus every
-    // realized close of the ledger and the open positions' mark to market; without a read, the paper start balance
+    // Without verified account equity this is a ledger P&L series with a neutral zero basis, never an invented
+    // paper-funded account. With a read the baseline is a reconstruction; external funding / other activity can
+    // prevent it from representing the account's historical balance.
+    balance = 0;
+    balanceFrom = "unavailable";
     const { liveUnitPeek } = await import("./server/live.server.ts");
     const eq = liveUnitPeek(r).equity;
     if (eq !== null && eq > 0) {
@@ -848,7 +1057,7 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
       for (const x of trades) realized += Number(x.pnl) || 0;
       balance = eq - realized - (acct?.openNet ?? 0);
       balanceFrom = "account equity";
-    } else balanceFrom = "paper start balance + live P&L";
+    }
   } else {
     const rows = r.db.all<{
       cfg: string;
@@ -858,10 +1067,13 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
       exit_t: number;
       entry: number;
       r: number;
+      unit_r: number | null;
       reason: string;
       pnl: number;
+      owned_notional_usd: number | null;
+      owned_unit_r: number | null;
     }>(
-      "SELECT cfg, sym, side, entry_t, exit_t, entry, r, reason, pnl FROM paper_trades WHERE exit_t IS NOT NULL ORDER BY exit_t",
+      "SELECT p.cfg, p.sym, p.side, p.entry_t, p.exit_t, p.entry, p.r, p.unit_r, p.reason, p.pnl, b.owned_notional_usd, b.unit_r AS owned_unit_r FROM paper_trades p LEFT JOIN paper_book_trades b ON b.cfg=p.cfg AND b.sym=p.sym AND b.side=p.side AND b.entry_t=p.entry_t AND b.exit_t=p.exit_t AND b.reason != 'dropped' WHERE p.exit_t IS NOT NULL ORDER BY p.exit_t",
     );
     trades = rows.map((x) => ({
       cfg: x.cfg,
@@ -871,6 +1083,10 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
       exitT: x.exit_t,
       entry: x.entry,
       r: x.r,
+      // Match the strict promotion ownership threshold; never infer funding from a unit return or P&L/r.
+      unitR: typeof x.owned_notional_usd === "number" && Number.isFinite(x.owned_notional_usd) && x.owned_notional_usd > 1e-9 ? x.owned_unit_r ?? null : null,
+      recordedUnitR: x.unit_r ?? null,
+      ownershipVerified: typeof x.owned_notional_usd === "number" && Number.isFinite(x.owned_notional_usd) && x.owned_notional_usd > 1e-9,
       reason: x.reason,
       pnl: x.pnl,
     }));
@@ -881,31 +1097,36 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
       : endT - 3_600_000;
   }
   if (data.hours > 0) startT = Math.max(startT, endT - data.hours * 3_600_000);
+  if (data.source === "paper") {
+    const window = trades.filter((x) => x.exitT > startT && x.exitT <= endT);
+    const verifiedOwnership = window.filter((x) => x.ownershipVerified === true).length;
+    paperEvidence = { requested: window.length, verifiedOwnership, unknownOwnership: window.length - verifiedOwnership, cashBasis: "recorded-paper-history",
+      recordedReturns: unitReturnReport(window.map((x) => ({ ...x, unitR: typeof x.recordedUnitR === "number" ? x.recordedUnitR : null })), endT) };
+  }
   const sized = sizeBook(trades, [], {
     balance,
     sizing: r.settings.sizing,
     fixedNotional: r.settings.paperNotional,
   });
-  // paper closes carry their own P&L: their unit is P&L ÷ r
-  const unit = (x: { cfg: string; sym: string; side: number; entryT: number; r: number; pnl?: unknown }) =>
-    typeof x.pnl === "number" && Math.abs(x.r) > 1e-12
-      ? Math.abs(x.pnl / x.r)
-      : (sized.units.get(orderKey(x)) ?? r.settings.paperNotional);
+  // Owned live closes retain their measured notional even at zero return.
+  // Missing live notional is unavailable, never filled in from the paper sizing setting.
+  // Paper history retains its nominal inferred/model sizing basis.
+  const unit = (x: { cfg: string; sym: string; side: number; entryT: number; r: number; pnl?: unknown; notional?: unknown }) =>
+    data.source === "live"
+      ? typeof x.notional === "number" && Number.isFinite(x.notional) && x.notional > 0 ? x.notional : NaN
+      : typeof x.pnl === "number" && Number.isFinite(x.pnl) && Number.isFinite(x.r) && Math.abs(x.r) > 1e-12 && Number.isFinite(x.pnl / x.r)
+        ? Math.abs(x.pnl / x.r)
+        : (sized.units.get(orderKey(x)) ?? r.settings.paperNotional);
   const closes = new Map<string, Map<number, number>>();
   for (const [sym, cs] of r.candles) {
     const m = new Map<number, number>();
-    for (const c of cs) if (c.t >= startT - 600_000) m.set(c.t, c.c);
+    for (let i = 0; i < cs.n; i++) if (cs.t[i] >= startT - 600_000) m.set(cs.t[i], cs.c[i]);
     closes.set(sym, m);
   }
   const price = (sym: string, t: number) => {
     const m = closes.get(sym);
     if (!m) return null;
-    const t0 = Math.floor(t / 60_000) * 60_000;
-    for (let k = 0; k < 5; k++) {
-      const v = m.get(t0 - k * 60_000);
-      if (v !== undefined) return v;
-    }
-    return null;
+    return minuteCloseAtOrBefore(m, t);
   };
   const report = buildStatistics({
     source: data.source,
@@ -922,8 +1143,17 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
   });
   return ser({
     report,
-    // where the start balance comes from (live: the account equity when read, else the paper start balance)
+    paperEvidence,
+    // The exact closes behind the totals, latest first; never mix paper or simulated rows into execution history.
+    closes: data.source === "live"
+      ? trades.filter((x) => x.exitT > startT && x.exitT <= endT)
+        .sort((a, b) => b.exitT - a.exitT).slice(0, 500)
+      : [],
+    // Live baseline: reconstructed from verified account equity, or unavailable (neutral ledger net-change basis).
     balanceFrom,
+    account: data.source === "live"
+      ? (await liveState<Row>(r.db, "liveStatus"))?.account ?? null
+      : null,
     conn: r.conn ?? null,
     settings: {
       toggles: r.settings.toggles,

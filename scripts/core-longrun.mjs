@@ -245,7 +245,7 @@ if (outPath) {
   const md = [
     `# CTS-A Core v2 — long simulated trading`,
     ``,
-    `${U.bars.length} symbols · ${((U.nowT - U.startT) / D).toFixed(0)} days of ${tf}m BingX bars · ${runs.length} separate ${runH}h runs (${new Date(runs[0]).toISOString().slice(0, 10)} → ${new Date(runs[runs.length - 1] + runH * H).toISOString().slice(0, 10)}) · causal Base per block · Main = top ${mainTop} pairs × every protect × sub-strategy · durable selection, ${base.preH}h pre-calc, ${base.longH / 24}d window · cost 0.2% round trip · patch \`${JSON.stringify(patch)}\` · settings \`${JSON.stringify(sp)}\``,
+    `${U.bars.length} symbols · ${((U.nowT - U.startT) / D).toFixed(0)} days of ${tf}m BingX bars · ${runs.length} separate ${runH}h runs (${new Date(runs[0]).toISOString().slice(0, 10)} → ${new Date(runs[runs.length - 1] + runH * H).toISOString().slice(0, 10)}) · causal Base per block · Main = top ${mainTop} pairs × every protect × sub-strategy · durable selection, ${base.preH}h pre-calc, ${base.longH / 24}d window · cost ${(settings.cost * 100).toFixed(2)}% round trip · patch \`${JSON.stringify(patch)}\` · settings \`${JSON.stringify(sp)}\``,
     ``,
     `| preset | runs + | stable | orders | /day | PF | net % | WR | green hours | green days | median day PF | worst hour % | MDD % | DDT h |`,
     `|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|`,

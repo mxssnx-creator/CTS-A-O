@@ -12,8 +12,12 @@ export default tseslint.config(
       "dist/**",
       ".output/**",
       ".vercel/**",
+      ".worktrees/**",
+      "**/.worktrees/**",
       ".nitro/**",
       "node_modules/**",
+      // Immutable replay evidence can contain archived source trees; lint the active source once.
+      "runs/**",
       "src/routeTree.gen.ts",
     ],
   },

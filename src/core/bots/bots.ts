@@ -2,8 +2,8 @@
 // "follow", which enters on indication onsets. A bot × indication combo = trigger AND indication agrees.
 import type { BotType, Side, Tactics } from "../domain/types.ts";
 import type { SeriesCache } from "../indications/cache.ts";
-import { tacticKey, withTactics } from "../indications/filters.ts";
-import { indicationState } from "../indications/registry.ts";
+import { tacticKeyFor, withTactics } from "../indications/filters.ts";
+import { indicationState, laneOf } from "../indications/registry.ts";
 
 export interface BotSpec {
   type: BotType;
@@ -144,9 +144,11 @@ export function botTrigger(type: BotType, k: SeriesCache): Int8Array | null {
 export function comboSignal(bot: BotType, ind: string, k: SeriesCache): Int8Array | null {
   return k.memo(`combo:${bot}:${ind}`, () => {
     const st = indicationState(ind, k);
-    if (bot === "follow" || bot === "revert") {
+    if (bot === "follow" || bot === "revert" || bot === "exit") {
       if (!st) return null;
-      const dir = bot === "follow" ? 1 : -1;
+      // Historic Exit has a stable direction-onset source. It carries no Bot trigger and does not inherit
+      // the selected Bot's filters or the range-engine's remove-only tactics.
+      const dir = bot === "revert" ? -1 : 1;
       const out = new Int8Array(k.b.n);
       for (let i = 1; i < st.length; i++)
         if (st[i] !== 0 && st[i] !== st[i - 1]) out[i] = st[i] * dir;
@@ -167,7 +169,46 @@ export function entrySignal(
   k: SeriesCache,
   tactics?: Tactics | null,
 ): Int8Array | null {
+  // (a low-ADX indication, its combined "@x4" form too, skips the trend-strength tactic: it would remove every entry,
+  // LOW_ADX_INDS)
+  const key = tacticKeyFor(tactics, laneOf(ind).base.replace(/@x\d+$/, ""));
+  if (bot === "exit") return comboSignal(bot, ind, k);
+  if (key && tactics?.onRun && (bot === "follow" || bot === "revert"))
+    return runEntries(bot, ind, k, key);
   const sig = comboSignal(bot, ind, k);
   if (!sig) return null;
-  return withTactics(sig, k, tacticKey(tactics), `${bot}:${ind}`);
+  return withTactics(sig, k, key, `${bot}:${ind}`);
+}
+
+/**
+ * tactics.onRun: one follow / revert entry per state run, on the run's first bar the tactics keep (the onset rule
+ * tests the tactics on the onset bar alone). Memoized per symbol cache.
+ */
+function runEntries(
+  bot: "follow" | "revert",
+  ind: string,
+  k: SeriesCache,
+  key: string,
+): Int8Array | null {
+  return k.memo(`run:${key}:${bot}:${ind}`, () => {
+    const st = indicationState(ind, k);
+    if (!st) return null;
+    const dir = bot === "follow" ? 1 : -1;
+    const n = st.length;
+    // every bar of every run as a candidate, then the tactics
+    const every = new Int8Array(n);
+    for (let i = 1; i < n; i++) if (st[i] !== 0) every[i] = st[i] * dir;
+    const kept = withTactics(every, k, key, `${bot}:${ind}:every`);
+    const out = new Int8Array(n);
+    let taken = false;
+    for (let i = 1; i < n; i++) {
+      // a new run starts where the state changes
+      if (st[i] !== st[i - 1]) taken = false;
+      if (!taken && kept[i] !== 0) {
+        out[i] = kept[i];
+        taken = true;
+      }
+    }
+    return out;
+  });
 }

@@ -3,11 +3,11 @@
 // range is refused rather than silently ignored.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { type CoreSettings, DEFAULT_SETTINGS } from "./config.ts";
+import { type CoreSettings, DEFAULT_SETTINGS, MINIMAL_PLUS_RANGE } from "./config.ts";
 import { checkSettings } from "./settings-check.ts";
 import type { MicroGrid, RangeGrid } from "./domain/types.ts";
 import { baseRangeProtects } from "./pipeline/pipeline.ts";
-import { EVAL_MIN_SL } from "./minimal-coord.ts";
+import { EVAL_MIN_SL, rangeVolumeFactorsOf } from "./minimal-coord.ts";
 
 /** the four ranges that are not Micro */
 const PLAIN = ["minimal", "short", "general", "long"] as const;
@@ -72,6 +72,36 @@ describe("range settings are complete and the same for every range", () => {
         /own Base cell/,
       );
     }
+  });
+
+  it("range volume factors use the 0.2 ladder and default every range to neutral", () => {
+    for (const name of ALL) {
+      for (const volumeFactor of [0.2, 1, 2.5, 5])
+        checkSettings(withRange(name, { ...cell(TP[name]), volumeFactor }));
+      assert.throws(
+        () => checkSettings(withRange(name, { ...cell(TP[name]), volumeFactor: 0.3 })),
+        /0\.2 steps/,
+      );
+      assert.throws(
+        () => checkSettings(withRange(name, { ...cell(TP[name]), volumeFactor: 5.2 })),
+        /volume factor out of range/,
+      );
+    }
+    const defaults = rangeVolumeFactorsOf(DEFAULT_SETTINGS.grid);
+    assert.deepEqual(defaults, { wide: 1, mc: 1, mn: 1, mp: 1, sh: 1, gn: 1, lg: 1 });
+    assert.equal(
+      rangeVolumeFactorsOf({ micro: { tp: [], slOfTp: [], trailOfTp: [] } }).mc,
+      1,
+      "an older saved grid without an explicit factor resolves to the neutral range default",
+    );
+    checkSettings({
+      ...DEFAULT_SETTINGS,
+      grid: { ...DEFAULT_SETTINGS.grid, volumeFactor: 2.5, minimalPlus: { ...MINIMAL_PLUS_RANGE, volumeFactor: 2.5 } },
+    });
+    assert.throws(
+      () => checkSettings({ ...DEFAULT_SETTINGS, grid: { ...DEFAULT_SETTINGS.grid, volumeFactor: 0.3 } }),
+      /0\.2 steps/,
+    );
   });
 
   it("a range's own evaluation stop floor builds the cells the global floor forbids", () => {

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildStatistics, subTypeOf, timeline, typeOf, withWithout, type StatTrade } from "./statistics.ts";
+import { buildStatistics, minuteCloseAtOrBefore, presetSeries, subTypeOf, timeline, typeOf, withWithout, type StatTrade } from "./statistics.ts";
+import { statsOf, unitStatsOf } from "./metrics/stats.ts";
 
 const H = 3_600_000;
 const T0 = Date.UTC(2026, 8, 30, 0);
@@ -50,8 +51,32 @@ test("timeline: balance steps at each close, equity marks open orders, margin an
   assert.equal(tl.ordersMax, 2);
 });
 
+test("equity drawdown uses every minute and trade event, independently of margin and chart downsampling", () => {
+  const trades = [tr({ entryT: T0, exitT: T0 + 4 * H, r: -0.2 })];
+  const price = (_sym: string, t: number) =>
+    t < T0 + H ? 100 : t < T0 + 2 * H ? 110 : t < T0 + 3 * H ? 100 : 80;
+  const args = { startT: T0, endT: T0 + 4 * H, balance: 1000, unit: () => 100, price, cost: 0, points: 2 };
+  const lowLeverage = timeline(trades, { ...args, leverage: 2 });
+  const highLeverage = timeline(trades, { ...args, leverage: 20 });
+  assert.equal(lowLeverage.stepMs, 2 * H, "chart remains downsampled");
+  assert.equal(lowLeverage.points.length, 3);
+  assert.ok(Math.abs(lowLeverage.peak - 1010) < 1e-8, `minute peak ${lowLeverage.peak}`);
+  assert.ok(Math.abs(lowLeverage.maxDd - 30) < 1e-8, `minute equity drawdown ${lowLeverage.maxDd}`);
+  assert.ok(Math.abs(lowLeverage.maxDdPct - (30 / 1010) * 100) < 1e-8);
+  assert.ok(Math.abs(lowLeverage.maxDd - highLeverage.maxDd) < 1e-8);
+  assert.ok(lowLeverage.marginMax > highLeverage.marginMax);
+});
+
+test("minute close lookup never reads the candle that is still forming", () => {
+  const closes = new Map([[T0, 101], [T0 + 60_000, 102]]);
+  assert.equal(minuteCloseAtOrBefore(closes, T0 + 60_000), 101);
+  assert.equal(minuteCloseAtOrBefore(closes, T0 + 2 * 60_000), 102);
+  assert.equal(minuteCloseAtOrBefore(closes, T0), null);
+});
+
 test("types and sub-types: Block raised / Active level, DCA vs DCA Active, Axis, Signals", () => {
   assert.equal(typeOf(tr({ kind: "trailing" })), "Trailing");
+  assert.equal(typeOf(tr({ cfg: "follow|rsi-mom-14-20@m15|tp3|sl3|tr0|h64|hxL" })), "Historic Exit");
   assert.equal(typeOf(tr({ cfg: "follow|sig-cci-m@m15|tp3|sl3|tr0|h64" })), "Signals");
   assert.equal(typeOf(tr({ cfg: "follow|x|tp3|sl3|tr0|h64|dcaA" })), "DCA Active");
   assert.deepEqual(subTypeOf(tr({ mult: 1 }), 2), ["Base (unit volume)"]);
@@ -59,8 +84,29 @@ test("types and sub-types: Block raised / Active level, DCA vs DCA Active, Axis,
   assert.deepEqual(subTypeOf(tr({ mult: 1.2, level: 1 }), 2), ["Block raised", "Block below Active level"]);
   // coordination volume alone is not a Block raise
   assert.deepEqual(subTypeOf(tr({ mult: 1.5, coordVol: 1.5 }), 2), ["Base (unit volume)"]);
+  // indication volume factors are not reported as Block raises either
+  assert.deepEqual(subTypeOf(tr({ mult: 8, volFactor: 8 }), 2), ["Base (unit volume)"]);
+  assert.deepEqual(subTypeOf(tr({ mult: 3, coordVol: 1.5, hedgeVol: 2 }), 2), ["Base (unit volume)"]);
   assert.deepEqual(subTypeOf(tr({ kind: "axis" }), 2), ["Axis"]);
   assert.deepEqual(subTypeOf(tr({}), 2), ["Base (no Block detail)"]);
+});
+
+test("preset diagrams include cumulative Historic Exit P&L", () => {
+  const s = presetSeries(
+    [tr({ cfg: "follow|rsi-mom-14-20@m15|tp3|sl3|tr1|h64|hxL", r: 0.025 })],
+    {
+      startT: T0,
+      endT: T0 + 2 * H,
+      balance: 1000,
+      unit: () => 100,
+      price: () => 100,
+      cost: 0.002,
+      leverage: 10,
+      days: 1 / 12,
+      points: 2,
+    },
+  );
+  assert.equal(s.kinds["Historic Exit"].at(-1), 2.5);
 });
 
 test("the report groups every dimension and compares presets with and without each sub-strategy", () => {
@@ -70,9 +116,9 @@ test("the report groups every dimension and compares presets with and without ea
     tr({ r: 0.005, exitT: T0 + 3 * H, kind: "dca", cfg: "follow|rsi-mom-14-20@m15|tp3|sl3|tr0|h64|dca" }),
   ];
   const presets = {
-    normal: { label: "Normal only", stats: { n: 10, pf: 1.2, net: 3, ddt: 4, wr: 0.6, gh: 0.5 } },
-    "normal-trailing": { label: "Normal + Trailing", stats: { n: 12, pf: 1.4, net: 5, ddt: 3, wr: 0.6, gh: 0.6 } },
-    block: { label: "Block", stats: { n: 12, pf: 1.6, net: 7, ddt: 3, wr: 0.6, gh: 0.6 } },
+    normal: { label: "Normal only", stats: { n: 10, pf: 1.2, gp: 18, gl: 15, net: 3, ddt: 4, wr: 0.6, gh: 0.5, pfBasis: "unit-net-returns" as const, unknownReturns: 0 } },
+    "normal-trailing": { label: "Normal + Trailing", stats: { n: 12, pf: 1.4, gp: 17.5, gl: 12.5, net: 5, ddt: 3, wr: 0.6, gh: 0.6, pfBasis: "unit-net-returns" as const, unknownReturns: 0 } },
+    block: { label: "Block", stats: { n: 12, pf: 1.6, gp: 56 / 3, gl: 35 / 3, net: 7, ddt: 3, wr: 0.6, gh: 0.6, pfBasis: "unit-net-returns" as const, unknownReturns: 0 } },
   };
   const r = buildStatistics({
     source: "sim",
@@ -99,7 +145,7 @@ test("the report groups every dimension and compares presets with and without ea
   assert.equal(r.types.find((x) => x.key === "DCA")?.n, 1);
   assert.equal(r.subTypes.find((x) => x.key === "Block Active level")?.n, 1);
   assert.equal(r.configs.length, 3);
-  assert.equal(r.configs.find((c) => c.range === "Short")?.tp, 0.008);
+  assert.equal(r.configs.find((c) => c.group === "Short")?.tp, 0.008);
   // every hour of the day is a row (3 with closes), every UTC day of the window too
   assert.equal(r.hourOfDay.length, 24);
   assert.deepEqual(
@@ -112,12 +158,45 @@ test("the report groups every dimension and compares presets with and without ea
   assert.ok(r.detail.blockDetail);
   const ww = withWithout(presets);
   assert.deepEqual(
-    ww.map((x) => [x.label, +x.dPf.toFixed(2)]),
+    ww.map((x) => { assert.ok(typeof x.dPf === "number"); return [x.label, +x.dPf.toFixed(2)]; }),
     [
       ["Trailing", 0.2],
       ["Block", 0.2],
     ],
   );
+  assert.equal(r.presets[0].gp, 18);
+  assert.equal(r.presets[0].gl, 15);
+  assert.equal(r.presets[0].noLoss, false);
+  assert.equal(r.presets[0].pfConvention, "gross-return-ratio");
+});
+
+test("with/without return PF never subtracts no-loss scores or an empty sample as finite ratios", () => {
+  const of = (returns: number[]) => unitStatsOf(returns.map((r, i) => ({ entryT: i * H, exitT: (i + 1) * H, r })));
+  const noLoss = of([0.01]);
+  const four = of([0.04, -0.01]);
+  const five = of([0.05, -0.01]);
+  for (const [withStats, withoutStats, expected] of [[noLoss, five, null], [five, noLoss, null], [noLoss, noLoss, null], [of([]), five, null], [four, five, -1]] as const) {
+    const [row] = withWithout({ normal: { stats: withoutStats }, "normal-trailing": { stats: withStats } });
+    assert.equal(row.dPf, expected);
+    assert.equal(row.with.gp, withStats.gp);
+    assert.equal(row.with.gl, withStats.gl);
+    assert.equal(row.with.noLoss, withStats.gp > 0 && withStats.gl === 0);
+    assert.equal(row.with.pfConvention, row.with.noLoss ? "no-loss-sentinel" : "gross-return-ratio");
+  }
+  assert.equal(noLoss.pf, four.pf, "equal engine scores have different measured ratio provenance");
+});
+
+test("older preset caches keep missing return provenance explicit and have no ratio delta", () => {
+  const legacy = { n: 3, pf: 4, net: 1 };
+  const [row] = withWithout({ normal: { stats: legacy }, "normal-trailing": { stats: legacy } });
+  assert.equal(row.with.gp, null);
+  assert.equal(row.with.gl, null);
+  assert.equal(row.with.noLoss, null);
+  assert.equal(row.with.pf, null);
+  assert.equal(row.with.pfBasis, "unavailable");
+  assert.equal(row.with.pfConvention, "unavailable");
+  assert.equal(row.dPf, null);
+  assert.deepEqual(JSON.parse(JSON.stringify(row)), row);
 });
 
 test("live closes are built from the own ledger: opens at their fills, reduces / closes realize, range from the id", async () => {
@@ -194,16 +273,62 @@ test("live closes: an exchange stop-out (flat marker F, qty 0) ends the position
     row("CTSBV2_Ea2", "O", 2, 200, T + 2),
     row("CTSBV2_Ca3", "X", 2, 210, T + 3),
   ];
-  const xs = liveTrades(rows, "CTSBV2_".length);
+  const xs = liveTrades(rows, "CTSBV2_".length, 0.002); // This fixture pins its historical 0.20% model.
   assert.equal(xs.length, 1);
   // the second position alone: entry 200 (not the ghost's blended 166.7), opened at T + 2, +5 %
   assert.equal(xs[0].entry, 200);
   assert.equal(xs[0].entryT, T + 2);
-  assert.ok(Math.abs(xs[0].r - 0.05) < 1e-12);
+  // the fills carry no measured fee (0 = unmeasured): the model's 0.1 % per side is charged — open 2 × 200 × 0.001 = 0.4,
+  // close 2 × 210 × 0.001 = 0.42 — on a gross +20 over a notional of 400: r = (20 − 0.82) / 400
+  assert.ok(Math.abs(xs[0].r - 0.04795) < 1e-12, `r ${xs[0].r}`);
   // without the F marker an own open ("O") still starts a fresh position
-  const ys = liveTrades([rows[0], rows[2], rows[3]], "CTSBV2_".length);
+  const ys = liveTrades([rows[0], rows[2], rows[3]], "CTSBV2_".length, 0.002);
   assert.equal(ys.length, 1);
   assert.equal(ys[0].entry, 200);
+});
+
+test("live closes: a position the exchange closed (its stop, its take-profit) is booked at the price the flat marker holds", async () => {
+  const { liveTrades } = await import("./statistics.ts");
+  const T = 1_790_000_000_000;
+  const row = (sym: string, coid: string, kind: string, qty: number, px: number, at: number, msg?: string) => ({
+    coid, sym, side: 1, kind, qty, px, status: "ok", at, fillPx: kind === "F" || msg === "already flat" ? null : px, fee: 0, msg,
+  });
+  const rows = [
+    // three positions stopped out on the exchange at -2 %: the desk prices each flat marker at the stop
+    row("A-USDT", "CTSBV2_Ea1", "O", 1, 100, T),
+    row("A-USDT", "flat-1", "F", 0, 98, T + 1, "flat on the exchange (stop 98)"),
+    row("B-USDT", "CTSBV2_Ea2", "O", 1, 100, T + 2),
+    row("B-USDT", "flat-2", "F", 0, 98, T + 3, "flat on the exchange (stop 98)"),
+    row("C-USDT", "CTSBV2_Ea3", "O", 1, 100, T + 4),
+    // our own close sent into a side the stop had already emptied: no fill, not the exit — the marker is
+    row("C-USDT", "CTSBV2_Ca4", "X", 1, 101, T + 5, "already flat"),
+    row("C-USDT", "flat-3", "F", 0, 98, T + 6, "already flat (stop 98)"),
+    // one closed by its take-profit
+    row("D-USDT", "CTSBV2_Ea5", "O", 1, 100, T + 7),
+    row("D-USDT", "flat-4", "F", 0, 103, T + 8, "flat on the exchange (target 103)"),
+    // one the desk closed itself at +1 %
+    row("E-USDT", "CTSBV2_Ea6", "O", 1, 100, T + 9),
+    row("E-USDT", "CTSBV2_Ca7", "X", 1, 101, T + 10),
+    // a flat marker whose price is not known (px 0): no close is invented
+    row("F-USDT", "CTSBV2_Ea8", "O", 1, 100, T + 11),
+    row("F-USDT", "flat-5", "F", 0, 0, T + 12, "flat on the exchange"),
+  ];
+  const xs = liveTrades(rows, "CTSBV2_".length, 0.002); // This fixture pins its historical 0.20% model.
+  assert.deepEqual(
+    xs.map((x) => [x.sym, +x.r.toFixed(9), x.reason]),
+    // Every unmeasured exit pays the model fee share, including the exchange's protective orders.
+    [
+      ["A-USDT", -0.02198, "sl"],
+      ["B-USDT", -0.02198, "sl"],
+      ["C-USDT", -0.02198, "sl"],
+      ["D-USDT", 0.02797, "tp"],
+      ["E-USDT", 0.00799, "close"],
+    ],
+  );
+  // All the stops and both fee shares count in PF.
+  const gp = xs.reduce((a, x) => a + Math.max(0, x.r), 0);
+  const gl = xs.reduce((a, x) => a - Math.min(0, x.r), 0);
+  assert.ok(Math.abs(gp / gl - 0.03596 / 0.06594) < 1e-9);
 });
 
 test("fillKeys / daysOf: every hour and every UTC day of the window", async () => {
@@ -260,10 +385,14 @@ test("preset diagrams and info: positions per hour, PF of the last 12 / 25 / 75 
     assert.ok(s.info.ddtH > 0);
 });
 
-test("ranges: a signal config is its own group, never counted as Wide", () => {
+test("ranges are Normal / Trailing only; Signals and Historic Exit use independent strategy groups", () => {
   const r = buildStatistics({
     source: "sim",
-    trades: [tr({}), tr({ cfg: "follow|sig-cci-m@m15|tp3|sl3|tr0|h64", exitT: T0 + 2 * H })],
+    trades: [
+      tr({}),
+      tr({ cfg: "follow|sig-cci-m@m15|tp3|sl3|tr0|h64", exitT: T0 + 2 * H }),
+      tr({ cfg: "follow|rsi-mom-14-20@m15|tp1|sl1|tr0|h32|hxL0", kind: "exit", exitT: T0 + 3 * H }),
+    ],
     startT: T0,
     endT: T0 + 4 * H,
     balance: 100,
@@ -276,10 +405,253 @@ test("ranges: a signal config is its own group, never counted as Wide", () => {
   });
   assert.deepEqual(
     r.ranges.map((x) => [x.key, x.n]),
-    [
-      ["Wide", 1],
-      ["Signals", 1],
-    ],
+    [["Wide", 1]],
   );
-  assert.equal(r.configs.find((c) => c.key.includes("sig-"))?.range, "Signals");
+  assert.deepEqual(r.strategyGroups.map((x) => [x.key, x.n]), [["Signals", 1], ["Historic Exit", 1]]);
+  assert.equal(r.configs.find((c) => c.key.includes("sig-"))?.group, "Signals");
+  assert.equal(r.configs.find((c) => c.key.includes("hxL0"))?.group, "Historic Exit");
+});
+
+test("preset diagrams use settled unit PF and keep cash episode PF explicitly diagnostic", () => {
+  const trades = Array.from({ length: 12 }, (_, i) => tr({
+    entryT: T0 + i * H,
+    exitT: T0 + i * H + H / 2,
+    r: i % 2 ? -0.068 : 0.0136,
+    mult: i % 2 ? 6.8 : 1,
+    ...(i === 0 ? { kind: "trailing-only" as const, cfg: "follow|sig-rsi-s@m15|tp0|sl1.5|tr0.5|h32|to" } : {}),
+  }));
+  const series = presetSeries(trades, { startT: T0, endT: T0 + 12 * H, balance: 1000, unit: () => 100, price: () => null, cost: 0.002, leverage: 10, days: 0.5 });
+  assert.ok(Math.abs(series.info.pf! - 1.36) < 1e-10);
+  assert.equal(series.info.pfBasis, "unit-net-returns");
+  assert.equal(series.info.sample, "settled-closes");
+  assert.equal(series.info.noLoss, false);
+  assert.ok(Math.abs(series.info.cash.pf - 0.2) < 1e-10);
+  assert.ok(Math.abs(series.info.cashPositionLast[12]!.pf - 0.2) < 1e-10);
+  assert.equal(series.info.cashPositionLast[12]!.noLoss, false);
+  assert.equal(series.info.cashPositionLast[25], null);
+  assert.ok(Math.abs(series.info.netUsd + 32.64) < 1e-8);
+  assert.ok(Math.abs(series.balance.at(-1)! - 967.36) < 1e-8);
+  assert.equal(series.kinds["Trailing only"].at(-1), 1.36);
+});
+
+test("preset diagrams preserve unknown losing closes and disclose no-loss scores without changing cash", () => {
+  const options = { startT: T0, endT: T0 + 3 * H, balance: 1000, unit: () => 100, price: () => null, cost: 0.002, leverage: 10, days: 0.125 };
+  const known = tr({ r: 0.0136, mult: 1 });
+  const unknown = tr({ entryT: T0 + H, exitT: T0 + 2 * H, r: -0.068, unitR: null });
+  const series = presetSeries([known, unknown], options);
+  assert.equal(series.info.pf, null);
+  assert.equal(series.info.n, 2);
+  assert.equal(series.info.unknownReturns, 1);
+  assert.equal(series.info.noLoss, null);
+  assert.equal(series.info.gp, null);
+  assert.equal(series.info.gl, null);
+  assert.equal(series.info.pfConvention, "unavailable");
+  assert.ok(Math.abs(series.info.cash.pf - 0.2) < 1e-10);
+  assert.ok(Math.abs(series.info.netUsd + 5.44) < 1e-10);
+  const wins = presetSeries([known], options).info;
+  const measuredFour = presetSeries([tr({ r: 0.04, mult: 1 }), tr({ r: -0.01, mult: 1, exitT: T0 + 2 * H })], options).info;
+  assert.equal(wins.pf, 4);
+  assert.equal(wins.noLoss, true);
+  assert.equal(wins.pfConvention, "no-loss-sentinel");
+  assert.equal(measuredFour.pf, 4);
+  assert.equal(measuredFour.noLoss, false);
+  assert.equal(measuredFour.pfConvention, "gross-return-ratio");
+  const boundary = presetSeries([tr({ exitT: T0, r: 1, mult: 1 }), tr({ exitT: options.endT, r: -0.01, mult: 1 })], options).info;
+  assert.equal(boundary.n, 1, "primary sample is (from, to] settled closes");
+  assert.equal(boundary.pf, 0);
+});
+
+test("an unmeasured fill is charged the model round-trip fee share, never zero", async () => {
+  const { liveTrades, feeOf } = await import("./statistics.ts");
+  // the share of a 2 × 50 notional at 0.2 % round trip (0.1 % per side)
+  assert.equal(feeOf({ fee: null, qty: 2 }, 50, 0.002), 0.1);
+  assert.equal(feeOf({ fee: 0, qty: 2 }, 50, 0.002), 0.1);
+  assert.equal(feeOf({ fee: 0.05, qty: 2 }, 50, 0.002), 0.05, "a measured commission is used as it is");
+  const T = 1_790_000_000_000;
+  const rows = [
+    { coid: "CTSBV2_Ua1", sym: "SOL-USDT", side: 1, kind: "O", qty: 1, px: 100, status: "ok", at: T, fillPx: 100, fee: null },
+    { coid: "CTSBV2_Ca2", sym: "SOL-USDT", side: 1, kind: "X", qty: 1, px: 110, status: "ok", at: T + 1, fillPx: 110, fee: 0.05 },
+  ];
+  const xs = liveTrades(rows, "CTSBV2_".length, 0.002); // This fixture pins its historical 0.20% model.
+  assert.equal(xs.length, 1);
+  // +10 gross, −0.1 model fee on the open, −0.05 measured on the close → 9.85 on a notional of 100
+  assert.ok(Math.abs(xs[0].r - 0.0985) < 1e-12, `r ${xs[0].r}`);
+});
+
+test("cash PF uses actual dollars: normalized PF 1.36 can be cash PF 0.20", () => {
+  const win = tr({ r: 0.0136, unitR: 0.0136 });
+  const loss = tr({ sym: "BTC-USDT", r: -0.01, unitR: -0.01, exitT: T0 + 2 * H });
+  const r = buildStatistics({
+    source: "live", trades: [win, loss], startT: T0, endT: T0 + 3 * H,
+    balance: 1000, unit: (x) => x.sym === "BTC-USDT" ? 680 : 100,
+    price: () => null, cost: 0, leverage: 10, minActiveLevel: 1,
+  });
+  assert.ok(r.total.pf !== null && Math.abs(r.total.pf - 1.36) < 1e-12);
+  assert.ok(Math.abs(r.total.cashPf - 0.20) < 1e-12);
+  assert.ok(Math.abs(r.total.usd + 5.44) < 1e-12);
+  assert.ok(Math.abs(r.types[0].cashPf - 0.20) < 1e-12, "breakdowns use the same money basis");
+});
+
+test("cash no-loss provenance distinguishes the sentinel from an actual cash ratio of four", () => {
+  const win = tr({ r: 0.04, unitR: 0.04 });
+  const loss = tr({ r: -0.01, unitR: -0.01, exitT: T0 + 2 * H });
+  const report = (trades: StatTrade[]) => buildStatistics({ source: "live", trades, startT: T0, endT: T0 + 3 * H,
+    balance: 1000, unit: () => 100, price: () => null, cost: 0, leverage: 10, minActiveLevel: 1 });
+  const noLoss = report([win]);
+  assert.equal(noLoss.total.cashPf, 4);
+  assert.equal(noLoss.total.cashNoLoss, true);
+  assert.equal(noLoss.types[0].cashNoLoss, true);
+  const measured = report([win, loss]);
+  assert.equal(measured.total.cashPf, 4);
+  assert.equal(measured.total.cashNoLoss, false);
+  assert.equal(measured.types[0].cashNoLoss, false);
+  assert.equal(report([]).total.cashNoLoss, false);
+});
+
+test("modeled execution multipliers change cash PF, never the primary unit-return PF", () => {
+  const trades = [tr({ r: 0.0136, mult: 1 }), tr({ r: -0.068, mult: 6.8, sym: "BTC-USDT", exitT: T0 + 2 * H })];
+  const report = (xs: StatTrade[]) => buildStatistics({ source: "sim", trades: xs, startT: T0, endT: T0 + 3 * H,
+    balance: 1000, unit: () => 100, price: () => null, cost: 0, leverage: 10, minActiveLevel: 1 });
+  const r = report(trades);
+  assert.ok(r.total.pf !== null && Math.abs(r.total.pf - 1.36) < 1e-12);
+  assert.ok(Math.abs(r.total.cashPf - 0.20) < 1e-12);
+  assert.equal(r.total.pfBasis, "unit-net-returns");
+  assert.equal(r.total.unknownReturns, 0);
+  assert.ok(r.total.returnGp !== null && Math.abs(r.total.returnGp - 1.36) < 1e-12);
+  assert.equal(r.total.returnGl, 1);
+  assert.ok(Math.abs(r.total.usd + 5.44) < 1e-12);
+  assert.ok(Math.abs(r.total.net + 5.44) < 1e-12, "sized net keeps the actual executed weighting");
+  assert.ok(Math.abs(r.total.usdEnd - 994.56) < 1e-12);
+  assert.equal(r.types[0].pf, r.total.pf);
+  const persisted = report(trades.map((x) => ({ ...x, unitR: x.r / (x.mult ?? 1) })));
+  assert.equal(persisted.total.pf, r.total.pf, "persisted unit returns are not divided by the multiplier again");
+  assert.equal(persisted.total.usd, r.total.usd);
+});
+
+test("an unknown legacy paper unit return invalidates the complete primary sample without hiding cash losses", () => {
+  const r = buildStatistics({ source: "paper", trades: [tr({ r: 0.0136, unitR: 0.0136 }), tr({ r: -0.068, unitR: null, exitT: T0 + 2 * H })],
+    startT: T0, endT: T0 + 3 * H, balance: 1000, unit: () => 100, price: () => null, cost: 0, leverage: 10, minActiveLevel: 1 });
+  assert.equal(r.total.n, 2);
+  assert.equal(r.total.pf, null);
+  assert.equal(r.total.returnGp, null);
+  assert.equal(r.total.returnGl, null);
+  assert.equal(r.total.noLoss, null);
+  assert.equal(r.total.pfConvention, "unavailable");
+  assert.equal(r.total.pfBasis, "unavailable");
+  assert.equal(r.total.unknownReturns, 1);
+  assert.ok(Math.abs(r.total.cashPf - 0.20) < 1e-12);
+  assert.ok(Math.abs(r.total.usd + 5.44) < 1e-12);
+  assert.ok(Math.abs(r.total.usdEnd - 994.56) < 1e-12);
+});
+
+test("preset comparisons require a unit-basis aggregate and never divide that aggregate a second time", () => {
+  const weighted = [tr({ r: 0.0136, mult: 1 }), tr({ r: -0.068, mult: 6.8, exitT: T0 + 2 * H })];
+  const baseline = unitStatsOf([tr({ r: 0.01 }), tr({ r: -0.01, exitT: T0 + 2 * H })]);
+  const [known] = withWithout({ normal: { stats: baseline }, "normal-trailing": { stats: unitStatsOf(weighted) } });
+  assert.ok(known.with.pf !== null && Math.abs(known.with.pf - 1.36) < 1e-12);
+  assert.ok(known.dPf !== null && Math.abs(known.dPf - 0.36) < 1e-12);
+  const [legacy] = withWithout({ normal: { stats: baseline }, "normal-trailing": { stats: statsOf(weighted) } });
+  assert.equal(legacy.with.pf, null, "old gp/gl could be weighted, even when present");
+  assert.equal(legacy.with.gp, null);
+  assert.equal(legacy.with.gl, null);
+  assert.equal(legacy.with.pfBasis, "unavailable");
+  assert.equal(legacy.dPf, null);
+});
+
+test("return gross sums distinguish a no-loss sentinel from a measured return PF of four", async () => {
+  const { rowOf, emptyRow } = await import("./statistics.ts");
+  const base = { cfg: "a", sym: "A-USDT", side: 1, entryT: 1, exitT: 2, entry: 100, r: .01, mult: 1 };
+  const noLoss = rowOf("win", [base], () => 100);
+  const measured = rowOf("ratio", [{ ...base, r: .04 }, { ...base, r: -.01, exitT: 3 }], () => 100);
+  assert.equal(noLoss.pf, measured.pf);
+  assert.equal(noLoss.pf, 4);
+  assert.equal(noLoss.noLoss, true);
+  assert.equal(noLoss.pfConvention, "no-loss-sentinel");
+  assert.equal(noLoss.returnGp, 1);
+  assert.equal(noLoss.returnGl, 0);
+  assert.equal(measured.noLoss, false);
+  assert.equal(measured.pfConvention, "gross-return-ratio");
+  assert.equal(measured.returnGp, 4);
+  assert.equal(measured.returnGl, 1);
+  assert.equal(emptyRow("empty").noLoss, false);
+});
+
+test("an oversized exit charges only the owned quantity's share of its measured fee", async () => {
+  const { liveTrades, feeOf } = await import("./statistics.ts");
+  const rows = [
+    { coid: "CTSBV2_Ua1", sym: "SOL-USDT", side: 1, kind: "O", qty: 1, px: 100, status: "ok", at: T0, fillPx: 100, fee: 0.05 },
+    { coid: "CTSBV2_Ca2", sym: "SOL-USDT", side: 1, kind: "X", qty: 2, px: 110, status: "ok", at: T0 + 1, fillPx: 110, fee: 0.20 },
+  ];
+  const xs = liveTrades(rows, "CTSBV2_".length);
+  assert.equal(xs.length, 1);
+  assert.ok(Math.abs(xs[0].r * xs[0].notional - 9.85) < 1e-12);
+  assert.equal(feeOf({ fee: -0.07, qty: 1 }, 100, 0.002), 0.07, "signed venue commissions are measured");
+});
+
+test("partial live closes retain measured free entry fees and estimate only an unmeasured exit slice", async () => {
+  const { liveTrades } = await import("./statistics.ts");
+  const rows = [
+    {
+      coid: "TAGUa",
+      sym: "SOL-USDT",
+      side: 1,
+      kind: "O",
+      qty: 2,
+      px: 100,
+      fillPx: 100,
+      fee: 0,
+      feeKnown: 1,
+      status: "ok",
+      at: 1,
+    },
+    {
+      coid: "TAGCb",
+      sym: "SOL-USDT",
+      side: 1,
+      kind: "R",
+      qty: 1,
+      px: 100,
+      fillPx: 100,
+      fee: 0,
+      feeKnown: null,
+      status: "ok",
+      at: 2,
+    },
+    {
+      coid: "TAGCc",
+      sym: "SOL-USDT",
+      side: 1,
+      kind: "X",
+      qty: 1,
+      px: 100,
+      fillPx: 100,
+      fee: 0,
+      feeKnown: 1,
+      status: "ok",
+      at: 3,
+    },
+  ];
+  const original = structuredClone(rows);
+  const measured = liveTrades(rows, 3, 0.002);
+  assert.equal(measured.length, 2, "both actual settled partial-close slices remain in the sample");
+  assert.deepEqual(
+    measured.map((x) => x.notional),
+    [100, 100],
+  );
+  assert.deepEqual(
+    measured.map((x) => x.unitR),
+    [-0.001, 0],
+    "only the first exit has an estimated fee",
+  );
+  const legacy = liveTrades(
+    rows.map((x) => ({ ...x, feeKnown: null })),
+    3,
+    0.002,
+  );
+  assert.deepEqual(
+    legacy.map((x) => x.unitR),
+    [-0.002, -0.002],
+    "legacy zero placeholders cannot become measured free fills",
+  );
+  assert.deepEqual(rows, original, "reconstruction does not rewrite fee provenance");
 });
