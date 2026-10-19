@@ -38,10 +38,10 @@ describe("positive coordinations stay on", () => {
     assert.equal(n.sideAccept.minPf, 1.3);
   });
 
-  it("engine direction acceptance on: PF 1.05 over 24 h, ≥ 30 closes (operator, 6 Oct); a desk without it is warned", () => {
-    assert.deepEqual(defaultWalkForward(DEFAULT_SETTINGS).engineSideAccept, { enabled: true, minPf: 1.05, hours: 24, minTrades: 30 });
+  it("engine direction acceptance off by default (operator override, 19 Oct); its PF 1.05 / 24 h / 30 closes setting is kept for re-enabling", () => {
+    assert.deepEqual(defaultWalkForward(DEFAULT_SETTINGS).engineSideAccept, { enabled: false, minPf: 1.05, hours: 24, minTrades: 30 });
     const off = positiveCoordWarnings({}, { engineSideAccept: { enabled: false, minPf: 1.05, hours: 24, minTrades: 30 } });
-    assert.ok(off.some((w) => w.includes("engine direction acceptance is off")));
+    assert.ok(!off.some((w) => w.includes("engine direction")));
     assert.ok(!positiveCoordWarnings({}, defaultWalkForward(DEFAULT_SETTINGS)).some((w) => w.includes("engine direction")));
   });
 
