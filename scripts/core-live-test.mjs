@@ -668,7 +668,13 @@ async function report(final = false) {
       events: d.events,
       total: d.total,
       byRange: d.byRange,
-      positions: d.positions && { n: d.positions.n, pf: d.positions.pf, usd: d.positions.usd, hand: d.positions.hand },
+      positions: d.positions && {
+        n: d.positions.n,
+        pf: d.positions.pf,
+        usd: d.positions.usd,
+        hand: d.positions.hand,
+        flat: d.positions.flat,
+      },
       stopMismatch: d.stopMismatch,
     };
     writeFileSync(join(out, "live-vs-system.md"), `${rel.relationMd(d)}\n`);
