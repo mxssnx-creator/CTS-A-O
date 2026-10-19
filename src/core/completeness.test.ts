@@ -533,7 +533,6 @@ const NOT_SHOWN: Record<string, string> = {
     "deny / allow reading of the source list (6 Oct); patch only so far — GAP: not on the page (reported)",
   "signals.baseGate":
     "signals judged on their own exits (Base gate off, measured 3 Oct); patch only",
-  "exitStrategy.trainFraction": "the automatic historic Exit fitter uses the fixed causal split; not operator editable",
   "exitStrategy.minEntries": "the automatic historic Exit fitter enforces its minimum sample; not operator editable",
   "exitStrategy.minValidationTrades": "the automatic historic Exit fitter enforces its validation sample; not operator editable",
   "exitStrategy.maxConfigsPerPair": "the Exit fitter bounds generated configurations; not operator editable",
