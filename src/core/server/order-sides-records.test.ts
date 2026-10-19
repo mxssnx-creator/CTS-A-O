@@ -18,6 +18,7 @@ import {
   engineProven,
   liveEntryOk,
   liveGate,
+  liveGroupGates,
   liveGroupKeyOf,
   liveGroupOf,
   sideTapeOf,
@@ -256,6 +257,30 @@ describe("live.sideGates: the engine proof, the simulated fallback and the setti
     assert.equal(rec.exitT.length, 20, "the LONG and the SHORT closes are both in it");
     // ten LONG losses of 2 % and ten SHORT wins of 1 %: the gains are 10 × 1 %, the losses 10 × 2 %
     assert.ok(near(rec.gp[20], 0.1) && near(rec.gl[20], 0.2), `gains ${rec.gp[20]} losses ${rec.gl[20]}`);
+  });
+
+  it("(d) live.sideGates: a live group's gate key carries its side (group|1, group|-1); unset, the key is the group alone (the pooled key)", () => {
+    assert.equal(liveGroupKeyOf("Micro", 1), "Micro|1");
+    assert.equal(liveGroupKeyOf("Micro", -1), "Micro|-1");
+    assert.equal(liveGroupKeyOf("Micro"), "Micro", "the pooled key");
+    assert.equal(liveGroupKeyOf("Micro", undefined), "Micro", "the pooled key");
+  });
+
+  it("(d) live.sideGates: a group's last N are judged per side: the SHORT group is refused by its own losses while its pooled last N pass (the helpers the runtime's groupsAt composes; groupsAt itself is not run)", () => {
+    // `tape`'s six closes: the LONG wins 5 %, the SHORT loses 1 %. The pooled last 3 are PF 2.5; each side's own last 3
+    // are all wins (PF no loss) and all losses (PF 0)
+    const group = liveGroupOf(CFG);
+    const pooled = liveGroupGates([tape], 0, NOW, 3, MIN_PF).get(group)!;
+    assert.equal(pooled.ok, true, `pooled ${JSON.stringify(pooled)}`);
+    const perSide = new Map<string, LiveGate>();
+    for (const s of [1, -1] as const)
+      perSide.set(liveGroupKeyOf(group, s), liveGroupGates([sideTapeOf(tape, s)], 0, NOW, 3, MIN_PF).get(group)!);
+    assert.equal(perSide.get(`${group}|1`)!.ok, true, "the LONG group's own last 3 win");
+    assert.equal(perSide.get(`${group}|-1`)!.ok, false, "the SHORT group's own last 3 lose");
+    // an entry whose own gate is not judged takes its side's group gate
+    const unjudged: LiveGate = { ok: true, n: 0, pf: null };
+    assert.equal(liveEntryOk(unjudged, perSide.get(liveGroupKeyOf(group, 1))), true, "a LONG entry is admitted");
+    assert.equal(liveEntryOk(unjudged, perSide.get(liveGroupKeyOf(group, -1))), false, "a SHORT entry is refused");
   });
 });
 
