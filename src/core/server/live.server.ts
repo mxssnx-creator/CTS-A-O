@@ -3686,7 +3686,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             o.id &&
             o.venueSymbol === msym &&
             ownCoidKind(o.clientOrderId, s.connId) === "T" &&
-            (!o.positionSide || o.positionSide === mps) &&
+            // one-way: the venue echoes a one-way take-profit as BOTH, which is no side of ours
+            (oneway || !o.positionSide || o.positionSide === mps) &&
             alive() &&
             (await ex.cancel(msym, o.id))
           )

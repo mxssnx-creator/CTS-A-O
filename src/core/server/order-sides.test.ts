@@ -890,6 +890,29 @@ describe("order sides, hedge mode (overall control): LONG and SHORT alike", { ti
     });
   }
 
+  // item 9, the take-profit (one-way): the cleanup of a merged key's take-profit matches the position side it is given, and a
+  // one-way take-profit is echoed as BOTH, which matches neither LONG nor SHORT — so it stayed. The hedge control is H-M
+  for (const s of [1, -1] as const) {
+    const side = s === 1 ? "long" : "short";
+    const sym = s === 1 ? "S1-USDT" : "S2-USDT";
+    const mark = s === 1 ? 10 : 20;
+    it(`OW-M ${side}, one-way: merged with someone else's quantity, the own take-profit the venue echoes as BOTH is cancelled`, async () => {
+      const tick = clock();
+      const ex = new OneWayVenue();
+      const { rt } = rtOf({ positionMode: "oneway" });
+      const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+      rt.paper.positions = [lane("combo|ema-9-21@m15|a", sym, s, mark, 0.02, 0.05)];
+      await step();
+      const takeProfits = () => ex.orders.filter((o) => o.type === TP);
+      assert.equal(takeProfits().length, 1, "own take-profit placed");
+      assert.equal(takeProfits()[0].positionSide, "BOTH", "the venue echoes it as BOTH");
+      ex.foreignOpen(sym, 2, s === 1);
+      tick(61_000);
+      await step();
+      assert.equal(takeProfits().length, 0, "the take-profit of a merged key is cancelled");
+    });
+  }
+
   // item 12 (live.server.ts:2479-2480): a lane order (V) of a one-way short that filled while the desk looks — its fill is
   // booked on the key of the position side it names. BOTH reads as LONG there, so the short's fill is booked on the long
   // key. The hedge short is the control; the one-way long is not written here (its V order is cancelled as an orphan first,
