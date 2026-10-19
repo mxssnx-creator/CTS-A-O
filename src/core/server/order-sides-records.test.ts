@@ -12,7 +12,12 @@ import assert from "node:assert/strict";
 import { CoreDb } from "./db.server.ts";
 import { liveLaneFilter, reconcileLaneCloses, resetLiveBackoff, stepLive } from "./live.server.ts";
 import { liveTag, stateHash } from "./live.ts";
-import type { CoreRuntime } from "./runtime.server.ts";
+import {
+  LV_SIDES_APART,
+  LV_SIDES_POOLED,
+  lvSideOfEntry,
+  type CoreRuntime,
+} from "./runtime.server.ts";
 import {
   attributeLanes,
   laneKeyOf,
@@ -272,6 +277,28 @@ describe("live.sideGates: the engine proof, the simulated fallback and the setti
     assert.equal(liveGroupKeyOf("Micro", -1), "Micro|-1");
     assert.equal(liveGroupKeyOf("Micro"), "Micro", "the pooled key");
     assert.equal(liveGroupKeyOf("Micro", undefined), "Micro", "the pooled key");
+  });
+
+  // the side selectors the runtime's live validation compute reads (runtime.server.ts: the sides a count runs over, and
+  // the side an entry is judged on); the closures lvOf and groupsAt that call them are not run
+  it("(d) live.sideGates: the sides a live count runs over are LONG and SHORT apart, keyed group|1 and group|-1 (LV_SIDES_APART)", () => {
+    assert.deepEqual(
+      LV_SIDES_APART.map((s) => liveGroupKeyOf("Micro", s)),
+      ["Micro|1", "Micro|-1"],
+    );
+  });
+
+  it("(d) live.sideGates: an entry is judged on its own side (+1 or -1); an entry with no side of its own has none (lvSideOfEntry)", () => {
+    assert.equal(lvSideOfEntry(true, 1), 1, "a LONG entry");
+    assert.equal(lvSideOfEntry(true, -1), -1, "a SHORT entry");
+    assert.equal(lvSideOfEntry(true, 0), undefined, "a side-0 entry has no side");
+    assert.equal(lvSideOfEntry(true, undefined), undefined, "an entry with no side");
+  });
+
+  it("(d) control: with live.sideGates unset the count runs over the pooled side (keyed by the group alone) and no entry has a side (pass)", () => {
+    assert.deepEqual(LV_SIDES_POOLED.map((s) => liveGroupKeyOf("Micro", s)), ["Micro"]);
+    assert.equal(lvSideOfEntry(false, 1), undefined, "a LONG entry is judged pooled");
+    assert.equal(lvSideOfEntry(false, -1), undefined, "a SHORT entry is judged pooled");
   });
 
   it("(d) live.sideGates: a group's last N are judged per side: the SHORT group is refused by its own losses while its pooled last N pass (the helpers the runtime's groupsAt composes; groupsAt itself is not run)", () => {

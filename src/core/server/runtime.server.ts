@@ -268,13 +268,13 @@ const WORKERS_RETRY_MS = 10 * 60_000;
 /** paper book rows written per transaction (one slice) */
 const PAPER_ROWS = 500;
 /** the sides a live count runs over with live.sideGates (each side apart), and without it (the pooled record) */
-const LV_SIDES_APART: ReadonlyArray<1 | -1 | undefined> = [1, -1];
-const LV_SIDES_POOLED: ReadonlyArray<1 | -1 | undefined> = [undefined];
+export const LV_SIDES_APART: ReadonlyArray<1 | -1 | undefined> = [1, -1];
+export const LV_SIDES_POOLED: ReadonlyArray<1 | -1 | undefined> = [undefined];
 /**
  * The side a live judgement is made on: an entry's own side with live.sideGates (sideOfRow: an entry that is neither
  * +1 nor -1 has none), undefined (the pooled record of both sides, as before) without it.
  */
-const lvSideOfEntry = (bySide: boolean, s?: number): 1 | -1 | undefined =>
+export const lvSideOfEntry = (bySide: boolean, s?: number): 1 | -1 | undefined =>
   bySide ? sideOfRow(s) : undefined;
 export { MAX_BACKTEST_DAYS };
 

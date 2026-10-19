@@ -621,9 +621,11 @@ variant beats the as-is setting and Block off in D1a and D1b — recorded here.
   a side-0 lane judged on either side (`liveLaneFilter`: its engine proof, and its active signal key in `validLane`),
   a side-less entry admitted, and the signal readers (`signalOk`, `signalUnitOf`, `signalProven`) reading a side that
   is not +1 or -1 as no side.
-  Not pinned by a cell: `groupsAt` in runtime.server.ts (a closure of the paper-step compute; it needs the whole-runtime
-  harness), the status counts that carry the side, the Proven live page and `coreListingData` (checked by reading and by
-  tsc). Left as it is: the lane identity readers `laneKeyOf` (src/core/live-record.ts) and `laneStringsOf`
+  The side selectors the live validation compute reads are pinned too: `LV_SIDES_APART` / `LV_SIDES_POOLED` (the sides a
+  count runs over) and `lvSideOfEntry` (the side an entry is judged on), in group d. Not pinned by a cell: `lvOf` and
+  `groupsAt` in runtime.server.ts (closures of the paper-step compute: lvOf's unjudged gate for an entry with no side,
+  and groupsAt's loop over the sides; they need the whole-runtime harness, which is not in this group's files), the
+  status counts that carry the side, the Proven live page and `coreListingData` (checked by reading and by tsc). Left as it is: the lane identity readers `laneKeyOf` (src/core/live-record.ts) and `laneStringsOf`
   (src/core/server/live.server.ts) still read a side of 0 as SHORT. Lanes and positions are typed +1 / -1, so no lane
   identity carries a side of 0 today.
 - **Stays off** until a causal comparison on the paper or the live book, recorded in this section, says otherwise. Until
