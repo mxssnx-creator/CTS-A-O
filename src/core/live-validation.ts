@@ -263,10 +263,12 @@ export interface ProofClose {
 
 /**
  * The signal unit of a config on a side: its indicator × side (`ind|1`, `ind|-1`); null for an engine config or a
- * close without a side (never counted on either).
+ * close without a side (never counted on either). With `bySide` (live.sideGates) a side that is not +1 or -1 is no side
+ * either, as liveRecords keeps it: a close of side 2 is in no unit.
  */
-export function signalUnitOf(cfg: string, side: number): string | null {
+export function signalUnitOf(cfg: string, side: number, bySide = false): string | null {
   if (!(side > 0 || side < 0)) return null;
+  if (bySide && side !== 1 && side !== -1) return null;
   const i1 = cfg.indexOf("|");
   const i2 = i1 < 0 ? -1 : cfg.indexOf("|", i1 + 1);
   const ind = i1 < 0 ? "" : i2 < 0 ? cfg.slice(i1 + 1) : cfg.slice(i1 + 1, i2);
@@ -274,10 +276,10 @@ export function signalUnitOf(cfg: string, side: number): string | null {
 }
 
 /** The signal closes per unit as proof tapes (exit order, ties as given); a close's event: symbol × side × entry bar. */
-function signalTapes(rows: ReadonlyArray<ProofClose>): Map<string, ProofTape> {
+function signalTapes(rows: ReadonlyArray<ProofClose>, bySide: boolean): Map<string, ProofTape> {
   const by = new Map<string, Array<{ t: number; r: number; ev: string }>>();
   for (const x of rows) {
-    const u = signalUnitOf(x.cfg, x.side);
+    const u = signalUnitOf(x.cfg, x.side, bySide);
     if (!u) continue;
     // the event as bot-stats counts it: configs that enter one bar on one symbol × side are one event (a Block leg's
     // id `…|blk:src` is the same lane: its paper entry time precedes the suffix)
@@ -305,16 +307,18 @@ function signalTapes(rows: ReadonlyArray<ProofClose>): Map<string, ProofTape> {
  * The signal proof (live.signalProofN): the signal units (indicator × side, every config of it) whose own forward
  * closes prove them — per unit the exchange record of its lanes once it holds n closes, else the paper book's closes;
  * proven when the last n closes before `now` hold PF ≥ minPf and span at least minEvents distinct events (symbol ×
- * side × paper entry bar: configs entering one bar are one sample, not n). Engine configs are never judged.
+ * side × paper entry bar: configs entering one bar are one sample, not n). Engine configs are never judged. `o.bySide`
+ * (live.sideGates) reads a side that is not +1 or -1 as no side (signalUnitOf).
  */
 export function signalProven(
   paper: ReadonlyArray<ProofClose>,
   exchange: ReadonlyArray<ProofClose>,
   now: number,
-  o: { n: number; minPf: number; minEvents: number },
+  o: { n: number; minPf: number; minEvents: number; bySide?: boolean },
 ): { proven: Set<string>; judged: number } {
   if (!(o.n > 0)) return { proven: new Set(), judged: 0 };
-  return lastNProven({ paper: signalTapes(paper), exchange: signalTapes(exchange) }, now, o);
+  const bySide = o.bySide === true;
+  return lastNProven({ paper: signalTapes(paper, bySide), exchange: signalTapes(exchange, bySide) }, now, o);
 }
 
 /**

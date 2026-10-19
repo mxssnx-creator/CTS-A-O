@@ -190,13 +190,16 @@ export function liveLaneFilter(
     if (side === undefined) return proven.has(recordKeyOf(l.cfg, 1)) || proven.has(recordKeyOf(l.cfg, -1));
     return proven.has(recordKeyOf(l.cfg, side));
   };
-  // the signal proof: a signal unit (indicator × side) not proven by its own closes trades on paper only
+  // the signal proof: a signal unit (indicator × side) not proven by its own closes trades on paper only. With
+  // live.sideGates a side that is not +1 or -1 is no side, judged on either (as engineOk does); ungated, a side that is
+  // not positive is SHORT, as it always was
   const signalOk = (l: Pick<ControlContribution, "cfg"> & { side?: number }) => {
     if (!signalProven) return true;
     const c = cfgInfo(l.cfg);
     if (!c.isSig) return true;
-    if (l.side === undefined) return signalProven.has(`${c.ind}|1`) || signalProven.has(`${c.ind}|-1`);
-    return signalProven.has(`${c.ind}|${l.side > 0 ? 1 : -1}`);
+    const side = s.sideGates === true ? sideOfRow(l.side) : l.side === undefined ? undefined : l.side > 0 ? 1 : -1;
+    if (side === undefined) return signalProven.has(`${c.ind}|1`) || signalProven.has(`${c.ind}|-1`);
+    return signalProven.has(`${c.ind}|${side}`);
   };
   const sendable = (l: Pick<ControlContribution, "cfg" | "vol"> & { side?: number }) =>
     allowed(l) && engineOk(l) && signalOk(l);

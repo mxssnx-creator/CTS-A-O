@@ -4397,8 +4397,10 @@ export class CoreRuntime {
     if (!(n > 0)) return null;
     const minPf = this.settings.live.signalProofPf ?? SIGNAL_PROOF_PF;
     const minEvents = this.settings.live.signalProofEvents ?? SIGNAL_PROOF_EVENTS;
-    // memoized on the two records' write versions, as the engine proof: an unchanged book costs no query
-    const key = `${n}|${minPf}|${minEvents}|${this.db.version("paper_book_trades")}|${this.db.version("live_lane_trades")}`;
+    // memoized on the two records' write versions, as the engine proof: an unchanged book costs no query. live.sideGates
+    // reads a side that is not +1 or -1 as no side (signalUnitOf), so its proof is memoized apart from the pooled one
+    const bySide = this.settings.live.sideGates === true;
+    const key = `${n}|${minPf}|${minEvents}|${this.db.version("paper_book_trades")}|${this.db.version("live_lane_trades")}${bySide ? "|sides" : ""}`;
     if (this.sigProofMemo?.key === key) return this.sigProofMemo.out;
     // the paper book's signal closes, read from the partial covering index (its entries carry the primary key: symbol,
     // side and entry time); signal ids carry "|sig-" — signalUnitOf keeps exactly the signal configs
@@ -4408,7 +4410,7 @@ export class CoreRuntime {
     const paper = rows
       .filter((x) => x.exit_t !== null)
       .map((x) => ({ id: String(x.entry_t), cfg: x.cfg, sym: x.sym, side: x.side, exitT: x.exit_t!, r: x.r }));
-    const out = { ...signalProven(paper, this.exchangeRows(0), now, { n, minPf, minEvents }), n, minPf, minEvents };
+    const out = { ...signalProven(paper, this.exchangeRows(0), now, { n, minPf, minEvents, bySide }), n, minPf, minEvents };
     const prev = this.sigProofMemo?.out;
     if (!prev || prev.proven.size !== out.proven.size || prev.judged !== out.judged)
       this.db.event(

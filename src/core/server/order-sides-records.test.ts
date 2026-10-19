@@ -21,6 +21,8 @@ import {
   liveGroupKeyOf,
   liveGroupOf,
   sideTapeOf,
+  signalProven,
+  signalUnitOf,
   type LiveGate,
   type SideTapeMemo,
 } from "../live-validation.ts";
@@ -292,6 +294,36 @@ describe("live.sideGates: a lane or an entry with no side of its own (g)", () =>
     ]);
     assert.equal(liveEntryOk(unjudged, groups.get(liveGroupKeyOf(group, sideOfRow(0)))), true, "an entry with side 0 is admitted");
     assert.equal(liveEntryOk(unjudged, groups.get(liveGroupKeyOf(group, sideOfRow(-1)))), false, "a SHORT entry takes its side's group gate");
+  });
+
+  // the signal readers: the lane filter's signal proof (live.server.ts signalOk) and the proof's unit of a close
+  // (live-validation.ts signalUnitOf, signalProven). A side that is not +1 or -1 is judged on either side by the lane
+  // filter; ungated the lane filter reads it as a SHORT, and the unit reader keeps the old mapping of a side 2 close
+  it("(g) live.sideGates: a signal lane with side 0 is judged on either side, so its LONG unit proven makes it sendable; ungated the same lane is a SHORT and is held back (the readers differ on purpose)", () => {
+    const sig = { cfg: "b|sig-ema|x", vol: 1, side: 0 };
+    const longOnly = new Set(["sig-ema|1"]);
+    assert.equal(liveLaneFilter({ sideGates: true }, null, null, null, longOnly).sendable(sig), true, "per-side path: either side, the LONG unit is proven");
+    assert.equal(liveLaneFilter({}, null, null, null, longOnly).sendable(sig), false, "ungated: read as a SHORT, whose unit is not proven");
+    assert.equal(liveLaneFilter({}, null, null, null, longOnly).unproven(sig), true, "ungated: held back by the signal proof");
+    assert.equal(liveLaneFilter({ sideGates: true }, null, null, null, longOnly).unproven(sig), false, "per-side path: not held back by it");
+    assert.equal(liveLaneFilter({ sideGates: true }, null, null, null, longOnly).sendable({ ...sig, side: -1 }), false, "a SHORT lane is still judged on its own side");
+  });
+
+  it("(g) live.sideGates: a close whose side is not +1 or -1 is in no signal unit (signalUnitOf); ungated, a side-2 close keeps the LONG unit it always had", () => {
+    const cfg = "b|sig-ema|x";
+    assert.equal(signalUnitOf(cfg, 0), null, "side 0, ungated: no unit");
+    assert.equal(signalUnitOf(cfg, 0, true), null, "side 0, per-side path: no unit");
+    assert.equal(signalUnitOf(cfg, 2), "sig-ema|1", "side 2, ungated: the LONG unit, as it always was");
+    assert.equal(signalUnitOf(cfg, 2, true), null, "side 2, per-side path: no side, in no unit");
+    assert.equal(signalUnitOf(cfg, -1, true), "sig-ema|-1", "a SHORT keeps its unit on the per-side path");
+    assert.equal(signalUnitOf("b|ema|a", 1, true), null, "an engine config has no signal unit");
+  });
+
+  it("(g) live.sideGates: the signal proof reads a side-2 close as no side (its unit is not judged); ungated the same close proves the LONG unit", () => {
+    const close = { id: "7", cfg: "b|sig-ema|x", sym: SYM, side: 2, exitT: T, r: 0.05 };
+    const o = { n: 1, minPf: 1.2, minEvents: 1 };
+    assert.deepEqual([...signalProven([close], [], NOW, o).proven], ["sig-ema|1"], "ungated: the side-2 close is a LONG unit");
+    assert.deepEqual([...signalProven([close], [], NOW, { ...o, bySide: true }).proven], [], "per-side path: no side, no unit");
   });
 });
 
