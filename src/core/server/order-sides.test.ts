@@ -651,6 +651,43 @@ describe("order sides, entries mode and exit orders (pure)", () => {
     }
   }
 
+  // E-5 for orders: a foreign order that names its position side freezes only that side, as a foreign position does
+  const enter = (book: BookView, e: 1 | -1) =>
+    planLive({
+      settings: S,
+      envArmed: true,
+      hasKeys: true,
+      intents: [intent(e)],
+      book,
+      ownSyms: new Set(),
+      sent: new Set(),
+      ready: { ok: true, why: "" },
+    });
+  for (const f of [1, -1] as const) {
+    for (const e of [1, -1] as const) {
+      const fName = f === 1 ? "LONG" : "SHORT";
+      const eName = e === 1 ? "LONG" : "SHORT";
+      const same = f === e;
+      it(`E-5 foreign ${fName} order, ${eName} entry: ${same ? "skipped (the same side)" : "allowed — the other side is not frozen"}`, () => {
+        const positionSide = f === 1 ? "LONG" : "SHORT";
+        const plan = enter({ positions: [], orders: [{ symbol: "S1-USDT", venueSymbol: "S1-USDT", clientOrderId: "manual-1", positionSide }] }, e);
+        assert.equal(plan.entries.length, same ? 0 : 1, `skipped: ${JSON.stringify(plan.skipped)}`);
+        if (same) assert.match(plan.skipped[0]?.why ?? "", /foreign/);
+      });
+    }
+  }
+
+  // E-5 for an order with no position side: the whole symbol is frozen, so both entries are skipped
+  for (const e of [1, -1] as const) {
+    const eName = e === 1 ? "LONG" : "SHORT";
+    it(`E-5 foreign order with no position side, ${eName} entry: skipped (the whole symbol is frozen)`, () => {
+      const orders = [{ symbol: "S1-USDT", venueSymbol: "S1-USDT", clientOrderId: "manual-1" }];
+      const plan = enter({ positions: [], orders }, e);
+      assert.equal(plan.entries.length, 0, `allowed: ${JSON.stringify(plan.entries)}`);
+      assert.match(plan.skipped[0]?.why ?? "", /foreign/);
+    });
+  }
+
   // the overall control's ownership (controlOwnership, hedge): a foreign position marks only its own side's key — the
   // contrast of E-5 (planLive marks the whole symbol)
   for (const f of [1, -1] as const) {
