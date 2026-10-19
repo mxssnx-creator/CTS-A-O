@@ -300,9 +300,17 @@ export interface WalkForwardOptions {
    * than this many hours before an entry does not take it (skip "seatQuiet"). The PF gap analysis (13 Oct): orders
    * of a config that closed within the last 4 h realized PF 0.39, those with no close for 4 h 0.63 (D1) and 1.09
    * (holdout) — the seat validation picks configs at their equity peak, and their next hours reverse. Measured as a
-   * lever; on only after a causal comparison (docs/positive-coordinations.md).
+   * lever; on only after a causal comparison (docs/positive-coordinations.md). With seatSideCooloff only the entry's
+   * own direction counts.
    */
   seatQuietH?: number;
+  /**
+   * Seat cool-off per direction (only with seatQuietH on): true = a close of the engine config in the entry's own
+   * direction starts the cool-off, a close in the opposite direction does not; the symbol is not part of it (any
+   * symbol, as before). Unset / false = both directions count (today's). Long and short run independently (6 Oct,
+   * docs/positive-coordinations.md); the default stays off until a causal comparison on the walk-forward records it.
+   */
+  seatSideCooloff?: boolean;
   /**
    * Contrarian execution — an EVALUATION knob (off; the paper book and live do not implement it): the seat selection
    * is unchanged, and each seated engine config's entries execute on its mirror's tape (follow ↔ revert: the same
@@ -3459,10 +3467,15 @@ export function execDecision(
   // the range's own seatQuietH / lastN (wf.rangeOpts), else the global ones
   const ro = o.rangeOpts ? rangeOptsOf(o, tp) : undefined;
   const quietH = ro?.seatQuietH ?? o.seatQuietH;
-  // seat cool-off (wf.seatQuietH): an engine config that closed within the last H hours before the entry waits
+  // seat cool-off (wf.seatQuietH): an engine config that closed within the last H hours before the entry waits;
+  // wf.seatSideCooloff: only a close in the entry's own direction counts (any symbol, as before)
   if (quietH && quietH > 0 && !isSignalInd(tp.ind)) {
     const b = lowerBound(tp.exitT, entryT + 1);
-    if (b > 0 && tp.exitT[b - 1] > entryT - quietH * H) return { ok: false, why: "seatQuiet" };
+    if (o.seatSideCooloff && ctx?.side) {
+      const want = ctx.side > 0 ? 1 : -1;
+      for (let i = b - 1; i >= 0 && tp.exitT[i] > entryT - quietH * H; i--)
+        if ((tp.side[i] > 0 ? 1 : -1) === want) return { ok: false, why: "seatQuiet" };
+    } else if (b > 0 && tp.exitT[b - 1] > entryT - quietH * H) return { ok: false, why: "seatQuiet" };
   }
   // signals: only the active ones (source × lane × symbol) trade, and a config set of source × symbol ×
   // direction × type whose last N closed results average below zero is disabled

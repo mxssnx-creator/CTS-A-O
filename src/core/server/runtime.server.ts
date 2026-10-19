@@ -6263,6 +6263,7 @@ export const WF_KEYS = [
   "causalBase",
   "entryCrowd",
   "seatQuietH",
+  "seatSideCooloff",
   "invertSeats",
   "rangeOpts",
 ] as const;
@@ -6395,6 +6396,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
   }
   num("seatQuietH", 0, 48); // seat cool-off hours (0 = off)
   if (p.invertSeats !== undefined) p.invertSeats = Boolean(p.invertSeats); // contrarian execution (evaluation only)
+  if (p.seatSideCooloff !== undefined) p.seatSideCooloff = Boolean(p.seatSideCooloff); // seat cool-off: own direction only
   if (p.rangeOpts !== undefined) p.rangeOpts = sanitizeRangeOpts(p.rangeOpts); // per-range seat and entry options
   if (p.causalBase !== undefined) p.causalBase = Boolean(p.causalBase); // direction gate: last N candidates of the side (0 = off; the book keeps 64)
   if (p.bestFirst !== undefined) p.bestFirst = Boolean(p.bestFirst);

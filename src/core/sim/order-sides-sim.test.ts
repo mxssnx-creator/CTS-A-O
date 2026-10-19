@@ -5,8 +5,8 @@
 // (c) a trailing stop moves only favourably; (d) a ladder add goes in the adverse direction; (e) Block: one direction's
 // level or pause never changes the other direction's decision (long and short run independently, 6 Oct in
 // docs/positive-coordinations.md). A cell another test already states exactly is not repeated here.
-// Plan item 3 (Block config level and pause, block.sideKeys) runs its cells with the option on; each has an option-off
-// control that pins the default result.
+// Plan items 3 (Block config level and pause, block.sideKeys) and 4 (seat cool-off, wf.seatSideCooloff) run their cells
+// with the option on; each has an option-off control that pins the default result.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { simulate } from "./backtest.ts";
@@ -682,25 +682,55 @@ describe("order sides: Block config source (the config's own closes, per directi
 });
 
 // ── Seat cool-off (walkforward.ts execDecision: an engine config that closed within H hours waits) ──────────────
-const seatBase = () => ({
+/** the seat base: wf.seatQuietH 2 h, wf.seatSideCooloff unset (both directions count) unless `extra` says otherwise */
+const seatBase = (extra: { seatSideCooloff?: boolean } = {}) => ({
   ...defaultWalkForward(DEFAULT_SETTINGS),
   lastN: 0,
   symGate: undefined,
   normalBaseMinPf: 0,
   seatQuietH: 2,
   toggles: { ...DEFAULT_TOGGLES, normal: true, block: false, blockActive: false },
+  ...extra,
 });
 
 describe("order sides: seat cool-off (wf.seatQuietH)", () => {
   for (const [name, s] of SIDES) {
+    const other = opposite(s) === 1 ? "LONG" : "SHORT";
+
     it(`${name} seat control: a ${name.toLowerCase()} close 1.5 h before the entry cools off that direction's seat`, () => {
       const res = execDecision(cfgTape([closeOf(s, 1.5 * H, 0.01)]), 2 * H, seatBase(), { sym: "A", side: s });
       assert.deepEqual(res, { ok: false, why: "seatQuiet" });
     });
 
-    it(`EXPECTED FAIL item 4, ${name} seat: the ${opposite(s) === 1 ? "LONG" : "SHORT"} close 1.5 h before does not cool off the ${name} seat (walkforward.ts:3437-3442)`, () => {
+    it(`${name} seat control, wf.seatSideCooloff unset: the ${other} close 1.5 h before cools off the ${name} seat, pooled as before`, () => {
       const res = execDecision(cfgTape([closeOf(opposite(s), 1.5 * H, 0.01)]), 2 * H, seatBase(), { sym: "A", side: s });
+      assert.deepEqual(res, { ok: false, why: "seatQuiet" });
+    });
+
+    it(`${name} seat, wf.seatSideCooloff on: the ${other} close 1.5 h before does not cool off the ${name} seat`, () => {
+      const res = execDecision(cfgTape([closeOf(opposite(s), 1.5 * H, 0.01)]), 2 * H, seatBase({ seatSideCooloff: true }), {
+        sym: "A",
+        side: s,
+      });
       assert.deepEqual(res, { ok: true, level: 0, vol: 1 });
+    });
+
+    it(`${name} seat, wf.seatSideCooloff on: its own ${name.toLowerCase()} close 1.5 h before still cools off the seat`, () => {
+      const res = execDecision(cfgTape([closeOf(s, 1.5 * H, 0.01)]), 2 * H, seatBase({ seatSideCooloff: true }), {
+        sym: "A",
+        side: s,
+      });
+      assert.deepEqual(res, { ok: false, why: "seatQuiet" });
+    });
+
+    it(`${name} seat, wf.seatSideCooloff on: an own-direction close on another symbol still cools off the seat (across symbols unchanged)`, () => {
+      const res = execDecision(
+        cfgTape([{ ...closeOf(s, 1.5 * H, 0.01), sym: "B" }]),
+        2 * H,
+        seatBase({ seatSideCooloff: true }),
+        { sym: "A", side: s },
+      );
+      assert.deepEqual(res, { ok: false, why: "seatQuiet" });
     });
   }
 });
