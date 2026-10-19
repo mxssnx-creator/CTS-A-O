@@ -68,7 +68,7 @@ position slot of every simulator, the symbol gate (`provenSide`), the last-N exe
 units (`sigActiveKey`), the signal loss-cluster guard, the signal position cap, the Block symbol and indication sources,
 and the Stable-02 symbol windows. The seat validation (`validOk`) stays pooled by design. Two stay as they are until
 compared, both behind options off by default: the Block config source, pooled across directions (`block.sideKeys`), and
-the Stable-02 pause that paper and live enforce, keyed by the bare symbol (`coord.s2Side`):
+the Stable-02 pause, which paper and live check by the bare symbol while `coord.s2Side` is off (the default, where that key never matches a `sym|±1` pause; on, by symbol × direction):
 
 - **One position slot per config × symbol × direction.** Every simulator (Normal / Trailing `simulate`, DCA and DCA
   Active, Axis revert and desk, Axis per range, Base's `runCombo`) held one slot per config × symbol: an open long
