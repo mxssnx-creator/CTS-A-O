@@ -10,11 +10,20 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { CoreDb } from "./db.server.ts";
-import { reconcileLaneCloses, resetLiveBackoff, stepLive } from "./live.server.ts";
+import { liveLaneFilter, reconcileLaneCloses, resetLiveBackoff, stepLive } from "./live.server.ts";
 import { liveTag, stateHash } from "./live.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
 import { attributeLanes, laneKeyOf, liveRecords, sideOfRow, type LiveRecord } from "../live-record.ts";
-import { engineProven, liveEntryOk, liveGate, sideTapeOf, type SideTapeMemo } from "../live-validation.ts";
+import {
+  engineProven,
+  liveEntryOk,
+  liveGate,
+  liveGroupKeyOf,
+  liveGroupOf,
+  sideTapeOf,
+  type LiveGate,
+  type SideTapeMemo,
+} from "../live-validation.ts";
 import { liveLedger, type LedgerRow } from "../statistics.ts";
 import { CandleSeries } from "../market/candle-series.ts";
 import type { Candle, Trade } from "../domain/types.ts";
@@ -245,6 +254,44 @@ describe("live.sideGates: the engine proof, the simulated fallback and the setti
     assert.equal(rec.exitT.length, 20, "the LONG and the SHORT closes are both in it");
     // ten LONG losses of 2 % and ten SHORT wins of 1 %: the gains are 10 × 1 %, the losses 10 × 2 %
     assert.ok(near(rec.gp[20], 0.1) && near(rec.gl[20], 0.2), `gains ${rec.gp[20]} losses ${rec.gl[20]}`);
+  });
+});
+
+// ── a lane or an entry with no side of its own, on the per-side path (live.server.ts liveLaneFilter, runtime lvOf) ──────
+describe("live.sideGates: a lane or an entry with no side of its own (g)", () => {
+  // an engine lane of CFG on a side that is not +1 or -1 (the lane filter takes any number; a position is always +1 or -1)
+  const lane = (side: number) => ({ cfg: CFG, vol: 1, side });
+  /** the sendable verdict of an engine lane with the given engine proof keys, on the per-side path */
+  const sendableOn = (proven: string[]) => liveLaneFilter({ sideGates: true }, null, null, new Set(proven), null).sendable;
+
+  it("(g) live.sideGates: a side-0 engine lane is judged on either side, sendable when its LONG or its SHORT is proven (intended: a lane with no side is proven on either side, as signalOk does)", () => {
+    assert.equal(sendableOn([`${CFG}|1`])(lane(0)), true, "its LONG is proven");
+    assert.equal(sendableOn([`${CFG}|-1`])(lane(0)), true, "its SHORT is proven");
+    assert.equal(sendableOn([])(lane(0)), false, "neither is proven");
+  });
+
+  it("(g) live.sideGates: a LONG or a SHORT lane is judged on its own side only, so the side-0 rule does not widen it (a SHORT with only the LONG proven is refused)", () => {
+    assert.equal(sendableOn([`${CFG}|1`])(lane(1)), true, "a LONG with its LONG proven");
+    assert.equal(sendableOn([`${CFG}|1`])(lane(-1)), false, "a SHORT with only the LONG proven");
+  });
+
+  it("(g) control: with live.sideGates off the side-0 lane takes the pooled proof of its config (pass)", () => {
+    const off = liveLaneFilter({}, null, null, new Set([CFG]), null).sendable;
+    assert.equal(off(lane(0)), true, "the config is proven");
+    assert.equal(liveLaneFilter({}, null, null, new Set<string>(), null).sendable(lane(0)), false, "not proven");
+  });
+
+  it("(g) live.sideGates: an entry with no side of its own is not judged and is admitted, as no side's group gate applies to it (the entry gate's composition: lvOf's unjudged gate, the group key without a side; the runtime closure itself is not run)", () => {
+    const unjudged: LiveGate = { ok: true, n: 0, pf: null };
+    const group = liveGroupOf(CFG);
+    // under the option each group's gate is keyed by its side, so the key of a side-less entry names no gate
+    const refused: LiveGate = { ok: false, n: 10, pf: 0.5 };
+    const groups = new Map([
+      [liveGroupKeyOf(group, 1), refused],
+      [liveGroupKeyOf(group, -1), refused],
+    ]);
+    assert.equal(liveEntryOk(unjudged, groups.get(liveGroupKeyOf(group, sideOfRow(0)))), true, "an entry with side 0 is admitted");
+    assert.equal(liveEntryOk(unjudged, groups.get(liveGroupKeyOf(group, sideOfRow(-1)))), false, "a SHORT entry takes its side's group gate");
   });
 });
 
