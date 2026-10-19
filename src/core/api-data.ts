@@ -68,7 +68,18 @@ export async function coreListingData(data: ReturnType<typeof coreListingInput>)
     rows = q ? all.filter((x) => x.id.toLowerCase().includes(q)) : all;
   } else if (data.kind === "active") {
     rows = q ? L.active.filter((x) => `${x.bot}|${x.ind}|${x.sym}`.toLowerCase().includes(q)) : L.active;
-  } else rows = (L.proven ?? []).filter((id) => !q || id.toLowerCase().includes(q)).map((id) => ({ id }));
+  } else {
+    const proven = (L.proven ?? []).filter((k) => !q || k.toLowerCase().includes(q));
+    // live.sideGates: a proven key is a config and its side (recordKeyOf), listed as a row with a side column; the
+    // split is loaded only on that path (this module loads the live modules on demand)
+    if (L.provenBySide) {
+      const { splitRecordKey } = await import("./live-record.ts");
+      rows = proven.map((k) => {
+        const { cfg, side } = splitRecordKey(k);
+        return { id: cfg, side: side > 0 ? "LONG" : "SHORT" };
+      });
+    } else rows = proven.map((id) => ({ id }));
+  }
   return ser({
     ready: true,
     kind: data.kind,
@@ -79,6 +90,7 @@ export async function coreListingData(data: ReturnType<typeof coreListingInput>)
     rows: rows.slice(data.offset, data.offset + data.limit),
     byRange: Object.entries(L.byRange).map(([range, x]) => ({ range, validated: x.rows.length, pf: x.pf })),
     proofOn: L.proven !== null,
+    ...(L.provenBySide ? { provenBySide: true as const } : {}),
   });
 }
 

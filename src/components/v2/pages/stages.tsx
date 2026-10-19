@@ -325,6 +325,7 @@ function SetListings(props: { minPf: number }) {
               ) : (
                 <tr>
                   <th>Config</th>
+                  {d.provenBySide && <th>Side</th>}
                 </tr>
               )}
             </thead>
@@ -353,8 +354,9 @@ function SetListings(props: { minPf: number }) {
                     <td>{x.side > 0 ? "long" : "short"}</td>
                   </tr>
                 ) : (
-                  <tr key={x.id ?? i}>
+                  <tr key={x.side ? `${x.id}|${x.side}` : (x.id ?? i)}>
                     <td>{x.id}</td>
+                    {d.provenBySide && <td>{x.side}</td>}
                   </tr>
                 ),
               )}

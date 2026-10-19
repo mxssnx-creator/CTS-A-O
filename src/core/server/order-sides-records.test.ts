@@ -13,7 +13,15 @@ import { CoreDb } from "./db.server.ts";
 import { liveLaneFilter, reconcileLaneCloses, resetLiveBackoff, stepLive } from "./live.server.ts";
 import { liveTag, stateHash } from "./live.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
-import { attributeLanes, laneKeyOf, liveRecords, sideOfRow, type LiveRecord } from "../live-record.ts";
+import {
+  attributeLanes,
+  laneKeyOf,
+  liveRecords,
+  recordKeyOf,
+  sideOfRow,
+  splitRecordKey,
+  type LiveRecord,
+} from "../live-record.ts";
 import {
   engineProven,
   liveEntryOk,
@@ -281,6 +289,12 @@ describe("live.sideGates: the engine proof, the simulated fallback and the setti
     const unjudged: LiveGate = { ok: true, n: 0, pf: null };
     assert.equal(liveEntryOk(unjudged, perSide.get(liveGroupKeyOf(group, 1))), true, "a LONG entry is admitted");
     assert.equal(liveEntryOk(unjudged, perSide.get(liveGroupKeyOf(group, -1))), false, "a SHORT entry is refused");
+  });
+
+  it("(d) live.sideGates: a proven key is its config and its side (recordKeyOf read back by splitRecordKey); a config id with a '|' is split at its last '|'", () => {
+    assert.deepEqual(splitRecordKey(recordKeyOf(CFG, -1)), { cfg: CFG, side: -1 });
+    assert.deepEqual(splitRecordKey(recordKeyOf(CFG, 1)), { cfg: CFG, side: 1 });
+    assert.deepEqual(splitRecordKey(recordKeyOf("b|ema|a|h16", 1)), { cfg: "b|ema|a|h16", side: 1 });
   });
 });
 

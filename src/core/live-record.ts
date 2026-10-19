@@ -178,6 +178,15 @@ export function recordKeyOf(cfg: string, side?: 1 | -1): string {
 }
 
 /**
+ * The config and the side of a per-side record key (recordKeyOf with a side): the side is the part after the last "|",
+ * so a config id that contains "|" is split correctly. Only for keys of the per-side path (live.sideGates).
+ */
+export function splitRecordKey(key: string): { cfg: string; side: 1 | -1 } {
+  const i = key.lastIndexOf("|");
+  return { cfg: key.slice(0, i), side: key.slice(i + 1) === "1" ? 1 : -1 };
+}
+
+/**
  * The side of a close, a lane or an entry on the per-side path (live.sideGates): +1 (LONG) or -1 (SHORT). Any other
  * value (0, null, undefined) belongs to neither side.
  */

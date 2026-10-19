@@ -400,7 +400,7 @@ export interface RuntimeStatus {
   /** after the Base PF evaluation, per range type (Wide, Micro … Long, Signals): sets evaluated / passed and PF */
   baseByRange?: Array<BaseRangeCount & { range: string; enabled: boolean }>;
   /** counts of the listings of the last paper step (CoreRuntime.listings; the pages page through coreListing) */
-  listings?: { paperStep: number; at: number; validated: number; active: number; proven: number | null; byRange: Array<{ range: string; validated: number; pf: number | null }> };
+  listings?: { paperStep: number; at: number; validated: number; active: number; proven: number | null; byRange: Array<{ range: string; validated: number; pf: number | null }>; provenBySide?: true };
   /** the preset comparison after the paper step (comparePresets): running, presets done / total, when it last finished */
   compare?: { running: boolean; done: number; total: number; at?: number; error?: string };
   /**
@@ -4324,6 +4324,8 @@ export class CoreRuntime {
     }
     active.sort((a, b) => (a.bot + a.ind + a.sym).localeCompare(b.bot + b.ind + b.sym) || b.side - a.side);
     const proof = this.engineProof();
+    // live.sideGates: each proven key is a config and its side (recordKeyOf); the listing and its count say so
+    const provenBySide = proof !== null && this.settings.live.sideGates === true;
     this.listings = {
       paperStep: this.status.paperSteps ?? 0,
       at: Date.now(),
@@ -4331,6 +4333,7 @@ export class CoreRuntime {
       byRange,
       active,
       proven: proof ? [...proof.proven].sort() : null,
+      ...(provenBySide ? { provenBySide: true as const } : {}),
     };
     this.status.listings = {
       paperStep: this.listings.paperStep,
@@ -4339,6 +4342,7 @@ export class CoreRuntime {
       active: active.length,
       proven: this.listings.proven ? this.listings.proven.length : null,
       byRange: Object.entries(byRange).map(([range, r]) => ({ range, validated: r.rows.length, pf: r.pf })),
+      ...(provenBySide ? { provenBySide: true as const } : {}),
     };
   }
   private proofMemo: { key: string; out: { proven: Set<string>; judged: number; n: number; minPf: number } } | null = null;
@@ -6227,6 +6231,8 @@ export interface SetListings {
   active: Array<{ bot: string; ind: string; sym: string; side: 1 | -1 }>;
   /** engine configs proven live by their own closes (live.engineProofN); null when the proof is off */
   proven: string[] | null;
+  /** live.sideGates on: `proven` holds record keys, a config and its side (cfg|1 / cfg|-1), not config ids alone */
+  provenBySide?: true;
 }
 
 /** The walk-forward knobs that are user settings (grids, toggles and gates come from CoreSettings). */
