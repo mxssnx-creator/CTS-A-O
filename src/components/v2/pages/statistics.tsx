@@ -366,7 +366,7 @@ export function StatisticsPage() {
             : "virtual start balance";
   const apart = [
     r.hand?.n ? `ended by orders not ours ${r.hand.n} (${fmt.usdSigned(r.hand.usd)})` : "",
-    r.flat?.n ? `exchange-ended at a verified price ${r.flat.n} (${fmt.usdSigned(r.flat.usd)})` : "",
+    r.flat?.n ? `exchange-ended, cause not proven ${r.flat.n} (${fmt.usdSigned(r.flat.usd)})` : "",
     d.unpriced?.n ? `${d.unpriced.n} flat markers without any price (not booked)` : "",
   ].filter(Boolean);
   return (
