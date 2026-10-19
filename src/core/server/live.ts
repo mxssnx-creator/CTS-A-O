@@ -2,7 +2,8 @@
 // Rules:
 //   - OFF unless settings.live.enabled AND env CTS_CORE_LIVE=1 AND keys exist
 //   - own tickets carry the CTSB tag of this connection; nothing else is ever cancelled or closed
-//   - a symbol with any foreign position or order is skipped entirely
+//   - a foreign position or order freezes its own side (hedge mode), or the whole symbol (one-way mode, or an order
+//     without a position side)
 //   - caps: max own positions, fixed notional per entry
 import type { LiveSettings } from "../config.ts";
 import { sigCfg } from "../sim/walkforward.ts";
@@ -169,14 +170,22 @@ export function planLive(input: {
   if (!input.hasKeys) return off(`no API keys for ${settings.connId}`);
   if (input.ready && !input.ready.ok) return off(`not ready: ${input.ready.why}`);
   if (!book) return off("exchange book unavailable");
-  const foreign = new Set<string>();
-  for (const o of book.orders)
-    if (!isOwnCoid(o.clientOrderId, settings.connId)) foreign.add(o.venueSymbol);
-  for (const p of book.positions) if (!input.ownSyms.has(p.venueSymbol)) foreign.add(p.venueSymbol);
   // hedge mode: a long and a short on one symbol are separate positions, so "already holding" is per
   // (symbol, direction) — an own long never blocks the short entry. One-way: one position per symbol.
   const oneway = (settings.positionMode ?? "hedge") === "oneway";
   const keyOf = (sym: string, side: 1 | -1) => (oneway ? sym : `${sym}|${side}`);
+  // foreignness per (symbol, direction), as controlOwnership marks it: a foreign position, or a foreign order that names
+  // a LONG / SHORT position side, freezes only that side (the opposite entry stays allowed). A foreign order without a
+  // position side, and anything foreign in one-way mode, freezes the whole symbol.
+  const foreign = new Set<string>();
+  for (const o of book.orders) {
+    if (isOwnCoid(o.clientOrderId, settings.connId)) continue;
+    if (o.positionSide === "LONG" || o.positionSide === "SHORT")
+      foreign.add(keyOf(o.venueSymbol, o.positionSide === "LONG" ? 1 : -1));
+    else foreign.add(o.venueSymbol);
+  }
+  for (const p of book.positions)
+    if (!input.ownSyms.has(p.venueSymbol)) foreign.add(keyOf(p.venueSymbol, p.side === "long" ? 1 : -1));
   const ownKeys = new Set<string>();
   for (const p of book.positions)
     if (input.ownSyms.has(p.venueSymbol)) ownKeys.add(keyOf(p.venueSymbol, p.side === "long" ? 1 : -1));
@@ -204,7 +213,7 @@ export function planLive(input: {
       skipped.push({ sym: it.sym, why: "stale signal (symbol not updated)" });
       continue;
     }
-    if (foreign.has(it.sym)) {
+    if (isForeign(foreign, keyOf(it.sym, it.side))) {
       skipped.push({ sym: it.sym, why: "foreign position/order on symbol" });
       continue;
     }
