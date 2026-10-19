@@ -62,9 +62,13 @@ untagged id, so every signal config and every Axis / DCA ladder was held back wi
 12.5 at the time). Fixed in code (`rangeExcluded`); x01's patch dropped the exclusion when it switched to signals
 trailing plain at volume factor 500 on every evaluated symbol, loss bounds 0.50 / 0.50 unchanged.
 
-6 Oct — **Long and short run independently, everywhere** (operator: "Always process long and short both and make
-sure it runs independently"). No coordination above is switched off; the ones that pooled both directions now
-judge each direction on its own record:
+6 Oct — **Long and short run independently** (operator: "Always process long and short both and make sure it runs
+independently"). No coordination above is switched off. The ones below now judge each direction on its own record: the
+position slot of every simulator, the symbol gate (`provenSide`), the last-N execution gates (`lastNSideOk`), the signal
+units (`sigActiveKey`), the signal loss-cluster guard, the signal position cap, the Block symbol and indication sources,
+and the Stable-02 symbol windows. The seat validation (`validOk`) stays pooled by design. Two stay as they are until
+compared, both behind options off by default: the Block config source, pooled across directions (`block.sideKeys`), and
+the Stable-02 pause that paper and live enforce, keyed by the bare symbol (`coord.s2Side`):
 
 - **One position slot per config × symbol × direction.** Every simulator (Normal / Trailing `simulate`, DCA and DCA
   Active, Axis revert and desk, Axis per range, Base's `runCombo`) held one slot per config × symbol: an open long
@@ -94,13 +98,13 @@ judge each direction on its own record:
   the rolling 24-result PF are kept per symbol × direction, so losing shorts never hold back the symbol's longs. The
   coordination stays on (`coord.s2Windows` unchanged); only its key gained the side. The relation volume is unchanged
   (it already judges `side:` and `leg:` relations apart).
-  - **Stable-02 pause per side (`coord.s2Side`, default off).** The simulation pauses a symbol × direction
-    (`S2Coord.blocked(sym, side)`, keys `sym|±1`, judged by `s2.blocked(tr.sym, tr.side)` in walkforward.ts). The paper
-    step and the live intents (`pendingEntries`) both refuse entries through `entryHeldBack` (runtime.server.ts:5246-5248),
-    which refuses a paused entry only when `coord.s2Side` is on. Off (the default; `DEFAULT_COORD` has no `s2Side` key),
-    it compares the bare symbol with those keys, which never match, so the default paper and live book does not enforce
-    the pause the simulation applies. Adopting `s2Side` needs a causal on/off comparison on the paper book, recorded
-    here; until then the control cells in `src/core/server/order-sides-paper.test.ts` pin the default as allowed.
+- **Stable-02 pause per side (`coord.s2Side`, default off).** The simulation pauses a symbol × direction
+  (`S2Coord.blocked(sym, side)`, keys `sym|±1`, judged by `s2?.blocked(tr.sym, tr.side) ??` in walkforward.ts). The paper
+  step and the live intents (`pendingEntries`) both refuse entries through `entryHeldBack` (runtime.server.ts:5266-5268),
+  which refuses a paused entry only when `coord.s2Side` is on. Off (the default; `DEFAULT_COORD` has no `s2Side` key),
+  it compares the bare symbol with those keys, which never match, so the default paper and live book does not enforce
+  the pause the simulation applies. Adopting `s2Side` needs a causal on/off comparison on the paper book, recorded
+  here; until then the control cells in `src/core/server/order-sides-paper.test.ts` pin the default as allowed.
 - Keys that could now collide carry the side: the run's dupe check, the Block feed candidate key, the paper position
   id (persisted stop hits written before are still read). `WalkForwardResult` adds `bySide` and `skipsBySide`.
 - Unchanged by design: the Stable-02 confluence rule (the documented exception), the signals' own direction
@@ -550,7 +554,7 @@ switchable, each option off by default:
 | `block.levelMinWin` | 0: a positive sum is a level — 7 losses and one big win are level 8 | e.g. 0.5: a level also needs half its closes won | one outlier is not a streak |
 | `block.poolSignals` | true: signal candidates feed the pooled sources engine entries are judged on | `false`: the engine's candidates only | signals have their own record (`signalsOwn`) |
 | `block.poolDedupe` | false: every config's candidate counts | `true`: an identical close (one entry under two indication names) counts once | double counting |
-| `block.sideKeys` | false: the config source's level and pause pool both directions | `true`: the config source's level and pause per direction | 6 Oct: long and short run independently. Acts only while `sources.config` is on (DEFAULT_BLOCK has it off, so the default changes no engine entry). Comparison: recipe `blk-cfg-*`, not yet run; no default changes until its result is recorded here |
+| `block.sideKeys` | false: the config source's level and pause pool both directions | `true`: the config source's level and pause per direction | 6 Oct: long and short run independently. For an engine entry it acts only while `sources.config` is on (DEFAULT_BLOCK has it off, so the default changes no engine entry). A signal entry has its config source on whatever `sources.config` says (`signalsOwn` gives its tape `OWN_SOURCES`), so `sideKeys` changes signal entries too when it is on. Comparison: recipe `blk-cfg-*`, not yet run; no default changes until its result is recorded here |
 
 Fixed outright (not a policy; identical at the default `maxMult` 8, so no golden moves): `maxMult` caps the **total**
 stack in every type — Overall capped only each leg and hard-coded the stack at 8× (block.ts, the walk-forward and paper
@@ -583,8 +587,10 @@ $E --label blk-minwin    --settings '{"block":{"levelMinWin":0.5}}' --toggles "$
 $E --label blk-poolsig   --settings '{"block":{"poolSignals":false}}' --toggles "$ON"
 $E --label blk-dedupe    --settings '{"block":{"poolDedupe":true}}' --toggles "$ON"
 $E --label blk-all       --settings '{"block":{"stepFloor":false,"windowHours":6,"levelMinWin":0.5,"poolSignals":false,"poolDedupe":true}}' --toggles "$ON"
-# block.sideKeys acts only while the config source is on, and a settings block.sources replaces the whole object, so
-# both arms give all six sources with config true. Compare blk-cfg-sidekeys with blk-cfg-pooled; blk-off is the reference.
+# block.sideKeys acts only while the config source is on: for an engine entry that is sources.config, and a signal entry
+# has it on while signalsOwn is on (the default). A settings block.sources replaces the whole object, so both arms give
+# five sources with config true (type off, as DEFAULT_BLOCK.sources). Compare blk-cfg-sidekeys with blk-cfg-pooled;
+# blk-off is the reference.
 $E --label blk-cfg-pooled   --settings '{"block":{"sources":{"config":true,"overall":true,"symbol":true,"direction":true,"indication":true,"type":false}}}' --toggles "$ON"
 $E --label blk-cfg-sidekeys --settings '{"block":{"sideKeys":true,"sources":{"config":true,"overall":true,"symbol":true,"direction":true,"indication":true,"type":false}}}' --toggles "$ON"
 ```
