@@ -1,0 +1,302 @@
+// Order sides in the records and the PF: a LONG (side 1) and a SHORT (side -1) of one config are two positions, and each
+// side's closes, flat markers, reconciled exits, validation record and gate keep their own side. Layer: the ledger's
+// closes and P&L (statistics.ts liveLedger), the lane closes (live-record.ts attributeLanes), the live record and its
+// gate (live-record.ts liveRecords, live-validation.ts liveGate / liveEntryOk), the stop a flat marker is priced at (one
+// control step of live.server.ts on the simulated venue, stopPxOf) and the lane exits reconciled to the venue's fills
+// (live.server.ts reconcileLaneCloses). Plan items: 13 (the live gate pools LONG and SHORT closes), 14 ("(unverified X)"
+// reads as a stop-out), 15 (a stale stop prices a new position). A cell whose title says "expected to fail at 5911116"
+// fails there for the plan item it names, and only that; every other cell passes at that commit.
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+import { CoreDb } from "./db.server.ts";
+import { reconcileLaneCloses, resetLiveBackoff, stepLive } from "./live.server.ts";
+import { liveTag } from "./live.ts";
+import type { CoreRuntime } from "./runtime.server.ts";
+import { attributeLanes, laneKeyOf, liveRecords, type LiveRecord } from "../live-record.ts";
+import { liveEntryOk, liveGate } from "../live-validation.ts";
+import { liveLedger, type LedgerRow } from "../statistics.ts";
+import { CandleSeries } from "../market/candle-series.ts";
+import type { Candle } from "../domain/types.ts";
+import { fakeRt, SimExchange } from "../test-support.ts";
+
+process.env.CTS_CORE_LIVE = "1";
+const H = 3_600_000;
+const T = 1_790_000_000_000;
+const SYM = "S1-USDT";
+const CFG = "b|ema|a";
+const near = (a: number, b: number, eps = 1e-12) => Math.abs(a - b) < eps;
+
+// ── the ledger's closes: P&L sign, fees, flat markers (statistics.ts liveLedger) ─────────────────────────────────────
+// the tag is 7 characters: the id letter after it names the range (E: wide). A LONG bought at 100 gains at 105 and loses
+// at 95; a SHORT sold at 100 gains at 95 and loses at 105.
+const TAG = "CTSBV2_";
+const SIDES = [
+  { name: "LONG", side: 1 as const, win: 105, loss: 95 },
+  { name: "SHORT", side: -1 as const, win: 95, loss: 105 },
+];
+/** one position: an own open of 1 at 100 (a fee of 0 is unmeasured: the model share is charged) */
+const opened = (side: 1 | -1, fee = 0): LedgerRow => ({
+  coid: `${TAG}Ea1`, sym: SYM, side, kind: "O", qty: 1, px: 100, status: "ok", at: T, fillPx: 100, fee,
+});
+/** the position closed by its own close order at px */
+const closedOwn = (side: 1 | -1, px: number, fee = 0): LedgerRow => ({
+  coid: `${TAG}Ca2`, sym: SYM, side, kind: "X", qty: 1, px, status: "ok", at: T + H, fillPx: px, fee,
+});
+/** the position the exchange closed: the flat marker the desk wrote, priced at px, with its note */
+const flatOf = (side: 1 | -1, px: number, msg: string): LedgerRow => ({
+  coid: "flat-1", sym: SYM, side, kind: "F", qty: 0, px, status: "ok", at: T + H, fillPx: null, fee: 0, msg,
+});
+const closesOf = (rows: LedgerRow[], modelCost = 0) => liveLedger(rows, TAG.length, modelCost).closed;
+
+describe("ledger closes: the P&L sign on each side (statistics.ts liveLedger)", () => {
+  for (const s of SIDES) {
+    it(`(a) ${s.name}: a gain to ${s.win} books +5 % of the notional, a loss to ${s.loss} books -5 %, before fees`, () => {
+      const [w] = closesOf([opened(s.side), closedOwn(s.side, s.win)]);
+      assert.equal(w.side, s.side);
+      assert.equal(w.notional, 100);
+      assert.ok(near(w.r, 0.05), `win r ${w.r}`);
+      const [l] = closesOf([opened(s.side), closedOwn(s.side, s.loss)]);
+      assert.ok(near(l.r, -0.05), `loss r ${l.r}`);
+    });
+
+    it(`(a) ${s.name}: measured commissions (0.1 open, 0.2 close) lower the same gain by 0.3 % of the notional`, () => {
+      const [w] = closesOf([opened(s.side, 0.1), closedOwn(s.side, s.win, 0.2)]);
+      assert.ok(near(w.r, 0.047), `r ${w.r}`);
+    });
+
+    it(`(a) ${s.name}: the model share (0.1 % per side on each fill's notional) is charged with the same sign`, () => {
+      const [w] = closesOf([opened(s.side), closedOwn(s.side, s.win)], 0.002);
+      // open 100 × 0.1 % = 0.1 ; close at the win price × 0.1 % — the gross 5 less both shares, over 100
+      assert.ok(near(w.r, (5 - 0.1 - s.win * 0.001) / 100), `r ${w.r}`);
+    });
+  }
+});
+
+describe("flat markers: the reason each one books (statistics.ts liveLedger)", () => {
+  for (const s of SIDES) {
+    it(`(b) ${s.name}: "flat on the exchange (unverified ${s.loss})" is not an own stop-out: it books "flat", out of PF (plan item 14, expected to fail at 5911116: books "sl")`, () => {
+      const [x] = closesOf([opened(s.side), flatOf(s.side, s.loss, `flat on the exchange (unverified ${s.loss})`)]);
+      // statistics.ts:457-459 keeps "flat" (a cause not proven) out of every PF, as "hand"; the unverified close is that case
+      assert.equal(x.reason, "flat", `reason ${x.reason}`);
+    });
+
+    it(`(b) ${s.name}: "(stop X)", "(target X)" and "(hand X)" book sl, tp and hand`, () => {
+      const got = ["stop", "target", "hand"].map(
+        (why) => closesOf([opened(s.side), flatOf(s.side, s.loss, `flat on the exchange (${why} ${s.loss})`)])[0].reason,
+      );
+      assert.deepEqual(got, ["sl", "tp", "hand"]);
+    });
+
+    it(`(c) ${s.name}: "(liq X)" is an own loss counted like a stop: reason sl, inside the PF`, () => {
+      const [x] = closesOf([opened(s.side), flatOf(s.side, s.loss, `flat on the exchange (liq ${s.loss})`)]);
+      // live.ts outsideCloseOf: "liq … an own loss, counted like a stop" — so the reason is sl and it is not apart
+      assert.equal(x.reason, "sl", `reason ${x.reason}`);
+      assert.ok(near(x.r, -0.05), `r ${x.r}`);
+    });
+  }
+});
+
+// ── the live record and its gate, per side (live-record.ts liveRecords, live-validation.ts liveGate) ──────────────────
+// 20 closes of one config, one every 2 h, alternating a LONG (even) and a SHORT (odd): the last 10 hold five of each
+const N = 10;
+const MIN_PF = 1.05;
+const NOW = T + 40 * H;
+const alternating = (longR: number, shortR: number) =>
+  Array.from({ length: 20 }, (_, i) => ({
+    cfg: CFG,
+    sym: SYM,
+    side: i % 2 === 0 ? 1 : -1,
+    exitT: T + 2 * i * H,
+    r: i % 2 === 0 ? longR : shortR,
+  }));
+/** the record a side is judged by: its own when the record is kept per side, else the config's (pooled) record */
+const recordOf = (recs: Map<string, LiveRecord>, side: 1 | -1) => recs.get(`${CFG}|${side}`) ?? recs.get(CFG);
+const gateOf = (rows: ReturnType<typeof alternating>, side: 1 | -1) =>
+  liveGate(recordOf(liveRecords(rows), side)!, 0, NOW, N, MIN_PF);
+
+describe("live validation per side (live-record.ts liveRecords, live-validation.ts liveGate)", () => {
+  it("(d) plan item 13: the record keeps a config's LONG and SHORT closes apart (one record per config and side; expected to fail at 5911116: one pooled record)", () => {
+    assert.equal(liveRecords(alternating(-0.02, 0.01)).size, 2, "one record per config and side");
+  });
+
+  it("(d) plan item 13: a SHORT is not refused by the LONG closes of its config — its own 10 closes all win, the pooled 10 lose (expected to fail at 5911116: refused by the pooled record)", () => {
+    // the longs lose 2 % each, the shorts win 1 % each: the pooled last 10 are PF 0.5, the shorts' own PF is no loss
+    const g = gateOf(alternating(-0.02, 0.01), -1);
+    assert.equal(liveEntryOk(g, undefined), true, `short judged ${JSON.stringify(g)}`);
+  });
+
+  it("(d) plan item 13: a SHORT is refused by its own 10 losing closes though the LONG closes of its config win (expected to fail at 5911116: admitted by the pooled record)", () => {
+    // the longs win 5 % each, the shorts lose 1 % each: the pooled last 10 are PF 5, the shorts' own PF is 0
+    const g = gateOf(alternating(0.05, -0.01), -1);
+    assert.equal(liveEntryOk(g, undefined), false, `short judged ${JSON.stringify(g)}`);
+  });
+
+  it("(d) a LONG is judged on its own closes both ways (pass: the pooled record gives the same verdict here)", () => {
+    assert.equal(liveEntryOk(gateOf(alternating(-0.02, 0.01), 1), undefined), false, "its own 10 losses");
+    assert.equal(liveEntryOk(gateOf(alternating(0.05, -0.01), 1), undefined), true, "its own 10 wins");
+  });
+});
+
+// ── the stop a flat marker is priced at (live.server.ts stepLive, stopPxOf) ───────────────────────────────────────────
+/**
+ * One control step on a desk whose key S0 holds nothing on the venue. The key carries an earlier position of this side,
+ * opened at 10 and closed by its stop at `oldStop` (a flat marker); then a new position (opened 3 h ago, so not a recent
+ * open) with `newStop` as its own stop row (null: no stop row at all). The 1-minute bars of the last 30 minutes are `bars`
+ * (their highs and lows). Returns the flat marker the step wrote for the new position.
+ */
+async function closedOutside(side: 1 | -1, oldStop: number, newStop: number | null, bars: Array<Pick<Candle, "h" | "l">>) {
+  resetLiveBackoff();
+  const { rt } = fakeRt(new CoreDb(":memory:"));
+  const tag = liveTag(rt.settings.live.connId);
+  const key = `S0-USDT|${side}`;
+  const at = Date.now();
+  const put = (coid: string, kind: string, qty: number, px: number, t: number, msg = "") =>
+    rt.db.run(
+      "INSERT INTO live_orders (coid, cfg, sym, side, kind, qty, px, status, msg, at) VALUES (?, ?, ?, ?, ?, ?, ?, 'ok', ?, ?)",
+      coid,
+      `control|${key}`,
+      "S0-USDT",
+      side,
+      kind,
+      qty,
+      px,
+      msg,
+      t,
+    );
+  put(`${tag}Ea1`, "O", 1, 10, at - 5 * H);
+  put(`${tag}Sa2`, "S", 0, oldStop, at - 5 * H + 1);
+  put("flat-old", "F", 0, oldStop, at - 4 * H, `flat on the exchange (stop ${oldStop})`);
+  put(`${tag}Ea3`, "O", 1, 10, at - 3 * H);
+  if (newStop !== null) put(`${tag}Sa4`, "S", 0, newStop, at - 3 * H + 1);
+  const candles: Candle[] = bars.map((b, i) => ({ t: at - (30 - i) * 60_000, o: 10, h: b.h, l: b.l, c: 10, v: 1 }));
+  // (the bars the desk reads for a key: rt.candles, one series per symbol)
+  Object.assign(rt, { candles: new Map([["S0-USDT", CandleSeries.fromCandles(candles)]]) });
+  await stepLive(rt as unknown as CoreRuntime, [], 1, new SimExchange());
+  const flats = rt.db.all<{ px: number; msg: string | null }>(
+    "SELECT px, msg FROM live_orders WHERE cfg = ? AND kind = 'F' ORDER BY at, rowid",
+    `control|${key}`,
+  );
+  return flats.at(-1)!;
+}
+
+describe("the stop a flat marker is priced at: a new position's own stop only (live.server.ts stepLive)", { timeout: 60_000 }, () => {
+  it("(e) LONG: a new position with no stop row of its own is not closed at the earlier position's stop 9.7 (plan item 15, expected to fail at 5911116: priced at 9.7)", async () => {
+    const m = await closedOutside(1, 9.7, null, [{ h: 10.1, l: 9.4 }]);
+    assert.ok(!String(m.msg).includes("(stop"), `booked at a stop it never had: "${m.msg}" at ${m.px}`);
+    assert.notEqual(m.px, 9.7);
+  });
+
+  it("(e) SHORT: a new position with no stop row of its own is not closed at the earlier stop 10.3 (plan item 15, expected to fail at 5911116: priced at 10.3)", async () => {
+    const m = await closedOutside(-1, 10.3, null, [{ h: 10.6, l: 9.9 }]);
+    assert.ok(!String(m.msg).includes("(stop"), `booked at a stop it never had: "${m.msg}" at ${m.px}`);
+    assert.notEqual(m.px, 10.3);
+  });
+
+  it("(e) LONG control: the position's own stop 9.5 is the one priced (pass)", async () => {
+    const m = await closedOutside(1, 9.7, 9.5, [{ h: 10.1, l: 9.4 }]);
+    assert.deepEqual([m.px, m.msg], [9.5, "flat on the exchange (stop 9.5)"]);
+  });
+
+  it("(e) SHORT control: the position's own stop 10.1 is the one priced (pass)", async () => {
+    const m = await closedOutside(-1, 10.3, 10.1, [{ h: 10.6, l: 9.9 }]);
+    assert.deepEqual([m.px, m.msg], [10.1, "flat on the exchange (stop 10.1)"]);
+  });
+});
+
+// ── lane exits name their side (live.server.ts reconcileLaneCloses, live-record.ts attributeLanes) ───────────────────
+describe("lane exits name their side: reconciled fills and lane closes (f)", () => {
+  it("(f) reconcile: the BUY fill of the SHORT lane's stop is its exit; r is the short's return less the cost; the LONG lane of the symbol is not touched", () => {
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    const tag = liveTag(rt.settings.live.connId);
+    const t = Date.now() - H;
+    const ins = (id: string, side: 1 | -1, exit: number, reason: string, src: string) =>
+      rt.db.run(
+        "INSERT INTO live_lane_trades (id, exit_t, cfg, sym, side, entry_t, entry, exit, r, reason, px_src) VALUES (?, ?, ?, ?, ?, ?, 10, ?, ?, ?, ?)",
+        id,
+        t,
+        CFG,
+        SYM,
+        side,
+        t - 2 * H,
+        exit,
+        (side * (exit - 10)) / 10 - 0.002,
+        reason,
+        src,
+      );
+    // both lanes were booked at the ticker, 10.5: the SHORT lost 5 %, the LONG gained 5 %
+    ins("long", 1, 10.5, "unverified", "ticker");
+    ins("short", -1, 10.5, "unverified", "ticker");
+    // the venue's stop of the SHORT filled at 9.6: a BUY on the SHORT position side. No LONG fill is in the history.
+    const hist = [
+      {
+        symbol: SYM,
+        positionSide: "SHORT",
+        side: "BUY",
+        status: "FILLED",
+        type: "STOP_MARKET",
+        avgPrice: 9.6,
+        executedQty: 1,
+        clientOrderId: `${tag}Sabc`,
+        updateTime: t - 30_000,
+      },
+    ];
+    assert.equal(reconcileLaneCloses(rt as never, hist), 1, "only the SHORT lane has a closing fill");
+    const got = rt.db.all<{ id: string; side: number; reason: string; px_src: string; exit: number; r: number }>(
+      // relation: all rows — the fixture reads back every row it wrote
+      "SELECT id, side, reason, px_src, exit, r FROM live_lane_trades ORDER BY id",
+    );
+    const short = got.find((x) => x.id === "short")!;
+    const long = got.find((x) => x.id === "long")!;
+    assert.deepEqual([short.side, short.reason, short.px_src, short.exit], [-1, "stop", "history", 9.6]);
+    // the short gained 4 % at 9.6 (side × (exit − entry) / entry), less the row's own 0.2 % cost — a positive r
+    assert.ok(near(short.r, 0.038), `short r ${short.r}`);
+    assert.deepEqual([long.side, long.reason, long.px_src, long.exit], [1, "unverified", "ticker", 10.5]);
+    assert.ok(near(long.r, 0.048), `long r ${long.r}`);
+  });
+
+  it("(f) attributeLanes: a SHORT lane the desk closes at 95 books +5 % less the cost; one the exchange stops at 105 books the loss", () => {
+    const K = `${SYM}|-1`;
+    const lane = { id: `${CFG}|${SYM}|${T}`, cfg: CFG, sym: SYM, side: -1 as const };
+    const join = attributeLanes(
+      {},
+      {
+        lanes: [lane],
+        heldAfter: new Set([K]),
+        grew: new Map([[K, 100]]),
+        shrank: new Map(),
+        external: new Map(),
+        prices: new Map([[SYM, 100]]),
+        cost: 0.002,
+        now: T,
+      },
+    );
+    const open = join.open[laneKeyOf(lane)];
+    assert.equal(open?.px, 100, "the short joins at its fill");
+    const sold = attributeLanes(join.open, {
+      lanes: [],
+      heldAfter: new Set(),
+      grew: new Map(),
+      shrank: new Map([[K, 95]]),
+      external: new Map(),
+      prices: new Map([[SYM, 95]]),
+      cost: 0.002,
+      now: T + H,
+    });
+    assert.equal(sold.closed.length, 1);
+    assert.deepEqual([sold.closed[0].side, sold.closed[0].reason, sold.closed[0].exit], [-1, "exit", 95]);
+    assert.ok(near(sold.closed[0].r, 0.048), `r ${sold.closed[0].r}`);
+    const stopped = attributeLanes(join.open, {
+      lanes: [],
+      heldAfter: new Set(),
+      grew: new Map(),
+      shrank: new Map(),
+      external: new Map([[K, 105]]),
+      prices: new Map([[SYM, 105]]),
+      cost: 0.002,
+      now: T + H,
+    });
+    assert.equal(stopped.closed.length, 1);
+    assert.deepEqual([stopped.closed[0].side, stopped.closed[0].reason, stopped.closed[0].exit], [-1, "stop", 105]);
+    assert.ok(near(stopped.closed[0].r, -0.052), `r ${stopped.closed[0].r}`);
+  });
+});
