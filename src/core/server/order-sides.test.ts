@@ -469,6 +469,39 @@ describe("order sides, hedge mode (overall control): LONG and SHORT alike", { ti
       );
     });
 
+    // control for OW-9, reduction: the same venue sale on the hedge venue takes 3 of ours from a merged side. The side is not
+    // frozen (hedge), its stop is re-placed bounded to our one unit left, and the event keeps the hedge wording "closed now"
+    it(`H-9 ${side}, reduction: merged with someone else's quantity on ${ps}, their sale takes 3 of ours, the stop is re-placed bounded — no closePosition order`, async () => {
+      const tick = clock();
+      const ex = new Venue();
+      const { rt } = rtOf({ notionalUsd: 4 * mark });
+      const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+      rt.paper.positions = [lane("combo|ema-9-21@m15|a", sym, s, mark, 0.02)];
+      await step();
+      assert.equal(ex.positions.get(`${sym}|${ps}`), 4, "our own quantity on the side");
+      ex.orders = ex.orders.filter((o) => o.type !== STOP);
+      ex.foreignFill(`${sym}|${ps}`, 2, true, mark);
+      tick(61_000);
+      await step();
+      // then they sell 3 by hand: the venue shows 3 (their 2 and 1 of ours), so the attribution takes 3 of ours
+      ex.foreignFill(`${sym}|${ps}`, 3, false, mark);
+      const n = ex.log.length;
+      tick(61_000);
+      await step();
+      const sent = ex.log.slice(n);
+      assert.deepEqual(
+        sent.filter((p) => p.closePosition === "true").map((p) => `${p.type} ${p.side}`),
+        [],
+        "closePosition orders sent on the merged side",
+      );
+      const left = rt.db
+        .all<{ msg: string }>("SELECT msg FROM events WHERE msg LIKE '%of ours left%'")
+        .map((r) => r.msg);
+      assert.equal(left.length, 1, JSON.stringify(left));
+      assert.ok(left[0].includes("closed now with a quantity-bounded order"), left[0]);
+      assert.ok(!left[0].includes("held, not closed"), left[0]);
+    });
+
     // control for OW-9, to nothing: the same sale on the hedge venue takes all of ours on its side, and the other side's lane
     // still opens on its own position side (a hedge freeze holds the side the sale fell on, not the symbol)
     it(`H-9 ${side}, to nothing: merged with someone else's quantity on ${ps}, their sale takes all of ours, the ${opp} lane opens on ${opp} and nothing closes the whole side`, async () => {
@@ -805,7 +838,7 @@ describe("order sides, hedge mode (overall control): LONG and SHORT alike", { ti
     const side = s === 1 ? "long" : "short";
     const sym = s === 1 ? "S1-USDT" : "S2-USDT";
     const mark = s === 1 ? 10 : 20;
-    it(`OW-9 ${side}, reduction: one-way merged by a venue reduction the attribution explains, its stop lost, no closePosition order and no order on the symbol in that step`, async () => {
+    it(`OW-9 ${side}, reduction: one-way merged by a venue reduction the attribution takes from our quantity, its stop lost, no closePosition order and no order on the symbol in that step`, async () => {
       const tick = clock();
       const ex = new OneWayVenue();
       // four units of ours at either mark
