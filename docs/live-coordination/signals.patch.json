@@ -45,7 +45,7 @@
       "ratio": 1,
       "maxPositionX": 30,
       "maxExposureX": 10,
-      "maxRiskPct": 2,
+      "maxRiskPct": 1,
       "maxBackstopLossPct": 0.5,
       "exposureScaler": true,
       "syncMs": 15000,
