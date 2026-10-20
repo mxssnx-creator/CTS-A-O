@@ -1,5 +1,5 @@
 // A settings patch file states only what it changes. updateSettings replaces `grid.micro` as a whole, so a patch of
-// { grid: { micro: { holdMin: 15 } } } would drop every other Micro field: the patch file's ranges are merged over the
+// { grid: { micro: { maxHoldMin: 15 } } } would drop every other Micro field: the patch file's ranges are merged over the
 // current range here instead (the Settings page sends whole ranges and keeps its own semantics).
 const RANGES = ["micro", "minimal", "short", "general", "long"];
 

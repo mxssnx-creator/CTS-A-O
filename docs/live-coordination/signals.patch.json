@@ -13,7 +13,7 @@
       "rangeMinPf": { "micro": 1.05, "minimal": 1.1, "short": 1.15, "general": 1.2, "long": 1.18 }
     },
     "grid": {
-      "micro": { "holdMin": 15 }
+      "micro": { "maxHoldMin": 15 }
     },
     "toggles": {
       "normal": true,

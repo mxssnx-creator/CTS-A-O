@@ -895,8 +895,8 @@ type RangeSpec = {
   minSl?: number;
   minTrail?: number;
   minTf?: number;
-  /** position hold limit of the range in minutes (0 / unset = the grid's hold) */
-  holdMin?: number;
+  /** maximum position hold time of the range in minutes (0 / unset = the grid's hold) */
+  maxHoldMin?: number;
   /** Micro: tp is the net target after the round-trip cost (price target = tp + cost) */
   tpNetOfCost?: boolean;
   /** Micro: only the Micro indications trade Micro cells */
@@ -974,7 +974,7 @@ export function RangeEditor(props: {
       minSl: props.defaults.minSl,
       minTrail: props.defaults.minTrail,
       ...(props.defaults.minTf !== undefined ? { minTf: props.defaults.minTf } : {}),
-      ...(props.defaults.holdMin !== undefined ? { holdMin: props.defaults.holdMin } : {}),
+      ...(props.defaults.maxHoldMin !== undefined ? { maxHoldMin: props.defaults.maxHoldMin } : {}),
       ...(props.defaults.tpNetOfCost !== undefined ? { tpNetOfCost: props.defaults.tpNetOfCost } : {}),
       ...(props.defaults.ownInds !== undefined ? { ownInds: props.defaults.ownInds } : {}),
       ...(props.defaults.minSlNet !== undefined ? { minSlNet: props.defaults.minSlNet } : {}),
@@ -1019,15 +1019,15 @@ export function RangeEditor(props: {
             onChange={(v) => props.set(p("slOfTp"), v)}
           />
           <Field
-            label="Position hold limit (minutes)"
-            hint="The range's cells close by time after this long, in place of the grid's hold (16 / 24 h): one hold per cell, so the range builds tp × stop × trail cells. A lane cannot hold shorter than one of its bars. 0 = the grid's hold (operator, 20 Oct: Micro 15 min)"
+            label="Maximum hold time (minutes)"
+            hint="The longest a position of this range is held: it closes by time after at most this long (earlier at its target, stop or trail), in place of the grid's maximum hold (16 / 24 h). One maximum per cell, so the range builds tp × stop × trail cells. A lane cannot hold shorter than one of its bars. 0 = the grid's hold (operator, 20 Oct: Micro 15 min)"
           >
             <Num
               step={1}
               min={0}
               max={1440}
-              value={s.holdMin ?? 0}
-              onChange={(v) => props.set(p("holdMin"), v || undefined)}
+              value={s.maxHoldMin ?? 0}
+              onChange={(v) => props.set(p("maxHoldMin"), v || undefined)}
             />
           </Field>
           {props.k === "micro" && (

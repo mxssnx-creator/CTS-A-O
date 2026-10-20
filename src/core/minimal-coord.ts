@@ -239,21 +239,21 @@ type GridSlice = Pick<
 export type CoordTag = "mn" | "sh" | "gn" | "lg";
 
 /**
- * The holds (hours) a range's cells are built at: its own hold limit (holdMin, minutes) when set, else the grid's holdH.
+ * The holds (hours) a range's cells are built at: its own hold limit (maxHoldMin, minutes) when set, else the grid's holdH.
  */
-export function rangeHolds(range: Pick<CoordRange, "holdMin"> | false | undefined, holdH: readonly number[]): readonly number[] {
-  return range && range.holdMin != null && range.holdMin > 0 ? [range.holdMin / 60] : holdH;
+export function rangeHolds(range: Pick<CoordRange, "maxHoldMin"> | false | undefined, holdH: readonly number[]): readonly number[] {
+  return range && range.maxHoldMin != null && range.maxHoldMin > 0 ? [range.maxHoldMin / 60] : holdH;
 }
 
-/** The fewest bars a cell of this range may hold: 2, or 1 when the range sets a hold limit (a 15 min limit on a 15m grid). */
-export function holdFloorBars(range: Pick<CoordRange, "holdMin"> | false | undefined): number {
-  return range && range.holdMin != null && range.holdMin > 0 ? 1 : 2;
+/** The shortest hold, in bars, a cell of this range may be given: the engine floor of 2, or 1 when the range sets a MAXIMUM hold time (15 min on a 15m grid). It is a floor on the value of the maximum, not a minimum hold: a position still closes earlier at target, stop or trail. */
+export function holdFloorBars(range: Pick<CoordRange, "maxHoldMin"> | false | undefined): number {
+  return range && range.maxHoldMin != null && range.maxHoldMin > 0 ? 1 : 2;
 }
 
 /** Cells a range adds before identical distances collapse. */
 export function coordVariants(holdN: number, range: CoordRange | false | undefined): number {
   if (!range) return 0;
-  const hold = range.holdMin != null && range.holdMin > 0 ? 1 : holdN || 1;
+  const hold = range.maxHoldMin != null && range.maxHoldMin > 0 ? 1 : holdN || 1;
   return range.tp.length * range.slOfTp.length * range.trailOfTp.length * hold;
 }
 

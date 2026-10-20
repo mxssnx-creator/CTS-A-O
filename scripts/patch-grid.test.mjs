@@ -5,8 +5,8 @@ import { mergeGridPatch, patchSettings } from "./lib/patch-grid.mjs";
 const cur = { holdH: [16, 24], micro: { tp: [0.002], minSlNet: 0.002, ownInds: true }, minimal: { tp: [0.01], minSl: 0.005 }, short: false };
 
 test("a range in a patch is merged over the current range, the rest of the grid is kept", () => {
-  const g = mergeGridPatch(cur, { micro: { holdMin: 15 } });
-  assert.deepEqual(g.micro, { tp: [0.002], minSlNet: 0.002, ownInds: true, holdMin: 15 });
+  const g = mergeGridPatch(cur, { micro: { maxHoldMin: 15 } });
+  assert.deepEqual(g.micro, { tp: [0.002], minSlNet: 0.002, ownInds: true, maxHoldMin: 15 });
   assert.deepEqual(g.minimal, cur.minimal);
   assert.deepEqual(g.holdH, [16, 24]);
   assert.equal(g.short, false);
@@ -23,6 +23,6 @@ test("settings without a grid pass through; the current grid is not mutated", ()
   const s = { signals: { enabled: true } };
   assert.equal(patchSettings(s, cur), s);
   const before = JSON.stringify(cur);
-  patchSettings({ grid: { micro: { holdMin: 15 } } }, cur);
+  patchSettings({ grid: { micro: { maxHoldMin: 15 } } }, cur);
   assert.equal(JSON.stringify(cur), before);
 });
