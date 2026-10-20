@@ -1430,6 +1430,9 @@ export class CoreRuntime {
 
   private resetRealtime(reason: string) {
     this.fastEpoch++;
+    // The replacement cohort may be seeded behind the previous cohort's last consumed bar.
+    // Its worker ends, rather than a retired cohort's global marker, determine what must catch up.
+    this.fastBarDone = 0;
     this.fastReady = false;
     this.fastCount = 0;
     this.fastEnds = {};
@@ -1593,6 +1596,7 @@ export class CoreRuntime {
       !this.fastArgs ||
       this.fastBusy ||
       this.fastHold ||
+      this.pulling ||
       this.paperRunning ||
       !this.paperStepped ||
       !this.sim ||
@@ -2209,6 +2213,7 @@ export class CoreRuntime {
       "tickSentBook",
       "realtimeLearning",
       "researchAbort",
+      "tickerMetadata",
     ])
       if (self[field] === undefined) self[field] = null;
     if (!self.fastEnds) self.fastEnds = {};
@@ -2630,7 +2635,15 @@ export class CoreRuntime {
       if (this.resetUniverse) return;
       // after aborts on memory pressure at the lightest level the next compute waits (memRetryDelayMs); the live
       // control keeps running on the current book meanwhile
+      // Every progressive batch and changed symbol population requires its own complete Base/Real publication.
+      // A warmed worker for the previous batch must not defer the new population to the periodic research timer.
+      const cohortSymbols = new Set(this.fastArgs?.bars?.map((b) => b.sym) ?? []);
+      const samePopulation =
+        cohortSymbols.size === this.candles.size &&
+        [...this.candles.keys()].every((sym) => cohortSymbols.has(sym));
       const incremental =
+        this.status.prehistoric?.complete !== false &&
+        samePopulation &&
         FAST_ENTRIES &&
         !this.replay &&
         this.market === "bingx" &&
@@ -3123,6 +3136,29 @@ export class CoreRuntime {
    * candles. The cycle calls it, and the realtime market loop while a compute runs (the compute works on the bars it
    * started with: a published CandleSeries never changes, an append is a new series). Returns the bars added.
    */
+  private tickerMetadata: Promise<void> | null = null;
+  /** Cosmetic volume/ranking data never holds a completed candle batch or the foreground worker. */
+  private refreshTickerMetadata(gen: number, timeoutMs = 5_000) {
+    if (this.tickerMetadata) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error("ticker metadata timeout")), timeoutMs);
+      timer.unref?.();
+    });
+    const task = Promise.race([Promise.resolve().then(() => this.feed.tickers()), deadline])
+      .then((tickers) => {
+        if (gen !== this.gen || this.stopped) return;
+        this.tickers = tickers;
+        this.upsertSymbols();
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (timer) clearTimeout(timer);
+        if (this.tickerMetadata === task) this.tickerMetadata = null;
+      });
+    this.tickerMetadata = task;
+  }
+
   private async pullNewBars(gen: number): Promise<number> {
     if (this.pulling) return await this.pulling;
     const run = async () => {
@@ -3175,14 +3211,7 @@ export class CoreRuntime {
         }
       });
       this.status.heartbeat = Date.now();
-      if (added) {
-        try {
-          this.tickers = await this.feed.tickers();
-          this.upsertSymbols();
-        } catch {
-          /* tickers are cosmetic */
-        }
-      }
+      if (added) this.refreshTickerMetadata(gen);
       return added;
     };
     this.pulling = run();

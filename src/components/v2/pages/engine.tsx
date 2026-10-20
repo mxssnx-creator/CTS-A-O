@@ -128,7 +128,8 @@ export function EnginePage() {
             )}
             <Line k="Cycles · computes" v={`${st.cycles} · ${st.computes}`} />
             <Line k="Last research" v={`${fmt.num(st.lastComputeMs)} ms`} />
-            <Line k="Last cycle" v={`${st.cycleKind ?? "–"} · ${fmt.num(st.lastCycleMs)} ms`} />
+            <Line k="Last cycle" v={st.cycles ? `${fmt.num(st.lastCycleMs)} ms` : "–"} />
+            <Line k="Current cycle" v={st.cycleKind ?? "–"} />
             <Line k="Next research" v={fmt.time(st.nextResearchAt)} />
             {st.fast && (
               <>
