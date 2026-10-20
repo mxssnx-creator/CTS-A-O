@@ -1,3 +1,157 @@
+# Inverse – Endstand mit vollständiger Kontextvalidierung
+
+Aktueller 24h-Lauf: **422 simulierte Abschlüsse aus 134 Konfigurationen, Return-PF 181.263 nach 0,15 % modellierten Kosten.** Einschließlich 21 offener Endmarkierungen beträgt PF 4.936. Alle zwölf Symbole wurden berechnet; ausgeführt wurde ausschließlich Trailing-Short auf 1m, auf APT, AVAX und DOT. Für Long liegt in diesem Fenster kein ausgeführter PF vor.
+
+Die letzte Integrationskorrektur prüft alle Gates unabhängig je Konfiguration × Symbol × Richtung: Mindeststichprobe, PF/Netto, LCB, Zeitfenster, Last-N, Range-Last-N, Drawdown, Stundenanteil und Stabilität. Fremde profitable Stichproben können fehlende eigene Nachweise nicht ersetzen. Frühere Ergebnisse der partiellen Prüfung stehen ausdrücklich im Archiv unten und zertifizieren den Endstand nicht.
+
+## Aktuelle eingefrorene Läufe
+
+| Lauf | Base bestanden / geprüft | Tapes | Sets Start → Ende | Abschlüsse | PF | offene Endmarkierungen |
+|---|---:|---:|---:|---:|---:|---:|
+| inverse-full-context-6h | 53/290 | 14,776 | 26 → 0 | 0 | — | 0 |
+| inverse-full-context-24h | 135/290 | 36,096 | 70 → 8 | 422 | 181.263 | 21 |
+| inverse-full-context-long-history | 53/290 | 14,664 | 3291 → 3463 | 109 | 5.008 | 521 |
+
+Standard: 24h breite Selektion, 120h Quellhistorie; zusätzliche feste Sensitivität: 336h Selektion und 360h Quelle. Schwellenwerte bleiben erhalten. Dies ändert nicht die Produktionsdefaults. Quellenhistorie und Kandidatenverlauf ändern sich gemeinsam; dies ist kein isolierter Profitvergleich oder unberührter Holdout. Jeder Lauf hat seinen eigenen kausalen Start, seine eigene Base-Auswahl und sein eigenes Simulationsbuch. Überlappende Läufe dürfen nicht addiert werden. Leere Kohorten haben keinen PF.
+
+## Endmarkierungen der aktuellen Läufe
+
+| Lauf | PF Abschlüsse | offene Positionen | Netto der offenen Positionen, Einheits-Prozentpunkte | PF Abschlüsse + offen |
+|---|---:|---:|---:|---:|
+| Standard 6h | — | 0 | 0 | — |
+| Standard 24h | 181,263 | 21 | −44,265 | 4,936 |
+| 336h Selektion / 360h Quelle, 6h Lauf | 5,008 | 521 | −303,317 | **0,228** |
+
+**Die längere Historien-Sensitivität scheitert wirtschaftlich einschließlich offener Positionen.** Ihre 109 Abschlüsse (11 Long, 98 Short) allein dürfen nicht als erfolgreiches Gesamtresultat präsentiert werden. Die Produktionsdefaults werden deshalb nicht auf diesen Versuch umgestellt. Dauerhaft viele positive Ausführungen beider Richtungen und echte Live-Profitabilität sind weiter unbewiesen.
+
+## 24h stündlich, Wien
+
+| Stunde | Abschlüsse | PF | Netto, Einheits-Prozentpunkte |
+|---|---:|---:|---:|
+| 10-16 23:00 | 0 | — | 0.0000 |
+| 10-17 00:00 | 0 | — | 0.0000 |
+| 10-17 01:00 | 0 | — | 0.0000 |
+| 10-17 02:00 | 56 | no-loss* | 13.6090 |
+| 10-17 03:00 | 42 | no-loss* | 14.4419 |
+| 10-17 04:00 | 70 | no-loss* | 28.8075 |
+| 10-17 05:00 | 6 | 20.556 | 2.0992 |
+| 10-17 06:00 | 62 | no-loss* | 30.2224 |
+| 10-17 07:00 | 64 | no-loss* | 54.1499 |
+| 10-17 08:00 | 42 | no-loss* | 16.7392 |
+| 10-17 09:00 | 0 | — | 0.0000 |
+| 10-17 10:00 | 0 | — | 0.0000 |
+| 10-17 11:00 | 30 | no-loss* | 33.7402 |
+| 10-17 12:00 | 0 | — | 0.0000 |
+| 10-17 13:00 | 0 | — | 0.0000 |
+| 10-17 14:00 | 5 | no-loss* | 5.5234 |
+| 10-17 15:00 | 10 | 5.568 | 2.3862 |
+| 10-17 16:00 | 0 | — | 0.0000 |
+| 10-17 17:00 | 10 | no-loss* | 7.9839 |
+| 10-17 18:00 | 13 | 4.764 | 2.2944 |
+| 10-17 19:00 | 12 | no-loss* | 11.3815 |
+| 10-17 20:00 | 0 | — | 0.0000 |
+| 10-17 21:00 | 0 | — | 0.0000 |
+| 10-17 22:00 | 0 | — | 0.0000 |
+
+13 positive, 11 flache und 0 negative Stunden auf abgeschlossenen Einheitsrenditen. Offene Endmarkierungen verlieren -44.265 Einheits-Prozentpunkte und werden getrennt ausgewiesen. Diese Zählung belegt keine stündlich grüne Konto-Equity. Viele Konfigurationen handeln dieselben Marktbewegungen; 422 Abschlüsse sind keine 422 unabhängigen Marktereignisse.
+
+## Aktuelle Symbol- und Quellenbelege
+
+| Symbol | Abschlüsse | PF |
+|---|---:|---:|
+| ADA-USDT | 0 | — |
+| APT-USDT | 158 | 240.831 |
+| ARB-USDT | 0 | — |
+| ATOM-USDT | 0 | — |
+| AVAX-USDT | 10 | 10.756 |
+| BCH-USDT | 0 | — |
+| BNB-USDT | 0 | — |
+| BTC-USDT | 0 | — |
+| DOGE-USDT | 0 | — |
+| DOT-USDT | 254 | 285.952 |
+| ETC-USDT | 0 | — |
+| ETH-USDT | 0 | — |
+
+| Richtung | Abschlüsse | PF |
+|---|---:|---:|
+| long | 0 | — |
+| short | 422 | 181.263 |
+
+| Variante | Abschlüsse | PF |
+|---|---:|---:|
+| inverse-known-trend-ema | 0 | — |
+| inverse-turn-trend-ema | 0 | — |
+| inverse-known-trend-adx | 0 | — |
+| inverse-turn-trend-adx | 0 | — |
+| inverse-known-trend-st | 0 | — |
+| inverse-turn-trend-st | 0 | — |
+| inverse-known-break-don20 | 2 | 0.000 |
+| inverse-turn-break-don20 | 0 | — |
+| inverse-known-break-atr | 6 | no-loss* |
+| inverse-turn-break-atr | 62 | no-loss* |
+| inverse-known-act-burst | 0 | — |
+| inverse-turn-act-burst | 0 | — |
+| inverse-known-dir-vwap | 0 | — |
+| inverse-turn-dir-vwap | 0 | — |
+| inverse-known-move-impulse | 26 | no-loss* |
+| inverse-turn-move-impulse | 2 | 0.000 |
+| inverse-known-rsi-mom-14-20 | 0 | — |
+| inverse-turn-rsi-mom-14-20 | 0 | — |
+| inverse-known-bb-walk | 0 | — |
+| inverse-turn-bb-walk | 0 | — |
+| inverse-known-sar-std | 0 | — |
+| inverse-turn-sar-std | 0 | — |
+| inverse-known-macd-hist | 30 | 25.964 |
+| inverse-turn-macd-hist | 0 | — |
+| inverse-known-ema-9-21 | 0 | — |
+| inverse-turn-ema-9-21 | 0 | — |
+| inverse-known-cci-14-100 | 0 | — |
+| inverse-turn-cci-14-100 | 0 | — |
+| inverse-known-obv-20 | 0 | — |
+| inverse-turn-obv-20 | 0 | — |
+| inverse-known-kelt-20-1.5 | 0 | — |
+| inverse-turn-kelt-20-1.5 | 0 | — |
+| inverse-known-ichi-tk-9 | 0 | — |
+| inverse-turn-ichi-tk-9 | 8 | no-loss* |
+| inverse-known-hma-16 | 0 | — |
+| inverse-turn-hma-16 | 0 | — |
+| inverse-known-tactic-trend-s | 132 | no-loss* |
+| inverse-turn-tactic-trend-s | 0 | — |
+| inverse-zscore-20 | 154 | no-loss* |
+| inverse-zscore-40 | 0 | — |
+| inverse-impulse-20 | 0 | — |
+| inverse-impulse-40 | 0 | — |
+| inverse-acceleration-20 | 0 | — |
+| inverse-acceleration-40 | 0 | — |
+| inverse-regression-20 | 0 | — |
+| inverse-regression-40 | 0 | — |
+| inverse-wick-20 | 0 | — |
+| inverse-wick-40 | 0 | — |
+| inverse-failed-break-20 | 0 | — |
+| inverse-failed-break-40 | 0 | — |
+| inverse-consensus-20 | 0 | — |
+| inverse-consensus-40 | 0 | — |
+| inverse-market-residual-20 | 0 | — |
+| inverse-market-residual-40 | 0 | — |
+| inverse-market-shock-20 | 0 | — |
+| inverse-market-shock-40 | 0 | — |
+| inverse-market-aligned-20 | 0 | — |
+| inverse-market-aligned-40 | 0 | — |
+
+`no-loss*` ist der bestehende Sentinel 4 und kein exakt gemessener endlicher PF. Der Gesamt-PF 181,263 enthält gemessene positive und negative Renditen und ist kein Sentinel.
+
+## Aktuelle Verifikation und offene Grenzen
+
+Implementierung `4878badf253309aaa77df4b50261192fd5da42ae` integriert die vollständige Validierung aus Remote-Basis `fb62831ba73656d2289aaacf6eaf7e97523da89e`. 91/91 gezielte Tests einschließlich acht neuer Inverse-Prüfungen bestehen. Aktueller Typecheck, Produktionsbuild und Lint bestehen. Entwicklung und aktueller Produktionsbuild sind auf Desktop und Telefon geprüft: 4/4 mit sichtbarer Inverse-Auswahl und funktionierender Focus-Erweiterung, ohne Seitenfehler oder Überlauf.
+
+SimExchange öffnet, schützt, aktualisiert und schließt alle 24 Positionen auf zwölf Symbolen in beiden Richtungen. DCA, DCA Active, Axis, trailing-only und botfreier Exit sind separat durch Funktionstests belegt. Der wirtschaftliche Replay bewertet Normal/Trailing und liefert nur für tatsächlich ausgeführte Trailing-Shorts Belege. Echte Börsen-Fills, finanzierte Mindestmengen/Margin, Konto-Equity-Drawdown und reale Live-Profitabilität sind nicht geprüft. Kein laufender Server, echtes Konto oder Deployment wurde geändert. Vorhandener Focus und unabhängige Live-Promotion-Tore bleiben erhalten.
+
+Reproduktion mit Node `--experimental-strip-types --no-warnings`: `scripts/audit-inverse.mjs --feed /path/to/public-feed22-verified.json.gz --hours 24 --out runs/current`. Historien-Sensitivität: `--selection-hours 336 --source-hours 360`. Maschinenlesbare Protokolle, Quellen-/Feed-Hashes und aktuelle sowie archivierte Ergebnisse im benachbarten `.json.gz`; vollständige Ausführungen in `-executions.json.gz`.
+
+## Archiv: supersedierter Stand vor vollständiger Kontextvalidierung
+
+**Die nachfolgenden Zahlen und Prüfhinweise gehören nur zum früheren Stand. Sie zertifizieren den aktuellen Code nicht.** Alle ursprünglichen Nachweise und Verluste bleiben erhalten.
+
 # Inverse – 12-Symbol-Prüfung, 20. Oktober 2026
 
 **24h: 368 simulierte Abschlüsse, Return-PF 3.153 nach 0,15 % modellierten Kosten.** 16 positive, 3 flache und 5 negative Stunden. Einschließlich 153 offener Endmarkierungen beträgt PF 1.784. Die Long-Seite verliert (PF 0,545); ein durchgängig positiver PF je Richtung/Stunde und reale Live-Profitabilität sind nicht belegt.

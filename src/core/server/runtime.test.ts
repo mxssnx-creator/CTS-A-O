@@ -31,8 +31,11 @@ const small = {
   refineTop: 4,
   evalTop: 8,
   cycleMs: 60_000,
-  // the short order range is covered by the protect-grid test; these runs stay on the wide grid only
-  grid: { short: false as const },
+  // Fix this coordination fixture to its documented Wide scope as production range/Exit catalogs grow.
+  grid: { tp: [0.02, 0.04], slOfTp: [1, 2], trailOfTp: [0, 0.5], holdH: [16],
+    micro: false as const, minimal: false as const, short: false as const,
+    general: false as const, long: false as const, minimalPlus: false as const },
+  exitStrategy: { enabled: false },
   // runtime mechanics, not the entry tactics (tactics.test / processing.test cover them): no entry filter, so
   // every synthetic minute has trades to audit
   tactics: {

@@ -15,7 +15,17 @@ The earlier 12-symbol Micro result of 9,310 closes at PF 0.057618 was real model
 - Integrate independent Signal peak trailing, trailing-only identity and 2% protection from PR 175, retaining measured MARKET-fill quantities and fail-closed return accounting from current main. Preserve 0.15% configured round-trip execution cost and the separate 0.2% target construction basis.
 - Integrate cooperative stable merge sorting from PR 168. Ordering and tie stability are tested; the runtime can yield during large sorts.
 
-## Frozen retrospective checks
+## Final context evaluation (supersedes the intermediate table below)
+
+The final evaluator applies **all** configured gates to each config × symbol × direction: minimum closes in the actual broad window, net return/PF, LCB, pre-window, Last-N/range Last-N, DDT, DDR, green share and stability. Five positive closes cannot borrow another context's twelve-close minimum or confidence bound. Qualified-container statistics and fixed/hourly/durable ranking include only contexts that independently passed. A losing diagnostic pool cannot veto a separately passing context. Original candidates and all actual execution losses remain intact.
+
+Context views retain only the actual window and required prior Last-N rows; a weak cache stores at most one materialized context per source tape. Binary searches reject insufficient windows before allocating a view. Tests cover lengthened Last-N/history settings, repeated symbol slots, and a loss closing at the exact entry boundary. The extra execution Last-N also uses the exact symbol/direction when Base provenance is present.
+
+On the final fixed **12-symbol** five-day input, all four daily 6h windows have **zero fully qualified contexts at the recorded start/end snapshots and zero executed orders** under the unchanged configured thresholds. PF is unavailable. This removes the incorrectly validated earlier cohort but does **not** establish the operator's desired many-orders/high-forward-PF result. Earlier 22-symbol full-context attempts, before final view clipping/cache reduction, were incomplete under this shared host's 8 GiB memory limit. The final larger-scope source has not completed that replay and has no passing result. Their earlier 999/PF0.023841 result belongs to the intermediate Last-N-only implementation and remains archived as a failed attempt, not evidence for the final source.
+
+New verification: full-context and scope regression checks pass 64/64 (additional cache regression checked separately); all 184 later core checks passed; the lifecycle benchmark is now explicitly pinned to its archived 336h/20h inputs and unused Exit-option shape. A direct comparison with source `9c037e2` showed that only input-option metadata differed; every non-options output field was identical. Its original complete result hash is retained, rather than replaced with a new expected outcome.
+
+## Intermediate frozen retrospective checks (retained failed attempts)
 
 The harness is `scripts/audit-postbase-continuity.mjs`. It freezes source/settings/feed hashes before scoring. Micro maximum hold is 15 minutes; Base and broad config evaluation remain 24 hours; Last-N can use earlier completed source closes. Each entry is checked for exact Base admission and current config/context qualification. Only settled modeled unit-net returns score PF. Signals and independent Exit are excluded from these engine-only replays and are tested separately.
 

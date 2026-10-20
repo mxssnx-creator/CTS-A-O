@@ -30,7 +30,7 @@ describe("captured independent execution factors", () => {
     const tp = makeTape(ID, "follow", IND, P, "normal", ["AAA-USDT"], history, [open], []);
     const defaults = defaultWalkForward(DEFAULT_SETTINGS);
     const run = walkForward({ bars: [], caches: [], startT: START - 100 * H, endT: NOW, splitT: START, nowT: NOW, baseTf: 60 } as never, [tp], {
-      ...defaults, startT: START, simH: 6, validLastN: 0, lastN: 0,
+      ...defaults, startT: START, simH: 6, longH: 336, validLastN: 0, lastN: 0,
       symGate: "off", rangeGate: undefined, preGate: false,
       toggles: { ...defaults.toggles, normal: true, block: false },
       indicationVolumeFactors: { coordination: 8, combined: { trend: 3 } },

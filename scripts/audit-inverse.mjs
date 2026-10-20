@@ -60,6 +60,12 @@ assert.ok(
 const hours = Number(arg("hours", 6));
 assert.ok(Number.isInteger(hours) && hours >= 1 && hours <= 48, "hours must be 1..48");
 const startT = endT - hours * H;
+const selectionHours = Number(arg("selection-hours", 24));
+const sourceHours = Number(arg("source-hours", 120));
+assert.ok(Number.isInteger(selectionHours) && selectionHours >= 6 && selectionHours <= 336);
+assert.ok(
+  Number.isInteger(sourceHours) && sourceHours >= selectionHours + 20 && sourceHours <= 400,
+);
 const fromT = startT - 24 * H;
 const settings = structuredClone(DEFAULT_SETTINGS);
 settings.signals.enabled = false; // Dedicated Inverse study; independent Signals processing is outside this cohort.
@@ -74,7 +80,7 @@ const scope = "inverse";
 const wf = {
   ...defaultWalkForward(settings),
   preH: 6,
-  longH: 24,
+  longH: selectionHours,
   simH: hours,
   startT,
   causalBase: true,
@@ -89,8 +95,7 @@ const protocol = {
   startT,
   endT,
   evaluationFromT: fromT,
-  lastNHistory:
-    "120h source history, with a separate 24h Base/selection window and strict Last-N; old data only warms up indicators or supplies Last-N",
+  lastNHistory: `${sourceHours}h source history; Base evaluates 24h, config selection ${selectionHours}h; Last-N stays strict`,
   settings,
   wf: { ...wf, protects: undefined, dcaProtects: undefined },
   source: sources(),
@@ -111,7 +116,7 @@ const bars = symbols.flatMap((sym) =>
       sym,
       tf,
       resample(
-        feed.candles[`${sym}|1`].filter((c) => c.t >= startT - 120 * H && c.t < endT),
+        feed.candles[`${sym}|1`].filter((c) => c.t >= startT - sourceHours * H && c.t < endT),
         1,
         tf,
       ),
