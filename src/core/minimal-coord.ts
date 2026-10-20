@@ -30,9 +30,18 @@ export const RANGE_TAGS: readonly RangeTag[] = ["mc", "mn", "mp", "sh", "gn", "l
 
 /** Range of a config id ("" = the wide grid). */
 export function rangeOfId(id: string | undefined): RangeTag | "" {
-  const m = id ? /\|(mc|mp|mn|sh|gn|lg)(?=\||$)/.exec(id) : null;
-  return m ? (m[1] as RangeTag) : "";
+  if (!id) return "";
+  // memoized: called per order in every simulation step; the regexp match cost 0.8 s of a 24-symbol compute
+  let r = RANGE_OF_ID.get(id);
+  if (r === undefined) {
+    const m = /\|(mc|mp|mn|sh|gn|lg)(?=\||$)/.exec(id);
+    r = m ? (m[1] as RangeTag) : "";
+    if (RANGE_OF_ID.size > 200_000) RANGE_OF_ID.clear();
+    RANGE_OF_ID.set(id, r);
+  }
+  return r;
 }
+const RANGE_OF_ID = new Map<string, RangeTag | "">();
 
 /** Round-trip cost these ranges are built on: 0.1% per side. */
 const COST = 0.002;

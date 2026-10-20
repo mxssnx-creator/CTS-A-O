@@ -101,6 +101,7 @@ const feed = {
 }
 const { CoreRuntime } = await import("../src/core/server/runtime.server.ts");
 const { CoreDb } = await import("../src/core/server/db.server.ts");
+const { tapeBytes } = await import("../src/core/sim/walkforward.ts");
 const { patchSettings } = await import("./lib/patch-grid.mjs");
 const { closePool } = await import("../src/core/server/pool.server.ts");
 
@@ -202,7 +203,7 @@ try {
       trades: digest(rt.sim?.trades),
       stats: digest(rt.sim?.stats),
     };
-    results.push({ compute: c, wallMs: Math.round(wall), phases, mem, digest: dig, rssStartMb: Math.round(m0.rss * MB), tapes: rt.tapes.length, trades: rt.sim?.trades?.length ?? 0 });
+    results.push({ compute: c, wallMs: Math.round(wall), phases, mem, digest: dig, rssStartMb: Math.round(m0.rss * MB), tapes: rt.tapes.length, bookMb: Math.round(rt.tapes.reduce((a, t) => a + tapeBytes(t.n), 0) * MB), openRows: rt.tapes.reduce((a, t) => a + (t.open?.length ?? 0), 0), trades: rt.sim?.trades?.length ?? 0 });
     console.log(JSON.stringify(results.at(-1)));
   }
   await stopAlloc();
