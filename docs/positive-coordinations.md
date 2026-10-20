@@ -598,3 +598,13 @@ operator: one venue-minimum position at a time at ~4 × the wallet; a single sto
 (0.40 USDT) can be reached by roughly 7–30 stops. Unchanged: the loss limit, the engine proof (signals trade live; an
 engine config reaches the exchange only after 25 own closes at PF ≥ 1.2), leverage max, positionSize min. The 11 Oct caps
 remain the setting for a funded wallet; this override is a recorded exception, not a new default.
+
+## Axis on by default (operator, 20 Oct)
+
+Operator decision: Axis is on in the session default (`toggles.axis: true`, `DEFAULT_TOGGLES` in src/core/config.ts), so its
+configs compute, validate and execute there as on x01. Evidence from the 6-symbol, 6 h run with Axis on (`--settings
+'{"toggles":{"axis":true}}'`, 19 Oct 19:00 UTC end): Axis configs produced orders (Wide axis 560 virtual closes, 1 funded;
+the funded count is low because the account reached its ruin point under the uncapped sizing the operator kept, 20 Oct). Presets
+that switch Axis off stay as they are: the strategy-type isolation presets (see "Strategy-type isolation presets (13 Oct)")
+and the two desk presets, which keep their x01 desk setting. Measured effect of Axis on the 20-symbol run: not yet measured
+at the default; to be recorded with its causal comparison.

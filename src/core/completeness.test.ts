@@ -703,6 +703,16 @@ const DOCUMENTED: Record<string, Array<{ warning: string; section: string }>> = 
  * Presets that turn a positive coordination off WITHOUT a record in the doc. This list may only shrink (it is empty
  * since the 13 Oct record): a preset added to it, or a new warning on one, fails the test.
  */
+// Axis is on by default since 20 Oct (operator): a preset that switches it off is documented here. Isolation presets
+// switch strategy types one at a time; the desk presets keep the x01 desk setting.
+const AXIS_OFF = "positive coordination: Axis is off";
+const AXIS_OFF_PRESETS: string[] = ["desk-combined", "desk-low-drawdown", "mx-mom-none-std-ln12-all-on", "mx-mom-none-std-ln12-block", "mx-mom-none-std-ln12-block-active+dca-active", "mx-mom-none-std-ln12-normal-off+block", "mx-mom-none-std-ln12-trailing+block-active", "mx-mom-none-std-ln12-trailing+dca", "mx-mom-none-strong-ln12-block-active", "mx-robust-none-std-ln12-trailing", "strategy:all-on", "strategy:block", "strategy:block-active", "strategy:block-active+dca-active", "strategy:dca", "strategy:dca-active", "strategy:normal", "strategy:normal+dca-active", "strategy:normal-off+block", "strategy:normal-trailing", "strategy:normal-trailing+block-active", "strategy:trailing", "strategy:trailing+block-active", "strategy:trailing+dca"];
+for (const id of AXIS_OFF_PRESETS)
+  DOCUMENTED[id] = [
+    ...(DOCUMENTED[id] ?? []),
+    { warning: AXIS_OFF, section: id.startsWith("desk-") ? "Axis on by default (operator, 20 Oct)" : ISOLATION },
+  ];
+
 const UNDOCUMENTED: Record<string, string[]> = {};
 
 /**
