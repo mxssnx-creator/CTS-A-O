@@ -205,6 +205,18 @@ describe("fixed-exit sink price paths", () => {
     );
   });
 
+  it("keeps adaptive Historic Exit bar updates in sink mode instead of skipping to a fixed barrier", () => {
+    const b = make([[100,100,100,100],[100,104,99,103],[103,107,102,106],
+      [106,110,105,109],[109,109.5,102,103],[103,104,97,98]]);
+    for (const set of ["static-sl", "adaptive-sl", "trailing"] as const)
+      for (const side of [1, -1] as const) {
+        const p: Protect = { tp: .2, sl: .1, trail: set === "trailing" ? .03 : 0, hold: 12,
+          exitType: "historic", exitSide: side, exitSet: set };
+        const sig = new Int8Array([side,0,0,0,0,0]);
+        parity(b, sig, p, { cost: .0015 }, {});
+      }
+  });
+
   it("isolates clipped causal extents and poisoned futures even when price arrays share their backing", () => {
     const b = make([
       [100, 100, 100, 100],

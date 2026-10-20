@@ -86,6 +86,8 @@ export interface Protect {
   trailOnly?: boolean;
   /** max bars in trade (time exit at close) */
   hold: number;
+  /** Explicit range time ceiling, preserved before lane conversion; a lane longer than this is ineligible. */
+  maxHoldMin?: number;
   /**
    * ATR-scaled exits (Stable-02 model): resolved at every entry from ATR(14) of the signal bar into the distances
    * above — stop = sl × ATR, target = tpRatio × stop, trailing (Stable-02 trail %) arming at 0.95 × stop. `tp` /
@@ -148,6 +150,12 @@ export interface RangeGrid {
   minTrail?: number;
   /** shortest lane (minutes) this range trades on; 0 = every lane (General / Long default 15) */
   minTf?: number;
+  /**
+   * MAXIMUM position hold time of this range in MINUTES: its cells close by time after at most this long (earlier at target, stop or trail), in place of the grid's
+   * holdH (hours; default 16 / 24 h) — one hold per cell, so the range's cell count is its tp × stop × trail. Unset =
+   * the grid's holdH. A lane cannot hold shorter than one of its bars (a 30m lane holds 30 min at least).
+   */
+  maxHoldMin?: number;
   /** Base judges this range at its own cell (Micro / Minimal default) or at the default protect */
   ownBase?: boolean;
   /** Base on this range's best cell (overrides grid.baseBest) */

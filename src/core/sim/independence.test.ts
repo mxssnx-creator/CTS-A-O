@@ -75,6 +75,9 @@ const base: WalkForwardOptions = {
   robustFrac: 0,
   // the former default (one seat per pair × family): the comparison baseline
   seatPer: "pair",
+  // the 100-close fixture spans about 120 h and was written against a 14-day window; with the production 24 h window
+  // only 7 closes fall inside it (below gates.minTrades 12). Production unchanged (commit 4779175)
+  longH: 336,
 };
 const indep: WalkForwardOptions = { ...base, seatPer: "config" };
 const u = {

@@ -28,7 +28,7 @@ function tape(n: number, sym: string, open = false) {
 }
 function options(mode: "overall" | "shared" | "additive" = "overall"): WalkForwardOptions {
   const base = defaultWalkForward(DEFAULT_SETTINGS);
-  return { ...base, mode: "fixed", simH: 6, seatPer: "config", validLastN: 0, lastN: 0,
+  return { ...base, longH: 336, mode: "fixed", simH: 6, seatPer: "config", validLastN: 0, lastN: 0,
     normalBaseMinPf: 0, robustFrac: 0, symGate: "off", blockTrace: true,
     maxOpen: 1, maxPerSymbol: 0, maxPerSide: 0, maxPositions: 0,
     coord: { enabled: false, hourLock: 0, cooldown: "off", conflict: false, confirm: false },
@@ -196,11 +196,9 @@ describe("opt-in Block trace follows the judging history without changing execut
     assert.equal(observed.n, 3, "unknown latest evidence does not erase older available rows from the diagnostic");
     const traced = execDecision(tp, NOW, o, { sym: "A", side: 1 });
     const plain = execDecision(tp, NOW, { ...o, blockTrace: false }, { sym: "A", side: 1 });
-    assert.ok(traced.ok && plain.ok);
-    assert.equal(traced.blockSampleCounts?.config, 3);
-    assert.equal(traced.blockLevels?.config, 0);
-    assert.equal(traced.vol, plain.vol);
-    assert.equal(traced.level, plain.level);
+    assert.deepEqual(traced, { ok: false, why: "directionValidation" },
+      "unknown own-direction returns cannot qualify a new order even if a legacy cached prefix is still positive");
+    assert.deepEqual(traced, plain, "tracing cannot turn the unknown result into executable proof");
   });
 
   it("fixed and automatic sample counts use config window 1 and the selected pooled window, retaining unknown rows", () => {

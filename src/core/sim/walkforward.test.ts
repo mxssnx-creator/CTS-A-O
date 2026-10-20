@@ -8,6 +8,7 @@ import {
   makeTape,
   selectDurable,
   selectFixed,
+  stableSortGen,
 } from "./walkforward.ts";
 import { DEFAULT_SETTINGS, DEFAULT_TOGGLES } from "../config.ts";
 import type { Trade } from "../domain/types.ts";
@@ -55,6 +56,8 @@ const o = {
   preGate: false,
   // these fixtures are short on purpose; the 50-close validation is covered on its own
   validLastN: 0,
+  // the fixtures are written for a 336 h selection window; the production window is 24 h (commit 4779175)
+  longH: 336,
   // the PF / DDT gates alone (the drawdown ratio has its own test below)
   gates: { ...DEFAULT_SETTINGS.gates, minTrades: 12, maxDdr: 0 },
   // Legacy candidate-history diagnostics judge the config set's raw tape, without accepted-order evidence.
@@ -71,6 +74,24 @@ const o = {
     minActiveLevel: 1,
   },
 };
+
+describe("cooperative simulation ordering", () => {
+  it("matches stable Array.sort order while yielding across large input", () => {
+    const input = Array.from({ length: 4097 }, (_, seq) => ({ key: (seq * 7919) % 97, seq }));
+    const compare = (a: (typeof input)[number], b: (typeof input)[number]) => a.key - b.key;
+    const expected = [...input].sort(compare);
+    const actual = [...input];
+    const sort = stableSortGen(actual, compare);
+    let yields = 0;
+    for (;;) {
+      const next = sort.next();
+      if (next.done) break;
+      yields++;
+    }
+    assert.ok(yields > 0, "large sorts expose cooperative yield points");
+    assert.deepEqual(actual, expected, "ordering and tie stability match the previous native sort");
+  });
+});
 
 describe("durable selection", () => {
   it("keeps configs positive across sub-windows and rejects a single burst", () => {
@@ -93,14 +114,17 @@ describe("durable selection", () => {
 });
 
 describe("toggles and Block", () => {
+  // These cases isolate the Block tail. Older own-direction evidence qualifies the config, while the four
+  // immediately preceding losses keep its six-close Block level exactly as the assertions below require.
+  const qualifiedBlockTape = () => tape("b", [
+    ...Array.from({ length: 40 }, (_, i) => [-60 + i, 0.01] as [number, number]),
+    ...[-8, -6, -4, -2].map((h) => [h, -0.03] as [number, number]),
+    [0, 0.01], [2, 0.01], [4, -0.03],
+  ]);
   it("legacy candidate history: Normal off still executes Block-adjusted entries; Active skips every entry below its min level", () => {
     const tg = { ...DEFAULT_TOGGLES, normal: false, block: true, blockActive: false };
     assert.ok(kindExecutable("normal", tg));
-    const t = tape("b", [
-      [0, 0.01],
-      [2, 0.01],
-      [4, -0.03],
-    ]);
+    const t = qualifiedBlockTape();
     assert.equal(blockLevel(t, 3 * H + 1, o.block), 2);
     assert.equal(blockLevel(t, 5 * H + 1, o.block), 0);
     const oo = { ...o, lastN: 0, toggles: tg };
@@ -133,11 +157,7 @@ describe("toggles and Block", () => {
 
   it("legacy candidate history: Normal off: Normal and Trailing execute only Block-raised; Trailing off is global; DCA / Axis run on", () => {
     const tg = { ...DEFAULT_TOGGLES, normal: false, block: true, blockActive: false };
-    const t = tape("b", [
-      [0, 0.01],
-      [2, 0.01],
-      [4, -0.03],
-    ]);
+    const t = qualifiedBlockTape();
     const tr = { ...t, kind: "trailing" as const };
     const oo = { ...o, lastN: 0, toggles: tg };
     // Normal off: an unraised trailing entry is skipped like an unraised plain one
@@ -172,7 +192,7 @@ describe("toggles and Block", () => {
 
   it("accepted-order default never borrows raw config wins without an accepted Block book", () => {
     assert.equal(DEFAULT_SETTINGS.block.historySource, "accepted-orders");
-    const t = tape("b", [[0, 0.01], [2, 0.01], [4, -0.03]]);
+    const t = qualifiedBlockTape();
     const block = { ...o.block, historySource: "accepted-orders" as const };
     assert.equal(blockLevel(t, 3 * H + 1, block), 2, "the diagnostic raw callback has two winning closes");
     for (const kind of ["normal", "trailing"] as const) {
@@ -248,6 +268,8 @@ describe('fixed selection respects min PF', () => {
   });
   it('last-N uses min PF, not only the neutral floor', () => {
     const tp = row('recent', 'pairA', [
+      // Full config validation passes independently; only the four-close execution tail changes the decision.
+      ...Array.from({ length: 20 }, (_, i) => [-30 + i, 0.01] as [number, number]),
       [1, 0.01],
       [2, 0.01],
       [3, -0.009],
@@ -272,6 +294,7 @@ describe('fixed selection respects min PF', () => {
   });
   it('last-N also rejects a drawdown longer than the gate when PF still passes', () => {
     const tp = row('ddt', 'pairA', [
+      ...Array.from({ length: 20 }, (_, i) => [-30 + i, 0.01] as [number, number]),
       [1, 0.05],
       [2, -0.01],
       [40, -0.01],
@@ -283,9 +306,11 @@ describe('fixed selection respects min PF', () => {
       lastNMinPf: 1,
       toggles: { ...o.toggles, normal: true, block: false },
     };
-    const pass = execDecision(tp, 42 * H, { ...common, gates: { ...o.gates, maxDdtH: 50 } });
+    // The last recovery closes at 42 h. The config's strict historical cutoff admits it only after that instant.
+    const entryT = 42 * H + 1;
+    const pass = execDecision(tp, entryT, { ...common, gates: { ...o.gates, maxDdtH: 50 } });
     assert.equal(pass.ok, true);
-    const fail = execDecision(tp, 42 * H, { ...common, gates: { ...o.gates, maxDdtH: 10 } });
+    const fail = execDecision(tp, entryT, { ...common, gates: { ...o.gates, maxDdtH: 10 } });
     assert.equal(fail.ok, false);
     if (!fail.ok) assert.equal(fail.why, 'lastN');
   });
@@ -335,8 +360,13 @@ describe("symbol min PF", () => {
     "pairA",
     P,
     "normal",
-    ["A", "B"],
-    [row("A", 1, 0.02), row("A", 3, 0.02), row("B", 2, -0.02), row("B", 4, -0.02)],
+    ["A", "B", "C"],
+    [
+      // A/B retain their own thin symbol samples. C supplies valid same-direction config evidence, never
+      // replacing A/B's separate symbol gate with the full config minimum.
+      ...Array.from({ length: 20 }, (_, i) => row("C", -30 + i, 0.02)),
+      row("A", 1, 0.02), row("A", 3, 0.02), row("B", 2, -0.02), row("B", 4, -0.02),
+    ],
     [],
     [],
   );
@@ -421,7 +451,7 @@ describe("max drawdown ratio (DDR)", () => {
     assert.deepEqual(ids(1.5), ["deep", "steady"], "and passes DDR 1.5");
     // Real last-N: the same gate on the last N closes before an entry
     const real = { ...opt(1), lastN: 30 };
-    assert.deepEqual(execDecision(b, T, real), { ok: false, why: "lastN" });
+    assert.deepEqual(execDecision(b, T, real), { ok: false, why: "directionValidation" });
     assert.equal(execDecision(a, T, real).ok, true);
   });
 });

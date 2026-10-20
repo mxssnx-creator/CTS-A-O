@@ -71,7 +71,8 @@ class Ex implements ExchangeClient {
         stopPrice: Number(p.stopPrice),
       });
     }
-    return undefined;
+    return { order: { orderId: `r${++this.seq}`, status: p.type === "MARKET" ? "FILLED" : "NEW",
+      ...(p.type === "MARKET" ? { executedQty: Number(p.quantity) } : {}) } };
   }
   async cancel(_s: string, id: string) {
     const n = this.orders.length;
@@ -110,6 +111,7 @@ function rtOf() {
         maxExposureX: 0,
         maxRiskPct: 0,
         maxBackstopLossPct: 0,
+        maxChase: 0.25,
       },
     },
     // Settled synthetic accepted outcomes and independent owned-paper execution evidence are declared per exact

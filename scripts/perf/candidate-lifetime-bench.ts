@@ -29,7 +29,7 @@ const fixture = () => {
     for (let hour = 0; hour < hours; hour++) for (let i = 0; i < perHour; i++) {
       const side = i % 2 ? 1 : -1;
       const sym = syms[i % syms.length];
-      active.add(`follow|${ind}|${sym}|${side}|normal`);
+      active.add(`follow|${ind}|${sym}|${side}|normal|cfg=${encodeURIComponent(id)}`);
       const entryT = start + hour * H + i * 60_000;
       const r = (i + k) % 7 ? 0.004 : -0.006;
       const holdMs = small && i === 0 && hour < hours - 1 ? 1.5 * H : 30_000;
@@ -41,6 +41,10 @@ const fixture = () => {
     tapes.push(makeTape(id, "follow", ind, { tp: 0.01 + k / 10000, sl: 0.01, trail: 0, hold: 32 }, "normal", syms, trades, [], []));
   }
   const o = { ...defaultWalkForward(DEFAULT_SETTINGS),
+    // Freeze the archived fixture's inputs (9c037e2); production defaults and independent Exit options changed later.
+    // A direct baseline comparison confirms every non-options output field remains identical.
+    longH: 336, preH: 20, signalLongH: undefined,
+    exitMinTrades: undefined, exitMinPf: undefined, exitMinGreenHourShare: undefined, exitMaxDdr: undefined,
     startT: start, simH: hours, stepH: 1, signalActive: active, signalOwnBase: true,
     signalValidLastN: 0, validLastN: 0, lastN: 0, preGate: false, rangeGate: undefined,
     signalGuardN: 0, signalCluster: undefined, signalAccept: undefined, signalSideAccept: undefined,

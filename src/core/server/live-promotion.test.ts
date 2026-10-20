@@ -35,7 +35,7 @@ function fixture(path = ":memory:", n = 3) {
 }
 function install(r: CoreRuntime, trades = [.02, -.01, .02].map((v, i) => close(v, i))) {
   r.tapes = [makeTape(CFG, "follow", "rsi-mom-14-25@m15", DEFAULT_PROTECT, "normal", [SYM],
-    [.03, .03, .03].map((v, i) => close(v, i)), [], [])];
+    Array.from({ length: 30 }, (_, i) => close(.03, i)), [], [])];
   const u = { bars: [], caches: [], startT: NOW - 24 * H, endT: NOW, splitT: NOW - 12 * H, nowT: NOW, baseTf: 15 } as never;
   r.sim = walkForward(u, [], { ...r.wf, simH: 24 });
   r.sim.trades = trades; r.sim.openAtEnd = [];
@@ -102,7 +102,8 @@ describe("strict live promotion uses two settled independent evidence axes", () 
       const trades = [.02, -.01, .02].map((v, i) => close(v, i, { cfg, kind }));
       const r = install(fixture(), trades);
       owned(r, [.02, -.01, .02], { cfg });
-      r.tapes = [makeTape(cfg, "follow", "rsi-mom-14-25@m15", DEFAULT_PROTECT, kind, [SYM], trades, [], [])];
+      r.tapes = [makeTape(cfg, "follow", "rsi-mom-14-25@m15", DEFAULT_PROTECT, kind, [SYM],
+        Array.from({ length: 30 }, (_, i) => close(.03, i, { cfg, kind })), [], [])];
       r.paper.selected = [cfg];
       r.wf.basePassed = new Set([pair]);
       r.wf.basePassedRanges = { [pair]: ["mn"] };
@@ -118,6 +119,39 @@ describe("strict live promotion uses two settled independent evidence axes", () 
       r.wf.basePassed = new Set();
       assert.equal(r.livePromotionGate(identity, NOW).state, "ineligible", "a failed pair never borrows ladder permission");
     }
+  });
+
+  it("winning long candidate history cannot promote an unvalidated short despite separate positive execution records", () => {
+    const r = install(fixture(), [.02, -.01, .02].map((v, i) => close(v, i, { side: -1 })));
+    owned(r, [.02, -.01, .02], { side: -1 });
+    assert.equal(r.livePromotionGate({ ...lane, side: -1 }, NOW).state, "ineligible");
+  });
+
+  it("symbol warmup cannot promote a symbol absent from current candidate evidence despite positive owned records", () => {
+    const sym = "BBB-USDT";
+    const r = install(fixture(), [.02, -.01, .02].map((v, i) => close(v, i, { sym })));
+    owned(r, [.02, -.01, .02], { sym });
+    assert.equal(r.wf.symGate, "provenSide");
+    assert.equal(r.settings.gates.warmup, true);
+    assert.equal(r.livePromotionGate({ ...lane, sym }, NOW).state, "ineligible");
+  });
+
+  it("a previously selected engine config must still pass current Last-N when native execution requests it", () => {
+    const r = install(fixture()); owned(r, [.02, -.01, .02]);
+    const pair = "follow|rsi-mom-14-25@m15";
+    r.wf.basePassed = new Set([pair]);
+    r.wf.basePassedRanges = { [pair]: [""] };
+    const candidate = (deteriorated: boolean) => makeTape(CFG, "follow", "rsi-mom-14-25@m15",
+      DEFAULT_PROTECT, "normal", [SYM], Array.from({ length: 50 }, (_, i) => close(
+        deteriorated && i >= 30 ? -.01 : .02, i)), [], []);
+    r.tapes = [candidate(false)];
+    assert.equal(r.livePromotionGate(lane, NOW).ok, true);
+    r.tapes = [candidate(true)];
+    const gate = r.livePromotionGate(lane, NOW);
+    assert.equal(gate.model?.pf, 4, "settled accepted model proof remains separate and positive");
+    assert.equal(gate.execution?.pf, 4, "owned execution proof remains separate and positive");
+    assert.equal(gate.state, "ineligible", "stale selection cannot waive the config's current Last-N failure");
+    assert.equal(gate.ok, false);
   });
 
   it("retains unknown, zero and dust funding inside the chronological last-N window", () => {

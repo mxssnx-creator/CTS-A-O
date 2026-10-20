@@ -60,7 +60,9 @@ function tape(
   t.fromT = 0;
   return t;
 }
-const o0 = { ...defaultWalkForward(DEFAULT_SETTINGS), preGate: false };
+// the fixtures span a 14-day window (one trade every few hours over 336 h); the production selection window is 24 h
+// since commit 4779175, so these seat fixtures pin the 336 h window they were written for (production unchanged)
+const o0 = { ...defaultWalkForward(DEFAULT_SETTINGS), preGate: false, longH: 336 };
 /** family seats switched on (off by default) */
 const of = { ...o0, familySeats: true };
 

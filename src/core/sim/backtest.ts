@@ -5,6 +5,7 @@
 // - Every closed trade pays the round-trip cost on notional.
 // - ATR protects (Protect.atr) are resolved into distances at every entry from ATR(14) of the signal bar.
 import type { AtrProtect, Bars, OpenPosition, Protect, Side, Trade } from "../domain/types.ts";
+import { capSignalProtect, isSignalConfig, ratchetTrail } from "./trailing.ts";
 import { atrEma } from "../math/indicators.ts";
 import { RT_COST } from "../model-cost.ts";
 import {
@@ -75,7 +76,7 @@ export function resolveAtrProtect(p: Protect, atrFrac: number, tfMin = REF_TF): 
     let gap = lo(atrTrailGap(a.trail) * a.sl * f, LANE_MIN.trail);
     if (a.minTrail) gap = Math.max(gap, a.minTrail);
     out.trail = r6(arm);
-    out.trailStep = gap / arm;
+    out.trailStep = (gap / arm) * (p.trailStep ?? 1);
     out.trailFree = false;
   }
   return out;
@@ -178,6 +179,8 @@ export function simulate(
   opt: SimOptions,
 ): SimResult {
   const { n, t, o, h, l, c, sym } = bars;
+  const signal = isSignalConfig(cfg);
+  if (signal) p = capSignalProtect(p);
   const cost = opt.cost;
   // Never manufacture positive returns through a missing, negative or invalid fee deduction.
   if (!(Number.isFinite(cost) && cost >= 0))
@@ -204,7 +207,11 @@ export function simulate(
     (ExitProtectionPosition & { target: number; trail: number; trailDist: number }) | undefined;
   const exitBar = { t: 0, high: 0, low: 0, close: 0 };
   const atr = p.atr ? (opt.atr ?? atrEma(h, l, c, ATR_PERIOD)) : null;
-  const resolve = (i: number) => resolveAtrProtect(p, atr![i] / c[i], bars.tfMin);
+  const resolve = (i: number) => {
+    const resolved = resolveAtrProtect(p, atr![i] / c[i], bars.tfMin);
+    return signal ? capSignalProtect(resolved) : resolved;
+  };
+  let trailPosition: OpenPosition | undefined;
   const nx = nextEntryIndex(sig);
 
   const sink = opt.sink;
@@ -212,6 +219,7 @@ export function simulate(
     sink &&
     opt.fixedPathScope &&
     !p.atr &&
+    p.exitType !== "historic" &&
     p.trail === 0 &&
     Number.isInteger(p.hold) &&
     p.hold >= 1 &&
@@ -303,22 +311,9 @@ export function simulate(
           advanceExitProtection(exitPosition, exitBar);
           ({ stop, target, peak, trailOn, trail } = exitPosition);
           dist = exitPosition.trailDist;
-        } else if (q.trail > 0) {
-          if (side === 1) {
-            if (h[i] > peak) peak = h[i];
-            if ((peak - entry) / entry >= q.trail) {
-              trailOn = true;
-              const lvl = peak * (1 - dist);
-              if (lvl > stop) stop = lvl;
-            }
-          } else {
-            if (l[i] < peak) peak = l[i];
-            if ((entry - peak) / entry >= q.trail) {
-              trailOn = true;
-              const lvl = peak * (1 + dist);
-              if (lvl < stop) stop = lvl;
-            }
-          }
+        } else if (trailPosition) {
+          ratchetTrail(trailPosition, q.trail, dist, h[i], l[i]);
+          ({ stop, peak, trailOn } = trailPosition);
         }
       }
     }
@@ -347,6 +342,10 @@ export function simulate(
         trailOn = false;
         exitPosition = exitProtection
           ? { side, entry, stop, target, peak, trailOn, trail, trailDist: dist, exitProtection }
+          : undefined;
+        // One object per position, never one allocation per bar; shared with realtime ratcheting.
+        trailPosition = q.trail > 0 && !exitPosition
+          ? { cfg, sym, side, entryT: t[entryI], entryI, entry, stop, target, peak, trailOn, mtm: 0 }
           : undefined;
         mfe = 0;
         mae = 0;
@@ -403,35 +402,13 @@ export function simulate(
  * so a trailing stop keeps moving while the next compute runs. Returns whether the stop moved.
  */
 export function trailBar(
-  p: { side: number; entry: number; stop: number; peak: number; trailOn: boolean },
+  p: { cfg?: string; side: number; entry: number; stop: number; peak: number; trailOn: boolean },
   trail: number,
   dist: number,
   hi: number,
   lo: number,
 ): boolean {
-  if (!(trail > 0) || !(p.entry > 0)) return false;
-  if (p.side === 1) {
-    if (hi > p.peak) p.peak = hi;
-    if ((p.peak - p.entry) / p.entry >= trail) {
-      p.trailOn = true;
-      const lvl = p.peak * (1 - dist);
-      if (lvl > p.stop) {
-        p.stop = lvl;
-        return true;
-      }
-    }
-  } else {
-    if (lo < p.peak) p.peak = lo;
-    if ((p.entry - p.peak) / p.entry >= trail) {
-      p.trailOn = true;
-      const lvl = p.peak * (1 + dist);
-      if (lvl < p.stop) {
-        p.stop = lvl;
-        return true;
-      }
-    }
-  }
-  return false;
+  return ratchetTrail(p, trail, dist, hi, lo);
 }
 
 export function sideSignal(sig: Int8Array, side: Side): Int8Array {

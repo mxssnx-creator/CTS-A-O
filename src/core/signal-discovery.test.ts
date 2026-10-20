@@ -60,7 +60,8 @@ describe("Signals: independent protection discovery", () => {
       minTrail: sig.minTrail,
       signalReferenceGrid: true,
     });
-    assert.equal(tapes.length, 86);
+    assert.equal(tapes.length, 81, "five wider Normal requests alias after the 2% stop cap");
+    assert.equal(new Set(tapes.map((tp) => tp.id)).size, tapes.length);
     assert.ok(tapes.filter((tp) => tp.kind === "trailing-only").some((tp) => tp.n >= 3));
     assert.ok(
       tapes.filter((tp) => tp.kind !== "trailing-only").some((tp) => tp.n >= 3),
@@ -247,7 +248,7 @@ describe("Signals: independent protection discovery", () => {
         ["normal", "trailing", "trailing-only"].map(
           (kind) => remote.tapes.filter((tp) => tp.kind === kind).length,
         ),
-        [42, 35, 9],
+        [37, 35, 9], // distinct effective protections after the initial-stop cap
       );
     } finally {
       closePool();

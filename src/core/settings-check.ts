@@ -556,6 +556,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
       num(g.minSl, 0, 0.2, `${name} min SL`);
       num(g.minTrail, 0, 0.1, `${name} min trail`);
       num(g.minTf, 0, 240, `${name} shortest lane (minutes)`);
+      if ((g as { maxHoldMin?: unknown }).maxHoldMin !== undefined)
+        num((g as { maxHoldMin?: unknown }).maxHoldMin, 1, 1440, `${name} max hold time (minutes)`);
       if (g.minSlEval !== undefined) num(g.minSlEval, 0.0005, 0.05, `${name} evaluation min SL`);
       for (const [k, v] of [
         ["own Base cell (ownBase)", g.ownBase],
@@ -764,6 +766,11 @@ export function checkSettings(s: Partial<CoreSettings>) {
     list(g.trailing?.tp, 0.002, 0.2, "signal Trailing TP");
     list(g.trailing?.trailOfTp, 0.05, 1, "signal trail share");
     num(g.trailing?.slOfTp, 0.2, 5, "signal Trailing SL×TP");
+    if (g.trailRatios !== undefined) {
+      list(g.trailRatios, 0.1, 2, "signal peak-gap ratios");
+      if (g.trailRatios.length > 8 || new Set(g.trailRatios).size !== g.trailRatios.length)
+        throw new Error("signal peak-gap ratios: at most 8 distinct values");
+    }
     if (g.trailingOnly) {
       bool(g.trailingOnly.enabled, "signal Trailing only sets");
       list(g.trailingOnly.sl, 0.002, 0.2, "signal Trailing only SL");
@@ -772,7 +779,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
         if (xs !== undefined && xs.length > 8)
           throw new Error("signal Trailing only ranges: at most 8 values per list");
       num(g.trailingOnly.trailStep, 0.1, 2, "signal Trailing only trail step");
-      const n = (g.trailingOnly.sl?.length ?? 3) * (g.trailingOnly.trail?.length ?? 3);
+      const n = (g.trailingOnly.sl?.length ?? 3) * (g.trailingOnly.trail?.length ?? 3) * (g.trailRatios?.length ?? 1);
       if (n > 64) throw new Error(`signal Trailing only grid too large (${n} configs, max 64)`);
     }
     num(g.holdH, 0.5, 96, "signal hold");

@@ -312,6 +312,8 @@ export async function accountIncome(network, conn, from, to = Date.now()) {
 
 export async function flatten(conn, tag, { from = Date.now() - 24 * 3_600_000, allowMainnet = false } = {}) {
   const network = conn === "bingx-x01" ? "mainnet" : "testnet";
+  // this sends market orders: the same switch that arms the desk must be set, on demo hosts too
+  if (process.env.CTS_CORE_LIVE !== "1") throw new Error("--flatten sends orders: set CTS_CORE_LIVE=1 to run it");
   if (network === "mainnet" && !allowMainnet) throw new Error("--flatten is for demo connections only");
   const T = tag.toUpperCase();
   const { own: net, others } = netByTag(await history(network, conn, from, Date.now()), T);

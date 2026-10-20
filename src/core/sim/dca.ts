@@ -8,6 +8,7 @@
 // Pessimistic ordering inside a bar: level fills first, then the stop; a target cannot be hit on a bar in
 // which a leg filled (the fill might have come after the high).
 import type { Bars, DcaConfig, OpenPosition, Protect, Side, Trade } from "../domain/types.ts";
+import { isSignalConfig, signalStopAt, SIGNAL_STOP_MAX } from "./trailing.ts";
 
 /** A DCA position never stacks more than 5 stages: the base leg and at most 4 deeper levels (5 units of volume). */
 export const DCA_MAX_STAGES = 5;
@@ -38,7 +39,9 @@ export function simulateDca(
   // level spacing: absolute, or a multiple of the target
   const step = dca.stepOfTp && dca.stepOfTp > 0 ? p.tp * dca.stepOfTp : dca.step;
   // stop must sit beyond the deepest level (stopGap steps past it)
-  const slDist = Math.max(p.sl, step * ((active ? 1 : levels) + Math.max(0, dca.stopGap ?? 0.5)));
+  const signal = isSignalConfig(cfg);
+  const requestedSl = Math.max(p.sl, step * ((active ? 1 : levels) + Math.max(0, dca.stopGap ?? 0.5)));
+  const slDist = signal ? Math.min(requestedSl, SIGNAL_STOP_MAX) : requestedSl;
 
   let state: "flat" | "wait" | "pos" = "flat";
   let side: Side = 1;
@@ -58,6 +61,7 @@ export function simulateDca(
   const retarget = () => {
     const a = avg();
     target = side === 1 ? a * (1 + p.tp) : a * (1 - p.tp);
+    if (signal) stop = signalStopAt(a, side, stop);
   };
   let nextAllowed = 0;
   const close = (i: number, exit: number, reason: Trade["reason"]) => {
@@ -112,6 +116,8 @@ export function simulateDca(
         const px = lvlPx(nextLevel);
         const hit = side === 1 ? l[i] <= px : h[i] >= px;
         if (!hit) break;
+        // A wider ladder cannot purchase another leg beyond an already-resting 2% Signal stop.
+        if (signal && (side === 1 ? px <= stop : px >= stop)) break;
         legs.push(side === 1 ? Math.min(o[i], px) : Math.max(o[i], px));
         nextLevel++;
         filledThisBar = true;

@@ -128,6 +128,29 @@ describe("diagnostic allSets retains the Base-qualified cohort", () => {
     assert.deepEqual(out.qualifiedTags[pair(IND)], ["mn", "sh"], "the independently configured range-expansion policy remains explicit");
   });
 
+  for (const allSets of [false, true]) it(`retains exact Base targets through selection, entry and cache updates (allSets ${allSets})`, () => {
+    const row = { ...run(IND, { mn: good, sh: bad }), rangeTps: { mn: [0.01] } };
+    const base = basePass([row], { ...s, grid: { ...s.grid, allSets } }, applies);
+    assert.deepEqual(base.qualifiedTps, { [pair(IND)]: { mn: [0.01] } });
+    assert.equal(base.pairTps[pair(IND)]?.mn?.length ?? 0, allSets ? 0 : 1);
+    const allowed = tape(IND, "mn");
+    const other = tape(IND, "mn");
+    other.id += "|diagnostic-target";
+    other.protect = { ...other.protect, tp: 0.02 };
+    const tapes = [allowed, other];
+    const o = { ...options(), basePassedTargets: base.qualifiedTps };
+    assert.ok(configEval(other, NOW, o).ok, "profitable diagnostic history cannot replace Base target proof");
+    for (const select of [selectFixed, selectAt])
+      assert.deepEqual(select(tapes, NOW, o).picks.map(p => p.id), [allowed.id]);
+    assert.deepEqual(selectDurable(tapes, NOW, o, new Set([other.id])).picks.map(p => p.id), [allowed.id]);
+    assert.equal(execDecision(allowed, NOW, o).ok, true);
+    assert.equal(execDecision(other, NOW, o).ok, false);
+    assert.deepEqual(selectFixed(tapes, NOW, { ...o, basePassedTargets: { [pair(IND)]: { mn: [0.02] } } }).picks.map(p => p.id), [other.id],
+      "the cached selector observes replacement qualification");
+    if (!allSets) base.pairTps[pair(IND)].mn = [0.02];
+    assert.deepEqual(base.qualifiedTps[pair(IND)].mn, [0.01], "builder maps cannot mutate target proof");
+  });
+
   it("runtime compute carries measurement tapes without marking their failed Base cohort qualified", async () => {
     const rt = tracked.track(new CoreRuntime(new CoreDb(":memory:"), {
       focus: [pair(IND)], pinned: [], tfs: [15], symbols: 1, historyDays: 4,

@@ -585,6 +585,8 @@ export interface SignalSettings {
   trailing: { tp: number[]; trailOfTp: number[]; slOfTp: number };
   /** Additional independent sets with a hard stop and peak trail, without any take-profit. 15m reference. */
   trailingOnly: { enabled: boolean; sl: number[]; trail: number[]; trailStep: number };
+  /** Independent peak-gap multipliers for capped, ATR and no-TP trailing (absent = existing scalar). */
+  trailRatios?: number[];
   holdH: number;
   /** exit model of the signal configs: percent grid (Normal + Trailing), ATR grid, or both */
   exits: SignalExitModel;
@@ -935,6 +937,7 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
       : [];
     return v.length || (empty && Array.isArray(xs)) ? [...new Set(v)].slice(0, 8) : [...def];
   };
+  if (s?.trailRatios !== undefined) out.trailRatios = nums(s.trailRatios, 0.1, 2, [1]);
   a.sl = nums(a.sl, 0.2, 2, DEFAULT_SIGNALS.atr.sl);
   const to = out.trailingOnly;
   to.enabled = to.enabled !== false;
