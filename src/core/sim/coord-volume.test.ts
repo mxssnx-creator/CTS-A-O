@@ -37,6 +37,9 @@ const base = {
   protects: [],
   dcaProtects: [],
   simH: 6,
+  // these fixtures place their settled closes 65 h or more before the step; the default history window was narrowed
+  // from 336 h to 24 h on 19 Oct (4779175), so the window these expectations were written for is pinned here
+  longH: 336,
   stepH: 1,
   validLastN: 0,
   lastN: 0,

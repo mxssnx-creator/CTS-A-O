@@ -29,7 +29,7 @@ const fixture = () => {
     for (let hour = 0; hour < hours; hour++) for (let i = 0; i < perHour; i++) {
       const side = i % 2 ? 1 : -1;
       const sym = syms[i % syms.length];
-      active.add(`follow|${ind}|${sym}|${side}|normal`);
+      active.add(`follow|${ind}|${sym}|${side}|normal|cfg=${encodeURIComponent(id)}`);
       const entryT = start + hour * H + i * 60_000;
       const r = (i + k) % 7 ? 0.004 : -0.006;
       const holdMs = small && i === 0 && hour < hours - 1 ? 1.5 * H : 30_000;

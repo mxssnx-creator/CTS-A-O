@@ -1,7 +1,7 @@
 // Tag-scoped closes on a shared account: a tag closes its own part of a merged position, never another system's.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { closableQty, historyWith, netByTag } from "./core-live-report.mjs";
+import { closableQty, flatten, historyWith, netByTag } from "./core-live-report.mjs";
 import { buildStatistics, liveTrades } from "../src/core/statistics.ts";
 import { RT_COST } from "../src/core/model-cost.ts";
 
@@ -328,6 +328,18 @@ describe("saved exchange report formatting", () => {
       }
     } finally {
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("flatten sends market orders", () => {
+  it("refuses to run without CTS_CORE_LIVE=1, before any request", async () => {
+    const was = process.env.CTS_CORE_LIVE;
+    delete process.env.CTS_CORE_LIVE;
+    try {
+      await assert.rejects(flatten("bingx-vst-02", "CTSV2T_"), /CTS_CORE_LIVE=1/);
+    } finally {
+      if (was !== undefined) process.env.CTS_CORE_LIVE = was;
     }
   });
 });

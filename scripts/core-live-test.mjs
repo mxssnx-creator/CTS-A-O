@@ -15,6 +15,7 @@
 // SIGUSR2 = restart keeping the positions: the control stops, each position keeps its exchange stop, and the next run
 // with the same tag and --out picks them up (the ownership ledger and the live record are restored from the folder).
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { patchSettings } from "./lib/patch-grid.mjs";
 import { join } from "node:path";
 import { closeAtExact } from "./lib/candles.mjs";
 import { returnBucket, addReturnEvidence, finishReturnEvidence, returnEvidenceText, mergeReturnEvidence } from "./lib/return-evidence.mjs";
@@ -130,7 +131,7 @@ if (patchFile && existsSync(patchFile)) {
     patchAt = statSync(patchFile).mtimeMs;
     const p = JSON.parse(readFileSync(patchFile, "utf8"));
     checkPatch(p);
-    rt.updateSettings(p.settings ?? {}, p.wf ?? {});
+    rt.updateSettings(patchSettings(p.settings, rt.settings.grid), p.wf ?? {});
     process.stderr.write(`${name}: patch applied at start — ${p.why ?? patchFile}\n`);
     warnPositive(rt, name);
   } catch (e) {
@@ -733,7 +734,7 @@ const patchTimer = patchFile
         patchAt = m;
         const p = JSON.parse(readFileSync(patchFile, "utf8"));
         checkPatch(p);
-        rt.updateSettings({ ...p.settings, ...(p.settings?.grid ? { grid: { ...rt.settings.grid, ...p.settings.grid } } : {}) }, p.wf ?? {});
+        rt.updateSettings(patchSettings(p.settings, rt.settings.grid), p.wf ?? {});
         // a loss pause outlives a patch (the patch may say openPaused: false)
         if (lossPaused) rt.updateSettings({ live: { ...rt.settings.live, openPaused: lossPaused } });
         rt.db.event("info", `live test ${name}: patch applied (${p.why ?? patchFile})`);

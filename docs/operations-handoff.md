@@ -1,5 +1,21 @@
 # CTS-A-O operations handoff
 
+## 20 October 2026 — exact post-Base context checkpoint (not released)
+
+Tested implementation commit: `700a91b06dcf42a05321ca2a3986c0c33dac1846`.
+Audit evidence update: `a00bfd8`. Integration branch: `codex/integrate-open-work-20261020`, based on main `4588030b946740d493cf0e0d629aa2722aa6211c`.
+Remote backup `backup/main-before-open-integration-20261020` preserves that main head. No running instance, native connection, account state or venue order was changed.
+
+New protections preserve exact Base-qualified TP targets separately from diagnostic construction; recheck the exact config at entry and native promotion; require its own symbol/direction Last-N and range Last-N; retain the configured lane history for count-based validation; and correct repeated-symbol indexing in multi-timeframe Signal/engine contexts. Maximum hold minutes now remain exact across lanes. Signals retain separate 336h source history. Integrated PR 175 independent peak trailing/2% Signal protection and selected PR 181 hold fixes, plus PR 168 stable yielding sorts. Current main's cost, ownership, confirmed-fill and unknown-return protections are retained.
+
+**Unresolved operator objective:** consistently high forward execution PF with many orders is not established. The extended public 22-symbol cached replay still produced 999 fully qualified modeled closes at PF **0.023841** in one fixed window. Other exact-context windows produced no eligible executions; an empty cohort has unavailable PF. Native promotion still requires separate matching settled model and owned execution evidence and cannot use these pooled historical stats as execution proof. Do not enable a release or claim alpha from these results.
+
+Details, the complete open-PR comparison and hashed retrospective protocols: `docs/sims/postbase-continuity-20261020.md` and `.json`. Original fixed-window losses are retained alongside the corrected admission counts. The larger public fixture is restored from PR 164 and checked against every manifest chunk and the archive hash; it is not a newly resealed holdout.
+
+Verification completed: TypeScript; production build with DATABASE_URL unset; lint (0 errors, existing warnings); desktop/phone UI 4/4 including Settings save; focused continuity/qualification 67/67; independent Signal gates/context regressions 43/43; live budgets/regression 100/100; native promotion 20/20; Base count 2/2; recovery 7/7; lane lifecycle + independent Exit 17/17; script repairs 46/46. Some counts overlap and must not be added as distinct tests. The broad core runs found stale fixture assumptions, now corrected and rerun; runtime smoke cases also exceeded their 120s wait on this host. A single immutable all-green full-core run remains pending. No full-suite success is claimed.
+
+Git CLI push has no HTTPS credentials in this workspace. Use the authenticated GitHub connector for an atomic review-branch tree/commit if available; preserve local commit provenance and verify identical source content after publication. Do not force-push or merge an unverified release.
+
 Updated 2026-10-18, UTC. Repository: `mxssnx-creator/CTS-A-O`.
 
 ## Local checkpoint: bounded broad history and Last-N validation — 18 October

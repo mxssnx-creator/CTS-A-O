@@ -7,7 +7,8 @@ import { indicationState } from "../src/core/indications/registry.ts";
 import { entrySignal } from "../src/core/bots/bots.ts";
 import { sideSignal, simulate } from "../src/core/sim/backtest.ts";
 import { buildTapes, filterEntries } from "../src/core/sim/walkforward.ts";
-import { laneProtect, makeUniverse } from "../src/core/pipeline/pipeline.ts";
+import { configId, laneProtect, makeUniverse } from "../src/core/pipeline/pipeline.ts";
+import { capSignalProtect, SIGNAL_STOP_MAX } from "../src/core/sim/trailing.ts";
 import { DEFAULT_TACTICS } from "../src/core/config.ts";
 import { tacticCooldown } from "../src/core/indications/filters.ts";
 import { maskEntries } from "./core-tactic-research.mjs";
@@ -361,7 +362,7 @@ describe("four-source frozen independent Signal research", () => {
     assert.match(md, /Entire IS-qualified pool/);
   });
 
-  it("preserves the frozen v2 floor-policy grid and matches runtime-disabled trails", () => {
+  it("preserves frozen v2 requests and explicitly reconciles the newer capped runtime grid", () => {
     const { market, p } = fixture();
     const cells = researchCells(p).filter(
       (c) => c.source === "r-laguerre" && c.range === "short" && c.tf === 1,
@@ -386,19 +387,18 @@ describe("four-source frozen independent Signal research", () => {
     const protocolByConfig = new Map(cells.map((cell) => [cell.cfg, cell]));
     const runtimeByConfig = new Map(tapes.map((tape) => [tape.id, tape]));
     assert.ok(protocolByConfig.size > 0, "the frozen protocol retains its eligible short-lane configs");
-    assert.equal(runtimeByConfig.size, protocolByConfig.size, "runtime and frozen protocol retain the same effective configs");
-    const disabledByRuntime = [...protocolByConfig.values()].filter((cell) => !runtimeByConfig.has(cell.cfg));
-    assert.equal(disabledByRuntime.length, 0, "frozen v2 and runtime construct the same effective cells");
-    for (const cell of disabledByRuntime) {
-      const lane = laneProtect(cell.requestedAliases[0].referenceProtect, cell.ind);
-      assert.ok(lane.trail > 0);
-      assert.ok(
-        lane.trail * (lane.trailStep ?? 1) + 1e-12 < p.preOutcomeModelClarification.signalFloors.minTrail,
-        `${cell.cfg} must be below the runtime's post-lane trail floor`,
-      );
-      assert.equal(cell.protect.trail, p.preOutcomeModelClarification.signalFloors.minTrail);
+    // The dated v2 protocol remains immutable. Current 2% protections deliberately collapse old aliases;
+    // compare their explicit effective transforms rather than claiming the old uncapped grid still executes.
+    const currentByConfig = new Map([...protocolByConfig.values()].map((cell) => {
+      const protect = capSignalProtect(cell.protect);
+      return [configId("follow", cell.ind, protect), protect];
+    }));
+    assert.ok(currentByConfig.size < protocolByConfig.size, "the new hard cap collapses old aliases");
+    assert.deepEqual([...runtimeByConfig.keys()].sort(), [...currentByConfig.keys()].sort());
+    for (const [id, tape] of runtimeByConfig) {
+      assert.ok(tape.protect.sl <= SIGNAL_STOP_MAX);
+      assert.deepEqual(tape.protect, currentByConfig.get(id));
     }
-    for (const [id, tape] of runtimeByConfig) assert.deepEqual(tape.protect, protocolByConfig.get(id).protect);
     assert.equal(report.oos.length, cells.length, "the frozen historical study preserves both directions for every cell");
     const k = new SeriesCache(b);
     const entries = maskEntries(
@@ -416,7 +416,7 @@ describe("four-source frozen independent Signal research", () => {
       assert.ok(cell, row.id);
       assert.deepEqual(row.protect, cell.protect);
       const tape = runtimeByConfig.get(row.cfg);
-      if (tape) assert.deepEqual(row.protect, tape.protect);
+      if (tape) assert.deepEqual(capSignalProtect(row.protect), tape.protect);
       const sim = simulate(cell.cfg, k.b, sideSignal(entries, row.side), cell.protect, {
         cost: 0.002,
         cooldown: tacticCooldown(DEFAULT_TACTICS),

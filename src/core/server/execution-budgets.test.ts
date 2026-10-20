@@ -146,7 +146,7 @@ describe("actual execution account budgets across independent Signal sets", () =
       it(`${gate}: a ${outcome} reduction releases only its confirmed quantity before a different set grows`, async () => {
         const { rt, ex, step } = setup();
         Object.assign(rt.settings.live, gate === "gross" ? { maxExposureX: 1 }
-          : gate === "risk" ? { maxRiskPct: .04 } : { maxBackstopLossPct: .048 });
+          : gate === "risk" ? { maxRiskPct: .02 } : { maxBackstopLossPct: .024 });
         rt.paper.positions = [lane(sig("s"), "S0-USDT", 1, 10)];
         await step();
         assert.equal(ex.positions.get("S0-USDT|LONG"), 10);
@@ -261,13 +261,13 @@ describe("actual execution account budgets across independent Signal sets", () =
 
   it("adding a narrow-stop sibling on a held key cannot dilute the wider quantity's risk to fund growth", async () => {
     const { rt, ex, step } = setup();
-    rt.settings.live.maxRiskPct = .1;
-    rt.paper.positions = [lane(sig("s"), "S0-USDT", 1, 10, 1, .1)];
+    rt.settings.live.maxRiskPct = .02;
+    rt.paper.positions = [lane(sig("s"), "S0-USDT", 1, 10, 1, .02)];
     await step();
     assert.equal(ex.positions.get("S0-USDT|LONG"), 10);
     rt.paper.positions.push(lane(sig("m"), "S0-USDT", 1, 10, 1, .001));
     const result = await step();
-    assert.equal(ex.positions.get("S0-USDT|LONG"), 10, "the existing100 USD still has a10 USD wide-stop loss");
+    assert.equal(ex.positions.get("S0-USDT|LONG"), 10, "the existing100 USD still has a2 USD capped-stop loss");
     assert.match(result.control!.actions.find((a) => a.kind === "increase")?.msg ?? "", /account risk budget/);
   });
 

@@ -63,6 +63,9 @@ describe("Base-stage validated count", { timeout: 600_000 }, () => {
   it("the passed count is recorded per compute, per range, in order", async () => {
     const rt = mk();
     rt.start();
+    await until(() => rt.status.computes >= 1, 480_000);
+    // a synthetic runtime computes again only on a new bar or a changed setting: force the second compute here
+    rt.updateSettings({ gates: { ...rt.settings.gates, minPf: rt.settings.gates.minPf + 0.05 } });
     await until(() => rt.status.computes >= 2, 480_000);
     const h = rt.status.baseHistory ?? [];
     assert.ok(h.length >= 2, `history ${h.length}`);
