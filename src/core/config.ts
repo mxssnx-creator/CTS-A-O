@@ -236,6 +236,13 @@ export interface CoreSettings {
   symbolRank: "volatility1h" | "volume" | "market" | "gainers" | "losers";
   /** engine cycle: checks for newly closed bars and runs the stages when one closed (ms) */
   cycleMs: number;
+  /**
+   * the cycle's compute mode. "full" (default, also when unset): every new bar recomputes Base → Main → tapes → run.
+   * "incremental": between heavy computes the validated set's tapes are continued over the new bars and the paper step
+   * runs on them (src/core/server/incremental.ts); the heavy compute runs again every `heavyEveryBars` bars, at each
+   * hour (the seats are hourly) and whenever the settings, the universe or the tapes cannot be continued.
+   */
+  runtime?: { cycle?: "full" | "incremental"; heavyEveryBars?: number };
   /** tick: open paper positions marked to market from the price stream and the live step (ms) */
   tickMs: number;
   /** effective round-trip position cost (fraction); = 2 × (taker fee + slippage per side) */

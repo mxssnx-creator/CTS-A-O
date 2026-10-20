@@ -132,6 +132,7 @@ import {
   type PipelineOutput,
   type PipelineProgress,
 } from "../pipeline/pipeline.ts";
+import { IncrementalState } from "./incremental.ts";
 import {
   buildTapesGen,
   defaultWalkForward,
@@ -445,6 +446,8 @@ export interface RuntimeStatus {
    * rebuilt, their open positions on the current bars, and how many the paper book took
    */
   fast?: { at: number; bar: number; ms: number; seated: number; open: number; added: number; error: string | null };
+  /** runtime.cycle "incremental": the last cycle's mode and the light cycles since the last heavy compute */
+  cycleMode?: { mode: "full" | "light"; lightSince: number; heavyBar: number; validated: number; continued: number; rebuilt: number; why?: string };
   /** the last event-loop stalls over 150 ms, with what was running (the live tick waits behind them) */
   stalls?: Array<{ at: number; ms: number; where: string }>;
   /** the last probed stalls (CTS_CORE_STALL_PROBE=1): what the main thread did during each (stall-probe.server.ts) */
@@ -1244,6 +1247,170 @@ export class CoreRuntime {
     }
   }
 
+  // ── runtime.cycle "incremental" ───────────────────────────────────────────────────────────────────────────
+  /** the tail universe of the running/last compute (set when it is built, taken by incCapture after its paper step) */
+  private incTail: ReturnType<typeof makeUniverse> | null = null;
+  /** why the last cycle was a full compute although runtime.cycle is "incremental" */
+  private incWhy: string | undefined;
+  /** the incremental state of the last heavy compute: the validated set and its continued tapes */
+  private inc: {
+    state: IncrementalState;
+    /** ids the paper step sees in a light cycle: seats, signal tapes, configs holding a position */
+    ids: Set<string>;
+    /** validated ids that are not resumable (DCA, Axis, signals, Exit): rebuilt over the grown universe each cycle */
+    others: Set<string>;
+    hour: number;
+    since: number;
+    heavyBar: number;
+  } | null = null;
+
+  /** The hour (in ms) the book is stepped at, from the newest bar. */
+  private incHour(): number {
+    return Math.floor((this.status.lastBarT + this.settings.tfMin * 60_000) / H);
+  }
+
+  /** Whether this cycle may continue the validated tapes instead of computing everything. */
+  private lightEligible(): boolean {
+    const inc = this.inc;
+    const s = this.settings;
+    const why = (w: string) => {
+      this.incWhy = w;
+      if (s.runtime?.cycle === "incremental")
+        this.status.cycleMode = { ...(this.status.cycleMode ?? { lightSince: 0, heavyBar: 0, validated: 0, continued: 0, rebuilt: 0 }), mode: "full", why: w };
+      return false;
+    };
+    if (s.runtime?.cycle !== "incremental") return false;
+    if (!inc) return why("no validated set captured yet");
+    if (this.dirty) return why("dirty (settings or a requested compute)");
+    if (this.resetUniverse || this.settingsStale) return why("settings or universe changed");
+    if (this.replay) return why("replay");
+    if (this.memFallback > 0) return why("memory fallback");
+    if (!this.sim || !this.lastSelection || !this.fastArgs) return why("no run yet");
+    if (this.incHour() !== inc.hour) return why("new hour: the seats are stepped");
+    if (inc.since >= Math.max(1, Math.round(s.runtime?.heavyEveryBars ?? 60))) return why("heavy interval");
+    return true;
+  }
+
+  /** After a heavy compute and its paper step: take the validated set's resumable tapes into the incremental state. */
+  private async incCapture(gen: number): Promise<void> {
+    this.inc = null;
+    const wu = this.incTail;
+    this.incTail = null;
+    const sel = this.lastSelection;
+    if (!wu || !sel || !this.fastArgs) return;
+    const s = this.settings;
+    const { signal } = splitSignalTapes(this.tapes, this.wf);
+    const ids = new Set<string>([...sel.picks.map((p) => p.id), ...signal.map((tp) => tp.id), ...this.paper.positions.map((p) => p.cfg)]);
+    const validated = this.tapes.filter((tp) => ids.has(tp.id));
+    const state = new IncrementalState(wu, s.cost, s.tactics, s.tfMin);
+    const others = new Set<string>();
+    // in slices: a seed is one full simulation of the config over the tail
+    for (let i = 0; i < validated.length; i += 8) {
+      const r = state.seed(validated.slice(i, i + 8));
+      for (const id of r.skipped) others.add(id);
+      await yieldNow();
+      if (gen !== this.gen) return;
+    }
+    this.inc = { state, ids, others, hour: this.incHour(), since: 0, heavyBar: this.status.lastBarT };
+    this.status.cycleMode = { mode: "full", lightSince: 0, heavyBar: this.status.lastBarT, validated: validated.length, continued: state.entries.size, rebuilt: others.size, why: this.incWhy };
+  }
+
+  /**
+   * A light cycle: the universe grown by the closed bars, the validated tapes continued over them (the resumable ones
+   * from their stored state, the others rebuilt on the grown universe), then the caller's paper step. False: nothing was
+   * changed and the caller computes in full.
+   */
+  private async lightStep(gen: number): Promise<boolean> {
+    const inc = this.inc;
+    if (!inc) return false;
+    const t0 = performance.now();
+    this.dirty = false;
+    this.status.state = "computing";
+    const prev = this.status.phases;
+    this.status.phases = {};
+    for (const k of ["Paper", "Adjust", "Audit", "Compare"]) if (prev[k]) this.status.phases[k] = prev[k];
+    const step = inc.state.step(this.candles);
+    await yieldNow();
+    if (gen !== this.gen) return true;
+    if (!step) {
+      this.inc = null;
+      return false;
+    }
+    const tExt = performance.now();
+    const repl = new Map<string, ConfigTape>(step.tapes);
+    const need = new Set<string>([...inc.others, ...step.broken]);
+    if (need.size) {
+      const rebuilt = await this.rebuildOnUniverse(inc.state.universe, need, gen);
+      if (gen !== this.gen) return true;
+      if (!rebuilt) {
+        // the rebuild could not run (no workers and no time): the continued tapes are dropped with it, compute in full
+        this.inc = null;
+        return false;
+      }
+      for (const tp of rebuilt) repl.set(tp.id, tp);
+    }
+    const tMerge = performance.now();
+    // the realtime entry step stands aside while the tapes are replaced, until the paper step has run on them
+    this.fastHold = true;
+    await this.paperIdle();
+    this.tapes = this.tapes.map((tp) => repl.get(tp.id) ?? tp);
+    this.tapeIdx = null;
+    inc.since++;
+    this.status.phases.Light = {
+      ms: performance.now() - t0,
+      maxSliceMs: 0,
+      slowest: `grow + continue ${Math.round(tExt - t0)} · rebuild ${Math.round(tMerge - tExt)} · merge ${Math.round(performance.now() - tMerge)} ms · ${step.tapes.size} continued, ${need.size} rebuilt`,
+    };
+    this.status.cycleMode = { mode: "light", lightSince: inc.since, heavyBar: inc.heavyBar, validated: inc.ids.size, continued: step.tapes.size, rebuilt: need.size };
+    return true;
+  }
+
+  /** The configs `ids` rebuilt on `u` with the last compute's tape arguments (exactly the heavy compute's builder). */
+  private async rebuildOnUniverse(u: ReturnType<typeof makeUniverse>, ids: ReadonlySet<string>, gen: number): Promise<ConfigTape[] | null> {
+    const a = this.fastArgs;
+    if (!a) return null;
+    const s = this.settings;
+    const byId = this.tapeIndex();
+    const sets = { main: new Set<string>(), sig: new Set<string>() };
+    const pairs = { main: new Set<string>(), sig: new Set<string>() };
+    for (const id of ids) {
+      const tp = byId.get(id);
+      if (!tp) continue;
+      const k = isSignalInd(tp.ind) ? "sig" : "main";
+      sets[k].add(id);
+      pairs[k].add(`${tp.bot}|${tp.ind}`);
+    }
+    const out: ConfigTape[] = [];
+    if (workersAvailable() && !this.workersBroken) {
+      const shared = shareBars(u.series);
+      const msgs: Array<Record<string, unknown>> = [];
+      for (const k of ["main", "sig"] as const)
+        if (sets[k].size)
+          msgs.push({
+            type: "tapes",
+            bars: shared,
+            pairs: [...pairs[k]],
+            protects: a[k].protects,
+            cost: s.cost,
+            dcaOpt: a[k].dcaFor,
+            tactics: s.tactics,
+            adjust: a.adjust,
+            floors: { ...a[k].floors, onlyIds: sets[k] },
+          });
+      if (!msgs.length) return out;
+      const res = await runOnWorkers<{ tapes: ConfigTape[] }>(msgs, poolSize(), 120_000, undefined, true);
+      if (gen !== this.gen) return null;
+      for (const r of res) out.push(...r.tapes);
+      return out;
+    }
+    for (const k of ["main", "sig"] as const) {
+      if (!sets[k].size) continue;
+      const g = buildTapesGen(u, a[k].protects, s.cost, a[k].dcaFor as never, pairs[k], s.tactics, a.adjust, { ...a[k].floors, onlyIds: sets[k] });
+      out.push(...(await this.drive("Tapes", g, () => undefined, gen)));
+    }
+    return out;
+  }
+
   /** the seats of the last full paper step (the realtime entry step keeps them) */
   private lastSelection: Pick<ReturnType<typeof withProbe>, "picks" | "eligible"> | null = null;
   /** what the last live control step saw (controlDue) */
@@ -1949,10 +2116,13 @@ export class CoreRuntime {
       if (memWait) this.dirty = true;
       this.memDeferred = !!memWait;
       const computed = (newBars || this.dirty) && !memWait;
+      // runtime.cycle "incremental": between heavy computes the validated set's tapes are continued over the new bars
+      let light = false;
       if (computed) {
         this.memGuardStart(gen);
         try {
-          await this.compute(gen);
+          if (this.lightEligible()) light = await this.lightStep(gen);
+          if (!light) await this.compute(gen);
         } finally {
           this.memGuardStop(gen);
         }
@@ -1978,9 +2148,20 @@ export class CoreRuntime {
         try {
           await this.paperIdle();
           this.paperRunning = true;
-          await this.driveSliced("Paper", this.stepPaperGen(), gen, (f) =>
-            this.setStage("Paper", 0.8 * f, 1, paperLabel),
-          );
+          // a light cycle seats nothing new (the seats are hourly: this hour's are the last full step's) and sees only
+          // the validated set's tapes; the full list comes back, with the continued tapes in it, after the step
+          const full = light ? this.tapes : null;
+          if (light && this.inc) this.tapes = this.tapes.filter((tp) => this.inc!.ids.has(tp.id));
+          try {
+            await this.driveSliced("Paper", this.stepPaperGen(undefined, light), gen, (f) =>
+              this.setStage("Paper", 0.8 * f, 1, paperLabel),
+            );
+          } finally {
+            if (full) {
+              this.tapes = full;
+              this.tapeIdx = null;
+            }
+          }
         } finally {
           this.paperRunning = false;
           this.fastHold = false;
@@ -1990,15 +2171,19 @@ export class CoreRuntime {
         if (pt && this.status.phases.Paper)
           this.status.phases.Paper.slowest = `select ${Math.round(pt.select)} · candidates ${Math.round(pt.cands)} · entries ${Math.round(pt.exec)} ms over ${pt.n} (wall, sliced)${pt.stale ? ` · ${pt.stale} older tape positions left to their tape` : ""}`;
         await yieldNow();
-        this.phase("Adjust", () => this.runAdjust());
-        await yieldNow();
-        this.busyPhase = "Audit";
-        const auditLabel = `self-audit · ${this.paper.selected.length} seats`;
-        this.setStage("Paper", 0.8, 1, auditLabel);
-        try {
-          await this.runAuditAsync(gen, (f) => this.setStage("Paper", 0.8 + 0.2 * f, 1, auditLabel));
-        } finally {
-          this.busyPhase = "";
+        // (Adjust and the self-audit read the whole published state: they run with the heavy compute, not in a light cycle)
+        if (!light) {
+          this.phase("Adjust", () => this.runAdjust());
+          await yieldNow();
+          this.busyPhase = "Audit";
+          const auditLabel = `self-audit · ${this.paper.selected.length} seats`;
+          this.setStage("Paper", 0.8, 1, auditLabel);
+          try {
+            await this.runAuditAsync(gen, (f) => this.setStage("Paper", 0.8 + 0.2 * f, 1, auditLabel));
+          } finally {
+            this.busyPhase = "";
+          }
+          if (this.settings.runtime?.cycle === "incremental") await this.incCapture(gen);
         }
         this.paperStepped = true;
         // the public signal that this compute's book is ready: the seats (paper.selected) are the new tapes'
@@ -2016,7 +2201,7 @@ export class CoreRuntime {
       this.status.error = null;
       // the preset comparison of this compute runs once the cycle has ended (its book is out, the next cycle is
       // scheduled): the next cycle waits for it before it starts, so the two never overlap
-      if (computed && !stale && !this.stopped) compareGen = gen;
+      if (computed && !light && !stale && !this.stopped) compareGen = gen;
       if (this.snapshotPath && Date.now() - this.lastSnapshot > 10 * 60_000) {
         this.lastSnapshot = Date.now();
         // in the background: the loop (and the live tick) keeps running while the pages are copied
@@ -2932,6 +3117,9 @@ export class CoreRuntime {
       Math.round(((24 + Math.max(wf.preH, wf.longH) + wf.simH) * 60) / tf) +
       tacticWarmupBars(s.tactics);
     const wu = makeUniverse(allBars.map((b) => tailBars(b, tailOf(b.tfMin))));
+    // runtime.cycle "incremental": the tail the tapes are built on is what the light cycles continue (incCapture)
+    this.inc = null;
+    this.incTail = s.runtime?.cycle === "incremental" && !this.replay ? wu : null;
     // Main candidates: Base combos by score (default protect, full history), plus every pair held right now
     // Base gate: only config sets with PF ≥ min PF (and positive net, enough trades) continue to Main → Real → Live
     const main = new Set<string>();
@@ -5320,7 +5508,10 @@ export class CoreRuntime {
    * kept as it is, and new entries only from `fast.opens` (the seated configs' tape positions on the current bars),
    * through the same entry rules; the full step (after each compute) re-seats and closes.
    */
-  private *stepPaperGen(fast?: { opens: ReadonlyMap<string, readonly OpenPosition[]>; t: number }): Generator<number, void> {
+  private *stepPaperGen(
+    fast?: { opens: ReadonlyMap<string, readonly OpenPosition[]>; t: number },
+    reuseSeats = false,
+  ): Generator<number, void> {
     if (!this.tapes.length || !this.sim) return;
     if (fast && !this.lastSelection) return;
     // sub-timings (the Paper phase is one synchronous slice: its slowest part is named in the phase record)
@@ -5333,8 +5524,9 @@ export class CoreRuntime {
     // (slices between the opening passes over every tape: together they were one 0.5 s step at 21 symbols)
     yield 0;
     // per-range selection modes (wf.rangeOpts[tag].mode), as the simulation selects; null = one selection
-    const groups = fast ? null : modeGroups(selTapes, this.wf);
-    const { picks, eligible } = fast
+    const reuse = !fast && reuseSeats && !!this.lastSelection;
+    const groups = fast || reuse ? null : modeGroups(selTapes, this.wf);
+    const { picks, eligible } = fast || reuse
       ? this.lastSelection!
       : withProbe(
           groups
@@ -5348,7 +5540,7 @@ export class CoreRuntime {
           t,
           this.wf,
         );
-    if (!fast) this.lastSelection = { picks, eligible };
+    if (!fast && !reuse) this.lastSelection = { picks, eligible };
     const tSelect = performance.now() - tp0;
     const sel = new Set([...picks.map((p) => p.id), ...sigTapes.map((tp) => tp.id)]);
     // sets that still hold an open position stay processed until that position is closed (even when no longer
