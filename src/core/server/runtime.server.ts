@@ -2834,6 +2834,7 @@ export class CoreRuntime {
         s.cost,
         s.tactics,
         baseRangeProtects(s.grid, s.cost),
+        s.grid?.baseCells === true,
         rangeMinTfOf(s.grid),
         // the gates decide which cell a range keeps (rangeCellPass in the worker): a gates patch must recompute
         // every combo, not reuse cells chosen under the old gates
@@ -2863,6 +2864,7 @@ export class CoreRuntime {
               rangeMinTf: rangeMinTfOf(s.grid),
               microOwnInds: microOwnInds(s.grid),
               gates: s.gates,
+              cells: s.grid?.baseCells === true,
             })),
           n,
           15 * 60_000,
@@ -2950,7 +2952,7 @@ export class CoreRuntime {
     const famNarrow = !!evalFams && familiesNarrowBase(evalFams);
     // each pair at the default protect and at one cell of each enabled range: the ranges and targets it passes are the
     // ones whose configs it computes (basePass — the preset backtest judges by the same rule)
-    const { passed, pairTags, pairTps, added: baseBuilt } = basePass(pipeline.s1, s, applies, famNarrow ? evalFams : null);
+    const { passed, pairTags, pairTps, pairCells, added: baseBuilt } = basePass(pipeline.s1, s, applies, famNarrow ? evalFams : null);
     this.basePairTags = pairTags;
     // the count of pairs that passed Base (validated); the pairs grid.allSets adds for measurement are reported apart
     this.status.basePassed = passed.length - baseBuilt;
@@ -2999,6 +3001,7 @@ export class CoreRuntime {
           const t = (pairTps[m] ??= {});
           for (const [tag, tps] of Object.entries(pairTps[k])) t[tag] = [...new Set([...(t[tag] ?? []), ...tps])];
         }
+        if (pairCells[k]) pairCells[m] = [...new Set([...(pairCells[m] ?? []), ...pairCells[k]])];
       }
     // only pairs that passed Base take a seat; held pairs stay in Main to manage their open positions
     wf.basePassed = passedKeys;
@@ -3273,6 +3276,7 @@ export class CoreRuntime {
       ...protectFloors(s),
       pairTags: this.basePairTags,
       pairTps,
+      pairCells,
       heldIds,
       microOwnInds: microOwnInds(s.grid),
       buildStats,
@@ -3296,6 +3300,7 @@ export class CoreRuntime {
             ...protectFloors(s),
             pairTags: this.basePairTags,
             pairTps,
+            pairCells,
             heldIds,
             microOwnInds: microOwnInds(s.grid),
             onlyIds: carriedHeld.ids,
@@ -3328,7 +3333,7 @@ export class CoreRuntime {
     // cells, a carried one's included (it builds only the seated ids: under a memory fallback the seated Micro /
     // Minimal configs took no new entry between computes)
     this.fastArgs = {
-      main: { protects: this.wf.protects, dcaFor: { ...dcaOpt, protects: this.wf.dcaProtects }, floors: { ...protectFloors(s), pairTags: this.basePairTags, pairTps, heldIds, microOwnInds: microOwnInds(s.grid) } },
+      main: { protects: this.wf.protects, dcaFor: { ...dcaOpt, protects: this.wf.dcaProtects }, floors: { ...protectFloors(s), pairTags: this.basePairTags, pairTps, pairCells, heldIds, microOwnInds: microOwnInds(s.grid) } },
       sig: {
         protects: signalProtects(sig),
         dcaFor: sigStrat,
@@ -4527,6 +4532,7 @@ export class CoreRuntime {
     main: Set<string>;
     pairTags: Record<string, string[]>;
     pairTps: Record<string, Record<string, readonly number[]>>;
+    pairCells: Record<string, readonly string[]>;
   }> {
     const rangeProtects = baseRangeProtects(s.grid, s.cost);
     const rangeMinTf = rangeMinTfOf(s.grid);
@@ -4552,6 +4558,7 @@ export class CoreRuntime {
             rangeMinTf,
             microOwnInds: micro,
             gates: s.gates,
+            cells: s.grid?.baseCells === true,
           })),
         n,
         15 * 60_000,
@@ -4565,7 +4572,7 @@ export class CoreRuntime {
       const look = makeUniverse(lookBars);
       function* base() {
         for (let i = 0; i < combos.length; i++) {
-          const rs = baseRuns(look, [combos[i]], s.cost, s.tactics, false, false, undefined, rangeProtects, rangeMinTf, micro, s.gates);
+          const rs = baseRuns(look, [combos[i]], s.cost, s.tactics, false, false, undefined, rangeProtects, rangeMinTf, micro, s.gates, s.grid?.baseCells === true);
           for (const x of rs) add(x);
           yield i;
         }
@@ -4574,8 +4581,8 @@ export class CoreRuntime {
     }
     // in combo order (as the engine's S1), whichever path computed them
     const runs = combos.flatMap((c) => byPair.get(`${c.bot}|${c.ind}`) ?? []);
-    const { passed, pairTags, pairTps } = basePass(runs, s);
-    return { main: mainByLane(passed, s.mainTop), pairTags, pairTps };
+    const { passed, pairTags, pairTps, pairCells } = basePass(runs, s);
+    return { main: mainByLane(passed, s.mainTop), pairTags, pairTps, pairCells };
   }
 
   private async runPresetBacktest(
@@ -4684,6 +4691,7 @@ export class CoreRuntime {
     // the ranges and targets each pair passed in Base (a fixed focus set has no Base: every cell of its pairs)
     let pairTags: Record<string, string[]> | undefined;
     let pairTps: Record<string, Record<string, readonly number[]>> | undefined;
+    let pairCells: Record<string, readonly string[]> | undefined;
     // the engine's Micro lane floor (Micro's own was applied under both rules: with Minimal on Micro's indications a
     // Micro pair on a faster lane never reached its Minimal cells)
     const combos = allCombos(s.focus, s.disabledKinds, s.tfs, microLaneFloor(s.grid));
@@ -4703,14 +4711,14 @@ export class CoreRuntime {
           v: b.v.slice(0, z),
         };
       });
-      ({ main, pairTags, pairTps } = await this.presetBase(job, s, combos, lookBars));
+      ({ main, pairTags, pairTps, pairCells } = await this.presetBase(job, s, combos, lookBars));
     }
     job.stage = "Tapes";
     const dcaOpt = { protects: wf.dcaProtects, dca: wf.dca, axis: s.axis };
     const adjust = s.adjust?.enabled ? this.adjustState() : null;
     // the engine's tape rules: only the ranges and targets a pair passed in Base, and the Micro indication rule (the
     // floors alone built every range and target of every pair, and Micro cells for every indication)
-    const floors: EntryFloors = { ...protectFloors(s), pairTags, pairTps, microOwnInds: microOwnInds(s.grid) };
+    const floors: EntryFloors = { ...protectFloors(s), pairTags, pairTps, ...(pairCells ? { pairCells } : {}), microOwnInds: microOwnInds(s.grid) };
     let tapes: ConfigTape[] = [];
     // pairs in the engine's combo order, cut into contiguous slices → identical tape order to one process
     // (lane combos included: the pairs are lane ids when the settings carry timeframe lanes)
@@ -6791,9 +6799,13 @@ export function basePass(
   passed: ComboRun[];
   pairTags: Record<string, string[]>;
   pairTps: Record<string, Record<string, readonly number[]>>;
+  /** grid.baseCells: per pair, the passed cells of the ranges it passed (protectCellKey); absent while the option is off */
+  pairCells: Record<string, readonly string[]>;
   added: number;
 } {
   const pairTags: Record<string, string[]> = {};
+  const pairCells: Record<string, readonly string[]> = {};
+  const cellsOn = s.grid?.baseCells === true;
   const setsGates = baseSetsGates(s.gates);
   // per pair, the range targets whose Base cells passed: the tape stage builds only those (baseTargets, on by
   // default — a range tag used to unlock every target of the range, most of them never Base-evaluated)
@@ -6817,6 +6829,11 @@ export function basePass(
       for (const t of tags) if (t && r.rangeTps[t]?.length) per[t] = r.rangeTps[t];
       if (Object.keys(per).length) pairTps[`${r.bot}|${r.ind}`] = per;
     }
+    // cell level: the passed cells of the passed ranges (a range without cells keeps the target / range level)
+    if (cellsOn && r.rangeCells?.length) {
+      const keep = r.rangeCells.filter((k) => tags.includes(k.slice(0, k.indexOf("|"))));
+      if (keep.length) pairCells[`${r.bot}|${r.ind}`] = keep;
+    }
     return true;
   });
   // grid.allSets (measurement): every indication builds its complete config sets — its best pair at Base (bot ×
@@ -6838,6 +6855,7 @@ export function basePass(
       const k = `${r.bot}|${r.ind}`;
       pairTags[k] = ["", ...ALL_RANGE_TAGS].filter((t) => rangeAppliesTo(r.ind, t, applies));
       delete pairTps[k];
+      delete pairCells[k];
       if (!inPassed.has(k)) {
         passed.push(r);
         inPassed.add(k);
@@ -6845,7 +6863,7 @@ export function basePass(
       }
     }
   }
-  return { passed, pairTags, pairTps, added };
+  return { passed, pairTags, pairTps, pairCells, added };
 }
 
 function protectFloors(s: CoreSettings): EntryFloors {

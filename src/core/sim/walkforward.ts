@@ -27,7 +27,7 @@ import type { RangeTag } from "../domain/types.ts";
 //           - Normal off: plain normal entries only execute when Block-adjusted (level >= 1)
 //           - max positions per symbol / total, honest hour guard
 //   Live  the Real entries due now are handed to the live adapter (gated, off by default).
-import { allCombos, configId, laneProtect, REF_TF, seriesOf } from "../pipeline/pipeline.ts";
+import { allCombos, configId, laneProtect, protectCellKey, REF_TF, seriesOf } from "../pipeline/pipeline.ts";
 import type { SymStat, Universe } from "../pipeline/pipeline.ts";
 import { entrySignal } from "../bots/bots.ts";
 import { tacticCooldown } from "../indications/filters.ts";
@@ -1385,6 +1385,12 @@ export type EntryFloors = {
    */
   pairTps?: Record<string, Record<string, readonly number[]>>;
   /**
+   * grid.baseCells, per pair, the cells Base validated (`protectCellKey`, tag|tp|sl|trail|hold): of a range with cells
+   * listed here only those cells are built (not every stop × trail × hold of a passed target). A range without an entry
+   * and the Wide grid keep the pair / target level. Absent = off.
+   */
+  pairCells?: Record<string, readonly string[]>;
+  /**
    * config ids held by the paper book (selected or holding a position): each keeps its own tape even when its range
    * is not in its pair's Base tags — without its tape an open position vanished from the book with no close. Only
    * that config, not every cell of its range (a held General position used to unlock all General cells of the pair,
@@ -1437,6 +1443,7 @@ export function floorsForPairs(floors: EntryFloors): (pairs: readonly string[]) 
     ...floors,
     ...(floors.pairTags ? { pairTags: pick(floors.pairTags, pairs) } : {}),
     ...(floors.pairTps ? { pairTps: pick(floors.pairTps, pairs) } : {}),
+    ...(floors.pairCells ? { pairCells: pick(floors.pairCells, pairs) } : {}),
     ...(floors.pairProtects ? { pairProtects: pick(floors.pairProtects, pairs) } : {}),
     ...(floors.heldIds ? { heldIds: new Set(pairs.flatMap((k) => held.get(k) ?? [])) } : {}),
   });
@@ -1676,6 +1683,10 @@ export function* buildTapesGen(
     );
     const laneTf = laneOf(c.ind).tf ?? u.bars[series[0]]?.tfMin ?? 1;
     const tagsOk = floors?.pairTags?.[`${c.bot}|${c.ind}`];
+    // grid.baseCells: the Base-passed cells of this pair, and the ranges they cover
+    const cellKeys = floors?.pairCells?.[`${c.bot}|${c.ind}`];
+    const cellSet = cellKeys ? new Set(cellKeys) : null;
+    const cellTags = cellKeys ? new Set(cellKeys.map((k) => k.slice(0, k.indexOf("|")))) : null;
     const microInd = isMicroInd(laneOf(c.ind).base);
     const own = floors?.pairProtects?.[`${c.bot}|${c.ind}`];
     for (const p0 of own?.length ? [...protects, ...own] : protects) {
@@ -1703,7 +1714,9 @@ export function* buildTapesGen(
             : // only the targets of this range that passed Base
               !!tps && !tps.includes(p0.tp)
               ? "baseTarget"
-              : !!p0.tag && !!fitted && !fitted.has(`${p0.tag}|${p0.tp}`)
+              : !!p0.tag && !!cellSet && cellTags!.has(p0.tag) && !cellSet.has(protectCellKey(p0))
+                ? "baseCell"
+                : !!p0.tag && !!fitted && !fitted.has(`${p0.tag}|${p0.tp}`)
                 ? "rangeFit"
                 : null;
       const filtered = why !== null;

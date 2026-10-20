@@ -569,6 +569,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
     }
     if (s.grid.baseTrailCells !== undefined && typeof s.grid.baseTrailCells !== "boolean")
       throw new Error("Base trailed cells: on / off");
+    if (s.grid.baseCells !== undefined && typeof s.grid.baseCells !== "boolean")
+      throw new Error("Base cells: on / off");
     if (s.grid.allSets !== undefined && typeof s.grid.allSets !== "boolean") throw new Error("all config sets: on / off");
     if (s.grid.baseRanges !== undefined && typeof s.grid.baseRanges !== "boolean")
       throw new Error("Base-passed ranges only: on / off");

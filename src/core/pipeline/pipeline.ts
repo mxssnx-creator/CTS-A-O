@@ -33,6 +33,7 @@ import {
   microPriceTp,
   microSlFloor,
   minPfOf,
+  rangeHolds,
   RANGE_OWN_BASE,
   rangeMinTfOf,
   microIndRule,
@@ -405,11 +406,20 @@ export interface ComboRun {
    */
   rangeTps?: Record<string, number[]>;
   /**
+   * Base, with grid.baseCells: the cells of each range that PASSED, `protectCellKey` (tag|tp|sl|trail|hold), a subset of
+   * what rangeTps' targets would build. The tape stage then builds only these cells.
+   */
+  rangeCells?: string[];
+  /**
    * Base, with Gates.baseWindows.report set: per report rule (its index), the targets of each range whose cells pass
    * today's Base AND the rule — a subset of rangeTps (the readout of what the rule would let the tape stage build)
    */
   ruleTps?: Array<Record<string, number[]>>;
 }
+
+/** One protect cell's identity, as the grid, Base and the tape stage compare it: `tag|tp|sl|trail|hold` ("" = Wide). */
+export const protectCellKey = (p: Pick<Protect, "tp" | "sl" | "trail" | "hold" | "tag">) =>
+  `${p.tag ?? ""}|${p.tp}|${p.sl}|${p.trail}|${p.hold}`;
 
 /** Base result of a pair at one range's representative cell (full history). */
 export interface RangeBaseStat {
@@ -436,6 +446,8 @@ export function baseRangeProtects(
     minSlEval?: number;
     /** grid.baseTrailCells: also measure one trailed cell per range target (off = every Base cell at trail 0) */
     baseTrailCells?: boolean;
+    /** grid.baseCells: every hold of the range, and with baseTrailCells every trail ratio at every stop */
+    baseCells?: boolean;
     /** the grid's trailing step and trail-free switch: a Base trailed cell is the cell the grid builds */
     trailStep?: number;
     trailFree?: boolean;
@@ -488,6 +500,36 @@ export function baseRangeProtects(
         const tp = tag === "mc" ? microPriceTp(tp0, r, cost) : tp0;
         // the Base cells are held to the same stop floor as the grid (EVAL_MIN_SL): a pair is never validated at a
         // stop no config may trade
+        if (g.baseCells) {
+          // cell level: the cells the grid builds (every hold; with baseTrailCells every trail ratio), each its own Base cell
+          const holds = [...new Set(rangeHolds(r, g.holdH ?? [16]).map((h) => Math.max(holdFloorBars(r), Math.round((h * 60) / REF_TF))))];
+          const trs = g.baseTrailCells ? [...new Set(r.trailOfTp ?? [])].filter((x) => x > 0).sort((a, b) => a - b) : [];
+          const step = g.trailStep ?? 1;
+          const trailStop = tag === "mc" ? 0 : ((r as { trailSlOfTp?: number }).trailSlOfTp ?? 2);
+          const seen = new Set<string>();
+          const add = (p: Protect) => {
+            const key = protectCellKey(p);
+            if (!seen.has(key)) {
+              seen.add(key);
+              out.push(p);
+            }
+          };
+          for (const h of holds) {
+            for (const k of ks) add({ tp, sl: rd(Math.max(floorR, minSlR, tp * k)), trail: 0, hold: h, tag });
+            for (const tr of trs)
+              for (const k of ks)
+                add({
+                  tp,
+                  sl: rd(Math.max(floorR, minSlR, tp * Math.max(k, trailStop))),
+                  trail: rd(Math.max((r.minTrail ?? 0) / (tag === "mc" ? 1 : step), tp * tr)),
+                  hold: h,
+                  tag,
+                  trailStep: step,
+                  trailFree: g.trailFree ?? false,
+                });
+          }
+          continue;
+        }
         for (const k of ks) out.push({ tp, sl: rd(Math.max(floorR, minSlR, tp * k)), trail: 0, hold, tag });
         // grid.baseTrailCells: one trailed cell per target as well (the middle non-zero trail ratio at the middle
         // stop). Base measured every cell at trail 0, so a target whose edge needs a trailing stop never passed and
@@ -1024,6 +1066,8 @@ export function rangeBaseStats(
    * and `ruleTpsOut[k]` is filled like `tpsOut` with the targets whose cell passes Base AND report rule k
    */
   windows?: { plan: BaseWindowsPlan; ruleTpsOut?: Array<Record<string, number[]>> },
+  /** grid.baseCells: filled with the key (protectCellKey) of every range cell that passed */
+  cellsOut?: string[],
 ): Record<string, RangeBaseStat> | undefined {
   if (!protects.length) return undefined;
   // a lane-less indication (a research tool, a legacy preset) trades the base timeframe: the same expression
@@ -1041,6 +1085,7 @@ export function rangeBaseStats(
     // several cells of one range (Base at every config): a passing cell first, then the higher net
     const k = p.tag ?? "";
     const prev = out[k];
+    if (cellsOut && k && pass && pass(k, cand)) cellsOut.push(protectCellKey(p));
     if (tpsOut && k && pass && pass(k, cand)) {
       const xs = (tpsOut[k] ??= []);
       if (!xs.includes(p.tp)) xs.push(p.tp);
@@ -1366,6 +1411,8 @@ export function baseRuns(
   microOwnInds: MicroIndRule = false,
   /** the stage gates: a range keeps a passing cell first (rangeCellPass) */
   gates?: Gates,
+  /** grid.baseCells: record the passed cells of each pair (ComboRun.rangeCells) */
+  cells = false,
 ): ComboRun[] {
   const pass = gates ? rangeCellPass(gates) : undefined;
   // two-window Base (gates.baseWindows; null while unset: nothing more is computed)
@@ -1389,6 +1436,7 @@ export function baseRuns(
       if (r) {
         // signal pairs never use range cells (they take their own configs): no range runs for them
         const tps: Record<string, number[]> = {};
+        const cellKeys: string[] | undefined = cells ? [] : undefined;
         const ruleTps = plan && !isSignalInd(c.ind) ? baseRunWindows(u, r, plan) : undefined;
         const ranges = isSignalInd(c.ind)
           ? undefined
@@ -1405,9 +1453,11 @@ export function baseRuns(
               u.baseTf,
               tps,
               plan ? { plan, ruleTpsOut: ruleTps } : undefined,
+              cellKeys,
             );
         if (ranges) r.ranges = ranges;
         if (Object.keys(tps).length) r.rangeTps = tps;
+        if (cellKeys?.length) r.rangeCells = cellKeys;
         if (ruleTps) r.ruleTps = ruleTps;
         out.push(packed ? { ...slim(r), bySym: JSON.stringify(r.bySym) } : slim(r));
       }
@@ -1460,6 +1510,7 @@ export function* runPipeline(
       const microOwn = microIndRule(g);
       const tps: Record<string, number[]> = {};
       const ruleTps = plan ? baseRunWindows(u, r, plan) : undefined;
+      const cellKeys: string[] | undefined = g.baseCells === true ? [] : undefined;
       const ranges = rangeBaseStats(
         u,
         c.bot,
@@ -1473,9 +1524,11 @@ export function* runPipeline(
         u.baseTf,
         tps,
         plan ? { plan, ruleTpsOut: ruleTps } : undefined,
+        cellKeys,
       );
       if (ranges) r.ranges = ranges;
       if (Object.keys(tps).length) r.rangeTps = tps;
+      if (cellKeys?.length) r.rangeCells = cellKeys;
       if (ruleTps) r.ruleTps = ruleTps;
     }
     if (r) s1.push(slim(r));
