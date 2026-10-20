@@ -2,6 +2,7 @@
 """Offline HTML with exact charts and frozen evidence; no CDN, PF averaging or loss filtering."""
 import argparse, gzip, hashlib, html, io, json, re, subprocess
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from pathlib import Path
 import matplotlib
 matplotlib.use('Agg')
@@ -12,7 +13,9 @@ ap=argparse.ArgumentParser()
 ap.add_argument('--runs',nargs='+',default=['inverse-20-6h-lowmem-final','inverse-20-24h-lowmem-final','inverse-20-long-base336-lowmem-final'])
 ap.add_argument('--out',default='docs/sims/inverse-20-symbol-20261020')
 ap.add_argument('--require-complete',action='store_true')
+ap.add_argument('--timezone',default='Europe/Vienna')
 args=ap.parse_args()
+reportTimezone=ZoneInfo(args.timezone)
 sha=lambda b:hashlib.sha256(b).hexdigest()
 esc=lambda v:html.escape(str(v),quote=True)
 fmt=lambda v,n=3:'—' if v is None else f'{v:,.{n}f}'
@@ -21,7 +24,7 @@ def pf(s):
     if not s.get('n'):return '— · keine Closes'
     if s.get('noLoss'):return 'keine Verluste · kein endlicher PF'
     return fmt(s.get('exactRatio',s.get('pf')))
-def utc(t):return datetime.fromtimestamp(t/1000,timezone.utc).strftime('%d.%m. %H:%M UTC')
+def localTime(t):return datetime.fromtimestamp(t/1000,reportTimezone).strftime('%d.%m. %H:%M %Z')
 def table(headers,rows,cls=''):
     return '<div class="scroll"><table class="'+cls+'"><thead><tr>'+''.join('<th>'+esc(v)+'</th>' for v in headers)+'</tr></thead><tbody>'+''.join('<tr>'+''.join('<td>'+esc(v)+'</td>' for v in row)+'</tr>' for row in rows)+'</tbody></table></div>'
 
@@ -55,7 +58,7 @@ resolution=coreCoverage.get('runtimeResolution',{})
 resolved=resolution.get('code')==0 and resolution.get('pass')==3 and resolution.get('fail')==0 and resolution.get('cancelled')==0
 coreDone=coreCoverage['complete'] and sorted(covered)==expected and all((p['code']==0 and p['fail']==0 and p['cancelled']==0) or (i==5 and p['fail']==3 and resolved) for i,p in enumerate(coreCoverage['parts']))
 verification['core-file-coverage']=dict(completed=coreDone,files=len(covered),expectedFiles=len(expected),prefixFiles=len(coreCoverage['prefixFiles']),rerunFiles=sum(len(p['files']) for p in coreCoverage['parts']),classification=coreCoverage['classification'])
-historicalFailures=sum(p.get('fail',0) for p in coreCoverage['parts'])
+historicalFailures=sum(p.get('fail',0)+p.get('previousAttempt',{}).get('fail',0) for p in coreCoverage['parts'])
 verification['core-completed-parts']=dict(completed=coreDone,tests=sum(p.get('tests',0) for p in coreCoverage['parts']),**{'pass':sum(p.get('pass',0) for p in coreCoverage['parts'])+(3 if resolved else 0),'fail':0 if resolved else historicalFailures,'cancelled':sum(p.get('cancelled',0) for p in coreCoverage['parts']),'skipped':sum(p.get('skipped',0) for p in coreCoverage['parts'])},historicalFailures=historicalFailures,resolution=resolution.get('notes'))
 slowPath=Path('runs/memory-core-slow-status.json')
 slow=read(slowPath) if slowPath.exists() else {}
@@ -107,7 +110,7 @@ for name,reason in [
     protocol=Path('runs')/name/'protocol.json'
     if protocol.exists():entry['protocol']=read(protocol)
     attempts.append(entry)
-bundle=dict(classification='Retrospective virtual-order evidence, not funded-account or live performance proof',
+bundle=dict(displayTimezone=args.timezone,classification='Retrospective virtual-order evidence, not funded-account or live performance proof',
     sourceCheckpoint=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
     sourceManifestSha256=sha(json.dumps(runs[0]['protocol']['source'],sort_keys=True).encode()),
     feedProvenance='Previously examined public archive, 1–17 October 2026; overlapping windows, no fresh holdout',
@@ -137,7 +140,7 @@ panels=[]
 for idx,x in enumerate(runs):
     p,r=x['protocol'],x['result'];s,e=r['validatedSnapshots']['start'],r['validatedSnapshots']['end']
     title=f"{p['wf']['simH']}h Replay · {p['wf']['longH']}h Evaluation"+(' · lange Historie' if p['wf']['longH']>24 else '')
-    heading=f'<div class="run-heading"><div><span class="eyebrow">Studie {idx+1:02}</span><h2>{esc(title)}</h2><p>{utc(r["startT"])} — {utc(r["endT"])}</p></div><span class="tag">20 Symbole · eingefrorener Replay</span></div>'
+    heading=f'<div class="run-heading"><div><span class="eyebrow">Studie {idx+1:02}</span><h2>{esc(title)}</h2><p>{localTime(r["startT"])} — {localTime(r["endT"])}</p></div><span class="tag">20 Symbole · eingefrorener Replay</span></div>'
     metrics=[('Base bestanden / geprüft',f'{r["baseQualified"]:,} / {r["baseEvaluated"]:,}','Indikation × Lane × Bot; keine Config-Zählung'),
       ('Sets validiert / berechnet',f'{e["passed"]:,} / {e["total"]:,}','End-Snapshot; alle Config-Gates inkl. Last-N'),
       ('PF ausgeführter Closes',pf(r['settled']),f'{r["settled"]["n"]:,} Modell-Closes nach Entry-Gates'),
@@ -160,8 +163,8 @@ for idx,x in enumerate(runs):
         hs=r['hourly'];xx=np.arange(len(hs));vs=[h['net'] for h in hs]
         ax.bar(xx,vs,color=[teal if v>0 else red if v<0 else gray for v in vs]);ax.axhline(0,color=gray,lw=.8)
         ax.plot(xx,np.cumsum(vs),color=blue,marker='.',lw=1.5,label='kumulierte Return-Summe')
-        ax.set_xticks(xx,[datetime.fromtimestamp(h['t']/1000,timezone.utc).strftime('%H:%M') for h in hs],rotation=45,ha='right',fontsize=8)
-        ax.set_ylabel('Netto Unit-Return-Summe (Prozentpunkte)');ax.set_xlabel('UTC · Stunde des Abschlusses');ax.legend(loc='upper right',fontsize=8)
+        ax.set_xticks(xx,[datetime.fromtimestamp(h['t']/1000,reportTimezone).strftime('%H:%M') for h in hs],rotation=45,ha='right',fontsize=8)
+        ax.set_ylabel('Netto Unit-Return-Summe (Prozentpunkte)');ax.set_xlabel(args.timezone+' · Stunde des Abschlusses');ax.legend(loc='upper right',fontsize=8)
         if not r['settled']['n']:ax.text(.5,.55,'0 Closes · alle Stunden flach',transform=ax.transAxes,ha='center')
     def directions(fig,ax):
         vals=[r['byDirection'][k] for k in ['long','short']];xx=np.arange(2)
@@ -201,14 +204,14 @@ for idx,x in enumerate(runs):
     strategyTable=table(['Strategie','Akzeptierte Closes','PF','Netto (pp)'],[[k,v['n'],pf(v),fmt(v['net'],6)] for k,v in r['byStrategy'].items()])
     matrix=table(['Range','Typ','Lane','Gebaut','Historie > 0','Long-Historie','Short-Historie','Validiert Start/Ende','Ausgef. Configs','Closes'],[[rangeNames.get(c['range'],c['range']),c['kind'],c['lane'],c['built'],c['nonempty'],c['longHistoryCells'],c['shortHistoryCells'],f'{c["qualifiedStart"]}/{c["qualifiedEnd"]}',c['executedConfigs'],c['settled']] for c in r['coverageMatrix']])
     sources=table(['Indikation','Akzeptierte Closes','PF der Closes','Netto (pp)'],[[k,v['n'],pf(v),fmt(v['net'],6)] for k,v in r['byIndication'].items()],'sources')
-    hist=table(['Symbol','Lane','Bars','Von','Bis (Close)','Stunden verfügbar'],[[c['sym'],f'{c["tf"]}m',c['bars'],utc(c['firstT']),utc(c['lastCloseT']),fmt((c['lastCloseT']-c['firstT'])/3600000,1)] for c in r['sourceCoverage']])
+    hist=table(['Symbol','Lane','Bars','Von','Bis (Close)','Stunden verfügbar'],[[c['sym'],f'{c["tf"]}m',c['bars'],localTime(c['firstT']),localTime(c['lastCloseT']),fmt((c['lastCloseT']-c['firstT'])/3600000,1)] for c in r['sourceCoverage']])
     fails=table(['Erste nicht bestandene Prüfung','Configs'],sorted(e['failures'].items()))
     orderRows=[]
     for label,ts in [('Close',x['executions']['settled']),('Open mark',x['executions']['endpointMarks'])]:
         for tr in ts:
             unit=tr.get('unitR')
             if not isinstance(unit,(int,float)):unit=tr['r']/tr['mult'] if tr.get('mult',0)>0 else None
-            orderRows.append([label,tr['sym'],'Long' if tr['side']==1 else 'Short',utc(tr['entryT']),utc(tr['exitT']),
+            orderRows.append([label,tr['sym'],'Long' if tr['side']==1 else 'Short',localTime(tr['entryT']),localTime(tr['exitT']),
                 fmt(tr.get('entry'),6),fmt(tr.get('exit'),6),fmt(unit*100 if unit is not None else None,6),
                 tr.get('mult','unknown'),tr.get('reason','—'),tr['cfg']])
     orderHeaders=['Sample','Symbol','Richtung','Entry','Exit / Mark','Entry-Preis','Exit / Mark-Preis','Unit-Return %','Externer Mult.','Grund','Exakte Config']
@@ -220,7 +223,7 @@ for idx,x in enumerate(runs):
     <details><summary>Vollständige Range-, Typ- und Lane-Matrix</summary>{matrix}</details>
     <details><summary>Alle 114 Indikationen · Ergebnisse nach Entry-Gates</summary><input class="source-search" type="search" aria-label="Indikationen filtern" placeholder="Indikation filtern …">{sources}</details>
     <details class="order-view"><summary>Alle modellierten Orders · {r['settled']['n']} Closes / {r['endpointMarks']['n']} offene Marks</summary><p>Virtuelle Entries nach den konfigurierten Gates, vor Kontoallokation. Marks sind gesondert gekennzeichnet. Unit-Returns entfernen ausschließlich den explizit bekannten externen Multiplikator; unbekannte Evidenz bleibt unbekannt.</p><input class="order-search" type="search" aria-label="Orders filtern" placeholder="Symbol, Richtung oder Config filtern …"><div class="order-controls"><button type="button" class="order-prev">Zurück</button><span class="order-page"></span><button type="button" class="order-next">Weiter</button><button type="button" class="order-download">Tabellenwerte als JSON</button></div><p class="note">100 Zeilen pro Seite; Suche und Tabellen-Download umfassen alle Orders. Anzeigewerte sind gerundet. Die Tabelle wird erst beim Öffnen geladen. <a href="{out.name}-executions.json.gz" download>Verlustfreie Ausführungsrohdatensätze aller Studien (GZIP)</a>.</p>{orders}<script class="order-data" type="application/json">{orderData}</script></details>
-    <details><summary>Historie · Quellenabdeckung für 20 Symbole und drei Lanes</summary><p>{esc(p['lastNHistory'])}. Base beginnt erst am {utc(p['evaluationFromT'])}. Ältere Candles dienen explizit Warmup und Auswahlhistorie.</p>{hist}</details>
+    <details><summary>Historie · Quellenabdeckung für 20 Symbole und drei Lanes</summary><p>{esc(p['lastNHistory'])}. Base beginnt erst am {localTime(p['evaluationFromT'])}. Ältere Candles dienen explizit Warmup und Auswahlhistorie.</p>{hist}</details>
     <details><summary>Nicht bestandene Config-Prüfungen · End-Snapshot</summary><p>Jede Config zählt an ihrem ersten fehlgeschlagenen Gate. Rohwerte werden nicht entfernt oder positiv geklemmt.</p>{fails}</details>
     <details><summary>Eingefrorene Einstellungen, WF und Herkunft</summary><pre>{esc(json.dumps({'protocolSha256':r['protocolSha256'],'feedSha256':p['feedSha256'],'harnessSha256':p['harnessSha256'],'wf':p['wf'],'settings':p['settings']},ensure_ascii=False,indent=2))}</pre></details></section>''')
 
@@ -310,9 +313,9 @@ doc=f'''<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="v
 <section class="shared"><h2>Speicherverbrauch und Fehlerbehebung</h2><p>Validierungs-Summen ersetzen die millionenfache Aufbewahrung einzelner Diagnosezeilen. Vollständige Detailzeilen bleiben explizit verfügbar. Decodierte Feeds und phasenlokale Indikator-Caches werden nach Gebrauch freigegeben. Geteilte Array-Arenen werden pro Puffer einmal kopiert; bereits geteilte Bars bleiben geteilt.</p>{memoryCharts}{memoryChecks}<p>Automatische Worker-Parallelität berücksichtigt RAM/cgroup, Serverreserve, Hard-Guard, Prioritätsarbeit und externe Arrays. Standard-Worker-Heap 2.048 MiB; explizite CTS_CORE_WORKERS und CTS_CORE_WORKER_HEAP_MB bleiben steuerbar. Ein Worker-Heap-OOM bricht die Berechnung ab und löst keinen Wiederholungsversuch im Hauptthread aus. History, Renditepräzision und PF-/Last-N-Gates wurden nicht reduziert.</p><p>Die drei aktuellen Studien laufen mit 1.024 MiB Old-Space und 20% Heap-Growth plus expliziter GC an Phasengrenzen. Dieses Heap-Limit umfasst keine Typed Arrays oder den gesamten RSS. Der frühere 24h-Versuch mit demselben Limit scheiterte nach 99.520 Tapes; Logs und Protokoll bleiben im Evidenzarchiv. Unterschiede zum älteren unbeschränkten RSS sind wegen anderer Laufbedingungen kein isolierter kausaler Benchmark.</p></section>
 <section class="shared"><h2>Welche Configs werden verwendet?</h2><p>Die gewöhnlichen Produktions-Ranges gelten auch für Inverse. Trailing-Abstände: 0 / 0,25 / 0,5 / 0,75 × TP; 0 bedeutet Normal TP/SL. Haltedauer 16h oder 24h. Die Zellenzahlen verwenden die effektiven, deduplizierten Floors des Referenzgrids.</p>{grid}<p>38 Gegensignal-/Bestätigungsvarianten aus 19 bekannten Quellen, 48 Math-/Marktvarianten über 10/20/40/80 Bars, 16 eigene Micro-Identitäten und 12 BTC/ETH-Referenzpaar-Varianten. Neu: RSI2-Umkehr und VWAP-Abweichung. Weitere Methoden: Z-Score, Impuls, Beschleunigung, OLS-Abweichung, Docht-Abweisung, Fehlausbruch, Konsens, Marktresiduum und Marktschock. Referenzpaare sind einzeln gehandelte Symbol-Legs, keine atomaren Zwei-Leg-Arbitrageorders.</p><p>Micro-Identitäten nutzen Micro und gemäß Standardregel Minimal. Wide und Minimal plus sind im normalen Factory-Grid aus. DCA ist ausführbar; DCA Active und Axis werden unabhängig berechnet und sind standardmäßig für neue Entries aus. Historische Exit- und Signal-Strategien besitzen eigene Prüfungen und sind aus diesem Inverse-Marktreplay ausgeklammert.</p></section>
 <details><summary>Rechenregeln und Indikationsparameter</summary><p>80 gültige, lückenlose Bars Warmup; Lücken und ungültige OHLCV setzen die rekursiven Kontexte zurück. Gemeinsame Math-Guards: ATR[i−1] &gt; 0, endlicher Z-Score/ADX, ADX ≤ 50, positive vorherige Volumenreferenz und aktuelle Aktivität ≤ 5× dieser Referenz. Neue Entries erfolgen nach dem abgeschlossenen Signalbar. Micro nutzt die dafür benannten acht Methoden auf p 10/20; Identitäten und Zulassung bleiben eigenständig.</p>{mathTable}<p>Referenz-Fits erfordern vollständige gemessene Zeitfenster. Fehlende, mehrdeutige oder identische Peers bleiben neutral. Follow handelt das bereits invertierte Signal; Revert invertiert es nicht erneut. Keine Rendite wird nachträglich negiert.</p></details>
-<section class="shared"><h2>Technische Prüfung und Betriebsstand</h2>{checks}<p>Die Core-Dateiabdeckung verbindet den dokumentierten seriellen Präfix mit den vollständig abgeschlossenen Teilprüfungen. Ein Umgebungsabbruch unterbrach die Gesamtinvocation; dies ist kein einzelner ununterbrochener grüner Gesamtlauf. Im langen Runtime-Block gab es einen Reaktionszeit-Ausreißer und zwei JSON-Testdatenabweichungen. Die drei betroffenen Fälle wurden separat gemeinsam bestanden; die Reaktionszeitgrenzen blieben unverändert. Der Ausreißer ist damit protokolliert, keine Garantie einer maximalen Live-Latenz. Alle ursprünglichen Fehlstatus bleiben in der Evidenz erhalten. Die Testfallzahlen der Teilprüfungen schließen die früheren Präfixfälle nicht mit ein; Dateimengen und alle Abschlusscodes stehen im Evidenzdownload.</p><p>Vollständige Produktionsgrids sind mit 20 konstruierten Symbolen auf Long-/Short-Abschlüsse je Range und Normal/Trailing geprüft. Native SimExchange-Prüfungen öffnen und schließen auf 12 sowie 20 Symbolen und prüfen TP/SL-Orders. Das belegt Korrektheit, keine Marktprofitabilität.</p><p>Factory-Focus: 211 Einträge. Migration v37 aktualisiert nur exakte frühere Standards einschließlich Presets und erhält eigene/off-Auswahlen. Explizit längere Evaluationen erweitern Backfill, Retention und Lanes; Prüfungen decken 168/336/720/1440h-Anforderungen ab. Der Archiv-Replay hier belegt maximal 336h Auswahlhistorie, keine 60-Tage-Marktergebnisse.</p><p>Native Live-Zulassung beurteilt qualifizierte Sets einzeln. Eine unpassende verlierende Gesamt-Simulation blockiert sie nicht pauschal. Matching post-Base-PF, eigene bestätigte Ausführungsnachweise, Ownership-, Risiko- und Schutzprüfungen bleiben erforderlich. Kein Konto aktiviert, keine echten Orders gesendet, kein Deployment geändert.</p><p>Positive Historie garantiert keine folgenden Stunden. Negative Ausführungsrenditen bleiben vollständig sichtbar. Frühere 102-Varianten-Studien mit zurückgezogener zusätzlicher Kontextprüfung sind als superseded archiviert und zertifizieren diesen Stand nicht.</p></section>
+<section class="shared"><h2>Technische Prüfung und Betriebsstand</h2>{checks}<p><a href="memory-core-verification-20261020.json.gz" download>Prüfprotokolle, Abschlusscodes und Quellmanifeste (GZIP)</a></p><p>Die Core-Dateiabdeckung verbindet den dokumentierten seriellen Präfix mit den vollständig abgeschlossenen Teilprüfungen. Ein Umgebungsabbruch unterbrach die Gesamtinvocation; dies ist kein einzelner ununterbrochener grüner Gesamtlauf. Im langen Runtime-Block gab es einen Reaktionszeit-Ausreißer und zwei JSON-Testdatenabweichungen. Die drei betroffenen Fälle wurden separat gemeinsam bestanden; die Reaktionszeitgrenzen blieben unverändert. Der Ausreißer ist damit protokolliert, keine Garantie einer maximalen Live-Latenz. Zusätzlich wurde ein historischer Hash-Test auf seine alten Eingaben fixiert: Der Vergleich mit zwei archivierten Ständen belegt ausschließlich eine neue neutrale Inverse-Metadatenzeile; alle übrigen Ausgaben bleiben identisch und der ursprüngliche Soll-Hash ist wieder erfüllt. Alle ursprünglichen Fehlstatus bleiben in der Evidenz erhalten. Die Testfallzahlen der Teilprüfungen schließen die früheren Präfixfälle nicht mit ein; Dateimengen und alle Abschlusscodes stehen im Evidenzdownload.</p><p>Vollständige Produktionsgrids sind mit 20 konstruierten Symbolen auf Long-/Short-Abschlüsse je Range und Normal/Trailing geprüft. Native SimExchange-Prüfungen öffnen und schließen auf 12 sowie 20 Symbolen und prüfen TP/SL-Orders. Das belegt Korrektheit, keine Marktprofitabilität.</p><p>Factory-Focus: 211 Einträge. Migration v37 aktualisiert nur exakte frühere Standards einschließlich Presets und erhält eigene/off-Auswahlen. Explizit längere Evaluationen erweitern Backfill, Retention und Lanes; Prüfungen decken 168/336/720/1440h-Anforderungen ab. Der Archiv-Replay hier belegt maximal 336h Auswahlhistorie, keine 60-Tage-Marktergebnisse.</p><p>Native Live-Zulassung beurteilt qualifizierte Sets einzeln. Eine unpassende verlierende Gesamt-Simulation blockiert sie nicht pauschal. Matching post-Base-PF, eigene bestätigte Ausführungsnachweise, Ownership-, Risiko- und Schutzprüfungen bleiben erforderlich. Kein Konto aktiviert, keine echten Orders gesendet, kein Deployment geändert.</p><p>Positive Historie garantiert keine folgenden Stunden. Negative Ausführungsrenditen bleiben vollständig sichtbar. Frühere 102-Varianten-Studien mit zurückgezogener zusätzlicher Kontextprüfung sind als superseded archiviert und zertifizieren diesen Stand nicht.</p></section>
 <p class="note">Realtime-Refresh ist konfigurierbar: CTS_CORE_FAST_ENTRIES=all (oder 1) schließt ausgewählte Inverse-Lanes auf deren eigenen 1/5/15m-Barschlüssen ein. Der bestehende Standard break beschränkt diesen schnellen Pfad auf Break; vollständige Berechnungen verarbeiten Inverse auch dann. Die Host-Einstellung wurde hier nicht geändert. Kaltaufbau eines vollständigen Research-Grids und Live-Tickdurchsatz sind unterschiedliche Messungen.</p>
-<footer>Source-Checkpoint: {esc(bundle['sourceCheckpoint'])}<br>Source-Manifest: {bundle['sourceManifestSha256']}<br>Feed: {runs[0]['protocol']['feedSha256']}<br>Darstellung: UTC. Selbstständig offline lesbar; keine externen Diagramm-Bibliotheken oder Datenabrufe.</footer></main>
+<footer>Source-Checkpoint: {esc(bundle['sourceCheckpoint'])}<br>Source-Manifest: {bundle['sourceManifestSha256']}<br>Feed: {runs[0]['protocol']['feedSha256']}<br>Darstellung: {esc(args.timezone)}; Rohprotokolle mit unveränderten Unix-Millisekunden. Selbstständig offline lesbar; keine externen Diagramm-Bibliotheken oder Datenabrufe.</footer></main>
 <script id="evidence" type="application/json">{data}</script><script>
 document.getElementById('run-select').addEventListener('change',e=>{{document.querySelectorAll('.run').forEach((r,i)=>r.hidden=String(i)!==e.target.value)}});
 document.querySelectorAll('.source-search').forEach(input=>input.addEventListener('input',()=>{{const q=input.value.toLowerCase();input.parentElement.querySelectorAll('tbody tr').forEach(r=>r.hidden=!r.textContent.toLowerCase().includes(q))}}));

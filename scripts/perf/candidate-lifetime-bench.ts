@@ -43,6 +43,12 @@ const fixture = () => {
   const o = { ...defaultWalkForward(DEFAULT_SETTINGS),
     // Freeze the archived fixture's inputs (9c037e2); production defaults and independent Exit options changed later.
     // A direct baseline comparison confirms every non-options output field remains identical.
+    // The Inverse catalogue adds volume metadata to current defaults. Keep the archived Signal-only fixture's
+    // complete volume inputs explicit; the snapshot still hashes every trade, accepted marker and diagnostic.
+    indicationVolumeFactors: { coordination: 8, combined: Object.fromEntries([
+      "trend", "break", "active", "direction", "move", "rsi", "bollinger", "sar", "macd", "ema",
+      "osc", "volume", "channel", "ichimoku", "smooth", "tactic", "relate",
+    ].map((kind) => [kind, 1])) },
     longH: 336, preH: 20, signalLongH: undefined,
     exitMinTrades: undefined, exitMinPf: undefined, exitMinGreenHourShare: undefined, exitMaxDdr: undefined,
     startT: start, simH: hours, stepH: 1, signalActive: active, signalOwnBase: true,

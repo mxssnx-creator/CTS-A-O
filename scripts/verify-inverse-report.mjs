@@ -25,6 +25,7 @@ try{for(const [name,viewport] of [['desktop',{width:1440,height:1000}],['phone',
  await order.locator('summary').click();
  }
  await p.locator('#run-select').selectOption('0');
+ await p.evaluate(()=>scrollTo(0,0));
  await p.screenshot({path:`/workspace/screenshots/inverse-report/${name}-top.png`});
  await p.locator('.run:visible .charts').scrollIntoViewIfNeeded();await p.screenshot({path:`/workspace/screenshots/inverse-report/${name}-charts.png`});
  const details=p.locator('.run:visible details').filter({hasText:'Alle 114 Indikationen'});await details.locator('summary').click();await details.locator('input').fill('rsi2-turn');assert.equal(await details.locator('tbody tr:visible').count(),6);

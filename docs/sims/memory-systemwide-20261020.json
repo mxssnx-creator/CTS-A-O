@@ -112,10 +112,33 @@
     "productionBuild": true,
     "lintErrors": 0,
     "desktopMobileDevBuiltSurfaces": 4,
-    "fullCore": "Execution environment recovery interrupted the full invocation; 123 ordered prefix files retained, 89 affected/remaining files rerun in checkpointed chunks. Not one uninterrupted green invocation.",
+    "fullCore": {
+      "classification": "Ordered serial prefix interrupted by execution-environment recovery; suffix rerun in completed chunks. Not one uninterrupted green invocation.",
+      "files": 212,
+      "prefixFiles": 123,
+      "rerunFiles": 89,
+      "completedParts": 17,
+      "partTests": 823,
+      "partPassed": 821,
+      "historicalFailuresResolved": 4,
+      "partSkipped": 2,
+      "failures": 0,
+      "cancelled": 0
+    },
     "24hAudit": "completed, zero entry violations",
     "6hAudit": "completed, all economic fields and executions exactly equal to baseline",
-    "pagedReportDesktopMobile": "3 studies / 33 SVGs, all paging/search/download/layout checks passed"
+    "pagedReportDesktopMobile": "33 diagrams, all three studies and paged order tables, full search/download; zero errors/overflow",
+    "optInSlow": {
+      "code": 0,
+      "tests": 2,
+      "pass": 2,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "duration_ms": 497888.036475,
+      "selectedTargets": 2,
+      "note": "Nonmatching regular cases were verified separately"
+    }
   },
   "twentyFourHourAudit": {
     "tapes": 99520,
@@ -352,6 +375,47 @@
         "all20Symbols": true,
         "pooledUnitGPGL": true,
         "sha256": "7ea7efae446f5a63f20ec3e2f7a3d4759496149462bba546a754282144aa0171"
+      }
+    ]
+  },
+  "candidateFixtureReferenceParity": {
+    "reference": "9c037e2bc3d050136e1a8ca4397bb7669b90c00c",
+    "preMemoryCheckpoint": "b25faf1",
+    "preMemoryAllOutputExactlyEqual": true,
+    "referenceAllNonOptionsExactlyEqual": true,
+    "onlyDifference": "opts.indicationVolumeFactors.combined.inverse = 1 added to factory defaults",
+    "referenceHash": "83198b23fe37899b152593f52c3818c37a3396cebcce621bf5bb9662fc3f6159",
+    "changedDefaultsHash": "8a4166f005901e34670e151e1c61ae6ff678ecc7476480dcf9b70d0a6ee8d852",
+    "correction": "Frozen legacy Signal-only benchmark volume inputs; original expected hash retained; 106/106 grouped checks pass"
+  },
+  "finalReport": {
+    "sourceCheckpoint": "3c9af4d3c0086c6ce1fd20a96330147865b1775b",
+    "htmlSha256": "e7795e49e4515cb212cb0d8a73e2732d76473efe4532dab091eb7bebaf5f0af5",
+    "displayTimezone": "Europe/Vienna",
+    "ui": [
+      {
+        "name": "desktop",
+        "studies": 3,
+        "svg": 33,
+        "noOverflow": true,
+        "sourceSearch": true,
+        "download": true,
+        "orderPagination": true,
+        "orderSearch": true,
+        "orderDownload": true,
+        "errors": []
+      },
+      {
+        "name": "phone",
+        "studies": 3,
+        "svg": 33,
+        "noOverflow": true,
+        "sourceSearch": true,
+        "download": true,
+        "orderPagination": true,
+        "orderSearch": true,
+        "orderDownload": true,
+        "errors": []
       }
     ]
   }
