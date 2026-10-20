@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { MarketSource, IncrementalMarkets } from "./market.ts";
-import { barsFromCandles, syntheticCandles } from "../market/bars.ts";
+import { barsFromCandles, headBars, syntheticCandles } from "../market/bars.ts";
 import type { Bars } from "../domain/types.ts";
 
 const cut = (b: Bars, n: number): Bars => ({
@@ -37,6 +37,36 @@ describe("incremental equal-weight market grids", () => {
       const a = actual.reference(input[1], "S0", 1)!,
         b = expected.reference(input[1], "S0", 1)!;
       for (const key of ["ret", "idx", "act"] as const) same(a[key], b[key], `peer ${key}`);
+    }
+  });
+  it("keeps aligned views and gapped copies exact and immutable across subsequent appends", () => {
+    const all = ["A", "B", "C"].map((sym) =>
+      barsFromCandles(
+        sym,
+        1,
+        syntheticCandles(sym, 1, 500, 500 * 60_000).filter((_, i) => sym !== "B" || i % 71 !== 35),
+      ),
+    );
+    const stream = new IncrementalMarkets();
+    let previous: Array<{ actual: Float64Array; expected: Float64Array }> = [];
+    for (const minute of [120, 121, 130, 210, 300, 420, 500]) {
+      const input = all.map((b) => headBars(b, minute * 60_000));
+      const actual = new MarketSource(input, stream),
+        expected = new MarketSource(input);
+      for (const old of previous)
+        same(old.actual, old.expected, "published prefix stays immutable");
+      previous = [];
+      for (const b of input)
+        for (const ref of [undefined, "A", "C"]) {
+          const a = ref ? actual.reference(b, ref, 1) : actual.ref(b, 1);
+          const e = ref ? expected.reference(b, ref, 1) : expected.ref(b, 1);
+          assert.equal(a === null, e === null);
+          if (a && e)
+            for (const key of ["ret", "idx", "act"] as const) {
+              same(a[key], e[key], `${b.sym} ${ref} ${key}`);
+              previous.push({ actual: a[key], expected: e[key].slice() });
+            }
+        }
     }
   });
   it("refuses a late constituent observation or a changed population instead of changing prior evidence", () => {

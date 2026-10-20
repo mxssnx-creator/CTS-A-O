@@ -47,6 +47,26 @@ interface Grid {
 /** Append-only market grids for a private realtime generation. Old constituent bars may not arrive retroactively. */
 export class IncrementalMarkets {
   private aggregators = new Map<string, StreamMath>();
+  private alignments = new Map<string, { n: number; first: number; start: number; run: boolean }>();
+  /** The grid and target prefixes are immutable within this generation; verify only new matching times. */
+  align(key: string, grid: Grid, b: Bars): MarketRef {
+    const id = `${key}|${b.sym}|${b.tfMin}`;
+    let old = this.alignments.get(id);
+    if (!old || b.n < old.n || b.t[0] !== old.first)
+      old = { n: 0, first: b.t[0], start: b.n ? lowerBound(grid.t, b.t[0]) : 0, run: true };
+    let run = old.run && old.start + b.n <= grid.t.length;
+    for (let i = old.n; run && i < b.n; i++) if (grid.t[old.start + i] !== b.t[i]) run = false;
+    this.alignments.set(id, { ...old, n: b.n, run });
+    return run
+      ? {
+          ret: grid.ret.subarray(old.start, old.start + b.n),
+          idx: grid.idx.subarray(old.start, old.start + b.n),
+          act: grid.act.subarray(old.start, old.start + b.n),
+          syms: grid.syms,
+        }
+      : alignMarket(grid, b);
+  }
+
   higher(b: Bars, factor: number) {
     const key = `${b.sym}|${b.tfMin}`;
     let math = this.aggregators.get(key);
@@ -326,7 +346,8 @@ export class MarketSource {
   }
   /** the market at the bars of `b` (a series of timeframe tf, or its `factor` × higher view) */
   ref(b: Bars, tf: number, factor = 1): MarketRef {
-    return alignMarket(this.grid(tf, factor), b);
+    const grid = this.grid(tf, factor);
+    return this.stream?.align(`market:${tf}x${factor}`, grid, b) ?? alignMarket(grid, b);
   }
   /** One named peer, matched by completed bar time. Missing/self/ambiguous peers stay unavailable. */
   reference(b: Bars, sym: string, tf: number, factor = 1): MarketRef | null {
@@ -344,6 +365,6 @@ export class MarketSource {
       g = this.stream ? this.stream.get(key, inputs) : buildMarket(inputs);
       this.grids.set(key, g);
     }
-    return alignMarket(g, b);
+    return this.stream?.align(key, g, b) ?? alignMarket(g, b);
   }
 }

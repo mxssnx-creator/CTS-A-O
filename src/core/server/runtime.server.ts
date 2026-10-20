@@ -1560,6 +1560,7 @@ export class CoreRuntime {
       if (gen !== this.gen || this.stopped)
         throw new Error("paper wait canceled by runtime generation");
       if (performance.now() >= until) {
+        this.researchAbort?.abort(new Error("research canceled: stalled paper generation"));
         this.gen++;
         this.paperOwner = null;
         this.paperRunning = false;
@@ -2066,6 +2067,7 @@ export class CoreRuntime {
     this.cancelBacktests("backtest canceled: runtime stopped");
     this.baseConfigRunner.cancel("stopped");
     this.cancelCompare("runtime stopped");
+    this.researchAbort?.abort(new Error("research canceled: runtime stopped"));
     this.stopTick();
     this.stopped = true;
     this.gen++;
@@ -2159,6 +2161,7 @@ export class CoreRuntime {
       this.db.event("warn", "watchdog: loop stale, starting a new generation");
       this.baseConfigRunner.cancel("newGeneration");
       this.cancelCompare("new generation");
+      this.researchAbort?.abort(new Error("research canceled: new generation"));
       this.gen++;
       this.paperOwner = null;
       this.paperRunning = false;
@@ -2205,6 +2208,7 @@ export class CoreRuntime {
       "paperOwner",
       "tickSentBook",
       "realtimeLearning",
+      "researchAbort",
     ])
       if (self[field] === undefined) self[field] = null;
     if (!self.fastEnds) self.fastEnds = {};
@@ -2594,6 +2598,12 @@ export class CoreRuntime {
     // a job left open by an abandoned cycle (watchdog, stop, error) never carries its bar into this one
     this.jobOpen = false;
     try {
+      // An explicitly requested discovery run waits before pulling another universe; ordinary foreground
+      // cycles remain free to pull new candles and continue validated sets during the background comparison.
+      if (this.dirty && this.comparing) {
+        await this.waitCompare();
+        if (gen !== this.gen || this.stopped) return;
+      }
       if (this.resetUniverse) {
         this.resetUniverse = false;
         this.fastBarDone = 0;
@@ -3547,6 +3557,69 @@ export class CoreRuntime {
     this.stepSlices[name] = n;
     onFraction(1);
     return r;
+  }
+
+  /** Live research never runs the historical selection/Real scan on the ticker's thread. */
+  private async researchSimulation(
+    u: ReturnType<typeof makeUniverse>,
+    tapes: ConfigTape[],
+    wf: WalkForwardOptions,
+    gen: number,
+    progress: (value: number) => void,
+  ): Promise<WalkForwardResult> {
+    if (this.market !== "bingx" || this.replay || !workersAvailable() || this.workersBroken)
+      return await this.drive("Simulation", walkForwardGen(u, tapes, wf), progress, gen);
+    const controller = new AbortController(),
+      owner = {};
+    const estimate = compareTapeBytes(tapes);
+    this.researchAbort = controller;
+    const check = () => {
+      controller.signal.throwIfAborted();
+      if (gen !== this.gen) throw new Error("research superseded by a newer generation");
+      if (this.memPressured)
+        throw new Error(this.memLastAbort ?? "memory pressure: research aborted");
+      if (!compareWorkers(1, estimate, this.compareAvailableBytes(), false))
+        throw new Error(
+          "insufficient memory for background research; current position control retained",
+        );
+    };
+    const started = performance.now();
+    const steps = Math.max(1, walkForwardSteps(u, wf));
+    let publishedSteps = 0;
+    const report = (fraction: number) => {
+      if (gen !== this.gen || controller.signal.aborted) return;
+      this.status.heartbeat = Date.now();
+      const completed = Math.min(steps, Math.round(fraction * steps));
+      while (publishedSteps < completed) {
+        publishedSteps++;
+        progress(0);
+      }
+    };
+    try {
+      check();
+      const packed = await this.drive("Pack Real tapes", packTapesGen(tapes), () => check(), gen);
+      check();
+      const [result] = await runOnWorkers<{ sim: WalkForwardResult }>(
+        [{ type: "research-real", nowT: u.nowT, baseTf: u.baseTf, packed, wf }],
+        1,
+        15 * 60_000,
+        report,
+        false,
+        controller.signal,
+        owner,
+      );
+      check();
+      report(1);
+      this.status.phases.Simulation = {
+        ms: performance.now() - started,
+        maxSliceMs: 0,
+        slowest: "historical Real selection on owned worker",
+      };
+      return result.sim;
+    } finally {
+      if (this.researchAbort === controller) this.researchAbort = null;
+      await retireOwnedIdleWorkers(owner);
+    }
   }
 
   async compute(gen = this.gen) {
@@ -4744,22 +4817,17 @@ export class CoreRuntime {
     // simH / stepH, which ran the bar past 100 %)
     const steps = Math.max(1, walkForwardSteps(wu, wf));
     this.setStage("Real", 0, steps, `${wf.simH}h sim · step 0/${steps}`);
-    const sim = await this.drive(
-      "Simulation",
-      walkForwardGen(wu, tapes, wf),
-      (v) => {
-        if (v >= 0) {
-          step++;
-          this.setStage(
-            "Real",
-            step,
-            steps,
-            `${wf.simH}h sim · step ${Math.min(step, steps)}/${steps} · ${wf.preH}h pre · validate last ${wf.validLastN ?? 0} · live last ${wf.lastN}`,
-          );
-        }
-      },
-      gen,
-    );
+    const sim = await this.researchSimulation(wu, tapes, wf, gen, (v) => {
+      if (v >= 0) {
+        step++;
+        this.setStage(
+          "Real",
+          step,
+          steps,
+          `${wf.simH}h sim · step ${Math.min(step, steps)}/${steps} · ${wf.preH}h pre · validate last ${wf.validLastN ?? 0} · live last ${wf.lastN}`,
+        );
+      }
+    });
     // the realtime entry step stands aside while the new tapes and run replace the old ones, until the full paper
     // step has seated on them (it re-checks the hold at every slice)
     this.fastHold = true;
@@ -5016,6 +5084,7 @@ export class CoreRuntime {
     key: string;
   } | null = null;
   private compareAbort: AbortController | null = null;
+  private researchAbort: AbortController | null = null;
   private compareRetryAt = 0;
   private cancelCompare(reason: string) {
     const pending = this.compareAbort || this.compareInput;
@@ -8626,8 +8695,9 @@ export class CoreRuntime {
     // the live tick ran between this step's slices on the old book: a stop it crossed after the positions were
     // built is carried over (else the lane asks for its volume again until the next step reads the stored hit)
     for (const p of positions) {
-      if (p.stopHit) continue;
       const prev = prevByKey.get(posId(p));
+      Object.assign(p, carryTrail(p, prev));
+      if (p.stopHit) continue;
       if (prev?.stopHit && prev.stop === p.stop) {
         p.stopHit = prev.stopHit;
         if (prev.hitPx) p.hitPx = prev.hitPx;

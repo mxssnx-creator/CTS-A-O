@@ -3,7 +3,8 @@ import { afterEach, describe, it, mock } from "node:test";
 import type { ExitConfigSet, Protect } from "../domain/types.ts";
 import { barsFromCandles } from "../market/bars.ts";
 import { CandleSeries } from "../market/candle-series.ts";
-import { configId } from "../pipeline/pipeline.ts";
+import { makeTape, walkForward } from "../sim/walkforward.ts";
+import { configId, makeUniverse } from "../pipeline/pipeline.ts";
 import { simulate } from "../sim/backtest.ts";
 import { createExitProtection } from "../sim/exit-protection.ts";
 import { CoreDb } from "./db.server.ts";
@@ -60,6 +61,62 @@ afterEach(async () => {
 });
 
 describe("completed protection bars through the actual runtime tick", () => {
+  it("preserves trailing changes made after each paper yield through atomic book publication on both sides", () => {
+    mock.timers.enable({ apis: ["Date"], now: T0 });
+    for (const side of [1, -1] as const) {
+      const rt = runtime(),
+        protect: Protect = { tp: 0.2, sl: 0.05, trail: 0.01, hold: 100 };
+      const old = position(protect, side);
+      const b = barsFromCandles(
+        old.sym,
+        1,
+        Array.from({ length: 120 }, (_, i) => candle(T0 - (120 - i) * M)),
+      );
+      const u = makeUniverse([b]);
+      rt.sim = walkForward(u, [], rt.wf);
+      rt.tapes = [
+        makeTape(
+          old.cfg,
+          "follow",
+          "ema-9-21@m1",
+          protect,
+          "trailing",
+          [old.sym],
+          [],
+          [{ ...old }],
+          [],
+        ),
+      ];
+      rt.paper.positions = [old];
+      rt.paper.selected = [old.cfg];
+      const hooks = rt as unknown as {
+        lastSelection: { picks: never[]; eligible: number };
+        stepPaperGen(f: {
+          opens: Map<string, readonly Position[]>;
+          t: number;
+        }): Generator<number, void>;
+      };
+      hooks.lastSelection = { picks: [], eligible: 1 };
+      let yields = 0;
+      for (const _ of hooks.stepPaperGen({ opens: new Map([[old.cfg, [{ ...old }]]]), t: T0 })) {
+        yields++;
+        old.stop += side * 0.01;
+        old.peak += side * 0.02;
+        old.trailOn = true;
+        old.tkBar = yields;
+        old.tkHi = 102;
+        old.tkLo = 98;
+      }
+      assert.ok(yields > 3);
+      assert.equal(rt.paper.positions.length, 1);
+      const next = rt.paper.positions[0];
+      assert.equal(next.stop, old.stop);
+      assert.equal(next.peak, old.peak);
+      assert.equal(next.trailOn, true);
+      assert.equal(next.tkBar, old.tkBar);
+    }
+  });
+
   it("advances all Exit tactics on flat bars, preserves idle Normal marks, and crosses the causal adjusted TP", async () => {
     mock.timers.enable({ apis: ["Date"], now: T0 });
     for (const side of [1, -1] as const) {

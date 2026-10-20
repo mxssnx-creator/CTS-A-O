@@ -153,7 +153,7 @@ try {
   rt.status.state = "running";
   rt.status.symbols = protocol.symbols;
   rt.status.lastBarT = cut - M;
-  rt.nextResearchAt = cut + H;
+  rt.nextResearchAt = cut + (steps + 1) * M; // Keep the endpoint close inside the isolated foreground window.
   rt.schedule = (ms) => scheduled.push(ms); // Exercise cycle() exactly; caller supplies its serialized clock.
   rt.syncMarket = async () => true; // Candles below are the already received, finalized exchange payload.
   rt.fastArgs = {
@@ -227,6 +227,12 @@ try {
     const tickStart = performance.now();
     await rt.tick();
     ticks.push(performance.now() - tickStart);
+    assert.equal(rt.status.tick?.count, step, "each measured tick must actually finish");
+    assert.equal(rt.status.tick?.error, null);
+    assert.ok(
+      rt.paper.positions.every((p) => Number.isFinite(p.mtm)),
+      "every open mark is finite",
+    );
     if (step % 5 === 0 || process.env.CTS_CORE_PROFILE_REALTIME === "1")
       console.log(
         JSON.stringify({
@@ -238,6 +244,8 @@ try {
         }),
       );
   }
+  const foregroundLoop = { p99: loop.percentile(99) / 1e6, max: loop.max / 1e6 };
+  loop.disable(); // The independent full-history oracle below is outside foreground latency.
   const dist = (values) => {
     const sorted = values.filter(Number.isFinite).sort((a, b) => a - b);
     return {
@@ -310,7 +318,7 @@ try {
     cut,
     clock:
       "Causal recorded bar-close clock; intervals invoked only after the previous invocation completes",
-    researchIntervalMs: H,
+    researchIntervalMs: (steps + 1) * M,
     researchDefaultMs: 300_000,
     historicalCohort: {
       earlierExecutedIds: ids.size,
@@ -336,7 +344,7 @@ try {
     workers: dist(workerMs),
     ticks: dist(ticks),
     series: { cycleMs, fastMs, workerMs, ticks },
-    loop: { p99: loop.percentile(99) / 1e6, max: loop.max / 1e6 },
+    loop: foregroundLoop,
     end: {
       positions: rt.paper.positions.length,
       closed: rt.paper.trades.length,

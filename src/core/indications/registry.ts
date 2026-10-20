@@ -123,6 +123,8 @@ function spec(
   params: Record<string, number>,
   fn: (k: SeriesCache) => Int8Array,
 ): IndicationSpec {
+  // Signal aliases deliberately share their exact source function and numeric continuation.
+  if (id.startsWith("sig-")) return { id, kind, label, params, fn };
   return {
     id,
     kind,

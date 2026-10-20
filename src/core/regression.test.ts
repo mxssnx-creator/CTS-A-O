@@ -710,10 +710,10 @@ it("overall mode does not compute the pending entries before every live step (on
   rt.onLive = async () => {
     steps++;
   };
-  const orig = rt.pendingEntries.bind(rt);
-  rt.pendingEntries = () => {
+  const orig = (R.pendingEntriesGen as () => Generator<number, unknown>).bind(rt);
+  R.pendingEntriesGen = function* () {
     pending++;
-    return orig();
+    return yield* orig();
   };
   const run = async (n: number) => {
     for (let i = 0; i < n; i++) {
@@ -895,13 +895,15 @@ it("a restart waits for the live step in flight (its open gets its stop) before 
   const { CoreDb } = await import("./server/db.server.ts");
   const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 1 } as never, { market: "synthetic" });
   const R = rt as unknown as Record<string, unknown>;
-  let release!: () => void;
-  rt.onLive = () => new Promise<void>((r) => (release = r));
+  let release!: () => void, entered!: () => void;
+  const active = new Promise<void>((resolve) => { entered = resolve; });
+  rt.onLive = () => { entered(); return new Promise<void>((r) => (release = r)); };
   rt.updateSettings({ live: { ...rt.settings.live, enabled: true } } as never);
   R.paperStepped = true;
   R.resetUniverse = false;
   R.settingsStale = false;
   await rt.tick();
+  await active; // Detached sliced planning finishes before an order/protection step is considered in flight.
   assert.equal(R.liveBusy, true, "a step is in flight");
   rt.stop();
   assert.equal(await rt.liveSettled(30), false, "still in flight: not settled");

@@ -15,6 +15,8 @@ import {
   packArena,
   unpackTapes,
   walkForward,
+  walkForwardGen,
+  walkForwardSteps,
   type ConfigTape,
   type PackedTapes,
 } from "../sim/walkforward.ts";
@@ -54,6 +56,14 @@ type Msg = { evaluationFromT?: number } & (
   | ({ id: number } & SignalHistMessage)
   | ({ id: number } & ExitStrategyMessage)
   | ({ id: number } & BaseConfigChunkMessage)
+  | {
+      id: number;
+      type: "research-real";
+      nowT: number;
+      baseTf: number;
+      packed: PackedTapes;
+      wf: Record<string, unknown>;
+    }
   | {
       id: number;
       type: "compare";
@@ -180,6 +190,33 @@ parentPort!.on("message", (m: Msg) => {
         ...arena.others,
       ]);
       return;
+    }
+    if (m.type === "research-real") {
+      const u = {
+        bars: [],
+        caches: [],
+        startT: 0,
+        endT: 0,
+        splitT: 0,
+        nowT: m.nowT,
+        baseTf: m.baseTf,
+      };
+      const g = walkForwardGen(u as never, unpackTapes(m.packed), m.wf as never);
+      const total = Math.max(1, walkForwardSteps(u as never, m.wf as never));
+      let done = 0,
+        last = 0;
+      for (;;) {
+        const result = g.next();
+        if (result.done) {
+          parentPort!.postMessage({ id: m.id, ok: true, sim: result.value });
+          return;
+        }
+        if (result.value >= 0) done++;
+        if (Date.now() - last >= 400) {
+          last = Date.now();
+          parentPort!.postMessage({ id: m.id, progress: done, total });
+        }
+      }
     }
     if (m.type === "compare") {
       // simulated trading of each preset on the same tapes (one walk-forward per preset)
