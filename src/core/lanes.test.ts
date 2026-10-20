@@ -140,7 +140,8 @@ describe("lane combos", () => {
 
 describe("lane protect", () => {
   it("scales TP / SL / trail by √(tf / 15m) and keeps the hold time", () => {
-    const p = { tp: 0.03, sl: 0.045, trail: 0.015, hold: 32 };
+    // a stop under the 3 % trailing cap, so the case tests the scaling (the cap has its own tests in trail-cap.test.ts)
+    const p = { tp: 0.03, sl: 0.025, trail: 0.015, hold: 32 };
     assert.deepEqual(laneProtect(p, "x@m15"), p);
     assert.deepEqual(laneProtect(p, "x"), p);
     const one = laneProtect(p, "x@m1");
@@ -148,7 +149,8 @@ describe("lane protect", () => {
     assert.ok(Math.abs(one.tp - Math.hypot(0.03 * Math.sqrt(1 / REF_TF), LANE_MIN.tp)) < 1e-4);
     assert.equal(one.hold, 32 * 15);
     const thirty = laneProtect(p, "x@m30c");
-    assert.ok(Math.abs(thirty.sl - 0.045 * Math.sqrt(2)) < 1e-4);
+    // 2.5 % × √2 = 3.5 % on a 30m lane: the trailing stop is capped at 3 %
+    assert.equal(thirty.sl, 0.03);
     assert.equal(thirty.hold, 16);
     assert.equal(laneProtect({ ...p, trail: 0 }, "x@m5").trail, 0);
   });

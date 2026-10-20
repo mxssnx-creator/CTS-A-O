@@ -41,6 +41,12 @@ export interface SimResult {
 export const REF_TF = 15;
 /** Floors of a short lane's scaled protect: target 3 × modeled round-trip cost, stop and trail. */
 export const LANE_MIN = { tp: +(RT_COST * 3).toFixed(6), sl: 0.005, trail: 0.0025 } as const;
+/** The owner's rule: a trailing config's initial stop from entry is at most 3 % (its trail then follows the peak). */
+export const TRAIL_SL_CAP = 0.03;
+/** A trailing protect (trail > 0) whose stop is above the cap gets the cap; every other protect is returned as it is. */
+export function capTrailingSl<T extends { sl: number; trail: number }>(p: T): T {
+  return p.trail > 0 && p.sl > TRAIL_SL_CAP ? { ...p, sl: TRAIL_SL_CAP } : p;
+}
 
 // ── ATR exits (Stable-02 model) ─────────────────────────────────────────────────────────────────────────
 /** ATR(14) of the Stable-02 desk (EMA of the true range) */
@@ -57,7 +63,8 @@ const r6 = (x: number) => +x.toFixed(6);
 /**
  * The fixed distances of an ATR protect for one entry: `atrFrac` = ATR ÷ price on the signal bar (fallback 1 %).
  * stop = sl × ATR, target = stop × tpRatio, trail arming at 0.95 × stop with the Stable-02 gap. Short lanes keep
- * the engine's soft floors (√(x² + floor²), as laneProtect), and live-feedback floors apply last.
+ * the engine's soft floors (√(x² + floor²), as laneProtect), and live-feedback floors apply last, except that a trailing
+ * stop is capped at TRAIL_SL_CAP after them.
  */
 export function resolveAtrProtect(p: Protect, atrFrac: number, tfMin = REF_TF): Protect {
   const a = p.atr;
@@ -66,6 +73,8 @@ export function resolveAtrProtect(p: Protect, atrFrac: number, tfMin = REF_TF): 
   const lo = (x: number, m: number) => (tfMin < REF_TF ? Math.hypot(x, m) : x);
   let sl = lo(a.sl * f, LANE_MIN.sl);
   if (a.minSl) sl = Math.max(sl, a.minSl);
+  // a trailing ATR protect keeps the 3 % initial-stop cap even against a live-feedback floor (the owner's rule)
+  if (a.trail && a.trail > 0) sl = Math.min(sl, TRAIL_SL_CAP);
   // the target follows the (floored) stop at its ratio, and never falls below 3 × the round-trip cost on any lane
   // (a low-ATR 15m entry gave targets below the cost: every target exit a loss)
   const tp = Math.max(sl * a.tpRatio, LANE_MIN.tp);
