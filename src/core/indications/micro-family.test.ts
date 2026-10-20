@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { after, describe, it } from "node:test";
 import {
   MICRO_CONFIG_IDS,
@@ -43,16 +44,16 @@ function fixture() {
 after(() => closePool());
 describe("first-class Micro", () => {
   it("registers every method/profile/subset once and computes only its own anchor", () => {
-    assert.equal(MICRO_CONFIG_IDS.length, 308);
-    assert.equal(new Set(MICRO_CONFIG_IDS).size, 308);
+    assert.equal(MICRO_CONFIG_IDS.length, 364);
+    assert.equal(new Set(MICRO_CONFIG_IDS).size, 364);
     for (const id of MICRO_CONFIG_IDS) assert.equal(INDICATION_BY_ID.get(id)?.kind, "micro");
     const combos = allCombos(
       MICRO_CONFIG_IDS.map((id) => `follow|${id}`),
       [],
       [1, 5, 15],
     );
-    assert.equal(combos.length, 308);
-    assert.equal(new Set(combos.map((c) => c.ind)).size, 308);
+    assert.equal(combos.length, 364);
+    assert.equal(new Set(combos.map((c) => c.ind)).size, 364);
     assert.ok(
       combos.every((c) => !c.ind.endsWith("c")),
       "explicit subsets never spawn duplicate combined lanes",
@@ -76,6 +77,18 @@ describe("first-class Micro", () => {
     assert.ok(Number.isNaN(a.high[7]));
     assert.equal(a.high[9], 8);
     assert.throws(() => microPriorExtrema(new Float64Array(), 0));
+  });
+  it("preserves every original Micro signal bit while adding independent techniques", () => {
+    // Captured independently from source 47d70d8 on this exact fixture; 308 original IDs × three symbols.
+    const bars = fixture(), u = makeUniverse(bars), hash = createHash("sha256");
+    const specs = microFamilySpecs().filter((s) => !/-(flow-break|trend-reclaim|market-continuation|direction-persist)-(fast|selective)$/.test(s.id));
+    let n = 0;
+    for (const spec of specs) for (let i = 0; i < bars.length; i++) {
+      if (bars[i].tfMin !== spec.params.anchor) continue;
+      hash.update(`${spec.id}|${bars[i].sym}`); hash.update(spec.fn(u.caches[i])!); n++;
+    }
+    assert.equal(n, 924);
+    assert.equal(hash.digest("hex"), "ecc0ded3a8208c76812b07e905d99522ad6818466e5348f90db751f7f6ac17e3");
   });
   it("matches prefix-only universes for all subsets and leaves no-market relations neutral", () => {
     const bars = fixture(),
@@ -101,6 +114,7 @@ describe("first-class Micro", () => {
       "market-follow",
       "drawdown-residual",
       "drawdown-market",
+      "market-continuation",
     ] as const)
       assert.ok(
         noMarket.states[method].every((x) => x === 0),
@@ -165,7 +179,7 @@ describe("first-class Micro", () => {
       includeMicro: true,
     };
     const pairs = exitStrategyPairs([], u, settings);
-    assert.equal(pairs.length, 308);
+    assert.equal(pairs.length, 364);
     assert.ok(pairs.every((pair) => pair.startsWith("exit|micro-") && !pair.endsWith("c")));
     assert.equal(exitStrategyPairs([], u, settings, ["micro"]).length, 0);
     assert.equal(exitStrategyPairs([], u, { ...settings, includeMicro: false }).length, 0);

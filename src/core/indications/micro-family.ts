@@ -2,6 +2,7 @@
 // All windows use completed bars; shared O(n) features do not share signal/config qualification.
 import type { IndicationSpec } from "./registry.ts";
 import type { SeriesCache } from "./cache.ts";
+import { RT_COST } from "../model-cost.ts";
 
 export const MICRO_SUBSETS = [[1], [5], [15], [1, 5], [1, 15], [5, 15], [1, 5, 15]] as const;
 export const MICRO_PROFILES = [
@@ -32,6 +33,10 @@ export const MICRO_METHODS = [
   "break-direction",
   "market-momentum",
   "relative-trend",
+  "flow-break",
+  "trend-reclaim",
+  "market-continuation",
+  "direction-persist",
 ] as const;
 export type MicroMethod = (typeof MICRO_METHODS)[number];
 export const microFamilyId = (tfs: readonly number[], method: MicroMethod, profile: MicroProfile) =>
@@ -96,7 +101,7 @@ export function microPriorExtrema(xs: Float64Array, window: number) {
 
 /** Also accepts genuine subminute Bars (e.g. tfMin=1/12 from recorded trades), without inventing minute paths. */
 export function microFrame(k: SeriesCache, profile: MicroProfile): Frame {
-  return k.memo(`micro-family:frame:v1:${profile}`, () => {
+  return k.memo(`micro-family:frame:v2:${profile}`, () => {
     const p = MICRO_PROFILES.find((x) => x.id === profile);
     if (!p) throw new Error(`unknown Micro profile ${profile}`);
     const { b } = k,
@@ -127,7 +132,7 @@ export function microFrame(k: SeriesCache, profile: MicroProfile): Frame {
     // Prefix moments end BEFORE the move: current price cannot inflate its own residual threshold.
     const rp = new Float64Array(n + 1),
       rq = new Float64Array(n + 1);
-    let lastActivity = 1;
+    let lastActivity = 1, signedFlow = 0, lastCross = -Infinity, lastCrossSide = 0;
     let run = 0,
       mrun = 0,
       fast = 0,
@@ -151,6 +156,7 @@ export function microFrame(k: SeriesCache, profile: MicroProfile): Frame {
       const contiguous = i > 0 && b.t[i] - b.t[i - 1] === span;
       if (!valid || !contiguous || run === 0) {
         lastActivity = 1;
+        signedFlow = 0; lastCross = -Infinity; lastCrossSide = 0;
         run = 0;
         mrun = 0;
         fast = slow = b.c[i];
@@ -180,6 +186,11 @@ export function microFrame(k: SeriesCache, profile: MicroProfile): Frame {
       slow += ((b.c[i] - slow) * 2) / 22;
       atr += (tr - atr) / 14;
       vol += ((b.v[i] - vol) * 2) / 21;
+      const turnEma = prevFast <= prevSlow && fast > slow ? 1 : prevFast >= prevSlow && fast < slow ? -1 : 0;
+      if (turnEma) { lastCross = i; lastCrossSide = turnEma; }
+      // Signed participation is measured at the completed close, with an independent rolling state per profile.
+      const location = range > 0 ? (2 * b.c[i] - b.h[i] - b.l[i]) / range : 0;
+      signedFlow += ((location * b.v[i] - signedFlow) * 2) / (w + 1);
       const compression = rangeSlow > 0 && rangeFast / rangeSlow < 0.85;
       rangeFast += ((range - rangeFast) * 2) / 9;
       rangeSlow += ((range - rangeSlow) * 2) / 25;
@@ -234,8 +245,6 @@ export function microFrame(k: SeriesCache, profile: MicroProfile): Frame {
       const breakout = log[i] > px.high[i] ? 1 : log[i] < px.low[i] ? -1 : 0;
       const rocNow = log[i] - log[i - 3],
         rocBefore = log[i - 1] - log[i - 4];
-      const turnEma =
-        prevFast <= prevSlow && fast > slow ? 1 : prevFast >= prevSlow && fast < slow ? -1 : 0;
       const turnRoc = rocBefore <= 0 && rocNow > 0 ? 1 : rocBefore >= 0 && rocNow < 0 ? -1 : 0;
       states["break-close"][i] = agree(breakout, trend);
       states["break-retest"][i] =
@@ -254,6 +263,19 @@ export function microFrame(k: SeriesCache, profile: MicroProfile): Frame {
       states["change-roc"][i] = recovery >= p.recovery ? turnRoc : 0;
       states["break-activity"][i] = agree(states["break-close"][i], states["activity-flow"][i]);
       states["break-direction"][i] = agree(states["break-activity"][i], turnRoc || turnEma);
+      // Additional cost-aware techniques, never replacements for existing siblings. The observed prior range
+      // must span three maximum modeled round trips; this is an opportunity hurdle, not a profit prediction.
+      const room = px.high[i] - px.low[i] >= 3 * RT_COST;
+      const flow = vol > 0 ? signedFlow / vol : 0;
+      states["flow-break"][i] = room && activity >= 1 && Math.abs(flow) >= p.recovery &&
+        direction(flow) === trend && breakout === trend && recovery >= p.recovery ? trend : 0;
+      states["trend-reclaim"][i] = room && activity >= 1 && recovery >= p.recovery
+        ? trend === 1 && b.c[i - 1] <= prevFast && b.c[i] > fast ? 1
+          : trend === -1 && b.c[i - 1] >= prevFast && b.c[i] < fast ? -1 : 0
+        : 0;
+      states["direction-persist"][i] = room && activity >= 1 && i - lastCross <= 3 &&
+        lastCrossSide === trend && direction(rocNow) === trend && turn === trend &&
+        Math.abs(b.c[i] - fast) <= prevAtr ? trend : 0;
       lastActivity = activity;
       let marketTurn = 0,
         residualTurn = 0;
@@ -280,6 +302,9 @@ export function microFrame(k: SeriesCache, profile: MicroProfile): Frame {
           const broad = mr[i] - mr[i - 3];
           const momentum = Math.abs(broad) >= p.stretch * mu * Math.sqrt(3) ? direction(broad) : 0;
           states["market-momentum"][i] = agree(momentum, trend) === turn ? momentum : 0;
+          states["market-continuation"][i] = room && activity >= 1 && momentum === trend &&
+            trend === turn && Math.abs(prevFast - prevSlow) / prevAtr >= p.recovery &&
+            Math.abs(b.c[i] - fast) / prevAtr <= 2 * p.stretch ? trend : 0;
           states["relative-trend"][i] =
             Math.abs(z) >= p.residual &&
             direction(z) === trend &&
@@ -335,7 +360,7 @@ export function microFamilyState(
 ): Int8Array {
   const anchor = Math.min(...tfs);
   if (k.b.tfMin !== anchor) return new Int8Array(k.b.n);
-  return k.memo(`micro-family:state:v1:${method}:${profile}:${tfs.join("x")}`, () => {
+  return k.memo(`micro-family:state:v2:${method}:${profile}:${tfs.join("x")}`, () => {
     const out = Int8Array.from(microFrame(k, profile).states[method]);
     for (const tf of tfs) {
       if (tf === anchor) continue;

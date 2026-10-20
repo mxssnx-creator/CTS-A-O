@@ -541,7 +541,10 @@ describe("bug-hunt regressions", () => {
     const { BREAK_MICRO_FOCUS_17OCT, PREVIOUS_DEFAULT_FOCUS_17OCT } = await import("./config.ts");
     assert.equal(BREAK_MICRO_FOCUS_17OCT.length, 60);
     assert.equal(new Set(BREAK_MICRO_FOCUS_17OCT).size, 60);
-    assert.deepEqual(DEFAULT_SETTINGS.focus, [...PREVIOUS_DEFAULT_FOCUS_17OCT, ...BREAK_MICRO_FOCUS_17OCT]);
+    const original = [...PREVIOUS_DEFAULT_FOCUS_17OCT, ...BREAK_MICRO_FOCUS_17OCT];
+    assert.deepEqual(DEFAULT_SETTINGS.focus.slice(0, original.length), original);
+    assert.equal(new Set(DEFAULT_SETTINGS.focus).size, DEFAULT_SETTINGS.focus.length);
+    assert.ok(DEFAULT_SETTINGS.focus.length > original.length, "later independent families extend the catalog");
     for (const id of BREAK_MICRO_FOCUS_17OCT) assert.ok(DEFAULT_SETTINGS.focus.includes(id), id);
     const defaultCombos = allCombos(DEFAULT_SETTINGS.focus, DEFAULT_SETTINGS.disabledKinds, DEFAULT_SETTINGS.tfs, microLaneFloor(DEFAULT_SETTINGS.grid));
     assert.deepEqual(

@@ -806,6 +806,7 @@ function waiting(k: string): string | null {
   return b && Date.now() < b.until ? b.msg : null;
 }
 function failed(k: string, msg: string, baseMs: number, maxMs: number) {
+  if (/request budget (?:pause|unavailable) \(not sent\)/.test(msg)) return;
   const n = (backoff.get(k)?.n ?? 0) + 1;
   backoff.set(k, { n, until: Date.now() + Math.min(maxMs, baseMs * 2 ** (n - 1)), msg });
 }
@@ -1129,6 +1130,14 @@ async function runStepNow(
     }
     liveKvSet(rt.db, pendingKey, pending);
   };
+  // A crash may follow the durable non-dispatch marker but precede removal of its request metadata.
+  // That marker is authoritative: never poll it into ownership or dedupe it as sent.
+  let retiredUnsent = false;
+  for (const coid of Object.keys(pending))
+    if (rt.db.get<{ status: string }>("SELECT status FROM live_orders WHERE coid=?", coid)?.status === "not-sent") {
+      delete pending[coid]; retiredUnsent = true;
+    }
+  if (retiredUnsent) savePending();
   const settled = (
     coid: string, cfg: string, sym: string, side: number, kind: "E" | "C", sentQty: number,
     px: number, key: string, at: number, resp: unknown,
@@ -1272,9 +1281,10 @@ async function runStepNow(
         )
         .map((r) => `${r.sym}|${Number(r.side) === 1 ? 1 : -1}`),
     );
-    // every intent ever recorded (pending, ok or error) is never sent again
+    // Every dispatched intent (pending, ok or refused) is never sent again. Explicit local non-dispatch
+    // is the only exception, retained durably so a restart can retry it with a fresh request identity.
     const sent = new Set(
-      rt.db.all<{ k: string }>("SELECT msg AS k FROM live_orders WHERE kind = 'E'").map((r) => r.k),
+      rt.db.all<{ k: string }>("SELECT msg AS k FROM live_orders WHERE kind = 'E' AND status <> 'not-sent'").map((r) => r.k),
     );
     const L = local(rt);
     for (const i of intents) if (sent.has(intentKey(i))) L.entriesSent.add(intentKey(i));
@@ -1593,7 +1603,7 @@ async function runStepNow(
           "E",
           0,
           px,
-          err instanceof bx.ExchangeRejected ? "error" : "pending",
+          err instanceof bx.RequestBudgetDeferred ? "not-sent" : err instanceof bx.ExchangeRejected ? "error" : "pending",
           key,
           entryAt,
         );
@@ -1602,6 +1612,11 @@ async function runStepNow(
             px, key, at: entryAt, stopDist, polledAt: Date.now() };
         } else delete pending[coid];
         savePending();
+        if (err instanceof bx.RequestBudgetDeferred) {
+          L.entriesSent.delete(key);
+          status.skipped.push({ sym: e.sym, why: err.message });
+          break;
+        }
         rt.db.event(
           "error",
           `live entry ${e.sym}: ${err instanceof Error ? err.message : err} — state unknown, re-checked next step`,
@@ -3440,6 +3455,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       try {
         await ex.setMarginMode?.(sym, marginMode);
       } catch (err) {
+        if (err instanceof bx.RequestBudgetDeferred) throw err;
         const msg = errText(err);
         if (!alreadySet(msg)) {
           const offline = /offline currently|not a valid/i.test(msg);
@@ -3498,6 +3514,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           local(rt).levVal.set(`${sym}|${side}`, lev);
         }
       } catch (err) {
+        if (err instanceof bx.RequestBudgetDeferred) throw err;
         const m = `leverage ${want} not applied on ${sym}: ${errText(err)}`;
         failed(k, m, ...OPEN_BACKOFF);
         throw new Error(m);
@@ -4573,7 +4590,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           }
         }
         const acts = planLaneOrders(covered, laneMap, resting, { ...planOpts, slots });
-        let capHit = false;
+        let capHit = false, budgetHit = false;
         const placeLane = async (lo: LaneOrder, which: "s" | "t", px: number) => {
           const kind = which === "s" ? "V" : "Y";
           const coid = makeCoid(s.connId, kind);
@@ -4606,6 +4623,10 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             if (err instanceof bx.ExchangeRejected) {
               record(coid, a, kind, lo.qty, px, "error", `${lo.id}: ${msg}`);
               if (lo[which]?.coid === coid) delete lo[which];
+            }
+            if (err instanceof bx.RequestBudgetDeferred) {
+              budgetHit = true;
+              return false;
             }
             bx.noteRateLimit(msg);
             // the account's TP/SL cap: no new lane order for a while (retrying each step drew BingX's error-rate
@@ -4645,7 +4666,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         };
         // different lanes side by side; one lane's actions (its stop, its take-profit) never in the same batch
         for (let i = 0; i < acts.length; ) {
-          if (!alive() || bx.blockingBanUntil() || capHit) break;
+          if (!alive() || bx.blockingBanUntil() || capHit || budgetHit) break;
           const batch: typeof acts = [];
           const lanesIn = new Set<string>();
           while (i < acts.length && batch.length < LANE_ORDER_CONCURRENCY && !lanesIn.has(acts[i].lane)) {

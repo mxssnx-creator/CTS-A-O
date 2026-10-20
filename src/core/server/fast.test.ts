@@ -81,8 +81,18 @@ describe("fast loops", { timeout: 1_200_000 }, () => {
     rt.start();
     await until(
       () =>
-        rt.status.computes >= 1 && rt.status.state === "running" && rt.paper.positions.length > 0,
+        rt.status.computes >= 1 && rt.status.state === "running",
     );
+    // This test checks marking and scheduling, not a random feed's entry at the current hour. Entry and
+    // ownership admission are covered by trading-e2e and entries-execution. Seed one explicit held test
+    // position after a real compute, so a quiet market cannot turn this test into a ten-minute wait.
+    const tape = rt.tapes.find((t) => t.kind === "normal")!;
+    assert.ok(tape, "the real compute built an ordinary strategy tape");
+    const sym = [...rt.candles.keys()][0], series = rt.candles.get(sym)!;
+    const entry = series.c[series.n - 1];
+    rt.paper.positions = [{ cfg: tape.id, sym, side: 1, entry, entryT: Date.now(),
+      entryI: series.n - 1, stop: entry * 0.9, target: entry * 1.1, peak: entry,
+      trailOn: false, trail: 0, trailDist: 0, mtm: -rt.settings.cost }];
     // count paper steps from here on
     // (the cycle drives the paper step as a generator in slices: count its runs, not stepPaper's)
     let steps = 0;

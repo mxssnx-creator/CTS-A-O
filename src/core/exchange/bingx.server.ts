@@ -7,6 +7,7 @@
 // key belongs to the account and signs on the VST host too.
 import { createHmac } from "node:crypto";
 import { readFileSync, renameSync, writeFileSync } from "node:fs";
+import { takeSignedRequestSlot } from "./request-budget.server.ts";
 
 export type Network = "mainnet" | "testnet";
 export type ConnId = "bingx-x01" | "bingx-vst-01" | "bingx-vst-02";
@@ -118,6 +119,10 @@ export async function signed(
     throw new ExchangeRejected(`frequency limit pause (${NOT_SENT}), unblocked after ${paused} [${method} ${path}]`, 100410);
   let body: { code?: number; msg?: string; data?: unknown };
   for (let attempt = 0; ; attempt++) {
+    // Nonblocking and atomic across local processes. Every actual dispatch, including a timestamp retry,
+    // takes a slot. Never queue a signed order beyond the live caller's generation/liveness check.
+    const slot = takeSignedRequestSlot(method, path, params);
+    if (slot.until) throw new RequestBudgetDeferred(`${slot.unavailable ? "request budget unavailable" : "request budget pause"} (${NOT_SENT}), retry after ${slot.until} [${method} ${path}]`);
     const url = signedUrl(HOSTS[network][0], path, secret, {
       ...params,
       recvWindow: 5000,
@@ -159,6 +164,11 @@ export class ExchangeRejected extends Error {
     this.name = "ExchangeRejected";
     this.code = code;
   }
+}
+/** Definitely not dispatched; retry on a subsequent fresh control step, without a venue-failure backoff. */
+export class RequestBudgetDeferred extends ExchangeRejected {
+  hold = true;
+  constructor(msg: string) { super(msg); this.name = "RequestBudgetDeferred"; }
 }
 
 /** Signed calls and rate-limit bans per endpoint in this process (diagnostics). */
