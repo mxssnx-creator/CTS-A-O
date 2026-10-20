@@ -15,10 +15,11 @@ import { signalActiveHas } from "../signals.ts";
 import { rangeOfId, rangeVolumeFactorsOf } from "../minimal-coord.ts";
 import { signalRangeOf } from "../signal-config.ts";
 import { kindOfId, parseConfigId } from "../pipeline/pipeline.ts";
-import { signalStopAt, isSignalConfig, SIGNAL_STOP_MAX } from "../sim/trailing.ts";
+import { signalStopAt, isSignalConfig, signalTrailMax, isBoundedTrailingPosition, positionTrailMax } from "../sim/trailing.ts";
 import { positionMult, runSubset, type WalkForwardResult } from "../sim/walkforward.ts";
 import type { CoreRuntime, LiveIntent } from "./runtime.server.ts";
 import type { CoreDb } from "./db.server.ts";
+import { reconcileVenueFees } from "./fill-fees.ts";
 import { attributeLanes, laneKeyOf, type LaneOpen, type LaneStepInput, type LaneTrade } from "../live-record.ts";
 import {
   coveredLanes,
@@ -278,6 +279,8 @@ export interface ExchangeClient {
   orderStatus?(venueSymbol: string, orderId: string): Promise<unknown>;
   /** a symbol's order history since a time, every order of the account (BingX allOrders): what closed a side */
   ordersSince?(venueSymbol: string, startTime: number): Promise<unknown>;
+  /** Settled order history including cumulative commissions; read after position protection, never before it. */
+  feeHistory?(venueSymbol: string, startTime: number): Promise<unknown>;
 }
 
 const orderReply = (resp: unknown): Record<string, unknown> | null => {
@@ -487,6 +490,9 @@ export function bingxClient(connId: LiveSettings["connId"]): ExchangeClient {
         endTime: Date.now(),
         limit: 500,
       }),
+    feeHistory: (sym, from) => bx.signed(network, connId, "GET", "/openApi/swap/v2/trade/allOrders", {
+      symbol: sym, startTime: Math.max(from, Date.now() - 6.9 * 24 * 3_600_000), endTime: Date.now(), limit: 500,
+    }),
   };
 }
 
@@ -643,6 +649,8 @@ interface LiveLocal {
   restopAt: Map<string, number>;
   /** last take-profit re-pricing per control key (RESTOP_MIN_MS apart) */
   retpAt: Map<string, number>;
+  feeSyncAt?: number;
+  feeCursor?: number;
   /** lane orders: no new one before this (the venue said its TP/SL order cap is reached) */
   laneCapUntil?: number;
   /** the paper lanes the last control step planned on (a change asks for a fresh exchange book) */
@@ -1497,10 +1505,11 @@ async function runStepNow(
         continue;
       }
       const signalEntry = isSignalConfig(e.cfg);
-      const stopPx = bx.stopPxExchange(px, e.side, signalEntry ? Math.min(e.sl, SIGNAL_STOP_MAX) : e.sl, spec, venueMins(rt).get(e.sym)?.stop ?? 0, signalEntry ? SIGNAL_STOP_MAX : Infinity);
+      const signalMax = signalEntry ? signalTrailMax(e) : Infinity;
+      const stopPx = bx.stopPxExchange(px, e.side, signalEntry ? Math.min(e.sl, signalMax) : e.sl, spec, venueMins(rt).get(e.sym)?.stop ?? 0, signalEntry ? signalMax : Infinity);
       const stopDist = Math.max(0, e.side * (px - stopPx) / px);
-      if (signalEntry && (!(Number.isFinite(stopPx) && stopPx > 0) || stopDist > SIGNAL_STOP_MAX + 1e-12)) {
-        status.skipped.push({ sym: e.sym, why: "Signal venue stop minimum exceeds the 2% entry cap" });
+      if (signalEntry && (!(Number.isFinite(stopPx) && stopPx > 0) || stopDist > signalMax + 1e-12)) {
+        status.skipped.push({ sym: e.sym, why: "Signal venue stop minimum exceeds the configured entry cap" });
         continue;
       }
       const admission = minRaiseBlock(qty * px, cap) ?? checkEntryBudget(e, qty, stopDist);
@@ -1566,7 +1575,7 @@ async function runStepNow(
         continue;
       }
       // the stop at a distance the venue accepts (its own tick, at least), the target by precision alone
-      const sl = bx.stopPxExchange(entryPx, e.side, signalEntry ? Math.min(e.sl, SIGNAL_STOP_MAX) : e.sl, spec, venueMins(rt).get(e.sym)?.stop ?? 0, signalEntry ? SIGNAL_STOP_MAX : Infinity);
+      const sl = bx.stopPxExchange(entryPx, e.side, signalEntry ? Math.min(e.sl, signalMax) : e.sl, spec, venueMins(rt).get(e.sym)?.stop ?? 0, signalEntry ? signalMax : Infinity);
       const tp = bx.snapPx(e.side === 1 ? entryPx * (1 + e.tp) : entryPx * (1 - e.tp), spec);
       let protectedOk = true;
       for (const [kind, type, stopPrice] of [
@@ -1590,8 +1599,8 @@ async function runStepNow(
         try {
           if (kind === "T" && !(e.tp > 0)) continue;
           if (kind === "S" && signalEntry &&
-            (!(Number.isFinite(sp) && sp > 0) || e.side * (entryPx - sp) / entryPx > SIGNAL_STOP_MAX + 1e-12))
-            throw new Error("Signal actual-fill stop cannot meet the 2% entry cap");
+            (!(Number.isFinite(sp) && sp > 0) || e.side * (entryPx - sp) / entryPx > signalMax + 1e-12))
+            throw new Error("Signal actual-fill stop cannot meet the configured entry cap");
           try {
             await placeExit(c, sp);
           } catch (err) {
@@ -1599,12 +1608,12 @@ async function runStepNow(
             // opened, so one retry here is the difference between a protected entry and a round trip paid for nothing.
             const msg = err instanceof Error ? err.message : String(err);
             if (kind !== "S" || !bx.stopTooClose(msg)) throw err;
-            const wider = bx.widenStopDist(signalEntry ? Math.min(e.sl, SIGNAL_STOP_MAX) : e.sl, entryPx, spec);
+            const wider = bx.widenStopDist(signalEntry ? Math.min(e.sl, signalMax) : e.sl, entryPx, spec);
             learnVenueMin(rt, e.sym, "stop", wider);
             record(c, e.cfg, e.sym, e.side, kind, qty, sp, "error", key);
-            sp = bx.stopPxExchange(entryPx, e.side, wider, spec, wider, signalEntry ? SIGNAL_STOP_MAX : Infinity);
-            if (signalEntry && (!(Number.isFinite(sp) && sp > 0) || e.side * (entryPx - sp) / entryPx > SIGNAL_STOP_MAX + 1e-12))
-              throw new Error("Signal stop retry would exceed the 2% entry cap");
+            sp = bx.stopPxExchange(entryPx, e.side, wider, spec, wider, signalEntry ? signalMax : Infinity);
+            if (signalEntry && (!(Number.isFinite(sp) && sp > 0) || e.side * (entryPx - sp) / entryPx > signalMax + 1e-12))
+              throw new Error("Signal stop retry would exceed the configured entry cap");
             c = makeCoid(s.connId, kind);
             await placeExit(c, sp);
             rt.db.event(
@@ -1847,7 +1856,7 @@ export function laneContributions(
   for (const p of positions) {
     // Preserve the immutable position identity used by laneStringsOf's hot-path cache.
     // Projection is read-only; legacy wide Signal stops are bounded without cloning every lane per tick.
-    const stop = isSignalConfig(p.cfg) ? signalStopAt(p.entry, p.side, p.stop) : p.stop;
+    const stop = isBoundedTrailingPosition(p) ? signalStopAt(p.entry, p.side, p.stop, positionTrailMax(p)) : p.stop;
     if (p.stopHit) continue;
     const ls = laneStringsOf(p);
     const id = ls.id;
@@ -1906,6 +1915,7 @@ export function laneContributions(
         sl,
         risk,
         chase,
+        ...(isBoundedTrailingPosition(p) ? { stopMax: positionTrailMax(p) } : {}),
       };
       if (externalUnits) x.laneUnits = unitsKnown ? v / intrinsic : NaN;
       if (tgt !== undefined) x.tgt = tgt;
@@ -3506,6 +3516,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     // fires — the position is liquidated first, and pays the liquidation fee); LIQ_STOP_SHARE of the way at most.
     // Unknown liquidation (cross margin on a large account reports none, or far away): the distance as it is.
     const allowedStopDist = (key: string, px: number, dist: number) => {
+      dist = Math.min(dist, targetOf.get(key)?.stopMax ?? Infinity);
       const [lsym, lsd] = key.split("|");
       const side = Number(lsd) === 1 ? 1 : -1;
       const liq =
@@ -3618,7 +3629,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       }
       const sc = makeCoid(s.connId, "S");
       try {
-        let stopPrice = bx.stopPxExchange(px, side, dist, spec, venueMins(rt).get(sym)?.stop ?? 0);
+        let stopPrice = bx.stopPxExchange(px, side, dist, spec, venueMins(rt).get(sym)?.stop ?? 0, targetOf.get(key)?.stopMax ?? Infinity);
         if (!(qty > 0) || !(stopPrice > 0)) throw new Error("stop needs a quantity and a price");
         const placeRepair = (c: string, sp: number) =>
           ex.order({
@@ -3643,7 +3654,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           const wider = bx.widenStopDist(dist, px, spec);
           learnVenueMin(rt, sym, "stop", wider);
           record(sc2, a, "S", qty, stopPrice, "error", msg);
-          stopPrice = bx.stopPxExchange(px, side, wider, spec, wider);
+          stopPrice = bx.stopPxExchange(px, side, wider, spec, wider, targetOf.get(key)?.stopMax ?? Infinity);
           sc2 = makeCoid(s.connId, "S");
           await placeRepair(sc2, stopPrice);
         }
@@ -3728,7 +3739,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       const positionSide = oneway ? "BOTH" : side === 1 ? "LONG" : "SHORT";
       const spec = specs.get(sym) ?? null;
       const stopDist = allowedStopDist(key, px, t.stopDist);
-      const want = bx.stopPxExchange(px, side, stopDist, spec, venueMins(rt).get(sym)?.stop ?? 0);
+      const want = bx.stopPxExchange(px, side, stopDist, spec, venueMins(rt).get(sym)?.stop ?? 0, t.stopMax ?? Infinity);
       const dist = Math.abs(px - want);
       if (!(want > 0) || !(dist > 0)) continue;
       const stops = book.orders
@@ -3815,7 +3826,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           if (bx.stopTooClose(msg)) {
             const wider = bx.widenStopDist(stopDist, px, spec);
             learnVenueMin(rt, sym, "stop", wider);
-            const wide = bx.stopPxExchange(px, side, wider, spec, wider);
+            const wide = bx.stopPxExchange(px, side, wider, spec, wider, t.stopMax ?? Infinity);
             const wc = makeCoid(s.connId, "S");
             record(wc, a, "S", qty, wide, "pending", "re-price widened");
             try {
@@ -4164,7 +4175,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             const learned = () => venueMins(rt).get(a.sym)?.stop ?? 0;
             // snapped AND at least the venue's minimum distance away on the right side of the mark: a stop that
             // lands on the wrong side is refused, and the refusal below closes the position we just opened
-            let stopPrice = bx.stopPxExchange(fpx, a.side, a.stopDist, spec, learned());
+            const stopMax = targetOf.get(a.key)?.stopMax ?? Infinity;
+            let stopPrice = bx.stopPxExchange(fpx, a.side, a.stopDist, spec, learned(), stopMax);
             let sc = makeCoid(s.connId, "S");
             const placeStop = (c: string, sp: number) =>
               ex.order({
@@ -4222,7 +4234,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
                   const wider = bx.widenStopDist(a.stopDist, fpx, spec);
                   learnVenueMin(rt, a.sym, "stop", wider);
                   record(sc, a, "S", qty, stopPrice, "error", msg);
-                  stopPrice = bx.stopPxExchange(fpx, a.side, wider, spec, wider);
+                  stopPrice = bx.stopPxExchange(fpx, a.side, wider, spec, wider, stopMax);
                   sc = makeCoid(s.connId, "S");
                   await placeStop(sc, stopPrice);
                   rt.db.event(
@@ -4649,6 +4661,28 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       if (row) row.px = px;
     }
     recordLanes(rt, { lanes: liveLanes, heldAfter, grew, shrank, external, externalWhy, laneExit, prices });
+    // Market replies often omit commission on VST. Reconcile one symbol per 30s only after all protection and
+    // ownership work. Read failures keep the fee explicitly unknown and never reverse a confirmed order fill.
+    if (ex.feeHistory && Date.now() - (Lm.feeSyncAt ?? 0) >= 30_000 && alive()) {
+      const pendingFees = rt.db.all<{ coid: string; sym: string; at: number }>(
+        "SELECT coid,sym,at FROM live_fills WHERE COALESCE(fee_known,0)=0 AND qty>0 ORDER BY at DESC LIMIT 1000",
+      ).filter((x) => isOwnCoid(x.coid, s.connId));
+      const symbols = [...new Set(pendingFees.map((x) => x.sym))].sort();
+      if (symbols.length) {
+        Lm.feeSyncAt = Date.now();
+        const sym = symbols[(Lm.feeCursor ?? 0) % symbols.length];
+        Lm.feeCursor = (Lm.feeCursor ?? 0) + 1;
+        try {
+          const history = await ex.feeHistory(sym, Math.min(...pendingFees.filter((x) => x.sym === sym).map((x) => x.at)) - 60_000);
+          if (alive()) {
+            const updated = reconcileVenueFees(rt.db, history, (coid) => isOwnCoid(coid, s.connId));
+            liveKvSet(rt.db,"liveFeeStatus",{at:Date.now(),symbol:sym,updated,pending:pendingFees.length-updated,error:null});
+          }
+        } catch (error) {
+          if (alive()) liveKvSet(rt.db,"liveFeeStatus",{at:Date.now(),symbol:sym,updated:0,pending:pendingFees.length,error:errText(error)});
+        }
+      }
+    }
   } catch (err) {
     status.error = err instanceof Error ? err.message : String(err);
     const until = bx.noteRateLimit(status.error);

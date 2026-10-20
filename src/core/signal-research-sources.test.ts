@@ -15,7 +15,9 @@ const at = Date.UTC(2026, 9, 1);
 
 describe("four frozen research Signal catalog candidates", () => {
   it("keeps all original 96 catalog identities and 63 enabled sources; every new source starts disabled", () => {
-    assert.equal(SIGNAL_SOURCES.length, 100);
+    assert.equal(SIGNAL_SOURCES.length, 103, "96 original, four frozen candidates and three later independent sources");
+    for (const name of ["r-apz-reclaim", "r-frama-pullback", "r-st-pullback"])
+      assert.equal(DEFAULT_SIGNALS.sources[name], false, `${name} requires separate opt-in`);
     assert.equal(
       SIGNAL_SOURCES.filter((s) => DEFAULT_SIGNALS.sources[s.name] !== false).length,
       63,

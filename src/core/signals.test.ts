@@ -1,6 +1,6 @@
 // Signals processing: sources, combos, the 42 Normal + 35 Trailing configs, the active ranking, the last-8 guard,
 // settings and the engine running with signals on.
-import { describe, it } from "node:test";
+import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   acceptKey,
@@ -31,6 +31,7 @@ import { DEFAULT_SETTINGS } from "./config.ts";
 import { signalRangeOf } from "./signal-config.ts";
 import {
   capsOf,
+  configEval,
   defaultWalkForward,
   activeSignalsAt,
   hedgeSignalsAt,
@@ -56,6 +57,8 @@ const why = (d: object) => ("why" in d ? d.why : "");
 
 /** sources on by default (research sources are available but off until validated as better) */
 const ENABLED = SIGNAL_SOURCES.filter((x) => DEFAULT_SIGNALS.sources[x.name] !== false).length;
+const runtimes: CoreRuntime[] = [];
+afterEach(() => { for (const rt of runtimes.splice(0)) rt.dispose(); });
 
 describe("signals: sources and combos", () => {
   it("every source has a short and a medium signal indication", () => {
@@ -118,8 +121,11 @@ describe("signals: sources and combos", () => {
       DEFAULT_SETTINGS.signals.coordination.ranges,
     );
     const normal = protects.filter((p) => p.trail === 0);
-    const trailing = protects.filter((p) => p.trail > 0);
-    assert.equal(protects.length, 2100);
+    const trailing = protects.filter((p) => p.trail > 0 && !p.trailOnly);
+    const trailingOnly = protects.filter((p) => p.trailOnly);
+    assert.equal(trailingOnly.length, 570, "independent capped no-TP hold candidates");
+    assert.ok(trailingOnly.every((p) => p.tp === 0 && p.sl <= 0.03 && p.trail <= 0.03));
+    assert.equal(protects.length, 2100 + trailingOnly.length);
     assert.equal(normal.length, 750, "300 existing + 450 new Normal protections");
     assert.equal(trailing.length, 1350, "900 existing + 450 new 48 h Trailing protections");
     assert.deepEqual([...new Set(normal.map((p) => p.hold))].sort((a, b) => a - b), [48, 64, 96, 128, 192]);
@@ -256,7 +262,7 @@ describe("signals: active ranking and guard", () => {
     const deep: Run = {
       bot: "follow",
       ind: "sig-e-s@m5",
-      bySym: { A: { n: 9, net: 3, pf: 1.2, dd: 4, okShare: 0.9 } },
+      bySym: { A: { n: 9, net: 3, pf: 1.6, dd: 4, okShare: 0.9 } },
     };
     assert.ok(![...activeSignals([deep], { ...on, rank: "lowdd" })].length, "never recovered");
     assert.equal(
@@ -366,24 +372,14 @@ describe("signals: active ranking and guard", () => {
 });
 
 describe("signals trade their own base", () => {
-  const mk = (ind: string, kind = "normal") =>
-    ({
-      id: `follow|${ind}|tp2|sl2|tr0|h96`,
-      bot: "follow",
-      ind,
-      kind,
-      syms: ["A"],
-      symI: new Uint16Array(0),
-      side: new Int8Array(0),
-      n: 0,
-      exitT: new Float64Array(0),
-      entryT: new Float64Array(0),
-      r: new Float64Array(0),
-      gp: new Float64Array(1),
-      gl: new Float64Array(1),
-      rs: new Float64Array(1),
-      protect: { tp: 0.02, sl: 0.02, trail: 0, hold: 96 },
-    }) as unknown as ConfigTape;
+  const NOW = Date.UTC(2026,9,20,12);
+  const mk = (ind: string, kind = "normal") => {
+    const id = `follow|${ind}|tp2|sl2|tr0|h96`;
+    const trades = Array.from({ length: 75 }, (_, i) => ({ cfg: id, sym: "A", side: 1 as const,
+      entryT: NOW - (76 - i) * 3_600_000 - 60_000, exitT: NOW - (76 - i) * 3_600_000,
+      entry: 100, exit: 102, r: 0.02, mult: 1, reason: "tp" as const, bars: 1, mfe: 0, mae: 0 }));
+    return makeTape(id, "follow", ind, { tp: 0.02, sl: 0.02, trail: 0, hold: 96 }, kind as ConfigTape["kind"], ["A"], trades, [], []);
+  };
   // x01: Normal off, Block and Block Active on at minimum level 5 — no record yet, so Block raises nothing
   const o0 = defaultWalkForward(DEFAULT_SETTINGS);
   const x01 = (ownBase: boolean) => ({
@@ -407,17 +403,17 @@ describe("signals trade their own base", () => {
 
   it("a signal's Normal / Trailing trade at their unit under Normal off and Block Active; engine entries do not", () => {
     for (const kind of ["normal", "trailing"]) {
-      const d = execDecision(mk("sig-ema-cross-s@m15", kind), 0, x01(true), ctx);
-      assert.equal(d.ok, true, kind);
+      const d = execDecision(mk("sig-ema-cross-s@m15", kind), NOW, x01(true), ctx);
+      assert.equal(d.ok, true, `${kind}: ${JSON.stringify({decision:d, evaluation:configEval(mk("sig-ema-cross-s@m15",kind),NOW,x01(true))})}`);
       assert.equal(d.ok && d.vol, 1);
     }
-    assert.notEqual(execDecision(mk("rsi-mom-14-20@m15"), 0, x01(true), ctx).ok, true);
+    assert.notEqual(execDecision(mk("rsi-mom-14-20@m15"), NOW, x01(true), ctx).ok, true);
     // off: signals follow the engine toggles (skipped below the Block Active level)
-    assert.equal(why(execDecision(mk("sig-ema-cross-s@m15"), 0, x01(false), ctx)), "blockActive");
+    assert.equal(why(execDecision(mk("sig-ema-cross-s@m15"), NOW, x01(false), ctx)), "blockActive");
     // Block off and Normal off: the signal base still trades, the engine base does not
     const noBlock = (b: boolean) => ({ ...x01(b), toggles: { ...x01(b).toggles, block: false } });
-    assert.equal(execDecision(mk("sig-ema-cross-s@m15"), 0, noBlock(true), ctx).ok, true);
-    assert.equal(why(execDecision(mk("rsi-mom-14-20@m15"), 0, noBlock(true), ctx)), "toggle");
+    assert.equal(execDecision(mk("sig-ema-cross-s@m15"), NOW, noBlock(true), ctx).ok, true);
+    assert.equal(why(execDecision(mk("rsi-mom-14-20@m15"), NOW, noBlock(true), ctx)), "toggle");
   });
 
   it("is on by default and can be switched off", () => {
@@ -580,6 +576,7 @@ describe("unlimited orders", () => {
     db.kvSet("wf", { maxPerSymbol: 3, maxPerSide: 16, maxOpen: 60, preH: 10 });
     db.kvSet("settings", { signals: { enabled: true, perSymbol: 6, maxOpen: 60 } });
     const rt = new CoreRuntime(db, undefined, { market: "synthetic" });
+    runtimes.push(rt);
     assert.equal(rt.wf.maxPerSymbol, 0);
     assert.equal(rt.wf.maxOpen, 0);
     assert.equal(rt.wf.preH, 10, "other saved options kept");
@@ -591,7 +588,9 @@ describe("unlimited orders", () => {
     assert.equal(rt.settings.signals.enabled, true);
     // a cap chosen after the migration is kept
     db.kvSet("wf", { maxPerSymbol: 5 });
-    assert.equal(new CoreRuntime(db, undefined, { market: "synthetic" }).wf.maxPerSymbol, 5);
+    const restored = new CoreRuntime(db, undefined, { market: "synthetic" });
+    runtimes.push(restored);
+    assert.equal(restored.wf.maxPerSymbol, 5);
   });
 });
 
@@ -603,15 +602,19 @@ describe("signals: engine", { timeout: 400_000 }, () => {
         symbols: 3,
         historyDays: 18,
         tfDays: { "1": 3, "5": 6, "15": 18, "30": 18 },
+        focus: ["follow|ema-9-21@m15"],
         mainTop: 10,
         refineTop: 4,
         evalTop: 6,
         cycleMs: 60_000,
+        // Keep the coordinator's General/Long range grids while bounding unrelated engine pairs.
         grid: { short: false },
+        exitStrategy: { enabled: false },
         signals: signalSettings({ enabled: true, count: 10, minTrades: 1 }),
       },
       { market: "synthetic" },
     );
+    runtimes.push(rt);
     rt.start();
     const t0 = Date.now();
     while (!(rt.status.computes >= 1 && rt.status.state === "running" && rt.audit !== null)) {
@@ -651,11 +654,11 @@ describe("signals: engine", { timeout: 400_000 }, () => {
     assert.ok(st.historic, "history calculations report their eligibility diagnostics");
     assert.ok(st.historic.qualified <= st.historic.candidates);
     assert.ok(full >= pct, `signal configs retain the full configured source/coordinator grids: ${full} vs ${pct}`);
-    // The hard 2% policy intentionally aliases wider requests to the same physical stop.
+    // The configured entry-distance policy aliases wider requests to the same physical stop.
     // Configured counts are not executable counts; duplicate protections must never inflate orders.
     assert.ok(sigTapes.length > 0 && sigTapes.length <= full, `${sigTapes.length} of ${full}`);
     assert.equal(new Set(sigTapes.map((tp) => tp.id)).size, sigTapes.length);
-    assert.ok(sigTapes.every((tp) => tp.protect.sl <= 0.02 + 1e-12));
+    assert.ok(sigTapes.every((tp) => tp.protect.sl <= rt.settings.signals.trailMax! + 1e-12));
     // stop floors (0.5 % by default) and each lane's trailing floor hold on engine and signal configs, % and ATR exits;
     // a range cell (minimal / short / general / long …) keeps its own minimum (at least the position cost)
     for (const t of rt.tapes) {

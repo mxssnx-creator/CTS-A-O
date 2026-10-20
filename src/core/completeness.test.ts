@@ -210,6 +210,7 @@ const CASES: Record<string, Case> = {
   "block.ranges.increase": span(0.05, 1),
   "block.ranges.pause": span(0, 12),
   "dca.levels": num(1, 4, { int: true }),
+  "dca.addRatio": num(0.1, 2.5),
   "dca.step": num(0.001, 0.1),
   "dca.stopGap": num(0, 5),
   "dca.slOfTp": num(0.25, 5),
@@ -238,6 +239,7 @@ const CASES: Record<string, Case> = {
   "grid.minTrail": num(0, 0.1),
   "grid.minSl": num(0, 0.2),
   "grid.trailStep": num(0.1, 1),
+  "grid.trailingOnly": oneOf([true, false], [0, 1, "true", null]),
   ...rangeKeys("minimal"),
   ...rangeKeys("short"),
   ...rangeKeys("general"),
@@ -317,6 +319,7 @@ const CASES: Record<string, Case> = {
   },
   "signals.trailingOnly.trailStep": num(0.1, 2),
   "signals.holdH": num(0.5, 96),
+  "signals.trailMax": num(0.002, 0.03),
   "signals.exits": oneOf(["pct", "atr", "both"]),
   "signals.atr.sl": list(0.2, 2, { max: 64 }),
   "signals.atr.tpRatio": list(0.2, 3, { max: 64 }),
@@ -529,8 +532,7 @@ const NOT_SHOWN: Record<string, string> = {
     "positive coordination pinned in code (positive-defaults.test.ts); a patch or the warnings switch it",
   "live.liveGroupLastN":
     "off by default after the replay on x01's record (docs/live-group-validation.md); patch only",
-  "signals.sourcesMode":
-    "deny / allow reading of the source list (6 Oct); patch only so far — GAP: not on the page (reported)",
+  "signals.sourcesMode": "deny / allow catalog mode remains a patch-only setting",
   "signals.baseGate":
     "signals judged on their own exits (Base gate off, measured 3 Oct); patch only",
 };

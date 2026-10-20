@@ -236,8 +236,7 @@ describe("short-history lanes are judged on the history they have", () => {
       [],
       [],
     );
-    // the 14-day fixtures pin the 336 h window; the production selection window is 24 h (commit 4779175)
-    const o = { ...defaultWalkForward(DEFAULT_SETTINGS), preGate: false, validLastN: 0, longH: 336 };
+    const o = { ...defaultWalkForward(DEFAULT_SETTINGS), longH: 336, preGate: false, validLastN: 0 };
     // without the history start: three of four sub-windows of the 14-day window are empty → rejected
     assert.equal(selectDurable([tape], now, o, new Set()).picks.length, 0);
     tape.fromT = 264 * H;

@@ -12,6 +12,7 @@
 import type { ExitConfigSet, Protect } from "./domain/types.ts";
 import { atrProtect } from "./sim/backtest.ts";
 import { isSignalInd, laneInd } from "./indications/registry.ts";
+import { SIGNAL_MIN_PF } from "./signal-policy.ts";
 import {
   SIGNAL_SOURCES,
   signalId,
@@ -114,7 +115,7 @@ export function signalProtects(sig: SignalSettings): Protect[] {
   const variants = out.flatMap((p) => p.trail > 0
     ? ratios.map((ratio) => ratio === 1 ? p : { ...p, trailStep: (p.trailStep ?? 1) * ratio })
     : [p]);
-  return variants.filter(
+  return variants.map((p) => sig.trailMax === undefined ? p : { ...p, trailMax: sig.trailMax }).filter(
     (p) => !(p.trail > 0 && p.trail * (p.trailStep ?? 1) + 1e-12 < sig.minTrail),
   );
 }
@@ -269,7 +270,7 @@ export function* activeSignalsGen(
     coordination: boolean;
   }> = [];
   const judge = (keys: string[], st: SignalSideStat, coordination: boolean) => {
-    if (st.n < sig.minTrades || !recentOk(st)) return;
+    if (st.n < sig.minTrades || !recentOk(st) || !Number.isFinite(st.pf) || st.pf < SIGNAL_MIN_PF || !(st.net > 0)) return;
     if (byDd) {
       // drawdown-aware: profitable, positive in enough 4-hour blocks, ranked by net ÷ max drawdown
       if (!(st.net > 0) || (st.okShare ?? 0) < (sig.minBlockShare ?? 0)) return;

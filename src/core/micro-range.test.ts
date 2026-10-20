@@ -21,7 +21,9 @@ import { baseFocus } from "./server/runtime.server.ts";
 import { microSpecs } from "./indications/micro.ts";
 import type { Bars } from "./domain/types.ts";
 
-const grid = (micro: object = {}) => ({ ...DEFAULT_SETTINGS.grid, holdH: [16], micro: { ...MICRO_RANGE, ...micro } });
+// This file checks the TP Cartesian ladder; independent no-TP cells are exercised by
+// strategy-sets-independent, ranges and the full processing/book coverage fixtures.
+const grid = (micro: object = {}) => ({ ...DEFAULT_SETTINGS.grid, trailingOnly: false, holdH: [16], micro: { ...MICRO_RANGE, ...micro } });
 
 test("Micro targets 2–5× the position cost (operator, 13 Oct): 0.2–0.8 % net → price targets 0.4–1.0 % at the 0.2 % cost", () => {
   assert.deepEqual([...MICRO_TP], [0.002, 0.003, 0.004, 0.005, 0.006, 0.007, 0.008]);
@@ -292,7 +294,7 @@ test("Micro can set its own evaluation stop floor and its own smallest net targe
   assert.ok(b2.length > 0 && Math.min(...b2.map((p) => p.sl)) >= 0.0025 - 1e-12);
   assert.ok(Math.min(...b2.map((p) => p.sl)) < EVAL_MIN_SL - 1e-12, "Base measures the tighter cell too");
   // minNetOfCost drops the net targets below a multiple of the round-trip cost
-  const cut = { ...DEFAULT_SETTINGS.grid, micro: { ...MICRO_RANGE, minNetOfCost: 1 } } as never;
+  const cut = { ...DEFAULT_SETTINGS.grid, trailingOnly: false, micro: { ...MICRO_RANGE, minNetOfCost: 1 } } as never;
   const tps = new Set(protectGrid(5, cut, cost).filter((p) => p.tag === "mc").map((p) => p.tp));
   assert.ok(!tps.has(0.003), "net 0.10 % (price 0.30 %) is dropped at a 0.20 % cost");
   assert.ok(tps.has(0.004), "net 0.20 % (price 0.40 %) is kept");

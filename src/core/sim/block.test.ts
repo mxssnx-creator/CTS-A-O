@@ -436,12 +436,14 @@ describe("Block types, Active, steps and pause", () => {
       toggles: { ...base.toggles, normal: true, block: true, blockActive: false },
       block: { ...ON, signalsOwn: true } };
     const d = execDecision(tp, 5 * H, o, { sym: "A", side: -1 });
-    assert.deepEqual(d, { ok: true, level: 0, vol: 1 }, "signalsOwn applies the same exact-side record in execution");
+    assert.deepEqual(d, { ok: false, why: "signalValid" }, "an undersampled losing own context cannot borrow its siblings' wins");
+    const qualified = makeTape(cfg,"follow",tp.ind,tp.protect,"normal",["A"],
+      [1,-1].flatMap(side=>Array.from({length:50},(_,i)=>row("A",side as 1|-1,i%2?.025:-.01,6*H+i*1000))),[],[]);
     const book = new BlockBook(2);
     book.add({ cfg, sym: "A", side: -1, kind: "osc", r: .1, bsrc: ["config"] });
-    assert.deepEqual(execDecision(tp, 7 * H, o, { book, sym: "A", side: -1 }),
+    assert.deepEqual(execDecision(qualified, 7 * H, o, { book, sym: "A", side: -1 }),
       { ok: true, level: 0, vol: 1 }, "signalsOwn still honors its own config pause without reading pooled levels");
-    const long = execDecision(tp, 7 * H, o, { book, sym: "A", side: 1 });
+    const long = execDecision(qualified, 7 * H, o, { book, sym: "A", side: 1 });
     assert.ok(long.ok && long.vol > 1, "the short's pause cannot suppress the independent long");
   });
 
@@ -935,7 +937,13 @@ describe("Direction gate (sideGateN)", () => {
 });
 
 describe("Signal direction acceptance (signalSideAccept)", () => {
-  const sig = makeTape("s", "follow", "sig-ema-trend-s", { tp: 0.02, sl: 0.02, trail: 0, hold: 32 }, "normal", ["A"], [], [], []);
+  // Own causal history is independent of the candidate-side guard being isolated below. An empty Signal no
+  // longer qualifies merely because this separate guard has too few observations.
+  const own:Trade[]=["A","Z"].flatMap(sym=>[1,-1].flatMap(side=>Array.from({length:50},(_,i)=>({
+    cfg:"s",sym,side:side as 1|-1,entryT:i*1000,exitT:i*1000+1,entry:100,exit:100,
+    r:i%2?.025:-.01,unitR:i%2?.025:-.01,reason:"time" as const,bars:1,mfe:0,mae:0,kind:"normal" as const
+  }))));
+  const sig = makeTape("s", "follow", "sig-ema-trend-s", { tp: 0.02, sl: 0.02, trail: 0, hold: 32 }, "normal", ["A","Z"], own, [], []);
   const o = {
     ...defaultWalkForward(DEFAULT_SETTINGS),
     lastN: 0,

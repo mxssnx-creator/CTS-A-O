@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CoreDb } from "./db.server.ts";
 import { CoreRuntime } from "./runtime.server.ts";
+import { sigActiveKey } from "../signals.ts";
 import { DEFAULT_PROTECT } from "../config.ts";
 import { makeTape, runSubset, walkForward } from "../sim/walkforward.ts";
 import { executionRecordKey, liveRecords, ownedPaperExecutionRecords, postBaseExecutionRecords } from "../live-record.ts";
@@ -119,6 +120,28 @@ describe("strict live promotion uses two settled independent evidence axes", () 
       r.wf.basePassed = new Set();
       assert.equal(r.livePromotionGate(identity, NOW).state, "ineligible", "a failed pair never borrows ladder permission");
     }
+  });
+
+  it("a stale active Signal cannot borrow old native proof after its own latest context fails", () => {
+    const cfg = CFG.replace("rsi-mom-14-25@m15", "sig-ema-cross-s@m15");
+    const ind = "sig-ema-cross-s@m15";
+    const rows = Array.from({ length: 75 }, (_, i) => close(i % 5 === 4 ? -.01 : .02, i, { cfg }));
+    const r = install(fixture(), rows);
+    r.wf.signalValidLastN = 3;
+    r.wf.gates.maxDdr = 0; r.wf.gates.maxDdtH = 1000;
+    r.wf.signalActive = new Set([sigActiveKey("follow", ind, SYM, 1, "normal", cfg)]);
+    r.wf.signalBasePassed = new Set([`follow|${ind}`]);
+    r.paper.selected = [cfg];
+    r.tapes = [makeTape(cfg, "follow", ind, DEFAULT_PROTECT, "normal", [SYM], rows, [], [])];
+    owned(r, [.02, -.01, .02], { cfg });
+    const own = { ...lane, cfg };
+    assert.equal(r.livePromotionGate(own, NOW).ok, true);
+    r.tapes = [makeTape(cfg, "follow", ind, DEFAULT_PROTECT, "normal", [SYM],
+      rows.map((t) => ({ ...t, r: -.01 })), [], [])];
+    const gate = r.livePromotionGate(own, NOW);
+    assert.equal(gate.state, "ineligible");
+    assert.equal(gate.ok, false);
+    assert.ok(gate.model!.pf! > 1 && gate.execution!.pf! > 1, "earlier proof is retained honestly, but cannot waive current exact-context qualification");
   });
 
   it("winning long candidate history cannot promote an unvalidated short despite separate positive execution records", () => {

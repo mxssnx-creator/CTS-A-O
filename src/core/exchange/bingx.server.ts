@@ -17,6 +17,10 @@ export const HOSTS: Record<Network, readonly string[]> = {
 };
 
 const TIMEOUT_MS = 10_000;
+// Match the bounded transport budget: a valid request can spend more than five seconds in transit (observed
+// on VST). Re-signing with the same five-second window only repeats that refusal. This does not retry an
+// unknown write outcome or extend the HTTP deadline.
+const RECEIVE_WINDOW_MS = TIMEOUT_MS;
 const env = (k: string) => (process.env[k] ?? "").trim();
 
 /**
@@ -116,15 +120,25 @@ export async function signed(
   const paused = rateLimitedUntil(Date.now(), `${method} ${path}`);
   if (paused)
     throw new ExchangeRejected(`frequency limit pause (${NOT_SENT}), unblocked after ${paused} [${method} ${path}]`, 100410);
-  let body: { code?: number; msg?: string; data?: unknown };
+  let body: { code?: number; msg?: string; data?: unknown } = {};
   for (let attempt = 0; ; attempt++) {
-    const url = signedUrl(HOSTS[network][0], path, secret, {
-      ...params,
-      recvWindow: 5000,
-      timestamp: Date.now(),
-    });
-    body = (await timedFetch(url, { method, headers: { "X-BX-APIKEY": apiKey } })) as typeof body;
-    signedCalls.set(`${method} ${path}`, (signedCalls.get(`${method} ${path}`) ?? 0) + 1);
+    const hosts = method === "GET" ? HOSTS[network] : HOSTS[network].slice(0, 1);
+    for (let host = 0; host < hosts.length; host++) {
+      const url = signedUrl(hosts[host], path, secret, {
+        ...params,
+        recvWindow: RECEIVE_WINDOW_MS,
+        timestamp: Date.now(),
+      });
+      signedCalls.set(`${method} ${path}`, (signedCalls.get(`${method} ${path}`) ?? 0) + 1);
+      try {
+        body = (await timedFetch(url, { method, headers: { "X-BX-APIKEY": apiKey } })) as typeof body;
+        break; // a business refusal never triggers host failover
+      } catch (error) {
+        // A transport failure can safely fail over a read. Writes have unknown execution outcome and are never
+        // repeated on another host. Each fallback read is newly signed, inside its own bounded deadline.
+        if (host + 1 >= hosts.length) throw error;
+      }
+    }
     // refused as stale (the request left this process seconds after it was signed, e.g. behind a blocked event
     // loop): the exchange executed nothing, so it is signed again with a fresh timestamp and sent once more
     if (Number(body?.code) !== 0 && body?.code != null && attempt === 0 && staleTimestamp(body?.msg)) {
@@ -533,7 +547,7 @@ export function minQtyFromReject(msg: string): number | null {
  * open — a full round trip for nothing.
  */
 export function stopAlreadyExists(msg: string): boolean {
-  return /(sl|stop).{0,24}order already exists|109400/i.test(msg);
+  return /(sl|stop).{0,24}order already exists/i.test(msg);
 }
 
 export function alreadyFlat(msg: string): boolean {

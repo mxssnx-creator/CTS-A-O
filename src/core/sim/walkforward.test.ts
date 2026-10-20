@@ -53,11 +53,11 @@ const burst = tape("burst", [
 ]);
 const o = {
   ...defaultWalkForward(DEFAULT_SETTINGS),
+  // These fixtures distribute evidence across fourteen days; preserve that declared evaluation window.
+  longH: 336,
   preGate: false,
   // these fixtures are short on purpose; the 50-close validation is covered on its own
   validLastN: 0,
-  // the fixtures are written for a 336 h selection window; the production window is 24 h (commit 4779175)
-  longH: 336,
   // the PF / DDT gates alone (the drawdown ratio has its own test below)
   gates: { ...DEFAULT_SETTINGS.gates, minTrades: 12, maxDdr: 0 },
   // Legacy candidate-history diagnostics judge the config set's raw tape, without accepted-order evidence.

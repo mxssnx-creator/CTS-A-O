@@ -2,12 +2,13 @@
 // tapes for exactly those sources on both directions, every signal trade belongs to a unit active at its entry,
 // the funnel counts the candidates of inactive units by side, signal skips and paper skips are named sig:<why>, and
 // the audit is clean. (signals.test covers the default deny mode on the full source list.)
-import { before, describe, it } from "node:test";
+import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { closePool } from "./server/pool.server.ts";
 import { CoreDb } from "./server/db.server.ts";
 import { CoreRuntime } from "./server/runtime.server.ts";
 import { DEFAULT_SIGNALS, signalSettings } from "./signal-config.ts";
-import { signalSetAt } from "./sim/walkforward.ts";
+import { configEval, signalConfigEval, signalSetAt } from "./sim/walkforward.ts";
 import { sigActiveKey } from "./signals.ts";
 import { isSignalInd, laneOf } from "./indications/registry.ts";
 import { coordSettings } from "./sim/walkforward.ts";
@@ -21,6 +22,7 @@ const srcOf = (ind: string) => laneOf(ind).base.replace(/^sig-/, "").replace(/-(
 
 describe("signals end to end: sources mode allow", { timeout: 600_000 }, () => {
   let rt: CoreRuntime;
+  after(() => { rt?.dispose(); closePool(); });
   before(async () => {
     rt = new CoreRuntime(
       new CoreDb(":memory:"),
@@ -28,11 +30,14 @@ describe("signals end to end: sources mode allow", { timeout: 600_000 }, () => {
         symbols: 3,
         historyDays: 18,
         tfDays: { "1": 3, "5": 6, "15": 18, "30": 18 },
+        // Signal lifecycle fixture: keep unrelated engine grids bounded, without reducing Signal cells/history.
+        focus: ["follow|ema-9-21@m15"],
         mainTop: 10,
         refineTop: 4,
         evalTop: 6,
         cycleMs: 60_000,
-        grid: { short: false },
+        grid: { tp: [0.02], slOfTp: [1], trailOfTp: [0, 0.5], holdH: [4],
+          micro: false, minimal: false, minimalPlus: false, short: false, general: false, long: false },
         signals: signalSettings({
           enabled: true,
           count: 0,
@@ -50,8 +55,8 @@ describe("signals end to end: sources mode allow", { timeout: 600_000 }, () => {
       } as never,
       { market: "synthetic" },
     );
-    // This fixture proves that active entries reach execution. The normal runtime Signal validity and per-symbol PF
-    // gates are covered independently; they otherwise suppress every short synthetic-window candidate here.
+    // A source's synthetic price path need not qualify. Controlled passing histories and both-side execution
+    // are covered by signal-pf15.test; this runtime fixture retains its own Base PF and sample gates.
     rt.updateSettings({}, {
       lastN: 0,
       validLastN: 0,
@@ -90,14 +95,25 @@ describe("signals end to end: sources mode allow", { timeout: 600_000 }, () => {
     const sim = rt.sim!;
     const steps = sim.signalSteps!;
     const trades = sim.trades.filter((x) => isSignalInd(x.cfg.split("|")[1] ?? ""));
-    assert.ok(
-      trades.length > 0,
-      `at least one signal candidate reaches a simulated execution; funnel=${JSON.stringify(sim.signalFunnel)} steps=${steps.length} skips=${JSON.stringify(sim.skips)}`,
-    );
+    const failures: Record<string, number> = {};
+    for (const tp of rt.tapes.filter(t => isSignalInd(t.ind))) {
+      const ev = configEval(tp, sim.startT, rt.wf);
+      for (const c of ev.contexts ?? []) if (!c.evaluation.ok) failures[c.evaluation.fail] = (failures[c.evaluation.fail] ?? 0) + 1;
+    }
+    assert.ok(sim.signalFunnel!.candidates > 0, "the runtime calculates real source candidates");
+    if (!trades.length) {
+      assert.ok(Object.values(failures).some(n => n > 0), "empty execution retains explicit own Base failure evidence");
+      assert.ok(sim.signalFunnel!.inactive > 0, "unqualified source candidates stay inactive");
+    }
+    for (const step of steps) for (const key of step.keys) {
+      const tp = rt.tapes.find(t => key.endsWith(`|cfg=${encodeURIComponent(t.id)}`));
+      assert.ok(tp, "activation preserves its exact config identity");
+      // Check the tape's own contexts; no active key may come from a pooled or failed sibling.
+      const ownKeys = [...new Set(tp.syms)].flatMap(sym => [1, -1].filter(side => signalConfigEval(tp, step.t, rt.wf, sym, side).ok).map(side => sigActiveKey(tp.bot, tp.ind, sym, side, tp.kind, tp.id)));
+      assert.ok(ownKeys.includes(key));
+    }
     const tradeSources = new Set(trades.map((x) => srcOf(x.cfg.split("|")[1] ?? "")));
     assert.ok([...tradeSources].every((source) => ALLOW.includes(source)), `executed sources: ${[...tradeSources]}`);
-    const sides = new Set(trades.map((x) => x.side));
-    assert.ok(sides.has(1) && sides.has(-1), `signal orders execute both directions: ${[...sides]}`);
     for (const x of trades) {
       const [bot, ind] = x.cfg.split("|");
       assert.ok(signalSetAt(steps, x.entryT)!.has(sigActiveKey(bot, ind, x.sym, x.side, x.kind, x.cfg)), x.cfg);

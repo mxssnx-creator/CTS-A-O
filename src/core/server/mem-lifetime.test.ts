@@ -10,13 +10,13 @@
 //   - the signal acceptance record's counts are 4-byte integers and every query answers as before.
 import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { CoreRuntime } from "./runtime.server.ts";
+import { CoreRuntime, marketHistoryBars } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
 import { MEM_READ_MS, memInfo, type MemInfo } from "./memguard.server.ts";
 import { CandleSeries } from "../market/candle-series.ts";
 import { setImmediate as tick } from "node:timers/promises";
 import { SignalAcceptIndex, acceptKey, type AcceptTape } from "../signals.ts";
-import { pinSyntheticEnd, rng, trackRuntimes } from "../test-support.ts";
+import { pinSyntheticEnd, rng, trackRuntimes, runtimeFixtureGrid } from "../test-support.ts";
 import { abortWorkers, poolWorkers, workerActivity, workersAvailable } from "./pool.server.ts";
 
 pinSyntheticEnd();
@@ -29,7 +29,16 @@ const tiny = {
   refineTop: 2,
   evalTop: 4,
   cycleMs: 60_000,
-  grid: { short: false as const },
+  grid: { ...runtimeFixtureGrid(), short: false as const },
+  // Keep real worker/local fitting and aborts, with a bounded source universe.
+  // Full bot-free source/range fitting is covered in independent Exit tests.
+  exitStrategy: { enabled: true, timeframes: [15], includeTactics: false, includeRelations: false,
+    includeCombined: false, lookbackH: 72, maxConfigsPerPair: 6, quantiles: [0.6], stopQuantiles: [0.5],
+    trailShares: [0.5], stopMultiples: [1] },
+  signals: { sourcesMode: "allow", sources: { "ema-cross": true, "rsi-reversal": true }, lanes: [15],
+    exits: "pct", normal: { tp: [0.02], slOfTp: [1] }, trailing: { tp: [0.03], trailOfTp: [0.5], slOfTp: 1 },
+    trailingOnly: { enabled: true, sl: [0.02], trail: [0.01], trailStep: 1 },
+    hist: { enabled: true, quantiles: [0.6], trailOfTp: [0.5], slOfTp: [1], minN: 5, lookbackH: 72 } },
   gates: { minPf: 1.05, minTrades: 3, maxDdr: 0 },
 };
 const until = async (cond: () => boolean, ms = 600_000) => {
@@ -230,7 +239,7 @@ describe("memory released after use, results unchanged", { timeout: 900_000 }, (
     }
   });
 
-  it("the runtime's candles are columns: 4 × 25,920 bars add under 4 MB of heap (17 MB as objects)", async () => {
+  it("the runtime's candles are columns: four complete configured histories add under 4 MB of heap", async () => {
     const gc = (globalThis as { gc?: () => void }).gc;
     if (!gc) return assert.fail("needs --expose-gc (npm run test:core passes it)");
     const prevState = process.env.CTS_CORE_STATE;
@@ -238,7 +247,7 @@ describe("memory released after use, results unchanged", { timeout: 900_000 }, (
     const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 4 } as never, { market: "synthetic" });
     try {
       const R = rt as unknown as { storeCandles(sym: string, cs: unknown[], append?: boolean): Promise<void> };
-      const want = Math.round((rt.settings.historyDays * 24 * 60) / rt.settings.tfMin);
+      const want = marketHistoryBars(rt.settings, rt.wf);
       // the input bars are made and dropped one symbol at a time, so only what the runtime keeps remains
       const store = async (sym: string) => {
         const r = rng(sym.length);

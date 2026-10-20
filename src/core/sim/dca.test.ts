@@ -3,6 +3,12 @@ import assert from "node:assert/strict";
 import { DCA_MAX_STAGES, simulateDca } from "./dca.ts";
 import { barsFromCandles } from "../market/bars.ts";
 import type { Candle } from "../domain/types.ts";
+import { DEFAULT_DCA, DEFAULT_BLOCK } from "../config.ts";
+import { configId, kindOfId, parseConfigId } from "../pipeline/pipeline.ts";
+import { dcaSnapshot } from "./dca.ts";
+import { buildTapes, packTapes, unpackTapes } from "./walkforward.ts";
+import { makeUniverse } from "../pipeline/pipeline.ts";
+import { syntheticCandles } from "../market/bars.ts";
 
 const mk = (rows: Array<[number, number, number, number]>): Candle[] =>
   rows.map(([o, h, l, c], i) => ({ t: i * 900_000, o, h, l, c, v: 1 }));
@@ -10,6 +16,69 @@ const P = { tp: 0.02, sl: 0.05, trail: 0, hold: 20 };
 const D = { levels: 2, step: 0.01 };
 
 describe("dca", () => {
+  it("defaults to one non-compounding addition of 2.5 original base units, with every Block relation active", () => {
+    assert.equal(DEFAULT_DCA.levels, 1);
+    assert.equal(DEFAULT_DCA.addRatio, 2.5);
+    assert.equal(DEFAULT_BLOCK.mode, "overall");
+    assert.ok(Object.values(DEFAULT_BLOCK.sources!).every(Boolean));
+  });
+
+  it("weights the one addition, target, cost, open mark and settled return consistently in both directions", () => {
+    for (const side of [1, -1] as const) {
+      const mirror = (x: number) => side === 1 ? x : 200 - x;
+      const rows = [[100,100,100,100],[100,100.1,97.9,98.2],[98.2,98.5,97.8,98.3],[98.3,103,98.2,102.5]];
+      const b = barsFromCandles("X",15,mk(rows.map(([o,h,l,c]) => [mirror(o),mirror(side===1?h:l),mirror(side===1?l:h),mirror(c)])));
+      const cfg={...DEFAULT_DCA,step:0.02};
+      const p={...P,hold:40};const cost=.002;
+      const sig=new Int8Array([side,0,0,0]);
+      const open=simulateDca("c",{...b,n:3},sig,p,cfg,false,cost).open!;
+      assert.ok(open);
+      assert.equal(open.w,3.5);
+      const level=mirror(98);const avg=(100+2.5*level)/3.5;
+      assert.ok(Math.abs(open.entry-avg)<1e-12);
+      const px=b.c[2];const mtm=side*(px-100)/100-cost+2.5*(side*(px-level)/level-cost);
+      assert.ok(Math.abs(open.mtm*open.w!-mtm)<1e-12);
+      const t=simulateDca("c",b,sig,p,cfg,false,cost).trades[0];
+      assert.equal(t.vol,3.5);assert.equal(t.level,1);assert.equal(t.reason,"tp");
+      const expected=side*(t.exit-100)/100-cost+2.5*(side*(t.exit-level)/level-cost);
+      assert.ok(Math.abs(t.r-expected)<1e-12);
+    }
+  });
+
+  it("uses immutable ladder identities so changed weights and spacing never inherit an old set's Last-N", () => {
+    const ids=new Set<string>();
+    for(const kind of ["dca","dca-active"] as const)for(const ratio of [1,2.5])for(const step of [.01,.02]){
+      const p={...P,dca:dcaSnapshot({...DEFAULT_DCA,addRatio:ratio,step})};
+      const id=configId("follow","ema-9-21@m15",p,kind);ids.add(id);
+      const parsed=parseConfigId(id)!;assert.ok(parsed);assert.equal(kindOfId(id),kind);
+      assert.deepEqual(parsed.protect.dca,p.dca);
+      assert.equal(configId(parsed.bot,parsed.ind,parsed.protect,kind),id);
+      // A snapshot, not a changed runtime setting, controls the old tape's ladder economics.
+    }
+    assert.equal(ids.size,8);
+    assert.throws(()=>dcaSnapshot({...DEFAULT_DCA,addRatio:3}),/2.5/);
+    assert.equal(dcaSnapshot({...DEFAULT_DCA,step:.0100000001}).step,.01,"identity precision matches effective execution");
+    assert.notEqual(dcaSnapshot({...DEFAULT_DCA,step:.010001}).step,.01);
+  });
+
+  it("never manufactures positive performance from a negative or unknown fee",()=>{
+    const b=barsFromCandles("X",15,mk([[100,100,100,100],[100,101,99,100]]));
+    for(const cost of [-.001,NaN,Infinity])assert.throws(()=>simulateDca("c",b,new Int8Array([1,0]),P,D,false,cost),/nonnegative/);
+  });
+
+  it("retains an old weighted ladder for exits after spacing changes, without qualifying it for new entries", () => {
+    const ind="ema-9-21@m15",pair=`follow|${ind}`;
+    const u=makeUniverse([barsFromCandles("A",15,syntheticCandles("A",15,1200,30*86400000))],0);
+    const oldOpt={protects:[P],dca:{...DEFAULT_DCA,step:.02}};
+    const old=buildTapes(u,[],.0015,oldOpt,new Set([pair]));
+    const held=old.find(t=>t.kind==="dca")!;assert.ok(held);
+    const current=buildTapes(u,[],.0015,{...oldOpt,dca:{...DEFAULT_DCA,step:.01}},new Set([pair]),null,null,{minSl:0,minTrail:0,heldIds:new Set([held.id])});
+    const retained=current.find(t=>t.id===held.id)!;assert.ok(retained);assert.equal(retained.heldOnly,true);
+    assert.deepEqual(retained.r,held.r);assert.equal(retained.n,held.n);
+    assert.ok(current.some(t=>t.kind==="dca"&&t.id!==held.id&&!t.heldOnly));
+    const rebuilt=unpackTapes(packTapes(current));
+    assert.deepEqual(rebuilt.map(t=>[t.id,t.heldOnly,t.protect.dca]),current.map(t=>[t.id,t.heldOnly,t.protect.dca]));
+  });
   it("a ladder open at the last bar is carried (marked open, mirrored in the paper book)", () => {
     // enters at bar 1 and neither stops nor targets: the position is still open at the last close
     const b = barsFromCandles(

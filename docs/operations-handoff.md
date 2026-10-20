@@ -1,3 +1,13 @@
+# Integrated PR 185 checkpoint — 20 October 2026
+Final fixture follow-up: the integrated full core run reached all 209 files with 2,476 passes, nine stale fixture failures and two slow skips. The five corrected files pass **137/137**: separate positive config-direction proof for candidate-book tests, a fixed pending-bar clock, true Trade-return loss changes rather than detached prefix-sum edits, correct 4% mark-to-stop arithmetic, per-direction hand-counted validation and separate symbol-PF proof. Production code and the v6 economic source seal are unchanged. Final complete CI is linked in PR 185.
+
+
+Current integrated code **`597670092e3f385d9786fd023d4ddbba66a99939`** preserves main **`dc8c3bb6a8a4d6176157534a6a9ecbf5773740f8`** (PR 182); backup `backup/main-before-pr185-20261020-dc8c3bb` exists. Engine direction/proven-symbol guards coexist with stricter Signal config/symbol/direction proof, capped trailing-only and weighted DCA. A reproduced Signal held-only cache defect is fixed: red before, 14/14 isolation cases green after. Integration made no venue/deployment/settings writes. X02 was reconfirmed read-only at 22:18:58.324Z with zero positions/orders.
+
+Integrated simulation/native group: 613 passes and one lifecycle snapshot mismatch, then the corrected snapshot passes 1/1. The merged fixture explicitly freezes its old window/Exit-option inputs; the complete parsed result matches pre-merge source with zero differences (60 input, 48 feed, 42 settled). TypeScript and research-protocol 8/8 checks pass. Final complete CI and release commit are linked in PR 185; pre-integration 208-file counts below are distinct.
+
+Integrated comparison `v6` seals source **`00ea02f0cdac575476cf7f7451b007c425ff70f38af761ec8f2929ce81b618ef`**, the same public 600h feed and the predeclared sixteen-arm selection protocol. Its final results are in PR 185 and the standalone report. The v5/e2414bbe figures below belong to the pre-integration revision, preserved with its exact original 130-file sealed source; its protocols are not rewritten to certify changed code. Empty samples and no-loss scores remain explicit, and reused retrospective results cannot establish consistent profit.
+
 # GitHub merge scope — 21 October 2026
 
 The user explicitly instructed "Merge github" for PR 182 after receiving the documented partial profitability result. This authorizes merging the verified admission fixes while retaining the losing multi-range window; it supersedes the earlier keep-draft instruction below. It does not establish a profitable release or change live settings, deployments or venue orders. Backup `backup/main-before-pr182-20261021` preserves main `4588030b946740d493cf0e0d629aa2722aa6211c`.
@@ -33,6 +43,35 @@ Six immutable final cached-feed replays are recorded in `docs/sims/final-window-
 Current verification: final scope/entry/native tests 47/47; config scope and actual execution, preserved losses, strict Last-N, symbol vetoes and within-hour deterioration cover all seven ranges. TypeScript and production build pass; the build's first generated-output cleanup attempt failed with ENOTEMPTY and passed after deleting only generated `.vercel/output` and rerunning. The remaining simulation segment passes 64/64; desktop/phone UI passes 4/4 and lint has zero errors with 28 existing warnings. The broader 43-file command exited zero but its log has no final totals, so no complete broad/core pass is claimed. The earlier incomplete/interrupted runs remain unclaimed. No release or merge as a completed profitability fix.
 
 # CTS-A-O operations handoff
+
+Updated 2026-10-20, UTC. Repository: `mxssnx-creator/CTS-A-O`.
+
+## Strategy defaults and authenticated X02 follow-up — 20 October
+
+Pre-integration tested code/fixture checkpoint: local **`7e62614c252f09c5aa547c54141928301a59c6f5`**. Following handoff edits are documentation only. The economic source seal remains `e2414bbe6a79da6638c402ae24e6605dfeee6084689993f2ecbba80fa6175779`; final remote release head and complete CI outcome are linked in PR 185. Earlier exact tree equivalence: local `92ad09a` / remote `a9f6038`, tree `1cf8c9cd2cbf3b4364d258b38f554e1fd645ff66`.
+
+PR [185](https://github.com/mxssnx-creator/CTS-A-O/pull/185) publishes the exact tested local tree: economic checkpoint `86fcf5e`, fixture/UI checkpoint `7e22f25`, initial remote commit `107b4f2fe21c76af79f914f0c5b312fd697dd592`, tree `49df3af591bc0cec6eadcea63d132f72887ced8a`. Backup `backup/main-before-strategy-defaults-20261020` preserves `4588030b946740d493cf0e0d629aa2722aa6211c`. The latest explicit user “Push, merge” authorizes this publication; normal Git lacked local authentication, so the connected GitHub API published a tree verified byte-for-byte by Git tree hash.
+
+Independent ordinary/Signal histories, no-TP trailing-only grids with a 3% initial maximum, one DCA addition of 2.5 original base units (3.5 total), immutable ladder identity and Overall Block relations are implemented. Live strategy history includes the complete requested performance window plus slow-lane indicator warmup; late own venue commissions reconcile only after protection.
+
+Authenticated **X02 VST** testing is now complete: 28 actual opens across twelve symbols/both sides, 60 filled execution slices, 60/60 commissions measured, 9/9 pilot lifecycle phases. All twelve original symbol settings were restored. Final authenticated book at `2026-10-20T20:20:49.636Z`: **0 positions / 0 orders**. Technical fixture admission is not profitable strategy evidence. X01 credentials were untouched; raw account records remain private. No hosted deployment/reload occurred.
+
+The completed sealed 600h `v5` sensitivity study ran 16/16 arms with 6,768 hourly own-config checks, strict Last-25/PF 1.5 and twelve symbols. Development built 50 configs after 1/42 pair Base passes; confirmation built 100 after 2/42. No active config passed every gate; zero funded/virtual closes, PF unavailable, no selected winner. Zero DD here means no exposure, not a profitable low-risk strategy. Do not relax gates or promote a preset from this result. Earlier insufficient-window/gzip attempts remain preserved separately.
+
+The first full CI core run completed all 208 files with 2,430 passes / one Fast-loop timeout / two slow skips. The timeout was an implicit random-market entry requirement in a tick-mechanics fixture. Its feed is now pinned and its held Normal position uses explicit fixed-unit paper sizing; the five corrected Fast-loop checks pass. The remaining 47 local Signal/simulation files pass 525/525. A local full run was interrupted after its runtime checks; it is not claimed as one green full run. Use the final complete PR CI as the release gate.
+
+TypeScript, lint, production build, desktop/mobile Settings and all-page functional UI checks pass. The fresh script stage has 624 passes/8 explicit skips, app/components 80/80, including actual all-page desktop/mobile browser checks with the explicit Chromium path. Both longer runtime tests pass: mixed-operation storm 319.5s and actual queued/repeated preset backtest 17.2s. The final Block matrix passes. The older browser-path failure and unbounded stress failures remain separately preserved. The 34-file targeted regression's stale fixtures were repaired and its three affected files rerun 52/52; the full 208-file core run and the complete per-commit CI outcomes are recorded in PR 185. Both the full default suite and longer runtime checks are release gates; use their linked final results instead of adding targeted rerun counts. See [strategy-defaults-20261020.md](strategy-defaults-20261020.md) for complete settings, order phases, candidate comparisons, evidence boundaries and any remaining release checks. Legacy economic preset caches require backed-up re-evaluation before a hosted reload.
+
+## Latest local Signal PF 1.5 checkpoint — 20 October
+
+Implementation and tested code: **`bc39e25`**, branch `fix/signals-history-matrix-20261020`. Every Signal source/range/lane/type/config/symbol/direction now shares its own PF>=1.5 historic/Last-N verdict across Strategy Base, selection, activation and native/model admission. Pure historic TP/SL runs independently of trailing; held zero-trailing IDs restore exactly; trailing-only Family-Seats are fixed. Stricter gates and the configured partial Last-N policy remain. Full historical fits require own N=25. Representative pair diagnostics remain separate from exact config qualification.
+
+**377/377** targeted tests pass in 24 offline files, including deterministic 12-symbol/all-range/all-lane/all-type routing with 1,104 expected modeled closes, native-proof, stop/control and exchange regression checks. TypeScript, production build and desktop/mobile dev/built Settings checks pass. Initial failures and the interrupted v1 run are preserved; the previous broad repository audit remains incomplete.
+
+Completed sealed `pf15-v2`: **88,621** configs, **17,706** own-Base passes at start, **21,083** configs passing at least one hourly Base evaluation, **4,542** configs with **7,055** accepted settled **virtual** closes. Return PF **1.112312**, hours **11 positive / 12 negative / 1 flat**. Development-selected 3% / ratio 1 / Trailing: development PF 3.839497, confirmation PF **1.370291**, total PF 2.499531. Confirmation does not meet PF 1.5. This is the reused retrospective public feed, not an untouched holdout, funded account or venue result. No every-hour profit or live promotion claim.
+
+See [signal-pf15-20261020.md](signal-pf15-20261020.md) for exact policy, scope and protocol. At that earlier checkpoint X02 credentials were absent and public publication had been rejected. The authenticated X02 tests and explicitly authorized publication in the follow-up above supersede those access limitations; the original virtual Signal profitability numbers remain unchanged.
+
 
 ## Final full-context checkpoint — 20 October
 
@@ -1532,3 +1571,42 @@ The tracked encoded fixture reconstructs source-feed SHA-256
 Finish the hosted checks and complete both final22 cases before selecting any
 prospective exclusions. No merge, live deployment/reload or exclusion was
 performed; existing PF/sample and own-position protection gates remain.
+
+## Independent Signal history, bounded trailing and X02 verification — 2026-10-20
+
+Local branch `fix/signals-history-matrix-20261020`, code checkpoints `97fc3c6`
+and `1a48c89`, plus final feed/fixture correction `025716f`. See [full evidence and reproduction notes](simulations/signals-12sym-20261020.md).
+Signals now retain a separate 336h history including actual backfill/warmup,
+configurable entry-anchored trailing ceilings up to 3%, and consistent
+percent/ATR/historic/DCA/Axis protection identities. Multi-timeframe duplicate
+symbol lookup no longer empties own Last-N evidence. Native admission rechecks
+current own validation; held legacy positions retain their original ceiling.
+APZ reclaim, FRAMA pullback and Supertrend pullback are opt-in research sources,
+not enabled production defaults.
+
+The complete 12-symbol main matrix contains 89,578 effective configs and
+21,775 settled accepted virtual closes before account funding: PF 0.623875,
+9/24 positive hours. The development-selected 3% / 0.5 / Trailing group has
+1,758 closes, PF 3.617904; confirmation alone has 603 closes, PF 5.143839 and
+9/12 positive hours. These are independent scenarios excluding shared side
+acceptance/cluster/Block/engine coordination and funding, not funded portfolio
+or venue results. The v5 repeat matches original counts/PF and adds per-symbol
+results, individual accepted trades and sorted aggregate diagnostics. Protocol
+SHA-256 `06e7c07c929dd1c8ac142065beddcea40ad6ef207becf7011a4c53eda3f9e417`.
+The corrected four-lane new-source sweep has 12,549 configs / 3,042 virtual
+closes, PF 1.569473; losing and insufficient cells are retained. No universally
+positive or every-hour-positive result is claimed.
+
+Typecheck, built worker and desktop/mobile Settings save/reload/bounds checks
+pass. Focused source/engine/E2E (58), isolated pipeline (21), context/lane/
+completeness/native (396), and corrected Control + cap regression (100) runs
+pass; counts overlap. The first full audit and incomplete study attempts are
+preserved, never promoted to successful benchmarks. A complete full-audit
+retry also remains incomplete: its execution session disappeared without a terminal summary during the server Base-count runtime fixtures (exit code/signal unknown). Known failures were five stale 336h seat-fixture expectations and the missing independent Signal Trailing-only assertion. Corrected reruns pass: seats 30/30, processing 6/6 including all 128 toggle combinations. The later paging correction removes the fixed 20-page ceiling for >480h presets; feed/backfill 21/21, repeated typecheck and worker build pass. The study uses cached candles and retains its exact source manifest separately from this feed-only change. Do not call either broad audit fully green; finish remaining coverage on a stable runner.
+
+Actual `bingx-vst-02` remains inaccessible: credential resolver has no key pair,
+and the documented server route timed out. No actual venue order, live reload,
+deployment or merge was performed. Git push was automatically rejected for
+public code publication without sufficient explicit authorization and was not
+bypassed. Code and a reviewable patch are prepared locally; publication still
+requires user approval.

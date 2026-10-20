@@ -454,6 +454,9 @@ export function PresetSettingsDialog(props: {
                   onChange={(v) => set(["dca", "levels"], v)}
                 />
               </Field>
+              <Field label="DCA addition × original base" hint="no compounding · one 2.5× addition gives 3.5× total by default">
+                <Num step={0.1} min={0.1} max={2.5} value={s.dca.addRatio ?? 1} onChange={(v) => set(["dca", "addRatio"], v)} />
+              </Field>
               <Field label="DCA step (%)" hint="0.1 – 10">
                 <Num pct min={0.001} max={0.1} value={s.dca.step} onChange={(v) => set(["dca", "step"], v)} />
               </Field>

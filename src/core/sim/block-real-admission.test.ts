@@ -28,7 +28,7 @@ function tape(n: number, sym: string, open = false) {
 }
 function options(mode: "overall" | "shared" | "additive" = "overall"): WalkForwardOptions {
   const base = defaultWalkForward(DEFAULT_SETTINGS);
-  return { ...base, longH: 336, mode: "fixed", simH: 6, seatPer: "config", validLastN: 0, lastN: 0,
+  return { ...base, mode: "fixed", longH: 336, simH: 6, seatPer: "config", validLastN: 0, lastN: 0,
     normalBaseMinPf: 0, robustFrac: 0, symGate: "off", blockTrace: true,
     maxOpen: 1, maxPerSymbol: 0, maxPerSide: 0, maxPositions: 0,
     coord: { enabled: false, hourLock: 0, cooldown: "off", conflict: false, confirm: false },

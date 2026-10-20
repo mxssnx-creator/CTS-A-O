@@ -38,7 +38,7 @@ describe("Strategy Base diagnostic and runtime parity", () => {
     const o: WalkForwardOptions = {
       ...defaults,
       longH: 6,
-      signalLongH: 6, // This fixture explicitly tests a six-hour Signal window; production remains 336h.
+      signalLongH: 6,
       preH: 6,
       preGate: false,
       validLastN: 0,

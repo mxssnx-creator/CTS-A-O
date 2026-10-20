@@ -39,7 +39,11 @@ test("an enabled plus range builds only the selected cells, tagged for their own
       cells: [{ tp: 0.006, sl: 0.012, trail: 0.003 }],
     },
   };
-  const cells = protectGrid(15, g).filter((p) => p.tag === "mp");
+  const allCells = protectGrid(15, g).filter((p) => p.tag === "mp");
+  const cells = allCells.filter((p) => !p.trailOnly);
+  const trailingOnly = allCells.filter((p) => p.trailOnly);
+  assert.equal(trailingOnly.length, 1, "one independent no-TP sibling of the selected trailing cell");
+  assert.ok(trailingOnly.every((p) => p.tp === 0 && p.sl <= 0.03 && p.trail > 0));
   assert.equal(cells.length, 1);
   assert.equal(cells[0].sl, 0.012);
   const id = configId("follow", "rsi-mom-14-20", { ...cells[0], tag: "mp" });

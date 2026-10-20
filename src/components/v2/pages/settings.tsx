@@ -811,7 +811,10 @@ export function SignalsSettings(props: {
           />
         </Field>
       </div>
-      <Field label="Signal peak-gap ratios" hint="Independent trailing configurations: ratio × activation gives the gap from the favorable peak. Stops, activation and peak gaps are capped at 2% of entry; no change to fixed Normal TP/SL or qualification gates.">
+      <Field label="Maximum Signal trailing from entry (%)" hint="Hard stop, activation and peak gap are bounded from entry from the start. Maximum 3%; a tighter configured stop stays tighter. Held orders retain their exact original protection.">
+        <Num pct value={g.trailMax ?? 0.03} min={0.002} max={0.03} step={0.1} onChange={(v) => set(["trailMax"], v)} />
+      </Field>
+      <Field label="Signal peak-gap ratios" hint="Independent trailing configurations: ratio × activation gives the gap from the favorable peak, bounded by the maximum from entry. Each value has its own history and qualification.">
         <List value={g.trailRatios ?? [1]} onChange={(v) => set(["trailRatios"], v)} />
       </Field>
       <div className="v2-grid v2-cols-2">
@@ -933,11 +936,11 @@ export function SignalsSettings(props: {
       </div>
       <div className="v2-grid v2-cols-4">
         <Field
-          label="Historic trailing configs"
-          hint="per signal, Trailing configs of its own from its historic entries: the move they reached within the hold (MFE) at each quantile is a target, trailed at every share, stopped at every multiple — each validated on its own"
+          label="Historic TP/SL and trailing configs"
+          hint="each source/range/lane/type/config uses its own symbol and direction history and Last-N at PF ≥ 1.5. Historic targets create independent TP/SL exits without trailing and additional peak-trailing variants; stricter stage gates still apply."
         >
           <Switch
-            label="historic trailing configs"
+            label="historic TP/SL and trailing configs"
             checked={hist.enabled !== false}
             onChange={(v) => set(["hist", "enabled"], v)}
           />
@@ -1535,7 +1538,7 @@ export function RangeEditor(props: {
         />
         <div>
           <div style={{ fontWeight: 600 }}>
-            {props.title} {on && <span className="v2-muted">· {cells} cells per hold</span>}
+            {props.title} {on && <span className="v2-muted">· {cells} TP combinations per hold</span>}
           </div>
           <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
             {props.info}
@@ -3787,6 +3790,10 @@ export function SettingsPage() {
                 onChange={(v) => set(["dca", "levels"], v)}
               />
             </Field>
+            <Field label="Addition × original base" hint="each added leg uses this many original base units; never compounds · default: one addition of 2.5×, total 3.5×">
+              <Num step={0.1} min={0.1} max={2.5} value={s.dca.addRatio ?? 1}
+                onChange={(v) => set(["dca", "addRatio"], v)} />
+            </Field>
             <Field
               label="Step (%)"
               hint="distance between levels (unless a step × target is set) · 0.1 – 10"
@@ -4001,6 +4008,12 @@ export function SettingsPage() {
                   onChange={(v) => set(["grid", "trailStep"], v)}
                 />
               </Field>
+              <div>
+                <div style={{ fontWeight: 600 }}>Independent Trailing-only sets</div>
+                <Switch label="Independent Trailing-only sets" checked={!!s.grid.trailingOnly}
+                  onChange={(v) => set(["grid", "trailingOnly"], v)} />
+                <div className="v2-muted">Own config and Last-N evaluation, no TP from entry, hard start stop at most 3%.</div>
+              </div>
               <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
                 <Switch
                   label="Trail runs free"
