@@ -359,6 +359,16 @@ export interface WalkForwardOptions {
    */
   basePassed?: ReadonlySet<string>;
   /**
+   * Which configs a step may seat. "pool" (default, today): every config of a Base-passed pair, re-validated at every
+   * step. "validated": only the validated set V — the configs that pass the evaluation (configEval) at the run's start
+   * (`validated`); each later step selects from V alone (its gates may drop a member for a step, never add a config
+   * outside V), and V is refreshed only by the next compute's Base + set evaluation. Not with probe / invertSeats
+   * (they seat configs outside V).
+   */
+  seatSet?: "validated" | "pool";
+  /** V's ids (seatSet "validated"): given, or evaluated once at the run's start (WalkForwardResult.validated) */
+  validated?: ReadonlySet<string>;
+  /**
    * signal pairs ("bot|ind") that passed their Base gate in the current compute: a held signal pair keeps its tapes
    * to manage its positions but opens nothing new. Unset = no restriction.
    */
@@ -2140,6 +2150,8 @@ export interface StepLog {
 
 export interface WalkForwardResult {
   startT: number;
+  /** seatSet "validated": the validated set V the run selected from (ids), evaluated at startT */
+  validated?: string[];
   endT: number;
   opts: Omit<WalkForwardOptions, "protects" | "dcaProtects">;
   trades: Trade[];
@@ -2582,7 +2594,7 @@ export function selectAt(
     if (ddt > Math.min(ddtMax, ddtLimitH(o, tp, t, longH)) || ddrFails(dd.mdd * 100, w.net, o.gates.maxDdr)) continue;
     pairOk.set(pair, (pairOk.get(pair) ?? 0) + 1);
     // a held-only tape serves its open position, it takes no new seat
-    if (tp.heldOnly || !tapeExecutable(tp, o)) continue;
+    if (tp.heldOnly || !tapeExecutable(tp, o) || !inValidated(tp.id, o)) continue;
     const pa = lowerBound(tp.exitT, fromPre);
     const pre = win(tp, pa, b);
     if (o.preGate && pre.n >= 3 && (pre.pf < PF_NEUTRAL || pre.net < 0)) continue;
@@ -2641,7 +2653,7 @@ export function selectDurable(
     // the base is evaluated whatever the toggles: DCA / Axis still have to beat it with Normal off
     noteBase(basePf, tp, w);
     // a held-only tape serves its open position, it takes no new seat
-    if (tp.heldOnly || !tapeExecutable(tp, o)) continue;
+    if (tp.heldOnly || !tapeExecutable(tp, o) || !inValidated(tp.id, o)) continue;
     if (held.has(tp.id)) {
       // sticky: stay while the long window still pays (PF >= neutral)
       if (w.n >= 3 && w.pf >= PF_NEUTRAL && w.net > 0)
@@ -2821,6 +2833,8 @@ interface SelInfo {
   tp: ConfigTape;
   inScope: boolean;
   canSeat: boolean;
+  /** seatSet "validated": the config is a member of V (always true under "pool") */
+  inV: boolean;
   base: boolean;
   pairKey: string;
   seat: string;
@@ -2862,6 +2876,7 @@ function selSig(o: WalkForwardOptions): string {
   return [
     o.bots.join(","),
     objId(o.basePassed),
+    o.seatSet === "validated" ? objId(o.validated) : 0,
     JSON.stringify(o.toggles ?? null),
     o.signalOwnBase ? 1 : 0,
     o.seatPer ?? "",
@@ -2875,6 +2890,18 @@ function selSig(o: WalkForwardOptions): string {
     JSON.stringify(o.rangeOpts ?? null),
   ].join("|");
 }
+/** Whether a config may take a seat under seatSet: always under "pool", only a member of V under "validated". */
+export function inValidated(id: string, o: Pick<WalkForwardOptions, "seatSet" | "validated">): boolean {
+  return o.seatSet !== "validated" || !o.validated || o.validated.has(id);
+}
+
+/** seatSet "validated" seats nothing outside V: a probe / contrarian seat would. */
+export function assertSeatSet(o: Pick<WalkForwardOptions, "seatSet" | "probe" | "invertSeats">): void {
+  if (o.seatSet !== "validated") return;
+  if (o.probe?.perRange || o.probe?.perCell) throw new Error('wf.seatSet "validated" refuses wf.probe (it seats configs outside V)');
+  if (o.invertSeats) throw new Error('wf.seatSet "validated" refuses wf.invertSeats (a seat executes on its mirror, outside V)');
+}
+
 function selInfoOf(tp: ConfigTape, o: WalkForwardOptions, botOk: ReadonlySet<string> | null): SelInfo {
   const pairKey = `${tp.bot}|${tp.ind}`;
   const seat = seatKey(tp, o);
@@ -2882,7 +2909,8 @@ function selInfoOf(tp: ConfigTape, o: WalkForwardOptions, botOk: ReadonlySet<str
   return {
     tp,
     inScope: !(botOk && !botOk.has(tp.bot)) && !(o.basePassed && !o.basePassed.has(pairKey)),
-    canSeat: !tp.heldOnly && tapeExecutable(tp, o),
+    inV: inValidated(tp.id, o),
+    canSeat: !tp.heldOnly && tapeExecutable(tp, o) && inValidated(tp.id, o),
     base: fam === "base",
     pairKey,
     seat,
@@ -2975,6 +3003,51 @@ function configPassAt(
   passOut.gh = gh;
   passOut.ddt = dd.ddtH;
   return true;
+}
+
+/**
+ * The validated set V: the ids of the configs that take a seat-eligible place and pass the evaluation (configEval's gates)
+ * at time t — evaluated once, at a run's start. In slices (yields −1 every ~8 ms).
+ */
+export function* validatedSetGen(
+  tapes: readonly ConfigTape[],
+  t: number,
+  o: WalkForwardOptions,
+): Generator<number, Set<string>> {
+  const out = new Set<string>();
+  const from = t - Math.max(o.longH, o.preH) * H;
+  const botOk = o.bots.length ? new Set<string>(o.bots) : null;
+  const ddtMax = Math.max(o.gates.minDdtH ?? 0, (o.gates.maxDdtH * Math.max(o.longH, o.preH)) / 72);
+  const free: WalkForwardOptions = { ...o, seatSet: "pool", validated: undefined };
+  let seen = 0;
+  let t0 = performance.now();
+  for (const tp of tapes) {
+    if (++seen % 32 === 0 && performance.now() - t0 > 8) {
+      yield -1;
+      t0 = performance.now();
+    }
+    const info = selInfoOf(tp, free, botOk);
+    if (!info.inScope || !info.canSeat) continue;
+    const a = lowerBound(tp.exitT, from);
+    const b = lowerBound(tp.exitT, t);
+    const gp = tp.gp[b] - tp.gp[a];
+    const gl = tp.gl[b] - tp.gl[a];
+    const net = (tp.rs[b] - tp.rs[a]) * 100;
+    if (configPassAt(tp, t, o, a, b, b - a, net, profitFactor(gp, gl), gp, gl, ddtMax, info)) out.add(tp.id);
+  }
+  return out;
+}
+
+/** The tapes a validated run selects from: V's members, and (family seats judged against their base) the base tapes of V's pairs. */
+export function validatedTapes(
+  tapes: readonly ConfigTape[],
+  v: ReadonlySet<string>,
+  o: Pick<WalkForwardOptions, "familySeats" | "seatPer">,
+): ConfigTape[] {
+  const needBase = !!o.familySeats && o.seatPer !== "config";
+  const pairs = new Set<string>();
+  if (needBase) for (const tp of tapes) if (v.has(tp.id)) pairs.add(`${tp.bot}|${tp.ind}`);
+  return tapes.filter((tp) => v.has(tp.id) || (needBase && familyOf(tp.kind) === "base" && pairs.has(`${tp.bot}|${tp.ind}`)));
 }
 
 /** selectFixed in slices: yields −1 every ~8 ms (with every config its own seat, ~100k tapes per step). */
@@ -4310,9 +4383,18 @@ export function* walkForwardGen(
   let invertMissing = 0;
   // signals: not selected into seats; every config of an active signal is a candidate on its own symbol and
   // direction (the Real gate checks active + guard per config × symbol × direction)
-  const { engine: selTapes, signal: sigTapes } = splitSignalTapes(tapes, o);
+  const { engine: allEngine, signal: sigTapes } = splitSignalTapes(tapes, o);
   const endT = u.nowT;
   const startT = o.startT ?? Math.floor((endT - o.simH * H) / H) * H;
+  // seatSet "validated": V is evaluated once here, then every step selects from V's tapes alone
+  assertSeatSet(o);
+  let validatedIds: Set<string> | undefined;
+  let selTapes = allEngine;
+  if (o.seatSet === "validated") {
+    validatedIds = o.validated ? new Set(o.validated) : yield* validatedSetGen(allEngine, startT, o);
+    o = { ...o, validated: validatedIds };
+    selTapes = validatedTapes(allEngine, validatedIds, o);
+  }
   // without an explicit start the run reaches the newest bar (the last partial hour included)
   const stopT = o.startT === undefined ? endT : Math.min(endT, startT + o.simH * H);
   const steps: StepLog[] = [];
@@ -4478,7 +4560,7 @@ export function* walkForwardGen(
   // every step's record per range (StepLog.byRange): the tapes of each range, counted once
   const stepRange = (cfg: string) => (sigCfg(cfg) ? "sig" : rangeOfId(cfg));
   const tapesByRange: Record<string, number> = {};
-  for (const tp of selTapes) tapesByRange[rangeOfId(tp.id)] = (tapesByRange[rangeOfId(tp.id)] ?? 0) + 1;
+  for (const tp of allEngine) tapesByRange[rangeOfId(tp.id)] = (tapesByRange[rangeOfId(tp.id)] ?? 0) + 1;
   if (sigTapes.length) tapesByRange.sig = sigTapes.length;
   // the step's hedge-only signals (negative-hour hedge; outside the ranked set)
   let hedgeKeys = new Set<string>();
@@ -4743,13 +4825,14 @@ export function* walkForwardGen(
   };
   const bySide = { long: sideStat(1), short: sideStat(-1) };
   const stable = runStable(stats, blocks, o.gates.minPf);
-  const { protects: _p, dcaProtects: _d, ...rest } = o;
+  const { protects: _p, dcaProtects: _d, validated: _v, ...rest } = o;
   // the end-of-run state paper / live continue from: every order closed by the end counts
   settle(stopT);
   // candidates still open at the end close the feed, in exit order (they never reached the books)
   while (vopen.size) feed.push(vopen.pop()!);
   return {
     startT,
+    ...(validatedIds ? { validated: [...validatedIds] } : {}),
     endT: stopT,
     opts: rest,
     trades,
