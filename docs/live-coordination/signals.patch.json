@@ -7,7 +7,8 @@
     "signals": {
       "enabled": true,
       "count": 0,
-      "sideAccept": { "enabled": false, "minPf": 1.3, "hours": 24, "minTrades": 20 }
+      "sideAccept": { "enabled": false, "minPf": 1.3, "hours": 24, "minTrades": 20 },
+      "accept": { "enabled": true, "minPf": 2, "hours": 48, "minTrades": 6 }
     },
     "gates": {
       "rangeMinPf": { "micro": 1.05, "minimal": 1.1, "short": 1.15, "general": 1.2, "long": 1.18 }
