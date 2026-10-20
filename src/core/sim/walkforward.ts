@@ -67,13 +67,16 @@ import { INDICATION_BY_ID, isSignalInd, laneOf, signalSourceOf } from "../indica
 import { isMicroInd, microIndFits, type MicroIndRule } from "../indications/micro.ts";
 import {
   acceptKey,
+  activationEnd,
   activeSignals,
   EngineSideIndex,
   engineSideKey,
   engineSideKeyFor,
   guardKey,
   SignalAcceptIndex,
+  type SignalActivationEnd,
   SignalGuard,
+  type SignalUnitReport,
   sigActiveKey,
   sideAcceptKey,
 } from "../signals.ts";
@@ -2157,6 +2160,8 @@ export interface WalkForwardResult {
   /** causal signal activation: the active set of every step, and the set at the end (paper / live use it) */
   signalSteps?: Array<{ t: number; keys: string[] }>;
   signalActiveEnd?: string[];
+  /** why each signal unit is or is not in signalActiveEnd (counts per direction and reason, the top long units) */
+  signalActivationEnd?: SignalActivationEnd;
   /**
    * the signal candidates of the run before any gate: every config's entry in the run, and how many of them belonged to
    * a unit not active at their step (dropped before the gates — counted here, not as skips: they are every config of
@@ -3900,6 +3905,7 @@ export function activeSignalsAt(
   t: number,
   sig: SignalSettings,
   windowH: number,
+  report?: SignalUnitReport[],
 ): Set<string> {
   const groups =
     sigTapes.length && "h" in sigTapes[0]
@@ -3978,6 +3984,7 @@ export function activeSignalsAt(
       return { bot: pair.slice(0, i), ind: pair.slice(i + 1), bySym };
     }),
     sig,
+    report,
   );
 }
 
@@ -4762,12 +4769,13 @@ export function* walkForwardGen(
         }
       : {}),
     ...(o.signalRank
-      ? {
-          signalSteps,
-          signalActiveEnd: sigTapes.length
-            ? [...activeSignalsAt(sigIdx, stopT, o.signalRank, Math.max(o.longH, o.preH))]
-            : [],
-        }
+      ? (() => {
+          const rep: SignalUnitReport[] = [];
+          const set = sigTapes.length
+            ? activeSignalsAt(sigIdx, stopT, o.signalRank, Math.max(o.longH, o.preH), rep)
+            : new Set<string>();
+          return { signalSteps, signalActiveEnd: [...set], signalActivationEnd: activationEnd(rep) };
+        })()
       : {}),
   };
 }

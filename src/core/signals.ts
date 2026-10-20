@@ -135,6 +135,8 @@ export function activeSignals(
       | string;
   }>,
   sig: SignalSettings,
+  /** optional collector: one row per judged unit with the first test it failed (decisions are unchanged) */
+  report?: SignalUnitReport[],
 ): Set<string> {
   type St = SignalSideStat & { sides?: Partial<Record<"1" | "-1", SignalSideStat>> };
   // automatic validation: the most recent part of the history must be positive too (when measured) — a unit without
@@ -148,17 +150,31 @@ export function activeSignals(
   const rank = sig.rank ?? "drawdown";
   const byDd = rank === "drawdown" || rank === "lowdd";
   // one row per unit; a pooled (pre-split) record is one unit holding both directions' keys
-  const rows: Array<{ key: string; keys: string[]; score: number; pf: number }> = [];
-  const judge = (keys: string[], st: SignalSideStat) => {
-    if (st.n < sig.minTrades || !recentOk(st)) return;
+  const rows: Array<{ key: string; keys: string[]; score: number; pf: number; side: 1 | -1 | 0; st: SignalSideStat }> = [];
+  const note = (keys: string[], side: 1 | -1 | 0, st: SignalSideStat, reason: SignalFail) =>
+    report?.push({
+      key: keys[0],
+      side,
+      reason,
+      n: st.n,
+      net: st.net,
+      dd: st.dd ?? 0,
+      okShare: st.okShare ?? 0,
+      recentN: st.recentN,
+      recentNet: st.recentNet,
+    });
+  const judge = (keys: string[], st: SignalSideStat, side: 1 | -1 | 0) => {
+    if (st.n < sig.minTrades) return void note(keys, side, st, "minTrades");
+    if (!recentOk(st)) return void note(keys, side, st, "recent");
     if (byDd) {
       // drawdown-aware: profitable, positive in enough 4-hour blocks, ranked by net ÷ max drawdown
-      if (!(st.net > 0) || (st.okShare ?? 0) < (sig.minBlockShare ?? 0)) return;
+      if (!(st.net > 0)) return void note(keys, side, st, "net");
+      if ((st.okShare ?? 0) < (sig.minBlockShare ?? 0)) return void note(keys, side, st, "block");
       const dd = Math.max(st.dd ?? 0, 0.5);
       // low drawdown: recovered its worst drawdown at least once, ranked by net ÷ drawdown²
-      if (rank === "lowdd" && st.net < dd) return;
-      rows.push({ key: keys[0], keys, score: rank === "lowdd" ? st.net / (dd * dd) : st.net / dd, pf: st.pf });
-    } else rows.push({ key: keys[0], keys, score: st.net, pf: st.pf });
+      if (rank === "lowdd" && st.net < dd) return void note(keys, side, st, "lowdd");
+      rows.push({ key: keys[0], keys, score: rank === "lowdd" ? st.net / (dd * dd) : st.net / dd, pf: st.pf, side, st });
+    } else rows.push({ key: keys[0], keys, score: st.net, pf: st.pf, side, st });
   };
   for (const r of runs) {
     if (!r.ind.includes("sig-")) continue;
@@ -167,14 +183,61 @@ export function activeSignals(
       const L = sigActiveKey(r.bot, r.ind, sym, 1);
       const S = sigActiveKey(r.bot, r.ind, sym, -1);
       if (st.sides) {
-        if (st.sides["1"]) judge([L], st.sides["1"]);
-        if (st.sides["-1"]) judge([S], st.sides["-1"]);
-      } else judge([L, S], st);
+        if (st.sides["1"]) judge([L], st.sides["1"], 1);
+        if (st.sides["-1"]) judge([S], st.sides["-1"], -1);
+      } else judge([L, S], st, 0);
     }
   }
   rows.sort((a, b) => b.score - a.score || b.pf - a.pf || (a.key < b.key ? -1 : 1));
   // signals.count 0 = no cap: every validated signal unit is active (operator: process freely, many orders)
-  return new Set((sig.count > 0 ? rows.slice(0, sig.count) : rows).flatMap((x) => x.keys));
+  const kept = sig.count > 0 ? rows.slice(0, sig.count) : rows;
+  if (report) {
+    const keptKeys = new Set(kept.map((x) => x.key));
+    for (const x of rows) note(x.keys, x.side, x.st, keptKeys.has(x.key) ? "active" : "cap");
+  }
+  return new Set(kept.flatMap((x) => x.keys));
+}
+
+/** The first test a signal unit failed in activeSignals ("active" = it is in the set, "cap" = ranked out by signals.count). */
+export type SignalFail = "minTrades" | "recent" | "net" | "block" | "lowdd" | "cap" | "active";
+
+/** One judged unit: its key, direction (0 = a pooled record that holds both), the verdict and the numbers it was judged on. */
+export interface SignalUnitReport {
+  key: string;
+  side: 1 | -1 | 0;
+  reason: SignalFail;
+  n: number;
+  net: number;
+  dd: number;
+  okShare: number;
+  recentN?: number;
+  recentNet?: number;
+}
+
+/** The compact end-of-run activation report: counts per direction and reason, and the long units with the most net. */
+export interface SignalActivationEnd {
+  counts: ReturnType<typeof summarizeActivation>;
+  /** the ten long units with the highest net, with the test each failed (or "active") */
+  topLong: SignalUnitReport[];
+}
+
+export function activationEnd(report: readonly SignalUnitReport[]): SignalActivationEnd {
+  const topLong = report
+    .filter((u) => u.side === 1)
+    .sort((a, b) => b.net - a.net || (a.key < b.key ? -1 : 1))
+    .slice(0, 10);
+  return { counts: summarizeActivation(report), topLong };
+}
+
+/** Per direction: how many units are active and how many failed each test (the status block of the activation report). */
+export function summarizeActivation(report: readonly SignalUnitReport[]) {
+  const out: Record<"long" | "short" | "pooled", Record<SignalFail, number>> = {
+    long: { minTrades: 0, recent: 0, net: 0, block: 0, lowdd: 0, cap: 0, active: 0 },
+    short: { minTrades: 0, recent: 0, net: 0, block: 0, lowdd: 0, cap: 0, active: 0 },
+    pooled: { minTrades: 0, recent: 0, net: 0, block: 0, lowdd: 0, cap: 0, active: 0 },
+  };
+  for (const u of report) out[u.side === 1 ? "long" : u.side === -1 ? "short" : "pooled"][u.reason]++;
+  return out;
 }
 
 /** One unit's ranking record (a symbol's pooled stats, or one direction of them). */

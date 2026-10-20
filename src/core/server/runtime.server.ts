@@ -212,7 +212,7 @@ import {
   type LiveRecord,
 } from "../live-record.ts";
 import { OWN_CLOSE_SQL } from "../relation.ts";
-import type { ExchangeAccept } from "../signals.ts";
+import type { ExchangeAccept, SignalActivationEnd } from "../signals.ts";
 
 import os from "node:os";
 import { type BlockBook, blockBookOf, blockStackCap } from "../sim/block.ts";
@@ -388,6 +388,8 @@ export interface RuntimeStatus {
     /** open now in the paper book: positions / orders */
     openPositions?: number;
     openOrders?: number;
+    /** why each signal unit is or is not active at the end of the last compute (per direction and test) */
+    activation?: SignalActivationEnd;
   };
   /** Base config sets evaluated / passing the Base gate (PF ≥ min PF) in the last compute */
   baseEvaluated?: number;
@@ -3412,7 +3414,10 @@ export class CoreRuntime {
       this.hedgeKeys = new Set((sim.hedgeEnd ?? []).filter((k) => !sigActive.has(k)));
       for (const k of this.hedgeKeys) sigActive.add(k);
       this.wf.signalActive = sigActive;
-      if (this.status.signals) this.status.signals.active = sigActive.size;
+      if (this.status.signals) {
+        this.status.signals.active = sigActive.size;
+        this.status.signals.activation = sim.signalActivationEnd;
+      }
     } else this.wf.signalActive = wf.signalActive;
     // stage sets of this compute, for the self-audit (Base-validated → Main config sets → Real → trades)
     this.stageSets = {
