@@ -379,77 +379,119 @@ const alreadySet = (msg: string) => /no need|already|not modified|same|repeat/i.
  */
 const bookCache = new Map<
   string,
-  { at: number; book: BookView; dirty: boolean; touchedAt: number }
+  { at: number; book: BookView; revision: number; notBefore: number; maxAgeMs: number }
 >();
+const bookChanges = new Map<string, { revision: number; at: number }>();
+const bookReads = new Map<string, {
+  revision: number; notBefore: number; maxAgeMs: number; promise: Promise<BookView>;
+}>();
 const contractCache = new Map<string, { at: number; specs: Map<string, bx.ContractSpec> }>();
 const accountCache = new Map<string, { at: number; snap: bx.AccountSnapshot | null }>();
+const contractReads = new Map<string, Promise<Map<string, bx.ContractSpec>>>();
+const accountReads = new Map<string, Promise<bx.AccountSnapshot | null>>();
+/** Concurrent callers share one read per connection; rejection releases the slot for a later retry. */
+function sharedRead<T>(reads: Map<string, Promise<T>>, id: string, read: () => Promise<T>): Promise<T> {
+  const pending = reads.get(id);
+  if (pending) return pending;
+  const promise = Promise.resolve().then(read).finally(() => {
+    if (reads.get(id) === promise) reads.delete(id);
+  });
+  reads.set(id, promise);
+  return promise;
+}
 /** the account balance (sizing, status) is re-read at most once a minute */
 const ACCOUNT_MS = 60_000;
 export function cachedClient(ex: ExchangeClient, syncMs: number): ExchangeClient {
   const key = () => ex.fingerprint();
-  const touch = () => {
-    const c = bookCache.get(key());
-    if (c) {
-      c.dirty = true;
-      c.touchedAt = Date.now();
-    }
+  const touch = (id: string) => {
+    const c = bookChanges.get(id);
+    bookChanges.set(id, { revision: (c?.revision ?? 0) + 1, at: Date.now() });
   };
   return {
     ...ex,
     book: async (fresh) => {
-      const c = bookCache.get(key());
-      // a caller may ask for a fresher book than syncMs (orders about to go out): the cache serves only within both
-      const maxAge = Math.min(syncMs, fresh?.maxAgeMs ?? Infinity);
-      const notBefore = Math.max(c?.touchedAt ?? 0, fresh?.notBefore ?? 0);
-      if (c && !c.dirty && Date.now() - c.at < maxAge && c.at >= notBefore) return c.book;
-      // a book another process read is fine when it was read after our own last order or cancel
-      const touchedAt = c?.touchedAt ?? 0;
-      const book = await ex.book({ notBefore, maxAgeMs: maxAge });
-      bookCache.set(key(), { at: Date.now(), book, dirty: false, touchedAt });
-      return book;
+      const id = key();
+      for (;;) {
+        const change = bookChanges.get(id);
+        const revision = change?.revision ?? 0;
+        const c = bookCache.get(id);
+        // A stricter caller must never inherit an older shared-file read from a looser caller.
+        const maxAgeMs = Math.min(syncMs, fresh?.maxAgeMs ?? Infinity);
+        const notBefore = Math.max(change?.at ?? 0, fresh?.notBefore ?? 0);
+        if (c && c.revision === revision && Date.now() - c.at < maxAgeMs && c.at >= notBefore &&
+            c.notBefore >= notBefore && c.maxAgeMs <= maxAgeMs) return c.book;
+        const pending = bookReads.get(id);
+        if (pending) {
+          const book = await pending.promise;
+          if (pending.revision === (bookChanges.get(id)?.revision ?? 0) &&
+              pending.notBefore >= notBefore && pending.maxAgeMs <= maxAgeMs) return book;
+          continue;
+        }
+        const startedAt = Date.now();
+        const read = { revision, notBefore, maxAgeMs, promise: null as unknown as Promise<BookView> };
+        read.promise = Promise.resolve().then(() => ex.book({ notBefore, maxAgeMs })).then((book) => {
+          // Even the very first read may race an order. Never mark its pre-order snapshot clean.
+          if ((bookChanges.get(id)?.revision ?? 0) === revision)
+            bookCache.set(id, { at: startedAt, book, revision, notBefore, maxAgeMs });
+          return book;
+        }).finally(() => {
+          if (bookReads.get(id) === read) bookReads.delete(id);
+        });
+        bookReads.set(id, read);
+        const book = await read.promise;
+        if ((bookChanges.get(id)?.revision ?? 0) === revision) return book;
+      }
     },
     ...(ex.account
       ? {
           account: async () => {
-            const c = accountCache.get(key());
+            const id = key();
+            const c = accountCache.get(id);
             if (c && Date.now() - c.at < ACCOUNT_MS) return c.snap;
-            const snap = await ex.account!();
-            accountCache.set(key(), { at: snap?.at ?? Date.now(), snap });
-            return snap;
+            return sharedRead(accountReads, id, async () => {
+              const snap = await ex.account!();
+              accountCache.set(id, { at: snap?.at ?? Date.now(), snap });
+              return snap;
+            });
           },
         }
       : {}),
     contracts: async () => {
-      const c = contractCache.get(key());
+      const id = key();
+      const c = contractCache.get(id);
       if (c && Date.now() - c.at < 600_000) return c.specs;
-      let specs: Map<string, bx.ContractSpec>;
-      try {
-        specs = await ex.contracts();
-      } catch (err) {
-        // a failed or late refresh never stops the step: the last good list serves (lot steps and minimums change
-        // rarely); without one the step reports the error as before
-        if (c) return c.specs;
-        throw err;
-      }
-      // an empty list is an outage (every host failed), not "no contracts": never cached, the last good list serves
-      if (specs.size) contractCache.set(key(), { at: Date.now(), specs });
-      else if (c) return c.specs;
-      return specs;
+      return sharedRead(contractReads, id, async () => {
+        let specs: Map<string, bx.ContractSpec>;
+        try {
+          specs = await ex.contracts();
+        } catch (err) {
+          // a failed or late refresh never stops the step: the last good list serves (lot steps and minimums change
+          // rarely); without one the step reports the error as before
+          if (c) return c.specs;
+          throw err;
+        }
+        // an empty list is an outage (every host failed), not "no contracts": never cached, the last good list serves
+        if (specs.size) contractCache.set(id, { at: Date.now(), specs });
+        else if (c) return c.specs;
+        return specs;
+      });
     },
     order: async (p) => {
-      touch();
+      const id = key();
+      touch(id);
       try {
         return await ex.order(p);
       } finally {
-        touch();
+        touch(id);
       }
     },
     cancel: async (sym, id) => {
-      touch();
+      const connection = key();
+      touch(connection);
       try {
         return await ex.cancel(sym, id);
       } finally {
-        touch();
+        touch(connection);
       }
     },
   };

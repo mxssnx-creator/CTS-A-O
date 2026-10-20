@@ -1,0 +1,22 @@
+{
+  "schema": "cts-micro-load-v1",
+  "source": "synthetic functional load, no exchange executions",
+  "scope": "120 symbols; all 616 Micro/mirror identities; 1/5/15m singles and combinations; four Micro protects; two real runtime computations; 100 coalesced kicks. Full four-range financial grid measured separately on 20 real symbols.",
+  "elapsedMs": 447226.04032900004,
+  "maxRssMb": 1550.7421875,
+  "maxCompute": 1,
+  "kicks": 100,
+  "nativeChecks": 3766,
+  "computes": 2,
+  "paperSteps": 1,
+  "symbols": 120,
+  "progress": {
+    "intervalMs": 100,
+    "checks": 4141,
+    "lagMs": 1.438706999993883,
+    "maxLagMs": 5890.392748999991,
+    "missed": 331,
+    "error": null
+  },
+  "failure": null
+}

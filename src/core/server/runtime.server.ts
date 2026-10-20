@@ -1749,6 +1749,7 @@ export class CoreRuntime {
       this.liveBusy = true;
       this.liveStartedAt = Date.now();
       const epoch = this.liveEpoch;
+      const gen = this.gen;
       // overall mode never reads the pending entries (the control sizes its positions from the lanes): computed before
       // every step (Block books, symbol stats, signal acceptance) they held the loop 0.5–1.6 s at a time and fed the
       // collector's multi-second pauses (x02, 7 Oct profile) — there they only refresh the status' "pending:"
@@ -1767,7 +1768,10 @@ export class CoreRuntime {
       }
       this.livePhase = "start";
       void Promise.resolve()
-        .then(() => this.onLive!(this, intents, this.gen))
+        .then(() => {
+          if (this.stopped || epoch !== this.liveEpoch || gen !== this.gen) return;
+          return this.onLive!(this, intents, gen);
+        })
         .catch((err) =>
           this.db.event("error", `live step failed: ${err instanceof Error ? err.message : err}`),
         )

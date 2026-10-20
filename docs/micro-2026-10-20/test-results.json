@@ -1,0 +1,24 @@
+{
+  "status": "in_progress",
+  "coreFilesTotal": 209,
+  "verifiedCoreFilesThroughPreviousBatches": 105,
+  "pendingFiles": 104,
+  "sourceSha256": "1ba487d77477f16f029e1660cee0cfb723bd2078d7f993f777479286fde89b6a",
+  "targeted": {
+    "allMicroWorkerParity": "passed all 616 identities",
+    "microCostTrailing": "5 passed",
+    "lifecycleControlLive": "65 passed",
+    "memoryAndExitTick": "12 passed",
+    "boundedAllIndicationPipeline": "21 passed",
+    "scriptResearch": "17 passed",
+    "devUI": "4 passed",
+    "uiLabels": "7 passed",
+    "builtUI": "desktop/mobile content, controls and no page errors/overflow"
+  },
+  "productionBuild": "passed",
+  "typecheck": "passed",
+  "notes": [
+    "Interrupted and resource-scheduled batches are preserved; no all-green full-suite claim yet.",
+    "Core fixtures use explicit original source scope where exhaustive new catalog expansion is unrelated to the asserted lifecycle behavior. Full new grids are tested separately."
+  ]
+}

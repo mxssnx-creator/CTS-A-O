@@ -131,7 +131,11 @@ it("native progress runs independently of a slow paper tick and changed settings
     assert.equal(rt.executionEntryBlocked(), true);
     self.settingsStale = false;
     self.executionPending = true;
-    assert.equal(rt.executionEntryBlocked(), true, "starting a compute does not admit the old paper book");
+    assert.equal(
+      rt.executionEntryBlocked(),
+      true,
+      "starting a compute does not admit the old paper book",
+    );
     console.log(
       JSON.stringify({
         executionIntervalMs: 100,
@@ -178,4 +182,63 @@ it("settings awaiting computation block native entries but retain stops, closes 
     ex.orders.some((o) => o.venueSymbol === "S2-USDT" && o.clientOrderId?.startsWith("CTSBV2_")),
     "missing stop repaired",
   );
+});
+
+it("stop and restart cannot overlap an old pending task or publish its stale error", async () => {
+  const clock = new Clock();
+  let release!: () => void,
+    calls = 0,
+    active = 0,
+    maxActive = 0;
+  const loop = new ExecutionProgress(
+    async () => {
+      calls++;
+      active++;
+      maxActive = Math.max(maxActive, active);
+      if (calls === 1)
+        await new Promise<void>((r) => {
+          release = r;
+        });
+      active--;
+    },
+    100,
+    clock,
+  );
+  loop.start();
+  await clock.fire();
+  loop.stop();
+  loop.start();
+  await clock.fire();
+  assert.equal(calls, 1, "restart waits for the old task rather than overlapping it");
+  release();
+  await settle();
+  await settle();
+  assert.equal(calls, 2);
+  assert.equal(maxActive, 1);
+  loop.stop();
+});
+
+it("stop before the detached live callback runs cannot grant it the restart generation", async () => {
+  const rt = new CoreRuntime(
+    new CoreDb(":memory:"),
+    {
+      live: { enabled: true, mode: "overall" },
+      signals: { enabled: false },
+    },
+    { market: "synthetic" },
+  );
+  let calls = 0;
+  rt.liveOrdersActive = true;
+  rt.onLive = async () => {
+    calls++;
+  };
+  try {
+    (rt as unknown as { progressLive(): void }).progressLive();
+    rt.stop();
+    await settle();
+    assert.equal(calls, 0, "no queued callback starts after stop with a newer generation");
+    assert.equal(await rt.liveSettled(1000), true);
+  } finally {
+    rt.dispose();
+  }
 });

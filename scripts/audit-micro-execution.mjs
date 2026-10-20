@@ -2,7 +2,7 @@
 // Independent price-path and arithmetic audit of a completed session. Does not call the production simulator/PF.
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
-import { readSessionDump } from "./lib/session-dump.mjs";
+import { readSessionDump, iterateSessionTapeTrades } from "./lib/session-dump.mjs";
 import { parseConfigId, makeUniverse } from "../src/core/pipeline/pipeline.ts";
 import { barsFromCandles } from "../src/core/market/bars.ts";
 import { entrySignal } from "../src/core/bots/bots.ts";
@@ -11,7 +11,7 @@ import { configEval, engineContextValid, makeTape } from "../src/core/sim/walkfo
 const dir = process.argv[2];
 if (!dir) throw new Error("audit-micro-execution.mjs SESSION_DIR");
 const protocol = JSON.parse(readFileSync(`${dir}/protocol.json`));
-const raw = await readSessionDump(`${dir}/raw.json`);
+const raw = await readSessionDump(`${dir}/raw.json`, { fields: ["trades"] });
 const feed = JSON.parse(readFileSync(protocol.feed.path));
 const cost = protocol.actualSettings.cost;
 assert.ok(cost >= 0 && cost <= 0.0015, "current modeled round trip must not exceed 0.15%");
@@ -33,21 +33,24 @@ const universe = makeUniverse([...columns].map(([key, cs]) => {
   const [sym, tf] = key.split("|"); return { ...barsFromCandles(sym, Number(tf), cs), lanes: [1, 5, 15] };
 }));
 const parsed = new Map(), tapes = new Map();
-for (const row of raw.tapeTrades) {
+const executedKinds = new Map(raw.trades.map((t) => [t.cfg, t.kind]));
+for await (const row of iterateSessionTapeTrades(`${dir}/raw.json`)) {
+  if (!executedKinds.has(row.id)) continue;
   const cfg = parseConfigId(row.id); assert.ok(cfg, row.id); parsed.set(row.id, cfg);
   const syms = [...new Set(row.trades.map((t) => t[0]))];
   const trades = row.trades.map(([sym, side, entryT, exitT, r]) =>
     ({ cfg: row.id, sym, side, entryT, exitT, r, entry: 1, exit: 1, reason: "time", bars: 1, mfe: 0, mae: 0, mult: 1 }));
-  const kind = raw.trades.find((t) => t.cfg === row.id)?.kind ?? (cfg.protect.trail ? "trailing" : "normal");
+  const kind = executedKinds.get(row.id);
   tapes.set(row.id, makeTape(row.id, cfg.bot, cfg.ind, cfg.protect, kind, syms, trades, [], []));
 }
+const columnIndex = new Map([...columns].map(([key, cs]) => [key, new Map(cs.map((b, i) => [b.t, i]))]));
 const violations = [], reasons = {}, bySource = {}, entryProof = [];
 let gp = 0, gl = 0, maxReturnError = 0, replayed = 0, maxPriceError = 0, beforeCostGp = 0, beforeCostGl = 0;
 const add = (key, r) => { const s = bySource[key] ??= { n: 0, gp: 0, gl: 0 }; s.n++; s.gp += Math.max(0, r); s.gl += Math.max(0, -r); };
 const record = (name, trade, detail) => violations.push({ name, cfg: trade.cfg, sym: trade.sym, entryT: trade.entryT, detail });
 for (const trade of raw.trades) {
   const cfg = parsed.get(trade.cfg) ?? parseConfigId(trade.cfg); assert.ok(cfg);
-  const tf = tfOf(trade.cfg), cs = columns.get(`${trade.sym}|${tf}`), index = cs.findIndex((b) => b.t === trade.entryT);
+  const tf = tfOf(trade.cfg), cs = columns.get(`${trade.sym}|${tf}`), index = columnIndex.get(`${trade.sym}|${tf}`)?.get(trade.entryT) ?? -1;
   if (index <= 0) { record("entry bar unavailable", trade); continue; }
   const basis = trade.mult ?? 1;
   const gross = trade.side * (trade.exit - trade.entry) / trade.entry;

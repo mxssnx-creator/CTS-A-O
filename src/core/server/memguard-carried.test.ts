@@ -1,3 +1,4 @@
+import { PREVIOUS_DEFAULT_FOCUS_17OCT as LEGACY_FIXTURE_FOCUS } from "../config.ts";
 // Memory fallback, partial processing: a carried range is not rebuilt in a compute, and its tapes of the previous
 // compute end at that compute's last bar. The configs paper holds in it (seated or with an open position) are rebuilt
 // on the current bars, so they keep taking entries and closing on new bars (frozen, a carried Micro / Minimal took no entry
@@ -15,6 +16,11 @@ import type { ConfigTape } from "../sim/walkforward.ts";
 process.env.CTS_CORE_SYNTHETIC_END = String(Math.floor(Date.now() / 3_600_000) * 3_600_000);
 
 const small = {
+  // Preserve this generic lifecycle fixture's original source scope. Exhaustive new-family grids are
+  // covered separately by Micro/Inverse parity, the 20-symbol replay and 120-symbol load test.
+  focus: [...LEGACY_FIXTURE_FOCUS],
+  pinned: [],
+  exitStrategy: { includeMicro: false },
   symbols: 3,
   historyDays: 6,
   tfDays: { "1": 2, "5": 3, "15": 6, "30": 6 },

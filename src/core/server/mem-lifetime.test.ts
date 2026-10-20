@@ -22,6 +22,11 @@ import { abortWorkers, poolWorkers, workerActivity, workersAvailable } from "./p
 pinSyntheticEnd();
 
 const tiny = {
+  // Cache-lifetime assertions need representative families, not a repeated exhaustive 616-source grid search.
+  // The full grid and maximum-universe coverage live in the dedicated Micro study and stress harness.
+  focus: ["follow|ema-9-21", "follow|rsi-mom-14-20", "follow|micro-1-break-close-fast", "follow|inverse-micro-1-break-close-fast"],
+  pinned: [],
+  exitStrategy: { includeMicro: false },
   symbols: 2,
   historyDays: 6,
   tfDays: { "1": 2, "5": 3, "15": 6, "30": 6 },

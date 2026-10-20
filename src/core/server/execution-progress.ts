@@ -24,6 +24,7 @@ export interface ExecutionProgressStats {
 export class ExecutionProgress {
   private timer: unknown = null;
   private epoch = 0;
+  private inFlight: Promise<void> | null = null;
   private readonly step: () => void | Promise<void>;
   readonly intervalMs: number;
   private readonly time: ProgressClock;
@@ -46,17 +47,22 @@ export class ExecutionProgress {
           this.stats.lagMs = Math.max(0, this.time.now() - deadline);
           this.stats.maxLagMs = Math.max(this.stats.maxLagMs, this.stats.lagMs);
           this.stats.checks++;
-          void Promise.resolve()
-            .then(() => (epoch === this.epoch ? this.step() : undefined))
+          const running = (this.inFlight ?? Promise.resolve())
+            .catch(() => {})
+            .then(() => (epoch === this.epoch ? this.step() : undefined));
+          this.inFlight = running;
+          void running
             .then(
               () => {
-                this.stats.error = null;
+                if (epoch === this.epoch) this.stats.error = null;
               },
               (err) => {
-                this.stats.error = err instanceof Error ? err.message : String(err);
+                if (epoch === this.epoch)
+                  this.stats.error = err instanceof Error ? err.message : String(err);
               },
             )
             .finally(() => {
+              if (this.inFlight === running) this.inFlight = null;
               if (epoch !== this.epoch) return;
               const next = deadline + this.intervalMs;
               const skipped = Math.max(

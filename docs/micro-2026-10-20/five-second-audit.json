@@ -1,0 +1,3685 @@
+{
+  "schema": "cts-recorded-5s-formula-audit-v1",
+  "source": "BingX public trade WebSocket, observed archive only",
+  "symbols": 19,
+  "trades": 30227,
+  "closedBars": 1748,
+  "startT": 1792524437237,
+  "lastReceivedAt": 1792524920066,
+  "observedMinutes": 8.04715,
+  "intervalMs": 5000,
+  "prefixChecks": 836,
+  "violations": 0,
+  "completeRequested12hHistory": false,
+  "recordingInterrupted": true,
+  "scope": "All 22 methods and both profiles on genuine observed 5s OHLCV with market peers. No invented gap bars, simulated profit or subminute live execution claim. Recorder was interrupted by executor restart before its requested duration.",
+  "counts": [
+    {
+      "sym": "ADA-USDT",
+      "bars": 92,
+      "gaps": 0,
+      "profiles": {
+        "fast": {
+          "ready": 61,
+          "methods": {
+            "drawdown-turn": {
+              "long": 5,
+              "short": 11
+            },
+            "drawdown-trend": {
+              "long": 3,
+              "short": 0
+            },
+            "range-reclaim": {
+              "long": 1,
+              "short": 6
+            },
+            "impulse-retest": {
+              "long": 6,
+              "short": 1
+            },
+            "squeeze-break": {
+              "long": 0,
+              "short": 0
+            },
+            "residual-revert": {
+              "long": 0,
+              "short": 0
+            },
+            "market-follow": {
+              "long": 7,
+              "short": 9
+            },
+            "activity-absorb": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-residual": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-market": {
+              "long": 5,
+              "short": 8
+            },
+            "pullback-activity": {
+              "long": 0,
+              "short": 0
+            },
+            "adaptive": {
+              "long": 6,
+              "short": 3
+            },
+            "break-close": {
+              "long": 5,
+              "short": 0
+            },
+            "break-retest": {
+              "long": 1,
+              "short": 0
+            },
+            "activity-acceleration": {
+              "long": 5,
+              "short": 0
+            },
+            "activity-flow": {
+              "long": 5,
+              "short": 0
+            },
+            "change-ema": {
+              "long": 1,
+              "short": 1
+            },
+            "change-roc": {
+              "long": 8,
+              "short": 3
+            },
+            "break-activity": {
+              "long": 2,
+              "short": 0
+            },
+            "break-direction": {
+              "long": 0,
+              "short": 0
+            },
+            "market-momentum": {
+              "long": 10,
+              "short": 5
+            },
+            "relative-trend": {
+              "long": 1,
+              "short": 0
+            }
+          }
+        },
+        "selective": {
+          "ready": 45,
+          "methods": {
+            "drawdown-turn": {
+              "long": 1,
+              "short": 10
+            },
+            "drawdown-trend": {
+              "long": 1,
+              "short": 0
+            },
+            "range-reclaim": {
+              "long": 0,
+              "short": 5
+            },
+            "impulse-retest": {
+              "long": 5,
+              "short": 0
+            },
+            "squeeze-break": {
+              "long": 0,
+              "short": 0
+            },
+            "residual-revert": {
+              "long": 0,
+              "short": 0
+            },
+            "market-follow": {
+              "long": 3,
+              "short": 6
+            },
+            "activity-absorb": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-residual": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-market": {
+              "long": 1,
+              "short": 6
+            },
+            "pullback-activity": {
+              "long": 0,
+              "short": 0
+            },
+            "adaptive": {
+              "long": 5,
+              "short": 1
+            },
+            "break-close": {
+              "long": 5,
+              "short": 0
+            },
+            "break-retest": {
+              "long": 1,
+              "short": 0
+            },
+            "activity-acceleration": {
+              "long": 4,
+              "short": 0
+            },
+            "activity-flow": {
+              "long": 4,
+              "short": 0
+            },
+            "change-ema": {
+              "long": 0,
+              "short": 0
+            },
+            "change-roc": {
+              "long": 5,
+              "short": 3
+            },
+            "break-activity": {
+              "long": 1,
+              "short": 0
+            },
+            "break-direction": {
+              "long": 0,
+              "short": 0
+            },
+            "market-momentum": {
+              "long": 6,
+              "short": 1
+            },
+            "relative-trend": {
+              "long": 0,
+              "short": 0
+            }
+          }
+        }
+      }
+    },
+    {
+      "sym": "ARB-USDT",
+      "bars": 92,
+      "gaps": 0,
+      "profiles": {
+        "fast": {
+          "ready": 61,
+          "methods": {
+            "drawdown-turn": {
+              "long": 11,
+              "short": 19
+            },
+            "drawdown-trend": {
+              "long": 6,
+              "short": 4
+            },
+            "range-reclaim": {
+              "long": 1,
+              "short": 2
+            },
+            "impulse-retest": {
+              "long": 1,
+              "short": 1
+            },
+            "squeeze-break": {
+              "long": 1,
+              "short": 0
+            },
+            "residual-revert": {
+              "long": 1,
+              "short": 1
+            },
+            "market-follow": {
+              "long": 12,
+              "short": 10
+            },
+            "activity-absorb": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-residual": {
+              "long": 1,
+              "short": 1
+            },
+            "drawdown-market": {
+              "long": 9,
+              "short": 10
+            },
+            "pullback-activity": {
+              "long": 0,
+              "short": 0
+            },
+            "adaptive": {
+              "long": 1,
+              "short": 1
+            },
+            "break-close": {
+              "long": 15,
+              "short": 6
+            },
+            "break-retest": {
+              "long": 3,
+              "short": 4
+            },
+            "activity-acceleration": {
+              "long": 1,
+              "short": 2
+            },
+            "activity-flow": {
+              "long": 1,
+              "short": 2
+            },
+            "change-ema": {
+              "long": 0,
+              "short": 0
+            },
+            "change-roc": {
+              "long": 7,
+              "short": 6
+            },
+            "break-activity": {
+              "long": 1,
+              "short": 2
+            },
+            "break-direction": {
+              "long": 0,
+              "short": 0
+            },
+            "market-momentum": {
+              "long": 10,
+              "short": 6
+            },
+            "relative-trend": {
+              "long": 1,
+              "short": 0
+            }
+          }
+        },
+        "selective": {
+          "ready": 45,
+          "methods": {
+            "drawdown-turn": {
+              "long": 2,
+              "short": 10
+            },
+            "drawdown-trend": {
+              "long": 2,
+              "short": 0
+            },
+            "range-reclaim": {
+              "long": 0,
+              "short": 2
+            },
+            "impulse-retest": {
+              "long": 1,
+              "short": 0
+            },
+            "squeeze-break": {
+              "long": 1,
+              "short": 0
+            },
+            "residual-revert": {
+              "long": 0,
+              "short": 0
+            },
+            "market-follow": {
+              "long": 6,
+              "short": 8
+            },
+            "activity-absorb": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-residual": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-market": {
+              "long": 2,
+              "short": 8
+            },
+            "pullback-activity": {
+              "long": 0,
+              "short": 0
+            },
+            "adaptive": {
+              "long": 1,
+              "short": 0
+            },
+            "break-close": {
+              "long": 15,
+              "short": 0
+            },
+            "break-retest": {
+              "long": 3,
+              "short": 0
+            },
+            "activity-acceleration": {
+              "long": 1,
+              "short": 0
+            },
+            "activity-flow": {
+              "long": 1,
+              "short": 0
+            },
+            "change-ema": {
+              "long": 0,
+              "short": 0
+            },
+            "change-roc": {
+              "long": 4,
+              "short": 3
+            },
+            "break-activity": {
+              "long": 1,
+              "short": 0
+            },
+            "break-direction": {
+              "long": 0,
+              "short": 0
+            },
+            "market-momentum": {
+              "long": 6,
+              "short": 0
+            },
+            "relative-trend": {
+              "long": 0,
+              "short": 0
+            }
+          }
+        }
+      }
+    },
+    {
+      "sym": "AVAX-USDT",
+      "bars": 92,
+      "gaps": 0,
+      "profiles": {
+        "fast": {
+          "ready": 61,
+          "methods": {
+            "drawdown-turn": {
+              "long": 12,
+              "short": 17
+            },
+            "drawdown-trend": {
+              "long": 5,
+              "short": 4
+            },
+            "range-reclaim": {
+              "long": 1,
+              "short": 2
+            },
+            "impulse-retest": {
+              "long": 2,
+              "short": 2
+            },
+            "squeeze-break": {
+              "long": 0,
+              "short": 0
+            },
+            "residual-revert": {
+              "long": 1,
+              "short": 0
+            },
+            "market-follow": {
+              "long": 13,
+              "short": 10
+            },
+            "activity-absorb": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-residual": {
+              "long": 1,
+              "short": 0
+            },
+            "drawdown-market": {
+              "long": 10,
+              "short": 10
+            },
+            "pullback-activity": {
+              "long": 0,
+              "short": 1
+            },
+            "adaptive": {
+              "long": 3,
+              "short": 2
+            },
+            "break-close": {
+              "long": 15,
+              "short": 2
+            },
+            "break-retest": {
+              "long": 5,
+              "short": 0
+            },
+            "activity-acceleration": {
+              "long": 1,
+              "short": 1
+            },
+            "activity-flow": {
+              "long": 0,
+              "short": 1
+            },
+            "change-ema": {
+              "long": 1,
+              "short": 0
+            },
+            "change-roc": {
+              "long": 5,
+              "short": 4
+            },
+            "break-activity": {
+              "long": 0,
+              "short": 0
+            },
+            "break-direction": {
+              "long": 0,
+              "short": 0
+            },
+            "market-momentum": {
+              "long": 12,
+              "short": 2
+            },
+            "relative-trend": {
+              "long": 0,
+              "short": 0
+            }
+          }
+        },
+        "selective": {
+          "ready": 45,
+          "methods": {
+            "drawdown-turn": {
+              "long": 2,
+              "short": 12
+            },
+            "drawdown-trend": {
+              "long": 2,
+              "short": 0
+            },
+            "range-reclaim": {
+              "long": 0,
+              "short": 2
+            },
+            "impulse-retest": {
+              "long": 2,
+              "short": 0
+            },
+            "squeeze-break": {
+              "long": 0,
+              "short": 0
+            },
+            "residual-revert": {
+              "long": 0,
+              "short": 0
+            },
+            "market-follow": {
+              "long": 7,
+              "short": 7
+            },
+            "activity-absorb": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-residual": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-market": {
+              "long": 2,
+              "short": 7
+            },
+            "pullback-activity": {
+              "long": 0,
+              "short": 0
+            },
+            "adaptive": {
+              "long": 2,
+              "short": 0
+            },
+            "break-close": {
+              "long": 15,
+              "short": 0
+            },
+            "break-retest": {
+              "long": 4,
+              "short": 0
+            },
+            "activity-acceleration": {
+              "long": 0,
+              "short": 0
+            },
+            "activity-flow": {
+              "long": 0,
+              "short": 0
+            },
+            "change-ema": {
+              "long": 0,
+              "short": 0
+            },
+            "change-roc": {
+              "long": 3,
+              "short": 3
+            },
+            "break-activity": {
+              "long": 0,
+              "short": 0
+            },
+            "break-direction": {
+              "long": 0,
+              "short": 0
+            },
+            "market-momentum": {
+              "long": 6,
+              "short": 0
+            },
+            "relative-trend": {
+              "long": 0,
+              "short": 0
+            }
+          }
+        }
+      }
+    },
+    {
+      "sym": "BCH-USDT",
+      "bars": 92,
+      "gaps": 0,
+      "profiles": {
+        "fast": {
+          "ready": 61,
+          "methods": {
+            "drawdown-turn": {
+              "long": 14,
+              "short": 12
+            },
+            "drawdown-trend": {
+              "long": 6,
+              "short": 2
+            },
+            "range-reclaim": {
+              "long": 0,
+              "short": 4
+            },
+            "impulse-retest": {
+              "long": 3,
+              "short": 0
+            },
+            "squeeze-break": {
+              "long": 0,
+              "short": 0
+            },
+            "residual-revert": {
+              "long": 3,
+              "short": 0
+            },
+            "market-follow": {
+              "long": 13,
+              "short": 9
+            },
+            "activity-absorb": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-residual": {
+              "long": 2,
+              "short": 0
+            },
+            "drawdown-market": {
+              "long": 8,
+              "short": 9
+            },
+            "pullback-activity": {
+              "long": 0,
+              "short": 0
+            },
+            "adaptive": {
+              "long": 4,
+              "short": 1
+            },
+            "break-close": {
+              "long": 16,
+              "short": 3
+            },
+            "break-retest": {
+              "long": 5,
+              "short": 1
+            },
+            "activity-acceleration": {
+              "long": 0,
+              "short": 2
+            },
+            "activity-flow": {
+              "long": 0,
+              "short": 1
+            },
+            "change-ema": {
+              "long": 1,
+              "short": 0
+            },
+            "change-roc": {
+              "long": 9,
+              "short": 7
+            },
+            "break-activity": {
+              "long": 0,
+              "short": 1
+            },
+            "break-direction": {
+              "long": 0,
+              "short": 0
+            },
+            "market-momentum": {
+              "long": 9,
+              "short": 5
+            },
+            "relative-trend": {
+              "long": 0,
+              "short": 2
+            }
+          }
+        },
+        "selective": {
+          "ready": 45,
+          "methods": {
+            "drawdown-turn": {
+              "long": 1,
+              "short": 6
+            },
+            "drawdown-trend": {
+              "long": 1,
+              "short": 0
+            },
+            "range-reclaim": {
+              "long": 0,
+              "short": 4
+            },
+            "impulse-retest": {
+              "long": 3,
+              "short": 0
+            },
+            "squeeze-break": {
+              "long": 0,
+              "short": 0
+            },
+            "residual-revert": {
+              "long": 0,
+              "short": 0
+            },
+            "market-follow": {
+              "long": 7,
+              "short": 8
+            },
+            "activity-absorb": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-residual": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-market": {
+              "long": 0,
+              "short": 5
+            },
+            "pullback-activity": {
+              "long": 0,
+              "short": 0
+            },
+            "adaptive": {
+              "long": 3,
+              "short": 0
+            },
+            "break-close": {
+              "long": 16,
+              "short": 0
+            },
+            "break-retest": {
+              "long": 4,
+              "short": 0
+            },
+            "activity-acceleration": {
+              "long": 0,
+              "short": 1
+            },
+            "activity-flow": {
+              "long": 0,
+              "short": 0
+            },
+            "change-ema": {
+              "long": 0,
+              "short": 0
+            },
+            "change-roc": {
+              "long": 4,
+              "short": 3
+            },
+            "break-activity": {
+              "long": 0,
+              "short": 0
+            },
+            "break-direction": {
+              "long": 0,
+              "short": 0
+            },
+            "market-momentum": {
+              "long": 6,
+              "short": 0
+            },
+            "relative-trend": {
+              "long": 0,
+              "short": 0
+            }
+          }
+        }
+      }
+    },
+    {
+      "sym": "BNB-USDT",
+      "bars": 92,
+      "gaps": 0,
+      "profiles": {
+        "fast": {
+          "ready": 61,
+          "methods": {
+            "drawdown-turn": {
+              "long": 6,
+              "short": 11
+            },
+            "drawdown-trend": {
+              "long": 2,
+              "short": 0
+            },
+            "range-reclaim": {
+              "long": 4,
+              "short": 10
+            },
+            "impulse-retest": {
+              "long": 1,
+              "short": 1
+            },
+            "squeeze-break": {
+              "long": 0,
+              "short": 0
+            },
+            "residual-revert": {
+              "long": 4,
+              "short": 2
+            },
+            "market-follow": {
+              "long": 5,
+              "short": 6
+            },
+            "activity-absorb": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-residual": {
+              "long": 2,
+              "short": 1
+            },
+            "drawdown-market": {
+              "long": 4,
+              "short": 4
+            },
+            "pullback-activity": {
+              "long": 0,
+              "short": 0
+            },
+            "adaptive": {
+              "long": 1,
+              "short": 1
+            },
+            "break-close": {
+              "long": 4,
+              "short": 1
+            },
+            "break-retest": {
+              "long": 1,
+              "short": 0
+            },
+            "activity-acceleration": {
+              "long": 1,
+              "short": 2
+            },
+            "activity-flow": {
+              "long": 0,
+              "short": 0
+            },
+            "change-ema": {
+              "long": 1,
+              "short": 0
+            },
+            "change-roc": {
+              "long": 7,
+              "short": 8
+            },
+            "break-activity": {
+              "long": 0,
+              "short": 0
+            },
+            "break-direction": {
+              "long": 0,
+              "short": 0
+            },
+            "market-momentum": {
+              "long": 6,
+              "short": 4
+            },
+            "relative-trend": {
+              "long": 0,
+              "short": 0
+            }
+          }
+        },
+        "selective": {
+          "ready": 45,
+          "methods": {
+            "drawdown-turn": {
+              "long": 1,
+              "short": 9
+            },
+            "drawdown-trend": {
+              "long": 1,
+              "short": 0
+            },
+            "range-reclaim": {
+              "long": 0,
+              "short": 10
+            },
+            "impulse-retest": {
+              "long": 1,
+              "short": 0
+            },
+            "squeeze-break": {
+              "long": 0,
+              "short": 0
+            },
+            "residual-revert": {
+              "long": 0,
+              "short": 0
+            },
+            "market-follow": {
+              "long": 2,
+              "short": 4
+            },
+            "activity-absorb": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-residual": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-market": {
+              "long": 0,
+              "short": 3
+            },
+            "pullback-activity": {
+              "long": 0,
+              "short": 0
+            },
+            "adaptive": {
+              "long": 1,
+              "short": 0
+            },
+            "break-close": {
+              "long": 4,
+              "short": 0
+            },
+            "break-retest": {
+              "long": 1,
+              "short": 0
+            },
+            "activity-acceleration": {
+              "long": 0,
+              "short": 0
+            },
+            "activity-flow": {
+              "long": 0,
+              "short": 0
+            },
+            "change-ema": {
+              "long": 0,
+              "short": 0
+            },
+            "change-roc": {
+              "long": 3,
+              "short": 4
+            },
+            "break-activity": {
+              "long": 0,
+              "short": 0
+            },
+            "break-direction": {
+              "long": 0,
+              "short": 0
+            },
+            "market-momentum": {
+              "long": 4,
+              "short": 0
+            },
+            "relative-trend": {
+              "long": 0,
+              "short": 0
+            }
+          }
+        }
+      }
+    },
+    {
+      "sym": "BTC-USDT",
+      "bars": 92,
+      "gaps": 0,
+      "profiles": {
+        "fast": {
+          "ready": 61,
+          "methods": {
+            "drawdown-turn": {
+              "long": 12,
+              "short": 16
+            },
+            "drawdown-trend": {
+              "long": 9,
+              "short": 1
+            },
+            "range-reclaim": {
+              "long": 1,
+              "short": 0
+            },
+            "impulse-retest": {
+              "long": 2,
+              "short": 1
+            },
+            "squeeze-break": {
+              "long": 0,
+              "short": 0
+            },
+            "residual-revert": {
+              "long": 4,
+              "short": 7
+            },
+            "market-follow": {
+              "long": 11,
+              "short": 15
+            },
+            "activity-absorb": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-residual": {
+              "long": 1,
+              "short": 3
+            },
+            "drawdown-market": {
+              "long": 7,
+              "short": 11
+            },
+            "pullback-activity": {
+              "long": 1,
+              "short": 0
+            },
+            "adaptive": {
+              "long": 2,
+              "short": 1
+            },
+            "break-close": {
+              "long": 11,
+              "short": 2
+            },
+            "break-retest": {
+              "long": 3,
+              "short": 3
+            },
+            "activity-acceleration": {
+              "long": 5,
+              "short": 2
+            },
+            "activity-flow": {
+              "long": 6,
+              "short": 0
+            },
+            "change-ema": {
+              "long": 1,
+              "short": 1
+            },
+            "change-roc": {
+              "long": 6,
+              "short": 5
+            },
+            "break-activity": {
+              "long": 5,
+              "short": 0
+            },
+            "break-direction": {
+              "long": 1,
+              "short": 0
+            },
+            "market-momentum": {
+              "long": 13,
+              "short": 0
+            },
+            "relative-trend": {
+              "long": 0,
+              "short": 0
+            }
+          }
+        },
+        "selective": {
+          "ready": 45,
+          "methods": {
+            "drawdown-turn": {
+              "long": 7,
+              "short": 13
+            },
+            "drawdown-trend": {
+              "long": 7,
+              "short": 0
+            },
+            "range-reclaim": {
+              "long": 0,
+              "short": 0
+            },
+            "impulse-retest": {
+              "long": 2,
+              "short": 0
+            },
+            "squeeze-break": {
+              "long": 0,
+              "short": 0
+            },
+            "residual-revert": {
+              "long": 0,
+              "short": 0
+            },
+            "market-follow": {
+              "long": 5,
+              "short": 12
+            },
+            "activity-absorb": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-residual": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-market": {
+              "long": 4,
+              "short": 9
+            },
+            "pullback-activity": {
+              "long": 0,
+              "short": 0
+            },
+            "adaptive": {
+              "long": 2,
+              "short": 0
+            },
+            "break-close": {
+              "long": 9,
+              "short": 0
+            },
+            "break-retest": {
+              "long": 2,
+              "short": 0
+            },
+            "activity-acceleration": {
+              "long": 4,
+              "short": 2
+            },
+            "activity-flow": {
+              "long": 4,
+              "short": 0
+            },
+            "change-ema": {
+              "long": 0,
+              "short": 0
+            },
+            "change-roc": {
+              "long": 4,
+              "short": 3
+            },
+            "break-activity": {
+              "long": 3,
+              "short": 0
+            },
+            "break-direction": {
+              "long": 1,
+              "short": 0
+            },
+            "market-momentum": {
+              "long": 6,
+              "short": 0
+            },
+            "relative-trend": {
+              "long": 0,
+              "short": 0
+            }
+          }
+        }
+      }
+    },
+    {
+      "sym": "DOGE-USDT",
+      "bars": 92,
+      "gaps": 0,
+      "profiles": {
+        "fast": {
+          "ready": 61,
+          "methods": {
+            "drawdown-turn": {
+              "long": 7,
+              "short": 13
+            },
+            "drawdown-trend": {
+              "long": 4,
+              "short": 2
+            },
+            "range-reclaim": {
+              "long": 2,
+              "short": 3
+            },
+            "impulse-retest": {
+              "long": 4,
+              "short": 0
+            },
+            "squeeze-break": {
+              "long": 1,
+              "short": 0
+            },
+            "residual-revert": {
+              "long": 0,
+              "short": 1
+            },
+            "market-follow": {
+              "long": 10,
+              "short": 9
+            },
+            "activity-absorb": {
+              "long": 2,
+              "short": 0
+            },
+            "drawdown-residual": {
+              "long": 0,
+              "short": 1
+            },
+            "drawdown-market": {
+              "long": 6,
+              "short": 9
+            },
+            "pullback-activity": {
+              "long": 0,
+              "short": 1
+            },
+            "adaptive": {
+              "long": 4,
+              "short": 3
+            },
+            "break-close": {
+              "long": 11,
+              "short": 2
+            },
+            "break-retest": {
+              "long": 4,
+              "short": 1
+            },
+            "activity-acceleration": {
+              "long": 6,
+              "short": 2
+            },
+            "activity-flow": {
+              "long": 3,
+              "short": 1
+            },
+            "change-ema": {
+              "long": 1,
+              "short": 1
+            },
+            "change-roc": {
+              "long": 9,
+              "short": 7
+            },
+            "break-activity": {
+              "long": 2,
+              "short": 1
+            },
+            "break-direction": {
+              "long": 0,
+              "short": 1
+            },
+            "market-momentum": {
+              "long": 8,
+              "short": 3
+            },
+            "relative-trend": {
+              "long": 0,
+              "short": 0
+            }
+          }
+        },
+        "selective": {
+          "ready": 45,
+          "methods": {
+            "drawdown-turn": {
+              "long": 0,
+              "short": 9
+            },
+            "drawdown-trend": {
+              "long": 0,
+              "short": 0
+            },
+            "range-reclaim": {
+              "long": 0,
+              "short": 3
+            },
+            "impulse-retest": {
+              "long": 4,
+              "short": 0
+            },
+            "squeeze-break": {
+              "long": 0,
+              "short": 0
+            },
+            "residual-revert": {
+              "long": 0,
+              "short": 0
+            },
+            "market-follow": {
+              "long": 5,
+              "short": 6
+            },
+            "activity-absorb": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-residual": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-market": {
+              "long": 0,
+              "short": 6
+            },
+            "pullback-activity": {
+              "long": 0,
+              "short": 0
+            },
+            "adaptive": {
+              "long": 4,
+              "short": 0
+            },
+            "break-close": {
+              "long": 10,
+              "short": 0
+            },
+            "break-retest": {
+              "long": 2,
+              "short": 0
+            },
+            "activity-acceleration": {
+              "long": 3,
+              "short": 0
+            },
+            "activity-flow": {
+              "long": 3,
+              "short": 0
+            },
+            "change-ema": {
+              "long": 0,
+              "short": 0
+            },
+            "change-roc": {
+              "long": 6,
+              "short": 5
+            },
+            "break-activity": {
+              "long": 2,
+              "short": 0
+            },
+            "break-direction": {
+              "long": 0,
+              "short": 0
+            },
+            "market-momentum": {
+              "long": 4,
+              "short": 0
+            },
+            "relative-trend": {
+              "long": 0,
+              "short": 0
+            }
+          }
+        }
+      }
+    },
+    {
+      "sym": "DOT-USDT",
+      "bars": 92,
+      "gaps": 0,
+      "profiles": {
+        "fast": {
+          "ready": 61,
+          "methods": {
+            "drawdown-turn": {
+              "long": 12,
+              "short": 18
+            },
+            "drawdown-trend": {
+              "long": 6,
+              "short": 2
+            },
+            "range-reclaim": {
+              "long": 1,
+              "short": 1
+            },
+            "impulse-retest": {
+              "long": 2,
+              "short": 1
+            },
+            "squeeze-break": {
+              "long": 0,
+              "short": 0
+            },
+            "residual-revert": {
+              "long": 2,
+              "short": 1
+            },
+            "market-follow": {
+              "long": 11,
+              "short": 16
+            },
+            "activity-absorb": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-residual": {
+              "long": 2,
+              "short": 1
+            },
+            "drawdown-market": {
+              "long": 7,
+              "short": 13
+            },
+            "pullback-activity": {
+              "long": 1,
+              "short": 0
+            },
+            "adaptive": {
+              "long": 3,
+              "short": 3
+            },
+            "break-close": {
+              "long": 8,
+              "short": 5
+            },
+            "break-retest": {
+              "long": 5,
+              "short": 1
+            },
+            "activity-acceleration": {
+              "long": 4,
+              "short": 2
+            },
+            "activity-flow": {
+              "long": 3,
+              "short": 1
+            },
+            "change-ema": {
+              "long": 1,
+              "short": 0
+            },
+            "change-roc": {
+              "long": 8,
+              "short": 6
+            },
+            "break-activity": {
+              "long": 2,
+              "short": 1
+            },
+            "break-direction": {
+              "long": 0,
+              "short": 0
+            },
+            "market-momentum": {
+              "long": 9,
+              "short": 4
+            },
+            "relative-trend": {
+              "long": 2,
+              "short": 0
+            }
+          }
+        },
+        "selective": {
+          "ready": 45,
+          "methods": {
+            "drawdown-turn": {
+              "long": 7,
+              "short": 13
+            },
+            "drawdown-trend": {
+              "long": 4,
+              "short": 0
+            },
+            "range-reclaim": {
+              "long": 0,
+              "short": 2
+            },
+            "impulse-retest": {
+              "long": 2,
+              "short": 0
+            },
+            "squeeze-break": {
+              "long": 0,
+              "short": 0
+            },
+            "residual-revert": {
+              "long": 0,
+              "short": 0
+            },
+            "market-follow": {
+              "long": 7,
+              "short": 13
+            },
+            "activity-absorb": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-residual": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-market": {
+              "long": 3,
+              "short": 10
+            },
+            "pullback-activity": {
+              "long": 1,
+              "short": 0
+            },
+            "adaptive": {
+              "long": 5,
+              "short": 2
+            },
+            "break-close": {
+              "long": 8,
+              "short": 0
+            },
+            "break-retest": {
+              "long": 2,
+              "short": 0
+            },
+            "activity-acceleration": {
+              "long": 3,
+              "short": 1
+            },
+            "activity-flow": {
+              "long": 3,
+              "short": 0
+            },
+            "change-ema": {
+              "long": 1,
+              "short": 0
+            },
+            "change-roc": {
+              "long": 3,
+              "short": 3
+            },
+            "break-activity": {
+              "long": 2,
+              "short": 0
+            },
+            "break-direction": {
+              "long": 0,
+              "short": 0
+            },
+            "market-momentum": {
+              "long": 5,
+              "short": 0
+            },
+            "relative-trend": {
+              "long": 1,
+              "short": 0
+            }
+          }
+        }
+      }
+    },
+    {
+      "sym": "ETC-USDT",
+      "bars": 92,
+      "gaps": 0,
+      "profiles": {
+        "fast": {
+          "ready": 61,
+          "methods": {
+            "drawdown-turn": {
+              "long": 16,
+              "short": 13
+            },
+            "drawdown-trend": {
+              "long": 10,
+              "short": 2
+            },
+            "range-reclaim": {
+              "long": 1,
+              "short": 1
+            },
+            "impulse-retest": {
+              "long": 6,
+              "short": 2
+            },
+            "squeeze-break": {
+              "long": 0,
+              "short": 0
+            },
+            "residual-revert": {
+              "long": 2,
+              "short": 1
+            },
+            "market-follow": {
+              "long": 11,
+              "short": 7
+            },
+            "activity-absorb": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-residual": {
+              "long": 1,
+              "short": 0
+            },
+            "drawdown-market": {
+              "long": 10,
+              "short": 6
+            },
+            "pullback-activity": {
+              "long": 0,
+              "short": 0
+            },
+            "adaptive": {
+              "long": 6,
+              "short": 2
+            },
+            "break-close": {
+              "long": 11,
+              "short": 4
+            },
+            "break-retest": {
+              "long": 4,
+              "short": 2
+            },
+            "activity-acceleration": {
+              "long": 1,
+              "short": 0
+            },
+            "activity-flow": {
+              "long": 0,
+              "short": 0
+            },
+            "change-ema": {
+              "long": 1,
+              "short": 0
+            },
+            "change-roc": {
+              "long": 8,
+              "short": 8
+            },
+            "break-activity": {
+              "long": 0,
+              "short": 0
+            },
+            "break-direction": {
+              "long": 0,
+              "short": 0
+            },
+            "market-momentum": {
+              "long": 8,
+              "short": 4
+            },
+            "relative-trend": {
+              "long": 0,
+              "short": 0
+            }
+          }
+        },
+        "selective": {
+          "ready": 45,
+          "methods": {
+            "drawdown-turn": {
+              "long": 3,
+              "short": 11
+            },
+            "drawdown-trend": {
+              "long": 3,
+              "short": 0
+            },
+            "range-reclaim": {
+              "long": 0,
+              "short": 1
+            },
+            "impulse-retest": {
+              "long": 6,
+              "short": 0
+            },
+            "squeeze-break": {
+              "long": 0,
+              "short": 0
+            },
+            "residual-revert": {
+              "long": 1,
+              "short": 0
+            },
+            "market-follow": {
+              "long": 6,
+              "short": 5
+            },
+            "activity-absorb": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-residual": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-market": {
+              "long": 3,
+              "short": 5
+            },
+            "pullback-activity": {
+              "long": 0,
+              "short": 0
+            },
+            "adaptive": {
+              "long": 6,
+              "short": 0
+            },
+            "break-close": {
+              "long": 11,
+              "short": 0
+            },
+            "break-retest": {
+              "long": 3,
+              "short": 0
+            },
+            "activity-acceleration": {
+              "long": 0,
+              "short": 0
+            },
+            "activity-flow": {
+              "long": 0,
+              "short": 0
+            },
+            "change-ema": {
+              "long": 0,
+              "short": 0
+            },
+            "change-roc": {
+              "long": 6,
+              "short": 6
+            },
+            "break-activity": {
+              "long": 0,
+              "short": 0
+            },
+            "break-direction": {
+              "long": 0,
+              "short": 0
+            },
+            "market-momentum": {
+              "long": 5,
+              "short": 0
+            },
+            "relative-trend": {
+              "long": 0,
+              "short": 0
+            }
+          }
+        }
+      }
+    },
+    {
+      "sym": "ETH-USDT",
+      "bars": 92,
+      "gaps": 0,
+      "profiles": {
+        "fast": {
+          "ready": 61,
+          "methods": {
+            "drawdown-turn": {
+              "long": 16,
+              "short": 15
+            },
+            "drawdown-trend": {
+              "long": 9,
+              "short": 1
+            },
+            "range-reclaim": {
+              "long": 3,
+              "short": 2
+            },
+            "impulse-retest": {
+              "long": 5,
+              "short": 1
+            },
+            "squeeze-break": {
+              "long": 0,
+              "short": 0
+            },
+            "residual-revert": {
+              "long": 3,
+              "short": 1
+            },
+            "market-follow": {
+              "long": 13,
+              "short": 16
+            },
+            "activity-absorb": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-residual": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-market": {
+              "long": 10,
+              "short": 10
+            },
+            "pullback-activity": {
+              "long": 0,
+              "short": 0
+            },
+            "adaptive": {
+              "long": 6,
+              "short": 1
+            },
+            "break-close": {
+              "long": 12,
+              "short": 2
+            },
+            "break-retest": {
+              "long": 6,
+              "short": 0
+            },
+            "activity-acceleration": {
+              "long": 5,
+              "short": 3
+            },
+            "activity-flow": {
+              "long": 5,
+              "short": 2
+            },
+            "change-ema": {
+              "long": 1,
+              "short": 1
+            },
+            "change-roc": {
+              "long": 10,
+              "short": 7
+            },
+            "break-activity": {
+              "long": 4,
+              "short": 2
+            },
+            "break-direction": {
+              "long": 2,
+              "short": 1
+            },
+            "market-momentum": {
+              "long": 11,
+              "short": 1
+            },
+            "relative-trend": {
+              "long": 0,
+              "short": 0
+            }
+          }
+        },
+        "selective": {
+          "ready": 45,
+          "methods": {
+            "drawdown-turn": {
+              "long": 6,
+              "short": 14
+            },
+            "drawdown-trend": {
+              "long": 6,
+              "short": 0
+            },
+            "range-reclaim": {
+              "long": 0,
+              "short": 2
+            },
+            "impulse-retest": {
+              "long": 4,
+              "short": 0
+            },
+            "squeeze-break": {
+              "long": 0,
+              "short": 0
+            },
+            "residual-revert": {
+              "long": 0,
+              "short": 0
+            },
+            "market-follow": {
+              "long": 6,
+              "short": 12
+            },
+            "activity-absorb": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-residual": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-market": {
+              "long": 3,
+              "short": 9
+            },
+            "pullback-activity": {
+              "long": 1,
+              "short": 0
+            },
+            "adaptive": {
+              "long": 4,
+              "short": 0
+            },
+            "break-close": {
+              "long": 8,
+              "short": 0
+            },
+            "break-retest": {
+              "long": 2,
+              "short": 0
+            },
+            "activity-acceleration": {
+              "long": 4,
+              "short": 1
+            },
+            "activity-flow": {
+              "long": 5,
+              "short": 0
+            },
+            "change-ema": {
+              "long": 0,
+              "short": 0
+            },
+            "change-roc": {
+              "long": 6,
+              "short": 4
+            },
+            "break-activity": {
+              "long": 4,
+              "short": 0
+            },
+            "break-direction": {
+              "long": 2,
+              "short": 0
+            },
+            "market-momentum": {
+              "long": 5,
+              "short": 0
+            },
+            "relative-trend": {
+              "long": 0,
+              "short": 0
+            }
+          }
+        }
+      }
+    },
+    {
+      "sym": "FIL-USDT",
+      "bars": 92,
+      "gaps": 0,
+      "profiles": {
+        "fast": {
+          "ready": 61,
+          "methods": {
+            "drawdown-turn": {
+              "long": 15,
+              "short": 15
+            },
+            "drawdown-trend": {
+              "long": 7,
+              "short": 1
+            },
+            "range-reclaim": {
+              "long": 0,
+              "short": 3
+            },
+            "impulse-retest": {
+              "long": 3,
+              "short": 0
+            },
+            "squeeze-break": {
+              "long": 0,
+              "short": 0
+            },
+            "residual-revert": {
+              "long": 1,
+              "short": 0
+            },
+            "market-follow": {
+              "long": 11,
+              "short": 12
+            },
+            "activity-absorb": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-residual": {
+              "long": 1,
+              "short": 0
+            },
+            "drawdown-market": {
+              "long": 10,
+              "short": 11
+            },
+            "pullback-activity": {
+              "long": 0,
+              "short": 0
+            },
+            "adaptive": {
+              "long": 4,
+              "short": 2
+            },
+            "break-close": {
+              "long": 13,
+              "short": 4
+            },
+            "break-retest": {
+              "long": 5,
+              "short": 0
+            },
+            "activity-acceleration": {
+              "long": 2,
+              "short": 2
+            },
+            "activity-flow": {
+              "long": 2,
+              "short": 1
+            },
+            "change-ema": {
+              "long": 1,
+              "short": 0
+            },
+            "change-roc": {
+              "long": 4,
+              "short": 5
+            },
+            "break-activity": {
+              "long": 2,
+              "short": 1
+            },
+            "break-direction": {
+              "long": 0,
+              "short": 0
+            },
+            "market-momentum": {
+              "long": 13,
+              "short": 3
+            },
+            "relative-trend": {
+              "long": 0,
+              "short": 0
+            }
+          }
+        },
+        "selective": {
+          "ready": 45,
+          "methods": {
+            "drawdown-turn": {
+              "long": 5,
+              "short": 10
+            },
+            "drawdown-trend": {
+              "long": 4,
+              "short": 0
+            },
+            "range-reclaim": {
+              "long": 0,
+              "short": 2
+            },
+            "impulse-retest": {
+              "long": 3,
+              "short": 0
+            },
+            "squeeze-break": {
+              "long": 0,
+              "short": 0
+            },
+            "residual-revert": {
+              "long": 0,
+              "short": 0
+            },
+            "market-follow": {
+              "long": 6,
+              "short": 8
+            },
+            "activity-absorb": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-residual": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-market": {
+              "long": 3,
+              "short": 6
+            },
+            "pullback-activity": {
+              "long": 0,
+              "short": 0
+            },
+            "adaptive": {
+              "long": 4,
+              "short": 0
+            },
+            "break-close": {
+              "long": 13,
+              "short": 0
+            },
+            "break-retest": {
+              "long": 4,
+              "short": 0
+            },
+            "activity-acceleration": {
+              "long": 2,
+              "short": 1
+            },
+            "activity-flow": {
+              "long": 2,
+              "short": 0
+            },
+            "change-ema": {
+              "long": 1,
+              "short": 0
+            },
+            "change-roc": {
+              "long": 3,
+              "short": 4
+            },
+            "break-activity": {
+              "long": 2,
+              "short": 0
+            },
+            "break-direction": {
+              "long": 0,
+              "short": 0
+            },
+            "market-momentum": {
+              "long": 6,
+              "short": 0
+            },
+            "relative-trend": {
+              "long": 0,
+              "short": 0
+            }
+          }
+        }
+      }
+    },
+    {
+      "sym": "LINK-USDT",
+      "bars": 92,
+      "gaps": 0,
+      "profiles": {
+        "fast": {
+          "ready": 61,
+          "methods": {
+            "drawdown-turn": {
+              "long": 14,
+              "short": 17
+            },
+            "drawdown-trend": {
+              "long": 9,
+              "short": 2
+            },
+            "range-reclaim": {
+              "long": 1,
+              "short": 3
+            },
+            "impulse-retest": {
+              "long": 4,
+              "short": 0
+            },
+            "squeeze-break": {
+              "long": 0,
+              "short": 0
+            },
+            "residual-revert": {
+              "long": 2,
+              "short": 1
+            },
+            "market-follow": {
+              "long": 10,
+              "short": 10
+            },
+            "activity-absorb": {
+              "long": 0,
+              "short": 2
+            },
+            "drawdown-residual": {
+              "long": 0,
+              "short": 1
+            },
+            "drawdown-market": {
+              "long": 8,
+              "short": 9
+            },
+            "pullback-activity": {
+              "long": 2,
+              "short": 0
+            },
+            "adaptive": {
+              "long": 9,
+              "short": 2
+            },
+            "break-close": {
+              "long": 12,
+              "short": 0
+            },
+            "break-retest": {
+              "long": 3,
+              "short": 0
+            },
+            "activity-acceleration": {
+              "long": 6,
+              "short": 2
+            },
+            "activity-flow": {
+              "long": 6,
+              "short": 0
+            },
+            "change-ema": {
+              "long": 1,
+              "short": 1
+            },
+            "change-roc": {
+              "long": 9,
+              "short": 7
+            },
+            "break-activity": {
+              "long": 2,
+              "short": 0
+            },
+            "break-direction": {
+              "long": 0,
+              "short": 0
+            },
+            "market-momentum": {
+              "long": 13,
+              "short": 2
+            },
+            "relative-trend": {
+              "long": 0,
+              "short": 0
+            }
+          }
+        },
+        "selective": {
+          "ready": 45,
+          "methods": {
+            "drawdown-turn": {
+              "long": 3,
+              "short": 14
+            },
+            "drawdown-trend": {
+              "long": 3,
+              "short": 0
+            },
+            "range-reclaim": {
+              "long": 0,
+              "short": 3
+            },
+            "impulse-retest": {
+              "long": 3,
+              "short": 0
+            },
+            "squeeze-break": {
+              "long": 0,
+              "short": 0
+            },
+            "residual-revert": {
+              "long": 0,
+              "short": 0
+            },
+            "market-follow": {
+              "long": 5,
+              "short": 7
+            },
+            "activity-absorb": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-residual": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-market": {
+              "long": 2,
+              "short": 7
+            },
+            "pullback-activity": {
+              "long": 1,
+              "short": 0
+            },
+            "adaptive": {
+              "long": 3,
+              "short": 0
+            },
+            "break-close": {
+              "long": 10,
+              "short": 0
+            },
+            "break-retest": {
+              "long": 2,
+              "short": 0
+            },
+            "activity-acceleration": {
+              "long": 5,
+              "short": 0
+            },
+            "activity-flow": {
+              "long": 5,
+              "short": 0
+            },
+            "change-ema": {
+              "long": 0,
+              "short": 0
+            },
+            "change-roc": {
+              "long": 6,
+              "short": 5
+            },
+            "break-activity": {
+              "long": 2,
+              "short": 0
+            },
+            "break-direction": {
+              "long": 0,
+              "short": 0
+            },
+            "market-momentum": {
+              "long": 6,
+              "short": 0
+            },
+            "relative-trend": {
+              "long": 0,
+              "short": 0
+            }
+          }
+        }
+      }
+    },
+    {
+      "sym": "LTC-USDT",
+      "bars": 92,
+      "gaps": 0,
+      "profiles": {
+        "fast": {
+          "ready": 61,
+          "methods": {
+            "drawdown-turn": {
+              "long": 11,
+              "short": 13
+            },
+            "drawdown-trend": {
+              "long": 6,
+              "short": 2
+            },
+            "range-reclaim": {
+              "long": 2,
+              "short": 2
+            },
+            "impulse-retest": {
+              "long": 3,
+              "short": 2
+            },
+            "squeeze-break": {
+              "long": 0,
+              "short": 0
+            },
+            "residual-revert": {
+              "long": 0,
+              "short": 2
+            },
+            "market-follow": {
+              "long": 7,
+              "short": 11
+            },
+            "activity-absorb": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-residual": {
+              "long": 0,
+              "short": 2
+            },
+            "drawdown-market": {
+              "long": 7,
+              "short": 10
+            },
+            "pullback-activity": {
+              "long": 0,
+              "short": 0
+            },
+            "adaptive": {
+              "long": 4,
+              "short": 1
+            },
+            "break-close": {
+              "long": 10,
+              "short": 3
+            },
+            "break-retest": {
+              "long": 2,
+              "short": 0
+            },
+            "activity-acceleration": {
+              "long": 0,
+              "short": 2
+            },
+            "activity-flow": {
+              "long": 0,
+              "short": 2
+            },
+            "change-ema": {
+              "long": 1,
+              "short": 0
+            },
+            "change-roc": {
+              "long": 5,
+              "short": 6
+            },
+            "break-activity": {
+              "long": 0,
+              "short": 1
+            },
+            "break-direction": {
+              "long": 0,
+              "short": 1
+            },
+            "market-momentum": {
+              "long": 10,
+              "short": 4
+            },
+            "relative-trend": {
+              "long": 0,
+              "short": 1
+            }
+          }
+        },
+        "selective": {
+          "ready": 45,
+          "methods": {
+            "drawdown-turn": {
+              "long": 6,
+              "short": 10
+            },
+            "drawdown-trend": {
+              "long": 4,
+              "short": 0
+            },
+            "range-reclaim": {
+              "long": 0,
+              "short": 2
+            },
+            "impulse-retest": {
+              "long": 3,
+              "short": 0
+            },
+            "squeeze-break": {
+              "long": 0,
+              "short": 0
+            },
+            "residual-revert": {
+              "long": 0,
+              "short": 0
+            },
+            "market-follow": {
+              "long": 5,
+              "short": 8
+            },
+            "activity-absorb": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-residual": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-market": {
+              "long": 5,
+              "short": 8
+            },
+            "pullback-activity": {
+              "long": 0,
+              "short": 0
+            },
+            "adaptive": {
+              "long": 5,
+              "short": 0
+            },
+            "break-close": {
+              "long": 10,
+              "short": 0
+            },
+            "break-retest": {
+              "long": 2,
+              "short": 0
+            },
+            "activity-acceleration": {
+              "long": 0,
+              "short": 0
+            },
+            "activity-flow": {
+              "long": 0,
+              "short": 0
+            },
+            "change-ema": {
+              "long": 1,
+              "short": 0
+            },
+            "change-roc": {
+              "long": 3,
+              "short": 4
+            },
+            "break-activity": {
+              "long": 0,
+              "short": 0
+            },
+            "break-direction": {
+              "long": 0,
+              "short": 0
+            },
+            "market-momentum": {
+              "long": 4,
+              "short": 0
+            },
+            "relative-trend": {
+              "long": 0,
+              "short": 0
+            }
+          }
+        }
+      }
+    },
+    {
+      "sym": "NEAR-USDT",
+      "bars": 92,
+      "gaps": 0,
+      "profiles": {
+        "fast": {
+          "ready": 61,
+          "methods": {
+            "drawdown-turn": {
+              "long": 10,
+              "short": 16
+            },
+            "drawdown-trend": {
+              "long": 6,
+              "short": 1
+            },
+            "range-reclaim": {
+              "long": 0,
+              "short": 2
+            },
+            "impulse-retest": {
+              "long": 5,
+              "short": 2
+            },
+            "squeeze-break": {
+              "long": 0,
+              "short": 0
+            },
+            "residual-revert": {
+              "long": 1,
+              "short": 2
+            },
+            "market-follow": {
+              "long": 9,
+              "short": 15
+            },
+            "activity-absorb": {
+              "long": 0,
+              "short": 2
+            },
+            "drawdown-residual": {
+              "long": 1,
+              "short": 2
+            },
+            "drawdown-market": {
+              "long": 6,
+              "short": 13
+            },
+            "pullback-activity": {
+              "long": 0,
+              "short": 0
+            },
+            "adaptive": {
+              "long": 5,
+              "short": 4
+            },
+            "break-close": {
+              "long": 9,
+              "short": 3
+            },
+            "break-retest": {
+              "long": 1,
+              "short": 0
+            },
+            "activity-acceleration": {
+              "long": 5,
+              "short": 3
+            },
+            "activity-flow": {
+              "long": 4,
+              "short": 1
+            },
+            "change-ema": {
+              "long": 1,
+              "short": 0
+            },
+            "change-roc": {
+              "long": 8,
+              "short": 9
+            },
+            "break-activity": {
+              "long": 3,
+              "short": 1
+            },
+            "break-direction": {
+              "long": 1,
+              "short": 0
+            },
+            "market-momentum": {
+              "long": 11,
+              "short": 2
+            },
+            "relative-trend": {
+              "long": 2,
+              "short": 0
+            }
+          }
+        },
+        "selective": {
+          "ready": 45,
+          "methods": {
+            "drawdown-turn": {
+              "long": 2,
+              "short": 16
+            },
+            "drawdown-trend": {
+              "long": 2,
+              "short": 0
+            },
+            "range-reclaim": {
+              "long": 0,
+              "short": 3
+            },
+            "impulse-retest": {
+              "long": 5,
+              "short": 0
+            },
+            "squeeze-break": {
+              "long": 0,
+              "short": 0
+            },
+            "residual-revert": {
+              "long": 0,
+              "short": 0
+            },
+            "market-follow": {
+              "long": 5,
+              "short": 12
+            },
+            "activity-absorb": {
+              "long": 0,
+              "short": 1
+            },
+            "drawdown-residual": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-market": {
+              "long": 1,
+              "short": 12
+            },
+            "pullback-activity": {
+              "long": 0,
+              "short": 0
+            },
+            "adaptive": {
+              "long": 4,
+              "short": 1
+            },
+            "break-close": {
+              "long": 9,
+              "short": 0
+            },
+            "break-retest": {
+              "long": 1,
+              "short": 0
+            },
+            "activity-acceleration": {
+              "long": 3,
+              "short": 2
+            },
+            "activity-flow": {
+              "long": 3,
+              "short": 0
+            },
+            "change-ema": {
+              "long": 0,
+              "short": 0
+            },
+            "change-roc": {
+              "long": 5,
+              "short": 8
+            },
+            "break-activity": {
+              "long": 2,
+              "short": 0
+            },
+            "break-direction": {
+              "long": 1,
+              "short": 0
+            },
+            "market-momentum": {
+              "long": 6,
+              "short": 0
+            },
+            "relative-trend": {
+              "long": 1,
+              "short": 0
+            }
+          }
+        }
+      }
+    },
+    {
+      "sym": "OP-USDT",
+      "bars": 92,
+      "gaps": 0,
+      "profiles": {
+        "fast": {
+          "ready": 61,
+          "methods": {
+            "drawdown-turn": {
+              "long": 10,
+              "short": 15
+            },
+            "drawdown-trend": {
+              "long": 5,
+              "short": 1
+            },
+            "range-reclaim": {
+              "long": 0,
+              "short": 1
+            },
+            "impulse-retest": {
+              "long": 2,
+              "short": 0
+            },
+            "squeeze-break": {
+              "long": 0,
+              "short": 0
+            },
+            "residual-revert": {
+              "long": 1,
+              "short": 1
+            },
+            "market-follow": {
+              "long": 12,
+              "short": 11
+            },
+            "activity-absorb": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-residual": {
+              "long": 1,
+              "short": 1
+            },
+            "drawdown-market": {
+              "long": 8,
+              "short": 11
+            },
+            "pullback-activity": {
+              "long": 0,
+              "short": 1
+            },
+            "adaptive": {
+              "long": 2,
+              "short": 4
+            },
+            "break-close": {
+              "long": 14,
+              "short": 3
+            },
+            "break-retest": {
+              "long": 7,
+              "short": 0
+            },
+            "activity-acceleration": {
+              "long": 0,
+              "short": 4
+            },
+            "activity-flow": {
+              "long": 0,
+              "short": 3
+            },
+            "change-ema": {
+              "long": 2,
+              "short": 1
+            },
+            "change-roc": {
+              "long": 5,
+              "short": 7
+            },
+            "break-activity": {
+              "long": 0,
+              "short": 2
+            },
+            "break-direction": {
+              "long": 0,
+              "short": 0
+            },
+            "market-momentum": {
+              "long": 12,
+              "short": 3
+            },
+            "relative-trend": {
+              "long": 0,
+              "short": 2
+            }
+          }
+        },
+        "selective": {
+          "ready": 45,
+          "methods": {
+            "drawdown-turn": {
+              "long": 3,
+              "short": 7
+            },
+            "drawdown-trend": {
+              "long": 3,
+              "short": 0
+            },
+            "range-reclaim": {
+              "long": 0,
+              "short": 1
+            },
+            "impulse-retest": {
+              "long": 2,
+              "short": 0
+            },
+            "squeeze-break": {
+              "long": 0,
+              "short": 0
+            },
+            "residual-revert": {
+              "long": 0,
+              "short": 1
+            },
+            "market-follow": {
+              "long": 5,
+              "short": 7
+            },
+            "activity-absorb": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-residual": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-market": {
+              "long": 3,
+              "short": 5
+            },
+            "pullback-activity": {
+              "long": 0,
+              "short": 0
+            },
+            "adaptive": {
+              "long": 2,
+              "short": 0
+            },
+            "break-close": {
+              "long": 14,
+              "short": 0
+            },
+            "break-retest": {
+              "long": 7,
+              "short": 0
+            },
+            "activity-acceleration": {
+              "long": 0,
+              "short": 1
+            },
+            "activity-flow": {
+              "long": 0,
+              "short": 0
+            },
+            "change-ema": {
+              "long": 0,
+              "short": 0
+            },
+            "change-roc": {
+              "long": 2,
+              "short": 3
+            },
+            "break-activity": {
+              "long": 0,
+              "short": 0
+            },
+            "break-direction": {
+              "long": 0,
+              "short": 0
+            },
+            "market-momentum": {
+              "long": 6,
+              "short": 0
+            },
+            "relative-trend": {
+              "long": 0,
+              "short": 0
+            }
+          }
+        }
+      }
+    },
+    {
+      "sym": "SOL-USDT",
+      "bars": 92,
+      "gaps": 0,
+      "profiles": {
+        "fast": {
+          "ready": 61,
+          "methods": {
+            "drawdown-turn": {
+              "long": 16,
+              "short": 16
+            },
+            "drawdown-trend": {
+              "long": 9,
+              "short": 2
+            },
+            "range-reclaim": {
+              "long": 1,
+              "short": 4
+            },
+            "impulse-retest": {
+              "long": 3,
+              "short": 2
+            },
+            "squeeze-break": {
+              "long": 0,
+              "short": 0
+            },
+            "residual-revert": {
+              "long": 1,
+              "short": 1
+            },
+            "market-follow": {
+              "long": 11,
+              "short": 11
+            },
+            "activity-absorb": {
+              "long": 0,
+              "short": 1
+            },
+            "drawdown-residual": {
+              "long": 1,
+              "short": 0
+            },
+            "drawdown-market": {
+              "long": 10,
+              "short": 9
+            },
+            "pullback-activity": {
+              "long": 0,
+              "short": 2
+            },
+            "adaptive": {
+              "long": 5,
+              "short": 2
+            },
+            "break-close": {
+              "long": 13,
+              "short": 4
+            },
+            "break-retest": {
+              "long": 3,
+              "short": 2
+            },
+            "activity-acceleration": {
+              "long": 3,
+              "short": 2
+            },
+            "activity-flow": {
+              "long": 3,
+              "short": 2
+            },
+            "change-ema": {
+              "long": 1,
+              "short": 0
+            },
+            "change-roc": {
+              "long": 7,
+              "short": 6
+            },
+            "break-activity": {
+              "long": 2,
+              "short": 2
+            },
+            "break-direction": {
+              "long": 0,
+              "short": 2
+            },
+            "market-momentum": {
+              "long": 10,
+              "short": 4
+            },
+            "relative-trend": {
+              "long": 0,
+              "short": 0
+            }
+          }
+        },
+        "selective": {
+          "ready": 45,
+          "methods": {
+            "drawdown-turn": {
+              "long": 4,
+              "short": 9
+            },
+            "drawdown-trend": {
+              "long": 4,
+              "short": 0
+            },
+            "range-reclaim": {
+              "long": 0,
+              "short": 3
+            },
+            "impulse-retest": {
+              "long": 3,
+              "short": 0
+            },
+            "squeeze-break": {
+              "long": 0,
+              "short": 0
+            },
+            "residual-revert": {
+              "long": 0,
+              "short": 0
+            },
+            "market-follow": {
+              "long": 5,
+              "short": 8
+            },
+            "activity-absorb": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-residual": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-market": {
+              "long": 4,
+              "short": 5
+            },
+            "pullback-activity": {
+              "long": 0,
+              "short": 0
+            },
+            "adaptive": {
+              "long": 3,
+              "short": 0
+            },
+            "break-close": {
+              "long": 12,
+              "short": 0
+            },
+            "break-retest": {
+              "long": 3,
+              "short": 0
+            },
+            "activity-acceleration": {
+              "long": 1,
+              "short": 0
+            },
+            "activity-flow": {
+              "long": 1,
+              "short": 0
+            },
+            "change-ema": {
+              "long": 0,
+              "short": 0
+            },
+            "change-roc": {
+              "long": 3,
+              "short": 3
+            },
+            "break-activity": {
+              "long": 1,
+              "short": 0
+            },
+            "break-direction": {
+              "long": 0,
+              "short": 0
+            },
+            "market-momentum": {
+              "long": 6,
+              "short": 0
+            },
+            "relative-trend": {
+              "long": 0,
+              "short": 0
+            }
+          }
+        }
+      }
+    },
+    {
+      "sym": "SUI-USDT",
+      "bars": 92,
+      "gaps": 0,
+      "profiles": {
+        "fast": {
+          "ready": 61,
+          "methods": {
+            "drawdown-turn": {
+              "long": 11,
+              "short": 12
+            },
+            "drawdown-trend": {
+              "long": 6,
+              "short": 1
+            },
+            "range-reclaim": {
+              "long": 1,
+              "short": 2
+            },
+            "impulse-retest": {
+              "long": 3,
+              "short": 1
+            },
+            "squeeze-break": {
+              "long": 0,
+              "short": 0
+            },
+            "residual-revert": {
+              "long": 0,
+              "short": 0
+            },
+            "market-follow": {
+              "long": 12,
+              "short": 9
+            },
+            "activity-absorb": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-residual": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-market": {
+              "long": 10,
+              "short": 9
+            },
+            "pullback-activity": {
+              "long": 0,
+              "short": 1
+            },
+            "adaptive": {
+              "long": 3,
+              "short": 2
+            },
+            "break-close": {
+              "long": 10,
+              "short": 6
+            },
+            "break-retest": {
+              "long": 2,
+              "short": 3
+            },
+            "activity-acceleration": {
+              "long": 1,
+              "short": 4
+            },
+            "activity-flow": {
+              "long": 0,
+              "short": 3
+            },
+            "change-ema": {
+              "long": 1,
+              "short": 0
+            },
+            "change-roc": {
+              "long": 5,
+              "short": 7
+            },
+            "break-activity": {
+              "long": 0,
+              "short": 2
+            },
+            "break-direction": {
+              "long": 0,
+              "short": 1
+            },
+            "market-momentum": {
+              "long": 11,
+              "short": 6
+            },
+            "relative-trend": {
+              "long": 0,
+              "short": 1
+            }
+          }
+        },
+        "selective": {
+          "ready": 45,
+          "methods": {
+            "drawdown-turn": {
+              "long": 5,
+              "short": 9
+            },
+            "drawdown-trend": {
+              "long": 5,
+              "short": 0
+            },
+            "range-reclaim": {
+              "long": 0,
+              "short": 1
+            },
+            "impulse-retest": {
+              "long": 3,
+              "short": 0
+            },
+            "squeeze-break": {
+              "long": 0,
+              "short": 0
+            },
+            "residual-revert": {
+              "long": 0,
+              "short": 0
+            },
+            "market-follow": {
+              "long": 7,
+              "short": 6
+            },
+            "activity-absorb": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-residual": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-market": {
+              "long": 5,
+              "short": 6
+            },
+            "pullback-activity": {
+              "long": 0,
+              "short": 0
+            },
+            "adaptive": {
+              "long": 3,
+              "short": 1
+            },
+            "break-close": {
+              "long": 10,
+              "short": 0
+            },
+            "break-retest": {
+              "long": 1,
+              "short": 0
+            },
+            "activity-acceleration": {
+              "long": 0,
+              "short": 0
+            },
+            "activity-flow": {
+              "long": 0,
+              "short": 0
+            },
+            "change-ema": {
+              "long": 0,
+              "short": 0
+            },
+            "change-roc": {
+              "long": 3,
+              "short": 5
+            },
+            "break-activity": {
+              "long": 0,
+              "short": 0
+            },
+            "break-direction": {
+              "long": 0,
+              "short": 0
+            },
+            "market-momentum": {
+              "long": 6,
+              "short": 0
+            },
+            "relative-trend": {
+              "long": 0,
+              "short": 0
+            }
+          }
+        }
+      }
+    },
+    {
+      "sym": "TRX-USDT",
+      "bars": 92,
+      "gaps": 0,
+      "profiles": {
+        "fast": {
+          "ready": 61,
+          "methods": {
+            "drawdown-turn": {
+              "long": 7,
+              "short": 6
+            },
+            "drawdown-trend": {
+              "long": 4,
+              "short": 0
+            },
+            "range-reclaim": {
+              "long": 0,
+              "short": 0
+            },
+            "impulse-retest": {
+              "long": 5,
+              "short": 8
+            },
+            "squeeze-break": {
+              "long": 0,
+              "short": 0
+            },
+            "residual-revert": {
+              "long": 3,
+              "short": 2
+            },
+            "market-follow": {
+              "long": 5,
+              "short": 7
+            },
+            "activity-absorb": {
+              "long": 1,
+              "short": 0
+            },
+            "drawdown-residual": {
+              "long": 1,
+              "short": 2
+            },
+            "drawdown-market": {
+              "long": 4,
+              "short": 0
+            },
+            "pullback-activity": {
+              "long": 0,
+              "short": 0
+            },
+            "adaptive": {
+              "long": 5,
+              "short": 6
+            },
+            "break-close": {
+              "long": 0,
+              "short": 0
+            },
+            "break-retest": {
+              "long": 0,
+              "short": 0
+            },
+            "activity-acceleration": {
+              "long": 0,
+              "short": 0
+            },
+            "activity-flow": {
+              "long": 0,
+              "short": 0
+            },
+            "change-ema": {
+              "long": 1,
+              "short": 2
+            },
+            "change-roc": {
+              "long": 7,
+              "short": 8
+            },
+            "break-activity": {
+              "long": 0,
+              "short": 0
+            },
+            "break-direction": {
+              "long": 0,
+              "short": 0
+            },
+            "market-momentum": {
+              "long": 7,
+              "short": 2
+            },
+            "relative-trend": {
+              "long": 0,
+              "short": 0
+            }
+          }
+        },
+        "selective": {
+          "ready": 45,
+          "methods": {
+            "drawdown-turn": {
+              "long": 6,
+              "short": 2
+            },
+            "drawdown-trend": {
+              "long": 1,
+              "short": 0
+            },
+            "range-reclaim": {
+              "long": 0,
+              "short": 0
+            },
+            "impulse-retest": {
+              "long": 1,
+              "short": 8
+            },
+            "squeeze-break": {
+              "long": 0,
+              "short": 0
+            },
+            "residual-revert": {
+              "long": 0,
+              "short": 0
+            },
+            "market-follow": {
+              "long": 2,
+              "short": 7
+            },
+            "activity-absorb": {
+              "long": 1,
+              "short": 0
+            },
+            "drawdown-residual": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-market": {
+              "long": 2,
+              "short": 1
+            },
+            "pullback-activity": {
+              "long": 0,
+              "short": 0
+            },
+            "adaptive": {
+              "long": 2,
+              "short": 6
+            },
+            "break-close": {
+              "long": 0,
+              "short": 0
+            },
+            "break-retest": {
+              "long": 0,
+              "short": 0
+            },
+            "activity-acceleration": {
+              "long": 0,
+              "short": 0
+            },
+            "activity-flow": {
+              "long": 0,
+              "short": 0
+            },
+            "change-ema": {
+              "long": 0,
+              "short": 1
+            },
+            "change-roc": {
+              "long": 4,
+              "short": 5
+            },
+            "break-activity": {
+              "long": 0,
+              "short": 0
+            },
+            "break-direction": {
+              "long": 0,
+              "short": 0
+            },
+            "market-momentum": {
+              "long": 4,
+              "short": 0
+            },
+            "relative-trend": {
+              "long": 0,
+              "short": 0
+            }
+          }
+        }
+      }
+    },
+    {
+      "sym": "XRP-USDT",
+      "bars": 92,
+      "gaps": 0,
+      "profiles": {
+        "fast": {
+          "ready": 61,
+          "methods": {
+            "drawdown-turn": {
+              "long": 10,
+              "short": 11
+            },
+            "drawdown-trend": {
+              "long": 3,
+              "short": 1
+            },
+            "range-reclaim": {
+              "long": 0,
+              "short": 0
+            },
+            "impulse-retest": {
+              "long": 3,
+              "short": 1
+            },
+            "squeeze-break": {
+              "long": 0,
+              "short": 0
+            },
+            "residual-revert": {
+              "long": 3,
+              "short": 0
+            },
+            "market-follow": {
+              "long": 11,
+              "short": 6
+            },
+            "activity-absorb": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-residual": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-market": {
+              "long": 9,
+              "short": 5
+            },
+            "pullback-activity": {
+              "long": 0,
+              "short": 0
+            },
+            "adaptive": {
+              "long": 4,
+              "short": 3
+            },
+            "break-close": {
+              "long": 11,
+              "short": 3
+            },
+            "break-retest": {
+              "long": 6,
+              "short": 0
+            },
+            "activity-acceleration": {
+              "long": 4,
+              "short": 1
+            },
+            "activity-flow": {
+              "long": 3,
+              "short": 0
+            },
+            "change-ema": {
+              "long": 1,
+              "short": 0
+            },
+            "change-roc": {
+              "long": 8,
+              "short": 4
+            },
+            "break-activity": {
+              "long": 1,
+              "short": 0
+            },
+            "break-direction": {
+              "long": 0,
+              "short": 0
+            },
+            "market-momentum": {
+              "long": 10,
+              "short": 5
+            },
+            "relative-trend": {
+              "long": 0,
+              "short": 0
+            }
+          }
+        },
+        "selective": {
+          "ready": 45,
+          "methods": {
+            "drawdown-turn": {
+              "long": 3,
+              "short": 9
+            },
+            "drawdown-trend": {
+              "long": 3,
+              "short": 0
+            },
+            "range-reclaim": {
+              "long": 0,
+              "short": 0
+            },
+            "impulse-retest": {
+              "long": 3,
+              "short": 0
+            },
+            "squeeze-break": {
+              "long": 0,
+              "short": 0
+            },
+            "residual-revert": {
+              "long": 0,
+              "short": 0
+            },
+            "market-follow": {
+              "long": 5,
+              "short": 4
+            },
+            "activity-absorb": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-residual": {
+              "long": 0,
+              "short": 0
+            },
+            "drawdown-market": {
+              "long": 3,
+              "short": 4
+            },
+            "pullback-activity": {
+              "long": 0,
+              "short": 0
+            },
+            "adaptive": {
+              "long": 3,
+              "short": 0
+            },
+            "break-close": {
+              "long": 11,
+              "short": 0
+            },
+            "break-retest": {
+              "long": 5,
+              "short": 0
+            },
+            "activity-acceleration": {
+              "long": 3,
+              "short": 1
+            },
+            "activity-flow": {
+              "long": 3,
+              "short": 0
+            },
+            "change-ema": {
+              "long": 0,
+              "short": 0
+            },
+            "change-roc": {
+              "long": 6,
+              "short": 3
+            },
+            "break-activity": {
+              "long": 1,
+              "short": 0
+            },
+            "break-direction": {
+              "long": 0,
+              "short": 0
+            },
+            "market-momentum": {
+              "long": 4,
+              "short": 0
+            },
+            "relative-trend": {
+              "long": 0,
+              "short": 0
+            }
+          }
+        }
+      }
+    }
+  ]
+}

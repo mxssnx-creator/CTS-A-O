@@ -1,3 +1,4 @@
+import { PREVIOUS_DEFAULT_FOCUS_17OCT as LEGACY_FIXTURE_FOCUS } from "../config.ts";
 // The realtime entry step (stepPaperGen fast mode): between computes the paper book takes the seated configs' new tape
 // positions with the same entry rules as the full paper step — and changes nothing the full step already decided.
 import { after, describe, it } from "node:test";
@@ -12,6 +13,11 @@ import type { OpenPosition } from "../domain/types.ts";
 
 process.env.CTS_CORE_SYNTHETIC_END ??= String(Math.floor(Date.now() / 3_600_000) * 3_600_000);
 const small = {
+  // Preserve this generic lifecycle fixture's original source scope. Exhaustive new-family grids are
+  // covered separately by Micro/Inverse parity, the 20-symbol replay and 120-symbol load test.
+  focus: [...LEGACY_FIXTURE_FOCUS],
+  pinned: [],
+  exitStrategy: { includeMicro: false },
   symbols: 4,
   historyDays: 18,
   tfDays: { "1": 3, "5": 6, "15": 18, "30": 18 },

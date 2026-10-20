@@ -1816,7 +1816,7 @@ export function ShortRange(props: {
       grid={props.grid as Record<string, unknown>}
       k="short"
       title="Short range"
-      info="Default TP 9–14× PositionCost at 0.2% per round trip (1.8–2.8%), step 1× (8× belongs to Minimal). SL 1–2.5× the target, trailing cells too. The editable values below define the current grid; evaluation subtracts the configured execution cost. Orders tracked as H."
+      info="Default TP 9–14× the fixed 0.2% distance reference (1.8–2.8%), step 1× (8× belongs to Minimal). SL 1–2.5× the target, trailing cells too. The editable values below define the current grid; evaluation subtracts the configured execution cost once (maximum 0.15%). Orders tracked as H."
       defaults={SHORT_RANGE}
       set={props.set}
     />
@@ -1833,7 +1833,7 @@ export function MinimalRange(props: {
       grid={props.grid as Record<string, unknown>}
       k="minimal"
       title="Minimal range"
-      info="Default TP 4–8× PositionCost at 0.2% per round trip (0.8–1.6%), step 0.5×, SL 1.5–3× the target (stop floor 0.6%, trail floor 0.3%), trailing cells too; every indication including Micro's. The editable values below define the current grid; evaluation subtracts the configured execution cost. Orders tracked as N."
+      info="Default TP 4–8× the fixed 0.2% distance reference (0.8–1.6%), step 0.5×, SL 1.5–3× the target (stop floor 0.6%, trail floor 0.3%), trailing cells too; every indication including Micro's. The editable values below define the current grid; evaluation subtracts the configured execution cost once (maximum 0.15%). Orders tracked as N."
       defaults={MINIMAL_RANGE}
       set={props.set}
     />
@@ -1850,7 +1850,7 @@ export function GeneralRange(props: {
       grid={props.grid as Record<string, unknown>}
       k="general"
       title="General range"
-      info="TP 14–22× the 0.2 % position cost (2.8–4.4 %), step 2× (14× belongs to Short), SL 0.5–1× the target. Orders tracked as G."
+      info="TP 14–22× the fixed 0.2% distance reference (2.8–4.4%), step 2× (14× belongs to Short), SL 0.5–1× the target. Transaction costs are deducted separately once (maximum modeled 0.15%). Orders tracked as G."
       defaults={GENERAL_RANGE}
       set={props.set}
     />
@@ -1867,14 +1867,14 @@ export function LongRange(props: {
       grid={props.grid as Record<string, unknown>}
       k="long"
       title="Long range"
-      info="TP 22–32× the 0.2 % position cost (4.4–6.4 %), step 2× (22× belongs to General), SL 0.5–1× the target. Orders tracked as L."
+      info="TP 22–32× the fixed 0.2% distance reference (4.4–6.4%), step 2× (22× belongs to General), SL 0.5–1× the target. Transaction costs are deducted separately once (maximum modeled 0.15%). Orders tracked as L."
       defaults={LONG_RANGE}
       set={props.set}
     />
   );
 }
 
-/** Micro range: net 0.1–0.4 % after the position cost (price targets 0.3–0.6 % at 0.2 %), SL 1–5× step 0.25. */
+/** Micro range: net 0.1–0.4 % after the position cost (price targets 0.25–0.55 % at 0.15 %), SL 1–5× step 0.25. */
 export function MicroRange(props: {
   grid: Record<string, unknown> | object;
   set: (path: string[], v: unknown) => void;
@@ -2536,7 +2536,7 @@ export function SettingsPage() {
               onChange={(v) => set(["cycleMs"], v)}
             />
           </Field>
-          <Field label="Tick (ms)" hint="open positions marked to market + live step · 50 – 10000">
+          <Field label="Tick (ms)" hint="paper positions marked to market · 50 – 10000 · active order execution checks run independently every 100 ms">
             <Num
               value={s.tickMs ?? 100}
               step={50}
@@ -2547,7 +2547,7 @@ export function SettingsPage() {
           </Field>
           <Field
             label="Position cost (round trip, %)"
-            hint="= 2 × (taker + slippage) · set the components below, or directly · 0 – 2"
+            hint="modeled transaction cost, deducted once per round trip · 2 × (taker + slippage), capped at 0.15% · 0 – 0.15"
           >
             <Num pct min={0} max={MAX_MODEL_RT_COST} value={s.cost} onChange={(v) => set(["cost"], v)} />
           </Field>

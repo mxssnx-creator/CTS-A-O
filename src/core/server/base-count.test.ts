@@ -1,3 +1,4 @@
+import { PREVIOUS_DEFAULT_FOCUS_17OCT as LEGACY_FIXTURE_FOCUS } from "../config.ts";
 // The Base-stage count of validated pairs: the pairs grid.allSets builds for measurement are reported apart
 // (status.baseBuilt), never as passed; and the passed count is recorded per compute (status.baseHistory) so its
 // continuity can be read without the events table (13 Oct).
@@ -10,6 +11,11 @@ import { signalSettings, SIGNAL_SOURCES } from "../signal-config.ts";
 import { trackRuntimes } from "../test-support.ts";
 
 const small = {
+  // Preserve this generic lifecycle fixture's original source scope. Exhaustive new-family grids are
+  // covered separately by Micro/Inverse parity, the 20-symbol replay and 120-symbol load test.
+  focus: [...LEGACY_FIXTURE_FOCUS],
+  pinned: [],
+  exitStrategy: { includeMicro: false },
   symbols: 4,
   historyDays: 18,
   tfDays: { "1": 3, "5": 6, "15": 18, "30": 18 },

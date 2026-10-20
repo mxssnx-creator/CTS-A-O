@@ -1,3 +1,4 @@
+import { PREVIOUS_DEFAULT_FOCUS_17OCT as LEGACY_FIXTURE_FOCUS } from "../config.ts";
 // The fast loops: engine cycle (250 ms) without needless work, tick (100 ms) marking open positions to market and
 // driving the live step, and a live book read over REST at most every syncMs.
 import { describe, it } from "node:test";
@@ -9,6 +10,11 @@ import { PriceStream } from "./stream.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 
 const small = {
+  // Preserve this generic lifecycle fixture's original source scope. Exhaustive new-family grids are
+  // covered separately by Micro/Inverse parity, the 20-symbol replay and 120-symbol load test.
+  focus: [...LEGACY_FIXTURE_FOCUS],
+  pinned: [],
+  exitStrategy: { includeMicro: false },
   symbols: 3,
   historyDays: 18,
   tfDays: { "1": 3, "5": 6, "15": 18, "30": 18 },

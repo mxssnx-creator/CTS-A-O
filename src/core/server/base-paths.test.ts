@@ -70,7 +70,15 @@ describe("engine Base: the worker and the in-process path", { timeout: 600_000 }
     assert.equal(microLaneFloor(DEFAULT_SETTINGS.grid), 0, "the code defaults (no Micro): unchanged, every lane");
     // the default lanes, every combo: the 2,560 Micro pairs on 1m (independent and combined) that Micro's floor drops
     const tfs = [1, 5, 15, 30];
-    assert.equal(allCombos([], [], tfs).length - allCombos([], [], tfs, 5).length, 2560);
+    const before = allCombos([], [], tfs);
+    const kept = new Set(allCombos([], [], tfs, 5).map((c) => `${c.bot}|${c.ind}`));
+    const dropped = before.filter((c) => !kept.has(`${c.bot}|${c.ind}`));
+    assert.equal(dropped.filter((c) => !c.ind.startsWith("inverse-")).length, 2560,
+      "the original Micro lane rule stays unchanged");
+    const inverse = dropped.filter((c) => c.ind.startsWith("inverse-"));
+    assert.equal(inverse.length, 32, "16 Inverse Micro primitives each have independent and combined 1m lanes");
+    assert.ok(inverse.every((c) => c.bot === "follow" && c.ind.startsWith("inverse-mc-")),
+      "Inverse never gains a double-inverting Revert lane");
   });
 
   it("evaluates the same combos on both paths: the Micro indications on 1m included under the Minimal rule", async () => {

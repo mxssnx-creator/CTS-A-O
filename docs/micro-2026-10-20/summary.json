@@ -1,0 +1,1344 @@
+{
+  "schema": "cts-micro-review-v1",
+  "acceptance": "Not accepted for profitable production promotion",
+  "implementation": {
+    "micro": 308,
+    "mirroredMicro": 308,
+    "additionalInverse": 114,
+    "methods": 22,
+    "profiles": 2,
+    "timeframeSubsets": [
+      [
+        1
+      ],
+      [
+        5
+      ],
+      [
+        15
+      ],
+      [
+        1,
+        5
+      ],
+      [
+        1,
+        15
+      ],
+      [
+        5,
+        15
+      ],
+      [
+        1,
+        5,
+        15
+      ]
+    ],
+    "independentIdentities": true,
+    "executionCheckIntervalMs": 100,
+    "hardLatencyGuarantee": false
+  },
+  "window": {
+    "indicatorStartT": 1792098000000,
+    "evaluationFromT": 1792184400000,
+    "tradeStartT": 1792227600000,
+    "endT": 1792270800000,
+    "preH": 12,
+    "runH": 12
+  },
+  "symbols": [
+    "ADA-USDT",
+    "APT-USDT",
+    "ARB-USDT",
+    "ATOM-USDT",
+    "AVAX-USDT",
+    "BCH-USDT",
+    "BNB-USDT",
+    "BTC-USDT",
+    "DOGE-USDT",
+    "DOT-USDT",
+    "ETC-USDT",
+    "ETH-USDT",
+    "FIL-USDT",
+    "LINK-USDT",
+    "LTC-USDT",
+    "NEAR-USDT",
+    "OP-USDT",
+    "SOL-USDT",
+    "SUI-USDT",
+    "TRX-USDT"
+  ],
+  "modelRoundTripCost": 0.0015,
+  "sourceSha256": "1ba487d77477f16f029e1660cee0cfb723bd2078d7f993f777479286fde89b6a",
+  "feedSha256": "2de8392ef1346c1b49b0933e111bd7328d13f23abb1643c90cf99c398fa3cab6",
+  "protocolSha256": "48ee529445669c9ec5ed86f0bc62f4a7257462d4e36b6e2e9f18eb1105a0b802",
+  "computed": {
+    "basePairs": 1232,
+    "basePassed": 187,
+    "mainPairs": 120,
+    "configs": 64473,
+    "initialEvaluatedConfigs": 62553,
+    "initialQualifiedConfigs": 14458,
+    "computeMs": 196386.618843,
+    "loop": {
+      "p50": 20.250623,
+      "p99": 49.479679,
+      "max": 678.952959
+    }
+  },
+  "result": {
+    "orders": 49259,
+    "fundedOrders": 49259,
+    "zeroAllocatedOrders": 0,
+    "unknownAllocations": 0,
+    "virtual": {
+      "n": 49259,
+      "gpR": 85.439214,
+      "glR": 390.27078,
+      "pf": 0.218923,
+      "unknownReturns": 0,
+      "unknownReturnTotals": 0,
+      "pfBasis": "unit-net-returns",
+      "noLoss": false,
+      "basis": "all-virtual-modeled-closes"
+    },
+    "positions": 53,
+    "pf": 0.218923,
+    "cashPf": 0.218923,
+    "cashPfDiagnostic": 0.208043,
+    "pfR": 0.218923,
+    "noLoss": false,
+    "pfBasis": "unit-net-returns",
+    "unknownReturns": 0,
+    "unknownReturnTotals": 0,
+    "cashBasis": "funded-modeled-allocations",
+    "gpR": 85.439214,
+    "glR": 390.27078,
+    "netU": -304.831565,
+    "mddU": 307.967727,
+    "fixedUnit": 0.02,
+    "eqMin": 4.066179,
+    "ruinT": null,
+    "gp": 1.543721,
+    "gl": 7.420192,
+    "net": -5.876471,
+    "netPct": -0.587647,
+    "wins": 11430,
+    "losses": 37829,
+    "wr": 0.232039,
+    "ddtH": 9.466667,
+    "ddr": null,
+    "closedMdd": 5.939021,
+    "balanceEnd": 4.123529,
+    "equityMaxDd": 6.55696,
+    "equityMaxDdPct": 0.617234,
+    "equityDdr": null,
+    "equityDdtMaxH": 9.95,
+    "avgOpenOrders": 12024.627778,
+    "maxOpenOrders": 31372,
+    "avgOpenPositions": 28.234722,
+    "maxOpenPositions": 40,
+    "marginMax": 62.677651,
+    "greenHours": 3,
+    "redHours": 9,
+    "flatHours": 0,
+    "fullHours": 12,
+    "partialHour": null,
+    "equityEnd": 4.081145,
+    "openEnd": {
+      "recorded": true,
+      "orders": 509,
+      "positions": 17,
+      "mtm": -0.042384,
+      "rule": "exact: the orders the engine executed in the run and still open at its end (every gate, cap and Block volume applied), marked to market at the last close"
+    },
+    "caps": {
+      "on": true,
+      "maxPositionX": 0,
+      "maxExposureX": 0,
+      "source": "balance-volume defaults (no balance caps in the settings)",
+      "capped": 0,
+      "scaled": 0,
+      "cappedOpen": 0,
+      "scaledOpen": 0,
+      "byPosition": 0,
+      "byExposure": 0
+    },
+    "uncapped": {
+      "n": 49259,
+      "fundedOrders": 49259,
+      "zeroAllocatedOrders": 0,
+      "unknownAllocations": 0,
+      "unknownReturns": 0,
+      "unknownReturnTotals": 0,
+      "pfBasis": "unit-net-returns",
+      "virtual": {
+        "n": 49259,
+        "gpR": 85.439214,
+        "glR": 390.27078,
+        "pf": 0.218923,
+        "unknownReturns": 0,
+        "unknownReturnTotals": 0,
+        "pfBasis": "unit-net-returns",
+        "noLoss": false,
+        "basis": "all-virtual-modeled-closes"
+      },
+      "net": -5.876471,
+      "gp": 1.543721,
+      "gl": 7.420192,
+      "gpR": 85.439214,
+      "glR": 390.27078,
+      "pf": 0.218923,
+      "cashPf": 0.218923,
+      "cashPfDiagnostic": 0.208043,
+      "cashBasis": "funded-modeled-allocations",
+      "balanceEnd": 4.123529,
+      "equityEnd": 4.081145,
+      "equityMaxDd": 6.55696,
+      "equityMaxDdPct": 0.617234,
+      "marginMax": 62.677651,
+      "eqMin": 4.066179,
+      "marginOverMinutes": 495
+    },
+    "feasible": false,
+    "marginOver": {
+      "minutes": 495,
+      "firstT": 1792231260000,
+      "maxRatio": 13.566011
+    }
+  },
+  "hours": [
+    {
+      "t": 1792227600000,
+      "orders": 216,
+      "pf": 1.933329,
+      "gpR": 0.181777,
+      "glR": 0.094023,
+      "net": 0.001755
+    },
+    {
+      "t": 1792231200000,
+      "orders": 753,
+      "pf": 2.086794,
+      "gpR": 1.433688,
+      "glR": 0.687029,
+      "net": 0.014939
+    },
+    {
+      "t": 1792234800000,
+      "orders": 2534,
+      "pf": 1.816003,
+      "gpR": 4.31924,
+      "glR": 2.378432,
+      "net": 0.038913
+    },
+    {
+      "t": 1792238400000,
+      "orders": 5271,
+      "pf": 0.368647,
+      "gpR": 9.855359,
+      "glR": 26.733873,
+      "net": -0.338166
+    },
+    {
+      "t": 1792242000000,
+      "orders": 10187,
+      "pf": 0.163534,
+      "gpR": 14.411457,
+      "glR": 88.125062,
+      "net": -1.475236
+    },
+    {
+      "t": 1792245600000,
+      "orders": 10264,
+      "pf": 0.114038,
+      "gpR": 8.033376,
+      "glR": 70.444816,
+      "net": -1.250156
+    },
+    {
+      "t": 1792249200000,
+      "orders": 7639,
+      "pf": 0.145212,
+      "gpR": 11.898701,
+      "glR": 81.940355,
+      "net": -1.391614
+    },
+    {
+      "t": 1792252800000,
+      "orders": 5463,
+      "pf": 0.273375,
+      "gpR": 17.378916,
+      "glR": 63.571666,
+      "net": -0.93365
+    },
+    {
+      "t": 1792256400000,
+      "orders": 2840,
+      "pf": 0.442264,
+      "gpR": 11.35939,
+      "glR": 25.684661,
+      "net": -0.28847
+    },
+    {
+      "t": 1792260000000,
+      "orders": 1637,
+      "pf": 0.434165,
+      "gpR": 4.36158,
+      "glR": 10.045914,
+      "net": -0.077963
+    },
+    {
+      "t": 1792263600000,
+      "orders": 1330,
+      "pf": 0.102959,
+      "gpR": 0.847194,
+      "glR": 8.228468,
+      "net": -0.077319
+    },
+    {
+      "t": 1792267200000,
+      "orders": 1125,
+      "pf": 0.110124,
+      "gpR": 1.358537,
+      "glR": 12.336481,
+      "net": -0.099504
+    }
+  ],
+  "ranges": [
+    {
+      "key": "Micro",
+      "n": 4126,
+      "wins": 1186,
+      "losses": 2940,
+      "flats": 0,
+      "wr": 0.287445,
+      "fundedOrders": 4126,
+      "zeroAllocatedOrders": 0,
+      "unknownAllocations": 0,
+      "virtual": {
+        "n": 4126,
+        "gpR": 4.633002,
+        "glR": 17.060349,
+        "pf": 0.271565,
+        "unknownReturns": 0,
+        "unknownReturnTotals": 0,
+        "pfBasis": "unit-net-returns",
+        "noLoss": false,
+        "basis": "all-virtual-modeled-closes"
+      },
+      "gp": 0.092198,
+      "gl": 0.33684,
+      "pf": 0.271565,
+      "pfBasis": "unit-net-returns",
+      "unknownReturns": 0,
+      "unknownReturnTotals": 0,
+      "noLoss": false,
+      "cashPf": 0.271565,
+      "cashPfDiagnostic": 0.273715,
+      "cashBasis": "funded-modeled-allocations",
+      "net": -0.244642,
+      "gpR": 4.633002,
+      "glR": 17.060349,
+      "pfU": 0.271565,
+      "netU": -12.427347,
+      "mddU": 14.223387,
+      "mdd": 0.280692,
+      "mddPct": 0.027969,
+      "ddr": null,
+      "ddtH": 9.483333,
+      "positions": 47,
+      "greenH": 3,
+      "redH": 4,
+      "activeH": 7,
+      "avgHoldMin": 47.454435,
+      "opened": 4126
+    },
+    {
+      "key": "Minimal",
+      "n": 6558,
+      "wins": 1792,
+      "losses": 4766,
+      "flats": 0,
+      "wr": 0.273254,
+      "fundedOrders": 6558,
+      "zeroAllocatedOrders": 0,
+      "unknownAllocations": 0,
+      "virtual": {
+        "n": 6558,
+        "gpR": 7.366918,
+        "glR": 29.456462,
+        "pf": 0.250095,
+        "unknownReturns": 0,
+        "unknownReturnTotals": 0,
+        "pfBasis": "unit-net-returns",
+        "noLoss": false,
+        "basis": "all-virtual-modeled-closes"
+      },
+      "gp": 0.132965,
+      "gl": 0.581269,
+      "pf": 0.250095,
+      "pfBasis": "unit-net-returns",
+      "unknownReturns": 0,
+      "unknownReturnTotals": 0,
+      "noLoss": false,
+      "cashPf": 0.250095,
+      "cashPfDiagnostic": 0.228749,
+      "cashBasis": "funded-modeled-allocations",
+      "net": -0.448304,
+      "gpR": 7.366918,
+      "glR": 29.456462,
+      "pfU": 0.250095,
+      "netU": -22.089545,
+      "mddU": 24.286884,
+      "mdd": 0.486565,
+      "mddPct": 0.048498,
+      "ddr": null,
+      "ddtH": 9.516667,
+      "positions": 59,
+      "greenH": 6,
+      "redH": 5,
+      "activeH": 11,
+      "avgHoldMin": 105.187557,
+      "opened": 6558
+    },
+    {
+      "key": "Short",
+      "n": 16165,
+      "wins": 3995,
+      "losses": 12170,
+      "flats": 0,
+      "wr": 0.247139,
+      "fundedOrders": 16165,
+      "zeroAllocatedOrders": 0,
+      "unknownAllocations": 0,
+      "virtual": {
+        "n": 16165,
+        "gpR": 32.63348,
+        "glR": 122.081037,
+        "pf": 0.26731,
+        "unknownReturns": 0,
+        "unknownReturnTotals": 0,
+        "pfBasis": "unit-net-returns",
+        "noLoss": false,
+        "basis": "all-virtual-modeled-closes"
+      },
+      "gp": 0.567611,
+      "gl": 2.243376,
+      "pf": 0.26731,
+      "pfBasis": "unit-net-returns",
+      "unknownReturns": 0,
+      "unknownReturnTotals": 0,
+      "noLoss": false,
+      "cashPf": 0.26731,
+      "cashPfDiagnostic": 0.253016,
+      "cashBasis": "funded-modeled-allocations",
+      "net": -1.675765,
+      "gpR": 32.63348,
+      "glR": 122.081037,
+      "pfU": 0.26731,
+      "netU": -89.447557,
+      "mddU": 91.108706,
+      "mdd": 1.708137,
+      "mddPct": 0.170275,
+      "ddr": null,
+      "ddtH": 8.883333,
+      "positions": 56,
+      "greenH": 3,
+      "redH": 8,
+      "activeH": 11,
+      "avgHoldMin": 168.176245,
+      "opened": 16165
+    },
+    {
+      "key": "General",
+      "n": 22363,
+      "wins": 4453,
+      "losses": 17910,
+      "flats": 0,
+      "wr": 0.199124,
+      "fundedOrders": 22363,
+      "zeroAllocatedOrders": 0,
+      "unknownAllocations": 0,
+      "virtual": {
+        "n": 22363,
+        "gpR": 40.788505,
+        "glR": 221.300768,
+        "pf": 0.184313,
+        "unknownReturns": 0,
+        "unknownReturnTotals": 0,
+        "pfBasis": "unit-net-returns",
+        "noLoss": false,
+        "basis": "all-virtual-modeled-closes"
+      },
+      "gp": 0.750795,
+      "gl": 4.25541,
+      "pf": 0.184313,
+      "pfBasis": "unit-net-returns",
+      "unknownReturns": 0,
+      "unknownReturnTotals": 0,
+      "noLoss": false,
+      "cashPf": 0.184313,
+      "cashPfDiagnostic": 0.176433,
+      "cashBasis": "funded-modeled-allocations",
+      "net": -3.504615,
+      "gpR": 40.788505,
+      "glR": 221.300768,
+      "pfU": 0.184313,
+      "netU": -180.512263,
+      "mddU": 180.512263,
+      "mdd": 3.504615,
+      "mddPct": 0.350462,
+      "ddr": null,
+      "ddtH": 11.966667,
+      "positions": 44,
+      "greenH": 0,
+      "redH": 11,
+      "activeH": 11,
+      "avgHoldMin": 225.814113,
+      "opened": 22363
+    },
+    {
+      "key": "Wide",
+      "n": 47,
+      "wins": 4,
+      "losses": 43,
+      "flats": 0,
+      "wr": 0.085106,
+      "fundedOrders": 47,
+      "zeroAllocatedOrders": 0,
+      "unknownAllocations": 0,
+      "virtual": {
+        "n": 47,
+        "gpR": 0.017311,
+        "glR": 0.372164,
+        "pf": 0.046513,
+        "unknownReturns": 0,
+        "unknownReturnTotals": 0,
+        "pfBasis": "unit-net-returns",
+        "noLoss": false,
+        "basis": "all-virtual-modeled-closes"
+      },
+      "gp": 0.000152,
+      "gl": 0.003297,
+      "pf": 0.046513,
+      "pfBasis": "unit-net-returns",
+      "unknownReturns": 0,
+      "unknownReturnTotals": 0,
+      "noLoss": false,
+      "cashPf": 0.046513,
+      "cashPfDiagnostic": 0.046232,
+      "cashBasis": "funded-modeled-allocations",
+      "net": -0.003145,
+      "gpR": 0.017311,
+      "glR": 0.372164,
+      "pfU": 0.046513,
+      "netU": -0.354854,
+      "mddU": 0.372164,
+      "mdd": 0.003297,
+      "mddPct": 0.00033,
+      "ddr": null,
+      "ddtH": 3.333333,
+      "positions": 19,
+      "greenH": 1,
+      "redH": 3,
+      "activeH": 4,
+      "avgHoldMin": 77.978723,
+      "opened": 47
+    }
+  ],
+  "indKinds": [
+    {
+      "key": "micro",
+      "n": 2482,
+      "wins": 628,
+      "losses": 1854,
+      "flats": 0,
+      "wr": 0.253022,
+      "fundedOrders": 2482,
+      "zeroAllocatedOrders": 0,
+      "unknownAllocations": 0,
+      "virtual": {
+        "n": 2482,
+        "gpR": 5.133755,
+        "glR": 23.713015,
+        "pf": 0.216495,
+        "unknownReturns": 0,
+        "unknownReturnTotals": 0,
+        "pfBasis": "unit-net-returns",
+        "noLoss": false,
+        "basis": "all-virtual-modeled-closes"
+      },
+      "gp": 0.091178,
+      "gl": 0.419834,
+      "pf": 0.216495,
+      "pfBasis": "unit-net-returns",
+      "unknownReturns": 0,
+      "unknownReturnTotals": 0,
+      "noLoss": false,
+      "cashPf": 0.216495,
+      "cashPfDiagnostic": 0.217176,
+      "cashBasis": "funded-modeled-allocations",
+      "net": -0.328656,
+      "gpR": 5.133755,
+      "glR": 23.713015,
+      "pfU": 0.216495,
+      "netU": -18.579259,
+      "mddU": 18.933841,
+      "mdd": 0.335751,
+      "mddPct": 0.033551,
+      "ddr": null,
+      "ddtH": 7.95,
+      "positions": 43,
+      "greenH": 1,
+      "redH": 8,
+      "activeH": 9,
+      "avgHoldMin": 201.489122,
+      "opened": 2482
+    },
+    {
+      "key": "inverse",
+      "n": 46777,
+      "wins": 10802,
+      "losses": 35975,
+      "flats": 0,
+      "wr": 0.230925,
+      "fundedOrders": 46777,
+      "zeroAllocatedOrders": 0,
+      "unknownAllocations": 0,
+      "virtual": {
+        "n": 46777,
+        "gpR": 80.305459,
+        "glR": 366.557765,
+        "pf": 0.21908,
+        "unknownReturns": 0,
+        "unknownReturnTotals": 0,
+        "pfBasis": "unit-net-returns",
+        "noLoss": false,
+        "basis": "all-virtual-modeled-closes"
+      },
+      "gp": 1.452543,
+      "gl": 7.000358,
+      "pf": 0.21908,
+      "pfBasis": "unit-net-returns",
+      "unknownReturns": 0,
+      "unknownReturnTotals": 0,
+      "noLoss": false,
+      "cashPf": 0.21908,
+      "cashPfDiagnostic": 0.207496,
+      "cashBasis": "funded-modeled-allocations",
+      "net": -5.547815,
+      "gpR": 80.305459,
+      "glR": 366.557765,
+      "pfU": 0.21908,
+      "netU": -286.252306,
+      "mddU": 289.388468,
+      "mdd": 5.610365,
+      "mddPct": 0.55756,
+      "ddr": null,
+      "ddtH": 9.466667,
+      "positions": 54,
+      "greenH": 3,
+      "redH": 9,
+      "activeH": 12,
+      "avgHoldMin": 174.394168,
+      "opened": 46777
+    }
+  ],
+  "checks": {
+    "total": 60,
+    "ok": true
+  },
+  "independentAudit": {
+    "scope": "Independent arithmetic, entry directions, exact config/symbol gates and normal/trailing candle scanner; modeled orders only",
+    "cost": 0.0015,
+    "roundTripChargedOnce": true,
+    "rows": 49259,
+    "independentlyReplayedProtectionRows": 49212,
+    "maxReturnError": 1.0720260441160478e-7,
+    "maxPriceError": 5.7946702497660636e-8,
+    "gp": 85.43921186760092,
+    "gl": 390.2709302090552,
+    "pf": 0.21892281810954753,
+    "beforeCostPfDiagnostic": 0.3118240840240731,
+    "reasons": {
+      "trail": 4251,
+      "tp": 1929,
+      "time": 40118,
+      "sl": 2961
+    },
+    "bySource": [
+      {
+        "id": "inverse-micro-1x5-break-activity-selective@m1",
+        "n": 607,
+        "gp": 0.5640831259263765,
+        "gl": 6.400897714164844,
+        "pf": 0.08812562723476908
+      },
+      {
+        "id": "inverse-micro-1x15-break-activity-selective@m1",
+        "n": 276,
+        "gp": 0.2038222078648421,
+        "gl": 0.9332798904634941,
+        "pf": 0.21839344225408952
+      },
+      {
+        "id": "inverse-micro-1x5-relative-trend-fast@m1",
+        "n": 895,
+        "gp": 0.6161579719730256,
+        "gl": 2.5813352642751544,
+        "pf": 0.2386973829011879
+      },
+      {
+        "id": "inverse-micro-1-relative-trend-selective@m1",
+        "n": 1544,
+        "gp": 1.723241904384169,
+        "gl": 7.406454291000967,
+        "pf": 0.23266759459758662
+      },
+      {
+        "id": "inverse-micro-1x5-drawdown-market-fast@m1",
+        "n": 2,
+        "gp": 0,
+        "gl": 0.001786754461727593,
+        "pf": 0
+      },
+      {
+        "id": "inverse-micro-1x15-break-retest-selective@m1",
+        "n": 1306,
+        "gp": 1.4991631855742995,
+        "gl": 6.2767344224689845,
+        "pf": 0.2388444507398158
+      },
+      {
+        "id": "inverse-micro-1-change-ema-fast@m1",
+        "n": 3,
+        "gp": 0.004151233198220158,
+        "gl": 0.0001284243174311439,
+        "pf": 32.324354773743586
+      },
+      {
+        "id": "inverse-micro-1x15-break-activity-fast@m1",
+        "n": 363,
+        "gp": 0.43800181214843287,
+        "gl": 1.7888404928914023,
+        "pf": 0.24485235765233948
+      },
+      {
+        "id": "inverse-micro-1x15-pullback-activity-fast@m1",
+        "n": 251,
+        "gp": 0.11451279597950653,
+        "gl": 0.6188119163581952,
+        "pf": 0.18505266778544316
+      },
+      {
+        "id": "inverse-micro-1x5x15-break-activity-fast@m1",
+        "n": 480,
+        "gp": 0.48993642018603467,
+        "gl": 2.223251636306365,
+        "pf": 0.22036930601342028
+      },
+      {
+        "id": "inverse-micro-1x5x15-impulse-retest-fast@m1",
+        "n": 4918,
+        "gp": 4.636269552138157,
+        "gl": 44.44021146072672,
+        "pf": 0.10432600115405348
+      },
+      {
+        "id": "inverse-micro-1x15-change-ema-fast@m1",
+        "n": 436,
+        "gp": 0.6816561070673893,
+        "gl": 1.9312587985934193,
+        "pf": 0.35295948298791197
+      },
+      {
+        "id": "inverse-micro-1x15-change-ema-selective@m1",
+        "n": 1115,
+        "gp": 1.6244377517799997,
+        "gl": 7.705266014122797,
+        "pf": 0.21082176122181984
+      },
+      {
+        "id": "inverse-micro-1x5-break-activity-fast@m1",
+        "n": 368,
+        "gp": 0.2714713119727495,
+        "gl": 3.41384411369664,
+        "pf": 0.07952071123680865
+      },
+      {
+        "id": "inverse-micro-1x15-break-retest-fast@m1",
+        "n": 2238,
+        "gp": 0.9147163417175468,
+        "gl": 15.811240138225928,
+        "pf": 0.05785228316823103
+      },
+      {
+        "id": "inverse-micro-1x5x15-break-retest-fast@m1",
+        "n": 435,
+        "gp": 0.1705398359182538,
+        "gl": 2.9849988332084765,
+        "pf": 0.05713229567160205
+      },
+      {
+        "id": "inverse-micro-1x5x15-drawdown-trend-fast@m1",
+        "n": 1407,
+        "gp": 0.835164870573723,
+        "gl": 10.530397975701053,
+        "pf": 0.07930990571304809
+      },
+      {
+        "id": "inverse-micro-1x5-break-retest-fast@m1",
+        "n": 1863,
+        "gp": 1.522426785890898,
+        "gl": 19.108283467884846,
+        "pf": 0.0796736550642882
+      },
+      {
+        "id": "inverse-micro-1x5x15-drawdown-trend-selective@m1",
+        "n": 843,
+        "gp": 0.3426710679983599,
+        "gl": 8.998659082586645,
+        "pf": 0.03808023671676423
+      },
+      {
+        "id": "inverse-micro-1-activity-absorb-fast@m1",
+        "n": 8210,
+        "gp": 45.201207224048375,
+        "gl": 33.52196997560329,
+        "pf": 1.3484054563900938
+      },
+      {
+        "id": "inverse-micro-1-impulse-retest-fast@m1",
+        "n": 47,
+        "gp": 0.017778134443905348,
+        "gl": 0.4995590458537847,
+        "pf": 0.03558765393492406
+      },
+      {
+        "id": "inverse-micro-1x5-impulse-retest-fast@m1",
+        "n": 2540,
+        "gp": 3.9966346571661227,
+        "gl": 24.27654395081293,
+        "pf": 0.16462947383547527
+      },
+      {
+        "id": "inverse-micro-1x5x15-break-close-fast@m1",
+        "n": 1285,
+        "gp": 0.7431385828630374,
+        "gl": 14.8711327848195,
+        "pf": 0.04997188806098454
+      },
+      {
+        "id": "inverse-micro-1x5x15-break-close-selective@m1",
+        "n": 1281,
+        "gp": 0.2669280042353426,
+        "gl": 13.66830039622383,
+        "pf": 0.01952898286527909
+      },
+      {
+        "id": "inverse-micro-1x5-break-retest-selective@m1",
+        "n": 2575,
+        "gp": 1.0350025869014088,
+        "gl": 33.54495488470921,
+        "pf": 0.03085419522722905
+      },
+      {
+        "id": "inverse-micro-1x5-break-close-fast@m1",
+        "n": 1249,
+        "gp": 0.841036310839156,
+        "gl": 12.665121403935329,
+        "pf": 0.0664057046131297
+      },
+      {
+        "id": "inverse-micro-1x5-market-momentum-selective@m1",
+        "n": 226,
+        "gp": 0.3503475791395202,
+        "gl": 1.9676293890934806,
+        "pf": 0.17805567505826447
+      },
+      {
+        "id": "inverse-micro-1x15-break-close-selective@m1",
+        "n": 36,
+        "gp": 0.002443246475454048,
+        "gl": 0.1918838302924962,
+        "pf": 0.01273294613584537
+      },
+      {
+        "id": "inverse-micro-1x15-activity-acceleration-fast@m1",
+        "n": 825,
+        "gp": 1.328024795688366,
+        "gl": 5.988922998194412,
+        "pf": 0.22174684765336763
+      },
+      {
+        "id": "inverse-micro-1x5-break-close-selective@m1",
+        "n": 56,
+        "gp": 0.0278173753787416,
+        "gl": 0.5335859060795578,
+        "pf": 0.052132890059120154
+      },
+      {
+        "id": "inverse-micro-1x15-activity-acceleration-selective@m1",
+        "n": 169,
+        "gp": 0.465672095484684,
+        "gl": 1.3378910571051446,
+        "pf": 0.3480642859608314
+      },
+      {
+        "id": "inverse-micro-1x5-drawdown-trend-fast@m1",
+        "n": 782,
+        "gp": 1.1949206484218158,
+        "gl": 6.587060332128139,
+        "pf": 0.18140423621044355
+      },
+      {
+        "id": "inverse-micro-1x15-impulse-retest-fast@m1",
+        "n": 354,
+        "gp": 0.4058648085545004,
+        "gl": 2.6947497405213006,
+        "pf": 0.15061317288631992
+      },
+      {
+        "id": "inverse-micro-1x5-drawdown-trend-selective@m1",
+        "n": 120,
+        "gp": 0.020602327764474678,
+        "gl": 0.9637966387479717,
+        "pf": 0.021376218733485424
+      },
+      {
+        "id": "inverse-micro-1x15-adaptive-selective@m1",
+        "n": 23,
+        "gp": 0.0002241952919591198,
+        "gl": 0.2102326319245423,
+        "pf": 0.0010664152843769233
+      },
+      {
+        "id": "inverse-micro-1x5x15-change-roc-fast@m1",
+        "n": 358,
+        "gp": 0.003297374368060254,
+        "gl": 3.4756011708831194,
+        "pf": 0.0009487205826963226
+      },
+      {
+        "id": "inverse-micro-1x5x15-market-momentum-fast@m1",
+        "n": 1017,
+        "gp": 1.0891906529467055,
+        "gl": 11.650250869499303,
+        "pf": 0.0934907466926947
+      },
+      {
+        "id": "inverse-micro-1x5-activity-acceleration-selective@m1",
+        "n": 1192,
+        "gp": 1.4989025855629652,
+        "gl": 10.092223901346456,
+        "pf": 0.14852054415508845
+      },
+      {
+        "id": "inverse-micro-1x15-activity-flow-selective@m1",
+        "n": 54,
+        "gp": 0.011499965801934946,
+        "gl": 0.5172509625977882,
+        "pf": 0.022232855293644493
+      },
+      {
+        "id": "inverse-micro-1x5x15-break-retest-selective@m1",
+        "n": 1182,
+        "gp": 1.7042174384438387,
+        "gl": 8.43716889977688,
+        "pf": 0.2019892524006372
+      },
+      {
+        "id": "inverse-micro-1x5x15-activity-flow-fast@m1",
+        "n": 195,
+        "gp": 0.42737513446816394,
+        "gl": 0.8399937941483517,
+        "pf": 0.5087836808383432
+      },
+      {
+        "id": "inverse-micro-1x15-activity-flow-fast@m1",
+        "n": 104,
+        "gp": 0.10690002830727918,
+        "gl": 0.36264430058776576,
+        "pf": 0.29477928684945004
+      },
+      {
+        "id": "inverse-micro-1x15-market-momentum-fast@m1",
+        "n": 9,
+        "gp": 0,
+        "gl": 0.024584271846220723,
+        "pf": 0
+      },
+      {
+        "id": "inverse-micro-1x15-drawdown-trend-fast@m1",
+        "n": 128,
+        "gp": 0.1267209764857334,
+        "gl": 1.1388097020584613,
+        "pf": 0.11127493580066825
+      },
+      {
+        "id": "inverse-micro-1x5-activity-flow-fast@m1",
+        "n": 13,
+        "gp": 0,
+        "gl": 0.1304310923620919,
+        "pf": 0
+      },
+      {
+        "id": "inverse-micro-1x5x15-market-momentum-selective@m1",
+        "n": 1413,
+        "gp": 0.5174256703746771,
+        "gl": 16.94437512753984,
+        "pf": 0.030536721860796194
+      },
+      {
+        "id": "inverse-micro-1x5-activity-flow-selective@m1",
+        "n": 211,
+        "gp": 0.27182470530541947,
+        "gl": 0.8673783171246181,
+        "pf": 0.3133865580206403
+      },
+      {
+        "id": "inverse-micro-1x5x15-activity-acceleration-selective@m1",
+        "n": 13,
+        "gp": 0.03432969322364951,
+        "gl": 0.0003852729522934317,
+        "pf": 89.10486194084893
+      },
+      {
+        "id": "inverse-micro-1x5x15-adaptive-selective@m1",
+        "n": 51,
+        "gp": 0,
+        "gl": 0.4290304632829913,
+        "pf": 0
+      },
+      {
+        "id": "inverse-micro-1x5x15-activity-flow-selective@m1",
+        "n": 2,
+        "gp": 0.025000011430081043,
+        "gl": 0,
+        "pf": null
+      },
+      {
+        "id": "inverse-micro-1x5-market-momentum-fast@m1",
+        "n": 20,
+        "gp": 0.12445175609118281,
+        "gl": 0.0016195944032317343,
+        "pf": 76.84131029525177
+      },
+      {
+        "id": "micro-1-relative-trend-fast@m1",
+        "n": 298,
+        "gp": 1.1852362998233938,
+        "gl": 2.3509680224723,
+        "pf": 0.5041482012915635
+      },
+      {
+        "id": "inverse-micro-1x15-change-roc-fast@m1",
+        "n": 580,
+        "gp": 0,
+        "gl": 5.667108191921218,
+        "pf": 0
+      },
+      {
+        "id": "inverse-micro-1x15-change-roc-selective@m1",
+        "n": 184,
+        "gp": 0,
+        "gl": 1.8596641854877631,
+        "pf": 0
+      },
+      {
+        "id": "inverse-micro-1x5x15-change-roc-selective@m1",
+        "n": 94,
+        "gp": 0.0011360640342350514,
+        "gl": 1.579104223472711,
+        "pf": 0.0007194357518319209
+      },
+      {
+        "id": "inverse-micro-1x15-break-close-fast@m1",
+        "n": 10,
+        "gp": 0,
+        "gl": 0.12487733757198494,
+        "pf": 0
+      },
+      {
+        "id": "inverse-micro-1x5-activity-acceleration-fast@m1",
+        "n": 38,
+        "gp": 0,
+        "gl": 0.3978830789329116,
+        "pf": 0
+      },
+      {
+        "id": "micro-1x5x15-market-follow-selective@m1",
+        "n": 3,
+        "gp": 0,
+        "gl": 0.05608889130252113,
+        "pf": 0
+      },
+      {
+        "id": "inverse-micro-1x15-drawdown-trend-selective@m1",
+        "n": 5,
+        "gp": 0,
+        "gl": 0.05419902300966407,
+        "pf": 0
+      },
+      {
+        "id": "inverse-micro-1-market-momentum-fast@m1",
+        "n": 2,
+        "gp": 0,
+        "gl": 0.04561919011770266,
+        "pf": 0
+      },
+      {
+        "id": "inverse-micro-1-market-momentum-selective@m1",
+        "n": 2,
+        "gp": 0,
+        "gl": 0.04561919011770266,
+        "pf": 0
+      },
+      {
+        "id": "inverse-micro-1x5x15-break-activity-selective@m1",
+        "n": 18,
+        "gp": 0,
+        "gl": 0.22844566916836817,
+        "pf": 0
+      },
+      {
+        "id": "inverse-micro-1x5x15-activity-acceleration-fast@m1",
+        "n": 33,
+        "gp": 0.02100008345649295,
+        "gl": 0.22439058792009037,
+        "pf": 0.09358718496682877
+      },
+      {
+        "id": "inverse-micro-1-drawdown-trend-selective@m1",
+        "n": 24,
+        "gp": 0,
+        "gl": 0.3833620735810264,
+        "pf": 0
+      },
+      {
+        "id": "micro-1x15-range-reclaim-fast@m1",
+        "n": 1853,
+        "gp": 3.2716589675399357,
+        "gl": 19.011834319512307,
+        "pf": 0.172085392317045
+      },
+      {
+        "id": "inverse-micro-1-relative-trend-fast@m1",
+        "n": 18,
+        "gp": 0,
+        "gl": 0.243979660486763,
+        "pf": 0
+      },
+      {
+        "id": "inverse-micro-1x5-change-ema-fast@m1",
+        "n": 15,
+        "gp": 0,
+        "gl": 0.24552065983743557,
+        "pf": 0
+      },
+      {
+        "id": "inverse-micro-1-break-activity-selective@m1",
+        "n": 28,
+        "gp": 0,
+        "gl": 0.6145159959655683,
+        "pf": 0
+      },
+      {
+        "id": "inverse-micro-1x5-adaptive-selective@m1",
+        "n": 2,
+        "gp": 0,
+        "gl": 0.028918673544796714,
+        "pf": 0
+      },
+      {
+        "id": "inverse-micro-1x15-market-momentum-selective@m1",
+        "n": 17,
+        "gp": 0.008985027085107011,
+        "gl": 0.20652699691306772,
+        "pf": 0.043505339347422116
+      },
+      {
+        "id": "inverse-micro-1x5x15-adaptive-fast@m1",
+        "n": 1,
+        "gp": 0,
+        "gl": 0.004681888222983794,
+        "pf": 0
+      },
+      {
+        "id": "inverse-micro-1-break-retest-selective@m1",
+        "n": 2,
+        "gp": 0.006938116870048883,
+        "gl": 0.013046086116918152,
+        "pf": 0.5318159644103176
+      },
+      {
+        "id": "micro-1x5x15-drawdown-turn-fast@m1",
+        "n": 4,
+        "gp": 0.00017784139926087716,
+        "gl": 0.004747125946504466,
+        "pf": 0.03746296206693867
+      },
+      {
+        "id": "micro-5-market-follow-fast@m5",
+        "n": 127,
+        "gp": 0.22435693750984453,
+        "gl": 0.3584691171124457,
+        "pf": 0.6258752199271536
+      },
+      {
+        "id": "inverse-micro-1x5-pullback-activity-fast@m1",
+        "n": 27,
+        "gp": 0.02552693163739698,
+        "gl": 0.04818657459239094,
+        "pf": 0.5297519455020133
+      },
+      {
+        "id": "inverse-micro-1x5-change-roc-selective@m1",
+        "n": 1,
+        "gp": 0,
+        "gl": 0.01611021795270661,
+        "pf": 0
+      },
+      {
+        "id": "inverse-micro-1x5-change-ema-selective@m1",
+        "n": 131,
+        "gp": 0.5508118763169326,
+        "gl": 1.3785171365928668,
+        "pf": 0.39956839251074916
+      },
+      {
+        "id": "inverse-micro-5-drawdown-market-selective@m5",
+        "n": 20,
+        "gp": 0.023370754944251608,
+        "gl": 0.13468027597863103,
+        "pf": 0.1735276734060132
+      },
+      {
+        "id": "inverse-micro-5-drawdown-turn-fast@m5",
+        "n": 292,
+        "gp": 0.888402501881559,
+        "gl": 0.6709116094139056,
+        "pf": 1.3241722000572458
+      },
+      {
+        "id": "inverse-micro-1x15-drawdown-market-fast@m1",
+        "n": 20,
+        "gp": 0.11514081650267435,
+        "gl": 0.08845681901771787,
+        "pf": 1.3016612826605451
+      },
+      {
+        "id": "micro-1-break-direction-fast@m1",
+        "n": 49,
+        "gp": 0,
+        "gl": 0.7253142155795079,
+        "pf": 0
+      },
+      {
+        "id": "micro-1x5x15-drawdown-market-selective@m1",
+        "n": 1,
+        "gp": 0,
+        "gl": 0.017744731428020175,
+        "pf": 0
+      },
+      {
+        "id": "micro-5-market-follow-selective@m5",
+        "n": 33,
+        "gp": 0.2767988631308343,
+        "gl": 0.08345248101570976,
+        "pf": 3.316844026227662
+      },
+      {
+        "id": "micro-1x5-pullback-activity-fast@m1",
+        "n": 62,
+        "gp": 0.1678487887926068,
+        "gl": 0.4791713998012806,
+        "pf": 0.3502896643293322
+      },
+      {
+        "id": "inverse-micro-1x5x15-change-ema-selective@m1",
+        "n": 34,
+        "gp": 0,
+        "gl": 0.17792948869994404,
+        "pf": 0
+      },
+      {
+        "id": "micro-1-market-momentum-selective@m1",
+        "n": 10,
+        "gp": 0,
+        "gl": 0.17237217442518746,
+        "pf": 0
+      },
+      {
+        "id": "inverse-micro-5-drawdown-market-fast@m5",
+        "n": 51,
+        "gp": 0.15562986542703044,
+        "gl": 0.16611885564559115,
+        "pf": 0.9368585211004667
+      },
+      {
+        "id": "inverse-micro-5x15-drawdown-market-selective@m5",
+        "n": 38,
+        "gp": 0.01731050811139125,
+        "gl": 0.3187704240524152,
+        "pf": 0.054303996874392885
+      },
+      {
+        "id": "micro-1-pullback-activity-fast@m1",
+        "n": 33,
+        "gp": 0.007678775339186841,
+        "gl": 0.399466827432474,
+        "pf": 0.01922256070307831
+      },
+      {
+        "id": "micro-15-drawdown-turn-selective@m15",
+        "n": 5,
+        "gp": 0,
+        "gl": 0.02857887593831758,
+        "pf": 0
+      },
+      {
+        "id": "micro-15-drawdown-market-selective@m15",
+        "n": 4,
+        "gp": 0,
+        "gl": 0.024814514872173055,
+        "pf": 0
+      }
+    ],
+    "precision": "1e-6 return tolerance covers Float32 stored price columns; modeled return arrays retain their original higher precision",
+    "violations": []
+  },
+  "limitations": [
+    "Historical regression on already cached market data, not an unseen forward holdout.",
+    "Losing after costs: high PF and every-hour profitability not demonstrated.",
+    "Uncapped all-config modeled exposure is infeasible at the study capital; financial order counts are correlated modeled allocations, not venue-owned fills.",
+    "No live exchange orders sent by this work.",
+    "5s archive is eight minutes for 19 observed symbols, not complete 12h history; live runtime lanes remain 1/5/15m.",
+    "100ms is a check interval; event-loop stalls, API latency, book-cache freshness and venue rate limits still apply.",
+    "No official BingX Node SDK was located in the official repositories; existing native REST client and official WebSocket protocol are retained."
+  ],
+  "stress": {
+    "schema": "cts-micro-load-v1",
+    "source": "synthetic functional load, no exchange executions",
+    "scope": "120 symbols; all 616 Micro/mirror identities; 1/5/15m singles and combinations; four Micro protects; two real runtime computations; 100 coalesced kicks. Full four-range financial grid measured separately on 20 real symbols.",
+    "elapsedMs": 447226.04032900004,
+    "maxRssMb": 1550.7421875,
+    "maxCompute": 1,
+    "kicks": 100,
+    "nativeChecks": 3766,
+    "computes": 2,
+    "paperSteps": 1,
+    "symbols": 120,
+    "progress": {
+      "intervalMs": 100,
+      "checks": 4141,
+      "lagMs": 1.438706999993883,
+      "maxLagMs": 5890.392748999991,
+      "missed": 331,
+      "error": null
+    },
+    "failure": null
+  }
+}
