@@ -1,6 +1,16 @@
 # CTS-A-O operations handoff
 
-## 20 October 2026 — exact post-Base context checkpoint (not released)
+## Final full-context checkpoint — 20 October
+
+Implementation commit `2f48e3ff9fad0cd7fa27fc4f8bbb2170f35b99ee` supersedes the intermediate `700a91b` validation logic below. The full gate runs independently per config/symbol/direction, including its own minimum sample, LCB, window, drawdown, green share and stability. Only passing contexts contribute to qualification/ranking; neither profitable nor losing unrelated pools can override a context. Additional execution Last-N uses the exact context. Compact views retain the actual evaluation window and required earlier Last-N rows, with one cached view per tape; cache changes and exact-entry-boundary closes have regressions.
+
+Four final 12-symbol fixed windows complete with **zero fully qualified contexts/orders and unavailable PF**, preserving thresholds. This is correct refusal of unproven entries, **not** fulfillment of many orders with consistently high forward PF. Earlier extended 22-symbol full-context attempts before final compaction were memory-incomplete; their results cannot certify this final source. The old 999/PF0.023841 sample remains in the archive as an explicitly failed intermediate implementation.
+
+Final focused checks cover all seven ranges, unrelated-pool independence, sample/LCB non-borrowing, all selection modes, native promotion, duplicate symbol slots, Last-N/history cache changes and exact-close boundaries. The later-core segment passed 184 tests before the final context changes. The simulation sweep passed 401/407; its six stale 24h-window fixture failures now pass in the explicitly pinned 18/18 Block admission fixture. The archived lifecycle snapshot remains exact after pinning its original input options; every non-options field matched reference source 9c037e2 before the fixture was updated. Production typecheck/build and UI are passing checkpoints; a single immutable full-green core run and profitable execution evidence remain pending. Do not deploy or merge as a completed profitability release.
+
+The draft review is https://github.com/mxssnx-creator/CTS-A-O/pull/182. Use the GitHub connector to update its branch: Git CLI has no push credentials. Verify the remote Git tree equals the local tested tree before moving the branch. Main remains unchanged.
+
+## Intermediate checkpoint (superseded by the final full-context logic above)
 
 Tested implementation commit: `700a91b06dcf42a05321ca2a3986c0c33dac1846`.
 Audit evidence update: `a00bfd8`. Integration branch: `codex/integrate-open-work-20261020`, based on main `4588030b946740d493cf0e0d629aa2722aa6211c`.

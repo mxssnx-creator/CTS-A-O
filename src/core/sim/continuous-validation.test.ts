@@ -9,8 +9,10 @@ import {
   makeTape,
   selectDurable,
   selectFixed,
+  selectAt,
   signalHistoryHours,
   engineContextValid,
+  configContextEval,
   tapeRetentionHours,
 } from "./walkforward.ts";
 
@@ -75,6 +77,88 @@ function fixture(tag?: RangeTag) {
 }
 
 describe("continuous post-Base qualification", () => {
+  it("compact context caching preserves longer Last-N and restored history windows", () => {
+    const { tp, o } = fixture();
+    const rows: Trade[] = Array.from({ length: 100 }, (_, i) => ({
+      cfg: tp.id, sym: "A", side: 1, entryT: T - (101 - i) * H,
+      exitT: T - (100 - i) * H, entry: 100, exit: 101, r: .01,
+      reason: "tp", bars: 1, mfe: 0, mae: 0,
+    }));
+    const own = makeTape(tp.id, tp.bot, tp.ind, tp.protect, tp.kind, ["A", "A"], rows, [], []);
+    assert.equal(configContextEval(own, T, o, "A", 1).n, 24);
+    assert.equal(configContextEval(own, T, { ...o, validLastN: 75 }, "A", 1).ok, true);
+    assert.equal(configContextEval(own, T, { ...o, longH: 336 }, "A", 1).n, 100);
+    assert.equal(configContextEval(own, T, o, "A", 1).n, 24);
+    assert.equal(own.n, 100, "compaction never trims the source candidate record");
+  });
+  it("a close at the exact entry boundary updates Last-N before the next entry", () => {
+    const { tp, o, trades } = fixture();
+    const rows = trades.slice(0, 31).map((trade, i) => ({ ...trade, r: i === 30 ? -0.5 : 0.01 }));
+    const own = makeTape(tp.id, tp.bot, tp.ind, tp.protect, tp.kind, ["A"], rows, [], []);
+    const at = rows[30].exitT;
+    assert.equal(execDecision(own, at - 1, o, { sym: "A", side: 1 }).ok, true);
+    assert.equal(execDecision(own, at, o, { sym: "A", side: 1 }).ok, false);
+    assert.equal(execDecision(own, at + 1, o, { sym: "A", side: 1 }).ok, false);
+  });
+  for (const tag of [undefined, "mc", "mn", "mp", "sh", "gn", "lg"] as const)
+    it(`${tag ?? "wide"}: a losing general pool cannot veto an independently qualified entry set`, () => {
+      const { tp, o } = fixture(tag);
+      const rows: Trade[] = Array.from({ length: 110 }, (_, i) => ({
+        cfg: tp.id,
+        sym: i < 30 ? "A" : "B",
+        side: 1,
+        entryT: T - (112 - i) * 60_000,
+        exitT: T - (111 - i) * 60_000,
+        entry: 100,
+        exit: i < 30 ? 105 : 90,
+        r: i < 30 ? 0.05 : -0.1,
+        reason: "time",
+        bars: 1,
+        mfe: 0,
+        mae: 0,
+      }));
+      const own = makeTape(
+        tp.id,
+        tp.bot,
+        tp.ind,
+        tp.protect,
+        tp.kind,
+        ["A", "B", "A", "B"],
+        rows,
+        [],
+        [],
+      );
+      const options = { ...o, durableFrac: 0 };
+      assert.equal(
+        configEval(own, T, { ...options, basePassed: undefined }).ok,
+        false,
+        "the broad diagnostic pool loses",
+      );
+      const ev = configEval(own, T, options);
+      assert.equal(ev.ok, true);
+      assert.equal(
+        ev.n,
+        30,
+        "qualification statistics include only independently admitted contexts",
+      );
+      assert.equal(ev.pf, 4);
+      for (const select of [selectFixed, selectAt])
+        assert.deepEqual(
+          select([own], T, options).picks.map((p) => p.id),
+          [own.id],
+        );
+      assert.deepEqual(
+        selectDurable([own], T, options, new Set()).picks.map((p) => p.id),
+        [own.id],
+      );
+      assert.equal(execDecision(own, T, options, { sym: "A", side: 1 }).ok, true);
+      assert.equal(execDecision(own, T, options, { sym: "B", side: 1 }).ok, false);
+      assert.equal(
+        own.n,
+        110,
+        "all losing candidates remain intact; execution results are never filtered retrospectively",
+      );
+    });
   for (const tag of [undefined, "mc", "mn", "mp", "sh", "gn", "lg"] as const)
     it(`${tag ?? "wide"}: profitable symbols and longs cannot validate a losing short context`, () => {
       const { tp, o } = fixture(tag);
@@ -97,6 +181,24 @@ describe("continuous post-Base qualification", () => {
           mae: 0,
         };
       });
+      for (let i = 0; i < 5; i++)
+        rows.push({
+          ...rows[0],
+          sym: "C",
+          side: 1,
+          entryT: T - (7 - i) * 60_000,
+          exitT: T - (6 - i) * 60_000,
+          r: 0.05,
+        });
+      for (let i = 0; i < 20; i++)
+        rows.push({
+          ...rows[0],
+          sym: "D",
+          side: 1,
+          entryT: T - (32 - i) * 60_000,
+          exitT: T - (31 - i) * 60_000,
+          r: i < 9 ? -0.01 : 0.012,
+        });
       // A real multi-timeframe universe repeats each symbol; tape trades use the last matching symbol slot.
       const own = makeTape(
         tp.id,
@@ -104,13 +206,14 @@ describe("continuous post-Base qualification", () => {
         tp.ind,
         tp.protect,
         tp.kind,
-        ["A", "B", "A", "B"],
+        ["A", "B", "C", "D", "A", "B", "C", "D"],
         rows,
         [],
         [],
       );
       const options = {
         ...o,
+        gates: { ...o.gates, minTrades: 12, lastNFloor: 5 },
         rangeGate: tag ? { lastN: 15, minPf: 1.1, ranges: [tag] } : undefined,
       };
       assert.equal(
@@ -121,12 +224,26 @@ describe("continuous post-Base qualification", () => {
       assert.equal(engineContextValid(own, T, options, "A", 1), true);
       assert.equal(engineContextValid(own, T, options, "B", -1), true);
       assert.equal(engineContextValid(own, T, options, "A", -1), false);
+      assert.equal(
+        engineContextValid(own, T, options, "C", 1),
+        false,
+        "five wins cannot borrow the minimum sample",
+      );
+      const sparse = configContextEval(own, T, options, "C", 1);
+      assert.equal(sparse.ok ? "ok" : sparse.fail, "closes");
+      const noisy = configContextEval(own, T, options, "D", 1);
+      assert.ok(noisy.pf > 1.1);
+      assert.equal(
+        noisy.ok ? "ok" : noisy.fail,
+        "lcb",
+        "recent PF cannot borrow another context's confidence bound",
+      );
       assert.equal(execDecision(own, T, options, { sym: "A", side: -1 }).ok, false);
       assert.equal(execDecision(own, T, options, { sym: "A", side: 1 }).ok, true);
       assert.equal(execDecision(own, T, options, { sym: "B", side: -1 }).ok, true);
       assert.equal(
         own.n,
-        80,
+        105,
         "rejected context losses remain available to independent candidate learning",
       );
     });

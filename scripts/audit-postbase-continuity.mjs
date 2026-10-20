@@ -10,12 +10,12 @@ import { barsFromCandles, headBars, resample } from "../src/core/market/bars.ts"
 import { makeUniverse, runPipeline } from "../src/core/pipeline/pipeline.ts";
 import { baseFocus, basePass } from "../src/core/server/runtime.server.ts";
 import {
-  buildTapes,
+  buildTapesGen,
   baseAllowsTape,
   engineContextValid,
   configEval,
   defaultWalkForward,
-  walkForward,
+  walkForwardGen,
 } from "../src/core/sim/walkforward.ts";
 import { modeledUnitStatsOf } from "../src/core/metrics/stats.ts";
 import { rangeMinTfOf, microIndRule } from "../src/core/minimal-coord.ts";
@@ -99,15 +99,24 @@ const protocol = {
   settings,
   wf: { ...wf, protects: undefined, dcaProtects: undefined },
   source: sources(),
+  rssBudgetMiB: 3072,
   harnessSha256: hash(readFileSync(new URL(import.meta.url))),
   signalScope: "Not scored: preserved 336h source history exceeds this cached five-day feed",
   allRanges: "Current configured production grids; Micro maximum hold explicitly 15 minutes",
 };
 writeFileSync(`${out}/protocol.json`, JSON.stringify(protocol, null, 2));
+let lastMemoryCheck = 0;
 const drain = (g) => {
   for (;;) {
-    const x = g.next();
-    if (x.done) return x.value;
+    const value = g.next();
+    if (Date.now() - lastMemoryCheck > 1000) {
+      lastMemoryCheck = Date.now();
+      assert.ok(
+        process.memoryUsage().rss <= 3072 * 1024 ** 2,
+        "audit memory budget exceeded; incomplete scoring cannot pass",
+      );
+    }
+    if (value.done) return value.value;
   }
 };
 const bars = symbols.flatMap((sym) =>
@@ -130,25 +139,27 @@ wf.baseWideLadderPairs = base.wideLadderPairs;
 console.log(
   `Base qualified ${base.qualified.length}/${pipeline.s1.length}; building exact admitted ranges`,
 );
-const tapes = buildTapes(
-  u,
-  wf.protects,
-  settings.cost,
-  undefined,
-  new Set(base.passed.map((r) => `${r.bot}|${r.ind}`)),
-  settings.tactics,
-  undefined,
-  {
-    minSl: settings.protectFloor.minSl,
-    minTrail: settings.protectFloor.minTrail,
-    pairTags: base.pairTags,
-    pairTps: base.pairTps,
-    rangeMinTf: rangeMinTfOf(settings.grid),
-    microOwnInds: microIndRule(settings.grid),
-  },
+const tapes = drain(
+  buildTapesGen(
+    u,
+    wf.protects,
+    settings.cost,
+    undefined,
+    new Set(base.passed.map((r) => `${r.bot}|${r.ind}`)),
+    settings.tactics,
+    undefined,
+    {
+      minSl: settings.protectFloor.minSl,
+      minTrail: settings.protectFloor.minTrail,
+      pairTags: base.pairTags,
+      pairTps: base.pairTps,
+      rangeMinTf: rangeMinTfOf(settings.grid),
+      microOwnInds: microIndRule(settings.grid),
+    },
+  ),
 );
 console.log(`Tapes ${tapes.length}; running all admitted configurations together`);
-const sim = walkForward(u, tapes, wf);
+const sim = drain(walkForwardGen(u, tapes, wf));
 const byId = new Map(tapes.map((tp) => [tp.id, tp]));
 const contextDiagnostic = {
   pooledPassingConfigs: 0,
