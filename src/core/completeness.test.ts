@@ -188,7 +188,7 @@ const CASES: Record<string, Case> = {
   "tactics.cooldownBars": num(0, 96),
   focus: oneOf(
     [[], ["follow|rsi-mom-14-20@x4"]],
-    [["Follow|X"], ["follow"], Array.from({ length: 201 }, () => "a|b")],
+    [["Follow|X"], ["follow"], Array.from({ length: 2001 }, () => "a|b")],
   ),
   pinned: oneOf(
     [[], ["follow|bb-walk@x4"]],

@@ -34,26 +34,35 @@ const bars = symbols.flatMap((s) =>
     ),
   ),
 );
+const catalog = arg("catalog", "all");
+if (!["all", "legacy"].includes(catalog)) throw Error("catalog must be all or legacy");
+const ids = catalog === "legacy" ? INVERSE_CONFIG_IDS.filter((id) =>
+  id.startsWith("inverse-known-") || id.startsWith("inverse-turn-") ||
+  (!id.startsWith("inverse-mc-") && !id.startsWith("inverse-pair-") && /-(20|40)$/.test(id))) : INVERSE_CONFIG_IDS;
 const u = makeUniverse(bars);
 const t = performance.now();
 let cells = 0;
 for (const k of u.caches)
-  for (const id of INVERSE_CONFIG_IDS) cells += indicationState(id, k).length;
+  for (const id of ids) cells += indicationState(id, k).length;
 const coldMs = performance.now() - t;
 const t1 = performance.now();
 let checksum = 0;
 const passes = 100;
 for (let n = 0; n < passes; n++)
   for (const k of u.caches)
-    for (const id of INVERSE_CONFIG_IDS) checksum += indicationState(id, k).length;
+    for (const id of ids) checksum += indicationState(id, k).length;
 const warmMs = performance.now() - t1;
+const digest = createHash("sha256");
+for (const k of u.caches) for (const id of ids) digest.update(indicationState(id, k));
 const result = {
+  statesSha256: digest.digest("hex"),
   classification: "Retrospective calculation benchmark, no real-time or venue throughput claim",
   feedSha256: createHash("sha256").update(bytes).digest("hex"),
   symbols,
   historyHours: 120,
   timeframes: [1, 5, 15],
-  variants: INVERSE_CONFIG_IDS.length,
+  variants: ids.length,
+  catalog,
   series: bars.length,
   barValues: cells,
   coldMs,

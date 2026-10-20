@@ -10,7 +10,10 @@ import { minPfOf } from "../minimal-coord.ts";
 import type { Bars, Candle } from "../domain/types.ts";
 import { buildTapes, packTapes, unpackTapes, type ConfigTape } from "../sim/walkforward.ts";
 import { closePool, runOnWorkers } from "../server/pool.server.ts";
-import { DEFAULT_DCA, DEFAULT_AXIS } from "../config.ts";
+import { DEFAULT_DCA, DEFAULT_AXIS, DEFAULT_SETTINGS } from "../config.ts";
+import { microIndRule, rangeMinTfOf } from "../minimal-coord.ts";
+import { microIndFits, isMicroInd } from "./micro.ts";
+import { protectGrid } from "../sim/walkforward.ts";
 import { exitStrategyPairs } from "../exit-strategy.ts";
 
 const END = Date.UTC(2026, 9, 1);
@@ -71,15 +74,92 @@ test("Inverse retains independent DCA, DCA Active, Axis and bot-free Exit identi
 });
 
 test("Inverse catalogue has stable unique identities and the ordinary PF floor", () => {
-  assert.equal(inverse.length, 58);
+  assert.equal(inverse.length, 102);
   assert.deepEqual(
     inverse.map((s) => s.id),
     INVERSE_CONFIG_IDS,
   );
-  assert.equal(new Set(INVERSE_CONFIG_IDS).size, 58);
+  assert.equal(new Set(INVERSE_CONFIG_IDS).size, 102);
   assert.equal(minPfOf({ minPf: 1.02 }, "sh", INVERSE_CONFIG_IDS[0]), 1.1);
   assert.equal(minPfOf({ minPf: 1.5 }, "sh", INVERSE_CONFIG_IDS[0]), 1.5);
   assert.ok(allCombos([], ["inverse"], [1, 5, 15]).every((p) => !p.ind.startsWith("inverse-")));
+});
+
+test("Inverse standard and Micro identities use the complete production TP/SL/trailing ranges on twelve symbols", () => {
+  const bars = Array.from({ length: 12 }, (_, i) => [5, 15].map((tf) =>
+    barsFromCandles(`X${i}-USDT`, tf, syntheticCandles(`X${i}`, tf, 500, END, i + 17)),
+  )).flat();
+  const pairs = ["follow|inverse-known-trend-ema@m15", "follow|inverse-mc-zscore-10@m5"];
+  const protects = protectGrid(15, DEFAULT_SETTINGS.grid, DEFAULT_SETTINGS.cost);
+  const floors = { minSl: DEFAULT_SETTINGS.protectFloor.minSl, minTrail: DEFAULT_SETTINGS.protectFloor.minTrail, rangeMinTf: rangeMinTfOf(DEFAULT_SETTINGS.grid), microOwnInds: microIndRule(DEFAULT_SETTINGS.grid) };
+  const tapes = buildTapes(makeUniverse(bars), protects, DEFAULT_SETTINGS.cost, undefined, new Set(pairs), null, null, floors);
+  assert.equal(new Set(tapes.map((t) => t.id)).size, tapes.length);
+  for (const pair of pairs) {
+    const ind = pair.split("|")[1];
+    const mc = isMicroInd(ind);
+    const tf = mc ? 5 : 15;
+    const eligible = protects.filter((p) => microIndFits(floors.microOwnInds, p.tag, mc) && tf >= (floors.rangeMinTf[p.tag ?? "wide"] ?? 0));
+    const own = tapes.filter((t) => t.ind === ind);
+    // Exact distances/hold conversion are compared with the production builder, including deduplicated floors.
+    assert.equal(own.length, eligible.length, ind);
+    const tags = new Set(own.map((t) => t.protect.tag));
+    assert.deepEqual([...tags].sort(), (mc ? ["mc", "mn"] : ["mn", "sh", "gn", "lg"]).sort());
+    for (const tag of tags) for (const kind of ["normal", "trailing"]) {
+      const cells = own.filter((t) => t.protect.tag === tag && t.kind === kind);
+      assert.ok(cells.length > 0, `${ind} ${tag} ${kind}`);
+      const sides = new Set(cells.flatMap((t) => [...t.side]));
+      const symbols = new Set(cells.flatMap((t) => [...t.symI].map((i) => t.syms[i])));
+      assert.deepEqual([...sides].sort(), [-1, 1], `${tag} ${kind}: both directions actually close`);
+      assert.equal(symbols.size, 12, `${tag} ${kind}: every symbol actually closes`);
+      assert.ok(cells.every((t) => t.protect.tp > 0 && t.protect.sl + 1e-12 >= (tag === "mc" ? 0.0035 : 0.005) && !t.protect.trailOnly));
+    }
+  }
+});
+
+test("BTC/ETH pair references are causal, timestamp aligned, gap-safe and unavailable without a distinct peer", () => {
+  const peerFixture = (method: string) => Array.from({ length: 12 }, (_, s) => {
+    let last = 100;
+    const candles: Candle[] = Array.from({ length: 900 }, (_, i) => {
+      const log = method === "spread"
+        ? .03 * Math.sin(i / 25) + .002 * Math.sin(i * 1.1) + (s < 2 ? 0 : .01 * Math.sin(i / 30 + s) + .002 * Math.sin(i * 1.7 + s))
+        : .03 * Math.sin(i / 14) + (s < 2 ? .002 : .012) * Math.sin(i / (5 + s));
+      const c = 100 * Math.exp(log);
+      const bar = { t: END + i * 60_000, o: last, c, h: Math.max(last, c) * 1.0003, l: Math.min(last, c) * .9997, v: 100 };
+      last = c;
+      return bar;
+    });
+    return barsFromCandles(s === 0 ? "BTC-USDT" : s === 1 ? "ETH-USDT" : `X${s}`, 1, candles);
+  });
+  for (const id of INVERSE_CONFIG_IDS.filter((id) => id.startsWith("inverse-pair-"))) {
+    const bars = peerFixture(id.includes("-spread-") ? "spread" : "residual");
+    const full = makeUniverse(bars);
+    const cut = 651;
+    const prefix = makeUniverse(bars.map((b) => headBars(b, b.t[cut])));
+    const dirs = new Set<number>();
+    for (let s = 0; s < bars.length; s++) {
+      const state = indicationState(id, full.caches[s])!;
+      assert.deepEqual(indicationState(id, prefix.caches[s]), state.slice(0, cut), `${id} ${s}`);
+      for (const d of state) if (d) dirs.add(d);
+    }
+    assert.deepEqual([...dirs].sort(), [-1, 1], id);
+    assert.ok(indicationState(id, new SeriesCache(bars[2]))!.every((d) => !d));
+    const self = id.includes("-btc-") ? 0 : 1;
+    assert.ok(indicationState(id, full.caches[self])!.every((d) => !d));
+  }
+  const bars = peerFixture("residual");
+  const full = makeUniverse(bars);
+  const gap = { ...bars[0], t: bars[0].t.slice(), n: bars[0].n };
+  for (let i = 400; i < gap.n; i++) gap.t[i] += 60_000;
+  const g = makeUniverse([gap, bars[2]]);
+  const ref = g.caches[1].reference("BTC-USDT")!;
+  assert.ok(Number.isNaN(ref.ret[400]), "missing peer time never carries a stale return");
+  assert.ok(Number.isNaN(ref.ret[401]), "peer's first bar after its gap has no one-bar return");
+  const state = indicationState("inverse-pair-btc-residual-20", g.caches[1])!;
+  assert.ok(state.slice(400, 422).every((d) => !d), "full fresh pair-fit window required");
+  const cache = full.caches[2];
+  assert.ok(cache.reference("BTC-USDT"));
+  cache.setMarket(null);
+  assert.ok(indicationState("inverse-pair-btc-spread-20", cache)!.every((d) => !d), "changing universe invalidates peer states");
 });
 
 test("Known Inverse states are the opposite of their actual source, before execution", () => {
@@ -112,7 +192,7 @@ test("Inverse uses independent 1/5/15m and completed combined lanes, without 30m
     [],
     [1, 5, 15, 30],
   );
-  assert.equal(combos.length, 58 * 5);
+  assert.equal(combos.length, 102 * 5);
   assert.ok(combos.every((p) => p.bot === "follow"));
   const b = fixture(1800, 1);
   b.lanes = [1, 5, 15, 30];
@@ -211,7 +291,10 @@ test("Market Inverse uses the full causal universe, has both directions and reje
 
 test("Real workers and serialized Normal/Trailing/Trailing-only tapes preserve Inverse returns and both sides", async () => {
   const bars = marketFixture(900);
-  const pairs = ["inverse-known-trend-ema", "inverse-zscore-20", "inverse-market-residual-20"].map(
+  bars[0] = { ...bars[0], sym: "BTC-USDT" };
+  bars[1] = { ...bars[1], sym: "ETH-USDT" };
+  const pairs = ["inverse-known-trend-ema", "inverse-zscore-20", "inverse-market-residual-20",
+    "inverse-zscore-80", "inverse-mc-zscore-10", "inverse-pair-btc-residual-20", "inverse-pair-eth-spread-20"].map(
     (id) => `follow|${id}@m1`,
   );
   const protects = [
@@ -220,7 +303,7 @@ test("Real workers and serialized Normal/Trailing/Trailing-only tapes preserve I
     { tp: 0.006, sl: 0.006, trail: 0.003, hold: 30, trailOnly: true },
   ];
   const local = buildTapes(makeUniverse(bars), protects, 0.002, undefined, new Set(pairs), null);
-  assert.equal(local.length, 9);
+  assert.equal(local.length, 21);
   assert.ok(local.some((tp) => tp.side.includes(1)));
   assert.ok(local.some((tp) => tp.side.includes(-1)));
   try {

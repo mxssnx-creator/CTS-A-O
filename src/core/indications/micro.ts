@@ -72,7 +72,7 @@ const spec = (id: string, label: string, params: Record<string, number>, fn: (k:
   ({ id, kind: "active", label, params, fn }) as IndicationSpec;
 
 export const isMicroInd = (base: string) =>
-  base.startsWith("mc-") || base.startsWith("relate-mc-") || base.startsWith("break-mc-rel-");
+  base.startsWith("mc-") || base.startsWith("relate-mc-") || base.startsWith("break-mc-rel-") || base.startsWith("inverse-mc-");
 
 /**
  * Which cells the Micro indications take (grid.micro.ownInds, grid.minimal.microInds): false = any indication on any

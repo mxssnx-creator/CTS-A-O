@@ -64,7 +64,9 @@ function InverseFocusInfo(props: { focus: string[]; pinned: string[]; disabled: 
       Include Inverse in Base focus
     </button>
     <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
-      Opposite states and confirmed turns of 19 known indications; 20 math and market variants.
+      Opposite states and confirmed turns of 19 known indications; 40 math/market variants over 10/20/40/80 bars,
+      12 Micro variants and 12 BTC/ETH pair comparisons. Micro uses its own range; other variants use
+      Minimal, Short, General and Long with the configured TP/SL and trailing cells.
       Follow trades the inverted direction. Each source, profile, timeframe, range and protection config
       qualifies independently at PF ≥ 1.1 or the stricter configured floor. Market variants need multiple symbols.
       Save to apply; adding a candidate does not establish profitability.

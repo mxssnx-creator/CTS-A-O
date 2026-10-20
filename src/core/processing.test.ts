@@ -15,10 +15,11 @@ import { allCombos } from "./pipeline/pipeline.ts";
 import { INDICATIONS, indicationState, laneOf, isSignalInd } from "./indications/registry.ts";
 import { isRelateInd, relateAnchorTf } from "./indications/relate.ts";
 import { breakAnchorTf, isBreakRelInd } from "./indications/break-config.ts";
+import { isInverseInd } from "./indications/inverse-config.ts";
 import { SeriesCache } from "./indications/cache.ts";
 import { MarketSource } from "./indications/market.ts";
 import { barsFromCandles, syntheticCandles } from "./market/bars.ts";
-import type { RangeGrid, StrategyToggles } from "./domain/types.ts";
+import type { Candle, RangeGrid, StrategyToggles } from "./domain/types.ts";
 import { DEFAULT_SETTINGS } from "./config.ts";
 
 // the same synthetic market on every run: it otherwise ends at the current minute, and whether that minute's market
@@ -80,6 +81,20 @@ function richCandles(sym: string, tf: number, n: number, end: number, seed: numb
 
 describe("every indication works", () => {
   const END = Date.UTC(2026, 9, 1);
+  const pairSeries = ["spread", "residual"].flatMap((regime) => Array.from({ length: 8 }, (_, s) => {
+    const tf = regime === "spread" ? 1 : 5;
+    let last = 100;
+    const candles: Candle[] = Array.from({ length: 900 }, (_, i) => {
+      const log = regime === "spread"
+        ? .03 * Math.sin(i / 25) + .002 * Math.sin(i * 1.1) + (s < 2 ? 0 : .01 * Math.sin(i / 30 + s) + .002 * Math.sin(i * 1.7 + s))
+        : .03 * Math.sin(i / 14) + (s < 2 ? .002 : .012) * Math.sin(i / (5 + s));
+      const c = 100 * Math.exp(log);
+      const bar = { t: END + i * tf * 60_000, o: last, c, h: Math.max(last, c) * 1.0003, l: Math.min(last, c) * .9997, v: 100 };
+      last = c;
+      return bar;
+    });
+    return barsFromCandles(s === 0 ? "BTC-USDT" : s === 1 ? "ETH-USDT" : `PAIR${s}-USDT`, tf, candles);
+  }));
   const series = [
     ...["AAA-USDT", "BBB-USDT", "CCC-USDT"].map((s, i) => barsFromCandles(s, 5, richCandles(s, 5, 4000, END, 7 + i))),
     ...["FFF-USDT", "GGG-USDT"].map((s) => barsFromCandles(s, 5, syntheticCandles(s, 5, 3000, END))),
@@ -90,9 +105,10 @@ describe("every indication works", () => {
   // the universe's market reference (as makeUniverse attaches it): the Micro market relations read the 5m market of
   // the five 5m series (the 1m and 15m series are alone in their timeframe: neutral there)
   const market = new MarketSource(series);
-  const cacheOf = (b: (typeof series)[number]) => {
+  const pairMarket = new MarketSource(pairSeries);
+  const cacheOf = (b: (typeof series)[number], source = market) => {
     const k = new SeriesCache(b);
-    k.setMarket(market);
+    k.setMarket(source);
     return k;
   };
 
@@ -104,8 +120,9 @@ describe("every indication works", () => {
     const quietSweepOnly = new Set(["break-mc-rel-reclaim8-5x15-dd48-guarded"]);
     for (const x of engine) {
       let fired = 0;
-      for (const b of series) {
-        const st = indicationState(x.id, cacheOf(b));
+      const referencePair = x.id.startsWith("inverse-pair-");
+      for (const b of referencePair ? pairSeries : series) {
+        const st = indicationState(x.id, cacheOf(b, referencePair ? pairMarket : market));
         if (!st) continue;
         if (st.length !== b.n) bad.push(`${x.id}: ${st.length} states for ${b.n} bars`);
         for (let i = 0; i < st.length; i++) if (st[i] !== 0 && st[i] !== 1 && st[i] !== -1) bad.push(`${x.id}: state ${st[i]}`);
@@ -162,6 +179,10 @@ describe("every indication works", () => {
         for (const lane of got)
           if (lane.endsWith("c") || Number.parseInt(lane, 10) !== anchor)
             missing.push(`${x.id}@m${lane}: unexpected ${family} lane`);
+      }
+      else if (isInverseInd(x.id)) {
+        for (const tf of [1, 5, 15]) if (!got.has(String(tf))) missing.push(`${x.id}@m${tf}`);
+        if (got.has("30") || got.has("30c")) missing.push(`${x.id}: unsupported 30m lane`);
       }
       else for (const tf of tfs) if (!got.has(String(tf)) && !got.has(`${tf}c`)) missing.push(`${x.id}@m${tf}`);
     }

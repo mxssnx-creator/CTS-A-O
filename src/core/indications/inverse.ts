@@ -10,6 +10,11 @@ import {
   INVERSE_SOURCES,
   INVERSE_WINDOWS,
   INVERSE_TIMEFRAMES,
+  INVERSE_MICRO_MATH,
+  INVERSE_MICRO_WINDOWS,
+  INVERSE_ANCHORS,
+  INVERSE_PAIR_METHODS,
+  INVERSE_PAIR_WINDOWS,
 } from "./inverse-config.ts";
 
 const WARMUP = 80;
@@ -65,11 +70,16 @@ function segments(k: SeriesCache): Array<{ from: number; to: number; k: SeriesCa
 function safeState(
   k: SeriesCache,
   fn: (k: SeriesCache, market: MarketRef | null) => Int8Array,
+  reference?: MarketRef | null,
 ): Int8Array {
+  if (!(INVERSE_TIMEFRAMES as readonly number[]).includes(k.b.tfMin)) return new Int8Array(k.b.n);
+  const market = reference === undefined ? k.market() : reference;
+  const parts = segments(k);
+  // Immutable, gap-free arrays can be shared by the standard and Micro identities.
+  // Their gates/configs remain separate; only the causal calculation is reused.
+  if (parts.length === 1 && parts[0].k === k && k.b.n > WARMUP) return fn(k, market);
   const out = new Int8Array(k.b.n);
-  if (!(INVERSE_TIMEFRAMES as readonly number[]).includes(k.b.tfMin)) return out;
-  const market = k.market();
-  for (const s of segments(k)) {
+  for (const s of parts) {
     if (s.to - s.from <= WARMUP) continue;
     const m = market && {
       syms: market.syms,
@@ -153,7 +163,7 @@ function mathStates(k: SeriesCache, market: MarketRef | null, p: number) {
       smm = 0,
       sms = 0,
       count = 0;
-    const threshold = p === 20 ? 1.5 : 2;
+    const threshold = p <= 10 ? 1.25 : p === 20 ? 1.5 : p === 40 ? 2 : 2.5;
     for (let i = 1; i < b.n; i++) {
       if (mr) {
         const j = i - 1;
@@ -258,6 +268,55 @@ function mathStates(k: SeriesCache, market: MarketRef | null, p: number) {
   });
 }
 
+/** Causal pair fit: previous p return pairs estimate beta; the signal bar never fits itself. */
+function pairStates(k: SeriesCache, peer: MarketRef | null, anchor: string, p: number) {
+  return k.memo(`inverse:pair:${anchor}:${p}`, () => {
+    const b = k.b;
+    const out = { spread: new Int8Array(b.n), residual: new Int8Array(b.n) };
+    if (!peer) return out;
+    const log = k.memo("inverse:log", () => Float64Array.from(b.c, Math.log));
+    const lr = new Float64Array(b.n).fill(NaN);
+    for (let i = 1; i < b.n; i++) lr[i] = log[i] - log[i - 1];
+    let sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0, count = 0;
+    let sz = 0, szz = 0, nz = 0;
+    const add = (j: number, d: number) => {
+      const x = peer.ret[j], y = lr[j];
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+      sx += d * x; sy += d * y; sxx += d * x * x;
+      syy += d * y * y; sxy += d * x * y; count += d;
+    };
+    const spread = (j: number) => Number.isFinite(peer.ret[j]) ? log[j] - peer.idx[j] : NaN;
+    const threshold = p <= 10 ? 1.25 : p === 20 ? 1.5 : 2;
+    for (let i = 1; i < b.n; i++) {
+      add(i - 1, 1);
+      if (i > p) add(i - p - 1, -1);
+      const z = spread(i);
+      if (Number.isFinite(z)) { sz += z; szz += z * z; nz++; }
+      if (i > p) {
+        const old = spread(i - p);
+        if (Number.isFinite(old)) { sz -= old; szz -= old * old; nz--; }
+      }
+      if (i < WARMUP || count !== p || nz !== p || !Number.isFinite(z)) continue;
+      const vx = sxx - sx * sx / p, vy = syy - sy * sy / p, cov = sxy - sx * sy / p;
+      if (!(vx > 1e-16) || !(vy > 1e-16) || cov / Math.sqrt(vx * vy) < 0.2) continue;
+      const turn = sign(lr[i]);
+      const variance = szz / p - (sz / p) ** 2;
+      if (variance > 1e-16) {
+        const zs = (z - sz / p) / Math.sqrt(variance);
+        if (Math.abs(zs) >= threshold && sign(z - spread(i - 1)) === -sign(zs) && turn === -sign(zs))
+          out.spread[i] = turn;
+      }
+      const beta = cov / vx;
+      const residualVar = (vy - cov * cov / vx) / p;
+      if (residualVar > 1e-16 && Number.isFinite(peer.idx[i - 3])) {
+        const rs = (log[i] - log[i - 3] - beta * (peer.idx[i] - peer.idx[i - 3])) / Math.sqrt(3 * residualVar);
+        if (Math.abs(rs) >= threshold && turn === -sign(rs)) out.residual[i] = turn;
+      }
+    }
+    return out;
+  });
+}
+
 export function inverseSpecs(known: readonly IndicationSpec[]): IndicationSpec[] {
   const byId = new Map(known.map((s) => [s.id, s]));
   const out: IndicationSpec[] = [];
@@ -302,5 +361,20 @@ export function inverseSpecs(known: readonly IndicationSpec[]): IndicationSpec[]
         params: { p, warmup: WARMUP },
         fn: (k) => safeState(k, (part, market) => mathStates(part, market, p)[method]),
       });
+  for (const method of INVERSE_MICRO_MATH)
+    for (const p of INVERSE_MICRO_WINDOWS)
+      out.push({
+        id: `inverse-mc-${method}-${p}`, kind: "inverse",
+        label: `Inverse · Micro · ${method} · ${p}`, params: { p, warmup: WARMUP },
+        fn: (k) => safeState(k, (part, market) => mathStates(part, market, p)[method]),
+      });
+  for (const anchor of INVERSE_ANCHORS)
+    for (const method of INVERSE_PAIR_METHODS)
+      for (const p of INVERSE_PAIR_WINDOWS)
+        out.push({
+          id: `inverse-pair-${anchor.split("-")[0].toLowerCase()}-${method}-${p}`, kind: "inverse",
+          label: `Inverse · ${anchor} pair ${method} · ${p}`, params: { p, warmup: WARMUP },
+          fn: (k) => safeState(k, (part, peer) => pairStates(part, peer, anchor, p)[method], k.reference(anchor)),
+        });
   return out;
 }

@@ -18,6 +18,7 @@ import {
   breakAnchorTf,
 } from "./indications/break-config.ts";
 import { DEFAULT_MODEL_FEES, RT_COST } from "./model-cost.ts";
+import { INVERSE_CONFIG_IDS } from "./indications/inverse-config.ts";
 export { RT_COST } from "./model-cost.ts";
 
 /** Hard ceiling for unique positions on the exchange. Strategy/config orders do not consume extra slots. */
@@ -606,6 +607,12 @@ export const PREVIOUS_DEFAULT_FOCUS_17OCT: readonly string[] = [
   ...FAMILY_FOCUS_13OCT,
 ];
 
+/** Exact former factory selection, used for additive upgrades without rewriting custom Focus. */
+export const PREVIOUS_DEFAULT_FOCUS_20OCT: readonly string[] = [
+  ...PREVIOUS_DEFAULT_FOCUS_17OCT, ...BREAK_MICRO_FOCUS_17OCT,
+];
+export const INVERSE_FOCUS_20OCT: readonly string[] = INVERSE_CONFIG_IDS.map((id) => `follow|${id}`);
+
 export const DEFAULT_SETTINGS: CoreSettings = {
   tfMin: 1,
   tfs: [1, 5, 15, 30],
@@ -656,7 +663,7 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   sizing: DEFAULT_SIZING,
   toggles: DEFAULT_TOGGLES,
   tactics: DEFAULT_TACTICS,
-  focus: [...PREVIOUS_DEFAULT_FOCUS_17OCT, ...BREAK_MICRO_FOCUS_17OCT],
+  focus: [...PREVIOUS_DEFAULT_FOCUS_20OCT, ...INVERSE_FOCUS_20OCT],
   pinned: [...PROVEN_WIDE_TRAIL_PAIRS],
   disabledKinds: [],
   block: DEFAULT_BLOCK,

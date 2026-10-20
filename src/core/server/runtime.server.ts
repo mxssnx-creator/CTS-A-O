@@ -11,6 +11,7 @@ import {
   DEFAULT_SETTINGS,
   FORMER_FOCUS_13OCT,
   PREVIOUS_DEFAULT_FOCUS_17OCT,
+  PREVIOUS_DEFAULT_FOCUS_20OCT,
   GENERAL_RANGE,
   MAX_BACKTEST_DAYS,
   GRID_VARIANTS_MAX,
@@ -24,6 +25,7 @@ import {
   type SettingsPatch,
 } from "../config.ts";
 import { roundTripCostFromFees } from "../model-cost.ts";
+import { evaluationHistorySettings } from "../market/history-requirements.ts";
 import {
   gateMinimalPlus,
   microIndRule,
@@ -2115,7 +2117,7 @@ export class CoreRuntime {
   }
 
   updateSettings(patch: SettingsPatch, wfPatch?: Partial<WalkForwardOptions>) {
-    const prevUniverse = `${this.settings.symbols}|${this.settings.tfMin}|${this.settings.historyDays}|${this.settings.symbolRank}|${this.settings.symbolOffset ?? 0}|${(this.settings.forceSymbols ?? []).join(",")}`;
+    const prevUniverse = `${this.settings.symbols}|${this.settings.tfMin}|${evaluationHistorySettings(this.settings, this.wf).historyDays}|${this.settings.symbolRank}|${this.settings.symbolOffset ?? 0}|${(this.settings.forceSymbols ?? []).join(",")}`;
     const prevCompute = computeKey(this.settings, this.wf);
     const next = mergeSettings(this.settings, patch);
     // a connection's runtime always trades its own connection (switching is done by selecting another runtime)
@@ -2220,7 +2222,7 @@ export class CoreRuntime {
     // a running cycle keeps its snapshot; the universe reset is applied at the start of the next cycle
     if (
       prevUniverse !==
-      `${this.settings.symbols}|${this.settings.tfMin}|${this.settings.historyDays}|${this.settings.symbolRank}|${this.settings.symbolOffset ?? 0}|${(this.settings.forceSymbols ?? []).join(",")}`
+      `${this.settings.symbols}|${this.settings.tfMin}|${evaluationHistorySettings(this.settings, this.wf).historyDays}|${this.settings.symbolRank}|${this.settings.symbolOffset ?? 0}|${(this.settings.forceSymbols ?? []).join(",")}`
     )
       this.resetUniverse = true;
     // live execution settings (limits, pause, margin floor) are read by the live step, not by the compute: a change
@@ -2634,7 +2636,7 @@ export class CoreRuntime {
 
   // ── market ────────────────────────────────────────────────────────────
   private async syncMarket(gen: number): Promise<boolean> {
-    const s = this.settings;
+    const s = evaluationHistorySettings(this.settings, this.wf);
     const want = Math.round((s.historyDays * 24 * 60) / s.tfMin);
     // a symbol is usable with most of the requested history (small history settings must not stall the loop)
     const minBars = Math.max(50, Math.min(200, Math.floor(want * 0.8)));
@@ -2643,7 +2645,8 @@ export class CoreRuntime {
       this.status.state = "backfill";
       this.loadCandlesFromDb();
       // a partial cache is not a finished universe: keep backfillKey unset so the missing symbols are fetched
-      if (this.candles.size >= s.symbols) this.backfillKey = uniKey;
+      if (this.candles.size >= s.symbols &&
+          (s === this.settings || [...this.candles.values()].every((cs) => cs.n >= want))) this.backfillKey = uniKey;
     }
     // candles of another timeframe (an older version / snapshot, or a hot reload across the base timeframe
     // change) are never read as base bars: drop them and backfill at the base timeframe
@@ -2722,8 +2725,8 @@ export class CoreRuntime {
         // (forceSymbols keeps them all) — the cap was s.symbols, which dropped forced symbols beyond it
         const target = ranked.length;
         const missing = ranked
-          .filter((x) => !this.candles.has(x))
-          .slice(0, Math.max(0, target - this.candles.size));
+          .filter((x) => !this.candles.has(x) ||
+            (s !== this.settings && this.candles.get(x)!.n < want && !this.prehistSyms.has(x)));
         // Connected desks progressively start realtime after each batch. A frozen offline replay loads all
         // symbols first, avoiding repeated full computations on intermediate partial universes.
         const batch = this.completeReplayUniverse ? target : Math.max(5, Math.ceil(target / 4));
@@ -2766,6 +2769,8 @@ export class CoreRuntime {
             if (cs.length >= minBars) {
               await this.storeCandles(sym, cs);
               this.prehistSyms.set(sym, { state: "computing", bars: cs.length });
+              if (s !== this.settings && cs.length < want)
+                this.db.event("warn", `${sym} extended history: ${cs.length}/${want} bars available; qualification uses measured history only`);
             } else this.prehistSyms.set(sym, { state: "skipped", bars: cs.length });
             this.setStage(
               "backfill",
@@ -2942,7 +2947,7 @@ export class CoreRuntime {
     // row by row into each symbol's columns (db.all held every row as a dictionary object at once: ~1 GB of heap on
     // each desk start); the same candles and the same symbol order (the universe's order follows it), each series sized
     // by its count (a builder grows past a count that moved)
-    const want = Math.round((this.settings.historyDays * 24 * 60) / this.settings.tfMin);
+    const want = Math.round((evaluationHistorySettings(this.settings, this.wf).historyDays * 24 * 60) / this.settings.tfMin);
     const counts = new Map<string, number>();
     for (const row of this.db.iterate(
       "SELECT sym, COUNT(*) FROM candles GROUP BY sym ORDER BY sym",
@@ -2983,7 +2988,7 @@ export class CoreRuntime {
    * yield between them — a 1m backfill is ~26k rows per symbol and must not block the event loop.
    */
   private async storeCandles(sym: string, cs: Candle[], append = false) {
-    const want = Math.round((this.settings.historyDays * 24 * 60) / this.settings.tfMin);
+    const want = Math.round((evaluationHistorySettings(this.settings, this.wf).historyDays * 24 * 60) / this.settings.tfMin);
     // the last `want` of [...old, ...cs] (append) or of cs: a new series, the one stored before stays as it was (a
     // compute or the realtime step reading it keeps its bars); an append writes past the old bars in place when it fits
     const old = append ? this.candles.get(sym) : undefined;
@@ -3340,8 +3345,9 @@ export class CoreRuntime {
     }
     // lane series per symbol, yielding between symbols (resampling 1m for every lane is not free)
     const allBars: ReturnType<typeof laneSeriesFrom> = [];
+    const historySettings = evaluationHistorySettings(s, wf);
     for (const [sym, cs] of this.candles) {
-      allBars.push(...laneSeriesOf(sym, cs, s));
+      allBars.push(...laneSeriesOf(sym, cs, historySettings));
       await yieldNow();
       if (gen !== this.gen) return;
     }
@@ -3413,7 +3419,7 @@ export class CoreRuntime {
         wf.causalBase ? runStartT : 0,
         this.evaluationFromT,
         microOwnInds(s.grid),
-        s.tfDays,
+        historySettings.tfDays,
         baseFocus(s),
         s.disabledKinds,
         s.tfs,
@@ -6534,7 +6540,7 @@ export class CoreRuntime {
     const ordinaryCandles = s.exitStrategy.enabled
       ? new Map([...candles].map(([sym, cs]) => [sym, cs.tail(ordinaryWantBars)]))
       : candles;
-    const bars = laneSeriesFrom(ordinaryCandles, s, days).map((b) =>
+    const bars = laneSeriesFrom(ordinaryCandles, evaluationHistorySettings(s, { ...wf, simH: 0 }), days).map((b) =>
       tailBars(b, Math.ceil((ordinaryWantBars * s.tfMin) / b.tfMin)),
     );
     const u = makeUniverse(bars);
@@ -8747,7 +8753,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
 function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
   const saved = db.kvGet<Partial<WalkForwardOptions>>("wf") ?? {};
   const v = db.kvGet<number>("wfCapsV") ?? 0;
-  if (v >= 35) return saved;
+  if (v >= 36) return saved;
   // each step runs only for a database older than it: a choice made after a step is never overwritten
   const out = { ...saved };
   const st = db.kvGet<Partial<CoreSettings>>("settings");
@@ -9194,9 +9200,24 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
       if (changed) db.kvSet("presets", presets);
     }
   }
+  if (v < 36) {
+    // Enable Inverse in the factory calculation path; deliberate custom/off selections survive.
+    const migrateFocus = (settings: SettingsPatch | undefined) => {
+      if (!settings || JSON.stringify(settings.focus) !== JSON.stringify(PREVIOUS_DEFAULT_FOCUS_20OCT)) return false;
+      settings.focus = [...DEFAULT_SETTINGS.focus];
+      return true;
+    };
+    migrateFocus(st);
+    const presets = db.kvGet<Preset[]>("presets");
+    if (Array.isArray(presets)) {
+      let changed = false;
+      for (const preset of presets) changed = migrateFocus(preset.settings) || changed;
+      if (changed) db.kvSet("presets", presets);
+    }
+  }
   db.kvSet("wf", pickWf(out));
   if (st) db.kvSet("settings", st);
-  db.kvSet("wfCapsV", 35);
+  db.kvSet("wfCapsV", 36);
   return out;
 }
 

@@ -317,8 +317,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
       throw new Error("disabledKinds: list of indication types");
   }
   if (s.focus !== undefined) {
-    if (!Array.isArray(s.focus) || s.focus.length > 200)
-      throw new Error("focus: up to 200 bot|indication pairs");
+    if (!Array.isArray(s.focus) || s.focus.length > 2000)
+      throw new Error("focus: up to 2000 bot|indication pairs");
     for (const f of s.focus)
       if (typeof f !== "string" || !/^[a-z]+\|[a-z0-9.@-]+$/.test(f))
         throw new Error(`focus entry ${String(f)} must be bot|indication`);

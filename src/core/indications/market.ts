@@ -180,4 +180,17 @@ export class MarketSource {
   ref(b: Bars, tf: number, factor = 1): MarketRef {
     return alignMarket(this.grid(tf, factor), b);
   }
+  /** One named peer, matched by completed bar time. Missing/self/ambiguous peers stay unavailable. */
+  reference(b: Bars, sym: string, tf: number, factor = 1): MarketRef | null {
+    if (b.sym === sym) return null;
+    const members = this.bars.filter((x) => x.sym === sym && x.tfMin === tf && x.n > 0);
+    if (members.length !== 1) return null;
+    const key = `peer:${sym}:${tf}x${factor}`;
+    let g = this.grids.get(key);
+    if (!g) {
+      g = buildMarket([factor === 1 ? members[0] : htfBars(members[0], factor).hb]);
+      this.grids.set(key, g);
+    }
+    return alignMarket(g, b);
+  }
 }

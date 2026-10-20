@@ -175,6 +175,25 @@ function caches(): SeriesCache[] {
     out.push(...makeUniverse([barsFromCandles("SWEEP-USDT", tf, cs)]).caches);
     out.push(...makeUniverse([barsFromCandles("SWEEP-USDT", tf, mirror(cs))]).caches);
   }
+  // Named reference pairs require their actual peers. Smooth residual shocks and noisy stretched
+  // spreads exercise distinct pair regimes; omitting BTC/ETH must correctly produce no signal.
+  for (const regime of ["spread", "residual"]) {
+    const pairs = Array.from({ length: 8 }, (_, s) => {
+      let last = 100;
+      const candles: Candle[] = Array.from({ length: 900 }, (_, i) => {
+        const log = regime === "spread"
+          ? .03 * Math.sin(i / 25) + .002 * Math.sin(i * 1.1) + (s < 2 ? 0 : .01 * Math.sin(i / 30 + s) + .002 * Math.sin(i * 1.7 + s))
+          : .03 * Math.sin(i / 14) + (s < 2 ? .002 : .012) * Math.sin(i / (5 + s));
+        const c = 100 * Math.exp(log);
+        const bar = { t: END + i * 60_000, o: last, c, h: Math.max(last, c) * 1.0003, l: Math.min(last, c) * .9997, v: 100 };
+        last = c;
+        return bar;
+      });
+      return { sym: s === 0 ? "BTC-USDT" : s === 1 ? "ETH-USDT" : `PAIR${s}-USDT`, candles };
+    });
+    out.push(...makeUniverse(pairs.map(({sym, candles}) => barsFromCandles(sym, 1, candles))).caches);
+    out.push(...makeUniverse(pairs.map(({sym, candles}) => barsFromCandles(sym, 1, mirror(candles)))).caches);
+  }
   return out;
 }
 

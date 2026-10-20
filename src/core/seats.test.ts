@@ -329,7 +329,7 @@ describe("bug-hunt regressions", () => {
     assert.equal("maxSymbols" in rt.settings.live, false);
     assert.equal(rt.settings.signals.maxPositions, 80, "v27 leaves the separately chosen signal evaluation cap intact");
     assert.equal(DEFAULT_SIGNALS.maxPositions, 250);
-    assert.equal(db.kvGet<number>("wfCapsV"), 35);
+    assert.equal(db.kvGet<number>("wfCapsV"), 36);
     const presets = db.kvGet<Array<{ settings: { live?: Record<string, unknown> } }>>("presets") ?? [];
     assert.equal(presets[0].settings.live?.maxPositions, undefined, "legacy unlimited preset inherits default");
     assert.equal("maxSymbols" in (presets[0].settings.live ?? {}), false);
@@ -529,7 +529,7 @@ describe("bug-hunt regressions", () => {
     old.kvSet("settings", { grid: { ...DEFAULT_SETTINGS.grid, micro: { ...DEFAULT_SETTINGS.grid.micro, tp: [...FORMER_MICRO_TP] } } });
     const a = new CoreRuntime(old, undefined, { market: "synthetic" });
     assert.deepEqual((a.settings.grid.micro as unknown as { tp: number[] }).tp, [...MICRO_TP]);
-    assert.equal(old.kvGet("wfCapsV"), 35);
+    assert.equal(old.kvGet("wfCapsV"), 36);
     const mine = new CoreDb(":memory:");
     mine.kvSet("wfCapsV", 24);
     mine.kvSet("settings", { grid: { ...DEFAULT_SETTINGS.grid, micro: { ...DEFAULT_SETTINGS.grid.micro, tp: [0.003] } } });
@@ -541,7 +541,7 @@ describe("bug-hunt regressions", () => {
     const { BREAK_MICRO_FOCUS_17OCT, PREVIOUS_DEFAULT_FOCUS_17OCT } = await import("./config.ts");
     assert.equal(BREAK_MICRO_FOCUS_17OCT.length, 60);
     assert.equal(new Set(BREAK_MICRO_FOCUS_17OCT).size, 60);
-    assert.deepEqual(DEFAULT_SETTINGS.focus, [...PREVIOUS_DEFAULT_FOCUS_17OCT, ...BREAK_MICRO_FOCUS_17OCT]);
+    assert.ok([...PREVIOUS_DEFAULT_FOCUS_17OCT, ...BREAK_MICRO_FOCUS_17OCT].every((id) => DEFAULT_SETTINGS.focus.includes(id)));
     for (const id of BREAK_MICRO_FOCUS_17OCT) assert.ok(DEFAULT_SETTINGS.focus.includes(id), id);
     const defaultCombos = allCombos(DEFAULT_SETTINGS.focus, DEFAULT_SETTINGS.disabledKinds, DEFAULT_SETTINGS.tfs, microLaneFloor(DEFAULT_SETTINGS.grid));
     assert.deepEqual(
@@ -555,7 +555,7 @@ describe("bug-hunt regressions", () => {
     previousDefault.kvSet("settings", { focus: [...PREVIOUS_DEFAULT_FOCUS_17OCT] });
     const upgraded = new CoreRuntime(previousDefault, undefined, { market: "synthetic" });
     assert.deepEqual(upgraded.settings.focus, DEFAULT_SETTINGS.focus);
-    assert.equal(previousDefault.kvGet<number>("wfCapsV"), 35);
+    assert.equal(previousDefault.kvGet<number>("wfCapsV"), 36);
 
     const customFocus = ["follow|rsi-mom-14-20"];
     const chosen = new CoreDb(":memory:");
@@ -608,7 +608,7 @@ describe("bug-hunt regressions", () => {
     assert.deepEqual(upgraded.settings.signals.normal, DEFAULT_SIGNALS.normal);
     assert.deepEqual(upgraded.settings.signals.trailing, DEFAULT_SIGNALS.trailing);
     assert.equal(upgraded.settings.signals.minTrail, DEFAULT_SIGNALS.minTrail);
-    assert.equal(old.kvGet<number>("wfCapsV"), 35);
+    assert.equal(old.kvGet<number>("wfCapsV"), 36);
     const preset = old.kvGet<Array<{ settings: { signals: typeof former & { maxPositions?: number }; focus?: string[] } }>>("presets")![0];
     assert.deepEqual(preset.settings.signals.normal, DEFAULT_SIGNALS.normal);
     assert.deepEqual(preset.settings.signals.trailing, DEFAULT_SIGNALS.trailing);

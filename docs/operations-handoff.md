@@ -1,5 +1,13 @@
 # CTS-A-O operations handoff
 
+## 20 October 2026 — Inverse expansion and extended-history repair (verification in progress)
+
+Operator follow-up: Long and Short independently, multiple symbols and named reference pairs, full ordinary TP/SL and Trailing range coverage, longer source history and measured performance. The catalogue is now 102 identities (38 known/turn, 40 math/market, 12 dedicated Micro, 12 BTC/ETH spread/residual), all on 1/5/15m. They join the factory Focus (199 total entries); v36 migrates only the former factory Focus including presets, preserving custom/all/off choices. Inverse keeps the 1.1 minimum return-PF and stricter existing gates. Focus validation now supports 2,000 explicit entries.
+
+Extended engine windows now extend backfill, retained candles and each lane consistently, and participate in the sliced-Base cache key. The former 1m/5m lane preferences no longer clip an explicitly longer evaluation. Source requirements also cover the supported 60-day WF window without rewriting saved lane preferences. Missing exchange history remains measured/limited evidence with a warning. The public archive only supports the separately tested 336h selection/360h source case, not a claimed 60-day market replay.
+
+Initial targeted checks 75/75, history/schema checks 314/314, typecheck/build/lint and dev/built desktop/phone UI pass. Universal side coverage fixtures now supply the BTC/ETH peers that those sources require. Broad full-core regression and final sealed 6h/24h/long-history studies are in progress. First 6h replay (before the isolated runtime cache-key correction): 29/510 Base pairs, 3,656 tapes, 46 settled closes PF 0.789104, 30 losing endpoint marks, combined PF 0.142826. This fails economically and does not establish a profitable production release. Do not use a previous high trailing-only settled PF as certification of the expanded strategy cohort. No deployment, account or venue orders changed.
+
 ## 20 October 2026 — Inverse on final full-context validation (draft, not deployed)
 
 Implementation checkpoint `4878badf253309aaa77df4b50261192fd5da42ae` integrates remote baseline `fb62831ba73656d2289aaacf6eaf7e97523da89e`; inherited files exactly match it. The 58-variant Inverse family retains independent 1/5/15m source/range/protection/symbol/direction gates. Earlier PF 3.153/7.209 evidence uses the superseded partial-context evaluator and cannot certify this final source.
