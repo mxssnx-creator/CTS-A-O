@@ -38,7 +38,7 @@
       ],
       "engineProofN": 25,
       "engineProofPf": 1.2,
-      "ratio": 3,
+      "ratio": 1.5,
       "maxPositionX": 5,
       "maxExposureX": 10,
       "maxRiskPct": 0.5,
