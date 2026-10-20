@@ -14,6 +14,18 @@ import { ENGINE_PROOF_PF, promotionGate, type LiveGate } from "./live-validation
 
 export const H = 3_600_000;
 
+/** Bounded real-engine grid for lifecycle tests; full Cartesian coverage has dedicated suites. */
+export function runtimeFixtureGrid(): CoreSettings["grid"] {
+  const grid = structuredClone(DEFAULT_SETTINGS.grid);
+  grid.holdH = [4];
+  for (const key of ["micro", "minimal", "short", "general", "long"] as const) {
+    const range = grid[key];
+    if (range) grid[key] = { ...range, tp: [range.tp[0], range.tp.at(-1)!],
+      slOfTp: [range.slOfTp[0], range.slOfTp.at(-1)!], trailOfTp: [0, range.trailOfTp.at(-1)!] };
+  }
+  return grid;
+}
+
 /** The synthetic market's end in tests: a fixed UTC hour, so every run sees the same bars, buckets and windows. */
 export const PINNED_END = Date.UTC(2026, 8, 30, 12);
 

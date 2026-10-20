@@ -52,6 +52,8 @@ class Ex implements ExchangeClient {
       const next = +((this.positions.get(key) ?? 0) + (into ? 1 : -1) * Number(p.quantity)).toFixed(6);
       if (next > 1e-9) this.positions.set(key, next);
       else this.positions.delete(key);
+      return { order: { status: "FILLED", executedQty: Number(p.quantity),
+        avgPrice: sym === "S1-USDT" ? 10 : 20 } };
     } else {
       // BingX keeps one close-position stop per position side
       if (

@@ -7,13 +7,12 @@ import { baseFocus, CoreRuntime as BaseRuntime, sanitizeWf } from "./runtime.ser
 import { DEFAULT_SETTINGS } from "../config.ts";
 import { auditStateGen, type AuditInput } from "../audit.ts";
 import { CoreDb } from "./db.server.ts";
-import { SIGNAL_SOURCES } from "../signal-config.ts";
 import { RESEARCH_PRESETS } from "../presets.ts";
 import { isSignalInd, laneLabel, laneOf } from "../indications/registry.ts";
 import { signalCombos, signalSettings } from "../signals.ts";
 import { syntheticCandles } from "../market/bars.ts";
 import { CandleSeries } from "../market/candle-series.ts";
-import { compareOn, trackRuntimes } from "../test-support.ts";
+import { compareOn, trackRuntimes, runtimeFixtureGrid } from "../test-support.ts";
 
 // the synthetic market ends on the hour: the same bars, lane buckets and hourly windows on every run (ending at
 // the current minute, the minute decided whether any entry was Block-raised — the self-audit tests failed at random)
@@ -32,7 +31,10 @@ const small = {
   evalTop: 8,
   cycleMs: 60_000,
   // the short order range is covered by the protect-grid test; these runs stay on the wide grid only
-  grid: { short: false as const },
+  grid: { ...runtimeFixtureGrid(), short: false as const },
+  // Lifecycle coordination is independent of fitting the entire bot-free Exit catalog.
+  // Exit fitting/routing and full Cartesian grids have their own complete suites.
+  exitStrategy: { enabled: false },
   // runtime mechanics, not the entry tactics (tactics.test / processing.test cover them): no entry filter, so
   // every synthetic minute has trades to audit
   tactics: {
@@ -49,9 +51,8 @@ const small = {
   // classic sources only keep each engine light enough to run several in parallel
   signals: signalSettings({
     exits: "pct",
-    sources: Object.fromEntries(
-      SIGNAL_SOURCES.filter((x) => x.name.startsWith("s2-")).map((x) => [x.name, false]),
-    ),
+    sourcesMode: "allow",
+    sources: { "ema-cross": true, "rsi-reversal": true },
   }),
 };
 /**
@@ -594,6 +595,12 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
       rt.updateSettings(
         {
           tfMin: 15,
+          symbols: small.symbols,
+          historyDays: small.historyDays,
+          tfDays: small.tfDays,
+          grid: small.grid,
+          signals: small.signals,
+          exitStrategy: small.exitStrategy,
           focus: [],
           tactics: { ...rt.settings.tactics, volRegime: true, session: false, cooldown: false },
           toggles: {
@@ -611,9 +618,9 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
       rt.start();
       const at = rt.status.settingsAt;
       // the wait is on the state (the final settings applied, the runtime running, nothing pending), not on a count of
-      // computes: the full-focus compute of this storm is 27,428 Base combos, 90–130 s on 4 cores, and a follow-up
-      // compute runs after it when a setting changed mid-compute. 280 s failed under load (the 11 Oct run reached
-      // running at 251 s with the desk and the evaluation on the same VM); 900 s is the ceiling.
+      // computes: all engine indications remain in focus, while the final known fixture restores its bounded
+      // symbol/protection scope after arbitrary presets. A follow-up compute may still be required; the real
+      // cancellation/replacement and final publication must finish within the same 900s ceiling.
       await until(
         () =>
           rt.status.appliedSettingsAt >= at && rt.status.state === "running" && !rt.status.pending,

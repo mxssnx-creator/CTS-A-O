@@ -7,6 +7,7 @@ import { CoreDb } from "./db.server.ts";
 import { cachedClient, type ExchangeClient } from "./live.server.ts";
 import { PriceStream } from "./stream.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
+import { runtimeFixtureGrid } from "../test-support.ts";
 
 const small = {
   symbols: 3,
@@ -15,7 +16,8 @@ const small = {
   mainTop: 10,
   refineTop: 4,
   evalTop: 6,
-  grid: { short: false as const },
+  grid: { ...runtimeFixtureGrid(), short: false as const },
+  exitStrategy: { enabled: false },
 };
 // a limit that only guards against a hang: the first synthetic compute alone takes ~155 s on the 4-core host the live
 // desks share, and the suite runs two files at once (180 s timed out under load, never on a hang)

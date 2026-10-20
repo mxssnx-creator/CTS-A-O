@@ -1538,7 +1538,7 @@ export function RangeEditor(props: {
         />
         <div>
           <div style={{ fontWeight: 600 }}>
-            {props.title} {on && <span className="v2-muted">· {cells} cells per hold</span>}
+            {props.title} {on && <span className="v2-muted">· {cells} TP combinations per hold</span>}
           </div>
           <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
             {props.info}

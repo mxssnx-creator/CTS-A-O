@@ -5,10 +5,11 @@ import assert from "node:assert/strict";
 import { CoreRuntime } from "./runtime.server.ts";
 import { fastBarFresh, fastEntryLaneDue, fastEntryMode, mergeFastTapes } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
-import { SIGNAL_SOURCES, signalSettings } from "../signal-config.ts";
+import { signalSettings } from "../signal-config.ts";
 import { laneInd } from "../indications/registry.ts";
 import { signalCoordinationId } from "../signal-coordination.ts";
 import type { OpenPosition } from "../domain/types.ts";
+import { runtimeFixtureGrid } from "../test-support.ts";
 
 process.env.CTS_CORE_SYNTHETIC_END ??= String(Math.floor(Date.now() / 3_600_000) * 3_600_000);
 const small = {
@@ -19,11 +20,13 @@ const small = {
   refineTop: 4,
   evalTop: 8,
   cycleMs: 60_000,
-  grid: { short: false as const },
+  grid: { ...runtimeFixtureGrid(), short: false as const },
+  exitStrategy: { enabled: false },
   gates: { minPf: 1.0, minTrades: 3, maxDdr: 0 },
   signals: signalSettings({
     exits: "pct",
-    sources: Object.fromEntries(SIGNAL_SOURCES.filter((x) => x.name.startsWith("s2-")).map((x) => [x.name, false])),
+    sourcesMode: "allow",
+    sources: { "ema-cross": true, "rsi-reversal": true },
   }),
 };
 const rts: CoreRuntime[] = [];

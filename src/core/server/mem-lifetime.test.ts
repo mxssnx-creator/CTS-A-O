@@ -16,7 +16,7 @@ import { MEM_READ_MS, memInfo, type MemInfo } from "./memguard.server.ts";
 import { CandleSeries } from "../market/candle-series.ts";
 import { setImmediate as tick } from "node:timers/promises";
 import { SignalAcceptIndex, acceptKey, type AcceptTape } from "../signals.ts";
-import { pinSyntheticEnd, rng, trackRuntimes } from "../test-support.ts";
+import { pinSyntheticEnd, rng, trackRuntimes, runtimeFixtureGrid } from "../test-support.ts";
 import { abortWorkers, poolWorkers, workerActivity, workersAvailable } from "./pool.server.ts";
 
 pinSyntheticEnd();
@@ -29,7 +29,16 @@ const tiny = {
   refineTop: 2,
   evalTop: 4,
   cycleMs: 60_000,
-  grid: { short: false as const },
+  grid: { ...runtimeFixtureGrid(), short: false as const },
+  // Keep real worker/local fitting and aborts, with a bounded source universe.
+  // Full bot-free source/range fitting is covered in independent Exit tests.
+  exitStrategy: { enabled: true, timeframes: [15], includeTactics: false, includeRelations: false,
+    includeCombined: false, lookbackH: 72, maxConfigsPerPair: 6, quantiles: [0.6], stopQuantiles: [0.5],
+    trailShares: [0.5], stopMultiples: [1] },
+  signals: { sourcesMode: "allow", sources: { "ema-cross": true, "rsi-reversal": true }, lanes: [15],
+    exits: "pct", normal: { tp: [0.02], slOfTp: [1] }, trailing: { tp: [0.03], trailOfTp: [0.5], slOfTp: 1 },
+    trailingOnly: { enabled: true, sl: [0.02], trail: [0.01], trailStep: 1 },
+    hist: { enabled: true, quantiles: [0.6], trailOfTp: [0.5], slOfTp: [1], minN: 5, lookbackH: 72 } },
   gates: { minPf: 1.05, minTrades: 3, maxDdr: 0 },
 };
 const until = async (cond: () => boolean, ms = 600_000) => {

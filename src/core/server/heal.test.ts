@@ -3,10 +3,10 @@ import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { CoreRuntime, type MarketFeed } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
-import { SIGNAL_SOURCES, signalSettings } from "../signal-config.ts";
+import { signalSettings } from "../signal-config.ts";
 import { syntheticCandles } from "../market/bars.ts";
 import { DEFAULT_ADJUST } from "../config.ts";
-import { trackRuntimes } from "../test-support.ts";
+import { trackRuntimes, runtimeFixtureGrid } from "../test-support.ts";
 
 const small = {
   symbols: 3,
@@ -17,14 +17,14 @@ const small = {
   refineTop: 4,
   evalTop: 6,
   cycleMs: 60_000,
-  grid: { short: false as const },
+  grid: { ...runtimeFixtureGrid(), short: false as const },
+  exitStrategy: { enabled: false },
   // runtime mechanics, not signal quality (signals.test covers the full signal defaults): percent exits and the
   // classic sources only keep each engine light enough to run several in parallel
   signals: signalSettings({
     exits: "pct",
-    sources: Object.fromEntries(
-      SIGNAL_SOURCES.filter((x) => x.name.startsWith("s2-")).map((x) => [x.name, false]),
-    ),
+    sourcesMode: "allow",
+    sources: { "ema-cross": true, "rsi-reversal": true },
   }),
 };
 /**
