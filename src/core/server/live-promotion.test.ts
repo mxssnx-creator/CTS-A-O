@@ -121,6 +121,21 @@ describe("strict live promotion uses two settled independent evidence axes", () 
     }
   });
 
+  it("winning long candidate history cannot promote an unvalidated short despite separate positive execution records", () => {
+    const r = install(fixture(), [.02, -.01, .02].map((v, i) => close(v, i, { side: -1 })));
+    owned(r, [.02, -.01, .02], { side: -1 });
+    assert.equal(r.livePromotionGate({ ...lane, side: -1 }, NOW).state, "ineligible");
+  });
+
+  it("symbol warmup cannot promote a symbol absent from current candidate evidence despite positive owned records", () => {
+    const sym = "BBB-USDT";
+    const r = install(fixture(), [.02, -.01, .02].map((v, i) => close(v, i, { sym })));
+    owned(r, [.02, -.01, .02], { sym });
+    assert.equal(r.wf.symGate, "provenSide");
+    assert.equal(r.settings.gates.warmup, true);
+    assert.equal(r.livePromotionGate({ ...lane, sym }, NOW).state, "ineligible");
+  });
+
   it("a previously selected engine config must still pass current Last-N when native execution requests it", () => {
     const r = install(fixture()); owned(r, [.02, -.01, .02]);
     const pair = "follow|rsi-mom-14-25@m15";

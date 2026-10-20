@@ -162,6 +162,7 @@ import {
   baseAllowsTape,
   configEval,
   engineContextValid,
+  configDirectionEval,
   tapeRetentionHours,
   kindExecutable,
   defaultWalkForward,
@@ -6073,6 +6074,7 @@ export class CoreRuntime {
       (isSignalInd(ind) ||
         (baseAllowsTape(tp, this.wf) &&
           (!this.wf.basePassed || configEval(tp, now, this.wf).ok) &&
+          configDirectionEval(tp, now, this.wf, lane.side).ok &&
           engineContextValid(tp, now, this.wf, lane.sym, lane.side))) &&
       (!isSignalInd(ind) ||
         ((!this.wf.signalBasePassed || this.wf.signalBasePassed.has(`${tp.bot}|${tp.ind}`)) &&

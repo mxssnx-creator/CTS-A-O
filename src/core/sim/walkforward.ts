@@ -3213,7 +3213,16 @@ export function selectAt(
   const basePf = new Map<string, number>();
   const cand: Array<Selection & { pair: string }> = [];
   const botOk = o.bots.length ? new Set<string>(o.bots) : null;
-  for (const tp of tapes) {
+  for (const original of tapes) {
+    if (original.kind !== "exit" && botOk && !botOk.has(original.bot)) continue;
+    if (!baseAllowsTape(original, o)) continue;
+    const originalA = lowerBound(original.exitT, fromLong),
+      originalB = lowerBound(original.exitT, t);
+    if (originalB - originalA < minTradesForTape(original, o, minLong)) continue;
+    const originalPair = seatKey(original, o);
+    pairTotal.set(originalPair, (pairTotal.get(originalPair) ?? 0) + 1);
+    const tp = isSignalInd(original.ind) ? original : qualifiedDirectionTape(original, t, o);
+    if (!tp) continue;
     if (tp.kind !== "exit" && botOk && !botOk.has(tp.bot)) continue;
     if (!baseAllowsTape(tp, o)) continue;
 
@@ -3222,7 +3231,6 @@ export function selectAt(
     const minSample = minTradesForTape(tp, o, minLong);
     if (b - a < minSample) continue;
     const pair = seatKey(tp, o);
-    pairTotal.set(pair, (pairTotal.get(pair) ?? 0) + 1);
     const w = win(tp, a, b);
     noteBase(basePf, tp, w);
     if (w.net <= 0 || w.pf < minPfForTape(tp, o)) continue;
@@ -3287,7 +3295,9 @@ export function selectDurable(
   const keep: Array<Selection & { pair: string }> = [];
   const cand0: Array<Selection & { pair: string }> = [];
   const basePf = new Map<string, number>();
-  for (const tp of tapes) {
+  for (const original of tapes) {
+    const tp = isSignalInd(original.ind) ? original : qualifiedDirectionTape(original, t, o);
+    if (!tp) continue;
     if (tp.kind !== "exit" && botOk && !botOk.has(tp.bot)) continue;
     if (!baseAllowsTape(tp, o)) continue;
 
@@ -3454,6 +3464,28 @@ function tapeHistoryHours(
 }
 
 export function configEval(tp: ConfigTape, t: number, o: WalkForwardOptions): ConfigEval {
+  if (isSignalInd(tp.ind) || directionViews.has(tp)) return configEvalRaw(tp, t, o);
+  const a = configDirectionEval(tp, t, o, 1),
+    b = configDirectionEval(tp, t, o, -1);
+  const admitted = [a, b].filter((ev): ev is Extract<ConfigEval, { ok: true }> => ev.ok);
+  if (!admitted.length) return a.n >= b.n ? a : b;
+  const gp = admitted.reduce((n, ev) => n + (ev.gp ?? 0), 0),
+    gl = admitted.reduce((n, ev) => n + (ev.gl ?? 0), 0);
+  return {
+    ok: true,
+    n: admitted.reduce((n, ev) => n + ev.n, 0),
+    net: admitted.reduce((n, ev) => n + ev.net, 0),
+    gp,
+    gl,
+    pf: profitFactor(gp, gl),
+    lcb: Math.min(...admitted.map((ev) => ev.lcb)),
+    gh: Math.min(...admitted.map((ev) => ev.gh)),
+    ddt: Math.max(...admitted.map((ev) => ev.ddt)),
+  };
+}
+
+/** Full configured evaluator on an already scoped chronological record. */
+function configEvalRaw(tp: ConfigTape, t: number, o: WalkForwardOptions): ConfigEval {
   const a = lowerBound(tp.exitT, t - tapeHistoryHours(tp, o) * H);
   const b = lowerBound(tp.exitT, t);
   return configEvalAt(
@@ -3590,6 +3622,7 @@ function configEvalAt(
     )
   )
     return no("rangeGate");
+  if (!engineValidationLastNOk(tp, t, o)) return no("lastN");
   const dd = winDd(tp, a, b, t);
   if (dd.ddtH > Math.min(ddtMax, ddtLimitH(o, tp, t, tapeHistoryHours(tp, o)))) return no("ddt");
   if (ddrFails(dd.mdd * 100, w.net, maxDdrForTape(tp, o))) return no("ddr");
@@ -3793,6 +3826,7 @@ function configPassAt(
     !lastNOk(tp, t, g.lastN, g.minPf, 0, 0, g.floor ?? o.gates.lastNFloor ?? 0, warm, prior)
   )
     return false;
+  if (!engineValidationLastNOk(tp, t, o)) return false;
   const dd = winDd(tp, a, b, t);
   if (dd.ddtH > Math.min(ddtMax, ddtLimitH(o, tp, t, tapeHistoryHours(tp, o)))) return false;
   if (ddrFails(dd.mdd * 100, net, maxDdrForTape(tp, o))) return false;
@@ -3833,7 +3867,20 @@ export function* selectFixedGen(
   // yields on time, not on a count: 2,000 tapes took up to ~500 ms (x02, 7 Oct profile)
   let t0 = performance.now();
   for (let i = 0; i < tapes.length; i++) {
-    const tp = tapes[i];
+    const original = tapes[i];
+    const tp = isSignalInd(original.ind) ? original : qualifiedDirectionTape(original, t, o);
+    if (!tp) {
+      const info = selInfoOf(original, o, botOk);
+      if (info.inScope && info.canSeat) checks?.push([original.id, 0, 0, 0, 0, 0]);
+      infos[i] = undefined;
+      ca[i] = -1;
+      cb[i] = -1;
+      if (++seen % 32 === 0 && performance.now() - t0 > 8) {
+        yield -1;
+        t0 = performance.now();
+      }
+      continue;
+    }
     const tapeFrom = t - tapeHistoryHours(tp, o) * H;
     const tapeDdtMax = Math.max(
       o.gates.minDdtH ?? 0,
@@ -3844,7 +3891,7 @@ export function* selectFixedGen(
       t0 = performance.now();
     }
     let info = infos[i];
-    if (!info || info.tp !== tp) {
+    if (!info || info.tp !== tp || info.canSeat !== (!tp.heldOnly && tapeExecutable(tp, o))) {
       info = infos[i] = selInfoOf(tp, o, botOk);
       ca[i] = -1;
       cb[i] = -1;
@@ -3882,7 +3929,12 @@ export function* selectFixedGen(
     let lcb: number;
     let gh: number;
     let ddt: number;
-    if (checks) {
+    if (!isSignalInd(tp.ind)) {
+      const ev = configEval(tp, t, o);
+      checks?.push([tp.id, ev.ok ? 1 : 0, n, pf, gp, gl]);
+      if (!ev.ok) continue;
+      ({ lcb, gh, ddt } = ev);
+    } else if (checks) {
       // the validation record keeps configEvalAt's own verdict
       const ev = configEvalAt(tp, t, o, a, b, { n, net, pf, gp, gl }, tapeDdtMax);
       checks.push([tp.id, ev.ok ? 1 : 0, n, pf, gp, gl]);
@@ -4213,6 +4265,186 @@ export function lastNSideOk(
   return true;
 }
 
+/** A config's validation evidence cannot cross directions. The separate execution Last-N may be off,
+ * but that never disables validLastN or the range's Last-N. Symbols still use their configured symbol gate.
+ * side=0 is a container query: it may seat if either independently validated direction can trade.
+ */
+export function engineValidationLastNOk(
+  tp: ConfigTape,
+  t: number,
+  o: WalkForwardOptions,
+  side = 0,
+): boolean {
+  if (isSignalInd(tp.ind)) return true; // Signals retain their stricter exact-symbol/direction proof.
+  const prior = lossPriorOf(tp, o.gates);
+  const range = o.rangeGate && rangeGateOn(o.rangeGate, tp.protect.tag) ? o.rangeGate : null;
+  const valid = (direction: number) =>
+    lastNSideOk(
+      tp,
+      direction,
+      t,
+      validationLastNForTape(tp, o),
+      minPfForTape(tp, o),
+      o.gates.maxDdtH,
+      maxDdrForTape(tp, o) ?? 0,
+      o.gates.lastNFloor ?? 0,
+      o.gates.warmup !== false,
+      prior,
+    ) &&
+    (!range ||
+      lastNSideOk(
+        tp,
+        direction,
+        t,
+        range.lastN,
+        range.minPf,
+        0,
+        0,
+        range.floor ?? o.gates.lastNFloor ?? 0,
+        o.gates.warmup !== false,
+        prior,
+      ));
+  return side === 1 || side === -1 ? valid(side) : side === 0 && (valid(1) || valid(-1));
+}
+
+/** Independent config × direction proof. Symbols remain subject to their separate configured gate. */
+const directionViews = new WeakSet<ConfigTape>();
+const directionIndices = new WeakMap<ConfigTape, Map<number, Uint32Array>>();
+const directionTapes = new WeakMap<
+  ConfigTape,
+  Map<number, { start: number; end: number; tape: ConfigTape }>
+>();
+
+function directionIndexOf(tp: ConfigTape, side: number): Uint32Array {
+  let bySide = directionIndices.get(tp);
+  if (!bySide) directionIndices.set(tp, (bySide = new Map()));
+  let idx = bySide.get(side);
+  if (!idx) {
+    const rows: number[] = [];
+    for (let i = 0; i < tp.n; i++) if (tp.side[i] === side) rows.push(i);
+    bySide.set(side, (idx = Uint32Array.from(rows)));
+  }
+  return idx;
+}
+
+function directionTape(tp: ConfigTape, t: number, o: WalkForwardOptions, side: number): ConfigTape {
+  const idx = directionIndexOf(tp, side);
+  const bound = (time: number) => {
+    let lo = 0,
+      hi = idx!.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (tp.exitT[idx![mid]] < time) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  };
+  const end = bound(t + 1),
+    from = bound(t - tapeHistoryHours(tp, o) * H);
+  const range = o.rangeGate && rangeGateOn(o.rangeGate, tp.protect.tag) ? o.rangeGate : null;
+  const required = Math.max(validationLastNForTape(tp, o), range?.lastN ?? 0, o.lastN);
+  const start = Math.min(from, Math.max(0, end - required));
+  let cached = directionTapes.get(tp);
+  if (!cached) directionTapes.set(tp, (cached = new Map()));
+  const old = cached.get(side);
+  if (old && old.end === end && old.start <= start) {
+    old.tape.heldOnly = tp.heldOnly;
+    old.tape.carried = tp.carried;
+    old.tape.fromT = tp.fromT;
+    return old.tape;
+  }
+  const n = end - start;
+  const own = {
+    ...tp,
+    ...tapeViews(new ArrayBuffer(tapeBytes(n)), 0, n),
+    n,
+    open: [],
+    pending: [],
+  };
+  const columns = [
+    "exitT",
+    "entryT",
+    "r",
+    "entry",
+    "exit",
+    "symI",
+    "side",
+    "reason",
+    "bars",
+    "vol",
+    "level",
+  ] as const;
+  for (let i = 0; i < n; i++) {
+    for (const column of columns) own[column][i] = tp[column][idx[start + i]];
+    const r = own.r[i];
+    own.gp[i + 1] = own.gp[i] + Math.max(0, r);
+    own.gl[i + 1] = own.gl[i] + Math.max(0, -r);
+    own.rs[i + 1] = own.rs[i] + r;
+    own.r2[i + 1] = own.r2[i] + r * r;
+  }
+  directionViews.add(own);
+  cached.set(side, { start, end, tape: own });
+  return own;
+}
+
+export function configDirectionEval(
+  tp: ConfigTape,
+  t: number,
+  o: WalkForwardOptions,
+  side: number,
+): ConfigEval {
+  if (side !== 1 && side !== -1) return { ok: false, fail: "context", n: 0, pf: 0, net: 0 };
+  // Reject definitely failing window samples before allocating/copying a compact view. Borderline arithmetic
+  // falls through to the canonical evaluator, so this is a compute optimization, not a changed PF threshold.
+  const idx = directionIndexOf(tp, side);
+  const before = lowerBound(tp.exitT, t),
+    from = lowerBound(tp.exitT, t - tapeHistoryHours(tp, o) * H);
+  const a = lowerBound(idx, from),
+    b = lowerBound(idx, before);
+  let gp = 0,
+    gl = 0;
+  for (let j = a; j < b; j++) {
+    const r = tp.r[idx[j]];
+    gp += Math.max(0, r);
+    gl += Math.max(0, -r);
+  }
+  const n = b - a,
+    net = (gp - gl) * 100,
+    pf = profitFactor(gp, gl);
+  const stats = { n, net, pf, gp: gp * 100, gl: gl * 100 };
+  if (n < minTradesForTape(tp, o, o.gates.minTrades)) {
+    directionTapes.get(tp)?.delete(side);
+    return { ok: false, fail: "closes", ...stats };
+  }
+  const tolerance = 1e-10 * Math.max(1, gp + gl);
+  if (gp - gl < -tolerance) {
+    directionTapes.get(tp)?.delete(side);
+    return { ok: false, fail: "net", ...stats };
+  }
+  if (gp + tolerance < minPfForTape(tp, o) * (gl + lossPriorOf(tp, o.gates))) {
+    directionTapes.get(tp)?.delete(side);
+    return { ok: false, fail: "pf", ...stats };
+  }
+  return configEvalRaw(directionTape(tp, t, o, side), t, o);
+}
+
+function qualifiedDirectionTape(
+  tp: ConfigTape,
+  t: number,
+  o: WalkForwardOptions,
+): ConfigTape | null {
+  if (directionViews.has(tp)) return configEvalRaw(tp, t, o).ok ? tp : null;
+  const long = configDirectionEval(tp, t, o, 1).ok,
+    short = configDirectionEval(tp, t, o, -1).ok;
+  return long && short
+    ? tp
+    : long
+      ? directionTape(tp, t, o, 1)
+      : short
+        ? directionTape(tp, t, o, -1)
+        : null;
+}
+
 /** Only queried config contexts allocate an index; original tape returns/times are never copied. */
 const signalContextIndices = new WeakMap<ConfigTape, Map<number, Uint32Array>>();
 function signalContextOf(tp: ConfigTape, sym: string, side: number): Uint32Array | null {
@@ -4297,7 +4529,9 @@ export function configContextEval(
   const minN = o.symMinN ?? 2;
   const proven = o.symGate === "proven" || o.symGate === "provenSide";
   const fails = w.net <= 0 || w.pf < minPfOf(o.gates, tp.protect.tag, tp.ind);
-  if (proven && o.gates.warmup === false && w.n < minN)
+  // Warmup can relax the sample floor for an observed result. An empty result proves no symbol/side PF and
+  // must never inherit the config's or another symbol's qualification, including when symMinN is zero.
+  if (proven && (w.n === 0 || (o.gates.warmup === false && w.n < minN)))
     return { ok: false, fail: "closes", ...stats };
   const judged = proven ? o.gates.warmup === false || w.n >= 1 : w.n >= minN;
   return judged && fails ? { ok: false, fail: "pf", ...stats } : yes();
@@ -4501,13 +4735,23 @@ export function execDecision(
   )
     return { ok: false, why: "configValidation" };
 
+  if (
+    !isSignalInd(tp.ind) &&
+    !o.probe?.perRange &&
+    !o.probe?.perCell &&
+    !(ctx?.side === 1 || ctx?.side === -1
+      ? configDirectionEval(tp, entryT, o, ctx.side).ok
+      : configEval(tp, entryT, o).ok)
+  )
+    return { ok: false, why: "directionValidation" };
+
   // last-N uses the stricter of its own floor and the stage min PF, so a pass below min PF cannot enter
   // a demo probe seat (a range tape) trades without the last-N and symbol gates: that is what it measures
   const probed = (!!o.probe?.perRange && !!tp.protect.tag) || !!o.probe?.perCell;
   // end stage / Live: the recent closes must clear min PF and the DDT gate again
   // signals: their own last N (never more than the engine's)
-  // per direction: the last N closes of the entry's own side (long and short run independently). The seat validation
-  // above stays pooled only for engine seats; Signals always judge their own symbol and direction
+  // Per direction: the last N closes of the entry's own side. Full engine validation above also requires the
+  // direction's own evidence; Signals retain their independent exact symbol/direction sample.
   const lastN =
     o.signalValidLastN !== undefined && isSignalInd(tp.ind)
       ? Math.min(o.lastN, o.signalValidLastN)
