@@ -18,7 +18,7 @@ import {
   breakAnchorTf,
 } from "./indications/break-config.ts";
 import { DEFAULT_MODEL_FEES, RT_COST } from "./model-cost.ts";
-import { INVERSE_CONFIG_IDS } from "./indications/inverse-config.ts";
+import { INVERSE_CONFIG_IDS, INVERSE_PREVIOUS_CONFIG_IDS } from "./indications/inverse-config.ts";
 export { RT_COST } from "./model-cost.ts";
 
 /** Hard ceiling for unique positions on the exchange. Strategy/config orders do not consume extra slots. */
@@ -612,6 +612,9 @@ export const PREVIOUS_DEFAULT_FOCUS_20OCT: readonly string[] = [
   ...PREVIOUS_DEFAULT_FOCUS_17OCT, ...BREAK_MICRO_FOCUS_17OCT,
 ];
 export const INVERSE_FOCUS_20OCT: readonly string[] = INVERSE_CONFIG_IDS.map((id) => `follow|${id}`);
+export const PREVIOUS_INVERSE_FOCUS_20OCT: readonly string[] = [
+  ...PREVIOUS_DEFAULT_FOCUS_20OCT, ...INVERSE_PREVIOUS_CONFIG_IDS.map((id) => `follow|${id}`),
+];
 
 export const DEFAULT_SETTINGS: CoreSettings = {
   tfMin: 1,

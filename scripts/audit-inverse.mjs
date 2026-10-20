@@ -16,6 +16,7 @@ import {
   baseAllowsTape,
   engineContextValid,
   configEval,
+  kindExecutable,
   defaultWalkForward,
   walkForward,
 } from "../src/core/sim/walkforward.ts";
@@ -47,11 +48,13 @@ const sources = () => {
   walk("src/core");
   return Object.fromEntries(files.sort().map((p) => [p, hash(readFileSync(p))]));
 };
+const symbolCount = Number(arg("symbols", 12));
+assert.ok(Number.isInteger(symbolCount) && symbolCount >= 2 && symbolCount <= 50);
 const symbols = feed.tickers
   .map((x) => x.sym ?? x.symbol)
   .sort()
-  .slice(0, 12);
-assert.equal(symbols.length, 12, "exactly twelve symbols required");
+  .slice(0, symbolCount);
+assert.equal(symbols.length, symbolCount, "requested symbol count must be available");
 const feedEndT =
   Math.floor(Math.min(...symbols.map((sym) => feed.candles[`${sym}|1`].at(-1).t + 60_000)) / H) * H;
 const endT = Number(arg("end", feedEndT));
@@ -229,8 +232,43 @@ const summary = (rows) => {
     net: s.net,
   };
 };
-const atStart = new Map(tapes.map((tp) => [tp.id, configEval(tp, startT, wf).ok]));
-const atEnd = new Map(tapes.map((tp) => [tp.id, configEval(tp, endT, wf).ok]));
+const snapshot = (at) => {
+  const verdicts = new Map();
+  const failures = {};
+  const broad = {n:0,gp:0,gl:0}, lastN = {n:0,gp:0,gl:0};
+  let passed = 0, executable = 0, executablePassed = 0;
+  for (const tp of tapes) {
+    const ev = configEval(tp, at, wf);
+    verdicts.set(tp.id, ev.ok);
+    const canExecute = kindExecutable(tp.kind, wf.toggles) && (!wf.bots.length || wf.bots.includes(tp.bot));
+    executable += Number(canExecute);
+    if (!ev.ok) { failures[ev.fail] = (failures[ev.fail] ?? 0) + 1; continue; }
+    passed++;
+    executablePassed += Number(canExecute);
+    broad.n += ev.n;
+    broad.gp += ev.gp ?? 0;
+    broad.gl += ev.gl ?? 0;
+    // All current tapes are Inverse engine configs. Keep the chronological N independent
+    // of the broad window, exactly as configEval does; no rejected rows or later closes.
+    let b = tp.n;
+    while (b > 0 && tp.exitT[b - 1] >= at) b--;
+    const a = Math.max(0, b - (wf.validLastN ?? 0));
+    if (wf.validLastN) {
+      lastN.n += b - a;
+      lastN.gp += (tp.gp[b] - tp.gp[a]) * 100;
+      lastN.gl += (tp.gl[b] - tp.gl[a]) * 100;
+    }
+  }
+  const pooled = (s) => ({...s,net:s.gp-s.gl,exactRatio:s.gl>0?s.gp/s.gl:null,
+    noLoss:s.gp>0&&s.gl===0,pf:s.n?(s.gl>0?s.gp/s.gl:null):null});
+  return {verdicts, data:{at,passed,total:tapes.length,executablePassed,executable,
+    requestedLastN:wf.validLastN ?? 0,rangeLastN:wf.rangeGate?.lastN ?? 0,
+    historyHours:Math.max(wf.longH,wf.preH),failures,
+    validatedHistory:pooled(broad),validatedLastN:pooled(lastN),
+    sample:"Overlapping config histories from passing sets only; not independent orders or future execution"}};
+};
+const startSnapshot = snapshot(startT), endSnapshot = snapshot(endT);
+const atStart = startSnapshot.verdicts, atEnd = endSnapshot.verdicts;
 const cells = new Map();
 for (const tp of tapes) {
   const tf = tp.ind.match(/@m(\d+)c?$/)?.[1] ?? "plain";
@@ -252,6 +290,7 @@ for (const id of new Set(sim.trades.map((t) => t.cfg))) {
   row.settled += sim.trades.filter((t) => t.cfg === id).length;
 }
 const result = {
+  validatedSnapshots:{start:startSnapshot.data,end:endSnapshot.data},
   timingMs: { base: baseMs, tapes: tapesMs, walk: walkMs, reporting: performance.now() - started - baseMs - tapesMs - walkMs, total: performance.now() - started },
   coverageMatrix: [...cells.values()],
   sourceCoverage: bars.map((b) => ({sym: b.sym, tf: b.tfMin, bars: b.n, firstT: b.t[0], lastCloseT: b.t[b.n - 1] + b.tfMin * 60000})),

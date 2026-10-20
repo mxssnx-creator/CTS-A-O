@@ -134,10 +134,13 @@ export async function coreListingData(data: ReturnType<typeof coreListingInput>)
     paperStep: L.paperStep,
     at: L.at,
     total: rows.length,
+    calculated: data.kind === "validated" ? L.candidates.filter((x) =>
+      (!(data.group ?? data.range) || x.group === (data.group ?? data.range)) && (!q || x.id.toLowerCase().includes(q))).length : null,
+    validation: data.kind === "validated" ? L.validation : null,
     offset: data.offset,
     rows: rows.slice(data.offset, data.offset + data.limit),
-    byRange: Object.entries(L.byRange).map(([range, x]) => ({ range, validated: x.rows.length, pf: x.pf })),
-    byGroup: Object.entries(L.byGroup).map(([group, x]) => ({ group, validated: x.rows.length, pf: x.pf })),
+    byRange: Object.entries(L.byRange).map(([range, x]) => ({ range, validated: x.rows.length, calculated: x.calculated, pf: x.pf, noLoss: x.gp > 0 && x.gl === 0 })),
+    byGroup: Object.entries(L.byGroup).map(([group, x]) => ({ group, validated: x.rows.length, calculated: x.calculated, pf: x.pf, noLoss: x.gp > 0 && x.gl === 0 })),
     proofOn: L.proven !== null,
   });
 }

@@ -64,8 +64,8 @@ function InverseFocusInfo(props: { focus: string[]; pinned: string[]; disabled: 
       Include Inverse in Base focus
     </button>
     <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
-      Opposite states and confirmed turns of 19 known indications; 40 math/market variants over 10/20/40/80 bars,
-      12 Micro variants and 12 BTC/ETH pair comparisons. Micro uses its own range; other variants use
+      Opposite states and confirmed turns of 19 known indications; 48 math/market variants over 10/20/40/80 bars,
+      including fast RSI and volume-weighted mean turns, 16 Micro variants and 12 BTC/ETH pair comparisons. Micro uses its own range; other variants use
       Minimal, Short, General and Long with the configured TP/SL and trailing cells.
       Follow trades the inverted direction. Each source, profile, timeframe, range and protection config
       qualifies independently at PF ≥ 1.1 or the stricter configured floor. Market variants need multiple symbols.
@@ -4905,8 +4905,8 @@ export function SettingsPage() {
               />
             </Field>
             <Field
-              label="Require simulated readiness"
-              hint={`only trade while the rolling simulated run holds PF ≥ min and is stable (turn off for a testnet) · mainnet (${MAINNET_CONN}): always on, enforced on save${onMainnet ? " — active now" : ""}`}
+              label="Aggregate simulation check"
+              hint="Native entries use each exact set's current validation and owned-execution PF. This extra aggregate check applies to adapters without exact-set promotion."
             >
               <Switch
                 label="Require simulated readiness"

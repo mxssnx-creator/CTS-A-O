@@ -13,11 +13,13 @@ const arg = (name, fallback) => {
 };
 const bytes = readFileSync(arg("feed"));
 const feed = JSON.parse(bytes[0] === 31 ? gunzipSync(bytes) : bytes);
+const symbolCount = Number(arg("symbols", 12));
+if (!Number.isInteger(symbolCount) || symbolCount < 2 || symbolCount > 50) throw Error("symbols must be 2..50");
 const symbols = feed.tickers
   .map((x) => x.sym ?? x.symbol)
   .sort()
-  .slice(0, 12);
-if (symbols.length !== 12) throw Error("exactly twelve symbols required");
+  .slice(0, symbolCount);
+if (symbols.length !== symbolCount) throw Error("requested symbol count must be available");
 const end =
   Math.floor(Math.min(...symbols.map((s) => feed.candles[`${s}|1`].at(-1).t + 60000)) / 3600000) *
   3600000;
@@ -38,7 +40,7 @@ const catalog = arg("catalog", "all");
 if (!["all", "legacy"].includes(catalog)) throw Error("catalog must be all or legacy");
 const ids = catalog === "legacy" ? INVERSE_CONFIG_IDS.filter((id) =>
   id.startsWith("inverse-known-") || id.startsWith("inverse-turn-") ||
-  (!id.startsWith("inverse-mc-") && !id.startsWith("inverse-pair-") && /-(20|40)$/.test(id))) : INVERSE_CONFIG_IDS;
+  (!id.startsWith("inverse-mc-") && !id.startsWith("inverse-pair-") && !id.includes("rsi2-turn-") && !id.includes("vwap-deviation-") && /-(20|40)$/.test(id))) : INVERSE_CONFIG_IDS;
 const u = makeUniverse(bars);
 const t = performance.now();
 let cells = 0;

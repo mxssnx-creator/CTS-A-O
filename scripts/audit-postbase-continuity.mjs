@@ -14,6 +14,7 @@ import {
   baseAllowsTape,
   engineContextValid,
   configEval,
+  configContextEval,
   defaultWalkForward,
   walkForwardGen,
 } from "../src/core/sim/walkforward.ts";
@@ -96,6 +97,8 @@ const protocol = {
   endT,
   evaluationFromT: fromT,
   lastNHistory: "All available source candles; Base and broad config evaluation remain 24h",
+  validationScope:
+    "Exact config minimum/LCB/Last-N/range gates; separate configured symbol gate at entry",
   settings,
   wf: { ...wf, protects: undefined, dcaProtects: undefined },
   source: sources(),
@@ -159,14 +162,51 @@ const tapes = drain(
   ),
 );
 console.log(`Tapes ${tapes.length}; running all admitted configurations together`);
+if (arg("diagnostic-only", "false") === "true") {
+  const diagnostics = [];
+  for (let t = startT; t <= endT; t += H) {
+    const failures = {},
+      configFailures = {},
+      counts = {},
+      examples = [];
+    let contexts = 0,
+      pooled = 0;
+    for (const tp of tapes) {
+      const cfg = configEval(tp, t, wf);
+      const gate = cfg.ok ? "pass" : cfg.fail;
+      configFailures[gate] = (configFailures[gate] ?? 0) + 1;
+      if (cfg.ok) pooled++;
+      for (const sym of new Set(tp.syms))
+        for (const side of [1, -1]) {
+          const ev = configContextEval(tp, t, wf, sym, side);
+          contexts++;
+          const gate = ev.ok ? "pass" : ev.fail;
+          failures[gate] = (failures[gate] ?? 0) + 1;
+          counts[ev.n] = (counts[ev.n] ?? 0) + 1;
+          if (ev.n >= 5 && examples.length < 12) examples.push({ cfg: tp.id, sym, side, ...ev });
+        }
+    }
+    diagnostics.push({ t, contexts, pooled, configFailures, failures, counts, examples });
+  }
+  writeFileSync(`${out}/diagnostics.json`, JSON.stringify(diagnostics, null, 2));
+  console.log(JSON.stringify(diagnostics.map(({ examples: _examples, ...rest }) => rest)));
+  process.exit(0);
+}
 const sim = drain(walkForwardGen(u, tapes, wf));
+const validationSteps = sim.steps.map((step) => ({
+  t: step.t,
+  passingSets: (step.checks ?? []).filter((row) => row[1] === 1).length,
+  selectedSets: step.real.length,
+  taken: step.taken,
+  skipped: step.skipped,
+}));
 const byId = new Map(tapes.map((tp) => [tp.id, tp]));
 const contextDiagnostic = {
   pooledPassingConfigs: 0,
   contexts: 0,
   fewerThanFiveCloses: 0,
   recentPfAtLeast135: 0,
-  acceptedByAllContextGates: 0,
+  acceptedByConfiguredSymbolGate: 0,
 };
 for (const tp of tapes) {
   if (!configEval(tp, startT, { ...wf, basePassed: undefined }).ok) continue;
@@ -185,7 +225,7 @@ for (const tp of tapes) {
       if (own.length >= 5 && gp > 0 && (gl === 0 || gp / gl >= 1.35))
         contextDiagnostic.recentPfAtLeast135++;
       if (engineContextValid(tp, startT, wf, sym, side))
-        contextDiagnostic.acceptedByAllContextGates++;
+        contextDiagnostic.acceptedByConfiguredSymbolGate++;
     }
 }
 const violations = [];
@@ -241,6 +281,7 @@ const result = {
   tapes: tapes.length,
   settled: summary(sim.trades),
   executedConfigs: new Set(sim.trades.map((t) => t.cfg)).size,
+  validationSteps,
   modeledOrdersOnly: true,
   contextDiagnostic,
   endpointMarks: summary(sim.openAtEnd ?? []),

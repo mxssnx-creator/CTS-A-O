@@ -12,6 +12,7 @@ import {
   FORMER_FOCUS_13OCT,
   PREVIOUS_DEFAULT_FOCUS_17OCT,
   PREVIOUS_DEFAULT_FOCUS_20OCT,
+  PREVIOUS_INVERSE_FOCUS_20OCT,
   GENERAL_RANGE,
   MAX_BACKTEST_DAYS,
   GRID_VARIANTS_MAX,
@@ -1675,6 +1676,7 @@ export class CoreRuntime {
 
   /** the seats of the last full paper step (the realtime entry step keeps them) */
   private lastSelection: Pick<ReturnType<typeof withProbe>, "picks" | "eligible"> | null = null;
+  private lastSelectionAt = 0;
   /** what the last live control step saw (controlDue) */
   private controlSeen: { positions: unknown; live: unknown; bar: number; at: number } | null = null;
   /** a stop crossed / a trailing stop moved since the last live control step (kept while a step is in flight) */
@@ -5835,7 +5837,17 @@ export class CoreRuntime {
    */
   listings: SetListings | null = null;
   private buildListings() {
-    const picks = this.lastSelection?.picks ?? [];
+    const at = this.lastSelectionAt;
+    const index = this.tapeIndex();
+    const probed = !!(this.wf.probe?.perRange || this.wf.probe?.perCell);
+    const picks = (this.lastSelection?.picks ?? []).filter((p) => {
+      const tp = index.get(p.id);
+      return tp && !tp.heldOnly && baseAllowsTape(tp, this.wf) && (!probed || configEval(tp, at, this.wf).ok);
+    });
+    const candidates = this.tapes.filter((tp) => !isSignalInd(tp.ind) && !tp.heldOnly &&
+      baseAllowsTape(tp, this.wf) && kindExecutable(tp.kind, this.wf.toggles) &&
+      (!this.wf.bots?.length || this.wf.bots.includes(tp.bot)))
+      .map((tp) => ({ id: tp.id, group: liveGroupOf(tp.id) }));
     const validated: SetListings["validated"] = [];
     const byRange: SetListings["byRange"] = {};
     const byGroup: SetListings["byGroup"] = {};
@@ -5863,16 +5875,22 @@ export class CoreRuntime {
         net: w.net,
         ddt: w.ddt,
       });
-      const g = (byGroup[group] ??= { rows: [], gp: 0, gl: 0, pf: null });
+      const g = (byGroup[group] ??= { rows: [], gp: 0, gl: 0, pf: null, calculated: 0 });
       g.rows.push(row);
       g.gp += w.gp ?? 0;
       g.gl += w.gl ?? 0;
       if (range) {
-        const r = (byRange[range] ??= { rows: [], gp: 0, gl: 0, pf: null });
+        const r = (byRange[range] ??= { rows: [], gp: 0, gl: 0, pf: null, calculated: 0 });
         r.rows.push(row);
         r.gp += w.gp ?? 0;
         r.gl += w.gl ?? 0;
       }
+    }
+    for (const c of candidates) {
+      const g = (byGroup[c.group] ??= { rows: [], gp: 0, gl: 0, pf: null, calculated: 0 });
+      g.calculated++;
+      const range = kindOfId(c.id) === "exit" ? "" : RANGE_LABEL[rangeOfId(c.id)];
+      if (range) (byRange[range] ??= { rows: [], gp: 0, gl: 0, pf: null, calculated: 0 }).calculated++;
     }
     for (const r of Object.values(byRange)) r.pf = r.gl > 1e-12 ? r.gp / r.gl : null;
     for (const r of Object.values(byGroup)) r.pf = r.gl > 1e-12 ? r.gp / r.gl : null;
@@ -5901,6 +5919,9 @@ export class CoreRuntime {
       paperStep: this.status.paperSteps ?? 0,
       at: Date.now(),
       validated,
+      candidates,
+      validation: { at, engineLastN: this.wf.validLastN ?? 0, signalLastN: this.wf.signalValidLastN ?? 0,
+        entryLastN: this.wf.lastN, rangeLastN: this.wf.rangeGate?.lastN ?? 0, historyH: this.wf.longH },
       byRange,
       byGroup,
       active,
@@ -7583,7 +7604,7 @@ export class CoreRuntime {
           t,
           this.wf,
         );
-    if (!fast) this.lastSelection = { picks, eligible };
+    if (!fast) { this.lastSelection = { picks, eligible }; this.lastSelectionAt = t; }
     const tSelect = performance.now() - tp0;
     const sel = new Set([...picks.map((p) => p.id), ...sigTapes.map((tp) => tp.id)]);
     // sets that still hold an open position stay processed until that position is closed (even when no longer
@@ -8584,6 +8605,8 @@ export interface LiveIntent {
 export interface SetListings {
   paperStep: number;
   at: number;
+  candidates: Array<{ id: string; group: string }>;
+  validation: { at: number; engineLastN: number; signalLastN: number; entryLastN: number; rangeLastN: number; historyH: number };
   /** engine configs validated (seated) at the paper step, best score first, with their validation-window figures */
   validated: Array<{
     id: string;
@@ -8597,8 +8620,8 @@ export interface SetListings {
     ddt: number;
   }>;
   /** per range: the rows of `validated` (best first) and the range's PF taken together on the validation windows */
-  byRange: Record<string, { rows: number[]; gp: number; gl: number; pf: number | null }>;
-  byGroup: Record<string, { rows: number[]; gp: number; gl: number; pf: number | null }>;
+  byRange: Record<string, { rows: number[]; gp: number; gl: number; pf: number | null; calculated: number }>;
+  byGroup: Record<string, { rows: number[]; gp: number; gl: number; pf: number | null; calculated: number }>;
   /** Signal units active at the paper step include their exact protection config; Base/discovery rows omit cfg. */
   active: Array<{
     bot: string;
@@ -8753,7 +8776,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
 function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
   const saved = db.kvGet<Partial<WalkForwardOptions>>("wf") ?? {};
   const v = db.kvGet<number>("wfCapsV") ?? 0;
-  if (v >= 36) return saved;
+  if (v >= 37) return saved;
   // each step runs only for a database older than it: a choice made after a step is never overwritten
   const out = { ...saved };
   const st = db.kvGet<Partial<CoreSettings>>("settings");
@@ -9215,9 +9238,23 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
       if (changed) db.kvSet("presets", presets);
     }
   }
+  if (v < 37) {
+    const migrateInverse = (settings: SettingsPatch | undefined) => {
+      if (!settings || JSON.stringify(settings.focus) !== JSON.stringify(PREVIOUS_INVERSE_FOCUS_20OCT)) return false;
+      settings.focus = [...DEFAULT_SETTINGS.focus];
+      return true;
+    };
+    migrateInverse(st);
+    const presets = db.kvGet<Preset[]>("presets");
+    if (Array.isArray(presets)) {
+      let changed = false;
+      for (const preset of presets) changed = migrateInverse(preset.settings) || changed;
+      if (changed) db.kvSet("presets", presets);
+    }
+  }
   db.kvSet("wf", pickWf(out));
   if (st) db.kvSet("settings", st);
-  db.kvSet("wfCapsV", 36);
+  db.kvSet("wfCapsV", 37);
   return out;
 }
 

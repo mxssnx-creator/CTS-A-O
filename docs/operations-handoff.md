@@ -1,5 +1,13 @@
 # CTS-A-O operations handoff
 
+## 20 October 2026 — Inverse rebased onto corrected admission scope (verification in progress)
+
+Late upstream integration: `8e83ee99c7c4e01f5a6cb7df77d07c50c847c709` / scope fix `5820f50bf520716ca0ca4f6f247f15c06b4cc594`. `walkforward.ts`, continuous-validation tests and inherited audit source match upstream exactly. The previous per-symbol full-config policy was a regression: config minTrades/validLastN/range Last-N must stay on the exact config; the separately configured symbol/direction gate retains its own modes/window/minimum/warmup. Base provenance must not change qualification population, ranking or Durable stability. Explicit losing-symbol vetoes, strict config evidence, exact Base range/target admission and native proof remain intact.
+
+The expanded 102-source studies on that withdrawn policy (967 24h closes PF 8.20, 17 Long closes PF 0.099; losing 6h and long-history cases) are **superseded**, preserved in `docs/sims/inverse-expanded-superseded-20261020.*`; they cannot certify this source. Fresh sealed 6h, 24h and 336h-selection/360h-source studies are running on the corrected scope. Current post-integration targeted checks pass 60/60; source hash parity is verified. Full immutable core regression, build/UI checks and final evidence publication are pending. No main merge, deployment, account or venue action occurred. Inverse's requested high forward PF and live profitability remain unproven.
+
+The upstream investigation and its severe forward losses remain in `docs/sims/final-window-admission-20261020.md` / `.json`, inherited without rewriting evidence. PR 182 is a draft; Inverse review remains PR 183. The operator's Long/Short, all ordinary range/protection, extended-history and performance requirements are recorded in AGENTS.project.md, including the configured-scope rule.
+
 ## 20 October 2026 — Inverse expansion and extended-history repair (verification in progress)
 
 Operator follow-up: Long and Short independently, multiple symbols and named reference pairs, full ordinary TP/SL and Trailing range coverage, longer source history and measured performance. The catalogue is now 102 identities (38 known/turn, 40 math/market, 12 dedicated Micro, 12 BTC/ETH spread/residual), all on 1/5/15m. They join the factory Focus (199 total entries); v36 migrates only the former factory Focus including presets, preserving custom/all/off choices. Inverse keeps the 1.1 minimum return-PF and stricter existing gates. Focus validation now supports 2,000 explicit entries.

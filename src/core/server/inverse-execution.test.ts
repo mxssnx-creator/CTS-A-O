@@ -5,13 +5,13 @@ import { fakeRt, lane, rng, SimExchange } from "../test-support.ts";
 import { stepLive, liveKv } from "./live.server.ts";
 import { CoreDb } from "./db.server.ts";
 
-test("Inverse preserves 12-symbol long/short identities through native open, stop updates and close", async () => {
+for (const symbols of [12, 20]) test(`Inverse preserves ${symbols}-symbol long/short identities through native open, stop updates and close`, async () => {
   const prev = process.env.CTS_CORE_LIVE;
   process.env.CTS_CORE_LIVE = "1";
   mock.timers.enable({ apis: ["Date"], now: Date.now() });
   const db = new CoreDb(":memory:");
   try {
-    const { rt, prices } = fakeRt(db, 12);
+    const { rt, prices } = fakeRt(db, symbols);
     rt.settings.live.maxNotionalUsd = 1000;
     const cfg = (side: number) =>
       `follow|inverse-known-trend-ema@m${side === 1 ? 5 : 15}|tp2|sl1|tr0|h24|mn`;
@@ -21,11 +21,11 @@ test("Inverse preserves 12-symbol long/short identities through native open, sto
         target: p.last * (1 + side * 0.02),
       })),
     );
-    const ex = new SimExchange(rng(17), { symbols: 12 }).withEquity(10_000);
+    const ex = new SimExchange(rng(17), { symbols }).withEquity(10_000);
     for (const p of prices) ex.px.set(p.sym, p.last);
     await stepLive(rt as never, [], 1, ex);
     const initial = await ex.book();
-    assert.equal(initial.positions.length, 24, JSON.stringify(liveKv(rt.db, "controlStatus")));
+    assert.equal(initial.positions.length, symbols * 2, JSON.stringify(liveKv(rt.db, "controlStatus")));
     for (const p of prices)
       for (const ps of ["LONG", "SHORT"]) {
         assert.ok(
@@ -38,6 +38,13 @@ test("Inverse preserves 12-symbol long/short identities through native open, sto
             (o) => o.venueSymbol === p.sym && o.positionSide === ps && o.type === "STOP_MARKET",
           ),
         );
+        const takeProfit = initial.orders.find(
+          (o) => o.venueSymbol === p.sym && o.positionSide === ps && o.type === "TAKE_PROFIT_MARKET",
+        );
+        const side = ps === "LONG" ? 1 : -1;
+        const target = rt.paper.positions.find((lane) => lane.sym === p.sym && lane.side === side)!.target!;
+        assert.ok(takeProfit?.stopPrice && side * (takeProfit.stopPrice - target) > 0,
+          `${p.sym} ${ps}: native take-profit stays beyond the exact owned lane target`);
       }
     const owned = new Map(initial.positions.map((p) => [`${p.venueSymbol}|${p.side}`, p.qty]));
     for (const p of rt.paper.positions) p.stop = p.entry * (1 - p.side * 0.01);
@@ -66,8 +73,8 @@ test("Inverse preserves 12-symbol long/short identities through native open, sto
     await stepLive(rt as never, [], 1, ex);
     assert.equal((await ex.book()).positions.length, 0);
     assert.equal((await ex.book()).orders.length, 0);
-    assert.equal(ex.fills.filter((f) => f.into).length, 24);
-    assert.equal(ex.fills.filter((f) => !f.into).length, 24);
+    assert.equal(ex.fills.filter((f) => f.into).length, symbols * 2);
+    assert.equal(ex.fills.filter((f) => !f.into).length, symbols * 2);
   } finally {
     mock.timers.reset();
     if (prev === undefined) delete process.env.CTS_CORE_LIVE;

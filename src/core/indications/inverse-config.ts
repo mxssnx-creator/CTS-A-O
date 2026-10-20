@@ -32,11 +32,13 @@ export const INVERSE_MATH = [
   "market-residual",
   "market-shock",
   "market-aligned",
+  "rsi2-turn",
+  "vwap-deviation",
 ] as const;
 export const INVERSE_WINDOWS = [10, 20, 40, 80] as const;
 /** Separate Micro identities reuse shared signals, but qualify only their own Micro/Minimal cells. */
 export const INVERSE_MICRO_MATH = [
-  "zscore", "impulse", "wick", "failed-break", "consensus", "market-residual",
+  "zscore", "impulse", "wick", "failed-break", "consensus", "market-residual", "rsi2-turn", "vwap-deviation",
 ] as const;
 export const INVERSE_MICRO_WINDOWS = [10, 20] as const;
 /** Bounded reference pairs avoid an O(symbols²) catalogue. Each traded leg qualifies independently. */
@@ -51,3 +53,6 @@ export const INVERSE_CONFIG_IDS = [
     INVERSE_PAIR_WINDOWS.map((p) => `inverse-pair-${anchor.split("-")[0].toLowerCase()}-${method}-${p}`))),
 ];
 export const isInverseInd = (id: string) => id.startsWith("inverse-");
+/** Exact published v36 catalogue, for additive factory-selection upgrades. */
+export const INVERSE_PREVIOUS_CONFIG_IDS = INVERSE_CONFIG_IDS.filter((id) =>
+  !id.includes("rsi2-turn-") && !id.includes("vwap-deviation-"));

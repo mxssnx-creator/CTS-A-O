@@ -131,6 +131,8 @@ function context(k: SeriesCache, p: number) {
       volume: k.volSma(p),
       macd: k.macd().hist,
       rsi: k.rsi(14),
+      rsi2: k.rsi(2),
+      vwap: k.vwap(p),
       dmi: k.dmi(14),
       stoch: k.stoch().k,
     };
@@ -233,6 +235,14 @@ function mathStates(k: SeriesCache, market: MarketRef | null, p: number) {
         sign(x.stoch[i] - 50);
       if (Math.abs(votes) >= 3 && Math.abs(extension) >= 0.75 && turn === -sign(votes))
         out.consensus[i] = turn;
+      // Fade an already observed fast-RSI extreme only after the next completed-bar turn.
+      const rsiBand = p <= 10 ? 20 : p === 20 ? 15 : p === 40 ? 10 : 5;
+      if ((x.rsi2[i - 1] < rsiBand && turn > 0) ||
+          (x.rsi2[i - 1] > 100 - rsiBand && turn < 0)) out["rsi2-turn"][i] = turn;
+      // Price/volume mean, not an unweighted price average. The prior stretch is known before the turn bar.
+      const vwStretch = (b.c[i - 1] - x.vwap[i - 1]) / a;
+      if (Math.abs(vwStretch) >= threshold && turn === -sign(vwStretch))
+        out["vwap-deviation"][i] = turn;
       if (
         !market ||
         market.syms < 2 ||

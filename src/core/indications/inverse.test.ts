@@ -74,19 +74,19 @@ test("Inverse retains independent DCA, DCA Active, Axis and bot-free Exit identi
 });
 
 test("Inverse catalogue has stable unique identities and the ordinary PF floor", () => {
-  assert.equal(inverse.length, 102);
+  assert.equal(inverse.length, 114);
   assert.deepEqual(
     inverse.map((s) => s.id),
     INVERSE_CONFIG_IDS,
   );
-  assert.equal(new Set(INVERSE_CONFIG_IDS).size, 102);
+  assert.equal(new Set(INVERSE_CONFIG_IDS).size, 114);
   assert.equal(minPfOf({ minPf: 1.02 }, "sh", INVERSE_CONFIG_IDS[0]), 1.1);
   assert.equal(minPfOf({ minPf: 1.5 }, "sh", INVERSE_CONFIG_IDS[0]), 1.5);
   assert.ok(allCombos([], ["inverse"], [1, 5, 15]).every((p) => !p.ind.startsWith("inverse-")));
 });
 
-test("Inverse standard and Micro identities use the complete production TP/SL/trailing ranges on twelve symbols", () => {
-  const bars = Array.from({ length: 12 }, (_, i) => [5, 15].map((tf) =>
+test("Inverse standard and Micro identities use the complete production TP/SL/trailing ranges on twenty symbols", () => {
+  const bars = Array.from({ length: 20 }, (_, i) => [5, 15].map((tf) =>
     barsFromCandles(`X${i}-USDT`, tf, syntheticCandles(`X${i}`, tf, 500, END, i + 17)),
   )).flat();
   const pairs = ["follow|inverse-known-trend-ema@m15", "follow|inverse-mc-zscore-10@m5"];
@@ -110,7 +110,7 @@ test("Inverse standard and Micro identities use the complete production TP/SL/tr
       const sides = new Set(cells.flatMap((t) => [...t.side]));
       const symbols = new Set(cells.flatMap((t) => [...t.symI].map((i) => t.syms[i])));
       assert.deepEqual([...sides].sort(), [-1, 1], `${tag} ${kind}: both directions actually close`);
-      assert.equal(symbols.size, 12, `${tag} ${kind}: every symbol actually closes`);
+      assert.equal(symbols.size, 20, `${tag} ${kind}: every symbol actually closes`);
       assert.ok(cells.every((t) => t.protect.tp > 0 && t.protect.sl + 1e-12 >= (tag === "mc" ? 0.0035 : 0.005) && !t.protect.trailOnly));
     }
   }
@@ -192,7 +192,7 @@ test("Inverse uses independent 1/5/15m and completed combined lanes, without 30m
     [],
     [1, 5, 15, 30],
   );
-  assert.equal(combos.length, 102 * 5);
+  assert.equal(combos.length, 114 * 5);
   assert.ok(combos.every((p) => p.bot === "follow"));
   const b = fixture(1800, 1);
   b.lanes = [1, 5, 15, 30];
