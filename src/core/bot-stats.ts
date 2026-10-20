@@ -110,6 +110,9 @@ function sqnOf(xs: readonly number[]): number {
  * part of `cost` is taken off.
  */
 export function repriced(x: Pick<LaneRow, "side" | "entry" | "exit" | "r">, cost: number): number {
+  // a row with no exit price (open at the end of a window, marked) has no gross move to derive its cost from: with exit 0
+  // a LONG read as a −100 % move and was re-priced to about −1.00 (a PF artifact); its stored r stands as it is
+  if (!(x.exit > 0) || !(x.entry > 0)) return x.r;
   const implied = (x.side * (x.exit - x.entry)) / x.entry - x.r;
   return x.r - Math.max(0, cost - implied);
 }
