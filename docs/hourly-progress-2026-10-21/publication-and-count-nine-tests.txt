@@ -1,0 +1,19 @@
+✔ a failed compute cannot withdraw active Base/config qualifications before publishing new tapes (108.58899ms)
+[core-v2] compute #1 done in 71 ms · sim PF unavailable n 0 · loop max 56 ms
+✔ current qualifications and realtime inputs survive simulation slices, then publish with completed new tapes (137.8853ms)
+✔ simulation failure cannot publish a partial replacement (34.442222ms)
+✔ simulation settings cannot publish a partial replacement (30.199076ms)
+✔ simulation generation cannot publish a partial replacement (28.093655ms)
+[core-v2] compute #1 done in 28 ms · sim PF unavailable n 0 · loop max 0 ms
+✔ timing-only settings changes do not discard a completed economic calculation (68.336988ms)
+✔ timing settings cannot cancel a partially completed exact Base sweep (48.520483ms)
+✔ live settings cannot cancel a partially completed exact Base sweep (7.703054ms)
+✔ unchanged settings cannot cancel a partially completed exact Base sweep (6.245558ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1103.943588
