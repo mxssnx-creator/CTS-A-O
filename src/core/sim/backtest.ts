@@ -319,8 +319,16 @@ export function nextEntryIndex(sig: Int8Array): Int32Array {
   if (nx) return nx;
   const n = sig.length;
   nx = new Int32Array(n + 1);
-  nx[n] = n;
-  for (let i = n - 1; i >= 0; i--) nx[i] = sig[i] !== 0 ? i : nx[i + 1];
+  // one forward scan; the stretch of bars before each entry is filled with its index (a native fill: the signals are
+  // sparse, and a read-modify-write per bar was 11 % of a Base cell's time)
+  let from = 0;
+  for (let i = 0; i < n; i++) {
+    if (sig[i] === 0) continue;
+    if (i + 1 - from > 8) nx.fill(i, from, i + 1);
+    else for (let j = from; j <= i; j++) nx[j] = i;
+    from = i + 1;
+  }
+  nx.fill(n, from, n + 1);
   nextMemo.set(sig, nx);
   return nx;
 }

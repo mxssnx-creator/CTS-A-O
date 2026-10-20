@@ -1065,6 +1065,9 @@ export function rangeBaseStats(
 }
 
 
+/** cellStats' close columns, reused by every call */
+const CELL_SCRATCH = { rr: new Float64Array(1024), en: new Float64Array(1024), ex: new Float64Array(1024) };
+
 /**
  * A Base range cell's stats over the whole history: exactly `runCombo(…).full`'s n / PF / net / max drawdown (the
  * same simulation, the same trade order, the same statsOf), without the per-symbol stats, the in-sample split and the
@@ -1085,10 +1088,11 @@ export function cellStats(
   const id = configId(bot, ind, p);
   const series = seriesOf(u, ind);
   if (!series.length) return null;
-  // each trade's return and times (simulate's sink: no Trade object per trade), in runCombo's push order
-  let rr = new Float64Array(256);
-  let en = new Float64Array(256);
-  let ex = new Float64Array(256);
+  // each trade's return and times (simulate's sink: no Trade object per trade), in runCombo's push order; in scratch
+  // columns shared by every call (a call is synchronous and nothing keeps them: 3 × 2 KB allocated per cell before)
+  let rr = CELL_SCRATCH.rr;
+  let en = CELL_SCRATCH.en;
+  let ex = CELL_SCRATCH.ex;
   let n = 0;
   const sink = (r: number, entryT: number, exitT: number) => {
     if (n === rr.length) {
@@ -1097,9 +1101,9 @@ export function cellStats(
         b.set(a);
         return b;
       };
-      rr = grow(rr);
-      en = grow(en);
-      ex = grow(ex);
+      rr = CELL_SCRATCH.rr = grow(rr);
+      en = CELL_SCRATCH.en = grow(en);
+      ex = CELL_SCRATCH.ex = grow(ex);
     }
     rr[n] = r;
     en[n] = entryT;
@@ -1119,7 +1123,14 @@ export function cellStats(
     return st;
   }
   // statsOf's order (exit, then entry; stable) and its arithmetic for n / PF / net / max drawdown
-  const idx = Array.from({ length: n }, (_, i) => i).sort((a, b) => ex[a] - ex[b] || en[a] - en[b]);
+  // (the closes of one series and side come in exit order: a single run is sorted already, which the check finds in O(n))
+  const idx = new Uint32Array(n);
+  let sorted = true;
+  for (let i = 0; i < n; i++) {
+    idx[i] = i;
+    if (i && (ex[i - 1] > ex[i] || (ex[i - 1] === ex[i] && en[i - 1] > en[i]))) sorted = false;
+  }
+  if (!sorted) idx.sort((a, b) => ex[a] - ex[b] || en[a] - en[b] || a - b);
   let gp = 0;
   let gl = 0;
   let sum = 0;
