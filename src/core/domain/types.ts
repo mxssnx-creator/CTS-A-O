@@ -116,6 +116,12 @@ export interface RangeGrid {
   minTrail?: number;
   /** shortest lane (minutes) this range trades on; 0 = every lane (General / Long default 15) */
   minTf?: number;
+  /**
+   * Position hold limit of this range in MINUTES: its cells close by time after this long, in place of the grid's
+   * holdH (hours; default 16 / 24 h) — one hold per cell, so the range's cell count is its tp × stop × trail. Unset =
+   * the grid's holdH. A lane cannot hold shorter than one of its bars (a 30m lane holds 30 min at least).
+   */
+  holdMin?: number;
   /** Base judges this range at its own cell (Micro / Minimal default) or at the default protect */
   ownBase?: boolean;
   /** Base on this range's best cell (overrides grid.baseBest) */

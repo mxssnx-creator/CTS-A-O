@@ -445,6 +445,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
       num(g.minSl, 0, 0.2, `${name} min SL`);
       num(g.minTrail, 0, 0.1, `${name} min trail`);
       num(g.minTf, 0, 240, `${name} shortest lane (minutes)`);
+      if ((g as { holdMin?: unknown }).holdMin !== undefined)
+        num((g as { holdMin?: unknown }).holdMin, 1, 1440, `${name} hold limit (minutes)`);
       if (g.minSlEval !== undefined) num(g.minSlEval, 0.0005, 0.05, `${name} evaluation min SL`);
       for (const [k, v] of [
         ["own Base cell (ownBase)", g.ownBase],

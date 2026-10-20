@@ -3,6 +3,7 @@ import {
   EVAL_MIN_SL,
   forEachCoord,
   forEachMicro,
+  holdFloorBars,
   plusVariants,
   RANGE_TAGS,
   rangeGateOf,
@@ -574,7 +575,10 @@ export function protectGrid(tfMin: number, g: ProtectGridSpec = DEFAULT_GRID, co
       sl: +Math.max(slFloor, minSl, tp * k).toFixed(4),
       // the floor is on the trailing distance (trail × trailStep), not on the arming move
       trail: tr > 0 ? +Math.max(minTrail / (g.trailStep ?? 1), tp * tr).toFixed(4) : 0,
-      hold: Math.max(2, Math.round((h * 60) / tfMin)),
+      hold: Math.max(
+        holdFloorBars(tag === "mn" ? g.minimal : tag === "sh" ? g.short : tag === "gn" ? g.general : tag === "lg" ? g.long : undefined),
+        Math.round((h * 60) / tfMin),
+      ),
       ...(tag ? { tag } : {}),
     };
     push(p);
@@ -590,7 +594,7 @@ export function protectGrid(tfMin: number, g: ProtectGridSpec = DEFAULT_GRID, co
       // the range's own evaluation floor when it sets one (micro.minSlEval), else the global one
       sl: +Math.max(slEval ?? slFloor, minSl, tp * k).toFixed(6),
       trail: tr > 0 ? +Math.max(minTrail, tp * tr).toFixed(6) : 0,
-      hold: Math.max(2, Math.round((h * 60) / tfMin)),
+      hold: Math.max(holdFloorBars(g.micro), Math.round((h * 60) / tfMin)),
       tag: "mc",
     });
   }, cost);
