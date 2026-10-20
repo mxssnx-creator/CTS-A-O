@@ -27,6 +27,7 @@ import type {
 import { evaluateConfig } from "../evals/evaluator.ts";
 import {
   EVAL_MIN_SL,
+  holdFloorBars,
   microNetTps,
   microPriceTp,
   microSlFloor,
@@ -178,7 +179,7 @@ export function laneProtect(p: Protect, ind: string): Protect {
   // the same time on every lane (the grid gives it in 15m bars: 64 bars = 16 h, which is 64 minutes on a 1m lane)
   // Historic Exit families are fitted from excursions in this exact lane: their distances are already native.
   if (p.tag || (p.exitType === "historic" && p.exitSet))
-    return { ...p, hold: Math.max(2, Math.round((p.hold * REF_TF) / tf)) };
+    return { ...p, hold: Math.max(p.tag && p.hold < 2 ? 1 : 2, Math.round((p.hold * REF_TF) / tf)) };
   const k = Math.sqrt(tf / REF_TF);
   const r4 = (x: number) => +(x * k).toFixed(4);
   // short lanes: a scaled target never below 3 × the round-trip cost, stops / trails never inside the noise.
@@ -190,7 +191,7 @@ export function laneProtect(p: Protect, ind: string): Protect {
     sl: floor(r4(p.sl), LANE_MIN.sl),
     // the lane floor is on the trailing distance (trail × trailStep), not on the arming move
     trail: p.trail > 0 ? floor(r4(p.trail), LANE_MIN.trail / (p.trailStep ?? 1)) : 0,
-    hold: Math.max(2, Math.round((p.hold * REF_TF) / tf)),
+    hold: Math.max(p.tag && p.hold < 2 ? 1 : 2, Math.round((p.hold * REF_TF) / tf)),
   };
 }
 
@@ -350,9 +351,7 @@ const pct = (x: number) => Math.round(x * 1e6) / 10000;
 const atrTag = (p: Protect) =>
   p.atr ? `|atr${p.atr.sl}x${p.atr.tpRatio}${p.atr.trail ? `t${p.atr.trail}` : ""}` : "";
 export function configId(bot: BotType, ind: string, p: Protect, kind?: StratKind): string {
-  const mode = p.trailOnly
-    ? `|to${p.trailStep !== undefined && p.trailStep !== 1 ? `|ts${p.trailStep}` : ""}`
-    : "";
+  const mode = `${p.trailOnly ? "|to" : ""}${p.trail > 0 && p.trailStep !== undefined && p.trailStep !== 1 ? `|ts${p.trailStep}` : ""}${p.trail > 0 && p.trailFree ? "|tf1" : ""}${p.trailMax !== undefined ? `|tm${pct(p.trailMax)}` : ""}`;
   const exit =
     p.exitType === "historic" || kind === "exit"
       ? `|hx${p.exitSide === 1 ? "L" : p.exitSide === -1 ? "S" : ""}${
@@ -369,7 +368,9 @@ export function configId(bot: BotType, ind: string, p: Protect, kind?: StratKind
                     : ""
         }`
       : "";
-  const base = `${bot}|${ind}|tp${pct(p.tp)}|sl${pct(p.sl)}|tr${pct(p.trail)}|h${p.hold}${atrTag(p)}${p.tag ? `|${p.tag}` : ""}${mode}${exit}`;
+  const dca = p.dca && (kind === "dca" || kind === "dca-active")
+    ? `|dc${p.dca.levels}s${pct(p.dca.step)}q${p.dca.stepOfTp ?? 0}g${p.dca.stopGap ?? 0.5}r${p.dca.addRatio ?? 1}` : "";
+  const base = `${bot}|${ind}|tp${pct(p.tp)}|sl${pct(p.sl)}|tr${pct(p.trail)}|h${p.hold}${atrTag(p)}${p.tag ? `|${p.tag}` : ""}${mode}${exit}${dca}`;
   return kind === "dca"
     ? `${base}|dca`
     : kind === "dca-active"
@@ -406,8 +407,13 @@ export const isTrailingKind = (kind: string): boolean =>
 const fromPct = (s: string) => +(Number(s) / 100).toFixed(6);
 
 export function parseConfigId(id: string): { bot: BotType; ind: string; protect: Protect } | null {
-  const mode = /\|to(?:\|ts([\d.]+))?(?=\||$)/.exec(id);
-  const plainId = mode ? id.slice(0, mode.index) + id.slice(mode.index + mode[0].length) : id;
+  const mode = /\|to(?=\||$)/.exec(id);
+  const ratio = /\|ts([\d.]+)(?=\||$)/.exec(id);
+  const free = /\|tf1(?=\||$)/.exec(id);
+  const ceiling = /\|tm([\d.]+)(?=\||$)/.exec(id);
+  const ladder = /\|dc([1-4])s([\d.]+)q([\d.]+)g([\d.]+)r([\d.]+)(?=\||$)/.exec(id);
+  // Remove each token once; duplicates or malformed tokens remain and fail the strict grammar below.
+  const plainId = id.replace(/\|to(?=\||$)/, "").replace(/\|ts[\d.]+(?=\||$)/, "").replace(/\|tf1(?=\||$)/, "").replace(/\|tm[\d.]+(?=\||$)/, "").replace(/\|dc[1-4]s[\d.]+q[\d.]+g[\d.]+r[\d.]+(?=\||$)/, "");
   const m =
     // (the Axis variant tag — "|ax-atr2", "|axd-fib3h" from axisVariants — is matched and ignored: without the group
     // every managed / desk Axis id failed to parse and its report rows showed tp / sl / trail / hold 0)
@@ -421,6 +427,18 @@ export function parseConfigId(id: string): { bot: BotType; ind: string; protect:
     trail: fromPct(m[5]),
     hold: +m[6],
   };
+  if (ladder) {
+    if (!/\|dcaA?$/.test(id)) return null;
+    const [levels, step, stepOfTp, stopGap, addRatio] = [+ladder[1], fromPct(ladder[2]), +ladder[3], +ladder[4], +ladder[5]];
+    if (![step, stepOfTp, stopGap, addRatio].every(Number.isFinite) || step < 0.001 || step > 0.1 ||
+      stepOfTp < 0 || stepOfTp > 5 || stopGap < 0 || stopGap > 5 || addRatio <= 0 || addRatio > 2.5) return null;
+    protect.dca = { levels, step, stepOfTp, stopGap, addRatio };
+  }
+  if (ceiling) {
+    const max = fromPct(ceiling[1]);
+    if (!(Number.isFinite(max) && max >= 0.002 && max <= 0.03)) return null;
+    protect.trailMax = max;
+  }
   if (m[7] !== undefined)
     protect.atr = { sl: +m[7], tpRatio: +m[8], ...(m[9] !== undefined ? { trail: +m[9] } : {}) };
   if (m[10] !== undefined) protect.tag = m[10].slice(1) as RangeTag;
@@ -434,8 +452,17 @@ export function parseConfigId(id: string): { bot: BotType; ind: string; protect:
     if (m[13] === "3") protect.exitSet = "breakeven";
     if (m[13] === "4") protect.exitSet = "trailing-only";
   }
+  if (ratio) {
+    const step = Number(ratio[1]);
+    if (!(Number.isFinite(step) && step > 0 && protect.trail > 0)) return null;
+    protect.trailStep = step;
+  }
+  if (free) {
+    if (!(protect.trail > 0) || mode) return null;
+    protect.trailFree = true;
+  }
   if (mode) {
-    const step = mode[1] === undefined ? 1 : Number(mode[1]);
+    const step = protect.trailStep ?? 1;
     if (
       protect.tp !== 0 ||
       !(protect.trail > 0) ||
@@ -567,8 +594,8 @@ export function baseRangeProtects(
   cost?: number,
 ): Protect[] {
   const slFloor = g.minSlEval ?? EVAL_MIN_SL;
-  const mid = <T>(xs: readonly T[]) => xs[Math.floor((xs.length - 1) / 2)];
-  const hold = Math.max(2, Math.round(((g.holdH?.[0] ?? 16) * 60) / REF_TF));
+  const mid = <T,>(xs: readonly T[]) => xs[Math.floor((xs.length - 1) / 2)];
+  const holdAll = Math.max(2, Math.round(((g.holdH?.[0] ?? 16) * 60) / REF_TF));
   const out: Protect[] = [];
   for (const [tag, r] of [
     ["mc", g.micro],
@@ -578,6 +605,12 @@ export function baseRangeProtects(
     ["lg", g.long],
   ] as const) {
     if (!r || !r.tp?.length || !r.slOfTp?.length) continue;
+    // the range's MAXIMUM hold (maxHoldMin) is the hold Base judges it at, as the grid builds its cells: before, Base
+    // measured Micro at 16 h while it traded 15 min (a Base PF of another config than the one that trades)
+    const hold =
+      r.maxHoldMin != null && r.maxHoldMin > 0
+        ? Math.max(holdFloorBars(r), Math.round(r.maxHoldMin / REF_TF))
+        : holdAll;
     // the range's own evaluation stop floor when it sets one (e.g. micro.minSlEval), else the global one
     // Micro's minSlNet: net floor + the round-trip cost, in place of minSl and minSlEval (as the grid)
     const net = tag === "mc" ? microSlFloor(r as { minSlNet?: number }, cost) : undefined;
@@ -657,6 +690,7 @@ export function baseRangeProtects(
   return out;
 }
 type CoordRangeLike = {
+  maxHoldMin?: number;
   tp: readonly number[];
   slOfTp: readonly number[];
   trailOfTp?: readonly number[];

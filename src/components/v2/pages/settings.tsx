@@ -811,6 +811,12 @@ export function SignalsSettings(props: {
           />
         </Field>
       </div>
+      <Field label="Maximum Signal trailing from entry (%)" hint="Hard stop, activation and peak gap are bounded from entry from the start. Maximum 3%; a tighter configured stop stays tighter. Held orders retain their exact original protection.">
+        <Num pct value={g.trailMax ?? 0.03} min={0.002} max={0.03} step={0.1} onChange={(v) => set(["trailMax"], v)} />
+      </Field>
+      <Field label="Signal peak-gap ratios" hint="Independent trailing configurations: ratio × activation gives the gap from the favorable peak, bounded by the maximum from entry. Each value has its own history and qualification.">
+        <List value={g.trailRatios ?? [1]} onChange={(v) => set(["trailRatios"], v)} />
+      </Field>
       <div className="v2-grid v2-cols-2">
         <Field
           label={`Normal: targets (%) × stop ratios → ${counts.normal} configs`}
@@ -930,11 +936,11 @@ export function SignalsSettings(props: {
       </div>
       <div className="v2-grid v2-cols-4">
         <Field
-          label="Historic trailing configs"
-          hint="per signal, Trailing configs of its own from its historic entries: the move they reached within the hold (MFE) at each quantile is a target, trailed at every share, stopped at every multiple — each validated on its own"
+          label="Historic TP/SL and trailing configs"
+          hint="each source/range/lane/type/config uses its own symbol and direction history and Last-N at PF ≥ 1.5. Historic targets create independent TP/SL exits without trailing and additional peak-trailing variants; stricter stage gates still apply."
         >
           <Switch
-            label="historic trailing configs"
+            label="historic TP/SL and trailing configs"
             checked={hist.enabled !== false}
             onChange={(v) => set(["hist", "enabled"], v)}
           />
@@ -1361,6 +1367,8 @@ type RangeSpec = {
   minSl?: number;
   minTrail?: number;
   minTf?: number;
+  /** maximum position hold time of the range in minutes (0 / unset = the grid's hold) */
+  maxHoldMin?: number;
   /** Micro: tp is the net target after the round-trip cost (price target = tp + cost) */
   tpNetOfCost?: boolean;
   /** Micro: only the Micro indications trade Micro cells */
@@ -1507,9 +1515,8 @@ export function RangeEditor(props: {
       minSl: props.defaults.minSl,
       minTrail: props.defaults.minTrail,
       ...(props.defaults.minTf !== undefined ? { minTf: props.defaults.minTf } : {}),
-      ...(props.defaults.tpNetOfCost !== undefined
-        ? { tpNetOfCost: props.defaults.tpNetOfCost }
-        : {}),
+      ...(props.defaults.maxHoldMin !== undefined ? { maxHoldMin: props.defaults.maxHoldMin } : {}),
+      ...(props.defaults.tpNetOfCost !== undefined ? { tpNetOfCost: props.defaults.tpNetOfCost } : {}),
       ...(props.defaults.ownInds !== undefined ? { ownInds: props.defaults.ownInds } : {}),
       ...(props.defaults.minSlNet !== undefined ? { minSlNet: props.defaults.minSlNet } : {}),
     });
@@ -1566,6 +1573,18 @@ export function RangeEditor(props: {
             value={s.slOfTp}
             onChange={(v) => props.set(p("slOfTp"), v)}
           />
+          <Field
+            label="Maximum hold time (minutes)"
+            hint="The longest a position of this range is held: it closes by time after at most this long (earlier at its target, stop or trail), in place of the grid's maximum hold (16 / 24 h). One maximum per cell, so the range builds tp × stop × trail cells. A lane cannot hold shorter than one of its bars. 0 = the grid's hold (operator, 20 Oct: Micro 15 min)"
+          >
+            <Num
+              step={1}
+              min={0}
+              max={1440}
+              value={s.maxHoldMin ?? 0}
+              onChange={(v) => props.set(p("maxHoldMin"), v || undefined)}
+            />
+          </Field>
           {props.k === "micro" && (
             <Field
               label="TP net of the position cost"
@@ -3771,6 +3790,10 @@ export function SettingsPage() {
                 onChange={(v) => set(["dca", "levels"], v)}
               />
             </Field>
+            <Field label="Addition × original base" hint="each added leg uses this many original base units; never compounds · default: one addition of 2.5×, total 3.5×">
+              <Num step={0.1} min={0.1} max={2.5} value={s.dca.addRatio ?? 1}
+                onChange={(v) => set(["dca", "addRatio"], v)} />
+            </Field>
             <Field
               label="Step (%)"
               hint="distance between levels (unless a step × target is set) · 0.1 – 10"
@@ -3985,6 +4008,12 @@ export function SettingsPage() {
                   onChange={(v) => set(["grid", "trailStep"], v)}
                 />
               </Field>
+              <div>
+                <div style={{ fontWeight: 600 }}>Independent Trailing-only sets</div>
+                <Switch label="Independent Trailing-only sets" checked={!!s.grid.trailingOnly}
+                  onChange={(v) => set(["grid", "trailingOnly"], v)} />
+                <div className="v2-muted">Own config and Last-N evaluation, no TP from entry, hard start stop at most 3%.</div>
+              </div>
               <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
                 <Switch
                   label="Trail runs free"

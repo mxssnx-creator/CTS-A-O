@@ -130,6 +130,19 @@ describe("control orders: complete (stop, take-profit, trailing), long and short
     return (ms: number) => mock.timers.tick(ms);
   };
 
+  it("a Trailing-only venue backstop starts at at most 3%, without a TP, on both sides", async () => {
+    const { rt }=rtOf();const ex=new Venue();
+    rt.paper.positions=[lane("follow|ema-9-21@m15|tp0|sl9|tr1|h32|tm3|to","S1-USDT",1,10,.09),
+      lane("follow|ema-9-21@m15|tp0|sl9|tr1|h32|tm3|to","S2-USDT",-1,20,.09)];
+    await stepLive(rt as unknown as CoreRuntime,[],1,ex);
+    assert.equal(ex.positions.size,2);
+    for(const [sym,px,side]of [["S1-USDT",10,1],["S2-USDT",20,-1]] as const){
+      const stop=ex.log.find(o=>o.symbol===sym&&o.type==="STOP_MARKET");assert.ok(stop);
+      assert.ok(side*(px-Number(stop.stopPrice))/px<=.03+1e-12);
+      assert.equal(ex.log.some(o=>o.symbol===sym&&o.type==="TAKE_PROFIT_MARKET"),false);
+    }
+  });
+
   it("the take-profit's distance and fit (pure)", () => {
     // 1.2 × the farthest target's distance, at least the floor, at most 50 %; none at or past the target
     assert.ok(near(tpDistFor(1, 10.5, 10, 0.01), 0.06));

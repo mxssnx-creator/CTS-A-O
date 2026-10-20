@@ -510,6 +510,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
   if (s.dca) {
     num(s.dca.levels, 1, 4, "dca levels (stack ≤ 5 stages: base + 4)");
     num(s.dca.step, 0.001, 0.1, "dca step");
+    if (s.dca.addRatio !== undefined) num(s.dca.addRatio, 0.1, 2.5, "dca addition (original base units)");
     if (s.dca.stepOfTp !== undefined) num(s.dca.stepOfTp, 0, 5, "dca step (× target)");
     if (s.dca.stopGap !== undefined) num(s.dca.stopGap, 0, 5, "dca stop gap (steps)");
     if (s.dca.slOfTp !== undefined) num(s.dca.slOfTp, 0.25, 5, "dca stop (× target)");
@@ -536,6 +537,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
     num(s.grid.minTrail, 0, 0.1, "min trail");
     num(s.grid.minSl, 0, 0.2, "min SL");
     num(s.grid.trailStep, 0.1, 1, "trail step");
+    if (s.grid.trailingOnly !== undefined && typeof s.grid.trailingOnly !== "boolean")
+      throw new Error("independent trailing-only grid: on / off");
     if (s.grid.trailFree !== undefined && typeof s.grid.trailFree !== "boolean")
       throw new Error("trail free: on / off");
     // the levers every range shares (RangeGrid): checked the same way for Micro, Minimal, Short, General and Long
@@ -556,6 +559,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
       num(g.minSl, 0, 0.2, `${name} min SL`);
       num(g.minTrail, 0, 0.1, `${name} min trail`);
       num(g.minTf, 0, 240, `${name} shortest lane (minutes)`);
+      if ((g as { maxHoldMin?: unknown }).maxHoldMin !== undefined)
+        num((g as { maxHoldMin?: unknown }).maxHoldMin, 1, 1440, `${name} max hold time (minutes)`);
       if (g.minSlEval !== undefined) num(g.minSlEval, 0.0005, 0.05, `${name} evaluation min SL`);
       for (const [k, v] of [
         ["own Base cell (ownBase)", g.ownBase],
@@ -764,6 +769,12 @@ export function checkSettings(s: Partial<CoreSettings>) {
     list(g.trailing?.tp, 0.002, 0.2, "signal Trailing TP");
     list(g.trailing?.trailOfTp, 0.05, 1, "signal trail share");
     num(g.trailing?.slOfTp, 0.2, 5, "signal Trailing SL×TP");
+    if (g.trailRatios !== undefined) {
+      list(g.trailRatios, 0.1, 2, "signal peak-gap ratios");
+      if (g.trailRatios.length > 8 || new Set(g.trailRatios).size !== g.trailRatios.length)
+        throw new Error("signal peak-gap ratios: at most 8 distinct values");
+    }
+    if (g.trailMax !== undefined) num(g.trailMax, 0.002, 0.03, "Signal maximum trailing from entry");
     if (g.trailingOnly) {
       bool(g.trailingOnly.enabled, "signal Trailing only sets");
       list(g.trailingOnly.sl, 0.002, 0.2, "signal Trailing only SL");
@@ -772,7 +783,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
         if (xs !== undefined && xs.length > 8)
           throw new Error("signal Trailing only ranges: at most 8 values per list");
       num(g.trailingOnly.trailStep, 0.1, 2, "signal Trailing only trail step");
-      const n = (g.trailingOnly.sl?.length ?? 3) * (g.trailingOnly.trail?.length ?? 3);
+      const n = (g.trailingOnly.sl?.length ?? 3) * (g.trailingOnly.trail?.length ?? 3) * (g.trailRatios?.length ?? 1);
       if (n > 64) throw new Error(`signal Trailing only grid too large (${n} configs, max 64)`);
     }
     num(g.holdH, 0.5, 96, "signal hold");

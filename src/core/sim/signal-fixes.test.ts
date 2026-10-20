@@ -233,7 +233,8 @@ describe("signal confirmation judges engine candidates", () => {
   const sigTape = (entry: number) => {
     const ind = "sig-ema-cross-s@m15";
     const id = `follow|${ind}|tp1|sl1|tr0|h32`;
-    return makeTape(id, "follow", ind, P, "normal", [SYM], [mk(id, SYM, 0.01, entry)], [], []);
+    const history = Array.from({ length: 75 }, (_, i) => mk(id, SYM, 0.01, entry - 30 * H + i * 15 * 60_000));
+    return makeTape(id, "follow", ind, P, "normal", [SYM], [...history, mk(id, SYM, 0.01, entry)], [], []);
   };
   const base: WalkForwardOptions = {
     ...defaultWalkForward(DEFAULT_SETTINGS),
@@ -341,6 +342,7 @@ describe("the signal funnel", () => {
       entry: 100,
       exit: 101,
       r: 0.01,
+      mult: 1,
       reason: "tp",
       bars: 2,
       mfe: 0,
@@ -357,7 +359,7 @@ describe("the signal funnel", () => {
       P,
       "normal",
       [SYM],
-      [tr(id, IN_RUN, 1), tr(id, IN_RUN + H, -1)],
+      [...Array.from({length:75},(_,i) => tr(id, IN_RUN-30*H+i*15*60_000,1)), tr(id, IN_RUN, 1), tr(id, IN_RUN + H, -1)],
       [],
       [],
     );
@@ -424,7 +426,7 @@ describe("the signal funnel", () => {
       P,
       "normal",
       [SYM],
-      [tr(id, IN_RUN, 1), tr(id, IN_RUN + H, -1)],
+      [...Array.from({length:75},(_,i) => ([1,-1] as const).map(side => tr(id, IN_RUN-30*H+i*15*60_000,side))).flat(), tr(id, IN_RUN, 1), tr(id, IN_RUN + H, -1)],
       [],
       [],
     );

@@ -126,6 +126,21 @@ describe("entries mode: actual MARKET execution quantities", () => {
     if (originalArmed === undefined) delete process.env.CTS_CORE_LIVE; else process.env.CTS_CORE_LIVE = originalArmed;
   });
 
+  it("Signal native protection caps the stop from its actual fill, not the preflight quote", async () => {
+    const { rt, state, step } = fixture();
+    const signal = { ...intent, cfg: "follow|sig-ema-cross-s@m15|tp10|sl8|tr0|h32",
+      protect: { ...intent.protect, sl: 0.08 } };
+    Object.assign(rt.settings.live, { notionalUsd: 10, maxPositionX: 0, maxExposureX: 0,
+      maxRiskPct: 0, maxBackstopLossPct: 0, minFreeMargin: 0 });
+    const result = await step([signal]);
+    assert.equal(result.placed, 1, JSON.stringify(result));
+    const stops = state.sent.filter((p) => p.type === "STOP_MARKET");
+    assert.equal(stops.length, 1, JSON.stringify({ result, sent: state.sent }));
+    const fill = Number(state.entry.order.avgPrice);
+    assert.ok(Math.abs(Number(stops[0].stopPrice) - fill * 0.98) < 1e-10);
+    assert.equal(Number(stops[0].quantity), .25, "only the confirmed filled quantity is protected");
+  });
+
   it("ordinary fixed-unit entries obey maxPositionX using the same actual account, without control-only ratio", async () => {
     const { rt, state, step } = fixture();
     Object.assign(rt.settings.live, { notionalUsd: 100, maxNotionalUsd: 0, maxPositionX: .1, ratio: 10,

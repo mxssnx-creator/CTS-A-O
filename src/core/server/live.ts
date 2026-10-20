@@ -277,6 +277,8 @@ export interface ControlContribution {
   tgt?: number;
   /** the lane's stop price (trailed as the tick trails it); unset: none */
   stopPx?: number;
+  /** Hard ceiling for a bounded lane's venue backstop. A mixed unbounded position retains its wider backstop. */
+  stopMax?: number;
   /**
    * The lane's strings, built once per paper position (laneContributions) instead of on every control step: its
    * position key (symbol|side), its lane key (laneKeyOf) and its id under the former build (legacy held-back ids).
@@ -407,10 +409,12 @@ export interface ControlTarget {
   qty: number;
   /** catastrophic stop distance for the control position (widest lane stop × 1.2, min stop … 20 %) */
   stopDist: number;
+  /** All lanes are bounded: the venue stop may never widen beyond this distance, including refusal retries. */
+  stopMax?: number;
   /**
-   * planned loss distance: the volume-weighted mean of the lanes' own stops (min stop … stopDist) — what the position
+   * planned loss distance: the volume-weighted mean of the lanes' own stops, at least min stop — what the position
    * loses when every lane exits at its own stop; the risk budget is measured on it (the backstop only fires when the
-   * desk does not manage the position)
+   * desk does not manage the position). A closer bounded venue stop never discounts the lane's current giveback risk.
    */
   riskDist?: number;
   /**
@@ -792,6 +796,8 @@ export function controlTargets(
     noTgt?: boolean;
     /** the widest lane stop (long: lowest, short: highest) */
     lw?: number;
+    stopMax?: number;
+    unbounded?: boolean;
   };
   const note = (a: Agg, cfg: string) => {
     const tag = rangeOfId(cfg);
@@ -811,6 +817,9 @@ export function controlTargets(
     a.vol += w;
     a.rw += w * Math.max(0, l.risk ?? l.sl);
     a.sl = Math.max(a.sl, l.sl);
+    if (l.stopMax !== undefined && Number.isFinite(l.stopMax) && l.stopMax > 0)
+      a.stopMax = Math.max(a.stopMax ?? 0, l.stopMax);
+    else a.unbounded = true;
     if (l.stopPx !== undefined && l.stopPx > 0)
       a.lw = a.lw === undefined ? l.stopPx : l.side === 1 ? Math.min(a.lw, l.stopPx) : Math.max(a.lw, l.stopPx);
     if (!(l.tgt !== undefined && l.tgt > 0)) a.noTgt = true;
@@ -901,7 +910,8 @@ export function controlTargets(
     }
     // our own floor, and under it the venue's: a stop the exchange refuses for being too close is not a stop
     const minStop = Math.max(cs.minStopPct ?? 0.01, cs.minStopOf?.(a.sym, px) ?? 0);
-    const stopDist = Math.min(BACKSTOP_MAX_DIST, Math.max(minStop, a.sl * 1.2));
+    const stopMax = !a.unbounded ? a.stopMax : undefined;
+    const stopDist = Math.min(BACKSTOP_MAX_DIST, stopMax ?? Infinity, Math.max(minStop, a.sl * 1.2));
     targets.push({
       key,
       sym: a.sym,
@@ -914,7 +924,8 @@ export function controlTargets(
       ...(a.tag && a.tag !== "mix" ? { cfg: `|${a.tag}` } : {}),
       // the stop is never tighter than the configured minimum (default 1 %), never wider than 20 %
       stopDist,
-      riskDist: Math.min(stopDist, Math.max(minStop, a.vol > 0 ? a.rw / a.vol : a.sl)),
+      ...(stopMax !== undefined ? { stopMax } : {}),
+      riskDist: Math.max(minStop, a.vol > 0 ? a.rw / a.vol : a.sl),
       // (lane orders: each lane carries its own take-profit — no position-wide one)
       ...(!cs.laneMode && !a.noTgt && a.tgt !== undefined && a.tgt > 0 ? { tpPx: a.tgt } : {}),
       ...(a.lw !== undefined && a.lw > 0 ? { stopPx: a.lw } : {}),

@@ -162,6 +162,8 @@ import {
   baseAllowsTape,
   kindExecutable,
   defaultWalkForward,
+  signalHistoryHours,
+  signalValidationOk,
   selectAt,
   selectDurable,
   selectFixedGen,
@@ -243,6 +245,7 @@ import { volumeFactorForIndication } from "../volume-factor.ts";
 import { isDeepStrictEqual } from "node:util";
 import { type BlockBook, blockBookOf, blockStackCap } from "../sim/block.ts";
 import { trailBar } from "../sim/backtest.ts";
+import { enforceSignalPosition } from "../sim/trailing.ts";
 import { advanceExitProtection, createExitProtection } from "../sim/exit-protection.ts";
 import {
   activeSignals,
@@ -687,6 +690,7 @@ export function crossedStop(p: { side: number; stop: number }, px: number): bool
  */
 /** A paper position's trail state while the tick follows it (its lane bar, and that bar's high and low so far). */
 export interface TickTrail {
+  cfg?: string;
   side: number;
   entry: number;
   stop: number;
@@ -709,16 +713,18 @@ export interface TickTrail {
  * then exited a reversal at an old level. Returns whether the stop moved.
  */
 export function tickTrail(p: TickTrail, px: number, now: number, tfMs: number): boolean {
-  if ((!p.exitProtection && !(p.trail && p.trail > 0)) || !(px > 0) || !(tfMs > 0)) return false;
+  const repaired = enforceSignalPosition(p);
+  if ((!p.exitProtection && !(p.trail && p.trail > 0)) || !(Number.isFinite(px) && px > 0) ||
+    !(Number.isFinite(tfMs) && tfMs > 0) || !Number.isFinite(now)) return repaired;
   const bar = Math.floor(now / tfMs);
   if (p.tkBar === undefined) {
     p.tkBar = bar;
     p.tkHi = px;
     p.tkLo = px;
     p.tkClose = px;
-    return false;
+    return repaired;
   }
-  if (bar < p.tkBar) return false;
+  if (bar < p.tkBar) return repaired;
   if (bar > p.tkBar) {
     const moved = p.exitProtection
       ? advanceExitProtection(p, {
@@ -732,12 +738,12 @@ export function tickTrail(p: TickTrail, px: number, now: number, tfMs: number): 
     p.tkHi = px;
     p.tkLo = px;
     p.tkClose = px;
-    return moved;
+    return moved || repaired;
   }
   if (px > (p.tkHi ?? px)) p.tkHi = px;
   if (px < (p.tkLo ?? px)) p.tkLo = px;
   p.tkClose = px;
-  return false;
+  return repaired;
 }
 
 /**
@@ -1249,7 +1255,14 @@ export class CoreRuntime {
     );
     for (const p of this.paper.positions) {
       const own = parseConfigId(p.cfg)?.protect;
-      if (!p.exitProtection && own) p.exitProtection = createExitProtection(own, p.entry);
+      if (!p.exitProtection && own) {
+        const protection = createExitProtection(own, p.entry);
+        if (protection) p.exitProtection = protection;
+      }
+      if (own?.trail && own.trail > 0) {
+        p.trail ??= own.trail;
+        p.trailDist ??= own.trail * (own.trailStep ?? 1);
+      }
       if (own?.trailOnly) {
         p.trailOnly = true;
         p.trailFree = false;
@@ -1257,6 +1270,7 @@ export class CoreRuntime {
         p.trail ??= own.trail;
         p.trailDist ??= own.trail * (own.trailStep ?? 1);
       }
+      enforceSignalPosition(p);
     }
     this.paper.selected = Array.isArray(book.selected) ? book.selected : [];
     if (typeof book.startedAt === "number" && book.startedAt > 0)
@@ -1751,6 +1765,7 @@ export class CoreRuntime {
               protectTf > 0 && (p.tkBar === undefined || nowMs >= (p.tkBar + 1) * protectTf);
             if (priceChanged || barDue) {
               // A trailing position's stop follows its lane bars between computes, as the simulation trails it.
+              if (enforceSignalPosition(p)) trailMoved = true;
               if (!p.stopHit && (p.trail || p.exitProtection)) {
                 if (tickTrail(p, px, nowMs, protectTf || this.laneMs(p.cfg))) trailMoved = true;
               }
@@ -2612,15 +2627,19 @@ export class CoreRuntime {
   // ── market ────────────────────────────────────────────────────────────
   private async syncMarket(gen: number): Promise<boolean> {
     const s = this.settings;
-    const want = Math.round((s.historyDays * 24 * 60) / s.tfMin);
+    const want = marketHistoryBars(s, this.wf);
     // a symbol is usable with most of the requested history (small history settings must not stall the loop)
     const minBars = Math.max(50, Math.min(200, Math.floor(want * 0.8)));
-    const uniKey = `${s.symbols}|${s.tfMin}|${s.historyDays}|${s.symbolRank}|${s.symbolOffset ?? 0}|${(s.forceSymbols ?? []).join(",")}`;
+    const uniKey = `${s.symbols}|${s.tfMin}|${want}|${s.symbolRank}|${s.symbolOffset ?? 0}|${(s.forceSymbols ?? []).join(",")}`;
+    if (this.historyBackfillKey !== uniKey) {
+      this.historyBackfillKey = uniKey;
+      this.historyBackfilled = new Set();
+    }
     if (this.candles.size === 0) {
       this.status.state = "backfill";
       this.loadCandlesFromDb();
       // a partial cache is not a finished universe: keep backfillKey unset so the missing symbols are fetched
-      if (this.candles.size >= s.symbols) this.backfillKey = uniKey;
+      if (this.candles.size >= s.symbols && [...this.candles.values()].every((cs) => cs.n >= want)) this.backfillKey = uniKey;
     }
     // candles of another timeframe (an older version / snapshot, or a hot reload across the base timeframe
     // change) are never read as base bars: drop them and backfill at the base timeframe
@@ -2699,8 +2718,8 @@ export class CoreRuntime {
         // (forceSymbols keeps them all) — the cap was s.symbols, which dropped forced symbols beyond it
         const target = ranked.length;
         const missing = ranked
-          .filter((x) => !this.candles.has(x))
-          .slice(0, Math.max(0, target - this.candles.size));
+          .filter((x) => !this.candles.has(x) || (this.candles.get(x)!.n < want && !this.historyBackfilled.has(x)))
+          .slice(0, target);
         // Connected desks progressively start realtime after each batch. A frozen offline replay loads all
         // symbols first, avoiding repeated full computations on intermediate partial universes.
         const batch = this.completeReplayUniverse ? target : Math.max(5, Math.ceil(target / 4));
@@ -2742,6 +2761,7 @@ export class CoreRuntime {
             if (gen !== this.gen) return;
             if (cs.length >= minBars) {
               await this.storeCandles(sym, cs);
+              this.historyBackfilled.add(sym);
               this.prehistSyms.set(sym, { state: "computing", bars: cs.length });
             } else this.prehistSyms.set(sym, { state: "skipped", bars: cs.length });
             this.setStage(
@@ -2785,7 +2805,7 @@ export class CoreRuntime {
         );
       }
       // the universe is complete only when no batch is left; until then the next cycle loads the next batch
-      if (this.market === "synthetic" || !this.prehistMore(s)) this.backfillKey = uniKey;
+      if (this.market === "synthetic" || (!this.prehistPending && !this.prehistMore(s))) this.backfillKey = uniKey;
       else this.dirty = true;
       this.status.symbols = [...this.candles.keys()];
       this.upsertSymbols();
@@ -2798,7 +2818,7 @@ export class CoreRuntime {
     let added = 0;
     if (this.status.source === "synthetic") return false;
     // gap repair: a symbol more than 300 bars behind cannot be caught up incrementally → backfill it again
-    const wantBars = Math.round((s.historyDays * 24 * 60) / s.tfMin);
+    const wantBars = marketHistoryBars(s, this.wf);
     const behind = [...this.candles.entries()].filter(
       ([sym, cs]) => now - (cs.lastT() ?? 0) > 300 * tfMs && (this.staleUntil.get(sym) ?? 0) < now,
     );
@@ -2919,7 +2939,7 @@ export class CoreRuntime {
     // row by row into each symbol's columns (db.all held every row as a dictionary object at once: ~1 GB of heap on
     // each desk start); the same candles and the same symbol order (the universe's order follows it), each series sized
     // by its count (a builder grows past a count that moved)
-    const want = Math.round((this.settings.historyDays * 24 * 60) / this.settings.tfMin);
+    const want = marketHistoryBars(this.settings, this.wf);
     const counts = new Map<string, number>();
     for (const row of this.db.iterate(
       "SELECT sym, COUNT(*) FROM candles GROUP BY sym ORDER BY sym",
@@ -2960,7 +2980,7 @@ export class CoreRuntime {
    * yield between them — a 1m backfill is ~26k rows per symbol and must not block the event loop.
    */
   private async storeCandles(sym: string, cs: Candle[], append = false) {
-    const want = Math.round((this.settings.historyDays * 24 * 60) / this.settings.tfMin);
+    const want = marketHistoryBars(this.settings, this.wf);
     // the last `want` of [...old, ...cs] (append) or of cs: a new series, the one stored before stays as it was (a
     // compute or the realtime step reading it keeps its bars); an append writes past the old bars in place when it fits
     const old = append ? this.candles.get(sym) : undefined;
@@ -3317,8 +3337,12 @@ export class CoreRuntime {
     }
     // lane series per symbol, yielding between symbols (resampling 1m for every lane is not free)
     const allBars: ReturnType<typeof laneSeriesFrom> = [];
+    const signalBars: ReturnType<typeof laneSeriesFrom> = [];
+    const signalH = signalDataHours(s, wf);
+    const strategyH = strategyDataHours(s, wf);
     for (const [sym, cs] of this.candles) {
-      allBars.push(...laneSeriesOf(sym, cs, s));
+      allBars.push(...laneSeriesOf(sym, cs, s, 0, strategyH));
+      if (sigEnabled(s)) signalBars.push(...laneSeriesOf(sym, cs, s, 0, signalH));
       await yieldNow();
       if (gen !== this.gen) return;
     }
@@ -3345,6 +3369,12 @@ export class CoreRuntime {
         )
       : u;
     if (!uStage.bars.length) return;
+    const signalU = sigEnabled(s) ? makeUniverse(signalBars, this.evaluationFromT) : u;
+    const signalStageU = wf.causalBase && sigEnabled(s)
+      ? makeUniverse(signalBars.map((b) => headBars(b, runStartT)), this.evaluationFromT)
+      : signalU;
+    const sharedSignalStage = workersAvailable() && !this.workersBroken
+      ? shareBars(signalStageU.series) : signalStageU.series;
     if (this.baseConfigs && this.baseConfigs.summary.cutT !== (wf.causalBase ? runStartT : u.nowT))
       this.baseConfigRunner.cancel("newBaseCut");
 
@@ -3506,6 +3536,7 @@ export class CoreRuntime {
     const tailOf = (tf: number) =>
       Math.round(((24 + Math.max(wf.preH, wf.longH, wf.symH ?? 0) + wf.simH) * 60) / tf) +
       tacticWarmupBars(s.tactics);
+    const signalWu = signalU;
     const wu = makeUniverse(
       allBars.map((b) => tailBars(b, tailOf(b.tfMin))),
       this.evaluationFromT,
@@ -3649,7 +3680,7 @@ export class CoreRuntime {
         (!isSignalCoordinationInd(c.ind) || coordProtects.length > 0) &&
         (!evalFams || evalFams.some((f) => evalFamilyMatch(f, c.bot, c.ind, []))),
     );
-    const representativePass = (r: ComboRun) => passesBase(r.full, setsGates);
+    const representativePass = (r: ComboRun) => passesBase(r.full, { ...setsGates, minPf: minPfOf(setsGates, undefined, r.ind) });
     const sigPairs = signalEvaluationPairs(configuredSignals, pipeline.s1, sig, representativePass);
     const representativePassed = signalEvaluationPairs(
       configuredSignals,
@@ -3692,7 +3723,7 @@ export class CoreRuntime {
     const sigHist: Record<string, Protect[]> = {};
     const retainedSignalIds = new Set<string>();
     const signalHistDiagnostics = emptySignalHistDiagnostics();
-    const signalHistValidation = signalHistValidationOf(s.cost, s.gates);
+    const signalHistValidation = signalHistValidationOf(s.cost, s.gates, wf.signalValidLastN);
     const standard = signalProtects(sig);
     try {
       if (s.exitStrategy.enabled && exitFitPairs.length) {
@@ -3907,7 +3938,7 @@ export class CoreRuntime {
               parts.map((pairs) => ({
                 type: "signal-hist",
                 evaluationFromT: this.evaluationFromT,
-                bars: sharedU,
+                bars: sharedSignalStage,
                 pairs,
                 sig,
                 tactics: s.tactics,
@@ -3967,7 +3998,7 @@ export class CoreRuntime {
           // checks and heartbeat. A memory-guard abort is rethrown by workersFailed, never retried in-process.
           this.startStage("Tapes", histLabel);
           const g = signalHistProtectsGen(
-            uStage,
+            signalStageU,
             sigPairs,
             sig,
             s.tactics,
@@ -4024,6 +4055,8 @@ export class CoreRuntime {
       // newer loop generation): nothing after it reads them in this compute, and through lastUniverse they stayed until
       // the next compute's Base (0.05–0.15 GB of series; an aborted compute's through its retry). A detail page
       // recomputes a series on demand (the same values)
+      for (const c of signalStageU.caches) c.clear();
+      if (signalU !== signalStageU) for (const c of signalU.caches) c.clear();
       for (const c of uStage.caches) c.clear();
       if (u !== uStage) for (const c of u.caches) c.clear();
     }
@@ -4087,7 +4120,7 @@ export class CoreRuntime {
           enabled: true,
           evaluated: new Set(sigRuns.map((r) => `${r.bot}|${r.ind}`)).size,
           passed: new Set(okRuns.map((r) => `${r.bot}|${r.ind}`)).size,
-          minPf: setsGates.minPf,
+          minPf: minPfOf(setsGates, undefined, "sig-base"),
           pfMedian: pfs.length ? pfs[pfs.length >> 1] : null,
           pfPassedMedian: ok.length ? ok[ok.length >> 1] : null,
           pfPassedMean: meanPf(ok),
@@ -4161,11 +4194,12 @@ export class CoreRuntime {
       floors: EntryFloors,
     ): Promise<ConfigTape[] | null> => {
       const signalStage = what.startsWith("signal");
+      const tapeUniverse = signalStage ? signalWu : wu;
       let workerTapes: ConfigTape[] | null = null;
       if (workersAvailable() && !this.workersBroken && pairs.size) {
         const n = poolSize();
         // every series (the short ones too): the worker's market reference is the main thread's (Universe.series)
-        const sharedWu = sharedWuOf();
+        const sharedWu = signalStage ? shareBars(signalWu.series) : sharedWuOf();
         const order = [...pairs];
         // small messages: each reply is deserialised on the main thread in one piece (one part per core
         // stalled it for ~0.5 s at 30 symbols × 43 signal sources; with every config its own seat a pair carries
@@ -4366,6 +4400,7 @@ export class CoreRuntime {
           minSl: sig.minSl,
           minTrail: sig.minTrail,
           signalReferenceGrid: true,
+          signalTrailMax: sig.trailMax,
           entry: sig.filter.trendH > 0 || sig.filter.volFloor > 0 ? sig.filter : null,
           pairProtects: sourceHist,
           heldIds,
@@ -4378,6 +4413,7 @@ export class CoreRuntime {
           minSl: sig.minSl,
           minTrail: sig.minTrail,
           signalReferenceGrid: true,
+          signalTrailMax: sig.trailMax,
           entry: sig.filter.trendH > 0 || sig.filter.volFloor > 0 ? sig.filter : null,
           pairProtects: coordHist,
           heldIds,
@@ -4414,6 +4450,7 @@ export class CoreRuntime {
           minSl: sig.minSl,
           minTrail: sig.minTrail,
           signalReferenceGrid: true,
+          signalTrailMax: sig.trailMax,
           entry: sig.filter.trendH > 0 || sig.filter.volFloor > 0 ? sig.filter : null,
           pairProtects: sourceHist,
           heldIds,
@@ -4427,6 +4464,7 @@ export class CoreRuntime {
           minSl: sig.minSl,
           minTrail: sig.minTrail,
           signalReferenceGrid: true,
+          signalTrailMax: sig.trailMax,
           entry: sig.filter.trendH > 0 || sig.filter.volFloor > 0 ? sig.filter : null,
           pairProtects: coordHist,
           heldIds,
@@ -4635,7 +4673,7 @@ export class CoreRuntime {
             setsPassTags(r, setsGates, applies, ALL_RANGE_TAGS).length > 0,
         )
         .map((r) => `${r.bot}|${r.ind}`);
-      const kinds = (["normal", "trailing", "dca", "dca-active", "axis"] as const).filter((kind) =>
+      const kinds = (["normal", "trailing", "trailing-only", "dca", "dca-active", "axis"] as const).filter((kind) =>
         kindExecutable(kind, wf.toggles),
       );
       const enabled = ["tactic", "relate", "break"].some(
@@ -5501,6 +5539,9 @@ export class CoreRuntime {
   // ── preset backtests (last 1–12 days, real data, background) ─────────────────
   private lastConsoleAt = 0;
   private backfillKey = "";
+  private historyBackfillKey = "";
+  /** A short-listed/new-market history is attempted once per requested span, without starving later batches. */
+  private historyBackfilled = new Set<string>();
   /** progressive prehistoric start: per-symbol state and batch bookkeeping */
   private prehistSyms = new Map<
     string,
@@ -6046,7 +6087,8 @@ export class CoreRuntime {
       !tp.heldOnly &&
       (isSignalInd(ind) || baseAllowsTape(tp, this.wf)) &&
       (!isSignalInd(ind) ||
-        ((!this.wf.signalBasePassed || this.wf.signalBasePassed.has(`${tp.bot}|${tp.ind}`)) &&
+        (signalValidationOk(tp, now, this.wf, lane.sym, lane.side) &&
+          (!this.wf.signalBasePassed || this.wf.signalBasePassed.has(`${tp.bot}|${tp.ind}`)) &&
           (!this.wf.signalActive ||
             signalActiveHas(
               this.wf.signalActive,
@@ -6359,7 +6401,8 @@ export class CoreRuntime {
       block: s.block,
       dca: s.dca,
     };
-    const lookH = Math.max(wf.longH, wf.preH);
+    const lookH = Math.max(wf.longH, wf.preH, wf.symH ?? 0);
+    const signalWantBars = Math.ceil(signalDataHours(s, { ...wf, simH: days * 24 }) * 60 / s.tfMin);
     // Preserve Normal/Signal cohorts while separately supplying Exit's causal fit/holdout and native lane warmup.
     // lookback=0 retains each lane's configured history; positive lookbacks extend only lanes needing more history.
     const exitLaneDays =
@@ -6392,10 +6435,11 @@ export class CoreRuntime {
     const ordinaryWantBars = Math.max(
       laneWantBars,
       Math.ceil(((24 + lookH + days * 24) * 60) / s.tfMin) + tacticWarmupBars(s.tactics) + 10,
+      Math.ceil(strategyDataHours(s, { ...wf, simH: days * 24 }) * 60 / s.tfMin) + 10,
     );
-    const wantBars = s.exitStrategy.enabled
+    const wantBars = Math.max(s.signals.enabled ? signalWantBars : 0, s.exitStrategy.enabled
       ? Math.max(ordinaryWantBars, Math.ceil(((exitHistoryH + days * 24) * 60) / s.tfMin) + 11)
-      : ordinaryWantBars;
+      : ordinaryWantBars);
     let candles: Map<string, CandleSeries>;
     // the engine's own data only when the preset trades the same universe (count, ranking, timeframe)
     const sameUniverse =
@@ -6505,10 +6549,12 @@ export class CoreRuntime {
     const ordinaryCandles = s.exitStrategy.enabled
       ? new Map([...candles].map(([sym, cs]) => [sym, cs.tail(ordinaryWantBars)]))
       : candles;
-    const bars = laneSeriesFrom(ordinaryCandles, s, days).map((b) =>
+    const bars = laneSeriesFrom(ordinaryCandles, s, days, strategyDataHours(s, { ...wf, simH: days * 24 })).map((b) =>
       tailBars(b, Math.ceil((ordinaryWantBars * s.tfMin) / b.tfMin)),
     );
     const u = makeUniverse(bars);
+    const signalU = s.signals.enabled
+      ? makeUniverse(laneSeriesFrom(candles, s, 0, signalWantBars * s.tfMin / 60)) : u;
     const exitU = s.exitStrategy.enabled
       ? makeUniverse(laneSeriesFrom(candles, exitLaneSettings, days))
       : null;
@@ -6784,7 +6830,7 @@ export class CoreRuntime {
     let sigActive: Set<string> | undefined;
     if (sigCombos.length) {
       const look = makeUniverse(
-        bars.map((b) => {
+        signalU.series.map((b) => {
           let z = 0;
           while (z < b.n && b.t[z] < startT) z++;
           return {
@@ -6820,7 +6866,7 @@ export class CoreRuntime {
           (!signalFamilies || signalFamilies.some((f) => evalFamilyMatch(f, c.bot, c.ind, []))),
       );
       const sigPairs = signalEvaluationPairs(initialized, runs, sig, (r) =>
-        passesBase(r.full, baseSetsGates(s.gates)),
+        passesBase(r.full, { ...baseSetsGates(s.gates), minPf: minPfOf(baseSetsGates(s.gates), undefined, r.ind) }),
       );
       if (sigPairs.size) {
         const coordinationPairs = new Set(
@@ -6832,12 +6878,12 @@ export class CoreRuntime {
         const history = sig.hist.enabled
           ? await this.sliced(
               signalHistProtectsGen(
-                u,
+                signalU,
                 sigPairs,
                 sig,
                 s.tactics,
                 startT,
-                coordinatorHistValidationOf(s, coordProtects),
+                coordinatorHistValidationOf(s, coordProtects, wf.signalValidLastN),
               ),
               () => undefined,
               job,
@@ -6854,6 +6900,7 @@ export class CoreRuntime {
           minSl: sig.minSl,
           minTrail: sig.minTrail,
           signalReferenceGrid: true,
+          signalTrailMax: sig.trailMax,
           entry: sig.filter.trendH > 0 || sig.filter.volFloor > 0 ? sig.filter : null,
         };
         const sigStrat =
@@ -6869,7 +6916,7 @@ export class CoreRuntime {
           tapes = tapes.concat(
             await this.sliced(
               buildTapesGen(
-                u,
+                signalU,
                 signalProtects(sig),
                 s.cost,
                 sigStrat,
@@ -6890,7 +6937,7 @@ export class CoreRuntime {
           tapes = tapes.concat(
             await this.sliced(
               buildTapesGen(
-                u,
+                signalU,
                 coordProtects,
                 s.cost,
                 coordStrat,
@@ -8597,6 +8644,7 @@ export const WF_KEYS = [
   "guardPct",
   "coord",
   "longH",
+  "signalLongH",
   "robustFrac",
   "rank",
   "bots",
@@ -8648,6 +8696,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
   num("guardPct", 0, 100);
   if (p.coord !== undefined) p.coord = coordSettings(p.coord as Partial<CoordSettings>);
   num("longH", 24, 1440);
+  num("signalLongH", 1, 1440);
   num("robustFrac", 0, 1);
   num("durableSplits", 2, 12, true);
   num("durableFrac", 0, 1);
@@ -9280,16 +9329,14 @@ export const ALL_RANGE_TAGS = ["mc", "mn", "mp", "sh", "gn", "lg"] as const;
 function coordinatorHistValidationOf(
   settings: CoreSettings,
   coordinatorProtects: readonly Protect[],
+  lastN?: number,
 ): SignalHistValidation {
   const tags = new Set<"sh" | "gn" | "lg">();
   for (const protect of coordinatorProtects)
     if (protect.tag === "sh" || protect.tag === "gn" || protect.tag === "lg") tags.add(protect.tag);
   return {
-    cost: settings.cost,
-    minPf: settings.gates.minPf,
-    minTrades: settings.gates.minTrades,
-    maxDdr: settings.gates.maxDdr,
-    rangeMinPf: Object.fromEntries([...tags].map((tag) => [tag, minPfOf(settings.gates, tag)])),
+    ...signalHistValidationOf(settings.cost, settings.gates, lastN),
+    rangeMinPf: Object.fromEntries([...tags].map((tag) => [tag, minPfOf(settings.gates, tag, "sig-coord")])),
   };
 }
 
@@ -9635,6 +9682,22 @@ export function normalizeLanes(s: CoreSettings): CoreSettings {
   };
 }
 
+/** Required physical candles include independent Signal evaluation plus simulator and indicator warmup. */
+const sigEnabled = (s: CoreSettings) => s.signals.enabled;
+export function signalDataHours(s: CoreSettings, wf: WalkForwardOptions): number {
+  if (!s.signals.enabled) return 0;
+  const slowest = Math.max(1, ...s.signals.lanes.filter((tf) => s.tfs.includes(tf)));
+  return 24 + signalHistoryHours(wf) + wf.simH + tacticWarmupBars(s.tactics) * slowest / 60;
+}
+/** General configs need their whole own evaluation window on every lane, plus replay and indicator warmup. */
+export function strategyDataHours(s: CoreSettings, wf: WalkForwardOptions): number {
+  const slowest = Math.max(1, ...s.tfs);
+  return 24 + Math.max(wf.longH, wf.preH, wf.symH ?? 0) + wf.simH + tacticWarmupBars(s.tactics) * slowest / 60;
+}
+export function marketHistoryBars(s: CoreSettings, wf: WalkForwardOptions): number {
+  return Math.ceil(Math.max(s.historyDays * 24, strategyDataHours(s, wf), signalDataHours(s, wf)) * 60 / s.tfMin);
+}
+
 /**
  * Every lane's series from base candles: the base as stored, 5m / 15m / 30m resampled (completed bars only), each
  * over its own history (tfDays) plus `extraDays` (a backtest window).
@@ -9643,9 +9706,10 @@ export function laneSeriesFrom(
   candles: ReadonlyMap<string, CandleSeries>,
   s: CoreSettings,
   extraDays = 0,
+  minHistoryH = 0,
 ): Bars[] {
   const out: Bars[] = [];
-  for (const [sym, cs] of candles) out.push(...laneSeriesOf(sym, cs, s, extraDays));
+  for (const [sym, cs] of candles) out.push(...laneSeriesOf(sym, cs, s, extraDays, minHistoryH));
   return out;
 }
 
@@ -9658,13 +9722,14 @@ export function laneSeriesOf(
   cs: CandleSeries,
   s: CoreSettings,
   extraDays = 0,
+  minHistoryH = 0,
 ): Bars[] {
   // the enabled lanes ride on every series (Bars.lanes): a combined lane agrees with the higher ENABLED lanes, the
   // ones laneInds generates it from (the whole ladder agreed with 15m / 30m on a desk running 1m and 5m only)
   const lanes = Object.freeze([...(s.tfs ?? [s.tfMin])]);
   const out: Bars[] = [];
   for (const tf of lanes) {
-    const n = laneBars(s, tf) + Math.round((extraDays * 24 * 60) / tf);
+    const n = Math.max(laneBars(s, tf) + Math.round((extraDays * 24 * 60) / tf), Math.ceil(minHistoryH * 60 / tf));
     const b =
       tf === s.tfMin
         ? barsOfSeries(sym, tf, cs, cs.n - n, cs.n)

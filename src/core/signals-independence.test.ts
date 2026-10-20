@@ -45,14 +45,14 @@ describe("independent signal qualification", () => {
   });
 
   it("Normal and Trailing remain distinct through simulation, live filtering and seated statistics", () => {
-    const normal = tape("normal", []);
+    const normal = tape("normal", Array(6).fill(0.01));
     const trailing = tape("trailing", []);
     const active = new Set([key("normal")]);
     const base = defaultWalkForward(DEFAULT_SETTINGS);
     const options = {
       ...base, signalActive: active, lastN: 0, validLastN: 0, signalValidLastN: 0,
       signalGuardN: 0, signalCluster: undefined, signalAccept: undefined, signalSideAccept: undefined,
-      signalOwnBase: true, symGate: undefined,
+      signalOwnBase: true, symGate: undefined, gates: { ...base.gates, minTrades: 3, maxDdr: 0, minGreen: 0 },
       toggles: { ...base.toggles, normal: true, trailing: true, block: false, blockActive: false },
     };
     assert.equal(execDecision(normal, NOW, options, { sym: SYM, side: 1 }).ok, true);
@@ -96,7 +96,7 @@ describe("independent signal qualification", () => {
       const live = liveLaneFilter({ source: "signals" }, new Set(), active);
       for (const side of [1, -1]) {
         assert.equal(signalActiveHas(active, "follow", IND, SYM, side, kind, tp.id), true);
-        assert.equal(execDecision(tp, NOW, options, { sym: SYM, side }).ok, true);
+        assert.equal(execDecision(tp, NOW, options, { sym: SYM, side }).ok, false, "typed activation alone cannot qualify an empty own history");
       }
       for (const rawSide of invalid) {
         const side = rawSide as 1 | -1;
@@ -124,7 +124,7 @@ describe("independent signal qualification", () => {
       assert.equal(live.validLane({ cfg: tp.id, sym: SYM, side: 1, vol: 1 }), false);
       assert.deepEqual([...signalSeatSymbols(tp, active)], []);
       const typed = new Set([key(kind)]);
-      assert.equal(execDecision(tp, NOW, { ...options, signalActive: typed }, { sym: SYM, side: 1 }).ok, true);
+      assert.equal(execDecision(tp, NOW, { ...options, signalActive: typed }, { sym: SYM, side: 1 }).ok, false, "typed activation still requires measured own history");
       assert.equal(liveLaneFilter({ source: "signals" }, new Set(), typed)
         .validLane({ cfg: tp.id, sym: SYM, side: 1, vol: 1 }), true);
       assert.deepEqual([...signalSeatSymbols(tp, typed)], [0]);
@@ -173,7 +173,7 @@ describe("independent signal qualification", () => {
     rt.wf.signalActive = active;
     (rt as unknown as { stepPaper(): void }).stepPaper();
     assert.deepEqual(rt.paper.selected, [good.id]);
-    rt.stop();
+    rt.dispose();
   });
 
   it("Signal last-N cannot borrow another symbol or direction even with the engine entry gate off", () => {

@@ -56,7 +56,7 @@ test("the position-cost ranges: Minimal 4–8× step 0.5, Short 9–14×, Genera
   const tags = new Set(cells.map((p) => p.tag ?? ""));
   assert.deepEqual([...tags].sort(), ["gn", "lg", "mc", "mn", "sh"]);
   const tps = new Map<string, Set<number>>();
-  for (const p of cells) (tps.get(p.tag!) ?? tps.set(p.tag!, new Set()).get(p.tag!)!).add(p.tp);
+  for (const p of cells.filter((p) => !p.trailOnly)) (tps.get(p.tag!) ?? tps.set(p.tag!, new Set()).get(p.tag!)!).add(p.tp);
   assert.equal(tps.get("mn")!.size + tps.get("sh")!.size + tps.get("gn")!.size + tps.get("lg")!.size, 33);
   // Micro: its 7 net targets as price targets (net + the 0.2 % cost)
   assert.equal(tps.get("mc")!.size, 7);
@@ -67,7 +67,10 @@ test("every TP × SL × Trail × hold of every range is its own config, at the r
   const cells = protectGrid(15, g);
   const r4 = (x: number) => +x.toFixed(4);
   for (const [tag, r] of [["mn", MINIMAL_RANGE], ["sh", SHORT_RANGE], ["gn", GENERAL_RANGE], ["lg", LONG_RANGE]] as const) {
-    const mine = cells.filter((p) => p.tag === tag);
+    const mine = cells.filter((p) => p.tag === tag && !p.trailOnly);
+    const trailingOnly = cells.filter((p) => p.tag === tag && p.trailOnly);
+    assert.ok(trailingOnly.length > 0, `${tag}: separate trailing-only configs`);
+    assert.ok(trailingOnly.every((p) => p.tp === 0 && p.sl <= 0.03 && p.trail > 0 && p.trail <= 0.03));
     // the full product, no cell folded into another
     assert.equal(mine.length, r.tp.length * r.slOfTp.length * r.trailOfTp.length * g.holdH.length, tag);
     const keys = new Set(mine.map((p) => `${p.tp}|${p.sl}|${p.trail}|${p.hold}`));

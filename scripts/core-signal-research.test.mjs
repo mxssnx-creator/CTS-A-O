@@ -7,7 +7,8 @@ import { indicationState } from "../src/core/indications/registry.ts";
 import { entrySignal } from "../src/core/bots/bots.ts";
 import { sideSignal, simulate } from "../src/core/sim/backtest.ts";
 import { buildTapes, filterEntries } from "../src/core/sim/walkforward.ts";
-import { laneProtect, makeUniverse } from "../src/core/pipeline/pipeline.ts";
+import { configId, laneProtect, makeUniverse } from "../src/core/pipeline/pipeline.ts";
+import { capSignalProtect } from "../src/core/sim/trailing.ts";
 import { DEFAULT_TACTICS } from "../src/core/config.ts";
 import { tacticCooldown } from "../src/core/indications/filters.ts";
 import { maskEntries } from "./core-tactic-research.mjs";
@@ -361,7 +362,7 @@ describe("four-source frozen independent Signal research", () => {
     assert.match(md, /Entire IS-qualified pool/);
   });
 
-  it("preserves the frozen v2 floor-policy grid and matches runtime-disabled trails", () => {
+  it("preserves the frozen v2 requests and explicitly reconciles current capped runtime identities", () => {
     const { market, p } = fixture();
     const cells = researchCells(p).filter(
       (c) => c.source === "r-laguerre" && c.range === "short" && c.tf === 1,
@@ -386,19 +387,18 @@ describe("four-source frozen independent Signal research", () => {
     const protocolByConfig = new Map(cells.map((cell) => [cell.cfg, cell]));
     const runtimeByConfig = new Map(tapes.map((tape) => [tape.id, tape]));
     assert.ok(protocolByConfig.size > 0, "the frozen protocol retains its eligible short-lane configs");
-    assert.equal(runtimeByConfig.size, protocolByConfig.size, "runtime and frozen protocol retain the same effective configs");
-    const disabledByRuntime = [...protocolByConfig.values()].filter((cell) => !runtimeByConfig.has(cell.cfg));
-    assert.equal(disabledByRuntime.length, 0, "frozen v2 and runtime construct the same effective cells");
-    for (const cell of disabledByRuntime) {
-      const lane = laneProtect(cell.requestedAliases[0].referenceProtect, cell.ind);
-      assert.ok(lane.trail > 0);
-      assert.ok(
-        lane.trail * (lane.trailStep ?? 1) + 1e-12 < p.preOutcomeModelClarification.signalFloors.minTrail,
-        `${cell.cfg} must be below the runtime's post-lane trail floor`,
-      );
-      assert.equal(cell.protect.trail, p.preOutcomeModelClarification.signalFloors.minTrail);
+    // The immutable 16 October protocol predates the hard stop cap. Keep its requests intact;
+    // current runtime aliases may collapse only after the production cap is applied.
+    const cappedByConfig = new Map([...protocolByConfig.values()].map((cell) => {
+      const protect = capSignalProtect(cell.protect);
+      return [configId("follow", cell.ind, protect), protect];
+    }));
+    assert.equal(runtimeByConfig.size, cappedByConfig.size, "every current capped identity is accounted for");
+    assert.ok(cappedByConfig.size < protocolByConfig.size, "the old wide-stop requests collapse at the current cap");
+    for (const [id, protect] of cappedByConfig) {
+      assert.ok(runtimeByConfig.has(id), id);
+      assert.deepEqual(runtimeByConfig.get(id).protect, protect);
     }
-    for (const [id, tape] of runtimeByConfig) assert.deepEqual(tape.protect, protocolByConfig.get(id).protect);
     assert.equal(report.oos.length, cells.length, "the frozen historical study preserves both directions for every cell");
     const k = new SeriesCache(b);
     const entries = maskEntries(

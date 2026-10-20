@@ -13,6 +13,7 @@
 import type { Gates, MicroGrid, MinimalGrid, ProtectGridSpec, RangeMinPfKey, RangeTag } from "./domain/types.ts";
 import type { MicroIndRule } from "./indications/micro.ts";
 import { POSITION_COST_RT, RT_COST } from "./model-cost.ts";
+import { SIGNAL_MIN_PF } from "./signal-policy.ts";
 
 export const MINIMAL_COORD = "Minimal Coord.";
 
@@ -274,10 +275,22 @@ type GridSlice = Pick<
 /** The position-cost ranges built by forEachCoord, smallest first. */
 export type CoordTag = "mn" | "sh" | "gn" | "lg";
 
+/**
+ * The holds (hours) a range's cells are built at: its own hold limit (maxHoldMin, minutes) when set, else the grid's holdH.
+ */
+export function rangeHolds(range: Pick<CoordRange, "maxHoldMin"> | false | undefined, holdH: readonly number[]): readonly number[] {
+  return range && range.maxHoldMin != null && range.maxHoldMin > 0 ? [range.maxHoldMin / 60] : holdH;
+}
+
+/** The shortest hold, in bars, a cell of this range may be given: the engine floor of 2, or 1 when the range sets a MAXIMUM hold time (15 min on a 15m grid). It is a floor on the value of the maximum, not a minimum hold: a position still closes earlier at target, stop or trail. */
+export function holdFloorBars(range: Pick<CoordRange, "maxHoldMin"> | false | undefined): number {
+  return range && range.maxHoldMin != null && range.maxHoldMin > 0 ? 1 : 2;
+}
+
 /** Cells a range adds before identical distances collapse. */
 export function coordVariants(holdN: number, range: CoordRange | false | undefined): number {
   if (!range) return 0;
-  const hold = holdN || 1;
+  const hold = range.maxHoldMin != null && range.maxHoldMin > 0 ? 1 : holdN || 1;
   return range.tp.length * range.slOfTp.length * range.trailOfTp.length * hold;
 }
 
@@ -309,7 +322,7 @@ export function forEachCoord(
     for (const tp of range.tp)
       for (const k of range.slOfTp)
         for (const tr of range.trailOfTp)
-          for (const h of g.holdH)
+          for (const h of rangeHolds(range, g.holdH))
             emit(tp, tr > 0 ? Math.max(k, trailStop) : k, tr, h, minSl, minTrail, tag, range.minSlEval);
   }
 }
@@ -363,7 +376,7 @@ export function forEachMicro(
   for (const tp of [...new Set(microNetTps(range, cost).map((x) => microPriceTp(x, range, cost)))])
     for (const k of range.slOfTp)
       for (const tr of range.trailOfTp)
-        for (const h of g.holdH) emit(tp, k, tr, h, minSl, minTrail, net ?? range.minSlEval);
+        for (const h of rangeHolds(range, g.holdH)) emit(tp, k, tr, h, minSl, minTrail, net ?? range.minSlEval);
 }
 
 /** 2×–5× position cost, step 0.25. Stops 0.5×–3× in steps of 0.25. Off unless a setting enables it. */
@@ -504,6 +517,7 @@ export function minPfOf(gates: Pick<Gates, "minPf" | "rangeMinPf">, tag: string 
   const key = tag ? RANGE_MIN_PF_KEY[tag as RangeTag] : undefined;
   const v = key ? gates.rangeMinPf?.[key] : undefined;
   const min = typeof v === "number" && Number.isFinite(v) ? Math.min(3, Math.max(1.05, v)) : gates.minPf;
+  if (ind?.startsWith("sig-")) return Math.max(SIGNAL_MIN_PF, min);
   // First-class Tactic, Relate and relational Break configs share a minimum return PF of 1.1 from Base onward.
   return ind && (ind.startsWith("tactic-") || ind.startsWith("relate-") || ind.startsWith("break-rel-") || ind.startsWith("break-mc-rel-"))
     ? Math.max(1.1, min)

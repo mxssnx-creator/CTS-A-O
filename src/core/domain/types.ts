@@ -84,6 +84,10 @@ export interface Protect {
   trailFree?: boolean;
   /** No take-profit from entry: the hard stop, completed-bar trailing stop and time limit are the only exits. */
   trailOnly?: boolean;
+  /** Signal stop/activation/peak-gap ceiling as a fraction of entry; persisted in the exact config identity. */
+  trailMax?: number;
+  /** Immutable DCA ladder economics carried in its config identity; absent on legacy, equal-unit ladders. */
+  dca?: Pick<DcaConfig, "levels" | "step" | "stepOfTp" | "stopGap" | "addRatio">;
   /** max bars in trade (time exit at close) */
   hold: number;
   /**
@@ -148,6 +152,12 @@ export interface RangeGrid {
   minTrail?: number;
   /** shortest lane (minutes) this range trades on; 0 = every lane (General / Long default 15) */
   minTf?: number;
+  /**
+   * MAXIMUM position hold time of this range in MINUTES: its cells close by time after at most this long (earlier at target, stop or trail), in place of the grid's
+   * holdH (hours; default 16 / 24 h) — one hold per cell, so the range's cell count is its tp × stop × trail. Unset =
+   * the grid's holdH. A lane cannot hold shorter than one of its bars (a 30m lane holds 30 min at least).
+   */
+  maxHoldMin?: number;
   /** Base judges this range at its own cell (Micro / Minimal default) or at the default protect */
   ownBase?: boolean;
   /** Base on this range's best cell (overrides grid.baseBest) */
@@ -408,6 +418,8 @@ export interface BlockConfig {
 
 export interface DcaConfig {
   levels: number;
+  /** Each additional leg in ORIGINAL base units, never compounded. Missing = legacy equal-unit legs. */
+  addRatio?: number;
   /** distance between levels as a fraction of the reference price */
   step: number;
   /** distance between levels as a multiple of the target (overrides step when set): step = TP × stepOfTp */
@@ -478,6 +490,7 @@ export interface OpenPosition {
   /** the trail in force: arming distance (fraction of the entry) and the distance it trails the peak at */
   trail?: number;
   trailDist?: number;
+  trailMax?: number;
   /** The position's own exit mode, retained across compute/restart instead of reading a mutable global grid. */
   trailFree?: boolean;
   trailOnly?: boolean;
@@ -653,6 +666,8 @@ export interface Gates {
 export type RangeMinPfKey = "micro" | "minimal" | "short" | "general" | "long";
 
 export interface ProtectGridSpec {
+  /** Additional independent no-TP sets derived from every nonzero trailing cell; hard start stop at most 3%. */
+  trailingOnly?: boolean;
   /** execution volume relative to the normal factor for untagged Wide configs (0.2–5 in 0.2 steps; default 1) */
   volumeFactor?: number;
   tp: readonly number[];

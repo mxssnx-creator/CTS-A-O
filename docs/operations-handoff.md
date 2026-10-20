@@ -1,6 +1,16 @@
 # CTS-A-O operations handoff
 
-Updated 2026-10-18, UTC. Repository: `mxssnx-creator/CTS-A-O`.
+Updated 2026-10-20, UTC. Repository: `mxssnx-creator/CTS-A-O`.
+
+## Latest local Signal PF 1.5 checkpoint — 20 October
+
+Implementation and tested code: **`bc39e25`**, branch `fix/signals-history-matrix-20261020`. Every Signal source/range/lane/type/config/symbol/direction now shares its own PF>=1.5 historic/Last-N verdict across Strategy Base, selection, activation and native/model admission. Pure historic TP/SL runs independently of trailing; held zero-trailing IDs restore exactly; trailing-only Family-Seats are fixed. Stricter gates and the configured partial Last-N policy remain. Full historical fits require own N=25. Representative pair diagnostics remain separate from exact config qualification.
+
+**377/377** targeted tests pass in 24 offline files, including deterministic 12-symbol/all-range/all-lane/all-type routing with 1,104 expected modeled closes, native-proof, stop/control and exchange regression checks. TypeScript, production build and desktop/mobile dev/built Settings checks pass. Initial failures and the interrupted v1 run are preserved; the previous broad repository audit remains incomplete.
+
+Completed sealed `pf15-v2`: **88,621** configs, **17,706** own-Base passes at start, **21,083** configs passing at least one hourly Base evaluation, **4,542** configs with **7,055** accepted settled **virtual** closes. Return PF **1.112312**, hours **11 positive / 12 negative / 1 flat**. Development-selected 3% / ratio 1 / Trailing: development PF 3.839497, confirmation PF **1.370291**, total PF 2.499531. Confirmation does not meet PF 1.5. This is the reused retrospective public feed, not an untouched holdout, funded account or venue result. No every-hour profit or live promotion claim.
+
+See [signal-pf15-20261020.md](signal-pf15-20261020.md) for exact policy, scope and protocol. X02 VST credentials are absent and the configured Core endpoint timed out; no authentic venue test/deployment/reload occurred. Earlier public GitHub push was automatically rejected for publication authorization; no bypass/retry. Local code and the self-contained source/evidence report are preserved for review.
 
 ## Local checkpoint: bounded broad history and Last-N validation — 18 October
 
@@ -1472,3 +1482,42 @@ The tracked encoded fixture reconstructs source-feed SHA-256
 Finish the hosted checks and complete both final22 cases before selecting any
 prospective exclusions. No merge, live deployment/reload or exclusion was
 performed; existing PF/sample and own-position protection gates remain.
+
+## Independent Signal history, bounded trailing and X02 verification — 2026-10-20
+
+Local branch `fix/signals-history-matrix-20261020`, code checkpoints `97fc3c6`
+and `1a48c89`, plus final feed/fixture correction `025716f`. See [full evidence and reproduction notes](simulations/signals-12sym-20261020.md).
+Signals now retain a separate 336h history including actual backfill/warmup,
+configurable entry-anchored trailing ceilings up to 3%, and consistent
+percent/ATR/historic/DCA/Axis protection identities. Multi-timeframe duplicate
+symbol lookup no longer empties own Last-N evidence. Native admission rechecks
+current own validation; held legacy positions retain their original ceiling.
+APZ reclaim, FRAMA pullback and Supertrend pullback are opt-in research sources,
+not enabled production defaults.
+
+The complete 12-symbol main matrix contains 89,578 effective configs and
+21,775 settled accepted virtual closes before account funding: PF 0.623875,
+9/24 positive hours. The development-selected 3% / 0.5 / Trailing group has
+1,758 closes, PF 3.617904; confirmation alone has 603 closes, PF 5.143839 and
+9/12 positive hours. These are independent scenarios excluding shared side
+acceptance/cluster/Block/engine coordination and funding, not funded portfolio
+or venue results. The v5 repeat matches original counts/PF and adds per-symbol
+results, individual accepted trades and sorted aggregate diagnostics. Protocol
+SHA-256 `06e7c07c929dd1c8ac142065beddcea40ad6ef207becf7011a4c53eda3f9e417`.
+The corrected four-lane new-source sweep has 12,549 configs / 3,042 virtual
+closes, PF 1.569473; losing and insufficient cells are retained. No universally
+positive or every-hour-positive result is claimed.
+
+Typecheck, built worker and desktop/mobile Settings save/reload/bounds checks
+pass. Focused source/engine/E2E (58), isolated pipeline (21), context/lane/
+completeness/native (396), and corrected Control + cap regression (100) runs
+pass; counts overlap. The first full audit and incomplete study attempts are
+preserved, never promoted to successful benchmarks. A complete full-audit
+retry also remains incomplete: its execution session disappeared without a terminal summary during the server Base-count runtime fixtures (exit code/signal unknown). Known failures were five stale 336h seat-fixture expectations and the missing independent Signal Trailing-only assertion. Corrected reruns pass: seats 30/30, processing 6/6 including all 128 toggle combinations. The later paging correction removes the fixed 20-page ceiling for >480h presets; feed/backfill 21/21, repeated typecheck and worker build pass. The study uses cached candles and retains its exact source manifest separately from this feed-only change. Do not call either broad audit fully green; finish remaining coverage on a stable runner.
+
+Actual `bingx-vst-02` remains inaccessible: credential resolver has no key pair,
+and the documented server route timed out. No actual venue order, live reload,
+deployment or merge was performed. Git push was automatically rejected for
+public code publication without sufficient explicit authorization and was not
+bypassed. Code and a reviewable patch are prepared locally; publication still
+requires user approval.

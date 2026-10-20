@@ -238,6 +238,17 @@ describe("fetchHistory", () => {
     assert.equal(urls.length, 3);
   });
 
+  it("loads a 600h Signal/preset history beyond the former 20-page ceiling", async () => {
+    fakeBingx(venue(0));
+    const count = 600 * 60;
+    const cs = await fetchHistory("BTC-USDT", 1, count, { nowT: NOW });
+    assert.equal(cs.length, count);
+    assert.equal(urls.length, 25);
+    assert.equal(cs[0].t, lastClosed - (count - 1) * M);
+    assert.equal(cs.at(-1)!.t, lastClosed);
+    for (let i = 1; i < cs.length; i++) assert.equal(cs[i].t - cs[i - 1].t, M);
+  });
+
   it("a venue that returns the forming bar: it is dropped and the history still has every bar asked", async () => {
     fakeBingx(venue(0, { forming: true }));
     const cs = await fetchHistory("BTC-USDT", 1, 2000, { nowT: NOW });

@@ -36,6 +36,7 @@ import type {
   Trade,
 } from "../domain/types.ts";
 import { atrTrailGap } from "./backtest.ts";
+import { isSignalConfig, signalStopAt, signalTrailMax } from "./trailing.ts";
 
 /**
  * The volume range's `vol`: realized volatility per bar = ATR ÷ price ÷ 1.6. The Stable-02 desk's quote `vol` was
@@ -92,6 +93,8 @@ export function simulateAxis(
   floor?: { minSl: number; slMult?: number } | null,
 ): AxisResult {
   const { n, t, o, h, l, c, sym } = bars;
+  const signal = isSignalConfig(cfg);
+  const signalMax = signal ? signalTrailMax({ cfg, trailMax: p.trailMax }) : Infinity;
   const tfMs = bars.tfMin * 60_000;
   const trades: Trade[] = [];
   const levels = Math.max(1, Math.round(ax.levels));
@@ -123,8 +126,10 @@ export function simulateAxis(
         : Math.min(m - 0.25 * step, a - 0.85 * step);
     // the stop floors (and the adjuster's relative step) hold the derived stop off the spread and noise
     const slDist = Math.max(Math.min(step, Math.abs(target - a)) * slMult, minSl * a);
-    stop = a - side * slDist;
-    risk = Math.max(slDist, sp, 0.45 * at);
+    const nextStop = a - side * slDist;
+    const ratchet = signal && legs.length > 1 ? (side === 1 ? Math.max(stop, nextStop) : Math.min(stop, nextStop)) : nextStop;
+    stop = signal ? signalStopAt(a, side, ratchet, signalMax) : nextStop;
+    risk = Math.min(Math.max(slDist, sp, 0.45 * at), signal ? a * signalMax : Infinity);
   };
 
   const wsum = () => legs.reduce((a, x) => a + x.w, 0);
@@ -255,6 +260,7 @@ export function simulateAxis(
       nextRung = 0;
       const deepest = side === 1 ? ref - step * (levels - 1) : ref + step * (levels - 1);
       stop = side === 1 ? deepest * (1 - p.sl) : deepest * (1 + p.sl);
+      if (signal) stop = signalStopAt(ref, side, stop, signalMax);
       pendingOpen = i + 1;
     }
   }
@@ -374,6 +380,8 @@ export function simulateAxisDesk(
   floor?: { minSl: number; minTrail: number; maxSl?: number } | null,
 ): AxisDeskResult {
   const { n, t, o, h, l, c, sym } = bars;
+  const signal = isSignalConfig(cfg);
+  const signalMax = signal ? signalTrailMax({ cfg, trailMax: p.trailMax }) : Infinity;
   const tfMs = bars.tfMin * 60_000;
   const trades: Trade[] = [];
   const nRungs = Math.max(2, Math.round(ax.levels));
@@ -383,7 +391,8 @@ export function simulateAxisDesk(
   const hold = Math.max(1, Math.round(p.hold));
   const expiry = Math.max(1, Math.round(ax.expiry && ax.expiry > 0 ? ax.expiry : hold));
   const minSl = Math.max(0, floor?.minSl ?? 0);
-  const maxSl = floor?.maxSl && floor.maxSl > 0 ? Math.max(floor.maxSl, minSl) : Infinity;
+  const requestedMaxSl = floor?.maxSl && floor.maxSl > 0 ? Math.max(floor.maxSl, minSl) : Infinity;
+  const maxSl = Math.min(requestedMaxSl, signal ? signalMax : Infinity);
   // the stop distance at price px: ATR-derived, held between the floor and (per range) the cap
   const slAt = (d: number, px: number) => Math.min(maxSl * px, Math.max(d, minSl * px));
   const minTrail = Math.max(0, floor?.minTrail ?? 0);
@@ -471,7 +480,7 @@ export function simulateAxisDesk(
     // the close (every hybrid exit at about −cost)
     if (ax.hybrid && (trailGapD > 0 || side * (c[i] - a) >= slD * 0.95)) {
       if (!(trailGapD > 0)) trailGapD = slD * trailK;
-      const gap = Math.max(trailGapD, minTrail * c[i]);
+      const gap = Math.min(Math.max(trailGapD, minTrail * c[i]), signal ? a * signalMax : Infinity);
       if (tighten(c[i] - side * gap)) trailed = true;
       slD = Math.abs(stop - a);
     }
@@ -508,7 +517,7 @@ export function simulateAxisDesk(
         trailed = false;
         trailGapD = 0;
         const lv = deskLevels(px, side, rg.sl0, rg.tp0, ratio);
-        stop = lv.sl;
+        stop = signal ? signalStopAt(px, side, lv.sl, signalMax) : lv.sl;
         target = lv.tp;
         // vst.ts applyFill: the controlling range spacing = the rung's distance from the axis (last closed bar)
         const m = center[i - 1];
@@ -526,6 +535,7 @@ export function simulateAxisDesk(
         target = side === 1 ? Math.max(target, lv.tp) : Math.min(target, lv.tp);
       }
       const a = avg();
+      if (signal) stop = signalStopAt(a, side, stop, signalMax);
       slD = Math.abs(stop - a);
       tpD = Math.abs(target - a);
     }
