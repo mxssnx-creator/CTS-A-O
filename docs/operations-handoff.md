@@ -1,3 +1,13 @@
+# Final-window admission correction — 20 October 2026
+
+Local tested implementation: `4e2b82d668ca0dd4f41dc592b099c472ddb5cb44` (scope/ranking fix `2393a13`). This supersedes the full-context admission policy in the older checkpoints below. Main remains `4588030b946740d493cf0e0d629aa2722aa6211c`; PR 182 remains a draft and no live deployment or venue action occurred.
+
+The all-window zero-order result was a regression: config-level minTrades, validLastN and range Last-N had been additionally imposed on each symbol/direction. A diagnostic found all 125,664 hourly context checks failing the new twelve-close minimum, with at most six own closes in 24h. Config evidence now stays on the exact config; the existing separately configured symbol/direction gate is reused unchanged at entry and native promotion. Strict empty-result rejection remains even with symMinN zero. Full PF/sample/LCB/Last-N/range/DDT/DDR/green/stability gates, exact Base pair/range/target admission, current entry rechecks, Signal exact-context proof/336h history, owned native evidence, costs and held-position exit management are retained. Removed Base-only selector shortcuts also restore the configured hourly rank and Durable positive-block rule.
+
+Six immutable final cached-feed replays are recorded in `docs/sims/final-window-admission-20261020.md` and `.json`. The difficult 12-symbol window admits 1,339 config sets initially and settles 6,716 modeled orders at unit-return PF 0.058019; the extended 22-symbol window settles 4,524 at PF 0.040518. The bounded multi-range run settles 536 at PF 0.480370. All entry invariants pass. The oldest Micro window has zero Base passes and correctly zero orders. The artificial admission deadlock is fixed; the requested consistently high forward PF is still unfulfilled. Never label these results profitable or live-ready. No actual order or owned fill is inferred from modeled executions.
+
+Current verification: final scope/entry/native tests 47/47; config scope and actual execution, preserved losses, strict Last-N, symbol vetoes and within-hour deterioration cover all seven ranges. TypeScript and production build pass; the build's first generated-output cleanup attempt failed with ENOTEMPTY and passed after deleting only generated `.vercel/output` and rerunning. The remaining simulation segment passes 64/64; desktop/phone UI passes 4/4 and lint has zero errors with 28 existing warnings. The broader 43-file command exited zero but its log has no final totals, so no complete broad/core pass is claimed. The earlier incomplete/interrupted runs remain unclaimed. No release or merge as a completed profitability fix.
+
 # CTS-A-O operations handoff
 
 ## Final full-context checkpoint — 20 October

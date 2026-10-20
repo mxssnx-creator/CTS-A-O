@@ -1,5 +1,7 @@
 # Post-Base continuity investigation — 20 October 2026
 
+**Superseded admission policy:** The full per-symbol/context evaluator below imposed config sample and Last-N rules at an unconfigured scope and blocked every final window. The correction and new measured results are recorded in [final-window-admission-20261020.md](final-window-admission-20261020.md). The original losses and failed attempts remain part of this historical record.
+
 The progression defects are fixed in the integration branch. **Consistently high forward PF and many executed orders are not established.** A passing historical PF cannot certify the returns of an entry that has not settled. Zero executed orders have unavailable PF; they are never scored as profitable.
 
 The earlier 12-symbol Micro result of 9,310 closes at PF 0.057618 was real modeled loss. Every one was a short. Its config containers passed their aggregate candidate history, but that did not prove each entry's exact symbol/direction Last-N. The initial continuity-only repair still allowed those orders. The final repair requires the concrete entry context and preserves rejected candidates for independent learning.
