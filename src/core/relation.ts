@@ -250,6 +250,9 @@ export interface RelationPosition {
   exitT: number;
   /** USD after fees (own fills) */
   usd: number;
+  /** the entry notional (USD) the position's closes were sized at, and its return on it (fraction, after fees): the PF's unit */
+  notional: number;
+  r: number;
   /** the own lanes closed on this position and matched, and their mean r (trade %) on either side */
   lanes: number;
   systemMeanR: number | null;
@@ -531,12 +534,13 @@ function positionsOf(
 ): NonNullable<Relation["positions"]> {
   const by = new Map<
     string,
-    { sym: string; side: number; entryT: number; exitT: number; usd: number; hand: boolean; flat: boolean }
+    { sym: string; side: number; entryT: number; exitT: number; usd: number; notional: number; hand: boolean; flat: boolean }
   >();
   for (const x of trades) {
     const k = `${x.sym}|${x.side}|${x.entryT}`;
-    const p = by.get(k) ?? { sym: x.sym, side: x.side, entryT: x.entryT, exitT: x.exitT, usd: 0, hand: false, flat: false };
+    const p = by.get(k) ?? { sym: x.sym, side: x.side, entryT: x.entryT, exitT: x.exitT, usd: 0, notional: 0, hand: false, flat: false };
     p.usd += x.r * x.notional;
+    p.notional += x.notional;
     p.exitT = Math.max(p.exitT, x.exitT);
     if (x.reason === "hand") p.hand = true;
     else if (x.reason === "flat") p.flat = true;
@@ -570,13 +574,18 @@ function positionsOf(
       entryT: p.entryT,
       exitT: p.exitT,
       usd: p.usd,
+      notional: p.notional,
+      r: p.notional > 0 ? p.usd / p.notional : 0,
       lanes: ls.length,
       systemMeanR: mean(ls.map((m) => m.rSys)),
       exchangeMeanR: mean(ls.map((m) => m.l.r)),
     });
     usd += p.usd;
-    if (p.usd > 0) gp += p.usd;
-    else gl -= p.usd;
+    // the PF is on the return per position (percent of its entry notional), the unit of every other stage — not on USD,
+    // where one large losing size would outweigh many small wins
+    const ret = p.notional > 0 ? p.usd / p.notional : 0;
+    if (ret > 0) gp += ret;
+    else gl -= ret;
   }
   return { n: list.length, pf: list.length ? profitFactor(gp, gl) : 0, usd, hand, flat, list };
 }

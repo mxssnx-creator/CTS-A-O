@@ -329,6 +329,32 @@ describe("relationOf: one window, own lanes against the paper book's own record 
     assert.ok(Math.abs(pos.list[0].systemMeanR! - 1) < 1e-9);
   });
 
+  it("the positions PF is on the return per position (percent of its entry notional), not on USD", () => {
+    const T = T0;
+    // S1: +2 % on 100 USD; S2: -1 % on 1000 USD. USD PF = 1.9 / 10.1 = 0.19; return PF = 0.019 / 0.0101 = 1.88
+    const ledger = [
+      { coid: "CTSX01S_Qa1", sym: "S1-USDT", side: 1, kind: "O", qty: 1, px: 100, status: "ok", msg: null, at: T, fillPx: 100, fee: 0.05 },
+      { coid: "CTSX01S_Ca2", sym: "S1-USDT", side: 1, kind: "X", qty: 1, px: 102, status: "ok", msg: null, at: T + 3 * H, fillPx: 102, fee: 0.05 },
+      { coid: "CTSX01S_Qb1", sym: "S2-USDT", side: 1, kind: "O", qty: 10, px: 100, status: "ok", msg: null, at: T, fillPx: 100, fee: 0.05 },
+      { coid: "CTSX01S_Cb2", sym: "S2-USDT", side: 1, kind: "X", qty: 10, px: 99, status: "ok", msg: null, at: T + 3 * H, fillPx: 99, fee: 0.05 },
+    ];
+    const l1 = laneRow(SIG, 1, 0.019, "exit", T + 3 * H);
+    const rel = relationOf({
+      system: [sysOf(l1, 0.01)],
+      lanes: [l1],
+      trades: liveTrades(ledger, "CTSX01S_".length),
+      from: T - 1,
+      to: T + 4 * H,
+      coverageFrom: 0,
+    });
+    const pos = rel.positions!;
+    assert.equal(pos.n, 2);
+    assert.ok(Math.abs(pos.pf - 0.019 / 0.0101) < 1e-6, String(pos.pf));
+    const s1 = pos.list.find((p) => p.sym === "S1-USDT")!;
+    assert.ok(Math.abs(s1.r - 0.019) < 1e-9 && Math.abs(s1.notional - 100) < 1e-9);
+    assert.ok(Math.abs(pos.usd - (1.9 - 10.1)) < 1e-9, "the money is still USD");
+  });
+
   it("a position whose cause is not proven (flat: an unverified stop) is left out of the positions PF, counted apart, LONG and SHORT", () => {
     const T = T0;
     for (const side of [1, -1] as const) {
