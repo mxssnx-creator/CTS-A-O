@@ -292,17 +292,24 @@ if (mode === "catalog") {
   };
   writeFileSync(`${out}/identity.json`, JSON.stringify(result, null, 2) + "\n");
   console.log(JSON.stringify(result));
-} else if (mode === "causal") {
+} else if (mode === "causal" || mode === "causal-partial") {
+  const partial = mode === "causal-partial",
+    resultFile = `${out}/${partial ? "causal-partial" : "causal"}.json`;
   const bytes = readFileSync("docs/micro-optimization-2026-10-20/reproduction-feed.json.gz");
   assert.equal(
     createHash("sha256").update(bytes).digest("hex"),
-    "a7beade8b9f2da1f5c2d5fda9b8ef32a4ce5bcc045ad10c67cd5678333c4224e",
+    frozenPlan.market.sha256,
   );
   const feed = JSON.parse(gunzipSync(bytes)),
     symbols = feed.tickers.map((x) => x.sym).sort();
   assert.equal(symbols.length, 20);
   const endT = Math.min(...symbols.map((sym) => feed.candles[`${sym}|1`].at(-1).t + 60000));
-  const cuts = Array.from({ length: 6 }, (_, i) => endT - (6 - i) * 3600000);
+  assert.equal(endT, frozenPlan.market.endT);
+  const cuts = partial
+    ? frozenPlan.market.partialPrefix.minutesAfterHour.map(
+        (minute) => endT - frozenPlan.market.partialPrefix.hoursBeforeEnd * 3600000 + minute * 60000,
+      )
+    : frozenPlan.market.prefixCutsHoursBeforeEnd.map((hour) => endT - hour * 3600000);
   const native = symbols.flatMap((sym) =>
     tfs.map((tf) => ({ sym, tf, candles: resample(feed.candles[`${sym}|1`], 1, tf) })),
   );
@@ -447,12 +454,13 @@ if (mode === "catalog") {
       violations: violations.length - errorsBefore,
     });
     writeFileSync(
-      `${out}/causal.json`,
+      resultFile,
       JSON.stringify(
         {
           scope,
-          classification:
-            "Native-price state shape/domain and six hourly prefix comparisons for every eligible registry/lane/symbol; not portfolio or profitability evidence",
+          classification: partial
+            ? "Native-price state shape/domain and three unfinished-higher-bar prefix comparisons for every eligible registry/lane/symbol; not portfolio or profitability evidence"
+            : "Native-price state shape/domain and six hourly prefix comparisons for every eligible registry/lane/symbol; not portfolio or profitability evidence",
           symbols,
           endT,
           cuts,
@@ -472,9 +480,9 @@ if (mode === "catalog") {
   }
   const expected = specs.filter((s) => !only || s.kind === only).length;
   assert.equal(completedSpecs.size, expected);
-  const result = JSON.parse(readFileSync(`${out}/causal.json`));
+  const result = JSON.parse(readFileSync(resultFile));
   result.complete = true;
-  writeFileSync(`${out}/causal.json`, JSON.stringify(result, null, 2) + "\n");
+  writeFileSync(resultFile, JSON.stringify(result, null, 2) + "\n");
   assert.equal(
     violations.length,
     0,
