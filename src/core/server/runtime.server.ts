@@ -2216,6 +2216,7 @@ export class CoreRuntime {
       signalMaxPositions: this.wf.signalMaxPositions,
       // the Base gates of the last compute: without them every pair took seats until the next compute finished
       basePassed: this.wf.basePassed,
+      exitBasePassed: this.wf.exitBasePassed,
       basePassedRanges: this.wf.basePassedRanges,
       basePassedTargets: this.wf.basePassedTargets,
       baseWideLadderPairs,
@@ -3380,9 +3381,25 @@ export class CoreRuntime {
     this.emit("state");
     this.touchPrehist();
     this.loop.reset();
-    const settingsAt = this.status.settingsAt;
     // snapshot: a settings change during this compute applies to the next one
     const s = this.settings;
+    const computeRevision = computeKey(s, this.wf);
+    // Result counters describe the last published cohort, not an unfinished attempt. Progress has its own stage.
+    const nextStatus: Pick<
+      RuntimeStatus,
+      | "basePassed"
+      | "baseBuilt"
+      | "baseEvaluated"
+      | "baseByRange"
+      | "baseGates"
+      | "baseWhy"
+      | "baseHistory"
+      | "signals"
+      | "exitStrategies"
+    > = {
+      baseHistory: this.status.baseHistory ? [...this.status.baseHistory] : undefined,
+      exitStrategies: undefined,
+    };
     const wf: WalkForwardOptions = {
       ...this.wf,
       paused: s.adjust?.enabled ? pausedSets(this.adjustState()) : undefined,
@@ -3581,8 +3598,6 @@ export class CoreRuntime {
     // heartbeat stands still for minutes)
     this.startStage("Tapes", "preparing: saving the Base / Main results");
     await this.persistPipeline(pipeline, gen);
-    this.pipeline = pipeline;
-    this.lastUniverse = u;
 
     // walk-forward tapes on the recent tail: warm-up + long window + simulated run
     // + the warm-up the active tactics need (e.g. the 2-week volatility rank) before their first valid signal
@@ -3629,11 +3644,10 @@ export class CoreRuntime {
       pairTps,
       added: baseBuilt,
     } = basePass(engineS1, s, applies, famNarrow ? evalFams : null);
-    this.basePairTags = pairTags;
     // the count of pairs that passed Base (validated); the pairs grid.allSets adds for measurement are reported apart
-    this.status.basePassed = qualified.length + exitBase.passed.size;
-    this.status.baseBuilt = baseBuilt;
-    this.status.baseEvaluated = pipeline.s1.filter((r) => !isSignalInd(r.ind)).length;
+    nextStatus.basePassed = qualified.length + exitBase.passed.size;
+    nextStatus.baseBuilt = baseBuilt;
+    nextStatus.baseEvaluated = pipeline.s1.filter((r) => !isSignalInd(r.ind)).length;
     // every timeframe lane gets its share of Main, so each lane is processed through to the end stages
     for (const k of mainByLane(passed, s.mainTop)) main.add(k);
     // Diagnostic pairs may rank ahead of qualified ones; they cannot displace the normal Main cohort.
@@ -3688,17 +3702,11 @@ export class CoreRuntime {
       }
     // only pairs that passed Base take a seat; held pairs stay in Main to manage their open positions
     wf.basePassed = normalBasePassedKeys;
-    this.wf.basePassed = normalBasePassedKeys;
     wf.exitBasePassed = exitBase.passed;
-    this.wf.exitBasePassed = exitBase.passed;
     wf.basePassedRanges = qualifiedTags;
-    this.wf.basePassedRanges = qualifiedTags;
     wf.basePassedTargets = qualifiedTps;
-    this.wf.basePassedTargets = qualifiedTps;
     wf.baseWideLadderPairs = wideLadderPairs;
-    this.wf.baseWideLadderPairs = wideLadderPairs;
     wf.family = evalFams && !famNarrow ? evalFams.map((f) => f.label) : undefined;
-    this.wf.family = wf.family;
     // Signals processing: the active signals and every signal pair still holding a position take the signal
     // configs, never the engine's protect grid
     const sig = signalSettings(s.signals);
@@ -3748,7 +3756,7 @@ export class CoreRuntime {
     // Preserve the original cumulative-threshold tape only for v1 positions that are already open.
     // V1 identities are intentionally excluded from normal discovery and new-entry ranking.
     for (const pair of heldLegacyCoordination) sigPairs.add(pair);
-    this.status.baseEvaluated =
+    nextStatus.baseEvaluated =
       pipeline.s1.filter((r) => !isSignalInd(r.ind)).length +
       (signalBaseGate
         ? new Set(pipeline.s1.filter((r) => isSignalInd(r.ind)).map((r) => `${r.bot}|${r.ind}`))
@@ -3756,7 +3764,6 @@ export class CoreRuntime {
         : 0);
     // a held signal pair keeps its tapes to manage its open positions; new entries still need Base + validation
     wf.signalBasePassed = new Set(sigPairs);
-    this.wf.signalBasePassed = wf.signalBasePassed;
     for (const k of [...main])
       if (isSignalInd(k.split("|")[1] ?? "")) {
         main.delete(k);
@@ -3947,7 +3954,7 @@ export class CoreRuntime {
           retainedExitIds.add(heldId);
         }
       }
-      this.status.exitStrategies = {
+      nextStatus.exitStrategies = {
         enabled: s.exitStrategy.enabled,
         pairs: exitPairs.length,
         baseEvaluated: exitBase.evaluated.size,
@@ -4122,7 +4129,7 @@ export class CoreRuntime {
       (n, pair) => n + (sigHist[pair]?.length ?? 0),
       0,
     );
-    this.status.signals = {
+    nextStatus.signals = {
       enabled: sig.enabled,
       combos: pipeline.s1.filter((r) => isSignalInd(r.ind)).length,
       active: sigActive.size,
@@ -4185,9 +4192,9 @@ export class CoreRuntime {
           ownCells: sigRuns.length,
         });
       }
-      this.status.baseByRange = rows;
+      nextStatus.baseByRange = rows;
       // what each Base gate would admit, from the same results (no recompute)
-      this.status.baseGates = baseGateSensitivity(
+      nextStatus.baseGates = baseGateSensitivity(
         engineRuns,
         setsGates,
         ALL_RANGE_TAGS,
@@ -4195,23 +4202,23 @@ export class CoreRuntime {
         (ind, tag) => rangeAppliesTo(ind, tag, applies),
       );
       // per range, the gate each failing pair misses (closes, net, PF, drawdown ratio)
-      this.status.baseWhy = baseRangeWhy(engineRuns, setsGates, ALL_RANGE_TAGS, (ind, tag) =>
+      nextStatus.baseWhy = baseRangeWhy(engineRuns, setsGates, ALL_RANGE_TAGS, (ind, tag) =>
         rangeAppliesTo(ind, tag, applies),
       ).filter((x) => enabled(x.tag));
       // Base totals include Signal representatives only when their representative Base gate is enabled; the Signals
       // range row remains an independent diagnostic either way.
-      this.status.basePassed =
+      nextStatus.basePassed =
         qualified.length + exitBase.passed.size + (signalBaseGate ? representativePassed.size : 0);
       // continuity: the passed count per compute (last BASE_HISTORY_N), per range
-      const hist = this.status.baseHistory ?? [];
+      const hist = nextStatus.baseHistory ?? [];
       hist.push({
         at: Date.now(),
         compute: this.status.computes + 1,
-        passed: this.status.basePassed ?? 0,
-        built: this.status.baseBuilt ?? 0,
+        passed: nextStatus.basePassed ?? 0,
+        built: nextStatus.baseBuilt ?? 0,
         byRange: Object.fromEntries(rows.map((r) => [r.tag || "wide", r.passed])),
       });
-      this.status.baseHistory =
+      nextStatus.baseHistory =
         hist.length > BASE_HISTORY_N ? hist.slice(hist.length - BASE_HISTORY_N) : hist;
       const f = (x: number | null) => (x === null ? "–" : x.toFixed(2));
       this.db.event(
@@ -4370,7 +4377,7 @@ export class CoreRuntime {
     const engineMain = new Set([...main].filter((pair) => !pair.startsWith(`${EXIT_BOT}|`)));
     const built = await tapesFor(engineMain, wf.protects, dcaOpt, "strategy tapes", {
       ...protectFloors(s, rangeFitCutT),
-      pairTags: this.basePairTags,
+      pairTags,
       pairTps,
       heldIds,
       microOwnInds: microOwnInds(s.grid),
@@ -4400,12 +4407,12 @@ export class CoreRuntime {
       },
     );
     if (!exitBuilt || gen !== this.gen) return;
-    this.buildStats = [...buildStats.values(), ...exitBuildStats.values()];
+    const newBuildStats = [...buildStats.values(), ...exitBuildStats.values()];
     // a carried range trades on its tapes of the previous compute (not rebuilt in this one, never switched off) —
     // those end at the previous compute's last bar, so the configs paper holds (seated or with an open position) are
     // rebuilt on the current bars: only those ids (onlyIds), the rest of the range stays carried
     const carriedHeld = carryTags.size
-      ? carriedRebuild(this.tapes, carryTags, heldIds, this.wf.protects, this.wf.dcaProtects)
+      ? carriedRebuild(this.tapes, carryTags, heldIds, countProtects, countDcaProtects)
       : null;
     const rebuilt = carriedHeld
       ? await tapesFor(
@@ -4418,7 +4425,7 @@ export class CoreRuntime {
           "carried tapes",
           {
             ...protectFloors(s, rangeFitCutT),
-            pairTags: this.basePairTags,
+            pairTags,
             pairTps,
             heldIds,
             microOwnInds: microOwnInds(s.grid),
@@ -4482,13 +4489,13 @@ export class CoreRuntime {
     // the realtime entry step rebuilds the seated configs with exactly these arguments (fastStep) — every range's
     // cells, a carried one's included (it builds only the seated ids: under a memory fallback the seated Micro /
     // Minimal configs took no new entry between computes)
-    this.fastArgs = {
+    const fastArgs = {
       main: {
-        protects: this.wf.protects,
-        dcaFor: { ...dcaOpt, protects: this.wf.dcaProtects },
+        protects: countProtects,
+        dcaFor: { ...dcaOpt, protects: countDcaProtects },
         floors: {
           ...protectFloors(s, rangeFitCutT),
-          pairTags: this.basePairTags,
+          pairTags,
           pairTps,
           heldIds,
           microOwnInds: microOwnInds(s.grid),
@@ -4524,7 +4531,7 @@ export class CoreRuntime {
     };
     // a demo probe measures the plus cells live: their static last-N gate does not apply there
     const tapes =
-      this.wf.probe?.perRange || this.wf.probe?.perCell
+      wf.probe?.perRange || wf.probe?.perCell
         ? [...strategyTapes, ...sigTapes]
         : gateMinimalPlus(
             [...strategyTapes, ...sigTapes],
@@ -4543,20 +4550,9 @@ export class CoreRuntime {
     wf.signalPerSymbol = sig.perSymbol;
     wf.signalMaxOpen = sig.maxOpen;
     wf.signalMaxPositions = sig.maxPositions;
-    // paper / live keep trading the last simulated run's end set until this run's exists: the Base ranking the
-    // simulation starts from opened signals the simulated run had not chosen for the whole compute (11 min on x02)
-    if (!sig.enabled || this.wf.signalActive === undefined) this.wf.signalActive = wf.signalActive;
-    // adjust pauses apply to paper / live as they did to the simulation
-    this.wf.paused = wf.paused;
-    this.wf.signalGuardN = wf.signalGuardN;
-    this.wf.signalCluster = wf.signalCluster;
-    this.wf.signalAccept = wf.signalAccept;
-    this.wf.signalSideAccept = wf.signalSideAccept;
-    this.wf.signalOwnBase = wf.signalOwnBase;
-    this.wf.signalSourceGate = wf.signalSourceGate;
-    this.wf.signalPerSymbol = wf.signalPerSymbol;
-    this.wf.signalMaxOpen = wf.signalMaxOpen;
-    this.wf.signalMaxPositions = wf.signalMaxPositions;
+    // wf and fastArgs remain private to this computation until its matching tapes and simulation are ready.
+    // Publishing Base/Signal qualifiers here mixed old active tapes with new gates during every yielded slice,
+    // and an interrupted computation left that mixed state in service indefinitely.
     let step = 0;
     // the steps the simulation really takes (its start is floored to the hour: up to one step more than
     // simH / stepH, which ran the bar past 100 %)
@@ -4580,8 +4576,48 @@ export class CoreRuntime {
     );
     // the realtime entry step stands aside while the new tapes and run replace the old ones, until the full paper
     // step has seated on them (it re-checks the hold at every slice)
+    if (
+      gen !== this.gen ||
+      computeRevision !== computeKey(this.settings, this.wf) ||
+      this.resetUniverse
+    )
+      return;
     this.fastHold = true;
     await this.paperIdle();
+    if (
+      gen !== this.gen ||
+      computeRevision !== computeKey(this.settings, this.wf) ||
+      this.resetUniverse
+    )
+      return;
+    const appliedSettingsAt = this.status.settingsAt;
+    // No yield between the execution qualifiers, realtime rebuild inputs and their matching data publication.
+    // Keep the previous complete snapshot usable until this point, including when a worker/compute fails.
+    Object.assign(this.wf, {
+      basePassed: wf.basePassed,
+      exitBasePassed: wf.exitBasePassed,
+      basePassedRanges: wf.basePassedRanges,
+      basePassedTargets: wf.basePassedTargets,
+      baseWideLadderPairs: wf.baseWideLadderPairs,
+      family: wf.family,
+      signalBasePassed: wf.signalBasePassed,
+      paused: wf.paused,
+      signalGuardN: wf.signalGuardN,
+      signalCluster: wf.signalCluster,
+      signalAccept: wf.signalAccept,
+      signalSideAccept: wf.signalSideAccept,
+      signalOwnBase: wf.signalOwnBase,
+      signalSourceGate: wf.signalSourceGate,
+      signalPerSymbol: wf.signalPerSymbol,
+      signalMaxOpen: wf.signalMaxOpen,
+      signalMaxPositions: wf.signalMaxPositions,
+    });
+    Object.assign(this.status, nextStatus);
+    this.buildStats = newBuildStats;
+    this.fastArgs = fastArgs;
+    this.basePairTags = pairTags;
+    this.pipeline = pipeline;
+    this.lastUniverse = u;
     this.tapes = tapes;
     this.sim = sim;
     // the previous set's index and the live books of the previous run (its feed, guard and acceptance index) are
@@ -4596,9 +4632,9 @@ export class CoreRuntime {
       this.hedgeKeys = new Set((sim.hedgeEnd ?? []).filter((k) => !sigActive.has(k)));
       for (const k of this.hedgeKeys) sigActive.add(k);
       this.wf.signalActive = sigActive;
-      if (this.status.signals) {
-        this.status.signals.active = sigActive.size;
-        this.status.signals.coordinationActive = [...sigActive].filter((key) =>
+      if (nextStatus.signals) {
+        nextStatus.signals.active = sigActive.size;
+        nextStatus.signals.coordinationActive = [...sigActive].filter((key) =>
           isSignalCoordinationInd(key.split("|")[1] ?? ""),
         ).length;
       }
@@ -4614,7 +4650,7 @@ export class CoreRuntime {
       // the set paper / live trade (the simulation's end set), not the Base ranking the compute started from
       signalActive: this.wf.signalActive,
     };
-    const sigStatus = this.status.signals;
+    const sigStatus = nextStatus.signals;
     if (sigStatus && sig.enabled) {
       // in slices: the guard replays every candidate of the run (hundreds of thousands with every config its own seat).
       // The status reads only its disabled keys (each config's last results), so only those lists are fed — the
@@ -4700,8 +4736,8 @@ export class CoreRuntime {
     this.status.computes++;
     this.status.lastComputeMs = performance.now() - t0;
     this.status.lastComputeAt = Date.now();
-    this.status.appliedSettingsAt = settingsAt;
-    if (gen === this.gen && settingsAt === this.status.settingsAt) {
+    this.status.appliedSettingsAt = appliedSettingsAt;
+    if (gen === this.gen && computeRevision === computeKey(this.settings, this.wf)) {
       const isMeasuredIndication = (ind: string) => {
         const base = laneOf(ind).base;
         return (
@@ -4779,7 +4815,11 @@ export class CoreRuntime {
           },
         },
       };
-      this.baseConfigRunner.request({ ...input, key: baseConfigJobKey(input), settingsAt });
+      this.baseConfigRunner.request({
+        ...input,
+        key: baseConfigJobKey(input),
+        settingsAt: appliedSettingsAt,
+      });
     }
     this.status.pending = this.dirty;
     this.status.loop = {

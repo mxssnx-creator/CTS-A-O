@@ -1,0 +1,44 @@
+{
+  "schema": "cts-hourly-progress-repeat-plan-v1",
+  "sourceSha256": "8042d7bf976ef85fa2f4b0fdb0b45ce25112a4f6cad00380c4b075c50ca116ea",
+  "checkpoint": "bd73860800edb11fc5824ece953c4c44e7fa64f4",
+  "baselineSourceSha256": "ae7b2021fbdce8c3432329781dfc19a651c7e1fc488b3826874af741e69befaa",
+  "originalWindow": {
+    "symbols": 20,
+    "ordinarySources": 616,
+    "preH": 12,
+    "runH": 12,
+    "indicatorWarmupH": 24,
+    "completeTapeHistories": true,
+    "requiredScalarDecisions": 750636
+  },
+  "research": {
+    "caseRevision": "v7",
+    "paired": [
+      {
+        "hold": "standard",
+        "feedSha256": "477c3a4dc588a5a98c7c9bea6ca2e7f62fb7658fe45f77653f83ea2ee0c4f2cd",
+        "settingsWfWindowsAccountIdentical": true
+      },
+      {
+        "hold": "fast",
+        "feedSha256": "477c3a4dc588a5a98c7c9bea6ca2e7f62fb7658fe45f77653f83ea2ee0c4f2cd",
+        "settingsWfWindowsAccountIdentical": true
+      }
+    ],
+    "windows": [
+      1791460800000,
+      1791547200000,
+      1791633600000
+    ],
+    "selectionUnchanged": true
+  },
+  "acceptance": [
+    "Current cohort, qualifications, counts/history and realtime inputs remain coherent through failures and economic/settings/generation transitions.",
+    "Every recorded own hourly decision has complete raw rows and matches independent scalar arithmetic, including never-passing configs.",
+    "Hourly window delta equals newly closed minus expired net returns; Last-N stays exact and independent.",
+    "All complete market filtered-stage outputs reproduce the same frozen economic cases; preserve losses and any discrepancy.",
+    "Full ordinary core inventory, optional slow tests, all registry hourly/unfinished-bar audits and stress pass on this source."
+  ],
+  "profitability": "No upward PF clamping, gate relaxation, loss removal or manufactured stable counts; positive hourly market results remain an empirical target, not a correctness assertion."
+}

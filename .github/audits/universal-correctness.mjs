@@ -51,7 +51,9 @@ assert.equal(
 );
 const files = sessionStudySourceFiles(),
   sourceSha256 = studySha256(studyExactJson(files));
-const frozenPlan = JSON.parse(readFileSync("docs/universal-correctness-2026-10-21/plan.json"));
+const frozenPlan = JSON.parse(
+  readFileSync(process.env.CTS_UNIVERSAL_PLAN ?? "docs/universal-correctness-2026-10-21/plan.json"),
+);
 assert.equal(
   sourceSha256,
   frozenPlan.sourceSha256,
@@ -296,10 +298,7 @@ if (mode === "catalog") {
   const partial = mode === "causal-partial",
     resultFile = `${out}/${partial ? "causal-partial" : "causal"}.json`;
   const bytes = readFileSync("docs/micro-optimization-2026-10-20/reproduction-feed.json.gz");
-  assert.equal(
-    createHash("sha256").update(bytes).digest("hex"),
-    frozenPlan.market.sha256,
-  );
+  assert.equal(createHash("sha256").update(bytes).digest("hex"), frozenPlan.market.sha256);
   const feed = JSON.parse(gunzipSync(bytes)),
     symbols = feed.tickers.map((x) => x.sym).sort();
   assert.equal(symbols.length, 20);
@@ -307,7 +306,8 @@ if (mode === "catalog") {
   assert.equal(endT, frozenPlan.market.endT);
   const cuts = partial
     ? frozenPlan.market.partialPrefix.minutesAfterHour.map(
-        (minute) => endT - frozenPlan.market.partialPrefix.hoursBeforeEnd * 3600000 + minute * 60000,
+        (minute) =>
+          endT - frozenPlan.market.partialPrefix.hoursBeforeEnd * 3600000 + minute * 60000,
       )
     : frozenPlan.market.prefixCutsHoursBeforeEnd.map((hour) => endT - hour * 3600000);
   const native = symbols.flatMap((sym) =>

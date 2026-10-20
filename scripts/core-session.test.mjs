@@ -830,3 +830,23 @@ describe("session qualification matches the runtime's full indication rules", ()
     assert.match(summaryOf(result.html), /Archived variants without recorded unit gross sums/);
   });
 });
+
+it("full tape dumps stream never-qualified own history without changing qualified outcomes", async () => {
+  const source=readFileSync(script,"utf8"),begin=source.indexOf('    tapeTrades: (() => {'),end=source.indexOf('    variants,',begin);
+  assert.ok(begin>0&&end>begin);
+  const expression=source.slice(begin+'    tapeTrades: '.length,end).trim().replace(/,$/,"");
+  const make=(id,values)=>({id,n:values.length,syms:["TEST-USDT"],symI:values.map(()=>0),side:values.map(()=>1),entryT:values.map((_,i)=>i*M),exitT:values.map((_,i)=>(i+1)*M),r:values});
+  const win=make("qualified",[.01,-.001,.02]),loss=make("never-qualified",[-.02,-.01,-.03]);
+  const evaluate=(all)=>runInNewContext(expression,{rt:{tapes:[win,loss]},sim:{trades:[{cfg:win.id}],steps:[{real:[win.id]}]},flag:key=>key==="tape-trades-all"&&all,arg:()=>"streamed-dump"});
+  const materialize=items=>Array.from(items,x=>({id:x.id,trades:Array.from(x.trades)}));
+  const ordinary=materialize(evaluate(false)),all=materialize(evaluate(true));
+  assert.deepEqual(JSON.parse(JSON.stringify(all.slice(0,1))),JSON.parse(JSON.stringify(ordinary)));
+  assert.deepEqual(all.map(x=>x.id),[win.id,loss.id]);
+  assert.deepEqual(all[1].trades.map(x=>x[4]),loss.r,"rejected losses remain visible to independent arithmetic");
+  const dir=mkdtempSync(join(tmpdir(),"cts-complete-history-")),file=join(dir,"raw.json");
+  try {
+    await writeSessionDump(file,{tapeTrades:evaluate(true),validation:[],trades:[]});
+    const restored=await readSessionDump(file);
+    assert.deepEqual(restored.tapeTrades,JSON.parse(JSON.stringify(all)));
+  } finally {rmSync(dir,{recursive:true,force:true});}
+});

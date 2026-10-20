@@ -30,6 +30,7 @@
 //   --signal-progress    capture every Signal protection cell/stage and exact shared-book order allocations
 //   --dump-only         with --dump: stop after the raw session is written (no report: the evaluation runs); the dump
 //                       then carries no tape trades unless --tape-trades
+//   --tape-trades-all   stream every built config, including never-qualified cells, for complete gate audits
 //   --tape-trades       with --dump-only: the dump keeps the tape trades of every config validated at a step or
 //                       executed (a full run always keeps them: measurement)
 //   --dump raw.json     the raw session (trades, minute closes, engine aggregates); --replay raw.json rebuilds
@@ -101,6 +102,7 @@ if (argv.includes("--help") || argv.includes("-h")) {
       "  --out PATH              write Markdown and JSON reports",
       "  --html DIR              write a standalone HTML report",
       "  --chunk-allocations     keep complete allocation rows in bounded data.json sidecars",
+      "  --tape-trades-all       dump all built config histories, including rejected configs",
       "  --writeup PATH          write the compact result summary",
       "  --dump PATH             save the raw session for later replay",
       "  --replay PATH           rebuild reports from a saved raw session",
@@ -1440,14 +1442,15 @@ async function runEngine() {
     // the tape trades of every config that was validated at a step or executed (measurement: the lookback and the
     // executor are checked against them; the report's stage check reads the executed configs'). An eval's --dump-only run
     // reads none of them: 0.5–6 M rows (0.2–0.8 GB of heap in the dump phase) left out unless --tape-trades
+    tapeTradesScope: flag("tape-trades-all") ? "all-built-configs" : "ever-seated-or-executed",
     tapeTrades: (() => {
-      if (flag("dump-only") && !flag("tape-trades")) return [];
+      if (flag("dump-only") && !flag("tape-trades") && !flag("tape-trades-all")) return [];
       const want = new Set([
         ...(sim.trades ?? []).map((x) => x.cfg),
         ...(sim.steps ?? []).flatMap((x) => x.real ?? []),
       ]);
       return (rt.tapes ?? [])
-        .filter((tp) => want.has(tp.id))
+        .filter((tp) => flag("tape-trades-all") || want.has(tp.id))
         .map((tp) => {
           function* rows() {
             for (let i = 0; i < tp.n; i++)

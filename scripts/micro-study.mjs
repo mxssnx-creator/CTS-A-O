@@ -196,6 +196,7 @@ if (mode === "prepare") {
     "--experimental-strip-types",
     "--no-warnings",
     "scripts/core-session.mjs",
+    ...(process.argv.includes("--tape-trades-all") ? ["--tape-trades-all"] : []),
     "--feed",
     p.feed.path,
     "--desk",

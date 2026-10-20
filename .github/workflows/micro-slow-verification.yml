@@ -52,6 +52,7 @@ jobs:
       CTS_CORE_STATE: "off"
       CTS_CORE_AUTOSTART: "0"
       CTS_CORE_LIVE: "0"
+      CTS_UNIVERSAL_PLAN: docs/hourly-progress-2026-10-21/universal-plan.json
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -67,6 +68,7 @@ jobs:
           node --expose-gc --max-old-space-size=4096 --experimental-strip-types --no-warnings .github/audits/universal-correctness.mjs catalog
           node --expose-gc --max-old-space-size=4096 --experimental-strip-types --no-warnings .github/audits/universal-correctness.mjs identity
           node --expose-gc --max-old-space-size=4096 --experimental-strip-types --no-warnings .github/audits/universal-correctness.mjs causal
+          node --expose-gc --max-old-space-size=4096 --experimental-strip-types --no-warnings .github/audits/universal-correctness.mjs causal-partial
       - name: Preserve complete universal coverage and every failure
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

@@ -52,7 +52,7 @@ jobs:
         if: matrix.task == 'functional'
         shell: bash
         run: |
-          node --require ./scripts/lib/core-test-offline-guard.cjs --experimental-strip-types --no-warnings --test scripts/core-session.test.mjs scripts/micro-stages.test.mjs scripts/simulation-parity.test.mjs scripts/session-funded-cohort.test.mjs scripts/test-all-offline.test.mjs scripts/core-test-offline.test.mjs
+          node --require ./scripts/lib/core-test-offline-guard.cjs --experimental-strip-types --no-warnings --test scripts/core-session.test.mjs scripts/micro-stages.test.mjs scripts/simulation-parity.test.mjs scripts/session-funded-cohort.test.mjs scripts/test-all-offline.test.mjs scripts/core-test-offline.test.mjs .github/audits/hourly-progress.test.mjs
       - name: Complete frozen chronological optimization
         if: matrix.task == 'study'
         run: node --require ./scripts/lib/core-test-offline-guard.cjs --experimental-strip-types --no-warnings scripts/micro-verification-ci.mjs
@@ -62,12 +62,13 @@ jobs:
         env:
           NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
         run: |
-          node --experimental-strip-types --no-warnings scripts/prepare-micro-identity-reference.mjs
-          node --experimental-strip-types --no-warnings scripts/micro-study.mjs run --out runs/micro-identity-reference-v9 --workers 2
-          node --experimental-strip-types --no-warnings scripts/audit-micro-execution.mjs runs/micro-identity-reference-v9
-          node --experimental-strip-types --no-warnings scripts/audit-micro-stages.mjs runs/micro-identity-reference-v9
-          node --experimental-strip-types --no-warnings scripts/audit-stage-transition.mjs runs/micro-identity-reference-v9
-          node --experimental-strip-types --no-warnings scripts/audit-simulation-parity.mjs runs/micro-identity-reference-v9/raw.json runs/micro-identity-reference-v9/simulation-parity.json
+          node --experimental-strip-types --no-warnings scripts/prepare-micro-identity-reference.mjs runs/micro-identity-reference-v10
+          node --experimental-strip-types --no-warnings scripts/micro-study.mjs run --out runs/micro-identity-reference-v10 --workers 2 --tape-trades-all
+          node --experimental-strip-types --no-warnings scripts/audit-micro-execution.mjs runs/micro-identity-reference-v10
+          node --experimental-strip-types --no-warnings scripts/audit-micro-stages.mjs runs/micro-identity-reference-v10
+          node --experimental-strip-types --no-warnings --max-old-space-size=2048 .github/audits/hourly-progress.mjs runs/micro-identity-reference-v10 runs/micro-identity-reference-v10/scalar-hours.json --require-all
+          node --experimental-strip-types --no-warnings scripts/audit-stage-transition.mjs runs/micro-identity-reference-v10
+          node --experimental-strip-types --no-warnings scripts/audit-simulation-parity.mjs runs/micro-identity-reference-v10/raw.json runs/micro-identity-reference-v10/simulation-parity.json
       - name: Exercise all 728 identities with 120 symbols and compute storm
         if: matrix.task == 'stress'
         run: node --require ./scripts/lib/core-test-offline-guard.cjs --expose-gc --max-old-space-size=4096 --experimental-strip-types --no-warnings scripts/stress-micro-runtime.mjs --out runs/micro-ci-stress

@@ -1,0 +1,328 @@
+#!/usr/bin/env node
+// Scalar reference: no production tape prefix sums, gate evaluators, cursors or PF helper.
+import assert from "node:assert/strict";
+import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import {
+  iterateSessionValidation,
+  iterateSessionTapeTrades,
+} from "../../scripts/lib/session-dump.mjs";
+import { parseConfigId, kindOfId } from "../../src/core/pipeline/pipeline.ts";
+const H = 3600000;
+export function scalarStats(rows, nowT) {
+  let gp = 0,
+    gl = 0,
+    sum = 0,
+    mean = 0,
+    m2 = 0,
+    peak = 0,
+    maxDd = 0,
+    peakT = rows[0]?.[2] ?? nowT,
+    dipped = false,
+    ddt = 0;
+  const hours = new Map();
+  for (let i = 0; i < rows.length; i++) {
+    const x = rows[i],
+      r = x[4];
+    assert.ok(Number.isFinite(r));
+    gp += Math.max(0, r);
+    gl += Math.max(0, -r);
+    sum += r;
+    const delta = r - mean;
+    mean += delta / (i + 1);
+    m2 += delta * (r - mean);
+    const hour = Math.floor((x[3] - 1) / H);
+    hours.set(hour, (hours.get(hour) ?? 0) + r);
+    if (sum < peak) {
+      dipped = true;
+      maxDd = Math.max(maxDd, peak - sum);
+    } else {
+      if (dipped) ddt = Math.max(ddt, x[3] - peakT);
+      dipped = false;
+      peak = sum;
+      peakT = x[3];
+    }
+  }
+  if (dipped) ddt = Math.max(ddt, nowT - peakT);
+  return {
+    n: rows.length,
+    gp,
+    gl,
+    net: sum * 100,
+    pf: gl > 0 ? gp / gl : gp > 0 ? 4 : 0,
+    lcb:
+      rows.length > 1
+        ? (sum - Math.sqrt(Math.max(0, m2 / (rows.length - 1))) * Math.sqrt(rows.length)) * 100
+        : 0,
+    ddt: ddt / H,
+    mdd: maxDd,
+    gh: hours.size ? [...hours.values()].filter((x) => x > 0).length / hours.size : 0,
+  };
+}
+function scalarLast(rows, t, n, minPf, maxDdt, maxDdr, floor, warmup, prior) {
+  if (n <= 0) return true;
+  const available = rows.filter((x) => x[3] <= t),
+    short = available.length < n;
+  if (short && (!(floor > 0) || available.length < floor)) return false;
+  const own = available.slice(-Math.min(n, available.length)),
+    w = scalarStats(own, t);
+  const pf = w.gl + prior > 0 ? w.gp / (w.gl + prior) : w.gp > 0 ? 4 : 0;
+  if (!(Number.isFinite(pf) && pf >= minPf)) return false;
+  if (!(short && warmup)) {
+    if (maxDdt > 0 && w.ddt > maxDdt) return false;
+    if (maxDdr !== undefined && maxDdr !== 0 && (!(w.net > 0) || w.mdd / (w.net / 100) > maxDdr))
+      return false;
+  }
+  return true;
+}
+export function scalarEval(rows, t, o, protect, kind = "normal") {
+  const winH = Math.max(o.longH, o.preH),
+    g = o.gates,
+    tag = protect.tag;
+  const key = { mc: "micro", mn: "minimal", mp: "minimal", sh: "short", gn: "general", lg: "long" }[
+    tag
+  ];
+  const configured = g.rangeMinPf?.[key],
+    rangeMin = typeof configured === "number" ? Math.min(3, Math.max(1.05, configured)) : g.minPf;
+  const minPf = Math.max(1.1, rangeMin, kind === "exit" ? (o.exitMinPf ?? 0) : 0);
+  const maxDdr =
+    kind === "exit" && o.exitMaxDdr > 0
+      ? g.maxDdr > 0
+        ? Math.min(g.maxDdr, o.exitMaxDdr)
+        : o.exitMaxDdr
+      : g.maxDdr;
+  const window = rows.filter((x) => x[3] >= t - winH * H && x[3] < t),
+    w = scalarStats(window, t),
+    no = (fail) => ({ ...w, ok: false, fail });
+  if (
+    w.n < Math.max(3, kind === "exit" ? (o.exitMinTrades ?? g.minTrades ?? 0) : (g.minTrades ?? 0))
+  )
+    return no("closes");
+  if (!(w.net > 0)) return no("net");
+  const prior = g.lossPrior ? Math.max(0, protect.sl) : 0;
+  if (!(w.pf >= minPf && (prior <= 0 || w.gp / (w.gl + prior) >= minPf))) return no("pf");
+  const pre = scalarStats(
+    rows.filter((x) => x[3] >= t - o.preH * H && x[3] < t),
+    t,
+  );
+  if (o.preGate && pre.n >= 3 && (!(pre.pf >= minPf) || pre.net < 0)) return no("pre");
+  if (!(w.lcb > 0)) return no("lcb");
+  if (
+    !scalarLast(
+      rows,
+      t,
+      kind === "exit" ? (o.exitMinTrades ?? o.validLastN ?? 0) : (o.validLastN ?? 0),
+      minPf,
+      g.maxDdtH,
+      maxDdr,
+      g.lastNFloor ?? 0,
+      g.warmup !== false,
+      prior,
+    )
+  )
+    return no("lastN");
+  const r = o.rangeGate;
+  if (
+    r &&
+    (r.ranges ?? ["mc", "mn", "sh", "mp"]).includes(tag) &&
+    !scalarLast(
+      rows,
+      t,
+      r.lastN,
+      r.minPf,
+      0,
+      0,
+      r.floor ?? g.lastNFloor ?? 0,
+      g.warmup !== false,
+      prior,
+    )
+  )
+    return no("rangeGate");
+  if (w.ddt > Math.max(g.minDdtH ?? 0, (g.maxDdtH * winH) / 72)) return no("ddt");
+  if (maxDdr > 0 && (!(w.net > 0) || w.mdd / (w.net / 100) > maxDdr)) return no("ddr");
+  if (w.gh < Math.max(g.minGreen ?? 0.5, kind === "exit" ? (o.exitMinGreenHourShare ?? 0) : 0))
+    return no("green");
+  if (g.stableBlocks >= 2) {
+    let active = 0;
+    const blocks = g.stableBlocks;
+    for (let k = 0; k < blocks; k++) {
+      const from = t - winH * H + (k * winH * H) / blocks;
+      const x = scalarStats(
+        rows.filter((row) => row[3] >= from && row[3] < from + (winH * H) / blocks),
+        t,
+      );
+      if (x.n < 2) continue;
+      active++;
+      if (!(x.net > 0) || x.pf < minPf) return no("stable");
+    }
+    if (active < 2 && g.warmup === false) return no("stable");
+  }
+  return { ...w, ok: true };
+}
+export async function hourlyAudit(dir, out, requireAll = false) {
+  const p = JSON.parse(readFileSync(`${dir}/protocol.json`)),
+    wf = p.actualWf;
+  assert.equal(wf.longH, 12);
+  assert.equal(wf.preH, 12);
+  assert.ok((wf.gates.minDdtH ?? 0) >= 12);
+  const steps = [];
+  for await (const s of iterateSessionValidation(`${dir}/raw.json`))
+    steps.push({
+      t: s.t,
+      checks: new Map(s.checks.map((x) => [x[0], x])),
+      real: new Set(s.real),
+      verified: 0,
+      passed: 0,
+      firstFailures: {},
+      dropped: 0,
+      gained: 0,
+      unchangedPass: 0,
+      unexplainedTransitions: 0,
+      entered: { n: 0, gp: 0, gl: 0 },
+      expired: { n: 0, gp: 0, gl: 0 },
+      passedGp: 0,
+      passedGl: 0,
+      examples: [],
+    });
+  assert.equal(steps.length, 12);
+  const violations = [],
+    seen = new Set();
+  let tapes = 0,
+    decisions = 0;
+  const mismatch = (x) => {
+    if (violations.length < 60) violations.push(x);
+  };
+  for await (const row of iterateSessionTapeTrades(`${dir}/raw.json`)) {
+    const cfg = parseConfigId(row.id);
+    assert.ok(cfg);
+    assert.ok(
+      /^(?:inverse-)?micro-/.test(cfg.ind),
+      "This frozen scalar reference is restricted to Micro/mirror sources",
+    );
+    const rows = row.trades,
+      kind = kindOfId(row.id);
+    let previous;
+    for (let i = 0; i < steps.length; i++) {
+      const s = steps[i],
+        expected = s.checks.get(row.id);
+      if (!expected) continue;
+      const e = scalarEval(rows, s.t, wf, cfg.protect, kind);
+      s.verified++;
+      decisions++;
+      if (e.ok) s.passed++;
+      else s.firstFailures[e.fail] = (s.firstFailures[e.fail] ?? 0) + 1;
+      const near = (a, b) => Math.abs(a - b) <= 1e-8 * Math.max(1, Math.abs(a), Math.abs(b));
+      if (
+        e.ok !== !!expected[1] ||
+        e.n !== expected[2] ||
+        !near(e.pf, expected[3]) ||
+        !near(e.gp, expected[4]) ||
+        !near(e.gl, expected[5])
+      )
+        mismatch({ id: row.id, t: s.t, expected, scalar: e });
+      if (e.ok) {
+        s.passedGp += e.gp;
+        s.passedGl += e.gl;
+      }
+      if (previous) {
+        const prevT = steps[i - 1].t,
+          from = s.t - 12 * H,
+          prevFrom = prevT - 12 * H;
+        const entered = scalarStats(
+            rows.filter((x) => x[3] >= prevT && x[3] < s.t),
+            s.t,
+          ),
+          expired = scalarStats(
+            rows.filter((x) => x[3] >= prevFrom && x[3] < from),
+            s.t,
+          );
+        for (const [a, b] of [
+          [s.entered, entered],
+          [s.expired, expired],
+        ])
+          for (const k of ["n", "gp", "gl"]) a[k] += b[k];
+        if (!near(e.net - previous.net, entered.net - expired.net))
+          mismatch({
+            id: row.id,
+            t: s.t,
+            error: "Hourly net does not equal incoming minus expired closes",
+          });
+        if (previous.ok && !e.ok) {
+          s.dropped++;
+          if (s.examples.length < 8)
+            s.examples.push({ id: row.id, before: previous, after: e, entered, expired });
+          if (entered.n === 0 && expired.n === 0 && e.fail !== "ddt" && e.fail !== "lastN")
+            s.unexplainedTransitions++;
+        } else if (!previous.ok && e.ok) s.gained++;
+        else if (e.ok) s.unchangedPass++;
+      }
+      previous = e;
+    }
+    seen.add(row.id);
+    tapes++;
+    if (tapes % 10000 === 0)
+      console.log(JSON.stringify({ tapes, decisions, violations: violations.length }));
+  }
+  for (const s of steps) {
+    if (requireAll && s.verified !== s.checks.size)
+      mismatch({
+        t: s.t,
+        expected: s.checks.size,
+        verified: s.verified,
+        error: "Complete history required, including never-passing configs",
+      });
+    for (const [id, check] of s.checks)
+      if (check[1] && !seen.has(id)) mismatch({ id, t: s.t, error: "Missing passing config tape" });
+    s.unverifiedNeverPassed = [...s.checks.keys()].filter((id) => !seen.has(id)).length;
+    assert.equal(
+      s.passed,
+      [...s.checks.values()].filter((x) => x[1]).length,
+      "Scalar coverage must include EVERY passing config, including newly eligible ones",
+    );
+  }
+  const result = {
+    schema: "cts-scalar-hourly-progress-v1",
+    requireAll,
+    sourceSha256: p.source.sha256,
+    window: p.window,
+    tapes,
+    decisions,
+    violations,
+    complete: true,
+    basis:
+      "Independent scalar arithmetic directly from saved own net-return rows; does not call makeTape, configEval, production prefix sums, forward cursors or profitFactor. Archive retains only configs that ever seated or executed; never-seated rejected configs lack raw rows and remain explicitly unverified. EVERY passing config is required. Historical overlapping validation samples are not future execution profits.",
+    steps: steps.map(({ checks, real, ...s }) => ({
+      ...s,
+      expectedChecks: checks.size,
+      recordedPassed: [...checks.values()].filter((x) => x[1]).length,
+      seated: real.size,
+      passedPf: s.passedGl ? s.passedGp / s.passedGl : null,
+    })),
+  };
+  mkdirSync(resolve(out, ".."), { recursive: true });
+  writeFileSync(out, JSON.stringify(result, null, 2) + "\n");
+  console.log(
+    JSON.stringify({
+      tapes,
+      decisions,
+      violations: violations.length,
+      steps: result.steps.map((s) => ({
+        t: s.t,
+        passed: s.passed,
+        dropped: s.dropped,
+        gained: s.gained,
+        firstFailures: s.firstFailures,
+        unexplained: s.unexplainedTransitions,
+      })),
+    }),
+  );
+  assert.equal(violations.length, 0, "Independent hourly arithmetic / verdict mismatch");
+  return result;
+}
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href)
+  await hourlyAudit(
+    resolve(process.argv[2]),
+    resolve(process.argv[3]),
+    process.argv.includes("--require-all"),
+  );
