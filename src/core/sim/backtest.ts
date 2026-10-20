@@ -27,6 +27,8 @@ export interface SimResult {
   pending: Side | 0;
   /** ATR protect: the distances that pending entry trades with (resolved from the last closed bar) */
   pendingProtect?: Protect;
+  /** only from simulateFrom */
+  state?: SimState;
 }
 
 /** Protect values are tuned on this timeframe; lanes scale them (volatility √t, hold in equal time). */
