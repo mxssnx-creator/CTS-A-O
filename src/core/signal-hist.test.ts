@@ -350,7 +350,8 @@ describe("signal historic trailing configs", () => {
     const sig = signalSettings({ enabled: true });
     const ind = "sig-ema-cross-s@m15";
     const pair = `follow|${ind}`;
-    const hist: Protect = { tp: 0.0175, sl: 0.035, trail: 0.0075, hold: 192 };
+    // a trailing historic config: its stop at the 3 % initial-stop cap (a wider one would be capped by laneProtect)
+    const hist: Protect = { tp: 0.0175, sl: 0.03, trail: 0.0075, hold: 192 };
     const histId = configId("follow", ind, laneProtect(hist, ind));
     const std = signalProtects(sig).find((p) => p.trail > 0)!;
     const stdId = configId("follow", ind, laneProtect(std, ind));
@@ -368,7 +369,7 @@ describe("signal historic trailing configs", () => {
 
   it("on by default beside the 77 percent configs and nine Trailing only sets", () => {
     assert.equal(DEFAULT_SIGNALS.hist.enabled, true);
-    assert.equal(signalProtects(signalSettings({ enabled: true })).length, 86);
+    assert.equal(signalProtects(signalSettings({ enabled: true })).length, 83);
   });
 });
 

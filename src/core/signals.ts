@@ -10,7 +10,7 @@
 //              results is negative (judged on the closes of the units active at their step: an inactive unit's candidates
 //              never reach the feed) and re-enabled once it is positive again
 import type { ExitConfigSet, Protect } from "./domain/types.ts";
-import { atrProtect } from "./sim/backtest.ts";
+import { atrProtect, capTrailingSl } from "./sim/backtest.ts";
 import { isSignalInd, laneInd } from "./indications/registry.ts";
 import {
   SIGNAL_SOURCES,
@@ -110,7 +110,19 @@ export function signalProtects(sig: SignalSettings): Protect[] {
         out.push({ tp: 0, sl, trail, hold, trailOnly: true, trailStep: only.trailStep });
   // A short trail is an inactive configuration, not a tighter distance that should be silently widened later.
   // The tape builder repeats this check after lane scaling because fast lanes can shrink a valid reference trail.
-  return out.filter((p) => !(p.trail > 0 && p.trail * (p.trailStep ?? 1) + 1e-12 < sig.minTrail));
+  // the owner's 3 % initial-stop cap on every fixed trailing protect, Trailing only sets included (an ATR protect's
+  // stop is capped where it resolves: resolveAtrProtect)
+  // (a cap can make two requests identical: they are one config)
+  const seen = new Set<string>();
+  return out
+    .map((p) => (p.atr ? p : capTrailingSl(p)))
+    .filter((p) => !(p.trail > 0 && p.trail * (p.trailStep ?? 1) + 1e-12 < sig.minTrail))
+    .filter((p) => {
+      const key = JSON.stringify(p);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
 }
 
 /** Signal pairs ("bot|ind") with at least `minTrades` Base trades on some symbol: the candidates to rank. */

@@ -60,7 +60,7 @@ describe("Signals: independent protection discovery", () => {
       minTrail: sig.minTrail,
       signalReferenceGrid: true,
     });
-    assert.equal(tapes.length, 86);
+    assert.equal(tapes.length, 83);
     assert.ok(tapes.filter((tp) => tp.kind === "trailing-only").some((tp) => tp.n >= 3));
     assert.ok(
       tapes.filter((tp) => tp.kind !== "trailing-only").some((tp) => tp.n >= 3),
@@ -165,12 +165,12 @@ describe("Signals: independent protection discovery", () => {
       requested.map((p) => adjustProtect(laneProtect(p, `sig-ema-cross-s@m${tf}`), sig));
     const unique = (tf: number) =>
       new Set(effective(tf).map((p) => configId("follow", `sig-ema-cross-s@m${tf}`, p)));
-    assert.equal(requested.length, 86);
+    assert.equal(requested.length, 83);
     // the owner's 3 % initial-stop cap folds three trailed requests onto one config on the 15m and 30m lanes (83 distinct);
-    // the 1m and 5m lanes keep their soft-floored stops under 3 % (86)
+    // the 3 % cap leaves 83 distinct configs on every lane
     assert.deepEqual(
       [1, 5, 15, 30].map((tf) => unique(tf).size),
-      [86, 86, 83, 83],
+      [83, 83, 83, 83],
     );
     assert.equal(
       new Set(
@@ -178,7 +178,7 @@ describe("Signals: independent protection discovery", () => {
           .filter((p) => p.trailOnly)
           .map((p) => configId("follow", IND, p)),
       ).size,
-      9,
+      6,
     );
     assert.ok(
       effective(1)
@@ -187,8 +187,8 @@ describe("Signals: independent protection discovery", () => {
     );
     assert.equal(
       requested.filter((p) => p.trailOnly).length,
-      9,
-      "all nine requested no-TP cells retain alias provenance",
+      6,
+      "all six requested no-TP cells (nine before the 3 % cap, three of them shared) retain alias provenance",
     );
   });
 
@@ -249,7 +249,7 @@ describe("Signals: independent protection discovery", () => {
         ["normal", "trailing", "trailing-only"].map(
           (kind) => remote.tapes.filter((tp) => tp.kind === kind).length,
         ),
-        [42, 35, 9],
+        [42, 35, 6],
       );
     } finally {
       closePool();
