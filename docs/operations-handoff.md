@@ -2,6 +2,18 @@
 
 Updated 2026-10-20, UTC. Repository: `mxssnx-creator/CTS-A-O`.
 
+## Strategy defaults and authenticated X02 follow-up — 20 October
+
+PR [185](https://github.com/mxssnx-creator/CTS-A-O/pull/185) publishes the exact tested local tree: economic checkpoint `86fcf5e`, fixture/UI checkpoint `7e22f25`, initial remote commit `107b4f2fe21c76af79f914f0c5b312fd697dd592`, tree `49df3af591bc0cec6eadcea63d132f72887ced8a`. Backup `backup/main-before-strategy-defaults-20261020` preserves `4588030b946740d493cf0e0d629aa2722aa6211c`. The latest explicit user “Push, merge” authorizes this publication; normal Git lacked local authentication, so the connected GitHub API published a tree verified byte-for-byte by Git tree hash.
+
+Independent ordinary/Signal histories, no-TP trailing-only grids with a 3% initial maximum, one DCA addition of 2.5 original base units (3.5 total), immutable ladder identity and Overall Block relations are implemented. Live strategy history includes the complete requested performance window plus slow-lane indicator warmup; late own venue commissions reconcile only after protection.
+
+Authenticated **X02 VST** testing is now complete: 28 actual opens across twelve symbols/both sides, 60 filled execution slices, 60/60 commissions measured, 9/9 pilot lifecycle phases. All twelve original symbol settings were restored. Final authenticated book at `2026-10-20T20:20:49.636Z`: **0 positions / 0 orders**. Technical fixture admission is not profitable strategy evidence. X01 credentials were untouched; raw account records remain private. No hosted deployment/reload occurred.
+
+The completed sealed 600h `v5` sensitivity study ran 16/16 arms with 6,768 hourly own-config checks, strict Last-25/PF 1.5 and twelve symbols. Development built 50 configs after 1/42 pair Base passes; confirmation built 100 after 2/42. No active config passed every gate; zero funded/virtual closes, PF unavailable, no selected winner. Zero DD here means no exposure, not a profitable low-risk strategy. Do not relax gates or promote a preset from this result. Earlier insufficient-window/gzip attempts remain preserved separately.
+
+TypeScript, lint, production build, desktop/mobile Settings and all-page functional UI checks pass. The script stage has 624 passes/8 explicit skips, app/components 80/80. The 34-file targeted regression's stale fixtures were repaired and its three affected files rerun 52/52; the full 208-file core run and remote CI are recorded in PR 185. See [strategy-defaults-20261020.md](strategy-defaults-20261020.md) for complete settings, order phases, candidate comparisons, evidence boundaries and any remaining release checks. Legacy economic preset caches require backed-up re-evaluation before a hosted reload.
+
 ## Latest local Signal PF 1.5 checkpoint — 20 October
 
 Implementation and tested code: **`bc39e25`**, branch `fix/signals-history-matrix-20261020`. Every Signal source/range/lane/type/config/symbol/direction now shares its own PF>=1.5 historic/Last-N verdict across Strategy Base, selection, activation and native/model admission. Pure historic TP/SL runs independently of trailing; held zero-trailing IDs restore exactly; trailing-only Family-Seats are fixed. Stricter gates and the configured partial Last-N policy remain. Full historical fits require own N=25. Representative pair diagnostics remain separate from exact config qualification.
@@ -10,7 +22,7 @@ Implementation and tested code: **`bc39e25`**, branch `fix/signals-history-matri
 
 Completed sealed `pf15-v2`: **88,621** configs, **17,706** own-Base passes at start, **21,083** configs passing at least one hourly Base evaluation, **4,542** configs with **7,055** accepted settled **virtual** closes. Return PF **1.112312**, hours **11 positive / 12 negative / 1 flat**. Development-selected 3% / ratio 1 / Trailing: development PF 3.839497, confirmation PF **1.370291**, total PF 2.499531. Confirmation does not meet PF 1.5. This is the reused retrospective public feed, not an untouched holdout, funded account or venue result. No every-hour profit or live promotion claim.
 
-See [signal-pf15-20261020.md](signal-pf15-20261020.md) for exact policy, scope and protocol. X02 VST credentials are absent and the configured Core endpoint timed out; no authentic venue test/deployment/reload occurred. Earlier public GitHub push was automatically rejected for publication authorization; no bypass/retry. Local code and the self-contained source/evidence report are preserved for review.
+See [signal-pf15-20261020.md](signal-pf15-20261020.md) for exact policy, scope and protocol. At that earlier checkpoint X02 credentials were absent and public publication had been rejected. The authenticated X02 tests and explicitly authorized publication in the follow-up above supersede those access limitations; the original virtual Signal profitability numbers remain unchanged.
 
 ## Local checkpoint: bounded broad history and Last-N validation — 18 October
 

@@ -1,0 +1,69 @@
+# Independent strategy sets, trailing-only, DCA and X02 verification — 20 October 2026
+
+PR: https://github.com/mxssnx-creator/CTS-A-O/pull/185. Economic code checkpoint: `86fcf5e`; subsequent fixture/UI checkpoint: `7e22f25`. The initial published tree `49df3af591bc0cec6eadcea63d132f72887ced8a` exactly matches that local checkpoint. The remote commit is `107b4f2fe21c76af79f914f0c5b312fd697dd592`. Normal Git lacked local authentication; publication used the connected GitHub API and a complete tree hash comparison. Backup `backup/main-before-strategy-defaults-20261020` preserves main `4588030b946740d493cf0e0d629aa2722aa6211c`. The operator's latest explicit “Push, merge” authorizes publication and supersedes the earlier rejected publication attempt.
+
+## Behavior and defaults
+
+- Signal source × parameter range × lane × type × protection config × symbol × direction retains its own causal historical and Last-N evaluation through Strategy Base, seating, native admission and statistics. Signal PF floor is 1.5, retaining stricter gates. Full fitting needs its own complete Last-25; empty or losing siblings cannot borrow proof. Configured partial-window policy remains explicit outside the strict study.
+- Ordinary strategies now load `max(longH, preH, symH) + simH + 24h + tactic indicator warmup` on every required lane. Short lane-day preferences cannot truncate a requested 336h window. Default slow-lane warmup requires up to 544h physical data for a 336h/6h run; the completed follow-up uses 600h, not the insufficient 384h all-lane attempt.
+- Normal TP/SL, TP plus trailing and trailing-only are separate grid cells and config IDs. Trailing-only is enabled in the default grid, has no TP from entry, and caps its initial SL, activation and peak gap at 3%, retaining tighter distances. Completed-bar ratchets never loosen; held config IDs survive restart/settings changes for exit management only. Existing Signal IDs without an explicit new cap preserve their older 2% policy.
+- DCA defaults: **one addition, 2.5× original base quantity, total 3.5×**, spacing 2%. Missing addition ratio on legacy configs means the old equal-unit model. Weighted average, P&L, roundtrip costs, open quantity/MTM and native addition agree. The addition never compounds; the ladder snapshot is part of identity. Changed ratio/spacing cannot reuse old Last-N evidence. Existing held snapshots retain their old exits. The 2% spacing is a tested default candidate, not a statistically established optimum.
+- Block defaults use Overall and all six relations (Config, Overall, Symbol, Direction, Indication, Type). Histories remain causal accepted virtual orders, distinct from account-funded and venue fills. Source additions share a total cap; Block volume is removed once for primary unit-return PF and retained for funded cash/equity. Block Active remains its separate opt-in type. The study compares Overall against Block off and 0.2 relation ratios with caps 2/3; sizing alone cannot improve unit-return PF on an unchanged cohort.
+- Native protection cannot widen all-bounded aggregates beyond their own cap during initial placement, repair, retries or restart. Mixed bounded/unbounded aggregates retain their explicit common backstop; per-set managed exits and optional native partial protection remain distinct. Risk budgets use current mark-to-own-stop distance and are not discounted by a nearer backstop.
+- BingX receive-window/transport budgets now agree. Only signed GET transport failures may try the alternate official host with a fresh signature. Unknown write outcomes are not retried on another host. Generic 109400 failures are not automatically duplicate-stop success.
+- Late commissions reconcile from exact own order history only when symbol, side, cumulative quantity and fill price match. Already measured fees, including confirmed zero, are retained. Missing fees remain unknown. Reconciliation runs after protection and cannot undo or delay the initial SL path.
+
+## Actual X02 VST technical checks
+
+No private account data or credentials are published. X01 credentials were not read; no private mainnet account requests were made. Technical fixture admission was explicit and does not certify a market strategy's PF.
+
+| Check | Confirmed result |
+|---|---|
+| ETH/SOL pilot, both directions | 4 actual opens, 8 resting SL/TP, 9/9 phases passed |
+| Pilot lifecycle | steady no-churn, tighten SL/TP, removed-stop repair, no-TP switch, 4 actual partial reductions, database restart, full cleanup |
+| 12 symbols, both directions | 24 actual opens, 48 resting SL/TP, steady follow-up without churn, 24 confirmed closes |
+| Settled execution slices | 60 filled rows: 28 opens, 4 partial reductions, 28 final closes |
+| Measured commissions | 60/60 matched own order-history receipts; 0 invented zero fees |
+| Final book | 0 positions / 0 orders, authenticated confirmation at 2026-10-20T20:20:49.636Z |
+| Settings restoration | all 12 original symbol leverages verified restored; original margin/position mode preserved |
+
+BTC, ETH, SOL, XRP, ADA, DOGE, BNB, AVAX, LINK, LTC, BCH and DOT USDT were each tested long and short. Market roundtrips/protection requests are technical evidence; resting protection orders are not filled trades. The separate fill-history endpoint returned a server-side RPC timeout, so measured commissions came from the confirmed own order-history endpoint. Raw receipts and account backups remain private.
+
+## Frozen 600h strategy sensitivity study
+
+`v5` seals the unchanged public 384h suffix plus older candles: 36,000 complete one-minute bars per symbol, twelve symbols, SHA256 manifest checked. Each arm uses 336h evaluated prehistory plus six-hour development or confirmation. Indicator-only warmup is outside the scored history. Six representative indications run across independent/combined 1/5/15/30-minute lanes (42 Base combos), a bounded Wide grid with Normal, Trailing, Trailing-only, DCA, DCA Active and Axis construction. Signals and Historic Exit are separately verified and disabled in this bounded assay; this is not a whole-catalog market-profitability result. The inactive DCA Active cells are not counted as passing executions.
+
+Roundtrip cost is 0.15%; modeled balance is $1,000, fixed unit $2, leverage 2. Own post-Base config PF and strict Last-25 must reach 1.5. Pair Base diagnostics retain the native pair threshold and are not exact config qualification. Development selection requires at least 25 funded settled closes, return PF ≥1.5, funded minute-mark equity drawdown ≤10% and a feasible account; selection is made on development only, with no confirmation retuning.
+
+| Scenario | Period | Pair Base pass/eval | Built configs | Active config evals | Config passes | Funded closes | Return PF |
+|---|---|---:|---:|---:|---:|---:|---:|
+| dca-0.5pct | development | 1/42 | 50 | 47 | 0 | 0 | — |
+| dca-0.5pct | confirmation | 2/42 | 100 | 94 | 0 | 0 | — |
+| dca-1pct | development | 1/42 | 50 | 47 | 0 | 0 | — |
+| dca-1pct | confirmation | 2/42 | 100 | 94 | 0 | 0 | — |
+| dca-1.5pct | development | 1/42 | 50 | 47 | 0 | 0 | — |
+| dca-1.5pct | confirmation | 2/42 | 100 | 94 | 0 | 0 | — |
+| baseline-dca-2pct | development | 1/42 | 50 | 47 | 0 | 0 | — |
+| baseline-dca-2pct | confirmation | 2/42 | 100 | 94 | 0 | 0 | — |
+| dca-2.5pct | development | 1/42 | 50 | 47 | 0 | 0 | — |
+| dca-2.5pct | confirmation | 2/42 | 100 | 94 | 0 | 0 | — |
+| block-off | development | 1/42 | 50 | 47 | 0 | 0 | — |
+| block-off | confirmation | 2/42 | 100 | 94 | 0 | 0 | — |
+| block-overall-ratio0.2-cap2 | development | 1/42 | 50 | 47 | 0 | 0 | — |
+| block-overall-ratio0.2-cap2 | confirmation | 2/42 | 100 | 94 | 0 | 0 | — |
+| block-overall-ratio0.2-cap3 | development | 1/42 | 50 | 47 | 0 | 0 | — |
+| block-overall-ratio0.2-cap3 | confirmation | 2/42 | 100 | 94 | 0 | 0 | — |
+
+All **16/16** runs completed with zero degraded-memory coverage, missing allocation/return evidence or sidecar checksum failures. **6,768** hourly own-config checks were retained. No scenario qualifies for selection. All runs have zero funded and virtual closes, six flat hours and zero equity drawdown **because there is no exposure**. These zeroes cannot demonstrate profitable low-drawdown trading or an optimal DCA/Block setting. No gates were relaxed to generate orders.
+
+Economic source SHA256: `e2414bbe6a79da6638c402ae24e6605dfeee6084689993f2ecbba80fa6175779`. Reproduce acquisition and sealing with `scripts/acquire-strategy-history.py`, `scripts/strategy-defaults-study.mjs`; verify all immutable source/feed/protocol links and sidecars using `scripts/strategy-defaults-audit.mjs`. The private workspace retains the 600h feed, per-arm protocol, raw/session output and every hourly verdict. Startup/failure attempts v1–v4 remain explicitly superseded: normalization failure, short ordinary lane history, incomplete slow-lane warmup, then one incomplete gzip repaired and revalidated. None is reported as a completed passing market study.
+
+The earlier independent Signal study remains distinct: 88,621 configs, 17,706 own Base passes at start, 21,083 ever-passing configs, 4,542 configs with 7,055 accepted virtual closes; total return PF 1.112312 and 11 positive / 12 negative / 1 flat hours. Its development-selected group's confirmation PF is 1.370291, below 1.5. See [signal-pf15-20261020.md](signal-pf15-20261020.md). New APZ reclaim, FRAMA pullback and Supertrend pullback sources remain research options; their source references and causal formulas are in [signal-research-20261020.md](signal-research-20261020.md). No universal hourly-profit claim or automatic profitable-preset promotion is justified.
+
+## Verification and release scope
+
+- 34-file Signal/strategy/history/Block/control/exchange regression set: original run 783 passed, three stale fixture failures and three dependent cancellations. Those three files were corrected and rerun: 52/52 passed, including all 128 toggle combinations and all ranges. The failed original log is preserved rather than represented as a single green run.
+- Additional focused weighted DCA/history/fee/schema checks passed 28/28; late-fee and control/regression groups passed; audit-negative mutations now deliberately choose cost-verifiable Normal closes and pass 43/43. Component label regression covers all five Historic Exit families, including Breakeven and Trailing-only.
+- Complete script stage: 624 passed, 8 explicit skips, zero failures/cancellations. All 80 app/component tests passed after updating the two newly supported Exit-family expectations. The full 208-file core audit and remote CI are tracked in PR 185; do not infer their result from the targeted checks.
+- TypeScript, lint, production build and packaged worker pass. Desktop/mobile dev and production Settings checks save/reload addition ratios 2 and 2.5, reject 2.6, and persist the independent trailing-only toggle. No page/console errors or horizontal overflow. Full functional dev UI checks visit every page on computed synthetic data; offline decorative request failures are separate from application failures.
+- No hosted production deployment/reload was performed. Actual venue testing was isolated to X02 VST. Existing preset caches without exact economic revision provenance require backed-up re-evaluation/retirement before a hosted reload; changing source does not certify legacy cached PF.

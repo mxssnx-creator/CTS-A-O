@@ -38,7 +38,7 @@ test("legacy discovery rows are explicit and never labeled as a qualified Normal
 
 test("Historic Exit labels preserve every family and direction without assigning a range or changing the kind", () => {
   const base = "follow|rsi@m5|tp1.2|sl0.8|tr0.3|h32";
-  for (const [code, family] of [["0", "Static SL"], ["1", "Adaptive SL"], ["2", "Trailing"]]) {
+  for (const [code, family] of [["0", "Static SL"], ["1", "Adaptive SL"], ["2", "Trailing"], ["3", "Breakeven"], ["4", "Trailing only"]]) {
     for (const [direction, side] of [["L", "Long"], ["S", "Short"]]) {
       const row = { key: `${base}|hx${direction}${code}`, kind: "exit" };
       assert.equal(historicExitLabel(row), `Historic Exit · ${family} · ${side}`);
@@ -50,7 +50,7 @@ test("Historic Exit labels preserve every family and direction without assigning
   assert.equal(historicExitLabel({ key: `${base}|hx` }), "Historic Exit", "legacy identity cannot invent a family or direction");
   assert.equal(historicExitLabel({ key: `${base}|hxL` }), "Historic Exit · Long");
   assert.equal(historicExitLabel({ key: `${base}|hx1` }), "Historic Exit · Adaptive SL");
-  for (const suffix of ["", "|mc", "|to", "|hxL3", "|hxLS0", "|hxL0|extra", "|hxL0|dca"])
+  for (const suffix of ["", "|mc", "|to", "|hxL5", "|hxLS0", "|hxL0|extra", "|hxL0|dca"])
     assert.equal(historicExitLabel({ key: `${base}${suffix}` }), null);
   assert.equal(historicExitLabel({}), null);
 });

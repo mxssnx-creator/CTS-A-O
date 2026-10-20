@@ -136,6 +136,10 @@ jobs:
 
   data:
     name: Acquire and verify frozen public candles
+    # The archived 17 October comparison seals an exact economic source inventory.
+    # Current-code PRs run every technical check above; an archived replay is an
+    # explicit dispatch from its matching source revision, never a retuned PR result.
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:

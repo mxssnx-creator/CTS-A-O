@@ -370,7 +370,9 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
       run: "overall",
       what: "a recorded Block volume the rules did not give (still within the caps)",
       corrupt: (i) => {
-        const k = i.sim!.trades.findIndex((x) => (x.mult ?? 1) <= 2 && !x.coordVol);
+        const k = i.sim!.trades.findIndex((x) => !sigCfg(x.cfg) && tapeOf(x).kind === "normal" &&
+          (x.vol ?? 1) === (x.mult ?? 1) && (x.mult ?? 1) <= 2 && !x.coordVol);
+        assert.ok(k >= 0, "a plain cost-verifiable close within the caps exists");
         return withTrade(i, k, { mult: (i.sim!.trades[k].mult ?? 1) + 1 });
       },
       alsoFails: UNIT_AND_COST_MULT_FAILS,
@@ -393,7 +395,8 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
       run: "shared",
       what: "a Block multiple above max after removing independent sizing factors",
       corrupt: (i) => {
-        const k = i.sim!.trades.findIndex((x) => (x.mult ?? 1) >= 1);
+        const k = plainIdx(i.sim!);
+        assert.ok(k >= 0, "a plain cost-verifiable close exists");
         const x = i.sim!.trades[k];
         const rangeVol = rangeVolumeFactorFor(tapeOf(x), i.sim!.opts);
         const independentFactors = (x.coordVol ?? 1) * (x.hedgeVol ?? 1) * rangeVol;
