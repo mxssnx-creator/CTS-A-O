@@ -1,0 +1,24 @@
+{
+  "sourceSha256": "ae7b2021fbdce8c3432329781dfc19a651c7e1fc488b3826874af741e69befaa",
+  "ciRun": 39508546694,
+  "commit": "b4eb41ead3c57e37532d646e6435757e14f66189",
+  "artifactId": 12305110025,
+  "artifactSha256": "ea0e9224ea70b343628889b355e984b86f5db0228fea81d020571844135d330d",
+  "complete": true,
+  "sourceFamilies": 19,
+  "registeredSources": 1708,
+  "nativeSymbols": 20,
+  "hourlyCuts": 6,
+  "totals": {
+    "laneSymbolCases": 123680,
+    "comparisons": 742080,
+    "comparedBars": 1698255600,
+    "entryComparisons": 4590120,
+    "entryCases": 765020
+  },
+  "violations": 0,
+  "identityCells": 606032,
+  "controlledPositiveHourlyDecisions": 5124,
+  "controlledNegativeHourlyDecisions": 5124,
+  "classification": "Real historical state/entry causality plus synthetic identity/gate correctness; not a positive market-return guarantee"
+}

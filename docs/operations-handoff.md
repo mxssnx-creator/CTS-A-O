@@ -1,3 +1,15 @@
+# Universal registry/type/range correctness complete — 21 October 2026
+
+Runtime source remains ae7b2021fbdce8c3432329781dfc19a651c7e1fc488b3826874af741e69befaa. Universal CI 39508546694 succeeds: all 1,708 registered specs / 19 families, 606,032 source/lane/type/range/side identity cells, 5,124 controlled passing hourly own-history checks and 5,124 controlled losing checks. On 20 real cached symbols over 96h, six hourly cuts yield 742,080 state-prefix and 4,590,120 Bot-entry/tactics-prefix comparisons, with zero future-data discrepancies. Includes 1/5/15/30m, independent/combined lanes. All seven range tags are checked; supplemental Wide/Minimal Plus identity cells are explicitly labeled, not claimed as a full Cartesian financial replay. See docs/universal-correctness-2026-10-21/{plan,summary,catalog,identity,causal}.json.
+
+Both optional slow tests pass on that runner: mixed-operation storm and two-day background preset backtest (2/2, 133.4s combined). Initial slow workflow failed before tests because worker packaging requires the app build; corrected workflow uses build:dev. Preserve first failed build evidence.
+
+Primary CI 39506738033: ordinary partition 206 files / 2,290 tests passes; runtime 1 file / 28 passes / 2 explicit slow exclusions passes; heavy partition has 5 files / 56 passes plus Signal allow-mode suite's 3 tests cancelled by its setup timeout. The Signal suite used the expanded default Micro/Inverse catalog despite testing only three allowed Signal sources. Its confirmation catalog is now pinned to the original source fixture, new unrelated families stay in dedicated coverage, and disposal/pool cleanup runs even on failure. Targeted repaired suite passes 3/3 in 7.37s. A final exact-checkout complete run remains necessary; do not label the prior run all-green.
+
+Final v9 original market replay, v6 chronological study and 120-symbol load all pass on source ae7. Results exactly reproduce corrected-order economic outcomes: original funded 126,342 / PF 0.101956311; standard full training 345,778 / PF 1.168138; selected training 101,415 / PF 2.877993; later validation 4,007 / PF 0.118385; confirmation 40,604 / PF 0.032616. All post-Base stages and funded evidence are retained. No consistent hourly market profitability or live acceptance.
+
+Final stress: 728 identities / 120 symbols, 2 computes, 100 coalesced kicks, max concurrent compute 1, 1,609 injected execution callbacks, 1,625 timer checks, maximum lag 38.737ms on this runner, no missed checks/errors. This is synthetic callback load, not venue execution latency. No deployment, merge or native orders.
+
 # Gate/identity/funding verification — 21 October 2026
 
 Current source manifest ae7b2021fbdce8c3432329781dfc19a651c7e1fc488b3826874af741e69befaa. Runtime economics match the corrected b0eb source; later changes are funding/report auditing, explanatory comments and lifecycle fixtures. v9 original-window and v6 chronological protocols have exactly the same economic settings/WF/feed/windows as their corrected-order predecessors. Do not retune from their known outcomes.

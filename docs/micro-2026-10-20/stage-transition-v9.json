@@ -1,0 +1,485 @@
+{
+  "schema": "cts-own-gate-transition-v1",
+  "sourceSha256": "ae7b2021fbdce8c3432329781dfc19a651c7e1fc488b3826874af741e69befaa",
+  "funding": {
+    "basis": "Exact per-close native report allocation",
+    "virtualCloses": 131858,
+    "fundedCloses": 126342,
+    "zeroAllocatedCloses": 5516,
+    "unknownAllocations": 0
+  },
+  "window": {
+    "indicatorStartT": 1792098000000,
+    "evaluationFromT": 1792184400000,
+    "tradeStartT": 1792227600000,
+    "endT": 1792270800000,
+    "preH": 12,
+    "runH": 12
+  },
+  "initialSets": 14458,
+  "verifiedInitialTapes": 14458,
+  "replayedDecisions": 173496,
+  "decisionMismatches": [],
+  "steps": [
+    {
+      "t": 1792227600000,
+      "evaluated": 62553,
+      "passed": 14458,
+      "seated": 14458,
+      "initialStillPassed": 14458,
+      "initialFirstFailures": {},
+      "newlyDroppedFirstFailures": {}
+    },
+    {
+      "t": 1792231200000,
+      "evaluated": 62553,
+      "passed": 11914,
+      "seated": 11914,
+      "initialStillPassed": 10370,
+      "initialFirstFailures": {
+        "net": 116,
+        "pf": 74,
+        "lcb": 2163,
+        "lastN": 1330,
+        "green": 391,
+        "ddr": 14
+      },
+      "newlyDroppedFirstFailures": {
+        "net": 116,
+        "pf": 74,
+        "lcb": 2163,
+        "lastN": 1330,
+        "green": 391,
+        "ddr": 14
+      }
+    },
+    {
+      "t": 1792234800000,
+      "evaluated": 62553,
+      "passed": 9254,
+      "seated": 9254,
+      "initialStillPassed": 7991,
+      "initialFirstFailures": {
+        "net": 103,
+        "pf": 119,
+        "lcb": 3451,
+        "lastN": 2310,
+        "green": 478,
+        "ddr": 6
+      },
+      "newlyDroppedFirstFailures": {
+        "lastN": 956,
+        "lcb": 1397,
+        "green": 317,
+        "ddr": 1
+      }
+    },
+    {
+      "t": 1792238400000,
+      "evaluated": 62553,
+      "passed": 8511,
+      "seated": 8511,
+      "initialStillPassed": 6595,
+      "initialFirstFailures": {
+        "net": 137,
+        "pf": 405,
+        "lcb": 3429,
+        "lastN": 3088,
+        "green": 798,
+        "ddr": 6
+      },
+      "newlyDroppedFirstFailures": {
+        "lastN": 1010,
+        "green": 510,
+        "lcb": 769,
+        "pf": 40,
+        "ddr": 3
+      }
+    },
+    {
+      "t": 1792242000000,
+      "evaluated": 62553,
+      "passed": 5367,
+      "seated": 5367,
+      "initialStillPassed": 4348,
+      "initialFirstFailures": {
+        "net": 891,
+        "pf": 1094,
+        "lcb": 5121,
+        "lastN": 2746,
+        "green": 257,
+        "ddr": 1
+      },
+      "newlyDroppedFirstFailures": {
+        "lastN": 1071,
+        "net": 163,
+        "pf": 173,
+        "lcb": 1445,
+        "green": 29
+      }
+    },
+    {
+      "t": 1792245600000,
+      "evaluated": 62553,
+      "passed": 2000,
+      "seated": 2000,
+      "initialStillPassed": 1674,
+      "initialFirstFailures": {
+        "net": 5650,
+        "pf": 1408,
+        "lcb": 4094,
+        "lastN": 1358,
+        "green": 272,
+        "ddr": 2
+      },
+      "newlyDroppedFirstFailures": {
+        "lastN": 543,
+        "lcb": 1624,
+        "green": 180,
+        "net": 216,
+        "pf": 157
+      }
+    },
+    {
+      "t": 1792249200000,
+      "evaluated": 62553,
+      "passed": 750,
+      "seated": 750,
+      "initialStillPassed": 579,
+      "initialFirstFailures": {
+        "net": 8867,
+        "pf": 1479,
+        "lcb": 2661,
+        "lastN": 860,
+        "ddr": 2,
+        "green": 10
+      },
+      "newlyDroppedFirstFailures": {
+        "lastN": 268,
+        "lcb": 498,
+        "net": 137,
+        "pf": 202,
+        "green": 6
+      }
+    },
+    {
+      "t": 1792252800000,
+      "evaluated": 62553,
+      "passed": 570,
+      "seated": 570,
+      "initialStillPassed": 452,
+      "initialFirstFailures": {
+        "net": 12502,
+        "pf": 517,
+        "lcb": 490,
+        "lastN": 494,
+        "green": 3
+      },
+      "newlyDroppedFirstFailures": {
+        "pf": 29,
+        "lcb": 49,
+        "net": 45,
+        "lastN": 124
+      }
+    },
+    {
+      "t": 1792256400000,
+      "evaluated": 62553,
+      "passed": 389,
+      "seated": 389,
+      "initialStillPassed": 311,
+      "initialFirstFailures": {
+        "net": 13478,
+        "pf": 171,
+        "lcb": 428,
+        "closes": 25,
+        "lastN": 45
+      },
+      "newlyDroppedFirstFailures": {
+        "net": 21,
+        "lcb": 102,
+        "pf": 22,
+        "lastN": 1
+      }
+    },
+    {
+      "t": 1792260000000,
+      "evaluated": 62553,
+      "passed": 304,
+      "seated": 304,
+      "initialStillPassed": 190,
+      "initialFirstFailures": {
+        "net": 13782,
+        "lcb": 223,
+        "pf": 157,
+        "lastN": 101,
+        "closes": 5
+      },
+      "newlyDroppedFirstFailures": {
+        "lastN": 98,
+        "lcb": 24,
+        "net": 2
+      }
+    },
+    {
+      "t": 1792263600000,
+      "evaluated": 62553,
+      "passed": 245,
+      "seated": 245,
+      "initialStillPassed": 163,
+      "initialFirstFailures": {
+        "net": 13788,
+        "lcb": 285,
+        "pf": 110,
+        "lastN": 99,
+        "closes": 13
+      },
+      "newlyDroppedFirstFailures": {
+        "lcb": 2,
+        "lastN": 25
+      }
+    },
+    {
+      "t": 1792267200000,
+      "evaluated": 62553,
+      "passed": 68,
+      "seated": 68,
+      "initialStillPassed": 40,
+      "initialFirstFailures": {
+        "net": 14018,
+        "pf": 69,
+        "lcb": 190,
+        "lastN": 127,
+        "green": 14
+      },
+      "newlyDroppedFirstFailures": {
+        "lastN": 35,
+        "pf": 8,
+        "lcb": 66,
+        "green": 14
+      }
+    }
+  ],
+  "closedOutcomesByEntryHour": [
+    {
+      "t": 1792227600000,
+      "n": 12879,
+      "configs": 9275,
+      "gp": 10.100251129027544,
+      "gl": 76.17284462438872,
+      "pf": 0.13259648079092068
+    },
+    {
+      "t": 1792231200000,
+      "n": 54840,
+      "configs": 11467,
+      "gp": 22.843704478787135,
+      "gl": 425.2489176864951,
+      "pf": 0.05371843061486197
+    },
+    {
+      "t": 1792234800000,
+      "n": 18526,
+      "configs": 8040,
+      "gp": 41.02622586298662,
+      "gl": 152.34367998412765,
+      "pf": 0.26930047815085634
+    },
+    {
+      "t": 1792238400000,
+      "n": 32636,
+      "configs": 6367,
+      "gp": 38.503147567086714,
+      "gl": 450.5585422498681,
+      "pf": 0.08545648113743645
+    },
+    {
+      "t": 1792242000000,
+      "n": 7393,
+      "configs": 3562,
+      "gp": 8.935664697110544,
+      "gl": 85.340759844585,
+      "pf": 0.10470570819129549
+    },
+    {
+      "t": 1792245600000,
+      "n": 68,
+      "configs": 33,
+      "gp": 0.05604344092422594,
+      "gl": 1.6792386609071261,
+      "pf": 0.03337431553293992
+    }
+  ],
+  "closedOutcomesByExitHour": [
+    {
+      "t": 1792227600000,
+      "n": 341,
+      "configs": 232,
+      "gp": 0.26257881298637054,
+      "gl": 0.12066761110384149,
+      "pf": 2.1760504793652227
+    },
+    {
+      "t": 1792231200000,
+      "n": 1216,
+      "configs": 737,
+      "gp": 2.326426216238894,
+      "gl": 0.9741532756951193,
+      "pf": 2.3881521258334253
+    },
+    {
+      "t": 1792234800000,
+      "n": 6815,
+      "configs": 3636,
+      "gp": 9.62737860318321,
+      "gl": 6.175432889491434,
+      "pf": 1.558980362261868
+    },
+    {
+      "t": 1792238400000,
+      "n": 12888,
+      "configs": 6687,
+      "gp": 19.490307032496503,
+      "gl": 72.08594806730476,
+      "pf": 0.27037595474639403
+    },
+    {
+      "t": 1792242000000,
+      "n": 29112,
+      "configs": 10203,
+      "gp": 25.120500042415713,
+      "gl": 289.08711458666835,
+      "pf": 0.08689595203277241
+    },
+    {
+      "t": 1792245600000,
+      "n": 35440,
+      "configs": 8811,
+      "gp": 15.400113076326294,
+      "gl": 280.22152364609383,
+      "pf": 0.05495692435023617
+    },
+    {
+      "t": 1792249200000,
+      "n": 23233,
+      "configs": 6359,
+      "gp": 20.87429611622322,
+      "gl": 281.09492011593136,
+      "pf": 0.074260666495197
+    },
+    {
+      "t": 1792252800000,
+      "n": 13250,
+      "configs": 3349,
+      "gp": 23.923980919301776,
+      "gl": 207.97820690041252,
+      "pf": 0.11503119137264917
+    },
+    {
+      "t": 1792256400000,
+      "n": 4016,
+      "configs": 2183,
+      "gp": 4.419774662764278,
+      "gl": 53.04427729683351,
+      "pf": 0.08332236554061069
+    },
+    {
+      "t": 1792260000000,
+      "n": 31,
+      "configs": 31,
+      "gp": 0.019681693989070978,
+      "gl": 0.5617386609071271,
+      "pf": 0.03503710062840944
+    }
+  ],
+  "settledHoldMinutes": {
+    "wins": 20489,
+    "winnersAverage": 162.4032895700132,
+    "losses": 105853,
+    "losersAverage": 194.0882072307823
+  },
+  "entryStageCounts": [
+    {
+      "t": 1792227600000,
+      "candidates": 32346,
+      "taken": 12879
+    },
+    {
+      "t": 1792231200000,
+      "candidates": 76067,
+      "taken": 54840
+    },
+    {
+      "t": 1792234800000,
+      "candidates": 30961,
+      "taken": 18526
+    },
+    {
+      "t": 1792238400000,
+      "candidates": 74500,
+      "taken": 32636
+    },
+    {
+      "t": 1792242000000,
+      "candidates": 18371,
+      "taken": 7393
+    },
+    {
+      "t": 1792245600000,
+      "candidates": 5562,
+      "taken": 1468
+    },
+    {
+      "t": 1792249200000,
+      "candidates": 5121,
+      "taken": 1806
+    },
+    {
+      "t": 1792252800000,
+      "candidates": 3822,
+      "taken": 1443
+    },
+    {
+      "t": 1792256400000,
+      "candidates": 1563,
+      "taken": 1243
+    },
+    {
+      "t": 1792260000000,
+      "candidates": 245,
+      "taken": 97
+    },
+    {
+      "t": 1792263600000,
+      "candidates": 100,
+      "taken": 33
+    },
+    {
+      "t": 1792267200000,
+      "candidates": 36,
+      "taken": 3
+    }
+  ],
+  "firstEntryRejectionCounts": {
+    "symPf": 49305,
+    "configValidation": 67022
+  },
+  "firstEntryRejectionReturnsIncludingEndpointMarks": {
+    "symPf": {
+      "n": 49305,
+      "gp": 89.67941983982787,
+      "gl": 332.86793610519294
+    },
+    "configValidation": {
+      "n": 67022,
+      "gp": 100.11206360472492,
+      "gl": 394.90438939717535
+    }
+  },
+  "notes": [
+    "Rolling own-config decisions use only closes available at each recorded step. The archived same-identity gate arithmetic is replayed independently of source signal generation.",
+    "First-failure codes are ordered gate failures, not independent or additive marginal causes. Initial-set counts exclude later newly eligible configs.",
+    "Entry-hour outcomes use hindsight to locate delayed losses; never use these outcomes to qualify the original entries. Exit-hour PF is a different clock.",
+    "Entry/rejection counters include endpoint-marked candidates; the outcome rows are settled closes only."
+  ]
+}
