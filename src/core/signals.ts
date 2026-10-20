@@ -149,16 +149,14 @@ export function activeSignals(
   const byDd = rank === "drawdown" || rank === "lowdd";
   // one row per unit; a pooled (pre-split) record is one unit holding both directions' keys
   const rows: Array<{ key: string; keys: string[]; score: number; pf: number }> = [];
-  const judge = (keys: string[], st: SignalSideStat, side: 1 | -1 | 0) => {
-    // longRelax: a long unit skips the recent window, the block share and the low-drawdown floor (its net stays positive)
-    const relaxed = sig.longRelax === true && side === 1;
-    if (st.n < sig.minTrades || (!relaxed && !recentOk(st))) return;
+  const judge = (keys: string[], st: SignalSideStat) => {
+    if (st.n < sig.minTrades || !recentOk(st)) return;
     if (byDd) {
       // drawdown-aware: profitable, positive in enough 4-hour blocks, ranked by net ÷ max drawdown
-      if (!(st.net > 0) || (!relaxed && (st.okShare ?? 0) < (sig.minBlockShare ?? 0))) return;
+      if (!(st.net > 0) || (st.okShare ?? 0) < (sig.minBlockShare ?? 0)) return;
       const dd = Math.max(st.dd ?? 0, 0.5);
       // low drawdown: recovered its worst drawdown at least once, ranked by net ÷ drawdown²
-      if (rank === "lowdd" && !relaxed && st.net < dd) return;
+      if (rank === "lowdd" && st.net < dd) return;
       rows.push({ key: keys[0], keys, score: rank === "lowdd" ? st.net / (dd * dd) : st.net / dd, pf: st.pf });
     } else rows.push({ key: keys[0], keys, score: st.net, pf: st.pf });
   };
@@ -169,9 +167,9 @@ export function activeSignals(
       const L = sigActiveKey(r.bot, r.ind, sym, 1);
       const S = sigActiveKey(r.bot, r.ind, sym, -1);
       if (st.sides) {
-        if (st.sides["1"]) judge([L], st.sides["1"], 1);
-        if (st.sides["-1"]) judge([S], st.sides["-1"], -1);
-      } else judge([L, S], st, 0);
+        if (st.sides["1"]) judge([L], st.sides["1"]);
+        if (st.sides["-1"]) judge([S], st.sides["-1"]);
+      } else judge([L, S], st);
     }
   }
   rows.sort((a, b) => b.score - a.score || b.pf - a.pf || (a.key < b.key ? -1 : 1));

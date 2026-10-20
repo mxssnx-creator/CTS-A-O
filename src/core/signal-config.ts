@@ -595,11 +595,6 @@ export interface SignalSettings {
    * at least one close per config). The per-step ranking itself judges the last max(longH, preH) hours.
    */
   validateH: number;
-  /**
-   * long units only: skip the recent-window validation, the 4-hour block share and the low-drawdown floor (the net must
-   * still be positive, with minTrades closes). Shorts are unchanged. Default off.
-   */
-  longRelax: boolean;
   /** signal orders' own caps (they add to the engine's orders): open per symbol, open overall; 0 = no limit */
   perSymbol: number;
   /** strategy sets each signal runs besides its Normal / Trailing configs: DCA (+ DCA Active) and Axis */
@@ -715,7 +710,6 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   minBlockShare: 0.6,
   validate: true,
   validateH: 24,
-  longRelax: false,
   minSl: 0.005,
   minTrail: 0.005,
   // off: pausing a source after its executed orders lost cost net at every tested setting (continuous 8 days,
@@ -844,7 +838,6 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
   out.minTrail = fl(out.minTrail, DEFAULT_SIGNALS.minTrail);
   const vh = Number(out.validateH);
   out.validateH = Number.isFinite(vh) ? Math.min(72, Math.max(2, Math.round(vh))) : 24;
-  out.longRelax = out.longRelax === true;
   out.guard.lastN = Math.min(
     50,
     Math.max(2, Math.round(Number(out.guard.lastN) || DEFAULT_SIGNALS.guard.lastN)),
