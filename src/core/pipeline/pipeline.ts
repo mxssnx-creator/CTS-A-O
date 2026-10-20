@@ -40,6 +40,7 @@ import {
 } from "../minimal-coord.ts";
 import { isMicroInd, microIndFits, type MicroIndRule } from "../indications/micro.ts";
 import { isRelateInd, relateAnchorTf } from "../indications/relate.ts";
+import { INVERSE_TIMEFRAMES, isInverseInd } from "../indications/inverse-config.ts";
 import { breakAnchorTf, isBreakRelInd } from "../indications/break-config.ts";
 import { SeriesCache } from "../indications/cache.ts";
 import { MarketSource } from "../indications/market.ts";
@@ -244,9 +245,11 @@ export const laneClosesWith = (baseOpenT: number, baseTf: number, laneTf: number
 /** Timeframe lanes of every indication: independent per timeframe, combined where higher timeframes exist. */
 export function laneInds(base: string, tfs: readonly number[]): string[] {
   const out: string[] = [];
-  for (const tf of tfs) {
+  const lanes = isInverseInd(base)
+    ? tfs.filter((tf) => (INVERSE_TIMEFRAMES as readonly number[]).includes(tf)) : tfs;
+  for (const tf of lanes) {
     out.push(laneInd(base, tf));
-    if (base !== "none" && higherFactors(tf, tfs.length ? tfs : TF_LADDER).length)
+    if (base !== "none" && higherFactors(tf, lanes.length ? lanes : TF_LADDER).length)
       out.push(laneInd(base, tf, true));
   }
   return out;
@@ -310,7 +313,8 @@ export function allCombos(
     // signal sources ("sig-…") are processed by Signals processing, not as engine combos; the Stable-02 ports
     // ("s2-…") run as signal sources only (as engine combos they added 26 % Base work)
     for (const ind of INDICATIONS)
-      if (!off.has(ind.kind) && !ind.id.startsWith("sig-") && !ind.id.startsWith("s2-"))
+      if (!off.has(ind.kind) && !ind.id.startsWith("sig-") && !ind.id.startsWith("s2-") &&
+          (!isInverseInd(ind.id) || b.type === "follow"))
         plain.push({ bot: b.type, ind: ind.id });
   }
   const out = tfs?.length

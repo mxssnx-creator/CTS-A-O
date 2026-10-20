@@ -1,5 +1,15 @@
 # CTS-A-O operations handoff
 
+## 20 October 2026 — Inverse indication research checkpoint (not deployed)
+
+Implementation commit `5bfc6ca20029d6a66d40664fac53e5a1e5cd767d` adds 58 independent Inverse variants on 1/5/15m lanes, shared causal math/market context, gap re-warmup, a PF floor of 1.1, no double Revert, Settings inclusion and source/worker/native-adapter regressions. Its baseline tree exactly matches remote integration commit `e9a432f58d0214f39f45df0a3ba2f3e8937e821b`. Existing narrow Focus is preserved; the Settings inclusion control adds the candidates explicitly. No running instance, connection, account or deployment was changed.
+
+The frozen retrospective 12-symbol 24h Normal/Trailing replay passed 135/290 Base pairs, built 36,096 tapes and closed 368 modeled positions at unit-return PF **3.153203** after 0.15% modeled costs. It had 16 positive / 3 flat / 5 negative hours. Long PF was **0.544850**, short PF **13.469108**. Its 153 open endpoint marks returned PF 0.222292; settled plus marks PF **1.784010**. Three separate 6h cases returned PF 4.714939 / 17.671062 / 7.208741; they overlap the 24h run and cannot be added to it. This is not funded, capital-feasible or venue-owned execution evidence, not a virgin alpha holdout, and not proof of profitable execution in every hour/direction. Losses and empty cohorts are retained.
+
+Eight new Inverse tests, 57 focused integration tests, 17 symmetry/side/UI-helper tests, functional UI 4/4 and targeted dev/built desktop/phone UI 4/4 pass (groups overlap). DCA/DCA Active/Axis/trailing-only/bot-free Exit are separately exercised by regression fixtures; the market-PF replay above covers Normal/Trailing only. A 12×3-lane 120h calculation profile evaluates 6,347,520 state values in 804ms; warm lookups average 1.18ms per full pass. Full 24h tape construction remains substantially heavier (342s total on this host); no realtime-cycle claim. Typecheck, production build and changed-file lint pass. Final formatted-source 6h replay exactly reproduces all original executions and economic summaries.
+
+Detailed limits, hourly results, all 58 variants, frozen settings/source hashes and execution trace: `docs/sims/inverse-12-symbol-20261020.md`, `.json.gz` and `-executions.json.gz`. Consistent per-direction/hourly PF and real venue/live behavior remain unproven; do not use pooled returns to bypass exact live-promotion proof.
+
 ## 20 October 2026 — exact post-Base context checkpoint (not released)
 
 Tested implementation commit: `700a91b06dcf42a05321ca2a3986c0c33dac1846`.

@@ -24,6 +24,7 @@ import {
 } from "./pipeline/pipeline.ts";
 import { barsFromCandles, headBars, resample, syntheticCandles, tailBars } from "./market/bars.ts";
 import { isRelateInd } from "./indications/relate.ts";
+import { isInverseInd } from "./indications/inverse-config.ts";
 import { breakAnchorTf, isBreakRelInd } from "./indications/break-config.ts";
 import { DEFAULT_PROTECT, DEFAULT_SETTINGS } from "./config.ts";
 import { defaultWalkForward, kindOfInd, makeTape, selectDurable } from "./sim/walkforward.ts";
@@ -73,7 +74,9 @@ describe("lane combos", () => {
     });
     const relate = plain.filter((c) => isRelateInd(laneOf(c.ind).base));
     const breaking = plain.filter((c) => isBreakRelInd(laneOf(c.ind).base));
-    assert.equal(lanes.length, (plain.length - none - anchored.length) * 7 + anchored.length + none * 4);
+    const inverse = plain.filter((c) => isInverseInd(c.ind));
+    assert.equal(lanes.length, (plain.length - none - anchored.length - inverse.length) * 7 + anchored.length + none * 4 + inverse.length * 5);
+    assert.equal(lanes.filter((c) => isInverseInd(laneOf(c.ind).base)).length, inverse.length * 5);
     assert.equal(lanes.filter((c) => isBreakRelInd(laneOf(c.ind).base)).length, breaking.length);
     assert.equal(lanes.filter((c) => isRelateInd(laneOf(c.ind).base)).length, relate.length);
     for (const c of lanes.filter((x) => isBreakRelInd(laneOf(x.ind).base)))

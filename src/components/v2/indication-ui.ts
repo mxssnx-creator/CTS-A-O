@@ -1,5 +1,6 @@
 /** Keep the registered first-class indication name visible in every type selector. */
 export function indicationKindLabel(kind: string): string {
+  if (kind === "inverse") return "Inverse";
   if (kind === "tactic") return "Tactic";
   if (kind === "signal-coordination") return "Signals Coordination";
   if (kind === "relate") return "Relate";
@@ -39,7 +40,7 @@ export function includeBreakInFocus(focus: readonly string[], ids: readonly stri
   return includeIndicationsInFocus(focus, ids);
 }
 
-function includeIndicationsInFocus(focus: readonly string[], ids: readonly string[]): string[] {
+export function includeIndicationsInFocus(focus: readonly string[], ids: readonly string[]): string[] {
   return focus.length ? [...new Set([...focus, ...ids.map((id) => `follow|${id}`)])] : [];
 }
 
@@ -56,7 +57,7 @@ export function breakFocusCoverage(focus: readonly string[], ids: readonly strin
   return indicationFocusCoverage(focus, ids, pinned);
 }
 
-function indicationFocusCoverage(focus: readonly string[], ids: readonly string[], pinned: readonly string[] = []) {
+export function indicationFocusCoverage(focus: readonly string[], ids: readonly string[], pinned: readonly string[] = []) {
   if (!focus.length) return { all: true, covered: ids.length, full: ids.length, total: ids.length };
   const effective = [...focus, ...pinned];
   const set = new Set(effective);

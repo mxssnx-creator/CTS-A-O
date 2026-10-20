@@ -4,6 +4,7 @@ import type { BotType, Side, Tactics } from "../domain/types.ts";
 import type { SeriesCache } from "../indications/cache.ts";
 import { tacticKeyFor, withTactics } from "../indications/filters.ts";
 import { indicationState, laneOf } from "../indications/registry.ts";
+import { isInverseInd } from "../indications/inverse-config.ts";
 
 export interface BotSpec {
   type: BotType;
@@ -169,6 +170,8 @@ export function entrySignal(
   k: SeriesCache,
   tactics?: Tactics | null,
 ): Int8Array | null {
+  // Inverse already defines the traded direction. A saved/manual Revert pair cannot undo it.
+  if (bot === "revert" && isInverseInd(laneOf(ind).base)) return new Int8Array(k.b.n);
   // (a low-ADX indication, its combined "@x4" form too, skips the trend-strength tactic: it would remove every entry,
   // LOW_ADX_INDS)
   const key = tacticKeyFor(tactics, laneOf(ind).base.replace(/@x\d+$/, ""));
