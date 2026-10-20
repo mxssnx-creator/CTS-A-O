@@ -76,7 +76,9 @@ export const RELATION_LEDGER_LOOKBACK_MS = 7 * 24 * 3_600_000;
 export function relationSystemSql(cols: ReadonlySet<string> = new Set(["held_px", "entry", "exit"])): string {
   const own = (c: string) => (cols.has(c) ? `b.${c}` : "NULL");
   return (
-    `SELECT b.cfg, b.sym, b.side, b.entry_t, b.exit_t, b.r, b.vol, b.reason, b.held_at, ${own("held_px")} AS held_px, ` +
+    // r at one unit (r / the order's execution multiple), as the exchange record is: the sized r of a Block-raised order
+    // read as a unit return put the multiple into every gap against the exchange
+    `SELECT b.cfg, b.sym, b.side, b.entry_t, b.exit_t, b.r / COALESCE(NULLIF(${own("mult")}, 0), NULLIF(b.vol, 0), 1) AS r, b.vol, b.reason, b.held_at, ${own("held_px")} AS held_px, ` +
     `COALESCE(${own("entry")}, p.entry) AS entry, COALESCE(${own("exit")}, p.exit) AS exit FROM paper_book_trades b ` +
     "LEFT JOIN paper_trades p ON p.cfg = b.cfg AND p.sym = b.sym AND p.side = b.side AND p.entry_t = b.entry_t WHERE b.exit_t >= ?"
   );

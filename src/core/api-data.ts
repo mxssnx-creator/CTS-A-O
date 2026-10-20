@@ -1159,7 +1159,7 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
     }>(
       // the paper book's own forward record (paper_book_trades: written once at each close, never back-filled or
       // re-priced; paper_trades is rewritten every step) — sized by the paper sizing below
-      "SELECT cfg, sym, side, entry_t, exit_t, entry, r, reason, NULL AS pnl FROM paper_book_trades WHERE exit_t IS NOT NULL AND r IS NOT NULL AND reason != 'dropped' ORDER BY exit_t",
+      "SELECT cfg, sym, side, entry_t, exit_t, entry, r / COALESCE(NULLIF(mult, 0), NULLIF(vol, 0), 1) AS r, reason, NULL AS pnl FROM paper_book_trades WHERE exit_t IS NOT NULL AND r IS NOT NULL AND reason != 'dropped' ORDER BY exit_t",
     );
     trades = rows.map((x) => ({
       cfg: x.cfg,

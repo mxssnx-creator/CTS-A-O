@@ -23,6 +23,7 @@ import {
   relationLine,
   relationMd,
   relationOf,
+  relationSystemSql,
   relationWarnsDue,
   type RelLaneRow,
   type RelSystemRow,
@@ -327,6 +328,24 @@ describe("relationOf: one window, own lanes against the paper book's own record 
     assert.ok(Math.abs(pos.hand.usd - (-10 - 0.05 - 0.09)) < 1e-9, "its money, counted apart");
     assert.equal(pos.list[0].lanes, 1);
     assert.ok(Math.abs(pos.list[0].systemMeanR! - 1) < 1e-9);
+  });
+
+  it("the system side is read at one unit: a Block-raised paper close (r sized by mult) matches the exchange's unit return", () => {
+    const db = new DatabaseSync(":memory:");
+    db.exec(
+      "CREATE TABLE paper_book_trades (cfg TEXT, sym TEXT, side INTEGER, entry_t INTEGER, exit_t INTEGER, r REAL, vol REAL, reason TEXT, held_at INTEGER, held_px REAL, entry REAL, exit REAL, mult REAL);" +
+        "CREATE TABLE paper_trades (cfg TEXT, sym TEXT, side INTEGER, entry_t INTEGER, entry REAL, exit REAL);" +
+        "INSERT INTO paper_book_trades VALUES ('c1','A-USDT',1,1000,2000,0.045,1.5,'tp',NULL,NULL,100,103,1.5);" +
+        // an older row: no mult written, the unit is vol
+        "INSERT INTO paper_book_trades VALUES ('c2','B-USDT',-1,1000,2000,0.04,2,'sl',NULL,NULL,100,98,NULL);" +
+        // a plain row
+        "INSERT INTO paper_book_trades VALUES ('c3','C-USDT',1,1000,2000,0.01,1,'tp',NULL,NULL,100,101,NULL);",
+    );
+    const rows = db.prepare(relationSystemSql()).all(0) as Array<{ cfg: string; r: number }>;
+    const r = Object.fromEntries(rows.map((x) => [x.cfg, x.r]));
+    assert.ok(Math.abs(r.c1 - 0.03) < 1e-12, String(r.c1));
+    assert.ok(Math.abs(r.c2 - 0.02) < 1e-12, String(r.c2));
+    assert.ok(Math.abs(r.c3 - 0.01) < 1e-12, String(r.c3));
   });
 
   it("the positions PF is on the return per position (percent of its entry notional), not on USD", () => {

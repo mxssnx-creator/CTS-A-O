@@ -4423,7 +4423,7 @@ export class CoreRuntime {
     // the paper book's signal closes, read from the partial covering index (its entries carry the primary key: symbol,
     // side and entry time); signal ids carry "|sig-" — signalUnitOf keeps exactly the signal configs
     const rows = this.db.all<{ cfg: string; sym: string; side: number; entry_t: number; exit_t: number | null; r: number }>(
-      "SELECT cfg, sym, side, entry_t, exit_t, r FROM paper_book_trades WHERE reason != 'dropped' AND r IS NOT NULL AND cfg LIKE '%|sig-%'",
+      "SELECT cfg, sym, side, entry_t, exit_t, r / COALESCE(NULLIF(mult, 0), NULLIF(vol, 0), 1) AS r FROM paper_book_trades WHERE reason != 'dropped' AND r IS NOT NULL AND cfg LIKE '%|sig-%'",
     );
     const paper = rows
       .filter((x) => x.exit_t !== null)
