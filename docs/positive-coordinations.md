@@ -36,6 +36,16 @@ for this desk again. The caps-off period (about 01:32 to 02:38 UTC) is not a mea
 Remaining backstops: the 80 %-of-wallet loss limit (`--max-loss-pct 80`), taken of the wallet at the start of each session
 and counted from each session's start (11 Oct, systemwide: src/core/loss-limit.ts), and the free-margin / last-N floors.
 
+20 Oct — **x01 Signals live desk: the stop-risk and worst-case budgets switched OFF, exposure cap 500×.** On the operator's
+explicit approval ("Budgets bei dieser Wallet sollen aus sein. Ausdrücklich genehmigt.") for the ~0.11 USDT-base wallet:
+`live.maxRiskPct 0` and `live.maxBackstopLossPct 0` (0 = budget off, `scaleToBudgets`), `live.maxExposureX 500` (settings
+maximum), `live.maxPositionX 30`, `live.ratio 1` (the minimum volume factor). The coordination "Live fill within every budget"
+is therefore OFF for this desk, with no causal comparison: the reason is the venue minimum (2–3.4 USD) over the wallet base — one
+stop of a minimum position costs ~0.2 USD, more than the base, so any budget at or below 100 % of the equity admits at most one
+position. The exchange's own margin check and the free-margin floor remain; no account-loss limit is active (`--max-loss 0`,
+operator's earlier choice). To restore with a larger deposit: maxRiskPct 0.5, maxBackstopLossPct 0.5, maxExposureX 10,
+maxPositionX 5.
+
 6 Oct — **engine direction acceptance off; Long and Short always run both directions.** The comparison above does NOT
 beat the coordination: on the same tapes switching it off let in 187 shorts at PF 0.05 and took the window from PF 3.62
 to 1.82 (net −37 %). Shown to the operator before the decision; the operator chose both directions anyway and asked for
