@@ -158,7 +158,7 @@ const pc = (x) => `${(x * 100).toFixed(1)}%`;
 const md = [
   `# Indication adjustments — ${tf}m`,
   "",
-  `${U.bars.length} symbols · ${days.toFixed(0)} days of real BingX data · half A → ${new Date(split).toISOString().slice(0, 10)} (select) · half B → ${new Date(U.nowT).toISOString().slice(0, 10)} (validate) · cost 0.2% round trip · ${INDICATIONS.length} indications × ${bots.join("/")} × ${filters.length} filters × ${PROTECTS.length} protects (${PROTECTS.map((p) => `TP ${pc(p.tp)} SL ${pc(p.sl)} hold ${p.hold}`).join("; ")})`,
+  `${U.bars.length} symbols · ${days.toFixed(0)} days of real BingX data · half A → ${new Date(split).toISOString().slice(0, 10)} (select) · half B → ${new Date(U.nowT).toISOString().slice(0, 10)} (validate) · cost ${(RT_COST * 100).toFixed(2)}% round trip · ${INDICATIONS.length} indications × ${bots.join("/")} × ${filters.length} filters × ${PROTECTS.length} protects (${PROTECTS.map((p) => `TP ${pc(p.tp)} SL ${pc(p.sl)} hold ${p.hold}`).join("; ")})`,
   "",
   `**Both-halves survivors** (PF ≥ 1.1 in A and B, ≥ ${minN} trades each): ${survivors.length} of ${rows.length}.`,
   "",

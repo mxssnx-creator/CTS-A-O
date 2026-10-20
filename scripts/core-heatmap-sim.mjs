@@ -2,12 +2,14 @@
 // CTS-A-O — heatmap simulation: TP × SL ratio × trailing cells on real BingX data (12 symbols, the 15m reference
 // lane, so every target is exact). The engine computes the tapes once per window, then per cell:
 //   base  every tape of the cell (every indication × every symbol) over the window: closes, PF, net, win rate
-//   wf    the Real-stage walk-forward with the heatmap probe (the best tape of every cell seated, Block off)
-// One JSON per window; scripts/core-heatmap.mjs pools the windows with the live run into the HTML heatmap.
+//   wf    a diagnostic walk-forward probe (the best tape of every cell seated, Block off, validLastN 0),
+//         which bypasses actual stage qualification and cannot establish it.
+// One JSON per window; scripts/core-heatmap.mjs pools the windows with the forward paper run into the HTML heatmap.
 //
 //   CTS_CORE_WORKERS=1 node --experimental-strip-types scripts/core-heatmap-sim.mjs --settings runs/hm/heatmap.json \
 //     --end-ago 24 --out runs/hm/sim-w24
 import { readFileSync, writeFileSync } from "node:fs";
+import { unitR } from "./lib/eval-orders.mjs";
 
 const { CoreRuntime } = await import("../src/core/server/runtime.server.ts");
 const { CoreDb } = await import("../src/core/server/db.server.ts");
@@ -65,7 +67,7 @@ const cellOf = (p) => {
   const tr = p.trail > 0 ? +(Math.round((p.trail / p.tp) * 4) / 4).toFixed(2) : 0;
   return `${tp}|${sl}|${tr}`;
 };
-const acc = () => ({ tapes: 0, n: 0, w: 0, gp: 0, gl: 0 });
+const acc = () => ({ tapes: 0, n: 0, w: 0, gp: 0, gl: 0, unknownReturns: 0 });
 const base = {};
 // the heatmap cells are the plain and trailing configs (DCA / Axis tapes carry their own protects)
 const { laneOf } = await import("../src/core/indications/registry.ts");
@@ -88,19 +90,47 @@ const byId = new Map(cellTapes.map((t) => [t.id, t]));
 const o = { ...rt.wf, probe: { perRange: 0, perCell: 1 }, toggles: { ...rt.wf.toggles, block: false, blockActive: false } };
 const wfSim = walkForward(rt.lastUniverse, cellTapes, o);
 const wf = {};
+const wfUnit = {};
 for (const t of wfSim.trades) {
   const tp = byId.get(t.cfg);
   if (!tp) continue;
-  const x = (wf[cellOf(tp.protect)] ??= acc());
-  x.n++;
-  if (t.r > 0) {
-    x.w++;
-    x.gp += t.r;
-  } else x.gl -= t.r;
+  // Direct simulated trades carry their sizing multiple. Normalize only these in-memory returns; the old wf
+  // field remains a weighted diagnostic for compatibility, separate from Base and the primary unit-return PF.
+  for (const [cells, r] of [[wfUnit, unitR(t)], [wf, t.r]]) {
+    const x = (cells[cellOf(tp.protect)] ??= acc());
+    x.n++;
+    if (!Number.isFinite(r)) {
+      x.unknownReturns++;
+      x.gp = null;
+      x.gl = null;
+      x.w = null;
+      continue;
+    }
+    if (x.unknownReturns) continue;
+    if (r > 0) {
+      x.w++;
+      x.gp += r;
+    } else x.gl -= r;
+  }
 }
 writeFileSync(
   `${out}.json`,
   JSON.stringify({
+    evidence: {
+      basis: "historical-diagnostic-cell-probe",
+      executionVerified: false,
+      stageQualification: false,
+      cost: rt.settings.cost,
+      costBasis: "Engine roundtrip model cost already deducted in each unit return; weighted diagnostic applies simulation sizing to the same net return",
+      wfUnitSource: "unitR(wfSim.trades): direct in-memory simulated returns divided by their own positive mult",
+      wfWeightedSource: "wfSim.trades.r: weighted simulation diagnostic; legacy wf field, not per-order unit returns",
+      qualificationBypass: {
+        validLastN: rt.wf.validLastN,
+        probe: o.probe,
+        block: o.toggles.block,
+        blockActive: o.toggles.blockActive,
+      },
+    },
     endAgo,
     startT: a,
     endT: b,
@@ -109,6 +139,7 @@ writeFileSync(
     computeS: (Date.now() - t0) / 1000,
     base,
     wf,
+    wfUnit,
   }),
 );
 process.stderr.write(`wrote ${out}.json: ${rt.tapes.length} tapes, ${Object.keys(base).length} cells\n`);

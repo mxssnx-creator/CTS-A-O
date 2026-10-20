@@ -67,7 +67,14 @@ function sameLanes(got: Bars[], want: Bars[], msg: string) {
 }
 
 describe("columnar candles: the append path against the Candle[] code", () => {
-  it("400 appends per symbol: the same bars, last bar, lanes, prices and SQLite rows at every step", async () => {
+  it("400 appends per symbol: the same bars, last bar, lanes, prices and SQLite rows at every step", async (t) => {
+    // This case verifies actual SQLite parity; the offline suite may inherit the deliberate no-SQL memory mode.
+    const previousState = process.env.CTS_CORE_STATE;
+    t.after(() => {
+      if (previousState === undefined) delete process.env.CTS_CORE_STATE;
+      else process.env.CTS_CORE_STATE = previousState;
+    });
+    delete process.env.CTS_CORE_STATE;
     // a short 1 m history: the headroom (90–179 bars) runs out every 30–60 steps, so the run copies many times
     const settings = { symbols: 3, historyDays: 0.5, tfDays: { "1": 0.25, "5": 0.5, "15": 0.5, "30": 0.5 }, tfs: [1, 5, 15, 30] };
     const db = new CoreDb(":memory:");

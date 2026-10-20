@@ -6,6 +6,8 @@ import { mkdtempSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CoreDb } from "./db.server.ts";
+import { recordLanes } from "./live.server.ts";
+import { DEFAULT_SETTINGS } from "../config.ts";
 
 const put = (db: CoreDb, coid: string, qty: number) =>
   db.runDurable(
@@ -25,6 +27,34 @@ const coids = (db: CoreDb) =>
   db.all<{ coid: string }>("SELECT coid FROM live_orders ORDER BY coid").map((r) => r.coid);
 
 describe("ledger journal", () => {
+  it("a lane's execution result survives a crash between database snapshots", () => {
+    const dir = mkdtempSync(join(tmpdir(), "cts-fill-journal-"));
+    try {
+      const journal = join(dir, "core.journal");
+      const a = new CoreDb(":memory:");
+      a.journalPath = journal;
+      const rt = { db: a, settings: DEFAULT_SETTINGS };
+      const lane = { id: "cfg|A-USDT|100", cfg: "cfg", sym: "A-USDT", side: 1 as const };
+      const common = { grew: new Map<string, number>(), shrank: new Map<string, number>(), external: new Map<string, number | null>(), prices: new Map([["A-USDT", 100]]) };
+      recordLanes(rt, { ...common, lanes: [lane], heldAfter: new Set(["A-USDT|1"]), now: 100 });
+      recordLanes(rt, { ...common, lanes: [], heldAfter: new Set(), shrank: new Map([["A-USDT|1", 98]]), now: 200 });
+      const b = new CoreDb(":memory:");
+      b.journalPath = journal;
+      assert.equal(b.replayJournal(), 1);
+      // relation: all rows — the fixture reads back the one row it replayed
+      const rows = b.all<{ entry: number; exit: number; r: number }>("SELECT entry, exit, r FROM live_lane_trades");
+      assert.equal(rows.length, 1);
+      assert.equal(rows[0].entry, 100);
+      assert.equal(rows[0].exit, 98);
+      assert.ok(Math.abs(rows[0].r - (-.02 - DEFAULT_SETTINGS.cost)) < 1e-12);
+      assert.equal(b.replayJournal(), 1);
+      // relation: all rows — the fixture counts the rows it replayed
+      assert.equal(b.get<{ n: number }>("SELECT COUNT(*) AS n FROM live_lane_trades")?.n, 1, "replaying twice is idempotent");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("a crash after a snapshot loses no ledger write", async () => {
     const dir = mkdtempSync(join(tmpdir(), "cts-journal-"));
     try {

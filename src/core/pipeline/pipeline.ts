@@ -33,11 +33,15 @@ import {
   microPriceTp,
   microSlFloor,
   minPfOf,
+  distanceAtFloor,
+  trailAtFloor,
   RANGE_OWN_BASE,
   rangeMinTfOf,
   microIndRule,
 } from "../minimal-coord.ts";
 import { isMicroInd, microIndFits, type MicroIndRule } from "../indications/micro.ts";
+import { isRelateInd, relateAnchorTf } from "../indications/relate.ts";
+import { breakAnchorTf, isBreakRelInd } from "../indications/break-config.ts";
 import { SeriesCache } from "../indications/cache.ts";
 import { MarketSource } from "../indications/market.ts";
 import {
@@ -50,10 +54,20 @@ import {
 } from "../indications/registry.ts";
 import { signalCombos, signalSettings } from "../signals.ts";
 import { optimizeLastN } from "../lastn/optimizer.ts";
-import { profitFactor, scoreStats, statsOf } from "../metrics/stats.ts";
-import { ATR_PERIOD, LANE_MIN, REF_TF, bothSides, mergeSideTrades, simulate } from "../sim/backtest.ts";
+import { ddrFails, scoreStats, statsOf } from "../metrics/stats.ts";
+import {
+  ATR_PERIOD,
+  LANE_MIN,
+  REF_TF,
+  bothSides,
+  mergeSideTrades,
+  nextEntryIndex,
+  simulate,
+  splitSides,
+} from "../sim/backtest.ts";
 import { buildPortfolio, type Portfolio } from "./portfolio.ts";
 import { baseWindowsPlan, judgeBaseWindows, type BaseWindowsPlan } from "./base-windows.ts";
+import { baseCellAccumulator } from "./base-cell-stats.ts";
 
 export interface Universe {
   bars: Bars[];
@@ -70,9 +84,15 @@ export interface Universe {
   nowT: number;
   /** finest timeframe of the series (the base data timeframe) */
   baseTf: number;
+  /** Replay-only lower entry boundary; older bars warm indicators but never provide evaluated trades. */
+  evaluationFromT?: number;
+  /** Physical candle start when a separate evaluation boundary is present. */
+  indicatorStartT?: number;
 }
 
-export function makeUniverse(bars: Bars[]): Universe {
+export function makeUniverse(bars: Bars[], evaluationFromT?: number): Universe {
+  if (evaluationFromT !== undefined && (!Number.isFinite(evaluationFromT) || evaluationFromT < 0))
+    throw new Error("evaluationFromT must be a finite nonnegative timestamp");
   const ok = bars.filter((b) => b.n >= 120);
   let startT = Infinity;
   let endT = 0;
@@ -85,6 +105,9 @@ export function makeUniverse(bars: Bars[]): Universe {
     baseTf = Math.min(baseTf, b.tfMin);
   }
   if (!ok.length) startT = endT = nowT = 0;
+  const indicatorStartT = startT;
+  if (evaluationFromT !== undefined && ok.length)
+    startT = Math.min(nowT, Math.max(startT, evaluationFromT));
   // the market reference per timeframe (market.ts), built lazily on the first relation indication: from EVERY series
   // given (a short one too), so a universe cut at any time sees the same market up to the cut
   const market = new MarketSource(bars);
@@ -99,10 +122,39 @@ export function makeUniverse(bars: Bars[]): Universe {
     caches,
     startT,
     endT,
-    splitT: startT + (endT - startT) / 2,
+    splitT: startT + Math.max(0, endT - startT) / 2,
     nowT,
     baseTf: Number.isFinite(baseTf) ? baseTf : 5,
+    ...(evaluationFromT !== undefined ? { evaluationFromT, indicatorStartT } : {}),
   };
+}
+
+type EvaluationSignalMemo = WeakMap<Bars, WeakMap<Int8Array, { fromT: number; signal: Int8Array }>>;
+const evaluationSignals = new WeakMap<Pick<Universe, "evaluationFromT">, EvaluationSignalMemo>();
+/** Preserve warmed indicator/onset state, while admitting entries only at opens on/after the replay boundary. */
+export function evaluationSignal(
+  u: Pick<Universe, "evaluationFromT">,
+  b: Bars,
+  sig: Int8Array,
+): Int8Array {
+  const fromT = u.evaluationFromT;
+  if (fromT === undefined) return sig;
+  // Bars/signals are immutable during a Universe job. Keep the clipped identity across its protection cells so
+  // splitSides/nextEntryIndex reuse their weak caches. A new job never inherits a clip from reused/mutated inputs.
+  let byBars = evaluationSignals.get(u);
+  if (!byBars) evaluationSignals.set(u, (byBars = new WeakMap()));
+  let bySignal = byBars.get(b);
+  if (!bySignal) byBars.set(b, (bySignal = new WeakMap()));
+  const hit = bySignal.get(sig);
+  if (hit?.fromT === fromT) return hit.signal;
+  const out = sig.slice();
+  for (let i = 0; i < out.length; i++) {
+    const entryT = i + 1 < b.n ? b.t[i + 1] : b.t[i] + b.tfMin * 60_000;
+    if (entryT < fromT) out[i] = 0;
+  }
+  // One cut per immutable input, rather than retaining every replay window requested over a long-lived series.
+  bySignal.set(sig, { fromT, signal: out });
+  return out;
 }
 
 /**
@@ -128,7 +180,9 @@ export function laneProtect(p: Protect, ind: string): Protect {
   // a range cell (micro, minimal, short, general, long, plus) is a fixed price distance on every lane; its hold is
   // the same time on every lane (the grid gives it in 15m bars: 64 bars = 16 h, which is 64 minutes on a 1m lane)
   // (a hold of 1 bar is a range hold limit of one grid bar, e.g. Micro at 15 min: it stays one bar of time on every lane)
-  if (p.tag) return { ...p, hold: Math.max(p.hold < 2 ? 1 : 2, Math.round((p.hold * REF_TF) / tf)) };
+  // Historic Exit families are fitted from excursions in this exact lane: their distances are already native.
+  if (p.tag || (p.exitType === "historic" && p.exitSet))
+    return { ...p, hold: Math.max(p.hold < 2 ? 1 : 2, Math.round((p.hold * REF_TF) / tf)) };
   const k = Math.sqrt(tf / REF_TF);
   const r4 = (x: number) => +(x * k).toFixed(4);
   // short lanes: a scaled target never below 3 × the round-trip cost, stops / trails never inside the noise.
@@ -136,7 +190,7 @@ export function laneProtect(p: Protect, ind: string): Protect {
   const floor = (x: number, lo: number) => (tf < REF_TF ? +Math.hypot(x, lo).toFixed(4) : x);
   return {
     ...p,
-    tp: floor(r4(p.tp), LANE_MIN.tp),
+    tp: p.trailOnly ? 0 : floor(r4(p.tp), LANE_MIN.tp),
     sl: floor(r4(p.sl), LANE_MIN.sl),
     // the lane floor is on the trailing distance (trail × trailStep), not on the arming move
     trail: p.trail > 0 ? floor(r4(p.trail), LANE_MIN.trail / (p.trailStep ?? 1)) : 0,
@@ -218,12 +272,16 @@ export function passesBase(
   st: { n: number; pf: number; net: number; mdd?: number; bw?: BaseWindowsResult },
   g: { minPf: number; minTrades: number; maxDdr?: number },
 ): boolean {
-  // a floor below PF 1 (the sets pre-filter, Gates.baseSetsMinPf) cannot also ask for a positive net
+  // Fail closed on invalid source/aggregate returns even when the optional drawdown ratio is disabled.
+  // A nonfinite numerator or gross-loss underflow must not turn into a high-PF winning Base pass.
+  if (!(Number.isSafeInteger(st.n) && Number.isFinite(st.pf) && Number.isFinite(st.net))) return false;
+  if (st.mdd !== undefined && !(Number.isFinite(st.mdd) && st.mdd >= 0)) return false;
+  // A floor below PF 1 (the sets pre-filter, Gates.baseSetsMinPf) cannot also ask for a positive net.
   if (!(st.n >= g.minTrades && (st.net > 0 || g.minPf < 1) && st.pf >= g.minPf)) return false;
   // the two-window Base gate (Gates.baseWindows.gate): the cell failed its windows (judged only while the gate is set)
   if (st.bw?.gate === false) return false;
-  // max drawdown ratio: drawdown ÷ net of the Base window (off at 0)
-  return !(g.maxDdr && g.maxDdr > 0 && st.mdd !== undefined && st.mdd / st.net > g.maxDdr);
+  // max drawdown ratio: drawdown ÷ net of the Base window (off at 0); unknown evidence cannot pass an active gate.
+  return !ddrFails(st.mdd, st.net, g.maxDdr);
 }
 
 /** Every bot × indication combo; `focus` ("bot|indication" pairs) narrows it when non-empty. */
@@ -257,7 +315,18 @@ export function allCombos(
   const out = tfs?.length
     ? plain.flatMap((c) =>
         laneInds(c.ind, tfs)
-          .filter((ind) => !(microMinTf > 0 && isMicroInd(laneOf(ind).base) && (laneOf(ind).tf ?? 0) < microMinTf))
+          .filter(
+            (ind) =>
+              !(
+                microMinTf > 0 &&
+                isMicroInd(laneOf(ind).base) &&
+                (laneOf(ind).tf ?? 0) < microMinTf
+              ) &&
+              (!isRelateInd(laneOf(ind).base) ||
+                (!laneOf(ind).combined && laneOf(ind).tf === relateAnchorTf(laneOf(ind).base))) &&
+              (!isBreakRelInd(laneOf(ind).base) ||
+                (!laneOf(ind).combined && laneOf(ind).tf === breakAnchorTf(laneOf(ind).base))),
+          )
           .map((ind) => ({ bot: c.bot, ind })),
       )
     : plain;
@@ -287,7 +356,26 @@ const pct = (x: number) => Math.round(x * 1e6) / 10000;
 const atrTag = (p: Protect) =>
   p.atr ? `|atr${p.atr.sl}x${p.atr.tpRatio}${p.atr.trail ? `t${p.atr.trail}` : ""}` : "";
 export function configId(bot: BotType, ind: string, p: Protect, kind?: StratKind): string {
-  const base = `${bot}|${ind}|tp${pct(p.tp)}|sl${pct(p.sl)}|tr${pct(p.trail)}|h${p.hold}${atrTag(p)}${p.tag ? `|${p.tag}` : ""}`;
+  const mode = p.trailOnly
+    ? `|to${p.trailStep !== undefined && p.trailStep !== 1 ? `|ts${p.trailStep}` : ""}`
+    : "";
+  const exit =
+    p.exitType === "historic" || kind === "exit"
+      ? `|hx${p.exitSide === 1 ? "L" : p.exitSide === -1 ? "S" : ""}${
+          p.exitSet === "static-sl"
+            ? "0"
+            : p.exitSet === "adaptive-sl"
+              ? "1"
+              : p.exitSet === "trailing"
+                ? "2"
+                : p.exitSet === "breakeven"
+                  ? "3"
+                  : p.exitSet === "trailing-only"
+                    ? "4"
+                    : ""
+        }`
+      : "";
+  const base = `${bot}|${ind}|tp${pct(p.tp)}|sl${pct(p.sl)}|tr${pct(p.trail)}|h${p.hold}${atrTag(p)}${p.tag ? `|${p.tag}` : ""}${mode}${exit}`;
   return kind === "dca"
     ? `${base}|dca`
     : kind === "dca-active"
@@ -299,20 +387,38 @@ export function configId(bot: BotType, ind: string, p: Protect, kind?: StratKind
 
 export function kindOfId(id: string): StratKind {
   const core = id.replace(/\|(?:mp|mc|mn|sh|gn|lg)(?=\||$)/g, "");
+  if (/\|hx(?:[LS])?[0-4]?$/.test(core)) return "exit";
   if (core.endsWith("|axis")) return "axis";
   if (core.endsWith("|dcaA")) return "dca-active";
   if (core.endsWith("|dca")) return "dca";
+  if (/\|to(?:\||$)/.test(core)) return "trailing-only";
   return /\|tr0\|/.test(core) ? "normal" : "trailing";
 }
+
+/** The plain strategy's independent execution/qualification identity. */
+export const protectKind = (p: Protect): StratKind =>
+  p.exitType === "historic"
+    ? "exit"
+    : p.trailOnly
+      ? "trailing-only"
+      : p.trail > 0
+        ? "trailing"
+        : "normal";
+export const isPlainKind = (kind: string): boolean =>
+  kind === "normal" || kind === "trailing" || kind === "trailing-only" || kind === "exit";
+export const isTrailingKind = (kind: string): boolean =>
+  kind === "trailing" || kind === "trailing-only";
 
 const fromPct = (s: string) => +(Number(s) / 100).toFixed(6);
 
 export function parseConfigId(id: string): { bot: BotType; ind: string; protect: Protect } | null {
+  const mode = /\|to(?:\|ts([\d.]+))?(?=\||$)/.exec(id);
+  const plainId = mode ? id.slice(0, mode.index) + id.slice(mode.index + mode[0].length) : id;
   const m =
     // (the Axis variant tag — "|ax-atr2", "|axd-fib3h" from axisVariants — is matched and ignored: without the group
     // every managed / desk Axis id failed to parse and its report rows showed tp / sl / trail / hold 0)
-    /^([a-z]+)\|([a-z0-9.@-]+)\|tp([\d.]+)\|sl([\d.]+)\|tr([\d.]+)\|h(\d+)(?:\|atr([\d.]+)x([\d.]+)(?:t([\d.]+))?)?(\|mc|\|mp|\|mn|\|sh|\|gn|\|lg)?(?:\|axd?-[a-z0-9]+)?(\|dcaA?|\|axis)?$/.exec(
-      id,
+    /^([a-z]+)\|([a-z0-9.@-]+)\|tp([\d.]+)\|sl([\d.]+)\|tr([\d.]+)\|h(\d+)(?:\|atr([\d.]+)x([\d.]+)(?:t([\d.]+))?)?(\|mc|\|mp|\|mn|\|sh|\|gn|\|lg)?(?:\|axd?-[a-z0-9]+)?(\|hx([LS])?([0-4])?)?(\|dcaA?|\|axis)?$/.exec(
+      plainId,
     );
   if (!m) return null;
   const protect: Protect = {
@@ -324,6 +430,29 @@ export function parseConfigId(id: string): { bot: BotType; ind: string; protect:
   if (m[7] !== undefined)
     protect.atr = { sl: +m[7], tpRatio: +m[8], ...(m[9] !== undefined ? { trail: +m[9] } : {}) };
   if (m[10] !== undefined) protect.tag = m[10].slice(1) as RangeTag;
+  if (m[11] !== undefined) {
+    protect.exitType = "historic";
+    if (m[12] === "L") protect.exitSide = 1;
+    if (m[12] === "S") protect.exitSide = -1;
+    if (m[13] === "0") protect.exitSet = "static-sl";
+    if (m[13] === "1") protect.exitSet = "adaptive-sl";
+    if (m[13] === "2") protect.exitSet = "trailing";
+    if (m[13] === "3") protect.exitSet = "breakeven";
+    if (m[13] === "4") protect.exitSet = "trailing-only";
+  }
+  if (mode) {
+    const step = mode[1] === undefined ? 1 : Number(mode[1]);
+    if (
+      protect.tp !== 0 ||
+      !(protect.trail > 0) ||
+      !(step > 0) ||
+      !Number.isFinite(step) ||
+      protect.atr
+    )
+      return null;
+    protect.trailOnly = true;
+    protect.trailStep = step;
+  }
   return { bot: m[1] as BotType, ind: m[2], protect };
 }
 
@@ -434,6 +563,8 @@ export function baseRangeProtects(
     holdH?: readonly number[];
     baseBest?: boolean;
     minSlEval?: number;
+    minSl?: number;
+    minTrail?: number;
     /** grid.baseTrailCells: also measure one trailed cell per range target (off = every Base cell at trail 0) */
     baseTrailCells?: boolean;
     /** the grid's trailing step and trail-free switch: a Base trailed cell is the cell the grid builds */
@@ -449,7 +580,7 @@ export function baseRangeProtects(
   cost?: number,
 ): Protect[] {
   const slFloor = g.minSlEval ?? EVAL_MIN_SL;
-  const mid = <T,>(xs: readonly T[]) => xs[Math.floor((xs.length - 1) / 2)];
+  const mid = <T>(xs: readonly T[]) => xs[Math.floor((xs.length - 1) / 2)];
   const holdAll = Math.max(2, Math.round(((g.holdH?.[0] ?? 16) * 60) / REF_TF));
   const out: Protect[] = [];
   for (const [tag, r] of [
@@ -471,9 +602,11 @@ export function baseRangeProtects(
     const net = tag === "mc" ? microSlFloor(r as { minSlNet?: number }, cost) : undefined;
     // rounded as the grid rounds the range's cells (protectGrid: 4 decimals, Micro 6): with stop steps of 0.25 a
     // target × stop has 5–6 decimals, and Base validated a 2.025 % stop the grid builds as 2.03 %
-    const rd = (x: number) => +x.toFixed(tag === "mc" ? 6 : 4);
+    const digits = tag === "mc" ? 6 : 4;
     const floorR = net ?? (r as { minSlEval?: number }).minSlEval ?? slFloor;
-    const minSlR = net ?? r.minSl ?? 0;
+    // Match the actual grid: ordinary ranges inherit its optional floors, while Micro has its own fallbacks.
+    const minSlR = net ?? r.minSl ?? (tag === "mc" ? 0.001 : (g.minSl ?? 0));
+    const minTrailR = r.minTrail ?? (tag === "mc" ? 0.0005 : (g.minTrail ?? 0));
     // every-config Base (grid.baseBest, default on) judges each range on its own cells; ownBase false keeps a
     // range on the default protect
     const best = r.baseBest ?? g.baseBest ?? true;
@@ -481,14 +614,24 @@ export function baseRangeProtects(
     if (best) {
       // every config of the range: each target × each stop (Micro: MICRO_BASE_SL, a spread of its 17 stops); no trail.
       // rangeBaseStats keeps the range's best cell
-      const ks = tag === "mc" ? microBaseSl(r.slOfTp) : [...new Set(r.slOfTp)].sort((a, b) => a - b);
+      const ks =
+        tag === "mc" ? microBaseSl(r.slOfTp) : [...new Set(r.slOfTp)].sort((a, b) => a - b);
       // Micro's net targets after minNetOfCost (microNetTps), as the grid builds them: a target the tape stage drops
       // is never validated at Base
-      for (const tp0 of [...new Set(tag === "mc" ? microNetTps(r, cost) : r.tp)].sort((a, b) => a - b)) {
+      for (const tp0 of [...new Set(tag === "mc" ? microNetTps(r, cost) : r.tp)].sort(
+        (a, b) => a - b,
+      )) {
         const tp = tag === "mc" ? microPriceTp(tp0, r, cost) : tp0;
         // the Base cells are held to the same stop floor as the grid (EVAL_MIN_SL): a pair is never validated at a
         // stop no config may trade
-        for (const k of ks) out.push({ tp, sl: rd(Math.max(floorR, minSlR, tp * k)), trail: 0, hold, tag });
+        for (const k of ks)
+          out.push({
+            tp,
+            sl: distanceAtFloor(tp * k, Math.max(floorR, minSlR), digits),
+            trail: 0,
+            hold,
+            tag,
+          });
         // grid.baseTrailCells: one trailed cell per target as well (the middle non-zero trail ratio at the middle
         // stop). Base measured every cell at trail 0, so a target whose edge needs a trailing stop never passed and
         // its trailing configs were never built — with grid.baseTargets on, the whole target was dropped.
@@ -501,12 +644,13 @@ export function baseRangeProtects(
             // trailing distance (minTrail ÷ trailStep), the grid's trailStep and trailFree. Measured without them,
             // Base validated a trailing cell no config trades (a tighter stop, the target still taken once armed)
             const k0 = mid([...new Set(ks)].sort((a, b) => a - b));
-            const k = tag === "mc" ? k0 : Math.max(k0, (r as { trailSlOfTp?: number }).trailSlOfTp ?? 2);
+            const k =
+              tag === "mc" ? k0 : Math.max(k0, (r as { trailSlOfTp?: number }).trailSlOfTp ?? 2);
             const step = g.trailStep ?? 1;
             out.push({
               tp,
-              sl: rd(Math.max(floorR, minSlR, tp * k)),
-              trail: rd(Math.max((r.minTrail ?? 0) / (tag === "mc" ? 1 : step), tp * tr)),
+              sl: distanceAtFloor(tp * k, Math.max(floorR, minSlR), digits),
+              trail: trailAtFloor(tp * tr, minTrailR, step, digits),
               hold,
               tag,
               trailStep: step,
@@ -521,7 +665,13 @@ export function baseRangeProtects(
     if (tp0 === undefined) continue;
     const tp = tag === "mc" ? microPriceTp(tp0, r, cost) : tp0;
     const k = mid([...r.slOfTp].sort((a, b) => a - b));
-    out.push({ tp, sl: rd(Math.max(floorR, minSlR, tp * k)), trail: 0, hold, tag });
+    out.push({
+      tp,
+      sl: distanceAtFloor(tp * k, Math.max(floorR, minSlR), digits),
+      trail: 0,
+      hold,
+      tag,
+    });
   }
   return out;
 }
@@ -565,42 +715,46 @@ export function microBaseSl(ladder: readonly number[]): number[] {
  * that range's own minimum PF. Returns the passing range tags ("" = the default / wide grid).
  */
 export function basePassTags(
-  r: Pick<ComboRun, "full" | "ranges">,
+  r: Pick<ComboRun, "full" | "ranges"> & Partial<Pick<ComboRun, "ind">>,
   g: { minPf: number; minTrades: number; maxDdr?: number; rangeMinPf?: Gates["rangeMinPf"] },
   /** every range tag of the grid; one without its own Base cell passes with the default protect */
   allTags: readonly string[] = [],
 ): string[] {
   const out: string[] = [];
   const own = new Set(Object.keys(r.ranges ?? {}));
-  if (passesBase(r.full, g)) {
+  if (passesBase(r.full, { ...g, minPf: minPfOf(g, "", r.ind) })) {
     out.push("");
     // a range without its own Base cell is judged on the default cell, but against its own range minimum
     for (const t of allTags)
-      if (t && !own.has(t) && passesBase(r.full, { ...g, minPf: minPfOf(g, t) })) out.push(t);
+      if (t && !own.has(t) && passesBase(r.full, { ...g, minPf: minPfOf(g, t, r.ind) }))
+        out.push(t);
   }
   for (const [tag, st] of Object.entries(r.ranges ?? {}))
-    if (passesBase(st, { ...g, minPf: minPfOf(g, tag) })) out.push(tag);
+    if (passesBase(st, { ...g, minPf: minPfOf(g, tag, r.ind) })) out.push(tag);
   return out;
 }
 
 /**
- * The gates Base computes a pair's sets on: the stage gates, or with Gates.baseSetsMinPf one floor for every range (a
- * wider pre-filter; each set is still judged at its own stage / range minimum before it can trade).
+ * The gates Base computes a pair's sets on: `baseSetsMinPf` replaces the fallback / Wide floor, while each tagged
+ * range retains its configured rangeMinPf. This widens only the untagged prefilter; it never weakens a range gate.
  */
 /** The Base pass of one range cell, exactly as basePassTags judges it (the sets gates, the range's own minimum). */
-export function rangeCellPass(gates: Gates): (tag: string, st: RangeBaseStat) => boolean {
+export function rangeCellPass(
+  gates: Gates,
+  ind?: string,
+): (tag: string, st: RangeBaseStat) => boolean {
   const g = baseSetsGates(gates);
-  return (tag, st) => passesBase(st, { ...g, minPf: tag ? minPfOf(g, tag) : g.minPf });
+  return (tag, st) => passesBase(st, { ...g, minPf: minPfOf(g, tag, ind) });
 }
 
 export function baseSetsGates<G extends Gates>(g: G): G {
-  return g.baseSetsMinPf === undefined ? g : { ...g, minPf: g.baseSetsMinPf, rangeMinPf: undefined };
+  return g.baseSetsMinPf === undefined ? g : { ...g, minPf: g.baseSetsMinPf };
 }
 
 /**
  * Every engine pair of a compute's Base (the session dump's basePairs): its statistic at the default protect, whether
- * it passed (any range) and the ranges its sets are built in (`tags`, "" = Wide: the compute's pairTags — the ranges it
- * passed while grid.baseRanges is on and grid.allSets off, the defaults; else every range its indication applies to).
+ * it passed (any range) and its admitted ranges (`tags`, "" = Wide). Callers supply the qualified range map before
+ * optional diagnostic construction; an explicit empty map entry retained for held exits is not a pass.
  * A range's survivors are counted by these tags: a Micro indication that passed only on its Minimal cells builds and
  * trades Minimal, and counted by `passed` alone it read as a Micro survivor.
  */
@@ -609,13 +763,36 @@ export function basePairRows(
   pairTags: Readonly<Record<string, readonly string[]>>,
   /** grid.baseTargets (default on): the tape stage builds only the Base-passed targets, so the rules list theirs */
   targets = true,
-): Array<{ pair: string; n: number; pf: number; net: number; passed: boolean; tags: string[]; rules?: BaseRuleTags[] }> {
-  const out: Array<{ pair: string; n: number; pf: number; net: number; passed: boolean; tags: string[]; rules?: BaseRuleTags[] }> = [];
+): Array<{
+  pair: string;
+  n: number;
+  pf: number | null;
+  net: number;
+  passed: boolean;
+  tags: string[];
+  rules?: BaseRuleTags[];
+}> {
+  const out: Array<{
+    pair: string;
+    n: number;
+    pf: number | null;
+    net: number;
+    passed: boolean;
+    tags: string[];
+    rules?: BaseRuleTags[];
+  }> = [];
   for (const r of s1) {
     if (isSignalInd(r.ind)) continue;
     const pair = `${r.bot}|${r.ind}`;
     const tags = pairTags[pair];
-    const row: (typeof out)[number] = { pair, n: r.full?.n ?? 0, pf: r.full?.pf ?? 0, net: r.full?.net ?? 0, passed: !!tags, tags: [...(tags ?? [])] };
+    const row: (typeof out)[number] = {
+      pair,
+      n: r.full?.n ?? 0,
+      pf: (r.full?.n ?? 0) > 0 ? (r.full?.pf ?? null) : null,
+      net: r.full?.net ?? 0,
+      passed: (tags?.length ?? 0) > 0,
+      tags: [...(tags ?? [])],
+    };
     // Gates.baseWindows.report: per rule, the ranges (and targets) of this passing pair that pass it too
     if (tags && r.full?.bw?.report) row.rules = baseRuleTags(r, tags, targets);
     out.push(row);
@@ -667,7 +844,8 @@ export function meanPf(xs: readonly number[]): number | null {
  */
 export function grossOf(pf: number, net: number): { gp: number; gl: number } | null {
   if (pf === Infinity) return net > 0 ? { gp: net, gl: 0 } : null;
-  if (!Number.isFinite(pf) || !Number.isFinite(net) || pf < 0 || Math.abs(pf - 1) < 1e-12) return null;
+  if (!Number.isFinite(pf) || !Number.isFinite(net) || pf < 0 || Math.abs(pf - 1) < 1e-12)
+    return null;
   const gl = net / (pf - 1);
   return gl >= 0 ? { gp: pf * gl, gl } : null;
 }
@@ -678,16 +856,30 @@ export function grossOf(pf: number, net: number): { gp: number; gl: number } | n
  * mean read 8–18). Null PF without a loss among them.
  */
 /**
- * A set's gross profit / loss for pooling. A set that knows its gross loss is 0 (no losing close) is all profit: its
- * stored PF is the PF_NO_LOSS sentinel (4), and grossOf would invent a loss of net / 3 for it. With a gross loss above 0
- * the stored PF is exact (gp / gl), so grossOf(pf, net) recovers both sums in net's units.
+ * A set's gross profit / loss for pooling. Exact gross sums take precedence over the stored ratio, including a
+ * break-even set (PF 1, net 0): its equal profit and loss still belong in the pooled denominator. Keep these sums
+ * in their input units; all members of a pool must use the same units. Reconstruct from PF / net only for older
+ * records without both sums. A known zero gross loss is all profit, rather than the PF_NO_LOSS sentinel's phantom loss.
  */
-export function grossOfStat(st: { pf: number; net: number; gp?: number; gl?: number }): { gp: number; gl: number } | null {
-  if (st.gl !== undefined && st.gl <= 0) return st.net > 0 ? { gp: st.net, gl: 0 } : null;
+export function grossOfStat(st: {
+  pf: number;
+  net: number;
+  gp?: number;
+  gl?: number;
+}): { gp: number; gl: number } | null {
+  if (st.gp !== undefined && st.gl !== undefined) {
+    if (!Number.isFinite(st.gp) || !Number.isFinite(st.gl) || st.gp < 0 || st.gl < 0) return null;
+    return st.gp > 0 || st.gl > 0 ? { gp: st.gp, gl: st.gl } : null;
+  }
+  if (st.gl === 0) return Number.isFinite(st.net) && st.net > 0 ? { gp: st.net, gl: 0 } : null;
   return grossOf(st.pf, st.net);
 }
 
-export function pooledPf(sets: Iterable<{ pf: number; net: number; gp?: number; gl?: number }>): { pf: number | null; gp: number; gl: number } {
+export function pooledPf(sets: Iterable<{ pf: number; net: number; gp?: number; gl?: number }>): {
+  pf: number | null;
+  gp: number;
+  gl: number;
+} {
   let gp = 0;
   let gl = 0;
   for (const st of sets) {
@@ -706,7 +898,7 @@ export interface BaseRangeCount {
   passed: number;
   /** the minimum PF the range is held to */
   minPf: number;
-  /** median PF of the evaluated sets / of the passed sets (null without any) */
+  /** Median measured PF among evaluated nonempty sets / passed sets (null without any measured PF). */
   pfMedian: number | null;
   pfPassedMedian: number | null;
   /** mean PF of the passed sets (null without any): the validated average, read against `minPf` */
@@ -748,6 +940,7 @@ export function baseRangeCounts(
     const pfOk: number[] = [];
     const stOk: Array<{ pf: number; net: number }> = [];
     const minPf = tag ? minPfOf(g, tag) : g.minPf;
+    let appliedMin = Infinity;
     let evaluated = 0;
     let ownCells = 0;
     for (const r of runs) {
@@ -758,10 +951,14 @@ export function baseRangeCounts(
       // range's. ownCells records how many rows carry the range's own distances, so a report can say which it is.
       if (own) ownCells++;
       const st = own ?? r.full;
-      pf.push(st.pf);
+      // EMPTY_STATS carries pf: 0 for gate arithmetic, but an empty close sample has no measured PF.
+      if (st.n > 0) pf.push(st.pf);
+      const ownMin = minPfOf(g, tag, r.ind);
+      appliedMin = Math.min(appliedMin, ownMin);
       const ok = own
-        ? passesBase(own, { ...g, minPf })
-        : passesBase(r.full, g) && (!tag || passesBase(r.full, { ...g, minPf }));
+        ? passesBase(own, { ...g, minPf: ownMin })
+        : passesBase(r.full, { ...g, minPf: minPfOf(g, "", r.ind) }) &&
+          (!tag || passesBase(r.full, { ...g, minPf: ownMin }));
       if (ok) {
         pfOk.push(st.pf);
         stOk.push(st);
@@ -772,7 +969,7 @@ export function baseRangeCounts(
       tag,
       evaluated,
       passed: pfOk.length,
-      minPf,
+      minPf: Number.isFinite(appliedMin) ? appliedMin : minPf,
       pfMedian: median(pf),
       pfPassedMedian: median(pfOk),
       pfPassedMean: meanPf(pfOk),
@@ -810,7 +1007,12 @@ export function baseGateSensitivity(
   runs: readonly Pick<ComboRun, "full" | "ranges" | "ind">[],
   g: { minPf: number; minTrades: number; maxDdr?: number; rangeMinPf?: Gates["rangeMinPf"] },
   allTags: readonly string[],
-  variants: ReadonlyArray<{ change: string; minPf?: number; minTrades?: number; maxDdr?: number }> = [],
+  variants: ReadonlyArray<{
+    change: string;
+    minPf?: number;
+    minTrades?: number;
+    maxDdr?: number;
+  }> = [],
   eligible: (ind: string, tag: string) => boolean = () => true,
 ): BaseGateRow[] {
   const median = (xs: number[]) => {
@@ -832,15 +1034,21 @@ export function baseGateSensitivity(
     const pf: number[] = [];
     for (const r of runs) {
       evaluated++;
-      const atDefault = passesBase(r.full, gg);
+      const atDefault = passesBase(r.full, { ...gg, minPf: minPfOf(gg, "", r.ind) });
       if (atDefault) {
         passed++;
         pf.push(r.full.pf);
       }
       const inAny =
-        (atDefault && allTags.some((t) => !t || (eligible(r.ind, t) && passesBase(r.full, { ...gg, minPf: minPfOf(gg, t) })))) ||
+        (atDefault &&
+          allTags.some(
+            (t) =>
+              !t ||
+              (eligible(r.ind, t) && passesBase(r.full, { ...gg, minPf: minPfOf(gg, t, r.ind) })),
+          )) ||
         Object.entries(r.ranges ?? {}).some(
-          ([t, st]) => eligible(r.ind, t) && passesBase(st, { ...gg, minPf: minPfOf(gg, t) }),
+          ([t, st]) =>
+            eligible(r.ind, t) && passesBase(st, { ...gg, minPf: minPfOf(gg, t, r.ind) }),
         );
       if (inAny) anyRange++;
     }
@@ -893,8 +1101,14 @@ export function baseRangeWhy(
   const win = !!g.baseWindows?.gate;
   const zero = (): BaseGateCounts => (win ? { closes: 0, net: 0, pf: 0, ddr: 0, windows: 0 } : { closes: 0, net: 0, pf: 0, ddr: 0 });
   return ["", ...allTags].map((tag) => {
-    const minPf = tag ? minPfOf(g, tag) : g.minPf;
-    const row: BaseWhyRow = { tag, evaluated: 0, passed: 0, first: zero(), only: zero(), onlyDdrPfMedian: null };
+    const row: BaseWhyRow = {
+      tag,
+      evaluated: 0,
+      passed: 0,
+      first: zero(),
+      only: zero(),
+      onlyDdrPfMedian: null,
+    };
     const ddrPf: number[] = [];
     for (const r of runs) {
       if (!eligible(r.ind, tag)) continue;
@@ -902,13 +1116,15 @@ export function baseRangeWhy(
       const own = tag ? r.ranges?.[tag] : undefined;
       const st = own ?? r.full;
       // no own cell: judged at the default protect against both minimums (as baseRangeCounts)
-      const need = own || !tag ? minPf : Math.max(g.minPf, minPf);
+      const minPf = minPfOf(g, tag, r.ind);
+      const need = own || !tag ? minPf : Math.max(minPfOf(g, "", r.ind), minPf);
       // the gates exactly as passesBase reads them
       const miss: BaseGate[] = [];
-      if (!(st.n >= g.minTrades)) miss.push("closes");
-      if (!(st.net > 0 || need < 1)) miss.push("net");
-      if (!(st.pf >= need)) miss.push("pf");
-      if (g.maxDdr && g.maxDdr > 0 && st.mdd !== undefined && st.mdd / st.net > g.maxDdr) miss.push("ddr");
+      if (!(Number.isSafeInteger(st.n) && st.n >= g.minTrades)) miss.push("closes");
+      if (!(Number.isFinite(st.net) && (st.net > 0 || need < 1))) miss.push("net");
+      if (!(Number.isFinite(st.pf) && st.pf >= need)) miss.push("pf");
+      if ((st.mdd !== undefined && !(Number.isFinite(st.mdd) && st.mdd >= 0)) ||
+          ddrFails(st.mdd, st.net, g.maxDdr)) miss.push("ddr");
       if (win && st.bw?.gate === false) miss.push("windows");
       if (!miss.length) {
         row.passed++;
@@ -927,7 +1143,12 @@ export function baseRangeWhy(
 }
 
 /** The Base-gate variations a report sweeps by default: each gate on its own, then the pair that matters most. */
-export const BASE_GATE_VARIANTS: ReadonlyArray<{ change: string; minPf?: number; minTrades?: number; maxDdr?: number }> = [
+export const BASE_GATE_VARIANTS: ReadonlyArray<{
+  change: string;
+  minPf?: number;
+  minTrades?: number;
+  maxDdr?: number;
+}> = [
   { change: "PF ≥ 1.00", minPf: 1 },
   { change: "PF ≥ 1.05", minPf: 1.05 },
   { change: "PF ≥ 1.20", minPf: 1.2 },
@@ -953,7 +1174,12 @@ export const BASE_GATE_VARIANTS: ReadonlyArray<{ change: string; minPf?: number;
  */
 export function setsPassTags(
   r: Pick<ComboRun, "bot" | "ind" | "full" | "ranges">,
-  setsGates: { minPf: number; minTrades: number; maxDdr?: number; rangeMinPf?: Gates["rangeMinPf"] },
+  setsGates: {
+    minPf: number;
+    minTrades: number;
+    maxDdr?: number;
+    rangeMinPf?: Gates["rangeMinPf"];
+  },
   applies: Parameters<typeof rangeAppliesTo>[2],
   allTags: readonly string[],
 ): string[] {
@@ -1064,7 +1290,6 @@ export function rangeBaseStats(
   return out;
 }
 
-
 /**
  * A Base range cell's stats over the whole history: exactly `runCombo(…).full`'s n / PF / net / max drawdown (the
  * same simulation, the same trade order, the same statsOf), without the per-symbol stats, the in-sample split and the
@@ -1080,70 +1305,54 @@ export function cellStats(
   /** Gates.baseWindows: the cell is also judged on its windows from the lane's first bar (laneFromT) to u.nowT */
   bw?: { plan: BaseWindowsPlan; fromT: number },
 ): RangeBaseStat | null {
-  const cooldown = tacticCooldown(tactics);
+  // Historic Exit is a standalone indication source; engine Bot tactics/cooldown do not thin its entry history.
+  const cooldown = bot === "exit" ? 0 : tacticCooldown(tactics);
   const p = laneProtect(protect, ind);
   const id = configId(bot, ind, p);
   const series = seriesOf(u, ind);
   if (!series.length) return null;
-  // each trade's return and times (simulate's sink: no Trade object per trade), in runCombo's push order
-  let rr = new Float64Array(256);
-  let en = new Float64Array(256);
-  let ex = new Float64Array(256);
-  let n = 0;
-  const sink = (r: number, entryT: number, exitT: number) => {
-    if (n === rr.length) {
-      const grow = (a: Float64Array) => {
-        const b = new Float64Array(a.length * 2);
-        b.set(a);
-        return b;
-      };
-      rr = grow(rr);
-      en = grow(en);
-      ex = grow(ex);
-    }
-    rr[n] = r;
-    en[n] = entryT;
-    ex[n] = exitT;
-    n++;
-  };
+  // Synchronous cells reuse one job-scoped buffer. Each series/direction supplies an already chronological run.
+  const cell = baseCellAccumulator(u);
+  // Gates.baseWindows: the same closes, kept for the windows (only while the plan is set)
+  const wRr: number[] = [];
+  const wEn: number[] = [];
+  const wEx: number[] = [];
+  const sink = bw
+    ? (r: number, entryT: number, exitT: number) => {
+        cell.push(r, entryT, exitT);
+        wRr.push(r);
+        wEn.push(entryT);
+        wEx.push(exitT);
+      }
+    : cell.push;
   for (const s of series) {
-    const sig = entrySignal(bot, ind, u.caches[s], tactics);
-    if (!sig) return null;
-    bothSides(sig, (sg) =>
-      simulate(id, u.bars[s], sg, p, { cost, cooldown, atr: p.atr ? u.caches[s].atrEma(ATR_PERIOD) : undefined, sink }),
-    );
+    const rawSignal = entrySignal(bot, ind, u.caches[s], tactics);
+    if (!rawSignal) return null;
+    const sig = evaluationSignal(u, u.bars[s], rawSignal);
+    for (const sg of splitSides(sig)) {
+      // A last-bar signal can only be pending. Base reads settled closes, so an empty entry run needs no simulator
+      // result or close callback; the exact signal index is shared with the nonempty protection cells.
+      if (nextEntryIndex(sg)[0] + 1 >= u.bars[s].n) continue;
+      cell.beginRun();
+      simulate(id, u.bars[s], sg, p, {
+        cost,
+        cooldown,
+        atr: p.atr ? u.caches[s].atrEma(ATR_PERIOD) : undefined,
+        fixedPathScope: u,
+        sink,
+      });
+    }
   }
-  if (!n) {
-    const st: RangeBaseStat = { n: 0, pf: statsOf([]).pf, net: 0, mdd: 0 };
-    if (bw) withWindows(st, bw, protect.tag ?? "", u.nowT, 0, ex, rr);
-    return st;
-  }
-  // statsOf's order (exit, then entry; stable) and its arithmetic for n / PF / net / max drawdown
-  const idx = Array.from({ length: n }, (_, i) => i).sort((a, b) => ex[a] - ex[b] || en[a] - en[b]);
-  let gp = 0;
-  let gl = 0;
-  let sum = 0;
-  let cum = 0;
-  let peak = 0;
-  let mdd = 0;
-  for (const i of idx) {
-    const r = rr[i];
-    if (r > 0) gp += r;
-    else gl -= r;
-    sum += r;
-    cum += r;
-    if (cum < peak) {
-      if (peak - cum > mdd) mdd = peak - cum;
-    } else peak = cum;
-  }
-  const st: RangeBaseStat = { n, pf: profitFactor(gp, gl), net: sum * 100, mdd: mdd * 100, gp: gp * 100, gl: gl * 100 };
+  const st: RangeBaseStat = cell.stats();
   if (bw) {
-    // the closes in the same exit order, for the windows
+    // the closes in exit order (statsOf's order: exit, then entry; stable), for the windows
+    const n = wRr.length;
+    const idx = Array.from({ length: n }, (_, i) => i).sort((a, b) => wEx[a] - wEx[b] || wEn[a] - wEn[b]);
     const oex = new Float64Array(n);
     const orr = new Float64Array(n);
     for (let j = 0; j < n; j++) {
-      oex[j] = ex[idx[j]];
-      orr[j] = rr[idx[j]];
+      oex[j] = wEx[idx[j]];
+      orr[j] = wRr[idx[j]];
     }
     withWindows(st, bw, protect.tag ?? "", u.nowT, n, oex, orr);
   }
@@ -1219,7 +1428,8 @@ export function* runComboSteps(
   tactics?: Tactics | null,
   laneScaled = false,
 ): Generator<void, ComboRun | null> {
-  const cooldown = tacticCooldown(tactics);
+  // Historic Exit is a standalone indication source; engine Bot tactics/cooldown do not thin its entry history.
+  const cooldown = bot === "exit" ? 0 : tacticCooldown(tactics);
   if (!laneScaled) protect = laneProtect(protect, ind);
   const id = configId(bot, ind, protect);
   const trades: Trade[] = [];
@@ -1229,8 +1439,9 @@ export function* runComboSteps(
   const series = seriesOf(u, ind);
   if (!series.length) return null;
   for (const s of series) {
-    const sig = entrySignal(bot, ind, u.caches[s], tactics);
-    if (!sig) return null;
+    const rawSignal = entrySignal(bot, ind, u.caches[s], tactics);
+    if (!rawSignal) return null;
+    const sig = evaluationSignal(u, u.bars[s], rawSignal);
     // long and short run independently (each direction its own position slot; a one-sided signal runs once)
     const runs = bothSides(sig, (sg) =>
       simulate(id, u.bars[s], sg, protect, {
@@ -1253,7 +1464,11 @@ export function* runComboSteps(
         for (const sd of [1, -1] as const) {
           // each direction's own run holds exactly its trades, in exit order (a one-sided signal: all of one side)
           const xs =
-            runs.length === 2 ? runs[sd > 0 ? 0 : 1].trades : symTrades[0]?.side === sd ? symTrades : [];
+            runs.length === 2
+              ? runs[sd > 0 ? 0 : 1].trades
+              : symTrades[0]?.side === sd
+                ? symTrades
+                : [];
           if (xs.length) sides[sd > 0 ? "1" : "-1"] = symStat(xs, u.nowT);
         }
         st.sides = sides;
@@ -1313,6 +1528,8 @@ export interface PipelineOutput {
     splitT: number;
     nowT: number;
     bars: number;
+    evaluationFromT?: number;
+    indicatorStartT?: number;
   };
   s1: ComboRun[];
   s2: ComboRun[];
@@ -1367,7 +1584,6 @@ export function baseRuns(
   /** the stage gates: a range keeps a passing cell first (rangeCellPass) */
   gates?: Gates,
 ): ComboRun[] {
-  const pass = gates ? rangeCellPass(gates) : undefined;
   // two-window Base (gates.baseWindows; null while unset: nothing more is computed)
   const plan = baseWindowsPlan(gates);
   const out: ComboRun[] = [];
@@ -1385,12 +1601,14 @@ export function baseRuns(
   const step = Math.max(1, Math.floor(total / 20));
   for (const g of groups.values()) {
     for (const c of g) {
+      const pass = gates ? rangeCellPass(gates, c.ind) : undefined;
       const r = runCombo(u, c.bot as BotType, c.ind, DEFAULT_PROTECT, cost, 1, tactics);
       if (r) {
         // signal pairs never use range cells (they take their own configs): no range runs for them
         const tps: Record<string, number[]> = {};
-        const ruleTps = plan && !isSignalInd(c.ind) ? baseRunWindows(u, r, plan) : undefined;
-        const ranges = isSignalInd(c.ind)
+        const engine = !isSignalInd(c.ind) && c.bot !== "exit";
+        const ruleTps = plan && engine ? baseRunWindows(u, r, plan) : undefined;
+        const ranges = !engine
           ? undefined
           : rangeBaseStats(
               u,
@@ -1415,9 +1633,10 @@ export function baseRuns(
       if (onStep && (done === total || done % step === 0)) onStep(done, total);
     }
     // bot triggers are reused by every indication: kept; the indication's own series are released
-    if (release) for (const k of u.caches) k.clear(["bot:"]);
+    if (release) for (const k of u.caches) k.clear(["bot:", "break:shared:"]);
     else for (const c of g) forgetCombo(u, c.bot, c.ind);
   }
+  if (release) for (const k of u.caches) k.clear(["bot:"]);
   return out;
 }
 
@@ -1426,6 +1645,8 @@ export function* runPipeline(
   s: CoreSettings,
   /** Base computed elsewhere (worker threads): S1 is taken as given */
   pre?: { s1: ComboRun[] },
+  /** Independent synthetic sources, such as Historic Exit, participate in S1 without joining the Bot grid. */
+  additionalCombos: readonly Combo[] = [],
 ): Generator<PipelineProgress, PipelineOutput> {
   const timings: Record<string, number> = {};
   const cost = s.cost;
@@ -1438,6 +1659,7 @@ export function* runPipeline(
     : [
         ...allCombos(s.focus, s.disabledKinds, s.tfs, microLaneFloor(s.grid)),
         ...signalCombos(signalSettings(s.signals), s.tfs ?? []),
+        ...additionalCombos,
       ];
   const s1: ComboRun[] = pre ? [...pre.s1] : [];
   // two-window Base (gates.baseWindows; null while unset), exactly as baseRuns (the workers' path)
@@ -1455,7 +1677,7 @@ export function* runPipeline(
       // a slice boundary between series (same progress; the driver checks its time budget here)
       yield { stage: "S1", done: i, total: combos.length, label: `${c.bot} × ${c.ind}` };
     }
-    if (r && !isSignalInd(c.ind)) {
+    if (r && !isSignalInd(c.ind) && c.bot !== "exit") {
       const g = s.grid ?? {};
       const microOwn = microIndRule(g);
       const tps: Record<string, number[]> = {};
@@ -1469,7 +1691,7 @@ export function* runPipeline(
         s.tactics,
         rangeMinTfOf(g),
         microOwn,
-        s.gates ? rangeCellPass(s.gates) : undefined,
+        s.gates ? rangeCellPass(s.gates, c.ind) : undefined,
         u.baseTf,
         tps,
         plan ? { plan, ruleTpsOut: ruleTps } : undefined,
@@ -1487,7 +1709,9 @@ export function* runPipeline(
 
   // S2
   t0 = performance.now();
-  const leaders = s1.filter((r) => r.is.n >= 4 && !isSignalInd(r.ind)).slice(0, s.refineTop);
+  const leaders = s1
+    .filter((r) => r.bot !== "exit" && r.is.n >= 4 && !isSignalInd(r.ind))
+    .slice(0, s.refineTop);
   const runs = new Map<string, ComboRun>();
   const s2: ComboRun[] = [];
   const grid = REFINE_GRID;
@@ -1538,7 +1762,7 @@ export function* runPipeline(
   for (let i = 0; i < chosen.length; i++) {
     const r = chosen[i];
     // each config is held to its own range's minimum PF (as at Base), not the stage minimum alone
-    const gr = { ...g, minPf: minPfOf(g, r.protect.tag) };
+    const gr = { ...g, minPf: minPfOf(g, r.protect.tag, r.ind) };
     const ln = optimizeLastN(r.id, r.trades, { gates: gr, splitT: u.splitT, nowT: u.nowT });
     const ev = evaluateConfig(r.id, r.trades, { gates: gr, nowT: u.nowT, bestN: ln.bestN });
     tapes.set(r.id, r.trades);
@@ -1565,14 +1789,17 @@ export function* runPipeline(
   // selection uses in-sample data only, so the out-of-sample figures reported afterwards stay honest
   const finalScore = (x: RankedConfig) => {
     const is = x.lastN ? scoreStats(x.lastN.is, 3) : 0;
-    const ok = x.lastN && x.lastN.is.net > 0 && x.lastN.is.pf >= minPfOf(g, x.protect.tag) ? 1 : 0;
+    const ok =
+      x.lastN && x.lastN.is.net > 0 && x.lastN.is.pf >= minPfOf(g, x.protect.tag, x.ind) ? 1 : 0;
     return ok * 1000 + is;
   };
   ranked.sort((a, b) => finalScore(b) - finalScore(a));
   ranked.forEach((x, i) => (x.rank = i + 1));
   // Portfolio of bots: validated configs, combined greedily for green hours at a high order count.
   const cands = ranked
-    .filter((x) => x.lastN && x.lastN.is.net > 0 && x.lastN.is.pf >= minPfOf(g, x.protect.tag))
+    .filter(
+      (x) => x.lastN && x.lastN.is.net > 0 && x.lastN.is.pf >= minPfOf(g, x.protect.tag, x.ind),
+    )
     .map((x) => ({ id: x.id, trades: tapes.get(x.id) ?? [], bestN: x.lastN!.bestN }));
   const portfolio = buildPortfolio(cands, {
     gates: g,
@@ -1593,6 +1820,9 @@ export function* runPipeline(
       splitT: u.splitT,
       nowT: u.nowT,
       bars: u.bars.reduce((a, b) => a + b.n, 0),
+      ...(u.evaluationFromT !== undefined
+        ? { evaluationFromT: u.evaluationFromT, indicatorStartT: u.indicatorStartT }
+        : {}),
     },
     s1,
     s2: s2.map(slim),

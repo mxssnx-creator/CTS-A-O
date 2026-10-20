@@ -325,7 +325,7 @@ describe("relationOf: one window, own lanes against the paper book's own record 
     assert.ok(Math.abs(pos.usd - (2 - 0.1)) < 1e-9);
     assert.equal(pos.hand.n, 1);
     // its money (−10 − the opening fee − the exit's model fee share: the venue's exit reports no commission), apart
-    assert.ok(Math.abs(pos.hand.usd - (-10 - 0.05 - 0.09)) < 1e-9, "its money, counted apart");
+    assert.ok(Math.abs(pos.hand.usd - (-10 - 0.05 - 0.0675)) < 1e-9, "its money, counted apart");
     assert.equal(pos.list[0].lanes, 1);
     assert.ok(Math.abs(pos.list[0].systemMeanR! - 1) < 1e-9);
   });
@@ -401,7 +401,7 @@ describe("relationOf: one window, own lanes against the paper book's own record 
       assert.equal(pos.hand.n, 0);
       assert.equal(pos.flat.n, 1, `side ${side}: the unproven close counted apart`);
       // its money: the gross loss, the opening fee and the exit's model share (the venue's exit reports no commission)
-      assert.ok(Math.abs(pos.flat.usd - (side * (loss - 100) - 0.05 - loss * 0.001)) < 1e-9, `side ${side}: flat usd ${pos.flat.usd}`);
+      assert.ok(Math.abs(pos.flat.usd - (side * (loss - 100) - 0.05 - loss * 0.00075)) < 1e-9, `side ${side}: flat usd ${pos.flat.usd}`);
     }
   });
 

@@ -6,7 +6,7 @@
 //
 // - Files run one at a time, light suites first, heavy ones last, each in its own process with the allocator caps,
 //   CTS_CORE_WORKERS=1, oom_score_adj 1000 (the kernel picks a test before a desk) and the network guard
-//   (scripts/test-preload.mjs).
+//   (scripts/lib/core-test-offline-guard.cjs, before the legacy pinned-END preload).
 // - Before a file starts the container must have --min-free MB available (the same reading as the runtime's memory
 //   guard, cgroupAvailMb); it waits up to 10 minutes, else the file is recorded as skipped with the reason. While a file
 //   runs, it is killed if the available memory falls under --kill-below MB, so a desk sharing the container is never
@@ -28,6 +28,7 @@ import { join, relative, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { cgroupAvailMb } from "../src/core/server/memguard.server.ts";
+import { testAllInvocation } from "./lib/test-all-invocation.mjs";
 
 const ROOT = resolve(fileURLToPath(import.meta.url), "../..");
 const args = process.argv.slice(2);
@@ -317,32 +318,14 @@ for (const [i, file] of files.entries()) {
   const timeoutMs = heavy ? 60 * 60_000 : 20 * 60_000;
   // (a collectable heap: --expose-gc lets the workers and the memory guard collect, and a 4 GB ceiling with a 50 %
   // growing step keeps a test isolate from growing to 4× its live heap — the container's NODE_OPTIONS gives 8 GB)
-  const nodeArgs = [
-    "--expose-gc",
-    "--max-old-space-size=4096",
-    "--heap-growing-percent=50",
-    "--experimental-strip-types",
-    "--no-warnings",
-    "--import",
-    "./scripts/test-preload.mjs",
-    "--test-reporter=tap",
-    file,
-  ];
+  const invocation = testAllInvocation(file, process.env, ROOT, covDir);
   const started = Date.now();
   const child = spawn(
     "sh",
-    ["-c", 'echo 1000 > /proc/self/oom_score_adj 2>/dev/null; exec node "$@"', "sh", ...nodeArgs],
+    ["-c", 'echo 1000 > /proc/self/oom_score_adj 2>/dev/null; exec "$@"', "sh", invocation.command, ...invocation.args],
     {
-      cwd: ROOT,
-      env: {
-        ...process.env,
-        MALLOC_ARENA_MAX: "2",
-        MALLOC_MMAP_THRESHOLD_: "1048576",
-        CTS_CORE_WORKERS: "1",
-        // no preset comparison (as desks and sessions); the tests that check it turn it on (test-support compareOn)
-        CTS_CORE_COMPARE: "0",
-        ...(covDir ? { NODE_V8_COVERAGE: covDir } : {}),
-      },
+      cwd: invocation.cwd,
+      env: invocation.env,
       stdio: ["ignore", "pipe", "pipe"],
     },
   );

@@ -1,9 +1,10 @@
 // Processing reaches the book: one synthetic runtime with every strategy type and range on (Micro, Minimal, Short,
 // General, Long, the Wide grid; Normal, Trailing, Block, DCA, Axis; signals) computes once. Checked: every range
-// that has tapes trades in the Real stage, every type trades on both sides, the stages are reported in order, the
-// audit is clean, and the paper step accounts for every tape position it was offered (opened, or counted under a
-// reason in status.paperSkips — none is dropped silently). The signal funnel counts the candidates of inactive units.
-import { before, describe, it } from "node:test";
+// that has tapes is accounted for in the Real stage, every type trades on both sides, the stages are reported in
+// order, the audit is clean, and the paper step accounts for every tape position it was offered (opened, or counted
+// under a reason in status.paperSkips — none is dropped silently). Quiet ranges can have validated seats but no entry
+// on the finite simulation window. The signal funnel counts the candidates of inactive units.
+import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { CoreDb } from "./server/db.server.ts";
 import { CoreRuntime } from "./server/runtime.server.ts";
@@ -11,7 +12,7 @@ import { isSignalInd } from "./indications/registry.ts";
 import { MICRO_RANGE, rangeOfId } from "./minimal-coord.ts";
 import { kindOfId } from "./pipeline/pipeline.ts";
 import { DEFAULT_SETTINGS } from "./config.ts";
-import { H } from "./test-support.ts";
+import { H, trackRuntimes } from "./test-support.ts";
 
 // the paper step adopts positions entered at the current hour: the synthetic market ends now
 process.env.CTS_CORE_SYNTHETIC_END = String(Math.floor(Date.now() / H) * H);
@@ -29,46 +30,60 @@ describe(
   { timeout: 1_800_000 },
   () => {
     let rt: CoreRuntime;
+    const tracked = trackRuntimes();
+    after(() => tracked.disposeAll());
     before(async () => {
-      rt = new CoreRuntime(
-        new CoreDb(":memory:"),
-        {
-          // every range on (Micro's 17 stop ratios included) is the heaviest compute: three symbols
-          symbols: 3,
-          historyDays: 18,
-          tfDays: { "1": 3, "5": 6, "15": 18, "30": 18 },
-          cycleMs: 60_000,
-          focus: [],
-          mainTop: 12,
-          toggles: {
-            normal: true,
-            trailing: true,
-            block: true,
-            blockActive: false,
-            dca: true,
-            dcaActive: false,
-            axis: true,
-          },
-          // every range on: Micro added to the default Minimal / Short / General / Long and the Wide grid
-          grid: { ...DEFAULT_SETTINGS.grid, micro: MICRO_RANGE },
-          tactics: {
-            session: false,
-            volRegime: false,
-            trendStrength: false,
-            cooldown: false,
-            cooldownBars: 4,
-          },
-          gates: { minPf: 1.05, minTrades: 3, maxDdr: 0 },
-          // the signals' own record gates likewise (validation on the latest hours, acceptance, direction acceptance):
-          // on a random synthetic market they refuse a whole direction at random (13 Oct: shorts only, or no signal)
-          signals: {
-            ...DEFAULT_SETTINGS.signals,
-            validate: false,
-            accept: { ...DEFAULT_SETTINGS.signals.accept, enabled: false },
-            sideAccept: { ...DEFAULT_SETTINGS.signals.sideAccept, enabled: false },
-          },
-        } as never,
-        { market: "synthetic" },
+      rt = tracked.track(
+        new CoreRuntime(
+          new CoreDb(":memory:"),
+          {
+            // every range on (Micro's 17 stop ratios included) is the heaviest compute: three symbols
+            symbols: 3,
+            historyDays: 18,
+            tfDays: { "1": 3, "5": 6, "15": 18, "30": 18 },
+            cycleMs: 60_000,
+            focus: [],
+            mainTop: 12,
+            toggles: {
+              normal: true,
+              trailing: true,
+              block: true,
+              blockActive: false,
+              dca: true,
+              dcaActive: false,
+              axis: true,
+            },
+            // Historic Exit has dedicated fit, holdout, worker-parity, tape, and lane tests. Keep this deliberately
+            // exhaustive all-ranges/all-strategies reachability fixture focused on the existing grid; multiplying
+            // its thousands of pairs by historical exit candidate simulations makes it a poor bounded regression test.
+            exitStrategy: { ...DEFAULT_SETTINGS.exitStrategy, enabled: false },
+            // every range on: Micro added to the default Minimal / Short / General / Long and the Wide grid
+            // Reachability only: keep every range's configurations, including Micro, available to Real. The production
+            // range gate is exercised separately; on this random 18-day synthetic window it correctly rejects Micro.
+            grid: {
+              ...DEFAULT_SETTINGS.grid,
+              micro: MICRO_RANGE,
+              rangeGate: { ...DEFAULT_SETTINGS.grid.rangeGate, enabled: false },
+            },
+            tactics: {
+              session: false,
+              volRegime: false,
+              trendStrength: false,
+              cooldown: false,
+              cooldownBars: 4,
+            },
+            gates: { minPf: 1.05, minTrades: 3, maxDdr: 0 },
+            // the signals' own record gates likewise (validation on the latest hours, acceptance, direction acceptance):
+            // on a random synthetic market they refuse a whole direction at random (13 Oct: shorts only, or no signal)
+            signals: {
+              ...DEFAULT_SETTINGS.signals,
+              validate: false,
+              accept: { ...DEFAULT_SETTINGS.signals.accept, enabled: false },
+              sideAccept: { ...DEFAULT_SETTINGS.signals.sideAccept, enabled: false },
+            },
+          } as never,
+          { market: "synthetic" },
+        ),
       );
       // reachability, not results: the gates that judge a config's or a group's record (last-N, engine direction
       // acceptance, the symbol gate) are off — on a random synthetic market they refuse a whole range at random
@@ -102,7 +117,7 @@ describe(
       assert.ok(rt.sim!.trades.length > 0, "Real executed trades");
     });
 
-    it("every range with tapes trades in the Real stage", () => {
+    it("every range with tapes is accounted for in the Real stage", () => {
       const tapeRanges = new Set<string>(
         rt.tapes.filter((t) => !isSignalInd(t.ind)).map((t) => t.protect.tag ?? "wide"),
       );
@@ -112,11 +127,40 @@ describe(
         const r = rangeOfId(x.cfg) || "wide";
         traded.set(r, (traded.get(r) ?? 0) + 1);
       }
+      for (const x of rt.sim!.openAtEnd ?? []) {
+        if (isSignalInd(x.cfg.split("|")[1] ?? "")) continue;
+        const r = rangeOfId(x.cfg) || "wide";
+        traded.set(r, (traded.get(r) ?? 0) + 1);
+      }
+      const real = new Map<
+        string,
+        { tapes: number; validated: number; candidates: number; taken: number }
+      >();
+      for (const step of rt.sim!.steps) {
+        for (const [tag, row] of Object.entries(step.byRange ?? {})) {
+          const x = real.get(tag) ?? { tapes: 0, validated: 0, candidates: 0, taken: 0 };
+          x.tapes = Math.max(x.tapes, row.tapes);
+          x.validated += row.validated;
+          x.candidates += row.candidates;
+          x.taken += row.taken;
+          real.set(tag, x);
+        }
+      }
       const missing = [...tapeRanges].filter((r) => !traded.has(r));
+      const unaccounted = missing.filter((tag) => {
+        const row = real.get(tag);
+        if (!row?.tapes) return true;
+        // No entry onset in this replay window: the configs still had to pass a Real seat validation.
+        if (row.candidates === 0) return row.validated === 0;
+        // Onsets that did not open must have an explicit execution rejection in the per-range diagnostics.
+        const skipKey = tag === "wide" ? "" : tag;
+        return row.taken === 0 && Object.keys(rt.sim!.skipsByRange?.[skipKey] ?? {}).length === 0;
+      });
       assert.deepEqual(
-        missing,
+        unaccounted,
         [],
-        `ranges with tapes but no Real trade (traded: ${JSON.stringify([...traded])})`,
+        `ranges with tapes but no Real accounting (missing trades: ${JSON.stringify(missing)}; ` +
+          `Real stage: ${JSON.stringify(Object.fromEntries(real))})`,
       );
       for (const r of ["sh", "gn", "lg"]) assert.ok(tapeRanges.has(r), `range ${r} has tapes`);
     });

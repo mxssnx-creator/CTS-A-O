@@ -59,7 +59,7 @@ function refTrend(k: SeriesCache, ref: SeriesCache, p: number): Int8Array {
 }
 
 const HOUR = 3_600_000;
-/** bars in the volatility-regime rank window (two weeks of 1h bars) */
+/** Completed bars of the indication's own lane (336 hours only on a 1h series). */
 export const VOL_RANK_BARS = 336;
 
 export const FILTERS: Record<string, FilterFn> = {
@@ -127,7 +127,8 @@ export function tacticKey(t?: Tactics | null): string {
 }
 
 /**
- * Indications whose own rule fixes a low-ADX regime (they fire only below ADX 12–25). The trend-strength tactic
+ * Indications whose own rule fixes a low-ADX regime (they fire only below ADX 12–25). Relate adaptive variants also
+ * include ranging turns. The trend-strength tactic
  * (ADX ≥ 20) removed every one of their entries (audit, 13 Oct: act-chop@x4, a default focus pair, and mc-qrsi2-5 never
  * traded), so it is not applied to them; the other tactics still are.
  */
@@ -138,12 +139,20 @@ export const LOW_ADX_INDS: ReadonlySet<string> = new Set([
   "r-bb-adx-m",
   "sig-r-bb-adx-s",
   "sig-r-bb-adx-m",
+  // Tactic's own regime logic deliberately includes low-ADX mean reversion and adaptive ranging entries.
+  "tactic-mean-reversion-s",
+  "tactic-mean-reversion-m",
+  "tactic-adaptive-s",
+  "tactic-adaptive-m",
 ]);
 
 /** The tactics key for one indication: without trend strength for a low-ADX indication (LOW_ADX_INDS). */
 export function tacticKeyFor(t: Tactics | null | undefined, base: string): string {
   const key = tacticKey(t);
-  return key && LOW_ADX_INDS.has(base) ? key.split("+").filter((x) => x !== "adx20").join("+") : key;
+  const relateAdaptive = base.startsWith("relate-") && base.includes("-adaptive-");
+  return key && (LOW_ADX_INDS.has(base) || relateAdaptive)
+    ? key.split("+").filter((x) => x !== "adx20").join("+")
+    : key;
 }
 
 /** Extra history (bars) the active tactics need before their first valid signal. */

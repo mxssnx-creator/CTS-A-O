@@ -122,6 +122,22 @@ describe("independent configs (seatPer config)", () => {
       const bad = tape(id(9), 70);
       assert.equal(ids(select([bad, tape(id(2), 0, 0.03)], t, indep)).includes(id(9)), false);
     });
+
+    it(`${name}: validation and entry last-N are isolated to each config`, () => {
+      const good = tape(id(1), 5);
+      const losingSibling = tape(id(2), 100);
+      const o = { ...indep, validLastN: 15, lastN: 15, lastNMinPf: 1.2, rangeGate: undefined };
+      const alone = ids(select([good], t, o));
+      const withSibling = ids(select([good, losingSibling], t, o));
+      assert.deepEqual(alone, [id(1)]);
+      assert.ok(withSibling.includes(id(1)), "the losing sibling does not fail this config's validation window");
+
+      const mine = (tapes: ReturnType<typeof tape>[]) =>
+        walkForward(u, tapes, o)
+          .trades.filter((x) => x.cfg === id(1))
+          .map((x) => `${x.entryT}|${x.exitT}|${x.r}`);
+      assert.deepEqual(mine([good, losingSibling]), mine([good]), "entry last-N uses only the selected config's tape");
+    });
   }
 
   it("DCA / Axis are judged on their own results, not against the pair's base", () => {
@@ -170,7 +186,7 @@ describe("independent configs (seatPer config)", () => {
     // a book full of other configs' wins (every pooled level at its top) does not move it
     const book = new BlockBook(0);
     for (let i = 0; i < 20; i++)
-      book.add({ sym: "AAA-USDT", side: 1, kind: "osc", r: 0.02, type: "normal", cfg: id(2) });
+      book.add({ sym: "AAA-USDT", side: 1, kind: "osc", r: 0.02, type: "normal", cfg: id(2), accepted: true });
     const withBook = execDecision(a, at, o, { sym: "AAA-USDT", side: 1, book });
     assert.deepEqual(withBook, alone);
     // the pooled sources would raise it: the config-only Block is what keeps it independent
@@ -191,7 +207,7 @@ describe("independent configs (seatPer config)", () => {
     const at = NOW - 2 * H + 10 * 60_000;
     const book = new BlockBook(0);
     for (let i = 0; i < 20; i++)
-      book.add({ sym: "AAA-USDT", side: 1, kind: "osc", r: 0.02, type: "normal", cfg: id(2) });
+      book.add({ sym: "AAA-USDT", side: 1, kind: "osc", r: 0.02, type: "normal", cfg: id(2), accepted: true });
     const ctx = { sym: "AAA-USDT", side: 1 };
     const own = execDecision(sig, at, o, { ...ctx, book });
     assert.deepEqual(own, execDecision(sig, at, o, { ...ctx, book: null }), "the book does not move it");
@@ -366,7 +382,10 @@ describe("the same order from two indications", () => {
     assert.equal(dup.n, both.skips.duplicate);
     let gp = 0;
     let gl = 0;
-    for (const x of both.trades) (x.r > 0 ? (gp += x.r) : (gl -= x.r));
+    for (const x of both.trades) {
+      if (x.r > 0) gp += x.r;
+      else gl -= x.r;
+    }
     assert.ok(Math.abs(dup.gp - gp) < 1e-12 && Math.abs(dup.gl - gl) < 1e-12, `${dup.gp}/${dup.gl} vs ${gp}/${gl}`);
     // another hold is another order (it exits elsewhere): both trade
     const h48 = `follow|${IND2}|tp1|sl1|tr0|h48`;

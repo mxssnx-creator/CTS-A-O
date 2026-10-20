@@ -144,9 +144,11 @@ export function botTrigger(type: BotType, k: SeriesCache): Int8Array | null {
 export function comboSignal(bot: BotType, ind: string, k: SeriesCache): Int8Array | null {
   return k.memo(`combo:${bot}:${ind}`, () => {
     const st = indicationState(ind, k);
-    if (bot === "follow" || bot === "revert") {
+    if (bot === "follow" || bot === "revert" || bot === "exit") {
       if (!st) return null;
-      const dir = bot === "follow" ? 1 : -1;
+      // Historic Exit has a stable direction-onset source. It carries no Bot trigger and does not inherit
+      // the selected Bot's filters or the range-engine's remove-only tactics.
+      const dir = bot === "revert" ? -1 : 1;
       const out = new Int8Array(k.b.n);
       for (let i = 1; i < st.length; i++)
         if (st[i] !== 0 && st[i] !== st[i - 1]) out[i] = st[i] * dir;
@@ -170,7 +172,9 @@ export function entrySignal(
   // (a low-ADX indication, its combined "@x4" form too, skips the trend-strength tactic: it would remove every entry,
   // LOW_ADX_INDS)
   const key = tacticKeyFor(tactics, laneOf(ind).base.replace(/@x\d+$/, ""));
-  if (key && tactics?.onRun && (bot === "follow" || bot === "revert")) return runEntries(bot, ind, k, key);
+  if (bot === "exit") return comboSignal(bot, ind, k);
+  if (key && tactics?.onRun && (bot === "follow" || bot === "revert"))
+    return runEntries(bot, ind, k, key);
   const sig = comboSignal(bot, ind, k);
   if (!sig) return null;
   return withTactics(sig, k, key, `${bot}:${ind}`);
@@ -180,7 +184,12 @@ export function entrySignal(
  * tactics.onRun: one follow / revert entry per state run, on the run's first bar the tactics keep (the onset rule
  * tests the tactics on the onset bar alone). Memoized per symbol cache.
  */
-function runEntries(bot: "follow" | "revert", ind: string, k: SeriesCache, key: string): Int8Array | null {
+function runEntries(
+  bot: "follow" | "revert",
+  ind: string,
+  k: SeriesCache,
+  key: string,
+): Int8Array | null {
   return k.memo(`run:${key}:${bot}:${ind}`, () => {
     const st = indicationState(ind, k);
     if (!st) return null;

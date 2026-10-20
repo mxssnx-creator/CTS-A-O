@@ -20,9 +20,9 @@ CREATE TABLE IF NOT EXISTS evals (id INTEGER PRIMARY KEY AUTOINCREMENT, cfg TEXT
 CREATE INDEX IF NOT EXISTS evals_cfg ON evals(cfg, at);
 CREATE TABLE IF NOT EXISTS tapes (cfg TEXT NOT NULL, sym TEXT NOT NULL, side INTEGER, entry_t INTEGER NOT NULL, exit_t INTEGER, entry REAL, exit REAL, r REAL, reason TEXT, bars INTEGER, PRIMARY KEY (cfg, sym, side, entry_t)) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS sim_runs (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER, start_t INTEGER, end_t INTEGER, n INTEGER, pf REAL, net REAL, gh REAL, tph REAL, ddt REAL, stable INTEGER, opts TEXT, blocks TEXT, hourly TEXT);
-CREATE TABLE IF NOT EXISTS paper_trades (cfg TEXT NOT NULL, sym TEXT NOT NULL, side INTEGER, entry_t INTEGER NOT NULL, exit_t INTEGER, entry REAL, exit REAL, r REAL, pnl REAL, reason TEXT, first_at INTEGER, PRIMARY KEY (cfg, sym, side, entry_t)) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS paper_trades (cfg TEXT NOT NULL, sym TEXT NOT NULL, side INTEGER, entry_t INTEGER NOT NULL, exit_t INTEGER, entry REAL, exit REAL, r REAL, pnl REAL, reason TEXT, first_at INTEGER, unit_r REAL, PRIMARY KEY (cfg, sym, side, entry_t)) WITHOUT ROWID;
 -- held_px / entry / exit: the executable record (relation.ts) — the price when the book adopted the position, the sim's entry and exit
-CREATE TABLE IF NOT EXISTS paper_book_trades (cfg TEXT NOT NULL, sym TEXT NOT NULL, side INTEGER, entry_t INTEGER NOT NULL, exit_t INTEGER, r REAL, vol REAL, reason TEXT, held_at INTEGER, at INTEGER, held_px REAL, entry REAL, exit REAL, mult REAL, PRIMARY KEY (cfg, sym, side, entry_t)) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS paper_book_trades (cfg TEXT NOT NULL, sym TEXT NOT NULL, side INTEGER, entry_t INTEGER NOT NULL, exit_t INTEGER, r REAL, vol REAL, reason TEXT, held_at INTEGER, at INTEGER, held_px REAL, entry REAL, exit REAL, mult REAL, unit_r REAL, owned_notional_usd REAL, PRIMARY KEY (cfg, sym, side, entry_t)) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS paper_book_trades_exit ON paper_book_trades (exit_t);
 CREATE INDEX IF NOT EXISTS paper_trades_exit ON paper_trades (exit_t);
 CREATE TABLE IF NOT EXISTS paper_positions (cfg TEXT NOT NULL, sym TEXT NOT NULL, side INTEGER, entry_t INTEGER, entry REAL, stop REAL, target REAL, mtm REAL, at INTEGER, PRIMARY KEY (cfg, sym, side)) WITHOUT ROWID;
@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS live_orders (coid TEXT PRIMARY KEY, cfg TEXT, sym TEX
 CREATE INDEX IF NOT EXISTS live_orders_cfg_kind ON live_orders (cfg, kind);
 -- the time windows of the statistics and the desk report (at >= ?) scan these without an index
 CREATE INDEX IF NOT EXISTS live_orders_at ON live_orders (at);
-CREATE TABLE IF NOT EXISTS live_fills (coid TEXT PRIMARY KEY, sym TEXT, side INTEGER, kind TEXT, qty REAL, ref_px REAL, fill_px REAL, fee REAL, at INTEGER);
+CREATE TABLE IF NOT EXISTS live_fills (coid TEXT PRIMARY KEY, sym TEXT, side INTEGER, kind TEXT, qty REAL, ref_px REAL, fill_px REAL, fee REAL, fee_known INTEGER, at INTEGER);
 CREATE INDEX IF NOT EXISTS live_fills_at ON live_fills (at);
 -- px_src: where the exit price comes from (fill / history / bar / ticker; NULL on rows from before it was recorded)
 CREATE TABLE IF NOT EXISTS live_lane_trades (id TEXT NOT NULL, exit_t INTEGER NOT NULL, cfg TEXT NOT NULL, sym TEXT, side INTEGER, entry_t INTEGER, entry REAL, exit REAL, r REAL, reason TEXT, px_src TEXT, PRIMARY KEY (id, exit_t)) WITHOUT ROWID;
@@ -79,6 +79,27 @@ function addColumns(db: DatabaseSync) {
 /** Tables whose readers memoize on their write version (CoreDb.version). */
 const VERSIONED = ["paper_book_trades", "live_lane_trades"] as const;
 
+function applySchema(db: DatabaseSync) {
+  db.exec(SCHEMA);
+  // the columns added since (held_px / entry / exit, px_src): a database from an older version gets them
+  addColumns(db);
+  // Historical r is execution-weighted and does not retain the multiplier. Its unit return cannot be recovered
+  // safely: add nullable storage without rewriting r, cash P&L or volume. CREATE IF NOT EXISTS alone cannot
+  // upgrade an existing on-disk database or a database retained across a server hot reload.
+  for (const table of ["paper_trades", "paper_book_trades"]) {
+    const columns = db.prepare("SELECT name FROM pragma_table_info(?)").all(table) as Array<{ name: string }>;
+    if (!columns.some((column) => column.name === "unit_r"))
+      db.exec(`ALTER TABLE ${table} ADD COLUMN unit_r REAL`);
+  }
+  const bookColumns = db.prepare("SELECT name FROM pragma_table_info('paper_book_trades')").all() as Array<{ name: string }>;
+  if (!bookColumns.some((column) => column.name === "owned_notional_usd"))
+    db.exec("ALTER TABLE paper_book_trades ADD COLUMN owned_notional_usd REAL");
+  // Historical placeholder zero fees remain unknown; only parser-confirmed receipts establish a measured zero.
+  const fillColumns = db.prepare("SELECT name FROM pragma_table_info('live_fills')").all() as Array<{ name: string }>;
+  if (!fillColumns.some((column) => column.name === "fee_known"))
+    db.exec("ALTER TABLE live_fills ADD COLUMN fee_known INTEGER");
+}
+
 export class CoreDb {
   readonly db: DatabaseSync;
   private stmts = new Map<string, StatementSync>();
@@ -90,9 +111,8 @@ export class CoreDb {
     this.db.exec(
       "PRAGMA journal_mode = MEMORY; PRAGMA synchronous = OFF; PRAGMA temp_store = MEMORY;",
     );
-    this.db.exec(SCHEMA);
     // (a database file from an older version keeps its tables: the columns added since come in here)
-    addColumns(this.db);
+    applySchema(this.db);
     this.migrate();
     if (opts.statePath) this.loadState(opts.statePath);
   }
@@ -138,14 +158,16 @@ export class CoreDb {
     (this.stateTimer as { unref?: () => void }).unref?.();
   }
 
-  /** Write the durable keys now (shutdown: a pending debounced write would be lost). */
-  flushState() {
+  /** Last configured durable-state write failure; intentional memory-only databases leave this empty. */
+  lastStateError = "";
+  /** Write durable keys now; false retains a failed configured store rather than relabeling it memory-only. */
+  flushState(): boolean {
     if (this.stateTimer) {
       clearTimeout(this.stateTimer);
       this.stateTimer = null;
     }
     {
-      if (!this.statePath) return;
+      if (!this.statePath) return this.lastStateError === "";
       try {
         const out: Record<string, unknown> = {};
         for (const k of DURABLE_KEYS) {
@@ -156,11 +178,12 @@ export class CoreDb {
         const tmp = `${this.statePath}.tmp`;
         writeFileSync(tmp, JSON.stringify(out));
         renameSync(tmp, this.statePath);
+        return true;
       } catch (err) {
-        console.warn(
-          `[core-v2] state file not writable (${err instanceof Error ? err.message : err}) — memory only`,
-        );
+        this.lastStateError = err instanceof Error ? err.message : String(err);
+        console.warn(`[core-v2] state file not writable (${this.lastStateError}) — durable state unavailable`);
         this.statePath = null;
+        return false;
       }
     }
   }
@@ -342,7 +365,7 @@ export class CoreDb {
       for (const t of tables) {
         this.db.exec(`DROP TABLE ${t}; ALTER TABLE ${t}_next RENAME TO ${t};`);
       }
-      this.db.exec(SCHEMA);
+      applySchema(this.db);
       this.migrate();
     });
     this.stmts.clear();
@@ -468,6 +491,9 @@ const DURABLE_KEYS = new Set([
   "adjust",
   "liveCost",
   "liveLaneOpen",
+  "laneOrders",
+  "laneQuantityCaps",
+  "controlSuppressed",
   "hostSettingsApplied",
   "stopHits",
   "connsEnabled",
@@ -523,8 +549,7 @@ export function upgradeShared(db: CoreDb, statePath: string | null = null) {
     db.flushState();
   }
   const raw = (db as unknown as { db?: DatabaseSync }).db;
-  raw?.exec(SCHEMA);
-  if (raw) addColumns(raw);
+  if (raw) applySchema(raw);
   (db as unknown as { stmts?: Map<string, unknown> }).stmts?.clear();
 }
 

@@ -8,7 +8,7 @@ import type { Trade } from "./domain/types.ts";
 import { PF_NO_LOSS } from "./config.ts";
 
 const H = 3_600_000;
-/** r values are binary fractions so every sum below is exact */
+/** One-unit modeled trades; r values are binary fractions so every sum below is exact. */
 const tr = (sym: string, side: 1 | -1, eH: number, xH: number, r: number): Trade => ({
   cfg: `b|ind|${sym}`,
   sym,
@@ -18,6 +18,7 @@ const tr = (sym: string, side: 1 | -1, eH: number, xH: number, r: number): Trade
   entry: 1,
   exit: 1,
   r,
+  mult: 1,
   reason: r > 0 ? "tp" : "sl",
   bars: 1,
   mfe: 0,
@@ -56,8 +57,8 @@ describe("pre-historic stats: hand-computed cases", () => {
     assert.ok(Math.abs(s.avgPositions - 0.5) < 1e-12);
     assert.equal(s.maxPositions, 1);
     assert.deepEqual(s.perSymbol, [
-      { sym: "A", n: 2, pf: 2, net: (1 / 32 - 1 / 64) * 100 },
-      { sym: "B", n: 2, pf: 2, net: (1 / 64 - 1 / 128) * 100 },
+      { sym: "A", n: 2, pf: 2, net: (1 / 32 - 1 / 64) * 100, wr: 0.5, gp: 100 / 32, gl: 100 / 64, noLoss: false, pfConvention: "gross-return-ratio", pfBasis: "unit-net-returns", unknownReturns: 0 },
+      { sym: "B", n: 2, pf: 2, net: (1 / 64 - 1 / 128) * 100, wr: 0.5, gp: 100 / 64, gl: 100 / 128, noLoss: false, pfConvention: "gross-return-ratio", pfBasis: "unit-net-returns", unknownReturns: 0 },
     ]);
   });
 
@@ -83,15 +84,21 @@ describe("pre-historic stats: hand-computed cases", () => {
     );
   });
 
-  it("empty input: zeros everywhere, no NaN", () => {
+  it("empty input: primary return statistics are unavailable, activity counts stay zero", () => {
     const s = prehistStats([], 0, 10 * H);
     const want: PrehistStats = {
-      pf: 0,
-      ddtH: 0,
+      pf: null,
+      pfBasis: "unavailable",
+      unknownReturns: 0,
+      gp: null,
+      gl: null,
+      noLoss: null,
+      pfConvention: "unavailable",
+      ddtH: null,
       n: 0,
-      wr: 0,
-      greenHours: 0,
-      net: 0,
+      wr: null,
+      greenHours: null,
+      net: null,
       avgOpen: 0,
       maxOpen: 0,
       positions: 0,

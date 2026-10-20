@@ -1,5 +1,52 @@
 # Positive coordinations — keep them
 
+**16 Oct correctness amendment: bounded, independently evidenced Block.**
+`maxMult` is the total multiple for a new config entry, including its base and
+all enabled source additions (with the existing absolute 8x bound). Earlier
+per-source-cap descriptions below are historical. Config-source levels and
+pauses now use exact config/symbol/direction evidence; the separately named
+pooled sources keep their scope. Fractional Block source legs retain logical
+identities and share their exact parent's physical exit, including optional
+native lane-order sizing. Pending/partial quantities reserve real capacity.
+Existing holdings keep their entry multiple after a lower cap is configured.
+The numeric ratio/step/cap defaults, unrelated coordination toggles and desk
+patches are unchanged; the accepted-history default is explicitly clarified below.
+These fixes correct identity and cap enforcement; they are not a new claim of
+positive execution PF. The frozen Block protocol and completed retrospective
+results are recorded in the operations handoff.
+
+**16 Oct Overall relation clarification.** New Block settings explicitly learn
+from settled accepted Real virtual orders before funding. Runtime restoration
+merges current defaults, so persisted settings missing the selector also adopt
+accepted orders. Choose explicit `real-candidates` to retain the legacy diagnostic
+across restart; only direct configs without runtime default merging use the
+unset-field legacy fallback. Neither source is venue-fill proof. Symbol × Direction, exact indication/lane ×
+Direction and config × symbol × direction histories and pauses are independent.
+Shared accepts any qualifying relation and an optional separate ratio; Additive
+sums enabled levels. All source legs and relation volume share the total cap.
+At effective ratio 0.2, a qualifying relation at level one requests an addition
+of 0.2 when the shared total cap has enough room, including with seven volume steps;
+Shared uses its explicit override when set.
+Steps retain positive sub-step fractions and round larger additions down.
+Recording floors to six decimal places; sub-micro-unit dust cannot invent a
+raise, and a recorded source addition must never exceed its requested addition.
+Defaults for the common ratio, steps and maximum remain unchanged. Each parent
+close contributes one primary unit-return sample; logical source legs never
+increase close frequency. The ten-arm retrospective comparison and all failed
+or insufficient cohorts are retained in the current handoff. Its populated fold
+has return PF 2.37485 but settled Block results equal Off; Long PF is zero,
+Signal execution is inactive and no arm qualifies both folds. Passing offline
+software checks does not qualify a strategy for promotion.
+
+**14 Oct operator amendment: independent Signals.** The operator explicitly requires independent parameter
+ranges, lanes, trade types and config evaluations, including historical calculations, minimum return-PF gates,
+parallel processing, live execution and statistics. Signal qualification must therefore retain the full indication
+(source, parameter range and lane) and trade type. Earlier source-wide acceptance pooling and type-pooled active
+qualification described below record the previous policy; they do not override this newer instruction. Shared
+direction acceptance and account risk limits remain separate coordinations. Counts deduplicate one onset within
+its independent acceptance group while return PF includes every settled close. This is an operator-directed
+identity change, not new evidence that any configuration has a positive execution PF.
+
 The operator's standing instruction: the coordinations below were validated as positive and stay on in every future
 change (code defaults, presets, x01's settings and patches). A change that turns one off or weakens it needs a new
 causal comparison that beats it, recorded here. `src/core/positive-defaults.test.ts` pins the code defaults, and a
@@ -174,12 +221,16 @@ check live and make sure all running correctly, fix issues. Run with min vol fac
 the mirror image of x01's narrowed live book: nothing is held back from live, and positivity is decided only by
 the calculations.
 
+This archived run predates the current exchange-slot limit. Current Live admission defaults to 100 occupied
+`(symbol, direction)` slots across strategies, ignores the former `maxSymbols` field, and aggregates every qualifying
+lane on an admitted slot. Strategy and signal evaluation limits remain separate.
+
 | What the desk runs | Setting (`runs/x02/patch.json`) |
 | --- | --- |
 | every range | `grid.micro / minimal / short / general / long` all on, plus the Wide grid |
 | every strategy type | `toggles` normal, trailing, block, dca, dcaActive, axis on (Axis with its full variant set: 2 modes x 2 hybrids x 5 ranges x 3 level counts) |
 | signals with their own sets | `signals.strategies: { dca: true, axis: true }`, `ownBase: true`, the measured-positive sources only |
-| no live narrowing | no `kinds`, no `plainOnly`, no `source`, no `maxSymbols`, `maxPositions: 0`, `maxNotionalUsd: 0` |
+| no live narrowing | no `kinds`, no `plainOnly`, no `source`, no symbol-count cap; current exchange-slot cap is 100, `maxNotionalUsd: 0` |
 | every risk budget off | `maxExposureX / maxRiskPct / maxBackstopLossPct / maxPositionX` all 0 — at the minimum size they could only drop sets, never protect anything (equity 475,622 USDT demo) |
 | the minimum volume factor | `live.ratio: 1` with `notionalUsd 1`: every order is raised to the exchange minimum, so size is the smallest the venue accepts |
 | positivity from the gates alone | per-range PF 1.05, `baseSetsMinPf: 1`, DDT/DDR with the sample warm-up, `liveLastN: 25`, signal acceptance PF 1.3 / 48 h |

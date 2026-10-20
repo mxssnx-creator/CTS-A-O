@@ -1,14 +1,14 @@
 #!/usr/bin/env node
-// CTS-A-O — coordinates a desk's optional ranges from a reference desk's live results. The reference (a twin on the
-// demo account, same settings with every range on) trades each range on live prices; a range is switched on for the
-// target desk once its live PF clears --on-pf over at least --min-n closes, and off again when it falls below
+// CTS-A-O — coordinates a desk's optional ranges from a reference desk's forward-paper results (ref.paper).
+// The reference evaluates each range on live prices; these paper closes are not actual exchange fills. A range is
+// switched on for the target desk once its paper return PF clears --on-pf over at least --min-n closes, and off below
 // --off-pf. The decision is written as a settings patch the target desk applies while running
 // (scripts/core-live-test.mjs --patch-file). Writes only when a decision changes; prints one line per range.
 //
-// --gate: the target desk opens only while the reference's live book of the ranges it trades (every range switched
+// --gate: the target desk opens only while the reference's paper book of the ranges it trades (every range switched
 // on, and every range this coordinator does not manage) clears --on-pf (paused below --off-pf, and until it has
-// --gate-n closes): a real-money desk follows a demo twin that proves the configs live first, and a range that
-// loses on the twin is switched off instead of holding the whole desk closed.
+// --gate-n closes). This is a paper-evidence gate, not proof of execution profitability; exchange accounting must
+// be assessed separately. A range that loses on the paper reference is switched off instead of holding the desk closed.
 //
 // micro / minimal start off (opt-in ranges); short / general / long start on and are switched off once proven
 // losing.
@@ -45,7 +45,7 @@ const RANGES = {
   long: { label: "Long", value: LONG_RANGE, start: true },
 };
 
-// no reference yet (still computing its first window): nothing is proven, so the gate stays closed
+// no reference yet (still computing its first window): no paper evidence, so the gate stays closed
 const ref = existsSync(refPath) ? JSON.parse(readFileSync(refPath, "utf8")) : { paper: {} };
 const prev = existsSync(patchPath) ? JSON.parse(readFileSync(patchPath, "utf8")) : null;
 const on = { ...(prev?.on ?? {}) };
@@ -63,7 +63,7 @@ for (const k of ranges) {
   if (now !== was) changed = true;
   on[k] = now;
   lines.push(
-    `${k}: ${a.n} live closes on the reference, PF ${pf === Infinity ? "∞" : pf.toFixed(2)} → ${now ? "on" : "off"}${now !== was ? " (changed)" : ""}`,
+    `${k}: ${a.n} forward-paper closes on the reference, return PF ${pf === Infinity ? "∞" : pf.toFixed(2)} → ${now ? "on" : "off"}${now !== was ? " (changed)" : ""}`,
   );
 }
 let paused = prev?.paused ?? true;
@@ -78,7 +78,7 @@ if (gate) {
   const was = paused;
   if (t.n >= gateN && pf >= onPf) paused = false;
   else if (t.n < gateN || pf < offPf) paused = true;
-  const reason = t.n < gateN ? `reference has ${t.n} of ${gateN} live closes` : `reference live PF ${pf === Infinity ? "∞" : pf.toFixed(2)} over ${t.n} closes`;
+  const reason = t.n < gateN ? `reference has ${t.n} of ${gateN} forward-paper closes` : `reference forward-paper return PF ${pf === Infinity ? "∞" : pf.toFixed(2)} over ${t.n} closes`;
   // a decision that flips is written; a reason that only counts closes (2 of 15 → 3 of 15) is not, since every
   // patch the desk applies is a settings update
   if (paused !== was || !prev) changed = true;
@@ -101,7 +101,16 @@ if (changed) {
   writeFileSync(
     tmp,
     JSON.stringify(
-      { ...(prev ?? {}), at: new Date().toISOString(), why, on, paused, reason: gate ? pausedReason : null, settings },
+      {
+        ...(prev ?? {}),
+        at: new Date().toISOString(),
+        why,
+        coordinatorEvidence: { kind: "forward-paper", source: "ref.paper", pfBasis: "net-returns", actualExecution: false },
+        on,
+        paused,
+        reason: gate ? pausedReason : null,
+        settings,
+      },
       null,
       1,
     ),

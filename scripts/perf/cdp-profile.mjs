@@ -16,7 +16,8 @@ ws.onmessage = (e) => {
   if (m.id && pending.has(m.id)) {
     const p = pending.get(m.id);
     pending.delete(m.id);
-    m.error ? p.rej(new Error(JSON.stringify(m.error))) : p.res(m.result);
+    if (m.error) p.rej(new Error(JSON.stringify(m.error)));
+    else p.res(m.result);
   }
 };
 await new Promise((r) => (ws.onopen = r));

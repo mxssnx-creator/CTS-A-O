@@ -23,7 +23,10 @@ set -Eeuo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.." # repo root
 LOSS_PCT="${1:-80}"
 SYMBOLS="${2:-60}"
-PATTERN="${CTS_SUPERVISE_PATTERN:-[c]ore-live-test.mjs --name x01-signals }"
+# Match a Node desk invocation, not a shell/monitor command that mentions it. The
+# anchors also keep pgrep's own command line from satisfying the pattern.
+DEFAULT_PATTERN='^([^[:space:]]*/)?node([[:space:]]+--[^[:space:]]+)*[[:space:]]+([^[:space:]]*/)?core-live-test[.]mjs[[:space:]]+--name[[:space:]]+x01-signals([[:space:]]|$)'
+PATTERN="${CTS_SUPERVISE_PATTERN:-$DEFAULT_PATTERN}"
 LAUNCHER="${CTS_SUPERVISE_LAUNCHER:-docs/live-coordination/start-x01-signals.sh}"
 HALT_FILE="${CTS_SUPERVISE_HALT:-runs/x01-signals/HALT}"
 
@@ -31,7 +34,18 @@ if [ -f "$HALT_FILE" ]; then
   echo "$(date -u +%FT%TZ) x01-signals halted ($HALT_FILE present) — not relaunching: $(head -c 300 "$HALT_FILE")"
   exit 0
 fi
-PID=$(pgrep -f "$PATTERN" | head -1 || true)
+PID=""
+if MATCHES=$(pgrep -f -- "$PATTERN"); then
+  PID="${MATCHES%%$'\n'*}"
+else
+  RESULT=$?
+  # 1 means no match. An invalid pattern or failed process query cannot establish
+  # that the desk is down, so refuse a potentially duplicate launch.
+  if [ "$RESULT" -ne 1 ]; then
+    echo "$(date -u +%FT%TZ) x01-signals process check failed (status $RESULT) — not relaunching" >&2
+    exit "$RESULT"
+  fi
+fi
 if [ -n "$PID" ]; then
   echo "$(date -u +%FT%TZ) x01-signals alive (pid $PID)"
   exit 0

@@ -9,7 +9,9 @@ import { liveKv, resetLiveBackoff, stepLive, type ControlStatus } from "./live.s
 import { coveredLanes, goneOrderOf, planLaneOrders, swapCount, trimLaneOrders, type LaneOrder, type LaneWant } from "./lane-orders.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
-import { SimExchange, type SimOrder } from "../test-support.ts";
+import { pxTick } from "../exchange/bingx.server.ts";
+import { authorizeSyntheticLanes, SimExchange, syntheticExecutionRun, type SimOrder } from "../test-support.ts";
+import type { LiveGate } from "../live-validation.ts";
 import { ownCoidKind } from "./live.ts";
 
 process.env.CTS_CORE_LIVE = "1";
@@ -48,6 +50,7 @@ function rtOf() {
     { sym: "S1-USDT", last: 10 },
     { sym: "S2-USDT", last: 20 },
   ];
+  let positions: Pos[] = [];
   const rt = {
     generation: 1,
     db: new CoreDb(":memory:"),
@@ -75,9 +78,22 @@ function rtOf() {
         laneOrders: true,
       },
     },
-    sim: { stats: { pf: 1.5, n: 50 }, stable: true },
+    // Settled synthetic accepted outcomes and independent owned-paper execution evidence are declared per exact
+    // fixture lane below. A summary alone cannot authorize admission or manufacture missing proof.
+    sim: syntheticExecutionRun([]),
+    livePromotionGate: undefined as ((lane: Pick<Pos, "cfg" | "sym" | "side">, at?: number) => LiveGate) | undefined,
     status: { lastBarT: Math.floor(Date.now() / H) * H },
-    paper: { positions: [] as Pos[] },
+    paper: {
+      get positions(): Pos[] { return positions; },
+      set positions(next: Pos[]) {
+        positions = new Proxy(next, { set(target, property, value) {
+          const changed = Reflect.set(target, property, value);
+          if (property !== "length") authorizeSyntheticLanes(rt, target);
+          return changed;
+        } });
+        authorizeSyntheticLanes(rt, positions);
+      },
+    },
     tickersAt: 0,
     freshTickers: async () => {
       rt.tickersAt = Date.now();
@@ -180,6 +196,16 @@ describe("lane orders: the planner (pure)", () => {
     assert.deepEqual(goneOrderOf({ order: { status: "FILLED", avgPrice: "9.49", stopPrice: "9.5" } }), { status: "filled", px: 9.49 });
     assert.deepEqual(goneOrderOf({ order: { status: "CANCELLED", avgPrice: "0" } }), { status: "cancelled" });
     assert.deepEqual(goneOrderOf(null), { status: "unknown" });
+    assert.deepEqual(goneOrderOf({ order: { status: "FILLED", avgPrice: 0, stopPrice: 9.8, executedQty: 1 } }),
+      { status: "unknown" }, "a trigger is not measured execution price");
+    assert.deepEqual(goneOrderOf({ order: { status: "FILLED", avgPrice: Infinity, executedQty: 1 } }),
+      { status: "unknown" }, "execution price must be finite");
+    assert.deepEqual(goneOrderOf({ order: { status: "PARTIALLY_FILLED", avgPrice: "9.8", executedQty: "0.4" } }),
+      { status: "filled", px: 9.8, qty: .4, complete: false });
+    assert.deepEqual(goneOrderOf({ order: { status: "FILLED", avgPrice: "9.8", executedQty: "1" } }),
+      { status: "filled", px: 9.8, qty: 1, complete: true });
+    assert.deepEqual(goneOrderOf({ order: { status: "CANCELLED", avgPrice: "9.8", executedQty: "0.4" } }),
+      { status: "filled", px: 9.8, qty: .4, complete: true });
   });
 });
 
@@ -411,9 +437,23 @@ describe("lane orders: the control step", { timeout: 120_000 }, () => {
     assert.equal(ex.orders.filter((o) => !isLane(o)).length, 2, "every position's backstop");
     const lanesPlaced = ex.orders.filter((o) => isLane(o));
     assert.equal(lanesPlaced.length, 5);
-    const dist = (o: { stopPrice?: number; venueSymbol: string }) =>
-      Math.abs((o.stopPrice ?? 0) - (o.venueSymbol === "S1-USDT" ? 10 : 20)) / (o.venueSymbol === "S1-USDT" ? 10 : 20);
-    assert.ok(Math.max(...lanesPlaced.map(dist)) <= 0.04 + 1e-9, "only the nearest levels");
+    // These are the five nearest logical levels. Venue-safe outward snapping can put an exact 4 % level one
+    // price tick farther out (9.6 → 9.5999), so a raw distance <= 4 % incorrectly rejected the right selection.
+    const nearest = [
+      { sym: "S1-USDT", type: "STOP_MARKET", px: 9.8 },
+      { sym: "S2-USDT", type: "STOP_MARKET", px: 20.4 },
+      { sym: "S1-USDT", type: "STOP_MARKET", px: 9.7 },
+      { sym: "S2-USDT", type: "TAKE_PROFIT_MARKET", px: 19.2 },
+      { sym: "S1-USDT", type: "STOP_MARKET", px: 9.6 },
+    ];
+    const contracts = await ex.contracts();
+    for (const want of nearest)
+      assert.equal(
+        lanesPlaced.filter((o) => o.venueSymbol === want.sym && o.type === want.type &&
+          Math.abs((o.stopPrice ?? 0) - want.px) <= pxTick(contracts.get(want.sym)) + 1e-9).length,
+        1,
+        `nearest ${want.sym} ${want.type} at ${want.px}, within one venue tick`,
+      );
     // the venue refuses the next one: lane orders pause, they are not retried every step
     ex.tpslCap = 7;
     rt.settings.live = { ...rt.settings.live, maxVenueOrders: 40 };
@@ -440,7 +480,7 @@ describe("lane orders: the control step", { timeout: 120_000 }, () => {
     await step();
     assert.equal(ex.orders.length, 7, "the backstop and 6 lane orders: 12 − 5 reserved");
     // a second position opens: its backstop takes one of the reserved slots (8 = one over the line)
-    rt.paper.positions = [...rt.paper.positions, lane(7, "S2-USDT", -1, 20, 0.15, 0.2)];
+    rt.paper.positions.push(lane(7, "S2-USDT", -1, 20, 0.15, 0.2));
     tick(20_000);
     await step();
     assert.equal(ex.orders.length, 8);

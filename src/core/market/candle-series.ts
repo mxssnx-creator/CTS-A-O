@@ -264,18 +264,33 @@ export function barsOfSeries(sym: string, tfMin: number, cs: CandleSeries, from:
 }
 
 /**
- * The last `n` bars of a resampled lane (tf a multiple of srcMin): only the bars of the last n + 1 buckets are read,
+ * The last `n` bars of a resampled lane (tf a multiple of srcMin): scan back until n complete buckets are found,
  * resampled as bars.ts resample does (h the max, l the min, c the last close, v summed in order; an incomplete bucket
- * dropped). The same values as barsFromCandles of the last n of resampleTail on the same bars.
+ * dropped; non-increasing times in the source groups read are rejected). The same values as barsFromCandles of
+ * the last n of resampleTail on the same valid source bars.
  */
 export function resampleTailBars(sym: string, cs: CandleSeries, srcMin: number, tf: number, n: number): Bars {
   const N = cs.n;
   if (!N || n <= 0) return barsOfSeries(sym, tf, cs, 0, 0);
   const tfMs = tf * 60_000;
-  const from = Math.floor(cs.t[N - 1] / tfMs) * tfMs - (n + 1) * tfMs;
-  const lo = cs.lowerBound(from);
-  if (tf === srcMin) return barsOfSeries(sym, tf, cs, Math.max(lo, N - n), N);
+  if (tf === srcMin) return barsOfSeries(sym, tf, cs, Math.max(0, N - n), N);
   const k = tf / srcMin;
+  const srcMs = srcMin * 60_000;
+  let lo = N;
+  let found = 0;
+  // Count complete groups backwards, then aggregate forwards to preserve the exact OHLCV summation order.
+  // Sparse history can require older groups; a clock-time cutoff would silently return too few lane bars.
+  while (lo > 0 && found < n) {
+    const end = lo;
+    const bt = Math.floor(cs.t[lo - 1] / tfMs) * tfMs;
+    let complete = true;
+    while (lo > 0 && Math.floor(cs.t[lo - 1] / tfMs) * tfMs === bt) {
+      lo--;
+      if (lo + 1 < N && !(cs.t[lo + 1] > cs.t[lo])) throw new RangeError("source bars must have strictly increasing timestamps");
+      if (lo + 1 < end && cs.t[lo + 1] !== cs.t[lo] + srcMs) complete = false;
+    }
+    if (complete && end - lo === k && cs.t[lo] === bt) found++;
+  }
   const size = Math.floor((N - lo) / Math.max(1, Math.floor(k))) + 1;
   const T = new Float64Array(size);
   const O = new Float64Array(size);
@@ -292,8 +307,10 @@ export function resampleTailBars(sym: string, cs: CandleSeries, srcMin: number, 
   let bc = 0;
   let bv = 0;
   let cnt = 0;
+  let complete = false;
+  let lastT = NaN;
   const flush = () => {
-    if (has && cnt === k) {
+    if (has && complete && cnt === k) {
       T[m] = bt;
       O[m] = bo;
       H[m] = bh;
@@ -315,13 +332,16 @@ export function resampleTailBars(sym: string, cs: CandleSeries, srcMin: number, 
       bc = cs.c[i];
       bv = cs.v[i];
       cnt = 1;
+      complete = cs.t[i] === b;
     } else {
       bh = Math.max(bh, cs.h[i]);
       bl = Math.min(bl, cs.l[i]);
       bc = cs.c[i];
       bv += cs.v[i];
       cnt++;
+      complete = complete && cs.t[i] === lastT + srcMs;
     }
+    lastT = cs.t[i];
   }
   flush();
   const s = Math.max(0, m - n);

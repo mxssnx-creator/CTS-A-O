@@ -2,6 +2,9 @@ import { Link } from "@tanstack/react-router";
 import { coreMarket, coreTrading } from "../api-conn";
 import { Sparkline } from "../charts";
 import { capText, sizeText } from "@/core/live-labels";
+import { ExecutionSummary } from "../execution-summary";
+import { paperUnitReturn } from "../accounting";
+import { hasNoTakeProfit } from "../signal-units";
 import { Age, Empty, ErrorNote, fmt, Kpi, Line, liveState, Panel, Pill, tone, usePoll } from "../ui";
 
 type Any = any;
@@ -19,15 +22,24 @@ export function TradingPage() {
   const selected = (d.selected ?? []) as string[];
   const sigSel = selected.filter((id) => (id.split("|")[1] ?? "").includes("sig-")).length;
   const realSel = selected.length - sigSel;
+  const liveUnit = d.sizing?.mode === "equityPct"
+    ? `${fmt.num(d.sizing.pct * 100, 2)}% of account balance`
+    : d.sizing?.mode === "minQty"
+      ? "exchange minimum lot"
+      : `${fmt.usd(d.liveSettings?.notionalUsd)} fixed notional`;
+  const entryUnit = d.sizing?.mode === "equityPct"
+    ? liveUnit
+    : `${fmt.usd(d.liveSettings?.notionalUsd)} configured notional, rounded to venue quantity limits`;
   return (
     <>
       <ErrorNote error={error} />
+      <ExecutionSummary account={live?.account} />
       <div className="v2-grid v2-cols-4">
         <Kpi
           label="Paper P&L (virtual)"
           value={fmt.usd(d.equity)}
           className={tone(d.equity)}
-          sub={`virtual balance ${fmt.usd(d.balance)} from ${fmt.usd(d.startBalance)} · paper sizing: ${d.sizing?.mode === "fixed" ? "fixed notional" : `${fmt.num((d.sizing?.pct ?? 0.02) * 100, 1)}% of the virtual equity per order`}`}
+          sub={`virtual balance ${fmt.usd(d.balance)} · equity ${fmt.usd(d.accountEquity)} from ${fmt.usd(d.startBalance)} · paper sizing: ${d.sizing?.mode === "fixed" ? "fixed notional" : `${fmt.num((d.sizing?.pct ?? 0.002) * 100, 1)}% of the virtual balance per order`}`}
         />
         <Kpi
           label="Paper open positions / orders"
@@ -89,7 +101,7 @@ export function TradingPage() {
                       <td>{fmt.time(p.entry_t)}</td>
                       <td className="num">{fmt.num(p.entry, 4)}</td>
                       <td className="num">{fmt.num(p.stop, 4)}</td>
-                      <td className="num">{fmt.num(p.target, 4)}</td>
+                      <td className="num">{hasNoTakeProfit(p) ? "None" : fmt.num(p.target, 4)}</td>
                       <td className={`num ${tone(p.mtm)}`}>{fmt.pct(p.mtm * 100)}</td>
                       <td className="num">
                         {fmt.num(p.vol ?? 1, 2)}
@@ -108,8 +120,8 @@ export function TradingPage() {
           )}
         </Panel>
         <Panel
-          title="Due now (Live intents)"
-          sub="signals on the newest closed bar from Real configs"
+          title="Paper signals due now"
+          sub="candidate signals on the newest closed bar; execution is subject to live gates and sizing"
           flush
         >
           {d.pending.length ? (
@@ -130,7 +142,7 @@ export function TradingPage() {
                       <td>{p.sym}</td>
                       <td>{p.side > 0 ? "long" : "short"}</td>
                       <td className="v2-mono">{p.cfg}</td>
-                      <td className="num">{fmt.frac(p.protect.tp)}</td>
+                      <td className="num">{hasNoTakeProfit(p.protect) ? "None" : fmt.frac(p.protect.tp)}</td>
                       <td className="num">{fmt.frac(p.protect.sl)}</td>
                     </tr>
                   ))}
@@ -154,7 +166,7 @@ export function TradingPage() {
       </div>
       <Panel
         title="Paper closes"
-        sub={`latest ${d.tradesShown ?? trades.length} · closed P&L above covers every close`}
+        sub={`latest ${d.tradesShown ?? trades.length} · unit net excludes execution volume; legacy unit basis may be unavailable · closed P&L above covers every close`}
         flush
       >
         <div className="v2-table-wrap">
@@ -167,13 +179,15 @@ export function TradingPage() {
                 <th>config</th>
                 <th className="num">entry</th>
                 <th className="num">exit</th>
-                <th className="num">net</th>
+                <th className="num">unit net</th>
                 <th className="num">pnl</th>
                 <th>reason</th>
               </tr>
             </thead>
             <tbody>
-              {trades.map((t) => (
+              {trades.map((t) => {
+                const unitR = paperUnitReturn(t);
+                return (
                 <tr key={`${t.cfg}|${t.sym}|${t.side}|${t.entry_t}`}>
                   <td>{fmt.time(t.exit_t)}</td>
                   <td>{t.sym}</td>
@@ -181,17 +195,18 @@ export function TradingPage() {
                   <td className="v2-mono">{t.cfg}</td>
                   <td className="num">{fmt.num(t.entry, 4)}</td>
                   <td className="num">{fmt.num(t.exit, 4)}</td>
-                  <td className={`num ${tone(t.r)}`}>{fmt.pct(t.r * 100)}</td>
+                  <td className={`num ${tone(unitR)}`} title={unitR === null ? "Unit-return basis unavailable for this legacy close" : undefined}>{fmt.frac(unitR)}</td>
                   <td className={`num ${tone(t.pnl)}`}>{fmt.usd(t.pnl)}</td>
                   <td>{t.reason}</td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
       </Panel>
       <Panel
-        title="Position cost and auto-adjust"
+        title="Paper position cost and auto-adjust"
         sub={`model ${(d.cost?.model * 100).toFixed(3)} % round trip (taker ${(d.cost?.fees?.taker * 100).toFixed(3)} % + slippage ${(d.cost?.fees?.slippage * 100).toFixed(3)} % per side) · measured live: ${d.liveCost ? `${(d.liveCost.rt * 100).toFixed(3)} % from ${d.liveCost.fills} fills (fee ${(d.liveCost.fee * 100).toFixed(3)} %, slippage ${(d.liveCost.slip * 100).toFixed(3)} % per side)` : "not enough live fills yet (40 needed)"}`}
         flush
       >
@@ -244,7 +259,7 @@ export function TradingPage() {
 
       <Panel
         title="Control orders · Overall"
-        sub={`${d.liveSettings?.connId ?? ""} keys: ${{ own: "own", x01: "x01 keys (VST host)", generic: "generic BINGX_API_KEY", none: "none — add BINGX_X01_API_KEY / BINGX_X01_SECRET" }[d.liveKeys as string] ?? "?"} · one position per symbol + direction, sized from every lane holding it · ${(d.liveSettings?.mode ?? "overall") === "overall" ? "Live mode: overall" : "Live mode: entries (preview only)"} · ${sizeText(d.liveSettings ?? {}, d.sizing?.mode)}, adjust beyond ±${Math.round((d.liveSettings?.rebalancePct ?? 0.25) * 100)}%`}
+        sub={`${d.liveSettings?.connId ?? ""} keys: ${{ own: "own", x01: "x01 keys (VST host)", generic: "generic BINGX_API_KEY", none: "none — add BINGX_X01_API_KEY / BINGX_X01_SECRET or configure credentials for this connection" }[d.liveKeys as string] ?? "?"} · one position per symbol + direction, sized from every lane holding it · ${(d.liveSettings?.mode ?? "overall") === "overall" ? `Live mode: overall · ${liveUnit} × lane volume × ${d.liveSettings?.ratio ?? 1}` : `Live mode: entries · Overall preview only; entries use ${entryUnit} per signal without the Control ratio`} · ${sizeText(d.liveSettings ?? {}, d.sizing?.mode)}${d.liveSettings?.maxExposureX ? ` · gross limit ${d.liveSettings.maxExposureX}× balance` : ""} · adjust beyond ±${Math.round((d.liveSettings?.rebalancePct ?? 0.25) * 100)}%`}
         right={
           d.control ? (
             <Pill kind={d.control.reconnected ? "bad" : d.control.unchanged ? undefined : "acc"}>
@@ -323,9 +338,10 @@ export function TradingPage() {
           </div>
         ) : (
           <Empty>
-            {d.controlPreview?.noBase
-              ? `No control positions — ${d.controlPreview.noBase}.`
-              : "No control positions — no lane holds a paper position right now."}
+            {d.controlPreview?.blocked ??
+              (d.controlPreview?.noBase
+                ? `No control positions — ${d.controlPreview.noBase}.`
+                : "No control positions — no eligible lane holds a paper position right now.")}
           </Empty>
         )}
         {d.controlPreview?.unit !== undefined && (d.controlPreview?.targets ?? []).length > 0 && (
@@ -333,16 +349,22 @@ export function TradingPage() {
             {d.liveSettings?.positionSize === "risk"
               ? `each position risks B × ${fmt.num((d.liveSettings?.riskPerPositionPct ?? 0.01) * 100, 2)}% × ${d.liveSettings?.ratio ?? 1} at its stop`
               : d.controlPreview.unitFrom === "minQty"
-                ? "one lane unit: the exchange minimum lot (per symbol)"
+                ? "one lane unit: the exchange minimum lot per unit (per symbol)"
                 : `one lane unit $${fmt.num(d.controlPreview.unit, 2)} · ${
                     d.controlPreview.unitFrom === "equity"
                       ? "from the account equity"
-                      : d.controlPreview.unitFrom === "fixed"
-                        ? "fixed notional"
-                        : "from the paper balance (no equity read yet — live sizes from the account)"
+                      : d.controlPreview.unitFrom === "balance"
+                        ? "from account balance"
+                        : d.controlPreview.unitFrom === "fixed"
+                          ? "fixed notional"
+                          : d.controlPreview.unitFrom === "paper"
+                            ? "simulated exchange balance"
+                            : "from the paper balance (no equity read yet — live sizes from the account)"
                   }`}
-            {` · B = min(wallet, equity) ${fmt.usd4(d.controlPreview.base)} (wallet ${fmt.usd4(d.controlPreview.wallet)}, equity ${fmt.usd4(d.controlPreview.equity)}) `}
-            <Age at={d.controlPreview.baseAt} prefix="read" />
+            {d.controlPreview.base !== undefined
+              ? ` · B = min(wallet, equity) ${fmt.usd4(d.controlPreview.base)} (wallet ${fmt.usd4(d.controlPreview.wallet)}, equity ${fmt.usd4(d.controlPreview.equity)}) `
+              : " "}
+            {d.controlPreview.baseAt !== undefined && <Age at={d.controlPreview.baseAt} prefix="read" />}
             {` · ${capText(d.liveSettings ?? {})}`}
             {d.controlPreview.top
               ? ` · top configs: ${d.controlPreview.top.kept} of ${d.controlPreview.top.of} kept`
@@ -350,7 +372,7 @@ export function TradingPage() {
             {d.controlPreview.symbolCapDropped
               ? ` · ${d.controlPreview.symbolCapDropped} positions over the symbol cap (${d.liveSettings?.maxSymbols})`
               : ""}
-            {" · after the account budgets on B (gross exposure, stop risk, worst case), as the live step sizes"}
+            {" · after the account budgets on B (gross exposure, stop risk, worst case) and the exposure / risk scalers, as the live step sizes"}
           </div>
         )}
         {(d.control?.actions ?? []).length > 0 && (
@@ -365,7 +387,7 @@ export function TradingPage() {
 
       <Panel
         title="Live orders"
-        sub={`own ${d.liveTag ?? ""} client ids only · fill price and fee from the exchange reply (fee – = none reported: the statistics charge the model share) · P&L = the close it made, USD after fees`}
+        sub={`own ${d.liveTag ?? ""} client ids only (own CTSB submission ledger; accepted requests are not confirmed fills) · fill price and fee from the exchange reply (fee – = none reported: the statistics charge the model share) · P&L = the close it made, USD after fees`}
         flush
       >
         {d.liveOrders.length ? (
@@ -399,7 +421,7 @@ export function TradingPage() {
                     <td className={`num ${tone(o.pnl)}`}>{o.pnl === null || o.pnl === undefined ? "" : fmt.usdSigned(o.pnl)}</td>
                     <td>
                       {o.status === "ok" ? (
-                        <Pill kind="ok">ok</Pill>
+                        <Pill kind="ok">accepted</Pill>
                       ) : (
                         <Pill kind="bad">{o.status}</Pill>
                       )}

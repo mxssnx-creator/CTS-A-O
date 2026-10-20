@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useConn } from "./conn";
 import { ageOf } from "@/core/live-labels";
+import { sameDataScope } from "./accounting";
 
 /**
  * Poll a server function; data is replaced in place (no reload, no scroll jump).
@@ -25,24 +26,34 @@ export function usePoll<T>(
   const fails = useRef(0);
   const seq = useRef(0);
   const applied = useRef(0);
+  // Data belongs to its exact connection and filters. Never show a prior sim/book or time range
+  // under a newly selected source while its request is pending.
+  const scope = [conn, ...deps];
+  const scopeRef = useRef(scope);
+  scopeRef.current = scope;
+  const dataScope = useRef<unknown[]>(scope);
   const shownConn = useRef(conn);
   const run = useCallback(async (force = false) => {
     if (inFlight.current && !force) return;
     const my = epoch.current;
+    const requestScope = scopeRef.current;
     const n = ++seq.current;
     inFlight.current = true;
     try {
       const d = await fnRef.current();
       // drop responses from an old dependency set, and any response older than one already shown
-      if (my !== epoch.current || n < applied.current) return;
+      if (my !== epoch.current || n < applied.current || !sameDataScope(requestScope, scopeRef.current)) return;
       applied.current = n;
       fails.current = 0;
+      dataScope.current = requestScope;
       setData(d);
       setError(null);
     } catch (e) {
       // an older request failing after a newer one succeeded must not show a stale error
-      if (my !== epoch.current || n < applied.current) return;
+      if (my !== epoch.current || n < applied.current || !sameDataScope(requestScope, scopeRef.current)) return;
       fails.current++;
+      if (!sameDataScope(dataScope.current, requestScope)) setData(null);
+      dataScope.current = requestScope;
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       if (my === epoch.current && n === seq.current) {
@@ -87,7 +98,8 @@ export function usePoll<T>(
     if (tick > 0) void run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tick]);
-  return { data, error, refresh: () => void run(true), loading };
+  const current = sameDataScope(dataScope.current, scope);
+  return { data: current ? data : null, error: current ? error : null, refresh: () => void run(true), loading: loading || !current };
 }
 
 /** Debounced copy of a value (typing in filters does not fire a request per key). */

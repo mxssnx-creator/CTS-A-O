@@ -36,7 +36,7 @@ const tr = (cfg: string, sym: string, side: 1 | -1, eH: number, xH: number, r: n
 
 describe("walk-forward variants", () => {
   const base = { ...defaultWalkForward(DEFAULT_SETTINGS), protects: [], dcaProtects: [] };
-  const kinds = { normal: 10, trailing: 10, dca: 0, "dca-active": 0, axis: 4 };
+  const kinds = { normal: 10, trailing: 10, exit: 0, dca: 0, "dca-active": 0, axis: 4 };
 
   it("flips every toggle once and marks the ones without tapes as recompute", () => {
     const vs = walkForwardVariants(
@@ -45,8 +45,9 @@ describe("walk-forward variants", () => {
     );
     // the strategy toggles (the range-off and crowding rows share the group: ids with a hyphen)
     const types = vs.filter((v) => /^type:[A-Za-z]+$/.test(v.id));
-    assert.equal(types.length, 7);
+    assert.equal(types.length, 8);
     assert.equal(vs.find((v) => v.id === "type:dca")!.status, "recompute");
+    assert.equal(vs.find((v) => v.id === "type:exit")!.status, "na");
     assert.equal(vs.find((v) => v.id === "type:axis")!.status, "run");
     assert.equal(vs.find((v) => v.id === "type:axis")!.opts!.toggles.axis, true);
     // no signal tapes: signals on needs a recompute, confirmation has nothing to act on
@@ -197,6 +198,53 @@ describe("run summary", () => {
     assert.equal(effectOf(vol, s), "volume");
     const fewer = summarizeRun({ trades: [trades[0]] }, T0, T0 + 3 * H);
     assert.equal(effectOf(fewer, s), "orders");
+  });
+
+  it("keeps primary return PF independent of execution volume and keeps weighted curves/fingerprints", () => {
+    const unit = [
+      { ...tr("b|ema|wide", "A", 1, 0, 0.5, 0.01), mult: 1 },
+      { ...tr("b|ema|wide", "B", -1, 0.5, 1.5, -0.005), mult: 1 },
+    ];
+    const scaled = [ { ...unit[0], r: 0.02, mult: 2, vol: 2 }, unit[1] ];
+    const a = summarizeRun({ trades: unit }, T0, T0 + 3 * H);
+    const b = summarizeRun({ trades: scaled }, T0, T0 + 3 * H);
+    assert.equal(a.pf, 2);
+    assert.equal(b.pf, a.pf);
+    assert.equal(b.unitGp, 1);
+    assert.equal(b.unitGl, 0.5);
+    assert.equal(b.pfBasis, "unit-net-returns");
+    assert.equal(b.sizedPf, 4);
+    assert.equal(b.gp, 2);
+    assert.equal(b.gl, 0.5);
+    assert.equal(b.net, 1.5);
+    assert.deepEqual(b.hourNet, [2, -0.5, 0]);
+    assert.equal(b.mdd, 0.5);
+    assert.equal(effectOf(b, a), "volume");
+    assert.equal(b.fpOrders, a.fpOrders);
+    assert.notEqual(b.fp, a.fp);
+  });
+
+  it("discloses the shared no-loss score and retains exact zero gross loss", () => {
+    const s = summarizeRun({ trades: [{ ...tr("b|ema|wide", "A", 1, 0, 0.5, 0.02), mult: 2 }] }, T0, T0 + H);
+    assert.equal(s.unitGp, 1);
+    assert.equal(s.unitGl, 0);
+    assert.equal(s.pf, 4);
+    assert.equal(s.noLoss, true);
+    assert.equal(s.pfConvention, "shared-profitFactor-no-loss-score");
+    const flat = summarizeRun({ trades: [{ ...tr("b|ema|wide", "A", 1, 0, 0.5, 0), mult: 1 }] }, T0, T0 + H);
+    assert.equal(flat.pf, 0);
+    assert.equal(flat.noLoss, false);
+  });
+
+  it("marks the entire primary sample unavailable when one execution return is unknown", () => {
+    const s = summarizeRun({ trades: [{ ...trades[0], mult: 0 }, { ...trades[1], mult: 1 }] }, T0, T0 + 3 * H);
+    assert.equal(s.orders, 2);
+    assert.equal(s.net, 0.5, "weighted net remains available");
+    assert.equal(s.pfBasis, "unavailable");
+    assert.equal(s.unknownReturns, 1);
+    assert.equal(s.unitGp, 0, "does not cherry-pick the known subset");
+    assert.equal(s.unitGl, 0);
+    assert.equal(s.noLoss, false);
   });
 });
 

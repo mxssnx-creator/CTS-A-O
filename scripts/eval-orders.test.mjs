@@ -6,7 +6,10 @@ import { blockSplit, windowOrders } from "./lib/eval-orders.mjs";
 const pf = (rs) => {
   let gp = 0;
   let gl = 0;
-  for (const r of rs) (r > 0 ? (gp += r) : (gl -= r));
+  for (const r of rs) {
+    if (r > 0) gp += r;
+    else gl -= r;
+  }
   return gl > 0 ? gp / gl : Infinity;
 };
 

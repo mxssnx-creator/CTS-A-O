@@ -21,7 +21,7 @@ import { CoreDb } from "./server/db.server.ts";
 import { CoreRuntime } from "./server/runtime.server.ts";
 import { DEFAULT_SETTINGS } from "./config.ts";
 import { checkSettings } from "./settings-check.ts";
-import { fakeRt, rng, SimExchange } from "./test-support.ts";
+import { authorizeSyntheticLanes, fakeRt, rng, SimExchange } from "./test-support.ts";
 
 process.env.CTS_CORE_LIVE = "1";
 
@@ -124,7 +124,7 @@ describe("engine proof", () => {
     assert.equal(on({ cfg: SIG, vol: 1 }), true, "signals are not judged by the engine proof");
   });
 
-  it("the live step: an unproven engine config opens nothing on the exchange, a proven one and a signal do", async () => {
+  it("the live step: an exact losing owned engine record opens nothing, a proven engine lane and signal do", async () => {
     const { rt } = fakeRt(new CoreDb(":memory:"));
     const lane = (cfg: string, sym: string, px: number) => ({
       cfg,
@@ -137,6 +137,7 @@ describe("engine proof", () => {
       vol: 1,
     });
     rt.paper.positions = [lane(ENG, "S1-USDT", 17), lane(ENG2, "S2-USDT", 24), lane(SIG, "S3-USDT", 31)] as never;
+    authorizeSyntheticLanes(rt, [{ cfg: ENG, sym: "S1-USDT", side: 1 }], { ownedReturns: [-.01] });
     (rt as unknown as { engineProof: () => unknown }).engineProof = () => ({ proven: new Set([ENG2]), judged: 2, n: 3, minPf: 1.2 });
     const ex = new SimExchange(rng(1));
     await stepLive(rt as never, [], 1, ex as unknown as ExchangeClient);
@@ -165,6 +166,7 @@ describe("engine proof", () => {
     assert.ok(one > 0, "the signal opened");
     // the unproven engine config joins the held key on paper: the exchange position stays the signal's
     rt.paper.positions = [lane(SIG, 17), lane(ENG, 17)] as never;
+    authorizeSyntheticLanes(rt, [{ cfg: ENG, sym: "S1-USDT", side: 1 }], { ownedReturns: [-.01] });
     await stepLive(rt as never, [], 1, ex as unknown as ExchangeClient);
     await stepLive(rt as never, [], 1, ex as unknown as ExchangeClient);
     assert.equal(await qty(), one, "no volume for the unproven lane");
@@ -179,8 +181,8 @@ describe("engine proof", () => {
     const rt = new CoreRuntime(db, { live: { ...DEFAULT_SETTINGS.live, engineProofN: 2 } } as never, { market: "synthetic" });
     const ins = (cfg: string, entryT: number, r: number, reason = "tp") =>
       db.run(
-        "INSERT INTO paper_book_trades (cfg, sym, side, entry_t, exit_t, r, vol, reason, held_at, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        cfg, "S1-USDT", 1, entryT, entryT + 60_000, r, 1, reason, entryT, entryT,
+        "INSERT INTO paper_book_trades (cfg, sym, side, entry_t, exit_t, r, vol, reason, held_at, at, unit_r, owned_notional_usd) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 20)",
+        cfg, "S1-USDT", 1, entryT, entryT + 60_000, r, 1, reason, entryT, entryT, r,
       );
     ins(ENG, 1_000, 0.02);
     ins(ENG, 2_000, -0.01);
@@ -205,8 +207,8 @@ describe("engine proof", () => {
     const rt = new CoreRuntime(db, { live: { ...DEFAULT_SETTINGS.live, engineProofN: 2 } } as never, { market: "synthetic" });
     const ins = (cfg: string, entryT: number, r: number) =>
       db.run(
-        "INSERT INTO paper_book_trades (cfg, sym, side, entry_t, exit_t, r, vol, reason, held_at, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        cfg, "S1-USDT", 1, entryT, entryT + 60_000, r, 1, "tp", entryT, entryT,
+        "INSERT INTO paper_book_trades (cfg, sym, side, entry_t, exit_t, r, vol, reason, held_at, at, unit_r, owned_notional_usd) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 20)",
+        cfg, "S1-USDT", 1, entryT, entryT + 60_000, r, 1, "tp", entryT, entryT, r,
       );
     ins(ENG, 1_000, 0.02);
     ins(ENG, 2_000, -0.01);

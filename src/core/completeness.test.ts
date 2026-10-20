@@ -25,6 +25,7 @@ import { mergeSignals, SIGNAL_SOURCES, type SignalSettings } from "./signal-conf
 import { coordSettings, defaultWalkForward, type WalkForwardOptions } from "./sim/walkforward.ts";
 import { positiveCoordWarnings, SIGNAL_EVAL_MIN_PF } from "./positive.ts";
 import { MICRO_RANGE } from "./minimal-coord.ts";
+import { INDICATION_KINDS } from "./domain/types.ts";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 type Obj = Record<string, unknown>;
@@ -104,7 +105,11 @@ const span = (lo: number, hi: number): Case => ({
   bad: [[out(lo, -1), lo], [hi, out(hi, 1)], [hi, lo], [lo]],
 });
 const oneOf = (ok: unknown[], bad: unknown[] = ["bogus"]): Case => ({ ok, bad });
+const volumeFactor: Case = {
+  ...num(0.2, 5, { also: [1, 2.5], bad: [0.3] }),
+};
 const rangeKeys = (r: string): Record<string, Case> => ({
+  [`grid.${r}.volumeFactor`]: volumeFactor,
   [`grid.${r}.tp`]: list(0.002, 0.2, { max: 64 }),
   [`grid.${r}.slOfTp`]: list(0.2, 5, { max: 64 }),
   [`grid.${r}.trailOfTp`]: list(0, 1, { max: 64 }),
@@ -143,9 +148,30 @@ const CASES: Record<string, Case> = {
   "gates.maxDdr": num(0, 20),
   "gates.rangeMinPf.micro": num(1.05, 3),
   "gates.rangeMinPf.minimal": num(1.05, 3),
+  "gates.rangeMinPf.short": num(1.05, 3),
   "gates.rangeMinPf.general": num(1.05, 3),
   "gates.rangeMinPf.long": num(1.05, 3),
   "gates.minTrades": num(1, 500),
+  "exitStrategy.timeframes": oneOf(
+    [[1], [1, 5, 15], [1, 5, 15, 30]],
+    [[], [0], [1, 7], [1, 1], [1, 5, 15, 30, 60]],
+  ),
+  "exitStrategy.lookbackH": num(0, 720),
+  "exitStrategy.trainFraction": num(0.5, 0.8),
+  "exitStrategy.minEntries": num(5, 1000, { int: true }),
+  "exitStrategy.minValidationTrades": num(2, 500, { int: true }),
+  "exitStrategy.minPf": num(1.05, 10),
+  "exitStrategy.minGreenHourShare": num(0, 1),
+  "exitStrategy.maxDdr": num(0, 10),
+  "exitStrategy.holdH": num(0.5, 96),
+  "exitStrategy.maxConfigsPerPair": num(6, 128, { int: true }),
+  "exitStrategy.quantiles": list(0.2, 0.95, { max: 4 }),
+  "exitStrategy.stopQuantiles": list(0.2, 0.95, { max: 4 }),
+  "exitStrategy.minTp": { ...num(0.001, 0.5), with: [["exitStrategy.maxTp", 1]] },
+  "exitStrategy.maxTp": { ...num(0.002, 1), with: [["exitStrategy.minTp", 0.001]] },
+  "exitStrategy.maxSl": num(0.005, 1),
+  "exitStrategy.trailShares": list(0.1, 0.95, { max: 4 }),
+  "exitStrategy.stopMultiples": list(0.25, 5, { max: 4 }),
   "gates.quorum": num(0, 1),
   "gates.baseSetsMinPf": num(0.5, 1.5),
   "gates.lastNFloor": num(0, 100, { int: true }),
@@ -157,7 +183,7 @@ const CASES: Record<string, Case> = {
   paperBalance: num(1, 100_000_000),
   "protectFloor.minSl": num(0, 0.1),
   "protectFloor.minTrail": num(0, 0.1),
-  "sizing.mode": oneOf(["equityPct", "fixed", "minQty"]),
+  "sizing.mode": oneOf(["equityPct"]),
   "sizing.pct": num(0.001, 0.25),
   "tactics.cooldownBars": num(0, 96),
   focus: oneOf(
@@ -171,6 +197,7 @@ const CASES: Record<string, Case> = {
   disabledKinds: oneOf([[], ["momentum"]], [["Momentum"], ["rsi2"], [1]]),
   "block.mode": oneOf(["shared", "additive", "overall"]),
   "block.ratio": num(0, 2),
+  "block.historySource": oneOf(["accepted-orders", "real-candidates"]),
   "block.maxLevel": { ...num(1, 12), with: [["block.minActiveLevel", 1]] },
   "block.minActiveLevel": { ...num(1, 12), with: [["block.maxLevel", 12]] },
   "block.maxMult": num(1, 8),
@@ -204,6 +231,7 @@ const CASES: Record<string, Case> = {
   "axis.trailPct": num(0.4, 2.4),
   "axis.expiry": num(0, 500, { int: true }),
   "grid.tp": list(0.002, 0.2, { empty: true, max: 64 }),
+  "grid.volumeFactor": volumeFactor,
   "grid.slOfTp": list(0.2, 5, { max: 64 }),
   "grid.trailOfTp": list(0, 1, { max: 64 }),
   "grid.holdH": list(0.25, 72, { max: 64 }),
@@ -215,6 +243,7 @@ const CASES: Record<string, Case> = {
   ...rangeKeys("general"),
   ...rangeKeys("long"),
   // Micro (on by default since 13 Oct): its own target / stop / trail bounds, the shared levers as the others
+  "grid.micro.volumeFactor": volumeFactor,
   "grid.micro.tp": list(0.001, 0.2, { max: 16 }),
   "grid.micro.slOfTp": list(0.5, 5, { max: 24 }),
   "grid.micro.trailOfTp": list(0, 1, { max: 8 }),
@@ -223,6 +252,7 @@ const CASES: Record<string, Case> = {
   "grid.micro.minTrail": num(0, 0.1),
   "grid.micro.minSlNet": num(0, 0.05),
   "grid.minimalPlus.lastN": num(50, 500, { int: true }),
+  "grid.minimalPlus.volumeFactor": volumeFactor,
   "grid.minimalPlus.minPf": num(1.05, 5),
   "grid.minimalPlus.cells": oneOf(
     [[], [{ tp: 0.002, sl: 0.001, trail: 0 }], [{ tp: 0.2, sl: 0.2, trail: 0.1 }]],
@@ -237,11 +267,13 @@ const CASES: Record<string, Case> = {
   "grid.rangeGate.minPf": num(1.05, 5),
   "live.connId": oneOf(["bingx-x01", "bingx-vst-01", "bingx-vst-02"], ["bingx-x02", "bogus"]),
   "live.notionalUsd": num(1, 500),
-  "live.maxPositions": num(0, 10_000, { int: true }),
+  "live.maxPositions": num(1, 100, { int: true }),
   "live.mode": oneOf(["overall", "entries"]),
   "live.ratio": num(0.1, 500),
   // 0 = no per-position cap
-  "live.maxNotionalUsd": num(1, 5000, { also: [0] }),
+  "live.maxNotionalUsd": num(0, 0),
+  "live.maxPositionX": num(0, 50),
+  "live.maxExposureX": num(0, 500),
   "live.rebalancePct": num(0, 1),
   "live.marginMode": oneOf(["cross", "isolated"]),
   "live.positionMode": oneOf(["hedge", "oneway"]),
@@ -250,13 +282,40 @@ const CASES: Record<string, Case> = {
   "live.liveGroupLastN": num(0, 2000),
   // 0 = no cap; else 10 … 2000 in steps of 10
   "signals.count": num(10, 2000, { int: true, also: [0, 100], bad: [15] }),
+  "signals.coordination.enabled": {
+    ...oneOf([false, true], ["false", 0, 1, null]),
+    with: [["signals.coordination.count", 100]],
+  },
+  "signals.coordination.minSources": num(2, 100, { int: true }),
+  "signals.coordination.count": num(10, 2000, { int: true, also: [0, 100], bad: [15] }),
+  "signals.coordination.volumeFactor": num(1, 22, { int: true }),
+  ...Object.fromEntries(
+    INDICATION_KINDS.map((kind) => [
+      `signals.combinedVolumeFactors.${kind}`,
+      num(1, 22, { int: true }),
+    ]),
+  ),
   "signals.sourcesMode": oneOf(["deny", "allow"]),
+  "signals.rangeVolumeFactors.short": volumeFactor,
+  "signals.rangeVolumeFactors.medium": volumeFactor,
   "signals.lanes": oneOf([[15], [1, 5, 15, 30]], [[], [2], [60]]),
   "signals.normal.tp": list(0.002, 0.2, { max: 64 }),
   "signals.normal.slOfTp": list(0.2, 5, { max: 64 }),
   "signals.trailing.tp": list(0.002, 0.2, { max: 64 }),
   "signals.trailing.trailOfTp": list(0.05, 1, { max: 64 }),
   "signals.trailing.slOfTp": num(0.2, 5),
+  "signals.trailingOnly.enabled": oneOf([false, true], ["false", 0, 1, null]),
+  "signals.trailingOnly.sl": {
+    ...list(0.002, 0.2, { max: 8 }),
+    ok: [...list(0.002, 0.2).ok, Array.from({ length: 8 }, () => 0.002)],
+    bad: [...list(0.002, 0.2, { max: 8 }).bad, null, "0.01", ["0.01"], [Number.NaN]],
+  },
+  "signals.trailingOnly.trail": {
+    ...list(0.002, 0.1, { max: 8 }),
+    ok: [...list(0.002, 0.1).ok, Array.from({ length: 8 }, () => 0.002)],
+    bad: [...list(0.002, 0.1, { max: 8 }).bad, null, "0.01", ["0.01"], [Number.NaN]],
+  },
+  "signals.trailingOnly.trailStep": num(0.1, 2),
   "signals.holdH": num(0.5, 96),
   "signals.exits": oneOf(["pct", "atr", "both"]),
   "signals.atr.sl": list(0.2, 2, { max: 64 }),
@@ -371,6 +430,37 @@ describe("settings completeness: every leaf of DEFAULT_SETTINGS is range-checked
     assert.deepEqual(loose, []);
   });
 
+  it("Trailing only permits the complete 8 × 8 protection grid and refuses either oversized range", () => {
+    const sl = Array.from({ length: 8 }, (_, i) => 0.002 + i * 0.001);
+    const trail = Array.from({ length: 8 }, (_, i) => 0.002 + i * 0.001);
+    assert.doesNotThrow(() =>
+      checkSettings(
+        withLeaves([
+          ["signals.trailingOnly.sl", sl],
+          ["signals.trailingOnly.trail", trail],
+        ]),
+      ),
+    );
+    assert.equal(
+      rejects(
+        withLeaves([
+          ["signals.trailingOnly.sl", [...sl, 0.02]],
+          ["signals.trailingOnly.trail", trail],
+        ]),
+      ),
+      true,
+    );
+    assert.equal(
+      rejects(
+        withLeaves([
+          ["signals.trailingOnly.sl", sl],
+          ["signals.trailingOnly.trail", [...trail, 0.02]],
+        ]),
+      ),
+      true,
+    );
+  });
+
   it("the unchecked list is exactly what checkSettings lets through", () => {
     // a listed leaf that checkSettings DOES check belongs in CASES (or the boolean sweep), not in the gap list
     const probe: Record<string, unknown> = {
@@ -429,6 +519,10 @@ function uiSources(): Map<string, string> {
 const NOT_SHOWN: Record<string, string> = {
   tfMin: "fixed at the 1m base (normalizeLanes forces 1); the lanes are chosen with `tfs`",
   historyDays: "derived: the longest lane history of tfDays (normalizeLanes)",
+  paperNotional:
+    "legacy fixed-sizing fallback for historical records; the page configures balance-percent sizing instead",
+  "live.maxNotionalUsd":
+    "legacy disabled USD ceiling (only zero is accepted); the page offers optional balance-relative limits instead",
   "block.signalsOwn":
     "measured default (a signal's Block level from its own closes, PR #65); not an operator lever",
   "grid.baseTargets":
@@ -439,9 +533,20 @@ const NOT_SHOWN: Record<string, string> = {
     "deny / allow reading of the source list (6 Oct); patch only so far — GAP: not on the page (reported)",
   "signals.baseGate":
     "signals judged on their own exits (Base gate off, measured 3 Oct); patch only",
+  "exitStrategy.trainFraction": "the automatic historic Exit fitter uses the fixed causal split; not operator editable",
+  "exitStrategy.minEntries": "the automatic historic Exit fitter enforces its minimum sample; not operator editable",
+  "exitStrategy.minValidationTrades": "the automatic historic Exit fitter enforces its validation sample; not operator editable",
+  "exitStrategy.maxConfigsPerPair": "the Exit fitter bounds generated configurations; not operator editable",
+  "exitStrategy.stopQuantiles": "the Exit fitter derives stop candidates from historical excursions; not operator editable",
+  "exitStrategy.minTp": "the Exit fitter clamps generated targets to its validated range; not operator editable",
+  "exitStrategy.maxTp": "the Exit fitter clamps generated targets to its validated range; not operator editable",
+  "exitStrategy.maxSl": "the Exit fitter caps generated stop distance; not operator editable",
+  "exitStrategy.trailShares": "the Exit fitter derives trailing candidates from historical excursions; not operator editable",
+  "exitStrategy.stopMultiples": "the Exit fitter derives stop candidates from historical excursions; not operator editable",
 };
 /** signal sources are listed from the SIGNAL_SOURCES catalog on the page, not by name */
 const SOURCE_PREFIX = "signals.sources.";
+const COMBINED_VOLUME_PREFIX = "signals.combinedVolumeFactors.";
 
 describe("settings completeness: every leaf is on the Settings page or listed as not shown", () => {
   const ui = uiSources();
@@ -461,7 +566,8 @@ describe("settings completeness: every leaf is on the Settings page or listed as
     const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const missing: string[] = [];
     for (const k of LEAVES.keys()) {
-      if (k in NOT_SHOWN || k.startsWith(SOURCE_PREFIX)) continue;
+      if (k in NOT_SHOWN || k.startsWith(SOURCE_PREFIX) || k.startsWith(COMBINED_VOLUME_PREFIX))
+        continue;
       const seg = k.split(".").at(-1)!;
       // tfDays.<tf>: the keys are numbers, the group name is what the page reads
       const word = /^\d+$/.test(seg) ? k.split(".").at(-2)! : seg;
@@ -482,6 +588,14 @@ describe("settings completeness: every leaf is on the Settings page or listed as
       [],
       "a default source switch the page cannot show",
     );
+  });
+
+  it("combined indication factors: the page lists every indication kind and defaults it to neutral volume", () => {
+    assert.match(text, /INDICATION_KINDS\.map/);
+    for (const kind of INDICATION_KINDS) {
+      assert.equal(DEFAULT_SETTINGS.signals.combinedVolumeFactors[kind], 1, kind);
+      assert.ok(LEAVES.has(`${COMBINED_VOLUME_PREFIX}${kind}`), kind);
+    }
   });
 
   it("the not-shown list is not stale: each entry is a leaf and really absent from the page", () => {
@@ -688,12 +802,9 @@ describe("presets: valid and keeping the positive coordinations", () => {
     assert.deepEqual(asPinned, UNDOCUMENTED);
   });
 
-  it(
-    "every preset that turns a positive coordination off is documented in docs/positive-coordinations.md",
-    () => {
-      assert.deepEqual(Object.keys(UNDOCUMENTED), []);
-    },
-  );
+  it("every preset that turns a positive coordination off is documented in docs/positive-coordinations.md", () => {
+    assert.deepEqual(Object.keys(UNDOCUMENTED), []);
+  });
 
   it("the checks catch a preset that switches a coordination off (the helper is not vacuous)", () => {
     const bad = [

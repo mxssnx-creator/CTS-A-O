@@ -6,7 +6,18 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { DEFAULT_SETTINGS, RT_COST } from "./config.ts";
-import { GENERAL_RANGE, LONG_RANGE, MICRO_RANGE, MINIMAL_RANGE, SHORT_RANGE, rangeOfId } from "./minimal-coord.ts";
+import {
+  GENERAL_RANGE,
+  LONG_RANGE,
+  MICRO_RANGE,
+  MICRO_TP,
+  MINIMAL_RANGE,
+  RANGE_COST_BASIS,
+  SHORT_RANGE,
+  microPriceTp,
+  microSlFloor,
+  rangeOfId,
+} from "./minimal-coord.ts";
 import { baseRangeProtects, cellStats, configId, laneProtect, makeUniverse, parseConfigId } from "./pipeline/pipeline.ts";
 import { buildTapes, configEval, defaultWalkForward, protectGrid, walkForward, winDd } from "./sim/walkforward.ts";
 import { barsFromCandles, syntheticCandles } from "./market/bars.ts";
@@ -31,7 +42,10 @@ const tapeStats = (tp: ConfigTape, nowT: number) => {
   const dd = winDd(tp, 0, tp.n, nowT);
   let gp = 0;
   let gl = 0;
-  for (let i = 0; i < tp.n; i++) (tp.r[i] > 0 ? (gp += tp.r[i]) : (gl -= tp.r[i]));
+  for (let i = 0; i < tp.n; i++) {
+    if (tp.r[i] > 0) gp += tp.r[i];
+    else gl -= tp.r[i];
+  }
   return { n: tp.n, pf: gl > 1e-12 ? gp / gl : gp > 0 ? Infinity : 0, net: tp.rs[tp.n] * 100, mdd: dd.mdd * 100, ddt: dd.ddtH };
 };
 const close = (a: number, b: number, eps = 1e-9) => Math.abs(a - b) <= eps * Math.max(1, Math.abs(a), Math.abs(b));
@@ -50,16 +64,20 @@ describe("stage consistency: one config, the same at every stage", () => {
     const gn: Protect = { tp: 0.03, sl: 0.01, trail: 0.0075, hold, tag: "gn" };
     // Long: 23× = 4.6 %, stop 0.25× = 1.15 % under its 1.6 % floor, trail ¾ = 3.45 %
     const lg: Protect = { tp: 0.046, sl: 0.016, trail: 0.0345, hold, tag: "lg" };
-    // Micro (2–5× cost): net 0.2 % + 0.2 % cost = 0.4 % price target (2× cost), stop 1× = 0.4 % on its 0.4 % net floor,
-    // trail ¼ = 0.1 % on its 0.1 % trail floor
-    const mc: Protect = { tp: 0.004, sl: 0.004, trail: 0.001, hold, tag: "mc" };
+    // Micro keeps the historical 0.20 % range-construction basis, then adds the current 0.15 % execution cost:
+    // 0.20 % net target + 0.15 % cost = 0.35 % price target. Its stop floor follows the same net-floor + live-cost rule.
+    const mcTp = microPriceTp(MICRO_TP[0], MICRO_RANGE, RT_COST);
+    const mc: Protect = { tp: mcTp, sl: microSlFloor(MICRO_RANGE, RT_COST)!, trail: MICRO_RANGE.minTrail!, hold, tag: "mc" };
     for (const p of [mn, sh, gn, lg, mc]) assert.ok(has(p), `${p.tag} ${JSON.stringify(p)} in the grid`);
     // the floors used above are the ranges' own
     assert.deepEqual(
       [MINIMAL_RANGE.minTrail, SHORT_RANGE.minSl, GENERAL_RANGE.minSl, LONG_RANGE.minSl, MICRO_RANGE.minSlNet, MICRO_RANGE.minTrail],
       [0.003, 0.006, 0.01, 0.016, 0.002, 0.001],
     );
-    // Base's plain cells are the grid's plain cells (same rounding): Minimal 0.8 % at 1.5×, Micro 0.4 % at 1×
+    assert.equal(RANGE_COST_BASIS, 0.002, "range geometry is intentionally frozen at its historical basis");
+    assert.equal(mc.tp, 0.0035, "Micro price target adds current round-trip cost to the frozen net target");
+    assert.equal(mc.sl, 0.0035, "Micro stop floor adds current round-trip cost to its configured net floor");
+    // Base's plain cells are the grid's plain cells (same rounding): Minimal 0.8 % at 1.5×, Micro 0.35 % at 1×
     const base = baseRangeProtects(grid, RT_COST);
     for (const p of [{ ...mn, trail: 0 }, { ...mc, trail: 0 }])
       assert.ok(base.some((c) => c.tag === p.tag && close(c.tp, p.tp) && close(c.sl, p.sl) && c.trail === 0), `Base ${p.tag}`);
@@ -84,6 +102,8 @@ describe("stage consistency: one config, the same at every stage", () => {
     const cases: Array<[string, string, Protect[]]> = [
       ["follow", "rsi-mom-14-20@m15", baseRangeProtects(grid, RT_COST).filter((p) => p.tag !== "mc").filter((_, i) => i % 9 === 0)],
       ["follow", "mc-rsi2-5@m5", baseRangeProtects(grid, RT_COST).filter((p) => p.tag === "mc").filter((_, i) => i % 5 === 0)],
+      ["follow", "tactic-trend-s@m15", [{ tp: 0.008, sl: 0.012, trail: 0, hold: 64, tag: "mn" }]],
+      ["follow", "tactic-mean-reversion-m@m5", [{ tp: 0.018, sl: 0.018, trail: 0.009, hold: 64, tag: "sh" }]],
     ];
     // a signal pair with its historic trailing configs (the Base calc is the same simulation)
     const sigPair = "follow|sig-ema-cross-s@m15";
@@ -94,6 +114,7 @@ describe("stage consistency: one config, the same at every stage", () => {
     for (const [bot, ind, ps] of cases)
       for (const p of ps) {
         const base = cellStats(u, bot as "follow", ind, p, RT_COST, null);
+        if (ind.startsWith("tactic-")) assert.ok(base && base.n > 0, `${ind}: nonempty Tactic accounting fixture`);
         const tapes = buildTapes(u, [p], RT_COST, undefined, new Set([`${bot}|${ind}`]), null, undefined, {
           minSl: 0,
           minTrail: 0,

@@ -3,7 +3,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { DEFAULT_SETTINGS, GENERAL_RANGE, LONG_RANGE, MINIMAL_RANGE, SHORT_RANGE } from "./config.ts";
-import { LANE_MIN, laneProtect, mainByLane } from "./pipeline/pipeline.ts";
+import { LANE_MIN, allCombos, laneProtect, mainByLane, microLaneFloor } from "./pipeline/pipeline.ts";
 import {
   defaultWalkForward,
   makeTape,
@@ -75,7 +75,7 @@ describe("Real seats", () => {
     assert.equal(o0.familyNeedsBase, false, "DCA / Axis need no base result to beat by default");
     assert.equal(o0.laneSeats, 3);
     assert.equal(DEFAULT_SETTINGS.mainTop, 0);
-    assert.equal(DEFAULT_SETTINGS.live.maxPositions, 0, "control positions: as many as the book holds");
+    assert.equal(DEFAULT_SETTINGS.live.maxPositions, 100, "exchange slot ceiling; independent of strategy seats");
   });
 
   it("DCA / Axis run next to the base on the same pair, only when they beat its PF", () => {
@@ -224,21 +224,21 @@ describe("stage audit", () => {
     });
     const failed = bad.checks.filter((c) => !c.ok).map((c) => c.name);
     assert.ok(failed.includes("stages: every validated pair has config sets"));
-    assert.ok(failed.includes("stages: Main ⊆ Base-validated ∪ held"));
+    assert.ok(failed.includes("stages: Main ⊆ Base-validated ∪ held ∪ measured"));
   });
 });
 
 describe("best first", () => {
   it("engine sets by selection score, then signals by their active ranking", async () => {
     const { bestFirst } = await import("./sim/walkforward.ts");
-    const tp = (id: string, ind: string) => ({ id, bot: "follow", ind }) as unknown as ConfigTape;
+    const tp = (id: string, ind: string) => ({ id, bot: "follow", ind, kind: "normal" }) as unknown as ConfigTape;
     const prio = bestFirst(
       [
         { id: "weak", score: 1 },
         { id: "strong", score: 9 },
       ],
       // active keys carry the direction (sigActiveKey); prio's side defaults to long
-      { signalActive: new Set(["follow|sig-b-s@m5|A|1", "follow|sig-a-s@m5|A|1"]) },
+      { signalActive: new Set(["follow|sig-b-s@m5|A|1|normal|cfg=sigB", "follow|sig-a-s@m5|A|1|normal|cfg=sigA"]) },
     );
     const order = [
       tp("sigA", "sig-a-s@m5"),
@@ -304,9 +304,34 @@ describe("bug-hunt regressions", () => {
     assert.deepEqual(rt.settings.signals.lanes, [15]);
     assert.equal(
       rt.settings.live.maxPositions,
-      12,
-      "the unlimited value a v5 migration wrote goes back",
+      100,
+      "legacy unlimited live settings migrate to the exchange slot ceiling",
     );
+  });
+  it("v27: exchange positions default to 100, legacy symbol caps disappear, and strategy caps stay independent", () => {
+    const db = new CoreDb(":memory:");
+    db.kvSet("wfCapsV", 26);
+    db.kvSet("settings", {
+      live: { maxPositions: 12, ...({ maxSymbols: 2 } as Record<string, unknown>) },
+      signals: { maxPositions: 80 },
+    });
+    db.kvSet("presets", [
+      {
+        id: "legacy-live-cap",
+        settings: { live: { maxPositions: 0, ...({ maxSymbols: 2 } as Record<string, unknown>) } },
+      },
+      { id: "custom-lower-cap", settings: { live: { maxPositions: 8 } } },
+    ]);
+    const rt = new CoreRuntime(db, undefined, { market: "synthetic" });
+    assert.equal(rt.settings.live.maxPositions, 100, "former shipped 12 becomes the 100 exchange ceiling");
+    assert.equal("maxSymbols" in rt.settings.live, false);
+    assert.equal(rt.settings.signals.maxPositions, 80, "v27 leaves the separately chosen signal evaluation cap intact");
+    assert.equal(DEFAULT_SIGNALS.maxPositions, 250);
+    assert.equal(db.kvGet<number>("wfCapsV"), 35);
+    const presets = db.kvGet<Array<{ settings: { live?: Record<string, unknown> } }>>("presets") ?? [];
+    assert.equal(presets[0].settings.live?.maxPositions, undefined, "legacy unlimited preset inherits default");
+    assert.equal("maxSymbols" in (presets[0].settings.live ?? {}), false);
+    assert.equal(presets[1].settings.live?.maxPositions, 8, "deliberate lower preset cap survives");
   });
   it("v10: signal settings still on the former defaults move to the validated ones; user choices stay", () => {
     const old = new CoreDb(":memory:");
@@ -324,7 +349,7 @@ describe("bug-hunt regressions", () => {
     assert.deepEqual(a.settings.signals.lanes, DEFAULT_SIGNALS.lanes);
     assert.equal(a.settings.signals.exits, "pct");
     assert.equal(a.settings.signals.holdH, 48);
-    assert.deepEqual(a.settings.signals.normal.slOfTp, [1.5, 2, 3]);
+    assert.deepEqual(a.settings.signals.normal.slOfTp, DEFAULT_SIGNALS.normal.slOfTp);
     assert.equal(a.settings.signals.perSymbol, DEFAULT_SIGNALS.perSymbol);
     const mine = new CoreDb(":memory:");
     mine.kvSet("wfCapsV", 9);
@@ -479,9 +504,9 @@ describe("bug-hunt regressions", () => {
   });
 
   it("v24: the range families PROTOCOL-8 kept join the default focus; a stored former default moves, a chosen focus stays", async () => {
-    const { FAMILY_FOCUS_13OCT, FORMER_FOCUS_13OCT } = await import("./config.ts");
+    const { FAMILY_FOCUS_13OCT, FORMER_FOCUS_13OCT, PREVIOUS_DEFAULT_FOCUS_17OCT } = await import("./config.ts");
     assert.equal(FAMILY_FOCUS_13OCT.length, 21);
-    assert.deepEqual(DEFAULT_SETTINGS.focus, [...FORMER_FOCUS_13OCT, ...FAMILY_FOCUS_13OCT]);
+    assert.deepEqual(PREVIOUS_DEFAULT_FOCUS_17OCT, [...FORMER_FOCUS_13OCT, ...FAMILY_FOCUS_13OCT]);
     const old = new CoreDb(":memory:");
     old.kvSet("wfCapsV", 23);
     old.kvSet("settings", { focus: [...FORMER_FOCUS_13OCT] });
@@ -502,7 +527,7 @@ describe("bug-hunt regressions", () => {
     old.kvSet("settings", { grid: { ...DEFAULT_SETTINGS.grid, micro: { ...DEFAULT_SETTINGS.grid.micro, tp: [...FORMER_MICRO_TP] } } });
     const a = new CoreRuntime(old, undefined, { market: "synthetic" });
     assert.deepEqual((a.settings.grid.micro as unknown as { tp: number[] }).tp, [...MICRO_TP]);
-    assert.equal(old.kvGet("wfCapsV"), 25);
+    assert.equal(old.kvGet("wfCapsV"), 35);
     const mine = new CoreDb(":memory:");
     mine.kvSet("wfCapsV", 24);
     mine.kvSet("settings", { grid: { ...DEFAULT_SETTINGS.grid, micro: { ...DEFAULT_SETTINGS.grid.micro, tp: [0.003] } } });
@@ -510,8 +535,36 @@ describe("bug-hunt regressions", () => {
     assert.deepEqual((b.settings.grid.micro as unknown as { tp: number[] }).tp, [0.003]);
   });
 
-  it("signal positions: 100 per direction (symbol × direction), orders unlimited, engine positions capped apart", () => {
-    assert.equal(DEFAULT_SIGNALS.maxPositions, 100);
+  it("v28: updated 60 Micro Break identities join default focus and old default selections migrate", async () => {
+    const { BREAK_MICRO_FOCUS_17OCT, PREVIOUS_DEFAULT_FOCUS_17OCT } = await import("./config.ts");
+    assert.equal(BREAK_MICRO_FOCUS_17OCT.length, 60);
+    assert.equal(new Set(BREAK_MICRO_FOCUS_17OCT).size, 60);
+    assert.deepEqual(DEFAULT_SETTINGS.focus, [...PREVIOUS_DEFAULT_FOCUS_17OCT, ...BREAK_MICRO_FOCUS_17OCT]);
+    for (const id of BREAK_MICRO_FOCUS_17OCT) assert.ok(DEFAULT_SETTINGS.focus.includes(id), id);
+    const defaultCombos = allCombos(DEFAULT_SETTINGS.focus, DEFAULT_SETTINGS.disabledKinds, DEFAULT_SETTINGS.tfs, microLaneFloor(DEFAULT_SETTINGS.grid));
+    assert.deepEqual(
+      defaultCombos.filter((c) => c.ind.includes("break-mc-rel-")).map((c) => `${c.bot}|${c.ind}`).sort(),
+      [...BREAK_MICRO_FOCUS_17OCT].sort(),
+      "every updated Micro ID is processed once on its eligible anchor lane",
+    );
+
+    const previousDefault = new CoreDb(":memory:");
+    previousDefault.kvSet("wfCapsV", 27);
+    previousDefault.kvSet("settings", { focus: [...PREVIOUS_DEFAULT_FOCUS_17OCT] });
+    const upgraded = new CoreRuntime(previousDefault, undefined, { market: "synthetic" });
+    assert.deepEqual(upgraded.settings.focus, DEFAULT_SETTINGS.focus);
+    assert.equal(previousDefault.kvGet<number>("wfCapsV"), 35);
+
+    const customFocus = ["follow|rsi-mom-14-20"];
+    const chosen = new CoreDb(":memory:");
+    chosen.kvSet("wfCapsV", 27);
+    chosen.kvSet("settings", { focus: customFocus });
+    const preserved = new CoreRuntime(chosen, undefined, { market: "synthetic" });
+    assert.deepEqual(preserved.settings.focus, customFocus, "explicitly chosen focus is preserved");
+  });
+
+  it("signal simulation positions: 250 per direction, separate from exchange slots, orders unlimited", () => {
+    assert.equal(DEFAULT_SIGNALS.maxPositions, 250);
     assert.equal(DEFAULT_SIGNALS.perSymbol, 0);
     assert.equal(DEFAULT_SIGNALS.maxOpen, 0);
     const eng = "combo|ema-9-21|15|x";
@@ -531,6 +584,49 @@ describe("bug-hunt regressions", () => {
     assert.equal(positionsFull(open, "C", 1, true, 0), false, "0 = no limit");
     assert.equal(positionsFull(open, "C", 1, false, 1), true, "engine positions are counted apart");
     assert.equal(positionsFull(open, "C", 1, false, 2), false);
+  });
+
+  it("v29: expanded Signal grids migrate after mainline v28 and preserve custom fields", () => {
+    const former = {
+      normal: { tp: [0.025, 0.03, 0.04, 0.05, 0.06], slOfTp: [1.5, 2, 3] },
+      trailing: { tp: [0.03, 0.04, 0.05, 0.06, 0.08], trailOfTp: [0.4, 0.6, 0.8], slOfTp: 3 },
+      minTrail: 0.005,
+    };
+    const old = new CoreDb(":memory:");
+    old.kvSet("wfCapsV", 28);
+    old.kvSet("settings", { signals: structuredClone(former) });
+    old.kvSet("presets", [{
+      id: "former-signal-grid", label: "Former signal grid", info: "", kind: "saved", at: 1,
+      settings: {
+        signals: { ...structuredClone(former), count: 100, maxPositions: 100, rank: "lowdd" },
+        focus: [...DEFAULT_SETTINGS.focus],
+      }, wf: {}, metrics: {},
+    }]);
+    const upgraded = new CoreRuntime(old, undefined, { market: "synthetic" });
+    assert.deepEqual(upgraded.settings.signals.normal, DEFAULT_SIGNALS.normal);
+    assert.deepEqual(upgraded.settings.signals.trailing, DEFAULT_SIGNALS.trailing);
+    assert.equal(upgraded.settings.signals.minTrail, DEFAULT_SIGNALS.minTrail);
+    assert.equal(old.kvGet<number>("wfCapsV"), 35);
+    const preset = old.kvGet<Array<{ settings: { signals: typeof former & { maxPositions?: number }; focus?: string[] } }>>("presets")![0];
+    assert.deepEqual(preset.settings.signals.normal, DEFAULT_SIGNALS.normal);
+    assert.deepEqual(preset.settings.signals.trailing, DEFAULT_SIGNALS.trailing);
+    assert.equal(preset.settings.signals.minTrail, DEFAULT_SIGNALS.minTrail);
+    assert.equal(preset.settings.signals.maxPositions, undefined, "the retired Signal default does not become an order cap");
+    assert.deepEqual(preset.settings.focus, DEFAULT_SETTINGS.focus);
+
+    const chosen = new CoreDb(":memory:");
+    chosen.kvSet("wfCapsV", 28);
+    chosen.kvSet("settings", { signals: {
+      normal: { tp: [0.02], slOfTp: [1.5, 2, 3] },
+      trailing: { tp: [0.03, 0.04, 0.05, 0.06, 0.08], trailOfTp: [0.2, 0.5], slOfTp: 3 },
+      minTrail: 0.004,
+    } });
+    const preserved = new CoreRuntime(chosen, undefined, { market: "synthetic" }).settings.signals;
+    assert.deepEqual(preserved.normal.tp, [0.02]);
+    assert.deepEqual(preserved.normal.slOfTp, DEFAULT_SIGNALS.normal.slOfTp);
+    assert.deepEqual(preserved.trailing.tp, DEFAULT_SIGNALS.trailing.tp);
+    assert.deepEqual(preserved.trailing.trailOfTp, [0.2, 0.5]);
+    assert.equal(preserved.minTrail, 0.004);
   });
 
   it("v14: validated research sources stored as off follow the new default; other choices stay", () => {

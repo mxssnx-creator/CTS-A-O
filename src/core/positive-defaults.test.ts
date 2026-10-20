@@ -46,6 +46,9 @@ describe("positive coordinations stay on", () => {
 
   it("control orders Overall by default: per position, the partials by the system (operator, 7 Oct)", () => {
     assert.equal(DEFAULT_SETTINGS.live.laneOrders, false);
+    assert.equal(DEFAULT_SETTINGS.live.maxNotionalUsd, 0, "fixed dollar position ceilings are disabled");
+    assert.equal(DEFAULT_SETTINGS.live.maxPositionX, 0, "volume factors size positions by account balance by default");
+    assert.equal(DEFAULT_SETTINGS.live.maxExposureX, 0, "gross exposure caps are opt-in");
     for (const p of [...DESK_PRESETS, ...LIVE_COORD_PRESETS])
       assert.ok(!JSON.stringify(p).includes('"laneOrders":true'), "no preset switches partials on");
   });

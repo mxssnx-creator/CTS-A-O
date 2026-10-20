@@ -10,6 +10,10 @@ starts with "sig-" (Signals). Then pooled tables per direction x stop/target, tr
 import json
 import re
 import sys
+import shutil
+import subprocess
+import tempfile
+from pathlib import Path
 from collections import defaultdict
 
 RANGE = {"mc": "Micro", "mn": "Minimal", "mp": "Minimal plus", "sh": "Short", "gn": "General", "lg": "Long"}
@@ -67,8 +71,24 @@ def fmt(x, d=2):
     return f"{x:.{d}f}"
 
 
+def read_session(file):
+    with open(file, encoding="utf-8") as source:
+        raw = json.load(source)
+    if not any(key in raw for key in ("tapeTradesSidecar", "validationSidecar", "arraySidecars")):
+        return raw
+    node = shutil.which("node")
+    if node is None:
+        raise RuntimeError("Node is required to verify a session dump with sidecars")
+    bridge = Path(__file__).resolve().parent / "lib" / "session-dump-bridge.mjs"
+    with tempfile.TemporaryDirectory(prefix="cts-losing-configs-") as directory:
+        output = Path(directory) / "trades.json"
+        subprocess.run([node, str(bridge), str(Path(file).resolve()), str(output)], check=True)
+        with output.open(encoding="utf-8") as source:
+            return json.load(source)
+
+
 def main():
-    raw = json.load(open(sys.argv[1]))
+    raw = read_session(sys.argv[1])
     out = open(sys.argv[2], "w") if len(sys.argv) > 2 else sys.stdout
     groups = defaultdict(list)
     kinds = {}

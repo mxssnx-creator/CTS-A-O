@@ -4,11 +4,13 @@
 //   - own tickets carry the CTSB tag of this connection; nothing else is ever cancelled or closed
 //   - a foreign position or order freezes its own side (hedge mode), or the whole symbol (one-way mode, or an order
 //     without a position side)
-//   - caps: max own positions, fixed notional per entry
-import type { LiveSettings } from "../config.ts";
+//   - the final live admission cap counts unique exchange positions (symbol × direction in hedge mode), foreign ones
+//     included; fixed notional per entry
+import { exchangePositionLimit, type LiveSettings } from "../config.ts";
 import { sigCfg } from "../sim/walkforward.ts";
 import { rangeOfId } from "../minimal-coord.ts";
 import type { RangeTag } from "../domain/types.ts";
+import { isSignalCoordinationInd } from "../signal-coordination.ts";
 
 export const LIVE_TAG: Record<LiveSettings["connId"], string> = {
   "bingx-x01": "CTSBX1_",
@@ -46,6 +48,11 @@ export type EntryKind = "E" | "U" | "M" | "N" | "H" | "G" | "L" | "Q";
  * their own letter their live closes landed in Wide), else "E" (the wide grid or a mix).
  */
 export function entryCoidKind(cfg: string | undefined): EntryKind {
+  const ind = cfg?.split("|")[1] ?? "";
+  if (isSignalCoordinationInd(ind)) {
+    const range = rangeOfId(cfg);
+    if (range) return RANGE_COID[range];
+  }
   if (cfg && sigCfg(cfg)) return "Q";
   const r = rangeOfId(cfg);
   return r ? RANGE_COID[r] : "E";
@@ -134,11 +141,19 @@ export interface LiveIntentLite {
   sl: number;
   /** open time of the bar the signal was decided on (the symbol's own newest bar) */
   barT: number;
+  /** Extra multiplier relative to a normal order; 1 = neutral. */
+  volFactor?: number;
   /**
    * the simulation manages the exit (trailing stop, DCA / Axis legs, …): a static exchange SL / TP cannot mirror
    * it, so entries mode skips it (overall mode mirrors every paper exit)
    */
   managed?: boolean;
+  /** Stable-02 relation-volume multiplier captured by the runtime's validated intent. */
+  coordVol?: number;
+  /** This entry belongs to the negative-hour hedge-only Signal set. */
+  hedge?: boolean;
+  /** Hedge-only size multiplier captured with the intent. */
+  hedgeVol?: number;
 }
 
 export interface LivePlan {
@@ -198,7 +213,13 @@ export function planLive(input: {
     else for (const sd of [1, -1] as const)
       if (!o.positionSide || (o.positionSide === "LONG") === (sd === 1)) held.add(keyOf(o.venueSymbol, sd));
   }
-  let open = ownKeys.size;
+  // All exchange positions consume account slots, including foreign positions. Own pending entries also reserve
+  // their symbol-direction slot until the position read catches up.
+  const occupied = new Set([
+    ...ownKeys,
+    ...held,
+    ...book.positions.map((p) => keyOf(p.venueSymbol, p.side === "long" ? 1 : -1)),
+  ]);
   const entries: LiveIntentLite[] = [];
   const skipped: LivePlan["skipped"] = [];
   const seen = new Set<string>();
@@ -222,13 +243,13 @@ export function planLive(input: {
       skipped.push({ sym: it.sym, why: oneway ? "already holding symbol" : "already holding symbol and direction" });
       continue;
     }
-    if (settings.maxPositions > 0 && open >= settings.maxPositions) {
-      skipped.push({ sym: it.sym, why: "max positions" });
+    if (!occupied.has(k) && occupied.size >= exchangePositionLimit(settings.maxPositions)) {
+      skipped.push({ sym: it.sym, why: "max exchange positions (symbol × direction)" });
       continue;
     }
     seen.add(k);
     entries.push(it);
-    open++;
+    occupied.add(k);
   }
   return { enabled: true, reason: "armed", entries, skipped };
 }
@@ -253,11 +274,15 @@ export interface ControlContribution {
    * the same on every lane of a Block Overall position — live.plainOnly judges it. Unset (lanes built elsewhere) = vol.
    */
   mult?: number;
+  /** The existing Block / relation volume with the additional indication factor removed. */
+  blockVol?: number;
+  /** Optional Block allocation in minimum-lane units; source children share their parent's bounded total. */
+  laneUnits?: number;
   /** stop distance of the lane's protect (fraction) */
   sl: number;
   /**
-   * what the lane still loses at its stop (fraction of the entry, ≥ 0): a trailed stop past the entry risks nothing.
-   * Unset = sl.
+   * Current account loss from the mark to this lane's stop (fraction of current notional, ≥ 0).
+   * Unrealized profit given back at a trailing stop is included. Unset = sl.
    */
   risk?: number;
   /**
@@ -397,10 +422,12 @@ export interface ControlTarget {
   /** the lanes on the key (a Block Overall position's legs fold into its lane: one config's position) */
   lanes: number;
   /**
-   * lane orders: the key's size in exchange-minimum units — each lane its volume, rounded, at least one (a lane that
-   * Block raised to 3 is 3 units, not one per contribution). Unset (a target built elsewhere) = lanes.
+   * lane orders: the key's size in minimum-lane (exchange-minimum) units — per lane its explicit `laneUnits` (Block /
+   * ladder provenance, proportional Block additions included), else its volume rounded, at least one (a lane that Block
+   * raised to 3 is 3 units, not one per contribution). The logical lane count stays `lanes`. Unset (a target built
+   * elsewhere) = lanes.
    */
-  units?: number;
+  laneUnits?: number;
   vol: number;
   notional: number;
   qty: number;
@@ -435,7 +462,7 @@ export interface ControlTarget {
   volEff?: number;
   /**
    * the per-position cap cut the lanes' size (unit × vol × ratio above it): a higher volume factor no longer sizes
-   * this position up — only a higher cap (maxPositionX / maxNotionalUsd) does
+   * this position up — only a higher explicit balance-relative maxPositionX does
    */
   capped?: boolean;
   /** set when every contributing lane is the same tracked range ("|mp", "|mc", "|mn" or "|sh") */
@@ -444,13 +471,13 @@ export interface ControlTarget {
 
 /**
  * Account exposure factor: when the targets' gross notional (long and short counted apart, both in full) exceeds
- * `maxX` × equity, every target is scaled by the same factor — the relations between positions (volume factors,
+ * `maxX` × account balance, every target is scaled by the same factor — the relations between positions (volume factors,
  * Block multiples, ratios, long vs short) stay as they are. A scaled quantity is snapped to the exchange (never
- * below its minimum for a target that was open). No equity or maxX ≤ 0: unchanged.
+ * below its minimum for a target that was open). No account balance or maxX ≤ 0: unchanged.
  */
 export function scaleToExposure(
   targets: ControlTarget[],
-  equity: number | null | undefined,
+  balance: number | null | undefined,
   maxX: number | undefined,
   snap: (sym: string, qty: number, px: number) => number,
   /** keys held now: never dropped (a held position at the exchange minimum stays) */
@@ -458,14 +485,14 @@ export function scaleToExposure(
 ): { factor: number; gross: number; cap: number; dropped: string[] } | null {
   // the exposure is the stop-risk budget with every unit of notional costing 1: the same drops (in rank order, a new
   // target whose exchange minimum no longer fits under the cap is left out) and the same water-fill as the risk
-  // scalers — so a round-up to the venue minimum can never take the gross past maxX × equity
-  const r = scaleToRisk(targets, equity, maxX, snap, held, () => 1);
+  // scalers — so a round-up to the venue minimum can never take the gross past maxX × balance
+  const r = scaleToRisk(targets, balance, maxX, snap, held, () => 1);
   return r && { factor: r.factor, gross: r.risk, cap: r.cap, dropped: r.dropped };
 }
 
 /**
  * Stop-risk budget: when the targets' summed notional × planned loss distance (every lane at its own stop at once;
- * `riskDist`, else the backstop `stopDist`) exceeds maxRiskPct × equity, the targets are scaled by one factor
+ * `riskDist`, else the backstop `stopDist`) exceeds maxRiskPct × account balance, the targets are scaled by one factor
  * (relations between positions kept).
  *
  * Positions at the exchange minimum cannot shrink, so the drops are decided FIRST: in rank order (the list is ranked
@@ -478,7 +505,7 @@ export function scaleToExposure(
  */
 export function scaleToRisk(
   targets: ControlTarget[],
-  equity: number | null | undefined,
+  balance: number | null | undefined,
   maxRiskPct: number | undefined,
   snap: (sym: string, qty: number, px: number) => number,
   /** keys held now: never dropped (a position at the exchange minimum that cannot shrink stays) */
@@ -486,10 +513,10 @@ export function scaleToRisk(
   /** the loss priced per position: its lanes' own stops (default) or the exchange backstop (the worst case) */
   dist: (t: ControlTarget) => number = (t) => t.riskDist ?? t.stopDist,
 ): { factor: number; risk: number; cap: number; dropped: string[] } | null {
-  if (!(maxRiskPct && maxRiskPct > 0) || !(equity && equity > 0)) return null;
+  if (!(maxRiskPct && maxRiskPct > 0) || !(balance && balance > 0)) return null;
   const riskOf = (t: ControlTarget) => Math.abs(t.notional) * dist(t);
   const risk = targets.reduce((a, t) => a + riskOf(t), 0);
-  const cap = maxRiskPct * equity;
+  const cap = maxRiskPct * balance;
   if (!(risk > cap)) return { factor: 1, risk, cap, dropped: [] };
   // 1) drops: in rank order, a new target is admitted while its risk at its minimum fits what the budget has left
   // (the held ones take theirs first); one that does not fit is left out and the next is still tried
@@ -592,11 +619,11 @@ export function admitWithinBudgets(
  * The three account budgets in the live step's order — gross exposure (maxExposureX), stop risk at the lanes' own
  * stops (maxRiskPct), worst case at the exchange backstops (maxBackstopLossPct) — with the drops decided across all
  * three at once (admitWithinBudgets) and then each scaler's factor on the survivors. A budget that is off (0) or an
- * unknown equity: that scaler is null (nothing dropped for it). Each result's `dropped` lists that budget's drops.
+ * unknown balance: that scaler is null (nothing dropped for it). Each result's `dropped` lists that budget's drops.
  */
 export function scaleToBudgets(
   targets: ControlTarget[],
-  equity: number | null | undefined,
+  balance: number | null | undefined,
   caps: { maxExposureX?: number; maxRiskPct?: number; maxBackstopLossPct?: number },
   snap: (sym: string, qty: number, px: number) => number,
   held?: ReadonlySet<string>,
@@ -605,7 +632,7 @@ export function scaleToBudgets(
   risk: ReturnType<typeof scaleToRisk>;
   worst: ReturnType<typeof scaleToRisk>;
 } {
-  const eq = equity && equity > 0 ? equity : 0;
+  const eq = balance && balance > 0 ? balance : 0;
   const capOf = (pct: number | undefined) => (eq > 0 && pct && pct > 0 ? pct * eq : Infinity);
   const dropped =
     eq > 0
@@ -620,9 +647,9 @@ export function scaleToBudgets(
           held,
         )
       : [[], [], []];
-  const exposure = scaleToExposure(targets, equity, caps.maxExposureX, snap, held);
-  const risk = scaleToRisk(targets, equity, caps.maxRiskPct, snap, held);
-  const worst = scaleToRisk(targets, equity, caps.maxBackstopLossPct, snap, held, (t) => t.stopDist);
+  const exposure = scaleToExposure(targets, balance, caps.maxExposureX, snap, held);
+  const risk = scaleToRisk(targets, balance, caps.maxRiskPct, snap, held);
+  const worst = scaleToRisk(targets, balance, caps.maxBackstopLossPct, snap, held, (t) => t.stopDist);
   const withDrops = <R extends { dropped: string[] } | null>(r: R, d: string[]): R =>
     r ? { ...r, dropped: [...d, ...r.dropped] } : r;
   return { exposure: withDrops(exposure, dropped[0]), risk: withDrops(risk, dropped[1]), worst: withDrops(worst, dropped[2]) };
@@ -752,10 +779,52 @@ export function accountPositions(
   return { rows, own, foreign: fr };
 }
 
-/** The per-position cap: the fixed USD cap and the equity multiple, the smaller one (Infinity when neither). */
-export function positionCapFor(fixed: number, equity: number | null | undefined, maxPositionX: number | undefined): number {
-  const x = maxPositionX && maxPositionX > 0 && equity && equity > 0 ? maxPositionX * equity : Infinity;
+/**
+ * Optional per-position limit: the legacy fixed amount and the balance multiple (the balance is the sizing base the
+ * caller holds, B = min(wallet, equity) where it is known), the smaller one (Infinity if neither).
+ */
+export function positionCapFor(fixed: number, balance: number | null | undefined, maxPositionX: number | undefined): number {
+  const x = maxPositionX && maxPositionX > 0 && balance && balance > 0 ? maxPositionX * balance : Infinity;
   return Math.min(fixed, x);
+}
+
+/** Actual owned exposure and unresolved entry remainders, priced at the current mark. Unknown is never zero. */
+export interface AccountBudgetUse {
+  notional: number | null;
+  risk: number | null;
+  worst: number | null;
+}
+
+/**
+ * Admission after execution: a planned reduction does not release capacity until its quantity is confirmed.
+ * This is separate from target scaling, which describes the desired final book rather than the book held now.
+ */
+export function accountGrowthBlock(
+  used: readonly AccountBudgetUse[],
+  addition: AccountBudgetUse,
+  equity: number | null | undefined,
+  caps: { maxExposureX?: number; maxRiskPct?: number; maxBackstopLossPct?: number },
+): string | null {
+  const checks = [
+    [caps.maxExposureX, "gross exposure cap", "notional"],
+    [caps.maxRiskPct, "risk budget", "risk"],
+    [caps.maxBackstopLossPct, "worst-case budget", "worst"],
+  ] as const;
+  for (const [multiple, name, field] of checks) {
+    if (!(multiple && multiple > 0)) continue;
+    if (!(typeof equity === "number" && Number.isFinite(equity) && equity > 0))
+      return `account ${name}: equity unknown — not increasing`;
+    let total = 0;
+    for (const item of [...used, addition]) {
+      const value = item[field];
+      if (value === null || !Number.isFinite(value) || value < 0)
+        return `account ${name}: current owned / pending exposure unknown — not increasing`;
+      total += value;
+    }
+    if (total > multiple * equity * 1.0001 + 1e-9)
+      return `account ${name}: ${(total).toFixed(4)} USD would exceed ${(multiple * equity).toFixed(4)} USD — not increasing`;
+  }
+  return null;
 }
 
 export type ControlAction =
@@ -777,13 +846,8 @@ export interface ControlSettings {
   signalWeight?: number;
   /** cap per (symbol, direction) position, USD */
   maxNotionalUsd: number;
-  /** max simultaneous control positions of the engine (symbol × direction); every lane order on one counts once */
+  /** max occupied exchange slots (symbol × direction); every lane order on one counts once */
   maxPositions: number;
-  /**
-   * max simultaneous control positions that only signal lanes hold (symbol × direction, long and short apart);
-   * capped apart from the engine's — 0 / unset = no limit
-   */
-  signalMaxPositions?: number;
   /** only adjust an existing position when the target differs by more than this share */
   rebalancePct: number;
   /** every position `ratio` units whatever its lanes' volume (live.positionSize "min") */
@@ -795,7 +859,8 @@ export interface ControlSettings {
    */
   riskSizing?: { base: number; pct: number };
   /**
-   * lane orders (live.laneOrders): every lane its own exchange-minimum units — its volume rounded, at least one (a plain
+   * lane orders (live.laneOrders): every lane its own minimum-lane units — its explicit laneUnits (an independent base
+   * config one unit, its Block additions their bounded extra weights), else its volume rounded, at least one (a plain
    * lane one unit); the position is the sum of its lanes' units × ratio
    */
   laneMode?: boolean;
@@ -890,15 +955,14 @@ export function controlTargets(
     sym: string;
     side: 1 | -1;
     lanes: number;
-    /** lane orders: units (each lane's volume, rounded, at least one) */
-    units: number;
-    /** each lane's volume by its lane identity (Block Overall legs fold into their lane) */
-    lv?: Map<string, number>;
+    /** lane orders: units (per lane its explicit laneUnits, else its volume, rounded, at least one) */
+    laneUnits: number;
+    /** per lane identity (Block Overall legs fold into their lane): its volume, and its explicit units when given */
+    lv?: Map<string, { vol: number; units: number; explicit: boolean }>;
     vol: number;
     sl: number;
     /** Σ weighted volume × lane stop (riskDist = rw / vol) */
     rw: number;
-    engine?: boolean;
     tag?: "" | RangeTag | "mix";
     /** the farthest lane target (long: highest, short: lowest); noTgt: a lane without one */
     tgt?: number;
@@ -914,16 +978,23 @@ export function controlTargets(
   let anon = 0;
   for (const l of lanes) {
     const key = `${l.sym}|${l.side}`;
-    const a = agg.get(key) ?? { sym: l.sym, side: l.side, lanes: 0, units: 0, vol: 0, sl: 0, rw: 0 };
+    const a = agg.get(key) ?? { sym: l.sym, side: l.side, lanes: 0, laneUnits: 0, vol: 0, sl: 0, rw: 0 };
     note(a, l.cfg);
-    // a position with any engine lane is an engine position; only signal lanes on it: a signal position
     const sig = sigCfg(l.cfg);
-    if (!sig) a.engine = true;
     // the lane's identity: a Block Overall leg (…|blk:src) is part of its position's lane
     const lid = l.lk ?? (l.id ? laneBaseId(l.id) : `#${anon++}`);
     const lv = a.lv ?? (a.lv = new Map());
-    lv.set(lid, (lv.get(lid) ?? 0) + Math.max(0, l.vol));
-    const w = Math.max(0, l.vol) * (sig ? Math.max(0, cs.signalWeight ?? 1) : 1);
+    const e = lv.get(lid) ?? { vol: 0, units: 0, explicit: false };
+    if (l.laneUnits !== undefined) {
+      // explicit minimum-lane units (fractional Block additions; NaN = units unknown, the target fails closed)
+      e.units += l.laneUnits;
+      e.explicit = true;
+    } else e.vol += Math.max(0, l.vol);
+    lv.set(lid, e);
+    // lane orders weigh the funded units (equal units have equal weight in the mark-to-stop risk)
+    const w = cs.laneMode
+      ? Math.max(0, l.laneUnits ?? l.vol)
+      : Math.max(0, l.vol) * (sig ? Math.max(0, cs.signalWeight ?? 1) : 1);
     a.vol += w;
     a.rw += w * Math.max(0, l.risk ?? l.sl);
     a.sl = Math.max(a.sl, l.sl);
@@ -936,8 +1007,9 @@ export function controlTargets(
   for (const a of agg.values()) {
     a.lanes = a.lv?.size ?? 0;
     let u = 0;
-    for (const v of a.lv?.values() ?? []) u += laneUnits(v);
-    a.units = u;
+    for (const v of a.lv?.values() ?? [])
+      u += v.explicit ? v.units + (v.vol > 0 ? laneUnits(v.vol) : 0) : laneUnits(v.vol);
+    a.laneUnits = u;
   }
   if (cs.positionMode === "oneway") {
     // one net position per symbol: long volume minus short volume decides side and size
@@ -946,7 +1018,11 @@ export function controlTargets(
     for (const sym of syms) {
       const L = agg.get(`${sym}|1`);
       const S = agg.get(`${sym}|-1`);
-      const v = (L?.vol ?? 0) - (S?.vol ?? 0);
+      // Lane sizing nets the actual minimum-lane units, including fractional Block additions.
+      // Raw intrinsic model volume must not choose a different side from the units being funded.
+      const v = cs.laneMode
+        ? (L?.laneUnits ?? 0) - (S?.laneUnits ?? 0)
+        : (L?.vol ?? 0) - (S?.vol ?? 0);
       if (Math.abs(v) < 1e-9) continue;
       const side = (v > 0 ? 1 : -1) as 1 | -1;
       // the stop and the risk come from the side that survives the netting (the other side's lanes are offset)
@@ -956,14 +1032,13 @@ export function controlTargets(
         sym,
         side,
         lanes: (L?.lanes ?? 0) + (S?.lanes ?? 0),
-        units: (L?.units ?? 0) + (S?.units ?? 0),
+        laneUnits: Math.abs((L?.laneUnits ?? 0) - (S?.laneUnits ?? 0)),
         vol: Math.abs(v),
         sl: win?.sl ?? 0,
         rw: win && win.vol > 0 ? (win.rw / win.vol) * Math.abs(v) : 0,
         tgt: win?.tgt,
         noTgt: win?.noTgt,
         lw: win?.lw,
-        engine: !!(L?.engine || S?.engine),
         tag: tags.length && tags.every((t) => t === tags[0]) ? tags[0] : "mix",
       });
     }
@@ -971,8 +1046,9 @@ export function controlTargets(
   }
   const targets: ControlTarget[] = [];
   const skipped: ControlPlan["skipped"] = [];
-  let engTargets = 0;
-  let sigTargets = 0;
+  const slotKey = (key: string) =>
+    cs.positionMode === "oneway" ? key.slice(0, key.lastIndexOf("|")) : key;
+  const occupied = new Set([...(cs.heldKeys ?? [])].map(slotKey));
   // held positions first, then the strongest: the position cap never closes a held position for a new one (that
   // may not even open — margin floor, mode refused — and every swap pays the round-trip cost)
   const isHeld = (k: string) => (cs.heldKeys?.has(k) ? 1 : 0);
@@ -985,12 +1061,6 @@ export function controlTargets(
       skipped.push({ sym: a.sym, why: "no fresh price", keep: key });
       continue;
     }
-    // positions (symbol × direction) are capped per class: the engine's by maxPositions, the signals' by
-    // signalMaxPositions (orders — the lane orders on a position — are not limited)
-    // one cap for every live position (engine and signal positions together); the signal cap, when set,
-    // only narrows the signal share inside it
-    const isSig = !a.engine;
-    const sigCap = cs.signalMaxPositions ?? 0;
     // a target that cannot open this step takes no slot (a held one is always kept and counted)
     if (!isHeld(key) && cs.blocked) {
       const b = cs.blocked(key);
@@ -999,17 +1069,9 @@ export function controlTargets(
         continue;
       }
     }
-    if (
-      (cs.maxPositions > 0 && engTargets + sigTargets >= cs.maxPositions) ||
-      (isSig && sigCap > 0 && sigTargets >= sigCap)
-    ) {
-      skipped.push({
-        sym: a.sym,
-        why:
-          cs.maxPositions > 0 && engTargets + sigTargets >= cs.maxPositions
-            ? "max control positions (symbol × side)"
-            : "max signal control positions (symbol × side)",
-      });
+    const slot = slotKey(key);
+    if (!occupied.has(slot) && occupied.size >= exchangePositionLimit(cs.maxPositions)) {
+      skipped.push({ sym: a.sym, why: "max exchange positions (symbol × direction)" });
       continue;
     }
     // our own floor, and under it the venue's: a stop the exchange refuses for being too close is not a stop
@@ -1022,7 +1084,7 @@ export function controlTargets(
     const unit = cs.unitOf ? cs.unitOf(a.sym, px) : cs.notionalUsd;
     const want = rs
       ? perRisk / Math.max(1e-9, riskDist)
-      : unit * (cs.laneMode ? a.units : cs.minSize ? 1 : a.vol) * cs.ratio;
+      : unit * (cs.laneMode ? a.laneUnits : cs.minSize ? 1 : a.vol) * cs.ratio;
     const notional = Math.min(cs.maxNotionalUsd, want);
     const sn = snap(a.sym, notional / px, px);
     const qty = typeof sn === "number" ? sn : sn.qty;
@@ -1054,7 +1116,7 @@ export function controlTargets(
       sym: a.sym,
       side: a.side,
       lanes: a.lanes,
-      ...(cs.laneMode ? { units: a.units } : {}),
+      ...(cs.laneMode ? { laneUnits: a.laneUnits } : {}),
       vol: a.vol,
       notional: qty * px,
       qty,
@@ -1072,8 +1134,7 @@ export function controlTargets(
       volEff: rs ? (a.vol * qty * px) / Math.max(1e-9, want) : (qty * px) / Math.max(1e-9, unit * cs.ratio),
       ...(want > cs.maxNotionalUsd * 1.0001 ? { capped: true } : {}),
     });
-    if (isSig) sigTargets++;
-    else engTargets++;
+    occupied.add(slot);
   }
   return { targets, skipped };
 }
@@ -1319,18 +1380,32 @@ export function outsideCloseOf(
   orders: ReadonlyArray<Record<string, unknown>>,
   side: number,
   connId: LiveSettings["connId"],
+  openedAt = 0,
 ): { why: "stop" | "target" | "hand" | "liq"; px: number } | null {
   const ps = side > 0 ? "LONG" : "SHORT";
   const closing = side > 0 ? "SELL" : "BUY";
-  let own: { why: "stop" | "target"; px: number } | null = null;
-  let qty = 0;
-  let notional = 0;
-  let liqQty = 0;
-  let liqNotional = 0;
-  for (const o of orders) {
-    // a one-way (BOTH) row is the symbol's one position: it belongs to the side its order closes (the side check below)
+  const at = (o: Record<string, unknown>) => Number(o.updateTime ?? o.time ?? 0) || 0;
+  // a one-way (BOTH) row is the symbol's one position: it belongs to the side its order closes (the side checks)
+  const onSide = (o: Record<string, unknown>) => {
     const pos = String(o.positionSide ?? "").toUpperCase();
-    if (pos !== ps && pos !== "BOTH") continue;
+    return pos === ps || pos === "BOTH";
+  };
+  // A history read spans beyond one position on a busy symbol. Never reuse the previous episode's stop / manual
+  // close for a position opened after it; the exchange may return newest first or oldest first.
+  let since = openedAt;
+  for (const o of orders)
+    if (
+      onSide(o) &&
+      String(o.side ?? "").toUpperCase() !== closing &&
+      isOwnCoid(String(o.clientOrderId ?? ""), connId) &&
+      Number(o.executedQty) > 0
+    ) since = Math.max(since, at(o));
+  let own: { why: "stop" | "target"; px: number; at: number } | null = null;
+  const hand: Array<{ px: number; qty: number; at: number }> = [];
+  const liq: Array<{ px: number; qty: number; at: number }> = [];
+  for (const o of orders) {
+    if (at(o) < since) continue;
+    if (!onSide(o)) continue;
     if (String(o.side ?? "").toUpperCase() !== closing) continue;
     if (!String(o.status ?? "").toUpperCase().includes("FILLED")) continue;
     const px = Number(o.avgPrice);
@@ -1340,23 +1415,34 @@ export function outsideCloseOf(
       const kind = ownCoidKind(coid, connId);
       if (kind === "V" || kind === "Y") continue;
       const type = String(o.type ?? "").toUpperCase();
-      if (type.startsWith("STOP")) own = { why: "stop", px };
-      else if (type.startsWith("TAKE_PROFIT")) own = { why: "target", px };
+      if (!own || at(o) >= own.at) {
+        if (type.startsWith("STOP")) own = { why: "stop", px, at: at(o) };
+        else if (type.startsWith("TAKE_PROFIT")) own = { why: "target", px, at: at(o) };
+      }
       continue;
     }
     const q = Number(o.executedQty);
     if (!(q > 0)) continue;
-    if (isLiquidationType(o.type)) {
-      liqQty += q;
-      liqNotional += q * px;
-      continue;
-    }
-    qty += q;
-    notional += q * px;
+    // the liquidation engine's fill: an own loss (counted like a stop), never a close by hand
+    (isLiquidationType(o.type) ? liq : hand).push({ px, qty: q, at: at(o) });
   }
-  if (own) return own;
-  if (liqQty > 0) return { why: "liq", px: liqNotional / liqQty };
-  return qty > 0 ? { why: "hand", px: notional / qty } : null;
+  // the latest close decides: an own close after every other fill is the side's close; else the fills after it
+  const lastOther = [...hand, ...liq].reduce((last, o) => Math.max(last, o.at), -Infinity);
+  if (own && own.at >= lastOther) return { why: own.why, px: own.px };
+  const vwap = (xs: ReadonlyArray<{ px: number; qty: number; at: number }>) => {
+    let qty = 0;
+    let notional = 0;
+    for (const o of xs) {
+      if (own && o.at < own.at) continue;
+      qty += o.qty;
+      notional += o.qty * o.px;
+    }
+    return qty > 0 ? notional / qty : null;
+  };
+  const liqPx = vwap(liq);
+  if (liqPx !== null) return { why: "liq", px: liqPx };
+  const handPx = vwap(hand);
+  return handPx !== null ? { why: "hand", px: handPx } : null;
 }
 
 /** how far a bar may stay short of a stop or a target and still count as reaching it (0.1 % of the level) */

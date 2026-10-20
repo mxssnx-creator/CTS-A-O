@@ -2,10 +2,11 @@
 // simulation once it holds enough closes.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { attributeLanes, laneIdOf, laneKeyOf, liveRecords, preferExchange, type LaneOpen } from "./live-record.ts";
-import { liveGate, liveGroupGates } from "./live-validation.ts";
+import { attributeLanes, executionRecordKey, laneIdOf, laneKeyOf, liveRecords, ownedPaperExecutionRecords, postBaseExecutionRecords, preferExchange, type LaneOpen } from "./live-record.ts";
+import { liveGate, liveGroupGates, promotionGate } from "./live-validation.ts";
 import { adjustTrades, evaluateAdjust } from "./adjust.ts";
 import { DEFAULT_ADJUST } from "./config.ts";
+import type { UnitReturnLike } from "./metrics/stats.ts";
 
 const K = "S1-USDT|1";
 const lane = (cfg: string, t: number) => ({ id: `${cfg}|S1-USDT|${t}`, cfg, sym: "S1-USDT", side: 1 as const });
@@ -21,6 +22,82 @@ const step = (open: Record<string, LaneOpen>, o: Partial<Parameters<typeof attri
     now: 1_000,
     ...o,
   });
+
+describe("post-Base modeled unit provenance", () => {
+  const cfg = "follow|rsi-mom-14-25@m15|tp2.6|sl3.9|tr0|h32";
+  const key = executionRecordKey(cfg, "S1-USDT", 1);
+  const trade = (
+    r: number,
+    i: number,
+    provenance: Pick<UnitReturnLike, "mult" | "unitR"> = {},
+  ) => ({
+    cfg,
+    sym: "S1-USDT",
+    side: 1 as const,
+    entryT: i * 10,
+    exitT: 100 + i,
+    entry: 100,
+    exit: 101,
+    r,
+    kind: "normal" as const,
+    reason: "time" as const,
+    bars: 1,
+    mfe: 0,
+    mae: 0,
+    ...provenance,
+  });
+  const execution = ownedPaperExecutionRecords(
+    [0, 1, 2, 3, 4, 5].map((i) => ({
+      cfg,
+      sym: "S1-USDT",
+      side: 1,
+      exitT: 100 + i,
+      unitR: 0.01,
+      ownedNotionalUsd: 100,
+    })),
+  ).get(key)!;
+
+  it("cannot promote a legacy modeled sample with missing multipliers despite valid owned execution", () => {
+    const model = postBaseExecutionRecords([trade(0.02, 0), trade(0.02, 1), trade(-0.01, 2)]).get(
+      key,
+    )!;
+    const gate = promotionGate(model, execution, 0, 500, 3, 1.1);
+    assert.equal(gate.ok, false);
+    assert.equal(gate.state, "unknown");
+    assert.equal(gate.model?.n, 3);
+    assert.equal(gate.model?.pf, null);
+    assert.equal(gate.model?.unknown, 3);
+  });
+
+  it("keeps a new unknown loss in the current window instead of backfilling older wins", () => {
+    const rows = [0, 1, 2, 3, 4].map((i) => trade(0.02, i, { mult: 1 }));
+    rows.push(trade(-1, 5));
+    const model = postBaseExecutionRecords(rows).get(key)!;
+    const gate = promotionGate(model, execution, 0, 500, 3, 1.1);
+    assert.equal(model.exitT.length, 6);
+    assert.equal(gate.ok, false);
+    assert.equal(gate.model?.unknown, 1);
+    assert.equal(gate.model?.n, 3);
+    assert.equal(gate.model?.fromT, 103);
+    assert.equal(gate.model?.toT, 105);
+  });
+
+  it("accepts known unit returns and explicit unit multipliers on the exact same close sample", () => {
+    for (const provenance of [{ mult: 1 }, { unitR: 0.02 }]) {
+      const rows = [
+        trade(0.02, 0, provenance),
+        trade(0.02, 1, provenance),
+        trade(-0.01, 2, "unitR" in provenance ? { unitR: -0.01 } : provenance),
+      ];
+      const model = postBaseExecutionRecords(rows).get(key)!;
+      const gate = promotionGate(model, execution, 0, 500, 3, 1.1);
+      assert.equal(gate.ok, true);
+      assert.equal(gate.model?.unknown, 0);
+      assert.equal(gate.model?.pf, 4);
+      assert.equal(gate.model?.noLoss, false);
+    }
+  });
+});
 
 describe("live record: lanes at the exchange's prices", () => {
   it("joins at the fill that grew the position, leaves at the fill that shrank it", () => {
@@ -127,7 +204,7 @@ describe("live record judges before the simulation", () => {
 
 describe("acceptance groups on the exchange record", async () => {
   const { exchangeAcceptIndex } = await import("./live-record.ts");
-  const { EngineSideIndex, SignalGuard, engineSideKey, sideAcceptKey } = await import("./signals.ts");
+  const { EngineSideIndex, SignalGuard, acceptKey, engineSideKey, sideAcceptKey } = await import("./signals.ts");
   const H = 3_600_000;
   const o = { enabled: true, minPf: 1.05, hours: 24, minTrades: 3 };
   // engine Short-range trailing longs: three exchange closes, all losses
@@ -140,6 +217,18 @@ describe("acceptance groups on the exchange record", async () => {
     assert.equal(ex.stats(key, 11 * H, 24).n, 3);
     assert.equal(ex.stats(key, 10 * H + 2 * 60_000, 24).n, 1, "only the closes before t");
     assert.equal(ex.stats(engineSideKey("trailing", "sh", -1), 11 * H, 24).n, 0);
+  });
+
+  it("keeps each Historic Exit config-set acceptance record independent", () => {
+    const rows = [
+      { cfg: "follow|ema-9-21@m15|tp3|sl4|tr0|h32|hxL0", sym: "S1-USDT", side: -1, exitT: 10 * H + 60_000, r: -0.01 },
+      { cfg: "follow|ema-9-21@m15|tp3|sl4|tr0|h32|hxL0", sym: "S2-USDT", side: -1, exitT: 10 * H + 120_000, r: -0.01 },
+      { cfg: "follow|ema-9-21@m15|tp3|sl4|tr1|h32|hxL2", sym: "S3-USDT", side: -1, exitT: 10 * H + 180_000, r: 0.01 },
+    ];
+    const sets = exchangeAcceptIndex(rows);
+    assert.equal(sets.stats(engineSideKey("exit", undefined, -1, undefined, "static-sl"), 11 * H, 24).n, 2);
+    assert.equal(sets.stats(engineSideKey("exit", undefined, -1, undefined, "trailing"), 11 * H, 24).n, 1);
+    assert.equal(sets.stats(engineSideKey("exit", undefined, -1, undefined, "adaptive-sl"), 11 * H, 24).n, 0);
   });
 
   it("engine direction acceptance: the exchange's losses refuse the group the simulation accepts", () => {
@@ -166,6 +255,18 @@ describe("acceptance groups on the exchange record", async () => {
     assert.ok(Math.abs(per.stats(key, 11 * H, 24).pf - 0.01 / 0.015) < 1e-9);
     // the entry is not counted before its last close
     assert.equal(per.stats(key, 10 * H + 2 * 60_000, 24).n, 0);
+  });
+
+  it("Signal exchange acceptance keeps exact protection configs independent", () => {
+    const ind = "sig-rsi-s@m15";
+    const won = `follow|${ind}|tp1|sl1|tr0|h32`;
+    const lost = `follow|${ind}|tp2|sl1|tr0|h32`;
+    const index = exchangeAcceptIndex([won, lost].flatMap((cfg) => rows.map((x) => ({
+      ...x, cfg, r: cfg === won ? 0.03 : -0.01,
+    }))));
+    assert.deepEqual(index.stats(acceptKey(ind, "S1-USDT", 1, "normal", won), 11 * H, 24), { n: 3, pf: Infinity });
+    assert.deepEqual(index.stats(acceptKey(ind, "S1-USDT", 1, "normal", lost), 11 * H, 24), { n: 3, pf: 0 });
+    assert.deepEqual(index.stats(acceptKey(ind, "S1-USDT", 1, "normal"), 11 * H, 24), { n: 0, pf: 0 });
   });
 
   it("signal side acceptance reads the exchange's signal closes", () => {

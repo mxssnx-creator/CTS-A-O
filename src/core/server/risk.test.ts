@@ -128,7 +128,7 @@ describe("planned loss distance (riskDist)", () => {
     assert.ok(Math.abs((targets[0].riskDist ?? 0) - 0.052) < 1e-9);
   });
 
-  it("a stop trailed past the entry risks nothing (floored at the minimum stop)", () => {
+  it("an explicitly zero-loss contribution still keeps the configured minimum risk floor", () => {
     const { targets } = controlTargets([lane(1, 0.03, 0)], px, cs);
     assert.equal(targets[0].riskDist, 0.01);
     assert.ok(Math.abs(targets[0].stopDist - 0.036) < 1e-9);

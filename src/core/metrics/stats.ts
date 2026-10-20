@@ -4,6 +4,11 @@ import type { Stats } from "../domain/types.ts";
 
 const H = 3_600_000;
 
+/** Settled exit bars ending exactly on a clock hour belong to the hour that just completed. */
+export function settledHourT(exitT: number): number {
+  return Math.floor((exitT - 1) / H) * H;
+}
+
 /** Minimal trade shape for stats. `r` is net return on notional (fraction). */
 export interface TradeLike {
   r: number;
@@ -11,9 +16,97 @@ export interface TradeLike {
   exitT: number;
 }
 
+export interface UnitReturnLike {
+  r: number;
+  /** External execution weighting (Block × relation × type factor); intrinsic ladder returns stay part of the config. */
+  mult?: number;
+  /** Verified persisted unit return. Explicit null means legacy/unknown, never an implicit multiplier of one. */
+  unitR?: number | null;
+}
+export type UnitStats = Stats & {
+  pfBasis: "unit-net-returns" | "unavailable";
+  unknownReturns: number;
+  /** Finite individual returns whose aggregate or derived primary statistics cannot be represented safely. */
+  unknownReturnTotals?: number;
+};
+
+/** Normalize a known executed return without changing its cash/sized return. Missing mult is an unweighted record. */
+export function unitReturn(trade: UnitReturnLike): number {
+  if (trade.unitR !== undefined)
+    return typeof trade.unitR === "number" && Number.isFinite(trade.unitR) ? trade.unitR : NaN;
+  if (!Number.isFinite(trade.r)) return NaN;
+  if (trade.mult === undefined) return trade.r;
+  return Number.isFinite(trade.mult) && trade.mult > 0 ? trade.r / trade.mult : NaN;
+}
+
+/** Modeled executions require explicit unit provenance; legacy missing mult is unknown, never a unit order. */
+export function modeledUnitReturn(trade: UnitReturnLike): number {
+  if (
+    trade.unitR === undefined &&
+    !(typeof trade.mult === "number" && Number.isFinite(trade.mult) && trade.mult > 0)
+  )
+    return NaN;
+  const r = unitReturn(trade);
+  return Number.isFinite(r) ? r : NaN;
+}
+
+/** Primary return statistics. Any unknown sample makes the whole primary result unavailable, never cherry-picked. */
+export function unitStatsOf(
+  trades: readonly (TradeLike & UnitReturnLike)[],
+  nowT?: number,
+): UnitStats {
+  return statsWithUnitReturns(trades, nowT, unitReturn);
+}
+
+/** Primary modeled execution statistics; retain the whole sample when any order's unit evidence is unknown. */
+export function modeledUnitStatsOf(
+  trades: readonly (TradeLike & UnitReturnLike)[],
+  nowT?: number,
+): UnitStats {
+  return statsWithUnitReturns(trades, nowT, modeledUnitReturn);
+}
+
+function statsWithUnitReturns(
+  trades: readonly (TradeLike & UnitReturnLike)[],
+  nowT: number | undefined,
+  returnOf: (trade: UnitReturnLike) => number,
+): UnitStats {
+  const normalized: TradeLike[] = [];
+  let unknownReturns = 0;
+  for (const trade of trades) {
+    const r = returnOf(trade);
+    if (!Number.isFinite(r)) unknownReturns++;
+    normalized.push({ r, entryT: trade.entryT, exitT: trade.exitT });
+  }
+  if (unknownReturns) return { ...EMPTY_STATS, pfBasis: "unavailable", unknownReturns };
+  const stats = statsOf(normalized, nowT);
+  // Finite rows can still overflow a sum, percentage conversion or PF quotient. Such a sample is not a
+  // measured infinite winner; retain conservative gate statistics and distinguish it from unknown rows.
+  if (Object.values(stats).some((value) => !Number.isFinite(value)))
+    return { ...EMPTY_STATS, pfBasis: "unavailable", unknownReturns: 0, unknownReturnTotals: 1 };
+  return { ...stats, pfBasis: "unit-net-returns", unknownReturns: 0 };
+}
+
 export function profitFactor(gp: number, gl: number): number {
-  if (gl <= 0) return gp > 0 ? PF_NO_LOSS : 0;
-  return gp / gl;
+  // Unknown or overflowed gross amounts are not a no-loss winner and cannot qualify a strategy.
+  if (!(Number.isFinite(gp) && Number.isFinite(gl) && gp >= 0 && gl >= 0)) return NaN;
+  if (gl === 0) return gp > 0 ? PF_NO_LOSS : 0;
+  const pf = gp / gl;
+  return Number.isFinite(pf) ? pf : NaN;
+}
+
+/**
+ * One drawdown-ratio rule for every gate: max drawdown ÷ net return, with both inputs in the same unit.
+ * A disabled limit is null/undefined/zero. Once enabled, missing or invalid evidence fails closed.
+ */
+export function ddrFails(
+  mdd: number | undefined,
+  net: number,
+  maxDdr: number | undefined,
+): boolean {
+  if (maxDdr == null || maxDdr === 0) return false;
+  if (!(Number.isFinite(maxDdr) && maxDdr > 0)) return true;
+  return !(Number.isFinite(mdd) && mdd! >= 0 && Number.isFinite(net) && net > 0) || mdd! / net > maxDdr;
 }
 
 export const EMPTY_STATS: Stats = Object.freeze({
@@ -46,7 +139,7 @@ export const EMPTY_STATS: Stats = Object.freeze({
 export function hourlyNet(trades: readonly TradeLike[]): Map<number, { net: number; n: number }> {
   const m = new Map<number, { net: number; n: number }>();
   for (const t of trades) {
-    const k = Math.floor((t.exitT - 1) / H) * H;
+    const k = settledHourT(t.exitT);
     const e = m.get(k);
     if (e) {
       e.net += t.r * 100;
@@ -89,7 +182,7 @@ export function statsOf(trades: readonly TradeLike[], nowT?: number): Stats {
     const tr = trades[i];
     const r = tr.r;
     if (ordered) {
-      const k = Math.floor((tr.exitT - 1) / H) * H;
+      const k = settledHourT(tr.exitT);
       if (k === hK) hNet += r * 100;
       else if (!(k < hK)) {
         if (hours > 0) {

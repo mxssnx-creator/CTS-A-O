@@ -2,6 +2,7 @@
 // CTS-A-O — live vs system from a desk's database snapshot (CTS_CORE_SNAPSHOT, e.g. runs/x01-live/core.sqlite): every
 // own exchange lane next to the same position in the paper book's own record (paper_book_trades), per lane and per
 // real position, per range, per hour, worst gaps (src/core/relation.ts, docs/execution-fidelity.md). Read-only.
+// The per-lane side is a normalized attributed return (not account cash PF); the per-position side is USD from own fills.
 //
 //   node --experimental-strip-types scripts/core-live-diff.mjs runs/x01-live/core.sqlite [--hours 6 | --since ISO]
 //     [--tag CTSX01S_] [--cost 0.002] [--out file.md] [--json]
@@ -29,6 +30,7 @@ const arg = (k, d) => {
 const file = argv.find((a, i) => !a.startsWith("--") && !(i > 0 && argv[i - 1].startsWith("--")));
 if (!file) throw new Error("usage: core-live-diff.mjs <core.sqlite> [--hours N | --since ISO] [--tag T] [--out file.md] [--json]");
 const hours = Number(arg("hours", 0));
+if (!Number.isFinite(hours) || hours < 0) throw new Error("--hours must be a finite nonnegative number");
 const sinceArg = arg("since", "");
 const since = sinceArg ? Date.parse(sinceArg) : hours > 0 ? Date.now() - hours * 3_600_000 : 0;
 if (!Number.isFinite(since)) throw new Error(`--since ${sinceArg}: not a time`);

@@ -3,7 +3,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { arch } from "node:os";
-import { startStallProbe, stallVerdict, type StallProbe } from "./stall-probe.server.ts";
+import { procMainThreadPid, startStallProbe, stallVerdict, type StallProbe } from "./stall-probe.server.ts";
 import { CoreRuntime } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
 
@@ -26,6 +26,17 @@ async function probeOf(block: () => void, probeAfterMs = 250): Promise<StallProb
 }
 
 describe("stall probe", { skip: !linux && "Linux /proc only" }, () => {
+  it("uses the procfs-visible process identity rather than the caller's PID namespace", () => {
+    const outerPid = process.pid + 1_000_000;
+    assert.equal(procMainThreadPid((path) => {
+      assert.equal(path, "/proc/self");
+      return String(outerPid);
+    }), outerPid);
+    for (const invalid of ["0", "-1", "1/task/2", "self", "9007199254740992"])
+      assert.equal(procMainThreadPid(() => invalid), null, invalid);
+    assert.equal(procMainThreadPid(() => { throw new Error("procfs unavailable"); }), null);
+  });
+
   it("a busy main thread: running, its CPU ≈ the stall, verdict js", async () => {
     const r = await probeOf(() => {
       const t = Date.now();
@@ -67,6 +78,7 @@ describe("stall probe", { skip: !linux && "Linux /proc only" }, () => {
     assert.ok(keep.length > 0);
     assert.ok(r, "a record");
     assert.ok(r!.gc.length > 0, `gc entries ${JSON.stringify(r!.gc)}`);
+    assert.ok(r!.gc.some((g) => g.kind === "major"), `forced full collection labeled major: ${JSON.stringify(r!.gc)}`);
   });
 
   it("a desk runtime (CTS_CORE_STALL_PROBE=1) keeps the probed stall in its status and, from 1 s, in its events", async () => {

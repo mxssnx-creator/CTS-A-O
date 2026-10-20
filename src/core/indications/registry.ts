@@ -9,8 +9,17 @@ import { stable02Specs } from "./stable02.ts";
 import { researchSpecs } from "./research.ts";
 import { research2Specs } from "./research2.ts";
 import { research3Specs } from "./research3.ts";
+import { research4Specs } from "./research4.ts";
 import { microSpecs } from "./micro.ts";
 import { rangeFamilySpecs } from "./range-families.ts";
+import { tacticSpecs } from "./tactic.ts";
+import {
+  isSignalCoordinationInd,
+  signalCoordinationSourceLabel,
+  signalCoordinationState,
+} from "../signal-coordination.ts";
+import { relateSpecs } from "./relate.ts";
+import { breakSpecs } from "./break.ts";
 
 export { SIGNAL_SOURCES, signalId };
 
@@ -993,9 +1002,16 @@ for (const x of research2Specs()) add(x);
 // third batch: quarter-hour order flow and burst reversal (Kim & Hansen 2026), Laguerre RSI, TD setup, choppiness
 // break, chandelier flip, ultimate oscillator, Klinger
 for (const x of research3Specs()) add(x);
+for (const x of research4Specs()) add(x);
 // ── range families (13 Oct): confluence, regime / compression / session and market-relation entries for the Short,
 // General and Long ranges (cfl-, htfpb-, rgm-, cmpx-, orb-, rel-) ──
 for (const x of rangeFamilySpecs()) add(x);
+// Tactic is a first-class indication kind; its techniques use the ordinary independent lanes and config PF gates.
+for (const x of tacticSpecs()) add(x);
+// Relate uses explicit 1/5/15m combinations and bounded standard/Micro identities.
+for (const x of relateSpecs()) add(x);
+// Break adds independent Donchian, squeeze and retest cells with trend, activity and drawdown filters.
+for (const x of breakSpecs()) add(x);
 // ── Micro range ("mc-…"): fast reversal entries for net 0.1–0.4 % targets (grid.micro.ownInds: only they trade Micro) ──
 for (const x of microSpecs()) add(x);
 
@@ -1071,6 +1087,8 @@ export function indicationState(id: string, k: SeriesCache): Int8Array | null {
     return f.length ? mtfState(lane.base, k, f) : indicationState(lane.base, k);
   }
   if (id === "none") return null;
+  if (isSignalCoordinationInd(id))
+    return k.memo(`ind:${id}`, () => signalCoordinationState(id, k, indicationState));
   const s = INDICATION_BY_ID.get(id);
   if (!s) throw new Error(`unknown indication ${id}`);
   return k.memo(`ind:${id}`, () => s.fn(k));
@@ -1112,17 +1130,19 @@ export function mtfState(id: string, k: SeriesCache, factors: readonly number[])
 
 // ── signal sources ──────────────────────────────────────────────────────────
 // Proven classic signals, each in a short and a medium parameter range. A signal fires on its source's own
-// state onsets ("follow"); it is processed as source × symbol with its own grid of 15 Normal and 15 Trailing
+// state onsets ("follow"); it is processed as source × symbol with its own grid of 42 Normal and 35 Trailing
 // configs (see src/core/signals.ts), separately from the engine's bot × indication combos. The specs reuse
 // the registry's computations under their own ids ("sig-…"), so the lanes, stages and live execution apply
 // unchanged while signal sets never collide with engine sets.
 // (the lane's base is a prefix of the id: the id's own prefix answers, with no lane parse)
 export const isSignalInd = (ind: string) => ind.startsWith("sig-");
 /** Source name of a signal indication ("sig-ema-cross-s@m5" → "ema-cross"). */
-export const signalSourceOf = (ind: string) =>
-  laneOf(ind)
-    .base.replace(/^sig-/, "")
-    .replace(/-[sm]$/, "");
+export const signalSourceOf = (ind: string) => {
+  const base = laneOf(ind).base;
+  return isSignalCoordinationInd(base)
+    ? signalCoordinationSourceLabel(base)
+    : base.replace(/^sig-/, "").replace(/-[sm]$/, "");
+};
 
 for (const src of SIGNAL_SOURCES) {
   for (const range of ["short", "medium"] as const) {

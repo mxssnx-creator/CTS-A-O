@@ -134,7 +134,7 @@ const to = Date.parse(a("end-at"));
 const from = to - Number(a("run")) * 3600000;
 const delay = Math.max(0, (Date.parse("2026-10-10T00:00:00Z") - to) / 3600000) * 12;
 setTimeout(() => {
-  const trades = [1, 2, 3].map((i) => ({ cfg: "follow|ema-21-55@m15|tp1|sl2|tr0|h64|gn", sym: "AAA-USDT", side: 1, entryT: from + i * 3600000, entry: 1, exitT: from + i * 3600000 + 60000, exit: 1, r: i === 2 ? -0.01 : 0.02, reason: "tp" }));
+  const trades = [1, 2, 3].map((i) => ({ cfg: "follow|ema-21-55@m15|tp1|sl2|tr0|h64|gn", sym: "AAA-USDT", side: 1, entryT: from + i * 3600000, entry: 1, exitT: from + i * 3600000 + 60000, exit: 1, r: i === 2 ? -0.01 : 0.02, mult: 1, reason: "tp" }));
   writeFileSync(a("dump"), JSON.stringify({ trades, openEnd: [], basePairs: [{ pair: "follow|ema-21-55@m15", passed: true, tags: ["gn"], pf: 1.5, n: 20 }], engine: { mem: { computeLevel: 0 }, baseByRange: [], baseWhy: [] }, funnel: { counts: null } }));
 }, delay);
 `,
@@ -142,7 +142,14 @@ setTimeout(() => {
   const r = spawnSync(
     process.execPath,
     ["--experimental-strip-types", "--no-warnings", join(here, "eval-gate.mjs"), "--label", "order", "--feed", feed, "--jobs", "3", "--expect-mb", "1", "--from", "2026-09-29T11:00:00Z", "--to", "2026-10-09T11:00:00Z"],
-    { encoding: "utf8", cwd: dir, env: { ...process.env, CTS_EVAL_SESSION: session, CTS_EVAL_RESERVE_MB: "0" } },
+    {
+      encoding: "utf8",
+      cwd: dir,
+      // These children only write the tiny fixed dump above. The real host's fluctuating free memory must not
+      // kill the delayed ordering fixture; mem-admission.test.mjs separately verifies the production kill guard.
+      env: { ...process.env, CTS_EVAL_SESSION: session, CTS_EVAL_RESERVE_MB: "0", CTS_EVAL_KILL_BELOW_MB: "0" },
+      timeout: 30_000,
+    },
   );
   assert.equal(r.status, 0, r.stderr + r.stdout);
   // the windows finished last-first (the stand-in sleeps longer for an earlier window)
@@ -154,6 +161,9 @@ setTimeout(() => {
   const ts = out.trades.map((t) => t.entryT);
   assert.deepEqual(ts, [...ts].sort((x, y) => x - y), "trades in window order");
   assert.deepEqual(out.summary.tradesPerWindow, [3, 3, 3, 3, 3]);
+  assert.equal(out.trades.filter((t) => t.r < 0).length, 5, "every window retains its losing return");
+  assert.ok(out.windows.every((w) => w.trades === 3 && Math.abs(w.pf - 4) < 1e-12));
+  assert.ok(Math.abs(out.summary.pf.d1 - 4) < 1e-12, "the ordered result retains the actual 4:1 return PF");
   assert.equal(out.summary.vmHwmMbPerWindow.length, 5);
   assert.ok(out.summary.vmHwmMbPerWindow.every((x) => x === null || x > 0));
 });

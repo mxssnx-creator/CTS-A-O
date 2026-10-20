@@ -1,7 +1,24 @@
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { coreListing, coreOverview, coreResults } from "../api-conn";
-import { Empty, ErrorNote, fmt, Line, liveState, Panel, pfTone, Pill, Seg, tone, usePoll } from "../ui";
+import { signalTypeLabel, signalUnitRowKey } from "../signal-units";
+import { BaseConfigCounts } from "../base-config-counts";
+import { unitStatsPfText } from "../accounting";
+import { pooledBasePfText } from "../progression";
+import { PromotionEvidence } from "../promotion-evidence";
+import {
+  Empty,
+  ErrorNote,
+  fmt,
+  Line,
+  liveState,
+  Panel,
+  pfTone,
+  Pill,
+  Seg,
+  tone,
+  usePoll,
+} from "../ui";
 
 type Any = any;
 
@@ -23,45 +40,52 @@ export function StagesPage() {
   const selected = (d.paper.selected ?? []) as string[];
   const sigSel = selected.filter((id) => (id.split("|")[1] ?? "").includes("sig-")).length;
   const realSel = selected.length - sigSel;
+  const exits = d.status?.exitStrategies;
+  const exitHistory = exits?.history ?? {};
   return (
     <>
       <ErrorNote error={error} />
       <Panel
         title="Coordination"
-        sub="each stage only evaluates what passed the previous one — no overload, full coverage in Base"
+        sub="calculation coverage and admission are separate: discovery or measurement can compute rejected pairs; each actual config must still pass its own entry gates"
       >
         <div className="v2-funnel">
           <div className="v2-stage">
             <div className="t">1 · Base</div>
             <div className="n">{fmt.num(d.status?.baseEvaluated ?? c.base)}</div>
             <p>
-              Every indication × bot type with the base protect, plus {d.wf.tapes} independent
-              strategy tapes (normal, trailing, DCA, DCA Active × {d.wf.protects} protect variants).
-              Always computed, whatever the toggles.
+              Every indication × bot type is evaluated at Base; {d.wf.tapes} independent strategy
+              tapes (Normal, capped Trailing, trailing-only, DCA, DCA Active and Axis across the
+              configured protection variants) are built for later validation or measurement.
+              Historic Exit has a separate Bot-free source set; each source first passes its own
+              Base PF gate, then its candidates fit and validate on pre-run history. A computed tape
+              is not an admitted or funded order.
             </p>
           </div>
           <div className="v2-stage">
             <div className="t">2 · Main</div>
             <div className="n">{fmt.num(c.main)}</div>
             <p>
-              In-sample PF ≥ {g.minPf}, DDT ≤ max({g.minDdtH ?? 0} h, {g.maxDdtH} h per 72 h), ≥{" "}
-              {g.minTrades} trades; pair must be
-              parameter-robust. Refined on the protect grid.
+              In-sample return PF meets each range's effective floor (global {g.minPf}, with range
+              overrides), DDT ≤ max({g.minDdtH ?? 0} h, {g.maxDdtH} h per 72 h), ≥ {g.minTrades}{" "}
+              trades; pair must be parameter-robust. Refined on the protect grid.
             </p>
           </div>
           <div className="v2-stage">
             <div className="t">3 · Real</div>
             <div className="n">{realSel}</div>
             <p>
-              {sigSel || d.status?.signals?.enabled ? `${realSel} engine · ${sigSel} signal configs. ` : ""}
+              {sigSel || d.status?.signals?.enabled
+                ? `${realSel} engine · ${sigSel} signal configs. `
+                : ""}
               Pre-historic window {d.wf.preH}h, validate last-N{" "}
               {d.wf.validLastN ? d.wf.validLastN : "off"}
               {d.wf.signalValidLastN !== undefined && d.wf.signalValidLastN !== d.wf.validLastN
                 ? ` (signals ${d.wf.signalValidLastN || "off"})`
                 : ""}{" "}
-              (PF and DDT) before a seat. End stage and
-              live re-check last-N {d.wf.lastN ? d.wf.lastN : "off"} (PF and DDT), then Block.
-              Additional strategies (Trailing, DCA, Axis) pass the same gates.
+              (PF and DDT) before a seat. End stage and live re-check last-N{" "}
+              {d.wf.lastN ? d.wf.lastN : "off"} (PF and DDT), then Block. Additional strategies
+              (Historic Exit, Trailing, DCA, Axis) pass the same gates.
             </p>
           </div>
           <div className="v2-stage">
@@ -80,6 +104,63 @@ export function StagesPage() {
         </div>
       </Panel>
 
+      <PromotionEvidence status={d.status?.livePromotion} />
+
+      <Panel
+        title="Historic Exit sets"
+        sub="five independent protection families over Bot-free indication, Tactic, and relation sources; each direction, timeframe lane, and source has its own Base → prehistory fit → holdout progression"
+      >
+        {exits ? (
+          <div className="v2-lines">
+            <Line
+              k="Build / execution"
+              v={`${exits.enabled ? "on" : "off"} / ${tg.exit !== false ? "on" : "off"}`}
+            />
+            <Line k="Independent Exit source lanes discovered" v={fmt.num(exits.pairs)} />
+            <Line
+              k="Standalone Base evaluated / passed / rejected"
+              v={`${fmt.num(exits.baseEvaluated ?? exitHistory.baseEvaluated)} / ${fmt.num(exits.basePassed ?? exitHistory.basePassed)} / ${fmt.num(exits.baseRejected ?? exitHistory.baseRejected)}`}
+            />
+            <Line
+              k="Independent protection families"
+              v={`${fmt.num(exits.families ?? 5)} · Static SL, Adaptive SL, Trailing, Breakeven, Trailing only`}
+            />
+            <Line
+              k="Tactic / relation lane sources"
+              v={`${fmt.num(exits.tactics)} / ${fmt.num(exits.relations)} · ${
+                [...(exits.timeframes ?? [])]
+                  .sort((a: number, b: number) => a - b)
+                  .map((tf: number) => `${tf}m`)
+                  .join(", ") || "—"
+              }`}
+            />
+            <Line k="Current configs (includes held lanes)" v={fmt.num(exits.configs)} />
+            <Line
+              k="Candidates / holdout evaluations / qualified"
+              v={`${fmt.num(exitHistory.candidates)} / ${fmt.num(exitHistory.evaluated)} / ${fmt.num(exitHistory.qualified)}`}
+            />
+            <Line
+              k="Capped / insufficient history or entries"
+              v={`${fmt.num(exitHistory.capped)} / ${fmt.num((exitHistory.noPrehistory ?? 0) + (exitHistory.insufficientEntries ?? 0))}`}
+            />
+            <Line
+              k="Holdout rejects: short / PF / drawdown"
+              v={`${fmt.num(exitHistory.insufficientTrades)} / ${fmt.num(exitHistory.pfRejected)} / ${fmt.num(exitHistory.ddrRejected)}`}
+            />
+            <Line
+              k="Position exits"
+              v={
+                d.settings.live.laneOrders
+                  ? "lane orders · each lane has its own partial stop / target"
+                  : "overall control · coordinates the combined position; lane completions can reduce it"
+              }
+            />
+          </div>
+        ) : (
+          <Empty>Historic Exit status is not available yet</Empty>
+        )}
+      </Panel>
+
       <Panel
         title="Timeframe lanes"
         sub="1m base, 5m / 15m / 30m derived · m+ = combined (agrees with every higher timeframe) · each lane independent through every stage · sim = the simulated run (Σ trade %), paper = the open paper book (virtual) · a position is one symbol × direction episode: a real position held by several lanes counts in each lane, the total row counts it once"
@@ -95,7 +176,7 @@ export function StagesPage() {
                   <th>Base passed</th>
                   <th>Main tapes</th>
                   <th>Sim positions / orders</th>
-                  <th>Sim PF</th>
+                  <th>Sim settled model return PF</th>
                   <th>Sim net (Σ trade %)</th>
                   <th>Sim WR</th>
                   <th>Paper open pos / orders</th>
@@ -111,7 +192,7 @@ export function StagesPage() {
                     <td>
                       {fmt.num(l.positions)} / {fmt.num(l.n)}
                     </td>
-                    <td className={l.n ? pfTone(l.pf) : ""}>{l.n ? fmt.pf(l.pf) : "–"}</td>
+                    <td className={l.n ? pfTone(l.pf) : ""}>{l.n ? unitStatsPfText(l) : "–"}</td>
                     <td className={l.n ? tone(l.net) : ""}>{l.n ? fmt.pct(l.net) : "–"}</td>
                     <td>{l.n ? fmt.ratio(l.wr) : "–"}</td>
                     <td>
@@ -182,12 +263,12 @@ export function StagesPage() {
               <Line k="Hour guard" v={port.guardPct ? `${port.guardPct}%` : "off"} />
               <Line
                 k="In-sample PF · net"
-                v={`${fmt.pf(port.is.pf)} · ${fmt.pct(port.is.net)}`}
+                v={`${pooledBasePfText({ passed: port.is.n, passedGp: port.is.gp, passedGl: port.is.gl })} · ${fmt.pct(port.is.net)}`}
                 className={pfTone(port.is.pf, g.minPf)}
               />
               <Line
                 k="Out-of-sample PF · net"
-                v={`${fmt.pf(port.oos.pf)} · ${fmt.pct(port.oos.net)}`}
+                v={`${pooledBasePfText({ passed: port.oos.n, passedGp: port.oos.gp, passedGl: port.oos.gl })} · ${fmt.pct(port.oos.net)}`}
                 className={pfTone(port.oos.pf, g.minPf)}
               />
               <Line k="OOS green hours" v={`${port.oos.greenHours}/${port.oos.hours}`} />
@@ -200,7 +281,7 @@ export function StagesPage() {
 
       <Panel
         title="Ranked (Main → Real candidates)"
-        sub="last-N chosen in-sample, validated out-of-sample; continuous window evals"
+        sub="historical model selection scores: last-N chosen in-sample, validated out-of-sample. Stored PF scores include the no-loss convention; they are separate from funded execution return PF"
         flush
       >
         <div className="v2-table-wrap">
@@ -210,11 +291,11 @@ export function StagesPage() {
                 <th>#</th>
                 <th>config</th>
                 <th className="num">n</th>
-                <th className="num">PF</th>
+                <th className="num">Model PF score</th>
                 <th className="num">net</th>
                 <th className="num">best N</th>
                 <th className="num">OOS n</th>
-                <th className="num">OOS PF</th>
+                <th className="num">OOS model PF score</th>
                 <th className="num">OOS net</th>
                 <th>last-N</th>
                 <th className="num">eval pass</th>
@@ -246,6 +327,7 @@ export function StagesPage() {
           </table>
         </div>
       </Panel>
+      <BaseConfigCounts />
       <SetListings minPf={g.minPf} />
     </>
   );
@@ -254,22 +336,26 @@ export function StagesPage() {
 const PAGE = 50;
 
 /**
- * The last paper step's listings (coreListing, built once per step): the engine configs it validated, per range with
- * that range's PF taken together on the validation windows, the signal units active, and the engine configs proven live.
+ * The last paper step's listings (coreListing, built once per step): validated Normal / Trailing ranges and independent
+ * strategy groups such as Historic Exit, with pooled validation PFs, active signal units, and proven live configs.
  */
 function SetListings(props: { minPf: number }) {
   const [kind, setKind] = useState<"validated" | "active" | "proven">("validated");
-  const [range, setRange] = useState("");
+  const [group, setGroup] = useState("");
   const [page, setPage] = useState(0);
   const { data } = usePoll(
-    () => coreListing({ data: { kind, range: range || undefined, offset: page * PAGE, limit: PAGE } }),
+    () =>
+      coreListing({ data: { kind, group: group || undefined, offset: page * PAGE, limit: PAGE } }),
     10000,
-    [kind, range, page],
+    [kind, group, page],
   );
   const d = data as Any;
   const pages = d?.total ? Math.ceil(d.total / PAGE) : 0;
   return (
-    <Panel title="Validated and active sets" sub="the last paper step's seats, signal units and proven configs, a page at a time">
+    <Panel
+      title="Validated and active sets"
+      sub="the last paper step's seats, independently ranked signal config × symbol × direction units and proven configs"
+    >
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         <Seg
           value={kind}
@@ -284,13 +370,19 @@ function SetListings(props: { minPf: number }) {
             setPage(0);
           }}
         />
-        {kind === "validated" && Array.isArray(d?.byRange) && (
+        {kind === "validated" && Array.isArray(d?.byGroup) && (
           <Seg
-            value={range}
-            label="range"
-            options={[{ value: "", label: "All" }, ...d.byRange.map((x: Any) => ({ value: x.range, label: `${x.range} ${x.validated} · PF ${fmt.pf(x.pf)}` }))]}
+            value={group}
+            label="group"
+            options={[
+              { value: "", label: "All" },
+              ...d.byGroup.map((x: Any) => ({
+                value: x.group,
+                label: `${x.group} ${x.validated} · PF ${fmt.pf(x.pf)}`,
+              })),
+            ]}
             onChange={(v) => {
-              setRange(v);
+              setGroup(v);
               setPage(0);
             }}
           />
@@ -309,7 +401,7 @@ function SetListings(props: { minPf: number }) {
               {kind === "validated" ? (
                 <tr>
                   <th>Config</th>
-                  <th>Range</th>
+                  <th>Range / strategy group</th>
                   <th className="num">PF</th>
                   <th className="num">Closes</th>
                   <th className="num">Net</th>
@@ -318,7 +410,9 @@ function SetListings(props: { minPf: number }) {
                 </tr>
               ) : kind === "active" ? (
                 <tr>
-                  <th>Signal</th>
+                  <th>Signal · range · lane</th>
+                  <th>Protection config</th>
+                  <th>Type</th>
                   <th>Symbol</th>
                   <th>Side</th>
                 </tr>
@@ -338,7 +432,7 @@ function SetListings(props: { minPf: number }) {
                         {x.id}
                       </Link>
                     </td>
-                    <td>{x.range}</td>
+                    <td>{x.group}</td>
                     <td className={`num ${pfTone(x.pf, props.minPf)}`}>{fmt.pf(x.pf)}</td>
                     <td className="num">{x.n}</td>
                     <td className={`num ${tone(x.net)}`}>{fmt.pct(x.net)}</td>
@@ -346,10 +440,12 @@ function SetListings(props: { minPf: number }) {
                     <td className="num">{fmt.num(x.score)}</td>
                   </tr>
                 ) : kind === "active" ? (
-                  <tr key={`${x.bot}|${x.ind}|${x.sym}|${x.side}`}>
+                  <tr key={signalUnitRowKey(x)}>
                     <td>
                       {x.bot} · {x.ind}
                     </td>
+                    <td className="v2-mono">{x.cfg ?? "Base / discovery"}</td>
+                    <td>{signalTypeLabel(x.kind)}</td>
                     <td>{x.sym}</td>
                     <td>{x.side > 0 ? "long" : "short"}</td>
                   </tr>
@@ -363,13 +459,21 @@ function SetListings(props: { minPf: number }) {
             </tbody>
           </table>
           <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6 }}>
-            <button className="v2-btn" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>
+            <button
+              className="v2-btn"
+              disabled={page === 0}
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+            >
               Previous
             </button>
             <span>
               {fmt.num(d.total)} · page {pages ? page + 1 : 0} of {pages}
             </span>
-            <button className="v2-btn" disabled={page + 1 >= pages} onClick={() => setPage((p) => p + 1)}>
+            <button
+              className="v2-btn"
+              disabled={page + 1 >= pages}
+              onClick={() => setPage((p) => p + 1)}
+            >
               Next
             </button>
           </div>

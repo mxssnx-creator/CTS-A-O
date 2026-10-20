@@ -571,6 +571,8 @@ export interface BookOrder {
 
 /** Account equity in USDT (swap wallet balance + unrealized P&L); null when the reply carries none. */
 export interface AccountSnapshot {
+  /** When the exchange reply was read, preserved through every account cache. */
+  at?: number;
   equity: number | null;
   wallet: number | null;
   /** open positions, mark to market */
@@ -613,7 +615,10 @@ export async function fetchAccount(network: Network, conn: ConnId): Promise<Acco
   const hit = accountCache.get(k);
   if (hit && Date.now() - hit.at < 15_000) return hit.snap;
   const snap = parseAccount(await signed(network, conn, "GET", "/openApi/swap/v2/user/balance"));
-  if (snap) accountCache.set(k, { at: Date.now(), snap });
+  if (snap) {
+    snap.at = Date.now();
+    accountCache.set(k, { at: snap.at, snap });
+  }
   return snap;
 }
 

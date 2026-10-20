@@ -133,28 +133,35 @@ export function syntheticCandles(
   return out;
 }
 
-/** Resample candles to a larger timeframe (tfMin must be a multiple of the source). Incomplete buckets are dropped. */
+/** Resample to a source-timeframe multiple; keep aligned contiguous buckets and reject non-increasing times. */
 export function resample(candles: readonly Candle[], srcMin: number, tfMin: number): Candle[] {
   if (tfMin === srcMin) return [...candles];
   const k = tfMin / srcMin;
   const tfMs = tfMin * 60_000;
+  const srcMs = srcMin * 60_000;
   const out: Candle[] = [];
   let cur: Candle | null = null;
   let cnt = 0;
+  let complete = false;
+  let lastT = NaN;
   for (const c of candles) {
+    if (cur && !(c.t > lastT)) throw new RangeError("source bars must have strictly increasing timestamps");
     const b = Math.floor(c.t / tfMs) * tfMs;
     if (!cur || cur.t !== b) {
-      if (cur && cnt === k) out.push(cur);
+      if (cur && complete && cnt === k) out.push(cur);
       cur = { t: b, o: c.o, h: c.h, l: c.l, c: c.c, v: c.v };
       cnt = 1;
+      complete = c.t === b;
     } else {
       cur.h = Math.max(cur.h, c.h);
       cur.l = Math.min(cur.l, c.l);
       cur.c = c.c;
       cur.v += c.v;
       cnt++;
+      complete = complete && c.t === lastT + srcMs;
     }
+    lastT = c.t;
   }
-  if (cur && cnt === k) out.push(cur);
+  if (cur && complete && cnt === k) out.push(cur);
   return out;
 }

@@ -9,7 +9,14 @@ import { ownLedger } from "./live.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import { ExchangeRejected } from "../exchange/bingx.server.ts";
-import { rng, SimExchange as SimVenue, fakeRt, type FakeRt } from "../test-support.ts";
+import {
+  authorizeSyntheticLanes,
+  rng,
+  SimExchange as SimVenue,
+  fakeRt,
+  syntheticExecutionRun,
+  type FakeRt,
+} from "../test-support.ts";
 /** this suite runs with the venue's one-stop-per-position-side rule */
 class SimExchange extends SimVenue {
   oneStopPerSide = true;
@@ -215,7 +222,9 @@ describe("control orders: audit regressions", () => {
     // tighter backstop stayed and filled before any lane stop
     const ex = new SimExchange(rng(22));
     const { rt } = fakeRt(new CoreDb(":memory:"));
-    rt.settings.live = { ...rt.settings.live, maxNotionalUsd: 10 };
+    // Legacy USD ceilings are ignored; use the supported balance-relative cap for this $10 limit.
+    rt.settings.live = { ...rt.settings.live, maxPositionX: 0.25 };
+    ex.withEquity(40);
     rt.paper.positions = [lane("a", "S1-USDT", 1)]; // 3 % lane stop → backstop 3.6 % below 17
     await step(rt, ex);
     const stopLog = () => ex.log.filter((p) => p.type === "STOP_MARKET");
@@ -264,10 +273,19 @@ describe("control orders: audit regressions", () => {
     const ex = new SimExchange(rng(31));
     const { rt, prices } = fakeRt(new CoreDb(":memory:"));
     rt.settings.live = { ...rt.settings.live, maxNotionalUsd: 10 };
-    const wide = { cfg: "w", sym: "S1-USDT", side: -1 as const, entry: 17, stop: 17 * 1.25, vol: 1, entryT: 1 };
+    const wide = {
+      cfg: "w",
+      sym: "S1-USDT",
+      side: -1 as const,
+      entry: 17,
+      stop: 17 * 1.25,
+      vol: 1,
+      entryT: 1,
+    };
     rt.paper.positions = [wide];
     await step(rt, ex);
-    const stopsOf = () => ex.log.filter((p) => p.type === "STOP_MARKET").map((p) => Number(p.stopPrice));
+    const stopsOf = () =>
+      ex.log.filter((p) => p.type === "STOP_MARKET").map((p) => Number(p.stopPrice));
     assert.equal(stopsOf().length, 1);
     assert.ok(Math.abs(stopsOf()[0] - 17 * 1.2) < 1e-3, `capped at 20 % above 17: ${stopsOf()[0]}`);
     // the price rises 6 % against the short; the lane's own stop (21.25) is unchanged
@@ -276,7 +294,12 @@ describe("control orders: audit regressions", () => {
     later(70_000);
     await step(rt, ex);
     assert.equal(stopsOf().length, 1, `not re-priced outward: ${JSON.stringify(stopsOf())}`);
-    const own = ex.orders.filter((o) => o.venueSymbol === "S1-USDT" && o.clientOrderId?.startsWith("CTSB") && o.type === "STOP_MARKET");
+    const own = ex.orders.filter(
+      (o) =>
+        o.venueSymbol === "S1-USDT" &&
+        o.clientOrderId?.startsWith("CTSB") &&
+        o.type === "STOP_MARKET",
+    );
     assert.equal(own.length, 1);
     assert.ok(Math.abs(Number(own[0].stopPrice) - 17 * 1.2) < 1e-3, `still at ${own[0].stopPrice}`);
   });
@@ -641,7 +664,11 @@ describe("control orders: audit regressions", () => {
     const t0 = performance.now();
     db.trim();
     const ms = performance.now() - t0;
-    assert.equal(db.get<{ n: number }>("SELECT COUNT(*) AS n FROM live_orders")?.n, 20_000, "held keys keep their ledger");
+    assert.equal(
+      db.get<{ n: number }>("SELECT COUNT(*) AS n FROM live_orders")?.n,
+      20_000,
+      "held keys keep their ledger",
+    );
     assert.ok(ms < 3_000, `trim took ${ms.toFixed(0)} ms`);
   });
 
@@ -707,7 +734,7 @@ describe("control orders: audit regressions", () => {
           ratio: 1,
         },
       },
-      sim: { stats: { pf: 1.5 }, stable: true },
+      sim: syntheticExecutionRun([]),
       status: {},
       paper: {
         positions: [
@@ -720,6 +747,7 @@ describe("control orders: audit regressions", () => {
         return prices;
       },
     };
+    authorizeSyntheticLanes(rt, rt.paper.positions);
     await stepLive(rt, [], 1, ex as any);
     assert.ok(pos.get("S1-USDT|LONG")! > 0);
     ex.empty = true; // bx.fetchContracts returns an empty map when every host fails; cachedClient keeps it 10 min
@@ -872,31 +900,36 @@ describe("control orders: audit regressions", () => {
       assert.ok(ex.positions.has(`${sym}|LONG`), `${sym} reaches the exchange`);
   });
 
-  it("live.maxSymbols: the exchange sees at most N symbols; held ones are never dropped", async () => {
+  it("legacy symbol-count settings do not filter exchange positions", async () => {
     const ex = new SimExchange(rng(28));
     const { rt } = fakeRt(new CoreDb(":memory:"));
-    rt.settings.live = { ...rt.settings.live, maxSymbols: 2 };
+    // A stale stored field is ignored even if a runtime is constructed outside the settings migration.
+    rt.settings.live = {
+      ...rt.settings.live,
+      ...({ maxSymbols: 2 } as unknown as typeof rt.settings.live),
+    };
     rt.paper.positions = [0, 1, 2, 3, 4].map((i) => lane(`c${i}`, `S${i}-USDT`, 1, 1, 10 + i * 7));
     await step(rt, ex);
     const syms = new Set([...ex.positions.keys()].map((k) => k.split("|")[0]));
-    assert.equal(syms.size, 2, `two symbols on the exchange, got ${[...syms].join(", ")}`);
-    // the two held symbols stay even when the cap comes down and other lanes rank ahead of them
-    rt.settings.live = { ...rt.settings.live, maxSymbols: 1 };
-    later();
-    await step(rt, ex);
-    const after = new Set([...ex.positions.keys()].map((k) => k.split("|")[0]));
-    assert.deepEqual(
-      [...after].sort(),
-      [...syms].sort(),
-      "held symbols are kept, none closed by the cap",
+    assert.equal(syms.size, 5, `all five symbols reach the exchange, got ${[...syms].join(", ")}`);
+  });
+
+  it("the 100-slot ceiling counts foreign exchange positions, while 1000 strategy orders remain in the lane book", async () => {
+    const ex = new SimExchange(rng(29));
+    for (let i = 0; i < 100; i++) ex.positions.set(`H${i}-USDT|LONG`, 1);
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.settings.live = { ...rt.settings.live, maxPositions: 100 };
+    rt.paper.positions = Array.from({ length: 1000 }, (_, i) => lane(`c${i}`, "S0-USDT", 1, 1, 10));
+    const status = await step(rt, ex);
+    assert.equal(
+      ex.positions.size,
+      100,
+      "no new position opens when the exchange already has 100 slots used",
     );
-    // no cap: every lane's symbol can open
-    rt.settings.live = { ...rt.settings.live, maxSymbols: 0 };
-    await step(rt, ex);
-    assert.ok(
-      new Set([...ex.positions.keys()].map((k) => k.split("|")[0])).size > 2,
-      "without the cap more symbols open",
-    );
+    const key = status.control?.keys?.find((x) => x.key === "S0-USDT|1");
+    assert.equal(key?.paper, 1000, "all strategy/config orders still reach live coordination");
+    assert.equal(key?.target, false);
+    assert.match(key?.why ?? "", /max exchange positions/);
   });
 
   it("a live step abandoned by the watchdog (its epoch gone) sends nothing when it resumes", async () => {
@@ -968,9 +1001,11 @@ describe("control exits: partial fills, the exchange minimum, an already-flat si
     assert.deepEqual(parseFill(half), { px: 17, fee: 0.001, qty: 0.25 });
     assert.equal(executedQty(half, 0.5), 0.25, "a partial fill");
     assert.equal(executedQty(half, 0.1), 0.1, "never more than was sent");
-    // no executed quantity in the reply: what was sent is what filled (a MARKET order the exchange accepted)
-    assert.equal(executedQty({ order: { avgPrice: "17" } }, 0.5), 0.5);
-    assert.equal(executedQty(undefined, 0.5), 0.5);
+    // A successful MARKET acknowledgement alone is not fill evidence; only explicit quantity or FILLED status is.
+    assert.equal(executedQty({ order: { avgPrice: "17" } }, 0.5), 0);
+    assert.equal(executedQty({ order: { avgPrice: "17", status: "ACCEPTED" } }, 0.5), 0);
+    assert.equal(executedQty({ order: { avgPrice: "17", status: "FILLED" } }, 0.5), 0.5);
+    assert.equal(executedQty(undefined, 0.5), 0);
   });
 
   it("a partial close keeps our own quantity and the protective stop; the next step closes the rest", async () => {
@@ -1099,13 +1134,23 @@ describe("control exits: partial fills, the exchange minimum, an already-flat si
     rt.paper.positions = [mnFollow, wideRev, mnAlone];
     await step(rt, ex);
     const both = ex.positions.get("S1-USDT|LONG") ?? 0;
-    assert.ok(both > 0 && ex.positions.has("S3-USDT|LONG"), "all three lanes open with nothing left out");
+    assert.ok(
+      both > 0 && ex.positions.has("S3-USDT|LONG"),
+      "all three lanes open with nothing left out",
+    );
     rt.settings.live = { ...rt.settings.live, excludeConfigs: ["follow|mn"] };
     later();
     await step(rt, ex);
     const rest = ex.positions.get("S1-USDT|LONG") ?? 0;
-    assert.ok(rest > 0 && rest < both, `the Minimal follow's share is closed, the Wide revert's stays (${both} → ${rest})`);
-    assert.equal(ex.positions.has("S3-USDT|LONG"), false, "a held position of the left-out family closes at once");
+    assert.ok(
+      rest > 0 && rest < both,
+      `the Minimal follow's share is closed, the Wide revert's stays (${both} → ${rest})`,
+    );
+    assert.equal(
+      ex.positions.has("S3-USDT|LONG"),
+      false,
+      "a held position of the left-out family closes at once",
+    );
     assert.equal(rt.paper.positions.length, 3, "the paper book keeps running every lane");
     // a fresh Minimal follow lane on S2 never opens while its family is left out
     rt.paper.positions = [mnFollow, wideRev, lane("follow|ind-a|tp1|sl1|tr0|h16|mn", "S2-USDT", 1)];

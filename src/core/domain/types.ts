@@ -45,6 +45,8 @@ export const INDICATION_KINDS = [
   "channel",
   "ichimoku",
   "smooth",
+  "tactic",
+  "relate",
 ] as const;
 export type IndicationKind = (typeof INDICATION_KINDS)[number];
 
@@ -67,7 +69,8 @@ export const BOT_TYPES = [
   "follow",
   "revert",
 ] as const;
-export type BotType = (typeof BOT_TYPES)[number];
+/** `exit` is a synthetic, bot-free direction-onset source used only by Historic Exit. */
+export type BotType = (typeof BOT_TYPES)[number] | "exit";
 
 /** Protective exit config. All distances are fractions of entry price. */
 export interface Protect {
@@ -79,6 +82,8 @@ export interface Protect {
   trailStep?: number;
   /** once the trail is active the target is dropped and the trail alone exits (let winners run) */
   trailFree?: boolean;
+  /** No take-profit from entry: the hard stop, completed-bar trailing stop and time limit are the only exits. */
+  trailOnly?: boolean;
   /** max bars in trade (time exit at close) */
   hold: number;
   /**
@@ -94,6 +99,31 @@ export interface Protect {
    * own minimum stop / trail), and its orders carry their own tracking kind.
    */
   tag?: RangeTag;
+  /** Historical exit candidate, selected on a chronological fit window and validated on its later holdout. */
+  exitType?: "historic";
+  /** Historical exits are independent by direction. 1 = long, -1 = short. */
+  exitSide?: 1 | -1;
+  /** Independently evaluated Historic Exit config family; encoded in its lane id. */
+  exitSet?: ExitConfigSet;
+}
+
+/** Historic Exit config families share the Exit strategy kind, but keep separate fits and execution identities. */
+export type ExitConfigSet =
+  "static-sl" | "adaptive-sl" | "trailing" | "breakeven" | "trailing-only";
+
+/** Bounded causal state of one Historic Exit position; anchors keep the qualified config identity stable. */
+export interface ExitProtectionState {
+  set: ExitConfigSet;
+  baseTp: number;
+  baseSl: number;
+  baseTrail: number;
+  baseTrailDist: number;
+  previousClose: number;
+  rangeEma: number;
+  moveEma: number;
+  samples: number;
+  /** last completed lane bar applied; duplicate/rebuilt bars cannot adjust twice */
+  lastBarT: number;
 }
 
 /**
@@ -102,6 +132,8 @@ export interface Protect {
  * them on another range rather than ignoring them.
  */
 export interface RangeGrid {
+  /** execution volume relative to the balance-based base unit (0.2–5 in 0.2 steps; explicit 2.5 remains supported) */
+  volumeFactor?: number;
   /** targets of this range (fractions of price; Micro: net of the round-trip cost unless `tpNetOfCost` is false) */
   tp: readonly number[];
   /** stop as a multiple of the target */
@@ -154,8 +186,7 @@ export interface MicroGrid extends RangeGrid {
   tpNetOfCost?: boolean;
   /**
    * Micro only: the smallest NET target the range computes, as a multiple of the round-trip cost (0 / unset = every
-   * target). At net 0.10 % with a 0.20 % cost the cost is two thirds of the 0.30 % price target, so one tick of
-   * extra slippage flips the order's sign; a floor of 1 keeps only net targets at or above the cost itself.
+   * target). A floor of 1 keeps only net targets at or above the configured round-trip cost itself.
    */
   minNetOfCost?: number;
   /**
@@ -196,12 +227,15 @@ export interface StrategyConfig {
 export type ExitReason = "tp" | "sl" | "trail" | "time" | "disarm" | "be";
 
 /** Sub-strategy that produced a trade. */
-export type StratKind = "normal" | "trailing" | "dca" | "dca-active" | "axis";
+export type StratKind =
+  "normal" | "trailing" | "trailing-only" | "exit" | "dca" | "dca-active" | "axis";
 
 /** Strategy toggles. Intern calculations always cover every kind; toggles only filter execution. */
 export interface StrategyToggles {
   normal: boolean;
   trailing: boolean;
+  /** independently qualified historic exit configs */
+  exit?: boolean;
   block: boolean;
   /** Block Active: execute only positions at Block level >= minActiveLevel (skip normal / lower levels) */
   blockActive: boolean;
@@ -303,10 +337,14 @@ export interface Tactics {
 export interface BlockConfig {
   /** extra volume per passing level (additive) */
   ratio: number;
+  /** Shared-only ratio override. Unset preserves ratio; a higher value still shares the total maxMult cap. */
+  sharedRatio?: number;
+  /** Closed accepted Real orders, or the explicitly labeled legacy candidate-learning diagnostic. */
+  historySource?: "accepted-orders" | "real-candidates";
   /** last-N windows 1..maxLevel are checked independently */
   maxLevel: number;
   minActiveLevel: number;
-  /** total volume cap as a multiple of the base position */
+  /** total external volume cap including the base and every Block source, maximum 8× */
   maxMult: number;
   /** which positions the levels are judged on (config set only by default) */
   sources?: {
@@ -320,7 +358,7 @@ export interface BlockConfig {
   };
   /**
    * shared: the strongest source's level; additive: the sources' levels add up; overall: every source is its own
-   * Block (its own level, its own extra position, tracked per source — the sources never combine)
+   * Block (its own level and extra position, tracked per source inside one shared total maxMult cap)
    */
   mode?: "shared" | "additive" | "overall";
   /**
@@ -342,7 +380,7 @@ export interface BlockConfig {
   /** raised closes per candidate window that windowAuto judges on. Default 300. */
   windowLookback?: number;
   /**
-   * signals judged on their own: a signal config's Block level comes only from its own closes (the config source),
+   * signals judged on their own: a signal config's Block level comes only from its own symbol × side closes,
    * never from the pooled overall / symbol / direction / indication / type books of the other positions
    */
   signalsOwn?: boolean;
@@ -448,14 +486,25 @@ export interface Trade {
   vol?: number;
   /** Block level at execution (broker) or DCA legs added (sim) */
   level?: number;
-  /** Block volume multiplier applied at execution (r includes it); r / mult is the unit result */
+  /** External execution multiplier (Block × relation × type factor); r / mult is the underlying strategy return. */
   mult?: number;
-  /** part of mult from coordination volume (Stable-02 relation volume); mult / coordVol is the Block volume */
+  /** part of mult from coordination volume (Stable-02 relation volume). */
   coordVol?: number;
+  /** additional type / combined-lane factor in mult; removed from Block reporting and audit. */
+  volFactor?: number;
+  /** Negative-hour hedge volume factor captured at entry. */
+  hedgeVol?: number;
+  /** Independent range sizing factor captured at entry. */
+  rangeVol?: number;
   /** taken by the negative-hour hedge (a signal outside the ranked set, while the book was losing) */
   hedge?: boolean;
   /** Block type overall: the extra volume each source added as its own position (part of mult) */
   legs?: Partial<Record<string, number>>;
+  /** Opt-in audit trace: independent Block levels before and after enabled/paused-source rules. */
+  blockLevels?: Partial<Record<string, number>>;
+  blockEffectiveLevels?: Partial<Record<string, number>>;
+  /** Available closes in each bounded judging tail, including unknown outcomes; not funded-fill counts. */
+  blockSampleCounts?: Partial<Record<string, number>>;
   /** still open at the end of the run: marked to market at the last close (r = its mark incl. cost), not closed */
   markedOpen?: boolean;
 }
@@ -474,6 +523,11 @@ export interface OpenPosition {
   /** the trail in force: arming distance (fraction of the entry) and the distance it trails the peak at */
   trail?: number;
   trailDist?: number;
+  /** The position's own exit mode, retained across compute/restart instead of reading a mutable global grid. */
+  trailFree?: boolean;
+  trailOnly?: boolean;
+  /** Per-position Historic Exit adaptation, serialized with the held paper book. */
+  exitProtection?: ExitProtectionState;
   /** mark-to-market return incl. cost at the last close, per unit of volume (from the average entry) */
   mtm: number;
   /**
@@ -482,6 +536,17 @@ export interface OpenPosition {
    * marked-open order's r already carries it (r = Σ legs), so it is never multiplied into r again.
    */
   w?: number;
+  /** execution factors retained at entry for exact closes after settings change or restart */
+  coordVol?: number;
+  volFactor?: number;
+  /** Negative-hour hedge volume factor captured at entry. */
+  hedgeVol?: number;
+  /** Independent range sizing factor captured at entry. */
+  rangeVol?: number;
+  /** Opt-in Block audit trace captured at entry and retained while this position is held. */
+  blockLevels?: Partial<Record<string, number>>;
+  blockEffectiveLevels?: Partial<Record<string, number>>;
+  blockSampleCounts?: Partial<Record<string, number>>;
 }
 
 export interface Stats {
@@ -540,7 +605,7 @@ export interface LastNResult {
   oos: Stats;
   oosRows: LastNRow[];
   success: boolean;
-  /** gate currently open for the next trade (using bestN on the full tape) */
+  /** gate open for the next trade as of its decision time; N=0 means the ungated baseline was selected */
   gateOpen: boolean;
 }
 
@@ -612,13 +677,13 @@ export interface Gates {
   /**
    * stage minimum PF per target range, in place of `minPf` for that range's configs (every PF gate a config passes:
    * the Main and Real windows, the pre-historic window, the validation last-N, the entry last-N and the symbol gate).
-   * Short, Wide and the signals keep `minPf`. Values 1.05–3.
+   * Tagged ranges use their configured floor; Wide and untagged Signals keep `minPf`. Values 1.05–3.
    */
   rangeMinPf?: Partial<Record<RangeMinPfKey, number>>;
   /**
-   * Base: the PF a pair needs on its Base cell to have its sets computed (every cell × strategy type). Unset = the
-   * stage minimum (as before). Lower (e.g. 0.9) computes many more sets — each set is still judged on its own at the
-   * stage / range minimum before it can trade; only the pre-filter on the pair is wider. 0.5–1.5.
+   * Base: fallback PF floor for the untagged / Wide Base cell. Unset = the stage minimum. A tagged cell still uses its
+   * rangeMinPf when configured. Lowering this floor widens only Wide set construction; it never weakens tagged ranges.
+   * 0.5–1.5.
    */
   baseSetsMinPf?: number;
   /**
@@ -676,6 +741,8 @@ export interface BaseWindowsResult {
 export type RangeMinPfKey = "micro" | "minimal" | "short" | "general" | "long";
 
 export interface ProtectGridSpec {
+  /** execution volume relative to the normal factor for untagged Wide configs (0.2–5 in 0.2 steps; default 1) */
+  volumeFactor?: number;
   tp: readonly number[];
   /** SL as a multiple of TP (max ratio e.g. 2 or 2.5) */
   slOfTp: readonly number[];
@@ -709,7 +776,8 @@ export interface ProtectGridSpec {
   /** Long range: 22-32x position cost, step 2x (tagged "lg"). */
   long?: false | RangeGrid;
   /**
-   * Micro range: NET targets 0.10%-0.40% after the round-trip cost (price targets 0.30%-0.60% at the 0.2% cost),
+   * Micro range: net targets use the frozen range reference basis (default 0.20%-0.80%); price targets add settings.cost
+   * (default 0.15%, so 0.35%-0.95%),
    * stops 1x-5x the price target step 0.25 (MICRO_SL, 17 ratios), both trailing distances. Tagged "mc" so the orders are not mixed
    * with the minimal range. Every lever of `RangeGrid` plus the three Micro-only ones.
    */
@@ -778,6 +846,8 @@ export interface ProtectGridSpec {
         enabled?: boolean;
         lastN?: number;
         minPf?: number;
+        /** execution volume relative to the normal factor for Minimal plus (0.2–5 in 0.2 steps; default 1) */
+        volumeFactor?: number;
         tp: readonly number[];
         slOfTp: readonly number[];
         trailOfTp: readonly number[];

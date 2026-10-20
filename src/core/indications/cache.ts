@@ -138,8 +138,10 @@ export class SeriesCache {
    * from, `factor` this series' aggregation of that timeframe (1 = a universe series, a higher view: its factor).
    */
   setMarket(src: MarketSource | null, tf: number = this.b.tfMin, factor = 1) {
+    if (this.mk?.src === src && this.mk.tf === tf && this.mk.factor === factor) return;
     this.mk = src ? { src, tf, factor } : null;
-    this.m.delete("mkt");
+    // Cached relation states and higher views may already depend on the previous market source.
+    this.m.clear();
   }
   /**
    * The equal-weight market of this series' timeframe, aligned to its bars by open time: per-bar log return,
@@ -166,7 +168,9 @@ export class SeriesCache {
 
 /**
  * Higher-timeframe bars: `factor` × the series' timeframe, COMPLETED higher bars only (a bucket is published with
- * the bar that closes it). `map[i]` = index of the last higher bar that had closed when bar i closed (−1 = none).
+ * the bar that closes it). A bucket needs every aligned, contiguous base bar; gaps and partial starting buckets
+ * are dropped; non-increasing source timestamps are rejected. `map[i]` = index of the last higher bar that had
+ * closed when bar i closed (−1 = none).
  */
 export function htfBars(b: Bars, factor: number): { hb: Bars; map: Int32Array } {
   const tfMs = b.tfMin * 60_000;
@@ -178,14 +182,18 @@ export function htfBars(b: Bars, factor: number): { hb: Bars; map: Int32Array } 
     C: number[] = [],
     V: number[] = [];
   const map = new Int32Array(b.n).fill(-1);
-  let cur = -1;
+  let cur = NaN;
   let bo = 0,
     bh = 0,
     bl = 0,
     bc = 0,
     bv = 0,
     bt = 0;
+  let count = 0;
+  let complete = false;
+  let lastT = NaN;
   for (let i = 0; i < b.n; i++) {
+    if (i > 0 && !(b.t[i] > lastT)) throw new RangeError("source bars must have strictly increasing timestamps");
     const bucket = Math.floor(b.t[i] / span);
     if (bucket !== cur) {
       cur = bucket;
@@ -195,14 +203,19 @@ export function htfBars(b: Bars, factor: number): { hb: Bars; map: Int32Array } 
       bl = b.l[i];
       bc = b.c[i];
       bv = b.v[i];
+      count = 1;
+      complete = b.t[i] === bt;
     } else {
       if (b.h[i] > bh) bh = b.h[i];
       if (b.l[i] < bl) bl = b.l[i];
       bc = b.c[i];
       bv += b.v[i];
+      count++;
+      complete = complete && b.t[i] === lastT + tfMs;
     }
+    lastT = b.t[i];
     // the bucket closes with this bar: publish the completed higher bar
-    if (b.t[i] + tfMs >= bt + span) {
+    if (complete && count === factor && b.t[i] + tfMs === bt + span) {
       T.push(bt);
       O.push(bo);
       Hh.push(bh);
