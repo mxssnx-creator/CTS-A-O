@@ -1131,12 +1131,20 @@ const AXIS_VARIANT_TAG = /^axd?-[a-z0-9]+$/;
  * same order.
  */
 export function orderCfgKey(cfg: string): string {
-  const parts = cfg.split("|");
-  return `${parts[0]}|${parts
-    .slice(2)
-    .filter((s) => !AXIS_VARIANT_TAG.test(s))
-    .join("|")}`;
+  // memoized by id (split / filter / join per call was 1.1 s of a 24-symbol compute; a config id repeats per trade)
+  let k = ORDER_CFG_KEY.get(cfg);
+  if (k === undefined) {
+    const parts = cfg.split("|");
+    k = `${parts[0]}|${parts
+      .slice(2)
+      .filter((s) => !AXIS_VARIANT_TAG.test(s))
+      .join("|")}`;
+    if (ORDER_CFG_KEY.size > 200_000) ORDER_CFG_KEY.clear();
+    ORDER_CFG_KEY.set(cfg, k);
+  }
+  return k;
 }
+const ORDER_CFG_KEY = new Map<string, string>();
 
 /**
  * An order's identity apart from the indication that produced it: symbol, side, entry, exit, result, strategy type
