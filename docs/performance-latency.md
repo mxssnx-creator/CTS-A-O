@@ -71,6 +71,33 @@ worker is the remaining step).
 - Moving the whole compute into a dedicated worker (the main thread keeps only the live tick and the exchange) would
   remove compute stalls from the live path entirely; it is a larger change to the runtime.
 
+## Live-step stalls "Real · live tickers" (point 3, 20 Oct)
+
+`stall 1.2–1.7 s (Real · live tickers): js` is the compute stage ("Real") plus the live step's last phase marker
+(`tickers`, which stayed set until `sizing`). The synchronous work in that stretch: the engine and signal proofs
+(`engineProof` / `signalProof`) were rebuilt, in one piece inside the step, from a full read of `paper_book_trades`
+whenever a close landed (the memo key is the table's write version). Measured on a synthetic book (in memory, 70
+symbols, 400 configs, ties in exit time):
+
+| paper closes | one piece (before) | worst slice (after) |
+|---:|---:|---:|
+| 50 k | engine 200 ms + signal 100 ms | ≤ 45 ms |
+| 60 k | 340 ms (worst slice of the step) | 45–69 ms |
+| 150 k | 688 ms (engine 0.5–1.2 s, signal 0.35 s in the bench) | 90 ms |
+
+Fix: pages of 4,000 rows that end on a whole config (the same rows in the same order as one scan of the partial
+index, so ties come out as before), a yield per page and per build (`liveRecordsGen`), and the live step awaits
+`warmProofs()` before it reads the memos: it still reads the proofs of the current book, never older ones. A write that
+lands while a rebuild yields restarts it. The same step now slices `laneContributions` (55–95 ms at 20 k positions)
+and the lane filter, and labels the phases `proofs` / `lanes` / `lane filter`. `status.loop.recent` is the worst
+slice (a late 50 ms timer) of the last 60 s with the phase that ran; the compute log line prints it.
+`live-stall.test.ts` fails before the fix (340 ms) and pins the results to the single reads.
+`scripts/core-golden.mjs` digest d7565c7c… equal before and after (the stored reference is older than HEAD).
+
+Other synchronous pieces measured, not changed: `exchangeAccept()` rebuild 270 ms and `exchangeRecords` 400 ms at 50 k
+own closes (a desk has hundreds to thousands); `JSON.stringify(status)` 0 ms on a fresh runtime (the 250 kB status
+document was not measured at x01 size); `api-data` reads the proofs synchronously (memo hit after the live step).
+
 ## Memory (14 Oct)
 
 Operator, 13 Oct: "Optimize for lower mem usage systemwide." On this 16 GB host the desk ran 3.4–5.1 GB RSS (4.56 GB

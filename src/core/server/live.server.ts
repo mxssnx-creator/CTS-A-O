@@ -1609,6 +1609,19 @@ function laneStringsOf(p: { cfg: string; sym: string; side: number; entryT: numb
   return x;
 }
 
+/** Runs a generator to its end, giving the loop back (setImmediate) whenever a slice has taken over ~12 ms. */
+export async function sliced<R>(g: Generator<void, R>, sliceMs = 12): Promise<R> {
+  let t = performance.now();
+  for (;;) {
+    const r = g.next();
+    if (r.done) return r.value;
+    if (performance.now() - t > sliceMs) {
+      await new Promise<void>((res) => setImmediate(res));
+      t = performance.now();
+    }
+  }
+}
+
 /**
  * Paper positions of every lane → contributions (one per lane position, with its Block volume). Runs on every control
  * step over the whole book: no string is built per step (laneStringsOf) and one object per lane. `positions`: the
@@ -1619,11 +1632,29 @@ export function laneContributions(
   prices?: ReadonlyMap<string, number>,
   positions: CoreRuntime["paper"]["positions"] = rt.paper.positions,
 ): ControlContribution[] {
+  const g = laneContributionsGen(rt, prices, positions);
+  for (;;) {
+    const r = g.next();
+    if (r.done) return r.value;
+  }
+}
+
+/** Positions per slice of laneContributionsGen (~1 ms per 250 positions: 20 k positions took 55–95 ms in one piece). */
+const LANE_SLICE = 2048;
+
+/** laneContributions in slices: yields every LANE_SLICE positions (the live step gives the loop back between them). */
+export function* laneContributionsGen(
+  rt: CoreRuntime,
+  prices?: ReadonlyMap<string, number>,
+  positions: CoreRuntime["paper"]["positions"] = rt.paper.positions,
+): Generator<void, ControlContribution[]> {
   // a lane whose stop was crossed at tick time no longer asks for its volume (its stop executes live now)
   const out: ControlContribution[] = [];
   // a trailing position that trails free (grid.trailFree) takes no target once its trail is armed (crossedExit)
   const trailFree = rt.settings.grid?.trailFree === true;
+  let seen = 0;
   for (const p of positions) {
+    if (++seen % LANE_SLICE === 0) yield;
     if (p.stopHit) continue;
     const ls = laneStringsOf(p);
     const id = ls.id;
@@ -2357,7 +2388,9 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     // a close by hand leaves resting is cancelled further down ("own orders left on a (symbol, side) that is flat
     // now"), so it can never catch a later position. With open orders of an earlier read the stop's fate is
     // unknown, which changes only the wording of the event, not the decision.
-    const allLanes = laneContributions(rt, prices, ps);
+    // (in slices: 20 k positions took 55–95 ms in one piece)
+    phase("lanes");
+    const allLanes = await sliced(laneContributionsGen(rt, prices, ps));
     const nowSup = Date.now();
     // (the lanes' id lookups change only with the lanes: built once per lane set, not on every step)
     const { laneIds, legacyIds, laneIdByKey } =
@@ -2732,7 +2765,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       if (!f) funnel.set(k, (f = { key: k, paper: 0, suppressed: 0, chased: 0, notSent: 0, notSelected: 0, sent: 0, budget: 0, target: false }));
       return f;
     };
-    const lanes = allLanes.filter((l) => {
+    const keepLane = (l: (typeof allLanes)[number]): boolean => {
       const f = fk(l);
       f.paper++;
       if (l.id && suppressed[l.id]) {
@@ -2776,7 +2809,20 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       if (!isHeld && cfgInfo(l.cfg).isSig) inactiveSignal++;
       if (isHeld) f.sent++;
       return isHeld;
-    });
+    };
+    // (the filter in slices: every lane is judged against the selection, the proofs and the funnel)
+    phase("lane filter");
+    const lanes: typeof allLanes = [];
+    {
+      let t = performance.now();
+      for (let i = 0; i < allLanes.length; i++) {
+        if ((i & 511) === 511 && performance.now() - t > 12) {
+          await new Promise<void>((res) => setImmediate(res));
+          t = performance.now();
+        }
+        if (keepLane(allLanes[i])) lanes.push(allLanes[i]);
+      }
+    }
     // one lane volume unit: fixed % of the account equity (or the fixed notional); unknown equity → nothing is
     // sized: held positions are kept as they are (closes of lanes that ended still run), nothing opens or grows
     phase("sizing");

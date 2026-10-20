@@ -206,6 +206,7 @@ import {
 import {
   exchangeAcceptIndex,
   liveRecords,
+  liveRecordsGen,
   preferExchange,
   recordKeyOf,
   sideOfRow,
@@ -448,7 +449,10 @@ export interface RuntimeStatus {
   /** where Base runs: worker cores, or in-process and why */
   workers?: string;
   /** event-loop delay over the last compute (ms) */
-  loop: { p50: number; p99: number; max: number };
+  /** the compute's loop-delay histogram (p50 / p99 / max, ms) and `recent`: the worst single slice (a timer that came
+   *  late) of the last 60 s with the phase that was running, so a slice is reported as it happens, not only as the
+   *  compute's maximum */
+  loop: { p50: number; p99: number; max: number; recent?: { ms: number; where: string; at: number; n: number } };
   /**
    * the realtime entry step's last run (CTS_CORE_FAST_ENTRIES): the bar it ran on, its time, the seated configs it
    * rebuilt, their open positions on the current bars, and how many the paper book took
@@ -770,6 +774,7 @@ export class CoreRuntime {
       const now = performance.now();
       const late = now - last - 50;
       last = now;
+      this.noteLag(late);
       if (late < 150) return;
       const where = `${this.busyPhase || this.status.stage || "idle"}${this.livePhase ? ` · live ${this.livePhase}` : ""}`;
       const xs = (this.status.stalls ??= []);
@@ -777,6 +782,27 @@ export class CoreRuntime {
       if (xs.length > 30) xs.splice(0, xs.length - 30);
     }, 50);
     (this.stallTimer as { unref?: () => void }).unref?.();
+  }
+  /** the slices of the last 60 s that held the loop 40 ms or more (a late 50 ms timer), newest last */
+  private lags: Array<{ at: number; ms: number; where: string }> = [];
+  private noteLag(late: number) {
+    const now = Date.now();
+    if (late >= 40) {
+      this.lags.push({
+        at: now,
+        ms: Math.round(late),
+        where: `${this.busyPhase || this.status.stage || "idle"}${this.livePhase ? ` · live ${this.livePhase}` : ""}`,
+      });
+      if (this.lags.length > 200) this.lags.splice(0, this.lags.length - 200);
+    }
+    while (this.lags.length && now - this.lags[0].at > 60_000) this.lags.shift();
+    if (!this.lags.length) {
+      if (this.status.loop?.recent) delete this.status.loop.recent;
+      return;
+    }
+    let w = this.lags[0];
+    for (const x of this.lags) if (x.ms > w.ms) w = x;
+    if (this.status.loop) this.status.loop.recent = { ms: w.ms, where: w.where, at: w.at, n: this.lags.length };
   }
   /** a probed stall: kept in the status (the last 20) and, from 1 s, in the events (the status keeps only the last 30 stalls) */
   private noteStallProbe(p: StallProbe) {
@@ -3503,6 +3529,7 @@ export class CoreRuntime {
       p50: this.loop.percentile(50) / 1e6,
       p99: this.loop.percentile(99) / 1e6,
       max: this.loop.max / 1e6,
+      ...(this.status.loop?.recent ? { recent: this.status.loop.recent } : {}),
     };
     const ph = Object.entries(this.status.phases)
       .map(([k, v]) => `${k} ${Math.round(v.ms)}/${Math.round(v.maxSliceMs)}`)
@@ -3520,7 +3547,7 @@ export class CoreRuntime {
     if (Date.now() - this.lastConsoleAt > 5 * 60_000) {
       this.lastConsoleAt = Date.now();
       console.info(
-        `[core-v2] compute #${this.status.computes} done in ${Math.round(this.status.lastComputeMs)} ms · sim PF ${sim.stats.pf.toFixed(2)} n ${sim.stats.n} · loop max ${this.status.loop.max.toFixed(0)} ms`,
+        `[core-v2] compute #${this.status.computes} done in ${Math.round(this.status.lastComputeMs)} ms · sim PF ${sim.stats.pf.toFixed(2)} n ${sim.stats.n} · loop max ${this.status.loop.max.toFixed(0)} ms${this.status.loop.recent ? ` (worst slice of the last 60 s ${this.status.loop.recent.ms} ms in ${this.status.loop.recent.where}, ${this.status.loop.recent.n} over 40 ms)` : ""}`,
       );
     }
     this.emit("compute");
@@ -4305,7 +4332,7 @@ export class CoreRuntime {
     const key = `${since}|${this.db.version("live_lane_trades")}${bySide ? "|sides" : ""}`;
     if (this.exRecMemo?.key === key) return this.exRecMemo.recs;
     const rows = yield* this.exchangeRowsGen(since);
-    const recs = liveRecords(rows, bySide ? { bySide } : undefined);
+    const recs = yield* liveRecordsGen(rows, bySide ? { bySide } : undefined);
     // (rows read across a yield that a write changed meanwhile are not memoized under the older key)
     if (this.db.version("live_lane_trades") === Number(key.split("|")[1])) this.exRecMemo = { key, recs };
     return recs;
@@ -4444,7 +4471,7 @@ export class CoreRuntime {
         x.exit_t === null ? null : { cfg: x.cfg, exitT: x.exit_t, r: x.r, side: x.side },
     );
     yield;
-    const paper = liveRecords(rows, bySide ? { bySide } : undefined);
+    const paper = yield* liveRecordsGen(rows, bySide ? { bySide } : undefined);
     yield;
     const out = { ...engineProven(paper, ex, now, n, minPf), n, minPf };
     if (this.engineProofKey() !== key) return out; // a write landed meanwhile: not memoized under the older key
@@ -4569,7 +4596,8 @@ export class CoreRuntime {
         let t = performance.now();
         for (;;) {
           if (g.next().done) break;
-          if (performance.now() - t > SLICE_MS) {
+          // (a step is a page of rows or one build: about 5–40 ms, so the loop is given back after each)
+          if (performance.now() - t > 3) {
             await yieldNow();
             t = performance.now();
           }
