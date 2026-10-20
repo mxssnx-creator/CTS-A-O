@@ -8,6 +8,7 @@ import { CoreDb } from "./db.server.ts";
 import { cachedClient, type ExchangeClient } from "./live.server.ts";
 import { PriceStream } from "./stream.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
+import { sizeBook, orderKey } from "../sizing.ts";
 
 const small = {
   // Preserve this generic lifecycle fixture's original source scope. Exhaustive new-family grids are
@@ -93,6 +94,16 @@ describe("fast loops", { timeout: 1_200_000 }, () => {
     rt.paper.positions = [{ cfg: tape.id, sym, side: 1, entry, entryT: Date.now(),
       entryI: series.n - 1, stop: entry * 0.9, target: entry * 1.1, peak: entry,
       trailOn: false, trail: 0, trailDist: 0, mtm: -rt.settings.cost }];
+    // A held fixture needs an actual allocation from the same sizing rules as the audited Paper book.
+    const seeded = sizeBook(rt.paper.trades, rt.paper.positions, {
+      balance: rt.settings.paperBalance + (rt.paper.carried ?? 0),
+      sizing: rt.settings.sizing, fixedNotional: rt.settings.paperNotional,
+    });
+    rt.paper.units = seeded.units;
+    rt.paper.equity = (rt.paper.carried ?? 0) + seeded.pnl + rt.paper.positions.reduce(
+      (sum, p) => sum + p.mtm * (p.vol ?? 1) * seeded.units.get(orderKey(p))!, 0,
+    );
+    rt.paper.balance = rt.settings.paperBalance + rt.paper.equity;
     // count paper steps from here on
     // (the cycle drives the paper step as a generator in slices: count its runs, not stepPaper's)
     let steps = 0;

@@ -2,7 +2,10 @@
 // Independent price-path and arithmetic audit of a completed session. Does not call the production simulator/PF.
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
-import { readSessionDump, iterateSessionTapeTrades } from "./lib/session-dump.mjs";
+import { iterateSessionTapeTrades } from "./lib/session-dump.mjs";
+import { readFundedSession } from "./lib/session-funded-cohort.mjs";
+import { modeledUnitReturn } from "../src/core/metrics/stats.ts";
+import { createHash } from "node:crypto";
 import { parseConfigId, makeUniverse } from "../src/core/pipeline/pipeline.ts";
 import { barsFromCandles } from "../src/core/market/bars.ts";
 import { entrySignal } from "../src/core/bots/bots.ts";
@@ -11,8 +14,11 @@ import { configEval, engineContextValid, makeTape } from "../src/core/sim/walkfo
 const dir = process.argv[2];
 if (!dir) throw new Error("audit-micro-execution.mjs SESSION_DIR");
 const protocol = JSON.parse(readFileSync(`${dir}/protocol.json`));
-const raw = await readSessionDump(`${dir}/raw.json`, { fields: ["trades"] });
-const feed = JSON.parse(readFileSync(protocol.feed.path));
+const { raw, trades: fundedTrades, funding } = await readFundedSession(`${dir}/raw.json`, process.argv[3]);
+const funded = new Set(fundedTrades);
+const feedBytes = readFileSync(process.argv[4] ?? protocol.feed.path);
+assert.equal(createHash("sha256").update(feedBytes).digest("hex"), protocol.feed.sha256, "Audit feed differs from frozen market history");
+const feed = JSON.parse(feedBytes);
 const cost = protocol.actualSettings.cost;
 assert.ok(cost >= 0 && cost <= 0.0015, "current modeled round trip must not exceed 0.15%");
 const tfOf = (id) => Number(/@m(\d+)/.exec(id)?.[1] ?? 1);
@@ -52,13 +58,16 @@ for (const trade of raw.trades) {
   const cfg = parsed.get(trade.cfg) ?? parseConfigId(trade.cfg); assert.ok(cfg);
   const tf = tfOf(trade.cfg), cs = columns.get(`${trade.sym}|${tf}`), index = columnIndex.get(`${trade.sym}|${tf}`)?.get(trade.entryT) ?? -1;
   if (index <= 0) { record("entry bar unavailable", trade); continue; }
-  const basis = trade.mult ?? 1;
+  const ownReturn = modeledUnitReturn(trade);
   const gross = trade.side * (trade.exit - trade.entry) / trade.entry;
   const net = gross - cost;
-  const err = Math.abs(net - trade.r / basis); maxReturnError = Math.max(maxReturnError, err);
-  if (err > 1e-6) record("return/cost discrepancy", trade, { expected: net, actual: trade.r / basis });
-  gp += Math.max(net, 0); gl += Math.max(-net, 0); beforeCostGp += Math.max(gross, 0); beforeCostGl += Math.max(-gross, 0);
-  add(cfg.ind, net); reasons[trade.reason] = (reasons[trade.reason] ?? 0) + 1;
+  const err = Math.abs(net - ownReturn); maxReturnError = Math.max(maxReturnError, err);
+  if (!Number.isFinite(ownReturn) || err > 1e-6) record("return/cost discrepancy", trade, { expected: net, actual: ownReturn });
+  if (funded.has(trade)) {
+    gp += Math.max(ownReturn, 0); gl += Math.max(-ownReturn, 0); beforeCostGp += Math.max(gross, 0); beforeCostGl += Math.max(-gross, 0);
+    add(cfg.ind, ownReturn);
+  }
+  reasons[trade.reason] = (reasons[trade.reason] ?? 0) + 1;
   const series = universe.bars.findIndex((b) => b.sym === trade.sym && b.tfMin === tf);
   const signal = entrySignal(cfg.bot, cfg.ind, universe.caches[series], protocol.actualSettings.tactics);
   if (signal[index - 1] !== trade.side) record("wrong/missing entry direction", trade, signal[index - 1]);
@@ -97,9 +106,9 @@ for (const trade of raw.trades) {
       record("protection path discrepancy", trade, closed);
   }
 }
-const result = { scope: "Independent arithmetic, entry directions, exact config/symbol gates and normal/trailing candle scanner; modeled orders only",
-  cost, roundTripChargedOnce: maxReturnError <= 1e-6, rows: raw.trades.length, independentlyReplayedProtectionRows: replayed,
-  maxReturnError, maxPriceError, gp, gl, pf: raw.trades.length && gl > 0 ? gp / gl : null,
+const result = { scope: "Independent arithmetic, entry directions, exact config/symbol gates and protection on all virtual modeled closes; primary PF uses only verified funded settled closes",
+  funding, cost, roundTripChargedOnce: maxReturnError <= 1e-6, rows: fundedTrades.length, virtualRows: raw.trades.length, independentlyReplayedProtectionRows: replayed,
+  maxReturnError, maxPriceError, gp, gl, pf: fundedTrades.length && gl > 0 ? gp / gl : null,
   beforeCostPfDiagnostic: beforeCostGl > 0 ? beforeCostGp / beforeCostGl : null, reasons,
   bySource: Object.entries(bySource).map(([id, x]) => ({ id, ...x, pf: x.gl > 0 ? x.gp / x.gl : null })),
   precision: "1e-6 return tolerance covers Float32 stored price columns; modeled return arrays retain their original higher precision",

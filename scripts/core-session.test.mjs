@@ -300,7 +300,7 @@ describe("session CLI background comparison policy", () => {
     }
   });
 });
-function replay({ caps = false, weighted = false, invalidReturn = false, qualification, thresholds, variants, presets, exhaustedCap = false, noBase = false, legacyRangeRows = false, baseNoLoss = false, signalCoverage = false, liveValidation, selectionPhases = false, marketData } = {}) {
+function replay({ caps = false, weighted = false, invalidReturn = false, qualification, thresholds, variants, presets, exhaustedCap = false, zeroOnlyType = false, allocationOnly = false, noBase = false, legacyRangeRows = false, baseNoLoss = false, signalCoverage = false, liveValidation, selectionPhases = false, marketData } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "cts-session-report-"));
   try {
     const raw = {
@@ -336,6 +336,7 @@ function replay({ caps = false, weighted = false, invalidReturn = false, qualifi
         { cfg: "follow|ema-9-21@m1|ghost", sym: "TEST-USDT", side: 1, entryT: H + 2 * M, exitT: H + 15 * M, entry: 100, exit: 110, r: 0.1, vol: 1, mult: 1, kind: "normal" },
       ];
       raw.closes = { "TEST-USDT": Array.from({ length: 60 }, (_, i) => [H + i * M, 100]) };
+      if (zeroOnlyType) raw.trades[2].kind = "exit";
     }
     if (marketData) {
       raw.settings.marketDataSource = marketData.source;
@@ -418,7 +419,7 @@ function replay({ caps = false, weighted = false, invalidReturn = false, qualifi
     writeFileSync(join(dir, "raw.json"), JSON.stringify(raw));
     const result = spawnSync(process.execPath, ["--experimental-strip-types", "--no-warnings", script,
       "--replay", join(dir, "raw.json"), "--caps", caps ? "on" : "off", "--out", join(dir, "report"),
-      ...(exhaustedCap ? ["--signal-progress"] : []),
+      ...(allocationOnly ? ["--chunk-allocations"] : exhaustedCap ? ["--signal-progress"] : []),
       "--html", join(dir, "html"), "--writeup", join(dir, "writeup.md"), "--quiet", "true"], {
       encoding: "utf8", timeout: 15_000, env: { ...process.env, CTS_CORE_VARIANTS: "0" },
     });
@@ -583,6 +584,26 @@ describe("session reports: return PF primary, simulated provenance", () => {
   it("marks equal legacy counts as copied when range provenance is absent", () => {
     const { md } = replay({ noBase: true, legacyRangeRows: true });
     assert.match(md, /no per-range split/);
+  });
+
+  it("a type with only zero-funded closes retains virtual hourly cells without inventing funded coverage", () => {
+    const { data } = replay({ caps: true, exhaustedCap: true, zeroOnlyType: true });
+    const zeroType = data.types.find((x) => x.key === "exit");
+    assert.equal(zeroType.n, 0);
+    assert.equal(zeroType.virtual.n, 1);
+    assert.equal(data.total.orders, 2);
+    assert.equal(data.total.zeroAllocatedOrders, 1);
+    assert.ok(data.checks.find((x) => x.name === "every type that traded has hourly cells")?.ok);
+    assert.equal(data.checksOk, true);
+  });
+
+  it("chunk-allocations preserves complete allocation evidence without enabling Signal research", () => {
+    const { data } = replay({ caps: true, exhaustedCap: true, allocationOnly: true });
+    assert.equal(data.arraySidecars.sizedOrders.items, 3);
+    assert.equal(data.total.fundedOrders, 2);
+    assert.equal(data.total.zeroAllocatedOrders, 1);
+    assert.ok(data.ownershipPrecision);
+    assert.equal(data.checksOk, true);
   });
 
   it("zeros floating-point cap residue before cash/unit allocation and records the original ghost amount", () => {

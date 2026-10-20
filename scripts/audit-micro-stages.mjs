@@ -2,7 +2,8 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { iterateSessionValidation, readSessionDump } from "./lib/session-dump.mjs";
+import { iterateSessionValidation } from "./lib/session-dump.mjs";
+import { readFundedSession } from "./lib/session-funded-cohort.mjs";
 import { modeledUnitReturn, settledHourT } from "../src/core/metrics/stats.ts";
 import { rangeOfId } from "../src/core/minimal-coord.ts";
 
@@ -30,9 +31,9 @@ export function cohortPf(x) {
           : "measured",
   };
 }
-export async function stageAudit(dir) {
+export async function stageAudit(dir, reportFile) {
   const protocol = JSON.parse(readFileSync(`${dir}/protocol.json`));
-  const raw = await readSessionDump(`${dir}/raw.json`, { fields: ["trades"] });
+  const { raw, trades, funding } = await readFundedSession(`${dir}/raw.json`, reportFile);
   const perRange = {},
     steps = [];
   const row = (tag) =>
@@ -60,7 +61,7 @@ export async function stageAudit(dir) {
     ids = new Set(),
     ranges = new Map(),
     byInd = new Map();
-  for (const trade of raw.trades) {
+  for (const trade of trades) {
     const ind = trade.cfg.split("|")[1],
       tag = rangeOfId(trade.cfg) || "wide";
     const x = byInd.get(ind) ?? {
@@ -141,6 +142,7 @@ export async function stageAudit(dir) {
         "First rejection only; candidate diagnostics may include endpoint marks. Config sets, candidate events and funded settled closes have different denominators. Never subtract these counts as though they were all sets or all closes.",
     },
     fundedModeledExecution: cohortPf(executed),
+    funding,
     perRange,
     perIndication: sourceRows,
     notes: [
@@ -156,7 +158,7 @@ export async function stageAudit(dir) {
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const dir = process.argv[2];
   if (!dir) throw new Error("audit-micro-stages.mjs SESSION_DIR");
-  const result = await stageAudit(dir);
+  const result = await stageAudit(dir, process.argv[3]);
   writeFileSync(`${dir}/filtered-stages.json`, JSON.stringify(result, null, 2));
   console.log(
     JSON.stringify({

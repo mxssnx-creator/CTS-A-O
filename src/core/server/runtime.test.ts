@@ -1292,7 +1292,6 @@ describe("paper book across a restart", () => {
       stop: 0.98,
       target: 1.02,
       mtm: 0.004,
-      exitProtection: undefined,
       vol: 2,
       level: 3,
     };
@@ -1328,7 +1327,6 @@ describe("paper book across a restart", () => {
         stop: 0.98,
         target: 1.02,
         mtm: 0.004,
-        exitProtection: undefined,
         vol: 16,
         coordVol: 2,
         volFactor: 8,

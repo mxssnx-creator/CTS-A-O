@@ -1,0 +1,57 @@
+{
+  "status": "final isolated full inventory pending",
+  "coreFilesTotal": 213,
+  "sourceSha256": "ae7b2021fbdce8c3432329781dfc19a651c7e1fc488b3826874af741e69befaa",
+  "baselineFullInventory": {
+    "runId": 39500328398,
+    "files": 212,
+    "tests": 2377,
+    "passed": 2372,
+    "failed": 3,
+    "explicitSlowSkipped": 2,
+    "failedFiles": [
+      "src/core/server/fast.test.ts",
+      "src/core/server/runtime.test.ts"
+    ],
+    "note": "Original failures preserved; incorrect fixture seeding / undefined optional snapshot properties repaired without relaxing accounting guards"
+  },
+  "currentTargeted": {
+    "fundedReportStageParity": {
+      "passed": 40,
+      "failed": 0
+    },
+    "paperRestart": {
+      "passed": 2,
+      "failed": 0
+    },
+    "fastLoops": {
+      "passed": 5,
+      "failed": 0
+    },
+    "orderIdentityIndependenceStageParity": {
+      "passed": 41,
+      "failed": 0
+    },
+    "typecheck": "passed",
+    "lint": "zero errors; newly changed audit/fixture files clean"
+  },
+  "marketReplay": {
+    "originalWindowCi": 39504046969,
+    "reportChecksPassed": 60,
+    "reportChecksTotal": 60,
+    "gateDecisionsPaired": 750636,
+    "gateDifferences": 0,
+    "fundedCloses": 126342,
+    "knownZeroAllocations": 5516,
+    "fundedPf": 0.10195631060722055,
+    "matchedTapeCloses": 126342,
+    "tapeDifferences": 0,
+    "duplicateRejectionsAfterFix": 0,
+    "scope": "Simulation only; all-config $10 sizing is capital-infeasible"
+  },
+  "notes": [
+    "No completed full-green final inventory claimed until isolated runner results are collected.",
+    "Two slow runtime tests are explicit exclusions of the ordinary inventory, not completed native/venue evidence.",
+    "Detailed before/after market cohorts, source origin and losing validation outcomes remain archived."
+  ]
+}

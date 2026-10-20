@@ -1,6 +1,6 @@
 # Micro implementation and review evidence
 
-Status: research implementation; **not accepted as a profitable production release**. Read `report.html` or `summary.json`. Modeled PF is 0.218923, with 3 positive / 9 negative hours. The uncapped all-config sizing replay exceeds account margin; these counts are not feasible native fills.
+Status: research implementation; **not accepted as a profitable production release**. Read `report.html` or `summary.json`. The corrected original-window cohort gives PF 0.101956 on 126,342 actually allocated simulated closes; the archived pre-fix run is 0.218923, with 3 positive / 9 negative hours. The uncapped all-config sizing replay exceeds account margin; these counts are not feasible native fills.
 
 ## Current continuation
 
@@ -8,7 +8,7 @@ Current code contains 364 Micro + 364 inverse identities (26 techniques), includ
 
 ## Order identity correction and stage trace
 
-See `stage-transition.md` and `own-gate-transition.json`. The full rolling decision audit replayed 173,496 own-config decisions without disagreement. A separate real bug collapsed Micro/Inverse order identities after set selection: the original replay had 97,398 duplicate rejections. The new regression proves old source admits only one of 844 identical independent sources; corrected source admits all 844 and preserves Paper/native lane keys. Exact admitted-trade PF equality alone could not catch these omitted orders. The original market-window replay and corrected v5 chronological study are required before stating the effect on market PF.
+See `stage-transition.md` and `own-gate-transition.json`. The full rolling decision audit replayed 173,496 own-config decisions without disagreement. A separate real bug collapsed Micro/Inverse order identities after set selection: the original replay had 97,398 duplicate rejections. The new regression proves old source admits only one of 844 identical independent sources; corrected source admits all 844 and preserves Paper/native lane keys. Exact admitted-trade PF equality alone could not catch these omitted orders. The controlled original-window replay is now complete: 750,636 recorded gate decisions and all selected IDs match, all original 49,259 virtual closes retain the same returns, and 82,599 independently admitted closes are added. Duplicate rejections become zero. Their additional virtual PF is 0.064664; total virtual PF is 0.113613, while the actually funded 126,342-close cohort and its exact tape both give PF 0.101956. There are 5,516 known zero allocations, kept outside primary PF. The original $10 uncapped scenario is infeasible. See `order-replay-comparison.json`, `simulation-parity-v8-corrected-orders.json` and `order-identity-history.json`. Final v9/v6 protocols reseal funding/reporting corrections with the same economic inputs.
 
 ## What changed in the archived 616-ID replay
 

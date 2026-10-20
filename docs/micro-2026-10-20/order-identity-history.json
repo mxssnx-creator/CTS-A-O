@@ -1,0 +1,58 @@
+{
+  "schema": "cts-micro-order-key-history-v1",
+  "scope": "Current source IDs probed against each actual historical key function. This is a key-policy compatibility trace, not an old registry inventory or market PF replay.",
+  "firstMicroIntegration": "ab38a7a: new Micro registry added without extending the existing order key policy",
+  "inverseIntegration": "36eb672: mirrored/inverse registry added while that order key function remained unchanged",
+  "fixedAt": "32594ed (published equivalent bc7ae24890d9d343aec595f0eee753d35b8f6aa1)",
+  "rows": [
+    {
+      "ref": "ab38a7a",
+      "keyFunctionSha256": "b617a0b3f1f72da052418534fd0a6cb3774f7bfe404d7c5f2e9c94e6236d6a1e",
+      "probedSources": 844,
+      "uniqueOrderIdentities": 1,
+      "preservedFullIds": 0
+    },
+    {
+      "ref": "36eb672",
+      "keyFunctionSha256": "b617a0b3f1f72da052418534fd0a6cb3774f7bfe404d7c5f2e9c94e6236d6a1e",
+      "probedSources": 844,
+      "uniqueOrderIdentities": 1,
+      "preservedFullIds": 0
+    },
+    {
+      "ref": "47d70d8",
+      "keyFunctionSha256": "b617a0b3f1f72da052418534fd0a6cb3774f7bfe404d7c5f2e9c94e6236d6a1e",
+      "probedSources": 844,
+      "uniqueOrderIdentities": 1,
+      "preservedFullIds": 0
+    },
+    {
+      "ref": "e9f7968",
+      "keyFunctionSha256": "b617a0b3f1f72da052418534fd0a6cb3774f7bfe404d7c5f2e9c94e6236d6a1e",
+      "probedSources": 844,
+      "uniqueOrderIdentities": 1,
+      "preservedFullIds": 0
+    },
+    {
+      "ref": "c8e97b8",
+      "keyFunctionSha256": "b617a0b3f1f72da052418534fd0a6cb3774f7bfe404d7c5f2e9c94e6236d6a1e",
+      "probedSources": 844,
+      "uniqueOrderIdentities": 1,
+      "preservedFullIds": 0
+    },
+    {
+      "ref": "32594ed",
+      "keyFunctionSha256": "0b59a702e6e4531c4d2ebbc107e6a17950078279747e3501a9786eab28ee35c0",
+      "probedSources": 844,
+      "uniqueOrderIdentities": 844,
+      "preservedFullIds": 844
+    },
+    {
+      "ref": "working-tree",
+      "keyFunctionSha256": "0b59a702e6e4531c4d2ebbc107e6a17950078279747e3501a9786eab28ee35c0",
+      "probedSources": 844,
+      "uniqueOrderIdentities": 844,
+      "preservedFullIds": 844
+    }
+  ]
+}

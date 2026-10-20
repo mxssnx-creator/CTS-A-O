@@ -3,18 +3,19 @@
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import {
-  iterateSessionValidation,
-  iterateSessionTapeTrades,
-  readSessionDump,
-} from "./lib/session-dump.mjs";
+import { iterateSessionValidation, iterateSessionTapeTrades } from "./lib/session-dump.mjs";
+import { readFundedSession } from "./lib/session-funded-cohort.mjs";
 import { configEval, makeTape } from "../src/core/sim/walkforward.ts";
 import { kindOfId, parseConfigId } from "../src/core/pipeline/pipeline.ts";
 import { modeledUnitReturn, settledHourT } from "../src/core/metrics/stats.ts";
 const dir = resolve(process.argv[2] ?? "runs/micro-inverse-general-20x12h-v7"),
   out = process.argv[3] ?? `${dir}/stage-transition.json`;
 const p = JSON.parse(readFileSync(`${dir}/protocol.json`)),
-  raw = await readSessionDump(`${dir}/raw.json`, { fields: ["trades"] });
+  {
+    raw,
+    trades: fundedTrades,
+    funding,
+  } = await readFundedSession(`${dir}/raw.json`, process.argv[4]);
 const recorded = [];
 let initial;
 for await (const s of iterateSessionValidation(`${dir}/raw.json`)) {
@@ -97,7 +98,7 @@ let winHold = 0,
   lossHold = 0,
   wins = 0,
   losses = 0;
-for (const t of raw.trades) {
+for (const t of fundedTrades) {
   const r = modeledUnitReturn(t);
   assert.ok(Number.isFinite(r));
   const h = Math.floor(t.entryT / 3600000) * 3600000,
@@ -136,6 +137,7 @@ const view = (m) =>
 const result = {
   schema: "cts-own-gate-transition-v1",
   sourceSha256: p.source.sha256,
+  funding,
   window: p.window,
   initialSets: initial.size,
   verifiedInitialTapes: seen.size,

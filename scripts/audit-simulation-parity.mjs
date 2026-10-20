@@ -4,7 +4,8 @@ import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { readSessionDump, iterateSessionTapeTrades } from "./lib/session-dump.mjs";
+import { iterateSessionTapeTrades } from "./lib/session-dump.mjs";
+import { readFundedSession } from "./lib/session-funded-cohort.mjs";
 import { modeledUnitReturn, settledHourT } from "../src/core/metrics/stats.ts";
 export const tradeMatchKey = (t) => JSON.stringify([t.sym, t.side, t.entryT, t.exitT]);
 export function reconcileReturns(tapeRows, executions, tolerance = 1e-10) {
@@ -56,11 +57,11 @@ const finish = (x) => ({
   pf: x.closes && x.gl ? x.gp / x.gl : null,
   pfState: !x.closes ? "empty" : !x.gl ? "no-loss-gate-score-4" : "measured",
 });
-export async function auditSimulationParity(file) {
+export async function auditSimulationParity(file, reportFile) {
   file = resolve(file);
-  const raw = await readSessionDump(file, { fields: ["trades"] }),
+  const { trades, funding } = await readFundedSession(file, reportFile),
     byCfg = new Map();
-  for (const t of raw.trades) {
+  for (const t of trades) {
     const xs = byCfg.get(t.cfg) ?? [];
     xs.push(t);
     byCfg.set(t.cfg, xs);
@@ -112,7 +113,8 @@ export async function auditSimulationParity(file) {
     basis:
       "Identical funded settled simulation cohort: cfg × symbol × side × entry timestamp × exit timestamp; one modeled round trip; external execution factors removed once from execution only.",
     sourceDump: file,
-    totalExecutions: raw.trades.length,
+    totalExecutions: trades.length,
+    funding,
     examinedConfigTapes: examined,
     matched: tape.closes,
     missingCount: missing.length,
@@ -123,13 +125,13 @@ export async function auditSimulationParity(file) {
     execution: finish(execution),
     hours: [...hours.values()].sort((a, b) => a.t - b.t).map(view),
     ranges: [...ranges.values()].map(view),
-    ok: missing.length === 0 && mismatched.length === 0 && tape.closes === raw.trades.length,
+    ok: missing.length === 0 && mismatched.length === 0 && tape.closes === trades.length,
   };
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const file = process.argv[2];
   assert.ok(file, "audit-simulation-parity.mjs RAW_JSON [OUT_JSON]");
-  const result = await auditSimulationParity(file);
+  const result = await auditSimulationParity(file, process.argv[4]);
   if (process.argv[3]) writeFileSync(process.argv[3], JSON.stringify(result, null, 2) + "\n");
   console.log(JSON.stringify(result));
   assert.ok(result.ok, "exact simulation cohort differs from its source tapes");

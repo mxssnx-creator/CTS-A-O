@@ -17,7 +17,7 @@ import {
   studySha256,
 } from "./lib/session-study.mjs";
 const root = resolve("."),
-  out = resolve(process.argv[2] ?? "runs/micro-identity-reference-v8");
+  out = resolve(process.argv[2] ?? "runs/micro-identity-reference-v9");
 assert.ok(!existsSync(`${out}/protocol.json`), "Never overwrite a measured protocol");
 process.env.CTS_CORE_STATE = "off";
 process.env.CTS_CORE_AUTOSTART = "0";

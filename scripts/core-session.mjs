@@ -2805,7 +2805,7 @@ check(
 check(
   "every type that traded has hourly cells",
   types.filter((x) => x.n > 0).length,
-  new Set(typeHours.map((h) => h.key)).size,
+  new Set(typeHours.filter((h) => h.closes > 0).map((h) => h.key)).size,
 );
 check(
   "Σ per-type net = total net",
@@ -4166,7 +4166,7 @@ if (raw.frozenBlockComparison)
   };
 // Exact allocations from this report's shared capped book, without rounding individual small P&L slices.
 // A Signal contribution uses these same allocations; it never invents a second independently sized balance.
-if (flag("signal-progress"))
+if (flag("signal-progress") || flag("chunk-allocations"))
   data.sizedOrders = trades.map((x, closeIndex) => {
     const key = orderKey(x),
       known = sized.units.has(key),
@@ -4190,7 +4190,7 @@ if (flag("signal-progress"))
       sizedPnl: known ? x.r * unitNotional : null,
     };
   });
-if (flag("signal-progress"))
+if (flag("signal-progress") || flag("chunk-allocations"))
   data.sizedOpenOrders = openEnd.map((x, openIndex) => {
     const key = orderKey(x),
       known = sized.units.has(key),
@@ -4213,7 +4213,7 @@ if (flag("signal-progress"))
       sizedPnl: known ? x.mtmR * unitNotional : null,
     };
   });
-if (flag("signal-progress"))
+if (flag("signal-progress") || flag("chunk-allocations"))
   data.ownershipPrecision = {
     epsilonUsd: BOOK_NOTIONAL_EPS_USD,
     definition:

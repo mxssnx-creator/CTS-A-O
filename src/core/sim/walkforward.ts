@@ -1254,9 +1254,9 @@ export function tradeAt(tp: ConfigTape, i: number): Trade {
 
 const AXIS_VARIANT_TAG = /^axd?-[a-z0-9]+$/;
 /**
- * The config id as order identity: without the indication and without the Axis variant tag (…|ax-atr2,
- * …|axd-fib3h). A variant tag is a ladder setting, not a protect: two depths whose deeper rung never fills place the
- * same order.
+ * Independent source families retain their full config ID. For the remaining engine aliases only,
+ * remove the indication and equivalent Axis variant tag (…|ax-atr2, …|axd-fib3h).
+ * Two Axis depths whose deeper rung never fills can place the same order.
  */
 export function orderCfgKey(cfg: string): string {
   const parts = cfg.split("|");
@@ -1281,8 +1281,8 @@ export function orderCfgKey(cfg: string): string {
 }
 
 /**
- * An order's identity apart from the indication that produced it: symbol, side, entry, exit, result, strategy type
- * and the protect part of the config id. Two configs with the same key are the same order.
+ * Exact event identity under orderCfgKey's explicit source/alias policy: symbol, side,
+ * entry, exit, result and strategy type. Independent Micro/Inverse sources never share a key.
  */
 export function dupKey(
   tr: Pick<Trade, "cfg" | "sym" | "side" | "entryT" | "exitT" | "r" | "kind">,

@@ -19,7 +19,7 @@ it("empty, missing evidence and the no-loss gate convention never become measure
   assert.equal(cohortPf({ ...emptyCohort(), closes: 2, gp: 1, gl: 1, unknownReturns: 1 }).pf, null);
 });
 it("source-hour selection assigns exact-hour settlements to the same completed hour as central statistics", async () => {
-  const { mkdtempSync, writeFileSync, rmSync } = await import("node:fs");
+  const { mkdtempSync, writeFileSync, mkdirSync, rmSync } = await import("node:fs");
   const { tmpdir } = await import("node:os");
   const { join } = await import("node:path");
   const { stageAudit } = await import("./audit-micro-stages.mjs");
@@ -38,6 +38,7 @@ it("source-hour selection assigns exact-hour settlements to the same completed h
     writeFileSync(
       join(dir, "raw.json"),
       JSON.stringify({
+        window: { startT: 0, endT: 2 * H },
         trades: [H, H + 1, 2 * H].map((exitT, i) => ({
           cfg,
           sym: "A",
@@ -52,6 +53,11 @@ it("source-hour selection assigns exact-hour settlements to the same completed h
         funnel: { counts: { basePassed: 1, poolConfigs: 1 } },
       }),
     );
+    mkdirSync(join(dir, "report"));
+    writeFileSync(join(dir, "report/data.json"), JSON.stringify({
+      window: { startT: 0, endT: 2 * H },
+      total: { orders: 3, fundedOrders: 3, zeroAllocatedOrders: 0, unknownAllocations: 0 },
+    }));
     const result = await stageAudit(dir);
     assert.equal(result.perIndication[0].activeHours, 2);
     assert.equal(result.perIndication[0].positiveHours, 1);
