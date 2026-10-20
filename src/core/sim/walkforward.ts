@@ -540,6 +540,9 @@ export function gridVariants(g: ProtectGridSpec): number {
   );
 }
 
+/** upper bound of a Wide stop / trail (grid.maxSl / maxTrail); none when unset */
+const capAt = (x: number, max?: number) => (max && max > 0 ? Math.min(x, max) : x);
+
 /**
  * Every protect variant of a grid (hold converted to bars). Each variant is computed independently. `cost` (the
  * round-trip position cost, settings.cost) turns Micro's net targets into price targets (tpNetOfCost).
@@ -572,9 +575,9 @@ export function protectGrid(tfMin: number, g: ProtectGridSpec = DEFAULT_GRID, co
     const p: Protect = {
       tp,
       // no evaluated config below the stop floor (EVAL_MIN_SL): a tighter stop is inside the spread and noise
-      sl: +Math.max(slFloor, minSl, tp * k).toFixed(4),
+      sl: +capAt(Math.max(slFloor, minSl, tp * k), tag ? undefined : g.maxSl).toFixed(4),
       // the floor is on the trailing distance (trail × trailStep), not on the arming move
-      trail: tr > 0 ? +Math.max(minTrail / (g.trailStep ?? 1), tp * tr).toFixed(4) : 0,
+      trail: tr > 0 ? +capAt(Math.max(minTrail / (g.trailStep ?? 1), tp * tr), tag ? undefined : g.maxTrail).toFixed(4) : 0,
       hold: Math.max(
         holdFloorBars(tag === "mn" ? g.minimal : tag === "sh" ? g.short : tag === "gn" ? g.general : tag === "lg" ? g.long : undefined),
         Math.round((h * 60) / tfMin),

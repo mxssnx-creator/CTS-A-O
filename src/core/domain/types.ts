@@ -685,6 +685,9 @@ export interface ProtectGridSpec {
   minTrail: number;
   /** minimum absolute SL distance (fraction) */
   minSl: number;
+  /** Wide grid only: upper bound of the stop and of the trailing distance (fractions of price; unset = none) */
+  maxSl?: number;
+  maxTrail?: number;
   holdH: readonly number[];
   /** trailing distance after activation as a share of the activation move (default 1) */
   trailStep?: number;

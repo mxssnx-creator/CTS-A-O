@@ -426,6 +426,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
     list(s.grid.holdH, 0.25, 72, "grid hold");
     num(s.grid.minTrail, 0, 0.1, "min trail");
     num(s.grid.minSl, 0, 0.2, "min SL");
+    if (s.grid.maxSl !== undefined) num(s.grid.maxSl, 0.005, 0.2, "max SL");
+    if (s.grid.maxTrail !== undefined) num(s.grid.maxTrail, 0.003, 0.2, "max trail");
     num(s.grid.trailStep, 0.1, 1, "trail step");
     if (s.grid.trailFree !== undefined && typeof s.grid.trailFree !== "boolean")
       throw new Error("trail free: on / off");
