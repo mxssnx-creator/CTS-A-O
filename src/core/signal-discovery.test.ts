@@ -166,9 +166,11 @@ describe("Signals: independent protection discovery", () => {
     const unique = (tf: number) =>
       new Set(effective(tf).map((p) => configId("follow", `sig-ema-cross-s@m${tf}`, p)));
     assert.equal(requested.length, 86);
+    // the owner's 3 % initial-stop cap folds three trailed requests onto one config on the 15m and 30m lanes (83 distinct);
+    // the 1m and 5m lanes keep their soft-floored stops under 3 % (86)
     assert.deepEqual(
       [1, 5, 15, 30].map((tf) => unique(tf).size),
-      [86, 86, 86, 86],
+      [86, 86, 83, 83],
     );
     assert.equal(
       new Set(
