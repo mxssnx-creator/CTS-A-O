@@ -113,7 +113,97 @@
     "lintErrors": 0,
     "desktopMobileDevBuiltSurfaces": 4,
     "fullCore": "in progress",
-    "24hAudit": "in progress",
-    "6hAudit": "deferred until other large replay completes to respect available RAM"
+    "24hAudit": "completed, zero entry violations",
+    "6hAudit": "running serialized",
+    "pagedReportDesktopMobile": true
+  },
+  "twentyFourHourAudit": {
+    "tapes": 99520,
+    "settled": {
+      "n": 12544,
+      "pf": 1.0338793872190866,
+      "noLoss": false,
+      "exactRatio": 1.0338793872190866,
+      "gp": 7024.784970120302,
+      "gl": 6794.58847614272,
+      "net": 230.19649397760253
+    },
+    "endpointMarks": {
+      "n": 2670,
+      "pf": 0.7028574539276111,
+      "noLoss": false,
+      "exactRatio": 0.7028574539276111,
+      "gp": 627.2486118833599,
+      "gl": 892.4264918558603,
+      "net": -265.1778799725114
+    },
+    "settledPlusMarks": {
+      "n": 15214,
+      "pf": 0.9954492886847942,
+      "noLoss": false,
+      "exactRatio": 0.9954492886847943,
+      "gp": 7652.033582003623,
+      "gl": 7687.014967998651,
+      "net": -34.98138599491035
+    },
+    "byDirection": {
+      "long": {
+        "n": 5561,
+        "pf": 0.4330854716360706,
+        "noLoss": false,
+        "exactRatio": 0.4330854716360706,
+        "gp": 1996.0417655233553,
+        "gl": 4608.886458330942,
+        "net": -2612.8446928075728
+      },
+      "short": {
+        "n": 6983,
+        "pf": 2.300745098653291,
+        "noLoss": false,
+        "exactRatio": 2.3007450986532905,
+        "gp": 5028.743204596957,
+        "gl": 2185.7020178117355,
+        "net": 2843.0411867852335
+      }
+    },
+    "executedConfigs": 4075,
+    "positiveHours": 13,
+    "flatHours": 0,
+    "negativeHours": 11,
+    "qualificationViolations": [],
+    "timingMs": {
+      "base": 11151.972728,
+      "tapes": 810927.5459949999,
+      "walk": 17397.72632600006,
+      "reporting": 4954.502669999958,
+      "total": 844431.752166
+    },
+    "rssMaxMiB": 4710.859375,
+    "memoryPhases": [
+      {
+        "phase": "bars",
+        "rssMiB": 361.46875,
+        "heapMiB": 120.37354278564453,
+        "arrayBuffersMiB": 55.1793327331543
+      },
+      {
+        "phase": "base-cache-released",
+        "rssMiB": 555.84765625,
+        "heapMiB": 23.08850860595703,
+        "arrayBuffersMiB": 221.56785678863525
+      },
+      {
+        "phase": "tapes-cache-released",
+        "rssMiB": 4669.4296875,
+        "heapMiB": 614.2385406494141,
+        "arrayBuffersMiB": 3648.3577756881714
+      },
+      {
+        "phase": "walk-complete",
+        "rssMiB": 4694.86328125,
+        "heapMiB": 746.0181274414062,
+        "arrayBuffersMiB": 3153.589472770691
+      }
+    ]
   }
 }
