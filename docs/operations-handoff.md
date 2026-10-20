@@ -1,3 +1,13 @@
+# Micro/Inverse independent order admission — active correction, 20 October 2026
+
+Source manifest `b0eb969dd109c5bfde95a4fd25fc79877d15521fae505737e43c8a72600f13d3` preserves full Micro/Inverse IDs in central closed/open order deduplication. The previous exact-cohort audit was correct for admitted trades but missed incorrectly omitted independent sources. Archived v7 had 97,398 duplicate rejections. `micro-order-identity.test.ts` proves old c8 source executes one of 844 identical independent sources, new source all 844; Paper/native keys retain both sides. Current focused identity/Signal/independence tests pass 36/36 and typecheck passes. See `docs/micro-2026-10-20/stage-transition.md` and the mandatory note in `docs/report-integrity.md`.
+
+Own rolling gate arithmetic independently replays 173,496 decisions with no mismatch. Counts first fall at 10:00 UTC (14,458 to 11,914); exit-hour PF first becomes losing at 12:00. This set decline precedes duplicate admission and must not be conflated with it. The exact original 616-source window is frozen for corrected v8 comparison, with unchanged economic settings and gates. The 728-source optimization is resealed as v5; preserve completed pre-fix v4 scores/selection separately. Current market PF impact is not known until corrected replays complete.
+
+CI 39500328398 on pre-identity-fix manifest 8855 completed study and stress. Selected training PF 2.5213 did not generalize: validation 0.175576, confirmation 0.0304892. All per-trade parity/audits pass. Stress processed 728 distinct IDs and 120 synthetic symbols, max timer lag 59.065ms on that runner; no universal latency SLA. Functional core inventory is still running. Local 3-file completion passed Micro 10/10 and processing 6/6; runtime suite was memory-killed before any tests and remains unverified locally, not failed assertions. Do not disable guards. No live deployment, merge or venue orders.
+
+The correction requires its own full isolated functional, original-window, chronological study and stress jobs. Do not claim profitability until measured; retain all losses and unknowns. The full requested 12h genuine 5s dataset and native capital/ownership acceptance remain unresolved.
+
 # Exact simulation parity and recovered comparison — active work, 20 October 2026
 
 Current runtime source manifest: `8855f27c677a7d4b93e9b39a56667edb26f98ad5a0edc6d668efa0cc45b83539`. This adds a central execution-to-tape audit, without changing signals, gates or economic calculations. PR 184 remains draft. The previous `3b6b052…` financial comparisons are preserved.

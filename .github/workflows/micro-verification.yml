@@ -10,14 +10,14 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: micro-verification-${{ github.ref }}
+  group: micro-verification-${{ github.sha }}
   cancel-in-progress: false
 jobs:
   verify:
     strategy:
       fail-fast: false
       matrix:
-        task: [functional, study, stress]
+        task: [functional, reference, study, stress]
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:
@@ -48,10 +48,22 @@ jobs:
         run: |
           npm run typecheck
           node --experimental-strip-types --no-warnings scripts/test-all.mjs --only src/core/ --no-coverage --min-free 4500 --out runs/micro-ci-functional --logs runs/micro-ci-functional/logs
-          node --require ./scripts/lib/core-test-offline-guard.cjs --experimental-strip-types --no-warnings --test scripts/micro-stages.test.mjs scripts/test-all-offline.test.mjs scripts/core-test-offline.test.mjs
+          node --require ./scripts/lib/core-test-offline-guard.cjs --experimental-strip-types --no-warnings --test scripts/micro-stages.test.mjs scripts/simulation-parity.test.mjs scripts/test-all-offline.test.mjs scripts/core-test-offline.test.mjs
       - name: Complete frozen chronological optimization
         if: matrix.task == 'study'
         run: node --require ./scripts/lib/core-test-offline-guard.cjs --experimental-strip-types --no-warnings scripts/micro-verification-ci.mjs
+      - name: Replay original market window with independent order identities
+        if: matrix.task == 'reference'
+        shell: bash
+        env:
+          NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
+        run: |
+          node --experimental-strip-types --no-warnings scripts/prepare-micro-identity-reference.mjs
+          node --experimental-strip-types --no-warnings scripts/micro-study.mjs run --out runs/micro-identity-reference-v8 --workers 2
+          node --experimental-strip-types --no-warnings scripts/audit-micro-execution.mjs runs/micro-identity-reference-v8
+          node --experimental-strip-types --no-warnings scripts/audit-micro-stages.mjs runs/micro-identity-reference-v8
+          node --experimental-strip-types --no-warnings scripts/audit-stage-transition.mjs runs/micro-identity-reference-v8
+          node --experimental-strip-types --no-warnings scripts/audit-simulation-parity.mjs runs/micro-identity-reference-v8/raw.json runs/micro-identity-reference-v8/simulation-parity.json
       - name: Exercise all 728 identities with 120 symbols and compute storm
         if: matrix.task == 'stress'
         run: node --require ./scripts/lib/core-test-offline-guard.cjs --expose-gc --max-old-space-size=4096 --experimental-strip-types --no-warnings scripts/stress-micro-runtime.mjs --out runs/micro-ci-stress
@@ -66,6 +78,7 @@ jobs:
           path: |
             runs/micro-ci-*/
             runs/micro-opt-*/
+            runs/micro-identity-reference-v8/
             docs/micro-optimization-2026-10-20/selection.json
             docs/micro-optimization-2026-10-20/selected-focus.json
             !**/*.sqlite*

@@ -88,7 +88,7 @@ try {
   await rt.liveSettled(2000);
   sample();
   const summary = { schema: "cts-micro-load-v1", source: "synthetic functional load, no exchange executions",
-    scope: "120 symbols; all 616 Micro/mirror identities; 1/5/15m singles and combinations; four Micro protects; two real runtime computations; 100 coalesced kicks. Full four-range financial grid measured separately on 20 real symbols.",
+    scope: `120 symbols; all ${MICRO_CONFIG_IDS.length + INVERSE_MICRO_CONFIG_IDS.length} Micro/mirror identities; 1/5/15m singles and combinations; four Micro protects; two real runtime computations; 100 coalesced kicks. Full four-range financial grid measured separately on 20 real symbols.`,
     settings: rt.settings, wf: rt.wf, elapsedMs: performance.now() - started, maxRssMb,
     maxCompute, kicks, nativeChecks, computes: rt.status.computes, paperSteps: rt.status.paperSteps,
     symbols: rt.candles.size, progress: rt.status.executionProgress, status: rt.status, failure, samples };

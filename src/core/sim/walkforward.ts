@@ -109,6 +109,7 @@ import { INDICATION_BY_ID, isSignalInd, laneOf, signalSourceOf } from "../indica
 import { signalRangeOf } from "../signal-config.ts";
 import { isMicroInd, microIndFits, type MicroIndRule } from "../indications/micro.ts";
 import { isMicroCalculationInd as isMicroFamilyInd } from "../indications/micro-family.ts";
+import { isInverseInd } from "../indications/inverse-config.ts";
 import {
   acceptKey,
   activeSignals,
@@ -1259,10 +1260,14 @@ const AXIS_VARIANT_TAG = /^axd?-[a-z0-9]+$/;
  */
 export function orderCfgKey(cfg: string): string {
   const parts = cfg.split("|");
-  // Signal, Tactic, Relate and Break sources, parameter ranges and timeframe lanes own independent trades even when their protect
-  // and onset coincide. Keep their complete identity; other engine aliases and equivalent Axis depths still dedupe.
+  // Each independently configured source owns its orders, even when protect, onset and outcome coincide.
+  // In particular, Micro profiles/subsets and their inverse mirrors must not collapse into engine aliases.
+  // Other engine aliases and equivalent Axis depths retain their existing deduplication policy.
   if (
     isSignalInd(parts[1] ?? "") ||
+    isMicroFamilyInd(parts[1] ?? "") ||
+    isMicroInd(parts[1] ?? "") ||
+    isInverseInd(parts[1] ?? "") ||
     parts[1]?.startsWith("tactic-") ||
     parts[1]?.startsWith("relate-") ||
     parts[1]?.startsWith("break-rel-") ||

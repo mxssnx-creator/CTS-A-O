@@ -133,6 +133,13 @@ export async function stageAudit(dir) {
     postBaseBuiltConfigs: raw.funnel.counts.poolConfigs,
     initial,
     rollingValidation: steps,
+    entryAdmission: {
+      firstRejectionCounts: raw.engine.skips ?? null,
+      firstRejectionsByRange: raw.engine.skipsByRange ?? null,
+      rejectedReturnDiagnostics: raw.engine.skipPf ?? null,
+      scope:
+        "First rejection only; candidate diagnostics may include endpoint marks. Config sets, candidate events and funded settled closes have different denominators. Never subtract these counts as though they were all sets or all closes.",
+    },
     fundedModeledExecution: cohortPf(executed),
     perRange,
     perIndication: sourceRows,
