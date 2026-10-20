@@ -119,27 +119,30 @@ describe("signals: sources and combos", () => {
     );
     const normal = protects.filter((p) => p.trail === 0);
     const trailing = protects.filter((p) => p.trail > 0);
-    assert.equal(protects.length, 2100);
+    // the owner's 3 % initial-stop cap on trailing configs folds 702 of the 1,350 Trailing protections onto configs
+    // already present (identical stop, target, trail and hold, so identical trades): 648 Trailing, 1,398 in all
+    assert.equal(protects.length, 1398);
     assert.equal(normal.length, 750, "300 existing + 450 new Normal protections");
-    assert.equal(trailing.length, 1350, "900 existing + 450 new 48 h Trailing protections");
+    assert.equal(trailing.length, 648, "Trailing protections after the 3 % cap (of 1,350 before it)");
     assert.deepEqual([...new Set(normal.map((p) => p.hold))].sort((a, b) => a - b), [48, 64, 96, 128, 192]);
     assert.deepEqual([...new Set(trailing.map((p) => p.hold))].sort((a, b) => a - b), [64, 96, 192]);
   });
 
-  it("builds all 42 Normal + 35 capped Trailing configs beside nine independent Trailing only sets", () => {
+  it("builds all 42 Normal + 35 capped Trailing configs beside six independent Trailing only sets (three fold onto the 3 % cap)", () => {
     const p = signalProtects({ ...on, exits: "pct" });
     const normal = p.filter((x) => x.trail === 0);
     const trailing = p.filter((x) => x.trail > 0 && !x.trailOnly);
     assert.equal(normal.length, 42);
     assert.equal(trailing.length, 35);
-    assert.equal(new Set(p.map((x) => `${x.tp}|${x.sl}|${x.trail}`)).size, 86, "all distinct");
+    assert.equal(new Set(p.map((x) => `${x.tp}|${x.sl}|${x.trail}`)).size, 83, "all distinct");
     for (const x of p) assert.ok((x.trailOnly ? x.tp === 0 : x.tp >= 0.01) && x.hold > 0);
     assert.deepEqual(on.normal.tp, [0.01, 0.015, 0.025, 0.03, 0.04, 0.05, 0.06]);
     assert.deepEqual(on.normal.slOfTp, [0.5, 0.75, 1, 1.5, 2, 3]);
     assert.deepEqual(on.trailing.tp, [0.01, 0.015, 0.03, 0.04, 0.05, 0.06, 0.08]);
     assert.deepEqual(on.trailing.trailOfTp, [0.2, 0.3, 0.4, 0.6, 0.8]);
     assert.equal(on.minTrail, 0.002, "the 1 % TP × 0.2 trail remains eligible");
-    for (const x of trailing) assert.ok(x.sl >= 2 * x.tp - 1e-9, "trailing stops at 2 × target");
+    // a trailing stop is at least 2 × its target, up to the owner's 3 % initial-stop cap
+    for (const x of trailing) assert.ok(x.sl >= Math.min(2 * x.tp, 0.03) - 1e-9, "trailing stops at 2 × target, capped at 3 %");
   });
 
   it("deactivates trails whose effective gap is below the configured minimum", () => {
@@ -160,9 +163,11 @@ describe("signals: sources and combos", () => {
     const pct = signalProtects({ ...on, exits: "pct" });
     const atr = signalProtects({ ...on, exits: "atr" });
     const both = signalProtects({ ...on, exits: "both" });
-    assert.equal(pct.length, 86);
-    assert.equal(atr.length, 27);
-    assert.equal(both.length, 104, "percent + ATR + nine additional Trailing only sets");
+    assert.equal(pct.length, 83);
+    // 9 ATR no-trail + 9 ATR trailing + 6 Trailing only sets (three folded onto the 3 % cap)
+    assert.equal(atr.length, 24);
+    // 83 percent (its six Trailing only sets included) + 18 ATR (9 no-trail, 9 trailing), after the 3 % cap
+    assert.equal(both.length, 101, "percent + ATR after the 3 % cap");
     assert.ok(pct.every((x) => !x.atr) && atr.every((x) => x.atr || x.trailOnly));
     assert.equal(atr.filter((x) => x.atr && x.trail > 0).length, 9);
     // Stable-02 max hold: 3 × 15m bars

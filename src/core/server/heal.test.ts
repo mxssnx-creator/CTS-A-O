@@ -36,6 +36,9 @@ class TrackedRuntime extends CoreRuntime {
   constructor(...a: ConstructorParameters<typeof CoreRuntime>) {
     super(...a);
     tracked.track(this);
+    // the preset comparison (about 20 s per preset) holds the cycle, so a 180 s wait for a compute behind it times out
+    // under load; none of these tests asserts on it (runtime.test.ts stubs it the same way)
+    (this as unknown as { comparePresets: () => Promise<void> }).comparePresets = async () => {};
   }
 }
 afterEach(() => tracked.disposeAll());

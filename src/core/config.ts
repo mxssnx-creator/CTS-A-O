@@ -105,7 +105,8 @@ export const DEFAULT_TOGGLES: StrategyToggles = {
   blockActive: false,
   dca: true,
   dcaActive: false,
-  axis: false,
+  // Axis on by default (operator, 20 Oct): its configs compute, validate and execute in the session run
+  axis: true,
 };
 
 /** Tactics: trend strength + volatility regime on by default (docs/block-sweep.md, tactics); the others in docs/tactics.md. */

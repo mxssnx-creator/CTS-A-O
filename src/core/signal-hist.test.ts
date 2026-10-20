@@ -240,9 +240,11 @@ describe("signal historic trailing configs", () => {
 
   it("historic preparation retains stage PF and stricter custom floors on local and worker paths", async () => {
     // A deterministic threshold fixture, not a strategy search: both single-protect configs have enough closes.
-    // The same nonzero cost applies to the measured tape and both historical preparation paths.
+    // The same nonzero cost applies to the measured tape and both historical preparation paths. The seeds are the pair
+    // whose PFs fall inside both bounds under the 0.15 % PositionCost (19 Oct; the HIST_MIN_TP floor moved to 0.75 %):
+    // seeds 1 / 2 give PF 1.0024 and 1.1010; the former 3 / 5 pair fell outside (scan of seeds 1–10).
     const cost = 0.0001;
-    const bars = [3, 5].map((seed) => barsFromCandles(`${seed}-USDT`, 15,
+    const bars = [1, 2].map((seed) => barsFromCandles(`${seed}-USDT`, 15,
       syntheticCandles(`${seed}-USDT`, 15, 600, Date.UTC(2026, 9, 1), seed)));
     const u = makeUniverse(bars);
     const sig = signalSettings({ enabled: true, holdH: 1, filter: { trendH: 0, volFloor: 0 },
@@ -348,7 +350,8 @@ describe("signal historic trailing configs", () => {
     const sig = signalSettings({ enabled: true });
     const ind = "sig-ema-cross-s@m15";
     const pair = `follow|${ind}`;
-    const hist: Protect = { tp: 0.0175, sl: 0.035, trail: 0.0075, hold: 192 };
+    // a trailing historic config: its stop at the 3 % initial-stop cap (a wider one would be capped by laneProtect)
+    const hist: Protect = { tp: 0.0175, sl: 0.03, trail: 0.0075, hold: 192 };
     const histId = configId("follow", ind, laneProtect(hist, ind));
     const std = signalProtects(sig).find((p) => p.trail > 0)!;
     const stdId = configId("follow", ind, laneProtect(std, ind));
@@ -366,7 +369,7 @@ describe("signal historic trailing configs", () => {
 
   it("on by default beside the 77 percent configs and nine Trailing only sets", () => {
     assert.equal(DEFAULT_SIGNALS.hist.enabled, true);
-    assert.equal(signalProtects(signalSettings({ enabled: true })).length, 86);
+    assert.equal(signalProtects(signalSettings({ enabled: true })).length, 83);
   });
 });
 

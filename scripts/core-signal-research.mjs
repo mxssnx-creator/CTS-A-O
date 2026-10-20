@@ -16,7 +16,9 @@ import { tacticCooldown } from "../src/core/indications/filters.ts";
 import { sideSignal, simulate } from "../src/core/sim/backtest.ts";
 import { profitFactor } from "../src/core/metrics/stats.ts";
 import { DEFAULT_TACTICS, PF_NO_LOSS } from "../src/core/config.ts";
-import { POSITION_COST_RT } from "../src/core/model-cost.ts";
+// The frozen runtime-parity v2 protocols were recorded at a 0.2 % round trip; that is their own frozen cost, kept as history.
+// The live modeled cost (POSITION_COST_RT) moved to 0.15 % on 19 Oct, so the guard no longer follows the constant.
+const FROZEN_PROTOCOL_ROUND_TRIP = 0.002;
 import { validateMarket, maskEntries } from "./core-tactic-research.mjs";
 
 export const sha256 = (value) => createHash("sha256").update(value).digest("hex");
@@ -42,7 +44,7 @@ export function researchCells(protocol) {
     sha256(JSON.stringify(protects)) !== FROZEN_PROTECTS_SHA256
   )
     throw new Error("Frozen protects differ from the predeclared research grid");
-  if (protocol.model.roundTripCost !== POSITION_COST_RT) throw new Error("Frozen PositionCost must remain 0.2% round trip");
+  if (protocol.model.roundTripCost !== FROZEN_PROTOCOL_ROUND_TRIP) throw new Error("Frozen PositionCost must remain 0.2% round trip (the protocol's recorded cost)");
   const floors = protocol.preOutcomeModelClarification?.signalFloors;
   if (stable(floors ?? {}) !== stable(FROZEN_SIGNAL_FLOORS))
     throw new Error("Frozen Signal floors differ from the predeclared research floors");

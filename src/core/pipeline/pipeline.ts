@@ -58,6 +58,7 @@ import {
   LANE_MIN,
   REF_TF,
   bothSides,
+  capTrailingSl,
   mergeSideTrades,
   nextEntryIndex,
   simulate,
@@ -172,6 +173,15 @@ export { LANE_MIN, REF_TF };
  * An ATR protect keeps its ATR multiples (the lane's own ATR scales it); only its nominal values and hold move.
  */
 export function laneProtect(p: Protect, ind: string): Protect {
+  // the 3 % initial-stop cap of a trailing protect applies after the lane's scaling and floors
+  return capTrailingSl(scaledLaneProtect(p, ind));
+}
+
+/**
+ * The lane's scaling without the 3 % initial-stop cap: the identity of a position opened before the cap (its stop
+ * stays where it was opened) and the inverse search that recovers a held Exit's protect from its id.
+ */
+export function scaledLaneProtect(p: Protect, ind: string): Protect {
   const tf = laneOf(ind).tf;
   if (tf === null || tf === REF_TF) return p;
   // a range cell (micro, minimal, short, general, long, plus) is a fixed price distance on every lane; its hold is
@@ -628,15 +638,17 @@ export function baseRangeProtects(
             const k =
               tag === "mc" ? k0 : Math.max(k0, (r as { trailSlOfTp?: number }).trailSlOfTp ?? 2);
             const step = g.trailStep ?? 1;
-            out.push({
-              tp,
-              sl: distanceAtFloor(tp * k, Math.max(floorR, minSlR), digits),
-              trail: trailAtFloor(tp * tr, minTrailR, step, digits),
-              hold,
-              tag,
-              trailStep: step,
-              trailFree: g.trailFree ?? false,
-            });
+            out.push(
+              capTrailingSl({
+                tp,
+                sl: distanceAtFloor(tp * k, Math.max(floorR, minSlR), digits),
+                trail: trailAtFloor(tp * tr, minTrailR, step, digits),
+                hold,
+                tag,
+                trailStep: step,
+                trailFree: g.trailFree ?? false,
+              }),
+            );
           }
         }
       }

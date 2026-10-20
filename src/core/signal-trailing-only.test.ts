@@ -105,13 +105,15 @@ describe("Signals: additional independent Trailing only sets", () => {
         trailingOnly: { ...sig.trailingOnly, enabled: false },
       });
       const extra = enabled.filter((p) => p.trailOnly);
-      assert.equal(extra.length, 9);
-      assert.equal(enabled.length - disabled.length, 9);
+      // six after the owner's 3 % cap (three of the nine share a stop with another)
+      assert.equal(extra.length, 6);
+      assert.equal(enabled.length - disabled.length, 6);
       assert.deepEqual(
         enabled.filter((p) => !p.trailOnly),
         disabled,
       );
-      assert.deepEqual(new Set(extra.map((p) => p.sl)), new Set([0.015, 0.03, 0.06]));
+      // the 6 % stops sit at the 3 % cap, where they share their configs with the 3 % sets
+      assert.deepEqual(new Set(extra.map((p) => p.sl)), new Set([0.015, 0.03]));
       assert.deepEqual(new Set(extra.map((p) => p.trail)), new Set([0.005, 0.01, 0.02]));
       assert.ok(
         extra.every(
@@ -461,7 +463,9 @@ describe("Signals: additional independent Trailing only sets", () => {
       },
     };
     const local = buildTapes(u, protects, 0.002, undefined, new Set(pairs), null, adjust, floors);
-    assert.equal(local.length, 18);
+    // six Trailing only sets after the 3 % cap, on each of the two pairs; the held set's adjusted 2× stop is capped at 3 %,
+    // which makes it the same config as one of the six on the first pair (10 tapes, the held flag kept on it)
+    assert.equal(local.length, 10);
     assert.ok(
       local.every(
         (tp) => tp.kind === "trailing-only" && tp.protect.trailOnly && tp.protect.tp === 0,
@@ -523,8 +527,9 @@ describe("Signals: additional independent Trailing only sets", () => {
       assert.deepEqual(
         counter.rows().map((row) => [row.kind, row.configured, row.evaluated]),
         [
-          ["trailing-only", 9, 9],
-          ["trailing-only", 9, 9],
+          ["trailing-only", 6, 6],
+          // on the second pair two of the six trade exactly as a sibling does (counted as duplicates), so 4 are evaluated
+          ["trailing-only", 6, 4],
         ],
       );
     } finally {

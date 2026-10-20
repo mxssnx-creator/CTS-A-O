@@ -140,7 +140,8 @@ describe("lane combos", () => {
 
 describe("lane protect", () => {
   it("scales TP / SL / trail by √(tf / 15m) and keeps the hold time", () => {
-    const p = { tp: 0.03, sl: 0.045, trail: 0.015, hold: 32 };
+    // a stop under the 3 % trailing cap, so the case tests the scaling (the cap has its own tests in trail-cap.test.ts)
+    const p = { tp: 0.03, sl: 0.025, trail: 0.015, hold: 32 };
     assert.deepEqual(laneProtect(p, "x@m15"), p);
     assert.deepEqual(laneProtect(p, "x"), p);
     const one = laneProtect(p, "x@m1");
@@ -148,7 +149,8 @@ describe("lane protect", () => {
     assert.ok(Math.abs(one.tp - Math.hypot(0.03 * Math.sqrt(1 / REF_TF), LANE_MIN.tp)) < 1e-4);
     assert.equal(one.hold, 32 * 15);
     const thirty = laneProtect(p, "x@m30c");
-    assert.ok(Math.abs(thirty.sl - 0.045 * Math.sqrt(2)) < 1e-4);
+    // 2.5 % × √2 = 3.5 % on a 30m lane: the trailing stop is capped at 3 %
+    assert.equal(thirty.sl, 0.03);
     assert.equal(thirty.hold, 16);
     assert.equal(laneProtect({ ...p, trail: 0 }, "x@m5").trail, 0);
   });
@@ -236,7 +238,8 @@ describe("short-history lanes are judged on the history they have", () => {
       [],
       [],
     );
-    const o = { ...defaultWalkForward(DEFAULT_SETTINGS), preGate: false, validLastN: 0 };
+    // the 14-day fixtures pin the 336 h window; the production selection window is 24 h (commit 4779175)
+    const o = { ...defaultWalkForward(DEFAULT_SETTINGS), preGate: false, validLastN: 0, longH: 336 };
     // without the history start: three of four sub-windows of the 14-day window are empty → rejected
     assert.equal(selectDurable([tape], now, o, new Set()).picks.length, 0);
     tape.fromT = 264 * H;
@@ -286,6 +289,7 @@ describe("Real seats per lane", () => {
       preGate: false,
       portfolio: 2,
       laneSeats: 0,
+      longH: 336, // the 14-day fixtures pin their window (production 24 h, commit 4779175)
     };
     const picks = selectDurable([...strong, fast], now, o, new Set()).picks.map((p) => p.id);
     assert.equal(picks.length, 2);

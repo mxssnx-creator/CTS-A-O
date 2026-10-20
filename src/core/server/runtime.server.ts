@@ -128,6 +128,7 @@ import {
   configId,
   isPlainKind,
   laneProtect,
+  scaledLaneProtect,
   laneClosesWith,
   mainByLane,
   parseConfigId,
@@ -3842,16 +3843,18 @@ export class CoreRuntime {
         const h = heldExitProtect(pos.cfg);
         if (!h || !main.has(h.pair)) continue;
         const list = (exitProtects[h.pair] ??= []);
+        // the held identity is the uncapped lane image: the position keeps the stop it was opened with (the 3 % cap
+        // applies to configs built from now on)
         const heldId = configId(
           h.pair.split("|")[0] as import("../domain/types.ts").BotType,
           h.pair.split("|")[1],
-          laneProtect(h.protect, h.pair.split("|")[1]),
+          scaledLaneProtect(h.protect, h.pair.split("|")[1]),
         );
         if (
           !list.some((p) => {
             const [bot, ind] = h.pair.split("|");
             return (
-              configId(bot as import("../domain/types.ts").BotType, ind, laneProtect(p, ind)) ===
+              configId(bot as import("../domain/types.ts").BotType, ind, scaledLaneProtect(p, ind)) ===
               heldId
             );
           })

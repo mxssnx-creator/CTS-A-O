@@ -20,6 +20,7 @@ import {
   evaluationSignal,
   laneProtect,
   parseConfigId,
+  scaledLaneProtect,
   passesBase,
   REF_TF,
   seriesOf,
@@ -622,7 +623,8 @@ export function heldExitProtect(id: string): { pair: string; protect: Protect } 
       }
       let lo = 0;
       let hi = Math.max(target * 4, 0.01);
-      const image = (ref: number) => laneProtect({ ...p, [f]: ref }, parsed.ind)[f];
+      // the uncapped lane image: a held id from before the 3 % cap recovers its protect exactly as it was opened
+      const image = (ref: number) => scaledLaneProtect({ ...p, [f]: ref }, parsed.ind)[f];
       while (image(hi) < target - 1e-9) hi *= 2;
       for (let i = 0; i < 80; i++) {
         const mid = (lo + hi) / 2;
@@ -633,6 +635,6 @@ export function heldExitProtect(id: string): { pair: string; protect: Protect } 
       p[f] = hi;
     }
   }
-  const outId = configId(parsed.bot, parsed.ind, laneProtect(p, parsed.ind));
+  const outId = configId(parsed.bot, parsed.ind, scaledLaneProtect(p, parsed.ind));
   return outId === id ? { pair: `${parsed.bot}|${parsed.ind}`, protect: p } : null;
 }

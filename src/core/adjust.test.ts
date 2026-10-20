@@ -149,10 +149,11 @@ describe("auto-adjust", () => {
       { tp: 0.05, sl: 0.036, trail: 0.02, hold: 24 },
       { minSl: 0.014, minTrail: 0.008, slMult: 1.5, trailMult: 2 },
     );
+    // the widened stop (3.6 % × 1.5 = 5.4 %) is held to the 3 % initial-stop cap of a trailing protect (owner rule)
     assert.deepEqual(
       p,
-      { tp: 0.05, sl: 0.054, trail: 0.04, hold: 24 },
-      "own distances × the step, target kept",
+      { tp: 0.05, sl: 0.03, trail: 0.04, hold: 24 },
+      "own distances × the step, target kept, stop capped at 3 %",
     );
     // the absolute floor still wins for a set whose own stop is tight
     assert.equal(

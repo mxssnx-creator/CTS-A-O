@@ -32,6 +32,7 @@ import {
 import { controlTargets, entryCoidKind, isOwnCoid, liveTag, makeCoid } from "./server/live.ts";
 import { buildTapes, fittedRangeTps, indHorizonBars, mergeBuildStats, protectGrid, universeSigma1m, type TapeBuildStat } from "./sim/walkforward.ts";
 import { barsFromCandles, syntheticCandles } from "./market/bars.ts";
+import { capTrailingSl } from "./sim/backtest.ts";
 import type { Bars, Protect } from "./domain/types.ts";
 
 const grid = (extra: object) => ({ ...DEFAULT_SETTINGS.grid, holdH: [16], ...extra });
@@ -68,9 +69,9 @@ test("every TP × SL × Trail × hold of every range is its own config, at the r
   const r4 = (x: number) => +x.toFixed(4);
   for (const [tag, r] of [["mn", MINIMAL_RANGE], ["sh", SHORT_RANGE], ["gn", GENERAL_RANGE], ["lg", LONG_RANGE]] as const) {
     const mine = cells.filter((p) => p.tag === tag);
-    // the full product, no cell folded into another
-    assert.equal(mine.length, r.tp.length * r.slOfTp.length * r.trailOfTp.length * g.holdH.length, tag);
+    // the full product, no cell folded into another, except that trailed cells above the 3 % stop cap share the cap
     const keys = new Set(mine.map((p) => `${p.tp}|${p.sl}|${p.trail}|${p.hold}`));
+    assert.equal(keys.size, mine.length, `${tag}: no two cells identical`);
     for (const tp of r.tp)
       for (const k of r.slOfTp)
         for (const tr of r.trailOfTp)
@@ -80,13 +81,15 @@ test("every TP × SL × Trail × hold of every range is its own config, at the r
             const sl = r4(Math.max(0.005, r.minSl ?? 0, tp * kk));
             const trail = tr > 0 ? r4(Math.max((r.minTrail ?? 0) / (g.trailStep ?? 1), tp * tr)) : 0;
             const hold = Math.max(2, Math.round((h * 60) / 15));
-            assert.ok(keys.has(`${tp}|${sl}|${trail}|${hold}`), `${tag} ${tp} × ${k} × ${tr} × ${h}h`);
+            const capped = capTrailingSl({ sl, trail }).sl;
+            assert.ok(keys.has(`${tp}|${capped}|${trail}|${hold}`), `${tag} ${tp} × ${k} × ${tr} × ${h}h`);
           }
   }
   // General's tightest cell: 3.0 % target, 0.25× = 0.75 % held at its 1.0 % floor, trailing a quarter (0.75 %)
   assert.ok(cells.some((p) => p.tag === "gn" && p.tp === 0.03 && p.sl === 0.01 && p.trail === 0.0075));
   // Long's widest: 6.4 % target, 1.5× = 9.6 % stop, trail three quarters (4.8 %)
-  assert.ok(cells.some((p) => p.tag === "lg" && p.tp === 0.064 && p.sl === 0.096 && p.trail === 0.048));
+  // its 9.6 % stop is held to the 3 % trailing cap (owner rule)
+  assert.ok(cells.some((p) => p.tag === "lg" && p.tp === 0.064 && p.sl === 0.03 && p.trail === 0.048));
 });
 
 test("every range tags its cells: minimal mn, short sh, general gn, long lg, micro mc; the wide grid stays untagged", () => {

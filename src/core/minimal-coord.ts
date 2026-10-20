@@ -12,7 +12,7 @@
  */
 import type { Gates, MicroGrid, MinimalGrid, ProtectGridSpec, RangeMinPfKey, RangeTag } from "./domain/types.ts";
 import type { MicroIndRule } from "./indications/micro.ts";
-import { POSITION_COST_RT, RT_COST } from "./model-cost.ts";
+import { RT_COST } from "./model-cost.ts";
 
 export const MINIMAL_COORD = "Minimal Coord.";
 
@@ -65,8 +65,11 @@ export function rangeOfId(id: string | undefined): RangeTag | "" {
   return m ? (m[1] as RangeTag) : "";
 }
 
-/** Fixed historical range-construction basis; changing modeled costs must not silently shrink configured distances. */
-export const RANGE_COST_BASIS = POSITION_COST_RT;
+/**
+ * Fixed historical range-construction basis (0.2 % round trip). Changing the modeled cost (POSITION_COST_RT, 0.15 % from
+ * 19 Oct) must not silently shrink the configured range distances, so the basis is kept as its own constant.
+ */
+export const RANGE_COST_BASIS = 0.002;
 
 /**
  * One range's settings. The type lives in domain/types.ts as `RangeGrid` + `MicroGrid` so the Settings surface and

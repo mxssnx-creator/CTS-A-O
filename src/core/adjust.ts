@@ -6,6 +6,7 @@
 // twice on the same trades. With `slScale` / `trailScale` each level also widens the set's OWN stop / trailing
 // distance (× 1 + level × scale, up to `scaleMax`), and `stepEvery` asks that many new closes before the next step.
 import { profitFactor } from "./metrics/stats.ts";
+import { capTrailingSl } from "./sim/backtest.ts";
 import type { Protect, StratKind } from "./domain/types.ts";
 import type { AdjustSettings } from "./config.ts";
 export { DEFAULT_ADJUST, type AdjustSettings } from "./config.ts";
@@ -230,7 +231,8 @@ export function adjustProtect(
       minSl: Math.max(p.atr.minSl ?? 0, adj.minSl),
       ...(p.atr.trail ? { minTrail: Math.max(p.atr.minTrail ?? 0, adj.minTrail) } : {}),
     };
-  return out;
+  // a relative step widens the stop; the 3 % initial-stop cap of a trailing protect still holds
+  return capTrailingSl(out);
 }
 
 /** Sets paused right now. */

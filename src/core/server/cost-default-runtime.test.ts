@@ -38,8 +38,8 @@ describe("modeled position cost defaults and migration", () => {
     assert.equal(runtime.settings.cost, RT_COST);
     assert.deepEqual(runtime.settings.fees, DEFAULT_SETTINGS.fees);
     assert.equal(LANE_MIN.tp, +(RT_COST * 3).toFixed(6), "short-lane ATR target floor follows the modeled transaction cost");
-    assert.equal(POSITION_COST_RT, 0.002);
-    assert.equal(POSITION_COST_STRESS_RT, 0.004);
+    assert.equal(POSITION_COST_RT, 0.0015);
+    assert.equal(POSITION_COST_STRESS_RT, 0.003);
     assert.equal(HIST_MIN_TP, POSITION_COST_RT * 5, "the historic Signal floor follows the PositionCost baseline");
   });
 

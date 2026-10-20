@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { POSITION_COST_RT } from "../../src/core/model-cost.ts";
 import {
   pfSearchFamilyRows,
   pfSearchObjectiveText,
@@ -65,7 +66,7 @@ test("schema7 preserves explicit unit returns and weighted diagnostics without d
   near(result.primary.pf, 1.36);
   near(result.objective.pf, 1.36);
   assert.equal(result.objective.kind, "unit-net-returns-repriced-round-trip");
-  assert.equal(result.objective.roundTrip, 0.002);
+  assert.equal(result.objective.roundTrip, POSITION_COST_RT);
   assert.equal(result.n, 2);
 });
 
@@ -117,7 +118,9 @@ test("cost repricing deducts only missing cost and preserves already greater rec
     family([tuple(0.009, T, { exit: 101 }), tuple(-0.01, T + 1, { exit: 99.1 })]),
   );
   const result = pfSearchSample(missingCost);
-  near(result.objective.pf, 0.008 / 0.011);
+  // the fixture's exits embed 0.1 % of cost; the repricing deducts the rest of POSITION_COST_RT
+  const missing = POSITION_COST_RT - 0.001;
+  near(result.objective.pf, (0.009 - missing) / (0.01 + missing));
   near(result.primary.pf, 0.9);
   assert.equal(missingCost[0].r, 0.009);
   const greaterCost = pfSearchSample(

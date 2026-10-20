@@ -60,7 +60,7 @@ desk prints a warning at start and on every patch that leaves one of them off (`
 | Signal direction acceptance (each side's signals pooled — the run's active candidates, counted per signal entry since 6 Oct) | `signals.sideAccept = { enabled: true, minPf: 1.3, hours: 24, minTrades: 20 }` | x01, 48 h on 5 Oct: long PF 3–44, short PF 0.1–0.3 per 12 h |
 | Signals trade their own base | `signals.ownBase: true` | the engine's Normal off / Block Active skip left signals ~16 closes a day |
 | Signal volatility floor | `signals.filter.volFloor: 0.003` | the move must be worth the 0.2 % round trip (worst drawdown 523 vs 660) |
-| Engine direction acceptance (type family × range × side) — **operator: ON, 6 Oct evening** (see below) | `wf.engineSideAccept = { enabled: true, minPf: 1.05, hours: 24, minTrades: 30 }` — code default on since 6 Oct evening (off earlier that day) | x01 paper replay, 5 Oct: opened shorts PF 1.25 / held 0.51; everything opened PF 1.70 vs 1.0. Same tapes, 12 symbols, 6 h + 6 h, 5–6 Oct: OFF let in 187 shorts at PF 0.05 (net −2,222 % in trade units), the window's PF 3.62 → 1.82 |
+| Engine direction acceptance (type family × range × side) — **operator: OFF as default, 11 Oct** (see below; ON 6 Oct evening – 11 Oct) | `wf.engineSideAccept = { enabled: false, minPf: 1.05, hours: 24, minTrades: 30 }` — code default off since 11 Oct | x01 paper replay, 5 Oct: opened shorts PF 1.25 / held 0.51; everything opened PF 1.70 vs 1.0. Same tapes, 12 symbols, 6 h + 6 h, 5–6 Oct: OFF let in 187 shorts at PF 0.05 (net −2,222 % in trade units), the window's PF 3.62 → 1.82 |
 | Normal and Trailing enabled and running, Block Active off | `toggles.normal: true`, `trailing: true`, `blockActive: false` (code default) | operator, 5 Oct: with Block Active (minimum level 5) only Block-raised entries opened — a 2 h Micro run traded Axis alone |
 | Axis on x01 | `toggles.axis: true` | profitable on both sides on x01 (24 h: long PF 1.37, short PF 1.19) |
 | DCA off on x01 | `toggles.dca: false` | lost in every last-N variant of the x01 simulation (PF 0.60–0.81) |
@@ -70,6 +70,24 @@ desk prints a warning at start and on every patch that leaves one of them off (`
 | Base-validated targets: the tape stage builds only the range targets whose Base cells passed | `grid.baseTargets: true` (code default) | two causal windows, 20 symbols, 2 h pre + 2 h run (5 Oct 12:00Z / 06:00Z): identical passed sets (2/2 and 10/10 Micro normal, 0/0 and 8/8 trailing) and identical orders, with 29–36 % fewer Micro sets built, 40–50 % fewer Micro configs evaluated, the evaluated pool's median PF up (0.45 → 0.51, 0.48 → 0.58) and compute 162 → 93 s / 147 → 97 s |
 | Live fill within every budget | kept configs held to the budget; exposure, stop-risk and worst-case budgets — the drops decided across all three at once, in rank order, every target whose exchange minimum fits (`scaleToBudgets`, 13 Oct) | kept whole, the fill overshot ~6× and every position was squeezed to the exchange minimum. 13 Oct 18:55Z, x01 (0.50 USDT wallet): dropping "the weakest while the survivors do not fit", one budget after the other, kept the two strongest keys under the gross cap and dropped both under the risk budget (XPL 2.00 USD at 11 % fit the 0.249 USD budget, ZKP 2.06 USD at 12.15 % did not) — nothing placed, 24 keys never tried; the admission keeps the coordination and fills what fits |
 | Allocator caps for every long-running process | `MALLOC_ARENA_MAX=2 MALLOC_MMAP_THRESHOLD_=1048576` | without them x01 held 11 GB RSS on a 2.6 GB heap |
+
+## Round-trip cost 0.15 % (operator, 19 Oct) — the modeled cost and the PositionCost baseline
+
+Operator: "Change roundtrip cost to 0.15 overall", and the frozen PositionCost constant changes too. The modeled cost
+was already 0.15 % (`RT_COST`, `model-cost.ts`); the frozen baseline `POSITION_COST_RT` was 0.2 % and is now 0.15 %
+(`POSITION_COST_STRESS_RT` 0.3 %). Consequences, by design:
+
+- **Follows the baseline:** `bot-stats.ts` repricing (`COST_RT`, `STRESS_RT`), and the historic Signal floor
+  `HIST_MIN_TP = 5 × POSITION_COST_RT` (1.0 % → 0.75 %). The signal-history fixture (`signal-hist.test.ts`) moved to seeds
+  1 / 2, the only pair of seeds 1–10 inside its PF bounds at the new floor.
+- **Kept at 0.2 %:** `RANGE_COST_BASIS` (`minimal-coord.ts`), the fixed historical range-construction basis. Tying it to
+  the baseline would shrink every configured range distance by a quarter; `minimal-coord.ts` requires that changing the
+  modeled cost never does so silently. The range grid is unchanged.
+- **Kept at 0.2 %:** the frozen runtime-parity v2 research protocols (`docs/signal-research-protocol-20261015/16.json`).
+  The guard in `scripts/core-signal-research.mjs` compares them to their own recorded 0.2 %, so the frozen reproduction
+  still runs. A new protocol version is needed to research at 0.15 %.
+- **Still to trace:** the 24 h run of 19 Oct recorded `cost 0.002` with no `fees` key. The source is not yet located.
+  The verification run logs the runtime cost at start.
 
 ## Operator overrides of a measured coordination
 
@@ -469,6 +487,8 @@ new default. Evidence on 11 Oct, five causal D1 windows (full engine, default se
 orders 3,918 → 5,502 and PF D1 0.33 → 0.46, D1a 0.47 → 0.55, D1b 0.24 → 0.41 (table in the 11 Oct section above). The
 6 Oct evidence (24 h, 30 symbols, PF 1.19 → 2.59) is kept as recorded.
 
+19 Oct, one more measurement on the same default: the session run ending 2026-10-19 14:00 UTC (12 symbols, 24 h pre-historic + 24 h run, defaults; the session's variant table row `sig:engineSide`). Direction acceptance on: PF 2.59, net +455.9 %, 52 orders. Off: PF 1.13, net +260.4 %, 177 orders. Off lowered PF and net on this window too. The default stays off by the operator's 19 Oct instruction ("Force it off and off as default"); the Settings switch sets it on.
+
 The x01 desk's patch (`docs/live-coordination/signals.patch.json`) still sets `engineSideAccept.enabled` true explicitly;
 the running desk keeps that setting until its next relaunch with a changed patch, which the operator approves.
 
@@ -578,3 +598,13 @@ operator: one venue-minimum position at a time at ~4 × the wallet; a single sto
 (0.40 USDT) can be reached by roughly 7–30 stops. Unchanged: the loss limit, the engine proof (signals trade live; an
 engine config reaches the exchange only after 25 own closes at PF ≥ 1.2), leverage max, positionSize min. The 11 Oct caps
 remain the setting for a funded wallet; this override is a recorded exception, not a new default.
+
+## Axis on by default (operator, 20 Oct)
+
+Operator decision: Axis is on in the session default (`toggles.axis: true`, `DEFAULT_TOGGLES` in src/core/config.ts), so its
+configs compute, validate and execute there as on x01. Evidence from the 6-symbol, 6 h run with Axis on (`--settings
+'{"toggles":{"axis":true}}'`, 19 Oct 19:00 UTC end): Axis configs produced orders (Wide axis 560 virtual closes, 1 funded;
+the funded count is low because the account reached its ruin point under the uncapped sizing the operator kept, 20 Oct). Presets
+that switch Axis off stay as they are: the strategy-type isolation presets (see "Strategy-type isolation presets (13 Oct)")
+and the two desk presets, which keep their x01 desk setting. Measured effect of Axis on the 20-symbol run: not yet measured
+at the default; to be recorded with its causal comparison.

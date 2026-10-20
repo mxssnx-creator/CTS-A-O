@@ -533,16 +533,6 @@ const NOT_SHOWN: Record<string, string> = {
     "deny / allow reading of the source list (6 Oct); patch only so far — GAP: not on the page (reported)",
   "signals.baseGate":
     "signals judged on their own exits (Base gate off, measured 3 Oct); patch only",
-  "exitStrategy.trainFraction": "the automatic historic Exit fitter uses the fixed causal split; not operator editable",
-  "exitStrategy.minEntries": "the automatic historic Exit fitter enforces its minimum sample; not operator editable",
-  "exitStrategy.minValidationTrades": "the automatic historic Exit fitter enforces its validation sample; not operator editable",
-  "exitStrategy.maxConfigsPerPair": "the Exit fitter bounds generated configurations; not operator editable",
-  "exitStrategy.stopQuantiles": "the Exit fitter derives stop candidates from historical excursions; not operator editable",
-  "exitStrategy.minTp": "the Exit fitter clamps generated targets to its validated range; not operator editable",
-  "exitStrategy.maxTp": "the Exit fitter clamps generated targets to its validated range; not operator editable",
-  "exitStrategy.maxSl": "the Exit fitter caps generated stop distance; not operator editable",
-  "exitStrategy.trailShares": "the Exit fitter derives trailing candidates from historical excursions; not operator editable",
-  "exitStrategy.stopMultiples": "the Exit fitter derives stop candidates from historical excursions; not operator editable",
 };
 /** signal sources are listed from the SIGNAL_SOURCES catalog on the page, not by name */
 const SOURCE_PREFIX = "signals.sources.";
@@ -713,6 +703,16 @@ const DOCUMENTED: Record<string, Array<{ warning: string; section: string }>> = 
  * Presets that turn a positive coordination off WITHOUT a record in the doc. This list may only shrink (it is empty
  * since the 13 Oct record): a preset added to it, or a new warning on one, fails the test.
  */
+// Axis is on by default since 20 Oct (operator): a preset that switches it off is documented here. Isolation presets
+// switch strategy types one at a time; the desk presets keep the x01 desk setting.
+const AXIS_OFF = "positive coordination: Axis is off";
+const AXIS_OFF_PRESETS: string[] = ["desk-combined", "desk-low-drawdown", "mx-mom-none-std-ln12-all-on", "mx-mom-none-std-ln12-block", "mx-mom-none-std-ln12-block-active+dca-active", "mx-mom-none-std-ln12-normal-off+block", "mx-mom-none-std-ln12-trailing+block-active", "mx-mom-none-std-ln12-trailing+dca", "mx-mom-none-strong-ln12-block-active", "mx-robust-none-std-ln12-trailing", "strategy:all-on", "strategy:block", "strategy:block-active", "strategy:block-active+dca-active", "strategy:dca", "strategy:dca-active", "strategy:normal", "strategy:normal+dca-active", "strategy:normal-off+block", "strategy:normal-trailing", "strategy:normal-trailing+block-active", "strategy:trailing", "strategy:trailing+block-active", "strategy:trailing+dca"];
+for (const id of AXIS_OFF_PRESETS)
+  DOCUMENTED[id] = [
+    ...(DOCUMENTED[id] ?? []),
+    { warning: AXIS_OFF, section: id.startsWith("desk-") ? "Axis on by default (operator, 20 Oct)" : ISOLATION },
+  ];
+
 const UNDOCUMENTED: Record<string, string[]> = {};
 
 /**

@@ -83,7 +83,7 @@ import {
   modeledUnitStatsOf as unitStatsOf,
   type UnitStats,
 } from "../metrics/stats.ts";
-import { ATR_PERIOD, simulate, splitSides } from "./backtest.ts";
+import { ATR_PERIOD, capTrailingSl, simulate, splitSides } from "./backtest.ts";
 import { headBars } from "../market/bars.ts";
 import { symbolDirections } from "./symbol-directions.ts";
 import { simulateDca } from "./dca.ts";
@@ -580,7 +580,9 @@ export function protectGrid(
   const slFloor = g.minSlEval ?? EVAL_MIN_SL;
   const out: Protect[] = [];
   const seen = new Set<string>();
-  const push = (p: Protect) => {
+  const push = (p0: Protect) => {
+    // the 3 % initial-stop cap (trailing protects) before the key: cells that differ only above it are one config
+    const p = capTrailingSl(p0);
     if (p.trail > 0) {
       p.trailStep = g.trailStep ?? 1;
       p.trailFree = g.trailFree ?? false;
