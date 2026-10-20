@@ -6,7 +6,8 @@
   "settings": {
     "signals": {
       "enabled": true,
-      "count": 0
+      "count": 0,
+      "longRelax": true
     },
     "toggles": {
       "normal": true,
