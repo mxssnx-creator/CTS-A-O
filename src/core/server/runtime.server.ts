@@ -6328,6 +6328,7 @@ export const WF_KEYS = [
   "familySeats",
   "familyNeedsBase",
   "seatPer",
+  "seatSet",
   "bestFirst",
   "laneSeats",
   "microSeats",
@@ -6443,6 +6444,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
   if (p.familySeats !== undefined) p.familySeats = Boolean(p.familySeats);
   if (p.familyNeedsBase !== undefined) p.familyNeedsBase = Boolean(p.familyNeedsBase);
   if (p.seatPer !== undefined && !["pair", "config"].includes(String(p.seatPer))) delete p.seatPer;
+  if (p.seatSet !== undefined && !["pool", "validated"].includes(String(p.seatSet))) delete p.seatSet;
   // symbol gate: veto (a proven loser on the symbol is skipped) / proven (only proven symbols) / per side / off
   if (p.symGate !== undefined && !["veto", "proven", "vetoSide", "provenSide", "off"].includes(String(p.symGate)))
     delete p.symGate;

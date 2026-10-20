@@ -263,3 +263,12 @@ describe("B6: skip what cannot seat", () => {
     assert.equal(build({ heldPairsOnly: new Set([other]) }).filter((t) => `${t.bot}|${t.ind}` === other).length, 0);
   });
 });
+
+import { sanitizeWf } from "../server/runtime.server.ts";
+describe("wf.seatSet reaches the engine", () => {
+  it("sanitizeWf keeps validated / pool and drops anything else", () => {
+    assert.equal(sanitizeWf({ seatSet: "validated" }).seatSet, "validated");
+    assert.equal(sanitizeWf({ seatSet: "pool" }).seatSet, "pool");
+    assert.equal(sanitizeWf({ seatSet: "x" as never }).seatSet, undefined);
+  });
+});
