@@ -335,8 +335,8 @@ export interface WalkForwardOptions {
   preH: number;
   simH: number;
   stepH: number;
-  /** measurement only: record every config's validation check at each fixed-mode step (the trades and seats are unchanged) */
-  recordValidation?: boolean;
+  /** Measurement only. Summary retains passed/evaluated counts and accepted-window sums without one row per config/hour. */
+  recordValidation?: boolean | "summary";
   /** simulation start; default = end - simH */
   startT?: number;
   portfolio: number;
@@ -2653,6 +2653,15 @@ export type ValidationCheck = [
   gp: number,
   gl: number,
 ];
+export interface ValidationSummary {
+  evaluated: number;
+  passed: number;
+  closes: number;
+  /** Intrinsic unit-return sums of passing config windows only; histories overlap. */
+  gp: number;
+  gl: number;
+  failures: Partial<Record<EvalGate, number>>;
+}
 
 export interface StepLog {
   t: number;
@@ -2663,6 +2672,7 @@ export interface StepLog {
   net: number;
   /** the validation checks of the step (only when WalkForwardOptions.recordValidation is on) */
   checks?: ValidationCheck[];
+  validationSummary?: ValidationSummary;
   /**
    * the step per range ("" = Wide, "mc" … "lg", "sig" = signals): the range's tapes, its configs validated at the step,
    * its candidates entering in the step and the orders taken — every enabled range shows up at every step
@@ -3363,7 +3373,7 @@ export function selectFixed(
   tapes: readonly ConfigTape[],
   t: number,
   o: WalkForwardOptions,
-): { picks: Selection[]; eligible: number } {
+): { picks: Selection[]; eligible: number; checks?: ValidationCheck[]; validationSummary?: ValidationSummary } {
   const g = selectFixedGen(tapes, t, o);
   for (;;) {
     const r = g.next();
@@ -3811,12 +3821,14 @@ export function* selectFixedGen(
   tapes: readonly ConfigTape[],
   t: number,
   o: WalkForwardOptions,
-): Generator<number, { picks: Selection[]; eligible: number; checks?: ValidationCheck[] }> {
+): Generator<number, { picks: Selection[]; eligible: number; checks?: ValidationCheck[]; validationSummary?: ValidationSummary }> {
   const from = t - Math.max(o.longH, o.preH) * H;
   let seen = 0;
   const botOk = o.bots.length ? new Set<string>(o.bots) : null;
   const best = new Map<string, Selection>();
-  const checks: ValidationCheck[] | null = o.recordValidation ? [] : null;
+  const checks: ValidationCheck[] | null = o.recordValidation === true ? [] : null;
+  const validationSummary: ValidationSummary | null = o.recordValidation === "summary"
+    ? { evaluated: 0, passed: 0, closes: 0, gp: 0, gl: 0, failures: {} } : null;
   const basePf = new Map<string, number>();
   // the base PFs are read by beatsBase only, which judges nothing without family seats or with every config its seat
   const needBase = !!o.familySeats && o.seatPer !== "config";
@@ -3882,10 +3894,19 @@ export function* selectFixedGen(
     let lcb: number;
     let gh: number;
     let ddt: number;
-    if (checks) {
+    if (checks || validationSummary) {
       // the validation record keeps configEvalAt's own verdict
       const ev = configEvalAt(tp, t, o, a, b, { n, net, pf, gp, gl }, tapeDdtMax);
-      checks.push([tp.id, ev.ok ? 1 : 0, n, pf, gp, gl]);
+      checks?.push([tp.id, ev.ok ? 1 : 0, n, pf, gp, gl]);
+      if (validationSummary) {
+        validationSummary.evaluated++;
+        if (ev.ok) {
+          validationSummary.passed++;
+          validationSummary.closes += n;
+          validationSummary.gp += gp;
+          validationSummary.gl += gl;
+        } else validationSummary.failures[ev.fail] = (validationSummary.failures[ev.fail] ?? 0) + 1;
+      }
       if (!ev.ok) continue;
       ({ lcb, gh, ddt } = ev);
     } else {
@@ -3935,7 +3956,7 @@ export function* selectFixedGen(
       return n < (f === "micro" ? microSeats(o) : seatsOf(o));
     })
     .map(([, v]) => v);
-  return { picks, eligible: best.size, ...(checks ? { checks } : {}) };
+  return { picks, eligible: best.size, ...(checks ? { checks } : {}), ...(validationSummary ? { validationSummary } : {}) };
 }
 
 /**
@@ -4693,16 +4714,10 @@ export function walkForward(
   }
 }
 
-const sigCfgMemo = new Map<string, boolean>();
-/** Whether a config id ("bot|ind|…") is a signal config (memoised: called per open order per candidate). */
+/** No per-config string cache: the prefix check allocates nothing and retains no old research identities. */
 export function sigCfg(cfg: string): boolean {
-  let v = sigCfgMemo.get(cfg);
-  if (v === undefined) {
-    v = isSignalInd(cfg.split("|")[1] ?? "");
-    if (sigCfgMemo.size > 200_000) sigCfgMemo.clear();
-    sigCfgMemo.set(cfg, v);
-  }
-  return v;
+  const first = cfg.indexOf("|");
+  return first >= 0 && cfg.startsWith("sig-", first + 1);
 }
 
 /**
@@ -5338,7 +5353,7 @@ function* selectFixedRuntimeGen(
   tapes: readonly ConfigTape[],
   t: number,
   o: WalkForwardOptions,
-): Generator<number, { picks: Selection[]; eligible: number; checks?: ValidationCheck[] }> {
+): Generator<number, { picks: Selection[]; eligible: number; checks?: ValidationCheck[]; validationSummary?: ValidationSummary }> {
   const gen = selectFixedGen(tapes, t, o);
   for (;;) {
     const r = gen.next();
@@ -5796,6 +5811,7 @@ export function* walkForwardGen(
       net,
       byRange,
       ...(sel?.checks ? { checks: sel.checks } : {}),
+      ...(sel?.validationSummary ? { validationSummary: sel.validationSummary } : {}),
     });
     yield t;
   }

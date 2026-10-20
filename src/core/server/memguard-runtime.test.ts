@@ -9,7 +9,7 @@ import { CoreRuntime as BaseRuntime } from "./runtime.server.ts";
 import { trackRuntimes } from "../test-support.ts";
 import { CoreDb } from "./db.server.ts";
 import { MEM_FALLBACK_MAX, memSoftMb, memHardMb } from "./memguard.server.ts";
-import { abortWorkers, closePool, runOnWorkers, workersAvailable } from "./pool.server.ts";
+import { abortWorkers, closePool, runOnWorkers, workersAvailable, workerFailure } from "./pool.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import { MICRO_RANGE } from "../minimal-coord.ts";
 
@@ -140,6 +140,14 @@ describe("memory guard in the runtime", { timeout: 300_000 }, () => {
     assert.equal(rt.workersBroken, false, "B's workers stay on (they were 10 min off, B computing in-process)");
     assert.equal(rt.memPressured, true, "B's compute aborts as a memory abort: its cycle steps the fallback");
     await closePool();
+  });
+
+  it("worker heap exhaustion aborts instead of retrying the same allocation in-process", () => {
+    const rt = mk() as unknown as Inner;
+    const err = workerFailure(Object.assign(new Error("heap exhausted"), {code:"ERR_WORKER_OUT_OF_MEMORY"}));
+    assert.throws(() => rt.workersFailed(err, "Base"), /memory pressure/);
+    assert.equal(rt.memPressured, true);
+    assert.equal(rt.workersBroken, false);
   });
 
   it("a backtest's failed worker message moves only that phase in-process: the engine keeps its workers", { skip: !workersAvailable() }, async () => {

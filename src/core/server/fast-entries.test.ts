@@ -59,6 +59,13 @@ describe("realtime entry step", { timeout: 1_200_000 }, () => {
     assert.equal(fastEntryLaneDue("break-rel-don-15-dd24-guarded@m15", t0 + 14 * 60_000, 1, "break"), true);
     assert.equal(fastEntryLaneDue("trend-ema@m1", t0, 1, "break"), false);
     assert.equal(fastEntryLaneDue("trend-ema@m1", t0, 1, "all"), true);
+    for (const tf of [1, 5, 15]) {
+      const ind = `inverse-known-trend-ema@m${tf}`;
+      assert.equal(fastEntryLaneDue(ind, t0 + (tf - 1) * 60_000, 1, "all"), true,
+        `selected Inverse ${tf}m refreshes under the operator's all-entry mode`);
+      assert.equal(fastEntryLaneDue(ind, t0 + (tf - 1) * 60_000, 1, "break"), false);
+      if (tf > 1) assert.equal(fastEntryLaneDue(ind, t0 + (tf - 2) * 60_000, 1, "all"), false);
+    }
     const coordinator = laneInd(
       signalCoordinationId(["ema-cross", "macd-cross", "rsi-reversal"], 0.6, 3, 3),
       15,

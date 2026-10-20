@@ -752,6 +752,9 @@ export class EngineSideIndex {
         x.n[j + 1] = x.n[j] + b[2];
       }
       this.groups.set(k, x);
+      // The prefix columns replace this group's boxed hourly buckets. Release each
+      // completed group while the remaining groups are encoded, rather than doubling the whole index.
+      acc.delete(k);
     }
   }
   /** PF and count of the group over the `hours` whole hours before the hour of t */

@@ -32,8 +32,8 @@ const arg = (k, fallback) => {
 };
 const H = 3_600_000;
 const hash = (x) => createHash("sha256").update(x).digest("hex");
-const input = readFileSync(resolve(arg("feed")));
-const feed = JSON.parse(input[0] === 31 ? gunzipSync(input) : input);
+let input = readFileSync(resolve(arg("feed")));
+let feed = JSON.parse(input[0] === 31 ? gunzipSync(input) : input);
 const out = resolve(arg("out", "runs/postbase-continuity-20261020"));
 mkdirSync(out, { recursive: true });
 const sources = () => {
@@ -91,7 +91,7 @@ const wf = {
   simH: hours,
   startT,
   causalBase: true,
-  recordValidation: true,
+  recordValidation: "summary",
 };
 const protocol = {
   classification:
@@ -130,6 +130,16 @@ const bars = symbols.flatMap((sym) =>
     ),
   ),
 );
+// The typed bars own the requested history. Retaining the decoded full feed duplicates every source candle.
+feed = null;
+input = null;
+const memoryPhases = [];
+const memoryAt = (phase) => {
+  const m = process.memoryUsage();
+  memoryPhases.push({phase, rssMiB:m.rss / 1048576, heapMiB:m.heapUsed / 1048576,
+    arrayBuffersMiB:m.arrayBuffers / 1048576});
+};
+memoryAt("bars");
 for (const b of bars) {
   assert.ok(b.n > 0 && b.t[0] <= startT - sourceHours * H + b.tfMin * 60000,
     `${b.sym} ${b.tfMin}m: requested source history unavailable; do not score a silently clipped window`);
@@ -146,6 +156,9 @@ const started = performance.now();
 const pipeline = drain(runPipeline(pre, settings));
 const baseMs = performance.now() - started;
 const base = basePass(pipeline.s1, settings);
+for (const k of pre.caches) k.clear();
+globalThis.gc?.();
+memoryAt("base-cache-released");
 wf.basePassed = new Set(base.qualified.map((r) => `${r.bot}|${r.ind}`));
 wf.basePassedRanges = base.qualifiedTags;
 wf.basePassedTargets = base.qualifiedTps;
@@ -172,7 +185,15 @@ const tapes = buildTapes(
 );
 console.log(`Tapes ${tapes.length}; running all admitted configurations together`);
 const tapesMs = performance.now() - started - baseMs;
+const sourceStatesByLane = Object.fromEntries([1, 5, 15].map((tf) => [tf, u.caches
+  .filter((k) => k.b.tfMin === tf)
+  .reduce((n, k) => n + INVERSE_CONFIG_IDS.reduce((m, id) => m +
+    indicationState(id, k).reduce((a, v) => a + Number(v !== 0), 0), 0), 0)]));
+for (const k of u.caches) k.clear();
+globalThis.gc?.();
+memoryAt("tapes-cache-released");
 const sim = walkForward(u, tapes, wf);
+memoryAt("walk-complete");
 const walkMs = performance.now() - started - baseMs - tapesMs;
 const report = walkForwardHourlyReport(sim);
 const byId = new Map(tapes.map((tp) => [tp.id, tp]));
@@ -317,17 +338,7 @@ const result = {
     [1, 5, 15].map((tf) => [
       tf,
       {
-        sourceStates: u.caches
-          .filter((k) => k.b.tfMin === tf)
-          .reduce(
-            (n, k) =>
-              n +
-              INVERSE_CONFIG_IDS.reduce(
-                (m, id) => m + indicationState(id, k).reduce((a, v) => a + Number(v !== 0), 0),
-                0,
-              ),
-            0,
-          ),
+        sourceStates: sourceStatesByLane[tf],
         ...summary(
           sim.trades.filter((t) => byId.get(t.cfg)?.ind.match(/@m(\d+)c?$/)?.[1] === String(tf)),
         ),
@@ -382,6 +393,8 @@ const result = {
   ),
   protocolSha256: hash(readFileSync(`${out}/protocol.json`)),
   rssMaxMiB: process.resourceUsage().maxRSS / 1024,
+  memoryPhases,
+  validationSteps: sim.steps.map(({t,validationSummary}) => ({t,...validationSummary})),
 };
 writeFileSync(`${out}/result.json`, JSON.stringify(result, null, 2));
 writeFileSync(`${out}/executions.json.gz`, gzipSync(JSON.stringify({settled: sim.trades, endpointMarks: sim.openAtEnd ?? []})));
