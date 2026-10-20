@@ -2703,6 +2703,9 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     // families of live.excludeConfigs and, with live.plainOnly, only lanes Block did not raise. The engine keeps
     // computing and paper-trading everything. A held position of a kind / range left out is still managed by its
     // lanes until they exit; a held position of an excluded config is closed (its lanes are dropped below).
+    // the proofs are rebuilt in slices when a close landed (not in one piece inside this step), and read from memo below
+    phase("proofs");
+    await rt.warmProofs?.();
     const { sendable, validLane, closedConfig, unproven } = liveLaneFilter(
       s,
       selected,

@@ -242,6 +242,15 @@ import { connDb, connPath, coreDb, type CoreDb } from "./db.server.ts";
 
 const H = 3_600_000;
 const SLICE_MS = 12;
+/** rows per page of the proofs' reads (a slice each: ~5 ms) */
+const PROOF_PAGE = 4000;
+/** runs a generator to its end without yielding (the synchronous callers of a sliced step) */
+function drain<R>(g: Generator<void, R>): R {
+  for (;;) {
+    const r = g.next();
+    if (r.done) return r.value;
+  }
+}
 /** overall mode: the pending entries (status "pending:" reasons only) are recomputed at most this often */
 const PENDING_STATUS_MS = 30_000;
 /**
@@ -4286,26 +4295,55 @@ export class CoreRuntime {
    * relation.ts), memoized until a new one.
    */
   exchangeRecords(since: number): Map<string, LiveRecord> {
+    return drain(this.exchangeRecordsGen(since));
+  }
+  /** exchangeRecords in slices (a yield per page of rows); it settles the same memo */
+  private *exchangeRecordsGen(since: number): Generator<void, Map<string, LiveRecord>> {
     // live.sideGates: one record per config and side (recordKeyOf), memoized apart from the pooled one
     const bySide = this.settings.live.sideGates === true;
     // memoized on the record's write version (no COUNT over the table to learn that nothing changed)
     const key = `${since}|${this.db.version("live_lane_trades")}${bySide ? "|sides" : ""}`;
     if (this.exRecMemo?.key === key) return this.exRecMemo.recs;
-    const recs = liveRecords(this.exchangeRows(since), bySide ? { bySide } : undefined);
-    this.exRecMemo = { key, recs };
+    const rows = yield* this.exchangeRowsGen(since);
+    const recs = liveRecords(rows, bySide ? { bySide } : undefined);
+    // (rows read across a yield that a write changed meanwhile are not memoized under the older key)
+    if (this.db.version("live_lane_trades") === Number(key.split("|")[1])) this.exRecMemo = { key, recs };
     return recs;
   }
   /**
    * The exchange record's closes since `since` (live_lane_trades) — the one read behind exchangeRecords and the signal
-   * proof, so both judge the same closes. Not memoized: each caller memoizes what it builds from it.
+   * proof, so both judge the same closes. Not memoized: each caller memoizes what it builds from it. Read in pages
+   * of the exit-time index (no cursor stays open across a yield); the same rows in the same order as one scan.
    */
   private exchangeRows(since: number): Array<{ id: string; cfg: string; sym: string; side: number; exitT: number; r: number }> {
-    return this.db
-      .all<{ id: string; cfg: string; sym: string | null; side: number | null; exit_t: number; r: number }>(
-        `SELECT id, cfg, sym, side, exit_t, r FROM live_lane_trades WHERE exit_t >= ? AND ${OWN_CLOSE_SQL}`,
-        since,
-      )
-      .map((x) => ({ id: x.id, cfg: x.cfg, sym: x.sym ?? "", side: x.side ?? 0, exitT: x.exit_t, r: x.r }));
+    return drain(this.exchangeRowsGen(since));
+  }
+  private *exchangeRowsGen(
+    since: number,
+  ): Generator<void, Array<{ id: string; cfg: string; sym: string; side: number; exitT: number; r: number }>> {
+    const out: Array<{ id: string; cfg: string; sym: string; side: number; exitT: number; r: number }> = [];
+    let at = since;
+    let after: string | null = null;
+    for (;;) {
+      const rows: Array<{ id: string; cfg: string; sym: string | null; side: number | null; exit_t: number; r: number }> =
+        after === null
+          ? this.db.all(
+              `SELECT id, cfg, sym, side, exit_t, r FROM live_lane_trades WHERE exit_t >= ? AND ${OWN_CLOSE_SQL} ORDER BY exit_t, id LIMIT ${PROOF_PAGE}`,
+              at,
+            )
+          : this.db.all(
+              `SELECT id, cfg, sym, side, exit_t, r FROM live_lane_trades WHERE (exit_t > ? OR (exit_t = ? AND id > ?)) AND ${OWN_CLOSE_SQL} ORDER BY exit_t, id LIMIT ${PROOF_PAGE}`,
+              at,
+              at,
+              after,
+            );
+      for (const x of rows) out.push({ id: x.id, cfg: x.cfg, sym: x.sym ?? "", side: x.side ?? 0, exitT: x.exit_t, r: x.r });
+      if (rows.length < PROOF_PAGE) return out;
+      const last = rows[rows.length - 1];
+      at = last.exit_t;
+      after = last.id;
+      yield;
+    }
   }
   /**
    * The listings of the last paper step, built once per step so a page never scans the tapes: the engine configs it
@@ -4366,29 +4404,50 @@ export class CoreRuntime {
    * Rebuilt when a close lands on either record or the setting changes.
    */
   engineProof(now = Date.now()): { proven: Set<string>; judged: number; n: number; minPf: number } | null {
+    return drain(this.engineProofGen(now));
+  }
+  /** the engine proof's memo key (null: the proof is off) */
+  private engineProofKey(): string | null {
     const n = this.settings.live.engineProofN ?? 0;
     if (!(n > 0)) return null;
     const minPf = this.settings.live.engineProofPf ?? ENGINE_PROOF_PF;
     // live.sideGates: the proof is per config and side (the records keyed by recordKeyOf)
-    const bySide = this.settings.live.sideGates === true;
-    const sides = bySide ? "|sides" : "";
+    const sides = this.settings.live.sideGates === true ? "|sides" : "";
     // memoized on the two records' write versions: an unchanged book costs no query at all (every live control step
-    // asks), a change re-reads the real closes from the partial index paper_book_trades_closed
-    const key = `${n}|${minPf}|${this.db.version("paper_book_trades")}|${this.db.version("live_lane_trades")}${sides}`;
+    // asks), a change re-reads the real closes from the partial index paper_book_trades_unit
+    return `${n}|${minPf}|${this.db.version("paper_book_trades")}|${this.db.version("live_lane_trades")}${sides}`;
+  }
+  /**
+   * engineProof in slices: a page of rows per slice (the 50 k closes of a desk's book took 0.2–0.5 s in one piece
+   * on every close that landed). A write that lands between two slices leaves the result unmemoized (warmProofs reads
+   * again); read in one go (engineProof) nothing can land.
+   */
+  private *engineProofGen(
+    now = Date.now(),
+  ): Generator<void, { proven: Set<string>; judged: number; n: number; minPf: number } | null> {
+    const key = this.engineProofKey();
+    if (key === null) return null;
     if (this.proofMemo?.key === key) return this.proofMemo.out;
-    const ex = this.exchangeRecords(0);
+    const n = this.settings.live.engineProofN ?? 0;
+    const minPf = this.settings.live.engineProofPf ?? ENGINE_PROOF_PF;
+    const bySide = this.settings.live.sideGates === true;
+    const ex = yield* this.exchangeRecordsGen(0);
+    yield;
     // judged at one unit (r / its execution multiple), as the exchange record is: a Block-raised paper close weighed
     // its multiple against an exchange close of one unit
-    const rows = this.db.all<{ cfg: string; side?: number | null; exit_t: number | null; r: number }>(
+    const rows = yield* this.paperCloseRows(
       bySide
-        ? "SELECT cfg, side, exit_t, r / COALESCE(NULLIF(mult, 0), NULLIF(vol, 0), 1) AS r FROM paper_book_trades WHERE reason != 'dropped' AND r IS NOT NULL"
-        : "SELECT cfg, exit_t, r / COALESCE(NULLIF(mult, 0), NULLIF(vol, 0), 1) AS r FROM paper_book_trades WHERE reason != 'dropped' AND r IS NOT NULL",
+        ? "cfg, side, exit_t, r / COALESCE(NULLIF(mult, 0), NULLIF(vol, 0), 1) AS r"
+        : "cfg, exit_t, r / COALESCE(NULLIF(mult, 0), NULLIF(vol, 0), 1) AS r",
+      "",
+      (x: { cfg: string; side?: number | null; exit_t: number | null; r: number }) =>
+        x.exit_t === null ? null : { cfg: x.cfg, exitT: x.exit_t, r: x.r, side: x.side },
     );
-    const paper = liveRecords(
-      rows.filter((x) => x.exit_t !== null).map((x) => ({ cfg: x.cfg, exitT: x.exit_t!, r: x.r, side: x.side })),
-      bySide ? { bySide } : undefined,
-    );
+    yield;
+    const paper = liveRecords(rows, bySide ? { bySide } : undefined);
+    yield;
     const out = { ...engineProven(paper, ex, now, n, minPf), n, minPf };
+    if (this.engineProofKey() !== key) return out; // a write landed meanwhile: not memoized under the older key
     const prev = this.proofMemo?.out;
     if (!prev || prev.proven.size !== out.proven.size || prev.judged !== out.judged)
       this.db.event(
@@ -4397,6 +4456,40 @@ export class CoreRuntime {
       );
     this.proofMemo = { key, out };
     return out;
+  }
+  /**
+   * The paper book's real closes in pages that end on a whole config, so no cursor is open across a yield (VACUUM
+   * INTO of the snapshot refuses one). The same rows in the same order as one scan of the partial index
+   * paper_book_trades_unit (cfg, exit_t, r, mult, vol, then the primary key), which the proofs' ties follow.
+   */
+  private *paperCloseRows<Row, T>(cols: string, extra: string, map: (x: Row) => T | null): Generator<void, T[]> {
+    const out: T[] = [];
+    let after: string | null = null;
+    let limit = PROOF_PAGE;
+    for (;;) {
+      const t = "paper_book_trades";
+      const rows: Array<Row & { cfg: string }> = this.db.all(
+        `SELECT ${cols} FROM ${t} WHERE ${t}.reason != 'dropped' AND ${t}.r IS NOT NULL${extra}${after === null ? "" : ` AND ${t}.cfg >= ?`} ` +
+          `ORDER BY ${t}.cfg, ${t}.exit_t, ${t}.r, ${t}.mult, ${t}.vol, ${t}.sym, ${t}.side, ${t}.entry_t LIMIT ${limit}`,
+        ...(after === null ? [] : [after]),
+      );
+      const full = rows.length >= limit;
+      const lastCfg = rows.length ? rows[rows.length - 1].cfg : "";
+      // a full page ends inside its last config: that config's rows come again on the next page
+      const keep = full ? rows.filter((x) => x.cfg !== lastCfg) : rows;
+      if (full && !keep.length) {
+        limit *= 2; // one config holds the whole page
+        continue;
+      }
+      for (const x of keep) {
+        const m = map(x);
+        if (m !== null) out.push(m);
+      }
+      if (!full) return out;
+      after = lastCfg;
+      limit = PROOF_PAGE;
+      yield;
+    }
   }
   private sigProofMemo: {
     key: string;
@@ -4411,6 +4504,9 @@ export class CoreRuntime {
   signalProof(
     now = Date.now(),
   ): { proven: Set<string>; judged: number; n: number; minPf: number; minEvents: number } | null {
+    return drain(this.signalProofGen(now));
+  }
+  private signalProofKey(): string | null {
     const n = this.settings.live.signalProofN ?? 0;
     if (!(n > 0)) return null;
     const minPf = this.settings.live.signalProofPf ?? SIGNAL_PROOF_PF;
@@ -4418,22 +4514,37 @@ export class CoreRuntime {
     // memoized on the two records' write versions, as the engine proof: an unchanged book costs no query. live.sideGates
     // reads a side that is not +1 or -1 as no side (signalUnitOf), so its proof is memoized apart from the pooled one
     const bySide = this.settings.live.sideGates === true;
-    const key = `${n}|${minPf}|${minEvents}|${this.db.version("paper_book_trades")}|${this.db.version("live_lane_trades")}${bySide ? "|sides" : ""}`;
+    return `${n}|${minPf}|${minEvents}|${this.db.version("paper_book_trades")}|${this.db.version("live_lane_trades")}${bySide ? "|sides" : ""}`;
+  }
+  /** signalProof in slices (see engineProofGen) */
+  private *signalProofGen(
+    now = Date.now(),
+  ): Generator<void, { proven: Set<string>; judged: number; n: number; minPf: number; minEvents: number } | null> {
+    const key = this.signalProofKey();
+    if (key === null) return null;
     if (this.sigProofMemo?.key === key) return this.sigProofMemo.out;
+    const n = this.settings.live.signalProofN ?? 0;
+    const minPf = this.settings.live.signalProofPf ?? SIGNAL_PROOF_PF;
+    const minEvents = this.settings.live.signalProofEvents ?? SIGNAL_PROOF_EVENTS;
+    const bySide = this.settings.live.sideGates === true;
     // the paper book's signal closes, read from the partial covering index (its entries carry the primary key: symbol,
     // side and entry time); signal ids carry "|sig-" — signalUnitOf keeps exactly the signal configs
-    const rows = this.db.all<{ cfg: string; sym: string; side: number; entry_t: number; exit_t: number | null; r: number }>(
-      "SELECT cfg, sym, side, entry_t, exit_t, r / COALESCE(NULLIF(mult, 0), NULLIF(vol, 0), 1) AS r FROM paper_book_trades WHERE reason != 'dropped' AND r IS NOT NULL AND cfg LIKE '%|sig-%'",
+    const paper = yield* this.paperCloseRows(
+      "cfg, sym, side, entry_t, exit_t, r / COALESCE(NULLIF(mult, 0), NULLIF(vol, 0), 1) AS r",
+      " AND cfg LIKE '%|sig-%'",
+      (x: { cfg: string; sym: string; side: number; entry_t: number; exit_t: number | null; r: number }) =>
+        x.exit_t === null ? null : { id: String(x.entry_t), cfg: x.cfg, sym: x.sym, side: x.side, exitT: x.exit_t, r: x.r },
     );
-    const paper = rows
-      .filter((x) => x.exit_t !== null)
-      .map((x) => ({ id: String(x.entry_t), cfg: x.cfg, sym: x.sym, side: x.side, exitT: x.exit_t!, r: x.r }));
+    yield;
+    const exchange = yield* this.exchangeRowsGen(0);
+    yield;
     const out = {
-      ...signalProven(paper, this.exchangeRows(0), now, { n, minPf, minEvents, bySide }),
+      ...signalProven(paper, exchange, now, { n, minPf, minEvents, bySide }),
       n,
       minPf,
       minEvents,
     };
+    if (this.signalProofKey() !== key) return out;
     const prev = this.sigProofMemo?.out;
     if (!prev || prev.proven.size !== out.proven.size || prev.judged !== out.judged)
       this.db.event(
@@ -4442,6 +4553,29 @@ export class CoreRuntime {
       );
     this.sigProofMemo = { key, out };
     return out;
+  }
+  /**
+   * Brings the engine and signal proofs up to date in slices of at most ~SLICE_MS, so the live step reads them from
+   * their memos (a close landing used to rebuild both in one synchronous piece inside the step: 0.3–1.2 s at 50–150 k
+   * paper closes). The step waits for the current proofs — admission never reads older ones. A write that lands
+   * while a rebuild yields restarts it (three times at most; after that the synchronous readers rebuild).
+   */
+  async warmProofs(): Promise<void> {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const eKey = this.engineProofKey();
+      const sKey = this.signalProofKey();
+      if ((eKey === null || this.proofMemo?.key === eKey) && (sKey === null || this.sigProofMemo?.key === sKey)) return;
+      for (const g of [this.engineProofGen(), this.signalProofGen()]) {
+        let t = performance.now();
+        for (;;) {
+          if (g.next().done) break;
+          if (performance.now() - t > SLICE_MS) {
+            await yieldNow();
+            t = performance.now();
+          }
+        }
+      }
+    }
   }
   private exAcceptMemo: { key: string; idx: ExchangeAccept } | null = null;
   /**
