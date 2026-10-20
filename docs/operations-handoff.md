@@ -1,5 +1,7 @@
 # Final-window admission correction — 20 October 2026
 
+Published checkpoint: `5820f50bf520716ca0ca4f6f247f15c06b4cc594`, tree `da8c26aff20fc8e60f8b337482ee1a4a43ad3b06`, exactly matching local review checkpoint `89ab76fd73b50300c47d7cf48d5a26baf8d8184b`. Draft review: https://github.com/mxssnx-creator/CTS-A-O/pull/182. Subsequent publication-note changes affect documentation only.
+
 Local tested implementation: `4e2b82d668ca0dd4f41dc592b099c472ddb5cb44` (scope/ranking fix `2393a13`). This supersedes the full-context admission policy in the older checkpoints below. Main remains `4588030b946740d493cf0e0d629aa2722aa6211c`; PR 182 remains a draft and no live deployment or venue action occurred.
 
 The all-window zero-order result was a regression: config-level minTrades, validLastN and range Last-N had been additionally imposed on each symbol/direction. A diagnostic found all 125,664 hourly context checks failing the new twelve-close minimum, with at most six own closes in 24h. Config evidence now stays on the exact config; the existing separately configured symbol/direction gate is reused unchanged at entry and native promotion. Strict empty-result rejection remains even with symMinN zero. Full PF/sample/LCB/Last-N/range/DDT/DDR/green/stability gates, exact Base pair/range/target admission, current entry rechecks, Signal exact-context proof/336h history, owned native evidence, costs and held-position exit management are retained. Removed Base-only selector shortcuts also restore the configured hourly rank and Durable positive-block rule.
