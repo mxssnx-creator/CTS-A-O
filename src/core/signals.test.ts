@@ -119,9 +119,11 @@ describe("signals: sources and combos", () => {
     );
     const normal = protects.filter((p) => p.trail === 0);
     const trailing = protects.filter((p) => p.trail > 0);
-    assert.equal(protects.length, 2100);
+    // the owner's 3 % initial-stop cap on trailing configs folds 702 of the 1,350 Trailing protections onto configs
+    // already present (identical stop, target, trail and hold, so identical trades): 648 Trailing, 1,398 in all
+    assert.equal(protects.length, 1398);
     assert.equal(normal.length, 750, "300 existing + 450 new Normal protections");
-    assert.equal(trailing.length, 1350, "900 existing + 450 new 48 h Trailing protections");
+    assert.equal(trailing.length, 648, "Trailing protections after the 3 % cap (of 1,350 before it)");
     assert.deepEqual([...new Set(normal.map((p) => p.hold))].sort((a, b) => a - b), [48, 64, 96, 128, 192]);
     assert.deepEqual([...new Set(trailing.map((p) => p.hold))].sort((a, b) => a - b), [64, 96, 192]);
   });
