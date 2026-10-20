@@ -20,6 +20,7 @@
 // views into it. The worker threads build their universe from the same full bars: identical values everywhere.
 import type { Bars } from "../domain/types.ts";
 import { htfBars } from "./cache.ts";
+import { StreamMath } from "./stream-math.ts";
 
 /** Rolling window (bars) of each series' own volume SMA in the market activity. */
 export const MARKET_ACT_P = 60;
@@ -41,6 +42,147 @@ interface Grid {
   idx: Float64Array;
   act: Float64Array;
   syms: number;
+}
+
+/** Append-only market grids for a private realtime generation. Old constituent bars may not arrive retroactively. */
+export class IncrementalMarkets {
+  private aggregators = new Map<string, StreamMath>();
+  higher(b: Bars, factor: number) {
+    const key = `${b.sym}|${b.tfMin}`;
+    let math = this.aggregators.get(key);
+    if (!math) this.aggregators.set(key, (math = new StreamMath()));
+    return math.higher(b, factor).hb;
+  }
+  private records = new Map<
+    string,
+    {
+      grid: Grid;
+      cap: number;
+      cols: { t: Float64Array; ret: Float64Array; idx: Float64Array; act: Float64Array };
+      members: Array<{
+        sym: string;
+        tf: number;
+        n: number;
+        first: number;
+        last: number;
+        vs: number;
+        start: number;
+      }>;
+    }
+  >();
+  get(key: string, series: readonly Bars[]): Grid {
+    let record = this.records.get(key);
+    if (!record) {
+      const grid = buildMarket(series);
+      const members = series.map((b) => {
+        let vs = 0,
+          start = 0;
+        for (let i = 0; i < b.n; i++) {
+          if (!i || b.t[i] - b.t[i - 1] !== b.tfMin * 60_000) {
+            vs = 0;
+            start = i;
+          }
+          vs += Number.isFinite(b.v[i]) ? b.v[i] : 0;
+          if (i - start + 1 > MARKET_ACT_P)
+            vs -= Number.isFinite(b.v[i - MARKET_ACT_P]) ? b.v[i - MARKET_ACT_P] : 0;
+        }
+        return { sym: b.sym, tf: b.tfMin, n: b.n, first: b.t[0], last: b.t[b.n - 1], vs, start };
+      });
+      record = {
+        grid,
+        cap: grid.t.length,
+        cols: { t: grid.t, ret: grid.ret, idx: grid.idx, act: grid.act },
+        members,
+      };
+      this.records.set(key, record);
+      return grid;
+    }
+    if (record.members.length !== series.length)
+      throw new Error("market constituents changed; bootstrap required");
+    const oldN = record.grid.t.length,
+      last = record.grid.t[oldN - 1] ?? -Infinity;
+    const times: number[] = [];
+    for (let s = 0; s < series.length; s++) {
+      const b = series[s],
+        previous = record.members[s];
+      if (
+        b.sym !== previous.sym ||
+        b.tfMin !== previous.tf ||
+        b.n < previous.n ||
+        (previous.n && (b.t[0] !== previous.first || b.t[previous.n - 1] !== previous.last))
+      )
+        throw new Error("market history changed; bootstrap required");
+      for (let i = previous.n; i < b.n; i++) {
+        if (!(b.t[i] > last))
+          throw new Error("late peer candle changes market history; bootstrap required");
+        times.push(b.t[i]);
+      }
+    }
+    if (!times.length) return record.grid;
+    times.sort((a, b) => a - b);
+    const unique = times.filter((t, i) => !i || t !== times[i - 1]);
+    const n = oldN + unique.length;
+    if (record.cap < n) {
+      record.cap = Math.max(n, Math.ceil(n * 1.25) + 64);
+      for (const name of ["t", "ret", "idx", "act"] as const) {
+        const col = new Float64Array(record.cap);
+        col.set(record.grid[name]);
+        record.cols[name] = col;
+      }
+    }
+    const { t, ret, idx, act } = record.cols;
+    const nr = new Uint32Array(unique.length),
+      na = new Uint32Array(unique.length);
+    const slot = new Map(unique.map((time, i) => [time, i]));
+    t.set(unique, oldN);
+    ret.fill(0, oldN, n);
+    act.fill(0, oldN, n);
+    for (let s = 0; s < series.length; s++) {
+      const b = series[s],
+        state = record.members[s];
+      for (let i = state.n; i < b.n; i++) {
+        const j = slot.get(b.t[i])!,
+          g = oldN + j;
+        if (!i || b.t[i] - b.t[i - 1] !== b.tfMin * 60_000) {
+          state.vs = 0;
+          state.start = i;
+        }
+        if (i && b.t[i] - b.t[i - 1] === b.tfMin * 60_000) {
+          const r = Math.log(b.c[i] / b.c[i - 1]);
+          if (Number.isFinite(r)) {
+            ret[g] += r;
+            nr[j]++;
+          }
+        }
+        const volume = Number.isFinite(b.v[i]) ? b.v[i] : 0;
+        state.vs += volume;
+        const bars = i - state.start + 1;
+        if (bars > MARKET_ACT_P)
+          state.vs -= Number.isFinite(b.v[i - MARKET_ACT_P]) ? b.v[i - MARKET_ACT_P] : 0;
+        if (bars >= MARKET_ACT_P && state.vs > 0) {
+          act[g] += volume / (state.vs / MARKET_ACT_P);
+          na[j]++;
+        }
+      }
+      state.n = b.n;
+      state.first = b.t[0];
+      state.last = b.t[b.n - 1];
+    }
+    let cumulative = oldN ? idx[oldN - 1] : 0;
+    for (let i = oldN; i < n; i++) {
+      ret[i] = nr[i - oldN] ? ret[i] / nr[i - oldN] : NaN;
+      act[i] = na[i - oldN] ? act[i] / na[i - oldN] : NaN;
+      if (Number.isFinite(ret[i])) cumulative += ret[i];
+      idx[i] = cumulative;
+    }
+    return (record.grid = {
+      t: t.subarray(0, n),
+      ret: ret.subarray(0, n),
+      idx: idx.subarray(0, n),
+      act: act.subarray(0, n),
+      syms: series.length,
+    });
+  }
 }
 
 /** first index of sorted `t` with t[i] ≥ x */
@@ -163,15 +305,21 @@ export function alignMarket(g: Grid, b: Bars): MarketRef {
 export class MarketSource {
   private readonly bars: readonly Bars[];
   private grids = new Map<string, Grid>();
-  constructor(bars: readonly Bars[]) {
+  private stream?: IncrementalMarkets;
+  constructor(bars: readonly Bars[], stream?: IncrementalMarkets) {
     this.bars = bars;
+    this.stream = stream;
   }
   grid(tf: number, factor = 1): Grid {
     const key = `${tf}x${factor}`;
     let g = this.grids.get(key);
     if (!g) {
       const members = this.bars.filter((b) => b.tfMin === tf && b.n > 0);
-      g = buildMarket(factor === 1 ? members : members.map((b) => htfBars(b, factor).hb));
+      const inputs =
+        factor === 1
+          ? members
+          : members.map((b) => this.stream?.higher(b, factor) ?? htfBars(b, factor).hb);
+      g = this.stream ? this.stream.get(key, inputs) : buildMarket(inputs);
       this.grids.set(key, g);
     }
     return g;
@@ -188,7 +336,12 @@ export class MarketSource {
     const key = `peer:${sym}:${tf}x${factor}`;
     let g = this.grids.get(key);
     if (!g) {
-      g = buildMarket([factor === 1 ? members[0] : htfBars(members[0], factor).hb]);
+      const inputs = [
+        factor === 1
+          ? members[0]
+          : (this.stream?.higher(members[0], factor) ?? htfBars(members[0], factor).hb),
+      ];
+      g = this.stream ? this.stream.get(key, inputs) : buildMarket(inputs);
       this.grids.set(key, g);
     }
     return alignMarket(g, b);

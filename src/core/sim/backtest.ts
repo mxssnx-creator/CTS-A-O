@@ -8,6 +8,7 @@ import type { AtrProtect, Bars, OpenPosition, Protect, Side, Trade } from "../do
 import { capSignalProtect, isSignalConfig, ratchetTrail } from "./trailing.ts";
 import { atrEma } from "../math/indicators.ts";
 import { RT_COST } from "../model-cost.ts";
+import type { SimulationCursor } from "./cursor.ts";
 import {
   advanceExitProtection,
   createExitProtection,
@@ -27,6 +28,8 @@ export interface SimOptions {
   sink?: (r: number, entryT: number, exitT: number) => void;
   /** Immutable compute/job identity: permits sink-only fixed-exit price indexing within this snapshot. */
   fixedPathScope?: object;
+  /** Realtime only: continue a private append-only simulation, emitting only newly settled closes. */
+  cursor?: SimulationCursor;
 }
 
 export interface SimResult {
@@ -184,34 +187,78 @@ export function simulate(
   const cost = opt.cost;
   // Never manufacture positive returns through a missing, negative or invalid fee deduction.
   if (!(Number.isFinite(cost) && cost >= 0))
-    throw new RangeError("simulation round-trip cost must be a finite, nonnegative fraction of notional");
+    throw new RangeError(
+      "simulation round-trip cost must be a finite, nonnegative fraction of notional",
+    );
   const cooldown = opt.cooldown ?? 0;
-  const trades: Trade[] = [];
-  let inPos = false;
-  let side: Side = 1;
-  let entryI = 0;
-  let entry = 0;
-  let stop = 0;
-  let target = 0;
-  let peak = 0;
-  let trailOn = false;
-  let mfe = 0;
-  let mae = 0;
-  let nextAllowed = 0;
+  const cursor = opt.cursor;
+  cursor?.begin(bars);
+  let trades: Trade[] = [];
   // the distances in force (an ATR protect resolves them at every entry)
-  let q: Protect = p;
-  let trail = p.trail;
-  let dist = p.trail * (p.trailStep ?? 1);
-  let exitProtection: OpenPosition["exitProtection"];
-  let exitPosition:
-    (ExitProtectionPosition & { target: number; trail: number; trailDist: number }) | undefined;
+  const initial = {
+    inPos: false,
+    side: 1 as Side,
+    entryI: 0,
+    entry: 0,
+    stop: 0,
+    target: 0,
+    peak: 0,
+    trailOn: false,
+    mfe: 0,
+    mae: 0,
+    nextAllowed: 0,
+    q: p as Protect,
+    trail: p.trail,
+    dist: p.trail * (p.trailStep ?? 1),
+    exitProtection: undefined as OpenPosition["exitProtection"],
+    exitPosition: undefined as
+      (ExitProtectionPosition & { target: number; trail: number; trailDist: number }) | undefined,
+    trailPosition: undefined as OpenPosition | undefined,
+  };
+  let {
+    inPos,
+    side,
+    entryI,
+    entry,
+    stop,
+    target,
+    peak,
+    trailOn,
+    mfe,
+    mae,
+    nextAllowed,
+    q,
+    trail,
+    dist,
+    exitProtection,
+    exitPosition,
+    trailPosition,
+  } = cursor?.restore(initial) ?? initial;
+  const checkpoint = () => ({
+    inPos,
+    side,
+    entryI,
+    entry,
+    stop,
+    target,
+    peak,
+    trailOn,
+    mfe,
+    mae,
+    nextAllowed,
+    q,
+    trail,
+    dist,
+    exitProtection,
+    exitPosition,
+    trailPosition,
+  });
   const exitBar = { t: 0, high: 0, low: 0, close: 0 };
   const atr = p.atr ? (opt.atr ?? atrEma(h, l, c, ATR_PERIOD)) : null;
   const resolve = (i: number) => {
     const resolved = resolveAtrProtect(p, atr![i] / c[i], bars.tfMin);
     return signal ? capSignalProtect(resolved) : resolved;
   };
-  let trailPosition: OpenPosition | undefined;
   const nx = nextEntryIndex(sig);
 
   const sink = opt.sink;
@@ -258,7 +305,8 @@ export function simulate(
     nextAllowed = i + cooldown;
   };
 
-  for (let i = 0; i < n; i++) {
+  for (let i = cursor?.start ?? 0; i < n; i++) {
+    cursor?.checkpoint(i, n, checkpoint);
     if (inPos && i >= entryI) {
       if (fixedPath && Number.isFinite(stop) && Number.isFinite(target)) {
         const end = Math.min(n - 1, entryI + p.hold - 1);
@@ -344,15 +392,29 @@ export function simulate(
           ? { side, entry, stop, target, peak, trailOn, trail, trailDist: dist, exitProtection }
           : undefined;
         // One object per position, never one allocation per bar; shared with realtime ratcheting.
-        trailPosition = q.trail > 0 && !exitPosition
-          ? { cfg, sym, side, entryT: t[entryI], entryI, entry, stop, target, peak, trailOn, mtm: 0 }
-          : undefined;
+        trailPosition =
+          q.trail > 0 && !exitPosition
+            ? {
+                cfg,
+                sym,
+                side,
+                entryT: t[entryI],
+                entryI,
+                entry,
+                stop,
+                target,
+                peak,
+                trailOn,
+                mtm: 0,
+              }
+            : undefined;
         mfe = 0;
         mae = 0;
       }
     }
   }
 
+  if (cursor) trades = cursor.finish(bars, trades, checkpoint);
   let open: OpenPosition | null = null;
   if (inPos) {
     const last = c[n - 1];

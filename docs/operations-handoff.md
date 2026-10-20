@@ -1,5 +1,14 @@
 # CTS-A-O operations handoff
 
+## 20 October 2026 — incremental cycle checkpoint (verification in progress)
+
+Branch `codex/incremental-cycle-20261020` continues PR 183's exact tree. Append-only worker calculations now retain validated/held configs, simulator boundary state, numeric indicator and market state; discovery remains background work on a five-minute default. Default fast entries cover all selected indications; explicit off/Break overrides remain. Research publishes its exact policy/tapes/book atomically. Cycle and tick timers re-arm only after completion; comparison rejection/timeout, worker timeout/exit and paper ownership recovery are bounded and generation fenced. The foreground continues while a background Compare uses an immutable snapshot. Signal and engine acceptance records fork their immutable groups before updates.
+
+Initial 45-cycle public-history latency fixture (20 symbols, 636 post-Base/config-qualified seats, 1/5/15m) measured median 146.36 ms, p95 254.35 ms, max 294.05 ms, zero >=500 ms; tick max 5.38 ms. Every column, prefix, open and pending state on 636 continued tapes / 107,155 total closes exactly matches a separate full-history rebuild. This excludes network/venue latency, cold discovery and worker bootstrap, and is not profitability evidence. Later formatting, memory-capacity and comparison-wait refinements require the final frozen-source rerun. Failed earlier performance attempts remain in local runs; do not substitute their timing for current proof.
+
+Focused final tests: 17/17 for source/math/market/tape parity, both directions/all simulator families, private-worker ownership/timeout and serial recovery; additional full suite is running (221 files). Typecheck and production build passed before the last removal of unused eager calculations; final type/lint/build, UI/report checks and final benchmark remain required. Source/math/PF/history/Last-N requirements are unchanged. No deployment, main merge, live reload, account mutation or venue orders occurred. Previous report/studies below certify the previous economic source, not this release's live operation.
+
+
 ## 20 October 2026 — systemwide memory corrections and final twenty-symbol evidence
 
 Production economic source is local `5fac4ba` (remote `a22ee02b4b9a07390146cb40e055e405803cfd32`, tree `46b13a1f0ee13f96e5ea9ee806ea875113095cbb`) and still exactly matches all three final replay manifests. Later changes are test fixtures, benchmark fixture inputs, report generation, evidence and this handoff. Latest published checkpoint before final artifacts: remote `44596e9aba275c397f72305a797265bc7728e035` / local `fea38fa`. No deployment, account, venue order or live reload occurred. PR 183 remains a draft; main is unchanged.

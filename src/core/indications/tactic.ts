@@ -70,9 +70,9 @@ export interface TacticSnapshot {
 
 interface TacticSeries {
   warmup: number;
-  ready: Uint8Array;
+  ready: Int8Array;
   trend: Int8Array;
-  regime: Uint8Array;
+  regime: Int8Array;
   atr: Float64Array;
   adx: Float64Array;
   z: Float64Array;
@@ -82,7 +82,7 @@ interface TacticSeries {
   low: Float64Array;
   breakout: Int8Array;
   states: Record<TacticTechnique, Int8Array>;
-  adaptive: Uint8Array;
+  adaptive: Int8Array;
 }
 
 const fin = (...xs: number[]) => xs.every(Number.isFinite);
@@ -104,6 +104,18 @@ function validBar(b: Bars, i: number): boolean {
 /** Fresh valid segments reset recursive indicator state as well as readiness after an outage or invalid candle. */
 function segmented(k: SeriesCache, range: TacticRange, warmup: number): TacticSeries | null {
   const b = k.b;
+  // In the append-only worker, validate only unseen bars. Once a gap is observed the full segmented
+  // oracle remains authoritative; continuous lanes avoid rescanning their entire history each minute.
+  if (k.streamMath) {
+    const check = k.streamMath.frame("tactic-valid", b.n, ["valid"], () => ({ invalid: false }), [
+      "valid",
+    ]);
+    for (let i = check.from; i < b.n; i++)
+      if (!validBar(b, i) || (i > 0 && b.t[i] - b.t[i - 1] !== b.tfMin * 60_000))
+        check.state.invalid = true;
+    check.commit(check.state);
+    if (!check.state.invalid) return null;
+  }
   const spans: Array<[number, number]> = [];
   let start = -1;
   for (let i = 0; i < b.n; i++) {
@@ -121,9 +133,9 @@ function segmented(k: SeriesCache, range: TacticRange, warmup: number): TacticSe
   const nan = () => new Float64Array(n).fill(NaN);
   const out: TacticSeries = {
     warmup,
-    ready: new Uint8Array(n),
+    ready: new Int8Array(n),
     trend: new Int8Array(n),
-    regime: new Uint8Array(n),
+    regime: new Int8Array(n),
     atr: nan(),
     adx: nan(),
     z: nan(),
@@ -132,7 +144,7 @@ function segmented(k: SeriesCache, range: TacticRange, warmup: number): TacticSe
     high: nan(),
     low: nan(),
     breakout: new Int8Array(n),
-    adaptive: new Uint8Array(n),
+    adaptive: new Int8Array(n),
     states: Object.fromEntries(TACTIC_TECHNIQUES.map((x) => [x.id, new Int8Array(n)])) as Record<
       TacticTechnique,
       Int8Array
@@ -186,26 +198,58 @@ function tacticSeries(k: SeriesCache, range: TacticRange): TacticSeries {
     const atr = k.atr(14);
     const { adx, pdi, mdi } = k.dmi(14);
     // A flat, fully warmed window has no stretch (z = 0), rather than an unready context forever.
-    const z = Float64Array.from(k.z(p.z), (v, i) =>
-      Number.isFinite(v) ? v : i >= p.z - 1 ? 0 : NaN,
-    );
+    const rawZ = k.z(p.z);
+    const normalizeZ = (v: number, i: number) => (Number.isFinite(v) ? v : i >= p.z - 1 ? 0 : NaN);
+    const z = k.streamMath
+      ? k.streamMath.vector(
+          `tactic-z:${range}`,
+          n,
+          () => 0,
+          (i, out) => {
+            out[i] = normalizeZ(rawZ[i], i);
+          },
+        )
+      : Float64Array.from(rawZ, normalizeZ);
     const volume = k.volSma(p.look);
     const { hi: high, lo: low } = k.don(p.look);
-    const ready = new Uint8Array(n);
-    const trend = new Int8Array(n);
-    // 0 insufficient, 1 trend, 2 range, 3 transition.
-    const regime = new Uint8Array(n);
-    const atrRatio = new Float64Array(n).fill(NaN);
-    const volumeRatio = new Float64Array(n).fill(NaN);
-    const breakout = new Int8Array(n);
+    const integerNames = [
+      "ready",
+      "trend",
+      "regime",
+      "breakout",
+      "adaptive",
+      ...TACTIC_TECHNIQUES.map((x) => `state:${x.id}`),
+    ];
+    const names = [...integerNames, "atrRatio", "volumeRatio"];
+    const frame = k.streamMath?.frame<
+      Record<string, Float64Array | Int8Array>,
+      { contiguous: number; atrSum: number; atrCount: number }
+    >(
+      `tactic-series:${range}`,
+      n,
+      names,
+      () => ({ contiguous: 0, atrSum: 0, atrCount: 0 }),
+      integerNames,
+    );
+    const int = (name: string) => (frame ? (frame.cols[name] as Int8Array) : new Int8Array(n));
+    const ready = int("ready"),
+      trend = int("trend"),
+      regime = int("regime");
+    const atrRatio = frame ? (frame.cols.atrRatio as Float64Array) : new Float64Array(n).fill(NaN);
+    const volumeRatio = frame
+      ? (frame.cols.volumeRatio as Float64Array)
+      : new Float64Array(n).fill(NaN);
+    const breakout = int("breakout"),
+      adaptive = int("adaptive");
     const states = Object.fromEntries(
-      TACTIC_TECHNIQUES.map((x) => [x.id, new Int8Array(n)]),
+      TACTIC_TECHNIQUES.map((x) => [x.id, int(`state:${x.id}`)]),
     ) as Record<TacticTechnique, Int8Array>;
-    const adaptive = new Uint8Array(n);
-    let contiguous = 0;
-    let atrSum = 0;
-    let atrCount = 0;
-    for (let i = 0; i < n; i++) {
+    let { contiguous, atrSum, atrCount } = frame?.state ?? {
+      contiguous: 0,
+      atrSum: 0,
+      atrCount: 0,
+    };
+    for (let i = frame?.from ?? 0; i < n; i++) {
       // The reference ATR and volume exclude this bar: a breakout cannot increase its own participation baseline.
       if (i > 0 && Number.isFinite(atr[i - 1])) {
         atrSum += atr[i - 1];
@@ -312,6 +356,7 @@ function tacticSeries(k: SeriesCache, range: TacticRange): TacticSeries {
         adaptive[i] = 4;
       }
     }
+    frame?.commit({ contiguous, atrSum, atrCount });
     return {
       warmup,
       ready,

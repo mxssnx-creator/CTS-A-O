@@ -150,9 +150,17 @@ export function comboSignal(bot: BotType, ind: string, k: SeriesCache): Int8Arra
       // Historic Exit has a stable direction-onset source. It carries no Bot trigger and does not inherit
       // the selected Bot's filters or the range-engine's remove-only tactics.
       const dir = bot === "revert" ? -1 : 1;
-      const out = new Int8Array(k.b.n);
-      for (let i = 1; i < st.length; i++)
+      const frame = k.streamMath?.frame<{ value: Int8Array }, number>(
+        `combo:${bot}:${ind}`,
+        k.b.n,
+        ["value"],
+        () => 0,
+        ["value"],
+      );
+      const out = frame?.cols.value ?? new Int8Array(k.b.n);
+      for (let i = Math.max(1, frame?.from ?? 1); i < st.length; i++)
         if (st[i] !== 0 && st[i] !== st[i - 1]) out[i] = st[i] * dir;
+      frame?.commit(0);
       return out;
     }
     const trig = botTrigger(bot, k)!;

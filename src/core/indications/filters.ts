@@ -4,9 +4,30 @@ import type { Tactics } from "../domain/types.ts";
 import type { SeriesCache } from "./cache.ts";
 import { choppiness } from "./research3.ts";
 
-export type FilterFn = (sig: Int8Array, k: SeriesCache, ref?: SeriesCache | null) => Int8Array;
+export type FilterFn = (
+  sig: Int8Array,
+  k: SeriesCache,
+  ref?: SeriesCache | null,
+  scope?: string,
+) => Int8Array;
 
-function keep(sig: Int8Array, pass: (i: number, side: number) => boolean): Int8Array {
+function keep(
+  sig: Int8Array,
+  pass: (i: number, side: number) => boolean,
+  k?: SeriesCache,
+  key?: string,
+): Int8Array {
+  if (k?.streamMath && key)
+    return k.streamMath.run<{ value: Int8Array }, number>(
+      `filter:${key}`,
+      sig.length,
+      ["value"],
+      () => 0,
+      (i, out) => {
+        if (sig[i] !== 0 && pass(i, sig[i])) out.value[i] = sig[i];
+      },
+      ["value"],
+    ).value;
   const out = new Int8Array(sig.length);
   for (let i = 0; i < sig.length; i++) if (sig[i] !== 0 && pass(i, sig[i])) out[i] = sig[i];
   return out;
@@ -15,6 +36,24 @@ function keep(sig: Int8Array, pass: (i: number, side: number) => boolean): Int8A
 /** Rolling percentile rank (0..1) of x[i] within the previous `p` values (causal). */
 function pctRank(k: SeriesCache, key: string, x: Float64Array, p: number): Float64Array {
   return k.memo(`rank:${key}:${p}`, () => {
+    if (k.streamMath)
+      return k.streamMath.vector(
+        `rank:${key}:${p}`,
+        x.length,
+        () => 0,
+        (i, out) => {
+          if (i < p || !Number.isFinite(x[i])) return;
+          let below = 0,
+            count = 0;
+          for (let j = i - p; j < i; j++) {
+            const value = x[j];
+            if (!Number.isFinite(value)) continue;
+            count++;
+            if (value < x[i]) below++;
+          }
+          if (count > p / 2) out[i] = below / count;
+        },
+      );
     const out = new Float64Array(x.length).fill(Number.NaN);
     for (let i = p; i < x.length; i++) {
       const v = x[i];
@@ -36,6 +75,15 @@ function pctRank(k: SeriesCache, key: string, x: Float64Array, p: number): Float
 function natr(k: SeriesCache): Float64Array {
   return k.memo("natr14", () => {
     const a = k.atr(14);
+    if (k.streamMath)
+      return k.streamMath.vector(
+        "natr14",
+        a.length,
+        () => 0,
+        (i, out) => {
+          out[i] = a[i] / k.b.c[i];
+        },
+      );
     const out = new Float64Array(a.length);
     for (let i = 0; i < a.length; i++) out[i] = a[i] / k.b.c[i];
     return out;
@@ -65,42 +113,91 @@ export const VOL_RANK_BARS = 336;
 export const FILTERS: Record<string, FilterFn> = {
   none: (s) => s,
   // trend strength
-  adx20: (s, k) => { const adx = k.dmi(14).adx; return keep(s, (i) => adx[i] >= 20); },
-  adx25: (s, k) => { const adx = k.dmi(14).adx; return keep(s, (i) => adx[i] >= 25); },
-  adxLo20: (s, k) => { const adx = k.dmi(14).adx; return keep(s, (i) => adx[i] < 20); },
+  adx20: (s, k, _ref, scope) => {
+    const adx = k.dmi(14).adx;
+    return keep(s, (i) => adx[i] >= 20, k, scope);
+  },
+  adx25: (s, k, _ref, scope) => {
+    const adx = k.dmi(14).adx;
+    return keep(s, (i) => adx[i] >= 25, k, scope);
+  },
+  adxLo20: (s, k, _ref, scope) => {
+    const adx = k.dmi(14).adx;
+    return keep(s, (i) => adx[i] < 20, k, scope);
+  },
   // higher-timeframe trend (EMA200 ≈ the 4h EMA50 on 1h bars) and its slope
-  htf: (s, k) => { const e = k.ema(200), c = k.b.c; return keep(s, (i, d) => (c[i] - e[i]) * d > 0); },
-  htfAgainst: (s, k) => { const e = k.ema(200), c = k.b.c; return keep(s, (i, d) => (c[i] - e[i]) * d < 0); },
-  slope50: (s, k) => { const e = k.ema(50); return keep(s, (i, d) => i >= 10 && (e[i] - e[i - 10]) * d > 0); },
+  htf: (s, k, _ref, scope) => {
+    const e = k.ema(200),
+      c = k.b.c;
+    return keep(s, (i, d) => (c[i] - e[i]) * d > 0, k, scope);
+  },
+  htfAgainst: (s, k, _ref, scope) => {
+    const e = k.ema(200),
+      c = k.b.c;
+    return keep(s, (i, d) => (c[i] - e[i]) * d < 0, k, scope);
+  },
+  slope50: (s, k, _ref, scope) => {
+    const e = k.ema(50);
+    return keep(s, (i, d) => i >= 10 && (e[i] - e[i - 10]) * d > 0, k, scope);
+  },
   // volatility regime (ATR% percentile over ~2 weeks of bars)
-  volHi: (s, k) => keep(s, (i) => pctRank(k, "natr", natr(k), VOL_RANK_BARS)[i] >= 0.5),
-  volLo: (s, k) => keep(s, (i) => pctRank(k, "natr", natr(k), VOL_RANK_BARS)[i] < 0.5),
+  volHi: (s, k, _ref, scope) =>
+    keep(s, (i) => pctRank(k, "natr", natr(k), VOL_RANK_BARS)[i] >= 0.5, k, scope),
+  volLo: (s, k, _ref, scope) =>
+    keep(s, (i) => pctRank(k, "natr", natr(k), VOL_RANK_BARS)[i] < 0.5, k, scope),
   // choppiness regime: not in a range (CHOP(14) under the 61.8 range line; unknown = kept out)
-  chop: (s, k) => {
+  chop: (s, k, _ref, scope) => {
     const ch = k.memo("chop14", () => choppiness(k.b.h, k.b.l, k.b.c, 14));
-    return keep(s, (i) => ch[i] < 61.8);
+    return keep(s, (i) => ch[i] < 61.8, k, scope);
   },
   // participation
-  volume: (s, k) => { const v = k.b.v, m = k.volSma(20); return keep(s, (i) => v[i] > 1.5 * m[i]); },
-  quiet: (s, k) => { const v = k.b.v, m = k.volSma(20); return keep(s, (i) => v[i] < m[i]); },
+  volume: (s, k, _ref, scope) => {
+    const v = k.b.v,
+      m = k.volSma(20);
+    return keep(s, (i) => v[i] > 1.5 * m[i], k, scope);
+  },
+  quiet: (s, k, _ref, scope) => {
+    const v = k.b.v,
+      m = k.volSma(20);
+    return keep(s, (i) => v[i] < m[i], k, scope);
+  },
   // session (UTC hour of the bar that closes the signal)
-  euUs: (s, k) =>
-    keep(s, (i) => {
-      const h = Math.floor((k.b.t[i] % 86_400_000) / HOUR);
-      return h >= 7 && h < 21;
-    }),
-  asia: (s, k) =>
-    keep(s, (i) => {
-      const h = Math.floor((k.b.t[i] % 86_400_000) / HOUR);
-      return h < 7 || h >= 21;
-    }),
+  euUs: (s, k, _ref, scope) =>
+    keep(
+      s,
+      (i) => {
+        const h = Math.floor((k.b.t[i] % 86_400_000) / HOUR);
+        return h >= 7 && h < 21;
+      },
+      k,
+      scope,
+    ),
+  asia: (s, k, _ref, scope) =>
+    keep(
+      s,
+      (i) => {
+        const h = Math.floor((k.b.t[i] % 86_400_000) / HOUR);
+        return h < 7 || h >= 21;
+      },
+      k,
+      scope,
+    ),
   // not overextended: within 2 ATR of EMA50
-  stretch2: (s, k) => { const c = k.b.c, e = k.ema(50), a = k.atr(14); return keep(s, (i) => Math.abs(c[i] - e[i]) < 2 * a[i]); },
+  stretch2: (s, k, _ref, scope) => {
+    const c = k.b.c,
+      e = k.ema(50),
+      a = k.atr(14);
+    return keep(s, (i) => Math.abs(c[i] - e[i]) < 2 * a[i], k, scope);
+  },
   // RSI room: long not overbought, short not oversold
-  rsiRoom: (s, k) => { const r = k.rsi(14); return keep(s, (i, d) => (d > 0 ? r[i] < 65 : r[i] > 35)); },
+  rsiRoom: (s, k, _ref, scope) => {
+    const r = k.rsi(14);
+    return keep(s, (i, d) => (d > 0 ? r[i] < 65 : r[i] > 35), k, scope);
+  },
   // market (reference symbol) regime
-  btc: (s, k, ref) => (ref ? keep(s, (i, d) => refTrend(k, ref, 50)[i] === d) : s),
-  btcAgainst: (s, k, ref) => (ref ? keep(s, (i, d) => refTrend(k, ref, 50)[i] === -d) : s),
+  btc: (s, k, ref, scope) => (ref ? keep(s, (i, d) => refTrend(k, ref, 50)[i] === d, k, scope) : s),
+  btcAgainst: (s, k, ref, scope) =>
+    ref ? keep(s, (i, d) => refTrend(k, ref, 50)[i] === -d, k, scope) : s,
 };
 
 export const FILTER_IDS = Object.keys(FILTERS);
@@ -110,10 +207,11 @@ export function applyFilter(
   sig: Int8Array,
   k: SeriesCache,
   ref?: SeriesCache | null,
+  streamKey?: string,
 ): Int8Array {
   const f = FILTERS[id];
   if (!f) throw new Error(`unknown filter ${id}`);
-  return f(sig, k, ref);
+  return f(sig, k, ref, streamKey ? `${streamKey}:${id}` : undefined);
 }
 
 // ── Tactics (engine-wide, switchable in Settings) ─────────────────────────────
@@ -121,7 +219,12 @@ export function applyFilter(
 /** Stable key of the active signal tactics ("" = none) — part of every memo key. */
 export function tacticKey(t?: Tactics | null): string {
   if (!t) return "";
-  return [t.session && "euUs", t.volRegime && "volHi", t.trendStrength && "adx20", t.chopRegime && "chop"]
+  return [
+    t.session && "euUs",
+    t.volRegime && "volHi",
+    t.trendStrength && "adx20",
+    t.chopRegime && "chop",
+  ]
     .filter(Boolean)
     .join("+");
 }
@@ -151,7 +254,10 @@ export function tacticKeyFor(t: Tactics | null | undefined, base: string): strin
   const key = tacticKey(t);
   const relateAdaptive = base.startsWith("relate-") && base.includes("-adaptive-");
   return key && (LOW_ADX_INDS.has(base) || relateAdaptive)
-    ? key.split("+").filter((x) => x !== "adx20").join("+")
+    ? key
+        .split("+")
+        .filter((x) => x !== "adx20")
+        .join("+")
     : key;
 }
 
@@ -174,6 +280,6 @@ export function withTactics(
 ): Int8Array {
   if (!key) return sig;
   return k.memo(`tac:${key}:${memoKey}`, () =>
-    key.split("+").reduce((x, id) => applyFilter(id, x, k), sig),
+    key.split("+").reduce((x, id) => applyFilter(id, x, k, undefined, `${key}:${memoKey}`), sig),
   );
 }

@@ -53,6 +53,9 @@ import {
   type EvalFamily,
 } from "../eval-family.ts";
 import { partitionByIndication } from "./partition.ts";
+import { OwnedWorker } from "./owned-worker.server.ts";
+import type { RealtimeTapeGroup } from "../sim/realtime.ts";
+import { appendTape } from "../sim/tape-append.ts";
 import { diffPositions, diffTrades, type WrittenPos } from "./paper-rows.ts";
 import type { ConnId } from "../exchange/bingx.server.ts";
 import { tacticWarmupBars } from "../indications/filters.ts";
@@ -197,6 +200,9 @@ import {
   type EntryFloors,
   type TapeBuildStat,
   floorsForPairs,
+  advanceGuardIndicesGen,
+  blockEntryOf,
+  type BlockFeedEntry,
   mergeBuildStats,
   DEFAULT_RANGE_FIT,
   protectGrid,
@@ -248,10 +254,10 @@ import {
 import { volumeFactorForIndication } from "../volume-factor.ts";
 
 import { isDeepStrictEqual } from "node:util";
-import { type BlockBook, blockBookOf, blockStackCap } from "../sim/block.ts";
-import { trailBar } from "../sim/backtest.ts";
+import { type BlockBook, type BlockSource, blockBookOf, blockStackCap } from "../sim/block.ts";
+import { carryTrail, TickMathBook, type TickMathResult } from "./tick-math.ts";
 import { enforceSignalPosition } from "../sim/trailing.ts";
-import { advanceExitProtection, createExitProtection } from "../sim/exit-protection.ts";
+import { createExitProtection } from "../sim/exit-protection.ts";
 import {
   activeSignals,
   signalEvaluationPairs,
@@ -328,8 +334,8 @@ const PENDING_STATUS_MS = 30_000;
 const CONTROL_IDLE_MS = Number(process.env.CTS_CORE_CONTROL_IDLE_MS) || 1_000;
 const CONTROL_TRAIL_MS = 250;
 /**
- * Realtime entries are Break-only by default. `1` enables every selected indication; `0`/`off` disables this path.
- * This keeps the new Break live path scoped while leaving the existing broad rollout explicitly operator-controlled.
+ * Only validated/held configs continue in realtime. Every selected family is included by default; an explicit
+ * `break` override retains the narrower rollout and `0`/`off` disables realtime entries.
  */
 export type FastEntryMode = "off" | "break" | "all";
 export function fastEntryMode(raw = process.env.CTS_CORE_FAST_ENTRIES): FastEntryMode {
@@ -337,7 +343,7 @@ export function fastEntryMode(raw = process.env.CTS_CORE_FAST_ENTRIES): FastEntr
   if (x === "1" || x === "all") return "all";
   if (x === "0" || x === "off") return "off";
   if (x === "break") return "break";
-  return x ? "off" : "break";
+  return x ? "off" : "all";
 }
 const FAST_ENTRY_MODE = fastEntryMode();
 const FAST_ENTRIES = FAST_ENTRY_MODE !== "off";
@@ -393,9 +399,11 @@ export function fastBarFresh(
     nowT - barCloseT <= maxDelayMs
   );
 }
-/** its bar tail: the longest hold a position blocks a re-entry for (signals 48 h), and the indicators' warm-up bars */
-const FAST_TAIL_H = 48;
-const FAST_WARMUP_BARS = 200;
+/** Discovery/selection is background work, not a full rebuild at every candle. Explicit kicks still apply now. */
+export function researchIntervalMs(raw = process.env.CTS_CORE_RESEARCH_MS): number {
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 60_000 && n <= 3_600_000 ? n : 300_000;
+}
 /** the live step's share of one tick for advancing the Block / acceptance books over a fresh run's feed, ms */
 const BOOK_CATCHUP_MS = 15;
 /** the paper step feeds the Block book / signal guard this many feed entries a slice before its entries */
@@ -459,6 +467,8 @@ export interface RuntimeStatus {
   startedAt: number;
   heartbeat: number;
   lastCycleMs: number;
+  cycleKind?: "idle" | "incremental" | "research";
+  nextResearchAt?: number;
   lastComputeMs: number;
   lastBarT: number;
   source: "bingx" | "synthetic" | "none";
@@ -628,6 +638,12 @@ export interface RuntimeStatus {
     open: number;
     added: number;
     error: string | null;
+    phase?: "warming" | "ready" | "incremental" | "error";
+    workerMs?: number;
+    workerProfile?: Record<string, number>;
+    cycles?: number;
+    maxMs?: number;
+    overBudget?: number;
   };
   /** the last event-loop stalls over 150 ms, with what was running (the live tick waits behind them) */
   stalls?: Array<{ at: number; ms: number; where: string }>;
@@ -681,149 +697,8 @@ const posId = (p: { cfg: string; sym: string; side: number; entryT: number }) =>
 const posIdLegacy = (p: { cfg: string; sym: string; entryT: number }) =>
   `${p.cfg}|${p.sym}|${p.entryT}`;
 
-/** true when `px` is at or through the position's stop (long: at or below, short: at or above) */
-export function crossedStop(p: { side: number; stop: number }, px: number): boolean {
-  if (!(p.stop > 0) || !(px > 0)) return false;
-  return p.side === 1 ? px <= p.stop : px >= p.stop;
-}
-
-/**
- * The exit level a tick price reached (0 = none): the stop, else the target — as the simulation exits (a target
- * reached exits there, unless the position trails free with its trail armed). Only the stop was checked at tick
- * time: a target reached intrabar kept the lane's volume on the exchange until the bar-closed compute (1.5–2 min
- * on x01) while the paper book had already taken its profit.
- */
-/** A paper position's trail state while the tick follows it (its lane bar, and that bar's high and low so far). */
-export interface TickTrail {
-  cfg?: string;
-  side: number;
-  entry: number;
-  stop: number;
-  peak: number;
-  trailOn: boolean;
-  trail?: number;
-  trailDist?: number;
-  target?: number;
-  exitProtection?: OpenPosition["exitProtection"];
-  tkBar?: number;
-  tkHi?: number;
-  tkLo?: number;
-  tkClose?: number;
-}
-
-/**
- * The tick's trailing between computes: the prices of the position's lane bar (5 / 15 / 30 min …) are followed, and
- * when that bar closes the simulation's own rule advances the peak and the trailing stop (trailBar). Without it a
- * trailing stop stood where the last paper step left it until the next compute (minutes on x02, 7 Oct) — the tick
- * then exited a reversal at an old level. Returns whether the stop moved.
- */
-export function tickTrail(p: TickTrail, px: number, now: number, tfMs: number): boolean {
-  const repaired = enforceSignalPosition(p);
-  if (
-    (!p.exitProtection && !(p.trail && p.trail > 0)) ||
-    !(Number.isFinite(px) && px > 0) ||
-    !(Number.isFinite(tfMs) && tfMs > 0) ||
-    !Number.isFinite(now)
-  )
-    return repaired;
-  const bar = Math.floor(now / tfMs);
-  if (p.tkBar === undefined) {
-    p.tkBar = bar;
-    p.tkHi = px;
-    p.tkLo = px;
-    p.tkClose = px;
-    return repaired;
-  }
-  if (bar < p.tkBar) return repaired;
-  if (bar > p.tkBar) {
-    const moved = p.exitProtection
-      ? advanceExitProtection(p, {
-          t: p.tkBar * tfMs,
-          high: p.tkHi ?? px,
-          low: p.tkLo ?? px,
-          close: p.tkClose ?? px,
-        })
-      : trailBar(p, p.trail!, p.trailDist ?? p.trail!, p.tkHi ?? px, p.tkLo ?? px);
-    p.tkBar = bar;
-    p.tkHi = px;
-    p.tkLo = px;
-    p.tkClose = px;
-    return moved || repaired;
-  }
-  if (px > (p.tkHi ?? px)) p.tkHi = px;
-  if (px < (p.tkLo ?? px)) p.tkLo = px;
-  p.tkClose = px;
-  return repaired;
-}
-
-/**
- * A rebuilt paper position (a new compute's tape) keeps what the tick advanced since: the tape stops at its data
- * end, the tick saw the bars after it — the stop and peak are only ever carried further (long up, short down), and
- * the bar being followed continues. Same position only (posId); a non-trailing position keeps the tape's.
- */
-export function carryTrail(
-  op: TickTrail,
-  prev: TickTrail | undefined,
-): Partial<
-  Pick<
-    TickTrail,
-    | "stop"
-    | "peak"
-    | "trailOn"
-    | "trail"
-    | "trailDist"
-    | "target"
-    | "exitProtection"
-    | "tkBar"
-    | "tkHi"
-    | "tkLo"
-    | "tkClose"
-  >
-> {
-  if (!prev || (!op.exitProtection && !(op.trail && op.trail > 0))) return {};
-  const long = op.side === 1;
-  return {
-    stop: long ? Math.max(op.stop, prev.stop) : Math.min(op.stop, prev.stop),
-    peak: long ? Math.max(op.peak, prev.peak) : Math.min(op.peak, prev.peak),
-    trailOn: op.trailOn || prev.trailOn,
-    ...(op.exitProtection &&
-    prev.exitProtection &&
-    prev.exitProtection.lastBarT > op.exitProtection.lastBarT
-      ? {
-          target: prev.target,
-          trail: prev.trail,
-          trailDist: prev.trailDist,
-          exitProtection: { ...prev.exitProtection },
-        }
-      : {}),
-    ...(prev.tkBar !== undefined
-      ? {
-          tkBar: prev.tkBar,
-          tkHi: prev.tkHi,
-          tkLo: prev.tkLo,
-          ...(prev.tkClose !== undefined ? { tkClose: prev.tkClose } : {}),
-        }
-      : {}),
-  };
-}
-
-export function crossedExit(
-  p: {
-    side: number;
-    stop: number;
-    target?: number;
-    trailOn?: boolean;
-    trailOnly?: boolean;
-    trailFree?: boolean;
-  },
-  px: number,
-  trailFree = false,
-): number {
-  if (crossedStop(p, px)) return p.stop;
-  const t = p.target ?? 0;
-  if (!(t > 0) || !(px > 0) || p.trailOnly || ((p.trailFree ?? trailFree) && p.trailOn)) return 0;
-  return (p.side === 1 ? px >= t : px <= t) ? t : 0;
-}
+export { tickTrail, carryTrail, crossedStop, crossedExit } from "./tick-math.ts";
+export type { TickTrail } from "./tick-math.ts";
 
 export interface PaperBook {
   selected: string[];
@@ -960,6 +835,11 @@ export class CoreRuntime {
   /** live prices (public WebSocket) for the tick; null for the synthetic test market */
   stream: PriceStream | null = null;
   private tickTimer: ReturnType<typeof setTimeout> | null = null;
+  private tickEpoch = 0;
+  private tickWorker = new OwnedWorker(128);
+  private tickSentBook: unknown = null;
+  private tickRetryAt = 0;
+  private mtmWriting = false;
   /** the market is a replayed window (see the constructor option) */
   private replay = false;
   /** Complete offline replay universe before the first compute. */
@@ -1369,6 +1249,7 @@ export class CoreRuntime {
   /** The tick: every tickMs, open paper positions marked to market and the live step (never overlapping). */
   private startTick() {
     if (this.tickTimer) return;
+    const epoch = ++this.tickEpoch;
     if (!this.stream && this.market === "bingx" && this.priceStream)
       this.stream = this.priceStream();
     const loop = () => {
@@ -1382,7 +1263,7 @@ export class CoreRuntime {
               };
             })
             .finally(() => {
-              if (this.tickTimer && !this.stopped) loop();
+              if (epoch === this.tickEpoch && this.tickTimer && !this.stopped) loop();
             });
         },
         Math.max(20, this.settings.tickMs ?? 100),
@@ -1393,6 +1274,9 @@ export class CoreRuntime {
   }
 
   private stopTick() {
+    this.tickEpoch++;
+    this.tickWorker.dispose(new Error("tick loop stopped"));
+    this.tickSentBook = null;
     if (this.tickTimer) clearTimeout(this.tickTimer);
     this.tickTimer = null;
     this.stream?.stop();
@@ -1433,6 +1317,9 @@ export class CoreRuntime {
     positions: unknown;
     units: Float64Array;
     cost: number;
+    baseTfMin: number;
+    trailFree: boolean;
+    math: TickMathBook | null;
     groups: Array<{ sym: string; idx: number[]; px: number; sum: number; nextBarT: number }>;
   } | null = null;
   private tickBook() {
@@ -1440,7 +1327,17 @@ export class CoreRuntime {
     const units = this.paperUnits();
     const cost = this.settings.cost;
     const m = this.tickMemo;
-    if (m && m.positions === positions && m.units === units && m.cost === cost) return m;
+    const baseTfMin = this.settings.tfMin,
+      trailFree = this.settings.grid?.trailFree === true;
+    if (
+      m &&
+      m.positions === positions &&
+      m.units === units &&
+      m.cost === cost &&
+      m.baseTfMin === baseTfMin &&
+      m.trailFree === trailFree
+    )
+      return m;
     const by = new Map<
       string,
       { sym: string; idx: number[]; px: number; sum: number; nextBarT: number }
@@ -1451,7 +1348,15 @@ export class CoreRuntime {
       if (!g) by.set(sym, (g = { sym, idx: [], px: NaN, sum: 0, nextBarT: Infinity }));
       g.idx.push(i);
     }
-    this.tickMemo = { positions, units, cost, groups: [...by.values()] };
+    this.tickMemo = {
+      positions,
+      units,
+      cost,
+      baseTfMin,
+      trailFree,
+      math: null,
+      groups: [...by.values()],
+    };
     return this.tickMemo;
   }
 
@@ -1489,185 +1394,385 @@ export class CoreRuntime {
     main: { protects: readonly Protect[]; dcaFor: unknown; floors: EntryFloors };
     sig: { protects: readonly Protect[]; dcaFor: unknown; floors: EntryFloors };
     coord: { protects: readonly Protect[]; dcaFor: unknown; floors: EntryFloors };
+    exit: { protects: readonly Protect[]; dcaFor: unknown; floors: EntryFloors };
     adjust: AdjustState | null;
+    bars: Bars[];
   } | null = null;
   /** a paper step (full or realtime) owns the book */
   private paperRunning = false;
+  private paperOwner: symbol | null = null;
+  private claimPaper(): symbol {
+    if (this.paperRunning) throw new Error("paper book already has an active owner");
+    const owner = Symbol("paper-step");
+    this.paperOwner = owner;
+    this.paperRunning = true;
+    return owner;
+  }
+  private releasePaper(owner: symbol) {
+    if (this.paperOwner !== owner) return;
+    this.paperOwner = null;
+    this.paperRunning = false;
+  }
   /** the compute is replacing its tapes and run: no realtime step until the full paper step has run on them */
   private fastHold = false;
   private fastBusy = false;
   /** the newest bar the realtime entry step has run on */
   private fastBarDone = 0;
-  /** Resolves once no paper step runs (the full and the realtime step never interleave their slices). */
-  private async paperIdle(): Promise<void> {
-    while (this.paperRunning) await new Promise((r) => setTimeout(r, 10));
+  private fastWorker = new OwnedWorker(512);
+  private fastEpoch = 0;
+  private fastReady = false;
+  private fastCount = 0;
+  private fastEnds: Record<string, number> = {};
+  private fastPreparing: Promise<void> | null = null;
+  private fastTask: Promise<void> | null = null;
+  private fastRetryAt = 0;
+  private nextResearchAt = 0;
+
+  private resetRealtime(reason: string) {
+    this.fastEpoch++;
+    this.fastReady = false;
+    this.fastCount = 0;
+    this.fastEnds = {};
+    this.fastPreparing = null;
+    this.fastWorker.dispose(new Error(reason));
   }
 
-  /**
-   * The realtime entry step (Break-only by default; CTS_CORE_FAST_ENTRIES=1 selects all types): on each new closed
-   * lane bar — also while a compute runs — seated configs are rebuilt on a short tail in a priority worker (onlyIds)
-   * and their tape refresh is published to both live modes before the paper book takes positions with the usual gates.
-   */
-  private async fastStep(): Promise<void> {
+  /** Seed the exact selected history once, off the ticker, then exchange only newly closed candles and trade deltas. */
+  private prepareRealtime(): Promise<void> {
+    if (this.fastPreparing) return this.fastPreparing;
     const a = this.fastArgs;
     if (
+      !FAST_ENTRIES ||
+      this.market !== "bingx" ||
       this.replay ||
       !a ||
+      this.fastReady ||
+      this.fastHold ||
+      !this.paperStepped ||
+      this.stopped ||
+      this.settingsStale ||
+      Date.now() < this.fastRetryAt
+    )
+      return Promise.resolve();
+    const epoch = this.fastEpoch,
+      gen = this.gen;
+    const task = (async () => {
+      const byId = this.tapeIndex();
+      const held = new Set(this.paper.positions.map((p) => p.cfg));
+      const cohort = new Set([...this.paper.selected, ...held]);
+      const groups: RealtimeTapeGroup[] = [];
+      for (const key of ["main", "sig", "coord", "exit"] as const) {
+        const ids = new Set<string>(),
+          pairs = new Set<string>();
+        for (const id of cohort) {
+          const tp = byId.get(id);
+          if (!tp) continue;
+          if (!held.has(id) && FAST_ENTRY_MODE === "break" && !isBreakRelInd(tp.ind)) continue;
+          const family =
+            tp.kind === "exit"
+              ? "exit"
+              : isSignalCoordinationInd(tp.ind)
+                ? "coord"
+                : isSignalInd(tp.ind)
+                  ? "sig"
+                  : "main";
+          if (family !== key) continue;
+          ids.add(id);
+          pairs.add(`${tp.bot}|${tp.ind}`);
+        }
+        if (!ids.size) continue;
+        const source = a[key];
+        const floors = floorsForPairs(source.floors)([...pairs]);
+        groups.push({
+          key,
+          pairs: [...pairs],
+          protects: source.protects,
+          dcaOpt: source.dcaFor as RealtimeTapeGroup["dcaOpt"],
+          tactics: this.settings.tactics,
+          adjust: a.adjust,
+          floors: {
+            ...floors,
+            onlyIds: ids,
+            heldIds: new Set([...(floors.heldIds ?? []), ...held]),
+          },
+        });
+      }
+      if (gen !== this.gen || epoch !== this.fastEpoch) return;
+      this.fastCount = groups.reduce((n, g) => n + (g.floors.onlyIds?.size ?? 0), 0);
+      if (!groups.length) {
+        this.fastReady = true;
+        this.fastEnds = Object.fromEntries(
+          a.bars.map((b) => [`${b.sym}|${b.tfMin}`, b.t[b.n - 1]]),
+        );
+        return;
+      }
+      this.status.fast = {
+        at: Date.now(),
+        bar: this.status.lastBarT,
+        ms: 0,
+        seated: cohort.size,
+        open: this.paper.positions.length,
+        added: 0,
+        error: null,
+        phase: "warming",
+      };
+      const result = await this.fastWorker.run<{ ends: Record<string, number> }>(
+        {
+          type: "realtime-init",
+          bars: shareBars(a.bars),
+          groups,
+          cost: this.settings.cost,
+          evaluationFromT: this.evaluationFromT,
+        },
+        120_000,
+      );
+      if (gen !== this.gen || epoch !== this.fastEpoch || this.stopped) return;
+      this.fastEnds = result.ends;
+      this.fastReady = true;
+      if (this.status.fast) this.status.fast.phase = "ready";
+    })()
+      .catch((error) => {
+        if (gen !== this.gen || epoch !== this.fastEpoch) return;
+        this.resetRealtime("realtime bootstrap failed");
+        this.fastRetryAt = Date.now() + 5_000;
+        this.status.fast = {
+          at: Date.now(),
+          bar: this.status.lastBarT,
+          ms: 0,
+          seated: 0,
+          open: this.paper.positions.length,
+          added: 0,
+          phase: "error",
+          error: error instanceof Error ? error.message : String(error),
+        };
+      })
+      .finally(() => {
+        if (this.fastPreparing === task) this.fastPreparing = null;
+      });
+    this.fastPreparing = task;
+    return task;
+  }
+  /** Resolves once no paper step runs (the full and the realtime step never interleave their slices). */
+  private async paperIdle(timeoutMs = 30_000): Promise<void> {
+    const gen = this.gen,
+      until = performance.now() + timeoutMs;
+    while (this.paperRunning) {
+      if (gen !== this.gen || this.stopped)
+        throw new Error("paper wait canceled by runtime generation");
+      if (performance.now() >= until) {
+        this.gen++;
+        this.paperOwner = null;
+        this.paperRunning = false;
+        this.busy = false;
+        this.dirty = true;
+        this.resetRealtime("stalled paper generation retired");
+        this.noteHeal("paper step stalled; retired its generation and scheduled recovery");
+        if (!this.stopped) this.schedule(0);
+        throw new Error("paper step stalled; generation retired");
+      }
+      await new Promise((r) => setTimeout(r, 10));
+    }
+  }
+
+  /** One serialized foreground candle cycle. Historical discovery keeps its separate background interval. */
+  private fastStep(): Promise<void> {
+    if (this.fastTask) return this.fastTask;
+    const task = this.runFastStep().finally(() => {
+      if (this.fastTask === task) this.fastTask = null;
+    });
+    this.fastTask = task;
+    return task;
+  }
+
+  private async runFastStep(): Promise<void> {
+    if (
+      this.replay ||
+      this.market !== "bingx" ||
+      !FAST_ENTRIES ||
+      !this.fastArgs ||
       this.fastBusy ||
       this.fastHold ||
       this.paperRunning ||
       !this.paperStepped ||
       !this.sim ||
-      !this.lastSelection
+      !this.lastSelection ||
+      this.stopped ||
+      this.settingsStale ||
+      this.resetUniverse
     )
       return;
+    if (!this.fastReady) {
+      void this.prepareRealtime();
+      return;
+    }
     const bar = this.status.lastBarT;
     if (!(bar > this.fastBarDone)) return;
+    if (!this.fastCount) {
+      this.fastBarDone = bar;
+      return;
+    }
     const barEnd = bar + this.settings.tfMin * 60_000;
     const startAt = Date.now();
     if (!fastBarFresh(barEnd, startAt)) {
-      this.fastBarDone = bar;
-      this.status.fast = {
-        at: startAt,
-        bar,
-        ms: 0,
-        delayMs: Math.max(0, startAt - barEnd),
-        seated: 0,
-        open: this.paper.positions.length,
-        added: 0,
-        error: "closed candle is stale; late entry suppressed",
-      };
-      return;
-    }
-    if (!workersAvailable() || this.workersBroken) {
-      this.fastBarDone = bar;
-      this.status.fast = {
-        at: startAt,
-        bar,
-        ms: 0,
-        delayMs: Math.max(0, startAt - barEnd),
-        seated: 0,
-        open: this.paper.positions.length,
-        added: 0,
-        error: "priority worker unavailable; full compute path remains active",
-      };
-      return;
+      // Catch up state even when entries are too late. Suppressing the entire calculation would keep its
+      // continuation behind forever; only pending/new entries are suppressed, held closes still reconcile.
+      this.controlUrgent = true;
     }
     this.fastBusy = true;
-    const gen = this.gen;
+    const gen = this.gen,
+      epoch = this.fastEpoch;
     const t0 = performance.now();
     const s = this.settings;
     try {
-      const byId = this.tapeIndex();
-      const ids = { main: new Set<string>(), sig: new Set<string>(), coord: new Set<string>() };
-      const pairs = { main: new Set<string>(), sig: new Set<string>(), coord: new Set<string>() };
-      for (const id of this.paper.selected ?? []) {
-        const tp = byId.get(id);
-        if (!tp) continue;
-        // Keep realtime work scoped to the configured mode and run each selected lane only at its candle close.
-        if (!fastEntryLaneDue(tp.ind, bar, s.tfMin, FAST_ENTRY_MODE)) continue;
-        const k = isSignalCoordinationInd(tp.ind) ? "coord" : isSignalInd(tp.ind) ? "sig" : "main";
-        ids[k].add(id);
-        pairs[k].add(`${tp.bot}|${tp.ind}`);
-      }
-      if (!ids.main.size && !ids.sig.size && !ids.coord.size) {
-        this.fastBarDone = bar;
-        return;
-      }
-      // the tail: FAST_TAIL_H of history (a position held that long still blocks a re-entry, as in the full tapes)
-      // plus the slowest lane's indicator and tactic warm-up
-      const maxTf = Math.max(...(s.tfs ?? [s.tfMin]));
-      const tail1m =
-        Math.round((FAST_TAIL_H * 60) / s.tfMin) +
-        (FAST_WARMUP_BARS + tacticWarmupBars(s.tactics)) * Math.ceil(maxTf / s.tfMin);
-      // per symbol, a yield between them (all at once was a 60–90 ms block at 30 symbols)
-      const lanes: ReturnType<typeof laneSeriesFrom> = [];
+      const appends: Bars[] = [];
+      const maxFactor = Math.ceil(Math.max(...(s.tfs ?? [s.tfMin])) / s.tfMin);
       for (const [sym, cs] of this.candles) {
-        lanes.push(...laneSeriesOf(sym, cs.tail(tail1m), s));
-        await yieldNow();
-        if (gen !== this.gen || this.fastHold) return;
-      }
-      const u = makeUniverse(lanes, this.evaluationFromT);
-      // every series (the short ones too): the worker's market reference is the main thread's (Universe.series)
-      const shared = shareBars(u.series);
-      const msgs: Array<Record<string, unknown>> = [];
-      for (const k of ["main", "sig", "coord"] as const)
-        if (ids[k].size)
-          msgs.push({
-            type: "tapes",
-            evaluationFromT: this.evaluationFromT,
-            bars: shared,
-            pairs: [...pairs[k]],
-            protects: a[k].protects,
-            cost: s.cost,
-            dcaOpt: a[k].dcaFor,
-            tactics: s.tactics,
-            adjust: a.adjust,
-            floors: { ...a[k].floors, onlyIds: ids[k] },
+        const last = this.fastEnds[`${sym}|${s.tfMin}`];
+        if (last === undefined) throw new Error(`realtime universe changed: ${sym}`);
+        if (cs.firstT()! > last + s.tfMin * 60_000)
+          throw new Error(`realtime candle coverage lost: ${sym}; research bootstrap required`);
+        const from = cs.lowerBound(last + s.tfMin * 60_000);
+        const tail = cs.tail(cs.n - from + 2 * maxFactor + 2);
+        for (const b of laneSeriesOf(sym, tail, s)) {
+          const end = this.fastEnds[`${sym}|${b.tfMin}`];
+          if (end === undefined)
+            throw new Error("realtime lane changed; research bootstrap required");
+          const i = lowerBound(b.t, end + 1);
+          if (i >= b.n) continue;
+          appends.push({
+            ...b,
+            n: b.n - i,
+            t: b.t.slice(i),
+            o: b.o.slice(i),
+            h: b.h.slice(i),
+            l: b.l.slice(i),
+            c: b.c.slice(i),
+            v: b.v.slice(i),
           });
-      const res = await runOnWorkers<{ tapes: ConfigTape[] }>(
-        msgs,
-        poolSize(),
-        120_000,
-        undefined,
-        true,
-      );
-      if (gen !== this.gen || this.fastHold || this.paperRunning) return;
-      if (!fastBarFresh(barEnd, Date.now())) {
+        }
+      }
+      if (!appends.length) {
         this.fastBarDone = bar;
-        this.status.fast = {
-          at: Date.now(),
-          bar,
-          ms: Math.round(performance.now() - t0),
-          delayMs: Math.max(0, Date.now() - barEnd),
-          seated: ids.main.size + ids.sig.size + ids.coord.size,
-          open: this.paper.positions.length,
-          added: 0,
-          error: "closed candle aged out during processing; late entry suppressed",
-        };
         return;
       }
-      // Publish refreshed seated tapes as well as paper opens: Entries mode reads pending from tapes; Overall mode
-      // reads the positions below. Without both, only one live mode saw the fast result.
-      const refreshed = res.flatMap((r) => r.tapes);
-      if (refreshed.length) this.tapes = mergeFastTapes(this.tapes, refreshed);
-      // the rebuilt configs' open positions, and their signals on a lane bar that closed now as entries at the open of
-      // the bar that starts (as the simulation enters them: next open) — not one lane bar later at a moved price
+      const workerStart = performance.now();
+      const result = await this.fastWorker.run<{
+        tapes: ConfigTape[];
+        ends: Record<string, number>;
+        changed: string[];
+        profile?: Record<string, number>;
+      }>(
+        {
+          type: "realtime-advance",
+          appends,
+        },
+        5_000,
+      );
+      const workerMs = performance.now() - workerStart;
+      if (
+        gen !== this.gen ||
+        epoch !== this.fastEpoch ||
+        this.stopped ||
+        this.fastHold ||
+        this.settingsStale
+      )
+        return;
+      this.fastEnds = result.ends;
+      const byId = this.tapeIndex();
+      const next = this.tapes.slice();
+      const slots = this.tapeIdx!.slots ?? new Map(this.tapes.map((tp, i) => [tp.id, i]));
+      const refreshed: ConfigTape[] = [];
+      for (const delta of result.tapes) {
+        const previous = byId.get(delta.id);
+        if (!previous) throw new Error("realtime config disappeared; research bootstrap required");
+        const tp = appendTape(previous, delta);
+        next[slots.get(tp.id)!] = tp;
+        refreshed.push(tp);
+      }
+      await this.driveSliced(
+        "Realtime acceptance",
+        advanceGuardIndicesGen(this.tapes, next, refreshed, result.tapes, this.wf),
+        gen,
+        () => undefined,
+      );
+      if (gen !== this.gen || epoch !== this.fastEpoch || this.fastHold || this.stopped) return;
+      for (const tp of refreshed) byId.set(tp.id, tp);
+      this.tapes = next;
+      this.tapeIdx = { tapes: next, byId, slots };
+      await this.driveSliced(
+        "Realtime learning",
+        this.appendRealtimeLearningGen(result.tapes),
+        gen,
+        () => undefined,
+      );
+      if (gen !== this.gen || epoch !== this.fastEpoch || this.fastHold || this.stopped) return;
+      const allowEntries = fastBarFresh(barEnd, Date.now());
       const priceOf = (sym: string) => this.stream?.price(sym) ?? this.candles.get(sym)?.lastC();
       const opens = new Map<string, OpenPosition[]>();
-      for (const r of res)
-        for (const tp of r.tapes)
-          opens.set(tp.id, [...tp.open, ...pendingAsOpen(tp, barEnd, s.tfMin, priceOf, s.cost)]);
+      for (const tp of refreshed) {
+        const tf = laneOf(tp.ind).tf ?? s.tfMin;
+        const pending =
+          allowEntries && fastEntryLaneDue(tp.ind, bar, s.tfMin, FAST_ENTRY_MODE)
+            ? tp.pending.filter((p) => result.ends[`${p.sym}|${tf}`] + tf * 60_000 === barEnd)
+            : [];
+        const eligible = allowEntries
+          ? tp.open
+          : tp.open.filter((o) => this.paper.positions.some((held) => posId(held) === posId(o)));
+        opens.set(tp.id, [
+          ...eligible,
+          ...pendingAsOpen({ ...tp, pending }, barEnd, s.tfMin, priceOf, s.cost),
+        ]);
+      }
       const before = this.paper.positions.length;
-      this.paperRunning = true;
+      await this.paperIdle();
+      if (gen !== this.gen || epoch !== this.fastEpoch || this.fastHold || this.stopped) return;
+      const paperOwner = this.claimPaper();
       try {
         await this.driveSliced(
           "Realtime",
-          this.stepPaperGen({ opens, t: barEnd }),
+          this.stepPaperGen({ opens, t: barEnd, refreshHeld: true }),
           gen,
           () => undefined,
         );
       } finally {
-        this.paperRunning = false;
+        this.releasePaper(paperOwner);
       }
+      if (gen !== this.gen || epoch !== this.fastEpoch) return;
       this.fastBarDone = bar;
-      const n = [...opens.values()].reduce((x, o) => x + o.length, 0);
+      const ms = performance.now() - t0;
+      const previous = this.status.fast;
       this.status.fast = {
         at: Date.now(),
         bar,
-        ms: Math.round(performance.now() - t0),
+        ms,
+        workerMs,
+        workerProfile: result.profile,
         delayMs: Math.max(0, Date.now() - barEnd),
-        seated: ids.main.size + ids.sig.size + ids.coord.size,
-        open: n,
+        seated: this.paper.selected.length,
+        open: this.paper.positions.length,
         added: this.paper.positions.length - before,
-        error: null,
+        phase: "incremental",
+        cycles: (previous?.cycles ?? 0) + 1,
+        maxMs: Math.max(previous?.maxMs ?? 0, ms),
+        overBudget: (previous?.overBudget ?? 0) + Number(ms >= 500),
+        error: allowEntries ? null : "state caught up; stale entries suppressed",
       };
       this.emit("paper");
-    } catch (e) {
+    } catch (error) {
+      if (gen !== this.gen || epoch !== this.fastEpoch) return;
+      this.resetRealtime("realtime update failed");
+      this.fastRetryAt = Date.now() + 5_000;
+      // Do not keep retrying a partly advanced state or allocate a failed worker's workload on the ticker.
+      this.dirty = true;
       this.status.fast = {
-        ...(this.status.fast ?? { at: 0, bar: 0, ms: 0, seated: 0, open: 0, added: 0 }),
         at: Date.now(),
-        error: e instanceof Error ? e.message : String(e),
+        bar,
+        ms: performance.now() - t0,
+        seated: 0,
+        open: this.paper.positions.length,
+        added: 0,
+        phase: "error",
+        error: error instanceof Error ? error.message : String(error),
       };
     } finally {
       this.fastBusy = false;
@@ -1717,7 +1822,7 @@ export class CoreRuntime {
   private marketLoop() {
     if (
       !this.busy ||
-      this.status.state !== "computing" ||
+      (this.status.state !== "computing" && !this.comparing) ||
       this.pulling ||
       this.market !== "bingx" ||
       this.status.source !== "bingx"
@@ -1732,6 +1837,33 @@ export class CoreRuntime {
         if (n > 0 && gen === this.gen) this.barsPending = true;
       })
       .catch(() => undefined);
+  }
+
+  /** Inspection-only marks never hold the ticker for a transaction over the complete position book. */
+  private async persistMtm(positions: PaperBook["positions"], gen: number) {
+    this.mtmWriting = true;
+    try {
+      for (let i = 0; i < positions.length; i += 100) {
+        if (gen !== this.gen || this.stopped) return;
+        this.db.tx(() => {
+          for (const p of positions.slice(i, i + 100))
+            this.db.run(
+              "UPDATE paper_positions SET mtm = ?, at = ? WHERE cfg = ? AND sym = ? AND side = ? AND entry_t = ?",
+              p.mtm,
+              Date.now(),
+              p.cfg,
+              p.sym,
+              p.side,
+              p.entryT,
+            );
+        });
+        if (i + 100 < positions.length) await yieldNow();
+      }
+    } catch (error) {
+      this.db.event("warn", `mark persistence: ${error instanceof Error ? error.message : error}`);
+    } finally {
+      this.mtmWriting = false;
+    }
   }
 
   async tick() {
@@ -1750,65 +1882,74 @@ export class CoreRuntime {
       }
       // Revisit a symbol only when its price moved or a protected lane completed a bar. Flat completed bars still
       // update Exit's volatility/TP state and trailing peaks; cache the next boundary instead of scanning every tick.
-      const cost = this.settings.cost;
-      let open = 0;
-      let newHits: Record<string, { at: number; stop: number; px?: number }> | null = null;
-      let trailMoved = false;
-      // a trailing position that trails free (grid.trailFree) takes no target once its trail is armed
-      const trailFree = this.settings.grid?.trailFree === true;
       const book = this.tickBook();
       const positions = this.paper.positions;
-      const nowMs = Date.now();
-      for (const g of book.groups) {
-        const px = this.stream?.price(g.sym) ?? this.candles.get(g.sym)?.lastC();
-        // no price: these positions keep their marks and add nothing to the open result (as before)
-        if (!px) continue;
-        const priceChanged = px !== g.px;
-        if (priceChanged || nowMs >= g.nextBarT) {
-          let sum = 0;
-          g.nextBarT = Infinity;
-          for (const pi of g.idx) {
-            const p = positions[pi];
-            if (!(p.entry > 0)) continue;
-            const protectTf =
-              !p.stopHit && (p.exitProtection || (p.trail ?? 0) > 0) ? this.laneMs(p.cfg) : 0;
-            const barDue =
-              protectTf > 0 && (p.tkBar === undefined || nowMs >= (p.tkBar + 1) * protectTf);
-            if (priceChanged || barDue) {
-              // A trailing position's stop follows its lane bars between computes, as the simulation trails it.
-              if (enforceSignalPosition(p)) trailMoved = true;
-              if (!p.stopHit && (p.trail || p.exitProtection)) {
-                if (tickTrail(p, px, nowMs, protectTf || this.laneMs(p.cfg))) trailMoved = true;
-              }
-              // Check the updated controls on this tick too: a completed bar can ratchet a stop through the close.
-              if (!p.stopHit) {
-                const lvl = crossedExit(
-                  p,
-                  px,
-                  isSignalInd(p.cfg.split("|")[1] ?? "") ? false : trailFree,
-                );
-                if (lvl > 0) {
-                  p.stopHit = Date.now();
-                  p.hitPx = lvl;
-                  (newHits ??= {})[posId(p)] = { at: p.stopHit, stop: p.stop, px: lvl };
-                }
-              }
-              const at = p.stopHit ? (p.hitPx ?? p.stop) : px;
-              p.mtm = (p.side * (at - p.entry)) / p.entry - cost;
-            }
-            if (protectTf > 0 && !p.stopHit)
-              g.nextBarT = Math.min(
-                g.nextBarT,
-                ((p.tkBar ?? Math.floor(nowMs / protectTf)) + 1) * protectTf,
-              );
-            // an open order's result is its unit result × its Block volume (as its closed r will be)
-            sum += p.mtm * (p.vol ?? 1) * book.units[pi];
-          }
-          g.px = px;
-          g.sum = sum;
+      const nowMs = Date.now(),
+        gen = this.gen;
+      const prices = Object.fromEntries(
+        book.groups.flatMap((g) => {
+          const px = this.stream?.price(g.sym) ?? this.candles.get(g.sym)?.lastC();
+          return px ? [[g.sym, px]] : [];
+        }),
+      );
+      let marked: TickMathResult | undefined;
+      if (positions.length >= 256 && this.tickWorker.available && nowMs >= this.tickRetryAt) {
+        const init = this.tickSentBook !== book;
+        try {
+          const reply = await this.tickWorker.run<{ result: TickMathResult }>(
+            {
+              type: init ? "tick-init" : "tick-advance",
+              prices,
+              now: nowMs,
+              ...(init
+                ? {
+                    positions,
+                    units: book.units,
+                    cost: book.cost,
+                    baseTfMin: book.baseTfMin,
+                    trailFree: book.trailFree,
+                  }
+                : {}),
+            },
+            init ? 3_000 : 750,
+          );
+          if (gen !== this.gen || positions !== this.paper.positions || this.stopped) return;
+          for (const patch of reply.result.patches)
+            Object.assign(positions[patch.index], patch.values);
+          marked = reply.result;
+          this.tickSentBook = book;
+          book.math = null;
+        } catch (error) {
+          if (gen !== this.gen || this.stopped) return;
+          this.tickWorker.dispose(new Error("tick worker failed; sliced control recovery"));
+          this.tickSentBook = null;
+          this.tickRetryAt = Date.now() + 5_000;
+          this.db.event(
+            "warn",
+            `tick worker: ${error instanceof Error ? error.message : error}; sliced recovery`,
+          );
         }
-        open += g.sum;
       }
+      if (!marked) {
+        book.math ??= new TickMathBook(
+          positions,
+          book.units,
+          book.cost,
+          book.baseTfMin,
+          book.trailFree,
+        );
+        const steps = book.math.advanceGen(prices, nowMs, false);
+        for (;;) {
+          const next = steps.next();
+          if (next.done) {
+            marked = next.value;
+            break;
+          }
+          await yieldNow();
+          if (gen !== this.gen || positions !== this.paper.positions || this.stopped) return;
+        }
+      }
+      const { open, hits: newHits, trailMoved } = marked;
       if (newHits) this.controlUrgent = true;
       if (trailMoved) this.controlTrail = true;
       // the tick's stop crossings persisted in one write (a read and a write of every hit per crossing before)
@@ -1822,21 +1963,9 @@ export class CoreRuntime {
       this.paper.balance = this.settings.paperBalance + this.paper.equity;
       // the stored marks are for inspection only (nothing reads them back; the book lives in memory and the state
       // file): every 30 s — every second it rewrote every paper position (17k rows on x01)
-      if (Date.now() - this.lastMtmWrite > 30_000 && this.paper.positions.length) {
+      if (Date.now() - this.lastMtmWrite > 30_000 && positions.length && !this.mtmWriting) {
         this.lastMtmWrite = Date.now();
-        const db = this.db;
-        db.tx(() => {
-          for (const p of this.paper.positions)
-            db.run(
-              "UPDATE paper_positions SET mtm = ?, at = ? WHERE cfg = ? AND sym = ? AND side = ? AND entry_t = ?",
-              p.mtm,
-              Date.now(),
-              p.cfg,
-              p.sym,
-              p.side,
-              p.entryT,
-            );
-        });
+        void this.persistMtm(positions, gen);
       }
       // live: decisions every tick on the newest paper book and prices (the exchange book is re-read over
       // REST at most every live.syncMs, and at once after own orders)
@@ -1858,17 +1987,33 @@ export class CoreRuntime {
         // every step (Block books, symbol stats, signal acceptance) they held the loop 0.5–1.6 s at a time and fed the
         // collector's multi-second pauses (x02, 7 Oct profile) — there they only refresh the status' "pending:"
         // reasons, every PENDING_STATUS_MS
-        let intents: LiveIntent[] = [];
-        if (
-          (this.settings.live.mode ?? "overall") !== "overall" ||
-          Date.now() - this.pendingAt >= PENDING_STATUS_MS
-        ) {
-          this.livePhase = "pending entries";
-          intents = this.pendingEntries();
-          this.pendingAt = Date.now();
-        }
-        this.livePhase = "start";
-        void this.onLive(this, intents, this.gen)
+        const onLive = this.onLive;
+        const liveGen = this.gen;
+        void (async () => {
+          let intents: LiveIntent[] = [];
+          if (
+            (this.settings.live.mode ?? "overall") !== "overall" ||
+            Date.now() - this.pendingAt >= PENDING_STATUS_MS
+          ) {
+            this.livePhase = "pending entries";
+            const paper = this.paper,
+              tapes = this.tapes;
+            const planned = await this.driveSliced(
+              "Live planning",
+              this.pendingEntriesGen(),
+              liveGen,
+              () => undefined,
+            );
+            if (epoch !== this.liveEpoch || liveGen !== this.gen || this.stopped) return;
+            if (paper === this.paper && tapes === this.tapes) {
+              intents = planned;
+              this.pendingAt = Date.now();
+            }
+          }
+          if (epoch !== this.liveEpoch || liveGen !== this.gen || this.stopped) return;
+          this.livePhase = "start";
+          await onLive(this, intents, liveGen);
+        })()
           .catch((err) =>
             this.db.event("error", `live step failed: ${err instanceof Error ? err.message : err}`),
           )
@@ -1917,12 +2062,15 @@ export class CoreRuntime {
 
   /** Stop now: the in-flight cycle is abandoned at its next yield (a new generation), nothing half-published. */
   stop() {
+    this.resetRealtime("runtime stopped");
     this.cancelBacktests("backtest canceled: runtime stopped");
     this.baseConfigRunner.cancel("stopped");
     this.cancelCompare("runtime stopped");
     this.stopTick();
     this.stopped = true;
     this.gen++;
+    this.paperOwner = null;
+    this.paperRunning = false;
     this.busy = false;
     this.dirty = true;
     if (this.timer) clearTimeout(this.timer);
@@ -2012,6 +2160,9 @@ export class CoreRuntime {
       this.baseConfigRunner.cancel("newGeneration");
       this.cancelCompare("new generation");
       this.gen++;
+      this.paperOwner = null;
+      this.paperRunning = false;
+      this.resetRealtime("watchdog generation replaced");
       this.busy = false;
       this.dirty = true;
       this.status.heartbeat = Date.now();
@@ -2033,6 +2184,34 @@ export class CoreRuntime {
   /** Fields added in newer code versions, for an instance re-bound after a dev hot reload. */
   ensureFields() {
     const self = this as unknown as Record<string, unknown>;
+    if (!self.fastWorker || typeof (self.fastWorker as OwnedWorker).run !== "function")
+      self.fastWorker = new OwnedWorker(512);
+    if (!self.tickWorker || typeof (self.tickWorker as OwnedWorker).run !== "function")
+      self.tickWorker = new OwnedWorker(128);
+    for (const field of [
+      "fastEpoch",
+      "fastCount",
+      "fastRetryAt",
+      "nextResearchAt",
+      "tickEpoch",
+      "tickRetryAt",
+    ])
+      if (typeof self[field] !== "number") self[field] = 0;
+    for (const field of ["fastReady", "mtmWriting"])
+      if (typeof self[field] !== "boolean") self[field] = false;
+    for (const field of [
+      "fastPreparing",
+      "fastTask",
+      "paperOwner",
+      "tickSentBook",
+      "realtimeLearning",
+    ])
+      if (self[field] === undefined) self[field] = null;
+    if (!self.fastEnds) self.fastEnds = {};
+    if (this.fastArgs && (!this.fastArgs.bars || !this.fastArgs.exit)) {
+      this.fastArgs = null;
+      this.dirty = true;
+    }
     if (!(self.btCandles instanceof Map)) self.btCandles = new Map();
     if (self.stallProbe === undefined) self.stallProbe = null;
     // candles of an earlier version (Candle[]) become series in a NEW map, in their order (code of the earlier module
@@ -2252,6 +2431,7 @@ export class CoreRuntime {
 
   /** Re-run the compute stages on the next cycle, now (or right after the running one). */
   kick() {
+    this.resetRealtime("research revision requested");
     this.dirty = true;
     this.settingsStale = true;
     this.status.pending = true;
@@ -2275,11 +2455,14 @@ export class CoreRuntime {
 
   private schedule(ms: number) {
     if (this.timer) clearTimeout(this.timer);
+    const gen = this.gen;
     this.status.nextCycleAt = Date.now() + ms;
     this.timer = setTimeout(() => {
+      if (gen !== this.gen || this.stopped) return;
       this.timer = null;
       // never an unhandled rejection (it would end the process): log, back off, keep the loop alive
       this.cycle().catch((err) => {
+        if (gen !== this.gen || this.stopped) return;
         this.status.error = err instanceof Error ? err.message : String(err);
         try {
           this.db.event("error", `cycle crashed: ${this.status.error}`);
@@ -2405,15 +2588,6 @@ export class CoreRuntime {
     if (this.busy || this.stopped) return;
     const gen = this.gen;
     this.busy = true;
-    // the previous compute's preset comparison finishes first (never beside a compute: memory, the cores)
-    if (this.comparing) await this.comparing;
-    // A stop/restart or watchdog replacement owns the new generation and its busy flag. A cycle already waiting
-    // for Compare must not adopt that generation and run beside the scheduled replacement.
-    if (gen !== this.gen) return;
-    if (this.stopped) {
-      this.busy = false;
-      return;
-    }
     const t0 = performance.now();
     let compareGen: number | null = null;
     this.inCycle = true;
@@ -2446,13 +2620,31 @@ export class CoreRuntime {
       if (this.resetUniverse) return;
       // after aborts on memory pressure at the lightest level the next compute waits (memRetryDelayMs); the live
       // control keeps running on the current book meanwhile
+      const incremental =
+        FAST_ENTRIES &&
+        !this.replay &&
+        this.market === "bingx" &&
+        !!this.fastArgs &&
+        this.paperStepped &&
+        this.fastWorker.available;
+      const wantsResearch =
+        this.dirty || (newBars && (!incremental || Date.now() >= this.nextResearchAt));
       const memWait =
-        (newBars || this.dirty) &&
+        wantsResearch &&
         (Date.now() < Math.max(this.memRetryAt, this.memFreshAt) || this.memStartBlocked());
       if (memWait) this.dirty = true;
       this.memDeferred = !!memWait;
-      const computed = (newBars || this.dirty) && !memWait;
+      const computed = wantsResearch && !memWait;
+      this.status.cycleKind = computed
+        ? "research"
+        : newBars && incremental
+          ? "incremental"
+          : "idle";
       if (computed) {
+        // Discovery waits for the previous comparison's workers. Foreground incremental updates keep running
+        // while Compare evaluates its immutable snapshot in the background.
+        await this.waitCompare();
+        if (gen !== this.gen || this.stopped || this.resetUniverse) return;
         this.memGuardStart(gen);
         try {
           await this.compute(gen);
@@ -2464,6 +2656,8 @@ export class CoreRuntime {
         // start while it waited on the workers) leaves the newer cycle's pressure and fallback alone.
         if (gen === this.gen) this.memAfterCompute(this.memPressured, false);
       }
+      if (gen !== this.gen) return;
+      if (!computed && incremental) await this.fastStep();
       if (gen !== this.gen) return;
       // settings changed during the compute: the tapes are from the old settings — recompute first
       const stale = this.dirty || this.resetUniverse;
@@ -2480,14 +2674,20 @@ export class CoreRuntime {
         this.setStage("Paper", 0, 1, paperLabel, true);
         try {
           await this.paperIdle();
-          this.paperRunning = true;
-          await this.driveSliced("Paper", this.stepPaperGen(), gen, (f) =>
-            this.setStage("Paper", 0.8 * f, 1, paperLabel),
-          );
+          if (gen !== this.gen || this.stopped) return;
+          const paperOwner = this.claimPaper();
+          try {
+            await this.driveSliced("Paper", this.stepPaperGen(), gen, (f) =>
+              this.setStage("Paper", 0.8 * f, 1, paperLabel),
+            );
+          } finally {
+            this.releasePaper(paperOwner);
+          }
         } finally {
-          this.paperRunning = false;
-          this.fastHold = false;
-          this.busyPhase = "";
+          if (gen === this.gen) {
+            this.fastHold = false;
+            this.busyPhase = "";
+          }
         }
         const pt = this.paperTimings;
         if (pt && this.status.phases.Paper)
@@ -2516,6 +2716,11 @@ export class CoreRuntime {
           `${this.computeSummary ? `${this.computeSummary} · ` : ""}${this.paper.selected.length} seats · ${this.paper.positions.length} open`,
         );
         this.emit("paper");
+        if (!this.replay && this.market === "bingx") {
+          this.nextResearchAt = Date.now() + researchIntervalMs();
+          this.status.nextResearchAt = this.nextResearchAt;
+          void this.prepareRealtime();
+        }
       }
       if (!this.stopped) this.status.state = "running";
       this.emit("state");
@@ -2586,16 +2791,41 @@ export class CoreRuntime {
                   ? 0
                   : this.nextInterval()),
           );
-        if (compareGen === gen && !this.stopped)
-          this.comparing = this.runCompare(gen).finally(() => {
-            this.comparing = null;
+        if (compareGen === gen && !this.stopped) {
+          const pending = this.runCompare(gen).finally(() => {
+            if (this.comparing === pending) this.comparing = null;
           });
+          this.comparing = pending;
+        }
       }
     }
   }
 
   /** The preset comparison after a cycle (a failure there is not the cycle's: status.compare.error). */
   private comparing: Promise<void> | null = null;
+  private async waitCompare(timeoutMs = 120_000) {
+    const pending = this.comparing;
+    if (!pending) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        pending,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => {
+            const error = new Error("Compare wait timeout; owned work canceled for recovery");
+            if (this.comparing === pending) {
+              this.compareAbort?.abort(error);
+              this.comparing = null;
+            }
+            reject(error);
+          }, timeoutMs);
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+      if (this.comparing === pending) this.comparing = null;
+    }
+  }
   private async runCompare(gen: number) {
     try {
       await this.comparePresets(gen);
@@ -2647,8 +2877,11 @@ export class CoreRuntime {
       this.status.state = "backfill";
       this.loadCandlesFromDb();
       // a partial cache is not a finished universe: keep backfillKey unset so the missing symbols are fetched
-      if (this.candles.size >= s.symbols &&
-          (s === this.settings || [...this.candles.values()].every((cs) => cs.n >= want))) this.backfillKey = uniKey;
+      if (
+        this.candles.size >= s.symbols &&
+        (s === this.settings || [...this.candles.values()].every((cs) => cs.n >= want))
+      )
+        this.backfillKey = uniKey;
     }
     // candles of another timeframe (an older version / snapshot, or a hot reload across the base timeframe
     // change) are never read as base bars: drop them and backfill at the base timeframe
@@ -2726,9 +2959,11 @@ export class CoreRuntime {
         // the universe of this run: the symbol count, or every forced symbol when there are more of them
         // (forceSymbols keeps them all) — the cap was s.symbols, which dropped forced symbols beyond it
         const target = ranked.length;
-        const missing = ranked
-          .filter((x) => !this.candles.has(x) ||
-            (s !== this.settings && this.candles.get(x)!.n < want && !this.prehistSyms.has(x)));
+        const missing = ranked.filter(
+          (x) =>
+            !this.candles.has(x) ||
+            (s !== this.settings && this.candles.get(x)!.n < want && !this.prehistSyms.has(x)),
+        );
         // Connected desks progressively start realtime after each batch. A frozen offline replay loads all
         // symbols first, avoiding repeated full computations on intermediate partial universes.
         const batch = this.completeReplayUniverse ? target : Math.max(5, Math.ceil(target / 4));
@@ -2772,7 +3007,10 @@ export class CoreRuntime {
               await this.storeCandles(sym, cs);
               this.prehistSyms.set(sym, { state: "computing", bars: cs.length });
               if (s !== this.settings && cs.length < want)
-                this.db.event("warn", `${sym} extended history: ${cs.length}/${want} bars available; qualification uses measured history only`);
+                this.db.event(
+                  "warn",
+                  `${sym} extended history: ${cs.length}/${want} bars available; qualification uses measured history only`,
+                );
             } else this.prehistSyms.set(sym, { state: "skipped", bars: cs.length });
             this.setStage(
               "backfill",
@@ -2949,7 +3187,10 @@ export class CoreRuntime {
     // row by row into each symbol's columns (db.all held every row as a dictionary object at once: ~1 GB of heap on
     // each desk start); the same candles and the same symbol order (the universe's order follows it), each series sized
     // by its count (a builder grows past a count that moved)
-    const want = Math.round((evaluationHistorySettings(this.settings, this.wf).historyDays * 24 * 60) / this.settings.tfMin);
+    const want = Math.round(
+      (evaluationHistorySettings(this.settings, this.wf).historyDays * 24 * 60) /
+        this.settings.tfMin,
+    );
     const counts = new Map<string, number>();
     for (const row of this.db.iterate(
       "SELECT sym, COUNT(*) FROM candles GROUP BY sym ORDER BY sym",
@@ -2990,7 +3231,10 @@ export class CoreRuntime {
    * yield between them — a 1m backfill is ~26k rows per symbol and must not block the event loop.
    */
   private async storeCandles(sym: string, cs: Candle[], append = false) {
-    const want = Math.round((evaluationHistorySettings(this.settings, this.wf).historyDays * 24 * 60) / this.settings.tfMin);
+    const want = Math.round(
+      (evaluationHistorySettings(this.settings, this.wf).historyDays * 24 * 60) /
+        this.settings.tfMin,
+    );
     // the last `want` of [...old, ...cs] (append) or of cs: a new series, the one stored before stays as it was (a
     // compute or the realtime step reading it keeps its bars); an append writes past the old bars in place when it fits
     const old = append ? this.candles.get(sym) : undefined;
@@ -3311,7 +3555,6 @@ export class CoreRuntime {
     // threads before the in-process Real allocation; another runtime can claim a worker at every message handoff.
     const computeWorkerOwner = {};
     this.dirty = false;
-    this.settingsStale = false;
     this.status.state = "computing";
     // the job's bar: a compute after this cycle's backfill batch continues it, otherwise it starts at 0
     this.beginJob(false);
@@ -3635,17 +3878,11 @@ export class CoreRuntime {
       }
     // only pairs that passed Base take a seat; held pairs stay in Main to manage their open positions
     wf.basePassed = normalBasePassedKeys;
-    this.wf.basePassed = normalBasePassedKeys;
     wf.exitBasePassed = exitBase.passed;
-    this.wf.exitBasePassed = exitBase.passed;
     wf.basePassedRanges = qualifiedTags;
-    this.wf.basePassedRanges = qualifiedTags;
     wf.basePassedTargets = qualifiedTps;
-    this.wf.basePassedTargets = qualifiedTps;
     wf.baseWideLadderPairs = wideLadderPairs;
-    this.wf.baseWideLadderPairs = wideLadderPairs;
     wf.family = evalFams && !famNarrow ? evalFams.map((f) => f.label) : undefined;
-    this.wf.family = wf.family;
     // Signals processing: the active signals and every signal pair still holding a position take the signal
     // configs, never the engine's protect grid
     const sig = signalSettings(s.signals);
@@ -3703,7 +3940,6 @@ export class CoreRuntime {
         : 0);
     // a held signal pair keeps its tapes to manage its open positions; new entries still need Base + validation
     wf.signalBasePassed = new Set(sigPairs);
-    this.wf.signalBasePassed = wf.signalBasePassed;
     for (const k of [...main])
       if (isSignalInd(k.split("|")[1] ?? "")) {
         main.delete(k);
@@ -4352,7 +4588,7 @@ export class CoreRuntime {
     // those end at the previous compute's last bar, so the configs paper holds (seated or with an open position) are
     // rebuilt on the current bars: only those ids (onlyIds), the rest of the range stays carried
     const carriedHeld = carryTags.size
-      ? carriedRebuild(this.tapes, carryTags, heldIds, this.wf.protects, this.wf.dcaProtects)
+      ? carriedRebuild(this.tapes, carryTags, heldIds, countProtects, countDcaProtects)
       : null;
     const rebuilt = carriedHeld
       ? await tapesFor(
@@ -4429,10 +4665,10 @@ export class CoreRuntime {
     // the realtime entry step rebuilds the seated configs with exactly these arguments (fastStep) — every range's
     // cells, a carried one's included (it builds only the seated ids: under a memory fallback the seated Micro /
     // Minimal configs took no new entry between computes)
-    this.fastArgs = {
+    const nextFastArgs: NonNullable<CoreRuntime["fastArgs"]> = {
       main: {
-        protects: this.wf.protects,
-        dcaFor: { ...dcaOpt, protects: this.wf.dcaProtects },
+        protects: countProtects,
+        dcaFor: { ...dcaOpt, protects: countDcaProtects },
         floors: {
           ...protectFloors(s, rangeFitCutT),
           pairTags: this.basePairTags,
@@ -4468,6 +4704,18 @@ export class CoreRuntime {
         },
       },
       adjust: adjustNow,
+      bars: wu.series,
+      exit: {
+        protects: [],
+        dcaFor: undefined,
+        floors: {
+          minSl: s.protectFloor.minSl,
+          minTrail: s.protectFloor.minTrail,
+          pairProtects: exitProtects,
+          heldIds,
+          heldOnlyIds: retainedExitIds,
+        },
+      },
     };
     // a demo probe measures the plus cells live: their static last-N gate does not apply there
     const tapes =
@@ -4490,20 +4738,7 @@ export class CoreRuntime {
     wf.signalPerSymbol = sig.perSymbol;
     wf.signalMaxOpen = sig.maxOpen;
     wf.signalMaxPositions = sig.maxPositions;
-    // paper / live keep trading the last simulated run's end set until this run's exists: the Base ranking the
-    // simulation starts from opened signals the simulated run had not chosen for the whole compute (11 min on x02)
-    if (!sig.enabled || this.wf.signalActive === undefined) this.wf.signalActive = wf.signalActive;
-    // adjust pauses apply to paper / live as they did to the simulation
-    this.wf.paused = wf.paused;
-    this.wf.signalGuardN = wf.signalGuardN;
-    this.wf.signalCluster = wf.signalCluster;
-    this.wf.signalAccept = wf.signalAccept;
-    this.wf.signalSideAccept = wf.signalSideAccept;
-    this.wf.signalOwnBase = wf.signalOwnBase;
-    this.wf.signalSourceGate = wf.signalSourceGate;
-    this.wf.signalPerSymbol = wf.signalPerSymbol;
-    this.wf.signalMaxOpen = wf.signalMaxOpen;
-    this.wf.signalMaxPositions = wf.signalMaxPositions;
+    // The active generation keeps its frozen validation/guard policy while this background run is built.
     let step = 0;
     // the steps the simulation really takes (its start is floored to the hour: up to one step more than
     // simH / stepH, which ran the bar past 100 %)
@@ -4529,8 +4764,15 @@ export class CoreRuntime {
     // step has seated on them (it re-checks the hold at every slice)
     this.fastHold = true;
     await this.paperIdle();
+    if (gen !== this.gen || this.dirty || this.resetUniverse) return;
+    this.resetRealtime("qualified research cohort replaced");
+    this.fastArgs = nextFastArgs;
+    this.wf = { ...wf, protects: countProtects, dcaProtects: countDcaProtects };
+    this.settingsStale = false;
     this.tapes = tapes;
     this.sim = sim;
+    this.realtimeLearning = { sim, feed: [...(sim.feed ?? [])], accepted: [] };
+    this.coordCache = null;
     // the previous set's index and the live books of the previous run (its feed, guard and acceptance index) are
     // released now: rebuilt on first use, as they were when they no longer matched — kept, they pinned the old set
     // (0.5–0.8 GB) for up to 30 s after every swap, the Paper / Audit peak
@@ -5842,11 +6084,22 @@ export class CoreRuntime {
     const probed = !!(this.wf.probe?.perRange || this.wf.probe?.perCell);
     const picks = (this.lastSelection?.picks ?? []).filter((p) => {
       const tp = index.get(p.id);
-      return tp && !tp.heldOnly && baseAllowsTape(tp, this.wf) && (!probed || configEval(tp, at, this.wf).ok);
+      return (
+        tp &&
+        !tp.heldOnly &&
+        baseAllowsTape(tp, this.wf) &&
+        (!probed || configEval(tp, at, this.wf).ok)
+      );
     });
-    const candidates = this.tapes.filter((tp) => !isSignalInd(tp.ind) && !tp.heldOnly &&
-      baseAllowsTape(tp, this.wf) && kindExecutable(tp.kind, this.wf.toggles) &&
-      (!this.wf.bots?.length || this.wf.bots.includes(tp.bot)))
+    const candidates = this.tapes
+      .filter(
+        (tp) =>
+          !isSignalInd(tp.ind) &&
+          !tp.heldOnly &&
+          baseAllowsTape(tp, this.wf) &&
+          kindExecutable(tp.kind, this.wf.toggles) &&
+          (!this.wf.bots?.length || this.wf.bots.includes(tp.bot)),
+      )
       .map((tp) => ({ id: tp.id, group: liveGroupOf(tp.id) }));
     const validated: SetListings["validated"] = [];
     const byRange: SetListings["byRange"] = {};
@@ -5890,7 +6143,8 @@ export class CoreRuntime {
       const g = (byGroup[c.group] ??= { rows: [], gp: 0, gl: 0, pf: null, calculated: 0 });
       g.calculated++;
       const range = kindOfId(c.id) === "exit" ? "" : RANGE_LABEL[rangeOfId(c.id)];
-      if (range) (byRange[range] ??= { rows: [], gp: 0, gl: 0, pf: null, calculated: 0 }).calculated++;
+      if (range)
+        (byRange[range] ??= { rows: [], gp: 0, gl: 0, pf: null, calculated: 0 }).calculated++;
     }
     for (const r of Object.values(byRange)) r.pf = r.gl > 1e-12 ? r.gp / r.gl : null;
     for (const r of Object.values(byGroup)) r.pf = r.gl > 1e-12 ? r.gp / r.gl : null;
@@ -5920,8 +6174,14 @@ export class CoreRuntime {
       at: Date.now(),
       validated,
       candidates,
-      validation: { at, engineLastN: this.wf.validLastN ?? 0, signalLastN: this.wf.signalValidLastN ?? 0,
-        entryLastN: this.wf.lastN, rangeLastN: this.wf.rangeGate?.lastN ?? 0, historyH: this.wf.longH },
+      validation: {
+        at,
+        engineLastN: this.wf.validLastN ?? 0,
+        signalLastN: this.wf.signalValidLastN ?? 0,
+        entryLastN: this.wf.lastN,
+        rangeLastN: this.wf.rangeGate?.lastN ?? 0,
+        historyH: this.wf.longH,
+      },
       byRange,
       byGroup,
       active,
@@ -6561,9 +6821,11 @@ export class CoreRuntime {
     const ordinaryCandles = s.exitStrategy.enabled
       ? new Map([...candles].map(([sym, cs]) => [sym, cs.tail(ordinaryWantBars)]))
       : candles;
-    const bars = laneSeriesFrom(ordinaryCandles, evaluationHistorySettings(s, { ...wf, simH: 0 }), days).map((b) =>
-      tailBars(b, Math.ceil((ordinaryWantBars * s.tfMin) / b.tfMin)),
-    );
+    const bars = laneSeriesFrom(
+      ordinaryCandles,
+      evaluationHistorySettings(s, { ...wf, simH: 0 }),
+      days,
+    ).map((b) => tailBars(b, Math.ceil((ordinaryWantBars * s.tfMin) / b.tfMin)));
     const u = makeUniverse(bars);
     const exitU = s.exitStrategy.enabled
       ? makeUniverse(laneSeriesFrom(candles, exitLaneSettings, days))
@@ -7195,7 +7457,74 @@ export class CoreRuntime {
       advance: (t: number, max: number) => boolean;
     };
   } | null = null;
-  private tapeIdx: { tapes: readonly ConfigTape[]; byId: Map<string, ConfigTape> } | null = null;
+  private realtimeLearning: {
+    sim: WalkForwardResult;
+    feed: BlockFeedEntry[];
+    accepted: Trade[];
+  } | null = null;
+
+  /** Continue learning causally from this cohort. Actual held entries alone feed accepted-order Block history. */
+  private *appendRealtimeLearningGen(deltas: readonly ConfigTape[]): Generator<number, void> {
+    const sim = this.sim;
+    if (!sim) return;
+    if (this.realtimeLearning?.sim !== sim)
+      this.realtimeLearning = { sim, feed: [...(sim.feed ?? [])], accepted: [] };
+    const state = this.realtimeLearning;
+    const held = new Map(this.paper.positions.map((p) => [orderKey(p), p]));
+    const feed: BlockFeedEntry[] = [];
+    const accepted: Trade[] = [];
+    let processed = 0;
+    for (const tp of deltas)
+      for (let i = 0; i < tp.n; i++) {
+        if (++processed % 256 === 0) yield processed;
+        const trade = tradeAt(tp, i);
+        const p = held.get(orderKey(trade));
+        const sources = p?.legs
+          ? Object.entries(p.legs)
+              .filter(([, value]) => (value ?? 0) > 0)
+              .map(([source]) => source as BlockSource)
+          : undefined;
+        feed.push({
+          ...blockEntryOf(trade, "candidate-unit"),
+          exitT: trade.exitT,
+          accepted: !!p,
+          ...(sources?.length ? { bsrc: sources } : {}),
+        });
+        if (p) {
+          const mult = positionMult(p);
+          accepted.push({ ...trade, r: trade.r * mult, vol: (trade.vol ?? 1) * mult, mult });
+        }
+      }
+    feed.sort((a, b) => a.exitT - b.exitT);
+    accepted.sort((a, b) => a.exitT - b.exitT);
+    for (const row of feed) state.feed.push(row);
+    for (const row of accepted) state.accepted.push(row);
+    const coord = this.coordCache;
+    if (coord?.sim === sim)
+      for (const trade of accepted) {
+        coord.closedBy.push(trade);
+        const hour = Math.floor(trade.exitT / H);
+        coord.hourNet.set(hour, (coord.hourNet.get(hour) ?? 0) + trade.r * 100);
+        if (sigCfg(trade.cfg)) {
+          const source = signalSourceOf(trade.cfg.split("|")[1] ?? "");
+          let rows = coord.srcClosed.get(source);
+          if (!rows) coord.srcClosed.set(source, (rows = []));
+          rows.push({ exitT: trade.exitT, r: trade.r });
+        }
+      }
+  }
+
+  private realtimeBooksAt(t: number): BooksAt {
+    if (!this.liveBooks || this.liveBooks.sim !== this.sim || t < this.liveBooks.t)
+      this.liveBooks = { sim: this.sim, t, at: this.booksAt() };
+    this.liveBooks.t = t;
+    return this.liveBooks.at;
+  }
+  private tapeIdx: {
+    tapes: readonly ConfigTape[];
+    byId: Map<string, ConfigTape>;
+    slots?: Map<string, number>;
+  } | null = null;
   /**
    * Partial processing (memory). The previous compute's tapes stay in memory until the new simulation is done, and
    * the old and the new set side by side were each compute's peak (x01, 6 Oct: 13.9 GB, killed). During a compute
@@ -7258,7 +7587,11 @@ export class CoreRuntime {
   /** Tapes by config id (rebuilt when the tape list changes). */
   private tapeIndex(): Map<string, ConfigTape> {
     if (this.tapeIdx?.tapes !== this.tapes)
-      this.tapeIdx = { tapes: this.tapes, byId: new Map(this.tapes.map((t) => [t.id, t])) };
+      this.tapeIdx = {
+        tapes: this.tapes,
+        byId: new Map(this.tapes.map((t) => [t.id, t])),
+        slots: new Map(this.tapes.map((t, i) => [t.id, i])),
+      };
     return this.tapeIdx.byId;
   }
   /** set by the live step: persists its in-memory state (called on shutdown) */
@@ -7372,7 +7705,8 @@ export class CoreRuntime {
   } | null = null;
   private coordOf(sim: WalkForwardResult) {
     if (this.coordCache?.sim === sim) return this.coordCache;
-    const closedBy = [...sim.trades].sort((a, b) => a.exitT - b.exitT);
+    const continued = this.realtimeLearning?.sim === sim ? this.realtimeLearning.accepted : [];
+    const closedBy = [...sim.trades, ...continued].sort((a, b) => a.exitT - b.exitT);
     const hourNet = new Map<number, number>();
     const srcClosed = new Map<string, Array<{ exitT: number; r: number }>>();
     for (const x of closedBy) {
@@ -7573,6 +7907,8 @@ export class CoreRuntime {
   private *stepPaperGen(fast?: {
     opens: ReadonlyMap<string, readonly OpenPosition[]>;
     t: number;
+    /** Current incremental tapes also reconcile held exits, instead of waiting for another research run. */
+    refreshHeld?: boolean;
   }): Generator<number, void> {
     if (!this.tapes.length || !this.sim) return;
     if (fast && !this.lastSelection) return;
@@ -7583,11 +7919,17 @@ export class CoreRuntime {
     const held = new Set(this.sim.steps[this.sim.steps.length - 1]?.real ?? []);
     // Each Signal protection config needs its own active symbol/direction evidence before taking a paper seat.
     // Held configs are kept separately below to manage their existing exits only.
-    const { engine: selTapes, signal: signalCandidates } = splitSignalTapes(this.tapes, this.wf);
+    const selectedTapes = fast
+      ? this.paper.selected.flatMap((id) => {
+          const tp = this.tapeIndex().get(id);
+          return tp ? [tp] : [];
+        })
+      : this.tapes;
+    const { engine: selTapes, signal: signalCandidates } = splitSignalTapes(selectedTapes, this.wf);
     const signalActive = this.wf.signalActive;
     const sigTapes = signalActive
       ? signalCandidates.filter(
-          (tp) => !tp.heldOnly && signalSeatSymbols(tp, signalActive).size > 0,
+          (tp) => !tp.heldOnly && (fast || signalSeatSymbols(tp, signalActive).size > 0),
         )
       : [];
     // (slices between the opening passes over every tape: together they were one 0.5 s step at 21 symbols)
@@ -7604,7 +7946,10 @@ export class CoreRuntime {
           t,
           this.wf,
         );
-    if (!fast) { this.lastSelection = { picks, eligible }; this.lastSelectionAt = t; }
+    if (!fast) {
+      this.lastSelection = { picks, eligible };
+      this.lastSelectionAt = t;
+    }
     const tSelect = performance.now() - tp0;
     const sel = new Set([...picks.map((p) => p.id), ...sigTapes.map((tp) => tp.id)]);
     // sets that still hold an open position stay processed until that position is closed (even when no longer
@@ -7665,7 +8010,12 @@ export class CoreRuntime {
       // realtime step took entries the full step had refused)
       for (const p of this.paper.positions) {
         const tp = byId.get(p.cfg);
-        if (tp) cands.push({ tp, op: p, held: true });
+        if (!tp) continue;
+        const refreshed = fast.refreshHeld ? fast.opens.get(p.cfg) : undefined;
+        if (refreshed) {
+          const op = refreshed.find((o) => posId(o) === posId(p));
+          if (op) cands.push({ tp, op, held: true });
+        } else cands.push({ tp, op: p, held: true });
       }
       for (const [id, ops] of fast.opens) {
         const tp = byId.get(id);
@@ -7727,7 +8077,9 @@ export class CoreRuntime {
     );
     yield 0;
     // Block sources (overall / symbol / direction / indication) judge executed positions closed before each entry
-    const booksAt = this.booksAt();
+    const booksAt = fast
+      ? this.realtimeBooksAt(cands.find((c) => !c.held)?.op.entryT ?? t)
+      : this.booksAt();
     // the books up to the first new entry, a slice at a time: the entries' lookups below then only add what closed
     // since (the first lookup replayed the whole run's feed in one block)
     const firstNew = cands.find((c) => !c.held)?.op.entryT;
@@ -8007,7 +8359,7 @@ export class CoreRuntime {
     )
       this.db.kvSet("stopHits", keepHits);
     const since = this.paper.startedAt - this.wf.simH * H;
-    const trades = this.sim.trades.filter((t) => t.exitT >= since);
+    const trades = (fast ? this.paper.trades : this.sim.trades).filter((t) => t.exitT >= since);
     yield 0;
     const inSim = new Set(trades.map(orderKey));
     yield 0;
@@ -8287,13 +8639,15 @@ export class CoreRuntime {
       // for both kinds — the selection score itself is not comparable (rankBy "score" boosts it by the green share
       // ×0.5–1.5, "green" is the share alone, held / probe picks score their net), so every selected config is
       // scored by selectionScoreAt (lower confidence bound over the selection window)
-      scores: new Map([
-        ...picks.flatMap((p) => {
-          const tp = byId.get(p.id);
-          return tp ? [[p.id, selectionScoreAt(tp, t, this.wf)] as [string, number]] : [];
-        }),
-        ...sigTapes.map((tp) => [tp.id, selectionScoreAt(tp, t, this.wf)] as [string, number]),
-      ]),
+      scores: fast
+        ? this.paper.scores
+        : new Map([
+            ...picks.flatMap((p) => {
+              const tp = byId.get(p.id);
+              return tp ? [[p.id, selectionScoreAt(tp, t, this.wf)] as [string, number]] : [];
+            }),
+            ...sigTapes.map((tp) => [tp.id, selectionScoreAt(tp, t, this.wf)] as [string, number]),
+          ]),
       eligible,
       positions,
       trades,
@@ -8354,7 +8708,8 @@ export class CoreRuntime {
       return Object.assign(() => ({ book: null, guard: null, direction: null }), {
         advance: () => true,
       });
-    const feed = this.sim?.feed ?? [];
+    const feed =
+      this.realtimeLearning?.sim === this.sim ? this.realtimeLearning.feed : (this.sim?.feed ?? []);
     // (fed only when read: an unread book cost the tick seconds after each new run)
     const book = wantBook ? blockBookOf(this.wf.block, !!this.wf.toggles.blockActive) : null;
     // acceptance on the same tape record the simulation judged on
@@ -8384,7 +8739,24 @@ export class CoreRuntime {
    * These are what the live adapter may mirror.
    */
   pendingEntries(): LiveIntent[] {
+    const g = this.pendingEntriesGen();
+    for (;;) {
+      const next = g.next();
+      if (next.done) return next.value;
+    }
+  }
+
+  private *pendingEntriesGen(): Generator<number, LiveIntent[]> {
     const out: LiveIntent[] = [];
+    if (
+      FAST_ENTRIES &&
+      this.market === "bingx" &&
+      !this.replay &&
+      this.fastArgs &&
+      this.fastBarDone < this.status.lastBarT
+    )
+      return out;
+    yield 0;
     const entryT = this.status.lastBarT + this.settings.tfMin * 60_000;
     // the books advance with time: one cursor per simulated run, moved forward tick by tick (replaying the whole
     // feed every 100 ms tick was O(feed) per tick)
@@ -8420,10 +8792,13 @@ export class CoreRuntime {
       const k = `pending:${sigCfg(tp.id) ? "sig:" : ""}${why}`;
       skips[k] = (skips[k] ?? 0) + 1;
     };
+    let visited = 0;
     for (const id of this.paper.selected) {
+      if (++visited % 16 === 0) yield visited;
       const tp = byId.get(id);
       if (!tp) continue;
       for (const p of tp.pending) {
+        if (++visited % 16 === 0) yield visited;
         // an entry on the next bar passes the same execution and coordination rules as in the simulation
         const d = execDecision(tp, entryT, this.wf, { ...books, sym: p.sym, side: p.side });
         if (!d.ok) {
@@ -8606,7 +8981,14 @@ export interface SetListings {
   paperStep: number;
   at: number;
   candidates: Array<{ id: string; group: string }>;
-  validation: { at: number; engineLastN: number; signalLastN: number; entryLastN: number; rangeLastN: number; historyH: number };
+  validation: {
+    at: number;
+    engineLastN: number;
+    signalLastN: number;
+    entryLastN: number;
+    rangeLastN: number;
+    historyH: number;
+  };
   /** engine configs validated (seated) at the paper step, best score first, with their validation-window figures */
   validated: Array<{
     id: string;
@@ -8620,8 +9002,14 @@ export interface SetListings {
     ddt: number;
   }>;
   /** per range: the rows of `validated` (best first) and the range's PF taken together on the validation windows */
-  byRange: Record<string, { rows: number[]; gp: number; gl: number; pf: number | null; calculated: number }>;
-  byGroup: Record<string, { rows: number[]; gp: number; gl: number; pf: number | null; calculated: number }>;
+  byRange: Record<
+    string,
+    { rows: number[]; gp: number; gl: number; pf: number | null; calculated: number }
+  >;
+  byGroup: Record<
+    string,
+    { rows: number[]; gp: number; gl: number; pf: number | null; calculated: number }
+  >;
   /** Signal units active at the paper step include their exact protection config; Base/discovery rows omit cfg. */
   active: Array<{
     bot: string;
@@ -9226,7 +9614,11 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
   if (v < 36) {
     // Enable Inverse in the factory calculation path; deliberate custom/off selections survive.
     const migrateFocus = (settings: SettingsPatch | undefined) => {
-      if (!settings || JSON.stringify(settings.focus) !== JSON.stringify(PREVIOUS_DEFAULT_FOCUS_20OCT)) return false;
+      if (
+        !settings ||
+        JSON.stringify(settings.focus) !== JSON.stringify(PREVIOUS_DEFAULT_FOCUS_20OCT)
+      )
+        return false;
       settings.focus = [...DEFAULT_SETTINGS.focus];
       return true;
     };
@@ -9240,7 +9632,11 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
   }
   if (v < 37) {
     const migrateInverse = (settings: SettingsPatch | undefined) => {
-      if (!settings || JSON.stringify(settings.focus) !== JSON.stringify(PREVIOUS_INVERSE_FOCUS_20OCT)) return false;
+      if (
+        !settings ||
+        JSON.stringify(settings.focus) !== JSON.stringify(PREVIOUS_INVERSE_FOCUS_20OCT)
+      )
+        return false;
       settings.focus = [...DEFAULT_SETTINGS.focus];
       return true;
     };

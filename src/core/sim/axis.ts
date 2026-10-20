@@ -37,6 +37,7 @@ import type {
 } from "../domain/types.ts";
 import { atrTrailGap } from "./backtest.ts";
 import { isSignalConfig, signalStopAt, SIGNAL_STOP_MAX } from "./trailing.ts";
+import type { SimulationCursor } from "./cursor.ts";
 
 /**
  * The volume range's `vol`: realized volatility per bar = ATR ÷ price ÷ 1.6. The Stable-02 desk's quote `vol` was
@@ -91,26 +92,64 @@ export function simulateAxis(
    * the set's live-feedback minSl) and the set's relative widening (slMult). Fixed exits take theirs from `p.sl`.
    */
   floor?: { minSl: number; slMult?: number } | null,
+  cursor?: SimulationCursor,
 ): AxisResult {
   const { n, t, o, h, l, c, sym } = bars;
   const signal = isSignalConfig(cfg);
   const tfMs = bars.tfMin * 60_000;
-  const trades: Trade[] = [];
+  cursor?.begin(bars);
+  let trades: Trade[] = [];
   const levels = Math.max(1, Math.round(ax.levels));
-  let state: "flat" | "pos" = "flat";
-  let side: Side = 1;
-  let legs: Array<{ px: number; w: number }> = [];
-  let rungs: number[] = [];
-  let nextRung = 0;
-  let startI = 0;
-  let stop = 0;
-  let target = 0;
-  let mfe = 0;
-  let mae = 0;
+  const initial = {
+    state: "flat" as "flat" | "pos",
+    side: 1 as Side,
+    legs: [] as Array<{ px: number; w: number }>,
+    rungs: [] as number[],
+    nextRung: 0,
+    startI: 0,
+    stop: 0,
+    target: 0,
+    mfe: 0,
+    mae: 0,
+    sp: 0,
+    risk: 0,
+    nextAllowed: 0,
+    pendingOpen: -1,
+  };
+  let {
+    state,
+    side,
+    legs,
+    rungs,
+    nextRung,
+    startI,
+    stop,
+    target,
+    mfe,
+    mae,
+    sp,
+    risk,
+    nextAllowed,
+    pendingOpen,
+  } = cursor?.restore(initial) ?? initial;
+  const checkpoint = () => ({
+    state,
+    side,
+    legs,
+    rungs,
+    nextRung,
+    startI,
+    stop,
+    target,
+    mfe,
+    mae,
+    sp,
+    risk,
+    nextAllowed,
+    pendingOpen,
+  });
   const managed = ax.exits !== "fixed";
   const range: AxisRange = ax.range ?? "atr";
-  let sp = 0; // rung spacing of the open ladder (price units)
-  let risk = 0;
   const minSl = Math.max(0, floor?.minSl ?? 0);
   const slMult = floor?.slMult && floor.slMult > 0 ? floor.slMult : 1;
   // managed exits from the current average entry (after a fill) and the axis / ATR on bar i
@@ -126,14 +165,18 @@ export function simulateAxis(
     // the stop floors (and the adjuster's relative step) hold the derived stop off the spread and noise
     const slDist = Math.max(Math.min(step, Math.abs(target - a)) * slMult, minSl * a);
     const nextStop = a - side * slDist;
-    const ratchet = signal && legs.length > 1 ? (side === 1 ? Math.max(stop, nextStop) : Math.min(stop, nextStop)) : nextStop;
+    const ratchet =
+      signal && legs.length > 1
+        ? side === 1
+          ? Math.max(stop, nextStop)
+          : Math.min(stop, nextStop)
+        : nextStop;
     stop = signal ? signalStopAt(a, side, ratchet) : nextStop;
     risk = Math.min(Math.max(slDist, sp, 0.45 * at), signal ? a * SIGNAL_STOP_MAX : Infinity);
   };
 
   const wsum = () => legs.reduce((a, x) => a + x.w, 0);
   const avg = () => legs.reduce((a, x) => a + x.px * x.w, 0) / wsum();
-  let nextAllowed = 0;
   // the same entry rules for a signal on bar i (used for the next-bar pending intent as well)
   const admissible = (i: number, s: Side, ref: number) => {
     const m = center[i];
@@ -173,8 +216,8 @@ export function simulateAxis(
     legs = [];
   };
 
-  let pendingOpen = -1;
-  for (let i = 0; i < n; i++) {
+  for (let i = cursor?.start ?? 0; i < n; i++) {
+    cursor?.checkpoint(i, n, checkpoint);
     let filled = false;
     if (pendingOpen === i) {
       legs = [{ px: o[i], w: 1 }];
@@ -221,7 +264,11 @@ export function simulateAxis(
       if (reached(stop)) {
         const sx = rested ? (side === 1 ? Math.min(o[i], stop) : Math.max(o[i], stop)) : stop;
         // a stop moved to the average entry (breakeven after 0.85 risk) is not a stop-out: "be"
-        close(i, side === 1 ? Math.min(sx, fillX) : Math.max(sx, fillX), side * (stop - avg()) >= 0 ? "be" : "sl");
+        close(
+          i,
+          side === 1 ? Math.min(sx, fillX) : Math.max(sx, fillX),
+          side * (stop - avg()) >= 0 ? "be" : "sl",
+        );
       } else if (!filled && (side === 1 ? h[i] >= target : l[i] <= target))
         // a target the open is already through fills at the open — on the entry bar too: a fixed target the next
         // open gapped past (beyond the axis) is marketable when placed and fills at that open, never behind the fill
@@ -263,6 +310,7 @@ export function simulateAxis(
       pendingOpen = i + 1;
     }
   }
+  if (cursor) trades = cursor.finish(bars, trades, checkpoint);
   // next-bar intent: only when the simulation itself would take it (the next open is unknown → last close)
   const last = n > 0 ? sig[n - 1] : 0;
   const ls: Side = last > 0 ? 1 : -1;
@@ -377,11 +425,13 @@ export function simulateAxisDesk(
    * maxSl (Axis per range) caps the stop so the target (stop × ratio) stays inside the range's target band
    */
   floor?: { minSl: number; minTrail: number; maxSl?: number } | null,
+  cursor?: SimulationCursor,
 ): AxisDeskResult {
   const { n, t, o, h, l, c, sym } = bars;
   const signal = isSignalConfig(cfg);
   const tfMs = bars.tfMin * 60_000;
-  const trades: Trade[] = [];
+  cursor?.begin(bars);
+  let trades: Trade[] = [];
   const nRungs = Math.max(2, Math.round(ax.levels));
   const range: AxisRange = ax.range ?? "atr";
   const slAtr = ax.slAtr && ax.slAtr > 0 ? ax.slAtr : 0.7;
@@ -398,23 +448,61 @@ export function simulateAxisDesk(
   const rungW = ax.ratio > 0 ? ax.ratio : 1;
   const fin = (x: number) => Number.isFinite(x);
 
-  let rungs: Array<{ px: number; sl0: number; tp0: number }> = [];
-  let nextRung = 0;
-  let placedI = -1;
-  let legs: Array<{ px: number; w: number }> = [];
-  let side: Side = 1;
-  let startI = 0;
-  let stop = 0;
-  let target = 0;
-  let slD = 0;
-  let tpD = 0;
-  let rangeSp = 0;
-  let trailed = false;
+  const initial = {
+    rungs: [] as Array<{ px: number; sl0: number; tp0: number }>,
+    nextRung: 0,
+    placedI: -1,
+    legs: [] as Array<{ px: number; w: number }>,
+    side: 1 as Side,
+    startI: 0,
+    stop: 0,
+    target: 0,
+    slD: 0,
+    tpD: 0,
+    rangeSp: 0,
+    trailed: false,
+    trailGapD: 0,
+    mfe: 0,
+    mae: 0,
+    nextAllowed: 0,
+  };
+  let {
+    rungs,
+    nextRung,
+    placedI,
+    legs,
+    side,
+    startI,
+    stop,
+    target,
+    slD,
+    tpD,
+    rangeSp,
+    trailed,
+    trailGapD,
+    mfe,
+    mae,
+    nextAllowed,
+  } = cursor?.restore(initial) ?? initial;
+  const checkpoint = () => ({
+    rungs,
+    nextRung,
+    placedI,
+    legs,
+    side,
+    startI,
+    stop,
+    target,
+    slD,
+    tpD,
+    rangeSp,
+    trailed,
+    trailGapD,
+    mfe,
+    mae,
+    nextAllowed,
+  });
   // the hybrid trail's gap, fixed when it arms (0 = not armed)
-  let trailGapD = 0;
-  let mfe = 0;
-  let mae = 0;
-  let nextAllowed = 0;
   const wsum = () => legs.reduce((a, x) => a + x.w, 0);
   const avg = () => legs.reduce((a, x) => a + x.px * x.w, 0) / wsum();
   const ret = (exit: number) => {
@@ -478,13 +566,17 @@ export function simulateAxisDesk(
     // the close (every hybrid exit at about −cost)
     if (ax.hybrid && (trailGapD > 0 || side * (c[i] - a) >= slD * 0.95)) {
       if (!(trailGapD > 0)) trailGapD = slD * trailK;
-      const gap = Math.min(Math.max(trailGapD, minTrail * c[i]), signal ? a * SIGNAL_STOP_MAX : Infinity);
+      const gap = Math.min(
+        Math.max(trailGapD, minTrail * c[i]),
+        signal ? a * SIGNAL_STOP_MAX : Infinity,
+      );
       if (tighten(c[i] - side * gap)) trailed = true;
       slD = Math.abs(stop - a);
     }
   };
 
-  for (let i = 0; i < n; i++) {
+  for (let i = cursor?.start ?? 0; i < n; i++) {
+    cursor?.checkpoint(i, n, checkpoint);
     // unfilled rungs rest on bars placedI + 1 … placedI + expiry
     if (nextRung < rungs.length && i > placedI + expiry) {
       rungs = [];
@@ -607,6 +699,7 @@ export function simulateAxisDesk(
     }
   }
 
+  if (cursor) trades = cursor.finish(bars, trades, checkpoint);
   let open: OpenPosition | null = null;
   if (legs.length && n > 0) {
     const a = avg();
