@@ -374,9 +374,13 @@ describe("protect grid", () => {
     assert.deepEqual(g.tp, []);
     // (9 × 7 Minimal + 6 × 7 Short + 8 × 6 General + 10 × 6 Long) cells × 4 trails × 2 holds, and Micro (on since
     // 13 Oct): 7 targets × 17 stops × 4 trails × 2 holds
-    assert.equal(gridVariants(g), 1704 + 952);
+    const allCells = protectGrid(15, g);
+    const trailingOnly = allCells.filter((p) => p.trailOnly);
+    assert.ok(trailingOnly.length > 0);
+    assert.ok(trailingOnly.every((p) => p.tp === 0 && p.sl <= 0.03 && p.trail > 0));
+    assert.equal(gridVariants(g), 1704 + 952 + trailingOnly.length);
     assert.ok(gridVariants(g) <= GRID_VARIANTS_MAX);
-    const cells = protectGrid(15, g);
+    const cells = allCells.filter((p) => !p.trailOnly);
     // the floors fold no two cells of the four ranges into one: every combination is its own config; Micro's stop floor
     // (0.2 % net + cost) folds its tightest stops of the smallest targets (952 distinct at 2–5× cost, micro-range.test.ts)
     assert.equal(cells.filter((p) => p.tag !== "mc").length, 1704);
