@@ -2,7 +2,9 @@
 
 Two admission bugs are reproduced and corrected. Long history could qualify an unobserved Short, and the `provenSide` symbol gate could accept an empty result during warmup. The fixed 22-symbol repeat now settles **680 modeled orders at unit-return PF 1.337123**, instead of 1,184 at PF 0.408581 after the direction-only fix. **Consistently profitable execution across all windows/ranges is still unproven:** the bounded multi-range repeat retains 193 losses at PF 0, and the profitable aggregate window contains two losing active hours.
 
-Tested implementation: `b545bfda5280de4b8b5afcd29141fbc7e813d850`; direction implementation: `d61c1fadaba89c5b6808b914e6246d1b34d982ed`. Published code checkpoint: `26a5107e5b931493dee3878b3274ca315fe282be`, exact matching tree `bf8fb60609f182e4a2d86966590ef96dcaa940f9`. Review: [draft PR 182](https://github.com/mxssnx-creator/CTS-A-O/pull/182). Main remains `4588030b946740d493cf0e0d629aa2722aa6211c`; no live reload, selected-account change or venue action occurred.
+Frozen production implementation: `b545bfda5280de4b8b5afcd29141fbc7e813d850`; direction implementation: `d61c1fadaba89c5b6808b914e6246d1b34d982ed`. Published code checkpoint: `26a5107e5b931493dee3878b3274ca315fe282be`, exact matching tree `bf8fb60609f182e4a2d86966590ef96dcaa940f9`. Review: [draft PR 182](https://github.com/mxssnx-creator/CTS-A-O/pull/182). Main remains `4588030b946740d493cf0e0d629aa2722aa6211c`; no live reload, selected-account change or venue action occurred.
+
+Fixture and complete-evidence checkpoint: local `d3836e04e36f57c83b8ef0425e9d05a3db5162df`, published `4e92b4f24acb5db6bf5c1fb56ff465274039e599`, exact tree `91639643f1722d2f1ab0a8485a2ea8773b175f90`. All 499 segmented checks apply to the frozen production source plus these final qualified fixtures. Subsequent publication-note changes affect documentation only.
 
 ## First cause: direction evidence was borrowed
 
