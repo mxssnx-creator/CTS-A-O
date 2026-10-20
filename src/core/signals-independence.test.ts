@@ -1,4 +1,4 @@
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { DEFAULT_SETTINGS } from "./config.ts";
 import type { StratKind, Trade } from "./domain/types.ts";
@@ -6,6 +6,7 @@ import { configId } from "./pipeline/pipeline.ts";
 import { liveLaneFilter } from "./server/live.server.ts";
 import { CoreRuntime } from "./server/runtime.server.ts";
 import { CoreDb } from "./server/db.server.ts";
+import { closePool } from "./server/pool.server.ts";
 import { signalSettings } from "./signal-config.ts";
 import { acceptKey, acceptOnWindow, SignalAcceptIndex, SignalGuard, signalActiveHas, signalSeatSymbols, sigActiveKey } from "./signals.ts";
 import { activeSignalsAt, defaultWalkForward, execDecision, hedgeSignalsAt, makeTape, signalIndex, walkForward } from "./sim/walkforward.ts";
@@ -14,6 +15,7 @@ const H = 3_600_000;
 const NOW = 100 * H;
 const IND = "sig-ema-cross-s@m15";
 const SYM = "A-USDT";
+after(() => closePool());
 function tape(kind: StratKind, rs: number[], ind = IND, tp = 0.03) {
   const protect = kind === "trailing-only"
     ? { tp: 0, sl: 0.06, trail: 0.015, trailOnly: true, hold: 192 }

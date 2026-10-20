@@ -1,13 +1,22 @@
 // The fast loops: engine cycle (250 ms) without needless work, tick (100 ms) marking open positions to market and
 // driving the live step, and a live book read over REST at most every syncMs.
-import { describe, it } from "node:test";
+import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { CoreRuntime } from "./runtime.server.ts";
+import { CoreRuntime as BaseRuntime } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
 import { cachedClient, type ExchangeClient } from "./live.server.ts";
 import { PriceStream } from "./stream.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
-import { runtimeFixtureGrid } from "../test-support.ts";
+import { runtimeFixtureGrid, trackRuntimes } from "../test-support.ts";
+
+const tracked = trackRuntimes();
+class CoreRuntime extends BaseRuntime {
+  constructor(...args: ConstructorParameters<typeof BaseRuntime>) {
+    super(...args);
+    tracked.track(this);
+  }
+}
+afterEach(() => tracked.disposeAll());
 
 const small = {
   symbols: 3,

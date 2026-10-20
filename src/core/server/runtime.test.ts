@@ -23,6 +23,7 @@ import { join } from "node:path";
 
 const small = {
   symbols: 4,
+  focus: ["follow|ema-9-21", "revert|ema-9-21", "follow|rsi-mom-14-20", "revert|rsi-mom-14-20"],
   historyDays: 18,
   // lanes over a shorter history keep each synthetic engine light (the suite runs several in parallel)
   tfDays: { "1": 3, "5": 6, "15": 18, "30": 18 },
@@ -334,6 +335,8 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
 
   it("computes on the synthetic feed and publishes every stage", async () => {
     const rt = mk();
+    // This one case intentionally verifies the complete engine indication/lane catalog.
+    rt.updateSettings({ focus: [] });
     rt.start();
     await until(() => rt.status.computes >= 1 && rt.status.state === "running");
     assert.equal(rt.status.source, "synthetic");
@@ -1294,7 +1297,6 @@ describe("paper book across a restart", () => {
       stop: 0.98,
       target: 1.02,
       mtm: 0.004,
-      exitProtection: undefined,
       vol: 2,
       level: 3,
     };
@@ -1330,7 +1332,6 @@ describe("paper book across a restart", () => {
         stop: 0.98,
         target: 1.02,
         mtm: 0.004,
-        exitProtection: undefined,
         vol: 16,
         coordVol: 2,
         volFactor: 8,

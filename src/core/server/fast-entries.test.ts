@@ -9,7 +9,7 @@ import { signalSettings } from "../signal-config.ts";
 import { laneInd } from "../indications/registry.ts";
 import { signalCoordinationId } from "../signal-coordination.ts";
 import type { OpenPosition } from "../domain/types.ts";
-import { runtimeFixtureGrid } from "../test-support.ts";
+import { runtimeFixtureGrid, trackRuntimes } from "../test-support.ts";
 
 process.env.CTS_CORE_SYNTHETIC_END ??= String(Math.floor(Date.now() / 3_600_000) * 3_600_000);
 const small = {
@@ -29,8 +29,8 @@ const small = {
     sources: { "ema-cross": true, "rsi-reversal": true },
   }),
 };
-const rts: CoreRuntime[] = [];
-after(() => rts.forEach((r) => r.stop()));
+const tracked = trackRuntimes();
+after(() => tracked.disposeAll());
 const until = async (c: () => boolean, ms = 900_000) => {
   const t0 = Date.now();
   while (!c()) {
@@ -89,8 +89,7 @@ describe("realtime entry step", { timeout: 1_200_000 }, () => {
   });
 
   it("adds nothing the full step decided, and re-takes a fresh position with the same rules", async () => {
-    const rt = new CoreRuntime(new CoreDb(":memory:"), small as never, { market: "synthetic" });
-    rts.push(rt);
+    const rt = tracked.track(new CoreRuntime(new CoreDb(":memory:"), small as never, { market: "synthetic" }));
     rt.wf.validLastN = 0;
     rt.wf.lastN = 0;
     rt.start();

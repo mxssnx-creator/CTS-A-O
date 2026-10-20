@@ -2,7 +2,7 @@
 // Block Active on / off, Normal on / off, volume steps and the pause after a win: every run replays clean through
 // the self-audit (each trade's level and volume re-derived from the causal book), volumes stay within the 8× stack,
 // Normal off only ever removes unadjusted base entries, and Block Active only ever removes entries below its level.
-import { before, describe, it } from "node:test";
+import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { CoreRuntime } from "../server/runtime.server.ts";
 import { CoreDb } from "../server/db.server.ts";
@@ -10,6 +10,10 @@ import { auditState } from "../audit.ts";
 import { walkForward, type WalkForwardOptions } from "./walkforward.ts";
 import { BLOCK_SOURCES, type BlockSource } from "./block.ts";
 import type { BlockConfig } from "../domain/types.ts";
+import { runtimeFixtureGrid, trackRuntimes } from "../test-support.ts";
+
+const tracked = trackRuntimes();
+after(() => tracked.disposeAll());
 
 let rt: CoreRuntime;
 // (a hang guard only: the setup runs one compute per symbol batch — three of ~100 s each before the runtime rests, which
@@ -44,21 +48,24 @@ function run(patch: {
 
 describe("Block matrix at the Real stage", { timeout: 1_200_000 }, () => {
   before(async () => {
-    rt = new CoreRuntime(
+    rt = tracked.track(new CoreRuntime(
       new CoreDb(":memory:"),
       {
         symbols: 4,
         historyDays: 18,
         tfDays: { "1": 3, "5": 6, "15": 18, "30": 18 },
         cycleMs: 60_000,
-        grid: { short: false },
+        // Real-stage relation replay needs diverse actual tapes, rather than a
+        // second full Cartesian/independent Exit fit before every matrix case.
+        grid: { ...runtimeFixtureGrid(), short: false },
+        exitStrategy: { enabled: false },
         signals: { enabled: false } as never,
         focus: [],
         pinned: [],
         mainTop: 16,
       },
       { market: "synthetic" },
-    );
+    ));
     // the matrix measures Block, not the desk's last-N seat gate
     rt.wf.validLastN = 0;
     rt.wf.lastN = 0;

@@ -10,7 +10,7 @@
 //   - the signal acceptance record's counts are 4-byte integers and every query answers as before.
 import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { CoreRuntime } from "./runtime.server.ts";
+import { CoreRuntime, marketHistoryBars } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
 import { MEM_READ_MS, memInfo, type MemInfo } from "./memguard.server.ts";
 import { CandleSeries } from "../market/candle-series.ts";
@@ -239,7 +239,7 @@ describe("memory released after use, results unchanged", { timeout: 900_000 }, (
     }
   });
 
-  it("the runtime's candles are columns: 4 × 25,920 bars add under 4 MB of heap (17 MB as objects)", async () => {
+  it("the runtime's candles are columns: four complete configured histories add under 4 MB of heap", async () => {
     const gc = (globalThis as { gc?: () => void }).gc;
     if (!gc) return assert.fail("needs --expose-gc (npm run test:core passes it)");
     const prevState = process.env.CTS_CORE_STATE;
@@ -247,7 +247,7 @@ describe("memory released after use, results unchanged", { timeout: 900_000 }, (
     const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 4 } as never, { market: "synthetic" });
     try {
       const R = rt as unknown as { storeCandles(sym: string, cs: unknown[], append?: boolean): Promise<void> };
-      const want = Math.round((rt.settings.historyDays * 24 * 60) / rt.settings.tfMin);
+      const want = marketHistoryBars(rt.settings, rt.wf);
       // the input bars are made and dropped one symbol at a time, so only what the runtime keeps remains
       const store = async (sym: string) => {
         const r = rng(sym.length);

@@ -121,8 +121,11 @@ describe("signals: sources and combos", () => {
       DEFAULT_SETTINGS.signals.coordination.ranges,
     );
     const normal = protects.filter((p) => p.trail === 0);
-    const trailing = protects.filter((p) => p.trail > 0);
-    assert.equal(protects.length, 2100);
+    const trailing = protects.filter((p) => p.trail > 0 && !p.trailOnly);
+    const trailingOnly = protects.filter((p) => p.trailOnly);
+    assert.equal(trailingOnly.length, 570, "independent capped no-TP hold candidates");
+    assert.ok(trailingOnly.every((p) => p.tp === 0 && p.sl <= 0.03 && p.trail <= 0.03));
+    assert.equal(protects.length, 2100 + trailingOnly.length);
     assert.equal(normal.length, 750, "300 existing + 450 new Normal protections");
     assert.equal(trailing.length, 1350, "900 existing + 450 new 48 h Trailing protections");
     assert.deepEqual([...new Set(normal.map((p) => p.hold))].sort((a, b) => a - b), [48, 64, 96, 128, 192]);
@@ -606,6 +609,7 @@ describe("signals: engine", { timeout: 400_000 }, () => {
         cycleMs: 60_000,
         // Keep the coordinator's General/Long range grids while bounding unrelated engine pairs.
         grid: { short: false },
+        exitStrategy: { enabled: false },
         signals: signalSettings({ enabled: true, count: 10, minTrades: 1 }),
       },
       { market: "synthetic" },
