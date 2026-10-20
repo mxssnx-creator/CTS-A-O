@@ -112,10 +112,10 @@
     "productionBuild": true,
     "lintErrors": 0,
     "desktopMobileDevBuiltSurfaces": 4,
-    "fullCore": "in progress",
+    "fullCore": "Execution environment recovery interrupted the full invocation; 123 ordered prefix files retained, 89 affected/remaining files rerun in checkpointed chunks. Not one uninterrupted green invocation.",
     "24hAudit": "completed, zero entry violations",
-    "6hAudit": "running serialized",
-    "pagedReportDesktopMobile": true
+    "6hAudit": "completed, all economic fields and executions exactly equal to baseline",
+    "pagedReportDesktopMobile": "3 studies / 33 SVGs, all paging/search/download/layout checks passed"
   },
   "twentyFourHourAudit": {
     "tapes": 99520,
@@ -205,5 +205,103 @@
         "arrayBuffersMiB": 3153.589472770691
       }
     ]
+  },
+  "sixHourAudit": {
+    "tapes": 26384,
+    "settled": {
+      "n": 6,
+      "pf": 1.745098039215682,
+      "noLoss": false,
+      "exactRatio": 1.745098039215682,
+      "gp": 4.450000000000008,
+      "gl": 2.550000000000011,
+      "net": 1.8999999999999972
+    },
+    "endpointMarks": {
+      "n": 14,
+      "pf": 0,
+      "noLoss": false,
+      "exactRatio": 0,
+      "gp": 0,
+      "gl": 22.07936468610407,
+      "net": -22.07936468610407
+    },
+    "settledPlusMarks": {
+      "n": 20,
+      "pf": 0.180678635308474,
+      "noLoss": false,
+      "exactRatio": 0.18067863530847403,
+      "gp": 4.450000000000008,
+      "gl": 24.629364686104083,
+      "net": -20.179364686104073
+    },
+    "byDirection": {
+      "long": {
+        "n": 0,
+        "pf": null,
+        "noLoss": false,
+        "exactRatio": null,
+        "gp": 0,
+        "gl": 0,
+        "net": 0
+      },
+      "short": {
+        "n": 6,
+        "pf": 1.745098039215682,
+        "noLoss": false,
+        "exactRatio": 1.745098039215682,
+        "gp": 4.450000000000008,
+        "gl": 2.550000000000011,
+        "net": 1.8999999999999972
+      }
+    },
+    "executedConfigs": 6,
+    "positiveHours": 1,
+    "flatHours": 4,
+    "negativeHours": 1,
+    "qualificationViolations": [],
+    "timingMs": {
+      "base": 10445.842942000001,
+      "tapes": 600860.164976,
+      "walk": 4736.38240100001,
+      "reporting": 837.728402000037,
+      "total": 616880.123606
+    },
+    "rssMaxMiB": 2933.75390625,
+    "memoryPhases": [
+      {
+        "phase": "bars",
+        "rssMiB": 372.7265625,
+        "heapMiB": 131.50082397460938,
+        "arrayBuffersMiB": 53.9268913269043
+      },
+      {
+        "phase": "base-cache-released",
+        "rssMiB": 551,
+        "heapMiB": 19.221878051757812,
+        "arrayBuffersMiB": 228.5710325241089
+      },
+      {
+        "phase": "tapes-cache-released",
+        "rssMiB": 2925.3046875,
+        "heapMiB": 226.96829986572266,
+        "arrayBuffersMiB": 2473.5916805267334
+      },
+      {
+        "phase": "walk-complete",
+        "rssMiB": 2928.75390625,
+        "heapMiB": 253.9879913330078,
+        "arrayBuffersMiB": 2208.7099323272705
+      }
+    ]
+  },
+  "sixHourParity": {
+    "executionsExactlyEqual": true,
+    "allEconomicFieldsEqual": true,
+    "baseline": "inverse-20-6h",
+    "current": "inverse-20-6h-lowmem-final",
+    "baselinePeakRssMiB": 3321.359375,
+    "currentPeakRssMiB": 2933.75390625,
+    "note": "Different heap flags/concurrent workloads; RSS comparison is not an isolated causal benchmark."
   }
 }
