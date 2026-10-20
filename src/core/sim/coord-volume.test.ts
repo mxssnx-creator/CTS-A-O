@@ -34,6 +34,7 @@ function result(cfg: string, entryT: number, r: number): Trade {
 
 const base = {
   ...defaultWalkForward(DEFAULT_SETTINGS),
+  longH: 336,
   protects: [],
   dcaProtects: [],
   simH: 6,
@@ -126,7 +127,10 @@ describe("coordination volume factors", () => {
     engineTrades.push(result(engine, START + 2 * H + 5 * M, -0.05));
     const activeTrades = Array.from({ length: 30 }, (_, i) => result(active, NOW - 80 * H + i * H, 0.02));
     activeTrades.push(result(active, START + H + 5 * M, 0.01));
-    const hedgeTrades = Array.from({ length: 20 }, (_, i) => result(hedge, NOW - 40 * H + i * H, -0.01));
+    const hedgeTrades = Array.from({ length: 20 }, (_, i) => result(hedge, NOW - 100 * H + i * H, -0.01));
+    // A hedge is still an independently qualified Signal config. Its recent own history must pass Last-25;
+    // the coordination book's losing hour supplies the hedge relation, not a substitute for this evidence.
+    for (let i = 0; i < 30; i++) hedgeTrades.push(result(hedge, NOW - (70 - i) * H, 0.02));
     // This positive close lands in the book's losing hour and makes the source eligible at the next hour.
     hedgeTrades.push(result(hedge, START + 25 * M, 0.02));
     hedgeTrades.push(result(hedge, START + H + 15 * M, 0.01));

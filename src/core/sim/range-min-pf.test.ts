@@ -52,6 +52,7 @@ const opts = (rangeMinPf?: WalkForwardOptions["gates"]["rangeMinPf"]): WalkForwa
   const o = defaultWalkForward(DEFAULT_SETTINGS);
   return {
     ...o,
+    longH: 336,
     gates: { ...o.gates, minPf: 1.05, minGreen: 0, rangeMinPf },
     toggles: { normal: true, trailing: true, block: false, blockActive: false, dca: true, dcaActive: false, axis: true },
     symGate: undefined,

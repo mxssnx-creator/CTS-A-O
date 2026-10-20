@@ -10,8 +10,9 @@ import { auditState } from "../audit.ts";
 import { walkForward, type WalkForwardOptions } from "./walkforward.ts";
 import { BLOCK_SOURCES, type BlockSource } from "./block.ts";
 import type { BlockConfig } from "../domain/types.ts";
-import { runtimeFixtureGrid, trackRuntimes } from "../test-support.ts";
+import { pinSyntheticEnd, runtimeFixtureGrid, trackRuntimes } from "../test-support.ts";
 
+pinSyntheticEnd();
 const tracked = trackRuntimes();
 after(() => tracked.disposeAll());
 

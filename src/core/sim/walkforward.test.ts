@@ -52,6 +52,8 @@ const burst = tape("burst", [
 ]);
 const o = {
   ...defaultWalkForward(DEFAULT_SETTINGS),
+  // These fixtures distribute evidence across fourteen days; preserve that declared evaluation window.
+  longH: 336,
   preGate: false,
   // these fixtures are short on purpose; the 50-close validation is covered on its own
   validLastN: 0,

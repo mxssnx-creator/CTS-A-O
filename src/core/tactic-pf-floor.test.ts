@@ -102,7 +102,7 @@ describe("first-class indication minimum return PF is consistent from Base throu
     assert.equal(minPfOf(G, "gn", IND), 1.3);
     assert.equal(minPfOf({ ...G, minPf: 1.4 }, undefined, IND), 1.4);
     assert.equal(minPfOf(G, "mc", OTHER), 1.05);
-    assert.equal(minPfOf(G, "sh", "sig-ema-cross-s@m15"), 1.08);
+    assert.equal(minPfOf(G, "sh", "sig-ema-cross-s@m15"), 1.5);
     assert.equal(minPfOf(G, undefined), 1.05);
   });
 

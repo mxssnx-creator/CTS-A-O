@@ -26,6 +26,14 @@ const fixture = () => {
     const id = `follow|${ind}|tp${1 + k / 100}|sl1|tr0|h32`;
     const syms = ["A-USDT", "B-USDT", "C-USDT"];
     const trades = [];
+    // Every admitted source/config/symbol/direction supplies its own causal Last-25 evidence.
+    // These closes precede the measured lifecycle window and do not enter its candidate/feed counts.
+    for (const sym of syms) for (const side of [1, -1]) for (let i = 0; i < 30; i++) {
+      const entryT = start - (100 - i) * H;
+      trades.push({ cfg: id, sym, side, entryT, exitT: entryT + 30_000,
+        entry: 100, exit: 100 * (1 + side * 0.01), r: 0.01, reason: "tp", bars: 1,
+        mfe: 0, mae: 0, kind: "normal", mult: 1 });
+    }
     for (let hour = 0; hour < hours; hour++) for (let i = 0; i < perHour; i++) {
       const side = i % 2 ? 1 : -1;
       const sym = syms[i % syms.length];
