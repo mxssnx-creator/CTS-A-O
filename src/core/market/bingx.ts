@@ -175,11 +175,27 @@ export async function rankUniverse(
   }
 }
 
+/**
+ * The shortest gap between two kline requests from this process, across every caller (the backfill, the gap repair and
+ * the realtime pull). x01, 20 Oct: the per-symbol pacing (klines-pace.ts) does not bound the sum, so the backfill's
+ * pages and a repair's pages went out together, and BingX banned the endpoint for 2 minutes every ~5 minutes.
+ */
+export const KLINES_MIN_GAP_MS = 250;
+let klinesNextAt = 0;
+
+/** Reserve the next request slot: resolves when this request may be sent (requests are spaced, never dropped). */
+async function klinesSlot(gapMs: number): Promise<void> {
+  const now = Date.now();
+  const start = Math.max(now, klinesNextAt);
+  klinesNextAt = start + gapMs;
+  if (start > now) await new Promise((r) => setTimeout(r, start - now));
+}
+
 /** One kline page (max 1440), ascending by time. Only CLOSED bars are returned. */
 export async function fetchKlines(
   sym: string,
   tfMin: number,
-  opt: { startT?: number; endT?: number; limit?: number; host?: string; nowT?: number } = {},
+  opt: { startT?: number; endT?: number; limit?: number; host?: string; nowT?: number; gapMs?: number } = {},
 ): Promise<Candle[]> {
   const iv = TF[tfMin];
   if (!iv) throw new Error(`unsupported timeframe ${tfMin}m`);
@@ -190,6 +206,7 @@ export async function fetchKlines(
   });
   if (opt.startT) q.set("startTime", String(opt.startT));
   if (opt.endT) q.set("endTime", String(opt.endT));
+  await klinesSlot(opt.gapMs ?? KLINES_MIN_GAP_MS);
   const data = (await getJson(
     `${opt.host ?? BINGX_HOSTS.mainnet}/openApi/swap/v3/quote/klines?${q}`,
   )) as Array<Record<string, string | number>>;
