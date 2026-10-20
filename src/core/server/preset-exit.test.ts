@@ -202,6 +202,8 @@ describe("independent Exit preset backtests", { timeout: 90_000 }, () => {
           const pairs = exitStrategyPairs(
             allCombos(rt.settings.focus, rt.settings.disabledKinds, rt.settings.tfs),
             u,
+            rt.settings.exitStrategy,
+            rt.settings.disabledKinds,
           );
           const validation = {
             cost: rt.settings.cost,

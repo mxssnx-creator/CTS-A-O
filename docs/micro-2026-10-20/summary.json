@@ -70,9 +70,9 @@
     "TRX-USDT"
   ],
   "modelRoundTripCost": 0.0015,
-  "sourceSha256": "1ba487d77477f16f029e1660cee0cfb723bd2078d7f993f777479286fde89b6a",
+  "sourceSha256": "dc407e994040d9d10c7adb2983215e8898041548300f747705474ea802fadb50",
   "feedSha256": "2de8392ef1346c1b49b0933e111bd7328d13f23abb1643c90cf99c398fa3cab6",
-  "protocolSha256": "48ee529445669c9ec5ed86f0bc62f4a7257462d4e36b6e2e9f18eb1105a0b802",
+  "protocolSha256": "30b115ed4aa5de5e297550037e8d188ca20cc3abbfe9359e1701c5a7b31aa512",
   "computed": {
     "basePairs": 1232,
     "basePassed": 187,
@@ -80,11 +80,11 @@
     "configs": 64473,
     "initialEvaluatedConfigs": 62553,
     "initialQualifiedConfigs": 14458,
-    "computeMs": 196386.618843,
+    "computeMs": 191641.851748,
     "loop": {
       "p50": 20.250623,
-      "p99": 49.479679,
-      "max": 678.952959
+      "p99": 38.699007,
+      "max": 718.274559
     }
   },
   "result": {
@@ -656,8 +656,8 @@
     "roundTripChargedOnce": true,
     "rows": 49259,
     "independentlyReplayedProtectionRows": 49212,
-    "maxReturnError": 1.0720260441160478e-7,
-    "maxPriceError": 5.7946702497660636e-8,
+    "maxReturnError": 1.0720260441160478e-07,
+    "maxPriceError": 5.7946702497660636e-08,
     "gp": 85.43921186760092,
     "gl": 390.2709302090552,
     "pf": 0.21892281810954753,
@@ -1340,5 +1340,18 @@
       "error": null
     },
     "failure": null
+  },
+  "apiBatching": {
+    "coalescedReads": [
+      "book",
+      "account",
+      "contracts"
+    ],
+    "scope": "per connection fingerprint",
+    "mutationFencing": "order/cancel revisions, including first read and same-millisecond changes",
+    "independentLaneConcurrency": 4,
+    "normalBookSyncMs": 1000,
+    "regressionTests": 116,
+    "note": "Own changes and stricter freshness requests can require earlier reads; active in-flight requests cannot be unsent on a newly received ban."
   }
 }

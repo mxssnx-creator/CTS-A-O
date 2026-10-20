@@ -15,6 +15,8 @@ import { allCombos } from "./pipeline/pipeline.ts";
 import { INDICATIONS, indicationState, laneOf, isSignalInd } from "./indications/registry.ts";
 import { isRelateInd, relateAnchorTf } from "./indications/relate.ts";
 import { breakAnchorTf, isBreakRelInd } from "./indications/break-config.ts";
+import { isMicroCalculationInd as isMicroFamilyInd, microAnchorTf } from "./indications/micro-family.ts";
+import { INVERSE_TIMEFRAMES, isInverseInd } from "./indications/inverse-config.ts";
 import { SeriesCache } from "./indications/cache.ts";
 import { MarketSource } from "./indications/market.ts";
 import { barsFromCandles, syntheticCandles } from "./market/bars.ts";
@@ -90,9 +92,13 @@ describe("every indication works", () => {
   // the universe's market reference (as makeUniverse attaches it): the Micro market relations read the 5m market of
   // the five 5m series (the 1m and 15m series are alone in their timeframe: neutral there)
   const market = new MarketSource(series);
+  const caches = new Map<(typeof series)[number], SeriesCache>();
   const cacheOf = (b: (typeof series)[number]) => {
+    const cached = caches.get(b);
+    if (cached) return cached;
     const k = new SeriesCache(b);
     k.setMarket(market);
+    caches.set(b, k);
     return k;
   };
 
@@ -111,7 +117,10 @@ describe("every indication works", () => {
         for (let i = 0; i < st.length; i++) if (st[i] !== 0 && st[i] !== 1 && st[i] !== -1) bad.push(`${x.id}: state ${st[i]}`);
         for (let i = 1; i < st.length; i++) if (st[i] !== 0 && st[i] !== st[i - 1]) fired++;
       }
-      if (!fired && !quietSweepOnly.has(x.id)) silent.push(x.id);
+      // New Micro and inverse relations require coherent native lanes and BTC/ETH peers. Their universal
+      // onset coverage lives in indications-both-sides.test.ts; this disjoint-symbol fixture still checks
+      // every state's shape and domain, without inventing the missing market context.
+      if (!fired && !quietSweepOnly.has(x.id) && x.kind !== "micro" && x.kind !== "inverse") silent.push(x.id);
     }
     assert.deepEqual(bad.slice(0, 10), []);
     assert.ok([...quietSweepOnly].every((id) => engine.some((x) => x.id === id)), "quiet fixture exception stays registered");
@@ -154,16 +163,21 @@ describe("every indication works", () => {
       if (x.id.startsWith("s2-")) continue; // Stable-02 ports run as signal sources only
       const got = lanesOf.get(x.id);
       if (!got) missing.push(`${x.id}: no lane`);
-      else if (isRelateInd(x.id) || isBreakRelInd(x.id)) {
+      else if (isRelateInd(x.id) || isBreakRelInd(x.id) || isMicroFamilyInd(x.id)) {
         const isBreak = isBreakRelInd(x.id);
-        const anchor = isBreak ? breakAnchorTf(x.id) : relateAnchorTf(x.id);
-        const family = isBreak ? "Break" : "Relate";
+        const micro = isMicroFamilyInd(x.id);
+        const anchor = micro ? microAnchorTf(x.id) : isBreak ? breakAnchorTf(x.id) : relateAnchorTf(x.id);
+        const family = micro ? "Micro" : isBreak ? "Break" : "Relate";
         if (anchor !== null && tfs.includes(anchor) && !got.has(String(anchor))) missing.push(`${x.id}@m${anchor}`);
         for (const lane of got)
           if (lane.endsWith("c") || Number.parseInt(lane, 10) !== anchor)
             missing.push(`${x.id}@m${lane}: unexpected ${family} lane`);
       }
-      else for (const tf of tfs) if (!got.has(String(tf)) && !got.has(`${tf}c`)) missing.push(`${x.id}@m${tf}`);
+      else for (const tf of tfs) {
+        const eligible = !isInverseInd(x.id) || (INVERSE_TIMEFRAMES as readonly number[]).includes(tf);
+        if (eligible && !got.has(String(tf)) && !got.has(`${tf}c`)) missing.push(`${x.id}@m${tf}`);
+        if (!eligible && (got.has(String(tf)) || got.has(`${tf}c`))) missing.push(`${x.id}@m${tf}: ineligible inverse lane`);
+      }
     }
     assert.deepEqual(missing, []);
     // a disabled kind drops only its own indications
@@ -207,6 +221,9 @@ describe("processing through the stages, every strategy type, every toggle combi
         tfDays: { "1": 3, "5": 6, "15": 18, "30": 18 },
         cycleMs: 60_000,
         focus: [],
+        // Preserve the original lifecycle matrix catalog; exhaustive new-family grids and their
+        // range qualification are covered by the frozen 20-symbol replay and dedicated parity tests.
+        disabledKinds: ["micro", "inverse"],
         pinned: [],
         mainTop: 24,
         grid,

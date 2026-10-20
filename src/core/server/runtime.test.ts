@@ -23,6 +23,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const small = {
+  // Keep generic lifecycle computes on their original catalog; new full grids have dedicated replay/parity coverage.
+  disabledKinds: ["micro", "inverse"],
   symbols: 4,
   historyDays: 18,
   // lanes over a shorter history keep each synthetic engine light (the suite runs several in parallel)

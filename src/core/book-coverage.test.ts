@@ -43,6 +43,9 @@ describe(
             tfDays: { "1": 3, "5": 6, "15": 18, "30": 18 },
             cycleMs: 60_000,
             focus: [],
+            // Preserve the original lifecycle matrix catalog; exhaustive new-family grids and their
+            // range qualification are covered by the frozen 20-symbol replay and dedicated parity tests.
+            disabledKinds: ["micro", "inverse"],
             mainTop: 12,
             toggles: {
               normal: true,

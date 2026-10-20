@@ -43,6 +43,10 @@ const fixture = () => {
   const o = { ...defaultWalkForward(DEFAULT_SETTINGS),
     // Freeze the archived fixture's inputs (9c037e2); production defaults and independent Exit options changed later.
     // A direct baseline comparison confirms every non-options output field remains identical.
+    indicationVolumeFactors: { coordination: 8, combined: {
+      trend: 1, break: 1, active: 1, direction: 1, move: 1, rsi: 1, bollinger: 1, sar: 1,
+      macd: 1, ema: 1, osc: 1, volume: 1, channel: 1, ichimoku: 1, smooth: 1, tactic: 1, relate: 1,
+    } },
     longH: 336, preH: 20, signalLongH: undefined,
     exitMinTrades: undefined, exitMinPf: undefined, exitMinGreenHourShare: undefined, exitMaxDdr: undefined,
     startT: start, simH: hours, stepH: 1, signalActive: active, signalOwnBase: true,

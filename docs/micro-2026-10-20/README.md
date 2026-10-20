@@ -8,6 +8,7 @@ Status: research implementation; **not accepted as a profitable production relea
 - Every configured TP/SL/trailing/hold cell is evaluated at Base for these families. Micro, Minimal, Short and General remain separate. Shared cached features do not share qualification or order identity. Worker and local results match for all 616 new IDs.
 - Modeled execution costs are capped at 0.0015 round trip, deducted once. Measured owned fees remain actual. The 0.002 distance reference is not an additional transaction fee. Paper adjustment no longer charges an already-net close again.
 - A dedicated deadline-based 100ms progress loop checks active execution, without overlapping native steps. Lag and missed deadlines are reported. It retains the official BingX REST endpoints, authentication, rate limits, book-cache policy and WebSocket protocol. No official Node SDK was found in the official BingX repositories; no community package is presented as an official library.
+- Concurrent book/account/contract reads share one in-flight request per connection. Revision fencing prevents a read begun before an own order/cancel from returning as current, even before a cache exists or within the same millisecond. Stricter freshness requests remain stricter. Independent lane orders retain bounded batches of four; exchange bans stop subsequent batches.
 - Stop/restart epochs fence queued callbacks and late results. Changed settings block new exposure until the new Paper book is complete; owned reductions and protection continue.
 - Genuine 5s bars can be built from public trades. Missing periods are not invented. The collected archive is a short compatibility/causality test, not the requested complete 12h high-frequency test. The normal production lanes remain 1/5/15m.
 
@@ -24,7 +25,7 @@ MALLOC_ARENA_MAX=2 MALLOC_MMAP_THRESHOLD_=1048576 \
 node --experimental-strip-types --no-warnings scripts/audit-micro-execution.mjs runs/micro-reproduction
 ```
 
-Before accepting a reproduction, compare its `source.sha256`, `feed.sha256`, `actualSettings`, `actualWf` and window to the saved protocol. A new local path and parent-feed hash are expected when resealing the supplied excerpt; economic settings and the actual feed hash must match. Do not edit an archived protocol or replace losing outputs with a different sample.
+Before accepting a reproduction, compare its `source.sha256`, `feed.sha256`, `actualSettings`, `actualWf` and window to the saved protocol. A new local path and parent-feed hash are expected when resealing the supplied excerpt; economic settings and the actual feed hash must match. The current protocol is the v7 source reseal after API-cache corrections. The previous frozen protocol and summary are retained as `protocol-v6.json` and `summary-v6.json`; `replay-comparison.json` records identical economic and hourly results. This repetition is not a new holdout. Do not edit an archived protocol or replace losing outputs with a different sample.
 
 ## Functional and load checks
 

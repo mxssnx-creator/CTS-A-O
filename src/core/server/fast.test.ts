@@ -69,7 +69,7 @@ describe("fast loops", { timeout: 1_200_000 }, () => {
         tactics: { session: false, volRegime: false, trendStrength: false, cooldown: false, cooldownBars: 4 },
         cycleMs: 250,
         tickMs: 50,
-        focus: [],
+        focus: [...LEGACY_FIXTURE_FOCUS],
         pinned: [],
         toggles: { normal: true } as never,
         signals: { enabled: false } as never,
