@@ -1,5 +1,5 @@
 {
-  "status": "final isolated full inventory pending",
+  "status": "complete bounded correctness verification; market profitability goal failed",
   "coreFilesTotal": 213,
   "sourceSha256": "ae7b2021fbdce8c3432329781dfc19a651c7e1fc488b3826874af741e69befaa",
   "baselineFullInventory": {
@@ -47,12 +47,15 @@
     "matchedTapeCloses": 126342,
     "tapeDifferences": 0,
     "duplicateRejectionsAfterFix": 0,
-    "scope": "Simulation only; all-config $10 sizing is capital-infeasible"
+    "scope": "Simulation only; all-config $10 sizing is capital-infeasible",
+    "finalCi": 39509771569,
+    "identicalStagesOnRepeat": true
   },
   "notes": [
-    "No completed full-green final inventory claimed until isolated runner results are collected.",
-    "Two slow runtime tests are explicit exclusions of the ordinary inventory, not completed native/venue evidence.",
-    "Detailed before/after market cohorts, source origin and losing validation outcomes remain archived."
+    "All six primary CI jobs passed at one exact commit/tree; all three functional inventories form the complete 213-file set with no duplicate or omission.",
+    "Two optional slow tests excluded from ordinary CI passed separately at the same frozen runtime manifest.",
+    "All five cached financial cases reproduce their entire filtered-stage JSON exactly on repeat, including losing validation/confirmation.",
+    "No venue execution or profitable every-hour production claim. Full Cartesian market portfolios, genuine 12h 5s coverage and a hard 100ms SLA remain unproven."
   ],
   "universalAudit": {
     "sourceSha256": "ae7b2021fbdce8c3432329781dfc19a651c7e1fc488b3826874af741e69befaa",
@@ -76,10 +79,66 @@
     "identityCells": 606032,
     "controlledPositiveHourlyDecisions": 5124,
     "controlledNegativeHourlyDecisions": 5124,
-    "classification": "Real historical state/entry causality plus synthetic identity/gate correctness; not a positive market-return guarantee"
+    "classification": "Real historical state/entry causality plus synthetic identity/gate correctness; not a positive market-return guarantee",
+    "unfinishedHigherBarAudit": {
+      "run": 39510692041,
+      "commit": "2c7ab7facf28b5bebad86b633d188e5efd544794",
+      "tree": "743b33bfc5495b6e7e5b0dd5231aaa07f9d7accf",
+      "conclusion": "success",
+      "jobId": 118930672853,
+      "artifactId": 12306320108,
+      "artifactSha256": "b8dd5b3008b0fb5ac2ca5bf2711c8ac9e4200e935ae2ccb6b30b6b24dbb9aa33",
+      "verified": true,
+      "minutesAfterHour": [
+        7,
+        17,
+        37
+      ],
+      "complete": true,
+      "completedSpecs": 1708,
+      "totals": {
+        "laneSymbolCases": 123680,
+        "comparisons": 371040,
+        "comparedBars": 829196560,
+        "entryComparisons": 2295060,
+        "entryCases": 765020
+      },
+      "violations": 0
+    },
+    "coreVerification": {
+      "run": 39509771569,
+      "allSixJobsPassed": true,
+      "files": 213,
+      "ordinaryPassed": 2377,
+      "ordinaryFailed": 0,
+      "ordinaryCancelled": 0,
+      "ordinarySlowSkipped": 2,
+      "separateSlowPassed": 2,
+      "allUniqueCoreTestsIncludingOptionalSlow": 2379,
+      "scriptRegressionsPassed": 50
+    },
+    "causalityComparisonsCombined": {
+      "statePrefixes": 1113120,
+      "entryPrefixes": 6885180,
+      "comparedStateBars": 2527452160,
+      "violations": 0
+    }
   },
-  "primaryCiRun": 39506738033,
-  "primaryPartitions": {
+  "primaryCiRun": 39509771569,
+  "slowRuntime": {
+    "run": 39508546694,
+    "pass": 2,
+    "fail": 0
+  },
+  "signalFixtureRepair": {
+    "localPassed": 3,
+    "failed": 0,
+    "durationMs": 7367.419624
+  },
+  "testedCommit": "4e0ed5cae46ee06d8c37a64aeea5e81df629a704",
+  "testedTree": "64b81989c421973e963052a8a0a787b09e59c06b",
+  "priorPrimaryCiRun": 39506738033,
+  "priorPrimaryPartitions": {
     "ordinary": {
       "files": 206,
       "pass": 2290,
@@ -98,14 +157,38 @@
       "cancelledInSetup": 3
     }
   },
-  "slowRuntime": {
-    "run": 39508546694,
-    "pass": 2,
-    "fail": 0
+  "primaryPartitions": {
+    "ordinary": {
+      "files": 206,
+      "pass": 2290,
+      "fail": 0
+    },
+    "heavy": {
+      "files": 6,
+      "pass": 59,
+      "fail": 0,
+      "cancelled": 0
+    },
+    "runtime": {
+      "files": 1,
+      "pass": 28,
+      "fail": 0,
+      "slowExcluded": 2
+    }
   },
-  "signalFixtureRepair": {
-    "localPassed": 3,
-    "failed": 0,
-    "durationMs": 7367.419624
+  "ordinaryInventory": {
+    "files": 213,
+    "tests": 2379,
+    "pass": 2377,
+    "fail": 0,
+    "cancelled": 0,
+    "explicitSlowExcluded": 2,
+    "exactDisjointCoverage": true
+  },
+  "allUniqueCoreTestsIncludingSeparateSlow": 2379,
+  "reportFundingAndOfflineScripts": {
+    "pass": 50,
+    "fail": 0,
+    "cancelled": 0
   }
 }

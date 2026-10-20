@@ -65,3 +65,10 @@ The full-report hourly membership control also compared a funded type count with
 ## Full registry hourly correctness audit — 21 October 2026
 
 The universal audit under `.github/audits/universal-correctness.mjs` freezes its runtime manifest and cached native feed before running. It covers all registered specs, source/lane/type/range identities and positive/negative own hourly gate fixtures; the native run compares complete past states and actual Bot/tactics entries against six shorter histories. Preserve the complete family ledger and disclose synthetic versus historical evidence. Zero future-data discrepancies are correctness evidence, not proof of profitable future orders. The Signal allow-mode integration fixture must keep its original confirmation catalog and dispose background work even when setup times out; catalog growth must not silently turn a three-source test into a full new-family search. Dedicated universal and full-family tests retain the expanded coverage.
+
+
+## Final full-inventory and unfinished-bar verification — 21 October 2026
+
+Always reconcile the exact disjoint union of CI partitions with the on-disk test inventory. A successful subset, repaired local assertion or cancelled setup is not a complete pass. Final CI 39509771569 covers all 213 files with 2,377 ordinary passes, no failures or cancellations and two explicit slow exclusions; the two optional slow tests pass separately in CI 39508546694 at the same frozen runtime manifest. Report/funding/offline scripts pass 50/50. Keep earlier failed/cancelled evidence and the exact tested tree.
+
+Hour-aligned prefix cuts can miss future leakage within an unfinished higher-timeframe candle. Include non-aligned cuts before certifying multi-timeframe causality: revision 2 freezes 7/17/37-minute offsets before scoring. CI 39510692041 passes every registered source and eligible Bot entry at all three cuts. This is causal signal-processing evidence, never authority to infer positive portfolio PF or rewrite measured losses. Repeat financial runs preserve the complete stage JSON, not merely an aggregate rounded PF.
