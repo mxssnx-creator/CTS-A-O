@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 ap=argparse.ArgumentParser()
-ap.add_argument('--runs',nargs='+',default=['inverse-20-6h','inverse-20-24h-memory','inverse-20-long-base336'])
+ap.add_argument('--runs',nargs='+',default=['inverse-20-6h-lowmem-final','inverse-20-24h-lowmem-final','inverse-20-long-base336-lowmem-final'])
 ap.add_argument('--out',default='docs/sims/inverse-20-symbol-20261020')
 ap.add_argument('--require-complete',action='store_true')
 args=ap.parse_args()
@@ -38,19 +38,22 @@ for name in args.runs:
         launch=read(d/'launch.json') if (d/'launch.json').exists() else {'nodeFlags':'default Node heap; experimental-strip-types, no-warnings'}))
 assert len({x['protocol']['feedSha256'] for x in runs})==1
 assert all(x['protocol']['settings']==runs[0]['protocol']['settings'] for x in runs)
-bench=read('runs/inverse-20-bench.json')
+bench=read('runs/inverse-20-bench-lowmem.json')
+memoryBench=read('runs/memory-validation-benchmark.json')
+assert bench['statesSha256']==read('runs/inverse-20-bench.json')['statesSha256']
 assert bench['variants']==114 and len(bench['symbols'])==20
 verification={}
-for name in ['inverse-20-final-targeted','inverse-20-api-contract','inverse-20-fast-contract','inverse-20-core-verified']:
+for name in ['memory-final-targeted-fixed','memory-core-final']:
     log=Path(f'runs/{name}.log').read_text()
     v={k:float(v) if '.' in v else int(v) for k,v in re.findall(r'ℹ (tests|pass|fail|cancelled|skipped|duration_ms) ([\d.]+)',log)}
     verification[name]=dict(**v,completed='tests' in v,logSha256=sha(log.encode()))
-checkStatus=read('runs/inverse-20-check-status.json')
+checkStatus=read('runs/memory-build-status.json')
+lintStatus=read('runs/memory-lint-status.json')
 for name in ['typecheck','lint','script-lint','build','ui']:
-    suffix=f'{name}-verified' if name in ['typecheck','lint','script-lint'] else name
-    log=Path(f'runs/inverse-20-{suffix}.log').read_text()
-    ok={'typecheck':checkStatus.get('typecheck')==0,'lint':checkStatus.get('lint')==0,'script-lint':checkStatus.get('script-lint')==0,
-        'build':'[migrate] DATABASE_URL not set' in log,'ui':log.count('"includeButtonWorks": true')==4}[name]
+    path={'typecheck':'memory-typecheck-verified','lint':'memory-lint-final','script-lint':'memory-scriptLint-verified','build':'memory-build-verified','ui':'memory-ui'}[name]
+    log=Path(f'runs/{path}.log').read_text()
+    ok={'typecheck':checkStatus.get('typecheck')==0,'lint':lintStatus.get('lint')==0,'script-lint':checkStatus.get('scriptLint')==0,
+        'build':checkStatus.get('build')==0 and '[migrate] DATABASE_URL not set' in log,'ui':log.count('"includeButtonWorks": true')==4}[name]
     verification[name]=dict(passed=ok,logSha256=sha(log.encode()))
 ui=read('../inverse-ui-targeted.json')
 assert len(ui)==4 and all(not v['errors'] and not v['overflow'] for v in ui)
@@ -65,6 +68,12 @@ if args.require_complete:assert complete,'all three studies and completed passin
 statusText='Drei Studien abgeschlossen · technische Prüfungen bestanden' if complete else f'Teilbericht · {len(runs)}/3 Studien abgeschlossen · vollständige Prüfung läuft'
 attempts=[]
 for name,reason in [
+ ('inverse-20-6h-lowmem-concurrent-stopped','Stopped without scoring when concurrent cgroup usage approached the memory reserve; rerun serialized after the larger audit. No economic rules changed.'),
+ ('inverse-20-24h-memory','Built 99,520 tapes, then V8 heap OOM during walk-forward at 1024 MiB. No result; a lower heap flag alone was insufficient.'),
+ ('inverse-20-24h-lowmem','Stopped before scoring to include the shared-arena transfer fix; superseded by lowmem-final.'),
+ ('memory-core-full','Stopped before completing regression to include shared-arena transfer fix; replaced by immutable final regression.'),
+ ('memory-final-targeted','New arena fixture assumed a returned tapes property; corrected to packArena in-place contract. Production source did not change for this fixture correction.'),
+ ('inverse-20-core-verified','Interrupted before final completion to implement the additional requested memory scope; no full-green claim.'),
  ('inverse-20-full-core','Interrupted after API fixture paths were mistakenly added under prehistoric rather than coreListing; corrected contract passes.'),
  ('inverse-20-full-core-final','Interrupted after stale trailing-only/Micro/aggregate-fallback expectations and concurrent-load resource failures; fixed fixtures and replaced by serial full verification.'),
  ('inverse-20-toggle-failure','Diagnostic isolated the missing Signal trailing-only exception in the synthetic toggle assertion; no production toggle rule changed.'),
@@ -84,7 +93,7 @@ bundle=dict(classification='Retrospective virtual-order evidence, not funded-acc
     sourceCheckpoint=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
     sourceManifestSha256=sha(json.dumps(runs[0]['protocol']['source'],sort_keys=True).encode()),
     feedProvenance='Previously examined public archive, 1–17 October 2026; overlapping windows, no fresh holdout',
-    runs=[{k:v for k,v in x.items() if k!='executions'} for x in runs],benchmark=bench,verification=verification,earlierAttempts=attempts)
+    runs=[{k:v for k,v in x.items() if k!='executions'} for x in runs],benchmark=bench,memoryBenchmark=memoryBench,longMemoryParity=read('runs/memory-long-parity.json'),verification=verification,earlierAttempts=attempts)
 out=Path(args.out);out.parent.mkdir(parents=True,exist_ok=True)
 Path(str(out)+'.json.gz').write_bytes(gzip.compress(json.dumps(bundle,separators=(',',':')).encode(),mtime=0))
 Path(str(out)+'-executions.json.gz').write_bytes(gzip.compress(json.dumps([{k:x[k] for k in ['name','executions']} for x in runs],separators=(',',':')).encode(),mtime=0))
@@ -205,6 +214,26 @@ def performance_plot(fig,ax):
 perf=chart('Laufzeit und Peak-Speicher','Base / Config-Aufbau / Replay / Bericht. Gleicher Host unter paralleler Testlast; keine garantierte Live-Latenz.',performance_plot,True)
 overviewRows=[[x['name'],f'{x["result"]["baseQualified"]}/{x["result"]["baseEvaluated"]}',f'{x["result"]["passingSetsAtEnd"]}/{x["result"]["tapes"]}',x['result']['settled']['n'],pf(x['result']['settled']),f'{x["result"]["byDirection"]["long"]["n"]}/{x["result"]["byDirection"]["short"]["n"]}',f'{x["result"]["positiveHours"]}/{x["result"]["flatHours"]}/{x["result"]["negativeHours"]}',fmt(x['result']['timingMs']['total']/1000,2),fmt(x['result']['rssMaxMiB'],1)] for x in runs]
 overview=table(['Studie','Base bestanden/von','Validiert Ende/von','Closes','PF Closes','Long/Short','Stunden +/0/−','Dauer s','RSS MiB'],overviewRows)
+def diagnosticMemory(fig,ax):
+    vals=memoryBench['runs'];xx=np.arange(2)
+    ax.bar(xx,[v['retainedHeapMiB'] for v in vals],color=[blue,teal])
+    ax.set_xticks(xx,['Alle Detailzeilen','Kompakte Summen']);ax.set_ylabel('Zusätzlich gehaltener Heap (MiB)')
+    for i,v in enumerate(vals):ax.text(i,v['retainedHeapMiB'],fmt(v['retainedHeapMiB'],1),ha='center',va='bottom')
+    ax.margins(y=.2)
+def phaseMemory(fig,ax):
+    for x in runs:
+        ms=x['result']['memoryPhases']
+        ax.plot(range(len(ms)),[v['rssMiB'] for v in ms],marker='o',label=x['name'].replace('inverse-20-','').replace('-lowmem-final',''))
+    ax.set_xticks(range(4),['Bars','Base-Cache frei','Tapes / Cache frei','Replay fertig'],rotation=15,fontsize=8)
+    ax.set_ylabel('Prozess-RSS (MiB)');ax.legend(loc='upper right',fontsize=8);ax.grid(axis='y')
+memoryCharts='<div class="charts">'+chart('Validierungsdiagnose: gespeicherter Heap','99.520 Configs × 24 Schritte; alle mangels Historie abgelehnt. Isolierter Diagnose-Test, keine Handelsperformance.',diagnosticMemory)+chart('Speicher nach Berechnungsphase','RSS enthält Heap, Arrays und native Allokationen. Phase-Snapshots sind kein kontinuierlicher Peak; max RSS steht im Studienvergleich.',phaseMemory)+'</div>'
+memoryChecks=table(['Eigenschaft','Nachweis'],[
+ ['Diagnose-Heap',f"{fmt(memoryBench['runs'][0]['retainedHeapMiB'],1)} → {fmt(memoryBench['runs'][1]['retainedHeapMiB'],1)} MiB; −{fmt(memoryBench['retainedHeapReductionPercent'],1)}%"],
+ ['Transfer-Arena','200 Configs im Test: eine gemeinsame Kopie; Werte, Array-Typen und Offsets identisch'],
+ ['Worker-OOM','Echter isolierter 32-MiB-Heap-OOM; Parent überlebt, andere Owner bleiben erhalten, Folgeauftrag erfolgreich'],
+ ['Rechenparität','114 Quellen: identischer SHA256 aller Zustandswerte; 24h Fixture: identische Selektion, Modellorders und Verluste'],
+ ['Lange Historie','336h Base und Config-Evaluation, 360h Source; keine Kürzung zugunsten des Speichers'],
+])
 checks=table(['Prüfung','Status','Tests','Bestanden','Fehler'],[[k,('vollständig' if v.get('completed') else 'unvollständig') if 'completed' in v else ('bestanden' if v.get('passed') else 'fehlgeschlagen'),v.get('tests','—'),v.get('pass','—'),v.get('fail','—')] for k,v in verification.items()])
 grid=table(['Range','TP-Preisdistanz','SL/TP','Normal / Trailing Zellen','Lane-Floor'],[
  ['Micro','0,35–0,95%; netto 0,20–0,80%','1–5; Schritt 0,25','238 / 714','5m'],
@@ -236,6 +265,7 @@ doc=f'''<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="v
 <p class="tag">{esc(statusText)}</p><nav><label for="run-select">Studie</label><select id="run-select">{options}</select><button id="download">Evidenz als JSON speichern</button><button onclick="window.print()">Druckansicht / PDF</button></nav>
 {''.join(panels)}
 <section class="shared"><h2>Studienvergleich und Performance</h2><p>Überlappende Zeiträume desselben bereits untersuchten öffentlichen Archivs. Studien werden nicht addiert und sind kein unabhängiger Holdout. Die Messung umfasst virtuelle Orders vor Kontoallokation.</p>{overview}{perf}<p>Calculation-Benchmark: {bench['barValues']:,} Zustandswerte, 60 Serien, 120h. Cold <strong>{fmt(bench['coldMs'],1)} ms</strong>; warm kompletter Cache-Pass <strong>{fmt(bench['warmMeanPassMs'],3)} ms</strong> (100 Wiederholungen); Peak RSS <strong>{fmt(bench['peakRssMiB'],1)} MiB</strong>. Kein Nachweis für Live-Ticklatenz oder Börsen-Orderdurchsatz.</p></section>
+<section class="shared"><h2>Speicherverbrauch und Fehlerbehebung</h2><p>Validierungs-Summen ersetzen die millionenfache Aufbewahrung einzelner Diagnosezeilen. Vollständige Detailzeilen bleiben explizit verfügbar. Decodierte Feeds und phasenlokale Indikator-Caches werden nach Gebrauch freigegeben. Geteilte Array-Arenen werden pro Puffer einmal kopiert; bereits geteilte Bars bleiben geteilt.</p>{memoryCharts}{memoryChecks}<p>Automatische Worker-Parallelität berücksichtigt RAM/cgroup, Serverreserve, Hard-Guard, Prioritätsarbeit und externe Arrays. Standard-Worker-Heap 2.048 MiB; explizite CTS_CORE_WORKERS und CTS_CORE_WORKER_HEAP_MB bleiben steuerbar. Ein Worker-Heap-OOM bricht die Berechnung ab und löst keinen Wiederholungsversuch im Hauptthread aus. History, Renditepräzision und PF-/Last-N-Gates wurden nicht reduziert.</p><p>Die drei aktuellen Studien laufen mit 1.024 MiB Old-Space und 20% Heap-Growth plus expliziter GC an Phasengrenzen. Dieses Heap-Limit umfasst keine Typed Arrays oder den gesamten RSS. Der frühere 24h-Versuch mit demselben Limit scheiterte nach 99.520 Tapes; Logs und Protokoll bleiben im Evidenzarchiv. Unterschiede zum älteren unbeschränkten RSS sind wegen anderer Laufbedingungen kein isolierter kausaler Benchmark.</p></section>
 <section class="shared"><h2>Welche Configs werden verwendet?</h2><p>Die gewöhnlichen Produktions-Ranges gelten auch für Inverse. Trailing-Abstände: 0 / 0,25 / 0,5 / 0,75 × TP; 0 bedeutet Normal TP/SL. Haltedauer 16h oder 24h. Die Zellenzahlen verwenden die effektiven, deduplizierten Floors des Referenzgrids.</p>{grid}<p>38 Gegensignal-/Bestätigungsvarianten aus 19 bekannten Quellen, 48 Math-/Marktvarianten über 10/20/40/80 Bars, 16 eigene Micro-Identitäten und 12 BTC/ETH-Referenzpaar-Varianten. Neu: RSI2-Umkehr und VWAP-Abweichung. Weitere Methoden: Z-Score, Impuls, Beschleunigung, OLS-Abweichung, Docht-Abweisung, Fehlausbruch, Konsens, Marktresiduum und Marktschock. Referenzpaare sind einzeln gehandelte Symbol-Legs, keine atomaren Zwei-Leg-Arbitrageorders.</p><p>Micro-Identitäten nutzen Micro und gemäß Standardregel Minimal. Wide und Minimal plus sind im normalen Factory-Grid aus. DCA ist ausführbar; DCA Active und Axis werden unabhängig berechnet und sind standardmäßig für neue Entries aus. Historische Exit- und Signal-Strategien besitzen eigene Prüfungen und sind aus diesem Inverse-Marktreplay ausgeklammert.</p></section>
 <details><summary>Rechenregeln und Indikationsparameter</summary><p>80 gültige, lückenlose Bars Warmup; Lücken und ungültige OHLCV setzen die rekursiven Kontexte zurück. Gemeinsame Math-Guards: ATR[i−1] &gt; 0, endlicher Z-Score/ADX, ADX ≤ 50, positive vorherige Volumenreferenz und aktuelle Aktivität ≤ 5× dieser Referenz. Neue Entries erfolgen nach dem abgeschlossenen Signalbar. Micro nutzt die dafür benannten acht Methoden auf p 10/20; Identitäten und Zulassung bleiben eigenständig.</p>{mathTable}<p>Referenz-Fits erfordern vollständige gemessene Zeitfenster. Fehlende, mehrdeutige oder identische Peers bleiben neutral. Follow handelt das bereits invertierte Signal; Revert invertiert es nicht erneut. Keine Rendite wird nachträglich negiert.</p></details>
 <section class="shared"><h2>Technische Prüfung und Betriebsstand</h2>{checks}<p>Vollständige Produktionsgrids sind mit 20 konstruierten Symbolen auf Long-/Short-Abschlüsse je Range und Normal/Trailing geprüft. Native SimExchange-Prüfungen öffnen und schließen auf 12 sowie 20 Symbolen und prüfen TP/SL-Orders. Das belegt Korrektheit, keine Marktprofitabilität.</p><p>Factory-Focus: 211 Einträge. Migration v37 aktualisiert nur exakte frühere Standards einschließlich Presets und erhält eigene/off-Auswahlen. Explizit längere Evaluationen erweitern Backfill, Retention und Lanes; Prüfungen decken 168/336/720/1440h-Anforderungen ab. Der Archiv-Replay hier belegt maximal 336h Auswahlhistorie, keine 60-Tage-Marktergebnisse.</p><p>Native Live-Zulassung beurteilt qualifizierte Sets einzeln. Eine unpassende verlierende Gesamt-Simulation blockiert sie nicht pauschal. Matching post-Base-PF, eigene bestätigte Ausführungsnachweise, Ownership-, Risiko- und Schutzprüfungen bleiben erforderlich. Kein Konto aktiviert, keine echten Orders gesendet, kein Deployment geändert.</p><p>Positive Historie garantiert keine folgenden Stunden. Negative Ausführungsrenditen bleiben vollständig sichtbar. Frühere 102-Varianten-Studien mit zurückgezogener zusätzlicher Kontextprüfung sind als superseded archiviert und zertifizieren diesen Stand nicht.</p></section>

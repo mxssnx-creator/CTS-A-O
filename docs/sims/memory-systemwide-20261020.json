@@ -1,0 +1,119 @@
+{
+  "classification": "Measured memory corrections; technical and retrospective modeled evidence, no funded/live proof",
+  "sourceCheckpoint": "5fac4ba",
+  "remoteCheckpoint": "a22ee02b4b9a07390146cb40e055e405803cfd32",
+  "validationBenchmark": {
+    "classification": "Diagnostic-retention benchmark; no qualified or executed trading sample",
+    "runs": [
+      {
+        "mode": "full",
+        "configs": 99520,
+        "steps": 24,
+        "evaluated": 2388480,
+        "passed": 0,
+        "retainedHeapMiB": 268.89009857177734,
+        "rssMaxMiB": 527.5546875,
+        "elapsedMs": 2107.339762
+      },
+      {
+        "mode": "summary",
+        "configs": 99520,
+        "steps": 24,
+        "evaluated": 2388480,
+        "passed": 0,
+        "retainedHeapMiB": 29.07703399658203,
+        "rssMaxMiB": 271.2109375,
+        "elapsedMs": 980.8593579999999
+      }
+    ],
+    "retainedHeapReductionPercent": 89.18627567507093
+  },
+  "longHistoryParity": {
+    "executionsExactlyEqual": true,
+    "allEconomicFieldsEqual": true,
+    "baseline": "inverse-20-long-base336",
+    "current": "inverse-20-long-base336-lowmem-final",
+    "baselinePeakRssMiB": 1751.703125,
+    "currentPeakRssMiB": 1064.35546875,
+    "note": "Different heap flags/concurrent workloads; RSS comparison is not an isolated causal benchmark."
+  },
+  "calculationBenchmark": {
+    "statesSha256": "09dd5537326dca5133f6ce9046e5a580d8074411e4efef3c87238b9a6dc66d14",
+    "classification": "Retrospective calculation benchmark, no real-time or venue throughput claim",
+    "feedSha256": "1373d0a7fab7528d0528573385e19dfecf6f4ab353194231c639103af29aadcd",
+    "symbols": [
+      "ADA-USDT",
+      "APT-USDT",
+      "ARB-USDT",
+      "ATOM-USDT",
+      "AVAX-USDT",
+      "BCH-USDT",
+      "BNB-USDT",
+      "BTC-USDT",
+      "DOGE-USDT",
+      "DOT-USDT",
+      "ETC-USDT",
+      "ETH-USDT",
+      "FIL-USDT",
+      "LINK-USDT",
+      "LTC-USDT",
+      "NEAR-USDT",
+      "OP-USDT",
+      "SOL-USDT",
+      "SUI-USDT",
+      "TRX-USDT"
+    ],
+    "historyHours": 120,
+    "timeframes": [
+      1,
+      5,
+      15
+    ],
+    "variants": 114,
+    "catalog": "all",
+    "series": 60,
+    "barValues": 20793600,
+    "coldMs": 1332.59256,
+    "warm100PassesMs": 269.5447140000001,
+    "warmMeanPassMs": 2.695447140000001,
+    "checksum": 2079360000,
+    "peakRssMiB": 448.8046875
+  },
+  "defaultPoolSnapshot": {
+    "automaticWorkers": 1,
+    "workerHeapMiB": 2048,
+    "availableCores": 8,
+    "memory": {
+      "availMb": 2990,
+      "hostAvailMb": 4520,
+      "cgroup": {
+        "version": 2,
+        "basis": "clean-file-estimate",
+        "limitMb": 8192,
+        "usedMb": 5816,
+        "rawAvailMb": 2376,
+        "cacheCreditMb": 613,
+        "availMb": 2990
+      },
+      "rssMb": 64,
+      "heapMb": 12,
+      "heapTotalMb": 16,
+      "arrayBuffersMb": 3,
+      "nativeMb": 45,
+      "level": "ok",
+      "at": 1792523641019
+    },
+    "note": "Concurrent host-load snapshot, not a throughput benchmark"
+  },
+  "verification": {
+    "targetedMemoryRuntime": 13,
+    "finalMemoryTests": 5,
+    "typecheck": true,
+    "productionBuild": true,
+    "lintErrors": 0,
+    "desktopMobileDevBuiltSurfaces": 4,
+    "fullCore": "in progress",
+    "24hAudit": "in progress",
+    "6hAudit": "deferred until other large replay completes to respect available RAM"
+  }
+}
