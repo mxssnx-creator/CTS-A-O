@@ -303,5 +303,56 @@
     "baselinePeakRssMiB": 3321.359375,
     "currentPeakRssMiB": 2933.75390625,
     "note": "Different heap flags/concurrent workloads; RSS comparison is not an isolated causal benchmark."
+  },
+  "runtimeScopedResolution": {
+    "code": 0,
+    "names": [
+      "keeps the event loop responsive during a compute",
+      "a new runtime on the same store continues the open positions, the selection and the book start",
+      "a desk process restarted on its snapshot continues the book"
+    ],
+    "tests": 3,
+    "pass": 3,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "duration_ms": 49227.233394,
+    "notes": "Two fixtures no longer require an undefined key that JSON persistence correctly omits. Latency thresholds and production code unchanged; original long-run failure retained."
+  },
+  "independentReconciliation": {
+    "classification": "Independent Python math.fsum reconciliation of all settled/marked modeled orders; verified explicit multipliers, no assumed unit basis",
+    "passed": true,
+    "studies": [
+      {
+        "name": "inverse-20-6h-lowmem-final",
+        "settled": 6,
+        "marks": 14,
+        "hourly": true,
+        "directions": true,
+        "all20Symbols": true,
+        "pooledUnitGPGL": true,
+        "sha256": "1fcfe5c333f5e1881318d45ca990829f921592b8d0882368121356d26d7802e9"
+      },
+      {
+        "name": "inverse-20-24h-lowmem-final",
+        "settled": 12544,
+        "marks": 2670,
+        "hourly": true,
+        "directions": true,
+        "all20Symbols": true,
+        "pooledUnitGPGL": true,
+        "sha256": "898ee4970ea73af7952700a8bea6be125a93126d0f4c6e90721ba31aae0fcebf"
+      },
+      {
+        "name": "inverse-20-long-base336-lowmem-final",
+        "settled": 127,
+        "marks": 476,
+        "hourly": true,
+        "directions": true,
+        "all20Symbols": true,
+        "pooledUnitGPGL": true,
+        "sha256": "7ea7efae446f5a63f20ec3e2f7a3d4759496149462bba546a754282144aa0171"
+      }
+    ]
   }
 }
