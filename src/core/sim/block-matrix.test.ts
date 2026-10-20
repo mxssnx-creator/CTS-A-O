@@ -6,6 +6,7 @@ import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { CoreRuntime } from "../server/runtime.server.ts";
 import { CoreDb } from "../server/db.server.ts";
+import { closePool } from "../server/pool.server.ts";
 import { auditState } from "../audit.ts";
 import { walkForward, type WalkForwardOptions } from "./walkforward.ts";
 import { BLOCK_SOURCES, type BlockSource } from "./block.ts";
@@ -74,6 +75,8 @@ describe("Block matrix at the Real stage", { timeout: 1_200_000 }, () => {
     await until(() => rt.status.computes >= 1 && rt.status.state === "running");
     rt.stop();
   });
+
+  after(async () => { rt?.dispose(); await closePool(); });
 
   const cases: Array<[string, Partial<BlockConfig>]> = [
     ...BLOCK_SOURCES.map(

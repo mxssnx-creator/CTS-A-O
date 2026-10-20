@@ -174,12 +174,17 @@ export { LANE_MIN, REF_TF };
  */
 export function laneProtect(p: Protect, ind: string): Protect {
   const tf = laneOf(ind).tf;
+  if (p.maxHoldMin !== undefined && tf !== null)
+    return { ...p, hold: Math.floor(p.maxHoldMin / tf) };
   if (tf === null || tf === REF_TF) return p;
   // a range cell (micro, minimal, short, general, long, plus) is a fixed price distance on every lane; its hold is
   // the same time on every lane (the grid gives it in 15m bars: 64 bars = 16 h, which is 64 minutes on a 1m lane)
   // Historic Exit families are fitted from excursions in this exact lane: their distances are already native.
   if (p.tag || (p.exitType === "historic" && p.exitSet))
-    return { ...p, hold: Math.max(p.tag && p.hold < 2 ? 1 : 2, Math.round((p.hold * REF_TF) / tf)) };
+    return {
+      ...p,
+      hold: Math.max(p.tag && p.hold < 2 ? 1 : 2, Math.round((p.hold * REF_TF) / tf)),
+    };
   const k = Math.sqrt(tf / REF_TF);
   const r4 = (x: number) => +(x * k).toFixed(4);
   // short lanes: a scaled target never below 3 × the round-trip cost, stops / trails never inside the noise.
@@ -271,7 +276,8 @@ export function passesBase(
 ): boolean {
   // Fail closed on invalid source/aggregate returns even when the optional drawdown ratio is disabled.
   // A nonfinite numerator or gross-loss underflow must not turn into a high-PF winning Base pass.
-  if (!(Number.isSafeInteger(st.n) && Number.isFinite(st.pf) && Number.isFinite(st.net))) return false;
+  if (!(Number.isSafeInteger(st.n) && Number.isFinite(st.pf) && Number.isFinite(st.net)))
+    return false;
   if (st.mdd !== undefined && !(Number.isFinite(st.mdd) && st.mdd >= 0)) return false;
   // A floor below PF 1 (the sets pre-filter, Gates.baseSetsMinPf) cannot also ask for a positive net.
   if (!(st.n >= g.minTrades && (st.net > 0 || g.minPf < 1) && st.pf >= g.minPf)) return false;
@@ -644,6 +650,7 @@ export function baseRangeProtects(
             sl: distanceAtFloor(tp * k, Math.max(floorR, minSlR), digits),
             trail: 0,
             hold,
+            ...(r.maxHoldMin ? { maxHoldMin: r.maxHoldMin } : {}),
             tag,
           });
         // grid.baseTrailCells: one trailed cell per target as well (the middle non-zero trail ratio at the middle
@@ -666,6 +673,7 @@ export function baseRangeProtects(
               sl: distanceAtFloor(tp * k, Math.max(floorR, minSlR), digits),
               trail: trailAtFloor(tp * tr, minTrailR, step, digits),
               hold,
+              ...(r.maxHoldMin ? { maxHoldMin: r.maxHoldMin } : {}),
               tag,
               trailStep: step,
               trailFree: g.trailFree ?? false,
@@ -684,6 +692,7 @@ export function baseRangeProtects(
       sl: distanceAtFloor(tp * k, Math.max(floorR, minSlR), digits),
       trail: 0,
       hold,
+      ...(r.maxHoldMin ? { maxHoldMin: r.maxHoldMin } : {}),
       tag,
     });
   }
@@ -1089,8 +1098,11 @@ export function baseRangeWhy(
       if (!(Number.isSafeInteger(st.n) && st.n >= g.minTrades)) miss.push("closes");
       if (!(Number.isFinite(st.net) && (st.net > 0 || need < 1))) miss.push("net");
       if (!(Number.isFinite(st.pf) && st.pf >= need)) miss.push("pf");
-      if ((st.mdd !== undefined && !(Number.isFinite(st.mdd) && st.mdd >= 0)) ||
-          ddrFails(st.mdd, st.net, g.maxDdr)) miss.push("ddr");
+      if (
+        (st.mdd !== undefined && !(Number.isFinite(st.mdd) && st.mdd >= 0)) ||
+        ddrFails(st.mdd, st.net, g.maxDdr)
+      )
+        miss.push("ddr");
       if (!miss.length) {
         row.passed++;
         continue;
@@ -1257,6 +1269,7 @@ export function cellStats(
   // Historic Exit is a standalone indication source; engine Bot tactics/cooldown do not thin its entry history.
   const cooldown = bot === "exit" ? 0 : tacticCooldown(tactics);
   const p = laneProtect(protect, ind);
+  if (p.hold < 1) return null;
   const id = configId(bot, ind, p);
   const series = seriesOf(u, ind);
   if (!series.length) return null;
@@ -1318,6 +1331,7 @@ export function* runComboSteps(
   // Historic Exit is a standalone indication source; engine Bot tactics/cooldown do not thin its entry history.
   const cooldown = bot === "exit" ? 0 : tacticCooldown(tactics);
   if (!laneScaled) protect = laneProtect(protect, ind);
+  if (protect.hold < 1) return null;
   const id = configId(bot, ind, protect);
   const trades: Trade[] = [];
   const open: OpenPosition[] = [];

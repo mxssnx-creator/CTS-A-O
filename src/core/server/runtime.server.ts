@@ -160,6 +160,10 @@ import {
 import {
   buildTapesGen,
   baseAllowsTape,
+  configEval,
+  engineContextValid,
+  configDirectionEval,
+  tapeRetentionHours,
   kindExecutable,
   defaultWalkForward,
   signalHistoryHours,
@@ -714,8 +718,13 @@ export interface TickTrail {
  */
 export function tickTrail(p: TickTrail, px: number, now: number, tfMs: number): boolean {
   const repaired = enforceSignalPosition(p);
-  if ((!p.exitProtection && !(p.trail && p.trail > 0)) || !(Number.isFinite(px) && px > 0) ||
-    !(Number.isFinite(tfMs) && tfMs > 0) || !Number.isFinite(now)) return repaired;
+  if (
+    (!p.exitProtection && !(p.trail && p.trail > 0)) ||
+    !(Number.isFinite(px) && px > 0) ||
+    !(Number.isFinite(tfMs) && tfMs > 0) ||
+    !Number.isFinite(now)
+  )
+    return repaired;
   const bar = Math.floor(now / tfMs);
   if (p.tkBar === undefined) {
     p.tkBar = bar;
@@ -2154,6 +2163,7 @@ export class CoreRuntime {
       // the Base gates of the last compute: without them every pair took seats until the next compute finished
       basePassed: this.wf.basePassed,
       basePassedRanges: this.wf.basePassedRanges,
+      basePassedTargets: this.wf.basePassedTargets,
       baseWideLadderPairs,
       signalBasePassed: this.wf.signalBasePassed,
       family: this.wf.family,
@@ -3534,7 +3544,7 @@ export class CoreRuntime {
     // + the warm-up the active tactics need (e.g. the 2-week volatility rank) before their first valid signal
     // (in each series' own bars: a 30m lane needs 30× fewer bars than the 1m lane for the same time)
     const tailOf = (tf: number) =>
-      Math.round(((24 + Math.max(wf.preH, wf.longH, wf.symH ?? 0) + wf.simH) * 60) / tf) +
+      Math.round(((24 + tapeRetentionHours(s, wf, tf) + wf.simH) * 60) / tf) +
       tacticWarmupBars(s.tactics);
     const signalWu = signalU;
     const wu = makeUniverse(
@@ -3570,6 +3580,7 @@ export class CoreRuntime {
       passed,
       qualified,
       qualifiedTags,
+      qualifiedTps,
       wideLadderPairs,
       pairTags,
       pairTps,
@@ -3639,6 +3650,8 @@ export class CoreRuntime {
     this.wf.exitBasePassed = exitBase.passed;
     wf.basePassedRanges = qualifiedTags;
     this.wf.basePassedRanges = qualifiedTags;
+    wf.basePassedTargets = qualifiedTps;
+    this.wf.basePassedTargets = qualifiedTps;
     wf.baseWideLadderPairs = wideLadderPairs;
     this.wf.baseWideLadderPairs = wideLadderPairs;
     wf.family = evalFams && !famNarrow ? evalFams.map((f) => f.label) : undefined;
@@ -6085,7 +6098,11 @@ export class CoreRuntime {
       this.promotionSelectedMemo?.ids.has(lane.cfg) &&
       tp &&
       !tp.heldOnly &&
-      (isSignalInd(ind) || baseAllowsTape(tp, this.wf)) &&
+      (isSignalInd(ind) ||
+        (baseAllowsTape(tp, this.wf) &&
+          (!this.wf.basePassed || configEval(tp, now, this.wf).ok) &&
+          configDirectionEval(tp, now, this.wf, lane.side).ok &&
+          engineContextValid(tp, now, this.wf, lane.sym, lane.side))) &&
       (!isSignalInd(ind) ||
         (signalValidationOk(tp, now, this.wf, lane.sym, lane.side) &&
           (!this.wf.signalBasePassed || this.wf.signalBasePassed.has(`${tp.bot}|${tp.ind}`)) &&
@@ -6278,6 +6295,7 @@ export class CoreRuntime {
     main: Set<string>;
     qualified: Set<string>;
     qualifiedTags: Record<string, string[]>;
+    qualifiedTps: Record<string, Record<string, readonly number[]>>;
     wideLadderPairs: Set<string>;
     pairTags: Record<string, string[]>;
     pairTps: Record<string, Record<string, readonly number[]>>;
@@ -6359,10 +6377,8 @@ export class CoreRuntime {
     // in combo order (as the engine's S1), whichever path computed them
     const runs = [...combos, ...exitCombos].flatMap((c) => byPair.get(`${c.bot}|${c.ind}`) ?? []);
     const engineRuns = runs.filter((r) => r.bot !== EXIT_BOT);
-    const { passed, qualified, qualifiedTags, wideLadderPairs, pairTags, pairTps } = basePass(
-      engineRuns,
-      s,
-    );
+    const { passed, qualified, qualifiedTags, qualifiedTps, wideLadderPairs, pairTags, pairTps } =
+      basePass(engineRuns, s);
     const setsGates = baseSetsGates(s.gates);
     const exitBase = qualifyExitBase(runs, s.exitStrategy, {
       ...setsGates,
@@ -6372,6 +6388,7 @@ export class CoreRuntime {
       main: new Set([...mainByLane(passed, s.mainTop), ...mainByLane(qualified, s.mainTop)]),
       qualified: new Set(qualified.map((r) => `${r.bot}|${r.ind}`)),
       qualifiedTags,
+      qualifiedTps,
       wideLadderPairs,
       pairTags,
       pairTps,
@@ -6599,6 +6616,7 @@ export class CoreRuntime {
     wf.basePassed = new Set([...base.qualified, ...base.exitBasePassed]);
     wf.exitBasePassed = base.exitBasePassed;
     wf.basePassedRanges = base.qualifiedTags;
+    wf.basePassedTargets = base.qualifiedTps;
     wf.baseWideLadderPairs = base.wideLadderPairs;
     this.checkBacktest(job);
     job.stage = "Tapes";
@@ -9455,6 +9473,7 @@ export function basePass(
   /** The actual Base-qualified rows and ranges, independent of diagnostic construction. */
   qualified: ComboRun[];
   qualifiedTags: Record<string, string[]>;
+  qualifiedTps: Record<string, Record<string, readonly number[]>>;
   /** Independent untagged ladder admission follows the same policy as the actual tape builder. */
   wideLadderPairs: Set<string>;
   pairTags: Record<string, string[]>;
@@ -9491,6 +9510,12 @@ export function basePass(
   const qualifiedTags = Object.fromEntries(
     Object.entries(pairTags).map(([k, tags]) => [k, [...tags]]),
   );
+  const qualifiedTps = Object.fromEntries(
+    Object.entries(pairTps).map(([pair, ranges]) => [
+      pair,
+      Object.fromEntries(Object.entries(ranges).map(([tag, tps]) => [tag, [...tps]])),
+    ]),
+  );
   const wideLadderPairs = new Set(
     qualified
       .map((r) => `${r.bot}|${r.ind}`)
@@ -9498,7 +9523,7 @@ export function basePass(
   );
   // grid.allSets (measurement): every indication builds its complete config sets — its best pair at Base (bot ×
   // lane, passed or not) and every pair that passed build every range they apply to, every target × stop × trail
-  // × hold. Selection still requires the original qualified pair/range and independent config evaluation.
+  // × hold. Selection still requires the original qualified pair/range/target and independent config evaluation.
   // (Every pair's whole grid: ~12 M Micro tapes on 8 symbols.)
   // (`added`: the pairs allSets builds for measurement that did not pass Base — never counted as passed)
   let added = 0;
@@ -9523,7 +9548,16 @@ export function basePass(
       }
     }
   }
-  return { passed, qualified, qualifiedTags, wideLadderPairs, pairTags, pairTps, added };
+  return {
+    passed,
+    qualified,
+    qualifiedTags,
+    qualifiedTps,
+    wideLadderPairs,
+    pairTags,
+    pairTps,
+    added,
+  };
 }
 
 /** Paper deactivation and native admission preserve the same indication/range floor. */

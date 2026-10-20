@@ -1043,16 +1043,16 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
       2 / 120,
       "current equity can still lose the mark-to-stop giveback, including a late live adoption",
     );
-    // short: stop 104 above price 100 → 4 %
+    // short: stop 102 above price 100 → 2 %, within the Signal entry stop cap
     rt.paper.positions = [
       { cfg, sym: "T-USDT", side: -1, entry: 101, stop: 104, vol: 1 },
     ];
     const [d] = laneContributions(rt as unknown as CoreRuntime, new Map([["T-USDT", 100]]));
-    assert.ok(Math.abs(d.sl - 0.04) < 1e-9, `sl ${d.sl}`);
-    assert.equal(d.risk, 0.04, "short risk uses current mark as well");
+    assert.ok(Math.abs(d.sl - 0.02) < 1e-9, `sl ${d.sl}`);
+    assert.equal(d.risk, 0.02, "short risk uses current mark as well");
     // no price: the entry distance stays the fallback
     const [e] = laneContributions(rt as unknown as CoreRuntime);
-    assert.ok(Math.abs(e.sl - 3 / 101) < 1e-9);
+    assert.ok(Math.abs(e.sl - 1 / 101) < 1e-9);
   });
 
   it("a stop the exchange keeps refusing: one open, one protective close, then no buy-sell-repeat", async () => {

@@ -285,8 +285,8 @@ describe("Real seats per lane", () => {
       ...defaultWalkForward(DEFAULT_SETTINGS),
       preGate: false,
       portfolio: 2,
-      longH: 336,
       laneSeats: 0,
+      longH: 336, // the 14-day fixtures pin their window (production 24 h, commit 4779175)
     };
     const picks = selectDurable([...strong, fast], now, o, new Set()).picks.map((p) => p.id);
     assert.equal(picks.length, 2);

@@ -63,11 +63,44 @@ test("Minimal maxHoldMin 60 holds 4 bars of 15m; rangeHolds and coordVariants fo
 });
 
 test("the settings check accepts a hold limit of 1–1440 minutes and refuses others", () => {
-  const ok = checkSettings({ grid: { ...DEFAULT_SETTINGS.grid, micro: { ...MICRO_RANGE, maxHoldMin: 15 } } });
+  const ok = checkSettings({
+    grid: { ...DEFAULT_SETTINGS.grid, micro: { ...MICRO_RANGE, maxHoldMin: 15 } },
+  });
   assert.ok(ok !== null);
-  assert.throws(() => checkSettings({ grid: { ...DEFAULT_SETTINGS.grid, micro: { ...MICRO_RANGE, maxHoldMin: 0.5 } } }), /max hold time/);
-  assert.throws(() => checkSettings({ grid: { ...DEFAULT_SETTINGS.grid, minimal: { ...MINIMAL_RANGE, maxHoldMin: 5000 } } }), /max hold time/);
-  assert.doesNotThrow(() => checkSettings({ grid: { ...DEFAULT_SETTINGS.grid, minimal: { ...MINIMAL_RANGE, maxHoldMin: 60 } } }));
+  assert.throws(
+    () =>
+      checkSettings({
+        grid: { ...DEFAULT_SETTINGS.grid, micro: { ...MICRO_RANGE, maxHoldMin: 0.5 } },
+      }),
+    /max hold time/,
+  );
+  assert.throws(
+    () =>
+      checkSettings({
+        grid: { ...DEFAULT_SETTINGS.grid, minimal: { ...MINIMAL_RANGE, maxHoldMin: 5000 } },
+      }),
+    /max hold time/,
+  );
+  assert.doesNotThrow(() =>
+    checkSettings({
+      grid: { ...DEFAULT_SETTINGS.grid, minimal: { ...MINIMAL_RANGE, maxHoldMin: 60 } },
+    }),
+  );
+});
+
+test("maximum hold minutes are never rounded up on a slower lane", async () => {
+  const { baseRangeProtects } = await import("./pipeline/pipeline.ts");
+  for (const minutes of [10, 15]) {
+    const g = grid({ micro: { ...MICRO_RANGE, maxHoldMin: minutes } });
+    const cells = [...baseRangeProtects(g, 0.002), ...protectGrid(15, g, 0.002)]
+      .filter(p => p.tag === "mc");
+    assert.ok(cells.length > 0);
+    for (const tf of [1, 5, 15, 30]) for (const cell of cells) {
+      const scaled = laneProtect(cell, `mc-rsi2-5@m${tf}`);
+      assert.equal(scaled.hold, Math.floor(minutes / tf));
+      assert.ok(scaled.hold * tf <= minutes);
+    }
+  }
 });
 
 test("Base judges a range at its own maximum hold: Micro 15 min is 1 bar, Minimal 60 min 4 bars; others keep the grid hold", async () => {

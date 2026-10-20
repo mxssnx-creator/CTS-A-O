@@ -9,7 +9,7 @@ import { CoreDb } from "./server/db.server.ts";
 import { closePool } from "./server/pool.server.ts";
 import { signalSettings } from "./signal-config.ts";
 import { acceptKey, acceptOnWindow, SignalAcceptIndex, SignalGuard, signalActiveHas, signalSeatSymbols, sigActiveKey } from "./signals.ts";
-import { activeSignalsAt, defaultWalkForward, execDecision, hedgeSignalsAt, makeTape, signalIndex, walkForward } from "./sim/walkforward.ts";
+import { activeSignalsAt, defaultWalkForward, execDecision, hedgeSignalsAt, makeTape, signalConfigEval, signalIndex, walkForward } from "./sim/walkforward.ts";
 
 const H = 3_600_000;
 const NOW = 100 * H;
@@ -207,6 +207,19 @@ describe("independent signal qualification", () => {
     assert.deepEqual(execDecision(held, NOW, defaultWalkForward(DEFAULT_SETTINGS), { sym: SYM, side: 1 }),
       { ok: false, why: "heldOnly" });
     assert.equal(signalIndex([held, own]).length, 1, "one lazy descriptor for the executable config only");
+  });
+
+  it("cached Signal eligibility follows an in-place transition to held-only and back", () => {
+    const tp = tape("normal", Array(12).fill(0.03));
+    const base = defaultWalkForward(DEFAULT_SETTINGS);
+    const options = { ...base, preGate: false, rangeGate: undefined, signalValidLastN: 8,
+      gates: { ...base.gates, maxDdr: 0 } };
+    const at = 110 * H;
+    assert.equal(signalConfigEval(tp, at, options, SYM, 1).ok, true);
+    tp.heldOnly = true;
+    assert.equal(signalConfigEval(tp, at, options, SYM, 1).ok, false);
+    tp.heldOnly = false;
+    assert.equal(signalConfigEval(tp, at, options, SYM, 1).ok, true);
   });
 
   it("a retained activation verdict cannot replace a config's own minimum PF", () => {

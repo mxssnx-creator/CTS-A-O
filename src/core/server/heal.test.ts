@@ -3,7 +3,6 @@ import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { CoreRuntime, type MarketFeed } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
-import { signalSettings } from "../signal-config.ts";
 import { syntheticCandles } from "../market/bars.ts";
 import { DEFAULT_ADJUST } from "../config.ts";
 import { trackRuntimes, runtimeFixtureGrid } from "../test-support.ts";
@@ -16,16 +15,15 @@ const small = {
   mainTop: 10,
   refineTop: 4,
   evalTop: 6,
-  cycleMs: 60_000,
-  grid: { ...runtimeFixtureGrid(), short: false as const },
+  cycleMs: 250,
+  // Recovery mechanics use a fixed engine fixture; production grid/source growth must not time out the suite.
+  focus: ["follow|rsi-mom-14-25@m15", "revert|rsi-mom-14-25@m15"],
+  pinned: [], tfs: [15],
+  grid: { tp: [0.02], slOfTp: [1], trailOfTp: [0], holdH: [1],
+    micro: false as const, minimal: false as const, short: false as const,
+    general: false as const, long: false as const, minimalPlus: false as const },
+  signals: { enabled: false },
   exitStrategy: { enabled: false },
-  // runtime mechanics, not signal quality (signals.test covers the full signal defaults): percent exits and the
-  // classic sources only keep each engine light enough to run several in parallel
-  signals: signalSettings({
-    exits: "pct",
-    sourcesMode: "allow",
-    sources: { "ema-cross": true, "rsi-reversal": true },
-  }),
 };
 /**
  * every runtime a test starts is stopped and released after it, even when the test failed (its timers kept the file

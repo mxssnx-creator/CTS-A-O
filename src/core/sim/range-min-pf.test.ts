@@ -52,12 +52,13 @@ const opts = (rangeMinPf?: WalkForwardOptions["gates"]["rangeMinPf"]): WalkForwa
   const o = defaultWalkForward(DEFAULT_SETTINGS);
   return {
     ...o,
-    longH: 336,
     gates: { ...o.gates, minPf: 1.05, minGreen: 0, rangeMinPf },
     toggles: { normal: true, trailing: true, block: false, blockActive: false, dca: true, dcaActive: false, axis: true },
     symGate: undefined,
     coord: { enabled: false, hourLock: 0, cooldown: "off", conflict: false, confirm: false },
     simH: 6,
+    // This PF-isolation fixture contains a 100-hour sample; preserve its original full window.
+    longH: 336,
     validLastN: 0,
     lastN: 0,
     robustFrac: 0,
@@ -223,7 +224,8 @@ describe("per-range stage min PF", () => {
 describe("drawdown-time limit on the history a tape has", () => {
   it("a 1m tape (72 h of history) under water for most of it fails DDT; the same record over the full window passes", async () => {
     const { ddtLimitH } = await import("./walkforward.ts");
-    const o = { ...opts(), gates: { ...opts().gates, maxDdtH: 35 } };
+    // the 336 h window this scenario is written for (the default longH is 24 h since 19 Oct, 4779175)
+    const o = { ...opts(), longH: 336, gates: { ...opts().gates, maxDdtH: 35 } };
     const tp = tape(null, 0);
     const winH = Math.max(o.longH, o.preH);
     // the whole window: the limit is 35 per 72 h of window

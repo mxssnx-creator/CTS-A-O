@@ -268,7 +268,7 @@ describe("actual execution account budgets across independent Signal sets", () =
     assert.equal(ex.positions.get("S0-USDT|LONG"), 10);
     rt.paper.positions.push(lane(sig("m"), "S0-USDT", 1, 10, 1, .001));
     const result = await step();
-    assert.equal(ex.positions.get("S0-USDT|LONG"), 10, "the existing100 USD still has a10 USD wide-stop loss");
+    assert.equal(ex.positions.get("S0-USDT|LONG"), 10, "the existing100 USD still has a2 USD capped-stop loss");
     assert.match(result.control!.actions.find((a) => a.kind === "increase")?.msg ?? "", /account risk budget/);
   });
 

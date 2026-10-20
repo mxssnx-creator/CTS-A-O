@@ -90,6 +90,8 @@ export interface Protect {
   dca?: Pick<DcaConfig, "levels" | "step" | "stepOfTp" | "stopGap" | "addRatio">;
   /** max bars in trade (time exit at close) */
   hold: number;
+  /** Explicit range time ceiling, preserved before lane conversion; a lane longer than this is ineligible. */
+  maxHoldMin?: number;
   /**
    * ATR-scaled exits (Stable-02 model): resolved at every entry from ATR(14) of the signal bar into the distances
    * above — stop = sl × ATR, target = tpRatio × stop, trailing (Stable-02 trail %) arming at 0.95 × stop. `tp` /

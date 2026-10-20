@@ -13,7 +13,12 @@ process.env.CTS_CORE_WORKERS = "2";
 // generic runner's 1MB host-pressure exemption must not disable the tested abort.
 process.env.CTS_CORE_MEM_HARD_MB = "1200";
 const runtimes: CoreRuntime[] = [];
-afterEach(async () => { for (const rt of runtimes.splice(0)) rt.dispose(); await closePool(); });
+const testHardMb = process.env.CTS_CORE_MEM_HARD_MB;
+afterEach(async () => {
+  if (testHardMb === undefined) delete process.env.CTS_CORE_MEM_HARD_MB;
+  else process.env.CTS_CORE_MEM_HARD_MB = testHardMb;
+  for (const rt of runtimes.splice(0)) rt.dispose(); await closePool();
+});
 
 type Inner = {
   gen: number; stopped: boolean; busy: boolean; memPressured: boolean; memFallback: number; workersBroken: boolean;
@@ -87,6 +92,8 @@ test("a cached pre-pack reading cannot increase the originally admitted worker c
 });
 
 test("pressure cancels only Compare's active worker call, preserves foreground state and retries", async () => {
+  // The suite disables host memory fallback; this fixture explicitly models a 1 GiB hard reserve.
+  process.env.CTS_CORE_MEM_HARD_MB = "1024";
   const { rt, inner, state } = fixture(); let available = 8e9, ownCanceled = false;
   inner.compareAvailableBytes = () => available;
   const normal = inner.compareOnWorkers;

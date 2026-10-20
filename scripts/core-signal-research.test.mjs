@@ -416,7 +416,7 @@ describe("four-source frozen independent Signal research", () => {
       assert.ok(cell, row.id);
       assert.deepEqual(row.protect, cell.protect);
       const tape = runtimeByConfig.get(row.cfg);
-      if (tape) assert.deepEqual(row.protect, tape.protect);
+      if (tape) assert.deepEqual(capSignalProtect(row.protect), tape.protect);
       const sim = simulate(cell.cfg, k.b, sideSignal(entries, row.side), cell.protect, {
         cost: 0.002,
         cooldown: tacticCooldown(DEFAULT_TACTICS),
