@@ -9,8 +9,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 ap=argparse.ArgumentParser()
-ap.add_argument('--runs',nargs='+',default=['inverse-20-6h','inverse-20-24h','inverse-20-long'])
+ap.add_argument('--runs',nargs='+',default=['inverse-20-6h','inverse-20-24h-memory','inverse-20-long-base336'])
 ap.add_argument('--out',default='docs/sims/inverse-20-symbol-20261020')
+ap.add_argument('--require-complete',action='store_true')
 args=ap.parse_args()
 sha=lambda b:hashlib.sha256(b).hexdigest()
 esc=lambda v:html.escape(str(v),quote=True)
@@ -33,29 +34,52 @@ for name in args.runs:
     assert not r['qualificationViolations'] and len(p['symbols'])==20,name
     ex=json.loads(gzip.decompress((d/'executions.json.gz').read_bytes()))
     assert len(ex['settled'])==r['settled']['n'],name
-    runs.append(dict(name=name,protocol=p,result=r,executions=ex))
+    runs.append(dict(name=name,protocol=p,result=r,executions=ex,
+        launch=read(d/'launch.json') if (d/'launch.json').exists() else {'nodeFlags':'default Node heap; experimental-strip-types, no-warnings'}))
 assert len({x['protocol']['feedSha256'] for x in runs})==1
 assert all(x['protocol']['settings']==runs[0]['protocol']['settings'] for x in runs)
 bench=read('runs/inverse-20-bench.json')
 assert bench['variants']==114 and len(bench['symbols'])==20
 verification={}
-for name in ['inverse-20-final-targeted','inverse-20-api-contract','inverse-20-full-core-final']:
+for name in ['inverse-20-final-targeted','inverse-20-api-contract','inverse-20-core-verified']:
     log=Path(f'runs/{name}.log').read_text()
     v={k:float(v) if '.' in v else int(v) for k,v in re.findall(r'ℹ (tests|pass|fail|cancelled|skipped|duration_ms) ([\d.]+)',log)}
     verification[name]=dict(**v,completed='tests' in v,logSha256=sha(log.encode()))
-for name in ['typecheck-final','lint','build','ui']:
-    log=Path(f'runs/inverse-20-{name}.log').read_text()
-    ok={'typecheck-final':'error TS' not in log and '> tsc --noEmit' in log,'lint':not log.strip(),
+checkStatus=read('runs/inverse-20-check-status.json')
+for name in ['typecheck','lint','script-lint','build','ui']:
+    suffix=f'{name}-verified' if name in ['typecheck','lint','script-lint'] else name
+    log=Path(f'runs/inverse-20-{suffix}.log').read_text()
+    ok={'typecheck':checkStatus.get('typecheck')==0,'lint':checkStatus.get('lint')==0,'script-lint':checkStatus.get('script-lint')==0,
         'build':'[migrate] DATABASE_URL not set' in log,'ui':log.count('"includeButtonWorks": true')==4}[name]
     verification[name]=dict(passed=ok,logSha256=sha(log.encode()))
 ui=read('../inverse-ui-targeted.json')
 assert len(ui)==4 and all(not v['errors'] and not v['overflow'] for v in ui)
 verification['ui']['surfaces']=ui
+complete=len(runs)==3 and all(v.get('completed',v.get('passed',False)) and not v.get('fail',0) and not v.get('cancelled',0) for v in verification.values())
+if args.require_complete:assert complete,'all three studies and completed passing verification are required'
+statusText='Drei Studien abgeschlossen · technische Prüfungen bestanden' if complete else f'Teilbericht · {len(runs)}/3 Studien abgeschlossen · vollständige Prüfung läuft'
+attempts=[]
+for name,reason in [
+ ('inverse-20-full-core','Interrupted after API fixture paths were mistakenly added under prehistoric rather than coreListing; corrected contract passes.'),
+ ('inverse-20-full-core-final','Interrupted after stale trailing-only/Micro/aggregate-fallback expectations and concurrent-load resource failures; fixed fixtures and replaced by serial full verification.'),
+ ('inverse-20-toggle-failure','Diagnostic isolated the missing Signal trailing-only exception in the synthetic toggle assertion; no production toggle rule changed.'),
+ ('inverse-20-admission-fixtures-corrected','Diagnostic confirmed old Micro magic count and aggregate fallback assumptions; fixed and separately verified.'),
+ ('inverse-20-admission-fixtures-fixed','One legacy fallback fixture reinstalled its exact adapter when declaring lanes; fallback is now removed after the last declaration.'),
+ ('inverse-20-long','Stopped before scoring to avoid overlapping large tape allocations; final long-history study explicitly evaluates 336h at Base as well as config selection.'),
+ ('inverse-20-24h','Interrupted during broad config construction under memory pressure; identical economic protocol retried with earlier garbage collection (1024MiB old-space, 20% growth). No scored result from this attempt.'),
+]:
+    entry=dict(name=name,reason=reason,currentEvidence=False)
+    log=Path(f'runs/{name}.log')
+    if log.exists():
+        raw=log.read_text();entry.update(logSha256=sha(raw.encode()),failures=[v for v in raw.splitlines() if '✖' in v],tail=raw[-3500:])
+    protocol=Path('runs')/name/'protocol.json'
+    if protocol.exists():entry['protocol']=read(protocol)
+    attempts.append(entry)
 bundle=dict(classification='Retrospective virtual-order evidence, not funded-account or live performance proof',
     sourceCheckpoint=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
     sourceManifestSha256=sha(json.dumps(runs[0]['protocol']['source'],sort_keys=True).encode()),
     feedProvenance='Previously examined public archive, 1–17 October 2026; overlapping windows, no fresh holdout',
-    runs=[{k:v for k,v in x.items() if k!='executions'} for x in runs],benchmark=bench,verification=verification)
+    runs=[{k:v for k,v in x.items() if k!='executions'} for x in runs],benchmark=bench,verification=verification,earlierAttempts=attempts)
 out=Path(args.out);out.parent.mkdir(parents=True,exist_ok=True)
 Path(str(out)+'.json.gz').write_bytes(gzip.compress(json.dumps(bundle,separators=(',',':')).encode(),mtime=0))
 Path(str(out)+'-executions.json.gz').write_bytes(gzip.compress(json.dumps([{k:x[k] for k in ['name','executions']} for x in runs],separators=(',',':')).encode(),mtime=0))
@@ -95,22 +119,22 @@ for idx,x in enumerate(runs):
             for i,v in enumerate(vals):
                 q=[s,e][i][k];label=fmt(v,2) if v is not None else ('verlustfrei' if q['noLoss'] else 'n/a')
                 ax.annotate(label,(xx[i]+(j-.5)*.32,v or 0),xytext=(0,6),textcoords='offset points',ha='center',fontsize=8,rotation=0 if v is not None else 90)
-        ax.axhline(1,color=red,lw=1,ls='--',label='PF 1');ax.set_xticks(xx,['Start','Ende']);ax.set_ylabel('Gemessener Return-PF');ax.legend(fontsize=8);ax.margins(y=.35)
+        ax.axhline(1,color=red,lw=1,ls='--',label='PF 1');ax.set_xticks(xx,['Start','Ende']);ax.set_ylabel('Gemessener Return-PF');ax.legend(loc='upper right',fontsize=8);ax.margins(y=.35)
     def amounts(fig,ax):
         xx=np.arange(2);ax.bar(xx,[s['total'],e['total']],color='#e6edef',label='Post-Base berechnet');ax.bar(xx,[s['passed'],e['passed']],color=teal,label='alle Config-Gates bestanden')
         for i,v in enumerate([s,e]):ax.text(i,v['total'],f'{v["passed"]:,} / {v["total"]:,}',ha='center',va='bottom',fontsize=9)
-        ax.set_xticks(xx,['Start','Ende']);ax.set_ylabel('Configs (keine Orders)');ax.margins(y=.25);ax.legend(fontsize=8)
+        ax.set_xticks(xx,['Start','Ende']);ax.set_ylabel('Configs (keine Orders)');ax.margins(y=.25);ax.legend(loc='upper right',fontsize=8)
     def hours(fig,ax):
         hs=r['hourly'];xx=np.arange(len(hs));vs=[h['net'] for h in hs]
         ax.bar(xx,vs,color=[teal if v>0 else red if v<0 else gray for v in vs]);ax.axhline(0,color=gray,lw=.8)
         ax.plot(xx,np.cumsum(vs),color=blue,marker='.',lw=1.5,label='kumulierte Return-Summe')
         ax.set_xticks(xx,[datetime.fromtimestamp(h['t']/1000,timezone.utc).strftime('%H:%M') for h in hs],rotation=45,ha='right',fontsize=8)
-        ax.set_ylabel('Netto Unit-Return-Summe (Prozentpunkte)');ax.set_xlabel('UTC · Stunde des Abschlusses');ax.legend(fontsize=8)
+        ax.set_ylabel('Netto Unit-Return-Summe (Prozentpunkte)');ax.set_xlabel('UTC · Stunde des Abschlusses');ax.legend(loc='upper right',fontsize=8)
         if not r['settled']['n']:ax.text(.5,.55,'0 Closes · alle Stunden flach',transform=ax.transAxes,ha='center')
     def directions(fig,ax):
         vals=[r['byDirection'][k] for k in ['long','short']];xx=np.arange(2)
         ax.bar(xx-.18,[v['gp'] for v in vals],.36,color=teal,label='Bruttogewinne');ax.bar(xx+.18,[-v['gl'] for v in vals],.36,color=red,label='Bruttoverluste')
-        ax.set_xticks(xx,[f'{l}\nn={v["n"]} · PF {pf(v)}' for l,v in zip(['Long','Short'],vals)],fontsize=8);ax.axhline(0,color=gray,lw=.8);ax.set_ylabel('Unit-Return-Summe (pp)');ax.legend(fontsize=8)
+        ax.set_xticks(xx,[f'{l}\nn={v["n"]} · PF {pf(v)}' for l,v in zip(['Long','Short'],vals)],fontsize=8);ax.axhline(0,color=gray,lw=.8);ax.set_ylabel('Unit-Return-Summe (pp)');ax.legend(loc='upper right',fontsize=8)
     def symbols(fig,ax):
         vals=list(r['bySymbol'].items());horizontal(ax,[k.replace('-USDT','')+f'  n={v["n"]}' for k,v in vals],[v['net'] for _,v in vals],'Netto Unit-Return-Summe (pp)')
     def coverage(fig,ax):
@@ -131,15 +155,25 @@ for idx,x in enumerate(runs):
         vals=[(t['unitR'] if isinstance(t.get('unitR'),(float,int)) else t['r']/t['mult'])*100 for t in ts if isinstance(t.get('unitR'),(float,int)) or t.get('mult',0)>0]
         if not vals:return empty(ax,'Unit-Evidenz für das Histogramm unbekannt')
         ax.hist(vals,bins=min(40,max(5,int(len(vals)**.5))),color=teal,edgecolor='white');ax.axvline(0,color=red,lw=1);ax.set_xlabel(f'Netto Unit-Return je Close (%) · bekannt {len(vals)}/{len(ts)}');ax.set_ylabel('Closes')
+    def strategies(fig,ax):
+        keys=['normal','trailing','dca','dca-active','axis']
+        vs=[r['byStrategy'].get(k,{'n':0,'net':0}) for k in keys]
+        horizontal(ax,[f'{k} · n={v["n"]}' for k,v in zip(keys,vs)],[v['net'] for v in vs],'Netto Unit-Return-Summe (pp)')
+    def marks(fig,ax):
+        vals=[r['settled'],r['endpointMarks'],r['settledPlusMarks']]
+        horizontal(ax,[f'{k} · n={v["n"]}' for k,v in zip(['Geschlossen','Offene Marks','Zusammen (Diagnose)'],vals)],[v['net'] for v in vals],'Unit-Return-Summe (pp), vor Kontoallokation')
     charts='<div class="charts">'+chart('PF nach Validierung / Last-N',f'Nur bestandene Configs. Last-N {s["requestedLastN"]}; Range Last-N {s["rangeLastN"]}. Überlappende Historien, keine unabhängigen Orders.',validation)+chart('Menge / Von',f'Ausführbare Strategien zusätzlich: Start {s["executablePassed"]}/{s["executable"]}, Ende {e["executablePassed"]}/{e["executable"]}.',amounts)+chart('Stündliche Ergebnisse','Geschlossene Modellorders nach Entry-Gates; Return-Summe ist keine Kontoequity.',hours,True)+chart('Long und Short','Richtungen separat; gepoolter PF qualifiziert keine verlierende Untergruppe.',directions)+chart('Ranges × Schutz- und Strategietypen','Unberechnete Zellen = —; deaktivierte Ausführungsarten können historisch berechnet sein.',coverage)+chart('20 Symbole','Alle Symbole bleiben sichtbar, auch ohne akzeptierte Closes.',symbols,height=6.2)+chart('Source-Berechnung je Zeitrahmen','Rohzustände sind keine bestandenen Configs oder Orders. Roh-PF darf unter 1 liegen.',lanes)+chart('Verteilung akzeptierter Closes','Netto nach Kosten; externe Sizing-Multiplikatoren entfernt. Intrinsisches DCA-Modell bleibt erhalten.',distribution)+'</div>'
+    charts=charts[:-6]+chart('Normal TP/SL, Trailing und weitere Typen','Akzeptierte Closes je unabhängiger Strategiefamilie; leere Familien bleiben sichtbar.',strategies)+chart('Geschlossene Orders und offene Marks','Offene Positionen zum Replay-Ende sind eigene bewertete Samples, keine realisierten Closes.',marks)+'</div>'
     snaps=table(['Snapshot','Sets bestanden/von','Eval-Closes','Eval-PF','Last-N-Closes','Last-N-PF'],[[l,f'{v["passed"]}/{v["total"]}',v['validatedHistory']['n'],pf(v['validatedHistory']),v['validatedLastN']['n'],pf(v['validatedLastN'])] for l,v in [('Start',s),('Ende',e)]])
     samples=table(['Sample','Closes / Marks','PF','Netto Unit-Return (pp)'],[[l,v['n'],pf(v),fmt(v['net'],6)] for l,v in [('Akzeptiert & geschlossen',r['settled']),('Noch offen · Endpoint-Marks',r['endpointMarks']),('Geschlossen + Marks · Diagnose',r['settledPlusMarks'])]])
+    strategyTable=table(['Strategie','Akzeptierte Closes','PF','Netto (pp)'],[[k,v['n'],pf(v),fmt(v['net'],6)] for k,v in r['byStrategy'].items()])
     matrix=table(['Range','Typ','Lane','Gebaut','Historie > 0','Long-Historie','Short-Historie','Validiert Start/Ende','Ausgef. Configs','Closes'],[[rangeNames.get(c['range'],c['range']),c['kind'],c['lane'],c['built'],c['nonempty'],c['longHistoryCells'],c['shortHistoryCells'],f'{c["qualifiedStart"]}/{c["qualifiedEnd"]}',c['executedConfigs'],c['settled']] for c in r['coverageMatrix']])
     sources=table(['Indikation','Akzeptierte Closes','PF der Closes','Netto (pp)'],[[k,v['n'],pf(v),fmt(v['net'],6)] for k,v in r['byIndication'].items()],'sources')
     hist=table(['Symbol','Lane','Bars','Von','Bis (Close)','Stunden verfügbar'],[[c['sym'],f'{c["tf"]}m',c['bars'],utc(c['firstT']),utc(c['lastCloseT']),fmt((c['lastCloseT']-c['firstT'])/3600000,1)] for c in r['sourceCoverage']])
     fails=table(['Erste nicht bestandene Prüfung','Configs'],sorted(e['failures'].items()))
-    panels.append(f'''<section class="run" id="run-{idx}" {'hidden' if idx else ''}>{heading}{cards}{charts}
-    <section class="detail"><h3>Exakte Samples und Validierung</h3>{snaps}{samples}<p class="note">PF = Σ positive Netto-Returns / |Σ negative Netto-Returns|; kein Mittelwert einzelner PFs. Verlustfreie Samples haben keinen endlichen gemessenen Quotienten; Engine-Score 4 bleibt eine Konvention. Endpoint-Marks sind keine realisierten Closes. Validierungsfenster teilen sich Marktbeobachtungen; ihre Menge ist keine Zahl unabhängiger Trades.</p></section>
+    endpoint=f'<aside class="rule"><strong>Offene Modellpositionen zum Ende: {r["endpointMarks"]["n"]}</strong>Mark-Summe {fmt(r["endpointMarks"]["net"],3)} Unit-Prozentpunkte; geschlossen + Marks: PF {pf(r["settledPlusMarks"])}. Modellwerte vor Kontoallokation, keine Kontoequity.</aside>' if r['endpointMarks']['n'] else ''
+    panels.append(f'''<section class="run" id="run-{idx}" {'hidden' if idx else ''}>{heading}<p class="note">Base-Evaluation {(r['startT']-p['evaluationFromT'])/3600000:g}h · Auswahlfenster {p['wf']['longH']}h · Kostenmodell {p['settings']['cost']*100:g}% Round-trip.</p>{cards}{endpoint}{charts}
+    <section class="detail"><h3>Exakte Samples und Validierung</h3>{snaps}{samples}{strategyTable}<p class="note">PF = Σ positive Netto-Returns / |Σ negative Netto-Returns|; kein Mittelwert einzelner PFs. Verlustfreie Samples haben keinen endlichen gemessenen Quotienten; Engine-Score 4 bleibt eine Konvention. Endpoint-Marks sind keine realisierten Closes. Validierungsfenster teilen sich Marktbeobachtungen; ihre Menge ist keine Zahl unabhängiger Trades.</p></section>
     <details><summary>Vollständige Range-, Typ- und Lane-Matrix</summary>{matrix}</details>
     <details><summary>Alle 114 Indikationen · Ergebnisse nach Entry-Gates</summary><input class="source-search" type="search" aria-label="Indikationen filtern" placeholder="Indikation filtern …">{sources}</details>
     <details><summary>Historie · Quellenabdeckung für 20 Symbole und drei Lanes</summary><p>{esc(p['lastNHistory'])}. Base beginnt erst am {utc(p['evaluationFromT'])}. Ältere Candles dienen explizit Warmup und Auswahlhistorie.</p>{hist}</details>
@@ -150,7 +184,7 @@ def performance_plot(fig,ax):
     xx=np.arange(len(runs));bottom=np.zeros(len(runs))
     for key,color in [('base',blue),('tapes','#5ca3c0'),('walk',teal),('reporting','#b0bfc7')]:
         vals=[x['result']['timingMs'][key]/1000 for x in runs];ax.bar(xx,vals,bottom=bottom,label=key,color=color);bottom+=vals
-    ax.set_xticks(xx,[f'{x["protocol"]["wf"]["simH"]}h / {x["protocol"]["wf"]["longH"]}h' for x in runs]);ax.set_ylabel('Sekunden');ax.legend(fontsize=8)
+    ax.set_xticks(xx,[f'{x["protocol"]["wf"]["simH"]}h / {x["protocol"]["wf"]["longH"]}h' for x in runs]);ax.set_ylabel('Sekunden');ax.legend(loc='upper right',fontsize=8)
     for i,x in enumerate(runs):ax.annotate(f'{bottom[i]:.1f}s\nRSS {x["result"]["rssMaxMiB"]:.0f} MiB',(i,bottom[i]),xytext=(0,5),textcoords='offset points',ha='center',fontsize=8)
     ax.margins(y=.25)
 perf=chart('Laufzeit und Peak-Speicher','Base / Config-Aufbau / Replay / Bericht. Gleicher Host unter paralleler Testlast; keine garantierte Live-Latenz.',performance_plot,True)
@@ -169,7 +203,7 @@ data=json.dumps(bundle,separators=(',',':'),ensure_ascii=False).replace('<','\\u
 doc=f'''<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CTS-A-O · Inverse · 20-Symbol Evaluationsbericht</title><style>{css}</style></head><body>
 <header><span class="eyebrow">CTS-A-O / Research & Evaluation / 20. Oktober 2026</span><h1>Inverse.<br>Quellen, Gates und Ergebnisse.</h1><p>114 eigenständige Indikationen · 20 Symbole · 1 / 5 / 15 Minuten. Vollständige Standard-Ranges mit Normal TP/SL und Trailing, Long und Short sowie explizit längere Historie.</p><div class="legend"><span>Return-PF nach Kosten</span><span>Last-N-validierte Sets</span><span>Menge / Von je Sample</span><span>Quellen und Ergebnisse hash-verifiziert</span></div></header>
 <main><aside class="rule"><strong>Systemweite Regel · für alle Typen</strong>PF unter 1 ist bei ungefilterten Source- und Berechnungsergebnissen normal. Erst ab der Stage-Base-Evaluation gelten die konfigurierten PF-Gates über 1. Validierte Ergebnisse enthalten ausschließlich bestandene Sets; spätere ausgeführte Orders werden vollständig einschließlich Verlusten ausgewertet.</aside>
-<nav><label for="run-select">Studie</label><select id="run-select">{options}</select><button id="download">Evidenz als JSON speichern</button><button onclick="window.print()">Druckansicht / PDF</button></nav>
+<p class="tag">{esc(statusText)}</p><nav><label for="run-select">Studie</label><select id="run-select">{options}</select><button id="download">Evidenz als JSON speichern</button><button onclick="window.print()">Druckansicht / PDF</button></nav>
 {''.join(panels)}
 <section class="shared"><h2>Studienvergleich und Performance</h2><p>Überlappende Zeiträume desselben bereits untersuchten öffentlichen Archivs. Studien werden nicht addiert und sind kein unabhängiger Holdout. Die Messung umfasst virtuelle Orders vor Kontoallokation.</p>{overview}{perf}<p>Calculation-Benchmark: {bench['barValues']:,} Zustandswerte, 60 Serien, 120h. Cold <strong>{fmt(bench['coldMs'],1)} ms</strong>; warm kompletter Cache-Pass <strong>{fmt(bench['warmMeanPassMs'],3)} ms</strong> (100 Wiederholungen); Peak RSS <strong>{fmt(bench['peakRssMiB'],1)} MiB</strong>. Kein Nachweis für Live-Ticklatenz oder Börsen-Orderdurchsatz.</p></section>
 <section class="shared"><h2>Welche Configs werden verwendet?</h2><p>Die gewöhnlichen Produktions-Ranges gelten auch für Inverse. Trailing-Abstände: 0 / 0,25 / 0,5 / 0,75 × TP; 0 bedeutet Normal TP/SL. Haltedauer 16h oder 24h. Die Zellenzahlen verwenden die effektiven, deduplizierten Floors des Referenzgrids.</p>{grid}<p>38 Gegensignal-/Bestätigungsvarianten aus 19 bekannten Quellen, 48 Math-/Marktvarianten über 10/20/40/80 Bars, 16 eigene Micro-Identitäten und 12 BTC/ETH-Referenzpaar-Varianten. Neu: RSI2-Umkehr und VWAP-Abweichung. Weitere Methoden: Z-Score, Impuls, Beschleunigung, OLS-Abweichung, Docht-Abweisung, Fehlausbruch, Konsens, Marktresiduum und Marktschock. Referenzpaare sind einzeln gehandelte Symbol-Legs, keine atomaren Zwei-Leg-Arbitrageorders.</p><p>Micro-Identitäten nutzen Micro und gemäß Standardregel Minimal. Wide und Minimal plus sind im normalen Factory-Grid aus. DCA ist ausführbar; DCA Active und Axis werden unabhängig berechnet und sind standardmäßig für neue Entries aus. Historische Exit- und Signal-Strategien besitzen eigene Prüfungen und sind aus diesem Inverse-Marktreplay ausgeklammert.</p></section>

@@ -320,13 +320,13 @@ describe("processing through the stages, every strategy type, every toggle combi
         const k = kindOf(x) as never;
         // a signal's own base (signalOwnBase) trades whatever the engine's Normal / Block switches say: its Normal
         // always, its Trailing with the Trailing switch
-        if (sim.opts.signalOwnBase && (k === "normal" || k === "trailing") && isSignalInd(byId.get(x.cfg)!.ind)) {
-          if (k === "trailing") assert.ok(tg.trailing, `${JSON.stringify(tg)}: a signal trailing with Trailing off`);
+        if (sim.opts.signalOwnBase && (k === "normal" || k === "trailing" || k === "trailing-only") && isSignalInd(byId.get(x.cfg)!.ind)) {
+          if (k !== "normal") assert.ok(tg.trailing, `${JSON.stringify(tg)}: a signal trailing with Trailing off`);
           continue;
         }
         assert.ok(kindExecutable(k, tg), `${JSON.stringify(tg)}: a ${k} trade executed`);
-        if (k === "trailing") assert.ok(tg.trailing, "Trailing off: no trailing");
-        if ((k === "normal" || k === "trailing") && !tg.normal)
+        if (k === "trailing" || k === "trailing-only") assert.ok(tg.trailing, "Trailing off: no trailing");
+        if ((k === "normal" || k === "trailing" || k === "trailing-only") && !tg.normal)
           assert.ok((x.level ?? 0) > 0 && tg.block, `${JSON.stringify(tg)}: an unraised ${k} with Normal off`);
         if (k === "dca") assert.ok(tg.dca && !tg.dcaActive);
         if (k === "dca-active") assert.ok(tg.dca && tg.dcaActive);

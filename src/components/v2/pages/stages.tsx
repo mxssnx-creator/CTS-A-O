@@ -377,6 +377,7 @@ function SetListings(props: { minPf: number }) {
       {kind === "validated" && d?.ready && <div className="v2-muted" style={{marginTop: 8, fontSize: "var(--v-fs-xs)"}}>
         {fmt.num(d.total)} / {fmt.num(d.calculated)} validated · Last-N {d.validation?.engineLastN || "off"}
         {` · range Last-N ${d.validation?.rangeLastN || "off"} · ${d.validation?.historyH ?? "—"}h evaluation history`}
+        <div>Config PF uses the engine score 4 for a positive sample without losses; that case has no finite measured ratio. Group PF pools the validated windows&apos; gains and losses.</div>
       </div>}
       {!d ? (
         <Empty>Loading…</Empty>

@@ -17,10 +17,16 @@ const small = {
   refineTop: 4,
   evalTop: 8,
   cycleMs: 60_000,
-  grid: { short: false as const },
+  // This tests count/admission continuity, not catalogue throughput. Keep it bounded
+  // as new source families join the factory selection; the catalogue has separate coverage.
+  focus: ["follow|ema-9-21", "follow|trend-ema", "follow|inverse-known-trend-ema", "follow|inverse-mc-zscore-10"],
+  pinned: [],
+  grid: { short: false as const, micro: false as const },
+  exitStrategy: { enabled: false },
   tactics: { session: false, volRegime: false, trendStrength: false, cooldown: false, cooldownBars: 4 },
   gates: { minPf: 1.05, minTrades: 3, maxDdr: 0 },
   signals: signalSettings({
+    enabled: false,
     exits: "pct",
     sources: Object.fromEntries(SIGNAL_SOURCES.filter((x) => x.name.startsWith("s2-")).map((x) => [x.name, false])),
   }),
