@@ -2073,7 +2073,9 @@ export class CoreRuntime {
     if (this.busy || this.stopped) return;
     this.busy = true;
     // the previous compute's preset comparison finishes first (never beside a compute: memory, the cores)
-    if (this.comparing) await this.comparing;
+    // (a light cycle of runtime.cycle "incremental" does not wait for it: it uses no worker beyond one priority message,
+    // and a cycle that turns out to be heavy waits for it below)
+    if (this.comparing && !(this.settings.runtime?.cycle === "incremental" && this.inc && !this.dirty)) await this.comparing;
     if (this.stopped) {
       this.busy = false;
       return;
@@ -2122,7 +2124,10 @@ export class CoreRuntime {
         this.memGuardStart(gen);
         try {
           if (this.lightEligible()) light = await this.lightStep(gen);
-          if (!light) await this.compute(gen);
+          if (!light) {
+            if (this.comparing) await this.comparing;
+            await this.compute(gen);
+          }
         } finally {
           this.memGuardStop(gen);
         }

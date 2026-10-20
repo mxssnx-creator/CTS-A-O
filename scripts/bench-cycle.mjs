@@ -79,7 +79,7 @@ async function oneCycle(label) {
   const ms = performance.now() - t0;
   const phases = {};
   for (const [k, v] of Object.entries(rt.status.phases ?? {})) phases[k] = Math.round(v.ms);
-  const row = { label, ms: Math.round(ms), stallMs: Math.round(stallMax), rssMb: rss(), light: rt.status.cycleMode ?? null, phases };
+  const row = { label, ms: Math.round(ms), stallMs: Math.round(stallMax), rssMb: rss(), light: rt.status.cycleMode ?? null, paper: rt.status.phases?.Paper?.slowest ?? null, lightDetail: rt.status.phases?.Light?.slowest ?? null, phases };
   out.push(row);
   console.log(JSON.stringify(row));
 }
