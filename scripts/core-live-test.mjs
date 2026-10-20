@@ -542,6 +542,8 @@ async function report(final = false) {
     mem: (({ rssMb, heapMb, arrayBuffersMb, nativeMb, availMb }) => ({ rssMb, heapMb, arrayBuffersMb, nativeMb, availMb }))(memInfo()),
     symbols: rt.status.symbols,
     lastComputeAt: rt.status.lastComputeAt,
+    // the signal activation of the last compute: active units per direction and the test each other unit failed
+    signals: rt.status.signals ?? null,
     probe: rt.wf.probe ?? null,
     final,
     // signed exchange calls and rate-limit bans per endpoint, since the start
