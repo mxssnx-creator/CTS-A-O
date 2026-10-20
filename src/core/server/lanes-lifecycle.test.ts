@@ -52,6 +52,9 @@ class Ex implements ExchangeClient {
       const next = +((this.positions.get(key) ?? 0) + (into ? 1 : -1) * Number(p.quantity)).toFixed(6);
       if (next > 1e-9) this.positions.set(key, next);
       else this.positions.delete(key);
+      // a MARKET order fills at once and the venue says so: an acknowledgement without fill fields is not a fill
+      // (live.server.ts executedQty / executionMsg), so the fixture reports the execution as BingX does
+      return { order: { orderId: `o${++this.seq}`, status: "FILLED", executedQty: Number(p.quantity), avgPrice: sym === "S1-USDT" ? 10 : 20, commission: 0 } };
     } else {
       // BingX keeps one close-position stop per position side
       if (
