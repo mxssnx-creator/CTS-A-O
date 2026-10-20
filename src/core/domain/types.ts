@@ -745,6 +745,12 @@ export interface ProtectGridSpec {
    */
   baseTrailCells?: boolean;
   /**
+   * Cell level (default off = today): Base records the CELLS that passed (`tag|tp|sl|trail|hold`, ComboRun.rangeCells) and
+   * the tape stage builds only those, not every stop × trail × hold of a passed target. Base then measures every hold of a range, and with `baseTrailCells` every trail ratio at every stop; without it the trailed cells are not
+   * measured and not built. A range without its own Base cell (ownBase off) and the Wide grid keep the pair / target level.
+   */
+  baseCells?: boolean;
+  /**
    * every indication builds its complete config sets: its best Base pair (passed or not) and every passed pair build
    * every range they apply to, every target × stop × trail × hold (no Base target filter) — the evaluation alone
    * decides the seats. A measurement mode (sessions; memory: every indication's whole grid), off by default.
