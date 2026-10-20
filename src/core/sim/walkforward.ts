@@ -366,6 +366,12 @@ export interface WalkForwardOptions {
    * (they seat configs outside V).
    */
   seatSet?: "validated" | "pool";
+  /**
+   * grid.baseCells: the Base-passed cells per pair (passedCellsOf). A tape of a range the pair has cells for, whose cell
+   * is not among them, takes no seat — whatever built it (a carried tape of an earlier compute, a measurement set).
+   * Unset = the pair / range level.
+   */
+  basePassedCells?: Readonly<Record<string, PassedCells>>;
   /** V's ids (seatSet "validated"): given, or evaluated once at the run's start (WalkForwardResult.validated) */
   validated?: ReadonlySet<string>;
   /**
@@ -1401,6 +1407,14 @@ export type EntryFloors = {
    */
   pairCells?: Record<string, readonly string[]>;
   /**
+   * Pairs in Main only because the paper book holds one of their configs (they did not pass Base): only the held ids are
+   * built — no Wide / range cell, no DCA, no Axis (a pair without Base entry used to build its whole grid).
+   */
+  heldPairsOnly?: ReadonlySet<string>;
+  /** DCA / Axis sets are not built while their toggle is off (only a held id keeps its tape); they could not seat anyway */
+  skipDca?: boolean;
+  skipAxis?: boolean;
+  /**
    * config ids held by the paper book (selected or holding a position): each keeps its own tape even when its range
    * is not in its pair's Base tags — without its tape an open position vanished from the book with no close. Only
    * that config, not every cell of its range (a held General position used to unlock all General cells of the pair,
@@ -1638,6 +1652,9 @@ export function* buildTapesGen(
   const bs = floors?.buildStats;
   const onlyIds = floors?.onlyIds;
   const notOnly = (id: string) => !!onlyIds && !onlyIds.has(id);
+  // B6: a held-only pair builds only its held ids, a DCA / Axis set whose toggle is off only a held id
+  const b6Skip = (id: string, pair: string, kind: "dca" | "axis") =>
+    !floors?.heldIds?.has(id) && (!!floors?.heldPairsOnly?.has(pair) || (kind === "dca" ? !!floors?.skipDca : !!floors?.skipAxis));
   const statOf = (ind: string, tag: string | undefined, kind: string) => {
     const k = `${ind}|${tag ?? ""}|${kind}`;
     let x = bs!.get(k);
@@ -1693,6 +1710,7 @@ export function* buildTapesGen(
     );
     const laneTf = laneOf(c.ind).tf ?? u.bars[series[0]]?.tfMin ?? 1;
     const tagsOk = floors?.pairTags?.[`${c.bot}|${c.ind}`];
+    const heldOnlyPair = !!floors?.heldPairsOnly?.has(`${c.bot}|${c.ind}`);
     // grid.baseCells: the Base-passed cells of this pair, and the ranges they cover
     const cellKeys = floors?.pairCells?.[`${c.bot}|${c.ind}`];
     const cellSet = cellKeys ? new Set(cellKeys) : null;
@@ -1714,7 +1732,9 @@ export function* buildTapesGen(
       // the structural exclusions first (a cell below its range's lane floor, a Micro cell off a Micro indication):
       // neither is a Base-gate hold, and a pair's tags already leave a floored range out (rangeAppliesTo), so
       // testing baseRange first labelled every lane-floor cell a gate hold (13 Oct: grid.allSets "cells held back")
-      const why = !microIndFits(floors?.microOwnInds, p0.tag, microInd)
+      const why = heldOnlyPair
+        ? "baseRange"
+        : !microIndFits(floors?.microOwnInds, p0.tag, microInd)
         ? "microOwnInds"
         : // (an untagged Wide cell reads the "wide" entry: grid.wideMinTf)
           laneTf < (floors?.rangeMinTf?.[p0.tag ?? "wide"] ?? 0)
@@ -1796,7 +1816,7 @@ export function* buildTapesGen(
           const kind: StratKind = active ? "dca-active" : "dca";
           const p = adj(c.bot, c.ind, kind, laneProtect(p0, c.ind));
           const id = configId(c.bot, c.ind, p, kind);
-          if (notOnly(id)) {
+          if (notOnly(id) || b6Skip(id, `${c.bot}|${c.ind}`, "dca")) {
             done++;
             continue;
           }
@@ -1847,7 +1867,7 @@ export function* buildTapesGen(
           // the axis / ATR floored at deskFloor / revFloor (which carry the feedback floors; fixed exits use p.sl),
           // so a raised placeholder stop must not change the id — a held position would lose its tape
           const id = configId(c.bot, c.ind, p0l, "axis").replace(/\|axis$/, `${tag}|axis`);
-          if (notOnly(id)) {
+          if (notOnly(id) || b6Skip(id, `${c.bot}|${c.ind}`, "axis")) {
             done++;
             continue;
           }
@@ -1925,7 +1945,7 @@ export function* buildTapesGen(
           for (const rv of axisRangeVariants(dcaOpt.axis, protects, tagsOk, floors?.pairTps?.[`${c.bot}|${c.ind}`])) {
             const p0l = laneProtect(rv.p0, c.ind);
             const id = configId(c.bot, c.ind, p0l, "axis").replace(/\|axis$/, `${rv.tag}|axis`);
-            if (notOnly(id) || built.has(id)) continue;
+            if (notOnly(id) || built.has(id) || b6Skip(id, `${c.bot}|${c.ind}`, "axis")) continue;
             built.add(id);
             const rf = {
               minSl: Math.max(rv.minSl, deskFloor.minSl),
@@ -2581,6 +2601,7 @@ export function selectAt(
   for (const tp of tapes) {
     if (botOk && !botOk.has(tp.bot)) continue;
     if (o.basePassed && !o.basePassed.has(`${tp.bot}|${tp.ind}`)) continue;
+    if (!cellAllowed(tp, o)) continue;
     const a = lowerBound(tp.exitT, fromLong);
     const b = lowerBound(tp.exitT, t);
     if (b - a < minLong) continue;
@@ -2642,6 +2663,7 @@ export function selectDurable(
   for (const tp of tapes) {
     if (botOk && !botOk.has(tp.bot)) continue;
     if (o.basePassed && !o.basePassed.has(`${tp.bot}|${tp.ind}`)) continue;
+    if (!cellAllowed(tp, o)) continue;
     // the window a tape can be judged on: the long window, clipped to where its lane's data begins (at least
     // the pre-calc window, so a lane with too little history is not judged on a sliver)
     const from = Math.min(t - o.preH * H, Math.max(from0, tp.fromT ?? from0));
@@ -2877,6 +2899,7 @@ function selSig(o: WalkForwardOptions): string {
     o.bots.join(","),
     objId(o.basePassed),
     o.seatSet === "validated" ? objId(o.validated) : 0,
+    objId(o.basePassedCells),
     JSON.stringify(o.toggles ?? null),
     o.signalOwnBase ? 1 : 0,
     o.seatPer ?? "",
@@ -2890,6 +2913,25 @@ function selSig(o: WalkForwardOptions): string {
     JSON.stringify(o.rangeOpts ?? null),
   ].join("|");
 }
+/** A pair's passed cells (protectCellKey) and the ranges they cover. */
+export interface PassedCells {
+  tags: ReadonlySet<string>;
+  keys: ReadonlySet<string>;
+}
+export function passedCellsOf(pairCells: Readonly<Record<string, readonly string[]>>): Record<string, PassedCells> {
+  const out: Record<string, PassedCells> = {};
+  for (const [pair, ks] of Object.entries(pairCells))
+    out[pair] = { tags: new Set(ks.map((k) => k.slice(0, k.indexOf("|")))), keys: new Set(ks) };
+  return out;
+}
+/** Whether a tape's cell is one its pair's Base passed (true without cells for the pair / its range: the pair level decides). */
+export function cellAllowed(tp: Pick<ConfigTape, "bot" | "ind" | "protect">, o: Pick<WalkForwardOptions, "basePassedCells">): boolean {
+  const c = o.basePassedCells?.[`${tp.bot}|${tp.ind}`];
+  const tag = tp.protect.tag;
+  if (!c || !tag || !c.tags.has(tag)) return true;
+  return c.keys.has(protectCellKey(tp.protect));
+}
+
 /** Whether a config may take a seat under seatSet: always under "pool", only a member of V under "validated". */
 export function inValidated(id: string, o: Pick<WalkForwardOptions, "seatSet" | "validated">): boolean {
   return o.seatSet !== "validated" || !o.validated || o.validated.has(id);
@@ -2908,7 +2950,7 @@ function selInfoOf(tp: ConfigTape, o: WalkForwardOptions, botOk: ReadonlySet<str
   const fam = familyOf(tp.kind);
   return {
     tp,
-    inScope: !(botOk && !botOk.has(tp.bot)) && !(o.basePassed && !o.basePassed.has(pairKey)),
+    inScope: !(botOk && !botOk.has(tp.bot)) && !(o.basePassed && !o.basePassed.has(pairKey)) && cellAllowed(tp, o),
     inV: inValidated(tp.id, o),
     canSeat: !tp.heldOnly && tapeExecutable(tp, o) && inValidated(tp.id, o),
     base: fam === "base",

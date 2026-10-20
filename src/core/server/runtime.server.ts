@@ -147,6 +147,11 @@ import {
   withProbe,
   execDecision,
   walkForwardGen,
+  assertSeatSet,
+  passedCellsOf,
+  validatedSetGen,
+  validatedTapes,
+  cellAllowed,
   walkForwardSteps,
   feedBooks,
   signalGuardFor,
@@ -394,6 +399,8 @@ export interface RuntimeStatus {
   /** Base config sets evaluated / passing the Base gate (PF ≥ min PF) in the last compute */
   baseEvaluated?: number;
   basePassed?: number;
+  /** wf.seatSet "validated": the size of the validated set V of the last simulation (its ids: sim.validated) */
+  validated?: number;
   /** pairs grid.allSets built for measurement without passing Base (not validated; apart from basePassed) */
   baseBuilt?: number;
   /** the passed count of the last computes (bounded; the events table keeps the long record): continuity of Base */
@@ -1245,6 +1252,8 @@ export class CoreRuntime {
   }
 
   /** the seats of the last full paper step (the realtime entry step keeps them) */
+  /** the validated set V of the current simulation and the tapes it selects from (wf.seatSet "validated") */
+  private validatedCache: { sim: WalkForwardResult; tapes: readonly ConfigTape[]; v: ReadonlySet<string>; list: ConfigTape[] } | null = null;
   private lastSelection: Pick<ReturnType<typeof withProbe>, "picks" | "eligible"> | null = null;
   /** what the last live control step saw (controlDue) */
   private controlSeen: { positions: unknown; live: unknown; bar: number; at: number } | null = null;
@@ -2952,7 +2961,7 @@ export class CoreRuntime {
     const famNarrow = !!evalFams && familiesNarrowBase(evalFams);
     // each pair at the default protect and at one cell of each enabled range: the ranges and targets it passes are the
     // ones whose configs it computes (basePass — the preset backtest judges by the same rule)
-    const { passed, pairTags, pairTps, pairCells, added: baseBuilt } = basePass(pipeline.s1, s, applies, famNarrow ? evalFams : null);
+    const { passed, pairTags, pairTps, pairCells, added: baseBuilt, addedKeys } = basePass(pipeline.s1, s, applies, famNarrow ? evalFams : null);
     this.basePairTags = pairTags;
     // the count of pairs that passed Base (validated); the pairs grid.allSets adds for measurement are reported apart
     this.status.basePassed = passed.length - baseBuilt;
@@ -2987,6 +2996,11 @@ export class CoreRuntime {
     const heldIds = new Set<string>([...this.paper.selected, ...this.paper.positions.map((p) => p.cfg)]);
     // pinned pairs are evaluated in Base like every other pair (baseFocus): they reach Main only when they pass
     const passedKeys = new Set(passed.map((r) => `${r.bot}|${r.ind}`));
+    // a validated-only run seats nothing a measurement mode added without Base (grid.allSets): V ⊆ the Base cells
+    if (wf.seatSet === "validated") {
+      assertSeatSet(wf);
+      for (const k of addedKeys) passedKeys.delete(k);
+    }
     for (const k of s.pinned ?? []) if (passedKeys.has(k)) main.add(k);
     // contrarian execution (wf.invertSeats, an evaluation knob): each engine pair's mirror (follow ↔ revert, the same
     // entries on the other side) computes the same cells, so a seat's entries can execute on its mirror's tape; a
@@ -3006,6 +3020,9 @@ export class CoreRuntime {
     // only pairs that passed Base take a seat; held pairs stay in Main to manage their open positions
     wf.basePassed = passedKeys;
     this.wf.basePassed = passedKeys;
+    // cell level (grid.baseCells): a tape whose cell Base did not pass takes no seat, whatever built it
+    wf.basePassedCells = s.grid?.baseCells === true ? passedCellsOf(pairCells) : undefined;
+    this.wf.basePassedCells = wf.basePassedCells;
     wf.family = evalFams && !famNarrow ? evalFams.map((f) => f.label) : undefined;
     this.wf.family = wf.family;
     // Signals processing: the active signals and every signal pair still holding a position take the signal
@@ -3272,11 +3289,18 @@ export class CoreRuntime {
     await this.slimTapes(carryTags, gen);
     // every set's completeness: grid cells per indication × range × type, built / kept / not built and why
     const buildStats = new Map<string, TapeBuildStat>();
+    // validated-only processing builds nothing it cannot seat: a held pair that did not pass Base only its held ids, and no
+    // DCA / Axis set while its toggle is off (Block on keeps them: its feed reads every tape)
+    const validatedOnly = wf.seatSet === "validated" && !wf.toggles.block;
     const built = await tapesFor(main, wf.protects, dcaOpt, "strategy tapes", {
       ...protectFloors(s),
       pairTags: this.basePairTags,
       pairTps,
       pairCells,
+      ...(wf.seatSet === "validated"
+        ? { heldPairsOnly: new Set([...main].filter((k) => !passedKeys.has(k) && !isSignalInd(k.split("|")[1] ?? ""))) }
+        : {}),
+      ...(validatedOnly ? { skipDca: !wf.toggles.dca, skipAxis: wf.toggles.axis === false } : {}),
       heldIds,
       microOwnInds: microOwnInds(s.grid),
       buildStats,
@@ -3308,7 +3332,7 @@ export class CoreRuntime {
         )
       : [];
     if (!rebuilt || gen !== this.gen) return;
-    const mainTapes = carryTags.size ? withCarried(rebuilt.length ? [...built, ...rebuilt] : built, this.tapes, carryTags) : built;
+    const mainTapes = carryTags.size ? withCarried(rebuilt.length ? [...built, ...rebuilt] : built, this.tapes, carryTags, wf.basePassedCells || wf.seatSet === "validated" ? (t) => !!wf.basePassed?.has(`${t.bot}|${t.ind}`) && cellAllowed(t, wf) : undefined) : built;
     // Signals: the active signals (best N by Base on each symbol) run their own Normal + Trailing configs and,
     // per signals.strategies, the DCA (+ DCA Active) and Axis sets
     const sigStrat =
@@ -3407,6 +3431,7 @@ export class CoreRuntime {
     await this.paperIdle();
     this.tapes = tapes;
     this.sim = sim;
+    this.status.validated = sim.validated?.length;
     // the previous set's index and the live books of the previous run (its feed, guard and acceptance index) are
     // released now: rebuilt on first use, as they were when they no longer matched — kept, they pinned the old set
     // (0.5–0.8 GB) for up to 30 s after every swap, the Paper / Audit peak
@@ -5337,24 +5362,38 @@ export class CoreRuntime {
     const t = fast ? fast.t : Math.min(nowT, this.sim.endT);
     const held = new Set(this.sim.steps[this.sim.steps.length - 1]?.real ?? []);
     // signal configs are not selected into seats: every config of an active signal runs (Real gate per symbol)
-    const { engine: selTapes, signal: sigTapes } = splitSignalTapes(this.tapes, this.wf);
+    const { engine: engineTapes, signal: sigTapes } = splitSignalTapes(this.tapes, this.wf);
+    // wf.seatSet "validated": the step selects from the validated set V of the last simulation (its ids), never from the
+    // pool; V is refreshed only by the next compute's Base + set evaluation
+    let selTapes = engineTapes;
+    let wfSel = this.wf;
+    if (!fast && this.wf.seatSet === "validated") {
+      assertSeatSet(this.wf);
+      let vc = this.validatedCache;
+      if (!vc || vc.sim !== this.sim || vc.tapes !== engineTapes) {
+        const v = this.sim.validated ? new Set(this.sim.validated) : yield* validatedSetGen(engineTapes, t, this.wf);
+        vc = this.validatedCache = { sim: this.sim, tapes: engineTapes, v, list: validatedTapes(engineTapes, v, this.wf) };
+      }
+      selTapes = vc.list;
+      wfSel = { ...this.wf, validated: vc.v };
+    }
     // (slices between the opening passes over every tape: together they were one 0.5 s step at 21 symbols)
     yield 0;
     // per-range selection modes (wf.rangeOpts[tag].mode), as the simulation selects; null = one selection
-    const groups = fast ? null : modeGroups(selTapes, this.wf);
+    const groups = fast ? null : modeGroups(selTapes, wfSel);
     const { picks, eligible } = fast
       ? this.lastSelection!
       : withProbe(
           groups
-            ? yield* selectGroupsGen(groups, t, this.wf, held)
-            : this.wf.mode === "durable"
-              ? selectDurable(selTapes, t, this.wf, held)
-              : this.wf.mode === "fixed"
-                ? yield* selectFixedGen(selTapes, t, this.wf)
-                : selectAt(selTapes, t, this.wf),
+            ? yield* selectGroupsGen(groups, t, wfSel, held)
+            : wfSel.mode === "durable"
+              ? selectDurable(selTapes, t, wfSel, held)
+              : wfSel.mode === "fixed"
+                ? yield* selectFixedGen(selTapes, t, wfSel)
+                : selectAt(selTapes, t, wfSel),
           selTapes,
           t,
-          this.wf,
+          wfSel,
         );
     if (!fast) this.lastSelection = { picks, eligible };
     const tSelect = performance.now() - tp0;
@@ -6802,6 +6841,8 @@ export function basePass(
   /** grid.baseCells: per pair, the passed cells of the ranges it passed (protectCellKey); absent while the option is off */
   pairCells: Record<string, readonly string[]>;
   added: number;
+  /** the pairs grid.allSets added for measurement (not Base-passed) */
+  addedKeys: Set<string>;
 } {
   const pairTags: Record<string, string[]> = {};
   const pairCells: Record<string, readonly string[]> = {};
@@ -6841,6 +6882,7 @@ export function basePass(
   // × hold; the evaluation alone decides the seats. (Every pair's whole grid: ~12 M Micro tapes on 8 symbols.)
   // (`added`: the pairs allSets builds for measurement that did not pass Base — never counted as passed)
   let added = 0;
+  const addedKeys = new Set<string>();
   if (s.grid?.allSets === true) {
     const best = new Map<string, ComboRun>();
     for (const r of s1) {
@@ -6859,11 +6901,12 @@ export function basePass(
       if (!inPassed.has(k)) {
         passed.push(r);
         inPassed.add(k);
+        addedKeys.add(k);
         added++;
       }
     }
   }
-  return { passed, pairTags, pairTps, pairCells, added };
+  return { passed, pairTags, pairTps, pairCells, added, addedKeys };
 }
 
 function protectFloors(s: CoreSettings): EntryFloors {
@@ -7122,11 +7165,13 @@ export function withCarried(
   built: ConfigTape[],
   prev: readonly ConfigTape[],
   tags: ReadonlySet<string>,
+  /** a carried tape this rejects (not among the current compute's Base-passed cells) is kept held-only: it manages its open position, takes no seat */
+  allow?: (t: ConfigTape) => boolean,
 ): ConfigTape[] {
   const ids = new Set(built.map((t) => t.id));
-  const carried = prev.filter(
-    (t) => !isSignalInd(t.ind) && !!t.protect.tag && tags.has(t.protect.tag) && !ids.has(t.id),
-  );
+  const carried = prev
+    .filter((t) => !isSignalInd(t.ind) && !!t.protect.tag && tags.has(t.protect.tag) && !ids.has(t.id))
+    .map((t) => (allow && !t.heldOnly && !allow(t) ? { ...t, heldOnly: true } : t));
   return carried.length ? [...built, ...carried] : built;
 }
 

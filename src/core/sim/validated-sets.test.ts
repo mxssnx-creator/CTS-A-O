@@ -155,3 +155,111 @@ describe("B2: the validated set V", () => {
     assert.equal(JSON.stringify(r.value.picks), JSON.stringify(full.picks));
   });
 });
+
+import { cellAllowed, passedCellsOf } from "./walkforward.ts";
+import { withCarried } from "../server/runtime.server.ts";
+
+describe("B3: Base pass keyed by cell", () => {
+  const u3 = makeUniverse([barsFromCandles("A-USDT", 15, syntheticCandles("A-USDT", 15, 1800, T_END, 3))]);
+  const p3 = "follow|rsi-mom-14-20";
+  const s3 = { ...DEFAULT_SETTINGS, gates: { ...DEFAULT_SETTINGS.gates, minPf: 0.5, baseSetsMinPf: 0.5, minTrades: 1, maxDdr: 0 } };
+  const tp3 = buildTapes(u3, protectGrid(15, { ...DEFAULT_SETTINGS.grid, holdH: [16] }), 0.002, undefined, new Set([p3]), null, undefined, { minSl: 0, minTrail: 0 });
+  const ranged = tp3.filter((t) => t.protect.tag);
+
+  it("a tape of a range whose cell Base did not pass is not allowed; a range or pair without cells keeps the pair level", () => {
+    assert.ok(ranged.length > 4);
+    const keep = ranged.slice(0, 2);
+    const cells = passedCellsOf({ [p3]: keep.map((t) => protectCellKey(t.protect)) });
+    const o = { basePassedCells: cells };
+    for (const t of keep) assert.equal(cellAllowed(t, o), true);
+    const sameTag = ranged.filter((t) => t.protect.tag === keep[0].protect.tag && !keep.includes(t));
+    assert.ok(sameTag.length > 0);
+    for (const t of sameTag) assert.equal(cellAllowed(t, o), false, t.id);
+    for (const t of tp3.filter((x) => !x.protect.tag || !cells[p3].tags.has(x.protect.tag))) assert.equal(cellAllowed(t, o), true);
+    assert.equal(cellAllowed(sameTag[0], {}), true, "off without the option");
+  });
+
+  it("the selection seats no tape outside the passed cells, whatever built it", () => {
+    const u4 = makeUniverse([
+      barsFromCandles("A-USDT", 15, syntheticCandles("A-USDT", 15, 1800, T_END, 3)),
+      barsFromCandles("B-USDT", 15, syntheticCandles("B-USDT", 15, 1800, T_END, 5)),
+      barsFromCandles("C-USDT", 15, syntheticCandles("C-USDT", 15, 1800, T_END, 9)),
+    ]);
+    const all = buildTapes(u4, protectGrid(15, { ...DEFAULT_SETTINGS.grid, holdH: [16] }), 0.002, undefined, new Set(["follow|ema-21-55", "revert|z-50-2"]));
+    const byId = new Map(all.map((x) => [x.id, x]));
+    const o = { ...defaultWalkForward(s3), longH: 96, preH: 20, gates: { ...s3.gates, minPf: 1.0, minTrades: 3, maxDdr: 0 } };
+    let checked = 0;
+    for (let i = 1; i <= 40 && !checked; i++) {
+      const t = u4.nowT - (40 - i) * 6 * H;
+      const picks = selectFixed(all.slice(), t, o).picks.map((p) => byId.get(p.id)!);
+      const victim = picks.find((x) => x.protect.tag);
+      if (!victim) continue;
+      const pair = `${victim.bot}|${victim.ind}`;
+      // Base passed every cell of the pair's ranges but the victim's
+      const cells = passedCellsOf({ [pair]: all.filter((x) => `${x.bot}|${x.ind}` === pair && x.protect.tag && x !== victim).map((x) => protectCellKey(x.protect)) });
+      const ov = { ...o, basePassedCells: cells };
+      assert.equal(cellAllowed(victim, ov), false);
+      const after = selectFixed(all.slice(), t, ov).picks.map((p) => p.id);
+      assert.ok(!after.includes(victim.id), "the cell Base did not pass takes no seat");
+      for (const id of after) assert.ok(cellAllowed(byId.get(id)!, ov), `${id} seated outside the passed cells`);
+      checked++;
+    }
+    assert.ok(checked > 0, "a range config was seated in the pool (the check is not vacuous)");
+  });
+
+  it("a carried tape outside the current passed cells becomes held-only; the others stay seat-able", () => {
+    const cells = passedCellsOf({ [p3]: ranged.slice(0, 2).map((t) => protectCellKey(t.protect)) });
+    const tag = ranged[0].protect.tag!;
+    const out = withCarried([], tp3, new Set([tag]), (t) => cellAllowed(t, { basePassedCells: cells }));
+    assert.ok(out.length > 2);
+    for (const t of out) assert.equal(!!t.heldOnly, !cellAllowed(t, { basePassedCells: cells }), t.id);
+    assert.ok(out.some((t) => t.heldOnly) && out.some((t) => !t.heldOnly));
+    assert.ok(withCarried([], tp3, new Set([tag])).every((t) => !t.heldOnly), "no allow: as today");
+  });
+
+  it("grid.allSets pairs are reported apart (addedKeys) and carry no cells", () => {
+    const g = { ...grid, baseCells: true, allSets: true };
+    const s = { ...s3, grid: g };
+    const runs = baseRuns(u3, [{ bot: "follow", ind: IND }], s.cost, s.tactics, false, false, undefined, baseRangeProtects(g, s.cost), undefined, false, s.gates, true);
+    const bp = basePass(runs, s as never);
+    assert.equal(bp.pairCells[p3], undefined);
+    assert.equal(bp.added, bp.addedKeys.size);
+  });
+});
+
+import { dcaProtectGrid } from "./walkforward.ts";
+
+describe("B6: skip what cannot seat", () => {
+  const u6 = makeUniverse([barsFromCandles("A-USDT", 15, syntheticCandles("A-USDT", 15, 1800, T_END, 3))]);
+  const pr = "follow|rsi-mom-14-20";
+  const other = "revert|z-50-2";
+  const protects: Protect[] = [
+    { tp: 0.012, sl: 0.012, trail: 0, hold: 64, tag: "mn" },
+    { tp: 0.02, sl: 0.02, trail: 0, hold: 64 },
+  ];
+  const dcaOpt = { protects: dcaProtectGrid(15), dca: DEFAULT_SETTINGS.dca, axis: { ...DEFAULT_SETTINGS.axis, enabled: true } as never };
+  const build = (floors: object, pairs = [pr, other]) =>
+    buildTapes(u6, protects, 0.002, dcaOpt as never, new Set(pairs), null, undefined, { minSl: 0, minTrail: 0, ...floors });
+  const kinds = (ts: ConfigTape[]) => [...new Set(ts.map((t) => t.kind))].sort();
+
+  it("a DCA / Axis set is not built while its toggle is off, except a held id", () => {
+    const all = build({});
+    assert.ok(kinds(all).includes("dca") && kinds(all).includes("axis"), kinds(all).join());
+    const noDca = build({ skipDca: true });
+    assert.ok(!kinds(noDca).includes("dca") && !kinds(noDca).includes("dca-active") && kinds(noDca).includes("axis"));
+    const noAxis = build({ skipAxis: true });
+    assert.ok(!kinds(noAxis).includes("axis") && kinds(noAxis).includes("dca"));
+    const held = all.find((t) => t.kind === "dca")!.id;
+    assert.ok(build({ skipDca: true, heldIds: new Set([held]) }).some((t) => t.id === held), "the held id keeps its tape");
+  });
+
+  it("a held pair that did not pass Base builds only its held ids; a passed pair is untouched", () => {
+    const all = build({});
+    const held = all.find((t) => t.ind === "z-50-2" && t.kind === "normal")!.id;
+    const got = build({ heldPairsOnly: new Set([other]), heldIds: new Set([held]) });
+    assert.deepEqual(got.filter((t) => `${t.bot}|${t.ind}` === other).map((t) => t.id), [held]);
+    assert.equal(got.filter((t) => `${t.bot}|${t.ind}` === pr).length, all.filter((t) => `${t.bot}|${t.ind}` === pr).length);
+    assert.ok(got.find((t) => t.id === held)!.heldOnly, "held-only: no new seat");
+    assert.equal(build({ heldPairsOnly: new Set([other]) }).filter((t) => `${t.bot}|${t.ind}` === other).length, 0);
+  });
+});
