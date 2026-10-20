@@ -1,4 +1,10 @@
-# Direction and empty-symbol causes — 20 October 2026
+# GitHub merge scope — 21 October 2026
+
+The user explicitly instructed "Merge github" for PR 182 after receiving the documented partial profitability result. This authorizes merging the verified admission fixes while retaining the losing multi-range window; it supersedes the earlier keep-draft instruction below. It does not establish a profitable release or change live settings, deployments or venue orders. Backup `backup/main-before-pr182-20261021` preserves main `4588030b946740d493cf0e0d629aa2722aa6211c`.
+
+Merge preparation found two failed CI workflows on `6ed27d61`: Exit verification stopped at a stale UI fixture treating the implemented Breakeven suffix as unknown, and the archived 17 October study correctly rejected the changed economic-source inventory. The UI fixture now covers all five supported Exit families/directions and retains malformed/unknown rejection. The archived data/research chain is explicit workflow-dispatch only, matching the already reviewed PR 185 change; automatic current-code build, worker, report/audit and independent-config checks remain active. Economic source hashes and the study's strict source-drift guard are unchanged. Final local follow-up: app/components **80/80**, exact-study guards **9/9**, TypeScript and workflow YAML validation pass. The 499 segmented source checks and original economic results below remain unchanged; a full default/core green run is still not claimed.
+
+# Direction and empty-symbol causes — 20 October 2026 (pre-merge evidence)
 
 Frozen production implementation: `b545bfda5280de4b8b5afcd29141fbc7e813d850`, including direction fix `d61c1fadaba89c5b6808b914e6246d1b34d982ed`. Published code checkpoint: `26a5107e5b931493dee3878b3274ca315fe282be`, exact local tree `bf8fb60609f182e4a2d86966590ef96dcaa940f9`. Draft review: https://github.com/mxssnx-creator/CTS-A-O/pull/182. Main remains `4588030b946740d493cf0e0d629aa2722aa6211c`; no live reload, account/database change or venue action occurred. The earlier pooled-direction admission policy below is superseded.
 
