@@ -58,6 +58,7 @@ type Msg = { evaluationFromT?: number } & (
       tactics: unknown;
       /** one representative cell per range (baseRangeProtects) and each range's shortest lane */
       rangeProtects?: unknown[];
+      completeRangeProtects?: unknown[];
       rangeMinTf?: Record<string, number>;
       microOwnInds?: MicroIndRule;
       gates?: unknown;
@@ -313,6 +314,7 @@ parentPort!.on("message", (m: Msg) => {
         m.rangeMinTf,
         m.microOwnInds,
         m.gates as never,
+        (m.completeRangeProtects ?? []) as never,
       );
       parentPort!.postMessage({
         id: m.id,

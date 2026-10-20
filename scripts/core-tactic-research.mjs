@@ -13,8 +13,8 @@ import { bothSides, simulate } from "../src/core/sim/backtest.ts";
 import { profitFactor, statsOf } from "../src/core/metrics/stats.ts";
 import { DEFAULT_TACTICS, PF_NO_LOSS } from "../src/core/config.ts";
 
-import { POSITION_COST_RT } from "../src/core/model-cost.ts";
-export const COST = POSITION_COST_RT;
+import { RT_COST } from "../src/core/model-cost.ts";
+export const COST = RT_COST;
 export const LANES = Object.freeze([
   { tf: 1, combined: false }, { tf: 1, combined: true },
   { tf: 5, combined: false }, { tf: 5, combined: true },
@@ -217,7 +217,7 @@ export function runResearch(market, { splitT, groups = researchGroups(), grid = 
   const pool = (ts, ms) => ({ closed: summarize(ts, data.endT), openAtEnd: ms.length, withOpenMarks: markedSummary(ts, ms, data.endT), context: contextBreakdown(ts, data.endT) });
   return { schema: "cts-tactic-research-v1", data: { ...data, splitT, split: iso(splitT),
       isSourceCandles: Object.values(prefix).reduce((s, cs) => s + cs.length, 0) },
-    protocol: { mode, bot: "follow", cost: COST, costBasis: "static roundtrip notional return deduction; 0.1% per side; no separate funding or extra slippage model",
+    protocol: { mode, bot: "follow", cost: COST, costBasis: "static roundtrip notional return deduction; 0.075% per side including modeled slippage; no second fee deduction",
       direction: "long and short independent", screen, selection: "IS-qualified first, then highest IS endpoint-marked net-return sum; closed net, sample count and ID break ties",
       oosPolicy: "fresh flat slots; full causal prior context; next-open entry >= split; settled exit <= endpoint",
       noLossSentinel: PF_NO_LOSS, marks: "open positions marked at final completed close with full modeled roundtrip cost; not settled closes",

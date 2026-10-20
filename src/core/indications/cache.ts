@@ -153,6 +153,11 @@ export class SeriesCache {
     if (!mk) return null;
     return this.memo("mkt", () => mk.src.ref(this.b, mk.tf, mk.factor));
   }
+  reference(sym: string): MarketRef | null {
+    const mk = this.mk;
+    if (!mk) return null;
+    return this.memo(`peer:${sym}`, () => mk.src.reference(this.b, sym, mk.tf, mk.factor));
+  }
   period(ms: number) {
     const b = this.b;
     return this.memo(`per${ms}`, () => I.periodLevels(b.t, b.h, b.l, b.c, b.o, b.v, ms));

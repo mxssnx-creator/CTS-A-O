@@ -16,7 +16,7 @@ import { tacticCooldown } from "../src/core/indications/filters.ts";
 import { sideSignal, simulate } from "../src/core/sim/backtest.ts";
 import { profitFactor } from "../src/core/metrics/stats.ts";
 import { DEFAULT_TACTICS, PF_NO_LOSS } from "../src/core/config.ts";
-import { POSITION_COST_RT } from "../src/core/model-cost.ts";
+import { RT_COST } from "../src/core/model-cost.ts";
 import { validateMarket, maskEntries } from "./core-tactic-research.mjs";
 
 export const sha256 = (value) => createHash("sha256").update(value).digest("hex");
@@ -42,7 +42,7 @@ export function researchCells(protocol) {
     sha256(JSON.stringify(protects)) !== FROZEN_PROTECTS_SHA256
   )
     throw new Error("Frozen protects differ from the predeclared research grid");
-  if (protocol.model.roundTripCost !== POSITION_COST_RT) throw new Error("Frozen PositionCost must remain 0.2% round trip");
+  if (protocol.model.roundTripCost !== RT_COST) throw new Error("Frozen model must be resealed at the canonical 0.15% round trip; archived outcomes are unchanged");
   const floors = protocol.preOutcomeModelClarification?.signalFloors;
   if (stable(floors ?? {}) !== stable(FROZEN_SIGNAL_FLOORS))
     throw new Error("Frozen Signal floors differ from the predeclared research floors");

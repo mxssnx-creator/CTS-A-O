@@ -130,7 +130,7 @@ const CASES: Record<string, Case> = {
   symbolRank: oneOf(["volatility1h", "volume", "market", "gainers", "losers"]),
   cycleMs: num(100, 600_000),
   tickMs: num(50, 10_000),
-  cost: num(0, 0.02),
+  cost: num(0, 0.0015),
   "fees.taker": num(0, 0.01),
   "fees.maker": num(0, 0.01),
   "fees.slippage": num(0, 0.02),
@@ -188,7 +188,7 @@ const CASES: Record<string, Case> = {
   "tactics.cooldownBars": num(0, 96),
   focus: oneOf(
     [[], ["follow|rsi-mom-14-20@x4"]],
-    [["Follow|X"], ["follow"], Array.from({ length: 201 }, () => "a|b")],
+    [["Follow|X"], ["follow"], Array.from({ length: 1001 }, () => "a|b")],
   ),
   pinned: oneOf(
     [[], ["follow|bb-walk@x4"]],

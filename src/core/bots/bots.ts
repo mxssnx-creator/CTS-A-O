@@ -3,6 +3,7 @@
 import type { BotType, Side, Tactics } from "../domain/types.ts";
 import type { SeriesCache } from "../indications/cache.ts";
 import { tacticKeyFor, withTactics } from "../indications/filters.ts";
+import { isInverseInd } from "../indications/inverse-config.ts";
 import { indicationState, laneOf } from "../indications/registry.ts";
 
 export interface BotSpec {
@@ -143,6 +144,8 @@ export function botTrigger(type: BotType, k: SeriesCache): Int8Array | null {
 /** Final entry signal for a bot × indication combo. Returns null when the combo is not defined. */
 export function comboSignal(bot: BotType, ind: string, k: SeriesCache): Int8Array | null {
   return k.memo(`combo:${bot}:${ind}`, () => {
+    // An Inverse source already reverses its input before entry. Never reverse it again via a Bot/preset.
+    if (isInverseInd(laneOf(ind).base) && bot !== "follow" && bot !== "exit") return new Int8Array(k.b.n);
     const st = indicationState(ind, k);
     if (bot === "follow" || bot === "revert" || bot === "exit") {
       if (!st) return null;

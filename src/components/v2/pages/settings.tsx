@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { progressText } from "@/core/progress";
+import { boundedModelCost, DEFAULT_MODEL_FEES, MAX_MODEL_RT_COST } from "@/core/model-cost";
+import { MICRO_CONFIG_IDS, MICRO_METHODS } from "@/core/indications/micro-family";
 import { TACTIC_TECHNIQUES } from "@/core/indications/tactic";
 import {
   breakFocusCoverage,
@@ -7,6 +9,8 @@ import {
   includeBreakInFocus,
   includeRelateInFocus,
   includeTacticInFocus,
+  includeMicroInFocus,
+  microFocusCoverage,
   relateFocusCoverage,
   tacticFocusCoverage,
 } from "../indication-ui";
@@ -49,6 +53,36 @@ const TACTIC_IDS = TACTIC_TECHNIQUES.flatMap((technique) =>
 );
 const RELATE_IDS = RELATE_CONFIG_IDS;
 const BREAK_IDS = BREAK_CONFIG_IDS;
+
+function MicroFocusInfo(props: {
+  focus: string[];
+  pinned: string[];
+  disabled: boolean;
+  onInclude: () => void;
+}) {
+  const coverage = microFocusCoverage(props.focus, MICRO_CONFIG_IDS, props.pinned);
+  return (
+    <div className="v2-lines" style={{ gap: 8 }}>
+      <div className={props.disabled || coverage.covered === 0 ? "v2-warn" : "v2-muted"}>
+        Micro:{" "}
+        {props.disabled ? "off" : `${coverage.covered}/${coverage.total} variants in Base focus`}.
+        {MICRO_METHODS.length} independent techniques/combinations, two profiles, seven 1/5/15m subsets.
+      </div>
+      <button
+        type="button"
+        className="v2-btn"
+        disabled={!props.disabled && coverage.full === coverage.total}
+        onClick={props.onInclude}
+      >
+        Include Micro in Base focus
+      </button>
+      <div className="v2-muted">
+        Micro, Minimal and Short retain independent TP/SL/trailing evaluations; Exit has a separate
+        source switch. Each higher timeframe uses completed bars. Save to apply.
+      </div>
+    </div>
+  );
+}
 
 function TacticFocusInfo(props: {
   focus: string[];
@@ -811,7 +845,10 @@ export function SignalsSettings(props: {
           />
         </Field>
       </div>
-      <Field label="Signal peak-gap ratios" hint="Independent trailing configurations: ratio × activation gives the gap from the favorable peak. Stops, activation and peak gaps are capped at 2% of entry; no change to fixed Normal TP/SL or qualification gates.">
+      <Field
+        label="Signal peak-gap ratios"
+        hint="Independent trailing configurations: ratio × activation gives the gap from the favorable peak. Stops, activation and peak gaps are capped at 2% of entry; no change to fixed Normal TP/SL or qualification gates."
+      >
         <List value={g.trailRatios ?? [1]} onChange={(v) => set(["trailRatios"], v)} />
       </Field>
       <div className="v2-grid v2-cols-2">
@@ -983,7 +1020,15 @@ export function SignalsSettings(props: {
         </Field>
       </div>
       <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
-        {counts.total} configured percent / ATR / trailing-only cells per signal ({counts.pct} eligible percent + {counts.atr} eligible ATR + {counts.trailingOnly} trailing only, TP None); {counts.activeTotal} currently meet the reference trail floor{counts.inactiveTrailingOnly ? ` · ${counts.inactiveTrailingOnly} trailing-only cells below minTrail are inactive` : ""}. Eligible cells qualify independently per full source, range, lane, type, symbol and direction. Master Trailing controls execution of both trailing types; disabled sets still retain held-position protection.
+        {counts.total} configured percent / ATR / trailing-only cells per signal ({counts.pct}{" "}
+        eligible percent + {counts.atr} eligible ATR + {counts.trailingOnly} trailing only, TP
+        None); {counts.activeTotal} currently meet the reference trail floor
+        {counts.inactiveTrailingOnly
+          ? ` · ${counts.inactiveTrailingOnly} trailing-only cells below minTrail are inactive`
+          : ""}
+        . Eligible cells qualify independently per full source, range, lane, type, symbol and
+        direction. Master Trailing controls execution of both trailing types; disabled sets still
+        retain held-position protection.
       </div>
       <div style={{ borderTop: "1px solid var(--v-border)", paddingTop: 10 }}>
         <div
@@ -1513,7 +1558,9 @@ export function RangeEditor(props: {
       minTrail: props.defaults.minTrail,
       ...(props.defaults.minTf !== undefined ? { minTf: props.defaults.minTf } : {}),
       ...(props.defaults.maxHoldMin !== undefined ? { maxHoldMin: props.defaults.maxHoldMin } : {}),
-      ...(props.defaults.tpNetOfCost !== undefined ? { tpNetOfCost: props.defaults.tpNetOfCost } : {}),
+      ...(props.defaults.tpNetOfCost !== undefined
+        ? { tpNetOfCost: props.defaults.tpNetOfCost }
+        : {}),
       ...(props.defaults.ownInds !== undefined ? { ownInds: props.defaults.ownInds } : {}),
       ...(props.defaults.minSlNet !== undefined ? { minSlNet: props.defaults.minSlNet } : {}),
     });
@@ -2502,7 +2549,7 @@ export function SettingsPage() {
             label="Position cost (round trip, %)"
             hint="= 2 × (taker + slippage) · set the components below, or directly · 0 – 2"
           >
-            <Num pct min={0} max={0.02} value={s.cost} onChange={(v) => set(["cost"], v)} />
+            <Num pct min={0} max={MAX_MODEL_RT_COST} value={s.cost} onChange={(v) => set(["cost"], v)} />
           </Field>
           <Field
             label="Base order unit (% of balance)"
@@ -2805,6 +2852,11 @@ export function SettingsPage() {
                       onChange={(v) => set(["exitStrategy", "includeTactics"], v)}
                     />
                     <Switch
+                      label="Micro"
+                      checked={exits.includeMicro === true}
+                      onChange={(v) => set(["exitStrategy", "includeMicro"], v)}
+                    />
+                    <Switch
                       label="Relations"
                       checked={exits.includeRelations !== false}
                       onChange={(v) => set(["exitStrategy", "includeRelations"], v)}
@@ -3015,7 +3067,7 @@ export function SettingsPage() {
       <div className="v2-grid v2-cols-2">
         <Panel
           title="Position cost"
-          sub="as charged on the exchange, per side — the engine deducts 2 × (taker + slippage) on every closed position"
+          sub="Modeled round-trip cost: 2 × (taker + slippage), capped at 0.15%, deducted once per closed funded unit. Actual exchange fees remain separate."
         >
           <div className="v2-grid v2-cols-3">
             <Field label="Taker fee (%)" hint="BingX standard 0.05">
@@ -3027,7 +3079,7 @@ export function SettingsPage() {
                 value={s.fees?.taker ?? 0.0005}
                 onChange={(v) => {
                   set(["fees", "taker"], v);
-                  set(["cost"], +(2 * (v + (s.fees?.slippage ?? 0.0005))).toFixed(5));
+                  set(["cost"], boundedModelCost(+(2 * (v + (s.fees?.slippage ?? DEFAULT_MODEL_FEES.slippage))).toFixed(5)));
                 }}
               />
             </Field>
@@ -3047,17 +3099,17 @@ export function SettingsPage() {
                 step={0.001}
                 min={0}
                 max={0.02}
-                value={s.fees?.slippage ?? 0.0005}
+                value={s.fees?.slippage ?? DEFAULT_MODEL_FEES.slippage}
                 onChange={(v) => {
                   set(["fees", "slippage"], v);
-                  set(["cost"], +(2 * ((s.fees?.taker ?? 0.0005) + v)).toFixed(5));
+                  set(["cost"], boundedModelCost(+(2 * ((s.fees?.taker ?? DEFAULT_MODEL_FEES.taker) + v)).toFixed(5)));
                 }}
               />
             </Field>
           </div>
           <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)", marginTop: 6 }}>
             Round trip deducted per position: <strong>{((s.cost ?? 0) * 100).toFixed(3)} %</strong>.
-            With auto-cost on, it is raised to the measured live cost once 40+ fills were measured.
+            Auto-cost may use measured fills up to the 0.15% model ceiling. Net paper returns are not charged again; actual owned fees remain uncapped.
           </div>
         </Panel>
         <Panel
@@ -3269,6 +3321,18 @@ export function SettingsPage() {
             })}
           </div>
           <div style={{ marginTop: 10 }}>
+            <MicroFocusInfo
+              focus={s.focus ?? []}
+              pinned={s.pinned ?? []}
+              disabled={(s.disabledKinds ?? []).includes("micro")}
+              onInclude={() => {
+                set(["focus"], includeMicroInFocus(s.focus ?? [], MICRO_CONFIG_IDS));
+                set(
+                  ["disabledKinds"],
+                  (s.disabledKinds ?? []).filter((kind: string) => kind !== "micro"),
+                );
+              }}
+            />
             <TacticFocusInfo
               focus={s.focus ?? []}
               pinned={s.pinned ?? []}

@@ -23,7 +23,7 @@ import {
   type CoreSettings,
   type SettingsPatch,
 } from "../config.ts";
-import { roundTripCostFromFees } from "../model-cost.ts";
+import { boundedModelCost, MAX_MODEL_RT_COST, roundTripCostFromFees } from "../model-cost.ts";
 import {
   gateMinimalPlus,
   microIndRule,
@@ -42,6 +42,7 @@ import { microSpecs, type MicroIndRule } from "../indications/micro.ts";
 import { isBreakRelInd } from "../indications/break-config.ts";
 import { sharedFeed } from "../market/shared-feed.ts";
 import { catchUp } from "./loop-budget.ts";
+import { ExecutionProgress, type ExecutionProgressStats } from "./execution-progress.ts";
 import {
   evalFamilyMatch,
   familiesNarrowBase,
@@ -146,6 +147,7 @@ import {
   rangeAppliesTo,
   type BaseRangeCount,
   baseRangeProtects,
+  completeBaseRangeProtects,
   laneInds,
   makeUniverse,
   seriesOf,
@@ -323,7 +325,8 @@ const PENDING_STATUS_MS = 30_000;
  * the exchange book it acts on is re-read every live.syncMs.
  */
 const CONTROL_IDLE_MS = Number(process.env.CTS_CORE_CONTROL_IDLE_MS) || 1_000;
-const CONTROL_TRAIL_MS = 250;
+const CONTROL_TRAIL_MS = 100;
+export const EXECUTION_INTERVAL_MS = 100;
 /**
  * Realtime entries are Break-only by default. `1` enables every selected indication; `0`/`off` disables this path.
  * This keeps the new Break live path scoped while leaving the existing broad rollout explicitly operator-controlled.
@@ -608,6 +611,8 @@ export interface RuntimeStatus {
   errorsInRow: number;
   /** the fast tick (paper mark-to-market + live step) */
   tick?: TickStatus;
+  /** Dedicated execution checks. Lag is measured, never a guaranteed exchange latency. */
+  executionProgress?: ExecutionProgressStats;
   /** where Base runs: worker cores, or in-process and why */
   workers?: string;
   /** event-loop delay over the last compute (ms) */
@@ -957,6 +962,9 @@ export class CoreRuntime {
   /** live prices (public WebSocket) for the tick; null for the synthetic test market */
   stream: PriceStream | null = null;
   private tickTimer: ReturnType<typeof setTimeout> | null = null;
+  private executionProgress: ExecutionProgress | null = null;
+  /** Native holdings or pending execution survive the end of their paper lane. */
+  liveOrdersActive = false;
   /** the market is a replayed window (see the constructor option) */
   private replay = false;
   /** Complete offline replay universe before the first compute. */
@@ -990,6 +998,8 @@ export class CoreRuntime {
    * lanes end, stop repair, reduces).
    */
   private settingsStale = false;
+  /** Entry admission stays fenced until the changed settings have produced a complete paper book. */
+  private executionPending = false;
   /**
    * the compute that would take the changed settings is held back for memory (memWait): the live control runs on the
    * current book meanwhile, with the current live settings — it never stops for as long as the pressure lasts (bug
@@ -1365,6 +1375,7 @@ export class CoreRuntime {
 
   /** The tick: every tickMs, open paper positions marked to market and the live step (never overlapping). */
   private startTick() {
+    this.startExecutionProgress();
     if (this.tickTimer) return;
     if (!this.stream && this.market === "bingx" && this.priceStream)
       this.stream = this.priceStream();
@@ -1389,7 +1400,19 @@ export class CoreRuntime {
     loop();
   }
 
+  private startExecutionProgress() {
+    if (!this.executionProgress) {
+      this.executionProgress = new ExecutionProgress(
+        () => this.progressLive(),
+        EXECUTION_INTERVAL_MS,
+      );
+      this.status.executionProgress = this.executionProgress.stats;
+    }
+    this.executionProgress.start();
+  }
+
   private stopTick() {
+    this.executionProgress?.stop();
     if (this.tickTimer) clearTimeout(this.tickTimer);
     this.tickTimer = null;
     this.stream?.stop();
@@ -1688,7 +1711,10 @@ export class CoreRuntime {
       seen.positions !== this.paper.positions ||
       seen.live !== this.settings.live ||
       seen.bar !== this.status.lastBarT ||
-      since >= CONTROL_IDLE_MS ||
+      since >=
+        (this.liveOrdersActive || this.paper.positions.length > 0
+          ? EXECUTION_INTERVAL_MS
+          : CONTROL_IDLE_MS) ||
       (this.controlTrail && since >= CONTROL_TRAIL_MS);
     if (due) {
       this.controlSeen = {
@@ -1701,6 +1727,78 @@ export class CoreRuntime {
       this.controlTrail = false;
     }
     return due;
+  }
+
+  /** Changed settings cannot admit entries; existing owned stops/reductions keep progressing. */
+  executionEntryBlocked(): boolean {
+    return this.executionPending || this.settingsStale || this.resetUniverse;
+  }
+
+  /** Independent of the paper tick, bar pulls and strategy compute. Exchange calls remain serialized. */
+  private progressLive() {
+    if (
+      !this.stopped &&
+      (this.paperStepped || this.liveOrdersActive) &&
+      this.onLive &&
+      this.settings.live.enabled &&
+      !this.liveBusy &&
+      this.controlDue()
+    ) {
+      // the live step runs detached: the tick (marking to market) never waits on the exchange; a step never
+      // overlaps the previous one (no duplicate orders), and one in flight too long is reported
+      this.liveBusy = true;
+      this.liveStartedAt = Date.now();
+      const epoch = this.liveEpoch;
+      // overall mode never reads the pending entries (the control sizes its positions from the lanes): computed before
+      // every step (Block books, symbol stats, signal acceptance) they held the loop 0.5–1.6 s at a time and fed the
+      // collector's multi-second pauses (x02, 7 Oct profile) — there they only refresh the status' "pending:"
+      // reasons, every PENDING_STATUS_MS
+      let intents: LiveIntent[] = [];
+      if (!this.executionEntryBlocked() && (this.settings.live.mode ?? "overall") !== "overall") {
+        this.livePhase = "pending entries";
+        try {
+          intents = this.pendingEntries();
+        } catch (error) {
+          this.liveBusy = false;
+          this.livePhase = "";
+          throw error;
+        }
+        this.pendingAt = Date.now();
+      }
+      this.livePhase = "start";
+      void Promise.resolve()
+        .then(() => this.onLive!(this, intents, this.gen))
+        .catch((err) =>
+          this.db.event("error", `live step failed: ${err instanceof Error ? err.message : err}`),
+        )
+        .finally(() => {
+          // a step the watchdog abandoned never clears the flag of the step that replaced it
+          if (epoch !== this.liveEpoch) return;
+          this.liveBusy = false;
+          this.liveSlowNoted = false;
+          // the stall watch names the live phase in flight: none once the step is done (a stall between steps
+          // was booked on the last step's last phase — "Base · live lane orders" while nothing ran)
+          this.livePhase = "";
+        });
+    } else if (this.liveBusy && Date.now() - this.liveStartedAt > LIVE_STEP_LIMIT_MS) {
+      // watchdog: a step that never returns (an await without its own limit) would freeze Live for good — no
+      // opens, and no closes when lanes end. It is abandoned: its epoch is gone, so it sends nothing more (it
+      // checks alive() before every order), and the next tick starts a fresh step that re-reads the book.
+      const stuck = this.livePhase;
+      this.liveEpoch++;
+      this.liveBusy = false;
+      this.liveSlowNoted = false;
+      this.db.event(
+        "warn",
+        `live step abandoned after ${Math.round((Date.now() - this.liveStartedAt) / 1000)} s (waiting on: ${stuck || "?"}) — a new step takes over`,
+      );
+    } else if (this.liveBusy && !this.liveSlowNoted && Date.now() - this.liveStartedAt > 60_000) {
+      this.liveSlowNoted = true;
+      this.db.event(
+        "warn",
+        `live step in flight for over 60 s (waiting on: ${this.livePhase || "?"})`,
+      );
+    }
   }
 
   /** when the realtime market loop last pulled bars */
@@ -1834,68 +1932,19 @@ export class CoreRuntime {
             );
         });
       }
-      // live: decisions every tick on the newest paper book and prices (the exchange book is re-read over
-      // REST at most every live.syncMs, and at once after own orders)
-      const stale = (this.settingsStale && !this.memDeferred) || this.resetUniverse;
+      // Status-only diagnostics stay off the dedicated execution timer.
       if (
-        !stale &&
         this.paperStepped &&
-        this.onLive &&
         this.settings.live.enabled &&
-        !this.liveBusy &&
-        this.controlDue()
+        this.onLive &&
+        (this.settings.live.mode ?? "overall") === "overall" &&
+        !this.executionEntryBlocked() &&
+        Date.now() - this.pendingAt >= PENDING_STATUS_MS
       ) {
-        // the live step runs detached: the tick (marking to market) never waits on the exchange; a step never
-        // overlaps the previous one (no duplicate orders), and one in flight too long is reported
-        this.liveBusy = true;
-        this.liveStartedAt = Date.now();
-        const epoch = this.liveEpoch;
-        // overall mode never reads the pending entries (the control sizes its positions from the lanes): computed before
-        // every step (Block books, symbol stats, signal acceptance) they held the loop 0.5–1.6 s at a time and fed the
-        // collector's multi-second pauses (x02, 7 Oct profile) — there they only refresh the status' "pending:"
-        // reasons, every PENDING_STATUS_MS
-        let intents: LiveIntent[] = [];
-        if (
-          (this.settings.live.mode ?? "overall") !== "overall" ||
-          Date.now() - this.pendingAt >= PENDING_STATUS_MS
-        ) {
-          this.livePhase = "pending entries";
-          intents = this.pendingEntries();
-          this.pendingAt = Date.now();
-        }
-        this.livePhase = "start";
-        void this.onLive(this, intents, this.gen)
-          .catch((err) =>
-            this.db.event("error", `live step failed: ${err instanceof Error ? err.message : err}`),
-          )
-          .finally(() => {
-            // a step the watchdog abandoned never clears the flag of the step that replaced it
-            if (epoch !== this.liveEpoch) return;
-            this.liveBusy = false;
-            this.liveSlowNoted = false;
-            // the stall watch names the live phase in flight: none once the step is done (a stall between steps
-            // was booked on the last step's last phase — "Base · live lane orders" while nothing ran)
-            this.livePhase = "";
-          });
-      } else if (this.liveBusy && Date.now() - this.liveStartedAt > LIVE_STEP_LIMIT_MS) {
-        // watchdog: a step that never returns (an await without its own limit) would freeze Live for good — no
-        // opens, and no closes when lanes end. It is abandoned: its epoch is gone, so it sends nothing more (it
-        // checks alive() before every order), and the next tick starts a fresh step that re-reads the book.
-        const stuck = this.livePhase;
-        this.liveEpoch++;
-        this.liveBusy = false;
-        this.liveSlowNoted = false;
-        this.db.event(
-          "warn",
-          `live step abandoned after ${Math.round((Date.now() - this.liveStartedAt) / 1000)} s (waiting on: ${stuck || "?"}) — a new step takes over`,
-        );
-      } else if (this.liveBusy && !this.liveSlowNoted && Date.now() - this.liveStartedAt > 60_000) {
-        this.liveSlowNoted = true;
-        this.db.event(
-          "warn",
-          `live step in flight for over 60 s (waiting on: ${this.livePhase || "?"})`,
-        );
+        this.pendingEntries();
+        this.pendingAt = Date.now();
       }
+      this.progressLive();
       const st = this.stream?.stats() ?? null;
       const prev = this.status.tick ?? blankTick();
       this.status.tick = {
@@ -2049,6 +2098,7 @@ export class CoreRuntime {
     if (typeof self.backfillKey !== "string") self.backfillKey = "";
     if (self.audit === undefined) self.audit = null;
     if (typeof self.paperStepped !== "boolean") self.paperStepped = false;
+    if (typeof self.executionPending !== "boolean") self.executionPending = !!self.settingsStale;
     if (!self.baseConfigRunner) {
       this.baseConfigs = null;
       this.baseConfigRunner = this.makeBaseConfigRunner();
@@ -2057,6 +2107,8 @@ export class CoreRuntime {
     if (typeof self.lastTrim !== "number") self.lastTrim = 0;
     if (self.stream === undefined) self.stream = null;
     if (self.tickTimer === undefined) self.tickTimer = null;
+    if (self.executionProgress === undefined) self.executionProgress = null;
+    if (typeof self.liveOrdersActive !== "boolean") self.liveOrdersActive = false;
     if (typeof self.ticking !== "boolean") self.ticking = false;
     if (typeof self.liveBusy !== "boolean") self.liveBusy = false;
     if (typeof self.liveStartedAt !== "number") self.liveStartedAt = 0;
@@ -2076,7 +2128,7 @@ export class CoreRuntime {
     if (typeof self.lastLiveEmit !== "number") self.lastLiveEmit = 0;
     if (typeof self.lastEmittedState !== "string") self.lastEmittedState = "";
     // a running runtime from an older module version gets the tick loop it did not have
-    if (!this.stopped && this.status.state !== "idle" && !self.tickTimer) this.startTick();
+    if (!this.stopped && this.status.state !== "idle") this.startTick();
     if (typeof self.lastAuditKey !== "string") self.lastAuditKey = "";
     if (typeof self.tickersAt !== "number") self.tickersAt = 0;
     if (typeof self.workersBroken !== "boolean") self.workersBroken = false;
@@ -2123,7 +2175,7 @@ export class CoreRuntime {
     // limits on the MERGED settings (a patch alone could bypass them across several saves)
     // position cost follows its components when they are edited (taker fee + slippage per side, × 2)
     if (patch.fees && patch.cost === undefined)
-      next.cost = +roundTripCostFromFees(next.fees).toFixed(5);
+      next.cost = boundedModelCost(+roundTripCostFromFees(next.fees).toFixed(5));
     const variants = gridVariants(next.grid);
     // a high ceiling, not a working limit (operator: process freely): it only catches a grid that would not fit in
     // memory at all
@@ -2250,6 +2302,7 @@ export class CoreRuntime {
   kick() {
     this.dirty = true;
     this.settingsStale = true;
+    this.executionPending = true;
     this.status.pending = true;
     if (!this.busy && !this.stopped) this.schedule(0);
   }
@@ -2502,6 +2555,8 @@ export class CoreRuntime {
           this.busyPhase = "";
         }
         this.paperStepped = true;
+        if (gen === this.gen && !this.dirty && !this.resetUniverse && !this.settingsStale)
+          this.executionPending = false;
         // the public signal that this compute's book is ready: the seats (paper.selected) are the new tapes'
         this.status.paperSteps = (this.status.paperSteps ?? 0) + 1;
         this.status.paperCompute = this.status.computes;
@@ -3423,6 +3478,7 @@ export class CoreRuntime {
         s.cost,
         s.tactics,
         baseRangeProtects(s.grid, s.cost),
+        completeBaseRangeProtects(s.grid, s.cost),
         rangeMinTfOf(s.grid),
         // the gates decide which cell a range keeps (rangeCellPass in the worker): a gates patch must recompute
         // every combo, not reuse cells chosen under the old gates
@@ -3455,6 +3511,7 @@ export class CoreRuntime {
               cost: s.cost,
               tactics: s.tactics,
               rangeProtects: baseRangeProtects(s.grid, s.cost),
+              completeRangeProtects: completeBaseRangeProtects(s.grid, s.cost),
               rangeMinTf: rangeMinTfOf(s.grid),
               microOwnInds: microOwnInds(s.grid),
               gates: s.gates,
@@ -4647,7 +4704,9 @@ export class CoreRuntime {
           base.startsWith("tactic-") ||
           base.startsWith("relate-") ||
           base.startsWith("break-rel-") ||
-          base.startsWith("break-mc-rel-")
+          base.startsWith("break-mc-rel-") ||
+          base.startsWith("micro-") ||
+          base.startsWith("inverse-")
         );
       };
       const measuredRuns = pipeline.s1.filter((r) => isMeasuredIndication(r.ind));
@@ -4664,7 +4723,7 @@ export class CoreRuntime {
       const kinds = (["normal", "trailing", "dca", "dca-active", "axis"] as const).filter((kind) =>
         kindExecutable(kind, wf.toggles),
       );
-      const enabled = ["tactic", "relate", "break"].some(
+      const enabled = ["tactic", "relate", "break", "micro", "inverse"].some(
         (kind) => !s.disabledKinds?.includes(kind),
       );
       const reason = !enabled
@@ -5375,10 +5434,16 @@ export class CoreRuntime {
     const a = this.settings.adjust;
     if (!a?.enabled) return;
     const lc = this.liveCost();
-    const excess = lc ? Math.max(0, lc.rt - this.settings.cost) : 0;
+    // Paper returns already contain the modeled cost once; owned net returns already contain actual fees.
+    const excess = 0;
     if (lc) this.db.kvSet("liveCost", { ...lc, model: this.settings.cost, at: Date.now() });
-    if (a.autoCost && lc && lc.rt > this.settings.cost + 0.0002) {
-      this.updateSettings({ cost: +Math.min(0.02, lc.rt).toFixed(5) });
+    if (
+      a.autoCost &&
+      lc &&
+      lc.rt > this.settings.cost + 0.0002 &&
+      this.settings.cost < MAX_MODEL_RT_COST
+    ) {
+      this.updateSettings({ cost: boundedModelCost(+lc.rt.toFixed(5)) });
       this.db.event(
         "warn",
         `auto-cost: measured live round trip ${(lc.rt * 100).toFixed(3)} % > model — engine cost raised`,
@@ -6273,6 +6338,7 @@ export class CoreRuntime {
     exitBaseEvaluated: number;
   }> {
     const rangeProtects = baseRangeProtects(s.grid, s.cost);
+    const completeRangeProtects = completeBaseRangeProtects(s.grid, s.cost);
     const rangeMinTf = rangeMinTfOf(s.grid);
     const micro = microOwnInds(s.grid);
     const byPair = new Map<string, ComboRun[]>();
@@ -6301,6 +6367,7 @@ export class CoreRuntime {
               cost: s.cost,
               tactics: s.tactics,
               rangeProtects,
+              completeRangeProtects,
               rangeMinTf,
               microOwnInds: micro,
               gates: s.gates,
@@ -6331,6 +6398,7 @@ export class CoreRuntime {
             rangeMinTf,
             micro,
             s.gates,
+            completeRangeProtects,
           );
           for (const x of rs) add(x);
           yield i;
@@ -9661,7 +9729,7 @@ function mergeSettings(
   }
   const live = { ...out.live, maxPositions: exchangePositionLimit(out.live.maxPositions) };
   delete (live as unknown as Record<string, unknown>).maxSymbols;
-  return normalizeLanes({ ...out, live });
+  return normalizeLanes({ ...out, cost: boundedModelCost(out.cost), live });
 }
 
 /**
@@ -9734,7 +9802,15 @@ const G = globalThis as unknown as {
 
 async function liveStep(r: CoreRuntime, intents: LiveIntent[], gen: number) {
   const { stepLive } = await import("./live.server.ts");
-  await stepLive(r, intents, gen);
+  const result = await stepLive(r, intents, gen);
+  // Errors/disabled reads are not proof that a previously owned position disappeared.
+  if (!result.error && result.enabled) {
+    r.liveOrdersActive = result.control
+      ? result.control.held.some((p) => p.qty > 0) ||
+        (result.control.laneOrders?.pending ?? 0) > 0 ||
+        result.control.actions.some((a) => /execution-pending/.test(a.msg ?? ""))
+      : true;
+  }
 }
 
 // ── One runtime per exchange connection ─────────────────────────────────────────────────────────────────────

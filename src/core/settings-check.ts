@@ -1,5 +1,6 @@
 // Range checks for a settings patch, shared by the Settings page, the preset dialog and presets (pure: testable).
 import { GRID_VARIANTS_MAX, MAX_EXCHANGE_POSITIONS, type CoreSettings } from "./config.ts";
+import { MAX_MODEL_RT_COST } from "./model-cost.ts";
 import { INDICATION_KINDS } from "./domain/types.ts";
 import { validPromotedLaneProof } from "./live-promote.ts";
 
@@ -40,7 +41,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
         throw new Error(`forced symbol ${String(x)}: like XRP or XRP-USDT`);
   }
   num(s.live?.minStopPct, 0.001, 0.2, "minimum stop");
-  num(s.cost, 0, 0.02, "cost");
+  num(s.cost, 0, MAX_MODEL_RT_COST, "modeled round-trip cost (maximum 0.15%)");
   num(s.armTop, 1, 40, "armTop");
   num(s.mainTop, 0, 100_000, "mainTop");
   if (s.grid?.minSlEval !== undefined) num(s.grid.minSlEval, 0.0005, 0.05, "grid.minSlEval");
@@ -254,7 +255,12 @@ export function checkSettings(s: Partial<CoreSettings>) {
       // Exit lanes are filtered against the initialized universe at runtime. Retaining a selected
       // lane while the system lane list changes lets operators switch system lanes back on later.
     }
-    for (const key of ["includeTactics", "includeRelations", "includeCombined"] as const)
+    for (const key of [
+      "includeTactics",
+      "includeRelations",
+      "includeMicro",
+      "includeCombined",
+    ] as const)
       if (e[key] !== undefined && typeof e[key] !== "boolean")
         throw new Error(`historic exit ${key}: on / off`);
     num(e.lookbackH, 0, 720, "historic exit lookback (hours)");
@@ -317,8 +323,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
       throw new Error("disabledKinds: list of indication types");
   }
   if (s.focus !== undefined) {
-    if (!Array.isArray(s.focus) || s.focus.length > 200)
-      throw new Error("focus: up to 200 bot|indication pairs");
+    if (!Array.isArray(s.focus) || s.focus.length > 1000)
+      throw new Error("focus: up to 1000 bot|indication pairs");
     for (const f of s.focus)
       if (typeof f !== "string" || !/^[a-z]+\|[a-z0-9.@-]+$/.test(f))
         throw new Error(`focus entry ${String(f)} must be bot|indication`);
@@ -779,7 +785,10 @@ export function checkSettings(s: Partial<CoreSettings>) {
         if (xs !== undefined && xs.length > 8)
           throw new Error("signal Trailing only ranges: at most 8 values per list");
       num(g.trailingOnly.trailStep, 0.1, 2, "signal Trailing only trail step");
-      const n = (g.trailingOnly.sl?.length ?? 3) * (g.trailingOnly.trail?.length ?? 3) * (g.trailRatios?.length ?? 1);
+      const n =
+        (g.trailingOnly.sl?.length ?? 3) *
+        (g.trailingOnly.trail?.length ?? 3) *
+        (g.trailRatios?.length ?? 1);
       if (n > 64) throw new Error(`signal Trailing only grid too large (${n} configs, max 64)`);
     }
     num(g.holdH, 0.5, 96, "signal hold");

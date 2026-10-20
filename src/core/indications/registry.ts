@@ -11,6 +11,9 @@ import { research2Specs } from "./research2.ts";
 import { research3Specs } from "./research3.ts";
 import { research4Specs } from "./research4.ts";
 import { microSpecs } from "./micro.ts";
+import { inverseSpecs } from "./inverse.ts";
+import { INVERSE_TIMEFRAMES, isInverseInd } from "./inverse-config.ts";
+import { microFamilySpecs, inverseMicroSpecs } from "./micro-family.ts";
 import { rangeFamilySpecs } from "./range-families.ts";
 import { tacticSpecs } from "./tactic.ts";
 import {
@@ -1014,6 +1017,9 @@ for (const x of relateSpecs()) add(x);
 for (const x of breakSpecs()) add(x);
 // ── Micro range ("mc-…"): fast reversal entries for net 0.1–0.4 % targets (grid.micro.ownInds: only they trade Micro) ──
 for (const x of microSpecs()) add(x);
+for (const x of microFamilySpecs()) add(x);
+for (const x of inverseSpecs([...BASE_INDICATIONS, ...VARIANTS])) add(x);
+for (const x of inverseMicroSpecs()) add(x);
 
 // ── combined timeframes ─────────────────────────────────────
 // "<id>@x4": the indication on this timeframe, kept only where it agrees on the 4× timeframe (1h → 4h, 15m → 1h),
@@ -1083,7 +1089,8 @@ export function indicationState(id: string, k: SeriesCache): Int8Array | null {
     if (lane.base === "none") return null;
     if (!lane.combined) return indicationState(lane.base, k);
     // the higher enabled lanes (Bars.lanes): the ones laneInds generated the lane from, not the fixed ladder
-    const f = higherFactors(k.b.tfMin, k.b.lanes);
+    const ladder = isInverseInd(lane.base) ? (k.b.lanes ?? INVERSE_TIMEFRAMES).filter((tf) => (INVERSE_TIMEFRAMES as readonly number[]).includes(tf)) : k.b.lanes;
+    const f = higherFactors(k.b.tfMin, ladder);
     return f.length ? mtfState(lane.base, k, f) : indicationState(lane.base, k);
   }
   if (id === "none") return null;

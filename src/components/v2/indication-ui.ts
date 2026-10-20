@@ -1,5 +1,7 @@
 /** Keep the registered first-class indication name visible in every type selector. */
 export function indicationKindLabel(kind: string): string {
+  if (kind === "inverse") return "Inverse";
+  if (kind === "micro") return "Micro";
   if (kind === "tactic") return "Tactic";
   if (kind === "signal-coordination") return "Signals Coordination";
   if (kind === "relate") return "Relate";
@@ -38,6 +40,9 @@ export function includeRelateInFocus(focus: readonly string[], ids: readonly str
 export function includeBreakInFocus(focus: readonly string[], ids: readonly string[]): string[] {
   return includeIndicationsInFocus(focus, ids);
 }
+
+export const includeMicroInFocus = (focus: readonly string[], ids: readonly string[]) => includeIndicationsInFocus(focus, ids);
+export const microFocusCoverage = (focus: readonly string[], ids: readonly string[], pinned: readonly string[] = []) => indicationFocusCoverage(focus, ids, pinned);
 
 function includeIndicationsInFocus(focus: readonly string[], ids: readonly string[]): string[] {
   return focus.length ? [...new Set([...focus, ...ids.map((id) => `follow|${id}`)])] : [];

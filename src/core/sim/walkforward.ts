@@ -108,6 +108,7 @@ import { botFamilyOf } from "../bot-stats.ts";
 import { INDICATION_BY_ID, isSignalInd, laneOf, signalSourceOf } from "../indications/registry.ts";
 import { signalRangeOf } from "../signal-config.ts";
 import { isMicroInd, microIndFits, type MicroIndRule } from "../indications/micro.ts";
+import { isMicroCalculationInd as isMicroFamilyInd } from "../indications/micro-family.ts";
 import {
   acceptKey,
   activeSignals,
@@ -2073,7 +2074,8 @@ export function* buildTapesGen(
       // neither is a Base-gate hold, and a pair's tags already leave a floored range out (rangeAppliesTo), so
       // testing baseRange first labelled every lane-floor cell a gate hold (13 Oct: grid.allSets "cells held back")
       const why =
-        !exitConfig && !microIndFits(floors?.microOwnInds, p0.tag, microInd)
+        !exitConfig &&
+        !microIndFits(floors?.microOwnInds, p0.tag, microInd, isMicroFamilyInd(c.ind))
           ? "microOwnInds"
           : // (an untagged Wide cell reads the "wide" entry: grid.wideMinTf)
             !exitConfig && laneTf < (floors?.rangeMinTf?.[p0.tag ?? "wide"] ?? 0)

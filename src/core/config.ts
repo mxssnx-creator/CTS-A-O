@@ -1,3 +1,5 @@
+import { INVERSE_CONFIG_IDS } from "./indications/inverse-config.ts";
+import { MICRO_CONFIG_IDS, INVERSE_MICRO_CONFIG_IDS } from "./indications/micro-family.ts";
 import { PROVEN_WIDE_TRAIL_PAIRS } from "./proven-wide-trail.ts";
 // CTS-A Core v2 — authoritative defaults. Every number the engine uses lives here.
 import type {
@@ -13,10 +15,7 @@ import type {
 import { DEFAULT_SIGNALS, type SignalSettings } from "./signal-config.ts";
 import { DEFAULT_SIZING, type SizingSettings } from "./sizing.ts";
 import type { PromotedLaneProof } from "./live-promote.ts";
-import {
-  BREAK_DEFAULT_MICRO_CONFIG_IDS,
-  breakAnchorTf,
-} from "./indications/break-config.ts";
+import { BREAK_DEFAULT_MICRO_CONFIG_IDS, breakAnchorTf } from "./indications/break-config.ts";
 import { DEFAULT_MODEL_FEES, RT_COST } from "./model-cost.ts";
 export { RT_COST } from "./model-cost.ts";
 
@@ -322,6 +321,8 @@ export interface ExitStrategySettings {
   includeTactics: boolean;
   /** Include all Relate subsets, modes and guarded/balanced activity profiles independently of Bot focus. */
   includeRelations: boolean;
+  /** Include first-class Micro techniques and exact timeframe subsets without Bot focus. */
+  includeMicro?: boolean;
   /** Evaluate each selected single-timeframe source plus its completed higher-timeframe confirmation lane. */
   includeCombined: boolean;
   /** prehistory horizon before the causal run cut; 0 uses all available prehistory */
@@ -625,6 +626,7 @@ export const DEFAULT_SETTINGS: CoreSettings = {
     timeframes: [1, 5, 15],
     includeTactics: true,
     includeRelations: true,
+    includeMicro: true,
     includeCombined: true,
     lookbackH: 168,
     trainFraction: 0.6,
@@ -656,7 +658,13 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   sizing: DEFAULT_SIZING,
   toggles: DEFAULT_TOGGLES,
   tactics: DEFAULT_TACTICS,
-  focus: [...PREVIOUS_DEFAULT_FOCUS_17OCT, ...BREAK_MICRO_FOCUS_17OCT],
+  focus: [
+    ...PREVIOUS_DEFAULT_FOCUS_17OCT,
+    ...BREAK_MICRO_FOCUS_17OCT,
+    ...MICRO_CONFIG_IDS.map((id) => `follow|${id}`),
+    ...INVERSE_CONFIG_IDS.map((id) => `follow|${id}`),
+    ...INVERSE_MICRO_CONFIG_IDS.map((id) => `follow|${id}`),
+  ],
   pinned: [...PROVEN_WIDE_TRAIL_PAIRS],
   disabledKinds: [],
   block: DEFAULT_BLOCK,

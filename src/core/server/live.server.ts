@@ -995,6 +995,7 @@ async function runStep(rt: CoreRuntime, intents: LiveIntent[], gen: number): Pro
   const s = rt.settings.live;
   // entries mode reads the book over REST: with nothing new to send it runs at most every syncMs, not every tick
   const L = local(rt);
+  if (rt.executionEntryBlocked?.()) intents = [];
   const fresh = intents.filter((i) => !L.entriesSent.has(intentKey(i)));
   if (!fresh.length && L.lastEntries && Date.now() - L.lastEntries.at < (s.syncMs ?? 1000))
     return L.lastEntries.status;
@@ -3191,6 +3192,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       ? `opening paused${typeof s.openPaused === "string" ? `: ${s.openPaused}` : ""}`
       : null;
     const openBlock =
+      (rt.executionEntryBlocked?.() ? "settings awaiting computation; existing positions protected" : null) ??
       notReady ?? (unit === null ? "account balance unknown — not sizing" : null) ?? marginLow ?? paused;
     // the room above the floor for this step: the account snapshot can be up to ~75 s old (client cache + exchange
     // read cache), so the margin of own opens in that time is taken off as well (counted twice at worst — safe side)

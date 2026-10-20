@@ -47,6 +47,8 @@ export const INDICATION_KINDS = [
   "smooth",
   "tactic",
   "relate",
+  "micro",
+  "inverse",
 ] as const;
 export type IndicationKind = (typeof INDICATION_KINDS)[number];
 
