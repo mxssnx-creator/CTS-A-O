@@ -48,7 +48,7 @@ const sample = (pf: number) =>
     4,
   );
 
-function tape(ind: string, pf: number, protect: Protect = P) {
+function tape(ind: string, pf: number, protect: Protect = P, otherSymbolPf?: number) {
   const id = configId("follow", ind, protect);
   const trades: Trade[] = Array.from({ length: 2000 }, (_, i) => ({
     cfg: id,
@@ -59,13 +59,15 @@ function tape(ind: string, pf: number, protect: Protect = P) {
     entry: 100,
     exit: 100,
     r: i % 2 ? -0.01 : pf * 0.01,
+    mult: 1,
     kind: "normal",
     reason: i % 2 ? "sl" : "tp",
     bars: 1,
     mfe: 0,
     mae: 0,
   }));
-  return makeTape(id, "follow", ind, protect, "normal", ["A"], trades, [], []);
+  if (otherSymbolPf !== undefined) trades.push(...trades.map(t => ({ ...t, sym: "B", r: t.r > 0 ? otherSymbolPf * 0.01 : t.r })));
+  return makeTape(id, "follow", ind, protect, "normal", otherSymbolPf === undefined ? ["A"] : ["A", "B"], trades, [], []);
 }
 
 const OPTIONS = {
@@ -178,11 +180,12 @@ describe("first-class indication minimum return PF is consistent from Base throu
     const strong = tape(IND, 1.2);
     const legacy = tape(OTHER, 1.08);
     const ctx = { sym: "A", side: 1 };
-    assert.deepEqual(execDecision(weak, NOW, OPTIONS, ctx), { ok: false, why: "lastN" });
+    assert.deepEqual(execDecision(weak, NOW, OPTIONS, ctx), { ok: false, why: "directionValidation" });
     assert.equal(execDecision(strong, NOW, OPTIONS, ctx).ok, true);
     assert.equal(execDecision(legacy, NOW, OPTIONS, ctx).ok, true);
     const symbolOnly = { ...OPTIONS, lastN: 0, symGate: "vetoSide" as const };
-    assert.deepEqual(execDecision(weak, NOW, symbolOnly, ctx), { ok: false, why: "symPf" });
+    const symbolWeak = tape(IND, 1.08, P, 1.2); // B qualifies the direction, while A must pass its own symbol gate.
+    assert.deepEqual(execDecision(symbolWeak, NOW, symbolOnly, ctx), { ok: false, why: "symPf" });
     assert.equal(execDecision(strong, NOW, symbolOnly, ctx).ok, true);
   });
 });

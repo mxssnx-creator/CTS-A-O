@@ -1,4 +1,6 @@
 # Integrated PR 185 checkpoint — 20 October 2026
+Final fixture follow-up: the integrated full core run reached all 209 files with 2,476 passes, nine stale fixture failures and two slow skips. The five corrected files pass **137/137**: separate positive config-direction proof for candidate-book tests, a fixed pending-bar clock, true Trade-return loss changes rather than detached prefix-sum edits, correct 4% mark-to-stop arithmetic, per-direction hand-counted validation and separate symbol-PF proof. Production code and the v6 economic source seal are unchanged. Final complete CI is linked in PR 185.
+
 
 Current integrated code **`597670092e3f385d9786fd023d4ddbba66a99939`** preserves main **`dc8c3bb6a8a4d6176157534a6a9ecbf5773740f8`** (PR 182); backup `backup/main-before-pr185-20261020-dc8c3bb` exists. Engine direction/proven-symbol guards coexist with stricter Signal config/symbol/direction proof, capped trailing-only and weighted DCA. A reproduced Signal held-only cache defect is fixed: red before, 14/14 isolation cases green after. Integration made no venue/deployment/settings writes. X02 was reconfirmed read-only at 22:18:58.324Z with zero positions/orders.
 

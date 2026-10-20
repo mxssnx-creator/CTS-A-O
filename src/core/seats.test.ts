@@ -28,6 +28,7 @@ function tape(
   r: number,
   every = 4,
   tag = "x",
+  lossScale = 1,
 ): ConfigTape {
   const ts: Trade[] = [];
   for (let h = 0; h < 336; h += every)
@@ -39,7 +40,8 @@ function tape(
       exitT: (h + 1) * H,
       entry: 1,
       exit: 1,
-      r: h % 5 === 0 ? -r / 2 : r,
+      r: h % 5 === 0 ? (-r / 2) * lossScale : r,
+      mult: 1,
       reason: "tp",
       bars: 4,
       mfe: 0,
@@ -99,8 +101,7 @@ describe("Real seats", () => {
     const one = selectDurable([base, dcaGood], now, { ...fam, familySeats: false, seatPer: "pair" }, new Set()).picks;
     assert.equal(one.length, 1);
     // a DCA tape worse than the base is not seated
-    const dcaWorse = tape("follow", "rsi@m15", "dca-active", 0.01, 4, "w");
-    for (let i = 1; i <= dcaWorse.n; i++) dcaWorse.gl[i] *= 1.5;
+    const dcaWorse = tape("follow", "rsi@m15", "dca-active", 0.01, 4, "w", 1.5);
     const p2 = selectDurable([base, dcaWorse], now, fam, new Set()).picks.map((p) => p.id);
     assert.deepEqual(p2, [base.id]);
     // a DCA tape on a pair without any base result to beat is not seated
@@ -123,8 +124,7 @@ describe("Real seats", () => {
     assert.deepEqual(ids([base, axis, lone], false), [axis.id, base.id, lone.id].sort(), "off: every passing config seats");
     assert.deepEqual(ids([base, axis, lone], true), [axis.id, base.id].sort(), "on: the lone ladder (no base seated) does not");
     // the base fails its evaluation: its pair's ladder loses its seat too
-    const weak = tape("follow", "rsi@m15", "normal", 0.01, 4, "w");
-    for (let i = 1; i <= weak.n; i++) weak.gl[i] *= 40;
+    const weak = tape("follow", "rsi@m15", "normal", 0.01, 4, "w", 40);
     assert.deepEqual(ids([weak, axis], true), []);
     // a trailing base counts as the pair's base
     const tr = tape("follow", "rsi@m15", "trailing", 0.01, 4, "t");
