@@ -1,7 +1,7 @@
 {
   "schema": "cts-micro-optimization-plan-v1",
   "classification": "Preregistered retrospective chronological comparison, not unseen forward or native evidence",
-  "sourceSha256": "3b6b05207292a9fc625fabeae7bd4e06260f8854e474d62d6d78620c2e26146a",
+  "sourceSha256": "8855f27c677a7d4b93e9b39a56667edb26f98ad5a0edc6d668efa0cc45b83539",
   "feedParentSha256": "1373d0a7fab7528d0528573385e19dfecf6f4ab353194231c639103af29aadcd",
   "methods": 26,
   "microIdentities": 364,
@@ -70,13 +70,17 @@
     "validation": "Seal selection once, then run the exact chosen hold/focus unchanged on validation and confirmation; do not select again from either outcome"
   },
   "preserve": "All training arms and later losses/empty outcomes remain published. No production gate weakened; all target/stop/trail cells remain independently qualified. Fixed $2 model notional is not proof of venue minimum fills.",
-  "revision": 2,
+  "revision": 3,
   "trainingCases": {
-    "standard": "runs/micro-opt-train-standard-v3",
-    "fast": "runs/micro-opt-train-fast-v3"
+    "standard": "runs/micro-opt-train-standard-v4",
+    "fast": "runs/micro-opt-train-fast-v4"
   },
   "preflightNotes": [
     "Original below-floor equity sizing was rejected before scoring; current actual scenario uses fixed $2 modeled notional and a $10,000 modeled balance.",
-    "The first training attempt was interrupted for a durable non-dispatch restart correction, without a completed scored result; original unscored protocols are retained."
-  ]
+    "The first training attempt was interrupted for a durable non-dispatch restart correction, without a completed scored result; original unscored protocols are retained.",
+    "Both v3 standard attempts were rejected by the unchanged memory guard during external workspace load. Neither produced a complete scored result; evidence remains retained.",
+    "Before any completed training score, the central runtime gained exact execution-to-tape unit-return checks. A reporting-hour boundary bug in the new stage audit was corrected to the existing settledHourT convention. No production signal, gate or economic calculation changed.",
+    "v4 protocols reseal that audit-only source change. Reproduction feed is a lossless 96h subset of the verified original feed. Each prepared 48h training feed and its normalized settings/WF must match the original unscored protocols exactly."
+  ],
+  "caseRevision": "v4"
 }

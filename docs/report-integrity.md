@@ -33,3 +33,13 @@ the same data — the basis for any default change (docs/positive-coordinations.
 1. `node --experimental-strip-types --no-warnings --test src/core/report-page.test.ts` passes.
 2. The run log ends with `checks: N/N ok` and the variants baseline "reproduces the session run".
 3. The page opens without a console error (`runs/htmlcheck.mjs`-style Chromium load: zero `pageerror`).
+
+## Same simulated cohort: mandatory PF equality — 20 October 2026
+
+A source tape and its executed **simulation** must have identical unit returns and PF for the **same** config × symbol × side × entry × exit sample. Normalize an explicitly recorded external execution multiplier exactly once. Do not deduct the modeled round-trip cost again. Missing provenance, a missing close, a duplicate close or a different return is an audit failure, never a no-loss winner.
+
+`auditStateGen` now checks each simulated execution against its exact source tape after every compute, alongside the existing PF/trade-list and one-time-cost checks. `tapeReturnIndex` uses the exact config and settlement identity; sibling wins cannot satisfy it. `audit-negative.test.ts` corrupts source returns, identities, timestamps and multipliers and verifies failures. `sim/simulation-parity.test.ts` covers 168 type/range/lane/side combinations. `scripts/audit-simulation-parity.mjs RAW_JSON OUT_JSON` independently reconciles saved tapes and executions, with hourly and range PF on identical samples. Its regression rejects doubled costs, duplicates, wrong directions and unknown multiplier evidence.
+
+Do not label historical gate-window PF as the later execution PF. Preserve the window, gate stage, funded/virtual status, closed/marked status and unit/cash basis with each value. On the archived 20-symbol replay, 416,561 overlapping historical config closes give gate PF 2.38235474; the later 49,259 funded simulated closes give **both** source-tape and execution PF 0.218922909, with zero per-trade discrepancies. This is a measured difference between samples, not authority to rewrite losses.
+
+A separate bug in the new Micro stage audit grouped exits exactly on an hour into the next reporting hour. It now uses the central `settledHourT`: an exit at 01:00 belongs to the completed 00:00–01:00 reporting hour. The regression includes a boundary example that previously changed the positive-hour count from one to two. Execution admission clocks deliberately differ where their documented half-open decision window requires it; do not blindly replace clock buckets with reporting buckets. The correction affects reporting and research selection hour counts, not the archived aggregate PF.

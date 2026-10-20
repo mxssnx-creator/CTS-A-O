@@ -1,0 +1,219 @@
+{
+  "schema": "cts-micro-legacy-comparison-v1",
+  "feedSha256": "7cd1feaf3590379a0f62129ae6822903dad4019c8163523933976ca19a4109f9",
+  "verifiedOriginalClosePrices": 3330,
+  "referenceCheckpoint": "15c31e5ea86d930c6c25c25bf9c51801ba15382b",
+  "currentSourceSha256": "3b6b05207292a9fc625fabeae7bd4e06260f8854e474d62d6d78620c2e26146a",
+  "sources": {
+    "original": {
+      "rawSha256": "ab7d96b846b5ad87d35b329575763834be046333bda68375e828b7db0ef693c1",
+      "cost": 0.002,
+      "window": {
+        "startT": 1792015200000,
+        "endT": 1792036800000
+      },
+      "all": {
+        "closes": 483,
+        "gp": 2.225246179676694,
+        "gl": 0.6292330116221838,
+        "pf": 3.5364422059483727,
+        "pfState": "measured"
+      },
+      "ordinary": {
+        "closes": 439,
+        "gp": 2.0616201731963653,
+        "gl": 0.5327944629649447,
+        "pf": 3.869447444561769,
+        "pfState": "measured"
+      },
+      "exit": {
+        "closes": 44,
+        "gp": 0.1636260064803369,
+        "gl": 0.09643854865723914,
+        "pf": 1.69668673739476,
+        "pfState": "measured"
+      }
+    },
+    "reference": {
+      "rawSha256": "cf4c6ea5844189ee6b06228f6be11d86d8f565caaf6fb22d77797f680e5643a5",
+      "cost": 0.0015,
+      "window": {
+        "startT": 1792015200000,
+        "endT": 1792036800000
+      },
+      "all": {
+        "closes": 1038,
+        "gp": 3.617932650970278,
+        "gl": 1.9059564198601338,
+        "pf": 1.8982242265727016,
+        "pfState": "measured"
+      },
+      "ordinary": {
+        "closes": 968,
+        "gp": 3.4286460026360386,
+        "gl": 1.7679992881297952,
+        "pf": 1.9392801940904,
+        "pfState": "measured"
+      },
+      "exit": {
+        "closes": 70,
+        "gp": 0.18928664833423953,
+        "gl": 0.1379571317303376,
+        "pf": 1.3720685981224576,
+        "pfState": "measured"
+      }
+    },
+    "current": {
+      "rawSha256": "f7c14887d874a489867ac3a733975a1459da1194047e554c370c47074ba27b26",
+      "cost": 0.0015,
+      "window": {
+        "startT": 1792015200000,
+        "endT": 1792036800000
+      },
+      "all": {
+        "closes": 1082,
+        "gp": 3.6448411292351053,
+        "gl": 1.9921371400715893,
+        "pf": 1.8296135621988978,
+        "pfState": "measured"
+      },
+      "ordinary": {
+        "closes": 962,
+        "gp": 3.394087789415966,
+        "gl": 1.7679992881297952,
+        "pf": 1.9197336855300777,
+        "pfState": "measured"
+      },
+      "exit": {
+        "closes": 120,
+        "gp": 0.2507533398191394,
+        "gl": 0.2241378519417928,
+        "pf": 1.1187460647399192,
+        "pfState": "measured"
+      }
+    }
+  },
+  "paired": {
+    "identicalTradeKeysAndUnitReturns": 962,
+    "shared": {
+      "closes": 962,
+      "gp": 3.394087789415966,
+      "gl": 1.7679992881297952,
+      "pf": 1.9197336855300777,
+      "pfState": "measured"
+    },
+    "added": {
+      "closes": 120,
+      "gp": 0.2507533398191394,
+      "gl": 0.2241378519417928,
+      "pf": 1.1187460647399192,
+      "pfState": "measured"
+    },
+    "removed": {
+      "closes": 76,
+      "gp": 0.22384486155431133,
+      "gl": 0.1379571317303376,
+      "pf": 1.6225682481704313,
+      "pfState": "measured"
+    },
+    "addedOrdinary": {
+      "closes": 0,
+      "gp": 0,
+      "gl": 0,
+      "pf": null,
+      "pfState": "empty"
+    },
+    "removedOrdinary": {
+      "closes": 6,
+      "gp": 0.03455821322007184,
+      "gl": 0,
+      "pf": null,
+      "pfState": "no-loss-gate-score-4"
+    },
+    "addedKinds": [
+      "exit"
+    ],
+    "removedKinds": [
+      "exit",
+      "normal",
+      "trailing"
+    ]
+  },
+  "removedOrdinaryDecisions": [
+    {
+      "cfg": "follow|break-vol@x4@m5|tp0.95|sl4.5125|tr0|h288|mc",
+      "sym": "ADA-USDT",
+      "side": -1,
+      "entryT": 1792031100000,
+      "config": {
+        "ok": false,
+        "fail": "lcb",
+        "pf": 2.0589812332439603,
+        "n": 13,
+        "net": 4.937499999999964,
+        "gp": 9.59999999999996,
+        "gl": 4.662499999999998
+      },
+      "context": true
+    },
+    {
+      "cfg": "follow|break-vol@x4@m5|tp0.95|sl4.5125|tr0.7125|h288|mc",
+      "sym": "ADA-USDT",
+      "side": -1,
+      "entryT": 1792031100000,
+      "config": {
+        "ok": false,
+        "fail": "lcb",
+        "pf": 1.859517241806137,
+        "n": 13,
+        "net": 4.0675889192333345,
+        "gp": 8.799999999999965,
+        "gl": 4.732411080766631
+      },
+      "context": true
+    },
+    {
+      "cfg": "follow|break-vol@x4@m5|tp0.95|sl4.5125|tr0.475|h288|mc",
+      "sym": "SOL-USDT",
+      "side": -1,
+      "entryT": 1792032000000,
+      "config": null,
+      "context": null
+    },
+    {
+      "cfg": "follow|break-vol@x4@m5|tp0.95|sl4.75|tr0.475|h288|mc",
+      "sym": "SOL-USDT",
+      "side": -1,
+      "entryT": 1792032000000,
+      "config": null,
+      "context": null
+    },
+    {
+      "cfg": "follow|break-vol@x4@m5|tp0.95|sl4.5125|tr0.475|h288|mc",
+      "sym": "LINK-USDT",
+      "side": -1,
+      "entryT": 1792032000000,
+      "config": null,
+      "context": null
+    },
+    {
+      "cfg": "follow|break-vol@x4@m5|tp0.95|sl4.75|tr0.475|h288|mc",
+      "sym": "LINK-USDT",
+      "side": -1,
+      "entryT": 1792032000000,
+      "config": null,
+      "context": null
+    }
+  ],
+  "currentEntryChecks": {
+    "checked": 1082,
+    "violations": []
+  },
+  "notes": [
+    "Original report used 0.20% modeled costs. Both reconstructed source runs use identical 0.15% costs, fixed original Focus/settings and identical native prices/window; lowering costs also changes target discovery and therefore selection.",
+    "The original report lacks a source manifest. The handoff checkpoint is a reconstructed reference, not authentication of the original source bytes.",
+    "Current independent Historic Exit discovery and qualification differ from the earlier checkpoint; report ordinary and Exit samples separately.",
+    "Original and paired runs use the original uncapped 2% account fraction for comparison only. They exceed margin/equity and are not feasible deployment sizing.",
+    "Neither aggregate positive PF nor individual config selection on an already examined six-hour window establishes profitability on another window."
+  ]
+}

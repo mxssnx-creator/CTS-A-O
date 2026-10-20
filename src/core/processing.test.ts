@@ -10,8 +10,8 @@ import assert from "node:assert/strict";
 import { CoreRuntime } from "./server/runtime.server.ts";
 import { CoreDb } from "./server/db.server.ts";
 import { auditState } from "./audit.ts";
-import { walkForward, kindExecutable, type WalkForwardOptions } from "./sim/walkforward.ts";
-import { allCombos } from "./pipeline/pipeline.ts";
+import { walkForward, tapeExecutable, type WalkForwardOptions } from "./sim/walkforward.ts";
+import { allCombos, isPlainKind, isTrailingKind } from "./pipeline/pipeline.ts";
 import { INDICATIONS, indicationState, laneOf, isSignalInd } from "./indications/registry.ts";
 import { isRelateInd, relateAnchorTf } from "./indications/relate.ts";
 import { breakAnchorTf, isBreakRelInd } from "./indications/break-config.ts";
@@ -316,13 +316,13 @@ describe("processing through the stages, every strategy type, every toggle combi
         const k = kindOf(x) as never;
         // a signal's own base (signalOwnBase) trades whatever the engine's Normal / Block switches say: its Normal
         // always, its Trailing with the Trailing switch
-        if (sim.opts.signalOwnBase && (k === "normal" || k === "trailing") && isSignalInd(byId.get(x.cfg)!.ind)) {
-          if (k === "trailing") assert.ok(tg.trailing, `${JSON.stringify(tg)}: a signal trailing with Trailing off`);
+        if (sim.opts.signalOwnBase && isPlainKind(k) && isSignalInd(byId.get(x.cfg)!.ind)) {
+          if (isTrailingKind(k)) assert.ok(tg.trailing, `${JSON.stringify(tg)}: a signal trailing with Trailing off`);
           continue;
         }
-        assert.ok(kindExecutable(k, tg), `${JSON.stringify(tg)}: a ${k} trade executed`);
-        if (k === "trailing") assert.ok(tg.trailing, "Trailing off: no trailing");
-        if ((k === "normal" || k === "trailing") && !tg.normal)
+        assert.ok(tapeExecutable(byId.get(x.cfg)!, { ...sim.opts, toggles: tg }), `${JSON.stringify(tg)}: a ${k} trade executed`);
+        if (isTrailingKind(k)) assert.ok(tg.trailing, "Trailing off: no trailing");
+        if ((k === "normal" || isTrailingKind(k)) && !tg.normal)
           assert.ok((x.level ?? 0) > 0 && tg.block, `${JSON.stringify(tg)}: an unraised ${k} with Normal off`);
         if (k === "dca") assert.ok(tg.dca && !tg.dcaActive);
         if (k === "dca-active") assert.ok(tg.dca && tg.dcaActive);
@@ -364,7 +364,7 @@ describe("processing through the stages, every strategy type, every toggle combi
     if (own(withNT.sim) !== "")
       assert.ok(ks.has("dca") || ks.has("axis"), `DCA / Axis trade with Normal + Trailing off: ${[...ks].join(",")}`);
     else t.diagnostic("no DCA / Axis config cleared its gates on this minute's synthetic market");
-    assert.ok(!ks.has("normal") && !ks.has("trailing"));
+    assert.ok(!ks.has("normal") && !ks.has("trailing") && !ks.has("trailing-only"));
     // one seat per pair (the default, related): DCA / Axis trade a pair only when they outscore the base there, so
     // turning Normal and Trailing off can only add DCA / Axis trades, never remove one
     const related = (normal: boolean) =>

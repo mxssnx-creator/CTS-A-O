@@ -2,7 +2,11 @@
 
 Status: research implementation; **not accepted as a profitable production release**. Read `report.html` or `summary.json`. Modeled PF is 0.218923, with 3 positive / 9 negative hours. The uncapped all-config sizing replay exceeds account margin; these counts are not feasible native fills.
 
-## What changed
+## Current continuation
+
+Current code contains 364 Micro + 364 inverse identities (26 techniques), including four added continuation/activity/direction methods. The financial replay below remains the original frozen 616-ID sample. Its exact-cohort reconciliation in `simulation-parity.json` matches all 49,259 tape/execution closes and unit returns: PF 0.218922909 on both sides, every hour and range equal. The central runtime now checks this identity after each compute. See `../micro-legacy-2026-10-20/README.md` for the recovered older positive window, and `../micro-optimization-2026-10-20/plan.json` for the unscored 728-ID continuation.
+
+## What changed in the archived 616-ID replay
 
 - Micro has 22 methods, 2 profiles and every nonempty 1/5/15m subset: 308 independent IDs. Another 308 inverse IDs reverse the input signal before entry and qualify on their own net returns. The additional existing 114 inverse primitives remain separate.
 - Every configured TP/SL/trailing/hold cell is evaluated at Base for these families. Micro, Minimal, Short and General remain separate. Shared cached features do not share qualification or order identity. Worker and local results match for all 616 new IDs.

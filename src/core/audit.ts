@@ -98,6 +98,30 @@ export interface AuditInput {
 const close = (a: number, b: number, eps = 1e-6) =>
   Math.abs(a - b) <= eps * Math.max(1, Math.abs(a), Math.abs(b));
 
+/** Same simulated close, same unit return. Qualification windows are not an execution cohort. */
+export function tapeReturnIndex(tp: ConfigTape, trade: Trade): number {
+  if (tp.id !== trade.cfg) return -1;
+  const r = unitReturn(trade);
+  if (!Number.isFinite(r)) return -1;
+  let lo = 0,
+    hi = tp.n;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (tp.exitT[mid] < trade.exitT) lo = mid + 1;
+    else hi = mid;
+  }
+  for (let i = lo; i < tp.n && tp.exitT[i] === trade.exitT; i++)
+    if (
+      tp.entryT[i] === trade.entryT &&
+      tp.syms[tp.symI[i]] === trade.sym &&
+      tp.side[i] === trade.side &&
+      Number.isFinite(tp.r[i]) &&
+      close(tp.r[i], r, 1e-10)
+    )
+      return i;
+  return -1;
+}
+
 /** The audit run to completion (tests, CLI). The runtime drives auditStateGen so the live tick runs between slices. */
 export function auditState(inp: AuditInput): AuditReport {
   const g = auditStateGen(inp);
@@ -133,7 +157,12 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
         `${st.passed.size - missing.length} / ${st.passed.size}${missing.length ? ` · missing ${missing.slice(0, 3).join(", ")}` : ""}`,
       );
     }
-    const allow = new Set<string>([...st.passed, ...st.held, ...(st.pinned ?? []), ...(st.measured ?? [])]);
+    const allow = new Set<string>([
+      ...st.passed,
+      ...st.held,
+      ...(st.pinned ?? []),
+      ...(st.measured ?? []),
+    ]);
     const stray = [...st.main].filter((k) => !allow.has(k));
     add(
       "stages: Main ⊆ Base-validated ∪ held ∪ measured",
@@ -154,7 +183,10 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
         if (sigCfg(x.cfg)) {
           const act = activeAt(x.entryT);
           // the active set is keyed per side (a source's longs and shorts are activated on their own records)
-          if (act && !signalActiveHas(act, bot, ind, x.sym, x.side, x.kind ?? kindOfId(x.cfg), x.cfg))
+          if (
+            act &&
+            !signalActiveHas(act, bot, ind, x.sym, x.side, x.kind ?? kindOfId(x.cfg), x.cfg)
+          )
             badSignal++;
         } else if (!st.main.has(pair) && byId.get(x.cfg)?.kind !== "exit") badEngine++;
       }
@@ -182,6 +214,7 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
     let foreign = 0;
     let offKind = 0;
     let badR = 0;
+    let tapeMismatch = 0;
     for (const x of trades) {
       if (++ops % 256 === 0) yield ops;
       const tp = byId.get(x.cfg);
@@ -189,6 +222,7 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
       // the engine's own rule: a signal's own base trades whatever the engine's Normal / Block switches say
       else if (!tapeExecutable(tp, o)) offKind++;
       if (!Number.isFinite(x.r) || x.exitT < x.entryT) badR++;
+      if (!tp || tapeReturnIndex(tp, x) < 0) tapeMismatch++;
     }
     add(
       "lanes: trades come from Main tapes",
@@ -223,6 +257,11 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
       `${plainOff} unraised plain, ${trailOff} trailing`,
     );
     add("numbers: finite results, exit ≥ entry", badR === 0, `${badR} invalid`);
+    add(
+      "numbers: simulated executions retain their exact tape unit returns",
+      tapeMismatch === 0,
+      `${trades.length} compared by config, symbol, side, entry and exit · ${tapeMismatch} mismatched; external execution factors removed once`,
+    );
 
     // replay through the Real-stage rules with the causal book
     const order = [...trades].sort(
@@ -242,21 +281,30 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
     const firstBad: string[] = [];
     for (const x of order) {
       if (++ops % 256 === 0) yield ops;
-      while (ei < exits.length && exits[ei].exitT <= x.entryT) feedBooks(exits[ei++], book, guard, direction);
+      while (ei < exits.length && exits[ei].exitT <= x.entryT)
+        feedBooks(exits[ei++], book, guard, direction);
       const tp = byId.get(x.cfg);
       if (!tp) continue;
       checked++;
       const oAt = sim.signalSteps
         ? { ...o, signalActive: signalSetAt(sim.signalSteps, x.entryT) ?? new Set<string>() }
         : o;
-      const d = execDecision(tp, x.entryT, oAt as never, { book, guard, direction, sym: x.sym, side: x.side });
+      const d = execDecision(tp, x.entryT, oAt as never, {
+        book,
+        guard,
+        direction,
+        sym: x.sym,
+        side: x.side,
+      });
       if (!d.ok) {
         denied++;
         if (firstBad.length < 3) firstBad.push(`${x.cfg}@${x.sym} ${d.why}`);
         continue;
       }
       const rangeVol = rangeVolumeFactorFor(tp, sim.opts);
-      const mult = (x.mult ?? 1) / ((x.coordVol ?? 1) * (x.hedgeVol ?? 1) * (x.volFactor ?? 1) * (x.rangeVol ?? rangeVol));
+      const mult =
+        (x.mult ?? 1) /
+        ((x.coordVol ?? 1) * (x.hedgeVol ?? 1) * (x.volFactor ?? 1) * (x.rangeVol ?? rangeVol));
       if (!close(d.vol, mult)) {
         volMismatch++;
         if (firstBad.length < 3) firstBad.push(`${x.cfg}@${x.sym} vol ${mult} ≠ ${d.vol}`);
@@ -276,7 +324,9 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
       const over = trades.filter((x) => {
         const tp = byId.get(x.cfg);
         const rangeVol = tp && sim ? rangeVolumeFactorFor(tp, sim.opts) : 1;
-        const m = (x.mult ?? 1) / ((x.coordVol ?? 1) * (x.hedgeVol ?? 1) * (x.volFactor ?? 1) * (x.rangeVol ?? rangeVol));
+        const m =
+          (x.mult ?? 1) /
+          ((x.coordVol ?? 1) * (x.hedgeVol ?? 1) * (x.volFactor ?? 1) * (x.rangeVol ?? rangeVol));
         if (m < 1 - 1e-9) return true;
         if (!overall) return m > cap + 1e-9;
         const legs = Object.values(x.legs ?? {}).map((v) => v ?? 0);
@@ -297,7 +347,11 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
       const scaled = trades.filter((x) => {
         const tp = byId.get(x.cfg);
         const rangeVol = tp && sim ? rangeVolumeFactorFor(tp, sim.opts) : 1;
-        return !close((x.mult ?? 1) / ((x.coordVol ?? 1) * (x.hedgeVol ?? 1) * (x.volFactor ?? 1) * (x.rangeVol ?? rangeVol)), 1);
+        return !close(
+          (x.mult ?? 1) /
+            ((x.coordVol ?? 1) * (x.hedgeVol ?? 1) * (x.volFactor ?? 1) * (x.rangeVol ?? rangeVol)),
+          1,
+        );
       }).length;
       add("block: off → volume 1", scaled === 0, `${scaled} scaled`);
     }
@@ -488,18 +542,18 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
     const blk = sim?.opts.block;
     const maxMult = blk ? blockStackCap(blk) : Infinity;
     // Strip the independently configured range factor and Axis ladder weight before checking the Block stack.
-    const badVol = p.positions.filter(
-      (x) => {
-        const tp = ids.has(x.cfg) ? byId.get(x.cfg) : undefined;
-        const rangeVol = tp && sim ? rangeVolumeFactorFor(tp, sim.opts) : 1;
-        const blockVol = positionMult(x) / ((x.coordVol ?? 1) * (x.hedgeVol ?? 1) * (x.volFactor ?? 1) * (x.rangeVol ?? rangeVol));
-        return (
-          blockVol < 1 - 1e-9 ||
-          blockVol > maxMult + 1e-9 ||
-          Object.values(x.legs ?? {}).some((v) => (v ?? 0) > maxMult - 1 + 1e-9)
-        );
-      },
-    ).length;
+    const badVol = p.positions.filter((x) => {
+      const tp = ids.has(x.cfg) ? byId.get(x.cfg) : undefined;
+      const rangeVol = tp && sim ? rangeVolumeFactorFor(tp, sim.opts) : 1;
+      const blockVol =
+        positionMult(x) /
+        ((x.coordVol ?? 1) * (x.hedgeVol ?? 1) * (x.volFactor ?? 1) * (x.rangeVol ?? rangeVol));
+      return (
+        blockVol < 1 - 1e-9 ||
+        blockVol > maxMult + 1e-9 ||
+        Object.values(x.legs ?? {}).some((v) => (v ?? 0) > maxMult - 1 + 1e-9)
+      );
+    }).length;
     add(
       "paper: Block / relation volume within [1, max multiple]",
       badVol === 0,
