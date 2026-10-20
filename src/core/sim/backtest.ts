@@ -27,6 +27,8 @@ export interface SimResult {
   pending: Side | 0;
   /** ATR protect: the distances that pending entry trades with (resolved from the last closed bar) */
   pendingProtect?: Protect;
+  /** only from simulateFrom */
+  state?: SimState;
 }
 
 /** Protect values are tuned on this timeframe; lanes scale them (volatility √t, hold in equal time). */
@@ -80,12 +82,66 @@ export function atrProtect(a: AtrProtect, hold: number): Protect {
   return { tp: +(sl * a.tpRatio).toFixed(4), sl, trail, hold, atr: { ...a } };
 }
 
+/**
+ * The loop-carried state of `simulate` after its last processed bar: `simulateFrom` continues from it on the same
+ * series extended by new closed bars (the bars and signals before `i0` must be unchanged — a causal signal on
+ * closed bars is). Plain data: it can be stored with a tape.
+ */
+export interface SimState {
+  /** the bar index the loop resumes at (the bar count when the run ended on the last bar, else the flat index it stopped at) */
+  i0: number;
+  inPos: boolean;
+  side: Side;
+  entryI: number;
+  entry: number;
+  stop: number;
+  target: number;
+  peak: number;
+  trailOn: boolean;
+  mfe: number;
+  mae: number;
+  nextAllowed: number;
+  /** the protect in force (an ATR protect's resolved distances) */
+  q: Protect;
+  dist: number;
+}
+
 export function simulate(
   cfg: string,
   bars: Bars,
   sig: Int8Array,
   p: Protect,
   opt: SimOptions,
+): SimResult {
+  return simCore(cfg, bars, sig, p, opt, null, false);
+}
+
+/**
+ * `simulate` that also returns its end state, and that continues from one: with `from`, only the bars from
+ * `from.i0` on are visited and `trades` holds the trades that close from there (a position open at the end of the
+ * earlier run is carried in `from`, not in `trades`). Equal to one `simulate` over the whole series (backtest-resume.test.ts).
+ * Not for sink runs (Base's range cells).
+ */
+export function simulateFrom(
+  cfg: string,
+  bars: Bars,
+  sig: Int8Array,
+  p: Protect,
+  opt: SimOptions,
+  from: SimState | null = null,
+): SimResult & { state: SimState } {
+  if (opt.sink) throw new Error("simulateFrom: a sink run has no resumable state");
+  return simCore(cfg, bars, sig, p, opt, from, true) as SimResult & { state: SimState };
+}
+
+function simCore(
+  cfg: string,
+  bars: Bars,
+  sig: Int8Array,
+  p: Protect,
+  opt: SimOptions,
+  from: SimState | null,
+  wantState: boolean,
 ): SimResult {
   const { n, t, o, h, l, c, sym } = bars;
   const cost = opt.cost;
@@ -105,6 +161,12 @@ export function simulate(
   // the distances in force (an ATR protect resolves them at every entry)
   let q: Protect = p;
   let dist = p.trail * (p.trailStep ?? 1);
+  if (from) {
+    if (from.i0 > n)
+      throw new RangeError("simulateFrom: the series is shorter than the stored state");
+    ({ inPos, side, entryI, entry, stop, target, peak, trailOn, mfe, mae, nextAllowed, q, dist } =
+      from);
+  }
   const atr = p.atr ? (opt.atr ?? atrEma(h, l, c, ATR_PERIOD)) : null;
   const resolve = (i: number) => resolveAtrProtect(p, atr![i] / c[i], bars.tfMin);
   const nx = nextEntryIndex(sig);
@@ -136,7 +198,8 @@ export function simulate(
     nextAllowed = i + cooldown;
   };
 
-  for (let i = 0; i < n; i++) {
+  let i = from ? from.i0 : 0;
+  for (; i < n; i++) {
     if (inPos && i >= entryI) {
       const gap = i > entryI;
       const barEnd = t[i] + bars.tfMin * 60_000;
@@ -232,8 +295,29 @@ export function simulate(
   const lastSig = n > 0 ? sig[n - 1] : 0;
   const pending: Side | 0 =
     !inPos && n > 0 && n - 1 >= nextAllowed && lastSig !== 0 ? (lastSig > 0 ? 1 : -1) : 0;
-  if (pending && atr) return { trades, open, pending, pendingProtect: resolve(n - 1) };
-  return { trades, open, pending };
+  const state: SimState | undefined = wantState
+    ? {
+        i0: i,
+        inPos,
+        side,
+        entryI,
+        entry,
+        stop,
+        target,
+        peak,
+        trailOn,
+        mfe,
+        mae,
+        nextAllowed,
+        q,
+        dist,
+      }
+    : undefined;
+  if (pending && atr)
+    return state
+      ? { trades, open, pending, pendingProtect: resolve(n - 1), state }
+      : { trades, open, pending, pendingProtect: resolve(n - 1) };
+  return state ? { trades, open, pending, state } : { trades, open, pending };
 }
 
 // ── Long and short run independently (operator: "always process long and short both, independently") ────────

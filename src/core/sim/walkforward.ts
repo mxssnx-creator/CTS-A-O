@@ -772,7 +772,7 @@ export interface ConfigTape {
 }
 
 // appended only: a tape stores the index ("be" last, so the earlier indices keep their meaning)
-const REASONS: Trade["reason"][] = ["tp", "sl", "trail", "time", "disarm", "be"];
+export const REASONS: Trade["reason"][] = ["tp", "sl", "trail", "time", "disarm", "be"];
 
 /** Bytes of one tape's backing buffer: 9 float64 columns (3 × n, 4 × n+1), 3 float32, 2 uint16, 3 int8/uint8. */
 export const tapeBytes = (n: number) => (3 * n + 4 * (n + 1)) * 8 + n * 4 * 3 + n * 2 * 2 + n * 3;
@@ -1028,7 +1028,7 @@ export function unpackTapes(p: PackedTapes): ConfigTape[] {
 // the symbol index of a universe is one array shared by all its tapes: built once per array, not per tape (a full-focus
 // compute builds ~100k tapes over the same 60 symbols)
 const symbolIndexOf = new WeakMap<readonly string[], { len: number; index: Map<string, number> }>();
-function symbolIndex(syms: readonly string[]): Map<string, number> {
+export function symbolIndex(syms: readonly string[]): Map<string, number> {
   let c = symbolIndexOf.get(syms);
   // rebuilt when the array has changed length since it was indexed (a cached index never outlives its universe)
   if (!c || c.len !== syms.length) {
