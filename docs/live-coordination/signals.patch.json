@@ -6,7 +6,8 @@
   "settings": {
     "signals": {
       "enabled": true,
-      "count": 0
+      "count": 0,
+      "sideAccept": { "enabled": false, "minPf": 1.3, "hours": 24, "minTrades": 20 }
     },
     "toggles": {
       "normal": true,
@@ -22,6 +23,7 @@
       "maxPositions": 0,
       "maxNotionalUsd": 200,
       "minFreeMargin": 0,
+      "sideGates": true,
       "source": "all",
       "excludeRanges": [
         "wide",
