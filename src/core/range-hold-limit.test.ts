@@ -69,3 +69,26 @@ test("the settings check accepts a hold limit of 1–1440 minutes and refuses ot
   assert.throws(() => checkSettings({ grid: { ...DEFAULT_SETTINGS.grid, minimal: { ...MINIMAL_RANGE, maxHoldMin: 5000 } } }), /max hold time/);
   assert.doesNotThrow(() => checkSettings({ grid: { ...DEFAULT_SETTINGS.grid, minimal: { ...MINIMAL_RANGE, maxHoldMin: 60 } } }));
 });
+
+test("Base judges a range at its own maximum hold: Micro 15 min is 1 bar, Minimal 60 min 4 bars; others keep the grid hold", async () => {
+  const { baseRangeProtects } = await import("./pipeline/pipeline.ts");
+  const g = {
+    holdH: [16, 24],
+    baseBest: true,
+    micro: { ...MICRO_RANGE, maxHoldMin: 15 },
+    minimal: { ...MINIMAL_RANGE, maxHoldMin: 60 },
+    short: DEFAULT_SETTINGS.grid.short,
+    general: false as const,
+    long: false as const,
+  };
+  const cells = baseRangeProtects(g, 0.002);
+  const holds = (tag: string) => [...new Set(cells.filter((p) => p.tag === tag).map((p) => p.hold))];
+  assert.deepEqual(holds("mc"), [1]);
+  assert.deepEqual(holds("mn"), [4]);
+  assert.deepEqual(holds("sh"), [64]);
+  // and the Base cells are among the cells the grid builds for the same range
+  const grid = protectGrid(15, { ...DEFAULT_SETTINGS.grid, ...g }, 0.002);
+  const key = (p: { tp: number; sl: number; hold: number; tag?: string }) => `${p.tag}|${p.tp}|${p.sl}|${p.hold}`;
+  const built = new Set(grid.map(key));
+  for (const p of cells.filter((c) => c.tag === "mc" || c.tag === "mn")) assert.ok(built.has(key(p)), key(p));
+});

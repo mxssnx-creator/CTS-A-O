@@ -28,6 +28,7 @@ import type {
 import { evaluateConfig } from "../evals/evaluator.ts";
 import {
   EVAL_MIN_SL,
+  holdFloorBars,
   microNetTps,
   microPriceTp,
   microSlFloor,
@@ -449,7 +450,7 @@ export function baseRangeProtects(
 ): Protect[] {
   const slFloor = g.minSlEval ?? EVAL_MIN_SL;
   const mid = <T,>(xs: readonly T[]) => xs[Math.floor((xs.length - 1) / 2)];
-  const hold = Math.max(2, Math.round(((g.holdH?.[0] ?? 16) * 60) / REF_TF));
+  const holdAll = Math.max(2, Math.round(((g.holdH?.[0] ?? 16) * 60) / REF_TF));
   const out: Protect[] = [];
   for (const [tag, r] of [
     ["mc", g.micro],
@@ -459,6 +460,12 @@ export function baseRangeProtects(
     ["lg", g.long],
   ] as const) {
     if (!r || !r.tp?.length || !r.slOfTp?.length) continue;
+    // the range's MAXIMUM hold (maxHoldMin) is the hold Base judges it at, as the grid builds its cells: before, Base
+    // measured Micro at 16 h while it traded 15 min (a Base PF of another config than the one that trades)
+    const hold =
+      r.maxHoldMin != null && r.maxHoldMin > 0
+        ? Math.max(holdFloorBars(r), Math.round(r.maxHoldMin / REF_TF))
+        : holdAll;
     // the range's own evaluation stop floor when it sets one (e.g. micro.minSlEval), else the global one
     // Micro's minSlNet: net floor + the round-trip cost, in place of minSl and minSlEval (as the grid)
     const net = tag === "mc" ? microSlFloor(r as { minSlNet?: number }, cost) : undefined;
@@ -519,6 +526,7 @@ export function baseRangeProtects(
   return out;
 }
 type CoordRangeLike = {
+  maxHoldMin?: number;
   tp: readonly number[];
   slOfTp: readonly number[];
   trailOfTp?: readonly number[];
