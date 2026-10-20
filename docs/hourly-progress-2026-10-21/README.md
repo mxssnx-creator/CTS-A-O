@@ -10,4 +10,6 @@ The fresh original-market replay will stream **every** built config using `--tap
 
 Frozen repeat: same 20 symbols, original 17 October 09–21 UTC market, same 12h evaluated prehistory plus 24h indicator warmup; same four chronological research windows and unchanged selection rules/costs. Reseal only the source/audit revision, preserve all previous losses and compare each complete filtered-stage result. Test acceptance is coherent publication and exact arithmetic, never a forced positive PF or frozen passing count.
 
+Additional reproduced counter defect: live-only, timing-only and unchanged settings edits cancelled an in-progress exact Base sweep without requiring another compute. Three failing regressions are retained in base-count-livepatch-before.txt. Cancellation now follows the economic compute key; genuine economic changes still cancel stale count work.
+
 Final CI and complete scalar receipts are pending. No venue orders, deployment or merge.

@@ -1,8 +1,8 @@
 {
   "schema": "cts-hourly-progress-repeat-plan-v1",
-  "sourceSha256": "8042d7bf976ef85fa2f4b0fdb0b45ce25112a4f6cad00380c4b075c50ca116ea",
-  "checkpoint": "bd73860800edb11fc5824ece953c4c44e7fa64f4",
-  "baselineSourceSha256": "ae7b2021fbdce8c3432329781dfc19a651c7e1fc488b3826874af741e69befaa",
+  "sourceSha256": "109fd1859eb0079134b54289ea06a0b5dc51573017bc150d8773f83eef7d611e",
+  "checkpoint": "5c4e9f6ee581f96fe6bfd0e57c793cb3fc41ef31",
+  "baselineSourceSha256": "8042d7bf976ef85fa2f4b0fdb0b45ce25112a4f6cad00380c4b075c50ca116ea",
   "originalWindow": {
     "symbols": 20,
     "ordinarySources": 616,
@@ -13,7 +13,7 @@
     "requiredScalarDecisions": 750636
   },
   "research": {
-    "caseRevision": "v7",
+    "caseRevision": "v8",
     "paired": [
       {
         "hold": "standard",

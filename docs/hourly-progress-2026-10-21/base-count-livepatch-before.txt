@@ -1,0 +1,78 @@
+✔ a failed compute cannot withdraw active Base/config qualifications before publishing new tapes (84.409039ms)
+[core-v2] compute #1 done in 53 ms · sim PF unavailable n 0 · loop max 32 ms
+✔ current qualifications and realtime inputs survive simulation slices, then publish with completed new tapes (111.432167ms)
+✔ simulation failure cannot publish a partial replacement (34.752054ms)
+✔ simulation settings cannot publish a partial replacement (31.238398ms)
+✔ simulation generation cannot publish a partial replacement (26.975059ms)
+[core-v2] compute #1 done in 26 ms · sim PF unavailable n 0 · loop max 0 ms
+✔ timing-only settings changes do not discard a completed economic calculation (51.115077ms)
+✖ timing settings cannot cancel a partially completed exact Base sweep (7.78928ms)
+✖ live settings cannot cancel a partially completed exact Base sweep (3.351189ms)
+✖ unchanged settings cannot cancel a partially completed exact Base sweep (3.858504ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 6
+ℹ fail 3
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 870.458879
+
+✖ failing tests:
+
+test at src/core/server/compute-publication.test.ts:224:3
+✖ timing settings cannot cancel a partially completed exact Base sweep (7.78928ms)
+  AssertionError [ERR_ASSERTION]: unchanged calculation inputs must retain completed work and continue the sweep
+  + actual - expected
+  
+  + 'cancelled'
+  - 'partial'
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/compute-publication.test.ts:300:14)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 'cancelled',
+    expected: 'partial',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/server/compute-publication.test.ts:224:3
+✖ live settings cannot cancel a partially completed exact Base sweep (3.351189ms)
+  AssertionError [ERR_ASSERTION]: unchanged calculation inputs must retain completed work and continue the sweep
+  + actual - expected
+  
+  + 'cancelled'
+  - 'partial'
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/compute-publication.test.ts:300:14)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 'cancelled',
+    expected: 'partial',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/server/compute-publication.test.ts:224:3
+✖ unchanged settings cannot cancel a partially completed exact Base sweep (3.858504ms)
+  AssertionError [ERR_ASSERTION]: unchanged calculation inputs must retain completed work and continue the sweep
+  + actual - expected
+  
+  + 'cancelled'
+  - 'partial'
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/compute-publication.test.ts:300:14)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 'cancelled',
+    expected: 'partial',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

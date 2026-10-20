@@ -31,7 +31,7 @@ jobs:
         run: npm run build:dev
         env:
           NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
-      - name: Complete mixed-operation storm and background preset backtest
+      - name: Complete snapshot-coherence storm and background preset backtest
         shell: bash
         run: |
           mkdir -p runs/micro-ci-slow

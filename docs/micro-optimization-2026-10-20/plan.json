@@ -1,7 +1,7 @@
 {
   "schema": "cts-micro-optimization-plan-v1",
   "classification": "Preregistered retrospective chronological comparison, not unseen forward or native evidence",
-  "sourceSha256": "8042d7bf976ef85fa2f4b0fdb0b45ce25112a4f6cad00380c4b075c50ca116ea",
+  "sourceSha256": "109fd1859eb0079134b54289ea06a0b5dc51573017bc150d8773f83eef7d611e",
   "feedParentSha256": "1373d0a7fab7528d0528573385e19dfecf6f4ab353194231c639103af29aadcd",
   "methods": 26,
   "microIdentities": 364,
@@ -70,10 +70,10 @@
     "validation": "Seal selection once, then run the exact chosen hold/focus unchanged on validation and confirmation; do not select again from either outcome"
   },
   "preserve": "All training arms and later losses/empty outcomes remain published. No production gate weakened; all target/stop/trail cells remain independently qualified. Fixed $2 model notional is not proof of venue minimum fills.",
-  "revision": 6,
+  "revision": 7,
   "trainingCases": {
-    "standard": "runs/micro-opt-train-standard-v7",
-    "fast": "runs/micro-opt-train-fast-v7"
+    "standard": "runs/micro-opt-train-standard-v8",
+    "fast": "runs/micro-opt-train-fast-v8"
   },
   "preflightNotes": [
     "Original below-floor equity sizing was rejected before scoring; current actual scenario uses fixed $2 modeled notional and a $10,000 modeled balance.",
@@ -83,7 +83,8 @@
     "v4 protocols reseal that audit-only source change. Reproduction feed is a lossless 96h subset of the verified original feed. Each prepared 48h training feed and its normalized settings/WF must match the original unscored protocols exactly.",
     "v4 completed on isolated CI 39500328398 before discovering Micro/Inverse order-key collisions. Its results are retained separately as pre-fix evidence. v5 changes only full Micro/Inverse order identity; windows, market feed, normalized settings, gates, costs and training-only selection thresholds stay fixed. Validation/confirmation are retrospective comparisons, not unseen evidence.",
     "v5 completed with corrected independent order admission. Report/stage auditing then exposed known zero allocations on the separate original-window v8 replay. v6 preserves the exact v5 signal, gate, fee, window, account and selection settings, while recording per-close funding without enabling Signal research and requiring audit PF to match the same funded cohort. The complete pre-fix v4 and corrected-order v5 studies remain archived; v6 is an audit/report reseal, not retuned strategy evidence.",
-    "v7 changes only coherent completed runtime publication, carries Exit Base proof across settings changes, and expands optional raw-history audit coverage. All v6 economic settings, windows, account, costs, thresholds and training-only selection remain exactly unchanged. This is a repeated cached-data correctness test, not fresh unseen evidence."
+    "v7 changes only coherent completed runtime publication, carries Exit Base proof across settings changes, and expands optional raw-history audit coverage. All v6 economic settings, windows, account, costs, thresholds and training-only selection remain exactly unchanged. This is a repeated cached-data correctness test, not fresh unseen evidence.",
+    "v8 additionally prevents harmless live/timing/unchanged settings patches from cancelling the exact Base counter. All prior economic settings, windows, account, costs, thresholds and training-only selection remain exactly unchanged. This is a repeated cached-data correctness test, not fresh unseen evidence."
   ],
-  "caseRevision": "v7"
+  "caseRevision": "v8"
 }

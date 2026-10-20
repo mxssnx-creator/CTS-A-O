@@ -2273,7 +2273,6 @@ export class CoreRuntime {
     this.db.kvSet("settings", this.settings);
     this.db.kvSet("wf", pickWf(this.wf));
     this.status.settingsAt = Date.now();
-    this.baseConfigRunner.cancel("settingsChanged");
     // a running cycle keeps its snapshot; the universe reset is applied at the start of the next cycle
     if (
       prevUniverse !==
@@ -2284,7 +2283,10 @@ export class CoreRuntime {
     // to them alone (or a patch that changes nothing, e.g. one re-applied on a restart) keeps the running compute —
     // marking it stale threw away its tapes, and a desk whose compute outlasts the patch interval never stepped paper
     const recompute = this.resetUniverse || computeKey(this.settings, this.wf) !== prevCompute;
-    if (recompute) this.cancelCompare("settings changed");
+    if (recompute) {
+      this.baseConfigRunner.cancel("settingsChanged");
+      this.cancelCompare("settings changed");
+    }
     this.db.event(
       "info",
       !recompute

@@ -1,3 +1,7 @@
+## Additional exact-counter progress fix — 21 October 2026
+
+Three additional regressions prove live-only, timing-only and unchanged settings patches canceled a partial exact Base sweep without scheduling another compute. Cancellation now occurs only when the economic compute key changes; the same started sweep continues from 32 to all 65 fixture cells without resetting. Real cost changes still invalidate counts. The combined publication/counter suite passes 9/9; failed before-fix evidence is retained. The source is resealed as chronological v8, preserving v7/v6 economic settings, feed and selection rules. Intermediate source 8042 has CI 39515430798 / 39515430847 in progress; latest full verification is still required at the subsequent exact source. No venue orders or deployment.
+
 ## Active hourly-progress correction — 21 October 2026
 
 A further real progress defect is reproduced against d76f9fb: compute published Base/Signal/range gates, Base counts/history and realtime arguments while old tapes/simulation still served execution. Interrupted/superseded jobs could leave mixed cohorts and false completed-history rows. New compute-publication regressions stage all of these until matching tape/simulation publication and recheck economic revision/generation across Paper idle. Timing/live-only settings edits retain the calculation. Exit Base proof is now carried through updateSettings too. Current six targeted publication tests pass; the prior failing reproduction is retained. Full exact-source verification is pending.

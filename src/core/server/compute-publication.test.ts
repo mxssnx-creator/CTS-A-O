@@ -219,3 +219,112 @@ test("timing-only settings changes do not discard a completed economic calculati
   assert.equal(f.rt.status.appliedSettingsAt, f.rt.status.settingsAt);
   assert.notEqual(f.inner.fastArgs, f.oldFast);
 });
+
+for (const change of ["timing", "live", "unchanged"] as const)
+  test(`${change} settings cannot cancel a partially completed exact Base sweep`, async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const { BaseConfigJobRunner } = await import("./base-config-job.server.ts");
+    const f = fixture();
+    let paused = false;
+    const runner = new BaseConfigJobRunner({
+      ready: () => true,
+      foreground: () => paused,
+      memoryOkay: () => true,
+      available: () => true,
+      run: async (m) => {
+        paused = true;
+        const [bot, ind] = m.pair.split("|"),
+          n = m.protects.length;
+        return {
+          seen: m.protects.map((p) => String(p.tp)),
+          rows: [
+            {
+              bot,
+              ind,
+              tag: "",
+              kind: "normal",
+              configured: n,
+              evaluated: n,
+              pfPassed: n,
+              passed: n,
+              notEvaluated: {},
+              minPf: 1.1,
+              floorPf: 1.1,
+              cost: m.options.cost,
+              cutT: m.options.cutT,
+              fromT: m.options.fromT,
+              closes: 10 * n,
+              gp: 1,
+              gl: 0.1,
+              firstEntryT: 0,
+              lastExitT: 100,
+            },
+          ],
+        };
+      },
+      publish: (snapshot) => {
+        f.rt.baseConfigs = snapshot;
+        f.rt.status.baseConfigs = snapshot.summary;
+      },
+    });
+    const inner = f.rt as unknown as { baseConfigRunner: InstanceType<typeof BaseConfigJobRunner> };
+    inner.baseConfigRunner.cancel("fixture replacement");
+    inner.baseConfigRunner = runner;
+    try {
+      runner.request({
+        key: "exact partial fixture",
+        settingsAt: f.rt.status.settingsAt,
+        pairs: ["follow|micro-1-drawdown-turn-fast@m1"],
+        protects: Array.from({ length: 65 }, (_, i) => ({
+          tp: (i + 1) / 10000,
+          sl: 0.01,
+          trail: 0,
+          hold: 60,
+        })),
+        kinds: ["normal"],
+        common: {
+          bars: [],
+          cost: 0.0015,
+          floors: { minSl: 0, minTrail: 0 },
+          options: { cost: 0.0015, gates: { minPf: 1.1, minTrades: 3 }, fromT: 0, cutT: 100 },
+        },
+      });
+      t.mock.timers.tick(25);
+      await Promise.resolve();
+      await Promise.resolve();
+      assert.equal(runner.snapshot?.summary.state, "partial");
+      assert.equal(runner.snapshot?.summary.passed, 32);
+      if (change === "timing") f.rt.updateSettings({ cycleMs: f.rt.settings.cycleMs + 1000 });
+      else if (change === "live") f.rt.updateSettings({ live: { openPaused: "fixture pause" } });
+      else f.rt.updateSettings({ disabledKinds: [...(f.rt.settings.disabledKinds ?? [])] });
+      assert.equal(
+        runner.snapshot?.summary.state,
+        "partial",
+        "unchanged calculation inputs must retain completed work and continue the sweep",
+      );
+      assert.equal(runner.snapshot?.summary.passed, 32);
+      assert.equal(runner.snapshot?.summary.doneChunks, 1);
+      for (let i = 0; i < 2; i++) {
+        paused = false;
+        t.mock.timers.tick(250);
+        await Promise.resolve();
+        await Promise.resolve();
+      }
+      assert.equal(
+        runner.snapshot?.summary.state,
+        "complete",
+        "the original sweep continues to completion without restarting its first chunk",
+      );
+      assert.equal(runner.snapshot?.summary.passed, 65);
+      assert.equal(runner.snapshot?.summary.doneChunks, 3);
+      f.rt.updateSettings({ cost: 0.001 });
+      assert.equal(
+        runner.snapshot?.summary.state,
+        "cancelled",
+        "a real economic change must invalidate old counts",
+      );
+      assert.equal(runner.snapshot?.summary.reason, "settingsChanged");
+    } finally {
+      runner.cancel("test cleanup");
+    }
+  });

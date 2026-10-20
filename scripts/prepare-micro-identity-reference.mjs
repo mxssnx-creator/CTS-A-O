@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Exact same original 616-source market window; only the independent-order identity behavior is corrected.
+// Exact original 616-source market; independent identities and coherent completed publication corrected.
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
@@ -101,7 +101,7 @@ const files = sessionStudySourceFiles(root),
       settingsDifference:
         "exitStrategy.includeMicro=false only prevents adding the newly registered 56 Micro IDs. Explicit original 616 sources and corresponding Exit set verified identical.",
       behaviorChange:
-        "Preserve full Micro/Inverse config identities through closed/open order deduplication; no gate or fee threshold relaxed.",
+        "Preserve independent Micro/Inverse config identities and publish only coherent completed runtime cohorts; no gate, fee, formula, source scope or window retuned.",
     },
   };
 writeFileSync(`${out}/protocol.json`, JSON.stringify(protocol, null, 2) + "\n");
