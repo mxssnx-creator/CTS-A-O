@@ -817,7 +817,10 @@ export interface PresetInfo {
   pfLast75: number | null;
   /** longest drawdown time of the equity, hours */
   ddtH: number;
+  /** profit factor on the unit return (r ÷ mult per order): the basis of every stage (Base, validation, orders) */
   pf: number;
+  /** the same on cash (r × position size in USD): sizing, compounding and Block's raised volume weigh a trade by its size */
+  pfCash: number;
   n: number;
   /** realized P&L, USD and % of the start balance */
   netUsd: number;
@@ -891,16 +894,23 @@ export function presetSeries(
     }
     for (const k of Object.keys(acc) as Array<keyof typeof acc>) kinds[k].push(+acc[k].toFixed(4));
   }
-  const ps = positionResults(trades, o.unit);
+  // PF is judged on the unit return (r ÷ mult, as unitR of the eval), never on cash: a cash PF weighs a trade by its size
+  const unitOf = (x: StatTrade) => (x.mult && x.mult > 0 ? 1 / x.mult : 1);
+  const ps = positionResults(trades, unitOf);
   const hours = Math.max(1e-9, (o.endT - o.startT) / 3_600_000);
   let gp = 0;
   let gl = 0;
+  let gpCash = 0;
+  let glCash = 0;
   let net = 0;
   for (const x of trades) {
     const v = x.r * o.unit(x);
     net += v;
-    if (v > 0) gp += v;
-    else gl -= v;
+    if (v > 0) gpCash += v;
+    else glCash -= v;
+    const u = x.r * unitOf(x);
+    if (u > 0) gp += u;
+    else gl -= u;
   }
   const r2 = (x: number) => +x.toFixed(2);
   return {
@@ -925,6 +935,7 @@ export function presetSeries(
       pfLast75: pfOfLast(ps, 75),
       ddtH: r2(tl.maxDdH),
       pf: profitFactor(gp, gl),
+      pfCash: profitFactor(gpCash, glCash),
       n: trades.length,
       netUsd: r2(net),
       netPct: r2((net / Math.max(1e-9, o.balance)) * 100),

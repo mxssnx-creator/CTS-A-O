@@ -307,6 +307,35 @@ test("preset diagrams and info: positions per hour, PF of the last 12 / 25 / 75 
     assert.ok(s.info.ddtH > 0);
 });
 
+test("preset PF is the unit-return PF; the cash PF is apart (a big losing size does not set the PF)", async () => {
+    const { presetSeries } = await import("./statistics.ts");
+    const T0 = Date.UTC(2026, 9, 1);
+    const base = { cfg: "b|ema-9-21|tp2|sl2|tr0|h16", sym: "A-USDT", side: 1, entry: 100, kind: "normal" as never };
+    // a win of +2 % at 100 USD and a loss of -1 % at 1000 USD: unit PF 2, cash PF 2 / 10
+    const trades = [
+      { ...base, entryT: T0, exitT: T0 + 3_600_000, r: 0.02 },
+      { ...base, entryT: T0 + 7_200_000, exitT: T0 + 10_800_000, r: -0.01 },
+    ];
+    const s = presetSeries(trades, {
+      startT: T0,
+      endT: T0 + 4 * 3_600_000,
+      balance: 1000,
+      unit: (x: { r: number }) => (x.r > 0 ? 100 : 1000),
+      price: () => 100,
+      cost: 0.002,
+      leverage: 10,
+      days: 1,
+      points: 40,
+    });
+    assert.ok(Math.abs(s.info.pf - 2) < 1e-9, String(s.info.pf));
+    assert.ok(Math.abs(s.info.pfCash - 0.2) < 1e-9, String(s.info.pfCash));
+    assert.ok(s.info.netUsd < 0, "the cash result is still the cash result");
+    // a Block-raised order (mult 2) weighs one unit in the PF, as the eval's unitR
+    const raised = [{ ...trades[0], mult: 2, r: 0.04 }, trades[1]];
+    const s2 = presetSeries(raised, { startT: T0, endT: T0 + 4 * 3_600_000, balance: 1000, unit: () => 100, price: () => 100, cost: 0.002, leverage: 10, days: 1, points: 40 });
+    assert.ok(Math.abs(s2.info.pf - 2) < 1e-9, String(s2.info.pf));
+});
+
 test("ranges: a signal config is its own group, never counted as Wide", () => {
   const r = buildStatistics({
     source: "sim",
