@@ -1,3 +1,48 @@
+# Main PR189 integration in verification — 21 October 2026 (UTC)
+
+Main advanced to 3e2c11317cc5cc38300432e7e1e11ad4e669a3dc (PR189) before the authorized merge.
+Integrate its independent Signal/coordinator rebuilds, own historic range floors, bounded fitting progress and UI
+request fix. Keep this branch's immutable captured candle snapshot and generation/economic publication fences;
+coordinators use their own grids on both worker and local paths. The expanded current runtime source is now
+7f29b92555e77144326b374623f9fa14114d6f0cc21692c9b336b30d05241ccd. TypeScript passes. Freeze universal
+v9 and 24-symbol v6 before scoring; v5 below remains evidence for its own source, not automatically promoted.
+Fresh complete default/heavy/runtime/slow/stress/universal/financial and report checks are required before merge.
+The blocked next-day workflow explicitly checks out f03a36d1, its original BF source and frozen plan, and keeps
+its seven sealed candidates unchanged. New-main economic studies require new protocols, never rewritten seals.
+No live reload, deployment or venue action.
+
+# Expanded Micro verification — 21 October 2026 (UTC)
+
+Current runtime manifest bf502cd9046ea8d3fe23701b0e549521618a143be948ba38f2269df7534d95a2,
+868 independent Micro/Inverse sources, OHLC breakout horizons 6/12/24/48. The complete 24-symbol v5 historical
+run passes all 60 report checks, every price/cost and source/execution comparison, 105,577 scalar tape checks /
+1,036,596 hourly decisions, and 185,520 initial-set transitions. No gate or cost was changed to improve results.
+373,222 funded modeled settled closes, unit PF 1.5730241054, nine positive / three negative settled hours.
+Micro remains 0.7939837207; Minimal 2.0994887024, Short 2.4444110152, General 1.4737436987, Wide Exit 0.4656176670.
+Base Micro representative PF 1.9240662812; initial Micro config gates PF 2.5891269435. These are different historical
+cohorts. Identical funded execution/source cohorts match exactly at every trade and hour. The uncapped complete
+grid is capital-infeasible (maximum modeled margin $32,063.20 against $10,000 initial capital); no live-readiness claim.
+See v5-verification.json, retaining all losses and exact artifact/source checksums.
+
+Earlier positive 9-symbol control re-run at the same 0.15% cost yields PF 2.5770087633 / 1,562 closes at both old
+846d9aa and expanded bf502cd sources: every identity, unit return, total and hourly result identical. That original
+uncapped sizing is also capital-infeasible; see legacy-expansion-parity.json. It is regression evidence, not a new
+868-source performance sample. Previously archived studies and failures remain immutable.
+
+Current-source heavy/runtime/stress/Axis-stress/universal/slow and Exact Signal builds passed. Ordinary CI exposed
+one stale completeness fixture still expecting 1,001 focus pairs to exceed the former cap. It now tests the explicit
+MAX_FOCUS_PAIRS + 1 boundary; all 314 completeness tests pass locally. Economic source is unchanged. Fresh full
+CI is required at the test/workflow checkpoint before the already authorized push/merge. PR 184 remains open
+until those checks finish; main backup fafdea2 exists. No deployment, live reload, settings change or venue orders.
+
+The additional next-day attempt sealed seven training-only sources before acquisition, then failed on all 24
+20 October archives (HTTP 404); the local official REST probe is HTTP 451. No later-day trades/PF exist. The failed
+run 39536098285 and hashed selection are retained, not relabeled a pass. Additional research is isolated in the
+explicit Frozen Micro next-day validation workflow, which recovers that same selection, checks source/script
+seals before data acquisition, resumes retained archive failures and fails normally on unavailable data. Core
+24-symbol correctness CI continues to run the entire original historical scope and seal its selection; nothing in
+its calculation/financial assertions is waived. Do not reselect from holdout results or claim hourly profitability.
+
 # Micro expansion and next-day verification pending — 21 October 2026 (Europe/Vienna)
 
 User explicitly requests the additional 6/12-bar breakouts and push/merge after completion. Main remains
@@ -203,6 +248,15 @@ TypeScript and production build pass. Desktop/mobile dev functional tests pass 4
 **Do not deploy or merge as a completed profitable production release.** Profitability, capital-feasible native execution, a strict 100ms SLA and full 12h 5s evidence remain unresolved. See `docs/micro-2026-10-20/report.html` and README for reproduction. Retain the losing evidence and native ownership/stop/quantity guards. Back up consistent runtime/database state and own-order ledgers before any future live reload.
 
 # Final-window admission correction — 20 October 2026
+# Signals progression recovery and publication — 21 October 2026
+
+[PR 189](https://github.com/mxssnx-creator/CTS-A-O/pull/189) publishes tested code `534492d622db6be370079e08b94fdbb2dfbb566c` (local `ef0a9275247e22339b17e33f4847e77893fc26d9`), with identical Git tree `9442ef46aef790ad27eb68c47af26ad5ef7c0479`, based on main `fafdea2f5ebe8c903a16f2edd8be34606f746c2f`. Test-harness and lifecycle-reference follow-ups leave production source unchanged. The user explicitly authorized push/merge. Refer to the PR's final checks and merge record for complete default/slow CI and the final merge SHA.
+
+Independent Signal history now matches across full workers, local fallback and incremental rebuilds. Coordinators retain their own rebuild grids and enabled-range historical PF floors. Historic progress covers sampling and candidate evaluations with cancellation checkpoints, and the UI labels variant/candidate counts accurately. All three recreated actual-runtime regressions fail against the original runtime and pass after the fixes.
+
+Fresh verification: **294/294** tests in 21 files, **3/3** complete-job progress tests, **4/4** functional desktop/phone UI tests, TypeScript and production build pass. Changed-file lint: zero errors/five existing warnings. Development and rebuilt Settings render correctly on desktop/mobile with no errors/overflow/baseline divergence. Packaged worker SHA-256 `e6f95d8ecd2f4c08d8b3e056e6898ce86e7d678fb8653bb17e0a564fc40817dd` contains the new progress implementation. Details and evidence boundaries: [signals-progress-audit-20261021.md](signals-progress-audit-20261021.md).
+
+The old unpushed audit commits were absent after workspace restoration; this is freshly reverified recovery on current main. The completed legacy lifecycle run exposed a reference that still used short strategy history for Signals. The corrected bounded fixture uses independent Signal history/coordinator grids, asserts exact hourly seat retention and preserves full tape/paper comparisons: 2/2 pass across three cycles, 49,719 tape states and decisions covering 7,446 open positions. Typecheck and lint pass. Complete default/slow CI is linked in PR 189. Initial CI also exposed abandoned Vite module requests in the UI wait; the corrected finite-data wait passes all four local UI checks, typecheck and changed-test lint. No hosted reload, database/settings mutation or venue action occurred. Merge alone cannot certify the remote live process; verify authenticated deployment access, backups, rebuilt worker, running SHA and owned-position reconciliation before a live-effect claim. Existing economic research seals and qualification thresholds are unchanged.
 
 # Integrated PR 185 checkpoint — 20 October 2026
 Final fixture follow-up: the integrated full core run reached all 209 files with 2,476 passes, nine stale fixture failures and two slow skips. The five corrected files pass **137/137**: separate positive config-direction proof for candidate-book tests, a fixed pending-bar clock, true Trade-return loss changes rather than detached prefix-sum edits, correct 4% mark-to-stop arithmetic, per-direction hand-counted validation and separate symbol-PF proof. Production code and the v6 economic source seal are unchanged. Final complete CI is linked in PR 185.

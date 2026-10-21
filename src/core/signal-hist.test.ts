@@ -103,8 +103,16 @@ describe("signal historic trailing configs", () => {
       },
       diagnostics,
     );
+    const progress: Array<{ done: number; total: number; evaluated: number }> = [];
     let result = gen.next();
-    while (!result.done) result = gen.next();
+    while (!result.done) {
+      progress.push({ ...result.value, evaluated: diagnostics.evaluated });
+      result = gen.next();
+    }
+    assert.ok(progress.some((p) => p.done > 0.25 && p.done < p.total && p.evaluated > 0), "reports config fitting between evaluations");
+    assert.ok(progress.every((p, i) => p.total === 1 && p.done >= 0 && p.done <= 1 && (!i || p.done >= progress[i - 1].done)), "progress is bounded and monotonic");
+    assert.equal(progress.at(-1)?.done, 1);
+    assert.ok(progress.filter((p) => p.done === p.total).every((p) => p.evaluated === diagnostics.evaluated), "100% only after all candidate evaluations");
     const configs = result.value[pair] ?? [];
     assert.ok(configs.length > 0, "permissive Short floor admits calculated historic configs");
     assert.ok(configs.every((protect) => protect.tag === "sh"));

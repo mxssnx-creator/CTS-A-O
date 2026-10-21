@@ -1921,7 +1921,10 @@ export class CoreRuntime {
     const repl = new Map<string, ConfigTape>(step.tapes);
     const need = new Set<string>([...inc.others, ...step.broken]);
     if (need.size) {
-      const needsSignal = [...need].some((id) => isSignalInd(id.split("|")[1] ?? ""));
+      const needsSignal = [...need].some((id) => {
+        const ind = id.split("|")[1] ?? "";
+        return isSignalInd(ind) || isSignalCoordinationInd(ind);
+      });
       const signalU = needsSignal
         ? makeUniverse(laneSeriesFrom(candles, settings, 0, signalDataHours(settings, wf)), this.evaluationFromT)
         : inc.state.universe;
@@ -1952,29 +1955,35 @@ export class CoreRuntime {
   }
 
   /** The configs `ids` rebuilt on `u` with the last compute's tape arguments (exactly the heavy compute's builder). */
-  private async rebuildOnUniverse(u: ReturnType<typeof makeUniverse>, ids: ReadonlySet<string>, gen: number, signalU: ReturnType<typeof makeUniverse>): Promise<ConfigTape[] | null> {
+  private async rebuildOnUniverse(u: ReturnType<typeof makeUniverse>, ids: ReadonlySet<string>, gen: number, capturedSignalU?: ReturnType<typeof makeUniverse>): Promise<ConfigTape[] | null> {
     const a = this.fastArgs;
     if (!a) return null;
     const s = this.settings;
     const byId = this.tapeIndex();
-    const sets = { main: new Set<string>(), sig: new Set<string>() };
-    const pairs = { main: new Set<string>(), sig: new Set<string>() };
+    const sets = { main: new Set<string>(), sig: new Set<string>(), coord: new Set<string>() };
+    const pairs = { main: new Set<string>(), sig: new Set<string>(), coord: new Set<string>() };
     for (const id of ids) {
       const tp = byId.get(id);
       if (!tp) continue;
-      const k = isSignalInd(tp.ind) ? "sig" : "main";
+      const k = isSignalCoordinationInd(tp.ind) ? "coord" : isSignalInd(tp.ind) ? "sig" : "main";
       sets[k].add(id);
       pairs[k].add(`${tp.bot}|${tp.ind}`);
     }
+    // Incremental strategy history is shorter than the independently configured Signal history.
+    const signalU = capturedSignalU ?? (sets.sig.size || sets.coord.size
+      ? makeUniverse(laneSeriesFrom(this.candles, s, 0, signalDataHours(s, this.wf)), u.evaluationFromT)
+      : u);
     const out: ConfigTape[] = [];
     if (workersAvailable() && !this.workersBroken) {
-      const shared = { main: shareBars(u.series), sig: shareBars(signalU.series) };
+      const shared = shareBars(u.series);
+      const sharedSignal = signalU === u ? shared : shareBars(signalU.series);
       const msgs: Array<Record<string, unknown>> = [];
-      for (const k of ["main", "sig"] as const)
+      for (const k of ["main", "sig", "coord"] as const)
         if (sets[k].size)
           msgs.push({
             type: "tapes",
-            bars: shared[k],
+            bars: k === "main" ? shared : sharedSignal,
+            evaluationFromT: u.evaluationFromT,
             pairs: [...pairs[k]],
             protects: a[k].protects,
             cost: s.cost,
@@ -1989,9 +1998,9 @@ export class CoreRuntime {
       for (const r of res) out.push(...r.tapes);
       return out;
     }
-    for (const k of ["main", "sig"] as const) {
+    for (const k of ["main", "sig", "coord"] as const) {
       if (!sets[k].size) continue;
-      const g = buildTapesGen(k === "sig" ? signalU : u, a[k].protects, s.cost, a[k].dcaFor as never, pairs[k], s.tactics, a.adjust, { ...a[k].floors, onlyIds: sets[k] });
+      const g = buildTapesGen(k === "main" ? u : signalU, a[k].protects, s.cost, a[k].dcaFor as never, pairs[k], s.tactics, a.adjust, { ...a[k].floors, onlyIds: sets[k] });
       out.push(...(await this.drive("Tapes", g, () => undefined, gen)));
     }
     return out;
@@ -4175,7 +4184,7 @@ export class CoreRuntime {
     const sigHist: Record<string, Protect[]> = {};
     const retainedSignalIds = new Set<string>();
     const signalHistDiagnostics = emptySignalHistDiagnostics();
-    const signalHistValidation = signalHistValidationOf(s.cost, s.gates, wf.signalValidLastN);
+    const signalHistValidation = coordinatorHistValidationOf(s, coordProtects, wf.signalValidLastN);
     const standard = signalProtects(sig);
     try {
       if (s.exitStrategy.enabled && exitFitPairs.length) {
@@ -4458,15 +4467,16 @@ export class CoreRuntime {
             signalHistValidation,
             signalHistDiagnostics,
           );
-          let k = 0;
-          hist = await this.drive(
-            "Signal history",
-            g,
-            () => {
-              if (++k % 64 === 0) this.setStage("Tapes", 0, 1, histLabel);
-            },
-            gen,
-          );
+          try {
+            hist = await this.drive(
+              "Signal history",
+              g,
+              (p) => this.setStage("Tapes", p.done, p.total, histLabel),
+              gen,
+            );
+          } finally {
+            g.return({});
+          }
         }
         Object.assign(sigHist, signalCoordinationHistory(hist, coordinationPairs, coordProtects));
       }

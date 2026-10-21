@@ -11,6 +11,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   DEFAULT_SETTINGS,
+  MAX_FOCUS_PAIRS,
   GATE_PRESETS,
   STRATEGY_PRESETS,
   type CoreSettings,
@@ -188,7 +189,7 @@ const CASES: Record<string, Case> = {
   "tactics.cooldownBars": num(0, 96),
   focus: oneOf(
     [[], ["follow|rsi-mom-14-20@x4"]],
-    [["Follow|X"], ["follow"], Array.from({ length: 1001 }, () => "a|b")],
+    [["Follow|X"], ["follow"], Array.from({ length: MAX_FOCUS_PAIRS + 1 }, () => "a|b")],
   ),
   pinned: oneOf(
     [[], ["follow|bb-walk@x4"]],

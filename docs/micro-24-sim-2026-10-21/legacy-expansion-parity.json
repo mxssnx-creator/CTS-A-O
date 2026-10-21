@@ -1,0 +1,21 @@
+{
+  "schema": "cts-legacy-window-expansion-parity-v1",
+  "beforeSource": "846d9aa1c91c37233a660ab9655247a3684242f2c745ad032ab238cdc8a6ec6f",
+  "afterSource": "bf502cd9046ea8d3fe23701b0e549521618a143be948ba38f2269df7534d95a2",
+  "feedSha256": "7cd1feaf3590379a0f62129ae6822903dad4019c8163523933976ca19a4109f9",
+  "window": {
+    "startT": 1792015200000,
+    "endT": 1792036800000
+  },
+  "focus": 97,
+  "cost": 0.0015,
+  "matchedCloses": 1562,
+  "missing": 0,
+  "returnMismatches": 0,
+  "unitPf": 2.577008763257835,
+  "totalAndEveryHourIdentical": true,
+  "feasible": false,
+  "minimumEquity": -4501.33452825154,
+  "maximumMargin": 57773.749836423456,
+  "classification": "Controlled same-data/settings/account 9-symbol regression at 0.15% modeled round trip. Positive modeled PF preserves the earlier positive sample; original uncapped 2% sizing is capital-infeasible and does not certify production or hourly profit."
+}

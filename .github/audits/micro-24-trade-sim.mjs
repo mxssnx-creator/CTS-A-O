@@ -29,7 +29,7 @@ const arg = (name, fallback) => {
   return i < 0 ? fallback : process.argv[i + 1];
 };
 const mode = process.argv[2],
-  out = resolve(arg("out", "runs/micro-24-trade-sim-20261020-v5")),
+  out = resolve(arg("out", "runs/micro-24-trade-sim-20261020-v6")),
   H = 3_600_000;
 process.env.CTS_CORE_STATE = "off";
 process.env.CTS_CORE_AUTOSTART = "0";
@@ -156,7 +156,7 @@ if (mode === "prepare") {
   const files = sessionStudySourceFiles(root);
   const protocol = {
     schema: "cts-session-study-v1",
-    id: arg("label", "micro-24-symbols-12h-pre-12h-run-20261020-v5"),
+    id: arg("label", "micro-24-symbols-12h-pre-12h-run-20261020-v6"),
     scope: { hold: "standard", focus: selected,
       ...(focusFile ? { selectedFocusSha256: studySha256(readFileSync(resolve(focusFile))) } : {}),
       purpose: focusFile ? "Frozen training-selected focus, independently gated in this later test; losses retained; not native execution"
