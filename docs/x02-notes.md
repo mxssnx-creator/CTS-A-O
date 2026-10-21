@@ -13,3 +13,7 @@ Host shared with the live x01 desk: heap 3072 MB, 12 symbols, `CTS_CORE_WORKERS=
 
 ## Findings log
 - 21 Oct 00:09Z: first start had Block Active on (copied from the old twin settings) -> corrected before any result.
+
+## 21 Oct 01:00Z — "too few positions open" (demo only, operator-approved)
+Finding: 4 of 12 symbols had paper positions; `exec:symPf` (466 skips), inactive Signals (951) and `live.maxChase` (DOOD short) held the rest back. DOOD long: "size rounds to zero".
+Patch: `wf.symGate: "off"`, `live.maxChase: 5` (x02 only; x01 patches untouched).
