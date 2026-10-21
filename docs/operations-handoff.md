@@ -1,3 +1,9 @@
+# Final integration check follow-up — 21 October 2026
+
+Full current-source CI 39524434518 exposed two lint errors in main-added profiling tools (unqualified gc and an expression-only conditional); both tools are corrected without economic source changes. Exact Signal checks 39524434516 exposed a stand-in trade without explicit unit evidence; its intentionally unscaled synthetic trade now records mult:1. Unknown production/legacy unit evidence remains unavailable. Before-fix logs are retained in integration-pr181-{lint,report}-before.txt; local lint passes with 41 existing warnings and eval-gate passes 12/12. Runtime manifest remains 1070ac283ba701ef6931cbf19fb614165188b3b60c1d86805828232f57196796. Complete replacement CI is required before merge.
+
+Latest user also requests a 24-symbol Trade Sim after completion, emphasizing hourly changes and stable positive results. Prepare an independently source/feed/settings-sealed 12h prehistory +12h run with separate indicator warmup and complete hourly scalar/cohort audits; preserve actual losing outcomes and do not claim guaranteed profitability. No live orders or deployment performed.
+
 # PR 181 also integrated; final verification pending — 21 October 2026
 
 Main advanced during verification to `6cc6ef8cd953948069ebc336666a1eb23e15cae5` (PR 181, preserving PRs 182/185). Backup `backup/main-before-micro-merge-20261021-6cc6ef8` exists. PR 184 remains the authorized merge target after the final combined-source checks. Current runtime manifest `1070ac283ba701ef6931cbf19fb614165188b3b60c1d86805828232f57196796`; complete core inventory is now 240 files. Prior 219-file receipts are pre-PR181 checkpoints, not final-current-source proof.

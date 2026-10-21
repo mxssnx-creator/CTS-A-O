@@ -175,7 +175,7 @@ const a = (k) => process.argv[process.argv.indexOf("--" + k) + 1];
 writeFileSync(a("dump") + ".args", JSON.stringify({ execArgv: process.execArgv, argv: process.argv.slice(2) }));
 const to = Date.parse(a("end-at"));
 const from = to - Number(a("run")) * 3600000;
-const trades = [{ cfg: "follow|ema-21-55@m15|tp1|sl2|tr0|h64|gn", sym: "AAA-USDT", side: 1, entryT: from + 3600000, entry: 1, exitT: from + 7200000, exit: 1, r: 0.02, reason: "tp" }];
+const trades = [{ cfg: "follow|ema-21-55@m15|tp1|sl2|tr0|h64|gn", sym: "AAA-USDT", side: 1, entryT: from + 3600000, entry: 1, exitT: from + 7200000, exit: 1, r: 0.02, mult: 1, reason: "tp" }];
 // Block on: orders stored at their volume (r × mult) beside the multiple — two raised, one at one unit
 if (JSON.parse(a("toggles")).block)
   for (const [i, r, mult] of [[2, 0.04, 2], [3, -0.01, 1], [4, -0.06, 3]])

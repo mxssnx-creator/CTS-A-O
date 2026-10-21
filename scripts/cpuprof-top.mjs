@@ -17,8 +17,11 @@ const INCL = opt("incl", null);
 const LINES = opt("lines", null);
 const files = [];
 for (const a of argv) {
-  if (statSync(a).isDirectory()) for (const f of readdirSync(a)) f.endsWith(".cpuprofile") && files.push(join(a, f));
-  else files.push(a);
+  if (statSync(a).isDirectory()) {
+    for (const f of readdirSync(a)) {
+      if (f.endsWith(".cpuprofile")) files.push(join(a, f));
+    }
+  } else files.push(a);
 }
 const self = new Map();
 const incl = new Map();

@@ -179,7 +179,7 @@ try {
   );
   const startupMs = performance.now() - t00;
   rt.stop();
-  if (typeof gc === "function") gc();
+  globalThis.gc?.();
   stages.clear();
   await startAlloc();
   for (let c = 1; c <= COMPUTES; c++) {

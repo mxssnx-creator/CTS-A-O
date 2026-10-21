@@ -1,0 +1,527 @@
+﻿2026-10-21T00:57:32.9024511Z Current runner version: '2.337.0'
+2026-10-21T00:57:32.9060523Z ##[group]Runner Image Provisioner
+2026-10-21T00:57:32.9062321Z Hosted Compute Agent
+2026-10-21T00:57:32.9063634Z Version: 20261012.601
+2026-10-21T00:57:32.9064907Z Commit: f3dc54e1fb89da6852db922499a0233137369e1d
+2026-10-21T00:57:32.9066223Z Build Date: 2026-10-12T17:48:21Z
+2026-10-21T00:57:32.9067477Z Worker ID: {d15e9d99-b3d7-4550-ab7e-7dec60f6e650}
+2026-10-21T00:57:32.9069227Z Region: eastus
+2026-10-21T00:57:32.9070224Z Cloud: Azure
+2026-10-21T00:57:32.9071266Z ##[endgroup]
+2026-10-21T00:57:32.9073758Z ##[group]Operating System
+2026-10-21T00:57:32.9074854Z Ubuntu
+2026-10-21T00:57:32.9075956Z 24.04.5
+2026-10-21T00:57:32.9076878Z LTS
+2026-10-21T00:57:32.9077886Z ##[endgroup]
+2026-10-21T00:57:32.9078912Z ##[group]Runner Image
+2026-10-21T00:57:32.9079936Z Image: ubuntu-24.04
+2026-10-21T00:57:32.9081151Z Version: 20261012.334.1
+2026-10-21T00:57:32.9083555Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20261012.334/images/ubuntu/Ubuntu2404-Readme.md
+2026-10-21T00:57:32.9086701Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20261012.334
+2026-10-21T00:57:32.9088537Z ##[endgroup]
+2026-10-21T00:57:32.9090720Z ##[group]GITHUB_TOKEN Permissions
+2026-10-21T00:57:32.9093869Z Contents: read
+2026-10-21T00:57:32.9095045Z Metadata: read
+2026-10-21T00:57:32.9096046Z ##[endgroup]
+2026-10-21T00:57:32.9098978Z Secret source: Actions
+2026-10-21T00:57:32.9100644Z Cache mode: write
+2026-10-21T00:57:32.9102171Z Prepare workflow directory
+2026-10-21T00:57:32.9542111Z Prepare all required actions
+2026-10-21T00:57:32.9590807Z Getting action download info
+2026-10-21T00:57:33.1818057Z Download action repository 'actions/checkout@v4' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+2026-10-21T00:57:33.2699658Z Download action repository 'actions/setup-node@v4' (SHA:49933ea5288caeca8642d1e84afbd3f7d6820020)
+2026-10-21T00:57:33.4628300Z Complete job name: verify
+2026-10-21T00:57:33.5430785Z ##[group]Run actions/checkout@v4
+2026-10-21T00:57:33.5431692Z with:
+2026-10-21T00:57:33.5432144Z   persist-credentials: false
+2026-10-21T00:57:33.5432699Z   repository: mxssnx-creator/CTS-A-O
+2026-10-21T00:57:33.5436660Z   token: ***
+2026-10-21T00:57:33.5437099Z   ssh-strict: true
+2026-10-21T00:57:33.5437542Z   ssh-user: git
+2026-10-21T00:57:33.5437959Z   clean: true
+2026-10-21T00:57:33.5438405Z   sparse-checkout-cone-mode: true
+2026-10-21T00:57:33.5438926Z   fetch-depth: 1
+2026-10-21T00:57:33.5439364Z   fetch-tags: false
+2026-10-21T00:57:33.5439810Z   show-progress: true
+2026-10-21T00:57:33.5440253Z   lfs: false
+2026-10-21T00:57:33.5440657Z   submodules: false
+2026-10-21T00:57:33.5441109Z   set-safe-directory: true
+2026-10-21T00:57:33.5441612Z   allow-unsafe-pr-checkout: false
+2026-10-21T00:57:33.5442385Z ##[endgroup]
+2026-10-21T00:57:33.6430502Z Syncing repository: mxssnx-creator/CTS-A-O
+2026-10-21T00:57:33.6433362Z ##[group]Getting Git version info
+2026-10-21T00:57:33.6434588Z Working directory is '/home/runner/work/CTS-A-O/CTS-A-O'
+2026-10-21T00:57:33.6436372Z [command]/usr/bin/git version
+2026-10-21T00:57:33.6518281Z git version 2.55.0
+2026-10-21T00:57:33.6551113Z ##[endgroup]
+2026-10-21T00:57:33.6559067Z Temporarily overriding HOME='/home/runner/work/_temp/a698dde6-9339-48c7-85f6-2bffb686f94d' before making global git config changes
+2026-10-21T00:57:33.6561958Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-21T00:57:33.6564519Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/CTS-A-O/CTS-A-O
+2026-10-21T00:57:33.6626388Z Deleting the contents of '/home/runner/work/CTS-A-O/CTS-A-O'
+2026-10-21T00:57:33.6628271Z ##[group]Initializing the repository
+2026-10-21T00:57:33.6631305Z [command]/usr/bin/git init /home/runner/work/CTS-A-O/CTS-A-O
+2026-10-21T00:57:33.6742412Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-10-21T00:57:33.6744526Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-10-21T00:57:33.6746583Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-10-21T00:57:33.6747978Z hint: call:
+2026-10-21T00:57:33.6748748Z hint:
+2026-10-21T00:57:33.6749692Z hint: 	git config --global init.defaultBranch <name>
+2026-10-21T00:57:33.6750849Z hint:
+2026-10-21T00:57:33.6752053Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-10-21T00:57:33.6753993Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-10-21T00:57:33.6755429Z hint:
+2026-10-21T00:57:33.6756363Z hint: 	git branch -m <name>
+2026-10-21T00:57:33.6757493Z hint:
+2026-10-21T00:57:33.6758732Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-10-21T00:57:33.6760471Z Initialized empty Git repository in /home/runner/work/CTS-A-O/CTS-A-O/.git/
+2026-10-21T00:57:33.6762946Z [command]/usr/bin/git remote add origin https://github.com/mxssnx-creator/CTS-A-O
+2026-10-21T00:57:33.6812338Z ##[endgroup]
+2026-10-21T00:57:33.6813943Z ##[group]Disabling automatic garbage collection
+2026-10-21T00:57:33.6815956Z [command]/usr/bin/git config --local gc.auto 0
+2026-10-21T00:57:33.6848764Z ##[endgroup]
+2026-10-21T00:57:33.6849970Z ##[group]Setting up auth
+2026-10-21T00:57:33.6856142Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-21T00:57:33.6890739Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-21T00:57:33.7305985Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-21T00:57:33.7343731Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-21T00:57:33.7598670Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-21T00:57:33.7634980Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-21T00:57:33.7857276Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-10-21T00:57:33.7897970Z ##[endgroup]
+2026-10-21T00:57:33.7898815Z ##[group]Fetching the repository
+2026-10-21T00:57:33.7908176Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +0adb37f7f0efcc11d7ed3c81890807fb6388e144:refs/remotes/pull/184/merge
+2026-10-21T00:57:35.0033369Z From https://github.com/mxssnx-creator/CTS-A-O
+2026-10-21T00:57:35.0035889Z  * [new ref]         0adb37f7f0efcc11d7ed3c81890807fb6388e144 -> pull/184/merge
+2026-10-21T00:57:35.0042010Z ##[endgroup]
+2026-10-21T00:57:35.0044243Z ##[group]Determining the checkout info
+2026-10-21T00:57:35.0046515Z ##[endgroup]
+2026-10-21T00:57:35.0049066Z [command]/usr/bin/git sparse-checkout disable
+2026-10-21T00:57:35.0108262Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-10-21T00:57:35.0151050Z ##[group]Checking out the ref
+2026-10-21T00:57:35.0155431Z [command]/usr/bin/git checkout --progress --force refs/remotes/pull/184/merge
+2026-10-21T00:57:35.2652042Z Note: switching to 'refs/remotes/pull/184/merge'.
+2026-10-21T00:57:35.2653538Z 
+2026-10-21T00:57:35.2654582Z You are in 'detached HEAD' state. You can look around, make experimental
+2026-10-21T00:57:35.2656961Z changes and commit them, and you can discard any commits you make in this
+2026-10-21T00:57:35.2659131Z state without impacting any branches by switching back to a branch.
+2026-10-21T00:57:35.2660316Z 
+2026-10-21T00:57:35.2661254Z If you want to create a new branch to retain commits you create, you may
+2026-10-21T00:57:35.2663645Z do so (now or later) by using -c with the switch command. Example:
+2026-10-21T00:57:35.2664917Z 
+2026-10-21T00:57:35.2665604Z   git switch -c <new-branch-name>
+2026-10-21T00:57:35.2666569Z 
+2026-10-21T00:57:35.2667468Z Or undo this operation with:
+2026-10-21T00:57:35.2668264Z 
+2026-10-21T00:57:35.2668825Z   git switch -
+2026-10-21T00:57:35.2669502Z 
+2026-10-21T00:57:35.2670632Z Turn off this advice by setting config variable advice.detachedHead to false
+2026-10-21T00:57:35.2672243Z 
+2026-10-21T00:57:35.2674291Z HEAD is now at 0adb37f Merge 5ffecef9ead2cc51ffe34e8cefef5f42b34188f1 into 6cc6ef8cd953948069ebc336666a1eb23e15cae5
+2026-10-21T00:57:35.2691592Z ##[endgroup]
+2026-10-21T00:57:35.2743959Z [command]/usr/bin/git log -1 --format=%H
+2026-10-21T00:57:35.2771668Z 0adb37f7f0efcc11d7ed3c81890807fb6388e144
+2026-10-21T00:57:35.2783638Z ##[group]Removing auth
+2026-10-21T00:57:35.2787894Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-21T00:57:35.2824554Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-21T00:57:35.3054835Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-21T00:57:35.3083361Z http.https://github.com/.extraheader
+2026-10-21T00:57:35.3092948Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2026-10-21T00:57:35.3131862Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-21T00:57:35.3354312Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-21T00:57:35.3389811Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-21T00:57:35.3609937Z ##[endgroup]
+2026-10-21T00:57:35.4036353Z ##[group]Run actions/setup-node@v4
+2026-10-21T00:57:35.4037538Z with:
+2026-10-21T00:57:35.4038416Z   node-version: 24
+2026-10-21T00:57:35.4039354Z   cache: npm
+2026-10-21T00:57:35.4040240Z   always-auth: false
+2026-10-21T00:57:35.4041198Z   check-latest: false
+2026-10-21T00:57:35.4049948Z   token: ***
+2026-10-21T00:57:35.4050845Z ##[endgroup]
+2026-10-21T00:57:35.5460641Z Found in cache @ /opt/hostedtoolcache/node/24.21.0/x64
+2026-10-21T00:57:35.5466606Z (node:2406) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-21T00:57:35.5470921Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-21T00:57:35.5475323Z ##[group]Environment details
+2026-10-21T00:57:35.9635899Z node: v24.21.0
+2026-10-21T00:57:35.9636479Z npm: 11.19.0
+2026-10-21T00:57:35.9636905Z yarn: 1.22.22
+2026-10-21T00:57:35.9638405Z ##[endgroup]
+2026-10-21T00:57:35.9668000Z [command]/opt/hostedtoolcache/node/24.21.0/x64/bin/npm config get cache
+2026-10-21T00:57:36.0805050Z /home/runner/.npm
+2026-10-21T00:57:36.1691059Z Cache hit for: node-cache-Linux-x64-npm-0572bece56f139ea2909222bc477aa7635ecc82f35e7616385c7ee8b190c33df
+2026-10-21T00:57:36.1799403Z (node:2406) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-10-21T00:57:36.6697791Z Received 84850377 of 84850377 (100.0%), 175.2 MBs/sec
+2026-10-21T00:57:36.6698716Z Cache Size: ~81 MB (84850377 B)
+2026-10-21T00:57:36.6769183Z [command]/usr/bin/tar -xf /home/runner/work/_temp/2515253b-ff7d-4107-87ad-6db37285a6c2/cache.tzst -P -C /home/runner/work/CTS-A-O/CTS-A-O --use-compress-program unzstd
+2026-10-21T00:57:36.8696736Z Cache restored successfully
+2026-10-21T00:57:36.8736514Z Cache restored from key: node-cache-Linux-x64-npm-0572bece56f139ea2909222bc477aa7635ecc82f35e7616385c7ee8b190c33df
+2026-10-21T00:57:36.8944225Z ##[group]Run npm ci
+2026-10-21T00:57:36.8944553Z [36;1mnpm ci[0m
+2026-10-21T00:57:36.9247636Z shell: /usr/bin/bash -e {0}
+2026-10-21T00:57:36.9247948Z ##[endgroup]
+2026-10-21T00:57:43.0727133Z npm warn deprecated recharts@2.15.4: 1.x and 2.x branches are no longer active. Bump to Recharts v3 to receive latest features and bugfixes. See https://github.com/recharts/recharts/wiki/3.0-migration-guide
+2026-10-21T00:57:43.4358615Z npm warn deprecated eslint@9.39.5: This version is no longer supported. Please see https://eslint.org/version-support for other options.
+2026-10-21T00:57:46.3418973Z 
+2026-10-21T00:57:46.3435356Z added 423 packages, and audited 424 packages in 9s
+2026-10-21T00:57:46.3435828Z 
+2026-10-21T00:57:46.3436127Z 94 packages are looking for funding
+2026-10-21T00:57:46.3436645Z   run `npm fund` for details
+2026-10-21T00:57:46.3521532Z 
+2026-10-21T00:57:46.3522352Z 1 high severity vulnerability
+2026-10-21T00:57:46.3522767Z 
+2026-10-21T00:57:46.3523411Z To address all issues, run:
+2026-10-21T00:57:46.3523941Z   npm audit fix
+2026-10-21T00:57:46.3524206Z 
+2026-10-21T00:57:46.3524455Z Run `npm audit` for details.
+2026-10-21T00:57:46.4443813Z ##[group]Run npx playwright install --with-deps chromium
+2026-10-21T00:57:46.4444555Z [36;1mnpx playwright install --with-deps chromium[0m
+2026-10-21T00:57:46.4512000Z shell: /usr/bin/bash -e {0}
+2026-10-21T00:57:46.4512259Z ##[endgroup]
+2026-10-21T00:57:47.2040290Z Installing dependencies...
+2026-10-21T00:57:47.2124449Z Switching to root user to install dependencies...
+2026-10-21T00:57:47.2963868Z Get:1 file:/etc/apt/apt-mirrors.txt Mirrorlist [144 B]
+2026-10-21T00:57:47.3236446Z Hit:2 http://azure.archive.ubuntu.com/ubuntu noble InRelease
+2026-10-21T00:57:47.3250604Z Get:6 https://packages.microsoft.com/ubuntu/24.04/prod noble InRelease [3600 B]
+2026-10-21T00:57:47.3274035Z Get:3 http://azure.archive.ubuntu.com/ubuntu noble-updates InRelease [126 kB]
+2026-10-21T00:57:47.3305782Z Get:4 http://azure.archive.ubuntu.com/ubuntu noble-backports InRelease [126 kB]
+2026-10-21T00:57:47.3327553Z Get:5 http://azure.archive.ubuntu.com/ubuntu noble-security InRelease [126 kB]
+2026-10-21T00:57:47.4381966Z Get:7 https://packages.microsoft.com/ubuntu/24.04/prod noble/main amd64 Packages [628 kB]
+2026-10-21T00:57:47.4614719Z Get:8 https://packages.microsoft.com/ubuntu/24.04/prod noble/main armhf Packages [12.4 kB]
+2026-10-21T00:57:47.4623403Z Get:9 https://packages.microsoft.com/ubuntu/24.04/prod noble/main arm64 Packages [565 kB]
+2026-10-21T00:57:47.4908391Z Get:10 http://azure.archive.ubuntu.com/ubuntu noble-updates/main amd64 Packages [1397 kB]
+2026-10-21T00:57:47.4980941Z Get:11 http://azure.archive.ubuntu.com/ubuntu noble-updates/main Translation-en [308 kB]
+2026-10-21T00:57:47.5001762Z Get:12 http://azure.archive.ubuntu.com/ubuntu noble-updates/universe amd64 Packages [1704 kB]
+2026-10-21T00:57:47.5106228Z Get:13 http://azure.archive.ubuntu.com/ubuntu noble-updates/universe Translation-en [342 kB]
+2026-10-21T00:57:47.5121211Z Get:14 http://azure.archive.ubuntu.com/ubuntu noble-updates/restricted amd64 Packages [1805 kB]
+2026-10-21T00:57:47.5227041Z Get:15 http://azure.archive.ubuntu.com/ubuntu noble-updates/restricted Translation-en [411 kB]
+2026-10-21T00:57:47.6073242Z Get:16 http://azure.archive.ubuntu.com/ubuntu noble-security/main amd64 Packages [1145 kB]
+2026-10-21T00:57:47.6136347Z Get:17 http://azure.archive.ubuntu.com/ubuntu noble-security/main Translation-en [231 kB]
+2026-10-21T00:57:47.6154980Z Get:18 http://azure.archive.ubuntu.com/ubuntu noble-security/universe amd64 Packages [1222 kB]
+2026-10-21T00:57:47.6219102Z Get:19 http://azure.archive.ubuntu.com/ubuntu noble-security/universe Translation-en [246 kB]
+2026-10-21T00:57:47.6694575Z Get:20 http://azure.archive.ubuntu.com/ubuntu noble-security/restricted amd64 Packages [1713 kB]
+2026-10-21T00:57:47.6824015Z Get:21 http://azure.archive.ubuntu.com/ubuntu noble-security/restricted Translation-en [392 kB]
+2026-10-21T00:57:50.5114477Z Fetched 12.5 MB in 1s (10.2 MB/s)
+2026-10-21T00:57:51.4215278Z Reading package lists...
+2026-10-21T00:57:51.4451389Z Reading package lists...
+2026-10-21T00:57:51.6165972Z Building dependency tree...
+2026-10-21T00:57:51.6173051Z Reading state information...
+2026-10-21T00:57:51.7499896Z libasound2t64 is already the newest version (1.2.11-1ubuntu0.3).
+2026-10-21T00:57:51.7500914Z libasound2t64 set to manually installed.
+2026-10-21T00:57:51.7501908Z libatk-bridge2.0-0t64 is already the newest version (2.52.0-1build1).
+2026-10-21T00:57:51.7502940Z libatk-bridge2.0-0t64 set to manually installed.
+2026-10-21T00:57:51.7504489Z libatk1.0-0t64 is already the newest version (2.52.0-1build1).
+2026-10-21T00:57:51.7505335Z libatk1.0-0t64 set to manually installed.
+2026-10-21T00:57:51.7506221Z libatspi2.0-0t64 is already the newest version (2.52.0-1build1).
+2026-10-21T00:57:51.7507070Z libatspi2.0-0t64 set to manually installed.
+2026-10-21T00:57:51.7507905Z libcairo2 is already the newest version (1.18.0-3build1).
+2026-10-21T00:57:51.7508717Z libcairo2 set to manually installed.
+2026-10-21T00:57:51.7509249Z libcups2t64 is already the newest version (2.4.7-1.2ubuntu7.14).
+2026-10-21T00:57:51.7510142Z libcups2t64 set to manually installed.
+2026-10-21T00:57:51.7510658Z libdbus-1-3 is already the newest version (1.14.10-4ubuntu4.1).
+2026-10-21T00:57:51.7511144Z libdbus-1-3 set to manually installed.
+2026-10-21T00:57:51.7511633Z libdrm2 is already the newest version (2.4.125-1ubuntu0.1~24.04.2).
+2026-10-21T00:57:51.7512099Z libdrm2 set to manually installed.
+2026-10-21T00:57:51.7512566Z libgbm1 is already the newest version (25.2.8-0ubuntu0.24.04.4).
+2026-10-21T00:57:51.7513220Z libgbm1 set to manually installed.
+2026-10-21T00:57:51.7513708Z libglib2.0-0t64 is already the newest version (2.80.0-6ubuntu3.9).
+2026-10-21T00:57:51.7514515Z libglib2.0-0t64 set to manually installed.
+2026-10-21T00:57:51.7515335Z libnspr4 is already the newest version (2:4.35-1.1build1).
+2026-10-21T00:57:51.7516102Z libnspr4 set to manually installed.
+2026-10-21T00:57:51.7516866Z libnss3 is already the newest version (2:3.98-1ubuntu0.2).
+2026-10-21T00:57:51.7517674Z libnss3 set to manually installed.
+2026-10-21T00:57:51.7518497Z libpango-1.0-0 is already the newest version (1.52.1+ds-1build1).
+2026-10-21T00:57:51.7519318Z libpango-1.0-0 set to manually installed.
+2026-10-21T00:57:51.7520126Z libx11-6 is already the newest version (2:1.8.7-1ubuntu0.1).
+2026-10-21T00:57:51.7520862Z libx11-6 set to manually installed.
+2026-10-21T00:57:51.7521554Z libxcb1 is already the newest version (1.15-1ubuntu2).
+2026-10-21T00:57:51.7522264Z libxcb1 set to manually installed.
+2026-10-21T00:57:51.7523335Z libxcomposite1 is already the newest version (1:0.4.5-1build3).
+2026-10-21T00:57:51.7524150Z libxcomposite1 set to manually installed.
+2026-10-21T00:57:51.7524958Z libxdamage1 is already the newest version (1:1.1.6-1build1).
+2026-10-21T00:57:51.7525712Z libxdamage1 set to manually installed.
+2026-10-21T00:57:51.7526465Z libxext6 is already the newest version (2:1.3.4-1build2).
+2026-10-21T00:57:51.7527196Z libxext6 set to manually installed.
+2026-10-21T00:57:51.7527945Z libxfixes3 is already the newest version (1:6.0.0-2build1).
+2026-10-21T00:57:51.7528700Z libxfixes3 set to manually installed.
+2026-10-21T00:57:51.7529475Z libxkbcommon0 is already the newest version (1.6.0-1build1).
+2026-10-21T00:57:51.7530231Z libxkbcommon0 set to manually installed.
+2026-10-21T00:57:51.7531036Z libxrandr2 is already the newest version (2:1.5.2-2build1).
+2026-10-21T00:57:51.7531801Z libxrandr2 set to manually installed.
+2026-10-21T00:57:51.7532758Z fonts-noto-color-emoji is already the newest version (2.047-0ubuntu0.24.04.1).
+2026-10-21T00:57:51.7534128Z libfontconfig1 is already the newest version (2.15.0-1.1ubuntu2).
+2026-10-21T00:57:51.7534975Z libfontconfig1 set to manually installed.
+2026-10-21T00:57:51.7535867Z libfreetype6 is already the newest version (2.13.2+dfsg-1ubuntu0.2).
+2026-10-21T00:57:51.7536721Z libfreetype6 set to manually installed.
+2026-10-21T00:57:51.7537547Z fonts-liberation is already the newest version (1:2.1.5-3).
+2026-10-21T00:57:51.7538360Z fonts-liberation set to manually installed.
+2026-10-21T00:57:51.7539134Z The following additional packages will be installed:
+2026-10-21T00:57:51.7539873Z   xfonts-encodings xfonts-utils xserver-common
+2026-10-21T00:57:51.7540739Z Recommended packages:
+2026-10-21T00:57:51.7541288Z   fonts-ipafont-mincho fonts-tlwg-loma xfonts-base
+2026-10-21T00:57:51.7698069Z The following NEW packages will be installed:
+2026-10-21T00:57:51.7698616Z   fonts-freefont-ttf fonts-ipafont-gothic fonts-tlwg-loma-otf fonts-unifont
+2026-10-21T00:57:51.7704305Z   fonts-wqy-zenhei xfonts-cyrillic xfonts-encodings xfonts-scalable
+2026-10-21T00:57:51.7704715Z   xfonts-utils
+2026-10-21T00:57:51.7712736Z The following packages will be upgraded:
+2026-10-21T00:57:51.7713846Z   xserver-common xvfb
+2026-10-21T00:57:51.7871886Z 2 upgraded, 9 newly installed, 0 to remove and 85 not upgraded.
+2026-10-21T00:57:51.7872678Z Need to get 22.0 MB of archives.
+2026-10-21T00:57:51.7873729Z After this operation, 79.5 MB of additional disk space will be used.
+2026-10-21T00:57:51.7874621Z Get:1 file:/etc/apt/apt-mirrors.txt Mirrorlist [144 B]
+2026-10-21T00:57:52.0148989Z Get:2 http://azure.archive.ubuntu.com/ubuntu noble/universe amd64 fonts-ipafont-gothic all 00303-21ubuntu1 [3513 kB]
+2026-10-21T00:57:53.0098744Z Get:3 http://azure.archive.ubuntu.com/ubuntu noble/main amd64 fonts-freefont-ttf all 20211204+svn4273-2 [5641 kB]
+2026-10-21T00:57:53.3057475Z Get:4 http://azure.archive.ubuntu.com/ubuntu noble/universe amd64 fonts-tlwg-loma-otf all 1:0.7.3-1 [107 kB]
+2026-10-21T00:57:53.4141428Z Get:5 http://azure.archive.ubuntu.com/ubuntu noble/universe amd64 fonts-unifont all 1:15.1.01-1build1 [2993 kB]
+2026-10-21T00:57:53.6245987Z Get:6 http://azure.archive.ubuntu.com/ubuntu noble/universe amd64 fonts-wqy-zenhei all 0.9.45-8 [7472 kB]
+2026-10-21T00:57:53.9985173Z Get:7 http://azure.archive.ubuntu.com/ubuntu noble/main amd64 xfonts-encodings all 1:1.0.5-0ubuntu2 [578 kB]
+2026-10-21T00:57:54.1241140Z Get:8 http://azure.archive.ubuntu.com/ubuntu noble/main amd64 xfonts-utils amd64 1:7.7+6build3 [94.4 kB]
+2026-10-21T00:57:54.2324239Z Get:9 http://azure.archive.ubuntu.com/ubuntu noble/universe amd64 xfonts-cyrillic all 1:1.0.5+nmu1 [384 kB]
+2026-10-21T00:57:54.3546271Z Get:10 http://azure.archive.ubuntu.com/ubuntu noble/main amd64 xfonts-scalable all 1:1.0.3-1.3 [304 kB]
+2026-10-21T00:57:54.4740204Z Get:11 http://azure.archive.ubuntu.com/ubuntu noble-updates/main amd64 xserver-common all 2:21.1.12-1ubuntu1.9 [35.0 kB]
+2026-10-21T00:57:54.5847243Z Get:12 http://azure.archive.ubuntu.com/ubuntu noble-updates/universe amd64 xvfb amd64 2:21.1.12-1ubuntu1.9 [877 kB]
+2026-10-21T00:57:54.8559043Z Fetched 22.0 MB in 3s (7753 kB/s)
+2026-10-21T00:57:54.8788174Z Selecting previously unselected package fonts-ipafont-gothic.
+2026-10-21T00:57:54.9096891Z (Reading database ... 
+2026-10-21T00:57:54.9097339Z (Reading database ... 5%
+2026-10-21T00:57:54.9097733Z (Reading database ... 10%
+2026-10-21T00:57:54.9098113Z (Reading database ... 15%
+2026-10-21T00:57:54.9098451Z (Reading database ... 20%
+2026-10-21T00:57:54.9098871Z (Reading database ... 25%
+2026-10-21T00:57:54.9099220Z (Reading database ... 30%
+2026-10-21T00:57:54.9099545Z (Reading database ... 35%
+2026-10-21T00:57:54.9099866Z (Reading database ... 40%
+2026-10-21T00:57:54.9100158Z (Reading database ... 45%
+2026-10-21T00:57:54.9100648Z (Reading database ... 50%
+2026-10-21T00:57:54.9145908Z (Reading database ... 55%
+2026-10-21T00:57:54.9842797Z (Reading database ... 60%
+2026-10-21T00:57:55.1875559Z (Reading database ... 65%
+2026-10-21T00:57:55.3871390Z (Reading database ... 70%
+2026-10-21T00:57:55.5741572Z (Reading database ... 75%
+2026-10-21T00:57:55.7000519Z (Reading database ... 80%
+2026-10-21T00:57:55.8225957Z (Reading database ... 85%
+2026-10-21T00:57:55.9321038Z (Reading database ... 90%
+2026-10-21T00:57:56.0446979Z (Reading database ... 95%
+2026-10-21T00:57:56.0447621Z (Reading database ... 100%
+2026-10-21T00:57:56.0448518Z (Reading database ... 203540 files and directories currently installed.)
+2026-10-21T00:57:56.0487442Z Preparing to unpack .../00-fonts-ipafont-gothic_00303-21ubuntu1_all.deb ...
+2026-10-21T00:57:56.0577832Z Unpacking fonts-ipafont-gothic (00303-21ubuntu1) ...
+2026-10-21T00:57:56.2825679Z Selecting previously unselected package fonts-freefont-ttf.
+2026-10-21T00:57:56.2950492Z Preparing to unpack .../01-fonts-freefont-ttf_20211204+svn4273-2_all.deb ...
+2026-10-21T00:57:56.2957238Z Unpacking fonts-freefont-ttf (20211204+svn4273-2) ...
+2026-10-21T00:57:56.3726730Z Selecting previously unselected package fonts-tlwg-loma-otf.
+2026-10-21T00:57:56.3850255Z Preparing to unpack .../02-fonts-tlwg-loma-otf_1%3a0.7.3-1_all.deb ...
+2026-10-21T00:57:56.3858986Z Unpacking fonts-tlwg-loma-otf (1:0.7.3-1) ...
+2026-10-21T00:57:56.4053756Z Selecting previously unselected package fonts-unifont.
+2026-10-21T00:57:56.4176721Z Preparing to unpack .../03-fonts-unifont_1%3a15.1.01-1build1_all.deb ...
+2026-10-21T00:57:56.4184984Z Unpacking fonts-unifont (1:15.1.01-1build1) ...
+2026-10-21T00:57:56.5337424Z Selecting previously unselected package fonts-wqy-zenhei.
+2026-10-21T00:57:56.5461247Z Preparing to unpack .../04-fonts-wqy-zenhei_0.9.45-8_all.deb ...
+2026-10-21T00:57:56.5560479Z Unpacking fonts-wqy-zenhei (0.9.45-8) ...
+2026-10-21T00:57:57.0134183Z Selecting previously unselected package xfonts-encodings.
+2026-10-21T00:57:57.0258244Z Preparing to unpack .../05-xfonts-encodings_1%3a1.0.5-0ubuntu2_all.deb ...
+2026-10-21T00:57:57.0264215Z Unpacking xfonts-encodings (1:1.0.5-0ubuntu2) ...
+2026-10-21T00:57:57.0535803Z Selecting previously unselected package xfonts-utils.
+2026-10-21T00:57:57.0659625Z Preparing to unpack .../06-xfonts-utils_1%3a7.7+6build3_amd64.deb ...
+2026-10-21T00:57:57.0666701Z Unpacking xfonts-utils (1:7.7+6build3) ...
+2026-10-21T00:57:57.1002968Z Selecting previously unselected package xfonts-cyrillic.
+2026-10-21T00:57:57.1127583Z Preparing to unpack .../07-xfonts-cyrillic_1%3a1.0.5+nmu1_all.deb ...
+2026-10-21T00:57:57.1135020Z Unpacking xfonts-cyrillic (1:1.0.5+nmu1) ...
+2026-10-21T00:57:57.1458213Z Selecting previously unselected package xfonts-scalable.
+2026-10-21T00:57:57.1580810Z Preparing to unpack .../08-xfonts-scalable_1%3a1.0.3-1.3_all.deb ...
+2026-10-21T00:57:57.1589495Z Unpacking xfonts-scalable (1:1.0.3-1.3) ...
+2026-10-21T00:57:57.1929917Z Preparing to unpack .../09-xserver-common_2%3a21.1.12-1ubuntu1.9_all.deb ...
+2026-10-21T00:57:57.1947615Z Unpacking xserver-common (2:21.1.12-1ubuntu1.9) over (2:21.1.12-1ubuntu1.8) ...
+2026-10-21T00:57:57.2298756Z Preparing to unpack .../10-xvfb_2%3a21.1.12-1ubuntu1.9_amd64.deb ...
+2026-10-21T00:57:57.2317784Z Unpacking xvfb (2:21.1.12-1ubuntu1.9) over (2:21.1.12-1ubuntu1.8) ...
+2026-10-21T00:57:57.2801190Z Setting up fonts-wqy-zenhei (0.9.45-8) ...
+2026-10-21T00:57:57.2912755Z Setting up fonts-freefont-ttf (20211204+svn4273-2) ...
+2026-10-21T00:57:57.2928756Z Setting up fonts-tlwg-loma-otf (1:0.7.3-1) ...
+2026-10-21T00:57:57.2946037Z Setting up xfonts-encodings (1:1.0.5-0ubuntu2) ...
+2026-10-21T00:57:57.2961818Z Setting up fonts-ipafont-gothic (00303-21ubuntu1) ...
+2026-10-21T00:57:57.3023718Z update-alternatives: using /usr/share/fonts/opentype/ipafont-gothic/ipag.ttf to provide /usr/share/fonts/truetype/fonts-japanese-gothic.ttf (fonts-japanese-gothic.ttf) in auto mode
+2026-10-21T00:57:57.3037043Z Setting up xserver-common (2:21.1.12-1ubuntu1.9) ...
+2026-10-21T00:57:57.3053463Z Setting up fonts-unifont (1:15.1.01-1build1) ...
+2026-10-21T00:57:57.3071254Z Setting up xvfb (2:21.1.12-1ubuntu1.9) ...
+2026-10-21T00:57:57.3087060Z Setting up xfonts-utils (1:7.7+6build3) ...
+2026-10-21T00:57:57.3124363Z Setting up xfonts-cyrillic (1:1.0.5+nmu1) ...
+2026-10-21T00:57:57.3432014Z Setting up xfonts-scalable (1:1.0.3-1.3) ...
+2026-10-21T00:57:57.3706156Z Processing triggers for man-db (2.12.0-4build2) ...
+2026-10-21T00:57:57.3729137Z Not building database; man-db/auto-update is not 'true'.
+2026-10-21T00:57:57.3741829Z Processing triggers for fontconfig (2.15.0-1.1ubuntu2) ...
+2026-10-21T00:57:58.1023437Z 
+2026-10-21T00:57:58.1024287Z Running kernel seems to be up-to-date.
+2026-10-21T00:57:58.1024712Z 
+2026-10-21T00:57:58.1024984Z No services need to be restarted.
+2026-10-21T00:57:58.1025221Z 
+2026-10-21T00:57:58.1025436Z No containers need to be restarted.
+2026-10-21T00:57:58.1025941Z 
+2026-10-21T00:57:58.1026167Z No user sessions are running outdated binaries.
+2026-10-21T00:57:58.1026439Z 
+2026-10-21T00:57:58.1026793Z No VM guests are running outdated hypervisor (qemu) binaries on this host.
+2026-10-21T00:57:58.9504613Z Downloading Chrome for Testing 153.0.8010.12 (playwright chromium v1243) from https://cdn.playwright.dev/builds/cft/153.0.8010.12/linux64/chrome-linux64.zip
+2026-10-21T00:57:59.3217879Z |                                                                                |   0% of 186.8 MiB
+2026-10-21T00:57:59.6479856Z |■■■■■■■■                                                                        |  10% of 186.8 MiB
+2026-10-21T00:57:59.7579727Z |■■■■■■■■■■■■■■■■                                                                |  20% of 186.8 MiB
+2026-10-21T00:57:59.8617075Z |■■■■■■■■■■■■■■■■■■■■■■■■                                                        |  30% of 186.8 MiB
+2026-10-21T00:57:59.9420086Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                                |  40% of 186.8 MiB
+2026-10-21T00:58:00.0239193Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                        |  50% of 186.8 MiB
+2026-10-21T00:58:00.0979614Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                |  60% of 186.8 MiB
+2026-10-21T00:58:00.1815050Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                        |  70% of 186.8 MiB
+2026-10-21T00:58:00.2693217Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                |  80% of 186.8 MiB
+2026-10-21T00:58:00.3345631Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■        |  90% of 186.8 MiB
+2026-10-21T00:58:00.4295373Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■| 100% of 186.8 MiB
+2026-10-21T00:58:03.6694821Z Chrome for Testing 153.0.8010.12 (playwright chromium v1243) downloaded to /home/runner/.cache/ms-playwright/chromium-1243
+2026-10-21T00:58:03.6698777Z Downloading FFmpeg (playwright ffmpeg v1011) from https://cdn.playwright.dev/dbazure/download/playwright/builds/ffmpeg/1011/ffmpeg-linux.zip
+2026-10-21T00:58:04.0212669Z |                                                                                |   0% of 2.3 MiB
+2026-10-21T00:58:04.0252272Z |■■■■■■■■                                                                        |  10% of 2.3 MiB
+2026-10-21T00:58:04.0316246Z |■■■■■■■■■■■■■■■■                                                                |  20% of 2.3 MiB
+2026-10-21T00:58:04.0347196Z |■■■■■■■■■■■■■■■■■■■■■■■■                                                        |  30% of 2.3 MiB
+2026-10-21T00:58:04.0376759Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                                |  40% of 2.3 MiB
+2026-10-21T00:58:04.0546647Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                        |  50% of 2.3 MiB
+2026-10-21T00:58:04.0562124Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                |  60% of 2.3 MiB
+2026-10-21T00:58:04.0581298Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                        |  70% of 2.3 MiB
+2026-10-21T00:58:04.0608841Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                |  80% of 2.3 MiB
+2026-10-21T00:58:04.0612486Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■        |  90% of 2.3 MiB
+2026-10-21T00:58:04.0644739Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■| 100% of 2.3 MiB
+2026-10-21T00:58:04.1255128Z FFmpeg (playwright ffmpeg v1011) downloaded to /home/runner/.cache/ms-playwright/ffmpeg-1011
+2026-10-21T00:58:04.1258923Z Downloading Chrome Headless Shell 153.0.8010.12 (playwright chromium-headless-shell v1243) from https://cdn.playwright.dev/builds/cft/153.0.8010.12/linux64/chrome-headless-shell-linux64.zip
+2026-10-21T00:58:04.5008831Z |                                                                                |   0% of 114.3 MiB
+2026-10-21T00:58:04.6794375Z |■■■■■■■■                                                                        |  10% of 114.3 MiB
+2026-10-21T00:58:04.8091533Z |■■■■■■■■■■■■■■■■                                                                |  20% of 114.3 MiB
+2026-10-21T00:58:04.8649295Z |■■■■■■■■■■■■■■■■■■■■■■■■                                                        |  30% of 114.3 MiB
+2026-10-21T00:58:04.9254504Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                                |  40% of 114.3 MiB
+2026-10-21T00:58:04.9866081Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                        |  50% of 114.3 MiB
+2026-10-21T00:58:05.0273740Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                |  60% of 114.3 MiB
+2026-10-21T00:58:05.0816737Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                        |  70% of 114.3 MiB
+2026-10-21T00:58:05.1178103Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                |  80% of 114.3 MiB
+2026-10-21T00:58:05.1570533Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■        |  90% of 114.3 MiB
+2026-10-21T00:58:05.2097575Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■| 100% of 114.3 MiB
+2026-10-21T00:58:07.4279310Z Chrome Headless Shell 153.0.8010.12 (playwright chromium-headless-shell v1243) downloaded to /home/runner/.cache/ms-playwright/chromium_headless_shell-1243
+2026-10-21T00:58:07.4666721Z ##[group]Run npm run typecheck -- --pretty false
+2026-10-21T00:58:07.4667388Z [36;1mnpm run typecheck -- --pretty false[0m
+2026-10-21T00:58:07.4735440Z shell: /usr/bin/bash -e {0}
+2026-10-21T00:58:07.4735708Z ##[endgroup]
+2026-10-21T00:58:07.5752790Z 
+2026-10-21T00:58:07.5753045Z > typecheck
+2026-10-21T00:58:07.5753729Z > tsc --noEmit --pretty false
+2026-10-21T00:58:07.5754074Z 
+2026-10-21T00:58:21.7994425Z ##[group]Run npm run lint
+2026-10-21T00:58:21.7994725Z [36;1mnpm run lint[0m
+2026-10-21T00:58:21.8057951Z shell: /usr/bin/bash -e {0}
+2026-10-21T00:58:21.8058212Z ##[endgroup]
+2026-10-21T00:58:21.9053220Z 
+2026-10-21T00:58:21.9053556Z > lint
+2026-10-21T00:58:21.9053921Z > eslint .
+2026-10-21T00:58:21.9054136Z 
+2026-10-21T00:58:37.5595604Z 
+2026-10-21T00:58:37.5596487Z /home/runner/work/CTS-A-O/CTS-A-O/scripts/bench-compute.mjs
+2026-10-21T00:58:37.5632021Z ##[warning]   81:7   warning  'lastT' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-21T00:58:37.5643875Z ##[error]  182:33  error    'gc' is not defined                                                               no-undef
+2026-10-21T00:58:37.5645251Z 
+2026-10-21T00:58:37.5645696Z /home/runner/work/CTS-A-O/CTS-A-O/scripts/bench-cycle.mjs
+2026-10-21T00:58:37.5647741Z ##[warning]  39:9  warning  'closePool' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-21T00:58:37.5649392Z 
+2026-10-21T00:58:37.5649808Z /home/runner/work/CTS-A-O/CTS-A-O/scripts/core-adjust.mjs
+2026-10-21T00:58:37.5651635Z ##[warning]  113:7  warning  'nA' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-21T00:58:37.5653556Z 
+2026-10-21T00:58:37.5654012Z /home/runner/work/CTS-A-O/CTS-A-O/scripts/core-coverage.mjs
+2026-10-21T00:58:37.5655838Z ##[warning]  13:24  warning  'statsOf' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-21T00:58:37.5657467Z 
+2026-10-21T00:58:37.5657852Z /home/runner/work/CTS-A-O/CTS-A-O/scripts/core-mtf.mjs
+2026-10-21T00:58:37.5659727Z ##[warning]  58:9  warning  'factors' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-21T00:58:37.5661400Z 
+2026-10-21T00:58:37.5661832Z /home/runner/work/CTS-A-O/CTS-A-O/scripts/core-session.mjs
+2026-10-21T00:58:37.5663918Z ##[warning]   955:9  warning  'G' is assigned a value but never used. Allowed unused vars must match /^_/u        @typescript-eslint/no-unused-vars
+2026-10-21T00:58:37.5667069Z ##[warning]  1867:7  warning  'byEntry' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-21T00:58:37.5668976Z 
+2026-10-21T00:58:37.5669757Z /home/runner/work/CTS-A-O/CTS-A-O/scripts/core-signal-coordination-replay.mjs
+2026-10-21T00:58:37.5671687Z ##[warning]  4:31  warning  'mkdir' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-21T00:58:37.5673622Z 
+2026-10-21T00:58:37.5674214Z /home/runner/work/CTS-A-O/CTS-A-O/scripts/core-signal-window-report.test.mjs
+2026-10-21T00:58:37.5676327Z ##[warning]  51:13  warning  'provenance' is assigned a value but never used. Allowed unused vars must match /^_/u   @typescript-eslint/no-unused-vars
+2026-10-21T00:58:37.5679614Z ##[warning]  51:25  warning  'generatedAt' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-21T00:58:37.5681373Z 
+2026-10-21T00:58:37.5681791Z /home/runner/work/CTS-A-O/CTS-A-O/scripts/cpuprof-top.mjs
+2026-10-21T00:58:37.5683967Z ##[error]  20:66  error  Expected an assignment or function call and instead saw an expression  @typescript-eslint/no-unused-expressions
+2026-10-21T00:58:37.5685735Z 
+2026-10-21T00:58:37.5686138Z /home/runner/work/CTS-A-O/CTS-A-O/scripts/eval-gate.mjs
+2026-10-21T00:58:37.5687990Z ##[warning]  12:33  warning  'readFileSync' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-21T00:58:37.5689743Z 
+2026-10-21T00:58:37.5690243Z /home/runner/work/CTS-A-O/CTS-A-O/scripts/freeze-session-study.mjs
+2026-10-21T00:58:37.5692089Z ##[warning]  4:19  warning  'dirname' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-21T00:58:37.5694302Z 
+2026-10-21T00:58:37.5694856Z /home/runner/work/CTS-A-O/CTS-A-O/scripts/lib/safe-network-interfaces.cjs
+2026-10-21T00:58:37.5696452Z   1:1  warning  Unused eslint-disable directive (no problems were reported from '@typescript-eslint/no-require-imports')
+2026-10-21T00:58:37.5697473Z 
+2026-10-21T00:58:37.5697973Z /home/runner/work/CTS-A-O/CTS-A-O/scripts/signals-12-symbol-study.mjs
+2026-10-21T00:58:37.5699938Z ##[warning]   9:26  warning  'SIGNAL_SOURCES' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-21T00:58:37.5703296Z ##[warning]  13:24  warning  'kindOfId' is defined but never used. Allowed unused vars must match /^_/u        @typescript-eslint/no-unused-vars
+2026-10-21T00:58:37.5705053Z 
+2026-10-21T00:58:37.5705575Z /home/runner/work/CTS-A-O/CTS-A-O/src/components/v2/charts.tsx
+2026-10-21T00:58:37.5708425Z ##[warning]   5:14  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+2026-10-21T00:58:37.5712510Z ##[warning]  17:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+2026-10-21T00:58:37.5714842Z 
+2026-10-21T00:58:37.5715280Z /home/runner/work/CTS-A-O/CTS-A-O/src/components/v2/conn.tsx
+2026-10-21T00:58:37.5717813Z ##[warning]   22:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+2026-10-21T00:58:37.5721971Z ##[warning]  118:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+2026-10-21T00:58:37.5724277Z 
+2026-10-21T00:58:37.5724712Z /home/runner/work/CTS-A-O/CTS-A-O/src/components/v2/ui.tsx
+2026-10-21T00:58:37.5727227Z ##[warning]   12:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+2026-10-21T00:58:37.5731276Z ##[warning]  106:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+2026-10-21T00:58:37.5735585Z ##[warning]  168:14  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+2026-10-21T00:58:37.5739654Z ##[warning]  219:14  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+2026-10-21T00:58:37.5743925Z ##[warning]  221:14  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+2026-10-21T00:58:37.5748001Z ##[warning]  228:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+2026-10-21T00:58:37.5752025Z ##[warning]  344:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+2026-10-21T00:58:37.5756299Z ##[warning]  353:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+2026-10-21T00:58:37.5758313Z 
+2026-10-21T00:58:37.5758842Z /home/runner/work/CTS-A-O/CTS-A-O/src/core/indications/stable02.test.ts
+2026-10-21T00:58:37.5761040Z ##[warning]  204:58  warning  'period' is assigned a value but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-21T00:58:37.5762944Z 
+2026-10-21T00:58:37.5763893Z /home/runner/work/CTS-A-O/CTS-A-O/src/core/regression.test.ts
+2026-10-21T00:58:37.5765413Z ##[warning]  5:47  warning  'RT_COST' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-21T00:58:37.5767017Z 
+2026-10-21T00:58:37.5767367Z /home/runner/work/CTS-A-O/CTS-A-O/src/core/server/heal.test.ts
+2026-10-21T00:58:37.5768944Z ##[warning]  8:25  warning  'runtimeFixtureGrid' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-21T00:58:37.5770376Z 
+2026-10-21T00:58:37.5770731Z /home/runner/work/CTS-A-O/CTS-A-O/src/core/server/runtime.server.ts
+2026-10-21T00:58:37.5772111Z ##[warning]  246:3  warning  'sideTapeOf' is defined but never used. Allowed unused vars must match /^_/u      @typescript-eslint/no-unused-vars
+2026-10-21T00:58:37.5774806Z ##[warning]  250:8  warning  'SideTapeMemo' is defined but never used. Allowed unused vars must match /^_/u    @typescript-eslint/no-unused-vars
+2026-10-21T00:58:37.5776727Z ##[warning]  259:3  warning  'preferExchange' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-21T00:58:37.5778570Z ##[warning]  274:8  warning  'os' is defined but never used. Allowed unused vars must match /^_/u              @typescript-eslint/no-unused-vars
+2026-10-21T00:58:37.5779569Z 
+2026-10-21T00:58:37.5779855Z /home/runner/work/CTS-A-O/CTS-A-O/src/core/server/runtime.test.ts
+2026-10-21T00:58:37.5781051Z ##[warning]  15:36  warning  'runtimeFixtureGrid' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-21T00:58:37.5782096Z 
+2026-10-21T00:58:37.5782357Z /home/runner/work/CTS-A-O/CTS-A-O/src/core/signal-hist.test.ts
+2026-10-21T00:58:37.5783644Z ##[warning]  24:10  warning  'DEFAULT_TACTICS' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-21T00:58:37.5784695Z 
+2026-10-21T00:58:37.5784981Z /home/runner/work/CTS-A-O/CTS-A-O/src/core/signals.test.ts
+2026-10-21T00:58:37.5786150Z ##[warning]  653:11  warning  'coordProtections' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-21T00:58:37.5787143Z 
+2026-10-21T00:58:37.5787391Z /home/runner/work/CTS-A-O/CTS-A-O/src/core/sim/walkforward.ts
+2026-10-21T00:58:37.5788571Z ##[warning]  2093:11  warning  'sideSignals' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-21T00:58:37.5790345Z ##[warning]  3474:11  warning  'ddtMax' is assigned a value but never used. Allowed unused vars must match /^_/u       @typescript-eslint/no-unused-vars
+2026-10-21T00:58:37.5791313Z 
+2026-10-21T00:58:37.5791530Z /home/runner/work/CTS-A-O/CTS-A-O/src/core/statistics.ts
+2026-10-21T00:58:37.5792600Z ##[warning]  1229:16  warning  'gp' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-21T00:58:37.5794458Z ##[warning]  1230:10  warning  'gl' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-21T00:58:37.5795381Z 
+2026-10-21T00:58:37.5795783Z ✖ 43 problems (2 errors, 41 warnings)
+2026-10-21T00:58:37.5796223Z   0 errors and 1 warning potentially fixable with the `--fix` option.
+2026-10-21T00:58:37.5796501Z 
+2026-10-21T00:58:37.7378510Z ##[error]Process completed with exit code 1.
+2026-10-21T00:58:37.7530857Z Post job cleanup.
+2026-10-21T00:58:37.8388114Z [command]/usr/bin/git version
+2026-10-21T00:58:37.8433375Z git version 2.55.0
+2026-10-21T00:58:37.8478415Z Temporarily overriding HOME='/home/runner/work/_temp/0ce5b9ff-b5dd-4a9e-a676-febedab0a901' before making global git config changes
+2026-10-21T00:58:37.8480058Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-21T00:58:37.8484002Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/CTS-A-O/CTS-A-O
+2026-10-21T00:58:37.8522525Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-21T00:58:37.8562012Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-21T00:58:37.8813618Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-21T00:58:37.8854005Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-21T00:58:37.9136203Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-21T00:58:37.9150563Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-21T00:58:37.9661555Z Cleaning up orphan processes
+2026-10-21T00:58:38.0026968Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-node@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
