@@ -1113,6 +1113,9 @@ export class CoreRuntime {
       replayPreloadAll?: boolean;
     } = {},
   ) {
+    if (opts.feed?.rankingAt !== undefined &&
+      (!opts.replay || opts.conn || !Number.isFinite(opts.feed.rankingAt) || opts.feed.rankingAt < 0))
+      throw new Error("rankingAt is a finite historical clock for unconnected replays only");
     if ((opts.completeReplayUniverse || opts.replayPreloadAll) && (!opts.replay || opts.conn))
       throw new Error("completeReplayUniverse is available for unconnected replays only");
     this.completeReplayUniverse =
@@ -3354,6 +3357,7 @@ export class CoreRuntime {
               s.symbols + offset,
               s.symbolRank ?? "volatility1h",
               this.feed.klines,
+              this.feed.rankingAt,
             )
           ).slice(offset),
           s.forceSymbols,
@@ -7619,7 +7623,7 @@ export class CoreRuntime {
               rankUniverse(this.tickers, s.symbols, s.symbolRank ?? "volatility1h", (...args) => {
                 this.checkBacktest(job);
                 return this.backtestAwait(job, this.feed.klines(...args));
-              }),
+              }, this.feed.rankingAt),
             ),
             s.forceSymbols,
             s.symbols,
@@ -10715,6 +10719,8 @@ export function computeKey(s: CoreSettings, wf: Partial<WalkForwardOptions>): st
 }
 
 export interface MarketFeed {
+  /** Frozen symbol-selection time; live feeds use the wall clock. Unconnected replay only. */
+  rankingAt?: number;
   tickers: typeof fetchTickers;
   history: typeof fetchHistory;
   klines: typeof fetchKlines;

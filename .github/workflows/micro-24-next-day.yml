@@ -1,0 +1,83 @@
+name: Frozen Micro next-day validation
+on:
+  workflow_dispatch:
+    inputs:
+      training_run:
+        description: Completed training run with a sealed shortlist artifact (never reselect from validation)
+        type: string
+        required: true
+        default: "39536098285"
+permissions:
+  contents: read
+  actions: read
+jobs:
+  validation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      CTS_CORE_STATE: "off"
+      CTS_CORE_AUTOSTART: "0"
+      CTS_CORE_LIVE: "0"
+      CTS_CORE_WORKERS: "2"
+      CTS_CORE_COMPARE: "0"
+      CTS_CORE_VARIANTS: "0"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          # Frozen failed holdout plan belongs to this exact original economic source.
+          ref: f03a36d16ef02b1299889d32c97222932c7cc388
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24.19.0"
+      - run: npm ci
+      - name: Recover the immutable training selection and retained acquisition failures
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.training_run }}
+          name: micro-24-next-day-${{ inputs.training_run }}
+          path: runs/recovered
+      - name: Reject source drift or a changed frozen focus before any future data is read
+        run: |
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import fs from 'node:fs';
+          import { sessionStudySourceFiles, studyExactJson, studySha256 } from './scripts/lib/session-study.mjs';
+          const dir = 'runs/recovered/micro-24-selection-v1';
+          const s = JSON.parse(fs.readFileSync(`${dir}/selection.json`));
+          const p = JSON.parse(fs.readFileSync('docs/micro-24-sim-2026-10-21/next-day-plan-v1.json'));
+          assert.equal(s.schema, 'cts-micro-24-training-selection-v1');
+          assert.equal(s.trainingWindow.endT, p.training.endT);
+          assert.equal(s.trainingSource, p.sourceSha256);
+          assert.equal(studySha256(studyExactJson(sessionStudySourceFiles())), p.sourceSha256);
+          assert.deepEqual(s.focus, JSON.parse(fs.readFileSync(`${dir}/focus.json`)));
+          assert.ok(s.eligible && s.focus.length > 0, 'No eligible sealed training selection');
+          for (const [file, sha] of Object.entries(p.scripts)) assert.equal(studySha256(fs.readFileSync(file)), sha, file);
+          console.log(JSON.stringify({ trainingSource: s.trainingSource, focus: s.focus, validation: 'not yet acquired or scored' }));
+          JS
+      - name: Build the exact worker
+        run: npm run build:dev
+        env:
+          NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
+      - name: Acquire the completed native archive window with at most two requests in flight
+        run: node --no-warnings .github/audits/micro-24-feed.mjs --from 2026-10-19T00:00:00Z --to 2026-10-21T00:00:00Z --out runs/recovered/micro-24-next-market --concurrency 2
+      - name: Run the unchanged training focus on the later twelve hours and audit every outcome
+        env:
+          NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
+        run: |
+          node --no-warnings .github/audits/micro-24-trade-sim.mjs prepare --feed runs/recovered/micro-24-next-market/feed.json --focus-file runs/recovered/micro-24-selection-v1/focus.json --label micro-24-next-day-validation-v1 --out runs/recovered/micro-24-validation-v1
+          node --no-warnings .github/audits/micro-24-trade-sim.mjs run --out runs/recovered/micro-24-validation-v1 --workers 2
+          node --no-warnings scripts/audit-micro-execution.mjs runs/recovered/micro-24-validation-v1
+          node --no-warnings scripts/audit-micro-stages.mjs runs/recovered/micro-24-validation-v1
+          node --no-warnings .github/audits/hourly-progress.mjs runs/recovered/micro-24-validation-v1 runs/recovered/micro-24-validation-v1/scalar-hours.json --require-all
+          node --no-warnings scripts/audit-stage-transition.mjs runs/recovered/micro-24-validation-v1
+          node --no-warnings scripts/audit-simulation-parity.mjs runs/recovered/micro-24-validation-v1/raw.json runs/recovered/micro-24-validation-v1/simulation-parity.json
+      - name: Preserve the selection, source, acquisition failures and all validation outcomes
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: micro-24-next-day-${{ github.run_id }}
+          retention-days: 30
+          compression-level: 6
+          path: runs/recovered/

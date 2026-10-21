@@ -7,6 +7,26 @@
 /** the timeframe the universe ranking reads (minutes) */
 export const RANK_TF = 60;
 
+/** A bounded replay must also honor earlier caller cuts (e.g. ranking at trade start).
+ * Keep the real scheduler clock untouched and never widen a source's requested historical window. */
+export function boundedReplayFeed(history, klines, cutT, rankingAt = cutT) {
+  const keep = (cs, tf, cut) => cs.filter((c) => c.t + tf * 60_000 <= cut);
+  const bound = (opt) => Math.min(opt.nowT ?? cutT, cutT);
+  return {
+    rankingAt,
+    history: async (sym, tf, bars, opt = {}) => {
+      const cut = bound(opt);
+      return keep(await history(sym, tf, bars, { ...opt, nowT: cut }), tf, cut);
+    },
+    klines: async (sym, tf, opt = {}) => {
+      const cut = bound(opt);
+      return keep(await klines(sym, tf, {
+        ...opt, endT: Math.min(opt.endT ?? cut, cut - 1), nowT: cut,
+      }), tf, cut);
+    },
+  };
+}
+
 /** the first index whose bar opens at or after t (bars sorted by open time) */
 export function lowerBound(cs, t) {
   let lo = 0;

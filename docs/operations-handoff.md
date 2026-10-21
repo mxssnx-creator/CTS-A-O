@@ -1,3 +1,14 @@
+## 21 October 2026 — additive negative-hour contexts and chronological comparison
+
+- PR190 exact Base-cell admission and incremental evaluation boundary merged after both complete workflows passed: main `1f6acd9328e05636ce3ff341e34628ea8e8aa762`; backup `backup/main-before-cohort-admission-20261021`.
+- PR191 adds 112 independent Micro/Inverse Tactic/relative/market context sources alongside originals, with exact factory-only focus migration. Original 434 Micro vectors are unchanged; Signals retain independent 336h history and this Micro comparison retains15m maximum hold.
+- All current1,972 sources and38,402 eligible Bot/lane pairs passed complete native hourly/unfinished-bar causality. Local21 focused +168 integration +4 UI cases, types, changed lint and app/worker build passed. Full PR191 CI status remains authoritative; initial UI Save-count race and browser setup failures are retained in evidence.
+- Retrospective v4 negative-hour training: inverse5m Activity Acceleration Normal Micro Long PF3.21, Break Close selective Normal Micro Short PF4.57, Break Retest Trailing Micro Long PF1.39. These are training-selected, small-onset cohorts, not future evidence.
+- Separate preregistered native BingX chronological24-symbol comparison (Oct20 12–24 UTC) is **negative**: original15,607 funded modeled closes PF0.810; original+contexts37,581 PF0.453. All15,607 originals remain identical. Added21,974 alone PF0.344. Do not claim stability or positive combined execution. Some relative variants have positive subgroup PF; they were not retrospectively substituted as the sole portfolio.
+- Independent source/own-direction entry qualification passed all53,188 closes, with zero unknown returns or source mismatches.221,268 full-history hourly config decisions have zero scalar verdict/arithmetic discrepancies. Base pair/representative counts differ from full protection-cell evaluations; uncomputed cells are never certified as passing.
+- Primary Binance Oct20 daily archives remained unavailable (24HTTP404; public REST probe451). Keep incomplete primary evidence separate from the all-BingX supplement. No venue orders, owned-fill proof, running-account updates or live reload occurred.
+- Full plan, results, all failed/empty/losing outcomes and checksummed reproducible evidence: `docs/negative-hour-contexts-20261021/README.md`. Source manifest`02c34224ab02d7e9a70a9480c7756d4eb25ddfc0da2f33b6cee99ba38da9cb5a`; built worker`01e384633aeed37f363d2c1f130d5086a29e2d85003558a2c638da0b0d135280`.
+
 # Exact-cohort procedure fixes and hourly verification — 21 October 2026
 
 PR190: https://github.com/mxssnx-creator/CTS-A-O/pull/190. Main remains720299c. Production source local2edac0c / remote31b66ac (same tested tree); runtime manifest110b13ff9f42232e39d346430bf1a6adf254a8fefe49a69cde626d972c912f71. Audit/runner/reference checkpointa54c0b9 preserves optional exact Base cell permission at Durable/entry/native, bounded incremental replay history, declared audit settlement horizons and fail-closed explicit test inventories. Read docs/sims/cohort-procedure-audit-20261021/README.md and report.json first. Source-specific scalar floors are now explicit; no production floor changed. Complete evidence archive includes initial failures and original scored audit code.
@@ -8,6 +19,94 @@ Corrected six-hour repeats: Oct13bounded36settled PF31.386887 plus195open marks;
 
 Latest operator steering requests additional independently qualified variants based on winners in negative hours, retaining originals in parallel. Initial small-window scan has no net-winning config in its negative hours (113mc-rsit5-10 variants each contain one small win but remain net losing). Broader previously published funded v4 archive at /workspace/scratch/e92abb680845/CTS-A-O/runs/ci-evidence-39532140644 has257095exact funded model closes,3negative hours,202positive source/type/range/side-hour groups and4852positive config/side-hour groups. This is retrospective training on a different old source, never current live/holdout proof. Current analysis scratch runs/funded-negative-hours-v4.json. Promising repeated groups: inverse-micro-5-activity-acceleration-fast Normal Micro Long (219closes/12summed hour-onsets,PF3.2122,two positive negative-portfolio hours); inverse-micro-5-break-close-selective Normal Micro Short (142closes/9onsets,PF4.5673); same source Trailing Minimal Short (250closes/6onsets,PF333.9947); inverse-micro-5-break-retest-fast Trailing Micro Long (494closes/8onsets,PF1.3869). Count unique onsets across the full cohort before choosing expansions. Preserve all source/config siblings, shared risk coordination, costs and independent forward gates; add new IDs and chronological validation instead of selecting by later losses. Expansion implementation is not complete yet.
 
+# Earlier replay clock bound preserved — 21 October 2026 (UTC)
+
+Final paired v3 source eb588571dfff70db0b79b4b0588fe1d9c5779c0d91aa4bc5011523e8054b7af9 also honors an earlier caller timestamp inside the offline feed wrapper. Previously the wrapper widened hourly ranking reads to the session endpoint even when rankUniverse requested trade start. Full forced symbol lists made that redundant internal ranking unable to change either frozen 12-symbol universe; nevertheless future ranking reads are now excluded. `boundedReplayFeed` covers native 1/5/60m reads, earlier history cuts and clamping of later cuts. Twenty-three targeted regressions pass. Both original symbol lists, economic settings, costs, gates, history and windows are unchanged; v1/v2 seals and their artifacts stay distinct. Paired v3 + full original 24-symbol v9 are pending. No live actions.
+
+# Paired 12-symbol replay repair — 21 October 2026 (UTC)
+
+Paired v1 run 39543724516 completed Volatility but Change failed before compute: the historical runtime ranker used today’s clock and the offline feed pruned its missing 5m lane. Preserve both artifacts and `docs/micro-rank-comparison-2026-10-21/replay-failure-v1.json`. Repair supplies a replay-only ranking clock to initial/preset ranking and derives completed 5m bars from genuine cached minute history. Live ranking still uses the wall clock. Both causal symbol selections, formulas, costs and gates remain unchanged. New source 431ca46de2df501dc8ac340e1acb5254054540237fe096ed4c0552cfc3f502ec; paired v2 freezes both protocols before scoring. Twenty targeted selection/runtime/report regressions pass; full CI and detailed HTML pending. No live execution, settings writes, deployment or reload.
+
+# Requested paired 12-symbol comparison frozen — 21 October 2026 (UTC)
+
+Latest user requests12symbols,12hTradeSim +12h evaluated prehistory,1HVolatility vs1HChange, detailed HTML
+with multiple charts; push/merge remains authorized after completion. `docs/micro-rank-comparison-2026-10-21/expected-v1.json`
+freezes source61b56, all868Micro/Inverse sources, identical full grids/fees/WF/account, both actual normalized
+settings and the selections before any performance scoring. Production volatility1h uses the last THREE completed
+1H candle ranges; change1h5m uses exactly twelve absolute consecutive5m returns/12. Preserve those actual rules.
+Both pick the same12 of the same24 archived contracts at19Oct12:00UTC, in different orders; do NOT change the
+cut/universe/formula to manufacture a difference. Two independent case runners and full source/execution,
+price/cost, funded-cohort, stage and scalar-hourly audits precede a detailed standalone HTML comparison.
+
+Candidate liquidity is reconstructed causally from prior24h minute close*base-volume, explicitly an approximation;
+future endpoint tickers/candles cannot enter selection. Selection is fixed at the start, not retrospectively re-ranked.
+Native archive coverage:18Oct00–20Oct00UTC; indicator-only warmup24h is separate. Keep all losing/empty results
+and capital feasibility. No new financial results exist for these cases yet. Research helpers/tests/protocols do not
+change the preserved main production source61b56. Four causal/formula/actual-prepare/tampering regressions pass;
+the expected settings/selection check passes from a different output directory. Detailed HTML must be rendered
+and visually checked on desktop/phone before delivery. No venue actions, live reload or deployment.
+
+# Finish Micro verification on main720 — 21 October 2026 (UTC)
+
+Main advanced to 720299c235b6a50ca223daa1b5e9d2d935bf36c4 via the combined Inverse/incremental merge,
+already including Micro f03a36d and all 6/12/24/48 breakouts. Preserve its complete production source byte-for-byte:
+61b56cee42745c066877f8b605041dcb54274a874d8686a7f1fe52b2f6a5ad46. The finishing PR adds no production
+calculation changes. Retain the UI document-commit request observer fix, derive the negative Focus fixture from
+MAX_FOCUS_PAIRS, isolate the genuinely blocked optional next-day research, and retain verified v5/v6 evidence.
+Main's retained full 260-file CI and 20-symbol streaming/latency study belong to source61b56; this continuation's
+24-symbol v5/v6 PF belongs to BF/7f source only. Freeze universal v10 and 24-symbol v7 before any new scoring.
+
+Source7f completed two full24-symbol runs (39538794094 and39539472043): 373,222 funded modeled settled closes,
+PF1.5730241054, 60 report checks, 1,036,596 own scalar decisions and185,520 transitions without discrepancies.
+Latest prior branch3f full243-file partition CI39539852016 passes, including all235 ordinary files, seven heavy,
+runtime and both120-symbol load jobs. Three negative hours, Micro PF0.79398 and capital infeasibility remain.
+The newer source61b56 has not yet completed this continuation's24-symbol replay; never relabel older results.
+No actual exchange orders, live settings writes, deployment or reload. PR184 still awaits its finishing checks.
+
+# Main PR189 integration in verification — 21 October 2026 (UTC)
+
+Main advanced to 3e2c11317cc5cc38300432e7e1e11ad4e669a3dc (PR189) before the authorized merge.
+Integrate its independent Signal/coordinator rebuilds, own historic range floors, bounded fitting progress and UI
+request fix. Keep this branch's immutable captured candle snapshot and generation/economic publication fences;
+coordinators use their own grids on both worker and local paths. The expanded current runtime source is now
+7f29b92555e77144326b374623f9fa14114d6f0cc21692c9b336b30d05241ccd. TypeScript passes. Freeze universal
+v9 and 24-symbol v6 before scoring; v5 below remains evidence for its own source, not automatically promoted.
+Fresh complete default/heavy/runtime/slow/stress/universal/financial and report checks are required before merge.
+The blocked next-day workflow explicitly checks out f03a36d1, its original BF source and frozen plan, and keeps
+its seven sealed candidates unchanged. New-main economic studies require new protocols, never rewritten seals.
+No live reload, deployment or venue action.
+
+# Expanded Micro verification — 21 October 2026 (UTC)
+
+Current runtime manifest bf502cd9046ea8d3fe23701b0e549521618a143be948ba38f2269df7534d95a2,
+868 independent Micro/Inverse sources, OHLC breakout horizons 6/12/24/48. The complete 24-symbol v5 historical
+run passes all 60 report checks, every price/cost and source/execution comparison, 105,577 scalar tape checks /
+1,036,596 hourly decisions, and 185,520 initial-set transitions. No gate or cost was changed to improve results.
+373,222 funded modeled settled closes, unit PF 1.5730241054, nine positive / three negative settled hours.
+Micro remains 0.7939837207; Minimal 2.0994887024, Short 2.4444110152, General 1.4737436987, Wide Exit 0.4656176670.
+Base Micro representative PF 1.9240662812; initial Micro config gates PF 2.5891269435. These are different historical
+cohorts. Identical funded execution/source cohorts match exactly at every trade and hour. The uncapped complete
+grid is capital-infeasible (maximum modeled margin $32,063.20 against $10,000 initial capital); no live-readiness claim.
+See v5-verification.json, retaining all losses and exact artifact/source checksums.
+
+Earlier positive 9-symbol control re-run at the same 0.15% cost yields PF 2.5770087633 / 1,562 closes at both old
+846d9aa and expanded bf502cd sources: every identity, unit return, total and hourly result identical. That original
+uncapped sizing is also capital-infeasible; see legacy-expansion-parity.json. It is regression evidence, not a new
+868-source performance sample. Previously archived studies and failures remain immutable.
+
+Current-source heavy/runtime/stress/Axis-stress/universal/slow and Exact Signal builds passed. Ordinary CI exposed
+one stale completeness fixture still expecting 1,001 focus pairs to exceed the former cap. It now tests the explicit
+MAX_FOCUS_PAIRS + 1 boundary; all 314 completeness tests pass locally. Economic source is unchanged. Fresh full
+CI is required at the test/workflow checkpoint before the already authorized push/merge. PR 184 remains open
+until those checks finish; main backup fafdea2 exists. No deployment, live reload, settings change or venue orders.
+
+The additional next-day attempt sealed seven training-only sources before acquisition, then failed on all 24
+20 October archives (HTTP 404); the local official REST probe is HTTP 451. No later-day trades/PF exist. The failed
+run 39536098285 and hashed selection are retained, not relabeled a pass. Additional research is isolated in the
+explicit Frozen Micro next-day validation workflow, which recovers that same selection, checks source/script
+seals before data acquisition, resumes retained archive failures and fails normally on unavailable data. Core
+24-symbol correctness CI continues to run the entire original historical scope and seal its selection; nothing in
+its calculation/financial assertions is waived. Do not reselect from holdout results or claim hourly profitability.
 # Combined release verification — 21 October 2026
 
 Authoritative combined production source: bb8b35674f282e9fe97c7220b8b28892fbf99fac, economic seal61b56cee42745c066877f8b605041dcb54274a874d8686a7f1fe52b2f6a5ad46. Maineb3c989 (including reviewed PR188 and PR189) is integrated without any source/test change; backup/main-before-combined-merge-20261021-eb3c989 preserves it. User explicitly authorizes final push and merge of PR186. Earlier handoffs below retain their historical scopes and pending states; current evidence is docs/combined-verification-2026-10-21/index.html and README.md.
@@ -1908,6 +2007,15 @@ TypeScript and production build pass. Desktop/mobile dev functional tests pass 4
 **Do not deploy or merge as a completed profitable production release.** Profitability, capital-feasible native execution, a strict 100ms SLA and full 12h 5s evidence remain unresolved. See `docs/micro-2026-10-20/report.html` and README for reproduction. Retain the losing evidence and native ownership/stop/quantity guards. Back up consistent runtime/database state and own-order ledgers before any future live reload.
 
 # Final-window admission correction — 20 October 2026
+# Signals progression recovery and publication — 21 October 2026
+
+[PR 189](https://github.com/mxssnx-creator/CTS-A-O/pull/189) publishes tested code `534492d622db6be370079e08b94fdbb2dfbb566c` (local `ef0a9275247e22339b17e33f4847e77893fc26d9`), with identical Git tree `9442ef46aef790ad27eb68c47af26ad5ef7c0479`, based on main `fafdea2f5ebe8c903a16f2edd8be34606f746c2f`. Test-harness and lifecycle-reference follow-ups leave production source unchanged. The user explicitly authorized push/merge. Refer to the PR's final checks and merge record for complete default/slow CI and the final merge SHA.
+
+Independent Signal history now matches across full workers, local fallback and incremental rebuilds. Coordinators retain their own rebuild grids and enabled-range historical PF floors. Historic progress covers sampling and candidate evaluations with cancellation checkpoints, and the UI labels variant/candidate counts accurately. All three recreated actual-runtime regressions fail against the original runtime and pass after the fixes.
+
+Fresh verification: **294/294** tests in 21 files, **3/3** complete-job progress tests, **4/4** functional desktop/phone UI tests, TypeScript and production build pass. Changed-file lint: zero errors/five existing warnings. Development and rebuilt Settings render correctly on desktop/mobile with no errors/overflow/baseline divergence. Packaged worker SHA-256 `e6f95d8ecd2f4c08d8b3e056e6898ce86e7d678fb8653bb17e0a564fc40817dd` contains the new progress implementation. Details and evidence boundaries: [signals-progress-audit-20261021.md](signals-progress-audit-20261021.md).
+
+The old unpushed audit commits were absent after workspace restoration; this is freshly reverified recovery on current main. The completed legacy lifecycle run exposed a reference that still used short strategy history for Signals. The corrected bounded fixture uses independent Signal history/coordinator grids, asserts exact hourly seat retention and preserves full tape/paper comparisons: 2/2 pass across three cycles, 49,719 tape states and decisions covering 7,446 open positions. Typecheck and lint pass. Complete default/slow CI is linked in PR 189. Initial CI also exposed abandoned Vite module requests in the UI wait; the corrected finite-data wait passes all four local UI checks, typecheck and changed-test lint. No hosted reload, database/settings mutation or venue action occurred. Merge alone cannot certify the remote live process; verify authenticated deployment access, backups, rebuilt worker, running SHA and owned-position reconciliation before a live-effect claim. Existing economic research seals and qualification thresholds are unchanged.
 
 # Integrated PR 185 checkpoint — 20 October 2026
 Final fixture follow-up: the integrated full core run reached all 209 files with 2,476 passes, nine stale fixture failures and two slow skips. The five corrected files pass **137/137**: separate positive config-direction proof for candidate-book tests, a fixed pending-bar clock, true Trade-return loss changes rather than detached prefix-sum edits, correct 4% mark-to-stop arithmetic, per-direction hand-counted validation and separate symbol-PF proof. Production code and the v6 economic source seal are unchanged. Final complete CI is linked in PR 185.

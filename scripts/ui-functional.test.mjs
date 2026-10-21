@@ -177,6 +177,17 @@ describe(
         pending.add(request);
         changed = Date.now();
       });
+      // A full document replacement can abandon an old fetch after the navigation request starts,
+      // without a terminal Playwright event. At main-frame commit no new document script has run yet:
+      // discard those previous-document RPCs, but keep the document itself until its body finishes.
+      // Requests made by the committed document are still tracked and must complete normally.
+      page.on("framenavigated", (frame) => {
+        if (frame !== page.mainFrame()) return;
+        for (const request of pending) {
+          if (!request.isNavigationRequest()) pending.delete(request);
+        }
+        changed = Date.now();
+      });
       const finished = (request) => {
         if (pending.delete(request)) changed = Date.now();
       };

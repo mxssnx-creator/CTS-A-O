@@ -1,0 +1,88 @@
+name: Paired 12-symbol ranking Trade Sim
+on:
+  push:
+    branches: [codex/micro-indication-20261020]
+    paths:
+      - src/core/**
+      - scripts/lib/**
+      - scripts/core-session.mjs
+      - package.json
+      - .github/audits/micro-rank-comparison.mjs
+      - .github/audits/micro-rank-comparison.test.mjs
+      - .github/audits/micro-24-trade-sim.mjs
+      - .github/workflows/micro-rank-comparison.yml
+      - docs/micro-24-sim-2026-10-21/reproduction-feed.json.gz
+      - docs/micro-rank-comparison-2026-10-21/expected*.json
+      - "!src/core/**/*.test.ts"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  paired:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        rank: [volatility1h, change1h5m]
+    env:
+      MALLOC_ARENA_MAX: "2"
+      CTS_CORE_STATE: "off"
+      CTS_CORE_AUTOSTART: "0"
+      CTS_CORE_LIVE: "0"
+      CTS_CORE_WORKERS: "2"
+      CTS_CORE_COMPARE: "0"
+      CTS_CORE_VARIANTS: "0"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24.19.0"
+      - run: npm ci
+      - name: Test causal selection, exact formulas and immutable paired protocols
+        env:
+          NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
+        run: node --experimental-strip-types --no-warnings --test .github/audits/micro-rank-comparison.test.mjs
+      - name: Build the exact worker
+        env:
+          NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
+        run: npm run build:dev
+      - name: Seal both twelve-symbol cases and identical settings before scoring either
+        env:
+          NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
+        run: node --experimental-strip-types --no-warnings .github/audits/micro-rank-comparison.mjs prepare --out runs/micro-rank-comparison-v3 --expected-file docs/micro-rank-comparison-2026-10-21/expected-v3.json
+      - name: Complete all own Micro and Inverse configurations on twelve selected symbols
+        env:
+          NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
+        id: sim
+        continue-on-error: true
+        run: node --experimental-strip-types --no-warnings .github/audits/micro-rank-comparison.mjs run --rank ${{ matrix.rank }} --out runs/micro-rank-comparison-v3 --workers 2
+      - name: Independently audit prices, costs, funded PF and every hourly transition
+        if: always() && steps.sim.outcome != 'skipped'
+        env:
+          NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
+          CASE_DIR: runs/micro-rank-comparison-v3/${{ matrix.rank }}
+        run: |
+          result=0
+          node --experimental-strip-types --no-warnings scripts/audit-micro-execution.mjs "$CASE_DIR" || result=1
+          node --experimental-strip-types --no-warnings scripts/audit-micro-stages.mjs "$CASE_DIR" || result=1
+          node --experimental-strip-types --no-warnings --max-old-space-size=2048 .github/audits/hourly-progress.mjs "$CASE_DIR" "$CASE_DIR/scalar-hours.json" --require-all || result=1
+          node --experimental-strip-types --no-warnings scripts/audit-stage-transition.mjs "$CASE_DIR" || result=1
+          node --experimental-strip-types --no-warnings scripts/audit-simulation-parity.mjs "$CASE_DIR/raw.json" "$CASE_DIR/simulation-parity.json" || result=1
+          exit "$result"
+      - name: Retain a failed simulation as a failure after collecting all available audits
+        if: always() && steps.sim.outcome == 'failure'
+        run: exit 1
+      - name: Preserve both frozen selections, detailed HTML, complete histories and failures
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: micro-rank-${{ matrix.rank }}-${{ github.run_id }}
+          retention-days: 30
+          compression-level: 6
+          path: |
+            runs/micro-rank-comparison-v3/plan.json
+            runs/micro-rank-comparison-v3/*-selection.json
+            runs/micro-rank-comparison-v3/${{ matrix.rank }}/
