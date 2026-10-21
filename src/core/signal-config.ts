@@ -812,9 +812,10 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   // setting: PF 1.3 over 48 h. Current qualification uses each exact config's own record; historical pooled evidence
   // does not certify this independent-config correction. Sparse windows retain acceptOnWindow semantics.
   accept: { enabled: true, minPf: 1.3, hours: 48, minTrades: 6 },
-  // on (a positive coordination, docs/positive-coordinations.md; x01 runs it): the pooled side record split cleanly
-  // (48 h, 5 Oct: long PF 3–44, short PF 0.1–0.3 per 12 h); the operator's signal evaluation: PF 1.3, as the acceptance
-  sideAccept: { enabled: true, minPf: 1.3, hours: 24, minTrades: 20 },
+  // off by default (operator override, 19 Oct: both sides always by default). The 5 Oct record that split the sides
+  // (48 h: long PF 3–44, short PF 0.1–0.3 per 12 h) stays in docs/positive-coordinations.md; the PF 1.3 / 24 h / 20
+  // trades setting is kept so the gate can be re-enabled by one flag.
+  sideAccept: { enabled: false, minPf: 1.3, hours: 24, minTrades: 20 },
   // signals judged on their own exits: the Base gate at the engine's default exit (TP 2.6 %, SL 3.9 %, 8 h) passed only
   // 6–11 of ~380 signal pairs (3 Oct: 51 orders at PF 0.44; 2 Oct: none)
   baseGate: false,

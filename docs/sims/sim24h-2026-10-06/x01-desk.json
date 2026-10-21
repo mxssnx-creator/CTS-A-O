@@ -307,7 +307,7 @@
     ]
    },
    "sideAccept": {
-    "enabled": true,
+    "enabled": false,
     "minPf": 1.3,
     "hours": 24,
     "minTrades": 20
@@ -394,7 +394,7 @@
   "normalBaseMinPf": 1.05,
   "sideGateN": 0,
   "engineSideAccept": {
-   "enabled": true,
+   "enabled": false,
    "minPf": 1.05,
    "hours": 24,
    "minTrades": 30,
