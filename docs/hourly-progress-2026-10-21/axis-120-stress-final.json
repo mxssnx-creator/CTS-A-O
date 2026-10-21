@@ -1,0 +1,2878 @@
+{
+  "schema": "cts-micro-load-v1",
+  "source": "synthetic functional load, no exchange executions",
+  "scope": "120 symbols; 6 indication/lane sources ×45 configured Axis variants; two real runtime computations; 100 coalesced kicks; allSets builder measurement with unchanged qualification gates. Synthetic load only.",
+  "strategy": "axis",
+  "axisTapes": 270,
+  "configuredProtects": 1,
+  "configuredTrailingOnly": 0,
+  "settings": {
+    "tfMin": 1,
+    "tfs": [
+      1,
+      5,
+      15
+    ],
+    "tfDays": {
+      "1": 2,
+      "5": 2,
+      "15": 2,
+      "30": 18
+    },
+    "historyDays": 2,
+    "symbols": 120,
+    "symbolRank": "volatility1h",
+    "cycleMs": 250,
+    "tickMs": 100,
+    "cost": 0.0015,
+    "fees": {
+      "taker": 0.0005,
+      "maker": 0.0002,
+      "slippage": 0.00025
+    },
+    "adjust": {
+      "enabled": true,
+      "window": 15,
+      "triggerPf": 1,
+      "recoverPf": 1.2,
+      "slStep": 0.002,
+      "slMax": 0.03,
+      "trailStep": 0.001,
+      "trailMax": 0.02,
+      "pauseH": 12,
+      "autoCost": true
+    },
+    "exitStrategy": {
+      "enabled": false,
+      "timeframes": [
+        1,
+        5,
+        15
+      ],
+      "includeTactics": true,
+      "includeRelations": true,
+      "includeMicro": true,
+      "includeCombined": true,
+      "lookbackH": 168,
+      "trainFraction": 0.6,
+      "minEntries": 30,
+      "minValidationTrades": 12,
+      "minPf": 1.1,
+      "minGreenHourShare": 0.5,
+      "maxDdr": 1,
+      "holdH": 24,
+      "maxConfigsPerPair": 24,
+      "quantiles": [
+        0.6,
+        0.8
+      ],
+      "stopQuantiles": [
+        0.5,
+        0.75
+      ],
+      "minTp": 0.006,
+      "maxTp": 0.2,
+      "maxSl": 0.25,
+      "trailShares": [
+        0.33,
+        0.66
+      ],
+      "stopMultiples": [
+        1,
+        2
+      ]
+    },
+    "gates": {
+      "minPf": 1.1,
+      "maxDdtH": 35,
+      "minDdtH": 18,
+      "maxDdr": 1,
+      "rangeMinPf": {
+        "micro": 1.05,
+        "minimal": 1.1,
+        "short": 1.1,
+        "general": 1.2,
+        "long": 1.3
+      },
+      "minTrades": 12,
+      "quorum": 0.6,
+      "baseSetsMinPf": 1,
+      "warmup": true,
+      "lastNFloor": 5
+    },
+    "refineTop": 24,
+    "mainTop": 0,
+    "evalTop": 60,
+    "armTop": 10,
+    "paperNotional": 100,
+    "paperBalance": 1000,
+    "protectFloor": {
+      "minSl": 0.005,
+      "minTrail": 0.005
+    },
+    "sizing": {
+      "mode": "equityPct",
+      "pct": 0.002
+    },
+    "toggles": {
+      "normal": false,
+      "trailing": false,
+      "exit": false,
+      "block": false,
+      "blockActive": false,
+      "dca": false,
+      "dcaActive": false,
+      "axis": true
+    },
+    "tactics": {
+      "session": false,
+      "volRegime": true,
+      "trendStrength": true,
+      "chopRegime": false,
+      "cooldown": false,
+      "cooldownBars": 4
+    },
+    "focus": [
+      "follow|ema-9-21@m1",
+      "follow|rsi-fast@m1",
+      "follow|rsi-mom-14-20@m5",
+      "follow|bb-bounce@m5",
+      "follow|trend-ema@m15",
+      "follow|ema-21-55@m15"
+    ],
+    "pinned": [],
+    "disabledKinds": [],
+    "block": {
+      "sources": {
+        "config": true,
+        "overall": true,
+        "symbol": true,
+        "direction": true,
+        "indication": true,
+        "type": true
+      },
+      "mode": "overall",
+      "historySource": "accepted-orders",
+      "ratio": 0.5,
+      "maxLevel": 8,
+      "minActiveLevel": 2,
+      "maxMult": 8,
+      "pause": 0,
+      "steps": 7,
+      "increase": 0.4,
+      "signalsOwn": true,
+      "ranges": {
+        "levels": [
+          1,
+          8
+        ],
+        "volRatio": [
+          0.1,
+          1
+        ],
+        "steps": [
+          0,
+          7
+        ],
+        "increase": [
+          0.1,
+          0.5
+        ],
+        "pause": [
+          0,
+          6
+        ]
+      }
+    },
+    "dca": {
+      "levels": 1,
+      "addRatio": 2.5,
+      "step": 0.02,
+      "stopGap": 0.5,
+      "slOfTp": 1
+    },
+    "axis": {
+      "volumeFactor": 0.1,
+      "levels": 3,
+      "spacing": 0.7,
+      "ratio": 1,
+      "minDisp": 0.35,
+      "maxDisp": 2.6,
+      "center": 50,
+      "centerMin": 132,
+      "ranges": [
+        "atr",
+        "linear",
+        "geo",
+        "fib",
+        "volume"
+      ],
+      "levelsSet": [
+        2,
+        3,
+        4
+      ],
+      "exits": "managed",
+      "mode": "revert",
+      "slAtr": 0.7,
+      "tpRatio": 2.2,
+      "hybrid": false,
+      "trailPct": 0.8,
+      "expiry": 0,
+      "modes": [
+        "revert",
+        "desk"
+      ],
+      "hybrids": [
+        false,
+        true
+      ]
+    },
+    "grid": {
+      "trailingOnly": true,
+      "volumeFactor": 1,
+      "tp": [
+        0.02
+      ],
+      "slOfTp": [
+        1
+      ],
+      "trailOfTp": [
+        0
+      ],
+      "minTrail": 0.006,
+      "minSl": 0.01,
+      "holdH": [
+        2
+      ],
+      "trailStep": 1,
+      "trailFree": false,
+      "minimal": false,
+      "short": false,
+      "general": false,
+      "long": false,
+      "micro": false,
+      "minimalPlus": {
+        "volumeFactor": 1,
+        "tp": [
+          0.004,
+          0.0045,
+          0.005,
+          0.0055,
+          0.006,
+          0.0065,
+          0.007,
+          0.0075,
+          0.008,
+          0.0085,
+          0.009,
+          0.0095,
+          0.01
+        ],
+        "slOfTp": [
+          0.5,
+          0.75,
+          1,
+          1.25,
+          1.5,
+          1.75,
+          2,
+          2.25,
+          2.5,
+          2.75,
+          3
+        ],
+        "trailOfTp": [
+          0,
+          0.25,
+          0.5,
+          0.75
+        ],
+        "trailSlOfTp": 2.5,
+        "minSl": 0.001,
+        "minTrail": 0.001,
+        "enabled": false,
+        "lastN": 50,
+        "minPf": 1.35
+      },
+      "rangeGate": {
+        "enabled": true,
+        "lastN": 75,
+        "minPf": 1.35
+      },
+      "baseBest": true,
+      "rangeFit": {
+        "enabled": false
+      },
+      "baseTargets": true,
+      "baseRanges": true,
+      "baseTrailCells": false,
+      "allSets": true
+    },
+    "live": {
+      "enabled": true,
+      "connId": "bingx-vst-02",
+      "notionalUsd": 6,
+      "maxPositions": 100,
+      "mode": "overall",
+      "laneOrders": false,
+      "ratio": 1,
+      "maxNotionalUsd": 0,
+      "maxPositionX": 0,
+      "maxExposureX": 0,
+      "rebalancePct": 0.25,
+      "marginMode": "cross",
+      "positionMode": "hedge",
+      "leverage": "max",
+      "liveLastN": 25,
+      "liveGroupLastN": 0
+    },
+    "signals": {
+      "enabled": false,
+      "count": 0,
+      "sourcesMode": "deny",
+      "sources": {
+        "r-apz-reclaim": false,
+        "r-frama-pullback": false,
+        "r-st-pullback": false,
+        "aroon": false,
+        "ichi-cloud": false,
+        "bb-walk": false,
+        "r-squeeze": false,
+        "r-donch-vol": false,
+        "r-sweep": false,
+        "r-capit": false,
+        "r-vwap-reclaim": false,
+        "r-cvd-div": false,
+        "r-rsi2": false,
+        "r-bb-adx": false,
+        "r-bbw-expand": false,
+        "r-zdist": false,
+        "r-clv-thrust": false,
+        "r-roofing": false,
+        "r-fisher": false,
+        "r-stc": false,
+        "r-vortex": false,
+        "r-tsi": false,
+        "r-elder": false,
+        "r-camarilla": false,
+        "r-fakeout": false,
+        "r-spring": false,
+        "r-valuearea": false,
+        "r-orb": false,
+        "r-pdhl": false,
+        "r-bos": false,
+        "r-choch": false,
+        "r-fvg": false,
+        "r-engulf": false,
+        "r-pin": false,
+        "r-star": false,
+        "r-streak": false,
+        "r-laguerre": false,
+        "r-chand": false,
+        "r-klinger": false,
+        "r-rvi": false
+      },
+      "ranges": {
+        "short": true,
+        "medium": true
+      },
+      "rangeVolumeFactors": {
+        "short": 1,
+        "medium": 1
+      },
+      "lanes": [
+        15
+      ],
+      "normal": {
+        "tp": [
+          0.01,
+          0.015,
+          0.025,
+          0.03,
+          0.04,
+          0.05,
+          0.06
+        ],
+        "slOfTp": [
+          0.5,
+          0.75,
+          1,
+          1.5,
+          2,
+          3
+        ]
+      },
+      "trailing": {
+        "tp": [
+          0.01,
+          0.015,
+          0.03,
+          0.04,
+          0.05,
+          0.06,
+          0.08
+        ],
+        "trailOfTp": [
+          0.2,
+          0.3,
+          0.4,
+          0.6,
+          0.8
+        ],
+        "slOfTp": 3
+      },
+      "trailingOnly": {
+        "enabled": true,
+        "sl": [
+          0.015,
+          0.03,
+          0.06
+        ],
+        "trail": [
+          0.005,
+          0.01,
+          0.02
+        ],
+        "trailStep": 1
+      },
+      "holdH": 48,
+      "trailMax": 0.03,
+      "exits": "pct",
+      "atr": {
+        "sl": [
+          0.7,
+          1.15,
+          1.5
+        ],
+        "tpRatio": [
+          1,
+          1.6,
+          2.2
+        ],
+        "trail": [
+          0.8
+        ],
+        "holdBars": 3
+      },
+      "hist": {
+        "enabled": true,
+        "quantiles": [
+          0.5,
+          0.75
+        ],
+        "trailOfTp": [
+          0.25,
+          0.5,
+          0.75
+        ],
+        "slOfTp": [
+          1,
+          2
+        ],
+        "minN": 30,
+        "lookbackH": 0
+      },
+      "guard": {
+        "enabled": true,
+        "lastN": 8
+      },
+      "cluster": {
+        "enabled": true,
+        "windowMin": 60,
+        "minLosses": 8,
+        "lossShare": 0.6
+      },
+      "coordination": {
+        "enabled": true,
+        "minSources": 3,
+        "count": 100,
+        "volumeFactor": 8,
+        "ranges": {
+          "short": true,
+          "normal": true,
+          "long": true
+        }
+      },
+      "combinedVolumeFactors": {
+        "trend": 1,
+        "break": 1,
+        "active": 1,
+        "direction": 1,
+        "move": 1,
+        "rsi": 1,
+        "bollinger": 1,
+        "sar": 1,
+        "macd": 1,
+        "ema": 1,
+        "osc": 1,
+        "volume": 1,
+        "channel": 1,
+        "ichimoku": 1,
+        "smooth": 1,
+        "tactic": 1,
+        "relate": 1,
+        "micro": 1,
+        "inverse": 1
+      },
+      "minTrades": 3,
+      "rank": "lowdd",
+      "minBlockShare": 0.6,
+      "validate": true,
+      "validateH": 24,
+      "minSl": 0.005,
+      "minTrail": 0.002,
+      "sourceGate": {
+        "enabled": false,
+        "days": 2,
+        "minShare": 0.5,
+        "minTrades": 5
+      },
+      "perSymbol": 0,
+      "maxOpen": 0,
+      "maxPositions": 250,
+      "strategies": {
+        "dca": false,
+        "axis": false
+      },
+      "ownBase": true,
+      "filter": {
+        "trendH": 0,
+        "volFloor": 0.003
+      },
+      "accept": {
+        "enabled": true,
+        "minPf": 1.3,
+        "hours": 48,
+        "minTrades": 6
+      },
+      "sideAccept": {
+        "enabled": true,
+        "minPf": 1.3,
+        "hours": 24,
+        "minTrades": 20
+      },
+      "baseGate": false
+    }
+  },
+  "wf": {
+    "axisVolumeFactor": 0.1,
+    "indicationVolumeFactors": {
+      "coordination": 8,
+      "combined": {
+        "trend": 1,
+        "break": 1,
+        "active": 1,
+        "direction": 1,
+        "move": 1,
+        "rsi": 1,
+        "bollinger": 1,
+        "sar": 1,
+        "macd": 1,
+        "ema": 1,
+        "osc": 1,
+        "volume": 1,
+        "channel": 1,
+        "ichimoku": 1,
+        "smooth": 1,
+        "tactic": 1,
+        "relate": 1,
+        "micro": 1,
+        "inverse": 1
+      }
+    },
+    "preH": 6,
+    "simH": 6,
+    "stepH": 1,
+    "portfolio": 0,
+    "lastN": 0,
+    "lastNMinPf": 1,
+    "validLastN": 15,
+    "signalValidLastN": 25,
+    "exitMinTrades": 12,
+    "exitMinPf": 1.1,
+    "exitMinGreenHourShare": 0.5,
+    "exitMaxDdr": 1,
+    "engineSideAccept": {
+      "enabled": false,
+      "minPf": 1.05,
+      "hours": 24,
+      "minTrades": 30
+    },
+    "rangeGate": {
+      "lastN": 75,
+      "minPf": 1.35
+    },
+    "rangeVolumeFactors": {
+      "wide": 1,
+      "mc": 1,
+      "mn": 1,
+      "mp": 1,
+      "sh": 1,
+      "gn": 1,
+      "lg": 1
+    },
+    "signalRangeVolumeFactors": {
+      "short": 1,
+      "medium": 1
+    },
+    "rangeSeats": false,
+    "maxPerSymbol": 0,
+    "maxOpen": 0,
+    "guardPct": 0,
+    "coord": {
+      "enabled": true,
+      "hourLock": 0,
+      "cooldown": "off",
+      "conflict": false,
+      "confirm": true,
+      "hedgeVolumeFactor": 1,
+      "s2Increase": 0.4
+    },
+    "longH": 24,
+    "signalLongH": 336,
+    "robustFrac": 0.6,
+    "rank": "lcb",
+    "bots": [],
+    "mode": "fixed",
+    "durableSplits": 4,
+    "durableFrac": 0.75,
+    "preGate": true,
+    "maxPerSide": 0,
+    "maxPositions": 0,
+    "familySeats": true,
+    "familyNeedsBase": false,
+    "seatPer": "config",
+    "laneSeats": 3,
+    "symGate": "provenSide",
+    "symMinN": 2,
+    "toggles": {
+      "normal": false,
+      "trailing": false,
+      "exit": false,
+      "block": false,
+      "blockActive": false,
+      "dca": false,
+      "dcaActive": false,
+      "axis": true
+    },
+    "block": {
+      "sources": {
+        "config": true,
+        "overall": true,
+        "symbol": true,
+        "direction": true,
+        "indication": true,
+        "type": true
+      },
+      "mode": "overall",
+      "historySource": "accepted-orders",
+      "ratio": 0.5,
+      "maxLevel": 8,
+      "minActiveLevel": 2,
+      "maxMult": 8,
+      "pause": 0,
+      "steps": 7,
+      "increase": 0.4,
+      "signalsOwn": true,
+      "ranges": {
+        "levels": [
+          1,
+          8
+        ],
+        "volRatio": [
+          0.1,
+          1
+        ],
+        "steps": [
+          0,
+          7
+        ],
+        "increase": [
+          0.1,
+          0.5
+        ],
+        "pause": [
+          0,
+          6
+        ]
+      }
+    },
+    "dca": {
+      "levels": 1,
+      "addRatio": 2.5,
+      "step": 0.02,
+      "stopGap": 0.5,
+      "slOfTp": 1
+    },
+    "gates": {
+      "minPf": 1.1,
+      "maxDdtH": 35,
+      "minDdtH": 18,
+      "maxDdr": 1,
+      "rangeMinPf": {
+        "micro": 1.05,
+        "minimal": 1.1,
+        "short": 1.1,
+        "general": 1.2,
+        "long": 1.3
+      },
+      "minTrades": 12,
+      "quorum": 0.6,
+      "baseSetsMinPf": 1,
+      "warmup": true,
+      "lastNFloor": 5
+    },
+    "cost": 0.0015,
+    "protects": [
+      {
+        "tp": 0.02,
+        "sl": 0.02,
+        "trail": 0,
+        "hold": 8
+      }
+    ],
+    "dcaProtects": [
+      {
+        "tp": 0.008,
+        "sl": 0.008,
+        "trail": 0,
+        "hold": 32
+      },
+      {
+        "tp": 0.012,
+        "sl": 0.012,
+        "trail": 0,
+        "hold": 32
+      },
+      {
+        "tp": 0.026,
+        "sl": 0.026,
+        "trail": 0,
+        "hold": 32
+      },
+      {
+        "tp": 0.035,
+        "sl": 0.035,
+        "trail": 0,
+        "hold": 32
+      }
+    ],
+    "causalBase": true,
+    "signalGuardN": 0,
+    "signalOwnBase": false,
+    "signalPerSymbol": 0,
+    "signalMaxOpen": 0,
+    "signalMaxPositions": 250,
+    "basePassed": {},
+    "exitBasePassed": {},
+    "basePassedRanges": {
+      "follow|rsi-fast@m1": [
+        ""
+      ],
+      "follow|bb-bounce@m5": [
+        ""
+      ]
+    },
+    "basePassedTargets": {},
+    "baseWideLadderPairs": {},
+    "signalBasePassed": {},
+    "paused": {}
+  },
+  "elapsedMs": 14624.780688,
+  "maxRssMb": 658.0078125,
+  "maxCompute": 1,
+  "kicks": 100,
+  "nativeChecks": 130,
+  "computes": 2,
+  "paperSteps": 1,
+  "symbols": 120,
+  "progress": {
+    "intervalMs": 100,
+    "checks": 145,
+    "lagMs": 2.411799000001338,
+    "maxLagMs": 124.50973700000009,
+    "missed": 1,
+    "error": null
+  },
+  "status": {
+    "state": "stopped",
+    "stage": "Realtime",
+    "progress": 1,
+    "label": "PF 1.42 · DDT 2.3h · green 71% · validate last 15 · live last 0 · 45 seats · 31 open",
+    "overall": 1,
+    "computeStartedAt": 1792547963756,
+    "paperSteps": 1,
+    "paperCompute": 2,
+    "cycles": 2,
+    "computes": 2,
+    "startedAt": 1792547956029,
+    "heartbeat": 1792547970649,
+    "lastCycleMs": 6893.715946,
+    "lastComputeMs": 6686.182108999999,
+    "lastBarT": 1792368000000,
+    "source": "synthetic",
+    "symbols": [
+      "SYN0-USDT",
+      "SYN1-USDT",
+      "SYN2-USDT",
+      "SYN3-USDT",
+      "SYN4-USDT",
+      "SYN5-USDT",
+      "SYN6-USDT",
+      "SYN7-USDT",
+      "SYN8-USDT",
+      "SYN9-USDT",
+      "SYN10-USDT",
+      "SYN11-USDT",
+      "SYN12-USDT",
+      "SYN13-USDT",
+      "SYN14-USDT",
+      "SYN15-USDT",
+      "SYN16-USDT",
+      "SYN17-USDT",
+      "SYN18-USDT",
+      "SYN19-USDT",
+      "SYN20-USDT",
+      "SYN21-USDT",
+      "SYN22-USDT",
+      "SYN23-USDT",
+      "SYN24-USDT",
+      "SYN25-USDT",
+      "SYN26-USDT",
+      "SYN27-USDT",
+      "SYN28-USDT",
+      "SYN29-USDT",
+      "SYN30-USDT",
+      "SYN31-USDT",
+      "SYN32-USDT",
+      "SYN33-USDT",
+      "SYN34-USDT",
+      "SYN35-USDT",
+      "SYN36-USDT",
+      "SYN37-USDT",
+      "SYN38-USDT",
+      "SYN39-USDT",
+      "SYN40-USDT",
+      "SYN41-USDT",
+      "SYN42-USDT",
+      "SYN43-USDT",
+      "SYN44-USDT",
+      "SYN45-USDT",
+      "SYN46-USDT",
+      "SYN47-USDT",
+      "SYN48-USDT",
+      "SYN49-USDT",
+      "SYN50-USDT",
+      "SYN51-USDT",
+      "SYN52-USDT",
+      "SYN53-USDT",
+      "SYN54-USDT",
+      "SYN55-USDT",
+      "SYN56-USDT",
+      "SYN57-USDT",
+      "SYN58-USDT",
+      "SYN59-USDT",
+      "SYN60-USDT",
+      "SYN61-USDT",
+      "SYN62-USDT",
+      "SYN63-USDT",
+      "SYN64-USDT",
+      "SYN65-USDT",
+      "SYN66-USDT",
+      "SYN67-USDT",
+      "SYN68-USDT",
+      "SYN69-USDT",
+      "SYN70-USDT",
+      "SYN71-USDT",
+      "SYN72-USDT",
+      "SYN73-USDT",
+      "SYN74-USDT",
+      "SYN75-USDT",
+      "SYN76-USDT",
+      "SYN77-USDT",
+      "SYN78-USDT",
+      "SYN79-USDT",
+      "SYN80-USDT",
+      "SYN81-USDT",
+      "SYN82-USDT",
+      "SYN83-USDT",
+      "SYN84-USDT",
+      "SYN85-USDT",
+      "SYN86-USDT",
+      "SYN87-USDT",
+      "SYN88-USDT",
+      "SYN89-USDT",
+      "SYN90-USDT",
+      "SYN91-USDT",
+      "SYN92-USDT",
+      "SYN93-USDT",
+      "SYN94-USDT",
+      "SYN95-USDT",
+      "SYN96-USDT",
+      "SYN97-USDT",
+      "SYN98-USDT",
+      "SYN99-USDT",
+      "SYN100-USDT",
+      "SYN101-USDT",
+      "SYN102-USDT",
+      "SYN103-USDT",
+      "SYN104-USDT",
+      "SYN105-USDT",
+      "SYN106-USDT",
+      "SYN107-USDT",
+      "SYN108-USDT",
+      "SYN109-USDT",
+      "SYN110-USDT",
+      "SYN111-USDT",
+      "SYN112-USDT",
+      "SYN113-USDT",
+      "SYN114-USDT",
+      "SYN115-USDT",
+      "SYN116-USDT",
+      "SYN117-USDT",
+      "SYN118-USDT",
+      "SYN119-USDT"
+    ],
+    "error": null,
+    "nextCycleAt": 1792547970849,
+    "phases": {
+      "Pipeline": {
+        "ms": 1865.052649000001,
+        "maxSliceMs": 38.67456299999867,
+        "slowest": "S1 follow × trend-ema@m15 (33 ms)"
+      },
+      "Persist": {
+        "ms": 10.192741000000751,
+        "maxSliceMs": 5.635598000000755
+      },
+      "Tapes": {
+        "ms": 4283.33669,
+        "maxSliceMs": 56.893121999999494,
+        "slowest": " (57 ms)"
+      },
+      "Simulation": {
+        "ms": 281.8696710000004,
+        "maxSliceMs": 20.485813000001144,
+        "slowest": "run candidate entry gates (20 ms)"
+      },
+      "Persist sim": {
+        "ms": 0.20344400000067253,
+        "maxSliceMs": 0.20344400000067253
+      },
+      "Auto preset": {
+        "ms": 2.6708249999992404,
+        "maxSliceMs": 2.6708249999992404
+      },
+      "Prehistoric": {
+        "ms": 1.2401170000011916,
+        "maxSliceMs": 1.2401170000011916,
+        "slowest": "finish (0 ms)"
+      },
+      "Paper": {
+        "ms": 69.98516800000107,
+        "maxSliceMs": 26.37358000000131,
+        "slowest": "select 13 · candidates 15 · entries 42 ms over 223 (wall, sliced) · 405 older tape positions left to their tape"
+      },
+      "Adjust": {
+        "ms": 0.9726319999990665,
+        "maxSliceMs": 0.9726319999990665
+      },
+      "Audit": {
+        "ms": 41.50210100000004,
+        "maxSliceMs": 28.10631900000044,
+        "slowest": " (27 ms)"
+      }
+    },
+    "mainPairs": 6,
+    "settingsAt": 1792547956031,
+    "appliedSettingsAt": 1792547956031,
+    "lastComputeAt": 1792547970442,
+    "pending": false,
+    "heals": 0,
+    "lastHeal": "",
+    "errorsInRow": 0,
+    "loop": {
+      "p50": 31.358975,
+      "p99": 57.868287,
+      "max": 123.076607,
+      "recent": {
+        "ms": 150,
+        "where": "Base",
+        "at": 1792547956756,
+        "n": 8
+      }
+    },
+    "executionProgress": {
+      "intervalMs": 100,
+      "checks": 145,
+      "lagMs": 2.411799000001338,
+      "maxLagMs": 124.50973700000009,
+      "missed": 1,
+      "error": null
+    },
+    "stageAt": 1792547970649,
+    "tick": {
+      "at": 1792547970647,
+      "ms": 0.8048899999994319,
+      "count": 129,
+      "open": 31,
+      "stream": null,
+      "error": null
+    },
+    "prehistoric": {
+      "hours": 6,
+      "simH": 6,
+      "total": 120,
+      "loaded": 120,
+      "ready": 120,
+      "complete": true,
+      "startedAt": 1792547956029,
+      "readyAt": 1792547963660,
+      "symbols": {
+        "SYN0-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN1-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN2-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 29,
+          "pf": 0.31414837440553994
+        },
+        "SYN3-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN4-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN5-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN6-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN7-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 12,
+          "pf": 4
+        },
+        "SYN8-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN9-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 3,
+          "pf": 0
+        },
+        "SYN10-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN11-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN12-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN13-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN14-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 3,
+          "pf": 0
+        },
+        "SYN15-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN16-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 4,
+          "pf": 4.384615384615348
+        },
+        "SYN17-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN18-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN19-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN20-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN21-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 6,
+          "pf": 4
+        },
+        "SYN22-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN23-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN24-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN25-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN26-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN27-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN28-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN29-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN30-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN31-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN32-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 3,
+          "pf": 0
+        },
+        "SYN33-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN34-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN35-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN36-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN37-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 2,
+          "pf": 4
+        },
+        "SYN38-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 6,
+          "pf": 0
+        },
+        "SYN39-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN40-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN41-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 6,
+          "pf": 4
+        },
+        "SYN42-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN43-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 12,
+          "pf": 4
+        },
+        "SYN44-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN45-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 1,
+          "pf": 0
+        },
+        "SYN46-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN47-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN48-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN49-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 28,
+          "pf": 3.7306633757430427
+        },
+        "SYN50-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN51-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 2,
+          "pf": 0
+        },
+        "SYN52-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN53-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN54-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 2,
+          "pf": 0
+        },
+        "SYN55-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN56-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN57-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN58-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN59-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN60-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN61-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN62-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN63-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN64-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN65-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 24,
+          "pf": 0
+        },
+        "SYN66-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 1,
+          "pf": 4
+        },
+        "SYN67-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN68-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN69-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN70-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN71-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN72-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 17,
+          "pf": 4
+        },
+        "SYN73-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 2,
+          "pf": 0
+        },
+        "SYN74-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN75-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN76-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN77-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 18,
+          "pf": 1.642065555837008
+        },
+        "SYN78-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN79-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN80-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN81-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 9,
+          "pf": 0.12202047403825403
+        },
+        "SYN82-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN83-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN84-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN85-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 6,
+          "pf": 4
+        },
+        "SYN86-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 1,
+          "pf": 4
+        },
+        "SYN87-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN88-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN89-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 7,
+          "pf": 4
+        },
+        "SYN90-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN91-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 3,
+          "pf": 0
+        },
+        "SYN92-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 2,
+          "pf": 4
+        },
+        "SYN93-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 1,
+          "pf": 4
+        },
+        "SYN94-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN95-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN96-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN97-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 2,
+          "pf": 0
+        },
+        "SYN98-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN99-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN100-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 9,
+          "pf": 4
+        },
+        "SYN101-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN102-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 10,
+          "pf": 6.771870099781511
+        },
+        "SYN103-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 16,
+          "pf": 4
+        },
+        "SYN104-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 3,
+          "pf": 4
+        },
+        "SYN105-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN106-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 4,
+          "pf": 0
+        },
+        "SYN107-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 5,
+          "pf": 0
+        },
+        "SYN108-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN109-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN110-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN111-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN112-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN113-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN114-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN115-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN116-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 21,
+          "pf": 105.16239559736773
+        },
+        "SYN117-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 6,
+          "pf": 4
+        },
+        "SYN118-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        },
+        "SYN119-USDT": {
+          "state": "ready",
+          "bars": 8580,
+          "n": 0
+        }
+      },
+      "stats": {
+        "pf": 1.3069478695091576,
+        "pfBasis": "unit-net-returns",
+        "unknownReturns": 0,
+        "gp": 115.7616006139206,
+        "gl": 88.57400001531543,
+        "noLoss": false,
+        "pfConvention": "gross-return-ratio",
+        "ddtH": 2.283333333333333,
+        "n": 286,
+        "wr": 0.6048951048951049,
+        "greenHours": 0.6666666666666666,
+        "net": 27.187600598605073,
+        "avgOpen": 41.91135734072022,
+        "maxOpen": 73,
+        "positions": 40,
+        "avgPositions": 8.379501385041552,
+        "maxPositions": 15,
+        "perSymbol": [
+          {
+            "sym": "SYN2-USDT",
+            "n": 29,
+            "pf": 0.31414837440553994,
+            "net": -13.430694268597845,
+            "wr": 0.3448275862068966,
+            "gp": 6.151812745155792,
+            "gl": 19.582507013753645,
+            "noLoss": false,
+            "pfConvention": "gross-return-ratio",
+            "pfBasis": "unit-net-returns",
+            "unknownReturns": 0
+          },
+          {
+            "sym": "SYN49-USDT",
+            "n": 28,
+            "pf": 3.7306633757430427,
+            "net": 6.087104995183176,
+            "wr": 0.5,
+            "gp": 8.316272108660431,
+            "gl": 2.2291671134772555,
+            "noLoss": false,
+            "pfConvention": "gross-return-ratio",
+            "pfBasis": "unit-net-returns",
+            "unknownReturns": 0
+          },
+          {
+            "sym": "SYN65-USDT",
+            "n": 24,
+            "pf": 0,
+            "net": -25.178752131209336,
+            "wr": 0,
+            "gp": 0,
+            "gl": 25.178752131209336,
+            "noLoss": false,
+            "pfConvention": "gross-return-ratio",
+            "pfBasis": "unit-net-returns",
+            "unknownReturns": 0
+          },
+          {
+            "sym": "SYN116-USDT",
+            "n": 21,
+            "pf": 105.16239559736773,
+            "net": 8.26209670409931,
+            "wr": 0.8571428571428571,
+            "gp": 8.341416084732952,
+            "gl": 0.07931938063363918,
+            "noLoss": false,
+            "pfConvention": "gross-return-ratio",
+            "pfBasis": "unit-net-returns",
+            "unknownReturns": 0
+          },
+          {
+            "sym": "SYN77-USDT",
+            "n": 18,
+            "pf": 1.642065555837008,
+            "net": 3.2973079887287975,
+            "wr": 0.5,
+            "gp": 8.432777348131465,
+            "gl": 5.135469359402667,
+            "noLoss": false,
+            "pfConvention": "gross-return-ratio",
+            "pfBasis": "unit-net-returns",
+            "unknownReturns": 0
+          },
+          {
+            "sym": "SYN72-USDT",
+            "n": 17,
+            "pf": 4,
+            "net": 11.159898889169096,
+            "wr": 1,
+            "gp": 11.159898889169096,
+            "gl": 0,
+            "noLoss": true,
+            "pfConvention": "no-loss-sentinel",
+            "pfBasis": "unit-net-returns",
+            "unknownReturns": 0
+          },
+          {
+            "sym": "SYN103-USDT",
+            "n": 16,
+            "pf": 4,
+            "net": 6.682925559781594,
+            "wr": 1,
+            "gp": 6.682925559781594,
+            "gl": 0,
+            "noLoss": true,
+            "pfConvention": "no-loss-sentinel",
+            "pfBasis": "unit-net-returns",
+            "unknownReturns": 0
+          },
+          {
+            "sym": "SYN43-USDT",
+            "n": 12,
+            "pf": 4,
+            "net": 4.1721203619630245,
+            "wr": 1,
+            "gp": 4.1721203619630245,
+            "gl": 0,
+            "noLoss": true,
+            "pfConvention": "no-loss-sentinel",
+            "pfBasis": "unit-net-returns",
+            "unknownReturns": 0
+          },
+          {
+            "sym": "SYN7-USDT",
+            "n": 12,
+            "pf": 4,
+            "net": 4.540639927442529,
+            "wr": 1,
+            "gp": 4.540639927442529,
+            "gl": 0,
+            "noLoss": true,
+            "pfConvention": "no-loss-sentinel",
+            "pfBasis": "unit-net-returns",
+            "unknownReturns": 0
+          },
+          {
+            "sym": "SYN102-USDT",
+            "n": 10,
+            "pf": 6.771870099781511,
+            "net": 8.19912009602694,
+            "wr": 0.9,
+            "gp": 9.61965104254587,
+            "gl": 1.4205309465189302,
+            "noLoss": false,
+            "pfConvention": "gross-return-ratio",
+            "pfBasis": "unit-net-returns",
+            "unknownReturns": 0
+          },
+          {
+            "sym": "SYN100-USDT",
+            "n": 9,
+            "pf": 4,
+            "net": 4.1555498725079,
+            "wr": 1,
+            "gp": 4.1555498725079,
+            "gl": 0,
+            "noLoss": true,
+            "pfConvention": "no-loss-sentinel",
+            "pfBasis": "unit-net-returns",
+            "unknownReturns": 0
+          },
+          {
+            "sym": "SYN81-USDT",
+            "n": 9,
+            "pf": 0.12202047403825403,
+            "net": -1.725540495100784,
+            "wr": 0.3333333333333333,
+            "gp": 0.2398134158695348,
+            "gl": 1.9653539109703189,
+            "noLoss": false,
+            "pfConvention": "gross-return-ratio",
+            "pfBasis": "unit-net-returns",
+            "unknownReturns": 0
+          },
+          {
+            "sym": "SYN89-USDT",
+            "n": 7,
+            "pf": 4,
+            "net": 4.226415083155978,
+            "wr": 1,
+            "gp": 4.226415083155978,
+            "gl": 0,
+            "noLoss": true,
+            "pfConvention": "no-loss-sentinel",
+            "pfBasis": "unit-net-returns",
+            "unknownReturns": 0
+          },
+          {
+            "sym": "SYN38-USDT",
+            "n": 6,
+            "pf": 0,
+            "net": -3.899999999999971,
+            "wr": 0,
+            "gp": 0,
+            "gl": 3.899999999999971,
+            "noLoss": false,
+            "pfConvention": "gross-return-ratio",
+            "pfBasis": "unit-net-returns",
+            "unknownReturns": 0
+          },
+          {
+            "sym": "SYN21-USDT",
+            "n": 6,
+            "pf": 4,
+            "net": 5.700000000000039,
+            "wr": 1,
+            "gp": 5.700000000000039,
+            "gl": 0,
+            "noLoss": true,
+            "pfConvention": "no-loss-sentinel",
+            "pfBasis": "unit-net-returns",
+            "unknownReturns": 0
+          },
+          {
+            "sym": "SYN41-USDT",
+            "n": 6,
+            "pf": 4,
+            "net": 5.700000000000038,
+            "wr": 1,
+            "gp": 5.700000000000038,
+            "gl": 0,
+            "noLoss": true,
+            "pfConvention": "no-loss-sentinel",
+            "pfBasis": "unit-net-returns",
+            "unknownReturns": 0
+          },
+          {
+            "sym": "SYN117-USDT",
+            "n": 6,
+            "pf": 4,
+            "net": 5.7,
+            "wr": 1,
+            "gp": 5.7,
+            "gl": 0,
+            "noLoss": true,
+            "pfConvention": "no-loss-sentinel",
+            "pfBasis": "unit-net-returns",
+            "unknownReturns": 0
+          },
+          {
+            "sym": "SYN85-USDT",
+            "n": 6,
+            "pf": 4,
+            "net": 3.4560232623166764,
+            "wr": 1,
+            "gp": 3.4560232623166764,
+            "gl": 0,
+            "noLoss": true,
+            "pfConvention": "no-loss-sentinel",
+            "pfBasis": "unit-net-returns",
+            "unknownReturns": 0
+          },
+          {
+            "sym": "SYN107-USDT",
+            "n": 5,
+            "pf": 0,
+            "net": -1.608757840393471,
+            "wr": 0,
+            "gp": 0,
+            "gl": 1.608757840393471,
+            "noLoss": false,
+            "pfConvention": "gross-return-ratio",
+            "pfBasis": "unit-net-returns",
+            "unknownReturns": 0
+          },
+          {
+            "sym": "SYN16-USDT",
+            "n": 4,
+            "pf": 4.384615384615348,
+            "net": 2.199999999999995,
+            "wr": 0.75,
+            "gp": 2.8500000000000005,
+            "gl": 0.6500000000000056,
+            "noLoss": false,
+            "pfConvention": "gross-return-ratio",
+            "pfBasis": "unit-net-returns",
+            "unknownReturns": 0
+          },
+          {
+            "sym": "SYN106-USDT",
+            "n": 4,
+            "pf": 0,
+            "net": -6.736940509564448,
+            "wr": 0,
+            "gp": 0,
+            "gl": 6.736940509564448,
+            "noLoss": false,
+            "pfConvention": "gross-return-ratio",
+            "pfBasis": "unit-net-returns",
+            "unknownReturns": 0
+          },
+          {
+            "sym": "SYN14-USDT",
+            "n": 3,
+            "pf": 0,
+            "net": -4.441501470125562,
+            "wr": 0,
+            "gp": 0,
+            "gl": 4.441501470125562,
+            "noLoss": false,
+            "pfConvention": "gross-return-ratio",
+            "pfBasis": "unit-net-returns",
+            "unknownReturns": 0
+          },
+          {
+            "sym": "SYN9-USDT",
+            "n": 3,
+            "pf": 0,
+            "net": -0.28197219006521834,
+            "wr": 0,
+            "gp": 0,
+            "gl": 0.28197219006521834,
+            "noLoss": false,
+            "pfConvention": "gross-return-ratio",
+            "pfBasis": "unit-net-returns",
+            "unknownReturns": 0
+          },
+          {
+            "sym": "SYN91-USDT",
+            "n": 3,
+            "pf": 0,
+            "net": -4.922160157417081,
+            "wr": 0,
+            "gp": 0,
+            "gl": 4.922160157417081,
+            "noLoss": false,
+            "pfConvention": "gross-return-ratio",
+            "pfBasis": "unit-net-returns",
+            "unknownReturns": 0
+          },
+          {
+            "sym": "SYN32-USDT",
+            "n": 3,
+            "pf": 0,
+            "net": -3.438338796733497,
+            "wr": 0,
+            "gp": 0,
+            "gl": 3.438338796733497,
+            "noLoss": false,
+            "pfConvention": "gross-return-ratio",
+            "pfBasis": "unit-net-returns",
+            "unknownReturns": 0
+          },
+          {
+            "sym": "SYN104-USDT",
+            "n": 3,
+            "pf": 4,
+            "net": 8.68110928842079,
+            "wr": 1,
+            "gp": 8.68110928842079,
+            "gl": 0,
+            "noLoss": true,
+            "pfConvention": "no-loss-sentinel",
+            "pfBasis": "unit-net-returns",
+            "unknownReturns": 0
+          },
+          {
+            "sym": "SYN73-USDT",
+            "n": 2,
+            "pf": 0,
+            "net": -1.3000000000000023,
+            "wr": 0,
+            "gp": 0,
+            "gl": 1.3000000000000023,
+            "noLoss": false,
+            "pfConvention": "gross-return-ratio",
+            "pfBasis": "unit-net-returns",
+            "unknownReturns": 0
+          },
+          {
+            "sym": "SYN54-USDT",
+            "n": 2,
+            "pf": 0,
+            "net": -1.3000000000000087,
+            "wr": 0,
+            "gp": 0,
+            "gl": 1.3000000000000087,
+            "noLoss": false,
+            "pfConvention": "gross-return-ratio",
+            "pfBasis": "unit-net-returns",
+            "unknownReturns": 0
+          },
+          {
+            "sym": "SYN37-USDT",
+            "n": 2,
+            "pf": 4,
+            "net": 1.9000000000000115,
+            "wr": 1,
+            "gp": 1.9000000000000115,
+            "gl": 0,
+            "noLoss": true,
+            "pfConvention": "no-loss-sentinel",
+            "pfBasis": "unit-net-returns",
+            "unknownReturns": 0
+          },
+          {
+            "sym": "SYN97-USDT",
+            "n": 2,
+            "pf": 0,
+            "net": -1.2999999999999936,
+            "wr": 0,
+            "gp": 0,
+            "gl": 1.2999999999999936,
+            "noLoss": false,
+            "pfConvention": "gross-return-ratio",
+            "pfBasis": "unit-net-returns",
+            "unknownReturns": 0
+          },
+          {
+            "sym": "SYN51-USDT",
+            "n": 2,
+            "pf": 0,
+            "net": -1.3000000000000098,
+            "wr": 0,
+            "gp": 0,
+            "gl": 1.3000000000000098,
+            "noLoss": false,
+            "pfConvention": "gross-return-ratio",
+            "pfBasis": "unit-net-returns",
+            "unknownReturns": 0
+          },
+          {
+            "sym": "SYN92-USDT",
+            "n": 2,
+            "pf": 4,
+            "net": 2.8851756240668975,
+            "wr": 1,
+            "gp": 2.8851756240668975,
+            "gl": 0,
+            "noLoss": true,
+            "pfConvention": "no-loss-sentinel",
+            "pfBasis": "unit-net-returns",
+            "unknownReturns": 0
+          },
+          {
+            "sym": "SYN86-USDT",
+            "n": 1,
+            "pf": 4,
+            "net": 0.9499999999999975,
+            "wr": 1,
+            "gp": 0.9499999999999975,
+            "gl": 0,
+            "noLoss": true,
+            "pfConvention": "no-loss-sentinel",
+            "pfBasis": "unit-net-returns",
+            "unknownReturns": 0
+          },
+          {
+            "sym": "SYN66-USDT",
+            "n": 1,
+            "pf": 4,
+            "net": 0.949999999999995,
+            "wr": 1,
+            "gp": 0.949999999999995,
+            "gl": 0,
+            "noLoss": true,
+            "pfConvention": "no-loss-sentinel",
+            "pfBasis": "unit-net-returns",
+            "unknownReturns": 0
+          },
+          {
+            "sym": "SYN45-USDT",
+            "n": 1,
+            "pf": 0,
+            "net": -1.8032291950503991,
+            "wr": 0,
+            "gp": 0,
+            "gl": 1.8032291950503991,
+            "noLoss": false,
+            "pfConvention": "gross-return-ratio",
+            "pfBasis": "unit-net-returns",
+            "unknownReturns": 0
+          },
+          {
+            "sym": "SYN93-USDT",
+            "n": 1,
+            "pf": 4,
+            "net": 0.9500000000000022,
+            "wr": 1,
+            "gp": 0.9500000000000022,
+            "gl": 0,
+            "noLoss": true,
+            "pfConvention": "no-loss-sentinel",
+            "pfBasis": "unit-net-returns",
+            "unknownReturns": 0
+          }
+        ]
+      },
+      "counts": {
+        "base": 6,
+        "main": 6,
+        "sets": 324,
+        "real": 45,
+        "evals": 4,
+        "armed": 2
+      }
+    },
+    "mem": {
+      "availMb": 6215,
+      "hostAvailMb": 7956,
+      "cgroup": {
+        "version": 2,
+        "basis": "clean-file-estimate",
+        "limitMb": 8192,
+        "usedMb": 5351,
+        "rawAvailMb": 2841,
+        "cacheCreditMb": 3374,
+        "availMb": 6215
+      },
+      "rssMb": 655,
+      "level": "ok",
+      "fallback": 0,
+      "fallbackLabel": "full",
+      "minAvailMb": 6215,
+      "lastAbort": null,
+      "aborts": 0,
+      "abortsInRow": 0,
+      "retryAt": null,
+      "computeLevel": 0,
+      "heapMb": 85,
+      "heapTotalMb": 162,
+      "arrayBuffersMb": 345,
+      "nativeMb": 147,
+      "dbMb": 0,
+      "tapeMb": 2,
+      "byPhase": {
+        "Paper": {
+          "rssMb": 571,
+          "heapMb": 50,
+          "arrayBuffersMb": 290
+        },
+        "Base": {
+          "rssMb": 570,
+          "heapMb": 30,
+          "arrayBuffersMb": 276
+        },
+        "Main": {
+          "rssMb": 574,
+          "heapMb": 86,
+          "arrayBuffersMb": 341
+        },
+        "Tapes": {
+          "rssMb": 655,
+          "heapMb": 85,
+          "arrayBuffersMb": 345
+        }
+      }
+    },
+    "workers": "unavailable (in-process)",
+    "stalls": [
+      {
+        "at": 1792547956756,
+        "ms": 150,
+        "where": "Base"
+      }
+    ],
+    "baseHistory": [
+      {
+        "at": 1792547958763,
+        "compute": 1,
+        "passed": 2,
+        "built": 4,
+        "byRange": {
+          "wide": 2,
+          "mc": 0,
+          "mn": 0,
+          "mp": 0,
+          "sh": 0,
+          "gn": 0,
+          "lg": 0
+        }
+      },
+      {
+        "at": 1792547965869,
+        "compute": 2,
+        "passed": 2,
+        "built": 4,
+        "byRange": {
+          "wide": 2,
+          "mc": 0,
+          "mn": 0,
+          "mp": 0,
+          "sh": 0,
+          "gn": 0,
+          "lg": 0
+        }
+      }
+    ],
+    "exitStrategies": {
+      "enabled": false,
+      "pairs": 0,
+      "baseEvaluated": 0,
+      "basePassed": 0,
+      "baseRejected": 0,
+      "families": 5,
+      "timeframes": [
+        1,
+        5,
+        15
+      ],
+      "tactics": 0,
+      "relations": 0,
+      "configs": 0,
+      "history": {
+        "pairs": 0,
+        "baseEvaluated": 0,
+        "basePassed": 0,
+        "baseRejected": 0,
+        "noPrehistory": 0,
+        "insufficientEntries": 0,
+        "candidates": 0,
+        "capped": 0,
+        "evaluated": 0,
+        "insufficientTrades": 0,
+        "pfRejected": 0,
+        "greenHourRejected": 0,
+        "ddrRejected": 0,
+        "qualified": 0
+      }
+    },
+    "basePassed": 2,
+    "baseBuilt": 4,
+    "baseEvaluated": 6,
+    "signals": {
+      "enabled": false,
+      "combos": 0,
+      "active": 0,
+      "pairs": 0,
+      "configs": 0,
+      "coordinationPairs": 0,
+      "coordinationConfigs": 0,
+      "coordinationActive": 0,
+      "discoveryPairs": 0,
+      "representativePassed": 0,
+      "representativeBaseGate": false,
+      "historic": {
+        "pairs": 0,
+        "insufficientEntries": 0,
+        "trailTooShort": 0,
+        "candidates": 0,
+        "evaluated": 0,
+        "insufficientTrades": 0,
+        "pfRejected": 0,
+        "ddrRejected": 0,
+        "qualified": 0
+      },
+      "openOrders": 0,
+      "openPositions": 0
+    },
+    "baseByRange": [
+      {
+        "tag": "",
+        "evaluated": 6,
+        "passed": 2,
+        "minPf": 1,
+        "pfMedian": 3.176249999999992,
+        "pfPassedMedian": 4,
+        "pfPassedMean": 3.5881249999999962,
+        "pfPassedPooled": 3.7531249999999927,
+        "passedGp": 120.10000000000007,
+        "passedGl": 32.00000000000008,
+        "ownCells": 6,
+        "range": "Wide",
+        "enabled": true
+      },
+      {
+        "tag": "mc",
+        "evaluated": 0,
+        "passed": 0,
+        "minPf": 1.05,
+        "pfMedian": null,
+        "pfPassedMedian": null,
+        "pfPassedMean": null,
+        "pfPassedPooled": null,
+        "passedGp": 0,
+        "passedGl": 0,
+        "ownCells": 0,
+        "range": "Micro",
+        "enabled": false
+      },
+      {
+        "tag": "mn",
+        "evaluated": 0,
+        "passed": 0,
+        "minPf": 1.1,
+        "pfMedian": null,
+        "pfPassedMedian": null,
+        "pfPassedMean": null,
+        "pfPassedPooled": null,
+        "passedGp": 0,
+        "passedGl": 0,
+        "ownCells": 0,
+        "range": "Minimal",
+        "enabled": false
+      },
+      {
+        "tag": "mp",
+        "evaluated": 0,
+        "passed": 0,
+        "minPf": 1.1,
+        "pfMedian": null,
+        "pfPassedMedian": null,
+        "pfPassedMean": null,
+        "pfPassedPooled": null,
+        "passedGp": 0,
+        "passedGl": 0,
+        "ownCells": 0,
+        "range": "Minimal plus",
+        "enabled": false
+      },
+      {
+        "tag": "sh",
+        "evaluated": 0,
+        "passed": 0,
+        "minPf": 1.1,
+        "pfMedian": null,
+        "pfPassedMedian": null,
+        "pfPassedMean": null,
+        "pfPassedPooled": null,
+        "passedGp": 0,
+        "passedGl": 0,
+        "ownCells": 0,
+        "range": "Short",
+        "enabled": false
+      },
+      {
+        "tag": "gn",
+        "evaluated": 0,
+        "passed": 0,
+        "minPf": 1.2,
+        "pfMedian": null,
+        "pfPassedMedian": null,
+        "pfPassedMean": null,
+        "pfPassedPooled": null,
+        "passedGp": 0,
+        "passedGl": 0,
+        "ownCells": 0,
+        "range": "General",
+        "enabled": false
+      },
+      {
+        "tag": "lg",
+        "evaluated": 0,
+        "passed": 0,
+        "minPf": 1.3,
+        "pfMedian": null,
+        "pfPassedMedian": null,
+        "pfPassedMean": null,
+        "pfPassedPooled": null,
+        "passedGp": 0,
+        "passedGl": 0,
+        "ownCells": 0,
+        "range": "Long",
+        "enabled": false
+      }
+    ],
+    "baseGates": [
+      {
+        "change": "as run",
+        "minPf": 1,
+        "minTrades": 12,
+        "maxDdr": 1,
+        "passed": 2,
+        "passedAnyRange": 0,
+        "share": 0,
+        "pfPassedMedian": 4
+      },
+      {
+        "change": "PF ≥ 1.00",
+        "minPf": 1,
+        "minTrades": 12,
+        "maxDdr": 1,
+        "passed": 2,
+        "passedAnyRange": 0,
+        "share": 0,
+        "pfPassedMedian": 4
+      },
+      {
+        "change": "PF ≥ 1.05",
+        "minPf": 1.05,
+        "minTrades": 12,
+        "maxDdr": 1,
+        "passed": 2,
+        "passedAnyRange": 0,
+        "share": 0,
+        "pfPassedMedian": 4
+      },
+      {
+        "change": "PF ≥ 1.20",
+        "minPf": 1.2,
+        "minTrades": 12,
+        "maxDdr": 1,
+        "passed": 2,
+        "passedAnyRange": 0,
+        "share": 0,
+        "pfPassedMedian": 4
+      },
+      {
+        "change": "closes ≥ 6",
+        "minPf": 1,
+        "minTrades": 6,
+        "maxDdr": 1,
+        "passed": 2,
+        "passedAnyRange": 0,
+        "share": 0,
+        "pfPassedMedian": 4
+      },
+      {
+        "change": "closes ≥ 20",
+        "minPf": 1,
+        "minTrades": 20,
+        "maxDdr": 1,
+        "passed": 1,
+        "passedAnyRange": 0,
+        "share": 0,
+        "pfPassedMedian": 3.176249999999992
+      },
+      {
+        "change": "closes ≥ 30",
+        "minPf": 1,
+        "minTrades": 30,
+        "maxDdr": 1,
+        "passed": 1,
+        "passedAnyRange": 0,
+        "share": 0,
+        "pfPassedMedian": 3.176249999999992
+      },
+      {
+        "change": "DDR off",
+        "minPf": 1,
+        "minTrades": 12,
+        "maxDdr": 0,
+        "passed": 2,
+        "passedAnyRange": 0,
+        "share": 0,
+        "pfPassedMedian": 4
+      },
+      {
+        "change": "DDR ≤ 2",
+        "minPf": 1,
+        "minTrades": 12,
+        "maxDdr": 2,
+        "passed": 2,
+        "passedAnyRange": 0,
+        "share": 0,
+        "pfPassedMedian": 4
+      },
+      {
+        "change": "DDR ≤ 0.5",
+        "minPf": 1,
+        "minTrades": 12,
+        "maxDdr": 0.5,
+        "passed": 2,
+        "passedAnyRange": 0,
+        "share": 0,
+        "pfPassedMedian": 4
+      },
+      {
+        "change": "PF ≥ 1.00 · DDR off",
+        "minPf": 1,
+        "minTrades": 12,
+        "maxDdr": 0,
+        "passed": 2,
+        "passedAnyRange": 0,
+        "share": 0,
+        "pfPassedMedian": 4
+      },
+      {
+        "change": "PF ≥ 1.00 · DDR off · closes ≥ 6",
+        "minPf": 1,
+        "minTrades": 6,
+        "maxDdr": 0,
+        "passed": 2,
+        "passedAnyRange": 0,
+        "share": 0,
+        "pfPassedMedian": 4
+      }
+    ],
+    "baseWhy": [
+      {
+        "tag": "",
+        "evaluated": 6,
+        "passed": 2,
+        "first": {
+          "closes": 3,
+          "net": 1,
+          "pf": 0,
+          "ddr": 0
+        },
+        "only": {
+          "closes": 0,
+          "net": 0,
+          "pf": 0,
+          "ddr": 0
+        },
+        "onlyDdrPfMedian": null
+      }
+    ],
+    "baseConfigs": {
+      "state": "cancelled",
+      "key": "f562dd4df3674cf84696b2685458c054dc22e67d7b9758d9dba7dbccfbfb959c",
+      "settingsAt": 1792547956031,
+      "cutT": 1792346400000,
+      "fromT": 1792324800000,
+      "cost": 0.0015,
+      "floorPf": 1.1,
+      "population": "focusedIndicationCandidates",
+      "admittedPairs": 0,
+      "admittedPairKeys": [],
+      "totalPairs": 0,
+      "donePairs": 0,
+      "totalChunks": 0,
+      "doneChunks": 0,
+      "plannedConfigured": 0,
+      "configured": 0,
+      "evaluated": 0,
+      "pfPassed": 0,
+      "passed": 0,
+      "updatedAt": 1792547970655,
+      "reason": "stopped"
+    },
+    "tapesReleased": 324,
+    "liveValidation": {
+      "lastN": 25,
+      "minPf": 1.1,
+      "since": 1792547970561,
+      "judged": 0,
+      "passing": 0,
+      "paused": 0,
+      "skipped": 0,
+      "onExchange": 0,
+      "exchangeCloses": 0,
+      "groupLastN": 0,
+      "groups": []
+    },
+    "paperSkips": {
+      "notSelected": 715,
+      "stale": 405,
+      "exec:symPf": 89,
+      "exec:directionValidation": 88,
+      "exec:configValidation": 15
+    },
+    "listings": {
+      "paperStep": 1,
+      "at": 1792547970648,
+      "validated": 45,
+      "active": 0,
+      "proven": null,
+      "byRange": [
+        {
+          "range": "Wide",
+          "validated": 45,
+          "pf": 1.4963473668892169
+        }
+      ],
+      "byGroup": [
+        {
+          "group": "Wide",
+          "validated": 45,
+          "pf": 1.4963473668892169
+        }
+      ]
+    }
+  },
+  "failure": null,
+  "samples": [
+    {
+      "ms": 1008,
+      "rssMb": 351.0078125,
+      "state": "computing",
+      "computes": 0,
+      "paperSteps": 0,
+      "nativeChecks": 8,
+      "progress": {
+        "intervalMs": 100,
+        "checks": 8,
+        "lagMs": 12.41316299999994,
+        "maxLagMs": 124.50973700000009,
+        "missed": 1,
+        "error": null
+      }
+    },
+    {
+      "ms": 2015,
+      "rssMb": 393.28125,
+      "state": "computing",
+      "computes": 0,
+      "paperSteps": 0,
+      "nativeChecks": 17,
+      "progress": {
+        "intervalMs": 100,
+        "checks": 19,
+        "lagMs": 1.8307310000000143,
+        "maxLagMs": 124.50973700000009,
+        "missed": 1,
+        "error": null
+      }
+    },
+    {
+      "ms": 3037,
+      "rssMb": 495.5078125,
+      "state": "computing",
+      "computes": 0,
+      "paperSteps": 0,
+      "nativeChecks": 26,
+      "progress": {
+        "intervalMs": 100,
+        "checks": 29,
+        "lagMs": 10.040558000000146,
+        "maxLagMs": 124.50973700000009,
+        "missed": 1,
+        "error": null
+      }
+    },
+    {
+      "ms": 4040,
+      "rssMb": 522.30859375,
+      "state": "computing",
+      "computes": 0,
+      "paperSteps": 0,
+      "nativeChecks": 34,
+      "progress": {
+        "intervalMs": 100,
+        "checks": 39,
+        "lagMs": 19.582766000000447,
+        "maxLagMs": 124.50973700000009,
+        "missed": 1,
+        "error": null
+      }
+    },
+    {
+      "ms": 5049,
+      "rssMb": 522.7265625,
+      "state": "computing",
+      "computes": 0,
+      "paperSteps": 0,
+      "nativeChecks": 42,
+      "progress": {
+        "intervalMs": 100,
+        "checks": 49,
+        "lagMs": 9.77829600000041,
+        "maxLagMs": 124.50973700000009,
+        "missed": 1,
+        "error": null
+      }
+    },
+    {
+      "ms": 6057,
+      "rssMb": 561.66015625,
+      "state": "computing",
+      "computes": 0,
+      "paperSteps": 0,
+      "nativeChecks": 51,
+      "progress": {
+        "intervalMs": 100,
+        "checks": 59,
+        "lagMs": 13.606560999999601,
+        "maxLagMs": 124.50973700000009,
+        "missed": 1,
+        "error": null
+      }
+    },
+    {
+      "ms": 7093,
+      "rssMb": 564.7265625,
+      "state": "computing",
+      "computes": 0,
+      "paperSteps": 0,
+      "nativeChecks": 60,
+      "progress": {
+        "intervalMs": 100,
+        "checks": 69,
+        "lagMs": 19.639054000000215,
+        "maxLagMs": 124.50973700000009,
+        "missed": 1,
+        "error": null
+      }
+    },
+    {
+      "ms": 8108,
+      "rssMb": 570.48828125,
+      "state": "computing",
+      "computes": 1,
+      "paperSteps": 0,
+      "nativeChecks": 70,
+      "progress": {
+        "intervalMs": 100,
+        "checks": 79,
+        "lagMs": 6.169430000001739,
+        "maxLagMs": 124.50973700000009,
+        "missed": 1,
+        "error": null
+      }
+    },
+    {
+      "ms": 9109,
+      "rssMb": 569.76171875,
+      "state": "computing",
+      "computes": 1,
+      "paperSteps": 0,
+      "nativeChecks": 79,
+      "progress": {
+        "intervalMs": 100,
+        "checks": 90,
+        "lagMs": 8.508006000000023,
+        "maxLagMs": 124.50973700000009,
+        "missed": 1,
+        "error": null
+      }
+    },
+    {
+      "ms": 10110,
+      "rssMb": 614.140625,
+      "state": "computing",
+      "computes": 1,
+      "paperSteps": 0,
+      "nativeChecks": 89,
+      "progress": {
+        "intervalMs": 100,
+        "checks": 100,
+        "lagMs": 8.98075400000016,
+        "maxLagMs": 124.50973700000009,
+        "missed": 1,
+        "error": null
+      }
+    },
+    {
+      "ms": 11138,
+      "rssMb": 619.19140625,
+      "state": "computing",
+      "computes": 1,
+      "paperSteps": 0,
+      "nativeChecks": 98,
+      "progress": {
+        "intervalMs": 100,
+        "checks": 110,
+        "lagMs": 5.7486340000014025,
+        "maxLagMs": 124.50973700000009,
+        "missed": 1,
+        "error": null
+      }
+    },
+    {
+      "ms": 12140,
+      "rssMb": 655.19140625,
+      "state": "computing",
+      "computes": 1,
+      "paperSteps": 0,
+      "nativeChecks": 107,
+      "progress": {
+        "intervalMs": 100,
+        "checks": 120,
+        "lagMs": 0,
+        "maxLagMs": 124.50973700000009,
+        "missed": 1,
+        "error": null
+      }
+    },
+    {
+      "ms": 13153,
+      "rssMb": 655.1328125,
+      "state": "computing",
+      "computes": 1,
+      "paperSteps": 0,
+      "nativeChecks": 116,
+      "progress": {
+        "intervalMs": 100,
+        "checks": 130,
+        "lagMs": 10.123277000000598,
+        "maxLagMs": 124.50973700000009,
+        "missed": 1,
+        "error": null
+      }
+    },
+    {
+      "ms": 14162,
+      "rssMb": 655.6328125,
+      "state": "computing",
+      "computes": 1,
+      "paperSteps": 0,
+      "nativeChecks": 125,
+      "progress": {
+        "intervalMs": 100,
+        "checks": 140,
+        "lagMs": 20.880716000001485,
+        "maxLagMs": 124.50973700000009,
+        "missed": 1,
+        "error": null
+      }
+    },
+    {
+      "ms": 14625,
+      "rssMb": 658.0078125,
+      "state": "stopped",
+      "computes": 2,
+      "paperSteps": 1,
+      "nativeChecks": 130,
+      "progress": {
+        "intervalMs": 100,
+        "checks": 145,
+        "lagMs": 2.411799000001338,
+        "maxLagMs": 124.50973700000009,
+        "missed": 1,
+        "error": null
+      }
+    }
+  ]
+}

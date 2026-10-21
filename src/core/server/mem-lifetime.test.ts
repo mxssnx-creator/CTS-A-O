@@ -14,6 +14,7 @@ import { CoreRuntime, marketHistoryBars } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
 import { MEM_READ_MS, memInfo, type MemInfo } from "./memguard.server.ts";
 import { CandleSeries } from "../market/candle-series.ts";
+import { SeriesCache } from "../indications/cache.ts";
 import { setImmediate as tick } from "node:timers/promises";
 import { SignalAcceptIndex, acceptKey, type AcceptTape } from "../signals.ts";
 import { pinSyntheticEnd, rng, trackRuntimes, runtimeFixtureGrid } from "../test-support.ts";
@@ -22,6 +23,10 @@ import { abortWorkers, poolWorkers, workerActivity, workersAvailable } from "./p
 pinSyntheticEnd();
 
 const tiny = {
+  // Cache-lifetime assertions need representative families, not a repeated exhaustive 616-source grid search.
+  // The full grid and maximum-universe coverage live in the dedicated Micro study and stress harness.
+  focus: ["follow|ema-9-21", "follow|rsi-mom-14-20", "follow|micro-1-break-close-fast", "follow|inverse-micro-1-break-close-fast"],
+  pinned: [],
   symbols: 2,
   historyDays: 6,
   tfDays: { "1": 2, "5": 3, "15": 6, "30": 6 },
@@ -32,7 +37,7 @@ const tiny = {
   grid: { ...runtimeFixtureGrid(), short: false as const },
   // Keep real worker/local fitting and aborts, with a bounded source universe.
   // Full bot-free source/range fitting is covered in independent Exit tests.
-  exitStrategy: { enabled: true, timeframes: [15], includeTactics: false, includeRelations: false,
+  exitStrategy: { includeMicro: false, enabled: true, timeframes: [15], includeTactics: false, includeRelations: false,
     includeCombined: false, lookbackH: 72, maxConfigsPerPair: 6, quantiles: [0.6], stopQuantiles: [0.5],
     trailShares: [0.5], stopMultiples: [1] },
   signals: { sourcesMode: "allow", sources: { "ema-cross": true, "rsi-reversal": true }, lanes: [15],
@@ -108,7 +113,7 @@ describe("memory released after use, results unchanged", { timeout: 900_000 }, (
     try {
       for (const phase of ["Exit history", "Signal history"] as const)
         for (const mode of ["worker", "fallback"] as const)
-          await ctx.test(`${phase}: ${mode}`, async () => {
+          await ctx.test(`${phase}: ${mode}`, async (sub) => {
             const t = trackRuntimes();
             const rt = t.track(
               new CoreRuntime(new CoreDb(":memory:"), tiny as never, { market: "synthetic" }),
@@ -135,8 +140,23 @@ describe("memory released after use, results unchanged", { timeout: 900_000 }, (
               if (phase === "Exit history") R.exitHistoryCache = null;
               const drive0 = R.drive.bind(rt),
                 setStage0 = R.setStage.bind(rt);
+              // The published universe now deliberately stays on the last completed cohort. Observe the first
+              // new universe's actual caches through construction, rather than changing that public contract.
+              const publishedUniverse = rt.lastUniverse;
+              const workingCaches = new Set<SeriesCache>();
+              let workingSource: unknown;
+              const setMarket0 = SeriesCache.prototype.setMarket;
+              const cacheProbe = sub.mock.method(SeriesCache.prototype, "setMarket", function (
+                this: SeriesCache,
+                ...args: Parameters<SeriesCache["setMarket"]>
+              ) {
+                workingSource ??= args[0];
+                if (args[0] === workingSource && (args[2] === undefined || args[2] === 1)) workingCaches.add(this);
+                return setMarket0.apply(this, args);
+              });
+              sub.after(() => cacheProbe.mock.restore());
               const memoOf = () =>
-                (rt.lastUniverse?.caches ?? []).reduce(
+                [...workingCaches].reduce(
                   (a, c) => a + (c as unknown as { m: Map<string, unknown> }).m.size,
                   0,
                 );
@@ -165,7 +185,7 @@ describe("memory released after use, results unchanged", { timeout: 900_000 }, (
                 ) {
                   // A real worker progress post proves the history message has started. Populate a main-thread memo
                   // as a detail/Base reader can: abort must release it as well as terminate the worker's own caches.
-                  for (const c of rt.lastUniverse?.caches ?? []) c.ema(9);
+                  for (const c of workingCaches) c.ema(9);
                   atAbort = memoOf();
                   abortedWorkers = abortWorkers(`memory pressure: ${phase} worker test`);
                 }
@@ -181,6 +201,8 @@ describe("memory released after use, results unchanged", { timeout: 900_000 }, (
               assert.ok(workersAvailable(), "the worker case must use the source worker");
               await assert.rejects(R.compute(R.gen), /memory pressure: (?:Exit|Signal) history/);
               assert.ok(atAbort > 0, `memos existed before the ${mode} abort (${atAbort})`);
+              cacheProbe.mock.restore();
+              assert.equal(rt.lastUniverse, publishedUniverse, "an aborted compute never replaces the published complete universe");
               assert.equal(memoOf(), 0, "the aborted compute's main-universe memos are cleared");
               assert.equal(
                 workerActivity().inFlight,

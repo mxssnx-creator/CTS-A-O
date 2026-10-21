@@ -11,7 +11,7 @@ import { INDICATIONS, indicationState, laneInd } from "./indications/registry.ts
 import { SIGNAL_SOURCES, signalId } from "./signal-config.ts";
 import { comboSignal } from "./bots/bots.ts";
 import { SeriesCache } from "./indications/cache.ts";
-import { barsFromCandles, syntheticCandles } from "./market/bars.ts";
+import { barsFromCandles, syntheticCandles, resample } from "./market/bars.ts";
 import { makeUniverse } from "./pipeline/pipeline.ts";
 import type { Candle } from "./domain/types.ts";
 
@@ -175,7 +175,89 @@ function caches(): SeriesCache[] {
     out.push(...makeUniverse([barsFromCandles("SWEEP-USDT", tf, cs)]).caches);
     out.push(...makeUniverse([barsFromCandles("SWEEP-USDT", tf, mirror(cs))]).caches);
   }
+  // Named reference pairs require their actual peers. Smooth residual shocks and noisy stretched
+  // spreads exercise distinct pair regimes; omitting BTC/ETH must correctly produce no signal.
+  for (const regime of ["spread", "residual"]) {
+    const pairs = Array.from({ length: 8 }, (_, s) => {
+      let last = 100;
+      const candles: Candle[] = Array.from({ length: 900 }, (_, i) => {
+        const log = regime === "spread"
+          ? .03 * Math.sin(i / 25) + .002 * Math.sin(i * 1.1) + (s < 2 ? 0 : .01 * Math.sin(i / 30 + s) + .002 * Math.sin(i * 1.7 + s))
+          : .03 * Math.sin(i / 14) + (s < 2 ? .002 : .012) * Math.sin(i / (5 + s));
+        const c = 100 * Math.exp(log);
+        const bar = { t: END + i * 60_000, o: last, c, h: Math.max(last, c) * 1.0003, l: Math.min(last, c) * .9997, v: 100 };
+        last = c;
+        return bar;
+      });
+      return { sym: s === 0 ? "BTC-USDT" : s === 1 ? "ETH-USDT" : `PAIR${s}-USDT`, candles };
+    });
+    out.push(...makeUniverse(pairs.map(({sym, candles}) => barsFromCandles(sym, 1, candles))).caches);
+    out.push(...makeUniverse(pairs.map(({sym, candles}) => barsFromCandles(sym, 1, mirror(candles)))).caches);
+  }
   return out;
+}
+
+function microWickRecovery(sym: string, seed: number) {
+ const cs=richCandles(sym,1,27000,END,seed);
+ // Each block supplies a quiet regime, a sustained pullback and a high-volume wick recovery.
+ // The following recovery keeps a completed 15m reference while faster bars trigger independently.
+ for(let at=900;at+120<cs.length;at+=900){
+   let price=cs[at-1].c;
+   for(let j=0;j<120;j++){
+     const i=at+j,o=price;
+     const ret=j<60 ? -0.001 : j<90 ? -0.01 : 0.0003;
+     const c=o*(1+ret);const wick=j>=90 ? 0.0005*Math.pow(1.16,j-90) : 0.0001;
+     cs[i]={...cs[i],o,c,h:Math.max(o,c)*1.00005,l:Math.min(o,c)*(1-wick),v:j>=90 ? 50000*Math.pow(1.25,j-90) : 100};
+     price=c;
+   }
+   const ratio=price/cs[at+120].o;
+   for(let i=at+120;i<cs.length;i++)cs[i]={...cs[i],o:cs[i].o*ratio,c:cs[i].c*ratio,h:cs[i].h*ratio,l:cs[i].l*ratio};
+ }
+ for(let at=450;at+300<cs.length;at+=900){
+  let price=cs[at-1].c;
+  for(let j=0;j<300;j++){
+   const i=at+j,o=price;
+   const r=j<180?0.0005:j<285?-0.000001:j===299?0.08:0.000002;
+   const c=o*(1+r),wick=j<180?0.002:0.00001;
+   cs[i]={...cs[i],o,c,h:Math.max(o,c)*(1+wick),l:Math.min(o,c)*(1-wick),v:j===299?100000:100};price=c;
+  }
+  const ratio=price/cs[at+300].o;
+  for(let i=at+300;i<cs.length;i++)cs[i]={...cs[i],o:cs[i].o*ratio,c:cs[i].c*ratio,h:cs[i].h*ratio,l:cs[i].l*ratio};
+ }
+ return cs;
+}
+
+/** Coherent 1/5/15m native history with BTC/ETH peers for context-dependent families. */
+function* microContextCaches(): Generator<SeriesCache[]> {
+  for (const scenario of [0, 1]) {
+    const series = ["BTC", "ETH", "AAA", "BBB", "CCC"].map((sym, i) => ({
+      sym: `${sym}-USDT`, cs: scenario ? microWickRecovery(sym, i + 7) : richCandles(sym, 1, 27000, END, i + 7),
+    }));
+    for (const flipped of [false, true])
+      yield makeUniverse(series.flatMap(({ sym, cs }) => [1, 5, 15].map((tf) =>
+        barsFromCandles(sym, tf, resample(flipped ? mirror(cs) : cs, 1, tf)),
+      ))).caches;
+  }
+  // Nested recovery: own closes turn up on all three frames while BTC/ETH recover more quickly.
+  // Its last three minute closes still underperform, retaining a negative causal residual.
+  const own: Candle[] = [], peer: Candle[] = [], n = 3000;
+  let a = 100, b = 100;
+  for (let i = 0; i < n; i++) {
+    const j = i - (n - 45);
+    let r = 0.00002 * Math.sin(i * 1.3), q = 0.00002 * Math.cos(i * 1.1);
+    if (j >= 0 && j < 30) r = -0.002;
+    if (j >= 30) { r = j < 40 ? 0.0001 : j < 42 ? 0.007 : j < 44 ? -0.006 : 0.001; q = 0.007; }
+    const c = a * (1 + r), d = b * (1 + q), t = END - (n - i) * 60000;
+    own.push({ t, o: a, c, h: Math.max(a, c) * 1.00002, l: Math.min(a, c) * 0.99998, v: i >= n - 15 ? 2000 : 1000 });
+    peer.push({ t, o: b, c: d, h: Math.max(b, d) * 1.00002, l: Math.min(b, d) * 0.99998, v: 1000 });
+    a = c; b = d;
+  }
+  for (const flipped of [false, true]) {
+    const series = [["A-USDT", own], ["BTC-USDT", peer], ["ETH-USDT", peer]] as const;
+    yield makeUniverse(series.flatMap(([sym, cs]) => [1, 5, 15].map((tf) =>
+      barsFromCandles(sym, tf, resample(flipped ? mirror(cs) : cs, 1, tf)),
+    ))).caches;
+  }
 }
 
 type Count = { long: number; short: number };
@@ -215,6 +297,11 @@ describe("every indication fires long and short", { timeout: 600_000 }, () => {
     assert.ok(engine.length > 300, `${engine.length} engine indications`);
     const counts = new Map<string, Count>();
     for (const x of engine) for (const k of ks) add(counts, x.id, onsets(indicationState(x.id, k)));
+    // Ordinary single-frame fixtures cannot exercise missing market peers or a completed multi-frame relation.
+    const contextual = engine.filter((x) => x.kind === "micro" || x.kind === "inverse");
+    for (const contexts of microContextCaches())
+      for (const x of contextual)
+        for (const k of contexts) add(counts, x.id, onsets(indicationState(x.id, k)));
     assert.equal(counts.size, engine.length);
     assert.deepEqual(oneWay(counts, exempt), []);
     // the symmetry exception fires both ways (biased, not one-sided)

@@ -1,0 +1,75 @@
+✖ a failed compute cannot withdraw active Base/config qualifications before publishing new tapes (106.507964ms)
+✖ current qualifications and realtime inputs survive simulation slices, then publish with completed new tapes (55.669639ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 0
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 732.988705
+
+✖ failing tests:
+
+test at src/core/server/compute-publication.test.ts:48:1
+✖ a failed compute cannot withdraw active Base/config qualifications before publishing new tapes (106.507964ms)
+  AssertionError [ERR_ASSERTION]: The validation function is expected to return "true". Received false
+  
+  Caught error:
+  
+  AssertionError [ERR_ASSERTION]: basePassed: unfinished compute changed current execution qualification
+  + actual - expected
+  
+  + Set(0) {}
+  - Set(1) {
+  -   'follow|old-current@m1'
+  - }
+  
+      at async TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/compute-publication.test.ts:51:3)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: AssertionError [ERR_ASSERTION]: basePassed: unfinished compute changed current execution qualification
+    + actual - expected
+    
+    + Set(0) {}
+    - Set(1) {
+    -   'follow|old-current@m1'
+    - }
+    
+        at assertCurrent (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/compute-publication.test.ts:43:34)
+        at f.inner.slimTapes (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/compute-publication.test.ts:50:31)
+        at CoreRuntime.compute (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/runtime.server.ts:4367:16)
+        at async waitForActual (node:assert:646:5)
+        at async strict.rejects (node:assert:769:25)
+        at async TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/compute-publication.test.ts:51:3)
+        at async Test.run (node:internal/test_runner/test:1389:7)
+        at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3),
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at src/core/server/compute-publication.test.ts:55:1
+✖ current qualifications and realtime inputs survive simulation slices, then publish with completed new tapes (55.669639ms)
+  AssertionError [ERR_ASSERTION]: basePassed: unfinished compute changed current execution qualification
+  + actual - expected
+  
+  + Set(0) {}
+  - Set(1) {
+  -   'follow|old-current@m1'
+  - }
+  
+      at assertCurrent (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/compute-publication.test.ts:43:34)
+      at f.inner.drive (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/compute-publication.test.ts:58:43)
+      at CoreRuntime.compute (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/runtime.server.ts:4565:28)
+      at async TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/compute-publication.test.ts:61:3)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: Set(0) {},
+    expected: Set(1) { 'follow|old-current@m1' },
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

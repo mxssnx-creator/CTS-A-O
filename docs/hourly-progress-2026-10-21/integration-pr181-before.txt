@@ -1,0 +1,243 @@
+[core-tests] offline Node transport guard; 2 files; concurrency 1; compute workers 1
+✔ a failed compute cannot withdraw active Base/config qualifications before publishing new tapes (124.509537ms)
+[core-v2] compute #1 done in 164 ms · sim PF unavailable n 0 · loop max 119 ms (worst slice of the last 60 s 73 ms in Base, 1 over 40 ms)
+✔ current qualifications and realtime inputs survive simulation slices, then publish with completed new tapes (263.840556ms)
+✔ simulation failure cannot publish a partial replacement (117.316978ms)
+✖ simulation settings cannot publish a partial replacement (102.81424ms)
+✔ simulation generation cannot publish a partial replacement (62.914578ms)
+✖ timing-only settings changes do not discard a completed economic calculation (47.475278ms)
+✔ timing settings cannot cancel a partially completed exact Base sweep (13.421316ms)
+✔ live settings cannot cancel a partially completed exact Base sweep (9.714246ms)
+✔ unchanged settings cannot cancel a partially completed exact Base sweep (5.633974ms)
+✔ charges a flat long or short exactly 0.15% once and caps runtime model overrides (1.965186ms)
+✔ DCA charges once per filled leg, never twice per side or on an unfilled ladder (3.335895ms)
+✖ matches every configured TP/SL/trailing/hold cell at Base, including General and all stop ratios (43.631898ms)
+✔ arms from the peak, never loosens a stop, applies updates next bar, and respects a worse gap fill on both sides (3.360515ms)
+✔ replaces the open mark with a settled net return without charging again; owned measured fees stay authoritative (3.16766ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 11
+ℹ fail 3
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3432.187107
+
+✖ failing tests:
+
+test at src/core/server/compute-publication.test.ts:183:3
+✖ simulation settings cannot publish a partial replacement (102.81424ms)
+  AssertionError [ERR_ASSERTION]: basePassedCells: unfinished compute changed current execution qualification
+  + actual - expected
+  
+  + undefined
+  - {
+  -   'follow|old-current@m1': {
+  -     keys: Set(1) {
+  -       'mc|0.01|0.01|0|60'
+  -     },
+  -     tags: Set(1) {
+  -       'mc'
+  -     }
+  -   }
+  - }
+  
+      at assertCurrent (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/compute-publication.test.ts:122:12)
+      at TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/compute-publication.test.ts:200:5)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: { 'follow|old-current@m1': { tags: [Set], keys: [Set] } },
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/server/compute-publication.test.ts:205:1
+✖ timing-only settings changes do not discard a completed economic calculation (47.475278ms)
+  AssertionError [ERR_ASSERTION]: basePassedCells: unfinished compute changed current execution qualification
+  + actual - expected
+  
+  + undefined
+  - {
+  -   'follow|old-current@m1': {
+  -     keys: Set(1) {
+  -       'mc|0.01|0.01|0|60'
+  -     },
+  -     tags: Set(1) {
+  -       'mc'
+  -     }
+  -   }
+  - }
+  
+      at assertCurrent (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/compute-publication.test.ts:122:12)
+      at f.inner.drive (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/compute-publication.test.ts:214:7)
+      at async CoreRuntime.compute (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/runtime.server.ts:4950:17)
+      at async TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/compute-publication.test.ts:218:3)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: { 'follow|old-current@m1': { tags: [Set], keys: [Set] } },
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/sim/micro-cost-trailing-audit.test.ts:67:1
+✖ matches every configured TP/SL/trailing/hold cell at Base, including General and all stop ratios (43.631898ms)
+  AssertionError [ERR_ASSERTION]: false/0.5: Base/execution identity
+  + actual - expected
+  ... Skipped lines
+  
+    [
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl0.35|tr0.2625|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl0.35|tr0.2|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl0.35|tr0|h4|mc',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl0.4375|tr0.2625|h4|mc|ts0.5',
+  ...
+      'follow|micro-1-break-close-fast@m15|tp3|sl4.5|tr2.25|h16|gn|ts0.5',
+  +   'follow|micro-1-break-close-fast@m15|tp3|sl6|tr0|h64',
+  +   'follow|micro-1-break-close-fast@m15|tp3|sl6|tr0|h96',
+  +   'follow|micro-1-break-close-fast@m15|tp3|sl6|tr1.5|h64|ts0.5',
+  +   'follow|micro-1-break-close-fast@m15|tp3|sl6|tr1.5|h96|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp4.2|sl1.05|tr0|h16|gn',
+      'follow|micro-1-break-close-fast@m15|tp4.2|sl1.05|tr1.05|h16|gn|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp4.2|sl1.05|tr2.1|h16|gn|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp4.2|sl1.05|tr3.15|h16|gn|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp4.2|sl2.1|tr0|h16|gn',
+  ...
+      'follow|micro-1-break-close-fast@m15|tp4|sl6|tr3|h16|gn|ts0.5',
+  +   'follow|micro-1-break-close-fast@m15|tp8|sl16|tr0|h64',
+  +   'follow|micro-1-break-close-fast@m15|tp8|sl16|tr0|h96',
+  +   'follow|micro-1-break-close-fast@m15|tp8|sl16|tr4|h64|ts0.5',
+  +   'follow|micro-1-break-close-fast@m15|tp8|sl16|tr4|h96|ts0.5',
+  +   'follow|micro-1-break-close-fast@m15|tp8|sl8|tr0|h64',
+  +   'follow|micro-1-break-close-fast@m15|tp8|sl8|tr0|h96',
+  +   'follow|micro-1-break-close-fast@m15|tp8|sl8|tr4|h64|ts0.5',
+  +   'follow|micro-1-break-close-fast@m15|tp8|sl8|tr4|h96|ts0.5'
+  -   'follow|micro-1-break-close-fast@m15|tp8|sl3|tr0|h64',
+  -   'follow|micro-1-break-close-fast@m15|tp8|sl3|tr0|h96',
+  -   'follow|micro-1-break-close-fast@m15|tp8|sl3|tr1.5|h64|ts0.5',
+  -   'follow|micro-1-break-close-fast@m15|tp8|sl3|tr1.5|h96|ts0.5'
+    ]
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/sim/micro-cost-trailing-audit.test.ts:84:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl0.35|tr0.2625|h4|mc|ts0.5',   'follow|micro-1-break-close-fast@m15|tp0.35|sl0.35|tr0.2|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl0.35|tr0|h4|mc',              'follow|micro-1-break-close-fast@m15|tp0.35|sl0.4375|tr0.2625|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl0.4375|tr0.2|h4|mc|ts0.5',    'follow|micro-1-break-close-fast@m15|tp0.35|sl0.4375|tr0|h4|mc',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl0.525|tr0.2625|h4|mc|ts0.5',  'follow|micro-1-break-close-fast@m15|tp0.35|sl0.525|tr0.2|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl0.525|tr0|h4|mc',             'follow|micro-1-break-close-fast@m15|tp0.35|sl0.6125|tr0.2625|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl0.6125|tr0.2|h4|mc|ts0.5',    'follow|micro-1-break-close-fast@m15|tp0.35|sl0.6125|tr0|h4|mc',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl0.7875|tr0.2625|h4|mc|ts0.5', 'follow|micro-1-break-close-fast@m15|tp0.35|sl0.7875|tr0.2|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl0.7875|tr0|h4|mc',            'follow|micro-1-break-close-fast@m15|tp0.35|sl0.7|tr0.2625|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl0.7|tr0.2|h4|mc|ts0.5',       'follow|micro-1-break-close-fast@m15|tp0.35|sl0.7|tr0|h4|mc',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl0.875|tr0.2625|h4|mc|ts0.5',  'follow|micro-1-break-close-fast@m15|tp0.35|sl0.875|tr0.2|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl0.875|tr0|h4|mc',             'follow|micro-1-break-close-fast@m15|tp0.35|sl0.9625|tr0.2625|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl0.9625|tr0.2|h4|mc|ts0.5',    'follow|micro-1-break-close-fast@m15|tp0.35|sl0.9625|tr0|h4|mc',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl1.05|tr0.2625|h4|mc|ts0.5',   'follow|micro-1-break-close-fast@m15|tp0.35|sl1.05|tr0.2|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl1.05|tr0|h4|mc',              'follow|micro-1-break-close-fast@m15|tp0.35|sl1.1375|tr0.2625|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl1.1375|tr0.2|h4|mc|ts0.5',    'follow|micro-1-break-close-fast@m15|tp0.35|sl1.1375|tr0|h4|mc',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl1.225|tr0.2625|h4|mc|ts0.5',  'follow|micro-1-break-close-fast@m15|tp0.35|sl1.225|tr0.2|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl1.225|tr0|h4|mc',             'follow|micro-1-break-close-fast@m15|tp0.35|sl1.3125|tr0.2625|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl1.3125|tr0.2|h4|mc|ts0.5',    'follow|micro-1-break-close-fast@m15|tp0.35|sl1.3125|tr0|h4|mc',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl1.4875|tr0.2625|h4|mc|ts0.5', 'follow|micro-1-break-close-fast@m15|tp0.35|sl1.4875|tr0.2|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl1.4875|tr0|h4|mc',            'follow|micro-1-break-close-fast@m15|tp0.35|sl1.4|tr0.2625|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl1.4|tr0.2|h4|mc|ts0.5',       'follow|micro-1-break-close-fast@m15|tp0.35|sl1.4|tr0|h4|mc',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl1.575|tr0.2625|h4|mc|ts0.5',  'follow|micro-1-break-close-fast@m15|tp0.35|sl1.575|tr0.2|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl1.575|tr0|h4|mc',             'follow|micro-1-break-close-fast@m15|tp0.35|sl1.6625|tr0.2625|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl1.6625|tr0.2|h4|mc|ts0.5',    'follow|micro-1-break-close-fast@m15|tp0.35|sl1.6625|tr0|h4|mc',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl1.75|tr0.2625|h4|mc|ts0.5',   'follow|micro-1-break-close-fast@m15|tp0.35|sl1.75|tr0.2|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl1.75|tr0|h4|mc',              'follow|micro-1-break-close-fast@m15|tp0.45|sl0.45|tr0.225|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl0.45|tr0.2|h4|mc|ts0.5',      'follow|micro-1-break-close-fast@m15|tp0.45|sl0.45|tr0.3375|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl0.45|tr0|h4|mc',              'follow|micro-1-break-close-fast@m15|tp0.45|sl0.5625|tr0.225|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl0.5625|tr0.2|h4|mc|ts0.5',    'follow|micro-1-break-close-fast@m15|tp0.45|sl0.5625|tr0.3375|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl0.5625|tr0|h4|mc',            'follow|micro-1-break-close-fast@m15|tp0.45|sl0.675|tr0.225|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl0.675|tr0.2|h4|mc|ts0.5',     'follow|micro-1-break-close-fast@m15|tp0.45|sl0.675|tr0.3375|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl0.675|tr0|h4|mc',             'follow|micro-1-break-close-fast@m15|tp0.45|sl0.7875|tr0.225|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl0.7875|tr0.2|h4|mc|ts0.5',    'follow|micro-1-break-close-fast@m15|tp0.45|sl0.7875|tr0.3375|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl0.7875|tr0|h4|mc',            'follow|micro-1-break-close-fast@m15|tp0.45|sl0.9|tr0.225|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl0.9|tr0.2|h4|mc|ts0.5',       'follow|micro-1-break-close-fast@m15|tp0.45|sl0.9|tr0.3375|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl0.9|tr0|h4|mc',               'follow|micro-1-break-close-fast@m15|tp0.45|sl1.0125|tr0.225|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl1.0125|tr0.2|h4|mc|ts0.5',    'follow|micro-1-break-close-fast@m15|tp0.45|sl1.0125|tr0.3375|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl1.0125|tr0|h4|mc',            'follow|micro-1-break-close-fast@m15|tp0.45|sl1.125|tr0.225|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl1.125|tr0.2|h4|mc|ts0.5',     'follow|micro-1-break-close-fast@m15|tp0.45|sl1.125|tr0.3375|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl1.125|tr0|h4|mc',             'follow|micro-1-break-close-fast@m15|tp0.45|sl1.2375|tr0.225|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl1.2375|tr0.2|h4|mc|ts0.5',    'follow|micro-1-break-close-fast@m15|tp0.45|sl1.2375|tr0.3375|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl1.2375|tr0|h4|mc',            'follow|micro-1-break-close-fast@m15|tp0.45|sl1.35|tr0.225|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl1.35|tr0.2|h4|mc|ts0.5',      'follow|micro-1-break-close-fast@m15|tp0.45|sl1.35|tr0.3375|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl1.35|tr0|h4|mc',              'follow|micro-1-break-close-fast@m15|tp0.45|sl1.4625|tr0.225|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl1.4625|tr0.2|h4|mc|ts0.5',    'follow|micro-1-break-close-fast@m15|tp0.45|sl1.4625|tr0.3375|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl1.4625|tr0|h4|mc',            'follow|micro-1-break-close-fast@m15|tp0.45|sl1.575|tr0.225|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl1.575|tr0.2|h4|mc|ts0.5',     'follow|micro-1-break-close-fast@m15|tp0.45|sl1.575|tr0.3375|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl1.575|tr0|h4|mc',             'follow|micro-1-break-close-fast@m15|tp0.45|sl1.6875|tr0.225|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl1.6875|tr0.2|h4|mc|ts0.5',    'follow|micro-1-break-close-fast@m15|tp0.45|sl1.6875|tr0.3375|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl1.6875|tr0|h4|mc',            'follow|micro-1-break-close-fast@m15|tp0.45|sl1.8|tr0.225|h4|mc|ts0.5',
+      ... 945 more items
+    ],
+    expected: [
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl0.35|tr0.2625|h4|mc|ts0.5',   'follow|micro-1-break-close-fast@m15|tp0.35|sl0.35|tr0.2|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl0.35|tr0|h4|mc',              'follow|micro-1-break-close-fast@m15|tp0.35|sl0.4375|tr0.2625|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl0.4375|tr0.2|h4|mc|ts0.5',    'follow|micro-1-break-close-fast@m15|tp0.35|sl0.4375|tr0|h4|mc',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl0.525|tr0.2625|h4|mc|ts0.5',  'follow|micro-1-break-close-fast@m15|tp0.35|sl0.525|tr0.2|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl0.525|tr0|h4|mc',             'follow|micro-1-break-close-fast@m15|tp0.35|sl0.6125|tr0.2625|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl0.6125|tr0.2|h4|mc|ts0.5',    'follow|micro-1-break-close-fast@m15|tp0.35|sl0.6125|tr0|h4|mc',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl0.7875|tr0.2625|h4|mc|ts0.5', 'follow|micro-1-break-close-fast@m15|tp0.35|sl0.7875|tr0.2|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl0.7875|tr0|h4|mc',            'follow|micro-1-break-close-fast@m15|tp0.35|sl0.7|tr0.2625|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl0.7|tr0.2|h4|mc|ts0.5',       'follow|micro-1-break-close-fast@m15|tp0.35|sl0.7|tr0|h4|mc',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl0.875|tr0.2625|h4|mc|ts0.5',  'follow|micro-1-break-close-fast@m15|tp0.35|sl0.875|tr0.2|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl0.875|tr0|h4|mc',             'follow|micro-1-break-close-fast@m15|tp0.35|sl0.9625|tr0.2625|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl0.9625|tr0.2|h4|mc|ts0.5',    'follow|micro-1-break-close-fast@m15|tp0.35|sl0.9625|tr0|h4|mc',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl1.05|tr0.2625|h4|mc|ts0.5',   'follow|micro-1-break-close-fast@m15|tp0.35|sl1.05|tr0.2|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl1.05|tr0|h4|mc',              'follow|micro-1-break-close-fast@m15|tp0.35|sl1.1375|tr0.2625|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl1.1375|tr0.2|h4|mc|ts0.5',    'follow|micro-1-break-close-fast@m15|tp0.35|sl1.1375|tr0|h4|mc',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl1.225|tr0.2625|h4|mc|ts0.5',  'follow|micro-1-break-close-fast@m15|tp0.35|sl1.225|tr0.2|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl1.225|tr0|h4|mc',             'follow|micro-1-break-close-fast@m15|tp0.35|sl1.3125|tr0.2625|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl1.3125|tr0.2|h4|mc|ts0.5',    'follow|micro-1-break-close-fast@m15|tp0.35|sl1.3125|tr0|h4|mc',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl1.4875|tr0.2625|h4|mc|ts0.5', 'follow|micro-1-break-close-fast@m15|tp0.35|sl1.4875|tr0.2|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl1.4875|tr0|h4|mc',            'follow|micro-1-break-close-fast@m15|tp0.35|sl1.4|tr0.2625|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl1.4|tr0.2|h4|mc|ts0.5',       'follow|micro-1-break-close-fast@m15|tp0.35|sl1.4|tr0|h4|mc',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl1.575|tr0.2625|h4|mc|ts0.5',  'follow|micro-1-break-close-fast@m15|tp0.35|sl1.575|tr0.2|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl1.575|tr0|h4|mc',             'follow|micro-1-break-close-fast@m15|tp0.35|sl1.6625|tr0.2625|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl1.6625|tr0.2|h4|mc|ts0.5',    'follow|micro-1-break-close-fast@m15|tp0.35|sl1.6625|tr0|h4|mc',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl1.75|tr0.2625|h4|mc|ts0.5',   'follow|micro-1-break-close-fast@m15|tp0.35|sl1.75|tr0.2|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.35|sl1.75|tr0|h4|mc',              'follow|micro-1-break-close-fast@m15|tp0.45|sl0.45|tr0.225|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl0.45|tr0.2|h4|mc|ts0.5',      'follow|micro-1-break-close-fast@m15|tp0.45|sl0.45|tr0.3375|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl0.45|tr0|h4|mc',              'follow|micro-1-break-close-fast@m15|tp0.45|sl0.5625|tr0.225|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl0.5625|tr0.2|h4|mc|ts0.5',    'follow|micro-1-break-close-fast@m15|tp0.45|sl0.5625|tr0.3375|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl0.5625|tr0|h4|mc',            'follow|micro-1-break-close-fast@m15|tp0.45|sl0.675|tr0.225|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl0.675|tr0.2|h4|mc|ts0.5',     'follow|micro-1-break-close-fast@m15|tp0.45|sl0.675|tr0.3375|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl0.675|tr0|h4|mc',             'follow|micro-1-break-close-fast@m15|tp0.45|sl0.7875|tr0.225|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl0.7875|tr0.2|h4|mc|ts0.5',    'follow|micro-1-break-close-fast@m15|tp0.45|sl0.7875|tr0.3375|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl0.7875|tr0|h4|mc',            'follow|micro-1-break-close-fast@m15|tp0.45|sl0.9|tr0.225|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl0.9|tr0.2|h4|mc|ts0.5',       'follow|micro-1-break-close-fast@m15|tp0.45|sl0.9|tr0.3375|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl0.9|tr0|h4|mc',               'follow|micro-1-break-close-fast@m15|tp0.45|sl1.0125|tr0.225|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl1.0125|tr0.2|h4|mc|ts0.5',    'follow|micro-1-break-close-fast@m15|tp0.45|sl1.0125|tr0.3375|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl1.0125|tr0|h4|mc',            'follow|micro-1-break-close-fast@m15|tp0.45|sl1.125|tr0.225|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl1.125|tr0.2|h4|mc|ts0.5',     'follow|micro-1-break-close-fast@m15|tp0.45|sl1.125|tr0.3375|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl1.125|tr0|h4|mc',             'follow|micro-1-break-close-fast@m15|tp0.45|sl1.2375|tr0.225|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl1.2375|tr0.2|h4|mc|ts0.5',    'follow|micro-1-break-close-fast@m15|tp0.45|sl1.2375|tr0.3375|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl1.2375|tr0|h4|mc',            'follow|micro-1-break-close-fast@m15|tp0.45|sl1.35|tr0.225|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl1.35|tr0.2|h4|mc|ts0.5',      'follow|micro-1-break-close-fast@m15|tp0.45|sl1.35|tr0.3375|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl1.35|tr0|h4|mc',              'follow|micro-1-break-close-fast@m15|tp0.45|sl1.4625|tr0.225|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl1.4625|tr0.2|h4|mc|ts0.5',    'follow|micro-1-break-close-fast@m15|tp0.45|sl1.4625|tr0.3375|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl1.4625|tr0|h4|mc',            'follow|micro-1-break-close-fast@m15|tp0.45|sl1.575|tr0.225|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl1.575|tr0.2|h4|mc|ts0.5',     'follow|micro-1-break-close-fast@m15|tp0.45|sl1.575|tr0.3375|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl1.575|tr0|h4|mc',             'follow|micro-1-break-close-fast@m15|tp0.45|sl1.6875|tr0.225|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl1.6875|tr0.2|h4|mc|ts0.5',    'follow|micro-1-break-close-fast@m15|tp0.45|sl1.6875|tr0.3375|h4|mc|ts0.5',
+      'follow|micro-1-break-close-fast@m15|tp0.45|sl1.6875|tr0|h4|mc',            'follow|micro-1-break-close-fast@m15|tp0.45|sl1.8|tr0.225|h4|mc|ts0.5',
+      ... 937 more items
+    ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }

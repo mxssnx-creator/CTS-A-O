@@ -1,0 +1,15 @@
+[core-tests] offline Node transport guard; 1 files; concurrency 1; compute workers 1
+▶ runtime.cycle incremental equals a full recompute
+  ✔ default is full (12.291385ms)
+[core-v2] compute #1 done in 10415 ms · sim PF 0.87 n 1175 · loop max 889 ms (worst slice of the last 60 s 867 ms in Tapes, 3 over 40 ms)
+compared 600 tape states, 6 open positions
+  ✔ continued tapes, seats and paper decisions at several T (32251.532336ms)
+✔ runtime.cycle incremental equals a full recompute (32266.976468ms)
+ℹ tests 2
+ℹ suites 1
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 33299.441938

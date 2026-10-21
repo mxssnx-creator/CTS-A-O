@@ -1,3 +1,4 @@
+import { PREVIOUS_DEFAULT_FOCUS_17OCT as LEGACY_FIXTURE_FOCUS } from "../config.ts";
 // The actual synthetic engine fills its paper book, but cold-start history does not waive strict live proof.
 // A separate, explicitly declared synthetic accepted/funded history tests the real runtime's promotion and live
 // control mechanics on a simulated hedge-mode venue (one stop per position side, as BingX). Checked over
@@ -27,6 +28,10 @@ process.env.CTS_CORE_LIVE = "1";
 process.env.CTS_CORE_SYNTHETIC_END = String(Math.floor(Date.now() / H) * H);
 
 const small = {
+  // Preserve this generic lifecycle fixture's original source scope. Exhaustive new-family grids are
+  // covered separately by Micro/Inverse parity, the 20-symbol replay and 120-symbol load test.
+  focus: [...LEGACY_FIXTURE_FOCUS],
+  pinned: [],
   symbols: 3,
   historyDays: 18,
   tfDays: { "1": 3, "5": 6, "15": 18, "30": 18 },

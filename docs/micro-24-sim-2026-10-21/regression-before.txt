@@ -1,0 +1,64 @@
+▶ first-class Micro
+  ✖ market momentum requires a nonzero own turn and aligned trend, including the inverse (3.344327ms)
+✖ first-class Micro (4.474375ms)
+▶ durable paper proof uses verified unit returns
+  ✖ Signal proof uses stored owned unit returns, retains unknown Last-N and cannot borrow nominal lane wins (19.175519ms)
+✖ durable paper proof uses verified unit returns (20.261873ms)
+ℹ tests 2
+ℹ suites 2
+ℹ pass 0
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 579.201315
+
+✖ failing tests:
+
+test at runs/micro-before-fix/src/core/indications/micro-family.test.ts:88:3
+✖ market momentum requires a nonzero own turn and aligned trend, including the inverse (3.344327ms)
+  AssertionError [ERR_ASSERTION]: fast
+  
+  1 !== 0
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/runs/micro-before-fix/src/core/indications/micro-family.test.ts:102:16)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.start (node:internal/test_runner/test:1242:17)
+      at node:internal/test_runner/test:1867:71
+      at node:internal/per_context/primordials:504:82
+      at new Promise (<anonymous>)
+      at new SafePromise (node:internal/per_context/primordials:478:3)
+      at node:internal/per_context/primordials:504:9
+      at Array.map (<anonymous>) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at runs/micro-before-fix/src/core/server/paper-unit-runtime.test.ts:122:3
+✖ Signal proof uses stored owned unit returns, retains unknown Last-N and cannot borrow nominal lane wins (19.175519ms)
+  AssertionError [ERR_ASSERTION]: cash/nominal PF 1.6 cannot qualify unit PF 0.8
+  
+  1 !== 0
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/runs/micro-before-fix/src/core/server/paper-unit-runtime.test.ts:132:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.start (node:internal/test_runner/test:1242:17)
+      at node:internal/test_runner/test:1867:71
+      at node:internal/per_context/primordials:504:82
+      at new Promise (<anonymous>)
+      at new SafePromise (node:internal/per_context/primordials:478:3)
+      at node:internal/per_context/primordials:504:9
+      at Array.map (<anonymous>) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

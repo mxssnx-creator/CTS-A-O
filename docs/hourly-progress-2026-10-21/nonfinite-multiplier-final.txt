@@ -1,0 +1,256 @@
+TAP version 13
+# Subtest: engine proof
+    # Subtest: a config is proven by its own last N closes at PF ≥ the floor; fewer than N is not proven (hand-computed)
+    ok 1 - a config is proven by its own last N closes at PF ≥ the floor; fewer than N is not proven (hand-computed)
+      ---
+      duration_ms: 6.319153
+      type: 'test'
+      ...
+    # Subtest: the exchange record decides once it holds N closes; the paper book's until then
+    ok 2 - the exchange record decides once it holds N closes; the paper book's until then
+      ---
+      duration_ms: 0.85048
+      type: 'test'
+      ...
+    # Subtest: engineProven is lastNProven on engine configs: the result before the generalization, bit for bit (random records)
+    ok 3 - engineProven is lastNProven on engine configs: the result before the generalization, bit for bit (random records)
+      ---
+      duration_ms: 7.048298
+      type: 'test'
+      ...
+    # Subtest: the live filter sends an engine lane only when proven; signals are not judged; off = unchanged
+    ok 4 - the live filter sends an engine lane only when proven; signals are not judged; off = unchanged
+      ---
+      duration_ms: 1.450428
+      type: 'test'
+      ...
+    # Subtest: the live step: an exact losing owned engine record opens nothing, a proven engine lane and signal do
+    ok 5 - the live step: an exact losing owned engine record opens nothing, a proven engine lane and signal do
+      ---
+      duration_ms: 50.815436
+      type: 'test'
+      ...
+    # Subtest: an unproven engine lane on a key a signal holds adds no volume and does not keep the position after the signal exits
+    ok 6 - an unproven engine lane on a key a signal holds adds no volume and does not keep the position after the signal exits
+      ---
+      duration_ms: 27.796662
+      type: 'test'
+      ...
+    # Subtest: the runtime reads the paper book's closes ('dropped' marks left out) and the setting is validated
+    ok 7 - the runtime reads the paper book's closes ('dropped' marks left out) and the setting is validated
+      ---
+      duration_ms: 36.293087
+      type: 'test'
+      ...
+    # Subtest: an unchanged book costs no query (every live control step asks); a new close re-reads it from the partial index
+    ok 8 - an unchanged book costs no query (every live control step asks); a new close re-reads it from the partial index
+      ---
+      duration_ms: 27.484168
+      type: 'test'
+      ...
+    # Subtest: judged at one unit: a Block-raised paper close weighs its edge, not its multiple (as the exchange record does)
+    ok 9 - judged at one unit: a Block-raised paper close weighs its edge, not its multiple (as the exchange record does)
+      ---
+      duration_ms: 19.293502
+      type: 'test'
+      ...
+    # Subtest: a database of an older build gains paper_book_trades.mult and the unit index on open
+    ok 10 - a database of an older build gains paper_book_trades.mult and the unit index on open
+      ---
+      duration_ms: 14.937728
+      type: 'test'
+      ...
+    1..10
+ok 1 - engine proof
+  ---
+  duration_ms: 196.579269
+  type: 'suite'
+  ...
+# Subtest: signal proof
+    # Subtest: a unit (indicator × side) is proven by its last N closes at PF ≥ the floor spanning ≥ minEvents events (hand-computed)
+    ok 1 - a unit (indicator × side) is proven by its last N closes at PF ≥ the floor spanning ≥ minEvents events (hand-computed)
+      ---
+      duration_ms: 2.130886
+      type: 'test'
+      ...
+    # Subtest: the exchange record decides once the unit holds N closes; its events are the lanes' paper entry bars
+    ok 2 - the exchange record decides once the unit holds N closes; its events are the lanes' paper entry bars
+      ---
+      duration_ms: 1.102062
+      type: 'test'
+      ...
+    # Subtest: the live filter sends a signal lane only when its unit is proven; engine configs are not judged; off = unchanged
+    ok 3 - the live filter sends a signal lane only when its unit is proven; engine configs are not judged; off = unchanged
+      ---
+      duration_ms: 1.268295
+      type: 'test'
+      ...
+    # Subtest: the live step: an unproven unit opens nothing, a proven one does, a held lane is kept; the funnel names the proof
+    ok 4 - the live step: an unproven unit opens nothing, a proven one does, a held lane is kept; the funnel names the proof
+      ---
+      duration_ms: 29.973009
+      type: 'test'
+      ...
+    # Subtest: the runtime: the paper book ('dropped' left out) until the unit's exchange record holds N; memoized; an event on a change
+    ok 5 - the runtime: the paper book ('dropped' left out) until the unit's exchange record holds N; memoized; an event on a change
+      ---
+      duration_ms: 34.993739
+      type: 'test'
+      ...
+    1..5
+ok 2 - signal proof
+  ---
+  duration_ms: 69.937652
+  type: 'suite'
+  ...
+# Subtest: relation: one predicate for an own exchange close (R-a)
+    # Subtest: own = exit, stop, target, liq; not hand, unverified, the restart window's stops; SQL and JS agree
+    ok 1 - own = exit, stop, target, liq; not hand, unverified, the restart window's stops; SQL and JS agree
+      ---
+      duration_ms: 4.264696
+      type: 'test'
+      ...
+    # Subtest: every runtime reader (live record, acceptance, engine proof, auto-adjust) equals its own-rows-only result
+    ok 2 - every runtime reader (live record, acceptance, engine proof, auto-adjust) equals its own-rows-only result
+      ---
+      duration_ms: 73.227804
+      type: 'test'
+      ...
+    # Subtest: botStatsFromRows: hand / unverified / restart counted apart, the families equal the own rows'
+    ok 3 - botStatsFromRows: hand / unverified / restart counted apart, the families equal the own rows'
+      ---
+      duration_ms: 2.704901
+      type: 'test'
+      ...
+    # Subtest: statistics.liveTrades: a position an order not ours closed is 'hand' — in the balance, in no PF
+    ok 4 - statistics.liveTrades: a position an order not ours closed is 'hand' — in the balance, in no PF
+      ---
+      duration_ms: 11.387084
+      type: 'test'
+      ...
+    # Subtest: source scan: every SQL read of live_lane_trades uses OWN_CLOSE_SQL / isOwnClose or says why it reads all rows
+    ok 5 - source scan: every SQL read of live_lane_trades uses OWN_CLOSE_SQL / isOwnClose or says why it reads all rows
+      ---
+      duration_ms: 126.355228
+      type: 'test'
+      ...
+    1..5
+ok 3 - relation: one predicate for an own exchange close (R-a)
+  ---
+  duration_ms: 220.540088
+  type: 'suite'
+  ...
+# Subtest: relationOf: one window, own lanes against the paper book's own record (R-f)
+    # Subtest: coverage, matched / exchange only / system open / dropped / system only, hand excluded, sign
+    ok 1 - coverage, matched / exchange only / system open / dropped / system only, hand excluded, sign
+      ---
+      duration_ms: 4.504817
+      type: 'test'
+      ...
+    # Subtest: the gap's parts sum exactly to exchange − system, per lane and per group (property)
+    ok 2 - the gap's parts sum exactly to exchange − system, per lane and per group (property)
+      ---
+      duration_ms: 10.407923
+      type: 'test'
+      ...
+    # Subtest: per real position (own fills, USD) beside per lane; a position an order not ours ended is left out
+    ok 3 - per real position (own fills, USD) beside per lane; a position an order not ours ended is left out
+      ---
+      duration_ms: 1.720165
+      type: 'test'
+      ...
+    # Subtest: the system side is read at one unit: a Block-raised paper close (r sized by mult) matches the exchange's unit return
+    ok 4 - the system side is read at one unit: a Block-raised paper close (r sized by mult) matches the exchange's unit return
+      ---
+      duration_ms: 2.78109
+      type: 'test'
+      ...
+    # Subtest: unknown matched paper units retain the complete cohort and prevent a partial known subset from being judged
+    ok 5 - unknown matched paper units retain the complete cohort and prevent a partial known subset from being judged
+      ---
+      duration_ms: 2.578433
+      type: 'test'
+      ...
+    # Subtest: the positions PF is on the return per position (percent of its entry notional), not on USD
+    ok 6 - the positions PF is on the return per position (percent of its entry notional), not on USD
+      ---
+      duration_ms: 0.962384
+      type: 'test'
+      ...
+    # Subtest: a position whose cause is not proven (flat: an unverified stop) is left out of the positions PF, counted apart, LONG and SHORT
+    ok 7 - a position whose cause is not proven (flat: an unverified stop) is left out of the positions PF, counted apart, LONG and SHORT
+      ---
+      duration_ms: 1.334776
+      type: 'test'
+      ...
+    # Subtest: db.trim keeps every paper book close an exchange lane has (and a Block leg's), trims the rest
+    ok 8 - db.trim keeps every paper book close an exchange lane has (and a Block leg's), trims the rest
+      ---
+      duration_ms: 354.832868
+      type: 'test'
+      ...
+    1..8
+ok 4 - relationOf: one window, own lanes against the paper book's own record (R-f)
+  ---
+  duration_ms: 380.432503
+  type: 'suite'
+  ...
+# Subtest: the executable system record (R-g)
+    # Subtest: executableR: the same exit and cost, entered at the book's adoption price; null for ladders / no price
+    ok 1 - executableR: the same exit and cost, entered at the book's adoption price; null for ladders / no price
+      ---
+      duration_ms: 0.581949
+      type: 'test'
+      ...
+    # Subtest: heldPxOf: a fresh ticker, else the last bar's close; the schema and an older database carry the new columns
+    ok 2 - heldPxOf: a fresh ticker, else the last bar's close; the schema and an older database carry the new columns
+      ---
+      duration_ms: 27.081049
+      type: 'test'
+      ...
+    # Subtest: the golden digest drops heldPx (a wall-clock price, like heldAt): golden stays byte-identical
+    ok 3 - the golden digest drops heldPx (a wall-clock price, like heldAt): golden stays byte-identical
+      ---
+      duration_ms: 0.485767
+      type: 'test'
+      ...
+    1..3
+ok 5 - the executable system record (R-g)
+  ---
+  duration_ms: 28.594621
+  type: 'suite'
+  ...
+# Subtest: relationCheck: the standing guard (alarm only)
+    # Subtest: not judged below 20 matched lanes / 3 events; in line → no alarm
+    ok 1 - not judged below 20 matched lanes / 3 events; in line → no alarm
+      ---
+      duration_ms: 1.374373
+      type: 'test'
+      ...
+    # Subtest: PF ratio out of 0.67–1.5, unmatched + unverified > 20 %, per position vs per lane about PF 1: each its alarm
+    ok 2 - PF ratio out of 0.67–1.5, unmatched + unverified > 20 %, per position vs per lane about PF 1: each its alarm
+      ---
+      duration_ms: 2.479338
+      type: 'test'
+      ...
+    # Subtest: a warn event at most once an hour per alarm kind
+    ok 3 - a warn event at most once an hour per alarm kind
+      ---
+      duration_ms: 0.282263
+      type: 'test'
+      ...
+    1..3
+ok 6 - relationCheck: the standing guard (alarm only)
+  ---
+  duration_ms: 4.363407
+  type: 'suite'
+  ...
+1..6
+# tests 34
+# suites 6
+# pass 34
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1441.952002

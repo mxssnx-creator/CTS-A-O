@@ -12,6 +12,7 @@ import {
   laneInd,
   laneOf,
 } from "./indications/registry.ts";
+import { isMicroCalculationInd as isMicroFamilyInd, microAnchorTf } from "./indications/micro-family.ts";
 import { isRelateInd, relateAnchorTf } from "./indications/relate.ts";
 import { breakAnchorTf, isBreakRelInd } from "./indications/break-config.ts";
 import { ddrFails, statsOf } from "./metrics/stats.ts";
@@ -102,7 +103,7 @@ export function exitStrategyPairs(
   u: Universe,
   settings?: Pick<
     ExitStrategySettings,
-    "timeframes" | "includeTactics" | "includeRelations" | "includeCombined"
+    "timeframes" | "includeTactics" | "includeRelations" | "includeMicro" | "includeCombined"
   >,
   disabledKinds: readonly string[] = [],
 ): string[] {
@@ -117,6 +118,7 @@ export function exitStrategyPairs(
   };
   for (const run of runs) addBase(run.ind);
   for (const spec of INDICATIONS) {
+    if (spec.kind === "micro" && settings?.includeMicro === true) addBase(spec.id);
     if (spec.kind === "tactic" && settings?.includeTactics !== false) addBase(spec.id);
     if ((spec.kind === "relate" || isBreakRelInd(spec.id)) && settings?.includeRelations !== false)
       addBase(spec.id);
@@ -132,6 +134,11 @@ export function exitStrategyPairs(
     if (seriesOf(u, ind).length) pairs.add(`${EXIT_BOT}|${ind}`);
   };
   for (const base of [...bases].sort()) {
+    if (isMicroFamilyInd(base)) {
+      const tf = microAnchorTf(base);
+      if (tf !== null && tfs.includes(tf)) addLane(base, tf);
+      continue;
+    }
     if (isRelateInd(base)) {
       const tf = relateAnchorTf(base);
       if (tf !== null && tfs.includes(tf)) addLane(base, tf);

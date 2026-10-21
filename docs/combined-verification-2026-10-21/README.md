@@ -1,0 +1,25 @@
+# Combined verification, 21 October 2026
+
+[index.html](index.html) is the self-contained six-chart report. It includes all 60 measured cycles, current registry and range catalogs, 512 admitted config/direction Last-15 windows (15/15), visible/evaluated counts, filters, CSV and embedded JSON. Desktop and phone render/filter/export checks pass without page errors or document overflow.
+
+Verified production source: `bb8b35674f282e9fe97c7220b8b28892fbf99fac`; economic seal `61b56cee42745c066877f8b605041dcb54274a874d8686a7f1fe52b2f6a5ad46`. Final evidence changes and the already-reviewed main PR189 merge do not alter that seal. Integrates Micro PR184 through f03a36d, Signals PR189 through 9444596, reviewed X02 PR188 through 3b427b3 and Inverse PR183. Main subsequently advanced to eb3c989 by the already-reviewed PR188 merge. Integrating that merge changes no source or test file; its exact backup is `backup/main-before-combined-merge-20261021-eb3c989`. Other active branches remain preserved.
+
+The final source passes the entire disjoint 260-file ordinary core inventory: 3,095 passed, zero failures/cancellations and two optional slow cases passed separately. Also passed: 675 scripts tests with eight absent-template skips, all 83 app/auth/component tests, TypeScript, lint (zero errors/43 existing warnings), production app/worker build, all 1,860-source correctness checks, 627,984 synthetic identity cells and native-price history/causality across 20 symbols (96 hours; six hourly and three unfinished-bar cuts). The separate 120-symbol/868-source synthetic stress passes two computations and 100 coalesced kicks with max one concurrent compute and 4,130 progress checks. Its 463 s cold workload and 3,597 MiB peak RSS are distinct from the warm cycle target. Raw artifact ZIP SHA-256 receipts and complete partition inventories are retained in ci-v5. The redundant single-run default-suite workflow is separately visible in GitHub; no archived financial research is falsely relabeled as current.
+
+Final warmed 20-symbol foreground (505 currently admitted configs from 2,635 built): 60/60 cycles below 500 ms; median 94.14 ms, p95 177.32 ms, maximum 235.71 ms. Tick median 0.43 ms, maximum 1.87 ms. Independent full-history oracle: 505 exact tapes / 172,109 exact closes, all numeric columns/prefixes/open/pending states equal. Cold candidate build 10.89 s; bootstrap 4.27 s; diagnostic peak RSS 1,337.34 MiB includes cold discovery and the oracle. Network/venue latency, cold research and future profitability are outside this foreground measurement. Repeated same-feed measurements are not new unseen alpha evidence.
+
+Corrected integration seams include Signal unknown-return and exchange-fallback provenance, independent long Signal/coordinator histories, incomplete owned reductions, actual mark-to-own-stop risk, captured volume/cash arithmetic, reusable trailing/Historic Exit state, atomic publication, generation cancellation, and stale-settings release only after matching publication/paper completion. Light cycles retain hourly seats and still apply per-entry own-history gates. The exact former 939-entry factory Focus upgrades once to 1,079 without changing custom/off choices or disabled types. All 26 former Micro methods were compared with the published old source before freezing the migration identity. Failed runs remain in v3/v4 evidence; no cost, original golden result, loss or PF gate was weakened.
+
+Raw/unfiltered PF below 1 remains normal for every indication/strategy type. Base and later configured gates determine admission. The report's Last-15 windows are modeled config/direction histories across the fixed 20-symbol reference, with symbol-specific owned/funded execution admission separate. No account, live instance, venue order or deployment was changed; merging code does not certify a running remote process or guarantee live profit.
+
+Reproduction uses committed, checksum-verified feed chunks; no refetch or reselection:
+
+```sh
+node scripts/prepare-combined-reference.mjs
+node --expose-gc --experimental-strip-types --no-warnings scripts/perf/realtime-cycle.mjs --study runs/combined-reference --feed runs/combined-reference/feed.json.gz --steps 60 --out runs/realtime-cycle.json
+node --expose-gc --experimental-strip-types --no-warnings scripts/perf/qualification-cohort.mjs --study runs/combined-reference --feed runs/combined-reference/feed.json.gz --steps 60 --out runs/qualification.json
+node --experimental-strip-types --no-warnings scripts/combined-verification-metadata.mjs
+python3 scripts/combined-verification-report.py
+```
+
+The report generator reads retained evidence under this directory and checks shared source hashes and cohort parity. The frozen universal plan precedes scoring; earlier plans/manifests/results retain their original source labels. Current factory ranges include Micro, Minimal, Short, General and Long; Wide and dynamically fitted Minimal Plus retain explicit coverage disclosures. The warmed benchmark's fixed prior cohort is narrower than the full registry and the universal correctness inventory.

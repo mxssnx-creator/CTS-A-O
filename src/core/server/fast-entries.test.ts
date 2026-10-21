@@ -1,3 +1,4 @@
+import { PREVIOUS_DEFAULT_FOCUS_17OCT as LEGACY_FIXTURE_FOCUS } from "../config.ts";
 // The realtime entry step (stepPaperGen fast mode): between computes the paper book takes the seated configs' new tape
 // positions with the same entry rules as the full paper step — and changes nothing the full step already decided.
 import { after, describe, it } from "node:test";
@@ -13,6 +14,10 @@ import { runtimeFixtureGrid, trackRuntimes } from "../test-support.ts";
 
 process.env.CTS_CORE_SYNTHETIC_END ??= String(Math.floor(Date.now() / 3_600_000) * 3_600_000);
 const small = {
+  // Preserve this generic lifecycle fixture's original source scope. Exhaustive new-family grids are
+  // covered separately by Micro/Inverse parity, the 20-symbol replay and 120-symbol load test.
+  focus: [...LEGACY_FIXTURE_FOCUS],
+  pinned: [],
   symbols: 4,
   historyDays: 18,
   tfDays: { "1": 3, "5": 6, "15": 18, "30": 18 },
@@ -40,28 +45,54 @@ const until = async (c: () => boolean, ms = 900_000) => {
 };
 
 describe("realtime entry step", { timeout: 1_200_000 }, () => {
-  it("defaults to selected Break only and gates 5m/15m refreshes on their own closes", () => {
+  it("defaults to every selected indication and gates 5m/15m refreshes on their own closes", () => {
     const t0 = Date.UTC(2026, 9, 16, 12, 0);
-    assert.equal(fastEntryMode(""), "break");
+    assert.equal(fastEntryMode(""), "all");
     assert.equal(fastEntryMode("break"), "break");
     assert.equal(fastEntryMode("1"), "all");
     assert.equal(fastEntryMode("off"), "off");
     assert.equal(fastBarFresh(t0, t0), true);
     assert.equal(fastBarFresh(t0, t0 + 15_000), true);
-    assert.equal(fastBarFresh(t0, t0 + 15_001), false, "late closed bars are not entered after the live window");
+    assert.equal(
+      fastBarFresh(t0, t0 + 15_001),
+      false,
+      "late closed bars are not entered after the live window",
+    );
     assert.equal(fastBarFresh(t0, t0 - 1), false, "future close timestamps are ignored");
     assert.equal(fastEntryLaneDue("break-rel-don-1-dd24-guarded@m1", t0, 1, "break"), true);
-    assert.equal(fastEntryLaneDue("break-rel-don-5-dd24-guarded@m5", t0 + 3 * 60_000, 1, "break"), false);
-    assert.equal(fastEntryLaneDue("break-rel-don-5-dd24-guarded@m5", t0 + 4 * 60_000, 1, "break"), true);
+    assert.equal(
+      fastEntryLaneDue("break-rel-don-5-dd24-guarded@m5", t0 + 3 * 60_000, 1, "break"),
+      false,
+    );
+    assert.equal(
+      fastEntryLaneDue("break-rel-don-5-dd24-guarded@m5", t0 + 4 * 60_000, 1, "break"),
+      true,
+    );
     assert.equal(
       fastEntryLaneDue("break-mc-rel-don8-5-dd24-guarded@m5", t0 + 4 * 60_000, 1, "break"),
       true,
       "new Micro Break IDs use the same seconds refresh at their anchor close",
     );
-    assert.equal(fastEntryLaneDue("break-rel-don-15-dd24-guarded@m15", t0 + 13 * 60_000, 1, "break"), false);
-    assert.equal(fastEntryLaneDue("break-rel-don-15-dd24-guarded@m15", t0 + 14 * 60_000, 1, "break"), true);
+    assert.equal(
+      fastEntryLaneDue("break-rel-don-15-dd24-guarded@m15", t0 + 13 * 60_000, 1, "break"),
+      false,
+    );
+    assert.equal(
+      fastEntryLaneDue("break-rel-don-15-dd24-guarded@m15", t0 + 14 * 60_000, 1, "break"),
+      true,
+    );
     assert.equal(fastEntryLaneDue("trend-ema@m1", t0, 1, "break"), false);
     assert.equal(fastEntryLaneDue("trend-ema@m1", t0, 1, "all"), true);
+    for (const tf of [1, 5, 15]) {
+      const ind = `inverse-known-trend-ema@m${tf}`;
+      assert.equal(
+        fastEntryLaneDue(ind, t0 + (tf - 1) * 60_000, 1, "all"),
+        true,
+        `selected Inverse ${tf}m refreshes under the operator's all-entry mode`,
+      );
+      assert.equal(fastEntryLaneDue(ind, t0 + (tf - 1) * 60_000, 1, "break"), false);
+      if (tf > 1) assert.equal(fastEntryLaneDue(ind, t0 + (tf - 2) * 60_000, 1, "all"), false);
+    }
     const coordinator = laneInd(
       signalCoordinationId(["ema-cross", "macd-cross", "rsi-reversal"], 0.6, 3, 3),
       15,
@@ -75,7 +106,10 @@ describe("realtime entry step", { timeout: 1_200_000 }, () => {
   });
 
   it("publishes refreshed pending tapes without replacing unrelated identities", () => {
-    const pendingA = { id: "follow|break-rel-don-1-dd24-guarded", pending: [{ sym: "AAA-USDT", side: 1 }] };
+    const pendingA = {
+      id: "follow|break-rel-don-1-dd24-guarded",
+      pending: [{ sym: "AAA-USDT", side: 1 }],
+    };
     const oldA = { ...pendingA, pending: [] };
     const keep = { id: "follow|ema-21-55", pending: [] };
     const current = [oldA, keep];
@@ -84,7 +118,11 @@ describe("realtime entry step", { timeout: 1_200_000 }, () => {
     assert.equal(next[0], refreshed);
     assert.equal(next[1], keep);
     assert.equal(oldA.pending.length, 0, "the in-flight full compute's tape stays immutable");
-    assert.deepEqual(next[0].pending, [{ sym: "AAA-USDT", side: -1 }], "Entries mode reads the newest closed-bar signal");
+    assert.deepEqual(
+      next[0].pending,
+      [{ sym: "AAA-USDT", side: -1 }],
+      "Entries mode reads the newest closed-bar signal",
+    );
     assert.equal(mergeFastTapes(current, []).length, current.length);
   });
 
@@ -93,10 +131,18 @@ describe("realtime entry step", { timeout: 1_200_000 }, () => {
     rt.wf.validLastN = 0;
     rt.wf.lastN = 0;
     rt.start();
-    await until(() => rt.status.computes >= 1 && rt.status.state === "running" && (rt.status.paperSteps ?? 0) >= 1);
+    await until(
+      () =>
+        rt.status.computes >= 1 &&
+        rt.status.state === "running" &&
+        (rt.status.paperSteps ?? 0) >= 1,
+    );
     rt.stop();
     const R = rt as unknown as {
-      stepPaperGen(fast?: { opens: ReadonlyMap<string, readonly OpenPosition[]>; t: number }): Generator<number, void>;
+      stepPaperGen(fast?: {
+        opens: ReadonlyMap<string, readonly OpenPosition[]>;
+        t: number;
+      }): Generator<number, void>;
       tapes: Array<{ id: string; open: OpenPosition[] }>;
       sim: { endT: number };
     };
@@ -117,7 +163,13 @@ describe("realtime entry step", { timeout: 1_200_000 }, () => {
       rt.paper.positions = rt.paper.positions.filter((p) => p !== gone);
       drain(R.stepPaperGen({ opens, t }));
       assert.ok(
-        rt.paper.positions.some((p) => p.cfg === gone.cfg && p.sym === gone.sym && p.side === gone.side && p.entryT === gone.entryT),
+        rt.paper.positions.some(
+          (p) =>
+            p.cfg === gone.cfg &&
+            p.sym === gone.sym &&
+            p.side === gone.side &&
+            p.entryT === gone.entryT,
+        ),
         "the fresh position is taken again",
       );
     }

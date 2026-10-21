@@ -339,7 +339,7 @@ export function lastNProven(
     const ex = exchange.get(id);
     const exG = ex ? liveGate(ex, 0, now, n, minPf) : null;
     const pp = paper.get(id);
-    const onEx = !!exG && exG.pf !== null;
+    const onEx = !!exG && (exG.pf !== null || (exG.unknown ?? 0) > 0);
     const g = onEx ? exG : pp ? liveGate(pp, 0, now, n, minPf) : null;
     if ((g?.unknown ?? 0) > 0) {
       unknown += g!.unknown!;
@@ -387,7 +387,7 @@ export interface ProofClose {
   sym: string;
   side: number;
   exitT: number;
-  r: number;
+  r: number | null;
 }
 
 /**
@@ -406,7 +406,7 @@ export function signalUnitOf(cfg: string, side: number, bySide = false): string 
 
 /** The signal closes per unit as proof tapes (exit order, ties as given); a close's event: symbol × side × entry bar. */
 function signalTapes(rows: ReadonlyArray<ProofClose>, bySide: boolean): Map<string, ProofTape> {
-  const by = new Map<string, Array<{ t: number; r: number; ev: string }>>();
+  const by = new Map<string, Array<{ t: number; r: number | null; ev: string }>>();
   for (const x of rows) {
     const u = signalUnitOf(x.cfg, x.side, bySide);
     if (!u) continue;
@@ -422,12 +422,18 @@ function signalTapes(rows: ReadonlyArray<ProofClose>, bySide: boolean): Map<stri
     const exitT = new Float64Array(xs.length);
     const gp = new Float64Array(xs.length + 1);
     const gl = new Float64Array(xs.length + 1);
+    const unknown = new Uint32Array(xs.length + 1);
     xs.forEach((v, i) => {
       exitT[i] = v.t;
-      gp[i + 1] = gp[i] + Math.max(0, v.r);
-      gl[i + 1] = gl[i] + Math.max(0, -v.r);
+      const r = typeof v.r === "number" && Number.isFinite(v.r) ? v.r : null;
+      const p = r === null ? gp[i] : gp[i] + Math.max(0, r);
+      const l = r === null ? gl[i] : gl[i] + Math.max(0, -r);
+      const valid = r !== null && Number.isFinite(p) && Number.isFinite(l);
+      gp[i + 1] = valid ? p : gp[i];
+      gl[i + 1] = valid ? l : gl[i];
+      unknown[i + 1] = unknown[i] + Number(!valid);
     });
-    out.set(u, { exitT, gp, gl, ev: xs.map((v) => v.ev) });
+    out.set(u, { exitT, gp, gl, unknown, ev: xs.map((v) => v.ev) });
   }
   return out;
 }

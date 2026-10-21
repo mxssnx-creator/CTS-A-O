@@ -1,0 +1,584 @@
+TAP version 13
+# Subtest: order sides: Normal (simulate, no trail)
+    # Subtest: SHORT (a): the stop sits above entry; a dip below the entry is no stop, the high at the stop is
+    ok 1 - SHORT (a): the stop sits above entry; a dip below the entry is no stop, the high at the stop is
+      ---
+      duration_ms: 2.314926
+      type: 'test'
+      ...
+    1..1
+ok 1 - order sides: Normal (simulate, no trail)
+  ---
+  duration_ms: 4.045308
+  type: 'suite'
+  ...
+# Subtest: order sides: Trailing (simulate, trail armed at 1 %)
+    # Subtest: LONG (a): before the trail arms the stop is the losing-side stop at 2 %
+    ok 1 - LONG (a): before the trail arms the stop is the losing-side stop at 2 %
+      ---
+      duration_ms: 1.280161
+      type: 'test'
+      ...
+    # Subtest: LONG (b): the 5 % target sits on the winning side and takes the position while the trail is not armed
+    ok 2 - LONG (b): the 5 % target sits on the winning side and takes the position while the trail is not armed
+      ---
+      duration_ms: 0.632294
+      type: 'test'
+      ...
+    # Subtest: LONG (c): the trail moves the stop only favourably; a pullback that makes no new peak leaves it where it was
+    ok 3 - LONG (c): the trail moves the stop only favourably; a pullback that makes no new peak leaves it where it was
+      ---
+      duration_ms: 0.413069
+      type: 'test'
+      ...
+    # Subtest: LONG (c): the trailed stop exits the position at its own level
+    ok 4 - LONG (c): the trailed stop exits the position at its own level
+      ---
+      duration_ms: 0.58589
+      type: 'test'
+      ...
+    # Subtest: LONG (c): a gap through the trailed stop fills at the worse of open and stop
+    ok 5 - LONG (c): a gap through the trailed stop fills at the worse of open and stop
+      ---
+      duration_ms: 0.28872
+      type: 'test'
+      ...
+    # Subtest: SHORT (a): before the trail arms the stop is the losing-side stop at 2 %
+    ok 6 - SHORT (a): before the trail arms the stop is the losing-side stop at 2 %
+      ---
+      duration_ms: 0.41227
+      type: 'test'
+      ...
+    # Subtest: SHORT (b): the 5 % target sits on the winning side and takes the position while the trail is not armed
+    ok 7 - SHORT (b): the 5 % target sits on the winning side and takes the position while the trail is not armed
+      ---
+      duration_ms: 0.780308
+      type: 'test'
+      ...
+    # Subtest: SHORT (c): the trail moves the stop only favourably; a pullback that makes no new peak leaves it where it was
+    ok 8 - SHORT (c): the trail moves the stop only favourably; a pullback that makes no new peak leaves it where it was
+      ---
+      duration_ms: 0.383435
+      type: 'test'
+      ...
+    # Subtest: SHORT (c): the trailed stop exits the position at its own level
+    ok 9 - SHORT (c): the trailed stop exits the position at its own level
+      ---
+      duration_ms: 0.194539
+      type: 'test'
+      ...
+    # Subtest: SHORT (c): a gap through the trailed stop fills at the worse of open and stop
+    ok 10 - SHORT (c): a gap through the trailed stop fills at the worse of open and stop
+      ---
+      duration_ms: 0.191441
+      type: 'test'
+      ...
+    1..10
+ok 2 - order sides: Trailing (simulate, trail armed at 1 %)
+  ---
+  duration_ms: 5.988128
+  type: 'suite'
+  ...
+# Subtest: order sides: DCA (simulateDca, base and one level)
+    # Subtest: SHORT (a): a rise through the level and the stop exits at the stop 1.5 % above the base
+    ok 1 - SHORT (a): a rise through the level and the stop exits at the stop 1.5 % above the base
+      ---
+      duration_ms: 0.700615
+      type: 'test'
+      ...
+    # Subtest: LONG (a): a gap through the stop fills at the worse of open and stop
+    ok 2 - LONG (a): a gap through the stop fills at the worse of open and stop
+      ---
+      duration_ms: 0.167392
+      type: 'test'
+      ...
+    # Subtest: SHORT (a): a gap through the stop fills at the worse of open and stop
+    ok 3 - SHORT (a): a gap through the stop fills at the worse of open and stop
+      ---
+      duration_ms: 0.076977
+      type: 'test'
+      ...
+    # Subtest: SHORT (b): the target 2 % below the base takes the position when no level filled
+    ok 4 - SHORT (b): the target 2 % below the base takes the position when no level filled
+      ---
+      duration_ms: 0.14645
+      type: 'test'
+      ...
+    # Subtest: LONG (b): a gap through the target fills at the open (the better price)
+    ok 5 - LONG (b): a gap through the target fills at the open (the better price)
+      ---
+      duration_ms: 0.132051
+      type: 'test'
+      ...
+    # Subtest: SHORT (b): a gap through the target fills at the open (the better price)
+    ok 6 - SHORT (b): a gap through the target fills at the open (the better price)
+      ---
+      duration_ms: 0.071526
+      type: 'test'
+      ...
+    # Subtest: SHORT (d): the level adds on a rise to 101, never on a fall
+    ok 7 - SHORT (d): the level adds on a rise to 101, never on a fall
+      ---
+      duration_ms: 0.278033
+      type: 'test'
+      ...
+    1..7
+ok 3 - order sides: DCA (simulateDca, base and one level)
+  ---
+  duration_ms: 1.869571
+  type: 'suite'
+  ...
+# Subtest: order sides: DCA Active (simulateDca, the level fill only)
+    # Subtest: LONG (a): a gap through the stop fills at the open (the stop is anchored to the reference)
+    ok 1 - LONG (a): a gap through the stop fills at the open (the stop is anchored to the reference)
+      ---
+      duration_ms: 0.242113
+      type: 'test'
+      ...
+    # Subtest: LONG (b): the target sits 2 % on the winning side of the fill; a gap through it fills at the open
+    ok 2 - LONG (b): the target sits 2 % on the winning side of the fill; a gap through it fills at the open
+      ---
+      duration_ms: 0.147088
+      type: 'test'
+      ...
+    # Subtest: SHORT (a): a gap through the stop fills at the open (the stop is anchored to the reference)
+    ok 3 - SHORT (a): a gap through the stop fills at the open (the stop is anchored to the reference)
+      ---
+      duration_ms: 0.090517
+      type: 'test'
+      ...
+    # Subtest: SHORT (b): the target sits 2 % on the winning side of the fill; a gap through it fills at the open
+    ok 4 - SHORT (b): the target sits 2 % on the winning side of the fill; a gap through it fills at the open
+      ---
+      duration_ms: 0.100789
+      type: 'test'
+      ...
+    # Subtest: SHORT (b): the target 2 % below the fill exits at 98.98 when the open is still above it
+    ok 5 - SHORT (b): the target 2 % below the fill exits at 98.98 when the open is still above it
+      ---
+      duration_ms: 0.101243
+      type: 'test'
+      ...
+    # Subtest: SHORT (d): the single level fills on the rise to 101 only; a fall never fills it
+    ok 6 - SHORT (d): the single level fills on the rise to 101 only; a fall never fills it
+      ---
+      duration_ms: 0.102372
+      type: 'test'
+      ...
+    1..6
+ok 4 - order sides: DCA Active (simulateDca, the level fill only)
+  ---
+  duration_ms: 1.193125
+  type: 'suite'
+  ...
+# Subtest: order sides: Axis revert (simulateAxis)
+    # Subtest: SHORT (a): the stop beyond the last level sits above entry; the level fills first, then the stop exits at 1 % past it
+    ok 1 - SHORT (a): the stop beyond the last level sits above entry; the level fills first, then the stop exits at 1 % past it
+      ---
+      duration_ms: 0.89048
+      type: 'test'
+      ...
+    # Subtest: LONG (a): a gap through the stop fills at the worse of open and stop
+    ok 2 - LONG (a): a gap through the stop fills at the worse of open and stop
+      ---
+      duration_ms: 0.225562
+      type: 'test'
+      ...
+    # Subtest: SHORT (a): a gap through the stop fills at the worse of open and stop
+    ok 3 - SHORT (a): a gap through the stop fills at the worse of open and stop
+      ---
+      duration_ms: 0.176766
+      type: 'test'
+      ...
+    # Subtest: SHORT (b): the target is the axis price on the winning side and takes the position without a gap
+    ok 4 - SHORT (b): the target is the axis price on the winning side and takes the position without a gap
+      ---
+      duration_ms: 0.146143
+      type: 'test'
+      ...
+    # Subtest: LONG (d): a level fills on the adverse move (the add), and not on a favourable one
+    ok 5 - LONG (d): a level fills on the adverse move (the add), and not on a favourable one
+      ---
+      duration_ms: 0.21167
+      type: 'test'
+      ...
+    # Subtest: SHORT (d): a level fills on the adverse move (the add), and not on a favourable one
+    ok 6 - SHORT (d): a level fills on the adverse move (the add), and not on a favourable one
+      ---
+      duration_ms: 0.07214
+      type: 'test'
+      ...
+    1..6
+ok 5 - order sides: Axis revert (simulateAxis)
+  ---
+  duration_ms: 1.925545
+  type: 'suite'
+  ...
+# Subtest: order sides: Axis managed exits (the stop at the derived distance, breakeven after 0.85 risk)
+    # Subtest: SHORT (a): the derived stop sits above entry and the target below it, both after the first closed bar
+    ok 1 - SHORT (a): the derived stop sits above entry and the target below it, both after the first closed bar
+      ---
+      duration_ms: 0.455999
+      type: 'test'
+      ...
+    # Subtest: SHORT (a): a high through the derived stop exits at it
+    ok 2 - SHORT (a): a high through the derived stop exits at it
+      ---
+      duration_ms: 0.187454
+      type: 'test'
+      ...
+    # Subtest: LONG (a): a gap through the derived stop fills at the open
+    ok 3 - LONG (a): a gap through the derived stop fills at the open
+      ---
+      duration_ms: 0.15722
+      type: 'test'
+      ...
+    # Subtest: SHORT (a): a gap through the derived stop fills at the open
+    ok 4 - SHORT (a): a gap through the derived stop fills at the open
+      ---
+      duration_ms: 0.076534
+      type: 'test'
+      ...
+    # Subtest: SHORT (b): the tightened target takes the position at 99.8 when the low reaches it
+    ok 5 - SHORT (b): the tightened target takes the position at 99.8 when the low reaches it
+      ---
+      duration_ms: 0.084588
+      type: 'test'
+      ...
+    # Subtest: LONG (b): a gap through the target fills at the open (the better price)
+    ok 6 - LONG (b): a gap through the target fills at the open (the better price)
+      ---
+      duration_ms: 0.109967
+      type: 'test'
+      ...
+    # Subtest: SHORT (b): a gap through the target fills at the open (the better price)
+    ok 7 - SHORT (b): a gap through the target fills at the open (the better price)
+      ---
+      duration_ms: 0.584195
+      type: 'test'
+      ...
+    # Subtest: SHORT (c): breakeven once the close is 0.85 risk in profit; a bounce back never loosens the stop
+    ok 8 - SHORT (c): breakeven once the close is 0.85 risk in profit; a bounce back never loosens the stop
+      ---
+      duration_ms: 0.151374
+      type: 'test'
+      ...
+    1..8
+ok 6 - order sides: Axis managed exits (the stop at the derived distance, breakeven after 0.85 risk)
+  ---
+  duration_ms: 2.280007
+  type: 'suite'
+  ...
+# Subtest: order sides: Axis desk (simulateAxisDesk)
+    # Subtest: LONG (a): the desk stop sits below the fill; a bar that reaches it exits there
+    ok 1 - LONG (a): the desk stop sits below the fill; a bar that reaches it exits there
+      ---
+      duration_ms: 1.193185
+      type: 'test'
+      ...
+    # Subtest: LONG (a): a gap through the desk stop fills at the open
+    ok 2 - LONG (a): a gap through the desk stop fills at the open
+      ---
+      duration_ms: 0.371675
+      type: 'test'
+      ...
+    # Subtest: SHORT (a): a gap through the desk stop fills at the open
+    ok 3 - SHORT (a): a gap through the desk stop fills at the open
+      ---
+      duration_ms: 0.459385
+      type: 'test'
+      ...
+    # Subtest: LONG (b): a gap through the target fills at the open (the better price)
+    ok 4 - LONG (b): a gap through the target fills at the open (the better price)
+      ---
+      duration_ms: 0.177592
+      type: 'test'
+      ...
+    # Subtest: SHORT (b): the target 0.84 below the fill takes the position when the low reaches it
+    ok 5 - SHORT (b): the target 0.84 below the fill takes the position when the low reaches it
+      ---
+      duration_ms: 0.140674
+      type: 'test'
+      ...
+    # Subtest: SHORT (b): a gap through the target fills at the open (the better price)
+    ok 6 - SHORT (b): a gap through the target fills at the open (the better price)
+      ---
+      duration_ms: 0.166747
+      type: 'test'
+      ...
+    # Subtest: SHORT (c): the hybrid trail arms once the move reaches 0.95 of the stop distance and exits at its own level
+    ok 7 - SHORT (c): the hybrid trail arms once the move reaches 0.95 of the stop distance and exits at its own level
+      ---
+      duration_ms: 0.242403
+      type: 'test'
+      ...
+    # Subtest: SHORT (c): the trail keeps its gap and never loosens: a pullback leaves the stop at 100.67
+    ok 8 - SHORT (c): the trail keeps its gap and never loosens: a pullback leaves the stop at 100.67
+      ---
+      duration_ms: 0.229788
+      type: 'test'
+      ...
+    1..8
+ok 7 - order sides: Axis desk (simulateAxisDesk)
+  ---
+  duration_ms: 3.466808
+  type: 'suite'
+  ...
+# Subtest: order sides: Block sources (book level and pause per direction)
+    # Subtest: Block symbol LONG (e): the opposite direction's closes never raise this direction's decision
+    ok 1 - Block symbol LONG (e): the opposite direction's closes never raise this direction's decision
+      ---
+      duration_ms: 1.195851
+      type: 'test'
+      ...
+    # Subtest: Block symbol LONG (e): a pause on the opposite direction never pauses this one
+    ok 2 - Block symbol LONG (e): a pause on the opposite direction never pauses this one
+      ---
+      duration_ms: 0.236682
+      type: 'test'
+      ...
+    # Subtest: Block symbol SHORT (e): the opposite direction's closes never raise this direction's decision
+    ok 3 - Block symbol SHORT (e): the opposite direction's closes never raise this direction's decision
+      ---
+      duration_ms: 0.098883
+      type: 'test'
+      ...
+    # Subtest: Block symbol SHORT (e): a pause on the opposite direction never pauses this one
+    ok 4 - Block symbol SHORT (e): a pause on the opposite direction never pauses this one
+      ---
+      duration_ms: 0.207127
+      type: 'test'
+      ...
+    # Subtest: Block direction LONG (e): the opposite direction's closes never raise this direction's decision
+    ok 5 - Block direction LONG (e): the opposite direction's closes never raise this direction's decision
+      ---
+      duration_ms: 0.232151
+      type: 'test'
+      ...
+    # Subtest: Block direction LONG (e): a pause on the opposite direction never pauses this one
+    ok 6 - Block direction LONG (e): a pause on the opposite direction never pauses this one
+      ---
+      duration_ms: 0.471188
+      type: 'test'
+      ...
+    # Subtest: Block direction SHORT (e): the opposite direction's closes never raise this direction's decision
+    ok 7 - Block direction SHORT (e): the opposite direction's closes never raise this direction's decision
+      ---
+      duration_ms: 0.119649
+      type: 'test'
+      ...
+    # Subtest: Block direction SHORT (e): a pause on the opposite direction never pauses this one
+    ok 8 - Block direction SHORT (e): a pause on the opposite direction never pauses this one
+      ---
+      duration_ms: 0.132166
+      type: 'test'
+      ...
+    # Subtest: Block indication LONG (e): the opposite direction's closes never raise this direction's decision
+    ok 9 - Block indication LONG (e): the opposite direction's closes never raise this direction's decision
+      ---
+      duration_ms: 0.249446
+      type: 'test'
+      ...
+    # Subtest: Block indication LONG (e): a pause on the opposite direction never pauses this one
+    ok 10 - Block indication LONG (e): a pause on the opposite direction never pauses this one
+      ---
+      duration_ms: 0.214636
+      type: 'test'
+      ...
+    # Subtest: Block indication SHORT (e): the opposite direction's closes never raise this direction's decision
+    ok 11 - Block indication SHORT (e): the opposite direction's closes never raise this direction's decision
+      ---
+      duration_ms: 0.134566
+      type: 'test'
+      ...
+    # Subtest: Block indication SHORT (e): a pause on the opposite direction never pauses this one
+    ok 12 - Block indication SHORT (e): a pause on the opposite direction never pauses this one
+      ---
+      duration_ms: 0.08621
+      type: 'test'
+      ...
+    # Subtest: Block overall and type LONG (e): both pool the two directions by definition (6 Oct), so an opposite close raises this one
+    ok 13 - Block overall and type LONG (e): both pool the two directions by definition (6 Oct), so an opposite close raises this one
+      ---
+      duration_ms: 0.236208
+      type: 'test'
+      ...
+    # Subtest: Block overall and type SHORT (e): both pool the two directions by definition (6 Oct), so an opposite close raises this one
+    ok 14 - Block overall and type SHORT (e): both pool the two directions by definition (6 Oct), so an opposite close raises this one
+      ---
+      duration_ms: 0.216118
+      type: 'test'
+      ...
+    1..14
+ok 8 - order sides: Block sources (book level and pause per direction)
+  ---
+  duration_ms: 4.347209
+  type: 'suite'
+  ...
+# Subtest: order sides: Block config source (the config's own closes, per direction)
+    # Subtest: Block config LONG (e) control: this direction's own wins raise its config level
+    ok 1 - Block config LONG (e) control: this direction's own wins raise its config level
+      ---
+      duration_ms: 21.069447
+      type: 'test'
+      ...
+    # Subtest: Block config LONG (e) control: a raised win pauses its own direction's config source
+    ok 2 - Block config LONG (e) control: a raised win pauses its own direction's config source
+      ---
+      duration_ms: 0.561497
+      type: 'test'
+      ...
+    # Subtest: Block config LONG (e) control, block.sideKeys unset: the opposite direction's wins raise this direction's config level, pooled as before
+    ok 3 - Block config LONG (e) control, block.sideKeys unset: the opposite direction's wins raise this direction's config level, pooled as before
+      ---
+      duration_ms: 13.84605
+      type: 'test'
+      ...
+    # Subtest: Block config LONG (e) control, block.sideKeys unset: an opposite raised win preserves this exact direction's config
+    ok 4 - Block config LONG (e) control, block.sideKeys unset: an opposite raised win preserves this exact direction's config
+      ---
+      duration_ms: 11.740952
+      type: 'test'
+      ...
+    # Subtest: Block config LONG (e), block.sideKeys on: the opposite direction's wins never raise this direction's config level
+    ok 5 - Block config LONG (e), block.sideKeys on: the opposite direction's wins never raise this direction's config level
+      ---
+      duration_ms: 12.573658
+      type: 'test'
+      ...
+    # Subtest: Block config LONG (e), block.sideKeys on: an opposite raised win does not pause this direction's config
+    ok 6 - Block config LONG (e), block.sideKeys on: an opposite raised win does not pause this direction's config
+      ---
+      duration_ms: 6.983973
+      type: 'test'
+      ...
+    # Subtest: Block config LONG (e) control, block.sideKeys on: an opposite raised win pauses the opposite direction's config only
+    ok 7 - Block config LONG (e) control, block.sideKeys on: an opposite raised win pauses the opposite direction's config only
+      ---
+      duration_ms: 0.16375
+      type: 'test'
+      ...
+    # Subtest: Block config SHORT (e) control: this direction's own wins raise its config level
+    ok 8 - Block config SHORT (e) control: this direction's own wins raise its config level
+      ---
+      duration_ms: 7.875076
+      type: 'test'
+      ...
+    # Subtest: Block config SHORT (e) control: a raised win pauses its own direction's config source
+    ok 9 - Block config SHORT (e) control: a raised win pauses its own direction's config source
+      ---
+      duration_ms: 0.084227
+      type: 'test'
+      ...
+    # Subtest: Block config SHORT (e) control, block.sideKeys unset: the opposite direction's wins raise this direction's config level, pooled as before
+    ok 10 - Block config SHORT (e) control, block.sideKeys unset: the opposite direction's wins raise this direction's config level, pooled as before
+      ---
+      duration_ms: 9.514476
+      type: 'test'
+      ...
+    # Subtest: Block config SHORT (e) control, block.sideKeys unset: an opposite raised win preserves this exact direction's config
+    ok 11 - Block config SHORT (e) control, block.sideKeys unset: an opposite raised win preserves this exact direction's config
+      ---
+      duration_ms: 6.164371
+      type: 'test'
+      ...
+    # Subtest: Block config SHORT (e), block.sideKeys on: the opposite direction's wins never raise this direction's config level
+    ok 12 - Block config SHORT (e), block.sideKeys on: the opposite direction's wins never raise this direction's config level
+      ---
+      duration_ms: 4.122942
+      type: 'test'
+      ...
+    # Subtest: Block config SHORT (e), block.sideKeys on: an opposite raised win does not pause this direction's config
+    ok 13 - Block config SHORT (e), block.sideKeys on: an opposite raised win does not pause this direction's config
+      ---
+      duration_ms: 7.082214
+      type: 'test'
+      ...
+    # Subtest: Block config SHORT (e) control, block.sideKeys on: an opposite raised win pauses the opposite direction's config only
+    ok 14 - Block config SHORT (e) control, block.sideKeys on: an opposite raised win pauses the opposite direction's config only
+      ---
+      duration_ms: 0.133428
+      type: 'test'
+      ...
+    1..14
+ok 9 - order sides: Block config source (the config's own closes, per direction)
+  ---
+  duration_ms: 102.641245
+  type: 'suite'
+  ...
+# Subtest: order sides: seat cool-off (wf.seatQuietH)
+    # Subtest: LONG seat control: a long close 1.5 h before the entry cools off that direction's seat
+    ok 1 - LONG seat control: a long close 1.5 h before the entry cools off that direction's seat
+      ---
+      duration_ms: 10.600872
+      type: 'test'
+      ...
+    # Subtest: LONG seat control, wf.seatSideCooloff unset: the SHORT close 1.5 h before cools off the LONG seat, pooled as before
+    ok 2 - LONG seat control, wf.seatSideCooloff unset: the SHORT close 1.5 h before cools off the LONG seat, pooled as before
+      ---
+      duration_ms: 7.496196
+      type: 'test'
+      ...
+    # Subtest: LONG seat, wf.seatSideCooloff on: the SHORT close 1.5 h before does not cool off the LONG seat
+    ok 3 - LONG seat, wf.seatSideCooloff on: the SHORT close 1.5 h before does not cool off the LONG seat
+      ---
+      duration_ms: 6.065724
+      type: 'test'
+      ...
+    # Subtest: LONG seat, wf.seatSideCooloff on: its own long close 1.5 h before still cools off the seat
+    ok 4 - LONG seat, wf.seatSideCooloff on: its own long close 1.5 h before still cools off the seat
+      ---
+      duration_ms: 4.541857
+      type: 'test'
+      ...
+    # Subtest: LONG seat, wf.seatSideCooloff on: an own-direction close on another symbol still cools off the seat (across symbols unchanged)
+    ok 5 - LONG seat, wf.seatSideCooloff on: an own-direction close on another symbol still cools off the seat (across symbols unchanged)
+      ---
+      duration_ms: 6.668753
+      type: 'test'
+      ...
+    # Subtest: SHORT seat control: a short close 1.5 h before the entry cools off that direction's seat
+    ok 6 - SHORT seat control: a short close 1.5 h before the entry cools off that direction's seat
+      ---
+      duration_ms: 3.613155
+      type: 'test'
+      ...
+    # Subtest: SHORT seat control, wf.seatSideCooloff unset: the LONG close 1.5 h before cools off the SHORT seat, pooled as before
+    ok 7 - SHORT seat control, wf.seatSideCooloff unset: the LONG close 1.5 h before cools off the SHORT seat, pooled as before
+      ---
+      duration_ms: 4.845498
+      type: 'test'
+      ...
+    # Subtest: SHORT seat, wf.seatSideCooloff on: the LONG close 1.5 h before does not cool off the SHORT seat
+    ok 8 - SHORT seat, wf.seatSideCooloff on: the LONG close 1.5 h before does not cool off the SHORT seat
+      ---
+      duration_ms: 5.140214
+      type: 'test'
+      ...
+    # Subtest: SHORT seat, wf.seatSideCooloff on: its own short close 1.5 h before still cools off the seat
+    ok 9 - SHORT seat, wf.seatSideCooloff on: its own short close 1.5 h before still cools off the seat
+      ---
+      duration_ms: 6.06366
+      type: 'test'
+      ...
+    # Subtest: SHORT seat, wf.seatSideCooloff on: an own-direction close on another symbol still cools off the seat (across symbols unchanged)
+    ok 10 - SHORT seat, wf.seatSideCooloff on: an own-direction close on another symbol still cools off the seat (across symbols unchanged)
+      ---
+      duration_ms: 3.965694
+      type: 'test'
+      ...
+    1..10
+ok 10 - order sides: seat cool-off (wf.seatQuietH)
+  ---
+  duration_ms: 59.505756
+  type: 'suite'
+  ...
+1..10
+# tests 84
+# suites 10
+# pass 84
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 652.336221

@@ -1,0 +1,53 @@
+✖ every Axis source, mode, spacing, depth and hybrid retains its own simulated, Paper and native identity (2.431583ms)
+✖ simultaneous Axis configs execute independently after their own prehistory and Last-N checks (53.469951ms)
+✔ Axis config gates retain losing Last-N samples and honor exact seat cooldowns (11.4902ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 1
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 462.412344
+
+✖ failing tests:
+
+test at src/core/axis-order-identity.test.ts:13:1
+✖ every Axis source, mode, spacing, depth and hybrid retains its own simulated, Paper and native identity (2.431583ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  1 !== 90
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/axis-order-identity.test.ts:17:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.start (node:internal/test_runner/test:1242:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 90,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/axis-order-identity.test.ts:37:1
+✖ simultaneous Axis configs execute independently after their own prehistory and Last-N checks (53.469951ms)
+  AssertionError [ERR_ASSERTION]: {"duplicate":89}
+  
+  1 !== 90
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/axis-order-identity.test.ts:41:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 90,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

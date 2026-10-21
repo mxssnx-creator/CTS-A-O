@@ -4,7 +4,6 @@
 // the audit is clean. (signals.test covers the default deny mode on the full source list.)
 import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { closePool } from "./server/pool.server.ts";
 import { CoreDb } from "./server/db.server.ts";
 import { CoreRuntime } from "./server/runtime.server.ts";
 import { DEFAULT_SIGNALS, signalSettings } from "./signal-config.ts";
@@ -13,6 +12,7 @@ import { sigActiveKey } from "./signals.ts";
 import { isSignalInd, laneOf } from "./indications/registry.ts";
 import { coordSettings } from "./sim/walkforward.ts";
 import { H } from "./test-support.ts";
+import { closePool } from "./server/pool.server.ts";
 
 process.env.CTS_CORE_SYNTHETIC_END = String(Math.floor(Date.now() / H) * H);
 
@@ -22,7 +22,11 @@ const srcOf = (ind: string) => laneOf(ind).base.replace(/^sig-/, "").replace(/-(
 
 describe("signals end to end: sources mode allow", { timeout: 600_000 }, () => {
   let rt: CoreRuntime;
-  after(() => { rt?.dispose(); closePool(); });
+  after(async () => {
+    rt?.dispose();
+    await rt?.backtestsSettled();
+    await closePool();
+  });
   before(async () => {
     rt = new CoreRuntime(
       new CoreDb(":memory:"),
@@ -36,6 +40,9 @@ describe("signals end to end: sources mode allow", { timeout: 600_000 }, () => {
         refineTop: 4,
         evalTop: 6,
         cycleMs: 60_000,
+        pinned: [],
+        disabledKinds: ["micro", "inverse"],
+        exitStrategy: { includeMicro: false },
         grid: { tp: [0.02], slOfTp: [1], trailOfTp: [0, 0.5], holdH: [4],
           micro: false, minimal: false, minimalPlus: false, short: false, general: false, long: false },
         signals: signalSettings({

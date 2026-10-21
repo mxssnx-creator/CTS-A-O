@@ -145,10 +145,13 @@ export async function coreListingData(data: ReturnType<typeof coreListingInput>)
     paperStep: L.paperStep,
     at: L.at,
     total: rows.length,
+    calculated: data.kind === "validated" ? L.candidates.filter((x) =>
+      (!(data.group ?? data.range) || x.group === (data.group ?? data.range)) && (!q || x.id.toLowerCase().includes(q))).length : null,
+    validation: data.kind === "validated" ? L.validation : null,
     offset: data.offset,
     rows: rows.slice(data.offset, data.offset + data.limit),
-    byRange: Object.entries(L.byRange).map(([range, x]) => ({ range, validated: x.rows.length, pf: x.pf })),
-    byGroup: Object.entries(L.byGroup).map(([group, x]) => ({ group, validated: x.rows.length, pf: x.pf })),
+    byRange: Object.entries(L.byRange).map(([range, x]) => ({ range, validated: x.rows.length, calculated: x.calculated, pf: x.pf, noLoss: x.gp > 0 && x.gl === 0 })),
+    byGroup: Object.entries(L.byGroup).map(([group, x]) => ({ group, validated: x.rows.length, calculated: x.calculated, pf: x.pf, noLoss: x.gp > 0 && x.gl === 0 })),
     proofOn: L.proven !== null,
     ...(L.provenBySide ? { provenBySide: true as const } : {}),
   });
@@ -1181,12 +1184,12 @@ async function liveSession(r: Awaited<ReturnType<typeof rt>>) {
 
 export const coreStatisticsInput = (d?: {
   conn?: string;
-  source?: "sim" | "paper" | "live";
+  source?: "sim" | "paper" | "paper-history" | "live";
   hours?: number;
 }) => {
   const src = d?.source ?? "sim";
-  if (src !== "sim" && src !== "paper" && src !== "live")
-    throw new Error("source: sim, paper or live");
+  if (src !== "sim" && src !== "paper" && src !== "paper-history" && src !== "live")
+    throw new Error("source: sim, paper, paper-history or live");
   const hours = d?.hours ?? 0;
   if (!Number.isFinite(hours) || hours < 0 || hours > 24 * 90) throw new Error("hours: 0–2160");
   return { ...connInput(d), source: src, hours };
@@ -1227,7 +1230,7 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
   >;
   let startT: number;
   let endT: number;
-  let paperEvidence: { requested: number; verifiedOwnership: number; unknownOwnership: number; cashBasis: "recorded-paper-history"; recordedReturns: ReturnStatsReport } | null = null;
+  let paperEvidence: { requested: number; verifiedOwnership: number; unknownOwnership: number; cashBasis: "recorded-paper-history" | "owned-paper-forward"; recordedReturns: ReturnStatsReport } | null = null;
   if (data.source === "sim") {
     if (!sim) return ser({ report: null, why: "no simulated run yet" });
     trades = sim.trades as never;
@@ -1303,11 +1306,18 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
       pnl: number;
       owned_notional_usd: number | null;
       owned_unit_r: number | null;
+      vol: number | null;
+      mult: number | null;
     }>(
       // the paper book's own forward record (paper_book_trades: written once at each close, never back-filled or
       // re-priced; paper_trades is rewritten every step) at one unit (r / mult) — sized by the paper sizing below; the
       // persisted unit return and the owned notional beside it (ownership evidence)
-      "SELECT cfg, sym, side, entry_t, exit_t, entry, r / COALESCE(NULLIF(mult, 0), NULLIF(vol, 0), 1) AS r, unit_r, reason, NULL AS pnl, owned_notional_usd, unit_r AS owned_unit_r FROM paper_book_trades WHERE exit_t IS NOT NULL AND r IS NOT NULL AND reason != 'dropped' ORDER BY exit_t",
+      data.source === "paper-history"
+        // Recorded nominal history remains complete. Ownership requires the same config, symbol, side and settled
+        // entry/exit identity; a missing allocation retains that close with unknown primary evidence.
+        ? "SELECT p.cfg, p.sym, p.side, p.entry_t, p.exit_t, p.entry, p.r, p.unit_r, p.reason, p.pnl, NULL AS vol, NULL AS mult, b.owned_notional_usd, b.unit_r AS owned_unit_r FROM paper_trades p LEFT JOIN paper_book_trades b ON b.cfg=p.cfg AND b.sym=p.sym AND b.side=p.side AND b.entry_t=p.entry_t AND b.exit_t=p.exit_t AND b.reason != 'dropped' WHERE p.exit_t IS NOT NULL ORDER BY p.exit_t"
+        // The forward book uses its held return and actual allocated notional, never a model-history replacement.
+        : "SELECT cfg, sym, side, entry_t, exit_t, entry, r, vol, mult, unit_r, reason, NULL AS pnl, owned_notional_usd, unit_r AS owned_unit_r FROM paper_book_trades WHERE exit_t IS NOT NULL AND reason != 'dropped' ORDER BY exit_t",
     );
     trades = rows.map((x) => ({
       cfg: x.cfg,
@@ -1323,6 +1333,7 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
       ownershipVerified: typeof x.owned_notional_usd === "number" && Number.isFinite(x.owned_notional_usd) && x.owned_notional_usd > 1e-9,
       reason: x.reason,
       pnl: x.pnl,
+      ...(data.source === "paper" ? { notional: x.owned_notional_usd, vol: x.vol, mult: x.mult } : {}),
     }));
     endT = Date.now();
     // rows are in exit order: the window starts at the earliest entry
@@ -1331,26 +1342,30 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
       : endT - 3_600_000;
   }
   if (data.hours > 0) startT = Math.max(startT, endT - data.hours * 3_600_000);
-  if (data.source === "paper") {
+  if (data.source === "paper" || data.source === "paper-history") {
     const window = trades.filter((x) => x.exitT > startT && x.exitT <= endT);
     const verifiedOwnership = window.filter((x) => x.ownershipVerified === true).length;
-    paperEvidence = { requested: window.length, verifiedOwnership, unknownOwnership: window.length - verifiedOwnership, cashBasis: "recorded-paper-history",
+    paperEvidence = { requested: window.length, verifiedOwnership, unknownOwnership: window.length - verifiedOwnership, cashBasis: data.source === "paper-history" ? "recorded-paper-history" : "owned-paper-forward",
       recordedReturns: unitReturnReport(window.map((x) => ({ ...x, unitR: typeof x.recordedUnitR === "number" ? x.recordedUnitR : null })), endT) };
   }
-  const sized = sizeBook(trades, [], {
+  const sized = data.source === "paper" || data.source === "live" ? null : sizeBook(trades, [], {
     balance,
     sizing: r.settings.sizing,
     fixedNotional: r.settings.paperNotional,
   });
   // Owned live closes retain their measured notional even at zero return.
   // Missing live notional is unavailable, never filled in from the paper sizing setting.
-  // Paper history retains its nominal inferred/model sizing basis.
-  const unit = (x: { cfg: string; sym: string; side: number; entryT: number; r: number; pnl?: unknown; notional?: unknown }) =>
+  // Forward cash uses the recorded weighted return and allocated base notional exactly once.
+  // Nominal history is separate; missing allocation/volume stays unknown rather than using today’s sizing.
+  const unit = (x: { cfg: string; sym: string; side: number; entryT: number; r: number; pnl?: unknown; notional?: unknown; vol?: unknown }) =>
     data.source === "live"
       ? typeof x.notional === "number" && Number.isFinite(x.notional) && x.notional > 0 ? x.notional : NaN
+      : data.source === "paper"
+        ? typeof x.notional === "number" && Number.isFinite(x.notional) && x.notional > 1e-9 &&
+          typeof x.vol === "number" && Number.isFinite(x.vol) && x.vol > 0 ? x.notional / x.vol : NaN
       : typeof x.pnl === "number" && Number.isFinite(x.pnl) && Number.isFinite(x.r) && Math.abs(x.r) > 1e-12 && Number.isFinite(x.pnl / x.r)
         ? Math.abs(x.pnl / x.r)
-        : (sized.units.get(orderKey(x)) ?? r.settings.paperNotional);
+        : (sized?.units.get(orderKey(x)) ?? r.settings.paperNotional);
   const closes = new Map<string, Map<number, number>>();
   for (const [sym, cs] of r.candles) {
     const m = new Map<number, number>();
@@ -1398,7 +1413,9 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
         ? "live: own orders by client id (exchange fills)"
         : data.source === "paper"
           ? "paper book forward record (virtual)"
-          : "simulated run (virtual)",
+          : data.source === "paper-history"
+            ? "recorded nominal paper history (virtual)"
+            : "simulated run (virtual)",
     account: data.source === "live"
       ? (await liveState<Row>(r.db, "liveStatus"))?.account ?? null
       : null,

@@ -67,6 +67,7 @@ const ADDED_COLUMNS: ReadonlyArray<readonly [table: string, column: string, type
   ["paper_book_trades", "held_px", "REAL"],
   ["paper_book_trades", "entry", "REAL"],
   ["paper_book_trades", "exit", "REAL"],
+  ["paper_book_trades", "mult", "REAL"],
   ["live_lane_trades", "px_src", "TEXT"],
 ];
 function addColumns(db: DatabaseSync) {

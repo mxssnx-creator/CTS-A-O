@@ -1,0 +1,34 @@
+{
+ "date": "2026-10-21T03:28:25.491Z",
+ "node": "v24.19.0",
+ "durationMs": 69601,
+ "totals": {
+  "files": 1,
+  "tests": 30,
+  "pass": 28,
+  "fail": 0,
+  "cancelled": 0,
+  "skipped": 2,
+  "filesFailed": 0,
+  "filesSkipped": 0
+ },
+ "coverage": null,
+ "files": [
+  {
+   "file": "src/core/server/runtime.test.ts",
+   "status": "pass",
+   "code": 0,
+   "ms": 69597,
+   "peakRssMb": 807,
+   "coverage": false,
+   "tests": 30,
+   "pass": 28,
+   "fail": 0,
+   "cancelled": 0,
+   "skipped": 2,
+   "todo": 0,
+   "failed": [],
+   "log": "/home/runner/work/CTS-A-O/CTS-A-O/runs/micro-ci-functional-runtime/logs/src__core__server__runtime.test.ts.log"
+  }
+ ]
+}

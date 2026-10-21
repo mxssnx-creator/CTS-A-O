@@ -72,7 +72,7 @@ const spec = (id: string, label: string, params: Record<string, number>, fn: (k:
   ({ id, kind: "active", label, params, fn }) as IndicationSpec;
 
 export const isMicroInd = (base: string) =>
-  base.startsWith("mc-") || base.startsWith("relate-mc-") || base.startsWith("break-mc-rel-");
+  base.startsWith("mc-") || base.startsWith("relate-mc-") || base.startsWith("break-mc-rel-") || base.startsWith("inverse-mc-");
 
 /**
  * Which cells the Micro indications take (grid.micro.ownInds, grid.minimal.microInds): false = any indication on any
@@ -82,7 +82,9 @@ export const isMicroInd = (base: string) =>
 export type MicroIndRule = boolean | "minimal";
 
 /** May an indication (Micro or not) take a cell of this range tag under the rule? */
-export function microIndFits(rule: MicroIndRule | undefined, tag: string | undefined, microInd: boolean): boolean {
+export function microIndFits(rule: MicroIndRule | undefined, tag: string | undefined, microInd: boolean, firstClassMicro = false): boolean {
+  // First-class Micro takes all ranges independently of legacy mc-* exclusivity.
+  if (firstClassMicro) return true;
   if (!rule) return true;
   if (microInd) return tag === "mc" || (rule === "minimal" && tag === "mn");
   return tag !== "mc";

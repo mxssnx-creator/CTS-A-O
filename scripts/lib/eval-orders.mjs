@@ -44,11 +44,6 @@ const pf4 = (rs) => {
  * @param {Array<{ r: number, mult?: number }>} orders
  */
 export function blockSplit(orders) {
-  // an order without a mult or unitR is stored at one unit (Block off): its r is its unit return
-  const unitOf = (t) => {
-    const u = unitR(t);
-    return Number.isFinite(u) ? u : t.r;
-  };
   const raised = [];
   const unraised = [];
   let multSum = 0;
@@ -63,9 +58,9 @@ export function blockSplit(orders) {
     raised: raised.length,
     meanMult: orders.length ? +(multSum / orders.length).toFixed(4) : null,
     pfVol: pf4(orders.map((t) => t.r)),
-    pfUnit: pf4(orders.map(unitOf)),
-    raisedPfUnit: pf4(raised.map(unitOf)),
+    pfUnit: pf4(orders.map(unitR)),
+    raisedPfUnit: pf4(raised.map(unitR)),
     raisedPfVol: pf4(raised.map((t) => t.r)),
-    unraisedPfUnit: pf4(unraised.map(unitOf)),
+    unraisedPfUnit: pf4(unraised.map(unitR)),
   };
 }

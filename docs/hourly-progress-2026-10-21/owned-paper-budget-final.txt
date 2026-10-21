@@ -1,0 +1,421 @@
+TAP version 13
+# Subtest: Overview, lane and connection summaries normalize retained weighted records and retain PF provenance
+ok 1 - Overview, lane and connection summaries normalize retained weighted records and retain PF provenance
+  ---
+  duration_ms: 70.122817
+  type: 'test'
+  ...
+# Subtest: unknown modeled losses preserve every close/count while whole primary summaries become unavailable
+ok 2 - unknown modeled losses preserve every close/count while whole primary summaries become unavailable
+  ---
+  duration_ms: 11.781405
+  type: 'test'
+  ...
+# Subtest: no-loss modeled score four stays distinct from a measured return ratio four
+ok 3 - no-loss modeled score four stays distinct from a measured return ratio four
+  ---
+  duration_ms: 16.592007
+  type: 'test'
+  ...
+# Subtest: a flat measured live close retains actual notional for reconstructed drawdown and margin
+ok 4 - a flat measured live close retains actual notional for reconstructed drawdown and margin
+  ---
+  duration_ms: 16.731502
+  type: 'test'
+  ...
+# Subtest: paper primary retains the losing forward-book close with legacy allocation NULL
+ok 5 - paper primary retains the losing forward-book close with legacy allocation NULL
+  ---
+  duration_ms: 28.869054
+  type: 'test'
+  ...
+# Subtest: paper primary retains the losing forward-book close with zero allocation
+ok 6 - paper primary retains the losing forward-book close with zero allocation
+  ---
+  duration_ms: 17.182378
+  type: 'test'
+  ...
+# Subtest: paper primary retains the losing forward-book close with dust allocation
+ok 7 - paper primary retains the losing forward-book close with dust allocation
+  ---
+  duration_ms: 10.873454
+  type: 'test'
+  ...
+# Subtest: paper statistics retain the actual forward-book different settled exit independently of nominal re-simulation
+ok 8 - paper statistics retain the actual forward-book different settled exit independently of nominal re-simulation
+  ---
+  duration_ms: 13.880154
+  type: 'test'
+  ...
+# Subtest: paper statistics retain the actual forward-book different entry independently of nominal re-simulation
+ok 9 - paper statistics retain the actual forward-book different entry independently of nominal re-simulation
+  ---
+  duration_ms: 13.905224
+  type: 'test'
+  ...
+# Subtest: paper statistics retain the actual forward-book different config/type independently of nominal re-simulation
+ok 10 - paper statistics retain the actual forward-book different config/type independently of nominal re-simulation
+  ---
+  duration_ms: 10.683169
+  type: 'test'
+  ...
+# Subtest: paper statistics retain the actual forward-book different symbol independently of nominal re-simulation
+ok 11 - paper statistics retain the actual forward-book different symbol independently of nominal re-simulation
+  ---
+  duration_ms: 8.34038
+  type: 'test'
+  ...
+# Subtest: paper statistics retain the actual forward-book different direction independently of nominal re-simulation
+ok 12 - paper statistics retain the actual forward-book different direction independently of nominal re-simulation
+  ---
+  duration_ms: 11.519196
+  type: 'test'
+  ...
+# Subtest: nominal closes and dropped marks never become actual forward-book settled orders
+ok 13 - nominal closes and dropped marks never become actual forward-book settled orders
+  ---
+  duration_ms: 9.401471
+  type: 'test'
+  ...
+# Subtest: forward-book sizing is captured once, including flat closes, independent of current settings and nominal history
+ok 14 - forward-book sizing is captured once, including flat closes, independent of current settings and nominal history
+  ---
+  duration_ms: 11.996701
+  type: 'test'
+  ...
+# Subtest: paper book identities are unique while opposite-side holdings remain independent
+ok 15 - paper book identities are unique while opposite-side holdings remain independent
+  ---
+  duration_ms: 13.886595
+  type: 'test'
+  ...
+# Subtest: known nominal returns cannot replace missing owned-book unit evidence or multiplier provenance
+ok 16 - known nominal returns cannot replace missing owned-book unit evidence or multiplier provenance
+  ---
+  duration_ms: 7.994266
+  type: 'test'
+  ...
+# Subtest: strict promotion evidence is exposed unchanged, separate from raw Base and paper-deactivation summaries
+ok 17 - strict promotion evidence is exposed unchanged, separate from raw Base and paper-deactivation summaries
+  ---
+  duration_ms: 7.167643
+  type: 'test'
+  ...
+# [core-v2] state file not writable (EEXIST: file already exists, mkdir '/tmp/cts-block-state-failure-0sMvQj/state') — durable state unavailable
+# Subtest: actual execution account budgets across independent Signal sets
+    # Subtest: Overall Block asks for its total capped target once across repeated native cycles (lane orders false)
+    ok 1 - Overall Block asks for its total capped target once across repeated native cycles (lane orders false)
+      ---
+      duration_ms: 57.543998
+      type: 'test'
+      ...
+    # Subtest: Overall Block asks for its total capped target once across repeated native cycles (lane orders true)
+    ok 2 - Overall Block asks for its total capped target once across repeated native cycles (lane orders true)
+      ---
+      duration_ms: 18.821248
+      type: 'test'
+      ...
+    # Subtest: an unfilled capped Block target reserves its whole stack without repeating or funding a sibling (lane orders false)
+    ok 3 - an unfilled capped Block target reserves its whole stack without repeating or funding a sibling (lane orders false)
+      ---
+      duration_ms: 22.091554
+      type: 'test'
+      ...
+    # Subtest: an unfilled capped Block target reserves its whole stack without repeating or funding a sibling (lane orders true)
+    ok 4 - an unfilled capped Block target reserves its whole stack without repeating or funding a sibling (lane orders true)
+      ---
+      duration_ms: 22.075025
+      type: 'test'
+      ...
+    # Subtest: weighted Block exits do not merge unrelated minimum-sized configs or change their one-unit rule
+    ok 5 - weighted Block exits do not merge unrelated minimum-sized configs or change their one-unit rule
+      ---
+      duration_ms: 13.301788
+      type: 'test'
+      ...
+    # Subtest: a partial weighted Block fill reserves its unfilled remainder and cannot fund a new sibling
+    ok 6 - a partial weighted Block fill reserves its unfilled remainder and cannot fund a new sibling
+      ---
+      duration_ms: 10.297373
+      type: 'test'
+      ...
+    # Subtest: a coalesced Block stop suppresses all its source children while an unrelated held config continues
+    ok 7 - a coalesced Block stop suppresses all its source children while an unrelated held config continues
+      ---
+      duration_ms: 16.471742
+      type: 'test'
+      ...
+    # Subtest: gross: a refused reduction releases only its confirmed quantity before a different set grows
+    ok 8 - gross: a refused reduction releases only its confirmed quantity before a different set grows
+      ---
+      duration_ms: 10.635435
+      type: 'test'
+      ...
+    # Subtest: gross: a partial reduction releases only its confirmed quantity before a different set grows
+    ok 9 - gross: a partial reduction releases only its confirmed quantity before a different set grows
+      ---
+      duration_ms: 16.767111
+      type: 'test'
+      ...
+    # Subtest: gross: a pending reduction releases only its confirmed quantity before a different set grows
+    ok 10 - gross: a pending reduction releases only its confirmed quantity before a different set grows
+      ---
+      duration_ms: 6.600277
+      type: 'test'
+      ...
+    # Subtest: gross: a confirmed reduction releases only its confirmed quantity before a different set grows
+    ok 11 - gross: a confirmed reduction releases only its confirmed quantity before a different set grows
+      ---
+      duration_ms: 6.226834
+      type: 'test'
+      ...
+    # Subtest: risk: a refused reduction releases only its confirmed quantity before a different set grows
+    ok 12 - risk: a refused reduction releases only its confirmed quantity before a different set grows
+      ---
+      duration_ms: 6.875882
+      type: 'test'
+      ...
+    # Subtest: risk: a partial reduction releases only its confirmed quantity before a different set grows
+    ok 13 - risk: a partial reduction releases only its confirmed quantity before a different set grows
+      ---
+      duration_ms: 6.48062
+      type: 'test'
+      ...
+    # Subtest: risk: a pending reduction releases only its confirmed quantity before a different set grows
+    ok 14 - risk: a pending reduction releases only its confirmed quantity before a different set grows
+      ---
+      duration_ms: 13.260714
+      type: 'test'
+      ...
+    # Subtest: risk: a confirmed reduction releases only its confirmed quantity before a different set grows
+    ok 15 - risk: a confirmed reduction releases only its confirmed quantity before a different set grows
+      ---
+      duration_ms: 12.02136
+      type: 'test'
+      ...
+    # Subtest: backstop: a refused reduction releases only its confirmed quantity before a different set grows
+    ok 16 - backstop: a refused reduction releases only its confirmed quantity before a different set grows
+      ---
+      duration_ms: 18.467817
+      type: 'test'
+      ...
+    # Subtest: backstop: a partial reduction releases only its confirmed quantity before a different set grows
+    ok 17 - backstop: a partial reduction releases only its confirmed quantity before a different set grows
+      ---
+      duration_ms: 10.937332
+      type: 'test'
+      ...
+    # Subtest: backstop: a pending reduction releases only its confirmed quantity before a different set grows
+    ok 18 - backstop: a pending reduction releases only its confirmed quantity before a different set grows
+      ---
+      duration_ms: 6.668516
+      type: 'test'
+      ...
+    # Subtest: backstop: a confirmed reduction releases only its confirmed quantity before a different set grows
+    ok 19 - backstop: a confirmed reduction releases only its confirmed quantity before a different set grows
+      ---
+      duration_ms: 4.878029
+      type: 'test'
+      ...
+    # Subtest: an accepted unfilled entry reserves its entire account capacity across other keys and later steps
+    ok 20 - an accepted unfilled entry reserves its entire account capacity across other keys and later steps
+      ---
+      duration_ms: 6.272988
+      type: 'test'
+      ...
+    # Subtest: a larger accepted minimum retry reserves its remainder before the next set opens
+    ok 21 - a larger accepted minimum retry reserves its remainder before the next set opens
+      ---
+      duration_ms: 5.94157
+      type: 'test'
+      ...
+    # Subtest: a partial entry reserves confirmed plus remaining quantity exactly once, allowing another set that fits
+    ok 22 - a partial entry reserves confirmed plus remaining quantity exactly once, allowing another set that fits
+      ---
+      duration_ms: 7.25442
+      type: 'test'
+      ...
+    # Subtest: a resting pending MARKET row is never mistaken for zero-distance stop protection
+    ok 23 - a resting pending MARKET row is never mistaken for zero-distance stop protection
+      ---
+      duration_ms: 8.090121
+      type: 'test'
+      ...
+    # Subtest: adding a narrow-stop sibling on a held key cannot dilute the wider quantity's risk to fund growth
+    ok 24 - adding a narrow-stop sibling on a held key cannot dilute the wider quantity's risk to fund growth
+      ---
+      duration_ms: 5.492265
+      type: 'test'
+      ...
+    # Subtest: unfilled entries also reserve free margin when the configured floor is enabled
+    ok 25 - unfilled entries also reserve free margin when the configured floor is enabled
+      ---
+      duration_ms: 5.500538
+      type: 'test'
+      ...
+    # Subtest: unknown held/pending cost and invalid equity cannot silently become zero budget usage
+    ok 26 - unknown held/pending cost and invalid equity cannot silently become zero budget usage
+      ---
+      duration_ms: 0.373429
+      type: 'test'
+      ...
+    # Subtest: lane partial exits follow confirmed equity/ratio resizing and retain exact Block parent weights
+    ok 27 - lane partial exits follow confirmed equity/ratio resizing and retain exact Block parent weights
+      ---
+      duration_ms: 16.797981
+      type: 'test'
+      ...
+    # Subtest: a refused partial-exit cancellation holds the reduction and preserves its durable quantity
+    ok 28 - a refused partial-exit cancellation holds the reduction and preserves its durable quantity
+      ---
+      duration_ms: 7.307185
+      type: 'test'
+      ...
+    # Subtest: a stop filling during resize cancellation is reconciled before any second reduction or reopen
+    ok 29 - a stop filling during resize cancellation is reconciled before any second reduction or reopen
+      ---
+      duration_ms: 9.908044
+      type: 'test'
+      ...
+    # Subtest: partial fills replace exact exits only for the confirmed quantity, never the pending remainder
+    ok 30 - partial fills replace exact exits only for the confirmed quantity, never the pending remainder
+      ---
+      duration_ms: 11.100446
+      type: 'test'
+      ...
+    # Subtest: a partially filled reduction retains actual ownership and never installs an oversized partial exit
+    ok 31 - a partially filled reduction retains actual ownership and never installs an oversized partial exit
+      ---
+      duration_ms: 13.251428
+      type: 'test'
+      ...
+    # Subtest: native one-way exits divide only the net owned quantity across the surviving independent parents
+    ok 32 - native one-way exits divide only the net owned quantity across the surviving independent parents
+      ---
+      duration_ms: 10.899918
+      type: 'test'
+      ...
+    # Subtest: a measured conditional partial fill protects the exact remainder without reopening it or diluting siblings
+    ok 33 - a measured conditional partial fill protects the exact remainder without reopening it or diluting siblings
+      ---
+      duration_ms: 10.126526
+      type: 'test'
+      ...
+    # Subtest: a full conditional fill retains a refused sibling identity until its cancellation confirms
+    ok 34 - a full conditional fill retains a refused sibling identity until its cancellation confirms
+      ---
+      duration_ms: 8.125734
+      type: 'test'
+      ...
+    # Subtest: a terminal cancellation without cumulative quantity remains unknown until zero execution is measured
+    ok 35 - a terminal cancellation without cumulative quantity remains unknown until zero execution is measured
+      ---
+      duration_ms: 5.090938
+      type: 'test'
+      ...
+    # Subtest: a successful cancellation that reveals a partial fill cannot be followed by a double reduction
+    ok 36 - a successful cancellation that reveals a partial fill cannot be followed by a double reduction
+      ---
+      duration_ms: 7.052017
+      type: 'test'
+      ...
+    # Subtest: a failed configured state checkpoint keeps the held backstop and sends no partial conditional
+    ok 37 - a failed configured state checkpoint keeps the held backstop and sends no partial conditional
+      ---
+      duration_ms: 17.605188
+      type: 'test'
+      ...
+    # Subtest: a failed pending ownership journal prevents funded native submission
+    ok 38 - a failed pending ownership journal prevents funded native submission
+      ---
+      duration_ms: 10.477602
+      type: 'test'
+      ...
+    # Subtest: conditional provisional IDs and partial caps survive an immediate state/journal reopen
+    ok 39 - conditional provisional IDs and partial caps survive an immediate state/journal reopen
+      ---
+      duration_ms: 26.398357
+      type: 'test'
+      ...
+    # Subtest: an accepted conditional timeout retains its provisional coid and is never placed twice
+    ok 40 - an accepted conditional timeout retains its provisional coid and is never placed twice
+      ---
+      duration_ms: 10.588071
+      type: 'test'
+      ...
+    # Subtest: an unknown cancellation while moving a stop retains its order identity and sends no duplicate
+    ok 41 - an unknown cancellation while moving a stop retains its order identity and sends no duplicate
+      ---
+      duration_ms: 5.951226
+      type: 'test'
+      ...
+    # Subtest: coalesced parent quantities snap down to coarse venue lot steps
+    ok 42 - coalesced parent quantities snap down to coarse venue lot steps
+      ---
+      duration_ms: 7.008025
+      type: 'test'
+      ...
+    # Subtest: DCA and Axis minimum-lane units remove intrinsic ladder weight for every Block mode
+    ok 43 - DCA and Axis minimum-lane units remove intrinsic ladder weight for every Block mode
+      ---
+      duration_ms: 3.422017
+      type: 'test'
+      ...
+    # Subtest: minimum-lane risk weights match equal funded shares despite unequal intrinsic model volume
+    ok 44 - minimum-lane risk weights match equal funded shares despite unequal intrinsic model volume
+      ---
+      duration_ms: 0.34214
+      type: 'test'
+      ...
+    # Subtest: one-way lane units net fractional Block weights and choose the side actually funded
+    ok 45 - one-way lane units net fractional Block weights and choose the side actually funded
+      ---
+      duration_ms: 0.888379
+      type: 'test'
+      ...
+    # Subtest: the equity percent and volume factor follow verified balance gains and losses without paper balance fallback
+    ok 46 - the equity percent and volume factor follow verified balance gains and losses without paper balance fallback
+      ---
+      duration_ms: 5.077458
+      type: 'test'
+      ...
+    1..46
+ok 18 - actual execution account budgets across independent Signal sets
+  ---
+  duration_ms: 510.840597
+  type: 'suite'
+  ...
+# Subtest: current-equity stop risk and per-position trailing mode
+    # Subtest: a profitable paper trail still risks mark→stop for long and short late live adoption
+    ok 1 - a profitable paper trail still risks mark→stop for long and short late live adoption
+      ---
+      duration_ms: 3.034683
+      type: 'test'
+      ...
+    # Subtest: a higher peak increases current giveback risk until the own trailing stop follows
+    ok 2 - a higher peak increases current giveback risk until the own trailing stop follows
+      ---
+      duration_ms: 1.790335
+      type: 'test'
+      ...
+    # Subtest: capped Signal targets and trailing-only no-target mode survive the global engine free-trail setting
+    ok 3 - capped Signal targets and trailing-only no-target mode survive the global engine free-trail setting
+      ---
+      duration_ms: 2.106926
+      type: 'test'
+      ...
+    1..3
+ok 19 - current-equity stop risk and per-position trailing mode
+  ---
+  duration_ms: 7.235024
+  type: 'suite'
+  ...
+1..19
+# tests 66
+# suites 2
+# pass 66
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1187.071033

@@ -32,6 +32,20 @@ export function capTrailingOnlyProtect(p: Protect): Protect {
   return p.trailOnly ? capSignalProtect({ ...p, tp: 0, trailFree: false, trailMax: p.trailMax ?? SIGNAL_STOP_LIMIT }) : p;
 }
 
+/** Canonical independent no-TP siblings, shared by Base and executable grids. */
+export function trailingOnlyProtects(protects: readonly Protect[]): Protect[] {
+  const out: Protect[] = [], seen = new Set<string>();
+  for (const p of protects) {
+    if (!(p.trail > 0) || p.trailOnly) continue;
+    const q = capTrailingOnlyProtect({ ...p, tp: 0, trailOnly: true, trailFree: false, trailMax: SIGNAL_STOP_LIMIT });
+    const key = `${q.sl}|${q.trail}|${q.trailStep}|${q.hold}|${q.tag ?? ""}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(q);
+  }
+  return out;
+}
+
 /** Apply after lane scaling, ATR resolution and feedback; never widen a tighter configured distance. */
 export function capSignalProtect(p: Protect): Protect {
   if (!(Number.isFinite(p.sl) && p.sl > 0 && Number.isFinite(p.trail) && p.trail >= 0))

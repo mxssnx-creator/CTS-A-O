@@ -528,7 +528,7 @@ export function minPfOf(gates: Pick<Gates, "minPf" | "rangeMinPf">, tag: string 
   const min = typeof v === "number" && Number.isFinite(v) ? Math.min(3, Math.max(1.05, v)) : gates.minPf;
   if (ind?.startsWith("sig-")) return Math.max(SIGNAL_MIN_PF, min);
   // First-class Tactic, Relate and relational Break configs share a minimum return PF of 1.1 from Base onward.
-  return ind && (ind.startsWith("tactic-") || ind.startsWith("relate-") || ind.startsWith("break-rel-") || ind.startsWith("break-mc-rel-"))
+  return ind && (ind.startsWith("micro-") || ind.startsWith("inverse-") || ind.startsWith("tactic-") || ind.startsWith("relate-") || ind.startsWith("break-rel-") || ind.startsWith("break-mc-rel-"))
     ? Math.max(1.1, min)
     : min;
 }

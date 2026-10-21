@@ -1,0 +1,1196 @@
+TAP version 13
+# Subtest: strict live promotion uses two settled independent evidence axes
+    # Subtest: rejects winning raw candidate tapes when post-Base accepted returns lose; removes external volume once
+    ok 1 - rejects winning raw candidate tapes when post-Base accepted returns lose; removes external volume once
+      ---
+      duration_ms: 52.85392
+      type: 'test'
+      ...
+    # Subtest: requires owned execution even with sufficient winning post-Base results; nominal attributed lanes cannot prove funding
+    ok 2 - requires owned execution even with sufficient winning post-Base results; nominal attributed lanes cannot prove funding
+      ---
+      duration_ms: 30.265834
+      type: 'test'
+      ...
+    # Subtest: qualifies only the exact config, timeframe/range, symbol and direction with both complete positive windows
+    ok 3 - qualifies only the exact config, timeframe/range, symbol and direction with both complete positive windows
+      ---
+      duration_ms: 27.602692
+      type: 'test'
+      ...
+    # Subtest: a stale selected measurement config cannot promote outside its current Base-qualified pair/range
+    ok 4 - a stale selected measurement config cannot promote outside its current Base-qualified pair/range
+      ---
+      duration_ms: 19.230906
+      type: 'test'
+      ...
+    # Subtest: native promotion preserves explicit independent untagged ladder admission without qualifying plain Wide or failed pairs
+    ok 5 - native promotion preserves explicit independent untagged ladder admission without qualifying plain Wide or failed pairs
+      ---
+      duration_ms: 182.974632
+      type: 'test'
+      ...
+    # Subtest: a stale active Signal cannot borrow old native proof after its own latest context fails
+    ok 6 - a stale active Signal cannot borrow old native proof after its own latest context fails
+      ---
+      duration_ms: 19.253384
+      type: 'test'
+      ...
+    # Subtest: winning long candidate history cannot promote an unvalidated short despite separate positive execution records
+    ok 7 - winning long candidate history cannot promote an unvalidated short despite separate positive execution records
+      ---
+      duration_ms: 19.214873
+      type: 'test'
+      ...
+    # Subtest: symbol warmup cannot promote a symbol absent from current candidate evidence despite positive owned records
+    ok 8 - symbol warmup cannot promote a symbol absent from current candidate evidence despite positive owned records
+      ---
+      duration_ms: 15.845171
+      type: 'test'
+      ...
+    # Subtest: a previously selected engine config must still pass current Last-N when native execution requests it
+    ok 9 - a previously selected engine config must still pass current Last-N when native execution requests it
+      ---
+      duration_ms: 14.486103
+      type: 'test'
+      ...
+    # Subtest: retains unknown, zero and dust funding inside the chronological last-N window
+    ok 10 - retains unknown, zero and dust funding inside the chronological last-N window
+      ---
+      duration_ms: 34.091153
+      type: 'test'
+      ...
+    # Subtest: does not use future closes or endpoint marks as settled promotion evidence
+    ok 11 - does not use future closes or endpoint marks as settled promotion evidence
+      ---
+      duration_ms: 15.271025
+      type: 'test'
+      ...
+    # Subtest: uses record versions and array identity caches without rescanning history on every live lane
+    ok 12 - uses record versions and array identity caches without rescanning history on every live lane
+      ---
+      duration_ms: 37.838801
+      type: 'test'
+      ...
+    # Subtest: recomputes a reference's CURRENT last N from its exact settled returns instead of clipping an aggregate PF
+    ok 13 - recomputes a reference's CURRENT last N from its exact settled returns instead of clipping an aggregate PF
+      ---
+      duration_ms: 27.364099
+      type: 'test'
+      ...
+    1..13
+ok 1 - strict live promotion uses two settled independent evidence axes
+  ---
+  duration_ms: 499.713814
+  type: 'suite'
+  ...
+# Subtest: strict proof helpers fail closed
+    # Subtest: checks current N, nonfinite PF, unknowns, causal windows, explicit expiry and no-loss convention independently of callers
+    ok 1 - checks current N, nonfinite PF, unknowns, causal windows, explicit expiry and no-loss convention independently of callers
+      ---
+      duration_ms: 0.815114
+      type: 'test'
+      ...
+    # Subtest: group windows preserve unknown returns rather than changing them to zero
+    ok 2 - group windows preserve unknown returns rather than changing them to zero
+      ---
+      duration_ms: 0.913461
+      type: 'test'
+      ...
+    # Subtest: rejects malformed/overflowed local cumulative returns and invalid chronological records
+    ok 3 - rejects malformed/overflowed local cumulative returns and invalid chronological records
+      ---
+      duration_ms: 0.474752
+      type: 'test'
+      ...
+    # Subtest: canonical exact records retain unknown owned funding and normalize each external multiplier once
+    ok 4 - canonical exact records retain unknown owned funding and normalize each external multiplier once
+      ---
+      duration_ms: 0.285933
+      type: 'test'
+      ...
+    # Subtest: does not turn missing/invalid identity fields into winning short evidence or skip their recent unknowns
+    ok 5 - does not turn missing/invalid identity fields into winning short evidence or skip their recent unknowns
+      ---
+      duration_ms: 0.366496
+      type: 'test'
+      ...
+    # Subtest: newer local losing or unknown owned closes cannot be hidden by a still-valid old reference
+    ok 6 - newer local losing or unknown owned closes cannot be hidden by a still-valid old reference
+      ---
+      duration_ms: 0.243941
+      type: 'test'
+      ...
+    1..6
+ok 2 - strict proof helpers fail closed
+  ---
+  duration_ms: 3.402692
+  type: 'suite'
+  ...
+# Subtest: native live boundary preserves held protection without unproven growth
+    # Subtest: blocks missing promotion evidence, prevents resizing a held share upward, and still closes it
+    ok 1 - blocks missing promotion evidence, prevents resizing a held share upward, and still closes it
+      ---
+      duration_ms: 28.558733
+      type: 'test'
+      ...
+    1..1
+ok 3 - native live boundary preserves held protection without unproven growth
+  ---
+  duration_ms: 28.734849
+  type: 'suite'
+  ...
+# Subtest: paper entry allocation provenance
+    # Subtest: a lower explicit Live PF cannot relax the post-Base range floor for paper entries
+    ok 1 - a lower explicit Live PF cannot relax the post-Base range floor for paper entries
+      ---
+      duration_ms: 19.762803
+      type: 'test'
+      ...
+    # Subtest: continues eligible paper learning before live proof and freezes only the newly measured allocation
+    ok 2 - continues eligible paper learning before live proof and freezes only the newly measured allocation
+      ---
+      duration_ms: 17.942558
+      type: 'test'
+      ...
+    # Subtest: persists frozen known adoption allocation across restart, excludes legacy/recomputed units and unconfirmed growth
+    ok 3 - persists frozen known adoption allocation across restart, excludes legacy/recomputed units and unconfirmed growth
+      ---
+      duration_ms: 146.125676
+      type: 'test'
+      ...
+    1..3
+ok 4 - paper entry allocation provenance
+  ---
+  duration_ms: 184.062931
+  type: 'suite'
+  ...
+# Subtest: ledger closes: the P&L sign on each side (statistics.ts liveLedger)
+    # Subtest: (a) LONG: a gain to 105 books +5 % of the notional, a loss to 95 books -5 %, before fees
+    ok 1 - (a) LONG: a gain to 105 books +5 % of the notional, a loss to 95 books -5 %, before fees
+      ---
+      duration_ms: 2.881264
+      type: 'test'
+      ...
+    # Subtest: (a) LONG: measured commissions (0.1 open, 0.2 close) lower the same gain by 0.3 % of the notional
+    ok 2 - (a) LONG: measured commissions (0.1 open, 0.2 close) lower the same gain by 0.3 % of the notional
+      ---
+      duration_ms: 0.384064
+      type: 'test'
+      ...
+    # Subtest: (a) LONG: the model share (0.1 % per side on each fill's notional) is charged with the same sign
+    ok 3 - (a) LONG: the model share (0.1 % per side on each fill's notional) is charged with the same sign
+      ---
+      duration_ms: 0.229502
+      type: 'test'
+      ...
+    # Subtest: (a) SHORT: a gain to 95 books +5 % of the notional, a loss to 105 books -5 %, before fees
+    ok 4 - (a) SHORT: a gain to 95 books +5 % of the notional, a loss to 105 books -5 %, before fees
+      ---
+      duration_ms: 0.137461
+      type: 'test'
+      ...
+    # Subtest: (a) SHORT: measured commissions (0.1 open, 0.2 close) lower the same gain by 0.3 % of the notional
+    ok 5 - (a) SHORT: measured commissions (0.1 open, 0.2 close) lower the same gain by 0.3 % of the notional
+      ---
+      duration_ms: 0.153599
+      type: 'test'
+      ...
+    # Subtest: (a) SHORT: the model share (0.1 % per side on each fill's notional) is charged with the same sign
+    ok 6 - (a) SHORT: the model share (0.1 % per side on each fill's notional) is charged with the same sign
+      ---
+      duration_ms: 0.407053
+      type: 'test'
+      ...
+    1..6
+ok 5 - ledger closes: the P&L sign on each side (statistics.ts liveLedger)
+  ---
+  duration_ms: 6.055223
+  type: 'suite'
+  ...
+# Subtest: flat markers: the reason each one books (statistics.ts liveLedger)
+    # Subtest: (b) LONG: "flat on the exchange (unverified 95)" is not an own stop-out: it books "flat", out of PF (plan item 14)
+    ok 1 - (b) LONG: "flat on the exchange (unverified 95)" is not an own stop-out: it books "flat", out of PF (plan item 14)
+      ---
+      duration_ms: 0.479646
+      type: 'test'
+      ...
+    # Subtest: (b) LONG: "(stop X)", "(target X)" and "(hand X)" book sl, tp and hand
+    ok 2 - (b) LONG: "(stop X)", "(target X)" and "(hand X)" book sl, tp and hand
+      ---
+      duration_ms: 1.312206
+      type: 'test'
+      ...
+    # Subtest: (c) LONG: "(liq X)" is an own loss counted like a stop: reason sl, inside the PF
+    ok 3 - (c) LONG: "(liq X)" is an own loss counted like a stop: reason sl, inside the PF
+      ---
+      duration_ms: 0.300096
+      type: 'test'
+      ...
+    # Subtest: (b) SHORT: "flat on the exchange (unverified 105)" is not an own stop-out: it books "flat", out of PF (plan item 14)
+    ok 4 - (b) SHORT: "flat on the exchange (unverified 105)" is not an own stop-out: it books "flat", out of PF (plan item 14)
+      ---
+      duration_ms: 0.209421
+      type: 'test'
+      ...
+    # Subtest: (b) SHORT: "(stop X)", "(target X)" and "(hand X)" book sl, tp and hand
+    ok 5 - (b) SHORT: "(stop X)", "(target X)" and "(hand X)" book sl, tp and hand
+      ---
+      duration_ms: 0.275196
+      type: 'test'
+      ...
+    # Subtest: (c) SHORT: "(liq X)" is an own loss counted like a stop: reason sl, inside the PF
+    ok 6 - (c) SHORT: "(liq X)" is an own loss counted like a stop: reason sl, inside the PF
+      ---
+      duration_ms: 0.587695
+      type: 'test'
+      ...
+    1..6
+ok 6 - flat markers: the reason each one books (statistics.ts liveLedger)
+  ---
+  duration_ms: 3.813353
+  type: 'suite'
+  ...
+# Subtest: live validation per side (live-record.ts liveRecords, live-validation.ts liveGate)
+    # Subtest: (d) plan item 13: with live.sideGates on, the record keeps a config's LONG and SHORT closes apart (one record per config and side)
+    ok 1 - (d) plan item 13: with live.sideGates on, the record keeps a config's LONG and SHORT closes apart (one record per config and side)
+      ---
+      duration_ms: 0.659267
+      type: 'test'
+      ...
+    # Subtest: (d) plan item 13: with live.sideGates on, a SHORT is not refused by the LONG closes of its config (its own 10 closes all win; the pooled 10 lose)
+    ok 2 - (d) plan item 13: with live.sideGates on, a SHORT is not refused by the LONG closes of its config (its own 10 closes all win; the pooled 10 lose)
+      ---
+      duration_ms: 0.635266
+      type: 'test'
+      ...
+    # Subtest: (d) plan item 13: with live.sideGates on, a SHORT is refused by its own 10 losing closes though the LONG closes of its config win
+    ok 3 - (d) plan item 13: with live.sideGates on, a SHORT is refused by its own 10 losing closes though the LONG closes of its config win
+      ---
+      duration_ms: 0.212163
+      type: 'test'
+      ...
+    # Subtest: (d) a LONG is judged on its own closes both ways (pass: the pooled record gives the same verdict here)
+    ok 4 - (d) a LONG is judged on its own closes both ways (pass: the pooled record gives the same verdict here)
+      ---
+      duration_ms: 0.148672
+      type: 'test'
+      ...
+    # Subtest: (d) control: with live.sideGates off the record stays one pooled record per config, and a SHORT gets the pooled verdict (pass)
+    ok 5 - (d) control: with live.sideGates off the record stays one pooled record per config, and a SHORT gets the pooled verdict (pass)
+      ---
+      duration_ms: 0.341187
+      type: 'test'
+      ...
+    # Subtest: (d) live.sideGates: a side is +1 or -1 only, so a close with side 0, null or 2 is in neither record
+    ok 6 - (d) live.sideGates: a side is +1 or -1 only, so a close with side 0, null or 2 is in neither record
+      ---
+      duration_ms: 0.204566
+      type: 'test'
+      ...
+    1..6
+ok 7 - live validation per side (live-record.ts liveRecords, live-validation.ts liveGate)
+  ---
+  duration_ms: 2.475302
+  type: 'suite'
+  ...
+# Subtest: live.sideGates: the engine proof, the simulated fallback and the settings path (d)
+    # Subtest: (d) plan item 13: with live.sideGates on, the engine proof keys each side: the LONG is proven, the SHORT is not (its own last 3 lose)
+    ok 1 - (d) plan item 13: with live.sideGates on, the engine proof keys each side: the LONG is proven, the SHORT is not (its own last 3 lose)
+      ---
+      duration_ms: 0.756399
+      type: 'test'
+      ...
+    # Subtest: (d) control: with live.sideGates off the engine proof judges the config as one, on the pooled last 3 (pass)
+    ok 2 - (d) control: with live.sideGates off the engine proof judges the config as one, on the pooled last 3 (pass)
+      ---
+      duration_ms: 0.469826
+      type: 'test'
+      ...
+    # Subtest: (d) with live.sideGates on, a side's simulated closes judge it alone: the SHORT's last 3 lose, the LONG's win (id kept)
+    ok 3 - (d) with live.sideGates on, a side's simulated closes judge it alone: the SHORT's last 3 lose, the LONG's win (id kept)
+      ---
+      duration_ms: 0.608912
+      type: 'test'
+      ...
+    # Subtest: (d) control: the pooled simulated tape judges the config as one, on its last 3 (pass)
+    ok 4 - (d) control: the pooled simulated tape judges the config as one, on its last 3 (pass)
+      ---
+      duration_ms: 0.926719
+      type: 'test'
+      ...
+    # Subtest: (d) sideTapeOf builds a side once per memo; without one each call builds its own copy
+    ok 5 - (d) sideTapeOf builds a side once per memo; without one each call builds its own copy
+      ---
+      duration_ms: 3.763642
+      type: 'test'
+      ...
+    # Subtest: (d) live.sideGates is a boolean: true and false are accepted, anything else is refused by the settings path
+    ok 6 - (d) live.sideGates is a boolean: true and false are accepted, anything else is refused by the settings path
+      ---
+      duration_ms: 8.937359
+      type: 'test'
+      ...
+    # Subtest: (d) control: DEFAULT_SETTINGS leaves live.sideGates unset: the default is one pooled record per config, holding both sides' closes (pass)
+    ok 7 - (d) control: DEFAULT_SETTINGS leaves live.sideGates unset: the default is one pooled record per config, holding both sides' closes (pass)
+      ---
+      duration_ms: 0.264247
+      type: 'test'
+      ...
+    # Subtest: (d) live.sideGates: a live group's gate key carries its side (group|1, group|-1); unset, the key is the group alone (the pooled key)
+    ok 8 - (d) live.sideGates: a live group's gate key carries its side (group|1, group|-1); unset, the key is the group alone (the pooled key)
+      ---
+      duration_ms: 0.420465
+      type: 'test'
+      ...
+    # Subtest: (d) live.sideGates: the sides a live count runs over are LONG and SHORT apart, keyed group|1 and group|-1 (LV_SIDES_APART)
+    ok 9 - (d) live.sideGates: the sides a live count runs over are LONG and SHORT apart, keyed group|1 and group|-1 (LV_SIDES_APART)
+      ---
+      duration_ms: 0.489444
+      type: 'test'
+      ...
+    # Subtest: (d) live.sideGates: an entry is judged on its own side (+1 or -1); an entry with no side of its own has none (lvSideOfEntry)
+    ok 10 - (d) live.sideGates: an entry is judged on its own side (+1 or -1); an entry with no side of its own has none (lvSideOfEntry)
+      ---
+      duration_ms: 0.143411
+      type: 'test'
+      ...
+    # Subtest: (d) control: with live.sideGates unset the count runs over the pooled side (keyed by the group alone) and no entry has a side (pass)
+    ok 11 - (d) control: with live.sideGates unset the count runs over the pooled side (keyed by the group alone) and no entry has a side (pass)
+      ---
+      duration_ms: 0.165947
+      type: 'test'
+      ...
+    # Subtest: (d) live.sideGates: a group's last N are judged per side: the SHORT group is refused by its own losses while its pooled last N pass (the helpers the runtime's groupsAt composes; groupsAt itself is not run)
+    ok 12 - (d) live.sideGates: a group's last N are judged per side: the SHORT group is refused by its own losses while its pooled last N pass (the helpers the runtime's groupsAt composes; groupsAt itself is not run)
+      ---
+      duration_ms: 2.234388
+      type: 'test'
+      ...
+    # Subtest: (d) live.sideGates: a proven key is its config and its side (recordKeyOf read back by splitRecordKey); a config id with a '|' is split at its last '|'
+    ok 13 - (d) live.sideGates: a proven key is its config and its side (recordKeyOf read back by splitRecordKey); a config id with a '|' is split at its last '|'
+      ---
+      duration_ms: 0.455571
+      type: 'test'
+      ...
+    1..13
+ok 8 - live.sideGates: the engine proof, the simulated fallback and the settings path (d)
+  ---
+  duration_ms: 20.561462
+  type: 'suite'
+  ...
+# Subtest: live.sideGates: a lane or an entry with no side of its own (g)
+    # Subtest: (g) live.sideGates: a side-0 engine lane is judged on either side, sendable when its LONG or its SHORT is proven (intended: a lane with no side is proven on either side, as signalOk does)
+    ok 1 - (g) live.sideGates: a side-0 engine lane is judged on either side, sendable when its LONG or its SHORT is proven (intended: a lane with no side is proven on either side, as signalOk does)
+      ---
+      duration_ms: 0.964686
+      type: 'test'
+      ...
+    # Subtest: (g) live.sideGates: a LONG or a SHORT lane is judged on its own side only, so the side-0 rule does not widen it (a SHORT with only the LONG proven is refused)
+    ok 2 - (g) live.sideGates: a LONG or a SHORT lane is judged on its own side only, so the side-0 rule does not widen it (a SHORT with only the LONG proven is refused)
+      ---
+      duration_ms: 0.429242
+      type: 'test'
+      ...
+    # Subtest: (g) control: with live.sideGates off the side-0 lane takes the pooled proof of its config (pass)
+    ok 3 - (g) control: with live.sideGates off the side-0 lane takes the pooled proof of its config (pass)
+      ---
+      duration_ms: 0.161641
+      type: 'test'
+      ...
+    # Subtest: (g) live.sideGates: an entry with no side of its own is not judged and is admitted, as no side's group gate applies to it (the entry gate's composition: lvOf's unjudged gate, the group key without a side; the runtime closure itself is not run)
+    ok 4 - (g) live.sideGates: an entry with no side of its own is not judged and is admitted, as no side's group gate applies to it (the entry gate's composition: lvOf's unjudged gate, the group key without a side; the runtime closure itself is not run)
+      ---
+      duration_ms: 0.219672
+      type: 'test'
+      ...
+    # Subtest: (g) live.sideGates: a signal lane with side 0 is judged on either side, so its LONG unit proven makes it sendable; ungated the same lane is a SHORT and is held back (the readers differ on purpose)
+    ok 5 - (g) live.sideGates: a signal lane with side 0 is judged on either side, so its LONG unit proven makes it sendable; ungated the same lane is a SHORT and is held back (the readers differ on purpose)
+      ---
+      duration_ms: 0.269538
+      type: 'test'
+      ...
+    # Subtest: (g) live.sideGates: a side-0 signal lane is valid when its LONG or its SHORT is active on its symbol, as signalOk judges it; a LONG or a SHORT lane needs its own
+    ok 6 - (g) live.sideGates: a side-0 signal lane is valid when its LONG or its SHORT is active on its symbol, as signalOk judges it; a LONG or a SHORT lane needs its own
+      ---
+      duration_ms: 0.61297
+      type: 'test'
+      ...
+    # Subtest: (g) control: ungated, an invalid side cannot normalize into an active SHORT or LONG
+    ok 7 - (g) control: ungated, an invalid side cannot normalize into an active SHORT or LONG
+      ---
+      duration_ms: 0.234393
+      type: 'test'
+      ...
+    # Subtest: (g) live.sideGates: a close whose side is not +1 or -1 is in no signal unit (signalUnitOf); ungated, a side-2 close keeps the LONG unit it always had
+    ok 8 - (g) live.sideGates: a close whose side is not +1 or -1 is in no signal unit (signalUnitOf); ungated, a side-2 close keeps the LONG unit it always had
+      ---
+      duration_ms: 0.219151
+      type: 'test'
+      ...
+    # Subtest: (g) live.sideGates: the signal proof reads a side-2 close as no side (its unit is not judged); ungated the same close proves the LONG unit
+    ok 9 - (g) live.sideGates: the signal proof reads a side-2 close as no side (its unit is not judged); ungated the same close proves the LONG unit
+      ---
+      duration_ms: 0.645733
+      type: 'test'
+      ...
+    1..9
+ok 9 - live.sideGates: a lane or an entry with no side of its own (g)
+  ---
+  duration_ms: 4.315101
+  type: 'suite'
+  ...
+# Subtest: the stop a flat marker is priced at: a new position's own stop only (live.server.ts stepLive)
+    # Subtest: (e) LONG: a new position with no stop row of its own is not closed at the earlier position's stop 9.7 (plan item 15)
+    ok 1 - (e) LONG: a new position with no stop row of its own is not closed at the earlier position's stop 9.7 (plan item 15)
+      ---
+      duration_ms: 38.054755
+      type: 'test'
+      ...
+    # Subtest: (e) SHORT: a new position with no stop row of its own is not closed at the earlier stop 10.3 (plan item 15)
+    ok 2 - (e) SHORT: a new position with no stop row of its own is not closed at the earlier stop 10.3 (plan item 15)
+      ---
+      duration_ms: 5.967864
+      type: 'test'
+      ...
+    # Subtest: (e) LONG control: the position's own stop 9.5 is the one priced (pass)
+    ok 3 - (e) LONG control: the position's own stop 9.5 is the one priced (pass)
+      ---
+      duration_ms: 4.285342
+      type: 'test'
+      ...
+    # Subtest: (e) SHORT control: the position's own stop 10.1 is the one priced (pass)
+    ok 4 - (e) SHORT control: the position's own stop 10.1 is the one priced (pass)
+      ---
+      duration_ms: 3.228104
+      type: 'test'
+      ...
+    # Subtest: (e) relaunch LONG: our stop filled while the desk was away and the history read finds nothing: the close is booked at that stop 9.5
+    ok 5 - (e) relaunch LONG: our stop filled while the desk was away and the history read finds nothing: the close is booked at that stop 9.5
+      ---
+      duration_ms: 8.939567
+      type: 'test'
+      ...
+    # Subtest: (e) relaunch SHORT: our stop filled while the desk was away and the history read finds nothing: the close is booked at that stop 10.5
+    ok 6 - (e) relaunch SHORT: our stop filled while the desk was away and the history read finds nothing: the close is booked at that stop 10.5
+      ---
+      duration_ms: 7.843231
+      type: 'test'
+      ...
+    # Subtest: (e) relaunch take-profit LONG: our take-profit filled while the desk was away with the stop untouched, and the history read finds nothing: the close is booked at that take-profit 10.5
+    ok 7 - (e) relaunch take-profit LONG: our take-profit filled while the desk was away with the stop untouched, and the history read finds nothing: the close is booked at that take-profit 10.5
+      ---
+      duration_ms: 4.353392
+      type: 'test'
+      ...
+    # Subtest: (e) relaunch take-profit SHORT: our take-profit filled while the desk was away with the stop untouched, and the history read finds nothing: the close is booked at that take-profit 9.5
+    ok 8 - (e) relaunch take-profit SHORT: our take-profit filled while the desk was away with the stop untouched, and the history read finds nothing: the close is booked at that take-profit 9.5
+      ---
+      duration_ms: 4.153821
+      type: 'test'
+      ...
+    1..8
+ok 10 - the stop a flat marker is priced at: a new position's own stop only (live.server.ts stepLive)
+  ---
+  duration_ms: 77.503629
+  type: 'suite'
+  ...
+# Subtest: the take-profit a flat marker is priced at: a new position's own take-profit (live.server.ts stepLive, tpPxOf)
+    # Subtest: (e) take-profit LONG: a position closed at its take-profit 10.5 with no history is booked at that take-profit, not unverified (plan item 15)
+    ok 1 - (e) take-profit LONG: a position closed at its take-profit 10.5 with no history is booked at that take-profit, not unverified (plan item 15)
+      ---
+      duration_ms: 8.059222
+      type: 'test'
+      ...
+    # Subtest: (e) take-profit SHORT: a position closed at its take-profit 9.5 with no history is booked at that take-profit, not unverified (plan item 15)
+    ok 2 - (e) take-profit SHORT: a position closed at its take-profit 9.5 with no history is booked at that take-profit, not unverified (plan item 15)
+      ---
+      duration_ms: 7.293403
+      type: 'test'
+      ...
+    # Subtest: (e) take-profit with the stop still resting LONG: a take-profit that filled while the venue left our stop on the book, no history: booked at the take-profit 10.5 (plan item 15)
+    ok 3 - (e) take-profit with the stop still resting LONG: a take-profit that filled while the venue left our stop on the book, no history: booked at the take-profit 10.5 (plan item 15)
+      ---
+      duration_ms: 3.89174
+      type: 'test'
+      ...
+    # Subtest: (e) take-profit with the stop still resting SHORT: a take-profit that filled while the venue left our stop on the book, no history: booked at the take-profit 9.5 (plan item 15)
+    ok 4 - (e) take-profit with the stop still resting SHORT: a take-profit that filled while the venue left our stop on the book, no history: booked at the take-profit 9.5 (plan item 15)
+      ---
+      duration_ms: 2.571442
+      type: 'test'
+      ...
+    1..4
+ok 11 - the take-profit a flat marker is priced at: a new position's own take-profit (live.server.ts stepLive, tpPxOf)
+  ---
+  duration_ms: 22.831937
+  type: 'suite'
+  ...
+# Subtest: lane exits name their side: reconciled fills and lane closes (f)
+    # Subtest: (f) reconcile: the BUY fill of the SHORT lane's stop is its exit; r is the short's return less the cost; the LONG lane of the symbol is not touched
+    ok 1 - (f) reconcile: the BUY fill of the SHORT lane's stop is its exit; r is the short's return less the cost; the LONG lane of the symbol is not touched
+      ---
+      duration_ms: 3.448793
+      type: 'test'
+      ...
+    # Subtest: (f) attributeLanes: a SHORT lane the desk closes at 95 books +5 % less the cost; one the exchange stops at 105 books the loss
+    ok 2 - (f) attributeLanes: a SHORT lane the desk closes at 95 books +5 % less the cost; one the exchange stops at 105 books the loss
+      ---
+      duration_ms: 0.406713
+      type: 'test'
+      ...
+    1..2
+ok 12 - lane exits name their side: reconciled fills and lane closes (f)
+  ---
+  duration_ms: 3.981189
+  type: 'suite'
+  ...
+# Subtest: order sides, hedge mode (overall control): LONG and SHORT alike
+    # Subtest: H-A long: the open is a market BUY on positionSide LONG, bounded to the lane's quantity, and the other side stays shut
+    ok 1 - H-A long: the open is a market BUY on positionSide LONG, bounded to the lane's quantity, and the other side stays shut
+      ---
+      duration_ms: 31.565208
+      type: 'test'
+      ...
+    # Subtest: H-B long: the stop is a STOP_MARKET SELL on LONG, triggered below the mark, bounded (no closePosition)
+    ok 2 - H-B long: the stop is a STOP_MARKET SELL on LONG, triggered below the mark, bounded (no closePosition)
+      ---
+      duration_ms: 6.198687
+      type: 'test'
+      ...
+    # Subtest: H-D long: a bounded close of one lane sends its own quantity as a SELL on LONG, never closePosition, and the other side's key is untouched
+    ok 3 - H-D long: a bounded close of one lane sends its own quantity as a SELL on LONG, never closePosition, and the other side's key is untouched
+      ---
+      duration_ms: 13.871051
+      type: 'test'
+      ...
+    # Subtest: H-F long: a manual SHORT position freezes nothing and closes nothing on LONG: the own side still grows, the manual quantity stays
+    ok 4 - H-F long: a manual SHORT position freezes nothing and closes nothing on LONG: the own side still grows, the manual quantity stays
+      ---
+      duration_ms: 12.686197
+      type: 'test'
+      ...
+    # Subtest: H-G long: its side closed by its stop leaves the SHORT side's stop and take-profit resting, and the SHORT position as it was
+    ok 5 - H-G long: its side closed by its stop leaves the SHORT side's stop and take-profit resting, and the SHORT position as it was
+      ---
+      duration_ms: 8.079866
+      type: 'test'
+      ...
+    # Subtest: H-7 long: our stop filled while the desk was away — the quantity someone else opened on LONG is not adopted (flat marker)
+    ok 6 - H-7 long: our stop filled while the desk was away — the quantity someone else opened on LONG is not adopted (flat marker)
+      ---
+      duration_ms: 6.564654
+      type: 'test'
+      ...
+    # Subtest: H-9 long: merged with someone else's quantity on LONG and its stop lost, the stop is re-placed bounded — no closePosition order
+    ok 7 - H-9 long: merged with someone else's quantity on LONG and its stop lost, the stop is re-placed bounded — no closePosition order
+      ---
+      duration_ms: 9.577253
+      type: 'test'
+      ...
+    # Subtest: H-9 long, reduction: merged with someone else's quantity on LONG, their sale takes 3 of ours, the one left is closed by one quantity-bounded MARKET — no closePosition order
+    ok 8 - H-9 long, reduction: merged with someone else's quantity on LONG, their sale takes 3 of ours, the one left is closed by one quantity-bounded MARKET — no closePosition order
+      ---
+      duration_ms: 5.849874
+      type: 'test'
+      ...
+    # Subtest: H-9 long, to nothing: merged with someone else's quantity on LONG, their sale takes all of ours, the SHORT lane opens on SHORT and nothing closes the whole side
+    ok 9 - H-9 long, to nothing: merged with someone else's quantity on LONG, their sale takes all of ours, the SHORT lane opens on SHORT and nothing closes the whole side
+      ---
+      duration_ms: 8.180484
+      type: 'test'
+      ...
+    # Subtest: H-M long: merged with someone else's quantity on LONG, the own take-profit is cancelled and nothing closes the whole side
+    ok 10 - H-M long: merged with someone else's quantity on LONG, the own take-profit is cancelled and nothing closes the whole side
+      ---
+      duration_ms: 5.136861
+      type: 'test'
+      ...
+    # Subtest: H-A short: the open is a market SELL on positionSide SHORT, bounded to the lane's quantity, and the other side stays shut
+    ok 11 - H-A short: the open is a market SELL on positionSide SHORT, bounded to the lane's quantity, and the other side stays shut
+      ---
+      duration_ms: 3.411405
+      type: 'test'
+      ...
+    # Subtest: H-B short: the stop is a STOP_MARKET BUY on SHORT, triggered above the mark, bounded (no closePosition)
+    ok 12 - H-B short: the stop is a STOP_MARKET BUY on SHORT, triggered above the mark, bounded (no closePosition)
+      ---
+      duration_ms: 3.792871
+      type: 'test'
+      ...
+    # Subtest: H-D short: a bounded close of one lane sends its own quantity as a BUY on SHORT, never closePosition, and the other side's key is untouched
+    ok 13 - H-D short: a bounded close of one lane sends its own quantity as a BUY on SHORT, never closePosition, and the other side's key is untouched
+      ---
+      duration_ms: 29.741473
+      type: 'test'
+      ...
+    # Subtest: H-F short: a manual LONG position freezes nothing and closes nothing on SHORT: the own side still grows, the manual quantity stays
+    ok 14 - H-F short: a manual LONG position freezes nothing and closes nothing on SHORT: the own side still grows, the manual quantity stays
+      ---
+      duration_ms: 5.339875
+      type: 'test'
+      ...
+    # Subtest: H-G short: its side closed by its stop leaves the LONG side's stop and take-profit resting, and the LONG position as it was
+    ok 15 - H-G short: its side closed by its stop leaves the LONG side's stop and take-profit resting, and the LONG position as it was
+      ---
+      duration_ms: 3.880876
+      type: 'test'
+      ...
+    # Subtest: H-7 short: our stop filled while the desk was away — the quantity someone else opened on SHORT is not adopted (flat marker)
+    ok 16 - H-7 short: our stop filled while the desk was away — the quantity someone else opened on SHORT is not adopted (flat marker)
+      ---
+      duration_ms: 4.125547
+      type: 'test'
+      ...
+    # Subtest: H-9 short: merged with someone else's quantity on SHORT and its stop lost, the stop is re-placed bounded — no closePosition order
+    ok 17 - H-9 short: merged with someone else's quantity on SHORT and its stop lost, the stop is re-placed bounded — no closePosition order
+      ---
+      duration_ms: 4.584865
+      type: 'test'
+      ...
+    # Subtest: H-9 short, reduction: merged with someone else's quantity on SHORT, their sale takes 3 of ours, the one left is closed by one quantity-bounded MARKET — no closePosition order
+    ok 18 - H-9 short, reduction: merged with someone else's quantity on SHORT, their sale takes 3 of ours, the one left is closed by one quantity-bounded MARKET — no closePosition order
+      ---
+      duration_ms: 4.314562
+      type: 'test'
+      ...
+    # Subtest: H-9 short, to nothing: merged with someone else's quantity on SHORT, their sale takes all of ours, the LONG lane opens on LONG and nothing closes the whole side
+    ok 19 - H-9 short, to nothing: merged with someone else's quantity on SHORT, their sale takes all of ours, the LONG lane opens on LONG and nothing closes the whole side
+      ---
+      duration_ms: 4.589948
+      type: 'test'
+      ...
+    # Subtest: H-M short: merged with someone else's quantity on SHORT, the own take-profit is cancelled and nothing closes the whole side
+    ok 20 - H-M short: merged with someone else's quantity on SHORT, the own take-profit is cancelled and nothing closes the whole side
+      ---
+      duration_ms: 3.587075
+      type: 'test'
+      ...
+    # Subtest: I-6 long (stop/trigger wording): a take-profit the venue refuses for being too close is retried and placed, widened
+    ok 21 - I-6 long (stop/trigger wording): a take-profit the venue refuses for being too close is retried and placed, widened
+      ---
+      duration_ms: 7.203161
+      type: 'test'
+      ...
+    # Subtest: I-6 long (take-profit wording): a take-profit the venue refuses for being too close is retried and placed, widened
+    ok 22 - I-6 long (take-profit wording): a take-profit the venue refuses for being too close is retried and placed, widened # TODO
+      ---
+      duration_ms: 0.160034
+      type: 'test'
+      ...
+    # Subtest: I-6 short (stop/trigger wording): a take-profit the venue refuses for being too close is retried and placed, widened
+    ok 23 - I-6 short (stop/trigger wording): a take-profit the venue refuses for being too close is retried and placed, widened
+      ---
+      duration_ms: 3.390503
+      type: 'test'
+      ...
+    # Subtest: I-6 short (take-profit wording): a take-profit the venue refuses for being too close is retried and placed, widened
+    ok 24 - I-6 short (take-profit wording): a take-profit the venue refuses for being too close is retried and placed, widened # TODO
+      ---
+      duration_ms: 0.107346
+      type: 'test'
+      ...
+    # Subtest: OW-A long: one-way: the open is a market BUY on positionSide BOTH, and its stop closes it with closePosition
+    ok 25 - OW-A long: one-way: the open is a market BUY on positionSide BOTH, and its stop closes it with closePosition
+      ---
+      duration_ms: 3.11778
+      type: 'test'
+      ...
+    # Subtest: OW-A short: one-way: the open is a market SELL on positionSide BOTH, and its stop closes it with closePosition
+    ok 26 - OW-A short: one-way: the open is a market SELL on positionSide BOTH, and its stop closes it with closePosition
+      ---
+      duration_ms: 2.497422
+      type: 'test'
+      ...
+    # Subtest: OW-7 long: one-way: our stop filled while the desk was away — the quantity someone else opened is not adopted (own exit flat marker, no closePosition order)
+    ok 27 - OW-7 long: one-way: our stop filled while the desk was away — the quantity someone else opened is not adopted (own exit flat marker, no closePosition order)
+      ---
+      duration_ms: 4.274925
+      type: 'test'
+      ...
+    # Subtest: OW-7 short: one-way: our stop filled while the desk was away — the quantity someone else opened is not adopted (own exit flat marker, no closePosition order)
+    ok 28 - OW-7 short: one-way: our stop filled while the desk was away — the quantity someone else opened is not adopted (own exit flat marker, no closePosition order)
+      ---
+      duration_ms: 4.193169
+      type: 'test'
+      ...
+    # Subtest: OW-13 long, hedge: a close by hand while the position's own stop and take-profit rest is booked by hand, not by its stop
+    ok 29 - OW-13 long, hedge: a close by hand while the position's own stop and take-profit rest is booked by hand, not by its stop
+      ---
+      duration_ms: 7.029423
+      type: 'test'
+      ...
+    # Subtest: OW-13 short, hedge: a close by hand while the position's own stop and take-profit rest is booked by hand, not by its stop
+    ok 30 - OW-13 short, hedge: a close by hand while the position's own stop and take-profit rest is booked by hand, not by its stop
+      ---
+      duration_ms: 4.284846
+      type: 'test'
+      ...
+    # Subtest: OW-13 long, oneway: a close by hand while the position's own stop and take-profit rest is booked by hand, not by its stop
+    ok 31 - OW-13 long, oneway: a close by hand while the position's own stop and take-profit rest is booked by hand, not by its stop
+      ---
+      duration_ms: 5.683268
+      type: 'test'
+      ...
+    # Subtest: OW-13 short, oneway: a close by hand while the position's own stop and take-profit rest is booked by hand, not by its stop
+    ok 32 - OW-13 short, oneway: a close by hand while the position's own stop and take-profit rest is booked by hand, not by its stop
+      ---
+      duration_ms: 4.222167
+      type: 'test'
+      ...
+    # Subtest: OW-13 long, oneway, book names no side (live bingx): a close by hand while the position's own stop and take-profit rest is booked by hand
+    ok 33 - OW-13 long, oneway, book names no side (live bingx): a close by hand while the position's own stop and take-profit rest is booked by hand
+      ---
+      duration_ms: 4.956116
+      type: 'test'
+      ...
+    # Subtest: OW-13 short, oneway, book names no side (live bingx): a close by hand while the position's own stop and take-profit rest is booked by hand
+    ok 34 - OW-13 short, oneway, book names no side (live bingx): a close by hand while the position's own stop and take-profit rest is booked by hand
+      ---
+      duration_ms: 3.870445
+      type: 'test'
+      ...
+    # Subtest: OW-13 long, oneway, book names no side (live bingx): with no control record and no net position, a close by hand is booked outside the desk, unverified at the ticker
+    ok 35 - OW-13 long, oneway, book names no side (live bingx): with no control record and no net position, a close by hand is booked outside the desk, unverified at the ticker
+      ---
+      duration_ms: 5.090307
+      type: 'test'
+      ...
+    # Subtest: OW-13 short, oneway, book names no side (live bingx): with no control record and no net position, a close by hand is booked outside the desk, unverified at the ticker
+    ok 36 - OW-13 short, oneway, book names no side (live bingx): with no control record and no net position, a close by hand is booked outside the desk, unverified at the ticker
+      ---
+      duration_ms: 6.310922
+      type: 'test'
+      ...
+    # Subtest: OW-13 long, hedge: with no control record and no position, a close by hand is booked by hand (the control of the no-record cells)
+    ok 37 - OW-13 long, hedge: with no control record and no position, a close by hand is booked by hand (the control of the no-record cells)
+      ---
+      duration_ms: 3.688982
+      type: 'test'
+      ...
+    # Subtest: OW-13 short, hedge: with no control record and no position, a close by hand is booked by hand (the control of the no-record cells)
+    ok 38 - OW-13 short, hedge: with no control record and no position, a close by hand is booked by hand (the control of the no-record cells)
+      ---
+      duration_ms: 4.369497
+      type: 'test'
+      ...
+    # Subtest: OW-9 long: one-way: merged with someone else's quantity and its stop lost, no closePosition order is sent on the side
+    ok 39 - OW-9 long: one-way: merged with someone else's quantity and its stop lost, no closePosition order is sent on the side
+      ---
+      duration_ms: 5.088263
+      type: 'test'
+      ...
+    # Subtest: OW-9 short: one-way: merged with someone else's quantity and its stop lost, no closePosition order is sent on the side
+    ok 40 - OW-9 short: one-way: merged with someone else's quantity and its stop lost, no closePosition order is sent on the side
+      ---
+      duration_ms: 5.075905
+      type: 'test'
+      ...
+    # Subtest: OW-9 long, estimate: one-way merged with someone else's 2 units, the other owner's estimate is those 2 units and our side is not booked closed
+    ok 41 - OW-9 long, estimate: one-way merged with someone else's 2 units, the other owner's estimate is those 2 units and our side is not booked closed
+      ---
+      duration_ms: 5.27029
+      type: 'test'
+      ...
+    # Subtest: OW-9 short, estimate: one-way merged with someone else's 2 units, the other owner's estimate is those 2 units and our side is not booked closed
+    ok 42 - OW-9 short, estimate: one-way merged with someone else's 2 units, the other owner's estimate is those 2 units and our side is not booked closed
+      ---
+      duration_ms: 4.105445
+      type: 'test'
+      ...
+    # Subtest: OW-9 long, reduction: one-way merged by a venue reduction the attribution takes from our quantity, its stop lost, no closePosition order and no order on the symbol in that step
+    ok 43 - OW-9 long, reduction: one-way merged by a venue reduction the attribution takes from our quantity, its stop lost, no closePosition order and no order on the symbol in that step
+      ---
+      duration_ms: 4.400879
+      type: 'test'
+      ...
+    # Subtest: OW-9 short, reduction: one-way merged by a venue reduction the attribution takes from our quantity, its stop lost, no closePosition order and no order on the symbol in that step
+    ok 44 - OW-9 short, reduction: one-way merged by a venue reduction the attribution takes from our quantity, its stop lost, no closePosition order and no order on the symbol in that step
+      ---
+      duration_ms: 3.83457
+      type: 'test'
+      ...
+    # Subtest: OW-9 long, to nothing: one-way merged, the attribution takes all four of ours, a short lane active — no order on the symbol in that step
+    ok 45 - OW-9 long, to nothing: one-way merged, the attribution takes all four of ours, a short lane active — no order on the symbol in that step
+      ---
+      duration_ms: 7.161462
+      type: 'test'
+      ...
+    # Subtest: OW-9 short, to nothing: one-way merged, the attribution takes all four of ours, a long lane active — no order on the symbol in that step
+    ok 46 - OW-9 short, to nothing: one-way merged, the attribution takes all four of ours, a long lane active — no order on the symbol in that step
+      ---
+      duration_ms: 7.748397
+      type: 'test'
+      ...
+    # Subtest: OW-M long, one-way: merged with someone else's quantity, the own take-profit the venue echoes as BOTH is cancelled
+    ok 47 - OW-M long, one-way: merged with someone else's quantity, the own take-profit the venue echoes as BOTH is cancelled
+      ---
+      duration_ms: 4.570049
+      type: 'test'
+      ...
+    # Subtest: OW-M short, one-way: merged with someone else's quantity, the own take-profit the venue echoes as BOTH is cancelled
+    ok 48 - OW-M short, one-way: merged with someone else's quantity, the own take-profit the venue echoes as BOTH is cancelled
+      ---
+      duration_ms: 3.282083
+      type: 'test'
+      ...
+    # Subtest: OW-12 short, hedge: a lane order of the short that fills is booked on the short's key (S2-USDT|-1)
+    ok 49 - OW-12 short, hedge: a lane order of the short that fills is booked on the short's key (S2-USDT|-1)
+      ---
+      duration_ms: 5.278355
+      type: 'test'
+      ...
+    # Subtest: OW-12 short, oneway: a lane order of the short that fills is booked on the short's key (S2-USDT|-1)
+    ok 50 - OW-12 short, oneway: a lane order of the short that fills is booked on the short's key (S2-USDT|-1)
+      ---
+      duration_ms: 3.418207
+      type: 'test'
+      ...
+    # Subtest: OW-12 long: one-way: a plain step keeps the open long's own stop and take-profit resting
+    ok 51 - OW-12 long: one-way: a plain step keeps the open long's own stop and take-profit resting
+      ---
+      duration_ms: 4.20349
+      type: 'test'
+      ...
+    # Subtest: OW-12 short: one-way: a plain step keeps the open short's own stop and take-profit resting
+    ok 52 - OW-12 short: one-way: a plain step keeps the open short's own stop and take-profit resting
+      ---
+      duration_ms: 3.085856
+      type: 'test'
+      ...
+    # Subtest: OW-16 long, hedge: a fresh open the book does not show yet keeps its own stop and take-profit resting
+    ok 53 - OW-16 long, hedge: a fresh open the book does not show yet keeps its own stop and take-profit resting
+      ---
+      duration_ms: 4.762658
+      type: 'test'
+      ...
+    # Subtest: OW-16 short, hedge: a fresh open the book does not show yet keeps its own stop and take-profit resting
+    ok 54 - OW-16 short, hedge: a fresh open the book does not show yet keeps its own stop and take-profit resting
+      ---
+      duration_ms: 3.337032
+      type: 'test'
+      ...
+    # Subtest: OW-16 long, oneway: a fresh open the book does not show yet keeps its own stop and take-profit resting
+    ok 55 - OW-16 long, oneway: a fresh open the book does not show yet keeps its own stop and take-profit resting
+      ---
+      duration_ms: 3.427718
+      type: 'test'
+      ...
+    # Subtest: OW-16 short, oneway: a fresh open the book does not show yet keeps its own stop and take-profit resting
+    ok 56 - OW-16 short, oneway: a fresh open the book does not show yet keeps its own stop and take-profit resting
+      ---
+      duration_ms: 3.273276
+      type: 'test'
+      ...
+    # Subtest: OW-12 short, hedge, venue cap: the short's backstop counts on its own key, so its seventh lane gets the slot
+    ok 57 - OW-12 short, hedge, venue cap: the short's backstop counts on its own key, so its seventh lane gets the slot
+      ---
+      duration_ms: 13.873115
+      type: 'test'
+      ...
+    # Subtest: OW-12 short, hedge, venue cap: a count at the trim line is not trimmed for the short's backstop
+    ok 58 - OW-12 short, hedge, venue cap: a count at the trim line is not trimmed for the short's backstop
+      ---
+      duration_ms: 8.346868
+      type: 'test'
+      ...
+    # Subtest: OW-12 short, oneway, venue cap: the short's backstop counts on its own key, so its seventh lane gets the slot
+    ok 59 - OW-12 short, oneway, venue cap: the short's backstop counts on its own key, so its seventh lane gets the slot
+      ---
+      duration_ms: 11.278592
+      type: 'test'
+      ...
+    # Subtest: OW-12 short, oneway, venue cap: a count at the trim line is not trimmed for the short's backstop
+    ok 60 - OW-12 short, oneway, venue cap: a count at the trim line is not trimmed for the short's backstop
+      ---
+      duration_ms: 14.913263
+      type: 'test'
+      ...
+    1..60
+ok 13 - order sides, hedge mode (overall control): LONG and SHORT alike
+  ---
+  duration_ms: 384.494527
+  type: 'suite'
+  ...
+# Subtest: order sides, entries mode: the protect pass closes the own quantity only
+    # Subtest: OW-8 long, hedge: an own entry without its stop is closed for its own quantity only, the manual quantity on LONG stays
+    ok 1 - OW-8 long, hedge: an own entry without its stop is closed for its own quantity only, the manual quantity on LONG stays
+      ---
+      duration_ms: 36.795372
+      type: 'test'
+      ...
+    # Subtest: OW-8 short, hedge: an own entry without its stop is closed for its own quantity only, the manual quantity on SHORT stays
+    ok 2 - OW-8 short, hedge: an own entry without its stop is closed for its own quantity only, the manual quantity on SHORT stays
+      ---
+      duration_ms: 13.141677
+      type: 'test'
+      ...
+    # Subtest: OW-8 long, oneway: an own entry without its stop is closed for its own quantity only, the manual quantity on the BOTH position stays
+    ok 3 - OW-8 long, oneway: an own entry without its stop is closed for its own quantity only, the manual quantity on the BOTH position stays
+      ---
+      duration_ms: 10.726931
+      type: 'test'
+      ...
+    # Subtest: OW-8 short, oneway: an own entry without its stop is closed for its own quantity only, the manual quantity on the BOTH position stays
+    ok 4 - OW-8 short, oneway: an own entry without its stop is closed for its own quantity only, the manual quantity on the BOTH position stays
+      ---
+      duration_ms: 8.654466
+      type: 'test'
+      ...
+    1..4
+ok 14 - order sides, entries mode: the protect pass closes the own quantity only
+  ---
+  duration_ms: 69.66918
+  type: 'suite'
+  ...
+# Subtest: order sides, entries mode and exit orders (pure)
+    # Subtest: E-5 foreign LONG position, LONG entry: skipped (the same side)
+    ok 1 - E-5 foreign LONG position, LONG entry: skipped (the same side)
+      ---
+      duration_ms: 0.317091
+      type: 'test'
+      ...
+    # Subtest: E-5 foreign LONG position, SHORT entry: allowed — the other side is not frozen
+    ok 2 - E-5 foreign LONG position, SHORT entry: allowed — the other side is not frozen
+      ---
+      duration_ms: 0.097635
+      type: 'test'
+      ...
+    # Subtest: E-5 foreign SHORT position, LONG entry: allowed — the other side is not frozen
+    ok 3 - E-5 foreign SHORT position, LONG entry: allowed — the other side is not frozen
+      ---
+      duration_ms: 0.185646
+      type: 'test'
+      ...
+    # Subtest: E-5 foreign SHORT position, SHORT entry: skipped (the same side)
+    ok 4 - E-5 foreign SHORT position, SHORT entry: skipped (the same side)
+      ---
+      duration_ms: 0.134676
+      type: 'test'
+      ...
+    # Subtest: E-5 foreign LONG order, LONG entry: skipped (the same side)
+    ok 5 - E-5 foreign LONG order, LONG entry: skipped (the same side)
+      ---
+      duration_ms: 0.462454
+      type: 'test'
+      ...
+    # Subtest: E-5 foreign LONG order, SHORT entry: allowed — the other side is not frozen
+    ok 6 - E-5 foreign LONG order, SHORT entry: allowed — the other side is not frozen
+      ---
+      duration_ms: 0.087898
+      type: 'test'
+      ...
+    # Subtest: E-5 foreign SHORT order, LONG entry: allowed — the other side is not frozen
+    ok 7 - E-5 foreign SHORT order, LONG entry: allowed — the other side is not frozen
+      ---
+      duration_ms: 0.050541
+      type: 'test'
+      ...
+    # Subtest: E-5 foreign SHORT order, SHORT entry: skipped (the same side)
+    ok 8 - E-5 foreign SHORT order, SHORT entry: skipped (the same side)
+      ---
+      duration_ms: 0.240724
+      type: 'test'
+      ...
+    # Subtest: E-5 foreign order with no position side, LONG entry: skipped (the whole symbol is frozen)
+    ok 9 - E-5 foreign order with no position side, LONG entry: skipped (the whole symbol is frozen)
+      ---
+      duration_ms: 0.134285
+      type: 'test'
+      ...
+    # Subtest: E-5 foreign order with no position side, SHORT entry: skipped (the whole symbol is frozen)
+    ok 10 - E-5 foreign order with no position side, SHORT entry: skipped (the whole symbol is frozen)
+      ---
+      duration_ms: 0.045735
+      type: 'test'
+      ...
+    # Subtest: E-5 control: overall ownership marks only the foreign LONG key (S1-USDT|1), not the symbol
+    ok 11 - E-5 control: overall ownership marks only the foreign LONG key (S1-USDT|1), not the symbol
+      ---
+      duration_ms: 0.298651
+      type: 'test'
+      ...
+    # Subtest: E-5 control: overall ownership marks only the foreign SHORT key (S1-USDT|-1), not the symbol
+    ok 12 - E-5 control: overall ownership marks only the foreign SHORT key (S1-USDT|-1), not the symbol
+      ---
+      duration_ms: 0.137827
+      type: 'test'
+      ...
+    # Subtest: E-X long: the entry's exit orders are SELL on LONG, bounded (no closePosition), the stop below and the target above the entry
+    ok 13 - E-X long: the entry's exit orders are SELL on LONG, bounded (no closePosition), the stop below and the target above the entry
+      ---
+      duration_ms: 0.331396
+      type: 'test'
+      ...
+    # Subtest: E-X short: the entry's exit orders are BUY on SHORT, bounded (no closePosition), the stop above and the target below the entry
+    ok 14 - E-X short: the entry's exit orders are BUY on SHORT, bounded (no closePosition), the stop above and the target below the entry
+      ---
+      duration_ms: 0.054968
+      type: 'test'
+      ...
+    1..14
+ok 15 - order sides, entries mode and exit orders (pure)
+  ---
+  duration_ms: 3.050339
+  type: 'suite'
+  ...
+# Subtest: order sides, closes read from the venue history (pure)
+    # Subtest: OW-10 long, hedge: a close by hand (not ours) is the long side's outside close
+    ok 1 - OW-10 long, hedge: a close by hand (not ours) is the long side's outside close
+      ---
+      duration_ms: 0.40359
+      type: 'test'
+      ...
+    # Subtest: OW-10 long, one-way: a close by hand (BOTH, not ours) is the side's outside close (outsideCloseOf reads a BOTH row by the side its order closes)
+    ok 2 - OW-10 long, one-way: a close by hand (BOTH, not ours) is the side's outside close (outsideCloseOf reads a BOTH row by the side its order closes)
+      ---
+      duration_ms: 0.134997
+      type: 'test'
+      ...
+    # Subtest: OW-10 long, one-way: the close fills (closeFillsOf) count the BOTH fill as the side's foreign close
+    ok 3 - OW-10 long, one-way: the close fills (closeFillsOf) count the BOTH fill as the side's foreign close
+      ---
+      duration_ms: 0.089127
+      type: 'test'
+      ...
+    # Subtest: OW-10 long, hedge: the close fills (closeFillsOf) count the long side's foreign close
+    ok 4 - OW-10 long, hedge: the close fills (closeFillsOf) count the long side's foreign close
+      ---
+      duration_ms: 0.058432
+      type: 'test'
+      ...
+    # Subtest: OW-10 short, hedge: a close by hand (not ours) is the short side's outside close
+    ok 5 - OW-10 short, hedge: a close by hand (not ours) is the short side's outside close
+      ---
+      duration_ms: 0.041018
+      type: 'test'
+      ...
+    # Subtest: OW-10 short, one-way: a close by hand (BOTH, not ours) is the side's outside close (outsideCloseOf reads a BOTH row by the side its order closes)
+    ok 6 - OW-10 short, one-way: a close by hand (BOTH, not ours) is the side's outside close (outsideCloseOf reads a BOTH row by the side its order closes)
+      ---
+      duration_ms: 0.034984
+      type: 'test'
+      ...
+    # Subtest: OW-10 short, one-way: the close fills (closeFillsOf) count the BOTH fill as the side's foreign close
+    ok 7 - OW-10 short, one-way: the close fills (closeFillsOf) count the BOTH fill as the side's foreign close
+      ---
+      duration_ms: 0.030192
+      type: 'test'
+      ...
+    # Subtest: OW-10 short, hedge: the close fills (closeFillsOf) count the short side's foreign close
+    ok 8 - OW-10 short, hedge: the close fills (closeFillsOf) count the short side's foreign close
+      ---
+      duration_ms: 0.029183
+      type: 'test'
+      ...
+    # Subtest: OW-11 long, hedge: a lane's stop that filled (LONG) re-prices the unverified close at the fill
+    ok 9 - OW-11 long, hedge: a lane's stop that filled (LONG) re-prices the unverified close at the fill
+      ---
+      duration_ms: 2.09454
+      type: 'test'
+      ...
+    # Subtest: OW-11 long, one-way: a lane's stop that filled (BOTH) re-prices the unverified close at the fill
+    ok 10 - OW-11 long, one-way: a lane's stop that filled (BOTH) re-prices the unverified close at the fill
+      ---
+      duration_ms: 1.636161
+      type: 'test'
+      ...
+    # Subtest: OW-11 short, hedge: a lane's stop that filled (SHORT) re-prices the unverified close at the fill
+    ok 11 - OW-11 short, hedge: a lane's stop that filled (SHORT) re-prices the unverified close at the fill
+      ---
+      duration_ms: 1.623389
+      type: 'test'
+      ...
+    # Subtest: OW-11 short, one-way: a lane's stop that filled (BOTH) re-prices the unverified close at the fill
+    ok 12 - OW-11 short, one-way: a lane's stop that filled (BOTH) re-prices the unverified close at the fill
+      ---
+      duration_ms: 2.246136
+      type: 'test'
+      ...
+    # Subtest: OW-11 long, one-way: the desk's own opening market of the other side (same order side, no close flag), filled 10 s after the lane's stop, does not re-price the close
+    ok 13 - OW-11 long, one-way: the desk's own opening market of the other side (same order side, no close flag), filled 10 s after the lane's stop, does not re-price the close
+      ---
+      duration_ms: 1.808653
+      type: 'test'
+      ...
+    # Subtest: OW-11 long, one-way: a lane's own market exit that the venue flags reduce-only re-prices the close at its fill
+    ok 14 - OW-11 long, one-way: a lane's own market exit that the venue flags reduce-only re-prices the close at its fill
+      ---
+      duration_ms: 1.740525
+      type: 'test'
+      ...
+    # Subtest: OW-11 long, one-way: a liquidation of the position (BOTH, not ours, unflagged) re-prices the close at its fill as "liq"
+    ok 15 - OW-11 long, one-way: a liquidation of the position (BOTH, not ours, unflagged) re-prices the close at its fill as "liq"
+      ---
+      duration_ms: 1.762877
+      type: 'test'
+      ...
+    # Subtest: OW-11 long, hedge: a liquidation of the LONG position re-prices the close at its fill as "liq" (the control of the one-way liquidation cell)
+    ok 16 - OW-11 long, hedge: a liquidation of the LONG position re-prices the close at its fill as "liq" (the control of the one-way liquidation cell)
+      ---
+      duration_ms: 2.299466
+      type: 'test'
+      ...
+    # Subtest: OW-11 long, one-way: a close by hand the venue does not flag (BOTH, MARKET, not ours) does not re-price the close
+    ok 17 - OW-11 long, one-way: a close by hand the venue does not flag (BOTH, MARKET, not ours) does not re-price the close
+      ---
+      duration_ms: 1.694968
+      type: 'test'
+      ...
+    # Subtest: OW-11 long, hedge: a close by hand on the LONG row (not ours, unflagged) re-prices the close as "hand" (the control of the one-way gate)
+    ok 18 - OW-11 long, hedge: a close by hand on the LONG row (not ours, unflagged) re-prices the close as "hand" (the control of the one-way gate)
+      ---
+      duration_ms: 2.247037
+      type: 'test'
+      ...
+    # Subtest: OW-11 short, one-way: the desk's own opening market of the other side (same order side, no close flag), filled 10 s after the lane's stop, does not re-price the close
+    ok 19 - OW-11 short, one-way: the desk's own opening market of the other side (same order side, no close flag), filled 10 s after the lane's stop, does not re-price the close
+      ---
+      duration_ms: 2.147696
+      type: 'test'
+      ...
+    # Subtest: OW-11 short, one-way: a lane's own market exit that the venue flags reduce-only re-prices the close at its fill
+    ok 20 - OW-11 short, one-way: a lane's own market exit that the venue flags reduce-only re-prices the close at its fill
+      ---
+      duration_ms: 2.166034
+      type: 'test'
+      ...
+    # Subtest: OW-11 short, one-way: a liquidation of the position (BOTH, not ours, unflagged) re-prices the close at its fill as "liq"
+    ok 21 - OW-11 short, one-way: a liquidation of the position (BOTH, not ours, unflagged) re-prices the close at its fill as "liq"
+      ---
+      duration_ms: 2.599903
+      type: 'test'
+      ...
+    # Subtest: OW-11 short, hedge: a liquidation of the SHORT position re-prices the close at its fill as "liq" (the control of the one-way liquidation cell)
+    ok 22 - OW-11 short, hedge: a liquidation of the SHORT position re-prices the close at its fill as "liq" (the control of the one-way liquidation cell)
+      ---
+      duration_ms: 2.179
+      type: 'test'
+      ...
+    # Subtest: OW-11 short, one-way: a close by hand the venue does not flag (BOTH, MARKET, not ours) does not re-price the close
+    ok 23 - OW-11 short, one-way: a close by hand the venue does not flag (BOTH, MARKET, not ours) does not re-price the close
+      ---
+      duration_ms: 1.499703
+      type: 'test'
+      ...
+    # Subtest: OW-11 short, hedge: a close by hand on the SHORT row (not ours, unflagged) re-prices the close as "hand" (the control of the one-way gate)
+    ok 24 - OW-11 short, hedge: a close by hand on the SHORT row (not ours, unflagged) re-prices the close as "hand" (the control of the one-way gate)
+      ---
+      duration_ms: 1.341296
+      type: 'test'
+      ...
+    1..24
+ok 16 - order sides, closes read from the venue history (pure)
+  ---
+  duration_ms: 33.05586
+  type: 'suite'
+  ...
+1..16
+# tests 179
+# suites 16
+# pass 177
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 2
+# duration_ms 1548.740055

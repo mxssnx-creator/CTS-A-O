@@ -1,3 +1,4 @@
+import { PREVIOUS_DEFAULT_FOCUS_17OCT as LEGACY_FIXTURE_FOCUS } from "../config.ts";
 // The fast loops: engine cycle (250 ms) without needless work, tick (100 ms) marking open positions to market and
 // driving the live step, and a live book read over REST at most every syncMs.
 import { afterEach, describe, it } from "node:test";
@@ -7,6 +8,7 @@ import { CoreDb } from "./db.server.ts";
 import { cachedClient, type ExchangeClient } from "./live.server.ts";
 import { PriceStream } from "./stream.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
+import { sizeBook, orderKey } from "../sizing.ts";
 import { pinSyntheticEnd, runtimeFixtureGrid, trackRuntimes } from "../test-support.ts";
 
 pinSyntheticEnd();
@@ -21,6 +23,10 @@ class CoreRuntime extends BaseRuntime {
 afterEach(() => tracked.disposeAll());
 
 const small = {
+  // Preserve this generic lifecycle fixture's original source scope. Exhaustive new-family grids are
+  // covered separately by Micro/Inverse parity, the 20-symbol replay and 120-symbol load test.
+  focus: [...LEGACY_FIXTURE_FOCUS],
+  pinned: [],
   symbols: 3,
   historyDays: 18,
   tfDays: { "1": 3, "5": 6, "15": 18, "30": 18 },
@@ -77,7 +83,7 @@ describe("fast loops", { timeout: 1_200_000 }, () => {
         cycleMs: 250,
         tickMs: 50,
         sizing: { mode: "fixed", pct: 0.02 },
-        focus: [],
+        focus: [...LEGACY_FIXTURE_FOCUS],
         pinned: [],
         toggles: { normal: true } as never,
         signals: { enabled: false } as never,
@@ -87,16 +93,31 @@ describe("fast loops", { timeout: 1_200_000 }, () => {
     rt.wf.validLastN = 0;
     rt.wf.lastN = 0;
     rt.start();
-    await until(() => rt.status.computes >= 1 && rt.status.state === "running", 120_000);
-    const [sym, candles] = rt.candles.entries().next().value!;
-    const last = candles.bar(candles.n - 1);
-    const cfg = "follow|ema-9-21@m15|tp2|sl2|tr0|h32";
-    rt.paper.positions = [{
-      cfg, sym, side: 1, entryT: last.t, entryI: candles.n - 1,
-      entry: last.c, stop: last.c * 0.98, target: last.c * 1.02,
-      peak: last.c, trailOn: false, mtm: -rt.settings.cost,
-    }];
-    rt.paper.selected = [cfg];
+    await until(
+      () =>
+        rt.status.computes >= 1 && rt.status.state === "running",
+    );
+    // This test checks marking and scheduling, not a random feed's entry at the current hour. Entry and
+    // ownership admission are covered by trading-e2e and entries-execution. Seed one explicit held test
+    // position after a real compute, so a quiet market cannot turn this test into a ten-minute wait.
+    const tape = rt.tapes.find((t) => t.kind === "normal")!;
+    assert.ok(tape, "the real compute built an ordinary strategy tape");
+    const sym = [...rt.candles.keys()][0], series = rt.candles.get(sym)!;
+    const entry = series.c[series.n - 1];
+    rt.paper.positions = [{ cfg: tape.id, sym, side: 1, entry, entryT: Date.now(),
+      entryI: series.n - 1, stop: entry * 0.9, target: entry * 1.1, peak: entry,
+      trailOn: false, trail: 0, trailDist: 0, mtm: -rt.settings.cost }];
+    // A held fixture needs an actual allocation from the same sizing rules as the audited Paper book.
+    const seeded = sizeBook(rt.paper.trades, rt.paper.positions, {
+      balance: rt.settings.paperBalance + (rt.paper.carried ?? 0),
+      sizing: rt.settings.sizing, fixedNotional: rt.settings.paperNotional,
+    });
+    rt.paper.units = seeded.units;
+    rt.paper.equity = (rt.paper.carried ?? 0) + seeded.pnl + rt.paper.positions.reduce(
+      (sum, p) => sum + p.mtm * (p.vol ?? 1) * seeded.units.get(orderKey(p))!, 0,
+    );
+    rt.paper.balance = rt.settings.paperBalance + rt.paper.equity;
+    rt.paper.selected = [tape.id];
     // count paper steps from here on
     // (the cycle drives the paper step as a generator in slices: count its runs, not stepPaper's)
     let steps = 0;

@@ -57,7 +57,7 @@ describe("B1: Base cells", () => {
   it("passed cells ⊆ Base cells, and the tapes built from them ⊆ passed cells", () => {
     const s = settings({ baseCells: true, baseTrailCells: true, short: false, general: false, long: false, micro: false });
     const rp = baseRangeProtects(s.grid, s.cost);
-    const runs = baseRuns(u, [{ bot: "follow", ind: IND }], s.cost, s.tactics, false, false, undefined, rp, undefined, false, s.gates, true);
+    const runs = baseRuns(u, [{ bot: "follow", ind: IND }], s.cost, s.tactics, false, false, undefined, rp, undefined, false, s.gates, [], true);
     assert.ok(runs.length === 1 && runs[0].rangeCells?.length, "some cells passed");
     const bp = basePass(runs, s as never);
     const cells = bp.pairCells[pair];
@@ -220,7 +220,7 @@ describe("B3: Base pass keyed by cell", () => {
   it("grid.allSets pairs are reported apart (addedKeys) and carry no cells", () => {
     const g = { ...grid, baseCells: true, allSets: true };
     const s = { ...s3, grid: g };
-    const runs = baseRuns(u3, [{ bot: "follow", ind: IND }], s.cost, s.tactics, false, false, undefined, baseRangeProtects(g, s.cost), undefined, false, s.gates, true);
+    const runs = baseRuns(u3, [{ bot: "follow", ind: IND }], s.cost, s.tactics, false, false, undefined, baseRangeProtects(g, s.cost), undefined, false, s.gates, [], true);
     const bp = basePass(runs, s as never);
     assert.equal(bp.pairCells[p3], undefined);
     assert.equal(bp.added, bp.addedKeys.size);

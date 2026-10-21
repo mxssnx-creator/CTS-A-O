@@ -267,7 +267,7 @@ export function PresetSettingsDialog(props: {
                   onChange={(e) => set(["symbols"], Math.round(Number(e.target.value)))}
                 />
               </Field>
-              <Field label="Order type" hint="ranking that picks the symbols">
+              <Field label="Symbol ranking" hint={s.symbolRank === "change1h5m" ? "sum of 12 absolute 5m percentage changes ÷12 over the last completed hour" : "ranking that picks the symbols"}>
                 <select
                   className="v2-select"
                   value={s.symbolRank}

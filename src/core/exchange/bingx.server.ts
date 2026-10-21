@@ -7,6 +7,7 @@
 // key belongs to the account and signs on the VST host too.
 import { createHmac } from "node:crypto";
 import { readFileSync, renameSync, writeFileSync } from "node:fs";
+import { takeSignedRequestSlot } from "./request-budget.server.ts";
 
 export type Network = "mainnet" | "testnet";
 export type ConnId = "bingx-x01" | "bingx-vst-01" | "bingx-vst-02";
@@ -124,6 +125,10 @@ export async function signed(
   for (let attempt = 0; ; attempt++) {
     const hosts = method === "GET" ? HOSTS[network] : HOSTS[network].slice(0, 1);
     for (let host = 0; host < hosts.length; host++) {
+      // Every actual dispatch, including read failover and a timestamp retry, consumes one shared slot.
+      // Deferral is nonblocking and definitely not sent, so stale orders cannot queue behind the budget.
+      const slot = takeSignedRequestSlot(method, path, params);
+      if (slot.until) throw new RequestBudgetDeferred(`${slot.unavailable ? "request budget unavailable" : "request budget pause"} (${NOT_SENT}), retry after ${slot.until} [${method} ${path}]`);
       const url = signedUrl(hosts[host], path, secret, {
         ...params,
         recvWindow: RECEIVE_WINDOW_MS,
@@ -173,6 +178,11 @@ export class ExchangeRejected extends Error {
     this.name = "ExchangeRejected";
     this.code = code;
   }
+}
+/** Definitely not dispatched; retry on a subsequent fresh control step, without a venue-failure backoff. */
+export class RequestBudgetDeferred extends ExchangeRejected {
+  hold = true;
+  constructor(msg: string) { super(msg); this.name = "RequestBudgetDeferred"; }
 }
 
 /** Signed calls and rate-limit bans per endpoint in this process (diagnostics). */
@@ -519,8 +529,8 @@ export function stopPxExchange(
  */
 export function stopTooClose(msg: string): boolean {
   const m = msg.toLowerCase();
-  if (/(stop|trigger)\s*(loss\s*)?price should be (lower|higher|greater|less)/.test(m)) return true;
-  return /(stop|trigger).{0,24}(too close|immediately|current price)/.test(m);
+  if (/(stop|trigger|take[\s-]*profit)\s*(loss\s*)?price should be (lower|higher|greater|less)/.test(m)) return true;
+  return /(stop|trigger|take[\s-]*profit).{0,24}(too close|immediately|current price)/.test(m);
 }
 
 /**

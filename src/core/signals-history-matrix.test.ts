@@ -137,3 +137,56 @@ describe("Signal history, bounded trailing and exact-context progression", () =>
           assert.equal(execDecision(tape, T - 220 * H, options, { sym: "A", side: 1 }).ok, false, "only 21 closes had settled");
         });
 });
+
+it("local runtime Signal tapes retain their independent 336h history beside the 24h engine", async () => {
+  const { CoreRuntime } = await import("./server/runtime.server.ts");
+  const { CoreDb } = await import("./server/db.server.ts");
+  const rt = new CoreRuntime(new CoreDb(":memory:"), {
+    symbols: 1, tfMin: 1, tfs: [15], historyDays: 1, tfDays: { "15": 1 },
+    focus: ["follow|ema-9-21@m15"], pinned: [], exitStrategy: { enabled: false },
+    grid: { allSets: true, tp: [0.02], slOfTp: [1], trailOfTp: [0], holdH: [1],
+      micro: false, minimal: false, minimalPlus: false, short: false, general: false, long: false },
+    // Raw tape-history contract: representative discovery is disabled, while entry qualification remains separate.
+    signals: signalSettings({ enabled: true, baseGate: false, sourcesMode: "allow", sources: { "ema-cross": true }, lanes: [15],
+      exits: "pct", hist: { ...signalSettings().hist, enabled: false }, count: 0, validate: false,
+      normal: { tp: [0.02], slOfTp: [1] }, trailing: { tp: [0.03], slOfTp: 1, trailOfTp: [0.5] },
+      trailingOnly: { ...signalSettings().trailingOnly, enabled: false } }),
+    gates: { minPf: 1.05, minTrades: 1, maxDdr: 0 },
+    tactics: { session: false, volRegime: false, trendStrength: false, cooldown: false },
+  } as never, { market: "synthetic", priceStream: null });
+  try {
+    rt.stop();
+    Object.assign(rt, { workersBroken: true, workersBrokenAt: Date.now() });
+    rt.wf = { ...rt.wf, longH: 24, preH: 6, simH: 6, signalLongH: 336,
+      signalValidLastN: 0, lastN: 0, validLastN: 0 };
+    rt.candles.set("HISTORY-USDT", CandleSeries.fromCandles(syntheticCandles("HISTORY", 1, 380 * 60, T)));
+    await rt.compute();
+    const signals = rt.tapes.filter((t) => t.ind.startsWith("sig-"));
+    assert.ok(signals.length > 0, JSON.stringify({ message: "actual Signal tapes built", enabled: rt.settings.signals.enabled, tfs: rt.settings.tfs, signalStatus: rt.status.signals, tapes: rt.tapes.map(t => t.ind).slice(0,5) }));
+    const earliest = Math.min(...signals.flatMap((t) => Array.from(t.entryT)));
+    assert.ok(earliest < T - 300 * H, `independent old Signal trades missing: ${earliest}`);
+    const engine = rt.tapes.filter((t) => !t.ind.startsWith("sig-"));
+    assert.ok(engine.length > 0, "ordinary raw engine tapes also built");
+    assert.ok(engine.every((t) => Array.from(t.entryT).every((v) => v >= T - 72 * H)),
+      "ordinary engine histories stay bounded independently");
+    // Signals rebuild in a light cycle while resumable ordinary tapes keep their own shorter universe.
+    const byId = new Map(signals.map((t) => [t.id, t]));
+    const signalIds = new Set(byId.keys());
+    const u = makeUniverse(laneSeriesFrom(rt.candles, rt.settings, 0, 54));
+    const inner = rt as unknown as { inc: unknown; gen: number; lightStep(gen: number): Promise<boolean> };
+    inner.inc = { state: { universe: u, step: () => ({ tapes: new Map(), broken: new Set() }) },
+      others: signalIds, ids: signalIds, since: 0, heavyBar: 1 };
+    await inner.lightStep(inner.gen);
+    const rebuiltSignals = rt.tapes.filter((t) => signalIds.has(t.id));
+    assert.equal(rebuiltSignals.length, signals.length, "every exact Signal config survives the long-history rebuild");
+    for (const t of rebuiltSignals) {
+      const original = byId.get(t.id)!;
+      assert.notEqual(t, original, "the Signal was actually rebuilt by the incremental path");
+      for (const key of ["entryT", "exitT", "r"] as const)
+        assert.deepEqual(Array.from(t[key]), Array.from(original[key]), `light Signal ${key} retains independent full history`);
+    }
+
+  } finally {
+    rt.dispose(); await rt.backtestsSettled(); rt.db.db.close();
+  }
+});

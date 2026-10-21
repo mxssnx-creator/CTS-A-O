@@ -609,6 +609,9 @@ describe("signals: engine", { timeout: 400_000 }, () => {
         cycleMs: 60_000,
         // Keep the coordinator's General/Long range grids while bounding unrelated engine pairs.
         grid: { short: false },
+        // This suite verifies the full Signal catalog and its own historic exits. Keep unrelated new
+        // engine families/independent Exit fitting out of this generic Signal lifecycle compute.
+        disabledKinds: ["micro", "inverse"],
         exitStrategy: { enabled: false },
         signals: signalSettings({ enabled: true, count: 10, minTrades: 1 }),
       },

@@ -1,10 +1,11 @@
-// Small worker pool for backtests: one worker per core (minus one for the server loop), created on demand and
+// Memory-budgeted worker pool for backtests, bounded by available cores, created on demand and
 // shut down after use. Falls back to in-process work when workers are unavailable (e.g. a bundled deployment).
 import { availableParallelism } from "node:os";
 import { existsSync, statSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
 import { Worker } from "node:worker_threads";
+import { memHardMb, memInfo } from "./memguard.server.ts";
 import type { Bars, Protect, Tactics } from "../domain/types.ts";
 import type { SignalSettings } from "../signal-config.ts";
 import type { SignalHistDiagnostics, SignalHistValidation } from "../signal-hist.ts";
@@ -114,11 +115,26 @@ export function workersAvailable(): boolean {
   }
 }
 
+export function workerHeapMb(value = process.env.CTS_CORE_WORKER_HEAP_MB): number {
+  const mb = Number(value);
+  return Number.isInteger(mb) && mb >= 16 && mb <= 16384 ? mb : 2048;
+}
+
+/** Reserve the server, the hard guard and one priority worker before admitting routine parallelism.
+ * Include our RSS in the budget so allocating an already admitted worker does not count its memory twice.
+ * Typed arrays / transferred tapes are outside V8's heap limit and need their own allowance. */
+export function memoryPoolSize(cores: number, processBudgetMb: number, heapMb = 2048, hardMb = 1200): number {
+  const cpu = Number.isFinite(cores) ? Math.max(1, Math.min(32, Math.floor(cores))) : 1;
+  if (!Number.isFinite(processBudgetMb) || processBudgetMb <= 0) return 1;
+  const workers = Math.floor((processBudgetMb - hardMb - 1024) / (heapMb + 1024));
+  return Math.max(1, Math.min(cpu, workers - 1));
+}
+
 export function poolSize(): number {
   const env = Number(process.env.CTS_CORE_WORKERS);
   if (Number.isInteger(env) && env > 0) return env;
-  // every core: the main thread only waits while the workers compute (ticks stay responsive, see the loop test)
-  return Math.max(1, Math.min(32, availableParallelism()));
+  const memory = memInfo();
+  return memoryPoolSize(availableParallelism(), memory.availMb + memory.rssMb, workerHeapMb(), memHardMb());
 }
 
 // Workers are kept and reused across calls (and released after IDLE_MS without work). Spawning fresh worker
@@ -175,7 +191,7 @@ function spawn(): Slot {
     // (a worker collects after each reply when the process runs with --expose-gc — V8 flags are process-wide, a
     // worker's execArgv may not carry them — so its heap does not sit near its limit on an always-busy desk)
     execArgv: workerExecArgv(WORKER_URL),
-    resourceLimits: { maxOldGenerationSizeMb: 4096 },
+    resourceLimits: { maxOldGenerationSizeMb: workerHeapMb() },
   });
   w.unref();
   const slot: Slot = { w, busy: false, ver: workerVersion() };
@@ -311,6 +327,12 @@ export function abortWorkers(reason: string): number {
  * pool is shared, so one runtime's abort also stops another runtime's calls (isWorkersAbort tells them apart).
  */
 const abortedError = (reason: string) => Object.assign(new Error(reason), { workersAborted: true });
+/** A worker heap OOM must never trigger the ordinary retry of the same allocation on the live server thread. */
+export function workerFailure(err: unknown): unknown {
+  return (err as { code?: unknown } | null)?.code === "ERR_WORKER_OUT_OF_MEMORY"
+    ? Object.assign(abortedError("memory pressure: worker heap limit reached"), { cause: err })
+    : err;
+}
 export function isWorkersAbort(err: unknown): boolean {
   return (err as { workersAborted?: unknown } | null)?.workersAborted === true;
 }
@@ -395,7 +417,8 @@ async function runOnWorkersNow<R>(
   const stopOwned = (slot: Slot) => { stopping.add(drop(slot)); };
   const fail = (err: unknown) => {
     if (failed) return;
-    failed = err instanceof Error ? err : new Error(String(err));
+    const classified = workerFailure(err);
+    failed = classified instanceof Error ? classified : new Error(String(classified));
     unqueue(queued);
     for (const cancel of [...cancellations]) cancel(failed);
     // (a Base part holds its worker for minutes: terminated now, not finished)
@@ -568,6 +591,7 @@ export function shareBars<
   },
 >(bars: readonly B[]): B[] {
   return bars.map((b) => {
+    if ([b.t, b.o, b.h, b.l, b.c, b.v].every((a) => a.buffer instanceof SharedArrayBuffer)) return b;
     const sab = new SharedArrayBuffer(Math.max(1, b.n) * 6 * 8);
     const cols = ["t", "o", "h", "l", "c", "v"] as const;
     const out = { ...b } as B;
@@ -598,22 +622,26 @@ const TAPE_COLS = [
   "r2",
 ] as const;
 
-/** Tapes whose columns live in shared memory (each tape's single backing buffer copied once). */
+/** Copy each distinct backing buffer once. Packed tapes can share one arena across thousands of configs. */
 export function shareTapes<T extends Record<string, unknown>>(tapes: readonly T[]): T[] {
+  const buffers = new Map<ArrayBufferLike, SharedArrayBuffer>();
+  const shared = (src: ArrayBufferLike): SharedArrayBuffer => {
+    if (src instanceof SharedArrayBuffer) return src;
+    let sab = buffers.get(src);
+    if (!sab) {
+      sab = new SharedArrayBuffer(src.byteLength);
+      new Uint8Array(sab).set(new Uint8Array(src));
+      buffers.set(src, sab);
+    }
+    return sab;
+  };
   return tapes.map((tp) => {
-    const first = tp[TAPE_COLS[0]] as Col;
-    const src = first.buffer as ArrayBuffer;
-    const sab = new SharedArrayBuffer(src.byteLength);
-    new Uint8Array(sab).set(new Uint8Array(src));
     const out = { ...tp } as Record<string, unknown>;
     for (const k of TAPE_COLS) {
       const a = tp[k] as Col;
-      if (a.buffer !== src) {
-        out[k] = a; // not on the tape's backing buffer (never the case for makeTape): leave as is
-        continue;
-      }
+      if (a.buffer instanceof SharedArrayBuffer) continue;
       const Ctor = a.constructor as new (b: SharedArrayBuffer, off: number, len: number) => Col;
-      out[k] = new Ctor(sab, a.byteOffset, a.length);
+      out[k] = new Ctor(shared(a.buffer), a.byteOffset, a.length);
     }
     return out as T;
   });

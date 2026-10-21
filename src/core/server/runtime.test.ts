@@ -22,6 +22,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const small = {
+  // Keep generic lifecycle computes on their original catalog; new full grids have dedicated replay/parity coverage.
+  disabledKinds: ["micro", "inverse"],
   symbols: 4,
   focus: ["follow|ema-9-21", "revert|ema-9-21", "follow|rsi-mom-14-20", "revert|rsi-mom-14-20"],
   historyDays: 18,
@@ -1241,7 +1243,7 @@ describe("sizing default migration", () => {
     );
     assert.equal(rt.wf.coord?.hedgeVolumeFactor, 1.6);
     assert.equal((rt.wf.coord as unknown as Record<string, unknown>)?.s2VolumeFactor, undefined);
-    assert.equal(db.kvGet<number>("wfCapsV"), 35);
+    assert.equal(db.kvGet<number>("wfCapsV"), 37);
 
     const customDb = new CoreDb(":memory:");
     customDb.kvSet("wfCapsV", 26);
@@ -1279,7 +1281,7 @@ describe("sizing default migration", () => {
     assert.equal(upgradedCap.settings.live.maxPositionX, 0);
     assert.equal(upgradedCap.settings.live.maxNotionalUsd, 0);
     assert.deepEqual(upgradedCap.settings.sizing, { mode: "equityPct", pct: 0.002 });
-    assert.equal(capDb.kvGet<number>("wfCapsV"), 35);
+    assert.equal(capDb.kvGet<number>("wfCapsV"), 37);
 
     const previousDefaultDb = new CoreDb(":memory:");
     previousDefaultDb.kvSet("wfCapsV", 34);
@@ -1288,7 +1290,7 @@ describe("sizing default migration", () => {
     previousDefaultDb.kvSet("settings", previousDefault);
     const upgradedDefault = new CoreRuntime(previousDefaultDb, undefined, { market: "synthetic" });
     assert.deepEqual(upgradedDefault.settings.sizing, { mode: "equityPct", pct: 0.002 });
-    assert.equal(previousDefaultDb.kvGet<number>("wfCapsV"), 35);
+    assert.equal(previousDefaultDb.kvGet<number>("wfCapsV"), 37);
     upgradedDefault.dispose();
   });
 });

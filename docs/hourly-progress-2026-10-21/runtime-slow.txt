@@ -1,0 +1,13 @@
+[core-v2] compute #1 done in 22254 ms · sim PF 0.63 n 795 · loop max 390 ms
+▶ runtime coordination
+  ✔ stress: a storm of mixed operations always ends in a clean compute with the last settings (34454.528621ms)
+  ✔ backtests a preset over the last days in the background and keeps the result (100742.536356ms)
+✔ runtime coordination (135198.974619ms)
+ℹ tests 2
+ℹ suites 1
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 135701.907645

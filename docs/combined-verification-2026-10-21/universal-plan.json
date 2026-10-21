@@ -1,0 +1,69 @@
+{
+  "schema": "cts-combined-system-universal-plan-v5",
+  "sourceSha256": "61b56cee42745c066877f8b605041dcb54274a874d8686a7f1fe52b2f6a5ad46",
+  "scope": {
+    "registeredSpecs": 1860,
+    "families": 19,
+    "engineBotLaneCombos": 37786,
+    "timeframes": [
+      1,
+      5,
+      15,
+      30
+    ],
+    "strategyKinds": [
+      "normal",
+      "trailing",
+      "trailing-only",
+      "exit",
+      "dca",
+      "dca-active",
+      "axis"
+    ],
+    "ranges": [
+      "wide",
+      "mc",
+      "mn",
+      "mp",
+      "sh",
+      "gn",
+      "lg"
+    ]
+  },
+  "market": {
+    "feed": "docs/micro-optimization-2026-10-20/reproduction-feed.json.gz",
+    "sha256": "a7beade8b9f2da1f5c2d5fda9b8ef32a4ce5bcc045ad10c67cd5678333c4224e",
+    "nativeSymbols": 20,
+    "historyHours": 96,
+    "endT": 1791633600000,
+    "prefixCutsHoursBeforeEnd": [
+      6,
+      5,
+      4,
+      3,
+      2,
+      1
+    ],
+    "partialPrefix": {
+      "hoursBeforeEnd": 6,
+      "minutesAfterHour": [
+        7,
+        17,
+        37
+      ]
+    }
+  },
+  "acceptance": [
+    "Every registered source and eligible native lane has valid state length/domain on every symbol.",
+    "All six hourly prefix results match the same completed historical states and actual Bot entries with the configured remove-only tactics.",
+    "All three unfinished-higher-bar prefix cuts match the same settled indication states and actual Bot entries; retain all violations and partial receipts.",
+    "Every configured protection identity round-trips without unintended collisions; all seven range tags are explicitly covered, with supplemental Wide/Minimal Plus test cells disclosed.",
+    "Every tested source/lane/type/range/side tape identity preserves unit-return parity and rejects sibling, cost, timestamp and provenance corruption.",
+    "Stable positive synthetic own records pass at each hourly decision; losing own records fail, future losses do not change earlier gates, and same-ID sibling histories cannot contaminate cached results."
+  ],
+  "classification": "Correctness/causality and synthetic gate audit, not proof of hourly market profitability or a full Cartesian financial portfolio replay",
+  "preserve": "Keep failed/partial receipts and all existing negative financial windows. Never change recorded costs/returns/gates to manufacture positive PF.",
+  "revisionReason": "One-time additive migration of the exact former 939-entry Micro factory selection, including presets, preserving custom/off choices and disabled kinds. Explicit old methods match published a57c7e8. Earlier CI retained its stale 939 current-count failure; migration/publication regression group51/51 passes. Same feed/windows/costs/gates as v4; no scoring-based retuning.",
+  "previousSourceSha256": "ecea01ea51606fb0fb33cdcb448acd9b2bb91ab0f8bb50980a740b8afb981921",
+  "preflightSourceSha256": "53cfd5967127c6e7e8684fdee3693e53278f9d37fdbbbb2b42524b4f65885f15"
+}

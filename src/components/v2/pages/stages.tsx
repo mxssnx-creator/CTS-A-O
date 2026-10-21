@@ -47,7 +47,7 @@ export function StagesPage() {
       <ErrorNote error={error} />
       <Panel
         title="Coordination"
-        sub="calculation coverage and admission are separate: discovery or measurement can compute rejected pairs; each actual config must still pass its own entry gates"
+        sub="All types: unfiltered source PF below 1 is normal. Configured PF gates above 1 apply from Base evaluation onward; later validation and Last-N gates remain independent."
       >
         <div className="v2-funnel">
           <div className="v2-stage">
@@ -354,7 +354,7 @@ function SetListings(props: { minPf: number }) {
   return (
     <Panel
       title="Validated and active sets"
-      sub="the last paper step's seats, independently ranked signal config × symbol × direction units and proven configs"
+      sub="PF includes only sets that passed the configured validation and Last-N gates; quantities show validated sets / eligible calculated configs"
     >
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         <Seg
@@ -378,7 +378,7 @@ function SetListings(props: { minPf: number }) {
               { value: "", label: "All" },
               ...d.byGroup.map((x: Any) => ({
                 value: x.group,
-                label: `${x.group} ${x.validated} · PF ${fmt.pf(x.pf)}`,
+                label: `${x.group} ${x.validated}/${x.calculated} · PF ${x.noLoss ? "no losses" : fmt.pf(x.pf)}`,
               })),
             ]}
             onChange={(v) => {
@@ -388,6 +388,11 @@ function SetListings(props: { minPf: number }) {
           />
         )}
       </div>
+      {kind === "validated" && d?.ready && <div className="v2-muted" style={{marginTop: 8, fontSize: "var(--v-fs-xs)"}}>
+        {fmt.num(d.total)} / {fmt.num(d.calculated)} validated · Last-N {d.validation?.engineLastN || "off"}
+        {` · range Last-N ${d.validation?.rangeLastN || "off"} · ${d.validation?.historyH ?? "—"}h evaluation history`}
+        <div>Config PF uses the engine score 4 for a positive sample without losses; that case has no finite measured ratio. Group PF pools the validated windows&apos; gains and losses.</div>
+      </div>}
       {!d ? (
         <Empty>Loading…</Empty>
       ) : !d.ready ? (

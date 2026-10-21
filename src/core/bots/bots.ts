@@ -3,6 +3,7 @@
 import type { BotType, Side, Tactics } from "../domain/types.ts";
 import type { SeriesCache } from "../indications/cache.ts";
 import { tacticKeyFor, withTactics } from "../indications/filters.ts";
+import { isInverseInd } from "../indications/inverse-config.ts";
 import { indicationState, laneOf } from "../indications/registry.ts";
 
 export interface BotSpec {
@@ -182,15 +183,25 @@ function tacKeys(e: EntryKeys, key: string) {
 /** Final entry signal for a bot × indication combo. Returns null when the combo is not defined. */
 export function comboSignal(bot: BotType, ind: string, k: SeriesCache): Int8Array | null {
   return k.memo(entryKeys(bot, ind).combo, () => {
+    // An Inverse source already reverses its input before entry. Never reverse it again via a Bot/preset.
+    if (isInverseInd(laneOf(ind).base) && bot !== "follow" && bot !== "exit") return new Int8Array(k.b.n);
     const st = indicationState(ind, k);
     if (bot === "follow" || bot === "revert" || bot === "exit") {
       if (!st) return null;
       // Historic Exit has a stable direction-onset source. It carries no Bot trigger and does not inherit
       // the selected Bot's filters or the range-engine's remove-only tactics.
       const dir = bot === "revert" ? -1 : 1;
-      const out = new Int8Array(k.b.n);
-      for (let i = 1; i < st.length; i++)
+      const frame = k.streamMath?.frame<{ value: Int8Array }, number>(
+        `combo:${bot}:${ind}`,
+        k.b.n,
+        ["value"],
+        () => 0,
+        ["value"],
+      );
+      const out = frame?.cols.value ?? new Int8Array(k.b.n);
+      for (let i = Math.max(1, frame?.from ?? 1); i < st.length; i++)
         if (st[i] !== 0 && st[i] !== st[i - 1]) out[i] = st[i] * dir;
+      frame?.commit(0);
       return out;
     }
     const trig = botTrigger(bot, k)!;
@@ -208,6 +219,8 @@ export function entrySignal(
   k: SeriesCache,
   tactics?: Tactics | null,
 ): Int8Array | null {
+  // Inverse already defines the traded direction. A saved/manual Revert pair cannot undo it.
+  if (bot === "revert" && isInverseInd(laneOf(ind).base)) return new Int8Array(k.b.n);
   // (a low-ADX indication, its combined "@x4" form too, skips the trend-strength tactic: it would remove every entry,
   // LOW_ADX_INDS)
   const e = entryKeys(bot, ind);

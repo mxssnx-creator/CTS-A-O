@@ -1,3 +1,4 @@
+import { RT_COST } from "../../src/core/model-cost.ts";
 // Bounded, deterministic Base statistics microbenchmark. Ordinary Trade-mode simulations supply the runs;
 // only collection/sorting/statistics are timed. It does not score or select a trading strategy.
 // node --experimental-strip-types --no-warnings scripts/perf/base-cell-stats-bench.ts [--iterations 2000]
@@ -25,7 +26,7 @@ for (const bot of ["follow", "revert", "sandwich"] as const) {
     for (let s = 0; s < u.bars.length; s++) {
       const sig = entrySignal(bot, "rsi-mid@m15", u.caches[s])!;
       bothSides(sig, (sg) => {
-        const result = simulate("bench", u.bars[s], sg, { tp, sl: tp * 1.5, trail: 0, hold: 64 }, { cost: 0.002 });
+        const result = simulate("bench", u.bars[s], sg, { tp, sl: tp * 1.5, trail: 0, hold: 64 }, { cost: RT_COST });
         runs.push(result.trades.map((t) => [t.r, t.entryT, t.exitT]));
       });
     }

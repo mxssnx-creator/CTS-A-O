@@ -1,13 +1,19 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { progressText } from "@/core/progress";
+import { boundedModelCost, DEFAULT_MODEL_FEES, MAX_MODEL_RT_COST } from "@/core/model-cost";
+import { MICRO_CONFIG_IDS, MICRO_METHODS } from "@/core/indications/micro-family";
 import { sizeText } from "@/core/live-labels";
 import { TACTIC_TECHNIQUES } from "@/core/indications/tactic";
 import {
   breakFocusCoverage,
+  includeIndicationsInFocus,
+  indicationFocusCoverage,
   indicationKindLabel,
   includeBreakInFocus,
   includeRelateInFocus,
   includeTacticInFocus,
+  includeMicroInFocus,
+  microFocusCoverage,
   relateFocusCoverage,
   tacticFocusCoverage,
 } from "../indication-ui";
@@ -33,6 +39,7 @@ import {
 } from "@/core/config";
 import { INDICATION_KINDS, type AxisRange } from "@/core/domain/types";
 import { BREAK_CONFIG_IDS } from "@/core/indications/break-config";
+import { INVERSE_CONFIG_IDS } from "@/core/indications/inverse-config";
 import {
   RELATE_CONFIG_IDS,
   RELATE_MODES,
@@ -50,6 +57,57 @@ const TACTIC_IDS = TACTIC_TECHNIQUES.flatMap((technique) =>
 );
 const RELATE_IDS = RELATE_CONFIG_IDS;
 const BREAK_IDS = BREAK_CONFIG_IDS;
+
+function InverseFocusInfo(props: { focus: string[]; pinned: string[]; disabled: boolean; onInclude: () => void }) {
+  const coverage = indicationFocusCoverage(props.focus, INVERSE_CONFIG_IDS, props.pinned);
+  return <div className="v2-lines" style={{ gap: 8 }}>
+    <div className={props.disabled || !coverage.covered ? "v2-warn" : "v2-muted"} style={{ fontSize: "var(--v-fs-xs)" }}>
+      {props.disabled ? "Inverse indication type is off. " : ""}
+      {coverage.covered}/{coverage.total} Inverse variants represented; {coverage.full}/{coverage.total} cover every selected 1/5/15m lane.
+    </div>
+    <button type="button" className="v2-btn" disabled={!props.disabled && coverage.full === coverage.total} onClick={props.onInclude}>
+      Include Inverse in Base focus
+    </button>
+    <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
+      Opposite states and confirmed turns of 19 known indications; 48 math/market variants over 10/20/40/80 bars,
+      including fast RSI and volume-weighted mean turns, 16 Micro variants and 12 BTC/ETH pair comparisons. Micro uses its own range; other variants use
+      Minimal, Short, General and Long with the configured TP/SL and trailing cells.
+      Follow trades the inverted direction. Each source, profile, timeframe, range and protection config
+      qualifies independently at PF ≥ 1.1 or the stricter configured floor. Market variants need multiple symbols.
+      Save to apply; adding a candidate does not establish profitability.
+    </div>
+  </div>;
+}
+
+function MicroFocusInfo(props: {
+  focus: string[];
+  pinned: string[];
+  disabled: boolean;
+  onInclude: () => void;
+}) {
+  const coverage = microFocusCoverage(props.focus, MICRO_CONFIG_IDS, props.pinned);
+  return (
+    <div className="v2-lines" style={{ gap: 8 }}>
+      <div className={props.disabled || coverage.covered === 0 ? "v2-warn" : "v2-muted"}>
+        Micro:{" "}
+        {props.disabled ? "off" : `${coverage.covered}/${coverage.total} variants in Base focus`}.
+        {MICRO_METHODS.length} independent techniques/combinations, two profiles, seven 1/5/15m subsets.
+      </div>
+      <button
+        type="button"
+        className="v2-btn"
+        disabled={!props.disabled && coverage.full === coverage.total}
+        onClick={props.onInclude}
+      >
+        Include Micro in Base focus
+      </button>
+      <div className="v2-muted">
+        Micro, Minimal and Short retain independent TP/SL/trailing evaluations; Exit has a separate
+        source switch. Each higher timeframe uses completed bars. Save to apply.
+      </div>
+    </div>
+  );
+}
 
 function TacticFocusInfo(props: {
   focus: string[];
@@ -987,7 +1045,15 @@ export function SignalsSettings(props: {
         </Field>
       </div>
       <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
-        {counts.total} configured percent / ATR / trailing-only cells per signal ({counts.pct} eligible percent + {counts.atr} eligible ATR + {counts.trailingOnly} trailing only, TP None); {counts.activeTotal} currently meet the reference trail floor{counts.inactiveTrailingOnly ? ` · ${counts.inactiveTrailingOnly} trailing-only cells below minTrail are inactive` : ""}. Eligible cells qualify independently per full source, range, lane, type, symbol and direction. Master Trailing controls execution of both trailing types; disabled sets still retain held-position protection.
+        {counts.total} configured percent / ATR / trailing-only cells per signal ({counts.pct}{" "}
+        eligible percent + {counts.atr} eligible ATR + {counts.trailingOnly} trailing only, TP
+        None); {counts.activeTotal} currently meet the reference trail floor
+        {counts.inactiveTrailingOnly
+          ? ` · ${counts.inactiveTrailingOnly} trailing-only cells below minTrail are inactive`
+          : ""}
+        . Eligible cells qualify independently per full source, range, lane, type, symbol and
+        direction. Master Trailing controls execution of both trailing types; disabled sets still
+        retain held-position protection.
       </div>
       <div style={{ borderTop: "1px solid var(--v-border)", paddingTop: 10 }}>
         <div
@@ -1517,7 +1583,9 @@ export function RangeEditor(props: {
       minTrail: props.defaults.minTrail,
       ...(props.defaults.minTf !== undefined ? { minTf: props.defaults.minTf } : {}),
       ...(props.defaults.maxHoldMin !== undefined ? { maxHoldMin: props.defaults.maxHoldMin } : {}),
-      ...(props.defaults.tpNetOfCost !== undefined ? { tpNetOfCost: props.defaults.tpNetOfCost } : {}),
+      ...(props.defaults.tpNetOfCost !== undefined
+        ? { tpNetOfCost: props.defaults.tpNetOfCost }
+        : {}),
       ...(props.defaults.ownInds !== undefined ? { ownInds: props.defaults.ownInds } : {}),
       ...(props.defaults.minSlNet !== undefined ? { minSlNet: props.defaults.minSlNet } : {}),
     });
@@ -1773,7 +1841,7 @@ export function ShortRange(props: {
       grid={props.grid as Record<string, unknown>}
       k="short"
       title="Short range"
-      info="Default TP 9–14× PositionCost at 0.2% per round trip (1.8–2.8%), step 1× (8× belongs to Minimal). SL 1–2.5× the target, trailing cells too. The editable values below define the current grid; evaluation subtracts the configured execution cost. Orders tracked as H."
+      info="Default TP 9–14× the fixed 0.2% distance reference (1.8–2.8%), step 1× (8× belongs to Minimal). SL 1–2.5× the target, trailing cells too. The editable values below define the current grid; evaluation subtracts the configured execution cost once (maximum 0.15%). Orders tracked as H."
       defaults={SHORT_RANGE}
       set={props.set}
     />
@@ -1790,7 +1858,7 @@ export function MinimalRange(props: {
       grid={props.grid as Record<string, unknown>}
       k="minimal"
       title="Minimal range"
-      info="Default TP 4–8× PositionCost at 0.2% per round trip (0.8–1.6%), step 0.5×, SL 1.5–3× the target (stop floor 0.6%, trail floor 0.3%), trailing cells too; every indication including Micro's. The editable values below define the current grid; evaluation subtracts the configured execution cost. Orders tracked as N."
+      info="Default TP 4–8× the fixed 0.2% distance reference (0.8–1.6%), step 0.5×, SL 1.5–3× the target (stop floor 0.6%, trail floor 0.3%), trailing cells too; every indication including Micro's. The editable values below define the current grid; evaluation subtracts the configured execution cost once (maximum 0.15%). Orders tracked as N."
       defaults={MINIMAL_RANGE}
       set={props.set}
     />
@@ -1807,7 +1875,7 @@ export function GeneralRange(props: {
       grid={props.grid as Record<string, unknown>}
       k="general"
       title="General range"
-      info="TP 14–22× the 0.2 % position cost (2.8–4.4 %), step 2× (14× belongs to Short), SL 0.5–1× the target. Orders tracked as G."
+      info="TP 14–22× the fixed 0.2% distance reference (2.8–4.4%), step 2× (14× belongs to Short), SL 0.5–1× the target. Transaction costs are deducted separately once (maximum modeled 0.15%). Orders tracked as G."
       defaults={GENERAL_RANGE}
       set={props.set}
     />
@@ -1824,14 +1892,14 @@ export function LongRange(props: {
       grid={props.grid as Record<string, unknown>}
       k="long"
       title="Long range"
-      info="TP 22–32× the 0.2 % position cost (4.4–6.4 %), step 2× (22× belongs to General), SL 0.5–1× the target. Orders tracked as L."
+      info="TP 22–32× the fixed 0.2% distance reference (4.4–6.4%), step 2× (22× belongs to General), SL 0.5–1× the target. Transaction costs are deducted separately once (maximum modeled 0.15%). Orders tracked as L."
       defaults={LONG_RANGE}
       set={props.set}
     />
   );
 }
 
-/** Micro range: net 0.1–0.4 % after the position cost (price targets 0.3–0.6 % at 0.2 %), SL 1–5× step 0.25. */
+/** Micro range: net 0.1–0.4 % after the position cost (price targets 0.25–0.55 % at 0.15 %), SL 1–5× step 0.25. */
 export function MicroRange(props: {
   grid: Record<string, unknown> | object;
   set: (path: string[], v: unknown) => void;
@@ -2121,6 +2189,7 @@ export function ProtectRanges(props: { grid: object; set: (path: string[], v: un
 /** how the universe is chosen (settings.symbolRank; default 1H volatility) */
 const SYMBOL_RANK: Record<string, string> = {
   volatility1h: "1H volatility",
+  change1h5m: "1H average 5m price distance",
   volume: "24h quote volume",
   market: "market majors",
   gainers: "24h gainers",
@@ -2449,7 +2518,7 @@ export function SettingsPage() {
               1m
             </div>
           </Field>
-          <Field label="Symbol ranking" hint="how the universe of symbols is picked">
+          <Field label="Symbol ranking" hint={s.symbolRank === "change1h5m" ? "sum of 12 absolute 5m percentage changes ÷12 over the last completed hour; native exchange 5m candles; ties by volume" : "how the universe of symbols is picked"}>
             <select
               className="v2-select"
               aria-label="Symbol ranking"
@@ -2493,7 +2562,7 @@ export function SettingsPage() {
               onChange={(v) => set(["cycleMs"], v)}
             />
           </Field>
-          <Field label="Tick (ms)" hint="open positions marked to market + live step · 50 – 10000">
+          <Field label="Tick (ms)" hint="paper positions marked to market · 50 – 10000 · active order execution checks run independently every 100 ms">
             <Num
               value={s.tickMs ?? 100}
               step={50}
@@ -2504,9 +2573,9 @@ export function SettingsPage() {
           </Field>
           <Field
             label="Position cost (round trip, %)"
-            hint="= 2 × (taker + slippage) · set the components below, or directly · 0 – 2"
+            hint="modeled transaction cost, deducted once per round trip · 2 × (taker + slippage), capped at 0.15% · 0 – 0.15"
           >
-            <Num pct min={0} max={0.02} value={s.cost} onChange={(v) => set(["cost"], v)} />
+            <Num pct min={0} max={MAX_MODEL_RT_COST} value={s.cost} onChange={(v) => set(["cost"], v)} />
           </Field>
           <Field
             label="Base order unit (% of balance)"
@@ -2809,6 +2878,11 @@ export function SettingsPage() {
                       onChange={(v) => set(["exitStrategy", "includeTactics"], v)}
                     />
                     <Switch
+                      label="Micro"
+                      checked={exits.includeMicro === true}
+                      onChange={(v) => set(["exitStrategy", "includeMicro"], v)}
+                    />
+                    <Switch
                       label="Relations"
                       checked={exits.includeRelations !== false}
                       onChange={(v) => set(["exitStrategy", "includeRelations"], v)}
@@ -3019,7 +3093,7 @@ export function SettingsPage() {
       <div className="v2-grid v2-cols-2">
         <Panel
           title="Position cost"
-          sub="as charged on the exchange, per side — the engine deducts 2 × (taker + slippage) on every closed position"
+          sub="Modeled round-trip cost: 2 × (taker + slippage), capped at 0.15%, deducted once per closed funded unit. Actual exchange fees remain separate."
         >
           <div className="v2-grid v2-cols-3">
             <Field label="Taker fee (%)" hint="BingX standard 0.05">
@@ -3031,7 +3105,7 @@ export function SettingsPage() {
                 value={s.fees?.taker ?? 0.0005}
                 onChange={(v) => {
                   set(["fees", "taker"], v);
-                  set(["cost"], +(2 * (v + (s.fees?.slippage ?? 0.0005))).toFixed(5));
+                  set(["cost"], boundedModelCost(+(2 * (v + (s.fees?.slippage ?? DEFAULT_MODEL_FEES.slippage))).toFixed(5)));
                 }}
               />
             </Field>
@@ -3051,17 +3125,17 @@ export function SettingsPage() {
                 step={0.001}
                 min={0}
                 max={0.02}
-                value={s.fees?.slippage ?? 0.0005}
+                value={s.fees?.slippage ?? DEFAULT_MODEL_FEES.slippage}
                 onChange={(v) => {
                   set(["fees", "slippage"], v);
-                  set(["cost"], +(2 * ((s.fees?.taker ?? 0.0005) + v)).toFixed(5));
+                  set(["cost"], boundedModelCost(+(2 * ((s.fees?.taker ?? DEFAULT_MODEL_FEES.taker) + v)).toFixed(5)));
                 }}
               />
             </Field>
           </div>
           <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)", marginTop: 6 }}>
             Round trip deducted per position: <strong>{((s.cost ?? 0) * 100).toFixed(3)} %</strong>.
-            With auto-cost on, it is raised to the measured live cost once 40+ fills were measured.
+            Auto-cost may use measured fills up to the 0.15% model ceiling. Net paper returns are not charged again; actual owned fees remain uncapped.
           </div>
         </Panel>
         <Panel
@@ -3273,6 +3347,18 @@ export function SettingsPage() {
             })}
           </div>
           <div style={{ marginTop: 10 }}>
+            <MicroFocusInfo
+              focus={s.focus ?? []}
+              pinned={s.pinned ?? []}
+              disabled={(s.disabledKinds ?? []).includes("micro")}
+              onInclude={() => {
+                set(["focus"], includeMicroInFocus(s.focus ?? [], MICRO_CONFIG_IDS));
+                set(
+                  ["disabledKinds"],
+                  (s.disabledKinds ?? []).filter((kind: string) => kind !== "micro"),
+                );
+              }}
+            />
             <TacticFocusInfo
               focus={s.focus ?? []}
               pinned={s.pinned ?? []}
@@ -3285,6 +3371,14 @@ export function SettingsPage() {
                 );
               }}
             />
+          </div>
+          <div style={{ marginTop: 10 }}>
+            <InverseFocusInfo focus={s.focus ?? []} pinned={s.pinned ?? []}
+              disabled={(s.disabledKinds ?? []).includes("inverse")}
+              onInclude={() => {
+                set(["focus"], includeIndicationsInFocus(s.focus ?? [], INVERSE_CONFIG_IDS));
+                set(["disabledKinds"], (s.disabledKinds ?? []).filter((kind: string) => kind !== "inverse"));
+              }} />
           </div>
           <div style={{ marginTop: 10 }}>
             <RelateFocusInfo
@@ -3641,7 +3735,11 @@ export function SettingsPage() {
                 onChange={(v) => set(["axis", "spacing"], v)}
               />
             </Field>
-            <Field label="Rung size (× normal)" hint="0.1 – 5">
+            <Field label="Axis volume per set" hint="relative to its base set · 0.1 =10% · captured at entry">
+              <Num step={0.01} min={0.01} max={5} value={s.axis?.volumeFactor ?? 0.1}
+                onChange={(v) => set(["axis", "volumeFactor"], v)} />
+            </Field>
+            <Field label="Rung size (× Axis base)" hint="0.1 – 5">
               <Num
                 step={0.1}
                 min={0.1}
@@ -4921,8 +5019,8 @@ export function SettingsPage() {
               />
             </Field>
             <Field
-              label="Require simulated readiness"
-              hint={`only trade while the rolling simulated run holds PF ≥ min and is stable (turn off for a testnet) · mainnet (${MAINNET_CONN}): always on, enforced on save${onMainnet ? " — active now" : ""}`}
+              label="Aggregate simulation check"
+              hint="Native entries use each exact set's current validation and owned-execution PF. This extra aggregate check applies to adapters without exact-set promotion."
             >
               <Switch
                 label="Require simulated readiness"

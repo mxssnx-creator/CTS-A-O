@@ -1,0 +1,34 @@
+[
+  {
+    "name": "dev",
+    "vp": "desktop",
+    "errors": [],
+    "metricsVisible": true,
+    "idleNotTimedAsUpdate": true,
+    "overflow": false
+  },
+  {
+    "name": "dev",
+    "vp": "phone",
+    "errors": [],
+    "metricsVisible": true,
+    "idleNotTimedAsUpdate": true,
+    "overflow": false
+  },
+  {
+    "name": "built",
+    "vp": "desktop",
+    "errors": [],
+    "metricsVisible": true,
+    "idleNotTimedAsUpdate": true,
+    "overflow": false
+  },
+  {
+    "name": "built",
+    "vp": "phone",
+    "errors": [],
+    "metricsVisible": true,
+    "idleNotTimedAsUpdate": true,
+    "overflow": false
+  }
+]

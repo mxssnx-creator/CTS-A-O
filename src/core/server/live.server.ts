@@ -336,6 +336,18 @@ export function liveReadiness(
     : { ok: true, why: "" };
 }
 
+/** Native admission judges every exact lane again. A pooled sibling PF must not veto a proven lane. */
+export function liveEntryReadiness(
+  sim: Parameters<typeof liveReadiness>[0] | null | undefined,
+  s: Parameters<typeof liveReadiness>[1] & Pick<LiveSettings, "requireReady">,
+  minPf: number,
+  exactPromotion: boolean,
+): { ok: boolean; why: string } {
+  if (!sim) return { ok: false, why: "no simulated run yet" };
+  if (exactPromotion || s.requireReady === false) return { ok: true, why: "" };
+  return liveReadiness(sim, s, minPf);
+}
+
 /** Everything the executor needs from an exchange. The default is BingX; tests inject a simulated exchange. */
 export interface ExchangeClient {
   hasKeys(): boolean;
@@ -468,77 +480,119 @@ const alreadySet = (msg: string) => /no need|already|not modified|same|repeat/i.
  */
 const bookCache = new Map<
   string,
-  { at: number; book: BookView; dirty: boolean; touchedAt: number }
+  { at: number; book: BookView; revision: number; notBefore: number; maxAgeMs: number }
 >();
+const bookChanges = new Map<string, { revision: number; at: number }>();
+const bookReads = new Map<string, {
+  revision: number; notBefore: number; maxAgeMs: number; promise: Promise<BookView>;
+}>();
 const contractCache = new Map<string, { at: number; specs: Map<string, bx.ContractSpec> }>();
 const accountCache = new Map<string, { at: number; snap: bx.AccountSnapshot | null }>();
+const contractReads = new Map<string, Promise<Map<string, bx.ContractSpec>>>();
+const accountReads = new Map<string, Promise<bx.AccountSnapshot | null>>();
+/** Concurrent callers share one read per connection; rejection releases the slot for a later retry. */
+function sharedRead<T>(reads: Map<string, Promise<T>>, id: string, read: () => Promise<T>): Promise<T> {
+  const pending = reads.get(id);
+  if (pending) return pending;
+  const promise = Promise.resolve().then(read).finally(() => {
+    if (reads.get(id) === promise) reads.delete(id);
+  });
+  reads.set(id, promise);
+  return promise;
+}
 /** the account balance (sizing, status) is re-read at most once a minute */
 const ACCOUNT_MS = 60_000;
 export function cachedClient(ex: ExchangeClient, syncMs: number): ExchangeClient {
   const key = () => ex.fingerprint();
-  const touch = () => {
-    const c = bookCache.get(key());
-    if (c) {
-      c.dirty = true;
-      c.touchedAt = Date.now();
-    }
+  const touch = (id: string) => {
+    const c = bookChanges.get(id);
+    bookChanges.set(id, { revision: (c?.revision ?? 0) + 1, at: Date.now() });
   };
   return {
     ...ex,
     book: async (fresh) => {
-      const c = bookCache.get(key());
-      // a caller may ask for a fresher book than syncMs (orders about to go out): the cache serves only within both
-      const maxAge = Math.min(syncMs, fresh?.maxAgeMs ?? Infinity);
-      const notBefore = Math.max(c?.touchedAt ?? 0, fresh?.notBefore ?? 0);
-      if (c && !c.dirty && Date.now() - c.at < maxAge && c.at >= notBefore) return c.book;
-      // a book another process read is fine when it was read after our own last order or cancel
-      const touchedAt = c?.touchedAt ?? 0;
-      const book = await ex.book({ notBefore, maxAgeMs: maxAge });
-      bookCache.set(key(), { at: Date.now(), book, dirty: false, touchedAt });
-      return book;
+      const id = key();
+      for (;;) {
+        const change = bookChanges.get(id);
+        const revision = change?.revision ?? 0;
+        const c = bookCache.get(id);
+        // A stricter caller must never inherit an older shared-file read from a looser caller.
+        const maxAgeMs = Math.min(syncMs, fresh?.maxAgeMs ?? Infinity);
+        const notBefore = Math.max(change?.at ?? 0, fresh?.notBefore ?? 0);
+        if (c && c.revision === revision && Date.now() - c.at < maxAgeMs && c.at >= notBefore &&
+            c.notBefore >= notBefore && c.maxAgeMs <= maxAgeMs) return c.book;
+        const pending = bookReads.get(id);
+        if (pending) {
+          const book = await pending.promise;
+          if (pending.revision === (bookChanges.get(id)?.revision ?? 0) &&
+              pending.notBefore >= notBefore && pending.maxAgeMs <= maxAgeMs) return book;
+          continue;
+        }
+        const startedAt = Date.now();
+        const read = { revision, notBefore, maxAgeMs, promise: null as unknown as Promise<BookView> };
+        read.promise = Promise.resolve().then(() => ex.book({ notBefore, maxAgeMs })).then((book) => {
+          // Even the very first read may race an order. Never mark its pre-order snapshot clean.
+          if ((bookChanges.get(id)?.revision ?? 0) === revision)
+            bookCache.set(id, { at: startedAt, book, revision, notBefore, maxAgeMs });
+          return book;
+        }).finally(() => {
+          if (bookReads.get(id) === read) bookReads.delete(id);
+        });
+        bookReads.set(id, read);
+        const book = await read.promise;
+        if ((bookChanges.get(id)?.revision ?? 0) === revision) return book;
+      }
     },
     ...(ex.account
       ? {
           account: async () => {
-            const c = accountCache.get(key());
+            const id = key();
+            const c = accountCache.get(id);
             if (c && Date.now() - c.at < ACCOUNT_MS) return c.snap;
-            const snap = await ex.account!();
-            accountCache.set(key(), { at: snap?.at ?? Date.now(), snap });
-            return snap;
+            return sharedRead(accountReads, id, async () => {
+              const snap = await ex.account!();
+              accountCache.set(id, { at: snap?.at ?? Date.now(), snap });
+              return snap;
+            });
           },
         }
       : {}),
     contracts: async () => {
-      const c = contractCache.get(key());
+      const id = key();
+      const c = contractCache.get(id);
       if (c && Date.now() - c.at < 600_000) return c.specs;
-      let specs: Map<string, bx.ContractSpec>;
-      try {
-        specs = await ex.contracts();
-      } catch (err) {
-        // a failed or late refresh never stops the step: the last good list serves (lot steps and minimums change
-        // rarely); without one the step reports the error as before
-        if (c) return c.specs;
-        throw err;
-      }
-      // an empty list is an outage (every host failed), not "no contracts": never cached, the last good list serves
-      if (specs.size) contractCache.set(key(), { at: Date.now(), specs });
-      else if (c) return c.specs;
-      return specs;
+      return sharedRead(contractReads, id, async () => {
+        let specs: Map<string, bx.ContractSpec>;
+        try {
+          specs = await ex.contracts();
+        } catch (err) {
+          // a failed or late refresh never stops the step: the last good list serves (lot steps and minimums change
+          // rarely); without one the step reports the error as before
+          if (c) return c.specs;
+          throw err;
+        }
+        // an empty list is an outage (every host failed), not "no contracts": never cached, the last good list serves
+        if (specs.size) contractCache.set(id, { at: Date.now(), specs });
+        else if (c) return c.specs;
+        return specs;
+      });
     },
     order: async (p) => {
-      touch();
+      const id = key();
+      touch(id);
       try {
         return await ex.order(p);
       } finally {
-        touch();
+        touch(id);
       }
     },
     cancel: async (sym, id) => {
-      touch();
+      const connection = key();
+      touch(connection);
       try {
         return await ex.cancel(sym, id);
       } finally {
-        touch();
+        touch(connection);
       }
     },
   };
@@ -878,6 +932,7 @@ function waiting(k: string): string | null {
   return b && Date.now() < b.until ? b.msg : null;
 }
 function failed(k: string, msg: string, baseMs: number, maxMs: number) {
+  if (/request budget (?:pause|unavailable) \(not sent\)/.test(msg)) return;
   const n = (backoff.get(k)?.n ?? 0) + 1;
   backoff.set(k, { n, until: Date.now() + Math.min(maxMs, baseMs * 2 ** (n - 1)), msg });
 }
@@ -1202,6 +1257,7 @@ async function runStep(rt: CoreRuntime, intents: LiveIntent[], gen: number): Pro
   const s = rt.settings.live;
   // entries mode reads the book over REST: with nothing new to send it runs at most every syncMs, not every tick
   const L = local(rt);
+  if (rt.executionEntryBlocked?.()) intents = [];
   const fresh = intents.filter((i) => !L.entriesSent.has(intentKey(i)));
   if (!fresh.length && L.lastEntries && Date.now() - L.lastEntries.at < (s.syncMs ?? 1000))
     return L.lastEntries.status;
@@ -1293,6 +1349,14 @@ async function runStepNow(
     }
     liveKvSet(rt.db, pendingKey, pending);
   };
+  // A crash may follow the durable non-dispatch marker but precede removal of its request metadata.
+  // That marker is authoritative: never poll it into ownership or dedupe it as sent.
+  let retiredUnsent = false;
+  for (const coid of Object.keys(pending))
+    if (rt.db.get<{ status: string }>("SELECT status FROM live_orders WHERE coid=?", coid)?.status === "not-sent") {
+      delete pending[coid]; retiredUnsent = true;
+    }
+  if (retiredUnsent) savePending();
   const settled = (
     coid: string, cfg: string, sym: string, side: number, kind: "E" | "C", sentQty: number,
     px: number, key: string, at: number, resp: unknown,
@@ -1411,11 +1475,7 @@ async function runStepNow(
     }
     const sim = rt.sim;
     const minPf = rt.settings.gates.minPf;
-    const ready = !sim
-      ? { ok: false, why: "no simulated run yet" }
-      : s.requireReady === false
-        ? { ok: true, why: "" }
-        : liveReadiness(sim, s, minPf);
+    const ready = liveEntryReadiness(sim, s, minPf, typeof rt.livePromotionGate === "function");
     const dayAgo = Date.now() - 24 * 3_600_000;
     const recent = new Set(
       rt.db
@@ -1436,9 +1496,10 @@ async function runStepNow(
         )
         .map((r) => `${r.sym}|${Number(r.side) === 1 ? 1 : -1}`),
     );
-    // every intent ever recorded (pending, ok or error) is never sent again
+    // Every dispatched intent (pending, ok or refused) is never sent again. Explicit local non-dispatch
+    // is the only exception, retained durably so a restart can retry it with a fresh request identity.
     const sent = new Set(
-      rt.db.all<{ k: string }>("SELECT msg AS k FROM live_orders WHERE kind = 'E'").map((r) => r.k),
+      rt.db.all<{ k: string }>("SELECT msg AS k FROM live_orders WHERE kind = 'E' AND status <> 'not-sent'").map((r) => r.k),
     );
     const L = local(rt);
     for (const i of intents) if (sent.has(intentKey(i))) L.entriesSent.add(intentKey(i));
@@ -1743,7 +1804,7 @@ async function runStepNow(
       // per-position cap (and the equity caps of the last read). Past either the symbol is too large for this
       // account: skipped with the reason (minRaiseBlock).
       const intentFactor = Number.isFinite(e.volFactor)
-        ? Math.min(22, Math.max(1, Math.round(e.volFactor!)))
+        ? Math.min(110, Math.max(0.01, e.volFactor!))
         : 1;
       const intentUnit = Math.min(unit * intentFactor, cap);
       const minNotional = bx.exchangeMinNotional(spec, px);
@@ -1821,7 +1882,7 @@ async function runStepNow(
           "E",
           0,
           px,
-          err instanceof bx.ExchangeRejected ? "error" : "pending",
+          err instanceof bx.RequestBudgetDeferred ? "not-sent" : err instanceof bx.ExchangeRejected ? "error" : "pending",
           key,
           entryAt,
         );
@@ -1830,6 +1891,11 @@ async function runStepNow(
             px, key, at: entryAt, stopDist, polledAt: Date.now() };
         } else delete pending[coid];
         savePending();
+        if (err instanceof bx.RequestBudgetDeferred) {
+          L.entriesSent.delete(key);
+          status.skipped.push({ sym: e.sym, why: err.message });
+          break;
+        }
         rt.db.event(
           "error",
           `live entry ${e.sym}: ${err instanceof Error ? err.message : err} — state unknown, re-checked next step`,
@@ -2157,7 +2223,6 @@ export function* laneContributionsGen(
 ): Generator<void, ControlContribution[]> {
   // a lane whose stop was crossed at tick time no longer asks for its volume (its stop executes live now)
   const out: ControlContribution[] = [];
-  const rangeVolumeFactors = rangeVolumeFactorsOf(rt.settings.grid);
   let seen = 0;
   for (const p of positions) {
     if (++seen % LANE_SLICE === 0) yield;
@@ -2167,12 +2232,9 @@ export function* laneContributionsGen(
     if (p.stopHit) continue;
     const ls = laneStringsOf(p);
     const id = ls.id;
-    const ind = p.cfg.split("|")[1] ?? "";
-    const signalRange = isSignalInd(ind) ? signalRangeOf(ind) : null;
-    const rangeFactor = signalRange
-      ? rt.settings.signals.rangeVolumeFactors[signalRange] ?? 1
-      : rangeVolumeFactors[rangeOfId(p.cfg) || "wide"] ?? 1;
-    const vol = (p.vol ?? 1) * rangeFactor;
+    // Paper captures all external factors at entry. Reapplying today's range setting doubles it and resizes
+    // held positions after edits. The recorded volume already includes the Axis set factor and ladder weight.
+    const vol = p.vol ?? 1;
     // the backstop sits at the current price minus this distance: measure it from the current price, so a stop
     // trailed far past the entry does not widen the backstop by its whole run (|entry − stop| did)
     const px = prices?.get(p.sym) ?? 0;
@@ -2207,7 +2269,8 @@ export function* laneContributionsGen(
       }
     // Minimum-lane units remove intrinsic DCA / Axis ladder weight for every Block mode. A legacy unraised
     // ordinary parent with no ladder/external provenance retains its documented single-unit rule.
-    const externalUnits = legsN > 0 || (p.level ?? 0) > 0 || p.w !== undefined;
+    const externalUnits = legsN > 0 || (p.level ?? 0) > 0 || p.w !== undefined || p.volFactor !== undefined ||
+      p.coordVol !== undefined || p.rangeVol !== undefined || p.hedgeVol !== undefined;
     const intrinsic = p.w ?? 1;
     const multiplier = positionMult(p);
     const unitsKnown = Number.isFinite(intrinsic) && intrinsic > 0 && Number.isFinite(multiplier) && multiplier > 0;
@@ -2228,7 +2291,7 @@ export function* laneContributionsGen(
         chase,
         ...(isBoundedTrailingPosition(p) ? { stopMax: positionTrailMax(p) } : {}),
       };
-      if (externalUnits) x.laneUnits = unitsKnown ? v / intrinsic : NaN;
+      x.laneUnits = externalUnits ? (unitsKnown ? v / intrinsic : NaN) : 1;
       if (tgt !== undefined) x.tgt = tgt;
       if (stopPx !== undefined) x.stopPx = stopPx;
       x.key = ls.key;
@@ -2467,6 +2530,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
   // the ledger's statistics book the exit the exchange made (statistics.ts liveTrades)
   const flatRows = new Map<string, { coid: string; msg: string }>();
   const pendingKeys = new Set<string>();
+  const unverifiedOwnership = new Set<string>();
   const settledFlat = new Map<string, number>();
   const pendingFlat = new Map<string, { coid: string; qty: number; from: number; to: number }>();
   // Initialised from the reconciled owned book below, then changed only by confirmed cumulative fills.
@@ -2583,12 +2647,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       return done(rt, status, `exchange rate limit until ${new Date(banned).toISOString()}`);
     // readiness (rolling simulated run PF ≥ min and stable) can be waived per connection, e.g. on a testnet. Not
     // ready only blocks opening and increasing: positions already held are still closed, reduced and protected.
-    const readiness = sim && s.requireReady !== false ? liveReadiness(sim, s, minPf) : null;
-    const notReady = !sim
-      ? "not ready: no simulated run yet"
-      : readiness && !readiness.ok
-        ? `not ready: ${readiness.why}`
-        : null;
+    const readiness = liveEntryReadiness(sim, s, minPf, typeof rt.livePromotionGate === "function");
+    const notReady = readiness.ok ? null : `not ready: ${readiness.why}`;
     const connHash = stateHash([ex.fingerprint()]);
     const reconnected = !!prev && prev.connHash !== connHash;
     if (reconnected)
@@ -2766,6 +2826,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     // the stop each flat marker of this step is priced at, read before the marker is written: a flat row is the key's
     // latest row and clears the memory (as an open does), so a marker written first would never find the stop it closed at
     const stopAtFlat = new Map<string, number | null>();
+    const ownedExitAtFlat = new Map<string, { why: "stop" | "target"; px: number }>();
     // the take-profit the key's current position carried (its last T row since its open; null: none, or cancelled
     // without a new one — a "gone" row)
     const tpPxOf = (k: string) => {
@@ -2927,6 +2988,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         const ck = `${k}|${openAt}`;
         if (Lv.ledgerVerified.has(ck)) continue;
         let gone: boolean | null = null;
+        let incompleteOwnership = false;
         if (ex.ordersSince)
           try {
             const r = await ex.ordersSince(vsym, openAt - 60_000);
@@ -2941,20 +3003,31 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
                   if (!/^(STOP|TAKE_PROFIT)/.test(String(o.type ?? "").toUpperCase())) return false;
                   if (String(o.positionSide ?? "").toUpperCase() !== vps) return false;
                   if (String(o.side ?? "").toUpperCase() !== (Number(vsd) === 1 ? "SELL" : "BUY")) return false;
-                  if (!String(o.status ?? "").toUpperCase().includes("FILLED")) return false;
+                  const state = String(o.status ?? "").toUpperCase();
+                  if (state !== "FILLED" && state !== "PARTIALLY_FILLED") return false;
                   const at = Number(o.updateTime ?? o.time ?? 0);
-                  return !(at > 0) || at >= openAt;
+                  const qty = Number(o.executedQty);
+                  if (!(Number.isFinite(at) && at >= openAt)) return false;
+                  if (state !== "FILLED" || !(Number.isFinite(qty) && qty >= (ledger.get(k) ?? Infinity) - 1e-12)) {
+                    incompleteOwnership = true;
+                    return false;
+                  }
+                  const px = Number(o.avgPrice);
+                  if (Number.isFinite(px) && px > 0) ownedExitAtFlat.set(k, { why: kd === "T" ? "target" : "stop", px });
+                  return true;
                 })
               : null;
           } catch {
             gone = null;
           }
+        if (gone === false && incompleteOwnership) gone = null;
         if (gone === false) {
           Lv.ledgerVerified.add(ck);
           if (Lv.ledgerVerified.size > 2_000) Lv.ledgerVerified.clear();
           continue;
         }
         held.delete(k);
+        if (gone === null) unverifiedOwnership.add(k);
         // our part gone: someone else's ("independent" trades its own beside it); history unreadable: not touched
         if (!gone || !independent) foreign.add(posOneway ? vsym : k);
         if (gone) {
@@ -2963,6 +3036,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           tpAtFlat.set(k, tpPxOf(k));
           const fid = `flat-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e9).toString(36)}`;
           record(fid, { key: k, sym: vsym, side: Number(vsd) }, "F", 0, 0, "ok", "own exit filled while away — the position there is not ours");
+          flatKeys.push(k);
           ledger.set(k, 0);
           rt.db.event("warn", `live: ${k} — our exit filled while the desk was away; the position there now is someone else's and is never touched${independent ? " (the desk trades its own beside it)" : ""}`);
         } else status.skipped.push({ sym: vsym, why: "ownership unverified (order history unreadable) — not touched this step" });
@@ -3087,7 +3161,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         keyState.set(key, "closed"); // metadata refresh is not a new opening after its proven exit
       } catch { /* no measured close is invented while its history is unreadable */ }
     }
-    for (const k of flatKeys) noteExternal(k, prices.get(k.split("|")[0]) ?? 0, false, await outsideOf(k));
+    for (const k of flatKeys) noteExternal(k, prices.get(k.split("|")[0]) ?? 0, false, ownedExitAtFlat.get(k) ?? await outsideOf(k));
     // A position closed outside this system — by its exchange stop, or by hand — never stops processing, and is
     // never put back. The lane orders that held it at that moment are held back, so the SAME position is not
     // reopened: reopening at market while those lanes are still active only pays a round trip and the slippage
@@ -3115,9 +3189,11 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     }
     if (!reconnected) {
       const outside = new Map(externalCloses(prev, held).map((x) => [x.key, x]));
+      const observedFlat = new Set(flatKeys);
+      for (const key of observedFlat) outside.set(key, { key, lanes: 0 });
       for (const key of settledFlat.keys()) if (!held.has(key)) outside.set(key, { key, lanes: 0 });
       for (const x of outside.values()) {
-        if (lagging.has(x.key) || pendingKeys.has(x.key) || keyState.get(x.key) === "closed") continue;
+        if (lagging.has(x.key) || pendingKeys.has(x.key) || unverifiedOwnership.has(x.key) || (keyState.get(x.key) === "closed" && !observedFlat.has(x.key))) continue;
         const [xsym, xsd] = x.key.split("|");
         // our own close whose reply timed out (its row still pending) is what emptied the side: it filled. Recorded
         // as done — not reported as an exchange stop-out, and no lane order held back (they asked for that close)
@@ -3132,7 +3208,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         }
         // by hand the position went at the market; by its stop or its take-profit, at that order's price (closedBy:
         // the one still resting did not fill)
-        const by = noteExternal(x.key, prices.get(xsym) ?? 0, true, await outsideOf(x.key));
+        const by = noteExternal(x.key, prices.get(xsym) ?? 0, true, ownedExitAtFlat.get(x.key) ?? await outsideOf(x.key));
         // the ledger still counts it (opened within the last 10 minutes: no flat marker above): marked flat now, so
         // the marker carries this close — found minutes later its stop and take-profit are gone and the venue's
         // history window has passed it
@@ -3865,6 +3941,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       ? `opening paused${typeof s.openPaused === "string" ? `: ${s.openPaused}` : ""}`
       : null;
     const openBlock =
+      (rt.executionEntryBlocked?.() ? "settings awaiting computation; existing positions protected" : null) ??
       notReady ?? (unit === null ? "account balance unknown — not sizing" : null) ?? marginLow ?? paused;
     // the room above the floor for this step: the account snapshot can be up to ~75 s old (client cache + exchange
     // read cache), so the margin of own opens in that time is taken off as well (counted twice at worst — safe side)
@@ -4073,6 +4150,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       try {
         await ex.setMarginMode?.(sym, marginMode);
       } catch (err) {
+        if (err instanceof bx.RequestBudgetDeferred) throw err;
         const msg = errText(err);
         if (!alreadySet(msg)) {
           const offline = /offline currently|not a valid/i.test(msg);
@@ -4155,6 +4233,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           local(rt).levVal.set(`${sym}|${side}`, lev);
         }
       } catch (err) {
+        if (err instanceof bx.RequestBudgetDeferred) throw err;
         const m = `leverage ${want} not applied on ${sym}: ${errText(err)}`;
         failed(k, m, ...OPEN_BACKOFF);
         throw new Error(m);
@@ -5403,7 +5482,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           }
         }
         const acts = planLaneOrders(covered, laneMap, resting, { ...planOpts, slots });
-        let capHit = false;
+        let capHit = false, budgetHit = false;
         const placeLane = async (lo: LaneOrder, which: "s" | "t", px: number) => {
           const kind = which === "s" ? "V" : "Y";
           const coid = makeCoid(s.connId, kind);
@@ -5436,6 +5515,10 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             if (err instanceof bx.ExchangeRejected) {
               record(coid, a, kind, lo.qty, px, "error", `${lo.id}: ${msg}`);
               if (lo[which]?.coid === coid) delete lo[which];
+            }
+            if (err instanceof bx.RequestBudgetDeferred) {
+              budgetHit = true;
+              return false;
             }
             bx.noteRateLimit(msg);
             // the account's TP/SL cap: no new lane order for a while (retrying each step drew BingX's error-rate
@@ -5475,7 +5558,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         };
         // different lanes side by side; one lane's actions (its stop, its take-profit) never in the same batch
         for (let i = 0; i < acts.length; ) {
-          if (!alive() || bx.blockingBanUntil() || capHit) break;
+          if (!alive() || bx.blockingBanUntil() || capHit || budgetHit) break;
           const batch: typeof acts = [];
           const lanesIn = new Set<string>();
           while (i < acts.length && batch.length < LANE_ORDER_CONCURRENCY && !lanesIn.has(acts[i].lane)) {

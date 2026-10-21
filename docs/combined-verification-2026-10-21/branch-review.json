@@ -1,0 +1,4038 @@
+{
+  "classification": "Read-only branch inventory and targeted overlap review; not a claim all open PRs have been merged",
+  "main": "eb3c989579914e1a1f63bc699d577ca59d80fa16",
+  "reviewed": [
+    {
+      "number": 179,
+      "title": "Turn engine direction acceptance off by default and on x01",
+      "head": "02582ecd6814c55136617c979de40487363ed532",
+      "base": "6cc6ef8cd953948069ebc336666a1eb23e15cae5",
+      "status": "diverged",
+      "ahead": 5,
+      "behind": 233,
+      "files": [
+        {
+          "path": "docs/positive-coordinations.md",
+          "additions": 43,
+          "deletions": 2
+        },
+        {
+          "path": "docs/sims/sim24h-2026-10-06/x01-desk.json",
+          "additions": 2,
+          "deletions": 2
+        },
+        {
+          "path": "docs/sims/sim24h-2026-10-06/x01-live-patch.json",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "path": "docs/sims/sim3h-2026-10-06/x01-signals-patch.json",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/completeness.test.ts",
+          "additions": 0,
+          "deletions": 10
+        },
+        {
+          "path": "src/core/positive-defaults.test.ts",
+          "additions": 3,
+          "deletions": 3
+        },
+        {
+          "path": "src/core/positive.ts",
+          "additions": 2,
+          "deletions": 2
+        },
+        {
+          "path": "src/core/signal-config.ts",
+          "additions": 4,
+          "deletions": 3
+        }
+      ],
+      "disposition": "Review old direction-off defaults against current main's independent config/direction proofs; do not replace latest policy wholesale."
+    },
+    {
+      "number": 180,
+      "title": "Record the 19 Oct direction-acceptance measurement; clear stale Settings not-shown entries",
+      "head": "d89b01aa5182f9a818f367cee2e960ed8e96e1d0",
+      "base": "6cc6ef8cd953948069ebc336666a1eb23e15cae5",
+      "status": "diverged",
+      "ahead": 16,
+      "behind": 233,
+      "files": [
+        {
+          "path": "docs/positive-coordinations.md",
+          "additions": 31,
+          "deletions": 1
+        },
+        {
+          "path": "scripts/core-live-report.mjs",
+          "additions": 2,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/core-live-report.test.mjs",
+          "additions": 13,
+          "deletions": 1
+        },
+        {
+          "path": "scripts/core-signal-research.mjs",
+          "additions": 4,
+          "deletions": 2
+        },
+        {
+          "path": "scripts/lib/pf-search-evidence.test.mjs",
+          "additions": 5,
+          "deletions": 2
+        },
+        {
+          "path": "scripts/sim-positive-types.test.mjs",
+          "additions": 4,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/adjust.test.ts",
+          "additions": 3,
+          "deletions": 2
+        },
+        {
+          "path": "src/core/adjust.ts",
+          "additions": 3,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/completeness.test.ts",
+          "additions": 10,
+          "deletions": 10
+        },
+        {
+          "path": "src/core/config.ts",
+          "additions": 2,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/exit-strategy.ts",
+          "additions": 4,
+          "deletions": 2
+        },
+        {
+          "path": "src/core/lanes.test.ts",
+          "additions": 7,
+          "deletions": 3
+        },
+        {
+          "path": "src/core/micro-range.test.ts",
+          "additions": 8,
+          "deletions": 6
+        },
+        {
+          "path": "src/core/minimal-coord.ts",
+          "additions": 6,
+          "deletions": 3
+        },
+        {
+          "path": "src/core/model-cost.ts",
+          "additions": 2,
+          "deletions": 2
+        },
+        {
+          "path": "src/core/pipeline/pipeline.ts",
+          "additions": 21,
+          "deletions": 9
+        },
+        {
+          "path": "src/core/ranges.test.ts",
+          "additions": 7,
+          "deletions": 4
+        },
+        {
+          "path": "src/core/regression.test.ts",
+          "additions": 4,
+          "deletions": 4
+        },
+        {
+          "path": "src/core/seats.test.ts",
+          "additions": 3,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/server/base-count.test.ts",
+          "additions": 3,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/server/cost-default-runtime.test.ts",
+          "additions": 2,
+          "deletions": 2
+        },
+        {
+          "path": "src/core/server/heal.test.ts",
+          "additions": 3,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/server/lanes-lifecycle.test.ts",
+          "additions": 3,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/server/runtime.server.ts",
+          "additions": 5,
+          "deletions": 2
+        },
+        {
+          "path": "src/core/signal-discovery.test.ts",
+          "additions": 9,
+          "deletions": 7
+        },
+        {
+          "path": "src/core/signal-hist.test.ts",
+          "additions": 7,
+          "deletions": 4
+        },
+        {
+          "path": "src/core/signal-trailing-only.test.ts",
+          "additions": 11,
+          "deletions": 6
+        },
+        {
+          "path": "src/core/signals.test.ts",
+          "additions": 13,
+          "deletions": 8
+        },
+        {
+          "path": "src/core/signals.ts",
+          "additions": 14,
+          "deletions": 2
+        },
+        {
+          "path": "src/core/sim/backtest.ts",
+          "additions": 10,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/sim/coord-volume.test.ts",
+          "additions": 3,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/sim/independence.test.ts",
+          "additions": 3,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/sim/range-min-pf.test.ts",
+          "additions": 2,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/sim/trail-cap.test.ts",
+          "additions": 57,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/sim/walkforward.test.ts",
+          "additions": 2,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/sim/walkforward.ts",
+          "additions": 4,
+          "deletions": 2
+        }
+      ],
+      "disposition": "Review old 3% cap and cost-basis changes against current main185 caps/legacy identities and frozen range basis."
+    },
+    {
+      "number": 168,
+      "title": "Fix/postbase responsive profile 20261017",
+      "head": "184142ee25f5ad44f4ca097612d54e6b359171fd",
+      "base": "6cc6ef8cd953948069ebc336666a1eb23e15cae5",
+      "status": "diverged",
+      "ahead": 24,
+      "behind": 285,
+      "files": [
+        {
+          "path": ".gitattributes",
+          "additions": 2,
+          "deletions": 0
+        },
+        {
+          "path": ".github/actions/setup-core/action.yml",
+          "additions": 27,
+          "deletions": 0
+        },
+        {
+          "path": ".github/workflows/expanded-postbase-study.yml",
+          "additions": 99,
+          "deletions": 0
+        },
+        {
+          "path": ".github/workflows/indication-edge-verification.yml",
+          "additions": 83,
+          "deletions": 0
+        },
+        {
+          "path": ".github/workflows/postbase-responsiveness.yml",
+          "additions": 62,
+          "deletions": 0
+        },
+        {
+          "path": "docs/operations-handoff.md",
+          "additions": 167,
+          "deletions": 1
+        },
+        {
+          "path": "docs/range-admission-diagnosis-20261015.md",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "path": "docs/signal-research-protocol-20261016.json",
+          "additions": 416,
+          "deletions": 0
+        },
+        {
+          "path": "docs/signal-research-results-20261015.md",
+          "additions": 21,
+          "deletions": 11
+        },
+        {
+          "path": "docs/signal-research-sources.md",
+          "additions": 4,
+          "deletions": 3
+        },
+        {
+          "path": "docs/sims/signals-coordination-stability-v2-20261017.md",
+          "additions": 41,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/signals-coordination-trade-sim-20261017-expanded.md",
+          "additions": 101,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/signals-coordination-trade-sim-20261017.md",
+          "additions": 82,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/expanded-postbase-indication-audit-20261017.md",
+          "additions": 166,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/expanded-postbase-performance-audit-20261017.md",
+          "additions": 144,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/expanded-postbase-progress-20261017.md",
+          "additions": 256,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/expanded-postbase-protocol-20261017.md",
+          "additions": 91,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/expanded-postbase-v2-index-20261017.json",
+          "additions": 2161,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/expanded-postbase-v3-index-20261017.json",
+          "additions": 742,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/expanded-postbase-v4-index-20261017.json",
+          "additions": 741,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/expanded-postbase-validation-20261017.json",
+          "additions": 186,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/postbase-ci-audit-failed-39077361130/README.md",
+          "additions": 73,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/postbase-ci-audit-failed-39077361130/build-dev.log",
+          "additions": 191,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/postbase-ci-audit-failed-39077361130/core-tests.log",
+          "additions": 3004,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/postbase-ci-audit-failed-39077361130/manifest.json",
+          "additions": 240,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/postbase-ci-audit-failed-39077361130/npm-ci.log",
+          "additions": 9,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/postbase-ci-audit-failed-39077361130/script-tests.log",
+          "additions": 69,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/postbase-ci-audit-failed-39077361130/typecheck.log",
+          "additions": 4,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/postbase-ci-interrupted-39076740047/README.md",
+          "additions": 46,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/postbase-ci-interrupted-39076740047/build-dev.log",
+          "additions": 191,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/postbase-ci-interrupted-39076740047/decode.log",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/postbase-ci-interrupted-39076740047/metadata.json",
+          "additions": 196,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/postbase-ci-interrupted-39076740047/npm-ci.log",
+          "additions": 9,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/postbase-ci-interrupted-39076740047/orchestration.json",
+          "additions": 216,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/postbase-ci-interrupted-39076740047/orchestrator.log",
+          "additions": 13,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/postbase-ci-interrupted-39076740047/run-baseline20.log",
+          "additions": 56,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/postbase-ci-interrupted-39076740047/run-result.json",
+          "additions": 55,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/postbase-ci-interrupted-39076740047/script-tests.log",
+          "additions": 67,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/postbase-ci-interrupted-39076740047/typecheck.log",
+          "additions": 4,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/postbase-interrupted-20261017/README.md",
+          "additions": 12,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/postbase-interrupted-20261017/engine.log",
+          "additions": 7,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/postbase-interrupted-20261017/run-result.json",
+          "additions": 22,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/prior-comparison-audit-20261017.md",
+          "additions": 131,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/symbols22-data-20261017/README.md",
+          "additions": 26,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/symbols22-data-20261017/contracts-request.json",
+          "additions": 10,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/symbols22-data-20261017/market-manifest.json",
+          "additions": 3641,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/symbols22-data-20261017/prior-attempt/acquisition-failure.json",
+          "additions": 161,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/symbols22-data-20261017/prior-attempt/protocol.json",
+          "additions": 50,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/symbols22-data-20261017/prior-attempt/requests.json",
+          "additions": 4156,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/symbols22-data-20261017/protocol.json",
+          "additions": 330,
+          "deletions": 0
+        },
+        {
+          "path": "research/fixtures/postbase-20261017/README.md",
+          "additions": 78,
+          "deletions": 0
+        },
+        {
+          "path": "research/fixtures/postbase-20261017/feed.json.gz.part-000.b64",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "research/fixtures/postbase-20261017/feed.json.gz.part-001.b64",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "research/fixtures/postbase-20261017/feed.json.gz.part-002.b64",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "research/fixtures/postbase-20261017/feed.json.gz.part-003.b64",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "research/fixtures/postbase-20261017/feed.json.gz.part-004.b64",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "research/fixtures/postbase-20261017/feed.json.gz.part-005.b64",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "research/fixtures/postbase-20261017/feed.json.gz.part-006.b64",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "research/fixtures/postbase-20261017/feed.json.gz.part-007.b64",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "research/fixtures/postbase-20261017/feed.json.gz.part-008.b64",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "research/fixtures/postbase-20261017/feed.json.gz.part-009.b64",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "research/fixtures/postbase-20261017/feed.json.gz.part-010.b64",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "research/fixtures/postbase-20261017/feed.json.gz.part-011.b64",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "research/fixtures/postbase-20261017/feed.json.gz.part-012.b64",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "research/fixtures/postbase-20261017/feed.json.gz.part-013.b64",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "research/fixtures/postbase-20261017/feed.json.gz.part-014.b64",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "research/fixtures/postbase-20261017/feed.json.gz.part-015.b64",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "research/fixtures/postbase-20261017/feed.json.gz.part-016.b64",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "research/fixtures/postbase-20261017/feed.json.gz.part-017.b64",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "research/fixtures/postbase-20261017/feed.json.gz.part-018.b64",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "research/fixtures/postbase-20261017/feed.json.gz.part-019.b64",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "research/fixtures/postbase-20261017/manifest.json",
+          "additions": 229,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/core-22-symbol-data.mjs",
+          "additions": 455,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/core-22-symbol-data.test.mjs",
+          "additions": 132,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/core-22-symbol-study.mjs",
+          "additions": 436,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/core-22-symbol-study.test.mjs",
+          "additions": 351,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/core-expanded-study-ci.mjs",
+          "additions": 494,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/core-expanded-study-review.mjs",
+          "additions": 235,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/core-expanded-study-review.test.mjs",
+          "additions": 220,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/core-hourly.test.mjs",
+          "additions": 9,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/core-session.mjs",
+          "additions": 39,
+          "deletions": 21
+        },
+        {
+          "path": "scripts/core-session.test.mjs",
+          "additions": 21,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/core-signal-coordination-replay.mjs",
+          "additions": 556,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/core-signal-research.mjs",
+          "additions": 22,
+          "deletions": 4
+        },
+        {
+          "path": "scripts/core-signal-research.test.mjs",
+          "additions": 31,
+          "deletions": 15
+        },
+        {
+          "path": "scripts/data/signals-coordination-protection-sample.json",
+          "additions": 259,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/lib/replay-evidence.mjs",
+          "additions": 51,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/lib/replay-evidence.test.mjs",
+          "additions": 32,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/lib/session-settings.mjs",
+          "additions": 21,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/lib/session-settings.test.mjs",
+          "additions": 29,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/lib/walkforward-hourly-report.mjs",
+          "additions": 2,
+          "deletions": 2
+        },
+        {
+          "path": "scripts/test-core.mjs",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/test-core.test.mjs",
+          "additions": 8,
+          "deletions": 0
+        },
+        {
+          "path": "src/components/v2/indication-ui.test.ts",
+          "additions": 4,
+          "deletions": 0
+        },
+        {
+          "path": "src/components/v2/indication-ui.ts",
+          "additions": 10,
+          "deletions": 2
+        },
+        {
+          "path": "src/components/v2/pages/settings.tsx",
+          "additions": 136,
+          "deletions": 3
+        },
+        {
+          "path": "src/components/v2/preset-settings.tsx",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/adjust.test.ts",
+          "additions": 4,
+          "deletions": 9
+        },
+        {
+          "path": "src/core/api-data.ts",
+          "additions": 2,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/audit-negative.test.ts",
+          "additions": 2,
+          "deletions": 2
+        },
+        {
+          "path": "src/core/audit.ts",
+          "additions": 12,
+          "deletions": 10
+        },
+        {
+          "path": "src/core/bots/bots.ts",
+          "additions": 9,
+          "deletions": 5
+        },
+        {
+          "path": "src/core/completeness.test.ts",
+          "additions": 29,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/config.ts",
+          "additions": 2,
+          "deletions": 3
+        },
+        {
+          "path": "src/core/domain/types.ts",
+          "additions": 13,
+          "deletions": 6
+        },
+        {
+          "path": "src/core/indications-both-sides.test.ts",
+          "additions": 40,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/indications/break-config.ts",
+          "additions": 15,
+          "deletions": 6
+        },
+        {
+          "path": "src/core/indications/break.test.ts",
+          "additions": 145,
+          "deletions": 7
+        },
+        {
+          "path": "src/core/indications/break.ts",
+          "additions": 22,
+          "deletions": 3
+        },
+        {
+          "path": "src/core/indications/micro-rel.test.ts",
+          "additions": 102,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/indications/micro.ts",
+          "additions": 34,
+          "deletions": 18
+        },
+        {
+          "path": "src/core/indications/registry.ts",
+          "additions": 22,
+          "deletions": 4
+        },
+        {
+          "path": "src/core/indications/research2.test.ts",
+          "additions": 58,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/indications/research2.ts",
+          "additions": 38,
+          "deletions": 16
+        },
+        {
+          "path": "src/core/indications/stable02-entry-warmup.test.ts",
+          "additions": 100,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/indications/stable02.ts",
+          "additions": 9,
+          "deletions": 8
+        },
+        {
+          "path": "src/core/live-diff.ts",
+          "additions": 2,
+          "deletions": 4
+        },
+        {
+          "path": "src/core/live-record.ts",
+          "additions": 3,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/live-validation.ts",
+          "additions": 7,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/math/indicators.ts",
+          "additions": 4,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/math/period-levels.test.ts",
+          "additions": 72,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/metrics/stats.test.ts",
+          "additions": 16,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/metrics/stats.ts",
+          "additions": 8,
+          "deletions": 3
+        },
+        {
+          "path": "src/core/pipeline/pipeline.ts",
+          "additions": 3,
+          "deletions": 3
+        },
+        {
+          "path": "src/core/processing.test.ts",
+          "additions": 54,
+          "deletions": 5
+        },
+        {
+          "path": "src/core/seats.test.ts",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/server/base-cohort.test.ts",
+          "additions": 227,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/server/base-config-job.test.ts",
+          "additions": 4,
+          "deletions": 2
+        },
+        {
+          "path": "src/core/server/control-audit.test.ts",
+          "additions": 10,
+          "deletions": 7
+        },
+        {
+          "path": "src/core/server/control-sizing.test.ts",
+          "additions": 14,
+          "deletions": 4
+        },
+        {
+          "path": "src/core/server/control.test.ts",
+          "additions": 21,
+          "deletions": 5
+        },
+        {
+          "path": "src/core/server/entries-execution.test.ts",
+          "additions": 38,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/server/fast-entries.test.ts",
+          "additions": 12,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/server/held-base.test.ts",
+          "additions": 52,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/server/live-promotion.test.ts",
+          "additions": 58,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/server/live.server.ts",
+          "additions": 59,
+          "deletions": 13
+        },
+        {
+          "path": "src/core/server/live.test.ts",
+          "additions": 5,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/server/live.ts",
+          "additions": 10,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/server/preset-base.test.ts",
+          "additions": 5,
+          "deletions": 3
+        },
+        {
+          "path": "src/core/server/replay-startup.test.ts",
+          "additions": 113,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/server/runtime.server.ts",
+          "additions": 380,
+          "deletions": 111
+        },
+        {
+          "path": "src/core/server/runtime.test.ts",
+          "additions": 32,
+          "deletions": 8
+        },
+        {
+          "path": "src/core/settings-check.ts",
+          "additions": 36,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/signal-config.ts",
+          "additions": 88,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/signal-coordination-feature.test.ts",
+          "additions": 345,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/signal-coordination.ts",
+          "additions": 222,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/signal-hist.test.ts",
+          "additions": 73,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/signal-hist.ts",
+          "additions": 84,
+          "deletions": 3
+        },
+        {
+          "path": "src/core/signal-research-sources.test.ts",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/signal-trailing-only.test.ts",
+          "additions": 2,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/signals-e2e.test.ts",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/signals.test.ts",
+          "additions": 63,
+          "deletions": 13
+        },
+        {
+          "path": "src/core/signals.ts",
+          "additions": 52,
+          "deletions": 18
+        },
+        {
+          "path": "src/core/sim/base-eval-parity.test.ts",
+          "additions": 71,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/sim/signal-gates.test.ts",
+          "additions": 78,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/sim/symbol-directions.test.ts",
+          "additions": 111,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/sim/symbol-directions.ts",
+          "additions": 14,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/sim/walkforward.test.ts",
+          "additions": 19,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/sim/walkforward.ts",
+          "additions": 471,
+          "deletions": 175
+        },
+        {
+          "path": "src/core/statistics.test.ts",
+          "additions": 2,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/statistics.ts",
+          "additions": 32,
+          "deletions": 12
+        },
+        {
+          "path": "src/core/volume-factor.test.ts",
+          "additions": 138,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/volume-factor.ts",
+          "additions": 17,
+          "deletions": 0
+        }
+      ],
+      "disposition": "Related older divergent branch; preserve current integrated implementations and dated evidence. File inventory alone is not proof every hunk is merged."
+    },
+    {
+      "number": 165,
+      "title": "Fix causal Base validation and bound replay resource use",
+      "head": "5316e8a29c8970b2fc2bea42bc0decc42da31b44",
+      "base": "6cc6ef8cd953948069ebc336666a1eb23e15cae5",
+      "status": "diverged",
+      "ahead": 6,
+      "behind": 285,
+      "files": [
+        {
+          "path": "docs/signal-research-protocol-20261016.json",
+          "additions": 416,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/core-22-symbol-data.mjs",
+          "additions": 123,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/core-22-symbol-final-report.mjs",
+          "additions": 269,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/core-22-symbol-final-report.test.mjs",
+          "additions": 83,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/core-22-symbol-study.mjs",
+          "additions": 361,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/core-22-symbol-study.test.mjs",
+          "additions": 154,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/core-causal-prune-study.mjs",
+          "additions": 124,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/core-causal-prune-study.test.mjs",
+          "additions": 56,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/core-hourly.test.mjs",
+          "additions": 9,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/core-session.mjs",
+          "additions": 11,
+          "deletions": 1
+        },
+        {
+          "path": "scripts/core-signal-coordination-replay.mjs",
+          "additions": 556,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/core-signal-research.mjs",
+          "additions": 22,
+          "deletions": 4
+        },
+        {
+          "path": "scripts/core-signal-research.test.mjs",
+          "additions": 38,
+          "deletions": 16
+        },
+        {
+          "path": "scripts/data/signals-coordination-protection-sample.json",
+          "additions": 259,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/lib/replay-evidence.mjs",
+          "additions": 51,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/lib/replay-evidence.test.mjs",
+          "additions": 32,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/lib/walkforward-hourly-report.mjs",
+          "additions": 2,
+          "deletions": 2
+        },
+        {
+          "path": "scripts/perf/base-cell-stats-bench.ts",
+          "additions": 96,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/perf/candidate-lifetime-bench.ts",
+          "additions": 92,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/test-core.mjs",
+          "additions": 6,
+          "deletions": 2
+        },
+        {
+          "path": "scripts/test-core.test.mjs",
+          "additions": 28,
+          "deletions": 2
+        },
+        {
+          "path": "scripts/verify-coordinator-selected.mjs",
+          "additions": 162,
+          "deletions": 0
+        },
+        {
+          "path": "src/components/v2/indication-ui.test.ts",
+          "additions": 4,
+          "deletions": 0
+        },
+        {
+          "path": "src/components/v2/indication-ui.ts",
+          "additions": 10,
+          "deletions": 2
+        },
+        {
+          "path": "src/components/v2/pages/settings.tsx",
+          "additions": 136,
+          "deletions": 3
+        },
+        {
+          "path": "src/components/v2/preset-settings.tsx",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/api-data.ts",
+          "additions": 2,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/audit-negative.test.ts",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/audit.ts",
+          "additions": 7,
+          "deletions": 7
+        },
+        {
+          "path": "src/core/book-coverage.test.ts",
+          "additions": 6,
+          "deletions": 4
+        },
+        {
+          "path": "src/core/completeness.test.ts",
+          "additions": 29,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/domain/types.ts",
+          "additions": 13,
+          "deletions": 6
+        },
+        {
+          "path": "src/core/indications/registry.ts",
+          "additions": 13,
+          "deletions": 4
+        },
+        {
+          "path": "src/core/live-diff.ts",
+          "additions": 2,
+          "deletions": 4
+        },
+        {
+          "path": "src/core/live-record.ts",
+          "additions": 3,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/live-validation.ts",
+          "additions": 7,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/metrics/stats.test.ts",
+          "additions": 16,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/metrics/stats.ts",
+          "additions": 8,
+          "deletions": 3
+        },
+        {
+          "path": "src/core/pipeline/base-cell-stats.test.ts",
+          "additions": 133,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/pipeline/base-cell-stats.ts",
+          "additions": 138,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/pipeline/base-pair-rows.test.ts",
+          "additions": 30,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/pipeline/evaluation-signal-cache.test.ts",
+          "additions": 81,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/pipeline/pipeline.ts",
+          "additions": 29,
+          "deletions": 54
+        },
+        {
+          "path": "src/core/processing.test.ts",
+          "additions": 0,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/server/base-config-job.server.ts",
+          "additions": 83,
+          "deletions": 47
+        },
+        {
+          "path": "src/core/server/base-config-job.test.ts",
+          "additions": 4,
+          "deletions": 2
+        },
+        {
+          "path": "src/core/server/base-config-planning.test.ts",
+          "additions": 141,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/server/compare-memory.test.ts",
+          "additions": 196,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/server/compute-worker-retirement.test.ts",
+          "additions": 80,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/server/control.test.ts",
+          "additions": 8,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/server/entries-execution.test.ts",
+          "additions": 38,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/server/fast-entries.test.ts",
+          "additions": 12,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/server/held-base.test.ts",
+          "additions": 52,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/server/live.server.ts",
+          "additions": 59,
+          "deletions": 13
+        },
+        {
+          "path": "src/core/server/live.test.ts",
+          "additions": 5,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/server/live.ts",
+          "additions": 10,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/server/memguard-cache.test.ts",
+          "additions": 119,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/server/memguard.server.ts",
+          "additions": 62,
+          "deletions": 13
+        },
+        {
+          "path": "src/core/server/pool-owner-retirement.test.ts",
+          "additions": 116,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/server/pool-priority.test.ts",
+          "additions": 63,
+          "deletions": 12
+        },
+        {
+          "path": "src/core/server/pool-spawn-failure.test.ts",
+          "additions": 58,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/server/pool.server.ts",
+          "additions": 46,
+          "deletions": 17
+        },
+        {
+          "path": "src/core/server/replay-universe.test.ts",
+          "additions": 70,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/server/runtime.server.ts",
+          "additions": 493,
+          "deletions": 158
+        },
+        {
+          "path": "src/core/server/runtime.test.ts",
+          "additions": 10,
+          "deletions": 6
+        },
+        {
+          "path": "src/core/server/stage-lifecycle.test.ts",
+          "additions": 66,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/settings-check.ts",
+          "additions": 36,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/signal-config.ts",
+          "additions": 88,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/signal-coordination-feature.test.ts",
+          "additions": 345,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/signal-coordination.ts",
+          "additions": 222,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/signal-hist.test.ts",
+          "additions": 73,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/signal-hist.ts",
+          "additions": 84,
+          "deletions": 3
+        },
+        {
+          "path": "src/core/signal-research-sources.test.ts",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/signals-e2e.test.ts",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/signals.test.ts",
+          "additions": 63,
+          "deletions": 13
+        },
+        {
+          "path": "src/core/signals.ts",
+          "additions": 52,
+          "deletions": 18
+        },
+        {
+          "path": "src/core/sim/backtest.ts",
+          "additions": 116,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/sim/base-eval-parity.test.ts",
+          "additions": 71,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/sim/candidate-lifetime.test.ts",
+          "additions": 23,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/sim/coord-volume.test.ts",
+          "additions": 23,
+          "deletions": 2
+        },
+        {
+          "path": "src/core/sim/execution-factors.test.ts",
+          "additions": 92,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/sim/fixed-price-path.test.ts",
+          "additions": 325,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/sim/range-fit-causal.test.ts",
+          "additions": 60,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/sim/signal-gates.test.ts",
+          "additions": 78,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/sim/symbol-directions.test.ts",
+          "additions": 111,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/sim/symbol-directions.ts",
+          "additions": 14,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/sim/walkforward.ts",
+          "additions": 173,
+          "deletions": 133
+        },
+        {
+          "path": "src/core/statistics.test.ts",
+          "additions": 2,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/statistics.ts",
+          "additions": 32,
+          "deletions": 12
+        },
+        {
+          "path": "src/core/volume-factor.test.ts",
+          "additions": 138,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/volume-factor.ts",
+          "additions": 17,
+          "deletions": 0
+        }
+      ],
+      "disposition": "Related older divergent branch; preserve current integrated implementations and dated evidence. File inventory alone is not proof every hunk is merged."
+    },
+    {
+      "number": 164,
+      "title": "Fix Base qualification across ranges and causal replay validation",
+      "head": "abc49a8743e69e8cf22f8cf0d2833e0be1d1bd07",
+      "base": "6cc6ef8cd953948069ebc336666a1eb23e15cae5",
+      "status": "diverged",
+      "ahead": 7,
+      "behind": 285,
+      "files": [
+        {
+          "path": ".gitattributes",
+          "additions": 2,
+          "deletions": 0
+        },
+        {
+          "path": ".github/workflows/expanded-postbase-study.yml",
+          "additions": 99,
+          "deletions": 0
+        },
+        {
+          "path": "docs/operations-handoff.md",
+          "additions": 128,
+          "deletions": 1
+        },
+        {
+          "path": "docs/range-admission-diagnosis-20261015.md",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "path": "docs/signal-research-protocol-20261016.json",
+          "additions": 416,
+          "deletions": 0
+        },
+        {
+          "path": "docs/signal-research-results-20261015.md",
+          "additions": 21,
+          "deletions": 11
+        },
+        {
+          "path": "docs/signal-research-sources.md",
+          "additions": 4,
+          "deletions": 3
+        },
+        {
+          "path": "docs/sims/signals-coordination-stability-v2-20261017.md",
+          "additions": 41,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/signals-coordination-trade-sim-20261017-expanded.md",
+          "additions": 101,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/signals-coordination-trade-sim-20261017.md",
+          "additions": 82,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/expanded-postbase-performance-audit-20261017.md",
+          "additions": 144,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/expanded-postbase-progress-20261017.md",
+          "additions": 229,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/expanded-postbase-protocol-20261017.md",
+          "additions": 91,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/expanded-postbase-v2-index-20261017.json",
+          "additions": 2161,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/expanded-postbase-v3-index-20261017.json",
+          "additions": 742,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/expanded-postbase-v4-index-20261017.json",
+          "additions": 741,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/expanded-postbase-validation-20261017.json",
+          "additions": 148,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/postbase-ci-interrupted-39076740047/README.md",
+          "additions": 46,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/postbase-ci-interrupted-39076740047/build-dev.log",
+          "additions": 191,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/postbase-ci-interrupted-39076740047/decode.log",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/postbase-ci-interrupted-39076740047/metadata.json",
+          "additions": 196,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/postbase-ci-interrupted-39076740047/npm-ci.log",
+          "additions": 9,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/postbase-ci-interrupted-39076740047/orchestration.json",
+          "additions": 216,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/postbase-ci-interrupted-39076740047/orchestrator.log",
+          "additions": 13,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/postbase-ci-interrupted-39076740047/run-baseline20.log",
+          "additions": 56,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/postbase-ci-interrupted-39076740047/run-result.json",
+          "additions": 55,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/postbase-ci-interrupted-39076740047/script-tests.log",
+          "additions": 67,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/postbase-ci-interrupted-39076740047/typecheck.log",
+          "additions": 4,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/postbase-interrupted-20261017/README.md",
+          "additions": 12,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/postbase-interrupted-20261017/engine.log",
+          "additions": 7,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/postbase-interrupted-20261017/run-result.json",
+          "additions": 22,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/prior-comparison-audit-20261017.md",
+          "additions": 131,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/symbols22-data-20261017/README.md",
+          "additions": 26,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/symbols22-data-20261017/contracts-request.json",
+          "additions": 10,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/symbols22-data-20261017/market-manifest.json",
+          "additions": 3641,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/symbols22-data-20261017/prior-attempt/acquisition-failure.json",
+          "additions": 161,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/symbols22-data-20261017/prior-attempt/protocol.json",
+          "additions": 50,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/symbols22-data-20261017/prior-attempt/requests.json",
+          "additions": 4156,
+          "deletions": 0
+        },
+        {
+          "path": "docs/simulations/symbols22-data-20261017/protocol.json",
+          "additions": 330,
+          "deletions": 0
+        },
+        {
+          "path": "research/fixtures/postbase-20261017/README.md",
+          "additions": 78,
+          "deletions": 0
+        },
+        {
+          "path": "research/fixtures/postbase-20261017/feed.json.gz.part-000.b64",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "research/fixtures/postbase-20261017/feed.json.gz.part-001.b64",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "research/fixtures/postbase-20261017/feed.json.gz.part-002.b64",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "research/fixtures/postbase-20261017/feed.json.gz.part-003.b64",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "research/fixtures/postbase-20261017/feed.json.gz.part-004.b64",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "research/fixtures/postbase-20261017/feed.json.gz.part-005.b64",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "research/fixtures/postbase-20261017/feed.json.gz.part-006.b64",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "research/fixtures/postbase-20261017/feed.json.gz.part-007.b64",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "research/fixtures/postbase-20261017/feed.json.gz.part-008.b64",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "research/fixtures/postbase-20261017/feed.json.gz.part-009.b64",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "research/fixtures/postbase-20261017/feed.json.gz.part-010.b64",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "research/fixtures/postbase-20261017/feed.json.gz.part-011.b64",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "research/fixtures/postbase-20261017/feed.json.gz.part-012.b64",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "research/fixtures/postbase-20261017/feed.json.gz.part-013.b64",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "research/fixtures/postbase-20261017/feed.json.gz.part-014.b64",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "research/fixtures/postbase-20261017/feed.json.gz.part-015.b64",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "research/fixtures/postbase-20261017/feed.json.gz.part-016.b64",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "research/fixtures/postbase-20261017/feed.json.gz.part-017.b64",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "research/fixtures/postbase-20261017/feed.json.gz.part-018.b64",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "research/fixtures/postbase-20261017/feed.json.gz.part-019.b64",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "research/fixtures/postbase-20261017/manifest.json",
+          "additions": 229,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/core-22-symbol-data.mjs",
+          "additions": 455,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/core-22-symbol-data.test.mjs",
+          "additions": 132,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/core-22-symbol-study.mjs",
+          "additions": 436,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/core-22-symbol-study.test.mjs",
+          "additions": 351,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/core-expanded-study-ci.mjs",
+          "additions": 494,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/core-expanded-study-review.mjs",
+          "additions": 235,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/core-expanded-study-review.test.mjs",
+          "additions": 220,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/core-hourly.test.mjs",
+          "additions": 9,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/core-session.mjs",
+          "additions": 39,
+          "deletions": 21
+        },
+        {
+          "path": "scripts/core-session.test.mjs",
+          "additions": 21,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/core-signal-coordination-replay.mjs",
+          "additions": 556,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/core-signal-research.mjs",
+          "additions": 22,
+          "deletions": 4
+        },
+        {
+          "path": "scripts/core-signal-research.test.mjs",
+          "additions": 31,
+          "deletions": 15
+        },
+        {
+          "path": "scripts/data/signals-coordination-protection-sample.json",
+          "additions": 259,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/lib/replay-evidence.mjs",
+          "additions": 51,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/lib/replay-evidence.test.mjs",
+          "additions": 32,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/lib/session-settings.mjs",
+          "additions": 21,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/lib/session-settings.test.mjs",
+          "additions": 29,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/lib/walkforward-hourly-report.mjs",
+          "additions": 2,
+          "deletions": 2
+        },
+        {
+          "path": "src/components/v2/indication-ui.test.ts",
+          "additions": 4,
+          "deletions": 0
+        },
+        {
+          "path": "src/components/v2/indication-ui.ts",
+          "additions": 10,
+          "deletions": 2
+        },
+        {
+          "path": "src/components/v2/pages/settings.tsx",
+          "additions": 136,
+          "deletions": 3
+        },
+        {
+          "path": "src/components/v2/preset-settings.tsx",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/api-data.ts",
+          "additions": 2,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/audit-negative.test.ts",
+          "additions": 2,
+          "deletions": 2
+        },
+        {
+          "path": "src/core/audit.ts",
+          "additions": 12,
+          "deletions": 10
+        },
+        {
+          "path": "src/core/completeness.test.ts",
+          "additions": 25,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/config.ts",
+          "additions": 2,
+          "deletions": 3
+        },
+        {
+          "path": "src/core/domain/types.ts",
+          "additions": 13,
+          "deletions": 6
+        },
+        {
+          "path": "src/core/indications-both-sides.test.ts",
+          "additions": 40,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/indications/break-config.ts",
+          "additions": 15,
+          "deletions": 6
+        },
+        {
+          "path": "src/core/indications/break.test.ts",
+          "additions": 145,
+          "deletions": 7
+        },
+        {
+          "path": "src/core/indications/break.ts",
+          "additions": 22,
+          "deletions": 3
+        },
+        {
+          "path": "src/core/indications/micro-rel.test.ts",
+          "additions": 102,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/indications/micro.ts",
+          "additions": 34,
+          "deletions": 18
+        },
+        {
+          "path": "src/core/indications/registry.ts",
+          "additions": 13,
+          "deletions": 4
+        },
+        {
+          "path": "src/core/live-diff.ts",
+          "additions": 2,
+          "deletions": 4
+        },
+        {
+          "path": "src/core/live-record.ts",
+          "additions": 3,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/live-validation.ts",
+          "additions": 7,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/metrics/stats.test.ts",
+          "additions": 16,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/metrics/stats.ts",
+          "additions": 8,
+          "deletions": 3
+        },
+        {
+          "path": "src/core/pipeline/pipeline.ts",
+          "additions": 3,
+          "deletions": 3
+        },
+        {
+          "path": "src/core/processing.test.ts",
+          "additions": 0,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/seats.test.ts",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/server/base-cohort.test.ts",
+          "additions": 227,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/server/base-config-job.test.ts",
+          "additions": 4,
+          "deletions": 2
+        },
+        {
+          "path": "src/core/server/control.test.ts",
+          "additions": 8,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/server/entries-execution.test.ts",
+          "additions": 38,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/server/fast-entries.test.ts",
+          "additions": 12,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/server/held-base.test.ts",
+          "additions": 52,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/server/live-promotion.test.ts",
+          "additions": 58,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/server/live.server.ts",
+          "additions": 59,
+          "deletions": 13
+        },
+        {
+          "path": "src/core/server/live.test.ts",
+          "additions": 5,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/server/live.ts",
+          "additions": 10,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/server/preset-base.test.ts",
+          "additions": 5,
+          "deletions": 3
+        },
+        {
+          "path": "src/core/server/replay-startup.test.ts",
+          "additions": 113,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/server/runtime.server.ts",
+          "additions": 380,
+          "deletions": 111
+        },
+        {
+          "path": "src/core/server/runtime.test.ts",
+          "additions": 10,
+          "deletions": 6
+        },
+        {
+          "path": "src/core/settings-check.ts",
+          "additions": 36,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/signal-config.ts",
+          "additions": 88,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/signal-coordination-feature.test.ts",
+          "additions": 345,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/signal-coordination.ts",
+          "additions": 222,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/signal-hist.test.ts",
+          "additions": 73,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/signal-hist.ts",
+          "additions": 84,
+          "deletions": 3
+        },
+        {
+          "path": "src/core/signal-research-sources.test.ts",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/signals-e2e.test.ts",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/signals.test.ts",
+          "additions": 63,
+          "deletions": 13
+        },
+        {
+          "path": "src/core/signals.ts",
+          "additions": 52,
+          "deletions": 18
+        },
+        {
+          "path": "src/core/sim/base-eval-parity.test.ts",
+          "additions": 71,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/sim/signal-gates.test.ts",
+          "additions": 78,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/sim/symbol-directions.test.ts",
+          "additions": 111,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/sim/symbol-directions.ts",
+          "additions": 14,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/sim/walkforward.ts",
+          "additions": 182,
+          "deletions": 128
+        },
+        {
+          "path": "src/core/statistics.test.ts",
+          "additions": 2,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/statistics.ts",
+          "additions": 32,
+          "deletions": 12
+        },
+        {
+          "path": "src/core/volume-factor.test.ts",
+          "additions": 138,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/volume-factor.ts",
+          "additions": 17,
+          "deletions": 0
+        }
+      ],
+      "disposition": "Related older divergent branch; preserve current integrated implementations and dated evidence. File inventory alone is not proof every hunk is merged."
+    },
+    {
+      "number": 148,
+      "title": "Expand Signals Coordination Ratios and Validation",
+      "head": "d9834d6692c8f9b32a2d560ee133abd23e5d08e0",
+      "base": "6cc6ef8cd953948069ebc336666a1eb23e15cae5",
+      "status": "diverged",
+      "ahead": 11,
+      "behind": 293,
+      "files": [
+        {
+          "path": "docs/operations-handoff.md",
+          "additions": 37,
+          "deletions": 1
+        },
+        {
+          "path": "docs/range-admission-diagnosis-20261015.md",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "path": "docs/signal-research-protocol-20261016.json",
+          "additions": 416,
+          "deletions": 0
+        },
+        {
+          "path": "docs/signal-research-results-20261015.md",
+          "additions": 20,
+          "deletions": 12
+        },
+        {
+          "path": "docs/signal-research-sources.md",
+          "additions": 4,
+          "deletions": 3
+        },
+        {
+          "path": "docs/sims/signals-coordination-trade-sim-20261017-expanded.md",
+          "additions": 103,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/signals-coordination-trade-sim-20261017.md",
+          "additions": 82,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/core-signal-coordination-replay.mjs",
+          "additions": 462,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/core-signal-research.mjs",
+          "additions": 22,
+          "deletions": 4
+        },
+        {
+          "path": "scripts/core-signal-research.test.mjs",
+          "additions": 27,
+          "deletions": 11
+        },
+        {
+          "path": "scripts/data/signals-coordination-protection-sample.json",
+          "additions": 259,
+          "deletions": 0
+        },
+        {
+          "path": "src/components/v2/indication-ui.test.ts",
+          "additions": 4,
+          "deletions": 0
+        },
+        {
+          "path": "src/components/v2/indication-ui.ts",
+          "additions": 10,
+          "deletions": 2
+        },
+        {
+          "path": "src/components/v2/pages/settings.tsx",
+          "additions": 134,
+          "deletions": 3
+        },
+        {
+          "path": "src/components/v2/preset-settings.tsx",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/api-data.ts",
+          "additions": 2,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/audit-negative.test.ts",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/audit.ts",
+          "additions": 10,
+          "deletions": 6
+        },
+        {
+          "path": "src/core/completeness.test.ts",
+          "additions": 25,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/domain/types.ts",
+          "additions": 8,
+          "deletions": 3
+        },
+        {
+          "path": "src/core/indications/registry.ts",
+          "additions": 13,
+          "deletions": 4
+        },
+        {
+          "path": "src/core/live-diff.ts",
+          "additions": 2,
+          "deletions": 4
+        },
+        {
+          "path": "src/core/live-record.ts",
+          "additions": 3,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/live-validation.ts",
+          "additions": 7,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/metrics/stats.ts",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/server/control.test.ts",
+          "additions": 8,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/server/entries-execution.test.ts",
+          "additions": 38,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/server/fast-entries.test.ts",
+          "additions": 12,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/server/live.server.ts",
+          "additions": 61,
+          "deletions": 14
+        },
+        {
+          "path": "src/core/server/live.test.ts",
+          "additions": 5,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/server/live.ts",
+          "additions": 10,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/server/runtime.server.ts",
+          "additions": 231,
+          "deletions": 57
+        },
+        {
+          "path": "src/core/server/runtime.test.ts",
+          "additions": 10,
+          "deletions": 6
+        },
+        {
+          "path": "src/core/settings-check.ts",
+          "additions": 36,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/signal-config.ts",
+          "additions": 88,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/signal-coordination-feature.test.ts",
+          "additions": 314,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/signal-coordination.ts",
+          "additions": 199,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/signal-hist.test.ts",
+          "additions": 73,
+          "deletions": 1
+        },
+        {
+          "path": "src/core/signal-hist.ts",
+          "additions": 84,
+          "deletions": 3
+        },
+        {
+          "path": "src/core/signal-research-sources.test.ts",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/signals-e2e.test.ts",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/signals.test.ts",
+          "additions": 49,
+          "deletions": 13
+        },
+        {
+          "path": "src/core/signals.ts",
+          "additions": 52,
+          "deletions": 18
+        },
+        {
+          "path": "src/core/sim/walkforward.ts",
+          "additions": 27,
+          "deletions": 11
+        },
+        {
+          "path": "src/core/statistics.test.ts",
+          "additions": 2,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/statistics.ts",
+          "additions": 31,
+          "deletions": 12
+        },
+        {
+          "path": "src/core/volume-factor.test.ts",
+          "additions": 130,
+          "deletions": 0
+        },
+        {
+          "path": "src/core/volume-factor.ts",
+          "additions": 17,
+          "deletions": 0
+        }
+      ],
+      "disposition": "Related older divergent branch; preserve current integrated implementations and dated evidence. File inventory alone is not proof every hunk is merged."
+    },
+    {
+      "number": 132,
+      "title": "claude/sim3h-fixes: session fixes and signal stop variant sims",
+      "head": "ddebc9d2d3c5dcd53c93f6ff43ad6d660141af59",
+      "base": "6cc6ef8cd953948069ebc336666a1eb23e15cae5",
+      "status": "diverged",
+      "ahead": 124,
+      "behind": 512,
+      "files": [
+        {
+          "path": ".gitignore",
+          "additions": 3,
+          "deletions": 0
+        },
+        {
+          "path": "README.md",
+          "additions": 19,
+          "deletions": 11
+        },
+        {
+          "path": "docs/live-coordination/launch.sh",
+          "additions": 28,
+          "deletions": 13
+        },
+        {
+          "path": "docs/live-coordination/rounds.sh",
+          "additions": 20,
+          "deletions": 14
+        },
+        {
+          "path": "docs/live-coordination/start-x01-signals.sh",
+          "additions": 130,
+          "deletions": 0
+        },
+        {
+          "path": "docs/live-coordination/x01-both-sides.patch.json",
+          "additions": 10,
+          "deletions": 0
+        },
+        {
+          "path": "docs/live-coordination/x01-signals-only.md",
+          "additions": 74,
+          "deletions": 0
+        },
+        {
+          "path": "docs/live-coordination/x01-signals-only.patch.json",
+          "additions": 92,
+          "deletions": 0
+        },
+        {
+          "path": "docs/live-coordination/x01-signals-test30.patch.json",
+          "additions": 72,
+          "deletions": 0
+        },
+        {
+          "path": "docs/live-coordination/x01-signals-test35.patch.json",
+          "additions": 77,
+          "deletions": 0
+        },
+        {
+          "path": "docs/live-coordination/x01-status.sh",
+          "additions": 24,
+          "deletions": 0
+        },
+        {
+          "path": "docs/live-coordination/x01-stop.sh",
+          "additions": 12,
+          "deletions": 0
+        },
+        {
+          "path": "docs/micro-scan-2026-10-08.md",
+          "additions": 50,
+          "deletions": 0
+        },
+        {
+          "path": "docs/perf/perf-2026-10-08/after/README.md",
+          "additions": 114,
+          "deletions": 0
+        },
+        {
+          "path": "docs/perf/perf-2026-10-08/after/prof-after-summary.json",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "docs/perf/perf-2026-10-08/baseline/README.md",
+          "additions": 90,
+          "deletions": 0
+        },
+        {
+          "path": "docs/perf/perf-2026-10-08/baseline/phases.txt",
+          "additions": 15,
+          "deletions": 0
+        },
+        {
+          "path": "docs/perf/perf-2026-10-08/baseline/prof-head-summary.json",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "docs/perf/perf-2026-10-08/speed/README.md",
+          "additions": 97,
+          "deletions": 0
+        },
+        {
+          "path": "docs/perf/sim-bisect-2026-10-07/README.md",
+          "additions": 298,
+          "deletions": 0
+        },
+        {
+          "path": "docs/perf/sim-bisect-2026-10-07/bench-desk.json",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "docs/perf/sim-bisect-2026-10-07/profiles/A-768cd0d-worker-phases.md",
+          "additions": 42,
+          "deletions": 0
+        },
+        {
+          "path": "docs/perf/sim-bisect-2026-10-07/profiles/A-768cd0d.json",
+          "additions": 1020,
+          "deletions": 0
+        },
+        {
+          "path": "docs/perf/sim-bisect-2026-10-07/profiles/A-768cd0d.txt",
+          "additions": 88,
+          "deletions": 0
+        },
+        {
+          "path": "docs/perf/sim-bisect-2026-10-07/profiles/B-d5dac9a-worker-phases.md",
+          "additions": 42,
+          "deletions": 0
+        },
+        {
+          "path": "docs/perf/sim-bisect-2026-10-07/profiles/B-d5dac9a.json",
+          "additions": 1020,
+          "deletions": 0
+        },
+        {
+          "path": "docs/perf/sim-bisect-2026-10-07/profiles/B-d5dac9a.txt",
+          "additions": 88,
+          "deletions": 0
+        },
+        {
+          "path": "docs/perf/sim-bisect-2026-10-07/profiles/C-7b32e4a-worker-phases.md",
+          "additions": 42,
+          "deletions": 0
+        },
+        {
+          "path": "docs/perf/sim-bisect-2026-10-07/profiles/C-7b32e4a.json",
+          "additions": 1020,
+          "deletions": 0
+        },
+        {
+          "path": "docs/perf/sim-bisect-2026-10-07/profiles/C-7b32e4a.txt",
+          "additions": 88,
+          "deletions": 0
+        },
+        {
+          "path": "docs/perf/sim-bisect-2026-10-07/profiles/diff-A-B.md",
+          "additions": 79,
+          "deletions": 0
+        },
+        {
+          "path": "docs/perf/sim-bisect-2026-10-07/profiles/diff-A-C.md",
+          "additions": 119,
+          "deletions": 0
+        },
+        {
+          "path": "docs/perf/sim-bisect-2026-10-07/tools/compare.mjs",
+          "additions": 37,
+          "deletions": 0
+        },
+        {
+          "path": "docs/perf/sim-bisect-2026-10-07/tools/phases.mjs",
+          "additions": 20,
+          "deletions": 0
+        },
+        {
+          "path": "docs/perf/sim-bisect-2026-10-07/tools/preload.mjs",
+          "additions": 6,
+          "deletions": 0
+        },
+        {
+          "path": "docs/perf/sim-bisect-2026-10-07/tools/profdiff.mjs",
+          "additions": 16,
+          "deletions": 0
+        },
+        {
+          "path": "docs/perf/sim-bisect-2026-10-07/tools/profphase.mjs",
+          "additions": 17,
+          "deletions": 0
+        },
+        {
+          "path": "docs/perf/sim-bisect-2026-10-07/tools/profsum.mjs",
+          "additions": 42,
+          "deletions": 0
+        },
+        {
+          "path": "docs/perf/sim-bisect-2026-10-07/tools/runbench.sh",
+          "additions": 6,
+          "deletions": 0
+        },
+        {
+          "path": "docs/positive-coordinations.md",
+          "additions": 315,
+          "deletions": 3
+        },
+        {
+          "path": "docs/range-sweep-2026-10-08.md",
+          "additions": 64,
+          "deletions": 0
+        },
+        {
+          "path": "docs/report-integrity.md",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "path": "docs/signals-audit-2026-10-08.md",
+          "additions": 71,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/6x6h-2026-10-08/README-w1-3.md",
+          "additions": 162,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/6x6h-2026-10-08/README-w4-6.md",
+          "additions": 557,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/6x6h-2026-10-08/w1-24h/session.md",
+          "additions": 1332,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/6x6h-2026-10-08/w1-24h/tables.md",
+          "additions": 163,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/6x6h-2026-10-08/w1/extra.txt",
+          "additions": 7,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/6x6h-2026-10-08/w1/html/data.json",
+          "additions": 298431,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/6x6h-2026-10-08/w1/html/index.html",
+          "additions": 1260,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/6x6h-2026-10-08/w1/session.md",
+          "additions": 975,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/6x6h-2026-10-08/w1/tables.md",
+          "additions": 160,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/6x6h-2026-10-08/w2/extra.txt",
+          "additions": 7,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/6x6h-2026-10-08/w2/session.md",
+          "additions": 1058,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/6x6h-2026-10-08/w2/tables.md",
+          "additions": 159,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/6x6h-2026-10-08/w3/extra.txt",
+          "additions": 7,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/6x6h-2026-10-08/w3/session.md",
+          "additions": 952,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/6x6h-2026-10-08/w3/tables.md",
+          "additions": 154,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/6x6h-2026-10-08/w4-24h/session.md",
+          "additions": 1354,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/6x6h-2026-10-08/w4/session.md",
+          "additions": 1037,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/6x6h-2026-10-08/w5-24h/session.md",
+          "additions": 1180,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/6x6h-2026-10-08/w5/session.md",
+          "additions": 900,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/6x6h-2026-10-08/w6-24h/session.md",
+          "additions": 1232,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/6x6h-2026-10-08/w6/session.md",
+          "additions": 1032,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/crowd-2026-10-08/desks/pin-fal-nocrowd.json",
+          "additions": 447,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/crowd-2026-10-08/desks/pin-ral-nocrowd.json",
+          "additions": 447,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/gate-2026-10-09/desks/domunit-fal.json",
+          "additions": 451,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/gate-2026-10-09/desks/domunit-ral.json",
+          "additions": 451,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/gate-2026-10-09/desks/hold12-fal.json",
+          "additions": 451,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/gate-2026-10-09/desks/hold12-ral.json",
+          "additions": 451,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/gate-2026-10-09/desks/pin-fal.json",
+          "additions": 449,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/gate-2026-10-09/desks/pin-ral.json",
+          "additions": 449,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/gate-2026-10-10/desks/A0-fal.json",
+          "additions": 449,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/gate-2026-10-10/desks/A0-ral.json",
+          "additions": 449,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/gate-2026-10-10/desks/A1-fal.json",
+          "additions": 450,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/gate-2026-10-10/desks/A1-ral.json",
+          "additions": 450,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/gate-2026-10-10/desks/A2-fal-13.json",
+          "additions": 450,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/gate-2026-10-10/desks/A2-fal-16.json",
+          "additions": 450,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/gate-2026-10-10/desks/A2-ral-13.json",
+          "additions": 450,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/gate-2026-10-10/desks/A2-ral-16.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/gate-2026-10-10/desks/A3-fal.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/gate-2026-10-10/desks/A3-ral.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/gate-2026-10-10/desks/A4-fal.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/gate-2026-10-10/desks/A4-ral.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/gate-2026-10-10/desks/A5-fal.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/gate-2026-10-10/desks/A5-ral.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/gate-2026-10-10/desks/A7-fal.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/gate-2026-10-10/desks/A7-ral.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/gate-2026-10-10/desks/A8-fal.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/gate-2026-10-10/desks/A8-ral.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/gate-2026-10-10/desks/mkt6-F2.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/gate-2026-10-10/desks/mkt6-F3.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/gate-2026-10-10/desks/mkt6-R2.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/gate-2026-10-10/desks/mkt6-S1.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/gate-2026-10-10/desks/mkt6-fal.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/gate-2026-10-10/desks/mkt6-ral.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/micro-2026-10-08/MB/README.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/micro-2026-10-08/MB/w-latest/session.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/micro-2026-10-08/MB/w-latest/writeup.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/micro-2026-10-08/MB/w-rally/session.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/micro-2026-10-08/MB/w-rally/writeup.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/micro-2026-10-08/MC0/README.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/micro-2026-10-08/MC0/w-latest/session.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/micro-2026-10-08/MC0/w-latest/writeup.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/micro-2026-10-08/MC6/README.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/micro-2026-10-08/MC6/w-latest/session.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/micro-2026-10-08/MC6/w-latest/writeup.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/micro-2026-10-08/MC6/w-rally/session.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/micro-2026-10-08/MC6/w-rally/writeup.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/micro-2026-10-08/MS0/README.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/micro-2026-10-08/MS0/w-latest/session.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/micro-2026-10-08/MS0/w-latest/writeup.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/micro-2026-10-08/MS0/w-rally/session.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/micro-2026-10-08/MS0/w-rally/writeup.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/micro-2026-10-08/MV5/README.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/micro-2026-10-08/MV5/w-latest/session.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/micro-2026-10-08/MV5/w-latest/writeup.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/micro-2026-10-08/MV5/w-rally/session.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/micro-2026-10-08/MV5/w-rally/writeup.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/micro-2026-10-08/MY0/README.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/micro-2026-10-08/MY0/w-latest/session.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/micro-2026-10-08/MY0/w-latest/writeup.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/micro-2026-10-08/desks/MB.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/micro-2026-10-08/desks/MC0.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/micro-2026-10-08/desks/MC6.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/micro-2026-10-08/desks/MS0.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/micro-2026-10-08/desks/MV5.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/micro-2026-10-08/desks/MY0.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/micro-scan-2026-10-08/cells.csv.gz",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/micro-scan-2026-10-08/scan.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/r5-2026-10-07/README.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/r5-2026-10-07/r5-latest/html/data.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/r5-2026-10-07/r5-latest/html/index.html",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/r5-2026-10-07/r5-latest/session.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/r5-2026-10-07/r5-latest/writeup.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/r5-2026-10-07/r5-v3b/html/data.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/r5-2026-10-07/r5-v3b/html/index.html",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/r5-2026-10-07/r5-v3b/session.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/r5-2026-10-07/r5-v3b/writeup.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/ranges-2026-10-08/R1-latest/README.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/ranges-2026-10-08/R1-latest/session.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/ranges-2026-10-08/R1-latest/writeup.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/ranges-2026-10-08/S1-rally/README.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/ranges-2026-10-08/S1-rally/session.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/ranges-2026-10-08/S1-rally/writeup.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/ranges-2026-10-08/S2-latest/README.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/ranges-2026-10-08/S2-latest/session.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/ranges-2026-10-08/S2-latest/writeup.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/ranges-2026-10-08/S2-rally/README.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/ranges-2026-10-08/S2-rally/session.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/ranges-2026-10-08/S2-rally/writeup.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/ranges-2026-10-08/desks/R1.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/ranges-2026-10-08/desks/S1.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/ranges-2026-10-08/desks/S2.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sig12h-2026-10-08/T0/README.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sig12h-2026-10-08/T0/html/data.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sig12h-2026-10-08/T0/html/index.html",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sig12h-2026-10-08/T0/session.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sig12h-2026-10-08/T0/writeup.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sig12h-2026-10-08/T1/README.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sig12h-2026-10-08/T1/html/data.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sig12h-2026-10-08/T1/html/index.html",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sig12h-2026-10-08/T1/session.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sig12h-2026-10-08/T1/writeup.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sig12h-2026-10-08/T2/README.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sig12h-2026-10-08/T2/html/data.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sig12h-2026-10-08/T2/html/index.html",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sig12h-2026-10-08/T2/session.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sig12h-2026-10-08/T2/writeup.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sig12h-2026-10-08/T3/README.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sig12h-2026-10-08/T3/html/data.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sig12h-2026-10-08/T3/html/index.html",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sig12h-2026-10-08/T3/session.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sig12h-2026-10-08/T3/writeup.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sig12h-2026-10-08/U1/README.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sig12h-2026-10-08/U1/html/data.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sig12h-2026-10-08/U1/html/index.html",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sig12h-2026-10-08/U1/session.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sig12h-2026-10-08/U1/writeup.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sig12h-2026-10-08/U2/README.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sig12h-2026-10-08/U2/html/data.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sig12h-2026-10-08/U2/html/index.html",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sig12h-2026-10-08/U2/session.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sig12h-2026-10-08/U2/writeup.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sig12h-2026-10-08/U3/README.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sig12h-2026-10-08/U3/html/data.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sig12h-2026-10-08/U3/html/index.html",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sig12h-2026-10-08/U3/session.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sig12h-2026-10-08/U3/writeup.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sig12h-2026-10-08/desks2/README.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sig12h-2026-10-08/desks2/U0.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sig12h-2026-10-08/desks2/U1.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sig12h-2026-10-08/desks2/U2.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sig12h-2026-10-08/desks2/U3.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sigstop-2026-10-08/H1/README.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sigstop-2026-10-08/H2/README.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sigstop-2026-10-08/H3/README.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sigstop-2026-10-08/H4/README.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sigstop-2026-10-08/V0/README.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sigstop-2026-10-08/V1/README.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sigstop-2026-10-08/V1/funnel.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sigstop-2026-10-08/V2/README.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sigstop-2026-10-08/V3/README.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sigstop-2026-10-08/desks/H1.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sigstop-2026-10-08/desks/H2.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sigstop-2026-10-08/desks/H3.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sigstop-2026-10-08/desks/H4.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sigstop-2026-10-08/desks/README.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/sim3h-2026-10-06/README.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F1/README.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F1/w-latest/html/data.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F1/w-latest/html/index.html",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F1/w-latest/session.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F1/w-latest/writeup.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F1/w-rally/html/data.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F1/w-rally/html/index.html",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F1/w-rally/session.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F1/w-rally/writeup.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F2/README.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F2/w-latest/html/data.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F2/w-latest/html/index.html",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F2/w-latest/session.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F2/w-latest/writeup.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F2/w-rally/html/data.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F2/w-rally/html/index.html",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F2/w-rally/session.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F2/w-rally/writeup.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F3/README.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F3/w-latest/html/data.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F3/w-latest/html/index.html",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F3/w-latest/session.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F3/w-latest/writeup.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F3/w-rally/html/data.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F3/w-rally/html/index.html",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F3/w-rally/session.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F3/w-rally/writeup.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F4/README.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F4/w-latest/html/data.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F4/w-latest/html/index.html",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F4/w-latest/session.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F4/w-latest/writeup.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F4/w-rally/html/data.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F4/w-rally/html/index.html",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F4/w-rally/session.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F4/w-rally/writeup.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F5/README.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F5/w-latest/html/data.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F5/w-latest/html/index.html",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F5/w-latest/session.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F5/w-latest/writeup.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F5/w-rally/html/data.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F5/w-rally/html/index.html",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F5/w-rally/session.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F5/w-rally/writeup.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F6/README.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F6/w-latest/html/data.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F6/w-latest/html/index.html",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F6/w-latest/session.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F6/w-latest/writeup.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F6/w-rally/html/data.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F6/w-rally/html/index.html",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F6/w-rally/session.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/F6/w-rally/writeup.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/README.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/desks/F1.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/desks/F2.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/desks/F3.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/desks/F4.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/desks/F5.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/trail-2026-10-08/desks/F6.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/universe-2026-10-08/README.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/universe-2026-10-08/desks/pin-fal-newmin.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/universe-2026-10-08/desks/pin-fal-noside.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/universe-2026-10-08/desks/pin-fal.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/universe-2026-10-08/desks/pin-ral-newmin.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/universe-2026-10-08/desks/pin-ral-noside.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/universe-2026-10-08/desks/pin-ral.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/x01-18h-2026-10-08/README.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/x01-18h-2026-10-08/html/data.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/x01-18h-2026-10-08/html/index.html",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/x01-18h-2026-10-08/session.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/x01-18h-2026-10-08/writeup.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/x01-2026-10-07/README.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/x01-2026-10-07/html/data.json",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/x01-2026-10-07/html/index.html",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/x01-2026-10-07/session.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "docs/sims/x01-2026-10-07/writeup.md",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/category-merge.mjs",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/category-merge.test.mjs",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/core-live-test.mjs",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/core-session.mjs",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/core-sweep.mjs",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/desk-launch.test.mjs",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/linux/cts-a-o.service.template",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/linux/cts.sh",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/linux/cts.test.mjs",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/micro-scan.mjs",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/perf/tapes-bench.ts",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/perf/walkforward-bench.ts",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/range-sweep-table.mjs",
+          "additions": 0,
+          "deletions": 0
+        }
+      ],
+      "disposition": "Related older divergent branch; preserve current integrated implementations and dated evidence. File inventory alone is not proof every hunk is merged."
+    }
+  ],
+  "integratedCurrentHeads": {
+    "main": "6cc6ef8cd953948069ebc336666a1eb23e15cae5",
+    "inverse183": "cc2916372debd3b5001e3018d047eece2f57cbe7",
+    "micro184": "6e93533cbedb2a2ee22ebe11c161583e5412e1b0"
+  },
+  "additionalReview187": {
+    "head": "ec9eeb33457d34f425cd1ee25a463f97fe65ed7e",
+    "included": [
+      "X02-specific demo profile maxChase 5 and optional symbol gate, corrected to the actual loader root wf; no deployment",
+      "Explicit legacy diagnostic option, while retaining automatic legacy detection and current snapshot handling",
+      "Existing profiling lint and explicit synthetic multiplier corrections already preserved"
+    ],
+    "resolvedAgainst": [
+      "Missing/invalid unit evidence falling back to stored sized r: omitted; unknown sample remains unavailable and losing evidence remains in the window",
+      "Unbraced nested profiling loop with ambiguous else: retained the explicit-brace correction",
+      "A nested settings.wf object would not be applied by core-live-test; the demo override is at root wf"
+    ],
+    "scope": "Only repository changes. No live account or global policy mutations."
+  },
+  "latestIntegratedHeads": {
+    "main": "fafdea2f5ebe8c903a16f2edd8be34606f746c2f",
+    "Micro-184": "82d0e6b48f40027f7a45fd6e8e3a3a8342478f8d",
+    "Inverse-183": "cc2916372debd3b5001e3018d047eece2f57cbe7",
+    "demo-188": "1f37509f5e683117295222693abe90fd2e5f45aa"
+  },
+  "latestResolution": "Reviewed later main/Micro/profile changes. Preserved exact-lane readiness, richer cursor/Exit recovery, two explicit paper sources and original verified candidate golden. Combined nonfinite multiplier rejection, full/partial/unknown ownership and captured cash; repaired Signal unknown-return proof aggregation and prevented exchange unknowns from falling back to older paper wins. Legacy unknown-unit r fallbacks remain rejected. The restored fixed public-price fixture is reused unchanged, not refetched or optimized.",
+  "latestIntegrationReview": "Latest reviewed source additions: PR184 f03a36d16ef02b1299889d32c97222932c7cc388 and PR189 944459646e9190a2f8c18e249b85ccf882838b36 are integrated. PR188 3b427b3c88fd4130eeca3f8b0b64dcb94688ac4c is recorded, with its tests resolved in favor of strict current per-direction validation rather than probe bypasses. Main remains fafdea2f5ebe8c903a16f2edd8be34606f746c2f. Previous economic measurements and full green v3 CI remain scoped to ce9c30a / de4cc45; expanded source requires new verification, not relabeling old results.",
+  "mainMergeReview": "Main subsequently merged the already-reviewed PR188 as eb3c989. Local integration changes no file before this documentation update; all source/tests retain the verified bb8b356 contents. Backup main-before-combined-merge-20261021-eb3c989 preserves current main."
+}

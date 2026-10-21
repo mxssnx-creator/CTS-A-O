@@ -1,0 +1,31 @@
+{
+  "sha256": "a7beade8b9f2da1f5c2d5fda9b8ef32a4ce5bcc045ad10c67cd5678333c4224e",
+  "decodedSha256": "605d2bdea27a5594de4a522d7f8784e7f53d1c1f99bae714d9c287c0c0b2a0ac",
+  "originalParentSha256": "1373d0a7fab7528d0528573385e19dfecf6f4ab353194231c639103af29aadcd",
+  "startT": 1791288000000,
+  "endT": 1791633600000,
+  "symbols": [
+    "ADA-USDT",
+    "APT-USDT",
+    "ARB-USDT",
+    "ATOM-USDT",
+    "AVAX-USDT",
+    "BCH-USDT",
+    "BNB-USDT",
+    "BTC-USDT",
+    "DOGE-USDT",
+    "DOT-USDT",
+    "ETC-USDT",
+    "ETH-USDT",
+    "FIL-USDT",
+    "LINK-USDT",
+    "LTC-USDT",
+    "NEAR-USDT",
+    "OP-USDT",
+    "SOL-USDT",
+    "SUI-USDT",
+    "TRX-USDT"
+  ],
+  "nativeOneMinuteBars": 115200,
+  "bytes": 1632562
+}

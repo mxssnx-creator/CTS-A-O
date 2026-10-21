@@ -1,0 +1,29 @@
+{
+  "scope": "Independent arithmetic, entry directions, exact config/symbol gates and protection on all virtual modeled closes; primary PF uses only verified funded settled closes",
+  "funding": {
+    "basis": "Exact per-close native report allocation",
+    "virtualCloses": 131858,
+    "fundedCloses": 126342,
+    "zeroAllocatedCloses": 5516,
+    "unknownAllocations": 0
+  },
+  "cost": 0.0015,
+  "roundTripChargedOnce": true,
+  "rows": 126342,
+  "virtualRows": 131858,
+  "independentlyReplayedProtectionRows": 131811,
+  "maxReturnError": 1.0720260441160478e-07,
+  "maxPriceError": 5.7946702497660636e-08,
+  "gp": 121.4650371759302,
+  "gl": 1191.3439830504033,
+  "pf": 0.10195631060722055,
+  "beforeCostPfDiagnostic": 0.15059293590013986,
+  "reasons": {
+    "trail": 9528,
+    "tp": 2672,
+    "time": 110389,
+    "sl": 9269
+  },
+  "precision": "1e-6 return tolerance covers Float32 stored price columns; modeled return arrays retain their original higher precision",
+  "violations": []
+}

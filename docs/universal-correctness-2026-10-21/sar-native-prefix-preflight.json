@@ -1,0 +1,84 @@
+{
+  "scope": {
+    "sourceSha256": "ae7b2021fbdce8c3432329781dfc19a651c7e1fc488b3826874af741e69befaa",
+    "registeredSpecs": 1708,
+    "byKind": {
+      "trend": 62,
+      "break": 237,
+      "active": 163,
+      "direction": 38,
+      "move": 60,
+      "rsi": 39,
+      "bollinger": 31,
+      "sar": 7,
+      "macd": 23,
+      "ema": 20,
+      "osc": 56,
+      "volume": 34,
+      "channel": 21,
+      "ichimoku": 8,
+      "smooth": 17,
+      "tactic": 10,
+      "relate": 40,
+      "micro": 364,
+      "inverse": 478
+    },
+    "engineCombos": 36596,
+    "timeframes": [
+      1,
+      5,
+      15,
+      30
+    ]
+  },
+  "classification": "Native-price state shape/domain and six hourly prefix comparisons for every eligible registry/lane/symbol; not portfolio or profitability evidence",
+  "symbols": [
+    "ADA-USDT",
+    "APT-USDT",
+    "ARB-USDT",
+    "ATOM-USDT",
+    "AVAX-USDT",
+    "BCH-USDT",
+    "BNB-USDT",
+    "BTC-USDT",
+    "DOGE-USDT",
+    "DOT-USDT",
+    "ETC-USDT",
+    "ETH-USDT",
+    "FIL-USDT",
+    "LINK-USDT",
+    "LTC-USDT",
+    "NEAR-USDT",
+    "OP-USDT",
+    "SOL-USDT",
+    "SUI-USDT",
+    "TRX-USDT"
+  ],
+  "endT": 1791633600000,
+  "cuts": [
+    1791612000000,
+    1791615600000,
+    1791619200000,
+    1791622800000,
+    1791626400000,
+    1791630000000
+  ],
+  "completedSpecs": 7,
+  "groups": [
+    {
+      "kind": "sar",
+      "specs": 7,
+      "laneSymbolCases": 980,
+      "comparisons": 5880,
+      "comparedBars": 11965800,
+      "entryComparisons": 43680,
+      "entryCases": 7280,
+      "longStates": 587502,
+      "shortStates": 607214,
+      "violations": 0
+    }
+  ],
+  "violationCount": 0,
+  "violations": [],
+  "complete": true
+}

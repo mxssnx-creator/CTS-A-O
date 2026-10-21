@@ -23,6 +23,8 @@ import {
   REF_TF,
 } from "./pipeline/pipeline.ts";
 import { barsFromCandles, headBars, resample, syntheticCandles, tailBars } from "./market/bars.ts";
+import { isMicroCalculationInd as isMicroFamilyInd } from "./indications/micro-family.ts";
+import { isInverseInd } from "./indications/inverse-config.ts";
 import { isRelateInd } from "./indications/relate.ts";
 import { breakAnchorTf, isBreakRelInd } from "./indications/break-config.ts";
 import { DEFAULT_PROTECT, DEFAULT_SETTINGS } from "./config.ts";
@@ -69,11 +71,13 @@ describe("lane combos", () => {
     const none = plain.filter((c) => c.ind === "none").length;
     const anchored = plain.filter((c) => {
       const base = laneOf(c.ind).base;
-      return isRelateInd(base) || isBreakRelInd(base);
+      return isRelateInd(base) || isBreakRelInd(base) || isMicroFamilyInd(base);
     });
     const relate = plain.filter((c) => isRelateInd(laneOf(c.ind).base));
     const breaking = plain.filter((c) => isBreakRelInd(laneOf(c.ind).base));
-    assert.equal(lanes.length, (plain.length - none - anchored.length) * 7 + anchored.length + none * 4);
+    const inverse = plain.filter((c) => isInverseInd(c.ind) && !isMicroFamilyInd(c.ind)).length;
+    assert.equal(lanes.length, (plain.length - none - anchored.length - inverse) * 7 + anchored.length + inverse * 5 + none * 4);
+    assert.equal(lanes.filter((c) => isInverseInd(laneOf(c.ind).base) && !isMicroFamilyInd(laneOf(c.ind).base)).length, inverse * 5);
     assert.equal(lanes.filter((c) => isBreakRelInd(laneOf(c.ind).base)).length, breaking.length);
     assert.equal(lanes.filter((c) => isRelateInd(laneOf(c.ind).base)).length, relate.length);
     for (const c of lanes.filter((x) => isBreakRelInd(laneOf(x.ind).base)))

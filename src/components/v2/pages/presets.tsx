@@ -57,7 +57,7 @@ function summary(p: Any): string {
   return [
     s.tfMin ? `${s.tfMin}m` : null,
     s.symbols
-      ? `${s.symbols} symbol${s.symbols > 1 ? "s" : ""} by ${({ volatility1h: "1H volatility", volume: "24h volume", market: "market", gainers: "gainers", losers: "losers" } as Record<string, string>)[s.symbolRank ?? "volatility1h"]}`
+      ? `${s.symbols} symbol${s.symbols > 1 ? "s" : ""} by ${({ volatility1h: "1H volatility", change1h5m: "1H average 5m price distance", volume: "24h volume", market: "market", gainers: "gainers", losers: "losers" } as Record<string, string>)[s.symbolRank ?? "volatility1h"]}`
       : null,
     s.focus?.length ? `${s.focus.length} focus pairs` : "all combos",
     w.mode ? `${w.mode} selection` : null,

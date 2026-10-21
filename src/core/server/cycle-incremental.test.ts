@@ -5,21 +5,24 @@
 // Run with CTS_CORE_WORKERS=1 (3 symbols; 6h evaluation + 6h simulation, independent Signal history 72h).
 import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { CoreRuntime as BaseRuntime, laneSeriesFrom, laneSeriesOf, signalDataHours } from "./runtime.server.ts";
+import { CoreRuntime as BaseRuntime, laneSeriesOf, laneSeriesFrom, signalDataHours } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
 import { signalSettings } from "../signals.ts";
-import { SIGNAL_SOURCES } from "../signal-config.ts";
+import { PREVIOUS_DEFAULT_FOCUS_17OCT } from "../config.ts";
 import { makeUniverse } from "../pipeline/pipeline.ts";
 import { buildTapes, type ConfigTape } from "../sim/walkforward.ts";
 import { CandleSeries } from "../market/candle-series.ts";
 import { isSignalInd } from "../indications/registry.ts";
 import { isSignalCoordinationInd } from "../signal-coordination.ts";
-import { trackRuntimes } from "../test-support.ts";
+import { runtimeFixtureGrid, trackRuntimes } from "../test-support.ts";
 import type { Bars } from "../domain/types.ts";
 
 process.env.CTS_CORE_SYNTHETIC_END = String(Math.floor(Date.now() / 3_600_000) * 3_600_000);
 
 const settings = {
+  // Preserve the original lifecycle fixture's source universe when unrelated families are registered.
+  // Complete Micro/Inverse grids have dedicated full-family and stress coverage.
+  focus: [...PREVIOUS_DEFAULT_FOCUS_17OCT], pinned: [], exitStrategy: { includeMicro: false },
   symbols: 3,
   historyDays: 1,
   tfDays: { "1": 1, "5": 1, "15": 1, "30": 1 },
@@ -27,7 +30,7 @@ const settings = {
   refineTop: 4,
   evalTop: 8,
   cycleMs: 60_000,
-  grid: { short: false as const },
+  grid: { ...runtimeFixtureGrid(), short: false as const },
   tactics: {
     session: false,
     volRegime: false,
@@ -37,10 +40,10 @@ const settings = {
   },
   gates: { minPf: 1.05, minTrades: 3, maxDdr: 0 },
   signals: signalSettings({
-    exits: "pct",
-    sources: Object.fromEntries(
-      SIGNAL_SOURCES.filter((x) => x.name.startsWith("s2-")).map((x) => [x.name, false]),
-    ),
+    sourcesMode: "allow", sources: { "ema-cross": true, "rsi-reversal": true }, lanes: [1, 5, 15, 30],
+    exits: "pct", normal: { tp: [0.01, 0.02, 0.03, 0.04], slOfTp: [1, 2] },
+    trailing: { tp: [0.02, 0.03], trailOfTp: [0.33, 0.66], slOfTp: 1 },
+    trailRatios: [0.5, 1, 1.5], hist: { ...signalSettings().hist, enabled: false },
   }),
   runtime: { cycle: "incremental" as const, heavyEveryBars: 60 },
 };
@@ -105,10 +108,13 @@ describe("runtime.cycle incremental equals a full recompute", { timeout: 600_000
     // Bound the lifecycle fixture instead of inheriting the production 336h Signal / 48h simulation defaults.
     // Signals still have substantially longer history than strategies, exercising the independent rebuild.
     rt.updateSettings({}, { preH: 6, longH: 6, symH: 6, simH: 6, signalLongH: 72 });
+    assert.equal(rt.executionEntryBlocked(), true, "changed settings fence old entries until publication and paper completion");
     const R = rt as any;
     await rt.cycle(); // the heavy compute
     // (the auto-adjust of the first book may ask for one more compute)
     for (let i = 0; i < 3 && R.dirty; i++) await rt.cycle();
+    assert.equal(R.settingsStale, false, "successful exact-revision publication clears stale settings");
+    assert.equal(rt.executionEntryBlocked(), false, "the completed matching paper step releases new entry admission");
     assert.ok(R.inc, "the heavy compute captured the validated set");
     const ids: Set<string> = R.inc.ids;
     assert.ok(ids.size > 50, `validated ${ids.size}`);

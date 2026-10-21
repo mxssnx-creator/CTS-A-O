@@ -482,6 +482,7 @@ describe("control sizing: risk-based (positionSize \"risk\")", () => {
     assert.ok(ex.positions.get("S0-USDT|LONG")! > 0);
     // no account read: nothing opens
     const ex2 = new SimExchange();
+    ex2.account = async () => null; // explicit unavailable account; a reader-less simulated venue uses its declared paper balance
     // (the first run's account read is remembered per connection: forget it, so this run really has no account read)
     resetAccountSeen();
     const { rt: rt2 } = fakeRt(new CoreDb(":memory:"));

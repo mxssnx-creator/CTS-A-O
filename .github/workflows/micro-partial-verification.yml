@@ -1,0 +1,36 @@
+name: Universal unfinished-bar causality
+on:
+  push:
+    branches: [codex/micro-indication-20261020]
+    paths: [.github/workflows/micro-partial-verification.yml]
+permissions:
+  contents: read
+jobs:
+  partial:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      MALLOC_ARENA_MAX: "2"
+      MALLOC_MMAP_THRESHOLD_: "1048576"
+      CTS_CORE_STATE: "off"
+      CTS_CORE_AUTOSTART: "0"
+      CTS_CORE_LIVE: "0"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24.19.0"
+      - run: npm ci
+      - name: Verify states and all eligible Bot entries inside unfinished higher bars
+        env:
+          NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
+        run: node --expose-gc --max-old-space-size=4096 --experimental-strip-types --no-warnings .github/audits/universal-correctness.mjs causal-partial runs/micro-ci-universal-partial
+      - name: Preserve all partial-bar comparisons and failures
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: micro-partial-${{ github.run_id }}
+          retention-days: 30
+          path: runs/micro-ci-universal-partial/

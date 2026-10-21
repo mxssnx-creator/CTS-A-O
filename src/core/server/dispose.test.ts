@@ -1,3 +1,4 @@
+import { PREVIOUS_DEFAULT_FOCUS_17OCT as LEGACY_FIXTURE_FOCUS } from "../config.ts";
 // A stopped runtime a test (or script) is done with must be collectable: stop() alone leaves the stall watch (started
 // in the constructor) and the healer running, and they keep the whole runtime — candles, tapes, sim, pipeline —
 // reachable until the process ends (runtime.test.ts built ~28 runtimes and reached 7.3 GB, 13 Oct). dispose()
@@ -12,6 +13,10 @@ import { pinSyntheticEnd, trackRuntimes, runtimeFixtureGrid } from "../test-supp
 pinSyntheticEnd();
 
 const tiny = {
+  // Preserve this generic lifecycle fixture's original source scope. Exhaustive new-family grids are
+  // covered separately by Micro/Inverse parity, the 20-symbol replay and 120-symbol load test.
+  focus: [...LEGACY_FIXTURE_FOCUS],
+  pinned: [],
   symbols: 1,
   historyDays: 4,
   tfDays: { "1": 1, "5": 2, "15": 4, "30": 4 },

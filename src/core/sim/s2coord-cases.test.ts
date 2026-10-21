@@ -31,6 +31,30 @@ const feed = (c: S2Coord, sym: string, rs: readonly number[], side = 1) =>
     return c.blocked(sym, side);
   });
 
+describe("coordination return evidence and numeric boundaries", () => {
+  it("unknown and overflowed closes cannot clear a completed window or rolling symbol PF", () => {
+    for (const bad of [NaN, Infinity, -Infinity]) {
+      const c = new S2Coord({...WIN,windowN:2});
+      feed(c,"A",[0.02,bad]);
+      assert.notEqual(c.blocked("A",1),null,"unknown completed window must hold entries");
+      feed(c,"A",[0.02,0.02,0.02,0.02]);
+      assert.notEqual(c.blocked("A",1),null,"unknown remains in the latest 24; older wins cannot replace it");
+      feed(c,"A",Array(24).fill(0.02));
+      assert.equal(c.blocked("A",1),null,"recovery requires a fully known bounded sample");
+    }
+    const overflow = new S2Coord({...WIN,windowN:2});
+    feed(overflow,"A",[1e308,1e308]);
+    assert.notEqual(overflow.blocked("A",1),null);
+  });
+  it("tiny losing relation windows keep their actual PF instead of a no-loss sentinel", () => {
+    for(const scale of [1,1e-11]) {
+      const c=new S2Coord({...REL,windowN:2,minPf:1.25});
+      feed(c,"A",[0.005*scale,-0.01*scale]);
+      assert.equal(c.volume(10*H),1,"PF 0.5 does not authorize a raise at any return scale");
+    }
+  });
+});
+
 describe("Stable-02 windows: more cases", () => {
   it("a window is judged only at every N-th close: a losing stretch across two windows is not a losing window", () => {
     const c = new S2Coord(WIN);

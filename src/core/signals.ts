@@ -464,6 +464,12 @@ function sliceClock(ms = 8): () => boolean {
 }
 
 export class SignalAcceptIndex {
+  /** Share immutable group columns, replacing only changed groups in the next published generation. */
+  fork(): SignalAcceptIndex {
+    const next = new SignalAcceptIndex();
+    next.groups = new Map(this.groups);
+    return next;
+  }
   private groups = new Map<
     string,
     { t: Float64Array; gp: Float64Array; gl: Float64Array; cn: Int32Array }
@@ -774,10 +780,50 @@ export function engineSideKeyFor(
  * own hour is never seen: causal by construction). Memory: one bucket per group and hour, not per close.
  */
 export class EngineSideIndex {
+  fork(): EngineSideIndex {
+    const next = new EngineSideIndex();
+    next.groups = new Map(this.groups);
+    return next;
+  }
   private groups = new Map<
     string,
     { h: Float64Array; gp: Float64Array; gl: Float64Array; n: Float64Array }
   >();
+  /** Extend the hourly record with strictly newer closes, retaining every earlier candidate and hour. */
+  *append(tapes: readonly SideTape[]): Generator<number, void> {
+    const additions = new EngineSideIndex();
+    yield* additions.fill(tapes);
+    for (const [key, extra] of additions.groups) {
+      const old = this.groups.get(key);
+      if (!old?.h.length) {
+        this.groups.set(key, extra);
+        continue;
+      }
+      const last = old.h[old.h.length - 1];
+      if (extra.h[0] < last)
+        throw new Error("engine acceptance append precedes its existing history");
+      const overlap = Number(extra.h[0] === last);
+      const n = old.h.length + extra.h.length - overlap;
+      const next = {
+        h: new Float64Array(n),
+        gp: new Float64Array(n + 1),
+        gl: new Float64Array(n + 1),
+        n: new Float64Array(n + 1),
+      };
+      next.h.set(old.h);
+      for (const col of ["gp", "gl", "n"] as const) next[col].set(old[col]);
+      for (let i = 0; i < extra.h.length; i++) {
+        const j = old.h.length - overlap + i;
+        next.h[j] = extra.h[i];
+        for (const col of ["gp", "gl", "n"] as const) {
+          const before = overlap && i === 0 ? old[col][old.h.length] : next[col][j];
+          next[col][j + 1] = before + extra[col][i + 1] - extra[col][i];
+        }
+      }
+      this.groups.set(key, next);
+      yield 0;
+    }
+  }
   // (the index is shared — cached per tape set, by the simulation and the live step alike — so it never holds the
   // exchange record itself: the live step's guard passes it per call)
   *fill(tapes: readonly SideTape[]): Generator<number, void> {
@@ -823,6 +869,9 @@ export class EngineSideIndex {
         x.n[j + 1] = x.n[j] + b[2];
       }
       this.groups.set(k, x);
+      // The prefix columns replace this group's boxed hourly buckets. Release each
+      // completed group while the remaining groups are encoded, rather than doubling the whole index.
+      acc.delete(k);
     }
   }
   /** PF and count of the group over the `hours` whole hours before the hour of t */

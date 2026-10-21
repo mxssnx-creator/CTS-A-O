@@ -16,7 +16,14 @@ import {
   allCombos,
   seriesOf,
 } from "./pipeline.ts";
-import { DEFAULT_SETTINGS, DEFAULT_GATES } from "../config.ts";
+import {
+  DEFAULT_SETTINGS,
+  DEFAULT_GATES,
+  MINIMAL_PLUS_RANGE,
+  MINIMAL_RANGE,
+  SHORT_RANGE,
+} from "../config.ts";
+import { MICRO_RANGE } from "../minimal-coord.ts";
 import { INDICATION_KINDS, type Bars, type Trade } from "../domain/types.ts";
 
 const END = Date.UTC(2026, 8, 20);
@@ -80,7 +87,12 @@ describe("indications", () => {
     // Relate and relational Break IDs are anchored to one explicit timeframe. This generic test owns one 5m series,
     // so their lane-correct direction checks live in the corresponding family tests instead.
     const unanchored = INDICATIONS.filter(
-      (s) => !s.id.startsWith("relate-") && !s.id.startsWith("break-rel-") && !s.id.startsWith("break-mc-rel-"),
+      (s) =>
+        !s.id.startsWith("relate-") &&
+        !s.id.startsWith("break-rel-") &&
+        !s.id.startsWith("break-mc-rel-") &&
+        s.kind !== "micro" &&
+        s.kind !== "inverse",
     );
     for (const s of unanchored) {
       const st = indicationState(s.id, kFull)!;
@@ -119,7 +131,8 @@ describe("bots", () => {
           const a = comboSignal(b.type, ind, kFull);
           const c = comboSignal(b.type, ind, kCut);
           if (!a || !c) continue;
-          for (let i = 0; i < cut; i++) if (c[i] !== a[i]) assert.fail(`${b.type}|${ind} @${i} cut ${cut}`);
+          for (let i = 0; i < cut; i++)
+            if (c[i] !== a[i]) assert.fail(`${b.type}|${ind} @${i} cut ${cut}`);
         }
     }
   });
@@ -206,7 +219,11 @@ describe("last-N", () => {
     assert.equal(historical.gateOpen, false, "the first five completed closes are losses");
 
     const atClose = optimizeLastN("x", xs, { gates, grid: [5, 10], nowT: 26 * H });
-    assert.equal(atClose.gateOpen, true, "a passing close exactly at nowT is included in the current last-N");
+    assert.equal(
+      atClose.gateOpen,
+      true,
+      "a passing close exactly at nowT is included in the current last-N",
+    );
     const beforeClose = optimizeLastN("x", xs, { gates, grid: [5, 10], nowT: 26 * H - 1 });
     assert.equal(beforeClose.gateOpen, false, "future closes after nowT are excluded");
   });
@@ -274,7 +291,10 @@ describe("combos", () => {
     const tfs = [1, 5, 15, 30];
     const micro = (c: { ind: string }) => isMicroInd(c.ind.split("@m")[0]);
     const all = allCombos(undefined, undefined, tfs).filter(micro);
-    assert.ok(all.some((c) => c.ind.endsWith("@m1")), "every lane without a floor");
+    assert.ok(
+      all.some((c) => c.ind.endsWith("@m1")),
+      "every lane without a floor",
+    );
     const pruned = allCombos(undefined, undefined, tfs, 5).filter(micro);
     assert.equal(
       pruned.filter((c) => c.ind.endsWith("@m1") || c.ind.endsWith("@m1c")).length,
@@ -284,7 +304,8 @@ describe("combos", () => {
     assert.ok(pruned.length > 0 && pruned.length < all.length, `${pruned.length} of ${all.length}`);
     // only the Micro ones are affected
     assert.equal(
-      allCombos(undefined, undefined, tfs, 5).filter((c) => !micro(c) && c.ind.endsWith("@m1")).length,
+      allCombos(undefined, undefined, tfs, 5).filter((c) => !micro(c) && c.ind.endsWith("@m1"))
+        .length,
       allCombos(undefined, undefined, tfs).filter((c) => !micro(c) && c.ind.endsWith("@m1")).length,
     );
   });
@@ -310,6 +331,21 @@ describe("pipeline", () => {
       refineTop: 6,
       evalTop: 12,
       armTop: 3,
+      // Keep the deterministic all-indication stage test bounded. Full production Micro/Inverse grids have
+      // separate exhaustive worker/grid and frozen 20-symbol replay coverage.
+      grid: {
+        ...DEFAULT_SETTINGS.grid,
+        tp: [0.02],
+        slOfTp: [1],
+        trailOfTp: [0, 0.25],
+        holdH: [4],
+        general: false as const,
+        long: false as const,
+        minimalPlus: { ...MINIMAL_PLUS_RANGE, enabled: false },
+        micro: { ...MICRO_RANGE, tp: [0.002], slOfTp: [1, 2], trailOfTp: [0, 0.25] },
+        minimal: { ...MINIMAL_RANGE, tp: [0.006], slOfTp: [1], trailOfTp: [0, 0.25] },
+        short: { ...SHORT_RANGE, tp: [0.012], slOfTp: [1], trailOfTp: [0, 0.25] },
+      },
       focus: [] as string[],
       pinned: [] as string[],
     };

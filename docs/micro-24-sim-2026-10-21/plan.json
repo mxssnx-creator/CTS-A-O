@@ -1,0 +1,68 @@
+{
+  "schema": "cts-micro-24-fixed-plan-v1",
+  "purpose": "Complete fixed-scope retrospective correctness and hourly stability follow-up; no outcome-based retuning or guaranteed profits",
+  "sourceSha256": "1070ac283ba701ef6931cbf19fb614165188b3b60c1d86805828232f57196796",
+  "symbols": [
+    "ADA-USDT",
+    "APT-USDT",
+    "ARB-USDT",
+    "ATOM-USDT",
+    "AVAX-USDT",
+    "BCH-USDT",
+    "BNB-USDT",
+    "BTC-USDT",
+    "DOGE-USDT",
+    "DOT-USDT",
+    "ETC-USDT",
+    "ETH-USDT",
+    "FIL-USDT",
+    "INJ-USDT",
+    "LINK-USDT",
+    "LTC-USDT",
+    "NEAR-USDT",
+    "OP-USDT",
+    "SOL-USDT",
+    "SUI-USDT",
+    "TRX-USDT",
+    "UNI-USDT",
+    "XLM-USDT",
+    "XRP-USDT"
+  ],
+  "window": {
+    "indicatorStartT": 1792281600000,
+    "evaluationFromT": 1792368000000,
+    "tradeStartT": 1792411200000,
+    "endT": 1792454400000,
+    "preH": 12,
+    "runH": 12
+  },
+  "feedSha256": "911c92f35f579c723d95bc7e1272746dd1390579ff8a4beeda6c184afb2708a7",
+  "account": {
+    "balance": 10000,
+    "leverage": 10,
+    "sizing": {
+      "mode": "fixed",
+      "pct": 0.002
+    },
+    "notionalUsd": 2
+  },
+  "modelCost": 0.0015,
+  "harnessSha256": "5591f8cea89b3af2e736d6f8ca7989459363e7bfe7cb7fd734e178420bcbad25",
+  "collectorSha256": "c38aae6998b310a9139522f8ca252d87c409c35be2f76e03db1148dead6b2816",
+  "limits": {
+    "nativeTimeframeMinutes": 1,
+    "derivedTimeframesMinutes": [
+      5,
+      15
+    ],
+    "indicatorWarmupHours": 24,
+    "prehistoryHours": 12,
+    "executionHours": 12,
+    "sourceIdentities": 728,
+    "nativeVenueOrders": false,
+    "market": "Official Binance USD-M archives; modeled BingX runtime; venue fees and fills not measured"
+  },
+  "originalFrozenProtocolSha256": "d633d6c1e8ec7a3eb19782bae6e8af5fb4c1f91148be6c7b6f3b99c6fbe92f32",
+  "actualSettingsSha256": "52c1138fccb07cf9d75591ac93fab4c759054e4d22cce861edc666b241d0d6c2",
+  "actualWfSha256": "dd103be1e6cb31f7df63144a529f7439021d60fdd02afab2a0c515eab2b73082"
+}

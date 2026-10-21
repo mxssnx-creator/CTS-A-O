@@ -1,0 +1,5 @@
+{
+  "status": "interrupted before completion",
+  "reason": "Source1070 run deliberately stopped with own-session SIGINT after wider integration checks found relation PF provenance errors and user added symbol ranking and Axis work. No completed market result or PF exists for this attempt. Original sealed protocol and log retained. New source requires a separate v2 protocol.",
+  "exitCode": 130
+}

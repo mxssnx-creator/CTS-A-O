@@ -1,0 +1,71 @@
+TAP version 13
+# Subtest: Stable-02 paused keys, one side each (item 2)
+    # Subtest: fixture: S2Coord pauses one side of each symbol, keyed sym|±1
+    ok 1 - fixture: S2Coord pauses one side of each symbol, keyed sym|±1
+      ---
+      duration_ms: 1.900451
+      type: 'test'
+      ...
+    # Subtest: [item 2] a LONG on the paused S1-USDT|1 side is refused
+    ok 2 - [item 2] a LONG on the paused S1-USDT|1 side is refused
+      ---
+      duration_ms: 0.635287
+      type: 'test'
+      ...
+    # Subtest: [item 2] a SHORT on S1-USDT, the other side, is allowed
+    ok 3 - [item 2] a SHORT on S1-USDT, the other side, is allowed
+      ---
+      duration_ms: 0.144511
+      type: 'test'
+      ...
+    # Subtest: [item 2] a SHORT on the paused S2-USDT|-1 side is refused
+    ok 4 - [item 2] a SHORT on the paused S2-USDT|-1 side is refused
+      ---
+      duration_ms: 0.432517
+      type: 'test'
+      ...
+    # Subtest: [item 2] a LONG on S2-USDT, the other side, is allowed
+    ok 5 - [item 2] a LONG on S2-USDT, the other side, is allowed
+      ---
+      duration_ms: 0.286759
+      type: 'test'
+      ...
+    # Subtest: [item 2] control: with coord.s2Side off (the default) the paused LONG is allowed, the old result
+    ok 6 - [item 2] control: with coord.s2Side off (the default) the paused LONG is allowed, the old result
+      ---
+      duration_ms: 0.141535
+      type: 'test'
+      ...
+    # Subtest: [item 2] control: with coord.s2Side off (the default) the paused SHORT is allowed, the old result
+    ok 7 - [item 2] control: with coord.s2Side off (the default) the paused SHORT is allowed, the old result
+      ---
+      duration_ms: 0.328097
+      type: 'test'
+      ...
+    # Subtest: [item 2] control: with coord.s2Side off the other-side cells are allowed too
+    ok 8 - [item 2] control: with coord.s2Side off the other-side cells are allowed too
+      ---
+      duration_ms: 0.465468
+      type: 'test'
+      ...
+    # Subtest: [item 2] coord.s2Side is normalised: only a true boolean turns it on, and an unset one adds no key
+    ok 9 - [item 2] coord.s2Side is normalised: only a true boolean turns it on, and an unset one adds no key
+      ---
+      duration_ms: 1.526118
+      type: 'test'
+      ...
+    1..9
+ok 1 - Stable-02 paused keys, one side each (item 2)
+  ---
+  duration_ms: 7.976535
+  type: 'suite'
+  ...
+1..1
+# tests 9
+# suites 1
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 635.597045

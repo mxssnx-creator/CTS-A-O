@@ -1,3 +1,4 @@
+import { MICRO_CONFIG_IDS, INVERSE_MICRO_CONFIG_IDS } from "./indications/micro-family.ts";
 import { PROVEN_WIDE_TRAIL_PAIRS } from "./proven-wide-trail.ts";
 // CTS-A Core v2 — authoritative defaults. Every number the engine uses lives here.
 import type {
@@ -13,15 +14,15 @@ import type {
 import { DEFAULT_SIGNALS, type SignalSettings } from "./signal-config.ts";
 import { DEFAULT_SIZING, type SizingSettings } from "./sizing.ts";
 import type { PromotedLaneProof } from "./live-promote.ts";
-import {
-  BREAK_DEFAULT_MICRO_CONFIG_IDS,
-  breakAnchorTf,
-} from "./indications/break-config.ts";
+import { BREAK_DEFAULT_MICRO_CONFIG_IDS, breakAnchorTf } from "./indications/break-config.ts";
 import { DEFAULT_MODEL_FEES, RT_COST } from "./model-cost.ts";
+import { INVERSE_CONFIG_IDS, INVERSE_PREVIOUS_CONFIG_IDS } from "./indications/inverse-config.ts";
 export { RT_COST } from "./model-cost.ts";
 
 /** Hard ceiling for unique positions on the exchange. Strategy/config orders do not consume extra slots. */
 export const MAX_EXCHANGE_POSITIONS = 100;
+/** Bounded settings payload, including every independent Micro/Inverse source and the ordinary catalog. */
+export const MAX_FOCUS_PAIRS = 2000;
 
 /** Normalize legacy, unset, or oversized exchange limits without allowing the account cap to be bypassed. */
 export function exchangePositionLimit(value?: number): number {
@@ -173,6 +174,7 @@ export const GRID_VARIANTS_MAX = 20_000;
 export const DEFAULT_DCA: DcaConfig = { levels: 1, addRatio: 2.5, step: 0.02, stopGap: 0.5, slOfTp: 1 };
 /** Axis: 3 legs 0.7 ATR apart toward the EMA-50 axis, entered at 0.35–2.6 ATR displacement (desk defaults). */
 export const DEFAULT_AXIS: AxisConfig = {
+  volumeFactor: 0.1,
   levels: 3,
   spacing: 0.7,
   ratio: 1,
@@ -261,7 +263,7 @@ export interface CoreSettings {
   /** symbols in the universe */
   symbols: number;
   /** how the universe is chosen: 1H volatility (default), 24h volume, market majors, 24h gainers / losers */
-  symbolRank: "volatility1h" | "volume" | "market" | "gainers" | "losers";
+  symbolRank: "volatility1h" | "change1h5m" | "volume" | "market" | "gainers" | "losers";
   /** engine cycle: checks for newly closed bars and runs the stages when one closed (ms) */
   cycleMs: number;
   /**
@@ -331,6 +333,8 @@ export interface ExitStrategySettings {
   includeTactics: boolean;
   /** Include all Relate subsets, modes and guarded/balanced activity profiles independently of Bot focus. */
   includeRelations: boolean;
+  /** Include first-class Micro techniques and exact timeframe subsets without Bot focus. */
+  includeMicro?: boolean;
   /** Evaluate each selected single-timeframe source plus its completed higher-timeframe confirmation lane. */
   includeCombined: boolean;
   /** prehistory horizon before the causal run cut; 0 uses all available prehistory */
@@ -655,6 +659,32 @@ export const PREVIOUS_DEFAULT_FOCUS_17OCT: readonly string[] = [
   ...FAMILY_FOCUS_13OCT,
 ];
 
+/** Exact former factory selection, used for additive upgrades without rewriting custom Focus. */
+export const PREVIOUS_DEFAULT_FOCUS_20OCT: readonly string[] = [
+  ...PREVIOUS_DEFAULT_FOCUS_17OCT, ...BREAK_MICRO_FOCUS_17OCT,
+];
+export const INVERSE_FOCUS_20OCT: readonly string[] = INVERSE_CONFIG_IDS.map((id) => `follow|${id}`);
+export const PREVIOUS_INVERSE_FOCUS_20OCT: readonly string[] = [
+  ...PREVIOUS_DEFAULT_FOCUS_20OCT, ...INVERSE_PREVIOUS_CONFIG_IDS.map((id) => `follow|${id}`),
+];
+
+// Freeze the former 939-entry factory selection. Future methods must not rewrite a migration identity.
+const MICRO_METHODS_BEFORE_CHANNELS_21OCT = [
+  "drawdown-turn", "drawdown-trend", "range-reclaim", "impulse-retest", "squeeze-break",
+  "residual-revert", "market-follow", "activity-absorb", "drawdown-residual", "drawdown-market",
+  "pullback-activity", "adaptive", "break-close", "break-retest", "activity-acceleration", "activity-flow",
+  "change-ema", "change-roc", "break-activity", "break-direction", "market-momentum", "relative-trend",
+  "flow-break", "trend-reclaim", "market-continuation", "direction-persist",
+];
+const MICRO_IDS_BEFORE_CHANNELS_21OCT = ["1", "5", "15", "1x5", "1x15", "5x15", "1x5x15"].flatMap(
+  (tf) => MICRO_METHODS_BEFORE_CHANNELS_21OCT.flatMap((method) => ["fast", "selective"].map((profile) => `micro-${tf}-${method}-${profile}`)),
+);
+export const PREVIOUS_MICRO_FOCUS_21OCT: readonly string[] = [
+  ...PREVIOUS_DEFAULT_FOCUS_20OCT, ...INVERSE_FOCUS_20OCT,
+  ...MICRO_IDS_BEFORE_CHANNELS_21OCT.map((id) => `follow|${id}`),
+  ...MICRO_IDS_BEFORE_CHANNELS_21OCT.map((id) => `follow|inverse-${id}`),
+];
+
 export const DEFAULT_SETTINGS: CoreSettings = {
   tfMin: 1,
   tfs: [1, 5, 15, 30],
@@ -674,6 +704,7 @@ export const DEFAULT_SETTINGS: CoreSettings = {
     timeframes: [1, 5, 15],
     includeTactics: true,
     includeRelations: true,
+    includeMicro: true,
     includeCombined: true,
     lookbackH: 168,
     trainFraction: 0.6,
@@ -705,7 +736,9 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   sizing: DEFAULT_SIZING,
   toggles: DEFAULT_TOGGLES,
   tactics: DEFAULT_TACTICS,
-  focus: [...PREVIOUS_DEFAULT_FOCUS_17OCT, ...BREAK_MICRO_FOCUS_17OCT],
+  focus: [...PREVIOUS_DEFAULT_FOCUS_20OCT, ...INVERSE_FOCUS_20OCT,
+    ...MICRO_CONFIG_IDS.map((id) => `follow|${id}`),
+    ...INVERSE_MICRO_CONFIG_IDS.map((id) => `follow|${id}`)],
   pinned: [...PROVEN_WIDE_TRAIL_PAIRS],
   disabledKinds: [],
   block: DEFAULT_BLOCK,
@@ -786,6 +819,7 @@ export const DEFAULT_SETTINGS: CoreSettings = {
 /** Symbol selection rankings (engine universe and preset settings). */
 export const SYMBOL_RANK_CHOICES = [
   { id: "volatility1h", label: "1H volatility" },
+  { id: "change1h5m", label: "1H average 5m price distance" },
   { id: "volume", label: "24h volume" },
   { id: "market", label: "Market (majors first)" },
   { id: "gainers", label: "24h gainers" },

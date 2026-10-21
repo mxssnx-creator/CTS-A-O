@@ -1,0 +1,208 @@
+TAP version 13
+# Subtest: releasing processed Real candidates preserves every settled order, deduplicated feed and step diagnostic
+ok 1 - releasing processed Real candidates preserves every settled order, deduplicated feed and step diagnostic
+  ---
+  duration_ms: 501.07487
+  type: 'test'
+  ...
+# Subtest: independent configs (seatPer config)
+    # Subtest: fixed: every passing variant of one indication takes its own seat
+    ok 1 - fixed: every passing variant of one indication takes its own seat
+      ---
+      duration_ms: 9.913383
+      type: 'test'
+      ...
+    # Subtest: fixed: a sibling never changes another config's seat
+    ok 2 - fixed: a sibling never changes another config's seat
+      ---
+      duration_ms: 14.476535
+      type: 'test'
+      ...
+    # Subtest: fixed: validation and entry last-N are isolated to each config
+    ok 3 - fixed: validation and entry last-N are isolated to each config
+      ---
+      duration_ms: 10.632268
+      type: 'test'
+      ...
+    # Subtest: hourly: every passing variant of one indication takes its own seat
+    ok 4 - hourly: every passing variant of one indication takes its own seat
+      ---
+      duration_ms: 2.226114
+      type: 'test'
+      ...
+    # Subtest: hourly: a sibling never changes another config's seat
+    ok 5 - hourly: a sibling never changes another config's seat
+      ---
+      duration_ms: 3.407717
+      type: 'test'
+      ...
+    # Subtest: hourly: validation and entry last-N are isolated to each config
+    ok 6 - hourly: validation and entry last-N are isolated to each config
+      ---
+      duration_ms: 3.360591
+      type: 'test'
+      ...
+    # Subtest: DCA / Axis are judged on their own results, not against the pair's base
+    ok 7 - DCA / Axis are judged on their own results, not against the pair's base
+      ---
+      duration_ms: 1.370971
+      type: 'test'
+      ...
+    # Subtest: a config's trades are the same with and without its siblings
+    ok 8 - a config's trades are the same with and without its siblings
+      ---
+      duration_ms: 6.10714
+      type: 'test'
+      ...
+    # Subtest: Block on the config's own results: the decision ignores every other position
+    ok 9 - Block on the config's own results: the decision ignores every other position
+      ---
+      duration_ms: 4.125415
+      type: 'test'
+      ...
+    # Subtest: signals on their own Block record (signalsOwn): the pooled book never raises or skips a signal
+    ok 10 - signals on their own Block record (signalsOwn): the pooled book never raises or skips a signal
+      ---
+      duration_ms: 2.727353
+      type: 'test'
+      ...
+    # Subtest: a type Block excludes (Axis) trades at its own volume, never raised or skipped by Block Active
+    ok 11 - a type Block excludes (Axis) trades at its own volume, never raised or skipped by Block Active
+      ---
+      duration_ms: 0.84749
+      type: 'test'
+      ...
+    1..11
+ok 2 - independent configs (seatPer config)
+  ---
+  duration_ms: 61.560395
+  type: 'suite'
+  ...
+# Subtest: held-only tapes (held by paper, no longer passing Base for their cell)
+    # Subtest: fixed: a held-only tape takes no new seat; the same tape unflagged does
+    ok 1 - fixed: a held-only tape takes no new seat; the same tape unflagged does
+      ---
+      duration_ms: 0.675545
+      type: 'test'
+      ...
+    # Subtest: hourly: a held-only tape takes no new seat; the same tape unflagged does
+    ok 2 - hourly: a held-only tape takes no new seat; the same tape unflagged does
+      ---
+      duration_ms: 0.77991
+      type: 'test'
+      ...
+    1..2
+ok 3 - held-only tapes (held by paper, no longer passing Base for their cell)
+  ---
+  duration_ms: 1.626258
+  type: 'suite'
+  ...
+# Subtest: Micro seats with independent configs
+    # Subtest: fixed: more than 200 passing Micro configs all take a seat (unlimited seats)
+    ok 1 - fixed: more than 200 passing Micro configs all take a seat (unlimited seats)
+      ---
+      duration_ms: 62.275212
+      type: 'test'
+      ...
+    # Subtest: fixed: no Micro cap in pair mode either (the 200-seat cap is disabled)
+    ok 2 - fixed: no Micro cap in pair mode either (the 200-seat cap is disabled)
+      ---
+      duration_ms: 8.864019
+      type: 'test'
+      ...
+    # Subtest: fixed: a portfolio limit still caps Micro
+    ok 3 - fixed: a portfolio limit still caps Micro
+      ---
+      duration_ms: 7.745347
+      type: 'test'
+      ...
+    # Subtest: hourly: more than 200 passing Micro configs all take a seat (unlimited seats)
+    ok 4 - hourly: more than 200 passing Micro configs all take a seat (unlimited seats)
+      ---
+      duration_ms: 5.956354
+      type: 'test'
+      ...
+    # Subtest: hourly: no Micro cap in pair mode either (the 200-seat cap is disabled)
+    ok 5 - hourly: no Micro cap in pair mode either (the 200-seat cap is disabled)
+      ---
+      duration_ms: 6.166956
+      type: 'test'
+      ...
+    # Subtest: hourly: a portfolio limit still caps Micro
+    ok 6 - hourly: a portfolio limit still caps Micro
+      ---
+      duration_ms: 7.763912
+      type: 'test'
+      ...
+    1..6
+ok 4 - Micro seats with independent configs
+  ---
+  duration_ms: 99.328721
+  type: 'suite'
+  ...
+# Subtest: orders still open at the end of the run
+    # Subtest: count in the run's PF at their mark (a losing open order is not left out), outside the closed trades
+    ok 1 - count in the run's PF at their mark (a losing open order is not left out), outside the closed trades
+      ---
+      duration_ms: 4.797632
+      type: 'test'
+      ...
+    # Subtest: stay in the feed flagged open, never a close for the Block book, the signal guard or Stable-02
+    ok 2 - stay in the feed flagged open, never a close for the Block book, the signal guard or Stable-02
+      ---
+      duration_ms: 35.637313
+      type: 'test'
+      ...
+    1..2
+ok 5 - orders still open at the end of the run
+  ---
+  duration_ms: 40.586984
+  type: 'suite'
+  ...
+# Subtest: the same order from two indications
+    # Subtest: executes once: identical trades at the same protect never double the position; different holds both trade
+    ok 1 - executes once: identical trades at the same protect never double the position; different holds both trade
+      ---
+      duration_ms: 3.615738
+      type: 'test'
+      ...
+    # Subtest: independent Axis depths and geometries keep their own simultaneous orders in sim and paper
+    ok 2 - independent Axis depths and geometries keep their own simultaneous orders in sim and paper
+      ---
+      duration_ms: 3.840626
+      type: 'test'
+      ...
+    1..2
+ok 6 - the same order from two indications
+  ---
+  duration_ms: 7.768152
+  type: 'suite'
+  ...
+# Subtest: continuous stability (gates.stableBlocks)
+    # Subtest: a set that made its PF in one stretch and lost after it is not validated; a steady one is
+    ok 1 - a set that made its PF in one stretch and lost after it is not validated; a steady one is
+      ---
+      duration_ms: 1.690395
+      type: 'test'
+      ...
+    # Subtest: entry crowding (entryCrowd): at most K configs of a range enter one symbol × side × bar, the best first
+    ok 2 - entry crowding (entryCrowd): at most K configs of a range enter one symbol × side × bar, the best first
+      ---
+      duration_ms: 114.630757
+      type: 'test'
+      ...
+    1..2
+ok 7 - continuous stability (gates.stableBlocks)
+  ---
+  duration_ms: 117.168835
+  type: 'suite'
+  ...
+1..7
+# tests 26
+# suites 6
+# pass 26
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 858.080057

@@ -27,6 +27,7 @@ import {
 const protocol = JSON.parse(
   readFileSync(new URL("../docs/signal-research-protocol-20261016.json", import.meta.url)),
 );
+protocol.model.roundTripCost = 0.0015; // new synthetic protocol; archived source stays immutable
 const MIN = 60_000;
 const START = Math.floor(1_790_000_000_000 / (30 * MIN)) * 30 * MIN;
 const candles = (n = 4800) =>
@@ -341,7 +342,7 @@ describe("four-source frozen independent Signal research", () => {
       cell.side,
     );
     const sim = simulate(cell.cfg, k.b, signal, cell.protect, {
-      cost: 0.002,
+      cost: protocol.model.roundTripCost,
       cooldown: tacticCooldown(DEFAULT_TACTICS),
     });
     const expected = totals(sim.trades.map((t) => t.r));
@@ -373,7 +374,7 @@ describe("four-source frozen independent Signal research", () => {
     const tapes = buildTapes(
       u,
       p.protects,
-      0.002,
+      protocol.model.roundTripCost,
       undefined,
       new Set([`follow|${cells[0].ind}`]),
       DEFAULT_TACTICS,
@@ -418,7 +419,7 @@ describe("four-source frozen independent Signal research", () => {
       const tape = runtimeByConfig.get(row.cfg);
       if (tape) assert.deepEqual(capSignalProtect(row.protect), tape.protect);
       const sim = simulate(cell.cfg, k.b, sideSignal(entries, row.side), cell.protect, {
-        cost: 0.002,
+        cost: protocol.model.roundTripCost,
         cooldown: tacticCooldown(DEFAULT_TACTICS),
       });
       const expected = totals(sim.trades.map((t) => t.r));

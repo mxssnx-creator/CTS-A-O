@@ -9,7 +9,8 @@ import assert from "node:assert/strict";
 import { CoreRuntime, crossedExit, sanitizeWf, tickTrail, type TickTrail } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
 import { SIGNAL_SOURCES, signalSettings } from "../signal-config.ts";
-import { fakeRt, pinSyntheticEnd, trackRuntimes } from "../test-support.ts";
+import { fakeRt, pinSyntheticEnd, trackRuntimes, runtimeFixtureGrid } from "../test-support.ts";
+import { PREVIOUS_DEFAULT_FOCUS_17OCT } from "../config.ts";
 import { coordSettings, DEFAULT_COORD, makeTape, type ConfigTape, type CoordSettings } from "../sim/walkforward.ts";
 import { simulate } from "../sim/backtest.ts";
 import { S2Coord } from "../sim/s2coord.ts";
@@ -90,17 +91,21 @@ const keyOf = (p: { cfg: string; sym: string; side: number; entryT: number }) =>
 
 const small = {
   symbols: 4,
+  focus: ["follow|ema-9-21@m15"],
+  tfs: [15],
+  exitStrategy: { enabled: false },
   historyDays: 18,
   tfDays: { "1": 3, "5": 6, "15": 18, "30": 18 },
   mainTop: 12,
   refineTop: 4,
   evalTop: 8,
   cycleMs: 60_000,
-  grid: { short: false as const },
+  pinned: [],
+  grid: { ...runtimeFixtureGrid(), short: false as const },
   gates: { minPf: 1.0, minTrades: 3, maxDdr: 0 },
   signals: signalSettings({
     exits: "pct",
-    sources: Object.fromEntries(SIGNAL_SOURCES.filter((x) => x.name.startsWith("s2-")).map((x) => [x.name, false])),
+    sources: Object.fromEntries(SIGNAL_SOURCES.map((x) => [x.name, false])),
   }),
 };
 
@@ -454,6 +459,7 @@ describe("Stable-02 paused keys, one side each (item 2)", () => {
   }
   const snap = s2.snapshot(T);
   const { rt: fake } = fakeRt();
+  Object.setPrototypeOf(fake, CoreRuntime.prototype);
   Object.assign(fake, { hedgeKeys: new Set<string>(), sim: { s2: snap } });
   /** the paper book's entry check on one candidate under the given coordination settings */
   const heldBackWith = (coord: CoordSettings, sym: string, side: 1 | -1) => {

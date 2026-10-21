@@ -157,7 +157,7 @@ function ConnStrip(props: { d: Any }) {
                 k="max positions"
                 v={live.maxPositions === 0 ? "no limit" : (live.maxPositions ?? "–")}
               />
-              <Line k="readiness" v={live.requireReady === false ? "off" : "on"} />
+              <Line k="readiness" v={`exact-set PF and owned execution · legacy aggregate ${live.requireReady === false ? "off" : "on"}`} />
             </div>
             <div className="v2-lines">
               <Line k="held" v={held.length ? `${held.length}` : "0"} />

@@ -1,0 +1,109 @@
+{
+  "primary": {
+    "run": 39509771569,
+    "commit": "4e0ed5cae46ee06d8c37a64aeea5e81df629a704",
+    "tree": "64b81989c421973e963052a8a0a787b09e59c06b",
+    "conclusion": "success",
+    "jobs": [
+      {
+        "id": 118927613535,
+        "name": "verify (stress)",
+        "conclusion": "success"
+      },
+      {
+        "id": 118927613754,
+        "name": "verify (functional-runtime)",
+        "conclusion": "success"
+      },
+      {
+        "id": 118927613779,
+        "name": "verify (reference)",
+        "conclusion": "success"
+      },
+      {
+        "id": 118927613795,
+        "name": "verify (functional)",
+        "conclusion": "success"
+      },
+      {
+        "id": 118927613944,
+        "name": "verify (functional-heavy)",
+        "conclusion": "success"
+      },
+      {
+        "id": 118927613954,
+        "name": "verify (study)",
+        "conclusion": "success"
+      }
+    ],
+    "artifacts": [
+      {
+        "id": 12305895822,
+        "name": "micro-stress-39509771569-1",
+        "digest": "sha256:2814cef2381e08efbe6d3e4d605462bd83ff2c6f18be835dc47d21434a81ad5f",
+        "bytes": 16597,
+        "verified": true
+      },
+      {
+        "id": 12305836327,
+        "name": "micro-study-39509771569-1",
+        "digest": "sha256:2a8f4ef6c47a8b401b6476f27f087bd5f8d3d3db17b2c89fa655b26ab088592d",
+        "bytes": 129496515,
+        "verified": true
+      },
+      {
+        "id": 12305372083,
+        "name": "micro-functional-heavy-39509771569-1",
+        "digest": "sha256:45461eb17a66c1860120c7b6b095785bf8ac6e2bf5211fd70228ac7f7bec7017",
+        "bytes": 9060,
+        "verified": true
+      },
+      {
+        "id": 12304988831,
+        "name": "micro-reference-39509771569-1",
+        "digest": "sha256:29bf4243e42b02ef4d49620261eb277a14532adcb425a4aec64de8be3e843a68",
+        "bytes": 35683181,
+        "verified": true
+      },
+      {
+        "id": 12304804634,
+        "name": "micro-functional-runtime-39509771569-1",
+        "digest": "sha256:b988fdde00fb35a5b178fda1d04ff245cfea4756c4917edefb07bf935509be87",
+        "bytes": 5842,
+        "verified": true
+      },
+      {
+        "id": 12304759852,
+        "name": "micro-functional-39509771569-1",
+        "digest": "sha256:7f9d9f7bd60d94ff3e6eb0c33ad9451b13dfed909578fffac1a96095764ac2f7",
+        "bytes": 223033,
+        "verified": true
+      }
+    ]
+  },
+  "partial": {
+    "run": 39510692041,
+    "commit": "2c7ab7facf28b5bebad86b633d188e5efd544794",
+    "tree": "743b33bfc5495b6e7e5b0dd5231aaa07f9d7accf",
+    "conclusion": "success",
+    "jobId": 118930672853,
+    "artifactId": 12306320108,
+    "artifactSha256": "b8dd5b3008b0fb5ac2ca5bf2711c8ac9e4200e935ae2ccb6b30b6b24dbb9aa33",
+    "verified": true
+  },
+  "sourceSha256": "ae7b2021fbdce8c3432329781dfc19a651c7e1fc488b3826874af741e69befaa",
+  "scriptRegressions": {
+    "tests": 50,
+    "pass": 50,
+    "fail": 0,
+    "cancelled": 0
+  },
+  "reportUi": {
+    "widths": [
+      1280,
+      390
+    ],
+    "pageErrors": 0,
+    "horizontalOverflow": false
+  }
+}

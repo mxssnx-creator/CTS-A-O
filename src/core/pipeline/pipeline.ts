@@ -39,8 +39,15 @@ import {
   RANGE_OWN_BASE,
   rangeMinTfOf,
   microIndRule,
+  forEachCoord,
+  forEachMicro,
 } from "../minimal-coord.ts";
 import { isMicroInd, microIndFits, type MicroIndRule } from "../indications/micro.ts";
+import { INVERSE_TIMEFRAMES, isInverseInd } from "../indications/inverse-config.ts";
+import {
+  isMicroCalculationInd as isMicroFamilyInd,
+  microAnchorTf,
+} from "../indications/micro-family.ts";
 import { isRelateInd, relateAnchorTf } from "../indications/relate.ts";
 import { breakAnchorTf, isBreakRelInd } from "../indications/break-config.ts";
 import { SeriesCache } from "../indications/cache.ts";
@@ -69,6 +76,7 @@ import {
 import { buildPortfolio, type Portfolio } from "./portfolio.ts";
 import { baseWindowsPlan, judgeBaseWindows, type BaseWindowsPlan } from "./base-windows.ts";
 import { baseCellAccumulator } from "./base-cell-stats.ts";
+import { trailingOnlyProtects } from "../sim/trailing.ts";
 
 export interface Universe {
   bars: Bars[];
@@ -245,9 +253,15 @@ export const laneClosesWith = (baseOpenT: number, baseTf: number, laneTf: number
 /** Timeframe lanes of every indication: independent per timeframe, combined where higher timeframes exist. */
 export function laneInds(base: string, tfs: readonly number[]): string[] {
   const out: string[] = [];
-  for (const tf of tfs) {
+  if (isMicroFamilyInd(base)) {
+    const anchor = microAnchorTf(base);
+    return anchor !== null && tfs.includes(anchor) ? [laneInd(base, anchor)] : [];
+  }
+  const lanes = isInverseInd(base)
+    ? tfs.filter((tf) => (INVERSE_TIMEFRAMES as readonly number[]).includes(tf)) : tfs;
+  for (const tf of lanes) {
     out.push(laneInd(base, tf));
-    if (base !== "none" && higherFactors(tf, tfs.length ? tfs : TF_LADDER).length)
+    if (base !== "none" && higherFactors(tf, lanes.length ? lanes : TF_LADDER).length)
       out.push(laneInd(base, tf, true));
   }
   return out;
@@ -313,7 +327,8 @@ export function allCombos(
     // signal sources ("sig-…") are processed by Signals processing, not as engine combos; the Stable-02 ports
     // ("s2-…") run as signal sources only (as engine combos they added 26 % Base work)
     for (const ind of INDICATIONS)
-      if (!off.has(ind.kind) && !ind.id.startsWith("sig-") && !ind.id.startsWith("s2-"))
+      if (!off.has(ind.kind) && !ind.id.startsWith("sig-") && !ind.id.startsWith("s2-") &&
+          (!isInverseInd(ind.id) || b.type === "follow"))
         plain.push({ bot: b.type, ind: ind.id });
   }
   const out = tfs?.length
@@ -596,6 +611,70 @@ export interface RangeBaseStat {
  * One representative cell per enabled range for the Base stage: the middle TP and the middle stop ratio, no trail,
  * the first hold (15m-reference bars; every lane holds the same time). Wide grid: the default protect alone.
  */
+/** Complete grid at the reference timeframe, matching protectGrid's cells, rounding and floors exactly. */
+export function completeBaseRangeProtects(g: CoreSettings["grid"], cost: number): Protect[] {
+  const out: Protect[] = [],
+    seen = new Set<string>();
+  const emit = (
+    tp: number,
+    k: number,
+    tr: number,
+    h: number,
+    minSl: number,
+    minTrail: number,
+    tag?: RangeTag,
+    slEval?: number,
+  ) => {
+    const range =
+      tag === "mc"
+        ? g.micro
+        : tag === "mn"
+          ? g.minimal
+          : tag === "sh"
+            ? g.short
+            : tag === "gn"
+              ? g.general
+              : tag === "lg"
+                ? g.long
+                : undefined;
+    const digits = tag === "mc" ? 6 : 4;
+    const p: Protect = {
+      tp: tag === "mc" ? +tp.toFixed(6) : tp,
+      sl: distanceAtFloor(tp * k, Math.max(slEval ?? g.minSlEval ?? EVAL_MIN_SL, minSl), digits),
+      trail: tr > 0 ? trailAtFloor(tp * tr, minTrail, g.trailStep ?? 1, digits) : 0,
+      hold: Math.max(holdFloorBars(range), Math.round((h * 60) / REF_TF)),
+      ...(tag ? { tag } : {}),
+      ...(range && range.maxHoldMin ? { maxHoldMin: range.maxHoldMin } : {}),
+    };
+    // The Wide caps resolve before identity/deduplication, as in the executable grid.
+    if (!tag) {
+      if (g.maxSl && g.maxSl > 0) p.sl = Math.min(p.sl, g.maxSl);
+      if (g.maxTrail && g.maxTrail > 0) p.trail = Math.min(p.trail, g.maxTrail);
+    }
+    if (p.trail > 0) {
+      p.trailStep = g.trailStep ?? 1;
+      p.trailFree = g.trailFree ?? false;
+    }
+    const key = `${p.tp}|${p.sl}|${p.trail}|${p.hold}|${p.tag ?? ""}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      out.push(p);
+    }
+  };
+  for (const tp of g.tp)
+    for (const k of g.slOfTp)
+      for (const tr of g.trailOfTp)
+        for (const h of g.holdH) emit(tp, k, tr, h, g.minSl, g.minTrail);
+  forEachCoord(g, emit);
+  forEachMicro(
+    g,
+    (tp, k, tr, h, minSl, minTrail, slEval) => emit(tp, k, tr, h, minSl, minTrail, "mc", slEval),
+    cost,
+  );
+  if (g.trailingOnly) out.push(...trailingOnlyProtects(out));
+  return out;
+}
+
 export function baseRangeProtects(
   g: {
     // (ranges whose ownBase is off, by default Short / General / Long, are judged at the default protect)
@@ -1287,7 +1366,8 @@ export function rangeAppliesTo(
   },
 ): boolean {
   if (!o.enabled(tag)) return false;
-  if (!microIndFits(o.microOwnInds, tag, isMicroInd(laneOf(ind).base))) return false;
+  if (!microIndFits(o.microOwnInds, tag, isMicroInd(laneOf(ind).base), isMicroFamilyInd(ind)))
+    return false;
   const tf = laneOf(ind).tf ?? o.baseTf ?? 1;
   // Wide ("" ) reads its own "wide" entry (grid.wideMinTf)
   return !(tf < (o.minTf?.[tag || "wide"] ?? 0));
@@ -1351,7 +1431,7 @@ export function rangeBaseStats(
   const out: Record<string, RangeBaseStat> = {};
   for (const p of protects) {
     if (p.tag && laneTf < (minTf?.[p.tag] ?? 0)) continue;
-    if (!microIndFits(microOwnInds, p.tag, microInd)) continue;
+    if (!microIndFits(microOwnInds, p.tag, microInd, isMicroFamilyInd(ind))) continue;
     // the cell's whole-history stats only (cellStats = runCombo(…).full, without its per-symbol and in-sample work)
     const cand = cellStats(u, bot, ind, p, cost, tactics, bw);
     if (!cand) continue;
@@ -1677,9 +1757,12 @@ export function baseRuns(
   microOwnInds: MicroIndRule = false,
   /** the stage gates: a range keeps a passing cell first (rangeCellPass) */
   gates?: Gates,
+  completeRangeProtectsOrCells: readonly Protect[] | boolean = [],
   /** grid.baseCells: record the passed cells of each pair (ComboRun.rangeCells) */
   cells = false,
 ): ComboRun[] {
+  const completeRangeProtects = typeof completeRangeProtectsOrCells === "boolean" ? [] : completeRangeProtectsOrCells;
+  if (typeof completeRangeProtectsOrCells === "boolean") cells = completeRangeProtectsOrCells;
   // two-window Base (gates.baseWindows; null while unset: nothing more is computed)
   const plan = baseWindowsPlan(gates);
   const out: ComboRun[] = [];
@@ -1687,7 +1770,10 @@ export function baseRuns(
   // next indication (a worker holding every indicator of every lane and symbol grew to gigabytes)
   const groups = new Map<string, Array<{ bot: string; ind: string }>>();
   for (const c of combos) {
-    const k = laneOf(c.ind).base;
+    const base = laneOf(c.ind).base;
+    const k = isMicroFamilyInd(base)
+      ? `micro-family:${base.endsWith("-selective") ? "selective" : "fast"}`
+      : base;
     let g = groups.get(k);
     if (!g) groups.set(k, (g = []));
     g.push(c);
@@ -1711,7 +1797,9 @@ export function baseRuns(
               u,
               c.bot as BotType,
               c.ind,
-              rangeProtects,
+              completeRangeProtects.length && (isMicroFamilyInd(c.ind) || isInverseInd(c.ind))
+                ? completeRangeProtects
+                : rangeProtects,
               cost,
               tactics,
               rangeMinTf,
@@ -1786,7 +1874,9 @@ export function* runPipeline(
         u,
         c.bot,
         c.ind,
-        baseRangeProtects(g, cost),
+        isMicroFamilyInd(c.ind) || isInverseInd(c.ind)
+          ? completeBaseRangeProtects(g as CoreSettings["grid"], cost)
+          : baseRangeProtects(g, cost),
         cost,
         s.tactics,
         rangeMinTfOf(g),

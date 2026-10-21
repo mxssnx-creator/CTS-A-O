@@ -1,0 +1,18 @@
+{
+  "status": "Expanded source CI in progress; previous v3 results remain separately archived",
+  "productionHead": "6804f0a15db37370b9791279ad0cbc8ae625aae4",
+  "sourceSha256": "ecea01ea51606fb0fb33cdcb448acd9b2bb91ab0f8bb50980a740b8afb981921",
+  "ordinaryFiles": 260,
+  "ordinaryPassed": null,
+  "ordinarySkipped": 2,
+  "partitions": [],
+  "types": "pass",
+  "lint": {
+    "errors": 0,
+    "warnings": 43
+  },
+  "build": "pass",
+  "scriptFirstAttempt": "Settings-save request settlement timeout; 673 pass,1 fail,8 skip; retained",
+  "universal": "pending",
+  "identityCells": null
+}

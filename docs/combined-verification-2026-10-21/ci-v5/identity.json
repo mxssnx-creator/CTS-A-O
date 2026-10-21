@@ -1,0 +1,78 @@
+{
+  "scope": {
+    "sourceSha256": "61b56cee42745c066877f8b605041dcb54274a874d8686a7f1fe52b2f6a5ad46",
+    "registeredSpecs": 1860,
+    "byKind": {
+      "trend": 70,
+      "break": 237,
+      "active": 163,
+      "direction": 38,
+      "move": 60,
+      "rsi": 39,
+      "bollinger": 31,
+      "sar": 7,
+      "macd": 23,
+      "ema": 20,
+      "osc": 60,
+      "volume": 34,
+      "channel": 21,
+      "ichimoku": 8,
+      "smooth": 17,
+      "tactic": 10,
+      "relate": 40,
+      "micro": 434,
+      "inverse": 548
+    },
+    "engineCombos": 37786,
+    "timeframes": [
+      1,
+      5,
+      15,
+      30
+    ]
+  },
+  "classification": "Synthetic identity contract for all registered source/lane/type/range combinations; three causal hourly own-history gate checks per source. Hypothetical combinations do not override real range eligibility or prove market profits.",
+  "strategyKinds": [
+    "normal",
+    "trailing",
+    "trailing-only",
+    "exit",
+    "dca",
+    "dca-active",
+    "axis"
+  ],
+  "ranges": [
+    "wide",
+    "mc",
+    "mn",
+    "mp",
+    "sh",
+    "gn",
+    "lg"
+  ],
+  "checkedIdentityCells": 627984,
+  "ownHourlyDecisions": 5580,
+  "losingOwnHourlyDecisions": 5580,
+  "completedSpecsByKind": {
+    "trend": 70,
+    "break": 237,
+    "active": 163,
+    "direction": 38,
+    "move": 60,
+    "rsi": 39,
+    "bollinger": 31,
+    "sar": 7,
+    "macd": 23,
+    "ema": 20,
+    "osc": 60,
+    "volume": 34,
+    "channel": 21,
+    "ichimoku": 8,
+    "smooth": 17,
+    "tactic": 10,
+    "relate": 40,
+    "micro": 434,
+    "inverse": 548
+  },
+  "violations": 0
+}

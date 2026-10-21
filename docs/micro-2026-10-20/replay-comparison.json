@@ -1,0 +1,13 @@
+{
+  "sameCachedWindow": true,
+  "unseenHoldout": false,
+  "v6SourceSha256": "1ba487d77477f16f029e1660cee0cfb723bd2078d7f993f777479286fde89b6a",
+  "v7SourceSha256": "dc407e994040d9d10c7adb2983215e8898041548300f747705474ea802fadb50",
+  "runtimeCommit": "47d70d8",
+  "sameEconomicTotals": true,
+  "sameHourlyResults": true,
+  "checksPassed": 60,
+  "orders": 49259,
+  "unitReturnPf": 0.218923,
+  "reason": "Source reseal after coalesced exchange-read and mutation-fencing fix; financial settings, feed, fills and results unchanged."
+}

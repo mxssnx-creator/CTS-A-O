@@ -1,0 +1,23 @@
+{
+  "run": 39506738033,
+  "sourceSha256": "ae7b2021fbdce8c3432329781dfc19a651c7e1fc488b3826874af741e69befaa",
+  "scope": "120 symbols; all 728 Micro/mirror identities; 1/5/15m singles and combinations; four Micro protects; two real runtime computations; 100 coalesced kicks. Full four-range financial grid measured separately on 20 real symbols.",
+  "elapsedMs": 162518.449203,
+  "maxRssMb": 1516.38671875,
+  "maxCompute": 1,
+  "kicks": 100,
+  "nativeChecks": 1609,
+  "computes": 2,
+  "paperSteps": 1,
+  "symbols": 120,
+  "progress": {
+    "intervalMs": 100,
+    "checks": 1625,
+    "lagMs": 0,
+    "maxLagMs": 38.73716699999932,
+    "missed": 0,
+    "error": null
+  },
+  "failure": null,
+  "focusIdentities": 728
+}

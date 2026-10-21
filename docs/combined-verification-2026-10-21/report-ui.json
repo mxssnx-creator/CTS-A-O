@@ -1,0 +1,26 @@
+{
+  "passed": true,
+  "results": [
+    {
+      "name": "desktop",
+      "width": 1440,
+      "height": 1000,
+      "charts": 6,
+      "rows": 512,
+      "microRows": 49,
+      "csvLines": 513,
+      "horizontalOverflow": false
+    },
+    {
+      "name": "phone",
+      "width": 390,
+      "height": 844,
+      "charts": 6,
+      "rows": 512,
+      "microRows": 49,
+      "csvLines": 513,
+      "horizontalOverflow": false
+    }
+  ],
+  "errors": []
+}

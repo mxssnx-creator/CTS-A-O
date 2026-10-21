@@ -38,6 +38,12 @@ const PROTECTS: Record<string, Protect> = {
   trailFree: { tp: 0.02, sl: 0.008, trail: 0.004, hold: 80, trailFree: true },
   atr: { tp: 0.02, sl: 0.01, trail: 0.005, hold: 40, atr: { sl: 1.5, tpRatio: 2, trail: 1 } },
 };
+for (const exitSet of ["static-sl", "adaptive-sl", "trailing", "trailing-only", "breakeven"] as const)
+  PROTECTS[`historic-${exitSet}`] = {
+    tp: exitSet === "trailing-only" ? 0 : 0.02, sl: 0.01,
+    trail: exitSet.startsWith("trailing") ? 0.004 : 0, hold:60,
+    exitType:"historic",exitSet,...(exitSet === "trailing-only" ? {trailOnly:true} : {}),
+  };
 
 describe("simulateFrom resumes simulate", () => {
   for (const [name, p] of Object.entries(PROTECTS))
@@ -101,4 +107,21 @@ describe("simulateFrom resumes simulate", () => {
       }),
     );
   });
+});
+
+
+it("historic legacy resume restores the captured protection and refuses an unproven replacement", () => {
+  const p=PROTECTS["historic-trailing"],cs=walk(7,600),sig=signals(11,600,false);
+  let part: ReturnType<typeof simulateFrom> | undefined;
+  for(let k=2;k<100;k++) {
+    const x=simulateFrom("c",barsFromCandles("X",5,cs.slice(0,k)),sig.slice(0,k),p,{cost:COST});
+    if(x.state.inPos && x.state.exitProtection){part=x;break}
+  }
+  assert.ok(part,"an open historic position is captured");
+  const legacy=structuredClone(part.state);delete legacy.exitPosition;delete legacy.trailPosition;
+  const resumed=simulateFrom("c",barsFromCandles("X",5,cs),sig,p,{cost:COST},legacy);
+  const full=simulate("c",barsFromCandles("X",5,cs),sig,p,{cost:COST});
+  assert.deepEqual([...part.trades,...resumed.trades],full.trades);assert.deepEqual(resumed.open,full.open);
+  delete legacy.exitProtection;
+  assert.throws(()=>simulateFrom("c",barsFromCandles("X",5,cs),sig,p,{cost:COST},legacy),/missing its protection state/);
 });

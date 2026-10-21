@@ -60,10 +60,13 @@ describe("Block matrix at the Real stage", { timeout: 1_200_000 }, () => {
         // Real-stage relation replay needs diverse actual tapes, rather than a
         // second full Cartesian/independent Exit fit before every matrix case.
         grid: { ...runtimeFixtureGrid(), short: false },
-        exitStrategy: { enabled: false },
         signals: { enabled: false } as never,
         focus: [],
         pinned: [],
+        // This matrix exercises Block coordination on its original catalog. New full Micro grids and
+        // independent historical Exit fitting have separate end-to-end/parity studies.
+        disabledKinds: ["micro", "inverse"],
+        exitStrategy: { enabled: false },
         mainTop: 16,
       },
       { market: "synthetic" },

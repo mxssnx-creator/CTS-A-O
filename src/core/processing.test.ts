@@ -10,15 +10,17 @@ import assert from "node:assert/strict";
 import { CoreRuntime } from "./server/runtime.server.ts";
 import { CoreDb } from "./server/db.server.ts";
 import { auditState } from "./audit.ts";
-import { walkForward, kindExecutable, type WalkForwardOptions } from "./sim/walkforward.ts";
-import { allCombos } from "./pipeline/pipeline.ts";
+import { walkForward, tapeExecutable, type WalkForwardOptions } from "./sim/walkforward.ts";
+import { allCombos, isPlainKind, isTrailingKind } from "./pipeline/pipeline.ts";
 import { INDICATIONS, indicationState, laneOf, isSignalInd } from "./indications/registry.ts";
 import { isRelateInd, relateAnchorTf } from "./indications/relate.ts";
 import { breakAnchorTf, isBreakRelInd } from "./indications/break-config.ts";
+import { isMicroCalculationInd as isMicroFamilyInd, microAnchorTf } from "./indications/micro-family.ts";
+import { INVERSE_TIMEFRAMES, isInverseInd } from "./indications/inverse-config.ts";
 import { SeriesCache } from "./indications/cache.ts";
 import { MarketSource } from "./indications/market.ts";
 import { barsFromCandles, syntheticCandles } from "./market/bars.ts";
-import type { RangeGrid, StrategyToggles } from "./domain/types.ts";
+import type { Candle, RangeGrid, StrategyToggles } from "./domain/types.ts";
 import { DEFAULT_SETTINGS } from "./config.ts";
 
 // the same synthetic market on every run: it otherwise ends at the current minute, and whether that minute's market
@@ -80,6 +82,20 @@ function richCandles(sym: string, tf: number, n: number, end: number, seed: numb
 
 describe("every indication works", () => {
   const END = Date.UTC(2026, 9, 1);
+  const pairSeries = ["spread", "residual"].flatMap((regime) => Array.from({ length: 8 }, (_, s) => {
+    const tf = regime === "spread" ? 1 : 5;
+    let last = 100;
+    const candles: Candle[] = Array.from({ length: 900 }, (_, i) => {
+      const log = regime === "spread"
+        ? .03 * Math.sin(i / 25) + .002 * Math.sin(i * 1.1) + (s < 2 ? 0 : .01 * Math.sin(i / 30 + s) + .002 * Math.sin(i * 1.7 + s))
+        : .03 * Math.sin(i / 14) + (s < 2 ? .002 : .012) * Math.sin(i / (5 + s));
+      const c = 100 * Math.exp(log);
+      const bar = { t: END + i * tf * 60_000, o: last, c, h: Math.max(last, c) * 1.0003, l: Math.min(last, c) * .9997, v: 100 };
+      last = c;
+      return bar;
+    });
+    return barsFromCandles(s === 0 ? "BTC-USDT" : s === 1 ? "ETH-USDT" : `PAIR${s}-USDT`, tf, candles);
+  }));
   const series = [
     ...["AAA-USDT", "BBB-USDT", "CCC-USDT"].map((s, i) => barsFromCandles(s, 5, richCandles(s, 5, 4000, END, 7 + i))),
     ...["FFF-USDT", "GGG-USDT"].map((s) => barsFromCandles(s, 5, syntheticCandles(s, 5, 3000, END))),
@@ -90,9 +106,14 @@ describe("every indication works", () => {
   // the universe's market reference (as makeUniverse attaches it): the Micro market relations read the 5m market of
   // the five 5m series (the 1m and 15m series are alone in their timeframe: neutral there)
   const market = new MarketSource(series);
-  const cacheOf = (b: (typeof series)[number]) => {
+  const pairMarket = new MarketSource(pairSeries);
+  const caches = new Map<(typeof series)[number], SeriesCache>();
+  const cacheOf = (b: (typeof series)[number], source = market) => {
+    const cached = caches.get(b);
+    if (cached) return cached;
     const k = new SeriesCache(b);
-    k.setMarket(market);
+    k.setMarket(source);
+    caches.set(b, k);
     return k;
   };
 
@@ -104,14 +125,18 @@ describe("every indication works", () => {
     const quietSweepOnly = new Set(["break-mc-rel-reclaim8-5x15-dd48-guarded"]);
     for (const x of engine) {
       let fired = 0;
-      for (const b of series) {
-        const st = indicationState(x.id, cacheOf(b));
+      const referencePair = x.id.startsWith("inverse-pair-");
+      for (const b of referencePair ? pairSeries : series) {
+        const st = indicationState(x.id, cacheOf(b, referencePair ? pairMarket : market));
         if (!st) continue;
         if (st.length !== b.n) bad.push(`${x.id}: ${st.length} states for ${b.n} bars`);
         for (let i = 0; i < st.length; i++) if (st[i] !== 0 && st[i] !== 1 && st[i] !== -1) bad.push(`${x.id}: state ${st[i]}`);
         for (let i = 1; i < st.length; i++) if (st[i] !== 0 && st[i] !== st[i - 1]) fired++;
       }
-      if (!fired && !quietSweepOnly.has(x.id)) silent.push(x.id);
+      // New Micro and inverse relations require coherent native lanes and BTC/ETH peers. Their universal
+      // onset coverage lives in indications-both-sides.test.ts; this disjoint-symbol fixture still checks
+      // every state's shape and domain, without inventing the missing market context.
+      if (!fired && !quietSweepOnly.has(x.id) && x.kind !== "micro" && x.kind !== "inverse") silent.push(x.id);
     }
     assert.deepEqual(bad.slice(0, 10), []);
     assert.ok([...quietSweepOnly].every((id) => engine.some((x) => x.id === id)), "quiet fixture exception stays registered");
@@ -154,16 +179,21 @@ describe("every indication works", () => {
       if (x.id.startsWith("s2-")) continue; // Stable-02 ports run as signal sources only
       const got = lanesOf.get(x.id);
       if (!got) missing.push(`${x.id}: no lane`);
-      else if (isRelateInd(x.id) || isBreakRelInd(x.id)) {
+      else if (isRelateInd(x.id) || isBreakRelInd(x.id) || isMicroFamilyInd(x.id)) {
         const isBreak = isBreakRelInd(x.id);
-        const anchor = isBreak ? breakAnchorTf(x.id) : relateAnchorTf(x.id);
-        const family = isBreak ? "Break" : "Relate";
+        const micro = isMicroFamilyInd(x.id);
+        const anchor = micro ? microAnchorTf(x.id) : isBreak ? breakAnchorTf(x.id) : relateAnchorTf(x.id);
+        const family = micro ? "Micro" : isBreak ? "Break" : "Relate";
         if (anchor !== null && tfs.includes(anchor) && !got.has(String(anchor))) missing.push(`${x.id}@m${anchor}`);
         for (const lane of got)
           if (lane.endsWith("c") || Number.parseInt(lane, 10) !== anchor)
             missing.push(`${x.id}@m${lane}: unexpected ${family} lane`);
       }
-      else for (const tf of tfs) if (!got.has(String(tf)) && !got.has(`${tf}c`)) missing.push(`${x.id}@m${tf}`);
+      else for (const tf of tfs) {
+        const eligible = !isInverseInd(x.id) || (INVERSE_TIMEFRAMES as readonly number[]).includes(tf);
+        if (eligible && !got.has(String(tf)) && !got.has(`${tf}c`)) missing.push(`${x.id}@m${tf}`);
+        if (!eligible && (got.has(String(tf)) || got.has(`${tf}c`))) missing.push(`${x.id}@m${tf}: ineligible inverse lane`);
+      }
     }
     assert.deepEqual(missing, []);
     // a disabled kind drops only its own indications
@@ -207,6 +237,9 @@ describe("processing through the stages, every strategy type, every toggle combi
         tfDays: { "1": 3, "5": 6, "15": 18, "30": 18 },
         cycleMs: 60_000,
         focus: [],
+        // Preserve the original lifecycle matrix catalog; exhaustive new-family grids and their
+        // range qualification are covered by the frozen 20-symbol replay and dedicated parity tests.
+        disabledKinds: ["micro", "inverse"],
         pinned: [],
         mainTop: 24,
         grid,
@@ -300,13 +333,13 @@ describe("processing through the stages, every strategy type, every toggle combi
         const k = kindOf(x) as never;
         // a signal's own base (signalOwnBase) trades whatever the engine's Normal / Block switches say: its Normal
         // always, its Trailing with the Trailing switch
-        if (sim.opts.signalOwnBase && (k === "normal" || k === "trailing" || k === "trailing-only") && isSignalInd(byId.get(x.cfg)!.ind)) {
-          if (k === "trailing" || k === "trailing-only") assert.ok(tg.trailing, `${JSON.stringify(tg)}: a signal trailing with Trailing off`);
+        if (sim.opts.signalOwnBase && isPlainKind(k) && isSignalInd(byId.get(x.cfg)!.ind)) {
+          if (isTrailingKind(k)) assert.ok(tg.trailing, `${JSON.stringify(tg)}: a signal trailing with Trailing off`);
           continue;
         }
-        assert.ok(kindExecutable(k, tg), `${JSON.stringify(tg)}: a ${k} trade executed`);
-        if (k === "trailing") assert.ok(tg.trailing, "Trailing off: no trailing");
-        if ((k === "normal" || k === "trailing") && !tg.normal)
+        assert.ok(tapeExecutable(byId.get(x.cfg)!, { ...sim.opts, toggles: tg }), `${JSON.stringify(tg)}: a ${k} trade executed`);
+        if (isTrailingKind(k)) assert.ok(tg.trailing, "Trailing off: no trailing");
+        if ((k === "normal" || isTrailingKind(k)) && !tg.normal)
           assert.ok((x.level ?? 0) > 0 && tg.block, `${JSON.stringify(tg)}: an unraised ${k} with Normal off`);
         if (k === "dca") assert.ok(tg.dca && !tg.dcaActive);
         if (k === "dca-active") assert.ok(tg.dca && tg.dcaActive);
@@ -348,7 +381,7 @@ describe("processing through the stages, every strategy type, every toggle combi
     if (own(withNT.sim) !== "")
       assert.ok(ks.has("dca") || ks.has("axis"), `DCA / Axis trade with Normal + Trailing off: ${[...ks].join(",")}`);
     else t.diagnostic("no DCA / Axis config cleared its gates on this minute's synthetic market");
-    assert.ok(!ks.has("normal") && !ks.has("trailing"));
+    assert.ok(!ks.has("normal") && !ks.has("trailing") && !ks.has("trailing-only"));
     // one seat per pair (the default, related): DCA / Axis trade a pair only when they outscore the base there, so
     // turning Normal and Trailing off can only add DCA / Axis trades, never remove one
     const related = (normal: boolean) =>
