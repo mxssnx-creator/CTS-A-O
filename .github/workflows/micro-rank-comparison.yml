@@ -1,7 +1,7 @@
 name: Paired 12-symbol ranking Trade Sim
 on:
   push:
-    branches: [codex/micro-indication-20261020]
+    branches: [codex/micro-indication-20261020, codex/micro-release-ranking-20261021]
     paths:
       - src/core/**
       - scripts/lib/**
@@ -52,18 +52,18 @@ jobs:
       - name: Seal both twelve-symbol cases and identical settings before scoring either
         env:
           NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
-        run: node --experimental-strip-types --no-warnings .github/audits/micro-rank-comparison.mjs prepare --out runs/micro-rank-comparison-v3 --expected-file docs/micro-rank-comparison-2026-10-21/expected-v3.json
+        run: node --experimental-strip-types --no-warnings .github/audits/micro-rank-comparison.mjs prepare --out runs/micro-rank-comparison-v4 --expected-file docs/micro-rank-comparison-2026-10-21/expected-v4.json
       - name: Complete all own Micro and Inverse configurations on twelve selected symbols
         env:
           NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
         id: sim
         continue-on-error: true
-        run: node --experimental-strip-types --no-warnings .github/audits/micro-rank-comparison.mjs run --rank ${{ matrix.rank }} --out runs/micro-rank-comparison-v3 --workers 2
+        run: node --experimental-strip-types --no-warnings .github/audits/micro-rank-comparison.mjs run --rank ${{ matrix.rank }} --out runs/micro-rank-comparison-v4 --workers 2
       - name: Independently audit prices, costs, funded PF and every hourly transition
         if: always() && steps.sim.outcome != 'skipped'
         env:
           NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
-          CASE_DIR: runs/micro-rank-comparison-v3/${{ matrix.rank }}
+          CASE_DIR: runs/micro-rank-comparison-v4/${{ matrix.rank }}
         run: |
           result=0
           node --experimental-strip-types --no-warnings scripts/audit-micro-execution.mjs "$CASE_DIR" || result=1
@@ -83,6 +83,6 @@ jobs:
           retention-days: 30
           compression-level: 6
           path: |
-            runs/micro-rank-comparison-v3/plan.json
-            runs/micro-rank-comparison-v3/*-selection.json
-            runs/micro-rank-comparison-v3/${{ matrix.rank }}/
+            runs/micro-rank-comparison-v4/plan.json
+            runs/micro-rank-comparison-v4/*-selection.json
+            runs/micro-rank-comparison-v4/${{ matrix.rank }}/

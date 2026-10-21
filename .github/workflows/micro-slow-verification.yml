@@ -1,7 +1,7 @@
 name: Micro runtime slow verification
 on:
   push:
-    branches: [codex/micro-indication-20261020, codex/incremental-cycle-20261020]
+    branches: [codex/micro-indication-20261020, codex/incremental-cycle-20261020, codex/micro-release-ranking-20261021]
     paths: [src/**, scripts/**, docs/hourly-progress-2026-10-21/integration-universal-plan.json, .github/workflows/micro-slow-verification.yml]
 permissions:
   contents: read
