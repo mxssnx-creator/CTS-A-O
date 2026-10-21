@@ -1,0 +1,112 @@
+{
+  "archive": "integrated-receipts.tar.gz",
+  "sha256": "bce841aec852ce032aaaf574a528a23eaf9f4e508caf126dc4feee17db6fd823",
+  "bytes": 162201,
+  "scope": "Updated source/settings protocols and complete audit receipts; identical candidate/funded data retained in original133-file full evidence archive by verified per-config/close tuple parity, not duplicated here.",
+  "files": {
+    "runs/integration-core-tests.log": {
+      "sha256": "b78f4d4e56da79015370a6a95c5cf771018ca27a4b23543d1f9b75afc01607d0",
+      "bytes": 32520
+    },
+    "runs/integration-script-tests.log": {
+      "sha256": "e1207e8d03946d246e739db3024fe84eda7b11c29f8eb7df34937550ed3483a4",
+      "bytes": 2798
+    },
+    "runs/integration-script-tests-v2.log": {
+      "sha256": "a819fe1db2ea9b0c4d0db848c0d26a611fb0bda9d94f0cd809e9374bf7d3f103",
+      "bytes": 2066
+    },
+    "runs/integration-typecheck.log": {
+      "sha256": "c34ec4c54eee3880917e67f16cb6de62654b2ad041175f1f0fefc6a9306278d5",
+      "bytes": 143
+    },
+    "runs/integration-build.log": {
+      "sha256": "a81a4aacaf5aa3b00186c361f46dc06eb072a2efa2a0904893101dd0d53ed37f",
+      "bytes": 15469
+    },
+    "runs/integration-lint.log": {
+      "sha256": "9920c17d53997fa7ae8b2fb73667584a8dc7e14d9148df606f3568510eda733c",
+      "bytes": 651
+    },
+    "runs/integration-ui-functional.log": {
+      "sha256": "2215803baaa50602bf3b4328822b74f80ec448dc25d0f644116b0d949e016681",
+      "bytes": 156
+    },
+    "runs/integration-ui-functional-v2.log": {
+      "sha256": "1ed1aadb9ba726604fb80054537f1f2f753a331724ebea437eac2d3037f812ef",
+      "bytes": 6874
+    },
+    "runs/integration-candidate-parity.log": {
+      "sha256": "e1815cf98abf6af592e7ab6cd89c7c517bb80ce0b97d47dc1c668e72972e499b",
+      "bytes": 910
+    },
+    "runs/check-integrated-candidate-parity.mjs": {
+      "sha256": "79cb8402b4722e2a4c4b599de1a98cf2a7c683ce9b741f7f89dd93cfa2132596",
+      "bytes": 1909
+    },
+    "runs/context-integrated-original-run.log": {
+      "sha256": "2f22d15ffa65f6c9e266b647bb5a63b19a07f4951bf3f2530b3eb5a67e5c0229",
+      "bytes": 919
+    },
+    "runs/context-integrated-expanded-run.log": {
+      "sha256": "a00b6432bc42b77992c265590deee48a5cfe2291fa2794c158a0da6f6c82cc8b",
+      "bytes": 1068
+    },
+    "runs/context-integrated-original-hourly.json": {
+      "sha256": "b2cd0fc26d11601b096718b9e4607b6d280997bd0df338a1ff6a93a7b55250ca",
+      "bytes": 298234
+    },
+    "runs/context-integrated-expanded-hourly.json": {
+      "sha256": "a000f3a53af82ae113bda379235f9dc5d534437b1f5a4330aff5fec7c2f59785",
+      "bytes": 297260
+    },
+    "runs/context-integrated-original-entry.json": {
+      "sha256": "5ed2e0578eb3844f00c78d3bc0df357bba2454b220b55b3883bdf0a869855c23",
+      "bytes": 1886
+    },
+    "runs/context-integrated-expanded-entry.json": {
+      "sha256": "b161fe8e62da092d97600e84ea3ce7459ddefb786328ff0f64f468995a3f6fd0",
+      "bytes": 1886
+    },
+    "runs/context-integrated-original/protocol.json": {
+      "sha256": "7cb1a604c90fb716769004fdd13e377fc6bd03297a72022f9b674ba30076e1c7",
+      "bytes": 502406
+    },
+    "runs/context-integrated-original/desk.json": {
+      "sha256": "ab0a532bbf55a2d9a706e227de60aa8c9c834c33099c7b172e65a3fccb37296e",
+      "bytes": 473143
+    },
+    "runs/context-integrated-original/command.json": {
+      "sha256": "631e974a2e5703b53a4d4694cafc8d92a22200c7370ad7315546f9ff3d1078f0",
+      "bytes": 1338
+    },
+    "runs/context-integrated-expanded/protocol.json": {
+      "sha256": "6fa1bd886a0b3685bd4eacf84ee0e700e566435b0df9f93a92e8fd9a63222c24",
+      "bytes": 515062
+    },
+    "runs/context-integrated-expanded/desk.json": {
+      "sha256": "d36a0919387702f9e352fc6775c8a3ba3d9a230e61be1800b7b0a820e0de374f",
+      "bytes": 479863
+    },
+    "runs/context-integrated-expanded/command.json": {
+      "sha256": "b081353659cc533937d7f35d6dd2e011d5801d83295ca51e2a3ae56919213d3b",
+      "bytes": 1338
+    },
+    "runs/context-integrated-universal/causal.json": {
+      "sha256": "cb43add7f8f91af5b846d159664b9526cc9196ea0db434d82d403b18c8819284",
+      "bytes": 6853
+    },
+    "runs/context-integrated-universal/causal-partial.json": {
+      "sha256": "7d6ddd62ec57a2a7a9a8e88badcdcb0f32fda2454526420f9f08cca803c7e644",
+      "bytes": 6791
+    },
+    "runs/context-integrated-universal/catalog.json": {
+      "sha256": "4687308ec272a51ed9cc7d2ac72b61ef3881b2a5bf4b8d3cc2482a44cd70c146",
+      "bytes": 3110
+    },
+    "runs/context-integrated-universal/identity.json": {
+      "sha256": "47afd4771b1bb6dac970f7ed898d58e643ddc55dd3da2a6ab92797e949fa59c8",
+      "bytes": 1581
+    }
+  }
+}

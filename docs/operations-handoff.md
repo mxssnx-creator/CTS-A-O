@@ -1,3 +1,7 @@
+## Integrated PR184/191 checkpoint — 21 October 2026
+
+Replay-only rank clocks and earlier caller bounds/native5m retention from PR184 are included with the112 context additions; truthful input-provider labels have a real prepare regression. New source seal`7368ba50ac6b77790d156c0d1ed509cc06fb1a6441cd5cdcee0d8712983dabb0`.334 integrated core tests +8 ranking/feed/provenance cases pass, as do types/lint/build. Both original/expanded provider simulations repeat exactly the prior economic results (PF0.810/0.453); every funded entry and full hourly reference passes again. All1,972 sources pass complete native hourly/unfinished-bar causality again. Preserve older02c receipts; their hardcoded Binance provider label is an explicit metadata erratum, not a change to the sealed BingX prices/returns. Integrated verification and GitHub exact-head status are authoritative; no live actions.
+
 ## 21 October 2026 — additive negative-hour contexts and chronological comparison
 
 - PR190 exact Base-cell admission and incremental evaluation boundary merged after both complete workflows passed: main `1f6acd9328e05636ce3ff341e34628ea8e8aa762`; backup `backup/main-before-cohort-admission-20261021`.
