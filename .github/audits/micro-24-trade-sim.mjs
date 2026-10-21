@@ -73,6 +73,10 @@ if (mode === "prepare") {
   const endT = Number(arg("end", Math.floor(lastT / H) * H)),
     runH = 12,
     preH = 12;
+  const microHold = Number(arg("micro-hold", 60)),
+    includeLong = arg("long-range", "false") === "true";
+  if (![15, 60].includes(microHold))
+    throw new Error("micro-hold must be a preregistered 15 or 60 minutes");
   if (endT > lastT || !Number.isSafeInteger(endT))
     throw new Error("End must be inside the supplied history");
   const tradeStartT = endT - runH * H,
@@ -161,9 +165,9 @@ if (mode === "prepare") {
     ...seed.grid,
     tp: [],
     general: { ...seed.grid.general, minTf: 0, maxHoldMin: 240 },
-    long: false,
+    long: includeLong ? structuredClone(DEFAULT_SETTINGS.grid.long) : false,
     minimalPlus: { ...seed.grid.minimalPlus, enabled: false },
-    micro: { ...seed.grid.micro, minTf: 0, maxHoldMin: 60 },
+    micro: { ...seed.grid.micro, minTf: 0, maxHoldMin: microHold },
     minimal: { ...seed.grid.minimal, minTf: 0, maxHoldMin: 120 },
     short: { ...seed.grid.short, minTf: 0, maxHoldMin: 180 },
   };
@@ -213,7 +217,9 @@ if (mode === "prepare") {
     schema: "cts-session-study-v1",
     id: arg("label", "micro-24-symbols-12h-pre-12h-run-20261020-v10"),
     scope: {
-      hold: "standard",
+      hold: microHold === 15 ? "micro-15m" : "standard",
+      microHold,
+      includeLong,
       focus: selected,
       ...(focusFile ? { selectedFocusSha256: studySha256(readFileSync(resolve(focusFile))) } : {}),
       purpose: selection
@@ -235,7 +241,13 @@ if (mode === "prepare") {
       sha256: studySha256(readFileSync(feedPath)),
       parentSha256: studySha256(input),
       provider:
-        "Verified official Binance USD-M native 1m archives; scope and chronology in window/feed hashes; not BingX venue execution",
+        typeof source.source?.provider === "string"
+          ? source.source.provider
+          : typeof source.source?.source === "string"
+            ? source.source.source
+            : "Unspecified cached input provider (unverified)",
+      providerVerification:
+        "Input metadata label; verify the sealed collection manifest separately. Not venue-owned fills.",
     },
     source: {
       checkpoint: execFileSync("git", ["rev-parse", "HEAD"], {

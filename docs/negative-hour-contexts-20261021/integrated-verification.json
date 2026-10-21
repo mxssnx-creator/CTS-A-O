@@ -1,0 +1,2138 @@
+{
+  "sourceSha256": "7368ba50ac6b77790d156c0d1ed509cc06fb1a6441cd5cdcee0d8712983dabb0",
+  "previousSourceSha256": "02c34224ab02d7e9a70a9480c7756d4eb25ddfc0da2f33b6cee99ba38da9cb5a",
+  "reason": "Combined PR184 replay-only ranking clock/caller bound/native5m fixes and truthful input provider label. All original/expanded prices, settings, formulas, gates and selected24 symbols unchanged.",
+  "providerLabelCorrection": "The initial02c protocols hardcoded Binance in feed.provider despite the separately preserved all-BingX feed/manifest and parent hashes. This metadata bug is fixed. Original protocols retained; no price/return rewrite.",
+  "unchangedFinancialResults": true,
+  "window": {
+    "indicatorStartT": 1792368000000,
+    "evaluationFromT": 1792454400000,
+    "tradeStartT": 1792497600000,
+    "endT": 1792540800000,
+    "preH": 12,
+    "runH": 12
+  },
+  "sourceReceiptScope": "All study source files plus script/lib and actual runtime options sealed before reruns",
+  "arms": {
+    "original": {
+      "protocolSha256": "7cb1a604c90fb716769004fdd13e377fc6bd03297a72022f9b674ba30076e1c7",
+      "funding": {
+        "basis": "Exact per-close native report allocation",
+        "virtualCloses": 15607,
+        "fundedCloses": 15607,
+        "zeroAllocatedCloses": 0,
+        "unknownAllocations": 0
+      },
+      "hourly": {
+        "basis": "modeled-settled-unit-net-returns",
+        "closedWindow": "(startT,endT]",
+        "summary": {
+          "n": 15607,
+          "gp": 5852.87111706157,
+          "gl": 7225.966982839181,
+          "net": -1373.0958657776114,
+          "pf": 0.8099775616137532,
+          "pfConvention": "ratio"
+        },
+        "hourly": [
+          {
+            "t": 1792497600000,
+            "n": 803,
+            "gp": 122.17334429784894,
+            "gl": 40.570816949346714,
+            "net": 81.60252734850224,
+            "pf": 3.011360221076747,
+            "pfConvention": "ratio"
+          },
+          {
+            "t": 1792501200000,
+            "n": 1375,
+            "gp": 111.14369374422242,
+            "gl": 144.535951698878,
+            "net": -33.39225795465557,
+            "pf": 0.7689691902799102,
+            "pfConvention": "ratio"
+          },
+          {
+            "t": 1792504800000,
+            "n": 2286,
+            "gp": 6.406250000001321,
+            "gl": 5188.357904299361,
+            "net": -5181.95165429936,
+            "pf": 0.0012347355595289113,
+            "pfConvention": "ratio"
+          },
+          {
+            "t": 1792508400000,
+            "n": 648,
+            "gp": 44.80012397957649,
+            "gl": 436.95937002393396,
+            "net": -392.1592460443574,
+            "pf": 0.10252697860014448,
+            "pfConvention": "ratio"
+          },
+          {
+            "t": 1792512000000,
+            "n": 420,
+            "gp": 595.4643936959043,
+            "gl": 21.925866904494896,
+            "net": 573.5385267914094,
+            "pf": 27.15807754784061,
+            "pfConvention": "ratio"
+          },
+          {
+            "t": 1792515600000,
+            "n": 1044,
+            "gp": 535.5979658606186,
+            "gl": 158.14637724535044,
+            "net": 377.4515886152682,
+            "pf": 3.386722953695516,
+            "pfConvention": "ratio"
+          },
+          {
+            "t": 1792519200000,
+            "n": 1548,
+            "gp": 374.8025751578546,
+            "gl": 47.97463801704922,
+            "net": 326.8279371408054,
+            "pf": 7.812514917249762,
+            "pfConvention": "ratio"
+          },
+          {
+            "t": 1792522800000,
+            "n": 3784,
+            "gp": 2604.2626580173655,
+            "gl": 360.25468532170134,
+            "net": 2244.0079726956637,
+            "pf": 7.2289487524410765,
+            "pfConvention": "ratio"
+          },
+          {
+            "t": 1792526400000,
+            "n": 760,
+            "gp": 321.8393821294362,
+            "gl": 326.83171681073844,
+            "net": -4.992334681302246,
+            "pf": 0.9847250605601622,
+            "pfConvention": "ratio"
+          },
+          {
+            "t": 1792530000000,
+            "n": 813,
+            "gp": 170.65668426276102,
+            "gl": 64.72931456928553,
+            "net": 105.9273696934755,
+            "pf": 2.6364667291523998,
+            "pfConvention": "ratio"
+          },
+          {
+            "t": 1792533600000,
+            "n": 1238,
+            "gp": 583.7252577112773,
+            "gl": 321.75166288648114,
+            "net": 261.9735948247962,
+            "pf": 1.8142105388814245,
+            "pfConvention": "ratio"
+          },
+          {
+            "t": 1792537200000,
+            "n": 888,
+            "gp": 381.99878820444104,
+            "gl": 113.9286781125443,
+            "net": 268.07011009189677,
+            "pf": 3.352964280223492,
+            "pfConvention": "ratio"
+          }
+        ],
+        "cumulative": [
+          {
+            "throughT": 1792501200000,
+            "n": 803,
+            "gp": 122.17334429784894,
+            "gl": 40.570816949346714,
+            "net": 81.60252734850224,
+            "pf": 3.011360221076747,
+            "pfConvention": "ratio"
+          },
+          {
+            "throughT": 1792504800000,
+            "n": 2178,
+            "gp": 233.31703804207277,
+            "gl": 185.10676864822372,
+            "net": 48.21026939384907,
+            "pf": 1.2604457402930938,
+            "pfConvention": "ratio"
+          },
+          {
+            "throughT": 1792508400000,
+            "n": 4464,
+            "gp": 239.72328804207405,
+            "gl": 5373.464672947594,
+            "net": -5133.741384905521,
+            "pf": 0.04461242468922285,
+            "pfConvention": "ratio"
+          },
+          {
+            "throughT": 1792512000000,
+            "n": 5112,
+            "gp": 284.5234120216499,
+            "gl": 5810.424042971544,
+            "net": -5525.900630949895,
+            "pf": 0.0489677534578251,
+            "pfConvention": "ratio"
+          },
+          {
+            "throughT": 1792515600000,
+            "n": 5532,
+            "gp": 879.9878057175544,
+            "gl": 5832.3499098760385,
+            "net": -4952.362104158485,
+            "pf": 0.15088048887935424,
+            "pfConvention": "ratio"
+          },
+          {
+            "throughT": 1792519200000,
+            "n": 6576,
+            "gp": 1415.5857715781885,
+            "gl": 5990.496287121449,
+            "net": -4574.910515543261,
+            "pf": 0.23630525815055722,
+            "pfConvention": "ratio"
+          },
+          {
+            "throughT": 1792522800000,
+            "n": 8124,
+            "gp": 1790.3883467360577,
+            "gl": 6038.4709251384575,
+            "net": -4248.082578402399,
+            "pf": 0.29649697231836974,
+            "pfConvention": "ratio"
+          },
+          {
+            "throughT": 1792526400000,
+            "n": 11908,
+            "gp": 4394.651004753379,
+            "gl": 6398.7256104602675,
+            "net": -2004.0746057068886,
+            "pf": 0.6868009776148639,
+            "pfConvention": "ratio"
+          },
+          {
+            "throughT": 1792530000000,
+            "n": 12668,
+            "gp": 4716.4903868828105,
+            "gl": 6725.557327270899,
+            "net": -2009.0669403880881,
+            "pf": 0.7012787427680245,
+            "pfConvention": "ratio"
+          },
+          {
+            "throughT": 1792533600000,
+            "n": 13481,
+            "gp": 4887.147071145561,
+            "gl": 6790.286641840243,
+            "net": -1903.139570694681,
+            "pf": 0.7197261807818308,
+            "pfConvention": "ratio"
+          },
+          {
+            "throughT": 1792537200000,
+            "n": 14719,
+            "gp": 5470.872328856931,
+            "gl": 7112.03830472665,
+            "net": -1641.165975869719,
+            "pf": 0.7692411225092808,
+            "pfConvention": "ratio"
+          },
+          {
+            "throughT": 1792540800000,
+            "n": 15607,
+            "gp": 5852.87111706157,
+            "gl": 7225.966982839181,
+            "net": -1373.0958657776114,
+            "pf": 0.8099775616137532,
+            "pfConvention": "ratio"
+          }
+        ],
+        "positiveHours": 8,
+        "flatHours": 0,
+        "negativeHours": 4,
+        "emptyHours": 0,
+        "allActiveHoursPfAbove1": false,
+        "pfAbove1AtEveryActiveHourEnd": false
+      },
+      "addedContext": {
+        "basis": "modeled-settled-unit-net-returns",
+        "closedWindow": "(startT,endT]",
+        "summary": {
+          "n": 0,
+          "gp": 0,
+          "gl": 0,
+          "net": 0,
+          "pf": null,
+          "pfConvention": "unavailable"
+        },
+        "hourly": [
+          {
+            "t": 1792497600000,
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "net": 0,
+            "pf": null,
+            "pfConvention": "unavailable"
+          },
+          {
+            "t": 1792501200000,
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "net": 0,
+            "pf": null,
+            "pfConvention": "unavailable"
+          },
+          {
+            "t": 1792504800000,
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "net": 0,
+            "pf": null,
+            "pfConvention": "unavailable"
+          },
+          {
+            "t": 1792508400000,
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "net": 0,
+            "pf": null,
+            "pfConvention": "unavailable"
+          },
+          {
+            "t": 1792512000000,
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "net": 0,
+            "pf": null,
+            "pfConvention": "unavailable"
+          },
+          {
+            "t": 1792515600000,
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "net": 0,
+            "pf": null,
+            "pfConvention": "unavailable"
+          },
+          {
+            "t": 1792519200000,
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "net": 0,
+            "pf": null,
+            "pfConvention": "unavailable"
+          },
+          {
+            "t": 1792522800000,
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "net": 0,
+            "pf": null,
+            "pfConvention": "unavailable"
+          },
+          {
+            "t": 1792526400000,
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "net": 0,
+            "pf": null,
+            "pfConvention": "unavailable"
+          },
+          {
+            "t": 1792530000000,
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "net": 0,
+            "pf": null,
+            "pfConvention": "unavailable"
+          },
+          {
+            "t": 1792533600000,
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "net": 0,
+            "pf": null,
+            "pfConvention": "unavailable"
+          },
+          {
+            "t": 1792537200000,
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "net": 0,
+            "pf": null,
+            "pfConvention": "unavailable"
+          }
+        ],
+        "cumulative": [
+          {
+            "throughT": 1792501200000,
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "net": 0,
+            "pf": null,
+            "pfConvention": "unavailable"
+          },
+          {
+            "throughT": 1792504800000,
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "net": 0,
+            "pf": null,
+            "pfConvention": "unavailable"
+          },
+          {
+            "throughT": 1792508400000,
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "net": 0,
+            "pf": null,
+            "pfConvention": "unavailable"
+          },
+          {
+            "throughT": 1792512000000,
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "net": 0,
+            "pf": null,
+            "pfConvention": "unavailable"
+          },
+          {
+            "throughT": 1792515600000,
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "net": 0,
+            "pf": null,
+            "pfConvention": "unavailable"
+          },
+          {
+            "throughT": 1792519200000,
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "net": 0,
+            "pf": null,
+            "pfConvention": "unavailable"
+          },
+          {
+            "throughT": 1792522800000,
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "net": 0,
+            "pf": null,
+            "pfConvention": "unavailable"
+          },
+          {
+            "throughT": 1792526400000,
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "net": 0,
+            "pf": null,
+            "pfConvention": "unavailable"
+          },
+          {
+            "throughT": 1792530000000,
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "net": 0,
+            "pf": null,
+            "pfConvention": "unavailable"
+          },
+          {
+            "throughT": 1792533600000,
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "net": 0,
+            "pf": null,
+            "pfConvention": "unavailable"
+          },
+          {
+            "throughT": 1792537200000,
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "net": 0,
+            "pf": null,
+            "pfConvention": "unavailable"
+          },
+          {
+            "throughT": 1792540800000,
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "net": 0,
+            "pf": null,
+            "pfConvention": "unavailable"
+          }
+        ],
+        "positiveHours": 0,
+        "flatHours": 0,
+        "negativeHours": 0,
+        "emptyHours": 12,
+        "allActiveHoursPfAbove1": null,
+        "pfAbove1AtEveryActiveHourEnd": null
+      },
+      "entryAudit": {
+        "funding": {
+          "basis": "Exact per-close native report allocation",
+          "virtualCloses": 15607,
+          "fundedCloses": 15607,
+          "zeroAllocatedCloses": 0,
+          "unknownAllocations": 0
+        },
+        "orders": 15607,
+        "matchedSourceCloses": 15607,
+        "missingSourceCloses": 0,
+        "failedOwnDirectionAtEntry": 0,
+        "maxCostError": 1.1766268867693594e-07,
+        "maxSourceUnitReturnError": 0,
+        "unknownReturns": 0
+      },
+      "hourlyGateAudit": {
+        "schema": "cts-scalar-hourly-progress-v2",
+        "requireAll": true,
+        "sourceSha256": "7368ba50ac6b77790d156c0d1ed509cc06fb1a6441cd5cdcee0d8712983dabb0",
+        "window": {
+          "indicatorStartT": 1792368000000,
+          "evaluationFromT": 1792454400000,
+          "tradeStartT": 1792497600000,
+          "endT": 1792540800000,
+          "preH": 12,
+          "runH": 12
+        },
+        "tapes": 5898,
+        "decisions": 55800,
+        "violations": [],
+        "complete": true,
+        "basis": "Independent scalar arithmetic directly from saved own net-return rows; does not call makeTape, configEval, production prefix sums, forward cursors or profitFactor. Long and short qualify separately; recorded selection summaries contain only passing directions, or zero if neither passes. Raw pooled and own-side windows independently conserve incoming minus expired closes regardless of changing qualifications. Missing histories remain explicitly unverified; EVERY passing config is required. Historical overlapping validation samples are not future execution profits."
+      },
+      "performance": {
+        "computeMs": 63549.340340999996,
+        "elapsedSeconds": 65,
+        "rssMaxMb": 817,
+        "phases": {
+          "Base (workers)": {
+            "ms": 49952.269633,
+            "maxSliceMs": 0,
+            "slowest": "168 of 168 combos on 2 cores",
+            "mainMs": 423.64214799994807
+          },
+          "Pipeline": {
+            "ms": 1347.1555900000021,
+            "maxSliceMs": 126.12699099999736,
+            "slowest": "S2 follow \u00d7 inverse-micro-1x5-break-retest-fast@m1 (126 ms)"
+          },
+          "Persist": {
+            "ms": 19.116285999996762,
+            "maxSliceMs": 5.640713000000687
+          },
+          "Exit history": {
+            "ms": 571.889694000005,
+            "maxSliceMs": 0,
+            "mainMs": 3.22451999939949,
+            "slowest": "1 workers \u00b7 1 bounded chunks of at most 16 pairs"
+          },
+          "Tapes": {
+            "ms": 8113.3833559999985,
+            "maxSliceMs": 0,
+            "slowest": "2 cores \u00b7 9 replies",
+            "mainMs": 140.81919500077493
+          },
+          "Simulation": {
+            "ms": 3332.260672000004,
+            "maxSliceMs": 20.586315000000468,
+            "slowest": "fixed seat selection (16 ms)"
+          },
+          "Persist sim": {
+            "ms": 0.22647399999550544,
+            "maxSliceMs": 0.22647399999550544
+          },
+          "Auto preset": {
+            "ms": 0.09477999999944586,
+            "maxSliceMs": 0.09477999999944586
+          },
+          "Prehistoric": {
+            "ms": 34.90666499999497,
+            "maxSliceMs": 21.50895699999819,
+            "slowest": " (12 ms)"
+          },
+          "Paper": {
+            "ms": 418.17074599999614,
+            "maxSliceMs": 55.29216499999893,
+            "slowest": "select 137 \u00b7 candidates 42 \u00b7 entries 228 ms over 2530 (wall, sliced) \u00b7 6132 older tape positions left to their tape"
+          },
+          "Adjust": {
+            "ms": 18.693308000001707,
+            "maxSliceMs": 18.693308000001707
+          },
+          "Audit": {
+            "ms": 588.701350000003,
+            "maxSliceMs": 30.877300000000105,
+            "slowest": " (31 ms)"
+          }
+        },
+        "memory": {
+          "availMb": 4389,
+          "hostAvailMb": 6002,
+          "cgroup": {
+            "version": 2,
+            "basis": "clean-file-estimate",
+            "limitMb": 8192,
+            "usedMb": 8119,
+            "rawAvailMb": 73,
+            "cacheCreditMb": 4316,
+            "availMb": 4389
+          },
+          "rssMb": 761,
+          "level": "ok",
+          "fallback": 0,
+          "fallbackLabel": "full",
+          "minAvailMb": 4320,
+          "lastAbort": null,
+          "aborts": 0,
+          "abortsInRow": 0,
+          "retryAt": null,
+          "computeLevel": 0,
+          "heapMb": 158,
+          "heapTotalMb": 293,
+          "arrayBuffersMb": 65,
+          "nativeMb": 403,
+          "dbMb": 1,
+          "tapeMb": 47,
+          "byPhase": {
+            "backfill": {
+              "rssMb": 157,
+              "heapMb": 51,
+              "arrayBuffersMb": 7
+            },
+            "Base": {
+              "rssMb": 479,
+              "heapMb": 38,
+              "arrayBuffersMb": 21
+            },
+            "Main": {
+              "rssMb": 432,
+              "heapMb": 62,
+              "arrayBuffersMb": 63
+            },
+            "Tapes": {
+              "rssMb": 761,
+              "heapMb": 98,
+              "arrayBuffersMb": 71
+            },
+            "Real": {
+              "rssMb": 761,
+              "heapMb": 177,
+              "arrayBuffersMb": 83
+            }
+          }
+        }
+      },
+      "feedProvider": "BingX public swap klines"
+    },
+    "expanded": {
+      "protocolSha256": "6fa1bd886a0b3685bd4eacf84ee0e700e566435b0df9f93a92e8fd9a63222c24",
+      "funding": {
+        "basis": "Exact per-close native report allocation",
+        "virtualCloses": 37581,
+        "fundedCloses": 37581,
+        "zeroAllocatedCloses": 0,
+        "unknownAllocations": 0
+      },
+      "hourly": {
+        "basis": "modeled-settled-unit-net-returns",
+        "closedWindow": "(startT,endT]",
+        "summary": {
+          "n": 37581,
+          "gp": 13996.977926379945,
+          "gl": 30925.59134162861,
+          "net": -16928.613415248667,
+          "pf": 0.4526017876831594,
+          "pfConvention": "ratio"
+        },
+        "hourly": [
+          {
+            "t": 1792497600000,
+            "n": 1780,
+            "gp": 280.39243816908305,
+            "gl": 99.98274315887721,
+            "net": 180.40969501020584,
+            "pf": 2.8044083339814594,
+            "pfConvention": "ratio"
+          },
+          {
+            "t": 1792501200000,
+            "n": 2457,
+            "gp": 234.38483060971916,
+            "gl": 1182.2642709790082,
+            "net": -947.8794403692891,
+            "pf": 0.19825079414404528,
+            "pfConvention": "ratio"
+          },
+          {
+            "t": 1792504800000,
+            "n": 8604,
+            "gp": 849.3799283114321,
+            "gl": 19930.415776809947,
+            "net": -19081.03584849851,
+            "pf": 0.042617270900074694,
+            "pfConvention": "ratio"
+          },
+          {
+            "t": 1792508400000,
+            "n": 4185,
+            "gp": 895.1576470473968,
+            "gl": 4370.410336748143,
+            "net": -3475.2526897007465,
+            "pf": 0.20482233430590177,
+            "pfConvention": "ratio"
+          },
+          {
+            "t": 1792512000000,
+            "n": 3331,
+            "gp": 3889.1498187451048,
+            "gl": 94.08627440978276,
+            "net": 3795.063544335322,
+            "pf": 41.33599553327329,
+            "pfConvention": "ratio"
+          },
+          {
+            "t": 1792515600000,
+            "n": 3049,
+            "gp": 1484.4041145278459,
+            "gl": 1064.8107233419946,
+            "net": 419.59339118585126,
+            "pf": 1.3940544380215514,
+            "pfConvention": "ratio"
+          },
+          {
+            "t": 1792519200000,
+            "n": 4091,
+            "gp": 1311.9630543586527,
+            "gl": 1727.5529611219713,
+            "net": -415.58990676331877,
+            "pf": 0.7594343466648854,
+            "pfConvention": "ratio"
+          },
+          {
+            "t": 1792522800000,
+            "n": 6001,
+            "gp": 3388.8683578378696,
+            "gl": 1574.5313620461259,
+            "net": 1814.3369957917437,
+            "pf": 2.1523028626333534,
+            "pfConvention": "ratio"
+          },
+          {
+            "t": 1792526400000,
+            "n": 1116,
+            "gp": 524.0365642864474,
+            "gl": 380.20119436996447,
+            "net": 143.835369916483,
+            "pf": 1.3783138297469952,
+            "pfConvention": "ratio"
+          },
+          {
+            "t": 1792530000000,
+            "n": 813,
+            "gp": 170.65668426276102,
+            "gl": 64.72931456928553,
+            "net": 105.9273696934755,
+            "pf": 2.6364667291523998,
+            "pfConvention": "ratio"
+          },
+          {
+            "t": 1792533600000,
+            "n": 1266,
+            "gp": 586.5857000189511,
+            "gl": 322.6777059598556,
+            "net": 263.90799405909553,
+            "pf": 1.8178686943185607,
+            "pfConvention": "ratio"
+          },
+          {
+            "t": 1792537200000,
+            "n": 888,
+            "gp": 381.99878820444104,
+            "gl": 113.9286781125443,
+            "net": 268.07011009189677,
+            "pf": 3.352964280223492,
+            "pfConvention": "ratio"
+          }
+        ],
+        "cumulative": [
+          {
+            "throughT": 1792501200000,
+            "n": 1780,
+            "gp": 280.39243816908305,
+            "gl": 99.98274315887721,
+            "net": 180.40969501020584,
+            "pf": 2.8044083339814594,
+            "pfConvention": "ratio"
+          },
+          {
+            "throughT": 1792504800000,
+            "n": 4237,
+            "gp": 514.7772687788021,
+            "gl": 1282.2470141378892,
+            "net": -767.469745359087,
+            "pf": 0.4014649775768122,
+            "pfConvention": "ratio"
+          },
+          {
+            "throughT": 1792508400000,
+            "n": 12841,
+            "gp": 1364.1571970902362,
+            "gl": 21212.662790947612,
+            "net": -19848.505593857375,
+            "pf": 0.0643086259624314,
+            "pfConvention": "ratio"
+          },
+          {
+            "throughT": 1792512000000,
+            "n": 17026,
+            "gp": 2259.3148441376366,
+            "gl": 25583.073127696196,
+            "net": -23323.75828355856,
+            "pf": 0.08831287910019323,
+            "pfConvention": "ratio"
+          },
+          {
+            "throughT": 1792515600000,
+            "n": 20357,
+            "gp": 6148.464662882798,
+            "gl": 25677.159402105917,
+            "net": -19528.69473922312,
+            "pf": 0.23945268113958626,
+            "pfConvention": "ratio"
+          },
+          {
+            "throughT": 1792519200000,
+            "n": 23406,
+            "gp": 7632.868777410621,
+            "gl": 26741.970125448188,
+            "net": -19109.101348037566,
+            "pf": 0.28542656885803014,
+            "pfConvention": "ratio"
+          },
+          {
+            "throughT": 1792522800000,
+            "n": 27497,
+            "gp": 8944.831831769225,
+            "gl": 28469.523086569687,
+            "net": -19524.691254800466,
+            "pf": 0.3141897321065027,
+            "pfConvention": "ratio"
+          },
+          {
+            "throughT": 1792526400000,
+            "n": 33498,
+            "gp": 12333.700189607098,
+            "gl": 30044.054448616997,
+            "net": -17710.354259009902,
+            "pf": 0.41052049784761485,
+            "pfConvention": "ratio"
+          },
+          {
+            "throughT": 1792530000000,
+            "n": 34614,
+            "gp": 12857.73675389351,
+            "gl": 30424.255642986616,
+            "net": -17566.518889093106,
+            "pf": 0.4226146698467369,
+            "pfConvention": "ratio"
+          },
+          {
+            "throughT": 1792533600000,
+            "n": 35427,
+            "gp": 13028.3934381563,
+            "gl": 30488.98495755612,
+            "net": -17460.59151939982,
+            "pf": 0.42731476486649844,
+            "pfConvention": "ratio"
+          },
+          {
+            "throughT": 1792537200000,
+            "n": 36693,
+            "gp": 13614.979138175195,
+            "gl": 30811.66266351629,
+            "net": -17196.683525341094,
+            "pf": 0.44187745682080715,
+            "pfConvention": "ratio"
+          },
+          {
+            "throughT": 1792540800000,
+            "n": 37581,
+            "gp": 13996.977926379945,
+            "gl": 30925.59134162861,
+            "net": -16928.613415248667,
+            "pf": 0.4526017876831594,
+            "pfConvention": "ratio"
+          }
+        ],
+        "positiveHours": 8,
+        "flatHours": 0,
+        "negativeHours": 4,
+        "emptyHours": 0,
+        "allActiveHoursPfAbove1": false,
+        "pfAbove1AtEveryActiveHourEnd": false
+      },
+      "addedContext": {
+        "basis": "modeled-settled-unit-net-returns",
+        "closedWindow": "(startT,endT]",
+        "summary": {
+          "n": 21974,
+          "gp": 8144.106809318274,
+          "gl": 23699.624358788886,
+          "net": -15555.51754947061,
+          "pf": 0.34363864532300376,
+          "pfConvention": "ratio"
+        },
+        "hourly": [
+          {
+            "t": 1792497600000,
+            "n": 977,
+            "gp": 158.21909387123486,
+            "gl": 59.41192620953005,
+            "net": 98.80716766170482,
+            "pf": 2.66308641994266,
+            "pfConvention": "ratio"
+          },
+          {
+            "t": 1792501200000,
+            "n": 1082,
+            "gp": 123.24113686549477,
+            "gl": 1037.728319280136,
+            "net": -914.4871824146413,
+            "pf": 0.11876050270169572,
+            "pfConvention": "ratio"
+          },
+          {
+            "t": 1792504800000,
+            "n": 6318,
+            "gp": 842.973678311431,
+            "gl": 14742.057872511028,
+            "net": -13899.084194199597,
+            "pf": 0.057181547216911474,
+            "pfConvention": "ratio"
+          },
+          {
+            "t": 1792508400000,
+            "n": 3537,
+            "gp": 850.3575230678198,
+            "gl": 3933.4509667241996,
+            "net": -3083.09344365638,
+            "pf": 0.21618612517648908,
+            "pfConvention": "ratio"
+          },
+          {
+            "t": 1792512000000,
+            "n": 2911,
+            "gp": 3293.685425049199,
+            "gl": 72.160407505288,
+            "net": 3221.525017543911,
+            "pf": 45.643941586774346,
+            "pfConvention": "ratio"
+          },
+          {
+            "t": 1792515600000,
+            "n": 2005,
+            "gp": 948.806148667213,
+            "gl": 906.6643460966427,
+            "net": 42.14180257057034,
+            "pf": 1.0464800482692393,
+            "pfConvention": "ratio"
+          },
+          {
+            "t": 1792519200000,
+            "n": 2543,
+            "gp": 937.1604792008025,
+            "gl": 1679.5783231049274,
+            "net": -742.4178439041249,
+            "pf": 0.5579736689315773,
+            "pfConvention": "ratio"
+          },
+          {
+            "t": 1792522800000,
+            "n": 2217,
+            "gp": 784.6056998204696,
+            "gl": 1214.2766767244386,
+            "net": -429.6709769039691,
+            "pf": 0.6461506795444476,
+            "pfConvention": "ratio"
+          },
+          {
+            "t": 1792526400000,
+            "n": 356,
+            "gp": 202.19718215701238,
+            "gl": 53.369477559226695,
+            "net": 148.82770459778567,
+            "pf": 3.788629595120626,
+            "pfConvention": "ratio"
+          },
+          {
+            "t": 1792530000000,
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "net": 0,
+            "pf": null,
+            "pfConvention": "unavailable"
+          },
+          {
+            "t": 1792533600000,
+            "n": 28,
+            "gp": 2.860442307673775,
+            "gl": 0.926043073374627,
+            "net": 1.934399234299148,
+            "pf": 3.0888868886518783,
+            "pfConvention": "ratio"
+          },
+          {
+            "t": 1792537200000,
+            "n": 0,
+            "gp": 0,
+            "gl": 0,
+            "net": 0,
+            "pf": null,
+            "pfConvention": "unavailable"
+          }
+        ],
+        "cumulative": [
+          {
+            "throughT": 1792501200000,
+            "n": 977,
+            "gp": 158.21909387123486,
+            "gl": 59.41192620953005,
+            "net": 98.80716766170482,
+            "pf": 2.66308641994266,
+            "pfConvention": "ratio"
+          },
+          {
+            "throughT": 1792504800000,
+            "n": 2059,
+            "gp": 281.4602307367285,
+            "gl": 1097.1402454896663,
+            "net": -815.680014752938,
+            "pf": 0.25653988347780415,
+            "pfConvention": "ratio"
+          },
+          {
+            "throughT": 1792508400000,
+            "n": 8377,
+            "gp": 1124.433909048156,
+            "gl": 15839.19811800075,
+            "net": -14714.764208952593,
+            "pf": 0.07099058302517679,
+            "pfConvention": "ratio"
+          },
+          {
+            "throughT": 1792512000000,
+            "n": 11914,
+            "gp": 1974.7914321159687,
+            "gl": 19772.64908472539,
+            "net": -17797.857652609422,
+            "pf": 0.09987490414936452,
+            "pfConvention": "ratio"
+          },
+          {
+            "throughT": 1792515600000,
+            "n": 14825,
+            "gp": 5268.476857165182,
+            "gl": 19844.8094922307,
+            "net": -14576.332635065515,
+            "pf": 0.26548387170095067,
+            "pfConvention": "ratio"
+          },
+          {
+            "throughT": 1792519200000,
+            "n": 16830,
+            "gp": 6217.283005832424,
+            "gl": 20751.473838327252,
+            "net": -14534.190832494827,
+            "pf": 0.29960681608789247,
+            "pfConvention": "ratio"
+          },
+          {
+            "throughT": 1792522800000,
+            "n": 19373,
+            "gp": 7154.443485033171,
+            "gl": 22431.052161432115,
+            "net": -15276.608676398944,
+            "pf": 0.31895264803202145,
+            "pfConvention": "ratio"
+          },
+          {
+            "throughT": 1792526400000,
+            "n": 21590,
+            "gp": 7939.0491848535885,
+            "gl": 23645.32883815613,
+            "net": -15706.27965330254,
+            "pf": 0.3357554990752532,
+            "pfConvention": "ratio"
+          },
+          {
+            "throughT": 1792530000000,
+            "n": 21946,
+            "gp": 8141.246367010601,
+            "gl": 23698.69831571551,
+            "net": -15557.451948704906,
+            "pf": 0.343531372843876,
+            "pfConvention": "ratio"
+          },
+          {
+            "throughT": 1792533600000,
+            "n": 21946,
+            "gp": 8141.246367010601,
+            "gl": 23698.69831571551,
+            "net": -15557.451948704906,
+            "pf": 0.343531372843876,
+            "pfConvention": "ratio"
+          },
+          {
+            "throughT": 1792537200000,
+            "n": 21974,
+            "gp": 8144.106809318274,
+            "gl": 23699.624358788886,
+            "net": -15555.51754947061,
+            "pf": 0.34363864532300376,
+            "pfConvention": "ratio"
+          },
+          {
+            "throughT": 1792540800000,
+            "n": 21974,
+            "gp": 8144.106809318274,
+            "gl": 23699.624358788886,
+            "net": -15555.51754947061,
+            "pf": 0.34363864532300376,
+            "pfConvention": "ratio"
+          }
+        ],
+        "positiveHours": 5,
+        "flatHours": 0,
+        "negativeHours": 5,
+        "emptyHours": 2,
+        "allActiveHoursPfAbove1": false,
+        "pfAbove1AtEveryActiveHourEnd": false
+      },
+      "entryAudit": {
+        "funding": {
+          "basis": "Exact per-close native report allocation",
+          "virtualCloses": 37581,
+          "fundedCloses": 37581,
+          "zeroAllocatedCloses": 0,
+          "unknownAllocations": 0
+        },
+        "orders": 37581,
+        "matchedSourceCloses": 37581,
+        "missingSourceCloses": 0,
+        "failedOwnDirectionAtEntry": 0,
+        "maxCostError": 1.1766268867693594e-07,
+        "maxSourceUnitReturnError": 0,
+        "unknownReturns": 0
+      },
+      "hourlyGateAudit": {
+        "schema": "cts-scalar-hourly-progress-v2",
+        "requireAll": true,
+        "sourceSha256": "7368ba50ac6b77790d156c0d1ed509cc06fb1a6441cd5cdcee0d8712983dabb0",
+        "window": {
+          "indicatorStartT": 1792368000000,
+          "evaluationFromT": 1792454400000,
+          "tradeStartT": 1792497600000,
+          "endT": 1792540800000,
+          "preH": 12,
+          "runH": 12
+        },
+        "tapes": 16623,
+        "decisions": 165468,
+        "violations": [],
+        "complete": true,
+        "basis": "Independent scalar arithmetic directly from saved own net-return rows; does not call makeTape, configEval, production prefix sums, forward cursors or profitFactor. Long and short qualify separately; recorded selection summaries contain only passing directions, or zero if neither passes. Raw pooled and own-side windows independently conserve incoming minus expired closes regardless of changing qualifications. Missing histories remain explicitly unverified; EVERY passing config is required. Historical overlapping validation samples are not future execution profits."
+      },
+      "performance": {
+        "computeMs": 114325.100328,
+        "elapsedSeconds": 117,
+        "rssMaxMb": 972,
+        "phases": {
+          "Base (workers)": {
+            "ms": 84433.976796,
+            "maxSliceMs": 0,
+            "slowest": "392 of 392 combos on 2 cores",
+            "mainMs": 713.2347980013437
+          },
+          "Pipeline": {
+            "ms": 1020.3010459999932,
+            "maxSliceMs": 122.34916899999371,
+            "slowest": "S2 follow \u00d7 inverse-micro-1x5-break-retest-fast@m1 (122 ms)"
+          },
+          "Persist": {
+            "ms": 26.35577999999805,
+            "maxSliceMs": 11.865022999991197
+          },
+          "Exit history": {
+            "ms": 591.144306000002,
+            "maxSliceMs": 0,
+            "mainMs": 9.288155000656843,
+            "slowest": "2 workers \u00b7 2 bounded chunks of at most 16 pairs"
+          },
+          "Tapes": {
+            "ms": 18595.09841800001,
+            "maxSliceMs": 0,
+            "slowest": "2 cores \u00b7 16 replies",
+            "mainMs": 414.15577600023244
+          },
+          "Simulation": {
+            "ms": 9391.501869999993,
+            "maxSliceMs": 53.747068000011495,
+            "slowest": "fixed seat selection (54 ms)"
+          },
+          "Persist sim": {
+            "ms": 0.31959199999982957,
+            "maxSliceMs": 0.31959199999982957
+          },
+          "Auto preset": {
+            "ms": 0.09170499999891035,
+            "maxSliceMs": 0.09170499999891035
+          },
+          "Prehistoric": {
+            "ms": 64.75640700000804,
+            "maxSliceMs": 26.75535300000047,
+            "slowest": "finish (27 ms)"
+          },
+          "Paper": {
+            "ms": 925.000939000005,
+            "maxSliceMs": 148.69085800000175,
+            "slowest": "select 356 \u00b7 candidates 153 \u00b7 entries 397 ms over 2774 (wall, sliced) \u00b7 7170 older tape positions left to their tape"
+          },
+          "Adjust": {
+            "ms": 15.599375000005239,
+            "maxSliceMs": 15.599375000005239
+          },
+          "Audit": {
+            "ms": 1403.7165550000063,
+            "maxSliceMs": 37.81603099999484,
+            "slowest": " (37 ms)"
+          }
+        },
+        "memory": {
+          "availMb": 6330,
+          "hostAvailMb": 8268,
+          "cgroup": {
+            "version": 2,
+            "basis": "clean-file-estimate",
+            "limitMb": 8192,
+            "usedMb": 6343,
+            "rawAvailMb": 1849,
+            "cacheCreditMb": 4481,
+            "availMb": 6330
+          },
+          "rssMb": 832,
+          "level": "ok",
+          "fallback": 0,
+          "fallbackLabel": "full",
+          "minAvailMb": 2538,
+          "lastAbort": null,
+          "aborts": 0,
+          "abortsInRow": 0,
+          "retryAt": null,
+          "computeLevel": 0,
+          "heapMb": 269,
+          "heapTotalMb": 411,
+          "arrayBuffersMb": 82,
+          "nativeMb": 339,
+          "dbMb": 1,
+          "tapeMb": 118,
+          "byPhase": {
+            "backfill": {
+              "rssMb": 160,
+              "heapMb": 48,
+              "arrayBuffersMb": 7
+            },
+            "Base": {
+              "rssMb": 641,
+              "heapMb": 42,
+              "arrayBuffersMb": 21
+            },
+            "Main": {
+              "rssMb": 513,
+              "heapMb": 52,
+              "arrayBuffersMb": 57
+            },
+            "Tapes": {
+              "rssMb": 867,
+              "heapMb": 81,
+              "arrayBuffersMb": 70
+            },
+            "Real": {
+              "rssMb": 834,
+              "heapMb": 323,
+              "arrayBuffersMb": 116
+            }
+          }
+        }
+      },
+      "feedProvider": "BingX public swap klines"
+    }
+  },
+  "universal": {
+    "catalog": {
+      "scope": {
+        "sourceSha256": "7368ba50ac6b77790d156c0d1ed509cc06fb1a6441cd5cdcee0d8712983dabb0",
+        "registeredSpecs": 1972,
+        "byKind": {
+          "trend": 70,
+          "break": 237,
+          "active": 163,
+          "direction": 38,
+          "move": 60,
+          "rsi": 39,
+          "bollinger": 31,
+          "sar": 7,
+          "macd": 23,
+          "ema": 20,
+          "osc": 60,
+          "volume": 34,
+          "channel": 21,
+          "ichimoku": 8,
+          "smooth": 17,
+          "tactic": 10,
+          "relate": 40,
+          "micro": 490,
+          "inverse": 604
+        },
+        "engineCombos": 38402,
+        "timeframes": [
+          1,
+          5,
+          15,
+          30
+        ]
+      },
+      "classification": "Complete static registry and configured protect identity audit; this does not execute every Cartesian market cell",
+      "configuredRanges": [
+        "wide",
+        "mn",
+        "sh",
+        "gn",
+        "lg",
+        "mc",
+        "mp"
+      ],
+      "originalDefaultCells": 3898,
+      "coverageOverrides": [
+        "Wide: explicit 2% target, retaining existing stop/trail/hold arrays",
+        "Minimal Plus: two explicit identity-test cells; production dynamic fitting is tested separately"
+      ],
+      "byTf": {
+        "1": {
+          "rawConfiguredCells": 3916,
+          "uniqueActualProtectIdentities": 3916,
+          "cellsByRange": {
+            "wide": 12,
+            "mn": 754,
+            "sh": 432,
+            "gn": 554,
+            "lg": 594,
+            "mc": 1564,
+            "mp": 6
+          }
+        },
+        "5": {
+          "rawConfiguredCells": 3916,
+          "uniqueActualProtectIdentities": 3916,
+          "cellsByRange": {
+            "wide": 12,
+            "mn": 754,
+            "sh": 432,
+            "gn": 554,
+            "lg": 594,
+            "mc": 1564,
+            "mp": 6
+          }
+        },
+        "15": {
+          "rawConfiguredCells": 3916,
+          "uniqueActualProtectIdentities": 3916,
+          "cellsByRange": {
+            "wide": 12,
+            "mn": 754,
+            "sh": 432,
+            "gn": 554,
+            "lg": 594,
+            "mc": 1564,
+            "mp": 6
+          }
+        },
+        "30": {
+          "rawConfiguredCells": 3916,
+          "uniqueActualProtectIdentities": 3916,
+          "cellsByRange": {
+            "wide": 12,
+            "mn": 754,
+            "sh": 432,
+            "gn": 554,
+            "lg": 594,
+            "mc": 1564,
+            "mp": 6
+          }
+        }
+      },
+      "eligibleEnginePairsByRange": {
+        "wide": 28522,
+        "mn": 38402,
+        "mp": 28522,
+        "sh": 10254,
+        "gn": 10254,
+        "lg": 10254,
+        "mc": 9598
+      },
+      "noEligibleRange": {
+        "count": 0,
+        "examples": []
+      },
+      "violations": [],
+      "notes": [
+        "Minimal Plus is explicitly enabled for this catalog check; all original distance/gate values are retained.",
+        "The actual target/stop/trail/hold identities are checked exhaustively per lane. Bot/indication prefixes are independently unique, so the full Cartesian identity mapping need not be allocated in memory.",
+        "A lane slower than an explicitly requested maximum hold cannot execute that cell; the engine reports this refusal instead of exceeding the configured time.",
+        "Signal sources and Stable-02 ports use their dedicated Signal engine. Legacy equivalent engine aliases share the documented execution key policy; independent source qualification is still separate."
+      ]
+    },
+    "identity": {
+      "scope": {
+        "sourceSha256": "7368ba50ac6b77790d156c0d1ed509cc06fb1a6441cd5cdcee0d8712983dabb0",
+        "registeredSpecs": 1972,
+        "byKind": {
+          "trend": 70,
+          "break": 237,
+          "active": 163,
+          "direction": 38,
+          "move": 60,
+          "rsi": 39,
+          "bollinger": 31,
+          "sar": 7,
+          "macd": 23,
+          "ema": 20,
+          "osc": 60,
+          "volume": 34,
+          "channel": 21,
+          "ichimoku": 8,
+          "smooth": 17,
+          "tactic": 10,
+          "relate": 40,
+          "micro": 490,
+          "inverse": 604
+        },
+        "engineCombos": 38402,
+        "timeframes": [
+          1,
+          5,
+          15,
+          30
+        ]
+      },
+      "classification": "Synthetic identity contract for all registered source/lane/type/range combinations; three causal hourly own-history gate checks per source. Hypothetical combinations do not override real range eligibility or prove market profits.",
+      "strategyKinds": [
+        "normal",
+        "trailing",
+        "trailing-only",
+        "exit",
+        "dca",
+        "dca-active",
+        "axis"
+      ],
+      "ranges": [
+        "wide",
+        "mc",
+        "mn",
+        "mp",
+        "sh",
+        "gn",
+        "lg"
+      ],
+      "checkedIdentityCells": 638960,
+      "ownHourlyDecisions": 5916,
+      "losingOwnHourlyDecisions": 5916,
+      "completedSpecsByKind": {
+        "trend": 70,
+        "break": 237,
+        "active": 163,
+        "direction": 38,
+        "move": 60,
+        "rsi": 39,
+        "bollinger": 31,
+        "sar": 7,
+        "macd": 23,
+        "ema": 20,
+        "osc": 60,
+        "volume": 34,
+        "channel": 21,
+        "ichimoku": 8,
+        "smooth": 17,
+        "tactic": 10,
+        "relate": 40,
+        "micro": 490,
+        "inverse": 604
+      },
+      "violations": 0
+    },
+    "causal": {
+      "scope": {
+        "sourceSha256": "7368ba50ac6b77790d156c0d1ed509cc06fb1a6441cd5cdcee0d8712983dabb0",
+        "registeredSpecs": 1972,
+        "byKind": {
+          "trend": 70,
+          "break": 237,
+          "active": 163,
+          "direction": 38,
+          "move": 60,
+          "rsi": 39,
+          "bollinger": 31,
+          "sar": 7,
+          "macd": 23,
+          "ema": 20,
+          "osc": 60,
+          "volume": 34,
+          "channel": 21,
+          "ichimoku": 8,
+          "smooth": 17,
+          "tactic": 10,
+          "relate": 40,
+          "micro": 490,
+          "inverse": 604
+        },
+        "engineCombos": 38402,
+        "timeframes": [
+          1,
+          5,
+          15,
+          30
+        ]
+      },
+      "classification": "Native-price state shape/domain and six hourly prefix comparisons for every eligible registry/lane/symbol; not portfolio or profitability evidence",
+      "symbols": [
+        "ADA-USDT",
+        "APT-USDT",
+        "ARB-USDT",
+        "ATOM-USDT",
+        "AVAX-USDT",
+        "BCH-USDT",
+        "BNB-USDT",
+        "BTC-USDT",
+        "DOGE-USDT",
+        "DOT-USDT",
+        "ETC-USDT",
+        "ETH-USDT",
+        "FIL-USDT",
+        "LINK-USDT",
+        "LTC-USDT",
+        "NEAR-USDT",
+        "OP-USDT",
+        "SOL-USDT",
+        "SUI-USDT",
+        "TRX-USDT"
+      ],
+      "endT": 1791633600000,
+      "cuts": [
+        1791612000000,
+        1791615600000,
+        1791619200000,
+        1791622800000,
+        1791626400000,
+        1791630000000
+      ],
+      "completedSpecs": 1972,
+      "groups": [
+        {
+          "kind": "trend",
+          "specs": 70,
+          "laneSymbolCases": 9800,
+          "comparisons": 58800,
+          "comparedBars": 119658000,
+          "entryComparisons": 308280,
+          "entryCases": 51380,
+          "longStates": 2997266,
+          "shortStates": 3271939,
+          "violations": 0
+        },
+        {
+          "kind": "break",
+          "specs": 237,
+          "laneSymbolCases": 14460,
+          "comparisons": 86760,
+          "comparedBars": 181618200,
+          "entryComparisons": 603000,
+          "entryCases": 100500,
+          "longStates": 861442,
+          "shortStates": 917564,
+          "violations": 0
+        },
+        {
+          "kind": "active",
+          "specs": 163,
+          "laneSymbolCases": 22820,
+          "comparisons": 136920,
+          "comparedBars": 278632200,
+          "entryComparisons": 1240680,
+          "entryCases": 206780,
+          "longStates": 1640622,
+          "shortStates": 1585063,
+          "violations": 0
+        },
+        {
+          "kind": "direction",
+          "specs": 38,
+          "laneSymbolCases": 5320,
+          "comparisons": 31920,
+          "comparedBars": 64957200,
+          "entryComparisons": 152880,
+          "entryCases": 25480,
+          "longStates": 1582146,
+          "shortStates": 1738472,
+          "violations": 0
+        },
+        {
+          "kind": "move",
+          "specs": 60,
+          "laneSymbolCases": 8400,
+          "comparisons": 50400,
+          "comparedBars": 102564000,
+          "entryComparisons": 292320,
+          "entryCases": 48720,
+          "longStates": 649648,
+          "shortStates": 687524,
+          "violations": 0
+        },
+        {
+          "kind": "rsi",
+          "specs": 39,
+          "laneSymbolCases": 5460,
+          "comparisons": 32760,
+          "comparedBars": 66666600,
+          "entryComparisons": 206640,
+          "entryCases": 34440,
+          "longStates": 416611,
+          "shortStates": 472520,
+          "violations": 0
+        },
+        {
+          "kind": "bollinger",
+          "specs": 31,
+          "laneSymbolCases": 4340,
+          "comparisons": 26040,
+          "comparedBars": 52991400,
+          "entryComparisons": 154560,
+          "entryCases": 25760,
+          "longStates": 143230,
+          "shortStates": 139521,
+          "violations": 0
+        },
+        {
+          "kind": "sar",
+          "specs": 7,
+          "laneSymbolCases": 980,
+          "comparisons": 5880,
+          "comparedBars": 11965800,
+          "entryComparisons": 43680,
+          "entryCases": 7280,
+          "longStates": 587502,
+          "shortStates": 607214,
+          "violations": 0
+        },
+        {
+          "kind": "macd",
+          "specs": 23,
+          "laneSymbolCases": 3220,
+          "comparisons": 19320,
+          "comparedBars": 39316200,
+          "entryComparisons": 117600,
+          "entryCases": 19600,
+          "longStates": 864177,
+          "shortStates": 873571,
+          "violations": 0
+        },
+        {
+          "kind": "ema",
+          "specs": 20,
+          "laneSymbolCases": 2800,
+          "comparisons": 16800,
+          "comparedBars": 34188000,
+          "entryComparisons": 122640,
+          "entryCases": 20440,
+          "longStates": 1314797,
+          "shortStates": 1560652,
+          "violations": 0
+        },
+        {
+          "kind": "osc",
+          "specs": 60,
+          "laneSymbolCases": 8400,
+          "comparisons": 50400,
+          "comparedBars": 102564000,
+          "entryComparisons": 352800,
+          "entryCases": 58800,
+          "longStates": 861056,
+          "shortStates": 813096,
+          "violations": 0
+        },
+        {
+          "kind": "volume",
+          "specs": 34,
+          "laneSymbolCases": 4760,
+          "comparisons": 28560,
+          "comparedBars": 58119600,
+          "entryComparisons": 149520,
+          "entryCases": 24920,
+          "longStates": 661076,
+          "shortStates": 851093,
+          "violations": 0
+        },
+        {
+          "kind": "channel",
+          "specs": 21,
+          "laneSymbolCases": 2940,
+          "comparisons": 17640,
+          "comparedBars": 35897400,
+          "entryComparisons": 100800,
+          "entryCases": 16800,
+          "longStates": 365236,
+          "shortStates": 404340,
+          "violations": 0
+        },
+        {
+          "kind": "ichimoku",
+          "specs": 8,
+          "laneSymbolCases": 1120,
+          "comparisons": 6720,
+          "comparedBars": 13675200,
+          "entryComparisons": 36960,
+          "entryCases": 6160,
+          "longStates": 530260,
+          "shortStates": 554296,
+          "violations": 0
+        },
+        {
+          "kind": "smooth",
+          "specs": 17,
+          "laneSymbolCases": 2380,
+          "comparisons": 14280,
+          "comparedBars": 29059800,
+          "entryComparisons": 82320,
+          "entryCases": 13720,
+          "longStates": 1484169,
+          "shortStates": 1579043,
+          "violations": 0
+        },
+        {
+          "kind": "tactic",
+          "specs": 10,
+          "laneSymbolCases": 1400,
+          "comparisons": 8400,
+          "comparedBars": 17094000,
+          "entryComparisons": 84000,
+          "entryCases": 14000,
+          "longStates": 70331,
+          "shortStates": 67057,
+          "violations": 0
+        },
+        {
+          "kind": "relate",
+          "specs": 40,
+          "laneSymbolCases": 800,
+          "comparisons": 4800,
+          "comparedBars": 13142400,
+          "entryComparisons": 48000,
+          "entryCases": 8000,
+          "longStates": 78269,
+          "shortStates": 71808,
+          "violations": 0
+        },
+        {
+          "kind": "micro",
+          "specs": 490,
+          "laneSymbolCases": 9800,
+          "comparisons": 58800,
+          "comparedBars": 208236000,
+          "entryComparisons": 588000,
+          "entryCases": 98000,
+          "longStates": 882808,
+          "shortStates": 970860,
+          "violations": 0
+        },
+        {
+          "kind": "inverse",
+          "specs": 604,
+          "laneSymbolCases": 21200,
+          "comparisons": 127200,
+          "comparedBars": 395515200,
+          "entryComparisons": 127200,
+          "entryCases": 21200,
+          "longStates": 2749426,
+          "shortStates": 2632186,
+          "violations": 0
+        }
+      ],
+      "violationCount": 0,
+      "violations": [],
+      "complete": true
+    },
+    "causal-partial": {
+      "scope": {
+        "sourceSha256": "7368ba50ac6b77790d156c0d1ed509cc06fb1a6441cd5cdcee0d8712983dabb0",
+        "registeredSpecs": 1972,
+        "byKind": {
+          "trend": 70,
+          "break": 237,
+          "active": 163,
+          "direction": 38,
+          "move": 60,
+          "rsi": 39,
+          "bollinger": 31,
+          "sar": 7,
+          "macd": 23,
+          "ema": 20,
+          "osc": 60,
+          "volume": 34,
+          "channel": 21,
+          "ichimoku": 8,
+          "smooth": 17,
+          "tactic": 10,
+          "relate": 40,
+          "micro": 490,
+          "inverse": 604
+        },
+        "engineCombos": 38402,
+        "timeframes": [
+          1,
+          5,
+          15,
+          30
+        ]
+      },
+      "classification": "Native-price state shape/domain and three unfinished-higher-bar prefix comparisons for every eligible registry/lane/symbol; not portfolio or profitability evidence",
+      "symbols": [
+        "ADA-USDT",
+        "APT-USDT",
+        "ARB-USDT",
+        "ATOM-USDT",
+        "AVAX-USDT",
+        "BCH-USDT",
+        "BNB-USDT",
+        "BTC-USDT",
+        "DOGE-USDT",
+        "DOT-USDT",
+        "ETC-USDT",
+        "ETH-USDT",
+        "FIL-USDT",
+        "LINK-USDT",
+        "LTC-USDT",
+        "NEAR-USDT",
+        "OP-USDT",
+        "SOL-USDT",
+        "SUI-USDT",
+        "TRX-USDT"
+      ],
+      "endT": 1791633600000,
+      "cuts": [
+        1791612420000,
+        1791613020000,
+        1791614220000
+      ],
+      "completedSpecs": 1972,
+      "groups": [
+        {
+          "kind": "trend",
+          "specs": 70,
+          "laneSymbolCases": 9800,
+          "comparisons": 29400,
+          "comparedBars": 58423400,
+          "entryComparisons": 154140,
+          "entryCases": 51380,
+          "longStates": 2997266,
+          "shortStates": 3271939,
+          "violations": 0
+        },
+        {
+          "kind": "break",
+          "specs": 237,
+          "laneSymbolCases": 14460,
+          "comparisons": 43380,
+          "comparedBars": 88675980,
+          "entryComparisons": 301500,
+          "entryCases": 100500,
+          "longStates": 861442,
+          "shortStates": 917564,
+          "violations": 0
+        },
+        {
+          "kind": "active",
+          "specs": 163,
+          "laneSymbolCases": 22820,
+          "comparisons": 68460,
+          "comparedBars": 136043060,
+          "entryComparisons": 620340,
+          "entryCases": 206780,
+          "longStates": 1640622,
+          "shortStates": 1585063,
+          "violations": 0
+        },
+        {
+          "kind": "direction",
+          "specs": 38,
+          "laneSymbolCases": 5320,
+          "comparisons": 15960,
+          "comparedBars": 31715560,
+          "entryComparisons": 76440,
+          "entryCases": 25480,
+          "longStates": 1582146,
+          "shortStates": 1738472,
+          "violations": 0
+        },
+        {
+          "kind": "move",
+          "specs": 60,
+          "laneSymbolCases": 8400,
+          "comparisons": 25200,
+          "comparedBars": 50077200,
+          "entryComparisons": 146160,
+          "entryCases": 48720,
+          "longStates": 649648,
+          "shortStates": 687524,
+          "violations": 0
+        },
+        {
+          "kind": "rsi",
+          "specs": 39,
+          "laneSymbolCases": 5460,
+          "comparisons": 16380,
+          "comparedBars": 32550180,
+          "entryComparisons": 103320,
+          "entryCases": 34440,
+          "longStates": 416611,
+          "shortStates": 472520,
+          "violations": 0
+        },
+        {
+          "kind": "bollinger",
+          "specs": 31,
+          "laneSymbolCases": 4340,
+          "comparisons": 13020,
+          "comparedBars": 25873220,
+          "entryComparisons": 77280,
+          "entryCases": 25760,
+          "longStates": 143230,
+          "shortStates": 139521,
+          "violations": 0
+        },
+        {
+          "kind": "sar",
+          "specs": 7,
+          "laneSymbolCases": 980,
+          "comparisons": 2940,
+          "comparedBars": 5842340,
+          "entryComparisons": 21840,
+          "entryCases": 7280,
+          "longStates": 587502,
+          "shortStates": 607214,
+          "violations": 0
+        },
+        {
+          "kind": "macd",
+          "specs": 23,
+          "laneSymbolCases": 3220,
+          "comparisons": 9660,
+          "comparedBars": 19196260,
+          "entryComparisons": 58800,
+          "entryCases": 19600,
+          "longStates": 864177,
+          "shortStates": 873571,
+          "violations": 0
+        },
+        {
+          "kind": "ema",
+          "specs": 20,
+          "laneSymbolCases": 2800,
+          "comparisons": 8400,
+          "comparedBars": 16692400,
+          "entryComparisons": 61320,
+          "entryCases": 20440,
+          "longStates": 1314797,
+          "shortStates": 1560652,
+          "violations": 0
+        },
+        {
+          "kind": "osc",
+          "specs": 60,
+          "laneSymbolCases": 8400,
+          "comparisons": 25200,
+          "comparedBars": 50077200,
+          "entryComparisons": 176400,
+          "entryCases": 58800,
+          "longStates": 861056,
+          "shortStates": 813096,
+          "violations": 0
+        },
+        {
+          "kind": "volume",
+          "specs": 34,
+          "laneSymbolCases": 4760,
+          "comparisons": 14280,
+          "comparedBars": 28377080,
+          "entryComparisons": 74760,
+          "entryCases": 24920,
+          "longStates": 661076,
+          "shortStates": 851093,
+          "violations": 0
+        },
+        {
+          "kind": "channel",
+          "specs": 21,
+          "laneSymbolCases": 2940,
+          "comparisons": 8820,
+          "comparedBars": 17527020,
+          "entryComparisons": 50400,
+          "entryCases": 16800,
+          "longStates": 365236,
+          "shortStates": 404340,
+          "violations": 0
+        },
+        {
+          "kind": "ichimoku",
+          "specs": 8,
+          "laneSymbolCases": 1120,
+          "comparisons": 3360,
+          "comparedBars": 6676960,
+          "entryComparisons": 18480,
+          "entryCases": 6160,
+          "longStates": 530260,
+          "shortStates": 554296,
+          "violations": 0
+        },
+        {
+          "kind": "smooth",
+          "specs": 17,
+          "laneSymbolCases": 2380,
+          "comparisons": 7140,
+          "comparedBars": 14188540,
+          "entryComparisons": 41160,
+          "entryCases": 13720,
+          "longStates": 1484169,
+          "shortStates": 1579043,
+          "violations": 0
+        },
+        {
+          "kind": "tactic",
+          "specs": 10,
+          "laneSymbolCases": 1400,
+          "comparisons": 4200,
+          "comparedBars": 8346200,
+          "entryComparisons": 42000,
+          "entryCases": 14000,
+          "longStates": 70331,
+          "shortStates": 67057,
+          "violations": 0
+        },
+        {
+          "kind": "relate",
+          "specs": 40,
+          "laneSymbolCases": 800,
+          "comparisons": 2400,
+          "comparedBars": 6417120,
+          "entryComparisons": 24000,
+          "entryCases": 8000,
+          "longStates": 78269,
+          "shortStates": 71808,
+          "violations": 0
+        },
+        {
+          "kind": "micro",
+          "specs": 490,
+          "laneSymbolCases": 9800,
+          "comparisons": 29400,
+          "comparedBars": 101680600,
+          "entryComparisons": 294000,
+          "entryCases": 98000,
+          "longStates": 882808,
+          "shortStates": 970860,
+          "violations": 0
+        },
+        {
+          "kind": "inverse",
+          "specs": 604,
+          "laneSymbolCases": 21200,
+          "comparisons": 63600,
+          "comparedBars": 193124560,
+          "entryComparisons": 63600,
+          "entryCases": 21200,
+          "longStates": 2749426,
+          "shortStates": 2632186,
+          "violations": 0
+        }
+      ],
+      "violationCount": 0,
+      "violations": [],
+      "complete": true
+    }
+  },
+  "targetedTests": {
+    "core": 334,
+    "rankingProviderScripts": 8,
+    "types": "pass",
+    "build": "pass",
+    "lintErrors": 0,
+    "ui": "4/4 passed on the complete integrated source in an isolated multiprocess browser",
+    "uiPriorAttempt": "Concurrent launcher ended without a completion receipt; retain the incomplete log rather than count it as a pass."
+  },
+  "candidateParity": {
+    "classification": "Every original/expanded candidate tuple and every funded execution field compared between02c and integrated7368 source. Existing full133-file archive retains the identical candidate data; source/provider metadata remain distinct.",
+    "arms": {
+      "original": {
+        "candidateConfigs": 5898,
+        "candidateCloses": 654770,
+        "allCandidateRowsIdentical": true,
+        "sortedConfigDigest": "53000bc8ec3d0ea149ec407f7b26f0ffc1fe0d345e95bafacbda77fc23d9d138",
+        "fundedCloses": 15607,
+        "allFundedFieldsIdentical": true,
+        "missing": 0,
+        "mismatched": 0
+      },
+      "expanded": {
+        "candidateConfigs": 16623,
+        "candidateCloses": 1644128,
+        "allCandidateRowsIdentical": true,
+        "sortedConfigDigest": "f10f59ad9c9d156c0fd453f2f0319ccdc765a54d9e65bb06a76e86d7be8c5968",
+        "fundedCloses": 37581,
+        "allFundedFieldsIdentical": true,
+        "missing": 0,
+        "mismatched": 0
+      }
+    }
+  }
+}

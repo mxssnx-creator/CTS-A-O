@@ -102,7 +102,7 @@ test(
         assert.equal(p.window.preH, 12);
         assert.equal(p.window.runH, 12);
         assert.equal(p.symbolSelection.cutT, p.window.tradeStartT);
-        assert.equal(p.scope.focus.length, 868);
+        assert.equal(p.scope.focus.length, 980);
         assert.deepEqual(p.actualSettings.forceSymbols, p.symbols);
         assert.equal(
           fs.existsSync(`${out}/${rank}/raw.json`),

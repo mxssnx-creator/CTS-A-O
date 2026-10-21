@@ -1,0 +1,25 @@
+{
+  "classification": "Every original/expanded candidate tuple and every funded execution field compared between02c and integrated7368 source. Existing full133-file archive retains the identical candidate data; source/provider metadata remain distinct.",
+  "arms": {
+    "original": {
+      "candidateConfigs": 5898,
+      "candidateCloses": 654770,
+      "allCandidateRowsIdentical": true,
+      "sortedConfigDigest": "53000bc8ec3d0ea149ec407f7b26f0ffc1fe0d345e95bafacbda77fc23d9d138",
+      "fundedCloses": 15607,
+      "allFundedFieldsIdentical": true,
+      "missing": 0,
+      "mismatched": 0
+    },
+    "expanded": {
+      "candidateConfigs": 16623,
+      "candidateCloses": 1644128,
+      "allCandidateRowsIdentical": true,
+      "sortedConfigDigest": "f10f59ad9c9d156c0fd453f2f0319ccdc765a54d9e65bb06a76e86d7be8c5968",
+      "fundedCloses": 37581,
+      "allFundedFieldsIdentical": true,
+      "missing": 0,
+      "mismatched": 0
+    }
+  }
+}

@@ -1,3 +1,27 @@
+## Integrated PR184/191 checkpoint — 21 October 2026
+
+Replay-only rank clocks and earlier caller bounds/native5m retention from PR184 are included with the112 context additions; truthful input-provider labels have a real prepare regression. New source seal`7368ba50ac6b77790d156c0d1ed509cc06fb1a6441cd5cdcee0d8712983dabb0`.334 integrated core tests +8 ranking/feed/provenance cases pass, as do types/lint/build. Both original/expanded provider simulations repeat exactly the prior economic results (PF0.810/0.453); every funded entry and full hourly reference passes again. All1,972 sources pass complete native hourly/unfinished-bar causality again. Preserve older02c receipts; their hardcoded Binance provider label is an explicit metadata erratum, not a change to the sealed BingX prices/returns. Integrated verification and GitHub exact-head status are authoritative; no live actions.
+
+## 21 October 2026 — additive negative-hour contexts and chronological comparison
+
+- PR190 exact Base-cell admission and incremental evaluation boundary merged after both complete workflows passed: main `1f6acd9328e05636ce3ff341e34628ea8e8aa762`; backup `backup/main-before-cohort-admission-20261021`.
+- PR191 adds 112 independent Micro/Inverse Tactic/relative/market context sources alongside originals, with exact factory-only focus migration. Original 434 Micro vectors are unchanged; Signals retain independent 336h history and this Micro comparison retains15m maximum hold.
+- All current1,972 sources and38,402 eligible Bot/lane pairs passed complete native hourly/unfinished-bar causality. Local21 focused +168 integration +4 UI cases, types, changed lint and app/worker build passed. Full PR191 CI status remains authoritative; initial UI Save-count race and browser setup failures are retained in evidence.
+- Retrospective v4 negative-hour training: inverse5m Activity Acceleration Normal Micro Long PF3.21, Break Close selective Normal Micro Short PF4.57, Break Retest Trailing Micro Long PF1.39. These are training-selected, small-onset cohorts, not future evidence.
+- Separate preregistered native BingX chronological24-symbol comparison (Oct20 12–24 UTC) is **negative**: original15,607 funded modeled closes PF0.810; original+contexts37,581 PF0.453. All15,607 originals remain identical. Added21,974 alone PF0.344. Do not claim stability or positive combined execution. Some relative variants have positive subgroup PF; they were not retrospectively substituted as the sole portfolio.
+- Independent source/own-direction entry qualification passed all53,188 closes, with zero unknown returns or source mismatches.221,268 full-history hourly config decisions have zero scalar verdict/arithmetic discrepancies. Base pair/representative counts differ from full protection-cell evaluations; uncomputed cells are never certified as passing.
+- Primary Binance Oct20 daily archives remained unavailable (24HTTP404; public REST probe451). Keep incomplete primary evidence separate from the all-BingX supplement. No venue orders, owned-fill proof, running-account updates or live reload occurred.
+- Full plan, results, all failed/empty/losing outcomes and checksummed reproducible evidence: `docs/negative-hour-contexts-20261021/README.md`. Source manifest`02c34224ab02d7e9a70a9480c7756d4eb25ddfc0da2f33b6cee99ba38da9cb5a`; built worker`01e384633aeed37f363d2c1f130d5086a29e2d85003558a2c638da0b0d135280`.
+
+# Exact-cohort procedure fixes and hourly verification — 21 October 2026
+
+PR190: https://github.com/mxssnx-creator/CTS-A-O/pull/190. Main remains720299c. Production source local2edac0c / remote31b66ac (same tested tree); runtime manifest110b13ff9f42232e39d346430bf1a6adf254a8fefe49a69cde626d972c912f71. Audit/runner/reference checkpointa54c0b9 preserves optional exact Base cell permission at Durable/entry/native, bounded incremental replay history, declared audit settlement horizons and fail-closed explicit test inventories. Read docs/sims/cohort-procedure-audit-20261021/README.md and report.json first. Source-specific scalar floors are now explicit; no production floor changed. Complete evidence archive includes initial failures and original scored audit code.
+
+Fresh234core checks in disjoint targeted groups,23script/reference/window tests,types/build pass; zero lint errors. Registry1860specs:627984synthetic identities,5580positive+5580losing hourly decisions; all20-symbol native six-hourly and three unfinished-bar prefix audits complete with zero violations.548576independent actual hourly direction decisions match.963settled modeled orders exactly match source identities/returns/cost once and current Base/direction/symbol proof. Full Exit CI39541882421 at31b66ac remains in progress; Exact Signal39541882409 green. Do not claim full CI completed until checked. No hosted reload or actual venue/account action.
+
+Corrected six-hour repeats: Oct13bounded36settled PF31.386887 plus195open marks; Oct14bounded48PF.224484 plus80marks; Oct15bounded6no-loss score4; Oct16bounded193PF0 plus5marks; Oct17Micro22 680PF1.337123 with two losing hours. Old Oct13/14 launcher results included195/80future settlements beyond their declared stop and are superseded in scope, not erased. Consistent positive PF across hours/ranges remains unmet. Preserve Signal336h and Micro15m.
+
+Latest operator steering requests additional independently qualified variants based on winners in negative hours, retaining originals in parallel. Initial small-window scan has no net-winning config in its negative hours (113mc-rsit5-10 variants each contain one small win but remain net losing). Broader previously published funded v4 archive at /workspace/scratch/e92abb680845/CTS-A-O/runs/ci-evidence-39532140644 has257095exact funded model closes,3negative hours,202positive source/type/range/side-hour groups and4852positive config/side-hour groups. This is retrospective training on a different old source, never current live/holdout proof. Current analysis scratch runs/funded-negative-hours-v4.json. Promising repeated groups: inverse-micro-5-activity-acceleration-fast Normal Micro Long (219closes/12summed hour-onsets,PF3.2122,two positive negative-portfolio hours); inverse-micro-5-break-close-selective Normal Micro Short (142closes/9onsets,PF4.5673); same source Trailing Minimal Short (250closes/6onsets,PF333.9947); inverse-micro-5-break-retest-fast Trailing Micro Long (494closes/8onsets,PF1.3869). Count unique onsets across the full cohort before choosing expansions. Preserve all source/config siblings, shared risk coordination, costs and independent forward gates; add new IDs and chronological validation instead of selecting by later losses. Expansion implementation is not complete yet.
 # Completed twelve-symbol comparison and release merge — 21 October 2026 (UTC)
 
 PR184 merged as 7ba74e8f970aeb7fc8531e6fbc57026a1c821e93. Its tree b22c5b68c6647f4297a91a1d684292de0eb9dfdf exactly matches tested PR merge46ae9aca. Economic source f704356e936a30cc7ae3415f5a58a04dccbf7d81198935414b4d42efb2c0d661 includes existing main1f6 Base-cell admission and incremental evaluation-boundary repairs. The source-sealed financial checkpoint is e2a91c7c84e29bd7bbfe092659a4ca14dbbb4016; report-only follow-up files do not change this economic source.
@@ -3634,3 +3658,26 @@ simulation state (`simulateFrom`, `extendTape`), rebuilds the other kinds in the
 universe, keeps the hour's seats and runs the paper step on the validated tapes. Equality with a full recompute:
 `src/core/sim/backtest-resume.test.ts`, `tape-extend.test.ts`, `src/core/server/cycle-incremental.test.ts`.
 Profile: `scripts/bench-cycle.mjs`.
+
+## Micro contexts: Node 24 CI crash follow-up — 2026-10-21
+
+PR191 head `e274b11ff714a5f6be9bdffda4b574e809086227` passed types,
+lint/build and 3,130 core cases but the pool cancellation test process aborted
+inside V8 WASM code GC (not a trading assertion); two cases were skipped and
+the slow CI step was consequently not run. Preserve the actual failure in
+`docs/negative-hour-contexts-20261021/ci-node24-failure-e274.txt`.
+The bounded core test child now runs Node24 with `--no-wasm-code-gc`, matching
+the upstream runtime workaround (https://github.com/nodejs/node/issues/66366).
+The real-spawn runner contract passes 4/4 and related cancellation/ownership/
+priority/memory/module-copy tests pass 22/22. Production worker settings,
+trading formulas, PF gates and economic source seal `15bee9d6359df10deefc71f511eba0604f2dacb674c9303add46a08ccc0cb4dc`
+are unchanged. A new complete hosted run is required before merging PR191.
+The repaired production source already passed both slow cases locally.
+
+Training scope clarification: the older v4 training Micro winners used a
+60-minute maximum hold. They are not proof of Micro15 profitability. The
+frozen new comparison uses actual Micro15 cells and remains PF0.809978 original
+versus PF0.452602 expanded. Its losing-hour posthoc diagnostic contains zero
+net-positive Micro15 config-sides in either arm over their respective losing
+portfolio hours. Keep longer-range positive subsets separately labeled; no
+post-validation tuning, venue order, reload or deployment has occurred.

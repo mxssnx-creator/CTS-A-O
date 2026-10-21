@@ -43,6 +43,7 @@ import {
   WIDE_TARGET_SL,
 } from "../minimal-coord.ts";
 import { microSpecs, type MicroIndRule } from "../indications/micro.ts";
+import { PRE_CONTEXT_FOCUS_21OCT } from "../indications/context-default-focus.ts";
 import { isBreakRelInd } from "../indications/break-config.ts";
 import { sharedFeed } from "../market/shared-feed.ts";
 import { catchUp } from "./loop-budget.ts";
@@ -1149,6 +1150,7 @@ export class CoreRuntime {
     // order caps from before unlimited orders are dropped once (walk-forward and signal caps)
     const savedWf = migrateWfCaps(db);
     migrateMicroBreakoutFocus(db);
+    migrateMicroContextFocus(db);
     const saved = db.kvGet<Partial<CoreSettings>>("settings");
     // settings saved before the tick loop existed carry a cycle of ≥ 5 s (the old minimum): the fast defaults apply
     if (saved && saved.tickMs === undefined && (saved.cycleMs ?? 0) >= 5_000) {
@@ -7553,7 +7555,12 @@ export class CoreRuntime {
         : s;
     const exitHistoryH =
       Math.max(...s.tfs.map((tf) => exitLaneSettings.tfDays[String(tf)] ?? s.historyDays)) * 24;
-    const endT = Math.floor(Date.now() / H) * H;
+    const dataNowT = this.market === "synthetic"
+      ? Number(process.env.CTS_CORE_SYNTHETIC_END) || Date.now() : Date.now();
+    const endT = Math.floor(dataNowT / H) * H;
+    // A declared whole-hour backtest must not borrow the live tail after that hour. Count/fetch only its
+    // closed prefix; otherwise a late partial native bucket can displace one complete history bar.
+    const beforeEnd = (cs: CandleSeries) => cs.range(0, cs.lowerBound(endT));
     const startT = endT - days * 24 * H;
     // history: warm-up day + long window + tactics warm-up + the backtest days
     const laneWantBars = Math.max(
@@ -7580,7 +7587,7 @@ export class CoreRuntime {
     const own =
       sameUniverse &&
       s.tfMin === this.settings.tfMin &&
-      [...this.candles.values()].every((c) => c.n >= wantBars) &&
+      [...this.candles.values()].every((c) => beforeEnd(c).n >= wantBars) &&
       this.candles.size > 0;
     if (own) candles = this.candles;
     else {
@@ -7588,17 +7595,16 @@ export class CoreRuntime {
       const enough =
         cached &&
         Date.now() - cached.at < 10 * 60_000 &&
-        [...cached.candles.values()].every((c) => c.n >= wantBars);
+        [...cached.candles.values()].every((c) => beforeEnd(c).n >= wantBars);
       if (enough) candles = cached!.candles;
       else if (this.market === "synthetic") {
         // test-only market: the backtest reads the same synthetic series as the compute (it fetched real BingX
         // tickers and candles before — a network dependency and real data mixed into a synthetic run)
-        const end = Number(process.env.CTS_CORE_SYNTHETIC_END) || Date.now();
         candles = new Map();
         for (let i = 0; i < s.symbols; i++)
           candles.set(
             `SYN${i}-USDT`,
-            CandleSeries.fromCandles(syntheticCandles(`SYN${i}`, s.tfMin, wantBars, end)),
+            CandleSeries.fromCandles(syntheticCandles(`SYN${i}`, s.tfMin, wantBars, endT - s.tfMin * 60_000)),
           );
         this.btCandles.set(uniKey, { at: Date.now(), candles });
       } else {
@@ -7637,7 +7643,7 @@ export class CoreRuntime {
             this.checkBacktest(job);
             const have =
               s.tfMin === this.settings.tfMin
-                ? (this.candles.get(sym) ?? CandleSeries.EMPTY)
+                ? beforeEnd(this.candles.get(sym) ?? CandleSeries.EMPTY)
                 : CandleSeries.EMPTY;
             const missing = wantBars - have.n;
             let cs: CandleSeries = have;
@@ -7648,7 +7654,7 @@ export class CoreRuntime {
                 this.feed
                   .history(sym, s.tfMin, have.n ? missing : wantBars, {
                     pauseMs: 0,
-                    nowT: first,
+                    nowT: first ?? endT,
                   })
                   .catch(() => [] as Candle[]),
               );
@@ -7675,6 +7681,7 @@ export class CoreRuntime {
       }
     }
     this.checkBacktest(job);
+    candles = new Map([...candles].map(([sym, cs]) => [sym, beforeEnd(cs)]));
     // every lane over its own history before the backtest window plus the window itself
     // CandleSeries.tail is a zero-copy view. The ordinary source keeps exactly its original fetch span, including
     // the first partial resampling bucket, even when Exit needed additional older candles.
@@ -10135,6 +10142,25 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
   if (p.bots !== undefined)
     p.bots = Array.isArray(p.bots) ? (p.bots as unknown[]).map(String).slice(0, 20) : [];
   return p as Partial<WalkForwardOptions>;
+}
+
+/** Add context children once for the exact former factory selection; preserve custom/off Focus. */
+function migrateMicroContextFocus(db: CoreDb): void {
+  if (db.kvGet("microContextFocusV1")) return;
+  const upgrade = (settings: SettingsPatch | undefined) => {
+    if (!settings || JSON.stringify(settings.focus) !== JSON.stringify(PRE_CONTEXT_FOCUS_21OCT)) return false;
+    settings.focus = [...DEFAULT_SETTINGS.focus];
+    return true;
+  };
+  const settings = db.kvGet<SettingsPatch>("settings");
+  if (upgrade(settings)) db.kvSet("settings", settings);
+  const presets = db.kvGet<Preset[]>("presets");
+  if (Array.isArray(presets)) {
+    let changed = false;
+    for (const preset of presets) changed = upgrade(preset.settings) || changed;
+    if (changed) db.kvSet("presets", presets);
+  }
+  db.kvSet("microContextFocusV1", true);
 }
 
 /** Add channel sources once for exact former factory selections, independently of older WF-cap migrations. */

@@ -76,7 +76,7 @@ function scalarLast(rows, t, n, minPf, maxDdt, maxDdr, floor, warmup, prior) {
   }
   return true;
 }
-export function scalarDirectionEval(rows, t, o, protect, kind = "normal") {
+export function scalarDirectionEval(rows, t, o, protect, kind = "normal", ind = "") {
   const winH = Math.max(o.longH, o.preH),
     g = o.gates,
     tag = protect.tag;
@@ -85,8 +85,10 @@ export function scalarDirectionEval(rows, t, o, protect, kind = "normal") {
   ];
   const ro = o.rangeOpts?.[tag ?? "wide"],
     configured = g.rangeMinPf?.[key],
-    rangeMin = typeof configured === "number" ? Math.min(3, Math.max(1.05, configured)) : g.minPf;
-  const minPf = Math.max(1.1, rangeMin, kind === "exit" ? (o.exitMinPf ?? 0) : 0);
+    rangeMin = typeof configured === "number" && Number.isFinite(configured)
+      ? Math.min(3, Math.max(1.05, configured)) : g.minPf;
+  const familyFloor = /^(micro-|inverse-|tactic-|relate-|break-rel-|break-mc-rel-)/.test(ind) ? 1.1 : 0;
+  const minPf = Math.max(familyFloor, rangeMin, kind === "exit" ? (o.exitMinPf ?? 0) : 0);
   const maxDdr =
     kind === "exit" && o.exitMaxDdr > 0
       ? g.maxDdr > 0
@@ -166,7 +168,7 @@ export function scalarDirectionEval(rows, t, o, protect, kind = "normal") {
 
 /** Selection records only independently qualified directions. A rejected container records a zero summary;
  * its actual losing/insufficient evidence remains in directions, never erased from arithmetic diagnostics. */
-export function scalarEval(rows, t, o, protect, kind = "normal") {
+export function scalarEval(rows, t, o, protect, kind = "normal", ind = "") {
   const directions = [1, -1].map((side) => ({
     side,
     ...scalarDirectionEval(
@@ -175,6 +177,7 @@ export function scalarEval(rows, t, o, protect, kind = "normal") {
       o,
       protect,
       kind,
+      ind,
     ),
   }));
   const passing = directions.filter((x) => x.ok);
@@ -252,7 +255,7 @@ export async function hourlyAudit(dir, out, requireAll = false) {
       const s = steps[i],
         expected = s.checks.get(row.id);
       if (!expected) continue;
-      const e = scalarEval(rows, s.t, wf, cfg.protect, kind),
+      const e = scalarEval(rows, s.t, wf, cfg.protect, kind, cfg.ind),
         rawWindow = scalarWindow(rows, s.t, Math.max(wf.longH, wf.preH));
       s.verified++;
       decisions++;

@@ -1,0 +1,93 @@
+2026-10-21T06:21:12.6206499Z ▶ worker pool: a failed or aborted call stops
+2026-10-21T06:21:12.6208443Z   ✔ an abort at a successful reply's progress boundary rejects that reply and never starts the next part (531.07571ms)
+2026-10-21T06:21:12.6362513Z   ✔ a later call's ordinary worker exit does not inherit an earlier memory-abort reason (16.643204ms)
+2026-10-21T06:21:13.1721236Z   ✔ after one message fails, the call's queued messages never run (537.04711ms)
+2026-10-21T06:21:13.3288130Z 
+2026-10-21T06:21:13.3288498Z 
+2026-10-21T06:21:13.3289365Z #
+2026-10-21T06:21:13.3289798Z # Fatal error in , line 0
+2026-10-21T06:21:13.3290468Z # Check failed: jit_page_->allocations_.erase(addr) == 1.
+2026-10-21T06:21:13.3291001Z #
+2026-10-21T06:21:13.3291284Z #
+2026-10-21T06:21:13.3291559Z #
+2026-10-21T06:21:13.3304524Z #FailureMessage Object: 0x7fdec3fd6ee0
+2026-10-21T06:21:13.3305154Z ----- Native stack trace -----
+2026-10-21T06:21:13.3305436Z 
+2026-10-21T06:21:13.3308273Z  1: 0x9dde61  [/opt/hostedtoolcache/node/24.21.0/x64/bin/node]
+2026-10-21T06:21:13.3309522Z  2: 0x27b2103 V8_Fatal(char const*, ...) [/opt/hostedtoolcache/node/24.21.0/x64/bin/node]
+2026-10-21T06:21:13.3311217Z  3: 0xd6c564 v8::internal::ThreadIsolation::JitPageReference::UnregisterAllocation(unsigned long) [/opt/hostedtoolcache/node/24.21.0/x64/bin/node]
+2026-10-21T06:21:13.3313205Z  4: 0xd6c72c v8::internal::ThreadIsolation::UnregisterWasmAllocation(unsigned long, unsigned long) [/opt/hostedtoolcache/node/24.21.0/x64/bin/node]
+2026-10-21T06:21:13.3314827Z  5: 0x18da3e3  [/opt/hostedtoolcache/node/24.21.0/x64/bin/node]
+2026-10-21T06:21:13.3318185Z  6: 0x1914e3f  [/opt/hostedtoolcache/node/24.21.0/x64/bin/node]
+2026-10-21T06:21:13.3323560Z  7: 0x18f9d1e  [/opt/hostedtoolcache/node/24.21.0/x64/bin/node]
+2026-10-21T06:21:13.3328017Z  8: 0x18f9ed1  [/opt/hostedtoolcache/node/24.21.0/x64/bin/node]
+2026-10-21T06:21:13.3331838Z  9: 0x18d1d2f  [/opt/hostedtoolcache/node/24.21.0/x64/bin/node]
+2026-10-21T06:21:13.3335920Z 10: 0x18d4b2c  [/opt/hostedtoolcache/node/24.21.0/x64/bin/node]
+2026-10-21T06:21:13.3340259Z 11: 0x1769c5f  [/opt/hostedtoolcache/node/24.21.0/x64/bin/node]
+2026-10-21T06:21:13.3340886Z 12: 0x7fdec3a36d09 
+2026-10-21T06:21:16.3044287Z ✖ src/core/server/pool-cancel.test.ts (4406.501979ms)
+2026-10-21T06:21:17.1924563Z ▶ worker pool upgrade from the old private-queue schema
+2026-10-21T06:21:17.1926407Z   ✔ rejects a hot reload before mutation while actual running and independently queued legacy calls both drain (692.662175ms)
+2026-10-21T06:21:17.1928019Z   ✔ also requires a restart for an empty legacy object without claiming transparent migration (4.933535ms)
+2026-10-21T06:21:17.1929490Z   ✔ requires a restart when an older shared scheduler cannot register its calls for synchronous aborts (2.972869ms)
+2026-10-21T06:21:17.1930774Z ✔ worker pool upgrade from the old private-queue schema (702.048493ms)
+2026-10-21T06:21:17.4029545Z ✔ default parallelism budgets server, priority worker, heap and external buffers (1.138087ms)
+2026-10-21T06:21:18.1269081Z ✔ a real worker heap OOM drains its call, survives in the parent and preserves another owner (731.517928ms)
+2026-10-21T06:21:18.8029481Z ▶ one worker pool across duplicate server module copies
+2026-10-21T06:21:18.8056561Z   ✔ hands an actual worker from one module's routine job to another module's queued job (460.266745ms)
+2026-10-21T06:21:19.3107624Z   ✔ serves cross-module priority waiters before routine work at the same unchanged worker limits (509.827455ms)
+2026-10-21T06:21:19.3189331Z   ✔ shares watchdog activity and abort reasons, rejecting running and queued work in both modules (10.254204ms)
+2026-10-21T06:21:19.5482238Z   ✔ another module's abort rejects an already successful reply before any remaining part can start (229.818773ms)
+2026-10-21T06:30:31.0745576Z ✔ cash no-loss provenance distinguishes the sentinel from an actual cash ratio of four (1.293866ms)
+2026-10-21T06:30:31.0755022Z ✔ modeled execution multipliers change cash PF, never the primary unit-return PF (1.120917ms)
+2026-10-21T06:30:31.0758454Z ✔ an unknown legacy paper unit return invalidates the complete primary sample without hiding cash losses (0.5276ms)
+2026-10-21T06:30:31.0760073Z ✔ preset comparisons require a unit-basis aggregate and never divide that aggregate a second time (0.299699ms)
+2026-10-21T06:30:31.0763259Z ✔ return gross sums distinguish a no-loss sentinel from a measured return PF of four (0.30716ms)
+2026-10-21T06:30:31.0764741Z ✔ an oversized exit charges only the owned quantity's share of its measured fee (0.184867ms)
+2026-10-21T06:30:31.0766691Z ✔ partial live closes retain measured free entry fees and estimate only an unmeasured exit slice (0.389563ms)
+2026-10-21T06:30:31.5312486Z ▶ first-class indication minimum return PF is consistent from Base through entry
+2026-10-21T06:30:31.5316216Z   ✔ applies the 1.1 floor to Tactic, Relate and Break identities while preserving stricter stage/range minima (0.878455ms)
+2026-10-21T06:30:31.5319418Z   ✔ holds Base pair tags and representative range-cell selection to the same Tactic floor (2.000594ms)
+2026-10-21T06:30:31.5321692Z   ✔ reports matching Base passed counts and PF failure reasons instead of reporting the old lower floor (1.163682ms)
+2026-10-21T06:30:31.5332462Z   ✔ rejects PF 1.08 at config evaluation and all seat selectors, including a previously held durable seat (22.500722ms)
+2026-10-21T06:30:31.5333625Z   ✔ uses the same 1.1 minimum for the exact config's per-side entry and symbol gates (16.848864ms)
+2026-10-21T06:30:31.5334945Z ✔ first-class indication minimum return PF is consistent from Base through entry (45.002917ms)
+2026-10-21T06:30:31.9659262Z ▶ indication volume factor settings
+2026-10-21T06:30:31.9660685Z   ✔ defaults coordination to 8× and every other combined indication to neutral 1× (2.468284ms)
+2026-10-21T06:30:31.9663162Z   ✔ merges a single kind without resetting the other settings and applies only to combined lanes (1.22247ms)
+2026-10-21T06:30:31.9668364Z   ✔ validates the factor range as whole numbers from 1 to 22 (2.157018ms)
+2026-10-21T06:30:31.9670639Z   ✔ runs combined-lane orders at the configured factor while strategy PF stays unit-normalized (28.595072ms)
+2026-10-21T06:30:31.9676479Z ✔ indication volume factor settings (35.736971ms)
+2026-10-21T06:30:32.3512573Z ▶ Wide stop and trail cap
+2026-10-21T06:30:32.3513230Z   ✔ no Wide cell has a stop or trail above 3 %, and every target is present (2.673812ms)
+2026-10-21T06:30:32.3515442Z   ✔ unset: the stop is tp × ratio as before (0.416533ms)
+2026-10-21T06:30:32.3516982Z ✔ Wide stop and trail cap (4.269369ms)
+2026-10-21T06:30:32.3649712Z ℹ tests 3133
+2026-10-21T06:30:32.3650126Z ℹ suites 431
+2026-10-21T06:30:32.3650540Z ℹ pass 3130
+2026-10-21T06:30:32.3650864Z ℹ fail 1
+2026-10-21T06:30:32.3651202Z ℹ cancelled 0
+2026-10-21T06:30:32.3651552Z ℹ skipped 2
+2026-10-21T06:30:32.3651877Z ℹ todo 0
+2026-10-21T06:30:32.3652275Z ℹ duration_ms 1426718.205423
+2026-10-21T06:30:32.3654910Z 
+2026-10-21T06:30:32.3655231Z ✖ failing tests:
+2026-10-21T06:30:32.3655491Z 
+2026-10-21T06:30:32.3655823Z test at src/core/server/pool-cancel.test.ts:1:1
+2026-10-21T06:30:32.3657090Z ✖ src/core/server/pool-cancel.test.ts (4406.501979ms)
+2026-10-21T06:30:32.3657593Z   'test failed'
+2026-10-21T06:30:32.3938932Z ##[error]Process completed with exit code 1.
+2026-10-21T06:30:32.4069906Z Post job cleanup.
+2026-10-21T06:30:32.4923504Z [command]/usr/bin/git version
+2026-10-21T06:30:32.4967586Z git version 2.55.0
+2026-10-21T06:30:32.5006528Z Temporarily overriding HOME='/home/runner/work/_temp/e23ae2bc-0ac5-42b0-8cc8-d2e89f3dd535' before making global git config changes
+2026-10-21T06:30:32.5008221Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-21T06:30:32.5012292Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/CTS-A-O/CTS-A-O
+2026-10-21T06:30:32.5054425Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-21T06:30:32.5091320Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-21T06:30:32.5380001Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-21T06:30:32.5424392Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-21T06:30:32.5700737Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-21T06:30:32.5743250Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-21T06:30:32.6197530Z Cleaning up orphan processes
+2026-10-21T06:30:32.6587702Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-node@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/

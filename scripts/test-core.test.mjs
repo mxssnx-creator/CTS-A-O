@@ -57,6 +57,7 @@ test("the standard core runner installs offline evidence before test imports and
       assert.equal(process.env.BINGX_X01_API_KEY,undefined); assert.equal(process.env.CTS_CORE_LIVE,'0');
       assert.equal(process.env.CTS_CORE_WORKERS,'2');
       assert.equal(process.env.CTS_CORE_MEM_SOFT_MB,'1'); assert.equal(process.env.CTS_CORE_MEM_HARD_MB,'1');
+      if(process.versions.node.startsWith('24.')) assert.ok(process.execArgv.includes('--no-wasm-code-gc'));
       test('guarded before imports',()=>assert.throws(()=>net.connect({host:'198.51.100.1',port:443}),{code:'CTS_OFFLINE_NETWORK_DENIED'}));
     `, "2");
     assert.equal(pass.error, undefined);
@@ -71,4 +72,11 @@ test("the standard core runner installs offline evidence before test imports and
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("explicit core test inventory refuses missing paths, directories and duplicate aliases", () => {
+  const real = "src/core/sim/symbol-directions.test.ts";
+  for (const missing of ["src/core/server/signals-history-matrix.test.ts", "src/core/sim"])
+    assert.throws(() => coreTestInvocation([real, missing]), /Missing or non-file core test/);
+  assert.throws(() => coreTestInvocation([real, resolve(real)]), /Duplicate core test/);
 });

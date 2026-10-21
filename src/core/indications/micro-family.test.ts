@@ -51,16 +51,16 @@ function fixture() {
 after(() => closePool());
 describe("first-class Micro", () => {
   it("registers every method/profile/subset once and computes only its own anchor", () => {
-    assert.equal(MICRO_CONFIG_IDS.length, 434);
-    assert.equal(new Set(MICRO_CONFIG_IDS).size, 434);
+    assert.equal(MICRO_CONFIG_IDS.length, 490);
+    assert.equal(new Set(MICRO_CONFIG_IDS).size, 490);
     for (const id of MICRO_CONFIG_IDS) assert.equal(INDICATION_BY_ID.get(id)?.kind, "micro");
     const combos = allCombos(
       MICRO_CONFIG_IDS.map((id) => `follow|${id}`),
       [],
       [1, 5, 15],
     );
-    assert.equal(combos.length, 434);
-    assert.equal(new Set(combos.map((c) => c.ind)).size, 434);
+    assert.equal(combos.length, 490);
+    assert.equal(new Set(combos.map((c) => c.ind)).size, 490);
     assert.ok(
       combos.every((c) => !c.ind.endsWith("c")),
       "explicit subsets never spawn duplicate combined lanes",
@@ -75,7 +75,10 @@ describe("first-class Micro", () => {
     );
     assert.doesNotThrow(() => checkSettings(DEFAULT_SETTINGS));
     assert.ok(DEFAULT_SETTINGS.focus.length <= MAX_FOCUS_PAIRS);
-    assert.throws(() => checkSettings({ focus: Array(MAX_FOCUS_PAIRS + 1).fill("follow|ema-9-21") }), /focus/);
+    assert.throws(
+      () => checkSettings({ focus: Array(MAX_FOCUS_PAIRS + 1).fill("follow|ema-9-21") }),
+      /focus/,
+    );
     assert.ok(DEFAULT_SETTINGS.focus.includes("follow|micro-1x5x15-adaptive-selective"));
   });
   it("uses prior extrema, excludes the current spike, and handles invalid windows", () => {
@@ -93,49 +96,104 @@ describe("first-class Micro", () => {
       const candles = Array.from({ length: n }, (_, i) => {
         const previous = moving ? 100 * Math.exp((i - 1) * 0.001) : 100;
         const close = moving ? 100 * Math.exp(i * 0.001) : 100;
-        return { t: end + i * 60_000, o: previous, h: Math.max(previous, close) + 0.1,
-          l: Math.min(previous, close) - 0.1, c: close, v: 100 };
+        return {
+          t: end + i * 60_000,
+          o: previous,
+          h: Math.max(previous, close) + 0.1,
+          l: Math.min(previous, close) - 0.1,
+          c: close,
+          v: 100,
+        };
       });
       const k = new SeriesCache(barsFromCandles("A-USDT", 1, candles));
-      k.market = () => ({ syms: 2, ret: new Float64Array(n).fill(0.002),
-        idx: Float64Array.from({ length: n }, (_, i) => i * 0.002), act: new Float64Array(n).fill(1) });
+      k.market = () => ({
+        syms: 2,
+        ret: new Float64Array(n).fill(0.002),
+        idx: Float64Array.from({ length: n }, (_, i) => i * 0.002),
+        act: new Float64Array(n).fill(1),
+      });
       for (const profile of ["fast", "selective"] as const) {
         const state = microFrame(k, profile).states["market-momentum"];
         assert.equal(state.at(-1), moving ? 1 : 0, profile);
-        const inverse = inverseMicroSpecs().find((s) => s.id === `inverse-micro-1-market-momentum-${profile}`)!;
+        const inverse = inverseMicroSpecs().find(
+          (s) => s.id === `inverse-micro-1-market-momentum-${profile}`,
+        )!;
         assert.equal(inverse.fn(k)!.at(-1), moving ? -1 : 0, profile);
       }
     }
   });
   it("adds independent OHLC breakout ranges, activity and failed-auction calculations on every anchor and side", () => {
-    for (const tf of [1, 5, 15]) for (const side of [1, -1]) {
-      const input = (last: Partial<{o: number;h: number;l: number;c: number;v: number}>, olderHigh = 101, olderAt = 100) => {
-        const candles = Array.from({ length: 120 }, (_, i) => ({
-          t: end + i * tf * 60_000, o: 100, h: i === olderAt ? olderHigh : 101, l: 99, c: 100, v: 100,
-          ...(i === 119 ? last : {}),
-        })).map((x) => side === 1 ? x : ({ ...x, o: 200-x.o, h: 200-x.l, l: 200-x.h, c: 200-x.c }));
-        return new SeriesCache(barsFromCandles("A-USDT", tf, candles));
-      };
-      const k = input({ h: 103, c: 102, v: 300 }, 105);
-      const state = microFrame(k, "fast").states;
-      assert.equal(state["break-channel"].at(-1), side);
-      assert.equal(state["break-channel-wide"].at(-1), 0, "the older wick still belongs to the separate wider range");
-      assert.equal(state["break-channel-activity"].at(-1), side);
-      assert.equal(state["break-channel-failure"].at(-1), 0);
-      const short = microFrame(input({ h: 103, c: 102, v: 300 }, 105, 110), "fast").states;
-      assert.equal(short["break-channel-short"].at(-1), side, "six-bar range excludes the older wick");
-      assert.equal(short["break-channel"].at(-1), 0, "twelve-bar range retains that wick independently");
-      assert.equal(microFrame(input({ h: 103, c: 102, v: 50 }), "fast").states["break-channel"].at(-1), side,
-        "low activity never disables its independent plain sibling");
-      assert.equal(microFrame(input({ h: 103, c: 102, v: 50 }), "fast").states["break-channel-activity"].at(-1), 0);
-      const failed = microFrame(input({ o: 101, h: 102, c: 100.5, v: 300 }), "fast").states;
-      assert.equal(failed["break-channel-failure"].at(-1), -side);
-      assert.equal(failed["break-channel"].at(-1), 0, "a failed auction is not a completed channel breakout");
-      assert.equal(microFrame(input({ h: 102, l: 98, c: 100 }), "fast").states["break-channel-failure"].at(-1), 0,
-        "two-sided wick rejections have no unique direction");
-      const inverse = inverseMicroSpecs().find((s) => s.id === `inverse-micro-${tf}-break-channel-fast`)!;
-      assert.equal(inverse.fn(k)!.at(-1), -side);
-    }
+    for (const tf of [1, 5, 15])
+      for (const side of [1, -1]) {
+        const input = (
+          last: Partial<{ o: number; h: number; l: number; c: number; v: number }>,
+          olderHigh = 101,
+          olderAt = 100,
+        ) => {
+          const candles = Array.from({ length: 120 }, (_, i) => ({
+            t: end + i * tf * 60_000,
+            o: 100,
+            h: i === olderAt ? olderHigh : 101,
+            l: 99,
+            c: 100,
+            v: 100,
+            ...(i === 119 ? last : {}),
+          })).map((x) =>
+            side === 1 ? x : { ...x, o: 200 - x.o, h: 200 - x.l, l: 200 - x.h, c: 200 - x.c },
+          );
+          return new SeriesCache(barsFromCandles("A-USDT", tf, candles));
+        };
+        const k = input({ h: 103, c: 102, v: 300 }, 105);
+        const state = microFrame(k, "fast").states;
+        assert.equal(state["break-channel"].at(-1), side);
+        assert.equal(
+          state["break-channel-wide"].at(-1),
+          0,
+          "the older wick still belongs to the separate wider range",
+        );
+        assert.equal(state["break-channel-activity"].at(-1), side);
+        assert.equal(state["break-channel-failure"].at(-1), 0);
+        const short = microFrame(input({ h: 103, c: 102, v: 300 }, 105, 110), "fast").states;
+        assert.equal(
+          short["break-channel-short"].at(-1),
+          side,
+          "six-bar range excludes the older wick",
+        );
+        assert.equal(
+          short["break-channel"].at(-1),
+          0,
+          "twelve-bar range retains that wick independently",
+        );
+        assert.equal(
+          microFrame(input({ h: 103, c: 102, v: 50 }), "fast").states["break-channel"].at(-1),
+          side,
+          "low activity never disables its independent plain sibling",
+        );
+        assert.equal(
+          microFrame(input({ h: 103, c: 102, v: 50 }), "fast").states["break-channel-activity"].at(
+            -1,
+          ),
+          0,
+        );
+        const failed = microFrame(input({ o: 101, h: 102, c: 100.5, v: 300 }), "fast").states;
+        assert.equal(failed["break-channel-failure"].at(-1), -side);
+        assert.equal(
+          failed["break-channel"].at(-1),
+          0,
+          "a failed auction is not a completed channel breakout",
+        );
+        assert.equal(
+          microFrame(input({ h: 102, l: 98, c: 100 }), "fast").states["break-channel-failure"].at(
+            -1,
+          ),
+          0,
+          "two-sided wick rejections have no unique direction",
+        );
+        const inverse = inverseMicroSpecs().find(
+          (s) => s.id === `inverse-micro-${tf}-break-channel-fast`,
+        )!;
+        assert.equal(inverse.fn(k)!.at(-1), -side);
+      }
     const windows = new Map(microFamilySpecs().map((s) => [s.id, s.params.window]));
     assert.equal(windows.get("micro-1-break-channel-fast"), 12);
     assert.equal(windows.get("micro-1-break-channel-short-fast"), 6);
@@ -151,7 +209,7 @@ describe("first-class Micro", () => {
       hash = createHash("sha256");
     const specs = microFamilySpecs().filter(
       (s) =>
-        !/-(flow-break|trend-reclaim|market-continuation|direction-persist|break-channel(?:-short|-wide|-activity|-failure)?)-(fast|selective)$/.test(
+        !/-(flow-break|trend-reclaim|market-continuation|direction-persist|break-channel(?:-short|-wide|-activity|-failure)?|break-close-tactic|break-retest-tactic|activity-acceleration-relative|break-retest-market)-(fast|selective)$/.test(
           s.id,
         ),
     );
@@ -239,14 +297,14 @@ describe("first-class Micro", () => {
       .picks.map((p) => p.id)
       .sort();
     const own = tapes.filter((_, i) => i % 2 === 0);
-    assert.equal(selected.length, 868);
+    assert.equal(selected.length, 980);
     assert.deepEqual(
       selected,
       selectFixed(own, now, o)
         .picks.map((p) => p.id)
         .sort(),
     );
-    assert.equal(new Set(tapes.map((t) => t.id)).size, 1736);
+    assert.equal(new Set(tapes.map((t) => t.id)).size, 1960);
   });
   it("matches prefix-only universes for all subsets and leaves no-market relations neutral", () => {
     const bars = fixture(),
@@ -337,7 +395,7 @@ describe("first-class Micro", () => {
       includeMicro: true,
     };
     const pairs = exitStrategyPairs([], u, settings);
-    assert.equal(pairs.length, 434);
+    assert.equal(pairs.length, 490);
     assert.ok(pairs.every((pair) => pair.startsWith("exit|micro-") && !pair.endsWith("c")));
     assert.equal(exitStrategyPairs([], u, settings, ["micro"]).length, 0);
     assert.equal(exitStrategyPairs([], u, { ...settings, includeMicro: false }).length, 0);
@@ -383,7 +441,10 @@ describe("first-class Micro", () => {
         DEFAULT_SETTINGS.gates,
         full,
       );
-      assert.ok(local.some((r) => (r.ranges?.mc?.n ?? 0) > 0), "complete Micro Base cells were actually calculated");
+      assert.ok(
+        local.some((r) => (r.ranges?.mc?.n ?? 0) > 0),
+        "complete Micro Base cells were actually calculated",
+      );
       const parts = [combos.filter((_, i) => i % 2 === 0), combos.filter((_, i) => i % 2 === 1)];
       const remote = await runOnWorkers<{ runsJson: string[] }>(
         parts.map((combos) => ({

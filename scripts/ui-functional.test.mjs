@@ -426,9 +426,10 @@ describe(
           await settleRequests();
           const save = page.getByRole("button", { name: /^save/i }).first();
           await save.waitFor({ state: "visible", timeout: 60_000 });
-          assert.ok(await save.count(), "a Save button");
+          // Hydration can replace the visible form between two awaits. count() is an immediate snapshot
+          // and could falsely see zero; the locator state check below resolves the replacement button.
           // nothing changed: nothing to save
-          assert.ok(await save.isDisabled(), "Save is disabled while the settings are unchanged");
+          assert.ok(await save.isDisabled({ timeout: 60_000 }), "Save is disabled while the settings are unchanged");
           // an edit enables it, the save answers without an error, and the edit undone saves back
           const box = page.locator('main [role="switch"]:not([disabled])').first();
           assert.ok(await box.count(), "a switch to edit");

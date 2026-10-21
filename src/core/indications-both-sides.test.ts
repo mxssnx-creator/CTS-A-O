@@ -14,6 +14,7 @@ import { SeriesCache } from "./indications/cache.ts";
 import { barsFromCandles, syntheticCandles, resample } from "./market/bars.ts";
 import { makeUniverse } from "./pipeline/pipeline.ts";
 import type { Candle } from "./domain/types.ts";
+import { controlledRetestTrend } from "./indications/test-support.ts";
 
 const END = Date.UTC(2026, 9, 1);
 
@@ -229,6 +230,11 @@ function microWickRecovery(sym: string, seed: number) {
 
 /** Coherent 1/5/15m native history with BTC/ETH peers for context-dependent families. */
 function* microContextCaches(): Generator<SeriesCache[]> {
+  const controlled = controlledRetestTrend();
+  for (const cs of [controlled, mirror(controlled)])
+    yield makeUniverse([1, 5, 15].map((tf) =>
+      barsFromCandles("CONTROLLED-USDT", tf, resample(cs, 1, tf)),
+    )).caches;
   for (const scenario of [0, 1]) {
     const series = ["BTC", "ETH", "AAA", "BBB", "CCC"].map((sym, i) => ({
       sym: `${sym}-USDT`, cs: scenario ? microWickRecovery(sym, i + 7) : richCandles(sym, 1, 27000, END, i + 7),
