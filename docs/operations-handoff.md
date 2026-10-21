@@ -3766,3 +3766,49 @@ the large runtime file; no whole-file reformat was applied. Exact source commit,
 hosted checks, merge and branch reload are pending. No live instance reload,
 deployment or venue order has been performed; a running-instance change still
 requires the consistent settings/state/database backup above.
+
+## Signals 12h simulation and throughput check — 2026-10-21
+
+Validated code commit: `9c0fa4e527ed6739064dd98e28b51c26845803cd`.
+The measured raw run is sealed to source SHA `d8140d72eca7b2d727e8325753ae34af05b0d570cb6b47f8bf4cbbcdfe98e9bc`;
+the later report-only source SHA and the exact changed file are recorded in its
+run manifest. No `src/core` economic code changed between the measured run and
+the final report fix.
+
+Two frozen runs used the same 12-symbol BingX 1m feed, 20 Oct 12:00–21 Oct
+00:00 UTC trade window, $10 paper balance, 10× leverage, 0.1% equity sizing,
+and unchanged Signal/Exit gates. The full 336h Signal and 168h Exit history
+requirements were not reduced. Detailed result and phase timings:
+[`docs/sims/signals-12h-20261021/RESULTS.md`](sims/signals-12h-20261021/RESULTS.md)
+and its [frozen run manifest](sims/signals-12h-20261021/run-manifest.json).
+
+The 48h local feed provided 24h of evaluated prehistory plus 12h of
+indicator-only warm-up. Signal therefore lacked 312h of its configured history;
+Exit lacked 144h. Of 380 configured Signal source/range/lane pairs, 285 reached
+Base; the missing 95 were 30m lanes because 48h yields 96 bars per symbol,
+below `makeUniverse`'s 120-bar minimum. The Signals Base range evaluated 285
+pairs and 3 passed its representative gate. Signal historic processing had
+285 insufficient-entry pairs and qualified none. Strategies Exit evaluated
+285 pairs at its separate Base pass; 20 passed and all 20 lacked sufficient
+historic entries. There were no selected configs, simulated orders, or measured
+PF. The coverage check correctly remains failed (570/665 evaluations) until a
+continuous 15-day 1m feed for the same symbols is available.
+
+Two workers reduced compute from 106.512s to 87.852s (17.5%) with an identical
+325,911-row tape checksum. Main-process peak RSS increased from 1,807 to
+2,279MB. The cgroup peak observed after the two-worker run was 7.06GiB of 8GiB,
+including reclaimable file cache, with no OOM events. Loop p99 rose from 40.5
+to 54.1ms and slices over 40ms from 10 to 22; the test does not justify changing
+the production worker default. Largest compute phases were Signal coordination
+tapes, simulation, Signal history and Base. DB persistence phases remained under
+10ms in the one-worker baseline.
+
+Report fixes now count the separate Signal Exit Base pass and include Signal in
+the indication-kind coverage check; gzip feeds are replayed directly, and
+reports distinguish evaluated Signal history from general prehistory and
+indicator warm-up. Validation: 44/44 focused session/feed/study tests,
+`npm run typecheck`, changed-file ESLint (0 errors, 3 existing unused-variable
+warnings), and `git diff --check`. The exact two-worker run was validated against
+its frozen feed, symbol universe, window and source before the final
+report-only coverage-kind adjustment. No runtime deployment or live reload was
+performed; the full 15-day feed remains required for a complete evaluation.
