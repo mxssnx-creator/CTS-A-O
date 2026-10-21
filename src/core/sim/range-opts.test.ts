@@ -45,6 +45,8 @@ function tape(k: number, tag: RangeTag | undefined, late: number) {
 const d = defaultWalkForward(DEFAULT_SETTINGS);
 const base: WalkForwardOptions = {
   ...d,
+  // the fixtures are laid out on the 336 h selection window (the engine default is 24 h since 19 Oct)
+  longH: 336,
   toggles: { ...d.toggles, normal: true, trailing: true, block: false, blockActive: false },
   symGate: undefined,
   coord: { enabled: false, hourLock: 0, cooldown: "off", conflict: false, confirm: false },

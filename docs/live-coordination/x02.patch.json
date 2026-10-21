@@ -12,11 +12,13 @@
       "axis": true
     },
     "live": {
-      "maxPositions": 0,
-      "maxNotionalUsd": 200,
+      "maxPositions": 100,
+      "maxNotionalUsd": 0,
       "leverage": "max",
       "positionSize": "min",
-      "maxChase": 5
+      "maxChase": 5,
+      "maxPositionX": 30,
+      "maxExposureX": 500
     },
     "wf": {
       "symGate": "off"

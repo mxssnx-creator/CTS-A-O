@@ -623,6 +623,9 @@ const cfgTape = (trades: Trade[]) =>
 /** the Block base for a block config: BB (block.sideKeys unset) unless another is given */
 const blockBase = (block: BlockConfig = BB) => ({
   ...defaultWalkForward(DEFAULT_SETTINGS),
+  // a probe seat skips the config and direction validation (main's independent-evidence rule): these cases measure
+  // the Block level and pause sources, not the seat's qualification
+  probe: { perRange: 0, perCell: 1 },
   lastN: 0,
   symGate: undefined,
   normalBaseMinPf: 0,
@@ -647,16 +650,16 @@ describe("order sides: Block config source (the config's own closes, per directi
       assert.equal(book.paused(sourceKey("config", { sym: "A", side: s, kind: IND.kind, cfg: "x" })), true);
     });
 
-    it(`Block config ${name} (e) control, block.sideKeys unset: the opposite direction's wins raise this direction's config level, pooled as before`, () => {
+    it(`Block config ${name} (e) control, block.sideKeys unset: the opposite direction's wins never raise this direction's config level (the exact config key is per direction in every case, main's rule)`, () => {
       const res = execDecision(cfgTape(winsAt(opposite(s))), 2 * H, blockBase(), { sym: "A", side: s });
-      assert.deepEqual(res, { ok: true, level: 3, vol: 1.6, src: ["config"] });
+      assert.deepEqual(res, { ok: true, level: 0, vol: 1 });
     });
 
-    it(`Block config ${name} (e) control, block.sideKeys unset: an opposite raised win pauses this direction's config, pooled as before`, () => {
+    it(`Block config ${name} (e) control, block.sideKeys unset: an opposite raised win does not pause this direction's config (the exact config key is per direction in every case, main's rule)`, () => {
       const book = new BlockBook(2);
       book.add({ sym: "A", side: opposite(s), kind: IND.kind, r: 0.02, cfg: "x", bsrc: ["config"] });
       const res = execDecision(cfgTape(winsAt(s)), 2 * H, blockBase(), { sym: "A", side: s, book });
-      assert.deepEqual(res, { ok: true, level: 0, vol: 1 });
+      assert.deepEqual(res, { ok: true, level: 3, vol: 1.6, src: ["config"] });
     });
 
     it(`Block config ${name} (e), block.sideKeys on: the opposite direction's wins never raise this direction's config level`, () => {
@@ -689,6 +692,8 @@ const seatBase = (extra: { seatSideCooloff?: boolean } = {}) => ({
   symGate: undefined,
   normalBaseMinPf: 0,
   seatQuietH: 2,
+  // a probe seat skips main's per-direction qualification: these cases measure the cool-off only
+  probe: { perRange: 0, perCell: 1 },
   toggles: { ...DEFAULT_TOGGLES, normal: true, block: false, blockActive: false },
   ...extra,
 });
