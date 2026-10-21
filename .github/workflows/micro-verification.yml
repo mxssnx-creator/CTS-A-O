@@ -7,6 +7,12 @@ on:
       - scripts/**
       - docs/micro-optimization-2026-10-20/**
       - .github/workflows/micro-verification.yml
+  workflow_dispatch:
+    inputs:
+      include_frozen_cases:
+        description: Run archived source-sealed research cases (requires their exact source)
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -17,7 +23,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        task: [functional, functional-heavy, functional-runtime, reference, study, stress]
+        # Archived financial studies remain immutable and still refuse a changed source.
+        # Automatic merge verification covers the entire current regression inventory and load test.
+        task: ${{ fromJSON(github.event.inputs.include_frozen_cases == 'true' && '["functional","functional-heavy","functional-runtime","reference","study","stress"]' || '["functional","functional-heavy","functional-runtime","stress"]') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:

@@ -384,7 +384,7 @@ const pct = (x: number) => Math.round(x * 1e6) / 10000;
 const atrTag = (p: Protect) =>
   p.atr ? `|atr${p.atr.sl}x${p.atr.tpRatio}${p.atr.trail ? `t${p.atr.trail}` : ""}` : "";
 export function configId(bot: BotType, ind: string, p: Protect, kind?: StratKind): string {
-  const mode = `${p.trailOnly ? "|to" : ""}${p.trail > 0 && p.trailStep !== undefined && p.trailStep !== 1 ? `|ts${p.trailStep}` : ""}${p.trail > 0 && p.trailFree ? "|tf1" : ""}`;
+  const mode = `${p.trailOnly ? "|to" : ""}${p.trail > 0 && p.trailStep !== undefined && p.trailStep !== 1 ? `|ts${p.trailStep}` : ""}${p.trail > 0 && p.trailFree ? "|tf1" : ""}${p.trailMax !== undefined ? `|tm${pct(p.trailMax)}` : ""}`;
   const exit =
     p.exitType === "historic" || kind === "exit"
       ? `|hx${p.exitSide === 1 ? "L" : p.exitSide === -1 ? "S" : ""}${
@@ -401,7 +401,9 @@ export function configId(bot: BotType, ind: string, p: Protect, kind?: StratKind
                     : ""
         }`
       : "";
-  const base = `${bot}|${ind}|tp${pct(p.tp)}|sl${pct(p.sl)}|tr${pct(p.trail)}|h${p.hold}${atrTag(p)}${p.tag ? `|${p.tag}` : ""}${mode}${exit}`;
+  const dca = p.dca && (kind === "dca" || kind === "dca-active")
+    ? `|dc${p.dca.levels}s${pct(p.dca.step)}q${p.dca.stepOfTp ?? 0}g${p.dca.stopGap ?? 0.5}r${p.dca.addRatio ?? 1}` : "";
+  const base = `${bot}|${ind}|tp${pct(p.tp)}|sl${pct(p.sl)}|tr${pct(p.trail)}|h${p.hold}${atrTag(p)}${p.tag ? `|${p.tag}` : ""}${mode}${exit}${dca}`;
   return kind === "dca"
     ? `${base}|dca`
     : kind === "dca-active"
@@ -441,11 +443,10 @@ export function parseConfigId(id: string): { bot: BotType; ind: string; protect:
   const mode = /\|to(?=\||$)/.exec(id);
   const ratio = /\|ts([\d.]+)(?=\||$)/.exec(id);
   const free = /\|tf1(?=\||$)/.exec(id);
+  const ceiling = /\|tm([\d.]+)(?=\||$)/.exec(id);
+  const ladder = /\|dc([1-4])s([\d.]+)q([\d.]+)g([\d.]+)r([\d.]+)(?=\||$)/.exec(id);
   // Remove each token once; duplicates or malformed tokens remain and fail the strict grammar below.
-  const plainId = id
-    .replace(/\|to(?=\||$)/, "")
-    .replace(/\|ts[\d.]+(?=\||$)/, "")
-    .replace(/\|tf1(?=\||$)/, "");
+  const plainId = id.replace(/\|to(?=\||$)/, "").replace(/\|ts[\d.]+(?=\||$)/, "").replace(/\|tf1(?=\||$)/, "").replace(/\|tm[\d.]+(?=\||$)/, "").replace(/\|dc[1-4]s[\d.]+q[\d.]+g[\d.]+r[\d.]+(?=\||$)/, "");
   const m =
     // (the Axis variant tag — "|ax-atr2", "|axd-fib3h" from axisVariants — is matched and ignored: without the group
     // every managed / desk Axis id failed to parse and its report rows showed tp / sl / trail / hold 0)
@@ -459,6 +460,18 @@ export function parseConfigId(id: string): { bot: BotType; ind: string; protect:
     trail: fromPct(m[5]),
     hold: +m[6],
   };
+  if (ladder) {
+    if (!/\|dcaA?$/.test(id)) return null;
+    const [levels, step, stepOfTp, stopGap, addRatio] = [+ladder[1], fromPct(ladder[2]), +ladder[3], +ladder[4], +ladder[5]];
+    if (![step, stepOfTp, stopGap, addRatio].every(Number.isFinite) || step < 0.001 || step > 0.1 ||
+      stepOfTp < 0 || stepOfTp > 5 || stopGap < 0 || stopGap > 5 || addRatio <= 0 || addRatio > 2.5) return null;
+    protect.dca = { levels, step, stepOfTp, stopGap, addRatio };
+  }
+  if (ceiling) {
+    const max = fromPct(ceiling[1]);
+    if (!(Number.isFinite(max) && max >= 0.002 && max <= 0.03)) return null;
+    protect.trailMax = max;
+  }
   if (m[7] !== undefined)
     protect.atr = { sl: +m[7], tpRatio: +m[8], ...(m[9] !== undefined ? { trail: +m[9] } : {}) };
   if (m[10] !== undefined) protect.tag = m[10].slice(1) as RangeTag;
@@ -672,7 +685,7 @@ export function baseRangeProtects(
   cost?: number,
 ): Protect[] {
   const slFloor = g.minSlEval ?? EVAL_MIN_SL;
-  const mid = <T>(xs: readonly T[]) => xs[Math.floor((xs.length - 1) / 2)];
+  const mid = <T,>(xs: readonly T[]) => xs[Math.floor((xs.length - 1) / 2)];
   const holdAll = Math.max(2, Math.round(((g.holdH?.[0] ?? 16) * 60) / REF_TF));
   const out: Protect[] = [];
   for (const [tag, r] of [

@@ -1029,9 +1029,12 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
 
   it("the backstop distance of a trailed lane is measured from the current price, not from the entry", () => {
     const { rt } = fakeRt(new CoreDb(":memory:"));
+    // This generic projection fixture permits a 4% stop. Signal-specific entry
+    // ceilings are covered independently by signals-history-matrix.test.ts.
+    const cfg = "follow|ema-9-21@m5|p";
     // long from 100, stop trailed to 118, price 120: 1.7 % to the stop (|entry − stop| said 18 %)
     rt.paper.positions = [
-      { cfg: "follow|sig-a-s@m5|p", sym: "T-USDT", side: 1, entry: 100, stop: 118, vol: 1 },
+      { cfg, sym: "T-USDT", side: 1, entry: 100, stop: 118, vol: 1 },
     ];
     const [c] = laneContributions(rt as unknown as CoreRuntime, new Map([["T-USDT", 120]]));
     assert.ok(Math.abs(c.sl - 2 / 120) < 1e-9, `sl ${c.sl}`);
@@ -1040,16 +1043,16 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
       2 / 120,
       "current equity can still lose the mark-to-stop giveback, including a late live adoption",
     );
-    // short: stop 102 above price 100 → 2 %, within the Signal entry stop cap
+    // ordinary short: stop 104 above price 100 → 4%; entry-distance fallback is 3/101.
     rt.paper.positions = [
-      { cfg: "follow|sig-a-s@m5|p", sym: "T-USDT", side: -1, entry: 101, stop: 102, vol: 1 },
+      { cfg, sym: "T-USDT", side: -1, entry: 101, stop: 104, vol: 1 },
     ];
     const [d] = laneContributions(rt as unknown as CoreRuntime, new Map([["T-USDT", 100]]));
-    assert.ok(Math.abs(d.sl - 0.02) < 1e-9, `sl ${d.sl}`);
-    assert.equal(d.risk, 0.02, "short risk uses current mark as well");
+    assert.ok(Math.abs(d.sl - 0.04) < 1e-9, `sl ${d.sl}`);
+    assert.equal(d.risk, 0.04, "short risk uses current mark as well");
     // no price: the entry distance stays the fallback
     const [e] = laneContributions(rt as unknown as CoreRuntime);
-    assert.ok(Math.abs(e.sl - 1 / 101) < 1e-9);
+    assert.ok(Math.abs(e.sl - 3 / 101) < 1e-9);
   });
 
   it("a stop the exchange keeps refusing: one open, one protective close, then no buy-sell-repeat", async () => {

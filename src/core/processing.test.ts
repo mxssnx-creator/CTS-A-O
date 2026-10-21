@@ -234,13 +234,14 @@ describe("processing through the stages, every strategy type, every toggle combi
       } as never,
       { market: "synthetic" },
     );
-    assert.ok(rt.wf.protects.length > 0 && rt.wf.protects.length <= 96,
+    assert.ok(rt.wf.protects.length > 0 && rt.wf.protects.length <= 144,
       `representative grid must remain bounded (${rt.wf.protects.length} cells)`);
     for (const tag of ["mc", "mn", "sh", "gn", "lg"]) {
       const own = rt.wf.protects.filter((p) => p.tag === tag);
       assert.ok(new Set(own.map((p) => p.tp)).size >= 2, `${tag}: multiple targets`);
       assert.ok(new Set(own.map((p) => p.sl)).size >= 2, `${tag}: multiple stops`);
       assert.ok(own.some((p) => p.trail === 0) && own.some((p) => p.trail > 0), `${tag}: Normal and Trailing`);
+      assert.ok(own.some((p) => p.trailOnly && p.tp === 0 && p.sl <= 0.03), `${tag}: independent capped Trailing-only`);
     }
     rt.start();
     try {

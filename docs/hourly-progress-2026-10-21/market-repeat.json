@@ -1,0 +1,76 @@
+{
+  "schema": "cts-hourly-progress-financial-repeat-v1",
+  "sourceSha256": "109fd1859eb0079134b54289ea06a0b5dc51573017bc150d8773f83eef7d611e",
+  "ciRun": 39516742275,
+  "baselineCi": 39509771569,
+  "classification": "Same frozen cached historical regression; not unseen data or native execution",
+  "allStageFieldsIdenticalExceptSource": true,
+  "selectionFocusAndHoldIdentical": true,
+  "pairedCases": [
+    {
+      "case": "micro-identity-reference-v11",
+      "allStageFieldsIdenticalExceptSource": true,
+      "fundedModeledExecution": {
+        "configs": 14399,
+        "closes": 126342,
+        "gp": 121.4650371759302,
+        "gl": 1191.3439830504033,
+        "unknownReturns": 0,
+        "pf": 0.10195631060722055,
+        "pfState": "measured"
+      }
+    },
+    {
+      "case": "micro-opt-train-standard-v8",
+      "allStageFieldsIdenticalExceptSource": true,
+      "fundedModeledExecution": {
+        "configs": 38912,
+        "closes": 345778,
+        "gp": 1115.8170217953343,
+        "gl": 955.209770842326,
+        "unknownReturns": 0,
+        "pf": 1.168138199435901,
+        "pfState": "measured"
+      }
+    },
+    {
+      "case": "micro-opt-train-fast-v8",
+      "allStageFieldsIdenticalExceptSource": true,
+      "fundedModeledExecution": {
+        "configs": 26503,
+        "closes": 226821,
+        "gp": 576.7135018910794,
+        "gl": 671.1043155629939,
+        "unknownReturns": 0,
+        "pf": 0.8593500123855866,
+        "pfState": "measured"
+      }
+    },
+    {
+      "case": "micro-opt-validation-v8",
+      "allStageFieldsIdenticalExceptSource": true,
+      "fundedModeledExecution": {
+        "configs": 987,
+        "closes": 4007,
+        "gp": 7.403396772811633,
+        "gl": 62.536673907455814,
+        "unknownReturns": 0,
+        "pf": 0.11838488218557107,
+        "pfState": "measured"
+      }
+    },
+    {
+      "case": "micro-opt-confirmation-v8",
+      "allStageFieldsIdenticalExceptSource": true,
+      "fundedModeledExecution": {
+        "configs": 6964,
+        "closes": 40604,
+        "gp": 10.720616854038553,
+        "gl": 328.6948035629286,
+        "unknownReturns": 0,
+        "pf": 0.032615717491822446,
+        "pfState": "measured"
+      }
+    }
+  ]
+}

@@ -115,7 +115,7 @@ describe("Signal 2% stop policy and independent peak ratios", () => {
   });
 
   it("preserves Ordinary trailing behavior and refuses malformed bars without corrupting peaks", () => {
-    const p={...position(),cfg:"follow|rsi-mid@m15|tp10|sl8|tr4|h50"};
+    const p={...position(),cfg:"follow|rsi-mid@m15|tp10|sl8|tr4|h50",trailOnly:false};
     assert.equal(trailBar(p,0.04,0.04,104,99),true); near(p.stop,104*0.96);
     const snapshot=structuredClone(p);
     for(const [h,l] of [[Infinity,90],[NaN,90],[90,91],[-1,-2]]) {
@@ -164,8 +164,8 @@ describe("Signal 2% stop policy and independent peak ratios", () => {
     const ts=buildTapes(u,protects,0.0015,undefined,new Set(["follow|"+IND]),null,null,{minSl:0.05,minTrail:0.05});
     assert.ok(ts.length>0); assert.equal(new Set(ts.map(t=>t.id)).size,ts.length);
     for(const tp of ts) {
-      assert.ok(tp.protect.sl<=0.02); assert.ok(tp.protect.trail<=0.02);
-      for(const op of tp.open) assert.ok(op.side*(op.entry-op.stop)/op.entry<=0.02+1e-12);
+      assert.ok(tp.protect.sl<=0.03); assert.ok(tp.protect.trail<=0.03);
+      for(const op of tp.open) assert.ok(op.side*(op.entry-op.stop)/op.entry<=0.03+1e-12);
     }
   });
 

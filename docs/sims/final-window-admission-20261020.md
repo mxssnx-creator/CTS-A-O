@@ -1,5 +1,7 @@
 # Final-window admission scope correction — 20 October 2026
 
+**Superseded direction/empty-evidence policy:** pooled Long/Short validation and zero-close symbol warmup below admitted unproven entries. The reproduced causes, independent direction evaluator, corrected proven-symbol rule and final nine-window results are in [direction-qualification-cause-20261020.md](direction-qualification-cause-20261020.md). The losses below remain historical evidence.
+
 The previous full-context change blocked all four fixed Micro windows by applying config-level evidence requirements separately to every symbol and direction. That was a scope regression, not proof that every configured set was invalid. This correction restores the configured validation contract. **Consistently profitable forward execution remains unproven.** Losses are retained and an empty sample has unavailable PF.
 
 ## Cause and correction

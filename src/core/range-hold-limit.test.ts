@@ -3,14 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DEFAULT_SETTINGS } from "./config.ts";
-import {
-  coordVariants,
-  forEachCoord,
-  forEachMicro,
-  MICRO_RANGE,
-  MINIMAL_RANGE,
-  rangeHolds,
-} from "./minimal-coord.ts";
+import { coordVariants, forEachCoord, forEachMicro, MICRO_RANGE, MINIMAL_RANGE, rangeHolds } from "./minimal-coord.ts";
 import { laneProtect } from "./pipeline/pipeline.ts";
 import { protectGrid } from "./sim/walkforward.ts";
 import { checkSettings } from "./settings-check.ts";
@@ -27,34 +20,20 @@ test("without a hold limit every Micro and Minimal cell holds as before (16 h an
   const cells = protectGrid(15, grid(), 0.002);
   for (const tag of ["mc", "mn"]) {
     const holds = new Set(cells.filter((p) => p.tag === tag).map((p) => p.hold));
-    assert.deepEqual(
-      [...holds].sort((a, b) => a - b),
-      [64, 96],
-      tag,
-    );
+    assert.deepEqual([...holds].sort((a, b) => a - b), [64, 96], tag);
   }
 });
 
 test("Micro maxHoldMin 15 builds one hold of 15 minutes per cell: 1 bar on the 15m grid, nothing else changes", () => {
   const off = protectGrid(15, grid(), 0.002).filter((p) => p.tag === "mc");
-  const on = protectGrid(15, grid({ micro: { ...MICRO_RANGE, maxHoldMin: 15 } }), 0.002).filter(
-    (p) => p.tag === "mc",
-  );
+  const on = protectGrid(15, grid({ micro: { ...MICRO_RANGE, maxHoldMin: 15 } }), 0.002).filter((p) => p.tag === "mc");
   assert.ok(on.length > 0);
-  assert.ok(
-    on.every((p) => p.hold === 1),
-    "every Micro cell holds one 15m bar",
-  );
+  assert.ok(on.every((p) => p.hold === 1), "every Micro cell holds one 15m bar");
   // one hold instead of two: half the cells (the same distances, one hold each)
   assert.equal(on.length * 2, off.length);
   // Minimal is untouched
-  const mn = protectGrid(15, grid({ micro: { ...MICRO_RANGE, maxHoldMin: 15 } }), 0.002).filter(
-    (p) => p.tag === "mn",
-  );
-  assert.deepEqual(
-    [...new Set(mn.map((p) => p.hold))].sort((a, b) => a - b),
-    [64, 96],
-  );
+  const mn = protectGrid(15, grid({ micro: { ...MICRO_RANGE, maxHoldMin: 15 } }), 0.002).filter((p) => p.tag === "mn");
+  assert.deepEqual([...new Set(mn.map((p) => p.hold))].sort((a, b) => a - b), [64, 96]);
 });
 
 test("a hold limit is the same time on every lane: Micro 15 min is 15 bars of 1m, 3 of 5m, 1 of 15m", () => {
@@ -67,35 +46,19 @@ test("a hold limit is the same time on every lane: Micro 15 min is 15 bars of 1m
 });
 
 test("Minimal maxHoldMin 60 holds 4 bars of 15m; rangeHolds and coordVariants follow the limit", () => {
-  const mn = protectGrid(15, grid({ minimal: { ...MINIMAL_RANGE, maxHoldMin: 60 } }), 0.002).filter(
-    (p) => p.tag === "mn",
-  );
+  const mn = protectGrid(15, grid({ minimal: { ...MINIMAL_RANGE, maxHoldMin: 60 } }), 0.002).filter((p) => p.tag === "mn");
   assert.ok(mn.length > 0 && mn.every((p) => p.hold === 4));
   assert.deepEqual([...rangeHolds({ maxHoldMin: 60 }, [16, 24])], [1]);
   assert.deepEqual([...rangeHolds({ maxHoldMin: undefined }, [16, 24])], [16, 24]);
   assert.deepEqual([...rangeHolds(undefined, [16])], [16]);
-  assert.equal(
-    coordVariants(2, { ...MINIMAL_RANGE, maxHoldMin: 60 }) * 2,
-    coordVariants(2, MINIMAL_RANGE),
-  );
+  assert.equal(coordVariants(2, { ...MINIMAL_RANGE, maxHoldMin: 60 }) * 2, coordVariants(2, MINIMAL_RANGE));
   const seen: number[] = [];
-  forEachMicro({ holdH: [16, 24], micro: { ...MICRO_RANGE, maxHoldMin: 15 } }, (_tp, _k, _tr, h) =>
-    seen.push(h),
-  );
+  forEachMicro({ holdH: [16, 24], micro: { ...MICRO_RANGE, maxHoldMin: 15 } }, (_tp, _k, _tr, h) => seen.push(h));
   assert.deepEqual([...new Set(seen)], [0.25]);
   const mnSeen: number[] = [];
-  forEachCoord(
-    {
-      ...grid(),
-      minimal: { ...MINIMAL_RANGE, maxHoldMin: 30 },
-      short: false,
-      general: false,
-      long: false,
-    },
-    (_tp, _k, _tr, h, _a, _b, tag) => {
-      if (tag === "mn") mnSeen.push(h);
-    },
-  );
+  forEachCoord({ ...grid(), minimal: { ...MINIMAL_RANGE, maxHoldMin: 30 }, short: false, general: false, long: false }, (_tp, _k, _tr, h, _a, _b, tag) => {
+    if (tag === "mn") mnSeen.push(h);
+  });
   assert.deepEqual([...new Set(mnSeen)], [0.5]);
 });
 
@@ -152,17 +115,13 @@ test("Base judges a range at its own maximum hold: Micro 15 min is 1 bar, Minima
     long: false as const,
   };
   const cells = baseRangeProtects(g, 0.002);
-  const holds = (tag: string) => [
-    ...new Set(cells.filter((p) => p.tag === tag).map((p) => p.hold)),
-  ];
+  const holds = (tag: string) => [...new Set(cells.filter((p) => p.tag === tag).map((p) => p.hold))];
   assert.deepEqual(holds("mc"), [1]);
   assert.deepEqual(holds("mn"), [4]);
   assert.deepEqual(holds("sh"), [64]);
   // and the Base cells are among the cells the grid builds for the same range
   const grid = protectGrid(15, { ...DEFAULT_SETTINGS.grid, ...g }, 0.002);
-  const key = (p: { tp: number; sl: number; hold: number; tag?: string }) =>
-    `${p.tag}|${p.tp}|${p.sl}|${p.hold}`;
+  const key = (p: { tp: number; sl: number; hold: number; tag?: string }) => `${p.tag}|${p.tp}|${p.sl}|${p.hold}`;
   const built = new Set(grid.map(key));
-  for (const p of cells.filter((c) => c.tag === "mc" || c.tag === "mn"))
-    assert.ok(built.has(key(p)), key(p));
+  for (const p of cells.filter((c) => c.tag === "mc" || c.tag === "mn")) assert.ok(built.has(key(p)), key(p));
 });

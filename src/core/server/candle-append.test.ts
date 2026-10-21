@@ -5,7 +5,7 @@
 // the lanes, the backtest's prices and the SQLite rows are the same; every series taken earlier is unchanged at the end.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { CoreRuntime, laneBars, laneSeriesFrom } from "./runtime.server.ts";
+import { CoreRuntime, laneBars, laneSeriesFrom, marketHistoryBars } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
 import { barsFromCandles, resample } from "../market/bars.ts";
 import { CandleSeries } from "../market/candle-series.ts";
@@ -76,12 +76,17 @@ describe("columnar candles: the append path against the Candle[] code", () => {
     });
     delete process.env.CTS_CORE_STATE;
     // a short 1 m history: the headroom (90–179 bars) runs out every 30–60 steps, so the run copies many times
-    const settings = { symbols: 3, historyDays: 0.5, tfDays: { "1": 0.25, "5": 0.5, "15": 0.5, "30": 0.5 }, tfs: [1, 5, 15, 30] };
+    const settings = { symbols: 3, historyDays: 0.5, tfDays: { "1": 0.25, "5": 0.5, "15": 0.5, "30": 0.5 }, tfs: [1, 5, 15, 30],
+      signals: { enabled: false }, tactics: { volRegime: false, trendStrength: false, chopRegime: false } };
     const db = new CoreDb(":memory:");
     const rt = new CoreRuntime(db, settings as never, { market: "synthetic" });
     const R = rt as unknown as { storeCandles(sym: string, cs: Candle[], append?: boolean): Promise<void> };
     const s = rt.settings;
-    const want = Math.round((s.historyDays * 24 * 60) / s.tfMin);
+    // No engine runs here: explicitly retain a 24h append buffer so 400 appends
+    // exercise both headroom copies and trimming. Long strategy/Signal histories
+    // are verified independently, and must not silently change this algorithm fixture.
+    rt.wf = { ...rt.wf, preH: 0, longH: 0, symH: 0, simH: 0 };
+    const want = marketHistoryBars(s, rt.wf);
     // (the runtime keeps at least a day: 1440 bars; 600 + ~1,500 appended cross the trim)
     assert.ok(want <= 1440, `want ${want}`);
     const ref = { candles: new Map<string, Candle[]>(), lastBarT: rt.status.lastBarT, db: new CoreDb(":memory:") };

@@ -7,13 +7,12 @@ import { baseFocus, CoreRuntime as BaseRuntime, sanitizeWf } from "./runtime.ser
 import { DEFAULT_SETTINGS } from "../config.ts";
 import { auditStateGen, type AuditInput } from "../audit.ts";
 import { CoreDb } from "./db.server.ts";
-import { SIGNAL_SOURCES } from "../signal-config.ts";
 import { RESEARCH_PRESETS } from "../presets.ts";
 import { isSignalInd, laneLabel, laneOf } from "../indications/registry.ts";
 import { signalCombos, signalSettings } from "../signals.ts";
 import { syntheticCandles } from "../market/bars.ts";
 import { CandleSeries } from "../market/candle-series.ts";
-import { compareOn, trackRuntimes } from "../test-support.ts";
+import { compareOn, trackRuntimes, runtimeFixtureGrid } from "../test-support.ts";
 
 // the synthetic market ends on the hour: the same bars, lane buckets and hourly windows on every run (ending at
 // the current minute, the minute decided whether any entry was Block-raised — the self-audit tests failed at random)
@@ -26,6 +25,7 @@ const small = {
   // Keep generic lifecycle computes on their original catalog; new full grids have dedicated replay/parity coverage.
   disabledKinds: ["micro", "inverse"],
   symbols: 4,
+  focus: ["follow|ema-9-21", "revert|ema-9-21", "follow|rsi-mom-14-20", "revert|rsi-mom-14-20"],
   historyDays: 18,
   // lanes over a shorter history keep each synthetic engine light (the suite runs several in parallel)
   tfDays: { "1": 3, "5": 6, "15": 18, "30": 18 },
@@ -54,9 +54,8 @@ const small = {
   // classic sources only keep each engine light enough to run several in parallel
   signals: signalSettings({
     exits: "pct",
-    sources: Object.fromEntries(
-      SIGNAL_SOURCES.filter((x) => x.name.startsWith("s2-")).map((x) => [x.name, false]),
-    ),
+    sourcesMode: "allow",
+    sources: { "ema-cross": true, "rsi-reversal": true },
   }),
 };
 /**
@@ -338,6 +337,8 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
 
   it("computes on the synthetic feed and publishes every stage", async () => {
     const rt = mk();
+    // This one case intentionally verifies the complete engine indication/lane catalog.
+    rt.updateSettings({ focus: [] });
     rt.start();
     await until(() => rt.status.computes >= 1 && rt.status.state === "running");
     assert.equal(rt.status.source, "synthetic");
@@ -599,6 +600,12 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
       rt.updateSettings(
         {
           tfMin: 15,
+          symbols: small.symbols,
+          historyDays: small.historyDays,
+          tfDays: small.tfDays,
+          grid: small.grid,
+          signals: small.signals,
+          exitStrategy: small.exitStrategy,
           focus: [],
           tactics: { ...rt.settings.tactics, volRegime: true, session: false, cooldown: false },
           toggles: {
@@ -616,9 +623,9 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
       rt.start();
       const at = rt.status.settingsAt;
       // the wait is on the state (the final settings applied, the runtime running, nothing pending), not on a count of
-      // computes: the full-focus compute of this storm is 27,428 Base combos, 90–130 s on 4 cores, and a follow-up
-      // compute runs after it when a setting changed mid-compute. 280 s failed under load (the 11 Oct run reached
-      // running at 251 s with the desk and the evaluation on the same VM); 900 s is the ceiling.
+      // computes: all engine indications remain in focus, while the final known fixture restores its bounded
+      // symbol/protection scope after arbitrary presets. A follow-up compute may still be required; the real
+      // cancellation/replacement and final publication must finish within the same 900s ceiling.
       await until(
         () =>
           rt.status.appliedSettingsAt >= at && rt.status.state === "running" && !rt.status.pending,

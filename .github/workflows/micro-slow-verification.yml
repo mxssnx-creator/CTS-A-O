@@ -52,7 +52,7 @@ jobs:
       CTS_CORE_STATE: "off"
       CTS_CORE_AUTOSTART: "0"
       CTS_CORE_LIVE: "0"
-      CTS_UNIVERSAL_PLAN: docs/hourly-progress-2026-10-21/universal-plan.json
+      CTS_UNIVERSAL_PLAN: docs/hourly-progress-2026-10-21/integration-universal-plan.json
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:

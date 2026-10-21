@@ -79,6 +79,7 @@ function applySchema(db: DatabaseSync) {
   const fillColumns = db.prepare("SELECT name FROM pragma_table_info('live_fills')").all() as Array<{ name: string }>;
   if (!fillColumns.some((column) => column.name === "fee_known"))
     db.exec("ALTER TABLE live_fills ADD COLUMN fee_known INTEGER");
+  db.exec("CREATE INDEX IF NOT EXISTS live_fills_unmeasured ON live_fills(at DESC) WHERE COALESCE(fee_known,0)=0 AND qty>0");
 }
 
 export class CoreDb {

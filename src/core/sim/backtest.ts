@@ -5,7 +5,7 @@
 // - Every closed trade pays the round-trip cost on notional.
 // - ATR protects (Protect.atr) are resolved into distances at every entry from ATR(14) of the signal bar.
 import type { AtrProtect, Bars, OpenPosition, Protect, Side, Trade } from "../domain/types.ts";
-import { capSignalProtect, isSignalConfig, ratchetTrail } from "./trailing.ts";
+import { capSignalProtect, capTrailingOnlyProtect, isSignalConfig, ratchetTrail } from "./trailing.ts";
 import { atrEma } from "../math/indicators.ts";
 import { RT_COST } from "../model-cost.ts";
 import {
@@ -180,7 +180,7 @@ export function simulate(
 ): SimResult {
   const { n, t, o, h, l, c, sym } = bars;
   const signal = isSignalConfig(cfg);
-  if (signal) p = capSignalProtect(p);
+  p = signal ? capSignalProtect(p) : capTrailingOnlyProtect(p);
   const cost = opt.cost;
   // Never manufacture positive returns through a missing, negative or invalid fee deduction.
   if (!(Number.isFinite(cost) && cost >= 0))

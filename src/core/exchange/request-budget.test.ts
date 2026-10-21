@@ -105,3 +105,35 @@ it("endpoint limits use conservative documented values and the stricter trader o
   assert.equal(signedRequestsPerSecond("POST", "/openApi/swap/v2/trade/order"), 1);
   assert.equal(signedRequestsPerSecond("DELETE", "/openApi/swap/v2/trade/order"), 1);
 });
+
+it("read host failover consumes the same rolling request budget as primary dispatches", async () => {
+  const saved = { CTS_BINGX_RATE_BUDGET_FILE: process.env.CTS_BINGX_RATE_BUDGET_FILE,
+    BINGX_X02_API_KEY: process.env.BINGX_X02_API_KEY, BINGX_X02_SECRET: process.env.BINGX_X02_SECRET };
+  const originalFetch = globalThis.fetch, originalNow = Date.now;
+  process.env.CTS_BINGX_RATE_BUDGET_FILE = file();
+  process.env.BINGX_X02_API_KEY = "fixture"; process.env.BINGX_X02_SECRET = "fixture";
+  Date.now = () => 100_000;
+  let calls = 0;
+  globalThis.fetch = (async (input: string | URL) => {
+    calls++;
+    if (new URL(String(input)).host === "open-api-vst.bingx.com") throw new Error("fixture transport failure");
+    return new Response('{"code":0,"data":{}}');
+  }) as typeof fetch;
+  const read = () => signed("testnet", "bingx-vst-02", "GET", "/openApi/swap/v2/trade/openOrders");
+  try {
+    await read(); await read();
+    assert.equal(calls, 4, "two successful reads each use primary and fallback slots");
+    await assert.rejects(read(), RequestBudgetDeferred);
+    assert.equal(calls, 5, "the fallback cannot dispatch a sixth request");
+    await assert.rejects(read(), RequestBudgetDeferred);
+    assert.equal(calls, 5, "a new caller cannot exceed the shared window either");
+    Date.now = () => 101_050;
+    await read();
+    assert.equal(calls, 7, "both hosts recover after the old window expires");
+  } finally {
+    globalThis.fetch = originalFetch; Date.now = originalNow;
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+  }
+});

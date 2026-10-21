@@ -6,10 +6,11 @@ import assert from "node:assert/strict";
 import { CoreRuntime } from "./runtime.server.ts";
 import { fastBarFresh, fastEntryLaneDue, fastEntryMode, mergeFastTapes } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
-import { SIGNAL_SOURCES, signalSettings } from "../signal-config.ts";
+import { signalSettings } from "../signal-config.ts";
 import { laneInd } from "../indications/registry.ts";
 import { signalCoordinationId } from "../signal-coordination.ts";
 import type { OpenPosition } from "../domain/types.ts";
+import { runtimeFixtureGrid, trackRuntimes } from "../test-support.ts";
 
 process.env.CTS_CORE_SYNTHETIC_END ??= String(Math.floor(Date.now() / 3_600_000) * 3_600_000);
 const small = {
@@ -17,7 +18,6 @@ const small = {
   // covered separately by Micro/Inverse parity, the 20-symbol replay and 120-symbol load test.
   focus: [...LEGACY_FIXTURE_FOCUS],
   pinned: [],
-  exitStrategy: { includeMicro: false },
   symbols: 4,
   historyDays: 18,
   tfDays: { "1": 3, "5": 6, "15": 18, "30": 18 },
@@ -25,15 +25,17 @@ const small = {
   refineTop: 4,
   evalTop: 8,
   cycleMs: 60_000,
-  grid: { short: false as const },
+  grid: { ...runtimeFixtureGrid(), short: false as const },
+  exitStrategy: { enabled: false },
   gates: { minPf: 1.0, minTrades: 3, maxDdr: 0 },
   signals: signalSettings({
     exits: "pct",
-    sources: Object.fromEntries(SIGNAL_SOURCES.filter((x) => x.name.startsWith("s2-")).map((x) => [x.name, false])),
+    sourcesMode: "allow",
+    sources: { "ema-cross": true, "rsi-reversal": true },
   }),
 };
-const rts: CoreRuntime[] = [];
-after(() => rts.forEach((r) => r.stop()));
+const tracked = trackRuntimes();
+after(() => tracked.disposeAll());
 const until = async (c: () => boolean, ms = 900_000) => {
   const t0 = Date.now();
   while (!c()) {
@@ -92,8 +94,7 @@ describe("realtime entry step", { timeout: 1_200_000 }, () => {
   });
 
   it("adds nothing the full step decided, and re-takes a fresh position with the same rules", async () => {
-    const rt = new CoreRuntime(new CoreDb(":memory:"), small as never, { market: "synthetic" });
-    rts.push(rt);
+    const rt = tracked.track(new CoreRuntime(new CoreDb(":memory:"), small as never, { market: "synthetic" }));
     rt.wf.validLastN = 0;
     rt.wf.lastN = 0;
     rt.start();

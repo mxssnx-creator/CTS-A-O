@@ -4,7 +4,7 @@ import { PREVIOUS_DEFAULT_FOCUS_17OCT as LEGACY_FIXTURE_FOCUS } from "../config.
 // on the current bars, so they keep taking entries and closing on new bars (frozen, a carried Micro / Minimal took no entry
 // for as long as the fallback held); the rest of the range stays carried (not rebuilt). The realtime entry step
 // builds the seated configs of every range, a carried one's included.
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { CoreRuntime } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
@@ -12,6 +12,10 @@ import { MEM_FALLBACK_MAX } from "./memguard.server.ts";
 import type { Candle, Protect } from "../domain/types.ts";
 import type { CandleSeries } from "../market/candle-series.ts";
 import type { ConfigTape } from "../sim/walkforward.ts";
+import { runtimeFixtureGrid, trackRuntimes } from "../test-support.ts";
+
+const tracked = trackRuntimes();
+after(() => tracked.disposeAll());
 
 process.env.CTS_CORE_SYNTHETIC_END = String(Math.floor(Date.now() / 3_600_000) * 3_600_000);
 
@@ -20,7 +24,6 @@ const small = {
   // covered separately by Micro/Inverse parity, the 20-symbol replay and 120-symbol load test.
   focus: [...LEGACY_FIXTURE_FOCUS],
   pinned: [],
-  exitStrategy: { includeMicro: false },
   symbols: 3,
   historyDays: 6,
   tfDays: { "1": 2, "5": 3, "15": 6, "30": 6 },
@@ -28,7 +31,9 @@ const small = {
   refineTop: 3,
   evalTop: 4,
   cycleMs: 60_000,
-  grid: { short: false as const },
+  grid: { ...runtimeFixtureGrid(), short: false as const },
+  signals: { enabled: false },
+  exitStrategy: { enabled: false },
   tactics: { session: false, volRegime: false, trendStrength: false, cooldown: false, cooldownBars: 4 },
   gates: { minPf: 1.05, minTrades: 3, maxDdr: 0 },
 };
@@ -55,7 +60,7 @@ const sig = (t: ConfigTape) =>
 
 describe("memory fallback: carried range on new bars", { timeout: 900_000 }, () => {
   it("the held configs of a carried range are rebuilt on the new bars, the rest stays carried", async () => {
-    const rt = new CoreRuntime(new CoreDb(":memory:"), small as never, { market: "synthetic" });
+    const rt = tracked.track(new CoreRuntime(new CoreDb(":memory:"), small as never, { market: "synthetic" }));
     const R = rt as unknown as Inner;
     try {
       rt.wf.validLastN = 0;

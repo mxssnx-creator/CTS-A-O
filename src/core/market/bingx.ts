@@ -230,7 +230,11 @@ export async function fetchHistory(
   let endT = Math.floor(now / tfMs) * tfMs - 1;
   const pages: Candle[][] = [];
   let got = 0;
-  for (let guard = 0; guard < 20 && got < bars; guard++) {
+  // Long Signal/preset histories can exceed 20 full pages (480h at 1m).
+  // Keep a bounded allowance for sparse/broken venues while admitting the
+  // requested number of normal pages, plus two overlap/recovery pages.
+  const maxPages = Math.max(20, Math.ceil(bars / 1440) + 2);
+  for (let guard = 0; guard < maxPages && got < bars; guard++) {
     const need = Math.min(1440, bars - got);
     const startT = endT - need * tfMs + 1;
     const page = await fetchKlines(sym, tfMin, {

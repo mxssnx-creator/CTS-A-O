@@ -166,6 +166,10 @@ describe(
       page.on("request", (request) => {
         const url = new URL(request.url());
         if (url.origin !== base || url.pathname === "/api/core/events") return;
+        // Vite may replace the whole document after first-run dependency discovery.
+        // Old-document imports can be abandoned without a terminal network event;
+        // the new document and all of its finite requests must still settle below.
+        if (request.isNavigationRequest() && request.frame() === page.mainFrame()) pending.clear();
         pending.add(request);
         changed = Date.now();
       });

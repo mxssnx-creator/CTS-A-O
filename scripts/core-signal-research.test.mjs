@@ -8,7 +8,7 @@ import { entrySignal } from "../src/core/bots/bots.ts";
 import { sideSignal, simulate } from "../src/core/sim/backtest.ts";
 import { buildTapes, filterEntries } from "../src/core/sim/walkforward.ts";
 import { configId, laneProtect, makeUniverse } from "../src/core/pipeline/pipeline.ts";
-import { capSignalProtect, SIGNAL_STOP_MAX } from "../src/core/sim/trailing.ts";
+import { capSignalProtect } from "../src/core/sim/trailing.ts";
 import { DEFAULT_TACTICS } from "../src/core/config.ts";
 import { tacticCooldown } from "../src/core/indications/filters.ts";
 import { maskEntries } from "./core-tactic-research.mjs";
@@ -363,7 +363,7 @@ describe("four-source frozen independent Signal research", () => {
     assert.match(md, /Entire IS-qualified pool/);
   });
 
-  it("preserves frozen v2 requests and explicitly reconciles the newer capped runtime grid", () => {
+  it("preserves the frozen v2 requests and explicitly reconciles current capped runtime identities", () => {
     const { market, p } = fixture();
     const cells = researchCells(p).filter(
       (c) => c.source === "r-laguerre" && c.range === "short" && c.tf === 1,
@@ -388,17 +388,17 @@ describe("four-source frozen independent Signal research", () => {
     const protocolByConfig = new Map(cells.map((cell) => [cell.cfg, cell]));
     const runtimeByConfig = new Map(tapes.map((tape) => [tape.id, tape]));
     assert.ok(protocolByConfig.size > 0, "the frozen protocol retains its eligible short-lane configs");
-    // The dated v2 protocol remains immutable. Current 2% protections deliberately collapse old aliases;
-    // compare their explicit effective transforms rather than claiming the old uncapped grid still executes.
-    const currentByConfig = new Map([...protocolByConfig.values()].map((cell) => {
+    // The immutable 16 October protocol predates the hard stop cap. Keep its requests intact;
+    // current runtime aliases may collapse only after the production cap is applied.
+    const cappedByConfig = new Map([...protocolByConfig.values()].map((cell) => {
       const protect = capSignalProtect(cell.protect);
       return [configId("follow", cell.ind, protect), protect];
     }));
-    assert.ok(currentByConfig.size < protocolByConfig.size, "the new hard cap collapses old aliases");
-    assert.deepEqual([...runtimeByConfig.keys()].sort(), [...currentByConfig.keys()].sort());
-    for (const [id, tape] of runtimeByConfig) {
-      assert.ok(tape.protect.sl <= SIGNAL_STOP_MAX);
-      assert.deepEqual(tape.protect, currentByConfig.get(id));
+    assert.equal(runtimeByConfig.size, cappedByConfig.size, "every current capped identity is accounted for");
+    assert.ok(cappedByConfig.size < protocolByConfig.size, "the old wide-stop requests collapse at the current cap");
+    for (const [id, protect] of cappedByConfig) {
+      assert.ok(runtimeByConfig.has(id), id);
+      assert.deepEqual(runtimeByConfig.get(id).protect, protect);
     }
     assert.equal(report.oos.length, cells.length, "the frozen historical study preserves both directions for every cell");
     const k = new SeriesCache(b);

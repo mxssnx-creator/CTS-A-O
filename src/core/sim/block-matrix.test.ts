@@ -11,6 +11,11 @@ import { auditState } from "../audit.ts";
 import { walkForward, type WalkForwardOptions } from "./walkforward.ts";
 import { BLOCK_SOURCES, type BlockSource } from "./block.ts";
 import type { BlockConfig } from "../domain/types.ts";
+import { pinSyntheticEnd, runtimeFixtureGrid, trackRuntimes } from "../test-support.ts";
+
+pinSyntheticEnd();
+const tracked = trackRuntimes();
+after(() => tracked.disposeAll());
 
 let rt: CoreRuntime;
 // (a hang guard only: the setup runs one compute per symbol batch — three of ~100 s each before the runtime rests, which
@@ -45,14 +50,16 @@ function run(patch: {
 
 describe("Block matrix at the Real stage", { timeout: 1_200_000 }, () => {
   before(async () => {
-    rt = new CoreRuntime(
+    rt = tracked.track(new CoreRuntime(
       new CoreDb(":memory:"),
       {
         symbols: 4,
         historyDays: 18,
         tfDays: { "1": 3, "5": 6, "15": 18, "30": 18 },
         cycleMs: 60_000,
-        grid: { short: false },
+        // Real-stage relation replay needs diverse actual tapes, rather than a
+        // second full Cartesian/independent Exit fit before every matrix case.
+        grid: { ...runtimeFixtureGrid(), short: false },
         signals: { enabled: false } as never,
         focus: [],
         pinned: [],
@@ -63,7 +70,7 @@ describe("Block matrix at the Real stage", { timeout: 1_200_000 }, () => {
         mainTop: 16,
       },
       { market: "synthetic" },
-    );
+    ));
     // the matrix measures Block, not the desk's last-N seat gate
     rt.wf.validLastN = 0;
     rt.wf.lastN = 0;

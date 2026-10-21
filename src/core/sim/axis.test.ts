@@ -601,7 +601,9 @@ describe("axis: signal strategy sets", () => {
     // the variants: one per spacing type, the stop band = Minimal's targets ÷ tpRatio
     const vs = axisRangeVariants(axis, grid, ["mn"]);
     assert.equal(vs.length, 2);
-    const mnTps = grid.filter((p) => p.tag === "mn").map((p) => p.tp);
+    const mnTps = grid.filter((p) => p.tag === "mn" && !p.trailOnly).map((p) => p.tp);
+    assert.deepEqual(vs, axisRangeVariants(axis, grid.filter((p) => !p.trailOnly), ["mn"]),
+      "no-TP siblings do not move the Axis TP-derived stop band");
     const ratio = snapTpRatio(axis.tpRatio ?? 2.2);
     assert.ok(Math.abs(vs[0].maxSl - Math.max(...mnTps) / ratio) < 1e-6, `${vs[0].maxSl}`);
     assert.ok(Math.abs(vs[0].minSl - Math.min(...mnTps) / ratio) < 1e-6, `${vs[0].minSl}`);

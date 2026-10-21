@@ -1,0 +1,117 @@
+{
+  "schema": "cts-hourly-progress-ci-final-v1",
+  "sourceSha256": "109fd1859eb0079134b54289ea06a0b5dc51573017bc150d8773f83eef7d611e",
+  "primary": {
+    "run": 39516742275,
+    "commit": "4e3fec4a8452d16e371cf5adfe1b8608ab94844a",
+    "tree": "a93715e29432b11659c19ef393e71ac1c89f45e1",
+    "conclusion": "success",
+    "jobs": [
+      {
+        "id": 118950598460,
+        "name": "verify (stress)",
+        "conclusion": "success"
+      },
+      {
+        "id": 118950598673,
+        "name": "verify (reference)",
+        "conclusion": "success"
+      },
+      {
+        "id": 118950598801,
+        "name": "verify (functional-heavy)",
+        "conclusion": "success"
+      },
+      {
+        "id": 118950598814,
+        "name": "verify (functional)",
+        "conclusion": "success"
+      },
+      {
+        "id": 118950598851,
+        "name": "verify (functional-runtime)",
+        "conclusion": "success"
+      },
+      {
+        "id": 118950598899,
+        "name": "verify (study)",
+        "conclusion": "success"
+      }
+    ],
+    "artifacts": [
+      {
+        "id": 12308471840,
+        "name": "micro-study-39516742275-1",
+        "digest": "sha256:199f0460cac7e08c52d4aab060ee467006cbb9e92b1b4949f02f6e74be90b9a7",
+        "sha256Verified": true
+      },
+      {
+        "id": 12308291047,
+        "name": "micro-reference-39516742275-1",
+        "digest": "sha256:ac4c4e1aa84c3b26d5deb82cdc604cc3a7fe99e1dc056604973ec69838c2644e",
+        "sha256Verified": true
+      },
+      {
+        "id": 12308199465,
+        "name": "micro-functional-heavy-39516742275-1",
+        "digest": "sha256:690f104a412c9c8f699111c4e6055f5159a9492f6a25418a124c0e181aae4806",
+        "sha256Verified": true
+      },
+      {
+        "id": 12308089334,
+        "name": "micro-functional-39516742275-1",
+        "digest": "sha256:29fcf5d01fab8c82e8b4af63ca31f1b7c8dd123e164796e0c345a6a2ed956490",
+        "sha256Verified": true
+      },
+      {
+        "id": 12308039722,
+        "name": "micro-functional-runtime-39516742275-1",
+        "digest": "sha256:4b5d3f60a547ec855d6c147f1e36ff4794ee6b37aaa81439a30e6dcbd8323b35",
+        "sha256Verified": true
+      },
+      {
+        "id": 12307973703,
+        "name": "micro-stress-39516742275-1",
+        "digest": "sha256:946183f2aff51331a3136875ad61f368329e01bf7bcd72c00e0b0aa598a0bca0",
+        "sha256Verified": true
+      }
+    ]
+  },
+  "universalAndSlow": {
+    "run": 39516154063,
+    "commit": "4a35070eb584b0f7168e52062d36e2beda903f4c",
+    "tree": "0202cb11cc47ece8945435e4d7ca33fd6abde9a2",
+    "conclusion": "success",
+    "note": "Same runtime manifest; subsequent change only updates the memory test's working-cache observation.",
+    "artifacts": [
+      {
+        "id": 12308027642,
+        "name": "micro-slow-39516154063",
+        "digest": "sha256:2ec27ce44a4ef388d5d185ac24cee249cf9a91bc6131704013f69d5d39f45d0b",
+        "sha256Verified": true
+      },
+      {
+        "id": 12306839539,
+        "name": "micro-universal-39516154063",
+        "digest": "sha256:b0ec1fe9f2538f5ee07a309148a32ba710777e9a279e0c698f4dc5b8bdcabfa9",
+        "sha256Verified": true
+      }
+    ]
+  },
+  "scriptRegressions": {
+    "tests": 54,
+    "pass": 54,
+    "fail": 0,
+    "cancelled": 0
+  },
+  "localPublicationCounterTests": 9,
+  "localMemoryTests": 10,
+  "ui": {
+    "widths": [
+      1280,
+      390
+    ],
+    "pageErrors": 0,
+    "horizontalOverflow": false
+  }
+}

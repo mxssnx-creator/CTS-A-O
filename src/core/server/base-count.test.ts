@@ -1,4 +1,3 @@
-import { PREVIOUS_DEFAULT_FOCUS_17OCT as LEGACY_FIXTURE_FOCUS } from "../config.ts";
 // The Base-stage count of validated pairs: the pairs grid.allSets builds for measurement are reported apart
 // (status.baseBuilt), never as passed; and the passed count is recorded per compute (status.baseHistory) so its
 // continuity can be read without the events table (13 Oct).
@@ -9,24 +8,36 @@ import { CoreRuntime } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
 import { signalSettings, SIGNAL_SOURCES } from "../signal-config.ts";
 import { trackRuntimes } from "../test-support.ts";
+import { DEFAULT_SETTINGS } from "../config.ts";
+
+// This fixture tests count provenance across computes, not full-catalog fitting.
+// Full-grid/range execution is covered by book-coverage and processing.test.ts.
+const countGrid = {
+  ...DEFAULT_SETTINGS.grid,
+  holdH: [4],
+  ...Object.fromEntries(["micro", "minimal", "general", "long"].map((key) => {
+    const r = DEFAULT_SETTINGS.grid[key as "micro" | "minimal" | "general" | "long"];
+    return [key, r && { ...r, tp: [r.tp[0], r.tp.at(-1)!], slOfTp: [r.slOfTp[0], r.slOfTp.at(-1)!],
+      trailOfTp: [0, r.trailOfTp.at(-1)!] }];
+  })),
+  short: false as const,
+};
 
 const small = {
-  // Preserve this generic lifecycle fixture's original source scope. Exhaustive new-family grids are
-  // covered separately by Micro/Inverse parity, the 20-symbol replay and 120-symbol load test.
-  focus: [...LEGACY_FIXTURE_FOCUS],
-  pinned: [],
-  exitStrategy: { includeMicro: false },
-  symbols: 4,
+  symbols: 2,
+  focus: ["follow|ema-9-21@m15", "revert|ema-9-21@m15", "follow|rsi-mom-14-20@m15", "revert|rsi-mom-14-20@m15"],
   historyDays: 18,
   tfDays: { "1": 3, "5": 6, "15": 18, "30": 18 },
   mainTop: 12,
   refineTop: 4,
   evalTop: 8,
   cycleMs: 60_000,
-  grid: { short: false as const },
+  grid: countGrid,
+  exitStrategy: { enabled: false },
   tactics: { session: false, volRegime: false, trendStrength: false, cooldown: false, cooldownBars: 4 },
   gates: { minPf: 1.05, minTrades: 3, maxDdr: 0 },
   signals: signalSettings({
+    enabled: false,
     exits: "pct",
     sources: Object.fromEntries(SIGNAL_SOURCES.filter((x) => x.name.startsWith("s2-")).map((x) => [x.name, false])),
   }),

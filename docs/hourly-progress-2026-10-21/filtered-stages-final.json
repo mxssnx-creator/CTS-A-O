@@ -1,0 +1,1776 @@
+{
+  "schema": "cts-micro-filtered-stages-v1",
+  "sourceSha256": "109fd1859eb0079134b54289ea06a0b5dc51573017bc150d8773f83eef7d611e",
+  "window": {
+    "indicatorStartT": 1792098000000,
+    "evaluationFromT": 1792184400000,
+    "tradeStartT": 1792227600000,
+    "endT": 1792270800000,
+    "preH": 12,
+    "runH": 12
+  },
+  "modelRoundTripCost": 0.0015,
+  "basis": "unit-net-returns after one modeled round trip",
+  "base": {
+    "evaluatedPairsIncludingExit": 1232,
+    "passedPairsIncludingExit": 187,
+    "ordinaryPassedPairs": 120,
+    "mainPairs": 120,
+    "rangeRepresentativeEvidence": [
+      {
+        "range": "Wide",
+        "tag": "wide",
+        "evaluatedPairs": 616,
+        "passedPairs": 36,
+        "minimumPf": 1.1,
+        "passedPooledPf": 2.169748846366503,
+        "passedMedianPf": 2.2611380772479373,
+        "gp": 499.15004130626534,
+        "gl": 230.04968623080512
+      },
+      {
+        "range": "Micro",
+        "tag": "mc",
+        "evaluatedPairs": 616,
+        "passedPairs": 59,
+        "minimumPf": 1.1,
+        "passedPooledPf": 1.7401080848178305,
+        "passedMedianPf": 1.7646077714525805,
+        "gp": 576.1932310675235,
+        "gl": 331.1249663711805
+      },
+      {
+        "range": "Minimal",
+        "tag": "mn",
+        "evaluatedPairs": 616,
+        "passedPairs": 81,
+        "minimumPf": 1.1,
+        "passedPooledPf": 2.0709317983736133,
+        "passedMedianPf": 2.139837701022305,
+        "gp": 1010.0983828113805,
+        "gl": 487.750675133122
+      },
+      {
+        "range": "Short",
+        "tag": "sh",
+        "evaluatedPairs": 616,
+        "passedPairs": 88,
+        "minimumPf": 1.1,
+        "passedPooledPf": 2.6040981078917014,
+        "passedMedianPf": 2.6439053273204163,
+        "gp": 1245.3667557629487,
+        "gl": 478.2334244585
+      },
+      {
+        "range": "General",
+        "tag": "gn",
+        "evaluatedPairs": 616,
+        "passedPairs": 111,
+        "minimumPf": 1.2,
+        "passedPooledPf": 2.5522590553411217,
+        "passedMedianPf": 2.647841036593582,
+        "gp": 1776.2062186811381,
+        "gl": 695.9349267324824
+      }
+    ]
+  },
+  "postBaseBuiltConfigs": 64473,
+  "initial": {
+    "t": 1792227600000,
+    "evaluated": 62553,
+    "passed": {
+      "configs": 14458,
+      "closes": 416561,
+      "gp": 1893.8120102028224,
+      "gl": 794.9328354929551,
+      "unknownReturns": 0,
+      "pf": 2.3823547419933013,
+      "pfState": "measured"
+    },
+    "seated": {
+      "configs": 14458,
+      "closes": 416561,
+      "gp": 1893.8120102028224,
+      "gl": 794.9328354929551,
+      "unknownReturns": 0,
+      "pf": 2.3823547419933013,
+      "pfState": "measured"
+    }
+  },
+  "rollingValidation": [
+    {
+      "t": 1792227600000,
+      "evaluated": 62553,
+      "passed": {
+        "configs": 14458,
+        "closes": 416561,
+        "gp": 1893.8120102028224,
+        "gl": 794.9328354929551,
+        "unknownReturns": 0,
+        "pf": 2.3823547419933013,
+        "pfState": "measured"
+      },
+      "seated": {
+        "configs": 14458,
+        "closes": 416561,
+        "gp": 1893.8120102028224,
+        "gl": 794.9328354929551,
+        "unknownReturns": 0,
+        "pf": 2.3823547419933013,
+        "pfState": "measured"
+      }
+    },
+    {
+      "t": 1792231200000,
+      "evaluated": 62553,
+      "passed": {
+        "configs": 11914,
+        "closes": 319669,
+        "gp": 1629.5080433913265,
+        "gl": 654.0827406853472,
+        "unknownReturns": 0,
+        "pf": 2.491287328089302,
+        "pfState": "measured"
+      },
+      "seated": {
+        "configs": 11914,
+        "closes": 319669,
+        "gp": 1629.5080433913265,
+        "gl": 654.0827406853472,
+        "unknownReturns": 0,
+        "pf": 2.491287328089302,
+        "pfState": "measured"
+      }
+    },
+    {
+      "t": 1792234800000,
+      "evaluated": 62553,
+      "passed": {
+        "configs": 9254,
+        "closes": 248816,
+        "gp": 1237.1493604592054,
+        "gl": 501.4423184463268,
+        "unknownReturns": 0,
+        "pf": 2.467181797285079,
+        "pfState": "measured"
+      },
+      "seated": {
+        "configs": 9254,
+        "closes": 248816,
+        "gp": 1237.1493604592054,
+        "gl": 501.4423184463268,
+        "unknownReturns": 0,
+        "pf": 2.467181797285079,
+        "pfState": "measured"
+      }
+    },
+    {
+      "t": 1792238400000,
+      "evaluated": 62553,
+      "passed": {
+        "configs": 8511,
+        "closes": 311176,
+        "gp": 1138.106541756171,
+        "gl": 515.2520158330112,
+        "unknownReturns": 0,
+        "pf": 2.208834719290107,
+        "pfState": "measured"
+      },
+      "seated": {
+        "configs": 8511,
+        "closes": 311176,
+        "gp": 1138.106541756171,
+        "gl": 515.2520158330112,
+        "unknownReturns": 0,
+        "pf": 2.208834719290107,
+        "pfState": "measured"
+      }
+    },
+    {
+      "t": 1792242000000,
+      "evaluated": 62553,
+      "passed": {
+        "configs": 5367,
+        "closes": 154818,
+        "gp": 771.8449841870926,
+        "gl": 302.66011935855045,
+        "unknownReturns": 0,
+        "pf": 2.5502037923692082,
+        "pfState": "measured"
+      },
+      "seated": {
+        "configs": 5367,
+        "closes": 154818,
+        "gp": 771.8449841870926,
+        "gl": 302.66011935855045,
+        "unknownReturns": 0,
+        "pf": 2.5502037923692082,
+        "pfState": "measured"
+      }
+    },
+    {
+      "t": 1792245600000,
+      "evaluated": 62553,
+      "passed": {
+        "configs": 2000,
+        "closes": 58760,
+        "gp": 315.70135761131104,
+        "gl": 123.55283462756566,
+        "unknownReturns": 0,
+        "pf": 2.5551931573480506,
+        "pfState": "measured"
+      },
+      "seated": {
+        "configs": 2000,
+        "closes": 58760,
+        "gp": 315.70135761131104,
+        "gl": 123.55283462756566,
+        "unknownReturns": 0,
+        "pf": 2.5551931573480506,
+        "pfState": "measured"
+      }
+    },
+    {
+      "t": 1792249200000,
+      "evaluated": 62553,
+      "passed": {
+        "configs": 750,
+        "closes": 19979,
+        "gp": 105.60267635370325,
+        "gl": 37.4538892356599,
+        "unknownReturns": 0,
+        "pf": 2.819538331233136,
+        "pfState": "measured"
+      },
+      "seated": {
+        "configs": 750,
+        "closes": 19979,
+        "gp": 105.60267635370325,
+        "gl": 37.4538892356599,
+        "unknownReturns": 0,
+        "pf": 2.819538331233136,
+        "pfState": "measured"
+      }
+    },
+    {
+      "t": 1792252800000,
+      "evaluated": 62553,
+      "passed": {
+        "configs": 570,
+        "closes": 17693,
+        "gp": 97.51263100672246,
+        "gl": 32.16819827282375,
+        "unknownReturns": 0,
+        "pf": 3.031336420513884,
+        "pfState": "measured"
+      },
+      "seated": {
+        "configs": 570,
+        "closes": 17693,
+        "gp": 97.51263100672246,
+        "gl": 32.16819827282375,
+        "unknownReturns": 0,
+        "pf": 3.031336420513884,
+        "pfState": "measured"
+      }
+    },
+    {
+      "t": 1792256400000,
+      "evaluated": 62553,
+      "passed": {
+        "configs": 389,
+        "closes": 12289,
+        "gp": 68.80679880488765,
+        "gl": 22.66905161900401,
+        "unknownReturns": 0,
+        "pf": 3.035274697914811,
+        "pfState": "measured"
+      },
+      "seated": {
+        "configs": 389,
+        "closes": 12289,
+        "gp": 68.80679880488765,
+        "gl": 22.66905161900401,
+        "unknownReturns": 0,
+        "pf": 3.035274697914811,
+        "pfState": "measured"
+      }
+    },
+    {
+      "t": 1792260000000,
+      "evaluated": 62553,
+      "passed": {
+        "configs": 304,
+        "closes": 10443,
+        "gp": 57.92489446531281,
+        "gl": 23.298690092678285,
+        "unknownReturns": 0,
+        "pf": 2.48618674418593,
+        "pfState": "measured"
+      },
+      "seated": {
+        "configs": 304,
+        "closes": 10443,
+        "gp": 57.92489446531281,
+        "gl": 23.298690092678285,
+        "unknownReturns": 0,
+        "pf": 2.48618674418593,
+        "pfState": "measured"
+      }
+    },
+    {
+      "t": 1792263600000,
+      "evaluated": 62553,
+      "passed": {
+        "configs": 245,
+        "closes": 8119,
+        "gp": 45.889036658397295,
+        "gl": 19.613465723674366,
+        "unknownReturns": 0,
+        "pf": 2.3396699647531998,
+        "pfState": "measured"
+      },
+      "seated": {
+        "configs": 245,
+        "closes": 8119,
+        "gp": 45.889036658397295,
+        "gl": 19.613465723674366,
+        "unknownReturns": 0,
+        "pf": 2.3396699647531998,
+        "pfState": "measured"
+      }
+    },
+    {
+      "t": 1792267200000,
+      "evaluated": 62553,
+      "passed": {
+        "configs": 68,
+        "closes": 2340,
+        "gp": 11.473148671715752,
+        "gl": 5.080508890834143,
+        "unknownReturns": 0,
+        "pf": 2.2582676102417043,
+        "pfState": "measured"
+      },
+      "seated": {
+        "configs": 68,
+        "closes": 2340,
+        "gp": 11.473148671715752,
+        "gl": 5.080508890834143,
+        "unknownReturns": 0,
+        "pf": 2.2582676102417043,
+        "pfState": "measured"
+      }
+    }
+  ],
+  "entryAdmission": {
+    "firstRejectionCounts": {
+      "symPf": 49305,
+      "configValidation": 67022
+    },
+    "firstRejectionsByRange": {
+      "gn": {
+        "symPf": 22429,
+        "configValidation": 15626
+      },
+      "mc": {
+        "symPf": 2621,
+        "configValidation": 14692
+      },
+      "sh": {
+        "symPf": 17798,
+        "configValidation": 14393
+      },
+      "mn": {
+        "configValidation": 22296,
+        "symPf": 6439
+      },
+      "exit": {
+        "symPf": 18,
+        "configValidation": 15
+      }
+    },
+    "rejectedReturnDiagnostics": {
+      "symPf": {
+        "n": 49305,
+        "gp": 89.67941983982787,
+        "gl": 332.86793610519294
+      },
+      "configValidation": {
+        "n": 67022,
+        "gp": 100.11206360472492,
+        "gl": 394.90438939717535
+      }
+    },
+    "scope": "First rejection only; candidate diagnostics may include endpoint marks. Config sets, candidate events and funded settled closes have different denominators. Never subtract these counts as though they were all sets or all closes."
+  },
+  "fundedModeledExecution": {
+    "configs": 14399,
+    "closes": 126342,
+    "gp": 121.4650371759302,
+    "gl": 1191.3439830504033,
+    "unknownReturns": 0,
+    "pf": 0.10195631060722055,
+    "pfState": "measured"
+  },
+  "funding": {
+    "basis": "Exact per-close native report allocation",
+    "virtualCloses": 131858,
+    "fundedCloses": 126342,
+    "zeroAllocatedCloses": 5516,
+    "unknownAllocations": 0
+  },
+  "perRange": {
+    "gn": {
+      "initialPassed": {
+        "configs": 5015,
+        "closes": 137993,
+        "gp": 764.3779048167329,
+        "gl": 300.05221560832956,
+        "unknownReturns": 0,
+        "pf": 2.547482954815127,
+        "pfState": "measured"
+      },
+      "initialSeated": {
+        "configs": 5015,
+        "closes": 137993,
+        "gp": 764.3779048167329,
+        "gl": 300.05221560832956,
+        "unknownReturns": 0,
+        "pf": 2.547482954815127,
+        "pfState": "measured"
+      },
+      "executed": {
+        "configs": 6407,
+        "closes": 66837,
+        "gp": 58.304814221471595,
+        "gl": 757.2338057124799,
+        "unknownReturns": 0,
+        "pf": 0.07699710945500209,
+        "pfState": "measured"
+      }
+    },
+    "mn": {
+      "initialPassed": {
+        "configs": 3450,
+        "closes": 112869,
+        "gp": 394.08614124622926,
+        "gl": 193.5379766320842,
+        "unknownReturns": 0,
+        "pf": 2.0362212528210275,
+        "pfState": "measured"
+      },
+      "initialSeated": {
+        "configs": 3450,
+        "closes": 112869,
+        "gp": 394.08614124622926,
+        "gl": 193.5379766320842,
+        "unknownReturns": 0,
+        "pf": 2.0362212528210275,
+        "pfState": "measured"
+      },
+      "executed": {
+        "configs": 2498,
+        "closes": 12366,
+        "gp": 11.084164468569973,
+        "gl": 52.274824349464645,
+        "unknownReturns": 0,
+        "pf": 0.21203637901240482,
+        "pfState": "measured"
+      }
+    },
+    "sh": {
+      "initialPassed": {
+        "configs": 4999,
+        "closes": 137998,
+        "gp": 677.4633739666135,
+        "gl": 273.79255652279267,
+        "unknownReturns": 0,
+        "pf": 2.4743673917600315,
+        "pfState": "measured"
+      },
+      "initialSeated": {
+        "configs": 4999,
+        "closes": 137998,
+        "gp": 677.4633739666135,
+        "gl": 273.79255652279267,
+        "unknownReturns": 0,
+        "pf": 2.4743673917600315,
+        "pfState": "measured"
+      },
+      "executed": {
+        "configs": 4394,
+        "closes": 41648,
+        "gp": 46.06720754108954,
+        "gl": 355.46547190400617,
+        "unknownReturns": 0,
+        "pf": 0.129596855903715,
+        "pfState": "measured"
+      }
+    },
+    "mc": {
+      "initialPassed": {
+        "configs": 994,
+        "closes": 27701,
+        "gp": 57.88459017324779,
+        "gl": 27.55008672975374,
+        "unknownReturns": 0,
+        "pf": 2.101067439135615,
+        "pfState": "measured"
+      },
+      "initialSeated": {
+        "configs": 994,
+        "closes": 27701,
+        "gp": 57.88459017324779,
+        "gl": 27.55008672975374,
+        "unknownReturns": 0,
+        "pf": 2.101067439135615,
+        "pfState": "measured"
+      },
+      "executed": {
+        "configs": 1100,
+        "closes": 5491,
+        "gp": 6.008850944793086,
+        "gl": 26.369881084576736,
+        "unknownReturns": 0,
+        "pf": 0.2278679575960452,
+        "pfState": "measured"
+      }
+    },
+    "wide": {
+      "initialPassed": {
+        "configs": 0,
+        "closes": 0,
+        "gp": 0,
+        "gl": 0,
+        "unknownReturns": 0,
+        "pf": null,
+        "pfState": "empty"
+      },
+      "initialSeated": {
+        "configs": 0,
+        "closes": 0,
+        "gp": 0,
+        "gl": 0,
+        "unknownReturns": 0,
+        "pf": null,
+        "pfState": "empty"
+      },
+      "executed": {
+        "configs": 0,
+        "closes": 0,
+        "gp": 0,
+        "gl": 0,
+        "unknownReturns": 0,
+        "pf": null,
+        "pfState": "empty"
+      }
+    }
+  },
+  "perIndication": [
+    {
+      "id": "inverse-micro-1x5-break-activity-selective@m1",
+      "configs": 163,
+      "closes": 1806,
+      "gp": 1.5161442525849356,
+      "gl": 19.07379869443809,
+      "unknownReturns": 0,
+      "pf": 0.07948832201039442,
+      "pfState": "measured",
+      "distinctOnsets": 26,
+      "activeHours": 8,
+      "positiveHours": 0
+    },
+    {
+      "id": "inverse-micro-1x15-break-activity-selective@m1",
+      "configs": 123,
+      "closes": 878,
+      "gp": 0.8055004396051842,
+      "gl": 4.971265769373777,
+      "unknownReturns": 0,
+      "pf": 0.1620312566203138,
+      "pfState": "measured",
+      "distinctOnsets": 22,
+      "activeHours": 8,
+      "positiveHours": 3
+    },
+    {
+      "id": "inverse-micro-1x5x15-break-activity-selective@m1",
+      "configs": 72,
+      "closes": 662,
+      "gp": 0.5157467849388744,
+      "gl": 4.454919765632456,
+      "unknownReturns": 0,
+      "pf": 0.11577016244324095,
+      "pfState": "measured",
+      "distinctOnsets": 22,
+      "activeHours": 9,
+      "positiveHours": 2
+    },
+    {
+      "id": "inverse-micro-1x5-relative-trend-fast@m1",
+      "configs": 169,
+      "closes": 1224,
+      "gp": 0.8772519590289559,
+      "gl": 4.469535956381826,
+      "unknownReturns": 0,
+      "pf": 0.1962736104128152,
+      "pfState": "measured",
+      "distinctOnsets": 16,
+      "activeHours": 7,
+      "positiveHours": 2
+    },
+    {
+      "id": "inverse-micro-1-relative-trend-selective@m1",
+      "configs": 326,
+      "closes": 1746,
+      "gp": 1.832550935619109,
+      "gl": 8.647149082801985,
+      "unknownReturns": 0,
+      "pf": 0.21192544711225184,
+      "pfState": "measured",
+      "distinctOnsets": 9,
+      "activeHours": 8,
+      "positiveHours": 2
+    },
+    {
+      "id": "inverse-micro-1x5-drawdown-market-fast@m1",
+      "configs": 2,
+      "closes": 2,
+      "gp": 0,
+      "gl": 0.0017867404387495811,
+      "unknownReturns": 0,
+      "pf": 0,
+      "pfState": "measured",
+      "distinctOnsets": 1,
+      "activeHours": 1,
+      "positiveHours": 0
+    },
+    {
+      "id": "inverse-micro-1x15-break-retest-selective@m1",
+      "configs": 357,
+      "closes": 4721,
+      "gp": 3.9227662643914503,
+      "gl": 44.96392876010762,
+      "unknownReturns": 0,
+      "pf": 0.0872425157801549,
+      "pfState": "measured",
+      "distinctOnsets": 20,
+      "activeHours": 8,
+      "positiveHours": 1
+    },
+    {
+      "id": "inverse-micro-1-change-ema-fast@m1",
+      "configs": 1,
+      "closes": 3,
+      "gp": 0.004151242791149402,
+      "gl": 0.00012842892768063748,
+      "unknownReturns": 0,
+      "pf": 32.32326911170856,
+      "pfState": "measured",
+      "distinctOnsets": 3,
+      "activeHours": 2,
+      "positiveHours": 1
+    },
+    {
+      "id": "inverse-micro-1x15-break-activity-fast@m1",
+      "configs": 186,
+      "closes": 2001,
+      "gp": 1.9505215121205222,
+      "gl": 15.935204721136495,
+      "unknownReturns": 0,
+      "pf": 0.12240329172133858,
+      "pfState": "measured",
+      "distinctOnsets": 24,
+      "activeHours": 8,
+      "positiveHours": 2
+    },
+    {
+      "id": "inverse-micro-1x5x15-break-activity-fast@m1",
+      "configs": 180,
+      "closes": 1944,
+      "gp": 1.8826402098293458,
+      "gl": 16.197925533192244,
+      "unknownReturns": 0,
+      "pf": 0.11622724193733962,
+      "pfState": "measured",
+      "distinctOnsets": 23,
+      "activeHours": 8,
+      "positiveHours": 2
+    },
+    {
+      "id": "inverse-micro-1x15-pullback-activity-fast@m1",
+      "configs": 40,
+      "closes": 252,
+      "gp": 0.11951207099322338,
+      "gl": 0.6188126339504906,
+      "unknownReturns": 0,
+      "pf": 0.19313127178781098,
+      "pfState": "measured",
+      "distinctOnsets": 15,
+      "activeHours": 5,
+      "positiveHours": 1
+    },
+    {
+      "id": "inverse-micro-1x5-break-activity-fast@m1",
+      "configs": 160,
+      "closes": 1534,
+      "gp": 1.2488914811514344,
+      "gl": 17.61174565315815,
+      "unknownReturns": 0,
+      "pf": 0.07091241866347772,
+      "pfState": "measured",
+      "distinctOnsets": 23,
+      "activeHours": 8,
+      "positiveHours": 0
+    },
+    {
+      "id": "inverse-micro-1x5x15-impulse-retest-fast@m1",
+      "configs": 545,
+      "closes": 5782,
+      "gp": 5.16660169089418,
+      "gl": 52.81549283833605,
+      "unknownReturns": 0,
+      "pf": 0.0978236008647828,
+      "pfState": "measured",
+      "distinctOnsets": 27,
+      "activeHours": 8,
+      "positiveHours": 2
+    },
+    {
+      "id": "inverse-micro-1x5x15-impulse-retest-selective@m1",
+      "configs": 545,
+      "closes": 5782,
+      "gp": 5.16660169089418,
+      "gl": 52.81549283833605,
+      "unknownReturns": 0,
+      "pf": 0.0978236008647828,
+      "pfState": "measured",
+      "distinctOnsets": 27,
+      "activeHours": 8,
+      "positiveHours": 2
+    },
+    {
+      "id": "inverse-micro-1x5x15-drawdown-trend-fast@m1",
+      "configs": 407,
+      "closes": 3198,
+      "gp": 1.9746506983640426,
+      "gl": 29.66534054030477,
+      "unknownReturns": 0,
+      "pf": 0.06656423497586979,
+      "pfState": "measured",
+      "distinctOnsets": 24,
+      "activeHours": 8,
+      "positiveHours": 0
+    },
+    {
+      "id": "inverse-micro-1x15-impulse-retest-fast@m1",
+      "configs": 457,
+      "closes": 3992,
+      "gp": 3.210402519870433,
+      "gl": 39.16392135653144,
+      "unknownReturns": 0,
+      "pf": 0.08197346968002295,
+      "pfState": "measured",
+      "distinctOnsets": 26,
+      "activeHours": 8,
+      "positiveHours": 0
+    },
+    {
+      "id": "inverse-micro-1x15-impulse-retest-selective@m1",
+      "configs": 457,
+      "closes": 3992,
+      "gp": 3.210402519870433,
+      "gl": 39.16392135653144,
+      "unknownReturns": 0,
+      "pf": 0.08197346968002295,
+      "pfState": "measured",
+      "distinctOnsets": 26,
+      "activeHours": 8,
+      "positiveHours": 0
+    },
+    {
+      "id": "inverse-micro-1x5-impulse-retest-fast@m1",
+      "configs": 316,
+      "closes": 4358,
+      "gp": 4.393813661183359,
+      "gl": 43.53012478261372,
+      "unknownReturns": 0,
+      "pf": 0.1009373091192765,
+      "pfState": "measured",
+      "distinctOnsets": 24,
+      "activeHours": 8,
+      "positiveHours": 1
+    },
+    {
+      "id": "inverse-micro-1x5-impulse-retest-selective@m1",
+      "configs": 316,
+      "closes": 4358,
+      "gp": 4.393813661183359,
+      "gl": 43.53012478261372,
+      "unknownReturns": 0,
+      "pf": 0.1009373091192765,
+      "pfState": "measured",
+      "distinctOnsets": 24,
+      "activeHours": 8,
+      "positiveHours": 1
+    },
+    {
+      "id": "inverse-micro-1x15-change-ema-fast@m1",
+      "configs": 112,
+      "closes": 754,
+      "gp": 1.0925897591019624,
+      "gl": 3.059052670324603,
+      "unknownReturns": 0,
+      "pf": 0.35716605003274604,
+      "pfState": "measured",
+      "distinctOnsets": 11,
+      "activeHours": 7,
+      "positiveHours": 3
+    },
+    {
+      "id": "inverse-micro-1x15-change-ema-selective@m1",
+      "configs": 264,
+      "closes": 1507,
+      "gp": 2.216225289356146,
+      "gl": 5.571800086985181,
+      "unknownReturns": 0,
+      "pf": 0.3977575029177532,
+      "pfState": "measured",
+      "distinctOnsets": 10,
+      "activeHours": 8,
+      "positiveHours": 3
+    },
+    {
+      "id": "inverse-micro-1x5x15-change-ema-fast@m1",
+      "configs": 31,
+      "closes": 128,
+      "gp": 0.2805513779226033,
+      "gl": 0.645843921028171,
+      "unknownReturns": 0,
+      "pf": 0.43439501215087845,
+      "pfState": "measured",
+      "distinctOnsets": 5,
+      "activeHours": 7,
+      "positiveHours": 3
+    },
+    {
+      "id": "inverse-micro-1-impulse-retest-fast@m1",
+      "configs": 24,
+      "closes": 59,
+      "gp": 0.03143785411965258,
+      "gl": 0.6177589691541929,
+      "unknownReturns": 0,
+      "pf": 0.05089016216582956,
+      "pfState": "measured",
+      "distinctOnsets": 16,
+      "activeHours": 5,
+      "positiveHours": 2
+    },
+    {
+      "id": "inverse-micro-1-impulse-retest-selective@m1",
+      "configs": 24,
+      "closes": 59,
+      "gp": 0.03143785411965258,
+      "gl": 0.6177589691541929,
+      "unknownReturns": 0,
+      "pf": 0.05089016216582956,
+      "pfState": "measured",
+      "distinctOnsets": 16,
+      "activeHours": 5,
+      "positiveHours": 2
+    },
+    {
+      "id": "inverse-micro-1x15-break-retest-fast@m1",
+      "configs": 441,
+      "closes": 6337,
+      "gp": 2.227078320789177,
+      "gl": 61.52518301381182,
+      "unknownReturns": 0,
+      "pf": 0.03619783333743549,
+      "pfState": "measured",
+      "distinctOnsets": 23,
+      "activeHours": 8,
+      "positiveHours": 2
+    },
+    {
+      "id": "inverse-micro-1x5x15-break-retest-fast@m1",
+      "configs": 305,
+      "closes": 4163,
+      "gp": 1.7295752940009714,
+      "gl": 41.530121213048204,
+      "unknownReturns": 0,
+      "pf": 0.04164628571942531,
+      "pfState": "measured",
+      "distinctOnsets": 20,
+      "activeHours": 8,
+      "positiveHours": 2
+    },
+    {
+      "id": "inverse-micro-1x5x15-drawdown-trend-selective@m1",
+      "configs": 297,
+      "closes": 1905,
+      "gp": 0.48326104200611825,
+      "gl": 20.51508692379368,
+      "unknownReturns": 0,
+      "pf": 0.023556373112200924,
+      "pfState": "measured",
+      "distinctOnsets": 19,
+      "activeHours": 8,
+      "positiveHours": 1
+    },
+    {
+      "id": "inverse-micro-1x5-drawdown-trend-fast@m1",
+      "configs": 159,
+      "closes": 1489,
+      "gp": 1.7803926758741926,
+      "gl": 13.605922134652635,
+      "unknownReturns": 0,
+      "pf": 0.13085424554501515,
+      "pfState": "measured",
+      "distinctOnsets": 21,
+      "activeHours": 7,
+      "positiveHours": 2
+    },
+    {
+      "id": "inverse-micro-1x15-drawdown-trend-selective@m1",
+      "configs": 224,
+      "closes": 1607,
+      "gp": 0.3063352674672429,
+      "gl": 17.79147242421775,
+      "unknownReturns": 0,
+      "pf": 0.01721809528537162,
+      "pfState": "measured",
+      "distinctOnsets": 20,
+      "activeHours": 8,
+      "positiveHours": 1
+    },
+    {
+      "id": "inverse-micro-1x5-break-retest-fast@m1",
+      "configs": 436,
+      "closes": 4122,
+      "gp": 2.3970987970187005,
+      "gl": 49.56938988489307,
+      "unknownReturns": 0,
+      "pf": 0.0483584486834535,
+      "pfState": "measured",
+      "distinctOnsets": 19,
+      "activeHours": 6,
+      "positiveHours": 1
+    },
+    {
+      "id": "inverse-micro-1x5-change-ema-selective@m1",
+      "configs": 100,
+      "closes": 525,
+      "gp": 1.0410374264228248,
+      "gl": 3.7402653208217456,
+      "unknownReturns": 0,
+      "pf": 0.2783325077575262,
+      "pfState": "measured",
+      "distinctOnsets": 9,
+      "activeHours": 7,
+      "positiveHours": 1
+    },
+    {
+      "id": "inverse-micro-1x5-change-ema-fast@m1",
+      "configs": 24,
+      "closes": 122,
+      "gp": 0.2403666021850197,
+      "gl": 1.065782504515653,
+      "unknownReturns": 0,
+      "pf": 0.22553063234440576,
+      "pfState": "measured",
+      "distinctOnsets": 10,
+      "activeHours": 7,
+      "positiveHours": 1
+    },
+    {
+      "id": "inverse-micro-1x5x15-change-ema-selective@m1",
+      "configs": 73,
+      "closes": 371,
+      "gp": 1.063676666929154,
+      "gl": 1.979402299589432,
+      "unknownReturns": 0,
+      "pf": 0.5373726539318369,
+      "pfState": "measured",
+      "distinctOnsets": 8,
+      "activeHours": 7,
+      "positiveHours": 2
+    },
+    {
+      "id": "inverse-micro-1x5x15-activity-flow-fast@m1",
+      "configs": 163,
+      "closes": 934,
+      "gp": 0.8042366701533132,
+      "gl": 7.048645215824861,
+      "unknownReturns": 0,
+      "pf": 0.11409804941632294,
+      "pfState": "measured",
+      "distinctOnsets": 23,
+      "activeHours": 7,
+      "positiveHours": 0
+    },
+    {
+      "id": "inverse-micro-1x15-activity-flow-fast@m1",
+      "configs": 176,
+      "closes": 831,
+      "gp": 0.6386847378024545,
+      "gl": 5.384859588868837,
+      "unknownReturns": 0,
+      "pf": 0.1186075007643085,
+      "pfState": "measured",
+      "distinctOnsets": 23,
+      "activeHours": 5,
+      "positiveHours": 0
+    },
+    {
+      "id": "inverse-micro-1-activity-absorb-fast@m1",
+      "configs": 543,
+      "closes": 3677,
+      "gp": 29.328871401452286,
+      "gl": 5.295391685094378,
+      "unknownReturns": 0,
+      "pf": 5.538565066680156,
+      "pfState": "measured",
+      "distinctOnsets": 16,
+      "activeHours": 7,
+      "positiveHours": 6
+    },
+    {
+      "id": "inverse-micro-1x5-drawdown-trend-selective@m1",
+      "configs": 106,
+      "closes": 829,
+      "gp": 0.07042255365782961,
+      "gl": 9.509044525871486,
+      "unknownReturns": 0,
+      "pf": 0.007405849606259522,
+      "pfState": "measured",
+      "distinctOnsets": 15,
+      "activeHours": 7,
+      "positiveHours": 1
+    },
+    {
+      "id": "inverse-micro-1x15-drawdown-trend-fast@m1",
+      "configs": 377,
+      "closes": 2326,
+      "gp": 1.275918570129344,
+      "gl": 24.13841405253393,
+      "unknownReturns": 0,
+      "pf": 0.052858425883013,
+      "pfState": "measured",
+      "distinctOnsets": 22,
+      "activeHours": 7,
+      "positiveHours": 0
+    },
+    {
+      "id": "inverse-micro-1x5-break-retest-selective@m1",
+      "configs": 472,
+      "closes": 4056,
+      "gp": 1.9810650618199739,
+      "gl": 50.70524473370282,
+      "unknownReturns": 0,
+      "pf": 0.03907021989982029,
+      "pfState": "measured",
+      "distinctOnsets": 18,
+      "activeHours": 6,
+      "positiveHours": 0
+    },
+    {
+      "id": "inverse-micro-1x5x15-break-close-fast@m1",
+      "configs": 193,
+      "closes": 2354,
+      "gp": 1.6118649722900678,
+      "gl": 27.024399741866954,
+      "unknownReturns": 0,
+      "pf": 0.05964480201915166,
+      "pfState": "measured",
+      "distinctOnsets": 19,
+      "activeHours": 7,
+      "positiveHours": 0
+    },
+    {
+      "id": "inverse-micro-1x5x15-break-close-selective@m1",
+      "configs": 250,
+      "closes": 2782,
+      "gp": 1.5769217493931413,
+      "gl": 28.97004094586229,
+      "unknownReturns": 0,
+      "pf": 0.0544328450325635,
+      "pfState": "measured",
+      "distinctOnsets": 20,
+      "activeHours": 7,
+      "positiveHours": 0
+    },
+    {
+      "id": "inverse-micro-1x5x15-break-retest-selective@m1",
+      "configs": 332,
+      "closes": 4441,
+      "gp": 3.8559831123024453,
+      "gl": 44.03189859375458,
+      "unknownReturns": 0,
+      "pf": 0.08757249256677231,
+      "pfState": "measured",
+      "distinctOnsets": 20,
+      "activeHours": 7,
+      "positiveHours": 1
+    },
+    {
+      "id": "inverse-micro-1x5x15-market-momentum-selective@m1",
+      "configs": 189,
+      "closes": 2305,
+      "gp": 0.5386997482561323,
+      "gl": 31.331692129233662,
+      "unknownReturns": 0,
+      "pf": 0.01719344573009847,
+      "pfState": "measured",
+      "distinctOnsets": 20,
+      "activeHours": 7,
+      "positiveHours": 0
+    },
+    {
+      "id": "inverse-micro-1x5-market-momentum-selective@m1",
+      "configs": 80,
+      "closes": 681,
+      "gp": 0.6486450465905588,
+      "gl": 7.849524629861491,
+      "unknownReturns": 0,
+      "pf": 0.0826349463409486,
+      "pfState": "measured",
+      "distinctOnsets": 18,
+      "activeHours": 6,
+      "positiveHours": 0
+    },
+    {
+      "id": "inverse-micro-1x5-break-close-fast@m1",
+      "configs": 244,
+      "closes": 1723,
+      "gp": 0.8415170994005344,
+      "gl": 18.284378248091283,
+      "unknownReturns": 0,
+      "pf": 0.04602382908417359,
+      "pfState": "measured",
+      "distinctOnsets": 15,
+      "activeHours": 6,
+      "positiveHours": 0
+    },
+    {
+      "id": "inverse-micro-1x5x15-market-momentum-fast@m1",
+      "configs": 189,
+      "closes": 2257,
+      "gp": 1.7985661693635722,
+      "gl": 27.621360113566556,
+      "unknownReturns": 0,
+      "pf": 0.0651150472666328,
+      "pfState": "measured",
+      "distinctOnsets": 25,
+      "activeHours": 7,
+      "positiveHours": 1
+    },
+    {
+      "id": "inverse-micro-1x5-break-close-selective@m1",
+      "configs": 170,
+      "closes": 1125,
+      "gp": 0.5177660214856022,
+      "gl": 10.842220841971871,
+      "unknownReturns": 0,
+      "pf": 0.04775460941371457,
+      "pfState": "measured",
+      "distinctOnsets": 15,
+      "activeHours": 6,
+      "positiveHours": 0
+    },
+    {
+      "id": "inverse-micro-1x5-activity-flow-selective@m1",
+      "configs": 148,
+      "closes": 1518,
+      "gp": 1.753003071870465,
+      "gl": 13.326332670899943,
+      "unknownReturns": 0,
+      "pf": 0.13154429768201806,
+      "pfState": "measured",
+      "distinctOnsets": 19,
+      "activeHours": 6,
+      "positiveHours": 0
+    },
+    {
+      "id": "inverse-micro-1x5-activity-flow-fast@m1",
+      "configs": 88,
+      "closes": 807,
+      "gp": 1.0011130250708977,
+      "gl": 6.980454232962873,
+      "unknownReturns": 0,
+      "pf": 0.14341660179411742,
+      "pfState": "measured",
+      "distinctOnsets": 19,
+      "activeHours": 6,
+      "positiveHours": 0
+    },
+    {
+      "id": "inverse-micro-1x15-activity-flow-selective@m1",
+      "configs": 89,
+      "closes": 485,
+      "gp": 0.24029791555193508,
+      "gl": 3.0236405317861026,
+      "unknownReturns": 0,
+      "pf": 0.07947304351353832,
+      "pfState": "measured",
+      "distinctOnsets": 17,
+      "activeHours": 5,
+      "positiveHours": 0
+    },
+    {
+      "id": "inverse-micro-1x15-market-momentum-selective@m1",
+      "configs": 95,
+      "closes": 769,
+      "gp": 0.19790834985758685,
+      "gl": 11.534003208601284,
+      "unknownReturns": 0,
+      "pf": 0.01715868690846211,
+      "pfState": "measured",
+      "distinctOnsets": 17,
+      "activeHours": 7,
+      "positiveHours": 0
+    },
+    {
+      "id": "inverse-micro-1x5x15-activity-flow-selective@m1",
+      "configs": 65,
+      "closes": 365,
+      "gp": 0.25154995230831934,
+      "gl": 2.2558476339114777,
+      "unknownReturns": 0,
+      "pf": 0.11151016962619492,
+      "pfState": "measured",
+      "distinctOnsets": 14,
+      "activeHours": 5,
+      "positiveHours": 0
+    },
+    {
+      "id": "inverse-micro-1x15-break-close-fast@m1",
+      "configs": 130,
+      "closes": 1044,
+      "gp": 0.48021737398432723,
+      "gl": 12.947561725244825,
+      "unknownReturns": 0,
+      "pf": 0.03708940603449773,
+      "pfState": "measured",
+      "distinctOnsets": 16,
+      "activeHours": 7,
+      "positiveHours": 0
+    },
+    {
+      "id": "inverse-micro-1x15-break-close-selective@m1",
+      "configs": 119,
+      "closes": 804,
+      "gp": 0.2760801861342699,
+      "gl": 9.668000510351701,
+      "unknownReturns": 0,
+      "pf": 0.02855607897813678,
+      "pfState": "measured",
+      "distinctOnsets": 17,
+      "activeHours": 7,
+      "positiveHours": 0
+    },
+    {
+      "id": "inverse-micro-1x15-activity-acceleration-fast@m1",
+      "configs": 220,
+      "closes": 1699,
+      "gp": 2.270013679631083,
+      "gl": 18.54276320966457,
+      "unknownReturns": 0,
+      "pf": 0.12242046419747957,
+      "pfState": "measured",
+      "distinctOnsets": 17,
+      "activeHours": 7,
+      "positiveHours": 1
+    },
+    {
+      "id": "inverse-micro-1x15-activity-acceleration-selective@m1",
+      "configs": 214,
+      "closes": 1375,
+      "gp": 1.3751297811652874,
+      "gl": 13.848399642476636,
+      "unknownReturns": 0,
+      "pf": 0.0992988227280362,
+      "pfState": "measured",
+      "distinctOnsets": 17,
+      "activeHours": 7,
+      "positiveHours": 1
+    },
+    {
+      "id": "inverse-micro-1x5-activity-acceleration-selective@m1",
+      "configs": 227,
+      "closes": 2066,
+      "gp": 2.307718701486028,
+      "gl": 19.03736692587516,
+      "unknownReturns": 0,
+      "pf": 0.12122047710019335,
+      "pfState": "measured",
+      "distinctOnsets": 16,
+      "activeHours": 6,
+      "positiveHours": 1
+    },
+    {
+      "id": "inverse-micro-1x5-activity-acceleration-fast@m1",
+      "configs": 113,
+      "closes": 853,
+      "gp": 1.114276702866855,
+      "gl": 5.7332737137045715,
+      "unknownReturns": 0,
+      "pf": 0.19435260873789015,
+      "pfState": "measured",
+      "distinctOnsets": 18,
+      "activeHours": 6,
+      "positiveHours": 2
+    },
+    {
+      "id": "inverse-micro-1x5x15-activity-acceleration-fast@m1",
+      "configs": 138,
+      "closes": 720,
+      "gp": 0.7276823693268605,
+      "gl": 6.000253397873882,
+      "unknownReturns": 0,
+      "pf": 0.12127527307175161,
+      "pfState": "measured",
+      "distinctOnsets": 18,
+      "activeHours": 6,
+      "positiveHours": 1
+    },
+    {
+      "id": "inverse-micro-1x5x15-activity-acceleration-selective@m1",
+      "configs": 132,
+      "closes": 569,
+      "gp": 0.39320634854744146,
+      "gl": 4.785845255145885,
+      "unknownReturns": 0,
+      "pf": 0.0821602721326299,
+      "pfState": "measured",
+      "distinctOnsets": 9,
+      "activeHours": 5,
+      "positiveHours": 1
+    },
+    {
+      "id": "inverse-micro-1x15-adaptive-fast@m1",
+      "configs": 117,
+      "closes": 693,
+      "gp": 0.11920888892113704,
+      "gl": 5.0308200369806135,
+      "unknownReturns": 0,
+      "pf": 0.023695717208100247,
+      "pfState": "measured",
+      "distinctOnsets": 11,
+      "activeHours": 5,
+      "positiveHours": 1
+    },
+    {
+      "id": "inverse-micro-1x15-adaptive-selective@m1",
+      "configs": 202,
+      "closes": 1171,
+      "gp": 0.08571689049558384,
+      "gl": 9.45967107193093,
+      "unknownReturns": 0,
+      "pf": 0.00906129714699341,
+      "pfState": "measured",
+      "distinctOnsets": 8,
+      "activeHours": 5,
+      "positiveHours": 1
+    },
+    {
+      "id": "inverse-micro-1x5x15-change-roc-fast@m1",
+      "configs": 146,
+      "closes": 853,
+      "gp": 0.034434280209609355,
+      "gl": 8.849606872818166,
+      "unknownReturns": 0,
+      "pf": 0.0038910519647347595,
+      "pfState": "measured",
+      "distinctOnsets": 9,
+      "activeHours": 5,
+      "positiveHours": 1
+    },
+    {
+      "id": "inverse-micro-1x5x15-change-roc-selective@m1",
+      "configs": 122,
+      "closes": 748,
+      "gp": 0.03114176858429934,
+      "gl": 7.793553745144083,
+      "unknownReturns": 0,
+      "pf": 0.003995836764929323,
+      "pfState": "measured",
+      "distinctOnsets": 16,
+      "activeHours": 5,
+      "positiveHours": 1
+    },
+    {
+      "id": "inverse-micro-1x5x15-adaptive-fast@m1",
+      "configs": 135,
+      "closes": 808,
+      "gp": 0.16110800237450051,
+      "gl": 6.148219841378305,
+      "unknownReturns": 0,
+      "pf": 0.026204008075674697,
+      "pfState": "measured",
+      "distinctOnsets": 15,
+      "activeHours": 5,
+      "positiveHours": 1
+    },
+    {
+      "id": "inverse-micro-1x5x15-adaptive-selective@m1",
+      "configs": 161,
+      "closes": 981,
+      "gp": 0.06646321658123953,
+      "gl": 7.832105342861985,
+      "unknownReturns": 0,
+      "pf": 0.008485996251545913,
+      "pfState": "measured",
+      "distinctOnsets": 11,
+      "activeHours": 5,
+      "positiveHours": 1
+    },
+    {
+      "id": "inverse-micro-1x15-change-roc-fast@m1",
+      "configs": 166,
+      "closes": 866,
+      "gp": 0.017180447335857153,
+      "gl": 8.758362453734078,
+      "unknownReturns": 0,
+      "pf": 0.0019616049720039123,
+      "pfState": "measured",
+      "distinctOnsets": 7,
+      "activeHours": 5,
+      "positiveHours": 1
+    },
+    {
+      "id": "inverse-micro-1x5-market-momentum-fast@m1",
+      "configs": 58,
+      "closes": 389,
+      "gp": 0.22781215544216007,
+      "gl": 3.496063605599339,
+      "unknownReturns": 0,
+      "pf": 0.06516247446908383,
+      "pfState": "measured",
+      "distinctOnsets": 11,
+      "activeHours": 5,
+      "positiveHours": 1
+    },
+    {
+      "id": "inverse-micro-1x15-market-momentum-fast@m1",
+      "configs": 55,
+      "closes": 464,
+      "gp": 0.49628423450867376,
+      "gl": 5.327191881718554,
+      "unknownReturns": 0,
+      "pf": 0.09316057043332411,
+      "pfState": "measured",
+      "distinctOnsets": 18,
+      "activeHours": 7,
+      "positiveHours": 0
+    },
+    {
+      "id": "inverse-micro-1x5-adaptive-fast@m1",
+      "configs": 65,
+      "closes": 446,
+      "gp": 0.07314769222350706,
+      "gl": 3.6085756919740786,
+      "unknownReturns": 0,
+      "pf": 0.020270516255539998,
+      "pfState": "measured",
+      "distinctOnsets": 9,
+      "activeHours": 4,
+      "positiveHours": 1
+    },
+    {
+      "id": "inverse-micro-1x5-adaptive-selective@m1",
+      "configs": 55,
+      "closes": 378,
+      "gp": 0.022847657185834522,
+      "gl": 3.1703083614890373,
+      "unknownReturns": 0,
+      "pf": 0.007206761797487543,
+      "pfState": "measured",
+      "distinctOnsets": 7,
+      "activeHours": 4,
+      "positiveHours": 1
+    },
+    {
+      "id": "inverse-micro-1-relative-trend-fast@m1",
+      "configs": 29,
+      "closes": 77,
+      "gp": 0.00887775551102226,
+      "gl": 1.0660556896245001,
+      "unknownReturns": 0,
+      "pf": 0.008327665803415296,
+      "pfState": "measured",
+      "distinctOnsets": 5,
+      "activeHours": 5,
+      "positiveHours": 1
+    },
+    {
+      "id": "inverse-micro-1x15-change-roc-selective@m1",
+      "configs": 130,
+      "closes": 718,
+      "gp": 0.0010526201063736007,
+      "gl": 7.1573280478201395,
+      "unknownReturns": 0,
+      "pf": 0.00014706886415443682,
+      "pfState": "measured",
+      "distinctOnsets": 7,
+      "activeHours": 5,
+      "positiveHours": 1
+    },
+    {
+      "id": "inverse-micro-1x5-change-roc-fast@m1",
+      "configs": 3,
+      "closes": 18,
+      "gp": 0.0010382770947771382,
+      "gl": 0.18737540450150028,
+      "unknownReturns": 0,
+      "pf": 0.005541159991298777,
+      "pfState": "measured",
+      "distinctOnsets": 6,
+      "activeHours": 3,
+      "positiveHours": 1
+    },
+    {
+      "id": "inverse-micro-1x5-change-roc-selective@m1",
+      "configs": 3,
+      "closes": 18,
+      "gp": 0.0010382770947771382,
+      "gl": 0.18737540450150028,
+      "unknownReturns": 0,
+      "pf": 0.005541159991298777,
+      "pfState": "measured",
+      "distinctOnsets": 6,
+      "activeHours": 3,
+      "positiveHours": 1
+    },
+    {
+      "id": "micro-1-relative-trend-fast@m1",
+      "configs": 35,
+      "closes": 105,
+      "gp": 0.8942748123407925,
+      "gl": 0,
+      "unknownReturns": 0,
+      "pf": null,
+      "pfState": "no-loss-gate-score-4",
+      "distinctOnsets": 3,
+      "activeHours": 2,
+      "positiveHours": 2
+    },
+    {
+      "id": "micro-1x5x15-market-follow-selective@m1",
+      "configs": 1,
+      "closes": 3,
+      "gp": 0,
+      "gl": 0.056088799041629236,
+      "unknownReturns": 0,
+      "pf": 0,
+      "pfState": "measured",
+      "distinctOnsets": 3,
+      "activeHours": 3,
+      "positiveHours": 0
+    },
+    {
+      "id": "micro-1x5x15-drawdown-market-selective@m1",
+      "configs": 1,
+      "closes": 3,
+      "gp": 0,
+      "gl": 0.0657447677895157,
+      "unknownReturns": 0,
+      "pf": 0,
+      "pfState": "measured",
+      "distinctOnsets": 3,
+      "activeHours": 3,
+      "positiveHours": 0
+    },
+    {
+      "id": "inverse-micro-1-market-momentum-fast@m1",
+      "configs": 2,
+      "closes": 2,
+      "gp": 0,
+      "gl": 0.04561913986826824,
+      "unknownReturns": 0,
+      "pf": 0,
+      "pfState": "measured",
+      "distinctOnsets": 1,
+      "activeHours": 1,
+      "positiveHours": 0
+    },
+    {
+      "id": "inverse-micro-1-market-momentum-selective@m1",
+      "configs": 4,
+      "closes": 4,
+      "gp": 0,
+      "gl": 0.09123827973653648,
+      "unknownReturns": 0,
+      "pf": 0,
+      "pfState": "measured",
+      "distinctOnsets": 1,
+      "activeHours": 1,
+      "positiveHours": 0
+    },
+    {
+      "id": "inverse-micro-1-drawdown-trend-selective@m1",
+      "configs": 15,
+      "closes": 35,
+      "gp": 0,
+      "gl": 0.5237480224992787,
+      "unknownReturns": 0,
+      "pf": 0,
+      "pfState": "measured",
+      "distinctOnsets": 5,
+      "activeHours": 3,
+      "positiveHours": 0
+    },
+    {
+      "id": "micro-1x15-range-reclaim-fast@m1",
+      "configs": 186,
+      "closes": 1821,
+      "gp": 3.084964671560626,
+      "gl": 18.86861479828752,
+      "unknownReturns": 0,
+      "pf": 0.16349714616255834,
+      "pfState": "measured",
+      "distinctOnsets": 14,
+      "activeHours": 6,
+      "positiveHours": 0
+    },
+    {
+      "id": "inverse-micro-1-break-activity-selective@m1",
+      "configs": 49,
+      "closes": 511,
+      "gp": 0.24291458799600865,
+      "gl": 7.546444322306128,
+      "unknownReturns": 0,
+      "pf": 0.03218927717759615,
+      "pfState": "measured",
+      "distinctOnsets": 15,
+      "activeHours": 5,
+      "positiveHours": 0
+    },
+    {
+      "id": "inverse-micro-1-break-retest-selective@m1",
+      "configs": 3,
+      "closes": 6,
+      "gp": 0.006938108623632144,
+      "gl": 0.06847623498348038,
+      "unknownReturns": 0,
+      "pf": 0.1013214091765696,
+      "pfState": "measured",
+      "distinctOnsets": 5,
+      "activeHours": 4,
+      "positiveHours": 1
+    },
+    {
+      "id": "micro-1x5x15-drawdown-turn-fast@m1",
+      "configs": 11,
+      "closes": 15,
+      "gp": 0.00017776495564719936,
+      "gl": 0.046026645318476694,
+      "unknownReturns": 0,
+      "pf": 0.003862218382790508,
+      "pfState": "measured",
+      "distinctOnsets": 3,
+      "activeHours": 2,
+      "positiveHours": 0
+    },
+    {
+      "id": "inverse-micro-1x5-pullback-activity-fast@m1",
+      "configs": 20,
+      "closes": 65,
+      "gp": 0.047010511651469813,
+      "gl": 0.11931531315109874,
+      "unknownReturns": 0,
+      "pf": 0.394002332223162,
+      "pfState": "measured",
+      "distinctOnsets": 4,
+      "activeHours": 2,
+      "positiveHours": 0
+    },
+    {
+      "id": "micro-5-market-follow-fast@m5",
+      "configs": 7,
+      "closes": 119,
+      "gp": 0.22435717599872912,
+      "gl": 0.1748696937438312,
+      "unknownReturns": 0,
+      "pf": 1.2829963339867956,
+      "pfState": "measured",
+      "distinctOnsets": 17,
+      "activeHours": 3,
+      "positiveHours": 2
+    },
+    {
+      "id": "micro-5-market-follow-selective@m5",
+      "configs": 7,
+      "closes": 119,
+      "gp": 0.22435717599872912,
+      "gl": 0.1748696937438312,
+      "unknownReturns": 0,
+      "pf": 1.2829963339867956,
+      "pfState": "measured",
+      "distinctOnsets": 17,
+      "activeHours": 3,
+      "positiveHours": 2
+    },
+    {
+      "id": "inverse-micro-5-drawdown-market-selective@m5",
+      "configs": 1,
+      "closes": 12,
+      "gp": 0.015836920938864373,
+      "gl": 0.047978657347137355,
+      "unknownReturns": 0,
+      "pf": 0.33008262036764313,
+      "pfState": "measured",
+      "distinctOnsets": 12,
+      "activeHours": 2,
+      "positiveHours": 0
+    },
+    {
+      "id": "inverse-micro-5-drawdown-turn-fast@m5",
+      "configs": 5,
+      "closes": 79,
+      "gp": 0.24437677763681856,
+      "gl": 0.2496007924820879,
+      "unknownReturns": 0,
+      "pf": 0.9790705197955482,
+      "pfState": "measured",
+      "distinctOnsets": 16,
+      "activeHours": 4,
+      "positiveHours": 3
+    },
+    {
+      "id": "micro-1x5-pullback-activity-fast@m1",
+      "configs": 6,
+      "closes": 33,
+      "gp": 0.08604486910324728,
+      "gl": 0.006416162729181392,
+      "unknownReturns": 0,
+      "pf": 13.410643204528784,
+      "pfState": "measured",
+      "distinctOnsets": 7,
+      "activeHours": 2,
+      "positiveHours": 2
+    },
+    {
+      "id": "inverse-micro-1x15-drawdown-market-fast@m1",
+      "configs": 1,
+      "closes": 4,
+      "gp": 0.05604344092422594,
+      "gl": 0,
+      "unknownReturns": 0,
+      "pf": null,
+      "pfState": "no-loss-gate-score-4",
+      "distinctOnsets": 4,
+      "activeHours": 2,
+      "positiveHours": 2
+    }
+  ],
+  "notes": [
+    "Base range rows are pair-level representative evidence, not counts or PF of every configured TP/SL cell.",
+    "Validation PF pools only configs passing their own recorded configEval. Seated PF uses that step's actual Real IDs too.",
+    "Historical validation windows overlap across steps and configurations; never sum them as distinct executed orders.",
+    "Execution contains only funded modeled settled closes after Base, own config validation, entry context and execution filters. It is not venue-owned execution.",
+    "The baseline all-config capital requirement is infeasible. This audit does not certify live sizing or profitability.",
+    "No-loss rows have no finite measured PF; the existing qualifying gate uses score 4. Empty/unknown cohorts remain unavailable."
+  ]
+}

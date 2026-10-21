@@ -1,4 +1,4 @@
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { DEFAULT_SETTINGS } from "./config.ts";
 import type { StratKind, Trade } from "./domain/types.ts";
@@ -6,14 +6,16 @@ import { configId } from "./pipeline/pipeline.ts";
 import { liveLaneFilter } from "./server/live.server.ts";
 import { CoreRuntime } from "./server/runtime.server.ts";
 import { CoreDb } from "./server/db.server.ts";
+import { closePool } from "./server/pool.server.ts";
 import { signalSettings } from "./signal-config.ts";
 import { acceptKey, acceptOnWindow, SignalAcceptIndex, SignalGuard, signalActiveHas, signalSeatSymbols, sigActiveKey } from "./signals.ts";
-import { activeSignalsAt, defaultWalkForward, execDecision, hedgeSignalsAt, makeTape, signalIndex, walkForward } from "./sim/walkforward.ts";
+import { activeSignalsAt, defaultWalkForward, execDecision, hedgeSignalsAt, makeTape, signalConfigEval, signalIndex, walkForward } from "./sim/walkforward.ts";
 
 const H = 3_600_000;
 const NOW = 100 * H;
 const IND = "sig-ema-cross-s@m15";
 const SYM = "A-USDT";
+after(() => closePool());
 function tape(kind: StratKind, rs: number[], ind = IND, tp = 0.03) {
   const protect = kind === "trailing-only"
     ? { tp: 0, sl: 0.06, trail: 0.015, trailOnly: true, hold: 192 }
@@ -45,14 +47,14 @@ describe("independent signal qualification", () => {
   });
 
   it("Normal and Trailing remain distinct through simulation, live filtering and seated statistics", () => {
-    const normal = tape("normal", []);
+    const normal = tape("normal", Array(6).fill(0.01));
     const trailing = tape("trailing", []);
     const active = new Set([key("normal")]);
     const base = defaultWalkForward(DEFAULT_SETTINGS);
     const options = {
       ...base, signalActive: active, lastN: 0, validLastN: 0, signalValidLastN: 0,
       signalGuardN: 0, signalCluster: undefined, signalAccept: undefined, signalSideAccept: undefined,
-      signalOwnBase: true, symGate: undefined,
+      signalOwnBase: true, symGate: undefined, gates: { ...base.gates, minTrades: 3, maxDdr: 0, minGreen: 0 },
       toggles: { ...base.toggles, normal: true, trailing: true, block: false, blockActive: false },
     };
     assert.equal(execDecision(normal, NOW, options, { sym: SYM, side: 1 }).ok, true);
@@ -96,7 +98,7 @@ describe("independent signal qualification", () => {
       const live = liveLaneFilter({ source: "signals" }, new Set(), active);
       for (const side of [1, -1]) {
         assert.equal(signalActiveHas(active, "follow", IND, SYM, side, kind, tp.id), true);
-        assert.equal(execDecision(tp, NOW, options, { sym: SYM, side }).ok, true);
+        assert.equal(execDecision(tp, NOW, options, { sym: SYM, side }).ok, false, "typed activation alone cannot qualify an empty own history");
       }
       for (const rawSide of invalid) {
         const side = rawSide as 1 | -1;
@@ -124,7 +126,7 @@ describe("independent signal qualification", () => {
       assert.equal(live.validLane({ cfg: tp.id, sym: SYM, side: 1, vol: 1 }), false);
       assert.deepEqual([...signalSeatSymbols(tp, active)], []);
       const typed = new Set([key(kind)]);
-      assert.equal(execDecision(tp, NOW, { ...options, signalActive: typed }, { sym: SYM, side: 1 }).ok, true);
+      assert.equal(execDecision(tp, NOW, { ...options, signalActive: typed }, { sym: SYM, side: 1 }).ok, false, "typed activation still requires measured own history");
       assert.equal(liveLaneFilter({ source: "signals" }, new Set(), typed)
         .validLane({ cfg: tp.id, sym: SYM, side: 1, vol: 1 }), true);
       assert.deepEqual([...signalSeatSymbols(tp, typed)], [0]);
@@ -173,7 +175,7 @@ describe("independent signal qualification", () => {
     rt.wf.signalActive = active;
     (rt as unknown as { stepPaper(): void }).stepPaper();
     assert.deepEqual(rt.paper.selected, [good.id]);
-    rt.stop();
+    rt.dispose();
   });
 
   it("Signal last-N cannot borrow another symbol or direction even with the engine entry gate off", () => {
@@ -205,6 +207,19 @@ describe("independent signal qualification", () => {
     assert.deepEqual(execDecision(held, NOW, defaultWalkForward(DEFAULT_SETTINGS), { sym: SYM, side: 1 }),
       { ok: false, why: "heldOnly" });
     assert.equal(signalIndex([held, own]).length, 1, "one lazy descriptor for the executable config only");
+  });
+
+  it("cached Signal eligibility follows an in-place transition to held-only and back", () => {
+    const tp = tape("normal", Array(12).fill(0.03));
+    const base = defaultWalkForward(DEFAULT_SETTINGS);
+    const options = { ...base, preGate: false, rangeGate: undefined, signalValidLastN: 8,
+      gates: { ...base.gates, maxDdr: 0 } };
+    const at = 110 * H;
+    assert.equal(signalConfigEval(tp, at, options, SYM, 1).ok, true);
+    tp.heldOnly = true;
+    assert.equal(signalConfigEval(tp, at, options, SYM, 1).ok, false);
+    tp.heldOnly = false;
+    assert.equal(signalConfigEval(tp, at, options, SYM, 1).ok, true);
   });
 
   it("a retained activation verdict cannot replace a config's own minimum PF", () => {

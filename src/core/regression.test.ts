@@ -374,9 +374,13 @@ describe("protect grid", () => {
     assert.deepEqual(g.tp, []);
     // (9 × 7 Minimal + 6 × 7 Short + 8 × 6 General + 10 × 6 Long) cells × 4 trails × 2 holds, and Micro (on since
     // 13 Oct): 7 targets × 17 stops × 4 trails × 2 holds
-    assert.equal(gridVariants(g), 1704 + 952);
+    const allCells = protectGrid(15, g);
+    const trailingOnly = allCells.filter((p) => p.trailOnly);
+    assert.ok(trailingOnly.length > 0);
+    assert.ok(trailingOnly.every((p) => p.tp === 0 && p.sl <= 0.03 && p.trail > 0));
+    assert.equal(gridVariants(g), 1704 + 952 + trailingOnly.length);
     assert.ok(gridVariants(g) <= GRID_VARIANTS_MAX);
-    const cells = protectGrid(15, g);
+    const cells = allCells.filter((p) => !p.trailOnly);
     // the floors fold no two cells of the four ranges into one: every combination is its own config; Micro's stop floor
     // (0.2 % net + cost) folds its tightest stops of the smallest targets (952 distinct at 2–5× cost, micro-range.test.ts)
     assert.equal(cells.filter((p) => p.tag !== "mc").length, 1704);
@@ -1053,6 +1057,21 @@ it("the drawdown-time limit scales with a config's history and never drops below
   assert.ok(Math.abs(ddtLimitH(o(undefined), tp(24), t, 336) - 35 * 24 / 72) < 1e-9);
 });
 
+// These tests isolate candidate-direction learning. Independently qualify the config itself on both sides;
+// an empty candidate book can be immature, but an empty config record cannot authorize an entry.
+const DIRECTION_GATE_AT = Date.UTC(2026, 8, 30, 12);
+function directionGateQualificationRows(cfg: string, at = DIRECTION_GATE_AT): import("./domain/types.ts").Trade[] {
+  const rows: import("./domain/types.ts").Trade[] = [];
+  for (const side of [1, -1] as const) for (let i = 0; i < 40; i++) {
+    const r = i % 5 === 0 ? -0.01 : 0.02;
+    const entryT = at + (-20 + i / 3) * 3_600_000;
+    rows.push({ cfg, sym: "A", side, entryT, exitT: entryT + 60_000,
+      entry: 100, exit: 100 * (1 + side * r), r, mult: 1,
+      reason: r > 0 ? "tp" : "sl", bars: 1, mfe: 0, mae: 0, kind: "normal" });
+  }
+  return rows;
+}
+
 it("candidate direction gating preserves rejected losses, recovery and downturn independently of accepted Block history", async () => {
   const { CoreRuntime } = await import("./server/runtime.server.ts");
   const { DEFAULT_BLOCK, DEFAULT_TOGGLES } = await import("./config.ts");
@@ -1061,9 +1080,9 @@ it("candidate direction gating preserves rejected losses, recovery and downturn 
   const { bookFor, candidateDirectionFor, execDecision, feedBooks, makeTape } = await import("./sim/walkforward.ts");
   type Feed = import("./sim/walkforward.ts").BlockFeedEntry;
   const ind = INDICATIONS[0].id;
-  const tp = makeTape("x", "magnet", ind, { tp: .02, sl: .02, trail: 0, hold: 32 }, "normal", ["A"], [], [], []);
+  const tp = makeTape("x", "magnet", ind, { tp: .02, sl: .02, trail: 0, hold: 32 }, "normal", ["A"], directionGateQualificationRows("x"), [], []);
   const rows = (r: number, accepted?: boolean, offset = 0): Feed[] => Array.from({ length: 8 }, (_, i) => ({
-    cfg: "candidate", sym: "B", side: 1, kind: "normal", type: "normal", ind, entryT: 0, exitT: offset + i + 1, r,
+    cfg: "candidate", sym: "B", side: 1, kind: "normal", type: "normal", ind, entryT: DIRECTION_GATE_AT, exitT: DIRECTION_GATE_AT + offset + i + 1, r,
     ...(accepted === undefined ? {} : { accepted }),
   }));
   const cases = [
@@ -1083,16 +1102,16 @@ it("candidate direction gating preserves rejected losses, recovery and downturn 
       }) & { advance: (t: number, max: number) => boolean } };
       R.sim = { feed, trades: [] };
       const at = R.booksAt();
-      while (!at.advance(20, 2)) { /* the real runtime bounded cursor */ }
-      const runtime = at(20);
+      while (!at.advance(DIRECTION_GATE_AT + 20, 2)) { /* the real runtime bounded cursor */ }
+      const runtime = at(DIRECTION_GATE_AT + 20);
       const book = bookFor(rt.wf), direction = candidateDirectionFor(rt.wf);
       const acceptedReference = blockBookOf(rt.wf.block, false);
       for (const row of feed) { feedBooks(row, book, undefined, direction); feedBooks(row, acceptedReference); }
       for (const context of [runtime, { book, direction }]) {
-        const decision = execDecision(tp, 20, rt.wf, { ...context, sym: "A", side });
+        const decision = execDecision(tp, DIRECTION_GATE_AT + 20, rt.wf, { ...context, sym: "A", side });
         assert.equal(decision.ok, test.ok, `${test.name}: Block ${block}, auto ${windowAuto}`);
         if (!decision.ok) assert.equal(decision.why, "sideGate");
-        assert.equal(execDecision(tp, 20, rt.wf, { ...context, sym: "A", side: -side }).ok, true, "opposite direction stays independent");
+        assert.equal(execDecision(tp, DIRECTION_GATE_AT + 20, rt.wf, { ...context, sym: "A", side: -side }).ok, true, "opposite direction stays independent");
         assert.equal(context.direction!.tailSum(side, 8).n, 8);
         assert.deepEqual(context.direction!.tailSum(side, 8), direction!.tailSum(side, 8));
         if (context.book) {
@@ -1110,17 +1129,17 @@ it("candidate direction tails preserve supported last-N, unknown counts and expl
   const { DEFAULT_TOGGLES } = await import("./config.ts");
   const { INDICATIONS } = await import("./indications/registry.ts");
   const { CandidateDirectionBook, candidateDirectionFor, defaultWalkForward, execDecision, makeTape } = await import("./sim/walkforward.ts");
-  const tp = makeTape("x", "magnet", INDICATIONS[0].id, { tp: .02, sl: .02, trail: 0, hold: 32 }, "normal", ["A"], [], [], []);
+  const tp = makeTape("x", "magnet", INDICATIONS[0].id, { tp: .02, sl: .02, trail: 0, hold: 32 }, "normal", ["A"], directionGateQualificationRows("x"), [], []);
   const o = { ...defaultWalkForward(DEFAULT_SETTINGS), lastN: 0, normalBaseMinPf: 0, sideGateN: 64,
     toggles: { ...DEFAULT_TOGGLES, normal: true, block: false, blockActive: false } };
   const direction = candidateDirectionFor(o)!;
   for (const side of [0, 2, -2, NaN, Infinity, -Infinity]) direction.add({ side, r: .5 });
   assert.deepEqual(direction.tailSum(1, 64), { n: 0, sum: 0 });
   assert.deepEqual(direction.tailSum(-1, 64), { n: 0, sum: 0 }, "invalid sides cannot alias Short");
-  const decide = () => execDecision(tp, 1, o, { direction, book: null, sym: "A", side: 1 });
+  const decide = () => execDecision(tp, DIRECTION_GATE_AT + 1, o, { direction, book: null, sym: "A", side: 1 });
   assert.equal(candidateDirectionFor({ sideGateN: 0 }), null);
   assert.equal(decide().ok, true, "a valid empty record is immature");
-  assert.deepEqual(execDecision(tp, 1, o, { book: null, sym: "A", side: 1 }), { ok: false, why: "sideGateUnavailable" });
+  assert.deepEqual(execDecision(tp, DIRECTION_GATE_AT + 1, o, { book: null, sym: "A", side: 1 }), { ok: false, why: "sideGateUnavailable" });
   for (let i = 0; i < 63; i++) direction.add({ side: 1, r: -.01 });
   assert.equal(direction.tailSum(1, 64).n, 63); assert.equal(decide().ok, true, "the denominator remains64, not the immature count");
   direction.add({ side: 1, r: -.01 }); assert.equal(decide().ok, false, "exactly64 losing candidates veto");
@@ -1130,10 +1149,10 @@ it("candidate direction tails preserve supported last-N, unknown counts and expl
   for (const bad of [Infinity, -Infinity]) {
     const unknown = new CandidateDirectionBook(); unknown.add({ side: 1, r: bad });
     assert.equal(unknown.tailSum(1, 1).n, 1);
-    assert.deepEqual(execDecision(tp, 1, { ...o, sideGateN: 1 }, { direction: unknown, sym: "A", side: 1 }), { ok: false, why: "sideGate" });
+    assert.deepEqual(execDecision(tp, DIRECTION_GATE_AT + 1, { ...o, sideGateN: 1 }, { direction: unknown, sym: "A", side: 1 }), { ok: false, why: "sideGate" });
   }
   const overflow = new CandidateDirectionBook(); overflow.add({ side: 1, r: 1e308 }); overflow.add({ side: 1, r: 1e308 });
-  assert.deepEqual(execDecision(tp, 1, { ...o, sideGateN: 2 }, { direction: overflow, sym: "A", side: 1 }), { ok: false, why: "sideGate" });
+  assert.deepEqual(execDecision(tp, DIRECTION_GATE_AT + 1, { ...o, sideGateN: 2 }, { direction: overflow, sym: "A", side: 1 }), { ok: false, why: "sideGate" });
 });
 
 it("closed signal candidates still teach the raw engine direction gate while open marks teach no history", async () => {
@@ -1144,17 +1163,17 @@ it("closed signal candidates still teach the raw engine direction gate while ope
   const o = { ...defaultWalkForward(DEFAULT_SETTINGS), lastN: 0, normalBaseMinPf: 0, sideGateN: 1,
     toggles: { ...DEFAULT_TOGGLES, normal: true, block: true, blockActive: false }, block: { ...DEFAULT_BLOCK } };
   const book = bookFor(o)!, direction = candidateDirectionFor(o)!, guard = new SignalGuard();
-  const row = { sym: "B", side: 1, r: -.02, ind: "sig-ema-trend-s@m15", kind: "signal", type: "normal", cfg: "follow|sig-ema-trend-s@m15|candidate", entryT: 1, exitT: 2 };
+  const row = { sym: "B", side: 1, r: -.02, ind: "sig-ema-trend-s@m15", kind: "signal", type: "normal", cfg: "follow|sig-ema-trend-s@m15|candidate", entryT: DIRECTION_GATE_AT + 1, exitT: DIRECTION_GATE_AT + 2 };
   feedBooks(row, book, guard, direction);
   assert.deepEqual(direction.tailSum(1, 1), { n: 1, sum: -.02 });
-  assert.equal(book.tailSum("all", 64).n, 0); assert.equal(guard.acceptStats(sideAcceptKey(1), 3, 24).n, 1);
-  feedBooks({ ...row, entryT: 3, exitT: 4, r: .5, accepted: true, open: true }, book, guard, direction);
+  assert.equal(book.tailSum("all", 64).n, 0); assert.equal(guard.acceptStats(sideAcceptKey(1), DIRECTION_GATE_AT + 3, 24).n, 1);
+  feedBooks({ ...row, entryT: DIRECTION_GATE_AT + 3, exitT: DIRECTION_GATE_AT + 4, r: .5, accepted: true, open: true }, book, guard, direction);
   assert.deepEqual(direction.tailSum(1, 64), { n: 1, sum: -.02 });
-  assert.equal(book.tailSum("all", 64).n, 0); assert.equal(guard.acceptStats(sideAcceptKey(1), 5, 24).n, 1);
-  const engine = makeTape("x", "magnet", INDICATIONS[0].id, { tp: .02, sl: .02, trail: 0, hold: 32 }, "normal", ["A"], [], [], []);
-  assert.deepEqual(execDecision(engine, 5, o, { book, direction, guard, sym: "A", side: 1 }), { ok: false, why: "sideGate" });
+  assert.equal(book.tailSum("all", 64).n, 0); assert.equal(guard.acceptStats(sideAcceptKey(1), DIRECTION_GATE_AT + 5, 24).n, 1);
+  const engine = makeTape("x", "magnet", INDICATIONS[0].id, { tp: .02, sl: .02, trail: 0, hold: 32 }, "normal", ["A"], directionGateQualificationRows("x"), [], []);
+  assert.deepEqual(execDecision(engine, DIRECTION_GATE_AT + 5, o, { book, direction, guard, sym: "A", side: 1 }), { ok: false, why: "sideGate" });
   const signal = makeTape("s", "follow", row.ind, { tp: .02, sl: .02, trail: 0, hold: 32 }, "normal", ["A"], [], [], []);
-  const decision = execDecision(signal, 5, { ...o, signalOwnBase: true }, { book, direction, guard, sym: "A", side: 1 });
+  const decision = execDecision(signal, DIRECTION_GATE_AT + 5, { ...o, signalOwnBase: true }, { book, direction, guard, sym: "A", side: 1 });
   assert.ok(decision.ok || !["sideGate", "sideGateUnavailable"].includes(decision.why), "the engine-only gate never vetoes signal entries; their own gates stay intact");
 });
 
@@ -1167,14 +1186,15 @@ it("pending-entry cached books use rejected candidate losses and recovery withou
   try {
     rt.wf = { ...rt.wf, lastN: 0, symGate: undefined, normalBaseMinPf: 0, sideGateN: 8,
       toggles: { ...DEFAULT_TOGGLES, normal: true, block: false, blockActive: false } };
+    rt.status.lastBarT = DIRECTION_GATE_AT; // pending eligibility is evaluated at this bar's next open.
     const ind = INDICATIONS[0].id;
-    const tp = makeTape("magnet|" + ind + "|pending", "magnet", ind, { tp: .02, sl: .02, trail: 0, hold: 32 }, "normal", ["A"], [], [], [{ sym: "A", side: 1 }]);
-    const feed = Array.from({ length: 8 }, (_, i) => ({ sym: "B", side: 1, cfg: "candidate", kind: "normal", entryT: 0, exitT: i + 1, r: -.01, accepted: false }));
+    const tp = makeTape("magnet|" + ind + "|pending", "magnet", ind, { tp: .02, sl: .02, trail: 0, hold: 32 }, "normal", ["A"], directionGateQualificationRows("magnet|" + ind + "|pending"), [], [{ sym: "A", side: 1 }]);
+    const feed = Array.from({ length: 8 }, (_, i) => ({ sym: "B", side: 1, cfg: "candidate", kind: "normal", entryT: DIRECTION_GATE_AT, exitT: DIRECTION_GATE_AT + i + 1, r: -.01, accepted: false }));
     (rt as unknown as { sim: unknown }).sim = { feed, trades: [] };
     rt.tapes = [tp]; rt.paper.selected = [tp.id];
     assert.deepEqual(rt.pendingEntries(), []);
     assert.equal(rt.status.paperSkips?.["pending:exec:sideGate"], 1);
-    feed.push(...Array.from({ length: 8 }, (_, i) => ({ ...feed[0], exitT: i + 9, r: .02 })));
+    feed.push(...Array.from({ length: 8 }, (_, i) => ({ ...feed[0], exitT: DIRECTION_GATE_AT + i + 9, r: .02 })));
     assert.deepEqual(rt.pendingEntries(), []);
     assert.equal(rt.status.paperSkips?.["pending:exec:sideGate"], undefined, "the cached cursor sees rejected winning recovery");
     assert.equal(rt.status.paperSkips?.["pending:liveValidation"], 1, "recovery does not manufacture model/owned execution qualification");

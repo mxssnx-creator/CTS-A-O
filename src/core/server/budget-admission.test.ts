@@ -105,13 +105,14 @@ describe("control: the budgets admit the targets that fit (end to end)", () => {
       minFreeMargin: 0,
       exposureScaler: true,
     };
-    // These deliberately wide stops are ordinary engine fixtures; Signals have their own 2% cap.
-    const cfg = (n: string) => `follow|ema-9-21@m15|tp1|sl2|tr0|h192|budget-${n}`;
+    // Signals have a hard 2% legacy cap. This budget regression deliberately needs
+    // genuine 13%/3% ordinary stops, rather than inventing wide-stop Signal exposure.
+    const cfg = (sl: number) => `follow|rsi-mom-14-20@m15|tp1|sl${sl}|tr0|h192`;
     rt.paper.positions = [
-      lane(cfg("a"), "S0-USDT", 1, 10, 3, 0.13),
-      lane(cfg("b"), "S1-USDT", 1, 17, 3, 0.13),
-      lane(cfg("c"), "S2-USDT", 1, 24, 1, 0.03),
-      lane(cfg("d"), "S3-USDT", 1, 31, 1, 0.03),
+      lane(cfg(13), "S0-USDT", 1, 10, 3, 0.13),
+      lane(cfg(13), "S1-USDT", 1, 17, 3, 0.13),
+      lane(cfg(3), "S2-USDT", 1, 24, 1, 0.03),
+      lane(cfg(3), "S3-USDT", 1, 31, 1, 0.03),
     ];
     const ex = new SimExchange(rng(1)).withEquity(0.5);
     await stepLive(rt as never, [], 1, ex as unknown as ExchangeClient);

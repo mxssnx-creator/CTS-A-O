@@ -1,0 +1,26 @@
+[core-v2] compute #1 done in 210 ms · sim PF unavailable n 0 · loop max 106 ms
+✖ local runtime Signal tapes retain their independent 336h history beside the 24h engine (327.478097ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 954.595129
+
+✖ failing tests:
+
+test at src/core/signals-history-matrix.test.ts:141:1
+✖ local runtime Signal tapes retain their independent 336h history beside the 24h engine (327.478097ms)
+  AssertionError [ERR_ASSERTION]: independent old Signal trades missing: 1792322100000
+      at TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/signals-history-matrix.test.ts:167:12)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }

@@ -92,10 +92,11 @@ describe("pooled symbol/direction tape assembly", () => {
     const formerReplay = tp(
       ([1, -1] as const).flatMap((side) => SYMS.flatMap((sym) => histories[sym][side])),
     );
-    const rejected = configEval(formerReplay, NOW, options);
-    assert.equal(rejected.ok, false);
-    assert.equal(!rejected.ok && rejected.fail, "lastN");
-    assert.equal(selectFixed([formerReplay], NOW, options).picks.length, 0);
+    const former = configEval(formerReplay, NOW, options);
+    assert.equal(former.ok, true, "a losing sibling direction cannot reject the qualified own symbol/direction");
+    assert.equal(selectFixed([formerReplay], NOW, options).picks.length, 1);
+    assert.deepEqual(former.contexts?.map((x) => [x.sym, x.side, x.evaluation.ok]),
+      [[SYMS[0], 1, true], [SYMS[0], -1, false], [SYMS[1], 1, true], [SYMS[1], -1, false]]);
   });
 
   it("preserves empty and one-sided symbol cases without inventing duplicate runtime directions", () => {

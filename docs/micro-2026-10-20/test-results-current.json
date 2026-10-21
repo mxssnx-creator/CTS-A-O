@@ -1,194 +1,152 @@
 {
-  "status": "complete bounded correctness verification; market profitability goal failed",
-  "coreFilesTotal": 213,
-  "sourceSha256": "ae7b2021fbdce8c3432329781dfc19a651c7e1fc488b3826874af741e69befaa",
-  "baselineFullInventory": {
-    "runId": 39500328398,
-    "files": 212,
-    "tests": 2377,
-    "passed": 2372,
-    "failed": 3,
-    "explicitSlowSkipped": 2,
-    "failedFiles": [
-      "src/core/server/fast.test.ts",
-      "src/core/server/runtime.test.ts"
-    ],
-    "note": "Original failures preserved; incorrect fixture seeding / undefined optional snapshot properties repaired without relaxing accounting guards"
-  },
-  "currentTargeted": {
-    "fundedReportStageParity": {
-      "passed": 40,
-      "failed": 0
-    },
-    "paperRestart": {
-      "passed": 2,
-      "failed": 0
-    },
-    "fastLoops": {
-      "passed": 5,
-      "failed": 0
-    },
-    "orderIdentityIndependenceStageParity": {
-      "passed": 41,
-      "failed": 0
-    },
-    "typecheck": "passed",
-    "lint": "zero errors; newly changed audit/fixture files clean"
-  },
-  "marketReplay": {
-    "originalWindowCi": 39504046969,
-    "reportChecksPassed": 60,
-    "reportChecksTotal": 60,
-    "gateDecisionsPaired": 750636,
-    "gateDifferences": 0,
-    "fundedCloses": 126342,
-    "knownZeroAllocations": 5516,
-    "fundedPf": 0.10195631060722055,
-    "matchedTapeCloses": 126342,
-    "tapeDifferences": 0,
-    "duplicateRejectionsAfterFix": 0,
-    "scope": "Simulation only; all-config $10 sizing is capital-infeasible",
-    "finalCi": 39509771569,
-    "identicalStagesOnRepeat": true
-  },
-  "notes": [
-    "All six primary CI jobs passed at one exact commit/tree; all three functional inventories form the complete 213-file set with no duplicate or omission.",
-    "Two optional slow tests excluded from ordinary CI passed separately at the same frozen runtime manifest.",
-    "All five cached financial cases reproduce their entire filtered-stage JSON exactly on repeat, including losing validation/confirmation.",
-    "No venue execution or profitable every-hour production claim. Full Cartesian market portfolios, genuine 12h 5s coverage and a hard 100ms SLA remain unproven."
-  ],
-  "universalAudit": {
-    "sourceSha256": "ae7b2021fbdce8c3432329781dfc19a651c7e1fc488b3826874af741e69befaa",
-    "ciRun": 39508546694,
-    "commit": "b4eb41ead3c57e37532d646e6435757e14f66189",
-    "artifactId": 12305110025,
-    "artifactSha256": "ea0e9224ea70b343628889b355e984b86f5db0228fea81d020571844135d330d",
-    "complete": true,
-    "sourceFamilies": 19,
-    "registeredSources": 1708,
-    "nativeSymbols": 20,
-    "hourlyCuts": 6,
-    "totals": {
-      "laneSymbolCases": 123680,
-      "comparisons": 742080,
-      "comparedBars": 1698255600,
-      "entryComparisons": 4590120,
-      "entryCases": 765020
-    },
-    "violations": 0,
-    "identityCells": 606032,
-    "controlledPositiveHourlyDecisions": 5124,
-    "controlledNegativeHourlyDecisions": 5124,
-    "classification": "Real historical state/entry causality plus synthetic identity/gate correctness; not a positive market-return guarantee",
-    "unfinishedHigherBarAudit": {
-      "run": 39510692041,
-      "commit": "2c7ab7facf28b5bebad86b633d188e5efd544794",
-      "tree": "743b33bfc5495b6e7e5b0dd5231aaa07f9d7accf",
-      "conclusion": "success",
-      "jobId": 118930672853,
-      "artifactId": 12306320108,
-      "artifactSha256": "b8dd5b3008b0fb5ac2ca5bf2711c8ac9e4200e935ae2ccb6b30b6b24dbb9aa33",
-      "verified": true,
-      "minutesAfterHour": [
-        7,
-        17,
-        37
-      ],
-      "complete": true,
-      "completedSpecs": 1708,
-      "totals": {
-        "laneSymbolCases": 123680,
-        "comparisons": 371040,
-        "comparedBars": 829196560,
-        "entryComparisons": 2295060,
-        "entryCases": 765020
+  "schema": "cts-hourly-progress-final-v1",
+  "status": "complete bounded verification; profitability goal remains unmet",
+  "sourceSha256": "109fd1859eb0079134b54289ea06a0b5dc51573017bc150d8773f83eef7d611e",
+  "primaryCi": {
+    "run": 39516742275,
+    "commit": "4e3fec4a8452d16e371cf5adfe1b8608ab94844a",
+    "tree": "a93715e29432b11659c19ef393e71ac1c89f45e1",
+    "conclusion": "success",
+    "jobs": [
+      {
+        "id": 118950598460,
+        "name": "verify (stress)",
+        "conclusion": "success"
       },
-      "violations": 0
-    },
-    "coreVerification": {
-      "run": 39509771569,
-      "allSixJobsPassed": true,
-      "files": 213,
-      "ordinaryPassed": 2377,
-      "ordinaryFailed": 0,
-      "ordinaryCancelled": 0,
-      "ordinarySlowSkipped": 2,
-      "separateSlowPassed": 2,
-      "allUniqueCoreTestsIncludingOptionalSlow": 2379,
-      "scriptRegressionsPassed": 50
-    },
-    "causalityComparisonsCombined": {
-      "statePrefixes": 1113120,
-      "entryPrefixes": 6885180,
-      "comparedStateBars": 2527452160,
-      "violations": 0
-    }
+      {
+        "id": 118950598673,
+        "name": "verify (reference)",
+        "conclusion": "success"
+      },
+      {
+        "id": 118950598801,
+        "name": "verify (functional-heavy)",
+        "conclusion": "success"
+      },
+      {
+        "id": 118950598814,
+        "name": "verify (functional)",
+        "conclusion": "success"
+      },
+      {
+        "id": 118950598851,
+        "name": "verify (functional-runtime)",
+        "conclusion": "success"
+      },
+      {
+        "id": 118950598899,
+        "name": "verify (study)",
+        "conclusion": "success"
+      }
+    ],
+    "artifacts": [
+      {
+        "id": 12308471840,
+        "name": "micro-study-39516742275-1",
+        "digest": "sha256:199f0460cac7e08c52d4aab060ee467006cbb9e92b1b4949f02f6e74be90b9a7",
+        "sha256Verified": true
+      },
+      {
+        "id": 12308291047,
+        "name": "micro-reference-39516742275-1",
+        "digest": "sha256:ac4c4e1aa84c3b26d5deb82cdc604cc3a7fe99e1dc056604973ec69838c2644e",
+        "sha256Verified": true
+      },
+      {
+        "id": 12308199465,
+        "name": "micro-functional-heavy-39516742275-1",
+        "digest": "sha256:690f104a412c9c8f699111c4e6055f5159a9492f6a25418a124c0e181aae4806",
+        "sha256Verified": true
+      },
+      {
+        "id": 12308089334,
+        "name": "micro-functional-39516742275-1",
+        "digest": "sha256:29fcf5d01fab8c82e8b4af63ca31f1b7c8dd123e164796e0c345a6a2ed956490",
+        "sha256Verified": true
+      },
+      {
+        "id": 12308039722,
+        "name": "micro-functional-runtime-39516742275-1",
+        "digest": "sha256:4b5d3f60a547ec855d6c147f1e36ff4794ee6b37aaa81439a30e6dcbd8323b35",
+        "sha256Verified": true
+      },
+      {
+        "id": 12307973703,
+        "name": "micro-stress-39516742275-1",
+        "digest": "sha256:946183f2aff51331a3136875ad61f368329e01bf7bcd72c00e0b0aa598a0bca0",
+        "sha256Verified": true
+      }
+    ]
   },
-  "primaryCiRun": 39509771569,
-  "slowRuntime": {
-    "run": 39508546694,
-    "pass": 2,
-    "fail": 0
+  "universalAndSlow": {
+    "run": 39516154063,
+    "commit": "4a35070eb584b0f7168e52062d36e2beda903f4c",
+    "tree": "0202cb11cc47ece8945435e4d7ca33fd6abde9a2",
+    "conclusion": "success",
+    "note": "Same runtime manifest; subsequent change only updates the memory test's working-cache observation.",
+    "artifacts": [
+      {
+        "id": 12308027642,
+        "name": "micro-slow-39516154063",
+        "digest": "sha256:2ec27ce44a4ef388d5d185ac24cee249cf9a91bc6131704013f69d5d39f45d0b",
+        "sha256Verified": true
+      },
+      {
+        "id": 12306839539,
+        "name": "micro-universal-39516154063",
+        "digest": "sha256:b0ec1fe9f2538f5ee07a309148a32ba710777e9a279e0c698f4dc5b8bdcabfa9",
+        "sha256Verified": true
+      }
+    ]
   },
-  "signalFixtureRepair": {
-    "localPassed": 3,
-    "failed": 0,
-    "durationMs": 7367.419624
-  },
-  "testedCommit": "4e0ed5cae46ee06d8c37a64aeea5e81df629a704",
-  "testedTree": "64b81989c421973e963052a8a0a787b09e59c06b",
-  "priorPrimaryCiRun": 39506738033,
-  "priorPrimaryPartitions": {
-    "ordinary": {
-      "files": 206,
-      "pass": 2290,
-      "fail": 0
-    },
-    "runtime": {
-      "files": 1,
-      "pass": 28,
-      "fail": 0,
-      "slowExcluded": 2
-    },
-    "heavyBeforeSignalFixtureRepair": {
-      "files": 6,
-      "pass": 56,
-      "failedAssertions": 0,
-      "cancelledInSetup": 3
-    }
-  },
-  "primaryPartitions": {
-    "ordinary": {
-      "files": 206,
-      "pass": 2290,
-      "fail": 0
-    },
-    "heavy": {
-      "files": 6,
-      "pass": 59,
-      "fail": 0,
-      "cancelled": 0
-    },
-    "runtime": {
-      "files": 1,
-      "pass": 28,
-      "fail": 0,
-      "slowExcluded": 2
-    }
-  },
-  "ordinaryInventory": {
-    "files": 213,
-    "tests": 2379,
-    "pass": 2377,
+  "core": {
+    "files": 214,
+    "tests": 2388,
+    "pass": 2386,
     "fail": 0,
     "cancelled": 0,
-    "explicitSlowExcluded": 2,
-    "exactDisjointCoverage": true
+    "skipped": 2
   },
-  "allUniqueCoreTestsIncludingSeparateSlow": 2379,
-  "reportFundingAndOfflineScripts": {
-    "pass": 50,
+  "allUniqueCoreIncludingOptionalSlow": 2388,
+  "scriptRegressions": {
+    "tests": 54,
+    "pass": 54,
     "fail": 0,
     "cancelled": 0
-  }
+  },
+  "fixed": [
+    "Premature publication of Base/Signal/range qualifications and count/history against old active tapes",
+    "Missing Exit Base proof in settings carry",
+    "Cancellation of partial exact Base sweeps after harmless live/timing/unchanged settings saves"
+  ],
+  "scalarHourly": {
+    "builtConfigs": 64473,
+    "checkedPerHour": 62553,
+    "hours": 12,
+    "decisions": 750636,
+    "missingHistories": 0,
+    "verdictOrArithmeticViolations": 0,
+    "unexplainedTransitions": 0
+  },
+  "universal": {
+    "families": 19,
+    "specs": 1708,
+    "identityCells": 606032,
+    "statePrefixComparisons": 1113120,
+    "entryPrefixComparisons": 6885180,
+    "violations": 0
+  },
+  "market": {
+    "allFiveFilteredStageOutputsIdenticalExceptSource": true,
+    "selectionUnchanged": true,
+    "fundedCloses": 126342,
+    "knownZeroAllocations": 5516,
+    "unknownAllocations": 0,
+    "fundedPf": 0.10195631060722055,
+    "matchedTapePf": 0.10195631060720917,
+    "missingOrMismatchedTrades": 0,
+    "validationPf": 0.11838488218557107,
+    "confirmationPf": 0.032615717491822446
+  },
+  "scope": "Cached 20-symbol retrospective simulations plus complete core, synthetic correctness/stress and native historical causality. No venue orders, deployment or merge; no guaranteed hourly profit or universal 100ms SLA."
 }

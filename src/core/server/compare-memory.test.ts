@@ -9,6 +9,9 @@ import type { ConfigTape } from "../sim/walkforward.ts";
 process.env.CTS_CORE_STATE = "off";
 process.env.CTS_CORE_AUTOSTART = "0";
 process.env.CTS_CORE_WORKERS = "2";
+// This fixture injects available bytes against the production hard reserve. The
+// generic runner's 1MB host-pressure exemption must not disable the tested abort.
+process.env.CTS_CORE_MEM_HARD_MB = "1200";
 const runtimes: CoreRuntime[] = [];
 const testHardMb = process.env.CTS_CORE_MEM_HARD_MB;
 afterEach(async () => {

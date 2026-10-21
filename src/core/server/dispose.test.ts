@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { setImmediate as tick } from "node:timers/promises";
 import { CoreRuntime } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
-import { pinSyntheticEnd, trackRuntimes } from "../test-support.ts";
+import { pinSyntheticEnd, trackRuntimes, runtimeFixtureGrid } from "../test-support.ts";
 
 pinSyntheticEnd();
 
@@ -17,7 +17,6 @@ const tiny = {
   // covered separately by Micro/Inverse parity, the 20-symbol replay and 120-symbol load test.
   focus: [...LEGACY_FIXTURE_FOCUS],
   pinned: [],
-  exitStrategy: { includeMicro: false },
   symbols: 1,
   historyDays: 4,
   tfDays: { "1": 1, "5": 2, "15": 4, "30": 4 },
@@ -25,7 +24,8 @@ const tiny = {
   refineTop: 2,
   evalTop: 2,
   cycleMs: 60_000,
-  grid: { short: false as const },
+  grid: { ...runtimeFixtureGrid(), short: false as const },
+  exitStrategy: { enabled: false },
   gates: { minPf: 1.05, minTrades: 3, maxDdr: 0 },
 };
 const gc = (globalThis as { gc?: () => void }).gc;
