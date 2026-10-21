@@ -19,7 +19,6 @@ jobs:
       CTS_CORE_LIVE: "0"
       CTS_CORE_COMPARE: "0"
       CTS_UI_BROWSER_EXECUTABLE: /usr/bin/chromium
-      NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -35,12 +34,16 @@ jobs:
       - name: Resolve browser executable
         run: node --input-type=module -e 'import {chromium} from "playwright"; import {appendFileSync} from "node:fs"; appendFileSync(process.env.GITHUB_ENV, `CTS_UI_BROWSER_EXECUTABLE=${chromium.executablePath()}\n`);'
       - name: Types, lint and production worker packaging
+        env:
+          NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
         run: |
           mkdir -p runs/combined-checks
           npm run typecheck 2>&1 | tee runs/combined-checks/typecheck.log
           npm run lint 2>&1 | tee runs/combined-checks/lint.log
           npm run build 2>&1 | tee runs/combined-checks/build.log
       - name: Every scripts test and app/component test
+        env:
+          NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
         shell: bash
         run: |
           node --test --test-concurrency=2 'scripts/**/*.test.mjs' 2>&1 | tee runs/combined-checks/scripts.log
