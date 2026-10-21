@@ -14,6 +14,7 @@ import { barsFromCandles, resample, syntheticCandles, headBars } from "../market
 import { makeUniverse } from "../pipeline/pipeline.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import { PRE_CONTEXT_FOCUS_21OCT } from "./context-default-focus.ts";
+import { controlledRetestTrend } from "./test-support.ts";
 const end = Date.UTC(2026, 9, 1);
 const bars = ["A", "B", "C"].flatMap((sym) => {
   const c = syntheticCandles(sym, 1, 2700, end, 17);
@@ -24,6 +25,30 @@ const bars = ["A", "B", "C"].flatMap((sym) => {
 });
 const child = (id: string) => MICRO_CONTEXT_METHODS.some((m) => id.includes(`-${m}-`));
 const agree = (a: number, b: number) => (a !== 0 && a === b ? a : 0);
+
+test("all 28 Retest/Tactic profile, subset and mirror identities have actual onsets in controlled-extension trends", () => {
+  const cs = controlledRetestTrend(),
+    K = cs[0].c ** 2;
+  const reflected = cs.map((x) => ({ ...x, o: K / x.o, c: K / x.c, h: K / x.l, l: K / x.h }));
+  const specs = [...microFamilySpecs(), ...inverseMicroSpecs()].filter((s) =>
+    s.id.includes("-break-retest-tactic-"),
+  );
+  assert.equal(specs.length, 28);
+  const counts = new Map(specs.map((s) => [s.id, [0, 0]]));
+  for (const rows of [cs, reflected]) {
+    const u = makeUniverse(
+      [1, 5, 15].map((tf) => barsFromCandles("CONTROLLED-USDT", tf, resample(rows, 1, tf))),
+    );
+    for (const s of specs)
+      for (const k of u.caches) {
+        const st = s.fn(k);
+        for (let i = 1; i < st.length; i++)
+          if (st[i] && st[i] !== st[i - 1]) counts.get(s.id)![st[i] > 0 ? 0 : 1]++;
+      }
+  }
+  for (const [id, [long, short]] of counts)
+    assert.ok(long > 0 && short > 0, `${id}: long ${long}, short ${short}`);
+});
 
 test("112 context identities join the ordinary factory focus without changing any original source state", () => {
   assert.equal(MICRO_CONFIG_IDS.filter(child).length, 56);

@@ -1,0 +1,75 @@
+2026-10-21T05:35:55.2667702Z   ✔ unset: the stop is tp × ratio as before (0.501864ms)
+2026-10-21T05:35:55.2672511Z ✔ Wide stop and trail cap (4.591845ms)
+2026-10-21T05:35:55.2800789Z ℹ tests 3131
+2026-10-21T05:35:55.2801533Z ℹ suites 432
+2026-10-21T05:35:55.2801772Z ℹ pass 3127
+2026-10-21T05:35:55.2801992Z ℹ fail 2
+2026-10-21T05:35:55.2802206Z ℹ cancelled 0
+2026-10-21T05:35:55.2802437Z ℹ skipped 2
+2026-10-21T05:35:55.2819157Z ℹ todo 0
+2026-10-21T05:35:55.2849053Z ℹ duration_ms 1440951.75815
+2026-10-21T05:35:55.2864252Z 
+2026-10-21T05:35:55.2864566Z ✖ failing tests:
+2026-10-21T05:35:55.2864775Z 
+2026-10-21T05:35:55.2865449Z test at src/core/indications-both-sides.test.ts:295:3
+2026-10-21T05:35:55.2866894Z ✖ every engine indication has a long onset and a short onset on the rich market and its mirror (51727.372025ms)
+2026-10-21T05:35:55.2867753Z   AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+2026-10-21T05:35:55.2868526Z   + actual - expected
+2026-10-21T05:35:55.2868780Z   
+2026-10-21T05:35:55.2868957Z   + [
+2026-10-21T05:35:55.2869539Z   +   'micro-1x15-break-retest-tactic-selective: long 0 short 0',
+2026-10-21T05:35:55.2870557Z   +   'micro-1x5x15-break-retest-tactic-selective: long 0 short 0',
+2026-10-21T05:35:55.2871513Z   +   'inverse-micro-1x15-break-retest-tactic-selective: long 0 short 0',
+2026-10-21T05:35:55.2872434Z   +   'inverse-micro-1x5x15-break-retest-tactic-selective: long 0 short 0'
+2026-10-21T05:35:55.2873066Z   + ]
+2026-10-21T05:35:55.2873357Z   - []
+2026-10-21T05:35:55.2873649Z   
+2026-10-21T05:35:55.2874540Z       at TestContext.<anonymous> (file:///home/runner/work/CTS-A-O/CTS-A-O/src/core/indications-both-sides.test.ts:306:12)
+2026-10-21T05:35:55.2875571Z       at Test.runInAsyncScope (node:async_hooks:227:14)
+2026-10-21T05:35:55.2876229Z       at Test.run (node:internal/test_runner/test:1402:25)
+2026-10-21T05:35:55.2877031Z       at Suite.processPendingSubtests (node:internal/test_runner/test:974:18)
+2026-10-21T05:35:55.2877836Z       at Test.postRun (node:internal/test_runner/test:1542:19)
+2026-10-21T05:35:55.2878836Z       at Test.run (node:internal/test_runner/test:1467:12)
+2026-10-21T05:35:55.2879411Z       at async Promise.all (index 0)
+2026-10-21T05:35:55.2880048Z       at async Suite.run (node:internal/test_runner/test:1905:7)
+2026-10-21T05:35:55.2880947Z       at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+2026-10-21T05:35:55.2881708Z     generatedMessage: true,
+2026-10-21T05:35:55.2882122Z     code: 'ERR_ASSERTION',
+2026-10-21T05:35:55.2884151Z     actual: [ 'micro-1x15-break-retest-tactic-selective: long 0 short 0', 'micro-1x5x15-break-retest-tactic-selective: long 0 short 0', 'inverse-micro-1x15-break-retest-tactic-selective: long 0 short 0', 'inverse-micro-1x5x15-break-retest-tactic-selective: long 0 short 0' ],
+2026-10-21T05:35:55.2886059Z     expected: [],
+2026-10-21T05:35:55.2886477Z     operator: 'deepStrictEqual',
+2026-10-21T05:35:55.2886916Z     diff: 'simple'
+2026-10-21T05:35:55.2887206Z   }
+2026-10-21T05:35:55.2887354Z 
+2026-10-21T05:35:55.2887663Z test at src/core/server/preset-exit.test.ts:363:3
+2026-10-21T05:35:55.2889161Z ✖ fetches enough new candles for the default Exit lookback and longer configured native lanes (1197.303705ms)
+2026-10-21T05:35:55.2890479Z   AssertionError [ERR_ASSERTION]: 15m preserves its longer ten-day prehistory plus the trading day
+2026-10-21T05:35:55.2891201Z   
+2026-10-21T05:35:55.2891482Z   1055 !== 1056
+2026-10-21T05:35:55.2891801Z   
+2026-10-21T05:35:55.2892472Z       at file:///home/runner/work/CTS-A-O/CTS-A-O/src/core/server/preset-exit.test.ts:385:14
+2026-10-21T05:35:55.2893759Z       at async withWorkers (file:///home/runner/work/CTS-A-O/CTS-A-O/src/core/server/preset-exit.test.ts:152:12)
+2026-10-21T05:35:55.2894814Z       at async Test.run (node:internal/test_runner/test:1409:7)
+2026-10-21T05:35:55.2895734Z       at async Suite.processPendingSubtests (node:internal/test_runner/test:974:7) {
+2026-10-21T05:35:55.2896486Z     generatedMessage: false,
+2026-10-21T05:35:55.2896919Z     code: 'ERR_ASSERTION',
+2026-10-21T05:35:55.2897323Z     actual: 1055,
+2026-10-21T05:35:55.2897669Z     expected: 1056,
+2026-10-21T05:35:55.2898229Z     operator: 'strictEqual',
+2026-10-21T05:35:55.2899018Z     diff: 'simple'
+2026-10-21T05:35:55.2899355Z   }
+2026-10-21T05:35:55.3087049Z ##[error]Process completed with exit code 1.
+2026-10-21T05:35:55.3221450Z Post job cleanup.
+2026-10-21T05:35:55.4105662Z [command]/usr/bin/git version
+2026-10-21T05:35:55.4151930Z git version 2.55.0
+2026-10-21T05:35:55.4196361Z Temporarily overriding HOME='/home/runner/work/_temp/3a0f2c4e-0a85-4d45-a8e1-2554cb167028' before making global git config changes
+2026-10-21T05:35:55.4198655Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-21T05:35:55.4202795Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/CTS-A-O/CTS-A-O
+2026-10-21T05:35:55.4245104Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-21T05:35:55.4283754Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-21T05:35:55.4537452Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-21T05:35:55.4576728Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-21T05:35:55.4840114Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-21T05:35:55.4878512Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-21T05:35:55.5325687Z Cleaning up orphan processes
+2026-10-21T05:35:55.5725573Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-node@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/

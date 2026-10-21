@@ -255,8 +255,14 @@ describe("independent Exit preset backtests", { timeout: 90_000 }, () => {
               tapes.map((t) => t.id),
             );
           assert.ok(actual.trades.every((t) => t.kind === "exit" && /\|hx[LS][0-4]$/.test(t.cfg)));
-          assert.ok(actual.trades.some((t) => t.cfg.includes("|hxL")), "the independent Exit fit trades long");
-          assert.ok(actual.trades.some((t) => t.cfg.includes("|hxS")), "the independent Exit fit trades short");
+          assert.ok(
+            actual.trades.some((t) => t.cfg.includes("|hxL")),
+            "the independent Exit fit trades long",
+          );
+          assert.ok(
+            actual.trades.some((t) => t.cfg.includes("|hxS")),
+            "the independent Exit fit trades short",
+          );
           assert.ok(
             tapes.every((t) => !t.protect.tag),
             "ranges are disabled and cannot gate Exit tapes",
@@ -388,6 +394,67 @@ describe("independent Exit preset backtests", { timeout: 90_000 }, () => {
         "15m preserves its longer ten-day prehistory plus the trading day",
       );
     }));
+
+  for (const cachedTail of [false, true])
+    it(`keeps the declared hourly endpoint and complete native history with a thirteen-minute ${cachedTail ? "cached" : "new"} tail`, async () =>
+      withWorkers(false, async () => {
+        const cut = Math.floor(Date.now() / H) * H;
+        const savedEnd = process.env.CTS_CORE_SYNTHETIC_END;
+        process.env.CTS_CORE_SYNTHETIC_END = String(cut + 13 * 60_000);
+        const native = new Map<number, { n: number; endT: number }>();
+        const clear = SeriesCache.prototype.clear;
+        let rt: CoreRuntime | undefined;
+        try {
+          const fixtureData = fixture();
+          rt = fixtureData.rt;
+          if (cachedTail) {
+            for (const entry of inner(rt).btCandles.values())
+              for (const [sym, cs] of entry.candles) {
+                const px = cs.lastC()!;
+                const tail = Array.from({ length: 13 }, (_, i) => ({
+                  t: cut + i * 60_000,
+                  o: px,
+                  c: px,
+                  h: px * 1.001,
+                  l: px * 0.999,
+                  v: 100,
+                }));
+                entry.candles.set(sym, cs.append(tail, cs.n + tail.length, 0));
+              }
+          } else inner(rt).btCandles.clear();
+          SeriesCache.prototype.clear = function (keep) {
+            if (rt?.backtestJob?.stage === "Exit history")
+              native.set(this.b.tfMin, {
+                n: this.b.n,
+                endT: this.b.t[this.b.n - 1] + this.b.tfMin * 60_000,
+              });
+            return clear.call(this, keep);
+          };
+          rt.startPresetBacktest(fixtureData.p.id, 1);
+          await rt.backtestsSettled();
+          assert.equal(rt.backtestJob?.state, "done", rt.backtestJob?.error);
+          assert.deepEqual(native.get(1), { n: 9 * 24 * 60, endT: cut });
+          assert.deepEqual(native.get(15), { n: 11 * 24 * 4, endT: cut });
+          if (cachedTail)
+            assert.ok(
+              [...inner(rt).btCandles.values()].some((x) =>
+                [...x.candles.values()].some((cs) => cs.lastT()! >= cut),
+              ),
+              "the reader clips a view without mutating the richer cache",
+            );
+          else
+            assert.ok(
+              [...inner(rt).btCandles.values()].every((x) =>
+                [...x.candles.values()].every((cs) => cs.lastT()! < cut),
+              ),
+              "a freshly generated cache contains the full requested closed history without a forming tail",
+            );
+        } finally {
+          SeriesCache.prototype.clear = clear;
+          if (savedEnd === undefined) delete process.env.CTS_CORE_SYNTHETIC_END;
+          else process.env.CTS_CORE_SYNTHETIC_END = savedEnd;
+        }
+      }));
 
   it("lookback zero retains each Exit lane's own configured history", async () =>
     withWorkers(false, async () => {
