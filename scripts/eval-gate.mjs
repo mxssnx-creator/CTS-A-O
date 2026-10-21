@@ -213,7 +213,9 @@ function blockRows(orders) {
   const z = () => ({ n: 0, gp: 0, gl: 0 });
   for (const t of orders) {
     const a = (out[rangeNameOf(t.cfg)] ??= { vol: z(), unit: z(), raised: z(), unraised: z() });
-    const u = unitR(t);
+    // (Block diagnostics: an order with no mult is stored at one unit — its r)
+    const u0 = unitR(t);
+    const u = Number.isFinite(u0) ? u0 : t.r;
     add(a.vol, t.r);
     add(a.unit, u);
     add(Number(t.mult) > 1 ? a.raised : a.unraised, u);

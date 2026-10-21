@@ -21,6 +21,7 @@ import {
   relationSystemSql,
 } from "../src/core/relation.ts";
 import { liveTrades } from "../src/core/statistics.ts";
+import { liveDiff, liveDiffMd } from "../src/core/live-diff.ts";
 
 const argv = process.argv.slice(2);
 const arg = (k, d) => {
@@ -35,6 +36,32 @@ const sinceArg = arg("since", "");
 const since = sinceArg ? Date.parse(sinceArg) : hours > 0 ? Date.now() - hours * 3_600_000 : 0;
 if (!Number.isFinite(since)) throw new Error(`--since ${sinceArg}: not a time`);
 const cost = Number(arg("cost", 0.002));
+// --legacy: the earlier paper_trades unit-return report (src/core/live-diff.ts), kept for old snapshots
+if (argv.includes("--legacy")) {
+  const ldb = new DatabaseSync(file, { readOnly: true });
+  const hasUnit = ldb.prepare("PRAGMA table_info(paper_trades)").all().some((x) => x.name === "unit_r");
+  let d;
+  try {
+    d = liveDiff(
+      ldb
+        .prepare(`SELECT cfg, sym, side, entry_t, exit_t, ${hasUnit ? "unit_r" : "NULL"} AS r FROM paper_trades WHERE exit_t IS NOT NULL`)
+        .all()
+        .map((x) => ({ cfg: x.cfg, sym: x.sym, side: x.side, entryT: x.entry_t, exitT: x.exit_t, r: x.r })),
+      ldb
+        .prepare("SELECT id, cfg, sym, exit_t, r, reason FROM live_lane_trades")
+        .all()
+        .map((x) => ({ id: x.id, cfg: x.cfg, sym: x.sym, exitT: x.exit_t, r: x.r, reason: x.reason })),
+      since,
+    );
+  } finally {
+    ldb.close();
+  }
+  const lmd = liveDiffMd(d);
+  const lout = arg("out", "");
+  if (lout) writeFileSync(lout, `${lmd}\n`);
+  process.stdout.write(`${lmd}\n`);
+  process.exit(0);
+}
 const db = new DatabaseSync(file, { readOnly: true });
 let rel;
 try {
