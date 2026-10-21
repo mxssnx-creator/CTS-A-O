@@ -3715,7 +3715,7 @@ its own exact settings/source provenance check and backups before a live reload.
 
 ## Signal evaluator performance — 2026-10-21
 
-Code commit `0496cd350abf7b4ea7cc0386124a502b61f8706c` optimizes the repeated
+Code commit `03eeeb18a7689b9384f8925c8da725f5f940b43f` optimizes the repeated
 Signal config evaluator. It computes the identical cache key once per config
 instead of once per symbol/direction and removes intermediate context
 collection arrays. Economic calculations, PF gates, direction identity,

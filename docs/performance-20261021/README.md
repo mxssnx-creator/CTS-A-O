@@ -10,7 +10,7 @@ aggregates the same results in one pass, and preallocates only the returned
 context array. Symbol order, direction order, sum order, first failure, gates,
 336-hour Signal history, and returned context contents stay unchanged.
 
-Code commit: `0496cd350abf7b4ea7cc0386124a502b61f8706c` (parent
+Code commit: `03eeeb18a7689b9384f8925c8da725f5f940b43f` (parent
 `8249317c21e9821d250b32af1b39c8118543a828`). No PF formulas, floors, Last-N
 checks, execution logic, or economic settings changed.
 
