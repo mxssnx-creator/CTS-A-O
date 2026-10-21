@@ -47,7 +47,7 @@ jobs:
         shell: bash
         run: |
           node --test --test-concurrency=2 'scripts/**/*.test.mjs' 2>&1 | tee runs/combined-checks/scripts.log
-          node --experimental-strip-types --test --test-concurrency=2 src/lib/app-data/app-data.test.ts src/lib/app-data/readiness-schedule.test.ts src/lib/auth/gate-identity.test.ts src/lib/auth/sign-in-gate.test.ts src/components/v2/accounting.test.ts src/components/v2/signal-units.test.ts src/components/v2/indication-ui.test.ts src/components/v2/base-counts.test.ts 2>&1 | tee runs/combined-checks/app.log
+          node --require ./scripts/lib/core-test-offline-guard.cjs --experimental-strip-types --no-warnings --test src/lib/auth/*.test.ts src/lib/app-data/*.test.ts src/components/v2/*.test.ts 2>&1 | tee runs/combined-checks/app.log
       - name: Keep every outcome
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

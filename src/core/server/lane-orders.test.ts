@@ -258,7 +258,7 @@ describe("lane orders: the control step", { timeout: 120_000 }, () => {
     const ov = { ...lane(1, "S1-USDT", 1, 10, 0.02, 0.05), vol: 4, legs: { overall: 2, symbol: 1 } };
     const plain = lane(2, "S1-USDT", 1, 10, 0.04, 0.06);
     // a Block-raised lane without legs (shared / additive): volume 3 → 3 units
-    const raised = { ...lane(3, "S2-USDT", -1, 20, 0.02, 0.04), vol: 3 };
+    const raised = { ...lane(3, "S2-USDT", -1, 20, 0.02, 0.04), vol: 3, level: 2 };
     rt.paper.positions = [ov, plain, raised];
     await step();
     assert.ok(near(ex.positions.get("S1-USDT|LONG")!, 5 * LANE), `4 + 1 units: ${ex.positions.get("S1-USDT|LONG")}`);
