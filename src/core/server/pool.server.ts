@@ -15,7 +15,7 @@ import type {
 } from "../exit-strategy.ts";
 import type { ExitStrategySettings } from "../config.ts";
 import type { BaseConfigCountOptions, BaseConfigCountRow } from "../base-config-counts.ts";
-import type { buildTapesGen, EntryFloors } from "../sim/walkforward.ts";
+import type { buildTapesGen, EntryFilter, EntryFloors } from "../sim/walkforward.ts";
 
 /** One background slice; normal/trailing work is bounded to 32 protection cells. No tapes cross the worker boundary. */
 export type BaseConfigChunkMessage = {
@@ -61,6 +61,8 @@ export type ExitStrategyMessage = {
   tactics?: Tactics | null;
   cutT: number;
   validation: ExitStrategyValidation;
+  /** Signal source filters are exact inputs to the independent Exit fit. */
+  entryFilters?: Readonly<Record<string, EntryFilter>>;
 };
 export type ExitStrategyReply = {
   pairProtects: Record<string, Protect[]>;

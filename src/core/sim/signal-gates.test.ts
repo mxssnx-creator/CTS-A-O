@@ -3,8 +3,10 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
+  activeSignalsAt,
   configEval,
   defaultWalkForward,
+  execDecision,
   makeTape,
   selectFixed,
   walkForward,
@@ -101,6 +103,31 @@ describe("signals: the active ranking", () => {
     // A's entry outside the step's active set is counted (the signal funnel, per side), never dropped silently
     assert.equal(r.signalFunnel?.inactive, 1);
   });
+
+  it("keeps Signal Exit active outside the Signals Normal/Trailing cap and bypasses Signal entry Base", () => {
+    const ind = "sig-ema-cross-s@m15";
+    const id = `exit|${ind}|tp1|sl1|tr0|h32`;
+    const exit = makeTape(id, "exit", ind, P, "exit", [SYM], [], [], []);
+    const key = sigActiveKey("exit", ind, SYM, 1, "exit", id);
+    const o: WalkForwardOptions = {
+      ...base,
+      toggles: { ...base.toggles, exit: true },
+      signalActive: new Set([key]),
+      signalBasePassed: new Set(),
+      exitBasePassed: new Set([`exit|${ind}`]),
+      rangeOpts: { sig: { validLastN: 0, lastN: 0 } },
+    };
+    assert.deepEqual(
+      [...activeSignalsAt([exit], NOW, signalSettings({ enabled: true, count: 1 }), 100, o)],
+      [key],
+      "the exact independently qualified Signal Exit context survives the dynamic Normal/Trailing ranking",
+    );
+    const decision = execDecision(exit, IN_RUN, o, { sym: SYM, side: 1 });
+    assert.ok(
+      decision.ok || decision.why !== "signalBase",
+      "Signal Exit has its own Exit Base proof and does not need Normal/Trailing Signal Base admission",
+    );
+  });
 });
 
 describe("signals: Strategy Base validation window", () => {
@@ -176,6 +203,63 @@ describe("signals: Strategy Base validation window", () => {
     const engine = makeTape(id.replace(ind, "rsi-mom-14-20@m15"), "follow", "rsi-mom-14-20@m15", P, "normal", [SYM], history.map((x) => ({ ...x, cfg: id.replace(ind, "rsi-mom-14-20@m15") })), [], []);
     assert.equal(configEval(engine, NOW, o).ok, true);
     assert.equal(selectFixed([engine], NOW, o).picks.length, 1);
+  });
+
+  it("uses only the Signals range's own validation and entry last-N values", () => {
+    const ind = "sig-ema-cross-s@m15";
+    const id = `follow|${ind}|tp1|sl1|tr0|h32`;
+    const history = [
+      ...Array.from({ length: 80 }, (_, i) => trade(id, 0.03, NOW - 160 * H + i * H)),
+      ...Array.from({ length: 30 }, (_, i) => trade(id, -0.02, NOW - 80 * H + i * H)),
+      ...Array.from({ length: 20 }, (_, i) => trade(id, 0.03, NOW - 50 * H + i * H)),
+      trade(id, 0.03, IN_RUN),
+    ];
+    const tp = makeTape(id, "follow", ind, P, "normal", [SYM], history, [], []);
+    const gates = {
+      ...DEFAULT_SETTINGS.gates,
+      minTrades: 12,
+      maxDdtH: 1_000,
+      minDdtH: 0,
+      maxDdr: 0,
+      minGreen: 0,
+      stableBlocks: 0,
+      lastNFloor: 0,
+    };
+    const o = {
+      ...base,
+      longH: 200,
+      validLastN: 50,
+      lastN: 50,
+      signalValidLastN: 15,
+      preGate: false,
+      rangeOpts: { sig: { validLastN: 15, lastN: 15 } },
+      gates,
+      signalActive: new Set([sigActiveKey("follow", ind, SYM, 1, "normal", id)]),
+    };
+    assert.equal(configEval(tp, NOW, o).ok, true, "the Signals range overrides both engine and legacy signal validation windows");
+    assert.equal(walkForward(u, [tp], o).trades.length, 1, "its own entry window is used too");
+    assert.equal(
+      configEval(tp, NOW, { ...o, rangeOpts: { sig: { validLastN: 50, lastN: 15 } } }).ok,
+      false,
+      "a changed Signals window invalidates the cached exact-context evaluation",
+    );
+    const strictDecision = execDecision(
+      tp,
+      IN_RUN,
+      { ...o, rangeOpts: { sig: { validLastN: 15, lastN: 50 } } },
+      { sym: SYM, side: 1 },
+    );
+    assert.equal(
+      strictDecision.ok ? undefined : strictDecision.why,
+      "lastN",
+      "the Signals range's stricter entry last-N still blocks the order",
+    );
+    const excludedDecision = execDecision(tp, IN_RUN, { ...o, excludeRanges: ["sig"] }, { sym: SYM, side: 1 });
+    assert.equal(
+      excludedDecision.ok ? undefined : excludedDecision.why,
+      "rangeOff",
+      "the dedicated Signals range can be excluded without affecting other ranges",
+    );
   });
 });
 

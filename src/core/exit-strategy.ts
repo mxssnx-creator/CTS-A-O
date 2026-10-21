@@ -30,6 +30,7 @@ import { quantileSorted } from "./signal-hist.ts";
 import { simulate } from "./sim/backtest.ts";
 import { filterEntries, type EntryFilter } from "./sim/walkforward.ts";
 import { adjustProtect } from "./adjust.ts";
+import { capSignalProtect } from "./sim/trailing.ts";
 
 const H = 3_600_000;
 /** The shared runtime/worker contract bounds per-message indicator-cache lifetime. */
@@ -46,6 +47,8 @@ export interface ExitStrategyValidation {
   minTrail: number;
   /** Require hourly consistency only when the holdout has enough active UTC hours to measure it. */
   minGreenHourShare?: number;
+  /** Signal Exit keeps the Signals' trailing/stop ceiling during holdout scoring and tape construction. */
+  signalTrailMax?: number;
 }
 
 export interface ExitStrategyDiagnostics {
@@ -156,6 +159,19 @@ export function exitStrategyPairs(
     }
   }
   return [...pairs].sort();
+}
+
+/**
+ * Exit sources for Signals keep the configured source lane exactly. Unlike engine indications, Signals already carry
+ * their short/medium source range and lane in the indication id; synthesizing sibling lanes would change identity.
+ */
+export function exitSignalStrategyPairs(
+  runs: Iterable<Pick<ComboRun, "ind">>,
+  u: Universe,
+): string[] {
+  const inds = new Set<string>();
+  for (const run of runs) if (isSignalInd(run.ind) && seriesOf(u, run.ind).length) inds.add(run.ind);
+  return [...inds].sort().map((ind) => `${EXIT_BOT}|${ind}`);
 }
 
 /** Apply the Normal system's Base return-PF gate to standalone Exit pairs. */
@@ -506,8 +522,14 @@ export function* exitStrategyProtectsGen(
     const kept: Protect[] = [];
     const ids = new Set<string>();
     for (const p of candidates) {
-      const lane = laneProtect(p, ind);
-      const actual = lane.tag ? lane : adjustProtect(lane, validation);
+      const qualifiedProtect = entryFilter
+        ? capSignalProtect({ ...p, trailMax: validation.signalTrailMax ?? p.trailMax })
+        : p;
+      const lane = laneProtect(qualifiedProtect, ind);
+      const adjusted = lane.tag ? lane : adjustProtect(lane, validation);
+      const actual = entryFilter
+        ? capSignalProtect({ ...adjusted, trailMax: validation.signalTrailMax ?? qualifiedProtect.trailMax })
+        : adjusted;
       const side = p.exitSide!;
       const trades: import("./domain/types.ts").Trade[] = [];
       yield;
@@ -549,10 +571,10 @@ export function* exitStrategyProtectsGen(
         diagnostics.ddrRejected++;
         continue;
       }
-      const id = configId(bot, ind, p);
+      const id = configId(bot, ind, qualifiedProtect);
       if (!ids.has(id)) {
         ids.add(id);
-        kept.push(p);
+        kept.push(qualifiedProtect);
         diagnostics.qualified++;
       }
     }

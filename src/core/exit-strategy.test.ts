@@ -11,6 +11,7 @@ import {
   passesExitHourlyConsistency,
   exitProtectCandidates,
   exitStrategyPairs,
+  exitSignalStrategyPairs,
   exitStrategyProtectsBoundedGen,
   exitStrategyProtectsGen,
   qualifyExitBase,
@@ -33,6 +34,7 @@ import { liveLaneFilter, rangeExcluded } from "./server/live.server.ts";
 import { planLaneOrders } from "./server/lane-orders.ts";
 import { CoreRuntime } from "./server/runtime.server.ts";
 import { CoreDb } from "./server/db.server.ts";
+import { closePool, runOnWorkers, type ExitStrategyReply } from "./server/pool.server.ts";
 import type { Bars, Protect } from "./domain/types.ts";
 
 function finish<T>(g: Generator<void, T>): T {
@@ -154,6 +156,27 @@ describe("independent historic exit strategy", () => {
       ),
       ["exit|ema-9-21@m15", "exit|rsi-9-21@m15"],
       "Exit sources are deduplicated across Bots, signal-only inputs and unavailable lanes are excluded",
+    );
+  });
+
+  it("keeps Signal Exit pairs on only their configured source range and lane", () => {
+    const oneMinute = syntheticCandles("A-USDT", 1, 60 * 60, Date.UTC(2026, 8, 1), 12);
+    const u = makeUniverse([1, 5, 15].map((tf) => ({
+      ...barsFromCandles("A-USDT", tf, resample(oneMinute, 1, tf)),
+      lanes: [1, 5, 15],
+    })));
+    assert.deepEqual(
+      exitSignalStrategyPairs(
+        [
+          { ind: "sig-ema-cross-s@m5" },
+          { ind: "sig-ema-cross-s@m5" },
+          { ind: "sig-ema-cross-m@m15" },
+          { ind: "ema-9-21@m15" },
+        ],
+        u,
+      ),
+      ["exit|sig-ema-cross-m@m15", "exit|sig-ema-cross-s@m5"],
+      "Signal short/medium identities stay separate and do not expand into other source ranges or lanes",
     );
   });
 
@@ -831,6 +854,67 @@ describe("independent historic exit strategy", () => {
       );
     }
     assert.ok((a[pair] ?? []).every((p) => p.exitType === "historic" && p.tag === undefined));
+  });
+
+  it("keeps Signal Exit filters and trail caps identical on local and worker history fits", async () => {
+    const bars = barsFromCandles(
+      "A-USDT",
+      15,
+      syntheticCandles("A-USDT", 15, 1200, Date.UTC(2026, 8, 1), 24),
+    );
+    const u = makeUniverse([bars]);
+    const pair = `${EXIT_BOT}|sig-ema-cross-s@m15`;
+    const settings = {
+      ...DEFAULT_SETTINGS.exitStrategy,
+      enabled: true,
+      lookbackH: 240,
+      trainFraction: 0.6,
+      minEntries: 3,
+      minValidationTrades: 2,
+      minPf: 1.05,
+      holdH: 1,
+      maxConfigsPerPair: 6,
+      quantiles: [0.5],
+      stopQuantiles: [0.5],
+      trailShares: [0.5],
+      stopMultiples: [1],
+    };
+    const validation = {
+      cost: 0.002,
+      minPf: 1.05,
+      minTrades: 2,
+      minSl: 0,
+      minTrail: 0,
+      signalTrailMax: 0.03,
+    };
+    const entryFilter = { trendH: 6, volFloor: 0.0005 };
+    const entryFilters = { [pair]: entryFilter };
+    const local = finish(
+      exitStrategyProtectsGen(u, [pair], settings, null, u.nowT, validation, emptyExitStrategyDiagnostics(), entryFilters),
+    );
+    try {
+      const [worker] = await runOnWorkers<ExitStrategyReply>(
+        [{
+          type: "exit-hist",
+          bars: u.bars,
+          pairs: [pair],
+          settings,
+          tactics: null,
+          cutT: u.nowT,
+          validation,
+          entryFilters,
+        }],
+        1,
+        60_000,
+      );
+      assert.deepEqual(worker.pairProtects, local);
+      assert.ok(
+        Object.values(local).flat().every((protect) => (protect.trailMax ?? 0) <= validation.signalTrailMax),
+        "every fitted Signal Exit carries the configured ceiling into its executable tape config",
+      );
+    } finally {
+      await closePool();
+    }
   });
 
   it("qualifies all five independent exits on a Bot-free planted trend/turn history", () => {

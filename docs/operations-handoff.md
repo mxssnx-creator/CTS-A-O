@@ -3735,3 +3735,34 @@ in the report. The workspace's `node_modules` link target is absent, so local
 reload, deployment or venue order was performed. The end-to-end cold-compute
 probe exceeded its diagnostic time budget; do not claim a full-cycle latency
 improvement from this targeted change.
+
+## Signals range, historic Exit, and state/worker performance — 2026-10-21
+
+Work started from `main` at `a0c5604294192833c1a54802ad29d5066af40ec0`.
+Validated source commit: `ae44fa7f47dc3361ad2e18e9f55a661ca9e2eab3`.
+Signals now has its own `rangeOpts.sig` validation and entry Last-N controls;
+Signal Exit configs keep exact source identities, use Signal history/filter and
+trailing limits, pass a separate Exit Base evaluation, and build on the Signal
+universe. Exit configs remain outside the Normal/Trailing active ranking cap.
+Signal historic fitting prepares each source's filtered, causal bars and
+direction views once, then reuses them for every protection candidate, retaining
+the existing sample, ordering and PF/DDR/Last-N rules. Durable in-memory SQLite
+state flushes now read serialized values in one indexed query and avoid parsing
+and rebuilding large JSON caches. The bounded shared worker pool's existing
+memory admission, priority, owner cancellation, timeout and OOM handling were
+audited and exercised; live ownership checkpoints remain synchronous and
+atomic before conditional orders can proceed.
+
+Local validation on this source tree: `npm run typecheck`; `npm run build:dev`
+(including the packaged production worker); 203 focused core cases across 21
+suites; plus the packaged-worker Signal Exit filter/cap parity case (1/1),
+`git diff --check`, and changed-file ESLint (0 errors, 5 existing warnings).
+The focused regression set covers durable-state restart/snapshot restore,
+Signal local/worker history parity, Exit Base parity, worker cancellation,
+memory/ownership/priority/shared arenas, incremental/full-cycle parity and
+atomic compute publication. The complete hosted suite is still required before
+merge. The broad Prettier check reports pre-existing formatting differences in
+the large runtime file; no whole-file reformat was applied. Exact source commit,
+hosted checks, merge and branch reload are pending. No live instance reload,
+deployment or venue order has been performed; a running-instance change still
+requires the consistent settings/state/database backup above.

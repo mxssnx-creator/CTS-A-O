@@ -347,6 +347,7 @@ parentPort!.on("message", (m: Msg) => {
         m.cutT,
         m.validation,
         diagnostics,
+        m.entryFilters,
       );
       // Exit history also yields once per candidate so the in-process fallback can remain responsive. This upper bound
       // covers those yields without reporting more than 100 % before every pair's validation has finished.
