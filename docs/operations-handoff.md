@@ -3658,3 +3658,26 @@ simulation state (`simulateFrom`, `extendTape`), rebuilds the other kinds in the
 universe, keeps the hour's seats and runs the paper step on the validated tapes. Equality with a full recompute:
 `src/core/sim/backtest-resume.test.ts`, `tape-extend.test.ts`, `src/core/server/cycle-incremental.test.ts`.
 Profile: `scripts/bench-cycle.mjs`.
+
+## Micro contexts: Node 24 CI crash follow-up — 2026-10-21
+
+PR191 head `e274b11ff714a5f6be9bdffda4b574e809086227` passed types,
+lint/build and 3,130 core cases but the pool cancellation test process aborted
+inside V8 WASM code GC (not a trading assertion); two cases were skipped and
+the slow CI step was consequently not run. Preserve the actual failure in
+`docs/negative-hour-contexts-20261021/ci-node24-failure-e274.txt`.
+The bounded core test child now runs Node24 with `--no-wasm-code-gc`, matching
+the upstream runtime workaround (https://github.com/nodejs/node/issues/66366).
+The real-spawn runner contract passes 4/4 and related cancellation/ownership/
+priority/memory/module-copy tests pass 22/22. Production worker settings,
+trading formulas, PF gates and economic source seal `15bee9d6359df10deefc71f511eba0604f2dacb674c9303add46a08ccc0cb4dc`
+are unchanged. A new complete hosted run is required before merging PR191.
+The repaired production source already passed both slow cases locally.
+
+Training scope clarification: the older v4 training Micro winners used a
+60-minute maximum hold. They are not proof of Micro15 profitability. The
+frozen new comparison uses actual Micro15 cells and remains PF0.809978 original
+versus PF0.452602 expanded. Its losing-hour posthoc diagnostic contains zero
+net-positive Micro15 config-sides in either arm over their respective losing
+portfolio hours. Keep longer-range positive subsets separately labeled; no
+post-validation tuning, venue order, reload or deployment has occurred.

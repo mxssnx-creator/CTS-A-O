@@ -57,6 +57,7 @@ test("the standard core runner installs offline evidence before test imports and
       assert.equal(process.env.BINGX_X01_API_KEY,undefined); assert.equal(process.env.CTS_CORE_LIVE,'0');
       assert.equal(process.env.CTS_CORE_WORKERS,'2');
       assert.equal(process.env.CTS_CORE_MEM_SOFT_MB,'1'); assert.equal(process.env.CTS_CORE_MEM_HARD_MB,'1');
+      if(process.versions.node.startsWith('24.')) assert.ok(process.execArgv.includes('--no-wasm-code-gc'));
       test('guarded before imports',()=>assert.throws(()=>net.connect({host:'198.51.100.1',port:443}),{code:'CTS_OFFLINE_NETWORK_DENIED'}));
     `, "2");
     assert.equal(pass.error, undefined);

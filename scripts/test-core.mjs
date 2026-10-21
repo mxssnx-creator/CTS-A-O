@@ -77,6 +77,10 @@ export function coreTestInvocation(argv = [], sourceEnv = process.env, root = RO
     concurrency,
     workers: Number(testWorkers),
     args: [
+      // Node 24's per-process WASM wrapper GC can double-free code while strip-types workers terminate
+      // (nodejs/node#66366). Keep those bounded compiler wrappers alive until this test process exits.
+      // This is a V8 CLI flag, not an allowed NODE_OPTIONS preload; trading/runtime options are unchanged.
+      ...(process.versions.node.startsWith("24.") ? ["--no-wasm-code-gc"] : []),
       "--require",
       guard,
       "--expose-gc",
