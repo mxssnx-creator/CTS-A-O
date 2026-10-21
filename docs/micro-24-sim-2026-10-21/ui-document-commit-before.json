@@ -1,0 +1,22 @@
+{
+  "schema": "cts-ui-document-commit-before-v1",
+  "head": "8a530b6657c622a687043ed7929a29cb1d0ab40f",
+  "runtimeSource": "7f29b92555e77144326b374623f9fa14114d6f0cc21692c9b336b30d05241ccd",
+  "run": 39538799920,
+  "job": 119021550627,
+  "scriptTests": {
+    "pass": 670,
+    "fail": 1,
+    "skippedTemplateFiles": 8,
+    "cancelled": 0
+  },
+  "failure": [
+    "2026-10-21T03:31:58.5219485Z test at scripts/ui-functional.test.mjs:401:5",
+    "2026-10-21T03:31:58.5220458Z   AssertionError [ERR_ASSERTION]: finite requests did not settle: GET /_serverFn/eyJmaWxlIjoiL3NyYy9jb3JlL2FwaS50cz90c3Mtc2VydmVyZm4tc3BsaXQiLCJleHBvcnQiOiJjb3JlU3RhdHVzX2NyZWF0ZVNlcnZlckZuX2hhbmRsZXIifQ",
+    "2026-10-21T03:31:58.5221089Z       at file:///home/runner/work/CTS-A-O/CTS-A-O/scripts/ui-functional.test.mjs:197:18",
+    "2026-10-21T03:31:58.5221435Z       at async file:///home/runner/work/CTS-A-O/CTS-A-O/scripts/ui-functional.test.mjs:445:11",
+    "2026-10-21T03:31:58.5221805Z       at async withClosed (file:///home/runner/work/CTS-A-O/CTS-A-O/scripts/ui-functional.test.mjs:134:14)",
+    "2026-10-21T03:31:58.5222448Z       at async TestContext.<anonymous> (file:///home/runner/work/CTS-A-O/CTS-A-O/scripts/ui-functional.test.mjs:404:7)"
+  ],
+  "classification": "Settings save/reload request observer retained an abandoned previous-document coreStatus RPC. Desktop/phone page checks and server-error check passed. Preserve this failed run; no production setting, calculation or assertion changed."
+}
