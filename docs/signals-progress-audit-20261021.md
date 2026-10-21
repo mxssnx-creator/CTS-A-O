@@ -6,7 +6,7 @@ Tested local code: `ef0a9275247e22339b17e33f4847e77893fc26d9`.
 Published code: `534492d622db6be370079e08b94fdbb2dfbb566c`.
 Both trees: `9442ef46aef790ad27eb68c47af26ad5ef7c0479`.
 Base: `fafdea2f5ebe8c903a16f2edd8be34606f746c2f`.
-Following evidence/handoff edits change documentation only.
+Following test-harness and lifecycle-reference fixes leave production source unchanged; their exact commits and final CI results are recorded in PR 189.
 
 ## Corrected behavior
 
@@ -40,6 +40,8 @@ The 294-test command selects: signal-accept-index, signal-coordination-feature, 
 
 The original unpushed audit commits (`65da64ce`, `f6493f03`) disappeared when the workspace was restored. This publication is a recovery against the latest available main with new code commits and freshly repeated verification; it does not rely on lost logs or claim byte identity with those lost commits. The first reconstructed progress test used the wrong label prefix; it was corrected before the final green run. Initial browser attempts failed because the restored test environment lacked usable fonts; using the installed system font configuration resolved the crash. The first render baseline sampled a loading screen; waiting for the actual Settings Save control produced matching final renders. Product code was not changed to hide these harness failures.
 
-The earlier large legacy cycle-incremental run was interrupted and is not a passing gate. The new bounded runtime tests exercise the actual rebuild method against full worker/local results. Existing strict economic gates, costs, losses and unknown-evidence rules are unchanged. No research source seal was rewritten.
+The completed legacy cycle-incremental run exposed its stale reference calculation: Signal tapes were rebuilt on ordinary strategy history (271 actual closes versus 61 reference closes for one config). Its reference now uses independent Signal history and separate coordinator protections, preserving the existing three-cycle tape, seat and paper-decision assertions. Its corrected run and the complete default/slow suites remain gates recorded in PR 189. The new bounded runtime tests already exercise the actual rebuild method against full worker/local results.
+
+Initial PR CI passed typecheck, lint, production build and the independent-config workflow, then stopped on four cancelled UI tests: Vite dependency re-optimization left speculative module requests pending after document replacement. The request observer now waits for finite document/fetch/XHR requests while keeping browser console/page-error checks, computed-page assertions and Settings edit/save/restore. All four local UI checks pass with this correction (45.64 seconds); follow-up typecheck and changed-test lint pass. Existing strict economic gates, costs, losses and unknown-evidence rules are unchanged. No research source seal was rewritten.
 
 A passing correctness suite does not prove every-hour profitability, a sub-500ms full-history refresh, or correct venue-owned live execution. The test feed is deterministic synthetic data. No live instance, database, settings or venue orders were changed in this audit. Publishing/merging source alone does not update an existing running process: a verified deployment must back up settings/durable state/database, rebuild the worker, restart the correct instance, verify its commit identity and reconcile owned positions. The existing handoff records unavailable authenticated host/deployment access; that must be resolved before claiming these fixes are active on the remote live instance.

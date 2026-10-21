@@ -5,7 +5,7 @@
 // Run with CTS_CORE_WORKERS=1 (one small runtime: 3 symbols, 1 day).
 import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { CoreRuntime as BaseRuntime, laneSeriesOf } from "./runtime.server.ts";
+import { CoreRuntime as BaseRuntime, laneSeriesFrom, laneSeriesOf, signalDataHours } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
 import { signalSettings } from "../signals.ts";
 import { SIGNAL_SOURCES } from "../signal-config.ts";
@@ -13,6 +13,7 @@ import { makeUniverse } from "../pipeline/pipeline.ts";
 import { buildTapes, selectFixedGen, type ConfigTape } from "../sim/walkforward.ts";
 import { CandleSeries } from "../market/candle-series.ts";
 import { isSignalInd } from "../indications/registry.ts";
+import { isSignalCoordinationInd } from "../signal-coordination.ts";
 import { trackRuntimes } from "../test-support.ts";
 import type { Bars } from "../domain/types.ts";
 
@@ -182,19 +183,25 @@ describe("runtime.cycle incremental equals a full recompute", { timeout: 600_000
           });
         }
       const u = makeUniverse(lanes);
+      // Signals rebuild from their independent configured history; ordinary resumable tapes retain
+      // the heavy tail's start. Reusing u for Signals would certify the old truncated-history bug.
+      const signalU = makeUniverse(
+        laneSeriesFrom(R.candles, s, 0, signalDataHours(s, R.wf)),
+        R.inc.state.universe.evaluationFromT,
+      );
       const a = R.fastArgs;
       const ref = new Map<string, ConfigTape>();
-      for (const kind of ["main", "sig"] as const) {
+      for (const kind of ["main", "sig", "coord"] as const) {
         const want = new Set<string>();
         const pairs = new Set<string>();
         for (const tp of A.tapes)
-          if (ids.has(tp.id) && (isSignalInd(tp.ind) ? "sig" : "main") === kind) {
+          if (ids.has(tp.id) && (isSignalCoordinationInd(tp.ind) ? "coord" : isSignalInd(tp.ind) ? "sig" : "main") === kind) {
             want.add(tp.id);
             pairs.add(`${tp.bot}|${tp.ind}`);
           }
         if (!want.size) continue;
         for (const tp of buildTapes(
-          u,
+          kind === "main" ? u : signalU,
           a[kind].protects,
           s.cost,
           a[kind].dcaFor,
