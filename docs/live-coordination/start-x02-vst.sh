@@ -21,7 +21,7 @@ AVAIL=$(awk '/MemAvailable/ {print int($2/1024)}' /proc/meminfo)
 if [ "$AVAIL" -lt 6000 ]; then echo "only ${AVAIL} MB available (< 6000): not starting x02 next to the live x01 desk"; exit 1; fi
 mkdir -p "$OUT"
 export CTS_CORE_LIVE_TAG=CTSV2X_ CTS_BINGX_BAN_FILE="$OUT/bingx-ban" CTS_BINGX_BOOK_FILE="$OUT/bingx-book"
-export MALLOC_ARENA_MAX=2 MALLOC_MMAP_THRESHOLD_=1048576 CTS_CORE_STALL_PROBE=1 CTS_CORE_WORKERS=1
+export MALLOC_ARENA_MAX=2 MALLOC_MMAP_THRESHOLD_=1048576 CTS_CORE_STALL_PROBE=1 CTS_CORE_WORKERS="${CTS_CORE_WORKERS:-3}"
 printf '{"symbols": %s, "heapMb": %s, "at": "%s"}\n' "$SYMBOLS" "$HEAP" "$(date -u +%FT%TZ)" > "$OUT/launch.json"
 echo "$(date -u +%FT%TZ) starting x02-vst: tag CTSV2X_, VST demo, $SYMBOLS symbols, heap $HEAP MB"
 nohup node --max-old-space-size="$HEAP" --expose-gc --experimental-strip-types --no-warnings scripts/core-live-test.mjs \
