@@ -3774,7 +3774,7 @@ export function configEval(tp: ConfigTape, t: number, o: WalkForwardOptions): Co
     let lcb = Infinity;
     let gh = Infinity;
     let ddt = -Infinity;
-    let failed: ConfigEval | undefined;
+    let failed: Extract<ConfigEval, { ok: false }> | undefined;
     for (const sym of symbols) {
       for (const side of SIGNAL_SIDES) {
         const evaluation = signalConfigEvalWithKey(tp, t, o, sym, side, key);
