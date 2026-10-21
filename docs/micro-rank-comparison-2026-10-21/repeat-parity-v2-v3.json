@@ -1,0 +1,30 @@
+{
+  "schema": "cts-paired-clock-repair-cohort-parity-v1",
+  "beforeSource": "431ca46de2df501dc8ac340e1acb5254054540237fe096ed4c0552cfc3f502ec",
+  "afterSource": "eb588571dfff70db0b79b4b0588fe1d9c5779c0d91aa4bc5011523e8054b7af9",
+  "basis": "Same frozen selection, settings, costs and windows; exact funded identity multiset and unit returns; comparison is repetition on the same historical window, not unseen performance.",
+  "cases": [
+    {
+      "rank": "volatility1h",
+      "same": true,
+      "matched": 160300,
+      "onlyLeft": 0,
+      "onlyRight": 0,
+      "mismatchedReturns": 0,
+      "maxReturnError": 0,
+      "examples": [],
+      "basis": "Funded settled exact identity multiset; duplicate legs retained; verified unit returns compared without charging costs again"
+    },
+    {
+      "rank": "change1h5m",
+      "same": true,
+      "matched": 160220,
+      "onlyLeft": 0,
+      "onlyRight": 0,
+      "mismatchedReturns": 0,
+      "maxReturnError": 0,
+      "examples": [],
+      "basis": "Funded settled exact identity multiset; duplicate legs retained; verified unit returns compared without charging costs again"
+    }
+  ]
+}

@@ -1,0 +1,623 @@
+{
+  "schema": "cts-micro-24-financial-verification-v9",
+  "workflowRun": 39545978081,
+  "calculationCheckpoint": "11780ad27ac44427f641ff126e616af9859414e1",
+  "sourceSha256": "eb588571dfff70db0b79b4b0588fe1d9c5779c0d91aa4bc5011523e8054b7af9",
+  "conclusion": "success",
+  "artifact": {
+    "id": 12322936006,
+    "sha": "60f74bad33c46937462ef0a0e83cb7eadc98d15e4e5736a50647729bd6d60167",
+    "name": "micro-24-trade-sim-39545978081"
+  },
+  "window": {
+    "indicatorStartT": 1792281600000,
+    "evaluationFromT": 1792368000000,
+    "tradeStartT": 1792411200000,
+    "endT": 1792454400000,
+    "preH": 12,
+    "runH": 12
+  },
+  "fundedUnitStats": {
+    "closes": 373222,
+    "gp": 1166.743630435816,
+    "gl": 741.7201214207048,
+    "pf": 1.5730241053741578,
+    "pfState": "measured"
+  },
+  "funding": {
+    "basis": "Exact per-close native report allocation",
+    "virtualCloses": 373222,
+    "fundedCloses": 373222,
+    "zeroAllocatedCloses": 0,
+    "unknownAllocations": 0
+  },
+  "reportChecks": 60,
+  "priceCost": {
+    "rows": 373222,
+    "violations": 0,
+    "cost": 0.0015,
+    "roundTripChargedOnce": true
+  },
+  "scalar": {
+    "tapes": 105577,
+    "decisions": 1036596,
+    "violations": 0
+  },
+  "transition": {
+    "decisions": 185520,
+    "mismatches": 0
+  },
+  "hourlyPf": [
+    {
+      "t": 1792411200000,
+      "tape": {
+        "closes": 7600,
+        "gp": 2.571216683032405,
+        "gl": 46.253617443998785,
+        "pf": 0.05558952629262968,
+        "pfState": "measured"
+      },
+      "execution": {
+        "closes": 7600,
+        "gp": 2.571216683032405,
+        "gl": 46.253617443998785,
+        "pf": 0.05558952629262968,
+        "pfState": "measured"
+      }
+    },
+    {
+      "t": 1792414800000,
+      "tape": {
+        "closes": 15934,
+        "gp": 20.227811224013372,
+        "gl": 29.67329976574977,
+        "pf": 0.6816839173161726,
+        "pfState": "measured"
+      },
+      "execution": {
+        "closes": 15934,
+        "gp": 20.227811224013372,
+        "gl": 29.67329976574977,
+        "pf": 0.6816839173161726,
+        "pfState": "measured"
+      }
+    },
+    {
+      "t": 1792418400000,
+      "tape": {
+        "closes": 115049,
+        "gp": 369.349199288881,
+        "gl": 195.59291716734492,
+        "pf": 1.8883567188318688,
+        "pfState": "measured"
+      },
+      "execution": {
+        "closes": 115049,
+        "gp": 369.349199288881,
+        "gl": 195.59291716734492,
+        "pf": 1.8883567188318688,
+        "pfState": "measured"
+      }
+    },
+    {
+      "t": 1792422000000,
+      "tape": {
+        "closes": 37799,
+        "gp": 130.8672031208899,
+        "gl": 75.38532182529077,
+        "pf": 1.7359772426810243,
+        "pfState": "measured"
+      },
+      "execution": {
+        "closes": 37799,
+        "gp": 130.8672031208899,
+        "gl": 75.38532182529077,
+        "pf": 1.7359772426810243,
+        "pfState": "measured"
+      }
+    },
+    {
+      "t": 1792425600000,
+      "tape": {
+        "closes": 60465,
+        "gp": 189.66953569725518,
+        "gl": 82.11037234631493,
+        "pf": 2.309933937423771,
+        "pfState": "measured"
+      },
+      "execution": {
+        "closes": 60465,
+        "gp": 189.66953569725518,
+        "gl": 82.11037234631493,
+        "pf": 2.309933937423771,
+        "pfState": "measured"
+      }
+    },
+    {
+      "t": 1792429200000,
+      "tape": {
+        "closes": 37294,
+        "gp": 104.48324690492298,
+        "gl": 86.910833779121,
+        "pf": 1.202188983371869,
+        "pfState": "measured"
+      },
+      "execution": {
+        "closes": 37294,
+        "gp": 104.48324690492298,
+        "gl": 86.910833779121,
+        "pf": 1.202188983371869,
+        "pfState": "measured"
+      }
+    },
+    {
+      "t": 1792432800000,
+      "tape": {
+        "closes": 30683,
+        "gp": 98.55359767236862,
+        "gl": 71.29765356307655,
+        "pf": 1.382283886596337,
+        "pfState": "measured"
+      },
+      "execution": {
+        "closes": 30683,
+        "gp": 98.55359767236862,
+        "gl": 71.29765356307655,
+        "pf": 1.382283886596337,
+        "pfState": "measured"
+      }
+    },
+    {
+      "t": 1792436400000,
+      "tape": {
+        "closes": 23684,
+        "gp": 68.81394678386893,
+        "gl": 53.33078206422372,
+        "pf": 1.2903232264810887,
+        "pfState": "measured"
+      },
+      "execution": {
+        "closes": 23684,
+        "gp": 68.81394678386893,
+        "gl": 53.33078206422372,
+        "pf": 1.2903232264810887,
+        "pfState": "measured"
+      }
+    },
+    {
+      "t": 1792440000000,
+      "tape": {
+        "closes": 8933,
+        "gp": 15.462140321605194,
+        "gl": 25.07804137398666,
+        "pf": 0.6165609224029753,
+        "pfState": "measured"
+      },
+      "execution": {
+        "closes": 8933,
+        "gp": 15.462140321605194,
+        "gl": 25.07804137398666,
+        "pf": 0.6165609224029753,
+        "pfState": "measured"
+      }
+    },
+    {
+      "t": 1792443600000,
+      "tape": {
+        "closes": 6212,
+        "gp": 40.146156135030246,
+        "gl": 20.993307219523235,
+        "pf": 1.9123311879938267,
+        "pfState": "measured"
+      },
+      "execution": {
+        "closes": 6212,
+        "gp": 40.146156135030246,
+        "gl": 20.993307219523235,
+        "pf": 1.9123311879938267,
+        "pfState": "measured"
+      }
+    },
+    {
+      "t": 1792447200000,
+      "tape": {
+        "closes": 17988,
+        "gp": 99.10194103211253,
+        "gl": 45.700733965667816,
+        "pf": 2.168497799325538,
+        "pfState": "measured"
+      },
+      "execution": {
+        "closes": 17988,
+        "gp": 99.10194103211253,
+        "gl": 45.700733965667816,
+        "pf": 2.168497799325538,
+        "pfState": "measured"
+      }
+    },
+    {
+      "t": 1792450800000,
+      "tape": {
+        "closes": 11581,
+        "gp": 27.49763557273434,
+        "gl": 9.393240906542994,
+        "pf": 2.927385323800274,
+        "pfState": "measured"
+      },
+      "execution": {
+        "closes": 11581,
+        "gp": 27.49763557273434,
+        "gl": 9.393240906542994,
+        "pf": 2.927385323800274,
+        "pfState": "measured"
+      }
+    }
+  ],
+  "base": {
+    "evaluatedPairsIncludingExit": 1736,
+    "passedPairsIncludingExit": 274,
+    "ordinaryPassedPairs": 195,
+    "mainPairs": 195,
+    "rangeRepresentativeEvidence": [
+      {
+        "range": "Wide",
+        "tag": "wide",
+        "evaluatedPairs": 868,
+        "passedPairs": 8,
+        "minimumPf": 1.1,
+        "passedPooledPf": 1.6407342043647966,
+        "passedMedianPf": 1.8836734693877615,
+        "gp": 178.3253502291262,
+        "gl": 108.68631235621989
+      },
+      {
+        "range": "Micro",
+        "tag": "mc",
+        "evaluatedPairs": 868,
+        "passedPairs": 76,
+        "minimumPf": 1.1,
+        "passedPooledPf": 1.9240662812069909,
+        "passedMedianPf": 1.927591510724908,
+        "gp": 558.6656164177593,
+        "gl": 290.35674179961273
+      },
+      {
+        "range": "Minimal",
+        "tag": "mn",
+        "evaluatedPairs": 868,
+        "passedPairs": 94,
+        "minimumPf": 1.1,
+        "passedPooledPf": 1.8223830045780893,
+        "passedMedianPf": 2.0484551496022987,
+        "gp": 1038.7868104719091,
+        "gl": 570.0156376910488
+      },
+      {
+        "range": "Short",
+        "tag": "sh",
+        "evaluatedPairs": 868,
+        "passedPairs": 64,
+        "minimumPf": 1.1,
+        "passedPooledPf": 1.7546338472652259,
+        "passedMedianPf": 1.9917135016045824,
+        "gp": 1093.5858241262536,
+        "gl": 623.2558580986669
+      },
+      {
+        "range": "General",
+        "tag": "gn",
+        "evaluatedPairs": 868,
+        "passedPairs": 103,
+        "minimumPf": 1.2,
+        "passedPooledPf": 1.840232695871181,
+        "passedMedianPf": 1.9062505576000406,
+        "gp": 2004.290321273411,
+        "gl": 1089.150478507591
+      }
+    ]
+  },
+  "initial": {
+    "t": 1792411200000,
+    "evaluated": 86383,
+    "passed": {
+      "configs": 15460,
+      "closes": 411481,
+      "gp": 1463.6381474996447,
+      "gl": 573.9225895731264,
+      "unknownReturns": 0,
+      "pf": 2.5502361713768282,
+      "pfState": "measured"
+    },
+    "seated": {
+      "configs": 15460,
+      "closes": 411481,
+      "gp": 1463.6381474996447,
+      "gl": 573.9225895731264,
+      "unknownReturns": 0,
+      "pf": 2.5502361713768282,
+      "pfState": "measured"
+    }
+  },
+  "perRange": {
+    "mn": {
+      "initialPassed": {
+        "configs": 3956,
+        "closes": 92204,
+        "gp": 276.7519091161206,
+        "gl": 79.63666002362518,
+        "unknownReturns": 0,
+        "pf": 3.4751822720091323,
+        "pfState": "measured"
+      },
+      "initialSeated": {
+        "configs": 3956,
+        "closes": 92204,
+        "gp": 276.7519091161206,
+        "gl": 79.63666002362518,
+        "unknownReturns": 0,
+        "pf": 3.4751822720091323,
+        "pfState": "measured"
+      },
+      "executed": {
+        "configs": 16129,
+        "closes": 167360,
+        "gp": 562.3159031048892,
+        "gl": 267.83468872884214,
+        "unknownReturns": 0,
+        "pf": 2.0994887024293636,
+        "pfState": "measured"
+      }
+    },
+    "sh": {
+      "initialPassed": {
+        "configs": 1845,
+        "closes": 43035,
+        "gp": 264.23860033891816,
+        "gl": 118.22287519848535,
+        "unknownReturns": 0,
+        "pf": 2.2350885976617114,
+        "pfState": "measured"
+      },
+      "initialSeated": {
+        "configs": 1845,
+        "closes": 43035,
+        "gp": 264.23860033891816,
+        "gl": 118.22287519848535,
+        "unknownReturns": 0,
+        "pf": 2.2350885976617114,
+        "pfState": "measured"
+      },
+      "executed": {
+        "configs": 6229,
+        "closes": 46592,
+        "gp": 201.91917835562515,
+        "gl": 82.60442990286779,
+        "unknownReturns": 0,
+        "pf": 2.444411015160521,
+        "pfState": "measured"
+      }
+    },
+    "gn": {
+      "initialPassed": {
+        "configs": 2758,
+        "closes": 64457,
+        "gp": 418.7228768933128,
+        "gl": 181.02432065441346,
+        "unknownReturns": 0,
+        "pf": 2.3130752562948738,
+        "pfState": "measured"
+      },
+      "initialSeated": {
+        "configs": 2758,
+        "closes": 64457,
+        "gp": 418.7228768933128,
+        "gl": 181.02432065441346,
+        "unknownReturns": 0,
+        "pf": 2.3130752562948738,
+        "pfState": "measured"
+      },
+      "executed": {
+        "configs": 8932,
+        "closes": 46505,
+        "gp": 199.26697810299694,
+        "gl": 135.21141992114548,
+        "unknownReturns": 0,
+        "pf": 1.4737436987142676,
+        "pfState": "measured"
+      }
+    },
+    "mc": {
+      "initialPassed": {
+        "configs": 6891,
+        "closes": 210940,
+        "gp": 501.49455473666933,
+        "gl": 193.6925325357099,
+        "unknownReturns": 0,
+        "pf": 2.5891269434675386,
+        "pfState": "measured"
+      },
+      "initialSeated": {
+        "configs": 6891,
+        "closes": 210940,
+        "gp": 501.49455473666933,
+        "gl": 193.6925325357099,
+        "unknownReturns": 0,
+        "pf": 2.5891269434675386,
+        "pfState": "measured"
+      },
+      "executed": {
+        "configs": 15277,
+        "closes": 112722,
+        "gp": 203.13733591885497,
+        "gl": 255.84571903790803,
+        "unknownReturns": 0,
+        "pf": 0.7939837206686137,
+        "pfState": "measured"
+      }
+    },
+    "wide": {
+      "initialPassed": {
+        "configs": 10,
+        "closes": 845,
+        "gp": 2.4302064146361486,
+        "gl": 1.3462011608837026,
+        "unknownReturns": 0,
+        "pf": 1.8052327432557402,
+        "pfState": "measured"
+      },
+      "initialSeated": {
+        "configs": 10,
+        "closes": 845,
+        "gp": 2.4302064146361486,
+        "gl": 1.3462011608837026,
+        "unknownReturns": 0,
+        "pf": 1.8052327432557402,
+        "pfState": "measured"
+      },
+      "executed": {
+        "configs": 10,
+        "closes": 43,
+        "gp": 0.10423495428689415,
+        "gl": 0.22386383008857566,
+        "unknownReturns": 0,
+        "pf": 0.46561766697930507,
+        "pfState": "measured"
+      }
+    }
+  },
+  "nativeTotal": {
+    "orders": 373222,
+    "fundedOrders": 373222,
+    "zeroAllocatedOrders": 0,
+    "unknownAllocations": 0,
+    "virtual": {
+      "n": 373222,
+      "gpR": 1166.74363,
+      "glR": 741.720121,
+      "pf": 1.573024,
+      "unknownReturns": 0,
+      "unknownReturnTotals": 0,
+      "pfBasis": "unit-net-returns",
+      "noLoss": false,
+      "basis": "all-virtual-modeled-closes"
+    },
+    "positions": 81,
+    "pf": 1.573024,
+    "cashPf": 1.573024,
+    "cashPfDiagnostic": 1.573024,
+    "pfR": 1.573024,
+    "noLoss": false,
+    "pfBasis": "unit-net-returns",
+    "unknownReturns": 0,
+    "unknownReturnTotals": 0,
+    "cashBasis": "funded-modeled-allocations",
+    "gpR": 1166.74363,
+    "glR": 741.720121,
+    "netU": 425.023509,
+    "mddU": 154.41872,
+    "fixedUnit": 2,
+    "eqMin": 8907.182751,
+    "ruinT": null,
+    "gp": 2333.487261,
+    "gl": 1483.440243,
+    "net": 850.047018,
+    "netPct": 0.085005,
+    "wins": 221660,
+    "losses": 151562,
+    "wr": 0.593909,
+    "ddtH": 2.833333,
+    "ddr": 0.363318,
+    "closedMdd": 308.837441,
+    "balanceEnd": 10850.047018,
+    "equityMaxDd": 1551.70892,
+    "equityMaxDdPct": 0.142392,
+    "equityDdr": 1.825439,
+    "equityDdtMaxH": 6.683333,
+    "avgOpenOrders": 33810.483333,
+    "maxOpenOrders": 115778,
+    "avgOpenPositions": 34.748611,
+    "maxOpenPositions": 48,
+    "marginMax": 32063.2,
+    "greenHours": 9,
+    "redHours": 3,
+    "flatHours": 0,
+    "fullHours": 12,
+    "partialHour": null,
+    "equityEnd": 10652.15135,
+    "openEnd": {
+      "recorded": true,
+      "orders": 151840,
+      "positions": 25,
+      "mtm": -197.895668,
+      "rule": "exact: the orders the engine executed in the run and still open at its end (every gate, cap and Block volume applied), marked to market at the last close"
+    },
+    "caps": {
+      "on": true,
+      "maxPositionX": 0,
+      "maxExposureX": 0,
+      "source": "balance-volume defaults (no balance caps in the settings)",
+      "capped": 0,
+      "scaled": 0,
+      "cappedOpen": 0,
+      "scaledOpen": 0,
+      "byPosition": 0,
+      "byExposure": 0
+    },
+    "uncapped": {
+      "n": 373222,
+      "fundedOrders": 373222,
+      "zeroAllocatedOrders": 0,
+      "unknownAllocations": 0,
+      "unknownReturns": 0,
+      "unknownReturnTotals": 0,
+      "pfBasis": "unit-net-returns",
+      "virtual": {
+        "n": 373222,
+        "gpR": 1166.74363,
+        "glR": 741.720121,
+        "pf": 1.573024,
+        "unknownReturns": 0,
+        "unknownReturnTotals": 0,
+        "pfBasis": "unit-net-returns",
+        "noLoss": false,
+        "basis": "all-virtual-modeled-closes"
+      },
+      "net": 850.047018,
+      "gp": 2333.487261,
+      "gl": 1483.440243,
+      "gpR": 1166.74363,
+      "glR": 741.720121,
+      "pf": 1.573024,
+      "cashPf": 1.573024,
+      "cashPfDiagnostic": 1.573024,
+      "cashBasis": "funded-modeled-allocations",
+      "balanceEnd": 10850.047018,
+      "equityEnd": 10652.15135,
+      "equityMaxDd": 1551.70892,
+      "equityMaxDdPct": 0.142392,
+      "marginMax": 32063.2,
+      "eqMin": 8907.182751,
+      "marginOverMinutes": 335
+    },
+    "feasible": false,
+    "marginOver": {
+      "minutes": 335,
+      "firstT": 1792418100000,
+      "maxRatio": 3.071242
+    }
+  },
+  "checksums": {
+    "protocol.json": "2b4b8ddb28c4a34a5c791e5851e11d1dfcbf973d6678a3521a7a99c7c68c22f8",
+    "report/data.json": "37c00ba82d2fb260d93b41f8fd18ca7e071e7995bf2a45072d45a6b9e981e370",
+    "independent-audit.json": "9f1d6a2bffc4b93353935cb0b1c77a1c881d4dd8e88c363bb5104feb97500ecc",
+    "scalar-hours.json": "f0c8f91eb6ad4fbc3c18d9148d0a81f76aadad53b11b9c7de5bf44fe78230bbb",
+    "stage-transition.json": "83234581545218471a4dcef7a00fd5fa49b5d9336937824b0f83dde7a5300139",
+    "simulation-parity.json": "0ce037a3871f3e808cfea935a292e515d4cc2ab9dfb26c7af3e61dc5816a0b37",
+    "filtered-stages.json": "a6f8140e8f1bc0ce754d7c2904f825b99e17fff120ce55774d12ae04d948dc5c"
+  },
+  "limits": [
+    "Original fixed 24-symbol historical follow-up; not the twelve-symbol selector comparison.",
+    "Micro remains below PF one; capital infeasibility is retained.",
+    "Financial evidence belongs only to the sealed source; no live execution or future profitability certificate."
+  ]
+}
