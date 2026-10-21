@@ -255,6 +255,8 @@ export interface StrategyToggles {
 }
 
 export interface AxisConfig {
+  /** Execution volume of each independent Axis set relative to its corresponding base set (0.1 =10%). */
+  volumeFactor?: number;
   /** legs incl. the base leg */
   levels: number;
   /** rung spacing in ATR(14) */

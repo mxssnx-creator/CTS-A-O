@@ -74,6 +74,7 @@ test("a flat measured live close retains actual notional for reconstructed drawd
   r.settings.sizing = { mode: "fixed", pct: 0.02 };
   r.settings.paperNotional = 5;
   r.settings.cost = 0;
+  r.settings.live.leverage = 10;
   const entryT = END - H;
   const exitT = entryT + 3 * 60_000;
   const tag = liveTag(r.settings.live.connId);
@@ -107,7 +108,7 @@ function bookRow(r: InstanceType<typeof CoreRuntime>, t: Trade, patch: Record<st
   r.db.run("INSERT INTO paper_book_trades (cfg,sym,side,entry_t,exit_t,r,unit_r,reason,owned_notional_usd) VALUES (?,?,?,?,?,?,?,?,?)",
     x.cfg as string,x.sym as string,x.side as number,x.entry_t as number,x.exit_t as number,x.r as number,x.unit_r as number,x.reason as string,x.owned_notional_usd as number|null);
 }
-const paperStats = () => coreStatisticsData(coreStatisticsInput({ source: "paper", hours: 6 })) as Promise<Any>;
+const paperStats = () => coreStatisticsData(coreStatisticsInput({ source: "paper-history", hours: 6 })) as Promise<Any>;
 
 for (const [name, patch] of [
   ["legacy allocation NULL", { owned_notional_usd:null }],
@@ -119,7 +120,7 @@ for (const [name, patch] of [
   ["different symbol", { sym:"OTHER-USDT" }],
   ["different direction", { side:-1 }],
   ["dropped bookkeeping row", { reason:"dropped" }],
-] as const) test(`paper primary cannot certify a losing close from ${name}`, async () => {
+] as const) test(`recorded paper history cannot certify a losing close from ${name}`, async () => {
   const { r, xs } = paperFixture(); bookRow(r,xs[0]); bookRow(r,xs[1],patch);
   const result = await paperStats();
   assert.equal(result.report.total.n,2); assert.equal(result.report.total.pf,null); assert.equal(result.report.total.unknownReturns,1);
@@ -178,4 +179,25 @@ test("strict promotion evidence is exposed unchanged, separate from raw Base and
   assert.deepEqual(response.livePromotion,r.status.livePromotion);
   assert.equal(response.livePromotion.lanes[0].model.noLoss,false);
   assert.equal(response.livePromotion.lanes[0].execution.pf,null);
+});
+
+
+test("forward paper source uses actual held return and allocation without rewritten nominal cash", async () => {
+  const { r, xs } = paperFixture();
+  bookRow(r, xs[0]); bookRow(r, xs[1], { unit_r: -0.02 });
+  const result = await coreStatisticsData(coreStatisticsInput({ source: "paper", hours: 6 })) as Any;
+  assert.equal(result.report.total.n, 2);
+  assert.ok(Math.abs(result.report.total.pf - 0.68) < 1e-10);
+  assert.ok(Math.abs(result.report.total.usd - (1.36 - 13.6)) < 1e-10);
+  assert.equal(result.paperEvidence.cashBasis, "owned-paper-forward");
+  assert.equal(result.sourceLabel, "paper book forward record (virtual)");
+});
+
+test("forward paper retains a settled unknown-return close in the full sample", async () => {
+  const { r, xs } = paperFixture();
+  bookRow(r, xs[0]); bookRow(r, xs[1], { r: null, unit_r: null });
+  const result = await coreStatisticsData(coreStatisticsInput({ source: "paper", hours: 6 })) as Any;
+  assert.equal(result.report.total.n, 2);
+  assert.equal(result.report.total.pf, null);
+  assert.equal(result.report.total.unknownReturns, 1);
 });

@@ -139,7 +139,7 @@ import type {
   SignalVolumeFactors,
 } from "../signal-config.ts";
 import { signalVolumeFactorsOf } from "../signal-config.ts";
-import { volumeFactorForIndication } from "../volume-factor.ts";
+import { volumeFactorForStrategy } from "../volume-factor.ts";
 
 const H = 3_600_000;
 
@@ -366,6 +366,8 @@ export interface RangeOpts {
 }
 
 export interface WalkForwardOptions {
+  /** Per Axis set, relative to the corresponding base volume. Captured once at entry. */
+  axisVolumeFactor?: number;
   /** execution sizing multiplier relative to the normal factor, per strategy target range */
   rangeVolumeFactors?: RangeVolumeFactors;
   /** execution sizing multiplier relative to the normal factor, per independent Signal range */
@@ -838,6 +840,7 @@ export const ENGINE_SIDE_ACCEPT: SignalAccept = {
 
 export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
   return {
+    axisVolumeFactor: s.axis.volumeFactor ?? 0.1,
     indicationVolumeFactors: signalVolumeFactorsOf(s.signals),
     // Keep the general replay warm-up short; config qualification uses its explicit Last-N close window below.
     preH: 6,
@@ -1334,11 +1337,9 @@ export function tradeAt(tp: ConfigTape, i: number): Trade {
   };
 }
 
-const AXIS_VARIANT_TAG = /^axd?-[a-z0-9]+$/;
 /**
- * Independent source families retain their full config ID. For the remaining engine aliases only,
- * remove the indication and equivalent Axis variant tag (…|ax-atr2, …|axd-fib3h).
- * Two Axis depths whose deeper rung never fills can place the same order.
+ * Independent source families and every Axis variant retain their full config ID. Remaining plain engine aliases
+ * remove only the indication. Identical Axis onsets can have different subsequent ladder fills and qualification.
  */
 export function orderCfgKey(cfg: string): string {
   // memoized by id (split / filter / join per call was 1.1 s of a 24-symbol compute; a config id repeats per trade)
@@ -1346,8 +1347,9 @@ export function orderCfgKey(cfg: string): string {
   if (k === undefined) {
     const parts = cfg.split("|");
     // Signal, Tactic, Relate and Break sources, parameter ranges and timeframe lanes own independent trades even when their protect
-    // and onset coincide. Keep their complete identity; other engine aliases and equivalent Axis depths still dedupe.
+    // and onset coincide. Axis mode/range/depth/hybrid identities also remain independent through admission.
     if (
+      parts.includes("axis") ||
       isSignalInd(parts[1] ?? "") ||
       isMicroFamilyInd(parts[1] ?? "") ||
       isMicroInd(parts[1] ?? "") ||
@@ -1359,10 +1361,7 @@ export function orderCfgKey(cfg: string): string {
     )
       k = cfg;
     else
-      k = `${parts[0]}|${parts
-        .slice(2)
-        .filter((s) => !AXIS_VARIANT_TAG.test(s))
-        .join("|")}`;
+      k = `${parts[0]}|${parts.slice(2).join("|")}`;
     if (ORDER_CFG_KEY.size > 200_000) ORDER_CFG_KEY.clear();
     ORDER_CFG_KEY.set(cfg, k);
   }
@@ -6169,7 +6168,7 @@ export function* walkForwardGen(
 ): Generator<number, WalkForwardResult> {
   const byId = new Map(tapes.map((t) => [t.id, t]));
   const indicationVolumeFactors = new Map(
-    tapes.map((tp) => [tp.id, volumeFactorForIndication(tp.ind, o.indicationVolumeFactors)]),
+    tapes.map((tp) => [tp.id, volumeFactorForStrategy(tp, o)]),
   );
   // contrarian execution: seats whose mirror (follow ↔ revert) has no tape, step by step
   let invertMissing = 0;

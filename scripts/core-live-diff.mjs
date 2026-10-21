@@ -5,7 +5,7 @@
 // The per-lane side is a normalized attributed return (not account cash PF); the per-position side is USD from own fills.
 //
 //   node --experimental-strip-types scripts/core-live-diff.mjs runs/x01-live/core.sqlite [--hours 6 | --since ISO]
-//     [--tag CTSX01S_] [--cost 0.002] [--out file.md] [--json]
+//     [--tag CTSX01S_] [--cost 0.002] [--legacy] [--out file.md] [--json]
 import { writeFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import {
@@ -40,12 +40,13 @@ const db = new DatabaseSync(file, { readOnly: true });
 let rel, legacy;
 try {
   const cols = new Set(db.prepare("SELECT name FROM pragma_table_info('paper_book_trades')").all().map((x) => String(x.name)));
-  if (!cols.size) {
+  if (!cols.size || argv.includes("--legacy")) {
     // Older snapshots carry virtual paper history and attributed lane returns, not funded book/fill evidence.
     // Preserve that diagnostic format and its unknown unit returns; never promote it into the modern relation.
     const paperCols = new Set(db.prepare("PRAGMA table_info(paper_trades)").all().map((x) => x.name));
     const laneCols = new Set(db.prepare("PRAGMA table_info(live_lane_trades)").all().map((x) => x.name));
     const system = paperCols.size ? db.prepare(`SELECT cfg, sym, side, entry_t, exit_t, ${paperCols.has("unit_r") ? "unit_r" : "NULL"} AS r FROM paper_trades WHERE exit_t IS NOT NULL`).all() : [];
+    // relation: all rows — legacy attribution diagnostic retains unknown and non-owned rows; liveDiff classifies them.
     const lanes = laneCols.size ? db.prepare(`SELECT id, cfg, sym, exit_t, r, ${laneCols.has("reason") ? "reason" : "'unverified' AS reason"} FROM live_lane_trades`).all() : [];
     legacy = liveDiff(system.map((x) => ({ cfg: x.cfg, sym: x.sym, side: x.side, entryT: x.entry_t, exitT: x.exit_t, r: x.r })),
       lanes.map((x) => ({ id: x.id, cfg: x.cfg, sym: x.sym, exitT: x.exit_t, r: x.r, reason: x.reason })), since);

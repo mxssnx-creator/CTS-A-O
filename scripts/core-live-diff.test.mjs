@@ -56,6 +56,12 @@ test("a current snapshot without an owned-fill ledger keeps the relation diagnos
     assert.equal(report.relation.counts.matched, 1);
     assert.equal(report.relation.positions, null, "missing fills never become funded execution");
     assert.equal(report.check.judged, false, "one attributed match cannot qualify a promotion");
+    const legacy = spawnSync(process.execPath, ["--experimental-strip-types", "--no-warnings", new URL("./core-live-diff.mjs", import.meta.url).pathname, file, "--legacy", "--json"], { encoding: "utf8", timeout: 10000 });
+    assert.equal(legacy.status, 0, legacy.stderr);
+    const legacyReport = JSON.parse(legacy.stdout);
+    assert.ok(legacyReport.legacy, "an explicit legacy diagnostic remains available on current snapshots");
+    assert.equal(legacyReport.relation, undefined);
+    assert.equal(legacyReport.check.judged, false);
     assert.deepEqual(readFileSync(file), before, "the snapshot is never migrated by a reader");
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });

@@ -70,9 +70,10 @@ export function pickUniverse(tickers: readonly Ticker[], n: number): string[] {
     .map((t) => t.sym);
 }
 
-export type SymbolRank = "volatility1h" | "volume" | "market" | "gainers" | "losers";
+export type SymbolRank = "volatility1h" | "change1h5m" | "volume" | "market" | "gainers" | "losers";
 export const SYMBOL_RANKS: ReadonlyArray<{ id: SymbolRank; label: string }> = [
   { id: "volatility1h", label: "1H volatility" },
+  { id: "change1h5m", label: "1H average 5m price distance" },
   { id: "volume", label: "24h volume" },
   { id: "market", label: "Market (majors first)" },
   { id: "gainers", label: "24h gainers" },
@@ -120,6 +121,24 @@ export function forceSymbols(ranked: readonly string[], forced: readonly string[
   return [...f, ...ranked.filter((x) => !set.has(x))].slice(0, Math.max(n, f.length));
 }
 
+/** Mean of the last hour's 12 absolute 5m close-to-close returns: sum(|close/previousClose - 1|) /12. */
+export function priceChange1h5m(candles: readonly Candle[], cutT: number): number | null {
+  const M = 60_000;
+  if (!Number.isSafeInteger(cutT) || cutT % (5 * M)) return null;
+  const from = cutT - 65 * M;
+  const rows = candles.filter((c) => c.t >= from && c.t < cutT);
+  // Thirteen completed native 5m closes supply twelve consecutive distances over exactly one hour.
+  if (rows.length !== 13 || rows.some((c, i) => c.t !== from + i * 5 * M || !Number.isFinite(c.c) || c.c <= 0)) return null;
+  let sum = 0;
+  for (let i = 1; i < rows.length; i++) sum += Math.abs(rows[i].c / rows[i - 1].c - 1);
+  const change = sum / 12;
+  return Number.isFinite(change) ? change : null;
+}
+
+// Shared by connections using the same feed. A completed five-minute endpoint is immutable; concurrent ranks
+// reuse the same promise. The existing feed/REST pager still owns global request pacing and rate-limit handling.
+const changeRanks = new WeakMap<typeof fetchKlines, Map<string, { cutT: number; value: Promise<number | null> }>>();
+
 /**
  * Symbols for the universe by the chosen ranking. Only liquid pairs (≥ $2M 24h volume, among the 150 most
  * traded) are candidates, so a ranking never picks an untradeable coin. "volatility1h" = mean high-low range of the
@@ -140,6 +159,33 @@ export async function rankUniverse(
     .slice(0, Math.max(150, n));
   const take = (xs: readonly Ticker[]) => xs.slice(0, n).map((t) => t.sym);
   switch (rank) {
+    case "change1h5m": {
+      const cutT = Math.floor(Date.now() / 300_000) * 300_000;
+      let cache = changeRanks.get(klines);
+      if (!cache) changeRanks.set(klines, (cache = new Map()));
+      for (const [sym, entry] of cache) if (entry.cutT !== cutT || !pool.some((t) => t.sym === sym)) cache.delete(sym);
+      const scores = new Map<string, number>();
+      let i = 0;
+      await Promise.all(Array.from({ length: Math.min(4, pool.length) }, async () => {
+        while (i < pool.length) {
+          const t = pool[i++];
+          let entry = cache.get(t.sym);
+          if (!entry) {
+            const value = Promise.resolve().then(() => klines(t.sym, 5, {
+              startT: cutT - 65 * 60_000, endT: cutT - 1, nowT: cutT, limit: 13,
+            })).then((cs) => priceChange1h5m(cs, cutT)).catch(() => null);
+            entry = { cutT, value };
+            cache.set(t.sym, entry);
+          }
+          const score = await entry.value;
+          if (score !== null) scores.set(t.sym, Math.abs(score));
+        }
+      }));
+      const ready = pool.filter((t) => scores.has(t.sym));
+      if (ready.length < Math.min(n, pool.length) || !ready.length)
+        throw new Error(`1H average 5m price distance: complete history for ${ready.length}/${Math.min(n, pool.length)} required symbols; retry after the next 5m close`);
+      return take(ready.sort((a, b) => scores.get(b.sym)! - scores.get(a.sym)! || b.quoteVol - a.quoteVol || a.sym.localeCompare(b.sym)));
+    }
     case "volume":
       return take(pool);
     case "market": {

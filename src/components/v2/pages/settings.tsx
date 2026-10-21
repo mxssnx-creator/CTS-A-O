@@ -2189,6 +2189,7 @@ export function ProtectRanges(props: { grid: object; set: (path: string[], v: un
 /** how the universe is chosen (settings.symbolRank; default 1H volatility) */
 const SYMBOL_RANK: Record<string, string> = {
   volatility1h: "1H volatility",
+  change1h5m: "1H average 5m price distance",
   volume: "24h quote volume",
   market: "market majors",
   gainers: "24h gainers",
@@ -2517,7 +2518,7 @@ export function SettingsPage() {
               1m
             </div>
           </Field>
-          <Field label="Symbol ranking" hint="how the universe of symbols is picked">
+          <Field label="Symbol ranking" hint={s.symbolRank === "change1h5m" ? "sum of 12 absolute 5m percentage changes ÷12 over the last completed hour; native exchange 5m candles; ties by volume" : "how the universe of symbols is picked"}>
             <select
               className="v2-select"
               aria-label="Symbol ranking"
@@ -3734,7 +3735,11 @@ export function SettingsPage() {
                 onChange={(v) => set(["axis", "spacing"], v)}
               />
             </Field>
-            <Field label="Rung size (× normal)" hint="0.1 – 5">
+            <Field label="Axis volume per set" hint="relative to its base set · 0.1 =10% · captured at entry">
+              <Num step={0.01} min={0.01} max={5} value={s.axis?.volumeFactor ?? 0.1}
+                onChange={(v) => set(["axis", "volumeFactor"], v)} />
+            </Field>
+            <Field label="Rung size (× Axis base)" hint="0.1 – 5">
               <Num
                 step={0.1}
                 min={0.1}

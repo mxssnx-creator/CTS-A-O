@@ -322,7 +322,7 @@ describe("native live boundary preserves held protection without unproven growth
   it("blocks missing promotion evidence, prevents resizing a held share upward, and still closes it", async () => {
     process.env.CTS_CORE_LIVE = "1";
     const { rt } = fakeRt(new CoreDb());
-    (rt as unknown as { engineProof: () => unknown }).engineProof = () => ({ proven: new Set(), judged: 1, n: 25, minPf: 1.2 });
+    (rt as unknown as { engineProof: () => unknown }).engineProof = () => ({ proven: new Set([CFG]), judged: 1, n: 25, minPf: 1.2 });
     rt.paper.positions = [paperLane(CFG, "S0-USDT", 1, 10)];
     const ex = new SimExchange(rng(17));
     await stepLive(rt as never, [], 1, ex as unknown as ExchangeClient);

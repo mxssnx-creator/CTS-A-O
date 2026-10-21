@@ -3,13 +3,14 @@ import assert from "node:assert/strict";
 import { CoreRuntime } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
 import { DEFAULT_SETTINGS, PREVIOUS_DEFAULT_FOCUS_20OCT, PREVIOUS_INVERSE_FOCUS_20OCT, INVERSE_FOCUS_20OCT } from "../config.ts";
+import { MICRO_CONFIG_IDS, INVERSE_MICRO_CONFIG_IDS } from "../indications/micro-family.ts";
 import { INVERSE_CONFIG_IDS } from "../indications/inverse-config.ts";
 import { allCombos, microLaneFloor } from "../pipeline/pipeline.ts";
 import { checkSettings } from "../settings-check.ts";
 
 test("Inverse joins the factory Focus and upgrades only the former factory selection, including presets", () => {
   assert.equal(INVERSE_FOCUS_20OCT.length, 114);
-  assert.deepEqual(DEFAULT_SETTINGS.focus, [...PREVIOUS_DEFAULT_FOCUS_20OCT, ...INVERSE_FOCUS_20OCT]);
+  assert.deepEqual(DEFAULT_SETTINGS.focus, [...PREVIOUS_DEFAULT_FOCUS_20OCT, ...INVERSE_FOCUS_20OCT, ...MICRO_CONFIG_IDS.map((id) => `follow|${id}`), ...INVERSE_MICRO_CONFIG_IDS.map((id) => `follow|${id}`)]);
   checkSettings(DEFAULT_SETTINGS);
   const combos = allCombos(DEFAULT_SETTINGS.focus, [], DEFAULT_SETTINGS.tfs, microLaneFloor(DEFAULT_SETTINGS.grid));
   for (const id of INVERSE_CONFIG_IDS) assert.ok(combos.some((c) => c.ind.startsWith(`${id}@m`)), id);
@@ -45,7 +46,7 @@ test("the published 102-identity factory selection upgrades at v37 without chang
   ]);
   const runtime = new CoreRuntime(db, undefined, { market: "synthetic" });
   try {
-    assert.equal(runtime.settings.focus.length, 211);
+    assert.equal(runtime.settings.focus.length, 939);
     assert.deepEqual(runtime.settings.focus, DEFAULT_SETTINGS.focus);
     assert.ok(runtime.settings.disabledKinds.includes("inverse"));
     const presets = db.kvGet<Array<{ settings: { focus: string[] } }>>("presets")!;

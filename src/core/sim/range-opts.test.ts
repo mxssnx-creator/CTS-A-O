@@ -49,6 +49,8 @@ const base: WalkForwardOptions = {
   symGate: undefined,
   coord: { enabled: false, hourLock: 0, cooldown: "off", conflict: false, confirm: false },
   engineSideAccept: undefined,
+  // This fixture deliberately tests a 336 h validation history with closes 20–120 h old.
+  longH: 336,
   simH: 6,
   validLastN: 0,
   lastN: 0,

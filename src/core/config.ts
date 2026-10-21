@@ -172,6 +172,7 @@ export const GRID_VARIANTS_MAX = 20_000;
 export const DEFAULT_DCA: DcaConfig = { levels: 1, addRatio: 2.5, step: 0.02, stopGap: 0.5, slOfTp: 1 };
 /** Axis: 3 legs 0.7 ATR apart toward the EMA-50 axis, entered at 0.35–2.6 ATR displacement (desk defaults). */
 export const DEFAULT_AXIS: AxisConfig = {
+  volumeFactor: 0.1,
   levels: 3,
   spacing: 0.7,
   ratio: 1,
@@ -260,7 +261,7 @@ export interface CoreSettings {
   /** symbols in the universe */
   symbols: number;
   /** how the universe is chosen: 1H volatility (default), 24h volume, market majors, 24h gainers / losers */
-  symbolRank: "volatility1h" | "volume" | "market" | "gainers" | "losers";
+  symbolRank: "volatility1h" | "change1h5m" | "volume" | "market" | "gainers" | "losers";
   /** engine cycle: checks for newly closed bars and runs the stages when one closed (ms) */
   cycleMs: number;
   /**
@@ -799,6 +800,7 @@ export const DEFAULT_SETTINGS: CoreSettings = {
 /** Symbol selection rankings (engine universe and preset settings). */
 export const SYMBOL_RANK_CHOICES = [
   { id: "volatility1h", label: "1H volatility" },
+  { id: "change1h5m", label: "1H average 5m price distance" },
   { id: "volume", label: "24h volume" },
   { id: "market", label: "Market (majors first)" },
   { id: "gainers", label: "24h gainers" },

@@ -21,6 +21,9 @@ const opt = (name, fallback) => {
   const i = process.argv.indexOf(`--${name}`);
   return i < 0 ? fallback : process.argv[i + 1];
 };
+const strategy = opt("strategy", "micro");
+assert.ok(["micro", "axis"].includes(strategy), "Unknown load-test strategy");
+const axisLoad = strategy === "axis";
 const out = resolve(opt("out", "runs/micro-stress-120"));
 mkdirSync(out, { recursive: true });
 const settings = {
@@ -35,6 +38,14 @@ const settings = {
     micro: { ...MICRO_RANGE, tp: [0.002], slOfTp: [1, 2], trailOfTp: [0, 0.5], maxHoldMin: 60 } },
   live: { enabled: true, mode: "overall" },
 };
+if (axisLoad) {
+  settings.focus = ["ema-9-21", "rsi-mom-14-20"].flatMap((id) => [1,5,15].map((tf) => `follow|${id}@m${tf}`));
+  settings.disabledKinds = [];
+  settings.toggles = { ...settings.toggles, normal: false, trailing: false, axis: true };
+  // allSets measures builders even for rejected Base pairs; unchanged PF gates still decide admission.
+  settings.grid = { ...settings.grid, tp: [0.02], slOfTp: [1], trailOfTp: [0], holdH: [2], micro: false, allSets: true };
+  settings.axis = { ...DEFAULT_SETTINGS.axis, modes: ["revert", "desk"], ranges: ["atr", "linear", "geo", "fib", "volume"], levelsSet: [2,3,4], hybrids: [false,true] };
+}
 const rt = new CoreRuntime(new CoreDb(":memory:"), settings, {
   market: "synthetic", priceStream: null, replay: true,
   evaluationFromT: Number(process.env.CTS_CORE_SYNTHETIC_END) - 12 * 3_600_000,
@@ -79,6 +90,7 @@ try {
   assert.equal(rt.status.executionProgress?.intervalMs, 100);
   assert.equal(rt.status.errorsInRow, 0);
   assert.equal(rt.status.executionProgress?.error, null);
+  if (axisLoad) assert.ok(rt.tapes.filter((t) => t.kind === "axis").length >= 270, "all 6 lane sources ×45 Axis variants were built");
 } catch (error) {
   failure = String(error?.stack ?? error);
   process.exitCode = 1;
@@ -88,7 +100,9 @@ try {
   await rt.liveSettled(2000);
   sample();
   const summary = { schema: "cts-micro-load-v1", source: "synthetic functional load, no exchange executions",
-    scope: `120 symbols; all ${MICRO_CONFIG_IDS.length + INVERSE_MICRO_CONFIG_IDS.length} Micro/mirror identities; 1/5/15m singles and combinations; configured Micro protects including enabled Trailing-only siblings; two real runtime computations; 100 coalesced kicks. Full four-range financial grid measured separately on 20 real symbols.`,
+    scope: axisLoad ? "120 symbols; 6 indication/lane sources ×45 configured Axis variants; two real runtime computations; 100 coalesced kicks; allSets builder measurement with unchanged qualification gates. Synthetic load only."
+      : `120 symbols; all ${MICRO_CONFIG_IDS.length + INVERSE_MICRO_CONFIG_IDS.length} Micro/mirror identities; 1/5/15m singles and combinations; configured Micro protects including enabled Trailing-only siblings; two real runtime computations; 100 coalesced kicks. Full four-range financial grid measured separately on native historical data.`,
+    strategy, axisTapes: rt.tapes.filter((t) => t.kind === "axis").length,
     configuredProtects: rt.wf.protects.length, configuredTrailingOnly: rt.wf.protects.filter((p) => p.trailOnly).length,
     settings: rt.settings, wf: rt.wf, elapsedMs: performance.now() - started, maxRssMb,
     maxCompute, kicks, nativeChecks, computes: rt.status.computes, paperSteps: rt.status.paperSteps,

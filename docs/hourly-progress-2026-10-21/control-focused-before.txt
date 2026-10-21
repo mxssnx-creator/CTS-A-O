@@ -1,0 +1,88 @@
+▶ control: someone else's quantity on a held key
+  ✔ the desk's stop there closes only the desk's quantity, no take-profit; every desk exit order triggers → the operator's 10 stay (64.132796ms)
+  ✔ the operator's part is gone again: one bounded stop for the desk's quantity (12.631259ms)
+✔ control: someone else's quantity on a held key (78.264035ms)
+▶ control: restart after the desk's stop filled while it was away
+  ✔ the operator's new position on that side is not adopted through the old ledger: no order, untouched (30.913455ms)
+  ✔ foreignSides "independent": the old ledger adopts nothing; the desk opens its own beside the operator's 5, bounded (25.120055ms)
+✔ control: restart after the desk's stop filled while it was away (56.279908ms)
+▶ control rows mirror
+  ✔ loads the table once and matches a fresh SQL read (11.147279ms)
+✔ control rows mirror (21.298274ms)
+▶ control orders: complete (stop, take-profit, trailing), long and short
+  ✔ a Trailing-only venue backstop starts at at most 3%, without a TP, on both sides (98.943321ms)
+  ✔ the take-profit's distance and fit (pure) (6.203983ms)
+  ✔ which order closed a position the exchange closed (pure) (2.537683ms)
+  ✔ what closed a side, from the venue's order history (pure) (1.772039ms)
+  ✔ outside-close attribution ignores old episodes and is independent of history order (7.189901ms)
+  ✔ every position carries its stop and its take-profit on the right sides, long and short; nothing churns (41.696223ms)
+  ✔ a refused take-profit is placed by the upkeep; a lane without a target removes it; a farther target moves it (97.494904ms)
+  ✔ closed by its take-profit: booked as target exits at its price; by its stop: stop exits; never reopened (66.56857ms)
+  ✔ closed by hand (a close-all in the venue's app): booked as hand exits at the close's fill, never at the cancelled stop (46.547772ms)
+  ✔ trailing: the stop follows the lanes' trailed stops — up for a long, down for a short — and holds on a pullback (39.906177ms)
+  ✔ the stop stays inside the liquidation price the exchange reports (6.158529ms)
+  ✔ positionSize "min": every position at the exchange minimum whatever its lanes, never resized (46.784691ms)
+✔ control orders: complete (stop, take-profit, trailing), long and short (464.669231ms)
+▶ control sizing: slots go to targets that can open
+  ✔ C1 (planner): a blocked key that is not held takes no slot; a held one is never left out (25.327145ms)
+  ✔ C1 (live step): an open the exchange refused waits — and the next target opens in its slot (84.234693ms)
+  ✔ C1: an offline symbol (margin-mode backoff for hours) does not hold a slot (13.498052ms)
+  ✔ C2: a target the worst-case budget drops gives its slot to the next one and is reported (25.446484ms)
+  ✔ C2: without a slot cap a drop is reported once (one pass) (29.418993ms)
+  ✔ C3: a position opened moments ago that the read does not show yet ranks as held — not displaced (48.228495ms)
+✔ control sizing: slots go to targets that can open (229.445996ms)
+▶ control orders: increases, stop repair, ownership
+  ✔ C4: an increase under the exchange minimum is not raised to it — the position is kept as it is (13.298222ms)
+  ✔ C5: a missing stop with the symbol missing from the tickers waits — the position is never closed for it (13.36687ms)
+  ✔ C6: ownership per side in hedge mode; the whole symbol in one-way mode or for an order without a side (2.478906ms)
+  ✔ C6 (live step): a foreign short never freezes our long — it is closed when its lanes end; the short is untouched (20.516021ms)
+  ✔ C7: the scalers never size under a minimum the venue named — a minimum that breaks the exposure cap is dropped (25.054717ms)
+  ✔ the live status says when the volume factor has no effect, and from which factor it would size (23.321272ms)
+  ✔ the hint names a budget that scales every position (it cancels the volume factor too), not only the cap (28.878222ms)
+✔ control orders: increases, stop repair, ownership (129.883541ms)
+▶ control sizing: the budget base B = min(wallet, equity)
+  ✔ budgetBase: the smaller of wallet and equity; either alone; null without a read (1.177256ms)
+  ✔ the per-position cap (maxPositionX × B) uses the wallet when open profit lifts the equity above it (28.806754ms)
+  ✔ %-of-equity sizing takes its unit from B too: open profit never sizes a unit up (6.914072ms)
+  ✔ the account read is cached in minimum-quantity sizing too: liveUnitPeek reads it (never the paper balance) (4.977031ms)
+  ✔ a step that ends before its account read carries the last account with its read time (29.393088ms)
+✔ control sizing: the budget base B = min(wallet, equity) (71.832728ms)
+▶ control sizing: risk-based (positionSize "risk")
+  ✔ notional = B × 1 % × ratio / riskDist, whatever the lanes' volume; the stop risk is B × 1 % × ratio (0.847153ms)
+  ✔ capped by the per-position cap (min(maxNotionalUsd, maxPositionX × B) is passed in as the cap) (0.385258ms)
+  ✔ the venue minimum: raised while its risk ≤ 2 × the per-position risk, else skipped with its reason (0.439648ms)
+  ✖ end to end: the live step sizes on B = min(wallet, equity); unknown B opens nothing (20.942386ms)
+✖ control sizing: risk-based (positionSize "risk") (25.356503ms)
+▶ settings check: position size "risk" and its risk per position
+  ✔ accepts risk with 0.05 % – 5 %, refuses other values and the lane-orders combination (33.302601ms)
+✔ settings check: position size "risk" and its risk per position (36.842315ms)
+▶ size labels: one wording of the live sizing on every page
+  ✔ names the unit per mode and the cap min(maxNotionalUsd, maxPositionX × B) (2.50483ms)
+✔ size labels: one wording of the live sizing on every page (2.731693ms)
+ℹ tests 41
+ℹ suites 10
+ℹ pass 40
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3887.268129
+
+✖ failing tests:
+
+test at src/core/server/control-sizing.test.ts:472:3
+✖ end to end: the live step sizes on B = min(wallet, equity); unknown B opens nothing (20.942386ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  1 !== 0
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/control-sizing.test.ts:492:12)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

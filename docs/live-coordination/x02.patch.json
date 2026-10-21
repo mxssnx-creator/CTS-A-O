@@ -1,8 +1,25 @@
 {
-  "why": "x02 BingX VST (demo) desk, operator 21 Oct: ALL indications and strategy types (Normal, Trailing, Block, DCA, DCA Active, Axis, Signals; Micro, Minimal, Short, General, Long and Wide ranges), 12 symbols to start (memory shares the host with the live x01 desk), monitored and fixed continuously; demo money only. Notes for later: settings / limits / minimums / success criteria are tracked in docs/x02-notes.md.",
+  "why": "x02 BingX VST (demo) desk, operator 21 Oct: ALL indications and strategy types (Normal, Trailing, Block, DCA, DCA Active, Axis, Signals; Micro, Minimal, Short, General, Long and Wide ranges), 12 symbols to start (memory shares the host with the live x01 desk), monitored and fixed continuously; demo money only. Notes for later: settings / limits / minimums / success criteria are tracked in docs/x02-notes.md. 21 Oct operator demo-only selection: wf.symGate off and live.maxChase 5; this file is a profile, applying it requires an explicit launcher action.",
   "settings": {
     "disabledKinds": [],
-    "toggles": { "normal": true, "trailing": true, "block": true, "blockActive": false, "dca": true, "dcaActive": true, "axis": true },
-    "live": { "maxPositions": 0, "maxNotionalUsd": 200, "leverage": "max", "positionSize": "min" }
+    "toggles": {
+      "normal": true,
+      "trailing": true,
+      "block": true,
+      "blockActive": false,
+      "dca": true,
+      "dcaActive": true,
+      "axis": true
+    },
+    "live": {
+      "maxPositions": 0,
+      "maxNotionalUsd": 200,
+      "leverage": "max",
+      "positionSize": "min",
+      "maxChase": 5
+    }
+  },
+  "wf": {
+    "symGate": "off"
   }
 }

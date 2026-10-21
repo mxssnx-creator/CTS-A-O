@@ -1,6 +1,6 @@
 {
-  "schema": "cts-universal-integration-plan-v3",
-  "sourceSha256": "1070ac283ba701ef6931cbf19fb614165188b3b60c1d86805828232f57196796",
+  "schema": "cts-universal-integration-plan-v5",
+  "sourceSha256": "065be5bb20cad6ab08b6a7021302273da59666f91d12f0ef7aa69238a6874fbc",
   "scope": {
     "registeredSpecs": 1720,
     "families": 19,

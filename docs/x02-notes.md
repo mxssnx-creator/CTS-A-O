@@ -13,3 +13,7 @@ Host shared with the live x01 desk: heap 3072 MB, 12 symbols, `CTS_CORE_WORKERS=
 
 ## Findings log
 - 21 Oct 00:09Z: first start had Block Active on (copied from the old twin settings) -> corrected before any result.
+
+## 21 Oct — scoped demo follow-up from PR 187
+
+The requested X02 demo profile uses `live.maxChase: 5` and `wf.symGate: "off"`. The WF object is at the patch root, matching the actual `core-live-test.mjs` loader; nesting it under settings would leave the requested WF change unapplied. The X01 profile and global defaults retain their own policy. This integration edits the repository profile only; no launcher, deployment or venue action was performed.

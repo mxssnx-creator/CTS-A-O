@@ -38,6 +38,12 @@ const PROTECTS: Record<string, Protect> = {
   trailFree: { tp: 0.02, sl: 0.008, trail: 0.004, hold: 80, trailFree: true },
   atr: { tp: 0.02, sl: 0.01, trail: 0.005, hold: 40, atr: { sl: 1.5, tpRatio: 2, trail: 1 } },
 };
+for (const exitSet of ["static-sl", "adaptive-sl", "trailing", "trailing-only", "breakeven"] as const)
+  PROTECTS[`historic-${exitSet}`] = {
+    tp: exitSet === "trailing-only" ? 0 : 0.02, sl: 0.01,
+    trail: exitSet.startsWith("trailing") ? 0.004 : 0, hold:60,
+    exitType:"historic",exitSet,...(exitSet === "trailing-only" ? {trailOnly:true} : {}),
+  };
 
 describe("simulateFrom resumes simulate", () => {
   for (const [name, p] of Object.entries(PROTECTS))

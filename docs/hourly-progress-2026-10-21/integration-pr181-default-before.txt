@@ -1,0 +1,65 @@
+2026-10-21T01:04:00.9186580Z ✖ 41 problems (0 errors, 41 warnings)
+2026-10-21T01:04:07.3592553Z ✔ cli: a non-game with no card fails too — the pass exists to produce one (77.220708ms)
+2026-10-21T01:04:07.3607652Z ✔ cli: --placeholder-ok is how a plain-utility pass reports no card as expected (202.770652ms)
+2026-10-21T01:04:07.3660406Z ﹣ SKILL.md tells the pass to self-check with the flag this CLI accepts (0.091051ms) # .grok/skills/og not present
+2026-10-21T01:04:07.4847588Z ✔ bad OHLCV, malformed rows, duplicate timestamps and invalid close boundaries fail closed (0.645352ms)
+2026-10-21T01:04:13.5714062Z ✖ snapshot report uses verified paper unit returns while venue returns remain unchanged (364.881171ms)
+2026-10-21T01:04:13.5729134Z ✖ legacy snapshots and mixed unknown paper samples keep their identities but have no primary ratio (799.535925ms)
+2026-10-21T01:04:16.5435814Z ✔ a close simultaneous with entry is not visible to that decision and invalid windows fail clearly (757.11142ms)
+2026-10-21T01:04:16.5566402Z ✖ legacy nominal rows including NULL cannot retain old ON or manufacture owned-execution proof (429.399336ms)
+2026-10-21T01:04:16.5569661Z ✖ verified complete exact evidence produces a byte-hash-bound proof with original kinds and default thresholds (459.983583ms)
+2026-10-21T01:04:16.5571999Z ✖ winning sibling cannot promote losing opposite side or a distinct protection config (443.128541ms)
+2026-10-21T01:04:16.5574143Z ✖ expired, future, NULL and incomplete artifact evidence revokes previously ON exact identities (448.518031ms)
+2026-10-21T01:04:16.5576403Z ✖ unreadable/malformed artifacts and unbound reference identity fail closed; dry mode never mutates (458.354479ms)
+2026-10-21T01:04:16.5578059Z ✖ invalid threshold arguments fail before changing the target patch (518.687521ms)
+2026-10-21T01:04:36.1580407Z   ✖ splits raised from unraised orders and weighs the book by volume (1.545953ms)
+2026-10-21T01:04:36.1581778Z   ✖ Block off (every order at one unit): both PFs agree, nothing raised (0.346371ms)
+2026-10-21T01:04:36.1583275Z ✖ the eval sees Block: volume-weighted PF and unit PF raised / unraised (2.269893ms)
+2026-10-21T01:04:40.7523158Z ✔ precomputed price cannot bypass an unknown or nonfinite endpoint time (0.365636ms)
+2026-10-21T01:04:42.0579712Z ✖ eval-gate carries a dump's basePairs[].rules into windows[].pairs and the report rules into summary.baseRules (unset: neither) (1081.153871ms)
+2026-10-21T01:04:42.0737105Z ✔ a window the run did not compute for the range is unscored, not 0 and not a pass (7.900846ms)
+2026-10-21T01:04:42.0814088Z ✔ requires30 unique own-side historical onsets plus the actual initial gate pass (10.880592ms)
+2026-10-21T01:04:44.8517865Z ✔ settings without a grid pass through; the current grid is not mutated (0.211958ms)
+2026-10-21T01:05:56.1435463Z ✔ an interrupted pass leaves the target on its old bytes, temp-free (1.089085ms)
+2026-10-21T01:05:56.1455650Z ℹ tests 678
+2026-10-21T01:05:56.1456339Z ℹ pass 659
+2026-10-21T01:05:56.1456907Z ℹ fail 11
+2026-10-21T01:05:56.1457127Z ℹ cancelled 0
+2026-10-21T01:05:56.1492166Z ✖ failing tests:
+2026-10-21T01:05:56.1493946Z ✖ snapshot report uses verified paper unit returns while venue returns remain unchanged (364.881171ms)
+2026-10-21T01:05:56.1495358Z   AssertionError [ERR_ASSERTION]: file:///home/runner/work/CTS-A-O/CTS-A-O/scripts/core-live-diff.mjs:42
+2026-10-21T01:05:56.1498134Z   Error: no such table: live_orders
+2026-10-21T01:05:56.1511190Z ✖ legacy snapshots and mixed unknown paper samples keep their identities but have no primary ratio (799.535925ms)
+2026-10-21T01:05:56.1511995Z   AssertionError [ERR_ASSERTION]: file:///home/runner/work/CTS-A-O/CTS-A-O/scripts/core-live-diff.mjs:42
+2026-10-21T01:05:56.1513807Z   Error: no such table: live_orders
+2026-10-21T01:05:56.1525474Z ✖ legacy nominal rows including NULL cannot retain old ON or manufacture owned-execution proof (429.399336ms)
+2026-10-21T01:05:56.1526648Z   AssertionError [ERR_ASSERTION]: file:///home/runner/work/CTS-A-O/CTS-A-O/scripts/core-live-promote.mjs:46
+2026-10-21T01:05:56.1527492Z     nominalCloses = db.prepare(`SELECT COUNT(*) AS n FROM live_lane_trades WHERE ${OWN_CLOSE_SQL}`).get().n;
+2026-10-21T01:05:56.1528468Z   Error: no such column: reason
+2026-10-21T01:05:56.1537515Z ✖ verified complete exact evidence produces a byte-hash-bound proof with original kinds and default thresholds (459.983583ms)
+2026-10-21T01:05:56.1538448Z   AssertionError [ERR_ASSERTION]: file:///home/runner/work/CTS-A-O/CTS-A-O/scripts/core-live-promote.mjs:46
+2026-10-21T01:05:56.1539317Z     nominalCloses = db.prepare(`SELECT COUNT(*) AS n FROM live_lane_trades WHERE ${OWN_CLOSE_SQL}`).get().n;
+2026-10-21T01:05:56.1540348Z   Error: no such column: reason
+2026-10-21T01:05:56.1554782Z ✖ winning sibling cannot promote losing opposite side or a distinct protection config (443.128541ms)
+2026-10-21T01:05:56.1556288Z   AssertionError [ERR_ASSERTION]: file:///home/runner/work/CTS-A-O/CTS-A-O/scripts/core-live-promote.mjs:46
+2026-10-21T01:05:56.1557667Z     nominalCloses = db.prepare(`SELECT COUNT(*) AS n FROM live_lane_trades WHERE ${OWN_CLOSE_SQL}`).get().n;
+2026-10-21T01:05:56.1559462Z   Error: no such column: reason
+2026-10-21T01:05:56.1574692Z ✖ expired, future, NULL and incomplete artifact evidence revokes previously ON exact identities (448.518031ms)
+2026-10-21T01:05:56.1576320Z   AssertionError [ERR_ASSERTION]: file:///home/runner/work/CTS-A-O/CTS-A-O/scripts/core-live-promote.mjs:46
+2026-10-21T01:05:56.1577709Z     nominalCloses = db.prepare(`SELECT COUNT(*) AS n FROM live_lane_trades WHERE ${OWN_CLOSE_SQL}`).get().n;
+2026-10-21T01:05:56.1579587Z   Error: no such column: reason
+2026-10-21T01:05:56.1608887Z ✖ unreadable/malformed artifacts and unbound reference identity fail closed; dry mode never mutates (458.354479ms)
+2026-10-21T01:05:56.1609823Z   AssertionError [ERR_ASSERTION]: file:///home/runner/work/CTS-A-O/CTS-A-O/scripts/core-live-promote.mjs:46
+2026-10-21T01:05:56.1610677Z     nominalCloses = db.prepare(`SELECT COUNT(*) AS n FROM live_lane_trades WHERE ${OWN_CLOSE_SQL}`).get().n;
+2026-10-21T01:05:56.1611685Z   Error: no such column: reason
+2026-10-21T01:05:56.1622755Z ✖ invalid threshold arguments fail before changing the target patch (518.687521ms)
+2026-10-21T01:05:56.1623587Z   AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Invalid promotion thresholds/. Input:
+2026-10-21T01:05:56.1625197Z     '  nominalCloses = db.prepare(`SELECT COUNT(*) AS n FROM live_lane_trades WHERE ${OWN_CLOSE_SQL}`).get().n;\n' +
+2026-10-21T01:05:56.1626476Z     'Error: no such column: reason\n' +
+2026-10-21T01:05:56.1637833Z     actual: "file:///home/runner/work/CTS-A-O/CTS-A-O/scripts/core-live-promote.mjs:46\n  nominalCloses = db.prepare(`SELECT COUNT(*) AS n FROM live_lane_trades WHERE ${OWN_CLOSE_SQL}`).get().n;\n                     ^\n\nError: no such column: reason\n    at file:///home/runner/work/CTS-A-O/CTS-A-O/scripts/core-live-promote.mjs:46:22 {\n  code: 'ERR_SQLITE_ERROR',\n  errcode: 1,\n  errstr: 'SQL logic error'\n}\n\nNode.js v24.22.0\n",
+2026-10-21T01:05:56.1643308Z ✖ splits raised from unraised orders and weighs the book by volume (1.545953ms)
+2026-10-21T01:05:56.1644277Z   AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+2026-10-21T01:05:56.1656704Z ✖ Block off (every order at one unit): both PFs agree, nothing raised (0.346371ms)
+2026-10-21T01:05:56.1657716Z   AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+2026-10-21T01:05:56.1670419Z ✖ eval-gate carries a dump's basePairs[].rules into windows[].pairs and the report rules into summary.baseRules (unset: neither) (1081.153871ms)
+2026-10-21T01:05:56.1671238Z   AssertionError [ERR_ASSERTION]: the losing 2 % target is the one the rule drops

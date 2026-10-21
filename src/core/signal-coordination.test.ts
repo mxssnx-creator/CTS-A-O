@@ -59,7 +59,7 @@ describe("Signal config identity through execution and persistence", () => {
     const alias = "follow|ema-cross-9-21@m15|tp1|sl1|tr0|h32";
     assert.equal(orderCfgKey(engine), orderCfgKey(alias));
     assert.notEqual(orderCfgKey(engine), orderCfgKey(cfg(1)));
-    assert.equal(
+    assert.notEqual(
       orderCfgKey(`${engine}|ax-linear2|axis`),
       orderCfgKey(`${engine}|ax-linear3|axis`),
     );

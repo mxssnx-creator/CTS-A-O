@@ -786,7 +786,7 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
       assert.equal(
         rt.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM live_orders WHERE status='pending'")?.n,
         0,
-        "filled timeouts reconcile through venue history and definitive rejects do not remain unknown",
+        `filled timeouts reconcile through venue history and definitive rejects do not remain unknown: ${JSON.stringify(rt.db.all("SELECT kind,status,msg,coid FROM live_orders WHERE status='pending'"))}`,
       );
     } finally {
       mock.timers.reset();

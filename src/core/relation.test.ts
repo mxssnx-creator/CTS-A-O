@@ -338,14 +338,33 @@ describe("relationOf: one window, own lanes against the paper book's own record 
         "INSERT INTO paper_book_trades VALUES ('c1','A-USDT',1,1000,2000,0.045,1.5,'tp',NULL,NULL,100,103,1.5);" +
         // an older row: no mult written, the unit is vol
         "INSERT INTO paper_book_trades VALUES ('c2','B-USDT',-1,1000,2000,0.04,2,'sl',NULL,NULL,100,98,NULL);" +
-        // a plain row
-        "INSERT INTO paper_book_trades VALUES ('c3','C-USDT',1,1000,2000,0.01,1,'tp',NULL,NULL,100,101,NULL);",
+        // an explicitly unscaled row
+        "INSERT INTO paper_book_trades VALUES ('c3','C-USDT',1,1000,2000,0.01,1,'tp',NULL,NULL,100,101,1);",
     );
-    const rows = db.prepare(relationSystemSql()).all(0) as Array<{ cfg: string; r: number }>;
+    const rows = db.prepare(relationSystemSql(new Set(["held_px", "entry", "exit", "mult"]))).all(0) as Array<{ cfg: string; r: number | null }>;
     const r = Object.fromEntries(rows.map((x) => [x.cfg, x.r]));
-    assert.ok(Math.abs(r.c1 - 0.03) < 1e-12, String(r.c1));
-    assert.ok(Math.abs(r.c2 - 0.02) < 1e-12, String(r.c2));
-    assert.ok(Math.abs(r.c3 - 0.01) < 1e-12, String(r.c3));
+    assert.ok(Math.abs(r.c1! - 0.03) < 1e-12, String(r.c1));
+    assert.equal(r.c2, null, "volume without external-multiplier evidence cannot recover a unit return");
+    assert.ok(Math.abs(r.c3! - 0.01) < 1e-12, String(r.c3));
+    db.exec("ALTER TABLE paper_book_trades ADD COLUMN unit_r REAL; UPDATE paper_book_trades SET unit_r=0.007 WHERE cfg='c1'");
+    const stored = db.prepare(relationSystemSql()).all(0) as Array<{cfg:string; r:number|null}>;
+    assert.equal(stored.find((x) => x.cfg === "c1")!.r, 0.007, "verified stored unit return takes precedence");
+    assert.equal(stored.find((x) => x.cfg === "c3")!.r, null, "explicit unknown does not fall through to mult");
+    db.close();
+  });
+
+  it("unknown matched paper units retain the complete cohort and prevent a partial known subset from being judged", () => {
+    const lanes = Array.from({length: 21}, (_, i) => laneRow(SIG, i, i % 2 ? -0.01 : 0.02, "exit", T0 + (i + 3) * H));
+    const system = lanes.map((l, i) => ({...sysOf(l, i % 2 ? -0.01 : 0.02), entry:100, exit:i % 2 ? 99 : 102, vol:1, ...(i === 20 ? {r:null} : {})}));
+    const rel = relationOf({system, lanes, from:0, to:Infinity, coverageFrom:0});
+    assert.equal(rel.counts.matched,21);
+    assert.equal(rel.total.system.n,21);
+    assert.equal(rel.total.system.unknownReturns,1);
+    assert.ok(Number.isNaN(rel.total.system.pf));
+    assert.ok(Number.isFinite(rel.total.exchange.pf));
+    assert.equal(relationCheck(rel).judged,false);
+    assert.equal(relationCheck(rel).ratio,null);
+    assert.match(relationMd(rel),/Unit basis unavailable/);
   });
 
   it("the positions PF is on the return per position (percent of its entry notional), not on USD", () => {

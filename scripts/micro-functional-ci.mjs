@@ -20,8 +20,9 @@ const heavy = new Set([
   "src/core/server/cycle-incremental.test.ts",
 ]);
 for (const f of heavy) assert.ok(files.includes(f), `Heavy file disappeared: ${f}`);
+const regular = files.filter((f) => !heavy.has(f) && f !== "src/core/server/runtime.test.ts");
 const groups = {
-  functional: files.filter((f) => !heavy.has(f) && f !== "src/core/server/runtime.test.ts"),
+  ...Object.fromEntries(Array.from({ length: 4 }, (_, i) => [`functional-${i}`, regular.filter((_, j) => j % 4 === i)])),
   "functional-heavy": files.filter((f) => heavy.has(f)),
   "functional-runtime": files.filter((f) => f === "src/core/server/runtime.test.ts"),
 };
@@ -29,14 +30,15 @@ const all = Object.values(groups).flat();
 assert.deepEqual([...all].sort(), files, "Ordinary core inventory omitted or duplicated");
 assert.equal(new Set(all).size, files.length);
 const part = process.argv[2];
-assert.ok(groups[part]?.length, "Unknown/empty test partition");
+const selected = part === "functional" ? regular : groups[part];
+assert.ok(selected?.length, "Unknown/empty test partition");
 const out = `runs/micro-ci-${part}`;
 mkdirSync(out, { recursive: true });
 writeFileSync(
   `${out}/inventory.json`,
   JSON.stringify({ total: files.length, partition: part, groups }, null, 2) + "\n",
 );
-console.log(`Complete ordinary core inventory: ${files.length}; ${part}: ${groups[part].length}`);
+console.log(`Complete ordinary core inventory: ${files.length}; ${part}: ${selected.length}`);
 const r = spawnSync(
   process.execPath,
   [
@@ -44,7 +46,7 @@ const r = spawnSync(
     "--no-warnings",
     "scripts/test-all.mjs",
     "--files",
-    groups[part].join(","),
+    selected.join(","),
     "--no-coverage",
     "--min-free",
     "4500",

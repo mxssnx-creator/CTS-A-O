@@ -406,6 +406,9 @@ describe(
             waitUntil: "domcontentloaded",
             timeout: 120_000,
           });
+          // SSR can show the form before hydration replaces it with the initial loading state. Wait for the
+          // finite settings/status RPCs and their debounce before asserting against the settled client form.
+          await settleRequests();
           const save = page.getByRole("button", { name: /^save/i }).first();
           await save.waitFor({ state: "visible", timeout: 60_000 });
           assert.ok(await save.count(), "a Save button");
@@ -427,6 +430,15 @@ describe(
           await box.click();
           await saveNow();
           await box.click();
+          await saveNow();
+          const ranking = page.getByRole("combobox", { name: "Symbol ranking", exact: true });
+          const previousRank = await ranking.inputValue();
+          await ranking.selectOption("change1h5m");
+          await saveNow();
+          await page.reload({ waitUntil: "domcontentloaded", timeout: 120_000 });
+          await ranking.waitFor({ state: "visible", timeout: 60_000 });
+          assert.equal(await ranking.inputValue(), "change1h5m", "the new exchange ranking persists through a real Settings save/reload");
+          await ranking.selectOption(previousRank);
           await saveNow();
           await settleRequests();
         },

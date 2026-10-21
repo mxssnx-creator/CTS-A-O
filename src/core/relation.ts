@@ -73,12 +73,17 @@ export const RELATION_LEDGER_LOOKBACK_MS = 7 * 24 * 3_600_000;
  * columns, else the same tape order's in paper_trades — rows written before the columns existed) and the price at
  * adoption. `cols`: the columns paper_book_trades has (an older snapshot lacks the new ones: read as NULL).
  */
-export function relationSystemSql(cols: ReadonlySet<string> = new Set(["held_px", "entry", "exit"])): string {
+export function relationSystemSql(cols: ReadonlySet<string> = new Set(["held_px", "entry", "exit", "mult", "unit_r"])): string {
   const own = (c: string) => (cols.has(c) ? `b.${c}` : "NULL");
+  // A stored NULL explicitly means unknown. Volume can include intrinsic ladder legs and is not proof of the
+  // external execution multiplier. Only an older row with an explicit positive mult can be normalized without unit_r.
+  const unit = cols.has("unit_r")
+    ? "b.unit_r"
+    : `CASE WHEN ${own("mult")} > 0 THEN b.r / ${own("mult")} ELSE NULL END`;
   return (
     // r at one unit (r / the order's execution multiple), as the exchange record is: the sized r of a Block-raised order
     // read as a unit return put the multiple into every gap against the exchange
-    `SELECT b.cfg, b.sym, b.side, b.entry_t, b.exit_t, b.r / COALESCE(NULLIF(${own("mult")}, 0), NULLIF(b.vol, 0), 1) AS r, b.vol, b.reason, b.held_at, ${own("held_px")} AS held_px, ` +
+    `SELECT b.cfg, b.sym, b.side, b.entry_t, b.exit_t, ${unit} AS r, b.vol, b.reason, b.held_at, ${own("held_px")} AS held_px, ` +
     `COALESCE(${own("entry")}, p.entry) AS entry, COALESCE(${own("exit")}, p.exit) AS exit FROM paper_book_trades b ` +
     "LEFT JOIN paper_trades p ON p.cfg = b.cfg AND p.sym = b.sym AND p.side = b.side AND p.entry_t = b.entry_t WHERE b.exit_t >= ?"
   );
@@ -118,7 +123,7 @@ export function executableR(x: {
   entry?: number | null;
   exit?: number | null;
 }): number | null {
-  if ((x.vol ?? 1) !== 1 || x.r === null || !(x.held_px! > 0) || !(x.entry! > 0) || !(x.exit! > 0)) return null;
+  if ((x.vol ?? 1) !== 1 || x.r === null || !Number.isFinite(x.r) || !(x.held_px! > 0) || !(x.entry! > 0) || !(x.exit! > 0)) return null;
   const side = x.side > 0 ? 1 : -1;
   const cost = side * (x.exit! / x.entry! - 1) - x.r;
   return side * (x.exit! / x.held_px! - 1) - cost;
@@ -187,6 +192,8 @@ export interface RelationInput {
 export interface RelSide {
   n: number;
   pf: number;
+  /** Retained matched closes whose return provenance is missing; any one withholds the aggregate PF. */
+  unknownReturns?: number;
   /** Σ r × 100 (trade %) */
   net: number;
 }
@@ -335,6 +342,8 @@ const acc = (): Acc => ({
   sysOnly: 0,
 });
 const sideOf = (rs: readonly number[]): RelSide => {
+  const unknownReturns = rs.filter((r) => !Number.isFinite(r)).length;
+  if (unknownReturns) return { n: rs.length, pf: NaN, net: NaN, unknownReturns };
   let gp = 0;
   let gl = 0;
   for (const r of rs) {
@@ -367,7 +376,7 @@ export function gapParts(
   const Xs = sys.exit ?? 0;
   const Ee = lane.entry;
   const Xe = lane.exit;
-  if ((sys.vol ?? 1) !== 1 || sys.r === null || !(Es > 0) || !(Xs > 0) || !(Ee > 0) || !(Xe > 0)) return null;
+  if ((sys.vol ?? 1) !== 1 || sys.r === null || !Number.isFinite(sys.r) || !(Es > 0) || !(Xs > 0) || !(Ee > 0) || !(Xe > 0)) return null;
   const s = lane.side > 0 ? 1 : -1;
   const Eh = sys.held_px! > 0 ? sys.held_px! : null;
   const model = s * (Xs / Es - 1) - sys.r;
@@ -445,7 +454,7 @@ export function relationOf(i: RelationInput): Relation {
       for (const k of keys) at(k).sd++;
       continue;
     }
-    if (!s || s.r === null || s.exit_t === null) {
+    if (!s || s.exit_t === null) {
       if (open.has(lanePositionOf(l.id))) {
         counts.systemOpen++;
         for (const k of keys) at(k).so++;
@@ -456,7 +465,7 @@ export function relationOf(i: RelationInput): Relation {
       continue;
     }
     counts.matched++;
-    const rSys = s.r;
+    const rSys = s.r ?? NaN;
     events.add(`${l.sym}|${l.side > 0 ? 1 : -1}|${Math.floor(s.entry_t / EVENT_BAR_MS)}`);
     matchedLanes.push({ l, rSys });
     if (l.reason === "stop" && rSys > 0) stopMismatch++;
@@ -594,9 +603,9 @@ function positionsOf(
 
 // ── the report ────────────────────────────────────────────────
 
-const f = (x: number | null | undefined, k = 2) => (x === null || x === undefined ? "–" : Number.isFinite(x) ? x.toFixed(k) : "∞");
+const f = (x: number | null | undefined, k = 2) => (typeof x === "number" && Number.isFinite(x) ? x.toFixed(k) : "–");
 const iso = (t: number | null) => (t === null || !Number.isFinite(t) ? "–" : new Date(t).toISOString().slice(0, 16).replace("T", " "));
-const pfOf = (s: RelSide) => (s.n ? f(s.pf) : "–");
+const pfOf = (s: RelSide) => (s.unknownReturns ? "Unit basis unavailable" : s.n ? f(s.pf) : "–");
 
 /** The relation as Markdown (live-vs-system.md, core-live-diff.mjs). */
 export function relationMd(rel: Relation): string {
@@ -709,14 +718,14 @@ export function relationCheck(rel: Relation, o: Partial<typeof RELATION_CHECK> =
   const atJoin = t.systemAtJoin.n >= k.minMatched;
   const pfExchange = t.matched ? (atJoin ? t.exchangeAtJoinLanes.pf : t.exchange.pf) : null;
   const pfSystem = t.matched ? (atJoin ? t.systemAtJoin.pf : t.system.pf) : null;
-  const ratio = pfExchange !== null && pfSystem !== null && pfSystem > 0 ? pfExchange / pfSystem : null;
+  const ratio = !t.system.unknownReturns && pfExchange !== null && pfSystem !== null && Number.isFinite(pfExchange) && Number.isFinite(pfSystem) && pfSystem > 0 ? pfExchange / pfSystem : null;
   const claimed = rel.counts.own + rel.counts.excluded.unverified;
   const unmatchedShare = claimed ? (rel.counts.exchangeOnly + rel.counts.excluded.unverified) / claimed : null;
   const positionsPf = rel.positions?.n ? rel.positions.pf : null;
   const lanesPf = rel.ownLanes.n ? rel.ownLanes.pf : null;
   const timing = { entryJoin: t.gap.entryJoin, share: Math.abs(t.gap.total) > 1e-12 ? t.gap.entryJoin / t.gap.total : null };
-  const judged = t.matched >= k.minMatched && rel.events >= k.minEvents;
-  const why = judged ? "" : `matched ${t.matched} of ${k.minMatched}, events ${rel.events} of ${k.minEvents}`;
+  const judged = !t.system.unknownReturns && Number.isFinite(pfSystem) && t.matched >= k.minMatched && rel.events >= k.minEvents;
+  const why = judged ? "" : `matched ${t.matched} of ${k.minMatched}, events ${rel.events} of ${k.minEvents}${t.system.unknownReturns ? `; unit basis unavailable for ${t.system.unknownReturns} matched close(s)` : ""}`;
   const alarms: RelationAlarm[] = [];
   if (judged) {
     if (ratio !== null && (ratio < k.low || ratio > k.high))

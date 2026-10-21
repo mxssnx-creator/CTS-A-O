@@ -1804,7 +1804,7 @@ async function runStepNow(
       // per-position cap (and the equity caps of the last read). Past either the symbol is too large for this
       // account: skipped with the reason (minRaiseBlock).
       const intentFactor = Number.isFinite(e.volFactor)
-        ? Math.min(22, Math.max(1, Math.round(e.volFactor!)))
+        ? Math.min(110, Math.max(0.01, e.volFactor!))
         : 1;
       const intentUnit = Math.min(unit * intentFactor, cap);
       const minNotional = bx.exchangeMinNotional(spec, px);
@@ -2223,7 +2223,6 @@ export function* laneContributionsGen(
 ): Generator<void, ControlContribution[]> {
   // a lane whose stop was crossed at tick time no longer asks for its volume (its stop executes live now)
   const out: ControlContribution[] = [];
-  const rangeVolumeFactors = rangeVolumeFactorsOf(rt.settings.grid);
   let seen = 0;
   for (const p of positions) {
     if (++seen % LANE_SLICE === 0) yield;
@@ -2233,12 +2232,9 @@ export function* laneContributionsGen(
     if (p.stopHit) continue;
     const ls = laneStringsOf(p);
     const id = ls.id;
-    const ind = p.cfg.split("|")[1] ?? "";
-    const signalRange = isSignalInd(ind) ? signalRangeOf(ind) : null;
-    const rangeFactor = signalRange
-      ? rt.settings.signals.rangeVolumeFactors[signalRange] ?? 1
-      : rangeVolumeFactors[rangeOfId(p.cfg) || "wide"] ?? 1;
-    const vol = (p.vol ?? 1) * rangeFactor;
+    // Paper captures all external factors at entry. Reapplying today's range setting doubles it and resizes
+    // held positions after edits. The recorded volume already includes the Axis set factor and ladder weight.
+    const vol = p.vol ?? 1;
     // the backstop sits at the current price minus this distance: measure it from the current price, so a stop
     // trailed far past the entry does not widen the backstop by its whole run (|entry − stop| did)
     const px = prices?.get(p.sym) ?? 0;
@@ -2294,7 +2290,7 @@ export function* laneContributionsGen(
         chase,
         ...(isBoundedTrailingPosition(p) ? { stopMax: positionTrailMax(p) } : {}),
       };
-      if (externalUnits) x.laneUnits = unitsKnown ? v / intrinsic : NaN;
+      x.laneUnits = externalUnits ? (unitsKnown ? v / intrinsic : NaN) : 1;
       if (tgt !== undefined) x.tgt = tgt;
       if (stopPx !== undefined) x.stopPx = stopPx;
       x.key = ls.key;
@@ -3020,6 +3016,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         // our part gone: someone else's ("independent" trades its own beside it); history unreadable: not touched
         if (!gone || !independent) foreign.add(posOneway ? vsym : k);
         if (gone) {
+          flatKeys.push(k);
           // the stop and the take-profit it carried, read before this marker clears them (as the flat loop above does)
           stopAtFlat.set(k, stopPxOf(k));
           tpAtFlat.set(k, tpPxOf(k));
@@ -3177,9 +3174,9 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     }
     if (!reconnected) {
       const outside = new Map(externalCloses(prev, held).map((x) => [x.key, x]));
-      for (const key of settledFlat.keys()) if (!held.has(key)) outside.set(key, { key, lanes: 0 });
+      for (const key of [...settledFlat.keys(), ...flatKeys]) if (!held.has(key)) outside.set(key, { key, lanes: 0 });
       for (const x of outside.values()) {
-        if (lagging.has(x.key) || pendingKeys.has(x.key) || keyState.get(x.key) === "closed") continue;
+        if (lagging.has(x.key) || pendingKeys.has(x.key) || (keyState.get(x.key) === "closed" && !flatKeys.includes(x.key))) continue;
         const [xsym, xsd] = x.key.split("|");
         // our own close whose reply timed out (its row still pending) is what emptied the side: it filled. Recorded
         // as done — not reported as an exchange stop-out, and no lane order held back (they asked for that close)

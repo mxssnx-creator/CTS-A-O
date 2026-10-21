@@ -26,7 +26,7 @@ import {
 import type { CoreRuntime } from "./runtime.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import { clearRateLimit, ExchangeRejected, stopPxExchange } from "../exchange/bingx.server.ts";
-import { SimExchange } from "../test-support.ts";
+import { SimExchange, authorizeSyntheticLanes, syntheticExecutionRun } from "../test-support.ts";
 
 process.env.CTS_CORE_LIVE = "1";
 
@@ -110,7 +110,7 @@ class OneWayVenue extends SimExchange {
       clientOrderId: String(p.clientOrderID ?? ""),
       updateTime: Date.now(),
     });
-    return { order: { orderId: `m${this.sent}` } };
+    return { order: { orderId: `m${this.sent}`, status: "FILLED", executedQty: q, avgPrice: this.px.get(sym) ?? 0 } };
   }
   /** a resting stop or take-profit fills: its quantity leaves the net (the whole net when closePosition) */
   fillOrder(id: string) {
@@ -262,7 +262,8 @@ function rtOf(live: Record<string, unknown> = {}, sizing: { mode: string; pct: n
         ...live,
       },
     },
-    sim: { stats: { pf: 1.5, n: 50 }, stable: true },
+    sim: syntheticExecutionRun([]),
+    livePromotionGate: undefined as Parameters<typeof authorizeSyntheticLanes>[0]["livePromotionGate"],
     status: { lastBarT: Math.floor(Date.now() / 3_600_000) * 3_600_000 },
     paper: { positions: [] as Pos[] },
     tickersAt: 0,
@@ -271,6 +272,19 @@ function rtOf(live: Record<string, unknown> = {}, sizing: { mode: string; pct: n
       return prices;
     },
   };
+  let positions: Pos[] = [];
+  Object.defineProperty(rt.paper, "positions", {
+    get: () => positions,
+    set: (next: Pos[]) => {
+      positions = new Proxy(next, { set(target, property, value) {
+        const result = Reflect.set(target, property, value);
+        if (property !== "length") authorizeSyntheticLanes(rt, target);
+        return result;
+      } });
+      authorizeSyntheticLanes(rt, next);
+    },
+  });
+  authorizeSyntheticLanes(rt, []);
   return { rt };
 }
 

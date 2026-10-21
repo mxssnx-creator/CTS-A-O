@@ -61,7 +61,7 @@ describe("paper unit-return storage", () => {
       try {
         assert.deepEqual(values(db.db), {
           paper: original.paper.map((row) => ({ ...row, unit_r: null })),
-          book: original.book.map((row) => ({ ...row, unit_r: null, owned_notional_usd: null })),
+          book: original.book.map((row) => ({ ...row, unit_r: null, owned_notional_usd: null, held_px: null, entry: null, exit: null, mult: null })),
         });
         assert.equal(db.get<{ user_version: number }>("PRAGMA user_version")?.user_version, 41);
         putUnit(db, "verified", .03);
@@ -101,7 +101,7 @@ describe("paper unit-return storage", () => {
       upgradeShared(retained);
       assert.deepEqual(values(raw), {
         paper: original.paper.map((row) => ({ ...row, unit_r: null })),
-        book: original.book.map((row) => ({ ...row, unit_r: null, owned_notional_usd: null })),
+        book: original.book.map((row) => ({ ...row, unit_r: null, owned_notional_usd: null, held_px: null, entry: null, exit: null, mult: null })),
       });
       assert.equal(retained.get<{ user_version: number }>("PRAGMA user_version")?.user_version, 41);
       putUnit(retained, "verified", .03);
@@ -121,7 +121,7 @@ describe("paper unit-return storage", () => {
       assert.equal(db.restore(path), true);
       assert.deepEqual(values(db.db), {
         paper: original.paper.map((row) => ({ ...row, unit_r: null })),
-        book: original.book.map((row) => ({ ...row, unit_r: null, owned_notional_usd: null })),
+        book: original.book.map((row) => ({ ...row, unit_r: null, owned_notional_usd: null, held_px: null, entry: null, exit: null, mult: null })),
       });
       const unchanged = new DatabaseSync(path, { readOnly: true });
       try {

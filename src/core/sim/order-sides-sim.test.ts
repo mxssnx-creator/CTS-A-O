@@ -548,7 +548,7 @@ describe("order sides: Axis desk (simulateAxisDesk)", () => {
 
 // ── Block (e): one direction's level or pause never changes the other direction's decision ───────────────────────
 // Block sizes an entry only (blockDecide returns the volume), so (a) to (d) belong to the type it raises: none here.
-const BB: BlockConfig = { ratio: 0.2, maxLevel: 3, minActiveLevel: 1, maxMult: 3 };
+const BB: BlockConfig = { sideKeys: false, ratio: 0.2, maxLevel: 3, minActiveLevel: 1, maxMult: 3 };
 const IND = INDICATIONS[0];
 const srcOnly = (src: BlockSource): BlockConfig => ({ ...BB, sources: { [src]: true } }) as BlockConfig;
 
@@ -621,11 +621,13 @@ const closeOf = (side: Side, exitT: number, r: number): Trade => ({
 const cfgTape = (trades: Trade[]) =>
   makeTape("x", "magnet", IND.id, { tp: 0.02, sl: 0.02, trail: 0, hold: 32 }, "normal", ["A"], trades, [], []);
 /** the Block base for a block config: BB (block.sideKeys unset) unless another is given */
+// Isolate Block source arithmetic from independent production config admission, tested in the direction suite.
 const blockBase = (block: BlockConfig = BB) => ({
   ...defaultWalkForward(DEFAULT_SETTINGS),
   lastN: 0,
   symGate: undefined,
   normalBaseMinPf: 0,
+  probe: { perRange: 0, perCell: 1 },
   seatQuietH: 0,
   block,
   toggles: { ...DEFAULT_TOGGLES, normal: true, block: true, blockActive: false },
@@ -647,16 +649,16 @@ describe("order sides: Block config source (the config's own closes, per directi
       assert.equal(book.paused(sourceKey("config", { sym: "A", side: s, kind: IND.kind, cfg: "x" })), true);
     });
 
-    it(`Block config ${name} (e) control, block.sideKeys unset: the opposite direction's wins raise this direction's config level, pooled as before`, () => {
+    it(`Block config ${name} (e) the exact config source never borrows opposite-direction wins, also with legacy sideKeys false`, () => {
       const res = execDecision(cfgTape(winsAt(opposite(s))), 2 * H, blockBase(), { sym: "A", side: s });
-      assert.deepEqual(res, { ok: true, level: 3, vol: 1.6, src: ["config"] });
+      assert.deepEqual(res, { ok: true, level: 0, vol: 1 });
     });
 
-    it(`Block config ${name} (e) control, block.sideKeys unset: an opposite raised win pauses this direction's config, pooled as before`, () => {
+    it(`Block config ${name} (e) an opposite raised win cannot pause this exact direction, also with legacy sideKeys false`, () => {
       const book = new BlockBook(2);
       book.add({ sym: "A", side: opposite(s), kind: IND.kind, r: 0.02, cfg: "x", bsrc: ["config"] });
       const res = execDecision(cfgTape(winsAt(s)), 2 * H, blockBase(), { sym: "A", side: s, book });
-      assert.deepEqual(res, { ok: true, level: 0, vol: 1 });
+      assert.deepEqual(res, { ok: true, level: 3, vol: 1.6, src: ["config"] });
     });
 
     it(`Block config ${name} (e), block.sideKeys on: the opposite direction's wins never raise this direction's config level`, () => {
@@ -688,6 +690,7 @@ const seatBase = (extra: { seatSideCooloff?: boolean } = {}) => ({
   lastN: 0,
   symGate: undefined,
   normalBaseMinPf: 0,
+  probe: { perRange: 0, perCell: 1 },
   seatQuietH: 2,
   toggles: { ...DEFAULT_TOGGLES, normal: true, block: false, blockActive: false },
   ...extra,

@@ -4006,6 +4006,24 @@
       ],
       "disposition": "Related older divergent branch; preserve current integrated implementations and dated evidence. File inventory alone is not proof every hunk is merged."
     }
-  ]
+  ],
+  "integratedCurrentHeads": {
+    "main": "6cc6ef8cd953948069ebc336666a1eb23e15cae5",
+    "inverse183": "cc2916372debd3b5001e3018d047eece2f57cbe7",
+    "micro184": "6e93533cbedb2a2ee22ebe11c161583e5412e1b0"
+  },
+  "additionalReview187": {
+    "head": "ec9eeb33457d34f425cd1ee25a463f97fe65ed7e",
+    "included": [
+      "X02-specific demo profile maxChase 5 and optional symbol gate, corrected to the actual loader root wf; no deployment",
+      "Explicit legacy diagnostic option, while retaining automatic legacy detection and current snapshot handling",
+      "Existing profiling lint and explicit synthetic multiplier corrections already preserved"
+    ],
+    "resolvedAgainst": [
+      "Missing/invalid unit evidence falling back to stored sized r: omitted; unknown sample remains unavailable and losing evidence remains in the window",
+      "Unbraced nested profiling loop with ambiguous else: retained the explicit-brace correction",
+      "A nested settings.wf object would not be applied by core-live-test; the demo override is at root wf"
+    ],
+    "scope": "Only repository changes. No live account or global policy mutations."
+  }
 }
-
