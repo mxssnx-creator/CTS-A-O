@@ -1,0 +1,439 @@
+TAP version 13
+# Subtest: snapshot report uses verified paper unit returns while venue returns remain unchanged
+ok 1 - snapshot report uses verified paper unit returns while venue returns remain unchanged
+  ---
+  duration_ms: 732.892274
+  type: 'test'
+  ...
+# Subtest: legacy snapshots and mixed unknown paper samples keep their identities but have no primary ratio
+ok 2 - legacy snapshots and mixed unknown paper samples keep their identities but have no primary ratio
+  ---
+  duration_ms: 1019.444469
+  type: 'test'
+  ...
+# Subtest: legacy nominal rows including NULL cannot retain old ON or manufacture owned-execution proof
+ok 3 - legacy nominal rows including NULL cannot retain old ON or manufacture owned-execution proof
+  ---
+  duration_ms: 772.296663
+  type: 'test'
+  ...
+# Subtest: verified complete exact evidence produces a byte-hash-bound proof with original kinds and default thresholds
+ok 4 - verified complete exact evidence produces a byte-hash-bound proof with original kinds and default thresholds
+  ---
+  duration_ms: 1528.511819
+  type: 'test'
+  ...
+# Subtest: winning sibling cannot promote losing opposite side or a distinct protection config
+ok 5 - winning sibling cannot promote losing opposite side or a distinct protection config
+  ---
+  duration_ms: 481.936506
+  type: 'test'
+  ...
+# Subtest: expired, future, NULL and incomplete artifact evidence revokes previously ON exact identities
+ok 6 - expired, future, NULL and incomplete artifact evidence revokes previously ON exact identities
+  ---
+  duration_ms: 32762.778478
+  type: 'test'
+  ...
+# Subtest: unreadable/malformed artifacts and unbound reference identity fail closed; dry mode never mutates
+ok 7 - unreadable/malformed artifacts and unbound reference identity fail closed; dry mode never mutates
+  ---
+  duration_ms: 1743.926441
+  type: 'test'
+  ...
+# Subtest: invalid threshold arguments fail before changing the target patch
+ok 8 - invalid threshold arguments fail before changing the target patch
+  ---
+  duration_ms: 449.370683
+  type: 'test'
+  ...
+# Subtest: a span that is not a multiple of 48 h: the last window's session runs over that window only
+ok 9 - a span that is not a multiple of 48 h: the last window's session runs over that window only
+  ---
+  duration_ms: 3.94825
+  type: 'test'
+  ...
+# Subtest: the split defaults to D1's only on D1; another span is cut inside it, both halves non-empty
+ok 10 - the split defaults to D1's only on D1; another span is cut inside it, both halves non-empty
+  ---
+  duration_ms: 1.958256
+  type: 'test'
+  ...
+# Subtest: the warm-up: the engine's 100 h, and with historic signal configs the 96 h lookback when that is longer
+ok 11 - the warm-up: the engine's 100 h, and with historic signal configs the 96 h lookback when that is longer
+  ---
+  duration_ms: 0.321767
+  type: 'test'
+  ...
+# Subtest: a lane's volatility rank is valid after 336 of its own bars: 5.6 h on 1m, 28 h on 5m, 84 h on 15m, 168 h on 30m
+ok 12 - a lane's volatility rank is valid after 336 of its own bars: 5.6 h on 1m, 28 h on 5m, 84 h on 15m, 168 h on 30m
+  ---
+  duration_ms: 1.174256
+  type: 'test'
+  ...
+# Subtest: the feed's start is read from the series' first bars
+ok 13 - the feed's start is read from the series' first bars
+  ---
+  duration_ms: 1.062408
+  type: 'test'
+  ...
+# Subtest: eval-gate --plan: per-window run lengths, a split inside the span, and the windows short of warm-up
+ok 14 - eval-gate --plan: per-window run lengths, a split inside the span, and the windows short of warm-up
+  ---
+  duration_ms: 1706.2413
+  type: 'test'
+  ...
+# Subtest: the feed's start read in chunks equals the whole-file reading, a chunk boundary at every offset of a key
+ok 15 - the feed's start read in chunks equals the whole-file reading, a chunk boundary at every offset of a key
+  ---
+  duration_ms: 100.276997
+  type: 'test'
+  ...
+# Subtest: eval-gate keeps every window's result in window order when the windows finish out of order
+ok 16 - eval-gate keeps every window's result in window order when the windows finish out of order
+  ---
+  duration_ms: 2942.421974
+  type: 'test'
+  ...
+# Subtest: eval-gate without --toggles / --window-h gives the session today's arguments byte for byte; --toggles merges over the eval's
+ok 17 - eval-gate without --toggles / --window-h gives the session today's arguments byte for byte; --toggles merges over the eval's
+  ---
+  duration_ms: 19560.881495
+  type: 'test'
+  ...
+# Subtest: eval-gate --window-h: N-hour windows, each its own session over its own hours
+ok 18 - eval-gate --window-h: N-hour windows, each its own session over its own hours
+  ---
+  duration_ms: 9390.201815
+  type: 'test'
+  ...
+# Subtest: eval-gate's funnel line prints the forward PF over the run (after Base, validated at the start) beside the in-sample one
+ok 19 - eval-gate's funnel line prints the forward PF over the run (after Base, validated at the start) beside the in-sample one
+  ---
+  duration_ms: 419.403298
+  type: 'test'
+  ...
+# Subtest: eval-gate with Block on: per range the volume-weighted PF and the unit PF of the raised and unraised orders
+ok 20 - eval-gate with Block on: per range the volume-weighted PF and the unit PF of the raised and unraised orders
+  ---
+  duration_ms: 938.850688
+  type: 'test'
+  ...
+# Subtest: evaluation window orders
+    # Subtest: a loser still open at the window end lowers the window's PF (it was dropped before)
+    ok 1 - a loser still open at the window end lowers the window's PF (it was dropped before)
+      ---
+      duration_ms: 2.035334
+      type: 'test'
+      ...
+    # Subtest: a dump without openEnd (older engines) gives the closed orders only
+    ok 2 - a dump without openEnd (older engines) gives the closed orders only
+      ---
+      duration_ms: 0.40162
+      type: 'test'
+      ...
+    1..2
+ok 21 - evaluation window orders
+  ---
+  duration_ms: 6.983219
+  type: 'suite'
+  ...
+# Subtest: the eval sees Block: volume-weighted PF and unit PF raised / unraised
+    # Subtest: splits raised from unraised orders and weighs the book by volume
+    ok 1 - splits raised from unraised orders and weighs the book by volume
+      ---
+      duration_ms: 1.286441
+      type: 'test'
+      ...
+    # Subtest: Block off (every order at one unit): both PFs agree, nothing raised
+    ok 2 - Block off (every order at one unit): both PFs agree, nothing raised
+      ---
+      duration_ms: 0.57461
+      type: 'test'
+      ...
+    1..2
+ok 22 - the eval sees Block: volume-weighted PF and unit PF raised / unraised
+  ---
+  duration_ms: 2.233355
+  type: 'suite'
+  ...
+# Subtest: a config id gives its range tag and its target as a fraction
+ok 23 - a config id gives its range tag and its target as a fraction
+  ---
+  duration_ms: 2.486306
+  type: 'test'
+  ...
+# Subtest: per range × rule: the pairs, orders, events and PF the rule keeps, by window, beside the run as it was
+ok 24 - per range × rule: the pairs, orders, events and PF the rule keeps, by window, beside the run as it was
+  ---
+  duration_ms: 2.921701
+  type: 'test'
+  ...
+# Subtest: eval-gate carries a dump's basePairs[].rules into windows[].pairs and the report rules into summary.baseRules (unset: neither)
+ok 25 - eval-gate carries a dump's basePairs[].rules into windows[].pairs and the report rules into summary.baseRules (unset: neither)
+  ---
+  duration_ms: 2179.904928
+  type: 'test'
+  ...
+# Subtest: an Axis config is kept wherever the rule keeps its range (its ladder targets are not Base cells)
+ok 26 - an Axis config is kept wherever the rule keeps its range (its ladder targets are not Base cells)
+  ---
+  duration_ms: 0.881298
+  type: 'test'
+  ...
+# Subtest: a run whose orders are not its Base pairs' is marked (contrarian seats, every set, ranges without Base)
+ok 27 - a run whose orders are not its Base pairs' is marked (contrarian seats, every set, ranges without Base)
+  ---
+  duration_ms: 61.609766
+  type: 'test'
+  ...
+# Subtest: eval-gate and core-session refuse a settings patch checkSettings refuses (exit 2, before any run)
+ok 28 - eval-gate and core-session refuse a settings patch checkSettings refuses (exit 2, before any run)
+  ---
+  duration_ms: 627.538338
+  type: 'test'
+  ...
+# Subtest: simulateFrom resumes simulate
+    # Subtest: normal cooldown 0 long: any split equals one run
+    ok 1 - normal cooldown 0 long: any split equals one run
+      ---
+      duration_ms: 43.009679
+      type: 'test'
+      ...
+    # Subtest: normal cooldown 0 mixed: any split equals one run
+    ok 2 - normal cooldown 0 mixed: any split equals one run
+      ---
+      duration_ms: 2.364952
+      type: 'test'
+      ...
+    # Subtest: normal cooldown 3 long: any split equals one run
+    ok 3 - normal cooldown 3 long: any split equals one run
+      ---
+      duration_ms: 12.575004
+      type: 'test'
+      ...
+    # Subtest: normal cooldown 3 mixed: any split equals one run
+    ok 4 - normal cooldown 3 mixed: any split equals one run
+      ---
+      duration_ms: 7.281671
+      type: 'test'
+      ...
+    # Subtest: trailing cooldown 0 long: any split equals one run
+    ok 5 - trailing cooldown 0 long: any split equals one run
+      ---
+      duration_ms: 11.17559
+      type: 'test'
+      ...
+    # Subtest: trailing cooldown 0 mixed: any split equals one run
+    ok 6 - trailing cooldown 0 mixed: any split equals one run
+      ---
+      duration_ms: 13.021685
+      type: 'test'
+      ...
+    # Subtest: trailing cooldown 3 long: any split equals one run
+    ok 7 - trailing cooldown 3 long: any split equals one run
+      ---
+      duration_ms: 18.043199
+      type: 'test'
+      ...
+    # Subtest: trailing cooldown 3 mixed: any split equals one run
+    ok 8 - trailing cooldown 3 mixed: any split equals one run
+      ---
+      duration_ms: 6.288063
+      type: 'test'
+      ...
+    # Subtest: trailFree cooldown 0 long: any split equals one run
+    ok 9 - trailFree cooldown 0 long: any split equals one run
+      ---
+      duration_ms: 15.318461
+      type: 'test'
+      ...
+    # Subtest: trailFree cooldown 0 mixed: any split equals one run
+    ok 10 - trailFree cooldown 0 mixed: any split equals one run
+      ---
+      duration_ms: 7.047192
+      type: 'test'
+      ...
+    # Subtest: trailFree cooldown 3 long: any split equals one run
+    ok 11 - trailFree cooldown 3 long: any split equals one run
+      ---
+      duration_ms: 3.113554
+      type: 'test'
+      ...
+    # Subtest: trailFree cooldown 3 mixed: any split equals one run
+    ok 12 - trailFree cooldown 3 mixed: any split equals one run
+      ---
+      duration_ms: 8.368354
+      type: 'test'
+      ...
+    # Subtest: atr cooldown 0 long: any split equals one run
+    ok 13 - atr cooldown 0 long: any split equals one run
+      ---
+      duration_ms: 17.121385
+      type: 'test'
+      ...
+    # Subtest: atr cooldown 0 mixed: any split equals one run
+    ok 14 - atr cooldown 0 mixed: any split equals one run
+      ---
+      duration_ms: 3.080842
+      type: 'test'
+      ...
+    # Subtest: atr cooldown 3 long: any split equals one run
+    ok 15 - atr cooldown 3 long: any split equals one run
+      ---
+      duration_ms: 5.587691
+      type: 'test'
+      ...
+    # Subtest: atr cooldown 3 mixed: any split equals one run
+    ok 16 - atr cooldown 3 mixed: any split equals one run
+      ---
+      duration_ms: 3.056191
+      type: 'test'
+      ...
+    # Subtest: historic-static-sl cooldown 0 long: any split equals one run
+    ok 17 - historic-static-sl cooldown 0 long: any split equals one run
+      ---
+      duration_ms: 9.885121
+      type: 'test'
+      ...
+    # Subtest: historic-static-sl cooldown 0 mixed: any split equals one run
+    ok 18 - historic-static-sl cooldown 0 mixed: any split equals one run
+      ---
+      duration_ms: 3.141854
+      type: 'test'
+      ...
+    # Subtest: historic-static-sl cooldown 3 long: any split equals one run
+    ok 19 - historic-static-sl cooldown 3 long: any split equals one run
+      ---
+      duration_ms: 4.952103
+      type: 'test'
+      ...
+    # Subtest: historic-static-sl cooldown 3 mixed: any split equals one run
+    ok 20 - historic-static-sl cooldown 3 mixed: any split equals one run
+      ---
+      duration_ms: 1.298285
+      type: 'test'
+      ...
+    # Subtest: historic-adaptive-sl cooldown 0 long: any split equals one run
+    ok 21 - historic-adaptive-sl cooldown 0 long: any split equals one run
+      ---
+      duration_ms: 5.988742
+      type: 'test'
+      ...
+    # Subtest: historic-adaptive-sl cooldown 0 mixed: any split equals one run
+    ok 22 - historic-adaptive-sl cooldown 0 mixed: any split equals one run
+      ---
+      duration_ms: 1.587082
+      type: 'test'
+      ...
+    # Subtest: historic-adaptive-sl cooldown 3 long: any split equals one run
+    ok 23 - historic-adaptive-sl cooldown 3 long: any split equals one run
+      ---
+      duration_ms: 3.902334
+      type: 'test'
+      ...
+    # Subtest: historic-adaptive-sl cooldown 3 mixed: any split equals one run
+    ok 24 - historic-adaptive-sl cooldown 3 mixed: any split equals one run
+      ---
+      duration_ms: 1.334126
+      type: 'test'
+      ...
+    # Subtest: historic-trailing cooldown 0 long: any split equals one run
+    ok 25 - historic-trailing cooldown 0 long: any split equals one run
+      ---
+      duration_ms: 6.615118
+      type: 'test'
+      ...
+    # Subtest: historic-trailing cooldown 0 mixed: any split equals one run
+    ok 26 - historic-trailing cooldown 0 mixed: any split equals one run
+      ---
+      duration_ms: 3.633454
+      type: 'test'
+      ...
+    # Subtest: historic-trailing cooldown 3 long: any split equals one run
+    ok 27 - historic-trailing cooldown 3 long: any split equals one run
+      ---
+      duration_ms: 1.933754
+      type: 'test'
+      ...
+    # Subtest: historic-trailing cooldown 3 mixed: any split equals one run
+    ok 28 - historic-trailing cooldown 3 mixed: any split equals one run
+      ---
+      duration_ms: 1.400065
+      type: 'test'
+      ...
+    # Subtest: historic-trailing-only cooldown 0 long: any split equals one run
+    ok 29 - historic-trailing-only cooldown 0 long: any split equals one run
+      ---
+      duration_ms: 7.050587
+      type: 'test'
+      ...
+    # Subtest: historic-trailing-only cooldown 0 mixed: any split equals one run
+    ok 30 - historic-trailing-only cooldown 0 mixed: any split equals one run
+      ---
+      duration_ms: 2.370548
+      type: 'test'
+      ...
+    # Subtest: historic-trailing-only cooldown 3 long: any split equals one run
+    ok 31 - historic-trailing-only cooldown 3 long: any split equals one run
+      ---
+      duration_ms: 6.295061
+      type: 'test'
+      ...
+    # Subtest: historic-trailing-only cooldown 3 mixed: any split equals one run
+    ok 32 - historic-trailing-only cooldown 3 mixed: any split equals one run
+      ---
+      duration_ms: 2.060651
+      type: 'test'
+      ...
+    # Subtest: historic-breakeven cooldown 0 long: any split equals one run
+    ok 33 - historic-breakeven cooldown 0 long: any split equals one run
+      ---
+      duration_ms: 3.608879
+      type: 'test'
+      ...
+    # Subtest: historic-breakeven cooldown 0 mixed: any split equals one run
+    ok 34 - historic-breakeven cooldown 0 mixed: any split equals one run
+      ---
+      duration_ms: 5.223265
+      type: 'test'
+      ...
+    # Subtest: historic-breakeven cooldown 3 long: any split equals one run
+    ok 35 - historic-breakeven cooldown 3 long: any split equals one run
+      ---
+      duration_ms: 8.347954
+      type: 'test'
+      ...
+    # Subtest: historic-breakeven cooldown 3 mixed: any split equals one run
+    ok 36 - historic-breakeven cooldown 3 mixed: any split equals one run
+      ---
+      duration_ms: 0.974347
+      type: 'test'
+      ...
+    # Subtest: simulate is unchanged by the state plumbing (no state field)
+    ok 37 - simulate is unchanged by the state plumbing (no state field)
+      ---
+      duration_ms: 0.266436
+      type: 'test'
+      ...
+    # Subtest: refuses a sink run
+    ok 38 - refuses a sink run
+      ---
+      duration_ms: 0.626032
+      type: 'test'
+      ...
+    1..38
+ok 29 - simulateFrom resumes simulate
+  ---
+  duration_ms: 264.218012
+  type: 'suite'
+  ...
+1..29
+# tests 68
+# suites 3
+# pass 68
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 37968.893708

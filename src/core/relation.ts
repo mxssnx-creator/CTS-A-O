@@ -79,7 +79,7 @@ export function relationSystemSql(cols: ReadonlySet<string> = new Set(["held_px"
   // external execution multiplier. Only an older row with an explicit positive mult can be normalized without unit_r.
   const unit = cols.has("unit_r")
     ? "b.unit_r"
-    : `CASE WHEN ${own("mult")} > 0 THEN b.r / ${own("mult")} ELSE NULL END`;
+    : `CASE WHEN ${own("mult")} > 0 AND ${own("mult")} <= 1.7976931348623157e308 THEN b.r / ${own("mult")} ELSE NULL END`;
   return (
     // r at one unit (r / the order's execution multiple), as the exchange record is: the sized r of a Block-raised order
     // read as a unit return put the multiple into every gap against the exchange

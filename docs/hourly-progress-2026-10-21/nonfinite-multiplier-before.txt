@@ -1,0 +1,55 @@
+TAP version 13
+# Subtest: engine proof
+    # Subtest: judged at one unit: a Block-raised paper close weighs its edge, not its multiple (as the exchange record does)
+    not ok 1 - judged at one unit: a Block-raised paper close weighs its edge, not its multiple (as the exchange record does)
+      ---
+      duration_ms: 33.679914
+      type: 'test'
+      location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/engine-proof.test.ts:239:3'
+      failureType: 'testCodeFailure'
+      error: |-
+        a nonfinite loss multiplier is unknown, not a zero-return winner
+        + actual - expected
+        
+        + [
+        +   'revert|ema-21-55@m15|tp2|sl2|tr0|h96|gn'
+        + ]
+        - []
+        
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected:
+      actual:
+        0: 'revert|ema-21-55@m15|tp2|sl2|tr0|h96|gn'
+      operator: 'deepStrictEqual'
+      stack: |-
+        TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/engine-proof.test.ts:260:12)
+        Test.runInAsyncScope (node:async_hooks:227:14)
+        Test.run (node:internal/test_runner/test:1382:25)
+        Test.start (node:internal/test_runner/test:1242:17)
+        node:internal/test_runner/test:1867:71
+        node:internal/per_context/primordials:504:82
+        new Promise (<anonymous>)
+        new SafePromise (node:internal/per_context/primordials:478:3)
+        node:internal/per_context/primordials:504:9
+        Array.map (<anonymous>)
+      ...
+    1..1
+not ok 1 - engine proof
+  ---
+  duration_ms: 35.980447
+  type: 'suite'
+  location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/engine-proof.test.ts:33:1'
+  failureType: 'subtestsFailed'
+  error: '1 subtest failed'
+  code: 'ERR_TEST_FAILURE'
+  ...
+1..1
+# tests 1
+# suites 1
+# pass 0
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 580.609715

@@ -48,6 +48,7 @@ if (argv.includes("--legacy")) {
         .all()
         .map((x) => ({ cfg: x.cfg, sym: x.sym, side: x.side, entryT: x.entry_t, exitT: x.exit_t, r: x.r })),
       ldb
+        // relation: all rows — legacy liveDiff classifies own closes and outside events separately.
         .prepare("SELECT id, cfg, sym, exit_t, r, reason FROM live_lane_trades")
         .all()
         .map((x) => ({ id: x.id, cfg: x.cfg, sym: x.sym, exitT: x.exit_t, r: x.r, reason: x.reason })),

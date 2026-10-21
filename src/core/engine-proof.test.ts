@@ -256,6 +256,8 @@ describe("engine proof", () => {
     assert.deepEqual([...rt.engineProof(Date.now())!.proven], []);
     db.run("UPDATE paper_book_trades SET mult = vol WHERE cfg = ? AND mult IS NULL", ENG2);
     assert.deepEqual([...rt.engineProof(Date.now())!.proven], [ENG2], "explicit known multipliers restore measured PF3");
+    db.run("UPDATE paper_book_trades SET mult = ? WHERE cfg = ? AND entry_t = 2000", Infinity, ENG2);
+    assert.deepEqual([...rt.engineProof(Date.now())!.proven], [], "a nonfinite loss multiplier is unknown, not a zero-return winner");
   });
 
   it("a database of an older build gains paper_book_trades.mult and the unit index on open", async () => {

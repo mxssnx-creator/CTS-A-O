@@ -1,3 +1,9 @@
+# Nonfinite historical multiplier guard — 21 October 2026 (Europe/Vienna)
+
+Before authorized merge, a new regression proved explicit Infinity in a legacy execution multiplier converted a loss to zero in SQL, falsely proving Last-2 PF. The engine and legacy relation SQL now accept only finite positive multipliers; zero/NaN/±Infinity remain unknown. The unknown row stays in its current own window and cannot select older wins. Engine/relation34tests pass, typecheck passes. Before-fix failure is retained in nonfinite-multiplier-before.txt. Main187's explicit legacy read also has the required classification comment; the source-scan guard remains enforced. Integrated UI4/4,225native/parser/control and68merge-targeted tests passed; full CI is still required at the new exact source.
+
+Freeze a new24-symbol v4 attempt because the runtime source changed; v3 CI39531317444 and39531620068 remain superseded same-data studies, with no scoring-based retuning. Both retain identical economic settings/feed/windows; the new change only refuses invalid legacy multiplier evidence. Never relabel their source as the new one. Main backup fafdea2 remains valid;184 not yet merged. No deployment or actual venue orders.
+
 # Main PR187 integration — 21 October 2026 (Europe/Vienna)
 
 Main advanced to fafdea2f (PR187). Preserve its operator-approved x02 patch and explicit --legacy snapshot CLI. Backup branch backup/main-before-micro-merge-20261021-fafdea2 exists. Resolve overlapping trailing restore with the stronger complete scalar/ratchet/Historic Exit state restoration. Preserve the correctly scoped profiler directory else clause. PR187 also added a raw-r fallback for unknown Block unit evidence: this violates the standing unit-provenance rule and is removed; intentional unweighted synthetic fixtures already declare mult1. --legacy CLI stays labeled diagnostic, never ownership proof.

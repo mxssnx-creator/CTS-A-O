@@ -6743,7 +6743,7 @@ export class CoreRuntime {
     // Legacy unit recovery requires an explicit positive external multiplier. Volume can contain intrinsic
     // ladder weight and cannot establish that multiplier; retain unknown closes in their own chronological tail.
     const rows = yield* this.paperCloseRows(
-      `cfg, ${bySide ? "side, " : ""}exit_t, unit_r, owned_notional_usd, CASE WHEN mult > 0 THEN r / mult ELSE NULL END AS legacy_r`,
+      `cfg, ${bySide ? "side, " : ""}exit_t, unit_r, owned_notional_usd, CASE WHEN mult > 0 AND mult <= 1.7976931348623157e308 THEN r / mult ELSE NULL END AS legacy_r`,
       "",
       (x: {
         cfg: string;
