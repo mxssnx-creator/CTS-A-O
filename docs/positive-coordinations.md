@@ -149,6 +149,7 @@ the Stable-02 pause, which paper and live check by the bare symbol while `coord.
   (simulation, paper, pending entries). The engine's `maxPositions` keeps counting both (a measured preset value).
 - **Block sources `symbol` and `indication` per direction** (`direction` already was; `overall` and `type` pool by
   definition).
+- **Superseded 21 Oct (main, PR #185):** the Block config key is per direction (and symbol) in every case; `block.sideKeys` is accepted but no longer changes it, so an opposite close neither raises nor pauses this direction's config source. The pooled-by-default line below is history.
 - **The Block config source stays pooled by default:** `block.sideKeys` (default off) keeps its level and pause across
   both directions until the comparison in "Block Overall: corrected rules" below is recorded here.
 - **Stable-02 symbol windows per direction** (`S2Coord`, found by the 6 Oct regression suite): the last-N window and

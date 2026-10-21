@@ -78,7 +78,10 @@ for await (const row of iterateSessionTapeTrades(`${dir}/raw.json`)) {
     assert.ok(expected);
     const ev = configEval(tp, s.t, p.actualWf);
     decisions++;
-    if (ev.ok !== !!expected[1] || ev.n !== expected[2] || Math.abs(ev.pf - expected[3]) > 1e-8) {
+    // Selection publishes only qualifying directions, or a zero summary when neither direction can seat.
+    // Keep the actual failed own-direction statistics below to explain the rejection.
+    const recordedN = ev.ok ? ev.n : 0, recordedPf = ev.ok ? ev.pf : 0;
+    if (ev.ok !== !!expected[1] || recordedN !== expected[2] || Math.abs(recordedPf - expected[3]) > 1e-8) {
       if (mismatches.length < 30) mismatches.push({ id: row.id, t: s.t, expected, actual: ev });
     }
     const x = steps[i];

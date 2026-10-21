@@ -11,7 +11,10 @@ const argv = process.argv.slice(2), arg = (key, fallback) => {
 };
 // Scope fixed before outcomes: original twenty plus four additional liquid historical contracts.
 const symbols = ["AVAX", "LINK", "LTC", "SUI", "NEAR", "DOT", "ATOM", "APT", "BTC", "ETH", "SOL", "BNB", "DOGE", "ADA", "BCH", "TRX", "ETC", "OP", "ARB", "FIL", "XRP", "UNI", "XLM", "INJ"].map((x) => `${x}-USDT`);
-const fromT = Date.parse("2026-10-18T00:00:00Z"), toT = Date.parse("2026-10-20T00:00:00Z");
+const fromT = Date.parse(arg("from", "2026-10-18T00:00:00Z")), toT = Date.parse(arg("to", "2026-10-20T00:00:00Z"));
+if (![fromT, toT].every((t) => Number.isSafeInteger(t) && t % DAY_MS === 0) ||
+    toT - fromT < 2 * DAY_MS || toT - fromT > 3 * DAY_MS)
+  throw new Error("Use an exact two or three completed UTC-day archive window");
 const out = path.resolve(arg("out", "runs/micro-24-market-20261020"));
 const concurrency = Number(arg("concurrency", 2));
 if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 2) throw new Error("concurrency must be 1..2");

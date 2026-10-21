@@ -42,6 +42,7 @@ type Pos = {
   entryT: number;
   target?: number;
   trailOn?: boolean;
+  level?: number;
   legs?: Record<string, number>;
 };
 

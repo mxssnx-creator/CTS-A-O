@@ -29,7 +29,7 @@ const arg = (name, fallback) => {
   return i < 0 ? fallback : process.argv[i + 1];
 };
 const mode = process.argv[2],
-  out = resolve(arg("out", "runs/micro-24-trade-sim-20261020-v4")),
+  out = resolve(arg("out", "runs/micro-24-trade-sim-20261020-v5")),
   H = 3_600_000;
 process.env.CTS_CORE_STATE = "off";
 process.env.CTS_CORE_AUTOSTART = "0";
@@ -67,7 +67,11 @@ if (mode === "prepare") {
   mkdirSync(out, { recursive: true });
   const feedPath = `${out}/feed.json`;
   writeFileSync(feedPath, JSON.stringify(feed));
-  const selected = [...MICRO_CONFIG_IDS, ...INVERSE_MICRO_CONFIG_IDS];
+  const allIds = [...MICRO_CONFIG_IDS, ...INVERSE_MICRO_CONFIG_IDS];
+  const focusFile = arg("focus-file");
+  const selected = focusFile ? JSON.parse(readFileSync(resolve(focusFile))) : allIds;
+  if (!Array.isArray(selected) || !selected.length || new Set(selected).size !== selected.length ||
+      selected.some((id) => !allIds.includes(id))) throw new Error("Nonempty unique registered Micro focus required");
   const seed = structuredClone(DEFAULT_SETTINGS);
   Object.assign(seed, {
     symbols: 24,
@@ -152,15 +156,18 @@ if (mode === "prepare") {
   const files = sessionStudySourceFiles(root);
   const protocol = {
     schema: "cts-session-study-v1",
-    id: "micro-24-symbols-12h-pre-12h-run-20261020-v4",
-    scope: { hold: "standard", focus: selected, purpose: "Fixed retrospective 24-symbol correctness and hourly stability test; no performance-based source selection or gate relaxation; not native execution" },
+    id: arg("label", "micro-24-symbols-12h-pre-12h-run-20261020-v5"),
+    scope: { hold: "standard", focus: selected,
+      ...(focusFile ? { selectedFocusSha256: studySha256(readFileSync(resolve(focusFile))) } : {}),
+      purpose: focusFile ? "Frozen training-selected focus, independently gated in this later test; losses retained; not native execution"
+        : "Fixed retrospective 24-symbol correctness and hourly stability test; no performance-based source selection or gate relaxation; not native execution" },
     symbols,
     window: { indicatorStartT, evaluationFromT, tradeStartT, endT, preH, runH },
     feed: {
       path: feedPath,
       sha256: studySha256(readFileSync(feedPath)),
       parentSha256: studySha256(input),
-      provider: "Verified official Binance USD-M native 1m archives, 18–20 October 2026; retrospective historical test, not BingX venue execution or fresh holdout",
+      provider: "Verified official Binance USD-M native 1m archives; scope and chronology in window/feed hashes; not BingX venue execution",
     },
     source: {
       checkpoint: execFileSync("git", ["rev-parse", "HEAD"], {
@@ -184,7 +191,7 @@ if (mode === "prepare") {
       out,
       window: protocol.window,
       symbols: symbols.length,
-      identities: MICRO_CONFIG_IDS.length + INVERSE_MICRO_CONFIG_IDS.length,
+      identities: selected.length,
       sourceSha256: protocol.source.sha256,
     }),
   );

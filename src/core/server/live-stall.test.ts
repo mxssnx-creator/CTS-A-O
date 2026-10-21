@@ -32,6 +32,12 @@ function fill(db: CoreDb, n = N) {
       "INSERT OR REPLACE INTO live_lane_trades (id,exit_t,cfg,sym,side,entry_t,r,reason) VALUES (?,?,?,?,?,?,?,?)",
       `id${i}`, 1e12 + Math.floor(i / 3), `n|${i % 2 ? "sig-x" + (i % 40) : "ind" + (i % 30)}|c${i % 400}`, `S${i % 70}-USDT`, 1, 1e12, 0.01 - (i % 3) * 0.01, "exit",
     );
+  // Keep measured passing examples alongside mixed known/unknown legacy rows; an empty proof cannot satisfy parity.
+  for (const cfg of ["n|ind-proof|c", "n|sig-x-proof|c"])
+    for (let i = 0; i < 30; i++) db.run(
+      "INSERT INTO paper_book_trades (cfg,sym,side,entry_t,exit_t,r,vol,reason,unit_r,owned_notional_usd) VALUES (?,?,1,?,?,0.03,2,'exit',0.015,20)",
+      cfg, "KNOWN-USDT", 1.6e12 + i * 60_000, 1.6e12 + (i + 1) * 60_000,
+    );
   db.run("COMMIT");
 }
 const runtime = () =>
@@ -65,10 +71,16 @@ async function worstSlice(work: () => Promise<void> | void): Promise<number> {
 /** the former single reads, kept here as the reference */
 function reference(rt: CoreRuntime) {
   const db = rt.db;
-  const unit = "CASE WHEN mult > 0 AND mult <= 1.7976931348623157e308 THEN r / mult ELSE NULL END AS r";
+  // Independent scalar provenance reference. Volume does not prove the external multiplier.
+  const unit = (x: {r: number; mult: number | null; unit_r: number | null; owned_notional_usd: number | null}) =>
+    x.owned_notional_usd !== null && Number.isFinite(x.owned_notional_usd) && x.owned_notional_usd > 1e-9
+      ? x.unit_r ?? NaN
+      : x.owned_notional_usd === null && x.unit_r === null && x.mult !== null && Number.isFinite(x.mult) && x.mult > 0
+        ? x.r / x.mult : NaN;
+  type Row = { cfg: string; sym: string; side: number; entry_t: number; exit_t: number | null; r: number; mult: number | null; unit_r: number | null; owned_notional_usd: number | null };
   const rows = db.all<{ cfg: string; exit_t: number | null; r: number }>(
-    `SELECT cfg, exit_t, ${unit} FROM paper_book_trades WHERE reason != 'dropped' AND r IS NOT NULL`,
-  );
+    "SELECT * FROM paper_book_trades WHERE reason != 'dropped' AND r IS NOT NULL ORDER BY cfg,exit_t,r,mult,vol,sym,side,entry_t",
+  ).map((x) => ({ ...x, r: unit(x as Row) }));
   const exRows = db
     .all<{ id: string; cfg: string; sym: string | null; side: number | null; exit_t: number; r: number }>(
       `SELECT id, cfg, sym, side, exit_t, r FROM live_lane_trades WHERE exit_t >= ? AND ${OWN_CLOSE_SQL}`,
@@ -76,17 +88,20 @@ function reference(rt: CoreRuntime) {
     )
     .map((x) => ({ id: x.id, cfg: x.cfg, sym: x.sym ?? "", side: x.side ?? 0, exitT: x.exit_t, r: x.r }));
   const now = Date.now();
+  const unknownCfgs = new Set(rows.filter((x) => !Number.isFinite(x.r)).map((x) => x.cfg));
   const engine = engineProven(
     liveRecords(rows.filter((x) => x.exit_t !== null).map((x) => ({ cfg: x.cfg, exitT: x.exit_t!, r: x.r }))),
-    liveRecords(exRows),
+    liveRecords(exRows.filter((x) => !unknownCfgs.has(x.cfg))),
     now, 25, 1.2,
   );
-  const sigRows = db.all<{ cfg: string; sym: string; side: number; entry_t: number; exit_t: number | null; r: number }>(
-    `SELECT cfg, sym, side, entry_t, exit_t, ${unit} FROM paper_book_trades WHERE reason != 'dropped' AND r IS NOT NULL AND cfg LIKE '%|sig-%'`,
-  );
+  const sigRows = db.all<Row>(
+    "SELECT * FROM paper_book_trades WHERE reason != 'dropped' AND r IS NOT NULL AND cfg LIKE '%|sig-%' ORDER BY cfg,exit_t,r,mult,vol,sym,side,entry_t",
+  ).map((x) => ({ ...x, r: unit(x) }));
+  const signalUnit = (x: {cfg: string;side: number}) => `${x.cfg.split('|')[1]}|${x.side > 0 ? 1 : -1}`;
+  const unknownUnits = new Set(sigRows.filter((x) => !Number.isFinite(x.r)).map(signalUnit));
   const signal = signalProven(
     sigRows.filter((x) => x.exit_t !== null).map((x) => ({ id: String(x.entry_t), cfg: x.cfg, sym: x.sym, side: x.side, exitT: x.exit_t!, r: x.r })),
-    exRows, now, { n: 25, minPf: 1.2, minEvents: 2 },
+    exRows.filter((x) => !unknownUnits.has(signalUnit(x))), now, { n: 25, minPf: 1.2, minEvents: 2 },
   );
   return { engine, signal };
 }
@@ -98,6 +113,7 @@ describe("live step proofs in slices", () => {
     fill(rt.db);
     const ref = reference(rt);
     assert.ok(ref.engine.judged > 0 && ref.signal.judged > 0, "the fixture judges configs");
+    assert.ok(ref.engine.proven.size > 0 && ref.signal.proven.size > 0, "known owned examples remain proven");
     // (the least of three rebuilds: a collector pause of the machine in one run is not the code's slice)
     let worst = Infinity;
     for (let k = 0; k < 3; k++) {

@@ -1,4 +1,46 @@
+# Signals progression recovery and publication — 21 October 2026
+
+[PR 189](https://github.com/mxssnx-creator/CTS-A-O/pull/189) publishes tested code `534492d622db6be370079e08b94fdbb2dfbb566c` (local `ef0a9275247e22339b17e33f4847e77893fc26d9`), with identical Git tree `9442ef46aef790ad27eb68c47af26ad5ef7c0479`, based on main `fafdea2f5ebe8c903a16f2edd8be34606f746c2f`. Test-harness and lifecycle-reference follow-ups leave production source unchanged. The user explicitly authorized push/merge. Refer to the PR's final checks and merge record for complete default/slow CI and the final merge SHA.
+
+Independent Signal history now matches across full workers, local fallback and incremental rebuilds. Coordinators retain their own rebuild grids and enabled-range historical PF floors. Historic progress covers sampling and candidate evaluations with cancellation checkpoints, and the UI labels variant/candidate counts accurately. All three recreated actual-runtime regressions fail against the original runtime and pass after the fixes.
+
+Fresh verification: **294/294** tests in 21 files, **3/3** complete-job progress tests, **4/4** functional desktop/phone UI tests, TypeScript and production build pass. Changed-file lint: zero errors/five existing warnings. Development and rebuilt Settings render correctly on desktop/mobile with no errors/overflow/baseline divergence. Packaged worker SHA-256 `e6f95d8ecd2f4c08d8b3e056e6898ce86e7d678fb8653bb17e0a564fc40817dd` contains the new progress implementation. Details and evidence boundaries: [signals-progress-audit-20261021.md](signals-progress-audit-20261021.md).
+
+The old unpushed audit commits were absent after workspace restoration; this is freshly reverified recovery on current main. The completed legacy lifecycle run exposed a reference that still used short strategy history for Signals. The corrected bounded fixture uses independent Signal history/coordinator grids, asserts exact hourly seat retention and preserves full tape/paper comparisons: 2/2 pass across three cycles, 49,719 tape states and decisions covering 7,446 open positions. Typecheck and lint pass. Complete default/slow CI is linked in PR 189. Initial CI also exposed abandoned Vite module requests in the UI wait; the corrected finite-data wait passes all four local UI checks, typecheck and changed-test lint. No hosted reload, database/settings mutation or venue action occurred. Merge alone cannot certify the remote live process; verify authenticated deployment access, backups, rebuilt worker, running SHA and owned-position reconciliation before a live-effect claim. Existing economic research seals and qualification thresholds are unchanged.
+
 # Combined system verification candidate — 21 October 2026 (Europe/Vienna)
+
+# Micro expansion and next-day verification pending — 21 October 2026 (Europe/Vienna)
+
+User explicitly requests the additional 6/12-bar breakouts and push/merge after completion. Main remains
+fafdea2f5ebe8c903a16f2edd8be34606f746c2f; PR 184 is open. Current source manifest
+bf502cd9046ea8d3fe23701b0e549521618a143be948ba38f2269df7534d95a2 adds independent OHLC breakout horizons
+6/12/24/48, activity and failed-auction variants, all seven 1/5/15m subsets and both inverses: 868 first-class sources,
+984 including legacy identity cases. Full registry 1,860 specs / 37,786 eligible bot/lane pairs. Default focus now exceeds
+the former 1,000-pair validation cap; a bounded 2,000 cap keeps the expanded default valid. No economic gate weakened.
+
+Concrete fixes: reject neutral-zero momentum confirmation (before-fix regression fails); Signal forward proof now
+uses verified funded unit returns, finite explicit legacy multipliers and unknown-prefix Last-N rather than volume
+or implicit one. Sliced proof reference preserves this contract and measured positive fixtures. Explicit raised-lane
+fixture carries its Block level instead of inferring external provenance from ordinary volume. The latest targeted
+Micro/Inverse/worker/identity group passes 14/14; preceding native/proof group 56/56 passes; audit/selection 10/10
+and typecheck pass. Full current-source CI, expanded financial run and next-day validation are still required.
+
+Previous 24-symbol v4 (846d9aa source, CI39532140644) computes all grids and passes all report/price/cost controls:
+257,095 funded settled closes, unit PF 1.5369277555. Micro separately 0.7450644243; Minimal 2.0475000964;
+Short 2.3868199477; General 1.5338949061. Nine positive, three negative settled hours. Source/execution returns
+match; round trip 0.15% once. Original scalar audit failed because it pooled directions. Corrected independent
+reference checks 87,234 tapes / 846,432 decisions, zero differences, missing histories or unexplained transitions.
+Transition replay checks 175,272 initial-config decisions, zero mismatches after honoring the zero rejected-summary
+contract. Both losses and initial CI failures remain retained. The two complete core-CI failures are fixture
+provenance mismatches (lane-orders/live-stall); their repairs have focused passing evidence, not yet final CI.
+
+Frozen next-day-plan-v1.json consumes only Micro-range funded training closes through 20 Oct 00:00 UTC to choose
+an optional research shortlist; all config/direction/type/range gates still operate independently. Seal before
+acquiring next-day native archives, evaluate 20 Oct 12:00–21 Oct 00:00 with independent 12h prehistory and 24h
+indicator warmup. Preserve no candidate, insufficient, losing and failed collection outcomes; do not reselect using
+validation. Universal v8 repeats all hourly and unfinished-bar checks on the expanded source. No merge,
+deployment, live reload, setting write or venue order has been performed by this continuation yet.
 
 # Nonfinite historical multiplier guard — 21 October 2026 (Europe/Vienna)
 

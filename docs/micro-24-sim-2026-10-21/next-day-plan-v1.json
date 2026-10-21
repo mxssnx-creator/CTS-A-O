@@ -1,0 +1,44 @@
+{
+  "schema": "cts-micro-24-next-day-plan-v1",
+  "sourceSha256": "bf502cd9046ea8d3fe23701b0e549521618a143be948ba38f2269df7534d95a2",
+  "training": {
+    "feed": "docs/micro-24-sim-2026-10-21/reproduction-feed.json.gz",
+    "endT": 1792454400000,
+    "sourceIdentities": 868,
+    "indicatorWarmupH": 24,
+    "evaluatedPreH": 12,
+    "runH": 12
+  },
+  "selection": {
+    "minimumCloses": 100,
+    "minimumDistinctOnsets": 12,
+    "minimumActiveHours": 6,
+    "minimumPositiveHourShare": 0.6,
+    "minimumUnitReturnPf": 1.35,
+    "maximumIndications": 24,
+    "basis": "Micro range settled funded unit returns; training only"
+  },
+  "validation": {
+    "archiveFrom": "2026-10-19T00:00:00Z",
+    "archiveToExclusive": "2026-10-21T00:00:00Z",
+    "tradeStart": "2026-10-20T12:00:00Z",
+    "end": "2026-10-21T00:00:00Z",
+    "symbols": 24,
+    "indicatorWarmupH": 24,
+    "evaluatedPreH": 12,
+    "runH": 12
+  },
+  "invariants": {
+    "roundTripCost": 0.0015,
+    "allocationBasis": "actual report allocations",
+    "unknownEvidenceFails": true,
+    "allGatesUnchanged": true,
+    "newVenueOrders": false
+  },
+  "scripts": {
+    ".github/audits/micro-24-trade-sim.mjs": "af8354c59c203998d59c63e5d0c530161cff044facee55e02ae06310bb0006bd",
+    ".github/audits/micro-24-feed.mjs": "2da754af24ef3b99b85ff3c83c697b48d0efeb143dbbf9c74358352abba472de",
+    "scripts/select-micro-24-research.mjs": "57141a90f6266f6b006d931192cb7d1aeadfbb5c03b72da91fa63df6e1afbaaf"
+  },
+  "classification": "The training period is already observed research. Freeze the shortlist before collecting the following day; report every validation loss/empty cohort and do not reselect using it. This is bounded historical model evidence, not live performance or hourly profit assurance."
+}

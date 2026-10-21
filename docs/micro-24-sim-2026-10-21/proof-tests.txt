@@ -1,0 +1,39 @@
+▶ engine proof
+  ✔ a config is proven by its own last N closes at PF ≥ the floor; fewer than N is not proven (hand-computed) (1.897459ms)
+  ✔ the exchange record decides once it holds N closes; the paper book's until then (0.278851ms)
+  ✔ engineProven is lastNProven on engine configs: the result before the generalization, bit for bit (random records) (2.841342ms)
+  ✔ the live filter sends an engine lane only when proven; signals are not judged; off = unchanged (0.669928ms)
+  ✔ the live step: an exact losing owned engine record opens nothing, a proven engine lane and signal do (23.395877ms)
+  ✔ an unproven engine lane on a key a signal holds adds no volume and does not keep the position after the signal exits (12.364913ms)
+  ✔ the runtime reads the paper book's closes ('dropped' marks left out) and the setting is validated (16.338525ms)
+  ✔ an unchanged book costs no query (every live control step asks); a new close re-reads it from the partial index (8.584666ms)
+  ✔ judged at one unit: a Block-raised paper close weighs its edge, not its multiple (as the exchange record does) (8.632266ms)
+  ✔ a database of an older build gains paper_book_trades.mult and the unit index on open (11.475149ms)
+✔ engine proof (87.986963ms)
+▶ signal proof
+  ✔ a unit (indicator × side) is proven by its last N closes at PF ≥ the floor spanning ≥ minEvents events (hand-computed) (1.513182ms)
+  ✔ the exchange record decides once the unit holds N closes; its events are the lanes' paper entry bars (3.158571ms)
+  ✔ the live filter sends a signal lane only when its unit is proven; engine configs are not judged; off = unchanged (0.476383ms)
+  ✔ the live step: an unproven unit opens nothing, a proven one does, a held lane is kept; the funnel names the proof (14.355028ms)
+  ✔ the runtime: the paper book ('dropped' left out) until the unit's exchange record holds N; memoized; an event on a change (14.575094ms)
+✔ signal proof (34.495234ms)
+▶ durable paper proof uses verified unit returns
+  ✔ persists explicit verified unit evidence even when its modeled multiplier is absent (26.503292ms)
+  ✔ writes both records from known execution multipliers, preserving cash and immutable evidence across restart/conflict (24.252662ms)
+  ✔ keeps recent unknowns inside last N instead of qualifying older wins, then recovers after known closes replace them (7.404245ms)
+  ✔ nominal attributed exchange rows cannot replace unknown owned-paper funding evidence (7.009852ms)
+  ✔ Signal proof uses stored owned unit returns, retains unknown Last-N and cannot borrow nominal lane wins (9.377755ms)
+✔ durable paper proof uses verified unit returns (75.673206ms)
+▶ actual API primary return basis
+  ✔ retains modeled rows with missing multipliers as unknown across API, presets and prehistoric reports (17.124935ms)
+  ✔ reports sim/paper PF 0.8 while cash remains sized, without any market recomputation (43.711581ms)
+  ✔ marks aggregate legacy preset and run archives unavailable instead of reusing sized PF (8.87305ms)
+✔ actual API primary return basis (70.080975ms)
+ℹ tests 23
+ℹ suites 4
+ℹ pass 23
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1104.907935

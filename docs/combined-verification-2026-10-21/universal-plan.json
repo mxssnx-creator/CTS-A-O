@@ -1,10 +1,10 @@
 {
-  "schema": "cts-combined-system-universal-plan-v3",
-  "sourceSha256": "de4cc45e706a9522d538ae26b40a64d6cca9b8319a399fd398418297fb57a632",
+  "schema": "cts-combined-system-universal-plan-v4",
+  "sourceSha256": "ecea01ea51606fb0fb33cdcb448acd9b2bb91ab0f8bb50980a740b8afb981921",
   "scope": {
-    "registeredSpecs": 1720,
+    "registeredSpecs": 1860,
     "families": 19,
-    "engineBotLaneCombos": 37016,
+    "engineBotLaneCombos": 37786,
     "timeframes": [
       1,
       5,
@@ -63,6 +63,7 @@
   ],
   "classification": "Correctness/causality and synthetic gate audit, not proof of hourly market profitability or a full Cartesian financial portfolio replay",
   "preserve": "Keep failed/partial receipts and all existing negative financial windows. Never change recorded costs/returns/gates to manufacture positive PF.",
-  "revisionReason": "Integrate reviewed later Micro/main changes while preserving exact per-lane readiness and separate recorded history. Keep unknown Signal returns chronological, reject nonfinite legacy multipliers, preserve partial/unknown ownership, captured weighted cash and legacy historic Exit state. Identical frozen correctness feed, ranges, cuts and thresholds; not new unseen profitability evidence.",
-  "previousSourceSha256": "d77b2c928ff5111e4e0c9ea2f5c87ff5754423799d2f564d5d7e20d43d4b9140"
+  "revisionReason": "Combine reviewed Micro breakout additions, neutral momentum fix and Signal history/coordinator/progress fixes from other chats. Preserve strict unknown/overflow provenance and Historic Exit continuation. Same frozen correctness feed, windows, costs and gates; not unseen financial validation. Fix stale-settings flag at exact-revision atomic publication, retaining entry fence until matching paper completion (red lifecycle regression retained). Light-cycle paper continuation retains the same hourly seats, while per-entry gates still recheck actual own histories.",
+  "previousSourceSha256": "de4cc45e706a9522d538ae26b40a64d6cca9b8319a399fd398418297fb57a632",
+  "preflightSourceSha256": "53cfd5967127c6e7e8684fdee3693e53278f9d37fdbbbb2b42524b4f65885f15"
 }

@@ -246,6 +246,7 @@ import {
   SIGNAL_PROOF_PF,
   engineProven,
   signalProven,
+  signalUnitOf,
   liveEntryOk,
   liveGate,
   liveGroupGates,
@@ -352,6 +353,15 @@ const H = 3_600_000;
 const SLICE_MS = 12;
 /** rows per page of the proofs' reads (a slice each: ~5 ms) */
 const PROOF_PAGE = 4000;
+type SignalProofResult = ReturnType<typeof signalProven> & { n: number; minPf: number; minEvents: number };
+// Both forward proofs use the same owned unit basis. An explicit legacy multiplier is recoverable;
+// nominal volume, missing funding, and nonfinite multipliers never establish a unit return.
+const PAPER_PROOF_UNIT_SQL = `CASE
+  WHEN owned_notional_usd > 1e-9 AND owned_notional_usd <= 1.7976931348623157e308
+    THEN unit_r
+  WHEN owned_notional_usd IS NULL AND unit_r IS NULL AND mult > 0 AND mult <= 1.7976931348623157e308
+    THEN r / mult
+  ELSE NULL END AS proof_r`;
 /** runs a generator to its end without yielding (the synchronous callers of a sliced step) */
 function drain<R>(g: Generator<void, R>): R {
   for (;;) {
@@ -2064,7 +2074,7 @@ export class CoreRuntime {
   }
 
   /** The configs `ids` rebuilt on `u` with the last compute's tape arguments (exactly the heavy compute's builder). */
-  private async rebuildOnUniverse(u: ReturnType<typeof makeUniverse>, ids: ReadonlySet<string>, gen: number, signalU: ReturnType<typeof makeUniverse>): Promise<ConfigTape[] | null> {
+  private async rebuildOnUniverse(u: ReturnType<typeof makeUniverse>, ids: ReadonlySet<string>, gen: number, signalUniverse?: ReturnType<typeof makeUniverse>): Promise<ConfigTape[] | null> {
     const a = this.fastArgs;
     if (!a) return null;
     const s = this.settings;
@@ -2078,6 +2088,10 @@ export class CoreRuntime {
       sets[k].add(id);
       pairs[k].add(`${tp.bot}|${tp.ind}`);
     }
+    // Incremental strategy history is shorter than the independently configured Signal history.
+    const signalU = signalUniverse ?? (sets.sig.size || sets.coord.size
+      ? makeUniverse(laneSeriesFrom(this.candles, s, 0, signalDataHours(s, this.wf)), u.evaluationFromT)
+      : u);
     const out: ConfigTape[] = [];
     if (workersAvailable() && !this.workersBroken) {
       const shared = { main: shareBars(u.series), sig: shareBars(signalU.series) };
@@ -2087,6 +2101,7 @@ export class CoreRuntime {
           msgs.push({
             type: "tapes",
             bars: shared[k === "sig" || k === "coord" ? "sig" : "main"],
+            evaluationFromT: u.evaluationFromT,
             pairs: [...pairs[k]],
             protects: a[k].protects,
             cost: s.cost,
@@ -3056,7 +3071,7 @@ export class CoreRuntime {
           if (gen !== this.gen || this.stopped) return;
           const paperOwner = this.claimPaper();
           try {
-            await this.driveSliced("Paper", this.stepPaperGen(), gen, (f) =>
+            await this.driveSliced("Paper", this.stepPaperGen(undefined, light), gen, (f) =>
               this.setStage("Paper", 0.8 * f, 1, paperLabel),
             );
           } finally {
@@ -4484,7 +4499,7 @@ export class CoreRuntime {
     const sigHist: Record<string, Protect[]> = {};
     const retainedSignalIds = new Set<string>();
     const signalHistDiagnostics = emptySignalHistDiagnostics();
-    const signalHistValidation = signalHistValidationOf(s.cost, s.gates, wf.signalValidLastN);
+    const signalHistValidation = coordinatorHistValidationOf(s, coordProtects, wf.signalValidLastN);
     const standard = signalProtects(sig);
     try {
       if (s.exitStrategy.enabled && exitFitPairs.length) {
@@ -4767,15 +4782,16 @@ export class CoreRuntime {
             signalHistValidation,
             signalHistDiagnostics,
           );
-          let k = 0;
-          hist = await this.drive(
-            "Signal history",
-            g,
-            () => {
-              if (++k % 64 === 0) this.setStage("Tapes", 0, 1, histLabel);
-            },
-            gen,
-          );
+          try {
+            hist = await this.drive(
+              "Signal history",
+              g,
+              (p) => this.setStage("Tapes", p.done, p.total, histLabel),
+              gen,
+            );
+          } finally {
+            g.return({});
+          }
         }
         Object.assign(sigHist, signalCoordinationHistory(hist, coordinationPairs, coordProtects));
       }
@@ -5354,6 +5370,9 @@ export class CoreRuntime {
     this.incTail = nextIncTail;
     this.tapes = tapes;
     this.sim = sim;
+    // This exact settings revision is now published. Entry admission remains fenced by executionPending
+    // until its matching paper step finishes; failed/superseded computes never reach this publication.
+    this.settingsStale = false;
     this.realtimeLearning = { sim, feed: [...(sim.feed ?? [])], accepted: [] };
     this.coordCache = null;
     this.status.validated = sim.validated?.length;
@@ -7111,15 +7130,13 @@ export class CoreRuntime {
     // Legacy unit recovery requires an explicit positive external multiplier. Volume can contain intrinsic
     // ladder weight and cannot establish that multiplier; retain unknown closes in their own chronological tail.
     const rows = yield* this.paperCloseRows(
-      `cfg, ${bySide ? "side, " : ""}exit_t, unit_r, owned_notional_usd, CASE WHEN mult > 0 AND mult <= 1.7976931348623157e308 THEN r / mult ELSE NULL END AS legacy_r`,
+      `cfg, ${bySide ? "side, " : ""}exit_t, ${PAPER_PROOF_UNIT_SQL}`,
       "",
       (x: {
         cfg: string;
         side?: number | null;
         exit_t: number | null;
-        unit_r: number | null;
-        owned_notional_usd: number | null;
-        legacy_r: number | null;
+        proof_r: number | null;
       }) =>
         x.exit_t === null
           ? null
@@ -7127,14 +7144,7 @@ export class CoreRuntime {
               cfg: x.cfg,
               exitT: x.exit_t,
               // Keep NULLs in time order: skipping a new unknown could incorrectly prove the config on older known wins.
-              r:
-                typeof x.owned_notional_usd === "number" &&
-                Number.isFinite(x.owned_notional_usd) &&
-                x.owned_notional_usd > 1e-9
-                  ? x.unit_r
-                  : x.owned_notional_usd === null && x.unit_r === null
-                    ? x.legacy_r
-                    : null,
+              r: x.proof_r,
               side: x.side,
             },
     );
@@ -7199,7 +7209,7 @@ export class CoreRuntime {
   }
   private sigProofMemo: {
     key: string;
-    out: { proven: Set<string>; judged: number; n: number; minPf: number; minEvents: number };
+    out: SignalProofResult;
   } | null = null;
   /**
    * The signal proof (live.signalProofN, null when off): the signal units (indicator × side) whose own forward closes
@@ -7209,7 +7219,7 @@ export class CoreRuntime {
    */
   signalProof(
     now = Date.now(),
-  ): { proven: Set<string>; judged: number; n: number; minPf: number; minEvents: number } | null {
+  ): SignalProofResult | null {
     return drain(this.signalProofGen(now));
   }
   private signalProofKey(): string | null {
@@ -7220,12 +7230,12 @@ export class CoreRuntime {
     // memoized on the two records' write versions, as the engine proof: an unchanged book costs no query. live.sideGates
     // reads a side that is not +1 or -1 as no side (signalUnitOf), so its proof is memoized apart from the pooled one
     const bySide = this.settings.live.sideGates === true;
-    return `${n}|${minPf}|${minEvents}|${this.db.version("paper_book_trades")}|${this.db.version("live_lane_trades")}${bySide ? "|sides" : ""}`;
+    return `${n}|${minPf}|${minEvents}|${this.db.version("paper_book_trades")}|${this.db.version("live_lane_trades")}${bySide ? "|sides" : ""}|owned-unit-v2`;
   }
   /** signalProof in slices (see engineProofGen) */
   private *signalProofGen(
     now = Date.now(),
-  ): Generator<void, { proven: Set<string>; judged: number; n: number; minPf: number; minEvents: number } | null> {
+  ): Generator<void, SignalProofResult | null> {
     const key = this.signalProofKey();
     if (key === null) return null;
     if (this.sigProofMemo?.key === key) return this.sigProofMemo.out;
@@ -7236,16 +7246,19 @@ export class CoreRuntime {
     // the paper book's signal closes, read from the partial covering index (its entries carry the primary key: symbol,
     // side and entry time); signal ids carry "|sig-" — signalUnitOf keeps exactly the signal configs
     const paper = yield* this.paperCloseRows(
-      "cfg, sym, side, entry_t, exit_t, CASE WHEN owned_notional_usd > 1e-9 AND owned_notional_usd <= 1.7976931348623157e308 THEN unit_r WHEN owned_notional_usd IS NULL AND unit_r IS NULL AND mult > 0 AND mult <= 1.7976931348623157e308 THEN r / mult ELSE NULL END AS r",
+      `cfg, sym, side, entry_t, exit_t, ${PAPER_PROOF_UNIT_SQL}`,
       " AND cfg LIKE '%|sig-%'",
-      (x: { cfg: string; sym: string; side: number; entry_t: number; exit_t: number | null; r: number }) =>
-        x.exit_t === null ? null : { id: String(x.entry_t), cfg: x.cfg, sym: x.sym, side: x.side, exitT: x.exit_t, r: x.r },
+      (x: { cfg: string; sym: string; side: number; entry_t: number; exit_t: number | null; proof_r: number | null }) =>
+        x.exit_t === null ? null : { id: String(x.entry_t), cfg: x.cfg, sym: x.sym, side: x.side, exitT: x.exit_t, r: x.proof_r ?? NaN },
     );
     yield;
     const exchange = yield* this.exchangeRowsGen(0);
     yield;
+    // Nominal lane attribution cannot replace an unknown owned-paper close in the same signal unit.
+    const unknownUnits = new Set(paper.filter((x) => !Number.isFinite(x.r)).map((x) => signalUnitOf(x.cfg, x.side, bySide)));
+    const verifiedExchange = exchange.filter((x) => !unknownUnits.has(signalUnitOf(x.cfg, x.side, bySide)));
     const out = {
-      ...signalProven(paper, exchange, now, { n, minPf, minEvents, bySide }),
+      ...signalProven(paper, verifiedExchange, now, { n, minPf, minEvents, bySide }),
       n,
       minPf,
       minEvents,

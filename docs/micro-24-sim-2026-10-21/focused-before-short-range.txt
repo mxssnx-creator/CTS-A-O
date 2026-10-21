@@ -1,0 +1,81 @@
+▶ engine proof
+  ✔ a config is proven by its own last N closes at PF ≥ the floor; fewer than N is not proven (hand-computed) (1.885813ms)
+  ✔ the exchange record decides once it holds N closes; the paper book's until then (0.278531ms)
+  ✔ engineProven is lastNProven on engine configs: the result before the generalization, bit for bit (random records) (3.400418ms)
+  ✔ the live filter sends an engine lane only when proven; signals are not judged; off = unchanged (0.665913ms)
+  ✔ the live step: an exact losing owned engine record opens nothing, a proven engine lane and signal do (21.627437ms)
+  ✔ an unproven engine lane on a key a signal holds adds no volume and does not keep the position after the signal exits (12.461441ms)
+  ✔ the runtime reads the paper book's closes ('dropped' marks left out) and the setting is validated (16.417299ms)
+  ✔ an unchanged book costs no query (every live control step asks); a new close re-reads it from the partial index (8.098982ms)
+  ✔ judged at one unit: a Block-raised paper close weighs its edge, not its multiple (as the exchange record does) (7.671963ms)
+  ✔ a database of an older build gains paper_book_trades.mult and the unit index on open (10.198931ms)
+✔ engine proof (84.029992ms)
+▶ signal proof
+  ✔ a unit (indicator × side) is proven by its last N closes at PF ≥ the floor spanning ≥ minEvents events (hand-computed) (0.788804ms)
+  ✔ the exchange record decides once the unit holds N closes; its events are the lanes' paper entry bars (0.302707ms)
+  ✔ the live filter sends a signal lane only when its unit is proven; engine configs are not judged; off = unchanged (0.342054ms)
+  ✔ the live step: an unproven unit opens nothing, a proven one does, a held lane is kept; the funnel names the proof (7.956413ms)
+  ✔ the runtime: the paper book ('dropped' left out) until the unit's exchange record holds N; memoized; an event on a change (7.781063ms)
+✔ signal proof (17.376985ms)
+▶ first-class Micro
+  ✔ registers every method/profile/subset once and computes only its own anchor (68.845723ms)
+  ✔ uses prior extrema, excludes the current spike, and handles invalid windows (0.254285ms)
+  ✔ market momentum requires a nonzero own turn and aligned trend, including the inverse (6.034476ms)
+  ✔ adds independent OHLC breakout ranges, activity and failed-auction calculations on every anchor and side (17.564091ms)
+  ✔ preserves every original Micro signal bit while adding independent techniques (107.971265ms)
+  ✔ qualifies every current identity on its own exact Last-N without borrowing sibling or future closes (518.875351ms)
+  ✔ matches prefix-only universes for all subsets and leaves no-market relations neutral (161.049388ms)
+  ✔ resets readiness across data gaps and supports genuine 5-second bars (33.181891ms)
+  ✔ keeps Micro/Minimal/Short and TP, SL, trailing identities independently computable (44.898331ms)
+  ✔ adds Bot-free Exit sources independently and respects the type switch (10.930342ms)
+  ✔ keeps parallel-worker Base results identical to local computation (2951.855485ms)
+✔ first-class Micro (3924.644678ms)
+✔ mirrors each complete Micro technique before entry with its own net-return qualification (177.576937ms)
+✔ all Micro and Inverse identities survive identical closed/open order and paper/native lane keys (8.726419ms)
+✔ a real walk-forward admits identical simultaneous onsets independently across all Micro/Inverse sources (220.705914ms)
+▶ lane orders: the planner (pure)
+  ✔ covers the lanes already on the exchange first, then new ones by entry, as many as the position holds (1.654993ms)
+  ✔ moves a trailed stop toward the price only (first: it keeps its slot), then new orders nearest first (0.455082ms)
+  ✔ under the venue's cap: the nearest levels first; a trim cancels the farthest first (0.667705ms)
+  ✔ a full cap swaps the farthest resting orders for candidates less than half as far, a few a step (0.183792ms)
+  ✔ reads the venue's answer for an order that left the book (0.375013ms)
+✔ lane orders: the planner (pure) (4.552128ms)
+▶ lane orders: the control step
+  ✔ every lane on the exchange: one minimum each, its own stop and take-profit at its own levels, long and short (28.13332ms)
+  ✔ a Block Overall position is ONE lane sized by its whole volume: one stop and one take-profit, none untracked (6.860184ms)
+  ✔ a lane's stop fills on the venue: booked there, its take-profit cancelled, never reopened, the others untouched (10.864183ms)
+  ✔ a lane's take-profit fills, then the side is closed by hand: that lane at its fill, the rest at the hand close (5.221717ms)
+  ✔ a lane that leaves is cancelled first, then reduced — and a stop that filled meanwhile is never exited twice (12.478918ms)
+  ✔ a trailed lane's stop follows it toward the price — up for a long, down for a short (10.252652ms)
+  ✔ many lanes: at most 60 orders a step, every stop before any take-profit, complete within a few steps (79.294216ms)
+  ✔ the venue's TP/SL cap: backstops first, lane orders nearest to triggering, no retry storm when it is full (12.500128ms)
+  ✔ a count just over the fill line is left alone: no cancel / place churn every step (12.708126ms)
+  ✔ under a full cap the farthest lane stops give their slots to nearer take-profits, four a step (7.728246ms)
+  ✔ switched to control orders "overall": the lane orders are cancelled, the position gets its stop and take-profit (4.245807ms)
+✔ lane orders: the control step (191.244038ms)
+proofs rebuild at 60000 closes: worst slice 30 ms
+▶ live step proofs in slices
+  ✔ rebuilding after a close: no slice over 100 ms, and the proofs of the single read (1316.863015ms)
+  ✔ a close landing while the rebuild yields: the proofs follow the book, never an older one (381.881249ms)
+  ✔ the loop lag is reported per slice: the worst slice of the last 60 s and where it ran (431.506778ms)
+✔ live step proofs in slices (2132.009557ms)
+▶ durable paper proof uses verified unit returns
+  ✔ persists explicit verified unit evidence even when its modeled multiplier is absent (25.935978ms)
+  ✔ writes both records from known execution multipliers, preserving cash and immutable evidence across restart/conflict (23.222153ms)
+  ✔ keeps recent unknowns inside last N instead of qualifying older wins, then recovers after known closes replace them (6.517889ms)
+  ✔ nominal attributed exchange rows cannot replace unknown owned-paper funding evidence (6.675992ms)
+  ✔ Signal proof uses stored owned unit returns, retains unknown Last-N and cannot borrow nominal lane wins (12.326983ms)
+✔ durable paper proof uses verified unit returns (75.92193ms)
+▶ actual API primary return basis
+  ✔ retains modeled rows with missing multipliers as unknown across API, presets and prehistoric reports (16.534983ms)
+  ✔ reports sim/paper PF 0.8 while cash remains sized, without any market recomputation (47.736847ms)
+  ✔ marks aggregate legacy preset and run archives unavailable instead of reusing sized PF (8.719689ms)
+✔ actual API primary return basis (73.327886ms)
+ℹ tests 56
+ℹ suites 8
+ℹ pass 56
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 8783.768978

@@ -1,0 +1,24 @@
+▶ first-class Micro
+  ✔ registers every method/profile/subset once and computes only its own anchor (80.988367ms)
+  ✔ uses prior extrema, excludes the current spike, and handles invalid windows (0.260464ms)
+  ✔ market momentum requires a nonzero own turn and aligned trend, including the inverse (7.186372ms)
+  ✔ adds independent OHLC breakout ranges, activity and failed-auction calculations on every anchor and side (20.185381ms)
+  ✔ preserves every original Micro signal bit while adding independent techniques (128.64629ms)
+  ✔ qualifies every current identity on its own exact Last-N without borrowing sibling or future closes (470.706883ms)
+  ✔ matches prefix-only universes for all subsets and leaves no-market relations neutral (162.608117ms)
+  ✔ resets readiness across data gaps and supports genuine 5-second bars (48.450782ms)
+  ✔ keeps Micro/Minimal/Short and TP, SL, trailing identities independently computable (54.353576ms)
+  ✔ adds Bot-free Exit sources independently and respects the type switch (11.737076ms)
+  ✔ keeps parallel-worker Base results identical to local computation (2902.283542ms)
+✔ first-class Micro (3889.467012ms)
+✔ mirrors each complete Micro technique before entry with its own net-return qualification (149.353383ms)
+✔ all Micro and Inverse identities survive identical closed/open order and paper/native lane keys (7.393619ms)
+✔ a real walk-forward admits identical simultaneous onsets independently across all Micro/Inverse sources (193.563263ms)
+ℹ tests 14
+ℹ suites 1
+ℹ pass 14
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4797.195181

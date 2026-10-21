@@ -6,7 +6,7 @@ import { DEFAULT_SETTINGS } from "../src/core/config.ts";
 import { defaultWalkForward, protectGrid } from "../src/core/sim/walkforward.ts";
 import { minPfOf } from "../src/core/minimal-coord.ts";
 const out = "docs/combined-verification-2026-10-21";
-const sourceSha256 = JSON.parse(readFileSync(`${out}/source-manifest-v3.json`)).sourceSha256;
+const sourceSha256 = JSON.parse(readFileSync(`${out}/source-manifest-v4.json`)).sourceSha256;
 const save = (name, value) =>
   writeFileSync(`${out}/${name}.json`, JSON.stringify(value, null, 2) + "\n");
 const byKind = {};

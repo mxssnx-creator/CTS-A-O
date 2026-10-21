@@ -453,8 +453,8 @@ describe("signal proof", () => {
     const rt = new CoreRuntime(db, { live: { ...DEFAULT_SETTINGS.live, signalProofN: 2 } } as never, { market: "synthetic" });
     const book = (cfg: string, sym: string, side: number, entryT: number, exitT: number, r: number, reason = "tp") =>
       db.run(
-        "INSERT INTO paper_book_trades (cfg, sym, side, entry_t, exit_t, r, vol, reason, held_at, at, mult) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
-        cfg, sym, side, entryT, exitT, r, 1, reason, entryT, entryT,
+        "INSERT INTO paper_book_trades (cfg, sym, side, entry_t, exit_t, r, vol, reason, held_at, at, unit_r, owned_notional_usd) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 20)",
+        cfg, sym, side, entryT, exitT, r, 1, reason, entryT, entryT, r,
       );
     const onExchange = (cfg: string, sym: string, side: number, entryT: number, exitT: number, r: number) =>
       db.run(

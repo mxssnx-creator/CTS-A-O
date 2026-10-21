@@ -1,10 +1,10 @@
 {
-  "schema": "cts-universal-integration-plan-v7",
-  "sourceSha256": "846d9aa1c91c37233a660ab9655247a3684242f2c745ad032ab238cdc8a6ec6f",
+  "schema": "cts-universal-integration-plan-v8",
+  "sourceSha256": "bf502cd9046ea8d3fe23701b0e549521618a143be948ba38f2269df7534d95a2",
   "scope": {
-    "registeredSpecs": 1720,
+    "registeredSpecs": 1860,
     "families": 19,
-    "engineBotLaneCombos": 37016,
+    "engineBotLaneCombos": 37786,
     "timeframes": [
       1,
       5,
@@ -63,5 +63,5 @@
   ],
   "classification": "Correctness/causality and synthetic gate audit, not proof of hourly market profitability or a full Cartesian financial portfolio replay",
   "preserve": "Keep failed/partial receipts and all existing negative financial windows. Never change recorded costs/returns/gates to manufacture positive PF.",
-  "revisionReason": "Preserve v6 and all failed evidence. Explicit Infinity in a historical SQL multiplier must remain unknown rather than turn a loss into zero and falsely qualify Last-N. Repeat unchanged registry, identity and causal audits at this finite-positive-only source."
+  "revisionReason": "Preserve v7 and all losses. Add separately identified OHLC breakouts over 6/12/24/48 prior bars, activity and failed-auction variants, in all independent/combined 1/5/15m lanes and inverses. Fix neutral-zero momentum agreement; keep stored owned Signal unit returns and unknown Last-N. No loss/PF/sample gate weakened."
 }

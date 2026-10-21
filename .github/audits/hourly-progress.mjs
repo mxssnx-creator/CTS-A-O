@@ -76,14 +76,15 @@ function scalarLast(rows, t, n, minPf, maxDdt, maxDdr, floor, warmup, prior) {
   }
   return true;
 }
-export function scalarEval(rows, t, o, protect, kind = "normal") {
+export function scalarDirectionEval(rows, t, o, protect, kind = "normal") {
   const winH = Math.max(o.longH, o.preH),
     g = o.gates,
     tag = protect.tag;
   const key = { mc: "micro", mn: "minimal", mp: "minimal", sh: "short", gn: "general", lg: "long" }[
     tag
   ];
-  const configured = g.rangeMinPf?.[key],
+  const ro = o.rangeOpts?.[tag ?? "wide"],
+    configured = g.rangeMinPf?.[key],
     rangeMin = typeof configured === "number" ? Math.min(3, Math.max(1.05, configured)) : g.minPf;
   const minPf = Math.max(1.1, rangeMin, kind === "exit" ? (o.exitMinPf ?? 0) : 0);
   const maxDdr =
@@ -112,7 +113,9 @@ export function scalarEval(rows, t, o, protect, kind = "normal") {
     !scalarLast(
       rows,
       t,
-      kind === "exit" ? (o.exitMinTrades ?? o.validLastN ?? 0) : (o.validLastN ?? 0),
+      kind === "exit"
+        ? (o.exitMinTrades ?? ro?.validLastN ?? o.validLastN ?? 0)
+        : (ro?.validLastN ?? o.validLastN ?? 0),
       minPf,
       g.maxDdtH,
       maxDdr,
@@ -143,9 +146,9 @@ export function scalarEval(rows, t, o, protect, kind = "normal") {
   if (maxDdr > 0 && (!(w.net > 0) || w.mdd / (w.net / 100) > maxDdr)) return no("ddr");
   if (w.gh < Math.max(g.minGreen ?? 0.5, kind === "exit" ? (o.exitMinGreenHourShare ?? 0) : 0))
     return no("green");
-  if (g.stableBlocks >= 2) {
+  if ((ro?.stableBlocks ?? g.stableBlocks) >= 2) {
     let active = 0;
-    const blocks = g.stableBlocks;
+    const blocks = ro?.stableBlocks ?? g.stableBlocks;
     for (let k = 0; k < blocks; k++) {
       const from = t - winH * H + (k * winH * H) / blocks;
       const x = scalarStats(
@@ -159,6 +162,45 @@ export function scalarEval(rows, t, o, protect, kind = "normal") {
     if (active < 2 && g.warmup === false) return no("stable");
   }
   return { ...w, ok: true };
+}
+
+/** Selection records only independently qualified directions. A rejected container records a zero summary;
+ * its actual losing/insufficient evidence remains in directions, never erased from arithmetic diagnostics. */
+export function scalarEval(rows, t, o, protect, kind = "normal") {
+  const directions = [1, -1].map((side) => ({
+    side,
+    ...scalarDirectionEval(
+      rows.filter((x) => x[1] === side),
+      t,
+      o,
+      protect,
+      kind,
+    ),
+  }));
+  const passing = directions.filter((x) => x.ok);
+  const gp = passing.reduce((n, x) => n + x.gp, 0),
+    gl = passing.reduce((n, x) => n + x.gl, 0);
+  return {
+    ok: passing.length > 0,
+    ...(passing.length
+      ? {}
+      : { fail: directions[0].n >= directions[1].n ? directions[0].fail : directions[1].fail }),
+    n: passing.reduce((n, x) => n + x.n, 0),
+    gp,
+    gl,
+    pf: gl > 0 ? gp / gl : gp > 0 ? 4 : 0,
+    net: passing.reduce((n, x) => n + x.net, 0),
+    qualifiedSides: passing.map((x) => x.side),
+    directions,
+  };
+}
+
+/** Raw window conservation has a fixed sample scope. Qualified-side membership can change each hour. */
+export function scalarWindow(rows, t, hours) {
+  return scalarStats(
+    rows.filter((x) => x[3] >= t - hours * H && x[3] < t),
+    t,
+  );
 }
 export async function hourlyAudit(dir, out, requireAll = false) {
   const p = JSON.parse(readFileSync(`${dir}/protocol.json`)),
@@ -178,6 +220,9 @@ export async function hourlyAudit(dir, out, requireAll = false) {
       dropped: 0,
       gained: 0,
       unchangedPass: 0,
+      directionChanges: 0,
+      droppedDirectionFailures: {},
+      transitionCauses: {},
       unexplainedTransitions: 0,
       entered: { n: 0, gp: 0, gl: 0 },
       expired: { n: 0, gp: 0, gl: 0 },
@@ -207,7 +252,8 @@ export async function hourlyAudit(dir, out, requireAll = false) {
       const s = steps[i],
         expected = s.checks.get(row.id);
       if (!expected) continue;
-      const e = scalarEval(rows, s.t, wf, cfg.protect, kind);
+      const e = scalarEval(rows, s.t, wf, cfg.protect, kind),
+        rawWindow = scalarWindow(rows, s.t, Math.max(wf.longH, wf.preH));
       s.verified++;
       decisions++;
       if (e.ok) s.passed++;
@@ -242,22 +288,61 @@ export async function hourlyAudit(dir, out, requireAll = false) {
           [s.expired, expired],
         ])
           for (const k of ["n", "gp", "gl"]) a[k] += b[k];
-        if (!near(e.net - previous.net, entered.net - expired.net))
+        if (!near(rawWindow.net - previous.rawWindow.net, entered.net - expired.net))
           mismatch({
             id: row.id,
             t: s.t,
             error: "Hourly net does not equal incoming minus expired closes",
           });
-        if (previous.ok && !e.ok) {
+        for (const side of [1, -1]) {
+          const own = rows.filter((x) => x[1] === side);
+          const before = scalarWindow(own, prevT, 12),
+            after = scalarWindow(own, s.t, 12);
+          const incoming = scalarStats(
+            own.filter((x) => x[3] >= prevT && x[3] < s.t),
+            s.t,
+          );
+          const outgoing = scalarStats(
+            own.filter((x) => x[3] >= prevFrom && x[3] < from),
+            s.t,
+          );
+          if (!near(after.net - before.net, incoming.net - outgoing.net))
+            mismatch({ id: row.id, t: s.t, side, error: "Own-side hourly conservation failed" });
+        }
+        if (e.qualifiedSides.join() !== previous.e.qualifiedSides.join()) s.directionChanges++;
+        if (previous.e.ok && !e.ok) {
           s.dropped++;
+          const failures = e.directions
+            .filter((x) => previous.e.qualifiedSides.includes(x.side))
+            .map((x) => x.fail);
+          for (const fail of failures)
+            s.droppedDirectionFailures[fail] = (s.droppedDirectionFailures[fail] ?? 0) + 1;
+          const boundary = rows.some((x) => x[3] === s.t);
+          const cause =
+            entered.n || expired.n
+              ? "window-closes"
+              : boundary
+                ? "last-N-boundary-closes"
+                : failures.every((x) => x === "ddt" || x === "stable")
+                  ? "clock-dependent-gate"
+                  : "unexplained";
+          s.transitionCauses[cause] = (s.transitionCauses[cause] ?? 0) + 1;
           if (s.examples.length < 8)
-            s.examples.push({ id: row.id, before: previous, after: e, entered, expired });
-          if (entered.n === 0 && expired.n === 0 && e.fail !== "ddt" && e.fail !== "lastN")
+            s.examples.push({ id: row.id, before: previous.e, after: e, entered, expired });
+          if (cause === "unexplained") {
             s.unexplainedTransitions++;
-        } else if (!previous.ok && e.ok) s.gained++;
+            mismatch({
+              id: row.id,
+              t: s.t,
+              error: "Unexplained qualification loss",
+              before: previous.e,
+              after: e,
+            });
+          }
+        } else if (!previous.e.ok && e.ok) s.gained++;
         else if (e.ok) s.unchangedPass++;
       }
-      previous = e;
+      previous = { e, rawWindow };
     }
     seen.add(row.id);
     tapes++;
@@ -275,23 +360,26 @@ export async function hourlyAudit(dir, out, requireAll = false) {
     for (const [id, check] of s.checks)
       if (check[1] && !seen.has(id)) mismatch({ id, t: s.t, error: "Missing passing config tape" });
     s.unverifiedNeverPassed = [...s.checks.keys()].filter((id) => !seen.has(id)).length;
-    assert.equal(
-      s.passed,
-      [...s.checks.values()].filter((x) => x[1]).length,
-      "Scalar coverage must include EVERY passing config, including newly eligible ones",
-    );
+    const recordedPassed = [...s.checks.values()].filter((x) => x[1]).length;
+    if (s.passed !== recordedPassed)
+      mismatch({
+        t: s.t,
+        actual: s.passed,
+        expected: recordedPassed,
+        error: "Scalar coverage must include EVERY passing config, including newly eligible ones",
+      });
   }
   const result = {
-    schema: "cts-scalar-hourly-progress-v1",
+    schema: "cts-scalar-hourly-progress-v2",
     requireAll,
     sourceSha256: p.source.sha256,
     window: p.window,
     tapes,
     decisions,
     violations,
-    complete: true,
+    complete: violations.length === 0 && steps.every((s) => s.verified === s.checks.size),
     basis:
-      "Independent scalar arithmetic directly from saved own net-return rows; does not call makeTape, configEval, production prefix sums, forward cursors or profitFactor. Archive retains only configs that ever seated or executed; never-seated rejected configs lack raw rows and remain explicitly unverified. EVERY passing config is required. Historical overlapping validation samples are not future execution profits.",
+      "Independent scalar arithmetic directly from saved own net-return rows; does not call makeTape, configEval, production prefix sums, forward cursors or profitFactor. Long and short qualify separately; recorded selection summaries contain only passing directions, or zero if neither passes. Raw pooled and own-side windows independently conserve incoming minus expired closes regardless of changing qualifications. Missing histories remain explicitly unverified; EVERY passing config is required. Historical overlapping validation samples are not future execution profits.",
     steps: steps.map(({ checks, real, ...s }) => ({
       ...s,
       expectedChecks: checks.size,
