@@ -1,8 +1,8 @@
 // runtime.cycle "incremental" against a full recompute, on a fixed synthetic fixture and several T (one heavy compute,
 // then light cycles after each new closed bar): the continued tapes of the validated set equal the tapes the builder
-// gives for the same configs on the full history up to that T; the seats of the hour are the ones a selection over the
-// continued tapes picks; and the paper step on the continued tapes takes the decisions it takes on the recomputed ones.
-// Run with CTS_CORE_WORKERS=1 (one small runtime: 3 symbols, 1 day).
+// gives for the same configs on the full history up to that T; light cycles retain the hour's existing seats;
+// and the paper step on the continued tapes takes the decisions it takes on the recomputed ones.
+// Run with CTS_CORE_WORKERS=1 (3 symbols; 6h evaluation + 6h simulation, independent Signal history 72h).
 import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { CoreRuntime as BaseRuntime, laneSeriesFrom, laneSeriesOf, signalDataHours } from "./runtime.server.ts";
@@ -10,7 +10,7 @@ import { CoreDb } from "./db.server.ts";
 import { signalSettings } from "../signals.ts";
 import { SIGNAL_SOURCES } from "../signal-config.ts";
 import { makeUniverse } from "../pipeline/pipeline.ts";
-import { buildTapes, selectFixedGen, type ConfigTape } from "../sim/walkforward.ts";
+import { buildTapes, type ConfigTape } from "../sim/walkforward.ts";
 import { CandleSeries } from "../market/candle-series.ts";
 import { isSignalInd } from "../indications/registry.ts";
 import { isSignalCoordinationInd } from "../signal-coordination.ts";
@@ -102,6 +102,9 @@ describe("runtime.cycle incremental equals a full recompute", { timeout: 600_000
 
   it("continued tapes, seats and paper decisions at several T", async () => {
     const rt = new CoreRuntime(new CoreDb(":memory:"), settings as never, { market: "synthetic" });
+    // Bound the lifecycle fixture instead of inheriting the production 336h Signal / 48h simulation defaults.
+    // Signals still have substantially longer history than strategies, exercising the independent rebuild.
+    rt.updateSettings({}, { preH: 6, longH: 6, symH: 6, simH: 6, signalLongH: 72 });
     const R = rt as any;
     await rt.cycle(); // the heavy compute
     // (the auto-adjust of the first book may ask for one more compute)
@@ -141,6 +144,7 @@ describe("runtime.cycle incremental equals a full recompute", { timeout: 600_000
       }
       R.barsPending = true;
       const before = structuredClone(R.paper);
+      const seats = structuredClone(R.lastSelection);
       const heavyTapes: ConfigTape[] = R.tapes;
       await rt.cycle();
       assert.equal(
@@ -148,6 +152,7 @@ describe("runtime.cycle incremental equals a full recompute", { timeout: 600_000
         "light",
         `cycle ${k} is light: ${rt.status.cycleMode?.why}`,
       );
+      assert.deepEqual(R.lastSelection, seats, `light cycle retains the hour's exact seats @${k}`);
       // (the synthetic market may add a bar of its own in a cycle: the reference history follows the store)
       for (const [sym, cs] of R.candles as Map<string, any>) {
         const list = all.get(sym)!;
@@ -223,20 +228,6 @@ describe("runtime.cycle incremental equals a full recompute", { timeout: 600_000
           `${id} @${k} entry=${R.inc.state.entries.has(id)} other=${R.inc.others.has(id)}`,
         );
         compared++;
-      }
-
-      // the seats of the hour: a selection over the continued tapes picks what the last full step seated
-      const t = Math.min(Math.floor(Date.now() / 3_600_000) * 3_600_000, R.sim.endT);
-      const engine = A.tapes.filter((tp) => !isSignalInd(tp.ind) && ids.has(tp.id));
-      if (R.wf.mode === "fixed") {
-        const g = selectFixedGen(engine, t, R.wf);
-        let r = g.next();
-        while (!r.done) r = g.next();
-        const picked = new Set(r.value.picks.map((p) => p.id));
-        const seated = new Set<string>(R.lastSelection.picks.map((p: { id: string }) => p.id));
-        for (const id of seated)
-          if (!isSignalInd(id.split("|")[1] ?? ""))
-            assert.ok(picked.has(id) || !engine.some((tp) => tp.id === id), `seat ${id} @${k}`);
       }
 
       // the decisions: the paper step on the recomputed tapes, from the same book, takes the same positions
