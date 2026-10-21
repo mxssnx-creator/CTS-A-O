@@ -625,7 +625,7 @@ const blockBase = (block: BlockConfig = BB) => ({
   ...defaultWalkForward(DEFAULT_SETTINGS),
   // a probe seat skips the config and direction validation (main's independent-evidence rule): these cases measure
   // the Block level and pause sources, not the seat's qualification
-  probe: { perCell: 1 },
+  probe: { perRange: 0, perCell: 1 },
   lastN: 0,
   symGate: undefined,
   normalBaseMinPf: 0,
@@ -693,7 +693,7 @@ const seatBase = (extra: { seatSideCooloff?: boolean } = {}) => ({
   normalBaseMinPf: 0,
   seatQuietH: 2,
   // a probe seat skips main's per-direction qualification: these cases measure the cool-off only
-  probe: { perCell: 1 },
+  probe: { perRange: 0, perCell: 1 },
   toggles: { ...DEFAULT_TOGGLES, normal: true, block: false, blockActive: false },
   ...extra,
 });
