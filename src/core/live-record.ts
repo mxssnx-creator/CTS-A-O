@@ -305,9 +305,23 @@ export function liveRecords(
   rows: ReadonlyArray<{ cfg: string; exitT: number; r: number | null; side?: number | null }>,
   o?: { bySide?: boolean },
 ): Map<string, LiveRecord> {
+  const g = liveRecordsGen(rows, o);
+  for (;;) {
+    const x = g.next();
+    if (x.done) return x.value;
+  }
+}
+
+/** liveRecords in slices: yields about every 8192 rows (grouping) and 8192 sorted closes (building) */
+export function* liveRecordsGen(
+  rows: ReadonlyArray<{ cfg: string; exitT: number; r: number | null; side?: number | null }>,
+  o?: { bySide?: boolean },
+): Generator<void, Map<string, LiveRecord>> {
   const bySide = o?.bySide === true;
   const by = new Map<string, { cfg: string; side?: 1 | -1; xs: Array<{ t: number; r: number | null }> }>();
+  let work = 0;
   for (const x of rows) {
+    if (++work % 8192 === 0) yield;
     const side = bySide ? sideOfRow(x.side) : undefined;
     if (bySide && side === undefined) continue;
     const key = recordKeyOf(x.cfg, side);
@@ -316,7 +330,12 @@ export function liveRecords(
     b.xs.push({ t: x.exitT, r: x.r });
   }
   const out = new Map<string, LiveRecord>();
+  work = 0;
   for (const [key, { cfg, side, xs }] of by) {
+    if ((work += xs.length) >= 8192) {
+      work = 0;
+      yield;
+    }
     xs.sort((a, b) => a.t - b.t);
     const exitT = new Float64Array(xs.length);
     const gp = new Float64Array(xs.length + 1);

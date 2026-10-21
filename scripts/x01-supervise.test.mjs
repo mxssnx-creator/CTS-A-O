@@ -1,4 +1,6 @@
 // The x01 supervisor: alive → no launch; down → relaunch with the loss percentage and symbols; a HALT file → no launch.
+// An omitted / "auto" loss limit and symbol count come from the ACTIVE run: the running desk's command line, else the last
+// launch (launch.json), else the old defaults; a number wins.
 // Runs the real script with a stub process pattern and a stub launcher; never starts the desk.
 import { after, test } from "node:test";
 import assert from "node:assert/strict";
@@ -27,8 +29,25 @@ const absentPattern = () => processPattern(token("absent"));
 const run = (env = {}, args = []) =>
   spawnSync("bash", [script, ...args], {
     encoding: "utf8",
-    env: { ...process.env, CTS_SUPERVISE_LAUNCHER: launcher, CTS_SUPERVISE_HALT: join(dir, "no-halt"), ...env },
+    env: { ...process.env, CTS_SUPERVISE_LAUNCHER: launcher, CTS_SUPERVISE_HALT: join(dir, "no-halt"), CTS_SUPERVISE_OUT: dir, CTS_X01_HEAP_MB: "", ...env },
   });
+// a dry run in a folder of its own (launch.json, defaults, the running desk's command line): the stdout line
+const runDry = (args, outDir, env = {}) => {
+  const r = spawnSync("bash", [script, ...args], {
+    encoding: "utf8",
+    env: { ...process.env, CTS_SUPERVISE_DRY_RUN: "1", CTS_SUPERVISE_OUT: outDir, CTS_SUPERVISE_PATTERN: "[n]o-such-desk-process-xyz", CTS_X01_HEAP_MB: "", ...env },
+  });
+  assert.equal(r.status, 0, r.stderr);
+  return r.stdout.trim();
+};
+const withDir = (fn) => {
+  const d = mkdtempSync(join(tmpdir(), "x01-sup-"));
+  try {
+    fn(d);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+};
 
 test("a live desk is reported alive and never relaunched", async () => {
   const value = token("alive");
@@ -37,7 +56,7 @@ test("a live desk is reported alive and never relaunched", async () => {
     await once(stub, "spawn");
     const out = run({ CTS_SUPERVISE_PATTERN: processPattern(value) });
     assert.equal(out.status, 0);
-    assert.match(out.stdout, /alive \(pid \d+\)/);
+    assert.match(out.stdout, /alive \(pid \d+;/);
     assert.doesNotMatch(out.stdout, /LAUNCHED|relaunching/);
   } finally {
     stub.kill();
@@ -48,7 +67,7 @@ test("a live desk is reported alive and never relaunched", async () => {
 test("a down desk is relaunched with the loss percentage and the symbols", () => {
   const out = run({ CTS_SUPERVISE_PATTERN: absentPattern() }, ["80", "60"]);
   assert.equal(out.status, 0);
-  assert.match(out.stdout, /down — relaunching \(loss limit 80% of the session's starting wallet, 60 symbols\)/);
+  assert.match(out.stdout, /down — relaunching \(loss limit 80% \[argument\], 60 symbols \[argument\]/);
   assert.match(out.stdout, /LAUNCHED 80 60/);
 });
 
@@ -67,7 +86,7 @@ test("the default matcher recognizes the launcher's Node flags and desk argument
     await once(stub, "spawn");
     const out = run({ CTS_SUPERVISE_PATTERN: "" });
     assert.equal(out.status, 0);
-    assert.match(out.stdout, /alive \(pid \d+\)/);
+    assert.match(out.stdout, /alive \(pid \d+;/);
     assert.doesNotMatch(out.stdout, /LAUNCHED|relaunching/);
   } finally {
     stub.kill();
@@ -153,5 +172,53 @@ test("the desk runs the ownership check and writes HALT into its --out folder, t
   const start = readFileSync(join(here, "..", "docs", "live-coordination", "start-x01-signals.sh"), "utf8");
   const outDir = /^OUT=(.+)$/m.exec(start)?.[1];
   assert.ok(outDir);
-  assert.ok(sup.includes(`HALT_FILE="\${CTS_SUPERVISE_HALT:-${outDir}/HALT}"`));
+  assert.ok(sup.includes(`OUT="\${CTS_SUPERVISE_OUT:-${outDir}}"`));
+  assert.ok(sup.includes('HALT_FILE="${CTS_SUPERVISE_HALT:-$OUT/HALT}"'));
+});
+
+test("no launch.json and no argument: the old defaults 80 % / 60 symbols", () =>
+  withDir((dir) => {
+    const out = runDry([], dir);
+    assert.match(out, /would relaunch \(loss limit 80% \[default\], 60 symbols \[default\]/);
+  }));
+
+test("launch.json: the active run's loss limit, symbols and heap are used", () =>
+  withDir((dir) => {
+    writeFileSync(join(dir, "launch.json"), '{"lossPct": 0, "symbols": 70, "heapMb": 6144, "at": "x"}\n');
+    const out = runDry(["auto", "auto"], dir);
+    assert.match(out, /loss limit 0% \[launch\.json\], 70 symbols \[launch\.json\], heap 6144 MB/);
+  }));
+
+test("an explicit number wins over launch.json, auto fills the other", () =>
+  withDir((dir) => {
+    writeFileSync(join(dir, "launch.json"), '{"lossPct": 0, "symbols": 70, "heapMb": 6144, "at": "x"}\n');
+    const out = runDry(["80", "auto"], dir);
+    assert.match(out, /loss limit 80% \[argument\], 70 symbols \[launch\.json\]/);
+  }));
+
+test("the heap from the environment is not overridden by launch.json", () =>
+  withDir((dir) => {
+    writeFileSync(join(dir, "launch.json"), '{"lossPct": 0, "symbols": 70, "heapMb": 6144, "at": "x"}\n');
+    assert.match(runDry([], dir, { CTS_X01_HEAP_MB: "3000" }), /heap 3000 MB/);
+  }));
+
+test("a HALT file stops the relaunch whatever the parameters", () =>
+  withDir((dir) => {
+    writeFileSync(join(dir, "HALT"), "operator: off\n");
+    assert.match(runDry([], dir), /halted .* not relaunching: operator: off/);
+  }));
+
+test("a running desk: its own command line is read for the status line", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "x01-sup-"));
+  // a stand-in process whose command line carries the desk's flags
+  const child = spawn(process.execPath, ["-e", "setTimeout(() => {}, 15000)", "fake-desk.mjs", "--name", "x01-signals", "--symbols", "70", "--max-loss-pct", "0"], { stdio: "ignore" });
+  try {
+    await new Promise((r) => setTimeout(r, 300));
+    writeFileSync(join(dir, "launch.json"), '{"lossPct": 80, "symbols": 50, "heapMb": 4096, "at": "x"}\n');
+    const out = runDry([], dir, { CTS_SUPERVISE_PATTERN: "[f]ake-desk.mjs --name x01-signals " });
+    assert.match(out, /alive \(pid \d+; loss limit 0% \[running desk\], 70 symbols \[running desk\]\)/);
+  } finally {
+    child.kill();
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

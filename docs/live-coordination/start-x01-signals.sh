@@ -39,6 +39,9 @@ if ps -eo args | grep -v grep | grep -q -- "core-live-test.mjs --name x01-signal
 fi
 
 mkdir -p "$OUT"
+# the launch parameters, for x01-supervise.sh: a relaunch after an outage continues with the ACTIVE run's values
+printf '{"lossPct": %s, "symbols": %s, "heapMb": %s, "at": "%s", "launcher": "start-x01-signals.sh"}\n' \
+  "$LOSS_PCT" "$SYMBOLS" "${CTS_X01_HEAP_MB:-4096}" "$(date -u +%FT%TZ)" > "$OUT/launch.json.tmp" && mv "$OUT/launch.json.tmp" "$OUT/launch.json"
 export CTS_CORE_LIVE_TAG="$TAG"
 export CTS_CORE_MAINNET_WAIVE_READY=1 # operator's explicit waiver of the overall-system readiness check
 export CTS_BINGX_BAN_FILE="$OUT/bingx-ban" CTS_BINGX_BOOK_FILE="$OUT/bingx-book"

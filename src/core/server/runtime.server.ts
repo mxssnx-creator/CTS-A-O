@@ -158,6 +158,7 @@ import {
   type PipelineOutput,
   type PipelineProgress,
 } from "../pipeline/pipeline.ts";
+import { IncrementalState } from "./incremental.ts";
 import {
   buildTapesGen,
   baseAllowsTape,
@@ -174,6 +175,11 @@ import {
   withProbe,
   execDecision,
   walkForwardGen,
+  assertSeatSet,
+  passedCellsOf,
+  validatedSetGen,
+  validatedTapes,
+  cellAllowed,
   walkForwardSteps,
   feedBooks,
   candidateDirectionFor,
@@ -239,6 +245,7 @@ import {
   exchangeAcceptIndex,
   executionRecordKey,
   liveRecords,
+  liveRecordsGen,
   ownedPaperExecutionRecords,
   postBaseExecutionRecords,
   preferExchange,
@@ -325,6 +332,15 @@ import { connDb, connPath, coreDb, type CoreDb } from "./db.server.ts";
 
 const H = 3_600_000;
 const SLICE_MS = 12;
+/** rows per page of the proofs' reads (a slice each: ~5 ms) */
+const PROOF_PAGE = 4000;
+/** runs a generator to its end without yielding (the synchronous callers of a sliced step) */
+function drain<R>(g: Generator<void, R>): R {
+  for (;;) {
+    const r = g.next();
+    if (r.done) return r.value;
+  }
+}
 /** overall mode: the pending entries (status "pending:" reasons only) are recomputed at most this often */
 const PENDING_STATUS_MS = 30_000;
 /**
@@ -575,6 +591,8 @@ export interface RuntimeStatus {
   /** Base config sets evaluated / passing the Base gate (PF ≥ min PF) in the last compute */
   baseEvaluated?: number;
   basePassed?: number;
+  /** wf.seatSet "validated": the size of the validated set V of the last simulation (its ids: sim.validated) */
+  validated?: number;
   /** pairs grid.allSets built for measurement without passing Base (not validated; apart from basePassed) */
   baseBuilt?: number;
   /** the passed count of the last computes (bounded; the events table keeps the long record): continuity of Base */
@@ -637,7 +655,10 @@ export interface RuntimeStatus {
   /** where Base runs: worker cores, or in-process and why */
   workers?: string;
   /** event-loop delay over the last compute (ms) */
-  loop: { p50: number; p99: number; max: number };
+  /** the compute's loop-delay histogram (p50 / p99 / max, ms) and `recent`: the worst single slice (a timer that came
+   *  late) of the last 60 s with the phase that was running, so a slice is reported as it happens, not only as the
+   *  compute's maximum */
+  loop: { p50: number; p99: number; max: number; recent?: { ms: number; where: string; at: number; n: number } };
   /**
    * the realtime entry step's last run (CTS_CORE_FAST_ENTRIES): the bar it ran on, its time, the seated configs it
    * rebuilt, their open positions on the current bars, and how many the paper book took
@@ -652,6 +673,8 @@ export interface RuntimeStatus {
     added: number;
     error: string | null;
   };
+  /** runtime.cycle "incremental": the last cycle's mode and the light cycles since the last heavy compute */
+  cycleMode?: { mode: "full" | "light"; lightSince: number; heavyBar: number; validated: number; continued: number; rebuilt: number; why?: string };
   /** the last event-loop stalls over 150 ms, with what was running (the live tick waits behind them) */
   stalls?: Array<{ at: number; ms: number; where: string }>;
   /** the last probed stalls (CTS_CORE_STALL_PROBE=1): what the main thread did during each (stall-probe.server.ts) */
@@ -1054,6 +1077,7 @@ export class CoreRuntime {
       const now = performance.now();
       const late = now - last - 50;
       last = now;
+      this.noteLag(late);
       if (late < 150) return;
       const where = `${this.busyPhase || this.status.stage || "idle"}${this.livePhase ? ` · live ${this.livePhase}` : ""}`;
       const xs = (this.status.stalls ??= []);
@@ -1061,6 +1085,27 @@ export class CoreRuntime {
       if (xs.length > 30) xs.splice(0, xs.length - 30);
     }, 50);
     (this.stallTimer as { unref?: () => void }).unref?.();
+  }
+  /** the slices of the last 60 s that held the loop 40 ms or more (a late 50 ms timer), newest last */
+  private lags: Array<{ at: number; ms: number; where: string }> = [];
+  private noteLag(late: number) {
+    const now = Date.now();
+    if (late >= 40) {
+      this.lags.push({
+        at: now,
+        ms: Math.round(late),
+        where: `${this.busyPhase || this.status.stage || "idle"}${this.livePhase ? ` · live ${this.livePhase}` : ""}`,
+      });
+      if (this.lags.length > 200) this.lags.splice(0, this.lags.length - 200);
+    }
+    while (this.lags.length && now - this.lags[0].at > 60_000) this.lags.shift();
+    if (!this.lags.length) {
+      if (this.status.loop?.recent) delete this.status.loop.recent;
+      return;
+    }
+    let w = this.lags[0];
+    for (const x of this.lags) if (x.ms > w.ms) w = x;
+    if (this.status.loop) this.status.loop.recent = { ms: w.ms, where: w.where, at: w.at, n: this.lags.length };
   }
   /** a probed stall: kept in the status (the last 20) and, from 1 s, in the events (the status keeps only the last 30 stalls) */
   private noteStallProbe(p: StallProbe) {
@@ -1718,7 +1763,173 @@ export class CoreRuntime {
     }
   }
 
+  // ── runtime.cycle "incremental" ───────────────────────────────────────────────────────────────────────────
+  /** the tail universe of the running/last compute (set when it is built, taken by incCapture after its paper step) */
+  private incTail: ReturnType<typeof makeUniverse> | null = null;
+  /** why the last cycle was a full compute although runtime.cycle is "incremental" */
+  private incWhy: string | undefined;
+  /** the incremental state of the last heavy compute: the validated set and its continued tapes */
+  private inc: {
+    state: IncrementalState;
+    /** ids the paper step sees in a light cycle: seats, signal tapes, configs holding a position */
+    ids: Set<string>;
+    /** validated ids that are not resumable (DCA, Axis, signals, Exit): rebuilt over the grown universe each cycle */
+    others: Set<string>;
+    hour: number;
+    since: number;
+    heavyBar: number;
+  } | null = null;
+
+  /** The hour (in ms) the book is stepped at, from the newest bar. */
+  private incHour(): number {
+    return Math.floor((this.status.lastBarT + this.settings.tfMin * 60_000) / H);
+  }
+
+  /** Whether this cycle may continue the validated tapes instead of computing everything. */
+  private lightEligible(): boolean {
+    const inc = this.inc;
+    const s = this.settings;
+    const why = (w: string) => {
+      this.incWhy = w;
+      if (s.runtime?.cycle === "incremental")
+        this.status.cycleMode = { ...(this.status.cycleMode ?? { lightSince: 0, heavyBar: 0, validated: 0, continued: 0, rebuilt: 0 }), mode: "full", why: w };
+      return false;
+    };
+    if (s.runtime?.cycle !== "incremental") return false;
+    if (!inc) return why("no validated set captured yet");
+    if (this.dirty) return why("dirty (settings or a requested compute)");
+    if (this.resetUniverse || this.settingsStale) return why("settings or universe changed");
+    if (this.replay) return why("replay");
+    if (this.memFallback > 0) return why("memory fallback");
+    if (!this.sim || !this.lastSelection || !this.fastArgs) return why("no run yet");
+    if (this.incHour() !== inc.hour) return why("new hour: the seats are stepped");
+    if (inc.since >= Math.max(1, Math.round(s.runtime?.heavyEveryBars ?? 60))) return why("heavy interval");
+    return true;
+  }
+
+  /** After a heavy compute and its paper step: take the validated set's resumable tapes into the incremental state. */
+  private async incCapture(gen: number): Promise<void> {
+    this.inc = null;
+    const wu = this.incTail;
+    this.incTail = null;
+    const sel = this.lastSelection;
+    if (!wu || !sel || !this.fastArgs) return;
+    const s = this.settings;
+    const { signal } = splitSignalTapes(this.tapes, this.wf);
+    const ids = new Set<string>([...sel.picks.map((p) => p.id), ...signal.map((tp) => tp.id), ...this.paper.positions.map((p) => p.cfg)]);
+    const validated = this.tapes.filter((tp) => ids.has(tp.id));
+    const state = new IncrementalState(wu, s.cost, s.tactics, s.tfMin);
+    const others = new Set<string>();
+    // in slices: a seed is one full simulation of the config over the tail
+    for (let i = 0; i < validated.length; i += 8) {
+      const r = state.seed(validated.slice(i, i + 8));
+      for (const id of r.skipped) others.add(id);
+      await yieldNow();
+      if (gen !== this.gen) return;
+    }
+    this.inc = { state, ids, others, hour: this.incHour(), since: 0, heavyBar: this.status.lastBarT };
+    this.status.cycleMode = { mode: "full", lightSince: 0, heavyBar: this.status.lastBarT, validated: validated.length, continued: state.entries.size, rebuilt: others.size, why: this.incWhy };
+  }
+
+  /**
+   * A light cycle: the universe grown by the closed bars, the validated tapes continued over them (the resumable ones
+   * from their stored state, the others rebuilt on the grown universe), then the caller's paper step. False: nothing was
+   * changed and the caller computes in full.
+   */
+  private async lightStep(gen: number): Promise<boolean> {
+    const inc = this.inc;
+    if (!inc) return false;
+    const t0 = performance.now();
+    this.dirty = false;
+    this.status.state = "computing";
+    const prev = this.status.phases;
+    this.status.phases = {};
+    for (const k of ["Paper", "Adjust", "Audit", "Compare"]) if (prev[k]) this.status.phases[k] = prev[k];
+    const step = inc.state.step(this.candles);
+    await yieldNow();
+    if (gen !== this.gen) return true;
+    if (!step) {
+      this.inc = null;
+      return false;
+    }
+    const tExt = performance.now();
+    const repl = new Map<string, ConfigTape>(step.tapes);
+    const need = new Set<string>([...inc.others, ...step.broken]);
+    if (need.size) {
+      const rebuilt = await this.rebuildOnUniverse(inc.state.universe, need, gen);
+      if (gen !== this.gen) return true;
+      if (!rebuilt) {
+        // the rebuild could not run (no workers and no time): the continued tapes are dropped with it, compute in full
+        this.inc = null;
+        return false;
+      }
+      for (const tp of rebuilt) repl.set(tp.id, tp);
+    }
+    const tMerge = performance.now();
+    // the realtime entry step stands aside while the tapes are replaced, until the paper step has run on them
+    this.fastHold = true;
+    await this.paperIdle();
+    this.tapes = this.tapes.map((tp) => repl.get(tp.id) ?? tp);
+    this.tapeIdx = null;
+    inc.since++;
+    this.status.phases.Light = {
+      ms: performance.now() - t0,
+      maxSliceMs: 0,
+      slowest: `grow + continue ${Math.round(tExt - t0)} · rebuild ${Math.round(tMerge - tExt)} · merge ${Math.round(performance.now() - tMerge)} ms · ${step.tapes.size} continued, ${need.size} rebuilt`,
+    };
+    this.status.cycleMode = { mode: "light", lightSince: inc.since, heavyBar: inc.heavyBar, validated: inc.ids.size, continued: step.tapes.size, rebuilt: need.size };
+    return true;
+  }
+
+  /** The configs `ids` rebuilt on `u` with the last compute's tape arguments (exactly the heavy compute's builder). */
+  private async rebuildOnUniverse(u: ReturnType<typeof makeUniverse>, ids: ReadonlySet<string>, gen: number): Promise<ConfigTape[] | null> {
+    const a = this.fastArgs;
+    if (!a) return null;
+    const s = this.settings;
+    const byId = this.tapeIndex();
+    const sets = { main: new Set<string>(), sig: new Set<string>() };
+    const pairs = { main: new Set<string>(), sig: new Set<string>() };
+    for (const id of ids) {
+      const tp = byId.get(id);
+      if (!tp) continue;
+      const k = isSignalInd(tp.ind) ? "sig" : "main";
+      sets[k].add(id);
+      pairs[k].add(`${tp.bot}|${tp.ind}`);
+    }
+    const out: ConfigTape[] = [];
+    if (workersAvailable() && !this.workersBroken) {
+      const shared = shareBars(u.series);
+      const msgs: Array<Record<string, unknown>> = [];
+      for (const k of ["main", "sig"] as const)
+        if (sets[k].size)
+          msgs.push({
+            type: "tapes",
+            bars: shared,
+            pairs: [...pairs[k]],
+            protects: a[k].protects,
+            cost: s.cost,
+            dcaOpt: a[k].dcaFor,
+            tactics: s.tactics,
+            adjust: a.adjust,
+            floors: { ...a[k].floors, onlyIds: sets[k] },
+          });
+      if (!msgs.length) return out;
+      const res = await runOnWorkers<{ tapes: ConfigTape[] }>(msgs, poolSize(), 120_000, undefined, true);
+      if (gen !== this.gen) return null;
+      for (const r of res) out.push(...r.tapes);
+      return out;
+    }
+    for (const k of ["main", "sig"] as const) {
+      if (!sets[k].size) continue;
+      const g = buildTapesGen(u, a[k].protects, s.cost, a[k].dcaFor as never, pairs[k], s.tactics, a.adjust, { ...a[k].floors, onlyIds: sets[k] });
+      out.push(...(await this.drive("Tapes", g, () => undefined, gen)));
+    }
+    return out;
+  }
+
   /** the seats of the last full paper step (the realtime entry step keeps them) */
+  /** the validated set V of the current simulation and the tapes it selects from (wf.seatSet "validated") */
+  private validatedCache: { sim: WalkForwardResult; tapes: readonly ConfigTape[]; v: ReadonlySet<string>; list: ConfigTape[] } | null = null;
   private lastSelection: Pick<ReturnType<typeof withProbe>, "picks" | "eligible"> | null = null;
   /** what the last live control step saw (controlDue) */
   private controlSeen: { positions: unknown; live: unknown; bar: number; at: number } | null = null;
@@ -2449,7 +2660,9 @@ export class CoreRuntime {
     const gen = this.gen;
     this.busy = true;
     // the previous compute's preset comparison finishes first (never beside a compute: memory, the cores)
-    if (this.comparing) await this.comparing;
+    // (a light cycle of runtime.cycle "incremental" does not wait for it: it uses no worker beyond one priority message,
+    // and a cycle that turns out to be heavy waits for it below)
+    if (this.comparing && !(this.settings.runtime?.cycle === "incremental" && this.inc && !this.dirty)) await this.comparing;
     // A stop/restart or watchdog replacement owns the new generation and its busy flag. A cycle already waiting
     // for Compare must not adopt that generation and run beside the scheduled replacement.
     if (gen !== this.gen) return;
@@ -2495,10 +2708,16 @@ export class CoreRuntime {
       if (memWait) this.dirty = true;
       this.memDeferred = !!memWait;
       const computed = (newBars || this.dirty) && !memWait;
+      // runtime.cycle "incremental": between heavy computes the validated set's tapes are continued over the new bars
+      let light = false;
       if (computed) {
         this.memGuardStart(gen);
         try {
-          await this.compute(gen);
+          if (this.lightEligible()) light = await this.lightStep(gen);
+          if (!light) {
+            if (this.comparing) await this.comparing;
+            await this.compute(gen);
+          }
         } finally {
           this.memGuardStop(gen);
         }
@@ -2524,9 +2743,20 @@ export class CoreRuntime {
         try {
           await this.paperIdle();
           this.paperRunning = true;
-          await this.driveSliced("Paper", this.stepPaperGen(), gen, (f) =>
-            this.setStage("Paper", 0.8 * f, 1, paperLabel),
-          );
+          // a light cycle seats nothing new (the seats are hourly: this hour's are the last full step's) and sees only
+          // the validated set's tapes; the full list comes back, with the continued tapes in it, after the step
+          const full = light ? this.tapes : null;
+          if (light && this.inc) this.tapes = this.tapes.filter((tp) => this.inc!.ids.has(tp.id));
+          try {
+            await this.driveSliced("Paper", this.stepPaperGen(undefined, light), gen, (f) =>
+              this.setStage("Paper", 0.8 * f, 1, paperLabel),
+            );
+          } finally {
+            if (full) {
+              this.tapes = full;
+              this.tapeIdx = null;
+            }
+          }
         } finally {
           this.paperRunning = false;
           this.fastHold = false;
@@ -2536,17 +2766,19 @@ export class CoreRuntime {
         if (pt && this.status.phases.Paper)
           this.status.phases.Paper.slowest = `select ${Math.round(pt.select)} · candidates ${Math.round(pt.cands)} · entries ${Math.round(pt.exec)} ms over ${pt.n} (wall, sliced)${pt.stale ? ` · ${pt.stale} older tape positions left to their tape` : ""}`;
         await yieldNow();
-        this.phase("Adjust", () => this.runAdjust());
-        await yieldNow();
-        this.busyPhase = "Audit";
-        const auditLabel = `self-audit · ${this.paper.selected.length} seats`;
-        this.setStage("Paper", 0.8, 1, auditLabel);
-        try {
-          await this.runAuditAsync(gen, (f) =>
-            this.setStage("Paper", 0.8 + 0.2 * f, 1, auditLabel),
-          );
-        } finally {
-          this.busyPhase = "";
+        // (Adjust and the self-audit read the whole published state: they run with the heavy compute, not in a light cycle)
+        if (!light) {
+          this.phase("Adjust", () => this.runAdjust());
+          await yieldNow();
+          this.busyPhase = "Audit";
+          const auditLabel = `self-audit · ${this.paper.selected.length} seats`;
+          this.setStage("Paper", 0.8, 1, auditLabel);
+          try {
+            await this.runAuditAsync(gen, (f) => this.setStage("Paper", 0.8 + 0.2 * f, 1, auditLabel));
+          } finally {
+            this.busyPhase = "";
+          }
+          if (this.settings.runtime?.cycle === "incremental") await this.incCapture(gen);
         }
         this.paperStepped = true;
         // the public signal that this compute's book is ready: the seats (paper.selected) are the new tapes'
@@ -2568,6 +2800,7 @@ export class CoreRuntime {
       if (
         !stale &&
         !this.stopped &&
+        !light &&
         (computed || (this.compareInput && Date.now() >= this.compareRetryAt))
       )
         compareGen = gen;
@@ -3497,6 +3730,7 @@ export class CoreRuntime {
         s.cost,
         s.tactics,
         baseRangeProtects(s.grid, s.cost),
+        s.grid?.baseCells === true,
         rangeMinTfOf(s.grid),
         // the gates decide which cell a range keeps (rangeCellPass in the worker): a gates patch must recompute
         // every combo, not reuse cells chosen under the old gates
@@ -3532,6 +3766,7 @@ export class CoreRuntime {
               rangeMinTf: rangeMinTfOf(s.grid),
               microOwnInds: microOwnInds(s.grid),
               gates: s.gates,
+              cells: s.grid?.baseCells === true,
             })),
           n,
           15 * 60_000,
@@ -3607,6 +3842,9 @@ export class CoreRuntime {
       allBars.map((b) => tailBars(b, tailOf(b.tfMin))),
       this.evaluationFromT,
     );
+    // runtime.cycle "incremental": the tail the tapes are built on is what the light cycles continue (incCapture)
+    this.inc = null;
+    this.incTail = s.runtime?.cycle === "incremental" && !this.replay ? wu : null;
     // Main candidates: Base combos by score (default protect, full history), plus every pair held right now
     // Base gate: only config sets with PF ≥ min PF (and positive net, enough trades) continue to Main → Real → Live
     const main = new Set<string>();
@@ -3639,7 +3877,9 @@ export class CoreRuntime {
       wideLadderPairs,
       pairTags,
       pairTps,
+      pairCells,
       added: baseBuilt,
+      addedKeys,
     } = basePass(engineS1, s, applies, famNarrow ? evalFams : null);
     this.basePairTags = pairTags;
     // the count of pairs that passed Base (validated); the pairs grid.allSets adds for measurement are reported apart
@@ -3681,6 +3921,11 @@ export class CoreRuntime {
     ]);
     // pinned pairs are evaluated in Base like every other pair (baseFocus): they reach Main only when they pass
     const passedKeys = new Set(qualified.map((r) => `${r.bot}|${r.ind}`));
+    // a validated-only run seats nothing a measurement mode added without Base (grid.allSets): V ⊆ the Base cells
+    if (wf.seatSet === "validated") {
+      assertSeatSet(wf);
+      for (const k of addedKeys) passedKeys.delete(k);
+    }
     const normalBasePassedKeys = new Set([...passedKeys, ...exitBase.passed]);
     for (const k of s.pinned ?? []) if (passedKeys.has(k)) main.add(k);
     // contrarian execution (wf.invertSeats, an evaluation knob): each engine pair's mirror (follow ↔ revert, the same
@@ -3697,6 +3942,7 @@ export class CoreRuntime {
           for (const [tag, tps] of Object.entries(pairTps[k]))
             t[tag] = [...new Set([...(t[tag] ?? []), ...tps])];
         }
+        if (pairCells[k]) pairCells[m] = [...new Set([...(pairCells[m] ?? []), ...pairCells[k]])];
       }
     // only pairs that passed Base take a seat; held pairs stay in Main to manage their open positions
     wf.basePassed = normalBasePassedKeys;
@@ -3707,6 +3953,9 @@ export class CoreRuntime {
     this.wf.basePassedRanges = qualifiedTags;
     wf.baseWideLadderPairs = wideLadderPairs;
     this.wf.baseWideLadderPairs = wideLadderPairs;
+    // cell level (grid.baseCells): a tape whose cell Base did not pass takes no seat, whatever built it
+    wf.basePassedCells = s.grid?.baseCells === true ? passedCellsOf(pairCells) : undefined;
+    this.wf.basePassedCells = wf.basePassedCells;
     wf.family = evalFams && !famNarrow ? evalFams.map((f) => f.label) : undefined;
     this.wf.family = wf.family;
     // Signals processing: the active signals and every signal pair still holding a position take the signal
@@ -4377,11 +4626,19 @@ export class CoreRuntime {
     await this.slimTapes(carryTags, gen);
     // every set's completeness: grid cells per indication × range × type, built / kept / not built and why
     const buildStats = new Map<string, TapeBuildStat>();
+    // validated-only processing builds nothing it cannot seat: a held pair that did not pass Base only its held ids, and no
+    // DCA / Axis set while its toggle is off (Block on keeps them: its feed reads every tape)
+    const validatedOnly = wf.seatSet === "validated" && !wf.toggles.block;
     const engineMain = new Set([...main].filter((pair) => !pair.startsWith(`${EXIT_BOT}|`)));
     const built = await tapesFor(engineMain, wf.protects, dcaOpt, "strategy tapes", {
       ...protectFloors(s, rangeFitCutT),
       pairTags: this.basePairTags,
       pairTps,
+      pairCells,
+      ...(wf.seatSet === "validated"
+        ? { heldPairsOnly: new Set([...main].filter((k) => !passedKeys.has(k) && !isSignalInd(k.split("|")[1] ?? ""))) }
+        : {}),
+      ...(validatedOnly ? { skipDca: !wf.toggles.dca, skipAxis: wf.toggles.axis === false } : {}),
       heldIds,
       microOwnInds: microOwnInds(s.grid),
       buildStats,
@@ -4430,6 +4687,7 @@ export class CoreRuntime {
             ...protectFloors(s, rangeFitCutT),
             pairTags: this.basePairTags,
             pairTps,
+            pairCells,
             heldIds,
             microOwnInds: microOwnInds(s.grid),
             onlyIds: carriedHeld.ids,
@@ -4438,7 +4696,14 @@ export class CoreRuntime {
       : [];
     if (!rebuilt || gen !== this.gen) return;
     const mainTapes = carryTags.size
-      ? withCarried(rebuilt.length ? [...built, ...rebuilt] : built, this.tapes, carryTags)
+      ? withCarried(
+          rebuilt.length ? [...built, ...rebuilt] : built,
+          this.tapes,
+          carryTags,
+          wf.basePassedCells || wf.seatSet === "validated"
+            ? (t) => !!wf.basePassed?.has(`${t.bot}|${t.ind}`) && cellAllowed(t, wf)
+            : undefined,
+        )
       : built;
     const strategyTapes = exitBuilt.length ? [...mainTapes, ...exitBuilt] : mainTapes;
     // Signals: the active signals (best N by Base on each symbol) run their own Normal + Trailing configs and,
@@ -4500,6 +4765,7 @@ export class CoreRuntime {
           ...protectFloors(s, rangeFitCutT),
           pairTags: this.basePairTags,
           pairTps,
+          pairCells,
           heldIds,
           microOwnInds: microOwnInds(s.grid),
         },
@@ -4594,6 +4860,7 @@ export class CoreRuntime {
     await this.paperIdle();
     this.tapes = tapes;
     this.sim = sim;
+    this.status.validated = sim.validated?.length;
     // the previous set's index and the live books of the previous run (its feed, guard and acceptance index) are
     // released now: rebuilt on first use, as they were when they no longer matched — kept, they pinned the old set
     // (0.5–0.8 GB) for up to 30 s after every swap, the Paper / Audit peak
@@ -4795,6 +5062,7 @@ export class CoreRuntime {
       p50: this.loop.percentile(50) / 1e6,
       p99: this.loop.percentile(99) / 1e6,
       max: this.loop.max / 1e6,
+      ...(this.status.loop?.recent ? { recent: this.status.loop.recent } : {}),
     };
     const ph = Object.entries(this.status.phases)
       .map(([k, v]) => `${k} ${Math.round(v.ms)}/${Math.round(v.maxSliceMs)}`)
@@ -4812,7 +5080,7 @@ export class CoreRuntime {
     if (Date.now() - this.lastConsoleAt > 5 * 60_000) {
       this.lastConsoleAt = Date.now();
       console.info(
-        `[core-v2] compute #${this.status.computes} done in ${Math.round(this.status.lastComputeMs)} ms · sim PF ${primaryPfLabel(sim.stats)} n ${sim.stats.n} · loop max ${this.status.loop.max.toFixed(0)} ms`,
+        `[core-v2] compute #${this.status.computes} done in ${Math.round(this.status.lastComputeMs)} ms · sim PF ${primaryPfLabel(sim.stats)} n ${sim.stats.n} · loop max ${this.status.loop.max.toFixed(0)} ms${this.status.loop.recent ? ` (worst slice of the last 60 s ${this.status.loop.recent.ms} ms in ${this.status.loop.recent.where}, ${this.status.loop.recent.n} over 40 ms)` : ""}`,
       );
     }
     this.emit("compute");
@@ -5892,26 +6160,55 @@ export class CoreRuntime {
    * relation.ts), memoized until a new one.
    */
   exchangeRecords(since: number): Map<string, LiveRecord> {
+    return drain(this.exchangeRecordsGen(since));
+  }
+  /** exchangeRecords in slices (a yield per page of rows); it settles the same memo */
+  private *exchangeRecordsGen(since: number): Generator<void, Map<string, LiveRecord>> {
     // live.sideGates: one record per config and side (recordKeyOf), memoized apart from the pooled one
     const bySide = this.settings.live.sideGates === true;
     // memoized on the record's write version (no COUNT over the table to learn that nothing changed)
     const key = `${since}|${this.db.version("live_lane_trades")}${bySide ? "|sides" : ""}`;
     if (this.exRecMemo?.key === key) return this.exRecMemo.recs;
-    const recs = liveRecords(this.exchangeRows(since), bySide ? { bySide } : undefined);
-    this.exRecMemo = { key, recs };
+    const rows = yield* this.exchangeRowsGen(since);
+    const recs = yield* liveRecordsGen(rows, bySide ? { bySide } : undefined);
+    // (rows read across a yield that a write changed meanwhile are not memoized under the older key)
+    if (this.db.version("live_lane_trades") === Number(key.split("|")[1])) this.exRecMemo = { key, recs };
     return recs;
   }
   /**
    * The exchange record's closes since `since` (live_lane_trades) — the one read behind exchangeRecords and the signal
-   * proof, so both judge the same closes. Not memoized: each caller memoizes what it builds from it.
+   * proof, so both judge the same closes. Not memoized: each caller memoizes what it builds from it. Read in pages
+   * of the exit-time index (no cursor stays open across a yield); the same rows in the same order as one scan.
    */
   private exchangeRows(since: number): Array<{ id: string; cfg: string; sym: string; side: number; exitT: number; r: number }> {
-    return this.db
-      .all<{ id: string; cfg: string; sym: string | null; side: number | null; exit_t: number; r: number }>(
-        `SELECT id, cfg, sym, side, exit_t, r FROM live_lane_trades WHERE exit_t >= ? AND ${OWN_CLOSE_SQL}`,
-        since,
-      )
-      .map((x) => ({ id: x.id, cfg: x.cfg, sym: x.sym ?? "", side: x.side ?? 0, exitT: x.exit_t, r: x.r }));
+    return drain(this.exchangeRowsGen(since));
+  }
+  private *exchangeRowsGen(
+    since: number,
+  ): Generator<void, Array<{ id: string; cfg: string; sym: string; side: number; exitT: number; r: number }>> {
+    const out: Array<{ id: string; cfg: string; sym: string; side: number; exitT: number; r: number }> = [];
+    let at = since;
+    let after: string | null = null;
+    for (;;) {
+      const rows: Array<{ id: string; cfg: string; sym: string | null; side: number | null; exit_t: number; r: number }> =
+        after === null
+          ? this.db.all(
+              `SELECT id, cfg, sym, side, exit_t, r FROM live_lane_trades WHERE exit_t >= ? AND ${OWN_CLOSE_SQL} ORDER BY exit_t, id LIMIT ${PROOF_PAGE}`,
+              at,
+            )
+          : this.db.all(
+              `SELECT id, cfg, sym, side, exit_t, r FROM live_lane_trades WHERE (exit_t > ? OR (exit_t = ? AND id > ?)) AND ${OWN_CLOSE_SQL} ORDER BY exit_t, id LIMIT ${PROOF_PAGE}`,
+              at,
+              at,
+              after,
+            );
+      for (const x of rows) out.push({ id: x.id, cfg: x.cfg, sym: x.sym ?? "", side: x.side ?? 0, exitT: x.exit_t, r: x.r });
+      if (rows.length < PROOF_PAGE) return out;
+      const last = rows[rows.length - 1];
+      at = last.exit_t;
+      after = last.id;
+      yield;
+    }
   }
   /**
    * The listings of the last paper step, built once per step so a page never scans the tapes: the engine configs it
@@ -6204,6 +6501,10 @@ export class CoreRuntime {
     unknown: number;
     unknownConfigs: number;
   } | null {
+    return drain(this.engineProofGen(now));
+  }
+  /** the engine proof's memo key (null: the proof is off) */
+  private engineProofKey(): string | null {
     const n = this.settings.live.engineProofN ?? 0;
     if (!(n > 0)) {
       this.status.engineProof = undefined;
@@ -6211,12 +6512,33 @@ export class CoreRuntime {
     }
     const minPf = this.settings.live.engineProofPf ?? ENGINE_PROOF_PF;
     // live.sideGates: the proof is per config and side (the records keyed by recordKeyOf)
-    const bySide = this.settings.live.sideGates === true;
-    const sides = bySide ? "|sides" : "";
+    const sides = this.settings.live.sideGates === true ? "|sides" : "";
     // memoized on the two records' write versions: an unchanged book costs no query at all (every live control step
     // asks), a change re-reads the real closes from the partial index paper_book_trades_closed
     // Basis version invalidates a weighted proof retained by an older runtime across hot reload.
-    const key = `unit-net-returns|${n}|${minPf}|${this.db.version("paper_book_trades")}|${this.db.version("live_lane_trades")}${sides}`;
+    return `unit-net-returns|${n}|${minPf}|${this.db.version("paper_book_trades")}|${this.db.version("live_lane_trades")}${sides}`;
+  }
+  /**
+   * engineProof in slices: a page of rows per slice (the 50 k closes of a desk's book took 0.2–0.5 s in one piece
+   * on every close that landed). A write that lands between two slices leaves the result unmemoized (warmProofs reads
+   * again); read in one go (engineProof) nothing can land.
+   */
+  private *engineProofGen(now = Date.now()): Generator<
+    void,
+    {
+      proven: Set<string>;
+      judged: number;
+      n: number;
+      minPf: number;
+      unknown: number;
+      unknownConfigs: number;
+    } | null
+  > {
+    const key = this.engineProofKey();
+    if (key === null) return null;
+    const n = this.settings.live.engineProofN ?? 0;
+    const minPf = this.settings.live.engineProofPf ?? ENGINE_PROOF_PF;
+    const bySide = this.settings.live.sideGates === true;
     const showProof = (out: { judged: number; proven: Set<string>; unknown: number; unknownConfigs: number }) => {
       this.status.engineProof = {
         n,
@@ -6232,46 +6554,52 @@ export class CoreRuntime {
       showProof(this.proofMemo.out);
       return this.proofMemo.out;
     }
-    const rows = this.db.all<{
-      cfg: string;
-      side?: number | null;
-      exit_t: number | null;
-      unit_r: number | null;
-      owned_notional_usd: number | null;
-      legacy_r: number | null;
-    }>(
-      // legacy_r: a close of an older build (neither unit_r nor owned_notional_usd written) at one unit, r / its
-      // execution multiple — a Block-raised paper close weighs its edge, not its multiple
-      `SELECT cfg, ${bySide ? "side, " : ""}exit_t, unit_r, owned_notional_usd, r / COALESCE(NULLIF(mult, 0), NULLIF(vol, 0), 1) AS legacy_r FROM paper_book_trades WHERE reason != 'dropped' AND exit_t IS NOT NULL`,
+    // legacy_r: a close of an older build (neither unit_r nor owned_notional_usd written) at one unit, r / its
+    // execution multiple — a Block-raised paper close weighs its edge, not its multiple
+    const rows = yield* this.paperCloseRows(
+      `cfg, ${bySide ? "side, " : ""}exit_t, unit_r, owned_notional_usd, r / COALESCE(NULLIF(mult, 0), NULLIF(vol, 0), 1) AS legacy_r`,
+      "",
+      (x: {
+        cfg: string;
+        side?: number | null;
+        exit_t: number | null;
+        unit_r: number | null;
+        owned_notional_usd: number | null;
+        legacy_r: number | null;
+      }) =>
+        x.exit_t === null
+          ? null
+          : {
+              cfg: x.cfg,
+              exitT: x.exit_t,
+              // Keep NULLs in time order: skipping a new unknown could incorrectly prove the config on older known wins.
+              r:
+                typeof x.owned_notional_usd === "number" &&
+                Number.isFinite(x.owned_notional_usd) &&
+                x.owned_notional_usd > 1e-9
+                  ? x.unit_r
+                  : x.owned_notional_usd === null && x.unit_r === null
+                    ? x.legacy_r
+                    : null,
+              side: x.side,
+            },
     );
-    // Keep NULLs in time order: skipping a new unknown could incorrectly prove the config on older known wins.
+    yield;
     // (live.sideGates: one record per config and side, recordKeyOf)
-    const paper = liveRecords(
-      rows.map((x) => ({
-        cfg: x.cfg,
-        exitT: x.exit_t!,
-        r:
-          typeof x.owned_notional_usd === "number" &&
-          Number.isFinite(x.owned_notional_usd) &&
-          x.owned_notional_usd > 1e-9
-            ? x.unit_r
-            : x.owned_notional_usd === null && x.unit_r === null
-              ? x.legacy_r
-              : null,
-        side: x.side,
-      })),
-      bySide ? { bySide } : undefined,
-    );
+    const paper = yield* liveRecordsGen(rows, bySide ? { bySide } : undefined);
+    yield;
     // The exchange's own record (own closes only, relation.ts) decides a config once it holds N closes — but
     // live_lane_trades is nominal attribution without allocated quantities, so it never replaces unknown owned-paper
     // evidence: a config whose paper record carries an unknown return is judged on the paper record alone.
     const ex = new Map<string, LiveRecord>();
-    for (const [k, rec] of this.exchangeRecords(0)) {
+    for (const [k, rec] of yield* this.exchangeRecordsGen(0)) {
       const pp = paper.get(k);
       if (!pp?.unknown?.[pp.exitT.length]) ex.set(k, rec);
     }
+    yield;
     const out = { ...engineProven(paper, ex, now, n, minPf), n, minPf };
     showProof(out);
+    if (this.engineProofKey() !== key) return out; // a write landed meanwhile: not memoized under the older key
     const prev = this.proofMemo?.out;
     if (!prev || prev.proven.size !== out.proven.size || prev.judged !== out.judged)
       this.db.event(
@@ -6280,6 +6608,40 @@ export class CoreRuntime {
       );
     this.proofMemo = { key, out };
     return out;
+  }
+  /**
+   * The paper book's real closes in pages that end on a whole config, so no cursor is open across a yield (VACUUM
+   * INTO of the snapshot refuses one). The same rows in the same order as one scan of the partial index
+   * paper_book_trades_unit (cfg, exit_t, r, mult, vol, then the primary key), which the proofs' ties follow.
+   */
+  private *paperCloseRows<Row, T>(cols: string, extra: string, map: (x: Row) => T | null): Generator<void, T[]> {
+    const out: T[] = [];
+    let after: string | null = null;
+    let limit = PROOF_PAGE;
+    for (;;) {
+      const t = "paper_book_trades";
+      const rows: Array<Row & { cfg: string }> = this.db.all(
+        `SELECT ${cols} FROM ${t} WHERE ${t}.reason != 'dropped' AND ${t}.r IS NOT NULL${extra}${after === null ? "" : ` AND ${t}.cfg >= ?`} ` +
+          `ORDER BY ${t}.cfg, ${t}.exit_t, ${t}.r, ${t}.mult, ${t}.vol, ${t}.sym, ${t}.side, ${t}.entry_t LIMIT ${limit}`,
+        ...(after === null ? [] : [after]),
+      );
+      const full = rows.length >= limit;
+      const lastCfg = rows.length ? rows[rows.length - 1].cfg : "";
+      // a full page ends inside its last config: that config's rows come again on the next page
+      const keep = full ? rows.filter((x) => x.cfg !== lastCfg) : rows;
+      if (full && !keep.length) {
+        limit *= 2; // one config holds the whole page
+        continue;
+      }
+      for (const x of keep) {
+        const m = map(x);
+        if (m !== null) out.push(m);
+      }
+      if (!full) return out;
+      after = lastCfg;
+      limit = PROOF_PAGE;
+      yield;
+    }
   }
   private sigProofMemo: {
     key: string;
@@ -6294,6 +6656,9 @@ export class CoreRuntime {
   signalProof(
     now = Date.now(),
   ): { proven: Set<string>; judged: number; n: number; minPf: number; minEvents: number } | null {
+    return drain(this.signalProofGen(now));
+  }
+  private signalProofKey(): string | null {
     const n = this.settings.live.signalProofN ?? 0;
     if (!(n > 0)) return null;
     const minPf = this.settings.live.signalProofPf ?? SIGNAL_PROOF_PF;
@@ -6301,22 +6666,37 @@ export class CoreRuntime {
     // memoized on the two records' write versions, as the engine proof: an unchanged book costs no query. live.sideGates
     // reads a side that is not +1 or -1 as no side (signalUnitOf), so its proof is memoized apart from the pooled one
     const bySide = this.settings.live.sideGates === true;
-    const key = `${n}|${minPf}|${minEvents}|${this.db.version("paper_book_trades")}|${this.db.version("live_lane_trades")}${bySide ? "|sides" : ""}`;
+    return `${n}|${minPf}|${minEvents}|${this.db.version("paper_book_trades")}|${this.db.version("live_lane_trades")}${bySide ? "|sides" : ""}`;
+  }
+  /** signalProof in slices (see engineProofGen) */
+  private *signalProofGen(
+    now = Date.now(),
+  ): Generator<void, { proven: Set<string>; judged: number; n: number; minPf: number; minEvents: number } | null> {
+    const key = this.signalProofKey();
+    if (key === null) return null;
     if (this.sigProofMemo?.key === key) return this.sigProofMemo.out;
+    const n = this.settings.live.signalProofN ?? 0;
+    const minPf = this.settings.live.signalProofPf ?? SIGNAL_PROOF_PF;
+    const minEvents = this.settings.live.signalProofEvents ?? SIGNAL_PROOF_EVENTS;
+    const bySide = this.settings.live.sideGates === true;
     // the paper book's signal closes, read from the partial covering index (its entries carry the primary key: symbol,
     // side and entry time); signal ids carry "|sig-" — signalUnitOf keeps exactly the signal configs
-    const rows = this.db.all<{ cfg: string; sym: string; side: number; entry_t: number; exit_t: number | null; r: number }>(
-      "SELECT cfg, sym, side, entry_t, exit_t, r / COALESCE(NULLIF(mult, 0), NULLIF(vol, 0), 1) AS r FROM paper_book_trades WHERE reason != 'dropped' AND r IS NOT NULL AND cfg LIKE '%|sig-%'",
+    const paper = yield* this.paperCloseRows(
+      "cfg, sym, side, entry_t, exit_t, r / COALESCE(NULLIF(mult, 0), NULLIF(vol, 0), 1) AS r",
+      " AND cfg LIKE '%|sig-%'",
+      (x: { cfg: string; sym: string; side: number; entry_t: number; exit_t: number | null; r: number }) =>
+        x.exit_t === null ? null : { id: String(x.entry_t), cfg: x.cfg, sym: x.sym, side: x.side, exitT: x.exit_t, r: x.r },
     );
-    const paper = rows
-      .filter((x) => x.exit_t !== null)
-      .map((x) => ({ id: String(x.entry_t), cfg: x.cfg, sym: x.sym, side: x.side, exitT: x.exit_t!, r: x.r }));
+    yield;
+    const exchange = yield* this.exchangeRowsGen(0);
+    yield;
     const out = {
-      ...signalProven(paper, this.exchangeRows(0), now, { n, minPf, minEvents, bySide }),
+      ...signalProven(paper, exchange, now, { n, minPf, minEvents, bySide }),
       n,
       minPf,
       minEvents,
     };
+    if (this.signalProofKey() !== key) return out;
     const prev = this.sigProofMemo?.out;
     if (!prev || prev.proven.size !== out.proven.size || prev.judged !== out.judged)
       this.db.event(
@@ -6325,6 +6705,30 @@ export class CoreRuntime {
       );
     this.sigProofMemo = { key, out };
     return out;
+  }
+  /**
+   * Brings the engine and signal proofs up to date in slices of at most ~SLICE_MS, so the live step reads them from
+   * their memos (a close landing used to rebuild both in one synchronous piece inside the step: 0.3–1.2 s at 50–150 k
+   * paper closes). The step waits for the current proofs — admission never reads older ones. A write that lands
+   * while a rebuild yields restarts it (three times at most; after that the synchronous readers rebuild).
+   */
+  async warmProofs(): Promise<void> {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const eKey = this.engineProofKey();
+      const sKey = this.signalProofKey();
+      if ((eKey === null || this.proofMemo?.key === eKey) && (sKey === null || this.sigProofMemo?.key === sKey)) return;
+      for (const g of [this.engineProofGen(), this.signalProofGen()]) {
+        let t = performance.now();
+        for (;;) {
+          if (g.next().done) break;
+          // (a step is a page of rows or one build: about 5–40 ms, so the loop is given back after each)
+          if (performance.now() - t > 3) {
+            await yieldNow();
+            t = performance.now();
+          }
+        }
+      }
+    }
   }
   private exAcceptMemo: { key: string; idx: ExchangeAccept } | null = null;
   /**
@@ -6429,6 +6833,7 @@ export class CoreRuntime {
     pairTps: Record<string, Record<string, readonly number[]>>;
     exitBasePassed: Set<string>;
     exitBaseEvaluated: number;
+    pairCells: Record<string, readonly string[]>;
   }> {
     const rangeProtects = baseRangeProtects(s.grid, s.cost);
     const rangeMinTf = rangeMinTfOf(s.grid);
@@ -6462,6 +6867,7 @@ export class CoreRuntime {
               rangeMinTf,
               microOwnInds: micro,
               gates: s.gates,
+              cells: s.grid?.baseCells === true,
             })),
           n,
           15 * 60_000,
@@ -6489,6 +6895,7 @@ export class CoreRuntime {
             rangeMinTf,
             micro,
             s.gates,
+            s.grid?.baseCells === true,
           );
           for (const x of rs) add(x);
           yield i;
@@ -6505,7 +6912,7 @@ export class CoreRuntime {
     // in combo order (as the engine's S1), whichever path computed them
     const runs = [...combos, ...exitCombos].flatMap((c) => byPair.get(`${c.bot}|${c.ind}`) ?? []);
     const engineRuns = runs.filter((r) => r.bot !== EXIT_BOT);
-    const { passed, qualified, qualifiedTags, wideLadderPairs, pairTags, pairTps } = basePass(
+    const { passed, qualified, qualifiedTags, wideLadderPairs, pairTags, pairTps, pairCells } = basePass(
       engineRuns,
       s,
     );
@@ -6521,6 +6928,7 @@ export class CoreRuntime {
       wideLadderPairs,
       pairTags,
       pairTps,
+      pairCells,
       exitBasePassed: exitBase.passed,
       exitBaseEvaluated: exitBase.evaluated.size,
     };
@@ -6737,7 +7145,7 @@ export class CoreRuntime {
     const lookBars = bars.map(beforeT);
     const exitLookBars = exitU?.series.map(beforeT) ?? [];
     const base = await this.presetBase(job, s, combos, lookBars, exitCombos, exitLookBars);
-    const { main, pairTags, pairTps } = base;
+    const { main, pairTags, pairTps, pairCells } = base;
     wf.basePassed = new Set([...base.qualified, ...base.exitBasePassed]);
     wf.exitBasePassed = base.exitBasePassed;
     wf.basePassedRanges = base.qualifiedTags;
@@ -6752,6 +7160,7 @@ export class CoreRuntime {
       ...protectFloors(s, startT),
       pairTags,
       pairTps,
+      ...(pairCells ? { pairCells } : {}),
       microOwnInds: microOwnInds(s.grid),
     };
     let tapes: ConfigTape[] = [];
@@ -7709,10 +8118,10 @@ export class CoreRuntime {
    * kept as it is, and new entries only from `fast.opens` (the seated configs' tape positions on the current bars),
    * through the same entry rules; the full step (after each compute) re-seats and closes.
    */
-  private *stepPaperGen(fast?: {
-    opens: ReadonlyMap<string, readonly OpenPosition[]>;
-    t: number;
-  }): Generator<number, void> {
+  private *stepPaperGen(
+    fast?: { opens: ReadonlyMap<string, readonly OpenPosition[]>; t: number },
+    reuseSeats = false,
+  ): Generator<number, void> {
     if (!this.tapes.length || !this.sim) return;
     if (fast && !this.lastSelection) return;
     // sub-timings (the Paper phase is one synchronous slice: its slowest part is named in the phase record)
@@ -7722,32 +8131,47 @@ export class CoreRuntime {
     const held = new Set(this.sim.steps[this.sim.steps.length - 1]?.real ?? []);
     // Each Signal protection config needs its own active symbol/direction evidence before taking a paper seat.
     // Held configs are kept separately below to manage their existing exits only.
-    const { engine: selTapes, signal: signalCandidates } = splitSignalTapes(this.tapes, this.wf);
+    const { engine: engineTapes, signal: signalCandidates } = splitSignalTapes(this.tapes, this.wf);
     const signalActive = this.wf.signalActive;
     const sigTapes = signalActive
       ? signalCandidates.filter(
           (tp) => !tp.heldOnly && signalSeatSymbols(tp, signalActive).size > 0,
         )
       : [];
+    // wf.seatSet "validated": the step selects from the validated set V of the last simulation (its ids), never from the
+    // pool; V is refreshed only by the next compute's Base + set evaluation
+    let selTapes = engineTapes;
+    let wfSel = this.wf;
+    if (!fast && this.wf.seatSet === "validated") {
+      assertSeatSet(this.wf);
+      let vc = this.validatedCache;
+      if (!vc || vc.sim !== this.sim || vc.tapes !== engineTapes) {
+        const v = this.sim.validated ? new Set(this.sim.validated) : yield* validatedSetGen(engineTapes, t, this.wf);
+        vc = this.validatedCache = { sim: this.sim, tapes: engineTapes, v, list: validatedTapes(engineTapes, v, this.wf) };
+      }
+      selTapes = vc.list;
+      wfSel = { ...this.wf, validated: vc.v };
+    }
     // (slices between the opening passes over every tape: together they were one 0.5 s step at 21 symbols)
     yield 0;
     // per-range selection modes (wf.rangeOpts[tag].mode), as the simulation selects; null = one selection
-    const groups = fast ? null : modeGroups(selTapes, this.wf);
-    const { picks, eligible } = fast
+    const reuse = !fast && reuseSeats && !!this.lastSelection;
+    const groups = fast || reuse ? null : modeGroups(selTapes, wfSel);
+    const { picks, eligible } = fast || reuse
       ? this.lastSelection!
       : withProbe(
           groups
-            ? yield* selectGroupsGen(groups, t, this.wf, held)
-            : this.wf.mode === "durable"
-              ? selectDurable(selTapes, t, this.wf, held)
-              : this.wf.mode === "fixed"
-                ? yield* selectFixedGen(selTapes, t, this.wf)
-                : selectAt(selTapes, t, this.wf),
+            ? yield* selectGroupsGen(groups, t, wfSel, held)
+            : wfSel.mode === "durable"
+              ? selectDurable(selTapes, t, wfSel, held)
+              : wfSel.mode === "fixed"
+                ? yield* selectFixedGen(selTapes, t, wfSel)
+                : selectAt(selTapes, t, wfSel),
           selTapes,
           t,
-          this.wf,
+          wfSel,
         );
-    if (!fast) this.lastSelection = { picks, eligible };
+    if (!fast && !reuse) this.lastSelection = { picks, eligible };
     const tSelect = performance.now() - tp0;
     const sel = new Set([...picks.map((p) => p.id), ...sigTapes.map((tp) => tp.id)]);
     // sets that still hold an open position stay processed until that position is closed (even when no longer
@@ -8830,6 +9254,7 @@ export const WF_KEYS = [
   "familySeats",
   "familyNeedsBase",
   "seatPer",
+  "seatSet",
   "bestFirst",
   "laneSeats",
   "microSeats",
@@ -8946,6 +9371,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
   if (p.familySeats !== undefined) p.familySeats = Boolean(p.familySeats);
   if (p.familyNeedsBase !== undefined) p.familyNeedsBase = Boolean(p.familyNeedsBase);
   if (p.seatPer !== undefined && !["pair", "config"].includes(String(p.seatPer))) delete p.seatPer;
+  if (p.seatSet !== undefined && !["pool", "validated"].includes(String(p.seatSet))) delete p.seatSet;
   // symbol gate: veto (a proven loser on the symbol is skipped) / proven (only proven symbols) / per side / off
   if (
     p.symGate !== undefined &&
@@ -9700,9 +10126,15 @@ export function basePass(
   wideLadderPairs: Set<string>;
   pairTags: Record<string, string[]>;
   pairTps: Record<string, Record<string, readonly number[]>>;
+  /** grid.baseCells: per pair, the passed cells of the ranges it passed (protectCellKey); absent while the option is off */
+  pairCells: Record<string, readonly string[]>;
   added: number;
+  /** the pairs grid.allSets added for measurement (not Base-passed) */
+  addedKeys: Set<string>;
 } {
   const pairTags: Record<string, string[]> = {};
+  const pairCells: Record<string, readonly string[]> = {};
+  const cellsOn = s.grid?.baseCells === true;
   const setsGates = baseSetsGates(s.gates);
   // per pair, the range targets whose Base cells passed: the tape stage builds only those (baseTargets, on by
   // default — a range tag used to unlock every target of the range, most of them never Base-evaluated)
@@ -9726,6 +10158,11 @@ export function basePass(
       for (const t of tags) if (t && r.rangeTps[t]?.length) per[t] = r.rangeTps[t];
       if (Object.keys(per).length) pairTps[`${r.bot}|${r.ind}`] = per;
     }
+    // cell level: the passed cells of the passed ranges (a range without cells keeps the target / range level)
+    if (cellsOn && r.rangeCells?.length) {
+      const keep = r.rangeCells.filter((k) => tags.includes(k.slice(0, k.indexOf("|"))));
+      if (keep.length) pairCells[`${r.bot}|${r.ind}`] = keep;
+    }
     return true;
   });
   const qualified = [...passed];
@@ -9743,6 +10180,7 @@ export function basePass(
   // (Every pair's whole grid: ~12 M Micro tapes on 8 symbols.)
   // (`added`: the pairs allSets builds for measurement that did not pass Base — never counted as passed)
   let added = 0;
+  const addedKeys = new Set<string>();
   if (s.grid?.allSets === true) {
     const best = new Map<string, ComboRun>();
     for (const r of s1) {
@@ -9757,14 +10195,16 @@ export function basePass(
       const k = `${r.bot}|${r.ind}`;
       pairTags[k] = ["", ...ALL_RANGE_TAGS].filter((t) => rangeAppliesTo(r.ind, t, applies));
       delete pairTps[k];
+      delete pairCells[k];
       if (!inPassed.has(k)) {
         passed.push(r);
         inPassed.add(k);
+        addedKeys.add(k);
         added++;
       }
     }
   }
-  return { passed, qualified, qualifiedTags, wideLadderPairs, pairTags, pairTps, added };
+  return { passed, qualified, qualifiedTags, wideLadderPairs, pairTags, pairTps, pairCells, added, addedKeys };
 }
 
 /** Paper deactivation and native admission preserve the same indication/range floor. */
@@ -10059,11 +10499,13 @@ export function withCarried(
   built: ConfigTape[],
   prev: readonly ConfigTape[],
   tags: ReadonlySet<string>,
+  /** a carried tape this rejects (not among the current compute's Base-passed cells) is kept held-only: it manages its open position, takes no seat */
+  allow?: (t: ConfigTape) => boolean,
 ): ConfigTape[] {
   const ids = new Set(built.map((t) => t.id));
-  const carried = prev.filter(
-    (t) => !isSignalInd(t.ind) && !!t.protect.tag && tags.has(t.protect.tag) && !ids.has(t.id),
-  );
+  const carried = prev
+    .filter((t) => !isSignalInd(t.ind) && !!t.protect.tag && tags.has(t.protect.tag) && !ids.has(t.id))
+    .map((t) => (allow && !t.heldOnly && !allow(t) ? { ...t, heldOnly: true } : t));
   // Mark shallow copies so reports can distinguish them from the current compute's built sets. The large typed-array
   // tape columns remain shared; only metadata is copied.
   return carried.length ? [...built, ...carried.map((t) => ({ ...t, carried: true }))] : built;

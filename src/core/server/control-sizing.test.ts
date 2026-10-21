@@ -482,6 +482,8 @@ describe("control sizing: risk-based (positionSize \"risk\")", () => {
     assert.ok(ex.positions.get("S0-USDT|LONG")! > 0);
     // no account read: nothing opens
     const ex2 = new SimExchange();
+    // (the first run's account read is remembered per connection: forget it, so this run really has no account read)
+    resetAccountSeen();
     const { rt: rt2 } = fakeRt(new CoreDb(":memory:"));
     rt2.settings.live = { ...rt2.settings.live, positionSize: "risk" };
     rt2.paper.positions = [lane("a", "S0-USDT", 1, 10, 5, 0.04)];
