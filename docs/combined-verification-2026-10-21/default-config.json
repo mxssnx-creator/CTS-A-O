@@ -1,6 +1,6 @@
 {
-  "sourceSha256": "4c5aa081359cf084d5e8c37ecd0bb9bf8b39372475fc6d41ee9ce978ff4cb160",
-  "classification": "Current defaults, distinct from the frozen historical latency cohort settings and any deployed connection settings",
+  "sourceSha256": "de4cc45e706a9522d538ae26b40a64d6cca9b8319a399fd398418297fb57a632",
+  "classification": "Current factory defaults; historical benchmark settings and deployed connections are separate",
   "tfs": [
     1,
     5,
@@ -505,8 +505,43 @@
     },
     "baseGate": false
   },
+  "axis": {
+    "volumeFactor": 0.1,
+    "levels": 3,
+    "spacing": 0.7,
+    "ratio": 1,
+    "minDisp": 0.35,
+    "maxDisp": 2.6,
+    "center": 50,
+    "centerMin": 132,
+    "ranges": [
+      "atr",
+      "linear",
+      "geo",
+      "fib"
+    ],
+    "levelsSet": [
+      2,
+      3
+    ],
+    "exits": "managed",
+    "mode": "revert",
+    "slAtr": 0.7,
+    "tpRatio": 2.2,
+    "hybrid": false,
+    "trailPct": 0.8,
+    "expiry": 0
+  },
+  "dca": {
+    "levels": 1,
+    "addRatio": 2.5,
+    "step": 0.02,
+    "stopGap": 0.5,
+    "slOfTp": 1
+  },
   "focusCount": 939,
   "wf": {
+    "axisVolumeFactor": 0.1,
     "indicationVolumeFactors": {
       "coordination": 8,
       "combined": {

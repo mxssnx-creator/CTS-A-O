@@ -1,5 +1,6 @@
 {
-  "classification": "Static current default protect cells at reference timeframe 15m; separate from all bot/source/strategy permutations and dynamic Minimal Plus fitting",
+  "sourceSha256": "de4cc45e706a9522d538ae26b40a64d6cca9b8319a399fd398418297fb57a632",
+  "classification": "Static default protect cells at 15m, before bot/source/strategy permutations; Minimal Plus fits dynamically",
   "rows": [
     {
       "tag": "wide",
