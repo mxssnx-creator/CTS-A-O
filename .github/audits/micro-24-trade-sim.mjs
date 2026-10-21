@@ -46,6 +46,8 @@ if (mode === "prepare") {
   const endT = Number(arg("end", Math.floor(lastT / H) * H)),
     runH = 12,
     preH = 12;
+  const microHold = Number(arg("micro-hold", 60)), includeLong = arg("long-range", "false") === "true";
+  if (![15, 60].includes(microHold)) throw new Error("micro-hold must be a preregistered 15 or 60 minutes");
   if (endT > lastT || !Number.isSafeInteger(endT))
     throw new Error("End must be inside the supplied history");
   const tradeStartT = endT - runH * H,
@@ -108,9 +110,9 @@ if (mode === "prepare") {
     ...seed.grid,
     tp: [],
     general: { ...seed.grid.general, minTf: 0, maxHoldMin: 240 },
-    long: false,
+    long: includeLong ? structuredClone(DEFAULT_SETTINGS.grid.long) : false,
     minimalPlus: { ...seed.grid.minimalPlus, enabled: false },
-    micro: { ...seed.grid.micro, minTf: 0, maxHoldMin: 60 },
+    micro: { ...seed.grid.micro, minTf: 0, maxHoldMin: microHold },
     minimal: { ...seed.grid.minimal, minTf: 0, maxHoldMin: 120 },
     short: { ...seed.grid.short, minTf: 0, maxHoldMin: 180 },
   };
@@ -157,7 +159,7 @@ if (mode === "prepare") {
   const protocol = {
     schema: "cts-session-study-v1",
     id: arg("label", "micro-24-symbols-12h-pre-12h-run-20261020-v5"),
-    scope: { hold: "standard", focus: selected,
+    scope: { hold: microHold === 15 ? "micro-15m" : "standard", microHold, includeLong, focus: selected,
       ...(focusFile ? { selectedFocusSha256: studySha256(readFileSync(resolve(focusFile))) } : {}),
       purpose: focusFile ? "Frozen training-selected focus, independently gated in this later test; losses retained; not native execution"
         : "Fixed retrospective 24-symbol correctness and hourly stability test; no performance-based source selection or gate relaxation; not native execution" },

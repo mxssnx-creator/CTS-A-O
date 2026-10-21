@@ -1,0 +1,95 @@
+{
+  "schema": "cts-negative-hour-context-research-v1",
+  "classification": "Additional independent indication research derived from previously observed v4 negative-hour funded model cohorts, not live or holdout proof",
+  "training": {
+    "archiveRun": 39532140644,
+    "period": "2026-10-19T12:00:00Z/2026-10-20T00:00:00Z",
+    "negativeHours": [
+      1792411200000,
+      1792414800000,
+      1792440000000
+    ],
+    "analysisSha256": "afe85b3f18a39aa219183ec622aa685215341b651844b33414f525494df6f528",
+    "basis": "Exact report allocation; unit returns; all losing/empty original rows retained"
+  },
+  "seeds": [
+    "activity-acceleration",
+    "break-close",
+    "break-retest"
+  ],
+  "children": {
+    "break-close-tactic": "Own break-close agrees with existing Tactic adaptive closed-bar state; short Tactic window for fast, medium for selective.",
+    "break-retest-tactic": "Own break-retest agrees with existing Tactic pullback state.",
+    "activity-acceleration-relative": "Own activity-acceleration agrees with sign of own-minus-market standardized three-bar residual; unknown/single-symbol market stays neutral.",
+    "break-retest-market": "Own break-retest agrees with existing standardized broad-market momentum."
+  },
+  "scope": {
+    "profiles": [
+      "fast",
+      "selective"
+    ],
+    "subsets": [
+      [
+        1
+      ],
+      [
+        5
+      ],
+      [
+        15
+      ],
+      [
+        1,
+        5
+      ],
+      [
+        1,
+        15
+      ],
+      [
+        5,
+        15
+      ],
+      [
+        1,
+        5,
+        15
+      ]
+    ],
+    "mirror": "Invert entry state, never returns; independently qualify both directions of originals and mirrors",
+    "additionalSourceIds": 112,
+    "originalSourceIdsUnchanged": true,
+    "ranges": [
+      "micro",
+      "minimal",
+      "short",
+      "general",
+      "long"
+    ],
+    "strategies": [
+      "normal",
+      "trailing",
+      "trailing-only"
+    ],
+    "microMaximumHoldMinutes": 15
+  },
+  "validation": {
+    "fromArchive": "2026-10-19T00:00:00Z",
+    "toArchiveExclusive": "2026-10-21T00:00:00Z",
+    "tradeStart": "2026-10-20T12:00:00Z",
+    "tradeEnd": "2026-10-21T00:00:00Z",
+    "preH": 12,
+    "runH": 12,
+    "indicatorWarmupH": 24,
+    "symbols": 24,
+    "roundTripCost": 0.0015,
+    "scoring": "Original-only and original-plus-children independent post-Base/config/own-direction gates; same prices, costs, hours, funding and settings. Report every negative, empty or failed arm; no reselection using validation."
+  },
+  "preserve": [
+    "Original IDs, formulas and observations",
+    "336h Signal history",
+    "All existing positive coordinations and PF gates",
+    "Exact config/lane/range/type/side qualification and owned/native proof",
+    "Shared account risk remains separate; no venue orders or running-account setting changes"
+  ]
+}

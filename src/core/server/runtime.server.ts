@@ -43,6 +43,7 @@ import {
   WIDE_TARGET_SL,
 } from "../minimal-coord.ts";
 import { microSpecs, type MicroIndRule } from "../indications/micro.ts";
+import { PRE_CONTEXT_FOCUS_21OCT } from "../indications/context-default-focus.ts";
 import { isBreakRelInd } from "../indications/break-config.ts";
 import { sharedFeed } from "../market/shared-feed.ts";
 import { catchUp } from "./loop-budget.ts";
@@ -1146,6 +1147,7 @@ export class CoreRuntime {
     // order caps from before unlimited orders are dropped once (walk-forward and signal caps)
     const savedWf = migrateWfCaps(db);
     migrateMicroBreakoutFocus(db);
+    migrateMicroContextFocus(db);
     const saved = db.kvGet<Partial<CoreSettings>>("settings");
     // settings saved before the tick loop existed carry a cycle of ≥ 5 s (the old minimum): the fast defaults apply
     if (saved && saved.tickMs === undefined && (saved.cycleMs ?? 0) >= 5_000) {
@@ -10131,6 +10133,25 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
   if (p.bots !== undefined)
     p.bots = Array.isArray(p.bots) ? (p.bots as unknown[]).map(String).slice(0, 20) : [];
   return p as Partial<WalkForwardOptions>;
+}
+
+/** Add context children once for the exact former factory selection; preserve custom/off Focus. */
+function migrateMicroContextFocus(db: CoreDb): void {
+  if (db.kvGet("microContextFocusV1")) return;
+  const upgrade = (settings: SettingsPatch | undefined) => {
+    if (!settings || JSON.stringify(settings.focus) !== JSON.stringify(PRE_CONTEXT_FOCUS_21OCT)) return false;
+    settings.focus = [...DEFAULT_SETTINGS.focus];
+    return true;
+  };
+  const settings = db.kvGet<SettingsPatch>("settings");
+  if (upgrade(settings)) db.kvSet("settings", settings);
+  const presets = db.kvGet<Preset[]>("presets");
+  if (Array.isArray(presets)) {
+    let changed = false;
+    for (const preset of presets) changed = upgrade(preset.settings) || changed;
+    if (changed) db.kvSet("presets", presets);
+  }
+  db.kvSet("microContextFocusV1", true);
 }
 
 /** Add channel sources once for exact former factory selections, independently of older WF-cap migrations. */

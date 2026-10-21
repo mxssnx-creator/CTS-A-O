@@ -1,0 +1,4378 @@
+{
+  "classification": "Retrospective training scan on previously published v4 funded simulated closes; source differs from current main, not live ownership or holdout proof",
+  "window": {
+    "startT": 1792411200000,
+    "endT": 1792454400000
+  },
+  "funding": {
+    "basis": "Exact per-close native report allocation",
+    "virtualCloses": 257095,
+    "fundedCloses": 257095,
+    "zeroAllocatedCloses": 0,
+    "unknownAllocations": 0
+  },
+  "hours": [
+    {
+      "t": 1792411200000,
+      "n": 7270,
+      "gp": 2.4843754017831876,
+      "gl": 45.95149704773092,
+      "pf": 0.05406516787043102
+    },
+    {
+      "t": 1792414800000,
+      "n": 14102,
+      "gp": 18.78358046978554,
+      "gl": 25.70181536902847,
+      "pf": 0.730826994128219
+    },
+    {
+      "t": 1792418400000,
+      "n": 68033,
+      "gp": 239.5159411908032,
+      "gl": 135.56439818445494,
+      "pf": 1.7668056244745554
+    },
+    {
+      "t": 1792422000000,
+      "n": 25977,
+      "gp": 86.74167898619861,
+      "gl": 53.25656158875024,
+      "pf": 1.6287510195649144
+    },
+    {
+      "t": 1792425600000,
+      "n": 43287,
+      "gp": 126.83121522770593,
+      "gl": 68.312490968945,
+      "pf": 1.856632856286322
+    },
+    {
+      "t": 1792429200000,
+      "n": 26612,
+      "gp": 82.0971295440677,
+      "gl": 55.356825163333106,
+      "pf": 1.4830534320173885
+    },
+    {
+      "t": 1792432800000,
+      "n": 24343,
+      "gp": 86.2591801060327,
+      "gl": 51.028457086775816,
+      "pf": 1.6904132523416437
+    },
+    {
+      "t": 1792436400000,
+      "n": 14467,
+      "gp": 47.335094689257836,
+      "gl": 34.688353406865396,
+      "pf": 1.3645817699692093
+    },
+    {
+      "t": 1792440000000,
+      "n": 5478,
+      "gp": 7.537368412125112,
+      "gl": 14.677583686042553,
+      "pf": 0.513529241144281
+    },
+    {
+      "t": 1792443600000,
+      "n": 3502,
+      "gp": 22.498872531704286,
+      "gl": 8.648792756398098,
+      "pf": 2.6013887909454585
+    },
+    {
+      "t": 1792447200000,
+      "n": 14275,
+      "gp": 75.805075506927,
+      "gl": 32.43064435781266,
+      "pf": 2.337452030571982
+    },
+    {
+      "t": 1792450800000,
+      "n": 9749,
+      "gp": 24.324926746568377,
+      "gl": 8.054014095347242,
+      "pf": 3.0202240098661797
+    }
+  ],
+  "negativeHours": [
+    1792411200000,
+    1792414800000,
+    1792440000000
+  ],
+  "fullAnalysis": {
+    "path": "training-negative-hours.json.gz",
+    "decodedSha256": "afe85b3f18a39aa219183ec622aa685215341b651844b33414f525494df6f528"
+  },
+  "positiveHourGroups": 202,
+  "positiveHourConfigGroups": 4852,
+  "positiveGroups": [
+    {
+      "n": 152,
+      "gp": 0.6422578195896841,
+      "gl": 0.0022816767021442952,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-5-break-close-selective@m5",
+        "trailing",
+        "mn",
+        -1
+      ],
+      "symbols": [
+        "ARB-USDT",
+        "NEAR-USDT",
+        "APT-USDT",
+        "BTC-USDT"
+      ],
+      "onsets": 4,
+      "pf": 281.48502326648514,
+      "noLoss": false,
+      "net": 0.6399761428875398
+    },
+    {
+      "n": 278,
+      "gp": 0.8005577778327561,
+      "gl": 0.20054356927716693,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-5-break-close-selective@m5",
+        "trailing",
+        "mc",
+        -1
+      ],
+      "symbols": [
+        "UNI-USDT",
+        "ARB-USDT",
+        "NEAR-USDT",
+        "APT-USDT",
+        "BTC-USDT"
+      ],
+      "onsets": 5,
+      "pf": 3.991939411062952,
+      "noLoss": false,
+      "net": 0.6000142085555891
+    },
+    {
+      "n": 190,
+      "gp": 0.7042025080103156,
+      "gl": 0.159067801570217,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-5-break-close-selective@m5",
+        "trailing-only",
+        "mc",
+        -1
+      ],
+      "symbols": [
+        "APT-USDT",
+        "ARB-USDT",
+        "NEAR-USDT",
+        "BTC-USDT"
+      ],
+      "onsets": 4,
+      "pf": 4.427058782851543,
+      "noLoss": false,
+      "net": 0.5451347064400986
+    },
+    {
+      "n": 76,
+      "gp": 0.5865000000000015,
+      "gl": 0.05599999999999985,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1x15-drawdown-turn-fast@m1",
+        "normal",
+        "mn",
+        -1
+      ],
+      "symbols": [
+        "ATOM-USDT",
+        "INJ-USDT",
+        "ARB-USDT",
+        "APT-USDT",
+        "OP-USDT"
+      ],
+      "onsets": 5,
+      "pf": 10.47321428571434,
+      "noLoss": false,
+      "net": 0.5305000000000016
+    },
+    {
+      "n": 57,
+      "gp": 0.45760945851731777,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x15-break-retest-fast@m1",
+        "trailing",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "INJ-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.45760945851731777
+    },
+    {
+      "n": 49,
+      "gp": 0.46673580786026186,
+      "gl": 0.009339048003227516,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x5-drawdown-trend-selective@m1",
+        "trailing",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "NEAR-USDT",
+        "UNI-USDT"
+      ],
+      "onsets": 2,
+      "pf": 49.97680788223392,
+      "noLoss": false,
+      "net": 0.4573967598570344
+    },
+    {
+      "n": 62,
+      "gp": 0.44807525822291533,
+      "gl": 0.01632582115770875,
+      "key": [
+        1792414800000,
+        "follow",
+        "micro-1-activity-absorb-fast@m1",
+        "trailing",
+        "sh",
+        -1
+      ],
+      "symbols": [
+        "OP-USDT",
+        "SUI-USDT",
+        "SOL-USDT",
+        "ETH-USDT",
+        "XLM-USDT",
+        "ADA-USDT"
+      ],
+      "onsets": 6,
+      "pf": 27.445802198521726,
+      "noLoss": false,
+      "net": 0.4317494370652066
+    },
+    {
+      "n": 55,
+      "gp": 0.4057544714630202,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-5x15-break-close-selective@m5",
+        "trailing-only",
+        "mc",
+        -1
+      ],
+      "symbols": [
+        "ARB-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.4057544714630202
+    },
+    {
+      "n": 96,
+      "gp": 0.3808505741872433,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-5-break-close-fast@m5",
+        "trailing",
+        "mn",
+        -1
+      ],
+      "symbols": [
+        "NEAR-USDT",
+        "APT-USDT"
+      ],
+      "onsets": 2,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.3808505741872433
+    },
+    {
+      "n": 155,
+      "gp": 0.40753384768541107,
+      "gl": 0.042944250871078206,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1x5x15-break-retest-selective@m1",
+        "trailing",
+        "mc",
+        -1
+      ],
+      "symbols": [
+        "LTC-USDT"
+      ],
+      "onsets": 1,
+      "pf": 9.489834830484238,
+      "noLoss": false,
+      "net": 0.36458959681433284
+    },
+    {
+      "n": 48,
+      "gp": 0.36366635852089946,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-5x15-break-close-selective@m5",
+        "trailing",
+        "mn",
+        -1
+      ],
+      "symbols": [
+        "ARB-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.36366635852089946
+    },
+    {
+      "n": 92,
+      "gp": 0.3562154244218267,
+      "gl": 0.0013174928717618439,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-5-break-close-selective@m5",
+        "trailing-only",
+        "mn",
+        -1
+      ],
+      "symbols": [
+        "APT-USDT",
+        "ARB-USDT",
+        "NEAR-USDT",
+        "BTC-USDT"
+      ],
+      "onsets": 4,
+      "pf": 270.3737014876372,
+      "noLoss": false,
+      "net": 0.3548979315500648
+    },
+    {
+      "n": 106,
+      "gp": 0.30962730372238034,
+      "gl": 0.005951562500000543,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1x15-flow-break-selective@m1",
+        "trailing",
+        "mc",
+        -1
+      ],
+      "symbols": [
+        "ATOM-USDT",
+        "LTC-USDT"
+      ],
+      "onsets": 3,
+      "pf": 52.024540399660104,
+      "noLoss": false,
+      "net": 0.3036757412223798
+    },
+    {
+      "n": 106,
+      "gp": 0.30962730372238034,
+      "gl": 0.005951562500000543,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1x5x15-flow-break-selective@m1",
+        "trailing",
+        "mc",
+        -1
+      ],
+      "symbols": [
+        "ATOM-USDT",
+        "LTC-USDT"
+      ],
+      "onsets": 3,
+      "pf": 52.024540399660104,
+      "noLoss": false,
+      "net": 0.3036757412223798
+    },
+    {
+      "n": 62,
+      "gp": 0.30099999999999566,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-5x15-break-close-selective@m5",
+        "trailing",
+        "mc",
+        -1
+      ],
+      "symbols": [
+        "ARB-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.30099999999999566
+    },
+    {
+      "n": 110,
+      "gp": 0.33299999999999563,
+      "gl": 0.04032704828540706,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-5-break-close-selective@m5",
+        "normal",
+        "mc",
+        -1
+      ],
+      "symbols": [
+        "NEAR-USDT",
+        "APT-USDT",
+        "ARB-USDT",
+        "INJ-USDT",
+        "UNI-USDT",
+        "BTC-USDT"
+      ],
+      "onsets": 7,
+      "pf": 8.257485091476347,
+      "noLoss": false,
+      "net": 0.29267295171458857
+    },
+    {
+      "n": 187,
+      "gp": 0.43542024973162535,
+      "gl": 0.16512499999999952,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-5-activity-acceleration-fast@m5",
+        "normal",
+        "mc",
+        1
+      ],
+      "symbols": [
+        "XLM-USDT",
+        "FIL-USDT",
+        "LINK-USDT",
+        "ARB-USDT",
+        "AVAX-USDT",
+        "BCH-USDT",
+        "DOT-USDT",
+        "NEAR-USDT",
+        "OP-USDT",
+        "ADA-USDT"
+      ],
+      "onsets": 10,
+      "pf": 2.6369129431135603,
+      "noLoss": false,
+      "net": 0.27029524973162583
+    },
+    {
+      "n": 53,
+      "gp": 0.2694985896797718,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1x5x15-break-retest-selective@m1",
+        "normal",
+        "mc",
+        -1
+      ],
+      "symbols": [
+        "LTC-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.2694985896797718
+    },
+    {
+      "n": 31,
+      "gp": 0.24887531954450653,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x15-break-retest-fast@m1",
+        "normal",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "INJ-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.24887531954450653
+    },
+    {
+      "n": 32,
+      "gp": 0.2519190645552604,
+      "gl": 0.03199999999999993,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-5x15-market-follow-selective@m5",
+        "trailing",
+        "mn",
+        -1
+      ],
+      "symbols": [
+        "ATOM-USDT",
+        "OP-USDT",
+        "ETH-USDT"
+      ],
+      "onsets": 3,
+      "pf": 7.872470767351905,
+      "noLoss": false,
+      "net": 0.2199190645552605
+    },
+    {
+      "n": 58,
+      "gp": 0.21291500906878344,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-5-break-close-fast@m5",
+        "trailing-only",
+        "mn",
+        -1
+      ],
+      "symbols": [
+        "APT-USDT",
+        "NEAR-USDT"
+      ],
+      "onsets": 2,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.21291500906878344
+    },
+    {
+      "n": 29,
+      "gp": 0.2055715434083579,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-5x15-break-close-selective@m5",
+        "trailing-only",
+        "mn",
+        -1
+      ],
+      "symbols": [
+        "ARB-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.2055715434083579
+    },
+    {
+      "n": 69,
+      "gp": 0.1980000000000026,
+      "gl": 0,
+      "key": [
+        1792411200000,
+        "follow",
+        "inverse-micro-5-activity-acceleration-selective@m5",
+        "trailing",
+        "mc",
+        1
+      ],
+      "symbols": [
+        "FIL-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.1980000000000026
+    },
+    {
+      "n": 15,
+      "gp": 0.19410671462829635,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1-break-retest-fast@m1",
+        "trailing",
+        "sh",
+        -1
+      ],
+      "symbols": [
+        "NEAR-USDT",
+        "FIL-USDT"
+      ],
+      "onsets": 2,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.19410671462829635
+    },
+    {
+      "n": 33,
+      "gp": 0.1820000000000024,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-5-break-retest-fast@m5",
+        "normal",
+        "mc",
+        1
+      ],
+      "symbols": [
+        "NEAR-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.1820000000000024
+    },
+    {
+      "n": 28,
+      "gp": 0.1807792915531334,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-5x15-break-close-selective@m5",
+        "trailing",
+        "mn",
+        1
+      ],
+      "symbols": [
+        "BCH-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.1807792915531334
+    },
+    {
+      "n": 90,
+      "gp": 0.18000000000000452,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-5-break-close-fast@m5",
+        "normal",
+        "mc",
+        1
+      ],
+      "symbols": [
+        "LINK-USDT",
+        "NEAR-USDT",
+        "INJ-USDT",
+        "OP-USDT"
+      ],
+      "onsets": 6,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.18000000000000452
+    },
+    {
+      "n": 14,
+      "gp": 0.16954209919261878,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x5x15-drawdown-trend-selective@m1",
+        "trailing",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "INJ-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.16954209919261878
+    },
+    {
+      "n": 21,
+      "gp": 0.16859295840111732,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x15-break-retest-fast@m1",
+        "trailing-only",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "INJ-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.16859295840111732
+    },
+    {
+      "n": 13,
+      "gp": 0.15743194925028886,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x5x15-drawdown-trend-selective@m1",
+        "trailing-only",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "INJ-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.15743194925028886
+    },
+    {
+      "n": 482,
+      "gp": 0.5711259842519699,
+      "gl": 0.4181161358947297,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-5-break-retest-fast@m5",
+        "trailing",
+        "mc",
+        1
+      ],
+      "symbols": [
+        "ARB-USDT",
+        "APT-USDT",
+        "AVAX-USDT",
+        "LINK-USDT",
+        "NEAR-USDT",
+        "XLM-USDT",
+        "LTC-USDT"
+      ],
+      "onsets": 7,
+      "pf": 1.3659505941568444,
+      "noLoss": false,
+      "net": 0.15300984835724024
+    },
+    {
+      "n": 17,
+      "gp": 0.1555786026200873,
+      "gl": 0.0034407018959259263,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x5-drawdown-trend-selective@m1",
+        "trailing-only",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "NEAR-USDT",
+        "UNI-USDT"
+      ],
+      "onsets": 2,
+      "pf": 45.21711189344975,
+      "noLoss": false,
+      "net": 0.15213790072416136
+    },
+    {
+      "n": 143,
+      "gp": 0.15242071656884854,
+      "gl": 0.0017728411558379886,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-5x15-drawdown-market-selective@m5",
+        "trailing",
+        "sh",
+        -1
+      ],
+      "symbols": [
+        "DOT-USDT",
+        "LTC-USDT",
+        "ATOM-USDT"
+      ],
+      "onsets": 3,
+      "pf": 85.97539382867166,
+      "noLoss": false,
+      "net": 0.15064787541301056
+    },
+    {
+      "n": 22,
+      "gp": 0.14204087193460477,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-5x15-break-close-selective@m5",
+        "trailing-only",
+        "mn",
+        1
+      ],
+      "symbols": [
+        "BCH-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.14204087193460477
+    },
+    {
+      "n": 127,
+      "gp": 0.14199553958880165,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-5x15-drawdown-market-fast@m5",
+        "trailing",
+        "sh",
+        -1
+      ],
+      "symbols": [
+        "DOT-USDT",
+        "ATOM-USDT"
+      ],
+      "onsets": 2,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.14199553958880165
+    },
+    {
+      "n": 38,
+      "gp": 0.13877278731836273,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "micro-5-range-reclaim-selective@m5",
+        "normal",
+        "mn",
+        1
+      ],
+      "symbols": [
+        "APT-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.13877278731836273
+    },
+    {
+      "n": 11,
+      "gp": 0.13321164936562901,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x15-drawdown-trend-selective@m1",
+        "trailing-only",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "INJ-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.13321164936562901
+    },
+    {
+      "n": 7,
+      "gp": 0.12949999999999956,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1-break-retest-fast@m1",
+        "normal",
+        "sh",
+        -1
+      ],
+      "symbols": [
+        "FIL-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.12949999999999956
+    },
+    {
+      "n": 45,
+      "gp": 0.12439950728726047,
+      "gl": 0.0014625766321040247,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1x5-trend-reclaim-selective@m1",
+        "trailing",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "ARB-USDT",
+        "ATOM-USDT",
+        "INJ-USDT",
+        "DOT-USDT"
+      ],
+      "onsets": 4,
+      "pf": 85.05503544679405,
+      "noLoss": false,
+      "net": 0.12293693065515644
+    },
+    {
+      "n": 98,
+      "gp": 0.1198100306563464,
+      "gl": 0,
+      "key": [
+        1792411200000,
+        "follow",
+        "inverse-micro-5-break-close-selective@m5",
+        "trailing",
+        "mn",
+        -1
+      ],
+      "symbols": [
+        "ARB-USDT",
+        "UNI-USDT"
+      ],
+      "onsets": 2,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.1198100306563464
+    },
+    {
+      "n": 152,
+      "gp": 0.18595495271279197,
+      "gl": 0.06969425087107924,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1x5x15-break-retest-selective@m1",
+        "trailing-only",
+        "mc",
+        -1
+      ],
+      "symbols": [
+        "LTC-USDT"
+      ],
+      "onsets": 1,
+      "pf": 2.66815340417063,
+      "noLoss": false,
+      "net": 0.11626070184171274
+    },
+    {
+      "n": 25,
+      "gp": 0.11687859683289048,
+      "gl": 0.006144745456926131,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-5x15-drawdown-market-selective@m5",
+        "trailing",
+        "mn",
+        -1
+      ],
+      "symbols": [
+        "OP-USDT",
+        "ETH-USDT",
+        "BTC-USDT"
+      ],
+      "onsets": 3,
+      "pf": 19.020901297245636,
+      "noLoss": false,
+      "net": 0.11073385137596435
+    },
+    {
+      "n": 15,
+      "gp": 0.10971990257480953,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x5x15-change-roc-fast@m1",
+        "trailing",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "INJ-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.10971990257480953
+    },
+    {
+      "n": 40,
+      "gp": 0.10900000000000239,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-5-market-continuation-fast@m5",
+        "trailing",
+        "mc",
+        1
+      ],
+      "symbols": [
+        "OP-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.10900000000000239
+    },
+    {
+      "n": 9,
+      "gp": 0.1089913494809692,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x15-drawdown-trend-selective@m1",
+        "trailing",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "INJ-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.1089913494809692
+    },
+    {
+      "n": 583,
+      "gp": 1.0486895967023635,
+      "gl": 0.941433772766516,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1x15-drawdown-turn-fast@m1",
+        "trailing",
+        "mn",
+        -1
+      ],
+      "symbols": [
+        "ARB-USDT",
+        "SUI-USDT",
+        "INJ-USDT",
+        "ATOM-USDT",
+        "APT-USDT",
+        "OP-USDT",
+        "SOL-USDT",
+        "ADA-USDT",
+        "ETC-USDT",
+        "DOGE-USDT"
+      ],
+      "onsets": 12,
+      "pf": 1.1139281668434982,
+      "noLoss": false,
+      "net": 0.10725582393584754
+    },
+    {
+      "n": 56,
+      "gp": 0.12299999999999932,
+      "gl": 0.01762499999999988,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-5-break-activity-fast@m5",
+        "normal",
+        "mc",
+        1
+      ],
+      "symbols": [
+        "NEAR-USDT",
+        "LINK-USDT"
+      ],
+      "onsets": 3,
+      "pf": 6.9787234042553274,
+      "noLoss": false,
+      "net": 0.10537499999999944
+    },
+    {
+      "n": 41,
+      "gp": 0.11000000000000076,
+      "gl": 0.005613522156236483,
+      "key": [
+        1792411200000,
+        "follow",
+        "inverse-micro-5-activity-acceleration-fast@m5",
+        "trailing",
+        "mc",
+        1
+      ],
+      "symbols": [
+        "FIL-USDT",
+        "ADA-USDT"
+      ],
+      "onsets": 2,
+      "pf": 19.59554036458082,
+      "noLoss": false,
+      "net": 0.10438647784376429
+    },
+    {
+      "n": 14,
+      "gp": 0.10240524240315556,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x5x15-change-roc-fast@m1",
+        "trailing-only",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "INJ-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.10240524240315556
+    },
+    {
+      "n": 13,
+      "gp": 0.09509058223150159,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x5x15-change-roc-selective@m1",
+        "trailing-only",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "INJ-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.09509058223150159
+    },
+    {
+      "n": 32,
+      "gp": 0.09500000000000207,
+      "gl": 0,
+      "key": [
+        1792411200000,
+        "follow",
+        "inverse-micro-5-activity-acceleration-fast@m5",
+        "normal",
+        "mc",
+        1
+      ],
+      "symbols": [
+        "FIL-USDT",
+        "ADA-USDT"
+      ],
+      "onsets": 2,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.09500000000000207
+    },
+    {
+      "n": 7,
+      "gp": 0.09449999999999957,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1x15-break-direction-selective@m1",
+        "normal",
+        "mn",
+        -1
+      ],
+      "symbols": [
+        "DOT-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.09449999999999957
+    },
+    {
+      "n": 7,
+      "gp": 0.09449999999999957,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1x5x15-break-direction-selective@m1",
+        "normal",
+        "mn",
+        -1
+      ],
+      "symbols": [
+        "DOT-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.09449999999999957
+    },
+    {
+      "n": 7,
+      "gp": 0.09449999999999957,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1x5-break-direction-selective@m1",
+        "normal",
+        "mn",
+        -1
+      ],
+      "symbols": [
+        "DOT-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.09449999999999957
+    },
+    {
+      "n": 40,
+      "gp": 0.09262208309618308,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1x15-trend-reclaim-selective@m1",
+        "trailing",
+        "mn",
+        -1
+      ],
+      "symbols": [
+        "ATOM-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.09262208309618308
+    },
+    {
+      "n": 13,
+      "gp": 0.09149999999999915,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1-flow-break-fast@m1",
+        "normal",
+        "mn",
+        1
+      ],
+      "symbols": [
+        "BCH-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.09149999999999915
+    },
+    {
+      "n": 47,
+      "gp": 0.09200000000000153,
+      "gl": 0.005000000000000036,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-5x15-break-close-fast@m5",
+        "normal",
+        "mc",
+        1
+      ],
+      "symbols": [
+        "LINK-USDT",
+        "NEAR-USDT"
+      ],
+      "onsets": 3,
+      "pf": 18.400000000000173,
+      "noLoss": false,
+      "net": 0.08700000000000149
+    },
+    {
+      "n": 7,
+      "gp": 0.08477104959630938,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x5x15-drawdown-trend-selective@m1",
+        "normal",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "INJ-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.08477104959630938
+    },
+    {
+      "n": 44,
+      "gp": 0.09999999999999826,
+      "gl": 0.01762499999999988,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-5x15-activity-flow-selective@m5",
+        "normal",
+        "mc",
+        1
+      ],
+      "symbols": [
+        "NEAR-USDT",
+        "LINK-USDT"
+      ],
+      "onsets": 2,
+      "pf": 5.673758865248167,
+      "noLoss": false,
+      "net": 0.08237499999999838
+    },
+    {
+      "n": 49,
+      "gp": 0.09400000000000248,
+      "gl": 0.011749999999999918,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-5-market-momentum-fast@m5",
+        "normal",
+        "mc",
+        1
+      ],
+      "symbols": [
+        "LINK-USDT",
+        "NEAR-USDT",
+        "OP-USDT",
+        "ADA-USDT"
+      ],
+      "onsets": 4,
+      "pf": 8.000000000000266,
+      "noLoss": false,
+      "net": 0.08225000000000257
+    },
+    {
+      "n": 10,
+      "gp": 0.0802823611433892,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x15-break-retest-selective@m1",
+        "trailing",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "INJ-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.0802823611433892
+    },
+    {
+      "n": 10,
+      "gp": 0.0802823611433892,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x5x15-break-retest-selective@m1",
+        "trailing",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "INJ-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.0802823611433892
+    },
+    {
+      "n": 10,
+      "gp": 0.0802823611433892,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x5x15-break-retest-fast@m1",
+        "trailing",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "INJ-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.0802823611433892
+    },
+    {
+      "n": 65,
+      "gp": 0.1037922702702869,
+      "gl": 0.023688308172834793,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-5x15-market-follow-fast@m5",
+        "trailing",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "DOT-USDT",
+        "ADA-USDT",
+        "AVAX-USDT",
+        "ETH-USDT",
+        "FIL-USDT",
+        "LINK-USDT",
+        "XRP-USDT"
+      ],
+      "onsets": 7,
+      "pf": 4.3815822351261655,
+      "noLoss": false,
+      "net": 0.0801039620974521
+    },
+    {
+      "n": 42,
+      "gp": 0.08915223033048843,
+      "gl": 0.012978209602143059,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-5x15-market-follow-fast@m5",
+        "trailing-only",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "DOT-USDT",
+        "ADA-USDT",
+        "AVAX-USDT",
+        "ETH-USDT",
+        "FIL-USDT",
+        "LINK-USDT",
+        "XRP-USDT",
+        "SUI-USDT"
+      ],
+      "onsets": 8,
+      "pf": 6.869378216527413,
+      "noLoss": false,
+      "net": 0.07617402072834537
+    },
+    {
+      "n": 47,
+      "gp": 0.09141382859179412,
+      "gl": 0.016380450169653102,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-5x15-drawdown-market-fast@m5",
+        "trailing-only",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "DOT-USDT",
+        "ETH-USDT",
+        "XRP-USDT",
+        "ADA-USDT",
+        "AVAX-USDT",
+        "FIL-USDT",
+        "LINK-USDT",
+        "SUI-USDT"
+      ],
+      "onsets": 8,
+      "pf": 5.580666443535845,
+      "noLoss": false,
+      "net": 0.07503337842214101
+    },
+    {
+      "n": 29,
+      "gp": 0.07500000000000051,
+      "gl": 0,
+      "key": [
+        1792411200000,
+        "follow",
+        "inverse-micro-5-activity-acceleration-selective@m5",
+        "normal",
+        "mc",
+        1
+      ],
+      "symbols": [
+        "FIL-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.07500000000000051
+    },
+    {
+      "n": 60,
+      "gp": 0.0733530799936807,
+      "gl": 0,
+      "key": [
+        1792411200000,
+        "follow",
+        "inverse-micro-5-break-close-selective@m5",
+        "trailing-only",
+        "mn",
+        -1
+      ],
+      "symbols": [
+        "ARB-USDT",
+        "UNI-USDT"
+      ],
+      "onsets": 2,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.0733530799936807
+    },
+    {
+      "n": 6,
+      "gp": 0.07266089965397947,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x15-drawdown-trend-selective@m1",
+        "normal",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "INJ-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.07266089965397947
+    },
+    {
+      "n": 27,
+      "gp": 0.07000000000000194,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-5-market-continuation-fast@m5",
+        "normal",
+        "mc",
+        1
+      ],
+      "symbols": [
+        "OP-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.07000000000000194
+    },
+    {
+      "n": 175,
+      "gp": 0.11268746953219598,
+      "gl": 0.04509964246016442,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1-activity-absorb-selective@m1",
+        "trailing",
+        "mn",
+        -1
+      ],
+      "symbols": [
+        "FIL-USDT",
+        "XRP-USDT",
+        "SOL-USDT",
+        "ETC-USDT",
+        "ADA-USDT",
+        "DOGE-USDT",
+        "UNI-USDT"
+      ],
+      "onsets": 7,
+      "pf": 2.49863332357303,
+      "noLoss": false,
+      "net": 0.06758782707203156
+    },
+    {
+      "n": 58,
+      "gp": 0.07204735595896469,
+      "gl": 0.005165877400681378,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-5x15-drawdown-market-selective@m5",
+        "trailing",
+        "mn",
+        -1
+      ],
+      "symbols": [
+        "DOT-USDT"
+      ],
+      "onsets": 1,
+      "pf": 13.94678006672432,
+      "noLoss": false,
+      "net": 0.06688147855828332
+    },
+    {
+      "n": 25,
+      "gp": 0.07043744802733694,
+      "gl": 0.0036132596685078087,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-5x15-drawdown-market-selective@m5",
+        "trailing-only",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "DOT-USDT",
+        "AVAX-USDT",
+        "FIL-USDT",
+        "LINK-USDT",
+        "XRP-USDT"
+      ],
+      "onsets": 5,
+      "pf": 19.494156105427635,
+      "noLoss": false,
+      "net": 0.06682418835882913
+    },
+    {
+      "n": 4,
+      "gp": 0.06599999999999992,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "micro-1-activity-absorb-fast@m1",
+        "normal",
+        "sh",
+        -1
+      ],
+      "symbols": [
+        "OP-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.06599999999999992
+    },
+    {
+      "n": 8,
+      "gp": 0.06422588891471136,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x15-break-retest-selective@m1",
+        "normal",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "INJ-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.06422588891471136
+    },
+    {
+      "n": 8,
+      "gp": 0.06422588891471136,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x5x15-break-retest-selective@m1",
+        "normal",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "INJ-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.06422588891471136
+    },
+    {
+      "n": 8,
+      "gp": 0.06422588891471136,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x5x15-break-retest-fast@m1",
+        "normal",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "INJ-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.06422588891471136
+    },
+    {
+      "n": 22,
+      "gp": 0.06291878388804782,
+      "gl": 0.0006863612895001941,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1x5-trend-reclaim-selective@m1",
+        "trailing-only",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "ARB-USDT",
+        "ATOM-USDT",
+        "INJ-USDT",
+        "DOT-USDT"
+      ],
+      "onsets": 4,
+      "pf": 91.67006480488587,
+      "noLoss": false,
+      "net": 0.06223242259854763
+    },
+    {
+      "n": 16,
+      "gp": 0.06174415790597873,
+      "gl": 0.0012828685258967519,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1x15-trend-reclaim-selective@m1",
+        "trailing",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "ARB-USDT",
+        "ATOM-USDT"
+      ],
+      "onsets": 2,
+      "pf": 48.12976283974094,
+      "noLoss": false,
+      "net": 0.06046128938008198
+    },
+    {
+      "n": 16,
+      "gp": 0.06174415790597873,
+      "gl": 0.0012828685258967519,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1x5x15-trend-reclaim-selective@m1",
+        "trailing",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "ARB-USDT",
+        "ATOM-USDT"
+      ],
+      "onsets": 2,
+      "pf": 48.12976283974094,
+      "noLoss": false,
+      "net": 0.06046128938008198
+    },
+    {
+      "n": 160,
+      "gp": 0.19585139427785278,
+      "gl": 0.13572263413460633,
+      "key": [
+        1792411200000,
+        "follow",
+        "inverse-micro-5-break-close-selective@m5",
+        "trailing",
+        "mc",
+        -1
+      ],
+      "symbols": [
+        "UNI-USDT",
+        "ARB-USDT"
+      ],
+      "onsets": 2,
+      "pf": 1.4430267694599284,
+      "noLoss": false,
+      "net": 0.060128760143246446
+    },
+    {
+      "n": 17,
+      "gp": 0.06312681370152096,
+      "gl": 0.00606510938783371,
+      "key": [
+        1792414800000,
+        "follow",
+        "micro-1-activity-absorb-fast@m1",
+        "trailing-only",
+        "sh",
+        -1
+      ],
+      "symbols": [
+        "OP-USDT",
+        "SUI-USDT",
+        "SOL-USDT",
+        "ETH-USDT",
+        "XLM-USDT"
+      ],
+      "onsets": 5,
+      "pf": 10.408190465311312,
+      "noLoss": false,
+      "net": 0.05706170431368725
+    },
+    {
+      "n": 51,
+      "gp": 0.05556712843262848,
+      "gl": 0.0008864205779189943,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-5x15-drawdown-market-selective@m5",
+        "trailing-only",
+        "sh",
+        -1
+      ],
+      "symbols": [
+        "DOT-USDT",
+        "LTC-USDT",
+        "ATOM-USDT"
+      ],
+      "onsets": 3,
+      "pf": 62.68709212852513,
+      "noLoss": false,
+      "net": 0.054680707854709486
+    },
+    {
+      "n": 8,
+      "gp": 0.051651226158038084,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-5x15-break-close-selective@m5",
+        "normal",
+        "mn",
+        1
+      ],
+      "symbols": [
+        "BCH-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.051651226158038084
+    },
+    {
+      "n": 7,
+      "gp": 0.05120262120157778,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x5x15-change-roc-fast@m1",
+        "normal",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "INJ-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.05120262120157778
+    },
+    {
+      "n": 44,
+      "gp": 0.04913284918971887,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-5x15-drawdown-market-fast@m5",
+        "trailing-only",
+        "sh",
+        -1
+      ],
+      "symbols": [
+        "DOT-USDT",
+        "ATOM-USDT"
+      ],
+      "onsets": 2,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.04913284918971887
+    },
+    {
+      "n": 35,
+      "gp": 0.06400000000000046,
+      "gl": 0.016749999999999952,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-5x15-market-momentum-fast@m5",
+        "normal",
+        "mc",
+        1
+      ],
+      "symbols": [
+        "LINK-USDT",
+        "NEAR-USDT",
+        "ADA-USDT"
+      ],
+      "onsets": 3,
+      "pf": 3.820895522388098,
+      "noLoss": false,
+      "net": 0.04725000000000051
+    },
+    {
+      "n": 18,
+      "gp": 0.046999999999999,
+      "gl": 0,
+      "key": [
+        1792411200000,
+        "follow",
+        "inverse-micro-1x5x15-drawdown-market-selective@m1",
+        "normal",
+        "mc",
+        -1
+      ],
+      "symbols": [
+        "UNI-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.046999999999999
+    },
+    {
+      "n": 40,
+      "gp": 0.04699890176323104,
+      "gl": 0,
+      "key": [
+        1792411200000,
+        "follow",
+        "inverse-micro-1x15-trend-reclaim-selective@m1",
+        "trailing",
+        "mn",
+        -1
+      ],
+      "symbols": [
+        "ARB-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.04699890176323104
+    },
+    {
+      "n": 288,
+      "gp": 0.2344580311310594,
+      "gl": 0.18767512807450407,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1-flow-break-fast@m1",
+        "trailing",
+        "mn",
+        1
+      ],
+      "symbols": [
+        "INJ-USDT",
+        "AVAX-USDT",
+        "OP-USDT",
+        "ARB-USDT",
+        "UNI-USDT",
+        "SUI-USDT",
+        "ATOM-USDT",
+        "BCH-USDT",
+        "FIL-USDT"
+      ],
+      "onsets": 11,
+      "pf": 1.2492759884409577,
+      "noLoss": false,
+      "net": 0.04678290305655533
+    },
+    {
+      "n": 7,
+      "gp": 0.045194822888283324,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-5-break-close-selective@m5",
+        "normal",
+        "mn",
+        1
+      ],
+      "symbols": [
+        "BCH-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.045194822888283324
+    },
+    {
+      "n": 8,
+      "gp": 0.041619766740050045,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x15-activity-flow-fast@m1",
+        "trailing",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "INJ-USDT",
+        "BCH-USDT"
+      ],
+      "onsets": 2,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.041619766740050045
+    },
+    {
+      "n": 9,
+      "gp": 0.03782495756516097,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x5-change-roc-fast@m1",
+        "trailing",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "INJ-USDT",
+        "ETC-USDT",
+        "NEAR-USDT"
+      ],
+      "onsets": 3,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.03782495756516097
+    },
+    {
+      "n": 44,
+      "gp": 0.036842812105923696,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1x15-flow-break-selective@m1",
+        "trailing-only",
+        "mc",
+        -1
+      ],
+      "symbols": [
+        "LTC-USDT",
+        "ATOM-USDT"
+      ],
+      "onsets": 2,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.036842812105923696
+    },
+    {
+      "n": 44,
+      "gp": 0.036842812105923696,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1x5x15-flow-break-selective@m1",
+        "trailing-only",
+        "mc",
+        -1
+      ],
+      "symbols": [
+        "LTC-USDT",
+        "ATOM-USDT"
+      ],
+      "onsets": 2,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.036842812105923696
+    },
+    {
+      "n": 58,
+      "gp": 0.07789056537617796,
+      "gl": 0.041096901703825135,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1-break-retest-selective@m1",
+        "trailing",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "ETC-USDT",
+        "SOL-USDT",
+        "DOGE-USDT",
+        "XRP-USDT",
+        "AVAX-USDT",
+        "ETH-USDT"
+      ],
+      "onsets": 6,
+      "pf": 1.8952904512733186,
+      "noLoss": false,
+      "net": 0.036793663672352823
+    },
+    {
+      "n": 35,
+      "gp": 0.062000000000000464,
+      "gl": 0.02612500000000014,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-5-market-momentum-selective@m5",
+        "normal",
+        "mc",
+        1
+      ],
+      "symbols": [
+        "LINK-USDT",
+        "NEAR-USDT",
+        "FIL-USDT"
+      ],
+      "onsets": 3,
+      "pf": 2.373205741626799,
+      "noLoss": false,
+      "net": 0.03587500000000032
+    },
+    {
+      "n": 42,
+      "gp": 0.03415896768596628,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x5-break-retest-fast@m1",
+        "trailing",
+        "sh",
+        1
+      ],
+      "symbols": [
+        "BCH-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.03415896768596628
+    },
+    {
+      "n": 42,
+      "gp": 0.03415896768596628,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x5-break-retest-selective@m1",
+        "trailing",
+        "sh",
+        1
+      ],
+      "symbols": [
+        "BCH-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.03415896768596628
+    },
+    {
+      "n": 34,
+      "gp": 0.04253111262234884,
+      "gl": 0.00845619884813587,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x5x15-change-roc-fast@m1",
+        "trailing",
+        "gn",
+        1
+      ],
+      "symbols": [
+        "ADA-USDT",
+        "SUI-USDT",
+        "DOGE-USDT"
+      ],
+      "onsets": 3,
+      "pf": 5.029578110231482,
+      "noLoss": false,
+      "net": 0.03407491377421297
+    },
+    {
+      "n": 42,
+      "gp": 0.033551724137931116,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-5x15-drawdown-market-selective@m5",
+        "normal",
+        "sh",
+        -1
+      ],
+      "symbols": [
+        "ATOM-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.033551724137931116
+    },
+    {
+      "n": 2,
+      "gp": 0.03300000000000019,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1-break-retest-selective@m1",
+        "normal",
+        "sh",
+        -1
+      ],
+      "symbols": [
+        "FIL-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.03300000000000019
+    },
+    {
+      "n": 4,
+      "gp": 0.03211294445735568,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x15-break-retest-selective@m1",
+        "trailing-only",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "INJ-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.03211294445735568
+    },
+    {
+      "n": 4,
+      "gp": 0.03211294445735568,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x5x15-break-retest-selective@m1",
+        "trailing-only",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "INJ-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.03211294445735568
+    },
+    {
+      "n": 4,
+      "gp": 0.03211294445735568,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x5x15-break-retest-fast@m1",
+        "trailing-only",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "INJ-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.03211294445735568
+    },
+    {
+      "n": 33,
+      "gp": 0.03205644301336491,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1-trend-reclaim-selective@m1",
+        "trailing",
+        "gn",
+        1
+      ],
+      "symbols": [
+        "ETH-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.03205644301336491
+    },
+    {
+      "n": 6,
+      "gp": 0.03121482505503753,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x15-activity-flow-fast@m1",
+        "normal",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "INJ-USDT",
+        "BCH-USDT"
+      ],
+      "onsets": 2,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.03121482505503753
+    },
+    {
+      "n": 4,
+      "gp": 0.030522619647355465,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1-trend-reclaim-selective@m1",
+        "trailing-only",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "ARB-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.030522619647355465
+    },
+    {
+      "n": 8,
+      "gp": 0.030872078952989896,
+      "gl": 0.0006414342629483759,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1x15-trend-reclaim-selective@m1",
+        "trailing-only",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "ARB-USDT",
+        "ATOM-USDT"
+      ],
+      "onsets": 2,
+      "pf": 48.12976283974177,
+      "noLoss": false,
+      "net": 0.03023064469004152
+    },
+    {
+      "n": 8,
+      "gp": 0.030872078952989896,
+      "gl": 0.0006414342629483759,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1x5x15-trend-reclaim-selective@m1",
+        "trailing-only",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "ARB-USDT",
+        "ATOM-USDT"
+      ],
+      "onsets": 2,
+      "pf": 48.12976283974177,
+      "noLoss": false,
+      "net": 0.03023064469004152
+    },
+    {
+      "n": 4,
+      "gp": 0.02925864068661587,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x5x15-change-roc-selective@m1",
+        "trailing",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "INJ-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.02925864068661587
+    },
+    {
+      "n": 7,
+      "gp": 0.031115720524017464,
+      "gl": 0.002457644211375662,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x5-drawdown-trend-selective@m1",
+        "normal",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "NEAR-USDT",
+        "UNI-USDT"
+      ],
+      "onsets": 2,
+      "pf": 12.66079133016593,
+      "noLoss": false,
+      "net": 0.028658076312641802
+    },
+    {
+      "n": 38,
+      "gp": 0.06400000000000046,
+      "gl": 0.036125000000000074,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-5x15-market-momentum-selective@m5",
+        "normal",
+        "mc",
+        1
+      ],
+      "symbols": [
+        "LINK-USDT",
+        "NEAR-USDT",
+        "FIL-USDT"
+      ],
+      "onsets": 3,
+      "pf": 1.7716262975778638,
+      "noLoss": false,
+      "net": 0.027875000000000386
+    },
+    {
+      "n": 16,
+      "gp": 0.02749568534596372,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-5x15-drawdown-market-selective@m5",
+        "trailing-only",
+        "mn",
+        -1
+      ],
+      "symbols": [
+        "DOT-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.02749568534596372
+    },
+    {
+      "n": 44,
+      "gp": 0.06600000000000214,
+      "gl": 0.038664013701389825,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-5-break-close-fast@m5",
+        "trailing",
+        "mc",
+        1
+      ],
+      "symbols": [
+        "NEAR-USDT",
+        "INJ-USDT",
+        "OP-USDT"
+      ],
+      "onsets": 4,
+      "pf": 1.707013671931057,
+      "noLoss": false,
+      "net": 0.027335986298612315
+    },
+    {
+      "n": 33,
+      "gp": 0.02636206896551731,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-5x15-drawdown-market-fast@m5",
+        "normal",
+        "sh",
+        -1
+      ],
+      "symbols": [
+        "ATOM-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.02636206896551731
+    },
+    {
+      "n": 20,
+      "gp": 0.0282480334917933,
+      "gl": 0.0018993734025879656,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1x15-market-follow-fast@m1",
+        "trailing",
+        "mn",
+        -1
+      ],
+      "symbols": [
+        "OP-USDT",
+        "XRP-USDT",
+        "SOL-USDT",
+        "BTC-USDT"
+      ],
+      "onsets": 4,
+      "pf": 14.872290752994816,
+      "noLoss": false,
+      "net": 0.026348660089205334
+    },
+    {
+      "n": 46,
+      "gp": 0.06104934360663374,
+      "gl": 0.035305450030005577,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1-break-retest-selective@m1",
+        "trailing-only",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "ETC-USDT",
+        "SOL-USDT",
+        "DOGE-USDT",
+        "XRP-USDT",
+        "AVAX-USDT",
+        "ETH-USDT"
+      ],
+      "onsets": 6,
+      "pf": 1.729176191062536,
+      "noLoss": false,
+      "net": 0.025743893576628166
+    },
+    {
+      "n": 8,
+      "gp": 0.023999999999999792,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "micro-1-relative-trend-selective@m1",
+        "normal",
+        "mc",
+        -1
+      ],
+      "symbols": [
+        "OP-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.023999999999999792
+    },
+    {
+      "n": 75,
+      "gp": 0.022708459214505344,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-5-break-close-selective@m5",
+        "normal",
+        "mc",
+        1
+      ],
+      "symbols": [
+        "LTC-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.022708459214505344
+    },
+    {
+      "n": 4,
+      "gp": 0.020809883370025022,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x15-break-activity-fast@m1",
+        "trailing",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "INJ-USDT",
+        "BCH-USDT"
+      ],
+      "onsets": 2,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.020809883370025022
+    },
+    {
+      "n": 18,
+      "gp": 0.020781612090682813,
+      "gl": 0,
+      "key": [
+        1792411200000,
+        "follow",
+        "inverse-micro-1x5x15-market-continuation-selective@m1",
+        "trailing",
+        "mn",
+        -1
+      ],
+      "symbols": [
+        "ARB-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.020781612090682813
+    },
+    {
+      "n": 18,
+      "gp": 0.020781612090682813,
+      "gl": 0,
+      "key": [
+        1792411200000,
+        "follow",
+        "inverse-micro-1x15-market-continuation-selective@m1",
+        "trailing",
+        "mn",
+        -1
+      ],
+      "symbols": [
+        "ARB-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.020781612090682813
+    },
+    {
+      "n": 31,
+      "gp": 0.07977804043518236,
+      "gl": 0.0604939151223705,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1-drawdown-trend-selective@m1",
+        "trailing-only",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "AVAX-USDT",
+        "FIL-USDT",
+        "SUI-USDT",
+        "UNI-USDT",
+        "XRP-USDT",
+        "XLM-USDT"
+      ],
+      "onsets": 6,
+      "pf": 1.3187779345046993,
+      "noLoss": false,
+      "net": 0.01928412531281186
+    },
+    {
+      "n": 16,
+      "gp": 0.018759788413099533,
+      "gl": 0,
+      "key": [
+        1792411200000,
+        "follow",
+        "inverse-micro-1x5x15-market-continuation-selective@m1",
+        "trailing-only",
+        "mn",
+        -1
+      ],
+      "symbols": [
+        "ARB-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.018759788413099533
+    },
+    {
+      "n": 16,
+      "gp": 0.018759788413099533,
+      "gl": 0,
+      "key": [
+        1792411200000,
+        "follow",
+        "inverse-micro-1x15-market-continuation-selective@m1",
+        "trailing-only",
+        "mn",
+        -1
+      ],
+      "symbols": [
+        "ARB-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.018759788413099533
+    },
+    {
+      "n": 14,
+      "gp": 0.02253334916864594,
+      "gl": 0.0038845110538454517,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1-market-continuation-selective@m1",
+        "trailing-only",
+        "mn",
+        -1
+      ],
+      "symbols": [
+        "UNI-USDT",
+        "SOL-USDT"
+      ],
+      "onsets": 2,
+      "pf": 5.800819937515473,
+      "noLoss": false,
+      "net": 0.018648838114800486
+    },
+    {
+      "n": 22,
+      "gp": 0.02695024652077769,
+      "gl": 0.00845619884813587,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x5x15-change-roc-fast@m1",
+        "trailing-only",
+        "gn",
+        1
+      ],
+      "symbols": [
+        "ADA-USDT",
+        "SUI-USDT",
+        "DOGE-USDT"
+      ],
+      "onsets": 3,
+      "pf": 3.1870403008224844,
+      "noLoss": false,
+      "net": 0.018494047672641817
+    },
+    {
+      "n": 9,
+      "gp": 0.017999999999999926,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-5x15-market-momentum-fast@m5",
+        "trailing",
+        "mc",
+        -1
+      ],
+      "symbols": [
+        "ARB-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.017999999999999926
+    },
+    {
+      "n": 9,
+      "gp": 0.017999999999999468,
+      "gl": 0,
+      "key": [
+        1792411200000,
+        "follow",
+        "inverse-micro-5x15-market-momentum-fast@m5",
+        "trailing",
+        "mc",
+        -1
+      ],
+      "symbols": [
+        "ARB-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.017999999999999468
+    },
+    {
+      "n": 568,
+      "gp": 0.4839493236422271,
+      "gl": 0.4661485370479558,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-5-break-retest-fast@m5",
+        "trailing-only",
+        "mc",
+        1
+      ],
+      "symbols": [
+        "ARB-USDT",
+        "APT-USDT",
+        "AVAX-USDT",
+        "LINK-USDT",
+        "NEAR-USDT",
+        "XLM-USDT",
+        "LTC-USDT"
+      ],
+      "onsets": 7,
+      "pf": 1.0381869408129023,
+      "noLoss": false,
+      "net": 0.01780078659427131
+    },
+    {
+      "n": 35,
+      "gp": 0.05800000000000092,
+      "gl": 0.0405000000000003,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-5x15-break-close-selective@m5",
+        "normal",
+        "mc",
+        1
+      ],
+      "symbols": [
+        "LINK-USDT",
+        "FIL-USDT",
+        "NEAR-USDT"
+      ],
+      "onsets": 3,
+      "pf": 1.432098765432111,
+      "noLoss": false,
+      "net": 0.01750000000000062
+    },
+    {
+      "n": 35,
+      "gp": 0.05800000000000092,
+      "gl": 0.0405000000000003,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-5-break-close-selective@m5",
+        "normal",
+        "mc",
+        1
+      ],
+      "symbols": [
+        "LINK-USDT",
+        "FIL-USDT",
+        "NEAR-USDT"
+      ],
+      "onsets": 3,
+      "pf": 1.432098765432111,
+      "noLoss": false,
+      "net": 0.01750000000000062
+    },
+    {
+      "n": 3,
+      "gp": 0.016849338811144213,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1x5-break-retest-selective@m1",
+        "trailing",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "APT-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.016849338811144213
+    },
+    {
+      "n": 1,
+      "gp": 0.016500000000000094,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1-break-retest-selective@m1",
+        "trailing",
+        "sh",
+        -1
+      ],
+      "symbols": [
+        "FIL-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.016500000000000094
+    },
+    {
+      "n": 15,
+      "gp": 0.01645438909291711,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-5-market-momentum-fast@m5",
+        "trailing",
+        "mc",
+        -1
+      ],
+      "symbols": [
+        "ARB-USDT",
+        "BTC-USDT"
+      ],
+      "onsets": 2,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.01645438909291711
+    },
+    {
+      "n": 63,
+      "gp": 0.024705031779663298,
+      "gl": 0.00912385240112906,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-5x15-break-close-fast@m5",
+        "trailing",
+        "mn",
+        1
+      ],
+      "symbols": [
+        "DOT-USDT"
+      ],
+      "onsets": 1,
+      "pf": 2.707741280054694,
+      "noLoss": false,
+      "net": 0.015581179378534237
+    },
+    {
+      "n": 4,
+      "gp": 0.018674267807343468,
+      "gl": 0.0033433179723502834,
+      "key": [
+        1792440000000,
+        "exit",
+        "inverse-micro-1-flow-break-selective@m1",
+        "exit",
+        "wide",
+        -1
+      ],
+      "symbols": [
+        "ADA-USDT",
+        "SUI-USDT",
+        "NEAR-USDT",
+        "INJ-USDT"
+      ],
+      "onsets": 4,
+      "pf": 5.585549433760811,
+      "noLoss": false,
+      "net": 0.015330949834993184
+    },
+    {
+      "n": 6,
+      "gp": 0.014878596832889808,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-5x15-drawdown-market-selective@m5",
+        "trailing",
+        "sh",
+        -1
+      ],
+      "symbols": [
+        "ETH-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.014878596832889808
+    },
+    {
+      "n": 2,
+      "gp": 0.014629320343307935,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x5x15-activity-flow-fast@m1",
+        "trailing",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "INJ-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.014629320343307935
+    },
+    {
+      "n": 2,
+      "gp": 0.014629320343307935,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x5x15-break-activity-fast@m1",
+        "trailing",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "INJ-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.014629320343307935
+    },
+    {
+      "n": 6,
+      "gp": 0.014509734280453608,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-5x15-market-follow-fast@m5",
+        "trailing",
+        "mn",
+        -1
+      ],
+      "symbols": [
+        "DOT-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.014509734280453608
+    },
+    {
+      "n": 6,
+      "gp": 0.014509734280453608,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-5x15-drawdown-market-fast@m5",
+        "trailing",
+        "mn",
+        -1
+      ],
+      "symbols": [
+        "DOT-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.014509734280453608
+    },
+    {
+      "n": 7,
+      "gp": 0.014000000000000578,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-5-market-momentum-fast@m5",
+        "trailing",
+        "mc",
+        1
+      ],
+      "symbols": [
+        "DOT-USDT",
+        "LTC-USDT"
+      ],
+      "onsets": 2,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.014000000000000578
+    },
+    {
+      "n": 26,
+      "gp": 0.03052919388919865,
+      "gl": 0.01691239769627174,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x5x15-change-roc-selective@m1",
+        "trailing-only",
+        "gn",
+        1
+      ],
+      "symbols": [
+        "ADA-USDT",
+        "SUI-USDT",
+        "DOGE-USDT"
+      ],
+      "onsets": 3,
+      "pf": 1.8051369437657363,
+      "noLoss": false,
+      "net": 0.013616796192926908
+    },
+    {
+      "n": 14,
+      "gp": 0.013599703096579064,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1-trend-reclaim-selective@m1",
+        "trailing-only",
+        "gn",
+        1
+      ],
+      "symbols": [
+        "ETH-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.013599703096579064
+    },
+    {
+      "n": 16,
+      "gp": 0.013012940070844293,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x5-break-retest-fast@m1",
+        "trailing-only",
+        "sh",
+        1
+      ],
+      "symbols": [
+        "BCH-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.013012940070844293
+    },
+    {
+      "n": 46,
+      "gp": 0.03624495962769693,
+      "gl": 0.02331036368792597,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-5x15-drawdown-market-fast@m5",
+        "trailing",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "DOT-USDT",
+        "ETH-USDT",
+        "XRP-USDT",
+        "AVAX-USDT",
+        "LINK-USDT"
+      ],
+      "onsets": 5,
+      "pf": 1.5548860632522292,
+      "noLoss": false,
+      "net": 0.012934595939770959
+    },
+    {
+      "n": 3,
+      "gp": 0.012185327943502793,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x5-change-roc-fast@m1",
+        "trailing-only",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "INJ-USDT",
+        "ETC-USDT",
+        "NEAR-USDT"
+      ],
+      "onsets": 3,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.012185327943502793
+    },
+    {
+      "n": 6,
+      "gp": 0.01199999999999995,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-5x15-break-close-selective@m5",
+        "normal",
+        "mc",
+        -1
+      ],
+      "symbols": [
+        "ARB-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.01199999999999995
+    },
+    {
+      "n": 6,
+      "gp": 0.011999999999999622,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-5-activity-acceleration-selective@m5",
+        "normal",
+        "mc",
+        -1
+      ],
+      "symbols": [
+        "APT-USDT",
+        "INJ-USDT"
+      ],
+      "onsets": 2,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.011999999999999622
+    },
+    {
+      "n": 12,
+      "gp": 0.01165688836849634,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x5-trend-reclaim-selective@m1",
+        "trailing",
+        "gn",
+        1
+      ],
+      "symbols": [
+        "ETH-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.01165688836849634
+    },
+    {
+      "n": 1,
+      "gp": 0.011551513051513,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x5x15-break-activity-selective@m1",
+        "trailing",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "INJ-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.011551513051513
+    },
+    {
+      "n": 1,
+      "gp": 0.011551513051513,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x5x15-break-activity-selective@m1",
+        "normal",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "INJ-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.011551513051513
+    },
+    {
+      "n": 14,
+      "gp": 0.011386322561988755,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x5-break-retest-selective@m1",
+        "trailing-only",
+        "sh",
+        1
+      ],
+      "symbols": [
+        "BCH-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.011386322561988755
+    },
+    {
+      "n": 2,
+      "gp": 0.01040494168501251,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x15-break-activity-fast@m1",
+        "normal",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "INJ-USDT",
+        "BCH-USDT"
+      ],
+      "onsets": 2,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.01040494168501251
+    },
+    {
+      "n": 32,
+      "gp": 0.05499999999999954,
+      "gl": 0.04462499999999995,
+      "key": [
+        1792411200000,
+        "follow",
+        "inverse-micro-5-break-close-selective@m5",
+        "normal",
+        "mc",
+        -1
+      ],
+      "symbols": [
+        "ARB-USDT",
+        "UNI-USDT"
+      ],
+      "onsets": 2,
+      "pf": 1.2324929971988707,
+      "noLoss": false,
+      "net": 0.010374999999999593
+    },
+    {
+      "n": 8,
+      "gp": 0.011786717062635526,
+      "gl": 0.0016021798365122948,
+      "key": [
+        1792411200000,
+        "follow",
+        "inverse-micro-1x5-market-continuation-selective@m1",
+        "trailing-only",
+        "mn",
+        -1
+      ],
+      "symbols": [
+        "ARB-USDT",
+        "UNI-USDT"
+      ],
+      "onsets": 2,
+      "pf": 7.356675445556375,
+      "noLoss": false,
+      "net": 0.010184537226123232
+    },
+    {
+      "n": 27,
+      "gp": 0.06388598058063875,
+      "gl": 0.05379732119918095,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1-drawdown-trend-selective@m1",
+        "trailing",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "AVAX-USDT",
+        "FIL-USDT",
+        "SUI-USDT",
+        "UNI-USDT",
+        "XRP-USDT",
+        "XLM-USDT"
+      ],
+      "onsets": 6,
+      "pf": 1.1875308873485582,
+      "noLoss": false,
+      "net": 0.010088659381457803
+    },
+    {
+      "n": 18,
+      "gp": 0.014461662439229285,
+      "gl": 0.005301682492087213,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1x5-market-continuation-selective@m1",
+        "trailing-only",
+        "mn",
+        -1
+      ],
+      "symbols": [
+        "SUI-USDT",
+        "DOGE-USDT",
+        "LTC-USDT"
+      ],
+      "onsets": 3,
+      "pf": 2.7277496268049597,
+      "noLoss": false,
+      "net": 0.009159979947142072
+    },
+    {
+      "n": 12,
+      "gp": 0.008748992950655059,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-5-break-retest-fast@m5",
+        "trailing",
+        "mc",
+        1
+      ],
+      "symbols": [
+        "LTC-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.008748992950655059
+    },
+    {
+      "n": 3,
+      "gp": 0.008482779515736859,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1x5-break-retest-fast@m1",
+        "trailing",
+        "mn",
+        -1
+      ],
+      "symbols": [
+        "LINK-USDT",
+        "SOL-USDT",
+        "DOGE-USDT"
+      ],
+      "onsets": 3,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.008482779515736859
+    },
+    {
+      "n": 14,
+      "gp": 0.01524224072672268,
+      "gl": 0.006974645336552662,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1-flow-break-fast@m1",
+        "trailing",
+        "sh",
+        1
+      ],
+      "symbols": [
+        "BCH-USDT",
+        "SUI-USDT"
+      ],
+      "onsets": 2,
+      "pf": 2.185378609409897,
+      "noLoss": false,
+      "net": 0.008267595390170017
+    },
+    {
+      "n": 1,
+      "gp": 0.00802823611433892,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x5-break-retest-selective@m1",
+        "trailing",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "INJ-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.00802823611433892
+    },
+    {
+      "n": 1,
+      "gp": 0.00802823611433892,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x5-break-retest-selective@m1",
+        "trailing-only",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "INJ-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.00802823611433892
+    },
+    {
+      "n": 1,
+      "gp": 0.00802823611433892,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x5x15-activity-acceleration-fast@m1",
+        "trailing",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "INJ-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.00802823611433892
+    },
+    {
+      "n": 1,
+      "gp": 0.00802823611433892,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x5x15-activity-acceleration-fast@m1",
+        "normal",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "INJ-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.00802823611433892
+    },
+    {
+      "n": 1,
+      "gp": 0.00802823611433892,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x5-break-retest-fast@m1",
+        "trailing",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "INJ-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.00802823611433892
+    },
+    {
+      "n": 1,
+      "gp": 0.00802823611433892,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x5-break-retest-fast@m1",
+        "trailing-only",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "INJ-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.00802823611433892
+    },
+    {
+      "n": 11,
+      "gp": 0.008019910204767137,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-5-break-retest-fast@m5",
+        "trailing-only",
+        "mc",
+        1
+      ],
+      "symbols": [
+        "LTC-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.008019910204767137
+    },
+    {
+      "n": 4,
+      "gp": 0.008000000000000358,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-5x15-break-close-fast@m5",
+        "normal",
+        "mc",
+        1
+      ],
+      "symbols": [
+        "DOT-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.008000000000000358
+    },
+    {
+      "n": 8,
+      "gp": 0.007771258912330893,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x15-trend-reclaim-selective@m1",
+        "trailing",
+        "gn",
+        1
+      ],
+      "symbols": [
+        "ETH-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.007771258912330893
+    },
+    {
+      "n": 3,
+      "gp": 0.007439298416444343,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-5x15-drawdown-market-selective@m5",
+        "trailing-only",
+        "sh",
+        -1
+      ],
+      "symbols": [
+        "ETH-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.007439298416444343
+    },
+    {
+      "n": 1,
+      "gp": 0.007314660171653968,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x5x15-activity-flow-fast@m1",
+        "normal",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "INJ-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.007314660171653968
+    },
+    {
+      "n": 1,
+      "gp": 0.007314660171653968,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x5x15-break-activity-fast@m1",
+        "normal",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "INJ-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.007314660171653968
+    },
+    {
+      "n": 47,
+      "gp": 0.06400000000000329,
+      "gl": 0.05696295232624931,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-5x15-market-momentum-fast@m5",
+        "normal",
+        "mc",
+        1
+      ],
+      "symbols": [
+        "DOT-USDT",
+        "LTC-USDT",
+        "ATOM-USDT"
+      ],
+      "onsets": 3,
+      "pf": 1.123537270916894,
+      "noLoss": false,
+      "net": 0.007037047673753981
+    },
+    {
+      "n": 8,
+      "gp": 0.009919064555259123,
+      "gl": 0.003511283118243504,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-5x15-drawdown-market-selective@m5",
+        "trailing-only",
+        "mn",
+        -1
+      ],
+      "symbols": [
+        "ETH-USDT",
+        "BTC-USDT"
+      ],
+      "onsets": 2,
+      "pf": 2.824911640910651,
+      "noLoss": false,
+      "net": 0.006407781437015619
+    },
+    {
+      "n": 35,
+      "gp": 0.0219439805149619,
+      "gl": 0.015728922952804245,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x5-activity-flow-fast@m1",
+        "trailing",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "INJ-USDT",
+        "NEAR-USDT"
+      ],
+      "onsets": 2,
+      "pf": 1.3951356097811898,
+      "noLoss": false,
+      "net": 0.006215057562157657
+    },
+    {
+      "n": 11,
+      "gp": 0.008788725956456855,
+      "gl": 0.0026508412460436066,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1x5-market-continuation-selective@m1",
+        "trailing",
+        "mn",
+        -1
+      ],
+      "symbols": [
+        "SUI-USDT",
+        "DOGE-USDT",
+        "LTC-USDT"
+      ],
+      "onsets": 3,
+      "pf": 3.3154478675681056,
+      "noLoss": false,
+      "net": 0.006137884710413249
+    },
+    {
+      "n": 6,
+      "gp": 0.005828444184248169,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x5-trend-reclaim-selective@m1",
+        "trailing-only",
+        "gn",
+        1
+      ],
+      "symbols": [
+        "ETH-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.005828444184248169
+    },
+    {
+      "n": 1,
+      "gp": 0.005616446270381404,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1x5-break-retest-selective@m1",
+        "trailing-only",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "APT-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.005616446270381404
+    },
+    {
+      "n": 1,
+      "gp": 0.005616446270381404,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1x5-break-retest-fast@m1",
+        "trailing-only",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "APT-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.005616446270381404
+    },
+    {
+      "n": 1,
+      "gp": 0.005616446270381404,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1x5-break-retest-fast@m1",
+        "trailing",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "APT-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.005616446270381404
+    },
+    {
+      "n": 2,
+      "gp": 0.005219090095030276,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1-break-retest-fast@m1",
+        "trailing-only",
+        "sh",
+        -1
+      ],
+      "symbols": [
+        "NEAR-USDT",
+        "INJ-USDT"
+      ],
+      "onsets": 2,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.005219090095030276
+    },
+    {
+      "n": 4,
+      "gp": 0.005893358531317763,
+      "gl": 0.0008010899182558672,
+      "key": [
+        1792411200000,
+        "follow",
+        "inverse-micro-1x5-market-continuation-selective@m1",
+        "trailing",
+        "mn",
+        -1
+      ],
+      "symbols": [
+        "ARB-USDT",
+        "UNI-USDT"
+      ],
+      "onsets": 2,
+      "pf": 7.356675445558947,
+      "noLoss": false,
+      "net": 0.005092268613061895
+    },
+    {
+      "n": 3,
+      "gp": 0.015898381065817455,
+      "gl": 0.011000000000000072,
+      "key": [
+        1792414800000,
+        "exit",
+        "inverse-micro-15-drawdown-market-fast@m15",
+        "exit",
+        "wide",
+        -1
+      ],
+      "symbols": [
+        "APT-USDT",
+        "NEAR-USDT",
+        "OP-USDT"
+      ],
+      "onsets": 3,
+      "pf": 1.4453073696197591,
+      "noLoss": false,
+      "net": 0.004898381065817383
+    },
+    {
+      "n": 1,
+      "gp": 0.004383973386249667,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1-break-retest-fast@m1",
+        "trailing-only",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "INJ-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.004383973386249667
+    },
+    {
+      "n": 1,
+      "gp": 0.004383973386249667,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1-break-retest-fast@m1",
+        "trailing",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "INJ-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.004383973386249667
+    },
+    {
+      "n": 1,
+      "gp": 0.0038856914468423996,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1-break-retest-selective@m1",
+        "trailing-only",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "NEAR-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.0038856914468423996
+    },
+    {
+      "n": 1,
+      "gp": 0.003885691446842222,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1-break-retest-selective@m1",
+        "trailing",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "NEAR-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.003885691446842222
+    },
+    {
+      "n": 4,
+      "gp": 0.0038856294561654455,
+      "gl": 0,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x15-trend-reclaim-selective@m1",
+        "trailing-only",
+        "gn",
+        1
+      ],
+      "symbols": [
+        "ETH-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.0038856294561654455
+    },
+    {
+      "n": 2,
+      "gp": 0.0036426858513188,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1-break-retest-selective@m1",
+        "trailing-only",
+        "sh",
+        -1
+      ],
+      "symbols": [
+        "NEAR-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.0036426858513188
+    },
+    {
+      "n": 4,
+      "gp": 0.0033546429293952965,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1x5-activity-flow-fast@m1",
+        "trailing",
+        "gn",
+        1
+      ],
+      "symbols": [
+        "NEAR-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.0033546429293952965
+    },
+    {
+      "n": 10,
+      "gp": 0.007314660171653968,
+      "gl": 0.004423759580476191,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-1x5-activity-flow-fast@m1",
+        "trailing-only",
+        "gn",
+        -1
+      ],
+      "symbols": [
+        "INJ-USDT",
+        "NEAR-USDT"
+      ],
+      "onsets": 2,
+      "pf": 1.6534940560369669,
+      "noLoss": false,
+      "net": 0.002890900591177777
+    },
+    {
+      "n": 45,
+      "gp": 0.012706744350283655,
+      "gl": 0.01022136299434922,
+      "key": [
+        1792440000000,
+        "follow",
+        "inverse-micro-5x15-break-close-fast@m5",
+        "trailing-only",
+        "mn",
+        1
+      ],
+      "symbols": [
+        "DOT-USDT"
+      ],
+      "onsets": 1,
+      "pf": 1.2431555710631208,
+      "noLoss": false,
+      "net": 0.0024853813559344348
+    },
+    {
+      "n": 2,
+      "gp": 0.0021959740320393988,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1x15-flow-break-selective@m1",
+        "trailing-only",
+        "mn",
+        -1
+      ],
+      "symbols": [
+        "LTC-USDT",
+        "ATOM-USDT"
+      ],
+      "onsets": 2,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.0021959740320393988
+    },
+    {
+      "n": 2,
+      "gp": 0.0021959740320393988,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1x5x15-flow-break-selective@m1",
+        "trailing-only",
+        "mn",
+        -1
+      ],
+      "symbols": [
+        "LTC-USDT",
+        "ATOM-USDT"
+      ],
+      "onsets": 2,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.0021959740320393988
+    },
+    {
+      "n": 2,
+      "gp": 0.0016773214646976483,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1x5-activity-flow-fast@m1",
+        "trailing-only",
+        "gn",
+        1
+      ],
+      "symbols": [
+        "NEAR-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.0016773214646976483
+    },
+    {
+      "n": 3,
+      "gp": 0.00645569663538988,
+      "gl": 0.005134505082628211,
+      "key": [
+        1792414800000,
+        "exit",
+        "inverse-micro-15-drawdown-turn-fast@m15",
+        "exit",
+        "wide",
+        -1
+      ],
+      "symbols": [
+        "XLM-USDT",
+        "ETH-USDT",
+        "ETC-USDT"
+      ],
+      "onsets": 3,
+      "pf": 1.2573162420720378,
+      "noLoss": false,
+      "net": 0.001321191552761669
+    },
+    {
+      "n": 5,
+      "gp": 0.0012020905923344175,
+      "gl": 0,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1x5x15-break-retest-fast@m1",
+        "trailing-only",
+        "mc",
+        -1
+      ],
+      "symbols": [
+        "LTC-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.0012020905923344175
+    },
+    {
+      "n": 1,
+      "gp": 0.0004920366314951586,
+      "gl": 0,
+      "key": [
+        1792411200000,
+        "follow",
+        "inverse-micro-1x5-break-retest-fast@m1",
+        "trailing",
+        "mn",
+        -1
+      ],
+      "symbols": [
+        "SUI-USDT"
+      ],
+      "onsets": 1,
+      "pf": null,
+      "noLoss": true,
+      "net": 0.0004920366314951586
+    },
+    {
+      "n": 7,
+      "gp": 0.00089547932029534,
+      "gl": 0.00083776851554933,
+      "key": [
+        1792414800000,
+        "follow",
+        "inverse-micro-1x5-break-retest-fast@m1",
+        "trailing-only",
+        "sh",
+        1
+      ],
+      "symbols": [
+        "OP-USDT"
+      ],
+      "onsets": 1,
+      "pf": 1.0688863375441706,
+      "noLoss": false,
+      "net": 5.7710804746009944e-05
+    }
+  ]
+}
