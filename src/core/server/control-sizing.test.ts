@@ -485,7 +485,8 @@ describe("control sizing: risk-based (positionSize \"risk\")", () => {
     // (the first run's account read is remembered per connection: forget it, so this run really has no account read)
     resetAccountSeen();
     const { rt: rt2 } = fakeRt(new CoreDb(":memory:"));
-    rt2.settings.live = { ...rt2.settings.live, positionSize: "risk" };
+    // (another connection id: a read that fails may fall back to the same connection's snapshot of the last 75 s)
+    rt2.settings.live = { ...rt2.settings.live, positionSize: "risk", connId: "bingx-vst-01" };
     rt2.paper.positions = [lane("a", "S0-USDT", 1, 10, 5, 0.04)];
     await step(rt2, ex2);
     assert.equal(ex2.positions.size, 0);
