@@ -21,6 +21,8 @@ export { RT_COST } from "./model-cost.ts";
 
 /** Hard ceiling for unique positions on the exchange. Strategy/config orders do not consume extra slots. */
 export const MAX_EXCHANGE_POSITIONS = 100;
+/** Bounded settings payload, including every independent Micro/Inverse source and the ordinary catalog. */
+export const MAX_FOCUS_PAIRS = 2000;
 
 /** Normalize legacy, unset, or oversized exchange limits without allowing the account cap to be bypassed. */
 export function exchangePositionLimit(value?: number): number {

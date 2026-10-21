@@ -422,12 +422,15 @@ function signalTapes(rows: ReadonlyArray<ProofClose>, bySide: boolean): Map<stri
     const exitT = new Float64Array(xs.length);
     const gp = new Float64Array(xs.length + 1);
     const gl = new Float64Array(xs.length + 1);
+    const unknown = new Uint32Array(xs.length + 1);
     xs.forEach((v, i) => {
       exitT[i] = v.t;
-      gp[i + 1] = gp[i] + Math.max(0, v.r);
-      gl[i + 1] = gl[i] + Math.max(0, -v.r);
+      const known = Number.isFinite(v.r);
+      gp[i + 1] = gp[i] + (known ? Math.max(0, v.r) : 0);
+      gl[i + 1] = gl[i] + (known ? Math.max(0, -v.r) : 0);
+      unknown[i + 1] = unknown[i] + Number(!known);
     });
-    out.set(u, { exitT, gp, gl, ev: xs.map((v) => v.ev) });
+    out.set(u, { exitT, gp, gl, unknown, ev: xs.map((v) => v.ev) });
   }
   return out;
 }

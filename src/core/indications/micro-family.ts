@@ -37,6 +37,11 @@ export const MICRO_METHODS = [
   "trend-reclaim",
   "market-continuation",
   "direction-persist",
+  "break-channel",
+  "break-channel-short",
+  "break-channel-wide",
+  "break-channel-activity",
+  "break-channel-failure",
 ] as const;
 export type MicroMethod = (typeof MICRO_METHODS)[number];
 export const microFamilyId = (tfs: readonly number[], method: MicroMethod, profile: MicroProfile) =>
@@ -99,9 +104,17 @@ export function microPriorExtrema(xs: Float64Array, window: number) {
   return { high, low };
 }
 
+/** Completed OHLC channel, separate from close-only extrema. Read-only features may be shared across profiles. */
+function priorChannel(k: SeriesCache, window: number) {
+  return k.memo(`micro-family:ohlc-channel:${window}`, () => ({
+    high: microPriorExtrema(k.b.h, window).high,
+    low: microPriorExtrema(k.b.l, window).low,
+  }));
+}
+
 /** Also accepts genuine subminute Bars (e.g. tfMin=1/12 from recorded trades), without inventing minute paths. */
 export function microFrame(k: SeriesCache, profile: MicroProfile): Frame {
-  return k.memo(`micro-family:frame:v2:${profile}`, () => {
+  return k.memo(`micro-family:frame:v3:${profile}`, () => {
     const p = MICRO_PROFILES.find((x) => x.id === profile);
     if (!p) throw new Error(`unknown Micro profile ${profile}`);
     const { b } = k,
@@ -129,6 +142,7 @@ export function microFrame(k: SeriesCache, profile: MicroProfile): Frame {
     }
     const px = microPriorExtrema(log, w),
       mx = microPriorExtrema(mr, w);
+    const shortChannel = priorChannel(k, w / 2), channel = priorChannel(k, w), wideChannel = priorChannel(k, 2 * w);
     // Prefix moments end BEFORE the move: current price cannot inflate its own residual threshold.
     const rp = new Float64Array(n + 1),
       rq = new Float64Array(n + 1);
@@ -263,6 +277,20 @@ export function microFrame(k: SeriesCache, profile: MicroProfile): Frame {
       states["change-roc"][i] = recovery >= p.recovery ? turnRoc : 0;
       states["break-activity"][i] = agree(states["break-close"][i], states["activity-flow"][i]);
       states["break-direction"][i] = agree(states["break-activity"][i], turnRoc || turnEma);
+      // Additional independent OHLC breakouts: prior w and 2w ranges, participation and failed auctions.
+      // The firing bar never moves its own channel; long/short ambiguities remain neutral.
+      const channelBreak = b.c[i] > channel.high[i] ? 1 : b.c[i] < channel.low[i] ? -1 : 0;
+      states["break-channel"][i] = channelBreak;
+      states["break-channel-short"][i] = b.c[i] > shortChannel.high[i] ? 1 : b.c[i] < shortChannel.low[i] ? -1 : 0;
+      states["break-channel-wide"][i] = b.c[i] > wideChannel.high[i] ? 1 : b.c[i] < wideChannel.low[i] ? -1 : 0;
+      states["break-channel-activity"][i] = activity >= p.activity && tr >= p.stretch * prevAtr
+        ? agree(channelBreak, turn) : 0;
+      const rejectedHigh = b.h[i] > channel.high[i] && b.c[i] < channel.high[i],
+        rejectedLow = b.l[i] < channel.low[i] && b.c[i] > channel.low[i];
+      states["break-channel-failure"][i] = b.c[i] > channel.low[i] && b.c[i] < channel.high[i]
+        ? rejectedHigh && !rejectedLow && b.c[i] < b.o[i] ? -1
+          : rejectedLow && !rejectedHigh && b.c[i] > b.o[i] ? 1 : 0
+        : 0;
       // Additional cost-aware techniques, never replacements for existing siblings. The observed prior range
       // must span three maximum modeled round trips; this is an opportunity hurdle, not a profit prediction.
       const room = px.high[i] - px.low[i] >= 3 * RT_COST;
@@ -301,7 +329,9 @@ export function microFrame(k: SeriesCache, profile: MicroProfile): Frame {
                 : 0;
           const broad = mr[i] - mr[i - 3];
           const momentum = Math.abs(broad) >= p.stretch * mu * Math.sqrt(3) ? direction(broad) : 0;
-          states["market-momentum"][i] = agree(momentum, trend) === turn ? momentum : 0;
+          // Zero is neutral, never an agreement. Comparing two zero results admitted market momentum
+          // on a flat own close even when the own trend opposed it or had no direction.
+          states["market-momentum"][i] = agree(agree(momentum, trend), turn);
           states["market-continuation"][i] = room && activity >= 1 && momentum === trend &&
             trend === turn && Math.abs(prevFast - prevSlow) / prevAtr >= p.recovery &&
             Math.abs(b.c[i] - fast) / prevAtr <= 2 * p.stretch ? trend : 0;
@@ -324,7 +354,12 @@ export function microFrame(k: SeriesCache, profile: MicroProfile): Frame {
         Math.abs(prevFast - prevSlow) / prevAtr > 0.5 ? states["impulse-retest"][i] : draw;
       for (const method of MICRO_METHODS) {
         bias[method][i] =
-          method === "residual-revert" || method === "drawdown-residual"
+          method === "break-channel-failure" ? states[method][i]
+            : method.startsWith("break-channel")
+              ? direction(b.c[i] - (method === "break-channel-wide"
+                ? (wideChannel.high[i] + wideChannel.low[i]) / 2 : method === "break-channel-short"
+                  ? (shortChannel.high[i] + shortChannel.low[i]) / 2 : (channel.high[i] + channel.low[i]) / 2))
+          : method === "residual-revert" || method === "drawdown-residual"
             ? residualTurn
             : method === "market-follow" || method === "drawdown-market"
               ? marketTurn
@@ -360,7 +395,7 @@ export function microFamilyState(
 ): Int8Array {
   const anchor = Math.min(...tfs);
   if (k.b.tfMin !== anchor) return new Int8Array(k.b.n);
-  return k.memo(`micro-family:state:v2:${method}:${profile}:${tfs.join("x")}`, () => {
+  return k.memo(`micro-family:state:v3:${method}:${profile}:${tfs.join("x")}`, () => {
     const out = Int8Array.from(microFrame(k, profile).states[method]);
     for (const tf of tfs) {
       if (tf === anchor) continue;
@@ -391,7 +426,7 @@ export function microFamilySpecs(): IndicationSpec[] {
         kind: "micro" as const,
         label: `Micro · ${method} · ${p.id} · ${tfs.join("+")}m`,
         params: {
-          window: p.window,
+          window: p.window * (method === "break-channel-wide" ? 2 : method === "break-channel-short" ? 0.5 : 1),
           stretch: p.stretch,
           residual: p.residual,
           activity: p.activity,

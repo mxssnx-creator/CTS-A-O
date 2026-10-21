@@ -1,5 +1,5 @@
 // Range checks for a settings patch, shared by the Settings page, the preset dialog and presets (pure: testable).
-import { GRID_VARIANTS_MAX, MAX_EXCHANGE_POSITIONS, type CoreSettings } from "./config.ts";
+import { GRID_VARIANTS_MAX, MAX_EXCHANGE_POSITIONS, MAX_FOCUS_PAIRS, type CoreSettings } from "./config.ts";
 import { MAX_MODEL_RT_COST } from "./model-cost.ts";
 import { INDICATION_KINDS } from "./domain/types.ts";
 import { validPromotedLaneProof } from "./live-promote.ts";
@@ -351,8 +351,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
       throw new Error("disabledKinds: list of indication types");
   }
   if (s.focus !== undefined) {
-    if (!Array.isArray(s.focus) || s.focus.length > 1000)
-      throw new Error("focus: up to 1000 bot|indication pairs");
+    if (!Array.isArray(s.focus) || s.focus.length > MAX_FOCUS_PAIRS)
+      throw new Error(`focus: up to ${MAX_FOCUS_PAIRS} bot|indication pairs`);
     for (const f of s.focus)
       if (typeof f !== "string" || !/^[a-z]+\|[a-z0-9.@-]+$/.test(f))
         throw new Error(`focus entry ${String(f)} must be bot|indication`);

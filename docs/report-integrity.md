@@ -1,5 +1,26 @@
 # Session report integrity — what broke, and the guard that keeps it from breaking again
 
+## Micro breakout and directional audit correction — 21 October 2026
+
+Neutral zero states cannot confirm momentum. `agree(momentum, trend) === turn` wrongly accepted an unrelated
+market move when the own close and rejected agreement were both zero. Require a nonzero three-way agreement.
+The regression fails on source 82d0e6b and passes after repair, including Inverse. Additional OHLC channels use
+only prior completed high/low bars at 6/12/24/48-bar horizons; their plain, activity and failed-auction IDs qualify
+independently on every individual/combined 1/5/15m lane. A close-only breakout is a separate original technique.
+
+Selection summaries contain only independently passing directions, or zero when neither passes. A pooled scalar
+reference cannot validate that contract. The corrected reference retains both losing direction records, verifies
+raw pooled and own-side incoming-minus-expired arithmetic separately from changing selected membership, and
+accounts for closes exactly at the Last-N decision boundary. Write failure evidence before asserting. The v4
+24-symbol archive has 87,234 full tapes and 846,432 decisions, zero differences or unexplained transitions under
+this independent reference. The original failed audit is retained; no trade, cost or PF was changed by its repair.
+
+Signal forward proofs must obey the same owned-unit provenance as engine proofs. Stored funded `unit_r` takes
+precedence; only a finite positive explicit legacy external multiplier can recover a legacy return. Volume or an
+implicit one cannot. Keep unknowns inside the chronological Last-N prefix until they expire; nominal attributed
+lane wins cannot replace unknown owned-paper evidence. Test cash PF 1.6 against actual unit PF 0.8, unknown tails,
+recovery, distinct event count and sliced-versus-single-read equality. Reproductions fail on 82d0e6b.
+
 The session report (`scripts/core-session.mjs` → session.md, writeup, `html/index.html`) is how the operator reads
 every run. On 6 Oct it showed wrong or no results for these reasons. Each now has a guard that fails loudly; a
 change to the report or the engine's run accounting must keep every guard green.

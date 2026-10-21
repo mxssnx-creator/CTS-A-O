@@ -1,3 +1,35 @@
+# Micro expansion and next-day verification pending — 21 October 2026 (Europe/Vienna)
+
+User explicitly requests the additional 6/12-bar breakouts and push/merge after completion. Main remains
+fafdea2f5ebe8c903a16f2edd8be34606f746c2f; PR 184 is open. Current source manifest
+bf502cd9046ea8d3fe23701b0e549521618a143be948ba38f2269df7534d95a2 adds independent OHLC breakout horizons
+6/12/24/48, activity and failed-auction variants, all seven 1/5/15m subsets and both inverses: 868 first-class sources,
+984 including legacy identity cases. Full registry 1,860 specs / 37,786 eligible bot/lane pairs. Default focus now exceeds
+the former 1,000-pair validation cap; a bounded 2,000 cap keeps the expanded default valid. No economic gate weakened.
+
+Concrete fixes: reject neutral-zero momentum confirmation (before-fix regression fails); Signal forward proof now
+uses verified funded unit returns, finite explicit legacy multipliers and unknown-prefix Last-N rather than volume
+or implicit one. Sliced proof reference preserves this contract and measured positive fixtures. Explicit raised-lane
+fixture carries its Block level instead of inferring external provenance from ordinary volume. The latest targeted
+Micro/Inverse/worker/identity group passes 14/14; preceding native/proof group 56/56 passes; audit/selection 10/10
+and typecheck pass. Full current-source CI, expanded financial run and next-day validation are still required.
+
+Previous 24-symbol v4 (846d9aa source, CI39532140644) computes all grids and passes all report/price/cost controls:
+257,095 funded settled closes, unit PF 1.5369277555. Micro separately 0.7450644243; Minimal 2.0475000964;
+Short 2.3868199477; General 1.5338949061. Nine positive, three negative settled hours. Source/execution returns
+match; round trip 0.15% once. Original scalar audit failed because it pooled directions. Corrected independent
+reference checks 87,234 tapes / 846,432 decisions, zero differences, missing histories or unexplained transitions.
+Transition replay checks 175,272 initial-config decisions, zero mismatches after honoring the zero rejected-summary
+contract. Both losses and initial CI failures remain retained. The two complete core-CI failures are fixture
+provenance mismatches (lane-orders/live-stall); their repairs have focused passing evidence, not yet final CI.
+
+Frozen next-day-plan-v1.json consumes only Micro-range funded training closes through 20 Oct 00:00 UTC to choose
+an optional research shortlist; all config/direction/type/range gates still operate independently. Seal before
+acquiring next-day native archives, evaluate 20 Oct 12:00–21 Oct 00:00 with independent 12h prehistory and 24h
+indicator warmup. Preserve no candidate, insufficient, losing and failed collection outcomes; do not reselect using
+validation. Universal v8 repeats all hourly and unfinished-bar checks on the expanded source. No merge,
+deployment, live reload, setting write or venue order has been performed by this continuation yet.
+
 # Nonfinite historical multiplier guard — 21 October 2026 (Europe/Vienna)
 
 Before authorized merge, a new regression proved explicit Infinity in a legacy execution multiplier converted a loss to zero in SQL, falsely proving Last-2 PF. The engine and legacy relation SQL now accept only finite positive multipliers; zero/NaN/±Infinity remain unknown. The unknown row stays in its current own window and cannot select older wins. Engine/relation34tests pass, typecheck passes. Before-fix failure is retained in nonfinite-multiplier-before.txt. Main187's explicit legacy read also has the required classification comment; the source-scan guard remains enforced. Integrated UI4/4,225native/parser/control and68merge-targeted tests passed; full CI is still required at the new exact source.

@@ -118,6 +118,32 @@ describe("durable paper proof uses verified unit returns", () => {
     const proof = r.engineProof(10_000)!;
     assert.deepEqual([...proof.proven], []); assert.equal(proof.unknown, 2);
   });
+
+  it("Signal proof uses stored owned unit returns, retains unknown Last-N and cannot borrow nominal lane wins", () => {
+    const r = fixture(), cfg = "follow|sig-ema-cross-s@m15|tp1|sl2|tr0|h192";
+    r.settings.live.signalProofN = 2;
+    r.settings.live.signalProofPf = 1.1;
+    r.settings.live.signalProofEvents = 2;
+    const insert = (i: number, unit: number | null, sized: number, mult: number | null = null, owned: number | null = 20) => {
+      r.db.run("INSERT INTO paper_book_trades (cfg,sym,side,entry_t,exit_t,r,vol,reason,unit_r,mult,owned_notional_usd) VALUES (?, 'AAA-USDT',1,?,?,?,2,'exit',?,?,?)",
+        cfg, 1000 + i * 900_000, 2000 + i * 900_000, sized, unit, mult, owned);
+    };
+    insert(0, 0.008, 0.016); insert(1, -0.01, -0.01);
+    assert.equal(r.signalProof(1e12)!.proven.size, 0, "cash/nominal PF 1.6 cannot qualify unit PF 0.8");
+    insert(2, 0.02, 0.04); insert(3, 0.02, 0.04);
+    assert.equal(r.signalProof(1e12)!.proven.size, 1, "two known own events pass");
+    insert(4, null, 0.03, Infinity, null);
+    for (let i = 0; i < 2; i++) r.db.run(
+      "INSERT INTO live_lane_trades (id,exit_t,cfg,sym,side,entry_t,r,reason) VALUES (?,?,?,'AAA-USDT',1,?,0.02,'exit')",
+      `nominal${i}`, 500_000 + i * 60_000, cfg, 400_000 + i * 60_000);
+    const unknown = r.signalProof(1e12) as {proven: Set<string>;unknown: number};
+    assert.equal(unknown.proven.size, 0);
+    assert.equal(unknown.unknown, 1, "a nonfinite multiplier stays unknown in the latest two");
+    insert(5, 0.02, 0.04);
+    assert.equal(r.signalProof(1e12)!.proven.size, 0, "older known wins cannot replace the current unknown");
+    insert(6, 0.02, 0.04);
+    assert.equal(r.signalProof(1e12)!.proven.size, 1, "own known history recovers once the unknown really expires");
+  });
 });
 
 describe("actual API primary return basis", () => {

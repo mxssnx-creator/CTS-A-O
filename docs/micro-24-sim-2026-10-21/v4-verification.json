@@ -1,0 +1,400 @@
+{
+  "schema": "cts-micro-24-v4-evidence-v1",
+  "sourceSha256": "846d9aa1c91c37233a660ab9655247a3684242f2c745ad032ab238cdc8a6ec6f",
+  "ci": 39532140644,
+  "commit": "82d0e6b48f40027f7a45fd6e8e3a3a8342478f8d",
+  "artifactId": 12316197223,
+  "artifactSha256": "eef5439beceaa0d65b035ded9d5efdca152018903caa95a884023c35c4cbf228",
+  "status": "Financial computation complete, original pooled scalar failed; corrected independent directional reference verifies all decisions. Superseded by separately frozen expanded source.",
+  "base": {
+    "evaluatedPairsIncludingExit": 1456,
+    "passedPairsIncludingExit": 225,
+    "ordinaryPassedPairs": 165,
+    "mainPairs": 165,
+    "rangeRepresentativeEvidence": [
+      {
+        "range": "Wide",
+        "tag": "wide",
+        "evaluatedPairs": 728,
+        "passedPairs": 7,
+        "minimumPf": 1.1,
+        "passedPooledPf": 1.777531228452949,
+        "passedMedianPf": 1.8836734693877615,
+        "gp": 135.92768894069806,
+        "gl": 76.46993018457457
+      },
+      {
+        "range": "Micro",
+        "tag": "mc",
+        "evaluatedPairs": 728,
+        "passedPairs": 61,
+        "minimumPf": 1.1,
+        "passedPooledPf": 1.9816649641673276,
+        "passedMedianPf": 2.069675570616003,
+        "gp": 464.4509092501446,
+        "gl": 234.37408323222863
+      },
+      {
+        "range": "Minimal",
+        "tag": "mn",
+        "evaluatedPairs": 728,
+        "passedPairs": 75,
+        "minimumPf": 1.1,
+        "passedPooledPf": 1.8193481235547568,
+        "passedMedianPf": 2.0222341292641373,
+        "gp": 919.5017212613253,
+        "gl": 505.40174766814005
+      },
+      {
+        "range": "Short",
+        "tag": "sh",
+        "evaluatedPairs": 728,
+        "passedPairs": 61,
+        "minimumPf": 1.1,
+        "passedPooledPf": 1.8077066724037227,
+        "passedMedianPf": 2.012533563329962,
+        "gp": 997.7134994749302,
+        "gl": 551.9222309160713
+      },
+      {
+        "range": "General",
+        "tag": "gn",
+        "evaluatedPairs": 728,
+        "passedPairs": 84,
+        "minimumPf": 1.2,
+        "passedPooledPf": 1.8753557299464139,
+        "passedMedianPf": 1.9062505576000406,
+        "gp": 1605.654711307032,
+        "gl": 856.1867413564847
+      }
+    ]
+  },
+  "initial": {
+    "t": 1792411200000,
+    "evaluated": 70536,
+    "passed": {
+      "configs": 14606,
+      "closes": 380091,
+      "gp": 1292.5255302790945,
+      "gl": 487.5066827022829,
+      "unknownReturns": 0,
+      "pf": 2.6512980768069414,
+      "pfState": "measured"
+    },
+    "seated": {
+      "configs": 14606,
+      "closes": 380091,
+      "gp": 1292.5255302790945,
+      "gl": 487.5066827022829,
+      "unknownReturns": 0,
+      "pf": 2.6512980768069414,
+      "pfState": "measured"
+    }
+  },
+  "executed": {
+    "configs": 34928,
+    "closes": 257095,
+    "gp": 820.2144388130258,
+    "gl": 533.6714337114071,
+    "unknownReturns": 0,
+    "pf": 1.536927755545882,
+    "pfState": "measured"
+  },
+  "perRange": {
+    "mn": {
+      "initialPassed": {
+        "configs": 3812,
+        "closes": 89951,
+        "gp": 271.1857855711664,
+        "gl": 77.86029239041768,
+        "unknownReturns": 0,
+        "pf": 3.4829792856588524,
+        "pfState": "measured"
+      },
+      "initialSeated": {
+        "configs": 3812,
+        "closes": 89951,
+        "gp": 271.1857855711664,
+        "gl": 77.86029239041768,
+        "unknownReturns": 0,
+        "pf": 3.4829792856588524,
+        "pfState": "measured"
+      },
+      "executed": {
+        "configs": 11542,
+        "closes": 101927,
+        "gp": 347.0961354632336,
+        "gl": 169.52191409821654,
+        "unknownReturns": 0,
+        "pf": 2.0475000964308085,
+        "pfState": "measured"
+      }
+    },
+    "sh": {
+      "initialPassed": {
+        "configs": 1775,
+        "closes": 40409,
+        "gp": 248.14307534694132,
+        "gl": 109.56561201527845,
+        "unknownReturns": 0,
+        "pf": 2.264789752758729,
+        "pfState": "measured"
+      },
+      "initialSeated": {
+        "configs": 1775,
+        "closes": 40409,
+        "gp": 248.14307534694132,
+        "gl": 109.56561201527845,
+        "unknownReturns": 0,
+        "pf": 2.264789752758729,
+        "pfState": "measured"
+      },
+      "executed": {
+        "configs": 6014,
+        "closes": 45718,
+        "gp": 198.323613680355,
+        "gl": 83.09114974130385,
+        "unknownReturns": 0,
+        "pf": 2.386819947705816,
+        "pfState": "measured"
+      }
+    },
+    "gn": {
+      "initialPassed": {
+        "configs": 2283,
+        "closes": 46208,
+        "gp": 280.9081560495219,
+        "gl": 112.39840952328244,
+        "unknownReturns": 0,
+        "pf": 2.499218247312779,
+        "pfState": "measured"
+      },
+      "initialSeated": {
+        "configs": 2283,
+        "closes": 46208,
+        "gp": 280.9081560495219,
+        "gl": 112.39840952328244,
+        "unknownReturns": 0,
+        "pf": 2.499218247312779,
+        "pfState": "measured"
+      },
+      "executed": {
+        "configs": 6429,
+        "closes": 28905,
+        "gp": 127.26996338021856,
+        "gl": 82.97176219647558,
+        "unknownReturns": 0,
+        "pf": 1.5338949060626874,
+        "pfState": "measured"
+      }
+    },
+    "mc": {
+      "initialPassed": {
+        "configs": 6726,
+        "closes": 202678,
+        "gp": 489.8583068968532,
+        "gl": 186.33616761241572,
+        "unknownReturns": 0,
+        "pf": 2.6288954698036493,
+        "pfState": "measured"
+      },
+      "initialSeated": {
+        "configs": 6726,
+        "closes": 202678,
+        "gp": 489.8583068968532,
+        "gl": 186.33616761241572,
+        "unknownReturns": 0,
+        "pf": 2.6288954698036493,
+        "pfState": "measured"
+      },
+      "executed": {
+        "configs": 10933,
+        "closes": 80502,
+        "gp": 147.42049133484755,
+        "gl": 197.86274384538658,
+        "unknownReturns": 0,
+        "pf": 0.7450644243063996,
+        "pfState": "measured"
+      }
+    },
+    "wide": {
+      "initialPassed": {
+        "configs": 10,
+        "closes": 845,
+        "gp": 2.4302064146361486,
+        "gl": 1.3462011608837026,
+        "unknownReturns": 0,
+        "pf": 1.8052327432557402,
+        "pfState": "measured"
+      },
+      "initialSeated": {
+        "configs": 10,
+        "closes": 845,
+        "gp": 2.4302064146361486,
+        "gl": 1.3462011608837026,
+        "unknownReturns": 0,
+        "pf": 1.8052327432557402,
+        "pfState": "measured"
+      },
+      "executed": {
+        "configs": 10,
+        "closes": 43,
+        "gp": 0.10423495428689415,
+        "gl": 0.22386383008857566,
+        "unknownReturns": 0,
+        "pf": 0.46561766697930507,
+        "pfState": "measured"
+      }
+    }
+  },
+  "funding": {
+    "basis": "Exact per-close native report allocation",
+    "virtualCloses": 257095,
+    "fundedCloses": 257095,
+    "zeroAllocatedCloses": 0,
+    "unknownAllocations": 0
+  },
+  "priceAudit": {
+    "scope": "Independent arithmetic, entry directions, exact config/symbol gates and protection on all virtual modeled closes; primary PF uses only verified funded settled closes",
+    "funding": {
+      "basis": "Exact per-close native report allocation",
+      "virtualCloses": 257095,
+      "fundedCloses": 257095,
+      "zeroAllocatedCloses": 0,
+      "unknownAllocations": 0
+    },
+    "cost": 0.0015,
+    "roundTripChargedOnce": true,
+    "rows": 257095,
+    "virtualRows": 257095,
+    "independentlyReplayedProtectionRows": 257052,
+    "maxReturnError": 1.1627438830340286e-07,
+    "maxPriceError": 5.928526680011198e-08,
+    "gp": 820.2144388130258,
+    "gl": 533.6714337114071,
+    "pf": 1.536927755545882,
+    "beforeCostPfDiagnostic": 2.61741503780981,
+    "reasons": {
+      "sl": 12507,
+      "tp": 51605,
+      "trail": 119577,
+      "time": 73406
+    },
+    "precision": "1e-6 return tolerance covers Float32 stored price columns; modeled return arrays retain their original higher precision",
+    "violations": []
+  },
+  "reportChecks": {
+    "passed": 60,
+    "total": 60
+  },
+  "hours": [
+    {
+      "t": 1792411200000,
+      "orders": 7270,
+      "fundedOrders": 7270,
+      "pf": 0.054065,
+      "gpR": 2.484375,
+      "glR": 45.951497,
+      "net": -86.934243
+    },
+    {
+      "t": 1792414800000,
+      "orders": 14102,
+      "fundedOrders": 14102,
+      "pf": 0.730827,
+      "gpR": 18.78358,
+      "glR": 25.701815,
+      "net": -13.83647
+    },
+    {
+      "t": 1792418400000,
+      "orders": 68033,
+      "fundedOrders": 68033,
+      "pf": 1.766806,
+      "gpR": 239.515941,
+      "glR": 135.564398,
+      "net": 207.903086
+    },
+    {
+      "t": 1792422000000,
+      "orders": 25977,
+      "fundedOrders": 25977,
+      "pf": 1.628751,
+      "gpR": 86.741679,
+      "glR": 53.256562,
+      "net": 66.970235
+    },
+    {
+      "t": 1792425600000,
+      "orders": 43287,
+      "fundedOrders": 43287,
+      "pf": 1.856633,
+      "gpR": 126.831215,
+      "glR": 68.312491,
+      "net": 117.037449
+    },
+    {
+      "t": 1792429200000,
+      "orders": 26612,
+      "fundedOrders": 26612,
+      "pf": 1.483053,
+      "gpR": 82.09713,
+      "glR": 55.356825,
+      "net": 53.480609
+    },
+    {
+      "t": 1792432800000,
+      "orders": 24343,
+      "fundedOrders": 24343,
+      "pf": 1.690413,
+      "gpR": 86.25918,
+      "glR": 51.028457,
+      "net": 70.461446
+    },
+    {
+      "t": 1792436400000,
+      "orders": 14467,
+      "fundedOrders": 14467,
+      "pf": 1.364582,
+      "gpR": 47.335095,
+      "glR": 34.688353,
+      "net": 25.293483
+    },
+    {
+      "t": 1792440000000,
+      "orders": 5478,
+      "fundedOrders": 5478,
+      "pf": 0.513529,
+      "gpR": 7.537368,
+      "glR": 14.677584,
+      "net": -14.280431
+    },
+    {
+      "t": 1792443600000,
+      "orders": 3502,
+      "fundedOrders": 3502,
+      "pf": 2.601389,
+      "gpR": 22.498873,
+      "glR": 8.648793,
+      "net": 27.70016
+    },
+    {
+      "t": 1792447200000,
+      "orders": 14275,
+      "fundedOrders": 14275,
+      "pf": 2.337452,
+      "gpR": 75.805076,
+      "glR": 32.430644,
+      "net": 86.748862
+    },
+    {
+      "t": 1792450800000,
+      "orders": 9749,
+      "fundedOrders": 9749,
+      "pf": 3.020224,
+      "gpR": 24.324927,
+      "glR": 8.054014,
+      "net": 32.541825
+    }
+  ]
+}
