@@ -33,7 +33,6 @@ jobs:
       CTS_CORE_WORKERS: "2"
       CTS_CORE_COMPARE: "0"
       CTS_CORE_VARIANTS: "0"
-      NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -43,18 +42,27 @@ jobs:
           node-version: "24.19.0"
       - run: npm ci
       - name: Test causal selection, exact formulas and immutable paired protocols
+        env:
+          NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
         run: node --experimental-strip-types --no-warnings --test .github/audits/micro-rank-comparison.test.mjs
       - name: Build the exact worker
+        env:
+          NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
         run: npm run build:dev
       - name: Seal both twelve-symbol cases and identical settings before scoring either
+        env:
+          NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
         run: node --experimental-strip-types --no-warnings .github/audits/micro-rank-comparison.mjs prepare --out runs/micro-rank-comparison-v1 --expected-file docs/micro-rank-comparison-2026-10-21/expected-v1.json
       - name: Complete all own Micro and Inverse configurations on twelve selected symbols
+        env:
+          NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
         id: sim
         continue-on-error: true
         run: node --experimental-strip-types --no-warnings .github/audits/micro-rank-comparison.mjs run --rank ${{ matrix.rank }} --out runs/micro-rank-comparison-v1 --workers 2
       - name: Independently audit prices, costs, funded PF and every hourly transition
         if: always() && steps.sim.outcome != 'skipped'
         env:
+          NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
           CASE_DIR: runs/micro-rank-comparison-v1/${{ matrix.rank }}
         run: |
           result=0
