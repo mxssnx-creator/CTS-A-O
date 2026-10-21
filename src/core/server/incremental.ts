@@ -119,7 +119,7 @@ export class IncrementalState {
       if (!g) return null;
       grown.push(g);
     }
-    const u = makeUniverse(grown);
+    const u = makeUniverse(grown, this.universe.evaluationFromT);
     const tapes = new Map<string, ConfigTape>();
     const broken: string[] = [];
     for (const [id, e] of this.entries) {

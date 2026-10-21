@@ -10,7 +10,7 @@
 // extendTape returns null and the caller rebuilds.
 import type { OpenPosition, Protect, StratKind, Tactics, Trade } from "../domain/types.ts";
 import type { Universe } from "../pipeline/pipeline.ts";
-import { seriesOf } from "../pipeline/pipeline.ts";
+import { evaluationSignal, seriesOf } from "../pipeline/pipeline.ts";
 import { entrySignal } from "../bots/bots.ts";
 import { isSignalInd } from "../indications/registry.ts";
 import { tacticCooldown } from "../indications/filters.ts";
@@ -44,6 +44,8 @@ export interface RunState {
 /** A resumable tape's runs, by `symbol@tf:direction`. */
 export interface TapeResume {
   runs: Map<string, RunState>;
+  /** Indicator-only warmup must never become evaluated entry history during continuation. */
+  evaluationFromT?: number;
 }
 
 interface Run {
@@ -61,6 +63,7 @@ function runConfig(
   tactics: Tactics | null | undefined,
   prev: TapeResume | null,
 ): Run | null {
+  if (prev && prev.evaluationFromT !== u.evaluationFromT) return null;
   const trades: Trade[] = [];
   const open: OpenPosition[] = [];
   const pending: ConfigTape["pending"] = [];
@@ -69,8 +72,9 @@ function runConfig(
   const p: Protect = tp.protect;
   for (const s of seriesOf(u, tp.ind)) {
     const bars = u.bars[s];
-    const sig = entrySignal(tp.bot, tp.ind, u.caches[s], tactics);
-    if (!sig) return null;
+    const raw = entrySignal(tp.bot, tp.ind, u.caches[s], tactics);
+    if (!raw) return null;
+    const sig = evaluationSignal(u, bars, raw);
     // one run per direction (as buildTapes: long and short each their own slot); a one-sided signal is its own run
     const sides = splitSides(sig);
     const dirs: Array<[number, Int8Array]> =
@@ -111,7 +115,7 @@ function runConfig(
       runs.set(key, { firstT: bars.t[0], n: bars.n, lastT: bars.t[bars.n - 1], sim: res.state });
     }
   }
-  return { trades, open, pending, resume: { runs } };
+  return { trades, open, pending, resume: { runs, evaluationFromT: u.evaluationFromT } };
 }
 
 function firstSide(sig: Int8Array): number {

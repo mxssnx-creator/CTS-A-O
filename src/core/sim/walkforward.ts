@@ -2738,7 +2738,7 @@ export function kindExecutable(kind: StratKind, tg: StrategyToggles): boolean {
   }
 }
 
-/** Diagnostic construction never expands the engine's Base-qualified pair/range cohort. */
+/** Diagnostic construction never expands the engine's Base-qualified pair/range/target/cell cohort. */
 export function baseAllowsTape(
   tp: Pick<ConfigTape, "bot" | "ind" | "protect" | "kind">,
   o: Pick<
@@ -2748,6 +2748,7 @@ export function baseAllowsTape(
     | "basePassedTargets"
     | "baseWideLadderPairs"
     | "exitBasePassed"
+    | "basePassedCells"
   >,
   /** An inverted research seat executes its mirror's tape but retains the source seat's qualification. */
   pair = `${tp.bot}|${tp.ind}`,
@@ -2766,7 +2767,7 @@ export function baseAllowsTape(
     return true;
   if (o.basePassedRanges && !ranges!.includes(tp.protect.tag ?? "")) return false;
   const targets = o.basePassedTargets?.[pair]?.[tp.protect.tag ?? ""];
-  return !targets || targets.includes(tp.protect.tp);
+  return (!targets || targets.includes(tp.protect.tp)) && cellAllowed(tp, o, pair);
 }
 
 /**
@@ -4074,8 +4075,12 @@ export function passedCellsOf(pairCells: Readonly<Record<string, readonly string
   return out;
 }
 /** Whether a tape's cell is one its pair's Base passed (true without cells for the pair / its range: the pair level decides). */
-export function cellAllowed(tp: Pick<ConfigTape, "bot" | "ind" | "protect">, o: Pick<WalkForwardOptions, "basePassedCells">): boolean {
-  const c = o.basePassedCells?.[`${tp.bot}|${tp.ind}`];
+export function cellAllowed(
+  tp: Pick<ConfigTape, "bot" | "ind" | "protect">,
+  o: Pick<WalkForwardOptions, "basePassedCells">,
+  pair = `${tp.bot}|${tp.ind}`,
+): boolean {
+  const c = o.basePassedCells?.[pair];
   const tag = tp.protect.tag;
   if (!c || !tag || !c.tags.has(tag)) return true;
   return c.keys.has(protectCellKey(tp.protect));

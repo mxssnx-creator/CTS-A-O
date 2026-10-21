@@ -7,7 +7,8 @@ import { CoreDb } from "./db.server.ts";
 import { CoreRuntime } from "./runtime.server.ts";
 import { sigActiveKey } from "../signals.ts";
 import { DEFAULT_PROTECT } from "../config.ts";
-import { makeTape, runSubset, walkForward } from "../sim/walkforward.ts";
+import { makeTape, passedCellsOf, runSubset, walkForward } from "../sim/walkforward.ts";
+import { protectCellKey } from "../pipeline/pipeline.ts";
 import { executionRecordKey, liveRecords, ownedPaperExecutionRecords, postBaseExecutionRecords } from "../live-record.ts";
 import { liveEntryOk, liveGroupGates, promotionGate, type PromotionWindow } from "../live-validation.ts";
 import { liveReadiness } from "./live.server.ts";
@@ -114,6 +115,27 @@ describe("strict live promotion uses two settled independent evidence axes", () 
     r.wf.basePassedRanges = { [pair]: [""] };
     r.wf.basePassed = new Set();
     assert.equal(r.livePromotionGate(lane, NOW).state, "ineligible", "diagnostic construction is not Base qualification");
+  });
+
+  it("a stale selected cell cannot borrow a passing sibling's Base proof at native admission", () => {
+    const cfg = `${CFG}|mn`, pair = "follow|rsi-mom-14-25@m15";
+    const trades = [.02, -.01, .02].map((v, i) => close(v, i, { cfg }));
+    const r = install(fixture(), trades);
+    const protect = { ...DEFAULT_PROTECT, tag: "mn" as const };
+    r.tapes = [makeTape(cfg, "follow", "rsi-mom-14-25@m15", protect, "normal", [SYM],
+      Array.from({ length: 30 }, (_, i) => close(.03, i, { cfg })), [], [])];
+    r.paper.selected = [cfg];
+    r.wf.basePassed = new Set([pair]);
+    r.wf.basePassedRanges = { [pair]: ["mn"] };
+    r.wf.basePassedCells = passedCellsOf({ [pair]: [protectCellKey(protect)] });
+    owned(r, [.02, -.01, .02], { cfg });
+    assert.equal(r.livePromotionGate({ ...lane, cfg }, NOW).ok, true);
+    r.wf.basePassedCells = passedCellsOf({ [pair]: [protectCellKey({ ...protect, sl: protect.sl * 2 })] });
+    const gate = r.livePromotionGate({ ...lane, cfg }, NOW);
+    assert.equal(gate.model?.pf, 4, "old model wins remain recorded");
+    assert.equal(gate.execution?.pf, 4, "old owned wins remain recorded");
+    assert.equal(gate.state, "ineligible", "only the currently passing exact Base cell can open");
+    assert.equal(gate.ok, false);
   });
 
   it("native promotion preserves explicit independent untagged ladder admission without qualifying plain Wide or failed pairs", () => {
