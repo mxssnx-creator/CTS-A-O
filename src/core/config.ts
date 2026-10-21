@@ -668,6 +668,23 @@ export const PREVIOUS_INVERSE_FOCUS_20OCT: readonly string[] = [
   ...PREVIOUS_DEFAULT_FOCUS_20OCT, ...INVERSE_PREVIOUS_CONFIG_IDS.map((id) => `follow|${id}`),
 ];
 
+// Freeze the former 939-entry factory selection. Future methods must not rewrite a migration identity.
+const MICRO_METHODS_BEFORE_CHANNELS_21OCT = [
+  "drawdown-turn", "drawdown-trend", "range-reclaim", "impulse-retest", "squeeze-break",
+  "residual-revert", "market-follow", "activity-absorb", "drawdown-residual", "drawdown-market",
+  "pullback-activity", "adaptive", "break-close", "break-retest", "activity-acceleration", "activity-flow",
+  "change-ema", "change-roc", "break-activity", "break-direction", "market-momentum", "relative-trend",
+  "flow-break", "trend-reclaim", "market-continuation", "direction-persist",
+];
+const MICRO_IDS_BEFORE_CHANNELS_21OCT = ["1", "5", "15", "1x5", "1x15", "5x15", "1x5x15"].flatMap(
+  (tf) => MICRO_METHODS_BEFORE_CHANNELS_21OCT.flatMap((method) => ["fast", "selective"].map((profile) => `micro-${tf}-${method}-${profile}`)),
+);
+export const PREVIOUS_MICRO_FOCUS_21OCT: readonly string[] = [
+  ...PREVIOUS_DEFAULT_FOCUS_20OCT, ...INVERSE_FOCUS_20OCT,
+  ...MICRO_IDS_BEFORE_CHANNELS_21OCT.map((id) => `follow|${id}`),
+  ...MICRO_IDS_BEFORE_CHANNELS_21OCT.map((id) => `follow|inverse-${id}`),
+];
+
 export const DEFAULT_SETTINGS: CoreSettings = {
   tfMin: 1,
   tfs: [1, 5, 15, 30],

@@ -13,6 +13,7 @@ import {
   PREVIOUS_DEFAULT_FOCUS_17OCT,
   PREVIOUS_DEFAULT_FOCUS_20OCT,
   PREVIOUS_INVERSE_FOCUS_20OCT,
+  PREVIOUS_MICRO_FOCUS_21OCT,
   GENERAL_RANGE,
   MAX_BACKTEST_DAYS,
   GRID_VARIANTS_MAX,
@@ -1144,6 +1145,7 @@ export class CoreRuntime {
     this.db = db;
     // order caps from before unlimited orders are dropped once (walk-forward and signal caps)
     const savedWf = migrateWfCaps(db);
+    migrateMicroBreakoutFocus(db);
     const saved = db.kvGet<Partial<CoreSettings>>("settings");
     // settings saved before the tick loop existed carry a cycle of ≥ 5 s (the old minimum): the fast defaults apply
     if (saved && saved.tickMs === undefined && (saved.cycleMs ?? 0) >= 5_000) {
@@ -10129,6 +10131,25 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
   if (p.bots !== undefined)
     p.bots = Array.isArray(p.bots) ? (p.bots as unknown[]).map(String).slice(0, 20) : [];
   return p as Partial<WalkForwardOptions>;
+}
+
+/** Add channel sources once for exact former factory selections, independently of older WF-cap migrations. */
+function migrateMicroBreakoutFocus(db: CoreDb): void {
+  if (db.kvGet("microBreakoutFocusV1")) return;
+  const upgrade = (settings: SettingsPatch | undefined) => {
+    if (!settings || JSON.stringify(settings.focus) !== JSON.stringify(PREVIOUS_MICRO_FOCUS_21OCT)) return false;
+    settings.focus = [...DEFAULT_SETTINGS.focus];
+    return true;
+  };
+  const settings = db.kvGet<SettingsPatch>("settings");
+  if (upgrade(settings)) db.kvSet("settings", settings);
+  const presets = db.kvGet<Preset[]>("presets");
+  if (Array.isArray(presets)) {
+    let changed = false;
+    for (const preset of presets) changed = upgrade(preset.settings) || changed;
+    if (changed) db.kvSet("presets", presets);
+  }
+  db.kvSet("microBreakoutFocusV1", true);
 }
 
 /**
