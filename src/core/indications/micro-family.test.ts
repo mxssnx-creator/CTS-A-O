@@ -324,6 +324,7 @@ describe("first-class Micro", () => {
         DEFAULT_SETTINGS.gates,
         full,
       );
+      assert.ok(local.some((r) => (r.ranges?.mc?.n ?? 0) > 0), "complete Micro Base cells were actually calculated");
       const parts = [combos.filter((_, i) => i % 2 === 0), combos.filter((_, i) => i % 2 === 1)];
       const remote = await runOnWorkers<{ runsJson: string[] }>(
         parts.map((combos) => ({

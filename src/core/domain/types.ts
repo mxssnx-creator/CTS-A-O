@@ -408,6 +408,45 @@ export interface BlockConfig {
   pause?: number;
   /** volume steps: the raise moves in this many equal steps up to maxMult (0 = continuous) */
   steps?: number;
+  /**
+   * with steps: any raise adds at least one step (true, the default — today's rule) or rounds to the nearest step
+   * (false: a raise under half a step adds nothing). With 7 steps to 8× a step is a full unit, so at the default an
+   * Overall leg of ratio × level = 0.1 still adds one whole unit (proposal pending a causal eval:
+   * docs/positive-coordinations.md, "Block Overall: corrected rules")
+   */
+  stepFloor?: boolean;
+  /**
+   * pooled sources' activity-scaled window: each pooled source's window is its own closes in its last windowHours
+   * hours ÷ maxLevel (never below `window`), so its top level spans about windowHours of that source whatever its
+   * rate (the overall pool closes far more often than one symbol's). 0 / unset = off (`window` for every source).
+   */
+  windowHours?: number;
+  /** a level also needs this share (0–1) of winning closes in its tail; 0 / unset = off (a positive sum is enough) */
+  levelMinWin?: number;
+  /**
+   * signal candidates feed the pooled sources (overall, symbol, direction, indication, type) the engine's entries are
+   * judged on. true / unset = yes (today's); false = the pooled sources hold the engine's candidates only (a signal's
+   * own config source is unaffected; with signalsOwn the signals never read the pool either)
+   */
+  poolSignals?: boolean;
+  /**
+   * identical closes (same symbol, side, entry, exit and result — one entry under two indication names) count once in
+   * the pooled sources. Default off (each config's candidate counts)
+   */
+  poolDedupe?: boolean;
+  /**
+   * the config source judged per direction: its level counts only the closes of the entry's own direction, and a raised
+   * win pauses only that direction's entries of the config (the closes of the other direction never raise or hold it).
+   * true = on; false / unset = off (both directions pooled, as before). The symbol, indication and direction sources
+   * are per direction already, and the overall and type sources pool by definition (6 Oct: long and short run
+   * independently, docs/positive-coordinations.md). Off changes nothing.
+   * It acts only while the config source is on (sources.config). DEFAULT_BLOCK sets sources.config false, so under the
+   * defaults it changes no engine entry. A settings block.sources replaces DEFAULT_BLOCK.sources whole, and a sources
+   * object without `config` reads it as on, so a comparison arm sets config: true in full. A signal's own config level
+   * is per direction with this option whatever sources.config says (signalsOwn, on by default, turns the config source
+   * on for signal tapes).
+   */
+  sideKeys?: boolean;
   /** volume added per passing relation. Default 0.4. */
   increase?: number;
   /** allowed min/max for the Block knobs. The active value stays inside. */
@@ -554,6 +593,8 @@ export interface Stats {
   tph: number;
   /** worst single-hour net, percent */
   worstHour: number;
+  /** Base's default cell against Gates.baseWindows (set only while it is) */
+  bw?: BaseWindowsResult;
 }
 
 export interface LastNRow {
@@ -662,8 +703,49 @@ export interface Gates {
    * its PF in one stretch and lost after it is not validated. 0 / unset = off. 2–12.
    */
   stableBlocks?: number;
+  /**
+   * Two-window Base (measurement, default off): a pair's Base cell is also judged on windows of its lane's own Base
+   * history [lane's first bar, the Base cut) — consecutive blocks and / or the last hours — not on the whole history
+   * alone. `report` rules never gate: each Base cell carries whether it passes them (RangeBaseStat.bw), the Base run the
+   * targets that pass today's Base and the rule (ComboRun.ruleTps), and the session dump every passing pair's
+   * (basePairs[].rules), so one run reads each rule's orders (scripts/eval-base-rules.mjs). `gate` is enforced: a cell
+   * that fails it fails Base (passesBase). Unset: nothing is computed and every result is as before. At most 8 report
+   * rules. null = off (as unset).
+   */
+  baseWindows?: { gate?: BaseWindowRule; report?: BaseWindowRule[] } | null;
   minTrades: number;
   quorum: number;
+}
+
+/**
+ * One two-window Base rule (Gates.baseWindows). A window with fewer than `minN` closes is not judged (passes), as the
+ * sample warm-up does. A rule sets `split`, `recentH` or both (both must pass).
+ */
+export interface BaseWindowRule {
+  /** the lane's Base history in this many equal time blocks, 2–6 */
+  split?: number;
+  /** the blocks that must pass, 1–split (default: every block) */
+  need?: number;
+  /** the last this many hours before the Base cut as a window of their own, 1–336 */
+  recentH?: number;
+  /** with fewer than `minN` closes in the last `recentH`, judge the last 2 × recentH */
+  widen?: boolean;
+  /** each window's PF floor, 0.5–3 (default the Base floor gates.baseSetsMinPf, else 1); under 1 drops net > 0 */
+  minPf?: number;
+  /** closes a window needs to be judged, 1–100 (default 3) */
+  minN?: number;
+  /**
+   * the range tags the rule judges (mc mn sh gn lg; "wide" = the untagged default cell); default every range. A
+   * range without a Base cell of its own (Minimal plus) is judged at the default cell, so it follows "wide":
+   * checkSettings refuses "mp" (it would judge nothing) and an empty list (judges nothing; leave it out instead)
+   */
+  ranges?: string[];
+}
+
+/** A Base cell against Gates.baseWindows: the gate rule's verdict and each report rule's (only the set ones). */
+export interface BaseWindowsResult {
+  gate?: boolean;
+  report?: boolean[];
 }
 
 /** The ranges with their own stage minimum PF (Gates.rangeMinPf). */
@@ -683,6 +765,9 @@ export interface ProtectGridSpec {
   minTrail: number;
   /** minimum absolute SL distance (fraction) */
   minSl: number;
+  /** Wide grid only: upper bound of the stop and of the trailing distance (fractions of price; unset = none) */
+  maxSl?: number;
+  maxTrail?: number;
   holdH: readonly number[];
   /** trailing distance after activation as a share of the activation move (default 1) */
   trailStep?: number;
@@ -740,6 +825,12 @@ export interface ProtectGridSpec {
    * built none of its trailing configs. Default off until a run shows it earns its Base cost.
    */
   baseTrailCells?: boolean;
+  /**
+   * Cell level (default off = today): Base records the CELLS that passed (`tag|tp|sl|trail|hold`, ComboRun.rangeCells) and
+   * the tape stage builds only those, not every stop × trail × hold of a passed target. Base then measures every hold of a range, and with `baseTrailCells` every trail ratio at every stop; without it the trailed cells are not
+   * measured and not built. A range without its own Base cell (ownBase off) and the Wide grid keep the pair / target level.
+   */
+  baseCells?: boolean;
   /**
    * every indication builds its complete config sets: its best Base pair (passed or not) and every passed pair build
    * every range they apply to, every target × stop × trail × hold (no Base target filter) — the evaluation alone

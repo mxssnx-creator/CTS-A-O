@@ -167,3 +167,125 @@ setTimeout(() => {
   assert.equal(out.summary.vmHwmMbPerWindow.length, 5);
   assert.ok(out.summary.vmHwmMbPerWindow.every((x) => x === null || x > 0));
 });
+
+// a stand-in session that records the arguments it was given (beside its dump: the dump itself is read and removed) and
+// writes one General trade with a funnel (Base, the seat validation, the run's pool and validated-at-start closes)
+const ARGS_SESSION = `import { writeFileSync } from "node:fs";
+const a = (k) => process.argv[process.argv.indexOf("--" + k) + 1];
+writeFileSync(a("dump") + ".args", JSON.stringify({ execArgv: process.execArgv, argv: process.argv.slice(2) }));
+const to = Date.parse(a("end-at"));
+const from = to - Number(a("run")) * 3600000;
+const trades = [{ cfg: "follow|ema-21-55@m15|tp1|sl2|tr0|h64|gn", sym: "AAA-USDT", side: 1, entryT: from + 3600000, entry: 1, exitT: from + 7200000, exit: 1, r: 0.02, reason: "tp" }];
+// Block on: orders stored at their volume (r × mult) beside the multiple — two raised, one at one unit
+if (JSON.parse(a("toggles")).block)
+  for (const [i, r, mult] of [[2, 0.04, 2], [3, -0.01, 1], [4, -0.06, 3]])
+    trades.push({ cfg: "follow|ema-21-55@m15|tp1|sl2|tr0|h64|gn", sym: "AAA-USDT", side: 1, entryT: from + i * 3600000, entry: 1, exitT: from + (i + 1) * 3600000, exit: 1, r, mult, reason: r > 0 ? "tp" : "sl" });
+writeFileSync(a("dump"), JSON.stringify({
+  trades, openEnd: [], basePairs: [{ pair: "follow|ema-21-55@m15", passed: true, tags: ["gn"], pf: 1.5, n: 20 }],
+  engine: { mem: { computeLevel: 0 }, baseByRange: [{ tag: "gn", range: "General", enabled: true, evaluated: 4, passed: 1, minPf: 1, pfPassedMean: 1.5, passedGp: 3, passedGl: 2 }], baseWhy: [] },
+  funnel: { counts: null },
+  tapeAgg: {
+    evalAfterBase: { "General|normal": { configs: 6, passed: 2, minPf: 1.12, pfPassedSum: 4, okGp: 9, okGl: 3 } },
+    rangeByType: { "General|normal": { n: 10, gp: 4, gl: 5 } },
+    rangeByTypeEval: { "General|normal": { n: 4, gp: 5, gl: 4 } },
+  },
+}));
+`;
+/** eval-gate over 10-07 11:00 to 10-09 11:00 with the recording stand-in session, in a directory of its own */
+function gateRun(label, ...extra) {
+  const dir = mkdtempSync(join(tmpdir(), "eval-gate-"));
+  const feed = join(dir, "feed.json");
+  writeFileSync(feed, JSON.stringify({ tickers: [], candles: { "AAA-USDT|1": [{ t: Date.parse("2026-09-20T00:00:00Z"), o: 1 }] } }));
+  const session = join(dir, "session.mjs");
+  writeFileSync(session, ARGS_SESSION);
+  const r = spawnSync(
+    process.execPath,
+    ["--experimental-strip-types", "--no-warnings", join(here, "eval-gate.mjs"), "--label", label, "--feed", feed, "--jobs", "1", "--expect-mb", "1", "--from", "2026-10-07T11:00:00Z", "--to", "2026-10-09T11:00:00Z", ...extra],
+    { encoding: "utf8", cwd: dir, env: { ...process.env, CTS_EVAL_SESSION: session, CTS_EVAL_RESERVE_MB: "0" } },
+  );
+  const argsOf = (k) => JSON.parse(readFileSync(join(dir, `runs/eval/gate/dumps/${label}_w${k}.json.args`), "utf8"));
+  const out = () => JSON.parse(readFileSync(join(dir, `runs/eval/gate/${label}.json`), "utf8"));
+  return { r, feed, argsOf, out };
+}
+const OFF = { dca: false, dcaActive: false, block: false, blockActive: false, axis: false };
+
+test("eval-gate without --toggles / --window-h gives the session today's arguments byte for byte; --toggles merges over the eval's", () => {
+  const plain = gateRun("plain");
+  assert.equal(plain.r.status, 0, plain.r.stderr + plain.r.stdout);
+  const a = plain.argsOf(0);
+  assert.deepEqual(a.execArgv, ["--max-old-space-size=3072", "--heap-growing-percent=50", "--experimental-strip-types", "--no-warnings"]);
+  assert.deepEqual(a.argv, [
+    "--feed", plain.feed, "--end-at", "2026-10-09T11:00:00.000Z", "--run", "48", "--pre", "24", "--symbols", "60", "--signals", "off", "--wf", "{}",
+    "--toggles", '{"dca":false,"dcaActive":false,"block":false,"blockActive":false,"axis":false}',
+    "--settings", "{}", "--dump", "runs/eval/gate/dumps/plain_w0.json", "--dump-only", "--quiet",
+  ]);
+  assert.deepEqual(plain.out().summary.toggles, OFF);
+  // a patch: merged over the eval's toggles (their key order kept), every other argument unchanged, recorded in the summary
+  const axis = gateRun("axis", "--toggles", '{"axis":true}');
+  assert.equal(axis.r.status, 0, axis.r.stderr + axis.r.stdout);
+  const b = axis.argsOf(0);
+  const at = b.argv.indexOf("--toggles");
+  assert.equal(b.argv[at + 1], '{"dca":false,"dcaActive":false,"block":false,"blockActive":false,"axis":true}');
+  const rest = (argv, label, feed) => argv.toSpliced(at + 1, 1).map((x) => x.replace(`${label}_w0`, "L_w0").replace(feed, "FEED"));
+  assert.deepEqual(rest(b.argv, "axis", axis.feed), rest(a.argv, "plain", plain.feed));
+  assert.deepEqual(axis.out().summary.toggles, { ...OFF, axis: true });
+  // a key no strategy type has, or a value that is not true / false, is refused before any session starts
+  const typo = gateRun("typo", "--toggles", '{"axes":true}');
+  assert.equal(typo.r.status, 2);
+  assert.match(typo.r.stderr, /no strategy type axes/);
+  assert.equal(gateRun("num", "--toggles", '{"axis":1}').r.status, 2);
+  const bad = gateRun("json", "--toggles", "{axis:true}");
+  assert.equal(bad.r.status, 2, "malformed JSON: refused, not a crash");
+  assert.match(bad.r.stderr, /--toggles: an object/);
+});
+
+test("eval-gate --window-h: N-hour windows, each its own session over its own hours", () => {
+  const w = gateRun("w24", "--window-h", "24");
+  assert.equal(w.r.status, 0, w.r.stderr + w.r.stdout);
+  const out = w.out();
+  assert.equal(out.summary.windowH, 24);
+  assert.deepEqual(
+    out.windows.map((x) => [x.from, x.to, x.runH]),
+    [
+      ["2026-10-07T11:00:00.000Z", "2026-10-08T11:00:00.000Z", 24],
+      ["2026-10-08T11:00:00.000Z", "2026-10-09T11:00:00.000Z", 24],
+    ],
+  );
+  for (const [k, end] of [[0, "2026-10-08T11:00:00.000Z"], [1, "2026-10-09T11:00:00.000Z"]]) {
+    const { argv } = w.argsOf(k);
+    assert.equal(argv[argv.indexOf("--end-at") + 1], end);
+    assert.equal(argv[argv.indexOf("--run") + 1], "24");
+  }
+  assert.equal("windowH" in gateRun("w48").out().summary, false, "only with --window-h");
+  assert.equal(gateRun("w48x", "--window-h", "48").out().summary.windowH, 48);
+  assert.equal(gateRun("w0", "--window-h", "0").r.status, 2);
+  assert.equal(gateRun("wf", "--window-h", "1.5").r.status, 2);
+});
+
+test("eval-gate's funnel line prints the forward PF over the run (after Base, validated at the start) beside the in-sample one", () => {
+  const g = gateRun("fwd");
+  assert.equal(g.r.status, 0, g.r.stderr + g.r.stdout);
+  const f = g.out().summary.funnel.find((x) => x.range === "General");
+  assert.equal(f.afterBasePf, 0.8);
+  assert.equal(f.validatedPf, 1.25);
+  assert.match(
+    g.r.stdout,
+    /General · Base PF 1\.50 \(1 of 4 pairs validated\) → validation PF 3\.00 \(2 of 6 sets validated\) · over the run: after Base PF 0\.80 \(10\), validated PF 1\.25 \(4\) → orders PF – \(1\)/,
+  );
+});
+
+test("eval-gate with Block on: per range the volume-weighted PF and the unit PF of the raised and unraised orders", () => {
+  const g = gateRun("blk", "--toggles", '{"block":true}');
+  assert.equal(g.r.status, 0, g.r.stderr + g.r.stdout);
+  const out = g.out();
+  // stored r: +0.02, +0.04 (×2), −0.01, −0.06 (×3); at one unit +0.02, +0.02, −0.01, −0.02
+  assert.deepEqual(out.summary.blockPf, [
+    { range: "General", orders: 4, volPf: +(0.06 / 0.07).toFixed(4), unitPf: +(0.04 / 0.03).toFixed(4), raised: { n: 2, pf: 1 }, unraised: { n: 2, pf: 2 } },
+  ]);
+  assert.deepEqual(Object.keys(out.windows[0].blockByRange), ["General"]);
+  assert.equal(out.windows[0].blockByRange.General.raised.n, 2);
+  // Block off: neither field
+  const plain = gateRun("noblk").out();
+  assert.equal("blockPf" in plain.summary, false);
+  assert.equal("blockByRange" in plain.windows[0], false);
+});

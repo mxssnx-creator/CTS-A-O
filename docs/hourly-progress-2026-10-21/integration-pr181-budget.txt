@@ -1,0 +1,38 @@
+[core-tests] offline Node transport guard; 3 files; concurrency 1; compute workers 1
+▶ rate-limit bans
+  ✔ a ban pauses until its end plus this process's jitter; a local refusal does not extend it (4.079042ms)
+  ✔ BingX's error-rate ban (110206) pauses its endpoint until the retry time it names (0.982635ms)
+  ✔ nothing reaches the exchange while banned (3.00526ms)
+  ✔ a ban names its endpoint: only that endpoint is held back, the live step pauses on any ban (1.489693ms)
+  ✔ with a shared ban file, a ban of one process pauses the others (2.048077ms)
+  ✔ market-data bans (klines, tickers) are held to their own endpoints: the live step and signed calls go on (1.74808ms)
+  ✔ a public market-data error names its endpoint, so its ban is held there without a default (2.650238ms)
+  ✔ an old "*" in a shared ban file still pauses everything; a klines ban is shared under its own key (1.838318ms)
+  ✔ a shared book is reused only when read after the desk's own last change and within its age (37.996798ms)
+  ✔ open orders rate limited: fresh positions with the open orders last read, marked with their time (4.440444ms)
+  ✔ a ban the exchange answers is recorded for its endpoint only (2.991027ms)
+  ✔ 19-digit order ids stay exact (a JSON number rounds them and a cancel by id then misses) (2.644682ms)
+✔ rate-limit bans (69.950569ms)
+✔ rolling windows cross second boundaries without doubling the dispatch allowance (2.895608ms)
+✔ separate clients/processes share one atomic budget, with no stored credentials (351.338096ms)
+✔ a busy/unavailable shared store sends nothing and recovers after the lock releases (10.224898ms)
+✔ new exposure leaves request capacity for owned stops and reductions (27.080411ms)
+✔ native signing refuses surplus requests before fetch and never creates a delayed send queue (93.497501ms)
+✔ endpoint limits use conservative documented values and the stricter trader opt-in (0.826202ms)
+✔ read host failover consumes the same rolling request budget as primary dispatches (23.253866ms)
+▶ signed requests: stale timestamp
+  ✔ re-signs once with a fresh timestamp and returns the answer (24.278964ms)
+  ✔ accepts a request arriving after five seconds within the bounded transport window (3.746886ms)
+  ✔ a second stale refusal is thrown (one retry), and other refusals are never retried (11.335078ms)
+  ✔ a reply without a code is an unknown outcome, never a refusal (an executed order is not sent again) (11.408269ms)
+  ✔ recognises the stale-timestamp refusals (0.463162ms)
+  ✔ fails over only a transport-failed read to the same network, while an unknown write is sent once (11.703007ms)
+✔ signed requests: stale timestamp (65.199838ms)
+ℹ tests 25
+ℹ suites 2
+ℹ pass 25
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1770.08847

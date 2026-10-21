@@ -1,3 +1,13 @@
+# PR 181 also integrated; final verification pending — 21 October 2026
+
+Main advanced during verification to `6cc6ef8cd953948069ebc336666a1eb23e15cae5` (PR 181, preserving PRs 182/185). Backup `backup/main-before-micro-merge-20261021-6cc6ef8` exists. PR 184 remains the authorized merge target after the final combined-source checks. Current runtime manifest `1070ac283ba701ef6931cbf19fb614165188b3b60c1d86805828232f57196796`; complete core inventory is now 240 files. Prior 219-file receipts are pre-PR181 checkpoints, not final-current-source proof.
+
+Integration preserves Base windows and exact passed-cell sets, validated seating, resumable tapes/simulation, endpoint-specific limits, account ownership and the incremental cycle. It keeps Micro/Inverse full identities alongside memoized keys, prevents double inversion and sends the full Micro grid and exact-cell recording flags through both worker and local Base paths. Wide caps now match complete Base and execution grids. New `basePassedCells` proofs carry across settings and publish atomically; incremental seed state is staged with the full cohort. Reproduced incremental-generation/economic changes during Paper idle could publish stale tapes; light publication is now fenced at the await boundary. A further actual-runtime regression proved light Signal rebuilding truncated its independent 336h history to the ordinary strategy history; both worker/local light rebuilds now use a separate Signal universe from the same captured candle snapshot.
+
+Focused merged-source checks: 69/69 across Micro grid, worker parity, inverse/order identity, Base windows, exact validated-cell sets and publication; separate budget/rate/retry group 25/25; cross-process budget race repeats 10/10. The incremental/full comparison passes 2/2, comparing 600 tape states and six held positions over three updates on 1/5/15/30m; its bounded legacy catalog and complete nested grids keep the comparison assertions intact. It uses each domain's own history when independently rebuilding references. Production build/typecheck pass. Full current-source CI is next. No live reload or venue orders.
+
+The previous b886 CI had one nondeterministic fixture failure: concurrent SQLite writers can deliberately defer without consuming quota, so the test cannot assume every child filled the allowance. The corrected test fills precisely the unused remainder and still rejects accepted request eleven; production limits/deferral behavior are unchanged. Failed evidence is retained in request-budget-contention-before.txt. All economic research remains archived and source-sealed; no financial PF is promoted from an older source.
+
 # Integration follow-up: missing Trailing-only Base cells — 21 October 2026
 
 Complete combined-source CI 39519260607 covered all 219 core files: 2,545 ordinary passes, two genuine Base/grid parity failures and two optional slow exclusions. Both slow tests and the 120-symbol stress passed; universal CI 39519260719 passed all 1,720 specs at the exact 9504 source. The two failures were not waived: main introduced executable Trailing-only siblings while Micro/Inverse completeBaseRangeProtects still omitted them. Base and execution now share canonical trailingOnlyProtects, preserving the executable grid's caps, duplicate handling, identities and all Normal/TP-trailing cells. Six full-grid parity modes test trailing-only off/on with peak-gap steps 0.5/1/2; worker/local Micro Base parity also passes. Focused correction group 83/83 green. Failed complete inventory is preserved in integration-before-grid-fix.json and the original universal plan in integration-universal-plan-v1.json. Final current-source CI is required before merge. No financial protocol, threshold or measured loss is rewritten.
@@ -1734,3 +1744,15 @@ deployment or merge was performed. Git push was automatically rejected for
 public code publication without sufficient explicit authorization and was not
 bypassed. Code and a reviewable patch are prepared locally; publication still
 requires user approval.
+
+## Incremental cycle (`runtime.cycle`)
+
+`settings.runtime = { cycle: "full" | "incremental", heavyEveryBars }` (default "full"; "incremental" is opt-in until it has
+run beside a full desk). In "incremental" the heavy compute (Base, Main, tapes, simulated run, Adjust, Audit, Compare)
+runs at the first cycle, at every hour boundary (the seats are hourly), every `heavyEveryBars` bars (60) and whenever the
+settings, the universe or the auto-adjust change. Between them a light cycle (`status.cycleMode`, phase `Light`) grows
+the tail universe by the closed bars, continues the validated set's Normal / Trailing / ATR tapes from a stored
+simulation state (`simulateFrom`, `extendTape`), rebuilds the other kinds in the set (DCA, Axis, signals) on the grown
+universe, keeps the hour's seats and runs the paper step on the validated tapes. Equality with a full recompute:
+`src/core/sim/backtest-resume.test.ts`, `tape-extend.test.ts`, `src/core/server/cycle-incremental.test.ts`.
+Profile: `scripts/bench-cycle.mjs`.

@@ -62,9 +62,18 @@ export function rangeVolumeFactorsOf(g?: Partial<ProtectGridSpec> | null): Range
 
 /** Range of a config id ("" = the wide grid). */
 export function rangeOfId(id: string | undefined): RangeTag | "" {
-  const m = id ? /\|(mc|mp|mn|sh|gn|lg)(?=\||$)/.exec(id) : null;
-  return m ? (m[1] as RangeTag) : "";
+  if (!id) return "";
+  // memoized: called per order in every simulation step; the regexp match cost 0.8 s of a 24-symbol compute
+  let r = RANGE_OF_ID.get(id);
+  if (r === undefined) {
+    const m = /\|(mc|mp|mn|sh|gn|lg)(?=\||$)/.exec(id);
+    r = m ? (m[1] as RangeTag) : "";
+    if (RANGE_OF_ID.size > 200_000) RANGE_OF_ID.clear();
+    RANGE_OF_ID.set(id, r);
+  }
+  return r;
 }
+const RANGE_OF_ID = new Map<string, RangeTag | "">();
 
 /** Fixed historical range-construction basis; changing modeled costs must not silently shrink configured distances. */
 export const RANGE_COST_BASIS = POSITION_COST_RT;

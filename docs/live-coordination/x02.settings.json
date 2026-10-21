@@ -1,0 +1,20 @@
+{
+  "focus": [],
+  "symbols": 12,
+  "symbolRank": "volatility1h",
+  "symbolOffset": 0,
+  "cycleMs": 250,
+  "tickMs": 100,
+  "live": { "notionalUsd": 1, "maxNotionalUsd": 200, "syncMs": 15000, "maxPositions": 0, "leverage": "max", "positionSize": "min" },
+  "sizing": { "mode": "minQty", "pct": 0.02 },
+  "toggles": { "normal": true, "trailing": true, "block": true, "blockActive": false, "dca": true, "dcaActive": true, "axis": true },
+  "disabledKinds": [],
+  "grid": {
+    "tp": [0.03, 0.04, 0.05, 0.06, 0.07, 0.08],
+    "slOfTp": [0.5, 1, 2],
+    "trailOfTp": [0, 0.25, 0.5],
+    "maxSl": 0.03,
+    "maxTrail": 0.03
+  },
+  "signals": { "enabled": true, "count": 0, "maxPositions": 0, "maxOpen": 0, "perSymbol": 0 }
+}

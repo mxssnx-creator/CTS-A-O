@@ -1,4 +1,5 @@
 import { signalSourceOf } from "./indications/registry.ts";
+import { closeClassOf } from "./relation.ts";
 import { POSITION_COST_RT, POSITION_COST_STRESS_RT } from "./model-cost.ts";
 
 // Per-bot exchange statistics: every config's closed trade on the exchange (live_lane_trades), judged against the frozen
@@ -17,11 +18,8 @@ export const MIN_SIDE_TRADES = 30;
 /** 8 h blocks with at least this many trades are judged for consistency */
 export const BLOCK_MIN_TRADES = 3;
 export const BLOCK_MS = 8 * 3_600_000;
-/**
- * The 01:06 UTC restart (11 Oct) booked 99 stops at trigger prices: their exit times fall in these windows. Excluded
- * from every judgement, counted apart.
- */
-export const RESTART_WINDOWS: ReadonlyArray<{ from: number; to: number }> = [{ from: 1791680800000, to: 1791680801000 }];
+/** the 01:06 UTC restart's windows (relation.ts: excluded from every judgement, counted apart) */
+export { RESTART_WINDOWS } from "./relation.ts";
 
 /** the 15-minute bar a paper entry belongs to (the id's entry time floored to the bar; non-numeric ids kept as they are) */
 export const EVENT_BAR_MS = 900_000;
@@ -45,10 +43,13 @@ export interface LaneRow {
 
 export interface FamilyStats {
   family: string;
-  /** trades counted (restart rows excluded) and rows in all */
+  /** trades counted (rows that are not own closes excluded) and rows in all */
   trades: number;
   raw: number;
+  /** excluded, counted apart (relation.ts): the restart window's stops, closes by an order not ours, unverified closes */
   restart: number;
+  hand: number;
+  unverified: number;
   /** distinct (symbol, side, paper entry bar) */
   events: number;
   winRate: number;
@@ -110,28 +111,41 @@ function sqnOf(xs: readonly number[]): number {
  * part of `cost` is taken off.
  */
 export function repriced(x: Pick<LaneRow, "side" | "entry" | "exit" | "r">, cost: number): number {
+  // a row with no exit price (open at the end of a window, marked) has no gross move to derive its cost from: with exit 0
+  // a LONG read as a −100 % move and was re-priced to about −1.00 (a PF artifact); its stored r stands as it is
+  if (!(x.exit > 0) || !(x.entry > 0)) return x.r;
   const implied = (x.side * (x.exit - x.entry)) / x.entry - x.r;
   return x.r - Math.max(0, cost - implied);
 }
 
-function inRestart(exitT: number): boolean {
-  return RESTART_WINDOWS.some((w) => exitT >= w.from && exitT <= w.to);
-}
-
-/** the per-family statistics of the exchange record, judged against the frozen criteria */
-export function botStatsFromRows(rows: readonly LaneRow[]): { families: FamilyStats[]; restart: number; rows: number } {
+/**
+ * The per-family statistics of the exchange record, judged against the frozen criteria. Only own closes are trades
+ * (relation.ts): the restart window's stops, the closes an order not ours made ("hand") and the unverified ones are
+ * counted apart. A simulated row (tp / sl / trail …) is not an exchange close and counts as it always did.
+ */
+export function botStatsFromRows(rows: readonly LaneRow[]): {
+  families: FamilyStats[];
+  restart: number;
+  hand: number;
+  unverified: number;
+  rows: number;
+} {
   const byFam = new Map<string, LaneRow[]>();
-  let restart = 0;
+  const apart = { restart: 0, hand: 0, unverified: 0 };
+  const apartByFam = new Map<string, { restart: number; hand: number; unverified: number }>();
+  const rawByFam = new Map<string, number>();
   for (const x of rows) {
-    if (x.reason === "stop" && inRestart(x.exit_t)) {
-      restart++;
+    const f = botFamilyOf(x.cfg);
+    rawByFam.set(f, (rawByFam.get(f) ?? 0) + 1);
+    const cls = closeClassOf(x);
+    if (cls === "restart" || cls === "hand" || cls === "unverified") {
+      apart[cls]++;
+      const a = apartByFam.get(f) ?? apartByFam.set(f, { restart: 0, hand: 0, unverified: 0 }).get(f)!;
+      a[cls]++;
       continue;
     }
-    const f = botFamilyOf(x.cfg);
     (byFam.get(f) ?? byFam.set(f, []).get(f)!).push(x);
   }
-  const rawByFam = new Map<string, number>();
-  for (const x of rows) rawByFam.set(botFamilyOf(x.cfg), (rawByFam.get(botFamilyOf(x.cfg)) ?? 0) + 1);
   const families: FamilyStats[] = [];
   for (const [family, xs] of byFam) {
     const r02 = xs.map((x) => repriced(x, COST_RT));
@@ -185,7 +199,9 @@ export function botStatsFromRows(rows: readonly LaneRow[]): { families: FamilySt
       family,
       trades: xs.length,
       raw: rawByFam.get(family) ?? xs.length,
-      restart: (rawByFam.get(family) ?? xs.length) - xs.length,
+      restart: apartByFam.get(family)?.restart ?? 0,
+      hand: apartByFam.get(family)?.hand ?? 0,
+      unverified: apartByFam.get(family)?.unverified ?? 0,
       events,
       winRate: xs.length ? r02.filter((r) => r > 0).length / xs.length : 0,
       pfStored: profitFactor(stored),
@@ -203,5 +219,5 @@ export function botStatsFromRows(rows: readonly LaneRow[]): { families: FamilySt
     });
   }
   families.sort((a, b) => b.trades - a.trades);
-  return { families, restart, rows: rows.length };
+  return { families, ...apart, rows: rows.length };
 }

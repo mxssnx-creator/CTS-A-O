@@ -5,6 +5,8 @@
 // unmatched in this window; it does not establish whether the other side is still open or exited outside the window.
 // The attribution has no filled quantity or settled cash P&L. These unweighted return PFs are NOT account cash PF
 // or execution-profitability proof; repeated closes of a paper identity remain separate samples in its side's stats.
+// The live-vs-system relation itself is relation.ts (own lanes against the paper book's own record, one window); this
+// diff compares the simulated run with the paper book (sim-vs-paper.md).
 import { profitFactor } from "./metrics/stats.ts";
 import { liveGroupOf } from "./live-validation.ts";
 

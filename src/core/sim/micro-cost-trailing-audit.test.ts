@@ -78,7 +78,7 @@ it("matches every configured TP/SL/trailing/hold cell at Base, including General
   const ids = (xs: ReturnType<typeof protectGrid>) =>
     xs.map((p) => configId("follow", "micro-1-break-close-fast@m15", p)).sort();
   for (const trailingOnly of [false, true]) for (const trailStep of [0.5, 1, 2]) {
-    const configured = { ...grid, trailingOnly, trailStep };
+    const configured = { ...grid, trailingOnly, trailStep, tp: [0.03, 0.08], maxSl: 0.03, maxTrail: 0.015 };
     const base = completeBaseRangeProtects(configured, RT_COST);
     const execution = protectGrid(15, configured, RT_COST);
     assert.deepEqual(ids(base), ids(execution), `${trailingOnly}/${trailStep}: Base/execution identity`);

@@ -228,6 +228,9 @@ function ShellInner() {
                   {st.state}
                   {isBusy(st.state) ? ` · ${progressText(st)}` : ""}
                 </Pill>
+                {isBusy(st.state) && st.heartbeat > 0 && Date.now() - st.heartbeat > 60_000 && (
+                  <Pill kind="bad">progress stale · last report {fmt.ago(st.heartbeat)}</Pill>
+                )}
                 {st.pending && st.state !== "computing" && <Pill kind="acc">compute queued</Pill>}
                 <Pill>{st.source}</Pill>
                 {st.live && <Pill kind="bad">live {liveState(st.live, st.liveStatus).label}</Pill>}

@@ -62,6 +62,8 @@ type Msg = { evaluationFromT?: number } & (
       rangeMinTf?: Record<string, number>;
       microOwnInds?: MicroIndRule;
       gates?: unknown;
+      /** grid.baseCells: record each pair's passed cells */
+      cells?: boolean;
     }
   | {
       id: number;
@@ -315,6 +317,7 @@ parentPort!.on("message", (m: Msg) => {
         m.microOwnInds,
         m.gates as never,
         (m.completeRangeProtects ?? []) as never,
+        m.cells === true,
       );
       parentPort!.postMessage({
         id: m.id,

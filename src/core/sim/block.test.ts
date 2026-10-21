@@ -63,6 +63,108 @@ describe("Block sources", () => {
     }
     assert.equal(levelOfTail([Number.MAX_VALUE, Number.MAX_VALUE], 2), 1,
       "overflow in the second window is unknown, not a second winning level");
+    assert.equal(levelOfTail([.01, NaN], 2, 1, 0.5), 0, "levelMinWin does not let an unknown close count either");
+  });
+
+  // the pooled-feed options judge the legacy candidate feed (an accepted-orders book takes accepted orders only)
+  const LEGACY_BLOCK: BlockConfig = { ...DEFAULT_BLOCK, historySource: "real-candidates" };
+
+  it("levelMinWin: seven losses and one big win are level 8 on the sum, no level with a win share", () => {
+    const xs = [-0.01, -0.01, -0.01, -0.01, -0.01, -0.01, -0.01, 0.2];
+    assert.equal(levelOfTail(xs, 8), 8, "today: every last-n sum is positive");
+    assert.equal(levelOfTail(xs, 8, 1, 0.5), 2, "only n = 1 and 2 have half their closes won");
+    assert.equal(levelOfTail([-0.005, 0.01, -0.005, 0.01], 4, 1, 0.5), 4);
+    const book = blockBookOf({ ...LEGACY_BLOCK, levelMinWin: 0.5 });
+    for (const r of xs) book.add({ sym: "A", side: 1, kind: "rsi", r });
+    assert.equal(book.level("all", 8), 2);
+    const plain = blockBookOf(LEGACY_BLOCK);
+    for (const r of xs) plain.add({ sym: "A", side: 1, kind: "rsi", r });
+    assert.equal(plain.level("all", 8), 8);
+  });
+
+  it("poolSignals off: signal closes stay out of the pooled sources (their config's pause still counts down)", () => {
+    const sig = { sym: "A", side: 1, kind: "sig", r: 0.01, cfg: "s1" };
+    const eng = { sym: "A", side: 1, kind: "rsi", r: -0.01, cfg: "e1" };
+    const on = blockBookOf({ ...LEGACY_BLOCK, pause: 2 });
+    const off = blockBookOf({ ...LEGACY_BLOCK, pause: 2, poolSignals: false });
+    for (const b of [on, off]) {
+      b.add({ ...sig, bsrc: ["config"] }, true);
+      b.add(sig, true);
+      b.add(eng, false);
+    }
+    assert.deepEqual(on.tailSum("all", 10), { n: 3, sum: 0.01 + 0.01 - 0.01 });
+    assert.deepEqual(off.tailSum("all", 10), { n: 1, sum: -0.01 }, "the engine's close only");
+    assert.equal(off.paused("c:s1|A|1"), true, "one of its two pause closes counted");
+    off.add(sig, true);
+    assert.equal(off.paused("c:s1|A|1"), false);
+    // feedBooks names a signal by its indication
+    const fb = blockBookOf({ ...LEGACY_BLOCK, poolSignals: false });
+    feedBooks({ exitT: 1, sym: "A", side: 1, kind: "sig", r: 0.02, ind: "sig-cci-m@m15", cfg: "s" }, fb);
+    feedBooks({ exitT: 2, sym: "A", side: 1, kind: "rsi", r: 0.03, ind: "rsi-mom-14-20@m15", cfg: "e" }, fb);
+    assert.deepEqual(fb.tailSum("all", 10), { n: 1, sum: 0.03 });
+  });
+
+  it("poolDedupe: the same close under two indication names counts once in the pooled sources", () => {
+    const x = { sym: "A", side: 1, kind: "rsi", r: 0.01, entryT: 10, exitT: 20 };
+    for (const auto of [false, true]) {
+      const d = blockBookOf({ ...LEGACY_BLOCK, poolDedupe: true, windowAuto: auto });
+      d.add({ ...x, cfg: "a" });
+      d.add({ ...x, cfg: "b" });
+      d.add({ ...x, cfg: "c", r: 0.02 });
+      d.add({ ...x, cfg: "d", side: -1 });
+      assert.equal(d.tailSum("all", 10).n, 3, `auto ${auto}: a twin is one close`);
+      assert.equal(blockBookOf({ ...LEGACY_BLOCK, windowAuto: auto }).poolDedupe, false);
+    }
+    const plain = blockBookOf(LEGACY_BLOCK);
+    plain.add({ ...x, cfg: "a" });
+    plain.add({ ...x, cfg: "b" });
+    assert.equal(plain.tailSum("all", 10).n, 2, "default: every config's candidate counts");
+  });
+
+  it("windowHours: a pooled source's window scales with its own activity", () => {
+    const book = new BlockBook(0, 1, { windowHours: 4 });
+    // the overall pool closes 40 times an hour, symbol B once an hour (8 h of closes)
+    for (let i = 0; i < 8 * 40; i++) {
+      const t = i * (H / 40);
+      book.add({ sym: "A", side: 1, kind: "rsi", r: 0.01, exitT: t });
+      if (i % 40 === 0) book.add({ sym: "B", side: 1, kind: "rsi", r: 0.01, exitT: t });
+    }
+    // overall: ~ 4 h × 41 closes / 8 levels ≈ 20 closes per level; symbol B: 4 closes / 8 → the fixed floor 1
+    const wAll = book.windowOf("all", 8);
+    assert.ok(wAll >= 19 && wAll <= 21, `overall window ${wAll}`);
+    assert.equal(book.windowOf("s:B|1", 8), 1);
+    // judged on its window: the overall pool's last 20 closes positive, but a loss streak 20 closes back shows at level 2
+    const b2 = new BlockBook(0, 1, { windowHours: 1 });
+    for (let i = 0; i < 80; i++) b2.add({ sym: "A", side: 1, kind: "rsi", r: i < 70 ? -0.01 : 0.01, exitT: i * (H / 80) });
+    // 80 closes in the last hour / 8 levels → window 10: level 1 = last 10 (positive), level 2 = last 20 (sum 0)
+    assert.equal(b2.windowOf("all", 8), 10);
+    assert.equal(b2.level("all", 8), 1);
+    const fixed = new BlockBook(0, 1);
+    for (let i = 0; i < 80; i++) fixed.add({ sym: "A", side: 1, kind: "rsi", r: i < 70 ? -0.01 : 0.01, exitT: i * (H / 80) });
+    assert.equal(fixed.level("all", 8), 8, "window 1: the last 8 closes are all wins");
+    // retention: a long run keeps the span a level reads
+    const big = new BlockBook(0, 1, { windowHours: 2 });
+    for (let i = 0; i < 20_000; i++) big.add({ sym: "A", side: 1, kind: "rsi", r: 0.001, exitT: i * (H / 1000) });
+    assert.equal(big.windowOf("all", 8), 250);
+    assert.equal(big.level("all", 8), 8);
+    // blockBookOf carries the option (fixed and auto books)
+    assert.equal(blockBookOf({ ...DEFAULT_BLOCK, windowHours: 3 }).windowHours, 3);
+    assert.equal(blockBookOf({ ...DEFAULT_BLOCK, windowHours: 3, windowAuto: true }).windowHours, 3);
+    assert.equal(blockBookOf(DEFAULT_BLOCK).windowHours, 0);
+  });
+
+  it("an accepted-orders book (the default history) takes accepted orders only, with the pooled-feed options", () => {
+    const book = blockBookOf({ ...DEFAULT_BLOCK, levelMinWin: 0.5, windowHours: 2, poolSignals: false });
+    assert.equal(book.acceptedOnly, true);
+    assert.equal(book.levelMinWin, 0.5);
+    assert.equal(book.windowHours, 2);
+    assert.equal(book.poolSignals, false);
+    book.add({ sym: "A", side: 1, kind: "rsi", r: 0.01 });
+    book.add({ sym: "A", side: 1, kind: "sig", r: 0.01, accepted: true }, true);
+    assert.deepEqual(book.tailSum("all", 10), { n: 0, sum: 0 }, "an unaccepted close and a kept-out signal");
+    book.add({ sym: "A", side: 1, kind: "rsi", r: 0.01, accepted: true });
+    assert.deepEqual(book.tailSum("all", 10), { n: 1, sum: 0.01 });
+    assert.equal(new BlockBook(0, 1, true).acceptedOnly, true, "the boolean form is acceptedOnly");
   });
 
   it("keeps symbol, direction and indication independent", () => {
@@ -372,13 +474,17 @@ describe("Block types, Active, steps and pause", () => {
     assert.deepEqual(ov.legs, { overall: 0.6, symbol: 0.4, direction: 0.2, indication: 0.8 });
     assert.ok(Math.abs(ov.vol - 3) < 1e-9, "1 + 0.6 + 0.4 + 0.2 + 0.8");
     assert.equal(ov.level, 4);
-    // The base and all sources share maxMult; adding sources never bypasses the chosen total cap.
+    // each source is capped on its own (maxMult − 1), the whole stack at maxMult (the total volume cap)
     const big = blockDecide({ ...L, overall: 6, symbol: 6, direction: 6, indication: 6 }, { ...ON, mode: "overall", ratio: 1, maxMult: 3 }, false);
-    // 4 sources × 2 extra = 9× requested → total cap 3×, each extra shrinks to 0.5.
+    // 4 sources × 2 extra = 9× → the stack never exceeds maxMult 3: every source's position shrinks to 0.5
     assert.deepEqual(big.legs, { overall: 0.5, symbol: 0.5, direction: 0.5, indication: 0.5 });
     assert.equal(big.vol, 3);
     const legSum = Object.values(big.legs ?? {}).reduce((a, v) => a + (v ?? 0), 0);
-    assert.ok(Math.abs(1 + legSum - big.vol) < 1e-6, "legs conserve the configured total cap");
+    assert.ok(Math.abs(1 + legSum - big.vol) < 1e-6, "legs shrink in proportion to the maxMult cap");
+    // at maxMult 8 (the default) the stack stays at 8×: 4 × 7 extra → 1.75 each
+    const big8 = blockDecide({ ...L, overall: 8, symbol: 8, direction: 8, indication: 8 }, { ...ON, mode: "overall", ratio: 1, maxMult: 8 }, false);
+    assert.deepEqual(big8.legs, { overall: 1.75, symbol: 1.75, direction: 1.75, indication: 1.75 });
+    assert.equal(big8.vol, 8);
     // Active: only sources at the min level or above raise; none → not adjusted
     const act = blockDecide(L, { ...ON, mode: "overall", minActiveLevel: 3 }, true);
     assert.deepEqual(act.legs, { overall: 0.6, indication: 0.8 });
@@ -488,6 +594,53 @@ describe("Block types, Active, steps and pause", () => {
     assert.equal(stepRaise(0.2, { ...b, steps: 0 }, 1.5), 0.2);
     const d = blockDecide({ ...L, indication: 3, overall: 0, symbol: 0, direction: 0 }, { ...b, mode: "shared" }, false);
     assert.equal(d.vol, 1.5, "0.2·3 = 0.6 → 2 steps of 0.25");
+  });
+
+  it("stepFloor off: a leg is the nearest step of ratio × level, never a forced full unit", () => {
+    // the default Overall: 7 steps to 8× (a step = one unit), ratio 0.5
+    const d0 = { ...DEFAULT_BLOCK, sources: SRC };
+    const lv1 = { ...L, overall: 1, symbol: 1, direction: 1, indication: 1 };
+    // the default rule (stepFloor unset): a raise below one step keeps its exact ratio, never a forced full unit
+    assert.equal(blockDecide(lv1, d0, false).vol, 3);
+    assert.ok(Math.abs(blockDecide(lv1, { ...d0, ratio: 0.1 }, false).vol - 1.4) < 1e-9);
+    assert.equal(stepRaise(0.1, d0, 7), 0.1);
+    assert.equal(stepRaise(1.6, d0, 7), 1, "a larger raise rounds down to complete steps");
+    // off: 0.1 is under half a step → nothing; 0.5 rounds to one step; 1.4 → 1; 1.6 → 2
+    const off = { ...d0, stepFloor: false };
+    assert.equal(stepRaise(0.1, off, 7), 0);
+    assert.equal(stepRaise(0.5, off, 7), 1);
+    assert.equal(stepRaise(1.4, off, 7), 1);
+    assert.equal(stepRaise(1.6, off, 7), 2);
+    const tiny = blockDecide(lv1, { ...off, ratio: 0.1 }, false);
+    assert.equal(tiny.vol, 1, "four sources at 0.1 units each raise nothing");
+    assert.deepEqual(tiny.src, []);
+    // Block Active still opens an entry at its level whose raise rounds to no step (at its unit)
+    const act = blockDecide(lv1, { ...off, ratio: 0.1, minActiveLevel: 1 }, true);
+    assert.equal(act.adjusted, true);
+    assert.equal(act.vol, 1);
+    assert.equal(blockDecide({ ...lv1, overall: 0, symbol: 0, direction: 0, indication: 0 }, off, true).adjusted, false);
+    // ratio 0.3: level 2 → 0.6 → one unit; level 1 → 0.3 → none
+    const mix = blockDecide({ ...L, overall: 2, symbol: 1, direction: 1, indication: 1 }, { ...off, ratio: 0.3 }, false);
+    assert.deepEqual(mix.legs, { overall: 1 });
+    assert.equal(mix.vol, 2);
+    // continuous steps (0) are unchanged by the flag
+    assert.equal(stepRaise(0.1, { ...off, steps: 0 }, 7), 0.1);
+  });
+
+  it("maxMult caps the total stack in every type (shared, additive, overall)", () => {
+    const lv = { ...L, overall: 8, symbol: 8, direction: 8, indication: 8 };
+    for (const maxMult of [1, 1.5, 2, 4, 8])
+      for (const mode of ["shared", "additive", "overall"] as const) {
+        const d = blockDecide(lv, { ...ON, mode, ratio: 1, maxLevel: 8, maxMult, steps: 0 }, false);
+        assert.ok(d.vol <= maxMult + 1e-9, `${mode} ${maxMult}: ${d.vol}`);
+        if (d.legs) {
+          const s = Object.values(d.legs).reduce((a, v) => a + (v ?? 0), 0);
+          assert.ok(Math.abs(1 + s - d.vol) < 1e-5, `${mode} ${maxMult}: legs sum to the stack`);
+        }
+      }
+    assert.equal(blockStackCap({ maxMult: 12 }), 8);
+    assert.equal(blockStackCap({ maxMult: 0.5 }), 1);
+    assert.equal(blockStackCap({ maxMult: 3 }), 3);
   });
 
   it("volume quantization preserves every positive substep and never exceeds requested extra volume or the cap", () => {

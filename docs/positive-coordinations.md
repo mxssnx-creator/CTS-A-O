@@ -83,6 +83,16 @@ for this desk again. The caps-off period (about 01:32 to 02:38 UTC) is not a mea
 Remaining backstops: the 80 %-of-wallet loss limit (`--max-loss-pct 80`), taken of the wallet at the start of each session
 and counted from each session's start (11 Oct, systemwide: src/core/loss-limit.ts), and the free-margin / last-N floors.
 
+20 Oct — **x01 Signals live desk: the stop-risk and worst-case budgets switched OFF, exposure cap 500×.** On the operator's
+explicit approval ("Budgets bei dieser Wallet sollen aus sein. Ausdrücklich genehmigt.") for the ~0.11 USDT-base wallet:
+`live.maxRiskPct 0` and `live.maxBackstopLossPct 0` (0 = budget off, `scaleToBudgets`), `live.maxExposureX 500` (settings
+maximum), `live.maxPositionX 30`, `live.ratio 1` (the minimum volume factor). The coordination "Live fill within every budget"
+is therefore OFF for this desk, with no causal comparison: the reason is the venue minimum (2–3.4 USD) over the wallet base — one
+stop of a minimum position costs ~0.2 USD, more than the base, so any budget at or below 100 % of the equity admits at most one
+position. The exchange's own margin check and the free-margin floor remain; no account-loss limit is active (`--max-loss 0`,
+operator's earlier choice). To restore with a larger deposit: maxRiskPct 0.5, maxBackstopLossPct 0.5, maxExposureX 10,
+maxPositionX 5.
+
 6 Oct — **engine direction acceptance off; Long and Short always run both directions.** The comparison above does NOT
 beat the coordination: on the same tapes switching it off let in 187 shorts at PF 0.05 and took the window from PF 3.62
 to 1.82 (net −37 %). Shown to the operator before the decision; the operator chose both directions anyway and asked for
@@ -109,9 +119,13 @@ untagged id, so every signal config and every Axis / DCA ladder was held back wi
 12.5 at the time). Fixed in code (`rangeExcluded`); x01's patch dropped the exclusion when it switched to signals
 trailing plain at volume factor 500 on every evaluated symbol, loss bounds 0.50 / 0.50 unchanged.
 
-6 Oct — **Long and short run independently, everywhere** (operator: "Always process long and short both and make
-sure it runs independently"). No coordination above is switched off; the ones that pooled both directions now
-judge each direction on its own record:
+6 Oct — **Long and short run independently** (operator: "Always process long and short both and make sure it runs
+independently"). No coordination above is switched off. The ones below now judge each direction on its own record: the
+position slot of every simulator, the symbol gate (`provenSide`), the last-N execution gates (`lastNSideOk`), the signal
+units (`sigActiveKey`), the signal loss-cluster guard, the signal position cap, the Block symbol and indication sources,
+and the Stable-02 symbol windows. The seat validation (`validOk`) stays pooled by design. Two stay as they are until
+compared, both behind options off by default: the Block config source, pooled across directions (`block.sideKeys`), and
+the Stable-02 pause, which paper and live check by the bare symbol while `coord.s2Side` is off (the default, where that key never matches a `sym|±1` pause; on, by symbol × direction):
 
 - **One position slot per config × symbol × direction.** Every simulator (Normal / Trailing `simulate`, DCA and DCA
   Active, Axis revert and desk, Axis per range, Base's `runCombo`) held one slot per config × symbol: an open long
@@ -135,10 +149,19 @@ judge each direction on its own record:
   (simulation, paper, pending entries). The engine's `maxPositions` keeps counting both (a measured preset value).
 - **Block sources `symbol` and `indication` per direction** (`direction` already was; `overall` and `type` pool by
   definition).
+- **The Block config source stays pooled by default:** `block.sideKeys` (default off) keeps its level and pause across
+  both directions until the comparison in "Block Overall: corrected rules" below is recorded here.
 - **Stable-02 symbol windows per direction** (`S2Coord`, found by the 6 Oct regression suite): the last-N window and
   the rolling 24-result PF are kept per symbol × direction, so losing shorts never hold back the symbol's longs. The
   coordination stays on (`coord.s2Windows` unchanged); only its key gained the side. The relation volume is unchanged
   (it already judges `side:` and `leg:` relations apart).
+- **Stable-02 pause per side (`coord.s2Side`, default off).** The simulation pauses a symbol × direction
+  (`S2Coord.blocked(sym, side)`, keys `sym|±1`, judged by `s2?.blocked(tr.sym, tr.side) ??` in walkforward.ts). The paper
+  step and the live intents (`pendingEntries`) both refuse entries through `entryHeldBack` (runtime.server.ts:5266-5268),
+  which refuses a paused entry only when `coord.s2Side` is on. Off (the default; `DEFAULT_COORD` has no `s2Side` key),
+  it compares the bare symbol with those keys, which never match, so the default paper and live book does not enforce
+  the pause the simulation applies. Adopting `s2Side` needs a causal on/off comparison on the paper book, recorded
+  here; until then the control cells in `src/core/server/order-sides-paper.test.ts` pin the default as allowed.
 - Keys that could now collide carry the side: the run's dupe check, the Block feed candidate key, the paper position
   id (persisted stop hits written before are still read). `WalkForwardResult` adds `bySide` and `skipsBySide`.
 - Unchanged by design: the Stable-02 confluence rule (the documented exception), the signals' own direction
@@ -578,3 +601,94 @@ operator: one venue-minimum position at a time at ~4 × the wallet; a single sto
 (0.40 USDT) can be reached by roughly 7–30 stops. Unchanged: the loss limit, the engine proof (signals trade live; an
 engine config reaches the exchange only after 25 own closes at PF ≥ 1.2), leverage max, positionSize min. The 11 Oct caps
 remain the setting for a funded wallet; this override is a recorded exception, not a new default.
+
+## Block Overall: corrected rules — PROPOSAL pending a causal eval (14 Oct)
+
+Block stays as it is by default (`DEFAULT_TOGGLES.block` true, `DEFAULT_BLOCK` unchanged, golden digests unchanged); the
+desks keep `toggles.block: false` (6 Oct). What the 6 Oct evidence above traced to the rules, not to the premise, is now
+switchable, each option off by default:
+
+| option | today (default) | proposed | why |
+|---|---|---|---|
+| `block.stepFloor` | true: any raise is at least one step — with 7 steps to 8× a full unit, so ratio 0.1 × level 1 adds a whole unit and four sources at level 1–2 make 5×, at ≥ 3 the full 8× | `false`: a leg is the nearest step of ratio × level (under half a step adds nothing; Block Active still opens it at its unit) | 6 Oct: 5,400 of 10,425 orders at 8× |
+| `block.windowHours` | 0: every pooled source judges `window` (1) closes per level — the overall pool's last 8 closes span minutes | e.g. 6: each pooled source's window is its own closes in its last 6 h ÷ maxLevel (never below `window`), so level 8 spans ~6 h of that source whatever its rate | levels that select, not scale |
+| `block.levelMinWin` | 0: a positive sum is a level — 7 losses and one big win are level 8 | e.g. 0.5: a level also needs half its closes won | one outlier is not a streak |
+| `block.poolSignals` | true: signal candidates feed the pooled sources engine entries are judged on | `false`: the engine's candidates only | signals have their own record (`signalsOwn`) |
+| `block.poolDedupe` | false: every config's candidate counts | `true`: an identical close (one entry under two indication names) counts once | double counting |
+| `block.sideKeys` | false: the config source's level and pause pool both directions | `true`: the config source's level and pause per direction | 6 Oct: long and short run independently. For an engine entry it acts only while `sources.config` is on (DEFAULT_BLOCK has it off, so the default changes no engine entry). A signal entry has its config source on whatever `sources.config` says (`signalsOwn` gives its tape `OWN_SOURCES`), so `sideKeys` changes signal entries too when it is on. Comparison: recipe `blk-cfg-*`, not yet run; no default changes until its result is recorded here |
+
+Fixed outright (not a policy; identical at the default `maxMult` 8, so no golden moves): `maxMult` caps the **total**
+stack in every type — Overall capped only each leg and hard-coded the stack at 8× (block.ts, the walk-forward and paper
+stack caps, the audit). The session chip now reads "max N× stack (every source within it)". Also fixed: the eval records
+what Block did (`summary.block`: volume-weighted PF, unit PF raised / unraised — eval-gate scored one unit only),
+`live.plainOnly` judges the whole Overall position, lane orders place one lane per Overall position sized by its whole
+volume (no second stop under the same id), the per-source statistics rows carry each source's own leg, and the engine
+proof judges the paper book at one unit (`paper_book_trades.mult`).
+
+Not changed: `live.positionSize "min"` sends one exchange minimum per position, so Block does nothing on the exchange
+there; the key funnel now says so per key (`raised`, `blockNote`). Stale: `docs/live-coordination/x01.patch.json`,
+`x01.settings.json` and `twin.*` still say `block: true`; the running x01 desk does not load them (it runs
+`signals.patch.json`, Block off). Left as they are.
+
+**Causal eval recipe** (five 48 h D1 windows, `scripts/eval-gate.mjs`; run only with the desk's memory reserve free —
+the runner stops a child under `CTS_EVAL_KILL_BELOW_MB`). On this base eval-gate runs every window with **Block off**
+(its toggles are fixed: `block false, blockActive false, dca false, axis false`), so Block can only be measured with the
+`--toggles` flag of the eval-tools branch (assumed to merge onto those fixed toggles; check its usage line first). One
+option at a time against the as-is Block, then the combination, with Block off as the reference:
+
+```sh
+E="env MALLOC_ARENA_MAX=2 MALLOC_MMAP_THRESHOLD_=1048576 nice -n 15 node --experimental-strip-types scripts/eval-gate.mjs --jobs 1"
+ON='{"block":true}'
+$E --label blk-off       --settings '{}'
+$E --label blk-asis      --settings '{}' --toggles "$ON"
+$E --label blk-stepfloor --settings '{"block":{"stepFloor":false}}' --toggles "$ON"
+$E --label blk-winh6     --settings '{"block":{"windowHours":6}}' --toggles "$ON"
+$E --label blk-winh12    --settings '{"block":{"windowHours":12}}' --toggles "$ON"
+$E --label blk-minwin    --settings '{"block":{"levelMinWin":0.5}}' --toggles "$ON"
+$E --label blk-poolsig   --settings '{"block":{"poolSignals":false}}' --toggles "$ON"
+$E --label blk-dedupe    --settings '{"block":{"poolDedupe":true}}' --toggles "$ON"
+$E --label blk-all       --settings '{"block":{"stepFloor":false,"windowHours":6,"levelMinWin":0.5,"poolSignals":false,"poolDedupe":true}}' --toggles "$ON"
+# block.sideKeys acts only while the config source is on: for an engine entry that is sources.config, and a signal entry
+# has it on while signalsOwn is on (the default). A settings block.sources replaces the whole object, so both arms give
+# five sources with config true (type off, as DEFAULT_BLOCK.sources). Compare blk-cfg-sidekeys with blk-cfg-pooled;
+# blk-off is the reference.
+$E --label blk-cfg-pooled   --settings '{"block":{"sources":{"config":true,"overall":true,"symbol":true,"direction":true,"indication":true,"type":false}}}' --toggles "$ON"
+$E --label blk-cfg-sidekeys --settings '{"block":{"sideKeys":true,"sources":{"config":true,"overall":true,"symbol":true,"direction":true,"indication":true,"type":false}}}' --toggles "$ON"
+```
+
+Read `summary.block` of each output (runs/eval/gate/<label>.json; the log prints it as "Block: … raised"): `pfVol` (what
+the book earns with Block's sizes) against `pfUnit`, and `raisedPfUnit` against `unraisedPfUnit` (Block selects only if
+the raised orders trade better). The eval's own PF columns are unit and identical for every Block variant that takes
+the same orders, so the decision reads `pfVol` per half (`summary.block.d1a` / `.d1b`). A default changes only when a
+variant beats the as-is setting and Block off in D1a and D1b — recorded here.
+
+## live.sideGates: live validation per side (plan item 13) — default off, no comparison recorded yet
+
+- **Key and default.** `live.sideGates` (boolean; `LiveSettings.sideGates` in `src/core/config.ts`). `DEFAULT_SETTINGS`
+  does not set it. Unset, the code runs as it did before the option: one pooled record per config, no new work and no
+  new output field. `src/core/server/order-sides-records.test.ts` (group d) pins the unset default.
+- **What it changes when on.** The exchange record, the simulated forward closes, the engine proof and the group gates
+  are kept per config and side, and an entry is judged on its own side: a SHORT is not refused by the LONG closes of
+  its config, nor a LONG by the SHORT ones. A close or an entry with no side of its own (neither +1 nor -1) belongs to
+  neither side. It changes entry decisions. The Proven live listing and its status carry `provenBySide` and show each
+  proof as a config and a side.
+- **How it is set.** Through the settings save or a desk patch's settings. `checkSettings` (`src/core/settings-check.ts`)
+  refuses anything but true or false. A preset does not carry the live stage (`src/core/api-data.ts`), so no preset turns
+  it on. There is no switch on the Settings page: a switch would make it a choice before a comparison is recorded here.
+- **Pinned by.** Group d of `src/core/server/order-sides-records.test.ts`: the record and the entry gate with the option
+  on, the pooled controls with it off, the engine proof per side, the simulated fallback (`sideTapeOf`, and its memo),
+  the no-side rule, the settings boolean, the unset default, the group gate's key and per-side verdicts
+  (`liveGroupKeyOf`, `liveGroupGates`) and the proven key's config and side (`splitRecordKey`). Group g of the same file:
+  a side-0 lane judged on either side (`liveLaneFilter`: its engine proof, and its active signal key in `validLane`),
+  a side-less entry admitted, and the signal readers (`signalOk`, `signalUnitOf`, `signalProven`) reading a side that
+  is not +1 or -1 as no side.
+  The side selectors the live validation compute reads are pinned too: `LV_SIDES_APART` / `LV_SIDES_POOLED` (the sides a
+  count runs over) and `lvSideOfEntry` (the side an entry is judged on), in group d. Not pinned by a cell: `lvOf` and
+  `groupsAt` in runtime.server.ts (closures of the paper-step compute: lvOf's unjudged gate for an entry with no side,
+  and groupsAt's loop over the sides; they need the whole-runtime harness, which is not in this group's files), the
+  status counts that carry the side, the Proven live page and `coreListingData` (checked by reading and by tsc). Left as
+  it is: the lane identity readers `laneKeyOf` (src/core/live-record.ts) and `laneStringsOf`
+  (src/core/server/live.server.ts) still read a side of 0 as SHORT. Lanes and positions are typed +1 / -1, so no lane
+  identity carries a side of 0 today.
+- **Stays off** until a causal comparison on the paper or the live book, recorded in this section, says otherwise. Until
+  then the default is the pooled record, which is the code as it was before the option.

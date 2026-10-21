@@ -6,6 +6,7 @@ import {
 } from "./live-promote.ts";
 import type { PromoteEvidence, PromoteEvidenceLane, PromoteOpts } from "./live-promote.ts";
 import { kindOfId } from "./pipeline/pipeline.ts";
+import { liveLaneFilter } from "./server/live.server.ts";
 
 const NOW = 1_800_000_000_000;
 const SH = "sweep|trend-adx@m15c|tp6|sl4.5|tr0|h64|sh";
@@ -315,5 +316,24 @@ describe("strict exact-lane reference promotion", () => {
     assert.deepEqual(blocked.promotedLanes, []);
     assert.deepEqual(blocked.excludeRanges, [...PROMOTE_RANGES]);
     assert.deepEqual(blocked.kinds, ["trailing-only"]);
+  });
+
+  it("the signal proof is the operator's: promoteLive never sets it, and signals are sendable while it is off", () => {
+    const on = { mc: false, mn: false, mp: false, sh: true, gn: false, lg: false, wide: false, exit: false };
+    const dec = { on, promotedLanes: decide(evidence([lane(SH)])).promotedLanes };
+    const live = promoteLive({ source: "signals" }, dec);
+    for (const k of ["signalProofN", "signalProofPf", "signalProofEvents"]) assert.ok(!(k in live), `${k} is never set`);
+    // the operator's own signal proof passes through as it is
+    const kept = promoteLive({ source: "signals", signalProofN: 30, signalProofPf: 1.5, signalProofEvents: 4 }, dec);
+    assert.deepEqual([kept.signalProofN, kept.signalProofPf, kept.signalProofEvents], [30, 1.5, 4]);
+    // off (no proven units): the promoted desk sends signals of either side, as before
+    const off = liveLaneFilter({ ...live, promotedLanes: undefined } as never, null, null, null, null).sendable;
+    assert.deepEqual([off({ cfg: SIG, vol: 1, side: 1 }), off({ cfg: SIG, vol: 1, side: -1 })], [true, true]);
+    // on: only a proven unit's side; the promoted engine range is not judged by it
+    const g = liveLaneFilter({ ...live, promotedLanes: undefined } as never, null, null, null, new Set(["sig-ema-cross-s@m15|-1"])).sendable;
+    assert.deepEqual(
+      [g({ cfg: SIG, vol: 1, side: 1 }), g({ cfg: SIG, vol: 1, side: -1 }), g({ cfg: SH, vol: 1, side: 1 })],
+      [false, true, true],
+    );
   });
 });

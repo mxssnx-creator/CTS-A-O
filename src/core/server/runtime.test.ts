@@ -850,7 +850,8 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
       trailOn: false,
       mtm: 0,
     };
-    rt.paper.positions = [{ ...op, vol: 2, level: 0, heldAt: op.entryT + 7 * 60_000 }];
+    // (adopted at 1.01 × its entry: the executable record's price, kept as it was)
+    rt.paper.positions = [{ ...op, vol: 2, level: 0, heldAt: op.entryT + 7 * 60_000, heldPx: op.entry * 1.01 }];
     // the re-simulation no longer takes it (as after a gate was added)
     (sim as { trades: unknown[] }).trades = sim.trades.filter(
       (x) => !(x.cfg === op.cfg && x.sym === op.sym && x.entryT === op.entryT),
@@ -866,8 +867,8 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     assert.equal(row!.exit_t, tp!.exitT[i]);
     assert.ok(Math.abs(row!.r - tp!.r[i] * 2) < 1e-12, "at the volume it was held with");
     // the book's own record: the position it held, its close, and when the book first held it (entry delay 7 min)
-    const own = rt.db.get<{ r: number; exit_t: number; held_at: number; reason: string }>(
-      "SELECT r, exit_t, held_at, reason FROM paper_book_trades WHERE cfg = ? AND sym = ? AND side = ? AND entry_t = ?",
+    const own = rt.db.get<{ r: number; exit_t: number; held_at: number; reason: string; held_px: number; entry: number; exit: number }>(
+      "SELECT r, exit_t, held_at, reason, held_px, entry, exit FROM paper_book_trades WHERE cfg = ? AND sym = ? AND side = ? AND entry_t = ?",
       op.cfg,
       op.sym,
       op.side,
@@ -877,6 +878,13 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     assert.equal(own!.exit_t, tp!.exitT[i]);
     assert.ok(Math.abs(own!.r - tp!.r[i] * 2) < 1e-12);
     assert.equal(own!.held_at - op.entryT, 7 * 60_000);
+    // the executable record (relation.ts): the price at adoption, the tape order's entry and exit
+    assert.equal(own!.held_px, op.entry * 1.01);
+    assert.equal(own!.entry, tp!.entry[i]);
+    assert.equal(own!.exit, tp!.exit[i]);
+    // every position the step adopted carries the market price it was adopted at
+    const adopted = rt.paper.positions as Array<{ heldAt?: number; heldPx?: number }>;
+    assert.ok(adopted.every((p) => p.heldPx! > 0), "a new position's heldPx is set at adoption");
   });
 
   it("never runs two cycles at once, however often a recompute is requested", async () => {
