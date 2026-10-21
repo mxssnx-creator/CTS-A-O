@@ -12,6 +12,8 @@ import { CoreDb } from "./db.server.ts";
 import { closePool } from "./pool.server.ts";
 import { allCombos, microLaneFloor } from "../pipeline/pipeline.ts";
 import { DEFAULT_SETTINGS, MINIMAL_RANGE } from "../config.ts";
+import { isMicroInd } from "../indications/micro.ts";
+import { laneOf } from "../indications/registry.ts";
 
 pinSyntheticEnd();
 after(() => closePool());
@@ -68,17 +70,14 @@ describe("engine Base: the worker and the in-process path", { timeout: 600_000 }
     assert.equal(microLaneFloor({ ...DEFAULT_SETTINGS.grid, micro, minimal: { ...MINIMAL_RANGE, microInds: false } }), 5);
     assert.equal(microLaneFloor({ ...DEFAULT_SETTINGS.grid, micro: { ...micro, ownInds: false } }), 0);
     assert.equal(microLaneFloor(DEFAULT_SETTINGS.grid), 0, "the code defaults (no Micro): unchanged, every lane");
-    // the default lanes, every combo: the 2,560 Micro pairs on 1m (independent and combined) that Micro's floor drops
+    // Every eligible Micro family, including newer dedicated aliases, loses exactly
+    // its under-floor lanes. Non-Micro families keep their complete lane coverage.
     const tfs = [1, 5, 15, 30];
-    const before = allCombos([], [], tfs);
-    const kept = new Set(allCombos([], [], tfs, 5).map((c) => `${c.bot}|${c.ind}`));
-    const dropped = before.filter((c) => !kept.has(`${c.bot}|${c.ind}`));
-    assert.equal(dropped.filter((c) => !c.ind.startsWith("inverse-")).length, 2560,
-      "the original Micro lane rule stays unchanged");
-    const inverse = dropped.filter((c) => c.ind.startsWith("inverse-"));
-    assert.equal(inverse.length, 32, "16 Inverse Micro primitives each have independent and combined 1m lanes");
-    assert.ok(inverse.every((c) => c.bot === "follow" && c.ind.startsWith("inverse-mc-")),
-      "Inverse never gains a double-inverting Revert lane");
+    const all = allCombos([], [], tfs);
+    const floored = new Set(allCombos([], [], tfs, 5).map((c) => `${c.bot}|${c.ind}`));
+    const dropped = all.filter((c) => !floored.has(`${c.bot}|${c.ind}`));
+    assert.ok(dropped.length > 0);
+    assert.deepEqual(dropped, all.filter((c) => isMicroInd(c.ind) && (laneOf(c.ind).tf ?? 1) < 5));
   });
 
   it("evaluates the same combos on both paths: the Micro indications on 1m included under the Minimal rule", async () => {

@@ -9,6 +9,7 @@
 // which a leg filled (the fill might have come after the high).
 import type { Bars, DcaConfig, OpenPosition, Protect, Side, Trade } from "../domain/types.ts";
 import { isSignalConfig, signalStopAt, signalTrailMax } from "./trailing.ts";
+import type { SimulationCursor } from "./cursor.ts";
 
 /** A DCA position never stacks more than 5 stages. Leg weights are measured in original base units. */
 export const DCA_MAX_STAGES = 5;
@@ -18,9 +19,14 @@ export function dcaSnapshot(dca: DcaConfig): NonNullable<Protect["dca"]> {
   const addRatio = dca.addRatio ?? 1;
   if (!(Number.isFinite(addRatio) && addRatio > 0 && addRatio <= 2.5))
     throw new RangeError("DCA addition must be positive and at most 2.5 original base units");
-  return { levels: Math.min(DCA_MAX_LEVELS, Math.max(1, Math.floor(dca.levels))),
+  return {
+    levels: Math.min(DCA_MAX_LEVELS, Math.max(1, Math.floor(dca.levels))),
     // Same effective precision as the config ID. Inputs sharing an ID execute the same spacing.
-    step: Math.round(dca.step * 1e6) / 1e6, stepOfTp: dca.stepOfTp ?? 0, stopGap: dca.stopGap ?? 0.5, addRatio };
+    step: Math.round(dca.step * 1e6) / 1e6,
+    stepOfTp: dca.stepOfTp ?? 0,
+    stopGap: dca.stopGap ?? 0.5,
+    addRatio,
+  };
 }
 
 export interface DcaResult {
@@ -39,12 +45,14 @@ export function simulateDca(
   active: boolean,
   cost: number,
   cooldown = 0,
+  cursor?: SimulationCursor,
 ): DcaResult {
   if (!(Number.isFinite(cost) && cost >= 0))
     throw new RangeError("DCA round-trip cost must be finite and nonnegative");
   const { n, t, o, h, l, c, sym } = bars;
   const tfMs = bars.tfMin * 60_000;
-  const trades: Trade[] = [];
+  cursor?.begin(bars);
+  let trades: Trade[] = [];
   const kind = active ? "dca-active" : "dca";
   const ladder = dcaSnapshot(p.dca ?? dca);
   const levels = ladder.levels;
@@ -54,21 +62,57 @@ export function simulateDca(
   // stop must sit beyond the deepest level (stopGap steps past it)
   const signal = isSignalConfig(cfg);
   const signalMax = signal ? signalTrailMax({ cfg, trailMax: p.trailMax }) : Infinity;
-  const requestedSl = Math.max(p.sl, step * ((active ? 1 : levels) + Math.max(0, ladder.stopGap ?? 0.5)));
+  const requestedSl = Math.max(
+    p.sl,
+    step * ((active ? 1 : levels) + Math.max(0, ladder.stopGap ?? 0.5)),
+  );
   const slDist = signal ? Math.min(requestedSl, signalMax) : requestedSl;
 
-  let state: "flat" | "wait" | "pos" = "flat";
-  let side: Side = 1;
-  let ref = 0;
-  let waitUntil = 0;
-  let legs: number[] = [];
-  let weights: number[] = [];
-  let nextLevel = 0; // index of next level to fill (1-based)
-  let startI = 0;
-  let stop = 0;
-  let target = 0;
-  let mfe = 0;
-  let mae = 0;
+  const initial = {
+    state: "flat" as "flat" | "wait" | "pos",
+    side: 1 as Side,
+    ref: 0,
+    waitUntil: 0,
+    legs: [] as number[],
+    weights: [] as number[],
+    nextLevel: 0,
+    startI: 0,
+    stop: 0,
+    target: 0,
+    mfe: 0,
+    mae: 0,
+    nextAllowed: 0,
+  };
+  let {
+    state,
+    side,
+    ref,
+    waitUntil,
+    legs,
+    weights,
+    nextLevel,
+    startI,
+    stop,
+    target,
+    mfe,
+    mae,
+    nextAllowed,
+  } = cursor?.restore(initial) ?? initial;
+  const checkpoint = () => ({
+    state,
+    side,
+    ref,
+    waitUntil,
+    legs,
+    weights,
+    nextLevel,
+    startI,
+    stop,
+    target,
+    mfe,
+    mae,
+    nextAllowed,
+  });
   let filledThisBar = false;
 
   const lvlPx = (k: number) => (side === 1 ? ref * (1 - step * k) : ref * (1 + step * k));
@@ -79,11 +123,11 @@ export function simulateDca(
     target = side === 1 ? a * (1 + p.tp) : a * (1 - p.tp);
     if (signal) stop = signalStopAt(a, side, stop, signalMax);
   };
-  let nextAllowed = 0;
   const close = (i: number, exit: number, reason: Trade["reason"]) => {
     nextAllowed = i + 1 + cooldown;
     let r = 0;
-    for (let k = 0; k < legs.length; k++) r += weights[k] * ((side * (exit - legs[k])) / legs[k] - cost);
+    for (let k = 0; k < legs.length; k++)
+      r += weights[k] * ((side * (exit - legs[k])) / legs[k] - cost);
     const a = avg();
     trades.push({
       cfg,
@@ -107,7 +151,8 @@ export function simulateDca(
     weights = [];
   };
 
-  for (let i = 0; i < n; i++) {
+  for (let i = cursor?.start ?? 0; i < n; i++) {
+    cursor?.checkpoint(i, n, checkpoint);
     filledThisBar = false;
     if (state === "wait") {
       const px = lvlPx(1);
@@ -189,6 +234,7 @@ export function simulateDca(
       }
     }
   }
+  if (cursor) trades = cursor.finish(bars, trades, checkpoint);
   const last = n > 0 ? sig[n - 1] : 0;
   // a ladder open at the last bar is carried like the Normal / Axis families': the walk-forward marks open losers to
   // market (openAtEnd), and the paper book mirrors it — without it DCA alone was judged on its closes
@@ -197,7 +243,8 @@ export function simulateDca(
     const px = c[n - 1];
     const a0 = avg();
     let mtm = 0;
-    for (let k = 0; k < legs.length; k++) mtm += weights[k] * ((side * (px - legs[k])) / legs[k] - cost);
+    for (let k = 0; k < legs.length; k++)
+      mtm += weights[k] * ((side * (px - legs[k])) / legs[k] - cost);
     open = {
       cfg,
       sym,

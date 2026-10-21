@@ -834,6 +834,9 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     const ex = new SimExchange(rng(1));
     const { rt, prices } = fakeRt(new CoreDb(":memory:"));
     rt.paper.positions = randomLanes(rng(3), prices);
+    // Explicitly exercise the legacy aggregate fallback. Native exact-lane
+    // admission has its independent positive/losing evidence tests.
+    Object.assign(rt, { livePromotionGate: undefined });
     rt.sim = syntheticExecutionRun(rt.paper.positions, [-0.01, 0.009]);
     let st = await step(rt, ex);
     assert.match(st.reason, /not ready/);
@@ -1131,6 +1134,9 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
       { cfg: "a", sym: "S2-USDT", side: 1, entry: 24, stop: 23, vol: 1 },
       { cfg: "c", sym: "S4-USDT", side: 1, entry: 38, stop: 37, vol: 1 },
     ];
+    // The synthetic lane setter installs exact proofs. Remove that adapter only
+    // after the final declaration to exercise aggregate fallback, as above.
+    Object.assign(rt, { livePromotionGate: undefined });
     await step(rt, ex);
     const st = await step(rt, ex);
     assert.match(st.reason, /opening blocked: not ready/);

@@ -177,7 +177,9 @@ it("local runtime Signal tapes retain their independent 336h history beside the 
     inner.inc = { state: { universe: u, step: () => ({ tapes: new Map(), broken: new Set() }) },
       others: signalIds, ids: signalIds, since: 0, heavyBar: 1 };
     await inner.lightStep(inner.gen);
-    for (const t of rt.tapes.filter((t) => signalIds.has(t.id))) {
+    const rebuiltSignals = rt.tapes.filter((t) => signalIds.has(t.id));
+    assert.equal(rebuiltSignals.length, signals.length, "every exact Signal config survives the long-history rebuild");
+    for (const t of rebuiltSignals) {
       const original = byId.get(t.id)!;
       assert.notEqual(t, original, "the Signal was actually rebuilt by the incremental path");
       for (const key of ["entryT", "exitT", "r"] as const)

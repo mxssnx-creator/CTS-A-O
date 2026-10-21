@@ -56,7 +56,7 @@ describe("actual execution account budgets across independent Signal sets", () =
       assert.equal(map[0].qty, 5, "the parent stop covers the whole owned stack");
       assert.equal(Object.keys(map[0].weights ?? {}).length, 7, "base and all six source allocations remain explicit");
       assert.ok(Math.abs(Object.values(map[0].weights ?? {}).reduce((sum, w) => sum + w, 0) - 2) < 1e-12);
-      assert.equal(ex.orders.filter((o) => o.type === "STOP_MARKET" && ownCoidKind(o.clientOrderId, rt.settings.live.connId) === "V")[0]?.qty, 5);
+      assert.equal(ex.orders.filter((o) => o.type === "STOP_MARKET" && (ownCoidKind(o.clientOrderId, rt.settings.live.connId) === "V"))[0]?.qty, 5);
     }
   });
 
@@ -312,7 +312,7 @@ describe("actual execution account budgets across independent Signal sets", () =
       assert.equal(map.length, 1);
       assert.equal(map[0].qty, qty, "stored partial quantity follows actual owned resizing");
       assert.equal(Object.keys(map[0].weights ?? {}).length, 3);
-      const stops = ex.orders.filter((o) => o.type === "STOP_MARKET" && ownCoidKind(o.clientOrderId, rt.settings.live.connId) === "V");
+      const stops = ex.orders.filter((o) => o.type === "STOP_MARKET" && (ownCoidKind(o.clientOrderId, rt.settings.live.connId) === "V"));
       assert.deepEqual(stops.map((o) => o.qty), [qty], "one exact parent stop covers the owned stack");
     }
   });
@@ -380,7 +380,7 @@ describe("actual execution account budgets across independent Signal sets", () =
     assert.equal(ex.positions.get("S0-USDT|LONG"), 1.5);
     const map = Object.values(liveKv<Record<string, LaneOrder>>(rt.db, "laneOrders") ?? {});
     assert.equal(map[0].qty, 1.5);
-    assert.deepEqual(ex.orders.filter((o) => o.type === "STOP_MARKET" && ownCoidKind(o.clientOrderId, rt.settings.live.connId) === "V").map((o) => o.qty), [1.5]);
+    assert.deepEqual(ex.orders.filter((o) => o.type === "STOP_MARKET" && (ownCoidKind(o.clientOrderId, rt.settings.live.connId) === "V")).map((o) => o.qty), [1.5]);
     const count = ex.log.filter((o) => o.type === "MARKET").length;
     await step();
     assert.equal(ex.log.filter((o) => o.type === "MARKET").length, count, "pending remainder is not requested again");
@@ -401,7 +401,7 @@ describe("actual execution account budgets across independent Signal sets", () =
     ex.equityUsd = 50;
     await step();
     assert.equal(ex.positions.get("S0-USDT|LONG"), .75);
-    const partials = ex.orders.filter((o) => o.type === "STOP_MARKET" && ownCoidKind(o.clientOrderId, rt.settings.live.connId) === "V");
+    const partials = ex.orders.filter((o) => o.type === "STOP_MARKET" && (ownCoidKind(o.clientOrderId, rt.settings.live.connId) === "V"));
     assert.deepEqual(partials.map((o) => o.qty), [.5], "only the intended retained share has the exact partial exit");
     assert.ok(ex.orders.some((o) => ownCoidKind(o.clientOrderId, rt.settings.live.connId) === "S"), "the unconfirmed reduction remainder retains the whole-side backstop");
     const count = ex.log.filter((o) => o.type === "MARKET").length;
@@ -429,7 +429,7 @@ describe("actual execution account budgets across independent Signal sets", () =
     assert.equal(physical.length, 2, "only the surviving-side parent configs have exits");
     assert.ok(physical.every((p) => p.side === 1 && p.qty === 1));
     assert.equal(physical.reduce((sum, p) => sum + p.qty, 0), 2);
-    assert.deepEqual(ex.orders.filter((o) => ownCoidKind(o.clientOrderId, rt.settings.live.connId) === "V" && o.type === "STOP_MARKET").map((o) => o.qty), [1, 1]);
+    assert.deepEqual(ex.orders.filter((o) => (ownCoidKind(o.clientOrderId, rt.settings.live.connId) === "V") && o.type === "STOP_MARKET").map((o) => o.qty), [1, 1]);
   });
 
   it("a measured conditional partial fill protects the exact remainder without reopening it or diluting siblings", async () => {
@@ -450,7 +450,7 @@ describe("actual execution account budgets across independent Signal sets", () =
     assert.equal(ex.positions.get("S0-USDT|LONG"), 1.6);
     const parents = Object.values(liveKv<Record<string, LaneOrder>>(rt.db, "laneOrders") ?? {});
     assert.deepEqual(parents.map((p) => p.qty).sort(), [.6, 1]);
-    assert.deepEqual(ex.orders.filter((o) => o.type === "STOP_MARKET" && ownCoidKind(o.clientOrderId, rt.settings.live.connId) === "V").map((o) => o.qty).sort(), [.6, 1]);
+    assert.deepEqual(ex.orders.filter((o) => o.type === "STOP_MARKET" && (ownCoidKind(o.clientOrderId, rt.settings.live.connId) === "V")).map((o) => o.qty).sort(), [.6, 1]);
     const rows = rt.db.all<{ qty: number }>("SELECT qty FROM live_orders WHERE coid LIKE 'lanefill-%'");
     assert.deepEqual(rows.map((r) => r.qty), [.4], "one measured cumulative slice is booked once");
   });
@@ -543,7 +543,7 @@ describe("actual execution account budgets across independent Signal sets", () =
     let blocked = false;
     ex.order = async (p) => {
       const result = await place(p);
-      if (!blocked && p.type === "STOP_MARKET" && ownCoidKind(String(p.clientOrderID), rt.settings.live.connId) === "S") {
+      if (!blocked && p.type === "STOP_MARKET" && ownCoidKind(String(p.clientOrderID ?? ""), rt.settings.live.connId) === "S") {
         blocked = true;
         rmSync(stateDir, { recursive: true, force: true });
         writeFileSync(stateDir, "blocks the configured state directory");
@@ -552,7 +552,7 @@ describe("actual execution account budgets across independent Signal sets", () =
     };
     await step();
     assert.equal(ex.positions.get("S0-USDT|LONG"), 1);
-    assert.equal(ex.orders.filter((o) => o.type === "STOP_MARKET" && ownCoidKind(o.clientOrderId, rt.settings.live.connId) === "V").length, 0);
+    assert.equal(ex.orders.filter((o) => o.type === "STOP_MARKET" && (ownCoidKind(o.clientOrderId, rt.settings.live.connId) === "V")).length, 0);
     assert.ok(ex.orders.some((o) => ownCoidKind(o.clientOrderId, rt.settings.live.connId) === "S"), "existing own-position protection remains");
     assert.ok(db.lastStateError);
     assert.equal(db.flushState(), false, "failed configured storage cannot become intentional memory mode");
@@ -590,7 +590,7 @@ describe("actual execution account budgets across independent Signal sets", () =
     const place = ex.order.bind(ex);
     let checked = 0;
     ex.order = async (p) => {
-      if (["V", "Y"].includes(ownCoidKind(String(p.clientOrderID), rt.settings.live.connId))) {
+      if (p.type !== "MARKET" && ["V", "Y"].includes(ownCoidKind(String(p.clientOrderID ?? ""), rt.settings.live.connId) ?? "")) {
         const checkpoint = JSON.parse(readFileSync(path, "utf8"));
         const rows = Object.values(checkpoint.laneOrders) as LaneOrder[];
         assert.ok(rows.some((row) => row.s?.coid === p.clientOrderID || row.t?.coid === p.clientOrderID),
@@ -634,7 +634,7 @@ describe("actual execution account budgets across independent Signal sets", () =
     let timedOut = false;
     ex.order = async (p) => {
       const result = await place(p);
-      if (!timedOut && p.type === "STOP_MARKET" && ownCoidKind(String(p.clientOrderID), rt.settings.live.connId) === "V") {
+      if (!timedOut && p.type === "STOP_MARKET" && ownCoidKind(String(p.clientOrderID ?? ""), rt.settings.live.connId) === "V") {
         timedOut = true;
         throw new Error("transport timeout after actual conditional acceptance");
       }
@@ -645,7 +645,7 @@ describe("actual execution account budgets across independent Signal sets", () =
     assert.ok(provisional.s?.coid);
     resetLiveBackoff();
     for (let i = 0; i < 3; i++) await step();
-    assert.equal(ex.orders.filter((o) => o.type === "STOP_MARKET" && ownCoidKind(o.clientOrderId, rt.settings.live.connId) === "V").length, 1);
+    assert.equal(ex.orders.filter((o) => o.type === "STOP_MARKET" && (ownCoidKind(o.clientOrderId, rt.settings.live.connId) === "V")).length, 1);
     const adopted = Object.values(liveKv<Record<string, LaneOrder>>(rt.db, "laneOrders") ?? {})[0];
     assert.equal(adopted.s?.coid, provisional.s?.coid);
     assert.ok(adopted.s?.oid, "the resting coid recovers its venue identity");
@@ -665,7 +665,7 @@ describe("actual execution account budgets across independent Signal sets", () =
     receiptClient.orderStatus = async (sym, id) => id === original.s?.oid ? null : status(sym, id);
     parent.stop = 9.9;
     await step();
-    assert.equal(ex.orders.filter((o) => o.type === "STOP_MARKET" && ownCoidKind(o.clientOrderId, rt.settings.live.connId) === "V").length, 1);
+    assert.equal(ex.orders.filter((o) => o.type === "STOP_MARKET" && (ownCoidKind(o.clientOrderId, rt.settings.live.connId) === "V")).length, 1);
     assert.equal(Object.values(liveKv<Record<string, LaneOrder>>(rt.db, "laneOrders") ?? {})[0].s?.coid, original.s?.coid);
   });
 
@@ -681,7 +681,7 @@ describe("actual execution account budgets across independent Signal sets", () =
     rt.paper.positions = [lane(sig("s"), "S0-USDT", 1, 10), lane(sig("m"), "S0-USDT", 1, 10),
       lane(sig("w"), "S0-USDT", 1, 10)];
     await step();
-    const partials = ex.orders.filter((o) => o.type === "STOP_MARKET" && ownCoidKind(o.clientOrderId, rt.settings.live.connId) === "V");
+    const partials = ex.orders.filter((o) => o.type === "STOP_MARKET" && (ownCoidKind(o.clientOrderId, rt.settings.live.connId) === "V"));
     assert.ok(partials.every((o) => Math.abs(o.qty! / .25 - Math.round(o.qty! / .25)) < 1e-12));
     assert.ok(partials.reduce((sum, o) => sum + o.qty!, 0) <= ex.positions.get("S0-USDT|LONG")!);
   });
@@ -711,8 +711,8 @@ describe("actual execution account budgets across independent Signal sets", () =
   it("minimum-lane risk weights match equal funded shares despite unequal intrinsic model volume", () => {
     const cs = { notionalUsd: 10, ratio: 1, maxNotionalUsd: Infinity, maxPositions: 0,
       rebalancePct: 0, laneMode: true, minStopPct: 0 };
-    const base = { cfg: sig("s"), sym: "S0-USDT", side: 1 as const };
-    const target = controlTargets([{ ...base, vol: 10, laneUnits: 1, sl: .01 }, { ...base, vol: 1, laneUnits: 1, sl: .2 }],
+    const base = { cfg: sig("s"), sym: "S0-USDT", side: 1 as const, laneUnits: 1 };
+    const target = controlTargets([{ ...base, vol: 10, sl: .01 }, { ...base, vol: 1, sl: .2 }],
       new Map([["S0-USDT", 10]]), cs).targets[0];
     assert.equal(target.qty, 2);
     assert.ok(Math.abs(target.riskDist! - .105) < 1e-12, "equal funded units have equal weight in mark-to-stop risk");

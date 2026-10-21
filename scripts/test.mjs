@@ -51,6 +51,7 @@ const stages = [
       "src/components/v2/signal-units.test.ts",
       "src/components/v2/indication-ui.test.ts",
       "src/components/v2/base-counts.test.ts",
+      "src/components/v2/progression.test.ts",
     ],
   ],
   ["core tests", ["scripts/test-core.mjs"]],

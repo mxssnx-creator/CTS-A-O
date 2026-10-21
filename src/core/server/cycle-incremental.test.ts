@@ -5,7 +5,7 @@
 // Run with CTS_CORE_WORKERS=1 (3 symbols; 6h evaluation + 6h simulation, independent Signal history 72h).
 import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { CoreRuntime as BaseRuntime, laneSeriesFrom, laneSeriesOf, signalDataHours } from "./runtime.server.ts";
+import { CoreRuntime as BaseRuntime, laneSeriesOf, laneSeriesFrom, signalDataHours } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
 import { signalSettings } from "../signals.ts";
 import { PREVIOUS_DEFAULT_FOCUS_17OCT } from "../config.ts";
@@ -108,10 +108,13 @@ describe("runtime.cycle incremental equals a full recompute", { timeout: 600_000
     // Bound the lifecycle fixture instead of inheriting the production 336h Signal / 48h simulation defaults.
     // Signals still have substantially longer history than strategies, exercising the independent rebuild.
     rt.updateSettings({}, { preH: 6, longH: 6, symH: 6, simH: 6, signalLongH: 72 });
+    assert.equal(rt.executionEntryBlocked(), true, "changed settings fence old entries until publication and paper completion");
     const R = rt as any;
     await rt.cycle(); // the heavy compute
     // (the auto-adjust of the first book may ask for one more compute)
     for (let i = 0; i < 3 && R.dirty; i++) await rt.cycle();
+    assert.equal(R.settingsStale, false, "successful exact-revision publication clears stale settings");
+    assert.equal(rt.executionEntryBlocked(), false, "the completed matching paper step releases new entry admission");
     assert.ok(R.inc, "the heavy compute captured the validated set");
     const ids: Set<string> = R.inc.ids;
     assert.ok(ids.size > 50, `validated ${ids.size}`);

@@ -257,20 +257,11 @@ export function laneInds(base: string, tfs: readonly number[]): string[] {
     const anchor = microAnchorTf(base);
     return anchor !== null && tfs.includes(anchor) ? [laneInd(base, anchor)] : [];
   }
-  for (const tf of tfs) {
-    if (isInverseInd(base) && !(INVERSE_TIMEFRAMES as readonly number[]).includes(tf)) continue;
+  const lanes = isInverseInd(base)
+    ? tfs.filter((tf) => (INVERSE_TIMEFRAMES as readonly number[]).includes(tf)) : tfs;
+  for (const tf of lanes) {
     out.push(laneInd(base, tf));
-    if (
-      base !== "none" &&
-      higherFactors(
-        tf,
-        isInverseInd(base)
-          ? tfs.filter((tf) => (INVERSE_TIMEFRAMES as readonly number[]).includes(tf))
-          : tfs.length
-            ? tfs
-            : TF_LADDER,
-      ).length
-    )
+    if (base !== "none" && higherFactors(tf, lanes.length ? lanes : TF_LADDER).length)
       out.push(laneInd(base, tf, true));
   }
   return out;
@@ -336,12 +327,8 @@ export function allCombos(
     // signal sources ("sig-…") are processed by Signals processing, not as engine combos; the Stable-02 ports
     // ("s2-…") run as signal sources only (as engine combos they added 26 % Base work)
     for (const ind of INDICATIONS)
-      if (
-        !off.has(ind.kind) &&
-        !ind.id.startsWith("sig-") &&
-        !ind.id.startsWith("s2-") &&
-        (!isInverseInd(ind.id) || b.type === "follow")
-      )
+      if (!off.has(ind.kind) && !ind.id.startsWith("sig-") && !ind.id.startsWith("s2-") &&
+          (!isInverseInd(ind.id) || b.type === "follow"))
         plain.push({ bot: b.type, ind: ind.id });
   }
   const out = tfs?.length
@@ -659,7 +646,7 @@ export function completeBaseRangeProtects(g: CoreSettings["grid"], cost: number)
       ...(tag ? { tag } : {}),
       ...(range && range.maxHoldMin ? { maxHoldMin: range.maxHoldMin } : {}),
     };
-    // Wide caps apply before de-duplication, exactly as in protectGrid.
+    // The Wide caps resolve before identity/deduplication, as in the executable grid.
     if (!tag) {
       if (g.maxSl && g.maxSl > 0) p.sl = Math.min(p.sl, g.maxSl);
       if (g.maxTrail && g.maxTrail > 0) p.trail = Math.min(p.trail, g.maxTrail);
@@ -1770,10 +1757,12 @@ export function baseRuns(
   microOwnInds: MicroIndRule = false,
   /** the stage gates: a range keeps a passing cell first (rangeCellPass) */
   gates?: Gates,
-  completeRangeProtects: readonly Protect[] = [],
+  completeRangeProtectsOrCells: readonly Protect[] | boolean = [],
   /** grid.baseCells: record the passed cells of each pair (ComboRun.rangeCells) */
   cells = false,
 ): ComboRun[] {
+  const completeRangeProtects = typeof completeRangeProtectsOrCells === "boolean" ? [] : completeRangeProtectsOrCells;
+  if (typeof completeRangeProtectsOrCells === "boolean") cells = completeRangeProtectsOrCells;
   // two-window Base (gates.baseWindows; null while unset: nothing more is computed)
   const plan = baseWindowsPlan(gates);
   const out: ComboRun[] = [];
@@ -1809,7 +1798,8 @@ export function baseRuns(
               c.bot as BotType,
               c.ind,
               completeRangeProtects.length && (isMicroFamilyInd(c.ind) || isInverseInd(c.ind))
-                ? completeRangeProtects : rangeProtects,
+                ? completeRangeProtects
+                : rangeProtects,
               cost,
               tactics,
               rangeMinTf,

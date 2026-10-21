@@ -213,7 +213,6 @@ function blockRows(orders) {
   const z = () => ({ n: 0, gp: 0, gl: 0 });
   for (const t of orders) {
     const a = (out[rangeNameOf(t.cfg)] ??= { vol: z(), unit: z(), raised: z(), unraised: z() });
-    // Missing unit evidence remains unknown, including in the Block diagnostics.
     const u = unitR(t);
     add(a.vol, t.r);
     add(a.unit, u);

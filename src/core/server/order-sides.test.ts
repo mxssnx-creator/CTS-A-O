@@ -276,6 +276,18 @@ function rtOf(live: Record<string, unknown> = {}, sizing: { mode: string; pct: n
       return prices;
     },
   };
+  Object.defineProperty(rt.paper, "positions", {
+    get: () => positions,
+    set: (next: Pos[]) => {
+      positions = new Proxy(next, { set(target, property, value) {
+        const result = Reflect.set(target, property, value);
+        if (property !== "length") authorizeSyntheticLanes(rt, target);
+        return result;
+      } });
+      authorizeSyntheticLanes(rt, next);
+    },
+  });
+  authorizeSyntheticLanes(rt, []);
   return { rt };
 }
 

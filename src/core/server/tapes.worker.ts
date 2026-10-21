@@ -15,6 +15,8 @@ import {
   packArena,
   unpackTapes,
   walkForward,
+  walkForwardGen,
+  walkForwardSteps,
   type ConfigTape,
   type PackedTapes,
 } from "../sim/walkforward.ts";
@@ -33,11 +35,35 @@ import type {
   SignalHistMessage,
 } from "./pool.server.ts";
 import { BaseConfigCounter } from "../base-config-counts.ts";
+import { RealtimeTapeSet, type RealtimeTapeGroup } from "../sim/realtime.ts";
+import { TickMathBook, type TickPosition } from "./tick-math.ts";
 
 type Msg = { evaluationFromT?: number } & (
+  | {
+      id: number;
+      type: "tick-init";
+      positions: TickPosition[];
+      units: Float64Array;
+      cost: number;
+      baseTfMin: number;
+      trailFree: boolean;
+      prices: Record<string, number>;
+      now: number;
+    }
+  | { id: number; type: "tick-advance"; prices: Record<string, number>; now: number }
+  | { id: number; type: "realtime-init"; bars: Bars[]; groups: RealtimeTapeGroup[]; cost: number }
+  | { id: number; type: "realtime-advance"; appends: Bars[] }
   | ({ id: number } & SignalHistMessage)
   | ({ id: number } & ExitStrategyMessage)
   | ({ id: number } & BaseConfigChunkMessage)
+  | {
+      id: number;
+      type: "research-real";
+      nowT: number;
+      baseTf: number;
+      packed: PackedTapes;
+      wf: Record<string, unknown>;
+    }
   | {
       id: number;
       type: "compare";
@@ -103,6 +129,8 @@ const chunksOf = <T>(xs: T[], n: number): T[][] => {
  */
 const IDLE_GC_MS = Number(process.env.CTS_CORE_WORKER_IDLE_GC_MS || 1000);
 let idleGc: ReturnType<typeof setTimeout> | null = null;
+let realtime: RealtimeTapeSet | null = null;
+let tickBook: TickMathBook | null = null;
 type GcFn = (o?: { type: "major"; execution: "sync"; flavor: "last-resort" }) => void;
 const gcOf = () => (globalThis as { gc?: GcFn }).gc;
 const collectSoon = () =>
@@ -135,13 +163,63 @@ parentPort!.on("message", (m: Msg) => {
     idleGc = null;
   }
   // (the sleep test message replies later; every other branch has replied when the handler returns)
-  if ((m as { type?: string }).type !== "sleep") collectSoon();
+  if (!["sleep", "realtime-advance", "tick-init", "tick-advance"].includes(m.type)) collectSoon();
   try {
     // tests: hold the worker busy (abort / timeout handling)
     if ((m as { type?: string }).type === "sleep") {
       const ms = Number((m as { ms?: number }).ms) || 0;
       setTimeout(() => parentPort!.postMessage({ ok: true, id: (m as { id?: number }).id }), ms);
       return;
+    }
+    if (m.type === "tick-init" || m.type === "tick-advance") {
+      if (m.type === "tick-init")
+        tickBook = new TickMathBook(m.positions, m.units, m.cost, m.baseTfMin, m.trailFree);
+      if (!tickBook) throw new Error("tick worker has no initialized book");
+      parentPort!.postMessage({ id: m.id, ok: true, result: tickBook.advance(m.prices, m.now) });
+      return;
+    }
+    if (m.type === "realtime-init") {
+      realtime = null;
+      realtime = new RealtimeTapeSet(m.bars, m.groups, m.cost, m.evaluationFromT);
+      parentPort!.postMessage({ id: m.id, ok: true, ends: realtime.ends() });
+      return;
+    }
+    if (m.type === "realtime-advance") {
+      if (!realtime) throw new Error("realtime worker has no initialized cohort");
+      const result = realtime.advance(m.appends);
+      const arena = packArena(result.tapes);
+      parentPort!.postMessage({ id: m.id, ok: true, ...result }, [
+        ...(arena.arena ? [arena.arena] : []),
+        ...arena.others,
+      ]);
+      return;
+    }
+    if (m.type === "research-real") {
+      const u = {
+        bars: [],
+        caches: [],
+        startT: 0,
+        endT: 0,
+        splitT: 0,
+        nowT: m.nowT,
+        baseTf: m.baseTf,
+      };
+      const g = walkForwardGen(u as never, unpackTapes(m.packed), m.wf as never);
+      const total = Math.max(1, walkForwardSteps(u as never, m.wf as never));
+      let done = 0,
+        last = 0;
+      for (;;) {
+        const result = g.next();
+        if (result.done) {
+          parentPort!.postMessage({ id: m.id, ok: true, sim: result.value });
+          return;
+        }
+        if (result.value >= 0) done++;
+        if (Date.now() - last >= 400) {
+          last = Date.now();
+          parentPort!.postMessage({ id: m.id, progress: done, total });
+        }
+      }
     }
     if (m.type === "compare") {
       // simulated trading of each preset on the same tapes (one walk-forward per preset)

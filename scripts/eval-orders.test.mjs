@@ -67,3 +67,11 @@ describe("the eval sees Block: volume-weighted PF and unit PF raised / unraised"
     assert.equal(b.raisedPfUnit, null);
   });
 });
+
+it("legacy unknown or invalid multiplier evidence makes primary unit PF unavailable", () => {
+  for (const unknown of [{ r: -0.01 }, { r: -0.01, mult: 0 }, { r: -0.01, unitR: null }]) {
+    const result = blockSplit([{ r: 0.02, mult: 1 }, unknown]);
+    assert.equal(result.n, 2, "the unknown close is retained in the denominator");
+    assert.equal(result.pfUnit, null, "known winners cannot replace unknown losing evidence");
+  }
+});

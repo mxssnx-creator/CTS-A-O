@@ -88,7 +88,8 @@ import {
   modeledUnitStatsOf as unitStatsOf,
   type UnitStats,
 } from "../metrics/stats.ts";
-import { ATR_PERIOD, simulate, splitSides } from "./backtest.ts";
+import { ATR_PERIOD, simulate, splitSides, sideSignal } from "./backtest.ts";
+import type { SimulationCursor, TapeContinuations, CursorResult } from "./cursor.ts";
 import { headBars } from "../market/bars.ts";
 import { symbolDirections } from "./symbol-directions.ts";
 import { dcaSnapshot, simulateDca } from "./dca.ts";
@@ -374,8 +375,8 @@ export interface WalkForwardOptions {
   preH: number;
   simH: number;
   stepH: number;
-  /** measurement only: record every config's validation check at each fixed-mode step (the trades and seats are unchanged) */
-  recordValidation?: boolean;
+  /** Measurement only. Summary retains passed/evaluated counts and accepted-window sums without one row per config/hour. */
+  recordValidation?: boolean | "summary";
   /** simulation start; default = end - simH */
   startT?: number;
   portfolio: number;
@@ -1703,6 +1704,8 @@ export type EntryFloors = {
    * every other cell of the given pairs is skipped before it is simulated, and none is counted in buildStats.
    */
   onlyIds?: ReadonlySet<string>;
+  /** Private worker-owned continuations. Never serialize this object or use it for discovery/Base counts. */
+  continuations?: TapeContinuations;
   /**
    * per pair ("bot|ind"), configs of its own beside the shared `protects` (a signal's historic trailing configs,
    * signalHistProtects): built, validated and seated like every other config of the pair
@@ -1969,6 +1972,57 @@ export function* buildTapesGen(
   const bs = floors?.buildStats;
   const onlyIds = floors?.onlyIds;
   const notOnly = (id: string) => !!onlyIds && !onlyIds.has(id);
+  const directions = new WeakMap<Int8Array, number>();
+  const sidesOf = (sig: Int8Array) => {
+    if (!floors?.continuations) return splitSides(sig);
+    const long = sideSignal(sig, 1),
+      short = sideSignal(sig, -1);
+    directions.set(long, 1);
+    directions.set(short, -1);
+    return [long, short];
+  };
+  const resume = <R extends CursorResult>(
+    id: string,
+    s: number,
+    sig: Int8Array,
+    run: (cursor: SimulationCursor | undefined, b: Bars, sig: Int8Array, k: SeriesCache) => R,
+    rawExit = false,
+  ): R => {
+    const cursor = floors?.continuations?.cursor(id, u.bars[s], directions.get(sig) ?? 0);
+    if (cursor) {
+      const side = directions.get(sig) ?? 0;
+      const pair = id.split("|").slice(0, 2);
+      const sourceKey = `cursor-source:${pair.join("|")}:${Number(rawExit)}`;
+      const filter = !rawExit && isSignalInd(pair[1]) ? floors?.entry : null;
+      floors!.continuations!.bind(cursor, id, u.bars[s], (nextU) => {
+        const b = nextU.bars[s],
+          k = nextU.caches[s];
+        return cursor.run(b, () => {
+          const sg = floors!.continuations!.measure(
+            "sourceMs",
+            () =>
+              k.memo(`${sourceKey}:${side}`, () => {
+                const source = entrySignal(
+                  pair[0] as BotType,
+                  pair[1],
+                  k,
+                  rawExit ? null : tactics,
+                );
+                if (!source)
+                  throw new Error("continued source disappeared; research bootstrap required");
+                let entry = evaluationSignal(nextU, b, source);
+                if (filter) entry = filterEntries(entry, b, k, filter);
+                return sideSignal(entry, side > 0 ? 1 : -1);
+              }),
+            sourceKey,
+          );
+          return floors!.continuations!.measure("simulationMs", () => run(cursor, b, sg, k));
+        });
+      });
+      return cursor.run(u.bars[s], () => run(cursor, u.bars[s], sig, u.caches[s]));
+    }
+    return run(undefined, u.bars[s], sig, u.caches[s]);
+  };
   // B6: a held-only pair builds only its held ids, a DCA / Axis set whose toggle is off only a held id
   const b6Skip = (id: string, pair: string, kind: "dca" | "axis") =>
     !floors?.heldIds?.has(id) && (!!floors?.heldPairsOnly?.has(pair) || (kind === "dca" ? !!floors?.skipDca : !!floors?.skipAxis));
@@ -2084,28 +2138,13 @@ export function* buildTapesGen(
     }
     // long and short run independently: each direction on its own side-filtered signal (its own position slot), so
     // an open long never drops a short signal (and vice versa); a one-sided signal runs once, as before
-    const sides: Array<Int8Array[] | null> = sigs.map((x) => (x ? splitSides(x) : null));
+    const sides: Array<Int8Array[] | null> = sigs.map((x) => (x ? sidesOf(x) : null));
     const orderedSides = symbolDirections(
       series.filter((s) => sides[s]),
       (s) => sides[s]!,
     );
-    const sideSignals = sides.map((xs) => {
-      if (!xs?.length) return null;
-      if (xs.length > 1) return { long: xs[0], short: xs[1] };
-      let first = 0;
-      for (const value of xs[0])
-        if (value !== 0) {
-          first = value;
-          break;
-        }
-      return first > 0
-        ? { long: xs[0], short: null }
-        : first < 0
-          ? { long: null, short: xs[0] }
-          : { long: null, short: null };
-    });
     const exitSideSignals = (exitSigs ?? sigs).map((x) => {
-      const xs = x ? splitSides(x) : null;
+      const xs = x ? sidesOf(x) : null;
       if (!xs?.length) return null;
       if (xs.length > 1) return { long: xs[0], short: xs[1] };
       let first = 0;
@@ -2252,11 +2291,19 @@ export function* buildTapesGen(
           : []
         : orderedSides;
       for (const { symbol: s, direction: sg } of runSides) {
-        const res = simulate(id, u.bars[s], sg, p, {
-          cost,
-          cooldown: exitConfig ? 0 : cooldown,
-          atr: p.atr ? u.caches[s].atrEma(ATR_PERIOD) : undefined,
-        });
+        const res = resume(
+          id,
+          s,
+          sg,
+          (cursor, b, direction, cache) =>
+            simulate(id, b, direction, p, {
+              cost,
+              cooldown: exitConfig ? 0 : cooldown,
+              atr: p.atr ? cache.atrEma(ATR_PERIOD) : undefined,
+              cursor,
+            }),
+          !!p.exitType && !!exitSigs,
+        );
         for (const tr of res.trades) {
           tr.kind = kind;
           trades.push(tr);
@@ -2272,7 +2319,8 @@ export function* buildTapesGen(
       // a range tape with fewer closes than its gate needs can never take a seat: not kept (memory) — unless it is
       // held: its open position needs the tape for its exit (dropped, the position was carried without one), so it
       // is kept held-only (no new seat)
-      const enough = !rangeGated(p.tag) || trades.length >= rangeMinN;
+      const enough =
+        !rangeGated(p.tag) || (floors?.continuations?.closed(id) ?? trades.length) >= rangeMinN;
       if (st && !filtered) {
         if (!enough) st.few++;
         else statKept(st, p);
@@ -2356,7 +2404,9 @@ export function* buildTapesGen(
           const open: OpenPosition[] = [];
           const pending: ConfigTape["pending"] = [];
           for (const { symbol: s, direction: sg } of orderedSides) {
-            const res = simulateDca(id, u.bars[s], sg, p, dcaOpt.dca, active, cost, cooldown);
+            const res = resume(id, s, sg, (cursor, b, direction) =>
+              simulateDca(id, b, direction, p, dcaOpt.dca, active, cost, cooldown, cursor),
+            );
             for (const tr of res.trades) trades.push(tr);
             // a ladder open at the last close is carried (marked open in the simulation, held in paper / live)
             if (res.open) open.push(res.open);
@@ -2433,25 +2483,23 @@ export function* buildTapesGen(
           const open: OpenPosition[] = [];
           const pending: ConfigTape["pending"] = [];
           for (const { symbol: s, direction: sg } of orderedSides) {
-            const k = u.caches[s];
-            const centerS = k.ema(
-              Math.max(
-                2,
-                Math.round(ax.centerMin ? ax.centerMin / (u.bars[s].tfMin || 1) : ax.center),
-              ),
-            );
             if (ax.mode === "desk") {
-              const res = simulateAxisDesk(
-                id,
-                u.bars[s],
-                sg,
-                p,
-                ax,
-                centerS,
-                k.atr(14),
-                cost,
-                cooldown,
-                deskFloor,
+              const res = resume(id, s, sg, (cursor, b, direction, cache) =>
+                simulateAxisDesk(
+                  id,
+                  b,
+                  direction,
+                  p,
+                  ax,
+                  cache.ema(
+                    Math.max(2, Math.round(ax.centerMin ? ax.centerMin / b.tfMin : ax.center)),
+                  ),
+                  cache.atr(14),
+                  cost,
+                  cooldown,
+                  deskFloor,
+                  cursor,
+                ),
               );
               for (const tr of res.trades) trades.push(tr);
               // open desk positions carry their average entry, stop and target (paper / live get a concrete stop)
@@ -2464,17 +2512,22 @@ export function* buildTapesGen(
                 );
               continue;
             }
-            const res = simulateAxis(
-              id,
-              u.bars[s],
-              sg,
-              p,
-              ax,
-              centerS,
-              k.atr(14),
-              cost,
-              cooldown,
-              revFloor,
+            const res = resume(id, s, sg, (cursor, b, direction, cache) =>
+              simulateAxis(
+                id,
+                b,
+                direction,
+                p,
+                ax,
+                cache.ema(
+                  Math.max(2, Math.round(ax.centerMin ? ax.centerMin / b.tfMin : ax.center)),
+                ),
+                cache.atr(14),
+                cost,
+                cooldown,
+                revFloor,
+                cursor,
+              ),
             );
             for (const tr of res.trades) trades.push(tr);
             // revert positions open at the last close as well (marked open at run end, held in paper, mirrored live)
@@ -2533,26 +2586,25 @@ export function* buildTapesGen(
             const open: OpenPosition[] = [];
             const pending: ConfigTape["pending"] = [];
             for (const { symbol: s, direction: sg } of orderedSides) {
-              const k = u.caches[s];
-              const centerS = k.ema(
-                Math.max(
-                  2,
-                  Math.round(
-                    rv.ax.centerMin ? rv.ax.centerMin / (u.bars[s].tfMin || 1) : rv.ax.center,
+              const res = resume(id, s, sg, (cursor, b, direction, cache) =>
+                simulateAxisDesk(
+                  id,
+                  b,
+                  direction,
+                  p0l,
+                  rv.ax,
+                  cache.ema(
+                    Math.max(
+                      2,
+                      Math.round(rv.ax.centerMin ? rv.ax.centerMin / b.tfMin : rv.ax.center),
+                    ),
                   ),
+                  cache.atr(14),
+                  cost,
+                  cooldown,
+                  rf,
+                  cursor,
                 ),
-              );
-              const res = simulateAxisDesk(
-                id,
-                u.bars[s],
-                sg,
-                p0l,
-                rv.ax,
-                centerS,
-                k.atr(14),
-                cost,
-                cooldown,
-                rf,
               );
               for (const tr of res.trades) trades.push(tr);
               if (res.open) open.push(res.open);
@@ -2814,6 +2866,26 @@ export type ValidationCheck = [
   gp: number,
   gl: number,
 ];
+export interface ValidationSummary {
+  evaluated: number;
+  passed: number;
+  closes: number;
+  /** Intrinsic unit-return sums of passing config windows only; histories overlap. */
+  gp: number;
+  gl: number;
+  failures: Partial<Record<EvalGate, number>>;
+}
+
+function summarizeValidation(summary: ValidationSummary | null, ev: ConfigEval, n: number, gp: number, gl: number) {
+  if (!summary) return;
+  summary.evaluated++;
+  if (ev.ok) {
+    summary.passed++;
+    summary.closes += n;
+    summary.gp += gp;
+    summary.gl += gl;
+  } else summary.failures[ev.fail] = (summary.failures[ev.fail] ?? 0) + 1;
+}
 
 export interface StepLog {
   t: number;
@@ -2824,6 +2896,7 @@ export interface StepLog {
   net: number;
   /** the validation checks of the step (only when WalkForwardOptions.recordValidation is on) */
   checks?: ValidationCheck[];
+  validationSummary?: ValidationSummary;
   /**
    * the step per range ("" = Wide, "mc" … "lg", "sig" = signals): the range's tapes, its configs validated at the step,
    * its candidates entering in the step and the orders taken — every enabled range shows up at every step
@@ -2958,6 +3031,26 @@ export function carryGuardIndices(from: readonly ConfigTape[], to: readonly Conf
   if (a) acceptIndexCache.set(to, a);
   const e = engineSideCache.get(from);
   if (e) engineSideCache.set(to, e);
+}
+
+/** Retain the complete discovery record and update only the continued cohort. No historical candidate is lost. */
+export function* advanceGuardIndicesGen(
+  from: readonly ConfigTape[],
+  to: readonly ConfigTape[],
+  refreshed: readonly ConfigTape[],
+  deltas: readonly ConfigTape[],
+  options: Pick<WalkForwardOptions, "signalAccept" | "signalSideAccept" | "engineSideAccept">,
+): Generator<number, void> {
+  if (options.signalAccept?.enabled || options.signalSideAccept?.enabled) {
+    const index = (yield* signalAcceptIndexGen(from)).fork();
+    yield* index.fill(refreshed.filter((tp) => isSignalInd(tp.ind)));
+    acceptIndexCache.set(to, index);
+  }
+  if (options.engineSideAccept?.enabled) {
+    const index = (yield* engineSideIndexGen(from)).fork();
+    yield* index.append(deltas);
+    engineSideCache.set(to, index);
+  }
 }
 
 export function* engineSideIndexGen(
@@ -3551,7 +3644,12 @@ export function selectFixed(
   tapes: readonly ConfigTape[],
   t: number,
   o: WalkForwardOptions,
-): { picks: Selection[]; eligible: number } {
+): {
+  picks: Selection[];
+  eligible: number;
+  checks?: ValidationCheck[];
+  validationSummary?: ValidationSummary;
+} {
   const g = selectFixedGen(tapes, t, o);
   for (;;) {
     const r = g.next();
@@ -4176,12 +4274,24 @@ export function* selectFixedGen(
   tapes: readonly ConfigTape[],
   t: number,
   o: WalkForwardOptions,
-): Generator<number, { picks: Selection[]; eligible: number; checks?: ValidationCheck[] }> {
+): Generator<
+  number,
+  {
+    picks: Selection[];
+    eligible: number;
+    checks?: ValidationCheck[];
+    validationSummary?: ValidationSummary;
+  }
+> {
   const from = t - Math.max(o.longH, o.preH) * H;
   let seen = 0;
   const botOk = o.bots.length ? new Set<string>(o.bots) : null;
   const best = new Map<string, Selection>();
-  const checks: ValidationCheck[] | null = o.recordValidation ? [] : null;
+  const checks: ValidationCheck[] | null = o.recordValidation === true ? [] : null;
+  const validationSummary: ValidationSummary | null =
+    o.recordValidation === "summary"
+      ? { evaluated: 0, passed: 0, closes: 0, gp: 0, gl: 0, failures: {} }
+      : null;
   const basePf = new Map<string, number>();
   // the base PFs are read by beatsBase only, which judges nothing without family seats or with every config its seat
   const needBase = !!o.familySeats && o.seatPer !== "config";
@@ -4203,6 +4313,8 @@ export function* selectFixedGen(
     if (!tp) {
       const info = selInfoOf(original, o, botOk);
       if (info.inScope && info.canSeat) checks?.push([original.id, 0, 0, 0, 0, 0]);
+      if (info.inScope && info.canSeat && validationSummary)
+        summarizeValidation(validationSummary, configEval(original, t, o), 0, 0, 0);
       infos[i] = undefined;
       ca[i] = -1;
       cb[i] = -1;
@@ -4233,6 +4345,7 @@ export function* selectFixedGen(
     if (isSignalInd(tp.ind)) {
       const ev = configEval(tp, t, o);
       if (checks) checks.push([tp.id, ev.ok ? 1 : 0, ev.n, ev.pf, (ev.gp ?? 0) / 100, (ev.gl ?? 0) / 100]);
+      summarizeValidation(validationSummary, ev, ev.n, (ev.gp ?? 0) / 100, (ev.gl ?? 0) / 100);
       if (needBase && info.base && ev.ok) basePf.set(info.pairKey, Math.max(basePf.get(info.pairKey) ?? -Infinity, ev.pf));
       if (ev.ok && info.canSeat) {
         const score = ev.lcb * (0.5 + ev.gh), pair = info.seat;
@@ -4275,15 +4388,11 @@ export function* selectFixedGen(
     let lcb: number;
     let gh: number;
     let ddt: number;
-    if (!isSignalInd(tp.ind)) {
-      const ev = configEval(tp, t, o);
-      checks?.push([tp.id, ev.ok ? 1 : 0, n, pf, gp, gl]);
-      if (!ev.ok) continue;
-      ({ lcb, gh, ddt } = ev);
-    } else if (checks) {
+    if (!isSignalInd(tp.ind) || checks || validationSummary) {
       // the validation record keeps configEvalAt's own verdict
-      const ev = configEvalAt(tp, t, o, a, b, { n, net, pf, gp, gl }, tapeDdtMax);
-      checks.push([tp.id, ev.ok ? 1 : 0, n, pf, gp, gl]);
+      const ev = !isSignalInd(tp.ind) ? configEval(tp, t, o) : configEvalAt(tp, t, o, a, b, { n, net, pf, gp, gl }, tapeDdtMax);
+      checks?.push([tp.id, ev.ok ? 1 : 0, n, pf, gp, gl]);
+      summarizeValidation(validationSummary, ev, n, gp, gl);
       if (!ev.ok) continue;
       ({ lcb, gh, ddt } = ev);
     } else {
@@ -4333,7 +4442,12 @@ export function* selectFixedGen(
       return n < (f === "micro" ? microSeats(o) : seatsOf(o));
     })
     .map(([, v]) => v);
-  return { picks, eligible: best.size, ...(checks ? { checks } : {}) };
+  return {
+    picks,
+    eligible: best.size,
+    ...(checks ? { checks } : {}),
+    ...(validationSummary ? { validationSummary } : {}),
+  };
 }
 
 /** The engine tapes of the ranges that select in one mode (modeGroups). */
@@ -4393,12 +4507,13 @@ export function* selectGroupsGen(
   t: number,
   o: WalkForwardOptions,
   held: ReadonlySet<string>,
-): Generator<number, { picks: Selection[]; eligible: number; checks?: ValidationCheck[] }> {
+): Generator<number, { picks: Selection[]; eligible: number; checks?: ValidationCheck[]; validationSummary?: ValidationSummary }> {
   const picks: Selection[] = [];
   let eligible = 0;
   let checks: ValidationCheck[] | undefined;
+  let validationSummary: ValidationSummary | undefined;
   for (const g of groups) {
-    const r: { picks: Selection[]; eligible: number; checks?: ValidationCheck[] } =
+    const r: { picks: Selection[]; eligible: number; checks?: ValidationCheck[]; validationSummary?: ValidationSummary } =
       g.mode === "fixed"
         ? yield* selectFixedGen(g.tapes, t, o)
         : g.mode === "durable"
@@ -4406,9 +4521,14 @@ export function* selectGroupsGen(
           : selectAt(g.tapes, t, o);
     for (const p of r.picks) picks.push(p);
     eligible += r.eligible;
-    if (r.checks) checks = r.checks;
+    if (r.checks) checks = [...(checks ?? []), ...r.checks];
+    if (r.validationSummary) {
+      validationSummary ??= { evaluated: 0, passed: 0, closes: 0, gp: 0, gl: 0, failures: {} };
+      for (const key of ["evaluated", "passed", "closes", "gp", "gl"] as const) validationSummary[key] += r.validationSummary[key];
+      for (const key of Object.keys(r.validationSummary.failures) as Array<keyof ValidationSummary["failures"]>) validationSummary.failures[key] = (validationSummary.failures[key] ?? 0) + r.validationSummary.failures[key]!;
+    }
   }
-  return { picks, eligible, ...(checks ? { checks } : {}) };
+  return { picks, eligible, ...(checks ? { checks } : {}), ...(validationSummary ? { validationSummary } : {}) };
 }
 
 /**
@@ -5381,16 +5501,10 @@ export function walkForward(
   }
 }
 
-const sigCfgMemo = new Map<string, boolean>();
-/** Whether a config id ("bot|ind|…") is a signal config (memoised: called per open order per candidate). */
+/** No per-config string cache: the prefix check allocates nothing and retains no old research identities. */
 export function sigCfg(cfg: string): boolean {
-  let v = sigCfgMemo.get(cfg);
-  if (v === undefined) {
-    v = isSignalInd(cfg.split("|")[1] ?? "");
-    if (sigCfgMemo.size > 200_000) sigCfgMemo.clear();
-    sigCfgMemo.set(cfg, v);
-  }
-  return v;
+  const first = cfg.indexOf("|");
+  return first >= 0 && cfg.startsWith("sig-", first + 1);
 }
 
 /**
@@ -6030,7 +6144,15 @@ function* selectFixedRuntimeGen(
   tapes: readonly ConfigTape[],
   t: number,
   o: WalkForwardOptions,
-): Generator<number, { picks: Selection[]; eligible: number; checks?: ValidationCheck[] }> {
+): Generator<
+  number,
+  {
+    picks: Selection[];
+    eligible: number;
+    checks?: ValidationCheck[];
+    validationSummary?: ValidationSummary;
+  }
+> {
   const gen = selectFixedGen(tapes, t, o);
   for (;;) {
     const r = gen.next();
@@ -6292,11 +6414,15 @@ export function* walkForwardGen(
     // Strategy Base reports Signals from the same own-context history/Last-N
     // evaluator as activation and entry, never from a pooled representative.
     const signalChecks: ValidationCheck[] = [];
+    const validationSummary = sel?.validationSummary ?? (o.recordValidation === "summary"
+      ? { evaluated: 0, passed: 0, closes: 0, gp: 0, gl: 0, failures: {} } as ValidationSummary : null);
     if (o.recordValidation) {
       let checked = 0;
       for (const tp of sigTapes) {
         const ev = configEval(tp, t, o);
-        signalChecks.push([tp.id, ev.ok ? 1 : 0, ev.n, ev.pf, (ev.gp ?? 0) / 100, (ev.gl ?? 0) / 100]);
+        if (o.recordValidation === true)
+          signalChecks.push([tp.id, ev.ok ? 1 : 0, ev.n, ev.pf, (ev.gp ?? 0) / 100, (ev.gl ?? 0) / 100]);
+        summarizeValidation(validationSummary, ev, ev.n, (ev.gp ?? 0) / 100, (ev.gl ?? 0) / 100);
         if (++checked % 32 === 0) yield -6;
       }
     }
@@ -6515,7 +6641,8 @@ export function* walkForwardGen(
       skipped,
       net,
       byRange,
-      ...(o.recordValidation ? { checks: [...(sel?.checks ?? []), ...signalChecks] } : {}),
+      ...(o.recordValidation === true ? { checks: [...(sel?.checks ?? []), ...signalChecks] } : {}),
+      ...(validationSummary ? { validationSummary } : {}),
     });
     yield t;
   }

@@ -1,0 +1,123 @@
+{
+  "scope": {
+    "sourceSha256": "de4cc45e706a9522d538ae26b40a64d6cca9b8319a399fd398418297fb57a632",
+    "registeredSpecs": 1720,
+    "byKind": {
+      "trend": 70,
+      "break": 237,
+      "active": 163,
+      "direction": 38,
+      "move": 60,
+      "rsi": 39,
+      "bollinger": 31,
+      "sar": 7,
+      "macd": 23,
+      "ema": 20,
+      "osc": 60,
+      "volume": 34,
+      "channel": 21,
+      "ichimoku": 8,
+      "smooth": 17,
+      "tactic": 10,
+      "relate": 40,
+      "micro": 364,
+      "inverse": 478
+    },
+    "engineCombos": 37016,
+    "timeframes": [
+      1,
+      5,
+      15,
+      30
+    ]
+  },
+  "classification": "Complete static registry and configured protect identity audit; this does not execute every Cartesian market cell",
+  "configuredRanges": [
+    "wide",
+    "mn",
+    "sh",
+    "gn",
+    "lg",
+    "mc",
+    "mp"
+  ],
+  "originalDefaultCells": 3898,
+  "coverageOverrides": [
+    "Wide: explicit 2% target, retaining existing stop/trail/hold arrays",
+    "Minimal Plus: two explicit identity-test cells; production dynamic fitting is tested separately"
+  ],
+  "byTf": {
+    "1": {
+      "rawConfiguredCells": 3916,
+      "uniqueActualProtectIdentities": 3916,
+      "cellsByRange": {
+        "wide": 12,
+        "mn": 754,
+        "sh": 432,
+        "gn": 554,
+        "lg": 594,
+        "mc": 1564,
+        "mp": 6
+      }
+    },
+    "5": {
+      "rawConfiguredCells": 3916,
+      "uniqueActualProtectIdentities": 3916,
+      "cellsByRange": {
+        "wide": 12,
+        "mn": 754,
+        "sh": 432,
+        "gn": 554,
+        "lg": 594,
+        "mc": 1564,
+        "mp": 6
+      }
+    },
+    "15": {
+      "rawConfiguredCells": 3916,
+      "uniqueActualProtectIdentities": 3916,
+      "cellsByRange": {
+        "wide": 12,
+        "mn": 754,
+        "sh": 432,
+        "gn": 554,
+        "lg": 594,
+        "mc": 1564,
+        "mp": 6
+      }
+    },
+    "30": {
+      "rawConfiguredCells": 3916,
+      "uniqueActualProtectIdentities": 3916,
+      "cellsByRange": {
+        "wide": 12,
+        "mn": 754,
+        "sh": 432,
+        "gn": 554,
+        "lg": 594,
+        "mc": 1564,
+        "mp": 6
+      }
+    }
+  },
+  "eligibleEnginePairsByRange": {
+    "wide": 27136,
+    "mn": 37016,
+    "mp": 27136,
+    "sh": 10056,
+    "gn": 10056,
+    "lg": 10056,
+    "mc": 9004
+  },
+  "noEligibleRange": {
+    "count": 0,
+    "examples": []
+  },
+  "violations": [],
+  "notes": [
+    "Minimal Plus is explicitly enabled for this catalog check; all original distance/gate values are retained.",
+    "The actual target/stop/trail/hold identities are checked exhaustively per lane. Bot/indication prefixes are independently unique, so the full Cartesian identity mapping need not be allocated in memory.",
+    "A lane slower than an explicitly requested maximum hold cannot execute that cell; the engine reports this refusal instead of exceeding the configured time.",
+    "Signal sources and Stable-02 ports use their dedicated Signal engine. Legacy equivalent engine aliases share the documented execution key policy; independent source qualification is still separate."
+  ]
+}

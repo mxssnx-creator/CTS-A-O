@@ -91,18 +91,21 @@ const keyOf = (p: { cfg: string; sym: string; side: number; entryT: number }) =>
 
 const small = {
   symbols: 4,
+  focus: ["follow|ema-9-21@m15"],
+  tfs: [15],
+  exitStrategy: { enabled: false },
   historyDays: 18,
   tfDays: { "1": 3, "5": 6, "15": 18, "30": 18 },
   mainTop: 12,
   refineTop: 4,
   evalTop: 8,
   cycleMs: 60_000,
-  focus: [...PREVIOUS_DEFAULT_FOCUS_17OCT], pinned: [], exitStrategy: { includeMicro: false },
+  pinned: [],
   grid: { ...runtimeFixtureGrid(), short: false as const },
   gates: { minPf: 1.0, minTrades: 3, maxDdr: 0 },
   signals: signalSettings({
     exits: "pct",
-    sources: Object.fromEntries(SIGNAL_SOURCES.filter((x) => x.name.startsWith("s2-")).map((x) => [x.name, false])),
+    sources: Object.fromEntries(SIGNAL_SOURCES.map((x) => [x.name, false])),
   }),
 };
 
@@ -456,8 +459,8 @@ describe("Stable-02 paused keys, one side each (item 2)", () => {
   }
   const snap = s2.snapshot(T);
   const { rt: fake } = fakeRt();
-  Object.assign(fake, { hedgeKeys: new Set<string>(), sim: { s2: snap },
-    isHedgeEntry: (CoreRuntime.prototype as unknown as { isHedgeEntry: unknown }).isHedgeEntry });
+  Object.setPrototypeOf(fake, CoreRuntime.prototype);
+  Object.assign(fake, { hedgeKeys: new Set<string>(), sim: { s2: snap } });
   /** the paper book's entry check on one candidate under the given coordination settings */
   const heldBackWith = (coord: CoordSettings, sym: string, side: 1 | -1) => {
     Object.assign(fake, { wf: { guardPct: 0, coord } });

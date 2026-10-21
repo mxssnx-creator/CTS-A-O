@@ -421,6 +421,8 @@ describe(
             waitUntil: "domcontentloaded",
             timeout: 120_000,
           });
+          // SSR can show the form before hydration replaces it with the initial loading state. Wait for the
+          // finite settings/status RPCs and their debounce before asserting against the settled client form.
           await settleRequests();
           const save = page.getByRole("button", { name: /^save/i }).first();
           await save.waitFor({ state: "visible", timeout: 60_000 });

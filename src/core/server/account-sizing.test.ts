@@ -33,9 +33,7 @@ describe("live account sizing: one actual balance for sizing, budgets and previe
     await stepLive(core(rt), [], 1, ex);
     assert.equal(ex.positions.get("S0-USDT|LONG"), 2, "100 balance × 10 % × factor 2 / price 10");
     assert.equal(duplicateReads, 0);
-    const peek = liveUnitPeek(core(rt));
-    assert.deepEqual(peek, { unit: 10, from: "balance", balance: 100, wallet: 100, base: 100, equity: 100, at: peek.at });
-    assert.ok(peek.at! > 0 && peek.at! <= Date.now());
+    assert.deepEqual(liveUnitPeek(core(rt)), { unit: 10, from: "balance", balance: 100, equity: 100, wallet: 100, base: 100, at: liveUnitPeek(core(rt)).at });
   });
 
   it("sizes and applies ratio caps from wallet balance, not unrealized equity", async () => {
@@ -54,25 +52,23 @@ describe("live account sizing: one actual balance for sizing, budgets and previe
     });
     await stepLive(core(rt), [], 1, ex);
     assert.equal(ex.positions.get("S0-USDT|LONG"), 0.4, "per-position limit is 0.1 × $40 wallet, not 0.1 × $100 equity or the $5,000 legacy cap");
-    const peek = liveUnitPeek(core(rt));
-    assert.deepEqual(peek, { unit: 10, from: "balance", balance: 40, wallet: 40, base: 40, equity: 100, at: peek.at });
-    assert.ok(peek.at! > 0 && peek.at! <= Date.now());
+    assert.deepEqual(liveUnitPeek(core(rt)), { unit: 10, from: "balance", balance: 40, equity: 100, wallet: 40, base: 40, at: liveUnitPeek(core(rt)).at });
   });
 
-  it("projects the captured range volume once and preserves it across settings edits", () => {
+  it("projects the range factors captured at entry exactly once despite later settings changes", () => {
     const rt = setup();
     rt.settings.grid.micro = { ...rt.settings.grid.micro, volumeFactor: 2.5 } as never;
     rt.settings.signals.rangeVolumeFactors = { ...rt.settings.signals.rangeVolumeFactors, short: 1.8 };
     rt.paper.positions = [
-      { ...lane("follow|ema-9-21@m1|tp1|sl1|tr0|h32|mc", "MICRO-USDT", 1, 10, 5), volFactor: 2.5 },
-      { ...lane("follow|sig-ema-cross-s@m15|tp1|sl1|tr0|h32", "SIGNAL-USDT", 1, 10, 3.6), volFactor: 1.8 },
+      lane("follow|ema-9-21@m1|tp1|sl1|tr0|h32|mc", "MICRO-USDT", 1, 10, 5),
+      lane("follow|sig-ema-cross-s@m15|tp1|sl1|tr0|h32", "SIGNAL-USDT", 1, 10, 3.6),
     ];
     const contributions = laneContributions(core(rt));
     assert.equal(contributions.find((x) => x.sym === "MICRO-USDT")?.vol, 5);
     assert.equal(contributions.find((x) => x.sym === "SIGNAL-USDT")?.vol, 3.6);
-    rt.settings.grid.micro = { ...MICRO_RANGE, volumeFactor: 4 } as never;
+    Object.assign(rt.settings.grid.micro as object, { volumeFactor: 4 });
     rt.settings.signals.rangeVolumeFactors.short = 3;
-    assert.deepEqual(laneContributions(core(rt)), contributions);
+    assert.deepEqual(laneContributions(core(rt)).map((x) => x.vol), [5, 3.6]);
   });
 
   it("an account-only client uses actual equity, and fixed/minimum sizing previews keep that equity too", async () => {

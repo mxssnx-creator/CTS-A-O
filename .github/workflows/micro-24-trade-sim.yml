@@ -1,15 +1,21 @@
 name: Complete 24-symbol Trade Sim
 on:
   push:
-    branches: [codex/micro-indication-20261020]
+    branches: [codex/micro-indication-20261020, codex/incremental-cycle-20261020]
+    # Economic source and audit changes need a fresh full replay; UI/test/report-only edits reuse the sealed source evidence.
     paths:
-      [
-        src/**,
-        scripts/**,
-        .github/audits/micro-24-trade-sim.mjs,
-        .github/workflows/micro-24-trade-sim.yml,
-        docs/micro-24-sim-2026-10-21/reproduction-feed.json.gz,
-      ]
+      - src/core/**
+      - scripts/lib/**
+      - scripts/core-session.mjs
+      - package.json
+      - scripts/audit-micro-*.mjs
+      - scripts/audit-stage-transition.mjs
+      - scripts/audit-simulation-parity.mjs
+      - .github/audits/hourly-progress.mjs
+      - .github/audits/micro-24-trade-sim.mjs
+      - .github/workflows/micro-24-trade-sim.yml
+      - docs/micro-24-sim-2026-10-21/reproduction-feed.json.gz
+      - "!src/core/**/*.test.ts"
   workflow_dispatch:
 permissions:
   contents: read
@@ -39,22 +45,22 @@ jobs:
         env:
           NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
       - name: Freeze actual settings, source, feed and 12h plus 12h window before scoring
-        run: node --require ./scripts/lib/core-test-offline-guard.cjs --experimental-strip-types --no-warnings .github/audits/micro-24-trade-sim.mjs prepare --feed docs/micro-24-sim-2026-10-21/reproduction-feed.json.gz --out runs/micro-24-trade-sim-v6
+        run: node --require ./scripts/lib/core-test-offline-guard.cjs --experimental-strip-types --no-warnings .github/audits/micro-24-trade-sim.mjs prepare --feed docs/micro-24-sim-2026-10-21/reproduction-feed.json.gz --out runs/micro-24-trade-sim-v7
       - name: Complete every configured Micro, Minimal, Short, General and Exit tape
-        run: node --require ./scripts/lib/core-test-offline-guard.cjs --experimental-strip-types --no-warnings .github/audits/micro-24-trade-sim.mjs run --out runs/micro-24-trade-sim-v6 --workers 2
+        run: node --require ./scripts/lib/core-test-offline-guard.cjs --experimental-strip-types --no-warnings .github/audits/micro-24-trade-sim.mjs run --out runs/micro-24-trade-sim-v7 --workers 2
       - name: Reconcile funded source/execution PF and every hourly gate delta
         env:
           NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
         run: |
-          node --experimental-strip-types --no-warnings scripts/audit-micro-execution.mjs runs/micro-24-trade-sim-v6
-          node --experimental-strip-types --no-warnings scripts/audit-micro-stages.mjs runs/micro-24-trade-sim-v6
-          node --experimental-strip-types --no-warnings --max-old-space-size=2048 .github/audits/hourly-progress.mjs runs/micro-24-trade-sim-v6 runs/micro-24-trade-sim-v6/scalar-hours.json --require-all
-          node --experimental-strip-types --no-warnings scripts/audit-stage-transition.mjs runs/micro-24-trade-sim-v6
-          node --experimental-strip-types --no-warnings scripts/audit-simulation-parity.mjs runs/micro-24-trade-sim-v6/raw.json runs/micro-24-trade-sim-v6/simulation-parity.json
+          node --experimental-strip-types --no-warnings scripts/audit-micro-execution.mjs runs/micro-24-trade-sim-v7
+          node --experimental-strip-types --no-warnings scripts/audit-micro-stages.mjs runs/micro-24-trade-sim-v7
+          node --experimental-strip-types --no-warnings --max-old-space-size=2048 .github/audits/hourly-progress.mjs runs/micro-24-trade-sim-v7 runs/micro-24-trade-sim-v7/scalar-hours.json --require-all
+          node --experimental-strip-types --no-warnings scripts/audit-stage-transition.mjs runs/micro-24-trade-sim-v7
+          node --experimental-strip-types --no-warnings scripts/audit-simulation-parity.mjs runs/micro-24-trade-sim-v7/raw.json runs/micro-24-trade-sim-v7/simulation-parity.json
       - name: Seal the Micro-only training shortlist before acquiring the next day
         id: shortlist
         run: |
-          node --require ./scripts/lib/core-test-offline-guard.cjs --no-warnings scripts/select-micro-24-research.mjs runs/micro-24-trade-sim-v6 runs/micro-24-selection-v1
+          node --require ./scripts/lib/core-test-offline-guard.cjs --no-warnings scripts/select-micro-24-research.mjs runs/micro-24-trade-sim-v7 runs/micro-24-selection-v1
           node --input-type=module -e 'import fs from "node:fs"; const s=JSON.parse(fs.readFileSync("runs/micro-24-selection-v1/selection.json"));fs.appendFileSync(process.env.GITHUB_OUTPUT,`eligible=${s.eligible}\n`);'
       - name: Preserve complete inputs, settings, outcomes and failures
         if: always()
@@ -63,7 +69,7 @@ jobs:
           name: micro-24-trade-sim-${{ github.run_id }}
           retention-days: 30
           compression-level: 6
-          path: runs/micro-24-trade-sim-v6/
+          path: runs/micro-24-trade-sim-v7/
       - name: Preserve the frozen shortlist, next-day source and every validation outcome
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

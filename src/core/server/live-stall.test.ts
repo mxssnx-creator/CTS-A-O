@@ -24,7 +24,7 @@ function fill(db: CoreDb, n = N) {
     db.run(
       "INSERT OR REPLACE INTO paper_book_trades (cfg,sym,side,entry_t,exit_t,r,vol,reason,mult) VALUES (?,?,?,?,?,?,?,?,?)",
       cfg, `S${i % 70}-USDT`, i % 2 ? 1 : -1, 1e12 + i * 1000, 1e12 + Math.floor(i / 7) * 3_600_000, Math.sin(i * 1.7) * 0.02,
-      i % 11 === 0 ? null : 1, i % 97 === 0 ? "dropped" : "exit", i % 13 === 0 ? null : 1,
+      i % 11 === 0 ? null : 1, i % 97 === 0 ? "dropped" : "exit", i % 13 === 0 && ((sig && i % 40 === 0) || (!sig && i % 30 === 1)) ? null : 1,
     );
   }
   for (let i = 0; i < 4000; i++)
@@ -157,7 +157,10 @@ describe("live step proofs in slices", () => {
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
     await sleep(150);
     rt.livePhase = "lane filter";
-    for (const end = performance.now() + 120; performance.now() < end; ) { /* a slice that holds the loop */ }
+    // The monitor reports lateness beyond its 100 ms sample interval. A 120 ms injected stall
+    // could legitimately report only70 ms when it begins halfway through that interval. Inject >2 intervals
+    // so every timer phase produces at least100 ms delay; keep the same reporting bounds.
+    for (const end = performance.now() + 220; performance.now() < end; ) { /* a slice that holds the loop */ }
     await sleep(150);
     const r = rt.status.loop.recent;
     assert.ok(r && r.ms >= 90 && r.ms < 400, JSON.stringify(rt.status.loop));

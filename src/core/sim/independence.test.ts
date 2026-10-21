@@ -408,7 +408,7 @@ describe("the same order from two indications", () => {
     assert.equal(walkForward(u, [a, other], indep).trades.length, alone.trades.length * 2);
   });
 
-  it("independent Axis depths and geometries keep their own simultaneous orders in sim and paper", () => {
+  it("Axis depths with identical onsets retain independent simulated and Paper orders", () => {
     const ax = (tag: string) => `follow|${IND}|tp1|sl1|tr0|h32|${tag}|axis`;
     const axTape = (cfg: string, shift = 0) =>
       makeTape(
@@ -435,9 +435,9 @@ describe("the same order from two indications", () => {
     const two = axTape(ax("ax-linear2"));
     const alone = walkForward(u, [two], indep);
     assert.ok(alone.trades.length > 0);
-    // Even if its deeper rung never filled, depth 3 is a separately qualified config.
+    // Identical shallow fills do not erase the separately validated depth-3 config.
     const both = walkForward(u, [two, axTape(ax("ax-linear3"))], indep);
-    assert.equal(both.trades.length, alone.trades.length * 2);
+    assert.equal(both.trades.length, alone.trades.length * 2, "both independently qualified Axis configs trade");
     assert.equal(both.skips.duplicate ?? 0, 0);
     // a variant whose ladder exits elsewhere (a rung filled) places other orders: both trade
     const other = walkForward(u, [two, axTape(ax("ax-atr3"), 60_000)], indep);

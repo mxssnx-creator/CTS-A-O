@@ -1,6 +1,6 @@
 {
-  "schema": "cts-universal-integration-plan-v9",
-  "sourceSha256": "7f29b92555e77144326b374623f9fa14114d6f0cc21692c9b336b30d05241ccd",
+  "schema": "cts-universal-integration-plan-v10",
+  "sourceSha256": "61b56cee42745c066877f8b605041dcb54274a874d8686a7f1fe52b2f6a5ad46",
   "scope": {
     "registeredSpecs": 1860,
     "families": 19,
@@ -63,5 +63,5 @@
   ],
   "classification": "Correctness/causality and synthetic gate audit, not proof of hourly market profitability or a full Cartesian financial portfolio replay",
   "preserve": "Keep failed/partial receipts and all existing negative financial windows. Never change recorded costs/returns/gates to manufacture positive PF.",
-  "revisionReason": "Integrate main PR189 Signals history, coordinator grids, per-range floors and bounded historic progress. Retain captured immutable light-cycle Signal snapshots, generation/economic publication fences, owned-return provenance and all Micro/Inverse breakouts. Preserve v8, every failure and unchanged economic gates. Repeat complete current-source correctness and 24-symbol financial audits."
+  "revisionReason": "Main720 already integrates Micro f03, Inverse and incremental/streaming processing, plus PR188/189. Preserve the complete reviewed main production source byte-for-byte. Retain only the UI previous-document RPC observer fix, cap-derived negative fixture and external-data-independent original 24-symbol workflow. Repeat 24-symbol v7 on this exact new main source; v5/v6 results retain BF/7f seals. No economic code, cost or gate changed by the finishing PR."
 }

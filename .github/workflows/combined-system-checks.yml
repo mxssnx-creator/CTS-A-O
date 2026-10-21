@@ -1,0 +1,57 @@
+name: Combined system scripts and UI checks
+on:
+  push:
+    branches: [codex/incremental-cycle-20261020]
+    paths: [src/**, scripts/**, .github/**, package.json, package-lock.json]
+permissions:
+  contents: read
+concurrency:
+  group: combined-checks-${{ github.sha }}
+  cancel-in-progress: false
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      MALLOC_ARENA_MAX: "2"
+      CTS_CORE_STATE: "off"
+      CTS_CORE_AUTOSTART: "0"
+      CTS_CORE_LIVE: "0"
+      CTS_CORE_COMPARE: "0"
+      CTS_UI_BROWSER_EXECUTABLE: /usr/bin/chromium
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24.19.0"
+      - run: npm ci
+      - name: Install local fixture browser
+        run: npx playwright install --with-deps chromium
+        env:
+          NODE_OPTIONS: ""
+      - name: Resolve browser executable
+        run: node --input-type=module -e 'import {chromium} from "playwright"; import {appendFileSync} from "node:fs"; appendFileSync(process.env.GITHUB_ENV, `CTS_UI_BROWSER_EXECUTABLE=${chromium.executablePath()}\n`);'
+      - name: Types, lint and production worker packaging
+        env:
+          NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
+        run: |
+          mkdir -p runs/combined-checks
+          npm run typecheck 2>&1 | tee runs/combined-checks/typecheck.log
+          npm run lint 2>&1 | tee runs/combined-checks/lint.log
+          npm run build 2>&1 | tee runs/combined-checks/build.log
+      - name: Every scripts test and app/component test
+        env:
+          NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
+        shell: bash
+        run: |
+          node --test --test-concurrency=2 'scripts/**/*.test.mjs' 2>&1 | tee runs/combined-checks/scripts.log
+          node --require ./scripts/lib/core-test-offline-guard.cjs --experimental-strip-types --no-warnings --test src/lib/auth/*.test.ts src/lib/app-data/*.test.ts src/components/v2/*.test.ts 2>&1 | tee runs/combined-checks/app.log
+      - name: Keep every outcome
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: combined-checks-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 30
+          path: runs/combined-checks/

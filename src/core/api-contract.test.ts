@@ -126,8 +126,10 @@ const FIELDS: Record<Fn, string[]> = {
     // pages/stages.tsx SetListings (the last paper step's validated sets, per range / strategy group)
     "ready",
     "total",
+    "calculated",
+    ...under("validation", ["engineLastN", "rangeLastN", "historyH"]),
     "proofOn",
-    ...under("byGroup[]", ["group", "validated", "pf"]),
+    ...under("byGroup[]", ["group", "validated", "calculated", "pf", "noLoss"]),
     ...under("rows[]", ["id", "group", "range", "pf", "n", "net", "ddt", "score"]),
   ],
   coreStatus: [
@@ -1524,6 +1526,7 @@ describe(
         byGroup: Array<{ group: string; validated: number }>;
       };
       assert.ok(all.total > 0 && all.rows.length <= 5, `${all.total} validated`);
+      assert.ok(Number((all as unknown as {calculated:number}).calculated) >= all.total, "validated / eligible calculated denominator");
       // the listing is the paper step's seats, best score first
       assert.equal(all.total, rt.listings!.validated.length);
       for (let i = 1; i < all.rows.length; i++)

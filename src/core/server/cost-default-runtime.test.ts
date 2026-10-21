@@ -90,7 +90,7 @@ describe("modeled position cost defaults and migration", () => {
     assert.equal(runtime.settings.cost, RT_COST);
     assert.deepEqual(runtime.settings.fees, DEFAULT_SETTINGS.fees);
     assert.equal(runtime.settings.symbols, 7);
-    assert.equal(db.kvGet<number>("wfCapsV"), 35);
+    assert.equal(db.kvGet<number>("wfCapsV"), 37);
     const presets = db.kvGet<Array<{ id: string; settings: SettingsPatch; wf: unknown; metrics: unknown }>>("presets")!;
     assert.deepEqual(presets[0], {
       id: "factory", settings: { cost: RT_COST, fees: DEFAULT_SETTINGS.fees }, wf: { lastN: 25 }, metrics: { pf: 1.3 },

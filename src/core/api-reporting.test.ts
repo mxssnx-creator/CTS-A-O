@@ -104,78 +104,69 @@ function paperFixture() {
   return { r, xs };
 }
 function bookRow(r: InstanceType<typeof CoreRuntime>, t: Trade, patch: Record<string, unknown> = {}) {
-  const x = { cfg:t.cfg,sym:t.sym,side:t.side,entry_t:t.entryT,exit_t:t.exitT,entry:t.entry,exit:t.exit,
-    r:t.r,vol:t.mult??1,mult:t.mult??1,unit_r:t.r/(t.mult??1),reason:t.reason,
-    owned_notional_usd:100*(t.mult??1),...patch };
-  const columns = Object.keys(x), values = Object.values(x);
-  r.db.run(`INSERT INTO paper_book_trades (${columns.join(",")}) VALUES (${columns.map(()=>"?").join(",")})`, ...values as never[]);
+  const x = { cfg:t.cfg,sym:t.sym,side:t.side,entry_t:t.entryT,exit_t:t.exitT,r:t.r,unit_r:t.r/(t.mult??1),reason:t.reason,owned_notional_usd:100*(t.mult??1),vol:t.mult??1,mult:t.mult??1,...patch };
+  if (typeof patch.unit_r === "number" && !("r" in patch)) x.r = patch.unit_r * (t.mult ?? 1);
+  r.db.run("INSERT INTO paper_book_trades (cfg,sym,side,entry_t,exit_t,r,unit_r,reason,owned_notional_usd,vol,mult) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+    x.cfg as string,x.sym as string,x.side as number,x.entry_t as number,x.exit_t as number,x.r as number,x.unit_r as number,x.reason as string,x.owned_notional_usd as number|null,x.vol as number|null,x.mult as number|null);
 }
-const paperStats = () => coreStatisticsData(coreStatisticsInput({ source: "paper", hours: 6 })) as Promise<Any>;
+const paperStats = () => coreStatisticsData(coreStatisticsInput({ source: "paper-history", hours: 6 })) as Promise<Any>;
 
-for (const [name, notional] of [["legacy allocation NULL",null],["zero allocation",0],["dust allocation",1e-9]] as const)
-test(`paper primary retains the losing forward-book close with ${name}`, async () => {
-  const { r, xs } = paperFixture(); bookRow(r,xs[0]); bookRow(r,xs[1],{owned_notional_usd:notional});
+for (const [name, patch] of [
+  ["legacy allocation NULL", { owned_notional_usd:null }],
+  ["zero allocation", { owned_notional_usd:0 }],
+  ["dust allocation", { owned_notional_usd:1e-9 }],
+  ["different settled exit (including a partial-close timestamp)", { exit_t:END-H+1 }],
+  ["different entry timestamp", { entry_t:END-2*H-1 }],
+  ["different config/type", { cfg:"follow|rsi-mom-14-25@m15|tp0|sl1|tr1|h32|mn|to" }],
+  ["different symbol", { sym:"OTHER-USDT" }],
+  ["different direction", { side:-1 }],
+  ["dropped bookkeeping row", { reason:"dropped" }],
+] as const) test(`recorded paper history cannot certify a losing close from ${name}`, async () => {
+  const { r, xs } = paperFixture(); bookRow(r,xs[0]); bookRow(r,xs[1],patch);
   const result = await paperStats();
   assert.equal(result.report.total.n,2); assert.equal(result.report.total.pf,null); assert.equal(result.report.total.unknownReturns,1);
-  assert.deepEqual([result.paperEvidence.verifiedOwnership,result.paperEvidence.unknownOwnership],[1,1]);
+  assert.equal(result.paperEvidence.verifiedOwnership,1); assert.equal(result.paperEvidence.unknownOwnership,1);
   assert.ok(Math.abs(result.paperEvidence.recordedReturns.pf-1.36)<1e-10);
-  assert.equal(result.report.total.cashPf,null); assert.equal(result.report.total.usd,null,"unknown allocation cannot inherit today's paper size");
-  assert.equal(result.paperEvidence.cashBasis,"owned-paper-book");
+  assert.ok(Math.abs(result.report.total.cashPf-.2)<1e-10); assert.ok(Math.abs(result.report.total.usd+5.44)<1e-10);
+  assert.equal(r.db.get<{n:number}>("SELECT COUNT(*) AS n FROM paper_trades")?.n,2);
 });
 
-for (const [name,patch] of [
-  ["different settled exit",{exit_t:END-H+1}], ["different entry",{entry_t:END-2*H-1}],
-  ["different config/type",{cfg:"follow|rsi-mom-14-25@m15|tp0|sl1|tr1|h32|mn|to"}],
-  ["different symbol",{sym:"OTHER-USDT"}], ["different direction",{side:-1}],
-] as const) test(`paper statistics retain the actual forward-book ${name} independently of nominal re-simulation`,async()=>{
-  const {r,xs}=paperFixture();bookRow(r,xs[0]);bookRow(r,xs[1],patch);
-  const result=await paperStats();
-  assert.equal(result.report.total.n,2);assert.ok(Math.abs(result.report.total.pf-1.36)<1e-10);
-  assert.deepEqual([result.paperEvidence.verifiedOwnership,result.paperEvidence.unknownOwnership],[2,0]);
+test("a missing paper allocation cannot disappear from the current sample to qualify older wins", async () => {
+  const { r, xs } = paperFixture(); bookRow(r,xs[0]);
+  const result = await paperStats();
+  assert.equal(result.report.total.n,2); assert.equal(result.report.total.pf,null);
+  assert.equal(result.paperEvidence.unknownOwnership,1);
+  assert.equal(result.paperEvidence.recordedReturns.n,2);
+  assert.ok(Math.abs(result.paperEvidence.recordedReturns.pf-1.36)<1e-10);
   assert.ok(Math.abs(result.report.total.usd+5.44)<1e-10);
 });
 
-test("nominal closes and dropped marks never become actual forward-book settled orders", async () => {
-  const {r,xs}=paperFixture();bookRow(r,xs[0]);bookRow(r,xs[1],{reason:"dropped"});
-  const result=await paperStats();
-  assert.equal(result.report.total.n,1);assert.equal(result.report.total.pf,4);assert.equal(result.report.total.noLoss,true);
-  assert.equal(result.paperEvidence.requested,1);assert.equal(result.paperEvidence.unknownOwnership,0);
-  assert.equal(r.db.get<{n:number}>("SELECT COUNT(*) AS n FROM paper_trades")?.n,2,"nominal archive stays intact");
-});
-
-test("forward-book sizing is captured once, including flat closes, independent of current settings and nominal history", async () => {
-  const {r,xs}=paperFixture();bookRow(r,xs[0]);bookRow(r,xs[1]);
-  const before=await paperStats();
-  assert.ok(Math.abs(before.report.total.pf-1.36)<1e-10);
-  assert.ok(Math.abs(before.report.total.cashPf-.2)<1e-10);assert.ok(Math.abs(before.report.total.usd+5.44)<1e-10);
-  r.settings.paperNotional=10000;r.settings.sizing={mode:"equityPct",pct:.5};
-  r.db.run("UPDATE paper_trades SET r = 99, unit_r = 99, pnl = 990000");
-  const after=await paperStats();
-  assert.deepEqual(after.report.total,before.report.total,"neither nominal retesting nor new sizing can reprice recorded holdings");
-  assert.equal(after.report.timeline.marginMax,before.report.timeline.marginMax);
-  assert.equal(after.report.timeline.maxDd,before.report.timeline.maxDd);
-  bookRow(r,{...xs[0],r:0,entryT:END-40*60_000,exitT:END-30*60_000},{vol:3,mult:3,owned_notional_usd:300});
-  const flat=await paperStats();
-  assert.equal(flat.report.total.n,3);assert.ok(Math.abs(flat.report.total.usd+5.44)<1e-10);
-  assert.ok(flat.report.timeline.marginMax>=30,"a flat return keeps its measured funded notional");
-});
-
-test("paper book identities are unique while opposite-side holdings remain independent", async () => {
-  const {r,xs}=paperFixture();bookRow(r,xs[0]);bookRow(r,xs[1]);
-  assert.throws(()=>bookRow(r,xs[1]),/UNIQUE constraint/);
-  bookRow(r,xs[1],{side:-1});
-  const result=await paperStats();
-  assert.equal(result.report.total.n,3);assert.ok(Math.abs(result.report.total.pf-.68)<1e-10);
-  assert.deepEqual([result.paperEvidence.verifiedOwnership,result.paperEvidence.unknownOwnership],[3,0]);
-});
-
-test("known nominal returns cannot replace missing owned-book unit evidence or multiplier provenance", async () => {
-  const {r,xs}=paperFixture();bookRow(r,xs[0]);bookRow(r,xs[1],{unit_r:null,mult:null});
-  const result=await paperStats();
-  assert.equal(result.report.total.n,2);assert.equal(result.report.total.pf,null);assert.equal(result.report.total.unknownReturns,1);
+test("paper ownership proof requires an exact unique settled identity and does not duplicate matching history", async () => {
+  const { r, xs } = paperFixture(); bookRow(r,xs[0]); bookRow(r,xs[1]);
+  assert.throws(()=>bookRow(r,xs[1]), /UNIQUE constraint/);
+  bookRow(r,xs[1],{ side:-1 });
+  const result = await paperStats();
+  assert.equal(result.report.total.n,2); assert.ok(Math.abs(result.report.total.pf-1.36)<1e-10);
   assert.deepEqual([result.paperEvidence.verifiedOwnership,result.paperEvidence.unknownOwnership],[2,0]);
-  assert.equal(result.paperEvidence.recordedReturns.pf,null);
-  assert.ok(Math.abs(result.report.total.usd+5.44)<1e-10,"recorded sized return and funded volume still establish cash independently");
+  assert.equal(result.report.total.noLoss,false);
+});
+
+test("known nominal returns cannot replace missing owned-book unit evidence", async () => {
+  const { r, xs } = paperFixture(); bookRow(r,xs[0]); bookRow(r,xs[1],{ unit_r:null });
+  const result = await paperStats();
+  assert.equal(result.report.total.n,2); assert.equal(result.report.total.pf,null); assert.equal(result.report.total.unknownReturns,1);
+  assert.deepEqual([result.paperEvidence.verifiedOwnership,result.paperEvidence.unknownOwnership],[2,0]);
+  assert.ok(Math.abs(result.paperEvidence.recordedReturns.pf-1.36)<1e-10);
+  assert.equal(result.paperEvidence.cashBasis,"recorded-paper-history");
+});
+
+test("owned unit PF uses the held book return while nominal unit and cash history remain separate", async () => {
+  const { r, xs } = paperFixture(); bookRow(r,xs[0]); bookRow(r,xs[1],{ unit_r:-0.02 });
+  const result = await paperStats();
+  assert.equal(result.report.total.n,2); assert.ok(Math.abs(result.report.total.pf-.68)<1e-10);
+  assert.ok(Math.abs(result.paperEvidence.recordedReturns.pf-1.36)<1e-10);
+  assert.ok(Math.abs(result.report.total.cashPf-.2)<1e-10); assert.ok(Math.abs(result.report.total.usd+5.44)<1e-10);
+  assert.equal(result.paperEvidence.cashBasis,"recorded-paper-history");
 });
 
 test("strict promotion evidence is exposed unchanged, separate from raw Base and paper-deactivation summaries", async () => {
@@ -189,4 +180,34 @@ test("strict promotion evidence is exposed unchanged, separate from raw Base and
   assert.deepEqual(response.livePromotion,r.status.livePromotion);
   assert.equal(response.livePromotion.lanes[0].model.noLoss,false);
   assert.equal(response.livePromotion.lanes[0].execution.pf,null);
+});
+
+
+test("forward paper source uses actual held return and allocation without rewritten nominal cash", async () => {
+  const { r, xs } = paperFixture();
+  bookRow(r, xs[0]); bookRow(r, xs[1], { unit_r: -0.02 });
+  const result = await coreStatisticsData(coreStatisticsInput({ source: "paper", hours: 6 })) as Any;
+  assert.equal(result.report.total.n, 2);
+  assert.ok(Math.abs(result.report.total.pf - 0.68) < 1e-10);
+  assert.ok(Math.abs(result.report.total.usd - (1.36 - 13.6)) < 1e-10);
+  assert.equal(result.paperEvidence.cashBasis, "owned-paper-forward");
+  assert.equal(result.sourceLabel, "paper book forward record (virtual)");
+});
+
+test("forward paper retains a settled unknown-return close in the full sample", async () => {
+  const { r, xs } = paperFixture();
+  bookRow(r, xs[0]); bookRow(r, xs[1], { r: null, unit_r: null });
+  const result = await coreStatisticsData(coreStatisticsInput({ source: "paper", hours: 6 })) as Any;
+  assert.equal(result.report.total.n, 2);
+  assert.equal(result.report.total.pf, null);
+  assert.equal(result.report.total.unknownReturns, 1);
+});
+
+
+test("forward cash retains a close with missing volume as unknown and never reprices it", async () => {
+  const {r,xs}=paperFixture(); bookRow(r,xs[0]); bookRow(r,xs[1],{vol:null});
+  const stats=()=>coreStatisticsData(coreStatisticsInput({source:"paper",hours:6})) as Promise<Any>;
+  const first=await stats(); assert.equal(first.report.total.n,2); assert.equal(first.report.total.cashPf,null);
+  r.settings.paperNotional=999; r.settings.sizing={mode:"equityPct",pct:.9};
+  const second=await stats(); assert.deepEqual(second.report.total,first.report.total);
 });

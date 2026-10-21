@@ -1,4 +1,3 @@
-import { INVERSE_CONFIG_IDS } from "./indications/inverse-config.ts";
 import { MICRO_CONFIG_IDS, INVERSE_MICRO_CONFIG_IDS } from "./indications/micro-family.ts";
 import { PROVEN_WIDE_TRAIL_PAIRS } from "./proven-wide-trail.ts";
 // CTS-A Core v2 — authoritative defaults. Every number the engine uses lives here.
@@ -17,6 +16,7 @@ import { DEFAULT_SIZING, type SizingSettings } from "./sizing.ts";
 import type { PromotedLaneProof } from "./live-promote.ts";
 import { BREAK_DEFAULT_MICRO_CONFIG_IDS, breakAnchorTf } from "./indications/break-config.ts";
 import { DEFAULT_MODEL_FEES, RT_COST } from "./model-cost.ts";
+import { INVERSE_CONFIG_IDS, INVERSE_PREVIOUS_CONFIG_IDS } from "./indications/inverse-config.ts";
 export { RT_COST } from "./model-cost.ts";
 
 /** Hard ceiling for unique positions on the exchange. Strategy/config orders do not consume extra slots. */
@@ -659,6 +659,32 @@ export const PREVIOUS_DEFAULT_FOCUS_17OCT: readonly string[] = [
   ...FAMILY_FOCUS_13OCT,
 ];
 
+/** Exact former factory selection, used for additive upgrades without rewriting custom Focus. */
+export const PREVIOUS_DEFAULT_FOCUS_20OCT: readonly string[] = [
+  ...PREVIOUS_DEFAULT_FOCUS_17OCT, ...BREAK_MICRO_FOCUS_17OCT,
+];
+export const INVERSE_FOCUS_20OCT: readonly string[] = INVERSE_CONFIG_IDS.map((id) => `follow|${id}`);
+export const PREVIOUS_INVERSE_FOCUS_20OCT: readonly string[] = [
+  ...PREVIOUS_DEFAULT_FOCUS_20OCT, ...INVERSE_PREVIOUS_CONFIG_IDS.map((id) => `follow|${id}`),
+];
+
+// Freeze the former 939-entry factory selection. Future methods must not rewrite a migration identity.
+const MICRO_METHODS_BEFORE_CHANNELS_21OCT = [
+  "drawdown-turn", "drawdown-trend", "range-reclaim", "impulse-retest", "squeeze-break",
+  "residual-revert", "market-follow", "activity-absorb", "drawdown-residual", "drawdown-market",
+  "pullback-activity", "adaptive", "break-close", "break-retest", "activity-acceleration", "activity-flow",
+  "change-ema", "change-roc", "break-activity", "break-direction", "market-momentum", "relative-trend",
+  "flow-break", "trend-reclaim", "market-continuation", "direction-persist",
+];
+const MICRO_IDS_BEFORE_CHANNELS_21OCT = ["1", "5", "15", "1x5", "1x15", "5x15", "1x5x15"].flatMap(
+  (tf) => MICRO_METHODS_BEFORE_CHANNELS_21OCT.flatMap((method) => ["fast", "selective"].map((profile) => `micro-${tf}-${method}-${profile}`)),
+);
+export const PREVIOUS_MICRO_FOCUS_21OCT: readonly string[] = [
+  ...PREVIOUS_DEFAULT_FOCUS_20OCT, ...INVERSE_FOCUS_20OCT,
+  ...MICRO_IDS_BEFORE_CHANNELS_21OCT.map((id) => `follow|${id}`),
+  ...MICRO_IDS_BEFORE_CHANNELS_21OCT.map((id) => `follow|inverse-${id}`),
+];
+
 export const DEFAULT_SETTINGS: CoreSettings = {
   tfMin: 1,
   tfs: [1, 5, 15, 30],
@@ -710,13 +736,9 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   sizing: DEFAULT_SIZING,
   toggles: DEFAULT_TOGGLES,
   tactics: DEFAULT_TACTICS,
-  focus: [
-    ...PREVIOUS_DEFAULT_FOCUS_17OCT,
-    ...BREAK_MICRO_FOCUS_17OCT,
+  focus: [...PREVIOUS_DEFAULT_FOCUS_20OCT, ...INVERSE_FOCUS_20OCT,
     ...MICRO_CONFIG_IDS.map((id) => `follow|${id}`),
-    ...INVERSE_CONFIG_IDS.map((id) => `follow|${id}`),
-    ...INVERSE_MICRO_CONFIG_IDS.map((id) => `follow|${id}`),
-  ],
+    ...INVERSE_MICRO_CONFIG_IDS.map((id) => `follow|${id}`)],
   pinned: [...PROVEN_WIDE_TRAIL_PAIRS],
   disabledKinds: [],
   block: DEFAULT_BLOCK,

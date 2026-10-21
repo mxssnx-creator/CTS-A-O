@@ -82,12 +82,12 @@ function GroupTable(props: {
             <th className="num">orders</th>
             <th className="num">positions</th>
             <th className="num">
-              {props.source === "paper" ? "recorded wins / losses" : "wins / losses"}
+              {props.source === "paper-history" ? "recorded wins / losses" : "wins / losses"}
             </th>
-            <th className="num">{props.source === "paper" ? "recorded WR" : "WR"}</th>
+            <th className="num">{props.source === "paper-history" ? "recorded WR" : "WR"}</th>
             <th className="num">Return PF</th>
             <th className="num">
-              {props.source === "paper" ? "nominal cash PF ($)" : "cash PF ($, diagnostic)"}
+              {props.source === "paper-history" ? "nominal cash PF ($)" : "cash PF ($, diagnostic)"}
             </th>
             <th
               className="num"
@@ -99,7 +99,7 @@ function GroupTable(props: {
             >
               {props.comparison ? "net %" : "recorded net %"}
             </th>
-            <th className="num">{props.source === "paper" ? "nominal net $" : "net $"}</th>
+            <th className="num">{props.source === "paper-history" ? "nominal net $" : "net $"}</th>
             <th className="num">DDT</th>
             <th className="num">green h</th>
             <th className="num">avg hold</th>
@@ -300,7 +300,7 @@ function Configs(props: { rows: Any[]; source: string }) {
               <th className="num">WR</th>
               <th className="num">Return PF</th>
               <th className="num">
-                {props.source === "paper" ? "nominal cash PF ($)" : "cash PF ($, diagnostic)"}
+                {props.source === "paper-history" ? "nominal cash PF ($)" : "cash PF ($, diagnostic)"}
               </th>
               <th className="num">net $</th>
               <th className="num">DDT</th>
@@ -393,7 +393,7 @@ function Configs(props: { rows: Any[]; source: string }) {
 }
 
 export function StatisticsPage() {
-  const [source, setSource] = useState<"sim" | "paper" | "live">("live");
+  const [source, setSource] = useState<"sim" | "paper" | "paper-history" | "live">("live");
   const [hours, setHours] = useState(0);
   const { data, error } = usePoll(() => coreStatistics({ data: { source, hours } }), 30_000, [
     source,
@@ -470,6 +470,7 @@ export function StatisticsPage() {
         options={[
           { value: "sim", label: "simulated run" },
           { value: "paper", label: "paper book" },
+          { value: "paper-history", label: "recorded paper history" },
           { value: "live", label: "live (own ids)" },
         ]}
         onChange={(v) => setSource(v)}
@@ -561,18 +562,18 @@ export function StatisticsPage() {
             label={
               r.source === "live"
                 ? "Ledger return PF"
-                : r.source === "paper"
+                : r.source === "paper-history"
                   ? "Owned paper return PF"
                   : "Model return PF before allocation"
             }
             value={returnPfText(T)}
-            sub={`${T.pfBasis === "unavailable" ? `unit-return evidence unavailable for ${fmt.num(T.unknownReturns)} closes · ` : ""}${r.source === "paper" ? "nominal paper cash PF" : "cash PF diagnostic"} ${cashPfText(T)} · ${r.source === "paper" ? "recorded WR" : "WR"} ${pct(T.wr)} · SQN ${fmt.pf(T.sqn)}`}
+            sub={`${T.pfBasis === "unavailable" ? `unit-return evidence unavailable for ${fmt.num(T.unknownReturns)} closes · ` : ""}${r.source === "paper-history" ? "nominal paper cash PF" : "cash PF diagnostic"} ${cashPfText(T)} · ${r.source === "paper-history" ? "recorded WR" : "WR"} ${pct(T.wr)} · SQN ${fmt.pf(T.sqn)}`}
             className={pfTone(returnPf(T))}
           />
           <Kpi
             label="Orders · positions"
             value={`${T.n} · ${T.positions}`}
-            sub={`${r.source === "paper" ? "recorded: " : ""}${T.wins} won · ${T.losses} lost · ${fmt.pf(T.tph)}/h`}
+            sub={`${r.source === "paper-history" ? "recorded: " : ""}${T.wins} won · ${T.losses} lost · ${fmt.pf(T.tph)}/h`}
           />
           <Kpi
             label={unbasedLive ? "Ledger drawdown ($)" : "Equity drawdown"}
@@ -599,6 +600,13 @@ export function StatisticsPage() {
           </p>
         )}
         {r.source === "paper" && (
+          <p className="v2-muted">
+            Forward book: {fmt.num(d.paperEvidence?.requested)} settled closes, using held unit returns
+            and actual paper allocations. Missing ownership or return evidence stays in the sample
+            and makes return PF unavailable. This virtual book does not prove venue fills.
+          </p>
+        )}
+        {r.source === "paper-history" && (
           <p className="v2-muted">
             All {fmt.num(d.paperEvidence?.requested)} recorded closes remain in this window:{" "}
             {fmt.num(d.paperEvidence?.verifiedOwnership)} have matching positive measured paper

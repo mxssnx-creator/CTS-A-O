@@ -43,7 +43,7 @@ export function EnginePage() {
       />
       <Panel
         title="Runtime"
-        sub="continuous loop · time-sliced compute · watchdog restarts a stale loop"
+        sub="serialized cycles · incremental validated sets · background research"
         right={
           <>
             <button
@@ -101,9 +101,9 @@ export function EnginePage() {
                 display: `${Math.round(st.progress * 100)}%`,
               },
               {
-                label: "Cycle vs budget",
-                value: Math.min(1, st.lastCycleMs / 20000),
-                display: `${fmt.num(st.lastCycleMs)} ms`,
+                label: "Validated update · 500 ms budget",
+                value: Math.min(1, (st.fast?.ms ?? 0) / 500),
+                display: st.fast?.cycles ? `${fmt.num(st.fast.ms)} ms` : "Waiting for update",
               },
               {
                 label: "Heap",
@@ -127,7 +127,23 @@ export function EnginePage() {
               />
             )}
             <Line k="Cycles · computes" v={`${st.cycles} · ${st.computes}`} />
-            <Line k="Last compute" v={`${fmt.num(st.lastComputeMs)} ms`} />
+            <Line k="Last research" v={`${fmt.num(st.lastComputeMs)} ms`} />
+            <Line k="Last cycle" v={st.cycles ? `${fmt.num(st.lastCycleMs)} ms` : "–"} />
+            <Line k="Current cycle" v={st.cycleKind ?? "–"} />
+            <Line k="Next research" v={fmt.time(st.nextResearchAt)} />
+            {st.fast && (
+              <>
+                <Line
+                  k="Validated updates"
+                  v={`${st.fast.phase} · ${st.fast.cycles ?? 0} completed`}
+                />
+                <Line
+                  k="500 ms overruns"
+                  v={`${st.fast.overBudget ?? 0} · max ${fmt.num(st.fast.maxMs ?? 0)} ms`}
+                />
+                {st.fast.error && <Line k="Update error" v={st.fast.error} className="v2-down" />}
+              </>
+            )}
             <Line k="Heartbeat (last progress)" v={<Age at={st.heartbeat} staleMs={isBusy(st.state) ? 60_000 : 600_000} />} />
             <Line k="Stage since" v={<Age at={st.stageAt} staleMs={Infinity} />} />
             <Line k="Next cycle" v={fmt.time(st.nextCycleAt)} />
@@ -380,7 +396,11 @@ function Connections() {
     }
   };
   return (
-    <Panel title="Connections" sub="one runtime per connection, running in parallel · the pages show the selected one" flush>
+    <Panel
+      title="Connections"
+      sub="one runtime per connection, running in parallel · the pages show the selected one"
+      flush
+    >
       <ErrorNote error={err ?? error} />
       <div className="v2-table-wrap">
         <table className="v2-table">
@@ -404,7 +424,8 @@ function Connections() {
               return (
                 <tr key={c.conn} aria-selected={c.conn === conn}>
                   <td>
-                    <b>{c.label}</b> {c.primary && <Pill>primary</Pill>} {c.network === "mainnet" && <Pill kind="bad">mainnet</Pill>}
+                    <b>{c.label}</b> {c.primary && <Pill>primary</Pill>}{" "}
+                    {c.network === "mainnet" && <Pill kind="bad">mainnet</Pill>}
                   </td>
                   <td>
                     <Switch
@@ -417,10 +438,24 @@ function Connections() {
                   <td>
                     {state}
                     {isBusy(state) ? ` · ${progressText(e ?? c)}` : ""}
-                    {c.error && <div className="v2-down" style={{ fontSize: "var(--v-fs-xs)" }}>{c.error}</div>}
+                    {c.error && (
+                      <div className="v2-down" style={{ fontSize: "var(--v-fs-xs)" }}>
+                        {c.error}
+                      </div>
+                    )}
                   </td>
                   <td>{c.keys}</td>
-                  <td>{c.live?.enabled ? (c.armed ? <Pill kind="bad">on</Pill> : <Pill>on (host not armed)</Pill>) : "off"}</td>
+                  <td>
+                    {c.live?.enabled ? (
+                      c.armed ? (
+                        <Pill kind="bad">on</Pill>
+                      ) : (
+                        <Pill>on (host not armed)</Pill>
+                      )
+                    ) : (
+                      "off"
+                    )}
+                  </td>
                   <td className="num">{e?.computes ?? c.computes}</td>
                   <td className="num">{c.sim ? unitStatsPfText(c.sim) : "–"}</td>
                   <td className="num">{c.paper ? fmt.usd(c.paper.equity) : "–"}</td>

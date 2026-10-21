@@ -135,8 +135,8 @@ describe("the budgets are sized on B = min(wallet, equity)", () => {
       minFreeMargin: 0,
       exposureScaler: true,
     };
-    // Exercise genuine wide ordinary stops; Signal protection has its independent hard cap.
-    const sig = (n: string) => `follow|rsi-mom-14-20@m15|tp1|sl${n === "a" || n === "b" ? 13 : 3}|tr0|h192`;
+    // Engine lanes isolate the budget; Signal stops have their own 3.9% policy cap.
+    const sig = (n: string) => `follow|ema-${n}@m15|tp1|sl2|tr0|h192`;
     rt.paper.positions = [
       lane(sig("a"), "S0-USDT", 1, 10, 3, 0.13),
       lane(sig("b"), "S1-USDT", 1, 17, 3, 0.13),

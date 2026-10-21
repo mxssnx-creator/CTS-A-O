@@ -649,7 +649,7 @@ describe("order sides: Block config source (the config's own closes, per directi
       assert.equal(book.paused(sourceKey("config", { sym: "A", side: s, kind: IND.kind, cfg: "x" })), true);
     });
 
-    it(`Block config ${name} (e) control, block.sideKeys unset: the opposite direction's wins cannot qualify this direction; pooled Block is diagnostic`, () => {
+    it(`Block config ${name} (e) control, block.sideKeys unset: the opposite direction's wins raise this direction's config level, pooled as before`, () => {
       const res = execDecision(cfgTape(winsAt(opposite(s))), 2 * H, blockBase(), { sym: "A", side: s });
       assert.deepEqual(res, { ok: false, why: "directionValidation" }, "pooled Block wins cannot qualify an unmeasured direction");
       assert.equal(blockLevel(cfgTape(winsAt(opposite(s))), 2 * H, BB, { sym: "A" }), 3, "the pooled Block source remains independent");

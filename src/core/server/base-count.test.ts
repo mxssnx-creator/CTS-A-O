@@ -25,13 +25,16 @@ const countGrid = {
 
 const small = {
   symbols: 2,
-  focus: ["follow|ema-9-21@m15", "revert|ema-9-21@m15", "follow|rsi-mom-14-20@m15", "revert|rsi-mom-14-20@m15"],
   historyDays: 18,
   tfDays: { "1": 3, "5": 6, "15": 18, "30": 18 },
   mainTop: 12,
   refineTop: 4,
   evalTop: 8,
   cycleMs: 60_000,
+  // This tests count/admission continuity, not catalogue throughput. Keep it bounded
+  // as new source families join the factory selection; the catalogue has separate coverage.
+  focus: ["follow|ema-9-21", "follow|trend-ema", "follow|inverse-known-trend-ema", "follow|inverse-mc-zscore-10"],
+  pinned: [],
   grid: countGrid,
   exitStrategy: { enabled: false },
   tactics: { session: false, volRegime: false, trendStrength: false, cooldown: false, cooldownBars: 4 },

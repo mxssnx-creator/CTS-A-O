@@ -44,7 +44,7 @@ export function includeBreakInFocus(focus: readonly string[], ids: readonly stri
 export const includeMicroInFocus = (focus: readonly string[], ids: readonly string[]) => includeIndicationsInFocus(focus, ids);
 export const microFocusCoverage = (focus: readonly string[], ids: readonly string[], pinned: readonly string[] = []) => indicationFocusCoverage(focus, ids, pinned);
 
-function includeIndicationsInFocus(focus: readonly string[], ids: readonly string[]): string[] {
+export function includeIndicationsInFocus(focus: readonly string[], ids: readonly string[]): string[] {
   return focus.length ? [...new Set([...focus, ...ids.map((id) => `follow|${id}`)])] : [];
 }
 
@@ -61,7 +61,7 @@ export function breakFocusCoverage(focus: readonly string[], ids: readonly strin
   return indicationFocusCoverage(focus, ids, pinned);
 }
 
-function indicationFocusCoverage(focus: readonly string[], ids: readonly string[], pinned: readonly string[] = []) {
+export function indicationFocusCoverage(focus: readonly string[], ids: readonly string[], pinned: readonly string[] = []) {
   if (!focus.length) return { all: true, covered: ids.length, full: ids.length, total: ids.length };
   const effective = [...focus, ...pinned];
   const set = new Set(effective);

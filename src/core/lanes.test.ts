@@ -77,6 +77,7 @@ describe("lane combos", () => {
     const breaking = plain.filter((c) => isBreakRelInd(laneOf(c.ind).base));
     const inverse = plain.filter((c) => isInverseInd(c.ind) && !isMicroFamilyInd(c.ind)).length;
     assert.equal(lanes.length, (plain.length - none - anchored.length - inverse) * 7 + anchored.length + inverse * 5 + none * 4);
+    assert.equal(lanes.filter((c) => isInverseInd(laneOf(c.ind).base) && !isMicroFamilyInd(laneOf(c.ind).base)).length, inverse * 5);
     assert.equal(lanes.filter((c) => isBreakRelInd(laneOf(c.ind).base)).length, breaking.length);
     assert.equal(lanes.filter((c) => isRelateInd(laneOf(c.ind).base)).length, relate.length);
     for (const c of lanes.filter((x) => isBreakRelInd(laneOf(x.ind).base)))

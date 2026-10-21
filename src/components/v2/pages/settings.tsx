@@ -6,6 +6,8 @@ import { sizeText } from "@/core/live-labels";
 import { TACTIC_TECHNIQUES } from "@/core/indications/tactic";
 import {
   breakFocusCoverage,
+  includeIndicationsInFocus,
+  indicationFocusCoverage,
   indicationKindLabel,
   includeBreakInFocus,
   includeRelateInFocus,
@@ -37,6 +39,7 @@ import {
 } from "@/core/config";
 import { INDICATION_KINDS, type AxisRange } from "@/core/domain/types";
 import { BREAK_CONFIG_IDS } from "@/core/indications/break-config";
+import { INVERSE_CONFIG_IDS } from "@/core/indications/inverse-config";
 import {
   RELATE_CONFIG_IDS,
   RELATE_MODES,
@@ -54,6 +57,27 @@ const TACTIC_IDS = TACTIC_TECHNIQUES.flatMap((technique) =>
 );
 const RELATE_IDS = RELATE_CONFIG_IDS;
 const BREAK_IDS = BREAK_CONFIG_IDS;
+
+function InverseFocusInfo(props: { focus: string[]; pinned: string[]; disabled: boolean; onInclude: () => void }) {
+  const coverage = indicationFocusCoverage(props.focus, INVERSE_CONFIG_IDS, props.pinned);
+  return <div className="v2-lines" style={{ gap: 8 }}>
+    <div className={props.disabled || !coverage.covered ? "v2-warn" : "v2-muted"} style={{ fontSize: "var(--v-fs-xs)" }}>
+      {props.disabled ? "Inverse indication type is off. " : ""}
+      {coverage.covered}/{coverage.total} Inverse variants represented; {coverage.full}/{coverage.total} cover every selected 1/5/15m lane.
+    </div>
+    <button type="button" className="v2-btn" disabled={!props.disabled && coverage.full === coverage.total} onClick={props.onInclude}>
+      Include Inverse in Base focus
+    </button>
+    <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
+      Opposite states and confirmed turns of 19 known indications; 48 math/market variants over 10/20/40/80 bars,
+      including fast RSI and volume-weighted mean turns, 16 Micro variants and 12 BTC/ETH pair comparisons. Micro uses its own range; other variants use
+      Minimal, Short, General and Long with the configured TP/SL and trailing cells.
+      Follow trades the inverted direction. Each source, profile, timeframe, range and protection config
+      qualifies independently at PF ≥ 1.1 or the stricter configured floor. Market variants need multiple symbols.
+      Save to apply; adding a candidate does not establish profitability.
+    </div>
+  </div>;
+}
 
 function MicroFocusInfo(props: {
   focus: string[];
@@ -3349,6 +3373,14 @@ export function SettingsPage() {
             />
           </div>
           <div style={{ marginTop: 10 }}>
+            <InverseFocusInfo focus={s.focus ?? []} pinned={s.pinned ?? []}
+              disabled={(s.disabledKinds ?? []).includes("inverse")}
+              onInclude={() => {
+                set(["focus"], includeIndicationsInFocus(s.focus ?? [], INVERSE_CONFIG_IDS));
+                set(["disabledKinds"], (s.disabledKinds ?? []).filter((kind: string) => kind !== "inverse"));
+              }} />
+          </div>
+          <div style={{ marginTop: 10 }}>
             <RelateFocusInfo
               focus={s.focus ?? []}
               pinned={s.pinned ?? []}
@@ -4987,8 +5019,8 @@ export function SettingsPage() {
               />
             </Field>
             <Field
-              label="Require simulated readiness"
-              hint={`only trade while the rolling simulated run holds PF ≥ min and is stable (turn off for a testnet) · mainnet (${MAINNET_CONN}): always on, enforced on save${onMainnet ? " — active now" : ""}`}
+              label="Aggregate simulation check"
+              hint="Native entries use each exact set's current validation and owned-execution PF. This extra aggregate check applies to adapters without exact-set promotion."
             >
               <Switch
                 label="Require simulated readiness"

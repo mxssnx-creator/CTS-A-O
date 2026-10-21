@@ -13,7 +13,7 @@ import { liveEntryOk, liveGroupGates, promotionGate, type PromotionWindow } from
 import { liveReadiness } from "./live.server.ts";
 import { orderKey } from "../sizing.ts";
 import type { OpenPosition, Trade } from "../domain/types.ts";
-import { fakeRt, lane as paperLane, rng, SimExchange } from "../test-support.ts";
+import { authorizeSyntheticLanes, fakeRt, lane as paperLane, rng, SimExchange } from "../test-support.ts";
 import { stepLive, liveKv, type ExchangeClient } from "./live.server.ts";
 import type { PromotedLaneProof } from "../live-promote.ts";
 import { checkSettings } from "../settings-check.ts";
@@ -51,6 +51,25 @@ function owned(r: CoreRuntime, values: Array<number | null>, opts: { cfg?: strin
   ));
 }
 const lane = { cfg: CFG, sym: SYM, side: 1 };
+
+it("a losing pooled run cannot veto a qualified native lane; its losing owned sibling still cannot open", async () => {
+  process.env.CTS_CORE_LIVE = "1";
+  const { rt, prices } = fakeRt(new CoreDb(":memory:"), 2);
+  rt.settings.live.requireReady = true;
+  const good = paperLane(CFG, prices[0].sym, 1, prices[0].last);
+  const bad = paperLane(OTHER, prices[1].sym, -1, prices[1].last);
+  rt.paper.positions = [good, bad];
+  authorizeSyntheticLanes(rt, [bad], { ownedReturns: [-.02] });
+  const unrelated = Array.from({ length: 100 }, (_, i) => close(-.5, i, { cfg: "unrelated|losing", sym: "OTHER" }));
+  rt.sim = { ...rt.sim, trades: [...rt.sim.trades, ...unrelated], stable: false };
+  assert.equal(liveReadiness(rt.sim, rt.settings.live, 1.1).ok, false);
+  const exchange = new SimExchange(rng(52), { symbols: 2 }).withEquity(10000);
+  for (const p of prices) exchange.px.set(p.sym, p.last);
+  await stepLive(rt as never, [], 1, exchange);
+  const book = await exchange.book();
+  assert.ok(book.positions.some((p) => p.venueSymbol === good.sym && p.side === "long"));
+  assert.ok(!book.positions.some((p) => p.venueSymbol === bad.sym));
+});
 
 describe("strict live promotion uses two settled independent evidence axes", () => {
   it("rejects winning raw candidate tapes when post-Base accepted returns lose; removes external volume once", () => {

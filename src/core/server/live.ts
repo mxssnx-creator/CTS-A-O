@@ -1087,6 +1087,7 @@ export function controlTargets(
     const minStop = Math.max(cs.minStopPct ?? 0.01, cs.minStopOf?.(a.sym, px) ?? 0);
     const stopMax = !a.unbounded ? a.stopMax : undefined;
     const stopDist = Math.min(BACKSTOP_MAX_DIST, stopMax ?? Infinity, Math.max(minStop, a.sl * 1.2));
+    // Account budgets reserve the full current mark→planned-stop loss, even when a nearer native backstop exists.
     const riskDist = Math.max(minStop, a.vol > 0 ? a.rw / a.vol : a.sl);
     const rs = cs.riskSizing;
     // risk-based: what this position may lose at its stop (base × pct × ratio)

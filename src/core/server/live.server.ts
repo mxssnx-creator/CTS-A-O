@@ -336,6 +336,18 @@ export function liveReadiness(
     : { ok: true, why: "" };
 }
 
+/** Native admission judges every exact lane again. A pooled sibling PF must not veto a proven lane. */
+export function liveEntryReadiness(
+  sim: Parameters<typeof liveReadiness>[0] | null | undefined,
+  s: Parameters<typeof liveReadiness>[1] & Pick<LiveSettings, "requireReady">,
+  minPf: number,
+  exactPromotion: boolean,
+): { ok: boolean; why: string } {
+  if (!sim) return { ok: false, why: "no simulated run yet" };
+  if (exactPromotion || s.requireReady === false) return { ok: true, why: "" };
+  return liveReadiness(sim, s, minPf);
+}
+
 /** Everything the executor needs from an exchange. The default is BingX; tests inject a simulated exchange. */
 export interface ExchangeClient {
   hasKeys(): boolean;
@@ -1463,11 +1475,7 @@ async function runStepNow(
     }
     const sim = rt.sim;
     const minPf = rt.settings.gates.minPf;
-    const ready = !sim
-      ? { ok: false, why: "no simulated run yet" }
-      : s.requireReady === false
-        ? { ok: true, why: "" }
-        : liveReadiness(sim, s, minPf);
+    const ready = liveEntryReadiness(sim, s, minPf, typeof rt.livePromotionGate === "function");
     const dayAgo = Date.now() - 24 * 3_600_000;
     const recent = new Set(
       rt.db
@@ -2283,7 +2291,7 @@ export function* laneContributionsGen(
         chase,
         ...(isBoundedTrailingPosition(p) ? { stopMax: positionTrailMax(p) } : {}),
       };
-      x.laneUnits = externalUnits ? unitsKnown ? v / intrinsic : NaN : 1;
+      x.laneUnits = externalUnits ? (unitsKnown ? v / intrinsic : NaN) : 1;
       if (tgt !== undefined) x.tgt = tgt;
       if (stopPx !== undefined) x.stopPx = stopPx;
       x.key = ls.key;
@@ -2639,12 +2647,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       return done(rt, status, `exchange rate limit until ${new Date(banned).toISOString()}`);
     // readiness (rolling simulated run PF ≥ min and stable) can be waived per connection, e.g. on a testnet. Not
     // ready only blocks opening and increasing: positions already held are still closed, reduced and protected.
-    const readiness = sim && s.requireReady !== false ? liveReadiness(sim, s, minPf) : null;
-    const notReady = !sim
-      ? "not ready: no simulated run yet"
-      : readiness && !readiness.ok
-        ? `not ready: ${readiness.why}`
-        : null;
+    const readiness = liveEntryReadiness(sim, s, minPf, typeof rt.livePromotionGate === "function");
+    const notReady = readiness.ok ? null : `not ready: ${readiness.why}`;
     const connHash = stateHash([ex.fingerprint()]);
     const reconnected = !!prev && prev.connHash !== connHash;
     if (reconnected)
@@ -3185,8 +3189,6 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     }
     if (!reconnected) {
       const outside = new Map(externalCloses(prev, held).map((x) => [x.key, x]));
-      // A reconciled flat marker is the evidence to attribute and suppress, not an own requested close.
-      // Include confirmed ledger positions even if the previous book never observed their short lifetime.
       const observedFlat = new Set(flatKeys);
       for (const key of observedFlat) outside.set(key, { key, lanes: 0 });
       for (const key of settledFlat.keys()) if (!held.has(key)) outside.set(key, { key, lanes: 0 });
