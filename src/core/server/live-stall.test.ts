@@ -141,7 +141,10 @@ describe("live step proofs in slices", () => {
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
     await sleep(150);
     rt.livePhase = "lane filter";
-    for (const end = performance.now() + 120; performance.now() < end; ) { /* a slice that holds the loop */ }
+    // The monitor reports lateness beyond its 100 ms sample interval. A 120 ms injected stall
+    // could legitimately report only70 ms when it begins halfway through that interval. Inject >2 intervals
+    // so every timer phase produces at least100 ms delay; keep the same reporting bounds.
+    for (const end = performance.now() + 220; performance.now() < end; ) { /* a slice that holds the loop */ }
     await sleep(150);
     const r = rt.status.loop.recent;
     assert.ok(r && r.ms >= 90 && r.ms < 400, JSON.stringify(rt.status.loop));
