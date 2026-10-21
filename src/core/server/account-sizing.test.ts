@@ -65,7 +65,7 @@ describe("live account sizing: one actual balance for sizing, budgets and previe
     const contributions = laneContributions(core(rt));
     assert.equal(contributions.find((x) => x.sym === "MICRO-USDT")?.vol, 5);
     assert.equal(contributions.find((x) => x.sym === "SIGNAL-USDT")?.vol, 3.6);
-    rt.settings.grid.micro = { ...rt.settings.grid.micro, volumeFactor: 4 } as never;
+    Object.assign(rt.settings.grid.micro as object, { volumeFactor: 4 });
     rt.settings.signals.rangeVolumeFactors.short = 3;
     assert.deepEqual(laneContributions(core(rt)).map((x) => x.vol), [5, 3.6]);
   });
