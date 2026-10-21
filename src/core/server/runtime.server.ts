@@ -458,6 +458,12 @@ const BOOK_CATCHUP_MS = 15;
 /** the paper step feeds the Block book / signal guard this many feed entries a slice before its entries */
 const BOOK_FEED_SLICE = 200;
 const BACKTEST_LIMIT_MS = 15 * 60_000;
+/**
+ * The time one heavy worker call (Base, exit / signal history, tapes) may take: 15 minutes for up to 8 symbols, longer in
+ * proportion above (up to 8 ×). A fixed 15 minutes timed Base out at 50 symbols on 3 cores, and the runtime then ran it
+ * in-process on the main thread (minutes-long event-loop stalls, live control not stepping).
+ */
+const workerCallLimitMs = (symbols: number) => 15 * 60_000 * Math.min(8, Math.max(1, symbols / 8));
 /** workers that failed are tried again after this long */
 const WORKERS_RETRY_MS = 10 * 60_000;
 /** paper book rows written per transaction (one slice) */
@@ -4244,7 +4250,7 @@ export class CoreRuntime {
               cells: s.grid?.baseCells === true,
             })),
           n,
-          15 * 60_000,
+          workerCallLimitMs(this.candles.size),
           (fraction) => {
             if (gen === this.gen) this.setStage("Base", fraction, 1, baseLabel);
           },
@@ -5017,7 +5023,7 @@ export class CoreRuntime {
                 floors: floorsOf(pp),
               })),
             n,
-            15 * 60_000,
+            workerCallLimitMs(this.candles.size),
             (fraction) => {
               if (gen === this.gen) this.setStage(stage, fraction, 1, tapeLabel);
             },
@@ -7446,7 +7452,7 @@ export class CoreRuntime {
               cells: s.grid?.baseCells === true,
             })),
           n,
-          15 * 60_000,
+          workerCallLimitMs(this.candles.size),
           undefined,
           true,
           signal,
@@ -7764,7 +7770,7 @@ export class CoreRuntime {
           floors,
         })),
         n,
-        15 * 60_000,
+        workerCallLimitMs(this.candles.size),
         undefined,
         // a backtest someone waits for goes before the engines' background recomputes
         true,
