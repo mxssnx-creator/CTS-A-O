@@ -143,7 +143,7 @@ const a = (k) => process.argv[process.argv.indexOf("--" + k) + 1];
 const to = Date.parse(a("end-at"));
 const from = to - Number(a("run")) * 3600000;
 const report = JSON.parse(a("settings")).gates?.baseWindows?.report;
-const trades = [1, 2].map((i) => ({ cfg: "follow|ema-21-55@m15|tp" + i + "|sl2|tr0|h64|gn", sym: "AAA-USDT", side: 1, entryT: from + i * 3600000, entry: 1, exitT: from + i * 3600000 + 60000, exit: 1, r: i === 2 ? -0.01 : 0.02, reason: "tp" }));
+const trades = [1, 2].map((i) => ({ cfg: "follow|ema-21-55@m15|tp" + i + "|sl2|tr0|h64|gn", sym: "AAA-USDT", side: 1, entryT: from + i * 3600000, entry: 1, exitT: from + i * 3600000 + 60000, exit: 1, r: i === 2 ? -0.01 : 0.02, reason: "tp", mult: 1 }));
 const pair = { pair: "follow|ema-21-55@m15", passed: true, tags: ["gn"], pf: 1.5, n: 20, ...(report ? { rules: [{ gn: [0.01] }] } : {}) };
 writeFileSync(a("dump"), JSON.stringify({ trades, openEnd: [], basePairs: [pair], engine: { mem: { computeLevel: 0 }, baseByRange: [], baseWhy: [] }, funnel: { counts: null } }));
 `,
