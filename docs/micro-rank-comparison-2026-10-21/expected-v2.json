@@ -1,0 +1,56 @@
+{
+  "schema": "cts-micro-12-symbol-rank-comparison-v1",
+  "sourceSha256": "431ca46de2df501dc8ac340e1acb5254054540237fe096ed4c0552cfc3f502ec",
+  "parentFeedSha256": "d5996f75203b9d078f5c4edc95b22c595fdeb7716bbec6998bd37ff7ecda4d33",
+  "candidateCount": 24,
+  "selectedCount": 12,
+  "window": {
+    "indicatorStartT": 1792281600000,
+    "evaluationFromT": 1792368000000,
+    "tradeStartT": 1792411200000,
+    "endT": 1792454400000,
+    "preH": 12,
+    "runH": 12
+  },
+  "definitions": {
+    "volatility1h": "Production option: mean((high-low)/close) of the last 3 completed native 1H candles; 3h lookback. This existing rule is unchanged.",
+    "change1h5m": "Production option: sum(abs(close/previousClose-1)) / 12 over 13 completed 5m closes; exactly twelve 5m distances in one hour."
+  },
+  "identicalEconomicSettings": true,
+  "comparableSettingsSha256": "85ac98daf2ee495a5bd2d76826f475865706e99cc54a8f21caad4ad9f276bfeb",
+  "selectionBeforeScoring": true,
+  "selectionDigests": {
+    "volatility1h": "c4970fa3dc1c4fcf9ce1ef78dd652584a40d53e232f9d6ca8eb63f679b208bbd",
+    "change1h5m": "3dee398985c0df0a2b2d9cbce3b2fedd94d9a345b584fd78b29cc05e59507984"
+  },
+  "selectedSymbols": {
+    "volatility1h": [
+      "INJ-USDT",
+      "NEAR-USDT",
+      "APT-USDT",
+      "OP-USDT",
+      "ARB-USDT",
+      "FIL-USDT",
+      "ATOM-USDT",
+      "DOT-USDT",
+      "SUI-USDT",
+      "UNI-USDT",
+      "AVAX-USDT",
+      "ADA-USDT"
+    ],
+    "change1h5m": [
+      "NEAR-USDT",
+      "INJ-USDT",
+      "OP-USDT",
+      "APT-USDT",
+      "FIL-USDT",
+      "UNI-USDT",
+      "ARB-USDT",
+      "DOT-USDT",
+      "ATOM-USDT",
+      "AVAX-USDT",
+      "ADA-USDT",
+      "SUI-USDT"
+    ]
+  }
+}

@@ -1,3 +1,7 @@
+# Historical symbol-ranking clocks — 21 October 2026
+
+A historical 1H-average-5m-distance selection must use its own cutoff, not Date.now(). Propagate the replay-only rankingAt clock through initial and preset ranking; connected/live runtimes cannot accept it. A bounded offline feed must honor the earlier of the caller nowT and the session endpoint instead of overwriting an earlier timestamp. Keep/derive the selector’s genuine completed native 5m lane before pruning a cached minute feed. Tests in symbol-rank, replay-backfill and scripts/lib/session-feed reproduce missing historical selection and endpoint-widening errors. Keep the wall clock for scheduler waits and real feeds; never shift market timestamps or fabricate sub-minute history. Preserve frozen selection protocols and failed runs when repairing a launcher.
+
 # Session report integrity — what broke, and the guard that keeps it from breaking again
 
 ## Micro breakout and directional audit correction — 21 October 2026

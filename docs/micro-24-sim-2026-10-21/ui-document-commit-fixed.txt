@@ -1,0 +1,98 @@
+[ui-fixture] starting synthetic dev server +5ms
+[ui-fixture] HTTP ready; launching Chromium +4019ms
+[ui-fixture] Chromium launched; opening Compare +4349ms
+[ui requestfailed] Chromium launched; opening Compare: GET /css2 net::ERR_NAME_NOT_RESOLVED
+[ui requestfailed] Chromium launched; opening Compare: GET /grok-app-builder/extensions.js net::ERR_NAME_NOT_RESOLVED
+[ui-fixture] Compare loaded; waiting for the real computed comparison table +4999ms
+[ui-fixture] real compute and Compare finished; checking every page +16517ms
+[ui-fixture] desktop: /v2 +16529ms
+[ui requestfailed] desktop /v2: GET /css2 net::ERR_NAME_NOT_RESOLVED
+[ui requestfailed] desktop /v2: GET /grok-app-builder/extensions.js net::ERR_NAME_NOT_RESOLVED
+[ui-fixture] desktop: /v2/compare +18462ms
+[ui requestfailed] desktop /v2/compare: GET /css2 net::ERR_NAME_NOT_RESOLVED
+[ui requestfailed] desktop /v2/compare: GET /grok-app-builder/extensions.js net::ERR_NAME_NOT_RESOLVED
+[ui-fixture] desktop: /v2/engine +19794ms
+[ui requestfailed] desktop /v2/engine: GET /css2 net::ERR_NAME_NOT_RESOLVED
+[ui requestfailed] desktop /v2/engine: GET /grok-app-builder/extensions.js net::ERR_NAME_NOT_RESOLVED
+[ui-fixture] desktop: /v2/hourly +21176ms
+[ui requestfailed] desktop /v2/hourly: GET /css2 net::ERR_NAME_NOT_RESOLVED
+[ui requestfailed] desktop /v2/hourly: GET /grok-app-builder/extensions.js net::ERR_NAME_NOT_RESOLVED
+[ui-fixture] desktop: /v2/market +22505ms
+[ui requestfailed] desktop /v2/market: GET /css2 net::ERR_NAME_NOT_RESOLVED
+[ui requestfailed] desktop /v2/market: GET /grok-app-builder/extensions.js net::ERR_NAME_NOT_RESOLVED
+[ui-fixture] desktop: /v2/matrix +23875ms
+[ui requestfailed] desktop /v2/matrix: GET /css2 net::ERR_NAME_NOT_RESOLVED
+[ui requestfailed] desktop /v2/matrix: GET /grok-app-builder/extensions.js net::ERR_NAME_NOT_RESOLVED
+[ui-fixture] desktop: /v2/presets +25907ms
+[ui requestfailed] desktop /v2/presets: GET /css2 net::ERR_NAME_NOT_RESOLVED
+[ui requestfailed] desktop /v2/presets: GET /grok-app-builder/extensions.js net::ERR_NAME_NOT_RESOLVED
+[ui-fixture] desktop: /v2/results +27318ms
+[ui requestfailed] desktop /v2/results: GET /css2 net::ERR_NAME_NOT_RESOLVED
+[ui requestfailed] desktop /v2/results: GET /grok-app-builder/extensions.js net::ERR_NAME_NOT_RESOLVED
+[ui-fixture] desktop: /v2/settings +29124ms
+[ui requestfailed] desktop /v2/settings: GET /css2 net::ERR_NAME_NOT_RESOLVED
+[ui requestfailed] desktop /v2/settings: GET /grok-app-builder/extensions.js net::ERR_NAME_NOT_RESOLVED
+[ui-fixture] desktop: /v2/stages +30507ms
+[ui requestfailed] desktop /v2/stages: GET /css2 net::ERR_NAME_NOT_RESOLVED
+[ui requestfailed] desktop /v2/stages: GET /grok-app-builder/extensions.js net::ERR_NAME_NOT_RESOLVED
+[ui-fixture] desktop: /v2/statistics +31887ms
+[ui requestfailed] desktop /v2/statistics: GET /css2 net::ERR_NAME_NOT_RESOLVED
+[ui requestfailed] desktop /v2/statistics: GET /grok-app-builder/extensions.js net::ERR_NAME_NOT_RESOLVED
+[ui-fixture] desktop: /v2/trading +33257ms
+[ui requestfailed] desktop /v2/trading: GET /css2 net::ERR_NAME_NOT_RESOLVED
+[ui requestfailed] desktop /v2/trading: GET /grok-app-builder/extensions.js net::ERR_NAME_NOT_RESOLVED
+▶ UI functional: every page on computed numbers, desktop and phone
+  ✔ desktop: every page renders numbers, logs no error and never scrolls sideways (18035.952384ms)
+[ui-fixture] phone: /v2 +34563ms
+[ui requestfailed] phone /v2: GET /css2 net::ERR_NAME_NOT_RESOLVED
+[ui requestfailed] phone /v2: GET /grok-app-builder/extensions.js net::ERR_NAME_NOT_RESOLVED
+[ui-fixture] phone: /v2/compare +36065ms
+[ui requestfailed] phone /v2/compare: GET /css2 net::ERR_NAME_NOT_RESOLVED
+[ui requestfailed] phone /v2/compare: GET /grok-app-builder/extensions.js net::ERR_NAME_NOT_RESOLVED
+[ui-fixture] phone: /v2/engine +37354ms
+[ui requestfailed] phone /v2/engine: GET /css2 net::ERR_NAME_NOT_RESOLVED
+[ui requestfailed] phone /v2/engine: GET /grok-app-builder/extensions.js net::ERR_NAME_NOT_RESOLVED
+[ui-fixture] phone: /v2/hourly +38658ms
+[ui requestfailed] phone /v2/hourly: GET /css2 net::ERR_NAME_NOT_RESOLVED
+[ui requestfailed] phone /v2/hourly: GET /grok-app-builder/extensions.js net::ERR_NAME_NOT_RESOLVED
+[ui-fixture] phone: /v2/market +39938ms
+[ui requestfailed] phone /v2/market: GET /css2 net::ERR_NAME_NOT_RESOLVED
+[ui requestfailed] phone /v2/market: GET /grok-app-builder/extensions.js net::ERR_NAME_NOT_RESOLVED
+[ui-fixture] phone: /v2/matrix +41215ms
+[ui requestfailed] phone /v2/matrix: GET /css2 net::ERR_NAME_NOT_RESOLVED
+[ui requestfailed] phone /v2/matrix: GET /grok-app-builder/extensions.js net::ERR_NAME_NOT_RESOLVED
+[ui-fixture] phone: /v2/presets +43122ms
+[ui requestfailed] phone /v2/presets: GET /css2 net::ERR_NAME_NOT_RESOLVED
+[ui requestfailed] phone /v2/presets: GET /grok-app-builder/extensions.js net::ERR_NAME_NOT_RESOLVED
+[ui-fixture] phone: /v2/results +44505ms
+[ui requestfailed] phone /v2/results: GET /css2 net::ERR_NAME_NOT_RESOLVED
+[ui requestfailed] phone /v2/results: GET /grok-app-builder/extensions.js net::ERR_NAME_NOT_RESOLVED
+[ui-fixture] phone: /v2/settings +46144ms
+[ui requestfailed] phone /v2/settings: GET /css2 net::ERR_NAME_NOT_RESOLVED
+[ui requestfailed] phone /v2/settings: GET /grok-app-builder/extensions.js net::ERR_NAME_NOT_RESOLVED
+[ui-fixture] phone: /v2/stages +47518ms
+[ui requestfailed] phone /v2/stages: GET /css2 net::ERR_NAME_NOT_RESOLVED
+[ui requestfailed] phone /v2/stages: GET /grok-app-builder/extensions.js net::ERR_NAME_NOT_RESOLVED
+[ui-fixture] phone: /v2/statistics +48868ms
+[ui requestfailed] phone /v2/statistics: GET /css2 net::ERR_NAME_NOT_RESOLVED
+[ui requestfailed] phone /v2/statistics: GET /grok-app-builder/extensions.js net::ERR_NAME_NOT_RESOLVED
+[ui-fixture] phone: /v2/trading +50213ms
+[ui requestfailed] phone /v2/trading: GET /css2 net::ERR_NAME_NOT_RESOLVED
+[ui requestfailed] phone /v2/trading: GET /grok-app-builder/extensions.js net::ERR_NAME_NOT_RESOLVED
+  ✔ phone: every page renders numbers, logs no error and never scrolls sideways (16974.3108ms)
+[ui requestfailed] settings save: GET /css2 net::ERR_NAME_NOT_RESOLVED
+[ui requestfailed] settings save: GET /grok-app-builder/extensions.js net::ERR_NAME_NOT_RESOLVED
+[ui requestfailed] settings save: GET /api/core/events net::ERR_ABORTED
+[ui requestfailed] settings save: GET /css2 net::ERR_NAME_NOT_RESOLVED
+[ui requestfailed] settings save: GET /grok-app-builder/extensions.js net::ERR_NAME_NOT_RESOLVED
+  ✔ Settings: saving unchanged settings succeeds without an error (6866.666008ms)
+  ✔ the dev server logged no unhandled errors (0.822724ms)
+✔ UI functional: every page on computed numbers, desktop and phone (58432.021689ms)
+ℹ tests 4
+ℹ suites 1
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 58626.185159
