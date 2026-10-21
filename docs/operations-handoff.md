@@ -1,3 +1,13 @@
+# Signals progression recovery and publication — 21 October 2026
+
+[PR 189](https://github.com/mxssnx-creator/CTS-A-O/pull/189) publishes tested code `534492d622db6be370079e08b94fdbb2dfbb566c` (local `ef0a9275247e22339b17e33f4847e77893fc26d9`), with identical Git tree `9442ef46aef790ad27eb68c47af26ad5ef7c0479`, based on main `fafdea2f5ebe8c903a16f2edd8be34606f746c2f`. Documentation-only follow-ups do not alter this source. The user explicitly authorized push/merge. Refer to the PR's final checks and merge record for complete default/slow CI and the final merge SHA.
+
+Independent Signal history now matches across full workers, local fallback and incremental rebuilds. Coordinators retain their own rebuild grids and enabled-range historical PF floors. Historic progress covers sampling and candidate evaluations with cancellation checkpoints, and the UI labels variant/candidate counts accurately. All three recreated actual-runtime regressions fail against the original runtime and pass after the fixes.
+
+Fresh verification: **294/294** tests in 21 files, **3/3** complete-job progress tests, **4/4** functional desktop/phone UI tests, TypeScript and production build pass. Changed-file lint: zero errors/five existing warnings. Development and rebuilt Settings render correctly on desktop/mobile with no errors/overflow/baseline divergence. Packaged worker SHA-256 `e6f95d8ecd2f4c08d8b3e056e6898ce86e7d678fb8653bb17e0a564fc40817dd` contains the new progress implementation. Details and evidence boundaries: [signals-progress-audit-20261021.md](signals-progress-audit-20261021.md).
+
+The old unpushed audit commits were absent after workspace restoration; this is freshly reverified recovery on current main. The prior interrupted large legacy lifecycle run remains unclaimed. No hosted reload, database/settings mutation or venue action occurred. Merge alone cannot certify the remote live process; verify authenticated deployment access, backups, rebuilt worker, running SHA and owned-position reconciliation before a live-effect claim. Existing economic research seals and qualification thresholds are unchanged.
+
 # Integrated PR 185 checkpoint — 20 October 2026
 Final fixture follow-up: the integrated full core run reached all 209 files with 2,476 passes, nine stale fixture failures and two slow skips. The five corrected files pass **137/137**: separate positive config-direction proof for candidate-book tests, a fixed pending-bar clock, true Trade-return loss changes rather than detached prefix-sum edits, correct 4% mark-to-stop arithmetic, per-direction hand-counted validation and separate symbol-PF proof. Production code and the v6 economic source seal are unchanged. Final complete CI is linked in PR 185.
 
