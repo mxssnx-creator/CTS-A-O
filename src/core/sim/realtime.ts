@@ -9,6 +9,8 @@ import { IncrementalMarkets, MarketSource } from "../indications/market.ts";
 
 export type RealtimeTapeGroup = {
   key: string;
+  /** Independently seeded source history (Signals may retain a longer window than engine strategies). */
+  bars?: readonly Bars[];
   pairs: string[];
   protects: Parameters<typeof buildTapes>[1];
   dcaOpt?: Parameters<typeof buildTapes>[3];
@@ -19,6 +21,65 @@ export type RealtimeTapeGroup = {
 
 const columns = ["t", "o", "h", "l", "c", "v"] as const;
 const seriesKey = (b: Pick<Bars, "sym" | "tfMin">) => `${b.sym}|${b.tfMin}`;
+
+/** A single owned generation with independent history/math state per source scope. */
+export class RealtimeTapeSet {
+  private books: RealtimeTapeBook[];
+  private failed = false;
+  constructor(
+    bars: readonly Bars[],
+    groups: readonly RealtimeTapeGroup[],
+    cost: number,
+    evaluationFromT?: number,
+  ) {
+    const scopes = new Map<readonly Bars[], RealtimeTapeGroup[]>();
+    for (const { bars: ownBars, ...group } of groups) {
+      const source = ownBars ?? bars;
+      let list = scopes.get(source);
+      if (!list) scopes.set(source, (list = []));
+      list.push(group);
+    }
+    this.books = [...scopes].map(
+      ([source, ownGroups]) => new RealtimeTapeBook(source, ownGroups, cost, evaluationFromT),
+    );
+    this.ends(); // Every participating scope must end on the same finalized candle for a shared series.
+  }
+  ends(): Record<string, number> {
+    const ends: Record<string, number> = {};
+    for (const book of this.books)
+      for (const [key, end] of Object.entries(book.ends())) {
+        if (ends[key] !== undefined && ends[key] !== end)
+          throw new Error(`realtime source endpoints differ: ${key}`);
+        ends[key] = end;
+      }
+    return ends;
+  }
+  advance(appends: readonly Bars[]): ReturnType<RealtimeTapeBook["advance"]> {
+    if (this.failed)
+      throw new Error("realtime source generation requires a new bootstrap after a failed update");
+    try {
+      const ends = this.ends();
+      for (const b of appends)
+        if (ends[seriesKey(b)] === undefined)
+          throw new Error(`unknown realtime series ${seriesKey(b)}`);
+      const tapes: ConfigTape[] = [],
+        changed = new Set<string>(),
+        profile: Record<string, number> = {};
+      for (const book of this.books) {
+        const own = book.ends();
+        const result = book.advance(appends.filter((b) => own[seriesKey(b)] !== undefined));
+        tapes.push(...result.tapes);
+        for (const key of result.changed) changed.add(key);
+        for (const [key, value] of Object.entries(result.profile ?? {}))
+          profile[key] = (profile[key] ?? 0) + value;
+      }
+      return { tapes, ends: this.ends(), changed: [...changed], profile };
+    } catch (error) {
+      this.failed = true;
+      throw error;
+    }
+  }
+}
 
 /** An isolated worker's validated cohort. Discovery never runs here. A new economic revision gets a new book. */
 export class RealtimeTapeBook {

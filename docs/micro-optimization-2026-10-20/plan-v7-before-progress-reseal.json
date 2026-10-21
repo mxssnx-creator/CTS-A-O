@@ -1,0 +1,89 @@
+{
+  "schema": "cts-micro-optimization-plan-v1",
+  "classification": "Preregistered retrospective chronological comparison, not unseen forward or native evidence",
+  "sourceSha256": "8042d7bf976ef85fa2f4b0fdb0b45ce25112a4f6cad00380c4b075c50ca116ea",
+  "feedParentSha256": "1373d0a7fab7528d0528573385e19dfecf6f4ab353194231c639103af29aadcd",
+  "methods": 26,
+  "microIdentities": 364,
+  "mirroredIdentities": 364,
+  "trainingEndT": 1791460800000,
+  "validationEndT": 1791547200000,
+  "confirmationEndT": 1791633600000,
+  "preH": 12,
+  "runH": 12,
+  "indicatorOnlyWarmupH": 24,
+  "symbols": [
+    "ADA-USDT",
+    "APT-USDT",
+    "ARB-USDT",
+    "ATOM-USDT",
+    "AVAX-USDT",
+    "BCH-USDT",
+    "BNB-USDT",
+    "BTC-USDT",
+    "DOGE-USDT",
+    "DOT-USDT",
+    "ETC-USDT",
+    "ETH-USDT",
+    "FIL-USDT",
+    "LINK-USDT",
+    "LTC-USDT",
+    "NEAR-USDT",
+    "OP-USDT",
+    "SOL-USDT",
+    "SUI-USDT",
+    "TRX-USDT"
+  ],
+  "arms": {
+    "standard": [
+      60,
+      120,
+      180,
+      240
+    ],
+    "fast": [
+      30,
+      60,
+      90,
+      120
+    ]
+  },
+  "account": {
+    "balance": 10000,
+    "leverage": 10,
+    "sizing": {
+      "mode": "fixed",
+      "pct": 0.002
+    },
+    "notionalUsd": 2
+  },
+  "selection": {
+    "stage": "Only funded modeled closes after all Base/config/context/execution filters in training",
+    "minimumCloses": 50,
+    "minimumDistinctOnsets": 15,
+    "minimumActiveHours": 4,
+    "minimumPositiveHourShare": 0.5,
+    "minimumUnitReturnPf": 1.1,
+    "maximumIndications": 24,
+    "ranking": "PF descending, then distinct onsets descending, then ID; choose hold arm by pooled selected-training unit-return PF, then closes",
+    "empty": "No eligible focus means no profitable candidate; never use an empty Focus array to silently run everything",
+    "validation": "Seal selection once, then run the exact chosen hold/focus unchanged on validation and confirmation; do not select again from either outcome"
+  },
+  "preserve": "All training arms and later losses/empty outcomes remain published. No production gate weakened; all target/stop/trail cells remain independently qualified. Fixed $2 model notional is not proof of venue minimum fills.",
+  "revision": 6,
+  "trainingCases": {
+    "standard": "runs/micro-opt-train-standard-v7",
+    "fast": "runs/micro-opt-train-fast-v7"
+  },
+  "preflightNotes": [
+    "Original below-floor equity sizing was rejected before scoring; current actual scenario uses fixed $2 modeled notional and a $10,000 modeled balance.",
+    "The first training attempt was interrupted for a durable non-dispatch restart correction, without a completed scored result; original unscored protocols are retained.",
+    "Both v3 standard attempts were rejected by the unchanged memory guard during external workspace load. Neither produced a complete scored result; evidence remains retained.",
+    "Before any completed training score, the central runtime gained exact execution-to-tape unit-return checks. A reporting-hour boundary bug in the new stage audit was corrected to the existing settledHourT convention. No production signal, gate or economic calculation changed.",
+    "v4 protocols reseal that audit-only source change. Reproduction feed is a lossless 96h subset of the verified original feed. Each prepared 48h training feed and its normalized settings/WF must match the original unscored protocols exactly.",
+    "v4 completed on isolated CI 39500328398 before discovering Micro/Inverse order-key collisions. Its results are retained separately as pre-fix evidence. v5 changes only full Micro/Inverse order identity; windows, market feed, normalized settings, gates, costs and training-only selection thresholds stay fixed. Validation/confirmation are retrospective comparisons, not unseen evidence.",
+    "v5 completed with corrected independent order admission. Report/stage auditing then exposed known zero allocations on the separate original-window v8 replay. v6 preserves the exact v5 signal, gate, fee, window, account and selection settings, while recording per-close funding without enabling Signal research and requiring audit PF to match the same funded cohort. The complete pre-fix v4 and corrected-order v5 studies remain archived; v6 is an audit/report reseal, not retuned strategy evidence.",
+    "v7 changes only coherent completed runtime publication, carries Exit Base proof across settings changes, and expands optional raw-history audit coverage. All v6 economic settings, windows, account, costs, thresholds and training-only selection remain exactly unchanged. This is a repeated cached-data correctness test, not fresh unseen evidence."
+  ],
+  "caseRevision": "v7"
+}

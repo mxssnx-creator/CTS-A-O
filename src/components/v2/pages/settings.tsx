@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { progressText } from "@/core/progress";
+import { boundedModelCost, DEFAULT_MODEL_FEES, MAX_MODEL_RT_COST } from "@/core/model-cost";
+import { MICRO_CONFIG_IDS, MICRO_METHODS } from "@/core/indications/micro-family";
+import { sizeText } from "@/core/live-labels";
 import { TACTIC_TECHNIQUES } from "@/core/indications/tactic";
 import {
   breakFocusCoverage,
@@ -9,6 +12,8 @@ import {
   includeBreakInFocus,
   includeRelateInFocus,
   includeTacticInFocus,
+  includeMicroInFocus,
+  microFocusCoverage,
   relateFocusCoverage,
   tacticFocusCoverage,
 } from "../indication-ui";
@@ -72,6 +77,36 @@ function InverseFocusInfo(props: { focus: string[]; pinned: string[]; disabled: 
       Save to apply; adding a candidate does not establish profitability.
     </div>
   </div>;
+}
+
+function MicroFocusInfo(props: {
+  focus: string[];
+  pinned: string[];
+  disabled: boolean;
+  onInclude: () => void;
+}) {
+  const coverage = microFocusCoverage(props.focus, MICRO_CONFIG_IDS, props.pinned);
+  return (
+    <div className="v2-lines" style={{ gap: 8 }}>
+      <div className={props.disabled || coverage.covered === 0 ? "v2-warn" : "v2-muted"}>
+        Micro:{" "}
+        {props.disabled ? "off" : `${coverage.covered}/${coverage.total} variants in Base focus`}.
+        {MICRO_METHODS.length} independent techniques/combinations, two profiles, seven 1/5/15m subsets.
+      </div>
+      <button
+        type="button"
+        className="v2-btn"
+        disabled={!props.disabled && coverage.full === coverage.total}
+        onClick={props.onInclude}
+      >
+        Include Micro in Base focus
+      </button>
+      <div className="v2-muted">
+        Micro, Minimal and Short retain independent TP/SL/trailing evaluations; Exit has a separate
+        source switch. Each higher timeframe uses completed bars. Save to apply.
+      </div>
+    </div>
+  );
 }
 
 function TacticFocusInfo(props: {
@@ -835,7 +870,10 @@ export function SignalsSettings(props: {
           />
         </Field>
       </div>
-      <Field label="Signal peak-gap ratios" hint="Independent trailing configurations: ratio × activation gives the gap from the favorable peak. Stops, activation and peak gaps are capped at 2% of entry; no change to fixed Normal TP/SL or qualification gates.">
+      <Field label="Maximum Signal trailing from entry (%)" hint="Hard stop, activation and peak gap are bounded from entry from the start. Maximum 3%; a tighter configured stop stays tighter. Held orders retain their exact original protection.">
+        <Num pct value={g.trailMax ?? 0.03} min={0.002} max={0.03} step={0.1} onChange={(v) => set(["trailMax"], v)} />
+      </Field>
+      <Field label="Signal peak-gap ratios" hint="Independent trailing configurations: ratio × activation gives the gap from the favorable peak, bounded by the maximum from entry. Each value has its own history and qualification.">
         <List value={g.trailRatios ?? [1]} onChange={(v) => set(["trailRatios"], v)} />
       </Field>
       <div className="v2-grid v2-cols-2">
@@ -957,11 +995,11 @@ export function SignalsSettings(props: {
       </div>
       <div className="v2-grid v2-cols-4">
         <Field
-          label="Historic trailing configs"
-          hint="per signal, Trailing configs of its own from its historic entries: the move they reached within the hold (MFE) at each quantile is a target, trailed at every share, stopped at every multiple — each validated on its own"
+          label="Historic TP/SL and trailing configs"
+          hint="each source/range/lane/type/config uses its own symbol and direction history and Last-N at PF ≥ 1.5. Historic targets create independent TP/SL exits without trailing and additional peak-trailing variants; stricter stage gates still apply."
         >
           <Switch
-            label="historic trailing configs"
+            label="historic TP/SL and trailing configs"
             checked={hist.enabled !== false}
             onChange={(v) => set(["hist", "enabled"], v)}
           />
@@ -1007,7 +1045,15 @@ export function SignalsSettings(props: {
         </Field>
       </div>
       <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
-        {counts.total} configured percent / ATR / trailing-only cells per signal ({counts.pct} eligible percent + {counts.atr} eligible ATR + {counts.trailingOnly} trailing only, TP None); {counts.activeTotal} currently meet the reference trail floor{counts.inactiveTrailingOnly ? ` · ${counts.inactiveTrailingOnly} trailing-only cells below minTrail are inactive` : ""}. Eligible cells qualify independently per full source, range, lane, type, symbol and direction. Master Trailing controls execution of both trailing types; disabled sets still retain held-position protection.
+        {counts.total} configured percent / ATR / trailing-only cells per signal ({counts.pct}{" "}
+        eligible percent + {counts.atr} eligible ATR + {counts.trailingOnly} trailing only, TP
+        None); {counts.activeTotal} currently meet the reference trail floor
+        {counts.inactiveTrailingOnly
+          ? ` · ${counts.inactiveTrailingOnly} trailing-only cells below minTrail are inactive`
+          : ""}
+        . Eligible cells qualify independently per full source, range, lane, type, symbol and
+        direction. Master Trailing controls execution of both trailing types; disabled sets still
+        retain held-position protection.
       </div>
       <div style={{ borderTop: "1px solid var(--v-border)", paddingTop: 10 }}>
         <div
@@ -1537,7 +1583,9 @@ export function RangeEditor(props: {
       minTrail: props.defaults.minTrail,
       ...(props.defaults.minTf !== undefined ? { minTf: props.defaults.minTf } : {}),
       ...(props.defaults.maxHoldMin !== undefined ? { maxHoldMin: props.defaults.maxHoldMin } : {}),
-      ...(props.defaults.tpNetOfCost !== undefined ? { tpNetOfCost: props.defaults.tpNetOfCost } : {}),
+      ...(props.defaults.tpNetOfCost !== undefined
+        ? { tpNetOfCost: props.defaults.tpNetOfCost }
+        : {}),
       ...(props.defaults.ownInds !== undefined ? { ownInds: props.defaults.ownInds } : {}),
       ...(props.defaults.minSlNet !== undefined ? { minSlNet: props.defaults.minSlNet } : {}),
     });
@@ -1559,7 +1607,7 @@ export function RangeEditor(props: {
         />
         <div>
           <div style={{ fontWeight: 600 }}>
-            {props.title} {on && <span className="v2-muted">· {cells} cells per hold</span>}
+            {props.title} {on && <span className="v2-muted">· {cells} TP combinations per hold</span>}
           </div>
           <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
             {props.info}
@@ -1793,7 +1841,7 @@ export function ShortRange(props: {
       grid={props.grid as Record<string, unknown>}
       k="short"
       title="Short range"
-      info="Default TP 9–14× PositionCost at 0.2% per round trip (1.8–2.8%), step 1× (8× belongs to Minimal). SL 1–2.5× the target, trailing cells too. The editable values below define the current grid; evaluation subtracts the configured execution cost. Orders tracked as H."
+      info="Default TP 9–14× the fixed 0.2% distance reference (1.8–2.8%), step 1× (8× belongs to Minimal). SL 1–2.5× the target, trailing cells too. The editable values below define the current grid; evaluation subtracts the configured execution cost once (maximum 0.15%). Orders tracked as H."
       defaults={SHORT_RANGE}
       set={props.set}
     />
@@ -1810,7 +1858,7 @@ export function MinimalRange(props: {
       grid={props.grid as Record<string, unknown>}
       k="minimal"
       title="Minimal range"
-      info="Default TP 4–8× PositionCost at 0.2% per round trip (0.8–1.6%), step 0.5×, SL 1.5–3× the target (stop floor 0.6%, trail floor 0.3%), trailing cells too; every indication including Micro's. The editable values below define the current grid; evaluation subtracts the configured execution cost. Orders tracked as N."
+      info="Default TP 4–8× the fixed 0.2% distance reference (0.8–1.6%), step 0.5×, SL 1.5–3× the target (stop floor 0.6%, trail floor 0.3%), trailing cells too; every indication including Micro's. The editable values below define the current grid; evaluation subtracts the configured execution cost once (maximum 0.15%). Orders tracked as N."
       defaults={MINIMAL_RANGE}
       set={props.set}
     />
@@ -1827,7 +1875,7 @@ export function GeneralRange(props: {
       grid={props.grid as Record<string, unknown>}
       k="general"
       title="General range"
-      info="TP 14–22× the 0.2 % position cost (2.8–4.4 %), step 2× (14× belongs to Short), SL 0.5–1× the target. Orders tracked as G."
+      info="TP 14–22× the fixed 0.2% distance reference (2.8–4.4%), step 2× (14× belongs to Short), SL 0.5–1× the target. Transaction costs are deducted separately once (maximum modeled 0.15%). Orders tracked as G."
       defaults={GENERAL_RANGE}
       set={props.set}
     />
@@ -1844,14 +1892,14 @@ export function LongRange(props: {
       grid={props.grid as Record<string, unknown>}
       k="long"
       title="Long range"
-      info="TP 22–32× the 0.2 % position cost (4.4–6.4 %), step 2× (22× belongs to General), SL 0.5–1× the target. Orders tracked as L."
+      info="TP 22–32× the fixed 0.2% distance reference (4.4–6.4%), step 2× (22× belongs to General), SL 0.5–1× the target. Transaction costs are deducted separately once (maximum modeled 0.15%). Orders tracked as L."
       defaults={LONG_RANGE}
       set={props.set}
     />
   );
 }
 
-/** Micro range: net 0.1–0.4 % after the position cost (price targets 0.3–0.6 % at 0.2 %), SL 1–5× step 0.25. */
+/** Micro range: net 0.1–0.4 % after the position cost (price targets 0.25–0.55 % at 0.15 %), SL 1–5× step 0.25. */
 export function MicroRange(props: {
   grid: Record<string, unknown> | object;
   set: (path: string[], v: unknown) => void;
@@ -2373,8 +2421,8 @@ export function SettingsPage() {
                 Live is on — after Save, orders go to the MAINNET account with real money.
               </p>
               <p>
-                Up to {s.live.maxPositions} exchange positions of ${s.live.notionalUsd} each. Takes
-                effect after Save.
+                Up to {s.live.maxPositions > 0 ? s.live.maxPositions : "unlimited"} positions, each sized{" "}
+                {sizeText(s.live, s.sizing?.mode)}. Takes effect after Save.
               </p>
             </>
           ) : ask === "live" ? (
@@ -2387,8 +2435,8 @@ export function SettingsPage() {
               <p>
                 Orders are only sent when the host also has CTS_CORE_LIVE=1 and API keys, and only
                 while the rolling simulated run holds PF ≥ {s.gates.minPf} and is stable. Up to{" "}
-                {s.live.maxPositions} exchange positions of ${s.live.notionalUsd} each. Takes effect
-                after Save.
+                {s.live.maxPositions > 0 ? s.live.maxPositions : "unlimited"} positions, each sized{" "}
+                {sizeText(s.live, s.sizing?.mode)}. Takes effect after Save.
               </p>
             </>
           ) : (
@@ -2513,7 +2561,7 @@ export function SettingsPage() {
               onChange={(v) => set(["cycleMs"], v)}
             />
           </Field>
-          <Field label="Tick (ms)" hint="open positions marked to market + live step · 50 – 10000">
+          <Field label="Tick (ms)" hint="paper positions marked to market · 50 – 10000 · active order execution checks run independently every 100 ms">
             <Num
               value={s.tickMs ?? 100}
               step={50}
@@ -2524,9 +2572,9 @@ export function SettingsPage() {
           </Field>
           <Field
             label="Position cost (round trip, %)"
-            hint="= 2 × (taker + slippage) · set the components below, or directly · 0 – 2"
+            hint="modeled transaction cost, deducted once per round trip · 2 × (taker + slippage), capped at 0.15% · 0 – 0.15"
           >
-            <Num pct min={0} max={0.02} value={s.cost} onChange={(v) => set(["cost"], v)} />
+            <Num pct min={0} max={MAX_MODEL_RT_COST} value={s.cost} onChange={(v) => set(["cost"], v)} />
           </Field>
           <Field
             label="Base order unit (% of balance)"
@@ -2829,6 +2877,11 @@ export function SettingsPage() {
                       onChange={(v) => set(["exitStrategy", "includeTactics"], v)}
                     />
                     <Switch
+                      label="Micro"
+                      checked={exits.includeMicro === true}
+                      onChange={(v) => set(["exitStrategy", "includeMicro"], v)}
+                    />
+                    <Switch
                       label="Relations"
                       checked={exits.includeRelations !== false}
                       onChange={(v) => set(["exitStrategy", "includeRelations"], v)}
@@ -3039,7 +3092,7 @@ export function SettingsPage() {
       <div className="v2-grid v2-cols-2">
         <Panel
           title="Position cost"
-          sub="as charged on the exchange, per side — the engine deducts 2 × (taker + slippage) on every closed position"
+          sub="Modeled round-trip cost: 2 × (taker + slippage), capped at 0.15%, deducted once per closed funded unit. Actual exchange fees remain separate."
         >
           <div className="v2-grid v2-cols-3">
             <Field label="Taker fee (%)" hint="BingX standard 0.05">
@@ -3051,7 +3104,7 @@ export function SettingsPage() {
                 value={s.fees?.taker ?? 0.0005}
                 onChange={(v) => {
                   set(["fees", "taker"], v);
-                  set(["cost"], +(2 * (v + (s.fees?.slippage ?? 0.0005))).toFixed(5));
+                  set(["cost"], boundedModelCost(+(2 * (v + (s.fees?.slippage ?? DEFAULT_MODEL_FEES.slippage))).toFixed(5)));
                 }}
               />
             </Field>
@@ -3071,17 +3124,17 @@ export function SettingsPage() {
                 step={0.001}
                 min={0}
                 max={0.02}
-                value={s.fees?.slippage ?? 0.0005}
+                value={s.fees?.slippage ?? DEFAULT_MODEL_FEES.slippage}
                 onChange={(v) => {
                   set(["fees", "slippage"], v);
-                  set(["cost"], +(2 * ((s.fees?.taker ?? 0.0005) + v)).toFixed(5));
+                  set(["cost"], boundedModelCost(+(2 * ((s.fees?.taker ?? DEFAULT_MODEL_FEES.taker) + v)).toFixed(5)));
                 }}
               />
             </Field>
           </div>
           <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)", marginTop: 6 }}>
             Round trip deducted per position: <strong>{((s.cost ?? 0) * 100).toFixed(3)} %</strong>.
-            With auto-cost on, it is raised to the measured live cost once 40+ fills were measured.
+            Auto-cost may use measured fills up to the 0.15% model ceiling. Net paper returns are not charged again; actual owned fees remain uncapped.
           </div>
         </Panel>
         <Panel
@@ -3293,6 +3346,18 @@ export function SettingsPage() {
             })}
           </div>
           <div style={{ marginTop: 10 }}>
+            <MicroFocusInfo
+              focus={s.focus ?? []}
+              pinned={s.pinned ?? []}
+              disabled={(s.disabledKinds ?? []).includes("micro")}
+              onInclude={() => {
+                set(["focus"], includeMicroInFocus(s.focus ?? [], MICRO_CONFIG_IDS));
+                set(
+                  ["disabledKinds"],
+                  (s.disabledKinds ?? []).filter((kind: string) => kind !== "micro"),
+                );
+              }}
+            />
             <TacticFocusInfo
               focus={s.focus ?? []}
               pinned={s.pinned ?? []}
@@ -3490,7 +3555,7 @@ export function SettingsPage() {
             </Field>
             <Field
               label="Max stack"
-              hint="total base + all Block source additions (default 8×) · Overall sources share this cap; additions never compound"
+              hint="total base + all Block source additions (default 8×) · Overall: the whole stack of every source's leg within it, sources share this cap; additions never compound"
             >
               <Num
                 step={0.1}
@@ -3819,6 +3884,10 @@ export function SettingsPage() {
                 onChange={(v) => set(["dca", "levels"], v)}
               />
             </Field>
+            <Field label="Addition × original base" hint="each added leg uses this many original base units; never compounds · default: one addition of 2.5×, total 3.5×">
+              <Num step={0.1} min={0.1} max={2.5} value={s.dca.addRatio ?? 1}
+                onChange={(v) => set(["dca", "addRatio"], v)} />
+            </Field>
             <Field
               label="Step (%)"
               hint="distance between levels (unless a step × target is set) · 0.1 – 10"
@@ -4033,6 +4102,12 @@ export function SettingsPage() {
                   onChange={(v) => set(["grid", "trailStep"], v)}
                 />
               </Field>
+              <div>
+                <div style={{ fontWeight: 600 }}>Independent Trailing-only sets</div>
+                <Switch label="Independent Trailing-only sets" checked={!!s.grid.trailingOnly}
+                  onChange={(v) => set(["grid", "trailingOnly"], v)} />
+                <div className="v2-muted">Own config and Last-N evaluation, no TP from entry, hard start stop at most 3%.</div>
+              </div>
               <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
                 <Switch
                   label="Trail runs free"
@@ -4880,8 +4955,42 @@ export function SettingsPage() {
               />
             </Field>
             <Field
+              label="Position size"
+              hint="lanes = the lanes' volume × unit × factor · min = one unit × factor per position (minQty: the venue minimum) · risk = every position risks B × risk per position × factor at its stop (B = min(wallet, equity)); the venue minimum only while it risks ≤ 2 × that"
+            >
+              <select
+                className="v2-select"
+                value={s.live.positionSize ?? "lanes"}
+                onChange={(e) => set(["live", "positionSize"], e.target.value)}
+              >
+                <option value="lanes">lanes (volume × unit × factor)</option>
+                <option value="min">min (one unit × factor)</option>
+                <option value="risk" disabled={s.live.laneOrders === true}>
+                  risk (B × risk % × factor at the stop)
+                </option>
+              </select>
+            </Field>
+            {s.live.positionSize === "risk" ? (
+              <Field
+                label="Risk per position (% of B)"
+                hint="what each position loses at its stop, as a share of B = min(wallet, equity), × the volume factor · 0.05 – 5"
+              >
+                <Num
+                  step={0.05}
+                  min={0.05}
+                  max={5}
+                  value={Math.round((s.live.riskPerPositionPct ?? 0.01) * 10000) / 100}
+                  onChange={(v) => set(["live", "riskPerPositionPct"], v / 100)}
+                />
+              </Field>
+            ) : null}
+            <Field
               label="Control ratio (volume factor)"
-              hint="Overall mode only: multiplies lane volume by 0.1 – 500. Balance-% units follow verified account wallet balance; fixed units and exchange-minimum lots use their configured basis. Optional balance-relative budgets can bound the result. Entries does not use this ratio."
+              hint={
+                s.live.positionSize === "risk"
+                  ? "risk multiple: each position risks B × risk per position × this at its stop · 0.1 – 500 · the per-position cap and the account budgets on B bound the size · Entries does not use this ratio"
+                  : "Overall mode only: control volume per lane volume unit, 0.1 – 500. Balance-% units follow verified account wallet balance; fixed units and exchange-minimum lots use their configured basis. The per-position cap, the exposure cap and the risk budget bound the size. Entries does not use this ratio."
+              }
             >
               <Num
                 step={0.1}

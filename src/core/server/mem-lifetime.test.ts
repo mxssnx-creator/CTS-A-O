@@ -10,18 +10,23 @@
 //   - the signal acceptance record's counts are 4-byte integers and every query answers as before.
 import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { CoreRuntime } from "./runtime.server.ts";
+import { CoreRuntime, marketHistoryBars } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
 import { MEM_READ_MS, memInfo, type MemInfo } from "./memguard.server.ts";
 import { CandleSeries } from "../market/candle-series.ts";
+import { SeriesCache } from "../indications/cache.ts";
 import { setImmediate as tick } from "node:timers/promises";
 import { SignalAcceptIndex, acceptKey, type AcceptTape } from "../signals.ts";
-import { pinSyntheticEnd, rng, trackRuntimes } from "../test-support.ts";
+import { pinSyntheticEnd, rng, trackRuntimes, runtimeFixtureGrid } from "../test-support.ts";
 import { abortWorkers, poolWorkers, workerActivity, workersAvailable } from "./pool.server.ts";
 
 pinSyntheticEnd();
 
 const tiny = {
+  // Cache-lifetime assertions need representative families, not a repeated exhaustive 616-source grid search.
+  // The full grid and maximum-universe coverage live in the dedicated Micro study and stress harness.
+  focus: ["follow|ema-9-21", "follow|rsi-mom-14-20", "follow|micro-1-break-close-fast", "follow|inverse-micro-1-break-close-fast"],
+  pinned: [],
   symbols: 2,
   historyDays: 6,
   tfDays: { "1": 2, "5": 3, "15": 6, "30": 6 },
@@ -29,7 +34,16 @@ const tiny = {
   refineTop: 2,
   evalTop: 4,
   cycleMs: 60_000,
-  grid: { short: false as const },
+  grid: { ...runtimeFixtureGrid(), short: false as const },
+  // Keep real worker/local fitting and aborts, with a bounded source universe.
+  // Full bot-free source/range fitting is covered in independent Exit tests.
+  exitStrategy: { includeMicro: false, enabled: true, timeframes: [15], includeTactics: false, includeRelations: false,
+    includeCombined: false, lookbackH: 72, maxConfigsPerPair: 6, quantiles: [0.6], stopQuantiles: [0.5],
+    trailShares: [0.5], stopMultiples: [1] },
+  signals: { sourcesMode: "allow", sources: { "ema-cross": true, "rsi-reversal": true }, lanes: [15],
+    exits: "pct", normal: { tp: [0.02], slOfTp: [1] }, trailing: { tp: [0.03], trailOfTp: [0.5], slOfTp: 1 },
+    trailingOnly: { enabled: true, sl: [0.02], trail: [0.01], trailStep: 1 },
+    hist: { enabled: true, quantiles: [0.6], trailOfTp: [0.5], slOfTp: [1], minN: 5, lookbackH: 72 } },
   gates: { minPf: 1.05, minTrades: 3, maxDdr: 0 },
 };
 const until = async (cond: () => boolean, ms = 600_000) => {
@@ -99,7 +113,7 @@ describe("memory released after use, results unchanged", { timeout: 900_000 }, (
     try {
       for (const phase of ["Exit history", "Signal history"] as const)
         for (const mode of ["worker", "fallback"] as const)
-          await ctx.test(`${phase}: ${mode}`, async () => {
+          await ctx.test(`${phase}: ${mode}`, async (sub) => {
             const t = trackRuntimes();
             const rt = t.track(
               new CoreRuntime(new CoreDb(":memory:"), tiny as never, { market: "synthetic" }),
@@ -126,8 +140,23 @@ describe("memory released after use, results unchanged", { timeout: 900_000 }, (
               if (phase === "Exit history") R.exitHistoryCache = null;
               const drive0 = R.drive.bind(rt),
                 setStage0 = R.setStage.bind(rt);
+              // The published universe now deliberately stays on the last completed cohort. Observe the first
+              // new universe's actual caches through construction, rather than changing that public contract.
+              const publishedUniverse = rt.lastUniverse;
+              const workingCaches = new Set<SeriesCache>();
+              let workingSource: unknown;
+              const setMarket0 = SeriesCache.prototype.setMarket;
+              const cacheProbe = sub.mock.method(SeriesCache.prototype, "setMarket", function (
+                this: SeriesCache,
+                ...args: Parameters<SeriesCache["setMarket"]>
+              ) {
+                workingSource ??= args[0];
+                if (args[0] === workingSource && (args[2] === undefined || args[2] === 1)) workingCaches.add(this);
+                return setMarket0.apply(this, args);
+              });
+              sub.after(() => cacheProbe.mock.restore());
               const memoOf = () =>
-                (rt.lastUniverse?.caches ?? []).reduce(
+                [...workingCaches].reduce(
                   (a, c) => a + (c as unknown as { m: Map<string, unknown> }).m.size,
                   0,
                 );
@@ -156,7 +185,7 @@ describe("memory released after use, results unchanged", { timeout: 900_000 }, (
                 ) {
                   // A real worker progress post proves the history message has started. Populate a main-thread memo
                   // as a detail/Base reader can: abort must release it as well as terminate the worker's own caches.
-                  for (const c of rt.lastUniverse?.caches ?? []) c.ema(9);
+                  for (const c of workingCaches) c.ema(9);
                   atAbort = memoOf();
                   abortedWorkers = abortWorkers(`memory pressure: ${phase} worker test`);
                 }
@@ -172,6 +201,8 @@ describe("memory released after use, results unchanged", { timeout: 900_000 }, (
               assert.ok(workersAvailable(), "the worker case must use the source worker");
               await assert.rejects(R.compute(R.gen), /memory pressure: (?:Exit|Signal) history/);
               assert.ok(atAbort > 0, `memos existed before the ${mode} abort (${atAbort})`);
+              cacheProbe.mock.restore();
+              assert.equal(rt.lastUniverse, publishedUniverse, "an aborted compute never replaces the published complete universe");
               assert.equal(memoOf(), 0, "the aborted compute's main-universe memos are cleared");
               assert.equal(
                 workerActivity().inFlight,
@@ -230,7 +261,7 @@ describe("memory released after use, results unchanged", { timeout: 900_000 }, (
     }
   });
 
-  it("the runtime's candles are columns: 4 × 25,920 bars add under 4 MB of heap (17 MB as objects)", async () => {
+  it("the runtime's candles are columns: four complete configured histories add under 4 MB of heap", async () => {
     const gc = (globalThis as { gc?: () => void }).gc;
     if (!gc) return assert.fail("needs --expose-gc (npm run test:core passes it)");
     const prevState = process.env.CTS_CORE_STATE;
@@ -238,7 +269,7 @@ describe("memory released after use, results unchanged", { timeout: 900_000 }, (
     const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 4 } as never, { market: "synthetic" });
     try {
       const R = rt as unknown as { storeCandles(sym: string, cs: unknown[], append?: boolean): Promise<void> };
-      const want = Math.round((rt.settings.historyDays * 24 * 60) / rt.settings.tfMin);
+      const want = marketHistoryBars(rt.settings, rt.wf);
       // the input bars are made and dropped one symbol at a time, so only what the runtime keeps remains
       const store = async (sym: string) => {
         const r = rng(sym.length);

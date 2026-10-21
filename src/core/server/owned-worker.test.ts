@@ -80,4 +80,45 @@ describe("private serial realtime worker", () => {
       worker.dispose();
     }
   });
+
+  it("publishes every repaired trailing-only control from the worker, including legacy TP/free flags", async () => {
+    const worker = new OwnedWorker(128);
+    const initial = positions(2).map((p, i) => ({
+      ...p,
+      cfg: `follow|sig-ema-cross-s@m1|tp4|sl8|tr1|h20|to|tm2.5|case${i}`,
+      stop: i ? 108 : 92,
+      trailOnly: undefined,
+      trailFree: true,
+      target: i ? 96 : 104,
+    }));
+    const local = structuredClone(initial),
+      units = new Float64Array([10, 10]);
+    try {
+      const reference = new TickMathBook(local, units, 0.002, 1, true);
+      const reply = await worker.run<{ result: TickMathResult }>(
+        {
+          type: "tick-init",
+          positions: initial,
+          units,
+          cost: 0.002,
+          baseTfMin: 1,
+          trailFree: true,
+          prices: { S0: 100, S1: 100 },
+          now: 1000,
+        },
+        5000,
+      );
+      reference.advance({ S0: 100, S1: 100 }, 1000);
+      for (const patch of reply.result.patches) Object.assign(initial[patch.index], patch.values);
+      for (let i = 0; i < initial.length; i++) {
+        for (const field of ["stop", "target", "trailOnly", "trailFree", "trailMax"] as const)
+          assert.equal(initial[i][field], local[i][field]);
+        assert.equal(initial[i].target, 0);
+        assert.equal(initial[i].trailOnly, true);
+        assert.equal(initial[i].trailFree, false);
+      }
+    } finally {
+      worker.dispose();
+    }
+  });
 });

@@ -21,10 +21,9 @@ CREATE INDEX IF NOT EXISTS evals_cfg ON evals(cfg, at);
 CREATE TABLE IF NOT EXISTS tapes (cfg TEXT NOT NULL, sym TEXT NOT NULL, side INTEGER, entry_t INTEGER NOT NULL, exit_t INTEGER, entry REAL, exit REAL, r REAL, reason TEXT, bars INTEGER, PRIMARY KEY (cfg, sym, side, entry_t)) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS sim_runs (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER, start_t INTEGER, end_t INTEGER, n INTEGER, pf REAL, net REAL, gh REAL, tph REAL, ddt REAL, stable INTEGER, opts TEXT, blocks TEXT, hourly TEXT);
 CREATE TABLE IF NOT EXISTS paper_trades (cfg TEXT NOT NULL, sym TEXT NOT NULL, side INTEGER, entry_t INTEGER NOT NULL, exit_t INTEGER, entry REAL, exit REAL, r REAL, pnl REAL, reason TEXT, first_at INTEGER, unit_r REAL, PRIMARY KEY (cfg, sym, side, entry_t)) WITHOUT ROWID;
-CREATE TABLE IF NOT EXISTS paper_book_trades (cfg TEXT NOT NULL, sym TEXT NOT NULL, side INTEGER, entry_t INTEGER NOT NULL, exit_t INTEGER, r REAL, vol REAL, reason TEXT, held_at INTEGER, at INTEGER, unit_r REAL, owned_notional_usd REAL, PRIMARY KEY (cfg, sym, side, entry_t)) WITHOUT ROWID;
+-- held_px / entry / exit: the executable record (relation.ts) — the price when the book adopted the position, the sim's entry and exit
+CREATE TABLE IF NOT EXISTS paper_book_trades (cfg TEXT NOT NULL, sym TEXT NOT NULL, side INTEGER, entry_t INTEGER NOT NULL, exit_t INTEGER, r REAL, vol REAL, reason TEXT, held_at INTEGER, at INTEGER, held_px REAL, entry REAL, exit REAL, mult REAL, unit_r REAL, owned_notional_usd REAL, PRIMARY KEY (cfg, sym, side, entry_t)) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS paper_book_trades_exit ON paper_book_trades (exit_t);
--- the engine proof's per-config closes (live.engineProofN): an index-only read of the real closes
-CREATE INDEX IF NOT EXISTS paper_book_trades_closed ON paper_book_trades (cfg, exit_t, r) WHERE reason != 'dropped';
 CREATE INDEX IF NOT EXISTS paper_trades_exit ON paper_trades (exit_t);
 CREATE TABLE IF NOT EXISTS paper_positions (cfg TEXT NOT NULL, sym TEXT NOT NULL, side INTEGER, entry_t INTEGER, entry REAL, stop REAL, target REAL, mtm REAL, at INTEGER, PRIMARY KEY (cfg, sym, side)) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS live_orders (coid TEXT PRIMARY KEY, cfg TEXT, sym TEXT, side INTEGER, kind TEXT, qty REAL, px REAL, status TEXT, msg TEXT, at INTEGER);
@@ -33,7 +32,8 @@ CREATE INDEX IF NOT EXISTS live_orders_cfg_kind ON live_orders (cfg, kind);
 CREATE INDEX IF NOT EXISTS live_orders_at ON live_orders (at);
 CREATE TABLE IF NOT EXISTS live_fills (coid TEXT PRIMARY KEY, sym TEXT, side INTEGER, kind TEXT, qty REAL, ref_px REAL, fill_px REAL, fee REAL, fee_known INTEGER, at INTEGER);
 CREATE INDEX IF NOT EXISTS live_fills_at ON live_fills (at);
-CREATE TABLE IF NOT EXISTS live_lane_trades (id TEXT NOT NULL, exit_t INTEGER NOT NULL, cfg TEXT NOT NULL, sym TEXT, side INTEGER, entry_t INTEGER, entry REAL, exit REAL, r REAL, reason TEXT, PRIMARY KEY (id, exit_t)) WITHOUT ROWID;
+-- px_src: where the exit price comes from (fill / history / bar / ticker; NULL on rows from before it was recorded)
+CREATE TABLE IF NOT EXISTS live_lane_trades (id TEXT NOT NULL, exit_t INTEGER NOT NULL, cfg TEXT NOT NULL, sym TEXT, side INTEGER, entry_t INTEGER, entry REAL, exit REAL, r REAL, reason TEXT, px_src TEXT, PRIMARY KEY (id, exit_t)) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS live_lane_trades_exit ON live_lane_trades (exit_t);
 CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, level TEXT NOT NULL, msg TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS events_at ON events (at);
@@ -59,11 +59,30 @@ const TABLES = [
   "runs",
 ];
 
+/**
+ * Columns added to a table after it existed: a database created by an older module version (hot reload) gets them
+ * (CREATE TABLE IF NOT EXISTS leaves an existing table as it is); a snapshot restores into them as NULL.
+ */
+const ADDED_COLUMNS: ReadonlyArray<readonly [table: string, column: string, type: string]> = [
+  ["paper_book_trades", "held_px", "REAL"],
+  ["paper_book_trades", "entry", "REAL"],
+  ["paper_book_trades", "exit", "REAL"],
+  ["live_lane_trades", "px_src", "TEXT"],
+];
+function addColumns(db: DatabaseSync) {
+  for (const [t, c, type] of ADDED_COLUMNS) {
+    const have = db.prepare("SELECT name FROM pragma_table_info(?)").all(t).map((r) => String((r as { name: string }).name));
+    if (have.length && !have.includes(c)) db.exec(`ALTER TABLE ${t} ADD COLUMN ${c} ${type}`);
+  }
+}
+
 /** Tables whose readers memoize on their write version (CoreDb.version). */
 const VERSIONED = ["paper_book_trades", "live_lane_trades"] as const;
 
 function applySchema(db: DatabaseSync) {
   db.exec(SCHEMA);
+  // the columns added since (held_px / entry / exit, px_src): a database from an older version gets them
+  addColumns(db);
   // Historical r is execution-weighted and does not retain the multiplier. Its unit return cannot be recovered
   // safely: add nullable storage without rewriting r, cash P&L or volume. CREATE IF NOT EXISTS alone cannot
   // upgrade an existing on-disk database or a database retained across a server hot reload.
@@ -79,6 +98,7 @@ function applySchema(db: DatabaseSync) {
   const fillColumns = db.prepare("SELECT name FROM pragma_table_info('live_fills')").all() as Array<{ name: string }>;
   if (!fillColumns.some((column) => column.name === "fee_known"))
     db.exec("ALTER TABLE live_fills ADD COLUMN fee_known INTEGER");
+  db.exec("CREATE INDEX IF NOT EXISTS live_fills_unmeasured ON live_fills(at DESC) WHERE COALESCE(fee_known,0)=0 AND qty>0");
 }
 
 export class CoreDb {
@@ -92,8 +112,28 @@ export class CoreDb {
     this.db.exec(
       "PRAGMA journal_mode = MEMORY; PRAGMA synchronous = OFF; PRAGMA temp_store = MEMORY;",
     );
+    // (a database file from an older version keeps its tables: the columns added since come in here)
     applySchema(this.db);
+    this.migrate();
     if (opts.statePath) this.loadState(opts.statePath);
+  }
+
+  /**
+   * Columns added after a table first shipped (a database written by an older build lacks them; CREATE TABLE IF NOT
+   * EXISTS leaves its table as it was), and the indexes that read them.
+   */
+  private migrate() {
+    const has = (t: string, c: string) =>
+      (this.db.prepare(`PRAGMA table_info(${t})`).all() as Array<{ name: string }>).some((x) => x.name === c);
+    // paper_book_trades.mult: the order's execution multiple (Block × relation volume) beside its sized r — a reader
+    // normalizes r / mult to the unit return the exchange record (live_lane_trades) is in. Rows written before carry
+    // NULL (read as vol: the same for every kind but an Axis ladder)
+    if (!has("paper_book_trades", "mult")) this.db.exec("ALTER TABLE paper_book_trades ADD COLUMN mult REAL");
+    // the engine proof's per-config closes (live.engineProofN): an index-only read of the real closes, at one unit
+    this.db.exec(
+      "DROP INDEX IF EXISTS paper_book_trades_closed; " +
+        "CREATE INDEX IF NOT EXISTS paper_book_trades_unit ON paper_book_trades (cfg, exit_t, r, mult, vol) WHERE reason != 'dropped';",
+    );
   }
 
   private loadState(path: string) {
@@ -290,14 +330,22 @@ export class CoreDb {
       "DELETE FROM live_orders WHERE cfg LIKE 'control|%' AND at < ? AND rowid < (SELECT MAX(f.rowid) FROM live_orders f WHERE f.cfg = live_orders.cfg AND f.kind = 'F')",
       Date.now() - 24 * 3_600_000,
     );
+    // relation: all rows — the record's bound, by age
     this.run(
       "DELETE FROM live_lane_trades WHERE exit_t < (SELECT exit_t FROM live_lane_trades ORDER BY exit_t DESC LIMIT 1 OFFSET 50000)",
     );
     this.run(
       "DELETE FROM paper_trades WHERE exit_t < (SELECT exit_t FROM paper_trades ORDER BY exit_t DESC LIMIT 1 OFFSET 20000)",
     );
+    // the paper book's record keeps every close an exchange lane has (the system side of the relation, relation.ts):
+    // trimmed, the live-vs-system comparison lost its counterparts (paper_trades, 14 Oct: 46 of 126 matched)
+    // relation: all rows — a lane of any kind keeps its system counterpart
     this.run(
-      "DELETE FROM paper_book_trades WHERE exit_t < (SELECT exit_t FROM paper_book_trades ORDER BY exit_t DESC LIMIT 1 OFFSET 50000)",
+      "DELETE FROM paper_book_trades WHERE exit_t < (SELECT exit_t FROM paper_book_trades ORDER BY exit_t DESC LIMIT 1 OFFSET 50000) " +
+        "AND NOT EXISTS (SELECT 1 FROM live_lane_trades l WHERE l.id = paper_book_trades.cfg || '|' || paper_book_trades.sym || '|' || paper_book_trades.side || '|' || paper_book_trades.entry_t " +
+        // (a Block leg's id: the lane's id + "|blk:<src>" — a range on the primary key, ';' follows ':')
+        "OR (l.id >= paper_book_trades.cfg || '|' || paper_book_trades.sym || '|' || paper_book_trades.side || '|' || paper_book_trades.entry_t || '|blk:' " +
+        "AND l.id < paper_book_trades.cfg || '|' || paper_book_trades.sym || '|' || paper_book_trades.side || '|' || paper_book_trades.entry_t || '|blk;'))",
     );
   }
   /** Create empty shadow copies (same DDL) of tables, e.g. results → results_next. */
@@ -318,7 +366,8 @@ export class CoreDb {
       for (const t of tables) {
         this.db.exec(`DROP TABLE ${t}; ALTER TABLE ${t}_next RENAME TO ${t};`);
       }
-      this.db.exec(SCHEMA);
+      applySchema(this.db);
+      this.migrate();
     });
     this.stmts.clear();
   }
@@ -504,3 +553,4 @@ export function upgradeShared(db: CoreDb, statePath: string | null = null) {
   if (raw) applySchema(raw);
   (db as unknown as { stmts?: Map<string, unknown> }).stmts?.clear();
 }
+

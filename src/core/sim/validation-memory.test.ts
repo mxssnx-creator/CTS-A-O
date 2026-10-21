@@ -61,3 +61,32 @@ test("compact validation summaries preserve config verdicts, selection and execu
   }
   assert.deepEqual(at.validationSummary?.failures, fails);
 });
+
+test("Signal diagnostics retain every independent verdict without retaining per-config rows in summary mode", () => {
+  const signalTapes = tapes.map((tp) => {
+    const source = "sig-ema-cross-s@m5", id = tp.id.replace(ind, source);
+    const rows: Trade[] = Array.from({ length: tp.n }, (_, i) => ({
+      cfg: id, sym: tp.syms[tp.symI[i]], side: tp.side[i] as 1 | -1,
+      entryT: tp.entryT[i], exitT: tp.exitT[i], entry: tp.entry[i], exit: tp.exit[i],
+      r: tp.r[i], reason: "tp", bars: 1, mfe: 0, mae: 0,
+    }));
+    return makeTape(id, "follow", source, protect, "normal", tp.syms, rows, [], []);
+  });
+  const u = { bars: [], caches: [], startT: T - 48 * H, endT: T + 24 * H, splitT: T, nowT: T + 24 * H, baseTf: 5 } as never;
+  for (const signalOwnBase of [false, true]) {
+    const own = { ...options, signalOwnBase, signalLongH: 24, signalValidLastN: 15,
+      signalRank: { ...DEFAULT_SETTINGS.signals, enabled: true } };
+    const full = walkForward(u, [...tapes, ...signalTapes], { ...own, recordValidation: true });
+    const compact = walkForward(u, [...tapes, ...signalTapes], { ...own, recordValidation: "summary" });
+    for (let i = 0; i < full.steps.length; i++) {
+      const checks = full.steps[i].checks!, summary = compact.steps[i].validationSummary!;
+      assert.equal(summary.evaluated, checks.length);
+      assert.equal(summary.passed, checks.filter((c) => c[1]).length);
+      assert.equal(summary.closes, checks.filter((c) => c[1]).reduce((n, c) => n + c[2], 0));
+      assert.equal(compact.steps[i].checks, undefined);
+      assert.ok(checks.some((c) => c[0].includes("sig-ema-cross")));
+    }
+    assert.deepEqual(compact.trades, full.trades);
+    assert.deepEqual(compact.skips, full.skips);
+  }
+});

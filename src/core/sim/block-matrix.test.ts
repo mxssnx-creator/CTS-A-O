@@ -11,6 +11,11 @@ import { auditState } from "../audit.ts";
 import { walkForward, type WalkForwardOptions } from "./walkforward.ts";
 import { BLOCK_SOURCES, type BlockSource } from "./block.ts";
 import type { BlockConfig } from "../domain/types.ts";
+import { pinSyntheticEnd, runtimeFixtureGrid, trackRuntimes } from "../test-support.ts";
+
+pinSyntheticEnd();
+const tracked = trackRuntimes();
+after(() => tracked.disposeAll());
 
 let rt: CoreRuntime;
 // (a hang guard only: the setup runs one compute per symbol batch — three of ~100 s each before the runtime rests, which
@@ -45,21 +50,27 @@ function run(patch: {
 
 describe("Block matrix at the Real stage", { timeout: 1_200_000 }, () => {
   before(async () => {
-    rt = new CoreRuntime(
+    rt = tracked.track(new CoreRuntime(
       new CoreDb(":memory:"),
       {
         symbols: 4,
         historyDays: 18,
         tfDays: { "1": 3, "5": 6, "15": 18, "30": 18 },
         cycleMs: 60_000,
-        grid: { short: false },
+        // Real-stage relation replay needs diverse actual tapes, rather than a
+        // second full Cartesian/independent Exit fit before every matrix case.
+        grid: { ...runtimeFixtureGrid(), short: false },
         signals: { enabled: false } as never,
         focus: [],
         pinned: [],
+        // This matrix exercises Block coordination on its original catalog. New full Micro grids and
+        // independent historical Exit fitting have separate end-to-end/parity studies.
+        disabledKinds: ["micro", "inverse"],
+        exitStrategy: { enabled: false },
         mainTop: 16,
       },
       { market: "synthetic" },
-    );
+    ));
     // the matrix measures Block, not the desk's last-N seat gate
     rt.wf.validLastN = 0;
     rt.wf.lastN = 0;
@@ -127,9 +138,12 @@ describe("Block matrix at the Real stage", { timeout: 1_200_000 }, () => {
           const m = x.mult ?? 1;
           // Complete steps round down; a smaller positive request retains its fractional ratio.
           const parts = mode === "overall" ? Object.values(x.legs ?? {}).map((v) => v ?? 0) : [m - 1];
-          // When the total cap binds, proportional source allocations can be fractional steps.
-          for (const p of parts) assert.ok(p < 0.25 || Math.abs(p / 0.25 - Math.round(p / 0.25)) < 1e-6 || m === 2.5, `${mode} raise ${p}`);
-          assert.ok(m <= 2.5 + 1e-9, "base plus every source shares the configured total cap");
+          // When the total cap binds, proportional source allocations can be fractional steps
+          // (an Overall stack shrunk to the cap moves its legs off the grid in proportion).
+          for (const p of parts)
+            assert.ok(p < 0.25 || Math.abs(p / 0.25 - Math.round(p / 0.25)) < 1e-6 || Math.abs(m - 2.5) < 1e-6, `${mode} raise ${p}`);
+          // maxMult caps the total stack in every type, Overall too: base plus every source share it
+          assert.ok(m <= 2.5 + 1e-9, `${mode} stack ${m}`);
           if (mode === "overall") assert.ok(parts.every((p) => p <= 1.5 + 1e-9), "every source within total extra budget");
         }
       }

@@ -9,6 +9,9 @@ import type { ConfigTape } from "../sim/walkforward.ts";
 process.env.CTS_CORE_STATE = "off";
 process.env.CTS_CORE_AUTOSTART = "0";
 process.env.CTS_CORE_WORKERS = "2";
+// This fixture injects available bytes against the production hard reserve. The
+// generic runner's 1MB host-pressure exemption must not disable the tested abort.
+process.env.CTS_CORE_MEM_HARD_MB = "1200";
 const runtimes: CoreRuntime[] = [];
 const testHardMb = process.env.CTS_CORE_MEM_HARD_MB;
 afterEach(async () => {
@@ -167,9 +170,7 @@ test("a cached pre-pack reading cannot increase the originally admitted worker c
 test("pressure cancels only Compare's active worker call, preserves foreground state and retries", async () => {
   // The suite disables host memory fallback; this fixture explicitly models a 1 GiB hard reserve.
   process.env.CTS_CORE_MEM_HARD_MB = "1024";
-  const { rt, inner, state } = fixture();
-  let available = 8e9,
-    ownCanceled = false;
+  const { rt, inner, state } = fixture(); let available = 8e9, ownCanceled = false;
   inner.compareAvailableBytes = () => available;
   const normal = inner.compareOnWorkers;
   const unrelated = runOnWorkers<{ ok: boolean }>([{ type: "sleep", ms: 800 }], 1, 10_000);

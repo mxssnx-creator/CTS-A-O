@@ -8,9 +8,23 @@ import { CoreRuntime } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
 import { signalSettings, SIGNAL_SOURCES } from "../signal-config.ts";
 import { trackRuntimes } from "../test-support.ts";
+import { DEFAULT_SETTINGS } from "../config.ts";
+
+// This fixture tests count provenance across computes, not full-catalog fitting.
+// Full-grid/range execution is covered by book-coverage and processing.test.ts.
+const countGrid = {
+  ...DEFAULT_SETTINGS.grid,
+  holdH: [4],
+  ...Object.fromEntries(["micro", "minimal", "general", "long"].map((key) => {
+    const r = DEFAULT_SETTINGS.grid[key as "micro" | "minimal" | "general" | "long"];
+    return [key, r && { ...r, tp: [r.tp[0], r.tp.at(-1)!], slOfTp: [r.slOfTp[0], r.slOfTp.at(-1)!],
+      trailOfTp: [0, r.trailOfTp.at(-1)!] }];
+  })),
+  short: false as const,
+};
 
 const small = {
-  symbols: 4,
+  symbols: 2,
   historyDays: 18,
   tfDays: { "1": 3, "5": 6, "15": 18, "30": 18 },
   mainTop: 12,
@@ -21,7 +35,7 @@ const small = {
   // as new source families join the factory selection; the catalogue has separate coverage.
   focus: ["follow|ema-9-21", "follow|trend-ema", "follow|inverse-known-trend-ema", "follow|inverse-mc-zscore-10"],
   pinned: [],
-  grid: { short: false as const, micro: false as const },
+  grid: countGrid,
   exitStrategy: { enabled: false },
   tactics: { session: false, volRegime: false, trendStrength: false, cooldown: false, cooldownBars: 4 },
   gates: { minPf: 1.05, minTrades: 3, maxDdr: 0 },

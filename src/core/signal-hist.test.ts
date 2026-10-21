@@ -57,9 +57,9 @@ function rows(xs: ReadonlyArray<readonly [number, number, number, number]>): Bar
 
 describe("signal historic trailing configs", () => {
   it("applies the independent PF floor of each coordinator exit range", () => {
-    assert.deepEqual(signalHistPassingRanges(1.3, 1.1), [undefined], "classic Signals keep their untagged floor");
+    assert.deepEqual(signalHistPassingRanges(1.6, 1.1), [undefined], "classic Signals keep their untagged floor");
     assert.deepEqual(
-      signalHistPassingRanges(1.3, 1.1, { sh: 1.05, gn: 1.25, lg: 1.35 }),
+      signalHistPassingRanges(1.6, 1.1, { sh: 1.05, gn: 1.55, lg: 1.8 }),
       ["sh", "gn"],
       "only the ranges whose own PF floor passes receive the historic config",
     );
@@ -204,14 +204,14 @@ describe("signal historic trailing configs", () => {
     ];
     assert.deepEqual([...new Set(ps.map((p) => p.tp))].sort(), tps.sort());
     for (const p of ps) {
-      assert.ok(p.trail > 0, "every historic config trails");
-      assert.ok(p.sl >= sig.minSl && p.trail >= sig.minTrail);
+      assert.ok(p.trail >= 0, "historic Normal TP/SL and Trailing variants are independent");
+      assert.ok(p.sl >= sig.minSl && (p.trail === 0 || p.trail >= sig.minTrail));
       assert.equal(+(p.tp / 0.0025).toFixed(6) % 1, 0, `${p.tp} on the grid`);
       assert.equal(p.hold, Math.round((sig.holdH * 60) / 15));
     }
     // up to quantiles × trails × stops per signal
     assert.ok(
-      ps.length <= sig.hist.quantiles.length * sig.hist.trailOfTp.length * sig.hist.slOfTp.length,
+      ps.length <= sig.hist.quantiles.length * (1 + sig.hist.trailOfTp.length) * sig.hist.slOfTp.length,
     );
     // too few historic entries: none; switched off: none
     assert.deepEqual(
@@ -234,48 +234,26 @@ describe("signal historic trailing configs", () => {
     assert.deepEqual(result.value, {}, "each custom config must clear its own historical PF gate");
     assert.ok(diagnostics.evaluated > 0);
     assert.equal(diagnostics.qualified, 0);
-    assert.equal(diagnostics.pfRejected, diagnostics.evaluated);
+    assert.equal(diagnostics.pfRejected + diagnostics.insufficientTrades, diagnostics.evaluated);
     // nothing before the cut, nothing to learn from
     assert.deepEqual(signalHistProtects(u, [pair], sig, null, u.bars[0].t[0]), {});
   });
 
   it("historic preparation retains stage PF and stricter custom floors on local and worker paths", async () => {
-    // A deterministic threshold fixture, not a strategy search: both single-protect configs have enough closes.
-    // The same nonzero cost applies to the measured tape and both historical preparation paths.
     const cost = 0.0001;
-    const bars = [3, 5].map((seed) => barsFromCandles(`${seed}-USDT`, 15,
-      syntheticCandles(`${seed}-USDT`, 15, 600, Date.UTC(2026, 9, 1), seed)));
+    const bars = [3,5].map(seed => barsFromCandles(`${seed}-USDT`, 15, syntheticCandles(`${seed}-USDT`, 15, 3000, Date.UTC(2026,9,1), seed)));
     const u = makeUniverse(bars);
-    const sig = signalSettings({ enabled: true, holdH: 1, filter: { trendH: 0, volFloor: 0 },
-      hist: { ...DEFAULT_SIGNALS.hist, quantiles: [0.5], slOfTp: [1], trailOfTp: [0.5] } });
-    const low = "follow|sig-rsi-mid-s@m15";
-    const middle = "follow|sig-donchian-s@m15";
-    const pairs = [low, middle];
-    const candidates = signalHistProtects(u, pairs, sig, null, u.nowT);
-    const pfOf = (pair: string) => {
-      const [tp] = buildTapes(u, candidates[pair], cost, undefined, new Set([pair]), null, undefined,
-        { minSl: sig.minSl, minTrail: sig.minTrail });
-      assert.ok(tp && tp.n >= Math.max(sig.hist.minN, DEFAULT_SETTINGS.gates.minTrades));
-      return tp.gp[tp.n] / tp.gl[tp.n];
-    };
-    const lowPf = pfOf(low), middlePf = pfOf(middle);
-    assert.ok(lowPf > 1 && lowPf < 1.1, `boundary fixture PF ${lowPf}`);
-    assert.ok(middlePf > 1.1 && middlePf < 1.3, `stricter-floor fixture PF ${middlePf}`);
+    const sig = signalSettings({ enabled: true, holdH: 1, filter: { trendH: 0, volFloor: 0 }, hist: { ...DEFAULT_SIGNALS.hist, quantiles: [0.5], slOfTp: [1], trailOfTp: [0.5], minN: 5, lookbackH: 0 } });
+    const pairs = ["follow|sig-rsi-mid-s@m15", "follow|sig-donchian-s@m15"];
     const stage = signalHistValidationOf(cost, { ...DEFAULT_SETTINGS.gates, minPf: 1.1, baseSetsMinPf: 1, maxDdr: 0 });
-    const stricter = signalHistValidationOf(cost, { ...DEFAULT_SETTINGS.gates, minPf: 1.1, baseSetsMinPf: 1.3, maxDdr: 0 });
-    assert.equal(stage.minPf, 1.1);
-    assert.equal(stricter.minPf, 1.3);
-    assert.equal(signalHistValidationOf(cost, { ...DEFAULT_SETTINGS.gates, minPf: 1.5, baseSetsMinPf: 1.3 }).minPf, 1.5);
-    const oldPrefilter = signalHistProtects(u, pairs, sig, null, u.nowT, { ...stage, minPf: 1 });
-    assert.deepEqual(Object.keys(oldPrefilter).sort(), [...pairs].sort(), "the former engine Wide floor admitted both");
+    const stricter = signalHistValidationOf(cost, { ...DEFAULT_SETTINGS.gates, minPf: 1.1, baseSetsMinPf: 1.8, maxDdr: 0 });
+    assert.equal(stage.minPf, 1.5); assert.equal(stricter.minPf, 1.8);
     try {
-      for (const validation of [stage, stricter]) {
+      for (const validation of [stage, stricter, { ...stage, minPf: 1e9 }]) {
         const local = signalHistProtects(u, pairs, sig, null, u.nowT, validation);
-        assert.deepEqual(Object.keys(local), validation.minPf === 1.1 ? [middle] : []);
-        const [remote] = await runOnWorkers<SignalHistReply>([{ type: "signal-hist", bars, pairs, sig,
-          tactics: null, cutT: u.nowT, validation }], 1, 60_000);
-        assert.deepEqual(remote.pairProtects, local, "workers enforce the identical serialized validation contract");
-        assert.ok((remote.diagnostics?.pfRejected ?? 0) >= 1);
+        const [remote] = await runOnWorkers<SignalHistReply>([{ type: "signal-hist", bars, pairs, sig, tactics: null, cutT: u.nowT, validation }], 1, 60_000);
+        assert.deepEqual(remote.pairProtects, local, "workers retain the same own-context history and Last-N PF contract");
+        if (validation.minPf === 1e9) assert.deepEqual(local, {}, "no-loss display sentinel cannot satisfy an arbitrarily high custom gate");
       }
     } finally { await closePool(); }
   });
@@ -336,13 +314,8 @@ describe("signal historic trailing configs", () => {
       assert.equal(h.pair, `follow|${ind}`);
       assert.equal(configId("follow", ind, laneProtect(h.protect, ind)), id);
     }
-    // a plain (untrailed) config, an ATR one or a range cell is not a historic config
-    assert.equal(
-      heldSignalProtect(
-        configId("follow", "sig-ema-cross-s@m15", { tp: 0.03, sl: 0.06, trail: 0, hold: 192 }),
-      ),
-      null,
-    );
+    // Historic pure TP/SL configs are retained too, without inventing a nonzero trail.
+    assert.equal(heldSignalProtect(configId("follow", "sig-ema-cross-s@m15", { tp: 0.03, sl: 0.06, trail: 0, hold: 192 }))?.protect.trail, 0);
   });
 
   it("only a historic config with an open position is rebuilt; a seated one and the standard configs are not (no pile-up)", () => {

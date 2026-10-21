@@ -5,7 +5,7 @@
 // - Every closed trade pays the round-trip cost on notional.
 // - ATR protects (Protect.atr) are resolved into distances at every entry from ATR(14) of the signal bar.
 import type { AtrProtect, Bars, OpenPosition, Protect, Side, Trade } from "../domain/types.ts";
-import { capSignalProtect, isSignalConfig, ratchetTrail } from "./trailing.ts";
+import { capSignalProtect, capTrailingOnlyProtect, isSignalConfig, ratchetTrail } from "./trailing.ts";
 import { atrEma } from "../math/indicators.ts";
 import { RT_COST } from "../model-cost.ts";
 import type { SimulationCursor } from "./cursor.ts";
@@ -39,6 +39,8 @@ export interface SimResult {
   pending: Side | 0;
   /** ATR protect: the distances that pending entry trades with (resolved from the last closed bar) */
   pendingProtect?: Protect;
+  /** only from simulateFrom */
+  state?: SimState;
 }
 
 /** Protect values are tuned on this timeframe; lanes scale them (volatility √t, hold in equal time). */
@@ -174,6 +176,35 @@ function firstFixedTouch(
     : firstFixedTouch(path, from, to, low, high, node * 2 + 1, mid + 1, right);
 }
 
+/**
+ * The loop-carried state of `simulate` after its last processed bar: `simulateFrom` continues from it on the same
+ * series extended by new closed bars (the bars and signals before `i0` must be unchanged — a causal signal on
+ * closed bars is). Plain data: it can be stored with a tape.
+ */
+export interface SimState {
+  /** the bar index the loop resumes at (the bar count when the run ended on the last bar, else the flat index it stopped at) */
+  i0: number;
+  inPos: boolean;
+  side: Side;
+  entryI: number;
+  entry: number;
+  stop: number;
+  target: number;
+  peak: number;
+  trailOn: boolean;
+  mfe: number;
+  mae: number;
+  nextAllowed: number;
+  /** the resolved trail of the position in force (an ATR protect resolves it per entry) */
+  trail: number;
+  /** the protect in force (an ATR protect's resolved distances) */
+  q: Protect;
+  dist: number;
+  exitProtection?: OpenPosition["exitProtection"];
+  exitPosition?: ExitProtectionPosition & { target: number; trail: number; trailDist: number };
+  trailPosition?: OpenPosition;
+}
+
 export function simulate(
   cfg: string,
   bars: Bars,
@@ -181,9 +212,39 @@ export function simulate(
   p: Protect,
   opt: SimOptions,
 ): SimResult {
+  return simCore(cfg, bars, sig, p, opt, null, false);
+}
+
+/**
+ * `simulate` that also returns its end state, and that continues from one: with `from`, only the bars from
+ * `from.i0` on are visited and `trades` holds the trades that close from there (a position open at the end of the
+ * earlier run is carried in `from`, not in `trades`). Equal to one `simulate` over the whole series (backtest-resume.test.ts).
+ * Not for sink runs (Base's range cells).
+ */
+export function simulateFrom(
+  cfg: string,
+  bars: Bars,
+  sig: Int8Array,
+  p: Protect,
+  opt: SimOptions,
+  from: SimState | null = null,
+): SimResult & { state: SimState } {
+  if (opt.sink) throw new Error("simulateFrom: a sink run has no resumable state");
+  return simCore(cfg, bars, sig, p, opt, from, true) as SimResult & { state: SimState };
+}
+
+function simCore(
+  cfg: string,
+  bars: Bars,
+  sig: Int8Array,
+  p: Protect,
+  opt: SimOptions,
+  from: SimState | null,
+  wantState: boolean,
+): SimResult {
   const { n, t, o, h, l, c, sym } = bars;
   const signal = isSignalConfig(cfg);
-  if (signal) p = capSignalProtect(p);
+  p = signal ? capSignalProtect(p) : capTrailingOnlyProtect(p);
   const cost = opt.cost;
   // Never manufacture positive returns through a missing, negative or invalid fee deduction.
   if (!(Number.isFinite(cost) && cost >= 0))
@@ -192,6 +253,7 @@ export function simulate(
     );
   const cooldown = opt.cooldown ?? 0;
   const cursor = opt.cursor;
+  if (cursor && (from || wantState)) throw new Error("Use a simulation cursor or simulateFrom state, never both");
   cursor?.begin(bars);
   let trades: Trade[] = [];
   // the distances in force (an ATR protect resolves them at every entry)
@@ -254,6 +316,14 @@ export function simulate(
     trailPosition,
   });
   const exitBar = { t: 0, high: 0, low: 0, close: 0 };
+  if (from) {
+    if (from.i0 > n)
+      throw new RangeError("simulateFrom: the series is shorter than the stored state");
+    ({ inPos, side, entryI, entry, stop, target, peak, trailOn, mfe, mae, nextAllowed, q, dist, trail, exitProtection, exitPosition, trailPosition } =
+      structuredClone(from));
+    if (inPos && trail > 0 && !exitPosition && !trailPosition)
+      trailPosition = { cfg, sym, side, entryT: t[entryI], entryI, entry, stop, target, peak, trailOn, mtm: 0 };
+  }
   const atr = p.atr ? (opt.atr ?? atrEma(h, l, c, ATR_PERIOD)) : null;
   const resolve = (i: number) => {
     const resolved = resolveAtrProtect(p, atr![i] / c[i], bars.tfMin);
@@ -305,7 +375,8 @@ export function simulate(
     nextAllowed = i + cooldown;
   };
 
-  for (let i = cursor?.start ?? 0; i < n; i++) {
+  let i = from ? from.i0 : (cursor?.start ?? 0);
+  for (; i < n; i++) {
     cursor?.checkpoint(i, n, checkpoint);
     if (inPos && i >= entryI) {
       if (fixedPath && Number.isFinite(stop) && Number.isFinite(target)) {
@@ -392,22 +463,9 @@ export function simulate(
           ? { side, entry, stop, target, peak, trailOn, trail, trailDist: dist, exitProtection }
           : undefined;
         // One object per position, never one allocation per bar; shared with realtime ratcheting.
-        trailPosition =
-          q.trail > 0 && !exitPosition
-            ? {
-                cfg,
-                sym,
-                side,
-                entryT: t[entryI],
-                entryI,
-                entry,
-                stop,
-                target,
-                peak,
-                trailOn,
-                mtm: 0,
-              }
-            : undefined;
+        trailPosition = q.trail > 0 && !exitPosition
+          ? { cfg, sym, side, entryT: t[entryI], entryI, entry, stop, target, peak, trailOn, mtm: 0 }
+          : undefined;
         mfe = 0;
         mae = 0;
       }
@@ -445,8 +503,12 @@ export function simulate(
   const lastSig = n > 0 ? sig[n - 1] : 0;
   const pending: Side | 0 =
     !inPos && n > 0 && n - 1 >= nextAllowed && lastSig !== 0 ? (lastSig > 0 ? 1 : -1) : 0;
-  if (pending && atr) return { trades, open, pending, pendingProtect: resolve(n - 1) };
-  return { trades, open, pending };
+  const state: SimState | undefined = wantState ? { i0: i, ...structuredClone(checkpoint()) } : undefined;
+  if (pending && atr)
+    return state
+      ? { trades, open, pending, pendingProtect: resolve(n - 1), state }
+      : { trades, open, pending, pendingProtect: resolve(n - 1) };
+  return state ? { trades, open, pending, state } : { trades, open, pending };
 }
 
 // ── Long and short run independently (operator: "always process long and short both, independently") ────────
@@ -510,8 +572,16 @@ export function nextEntryIndex(sig: Int8Array): Int32Array {
   if (nx) return nx;
   const n = sig.length;
   nx = new Int32Array(n + 1);
-  nx[n] = n;
-  for (let i = n - 1; i >= 0; i--) nx[i] = sig[i] !== 0 ? i : nx[i + 1];
+  // one forward scan; the stretch of bars before each entry is filled with its index (a native fill: the signals are
+  // sparse, and a read-modify-write per bar was 11 % of a Base cell's time)
+  let from = 0;
+  for (let i = 0; i < n; i++) {
+    if (sig[i] === 0) continue;
+    if (i + 1 - from > 8) nx.fill(i, from, i + 1);
+    else for (let j = from; j <= i; j++) nx[j] = i;
+    from = i + 1;
+  }
+  nx.fill(n, from, n + 1);
   nextMemo.set(sig, nx);
   return nx;
 }

@@ -58,8 +58,10 @@ function runAll(root, { mode, slow, end, killBelow = 1600 } = {}) {
     "--files", "scripts/fixture.test.mjs", "--min-free", "0", "--kill-below", String(killBelow), "--out", "report", "--logs", join(root, "logs")],
   { cwd: root, env, encoding: "utf8", timeout: 20000 });
   assert.equal(result.error, undefined, result.error?.message);
-  const reports = readdirSync(join(root, "report")).filter((name) => name.endsWith(".json"));
+  const reports = readdirSync(join(root, "report")).filter((name) => /^report-.*\.json$/.test(name));
   assert.equal(reports.length, 1, result.stderr + result.stdout);
+  const progress = JSON.parse(readFileSync(join(root, "report", "progress.json"), "utf8"));
+  assert.equal(progress.results.length, 1, "the resumable checkpoint retains the completed fixture");
   return { result, report: JSON.parse(readFileSync(join(root, "report", reports[0]), "utf8")) };
 }
 

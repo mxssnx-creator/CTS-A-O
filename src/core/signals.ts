@@ -12,6 +12,7 @@
 import type { ExitConfigSet, Protect } from "./domain/types.ts";
 import { atrProtect } from "./sim/backtest.ts";
 import { isSignalInd, laneInd } from "./indications/registry.ts";
+import { SIGNAL_MIN_PF } from "./signal-policy.ts";
 import {
   SIGNAL_SOURCES,
   signalId,
@@ -111,12 +112,10 @@ export function signalProtects(sig: SignalSettings): Protect[] {
   // A short trail is an inactive configuration, not a tighter distance that should be silently widened later.
   // The tape builder repeats this check after lane scaling because fast lanes can shrink a valid reference trail.
   const ratios = sig.trailRatios?.length ? [...new Set(sig.trailRatios)] : [1];
-  const variants = out.flatMap((p) =>
-    p.trail > 0
-      ? ratios.map((ratio) => (ratio === 1 ? p : { ...p, trailStep: (p.trailStep ?? 1) * ratio }))
-      : [p],
-  );
-  return variants.filter(
+  const variants = out.flatMap((p) => p.trail > 0
+    ? ratios.map((ratio) => ratio === 1 ? p : { ...p, trailStep: (p.trailStep ?? 1) * ratio })
+    : [p]);
+  return variants.map((p) => sig.trailMax === undefined ? p : { ...p, trailMax: sig.trailMax }).filter(
     (p) => !(p.trail > 0 && p.trail * (p.trailStep ?? 1) + 1e-12 < sig.minTrail),
   );
 }
@@ -240,8 +239,10 @@ type ActiveSignalRun = {
 export function activeSignals(
   runs: Iterable<ActiveSignalRun | null>,
   sig: SignalSettings,
+  /** optional collector: one row per judged unit with the first test it failed (decisions are unchanged) */
+  report?: SignalUnitReport[],
 ): Set<string> {
-  const gen = activeSignalsGen(runs, sig);
+  const gen = activeSignalsGen(runs, sig, report);
   for (;;) {
     const r = gen.next();
     if (r.done) return r.value;
@@ -252,6 +253,8 @@ export function activeSignals(
 export function* activeSignalsGen(
   runs: Iterable<ActiveSignalRun | null>,
   sig: SignalSettings,
+  /** optional collector: one row per judged unit with the first test it failed (decisions are unchanged) */
+  report?: SignalUnitReport[],
 ): Generator<number, Set<string>> {
   type St = SignalSideStat & { sides?: Partial<Record<"1" | "-1", SignalSideStat>> };
   // The latest validation window must have positive own-config results when measured. No empty sibling protect
@@ -268,24 +271,43 @@ export function* activeSignalsGen(
     keys: string[];
     score: number;
     pf: number;
+    side: 1 | -1 | 0;
+    st: SignalSideStat;
     coordination: boolean;
   }> = [];
-  const judge = (keys: string[], st: SignalSideStat, coordination: boolean) => {
-    if (st.n < sig.minTrades || !recentOk(st)) return;
+  const note = (keys: string[], side: 1 | -1 | 0, st: SignalSideStat, reason: SignalFail) =>
+    report?.push({
+      key: keys[0],
+      side,
+      reason,
+      n: st.n,
+      net: st.net,
+      dd: st.dd ?? 0,
+      okShare: st.okShare ?? 0,
+      recentN: st.recentN,
+      recentNet: st.recentNet,
+    });
+  const judge = (keys: string[], st: SignalSideStat, side: 1 | -1 | 0, coordination: boolean) => {
+    if (st.n < sig.minTrades) return void note(keys, side, st, "minTrades");
+    if (!recentOk(st)) return void note(keys, side, st, "recent");
+    if (!Number.isFinite(st.pf) || st.pf < SIGNAL_MIN_PF || !(st.net > 0)) return void note(keys, side, st, "net");
     if (byDd) {
       // drawdown-aware: profitable, positive in enough 4-hour blocks, ranked by net ÷ max drawdown
-      if (!(st.net > 0) || (st.okShare ?? 0) < (sig.minBlockShare ?? 0)) return;
+      if (!(st.net > 0)) return void note(keys, side, st, "net");
+      if ((st.okShare ?? 0) < (sig.minBlockShare ?? 0)) return void note(keys, side, st, "block");
       const dd = Math.max(st.dd ?? 0, 0.5);
       // low drawdown: recovered its worst drawdown at least once, ranked by net ÷ drawdown²
-      if (rank === "lowdd" && st.net < dd) return;
+      if (rank === "lowdd" && st.net < dd) return void note(keys, side, st, "lowdd");
       rows.push({
         key: keys[0],
         keys,
         score: rank === "lowdd" ? st.net / (dd * dd) : st.net / dd,
         pf: st.pf,
+        side,
+        st,
         coordination,
       });
-    } else rows.push({ key: keys[0], keys, score: st.net, pf: st.pf, coordination });
+    } else rows.push({ key: keys[0], keys, score: st.net, pf: st.pf, side, st, coordination });
   };
   let visited = 0;
   for (const r of runs) {
@@ -300,9 +322,9 @@ export function* activeSignalsGen(
       const L = sigActiveKey(r.bot, r.ind, sym, 1, r.kind, r.cfg);
       const S = sigActiveKey(r.bot, r.ind, sym, -1, r.kind, r.cfg);
       if (st.sides) {
-        if (st.sides["1"]) judge([L], st.sides["1"], coordination);
-        if (st.sides["-1"]) judge([S], st.sides["-1"], coordination);
-      } else judge([L, S], st, coordination);
+        if (st.sides["1"]) judge([L], st.sides["1"], 1, coordination);
+        if (st.sides["-1"]) judge([S], st.sides["-1"], -1, coordination);
+      } else judge([L, S], st, 0, coordination);
     }
     if (++visited % 8 === 0) yield -1;
   }
@@ -311,12 +333,59 @@ export function* activeSignalsGen(
   const classic = rows.filter((x) => !x.coordination).sort(sort);
   const coordinated = rows.filter((x) => x.coordination).sort(sort);
   // Each family has a distinct active-unit cap, in both the initial ranking and the causal hourly ranking.
-  return new Set(
-    [
-      ...(sig.count > 0 ? classic.slice(0, sig.count) : classic),
-      ...(sig.coordination.count > 0 ? coordinated.slice(0, sig.coordination.count) : coordinated),
-    ].flatMap((x) => x.keys),
-  );
+  // signals.count 0 = no cap: every validated signal unit is active (operator: process freely, many orders)
+  const kept = [
+    ...(sig.count > 0 ? classic.slice(0, sig.count) : classic),
+    ...(sig.coordination.count > 0 ? coordinated.slice(0, sig.coordination.count) : coordinated),
+  ];
+  if (report) {
+    const keptKeys = new Set(kept.map((x) => x.key));
+    for (const x of [...classic, ...coordinated])
+      note(x.keys, x.side, x.st, keptKeys.has(x.key) ? "active" : "cap");
+  }
+  return new Set(kept.flatMap((x) => x.keys));
+}
+
+/** The first test a signal unit failed in activeSignals ("active" = it is in the set, "cap" = ranked out by signals.count). */
+export type SignalFail = "minTrades" | "recent" | "net" | "block" | "lowdd" | "cap" | "active";
+
+/** One judged unit: its key, direction (0 = a pooled record that holds both), the verdict and the numbers it was judged on. */
+export interface SignalUnitReport {
+  key: string;
+  side: 1 | -1 | 0;
+  reason: SignalFail;
+  n: number;
+  net: number;
+  dd: number;
+  okShare: number;
+  recentN?: number;
+  recentNet?: number;
+}
+
+/** The compact end-of-run activation report: counts per direction and reason, and the long units with the most net. */
+export interface SignalActivationEnd {
+  counts: ReturnType<typeof summarizeActivation>;
+  /** the ten long units with the highest net, with the test each failed (or "active") */
+  topLong: SignalUnitReport[];
+}
+
+export function activationEnd(report: readonly SignalUnitReport[]): SignalActivationEnd {
+  const topLong = report
+    .filter((u) => u.side === 1)
+    .sort((a, b) => b.net - a.net || (a.key < b.key ? -1 : 1))
+    .slice(0, 10);
+  return { counts: summarizeActivation(report), topLong };
+}
+
+/** Per direction: how many units are active and how many failed each test (the status block of the activation report). */
+export function summarizeActivation(report: readonly SignalUnitReport[]) {
+  const out: Record<"long" | "short" | "pooled", Record<SignalFail, number>> = {
+    long: { minTrades: 0, recent: 0, net: 0, block: 0, lowdd: 0, cap: 0, active: 0 },
+    short: { minTrades: 0, recent: 0, net: 0, block: 0, lowdd: 0, cap: 0, active: 0 },
+    pooled: { minTrades: 0, recent: 0, net: 0, block: 0, lowdd: 0, cap: 0, active: 0 },
+  };
+  for (const u of report) out[u.side === 1 ? "long" : u.side === -1 ? "short" : "pooled"][u.reason]++;
+  return out;
 }
 
 /** One unit's ranking record (a symbol's pooled stats, or one direction of them). */

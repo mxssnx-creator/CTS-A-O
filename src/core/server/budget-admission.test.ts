@@ -105,18 +105,49 @@ describe("control: the budgets admit the targets that fit (end to end)", () => {
       minFreeMargin: 0,
       exposureScaler: true,
     };
-    // These deliberately wide stops are ordinary engine fixtures; Signals have their own 2% cap.
-    const cfg = (n: string) => `follow|ema-9-21@m15|tp1|sl2|tr0|h192|budget-${n}`;
+    // Signals have a hard 2% legacy cap. This budget regression deliberately needs
+    // genuine 13%/3% ordinary stops, rather than inventing wide-stop Signal exposure.
+    const cfg = (sl: number) => `follow|rsi-mom-14-20@m15|tp1|sl${sl}|tr0|h192`;
     rt.paper.positions = [
-      lane(cfg("a"), "S0-USDT", 1, 10, 3, 0.13),
-      lane(cfg("b"), "S1-USDT", 1, 17, 3, 0.13),
-      lane(cfg("c"), "S2-USDT", 1, 24, 1, 0.03),
-      lane(cfg("d"), "S3-USDT", 1, 31, 1, 0.03),
+      lane(cfg(13), "S0-USDT", 1, 10, 3, 0.13),
+      lane(cfg(13), "S1-USDT", 1, 17, 3, 0.13),
+      lane(cfg(3), "S2-USDT", 1, 24, 1, 0.03),
+      lane(cfg(3), "S3-USDT", 1, 31, 1, 0.03),
     ];
     const ex = new SimExchange(rng(1)).withEquity(0.5);
     await stepLive(rt as never, [], 1, ex as unknown as ExchangeClient);
     assert.deepEqual([...ex.positions.keys()].sort(), ["S2-USDT|LONG", "S3-USDT|LONG"]);
     const gross = [...ex.positions].reduce((a, [k, q]) => a + q * (k.startsWith("S2") ? 24 : 31), 0);
     assert.ok(gross <= 5 * 1.0001 + 1e-9, `gross ${gross}`);
+  });
+});
+
+describe("the budgets are sized on B = min(wallet, equity)", () => {
+  it("0.50 USDT wallet with 0.50 open profit (equity 1.00): the budgets are those of 0.50, not 1.00", async () => {
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.settings.live = {
+      ...rt.settings.live,
+      maxPositions: 0,
+      maxExposureX: 10,
+      maxRiskPct: 0.5,
+      maxBackstopLossPct: 0.5,
+      maxPositionX: 5,
+      minFreeMargin: 0,
+      exposureScaler: true,
+    };
+    const sig = (n: string) => `follow|sig-${n}-s@m15|tp1|sl2|tr0|h192`;
+    rt.paper.positions = [
+      lane(sig("a"), "S0-USDT", 1, 10, 3, 0.13),
+      lane(sig("b"), "S1-USDT", 1, 17, 3, 0.13),
+      lane(sig("c"), "S2-USDT", 1, 24, 1, 0.03),
+      lane(sig("d"), "S3-USDT", 1, 31, 1, 0.03),
+    ];
+    const ex = new SimExchange(rng(1)).withEquity(1);
+    ex.account = async () => ({ equity: 1, wallet: 0.5, unrealized: 0.5, realized: 0, usedMargin: 0, availableMargin: 1 });
+    await stepLive(rt as never, [], 1, ex as unknown as ExchangeClient);
+    // on equity 1.00 the risk budget (0.50 USD) would also fund a wide-stop key; on B = 0.50 only the two tight ones fit
+    assert.deepEqual([...ex.positions.keys()].sort(), ["S2-USDT|LONG", "S3-USDT|LONG"]);
+    const gross = [...ex.positions].reduce((a, [k, q]) => a + q * (k.startsWith("S2") ? 24 : 31), 0);
+    assert.ok(gross <= 5 * 1.0001 + 1e-9, `gross ${gross} within 10 × B`);
   });
 });

@@ -7,12 +7,13 @@ import { makeTape, walkForward } from "../sim/walkforward.ts";
 import { configId, makeUniverse } from "../pipeline/pipeline.ts";
 import { simulate } from "../sim/backtest.ts";
 import { createExitProtection } from "../sim/exit-protection.ts";
+import { RT_COST } from "../model-cost.ts";
 import { CoreDb } from "./db.server.ts";
 import { CoreRuntime, type PaperBook } from "./runtime.server.ts";
 
 const M = 60_000;
 const T0 = Date.UTC(2026, 9, 17);
-const COST = 0.002;
+const COST = RT_COST;
 const runtimes: CoreRuntime[] = [];
 type Position = PaperBook["positions"][number];
 

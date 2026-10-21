@@ -80,6 +80,11 @@ if (!globalThis[marker]) {
       delete process.env[key];
   }
   process.env.CTS_CORE_LIVE = "0";
+  // Mock API traffic must never consume the running desks' shared native request budget.
+  process.env.CTS_BINGX_RATE_BUDGET_FILE = require("node:path").join(
+    require("node:fs").mkdtempSync(require("node:path").join(require("node:os").tmpdir(), "cts-test-api-budget-")),
+    "requests.sqlite",
+  );
   const cleanAgents = [
     new http.Agent({ keepAlive: true, scheduling: "lifo", timeout: 5000, proxyEnv: {} }),
     new https.Agent({ keepAlive: true, scheduling: "lifo", timeout: 5000, proxyEnv: {} }),

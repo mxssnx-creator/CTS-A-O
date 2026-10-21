@@ -30,6 +30,7 @@
 //   --signal-progress    capture every Signal protection cell/stage and exact shared-book order allocations
 //   --dump-only         with --dump: stop after the raw session is written (no report: the evaluation runs); the dump
 //                       then carries no tape trades unless --tape-trades
+//   --tape-trades-all   stream every built config, including never-qualified cells, for complete gate audits
 //   --tape-trades       with --dump-only: the dump keeps the tape trades of every config validated at a step or
 //                       executed (a full run always keeps them: measurement)
 //   --dump raw.json     the raw session (trades, minute closes, engine aggregates); --replay raw.json rebuilds
@@ -101,6 +102,7 @@ if (argv.includes("--help") || argv.includes("-h")) {
       "  --out PATH              write Markdown and JSON reports",
       "  --html DIR              write a standalone HTML report",
       "  --chunk-allocations     keep complete allocation rows in bounded data.json sidecars",
+      "  --tape-trades-all       dump all built config histories, including rejected configs",
       "  --writeup PATH          write the compact result summary",
       "  --dump PATH             save the raw session for later replay",
       "  --replay PATH           rebuild reports from a saved raw session",
@@ -117,6 +119,17 @@ const arg = (k, d) => {
   return i >= 0 ? argv[i + 1] : d;
 };
 const flag = (k) => argv.includes(`--${k}`);
+// --settings is checked as the Settings page checks a patch (src/core/settings-check.ts): the engine takes it as asked, so
+// an unknown key or a value out of bounds ran the session as if the patch were not there
+{
+  const { checkSettings } = await import("../src/core/settings-check.ts");
+  try {
+    checkSettings(JSON.parse(arg("settings", "{}")));
+  } catch (e) {
+    process.stderr.write(`--settings refused: ${e.message}\n`);
+    process.exit(2);
+  }
+}
 if (flag("replay-preload-all")) {
   const end = Date.parse(arg("end-at")),
     from = Date.parse(arg("evaluation-from"));
@@ -1226,10 +1239,13 @@ async function runEngine() {
   // every engine pair's Base statistic, its gate result and its qualified ranges (the dump's basePairs: the
   // survival per range and the filter's quality per window — a range's survivors are the pairs whose tags hold it)
   // (the stored Base runs are slim — no trades — so Base is reported as counts, not per hour)
+  // (with gates.baseWindows.report set, each passing pair also carries `rules`: per report rule, its ranges and targets
+  // that pass the rule too — a dump-only field the eval readers use, scripts/eval-base-rules.mjs)
   const { basePairRows } = await import("../src/core/pipeline/pipeline.ts");
   const basePairs = basePairRows(
     rt.pipeline?.s1 ?? [],
     rt.wf.basePassedRanges ?? rt.basePairTags ?? {},
+    rt.settings.grid?.baseTargets !== false,
   ).map((row) => ({ ...row, builtTags: [...(rt.basePairTags?.[row.pair] ?? [])] }));
   {
     funnel.counts = {
@@ -1359,32 +1375,36 @@ async function runEngine() {
         ...(replaySelectionHours !== null ? { replaySelectionHours } : {}),
         ...(replayMinGreen !== null ? { replayMinGreen } : {}),
       },
-      wf: Object.fromEntries(
-        [
-          "preH",
-          "simH",
-          "longH",
-          "stepH",
-          "causalBase",
-          "portfolio",
-          "lastN",
-          "lastNMinPf",
-          "validLastN",
-          "signalValidLastN",
-          "maxPerSymbol",
-          "maxPerSide",
-          "maxOpen",
-          "maxPositions",
-          "signalMaxPositions",
-          "signalMaxOpen",
-          "guardPct",
-          "coord",
-          "mode",
-          "familySeats",
-          "laneSeats",
-          "symGate",
-        ].map((k) => [k, rt.wf[k] ?? null]),
-      ),
+      wf: {
+        ...Object.fromEntries(
+          [
+            "preH",
+            "simH",
+            "longH",
+            "stepH",
+            "causalBase",
+            "portfolio",
+            "lastN",
+            "lastNMinPf",
+            "validLastN",
+            "signalValidLastN",
+            "maxPerSymbol",
+            "maxPerSide",
+            "maxOpen",
+            "maxPositions",
+            "signalMaxPositions",
+            "signalMaxOpen",
+            "guardPct",
+            "coord",
+            "mode",
+            "familySeats",
+            "laneSeats",
+            "symGate",
+          ].map((k) => [k, rt.wf[k] ?? null]),
+        ),
+        // per-range seat and entry options (--wf '{"rangeOpts":{…}}', as sanitized), dumped only when set
+        ...(rt.wf.rangeOpts ? { rangeOpts: rt.wf.rangeOpts } : {}),
+      },
       gates: s.gates,
       exitStrategy: s.exitStrategy,
       toggles: s.toggles,
@@ -1440,14 +1460,15 @@ async function runEngine() {
     // the tape trades of every config that was validated at a step or executed (measurement: the lookback and the
     // executor are checked against them; the report's stage check reads the executed configs'). An eval's --dump-only run
     // reads none of them: 0.5–6 M rows (0.2–0.8 GB of heap in the dump phase) left out unless --tape-trades
+    tapeTradesScope: flag("tape-trades-all") ? "all-built-configs" : "ever-seated-or-executed",
     tapeTrades: (() => {
-      if (flag("dump-only") && !flag("tape-trades")) return [];
+      if (flag("dump-only") && !flag("tape-trades") && !flag("tape-trades-all")) return [];
       const want = new Set([
         ...(sim.trades ?? []).map((x) => x.cfg),
         ...(sim.steps ?? []).flatMap((x) => x.real ?? []),
       ]);
       return (rt.tapes ?? [])
-        .filter((tp) => want.has(tp.id))
+        .filter((tp) => flag("tape-trades-all") || want.has(tp.id))
         .map((tp) => {
           function* rows() {
             for (let i = 0; i < tp.n; i++)
@@ -2805,7 +2826,7 @@ check(
 check(
   "every type that traded has hourly cells",
   types.filter((x) => x.n > 0).length,
-  new Set(typeHours.map((h) => h.key)).size,
+  new Set(typeHours.filter((h) => h.closes > 0).map((h) => h.key)).size,
 );
 check(
   "Σ per-type net = total net",
@@ -4166,7 +4187,7 @@ if (raw.frozenBlockComparison)
   };
 // Exact allocations from this report's shared capped book, without rounding individual small P&L slices.
 // A Signal contribution uses these same allocations; it never invents a second independently sized balance.
-if (flag("signal-progress"))
+if (flag("signal-progress") || flag("chunk-allocations"))
   data.sizedOrders = trades.map((x, closeIndex) => {
     const key = orderKey(x),
       known = sized.units.has(key),
@@ -4190,7 +4211,7 @@ if (flag("signal-progress"))
       sizedPnl: known ? x.r * unitNotional : null,
     };
   });
-if (flag("signal-progress"))
+if (flag("signal-progress") || flag("chunk-allocations"))
   data.sizedOpenOrders = openEnd.map((x, openIndex) => {
     const key = orderKey(x),
       known = sized.units.has(key),
@@ -4213,7 +4234,7 @@ if (flag("signal-progress"))
       sizedPnl: known ? x.mtmR * unitNotional : null,
     };
   });
-if (flag("signal-progress"))
+if (flag("signal-progress") || flag("chunk-allocations"))
   data.ownershipPrecision = {
     epsilonUsd: BOOK_NOTIONAL_EPS_USD,
     definition:
@@ -4709,7 +4730,7 @@ function clientMain(D) {
         gl: 0,
       },
     );
-    const types = ["normal", "trailing", "dca", "dca-active", "axis"];
+    const types = ["normal", "trailing", "trailing-only", "exit", "dca", "dca-active", "axis"];
     const fmtSets = (o) =>
       types
         .filter((k) => o[k])
@@ -4749,7 +4770,7 @@ function clientMain(D) {
       wide: "Wide",
     };
     const RO = ["Micro", "Minimal", "Minimal plus", "Short", "General", "Long", "Wide"];
-    const TO = ["normal", "trailing", "dca", "dca-active", "axis"];
+    const TO = ["normal", "trailing", "trailing-only", "exit", "dca", "dca-active", "axis"];
     const col = (x) => `${RG[x.tag] ?? x.tag}|${x.kind}`;
     const cols = [...new Set(C.sets.map(col))].sort(
       (a, b) =>

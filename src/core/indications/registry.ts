@@ -10,7 +10,11 @@ import { researchSpecs } from "./research.ts";
 import { research2Specs } from "./research2.ts";
 import { research3Specs } from "./research3.ts";
 import { research4Specs } from "./research4.ts";
+import { research5Specs } from "./research5.ts";
 import { microSpecs } from "./micro.ts";
+import { inverseSpecs } from "./inverse.ts";
+import { INVERSE_TIMEFRAMES, isInverseInd } from "./inverse-config.ts";
+import { microFamilySpecs, inverseMicroSpecs } from "./micro-family.ts";
 import { rangeFamilySpecs } from "./range-families.ts";
 import { tacticSpecs } from "./tactic.ts";
 import {
@@ -20,8 +24,6 @@ import {
 } from "../signal-coordination.ts";
 import { relateSpecs } from "./relate.ts";
 import { breakSpecs } from "./break.ts";
-import { inverseSpecs } from "./inverse.ts";
-import { INVERSE_TIMEFRAMES, isInverseInd } from "./inverse-config.ts";
 
 export { SIGNAL_SOURCES, signalId };
 
@@ -1228,6 +1230,7 @@ for (const x of research2Specs()) add(x);
 // break, chandelier flip, ultimate oscillator, Klinger
 for (const x of research3Specs()) add(x);
 for (const x of research4Specs()) add(x);
+for (const x of research5Specs()) add(x);
 // ── range families (13 Oct): confluence, regime / compression / session and market-relation entries for the Short,
 // General and Long ranges (cfl-, htfpb-, rgm-, cmpx-, orb-, rel-) ──
 for (const x of rangeFamilySpecs()) add(x);
@@ -1239,8 +1242,9 @@ for (const x of relateSpecs()) add(x);
 for (const x of breakSpecs()) add(x);
 // ── Micro range ("mc-…"): fast reversal entries for net 0.1–0.4 % targets (grid.micro.ownInds: only they trade Micro) ──
 for (const x of microSpecs()) add(x);
-// Inverse flips entry direction, preserving each source/profile's own stages and returns.
+for (const x of microFamilySpecs()) add(x);
 for (const x of inverseSpecs([...BASE_INDICATIONS, ...VARIANTS])) add(x);
+for (const x of inverseMicroSpecs()) add(x);
 
 // ── combined timeframes ─────────────────────────────────────
 // "<id>@x4": the indication on this timeframe, kept only where it agrees on the 4× timeframe (1h → 4h, 15m → 1h),

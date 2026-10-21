@@ -1,0 +1,28 @@
+{
+  "status": "in_progress",
+  "coreFilesTotal": 210,
+  "verifiedCoreFilesThroughPreviousBatches": 191,
+  "pendingFiles": 19,
+  "sourceSha256": "dc407e994040d9d10c7adb2983215e8898041548300f747705474ea802fadb50",
+  "targeted": {
+    "allMicroWorkerParity": "passed all 616 identities",
+    "microCostTrailing": "5 passed",
+    "lifecycleControlLive": "65 passed",
+    "memoryAndExitTick": "12 passed",
+    "boundedAllIndicationPipeline": "21 passed",
+    "scriptResearch": "17 passed",
+    "devUI": "4 passed",
+    "uiLabels": "7 passed",
+    "builtUI": "desktop/mobile content, controls and no page errors/overflow",
+    "apiRateLimitsAndLiveControl": "116 passed",
+    "presetExitAndLifecycleSnapshot": "9 passed",
+    "processingIndicationShapeAndLanes": "3 passed; complete processing matrix still queued"
+  },
+  "productionBuild": "passed",
+  "typecheck": "passed",
+  "notes": [
+    "Interrupted and resource-scheduled batches are preserved; no all-green full-suite claim yet.",
+    "Core fixtures use explicit original source scope where exhaustive new catalog expansion is unrelated to the asserted lifecycle behavior. Full new grids are tested separately.",
+    "Concurrent cache misses and own-order invalidation race fixed at 47d70d8; final v7 market replay exactly reproduces v6 totals and hours, 60/60 checks. New generic lifecycle matrices retain the original catalog; universal indication shape/lane checks still include every new identity."
+  ]
+}

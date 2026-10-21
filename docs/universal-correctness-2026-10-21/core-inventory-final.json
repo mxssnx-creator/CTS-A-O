@@ -1,0 +1,1975 @@
+{
+  "schema": "cts-final-core-inventory-v1",
+  "ciRun": 39509771569,
+  "commit": "4e0ed5cae46ee06d8c37a64aeea5e81df629a704",
+  "tree": "64b81989c421973e963052a8a0a787b09e59c06b",
+  "sourceSha256": "ae7b2021fbdce8c3432329781dfc19a651c7e1fc488b3826874af741e69befaa",
+  "inventoryExact": true,
+  "totals": {
+    "files": 213,
+    "tests": 2379,
+    "pass": 2377,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 2
+  },
+  "partitions": {
+    "functional": {
+      "files": 206,
+      "tests": 2290,
+      "pass": 2290,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "filesFailed": 0,
+      "filesSkipped": 0
+    },
+    "functional-heavy": {
+      "files": 6,
+      "tests": 59,
+      "pass": 59,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "filesFailed": 0,
+      "filesSkipped": 0
+    },
+    "functional-runtime": {
+      "files": 1,
+      "tests": 30,
+      "pass": 28,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 2,
+      "filesFailed": 0,
+      "filesSkipped": 0
+    }
+  },
+  "files": [
+    {
+      "file": "src/core/adjust-evidence.test.ts",
+      "status": "pass",
+      "tests": 8,
+      "pass": 8,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/adjust.test.ts",
+      "status": "pass",
+      "tests": 12,
+      "pass": 12,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/api-contract.test.ts",
+      "status": "pass",
+      "tests": 23,
+      "pass": 23,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/api-lane-summary.test.ts",
+      "status": "pass",
+      "tests": 7,
+      "pass": 7,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/api-reporting.test.ts",
+      "status": "pass",
+      "tests": 18,
+      "pass": 18,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/audit-negative.test.ts",
+      "status": "pass",
+      "tests": 44,
+      "pass": 44,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/base-config-counts.test.ts",
+      "status": "pass",
+      "tests": 13,
+      "pass": 13,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/block-settings.test.ts",
+      "status": "pass",
+      "tests": 3,
+      "pass": 3,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/book-coverage.test.ts",
+      "status": "pass",
+      "tests": 5,
+      "pass": 5,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/bot-stats.test.ts",
+      "status": "pass",
+      "tests": 7,
+      "pass": 7,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/completeness.test.ts",
+      "status": "pass",
+      "tests": 310,
+      "pass": 310,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/engine-proof.test.ts",
+      "status": "pass",
+      "tests": 7,
+      "pass": 7,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/eval-family.test.ts",
+      "status": "pass",
+      "tests": 7,
+      "pass": 7,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/exchange/keys.test.ts",
+      "status": "pass",
+      "tests": 4,
+      "pass": 4,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/exchange/min-exchange.test.ts",
+      "status": "pass",
+      "tests": 15,
+      "pass": 15,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/exchange/ratelimit.test.ts",
+      "status": "pass",
+      "tests": 9,
+      "pass": 9,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/exchange/request-budget.test.ts",
+      "status": "pass",
+      "tests": 6,
+      "pass": 6,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/exchange/signed-retry.test.ts",
+      "status": "pass",
+      "tests": 4,
+      "pass": 4,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/exchange/stuck-requests.test.ts",
+      "status": "pass",
+      "tests": 4,
+      "pass": 4,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/exit-excursions.test.ts",
+      "status": "pass",
+      "tests": 4,
+      "pass": 4,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/exit-strategy.test.ts",
+      "status": "pass",
+      "tests": 20,
+      "pass": 20,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/indications-both-sides.test.ts",
+      "status": "pass",
+      "tests": 6,
+      "pass": 6,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/indications/break.test.ts",
+      "status": "pass",
+      "tests": 16,
+      "pass": 16,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/indications/htf-completeness.test.ts",
+      "status": "pass",
+      "tests": 9,
+      "pass": 9,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/indications/inverse.test.ts",
+      "status": "pass",
+      "tests": 9,
+      "pass": 9,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/indications/micro-exhaustion.test.ts",
+      "status": "pass",
+      "tests": 5,
+      "pass": 5,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/indications/micro-family.test.ts",
+      "status": "pass",
+      "tests": 10,
+      "pass": 10,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/indications/micro-rel.test.ts",
+      "status": "pass",
+      "tests": 9,
+      "pass": 9,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/indications/micro.test.ts",
+      "status": "pass",
+      "tests": 12,
+      "pass": 12,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/indications/range-families.test.ts",
+      "status": "pass",
+      "tests": 10,
+      "pass": 10,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/indications/relate.test.ts",
+      "status": "pass",
+      "tests": 7,
+      "pass": 7,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/indications/research.test.ts",
+      "status": "pass",
+      "tests": 7,
+      "pass": 7,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/indications/research2.test.ts",
+      "status": "pass",
+      "tests": 8,
+      "pass": 8,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/indications/research3.test.ts",
+      "status": "pass",
+      "tests": 6,
+      "pass": 6,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/indications/research4.test.ts",
+      "status": "pass",
+      "tests": 6,
+      "pass": 6,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/indications/stable02.test.ts",
+      "status": "pass",
+      "tests": 32,
+      "pass": 32,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/indications/symmetry.test.ts",
+      "status": "pass",
+      "tests": 4,
+      "pass": 4,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/indications/tactic.test.ts",
+      "status": "pass",
+      "tests": 9,
+      "pass": 9,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/indications/tactics.test.ts",
+      "status": "pass",
+      "tests": 14,
+      "pass": 14,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/invariants.test.ts",
+      "status": "pass",
+      "tests": 15,
+      "pass": 15,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/lanes.test.ts",
+      "status": "pass",
+      "tests": 14,
+      "pass": 14,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/live-diff.test.ts",
+      "status": "pass",
+      "tests": 7,
+      "pass": 7,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/live-promote.test.ts",
+      "status": "pass",
+      "tests": 19,
+      "pass": 19,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/live-record.test.ts",
+      "status": "pass",
+      "tests": 16,
+      "pass": 16,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/live-validation.test.ts",
+      "status": "pass",
+      "tests": 11,
+      "pass": 11,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/loss-limit.test.ts",
+      "status": "pass",
+      "tests": 7,
+      "pass": 7,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/market/bingx.test.ts",
+      "status": "pass",
+      "tests": 15,
+      "pass": 15,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/market/candle-series.test.ts",
+      "status": "pass",
+      "tests": 7,
+      "pass": 7,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/market/force-symbols.test.ts",
+      "status": "pass",
+      "tests": 3,
+      "pass": 3,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/market/trade-bars.test.ts",
+      "status": "pass",
+      "tests": 2,
+      "pass": 2,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/metrics/stats.test.ts",
+      "status": "pass",
+      "tests": 5,
+      "pass": 5,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/metrics/unit-return.test.ts",
+      "status": "pass",
+      "tests": 7,
+      "pass": 7,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/micro-order-identity.test.ts",
+      "status": "pass",
+      "tests": 2,
+      "pass": 2,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/micro-range.test.ts",
+      "status": "pass",
+      "tests": 12,
+      "pass": 12,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/minimal-plus.test.ts",
+      "status": "pass",
+      "tests": 5,
+      "pass": 5,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/pipeline/base-cell-stats.test.ts",
+      "status": "pass",
+      "tests": 9,
+      "pass": 9,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/pipeline/base-pair-rows.test.ts",
+      "status": "pass",
+      "tests": 1,
+      "pass": 1,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/pipeline/core.test.ts",
+      "status": "pass",
+      "tests": 21,
+      "pass": 21,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/pipeline/evaluation-signal-cache.test.ts",
+      "status": "pass",
+      "tests": 4,
+      "pass": 4,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/pipeline/pooled-pf.test.ts",
+      "status": "pass",
+      "tests": 6,
+      "pass": 6,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/pipeline/sets-pass.test.ts",
+      "status": "pass",
+      "tests": 5,
+      "pass": 5,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/positions-cases.test.ts",
+      "status": "pass",
+      "tests": 7,
+      "pass": 7,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/positions.test.ts",
+      "status": "pass",
+      "tests": 4,
+      "pass": 4,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/positive-defaults.test.ts",
+      "status": "pass",
+      "tests": 14,
+      "pass": 14,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/prehist-cases.test.ts",
+      "status": "pass",
+      "tests": 7,
+      "pass": 7,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/prehist.test.ts",
+      "status": "pass",
+      "tests": 2,
+      "pass": 2,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/preset-reporting.test.ts",
+      "status": "pass",
+      "tests": 5,
+      "pass": 5,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/presets.live.test.ts",
+      "status": "pass",
+      "tests": 3,
+      "pass": 3,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/processing.test.ts",
+      "status": "pass",
+      "tests": 6,
+      "pass": 6,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/range-hold-limit.test.ts",
+      "status": "pass",
+      "tests": 7,
+      "pass": 7,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/range-protection-parity.test.ts",
+      "status": "pass",
+      "tests": 6,
+      "pass": 6,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/range-settings.test.ts",
+      "status": "pass",
+      "tests": 6,
+      "pass": 6,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/ranges.test.ts",
+      "status": "pass",
+      "tests": 30,
+      "pass": 30,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/regression.test.ts",
+      "status": "pass",
+      "tests": 51,
+      "pass": 51,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/replay-evaluation-window.test.ts",
+      "status": "pass",
+      "tests": 6,
+      "pass": 6,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/report-page.test.ts",
+      "status": "pass",
+      "tests": 2,
+      "pass": 2,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/reporting-stats.test.ts",
+      "status": "pass",
+      "tests": 5,
+      "pass": 5,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/seats.test.ts",
+      "status": "pass",
+      "tests": 30,
+      "pass": 30,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/account-sizing.test.ts",
+      "status": "pass",
+      "tests": 13,
+      "pass": 13,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/api-batching.test.ts",
+      "status": "pass",
+      "tests": 4,
+      "pass": 4,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/base-cohort.test.ts",
+      "status": "pass",
+      "tests": 14,
+      "pass": 14,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/base-config-job.test.ts",
+      "status": "pass",
+      "tests": 11,
+      "pass": 11,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/base-config-planning.test.ts",
+      "status": "pass",
+      "tests": 3,
+      "pass": 3,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/base-count.test.ts",
+      "status": "pass",
+      "tests": 2,
+      "pass": 2,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/base-paths.test.ts",
+      "status": "pass",
+      "tests": 3,
+      "pass": 3,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/base-slice.test.ts",
+      "status": "pass",
+      "tests": 3,
+      "pass": 3,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/boot.test.ts",
+      "status": "pass",
+      "tests": 4,
+      "pass": 4,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/budget-admission.test.ts",
+      "status": "pass",
+      "tests": 5,
+      "pass": 5,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/candle-append.test.ts",
+      "status": "pass",
+      "tests": 2,
+      "pass": 2,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/caps-restore.test.ts",
+      "status": "pass",
+      "tests": 4,
+      "pass": 4,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/compare-memory.test.ts",
+      "status": "pass",
+      "tests": 11,
+      "pass": 11,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/compute-worker-retirement.test.ts",
+      "status": "pass",
+      "tests": 3,
+      "pass": 3,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/conns.test.ts",
+      "status": "pass",
+      "tests": 6,
+      "pass": 6,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/control-audit.test.ts",
+      "status": "pass",
+      "tests": 39,
+      "pass": 39,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/control-excess.test.ts",
+      "status": "pass",
+      "tests": 3,
+      "pass": 3,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/control-mirror.test.ts",
+      "status": "pass",
+      "tests": 1,
+      "pass": 1,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/control-orders.test.ts",
+      "status": "pass",
+      "tests": 11,
+      "pass": 11,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/control-sizing.test.ts",
+      "status": "pass",
+      "tests": 13,
+      "pass": 13,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/control.test.ts",
+      "status": "pass",
+      "tests": 47,
+      "pass": 47,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/cost-default-runtime.test.ts",
+      "status": "pass",
+      "tests": 6,
+      "pass": 6,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/dispose.test.ts",
+      "status": "pass",
+      "tests": 3,
+      "pass": 3,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/entries-execution.test.ts",
+      "status": "pass",
+      "tests": 47,
+      "pass": 47,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/eval-family-runtime.test.ts",
+      "status": "pass",
+      "tests": 1,
+      "pass": 1,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/exchange-minimum.test.ts",
+      "status": "pass",
+      "tests": 5,
+      "pass": 5,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/execution-accounting.test.ts",
+      "status": "pass",
+      "tests": 24,
+      "pass": 24,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/execution-budgets.test.ts",
+      "status": "pass",
+      "tests": 49,
+      "pass": 49,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/execution-progress.test.ts",
+      "status": "pass",
+      "tests": 6,
+      "pass": 6,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/exit-tick.test.ts",
+      "status": "pass",
+      "tests": 2,
+      "pass": 2,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/exposure.test.ts",
+      "status": "pass",
+      "tests": 3,
+      "pass": 3,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/fast-entries.test.ts",
+      "status": "pass",
+      "tests": 3,
+      "pass": 3,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/fast.test.ts",
+      "status": "pass",
+      "tests": 5,
+      "pass": 5,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/fee-provenance.test.ts",
+      "status": "pass",
+      "tests": 5,
+      "pass": 5,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/gating-runtime.test.ts",
+      "status": "pass",
+      "tests": 2,
+      "pass": 2,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/heal.test.ts",
+      "status": "pass",
+      "tests": 7,
+      "pass": 7,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/held-base.test.ts",
+      "status": "pass",
+      "tests": 2,
+      "pass": 2,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/journal.test.ts",
+      "status": "pass",
+      "tests": 3,
+      "pass": 3,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/key-funnel.test.ts",
+      "status": "pass",
+      "tests": 1,
+      "pass": 1,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/lane-orders.test.ts",
+      "status": "pass",
+      "tests": 15,
+      "pass": 15,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/lane-series.test.ts",
+      "status": "pass",
+      "tests": 13,
+      "pass": 13,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/lanes-lifecycle.test.ts",
+      "status": "pass",
+      "tests": 9,
+      "pass": 9,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/live-promotion.test.ts",
+      "status": "pass",
+      "tests": 20,
+      "pass": 20,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/live.test.ts",
+      "status": "pass",
+      "tests": 11,
+      "pass": 11,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/loop-budget.test.ts",
+      "status": "pass",
+      "tests": 2,
+      "pass": 2,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/mem-lifetime.test.ts",
+      "status": "pass",
+      "tests": 10,
+      "pass": 10,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/memguard-cache.test.ts",
+      "status": "pass",
+      "tests": 7,
+      "pass": 7,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/memguard-carried.test.ts",
+      "status": "pass",
+      "tests": 1,
+      "pass": 1,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/memguard-runtime.test.ts",
+      "status": "pass",
+      "tests": 9,
+      "pass": 9,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/memguard.test.ts",
+      "status": "pass",
+      "tests": 9,
+      "pass": 9,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/paper-rows.test.ts",
+      "status": "pass",
+      "tests": 2,
+      "pass": 2,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/paper-unit-runtime.test.ts",
+      "status": "pass",
+      "tests": 7,
+      "pass": 7,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/paper-unit-schema.test.ts",
+      "status": "pass",
+      "tests": 6,
+      "pass": 6,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/partition.test.ts",
+      "status": "pass",
+      "tests": 4,
+      "pass": 4,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/pool-cancel.test.ts",
+      "status": "pass",
+      "tests": 5,
+      "pass": 5,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/pool-legacy-reload.test.ts",
+      "status": "pass",
+      "tests": 3,
+      "pass": 3,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/pool-module-copies.test.ts",
+      "status": "pass",
+      "tests": 4,
+      "pass": 4,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/pool-owner-retirement.test.ts",
+      "status": "pass",
+      "tests": 7,
+      "pass": 7,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/pool-priority.test.ts",
+      "status": "pass",
+      "tests": 3,
+      "pass": 3,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/pool-spawn-failure.test.ts",
+      "status": "pass",
+      "tests": 1,
+      "pass": 1,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/pool-worker-path.test.ts",
+      "status": "pass",
+      "tests": 7,
+      "pass": 7,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/pool.test.ts",
+      "status": "pass",
+      "tests": 14,
+      "pass": 14,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/preset-backtest-queue.test.ts",
+      "status": "pass",
+      "tests": 7,
+      "pass": 7,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/preset-base.test.ts",
+      "status": "pass",
+      "tests": 6,
+      "pass": 6,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/preset-exit.test.ts",
+      "status": "pass",
+      "tests": 8,
+      "pass": 8,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/preset-lifecycle.test.ts",
+      "status": "pass",
+      "tests": 22,
+      "pass": 22,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/readiness.test.ts",
+      "status": "pass",
+      "tests": 7,
+      "pass": 7,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/realtime-market.test.ts",
+      "status": "pass",
+      "tests": 3,
+      "pass": 3,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/replay-backfill.test.ts",
+      "status": "pass",
+      "tests": 4,
+      "pass": 4,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/replay-startup.test.ts",
+      "status": "pass",
+      "tests": 3,
+      "pass": 3,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/replay-universe.test.ts",
+      "status": "pass",
+      "tests": 4,
+      "pass": 4,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/risk.test.ts",
+      "status": "pass",
+      "tests": 13,
+      "pass": 13,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/runtime.test.ts",
+      "status": "pass",
+      "tests": 30,
+      "pass": 28,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 2
+    },
+    {
+      "file": "src/core/server/stage-lifecycle.test.ts",
+      "status": "pass",
+      "tests": 2,
+      "pass": 2,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/stall-probe.test.ts",
+      "status": "pass",
+      "tests": 6,
+      "pass": 6,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/state.test.ts",
+      "status": "pass",
+      "tests": 3,
+      "pass": 3,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/server/trading-e2e.test.ts",
+      "status": "pass",
+      "tests": 7,
+      "pass": 7,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/session-window.test.ts",
+      "status": "pass",
+      "tests": 2,
+      "pass": 2,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/signal-accept-index.test.ts",
+      "status": "pass",
+      "tests": 5,
+      "pass": 5,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/signal-coordination-feature.test.ts",
+      "status": "pass",
+      "tests": 14,
+      "pass": 14,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/signal-coordination.test.ts",
+      "status": "pass",
+      "tests": 9,
+      "pass": 9,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/signal-discovery.test.ts",
+      "status": "pass",
+      "tests": 4,
+      "pass": 4,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/signal-hist.test.ts",
+      "status": "pass",
+      "tests": 14,
+      "pass": 14,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/signal-research-sources.test.ts",
+      "status": "pass",
+      "tests": 3,
+      "pass": 3,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/signal-trailing-only.test.ts",
+      "status": "pass",
+      "tests": 13,
+      "pass": 13,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/signals-e2e.test.ts",
+      "status": "pass",
+      "tests": 3,
+      "pass": 3,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/signals-independence.test.ts",
+      "status": "pass",
+      "tests": 13,
+      "pass": 13,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/signals.test.ts",
+      "status": "pass",
+      "tests": 38,
+      "pass": 38,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/sim/axis-floors.test.ts",
+      "status": "pass",
+      "tests": 5,
+      "pass": 5,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/sim/axis-variants.test.ts",
+      "status": "pass",
+      "tests": 4,
+      "pass": 4,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/sim/axis.test.ts",
+      "status": "pass",
+      "tests": 36,
+      "pass": 36,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/sim/backtest.test.ts",
+      "status": "pass",
+      "tests": 16,
+      "pass": 16,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/sim/base-eval-parity.test.ts",
+      "status": "pass",
+      "tests": 1,
+      "pass": 1,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/sim/block-matrix.test.ts",
+      "status": "pass",
+      "tests": 36,
+      "pass": 36,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/sim/block-real-admission.test.ts",
+      "status": "pass",
+      "tests": 18,
+      "pass": 18,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/sim/block-replay.test.ts",
+      "status": "pass",
+      "tests": 12,
+      "pass": 12,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/sim/block.test.ts",
+      "status": "pass",
+      "tests": 47,
+      "pass": 47,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/sim/both-sides.test.ts",
+      "status": "pass",
+      "tests": 19,
+      "pass": 19,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/sim/candidate-lifetime.test.ts",
+      "status": "pass",
+      "tests": 1,
+      "pass": 1,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/sim/continuous-validation.test.ts",
+      "status": "pass",
+      "tests": 27,
+      "pass": 27,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/sim/coord-volume.test.ts",
+      "status": "pass",
+      "tests": 4,
+      "pass": 4,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/sim/dca.test.ts",
+      "status": "pass",
+      "tests": 8,
+      "pass": 8,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/sim/engine-side.test.ts",
+      "status": "pass",
+      "tests": 11,
+      "pass": 11,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/sim/eval-prior.test.ts",
+      "status": "pass",
+      "tests": 5,
+      "pass": 5,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/sim/execution-factors.test.ts",
+      "status": "pass",
+      "tests": 3,
+      "pass": 3,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/sim/exit-protection.test.ts",
+      "status": "pass",
+      "tests": 6,
+      "pass": 6,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/sim/exitheap.test.ts",
+      "status": "pass",
+      "tests": 4,
+      "pass": 4,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/sim/fixed-price-path.test.ts",
+      "status": "pass",
+      "tests": 9,
+      "pass": 9,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/sim/gap-fill.test.ts",
+      "status": "pass",
+      "tests": 4,
+      "pass": 4,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/sim/gating.test.ts",
+      "status": "pass",
+      "tests": 13,
+      "pass": 13,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/sim/independence.test.ts",
+      "status": "pass",
+      "tests": 25,
+      "pass": 25,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/sim/invert-seats.test.ts",
+      "status": "pass",
+      "tests": 3,
+      "pass": 3,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/sim/lane-floor-skip.test.ts",
+      "status": "pass",
+      "tests": 1,
+      "pass": 1,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/sim/lastn-calc.test.ts",
+      "status": "pass",
+      "tests": 6,
+      "pass": 6,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/sim/micro-cost-trailing-audit.test.ts",
+      "status": "pass",
+      "tests": 5,
+      "pass": 5,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/sim/range-fit-causal.test.ts",
+      "status": "pass",
+      "tests": 3,
+      "pass": 3,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/sim/range-min-pf.test.ts",
+      "status": "pass",
+      "tests": 15,
+      "pass": 15,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/sim/report-variants-cases.test.ts",
+      "status": "pass",
+      "tests": 6,
+      "pass": 6,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/sim/report-variants.test.ts",
+      "status": "pass",
+      "tests": 14,
+      "pass": 14,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/sim/run-blocks.test.ts",
+      "status": "pass",
+      "tests": 3,
+      "pass": 3,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/sim/s2coord-cases.test.ts",
+      "status": "pass",
+      "tests": 15,
+      "pass": 15,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/sim/s2coord.test.ts",
+      "status": "pass",
+      "tests": 3,
+      "pass": 3,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/sim/selection-index.test.ts",
+      "status": "pass",
+      "tests": 6,
+      "pass": 6,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/sim/signal-fixes.test.ts",
+      "status": "pass",
+      "tests": 12,
+      "pass": 12,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/sim/signal-gates.test.ts",
+      "status": "pass",
+      "tests": 7,
+      "pass": 7,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/sim/signal-stop-policy.test.ts",
+      "status": "pass",
+      "tests": 16,
+      "pass": 16,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/sim/simulation-parity.test.ts",
+      "status": "pass",
+      "tests": 1,
+      "pass": 1,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/sim/symbol-directions.test.ts",
+      "status": "pass",
+      "tests": 2,
+      "pass": 2,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/sim/trail-tick.test.ts",
+      "status": "pass",
+      "tests": 3,
+      "pass": 3,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/sim/walkforward.test.ts",
+      "status": "pass",
+      "tests": 15,
+      "pass": 15,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/sizing.test.ts",
+      "status": "pass",
+      "tests": 9,
+      "pass": 9,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/stage-consistency.test.ts",
+      "status": "pass",
+      "tests": 4,
+      "pass": 4,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/statistics.test.ts",
+      "status": "pass",
+      "tests": 26,
+      "pass": 26,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/tactic-pf-floor.test.ts",
+      "status": "pass",
+      "tests": 5,
+      "pass": 5,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "file": "src/core/volume-factor.test.ts",
+      "status": "pass",
+      "tests": 4,
+      "pass": 4,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    }
+  ],
+  "optionalSlow": {
+    "ciRun": 39508546694,
+    "tests": 2,
+    "pass": 2,
+    "fail": 0,
+    "scope": "Same frozen runtime/source; skipped in ordinary inventory and separately run with CTS_SLOW_TESTS=1"
+  },
+  "allUniqueCoreTestsIncludingOptionalSlow": 2379
+}

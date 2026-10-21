@@ -8,12 +8,26 @@
 // Pessimistic ordering inside a bar: level fills first, then the stop; a target cannot be hit on a bar in
 // which a leg filled (the fill might have come after the high).
 import type { Bars, DcaConfig, OpenPosition, Protect, Side, Trade } from "../domain/types.ts";
-import { isSignalConfig, signalStopAt, SIGNAL_STOP_MAX } from "./trailing.ts";
+import { isSignalConfig, signalStopAt, signalTrailMax } from "./trailing.ts";
 import type { SimulationCursor } from "./cursor.ts";
 
-/** A DCA position never stacks more than 5 stages: the base leg and at most 4 deeper levels (5 units of volume). */
+/** A DCA position never stacks more than 5 stages. Leg weights are measured in original base units. */
 export const DCA_MAX_STAGES = 5;
 export const DCA_MAX_LEVELS = DCA_MAX_STAGES - 1;
+
+export function dcaSnapshot(dca: DcaConfig): NonNullable<Protect["dca"]> {
+  const addRatio = dca.addRatio ?? 1;
+  if (!(Number.isFinite(addRatio) && addRatio > 0 && addRatio <= 2.5))
+    throw new RangeError("DCA addition must be positive and at most 2.5 original base units");
+  return {
+    levels: Math.min(DCA_MAX_LEVELS, Math.max(1, Math.floor(dca.levels))),
+    // Same effective precision as the config ID. Inputs sharing an ID execute the same spacing.
+    step: Math.round(dca.step * 1e6) / 1e6,
+    stepOfTp: dca.stepOfTp ?? 0,
+    stopGap: dca.stopGap ?? 0.5,
+    addRatio,
+  };
+}
 
 export interface DcaResult {
   trades: Trade[];
@@ -33,21 +47,26 @@ export function simulateDca(
   cooldown = 0,
   cursor?: SimulationCursor,
 ): DcaResult {
+  if (!(Number.isFinite(cost) && cost >= 0))
+    throw new RangeError("DCA round-trip cost must be finite and nonnegative");
   const { n, t, o, h, l, c, sym } = bars;
   const tfMs = bars.tfMin * 60_000;
   cursor?.begin(bars);
   let trades: Trade[] = [];
   const kind = active ? "dca-active" : "dca";
-  const levels = Math.min(DCA_MAX_LEVELS, Math.max(1, Math.floor(dca.levels)));
+  const ladder = dcaSnapshot(p.dca ?? dca);
+  const levels = ladder.levels;
+  const addRatio = ladder.addRatio!;
   // level spacing: absolute, or a multiple of the target
-  const step = dca.stepOfTp && dca.stepOfTp > 0 ? p.tp * dca.stepOfTp : dca.step;
+  const step = ladder.stepOfTp && ladder.stepOfTp > 0 ? p.tp * ladder.stepOfTp : ladder.step;
   // stop must sit beyond the deepest level (stopGap steps past it)
   const signal = isSignalConfig(cfg);
+  const signalMax = signal ? signalTrailMax({ cfg, trailMax: p.trailMax }) : Infinity;
   const requestedSl = Math.max(
     p.sl,
-    step * ((active ? 1 : levels) + Math.max(0, dca.stopGap ?? 0.5)),
+    step * ((active ? 1 : levels) + Math.max(0, ladder.stopGap ?? 0.5)),
   );
-  const slDist = signal ? Math.min(requestedSl, SIGNAL_STOP_MAX) : requestedSl;
+  const slDist = signal ? Math.min(requestedSl, signalMax) : requestedSl;
 
   const initial = {
     state: "flat" as "flat" | "wait" | "pos",
@@ -55,6 +74,7 @@ export function simulateDca(
     ref: 0,
     waitUntil: 0,
     legs: [] as number[],
+    weights: [] as number[],
     nextLevel: 0,
     startI: 0,
     stop: 0,
@@ -69,6 +89,7 @@ export function simulateDca(
     ref,
     waitUntil,
     legs,
+    weights,
     nextLevel,
     startI,
     stop,
@@ -83,6 +104,7 @@ export function simulateDca(
     ref,
     waitUntil,
     legs,
+    weights,
     nextLevel,
     startI,
     stop,
@@ -94,16 +116,18 @@ export function simulateDca(
   let filledThisBar = false;
 
   const lvlPx = (k: number) => (side === 1 ? ref * (1 - step * k) : ref * (1 + step * k));
-  const avg = () => legs.reduce((a, b) => a + b, 0) / legs.length;
+  const weight = () => weights.reduce((a, b) => a + b, 0);
+  const avg = () => legs.reduce((a, px, i) => a + px * weights[i], 0) / weight();
   const retarget = () => {
     const a = avg();
     target = side === 1 ? a * (1 + p.tp) : a * (1 - p.tp);
-    if (signal) stop = signalStopAt(a, side, stop);
+    if (signal) stop = signalStopAt(a, side, stop, signalMax);
   };
   const close = (i: number, exit: number, reason: Trade["reason"]) => {
     nextAllowed = i + 1 + cooldown;
     let r = 0;
-    for (const px of legs) r += (side * (exit - px)) / px - cost;
+    for (let k = 0; k < legs.length; k++)
+      r += weights[k] * ((side * (exit - legs[k])) / legs[k] - cost);
     const a = avg();
     trades.push({
       cfg,
@@ -119,11 +143,12 @@ export function simulateDca(
       mfe,
       mae,
       kind,
-      vol: legs.length,
+      vol: weight(),
       level: active ? 1 : legs.length - 1,
     });
     state = "flat";
     legs = [];
+    weights = [];
   };
 
   for (let i = cursor?.start ?? 0; i < n; i++) {
@@ -135,6 +160,7 @@ export function simulateDca(
       if (hit) {
         const fill = side === 1 ? Math.min(o[i], px) : Math.max(o[i], px);
         legs = [fill];
+        weights = [1];
         startI = i;
         state = "pos";
         stop = side === 1 ? ref * (1 - slDist) : ref * (1 + slDist);
@@ -156,6 +182,7 @@ export function simulateDca(
         // A wider ladder cannot purchase another leg beyond an already-resting 2% Signal stop.
         if (signal && (side === 1 ? px <= stop : px >= stop)) break;
         legs.push(side === 1 ? Math.min(o[i], px) : Math.max(o[i], px));
+        weights.push(addRatio);
         nextLevel++;
         filledThisBar = true;
         retarget();
@@ -196,6 +223,7 @@ export function simulateDca(
       } else {
         state = "pos";
         legs = [ref];
+        weights = [1];
         startI = i + 1;
         nextLevel = 1;
         stop = side === 1 ? ref * (1 - slDist) : ref * (1 + slDist);
@@ -215,7 +243,8 @@ export function simulateDca(
     const px = c[n - 1];
     const a0 = avg();
     let mtm = 0;
-    for (const leg of legs) mtm += (side * (px - leg)) / leg - cost;
+    for (let k = 0; k < legs.length; k++)
+      mtm += weights[k] * ((side * (px - legs[k])) / legs[k] - cost);
     open = {
       cfg,
       sym,
@@ -227,8 +256,8 @@ export function simulateDca(
       target,
       peak: a0,
       trailOn: false,
-      mtm: mtm / legs.length,
-      w: legs.length,
+      mtm: mtm / weight(),
+      w: weight(),
     };
   }
   return {

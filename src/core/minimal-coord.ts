@@ -13,6 +13,7 @@
 import type { Gates, MicroGrid, MinimalGrid, ProtectGridSpec, RangeMinPfKey, RangeTag } from "./domain/types.ts";
 import type { MicroIndRule } from "./indications/micro.ts";
 import { POSITION_COST_RT, RT_COST } from "./model-cost.ts";
+import { SIGNAL_MIN_PF } from "./signal-policy.ts";
 
 export const MINIMAL_COORD = "Minimal Coord.";
 
@@ -61,9 +62,18 @@ export function rangeVolumeFactorsOf(g?: Partial<ProtectGridSpec> | null): Range
 
 /** Range of a config id ("" = the wide grid). */
 export function rangeOfId(id: string | undefined): RangeTag | "" {
-  const m = id ? /\|(mc|mp|mn|sh|gn|lg)(?=\||$)/.exec(id) : null;
-  return m ? (m[1] as RangeTag) : "";
+  if (!id) return "";
+  // memoized: called per order in every simulation step; the regexp match cost 0.8 s of a 24-symbol compute
+  let r = RANGE_OF_ID.get(id);
+  if (r === undefined) {
+    const m = /\|(mc|mp|mn|sh|gn|lg)(?=\||$)/.exec(id);
+    r = m ? (m[1] as RangeTag) : "";
+    if (RANGE_OF_ID.size > 200_000) RANGE_OF_ID.clear();
+    RANGE_OF_ID.set(id, r);
+  }
+  return r;
 }
+const RANGE_OF_ID = new Map<string, RangeTag | "">();
 
 /** Fixed historical range-construction basis; changing modeled costs must not silently shrink configured distances. */
 export const RANGE_COST_BASIS = POSITION_COST_RT;
@@ -516,8 +526,9 @@ export function minPfOf(gates: Pick<Gates, "minPf" | "rangeMinPf">, tag: string 
   const key = tag ? RANGE_MIN_PF_KEY[tag as RangeTag] : undefined;
   const v = key ? gates.rangeMinPf?.[key] : undefined;
   const min = typeof v === "number" && Number.isFinite(v) ? Math.min(3, Math.max(1.05, v)) : gates.minPf;
+  if (ind?.startsWith("sig-")) return Math.max(SIGNAL_MIN_PF, min);
   // First-class Tactic, Relate and relational Break configs share a minimum return PF of 1.1 from Base onward.
-  return ind && (ind.startsWith("inverse-") || ind.startsWith("tactic-") || ind.startsWith("relate-") || ind.startsWith("break-rel-") || ind.startsWith("break-mc-rel-"))
+  return ind && (ind.startsWith("micro-") || ind.startsWith("inverse-") || ind.startsWith("tactic-") || ind.startsWith("relate-") || ind.startsWith("break-rel-") || ind.startsWith("break-mc-rel-"))
     ? Math.max(1.1, min)
     : min;
 }

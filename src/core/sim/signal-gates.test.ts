@@ -186,6 +186,7 @@ describe("signals: acceptance on the source's record", () => {
     ...base,
     signalActive: new Set([sigActiveKey("follow", "sig-ema-cross-s@m15", SYM, 1, "normal", "follow|sig-ema-cross-s@m15|tp1|sl1|tr0|h32")]),
     signalAccept: accept,
+    gates: { ...base.gates, minTrades: 3, maxDdtH: 1000, maxDdr: 0, minGreen: 0, stableBlocks: 0 },
   });
 
   it("counts the group's closes from before the run (regression: the first hours of every run accepted nothing)", () => {
@@ -215,7 +216,7 @@ describe("signals: acceptance on the source's record", () => {
     const other = tape("sig-ema-cross-m@m30", (id) =>
       Array.from({ length: 10 }, (_, i) => trade(id, 0.01, NOW - 30 * H + i * H)),
     );
-    const lane = tape("sig-ema-cross-s@m15", (id) => [trade(id, 0.01, IN_RUN)]);
+    const lane = tape("sig-ema-cross-s@m15", (id) => [...Array.from({ length: 10 }, (_, i) => trade(id, 0.01, NOW - 30 * H + i * H)), trade(id, 0.01, IN_RUN)]);
     assert.deepEqual(
       walkForward(u, [other, lane], o()).trades.map((x) => x.cfg),
       [lane.id],

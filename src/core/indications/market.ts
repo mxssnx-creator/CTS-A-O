@@ -367,4 +367,5 @@ export class MarketSource {
     }
     return this.stream?.align(key, g, b) ?? alignMarket(g, b);
   }
+
 }

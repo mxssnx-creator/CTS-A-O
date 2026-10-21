@@ -113,6 +113,9 @@ export class TickMathBook {
                   trailOn: p.trailOn,
                   trail: p.trail,
                   trailDist: p.trailDist,
+                  trailOnly: p.trailOnly,
+                  trailFree: p.trailFree,
+                  trailMax: p.trailMax,
                   exitProtection: p.exitProtection,
                   mtm: p.mtm,
                   tkBar: p.tkBar,
@@ -170,6 +173,9 @@ export interface TickTrail {
   trailOn: boolean;
   trail?: number;
   trailDist?: number;
+  trailOnly?: boolean;
+  trailFree?: boolean;
+  trailMax?: number;
   target?: number;
   exitProtection?: OpenPosition["exitProtection"];
   tkBar?: number;

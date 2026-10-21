@@ -1,0 +1,98 @@
+name: Independent Micro verification
+on:
+  push:
+    branches: [codex/micro-indication-20261020, codex/incremental-cycle-20261020]
+    paths:
+      - src/**
+      - scripts/**
+      - docs/micro-optimization-2026-10-20/**
+      - .github/workflows/micro-verification.yml
+  workflow_dispatch:
+    inputs:
+      include_frozen_cases:
+        description: Run archived source-sealed research cases (requires their exact source)
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: micro-verification-${{ github.sha }}
+  cancel-in-progress: false
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        # Archived financial studies remain immutable and still refuse a changed source.
+        # Automatic merge verification covers the entire current regression inventory and load test.
+        task: ${{ fromJSON(github.event.inputs.include_frozen_cases == 'true' && '["functional","functional-heavy","functional-runtime","reference","study","stress"]' || '["functional","functional-heavy","functional-runtime","stress"]') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      MALLOC_ARENA_MAX: "2"
+      MALLOC_MMAP_THRESHOLD_: "1048576"
+      CTS_CORE_STATE: "off"
+      CTS_CORE_AUTOSTART: "0"
+      CTS_CORE_LIVE: "0"
+      CTS_CORE_WORKERS: "2"
+      CTS_CORE_COMPARE: "0"
+      CTS_CORE_VARIANTS: "0"
+      CTS_CORE_TEST_CONCURRENCY: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24.19.0"
+      - run: npm ci
+      - name: Build exact worker source
+        run: npm run build:dev
+        env:
+          NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
+      - name: Verify types and complete ordinary core inventory
+        if: startsWith(matrix.task, 'functional')
+        shell: bash
+        run: |
+          npm run typecheck
+          node --experimental-strip-types --no-warnings scripts/micro-functional-ci.mjs ${{ matrix.task }}
+      - name: Verify report, funding, parity and offline regressions
+        if: matrix.task == 'functional'
+        shell: bash
+        run: |
+          node --require ./scripts/lib/core-test-offline-guard.cjs --experimental-strip-types --no-warnings --test scripts/core-session.test.mjs scripts/micro-stages.test.mjs scripts/simulation-parity.test.mjs scripts/session-funded-cohort.test.mjs scripts/test-all-offline.test.mjs scripts/core-test-offline.test.mjs .github/audits/hourly-progress.test.mjs
+      - name: Complete frozen chronological optimization
+        if: matrix.task == 'study'
+        run: node --require ./scripts/lib/core-test-offline-guard.cjs --experimental-strip-types --no-warnings scripts/micro-verification-ci.mjs
+      - name: Replay original market window with independent order identities
+        if: matrix.task == 'reference'
+        shell: bash
+        env:
+          NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
+        run: |
+          node --experimental-strip-types --no-warnings scripts/prepare-micro-identity-reference.mjs runs/micro-identity-reference-v11
+          node --experimental-strip-types --no-warnings scripts/micro-study.mjs run --out runs/micro-identity-reference-v11 --workers 2 --tape-trades-all
+          node --experimental-strip-types --no-warnings scripts/audit-micro-execution.mjs runs/micro-identity-reference-v11
+          node --experimental-strip-types --no-warnings scripts/audit-micro-stages.mjs runs/micro-identity-reference-v11
+          node --experimental-strip-types --no-warnings --max-old-space-size=2048 .github/audits/hourly-progress.mjs runs/micro-identity-reference-v11 runs/micro-identity-reference-v11/scalar-hours.json --require-all
+          node --experimental-strip-types --no-warnings scripts/audit-stage-transition.mjs runs/micro-identity-reference-v11
+          node --experimental-strip-types --no-warnings scripts/audit-simulation-parity.mjs runs/micro-identity-reference-v11/raw.json runs/micro-identity-reference-v11/simulation-parity.json
+      - name: Exercise all 728 identities with 120 symbols and compute storm
+        if: matrix.task == 'stress'
+        run: node --require ./scripts/lib/core-test-offline-guard.cjs --expose-gc --max-old-space-size=4096 --experimental-strip-types --no-warnings scripts/stress-micro-runtime.mjs --out runs/micro-ci-stress
+      - name: Preserve successes and failures
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: micro-${{ matrix.task }}-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 30
+          compression-level: 6
+          if-no-files-found: warn
+          path: |
+            runs/micro-ci-*/
+            runs/micro-opt-*/
+            runs/micro-identity-reference-*/
+            docs/micro-optimization-2026-10-20/selection.json
+            docs/micro-optimization-2026-10-20/selected-focus.json
+            !**/*.sqlite*
+            !**/*.db

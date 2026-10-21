@@ -52,7 +52,7 @@ export function StagesPage() {
         <div className="v2-funnel">
           <div className="v2-stage">
             <div className="t">1 · Base</div>
-            <div className="n">{fmt.num(c.base)}</div>
+            <div className="n">{fmt.num(d.status?.baseEvaluated ?? c.base)}</div>
             <p>
               Every indication × bot type is evaluated at Base; {d.wf.tapes} independent strategy
               tapes (Normal, capped Trailing, trailing-only, DCA, DCA Active and Axis across the
@@ -97,7 +97,8 @@ export function StagesPage() {
                 : ls.blocked
                   ? `blocked: ${ls.blocked}`
                   : (d.live?.reason ?? "armed")}
-              . Own CTSB tags only; foreign symbols are skipped.
+              . Own CTSB tags only; a foreign side is skipped in hedge mode, the whole symbol in
+              one-way mode or for a foreign order with no position side.
             </p>
           </div>
         </div>
@@ -162,7 +163,7 @@ export function StagesPage() {
 
       <Panel
         title="Timeframe lanes"
-        sub="1m base, 5m / 15m / 30m derived · m+ = combined (agrees with every higher timeframe) · each lane independent through every stage"
+        sub="1m base, 5m / 15m / 30m derived · m+ = combined (agrees with every higher timeframe) · each lane independent through every stage · sim = the simulated run (Σ trade %), paper = the open paper book (virtual) · a position is one symbol × direction episode: a real position held by several lanes counts in each lane, the total row counts it once"
         flush
       >
         {d.lanes?.length ? (
@@ -174,11 +175,11 @@ export function StagesPage() {
                   <th>Base evaluated</th>
                   <th>Base passed</th>
                   <th>Main tapes</th>
-                  <th>Positions / Orders</th>
-                  <th>Settled model return PF</th>
-                  <th>Net %</th>
-                  <th>WR</th>
-                  <th>Open pos / orders</th>
+                  <th>Sim positions / orders</th>
+                  <th>Sim settled model return PF</th>
+                  <th>Sim net (Σ trade %)</th>
+                  <th>Sim WR</th>
+                  <th>Paper open pos / orders</th>
                 </tr>
               </thead>
               <tbody>
@@ -199,6 +200,19 @@ export function StagesPage() {
                     </td>
                   </tr>
                 ))}
+                <tr className="v2-muted">
+                  <td style={{ fontWeight: 600 }}>all lanes</td>
+                  <td colSpan={3} />
+                  <td>
+                    {fmt.num(d.sim?.positions)} / {fmt.num(d.sim?.stats?.n)}
+                  </td>
+                  <td>{fmt.pf(d.sim?.stats?.pf)}</td>
+                  <td>{fmt.pct(d.sim?.stats?.net)}</td>
+                  <td>{fmt.ratio(d.sim?.stats?.wr)}</td>
+                  <td>
+                    {d.paper?.book?.positions ?? 0} / {d.paper?.book?.orders ?? 0}
+                  </td>
+                </tr>
               </tbody>
             </table>
           </div>
@@ -410,6 +424,7 @@ function SetListings(props: { minPf: number }) {
               ) : (
                 <tr>
                   <th>Config</th>
+                  {d.provenBySide && <th>Side</th>}
                 </tr>
               )}
             </thead>
@@ -440,8 +455,9 @@ function SetListings(props: { minPf: number }) {
                     <td>{x.side > 0 ? "long" : "short"}</td>
                   </tr>
                 ) : (
-                  <tr key={x.id ?? i}>
+                  <tr key={x.side ? `${x.id}|${x.side}` : (x.id ?? i)}>
                     <td>{x.id}</td>
+                    {d.provenBySide && <td>{x.side}</td>}
                   </tr>
                 ),
               )}

@@ -23,8 +23,9 @@ import {
   REF_TF,
 } from "./pipeline/pipeline.ts";
 import { barsFromCandles, headBars, resample, syntheticCandles, tailBars } from "./market/bars.ts";
-import { isRelateInd } from "./indications/relate.ts";
+import { isMicroCalculationInd as isMicroFamilyInd } from "./indications/micro-family.ts";
 import { isInverseInd } from "./indications/inverse-config.ts";
+import { isRelateInd } from "./indications/relate.ts";
 import { breakAnchorTf, isBreakRelInd } from "./indications/break-config.ts";
 import { DEFAULT_PROTECT, DEFAULT_SETTINGS } from "./config.ts";
 import { defaultWalkForward, kindOfInd, makeTape, selectDurable } from "./sim/walkforward.ts";
@@ -70,13 +71,13 @@ describe("lane combos", () => {
     const none = plain.filter((c) => c.ind === "none").length;
     const anchored = plain.filter((c) => {
       const base = laneOf(c.ind).base;
-      return isRelateInd(base) || isBreakRelInd(base);
+      return isRelateInd(base) || isBreakRelInd(base) || isMicroFamilyInd(base);
     });
     const relate = plain.filter((c) => isRelateInd(laneOf(c.ind).base));
     const breaking = plain.filter((c) => isBreakRelInd(laneOf(c.ind).base));
-    const inverse = plain.filter((c) => isInverseInd(c.ind));
-    assert.equal(lanes.length, (plain.length - none - anchored.length - inverse.length) * 7 + anchored.length + none * 4 + inverse.length * 5);
-    assert.equal(lanes.filter((c) => isInverseInd(laneOf(c.ind).base)).length, inverse.length * 5);
+    const inverse = plain.filter((c) => isInverseInd(c.ind) && !isMicroFamilyInd(c.ind)).length;
+    assert.equal(lanes.length, (plain.length - none - anchored.length - inverse) * 7 + anchored.length + inverse * 5 + none * 4);
+    assert.equal(lanes.filter((c) => isInverseInd(laneOf(c.ind).base) && !isMicroFamilyInd(laneOf(c.ind).base)).length, inverse * 5);
     assert.equal(lanes.filter((c) => isBreakRelInd(laneOf(c.ind).base)).length, breaking.length);
     assert.equal(lanes.filter((c) => isRelateInd(laneOf(c.ind).base)).length, relate.length);
     for (const c of lanes.filter((x) => isBreakRelInd(laneOf(x.ind).base)))
@@ -239,8 +240,7 @@ describe("short-history lanes are judged on the history they have", () => {
       [],
       [],
     );
-    // the 14-day fixtures pin the 336 h window; the production selection window is 24 h (commit 4779175)
-    const o = { ...defaultWalkForward(DEFAULT_SETTINGS), preGate: false, validLastN: 0, longH: 336 };
+    const o = { ...defaultWalkForward(DEFAULT_SETTINGS), longH: 336, preGate: false, validLastN: 0 };
     // without the history start: three of four sub-windows of the 14-day window are empty → rejected
     assert.equal(selectDurable([tape], now, o, new Set()).picks.length, 0);
     tape.fromT = 264 * H;

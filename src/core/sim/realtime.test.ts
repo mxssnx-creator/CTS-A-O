@@ -6,7 +6,7 @@ import { DEFAULT_AXIS, DEFAULT_DCA } from "../config.ts";
 import { signalId } from "../signal-config.ts";
 import type { Bars, Protect } from "../domain/types.ts";
 import { buildTapes, type ConfigTape } from "./walkforward.ts";
-import { RealtimeTapeBook, type RealtimeTapeGroup } from "./realtime.ts";
+import { RealtimeTapeBook, RealtimeTapeSet, type RealtimeTapeGroup } from "./realtime.ts";
 import { appendTape } from "./tape-append.ts";
 
 const M = 60_000;
@@ -22,6 +22,97 @@ const slice = (b: Bars, a: number, z = b.n): Bars => ({
 });
 
 describe("validated-cohort realtime continuations", () => {
+  it("retains independent engine/Signal source histories on 20 symbols and 1/5/15m", () => {
+    const start = Date.UTC(2026, 9, 1),
+      seedEnd = start + 3510 * M;
+    const all = Array.from({ length: 20 }, (_, i) => `S${i}-USDT`).flatMap((sym) => {
+      const candles = syntheticCandles(sym, 1, 3600, start + 3600 * M);
+      return [1, 5, 15].map((tf) => ({
+        ...barsFromCandles(sym, tf, resample(candles, 1, tf)),
+        lanes: [1, 5, 15],
+      }));
+    });
+    const mainAll = all.map((b) =>
+      slice(
+        b,
+        b.t.findIndex((t) => t >= seedEnd - 1950 * M),
+      ),
+    );
+    const mainSeed = mainAll.map((b) => headBars(b, seedEnd));
+    const sigSeed = all.map((b) => headBars(b, seedEnd));
+    const protects: Protect[] = [
+      { tp: 0.009, sl: 0.006, trail: 0, hold: 18 },
+      { tp: 0.015, sl: 0.009, trail: 0.004, trailStep: 0.7, hold: 36, trailMax: 0.025 },
+    ];
+    const pairs = (ind: string) => [1, 5, 15].map((tf) => `follow|${ind}@m${tf}`);
+    const groups: RealtimeTapeGroup[] = [
+      {
+        key: "main",
+        pairs: pairs("inverse-known-trend-ema"),
+        protects,
+        floors: { minSl: 0, minTrail: 0 },
+      },
+      {
+        key: "sig",
+        pairs: pairs(signalId("ema-cross", "short")),
+        protects,
+        bars: sigSeed,
+        floors: { minSl: 0, minTrail: 0 },
+      },
+    ];
+    const build = (bs: Bars[], g: RealtimeTapeGroup) =>
+      buildTapes(
+        makeUniverse(bs),
+        g.protects,
+        0.002,
+        undefined,
+        new Set(g.pairs),
+        undefined,
+        undefined,
+        g.floors,
+      );
+    const initial = groups.flatMap((g) => build(g.key === "main" ? mainSeed : sigSeed, g));
+    assert.ok(initial.length >= 12);
+    assert.ok(
+      build(sigSeed, groups[0]).reduce((n, tp) => n + tp.n, 0) >
+        build(mainSeed, groups[0]).reduce((n, tp) => n + tp.n, 0),
+      "longer history really changes the independent reference sample",
+    );
+    const current = new Map(initial.map((tp) => [tp.id, tp]));
+    const set = new RealtimeTapeSet(mainSeed, groups, 0.002);
+    for (const minutes of [1, 2, 5, 15, 30]) {
+      const ends = set.ends(),
+        cut = all.map((b) => headBars(b, seedEnd + minutes * M));
+      const tails = cut
+        .map((b) => {
+          const i = b.t.findIndex((t) => t > ends[`${b.sym}|${b.tfMin}`]);
+          return slice(b, i < 0 ? b.n : i);
+        })
+        .filter((b) => b.n > 0);
+      const delta = set.advance(tails);
+      for (const tp of delta.tapes) current.set(tp.id, appendTape(current.get(tp.id)!, tp));
+      const expected = groups.flatMap((g) =>
+        build(
+          (g.key === "main" ? mainAll : all).map((b) => headBars(b, seedEnd + minutes * M)),
+          g,
+        ),
+      );
+      assert.equal(current.size, expected.length);
+      for (const tp of expected) assert.deepEqual(current.get(tp.id), tp, `${minutes}m ${tp.id}`);
+    }
+    assert.throws(
+      () =>
+        new RealtimeTapeSet(
+          mainSeed,
+          [{ ...groups[0], bars: mainAll.map((b) => headBars(b, seedEnd - M)) }, groups[1]],
+          0.002,
+        ),
+      /endpoints differ/,
+    );
+    assert.throws(() => set.advance([{ ...all[0], sym: "UNKNOWN" }]), /unknown realtime series/);
+    assert.throws(() => set.advance([]), /new bootstrap/);
+  });
+
   it("matches full tapes exactly over 1/5/15m, both sides and every simulator family", () => {
     const start = Date.UTC(2026, 9, 1),
       initialEnd = start + 2100 * M;

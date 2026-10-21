@@ -19,7 +19,7 @@ import { exitStrategyPairs } from "../exit-strategy.ts";
 const END = Date.UTC(2026, 9, 1);
 const fixture = (n = 1600, tf = 5) =>
   barsFromCandles("TEST-USDT", tf, syntheticCandles("TEST", tf, n, END, 17));
-const inverse = INDICATIONS.filter((s) => s.kind === "inverse");
+const inverse = INDICATIONS.filter((s) => s.kind === "inverse" && INVERSE_CONFIG_IDS.includes(s.id));
 
 test("Inverse retains independent DCA, DCA Active, Axis and bot-free Exit identities", () => {
   // A noisy market exercises ladder fills; the smooth causal-market fixture intentionally

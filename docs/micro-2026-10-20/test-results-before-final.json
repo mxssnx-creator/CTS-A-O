@@ -1,0 +1,111 @@
+{
+  "status": "final isolated full inventory pending",
+  "coreFilesTotal": 213,
+  "sourceSha256": "ae7b2021fbdce8c3432329781dfc19a651c7e1fc488b3826874af741e69befaa",
+  "baselineFullInventory": {
+    "runId": 39500328398,
+    "files": 212,
+    "tests": 2377,
+    "passed": 2372,
+    "failed": 3,
+    "explicitSlowSkipped": 2,
+    "failedFiles": [
+      "src/core/server/fast.test.ts",
+      "src/core/server/runtime.test.ts"
+    ],
+    "note": "Original failures preserved; incorrect fixture seeding / undefined optional snapshot properties repaired without relaxing accounting guards"
+  },
+  "currentTargeted": {
+    "fundedReportStageParity": {
+      "passed": 40,
+      "failed": 0
+    },
+    "paperRestart": {
+      "passed": 2,
+      "failed": 0
+    },
+    "fastLoops": {
+      "passed": 5,
+      "failed": 0
+    },
+    "orderIdentityIndependenceStageParity": {
+      "passed": 41,
+      "failed": 0
+    },
+    "typecheck": "passed",
+    "lint": "zero errors; newly changed audit/fixture files clean"
+  },
+  "marketReplay": {
+    "originalWindowCi": 39504046969,
+    "reportChecksPassed": 60,
+    "reportChecksTotal": 60,
+    "gateDecisionsPaired": 750636,
+    "gateDifferences": 0,
+    "fundedCloses": 126342,
+    "knownZeroAllocations": 5516,
+    "fundedPf": 0.10195631060722055,
+    "matchedTapeCloses": 126342,
+    "tapeDifferences": 0,
+    "duplicateRejectionsAfterFix": 0,
+    "scope": "Simulation only; all-config $10 sizing is capital-infeasible"
+  },
+  "notes": [
+    "No completed full-green final inventory claimed until isolated runner results are collected.",
+    "Two slow runtime tests are explicit exclusions of the ordinary inventory, not completed native/venue evidence.",
+    "Detailed before/after market cohorts, source origin and losing validation outcomes remain archived."
+  ],
+  "universalAudit": {
+    "sourceSha256": "ae7b2021fbdce8c3432329781dfc19a651c7e1fc488b3826874af741e69befaa",
+    "ciRun": 39508546694,
+    "commit": "b4eb41ead3c57e37532d646e6435757e14f66189",
+    "artifactId": 12305110025,
+    "artifactSha256": "ea0e9224ea70b343628889b355e984b86f5db0228fea81d020571844135d330d",
+    "complete": true,
+    "sourceFamilies": 19,
+    "registeredSources": 1708,
+    "nativeSymbols": 20,
+    "hourlyCuts": 6,
+    "totals": {
+      "laneSymbolCases": 123680,
+      "comparisons": 742080,
+      "comparedBars": 1698255600,
+      "entryComparisons": 4590120,
+      "entryCases": 765020
+    },
+    "violations": 0,
+    "identityCells": 606032,
+    "controlledPositiveHourlyDecisions": 5124,
+    "controlledNegativeHourlyDecisions": 5124,
+    "classification": "Real historical state/entry causality plus synthetic identity/gate correctness; not a positive market-return guarantee"
+  },
+  "primaryCiRun": 39506738033,
+  "primaryPartitions": {
+    "ordinary": {
+      "files": 206,
+      "pass": 2290,
+      "fail": 0
+    },
+    "runtime": {
+      "files": 1,
+      "pass": 28,
+      "fail": 0,
+      "slowExcluded": 2
+    },
+    "heavyBeforeSignalFixtureRepair": {
+      "files": 6,
+      "pass": 56,
+      "failedAssertions": 0,
+      "cancelledInSetup": 3
+    }
+  },
+  "slowRuntime": {
+    "run": 39508546694,
+    "pass": 2,
+    "fail": 0
+  },
+  "signalFixtureRepair": {
+    "localPassed": 3,
+    "failed": 0,
+    "durationMs": 7367.419624
+  }
+}

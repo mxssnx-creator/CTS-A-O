@@ -98,32 +98,64 @@ export async function historyWith(signed, network, conn, from, to) {
   return [...out.values()];
 }
 
-/** `all`: the account's orders already read (one read serves every tag of a monitoring round). */
+/**
+ * `all`: the account's orders already read (one read serves every tag of a monitoring round) — every order, or at
+ * least every order on the symbols the tag trades.
+ *
+ * Own-first (decision of 14 Oct: the operator's quantity is never own): per symbol × side one episode from the first own
+ * fill in until the own quantity is back to 0. A closing fill of an order that is not ours (a close by hand, another
+ * system) on a key the tag holds reduces the OWN quantity first: the episode carries its share of that fill's realized
+ * profit and commission (× q_own / q — the loss limit is money truth), and own at 0 ends it with closedBy "hand"
+ * (flagged: PF views leave such episodes out). Someone else's fill into the position never adds to ours, and only own
+ * fills enter the close-slice ledger.
+ */
 export async function ownResults({ conn = "bingx-vst-02", tag, from, to = Date.now(), all = null, modelCost }) {
   const modelSource = modelCost === undefined ? "current-default-estimate" : "explicit-model";
   if (modelCost === undefined) modelCost = RT_COST;
   if (!Number.isFinite(modelCost) || modelCost < 0) throw new Error("modelCost must be finite and nonnegative");
   const network = conn === "bingx-x01" ? "mainnet" : "testnet";
   const T = tag.toUpperCase();
+  const isOwn = (o) => String(o.clientOrderId ?? "").toUpperCase().startsWith(T);
+  // own orders: cumulative snapshots of one order collapse to its latest (orderIdentity); the others are kept as read
   const own = new Map();
+  const others = [];
   for (const o of all ?? (await history(network, conn, from, to)))
-    if (String(o.clientOrderId ?? "").toUpperCase().startsWith(T)) rememberOrder(own, o);
+    if (isOwn(o)) rememberOrder(own, o);
+    else others.push(o);
   const orders = [...own.values()];
-  // positions: per symbol × side, one episode from the first own fill in until the own quantity is back to 0
+  const every = [...orders, ...others];
+  const keyOf = (o) => `${o.symbol}|${o.positionSide}`;
+  const ownKeys = new Set(orders.map(keyOf));
   // (the exchange's position ids are 19-digit integers that lose precision as JSON numbers)
-  const fills = orders
-    .filter((o) => num(o.executedQty) > 0)
+  const fills = every
+    .filter((o) => ownKeys.has(keyOf(o)) && num(o.executedQty) > 0)
     .sort((a, b) => num(a.updateTime || a.time) - num(b.updateTime || b.time));
   const open = new Map();
   const byPos = [];
   const ledger = [];
   for (const o of fills) {
-    const k = `${o.symbol}|${o.positionSide}`;
+    const k = keyOf(o);
     const q = num(o.executedQty);
     const into = (o.positionSide === "LONG" && o.side === "BUY") || (o.positionSide === "SHORT" && o.side === "SELL");
     let p = open.get(k);
+    if (!isOwn(o)) {
+      if (into || !p || !(q > 0)) continue;
+      const cut = Math.min(p.qty, q);
+      if (!(cut > 1e-12)) continue;
+      const share = cut / q;
+      p.profit += num(o.profit) * share;
+      p.fee += num(o.commission) * share;
+      p.handQty += cut;
+      p.last = Math.max(p.last, num(o.updateTime || o.time));
+      p.qty -= cut;
+      if (p.qty <= 1e-9) {
+        p.closedBy = "hand";
+        open.delete(k);
+      }
+      continue;
+    }
     if (!p) {
-      p = { sym: o.symbol, side: o.positionSide, kind: "", first: num(o.time), last: 0, profit: 0, fee: 0, orders: 0, notional: 0, qty: 0 };
+      p = { sym: o.symbol, side: o.positionSide, kind: "", first: num(o.time), last: 0, profit: 0, fee: 0, orders: 0, notional: 0, qty: 0, inQty: 0, handQty: 0, closedBy: "own" };
       open.set(k, p);
       byPos.push(p);
     }
@@ -146,7 +178,10 @@ export async function ownResults({ conn = "bingx-vst-02", tag, from, to = Date.n
     p.profit += num(o.profit);
     p.fee += num(o.commission);
     p.orders++;
-    if (into) p.notional += num(o.cumQuote) || num(o.avgPrice) * q;
+    if (into) {
+      p.notional += num(o.cumQuote) || num(o.avgPrice) * q;
+      p.inQty += q;
+    }
     p.qty += into ? q : -q;
     if (p.qty <= 1e-9) open.delete(k);
   }
@@ -155,17 +190,30 @@ export async function ownResults({ conn = "bingx-vst-02", tag, from, to = Date.n
   for (const p of byPos) {
     const kind = KIND[p.kind] ?? "unknown";
     const net = p.profit + p.fee;
+    const isOpen = p.qty > 1e-9;
+    // the own average entry (own fills in only): the open P&L of the own quantity is marked against it
+    const avgEntry = p.inQty > 0 ? p.notional / p.inQty : 0;
+    const hand = p.closedBy === "hand";
     const r = p.notional > 0 ? net / p.notional : null;
-    positions.push({ ...p, kind, net, r, open: p.qty > 1e-9 });
+    positions.push({ ...p, kind, net, r, open: isOpen, avgEntry, hand });
     const a = (byKind[kind] ??= {
       positions: 0, closedPositions: 0, openPositions: 0, returnCloses: 0, unpricedPositions: 0,
       wins: 0, gp: 0, gl: 0, cashGp: 0, cashGl: 0, net: 0, fee: 0, profit: 0, notional: 0,
-      episodeGp: 0, episodeGl: 0, episodeCashGp: 0, episodeCashGl: 0,
+      episodeGp: 0, episodeGl: 0, episodeCashGp: 0, episodeCashGl: 0, hand: 0, handNet: 0,
     });
+    a.net += net;
+    a.fee += p.fee;
+    a.profit += p.profit;
+    if (hand) {
+      // ended by an order not ours: money, not a result of the tag's own exits (left out of every PF, counted apart)
+      a.hand++;
+      a.handNet += net;
+      continue;
+    }
     a.positions++;
     // Closed-position PF: an entry fee or a partial realization of a still-open episode is not a closed position.
     // Its realized dollars remain in net (the account-loss guard needs them), while its PF is judged after it exits.
-    if (p.qty > 1e-9) a.openPositions++;
+    if (isOpen) a.openPositions++;
     else {
       a.closedPositions++;
       if (net > 0) {
@@ -179,9 +227,6 @@ export async function ownResults({ conn = "bingx-vst-02", tag, from, to = Date.n
         else a.episodeGl -= r;
       }
     }
-    a.net += net;
-    a.fee += p.fee;
-    a.profit += p.profit;
     a.notional += p.notional;
   }
   const closes = liveTrades(ledger, T.length, modelCost)
@@ -254,32 +299,66 @@ export async function ownResults({ conn = "bingx-vst-02", tag, from, to = Date.n
   };
 }
 
+/**
+ * The open P&L of the tag's own quantity: Σ own open qty × side × (mark − own average entry), from the exchange's
+ * positions (BingX user/positions rows). A position without a mark price falls back to the exchange's unrealized
+ * profit × the own share of the position (`approx`: true then).
+ */
+export function ownOpenPnl(positions, raw) {
+  let open = 0;
+  let approx = false;
+  for (const p of positions.filter((x) => x.open)) {
+    const b = (raw ?? []).find((x) => x.symbol === p.sym && String(x.positionSide).toUpperCase() === p.side);
+    const q = Math.abs(num(b?.positionAmt));
+    if (!(q > 0)) continue;
+    const own = Math.min(p.qty, q);
+    const mark = num(b?.markPrice);
+    if (mark > 0 && p.avgEntry > 0) open += own * (p.side === "LONG" ? 1 : -1) * (mark - p.avgEntry);
+    else {
+      open += num(b?.unrealizedProfit) * Math.min(1, own / q);
+      approx = true;
+    }
+  }
+  return { open, approx };
+}
+
 // `allowMainnet` only from a desk closing its own tag on x01 (the command line refuses mainnet); `from` = the
 // desk's start, so every own fill since then is counted (a desk running longer than a day)
 /**
  * Per symbol × side: the tag's own net quantity (its fills in minus its fills out) and the other systems' (every
- * other client-id prefix, manual orders included, each counted only while positive). Position ids are 19-digit
- * integers and are not compared.
+ * other client-id prefix, manual orders included), in time order and own-first: a closing fill that is not the tag's
+ * reduces the tag's quantity first (the operator's quantity is never own), only the rest the others'. Position ids
+ * are 19-digit integers and are not compared.
  */
 export function netByTag(orders, tag) {
   const T = tag.toUpperCase();
   const own = new Map();
-  const per = new Map();
-  for (const o of orders) {
+  const others = new Map();
+  const xs = orders
+    .map((o, i) => ({ o, i }))
+    .sort((a, b) => num(a.o.updateTime || a.o.time) - num(b.o.updateTime || b.o.time) || a.i - b.i);
+  for (const { o } of xs) {
     const q = num(o.executedQty);
     if (!(q > 0)) continue;
     const k = `${o.symbol}|${o.positionSide}`;
     const into = (o.positionSide === "LONG" && o.side === "BUY") || (o.positionSide === "SHORT" && o.side === "SELL");
-    const coid = String(o.clientOrderId ?? "").toUpperCase();
-    const g = coid.startsWith(T) ? T : (/^([A-Z0-9]{2,12}_)/.exec(coid)?.[1] ?? (coid ? coid.slice(0, 8) : "manual"));
-    if (g === T) own.set(k, (own.get(k) ?? 0) + (into ? q : -q));
+    const mine = String(o.clientOrderId ?? "").toUpperCase().startsWith(T);
+    const a = own.get(k) ?? 0;
+    const b = others.get(k) ?? 0;
+    if (mine) {
+      // an own close past the own quantity took the others' part (a closePosition order): theirs shrinks by the rest
+      if (into) own.set(k, a + q);
+      else {
+        own.set(k, Math.max(0, a - q));
+        if (others.has(k)) others.set(k, Math.max(0, b - Math.max(0, q - a)));
+      }
+    } else if (into) others.set(k, b + q);
     else {
-      const m = per.get(k) ?? per.set(k, new Map()).get(k);
-      m.set(g, (m.get(g) ?? 0) + (into ? q : -q));
+      const cut = Math.min(a, q);
+      if (own.has(k)) own.set(k, a - cut);
+      others.set(k, Math.max(0, b - (q - cut)));
     }
   }
-  const others = new Map();
-  for (const [k, m] of per) others.set(k, [...m.values()].reduce((a, v) => a + Math.max(0, v), 0));
   return { own, others };
 }
 

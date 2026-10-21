@@ -14,6 +14,18 @@ import { ENGINE_PROOF_PF, promotionGate, type LiveGate } from "./live-validation
 
 export const H = 3_600_000;
 
+/** Bounded real-engine grid for lifecycle tests; full Cartesian coverage has dedicated suites. */
+export function runtimeFixtureGrid(): CoreSettings["grid"] {
+  const grid = structuredClone(DEFAULT_SETTINGS.grid);
+  grid.holdH = [4];
+  for (const key of ["micro", "minimal", "short", "general", "long"] as const) {
+    const range = grid[key];
+    if (range) grid[key] = { ...range, tp: [range.tp[0], range.tp.at(-1)!],
+      slOfTp: [range.slOfTp[0], range.slOfTp.at(-1)!], trailOfTp: [0, range.trailOfTp.at(-1)!] };
+  }
+  return grid;
+}
+
 /** The synthetic market's end in tests: a fixed UTC hour, so every run sees the same bars, buckets and windows. */
 export const PINNED_END = Date.UTC(2026, 8, 30, 12);
 
@@ -202,7 +214,17 @@ export class SimExchange implements ExchangeClient {
     }
     return m;
   }
-  async setMarginMode(_sym: string, _mode: "cross" | "isolated") {}
+  /** the margin mode the venue reports per symbol (unset: cross, the venue's default) */
+  margins = new Map<string, "cross" | "isolated">();
+  /** symbols whose margin mode was set (setMarginMode calls) */
+  marginSet: string[] = [];
+  async setMarginMode(sym: string, mode: "cross" | "isolated") {
+    this.marginSet.push(sym);
+    this.margins.set(sym, mode);
+  }
+  async marginMode(sym: string) {
+    return this.margins.get(sym) ?? "cross";
+  }
   account?: () => Promise<AccountSnapshot | null>;
   leverage?: ExchangeClient["leverage"];
   setLeverage?: ExchangeClient["setLeverage"];
@@ -370,6 +392,22 @@ export class SimExchange implements ExchangeClient {
     this.orders = this.orders.filter((o) => !cond(o));
   }
   /**
+   * someone else's market order on a position (`sym|LONG|SHORT`) — the operator by hand in the venue's app, another
+   * system: `qty` into the position (it merges with ours) or, `into` false, out of it (never below 0). Nothing of ours is
+   * cancelled (a partial close leaves the side's orders resting); the venue's history shows it as an order not ours.
+   */
+  foreignFill(k: string, qty: number, into = true, px = this.px.get(k.split("|")[0]) ?? NaN) {
+    const [sym, ps] = k.split("|") as [string, "LONG" | "SHORT"];
+    const cur = this.positions.get(k) ?? 0;
+    const next = +(into ? cur + qty : Math.max(0, cur - qty)).toFixed(6);
+    const q = into ? qty : cur - next;
+    this.fills.push({ sym, ps, into, qty: q, px, t: Date.now() });
+    const side = (ps === "LONG") === into ? "BUY" : "SELL";
+    this.hist({ venueSymbol: sym, positionSide: ps, clientOrderId: "" }, "FILLED", px, q, side);
+    if (next > 0) this.positions.set(k, next);
+    else this.positions.delete(k);
+  }
+  /**
    * the take-profit of this position triggers: it closes at that price. `keepStop`: the venue leaves the position's
    * stop resting (else it cancels every close order of the position with it, as triggerStop does)
    */
@@ -415,6 +453,8 @@ export type FakePaperPosition = {
   entry: number;
   stop: number;
   vol: number;
+  /** Intrinsic ladder weight, independent of the external execution multiple. */
+  w?: number;
   level?: number;
   legs?: Partial<Record<"config" | "overall" | "symbol" | "direction" | "indication" | "type", number>>;
   entryT?: number;

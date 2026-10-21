@@ -1,0 +1,28 @@
+[core-v2] compute #1 done in 20444 ms · sim PF 0.21 n 1265 · loop max 608 ms
+▶ memory released after use, results unchanged
+  ✔ after a compute: no indicator memo left on the universe, the swap released the old index and books, no by_sym (39934.736984ms)
+[core-v2] compute #1 done in 15449 ms · sim PF 0.21 n 1265 · loop max 437 ms
+  ▶ a compute aborted in Exit or Signal history still clears the memos (worker and local fallback)
+    ✔ Exit history: worker (19518.22591ms)
+[core-v2] compute #1 done in 11650 ms · sim PF 0.21 n 1265 · loop max 436 ms
+    ✔ Exit history: fallback (15416.650167ms)
+[core-v2] compute #1 done in 11368 ms · sim PF 0.21 n 1265 · loop max 465 ms
+    ✔ Signal history: worker (15486.718011ms)
+[core-v2] compute #1 done in 12237 ms · sim PF 0.21 n 1265 · loop max 503 ms
+    ✔ Signal history: fallback (17294.746503ms)
+  ✔ a compute aborted in Exit or Signal history still clears the memos (worker and local fallback) (67722.640471ms)
+  ✔ the status' tape size memo does not hold a tape set the runtime replaced (383.553701ms)
+  ✔ the runtime's candles are columns: 4 × 25,920 bars add under 4 MB of heap (17 MB as objects) (292.67444ms)
+  ✔ the boot loader streams the candles: the same map, the same symbol order, the same values (33.443033ms)
+✔ memory released after use, results unchanged (110414.466838ms)
+▶ signal acceptance record
+  ✔ counts are 4-byte integers and every query answers as the reference does (51.476514ms)
+✔ signal acceptance record (51.669816ms)
+ℹ tests 10
+ℹ suites 2
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 111807.903539

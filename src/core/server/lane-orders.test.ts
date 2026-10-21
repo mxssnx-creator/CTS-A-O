@@ -10,11 +10,16 @@ import { coveredLanes, goneOrderOf, planLaneOrders, swapCount, trimLaneOrders, t
 import type { CoreRuntime } from "./runtime.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import { pxTick } from "../exchange/bingx.server.ts";
-import { authorizeSyntheticLanes, SimExchange, syntheticExecutionRun } from "../test-support.ts";
+import { authorizeSyntheticLanes, SimExchange, syntheticExecutionRun, type SimOrder } from "../test-support.ts";
 import type { LiveGate } from "../live-validation.ts";
+import { ownCoidKind } from "./live.ts";
 
 process.env.CTS_CORE_LIVE = "1";
 const H = 3_600_000;
+
+// a lane's own order (V stop, Y take-profit) — the position's backstop and take-profit are S / T (in hedge mode both are
+// quantity-bounded now: the kind, not closePosition, tells them apart)
+const isLane = (o: SimOrder) => /^[VY]$/.test(ownCoidKind(o.clientOrderId, DEFAULT_SETTINGS.live.connId));
 
 class Venue extends SimExchange {
   oneStopPerSide = true;
@@ -23,7 +28,7 @@ class Venue extends SimExchange {
     return this.orders.filter((o) => o.venueSymbol === sym && o.positionSide === ps && o.type === type);
   }
   partial(k: string, type: string) {
-    return this.of(k, type).filter((o) => !o.closePosition);
+    return this.of(k, type).filter((o) => isLane(o));
   }
 }
 
@@ -37,6 +42,7 @@ type Pos = {
   entryT: number;
   target?: number;
   trailOn?: boolean;
+  legs?: Record<string, number>;
 };
 
 function rtOf() {
@@ -233,8 +239,8 @@ describe("lane orders: the control step", { timeout: 120_000 }, () => {
     const st = ex.partial("S2-USDT|SHORT", "TAKE_PROFIT_MARKET");
     assert.ok(ss.length === 1 && ss[0].stopPrice! > 20 && st.length === 1 && st[0].stopPrice! < 20);
     // the backstop stays behind them all; no position-wide take-profit
-    assert.equal(ex.of("S1-USDT|LONG", "STOP_MARKET").filter((o) => o.closePosition).length, 1);
-    assert.equal(ex.of("S1-USDT|LONG", "TAKE_PROFIT_MARKET").filter((o) => o.closePosition).length, 0);
+    assert.equal(ex.of("S1-USDT|LONG", "STOP_MARKET").filter((o) => !isLane(o)).length, 1);
+    assert.equal(ex.of("S1-USDT|LONG", "TAKE_PROFIT_MARKET").filter((o) => !isLane(o)).length, 0);
     const n = ex.log.length;
     await step();
     assert.equal(ex.log.length, n, "a steady book sends nothing more");
@@ -242,6 +248,39 @@ describe("lane orders: the control step", { timeout: 120_000 }, () => {
     assert.equal(c.laneOrders?.onExchange, 4);
     assert.equal(c.protect?.laneStops, 4);
     assert.equal(c.protect?.laneTps, 3);
+  });
+
+  it("a Block Overall position is ONE lane sized by its whole volume: one stop and one take-profit, none untracked", async () => {
+    const ex = new Venue();
+    const { rt } = rtOf();
+    const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+    // volume 4 = base 1 + overall leg 2 + symbol leg 1 (Overall legs share the position's stop and target)
+    const ov = { ...lane(1, "S1-USDT", 1, 10, 0.02, 0.05), vol: 4, legs: { overall: 2, symbol: 1 } };
+    const plain = lane(2, "S1-USDT", 1, 10, 0.04, 0.06);
+    // a Block-raised lane without legs (shared / additive): volume 3 → 3 units
+    const raised = { ...lane(3, "S2-USDT", -1, 20, 0.02, 0.04), vol: 3 };
+    rt.paper.positions = [ov, plain, raised];
+    await step();
+    assert.ok(near(ex.positions.get("S1-USDT|LONG")!, 5 * LANE), `4 + 1 units: ${ex.positions.get("S1-USDT|LONG")}`);
+    const stops = ex.partial("S1-USDT|LONG", "STOP_MARKET");
+    assert.equal(stops.length, 2, "one lane stop for the Overall position (not one per leg), one for the plain lane");
+    const qs = stops.map((o) => o.qty!).sort((x, y) => x - y);
+    assert.ok(near(qs[0], LANE) && near(qs[1], 4 * LANE), `the Overall lane holds its 4 units: ${qs}`);
+    const tps = ex.partial("S1-USDT|LONG", "TAKE_PROFIT_MARKET");
+    assert.equal(tps.length, 2);
+    // S2 at 20: one minimum 0.1; the raised lane 3 units, one stop for them
+    assert.ok(near(ex.positions.get("S2-USDT|SHORT")!, 0.3), `raised lane: ${ex.positions.get("S2-USDT|SHORT")}`);
+    assert.equal(ex.partial("S2-USDT|SHORT", "STOP_MARKET").length, 1);
+    assert.ok(near(ex.partial("S2-USDT|SHORT", "STOP_MARKET")[0].qty!, 0.3));
+    // every own lane order is in the lane map (none placed and then overwritten)
+    const map = liveKv<Record<string, LaneOrder>>(rt.db, "laneOrders") ?? {};
+    const tracked = new Set(Object.values(map).flatMap((lo) => [lo.s?.coid, lo.t?.coid]).filter(Boolean).map((c) => c!.toUpperCase()));
+    for (const o of [...stops, ...tps, ...ex.partial("S2-USDT|SHORT", "STOP_MARKET")])
+      assert.ok(tracked.has((o.clientOrderId ?? "").toUpperCase()), `own order ${o.clientOrderId} tracked`);
+    assert.equal(Object.keys(map).length, 3);
+    const n = ex.log.length;
+    await step();
+    assert.equal(ex.log.length, n, "a steady book sends nothing more");
   });
 
   it("a lane's stop fills on the venue: booked there, its take-profit cancelled, never reopened, the others untouched", async () => {
@@ -258,6 +297,7 @@ describe("lane orders: the control step", { timeout: 120_000 }, () => {
     ex.triggerOrder(stopA.id);
     tick(20_000);
     await step();
+    // relation: all rows — the test reads what the writer wrote
     const rows = rt.db.all<{ cfg: string; reason: string; exit: number }>("SELECT cfg, reason, exit FROM live_lane_trades");
     assert.deepEqual(rows.map((r) => [r.cfg, r.reason, r.exit]), [[a.cfg, "stop", 9.8]]);
     assert.ok(near(ex.positions.get("S1-USDT|LONG")!, LANE), "the other lane stays");
@@ -286,6 +326,7 @@ describe("lane orders: the control step", { timeout: 120_000 }, () => {
     ex.closeByHand("S1-USDT|LONG", 10.3);
     tick(20_000);
     await step();
+    // relation: all rows — the test reads what the writer wrote
     const rows = rt.db.all<{ cfg: string; reason: string; exit: number }>(
       "SELECT cfg, reason, exit FROM live_lane_trades ORDER BY cfg",
     );
@@ -393,8 +434,8 @@ describe("lane orders: the control step", { timeout: 120_000 }, () => {
     ];
     await step();
     // 2 backstops, then 12 − 2 − 5 reserved = 5 lane orders: the 5 levels nearest to the price
-    assert.equal(ex.orders.filter((o) => o.closePosition).length, 2, "every position's backstop");
-    const lanesPlaced = ex.orders.filter((o) => !o.closePosition);
+    assert.equal(ex.orders.filter((o) => !isLane(o)).length, 2, "every position's backstop");
+    const lanesPlaced = ex.orders.filter((o) => isLane(o));
     assert.equal(lanesPlaced.length, 5);
     // These are the five nearest logical levels. Venue-safe outward snapping can put an exact 4 % level one
     // price tick farther out (9.6 → 9.5999), so a raw distance <= 4 % incorrectly rejected the right selection.
@@ -490,9 +531,9 @@ describe("lane orders: the control step", { timeout: 120_000 }, () => {
     await step();
     tick(20_000);
     await step();
-    assert.equal(ex.orders.filter((o) => !o.closePosition).length, 0, "no lane order left");
-    assert.equal(ex.of("S1-USDT|LONG", "STOP_MARKET").filter((o) => o.closePosition).length, 1, "the position's stop");
-    const tp = ex.of("S1-USDT|LONG", "TAKE_PROFIT_MARKET").filter((o) => o.closePosition);
+    assert.equal(ex.orders.filter((o) => isLane(o)).length, 0, "no lane order left");
+    assert.equal(ex.of("S1-USDT|LONG", "STOP_MARKET").filter((o) => !isLane(o)).length, 1, "the position's stop");
+    const tp = ex.of("S1-USDT|LONG", "TAKE_PROFIT_MARKET").filter((o) => !isLane(o));
     assert.equal(tp.length, 1, "the position's take-profit, beyond the outer target");
     assert.ok(tp[0].stopPrice! > 10.6, `${tp[0].stopPrice}`);
     assert.ok(ex.positions.has("S1-USDT|LONG"), "the position stays");

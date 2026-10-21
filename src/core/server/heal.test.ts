@@ -5,7 +5,7 @@ import { CoreRuntime, type MarketFeed } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
 import { syntheticCandles } from "../market/bars.ts";
 import { DEFAULT_ADJUST } from "../config.ts";
-import { trackRuntimes } from "../test-support.ts";
+import { trackRuntimes, runtimeFixtureGrid } from "../test-support.ts";
 
 const small = {
   symbols: 3,
@@ -275,6 +275,7 @@ describe("self-healing", { timeout: 600_000 }, () => {
       {
         ...small,
         symbols: 12,
+        cycleMs: 250,
         symbolRank: "volume",
         historyDays: 6,
         tfDays: { "1": 2, "5": 3, "15": 6, "30": 6 },
@@ -282,6 +283,9 @@ describe("self-healing", { timeout: 600_000 }, () => {
         refineTop: 3,
         evalTop: 4,
         focus: ["follow|rsi-mom-14-25"],
+        // This assertion measures progressive engine batches. Independent Signal
+        // backfill may legitimately fetch the other symbols before the first paper step.
+        signals: { enabled: false },
       },
       { market: "bingx", priceStream: null, feed },
     );

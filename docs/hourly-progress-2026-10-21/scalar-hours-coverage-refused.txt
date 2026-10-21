@@ -1,0 +1,21 @@
+{"tapes":10000,"decisions":120000,"violations":0}
+{"tapes":18505,"decisions":222060,"violations":12,"steps":[{"t":1792227600000,"passed":14458,"dropped":0,"gained":0,"firstFailures":{"lastN":853,"lcb":2479,"pf":51,"rangeGate":4,"net":73,"closes":76,"ddr":29,"green":482},"unexplained":0},{"t":1792231200000,"passed":11914,"dropped":4088,"gained":1544,"firstFailures":{"net":170,"pf":111,"lcb":3963,"lastN":1772,"green":529,"closes":22,"ddr":24},"unexplained":0},{"t":1792234800000,"passed":9254,"dropped":3414,"gained":754,"firstFailures":{"net":154,"pf":158,"lcb":5223,"lastN":2824,"green":861,"closes":17,"ddr":14},"unexplained":0},{"t":1792238400000,"passed":8511,"dropped":2948,"gained":2205,"firstFailures":{"net":198,"pf":634,"rangeGate":2,"lcb":4759,"lastN":3203,"green":1171,"closes":10,"ddr":17},"unexplained":0},{"t":1792242000000,"passed":5367,"dropped":4340,"gained":1196,"firstFailures":{"net":1452,"pf":1723,"lcb":6525,"lastN":2898,"green":527,"ddr":3,"closes":10},"unexplained":0},{"t":1792245600000,"passed":2000,"dropped":3473,"gained":106,"firstFailures":{"net":7154,"pf":1822,"lcb":5702,"lastN":1429,"green":385,"ddr":3,"closes":10},"unexplained":0},{"t":1792249200000,"passed":750,"dropped":1369,"gained":119,"firstFailures":{"net":11243,"pf":2127,"lcb":3414,"lastN":948,"ddr":4,"green":15,"closes":4},"unexplained":0},{"t":1792252800000,"passed":570,"dropped":405,"gained":225,"firstFailures":{"net":15719,"pf":804,"lcb":905,"green":4,"lastN":502,"closes":1},"unexplained":0},{"t":1792256400000,"passed":389,"dropped":237,"gained":56,"firstFailures":{"net":17081,"pf":247,"lcb":693,"green":1,"closes":28,"lastN":64,"ddr":2},"unexplained":0},{"t":1792260000000,"passed":304,"dropped":173,"gained":88,"firstFailures":{"net":17475,"ddr":1,"lcb":339,"pf":271,"green":2,"lastN":108,"closes":5},"unexplained":0},{"t":1792263600000,"passed":245,"dropped":100,"gained":41,"firstFailures":{"net":17490,"lcb":372,"pf":243,"lastN":141,"closes":13,"rangeGate":1},"unexplained":0},{"t":1792267200000,"passed":68,"dropped":187,"gained":10,"firstFailures":{"net":17827,"pf":170,"lcb":242,"lastN":177,"green":14,"closes":7},"unexplained":0}]}
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: Independent hourly arithmetic / verdict mismatch
+
+12 !== 0
+
+    at hourlyAudit (file:///workspace/scratch/e92abb680845/CTS-A-O/.github/audits/hourly-progress.mjs:106:10)
+    at async file:///workspace/scratch/e92abb680845/CTS-A-O/.github/audits/hourly-progress.mjs:108:84 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: 12,
+  expected: 0,
+  operator: 'strictEqual',
+  diff: 'simple'
+}
+
+Node.js v24.19.0

@@ -2,6 +2,7 @@
 // memory-heavy strategy calculation again after each quarter-universe backfill batch.
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
+import { CandleSeries } from "../market/candle-series.ts";
 import { syntheticCandles } from "../market/bars.ts";
 import { trackRuntimes } from "../test-support.ts";
 import { CoreDb } from "./db.server.ts";
@@ -78,6 +79,21 @@ describe("offline replay universe backfill", { timeout: 20_000 }, () => {
     await until(() => computed.length > 0);
     assert.deepEqual(computed, [universe.slice(0, 6)]);
     assert.deepEqual(attempts, universe.slice(0, 6));
+  });
+
+  it("extends every existing short-history cache across progressive batches, including young symbols", async () => {
+    const { rt, attempts } = fixture(false);
+    const end = Math.floor(Date.now() / 60_000) * 60_000;
+    for (const sym of universe)
+      rt.candles.set(sym, CandleSeries.fromCandles(syntheticCandles(sym, 1, 200, end)));
+    const sync = () => (rt as unknown as { syncMarket(gen: number): Promise<boolean> }).syncMarket(rt.generation);
+    await sync();
+    assert.equal(attempts.length, 6);
+    assert.equal((rt as unknown as { prehistPending: boolean }).prehistPending, true, "existing symbols do not mark the history extension complete after one batch");
+    await sync(); await sync(); await sync();
+    assert.deepEqual(attempts, universe, "short but usable venue histories are not requested repeatedly ahead of later symbols");
+    await sync();
+    assert.deepEqual(attempts, universe, "completed span is not downloaded repeatedly");
   });
 
   for (const failure of ["reject", "short"] as const) {

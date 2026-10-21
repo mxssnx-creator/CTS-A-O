@@ -1,0 +1,6543 @@
+{
+  "ci": {
+    "run": 39500328398,
+    "job": 118895882566,
+    "commit": "4542d60d5cb74dd9f9066df3f9df8a4029e20750",
+    "artifact": 12299731639,
+    "artifactSha256": "3b41014dcdfa4bc18308880ad3caa41e4b764c6584808b6c4f653b3498ed7485"
+  },
+  "result": {
+    "schema": "cts-micro-load-v1",
+    "source": "synthetic functional load, no exchange executions",
+    "scope": "120 symbols; all 616 Micro/mirror identities; 1/5/15m singles and combinations; four Micro protects; two real runtime computations; 100 coalesced kicks. Full four-range financial grid measured separately on 20 real symbols.",
+    "settings": {
+      "tfMin": 1,
+      "tfs": [
+        1,
+        5,
+        15
+      ],
+      "tfDays": {
+        "1": 2,
+        "5": 2,
+        "15": 2,
+        "30": 18
+      },
+      "historyDays": 2,
+      "symbols": 120,
+      "symbolRank": "volatility1h",
+      "cycleMs": 250,
+      "tickMs": 100,
+      "cost": 0.0015,
+      "fees": {
+        "taker": 0.0005,
+        "maker": 0.0002,
+        "slippage": 0.00025
+      },
+      "adjust": {
+        "enabled": true,
+        "window": 15,
+        "triggerPf": 1,
+        "recoverPf": 1.2,
+        "slStep": 0.002,
+        "slMax": 0.03,
+        "trailStep": 0.001,
+        "trailMax": 0.02,
+        "pauseH": 12,
+        "autoCost": true
+      },
+      "exitStrategy": {
+        "enabled": false,
+        "timeframes": [
+          1,
+          5,
+          15
+        ],
+        "includeTactics": true,
+        "includeRelations": true,
+        "includeMicro": true,
+        "includeCombined": true,
+        "lookbackH": 168,
+        "trainFraction": 0.6,
+        "minEntries": 30,
+        "minValidationTrades": 12,
+        "minPf": 1.1,
+        "minGreenHourShare": 0.5,
+        "maxDdr": 1,
+        "holdH": 24,
+        "maxConfigsPerPair": 24,
+        "quantiles": [
+          0.6,
+          0.8
+        ],
+        "stopQuantiles": [
+          0.5,
+          0.75
+        ],
+        "minTp": 0.006,
+        "maxTp": 0.2,
+        "maxSl": 0.25,
+        "trailShares": [
+          0.33,
+          0.66
+        ],
+        "stopMultiples": [
+          1,
+          2
+        ]
+      },
+      "gates": {
+        "minPf": 1.1,
+        "maxDdtH": 35,
+        "minDdtH": 18,
+        "maxDdr": 1,
+        "rangeMinPf": {
+          "micro": 1.05,
+          "minimal": 1.1,
+          "short": 1.1,
+          "general": 1.2,
+          "long": 1.3
+        },
+        "minTrades": 12,
+        "quorum": 0.6,
+        "baseSetsMinPf": 1,
+        "warmup": true,
+        "lastNFloor": 5
+      },
+      "refineTop": 24,
+      "mainTop": 0,
+      "evalTop": 60,
+      "armTop": 10,
+      "paperNotional": 100,
+      "paperBalance": 1000,
+      "protectFloor": {
+        "minSl": 0.005,
+        "minTrail": 0.005
+      },
+      "sizing": {
+        "mode": "equityPct",
+        "pct": 0.002
+      },
+      "toggles": {
+        "normal": true,
+        "trailing": true,
+        "exit": false,
+        "block": false,
+        "blockActive": false,
+        "dca": false,
+        "dcaActive": false,
+        "axis": false
+      },
+      "tactics": {
+        "session": false,
+        "volRegime": true,
+        "trendStrength": true,
+        "chopRegime": false,
+        "cooldown": false,
+        "cooldownBars": 4
+      },
+      "focus": [
+        "follow|micro-1-drawdown-turn-fast",
+        "follow|micro-1-drawdown-turn-selective",
+        "follow|micro-1-drawdown-trend-fast",
+        "follow|micro-1-drawdown-trend-selective",
+        "follow|micro-1-range-reclaim-fast",
+        "follow|micro-1-range-reclaim-selective",
+        "follow|micro-1-impulse-retest-fast",
+        "follow|micro-1-impulse-retest-selective",
+        "follow|micro-1-squeeze-break-fast",
+        "follow|micro-1-squeeze-break-selective",
+        "follow|micro-1-residual-revert-fast",
+        "follow|micro-1-residual-revert-selective",
+        "follow|micro-1-market-follow-fast",
+        "follow|micro-1-market-follow-selective",
+        "follow|micro-1-activity-absorb-fast",
+        "follow|micro-1-activity-absorb-selective",
+        "follow|micro-1-drawdown-residual-fast",
+        "follow|micro-1-drawdown-residual-selective",
+        "follow|micro-1-drawdown-market-fast",
+        "follow|micro-1-drawdown-market-selective",
+        "follow|micro-1-pullback-activity-fast",
+        "follow|micro-1-pullback-activity-selective",
+        "follow|micro-1-adaptive-fast",
+        "follow|micro-1-adaptive-selective",
+        "follow|micro-1-break-close-fast",
+        "follow|micro-1-break-close-selective",
+        "follow|micro-1-break-retest-fast",
+        "follow|micro-1-break-retest-selective",
+        "follow|micro-1-activity-acceleration-fast",
+        "follow|micro-1-activity-acceleration-selective",
+        "follow|micro-1-activity-flow-fast",
+        "follow|micro-1-activity-flow-selective",
+        "follow|micro-1-change-ema-fast",
+        "follow|micro-1-change-ema-selective",
+        "follow|micro-1-change-roc-fast",
+        "follow|micro-1-change-roc-selective",
+        "follow|micro-1-break-activity-fast",
+        "follow|micro-1-break-activity-selective",
+        "follow|micro-1-break-direction-fast",
+        "follow|micro-1-break-direction-selective",
+        "follow|micro-1-market-momentum-fast",
+        "follow|micro-1-market-momentum-selective",
+        "follow|micro-1-relative-trend-fast",
+        "follow|micro-1-relative-trend-selective",
+        "follow|micro-1-flow-break-fast",
+        "follow|micro-1-flow-break-selective",
+        "follow|micro-1-trend-reclaim-fast",
+        "follow|micro-1-trend-reclaim-selective",
+        "follow|micro-1-market-continuation-fast",
+        "follow|micro-1-market-continuation-selective",
+        "follow|micro-1-direction-persist-fast",
+        "follow|micro-1-direction-persist-selective",
+        "follow|micro-5-drawdown-turn-fast",
+        "follow|micro-5-drawdown-turn-selective",
+        "follow|micro-5-drawdown-trend-fast",
+        "follow|micro-5-drawdown-trend-selective",
+        "follow|micro-5-range-reclaim-fast",
+        "follow|micro-5-range-reclaim-selective",
+        "follow|micro-5-impulse-retest-fast",
+        "follow|micro-5-impulse-retest-selective",
+        "follow|micro-5-squeeze-break-fast",
+        "follow|micro-5-squeeze-break-selective",
+        "follow|micro-5-residual-revert-fast",
+        "follow|micro-5-residual-revert-selective",
+        "follow|micro-5-market-follow-fast",
+        "follow|micro-5-market-follow-selective",
+        "follow|micro-5-activity-absorb-fast",
+        "follow|micro-5-activity-absorb-selective",
+        "follow|micro-5-drawdown-residual-fast",
+        "follow|micro-5-drawdown-residual-selective",
+        "follow|micro-5-drawdown-market-fast",
+        "follow|micro-5-drawdown-market-selective",
+        "follow|micro-5-pullback-activity-fast",
+        "follow|micro-5-pullback-activity-selective",
+        "follow|micro-5-adaptive-fast",
+        "follow|micro-5-adaptive-selective",
+        "follow|micro-5-break-close-fast",
+        "follow|micro-5-break-close-selective",
+        "follow|micro-5-break-retest-fast",
+        "follow|micro-5-break-retest-selective",
+        "follow|micro-5-activity-acceleration-fast",
+        "follow|micro-5-activity-acceleration-selective",
+        "follow|micro-5-activity-flow-fast",
+        "follow|micro-5-activity-flow-selective",
+        "follow|micro-5-change-ema-fast",
+        "follow|micro-5-change-ema-selective",
+        "follow|micro-5-change-roc-fast",
+        "follow|micro-5-change-roc-selective",
+        "follow|micro-5-break-activity-fast",
+        "follow|micro-5-break-activity-selective",
+        "follow|micro-5-break-direction-fast",
+        "follow|micro-5-break-direction-selective",
+        "follow|micro-5-market-momentum-fast",
+        "follow|micro-5-market-momentum-selective",
+        "follow|micro-5-relative-trend-fast",
+        "follow|micro-5-relative-trend-selective",
+        "follow|micro-5-flow-break-fast",
+        "follow|micro-5-flow-break-selective",
+        "follow|micro-5-trend-reclaim-fast",
+        "follow|micro-5-trend-reclaim-selective",
+        "follow|micro-5-market-continuation-fast",
+        "follow|micro-5-market-continuation-selective",
+        "follow|micro-5-direction-persist-fast",
+        "follow|micro-5-direction-persist-selective",
+        "follow|micro-15-drawdown-turn-fast",
+        "follow|micro-15-drawdown-turn-selective",
+        "follow|micro-15-drawdown-trend-fast",
+        "follow|micro-15-drawdown-trend-selective",
+        "follow|micro-15-range-reclaim-fast",
+        "follow|micro-15-range-reclaim-selective",
+        "follow|micro-15-impulse-retest-fast",
+        "follow|micro-15-impulse-retest-selective",
+        "follow|micro-15-squeeze-break-fast",
+        "follow|micro-15-squeeze-break-selective",
+        "follow|micro-15-residual-revert-fast",
+        "follow|micro-15-residual-revert-selective",
+        "follow|micro-15-market-follow-fast",
+        "follow|micro-15-market-follow-selective",
+        "follow|micro-15-activity-absorb-fast",
+        "follow|micro-15-activity-absorb-selective",
+        "follow|micro-15-drawdown-residual-fast",
+        "follow|micro-15-drawdown-residual-selective",
+        "follow|micro-15-drawdown-market-fast",
+        "follow|micro-15-drawdown-market-selective",
+        "follow|micro-15-pullback-activity-fast",
+        "follow|micro-15-pullback-activity-selective",
+        "follow|micro-15-adaptive-fast",
+        "follow|micro-15-adaptive-selective",
+        "follow|micro-15-break-close-fast",
+        "follow|micro-15-break-close-selective",
+        "follow|micro-15-break-retest-fast",
+        "follow|micro-15-break-retest-selective",
+        "follow|micro-15-activity-acceleration-fast",
+        "follow|micro-15-activity-acceleration-selective",
+        "follow|micro-15-activity-flow-fast",
+        "follow|micro-15-activity-flow-selective",
+        "follow|micro-15-change-ema-fast",
+        "follow|micro-15-change-ema-selective",
+        "follow|micro-15-change-roc-fast",
+        "follow|micro-15-change-roc-selective",
+        "follow|micro-15-break-activity-fast",
+        "follow|micro-15-break-activity-selective",
+        "follow|micro-15-break-direction-fast",
+        "follow|micro-15-break-direction-selective",
+        "follow|micro-15-market-momentum-fast",
+        "follow|micro-15-market-momentum-selective",
+        "follow|micro-15-relative-trend-fast",
+        "follow|micro-15-relative-trend-selective",
+        "follow|micro-15-flow-break-fast",
+        "follow|micro-15-flow-break-selective",
+        "follow|micro-15-trend-reclaim-fast",
+        "follow|micro-15-trend-reclaim-selective",
+        "follow|micro-15-market-continuation-fast",
+        "follow|micro-15-market-continuation-selective",
+        "follow|micro-15-direction-persist-fast",
+        "follow|micro-15-direction-persist-selective",
+        "follow|micro-1x5-drawdown-turn-fast",
+        "follow|micro-1x5-drawdown-turn-selective",
+        "follow|micro-1x5-drawdown-trend-fast",
+        "follow|micro-1x5-drawdown-trend-selective",
+        "follow|micro-1x5-range-reclaim-fast",
+        "follow|micro-1x5-range-reclaim-selective",
+        "follow|micro-1x5-impulse-retest-fast",
+        "follow|micro-1x5-impulse-retest-selective",
+        "follow|micro-1x5-squeeze-break-fast",
+        "follow|micro-1x5-squeeze-break-selective",
+        "follow|micro-1x5-residual-revert-fast",
+        "follow|micro-1x5-residual-revert-selective",
+        "follow|micro-1x5-market-follow-fast",
+        "follow|micro-1x5-market-follow-selective",
+        "follow|micro-1x5-activity-absorb-fast",
+        "follow|micro-1x5-activity-absorb-selective",
+        "follow|micro-1x5-drawdown-residual-fast",
+        "follow|micro-1x5-drawdown-residual-selective",
+        "follow|micro-1x5-drawdown-market-fast",
+        "follow|micro-1x5-drawdown-market-selective",
+        "follow|micro-1x5-pullback-activity-fast",
+        "follow|micro-1x5-pullback-activity-selective",
+        "follow|micro-1x5-adaptive-fast",
+        "follow|micro-1x5-adaptive-selective",
+        "follow|micro-1x5-break-close-fast",
+        "follow|micro-1x5-break-close-selective",
+        "follow|micro-1x5-break-retest-fast",
+        "follow|micro-1x5-break-retest-selective",
+        "follow|micro-1x5-activity-acceleration-fast",
+        "follow|micro-1x5-activity-acceleration-selective",
+        "follow|micro-1x5-activity-flow-fast",
+        "follow|micro-1x5-activity-flow-selective",
+        "follow|micro-1x5-change-ema-fast",
+        "follow|micro-1x5-change-ema-selective",
+        "follow|micro-1x5-change-roc-fast",
+        "follow|micro-1x5-change-roc-selective",
+        "follow|micro-1x5-break-activity-fast",
+        "follow|micro-1x5-break-activity-selective",
+        "follow|micro-1x5-break-direction-fast",
+        "follow|micro-1x5-break-direction-selective",
+        "follow|micro-1x5-market-momentum-fast",
+        "follow|micro-1x5-market-momentum-selective",
+        "follow|micro-1x5-relative-trend-fast",
+        "follow|micro-1x5-relative-trend-selective",
+        "follow|micro-1x5-flow-break-fast",
+        "follow|micro-1x5-flow-break-selective",
+        "follow|micro-1x5-trend-reclaim-fast",
+        "follow|micro-1x5-trend-reclaim-selective",
+        "follow|micro-1x5-market-continuation-fast",
+        "follow|micro-1x5-market-continuation-selective",
+        "follow|micro-1x5-direction-persist-fast",
+        "follow|micro-1x5-direction-persist-selective",
+        "follow|micro-1x15-drawdown-turn-fast",
+        "follow|micro-1x15-drawdown-turn-selective",
+        "follow|micro-1x15-drawdown-trend-fast",
+        "follow|micro-1x15-drawdown-trend-selective",
+        "follow|micro-1x15-range-reclaim-fast",
+        "follow|micro-1x15-range-reclaim-selective",
+        "follow|micro-1x15-impulse-retest-fast",
+        "follow|micro-1x15-impulse-retest-selective",
+        "follow|micro-1x15-squeeze-break-fast",
+        "follow|micro-1x15-squeeze-break-selective",
+        "follow|micro-1x15-residual-revert-fast",
+        "follow|micro-1x15-residual-revert-selective",
+        "follow|micro-1x15-market-follow-fast",
+        "follow|micro-1x15-market-follow-selective",
+        "follow|micro-1x15-activity-absorb-fast",
+        "follow|micro-1x15-activity-absorb-selective",
+        "follow|micro-1x15-drawdown-residual-fast",
+        "follow|micro-1x15-drawdown-residual-selective",
+        "follow|micro-1x15-drawdown-market-fast",
+        "follow|micro-1x15-drawdown-market-selective",
+        "follow|micro-1x15-pullback-activity-fast",
+        "follow|micro-1x15-pullback-activity-selective",
+        "follow|micro-1x15-adaptive-fast",
+        "follow|micro-1x15-adaptive-selective",
+        "follow|micro-1x15-break-close-fast",
+        "follow|micro-1x15-break-close-selective",
+        "follow|micro-1x15-break-retest-fast",
+        "follow|micro-1x15-break-retest-selective",
+        "follow|micro-1x15-activity-acceleration-fast",
+        "follow|micro-1x15-activity-acceleration-selective",
+        "follow|micro-1x15-activity-flow-fast",
+        "follow|micro-1x15-activity-flow-selective",
+        "follow|micro-1x15-change-ema-fast",
+        "follow|micro-1x15-change-ema-selective",
+        "follow|micro-1x15-change-roc-fast",
+        "follow|micro-1x15-change-roc-selective",
+        "follow|micro-1x15-break-activity-fast",
+        "follow|micro-1x15-break-activity-selective",
+        "follow|micro-1x15-break-direction-fast",
+        "follow|micro-1x15-break-direction-selective",
+        "follow|micro-1x15-market-momentum-fast",
+        "follow|micro-1x15-market-momentum-selective",
+        "follow|micro-1x15-relative-trend-fast",
+        "follow|micro-1x15-relative-trend-selective",
+        "follow|micro-1x15-flow-break-fast",
+        "follow|micro-1x15-flow-break-selective",
+        "follow|micro-1x15-trend-reclaim-fast",
+        "follow|micro-1x15-trend-reclaim-selective",
+        "follow|micro-1x15-market-continuation-fast",
+        "follow|micro-1x15-market-continuation-selective",
+        "follow|micro-1x15-direction-persist-fast",
+        "follow|micro-1x15-direction-persist-selective",
+        "follow|micro-5x15-drawdown-turn-fast",
+        "follow|micro-5x15-drawdown-turn-selective",
+        "follow|micro-5x15-drawdown-trend-fast",
+        "follow|micro-5x15-drawdown-trend-selective",
+        "follow|micro-5x15-range-reclaim-fast",
+        "follow|micro-5x15-range-reclaim-selective",
+        "follow|micro-5x15-impulse-retest-fast",
+        "follow|micro-5x15-impulse-retest-selective",
+        "follow|micro-5x15-squeeze-break-fast",
+        "follow|micro-5x15-squeeze-break-selective",
+        "follow|micro-5x15-residual-revert-fast",
+        "follow|micro-5x15-residual-revert-selective",
+        "follow|micro-5x15-market-follow-fast",
+        "follow|micro-5x15-market-follow-selective",
+        "follow|micro-5x15-activity-absorb-fast",
+        "follow|micro-5x15-activity-absorb-selective",
+        "follow|micro-5x15-drawdown-residual-fast",
+        "follow|micro-5x15-drawdown-residual-selective",
+        "follow|micro-5x15-drawdown-market-fast",
+        "follow|micro-5x15-drawdown-market-selective",
+        "follow|micro-5x15-pullback-activity-fast",
+        "follow|micro-5x15-pullback-activity-selective",
+        "follow|micro-5x15-adaptive-fast",
+        "follow|micro-5x15-adaptive-selective",
+        "follow|micro-5x15-break-close-fast",
+        "follow|micro-5x15-break-close-selective",
+        "follow|micro-5x15-break-retest-fast",
+        "follow|micro-5x15-break-retest-selective",
+        "follow|micro-5x15-activity-acceleration-fast",
+        "follow|micro-5x15-activity-acceleration-selective",
+        "follow|micro-5x15-activity-flow-fast",
+        "follow|micro-5x15-activity-flow-selective",
+        "follow|micro-5x15-change-ema-fast",
+        "follow|micro-5x15-change-ema-selective",
+        "follow|micro-5x15-change-roc-fast",
+        "follow|micro-5x15-change-roc-selective",
+        "follow|micro-5x15-break-activity-fast",
+        "follow|micro-5x15-break-activity-selective",
+        "follow|micro-5x15-break-direction-fast",
+        "follow|micro-5x15-break-direction-selective",
+        "follow|micro-5x15-market-momentum-fast",
+        "follow|micro-5x15-market-momentum-selective",
+        "follow|micro-5x15-relative-trend-fast",
+        "follow|micro-5x15-relative-trend-selective",
+        "follow|micro-5x15-flow-break-fast",
+        "follow|micro-5x15-flow-break-selective",
+        "follow|micro-5x15-trend-reclaim-fast",
+        "follow|micro-5x15-trend-reclaim-selective",
+        "follow|micro-5x15-market-continuation-fast",
+        "follow|micro-5x15-market-continuation-selective",
+        "follow|micro-5x15-direction-persist-fast",
+        "follow|micro-5x15-direction-persist-selective",
+        "follow|micro-1x5x15-drawdown-turn-fast",
+        "follow|micro-1x5x15-drawdown-turn-selective",
+        "follow|micro-1x5x15-drawdown-trend-fast",
+        "follow|micro-1x5x15-drawdown-trend-selective",
+        "follow|micro-1x5x15-range-reclaim-fast",
+        "follow|micro-1x5x15-range-reclaim-selective",
+        "follow|micro-1x5x15-impulse-retest-fast",
+        "follow|micro-1x5x15-impulse-retest-selective",
+        "follow|micro-1x5x15-squeeze-break-fast",
+        "follow|micro-1x5x15-squeeze-break-selective",
+        "follow|micro-1x5x15-residual-revert-fast",
+        "follow|micro-1x5x15-residual-revert-selective",
+        "follow|micro-1x5x15-market-follow-fast",
+        "follow|micro-1x5x15-market-follow-selective",
+        "follow|micro-1x5x15-activity-absorb-fast",
+        "follow|micro-1x5x15-activity-absorb-selective",
+        "follow|micro-1x5x15-drawdown-residual-fast",
+        "follow|micro-1x5x15-drawdown-residual-selective",
+        "follow|micro-1x5x15-drawdown-market-fast",
+        "follow|micro-1x5x15-drawdown-market-selective",
+        "follow|micro-1x5x15-pullback-activity-fast",
+        "follow|micro-1x5x15-pullback-activity-selective",
+        "follow|micro-1x5x15-adaptive-fast",
+        "follow|micro-1x5x15-adaptive-selective",
+        "follow|micro-1x5x15-break-close-fast",
+        "follow|micro-1x5x15-break-close-selective",
+        "follow|micro-1x5x15-break-retest-fast",
+        "follow|micro-1x5x15-break-retest-selective",
+        "follow|micro-1x5x15-activity-acceleration-fast",
+        "follow|micro-1x5x15-activity-acceleration-selective",
+        "follow|micro-1x5x15-activity-flow-fast",
+        "follow|micro-1x5x15-activity-flow-selective",
+        "follow|micro-1x5x15-change-ema-fast",
+        "follow|micro-1x5x15-change-ema-selective",
+        "follow|micro-1x5x15-change-roc-fast",
+        "follow|micro-1x5x15-change-roc-selective",
+        "follow|micro-1x5x15-break-activity-fast",
+        "follow|micro-1x5x15-break-activity-selective",
+        "follow|micro-1x5x15-break-direction-fast",
+        "follow|micro-1x5x15-break-direction-selective",
+        "follow|micro-1x5x15-market-momentum-fast",
+        "follow|micro-1x5x15-market-momentum-selective",
+        "follow|micro-1x5x15-relative-trend-fast",
+        "follow|micro-1x5x15-relative-trend-selective",
+        "follow|micro-1x5x15-flow-break-fast",
+        "follow|micro-1x5x15-flow-break-selective",
+        "follow|micro-1x5x15-trend-reclaim-fast",
+        "follow|micro-1x5x15-trend-reclaim-selective",
+        "follow|micro-1x5x15-market-continuation-fast",
+        "follow|micro-1x5x15-market-continuation-selective",
+        "follow|micro-1x5x15-direction-persist-fast",
+        "follow|micro-1x5x15-direction-persist-selective",
+        "follow|inverse-micro-1-drawdown-turn-fast",
+        "follow|inverse-micro-1-drawdown-turn-selective",
+        "follow|inverse-micro-1-drawdown-trend-fast",
+        "follow|inverse-micro-1-drawdown-trend-selective",
+        "follow|inverse-micro-1-range-reclaim-fast",
+        "follow|inverse-micro-1-range-reclaim-selective",
+        "follow|inverse-micro-1-impulse-retest-fast",
+        "follow|inverse-micro-1-impulse-retest-selective",
+        "follow|inverse-micro-1-squeeze-break-fast",
+        "follow|inverse-micro-1-squeeze-break-selective",
+        "follow|inverse-micro-1-residual-revert-fast",
+        "follow|inverse-micro-1-residual-revert-selective",
+        "follow|inverse-micro-1-market-follow-fast",
+        "follow|inverse-micro-1-market-follow-selective",
+        "follow|inverse-micro-1-activity-absorb-fast",
+        "follow|inverse-micro-1-activity-absorb-selective",
+        "follow|inverse-micro-1-drawdown-residual-fast",
+        "follow|inverse-micro-1-drawdown-residual-selective",
+        "follow|inverse-micro-1-drawdown-market-fast",
+        "follow|inverse-micro-1-drawdown-market-selective",
+        "follow|inverse-micro-1-pullback-activity-fast",
+        "follow|inverse-micro-1-pullback-activity-selective",
+        "follow|inverse-micro-1-adaptive-fast",
+        "follow|inverse-micro-1-adaptive-selective",
+        "follow|inverse-micro-1-break-close-fast",
+        "follow|inverse-micro-1-break-close-selective",
+        "follow|inverse-micro-1-break-retest-fast",
+        "follow|inverse-micro-1-break-retest-selective",
+        "follow|inverse-micro-1-activity-acceleration-fast",
+        "follow|inverse-micro-1-activity-acceleration-selective",
+        "follow|inverse-micro-1-activity-flow-fast",
+        "follow|inverse-micro-1-activity-flow-selective",
+        "follow|inverse-micro-1-change-ema-fast",
+        "follow|inverse-micro-1-change-ema-selective",
+        "follow|inverse-micro-1-change-roc-fast",
+        "follow|inverse-micro-1-change-roc-selective",
+        "follow|inverse-micro-1-break-activity-fast",
+        "follow|inverse-micro-1-break-activity-selective",
+        "follow|inverse-micro-1-break-direction-fast",
+        "follow|inverse-micro-1-break-direction-selective",
+        "follow|inverse-micro-1-market-momentum-fast",
+        "follow|inverse-micro-1-market-momentum-selective",
+        "follow|inverse-micro-1-relative-trend-fast",
+        "follow|inverse-micro-1-relative-trend-selective",
+        "follow|inverse-micro-1-flow-break-fast",
+        "follow|inverse-micro-1-flow-break-selective",
+        "follow|inverse-micro-1-trend-reclaim-fast",
+        "follow|inverse-micro-1-trend-reclaim-selective",
+        "follow|inverse-micro-1-market-continuation-fast",
+        "follow|inverse-micro-1-market-continuation-selective",
+        "follow|inverse-micro-1-direction-persist-fast",
+        "follow|inverse-micro-1-direction-persist-selective",
+        "follow|inverse-micro-5-drawdown-turn-fast",
+        "follow|inverse-micro-5-drawdown-turn-selective",
+        "follow|inverse-micro-5-drawdown-trend-fast",
+        "follow|inverse-micro-5-drawdown-trend-selective",
+        "follow|inverse-micro-5-range-reclaim-fast",
+        "follow|inverse-micro-5-range-reclaim-selective",
+        "follow|inverse-micro-5-impulse-retest-fast",
+        "follow|inverse-micro-5-impulse-retest-selective",
+        "follow|inverse-micro-5-squeeze-break-fast",
+        "follow|inverse-micro-5-squeeze-break-selective",
+        "follow|inverse-micro-5-residual-revert-fast",
+        "follow|inverse-micro-5-residual-revert-selective",
+        "follow|inverse-micro-5-market-follow-fast",
+        "follow|inverse-micro-5-market-follow-selective",
+        "follow|inverse-micro-5-activity-absorb-fast",
+        "follow|inverse-micro-5-activity-absorb-selective",
+        "follow|inverse-micro-5-drawdown-residual-fast",
+        "follow|inverse-micro-5-drawdown-residual-selective",
+        "follow|inverse-micro-5-drawdown-market-fast",
+        "follow|inverse-micro-5-drawdown-market-selective",
+        "follow|inverse-micro-5-pullback-activity-fast",
+        "follow|inverse-micro-5-pullback-activity-selective",
+        "follow|inverse-micro-5-adaptive-fast",
+        "follow|inverse-micro-5-adaptive-selective",
+        "follow|inverse-micro-5-break-close-fast",
+        "follow|inverse-micro-5-break-close-selective",
+        "follow|inverse-micro-5-break-retest-fast",
+        "follow|inverse-micro-5-break-retest-selective",
+        "follow|inverse-micro-5-activity-acceleration-fast",
+        "follow|inverse-micro-5-activity-acceleration-selective",
+        "follow|inverse-micro-5-activity-flow-fast",
+        "follow|inverse-micro-5-activity-flow-selective",
+        "follow|inverse-micro-5-change-ema-fast",
+        "follow|inverse-micro-5-change-ema-selective",
+        "follow|inverse-micro-5-change-roc-fast",
+        "follow|inverse-micro-5-change-roc-selective",
+        "follow|inverse-micro-5-break-activity-fast",
+        "follow|inverse-micro-5-break-activity-selective",
+        "follow|inverse-micro-5-break-direction-fast",
+        "follow|inverse-micro-5-break-direction-selective",
+        "follow|inverse-micro-5-market-momentum-fast",
+        "follow|inverse-micro-5-market-momentum-selective",
+        "follow|inverse-micro-5-relative-trend-fast",
+        "follow|inverse-micro-5-relative-trend-selective",
+        "follow|inverse-micro-5-flow-break-fast",
+        "follow|inverse-micro-5-flow-break-selective",
+        "follow|inverse-micro-5-trend-reclaim-fast",
+        "follow|inverse-micro-5-trend-reclaim-selective",
+        "follow|inverse-micro-5-market-continuation-fast",
+        "follow|inverse-micro-5-market-continuation-selective",
+        "follow|inverse-micro-5-direction-persist-fast",
+        "follow|inverse-micro-5-direction-persist-selective",
+        "follow|inverse-micro-15-drawdown-turn-fast",
+        "follow|inverse-micro-15-drawdown-turn-selective",
+        "follow|inverse-micro-15-drawdown-trend-fast",
+        "follow|inverse-micro-15-drawdown-trend-selective",
+        "follow|inverse-micro-15-range-reclaim-fast",
+        "follow|inverse-micro-15-range-reclaim-selective",
+        "follow|inverse-micro-15-impulse-retest-fast",
+        "follow|inverse-micro-15-impulse-retest-selective",
+        "follow|inverse-micro-15-squeeze-break-fast",
+        "follow|inverse-micro-15-squeeze-break-selective",
+        "follow|inverse-micro-15-residual-revert-fast",
+        "follow|inverse-micro-15-residual-revert-selective",
+        "follow|inverse-micro-15-market-follow-fast",
+        "follow|inverse-micro-15-market-follow-selective",
+        "follow|inverse-micro-15-activity-absorb-fast",
+        "follow|inverse-micro-15-activity-absorb-selective",
+        "follow|inverse-micro-15-drawdown-residual-fast",
+        "follow|inverse-micro-15-drawdown-residual-selective",
+        "follow|inverse-micro-15-drawdown-market-fast",
+        "follow|inverse-micro-15-drawdown-market-selective",
+        "follow|inverse-micro-15-pullback-activity-fast",
+        "follow|inverse-micro-15-pullback-activity-selective",
+        "follow|inverse-micro-15-adaptive-fast",
+        "follow|inverse-micro-15-adaptive-selective",
+        "follow|inverse-micro-15-break-close-fast",
+        "follow|inverse-micro-15-break-close-selective",
+        "follow|inverse-micro-15-break-retest-fast",
+        "follow|inverse-micro-15-break-retest-selective",
+        "follow|inverse-micro-15-activity-acceleration-fast",
+        "follow|inverse-micro-15-activity-acceleration-selective",
+        "follow|inverse-micro-15-activity-flow-fast",
+        "follow|inverse-micro-15-activity-flow-selective",
+        "follow|inverse-micro-15-change-ema-fast",
+        "follow|inverse-micro-15-change-ema-selective",
+        "follow|inverse-micro-15-change-roc-fast",
+        "follow|inverse-micro-15-change-roc-selective",
+        "follow|inverse-micro-15-break-activity-fast",
+        "follow|inverse-micro-15-break-activity-selective",
+        "follow|inverse-micro-15-break-direction-fast",
+        "follow|inverse-micro-15-break-direction-selective",
+        "follow|inverse-micro-15-market-momentum-fast",
+        "follow|inverse-micro-15-market-momentum-selective",
+        "follow|inverse-micro-15-relative-trend-fast",
+        "follow|inverse-micro-15-relative-trend-selective",
+        "follow|inverse-micro-15-flow-break-fast",
+        "follow|inverse-micro-15-flow-break-selective",
+        "follow|inverse-micro-15-trend-reclaim-fast",
+        "follow|inverse-micro-15-trend-reclaim-selective",
+        "follow|inverse-micro-15-market-continuation-fast",
+        "follow|inverse-micro-15-market-continuation-selective",
+        "follow|inverse-micro-15-direction-persist-fast",
+        "follow|inverse-micro-15-direction-persist-selective",
+        "follow|inverse-micro-1x5-drawdown-turn-fast",
+        "follow|inverse-micro-1x5-drawdown-turn-selective",
+        "follow|inverse-micro-1x5-drawdown-trend-fast",
+        "follow|inverse-micro-1x5-drawdown-trend-selective",
+        "follow|inverse-micro-1x5-range-reclaim-fast",
+        "follow|inverse-micro-1x5-range-reclaim-selective",
+        "follow|inverse-micro-1x5-impulse-retest-fast",
+        "follow|inverse-micro-1x5-impulse-retest-selective",
+        "follow|inverse-micro-1x5-squeeze-break-fast",
+        "follow|inverse-micro-1x5-squeeze-break-selective",
+        "follow|inverse-micro-1x5-residual-revert-fast",
+        "follow|inverse-micro-1x5-residual-revert-selective",
+        "follow|inverse-micro-1x5-market-follow-fast",
+        "follow|inverse-micro-1x5-market-follow-selective",
+        "follow|inverse-micro-1x5-activity-absorb-fast",
+        "follow|inverse-micro-1x5-activity-absorb-selective",
+        "follow|inverse-micro-1x5-drawdown-residual-fast",
+        "follow|inverse-micro-1x5-drawdown-residual-selective",
+        "follow|inverse-micro-1x5-drawdown-market-fast",
+        "follow|inverse-micro-1x5-drawdown-market-selective",
+        "follow|inverse-micro-1x5-pullback-activity-fast",
+        "follow|inverse-micro-1x5-pullback-activity-selective",
+        "follow|inverse-micro-1x5-adaptive-fast",
+        "follow|inverse-micro-1x5-adaptive-selective",
+        "follow|inverse-micro-1x5-break-close-fast",
+        "follow|inverse-micro-1x5-break-close-selective",
+        "follow|inverse-micro-1x5-break-retest-fast",
+        "follow|inverse-micro-1x5-break-retest-selective",
+        "follow|inverse-micro-1x5-activity-acceleration-fast",
+        "follow|inverse-micro-1x5-activity-acceleration-selective",
+        "follow|inverse-micro-1x5-activity-flow-fast",
+        "follow|inverse-micro-1x5-activity-flow-selective",
+        "follow|inverse-micro-1x5-change-ema-fast",
+        "follow|inverse-micro-1x5-change-ema-selective",
+        "follow|inverse-micro-1x5-change-roc-fast",
+        "follow|inverse-micro-1x5-change-roc-selective",
+        "follow|inverse-micro-1x5-break-activity-fast",
+        "follow|inverse-micro-1x5-break-activity-selective",
+        "follow|inverse-micro-1x5-break-direction-fast",
+        "follow|inverse-micro-1x5-break-direction-selective",
+        "follow|inverse-micro-1x5-market-momentum-fast",
+        "follow|inverse-micro-1x5-market-momentum-selective",
+        "follow|inverse-micro-1x5-relative-trend-fast",
+        "follow|inverse-micro-1x5-relative-trend-selective",
+        "follow|inverse-micro-1x5-flow-break-fast",
+        "follow|inverse-micro-1x5-flow-break-selective",
+        "follow|inverse-micro-1x5-trend-reclaim-fast",
+        "follow|inverse-micro-1x5-trend-reclaim-selective",
+        "follow|inverse-micro-1x5-market-continuation-fast",
+        "follow|inverse-micro-1x5-market-continuation-selective",
+        "follow|inverse-micro-1x5-direction-persist-fast",
+        "follow|inverse-micro-1x5-direction-persist-selective",
+        "follow|inverse-micro-1x15-drawdown-turn-fast",
+        "follow|inverse-micro-1x15-drawdown-turn-selective",
+        "follow|inverse-micro-1x15-drawdown-trend-fast",
+        "follow|inverse-micro-1x15-drawdown-trend-selective",
+        "follow|inverse-micro-1x15-range-reclaim-fast",
+        "follow|inverse-micro-1x15-range-reclaim-selective",
+        "follow|inverse-micro-1x15-impulse-retest-fast",
+        "follow|inverse-micro-1x15-impulse-retest-selective",
+        "follow|inverse-micro-1x15-squeeze-break-fast",
+        "follow|inverse-micro-1x15-squeeze-break-selective",
+        "follow|inverse-micro-1x15-residual-revert-fast",
+        "follow|inverse-micro-1x15-residual-revert-selective",
+        "follow|inverse-micro-1x15-market-follow-fast",
+        "follow|inverse-micro-1x15-market-follow-selective",
+        "follow|inverse-micro-1x15-activity-absorb-fast",
+        "follow|inverse-micro-1x15-activity-absorb-selective",
+        "follow|inverse-micro-1x15-drawdown-residual-fast",
+        "follow|inverse-micro-1x15-drawdown-residual-selective",
+        "follow|inverse-micro-1x15-drawdown-market-fast",
+        "follow|inverse-micro-1x15-drawdown-market-selective",
+        "follow|inverse-micro-1x15-pullback-activity-fast",
+        "follow|inverse-micro-1x15-pullback-activity-selective",
+        "follow|inverse-micro-1x15-adaptive-fast",
+        "follow|inverse-micro-1x15-adaptive-selective",
+        "follow|inverse-micro-1x15-break-close-fast",
+        "follow|inverse-micro-1x15-break-close-selective",
+        "follow|inverse-micro-1x15-break-retest-fast",
+        "follow|inverse-micro-1x15-break-retest-selective",
+        "follow|inverse-micro-1x15-activity-acceleration-fast",
+        "follow|inverse-micro-1x15-activity-acceleration-selective",
+        "follow|inverse-micro-1x15-activity-flow-fast",
+        "follow|inverse-micro-1x15-activity-flow-selective",
+        "follow|inverse-micro-1x15-change-ema-fast",
+        "follow|inverse-micro-1x15-change-ema-selective",
+        "follow|inverse-micro-1x15-change-roc-fast",
+        "follow|inverse-micro-1x15-change-roc-selective",
+        "follow|inverse-micro-1x15-break-activity-fast",
+        "follow|inverse-micro-1x15-break-activity-selective",
+        "follow|inverse-micro-1x15-break-direction-fast",
+        "follow|inverse-micro-1x15-break-direction-selective",
+        "follow|inverse-micro-1x15-market-momentum-fast",
+        "follow|inverse-micro-1x15-market-momentum-selective",
+        "follow|inverse-micro-1x15-relative-trend-fast",
+        "follow|inverse-micro-1x15-relative-trend-selective",
+        "follow|inverse-micro-1x15-flow-break-fast",
+        "follow|inverse-micro-1x15-flow-break-selective",
+        "follow|inverse-micro-1x15-trend-reclaim-fast",
+        "follow|inverse-micro-1x15-trend-reclaim-selective",
+        "follow|inverse-micro-1x15-market-continuation-fast",
+        "follow|inverse-micro-1x15-market-continuation-selective",
+        "follow|inverse-micro-1x15-direction-persist-fast",
+        "follow|inverse-micro-1x15-direction-persist-selective",
+        "follow|inverse-micro-5x15-drawdown-turn-fast",
+        "follow|inverse-micro-5x15-drawdown-turn-selective",
+        "follow|inverse-micro-5x15-drawdown-trend-fast",
+        "follow|inverse-micro-5x15-drawdown-trend-selective",
+        "follow|inverse-micro-5x15-range-reclaim-fast",
+        "follow|inverse-micro-5x15-range-reclaim-selective",
+        "follow|inverse-micro-5x15-impulse-retest-fast",
+        "follow|inverse-micro-5x15-impulse-retest-selective",
+        "follow|inverse-micro-5x15-squeeze-break-fast",
+        "follow|inverse-micro-5x15-squeeze-break-selective",
+        "follow|inverse-micro-5x15-residual-revert-fast",
+        "follow|inverse-micro-5x15-residual-revert-selective",
+        "follow|inverse-micro-5x15-market-follow-fast",
+        "follow|inverse-micro-5x15-market-follow-selective",
+        "follow|inverse-micro-5x15-activity-absorb-fast",
+        "follow|inverse-micro-5x15-activity-absorb-selective",
+        "follow|inverse-micro-5x15-drawdown-residual-fast",
+        "follow|inverse-micro-5x15-drawdown-residual-selective",
+        "follow|inverse-micro-5x15-drawdown-market-fast",
+        "follow|inverse-micro-5x15-drawdown-market-selective",
+        "follow|inverse-micro-5x15-pullback-activity-fast",
+        "follow|inverse-micro-5x15-pullback-activity-selective",
+        "follow|inverse-micro-5x15-adaptive-fast",
+        "follow|inverse-micro-5x15-adaptive-selective",
+        "follow|inverse-micro-5x15-break-close-fast",
+        "follow|inverse-micro-5x15-break-close-selective",
+        "follow|inverse-micro-5x15-break-retest-fast",
+        "follow|inverse-micro-5x15-break-retest-selective",
+        "follow|inverse-micro-5x15-activity-acceleration-fast",
+        "follow|inverse-micro-5x15-activity-acceleration-selective",
+        "follow|inverse-micro-5x15-activity-flow-fast",
+        "follow|inverse-micro-5x15-activity-flow-selective",
+        "follow|inverse-micro-5x15-change-ema-fast",
+        "follow|inverse-micro-5x15-change-ema-selective",
+        "follow|inverse-micro-5x15-change-roc-fast",
+        "follow|inverse-micro-5x15-change-roc-selective",
+        "follow|inverse-micro-5x15-break-activity-fast",
+        "follow|inverse-micro-5x15-break-activity-selective",
+        "follow|inverse-micro-5x15-break-direction-fast",
+        "follow|inverse-micro-5x15-break-direction-selective",
+        "follow|inverse-micro-5x15-market-momentum-fast",
+        "follow|inverse-micro-5x15-market-momentum-selective",
+        "follow|inverse-micro-5x15-relative-trend-fast",
+        "follow|inverse-micro-5x15-relative-trend-selective",
+        "follow|inverse-micro-5x15-flow-break-fast",
+        "follow|inverse-micro-5x15-flow-break-selective",
+        "follow|inverse-micro-5x15-trend-reclaim-fast",
+        "follow|inverse-micro-5x15-trend-reclaim-selective",
+        "follow|inverse-micro-5x15-market-continuation-fast",
+        "follow|inverse-micro-5x15-market-continuation-selective",
+        "follow|inverse-micro-5x15-direction-persist-fast",
+        "follow|inverse-micro-5x15-direction-persist-selective",
+        "follow|inverse-micro-1x5x15-drawdown-turn-fast",
+        "follow|inverse-micro-1x5x15-drawdown-turn-selective",
+        "follow|inverse-micro-1x5x15-drawdown-trend-fast",
+        "follow|inverse-micro-1x5x15-drawdown-trend-selective",
+        "follow|inverse-micro-1x5x15-range-reclaim-fast",
+        "follow|inverse-micro-1x5x15-range-reclaim-selective",
+        "follow|inverse-micro-1x5x15-impulse-retest-fast",
+        "follow|inverse-micro-1x5x15-impulse-retest-selective",
+        "follow|inverse-micro-1x5x15-squeeze-break-fast",
+        "follow|inverse-micro-1x5x15-squeeze-break-selective",
+        "follow|inverse-micro-1x5x15-residual-revert-fast",
+        "follow|inverse-micro-1x5x15-residual-revert-selective",
+        "follow|inverse-micro-1x5x15-market-follow-fast",
+        "follow|inverse-micro-1x5x15-market-follow-selective",
+        "follow|inverse-micro-1x5x15-activity-absorb-fast",
+        "follow|inverse-micro-1x5x15-activity-absorb-selective",
+        "follow|inverse-micro-1x5x15-drawdown-residual-fast",
+        "follow|inverse-micro-1x5x15-drawdown-residual-selective",
+        "follow|inverse-micro-1x5x15-drawdown-market-fast",
+        "follow|inverse-micro-1x5x15-drawdown-market-selective",
+        "follow|inverse-micro-1x5x15-pullback-activity-fast",
+        "follow|inverse-micro-1x5x15-pullback-activity-selective",
+        "follow|inverse-micro-1x5x15-adaptive-fast",
+        "follow|inverse-micro-1x5x15-adaptive-selective",
+        "follow|inverse-micro-1x5x15-break-close-fast",
+        "follow|inverse-micro-1x5x15-break-close-selective",
+        "follow|inverse-micro-1x5x15-break-retest-fast",
+        "follow|inverse-micro-1x5x15-break-retest-selective",
+        "follow|inverse-micro-1x5x15-activity-acceleration-fast",
+        "follow|inverse-micro-1x5x15-activity-acceleration-selective",
+        "follow|inverse-micro-1x5x15-activity-flow-fast",
+        "follow|inverse-micro-1x5x15-activity-flow-selective",
+        "follow|inverse-micro-1x5x15-change-ema-fast",
+        "follow|inverse-micro-1x5x15-change-ema-selective",
+        "follow|inverse-micro-1x5x15-change-roc-fast",
+        "follow|inverse-micro-1x5x15-change-roc-selective",
+        "follow|inverse-micro-1x5x15-break-activity-fast",
+        "follow|inverse-micro-1x5x15-break-activity-selective",
+        "follow|inverse-micro-1x5x15-break-direction-fast",
+        "follow|inverse-micro-1x5x15-break-direction-selective",
+        "follow|inverse-micro-1x5x15-market-momentum-fast",
+        "follow|inverse-micro-1x5x15-market-momentum-selective",
+        "follow|inverse-micro-1x5x15-relative-trend-fast",
+        "follow|inverse-micro-1x5x15-relative-trend-selective",
+        "follow|inverse-micro-1x5x15-flow-break-fast",
+        "follow|inverse-micro-1x5x15-flow-break-selective",
+        "follow|inverse-micro-1x5x15-trend-reclaim-fast",
+        "follow|inverse-micro-1x5x15-trend-reclaim-selective",
+        "follow|inverse-micro-1x5x15-market-continuation-fast",
+        "follow|inverse-micro-1x5x15-market-continuation-selective",
+        "follow|inverse-micro-1x5x15-direction-persist-fast",
+        "follow|inverse-micro-1x5x15-direction-persist-selective"
+      ],
+      "pinned": [],
+      "disabledKinds": [
+        "trend",
+        "break",
+        "active",
+        "direction",
+        "move",
+        "rsi",
+        "bollinger",
+        "sar",
+        "macd",
+        "ema",
+        "osc",
+        "volume",
+        "channel",
+        "ichimoku",
+        "smooth",
+        "tactic",
+        "relate"
+      ],
+      "block": {
+        "sources": {
+          "config": false,
+          "overall": true,
+          "symbol": true,
+          "direction": true,
+          "indication": true,
+          "type": false
+        },
+        "mode": "overall",
+        "historySource": "accepted-orders",
+        "ratio": 0.5,
+        "maxLevel": 8,
+        "minActiveLevel": 2,
+        "maxMult": 8,
+        "pause": 0,
+        "steps": 7,
+        "increase": 0.4,
+        "signalsOwn": true,
+        "ranges": {
+          "levels": [
+            1,
+            8
+          ],
+          "volRatio": [
+            0.1,
+            1
+          ],
+          "steps": [
+            0,
+            6
+          ],
+          "increase": [
+            0.1,
+            0.5
+          ],
+          "pause": [
+            0,
+            6
+          ]
+        }
+      },
+      "dca": {
+        "levels": 2,
+        "step": 0.02,
+        "stopGap": 0.5,
+        "slOfTp": 1
+      },
+      "axis": {
+        "levels": 3,
+        "spacing": 0.7,
+        "ratio": 1,
+        "minDisp": 0.35,
+        "maxDisp": 2.6,
+        "center": 50,
+        "centerMin": 132,
+        "ranges": [
+          "atr",
+          "linear",
+          "geo",
+          "fib"
+        ],
+        "levelsSet": [
+          2,
+          3
+        ],
+        "exits": "managed",
+        "mode": "revert",
+        "slAtr": 0.7,
+        "tpRatio": 2.2,
+        "hybrid": false,
+        "trailPct": 0.8,
+        "expiry": 0
+      },
+      "grid": {
+        "volumeFactor": 1,
+        "tp": [],
+        "slOfTp": [
+          1,
+          2
+        ],
+        "trailOfTp": [
+          0,
+          0.5
+        ],
+        "minTrail": 0.006,
+        "minSl": 0.01,
+        "holdH": [
+          16,
+          24
+        ],
+        "trailStep": 1,
+        "trailFree": false,
+        "minimal": false,
+        "short": false,
+        "general": false,
+        "long": false,
+        "micro": {
+          "volumeFactor": 1,
+          "tp": [
+            0.002
+          ],
+          "slOfTp": [
+            1,
+            2
+          ],
+          "trailOfTp": [
+            0,
+            0.5
+          ],
+          "trailSlOfTp": 1,
+          "minSl": 0.005,
+          "minTrail": 0.001,
+          "tpNetOfCost": true,
+          "minSlNet": 0.002,
+          "maxHoldMin": 60
+        },
+        "minimalPlus": {
+          "volumeFactor": 1,
+          "tp": [
+            0.004,
+            0.0045,
+            0.005,
+            0.0055,
+            0.006,
+            0.0065,
+            0.007,
+            0.0075,
+            0.008,
+            0.0085,
+            0.009,
+            0.0095,
+            0.01
+          ],
+          "slOfTp": [
+            0.5,
+            0.75,
+            1,
+            1.25,
+            1.5,
+            1.75,
+            2,
+            2.25,
+            2.5,
+            2.75,
+            3
+          ],
+          "trailOfTp": [
+            0,
+            0.25,
+            0.5,
+            0.75
+          ],
+          "trailSlOfTp": 2.5,
+          "minSl": 0.001,
+          "minTrail": 0.001,
+          "enabled": false,
+          "lastN": 50,
+          "minPf": 1.35
+        },
+        "rangeGate": {
+          "enabled": true,
+          "lastN": 75,
+          "minPf": 1.35
+        },
+        "baseBest": true,
+        "rangeFit": {
+          "enabled": false
+        },
+        "baseTargets": true,
+        "baseRanges": true,
+        "baseTrailCells": false,
+        "allSets": false
+      },
+      "live": {
+        "enabled": true,
+        "connId": "bingx-vst-02",
+        "notionalUsd": 6,
+        "maxPositions": 100,
+        "mode": "overall",
+        "laneOrders": false,
+        "ratio": 1,
+        "maxNotionalUsd": 0,
+        "maxPositionX": 0,
+        "maxExposureX": 0,
+        "rebalancePct": 0.25,
+        "marginMode": "cross",
+        "positionMode": "hedge",
+        "leverage": "max",
+        "liveLastN": 25,
+        "liveGroupLastN": 0
+      },
+      "signals": {
+        "enabled": false,
+        "count": 0,
+        "sourcesMode": "deny",
+        "sources": {
+          "aroon": false,
+          "ichi-cloud": false,
+          "bb-walk": false,
+          "r-squeeze": false,
+          "r-donch-vol": false,
+          "r-sweep": false,
+          "r-capit": false,
+          "r-vwap-reclaim": false,
+          "r-cvd-div": false,
+          "r-rsi2": false,
+          "r-bb-adx": false,
+          "r-bbw-expand": false,
+          "r-zdist": false,
+          "r-clv-thrust": false,
+          "r-roofing": false,
+          "r-fisher": false,
+          "r-stc": false,
+          "r-vortex": false,
+          "r-tsi": false,
+          "r-elder": false,
+          "r-camarilla": false,
+          "r-fakeout": false,
+          "r-spring": false,
+          "r-valuearea": false,
+          "r-orb": false,
+          "r-pdhl": false,
+          "r-bos": false,
+          "r-choch": false,
+          "r-fvg": false,
+          "r-engulf": false,
+          "r-pin": false,
+          "r-star": false,
+          "r-streak": false,
+          "r-laguerre": false,
+          "r-chand": false,
+          "r-klinger": false,
+          "r-rvi": false
+        },
+        "ranges": {
+          "short": true,
+          "medium": true
+        },
+        "rangeVolumeFactors": {
+          "short": 1,
+          "medium": 1
+        },
+        "lanes": [
+          15
+        ],
+        "normal": {
+          "tp": [
+            0.01,
+            0.015,
+            0.025,
+            0.03,
+            0.04,
+            0.05,
+            0.06
+          ],
+          "slOfTp": [
+            0.5,
+            0.75,
+            1,
+            1.5,
+            2,
+            3
+          ]
+        },
+        "trailing": {
+          "tp": [
+            0.01,
+            0.015,
+            0.03,
+            0.04,
+            0.05,
+            0.06,
+            0.08
+          ],
+          "trailOfTp": [
+            0.2,
+            0.3,
+            0.4,
+            0.6,
+            0.8
+          ],
+          "slOfTp": 3
+        },
+        "trailingOnly": {
+          "enabled": true,
+          "sl": [
+            0.015,
+            0.03,
+            0.06
+          ],
+          "trail": [
+            0.005,
+            0.01,
+            0.02
+          ],
+          "trailStep": 1
+        },
+        "holdH": 48,
+        "exits": "pct",
+        "atr": {
+          "sl": [
+            0.7,
+            1.15,
+            1.5
+          ],
+          "tpRatio": [
+            1,
+            1.6,
+            2.2
+          ],
+          "trail": [
+            0.8
+          ],
+          "holdBars": 3
+        },
+        "hist": {
+          "enabled": true,
+          "quantiles": [
+            0.5,
+            0.75
+          ],
+          "trailOfTp": [
+            0.25,
+            0.5,
+            0.75
+          ],
+          "slOfTp": [
+            1,
+            2
+          ],
+          "minN": 30,
+          "lookbackH": 0
+        },
+        "guard": {
+          "enabled": true,
+          "lastN": 8
+        },
+        "cluster": {
+          "enabled": true,
+          "windowMin": 60,
+          "minLosses": 8,
+          "lossShare": 0.6
+        },
+        "coordination": {
+          "enabled": true,
+          "minSources": 3,
+          "count": 100,
+          "volumeFactor": 8,
+          "ranges": {
+            "short": true,
+            "normal": true,
+            "long": true
+          }
+        },
+        "combinedVolumeFactors": {
+          "trend": 1,
+          "break": 1,
+          "active": 1,
+          "direction": 1,
+          "move": 1,
+          "rsi": 1,
+          "bollinger": 1,
+          "sar": 1,
+          "macd": 1,
+          "ema": 1,
+          "osc": 1,
+          "volume": 1,
+          "channel": 1,
+          "ichimoku": 1,
+          "smooth": 1,
+          "tactic": 1,
+          "relate": 1,
+          "micro": 1,
+          "inverse": 1
+        },
+        "minTrades": 3,
+        "rank": "lowdd",
+        "minBlockShare": 0.6,
+        "validate": true,
+        "validateH": 24,
+        "minSl": 0.005,
+        "minTrail": 0.002,
+        "sourceGate": {
+          "enabled": false,
+          "days": 2,
+          "minShare": 0.5,
+          "minTrades": 5
+        },
+        "perSymbol": 0,
+        "maxOpen": 0,
+        "maxPositions": 250,
+        "strategies": {
+          "dca": false,
+          "axis": false
+        },
+        "ownBase": true,
+        "filter": {
+          "trendH": 0,
+          "volFloor": 0.003
+        },
+        "accept": {
+          "enabled": true,
+          "minPf": 1.3,
+          "hours": 48,
+          "minTrades": 6
+        },
+        "sideAccept": {
+          "enabled": true,
+          "minPf": 1.3,
+          "hours": 24,
+          "minTrades": 20
+        },
+        "baseGate": false
+      }
+    },
+    "wf": {
+      "indicationVolumeFactors": {
+        "coordination": 8,
+        "combined": {
+          "trend": 1,
+          "break": 1,
+          "active": 1,
+          "direction": 1,
+          "move": 1,
+          "rsi": 1,
+          "bollinger": 1,
+          "sar": 1,
+          "macd": 1,
+          "ema": 1,
+          "osc": 1,
+          "volume": 1,
+          "channel": 1,
+          "ichimoku": 1,
+          "smooth": 1,
+          "tactic": 1,
+          "relate": 1,
+          "micro": 1,
+          "inverse": 1
+        }
+      },
+      "preH": 6,
+      "simH": 6,
+      "stepH": 1,
+      "portfolio": 0,
+      "lastN": 0,
+      "lastNMinPf": 1,
+      "validLastN": 15,
+      "signalValidLastN": 25,
+      "exitMinTrades": 12,
+      "exitMinPf": 1.1,
+      "exitMinGreenHourShare": 0.5,
+      "exitMaxDdr": 1,
+      "engineSideAccept": {
+        "enabled": false,
+        "minPf": 1.05,
+        "hours": 24,
+        "minTrades": 30
+      },
+      "rangeGate": {
+        "lastN": 75,
+        "minPf": 1.35
+      },
+      "rangeVolumeFactors": {
+        "wide": 1,
+        "mc": 1,
+        "mn": 1,
+        "mp": 1,
+        "sh": 1,
+        "gn": 1,
+        "lg": 1
+      },
+      "signalRangeVolumeFactors": {
+        "short": 1,
+        "medium": 1
+      },
+      "rangeSeats": false,
+      "maxPerSymbol": 0,
+      "maxOpen": 0,
+      "guardPct": 0,
+      "coord": {
+        "enabled": true,
+        "hourLock": 0,
+        "cooldown": "off",
+        "conflict": false,
+        "confirm": true,
+        "hedgeVolumeFactor": 1,
+        "s2Increase": 0.4
+      },
+      "longH": 24,
+      "signalLongH": 336,
+      "robustFrac": 0.6,
+      "rank": "lcb",
+      "bots": [],
+      "mode": "fixed",
+      "durableSplits": 4,
+      "durableFrac": 0.75,
+      "preGate": true,
+      "maxPerSide": 0,
+      "maxPositions": 0,
+      "familySeats": true,
+      "familyNeedsBase": false,
+      "seatPer": "config",
+      "laneSeats": 3,
+      "symGate": "provenSide",
+      "symMinN": 2,
+      "toggles": {
+        "normal": true,
+        "trailing": true,
+        "exit": false,
+        "block": false,
+        "blockActive": false,
+        "dca": false,
+        "dcaActive": false,
+        "axis": false
+      },
+      "block": {
+        "sources": {
+          "config": false,
+          "overall": true,
+          "symbol": true,
+          "direction": true,
+          "indication": true,
+          "type": false
+        },
+        "mode": "overall",
+        "historySource": "accepted-orders",
+        "ratio": 0.5,
+        "maxLevel": 8,
+        "minActiveLevel": 2,
+        "maxMult": 8,
+        "pause": 0,
+        "steps": 7,
+        "increase": 0.4,
+        "signalsOwn": true,
+        "ranges": {
+          "levels": [
+            1,
+            8
+          ],
+          "volRatio": [
+            0.1,
+            1
+          ],
+          "steps": [
+            0,
+            6
+          ],
+          "increase": [
+            0.1,
+            0.5
+          ],
+          "pause": [
+            0,
+            6
+          ]
+        }
+      },
+      "dca": {
+        "levels": 2,
+        "step": 0.02,
+        "stopGap": 0.5,
+        "slOfTp": 1
+      },
+      "gates": {
+        "minPf": 1.1,
+        "maxDdtH": 35,
+        "minDdtH": 18,
+        "maxDdr": 1,
+        "rangeMinPf": {
+          "micro": 1.05,
+          "minimal": 1.1,
+          "short": 1.1,
+          "general": 1.2,
+          "long": 1.3
+        },
+        "minTrades": 12,
+        "quorum": 0.6,
+        "baseSetsMinPf": 1,
+        "warmup": true,
+        "lastNFloor": 5
+      },
+      "cost": 0.0015,
+      "protects": [
+        {
+          "tp": 0.0035,
+          "sl": 0.0035,
+          "trail": 0,
+          "hold": 4,
+          "tag": "mc",
+          "maxHoldMin": 60
+        },
+        {
+          "tp": 0.0035,
+          "sl": 0.0035,
+          "trail": 0.00175,
+          "hold": 4,
+          "tag": "mc",
+          "maxHoldMin": 60,
+          "trailStep": 1,
+          "trailFree": false
+        },
+        {
+          "tp": 0.0035,
+          "sl": 0.007,
+          "trail": 0,
+          "hold": 4,
+          "tag": "mc",
+          "maxHoldMin": 60
+        },
+        {
+          "tp": 0.0035,
+          "sl": 0.007,
+          "trail": 0.00175,
+          "hold": 4,
+          "tag": "mc",
+          "maxHoldMin": 60,
+          "trailStep": 1,
+          "trailFree": false
+        }
+      ],
+      "dcaProtects": [
+        {
+          "tp": 0.008,
+          "sl": 0.008,
+          "trail": 0,
+          "hold": 32
+        },
+        {
+          "tp": 0.012,
+          "sl": 0.012,
+          "trail": 0,
+          "hold": 32
+        },
+        {
+          "tp": 0.026,
+          "sl": 0.026,
+          "trail": 0,
+          "hold": 32
+        },
+        {
+          "tp": 0.035,
+          "sl": 0.035,
+          "trail": 0,
+          "hold": 32
+        }
+      ],
+      "causalBase": true,
+      "signalGuardN": 0,
+      "signalOwnBase": false,
+      "signalPerSymbol": 0,
+      "signalMaxOpen": 0,
+      "signalMaxPositions": 250,
+      "basePassed": {},
+      "basePassedRanges": {
+        "follow|inverse-micro-1-drawdown-trend-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1-activity-flow-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1-break-close-selective@m1": [
+          ""
+        ],
+        "follow|micro-1-range-reclaim-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1-break-activity-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1-break-retest-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1-market-momentum-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1-flow-break-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5-adaptive-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5-adaptive-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5-drawdown-trend-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1-flow-break-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1-break-activity-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1-activity-flow-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5-impulse-retest-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5-impulse-retest-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1-break-close-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5-activity-acceleration-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5-activity-flow-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5-change-roc-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1-impulse-retest-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1-impulse-retest-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5-break-close-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5-break-activity-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5-break-retest-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5-change-roc-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5-break-retest-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1-break-retest-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x15-drawdown-trend-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5-break-close-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1-pullback-activity-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5-market-momentum-fast@m1": [
+          ""
+        ],
+        "follow|micro-1-range-reclaim-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5x15-activity-flow-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x15-market-momentum-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5x15-drawdown-trend-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1-adaptive-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x15-activity-acceleration-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1-market-momentum-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5-flow-break-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x15-activity-flow-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5-activity-acceleration-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5-activity-flow-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5-flow-break-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5x15-activity-acceleration-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5-pullback-activity-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x15-break-activity-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1-break-direction-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x15-activity-flow-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5x15-adaptive-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5x15-activity-acceleration-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x15-flow-break-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5-drawdown-trend-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1-drawdown-trend-selective@m1": [
+          ""
+        ],
+        "follow|micro-1x5-drawdown-turn-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1-market-continuation-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1-adaptive-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5x15-adaptive-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x15-impulse-retest-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x15-impulse-retest-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5x15-change-roc-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1-activity-acceleration-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5x15-break-activity-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1-activity-acceleration-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5-break-activity-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5x15-impulse-retest-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5x15-impulse-retest-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5x15-activity-flow-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x15-break-retest-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5x15-change-roc-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x15-flow-break-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x15-activity-acceleration-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x15-break-activity-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5-trend-reclaim-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5x15-flow-break-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x15-break-close-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5x15-flow-break-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5x15-break-close-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x15-break-retest-fast@m1": [
+          ""
+        ],
+        "follow|micro-1x5-drawdown-turn-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1-break-direction-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1-market-continuation-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x15-adaptive-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5x15-market-momentum-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5x15-drawdown-trend-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5x15-break-retest-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5x15-market-follow-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5x15-break-close-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5-change-ema-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5x15-break-activity-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x15-pullback-activity-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5-break-direction-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1-trend-reclaim-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5x15-pullback-activity-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5-trend-reclaim-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5-pullback-activity-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5-market-continuation-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x15-break-close-fast@m1": [
+          ""
+        ],
+        "follow|micro-1x15-range-reclaim-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5x15-drawdown-market-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x15-adaptive-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x15-break-direction-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x15-change-roc-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5-market-momentum-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1-relative-trend-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x15-drawdown-trend-selective@m1": [
+          ""
+        ],
+        "follow|micro-1-drawdown-residual-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5x15-drawdown-market-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x15-change-ema-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x15-change-roc-selective@m1": [
+          ""
+        ],
+        "follow|micro-5-drawdown-turn-fast@m5": [
+          ""
+        ],
+        "follow|micro-5-change-roc-fast@m5": [
+          ""
+        ],
+        "follow|inverse-micro-1-squeeze-break-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5x15-break-direction-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1-change-ema-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5-change-ema-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x15-market-momentum-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5-break-direction-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x15-market-continuation-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5x15-break-retest-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5x15-change-ema-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1-trend-reclaim-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x15-pullback-activity-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5x15-pullback-activity-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5x15-drawdown-turn-fast@m1": [
+          ""
+        ],
+        "follow|micro-5-change-roc-selective@m5": [
+          ""
+        ],
+        "follow|inverse-micro-1-change-ema-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5x15-market-continuation-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5x15-trend-reclaim-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5-market-continuation-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x15-trend-reclaim-fast@m1": [
+          ""
+        ],
+        "follow|micro-1x15-drawdown-market-selective@m1": [
+          ""
+        ],
+        "follow|micro-1x5-drawdown-market-selective@m1": [
+          ""
+        ],
+        "follow|micro-5-drawdown-turn-selective@m5": [
+          ""
+        ],
+        "follow|inverse-micro-1-pullback-activity-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5x15-trend-reclaim-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5x15-market-momentum-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x15-trend-reclaim-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x15-market-continuation-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5-relative-trend-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x15-relative-trend-fast@m1": [
+          ""
+        ],
+        "follow|micro-1x15-range-reclaim-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5x15-relative-trend-fast@m1": [
+          ""
+        ],
+        "follow|micro-5-drawdown-trend-fast@m5": [
+          ""
+        ],
+        "follow|micro-5-market-follow-fast@m5": [
+          ""
+        ],
+        "follow|micro-5-market-follow-selective@m5": [
+          ""
+        ],
+        "follow|micro-5-drawdown-market-fast@m5": [
+          ""
+        ],
+        "follow|micro-5-adaptive-fast@m5": [
+          ""
+        ],
+        "follow|micro-5x15-drawdown-turn-fast@m5": [
+          ""
+        ],
+        "follow|micro-5x15-drawdown-trend-fast@m5": [
+          ""
+        ],
+        "follow|micro-5x15-market-follow-fast@m5": [
+          ""
+        ],
+        "follow|micro-5x15-market-follow-selective@m5": [
+          ""
+        ],
+        "follow|inverse-micro-1-squeeze-break-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1-relative-trend-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-5-drawdown-turn-fast@m5": [
+          ""
+        ],
+        "follow|inverse-micro-5-drawdown-turn-selective@m5": [
+          ""
+        ],
+        "follow|inverse-micro-5-market-follow-fast@m5": [
+          ""
+        ],
+        "follow|inverse-micro-5-market-follow-selective@m5": [
+          ""
+        ],
+        "follow|inverse-micro-5-drawdown-market-fast@m5": [
+          ""
+        ],
+        "follow|inverse-micro-5-drawdown-market-selective@m5": [
+          ""
+        ],
+        "follow|inverse-micro-5-pullback-activity-fast@m5": [
+          "mc"
+        ],
+        "follow|inverse-micro-5-adaptive-fast@m5": [
+          ""
+        ],
+        "follow|inverse-micro-5-adaptive-selective@m5": [
+          ""
+        ],
+        "follow|inverse-micro-5-break-retest-fast@m5": [
+          "mc"
+        ],
+        "follow|inverse-micro-5-break-retest-selective@m5": [
+          "mc"
+        ],
+        "follow|inverse-micro-5-activity-flow-fast@m5": [
+          "mc"
+        ],
+        "follow|inverse-micro-5-change-roc-fast@m5": [
+          ""
+        ],
+        "follow|inverse-micro-5-change-roc-selective@m5": [
+          ""
+        ],
+        "follow|inverse-micro-5-break-activity-fast@m5": [
+          "mc"
+        ],
+        "follow|inverse-micro-5-flow-break-selective@m5": [
+          "mc"
+        ],
+        "follow|inverse-micro-5-market-continuation-selective@m5": [
+          "mc"
+        ],
+        "follow|inverse-micro-1x5-squeeze-break-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x15-squeeze-break-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x15-break-direction-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-5x15-drawdown-turn-fast@m5": [
+          ""
+        ],
+        "follow|inverse-micro-5x15-market-follow-fast@m5": [
+          ""
+        ],
+        "follow|inverse-micro-5x15-market-follow-selective@m5": [
+          ""
+        ],
+        "follow|inverse-micro-5x15-pullback-activity-fast@m5": [
+          "mc"
+        ],
+        "follow|inverse-micro-5x15-adaptive-fast@m5": [
+          ""
+        ],
+        "follow|inverse-micro-5x15-break-retest-fast@m5": [
+          "mc"
+        ],
+        "follow|inverse-micro-5x15-break-retest-selective@m5": [
+          "mc"
+        ],
+        "follow|inverse-micro-5x15-flow-break-selective@m5": [
+          "mc"
+        ],
+        "follow|inverse-micro-5x15-market-continuation-selective@m5": [
+          "mc"
+        ],
+        "follow|inverse-micro-1x5x15-squeeze-break-fast@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5x15-break-direction-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-1x5x15-market-continuation-selective@m1": [
+          ""
+        ],
+        "follow|inverse-micro-5-impulse-retest-fast@m5": [
+          ""
+        ],
+        "follow|inverse-micro-5-impulse-retest-selective@m5": [
+          ""
+        ]
+      },
+      "basePassedTargets": {
+        "follow|inverse-micro-5-pullback-activity-fast@m5": {
+          "mc": [
+            0.0035
+          ]
+        },
+        "follow|inverse-micro-5-break-retest-fast@m5": {
+          "mc": [
+            0.0035
+          ]
+        },
+        "follow|inverse-micro-5-break-retest-selective@m5": {
+          "mc": [
+            0.0035
+          ]
+        },
+        "follow|inverse-micro-5-activity-flow-fast@m5": {
+          "mc": [
+            0.0035
+          ]
+        },
+        "follow|inverse-micro-5-break-activity-fast@m5": {
+          "mc": [
+            0.0035
+          ]
+        },
+        "follow|inverse-micro-5-flow-break-selective@m5": {
+          "mc": [
+            0.0035
+          ]
+        },
+        "follow|inverse-micro-5-market-continuation-selective@m5": {
+          "mc": [
+            0.0035
+          ]
+        },
+        "follow|inverse-micro-5x15-pullback-activity-fast@m5": {
+          "mc": [
+            0.0035
+          ]
+        },
+        "follow|inverse-micro-5x15-break-retest-fast@m5": {
+          "mc": [
+            0.0035
+          ]
+        },
+        "follow|inverse-micro-5x15-break-retest-selective@m5": {
+          "mc": [
+            0.0035
+          ]
+        },
+        "follow|inverse-micro-5x15-flow-break-selective@m5": {
+          "mc": [
+            0.0035
+          ]
+        },
+        "follow|inverse-micro-5x15-market-continuation-selective@m5": {
+          "mc": [
+            0.0035
+          ]
+        }
+      },
+      "baseWideLadderPairs": {},
+      "signalBasePassed": {},
+      "paused": {},
+      "exitBasePassed": {}
+    },
+    "elapsedMs": 163629.887883,
+    "maxRssMb": 1462.4921875,
+    "maxCompute": 1,
+    "kicks": 100,
+    "nativeChecks": 1554,
+    "computes": 2,
+    "paperSteps": 1,
+    "symbols": 120,
+    "progress": {
+      "intervalMs": 100,
+      "checks": 1636,
+      "lagMs": 0,
+      "maxLagMs": 59.06535699999995,
+      "missed": 0,
+      "error": null
+    },
+    "status": {
+      "state": "stopped",
+      "stage": "Realtime",
+      "progress": 1,
+      "label": "PF 0.49 \u00b7 DDT 3.8h \u00b7 green 50% \u00b7 validate last 15 \u00b7 live last 0 \u00b7 0 seats \u00b7 0 open",
+      "overall": 1,
+      "computeStartedAt": 1792531681531,
+      "paperSteps": 1,
+      "paperCompute": 2,
+      "cycles": 2,
+      "computes": 2,
+      "startedAt": 1792531599424,
+      "heartbeat": 1792531763011,
+      "lastCycleMs": 81480.460029,
+      "lastComputeMs": 81443.90284499999,
+      "lastBarT": 1792368000000,
+      "source": "synthetic",
+      "symbols": [
+        "SYN0-USDT",
+        "SYN1-USDT",
+        "SYN2-USDT",
+        "SYN3-USDT",
+        "SYN4-USDT",
+        "SYN5-USDT",
+        "SYN6-USDT",
+        "SYN7-USDT",
+        "SYN8-USDT",
+        "SYN9-USDT",
+        "SYN10-USDT",
+        "SYN11-USDT",
+        "SYN12-USDT",
+        "SYN13-USDT",
+        "SYN14-USDT",
+        "SYN15-USDT",
+        "SYN16-USDT",
+        "SYN17-USDT",
+        "SYN18-USDT",
+        "SYN19-USDT",
+        "SYN20-USDT",
+        "SYN21-USDT",
+        "SYN22-USDT",
+        "SYN23-USDT",
+        "SYN24-USDT",
+        "SYN25-USDT",
+        "SYN26-USDT",
+        "SYN27-USDT",
+        "SYN28-USDT",
+        "SYN29-USDT",
+        "SYN30-USDT",
+        "SYN31-USDT",
+        "SYN32-USDT",
+        "SYN33-USDT",
+        "SYN34-USDT",
+        "SYN35-USDT",
+        "SYN36-USDT",
+        "SYN37-USDT",
+        "SYN38-USDT",
+        "SYN39-USDT",
+        "SYN40-USDT",
+        "SYN41-USDT",
+        "SYN42-USDT",
+        "SYN43-USDT",
+        "SYN44-USDT",
+        "SYN45-USDT",
+        "SYN46-USDT",
+        "SYN47-USDT",
+        "SYN48-USDT",
+        "SYN49-USDT",
+        "SYN50-USDT",
+        "SYN51-USDT",
+        "SYN52-USDT",
+        "SYN53-USDT",
+        "SYN54-USDT",
+        "SYN55-USDT",
+        "SYN56-USDT",
+        "SYN57-USDT",
+        "SYN58-USDT",
+        "SYN59-USDT",
+        "SYN60-USDT",
+        "SYN61-USDT",
+        "SYN62-USDT",
+        "SYN63-USDT",
+        "SYN64-USDT",
+        "SYN65-USDT",
+        "SYN66-USDT",
+        "SYN67-USDT",
+        "SYN68-USDT",
+        "SYN69-USDT",
+        "SYN70-USDT",
+        "SYN71-USDT",
+        "SYN72-USDT",
+        "SYN73-USDT",
+        "SYN74-USDT",
+        "SYN75-USDT",
+        "SYN76-USDT",
+        "SYN77-USDT",
+        "SYN78-USDT",
+        "SYN79-USDT",
+        "SYN80-USDT",
+        "SYN81-USDT",
+        "SYN82-USDT",
+        "SYN83-USDT",
+        "SYN84-USDT",
+        "SYN85-USDT",
+        "SYN86-USDT",
+        "SYN87-USDT",
+        "SYN88-USDT",
+        "SYN89-USDT",
+        "SYN90-USDT",
+        "SYN91-USDT",
+        "SYN92-USDT",
+        "SYN93-USDT",
+        "SYN94-USDT",
+        "SYN95-USDT",
+        "SYN96-USDT",
+        "SYN97-USDT",
+        "SYN98-USDT",
+        "SYN99-USDT",
+        "SYN100-USDT",
+        "SYN101-USDT",
+        "SYN102-USDT",
+        "SYN103-USDT",
+        "SYN104-USDT",
+        "SYN105-USDT",
+        "SYN106-USDT",
+        "SYN107-USDT",
+        "SYN108-USDT",
+        "SYN109-USDT",
+        "SYN110-USDT",
+        "SYN111-USDT",
+        "SYN112-USDT",
+        "SYN113-USDT",
+        "SYN114-USDT",
+        "SYN115-USDT",
+        "SYN116-USDT",
+        "SYN117-USDT",
+        "SYN118-USDT",
+        "SYN119-USDT"
+      ],
+      "error": null,
+      "nextCycleAt": 1792531763211,
+      "phases": {
+        "Base (workers)": {
+          "ms": 11569.31137499999,
+          "maxSliceMs": 0,
+          "slowest": "728 of 728 combos on 2 cores",
+          "mainMs": 83.21858500000963
+        },
+        "Pipeline": {
+          "ms": 3824.346445999996,
+          "maxSliceMs": 101.88617199999862,
+          "slowest": "S2 follow \u00d7 inverse-micro-1-drawdown-trend-fast@m1 (102 ms)"
+        },
+        "Persist": {
+          "ms": 50.76678599999286,
+          "maxSliceMs": 7.361812999995891
+        },
+        "Tapes": {
+          "ms": 65874.88720999999,
+          "maxSliceMs": 0,
+          "slowest": "2 cores \u00b7 94 replies",
+          "mainMs": 1019.145623999997
+        },
+        "Simulation": {
+          "ms": 20.030767999996897,
+          "maxSliceMs": 13.501262000005227,
+          "slowest": "fixed seat selection (12 ms)"
+        },
+        "Persist sim": {
+          "ms": 0.21799900001497008,
+          "maxSliceMs": 0.21799900001497008
+        },
+        "Auto preset": {
+          "ms": 0.0034659999946597964,
+          "maxSliceMs": 0.0034659999946597964
+        },
+        "Prehistoric": {
+          "ms": 0.3870360000000801,
+          "maxSliceMs": 0.3870360000000801,
+          "slowest": "finish (0 ms)"
+        },
+        "Paper": {
+          "ms": 4.916181000007782,
+          "maxSliceMs": 4.916181000007782,
+          "slowest": "select 2 \u00b7 candidates 1 \u00b7 entries 2 ms over 0 (wall, sliced)"
+        },
+        "Adjust": {
+          "ms": 0.6510810000181664,
+          "maxSliceMs": 0.6510810000181664
+        },
+        "Audit": {
+          "ms": 3.076889999996638,
+          "maxSliceMs": 3.076889999996638,
+          "slowest": " (3 ms)"
+        }
+      },
+      "mainPairs": 188,
+      "settingsAt": 1792531599426,
+      "appliedSettingsAt": 1792531599426,
+      "lastComputeAt": 1792531762975,
+      "pending": false,
+      "heals": 0,
+      "lastHeal": "",
+      "errorsInRow": 0,
+      "loop": {
+        "p50": 20.234239,
+        "p99": 26.427391,
+        "max": 103.677951
+      },
+      "executionProgress": {
+        "intervalMs": 100,
+        "checks": 1636,
+        "lagMs": 0,
+        "maxLagMs": 59.06535699999995,
+        "missed": 0,
+        "error": null
+      },
+      "tick": {
+        "at": 1792531763006,
+        "ms": 0.04579600002034567,
+        "count": 1623,
+        "open": 0,
+        "stream": null,
+        "error": null
+      },
+      "prehistoric": {
+        "hours": 6,
+        "simH": 6,
+        "total": 120,
+        "loaded": 120,
+        "ready": 120,
+        "complete": true,
+        "startedAt": 1792531599424,
+        "readyAt": 1792531681491,
+        "symbols": {
+          "SYN0-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN1-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN2-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN3-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN4-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN5-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN6-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN7-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN8-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN9-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN10-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN11-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 1,
+            "pf": 4
+          },
+          "SYN12-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN13-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN14-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN15-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN16-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN17-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN18-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN19-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN20-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN21-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN22-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN23-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN24-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN25-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 1,
+            "pf": 4
+          },
+          "SYN26-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN27-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN28-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN29-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN30-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN31-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN32-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN33-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN34-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN35-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 1,
+            "pf": 4
+          },
+          "SYN36-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN37-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN38-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN39-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN40-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN41-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN42-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN43-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN44-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN45-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 2,
+            "pf": 4
+          },
+          "SYN46-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN47-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN48-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN49-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN50-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN51-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN52-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN53-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN54-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN55-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN56-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN57-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN58-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN59-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN60-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN61-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN62-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN63-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN64-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN65-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN66-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN67-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN68-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN69-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 1,
+            "pf": 0
+          },
+          "SYN70-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN71-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN72-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN73-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN74-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN75-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN76-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN77-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN78-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN79-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN80-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN81-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN82-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN83-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN84-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN85-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 2,
+            "pf": 4
+          },
+          "SYN86-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 2,
+            "pf": 0
+          },
+          "SYN87-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 1,
+            "pf": 4
+          },
+          "SYN88-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN89-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN90-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN91-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 2,
+            "pf": 0
+          },
+          "SYN92-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN93-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN94-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN95-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 1,
+            "pf": 0
+          },
+          "SYN96-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN97-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN98-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN99-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 1,
+            "pf": 4
+          },
+          "SYN100-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN101-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN102-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN103-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN104-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN105-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 1,
+            "pf": 4
+          },
+          "SYN106-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN107-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN108-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN109-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN110-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN111-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN112-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 1,
+            "pf": 4
+          },
+          "SYN113-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 1,
+            "pf": 4
+          },
+          "SYN114-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN115-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN116-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN117-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN118-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 0
+          },
+          "SYN119-USDT": {
+            "state": "ready",
+            "bars": 2880,
+            "n": 3,
+            "pf": 0
+          }
+        },
+        "stats": {
+          "pf": 0.49485909710379666,
+          "pfBasis": "unit-net-returns",
+          "unknownReturns": 0,
+          "gp": 2.204480242862409,
+          "gl": 4.454763498871315,
+          "noLoss": false,
+          "pfConvention": "gross-return-ratio",
+          "ddtH": 3.1666666666666665,
+          "n": 21,
+          "wr": 0.5714285714285714,
+          "greenHours": 0.5,
+          "net": -2.2502832560089057,
+          "avgOpen": 0.9141274238227147,
+          "maxOpen": 4,
+          "positions": 15,
+          "avgPositions": 0.7479224376731302,
+          "maxPositions": 3,
+          "perSymbol": [
+            {
+              "sym": "SYN119-USDT",
+              "n": 3,
+              "pf": 0,
+              "net": -1.8499999999999988,
+              "wr": 0,
+              "gp": 0,
+              "gl": 1.8499999999999988,
+              "noLoss": false,
+              "pfConvention": "gross-return-ratio",
+              "pfBasis": "unit-net-returns",
+              "unknownReturns": 0
+            },
+            {
+              "sym": "SYN85-USDT",
+              "n": 2,
+              "pf": 4,
+              "net": 0.3999999999999949,
+              "wr": 1,
+              "gp": 0.3999999999999949,
+              "gl": 0,
+              "noLoss": true,
+              "pfConvention": "no-loss-sentinel",
+              "pfBasis": "unit-net-returns",
+              "unknownReturns": 0
+            },
+            {
+              "sym": "SYN86-USDT",
+              "n": 2,
+              "pf": 0,
+              "net": -1.0677122303052653,
+              "wr": 0,
+              "gp": 0,
+              "gl": 1.0677122303052653,
+              "noLoss": false,
+              "pfConvention": "gross-return-ratio",
+              "pfBasis": "unit-net-returns",
+              "unknownReturns": 0
+            },
+            {
+              "sym": "SYN45-USDT",
+              "n": 2,
+              "pf": 4,
+              "net": 0.39999999999998403,
+              "wr": 1,
+              "gp": 0.39999999999998403,
+              "gl": 0,
+              "noLoss": true,
+              "pfConvention": "no-loss-sentinel",
+              "pfBasis": "unit-net-returns",
+              "unknownReturns": 0
+            },
+            {
+              "sym": "SYN91-USDT",
+              "n": 2,
+              "pf": 0,
+              "net": -1.349999999999996,
+              "wr": 0,
+              "gp": 0,
+              "gl": 1.349999999999996,
+              "noLoss": false,
+              "pfConvention": "gross-return-ratio",
+              "pfBasis": "unit-net-returns",
+              "unknownReturns": 0
+            },
+            {
+              "sym": "SYN99-USDT",
+              "n": 1,
+              "pf": 4,
+              "net": 0.20000000000000773,
+              "wr": 1,
+              "gp": 0.20000000000000773,
+              "gl": 0,
+              "noLoss": true,
+              "pfConvention": "no-loss-sentinel",
+              "pfBasis": "unit-net-returns",
+              "unknownReturns": 0
+            },
+            {
+              "sym": "SYN105-USDT",
+              "n": 1,
+              "pf": 4,
+              "net": 0.2000000000000085,
+              "wr": 1,
+              "gp": 0.2000000000000085,
+              "gl": 0,
+              "noLoss": true,
+              "pfConvention": "no-loss-sentinel",
+              "pfBasis": "unit-net-returns",
+              "unknownReturns": 0
+            },
+            {
+              "sym": "SYN87-USDT",
+              "n": 1,
+              "pf": 4,
+              "net": 0.00448024286240909,
+              "wr": 1,
+              "gp": 0.00448024286240909,
+              "gl": 0,
+              "noLoss": true,
+              "pfConvention": "no-loss-sentinel",
+              "pfBasis": "unit-net-returns",
+              "unknownReturns": 0
+            },
+            {
+              "sym": "SYN112-USDT",
+              "n": 1,
+              "pf": 4,
+              "net": 0.19999999999999596,
+              "wr": 1,
+              "gp": 0.19999999999999596,
+              "gl": 0,
+              "noLoss": true,
+              "pfConvention": "no-loss-sentinel",
+              "pfBasis": "unit-net-returns",
+              "unknownReturns": 0
+            },
+            {
+              "sym": "SYN25-USDT",
+              "n": 1,
+              "pf": 4,
+              "net": 0.19999999999998969,
+              "wr": 1,
+              "gp": 0.19999999999998969,
+              "gl": 0,
+              "noLoss": true,
+              "pfConvention": "no-loss-sentinel",
+              "pfBasis": "unit-net-returns",
+              "unknownReturns": 0
+            },
+            {
+              "sym": "SYN11-USDT",
+              "n": 1,
+              "pf": 4,
+              "net": 0.20000000000000898,
+              "wr": 1,
+              "gp": 0.20000000000000898,
+              "gl": 0,
+              "noLoss": true,
+              "pfConvention": "no-loss-sentinel",
+              "pfBasis": "unit-net-returns",
+              "unknownReturns": 0
+            },
+            {
+              "sym": "SYN35-USDT",
+              "n": 1,
+              "pf": 4,
+              "net": 0.19999999999999984,
+              "wr": 1,
+              "gp": 0.19999999999999984,
+              "gl": 0,
+              "noLoss": true,
+              "pfConvention": "no-loss-sentinel",
+              "pfBasis": "unit-net-returns",
+              "unknownReturns": 0
+            },
+            {
+              "sym": "SYN113-USDT",
+              "n": 1,
+              "pf": 4,
+              "net": 0.20000000000001042,
+              "wr": 1,
+              "gp": 0.20000000000001042,
+              "gl": 0,
+              "noLoss": true,
+              "pfConvention": "no-loss-sentinel",
+              "pfBasis": "unit-net-returns",
+              "unknownReturns": 0
+            },
+            {
+              "sym": "SYN69-USDT",
+              "n": 1,
+              "pf": 0,
+              "net": -0.07999055492401819,
+              "wr": 0,
+              "gp": 0,
+              "gl": 0.07999055492401819,
+              "noLoss": false,
+              "pfConvention": "gross-return-ratio",
+              "pfBasis": "unit-net-returns",
+              "unknownReturns": 0
+            },
+            {
+              "sym": "SYN95-USDT",
+              "n": 1,
+              "pf": 0,
+              "net": -0.10706071364203619,
+              "wr": 0,
+              "gp": 0,
+              "gl": 0.10706071364203619,
+              "noLoss": false,
+              "pfConvention": "gross-return-ratio",
+              "pfBasis": "unit-net-returns",
+              "unknownReturns": 0
+            }
+          ]
+        },
+        "counts": {
+          "base": 728,
+          "main": 188,
+          "sets": 3056,
+          "real": 0,
+          "evals": 48,
+          "armed": 10
+        }
+      },
+      "mem": {
+        "availMb": 13585,
+        "hostAvailMb": 13585,
+        "rssMb": 1461,
+        "level": "ok",
+        "fallback": 0,
+        "fallbackLabel": "full",
+        "minAvailMb": 13570,
+        "lastAbort": null,
+        "aborts": 0,
+        "abortsInRow": 0,
+        "retryAt": null,
+        "computeLevel": 0,
+        "heapMb": 86,
+        "heapTotalMb": 195,
+        "arrayBuffersMb": 109,
+        "nativeMb": 1157,
+        "dbMb": 6,
+        "tapeMb": 18,
+        "byPhase": {
+          "Paper": {
+            "rssMb": 1356,
+            "heapMb": 85,
+            "arrayBuffersMb": 91
+          },
+          "Base": {
+            "rssMb": 1434,
+            "heapMb": 90,
+            "arrayBuffersMb": 146
+          },
+          "Main": {
+            "rssMb": 1418,
+            "heapMb": 159,
+            "arrayBuffersMb": 274
+          },
+          "Tapes": {
+            "rssMb": 1462,
+            "heapMb": 193,
+            "arrayBuffersMb": 305
+          }
+        }
+      },
+      "workers": "2 cores",
+      "basePassed": 188,
+      "baseBuilt": 0,
+      "baseEvaluated": 728,
+      "exitStrategies": {
+        "enabled": false,
+        "pairs": 0,
+        "baseEvaluated": 0,
+        "basePassed": 0,
+        "baseRejected": 0,
+        "families": 5,
+        "timeframes": [
+          1,
+          5,
+          15
+        ],
+        "tactics": 0,
+        "relations": 0,
+        "configs": 0,
+        "history": {
+          "pairs": 0,
+          "baseEvaluated": 0,
+          "basePassed": 0,
+          "baseRejected": 0,
+          "noPrehistory": 0,
+          "insufficientEntries": 0,
+          "candidates": 0,
+          "capped": 0,
+          "evaluated": 0,
+          "insufficientTrades": 0,
+          "pfRejected": 0,
+          "greenHourRejected": 0,
+          "ddrRejected": 0,
+          "qualified": 0
+        }
+      },
+      "signals": {
+        "enabled": false,
+        "combos": 0,
+        "active": 0,
+        "pairs": 0,
+        "configs": 0,
+        "coordinationPairs": 0,
+        "coordinationConfigs": 0,
+        "coordinationActive": 0,
+        "discoveryPairs": 0,
+        "representativePassed": 0,
+        "representativeBaseGate": false,
+        "historic": {
+          "pairs": 0,
+          "insufficientEntries": 0,
+          "trailTooShort": 0,
+          "candidates": 0,
+          "evaluated": 0,
+          "insufficientTrades": 0,
+          "pfRejected": 0,
+          "ddrRejected": 0,
+          "qualified": 0
+        },
+        "openOrders": 0,
+        "openPositions": 0
+      },
+      "baseByRange": [
+        {
+          "tag": "",
+          "evaluated": 728,
+          "passed": 176,
+          "minPf": 1.1,
+          "pfMedian": 1.3921874999999948,
+          "pfPassedMedian": 1.8612804878048708,
+          "pfPassedMean": 2.0722276871522287,
+          "pfPassedPooled": 1.719293727006618,
+          "passedGp": 9879.439999999993,
+          "passedGl": 5746.220000000015,
+          "ownCells": 728,
+          "range": "Wide",
+          "enabled": true
+        },
+        {
+          "tag": "mc",
+          "evaluated": 312,
+          "passed": 12,
+          "minPf": 1.1,
+          "pfMedian": 0.49172469492092463,
+          "pfPassedMedian": 1.6038492153448565,
+          "pfPassedMean": 1.709238858620658,
+          "pfPassedPooled": 1.5335694538038427,
+          "passedGp": 64.3877528429935,
+          "passedGl": 41.985547301615256,
+          "ownCells": 312,
+          "range": "Micro",
+          "enabled": true
+        },
+        {
+          "tag": "mn",
+          "evaluated": 0,
+          "passed": 0,
+          "minPf": 1.1,
+          "pfMedian": null,
+          "pfPassedMedian": null,
+          "pfPassedMean": null,
+          "pfPassedPooled": null,
+          "passedGp": 0,
+          "passedGl": 0,
+          "ownCells": 0,
+          "range": "Minimal",
+          "enabled": false
+        },
+        {
+          "tag": "mp",
+          "evaluated": 0,
+          "passed": 0,
+          "minPf": 1.1,
+          "pfMedian": null,
+          "pfPassedMedian": null,
+          "pfPassedMean": null,
+          "pfPassedPooled": null,
+          "passedGp": 0,
+          "passedGl": 0,
+          "ownCells": 0,
+          "range": "Minimal plus",
+          "enabled": false
+        },
+        {
+          "tag": "sh",
+          "evaluated": 0,
+          "passed": 0,
+          "minPf": 1.1,
+          "pfMedian": null,
+          "pfPassedMedian": null,
+          "pfPassedMean": null,
+          "pfPassedPooled": null,
+          "passedGp": 0,
+          "passedGl": 0,
+          "ownCells": 0,
+          "range": "Short",
+          "enabled": false
+        },
+        {
+          "tag": "gn",
+          "evaluated": 0,
+          "passed": 0,
+          "minPf": 1.2,
+          "pfMedian": null,
+          "pfPassedMedian": null,
+          "pfPassedMean": null,
+          "pfPassedPooled": null,
+          "passedGp": 0,
+          "passedGl": 0,
+          "ownCells": 0,
+          "range": "General",
+          "enabled": false
+        },
+        {
+          "tag": "lg",
+          "evaluated": 0,
+          "passed": 0,
+          "minPf": 1.3,
+          "pfMedian": null,
+          "pfPassedMedian": null,
+          "pfPassedMean": null,
+          "pfPassedPooled": null,
+          "passedGp": 0,
+          "passedGl": 0,
+          "ownCells": 0,
+          "range": "Long",
+          "enabled": false
+        }
+      ],
+      "baseGates": [
+        {
+          "change": "as run",
+          "minPf": 1,
+          "minTrades": 12,
+          "maxDdr": 1,
+          "passed": 176,
+          "passedAnyRange": 41,
+          "share": 0.05631868131868132,
+          "pfPassedMedian": 1.8612804878048708
+        },
+        {
+          "change": "PF \u2265 1.00",
+          "minPf": 1,
+          "minTrades": 12,
+          "maxDdr": 1,
+          "passed": 176,
+          "passedAnyRange": 41,
+          "share": 0.05631868131868132,
+          "pfPassedMedian": 1.8612804878048708
+        },
+        {
+          "change": "PF \u2265 1.05",
+          "minPf": 1.05,
+          "minTrades": 12,
+          "maxDdr": 1,
+          "passed": 176,
+          "passedAnyRange": 41,
+          "share": 0.05631868131868132,
+          "pfPassedMedian": 1.8612804878048708
+        },
+        {
+          "change": "PF \u2265 1.20",
+          "minPf": 1.2,
+          "minTrades": 12,
+          "maxDdr": 1,
+          "passed": 172,
+          "passedAnyRange": 41,
+          "share": 0.05631868131868132,
+          "pfPassedMedian": 1.8691406249999958
+        },
+        {
+          "change": "closes \u2265 6",
+          "minPf": 1,
+          "minTrades": 6,
+          "maxDdr": 1,
+          "passed": 215,
+          "passedAnyRange": 76,
+          "share": 0.1043956043956044,
+          "pfPassedMedian": 1.9335937499999922
+        },
+        {
+          "change": "closes \u2265 20",
+          "minPf": 1,
+          "minTrades": 20,
+          "maxDdr": 1,
+          "passed": 153,
+          "passedAnyRange": 20,
+          "share": 0.027472527472527472,
+          "pfPassedMedian": 1.8245192307692268
+        },
+        {
+          "change": "closes \u2265 30",
+          "minPf": 1,
+          "minTrades": 30,
+          "maxDdr": 1,
+          "passed": 139,
+          "passedAnyRange": 6,
+          "share": 0.008241758241758242,
+          "pfPassedMedian": 1.824519230769226
+        },
+        {
+          "change": "DDR off",
+          "minPf": 1,
+          "minTrades": 12,
+          "maxDdr": 0,
+          "passed": 184,
+          "passedAnyRange": 45,
+          "share": 0.061813186813186816,
+          "pfPassedMedian": 1.8515624999999927
+        },
+        {
+          "change": "DDR \u2264 2",
+          "minPf": 1,
+          "minTrades": 12,
+          "maxDdr": 2,
+          "passed": 181,
+          "passedAnyRange": 41,
+          "share": 0.05631868131868132,
+          "pfPassedMedian": 1.8562499999999944
+        },
+        {
+          "change": "DDR \u2264 0.5",
+          "minPf": 1,
+          "minTrades": 12,
+          "maxDdr": 0.5,
+          "passed": 159,
+          "passedAnyRange": 28,
+          "share": 0.038461538461538464,
+          "pfPassedMedian": 1.9151785714285658
+        },
+        {
+          "change": "PF \u2265 1.00 \u00b7 DDR off",
+          "minPf": 1,
+          "minTrades": 12,
+          "maxDdr": 0,
+          "passed": 184,
+          "passedAnyRange": 45,
+          "share": 0.061813186813186816,
+          "pfPassedMedian": 1.8515624999999927
+        },
+        {
+          "change": "PF \u2265 1.00 \u00b7 DDR off \u00b7 closes \u2265 6",
+          "minPf": 1,
+          "minTrades": 6,
+          "maxDdr": 0,
+          "passed": 241,
+          "passedAnyRange": 98,
+          "share": 0.1346153846153846,
+          "pfPassedMedian": 1.8562499999999944
+        }
+      ],
+      "baseWhy": [
+        {
+          "tag": "",
+          "evaluated": 728,
+          "passed": 176,
+          "first": {
+            "closes": 350,
+            "net": 185,
+            "pf": 9,
+            "ddr": 8
+          },
+          "only": {
+            "closes": 91,
+            "net": 0,
+            "pf": 0,
+            "ddr": 8
+          },
+          "onlyDdrPfMedian": 1.1591836734693866
+        },
+        {
+          "tag": "mc",
+          "evaluated": 312,
+          "passed": 12,
+          "first": {
+            "closes": 167,
+            "net": 127,
+            "pf": 4,
+            "ddr": 2
+          },
+          "only": {
+            "closes": 14,
+            "net": 0,
+            "pf": 0,
+            "ddr": 2
+          },
+          "onlyDdrPfMedian": 1.1727984886273135
+        }
+      ],
+      "baseHistory": [
+        {
+          "at": 1792531615622,
+          "compute": 1,
+          "passed": 188,
+          "built": 0,
+          "byRange": {
+            "wide": 176,
+            "mc": 12,
+            "mn": 0,
+            "mp": 0,
+            "sh": 0,
+            "gn": 0,
+            "lg": 0
+          }
+        },
+        {
+          "at": 1792531697063,
+          "compute": 2,
+          "passed": 188,
+          "built": 0,
+          "byRange": {
+            "wide": 176,
+            "mc": 12,
+            "mn": 0,
+            "mp": 0,
+            "sh": 0,
+            "gn": 0,
+            "lg": 0
+          }
+        }
+      ],
+      "baseConfigs": {
+        "state": "cancelled",
+        "key": "48445f877d44bedc448d1de473aa9497c1c69e8057cd9c0f9394afbbc919f988",
+        "settingsAt": 1792531599426,
+        "cutT": 1792346400000,
+        "fromT": 1792324800000,
+        "cost": 0.0015,
+        "floorPf": 1.1,
+        "population": "focusedIndicationCandidates",
+        "admittedPairs": 188,
+        "admittedPairKeys": [
+          "follow|inverse-micro-1-drawdown-trend-fast@m1",
+          "follow|inverse-micro-1-activity-flow-fast@m1",
+          "follow|inverse-micro-1-break-close-selective@m1",
+          "follow|micro-1-range-reclaim-selective@m1",
+          "follow|inverse-micro-1-break-activity-fast@m1",
+          "follow|inverse-micro-1-break-retest-selective@m1",
+          "follow|inverse-micro-1-market-momentum-fast@m1",
+          "follow|inverse-micro-1-flow-break-fast@m1",
+          "follow|inverse-micro-1x5-adaptive-fast@m1",
+          "follow|inverse-micro-1x5-adaptive-selective@m1",
+          "follow|inverse-micro-1x5-drawdown-trend-fast@m1",
+          "follow|inverse-micro-1-flow-break-selective@m1",
+          "follow|inverse-micro-1-break-activity-selective@m1",
+          "follow|inverse-micro-1-activity-flow-selective@m1",
+          "follow|inverse-micro-1x5-impulse-retest-fast@m1",
+          "follow|inverse-micro-1x5-impulse-retest-selective@m1",
+          "follow|inverse-micro-1-break-close-fast@m1",
+          "follow|inverse-micro-1x5-activity-acceleration-fast@m1",
+          "follow|inverse-micro-1x5-activity-flow-fast@m1",
+          "follow|inverse-micro-1x5-change-roc-fast@m1",
+          "follow|inverse-micro-1-impulse-retest-fast@m1",
+          "follow|inverse-micro-1-impulse-retest-selective@m1",
+          "follow|inverse-micro-1x5-break-close-selective@m1",
+          "follow|inverse-micro-1x5-break-activity-fast@m1",
+          "follow|inverse-micro-1x5-break-retest-fast@m1",
+          "follow|inverse-micro-1x5-change-roc-selective@m1",
+          "follow|inverse-micro-1x5-break-retest-selective@m1",
+          "follow|inverse-micro-1-break-retest-fast@m1",
+          "follow|inverse-micro-1x15-drawdown-trend-fast@m1",
+          "follow|inverse-micro-1x5-break-close-fast@m1",
+          "follow|inverse-micro-1-pullback-activity-fast@m1",
+          "follow|inverse-micro-1x5-market-momentum-fast@m1",
+          "follow|micro-1-range-reclaim-fast@m1",
+          "follow|inverse-micro-1x5x15-activity-flow-fast@m1",
+          "follow|inverse-micro-1x15-market-momentum-fast@m1",
+          "follow|inverse-micro-1x5x15-drawdown-trend-fast@m1",
+          "follow|inverse-micro-1-adaptive-fast@m1",
+          "follow|inverse-micro-1x15-activity-acceleration-selective@m1",
+          "follow|inverse-micro-1-market-momentum-selective@m1",
+          "follow|inverse-micro-1x5-flow-break-selective@m1",
+          "follow|inverse-micro-1x15-activity-flow-fast@m1",
+          "follow|inverse-micro-1x5-activity-acceleration-selective@m1",
+          "follow|inverse-micro-1x5-activity-flow-selective@m1",
+          "follow|inverse-micro-1x5-flow-break-fast@m1",
+          "follow|inverse-micro-1x5x15-activity-acceleration-fast@m1",
+          "follow|inverse-micro-1x5-pullback-activity-fast@m1",
+          "follow|inverse-micro-1x15-break-activity-fast@m1",
+          "follow|inverse-micro-1-break-direction-fast@m1",
+          "follow|inverse-micro-1x15-activity-flow-selective@m1",
+          "follow|inverse-micro-1x5x15-adaptive-selective@m1",
+          "follow|inverse-micro-1x5x15-activity-acceleration-selective@m1",
+          "follow|inverse-micro-1x15-flow-break-selective@m1",
+          "follow|inverse-micro-1x5-drawdown-trend-selective@m1",
+          "follow|inverse-micro-1-drawdown-trend-selective@m1",
+          "follow|micro-1x5-drawdown-turn-selective@m1",
+          "follow|inverse-micro-1-market-continuation-fast@m1",
+          "follow|inverse-micro-1-adaptive-selective@m1",
+          "follow|inverse-micro-1x5x15-adaptive-fast@m1",
+          "follow|inverse-micro-1x15-impulse-retest-fast@m1",
+          "follow|inverse-micro-1x15-impulse-retest-selective@m1",
+          "follow|inverse-micro-1x5x15-change-roc-fast@m1",
+          "follow|inverse-micro-1-activity-acceleration-selective@m1",
+          "follow|inverse-micro-1x5x15-break-activity-fast@m1",
+          "follow|inverse-micro-1-activity-acceleration-fast@m1",
+          "follow|inverse-micro-1x5-break-activity-selective@m1",
+          "follow|inverse-micro-1x5x15-impulse-retest-fast@m1",
+          "follow|inverse-micro-1x5x15-impulse-retest-selective@m1",
+          "follow|inverse-micro-1x5x15-activity-flow-selective@m1",
+          "follow|inverse-micro-1x15-break-retest-selective@m1",
+          "follow|inverse-micro-1x5x15-change-roc-selective@m1",
+          "follow|inverse-micro-1x15-flow-break-fast@m1",
+          "follow|inverse-micro-1x15-activity-acceleration-fast@m1",
+          "follow|inverse-micro-1x15-break-activity-selective@m1",
+          "follow|inverse-micro-1x5-trend-reclaim-selective@m1",
+          "follow|inverse-micro-1x5x15-flow-break-fast@m1",
+          "follow|inverse-micro-1x15-break-close-selective@m1",
+          "follow|inverse-micro-1x5x15-flow-break-selective@m1",
+          "follow|inverse-micro-1x5x15-break-close-selective@m1",
+          "follow|inverse-micro-1x15-break-retest-fast@m1",
+          "follow|micro-1x5-drawdown-turn-fast@m1",
+          "follow|inverse-micro-1-break-direction-selective@m1",
+          "follow|inverse-micro-1-market-continuation-selective@m1",
+          "follow|inverse-micro-1x15-adaptive-fast@m1",
+          "follow|inverse-micro-1x5x15-market-momentum-fast@m1",
+          "follow|inverse-micro-1x5x15-drawdown-trend-selective@m1",
+          "follow|inverse-micro-1x5x15-break-retest-fast@m1",
+          "follow|inverse-micro-1x5x15-market-follow-selective@m1",
+          "follow|inverse-micro-1x5x15-break-close-fast@m1",
+          "follow|inverse-micro-1x5-change-ema-selective@m1",
+          "follow|inverse-micro-1x5x15-break-activity-selective@m1",
+          "follow|inverse-micro-1x15-pullback-activity-fast@m1",
+          "follow|inverse-micro-1x5-break-direction-fast@m1",
+          "follow|inverse-micro-1-trend-reclaim-selective@m1",
+          "follow|inverse-micro-1x5x15-pullback-activity-fast@m1",
+          "follow|inverse-micro-1x5-trend-reclaim-fast@m1",
+          "follow|inverse-micro-1x5-pullback-activity-selective@m1",
+          "follow|inverse-micro-1x5-market-continuation-fast@m1",
+          "follow|inverse-micro-1x15-break-close-fast@m1",
+          "follow|micro-1x15-range-reclaim-selective@m1",
+          "follow|inverse-micro-1x5x15-drawdown-market-fast@m1",
+          "follow|inverse-micro-1x15-adaptive-selective@m1",
+          "follow|inverse-micro-1x15-break-direction-fast@m1",
+          "follow|inverse-micro-1x15-change-roc-fast@m1",
+          "follow|inverse-micro-1x5-market-momentum-selective@m1",
+          "follow|inverse-micro-1-relative-trend-fast@m1",
+          "follow|inverse-micro-1x15-drawdown-trend-selective@m1",
+          "follow|micro-1-drawdown-residual-selective@m1",
+          "follow|inverse-micro-1x5x15-drawdown-market-selective@m1",
+          "follow|inverse-micro-1x15-change-ema-selective@m1",
+          "follow|inverse-micro-1x15-change-roc-selective@m1",
+          "follow|micro-5-drawdown-turn-fast@m5",
+          "follow|micro-5-change-roc-fast@m5",
+          "follow|inverse-micro-1-squeeze-break-fast@m1",
+          "follow|inverse-micro-1x5x15-break-direction-fast@m1",
+          "follow|inverse-micro-1-change-ema-selective@m1",
+          "follow|inverse-micro-1x5-change-ema-fast@m1",
+          "follow|inverse-micro-1x15-market-momentum-selective@m1",
+          "follow|inverse-micro-1x5-break-direction-selective@m1",
+          "follow|inverse-micro-1x15-market-continuation-fast@m1",
+          "follow|inverse-micro-1x5x15-break-retest-selective@m1",
+          "follow|inverse-micro-1x5x15-change-ema-selective@m1",
+          "follow|inverse-micro-1-trend-reclaim-fast@m1",
+          "follow|inverse-micro-1x15-pullback-activity-selective@m1",
+          "follow|inverse-micro-1x5x15-pullback-activity-selective@m1",
+          "follow|inverse-micro-1x5x15-drawdown-turn-fast@m1",
+          "follow|micro-5-change-roc-selective@m5",
+          "follow|inverse-micro-1-change-ema-fast@m1",
+          "follow|inverse-micro-1x5x15-market-continuation-fast@m1",
+          "follow|inverse-micro-1x5x15-trend-reclaim-selective@m1",
+          "follow|inverse-micro-1x5-market-continuation-selective@m1",
+          "follow|inverse-micro-1x15-trend-reclaim-fast@m1",
+          "follow|micro-1x15-drawdown-market-selective@m1",
+          "follow|micro-1x5-drawdown-market-selective@m1",
+          "follow|micro-5-drawdown-turn-selective@m5",
+          "follow|inverse-micro-1-pullback-activity-selective@m1",
+          "follow|inverse-micro-1x5x15-trend-reclaim-fast@m1",
+          "follow|inverse-micro-1x5x15-market-momentum-selective@m1",
+          "follow|inverse-micro-1x15-trend-reclaim-selective@m1",
+          "follow|inverse-micro-1x15-market-continuation-selective@m1",
+          "follow|inverse-micro-1x5-relative-trend-fast@m1",
+          "follow|inverse-micro-1x15-relative-trend-fast@m1",
+          "follow|micro-1x15-range-reclaim-fast@m1",
+          "follow|inverse-micro-1x5x15-relative-trend-fast@m1",
+          "follow|micro-5-drawdown-trend-fast@m5",
+          "follow|micro-5-market-follow-fast@m5",
+          "follow|micro-5-market-follow-selective@m5",
+          "follow|micro-5-drawdown-market-fast@m5",
+          "follow|micro-5-adaptive-fast@m5",
+          "follow|micro-5x15-drawdown-turn-fast@m5",
+          "follow|micro-5x15-drawdown-trend-fast@m5",
+          "follow|micro-5x15-market-follow-fast@m5",
+          "follow|micro-5x15-market-follow-selective@m5",
+          "follow|inverse-micro-1-squeeze-break-selective@m1",
+          "follow|inverse-micro-1-relative-trend-selective@m1",
+          "follow|inverse-micro-5-drawdown-turn-fast@m5",
+          "follow|inverse-micro-5-drawdown-turn-selective@m5",
+          "follow|inverse-micro-5-market-follow-fast@m5",
+          "follow|inverse-micro-5-market-follow-selective@m5",
+          "follow|inverse-micro-5-drawdown-market-fast@m5",
+          "follow|inverse-micro-5-drawdown-market-selective@m5",
+          "follow|inverse-micro-5-pullback-activity-fast@m5",
+          "follow|inverse-micro-5-adaptive-fast@m5",
+          "follow|inverse-micro-5-adaptive-selective@m5",
+          "follow|inverse-micro-5-break-retest-fast@m5",
+          "follow|inverse-micro-5-break-retest-selective@m5",
+          "follow|inverse-micro-5-activity-flow-fast@m5",
+          "follow|inverse-micro-5-change-roc-fast@m5",
+          "follow|inverse-micro-5-change-roc-selective@m5",
+          "follow|inverse-micro-5-break-activity-fast@m5",
+          "follow|inverse-micro-5-flow-break-selective@m5",
+          "follow|inverse-micro-5-market-continuation-selective@m5",
+          "follow|inverse-micro-1x5-squeeze-break-fast@m1",
+          "follow|inverse-micro-1x15-squeeze-break-fast@m1",
+          "follow|inverse-micro-1x15-break-direction-selective@m1",
+          "follow|inverse-micro-5x15-drawdown-turn-fast@m5",
+          "follow|inverse-micro-5x15-market-follow-fast@m5",
+          "follow|inverse-micro-5x15-market-follow-selective@m5",
+          "follow|inverse-micro-5x15-pullback-activity-fast@m5",
+          "follow|inverse-micro-5x15-adaptive-fast@m5",
+          "follow|inverse-micro-5x15-break-retest-fast@m5",
+          "follow|inverse-micro-5x15-break-retest-selective@m5",
+          "follow|inverse-micro-5x15-flow-break-selective@m5",
+          "follow|inverse-micro-5x15-market-continuation-selective@m5",
+          "follow|inverse-micro-1x5x15-squeeze-break-fast@m1",
+          "follow|inverse-micro-1x5x15-break-direction-selective@m1",
+          "follow|inverse-micro-1x5x15-market-continuation-selective@m1",
+          "follow|inverse-micro-5-impulse-retest-fast@m5",
+          "follow|inverse-micro-5-impulse-retest-selective@m5"
+        ],
+        "totalPairs": 728,
+        "donePairs": 0,
+        "totalChunks": 728,
+        "doneChunks": 0,
+        "plannedConfigured": 2912,
+        "configured": 0,
+        "evaluated": 0,
+        "pfPassed": 0,
+        "passed": 0,
+        "updatedAt": 1792531763056,
+        "reason": "stopped"
+      },
+      "tapesReleased": 3056,
+      "liveValidation": {
+        "lastN": 25,
+        "minPf": 1.1,
+        "since": 1792531763004,
+        "judged": 0,
+        "passing": 0,
+        "paused": 0,
+        "skipped": 0,
+        "onExchange": 0,
+        "exchangeCloses": 0,
+        "groupLastN": 0,
+        "groups": []
+      },
+      "paperSkips": {},
+      "listings": {
+        "paperStep": 1,
+        "at": 1792531763011,
+        "validated": 0,
+        "active": 0,
+        "proven": null,
+        "byRange": [],
+        "byGroup": []
+      }
+    },
+    "failure": null,
+    "samples": [
+      {
+        "ms": 1000,
+        "rssMb": 336.31640625,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 9,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 9,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 2002,
+        "rssMb": 492.359375,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 19,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 19,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 3003,
+        "rssMb": 706.828125,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 28,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 30,
+          "lagMs": 0.04597199999989243,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 4003,
+        "rssMb": 848.71484375,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 38,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 40,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 5004,
+        "rssMb": 1152.52734375,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 48,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 50,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 6004,
+        "rssMb": 1189.65234375,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 58,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 60,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 7004,
+        "rssMb": 1189.046875,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 67,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 70,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 8004,
+        "rssMb": 1190.24609375,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 77,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 80,
+          "lagMs": 1.132129999998142,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 9004,
+        "rssMb": 1192.0390625,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 85,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 90,
+          "lagMs": 0.020723999998153886,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 10004,
+        "rssMb": 1212.84765625,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 95,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 100,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 11005,
+        "rssMb": 1212.796875,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 104,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 110,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 12005,
+        "rssMb": 1213.546875,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 113,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 120,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 13016,
+        "rssMb": 1068.125,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 123,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 130,
+          "lagMs": 3.4642279999989114,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 14026,
+        "rssMb": 949.609375,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 133,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 140,
+          "lagMs": 0.15250499999820022,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 15026,
+        "rssMb": 1021.859375,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 142,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 150,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 16027,
+        "rssMb": 1049.734375,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 151,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 160,
+          "lagMs": 2.504873999998381,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 17027,
+        "rssMb": 1071.1796875,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 161,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 170,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 18027,
+        "rssMb": 1099.45703125,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 170,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 180,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 19027,
+        "rssMb": 1117.36328125,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 180,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 190,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 20027,
+        "rssMb": 1134.73828125,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 189,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 200,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 21027,
+        "rssMb": 1139.6796875,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 199,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 210,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 22027,
+        "rssMb": 1212.31640625,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 209,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 220,
+          "lagMs": 2.038199999999051,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 23027,
+        "rssMb": 1212.81640625,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 218,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 230,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 24027,
+        "rssMb": 1213.06640625,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 228,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 240,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 25028,
+        "rssMb": 1254.06640625,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 238,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 250,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 26028,
+        "rssMb": 1273.375,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 248,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 260,
+          "lagMs": 1.1283870000006573,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 27028,
+        "rssMb": 1334.75,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 257,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 270,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 28028,
+        "rssMb": 1336.75,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 267,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 280,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 29028,
+        "rssMb": 1351.25390625,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 276,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 290,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 30028,
+        "rssMb": 1351.87890625,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 286,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 300,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 31028,
+        "rssMb": 1351.9609375,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 296,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 310,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 32028,
+        "rssMb": 1351.7421875,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 306,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 320,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 33028,
+        "rssMb": 1351.5703125,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 315,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 330,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 34028,
+        "rssMb": 1351.6953125,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 325,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 340,
+          "lagMs": 0.634345000005851,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 35028,
+        "rssMb": 1351.1953125,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 333,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 350,
+          "lagMs": 1.0704360000017914,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 36029,
+        "rssMb": 1351.1953125,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 343,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 360,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 37029,
+        "rssMb": 1351.5703125,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 352,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 370,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 38029,
+        "rssMb": 1351.58984375,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 362,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 380,
+          "lagMs": 0.10979100000258768,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 39029,
+        "rssMb": 1366.94921875,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 372,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 390,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 40029,
+        "rssMb": 1367.57421875,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 382,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 400,
+          "lagMs": 0.03129400000034366,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 41031,
+        "rssMb": 1364.984375,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 392,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 410,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 42033,
+        "rssMb": 1365.359375,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 402,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 420,
+          "lagMs": 0.05114800000592368,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 43033,
+        "rssMb": 1364.953125,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 411,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 430,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 44033,
+        "rssMb": 1364.6953125,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 420,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 440,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 45033,
+        "rssMb": 1358.0546875,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 429,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 450,
+          "lagMs": 2.0495240000018384,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 46033,
+        "rssMb": 1358.1796875,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 438,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 460,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 47033,
+        "rssMb": 1358.1796875,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 447,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 470,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 48033,
+        "rssMb": 1355.78125,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 457,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 480,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 49033,
+        "rssMb": 1355.58203125,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 467,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 490,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 50033,
+        "rssMb": 1355.21875,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 476,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 500,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 51033,
+        "rssMb": 1355.96875,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 484,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 510,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 52033,
+        "rssMb": 1356.21875,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 494,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 520,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 53033,
+        "rssMb": 1355.8046875,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 503,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 530,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 54034,
+        "rssMb": 1356.3046875,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 513,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 540,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 55034,
+        "rssMb": 1355.7734375,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 523,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 550,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 56034,
+        "rssMb": 1355.8515625,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 533,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 560,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 57034,
+        "rssMb": 1355.8515625,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 542,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 570,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 58034,
+        "rssMb": 1356.2265625,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 551,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 580,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 59034,
+        "rssMb": 1356.07421875,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 561,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 590,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 60034,
+        "rssMb": 1355.73828125,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 571,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 600,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 61035,
+        "rssMb": 1355.57421875,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 581,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 610,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 62036,
+        "rssMb": 1355.73828125,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 590,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 620,
+          "lagMs": 0.11508600000524893,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 63036,
+        "rssMb": 1355.640625,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 600,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 630,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 64037,
+        "rssMb": 1356.140625,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 609,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 640,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 65037,
+        "rssMb": 1356.265625,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 618,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 650,
+          "lagMs": 0.07808900000236463,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 66038,
+        "rssMb": 1356.0390625,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 627,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 660,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 67038,
+        "rssMb": 1356.1640625,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 637,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 670,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 68039,
+        "rssMb": 1356.140625,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 646,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 680,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 69039,
+        "rssMb": 1356.046875,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 656,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 690,
+          "lagMs": 0.03552400000626221,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 70039,
+        "rssMb": 1355.92578125,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 666,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 700,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 71039,
+        "rssMb": 1355.68359375,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 676,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 710,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 72039,
+        "rssMb": 1355.93359375,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 685,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 720,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 73040,
+        "rssMb": 1355.375,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 694,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 730,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 74040,
+        "rssMb": 1355.75,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 704,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 740,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 75040,
+        "rssMb": 1355.75,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 714,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 750,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 76040,
+        "rssMb": 1355.359375,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 724,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 760,
+          "lagMs": 1.058984999996028,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 77040,
+        "rssMb": 1356.234375,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 734,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 770,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 78041,
+        "rssMb": 1355.8046875,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 742,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 780,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 79046,
+        "rssMb": 1355.9140625,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 751,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 790,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 80047,
+        "rssMb": 1355.1796875,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 761,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 800,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 81047,
+        "rssMb": 1355.8046875,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 770,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 810,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 82053,
+        "rssMb": 1329.8984375,
+        "state": "computing",
+        "computes": 0,
+        "paperSteps": 0,
+        "nativeChecks": 779,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 820,
+          "lagMs": 11.513321000005817,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 83055,
+        "rssMb": 1360.0859375,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 787,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 830,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 84056,
+        "rssMb": 1356.1640625,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 797,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 840,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 85057,
+        "rssMb": 1353.0234375,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 807,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 850,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 86057,
+        "rssMb": 1354.46484375,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 817,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 860,
+          "lagMs": 6.152593999999226,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 87057,
+        "rssMb": 1400.55859375,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 826,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 870,
+          "lagMs": 0.02426500000001397,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 88057,
+        "rssMb": 1399.25390625,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 836,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 880,
+          "lagMs": 0.17229099999531172,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 89057,
+        "rssMb": 1400.62109375,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 846,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 890,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 90057,
+        "rssMb": 1401.66796875,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 855,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 900,
+          "lagMs": 0.06649900000775233,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 91057,
+        "rssMb": 1401.58984375,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 865,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 910,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 92057,
+        "rssMb": 1433.6796875,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 874,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 920,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 93057,
+        "rssMb": 1433.671875,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 884,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 930,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 94063,
+        "rssMb": 1417.921875,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 893,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 940,
+          "lagMs": 9.800082000001566,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 95064,
+        "rssMb": 1093.06640625,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 902,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 950,
+          "lagMs": 11.278743000002578,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 96073,
+        "rssMb": 1143.56640625,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 911,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 960,
+          "lagMs": 8.619558999998844,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 97081,
+        "rssMb": 1186.74609375,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 920,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 970,
+          "lagMs": 6.2845410000009,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 98081,
+        "rssMb": 1211.62109375,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 930,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 980,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 99081,
+        "rssMb": 1226.87109375,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 939,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 990,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 100081,
+        "rssMb": 1235.8203125,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 948,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1000,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 101081,
+        "rssMb": 1264.0390625,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 956,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1010,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 102081,
+        "rssMb": 1267.21875,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 966,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1020,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 103082,
+        "rssMb": 1275.7578125,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 975,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1030,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 104082,
+        "rssMb": 1331.828125,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 985,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1040,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 105082,
+        "rssMb": 1332.35546875,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 994,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1050,
+          "lagMs": 0.10660500000813045,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 106082,
+        "rssMb": 1332.37890625,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1004,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1060,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 107082,
+        "rssMb": 1357.37890625,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1014,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1070,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 108082,
+        "rssMb": 1457.62890625,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1024,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1080,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 109082,
+        "rssMb": 1457.87890625,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1034,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1090,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 110082,
+        "rssMb": 1458.25390625,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1043,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1100,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 111082,
+        "rssMb": 1461.37890625,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1053,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1110,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 112082,
+        "rssMb": 1462.25390625,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1062,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1120,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 113084,
+        "rssMb": 1462.33203125,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1072,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1130,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 114085,
+        "rssMb": 1461.9375,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1081,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1140,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 115086,
+        "rssMb": 1462.1875,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1091,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1150,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 116086,
+        "rssMb": 1462.25,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1100,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1160,
+          "lagMs": 1.052544999998645,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 117088,
+        "rssMb": 1461.8671875,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1109,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1170,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 118089,
+        "rssMb": 1462.2421875,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1119,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1180,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 119090,
+        "rssMb": 1462.4921875,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1129,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1190,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 120090,
+        "rssMb": 1462.4375,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1139,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1200,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 121090,
+        "rssMb": 1461.75,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1149,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1210,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 122090,
+        "rssMb": 1461.75,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1158,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1220,
+          "lagMs": 1.044584000002942,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 123090,
+        "rssMb": 1462.0703125,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1168,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1230,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 124090,
+        "rssMb": 1461.7578125,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1178,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1240,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 125090,
+        "rssMb": 1461.5390625,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1188,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1250,
+          "lagMs": 0.060803000000305474,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 126090,
+        "rssMb": 1461.33203125,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1197,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1260,
+          "lagMs": 0.013598000005003996,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 127091,
+        "rssMb": 1462.08203125,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1206,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1270,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 128091,
+        "rssMb": 1461.875,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1216,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1280,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 129091,
+        "rssMb": 1461.625,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1225,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1290,
+          "lagMs": 0.0021560000022873282,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 130091,
+        "rssMb": 1462,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1235,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1300,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 131091,
+        "rssMb": 1461.07421875,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1245,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1310,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 132091,
+        "rssMb": 1461.69921875,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1254,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1320,
+          "lagMs": 0.05945200001588091,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 133091,
+        "rssMb": 1461.94921875,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1263,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1330,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 134092,
+        "rssMb": 1461.86328125,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1273,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1340,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 135092,
+        "rssMb": 1461.86328125,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1282,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1350,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 136094,
+        "rssMb": 1462.23828125,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1291,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1360,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 137095,
+        "rssMb": 1462.1015625,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1301,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1370,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 138095,
+        "rssMb": 1462.2265625,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1310,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1380,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 139095,
+        "rssMb": 1462.2265625,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1320,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1390,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 140095,
+        "rssMb": 1462.2265625,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1330,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1400,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 141095,
+        "rssMb": 1461.98828125,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1340,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1410,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 142096,
+        "rssMb": 1461.84375,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1349,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1420,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 143097,
+        "rssMb": 1461.9375,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1359,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1430,
+          "lagMs": 1.0916880000149831,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 144097,
+        "rssMb": 1462.3125,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1368,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1440,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 145098,
+        "rssMb": 1462.0546875,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1377,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1450,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 146098,
+        "rssMb": 1462.3046875,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1387,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1460,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 147098,
+        "rssMb": 1462.23828125,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1397,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1470,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 148099,
+        "rssMb": 1462.23828125,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1406,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1480,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 149100,
+        "rssMb": 1462.48828125,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1416,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1490,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 150100,
+        "rssMb": 1462.3828125,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1426,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1500,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 151100,
+        "rssMb": 1462.3828125,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1435,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1510,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 152100,
+        "rssMb": 1462.3828125,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1445,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1520,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 153100,
+        "rssMb": 1461.65234375,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1455,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1530,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 154100,
+        "rssMb": 1461.72265625,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1465,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1540,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 155102,
+        "rssMb": 1462.22265625,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1474,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1550,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 156102,
+        "rssMb": 1461.95703125,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1483,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1561,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 157102,
+        "rssMb": 1462.18359375,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1492,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1571,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 158104,
+        "rssMb": 1462.0078125,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1502,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1581,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 159104,
+        "rssMb": 1461.8203125,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1511,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1591,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 160104,
+        "rssMb": 1461.8203125,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1521,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1601,
+          "lagMs": 0.051722000003792346,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 161104,
+        "rssMb": 1461.1953125,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1530,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1611,
+          "lagMs": 0.09646800000336953,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 162104,
+        "rssMb": 1461.4453125,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1540,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1621,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 163104,
+        "rssMb": 1461.4453125,
+        "state": "computing",
+        "computes": 1,
+        "paperSteps": 0,
+        "nativeChecks": 1549,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1631,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      },
+      {
+        "ms": 163630,
+        "rssMb": 1432.35546875,
+        "state": "stopped",
+        "computes": 2,
+        "paperSteps": 1,
+        "nativeChecks": 1554,
+        "progress": {
+          "intervalMs": 100,
+          "checks": 1636,
+          "lagMs": 0,
+          "maxLagMs": 59.06535699999995,
+          "missed": 0,
+          "error": null
+        }
+      }
+    ]
+  },
+  "verifiedScope": {
+    "identities": 728,
+    "uniqueIdentities": 728,
+    "micro": 364,
+    "inverseMicro": 364,
+    "note": "Original result.scope has a stale 616 literal; its recorded exact settings contain 728 unique focused identities. Preserve the original receipt and correct the producer label."
+  }
+}

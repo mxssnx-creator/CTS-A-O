@@ -1,10 +1,11 @@
 import { Link } from "@tanstack/react-router";
 import { coreMarket, coreTrading } from "../api-conn";
 import { Sparkline } from "../charts";
+import { capText, sizeText } from "@/core/live-labels";
 import { ExecutionSummary } from "../execution-summary";
 import { paperUnitReturn } from "../accounting";
 import { hasNoTakeProfit } from "../signal-units";
-import { Empty, ErrorNote, fmt, Kpi, Line, liveState, Panel, Pill, tone, usePoll } from "../ui";
+import { Age, Empty, ErrorNote, fmt, Kpi, Line, liveState, Panel, Pill, tone, usePoll } from "../ui";
 
 type Any = any;
 
@@ -35,10 +36,10 @@ export function TradingPage() {
       <ExecutionSummary account={live?.account} />
       <div className="v2-grid v2-cols-4">
         <Kpi
-          label="Paper P&L"
+          label="Paper P&L (virtual)"
           value={fmt.usd(d.equity)}
           className={tone(d.equity)}
-        sub={`balance ${fmt.usd(d.balance)} · equity ${fmt.usd(d.accountEquity)} · start ${fmt.usd(d.startBalance)} · ${d.sizing?.mode === "fixed" ? "fixed notional" : `${fmt.num((d.sizing?.pct ?? 0.002) * 100, 1)}% of balance per order`}`}
+          sub={`virtual balance ${fmt.usd(d.balance)} · equity ${fmt.usd(d.accountEquity)} from ${fmt.usd(d.startBalance)} · paper sizing: ${d.sizing?.mode === "fixed" ? "fixed notional" : `${fmt.num((d.sizing?.pct ?? 0.002) * 100, 1)}% of the virtual balance per order`}`}
         />
         <Kpi
           label="Paper open positions / orders"
@@ -52,7 +53,7 @@ export function TradingPage() {
           className={tone(pnl)}
         />
         <Kpi
-          label="Live"
+          label={`Live · own session net ${fmt.usdSigned(d.liveSession?.net)}`}
           value={ls.on ? "on" : "off"}
           sub={
             !ls.on
@@ -258,7 +259,7 @@ export function TradingPage() {
 
       <Panel
         title="Control orders · Overall"
-        sub={`${d.liveSettings?.connId ?? ""} keys: ${{ own: "own", x01: "x01 keys (VST host)", generic: "generic BINGX_API_KEY", none: "none — configure credentials for this connection" }[d.liveKeys as string] ?? "?"} · one position per symbol + direction, sized from every lane holding it · ${(d.liveSettings?.mode ?? "overall") === "overall" ? `Live mode: overall · ${liveUnit} × lane volume × ${d.liveSettings?.ratio ?? 1}` : `Live mode: entries · Overall preview only; entries use ${entryUnit} per signal without the Control ratio`} · balance-relative sizing${d.liveSettings?.maxPositionX ? ` · position limit ${d.liveSettings.maxPositionX}× balance` : ""}${d.liveSettings?.maxExposureX ? ` · gross limit ${d.liveSettings.maxExposureX}× balance` : ""} · adjust beyond ±${Math.round((d.liveSettings?.rebalancePct ?? 0.25) * 100)}%`}
+        sub={`${d.liveSettings?.connId ?? ""} keys: ${{ own: "own", x01: "x01 keys (VST host)", generic: "generic BINGX_API_KEY", none: "none — add BINGX_X01_API_KEY / BINGX_X01_SECRET or configure credentials for this connection" }[d.liveKeys as string] ?? "?"} · one position per symbol + direction, sized from every lane holding it · ${(d.liveSettings?.mode ?? "overall") === "overall" ? `Live mode: overall · ${liveUnit} × lane volume × ${d.liveSettings?.ratio ?? 1}` : `Live mode: entries · Overall preview only; entries use ${entryUnit} per signal without the Control ratio`} · ${sizeText(d.liveSettings ?? {}, d.sizing?.mode)}${d.liveSettings?.maxExposureX ? ` · gross limit ${d.liveSettings.maxExposureX}× balance` : ""} · adjust beyond ±${Math.round((d.liveSettings?.rebalancePct ?? 0.25) * 100)}%`}
         right={
           d.control ? (
             <Pill kind={d.control.reconnected ? "bad" : d.control.unchanged ? undefined : "acc"}>
@@ -292,7 +293,9 @@ export function TradingPage() {
               steps {d.control.steps} · changes {d.control.changes}
 
             </span>
-            <span>{fmt.ago(d.control.at)}</span>
+            <span>
+              <Age at={d.control.at} prefix="control status" />
+            </span>
           </div>
         )}
         {(d.controlPreview?.targets ?? []).length ? (
@@ -306,7 +309,7 @@ export function TradingPage() {
                   <th className="num">volume</th>
                   <th className="num">target $</th>
                   <th className="num">target qty</th>
-                  <th className="num">held qty</th>
+                  <th className="num">held qty (last step)</th>
                   <th className="num">stop</th>
                 </tr>
               </thead>
@@ -334,25 +337,42 @@ export function TradingPage() {
             </table>
           </div>
         ) : (
-          <Empty>{d.controlPreview?.blocked ?? "No control positions — no eligible lane holds a paper position right now."}</Empty>
+          <Empty>
+            {d.controlPreview?.blocked ??
+              (d.controlPreview?.noBase
+                ? `No control positions — ${d.controlPreview.noBase}.`
+                : "No control positions — no eligible lane holds a paper position right now.")}
+          </Empty>
         )}
         {d.controlPreview?.unit !== undefined && (d.controlPreview?.targets ?? []).length > 0 && (
           <div className="v2-muted" style={{ padding: "8px 12px", fontSize: "var(--v-fs-xs)" }}>
-            {d.controlPreview.unitFrom === "minQty"
-              ? "one lane unit: the exchange minimum lot per unit (per symbol)"
-              : `one lane unit $${fmt.num(d.controlPreview.unit, 2)} · ${
-                  d.controlPreview.unitFrom === "balance"
-                    ? "from account balance"
-                    : d.controlPreview.unitFrom === "fixed"
-                      ? "fixed notional"
-                      : d.controlPreview.unitFrom === "paper"
-                        ? "simulated exchange balance"
-                      : "exchange balance unavailable"
-                }`}
+            {d.liveSettings?.positionSize === "risk"
+              ? `each position risks B × ${fmt.num((d.liveSettings?.riskPerPositionPct ?? 0.01) * 100, 2)}% × ${d.liveSettings?.ratio ?? 1} at its stop`
+              : d.controlPreview.unitFrom === "minQty"
+                ? "one lane unit: the exchange minimum lot per unit (per symbol)"
+                : `one lane unit $${fmt.num(d.controlPreview.unit, 2)} · ${
+                    d.controlPreview.unitFrom === "equity"
+                      ? "from the account equity"
+                      : d.controlPreview.unitFrom === "balance"
+                        ? "from account balance"
+                        : d.controlPreview.unitFrom === "fixed"
+                          ? "fixed notional"
+                          : d.controlPreview.unitFrom === "paper"
+                            ? "simulated exchange balance"
+                            : "from the paper balance (no equity read yet — live sizes from the account)"
+                  }`}
+            {d.controlPreview.base !== undefined
+              ? ` · B = min(wallet, equity) ${fmt.usd4(d.controlPreview.base)} (wallet ${fmt.usd4(d.controlPreview.wallet)}, equity ${fmt.usd4(d.controlPreview.equity)}) `
+              : " "}
+            {d.controlPreview.baseAt !== undefined && <Age at={d.controlPreview.baseAt} prefix="read" />}
+            {` · ${capText(d.liveSettings ?? {})}`}
             {d.controlPreview.top
               ? ` · top configs: ${d.controlPreview.top.kept} of ${d.controlPreview.top.of} kept`
               : ""}
-            {" · after account exposure / risk scalers"}
+            {d.controlPreview.symbolCapDropped
+              ? ` · ${d.controlPreview.symbolCapDropped} positions over the symbol cap (${d.liveSettings?.maxSymbols})`
+              : ""}
+            {" · after the account budgets on B (gross exposure, stop risk, worst case) and the exposure / risk scalers, as the live step sizes"}
           </div>
         )}
         {(d.control?.actions ?? []).length > 0 && (
@@ -365,7 +385,11 @@ export function TradingPage() {
         )}
       </Panel>
 
-      <Panel title="Live orders" sub="own CTSB submission ledger; accepted requests are not confirmed fills" flush>
+      <Panel
+        title="Live orders"
+        sub={`own ${d.liveTag ?? ""} client ids only (own CTSB submission ledger; accepted requests are not confirmed fills) · fill price and fee from the exchange reply (fee – = none reported: the statistics charge the model share) · P&L = the close it made, USD after fees`}
+        flush
+      >
         {d.liveOrders.length ? (
           <div className="v2-table-wrap">
             <table className="v2-table">
@@ -376,7 +400,10 @@ export function TradingPage() {
                   <th>symbol</th>
                   <th>kind</th>
                   <th className="num">qty</th>
-                  <th className="num">px</th>
+                  <th className="num">sent px</th>
+                  <th className="num">fill px</th>
+                  <th className="num">fee $</th>
+                  <th className="num">P&amp;L $</th>
                   <th>status</th>
                 </tr>
               </thead>
@@ -388,7 +415,10 @@ export function TradingPage() {
                     <td>{o.sym}</td>
                     <td>{o.kind}</td>
                     <td className="num">{o.qty}</td>
-                    <td className="num">{fmt.num(o.px, 4)}</td>
+                    <td className="num">{o.px > 0 ? fmt.num(o.px, 5) : "–"}</td>
+                    <td className="num">{o.fillPx > 0 ? fmt.num(o.fillPx, 5) : "–"}</td>
+                    <td className="num">{o.fee > 0 ? fmt.usd4(o.fee) : "–"}</td>
+                    <td className={`num ${tone(o.pnl)}`}>{o.pnl === null || o.pnl === undefined ? "" : fmt.usdSigned(o.pnl)}</td>
                     <td>
                       {o.status === "ok" ? (
                         <Pill kind="ok">accepted</Pill>
@@ -408,6 +438,42 @@ export function TradingPage() {
           </Empty>
         )}
       </Panel>
+      {(d.liveFlats ?? []).length > 0 && (
+        <Panel
+          title="Flat markers"
+          sub="the exchange ended an own position (its stop, its target, an order not ours, or unverified: the history does not show it and the bars did not reach exactly one level alone, neither, both or no bars): booked at the attributed price, else the 1m close (flat); an unverified one at the ticker, never dropped"
+          flush
+        >
+          <div className="v2-table-wrap">
+            <table className="v2-table">
+              <thead>
+                <tr>
+                  <th>time</th>
+                  <th>symbol</th>
+                  <th>side</th>
+                  <th className="num">booked px</th>
+                  <th>booked as</th>
+                  <th className="num">P&amp;L $</th>
+                  <th>note</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(d.liveFlats as Any[]).map((o) => (
+                  <tr key={o.coid}>
+                    <td>{fmt.time(o.at)}</td>
+                    <td>{o.sym}</td>
+                    <td className={o.side === 1 ? "v2-up" : "v2-down"}>{o.side === 1 ? "long" : "short"}</td>
+                    <td className="num">{o.px > 0 ? fmt.num(o.px, 5) : o.pxFrom ? o.pxFrom : "–"}</td>
+                    <td>{o.closeReason ?? (o.pnl === null ? "no own position left" : "–")}</td>
+                    <td className={`num ${tone(o.pnl)}`}>{o.pnl === null || o.pnl === undefined ? "" : fmt.usdSigned(o.pnl)}</td>
+                    <td className="v2-muted">{o.msg ?? ""}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Panel>
+      )}
     </>
   );
 }

@@ -133,7 +133,9 @@ const FIELDS: Record<Fn, string[]> = {
     ...under("rows[]", ["id", "group", "range", "pf", "n", "net", "ddt", "score"]),
   ],
   coreStatus: [
-    // shell.tsx (header: state pill, progressText, liveState, bar time, symbols)
+    // shell.tsx (header: state pill, progressText, liveState, bar time, symbols; a stale progress report)
+    "heartbeat",
+    "stageAt",
     "state",
     "stage",
     "progress",
@@ -177,7 +179,9 @@ const FIELDS: Record<Fn, string[]> = {
     ]),
   ],
   coreOverview: [
-    // pages/overview.tsx
+    // pages/overview.tsx (the account panel: the server's live tag and the own session from the own ledger)
+    "liveTag",
+    ...under("liveSession", ["closes", "realized", "net", "hand.n", "hand.usd", "flat.n", "flat.usd", "feesModelled"]),
     ...under("settings.gates", ["minPf", "maxDdtH", "baseSetsMinPf"]),
     ...under("settings.live", [
       "enabled",
@@ -360,6 +364,9 @@ const FIELDS: Record<Fn, string[]> = {
   ],
   coreTrading: [
     // pages/trading.tsx TradingPage
+    "liveTag",
+    "liveSession.net",
+    "liveFlats",
     "realized",
     "carried",
     "selected",
@@ -416,7 +423,7 @@ const FIELDS: Record<Fn, string[]> = {
     ]),
     "liveKeys",
     "control",
-    ...under("controlPreview", ["unit", "unitFrom", "top", "exchangeSlots"]),
+    ...under("controlPreview", ["unit", "unitFrom", "top", "exchangeSlots", "base", "baseAt", "wallet", "equity", "noBase"]),
     ...under("controlPreview.targets[]", [
       "key",
       "sym",
@@ -689,6 +696,12 @@ const FIELDS: Record<Fn, string[]> = {
   coreStatistics: [
     // pages/statistics.tsx
     "balanceFrom",
+    "accountAt",
+    "leverageFrom",
+    "unpriced",
+    "feesModelled",
+    "sourceLabel",
+    ...under("report", ["hand.n", "hand.usd", "flat.n", "flat.usd", "open.positions"]),
     "paperEvidence",
     ...under("report", ["source", "startT", "endT", "balance0", "detail.blockDetail"]),
     ...under("report.total", [
@@ -877,6 +890,20 @@ const OPTIONAL: Partial<Record<Fn, Record<string, string>>> = {
     "live.account.overall": "as live.account",
     "live.account.positions": "as live.account",
     "live.account.orders": "as live.account",
+    "live.account.wallet": "as live.account",
+    "live.account.equity": "as live.account",
+    "live.account.availableMargin": "as live.account",
+    "live.account.base": "as live.account",
+    "live.account.readAt": "as live.account",
+    "live.account.own.upnl": "as live.account (own / foreign sums once the step read the book)",
+    "live.account.own.n": "as live.account.own.upnl",
+    "live.account.own.margin": "as live.account.own.upnl",
+    "live.account.foreign.n": "as live.account.own.upnl",
+    "live.account.foreign.upnl": "as live.account.own.upnl",
+    "live.account.positionsDetail[]": "as live.account.own.upnl",
+    "liveSession.since": "null until the desk's first live step on this database",
+    "liveSession.openUpnl": "null until an account read with the book",
+    "liveSession.accountAt": "as liveSession.openUpnl",
     "status.prehistoric.symbols{}.n": "only a symbol that traded in the run",
     "status.prehistoric.symbols{}.pf": "only a symbol that traded in the run",
     "status.prehistoric.symbols{}.bars": "only a loaded symbol",
@@ -935,6 +962,7 @@ const OPTIONAL: Partial<Record<Fn, Record<string, string>>> = {
     "trades[]": "no paper close yet after one compute",
     "adjust[]": "no set has adjust.window closes yet",
     "liveOrders[]": "no live order without Live",
+    "liveFlats[]": "no flat marker without Live",
     "controlPreview.targets[]": "no lane holds a paper position at the moment of the read",
   },
   coreEngine: {
@@ -1229,7 +1257,16 @@ it("with/without statistics contract preserves PF provenance and nullable deltas
       minActiveLevel: 2,
       presets: { normal: { stats: measuredFive }, "normal-trailing": { stats: withStats } },
     });
-    const response = { balanceFrom: "paper start balance", paperEvidence: null, report };
+    const response = {
+      balanceFrom: "paper start balance",
+      accountAt: null,
+      leverageFrom: "assumed 10× (virtual)",
+      unpriced: null,
+      feesModelled: null,
+      sourceLabel: "simulated run (virtual)",
+      paperEvidence: null,
+      report,
+    };
     checkContract("coreStatistics", response, { allEmpty: true });
     assertJson("nullable comparison PF", response);
     assert.equal(report.withWithout[0].dPf, expectedDelta);
@@ -1381,9 +1418,10 @@ describe(
         equity: number;
         trades: { pnl: number };
       };
-      assert.equal(
-        p.balance,
-        rt.settings.paperBalance + p.trades.pnl,
+      // (the balance is the Trading page's own reader — carried closes + r × unit — so the two pages agree to the last
+      // digit; the closes' stored P&L sums to it up to rounding)
+      assert.ok(
+        Math.abs(p.balance - (rt.settings.paperBalance + p.trades.pnl)) < 1e-6,
         "balance includes realized closes only",
       );
       assert.equal(
@@ -1853,6 +1891,80 @@ describe(
         ),
         /primary/,
       );
+    });
+
+    it("one value, one source: the same live, paper and sim numbers on every page, stable across reads", async () => {
+      const { liveTag } = await import("./server/live.ts");
+      const tag = liveTag(DEFAULT_SETTINGS.live.connId);
+      // a small own ledger on the runtime's database: a desk close (+1 %), a position the exchange ended with no price
+      // on its marker (priced at the 1m close, booked "flat"), and one an order not ours closed ("hand")
+      const [sym, cs] = [...rt.candles][0];
+      const T = cs.t[cs.n - 30];
+      const ins = (coid: string, kind: string, qty: number, px: number, at: number, msg: string | null, fill?: number) => {
+        rt.db.run("INSERT INTO live_orders (coid, cfg, sym, side, kind, qty, px, status, msg, at) VALUES (?, ?, ?, 1, ?, ?, ?, 'ok', ?, ?)", coid, "c", sym, kind, qty, px, msg, at);
+        if (fill) rt.db.run("INSERT INTO live_fills (coid, sym, side, kind, qty, ref_px, fill_px, fee, at) VALUES (?, ?, 1, ?, ?, ?, ?, 0, ?)", coid, sym, kind, qty, px, fill, at);
+      };
+      const px0 = cs.c[cs.n - 30];
+      ins(`${tag}Ea1`, "O", 1, px0, T, null, px0);
+      ins(`${tag}Ca2`, "X", 1, px0 * 1.01, T + 60_000, null, px0 * 1.01);
+      ins(`${tag}Ea3`, "O", 1, px0, T + 120_000, null, px0);
+      ins("flat-a", "F", 0, 0, T + 180_000, "flat on the exchange");
+      ins(`${tag}Ea4`, "O", 1, px0, T + 240_000, null, px0);
+      ins("flat-b", "F", 0, px0 * 0.99, T + 300_000, `flat on the exchange (hand ${px0 * 0.99})`);
+      // the session starts at liveSince (the runtime set it on its first step): before the ledger here
+      const since0 = rt.db.kvGet<number>("liveSince");
+      rt.db.kvSet("liveSince", T - 1);
+      try {
+        const ov = (await api.coreOverviewData(api.connInput({}))) as Record<string, any>;
+        const tr = (await api.coreTradingData(api.connInput({}))) as Record<string, any>;
+        const live = (await api.coreStatisticsData(api.coreStatisticsInput({ source: "live" }))) as Record<string, any>;
+        // the order tag is the server's own, on every page
+        assert.equal(ov.liveTag, tag);
+        assert.equal(tr.liveTag, tag);
+        // the own session is one object on Overview and Trading
+        assert.deepEqual(ov.liveSession, tr.liveSession);
+        const ss = ov.liveSession;
+        assert.equal(ss.closes, 2, "the desk close and the flat-priced one");
+        assert.equal(ss.flat.n, 1);
+        assert.equal(ss.hand.n, 1);
+        // the Trading rows carry the same money per close as the session and the statistics
+        const rowPnl = (tr.liveOrders as Array<{ pnl: number | null }>).reduce((a, o) => a + (o.pnl ?? 0), 0);
+        const flatPnl = (tr.liveFlats as Array<{ pnl: number | null; closeReason: string | null }>)
+          .filter((o) => o.closeReason !== "hand")
+          .reduce((a, o) => a + (o.pnl ?? 0), 0);
+        assert.ok(Math.abs(rowPnl + flatPnl - ss.realized) < 1e-9, `rows ${rowPnl} + flats ${flatPnl} vs session ${ss.realized}`);
+        const rep = live.report;
+        assert.ok(Math.abs(rep.total.usd + rep.flat.usd - ss.realized) < 1e-9, "statistics own + flat = session realized");
+        assert.ok(Math.abs(rep.hand.usd - ss.hand.usd) < 1e-9, "hand apart, the same on both");
+        assert.equal(rep.total.n, 1, "only the desk close is a result (flat and hand out of PF)");
+        assert.equal(live.feesModelled, true, "every fill reported fee 0: the fees are the model's");
+        assert.equal(live.sourceLabel, "live: own orders by client id (exchange fills)");
+        // nothing virtual stands in for a live number: no account read → the balance is unavailable (a neutral zero
+        // basis), never the paper start balance
+        assert.equal(live.balanceFrom, "unavailable");
+        // paper: Overview and Trading show the same virtual P&L and balance
+        assert.equal(ov.paper.equity, tr.equity);
+        assert.equal(ov.paper.balance, tr.balance);
+        assert.equal(ov.paper.book.positions, tr.book.positions);
+        // sim: the Overview's run and the statistics of the simulated run count the same closes
+        const simSt = (await api.coreStatisticsData(api.coreStatisticsInput({ source: "sim" }))) as Record<string, any>;
+        assert.equal(simSt.report.total.n + simSt.report.hand.n + simSt.report.flat.n, rt.sim!.trades.length);
+        // stable: a second read of every page gives the same values (no history rewritten between reads)
+        const ov2 = (await api.coreOverviewData(api.connInput({}))) as Record<string, any>;
+        assert.deepEqual(ov2.liveSession, ov.liveSession);
+        const live2 = (await api.coreStatisticsData(api.coreStatisticsInput({ source: "live" }))) as Record<string, any>;
+        assert.deepEqual(live2.report.total, live.report.total);
+        const p1 = (await api.coreStatisticsData(api.coreStatisticsInput({ source: "paper" }))) as Record<string, any>;
+        const p2 = (await api.coreStatisticsData(api.coreStatisticsInput({ source: "paper" }))) as Record<string, any>;
+        assert.deepEqual(p2.report?.total ?? null, p1.report?.total ?? null);
+        assert.equal(p1.sourceLabel, "paper book forward record (virtual)");
+        // no NaN / Infinity anywhere (a JSON round trip turns them into null)
+        for (const [k, x] of Object.entries({ ov, tr, live, simSt, p1 })) assertJson(`consistency ${k}`, x);
+      } finally {
+        rt.db.run("DELETE FROM live_orders");
+        rt.db.run("DELETE FROM live_fills");
+        if (since0 !== undefined) rt.db.kvSet("liveSince", since0);
+      }
     });
 
     it("the validators reject bad input", async () => {

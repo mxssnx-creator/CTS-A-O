@@ -1,0 +1,14 @@
+[core-v2] compute #1 done in 6449 ms · sim PF 0.50 n 1378 · loop max 460 ms
+▶ signals end to end: sources mode allow
+  ✔ only the allowed sources run, each on every lane and range, with tapes on both directions (6.28737ms)
+  ✔ every signal trade belongs to a unit active at its entry; the funnel counts the rest by side (3.890081ms)
+  ✔ signal skips and paper skips carry the sig: prefix; the audit is clean (0.7507ms)
+✔ signals end to end: sources mode allow (6770.969144ms)
+ℹ tests 3
+ℹ suites 1
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 7367.419624

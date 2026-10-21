@@ -72,7 +72,7 @@ if (!process.env.CTS_CORE_LIVE_TAG) throw new Error("set CTS_CORE_LIVE_TAG (its 
 const { coreRuntime, setProbe } = await import("../src/core/server/runtime.server.ts");
 const { rangeOfId, RANGE_LABEL } = await import("../src/core/minimal-coord.ts");
 const { liveTag, ownLedger } = await import("../src/core/server/live.ts");
-const { controlRows } = await import("../src/core/server/live.server.ts");
+const { controlRows, reconcileLaneCloses } = await import("../src/core/server/live.server.ts");
 const { ownershipBreaches, ledgerToHistoryKeys, writeHalt } = await import("./lib/ownership-halt.mjs");
 const { lossLimitUsd, lossLimitText, sessionBaseline, sessionWalletOf, lossGuard, isLossGuardPause } = await import(
   "../src/core/loss-limit.ts"
@@ -92,12 +92,15 @@ const warnPositive = (rt, name) => {
   if (w) process.stderr.write(`${w}\n`);
 }
 const { profitFactor, modeledUnitReturn: unitReturn } = await import("../src/core/metrics/stats.ts");
-const { ownResults, flatten, history, orderIdentity } = await import("./core-live-report.mjs");
+const { ownResults, ownOpenPnl, flatten, history, orderIdentity } = await import("./core-live-report.mjs");
 const { kindOfInd } = await import("../src/core/sim/walkforward.ts");
-const { rowOf, timeline } = await import("../src/core/statistics.ts");
+const { liveTrades, rowOf, timeline } = await import("../src/core/statistics.ts");
 const { isSignalInd, signalSourceOf } = await import("../src/core/indications/registry.ts");
 const { checkMerged, checkSettings } = await import("../src/core/settings-check.ts");
 const { botStatsFromRows } = await import("../src/core/bot-stats.ts");
+const rel = await import("../src/core/relation.ts");
+/** the relation alarms' last warn event per kind (≤ once an hour each) */
+const relationWarned = new Map();
 /** the checks the settings API runs: a patch out of range is refused whole, as on the Settings page */
 const checkPatch = (p) => {
   checkSettings(p.settings ?? {});
@@ -373,6 +376,7 @@ async function report(final = false) {
   // the forward record only: the simulated window back-fills the closes of configs selected now (hours ago), which
   // never traded forward; rows from before first_at existed are counted apart (legacy)
   // the exchange record per config (one row per config's closed paper position), judged per bot family below
+  // relation: all rows — botStatsFromRows counts hand / unverified / restart apart
   const botRows = rt.db.all(
     "SELECT id, cfg, sym, side, entry, exit, exit_t, r, reason FROM live_lane_trades",
   );
@@ -393,24 +397,33 @@ async function report(final = false) {
   // the paper book's own record: every position the book really held, closed on its tape (paper_book_trades) — with
   // the delay between its signal's entry and the moment the book first held it (a compute takes 9–20 min: what the
   // book adopts late, or never, is what the exchange trades late, or never)
+  // ideal (the tape's r) and executable (the same close entered at the price the book adopted it, relation.ts
+  // executableR: single-leg positions with an adoption price)
   const bookRows = rt.db.all(
-    "SELECT cfg, entry_t, exit_t, r, unit_r, reason, held_at FROM paper_book_trades WHERE exit_t >= ?",
+    "SELECT cfg, side, entry_t, exit_t, r, vol, unit_r, reason, held_at, held_px, entry, exit FROM paper_book_trades WHERE exit_t >= ?",
     t0,
   );
   const book = {};
   const delays = {};
   for (const x of bookRows) {
     const k = catOf(x.cfg);
-    const a = (book[k] ??= { ...acc(), dropped: 0 });
+    const a = (book[k] ??= { ...acc(), dropped: 0, exec: { n: 0, gp: 0, gl: 0 } });
     if (x.reason === "dropped") {
       a.dropped++;
       continue;
     }
     addReturnEvidence(a, x.unit_r, typeof x.r === "number" && Number.isFinite(x.r) ? x.r * notional : NaN);
+    const rx = rel.executableR(x);
+    if (rx !== null) {
+      a.exec.n++;
+      if (rx > 0) a.exec.gp += rx;
+      else a.exec.gl -= rx;
+    }
     if (x.held_at != null) (delays[k] ??= []).push((x.held_at - x.entry_t) / 60_000);
   }
   for (const [k, a] of Object.entries(book)) {
     Object.assign(a, finishReturnEvidence(a));
+    a.exec.pf = a.exec.n ? profitFactor(a.exec.gp, a.exec.gl) : null;
     const d = (delays[k] ?? []).sort((x, y) => x - y);
     a.entryDelayMin = d.length ? { median: d[d.length >> 1], p90: d[Math.floor(d.length * 0.9)] } : null;
   }
@@ -485,6 +498,8 @@ async function report(final = false) {
     mem: (({ rssMb, heapMb, arrayBuffersMb, nativeMb, availMb }) => ({ rssMb, heapMb, arrayBuffersMb, nativeMb, availMb }))(memInfo()),
     symbols: rt.status.symbols,
     lastComputeAt: rt.status.lastComputeAt,
+    // the signal activation of the last compute: active units per direction and the test each other unit failed
+    signals: rt.status.signals ?? null,
     probe: rt.wf.probe ?? null,
     final,
     // signed exchange calls and rate-limit bans per endpoint, since the start
@@ -587,22 +602,54 @@ async function report(final = false) {
       .all("SELECT at, level, msg FROM events WHERE at >= ? ORDER BY id DESC LIMIT 25", t0)
       .map((e) => `${new Date(e.at).toISOString().slice(11, 19)} ${e.level} ${e.msg}`),
   };
-  // live vs system: every exchange order (live record) next to the same order in the paper book, since the start
-  {
-    const { liveDiff, liveDiffMd } = await import("../src/core/live-diff.ts");
-    const d = liveDiff(
-      rowsOf(
-        "SELECT cfg, sym, side, entry_t, exit_t, unit_r AS r FROM paper_trades WHERE exit_t IS NOT NULL AND exit_t >= ?",
-        ["cfg", "sym", "side", "entryT", "exitT", "r"],
-        t0,
-      ),
-      rt.db
-        .all("SELECT id, cfg, sym, exit_t, r, reason FROM live_lane_trades WHERE exit_t >= ?", t0)
-        .map((x) => ({ id: x.id, cfg: x.cfg, sym: x.sym, exitT: x.exit_t, r: x.r, reason: x.reason })),
-      t0,
-    );
-    doc.liveVsSystem = { total: d.total, byRange: d.byRange, stopMismatch: d.stopMismatch };
-    writeFileSync(join(out, "live-vs-system.md"), `${liveDiffMd(d)}\n`);
+  // live vs system (src/core/relation.ts, docs/execution-fidelity.md): every own exchange lane next to the same
+  // position in the paper book's own record, per lane and per real position, since the start (live-vs-system.md); and
+  // the standing check over the last 48 h (doc.relation, a stderr line, a warn event at most once an hour per alarm)
+  let relLine = null;
+  try {
+    const now = Date.now();
+    const relationSince = (from) =>
+      rel.relationOf({
+        system: rt.db.all(rel.relationSystemSql(), from - rel.RELATION_SYSTEM_SLACK_MS),
+        lanes: rt.db.all(rel.RELATION_LANES_SQL, from),
+        // the real positions: the own ledger's closes (its fills, the model cost on an unmeasured one)
+        trades: liveTrades(rt.db.all(rel.RELATION_LEDGER_SQL, from - rel.RELATION_LEDGER_LOOKBACK_MS), tag.length, rt.settings.cost),
+        open: rt.paper.positions.map((p) => rel.laneIdOfRow({ cfg: p.cfg, sym: p.sym, side: p.side, entry_t: p.entryT })),
+        from,
+        to: now,
+        coverageFrom: rt.db.get(rel.RELATION_COVERAGE_SQL)?.t ?? null,
+      });
+    const d = relationSince(t0);
+    doc.liveVsSystem = {
+      from: d.from,
+      counts: d.counts,
+      events: d.events,
+      total: d.total,
+      byRange: d.byRange,
+      positions: d.positions && {
+        n: d.positions.n,
+        pf: d.positions.pf,
+        usd: d.positions.usd,
+        hand: d.positions.hand,
+        flat: d.positions.flat,
+      },
+      stopMismatch: d.stopMismatch,
+    };
+    writeFileSync(join(out, "live-vs-system.md"), `${rel.relationMd(d)}\n`);
+    const w = relationSince(now - rel.RELATION_CHECK.windowH * H);
+    const chk = rel.relationCheck(w);
+    doc.relation = {
+      windowH: rel.RELATION_CHECK.windowH,
+      // (no window yet — a desk without exchange rows or a first start — has no start time: not an exception)
+      from: Number.isFinite(w.from) ? new Date(w.from).toISOString() : null,
+      counts: w.counts,
+      ...chk,
+      gap: w.total.gap,
+    };
+    relLine = rel.relationLine(w, chk);
+    for (const a of rel.relationWarnsDue(chk.alarms, relationWarned, now)) rt.db.event("warn", `relation: ${a.msg}`);
+  } catch (e) {
+    process.stderr.write(`${name}: live vs system not written (${e instanceof Error ? e.message : e})\n`);
   }
   // simulated run vs paper book: every order of the desk's own simulated run next to the same position in the paper
   // book's own record (paper_book_trades: what the book really held, not the simulated window's trades copied), since
@@ -650,6 +697,7 @@ async function report(final = false) {
       process.stderr.write(`${name}: sim vs paper not written (${error})\n`);
     }
   writeFileSync(join(out, "status.json"), JSON.stringify(doc, null, 2));
+  if (relLine) process.stderr.write(`  ${relLine}\n`);
   {
     const ks = doc.control?.keys ?? [];
     if (ks.length)
@@ -693,7 +741,8 @@ async function report(final = false) {
       .filter(([, a]) => a.n > 0)
       .map(
         ([k, a]) =>
-          `${k} ${a.n} PF ${returnEvidenceText(a)} $${a.usd === null ? "unavailable" : a.usd.toFixed(2)}${a.entryDelayMin ? ` (entry +${Math.round(a.entryDelayMin.median)} min)` : ""}`,
+          // PF ideal / executable (at the book's adoption price, the single-leg closes that have one)
+          `${k} ${a.n} PF ${returnEvidenceText(a)}${a.exec.pf !== null ? ` / ${a.exec.pf.toFixed(2)} exec (${a.exec.n})` : ""} $${a.usd === null ? "unavailable" : a.usd.toFixed(2)}${a.entryDelayMin ? ` (entry +${Math.round(a.entryDelayMin.median)} min)` : ""}`,
       )
       .join(" · ") || "none"} · paper sample ${Object.entries(paper)
       .map(([k, a]) => `${k} ${a.n} PF ${returnEvidenceText(a)}`)
@@ -783,7 +832,9 @@ const stop = async (why) => {
 // the loss limit: realized net of the tag's own positions (fees included) plus their share of the open P&L,
 // checked every minute from the exchange
 let lossTimer = null;
-const lossSeen = { at: 0, orders: new Map() };
+// the account's orders the loss check has read: every order on a symbol the desk has an own order on (the operator's
+// fills there reduce the own quantity first — ownResults), and those symbols
+const lossSeen = { at: 0, orders: new Map(), ownSyms: new Set() };
 /** "pause" mode: the reason opening is paused for the loss limit, or null */
 let lossPaused = null;
 // a loss pause saved before a restart is this desk's own: picked up, so it resumes once the net recovers (it was
@@ -850,10 +901,32 @@ if (hasLossLimit || mainnet)
       // the account's order history once, then only what is new (10 min overlap for late updates)
       const from = lossSeen.at ? lossSeen.at - 600_000 : lossT0 - 60_000;
       const now = Date.now();
-      // only this desk's own orders are kept (the account carries every other system's orders too)
-      for (const o of await history(network, conn, from, now))
-        if (String(o.clientOrderId ?? "").toUpperCase().startsWith(tag)) lossSeen.orders.set(orderIdentity(o), o);
+      // only the symbols this desk trades are kept (the account carries every other system's orders too) — with every
+      // order on them, its own and the others' (own-first: a manual close there reduces the own quantity first); keyed
+      // by orderIdentity (client id first), an order not ours without a stable identity by its venue id as given
+      const batch = await history(network, conn, from, now);
+      const isOwn = (o) => String(o.clientOrderId ?? "").toUpperCase().startsWith(tag);
+      for (const o of batch) if (isOwn(o)) lossSeen.ownSyms.add(String(o.symbol));
+      for (const o of batch) {
+        if (!lossSeen.ownSyms.has(String(o.symbol))) continue;
+        let key;
+        try {
+          key = orderIdentity(o);
+        } catch (e) {
+          if (isOwn(o)) throw e;
+          key = `venue:${String(o.orderId)}`;
+        }
+        lossSeen.orders.set(key, o);
+      }
       lossSeen.at = now;
+      // the lane record: closes booked from the bars or the ticker (or unverified) re-priced from this same history
+      // (reconcileLaneCloses — no extra exchange call)
+      try {
+        const n = reconcileLaneCloses(rt, [...lossSeen.orders.values()]);
+        if (n) rt.db.event("info", `live test ${name}: ${n} lane close(s) re-priced from the venue's order history`);
+      } catch (e) {
+        process.stderr.write(`${name}: lane closes not reconciled (${e instanceof Error ? e.message : e})\n`);
+      }
       // ownership: an own fill that took out more than this desk held on its (symbol, side) → HALT (once)
       if (!haltWritten) {
         const br = ownershipBreaches([...lossSeen.orders.values()], tag, { since: procT0, startOwn: ownAtStart });
@@ -876,15 +949,14 @@ if (hasLossLimit || mainnet)
       const realized = r.positions.reduce((a, p) => a + p.net, 0);
       // positions only (the open-orders endpoint is the one rate limits pause); unreadable → the realized loss
       // alone still trips the limit
+      // the own open quantity marked against the own average entry (ownOpenPnl; the old share of the exchange's
+      // unrealized profit only where no mark price is given — openApprox)
       let open = 0;
       let openKnown = true;
+      let openApprox = false;
       try {
         const raw = await bxm.signed(network, conn, "GET", "/openApi/swap/v2/user/positions", {});
-        for (const p of r.positions.filter((x) => x.open)) {
-          const b = (raw ?? []).find((x) => x.symbol === p.sym && String(x.positionSide).toUpperCase() === p.side);
-          const q = Math.abs(Number(b?.positionAmt ?? 0));
-          if (q > 0) open += Number(b.unrealizedProfit ?? 0) * Math.min(1, p.qty / q);
-        }
+        ({ open, approx: openApprox } = ownOpenPnl(r.positions, raw));
       } catch (e) {
         openKnown = false;
         process.stderr.write(`${name}: open P&L unreadable (${e instanceof Error ? e.message : e}) — realized only\n`);
@@ -893,7 +965,7 @@ if (hasLossLimit || mainnet)
       const wallet = sessionWallet;
       const lim = { fixed: maxLoss, pct: maxLossPct, wallet };
       const limit = lossLimitUsd(lim);
-      lastLoss = { at: Date.now(), realized, open, openKnown, net: realized + open, paused: lossPaused, limit, wallet };
+      lastLoss = { at: Date.now(), realized, open, openKnown, ...(openApprox ? { openApprox } : {}), net: realized + open, paused: lossPaused, limit, wallet };
       const net = realized + open;
       lossOkAt = Date.now();
       if (!(limit > 0)) {

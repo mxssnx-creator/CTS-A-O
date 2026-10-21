@@ -82,7 +82,9 @@ export const isMicroInd = (base: string) =>
 export type MicroIndRule = boolean | "minimal";
 
 /** May an indication (Micro or not) take a cell of this range tag under the rule? */
-export function microIndFits(rule: MicroIndRule | undefined, tag: string | undefined, microInd: boolean): boolean {
+export function microIndFits(rule: MicroIndRule | undefined, tag: string | undefined, microInd: boolean, firstClassMicro = false): boolean {
+  // First-class Micro takes all ranges independently of legacy mc-* exclusivity.
+  if (firstClassMicro) return true;
   if (!rule) return true;
   if (microInd) return tag === "mc" || (rule === "minimal" && tag === "mn");
   return tag !== "mc";

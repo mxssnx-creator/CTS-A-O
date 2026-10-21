@@ -35,7 +35,7 @@ import type {
   SignalHistMessage,
 } from "./pool.server.ts";
 import { BaseConfigCounter } from "../base-config-counts.ts";
-import { RealtimeTapeBook, type RealtimeTapeGroup } from "../sim/realtime.ts";
+import { RealtimeTapeSet, type RealtimeTapeGroup } from "../sim/realtime.ts";
 import { TickMathBook, type TickPosition } from "./tick-math.ts";
 
 type Msg = { evaluationFromT?: number } & (
@@ -84,9 +84,12 @@ type Msg = { evaluationFromT?: number } & (
       tactics: unknown;
       /** one representative cell per range (baseRangeProtects) and each range's shortest lane */
       rangeProtects?: unknown[];
+      completeRangeProtects?: unknown[];
       rangeMinTf?: Record<string, number>;
       microOwnInds?: MicroIndRule;
       gates?: unknown;
+      /** grid.baseCells: record each pair's passed cells */
+      cells?: boolean;
     }
   | {
       id: number;
@@ -126,7 +129,7 @@ const chunksOf = <T>(xs: T[], n: number): T[][] => {
  */
 const IDLE_GC_MS = Number(process.env.CTS_CORE_WORKER_IDLE_GC_MS || 1000);
 let idleGc: ReturnType<typeof setTimeout> | null = null;
-let realtime: RealtimeTapeBook | null = null;
+let realtime: RealtimeTapeSet | null = null;
 let tickBook: TickMathBook | null = null;
 type GcFn = (o?: { type: "major"; execution: "sync"; flavor: "last-resort" }) => void;
 const gcOf = () => (globalThis as { gc?: GcFn }).gc;
@@ -177,7 +180,7 @@ parentPort!.on("message", (m: Msg) => {
     }
     if (m.type === "realtime-init") {
       realtime = null;
-      realtime = new RealtimeTapeBook(m.bars, m.groups, m.cost, m.evaluationFromT);
+      realtime = new RealtimeTapeSet(m.bars, m.groups, m.cost, m.evaluationFromT);
       parentPort!.postMessage({ id: m.id, ok: true, ends: realtime.ends() });
       return;
     }
@@ -391,6 +394,8 @@ parentPort!.on("message", (m: Msg) => {
         m.rangeMinTf,
         m.microOwnInds,
         m.gates as never,
+        (m.completeRangeProtects ?? []) as never,
+        m.cells === true,
       );
       parentPort!.postMessage({
         id: m.id,

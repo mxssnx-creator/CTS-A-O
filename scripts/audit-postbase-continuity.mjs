@@ -13,8 +13,12 @@ import {
   buildTapesGen,
   baseAllowsTape,
   engineContextValid,
+  configDirectionEval,
   configEval,
   configContextEval,
+  makeTape,
+  tradeAt,
+  symStats,
   defaultWalkForward,
   walkForwardGen,
 } from "../src/core/sim/walkforward.ts";
@@ -54,7 +58,7 @@ assert.ok(
 const startT = endT - 6 * H;
 const fromT = startT - 24 * H;
 const settings = structuredClone(DEFAULT_SETTINGS);
-settings.signals.enabled = false; // Signal source history is independent; this feed has only five days, not 336h.
+settings.signals.enabled = false; // Isolate engine validation; Signal sources retain their independent 336h history.
 settings.exitStrategy.enabled = false;
 settings.grid.micro = { ...settings.grid.micro, maxHoldMin: 15 };
 settings.focus = ["follow", "revert"].flatMap((bot) =>
@@ -98,13 +102,13 @@ const protocol = {
   evaluationFromT: fromT,
   lastNHistory: "All available source candles; Base and broad config evaluation remain 24h",
   validationScope:
-    "Exact config minimum/LCB/Last-N/range gates; separate configured symbol gate at entry",
+    "Full independent config/direction evaluation through entry, including sample, confidence and Last-N; separate symbol gate",
   settings,
   wf: { ...wf, protects: undefined, dcaProtects: undefined },
   source: sources(),
   rssBudgetMiB: 3072,
   harnessSha256: hash(readFileSync(new URL(import.meta.url))),
-  signalScope: "Not scored: preserved 336h source history exceeds this cached five-day feed",
+  signalScope: "Not scored: engine-only replay; independent 336h Signal history is tested separately",
   allRanges: "Current configured production grids; Micro maximum hold explicitly 15 minutes",
 };
 writeFileSync(`${out}/protocol.json`, JSON.stringify(protocol, null, 2));
@@ -162,6 +166,205 @@ const tapes = drain(
   ),
 );
 console.log(`Tapes ${tapes.length}; running all admitted configurations together`);
+if (arg("diagnose-parity")) {
+  const bytes = readFileSync(arg("diagnose-parity"));
+  const orders = JSON.parse(gunzipSync(bytes));
+  const byId = new Map(tapes.map((tp) => [tp.id, tp]));
+  const index = new Map();
+  const stats = {
+    orders: orders.length, matched: 0, missing: 0, mismatched: 0,
+    entryQualificationFailed: 0, symbolWithoutPriorClose: 0,
+    maxUnitReturnError: 0, maxCostError: 0,
+  };
+  const failures = [];
+  const evaluations = [];
+  for (const order of orders) {
+    const tp = byId.get(order.cfg);
+    assert.ok(tp, `missing config ${order.cfg}`);
+    let rows = index.get(tp);
+    if (!rows) {
+      rows = new Map();
+      for (let i = 0; i < tp.n; i++) {
+        const key = `${tp.syms[tp.symI[i]]}|${tp.side[i]}|${tp.entryT[i]}`;
+        const matches = rows.get(key) ?? [];
+        matches.push(i);
+        rows.set(key, matches);
+      }
+      index.set(tp, rows);
+    }
+    const matches = (rows.get(`${order.sym}|${order.side}|${order.entryT}`) ?? [])
+      .map((i) => tradeAt(tp, i));
+    const unitR = order.r / order.mult;
+    const match = matches.find((row) => row.exitT === order.exitT && row.reason === order.reason &&
+      Math.abs(row.entry - order.entry) <= 1e-8 * Math.max(1, order.entry) &&
+      Math.abs(row.exit - order.exit) <= 1e-8 * Math.max(1, order.exit) &&
+      Math.abs(row.r - unitR) <= 1e-8);
+    if (!matches.length) stats.missing++;
+    else if (!match) stats.mismatched++;
+    else stats.matched++;
+    if (!match && failures.length < 12) failures.push({ order, matches });
+    if (match) stats.maxUnitReturnError = Math.max(stats.maxUnitReturnError, Math.abs(match.r - unitR));
+    const cost = order.side * (order.exit - order.entry) / order.entry - unitR;
+    stats.maxCostError = Math.max(stats.maxCostError, Math.abs(cost - settings.cost));
+    const direction = configDirectionEval(tp, order.entryT, wf, order.side);
+    const symbol = symStats(tp, order.sym, order.side, order.entryT - 24 * H, order.entryT);
+    const qualified = baseAllowsTape(tp, wf) && direction.ok &&
+      engineContextValid(tp, order.entryT, wf, order.sym, order.side);
+    if (!qualified) stats.entryQualificationFailed++;
+    if (!symbol.n) stats.symbolWithoutPriorClose++;
+    evaluations.push({ cfg: order.cfg, sym: order.sym, side: order.side,
+      entryT: order.entryT, exitT: order.exitT, unitR, direction, symbol, qualified });
+  }
+  assert.deepEqual(sources(), protocol.source, "source unchanged throughout parity audit");
+  writeFileSync(`${out}/execution-parity.json`, JSON.stringify({
+    stats, failures, evaluations, source: protocol.source,
+    protocolSha256: hash(readFileSync(`${out}/protocol.json`)), ordersSha256: hash(bytes),
+  }, null, 2));
+  await new Promise((done) => process.stdout.write(`${JSON.stringify(stats)}\n`, done));
+  // The diagnostic is complete: do not continue into a second execution replay.
+  process.exit(stats.missing || stats.mismatched || stats.entryQualificationFailed ? 1 : 0);
+} else if (arg("diagnose-prefix")) {
+  const orders = JSON.parse(gunzipSync(readFileSync(arg("diagnose-prefix"))));
+  const byPair = new Map();
+  for (const order of orders) {
+    const pair = order.cfg.split("|").slice(0, 2).join("|");
+    if (!byPair.has(pair)) byPair.set(pair, order.cfg);
+  }
+  const onlyIds = new Set(byPair.values());
+  const comparisons = [];
+  for (let cut = startT; cut <= endT; cut += H) {
+    const head = makeUniverse(bars.map((b) => headBars(b, cut)));
+    const prefix = drain(
+      buildTapesGen(
+        head,
+        wf.protects,
+        settings.cost,
+        undefined,
+        new Set(byPair.keys()),
+        settings.tactics,
+        undefined,
+        {
+          minSl: settings.protectFloor.minSl,
+          minTrail: settings.protectFloor.minTrail,
+          pairTags: base.pairTags,
+          pairTps: base.pairTps,
+          rangeMinTf: rangeMinTfOf(settings.grid),
+          microOwnInds: microIndRule(settings.grid),
+          onlyIds,
+        },
+      ),
+    );
+    const original = new Map(tapes.filter((tp) => onlyIds.has(tp.id)).map((tp) => [tp.id, tp]));
+    const rows = (tp) => {
+      const out = [];
+      for (let i = 0; i < tp.n; i++)
+        if (tp.exitT[i] <= cut)
+          out.push([
+            tp.entryT[i],
+            tp.exitT[i],
+            tp.syms[tp.symI[i]],
+            tp.side[i],
+            +tp.r[i].toFixed(12),
+            tp.reason[i],
+          ]);
+      return out;
+    };
+    for (const tp of prefix) {
+      const full = original.get(tp.id),
+        a = rows(full),
+        b = rows(tp);
+      comparisons.push({
+        cut,
+        cfg: tp.id,
+        fullN: a.length,
+        prefixN: b.length,
+        same: JSON.stringify(a) === JSON.stringify(b),
+      });
+    }
+  }
+  assert.deepEqual(sources(), protocol.source);
+  writeFileSync(
+    `${out}/prefix-audit.json`,
+    JSON.stringify(
+      { comparisons, violations: comparisons.filter((x) => !x.same), source: protocol.source },
+      null,
+      2,
+    ),
+  );
+  console.log(
+    JSON.stringify(
+      { comparisons: comparisons.length, violations: comparisons.filter((x) => !x.same) },
+      null,
+      2,
+    ),
+  );
+  process.exit(0);
+}
+if (arg("diagnose-orders")) {
+  const orders = JSON.parse(gunzipSync(readFileSync(arg("diagnose-orders"))));
+  const byId = new Map(tapes.map((tp) => [tp.id, tp]));
+  const sides = new Map();
+  const stats = {
+    orders: orders.length,
+    configFailed: 0,
+    ownDirectionFailed: {},
+    symbolWithoutPriorClose: 0,
+    priorExecutionLosing: 0,
+    maxCostError: 0,
+  };
+  const examples = [];
+  for (const order of orders) {
+    const tp = byId.get(order.cfg);
+    assert.ok(tp);
+    const key = `${order.cfg}|${order.side}`;
+    let own = sides.get(key);
+    if (!own) {
+      const rows = [];
+      for (let i = 0; i < tp.n; i++) if (tp.side[i] === order.side) rows.push(tradeAt(tp, i));
+      own = makeTape(tp.id, tp.bot, tp.ind, tp.protect, tp.kind, tp.syms, rows, [], []);
+      sides.set(key, own);
+    }
+    const config = configEval(tp, order.entryT, wf);
+    const direction = configEval(own, order.entryT, { ...wf, basePassed: undefined });
+    const symbol = symStats(tp, order.sym, order.side, order.entryT - 24 * H, order.entryT);
+    const prior = orders
+      .filter((x) => x.cfg === order.cfg && x.side === order.side && x.exitT <= order.entryT)
+      .slice(-15);
+    const gp = prior.reduce((n, x) => n + Math.max(0, x.r / x.mult), 0);
+    const gl = prior.reduce((n, x) => n + Math.max(0, -x.r / x.mult), 0);
+    if (!config.ok) stats.configFailed++;
+    const gate = direction.ok ? "pass" : direction.fail;
+    stats.ownDirectionFailed[gate] = (stats.ownDirectionFailed[gate] ?? 0) + 1;
+    if (!symbol.n) stats.symbolWithoutPriorClose++;
+    if (prior.length && gp <= gl) stats.priorExecutionLosing++;
+    const estimatedCost =
+      (order.side * (order.exit - order.entry)) / order.entry - order.r / order.mult;
+    stats.maxCostError = Math.max(stats.maxCostError, Math.abs(estimatedCost - settings.cost));
+    if (examples.length < 12 && !direction.ok)
+      examples.push({
+        cfg: order.cfg,
+        sym: order.sym,
+        side: order.side,
+        entryT: order.entryT,
+        unitR: order.r / order.mult,
+        config,
+        direction,
+        symbol,
+        priorExecution: { n: prior.length, gp, gl },
+      });
+  }
+  assert.deepEqual(sources(), protocol.source);
+  const result = {
+    stats,
+    examples,
+    source: protocol.source,
+    settingsSha256: hash(JSON.stringify(settings)),
+    ordersSha256: hash(readFileSync(arg("diagnose-orders"))),
+  };
+  writeFileSync(`${out}/entry-audit.json`, JSON.stringify(result, null, 2));
+  console.log(JSON.stringify({ stats, examples: examples.slice(0, 3) }, null, 2));
+  process.exit(0);
+}
 if (arg("diagnostic-only", "false") === "true") {
   const diagnostics = [];
   for (let t = startT; t <= endT; t += H) {
@@ -202,7 +405,7 @@ const validationSteps = sim.steps.map((step) => ({
 }));
 const byId = new Map(tapes.map((tp) => [tp.id, tp]));
 const contextDiagnostic = {
-  pooledPassingConfigs: 0,
+  qualifiedConfigContainers: 0,
   contexts: 0,
   fewerThanFiveCloses: 0,
   recentPfAtLeast135: 0,
@@ -210,7 +413,7 @@ const contextDiagnostic = {
 };
 for (const tp of tapes) {
   if (!configEval(tp, startT, { ...wf, basePassed: undefined }).ok) continue;
-  contextDiagnostic.pooledPassingConfigs++;
+  contextDiagnostic.qualifiedConfigContainers++;
   for (const sym of new Set(tp.syms))
     for (const side of [1, -1]) {
       contextDiagnostic.contexts++;
@@ -238,6 +441,7 @@ for (const trade of [...sim.trades, ...(sim.openAtEnd ?? [])]) {
   );
   if (
     !configEval(tp, trade.entryT, wf).ok ||
+    !configDirectionEval(tp, trade.entryT, wf, trade.side).ok ||
     !engineContextValid(tp, trade.entryT, wf, trade.sym, trade.side)
   )
     violations.push({ cfg: trade.cfg, entryT: trade.entryT });
@@ -263,6 +467,15 @@ const result = {
   })),
   passingSetsAtStart: tapes.filter((tp) => configEval(tp, startT, wf).ok).length,
   passingSetsAtEnd: tapes.filter((tp) => configEval(tp, endT, wf).ok).length,
+  passingDirectionalSetsAtStart: tapes.reduce(
+    (n, tp) =>
+      n +
+      (configEval(tp, startT, wf).ok
+        ? Number(configDirectionEval(tp, startT, wf, 1).ok) +
+          Number(configDirectionEval(tp, startT, wf, -1).ok)
+        : 0),
+    0,
+  ),
   passingEntryContextsAtStart: tapes.reduce(
     (n, tp) =>
       n +
@@ -270,8 +483,14 @@ const result = {
         ? [...new Set(tp.syms)].reduce(
             (m, sym) =>
               m +
-              Number(engineContextValid(tp, startT, wf, sym, 1)) +
-              Number(engineContextValid(tp, startT, wf, sym, -1)),
+              Number(
+                configDirectionEval(tp, startT, wf, 1).ok &&
+                  engineContextValid(tp, startT, wf, sym, 1),
+              ) +
+              Number(
+                configDirectionEval(tp, startT, wf, -1).ok &&
+                  engineContextValid(tp, startT, wf, sym, -1),
+              ),
             0,
           )
         : 0),

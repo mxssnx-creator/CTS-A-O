@@ -345,7 +345,11 @@ describe("live control targets (server/live.ts controlTargets)", () => {
           t.stopDist <= 0.2 && t.stopDist >= Math.min(0.2, minStop),
           `${at}: stop ${t.stopDist}`,
         );
-        assert.ok((t.riskDist ?? 0) <= t.stopDist + 1e-12, `${at}: risk past the stop`);
+        // Own mark-to-stop risk remains conservative even when the native backstop is nearer.
+        const ownRiskMax = Math.max(minStop, ...k.lanes.filter((l) => l.sym === t.sym && l.side === t.side)
+          .map((l) => Math.max(0, l.risk ?? l.sl)));
+        assert.ok(Number.isFinite(t.riskDist) && t.riskDist! >= minStop &&
+          t.riskDist! <= ownRiskMax + 1e-12, `${at}: risk outside own lane distances`);
       }
     }
     assert.ok(targets > CASES, `${targets} targets: the cases exercise the sizing`);

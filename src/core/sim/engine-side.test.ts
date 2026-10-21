@@ -41,11 +41,12 @@ describe("engine direction acceptance (engineSideAccept)", () => {
     assert.equal(engineSideKey("trailing", undefined, -1), "base|wide|-1");
     assert.equal(engineSideKey("dca-active", "sh", 1), "dca|sh|1");
     const g = { ...o, engineSideAccept: acc };
-    assert.equal(why(execDecision(plain, T0, g, { guard, sym: "B", side: -1 })), "engineSide");
+    assert.equal(idx.accepts(engineSideKey("normal", undefined, -1), T0, acc), false);
+    assert.equal(why(execDecision(plain, T0, g, { guard, sym: "B", side: -1 })), "directionValidation");
     assert.equal(why(execDecision(plain, T0, g, { guard, sym: "B", side: 1 })), "ok");
     assert.notEqual(why(execDecision(axis, T0, g, { guard, sym: "B", side: -1 })), "engineSide");
-    // off: shorts open
-    assert.equal(why(execDecision(plain, T0, o, { guard, sym: "B", side: -1 })), "ok");
+    // Disabling this additional pooled gate never waives the config's own losing-direction result.
+    assert.equal(why(execDecision(plain, T0, o, { guard, sym: "B", side: -1 })), "directionValidation");
   });
 
   it("keeps Historic Exit tactics outside Normal ranges and independently gates each tactic", () => {
@@ -87,7 +88,8 @@ describe("engine direction acceptance (engineSideAccept)", () => {
       engineSideAccept: acc,
       toggles: { ...DEFAULT_TOGGLES, normal: false, exit: true, block: false },
     };
-    assert.equal(why(execDecision(staticExit, T0, g, { guard, sym: "B", side: -1 })), "engineSide");
+    assert.equal(idx.accepts(staticKey, T0, acc), false);
+    assert.equal(why(execDecision(staticExit, T0, g, { guard, sym: "B", side: -1 })), "directionValidation");
     assert.equal(why(execDecision(trailingExit, T0, g, { guard, sym: "B", side: -1 })), "ok");
   });
 
@@ -202,7 +204,10 @@ describe("engine direction acceptance (engineSideAccept)", () => {
 
   it("seat cool-off (seatQuietH): a config that closed within H hours before the entry waits; closes after it never count", () => {
     // the config's last close at T0 − 2 h; one at T0 + 30 min (after the entry) must not be seen
-    const tp = tape("q", "normal", [tr(1, 0.01, T0 - 6 * H), tr(1, 0.01, T0 - 2 * H), tr(1, 0.01, T0 + 30 * 60_000)]);
+    const tp = tape("q", "normal", [
+      ...Array.from({ length: 12 }, (_, i) => tr(1, 0.01, T0 - (20 - i) * H)),
+      tr(1, 0.01, T0 - 6 * H), tr(1, 0.01, T0 - 2 * H), tr(1, 0.01, T0 + 30 * 60_000),
+    ]);
     const q = { ...o, seatQuietH: 4 };
     assert.equal(why(execDecision(tp, T0, q, { guard, sym: "B", side: 1 })), "seatQuiet", "closed 2 h before: waits");
     assert.equal(why(execDecision(tp, T0, { ...o, seatQuietH: 2 }, { guard, sym: "B", side: 1 })), "ok", "exactly 2 h: free");
@@ -231,13 +236,15 @@ describe("engine direction acceptance (engineSideAccept)", () => {
     const split = { ...o, engineSideAccept: { ...acc, perInd: ["mc"] } };
     assert.equal(why(execDecision(good, T0, pooled, { guard: g, sym: "B", side: 1 })), "engineSide", "pooled: blocked by the loser");
     assert.equal(why(execDecision(good, T0, split, { guard: g, sym: "B", side: 1 })), "ok");
-    assert.equal(why(execDecision(bad, T0, split, { guard: g, sym: "B", side: 1 })), "engineSide");
+    assert.equal(ix.accepts(engineSideKeyFor("normal", "mc", 1, bad.ind, ["mc"]), T0, split.engineSideAccept), false);
+    assert.equal(why(execDecision(bad, T0, split, { guard: g, sym: "B", side: 1 })), "directionValidation");
   });
 
   it("perInd: a thin indication group (fewer than minTrades) is judged by its pooled range group, not accepted", () => {
     const mk = (ind: string, r: number, n: number) =>
       makeTape(`y|${ind}|mc`, "follow", ind, { ...P, tag: "mc" } as Protect, "normal", ["A"], trades(-1, r).slice(0, n), [], []);
-    const thin = mk("mc-bbx-25@m15c", 0.004, 5);
+    // Twelve own closes qualify this config, while remaining below the independent engine-side minimum of 30.
+    const thin = mk("mc-bbx-25@m15c", 0.004, 12);
     const pool = mk("mc-rsi2-5@m5", -0.012, 40);
     const ix = new EngineSideIndex();
     for (const _ of ix.fill([thin, pool]));

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import { DEFAULT_SETTINGS, RT_COST, type SettingsPatch } from "../config.ts";
 import { liveTrades, type LedgerRow } from "../statistics.ts";
-import { DEFAULT_MODEL_FEES, roundTripCostFromFees } from "../model-cost.ts";
+import { DEFAULT_MODEL_FEES, MAX_MODEL_RT_COST, roundTripCostFromFees } from "../model-cost.ts";
 import { CoreDb } from "./db.server.ts";
 import { CoreRuntime } from "./runtime.server.ts";
 import { LANE_MIN } from "../sim/backtest.ts";
@@ -47,9 +47,11 @@ describe("modeled position cost defaults and migration", () => {
     const { runtime } = fixture();
     const changedFees = { ...DEFAULT_MODEL_FEES, taker: 0.0006 };
     runtime.updateSettings({ fees: changedFees });
-    assert.equal(runtime.settings.cost, roundTripCostFromFees(changedFees));
+    assert.equal(runtime.settings.cost, MAX_MODEL_RT_COST);
     runtime.updateSettings({ cost: 0.0021, fees: DEFAULT_MODEL_FEES });
-    assert.equal(runtime.settings.cost, 0.0021);
+    assert.equal(runtime.settings.cost, MAX_MODEL_RT_COST);
+    runtime.updateSettings({ cost: 0.001 });
+    assert.equal(runtime.settings.cost, 0.001, "lower explicit modeled costs remain authoritative");
   });
 
   it("omitted Micro helper costs use the model default while configured range distances keep their fixed basis", () => {
@@ -113,7 +115,7 @@ describe("modeled position cost defaults and migration", () => {
       assert.deepEqual(db.kvGet("settings"), before);
     }
     const { runtime } = fixture(structuredClone(formerModel), 34);
-    assert.equal(runtime.settings.cost, formerModel.cost, "a choice saved after migration must remain unchanged");
+    assert.equal(runtime.settings.cost, MAX_MODEL_RT_COST, "saved model choices respect the current operator ceiling; durable provenance is preserved");
     assert.deepEqual(runtime.settings.fees, formerModel.fees);
   });
 

@@ -127,7 +127,18 @@ export async function coreListingData(data: ReturnType<typeof coreListingInput>)
     rows = q ? all.filter((x) => x.id.toLowerCase().includes(q)) : all;
   } else if (data.kind === "active") {
     rows = q ? L.active.filter((x) => `${x.bot}|${x.ind}|${x.sym}|${x.side}|${x.kind ?? "discovery"}|${x.cfg ?? ""}`.toLowerCase().includes(q)) : L.active;
-  } else rows = (L.proven ?? []).filter((id) => !q || id.toLowerCase().includes(q)).map((id) => ({ id }));
+  } else {
+    const proven = (L.proven ?? []).filter((k) => !q || k.toLowerCase().includes(q));
+    // live.sideGates: a proven key is a config and its side (recordKeyOf), listed as a row with a side column; the
+    // split is loaded only on that path (this module loads the live modules on demand)
+    if (L.provenBySide) {
+      const { splitRecordKey } = await import("./live-record.ts");
+      rows = proven.map((k) => {
+        const { cfg, side } = splitRecordKey(k);
+        return { id: cfg, side: side > 0 ? "LONG" : "SHORT" };
+      });
+    } else rows = proven.map((id) => ({ id }));
+  }
   return ser({
     ready: true,
     kind: data.kind,
@@ -142,6 +153,7 @@ export async function coreListingData(data: ReturnType<typeof coreListingInput>)
     byRange: Object.entries(L.byRange).map(([range, x]) => ({ range, validated: x.rows.length, calculated: x.calculated, pf: x.pf, noLoss: x.gp > 0 && x.gl === 0 })),
     byGroup: Object.entries(L.byGroup).map(([group, x]) => ({ group, validated: x.rows.length, calculated: x.calculated, pf: x.pf, noLoss: x.gp > 0 && x.gl === 0 })),
     proofOn: L.proven !== null,
+    ...(L.provenBySide ? { provenBySide: true as const } : {}),
   });
 }
 
@@ -162,6 +174,9 @@ export async function coreStatusData(data: ReturnType<typeof connInput>) {
     // the whole job's bar (backfill batch → compute → paper step) and the compute's start / the last one's length
     // (an ETA while computing)
     overall: st.overall ?? 0,
+    // the last progress report and the current stage's start: the shell marks a busy job whose report is old as stale
+    heartbeat: st.heartbeat,
+    stageAt: st.stageAt ?? 0,
     computeStartedAt: st.computeStartedAt ?? 0,
     lastComputeMs: st.lastComputeMs,
     paperCompute: st.paperCompute ?? 0,
@@ -243,13 +258,16 @@ export async function coreOverviewData(data: ReturnType<typeof connInput>) {
       positions: r.paper.positions.length,
       book: openBook(r.paper.positions),
       equity: r.paper.equity,
-      balance: r.settings.paperBalance + Number(paperTrades?.pnl ?? 0),
+      // the realized balance, from the same reader as Trading's (paperRealizedOf)
+      balance: r.settings.paperBalance + (await paperRealizedOf(r)).realized,
       accountEquity: r.settings.paperBalance + r.paper.equity,
       startBalance: r.settings.paperBalance,
       sizing: r.settings.sizing,
       trades: paperTrades,
     },
     live: (await liveState<Row>(db, "liveStatus")) ?? null,
+    liveSession: await liveSession(r),
+    liveTag: (await import("./server/live.ts")).liveTag(r.settings.live.connId),
     db: { bytes: db.bytes() },
     lanes: await laneSummary(r),
   });
@@ -491,15 +509,23 @@ export async function coreSimData(data: ReturnType<typeof connInput>) {
 /** latest paper closes listed on the Trading page */
 const TRADES_SHOWN = 300;
 
-export async function coreTradingData(data: ReturnType<typeof connInput>) {
-  const r = await rt(data.conn);
+/**
+ * The paper book's realized P&L (as in its equity): carried closes + every closed order's r × unit — one reader, so
+ * Overview and Trading show the same balance to the last digit.
+ */
+async function paperRealizedOf(r: Awaited<ReturnType<typeof rt>>) {
   const units = r.paper.units;
   const { orderKey } = await import("./sizing.ts");
   const unitOf = (x: { cfg: string; sym: string; side: number; entryT: number }) =>
     units?.get(orderKey(x)) ?? r.settings.paperNotional;
-  // the paper book's realized P&L (as in its equity): carried closes + every closed order's r × unit
   let realized = r.paper.carried ?? 0;
   for (const t of r.paper.trades) realized += t.r * unitOf(t);
+  return { realized, unitOf };
+}
+
+export async function coreTradingData(data: ReturnType<typeof connInput>) {
+  const r = await rt(data.conn);
+  const { realized, unitOf } = await paperRealizedOf(r);
   return ser({
     // open orders from the in-memory book (the database copy trails it): with Block level, volume and unit
     positions: [...r.paper.positions]
@@ -533,7 +559,9 @@ export async function coreTradingData(data: ReturnType<typeof connInput>) {
     startBalance: r.settings.paperBalance,
     sizing: r.settings.sizing,
     live: (await liveState<Row>(r.db, "liveStatus")) ?? null,
-    liveOrders: r.db.all<Row>("SELECT * FROM live_orders ORDER BY at DESC LIMIT 200"),
+    ...(await liveOrdersView(r)),
+    liveSession: await liveSession(r),
+    liveTag: (await import("./server/live.ts")).liveTag(r.settings.live.connId),
     pending: r.pendingEntries().slice(0, 50),
     control: (await liveState<Row>(r.db, "controlStatus")) ?? null,
     adjust: Object.values(r.adjustState())
@@ -551,15 +579,25 @@ export async function coreTradingData(data: ReturnType<typeof connInput>) {
 /**
  * The Overall control positions the current paper book asks for (shown even while Live is off): the lanes the live
  * step would send (live.kinds / source / plainOnly / excludeRanges, the selected engine configs and active signals,
- * top configs), the same sizing (unit from the last verified wallet-balance read; minimum-quantity sizing per
- * symbol; position mode; the 100-slot exchange position ceiling; exchange minimum). Without an exchange read the
- * held positions come from the live step's last control status. Unknown or stale account balance blocks previews
- * requiring a balance read; the paper balance never funds a live account. The account-wide scalers (gross exposure, stop risk, worst case) are applied as the live step applies
+ * the engine and signal proofs, the post-Base / owned promotion gate, top configs), the same sizing (unit from the last
+ * verified wallet-balance read; minimum-quantity sizing per symbol; position mode; per-position cap; the 100-slot
+ * exchange position ceiling; exchange minimum). Without an exchange read the held positions come
+ * from the live step's last control status, the equity caps from the last account read. Unknown or stale account
+ * balance blocks previews requiring a balance read; the paper balance never funds a live account. The account-wide
+ * scalers (gross exposure, stop risk, worst case) are applied as the live step applies
  * them, drops included, so the preview shows the sizes the desk would send.
  */
 async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
-  const { controlTargets, liveNetwork, positionCapFor, topConfigLanes, scaleToBudgets } =
-    await import("./server/live.ts");
+  const {
+    controlTargets,
+    liveNetwork,
+    positionCapFor,
+    topConfigLanes,
+    scaleToBudgets,
+    riskNotional,
+    symRiskDist,
+    RISK_PER_POSITION_DEFAULT,
+  } = await import("./server/live.ts");
   const {
     controlSettingsOf,
     laneContributions,
@@ -573,26 +611,43 @@ async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
   const s = r.settings.live;
   const u = liveUnitPeek(r);
   const minQty = u.from === "minQty";
-  const eq = u.equity ?? 0;
+  // B = min(wallet, equity) of the account read (the live step's last status, else the connection's last read): the
+  // base of every equity cap and budget, as the live step sizes. No read yet: the live step sizes nothing while an
+  // equity cap is on — never the paper balance in its place
+  const acct = liveKv<{ account?: { base?: number | null; wallet?: number | null; equity?: number | null; readAt?: number | null } }>(
+    r.db as never,
+    "liveStatus",
+  )?.account;
+  const base = acct?.base ?? u.base;
+  const baseAt = acct?.base != null ? (acct.readAt ?? null) : u.at;
+  const eq = base ?? 0;
   const maxExposureX = s.exposureScaler === false ? 0 : (s.maxExposureX ?? 0);
   const equityRequired = (s.maxPositionX ?? 0) > 0 || maxExposureX > 0 ||
-    (s.maxRiskPct ?? 0) > 0 || (s.maxBackstopLossPct ?? 0) > 0;
+    (s.maxRiskPct ?? 0) > 0 || (s.maxBackstopLossPct ?? 0) > 0 || s.positionSize === "risk";
   if (u.from === "unknown" || (equityRequired && !(eq > 0))) {
+    const noBase = "no account read yet: the live step sizes nothing until the account is read";
     return {
       targets: [],
       skipped: [],
+      noBase,
       unit: u.unit,
       unitFrom: u.from,
       blocked: "Waiting for a current exchange equity read; no live size is inferred from the paper balance",
+      base: base ?? null,
+      baseAt,
+      wallet: acct?.wallet ?? u.wallet,
+      equity: acct?.equity ?? u.equity,
       top: null,
       exchangeSlots: [],
     };
   }
   // An equity-blocked preview has no targets: do not delay the account UI on unused venue metadata.
   const bx = await import("./exchange/bingx.server.ts");
-  const specs = await bx
-    .fetchContracts(liveNetwork(s.connId))
-    .catch(() => new Map<string, never>());
+  // the synthetic test market never reaches the exchange (no contract read): the venue minimums are then unknown
+  const specs =
+    process.env.CTS_CORE_MARKET === "synthetic"
+      ? new Map<string, never>()
+      : await bx.fetchContracts(liveNetwork(s.connId)).catch(() => new Map<string, never>());
   const prices = new Map<string, number>();
   for (const [sym, cs] of r.candles) if (cs.n) prices.set(sym, cs.c[cs.n - 1]);
   const lotUsd = (sym: string, px: number) => bx.minQtyExchange(px, specs.get(sym) ?? null) * px;
@@ -607,8 +662,14 @@ async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
   const ownedHeldKeys = new Set((status?.held ?? []).filter((h) => h.qty > 0).map((h) => h.key));
   const exchangeSlots = new Set([...(status?.exchangeSlots ?? []), ...ownedHeldKeys]);
   const selected = r.paper.selected ? new Set(r.paper.selected) : null;
-  const { validLane } = liveLaneFilter(s, selected, r.wf?.signalActive, null,
-    (lane) => r.livePromotionGate(lane).ok);
+  const { validLane } = liveLaneFilter(
+    s,
+    selected,
+    r.wf?.signalActive,
+    r.engineProof()?.proven ?? null,
+    r.signalProof()?.proven ?? null,
+    (lane) => r.livePromotionGate(lane).ok,
+  );
   let lanes = laneContributions(r, prices).filter(
     (l) => validLane(l) || ownedHeldKeys.has(`${l.sym}|${l.side}`),
   );
@@ -641,6 +702,7 @@ async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
     );
     const ratio = s.ratio ?? 1;
     const prev = liveKv<string[]>(r.db as never, "controlTopKept");
+    const riskOf = s.positionSize === "risk" ? symRiskDist(lanes, minStop) : null;
     const t = topConfigLanes(lanes, (c) => r.paper.scores?.get(c), {
       top,
       budget,
@@ -653,7 +715,11 @@ async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
         const unit = minQty ? lotUsd(sym, px) : u.unit;
         // positionSize "min": a position costs its ratio units, however many lanes hold it (as the live step)
         const units = s.positionSize === "min" ? 1 : v;
-        return Math.max(bx.exchangeMinNotional(spec, px), Math.min(posCap, units * ratio * unit));
+        // positionSize "risk": B × risk per position × ratio at the symbol's lanes' planned risk (as the live step)
+        const want = riskOf
+          ? riskNotional(eq, s.riskPerPositionPct ?? RISK_PER_POSITION_DEFAULT, ratio, riskOf.get(sym) ?? minStop)
+          : units * ratio * unit;
+        return Math.max(bx.exchangeMinNotional(spec, px), Math.min(posCap, want));
       },
     });
     lanes = t.lanes;
@@ -666,7 +732,7 @@ async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
     lanes,
     prices,
     {
-      ...controlSettingsOf(s, u.unit),
+      ...controlSettingsOf(s, u.unit, r.settings.signals.maxPositions, eq),
       maxNotionalUsd: posCap,
       ...(minQty ? { unitOf: lotUsd } : {}),
       heldKeys: exchangeSlots,
@@ -691,8 +757,14 @@ async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
     plan.skipped.push({ sym: k.split("|")[0], why });
   return {
     ...plan,
+    noBase: null,
     unit: u.unit,
     unitFrom: u.from,
+    // the base the caps and budgets were applied on (null: no account read — caps on equity not applied)
+    base: base ?? null,
+    baseAt,
+    wallet: acct?.wallet ?? u.wallet,
+    equity: acct?.equity ?? u.equity,
     blocked: null,
     top: topKept,
     exchangeSlots: [...exchangeSlots],
@@ -970,6 +1042,146 @@ const CONN_LABEL: Record<string, string> = {
 
 /** Complete statistics of the selected connection: simulated run (full detail) or paper book. */
 /** Input of coreStatistics. */
+/**
+ * The live closes of the connection's own ledger (live_orders by own client id with their fills), in USD: the one
+ * source of every live P&L the pages show (Overview session net, Trading, Statistics). `pnl` = r × notional, after
+ * fees. Closes booked "hand" (an order not ours ended the position) are money but never a desk result (relation.ts).
+ */
+async function liveLedgerTrades(r: Awaited<ReturnType<typeof rt>>) {
+  const { liveLedger } = await import("./statistics.ts");
+  const { liveTag } = await import("./server/live.ts");
+  const rows = r.db.all<{
+    coid: string;
+    cfg: string | null;
+    sym: string;
+    side: number;
+    kind: string;
+    qty: number;
+    px: number;
+    status: string;
+    msg: string | null;
+    at: number;
+    fill_px: number | null;
+    fee: number | null;
+    feeKnown: number | null;
+  }>(
+    "SELECT o.coid, o.cfg, o.sym, o.side, o.kind, o.qty, o.px, o.status, o.msg, o.at, f.fill_px, f.fee, f.fee_known AS feeKnown FROM live_orders o LEFT JOIN live_fills f ON f.coid = o.coid ORDER BY o.at",
+  );
+  const tag = liveTag(r.settings.live.connId);
+  // a flat marker without its own price (px 0) is booked at a price that can be checked, never dropped: the exit the
+  // desk attributed to a lane of that symbol × side within 15 minutes before it (live_lane_trades), else the 1m close
+  // at the marker's time; its cause stays unproven, so it is booked "flat" (in the balance, out of every PF)
+  const laneExit = (sym: string, side: number, from: number, to: number, at: number) =>
+    r.db.get<{ exit: number }>(
+      // relation: all rows — only the attributed exit PRICE of a flat marker is read (any close class); the result is
+      // booked "flat", out of every PF, so the own-close predicate does not apply
+      "SELECT exit FROM live_lane_trades WHERE sym = ? AND side = ? AND exit_t BETWEEN ? AND ? AND exit > 0 ORDER BY ABS(exit_t - ?) LIMIT 1",
+      sym,
+      side,
+      from,
+      to,
+      at,
+    );
+  const barClose = (sym: string, t: number) => {
+    const cs = r.candles.get(sym);
+    if (!cs?.n) return null;
+    const t0 = Math.floor(t / 60_000) * 60_000;
+    for (let i = cs.n - 1; i >= 0; i--) if (cs.t[i] <= t0) return t0 - cs.t[i] <= 5 * 60_000 ? cs.c[i] : null;
+    return null;
+  };
+  const led = liveLedger(rows.map((x) => ({ ...x, fillPx: x.fill_px })), tag.length, r.settings.cost, {
+    flatPx: (sym, side, at) => {
+      const lx = laneExit(sym, side, at - 900_000, at + 60_000, at);
+      if (lx && lx.exit > 0) return { px: lx.exit, from: "lane exit" };
+      const c = barClose(sym, at);
+      return c !== null && c > 0 ? { px: c, from: "1m close" } : null;
+    },
+  });
+  const trades = led.closed.map((x) => ({ ...x, pnl: x.r * x.notional }));
+  // every fill reported no commission (or none was measured): the fees in these results are the model's
+  const fills = r.db.get<{ n: number; measured: number }>(
+    "SELECT COUNT(*) AS n, COALESCE(SUM(CASE WHEN fee > 0 THEN 1 ELSE 0 END), 0) AS measured FROM live_fills",
+  );
+  return {
+    trades,
+    open: led.open,
+    unpriced: led.unpriced,
+    tag,
+    // (no fill at all: nothing is modelled yet)
+    feesModelled: (fills?.n ?? 0) > 0 && !((fills?.measured ?? 0) > 0),
+    fills: fills?.n ?? 0,
+  };
+}
+
+/**
+ * The live orders table: the own orders (not the flat markers) with their fill price, fee (measured, or null when the
+ * fill reported none) and the realized P&L of the close they made (USD, from the one ledger reader); the flat markers
+ * (F: the exchange ended a position — stop, target, an order not ours) apart, with the price they were booked at.
+ */
+async function liveOrdersView(r: Awaited<ReturnType<typeof rt>>) {
+  const { trades } = await liveLedgerTrades(r);
+  const byCoid = new Map<string, { pnl: number; reason?: string; pxFrom?: string; exit?: number }>();
+  for (const x of trades) if (x.coid) byCoid.set(x.coid, { pnl: x.pnl, reason: x.reason, pxFrom: x.pxFrom });
+  const q = (where: string, limit: number) =>
+    r.db
+      .all<Row>(
+        `SELECT o.*, f.fill_px AS fillPx, f.fee AS fee FROM live_orders o LEFT JOIN live_fills f ON f.coid = o.coid WHERE ${where} ORDER BY o.at DESC LIMIT ${limit}`,
+      )
+      .map((o) => {
+        const c = byCoid.get(String(o.coid));
+        return { ...o, pnl: c ? c.pnl : null, closeReason: c?.reason ?? null, pxFrom: c?.pxFrom ?? null };
+      });
+  return { liveOrders: q("o.kind != 'F'", 100), liveFlats: q("o.kind = 'F'", 50) };
+}
+
+/**
+ * The own session of the live desk since liveSince (the desk's first live step on this database; never written by a
+ * reader): own realized closes in USD (hand-ended positions apart), the own open uPnL of the last account read (own
+ * quantity only), and their sum. Every page shows this one object.
+ */
+async function liveSession(r: Awaited<ReturnType<typeof rt>>) {
+  const since = r.db.kvGet<number>("liveSince") ?? null;
+  const st = await liveState<{ account?: { own?: { upnl: number; n: number }; readAt?: number | null } }>(
+    r.db,
+    "liveStatus",
+  );
+  const { trades, feesModelled } = await liveLedgerTrades(r);
+  let realized = 0;
+  let n = 0;
+  const hand = { n: 0, usd: 0 };
+  // own quantity the exchange ended with its cause not proven (a flat marker: the unverified one at the ticker, or one
+  // priced from the lane exit or the bar close): in the realized money, counted apart
+  const flat = { n: 0, usd: 0 };
+  for (const x of trades) {
+    if (since !== null && x.exitT < since) continue;
+    const usd = Number.isFinite(x.pnl) ? x.pnl : 0;
+    if (x.reason === "hand") {
+      hand.n++;
+      hand.usd += usd;
+      continue;
+    }
+    if (x.reason === "flat") {
+      flat.n++;
+      flat.usd += usd;
+    }
+    n++;
+    realized += usd;
+  }
+  const own = st?.account?.own ?? null;
+  return {
+    since,
+    closes: n,
+    realized,
+    hand,
+    flat,
+    openUpnl: own ? own.upnl : null,
+    openPositions: own ? own.n : null,
+    net: realized + (own?.upnl ?? 0),
+    accountAt: st?.account?.readAt ?? null,
+    feesModelled,
+  };
+}
+
 export const coreStatisticsInput = (d?: {
   conn?: string;
   source?: "sim" | "paper" | "live";
@@ -994,8 +1206,17 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
       : null;
   const sim = r.sim;
   let balance = r.settings.paperBalance ?? 1000;
-  let balanceFrom: "paper start balance" | "account equity" | "unavailable" =
-    "paper start balance";
+  // live: without an account read the balance is unavailable (a neutral zero basis), never the paper start balance
+  let balanceFrom: "paper start balance" | "account equity" | "account wallet" | "unavailable" = "paper start balance";
+  let accountAt: number | null = null;
+  // live: the own positions still open (timeline only), flat markers left unpriced, whether the fees are modelled
+  let liveExtra: {
+    open: Array<Record<string, unknown> & { cfg: string; sym: string; side: number; entryT: number; exitT: number; entry: number; r: number; notional: number }>;
+    unpriced: { n: number; notional: number };
+    feesModelled: boolean;
+  } | null = null;
+  let leverage = 10;
+  let leverageFrom = "assumed 10× (virtual)";
   let trades: Array<
     Record<string, unknown> & {
       cfg: string;
@@ -1016,50 +1237,60 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
     startT = sim.startT;
     endT = sim.endT;
   } else if (data.source === "live") {
-    // the connection's own orders by client id, with their fills and fees
-    const { liveTrades } = await import("./statistics.ts");
-    const { liveTag } = await import("./server/live.ts");
-    const rows = r.db.all<{
-      coid: string;
-      cfg: string | null;
-      sym: string;
-      side: number;
-      kind: string;
-      qty: number;
-      px: number;
-      status: string;
-      msg: string | null;
-      at: number;
-      fill_px: number | null;
-      fee: number | null;
-      feeKnown: number | null;
-    }>(
-      "SELECT o.coid, o.cfg, o.sym, o.side, o.kind, o.qty, o.px, o.status, o.msg, o.at, f.fill_px, f.fee, f.fee_known AS feeKnown FROM live_orders o LEFT JOIN live_fills f ON f.coid = o.coid ORDER BY o.at",
-    );
-    const tag = liveTag(r.settings.live.connId);
-    trades = liveTrades(
-      rows.map((x) => ({ ...x, fillPx: x.fill_px })),
-      tag.length,
-      r.settings.cost,
-    ).map((x) => ({ ...x, pnl: x.r * x.notional }));
+    // the connection's own orders by client id, with their fills and fees (one source: liveLedgerTrades)
+    const L = await liveLedgerTrades(r);
+    trades = L.trades;
+    liveExtra = {
+      open: L.open.map((x) => ({ ...x, exitT: Infinity, r: 0, vol: 1 })),
+      unpriced: { n: L.unpriced.length, notional: L.unpriced.reduce((a, x) => a + x.notional, 0) },
+      feesModelled: L.feesModelled,
+    };
     endT = Date.now();
     startT = trades.length
       ? trades.reduce((m, x) => Math.min(m, x.entryT), Infinity)
       : endT - 3_600_000;
-    // Without verified account equity this is a ledger P&L series with a neutral zero basis, never an invented
+    // the account's balance before the first ledger close: the last wallet read (no exchange call; the wallet holds
+    // no open P&L) minus every realized close of the ledger; without a wallet, the equity minus the open mark to
+    // market. Without verified account equity this is a ledger P&L series with a neutral zero basis, never an invented
     // paper-funded account. With a read the baseline is a reconstruction; external funding / other activity can
     // prevent it from representing the account's historical balance.
     balance = 0;
     balanceFrom = "unavailable";
     const { liveUnitPeek } = await import("./server/live.server.ts");
-    const eq = liveUnitPeek(r).equity;
-    if (eq !== null && eq > 0) {
-      const acct = (await liveState<{ account?: { openNet?: number } }>(r.db, "liveStatus"))
-        ?.account;
-      let realized = 0;
-      for (const x of trades) realized += Number(x.pnl) || 0;
+    const peek = liveUnitPeek(r);
+    const acct = (
+      await liveState<{ account?: { openNet?: number; wallet?: number | null; equity?: number | null; readAt?: number | null } }>(
+        r.db,
+        "liveStatus",
+      )
+    )?.account;
+    const wallet = acct?.wallet ?? peek.wallet;
+    const eq = acct?.equity ?? peek.equity;
+    let realized = 0;
+    for (const x of trades) realized += Number(x.pnl) || 0;
+    if (wallet !== null && wallet !== undefined && wallet > 0) {
+      balance = wallet - realized;
+      balanceFrom = "account wallet";
+    } else if (eq !== null && eq !== undefined && eq > 0) {
       balance = eq - realized - (acct?.openNet ?? 0);
       balanceFrom = "account equity";
+    }
+    accountAt = acct?.readAt ?? peek.at;
+    // the margin line at the desk's actual leverage: fixed in the settings, or ("max") what the own positions hold now
+    // (own notional / own margin of the last account read); unknown → 1× (margin = notional, labelled)
+    const lev = r.settings.live.leverage;
+    const own = (
+      await liveState<{ account?: { own?: { notional: number; margin: number } } }>(r.db, "liveStatus")
+    )?.account?.own;
+    if (typeof lev === "number" && lev > 0) {
+      leverage = lev;
+      leverageFrom = `${lev}× (settings)`;
+    } else if (own && own.margin > 0 && own.notional > 0) {
+      leverage = own.notional / own.margin;
+      leverageFrom = `${leverage.toFixed(1)}× (own positions now)`;
+    } else {
+      leverage = 1;
+      leverageFrom = "1× (leverage unknown: margin shown as notional)";
     }
   } else {
     const rows = r.db.all<{
@@ -1076,7 +1307,10 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
       owned_notional_usd: number | null;
       owned_unit_r: number | null;
     }>(
-      "SELECT p.cfg, p.sym, p.side, p.entry_t, p.exit_t, p.entry, p.r, p.unit_r, p.reason, p.pnl, b.owned_notional_usd, b.unit_r AS owned_unit_r FROM paper_trades p LEFT JOIN paper_book_trades b ON b.cfg=p.cfg AND b.sym=p.sym AND b.side=p.side AND b.entry_t=p.entry_t AND b.exit_t=p.exit_t AND b.reason != 'dropped' WHERE p.exit_t IS NOT NULL ORDER BY p.exit_t",
+      // the paper book's own forward record (paper_book_trades: written once at each close, never back-filled or
+      // re-priced; paper_trades is rewritten every step) at one unit (r / mult) — sized by the paper sizing below; the
+      // persisted unit return and the owned notional beside it (ownership evidence)
+      "SELECT cfg, sym, side, entry_t, exit_t, entry, r / COALESCE(NULLIF(mult, 0), NULLIF(vol, 0), 1) AS r, unit_r, reason, NULL AS pnl, owned_notional_usd, unit_r AS owned_unit_r FROM paper_book_trades WHERE exit_t IS NOT NULL AND r IS NOT NULL AND reason != 'dropped' ORDER BY exit_t",
     );
     trades = rows.map((x) => ({
       cfg: x.cfg,
@@ -1140,9 +1374,10 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
     unit: unit as never,
     price,
     cost: r.settings.cost,
-    leverage: 10,
+    leverage,
     minActiveLevel: r.settings.block?.minActiveLevel ?? 1,
     presets: presets as never,
+    ...(liveExtra ? { open: liveExtra.open as never } : {}),
   });
   return ser({
     report,
@@ -1154,6 +1389,19 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
       : [],
     // Live baseline: reconstructed from verified account equity, or unavailable (neutral ledger net-change basis).
     balanceFrom,
+    // when the account behind the balance was read (live)
+    accountAt,
+    leverageFrom,
+    // live: flat markers no price could be found for (counted, never booked), whether the fees are the model's
+    unpriced: liveExtra?.unpriced ?? null,
+    feesModelled: liveExtra?.feesModelled ?? null,
+    // where the trades come from, as the page labels it
+    sourceLabel:
+      data.source === "live"
+        ? "live: own orders by client id (exchange fills)"
+        : data.source === "paper"
+          ? "paper book forward record (virtual)"
+          : "simulated run (virtual)",
     account: data.source === "live"
       ? (await liveState<Row>(r.db, "liveStatus"))?.account ?? null
       : null,

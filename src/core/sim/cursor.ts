@@ -66,6 +66,7 @@ export class SimulationCursor {
     // trailing/protection objects can change while replaying the boundary bar. Preserve their shared aliases.
     if (Array.isArray(value.legs) && value.legs.length)
       out.legs = value.legs.map((x) => (typeof x === "object" && x !== null ? { ...x } : x));
+    if (Array.isArray(value.weights)) out.weights = value.weights.slice();
     if (value.inPos) {
       if (value.exitProtection) out.exitProtection = { ...(value.exitProtection as object) };
       if (value.exitPosition)

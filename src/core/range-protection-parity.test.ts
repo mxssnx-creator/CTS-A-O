@@ -15,6 +15,9 @@ const PLAIN = [["minimal", "mn"], ["short", "sh"], ["general", "gn"], ["long", "
 function grid(name: "micro" | typeof PLAIN[number][0], range: MicroGrid, step = 1): ProtectGridSpec {
   return {
     ...DEFAULT_SETTINGS.grid,
+    // Representative Base protection is a TP cell; no-TP siblings have their own
+    // configured-cell qualification, covered in strategy-sets-independent.test.ts.
+    trailingOnly: false,
     tp: [],
     holdH: [0.5],
     micro: false,

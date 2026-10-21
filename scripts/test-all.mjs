@@ -301,6 +301,8 @@ console.log(
 
 for (const [i, file] of files.entries()) {
   const need = needOf(file);
+  console.log(`[${i + 1}/${files.length}] ${file} START · waiting for ${need} MB headroom`);
+  writeFileSync(join(OUT, "progress.json"), JSON.stringify({ at: Date.now(), current: file, results }, null, 2));
   const head = await waitHeadroom(need);
   const tag = `[${i + 1}/${files.length}] ${file}`;
   if (!head.ok) {
@@ -368,6 +370,7 @@ for (const [i, file] of files.entries()) {
   console.log(
     `${tag} ${status.toUpperCase()} · ${tap.pass}/${tap.tests} pass${tap.fail ? ` · ${tap.fail} fail` : ""} · ${(ms / 1000).toFixed(1)} s · peak ${peak} MB${killed ? ` · ${killed}` : ""}`,
   );
+  writeFileSync(join(OUT, "progress.json"), JSON.stringify({ at: Date.now(), current: null, results }, null, 2));
   if (covDir) {
     mergeCoverage(covDir);
     rmSync(covDir, { recursive: true, force: true });

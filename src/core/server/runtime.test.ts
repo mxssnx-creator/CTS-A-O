@@ -7,13 +7,12 @@ import { baseFocus, CoreRuntime as BaseRuntime, sanitizeWf } from "./runtime.ser
 import { DEFAULT_SETTINGS } from "../config.ts";
 import { auditStateGen, type AuditInput } from "../audit.ts";
 import { CoreDb } from "./db.server.ts";
-import { SIGNAL_SOURCES } from "../signal-config.ts";
 import { RESEARCH_PRESETS } from "../presets.ts";
 import { isSignalInd, laneLabel, laneOf } from "../indications/registry.ts";
 import { signalCombos, signalSettings } from "../signals.ts";
 import { syntheticCandles } from "../market/bars.ts";
 import { CandleSeries } from "../market/candle-series.ts";
-import { compareOn, trackRuntimes } from "../test-support.ts";
+import { compareOn, trackRuntimes, runtimeFixtureGrid } from "../test-support.ts";
 
 // the synthetic market ends on the hour: the same bars, lane buckets and hourly windows on every run (ending at
 // the current minute, the minute decided whether any entry was Block-raised — the self-audit tests failed at random)
@@ -23,7 +22,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const small = {
+  // Keep generic lifecycle computes on their original catalog; new full grids have dedicated replay/parity coverage.
+  disabledKinds: ["micro", "inverse"],
   symbols: 4,
+  focus: ["follow|ema-9-21", "revert|ema-9-21", "follow|rsi-mom-14-20", "revert|rsi-mom-14-20"],
   historyDays: 18,
   // lanes over a shorter history keep each synthetic engine light (the suite runs several in parallel)
   tfDays: { "1": 3, "5": 6, "15": 18, "30": 18 },
@@ -52,9 +54,8 @@ const small = {
   // classic sources only keep each engine light enough to run several in parallel
   signals: signalSettings({
     exits: "pct",
-    sources: Object.fromEntries(
-      SIGNAL_SOURCES.filter((x) => x.name.startsWith("s2-")).map((x) => [x.name, false]),
-    ),
+    sourcesMode: "allow",
+    sources: { "ema-cross": true, "rsi-reversal": true },
   }),
 };
 /**
@@ -336,6 +337,8 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
 
   it("computes on the synthetic feed and publishes every stage", async () => {
     const rt = mk();
+    // This one case intentionally verifies the complete engine indication/lane catalog.
+    rt.updateSettings({ focus: [] });
     rt.start();
     await until(() => rt.status.computes >= 1 && rt.status.state === "running");
     assert.equal(rt.status.source, "synthetic");
@@ -597,6 +600,12 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
       rt.updateSettings(
         {
           tfMin: 15,
+          symbols: small.symbols,
+          historyDays: small.historyDays,
+          tfDays: small.tfDays,
+          grid: small.grid,
+          signals: small.signals,
+          exitStrategy: small.exitStrategy,
           focus: [],
           tactics: { ...rt.settings.tactics, volRegime: true, session: false, cooldown: false },
           toggles: {
@@ -614,9 +623,9 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
       rt.start();
       const at = rt.status.settingsAt;
       // the wait is on the state (the final settings applied, the runtime running, nothing pending), not on a count of
-      // computes: the full-focus compute of this storm is 27,428 Base combos, 90–130 s on 4 cores, and a follow-up
-      // compute runs after it when a setting changed mid-compute. 280 s failed under load (the 11 Oct run reached
-      // running at 251 s with the desk and the evaluation on the same VM); 900 s is the ceiling.
+      // computes: all engine indications remain in focus, while the final known fixture restores its bounded
+      // symbol/protection scope after arbitrary presets. A follow-up compute may still be required; the real
+      // cancellation/replacement and final publication must finish within the same 900s ceiling.
       await until(
         () =>
           rt.status.appliedSettingsAt >= at && rt.status.state === "running" && !rt.status.pending,
@@ -841,7 +850,8 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
       trailOn: false,
       mtm: 0,
     };
-    rt.paper.positions = [{ ...op, vol: 2, level: 0, heldAt: op.entryT + 7 * 60_000 }];
+    // (adopted at 1.01 × its entry: the executable record's price, kept as it was)
+    rt.paper.positions = [{ ...op, vol: 2, level: 0, heldAt: op.entryT + 7 * 60_000, heldPx: op.entry * 1.01 }];
     // the re-simulation no longer takes it (as after a gate was added)
     (sim as { trades: unknown[] }).trades = sim.trades.filter(
       (x) => !(x.cfg === op.cfg && x.sym === op.sym && x.entryT === op.entryT),
@@ -857,8 +867,8 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     assert.equal(row!.exit_t, tp!.exitT[i]);
     assert.ok(Math.abs(row!.r - tp!.r[i] * 2) < 1e-12, "at the volume it was held with");
     // the book's own record: the position it held, its close, and when the book first held it (entry delay 7 min)
-    const own = rt.db.get<{ r: number; exit_t: number; held_at: number; reason: string }>(
-      "SELECT r, exit_t, held_at, reason FROM paper_book_trades WHERE cfg = ? AND sym = ? AND side = ? AND entry_t = ?",
+    const own = rt.db.get<{ r: number; exit_t: number; held_at: number; reason: string; held_px: number; entry: number; exit: number }>(
+      "SELECT r, exit_t, held_at, reason, held_px, entry, exit FROM paper_book_trades WHERE cfg = ? AND sym = ? AND side = ? AND entry_t = ?",
       op.cfg,
       op.sym,
       op.side,
@@ -868,6 +878,13 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     assert.equal(own!.exit_t, tp!.exitT[i]);
     assert.ok(Math.abs(own!.r - tp!.r[i] * 2) < 1e-12);
     assert.equal(own!.held_at - op.entryT, 7 * 60_000);
+    // the executable record (relation.ts): the price at adoption, the tape order's entry and exit
+    assert.equal(own!.held_px, op.entry * 1.01);
+    assert.equal(own!.entry, tp!.entry[i]);
+    assert.equal(own!.exit, tp!.exit[i]);
+    // every position the step adopted carries the market price it was adopted at
+    const adopted = rt.paper.positions as Array<{ heldAt?: number; heldPx?: number }>;
+    assert.ok(adopted.every((p) => p.heldPx! > 0), "a new position's heldPx is set at adoption");
   });
 
   it("never runs two cycles at once, however often a recompute is requested", async () => {

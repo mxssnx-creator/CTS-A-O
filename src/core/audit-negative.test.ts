@@ -5,7 +5,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { auditState, type AuditInput } from "./audit.ts";
+import { auditState, tapeReturnIndex, type AuditInput } from "./audit.ts";
 import { DEFAULT_SETTINGS } from "./config.ts";
 import { sigActiveKey } from "./signals.ts";
 import { modeledUnitStatsOf } from "./metrics/stats.ts";
@@ -238,9 +238,11 @@ type Corruption = {
   alsoFails?: Record<string, string>;
 };
 const REPLAY = "replay: every trade passes the Real rules with its recorded Block volume and level";
+const PARITY = "numbers: simulated executions retain their exact tape unit returns";
 // Changing only the recorded multiplier also changes r / mult. The unit-return summary and hour totals must
 // reject those stale published numbers alongside the volume check; the raw sized diagnostic stays unchanged.
 const UNIT_MULT_FAILS = {
+  [PARITY]: "a changed unit return no longer equals its exact source simulation close",
   "numbers: stats match the trade list":
     "the recorded multiplier is the denominator of the primary unit return",
   "numbers: hourly rows add up":
@@ -323,6 +325,7 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
       run: "overall",
       what: "a trade whose config has no tape (its pair still in Main)",
       corrupt: (i) => withTrade(i, plainIdx(i.sim!), { cfg: `follow|${ENGINE}|ghost` }),
+      alsoFails: { [PARITY]: "a missing configuration cannot supply the source return" },
     },
   ],
   "lanes: only enabled strategies execute": [
@@ -335,6 +338,7 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
         return withTrade(i, k, { cfg: `${x.cfg}|trailing` });
       },
       alsoFails: {
+        [PARITY]: "changing only the config identity breaks its exact source-close identity",
         [REPLAY]:
           "the replay re-judges the same switch: execDecision refuses a non-executable tape first",
       },
@@ -355,6 +359,7 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
         const k = lastOfKey(i.sim!);
         return withTrade(i, k, { exitT: i.sim!.trades[k].entryT - 1 });
       },
+      alsoFails: { [PARITY]: "the changed exit timestamp no longer identifies the simulated close" },
     },
   ],
   [REPLAY]: [
@@ -370,7 +375,9 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
       run: "overall",
       what: "a recorded Block volume the rules did not give (still within the caps)",
       corrupt: (i) => {
-        const k = i.sim!.trades.findIndex((x) => (x.mult ?? 1) <= 2 && !x.coordVol);
+        const k = i.sim!.trades.findIndex((x) => !sigCfg(x.cfg) && tapeOf(x).kind === "normal" &&
+          (x.vol ?? 1) === (x.mult ?? 1) && (x.mult ?? 1) <= 2 && !x.coordVol);
+        assert.ok(k >= 0, "a plain cost-verifiable close within the caps exists");
         return withTrade(i, k, { mult: (i.sim!.trades[k].mult ?? 1) + 1 });
       },
       alsoFails: UNIT_AND_COST_MULT_FAILS,
@@ -387,13 +394,27 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
         return withTrade(i, k, { legs: { ...x.legs, [src]: i.sim!.opts.block.maxMult } });
       },
     },
+    {
+      run: "overall",
+      what: "an Overall stack above the max multiple (maxMult caps the total, not only each leg; its coordination part raised with it)",
+      corrupt: (i) => {
+        const k = i.sim!.trades.findIndex((x) => x.legs && Object.keys(x.legs).length);
+        const x = i.sim!.trades[k];
+        const blockPart = (x.mult ?? 1) / (x.coordVol ?? 1);
+        const mult = Math.min(8, i.sim!.opts.block.maxMult) + 0.5;
+        return withTrade(i, k, { mult, coordVol: mult / blockPart });
+      },
+      // the recorded multiplier also normalizes the unit return (r ÷ mult)
+      alsoFails: UNIT_AND_COST_MULT_FAILS,
+    },
   ],
   "block: volume within [1, max multiple]": [
     {
       run: "shared",
       what: "a Block multiple above max after removing independent sizing factors",
       corrupt: (i) => {
-        const k = i.sim!.trades.findIndex((x) => (x.mult ?? 1) >= 1);
+        const k = plainIdx(i.sim!);
+        assert.ok(k >= 0, "a plain cost-verifiable close exists");
         const x = i.sim!.trades[k];
         const rangeVol = rangeVolumeFactorFor(tapeOf(x), i.sim!.opts);
         const independentFactors = (x.coordVol ?? 1) * (x.hedgeVol ?? 1) * rangeVol;
@@ -445,6 +466,7 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
         const [a, b] = backToBack(i.sim!);
         return withTrade(i, a, { exitT: i.sim!.trades[b].entryT + 1 });
       },
+      alsoFails: { [PARITY]: "a moved exit no longer identifies the original source close" },
     },
   ],
   "caps: max positions (symbol × direction)": [
@@ -518,6 +540,22 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
         withSim(i, (s) => ({
           byKind: { ...s.byKind, normal: { ...s.byKind.normal, n: s.byKind.normal.n + 1 } },
         })),
+    },
+  ],
+  [PARITY]: [
+    {
+      run: "overall",
+      what: "the exact source close differs while the execution and its published PF stay untouched",
+      corrupt: (i) => {
+        const trade = i.sim!.trades[plainIdx(i.sim!)];
+        return { ...i, tapes: i.tapes.map((tp) => {
+          if (tp.id !== trade.cfg) return tp;
+          const at = tapeReturnIndex(tp, trade);
+          assert.ok(at >= 0);
+          const r = tp.r.slice(); r[at] += 0.001;
+          return { ...tp, r };
+        }) };
+      },
     },
   ],
   "numbers: every plain close pays the round-trip cost": [

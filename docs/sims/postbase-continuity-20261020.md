@@ -1,5 +1,7 @@
 # Post-Base continuity investigation — 20 October 2026
 
+**Latest cause and implementation:** [direction-qualification-cause-20261020.md](direction-qualification-cause-20261020.md) supersedes both intermediate admission policies below. It proves cross-direction evidence borrowing and empty proven-symbol warmup, records their fixes, and retains remaining losing windows.
+
 **Superseded admission policy:** The full per-symbol/context evaluator below imposed config sample and Last-N rules at an unconfigured scope and blocked every final window. The correction and new measured results are recorded in [final-window-admission-20261020.md](final-window-admission-20261020.md). The original losses and failed attempts remain part of this historical record.
 
 The progression defects are fixed in the integration branch. **Consistently high forward PF and many executed orders are not established.** A passing historical PF cannot certify the returns of an entry that has not settled. Zero executed orders have unavailable PF; they are never scored as profitable.

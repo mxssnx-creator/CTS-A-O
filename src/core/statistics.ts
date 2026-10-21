@@ -322,12 +322,16 @@ export function rowOf(
   };
 }
 
-/** Rows per key (a trade may fall into several keys); sorted by the key order given, else by trade count. */
+/**
+ * Rows per key (a trade may fall into several keys); sorted by the key order given, else by trade count. `share`: the
+ * part of a trade a key carries (1 = the whole trade; a Block Overall source row carries its own leg).
+ */
 export function groupBy(
   trades: readonly StatTrade[],
   keys: (x: StatTrade) => string | readonly string[] | null,
   unit: (x: StatTrade) => number,
   order?: readonly string[],
+  share?: (x: StatTrade, key: string) => number,
 ): GroupRow[] {
   const by = new Map<string, StatTrade[]>();
   for (const x of trades) {
@@ -336,7 +340,8 @@ export function groupBy(
     for (const key of typeof k === "string" ? [k] : k) {
       let xs = by.get(key);
       if (!xs) by.set(key, (xs = []));
-      xs.push(x);
+      const f = share ? share(x, key) : 1;
+      xs.push(f === 1 ? x : { ...x, r: x.r * f, ...(x.vol !== undefined ? { vol: x.vol * f } : {}) });
     }
   }
   const rows = [...by.entries()].map(([k, xs]) => rowOf(k, xs, unit));
@@ -412,6 +417,20 @@ export function subTypeOf(x: StatTrade, minActiveLevel: number): string[] {
   else if (k === "dca-active") out.push("DCA Active");
   else if (k === "axis") out.push("Axis");
   return out;
+}
+
+/**
+ * The part of a trade a sub-type row carries: a Block Overall source row ("Block overall", "Block symbol" …) its own
+ * leg — the leg's share of the Block volume (legs ÷ the Block multiple; a relation volume on top scales every part
+ * alike). Every other row the whole trade. Before, each source row carried the whole stacked trade (a trade raised by
+ * four sources counted four times in full).
+ */
+export function subTypeShare(x: StatTrade, key: string): number {
+  if (!key.startsWith("Block ") || !x.legs) return 1;
+  const v = (x.legs as Record<string, number | undefined>)[key.slice(6)];
+  if (v === undefined) return 1;
+  const m = blockMult(x);
+  return m > 0 ? Math.max(0, v) / m : 0;
 }
 
 /** Execution presets compared on the same tapes: [label, with, without]. */
@@ -546,6 +565,15 @@ export interface StatisticsReport {
   /** balance at the window's start (the timeline's first point: balance0 + closes before the window) */
   balanceStart: number;
   total: GroupRow & { usdEnd: number; mdd: number; expectancy: number; sqn: number; tph: number };
+  /** live closes an order not ours made: in the balance, not in any PF or breakdown */
+  hand: { n: number; usd: number };
+  /**
+   * live closes whose cause is not proven: a flat marker priced from the attributed lane exit or the 1m close at its
+   * time, or the unverified marker booked at the ticker; kept in the balance, out of every PF, counted apart from hand
+   */
+  flat: { n: number; usd: number };
+  /** positions open at the window's end (marked to market in the timeline, never a close) */
+  open: { n: number; positions: number; notional: number };
   timeline: Timeline;
   types: GroupRow[];
   subTypes: GroupRow[];
@@ -585,6 +613,11 @@ export interface StatisticsInput {
   presets?: Record<string, PresetSim> | null;
   /** most configs listed (best and worst by result) */
   maxConfigs?: number;
+  /**
+   * positions still open at endT (live: the own ledger's open positions): marked to market in the timeline only,
+   * never a close; `exitT` is ignored
+   */
+  open?: readonly StatTrade[];
 }
 
 const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -638,11 +671,23 @@ export function daysOf(startT: number, endT: number): string[] {
 }
 
 export function buildStatistics(i: StatisticsInput): StatisticsReport {
-  const trades = i.trades.filter((x) => x.exitT > i.startT && x.exitT <= i.endT);
+  // a live close an order not ours made ("hand", relation.ts) is money, not a result: in the balance (the timeline
+  // reads every trade), left out of every PF and breakdown, and counted apart
+  const inWindow = i.trades.filter((x) => x.exitT > i.startT && x.exitT <= i.endT);
+  // a live close whose cause is not proven ("flat": the unverified marker at the ticker, or a marker priced from the
+  // attributed lane exit or the 1m close at its time, the order that ended it unknown) is counted the same way, apart
+  // from hand
+  const apart = (x: StatTrade) => x.reason === "hand" || x.reason === "flat";
+  const trades = inWindow.filter((x) => !apart(x));
   const unit = i.unit;
+  const handTrades = inWindow.filter((x) => x.reason === "hand");
+  const hand = { n: handTrades.length, usd: handTrades.reduce((a, x) => a + x.r * unit(x), 0) };
+  const flatTrades = inWindow.filter((x) => x.reason === "flat");
+  const flat = { n: flatTrades.length, usd: flatTrades.reduce((a, x) => a + x.r * unit(x), 0) };
+  const openNow = (i.open ?? []).map((x) => ({ ...x, exitT: Infinity, r: 0 }));
   const all = rowOf("All", trades, unit);
   const s = statsOf([...trades].sort((a, b) => a.exitT - b.exitT));
-  const tl = timeline(i.trades, {
+  const tl = timeline(openNow.length ? [...i.trades, ...openNow] : i.trades, {
     startT: i.startT,
     endT: i.endT,
     balance: i.balance,
@@ -707,6 +752,13 @@ export function buildStatistics(i: StatisticsInput): StatisticsReport {
       sqn: s.sqn,
       tph: s.tph,
     },
+    hand,
+    flat,
+    open: {
+      n: openNow.length,
+      positions: new Set(openNow.map((x) => `${x.sym}|${x.side > 0 ? 1 : -1}`)).size,
+      notional: openNow.reduce((a, x) => a + unit(x) * (x.vol ?? 1), 0),
+    },
     timeline: tl,
     types: groupBy(trades, typeOf, unit, TYPE_ORDER),
     subTypes: groupBy(trades, (x) => subTypeOf(x, i.minActiveLevel), unit, [
@@ -724,7 +776,7 @@ export function buildStatistics(i: StatisticsInput): StatisticsReport {
       "DCA Active",
       "Axis",
       "Base (no Block detail)",
-    ]),
+    ], subTypeShare),
     ranges: groupBy(
       trades.filter((x) => Object.values(RANGE_LABEL).includes(liveGroupOf(x.cfg) as never)),
       (x) => liveGroupOf(x.cfg),
@@ -827,6 +879,10 @@ const RANGE_OF_LETTER: Record<string, string> = {
  * (px 0) it ends without a close row — no price is invented. An own close the venue answered "already flat" did not
  * fill (the side was already gone): the flat marker after it books the exit. An own open ("O") always starts a fresh
  * position — a ghost left open would otherwise absorb the next position's fills and skew its P&L.
+ * A position an order not ours closed (the flat marker's "(hand <price>)") is booked with reason "hand": its money is
+ * real, its result is not the desk's (relation.ts) — buildStatistics leaves it out of every PF and keeps it in the
+ * balance. A position the exchange ended on a stop or take-profit the bars cannot prove (the marker's "(unverified
+ * <price>)") is booked "flat": its cause is not proven, so it too is left out of every PF, not counted as an own stop-out.
  */
 // Positive recorded fees retain their historical interpretation. Zero is free
 // only with the new durable measurement flag; old zero placeholders keep the model share.
@@ -844,8 +900,32 @@ export function feeOf(
 
 /** @param modelCost the round-trip cost charged to an unmeasured fill (the desk's settings.cost by default) */
 export function liveTrades(rows: readonly LedgerRow[], tagLen: number, modelCost = RT_COST): Array<StatTrade & { notional: number }> {
+  return liveLedger(rows, tagLen, modelCost).closed;
+}
+
+/** A live close with its notional (USD) and the own row that closed it (the flat marker's id for an exchange exit). */
+export type LiveClose = StatTrade & { notional: number; coid?: string; pxFrom?: string };
+
+/**
+ * The own ledger as closes, the positions still open, and the flat markers that could not be priced.
+ * `flatPx`: the verifiable price of a flat marker that holds none (px 0) — the attributed lane exit, else the 1m bar
+ * close at the marker's time — with where it came from. A marker priced that way is booked with reason
+ * "flat": its cause is not proven (stop, target or an order not ours), so like "hand" it stays in the balance and out of
+ * every PF. Without a price the position ends unbooked and is counted under `unpriced` (never dropped silently).
+ */
+export function liveLedger(
+  rows: readonly LedgerRow[],
+  tagLen: number,
+  modelCost = RT_COST,
+  opts: { flatPx?: (sym: string, side: 1 | -1, at: number) => { px: number; from: string } | null } = {},
+): {
+  closed: LiveClose[];
+  open: Array<{ sym: string; side: 1 | -1; qty: number; entry: number; entryT: number; cfg: string; notional: number }>;
+  unpriced: Array<{ sym: string; side: 1 | -1; at: number; qty: number; notional: number }>;
+} {
   const open = new Map<string, { qty: number; cost: number; fees: number; t: number; range: string; cfg: string }>();
-  const out: Array<StatTrade & { notional: number }> = [];
+  const out: LiveClose[] = [];
+  const unpriced: Array<{ sym: string; side: 1 | -1; at: number; qty: number; notional: number }> = [];
   // `q` of the position `p` realized at `px`, with its share of the opening fees and the exit's own fee
   const closeOf = (
     p: { qty: number; cost: number; fees: number; t: number; range: string; cfg: string },
@@ -854,7 +934,7 @@ export function liveTrades(rows: readonly LedgerRow[], tagLen: number, modelCost
     px: number,
     fee: number,
     reason: string,
-  ): StatTrade & { notional: number } => {
+  ): LiveClose => {
     const entry = p.cost / p.qty;
     const notional = q * entry;
     const side = x.side > 0 ? 1 : -1;
@@ -873,28 +953,31 @@ export function liveTrades(rows: readonly LedgerRow[], tagLen: number, modelCost
       unitR: notional > 0 ? pnl / notional : null,
       reason,
       notional,
+      coid: x.coid,
     };
   };
   for (const x of [...rows].sort((a, b) => a.at - b.at)) {
     if (x.status !== "ok") continue;
     const k = `${x.sym}|${x.side > 0 ? 1 : -1}`;
-    // flat on the exchange (a stop-out, a take-profit, or closed by hand): the position is gone — realized at the
-    // close the desk attributed to it when the marker holds one
+    // flat on the exchange (a stop-out, a take-profit, closed by hand, or unverified — the bars reached neither its stop
+    // nor its take-profit alone): the position is gone — realized at the close the desk attributed to it when the
+    // marker holds one. An unverified close has no proven cause: booked "flat", out of every PF, not an own stop-out
     if (x.kind === "F") {
       const p = open.get(k);
       open.delete(k);
       if (p && p.qty > 0 && x.px > 0) {
-        const why = /\((stop|target|hand) /.exec(x.msg ?? "")?.[1];
-        out.push(
-          closeOf(
-            p,
-            x,
-            p.qty,
-            x.px,
-            feeOf({ ...x, qty: p.qty }, x.px, modelCost),
-            why === "target" ? "tp" : why === "hand" ? "close" : "sl",
-          ),
-        );
+        const why = /\((stop|target|hand|unverified) /.exec(x.msg ?? "")?.[1];
+        // the marker's measured commission when it carries one; unmeasured, the model share, as an unmeasured open pays
+        const fee = feeOf({ ...x, qty: p.qty }, x.px, modelCost);
+        const reason = why === "target" ? "tp" : why === "hand" ? "hand" : why === "unverified" ? "flat" : "sl";
+        out.push(closeOf(p, x, p.qty, x.px, fee, reason));
+      } else if (p && p.qty > 0) {
+        const side: 1 | -1 = x.side > 0 ? 1 : -1;
+        const v = opts.flatPx?.(x.sym, side, x.at) ?? null;
+        if (v && v.px > 0) {
+          const c = closeOf(p, x, p.qty, v.px, feeOf({ fee: null, qty: p.qty }, v.px, modelCost), "flat");
+          out.push({ ...c, pxFrom: v.from });
+        } else unpriced.push({ sym: x.sym, side, at: x.at, qty: p.qty, notional: p.cost });
       }
       continue;
     }
@@ -908,7 +991,9 @@ export function liveTrades(rows: readonly LedgerRow[], tagLen: number, modelCost
     if (!(x.qty > 0)) continue;
     const px = x.fillPx && x.fillPx > 0 ? x.fillPx : x.px;
     if (!(px > 0)) continue;
-    const fee = feeOf(x, px, modelCost);
+    // an outside reduction the desk took from its own quantity first (H: an order not ours closed it) — no exit fee is
+    // known: none is charged
+    const fee = x.kind === "H" ? 0 : feeOf(x, px, modelCost);
     if (x.kind === "O" || x.kind === "I" || x.kind === "E") {
       // an open means the key held nothing of ours: whatever is still counted there is dropped
       if (x.kind === "O") open.delete(k);
@@ -922,12 +1007,13 @@ export function liveTrades(rows: readonly LedgerRow[], tagLen: number, modelCost
       p.cost += x.qty * px;
       p.fees += fee;
       open.set(k, p);
-    } else if (x.kind === "R" || x.kind === "X" || x.kind === "C") {
+    } else if (x.kind === "R" || x.kind === "X" || x.kind === "C" || x.kind === "H") {
       const p = open.get(k);
       if (!p || !(p.qty > 0)) continue;
       const q = Math.min(p.qty, x.qty);
       const entry = p.cost / p.qty;
       const share = q / p.qty;
+      // an oversized exit charges only the owned quantity's share of its fee
       out.push(
         closeOf(
           p,
@@ -935,7 +1021,7 @@ export function liveTrades(rows: readonly LedgerRow[], tagLen: number, modelCost
           q,
           px,
           fee * (q / x.qty),
-          x.kind === "X" || x.kind === "C" ? "close" : "reduce",
+          x.kind === "H" ? "hand" : x.kind === "X" || x.kind === "C" ? "close" : "reduce",
         ),
       );
       p.qty -= q;
@@ -944,7 +1030,20 @@ export function liveTrades(rows: readonly LedgerRow[], tagLen: number, modelCost
       if (p.qty <= 1e-12) open.delete(k);
     }
   }
-  return out;
+  const stillOpen = [...open].map(([k, p]) => {
+    const [sym, sd] = k.split("|");
+    const side: 1 | -1 = Number(sd) > 0 ? 1 : -1;
+    return {
+      sym,
+      side,
+      qty: p.qty,
+      entry: p.cost / p.qty,
+      entryT: p.t,
+      cfg: p.cfg || (p.range === "@sig" ? `live|sig-${sym}|tp0|sl0|tr0|h0` : `live|${sym}|tp0|sl0|tr0|h0${p.range}`),
+      notional: p.cost,
+    };
+  });
+  return { closed: out, open: stillOpen, unpriced };
 }
 
 /** A preset's cached diagrams over its backtest window: one shared time axis, down-sampled. */
@@ -970,15 +1069,21 @@ export interface PresetInfo {
   positions: number;
   hours: number;
   posPerHour: number;
-  /** Legacy aliases for cash episode PF. Never primary return ratios (null = fewer positions). */
+  /** PF of the last 12 / 25 / 75 positions on the unit return (null = fewer positions); the cash episodes: cashPositionLast */
   pfLast12: number | null;
   pfLast25: number | null;
   pfLast75: number | null;
   cashPositionLast: Record<12 | 25 | 75, CashPfDiagnostic | null>;
   /** longest drawdown time of the equity, hours */
   ddtH: number;
-  /** Unit-return PF on the settled closes inside (from, to], independently of execution volume and account size. */
+  /**
+   * Profit factor on the unit return (unitR, else r ÷ mult per order) of the settled closes inside (from, to]: the
+   * basis of every stage (Base, validation, orders), independent of execution volume and account size (null = an
+   * unknown unit return in the sample).
+   */
   pf: number | null;
+  /** the same on cash (r × position size in USD): sizing, compounding and Block's raised volume weigh a trade by its size */
+  pfCash: number;
   pfBasis: UnitStats["pfBasis"];
   unknownReturns: number;
   gp: number | null;
@@ -1091,25 +1196,38 @@ export function presetSeries(
     }
     for (const k of Object.keys(acc) as Array<keyof typeof acc>) kinds[k].push(+acc[k].toFixed(4));
   }
-  const ps = positionResults(trades, o.unit);
+  // PF is judged on the unit return (r ÷ mult, as unitR of the eval), never on cash: a cash PF weighs a trade by its size
+  const unitOf = (x: StatTrade) => (x.mult && x.mult > 0 ? 1 / x.mult : 1);
+  // positions on the unit return (pfLast*); the cash episodes apart (cashPositionLast, diagnostic)
+  const ps = positionResults(trades, unitOf);
+  const psCash = positionResults(trades, o.unit);
   const settled = trades.filter((trade) => trade.exitT > o.startT && trade.exitT <= o.endT);
-  const primary = unitStatsOf(settled, o.endT);
+  // a persisted unit return (unitR; explicit null = unknown) stands; otherwise r ÷ mult (unitOf)
+  const primary = unitStatsOf(
+    settled.map((x) => (x.unitR !== undefined ? x : { ...x, unitR: x.r * unitOf(x) })),
+    o.endT,
+  );
   const knownBasis = primary.pfBasis === "unit-net-returns";
   const noLoss = knownBasis ? primary.gp > 0 && primary.gl === 0 : null;
   const cashPositionLast = {
-    12: cashPfOfLast(ps, 12),
-    25: cashPfOfLast(ps, 25),
-    75: cashPfOfLast(ps, 75),
+    12: cashPfOfLast(psCash, 12),
+    25: cashPfOfLast(psCash, 25),
+    75: cashPfOfLast(psCash, 75),
   };
   const hours = Math.max(1e-9, (o.endT - o.startT) / 3_600_000);
   let gp = 0;
   let gl = 0;
+  let gpCash = 0;
+  let glCash = 0;
   let net = 0;
   for (const x of trades) {
     const v = x.r * o.unit(x);
     net += v;
-    if (v > 0) gp += v;
-    else gl -= v;
+    if (v > 0) gpCash += v;
+    else glCash -= v;
+    const u = x.r * unitOf(x);
+    if (u > 0) gp += u;
+    else gl -= u;
   }
   const r2 = (x: number) => +x.toFixed(2);
   return {
@@ -1129,12 +1247,13 @@ export function presetSeries(
       positions: ps.length,
       hours: r2(hours),
       posPerHour: +(ps.length / hours).toFixed(3),
-      pfLast12: cashPositionLast[12]?.pf ?? null,
-      pfLast25: cashPositionLast[25]?.pf ?? null,
-      pfLast75: cashPositionLast[75]?.pf ?? null,
+      pfLast12: cashPfOfLast(ps, 12)?.pf ?? null,
+      pfLast25: cashPfOfLast(ps, 25)?.pf ?? null,
+      pfLast75: cashPfOfLast(ps, 75)?.pf ?? null,
       cashPositionLast,
       ddtH: r2(tl.maxDdH),
       pf: knownBasis ? primary.pf : null,
+      pfCash: profitFactor(gpCash, glCash),
       pfBasis: primary.pfBasis,
       unknownReturns: primary.unknownReturns,
       gp: knownBasis ? primary.gp : null,
@@ -1146,7 +1265,7 @@ export function presetSeries(
           ? "no-loss-sentinel"
           : "gross-return-ratio",
       sample: "settled-closes",
-      cash: cashPfDetails(trades.length, gp, gl),
+      cash: cashPfDetails(trades.length, gpCash, glCash),
       n: settled.length,
       netUsd: r2(net),
       netPct: r2((net / Math.max(1e-9, o.balance)) * 100),

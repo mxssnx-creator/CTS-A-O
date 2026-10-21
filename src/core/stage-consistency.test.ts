@@ -19,7 +19,7 @@ import {
   rangeOfId,
 } from "./minimal-coord.ts";
 import { baseRangeProtects, cellStats, configId, laneProtect, makeUniverse, parseConfigId } from "./pipeline/pipeline.ts";
-import { buildTapes, configEval, defaultWalkForward, protectGrid, walkForward, winDd } from "./sim/walkforward.ts";
+import { buildTapes, configDirectionEval, configEval, defaultWalkForward, protectGrid, walkForward, winDd } from "./sim/walkforward.ts";
 import { barsFromCandles, syntheticCandles } from "./market/bars.ts";
 import { statsOf } from "./metrics/stats.ts";
 import { signalHistProtects } from "./signal-hist.ts";
@@ -135,7 +135,7 @@ describe("stage consistency: one config, the same at every stage", () => {
     assert.ok(compared >= 10, `${compared} cells compared`);
   });
 
-  it("the validation reads the window by hand: closes, net and PF over the lookback before t", () => {
+  it("validation reads each direction by hand and aggregates only qualified direction samples", () => {
     const u = universe();
     const tapes = buildTapes(u, protectGrid(15, grid, RT_COST).filter((_, i) => i % 40 === 0), RT_COST, undefined, new Set(["follow|rsi-mom-14-20@m15", "follow|mc-rsi2-5@m5"]), null, undefined, { minSl: 0, minTrail: 0, rangeMinN: 0 });
     const o = defaultWalkForward(DEFAULT_SETTINGS);
@@ -143,22 +143,27 @@ describe("stage consistency: one config, the same at every stage", () => {
     const look = Math.max(o.longH, o.preH) * H;
     let checked = 0;
     for (const tp of tapes) {
-      let n = 0;
-      let gp = 0;
-      let gl = 0;
-      let net = 0;
-      for (let i = 0; i < tp.n; i++)
-        if (tp.exitT[i] >= t - look && tp.exitT[i] < t) {
-          n++;
-          net += tp.r[i] * 100;
-          if (tp.r[i] > 0) gp += tp.r[i];
-          else gl -= tp.r[i];
+      const own = [];
+      for (const side of [1, -1]) {
+        let n = 0, gp = 0, gl = 0, net = 0;
+        for (let i = 0; i < tp.n; i++) if (tp.side[i] === side && tp.exitT[i] >= t - look && tp.exitT[i] < t) {
+          n++; net += tp.r[i] * 100;
+          if (tp.r[i] > 0) gp += tp.r[i]; else gl -= tp.r[i];
         }
-      const ev = configEval(tp, t, o);
-      assert.equal(ev.n, n, tp.id);
-      assert.ok(close(ev.net, net, 1e-7), `${tp.id} net`);
-      if (gl > 1e-12) assert.ok(close(ev.pf, gp / gl, 1e-7), `${tp.id} PF`);
-      checked++;
+        const ev = configDirectionEval(tp, t, o, side);
+        assert.equal(ev.n, n, `${tp.id} side ${side}`);
+        assert.ok(close(ev.net, net, 1e-7), `${tp.id} side ${side} net`);
+        if (gl > 1e-12) assert.ok(close(ev.pf, gp / gl, 1e-7), `${tp.id} side ${side} PF`);
+        own.push(ev); checked++;
+      }
+      const aggregate = configEval(tp, t, o), passing = own.filter(ev => ev.ok);
+      if (passing.length) {
+        assert.equal(aggregate.n, passing.reduce((n, ev) => n + ev.n, 0));
+        assert.ok(close(aggregate.net, passing.reduce((n, ev) => n + ev.net, 0), 1e-7));
+      } else {
+        assert.equal(aggregate.ok, false);
+        assert.equal(aggregate.n, Math.max(...own.map(ev => ev.n)), "a failed directional verdict is not a pooled passing sample");
+      }
     }
     assert.ok(checked >= 5);
   });

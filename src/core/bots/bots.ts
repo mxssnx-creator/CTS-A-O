@@ -3,8 +3,8 @@
 import type { BotType, Side, Tactics } from "../domain/types.ts";
 import type { SeriesCache } from "../indications/cache.ts";
 import { tacticKeyFor, withTactics } from "../indications/filters.ts";
-import { indicationState, laneOf } from "../indications/registry.ts";
 import { isInverseInd } from "../indications/inverse-config.ts";
+import { indicationState, laneOf } from "../indications/registry.ts";
 
 export interface BotSpec {
   type: BotType;
@@ -141,9 +141,50 @@ export function botTrigger(type: BotType, k: SeriesCache): Int8Array | null {
   });
 }
 
+/**
+ * The memo keys of one bot × indication combo, built once: a key made by a template literal per call is a new string that
+ * the memo's Map hashes again every time (11 % of Base's CPU in the x01 profile). The strings keep their content, so the
+ * suffix forgetting (forgetCombo) still matches them.
+ */
+interface EntryKeys {
+  combo: string;
+  /** `${bot}:${ind}` */
+  bi: string;
+  every: string;
+  /** the indication's base for the tactics key (its "@x<n>" suffix cut) */
+  base: string;
+  /** by tactics key: `tac:${key}:${bi}`, `tac:${key}:${bi}:every`, `run:${key}:${bi}` */
+  tac: Map<string, { tac: string; every: string; run: string }>;
+}
+const ENTRY_KEYS = new Map<string, Map<string, EntryKeys>>();
+function entryKeys(bot: BotType, ind: string): EntryKeys {
+  let byInd = ENTRY_KEYS.get(bot);
+  if (!byInd) ENTRY_KEYS.set(bot, (byInd = new Map()));
+  let e = byInd.get(ind);
+  if (!e) {
+    if (byInd.size > 200_000) byInd.clear();
+    e = {
+      combo: `combo:${bot}:${ind}`,
+      bi: `${bot}:${ind}`,
+      every: `${bot}:${ind}:every`,
+      base: laneOf(ind).base.replace(/@x\d+$/, ""),
+      tac: new Map(),
+    };
+    byInd.set(ind, e);
+  }
+  return e;
+}
+function tacKeys(e: EntryKeys, key: string) {
+  let t = e.tac.get(key);
+  if (!t) e.tac.set(key, (t = { tac: `tac:${key}:${e.bi}`, every: `tac:${key}:${e.every}`, run: `run:${key}:${e.bi}` }));
+  return t;
+}
+
 /** Final entry signal for a bot × indication combo. Returns null when the combo is not defined. */
 export function comboSignal(bot: BotType, ind: string, k: SeriesCache): Int8Array | null {
-  return k.memo(`combo:${bot}:${ind}`, () => {
+  return k.memo(entryKeys(bot, ind).combo, () => {
+    // An Inverse source already reverses its input before entry. Never reverse it again via a Bot/preset.
+    if (isInverseInd(laneOf(ind).base) && bot !== "follow" && bot !== "exit") return new Int8Array(k.b.n);
     const st = indicationState(ind, k);
     if (bot === "follow" || bot === "revert" || bot === "exit") {
       if (!st) return null;
@@ -182,26 +223,23 @@ export function entrySignal(
   if (bot === "revert" && isInverseInd(laneOf(ind).base)) return new Int8Array(k.b.n);
   // (a low-ADX indication, its combined "@x4" form too, skips the trend-strength tactic: it would remove every entry,
   // LOW_ADX_INDS)
-  const key = tacticKeyFor(tactics, laneOf(ind).base.replace(/@x\d+$/, ""));
+  const e = entryKeys(bot, ind);
+  const key = tacticKeyFor(tactics, e.base);
   if (bot === "exit") return comboSignal(bot, ind, k);
-  if (key && tactics?.onRun && (bot === "follow" || bot === "revert"))
-    return runEntries(bot, ind, k, key);
+  if (key && tactics?.onRun && (bot === "follow" || bot === "revert")) return runEntries(bot, ind, k, key);
   const sig = comboSignal(bot, ind, k);
   if (!sig) return null;
-  return withTactics(sig, k, key, `${bot}:${ind}`);
+  return key ? withTactics(sig, k, key, e.bi, tacKeys(e, key).tac) : sig;
 }
 
 /**
  * tactics.onRun: one follow / revert entry per state run, on the run's first bar the tactics keep (the onset rule
  * tests the tactics on the onset bar alone). Memoized per symbol cache.
  */
-function runEntries(
-  bot: "follow" | "revert",
-  ind: string,
-  k: SeriesCache,
-  key: string,
-): Int8Array | null {
-  return k.memo(`run:${key}:${bot}:${ind}`, () => {
+function runEntries(bot: "follow" | "revert", ind: string, k: SeriesCache, key: string): Int8Array | null {
+  const e = entryKeys(bot, ind);
+  const keys = tacKeys(e, key);
+  return k.memo(keys.run, () => {
     const st = indicationState(ind, k);
     if (!st) return null;
     const dir = bot === "follow" ? 1 : -1;
@@ -209,7 +247,7 @@ function runEntries(
     // every bar of every run as a candidate, then the tactics
     const every = new Int8Array(n);
     for (let i = 1; i < n; i++) if (st[i] !== 0) every[i] = st[i] * dir;
-    const kept = withTactics(every, k, key, `${bot}:${ind}:every`);
+    const kept = withTactics(every, k, key, e.every, keys.every);
     const out = new Int8Array(n);
     let taken = false;
     for (let i = 1; i < n; i++) {

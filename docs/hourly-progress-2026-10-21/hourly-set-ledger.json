@@ -1,0 +1,237 @@
+{
+  "schema": "cts-hourly-set-ledger-v1",
+  "sourceSha256": "109fd1859eb0079134b54289ea06a0b5dc51573017bc150d8773f83eef7d611e",
+  "ciRun": 39516742275,
+  "nativeSymbols": 20,
+  "builtConfigs": 64473,
+  "verifiedDecisions": 750636,
+  "missingHistories": 0,
+  "calculationViolations": 0,
+  "rows": [
+    {
+      "t": 1792227600000,
+      "expectedChecks": 62553,
+      "passed": 14458,
+      "dropped": 0,
+      "gained": 0,
+      "passedPf": 2.3823547419933013,
+      "firstFailures": {
+        "pf": 4466,
+        "net": 11900,
+        "lcb": 26160,
+        "lastN": 2885,
+        "rangeGate": 8,
+        "green": 1354,
+        "ddr": 144,
+        "closes": 1178
+      },
+      "unexplainedTransitions": 0
+    },
+    {
+      "t": 1792231200000,
+      "expectedChecks": 62553,
+      "passed": 11914,
+      "dropped": 4088,
+      "gained": 1544,
+      "passedPf": 2.491287328089302,
+      "firstFailures": {
+        "net": 15486,
+        "pf": 5645,
+        "lcb": 24704,
+        "rangeGate": 74,
+        "lastN": 2766,
+        "green": 1100,
+        "closes": 781,
+        "ddr": 83
+      },
+      "unexplainedTransitions": 0
+    },
+    {
+      "t": 1792234800000,
+      "expectedChecks": 62553,
+      "passed": 9254,
+      "dropped": 3414,
+      "gained": 754,
+      "passedPf": 2.467181797285079,
+      "firstFailures": {
+        "net": 15740,
+        "pf": 6317,
+        "lcb": 25352,
+        "lastN": 3883,
+        "rangeGate": 8,
+        "green": 1304,
+        "closes": 633,
+        "ddr": 62
+      },
+      "unexplainedTransitions": 0
+    },
+    {
+      "t": 1792238400000,
+      "expectedChecks": 62553,
+      "passed": 8511,
+      "dropped": 2948,
+      "gained": 2205,
+      "passedPf": 2.208834719290107,
+      "firstFailures": {
+        "net": 14889,
+        "pf": 7077,
+        "lcb": 24917,
+        "lastN": 4507,
+        "rangeGate": 449,
+        "green": 1622,
+        "closes": 507,
+        "ddr": 74
+      },
+      "unexplainedTransitions": 0
+    },
+    {
+      "t": 1792242000000,
+      "expectedChecks": 62553,
+      "passed": 5367,
+      "dropped": 4340,
+      "gained": 1196,
+      "passedPf": 2.5502037923692082,
+      "firstFailures": {
+        "net": 26561,
+        "pf": 7848,
+        "lcb": 18299,
+        "rangeGate": 82,
+        "lastN": 3262,
+        "green": 678,
+        "closes": 450,
+        "ddr": 6
+      },
+      "unexplainedTransitions": 0
+    },
+    {
+      "t": 1792245600000,
+      "expectedChecks": 62553,
+      "passed": 2000,
+      "dropped": 3473,
+      "gained": 106,
+      "passedPf": 2.5551931573480506,
+      "firstFailures": {
+        "net": 42823,
+        "pf": 5242,
+        "lcb": 10132,
+        "lastN": 1494,
+        "rangeGate": 12,
+        "green": 403,
+        "closes": 444,
+        "ddr": 3
+      },
+      "unexplainedTransitions": 0
+    },
+    {
+      "t": 1792249200000,
+      "expectedChecks": 62553,
+      "passed": 750,
+      "dropped": 1369,
+      "gained": 119,
+      "passedPf": 2.819538331233136,
+      "firstFailures": {
+        "net": 51241,
+        "pf": 3882,
+        "lcb": 5355,
+        "lastN": 1008,
+        "ddr": 6,
+        "green": 15,
+        "closes": 296
+      },
+      "unexplainedTransitions": 0
+    },
+    {
+      "t": 1792252800000,
+      "expectedChecks": 62553,
+      "passed": 570,
+      "dropped": 405,
+      "gained": 225,
+      "passedPf": 3.0313364205138846,
+      "firstFailures": {
+        "net": 57807,
+        "pf": 1667,
+        "lcb": 1887,
+        "lastN": 547,
+        "closes": 61,
+        "green": 4,
+        "rangeGate": 10
+      },
+      "unexplainedTransitions": 0
+    },
+    {
+      "t": 1792256400000,
+      "expectedChecks": 62553,
+      "passed": 389,
+      "dropped": 237,
+      "gained": 56,
+      "passedPf": 3.0352746979148115,
+      "firstFailures": {
+        "net": 59386,
+        "pf": 869,
+        "lcb": 1535,
+        "green": 1,
+        "lastN": 121,
+        "closes": 229,
+        "ddr": 6,
+        "rangeGate": 17
+      },
+      "unexplainedTransitions": 0
+    },
+    {
+      "t": 1792260000000,
+      "expectedChecks": 62553,
+      "passed": 304,
+      "dropped": 173,
+      "gained": 88,
+      "passedPf": 2.4861867441859298,
+      "firstFailures": {
+        "net": 60167,
+        "pf": 997,
+        "lcb": 937,
+        "ddr": 7,
+        "green": 2,
+        "lastN": 119,
+        "rangeGate": 7,
+        "closes": 13
+      },
+      "unexplainedTransitions": 0
+    },
+    {
+      "t": 1792263600000,
+      "expectedChecks": 62553,
+      "passed": 245,
+      "dropped": 100,
+      "gained": 41,
+      "passedPf": 2.3396699647532,
+      "firstFailures": {
+        "net": 60251,
+        "pf": 874,
+        "lcb": 903,
+        "lastN": 210,
+        "closes": 55,
+        "rangeGate": 15
+      },
+      "unexplainedTransitions": 0
+    },
+    {
+      "t": 1792267200000,
+      "expectedChecks": 62553,
+      "passed": 68,
+      "dropped": 187,
+      "gained": 10,
+      "passedPf": 2.2582676102417043,
+      "firstFailures": {
+        "net": 60681,
+        "pf": 651,
+        "lcb": 845,
+        "lastN": 190,
+        "green": 14,
+        "rangeGate": 16,
+        "ddr": 1,
+        "closes": 87
+      },
+      "unexplainedTransitions": 0
+    }
+  ],
+  "note": "Past own-history PF of passing configs is distinct from subsequent funded execution PF. Dropped/gained counts are full config IDs, not trades."
+}

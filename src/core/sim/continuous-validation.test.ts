@@ -15,6 +15,8 @@ import {
   configContextEval,
   tapeRetentionHours,
   walkForward,
+  engineValidationLastNOk,
+  configDirectionEval,
 } from "./walkforward.ts";
 
 const H = 3_600_000;
@@ -79,6 +81,124 @@ function fixture(tag?: RangeTag) {
 
 describe("continuous post-Base qualification", () => {
   for (const tag of [undefined, "mc", "mn", "mp", "sh", "gn", "lg"] as const) {
+    it(`${tag ?? "wide"}: each direction retains its own full sample and confidence, and rejected directions cannot dilute it`, () => {
+      const { tp, o, trades } = fixture(tag);
+      const longs = Array.from({ length: 30 }, (_, i) => ({
+        ...trades[0],
+        entryT: T - (112 - i) * 60_000,
+        exitT: T - (111 - i) * 60_000,
+        r: 0.05,
+      }));
+      const shorts = Array.from({ length: 20 }, (_, i) => ({
+        ...trades[0],
+        side: -1 as const,
+        entryT: T - (32 - i) * 60_000,
+        exitT: T - (31 - i) * 60_000,
+        r: i < 9 ? -0.01 : 0.012,
+      }));
+      const own = makeTape(
+        tp.id,
+        tp.bot,
+        tp.ind,
+        tp.protect,
+        tp.kind,
+        ["A"],
+        [...longs, ...shorts],
+        [],
+        [],
+      );
+      const options = {
+        ...o,
+        gates: { ...o.gates, minTrades: 12, lastNFloor: 5 },
+        rangeGate: tag ? { lastN: 75, minPf: 1.35, ranges: [tag] } : undefined,
+      };
+      assert.equal(
+        engineValidationLastNOk(own, T, options, -1),
+        true,
+        "short PF/Last-N alone passes",
+      );
+      const short = configDirectionEval(own, T, options, -1);
+      assert.equal(
+        short.ok ? "ok" : short.fail,
+        "lcb",
+        "short confidence cannot borrow the winning long sample",
+      );
+      const ev = configEval(own, T, options);
+      assert.equal(ev.ok, true);
+      assert.equal(ev.n, 30);
+      assert.equal(ev.pf, 4, "primary validation contains only independently passing directions");
+      assert.equal(execDecision(own, T, options, { sym: "A", side: -1 }).ok, false);
+      const losingShorts = shorts.flatMap((tr) =>
+        Array.from({ length: 4 }, () => ({ ...tr, r: -0.1 })),
+      );
+      const losingPool = makeTape(
+        tp.id,
+        tp.bot,
+        tp.ind,
+        tp.protect,
+        tp.kind,
+        ["A"],
+        [...longs, ...losingShorts],
+        [],
+        [],
+      );
+      assert.equal(configEval(losingPool, T, options).ok, true);
+      assert.equal(configEval(losingPool, T, options).n, 30);
+      assert.equal(losingPool.n, 110, "all rejected losses remain in candidate learning");
+    });
+    it(`${tag ?? "wide"}: winning longs never qualify an unseen or losing short when execution Last-N is off`, () => {
+      const { tp, o, trades } = fixture(tag);
+      const rows = trades
+        .slice(0, 18)
+        .map((tr) => ({ ...tr, entryT: tr.entryT - H, exitT: tr.exitT - H }));
+      const own = makeTape(tp.id, tp.bot, tp.ind, tp.protect, tp.kind, ["A", "A"], rows, [], []);
+      const options = {
+        ...o,
+        lastN: 0,
+        symGate: "provenSide" as const,
+        gates: { ...o.gates, minTrades: 12, lastNFloor: 5 },
+        rangeGate: tag ? { lastN: 75, minPf: 1.35, ranges: [tag] } : undefined,
+      };
+      assert.equal(configEval(own, T, options).ok, true);
+      assert.equal(
+        engineContextValid(own, T, options, "A", -1),
+        false,
+        "the proven symbol gate also rejects the empty short result during warmup",
+      );
+      assert.equal(engineValidationLastNOk(own, T, options, 1), true);
+      assert.equal(engineValidationLastNOk(own, T, options, -1), false);
+      assert.equal(execDecision(own, T, options, { sym: "A", side: 1 }).ok, true);
+      assert.deepEqual(execDecision(own, T, options, { sym: "A", side: -1 }), {
+        ok: false,
+        why: "directionValidation",
+      });
+      const losses = trades.slice(0, 5).map((tr) => ({
+        ...tr,
+        side: -1 as const,
+        r: -0.001,
+        entryT: tr.entryT - H,
+        exitT: tr.exitT - H,
+      }));
+      const mixed = makeTape(
+        tp.id,
+        tp.bot,
+        tp.ind,
+        tp.protect,
+        tp.kind,
+        ["A"],
+        [...rows, ...losses],
+        [],
+        [],
+      );
+      assert.equal(
+        configEval(mixed, T, options).ok,
+        true,
+        "the config remains profitable from longs",
+      );
+      assert.equal(execDecision(mixed, T, options, { sym: "A", side: -1 }).ok, false);
+      assert.equal(execDecision(mixed, T, options, { sym: "A", side: 1 }).ok, true);
+      assert.equal(mixed.n, 23, "the losing side remains in candidate learning");
+    });
     it(`${tag ?? "wide"}: Base provenance preserves config sample scope through selection and execution`, () => {
       const { tp, o, trades } = fixture(tag);
       const history = ["A", "B", "C"].flatMap((sym) =>
@@ -225,9 +345,17 @@ describe("continuous post-Base qualification", () => {
       );
       assert.equal(
         engineContextValid(own, T, options, "A", -1),
-        true,
-        "the existing explicit symbol warmup policy is retained",
+        false,
+        "warmup cannot treat an empty symbol/direction result as proven",
       );
+      assert.equal(engineContextValid(own, T, { ...options, symMinN: 0 }, "A", -1), false);
+      assert.deepEqual(
+        execDecision(own, T, options, { sym: "unseen", side: 1 }),
+        { ok: false, why: "symPf" },
+        "passing direction evidence cannot qualify an unobserved symbol",
+      );
+      assert.equal(engineContextValid(own, T, options, "unseen", 1), false,
+        "native promotion rejects the same empty symbol result");
       assert.equal(
         configEval(own, T, {
           ...options,
@@ -334,6 +462,154 @@ describe("continuous post-Base qualification", () => {
         [steady.id],
       );
     }
+  });
+
+  it("direction-scoped caching restores longer Last-N and history requests without trimming candidates", () => {
+    const { tp, o, trades } = fixture();
+    const rows = Array.from({ length: 100 }, (_, i) => ({
+      ...trades[0],
+      entryT: T - (101 - i) * H,
+      exitT: T - (100 - i) * H,
+    }));
+    const own = makeTape(tp.id, tp.bot, tp.ind, tp.protect, tp.kind, ["A"], rows, [], []);
+    assert.equal(configDirectionEval(own, T, o, 1).n, 24);
+    assert.equal(configDirectionEval(own, T, { ...o, validLastN: 75 }, 1).ok, true);
+    assert.equal(configDirectionEval(own, T, { ...o, longH: 336 }, 1).n, 100);
+    assert.equal(configDirectionEval(own, T, o, 1).n, 24);
+    assert.equal(own.n, 100);
+  });
+
+  it("cached direction views and selection info refresh held-only admission on the same tape list", () => {
+    const { tp, o } = fixture();
+    const list = [tp],
+      at = T + 30 * 60_000 + 1;
+    assert.equal(selectFixed(list, at, o).picks.length, 1);
+    tp.heldOnly = true;
+    assert.equal(selectFixed(list, at, o).picks.length, 0);
+    tp.heldOnly = false;
+    assert.equal(selectFixed(list, at, o).picks.length, 1);
+  });
+
+  it("failed direction configs remain in the hourly robustness denominator", () => {
+    const { tp, o, trades } = fixture();
+    const good = makeTape(
+      tp.id,
+      tp.bot,
+      tp.ind,
+      tp.protect,
+      tp.kind,
+      ["A"],
+      trades.slice(0, 18).map((tr) => ({ ...tr, entryT: tr.entryT - H, exitT: tr.exitT - H })),
+      [],
+      [],
+    );
+    const bad = [2, 3, 4].map((k) =>
+      makeTape(
+        tp.id.replace("|tp1|", `|tp${k}|`),
+        tp.bot,
+        tp.ind,
+        { ...tp.protect, tp: k / 100 },
+        tp.kind,
+        ["A"],
+        trades
+          .slice(0, 18)
+          .map((tr) => ({ ...tr, r: -0.01, entryT: tr.entryT - H, exitT: tr.exitT - H })),
+        [],
+        [],
+      ),
+    );
+    const options = { ...o, robustFrac: 0.6, seatPer: "pair" as const, familySeats: false };
+    assert.equal(selectAt([good], T, options).picks.length, 1);
+    assert.equal(selectAt([good, ...bad], T, options).picks.length, 0);
+  });
+
+  it("a rejected direction learns causally from its own candidates and can recover", () => {
+    const { tp, o, trades } = fixture("mc");
+    const longs = trades
+      .slice(0, 18)
+      .map((tr) => ({ ...tr, entryT: tr.entryT - H, exitT: tr.exitT - H }));
+    const shorts = trades.slice(0, 14).map((tr, i) => ({
+      ...tr,
+      side: -1 as const,
+      r: 0.01,
+      entryT: T + (2 * i + 1) * 60_000,
+      exitT: T + (2 * i + 2) * 60_000,
+    }));
+    const own = makeTape(
+      tp.id,
+      tp.bot,
+      tp.ind,
+      tp.protect,
+      tp.kind,
+      ["A"],
+      [...longs, ...shorts],
+      [],
+      [],
+    );
+    const options = {
+      ...o,
+      startT: T,
+      simH: 1,
+      lastN: 0,
+      gates: { ...o.gates, minTrades: 12, lastNFloor: 5 },
+      rangeGate: { lastN: 75, minPf: 1.35 },
+    };
+    assert.equal(engineValidationLastNOk(own, T + 9 * 60_000, options, -1), false);
+    assert.equal(
+      engineValidationLastNOk(own, T + 10 * 60_000, options, -1),
+      true,
+      "the fifth own close has settled at this boundary",
+    );
+    const u = {
+      bars: [],
+      caches: [],
+      startT: T - 24 * H,
+      endT: T + H,
+      splitT: T,
+      nowT: T + H,
+      baseTf: 5,
+    } as never;
+    const sim = walkForward(u, [own], options);
+    assert.deepEqual(
+      sim.trades.map((tr) => tr.entryT),
+      shorts.slice(12).map((tr) => tr.entryT),
+    );
+    assert.equal(
+      configDirectionEval(own, T + 10 * 60_000, options, -1).ok,
+      false,
+      "five wins cannot borrow the long direction's twelve-close sample",
+    );
+    assert.equal(configDirectionEval(own, T + 24 * 60_000 + 1, options, -1).ok, true);
+    assert.equal(own.n, 32, "rejected candidates remain available to independent learning");
+  });
+
+  it("a strict range window cannot borrow the opposite direction's closes", () => {
+    const { tp, o, trades } = fixture("mc");
+    const rows = Array.from({ length: 80 }, (_, i) => ({
+      ...trades[0],
+      entryT: T - (82 - i) * 60_000,
+      exitT: T - (81 - i) * 60_000,
+    }));
+    rows.push(...rows.slice(0, 5).map((tr) => ({ ...tr, side: -1 as const })));
+    const own = makeTape(tp.id, tp.bot, tp.ind, tp.protect, tp.kind, ["A"], rows, [], []);
+    const options = {
+      ...o,
+      lastN: 0,
+      validLastN: 0,
+      rangeGate: { lastN: 75, minPf: 1.35, floor: 0 },
+    };
+    assert.equal(configEval(own, T, options).ok, true);
+    assert.equal(engineValidationLastNOk(own, T, options, 1), true);
+    assert.equal(engineValidationLastNOk(own, T, options, -1), false);
+    assert.equal(
+      engineValidationLastNOk(
+        own,
+        T,
+        { ...options, rangeGate: { ...options.rangeGate, floor: 5 } },
+        -1,
+      ),
+      true,
+    );
   });
 
   it("Signal history stays independent of the shortened engine window", () => {

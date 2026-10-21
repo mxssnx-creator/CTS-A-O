@@ -104,7 +104,7 @@ export function PrehistoricPanel(props: {
         </div>
         <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)", marginTop: 4 }}>
           {running
-            ? `${st.stage}: ${st.label || "…"}`
+            ? `${st.stage}: ${st.label || "…"} · last progress ${fmt.ago(st.heartbeat)}${Date.now() - (st.heartbeat ?? 0) > 60_000 ? " · stale" : ""}`
             : p.complete
               ? `completed ${fmt.ago(p.readyAt)}`
               : "next batch queued"}

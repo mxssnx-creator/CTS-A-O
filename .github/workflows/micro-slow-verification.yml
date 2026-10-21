@@ -1,0 +1,78 @@
+name: Micro runtime slow verification
+on:
+  push:
+    branches: [codex/micro-indication-20261020, codex/incremental-cycle-20261020]
+    paths: [src/**, scripts/**, docs/hourly-progress-2026-10-21/integration-universal-plan.json, .github/workflows/micro-slow-verification.yml]
+permissions:
+  contents: read
+jobs:
+  slow:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      MALLOC_ARENA_MAX: "2"
+      MALLOC_MMAP_THRESHOLD_: "1048576"
+      CTS_CORE_STATE: "off"
+      CTS_CORE_AUTOSTART: "0"
+      CTS_CORE_LIVE: "0"
+      CTS_CORE_WORKERS: "2"
+      CTS_CORE_COMPARE: "0"
+      CTS_CORE_VARIANTS: "0"
+      CTS_CORE_SLOW: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24.19.0"
+      - run: npm ci
+      - name: Build exact worker source
+        run: npm run build:dev
+        env:
+          NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
+      - name: Complete snapshot-coherence storm and background preset backtest
+        shell: bash
+        run: |
+          mkdir -p runs/micro-ci-slow
+          node --require ./scripts/lib/core-test-offline-guard.cjs --experimental-strip-types --no-warnings --test --test-name-pattern='stress: a storm|backtests a preset' src/core/server/runtime.test.ts 2>&1 | tee runs/micro-ci-slow/runtime-slow.log
+      - name: Preserve slow verification evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: micro-slow-${{ github.run_id }}
+          retention-days: 30
+          path: runs/micro-ci-slow/
+  universal:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      MALLOC_ARENA_MAX: "2"
+      MALLOC_MMAP_THRESHOLD_: "1048576"
+      CTS_CORE_STATE: "off"
+      CTS_CORE_AUTOSTART: "0"
+      CTS_CORE_LIVE: "0"
+      CTS_UNIVERSAL_PLAN: ${{ github.ref_name == 'codex/incremental-cycle-20261020' && 'docs/combined-verification-2026-10-21/universal-plan.json' || 'docs/hourly-progress-2026-10-21/integration-universal-plan.json' }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24.19.0"
+      - run: npm ci
+      - name: Audit complete registry, configured ranges and native-history causality
+        env:
+          NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
+        run: |
+          node --expose-gc --max-old-space-size=4096 --experimental-strip-types --no-warnings .github/audits/universal-correctness.mjs catalog
+          node --expose-gc --max-old-space-size=4096 --experimental-strip-types --no-warnings .github/audits/universal-correctness.mjs identity
+          node --expose-gc --max-old-space-size=4096 --experimental-strip-types --no-warnings .github/audits/universal-correctness.mjs causal
+          node --expose-gc --max-old-space-size=4096 --experimental-strip-types --no-warnings .github/audits/universal-correctness.mjs causal-partial
+      - name: Preserve complete universal coverage and every failure
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: micro-universal-${{ github.run_id }}
+          retention-days: 30
+          path: runs/micro-ci-universal/

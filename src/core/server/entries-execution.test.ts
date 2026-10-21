@@ -9,6 +9,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CoreRuntime, LiveIntent } from "./runtime.server.ts";
+import { REQUEST_WINDOW_MS, takeSignedRequestSlot } from "../exchange/request-budget.server.ts";
 
 const originalKey = process.env.BINGX_X02_API_KEY;
 const originalSecret = process.env.BINGX_X02_SECRET;
@@ -124,6 +125,40 @@ describe("entries mode: actual MARKET execution quantities", () => {
     if (originalKey === undefined) delete process.env.BINGX_X02_API_KEY; else process.env.BINGX_X02_API_KEY = originalKey;
     if (originalSecret === undefined) delete process.env.BINGX_X02_SECRET; else process.env.BINGX_X02_SECRET = originalSecret;
     if (originalArmed === undefined) delete process.env.CTS_CORE_LIVE; else process.env.CTS_CORE_LIVE = originalArmed;
+  });
+
+  for (const restart of [false, true]) it(`an unsent request-budget hold retries the same entry ${restart ? "after restart" : "on a fresh step"} without pending ownership`, async () => {
+    const { rt, state, step } = fixture();
+    for (let i = 0; i < 8; i++)
+      assert.equal(takeSignedRequestSlot("POST", "/openApi/swap/v2/trade/order", { type: "STOP_MARKET" }).until, 0);
+    const held = await step();
+    assert.equal(held.placed, 0);
+    assert.equal(state.sent.length, 0);
+    assert.ok(held.skipped.some((x) => /request budget pause.*not sent/.test(x.why)));
+    assert.equal(rt.db.all("SELECT coid FROM live_orders WHERE status = 'pending'").length, 0);
+    assert.equal(rt.db.all("SELECT coid FROM live_orders WHERE status = 'not-sent'").length, 1);
+    mock.timers.tick(REQUEST_WINDOW_MS + 1);
+    const resumed = restart ? fixture(rt.db) : { state, step };
+    const retry = await resumed.step();
+    assert.equal(retry.placed, 1, JSON.stringify(retry));
+    assert.equal(resumed.state.sent.filter((x) => x.type === "MARKET" && x.side === "BUY").length, 1);
+    assert.ok(resumed.state.sent.some((x) => x.type === "STOP_MARKET"), "the accepted entry receives its native stop");
+  });
+
+  it("a durable non-dispatch marker wins over stale pre-crash request metadata", async () => {
+    const { rt, state, step } = fixture();
+    const coid = makeCoid(rt.settings.live.connId, "E");
+    const key = `${intent.cfg}|${intent.sym}|${intent.barT}`;
+    rt.db.run("INSERT INTO live_orders (coid,cfg,sym,side,kind,qty,px,status,msg,at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+      coid, intent.cfg, intent.sym, intent.side, "E", 0, 10, "not-sent", key, Date.now());
+    rt.db.kvSet(`entriesPendingExecutions|${rt.settings.live.connId}`, {
+      [coid]: { oid: "",cfg:intent.cfg,sym:intent.sym,side:intent.side,kind:"E",sentQty:1,px:10,key,at:Date.now() },
+    });
+    const status = await step();
+    assert.equal(status.placed, 1, JSON.stringify(status));
+    assert.equal(state.polls, 0, "a known non-dispatch is never queried as a possible venue fill");
+    assert.equal(rt.db.all("SELECT coid FROM live_fills WHERE coid=?", coid).length, 0);
+    assert.equal(rt.db.get<{qty:number}>("SELECT qty FROM live_orders WHERE coid=?", coid)?.qty, 0);
   });
 
   it("Signal native protection caps the stop from its actual fill, not the preflight quote", async () => {

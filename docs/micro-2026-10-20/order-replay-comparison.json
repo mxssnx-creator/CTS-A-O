@@ -1,0 +1,142 @@
+{
+  "schema": "cts-micro-independent-order-market-comparison-v1",
+  "feedSha256": "2de8392ef1346c1b49b0933e111bd7328d13f23abb1643c90cf99c398fa3cab6",
+  "window": {
+    "indicatorStartT": 1792098000000,
+    "evaluationFromT": 1792184400000,
+    "tradeStartT": 1792227600000,
+    "endT": 1792270800000,
+    "preH": 12,
+    "runH": 12
+  },
+  "baselineSourceSha256": "dc407e994040d9d10c7adb2983215e8898041548300f747705474ea802fadb50",
+  "correctedSourceSha256": "b0eb969dd109c5bfde95a4fd25fc79877d15521fae505737e43c8a72600f13d3",
+  "gateDecisionsCompared": 750636,
+  "gateDecisionDifferences": 0,
+  "steps": [
+    {
+      "t": 1792227600000,
+      "evaluated": 62553,
+      "passedAndSeated": 14458
+    },
+    {
+      "t": 1792231200000,
+      "evaluated": 62553,
+      "passedAndSeated": 11914
+    },
+    {
+      "t": 1792234800000,
+      "evaluated": 62553,
+      "passedAndSeated": 9254
+    },
+    {
+      "t": 1792238400000,
+      "evaluated": 62553,
+      "passedAndSeated": 8511
+    },
+    {
+      "t": 1792242000000,
+      "evaluated": 62553,
+      "passedAndSeated": 5367
+    },
+    {
+      "t": 1792245600000,
+      "evaluated": 62553,
+      "passedAndSeated": 2000
+    },
+    {
+      "t": 1792249200000,
+      "evaluated": 62553,
+      "passedAndSeated": 750
+    },
+    {
+      "t": 1792252800000,
+      "evaluated": 62553,
+      "passedAndSeated": 570
+    },
+    {
+      "t": 1792256400000,
+      "evaluated": 62553,
+      "passedAndSeated": 389
+    },
+    {
+      "t": 1792260000000,
+      "evaluated": 62553,
+      "passedAndSeated": 304
+    },
+    {
+      "t": 1792263600000,
+      "evaluated": 62553,
+      "passedAndSeated": 245
+    },
+    {
+      "t": 1792267200000,
+      "evaluated": 62553,
+      "passedAndSeated": 68
+    }
+  ],
+  "identicalPreviousVirtualCloses": 49259,
+  "previousVirtualClosesRemoved": 0,
+  "addedVirtualCloses": {
+    "closes": 82599,
+    "gp": 54.29415690236139,
+    "gl": 839.6368678014205,
+    "pf": 0.06466385527416157
+  },
+  "baseline": {
+    "virtual": {
+      "closes": 49259,
+      "gp": 85.43921446861462,
+      "gl": 390.2707797303289,
+      "pf": 0.21892290918539123
+    },
+    "funded": {
+      "closes": 49259,
+      "gp": 85.43921446861462,
+      "gl": 390.2707797303289,
+      "pf": 0.21892290918539123
+    },
+    "funding": {
+      "basis": "Archived report explicitly records every virtual close funded, zero unknown/zero exclusions",
+      "virtualCloses": 49259,
+      "fundedCloses": 49259,
+      "zeroAllocatedCloses": 0,
+      "unknownAllocations": 0
+    },
+    "firstRejections": {
+      "symPf": 43193,
+      "duplicate": 97398,
+      "configValidation": 58335
+    }
+  },
+  "corrected": {
+    "virtual": {
+      "closes": 131858,
+      "gp": 139.73337137098483,
+      "gl": 1229.9076475316729,
+      "pf": 0.11361289740040126
+    },
+    "funded": {
+      "closes": 126342,
+      "gp": 121.4650371759302,
+      "gl": 1191.3439830504033,
+      "pf": 0.10195631060722055
+    },
+    "funding": {
+      "basis": "Exact per-close native report allocation",
+      "virtualCloses": 131858,
+      "fundedCloses": 126342,
+      "zeroAllocatedCloses": 5516,
+      "unknownAllocations": 0
+    },
+    "firstRejections": {
+      "symPf": 49305,
+      "configValidation": 67022
+    }
+  },
+  "notes": [
+    "Every recorded config decision and selected ID is compared at the same causal time. Set-count deterioration is unchanged by the order-identity repair.",
+    "Shared prior virtual orders retain exactly the same unit returns. Additional independently admitted orders may lose; correctness cannot force PF positive.",
+    "Funding is the actual report cohort. Known zero allocations and endpoint marks are excluded from funded settled PF."
+  ]
+}

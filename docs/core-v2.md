@@ -16,7 +16,7 @@ untouched). UI at `/v2`. Everything here is honest by construction:
 | **Base** | Every indication (10 kinds, 98 configs) × bot type (8 fade bots + `follow` + `revert`) = 988 combos; plus independent strategy tapes for every protect variant × sub-strategy (normal, trailing, DCA, DCA Active). Default grid: TP 1.8/2.6/3.5/5 % × SL 1/1.5/2/2.5 × TP × trail 0/0.25/0.4 × TP (min trail 0.6 %, min SL 1 %) × hold 3h/8h ≈ 37,700 tapes. Always computed, whatever the toggles. Tapes are compact typed-array columns. | `src/core/sim/walkforward.ts` `buildTapesGen`, `src/core/pipeline/pipeline.ts` |
 | **Main** | Long-window gates: n ≥ min trades, PF ≥ min, net > 0, DDT limit; parameter robustness. Selection only uses trades closed **before** the decision time. | `selectAt`, `selectDurable` |
 | **Real** | Durable winners (default): positive in ≥ 75 % of 4 sub-windows of the last 14 days and PF ≥ 1.1 overall; still working in the **20 h pre-historic window** (PF ≥ 1.0); once held, kept while the 14-day PF stays ≥ 1.0. Entries go through last-N (12, PF ≥ 1.0), Block levels, per-symbol / per-side / total caps and the hour guard; executed on paper every hour. | `walkForward`, `execDecision` |
-| **Live** | Off by default. Needs Settings → Live enabled **and** `CTS_CORE_LIVE=1` on the host **and** API keys **and** a rolling simulated run with PF ≥ min and stable. Uses its own `CTSB{X1,V1,V2}_` client-order tags, never touches CTSA or foreign tickets, skips any symbol with foreign positions/orders. | `src/core/server/live.ts`, `live.server.ts` |
+| **Live** | Off by default. Needs Settings → Live enabled **and** `CTS_CORE_LIVE=1` on the host **and** API keys **and** a rolling simulated run with PF ≥ min and stable. Uses its own `CTSB{X1,V1,V2}_` client-order tags, never touches CTSA or foreign tickets. In hedge mode a foreign position, or a foreign order that names its position side, skips only that side; in one-way mode, or for a foreign order with no position side, it skips the whole symbol. Under `live.foreignSides` "independent" (hedge mode) controlOwnership freezes nothing: the desk trades its own quantity beside the foreign one. The entry check (planLive) does not read that setting and still skips the side. | `src/core/server/live.ts`, `live.server.ts` |
 
 ### Sub-strategies (toggles filter execution only)
 
@@ -149,7 +149,7 @@ when the target moves more than `rebalancePct`.
   pass** re-places a missing stop, for example after a fill whose reply timed out; if the stop cannot be placed, the
   position is closed. A missing take-profit is placed by its upkeep and never closes anything.
 - **Ownership is restart-safe.** A position is ours when an own-tagged order rests on that symbol and position side,
-  or when we opened it in the last 10 minutes. A symbol with any foreign order, or a position we do not own, is never touched.
+  or when we opened it in the last 10 minutes. In hedge mode a foreign position, or a foreign order that names its position side, freezes only that side. In one-way mode, or for a foreign order with no position side, the whole symbol is never touched. Under `live.foreignSides` "independent" (hedge mode) that ownership freezes nothing: the desk trades its own quantity beside the foreign one, bounded to its own; the entry check still skips the side.
 - **Hashes:**
   - `conn`: connection id, network, host and a one-way key fingerprint. A change triggers a logged full re-sync.
   - `targets`, `book` (own positions and own orders) and `plan`.
@@ -163,6 +163,21 @@ when the target moves more than `rebalancePct`.
   - a connection change, and foreign positions and orders never touched.
   A runtime storm test mixes preset applies, toggles, tactics, focus, mode, start/stop and resync, and always ends
   in a clean compute with the last settings.
+
+**One-way order history: open decisions (19 Oct review).** `reconcileLaneCloses` (live.server.ts) counts a one-way
+(BOTH) history row as a lane's close only when it is one: an own stop or take-profit, a row the venue flags
+`reduceOnly` or `closePosition`, or a liquidation or auto-deleverage fill (the venue's engine took the position, whatever
+flags its row carries). The desk's own entry of the other side is a market of the same order side with neither flag, so
+it no longer re-prices a lane's close at its own price (cells OW-11 in `order-sides.test.ts`). Open, not confirmed: the
+repo holds no recorded `allOrders` row that shows the venue echoes the two flags. If it does not, an own one-way market
+exit is not re-priced (the lane keeps its bar or ticker price, as before commit 0bf0c1b); stop and take-profit fills still
+are. An unflagged close by hand (BOTH, MARKET, not ours) is not re-priced either. That is the operator's decision until
+its echo is confirmed, so such a close keeps its bar or ticker price, which is not its fill price. Open, unchanged:
+`outsideCloseOf` and `closeFillsOf` (live.ts) still count a non-own BOTH row by the side its order closes, unflagged
+manual closes included, so the two readers disagree on those rows. A manual or other-system market that opens the
+opposite side of the symbol is then booked as this side's outside close at its own fill price, which is a wrong price.
+Their one-way cells (OW-10) carry no flags on the close rows, so a flag rule there needs the operator's decision on those
+cells.
 
 Running against **VST x02** needs `BINGX_X02_API_KEY` and `BINGX_X02_SECRET` in the host environment, plus
 `CTS_CORE_LIVE=1`.

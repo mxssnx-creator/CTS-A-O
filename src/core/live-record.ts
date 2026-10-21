@@ -133,10 +133,24 @@ export interface LaneTrade {
   r: number;
   /**
    * how the lane left: "exit" (the desk moved the position), "stop" (the exchange closed it at its stop), "target"
-   * (at its take-profit), "hand" (an order that is not ours closed it: by hand in the venue, or another system)
+   * (at its take-profit), "hand" (an order that is not ours closed it: by hand in the venue, or another system),
+   * "liq" (the venue liquidated or auto-deleveraged the position: an own loss), "unverified" (the venue's history could
+   * not say what closed it and the bars proved neither level: booked at the price then, never counted as an own close)
    */
-  reason: "exit" | "stop" | "target" | "hand";
+  reason: "exit" | "stop" | "target" | "hand" | "liq" | "unverified";
+  /**
+   * where the exit price comes from: "fill" (the fill of our own order), "history" (the venue's order history),
+   * "bar" (the stop / target level the 1m bars proved reached), "ticker" (the market price when the desk saw it).
+   * Unset: a row from before the source was recorded.
+   */
+  pxSrc?: PxSrc;
 }
+
+/** The source of a lane's exit price (live_lane_trades.px_src). */
+export type PxSrc = "fill" | "history" | "bar" | "ticker";
+
+/** How the exchange closed a side outside the desk's own step (live-record's `externalWhy`; unset = by its stop). */
+export type OutsideWhy = "stop" | "target" | "hand" | "liq" | "unverified";
 
 export interface LaneStepInput {
   /** the lanes that asked for volume on the exchange this step (after every filter): id, cfg, sym, side */
@@ -156,7 +170,9 @@ export interface LaneStepInput {
   /** keys the exchange closed outside this step (stop-out or by hand) → the price they closed at when known */
   external: ReadonlyMap<string, number | null>;
   /** of those, the keys its take-profit or an order not ours closed; unset = by its stop */
-  externalWhy?: ReadonlyMap<string, "stop" | "target" | "hand">;
+  externalWhy?: ReadonlyMap<string, OutsideWhy>;
+  /** of those, where a known price comes from (unset: not recorded); an unknown price is the ticker's */
+  externalSrc?: ReadonlyMap<string, PxSrc>;
   /** lanes the venue closed by their own order (lane orders: laneKeyOf id → its fill price and kind) */
   laneExit?: ReadonlyMap<string, { px: number; reason: "stop" | "target" }>;
   /** market prices */
@@ -199,7 +215,7 @@ export function attributeLanes(
     if (!x.heldAfter.has(key)) continue;
     live.set(l.lk ?? laneKeyOf({ id: l.id, cfg: l.cfg, sym: l.sym, side: l.side }), l);
   }
-  const close = (id: string, o: LaneOpen, px: number, reason: LaneTrade["reason"]) => {
+  const close = (id: string, o: LaneOpen, px: number, reason: LaneTrade["reason"], pxSrc: PxSrc | undefined) => {
     if (!(px > 0) || !(o.px > 0)) return;
     closed.push({
       id,
@@ -212,29 +228,29 @@ export function attributeLanes(
       exit: px,
       r: (o.side * (px - o.px)) / o.px - x.cost,
       reason,
+      ...(pxSrc ? { pxSrc } : {}),
     });
   };
   for (const [id, o] of Object.entries(open)) {
     const key = `${o.sym}|${o.side}`;
     const own = x.laneExit?.get(id);
     if (own) {
-      close(id, o, own.px, own.reason);
+      close(id, o, own.px, own.reason, "fill");
       continue;
     }
     if (x.external.has(key)) {
-      close(
-        id,
-        o,
-        x.external.get(key) ?? x.prices.get(o.sym) ?? 0,
-        x.externalWhy?.get(key) ?? "stop",
-      );
+      const px = x.external.get(key);
+      const why = x.externalWhy?.get(key) ?? "stop";
+      if (px !== null && px !== undefined && px > 0) close(id, o, px, why, x.externalSrc?.get(key));
+      else close(id, o, x.prices.get(o.sym) ?? 0, why, "ticker");
       continue;
     }
     if (live.has(id)) {
       next[id] = o;
       continue;
     }
-    close(id, o, x.shrank.get(key) ?? x.prices.get(o.sym) ?? 0, "exit");
+    const sp = x.shrank.get(key);
+    close(id, o, sp ?? x.prices.get(o.sym) ?? 0, "exit", sp !== undefined ? "fill" : "ticker");
   }
   for (const [id, l] of live) {
     if (next[id]) continue;
@@ -245,9 +261,13 @@ export function attributeLanes(
   return { open: next, closed };
 }
 
-/** A config's exchange closes, shaped like a tape for the gates: exit times ascending and gain / loss prefix sums. */
+/**
+ * A config's exchange closes, shaped like a tape for the gates: exit times ascending and gain / loss prefix sums.
+ * `id` is the config; `side` is set on a record kept per side (liveRecords bySide).
+ */
 export interface LiveRecord {
   id: string;
+  side?: 1 | -1;
   exitT: Float64Array;
   gp: Float64Array;
   gl: Float64Array;
@@ -255,14 +275,67 @@ export interface LiveRecord {
   unknown?: Uint32Array;
 }
 
+/** A record's key in a map: the config alone, or the config and its side (live.sideGates: each side's own record). */
+export function recordKeyOf(cfg: string, side?: 1 | -1): string {
+  return side === undefined ? cfg : `${cfg}|${side}`;
+}
+
+/**
+ * The config and the side of a per-side record key (recordKeyOf with a side): the side is the part after the last "|",
+ * so a config id that contains "|" is split correctly. Only for keys of the per-side path (live.sideGates).
+ */
+export function splitRecordKey(key: string): { cfg: string; side: 1 | -1 } {
+  const i = key.lastIndexOf("|");
+  return { cfg: key.slice(0, i), side: key.slice(i + 1) === "1" ? 1 : -1 };
+}
+
+/**
+ * The side of a close, a lane or an entry on the per-side path (live.sideGates): +1 (LONG) or -1 (SHORT). Any other
+ * value (0, null, undefined) belongs to neither side.
+ */
+export function sideOfRow(s: number | null | undefined): 1 | -1 | undefined {
+  return s === 1 || s === -1 ? s : undefined;
+}
+
+/**
+ * The records of the closes, by config. With `bySide` (live.sideGates) one record per config and side, keyed
+ * cfg|1 / cfg|-1; a close with no side of its own (sideOfRow: not +1 or -1) belongs to neither side and is left out.
+ */
 export function liveRecords(
-  rows: ReadonlyArray<{ cfg: string; exitT: number; r: number | null }>,
+  rows: ReadonlyArray<{ cfg: string; exitT: number; r: number | null; side?: number | null }>,
+  o?: { bySide?: boolean },
 ): Map<string, LiveRecord> {
-  const by = new Map<string, Array<{ t: number; r: number | null }>>();
-  for (const x of rows)
-    (by.get(x.cfg) ?? by.set(x.cfg, []).get(x.cfg)!).push({ t: x.exitT, r: x.r });
+  const g = liveRecordsGen(rows, o);
+  for (;;) {
+    const x = g.next();
+    if (x.done) return x.value;
+  }
+}
+
+/** liveRecords in slices: yields about every 8192 rows (grouping) and 8192 sorted closes (building) */
+export function* liveRecordsGen(
+  rows: ReadonlyArray<{ cfg: string; exitT: number; r: number | null; side?: number | null }>,
+  o?: { bySide?: boolean },
+): Generator<void, Map<string, LiveRecord>> {
+  const bySide = o?.bySide === true;
+  const by = new Map<string, { cfg: string; side?: 1 | -1; xs: Array<{ t: number; r: number | null }> }>();
+  let work = 0;
+  for (const x of rows) {
+    if (++work % 8192 === 0) yield;
+    const side = bySide ? sideOfRow(x.side) : undefined;
+    if (bySide && side === undefined) continue;
+    const key = recordKeyOf(x.cfg, side);
+    let b = by.get(key);
+    if (!b) by.set(key, (b = { cfg: x.cfg, side, xs: [] }));
+    b.xs.push({ t: x.exitT, r: x.r });
+  }
   const out = new Map<string, LiveRecord>();
-  for (const [id, xs] of by) {
+  work = 0;
+  for (const [key, { cfg, side, xs }] of by) {
+    if ((work += xs.length) >= 8192) {
+      work = 0;
+      yield;
+    }
     xs.sort((a, b) => a.t - b.t);
     const exitT = new Float64Array(xs.length);
     const gp = new Float64Array(xs.length + 1);
@@ -275,7 +348,8 @@ export function liveRecords(
       gl[i + 1] = gl[i] + (r === null ? 0 : Math.max(0, -r));
       unknown[i + 1] = unknown[i] + Number(r === null);
     });
-    out.set(id, { id, exitT, gp, gl, ...(unknown[xs.length] ? { unknown } : {}) });
+    const u = unknown[xs.length] ? { unknown } : {};
+    out.set(key, side === undefined ? { id: cfg, exitT, gp, gl, ...u } : { id: cfg, side, exitT, gp, gl, ...u });
   }
   return out;
 }

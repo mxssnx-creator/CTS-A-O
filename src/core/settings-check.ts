@@ -1,5 +1,6 @@
 // Range checks for a settings patch, shared by the Settings page, the preset dialog and presets (pure: testable).
 import { GRID_VARIANTS_MAX, MAX_EXCHANGE_POSITIONS, type CoreSettings } from "./config.ts";
+import { MAX_MODEL_RT_COST } from "./model-cost.ts";
 import { INDICATION_KINDS } from "./domain/types.ts";
 import { validPromotedLaneProof } from "./live-promote.ts";
 
@@ -40,7 +41,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
         throw new Error(`forced symbol ${String(x)}: like XRP or XRP-USDT`);
   }
   num(s.live?.minStopPct, 0.001, 0.2, "minimum stop");
-  num(s.cost, 0, 0.02, "cost");
+  num(s.cost, 0, MAX_MODEL_RT_COST, "modeled round-trip cost (maximum 0.15%)");
   num(s.armTop, 1, 40, "armTop");
   num(s.mainTop, 0, 100_000, "mainTop");
   if (s.grid?.minSlEval !== undefined) num(s.grid.minSlEval, 0.0005, 0.05, "grid.minSlEval");
@@ -111,8 +112,22 @@ export function checkSettings(s: Partial<CoreSettings>) {
     }
     if (s.gates.stableBlocks !== undefined && s.gates.stableBlocks !== 0)
       num(s.gates.stableBlocks, 2, 12, "stability blocks");
-    if (s.gates.baseSetsMinPf !== undefined)
-      num(s.gates.baseSetsMinPf, 0.5, 1.5, "Base PF for computing a pair's sets");
+    if (s.gates.baseSetsMinPf !== undefined) num(s.gates.baseSetsMinPf, 0.5, 1.5, "Base PF for computing a pair's sets");
+    // null = off (as unset)
+    if (s.gates.baseWindows !== undefined && s.gates.baseWindows !== null) {
+      const bw = s.gates.baseWindows as unknown;
+      if (typeof bw !== "object" || bw === null || Array.isArray(bw))
+        throw new Error("two-window Base (gates.baseWindows): { gate?: rule, report?: [rule, …] }");
+      for (const k of Object.keys(bw))
+        if (k !== "gate" && k !== "report") throw new Error(`two-window Base: unknown key ${k} (gate, report)`);
+      const { gate, report } = bw as { gate?: unknown; report?: unknown };
+      if (gate !== undefined) checkBaseWindowRule(gate, "two-window Base gate");
+      if (report !== undefined) {
+        if (!Array.isArray(report) || report.length > 8)
+          throw new Error("two-window Base report: a list of at most 8 rules");
+        report.forEach((r, i) => checkBaseWindowRule(r, `two-window Base report rule ${i + 1}`));
+      }
+    }
     num(s.gates.minTrades, 1, 500, "minTrades");
     num(s.gates.quorum, 0, 1, "quorum");
   }
@@ -142,6 +157,15 @@ export function checkSettings(s: Partial<CoreSettings>) {
       int(s.live.engineProofN, "engine proof closes");
     }
     if (s.live.engineProofPf !== undefined) num(s.live.engineProofPf, 0, 10, "engine proof PF");
+    if (s.live.signalProofN !== undefined) {
+      num(s.live.signalProofN, 0, 1000, "signal proof closes");
+      int(s.live.signalProofN, "signal proof closes");
+    }
+    if (s.live.signalProofPf !== undefined) num(s.live.signalProofPf, 0, 10, "signal proof PF");
+    if (s.live.signalProofEvents !== undefined) {
+      num(s.live.signalProofEvents, 1, 100, "signal proof events");
+      int(s.live.signalProofEvents, "signal proof events");
+    }
     if (
       s.live.promotedLanes !== undefined &&
       (!Array.isArray(s.live.promotedLanes) ||
@@ -190,22 +214,27 @@ export function checkSettings(s: Partial<CoreSettings>) {
     if (s.live.signalWeight !== undefined) num(s.live.signalWeight, 0, 30, "signal volume weight");
     if (s.live.signalsByScore !== undefined && typeof s.live.signalsByScore !== "boolean")
       throw new Error("signalsByScore: true or false");
-    if (s.live.liveGroupLastN !== undefined)
-      num(s.live.liveGroupLastN, 0, 2000, "live group last N");
-    if (s.live.maxExposureX !== undefined)
-      num(s.live.maxExposureX, 0, 500, "max exposure × balance");
+    if (s.live.liveGroupLastN !== undefined) num(s.live.liveGroupLastN, 0, 2000, "live group last N");
+    if (s.live.sideGates !== undefined && typeof s.live.sideGates !== "boolean")
+      throw new Error("live side gates: true or false");
+    if (s.live.maxExposureX !== undefined) num(s.live.maxExposureX, 0, 500, "max exposure × balance");
     if (s.live.exposureScaler !== undefined && typeof s.live.exposureScaler !== "boolean")
       throw new Error("exposureScaler: true or false");
-    if (s.live.maxRiskPct !== undefined)
-      num(s.live.maxRiskPct, 0, 1, "stop-risk budget (fraction of balance)");
-    if (s.live.maxChase !== undefined)
-      num(s.live.maxChase, 0, 5, "maximum chase (fraction of a lane's target distance)");
+    if (s.live.maxRiskPct !== undefined) num(s.live.maxRiskPct, 0, 1, "stop-risk budget (fraction of balance)");
+    if (s.live.maxChase !== undefined) num(s.live.maxChase, 0, 5, "maximum chase (fraction of a lane's target distance)");
+    if (s.live.foreignSides !== undefined && s.live.foreignSides !== "avoid" && s.live.foreignSides !== "independent")
+      throw new Error('foreign sides: "avoid" or "independent"');
     if (
       s.live.positionSize !== undefined &&
       s.live.positionSize !== "lanes" &&
-      s.live.positionSize !== "min"
+      s.live.positionSize !== "min" &&
+      s.live.positionSize !== "risk"
     )
-      throw new Error('position size: "lanes" or "min"');
+      throw new Error('position size: "lanes", "min" or "risk"');
+    if (s.live.positionSize === "risk" && s.live.laneOrders === true)
+      throw new Error('position size "risk" needs control orders (laneOrders off): lane orders size every lane one unit');
+    if (s.live.riskPerPositionPct !== undefined)
+      num(s.live.riskPerPositionPct, 0.0005, 0.05, "risk per position (fraction of B)");
     if (s.live.laneOrders !== undefined && typeof s.live.laneOrders !== "boolean")
       throw new Error("laneOrders: true or false");
     if (s.live.maxVenueOrders !== undefined)
@@ -254,7 +283,12 @@ export function checkSettings(s: Partial<CoreSettings>) {
       // Exit lanes are filtered against the initialized universe at runtime. Retaining a selected
       // lane while the system lane list changes lets operators switch system lanes back on later.
     }
-    for (const key of ["includeTactics", "includeRelations", "includeCombined"] as const)
+    for (const key of [
+      "includeTactics",
+      "includeRelations",
+      "includeMicro",
+      "includeCombined",
+    ] as const)
       if (e[key] !== undefined && typeof e[key] !== "boolean")
         throw new Error(`historic exit ${key}: on / off`);
     num(e.lookbackH, 0, 720, "historic exit lookback (hours)");
@@ -373,8 +407,13 @@ export function checkSettings(s: Partial<CoreSettings>) {
         throw new Error("block window candidates: 1–12 windows");
       for (const w of s.block.windowCandidates) num(w, 1, 500, "block window candidate");
     }
-    if (s.block.windowLookback !== undefined)
-      num(s.block.windowLookback, 30, 5000, "block window lookback");
+    if (s.block.windowLookback !== undefined) num(s.block.windowLookback, 30, 5000, "block window lookback");
+    if (s.block.stepFloor !== undefined && typeof s.block.stepFloor !== "boolean")
+      throw new Error("block step floor: on / off");
+    if (s.block.windowHours !== undefined) num(s.block.windowHours, 0, 168, "block activity window (hours, 0 = off)");
+    if (s.block.levelMinWin !== undefined) num(s.block.levelMinWin, 0, 1, "block level win share (0 = off)");
+    for (const k of ["poolSignals", "poolDedupe", "sideKeys"] as const)
+      if (s.block[k] !== undefined && typeof s.block[k] !== "boolean") throw new Error(`block ${k}: on / off`);
     num(s.block.increase, 0.05, 1, "block increase");
     const span = (pair: unknown, lo: number, hi: number, name: string) => {
       if (pair === undefined) return;
@@ -510,6 +549,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
   if (s.dca) {
     num(s.dca.levels, 1, 4, "dca levels (stack ≤ 5 stages: base + 4)");
     num(s.dca.step, 0.001, 0.1, "dca step");
+    if (s.dca.addRatio !== undefined) num(s.dca.addRatio, 0.1, 2.5, "dca addition (original base units)");
     if (s.dca.stepOfTp !== undefined) num(s.dca.stepOfTp, 0, 5, "dca step (× target)");
     if (s.dca.stopGap !== undefined) num(s.dca.stopGap, 0, 5, "dca stop gap (steps)");
     if (s.dca.slOfTp !== undefined) num(s.dca.slOfTp, 0.25, 5, "dca stop (× target)");
@@ -535,7 +575,11 @@ export function checkSettings(s: Partial<CoreSettings>) {
     list(s.grid.holdH, 0.25, 72, "grid hold");
     num(s.grid.minTrail, 0, 0.1, "min trail");
     num(s.grid.minSl, 0, 0.2, "min SL");
+    if (s.grid.maxSl !== undefined) num(s.grid.maxSl, 0.005, 0.2, "max SL");
+    if (s.grid.maxTrail !== undefined) num(s.grid.maxTrail, 0.003, 0.2, "max trail");
     num(s.grid.trailStep, 0.1, 1, "trail step");
+    if (s.grid.trailingOnly !== undefined && typeof s.grid.trailingOnly !== "boolean")
+      throw new Error("independent trailing-only grid: on / off");
     if (s.grid.trailFree !== undefined && typeof s.grid.trailFree !== "boolean")
       throw new Error("trail free: on / off");
     // the levers every range shares (RangeGrid): checked the same way for Micro, Minimal, Short, General and Long
@@ -700,6 +744,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
     }
     if (s.grid.baseTrailCells !== undefined && typeof s.grid.baseTrailCells !== "boolean")
       throw new Error("Base trailed cells: on / off");
+    if (s.grid.baseCells !== undefined && typeof s.grid.baseCells !== "boolean")
+      throw new Error("Base cells: on / off");
     if (s.grid.allSets !== undefined && typeof s.grid.allSets !== "boolean")
       throw new Error("all config sets: on / off");
     if (s.grid.baseRanges !== undefined && typeof s.grid.baseRanges !== "boolean")
@@ -771,6 +817,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
       if (g.trailRatios.length > 8 || new Set(g.trailRatios).size !== g.trailRatios.length)
         throw new Error("signal peak-gap ratios: at most 8 distinct values");
     }
+    if (g.trailMax !== undefined) num(g.trailMax, 0.002, 0.03, "Signal maximum trailing from entry");
     if (g.trailingOnly) {
       bool(g.trailingOnly.enabled, "signal Trailing only sets");
       list(g.trailingOnly.sl, 0.002, 0.2, "signal Trailing only SL");
@@ -779,7 +826,10 @@ export function checkSettings(s: Partial<CoreSettings>) {
         if (xs !== undefined && xs.length > 8)
           throw new Error("signal Trailing only ranges: at most 8 values per list");
       num(g.trailingOnly.trailStep, 0.1, 2, "signal Trailing only trail step");
-      const n = (g.trailingOnly.sl?.length ?? 3) * (g.trailingOnly.trail?.length ?? 3) * (g.trailRatios?.length ?? 1);
+      const n =
+        (g.trailingOnly.sl?.length ?? 3) *
+        (g.trailingOnly.trail?.length ?? 3) *
+        (g.trailRatios?.length ?? 1);
       if (n > 64) throw new Error(`signal Trailing only grid too large (${n} configs, max 64)`);
     }
     num(g.holdH, 0.5, 96, "signal hold");
@@ -911,6 +961,42 @@ export function checkSettings(s: Partial<CoreSettings>) {
     int(g.maxPositions, "signal max positions");
     int(g.perSymbol, "signal orders per symbol");
     int(g.maxOpen, "signal open orders");
+  }
+}
+
+/**
+ * One two-window Base rule (Gates.baseWindows): split 2–6 blocks with need 1–split of them, a recent window of 1–336 h
+ * (widen: on / off), a PF floor 0.5–3, 1–100 closes per judged window, the range tags it judges (a non-empty list
+ * without "mp": Minimal plus is judged at the default cell, "wide"). It judges at least one window (split or recentH).
+ */
+function checkBaseWindowRule(r: unknown, name: string) {
+  if (typeof r !== "object" || r === null || Array.isArray(r)) throw new Error(`${name}: an object`);
+  const x = r as Record<string, unknown>;
+  const KEYS = ["split", "need", "recentH", "widen", "minPf", "minN", "ranges"];
+  for (const k of Object.keys(x)) if (!KEYS.includes(k)) throw new Error(`${name}: unknown key ${k}`);
+  const num = (v: unknown, lo: number, hi: number, what: string, whole = false) => {
+    if (v === undefined) return;
+    if (typeof v !== "number" || !Number.isFinite(v) || v < lo || v > hi || (whole && !Number.isInteger(v)))
+      throw new Error(`${name}: ${what} out of range (${lo}–${hi}${whole ? ", whole" : ""})`);
+  };
+  num(x.split, 2, 6, "split (blocks)", true);
+  if (x.need !== undefined && x.split === undefined) throw new Error(`${name}: need goes with split`);
+  num(x.need, 1, typeof x.split === "number" ? x.split : 6, "need (blocks that pass)", true);
+  num(x.recentH, 1, 336, "recentH (hours)");
+  if (x.widen !== undefined && typeof x.widen !== "boolean") throw new Error(`${name}: widen is true or false`);
+  num(x.minPf, 0.5, 3, "minPf");
+  num(x.minN, 1, 100, "minN (closes)", true);
+  if (x.split === undefined && x.recentH === undefined) throw new Error(`${name}: set split, recentH or both`);
+  if (x.ranges !== undefined) {
+    const ok = ["mc", "mn", "sh", "gn", "lg", "wide"];
+    // Minimal plus has no Base cell of its own: it is judged at the default cell, so "mp" would judge nothing ("wide"
+    // judges it); an empty list judges nothing either (leave `ranges` out for every range)
+    if (Array.isArray(x.ranges) && x.ranges.includes("mp"))
+      throw new Error(`${name}: Minimal plus (mp) is judged at the default cell — list "wide" instead`);
+    if (Array.isArray(x.ranges) && !x.ranges.length)
+      throw new Error(`${name}: an empty range list judges nothing (leave ranges out for every range)`);
+    if (!Array.isArray(x.ranges) || !x.ranges.every((t) => ok.includes(t)))
+      throw new Error(`${name}: ranges are any of ${ok.join(", ")}`);
   }
 }
 
