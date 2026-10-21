@@ -1,6 +1,6 @@
 {
-  "schema": "cts-universal-integration-plan-v2",
-  "sourceSha256": "b8864f5d3c8e4b894f26da2bb62799879760be9080dc35613d34947119e806e8",
+  "schema": "cts-universal-integration-plan-v3",
+  "sourceSha256": "1070ac283ba701ef6931cbf19fb614165188b3b60c1d86805828232f57196796",
   "scope": {
     "registeredSpecs": 1720,
     "families": 19,
@@ -63,5 +63,5 @@
   ],
   "classification": "Correctness/causality and synthetic gate audit, not proof of hourly market profitability or a full Cartesian financial portfolio replay",
   "preserve": "Keep failed/partial receipts and all existing negative financial windows. Never change recorded costs/returns/gates to manufacture positive PF.",
-  "revisionReason": "Repeat the same combined-source coverage after fixing omitted Trailing-only Base cells. Executable grid generation is unchanged; Base and execution now share canonical no-TP sibling generation. Preserve the failed 9504-source complete test inventory and v1 plan."
+  "revisionReason": "Integrate main PR 181 without losing PR 182/185 or Micro fixes: independent full Base cells plus cell proofs, capped Wide cells, atomic full/incremental publication and separate long Signal histories during light rebuilds. Preserve v1/v2 receipts and all financial losses. Repeat the same preregistered native correctness cuts."
 }

@@ -37,7 +37,11 @@ it("separate clients/processes share one atomic budget, with no stored credentia
       promisify(execFile)(process.execPath, ["--experimental-strip-types", "--no-warnings", "--input-type=module", "-e", code, path, String(now)])));
     const total = replies.reduce((n, x) => n + Number(x.stdout), 0);
     assert.ok(total > 0 && total <= 10, `${total} accepted across four processes`);
-    assert.equal(b.take("POST order", 10, now).until > now, true);
+    // A contended SQLite writer deliberately defers without consuming a slot. Exhaust only the capacity
+    // actually left by the children; the combined accepted total must be exactly ten before the next refusal.
+    for (let accepted = total; accepted < 10; accepted++)
+      assert.equal(b.take("POST order", 10, now).until, 0, "unconsumed capacity remains available");
+    assert.equal(b.take("POST order", 10, now).until > now, true, "the eleventh accepted request is refused");
   } finally { b.close(); }
 });
 

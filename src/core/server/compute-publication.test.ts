@@ -22,6 +22,7 @@ const fields = [
   "basePassedRanges",
   "basePassedTargets",
   "baseWideLadderPairs",
+  "basePassedCells",
   "family",
   "signalBasePassed",
   "paused",
@@ -41,6 +42,8 @@ type Inner = {
   gen: number;
   fastArgs: unknown;
   basePairTags: unknown;
+  inc: unknown;
+  incTail: unknown;
 };
 function fixture() {
   const rt = new CoreRuntime(
@@ -87,6 +90,7 @@ function fixture() {
     basePassedRanges: { "follow|old-current@m1": ["mc"] },
     basePassedTargets: { "follow|old-current@m1": { mc: [0.01] } },
     baseWideLadderPairs: new Set(["follow|old-current@m1"]),
+    basePassedCells: { "follow|old-current@m1": { tags: new Set(["mc"]), keys: new Set(["mc|0.01|0.01|0|60"]) } },
     family: ["old current family"],
     signalBasePassed: new Set(["follow|sig-old@m1"]),
     signalGuardN: 77,
@@ -98,18 +102,24 @@ function fixture() {
   rt.status.baseEvaluated = 21;
   rt.status.baseHistory = [{ at: 1, compute: 0, passed: 17, built: 3, byRange: { wide: 17 } }];
   const inner = rt as unknown as Inner;
+  inner.inc = { current: true };
+  inner.incTail = { current: true };
   inner.fastArgs = { current: true };
   inner.basePairTags = { current: ["mc"] };
   return {
     rt,
     inner,
     previous: Object.fromEntries(fields.map((k) => [k, rt.wf[k]])),
+    oldInc: inner.inc,
+    oldIncTail: inner.incTail,
     oldFast: inner.fastArgs,
     oldTags: inner.basePairTags,
     oldStatus: Object.fromEntries(statusFields.map((k) => [k, rt.status[k]])),
   };
 }
 function assertCurrent(f: ReturnType<typeof fixture>) {
+  assert.equal(f.inner.inc, f.oldInc, "unfinished compute withdrew the published incremental state");
+  assert.equal(f.inner.incTail, f.oldIncTail, "unfinished compute replaced the incremental seed universe");
   for (const key of statusFields)
     assert.equal(
       f.rt.status[key],
@@ -326,5 +336,28 @@ for (const change of ["timing", "live", "unchanged"] as const)
       assert.equal(runner.snapshot?.summary.reason, "settingsChanged");
     } finally {
       runner.cancel("test cleanup");
+    }
+  });
+
+for (const supersede of ["generation", "economics", "none"] as const)
+  test(`incremental tapes publish only under their current cohort after Paper idle: ${supersede}`, async () => {
+    const f = fixture();
+    const old = [{ id: "held" }], replacement = { id: "held", updated: true };
+    f.rt.tapes = old as never;
+    const state = { step: () => ({ tapes: new Map([["held", replacement]]), broken: new Set() }) };
+    const inc = { state, others: new Set(), ids: new Set(["held"]), since: 0, heavyBar: 1 };
+    const inner = f.rt as unknown as { inc: unknown; paperIdle(): Promise<void>; lightStep(gen: number): Promise<boolean>; gen: number };
+    inner.inc = inc;
+    inner.paperIdle = async () => {
+      if (supersede === "generation") inner.gen++;
+      if (supersede === "economics") f.rt.updateSettings({ cost: 0.001 });
+    };
+    await inner.lightStep(inner.gen);
+    if (supersede === "none") {
+      assert.equal(f.rt.tapes[0], replacement);
+      assert.equal(inc.since, 1);
+    } else {
+      assert.equal(f.rt.tapes, old, "a superseded incremental attempt replaced the active tape cohort");
+      assert.equal(inc.since, 0, "an unpublished incremental step advanced the committed counter");
     }
   });

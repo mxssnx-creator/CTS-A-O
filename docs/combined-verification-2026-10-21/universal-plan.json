@@ -1,6 +1,6 @@
 {
   "schema": "cts-combined-system-universal-plan-v1",
-  "sourceSha256": "2e5e20ea99580a65482dc02c342f33de496ad34f09b2f641000913b93c2b7efd",
+  "sourceSha256": "4c5aa081359cf084d5e8c37ecd0bb9bf8b39372475fc6d41ee9ce978ff4cb160",
   "scope": {
     "registeredSpecs": 1720,
     "families": 19,
@@ -63,5 +63,5 @@
   ],
   "classification": "Correctness/causality and synthetic gate audit, not proof of hourly market profitability or a full Cartesian financial portfolio replay",
   "preserve": "Keep failed/partial receipts and all existing negative financial windows. Never change recorded costs/returns/gates to manufacture positive PF.",
-  "revisionReason": "Freeze the combined Inverse/performance, Micro184 and main181 source before scoring complete registry, identity and 20-symbol native-history causality. Earlier plans/results remain immutable."
+  "revisionReason": "Repeat complete combined-source verification after incorporating the other chat Micro/main181 checkpoint (remote 6e93533). Retain Base cell proof on settings updates, cap Wide cells identically at Base/execution, preserve/fence incremental seeds and rebuild long Signal/coordination/Exit inputs independently. Preserve every earlier failed attempt and plan."
 }

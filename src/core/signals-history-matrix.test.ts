@@ -169,6 +169,23 @@ it("local runtime Signal tapes retain their independent 336h history beside the 
     assert.ok(engine.length > 0, "ordinary raw engine tapes also built");
     assert.ok(engine.every((t) => Array.from(t.entryT).every((v) => v >= T - 72 * H)),
       "ordinary engine histories stay bounded independently");
+    // Signals rebuild in a light cycle while resumable ordinary tapes keep their own shorter universe.
+    const byId = new Map(signals.map((t) => [t.id, t]));
+    const signalIds = new Set(byId.keys());
+    const u = makeUniverse(laneSeriesFrom(rt.candles, rt.settings, 0, 54));
+    const inner = rt as unknown as { inc: unknown; gen: number; lightStep(gen: number): Promise<boolean> };
+    inner.inc = { state: { universe: u, step: () => ({ tapes: new Map(), broken: new Set() }) },
+      others: signalIds, ids: signalIds, since: 0, heavyBar: 1 };
+    await inner.lightStep(inner.gen);
+    const rebuiltSignals = rt.tapes.filter((t) => signalIds.has(t.id));
+    assert.equal(rebuiltSignals.length, signals.length, "every exact Signal config survives the long-history rebuild");
+    for (const t of rebuiltSignals) {
+      const original = byId.get(t.id)!;
+      assert.notEqual(t, original, "the Signal was actually rebuilt by the incremental path");
+      for (const key of ["entryT", "exitT", "r"] as const)
+        assert.deepEqual(Array.from(t[key]), Array.from(original[key]), `light Signal ${key} retains independent full history`);
+    }
+
   } finally {
     rt.dispose(); await rt.backtestsSettled(); rt.db.db.close();
   }

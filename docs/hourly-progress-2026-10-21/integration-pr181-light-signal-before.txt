@@ -1,0 +1,60 @@
+[core-tests] offline Node transport guard; 1 files; concurrency 1; compute workers 1
+[core-v2] compute #1 done in 163 ms · sim PF unavailable n 0 · loop max 83 ms (worst slice of the last 60 s 78 ms in Base, 1 over 40 ms)
+✖ local runtime Signal tapes retain their independent 336h history beside the 24h engine (231.538989ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 973.912395
+
+✖ failing tests:
+
+test at src/core/signals-history-matrix.test.ts:141:1
+✖ local runtime Signal tapes retain their independent 336h history beside the 24h engine (231.538989ms)
+  AssertionError [ERR_ASSERTION]: light Signal entryT retains independent full history
+  + actual - expected
+  
+    [
+  -   1791198900000,
+  -   1791235800000,
+  -   1791378900000,
+  -   1791411300000,
+  -   1791512100000,
+  -   1791603900000,
+  -   1791699300000,
+  -   1791794700000,
+  -   1791828900000,
+  -   1791941400000,
+  -   1792009800000,
+  -   1792142100000,
+  -   1792141200000,
+  -   1792197900000,
+  -   1792296000000,
+  -   1792300500000,
+      1792359000000,
+  +   1792322100000
+    ]
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/signals-history-matrix.test.ts:184:16)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [ 1792359000000, 1792322100000 ],
+    expected: [
+      1791198900000, 1791235800000,
+      1791378900000, 1791411300000,
+      1791512100000, 1791603900000,
+      1791699300000, 1791794700000,
+      1791828900000, 1791941400000,
+      1792009800000, 1792142100000,
+      1792141200000, 1792197900000,
+      1792296000000, 1792300500000,
+      1792359000000
+    ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }

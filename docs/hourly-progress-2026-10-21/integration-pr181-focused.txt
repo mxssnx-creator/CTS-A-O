@@ -1,0 +1,100 @@
+[core-tests] offline Node transport guard; 9 files; concurrency 1; compute workers 1
+✔ Inverse retains independent DCA, DCA Active, Axis and bot-free Exit identities (98.317722ms)
+✔ Inverse catalogue has stable unique identities and the ordinary PF floor (58.894418ms)
+✔ Inverse standard and Micro identities use the complete production TP/SL/trailing ranges on twenty symbols (21893.727539ms)
+✔ BTC/ETH pair references are causal, timestamp aligned, gap-safe and unavailable without a distinct peer (160.816494ms)
+✔ Known Inverse states are the opposite of their actual source, before execution (40.918034ms)
+✔ Inverse uses independent 1/5/15m and completed combined lanes, without 30m work (91.330762ms)
+✔ All price/math variants are prefix-causal and recover only after fresh gap/invalid warmup (73.65492ms)
+✔ Market Inverse uses the full causal universe, has both directions and rejects absent market evidence (107.18953ms)
+✔ Real workers and serialized Normal/Trailing/Trailing-only tapes preserve Inverse returns and both sides (861.193483ms)
+▶ first-class Micro
+  ✔ registers every method/profile/subset once and computes only its own anchor (251.57512ms)
+  ✔ uses prior extrema, excludes the current spike, and handles invalid windows (0.637155ms)
+  ✔ preserves every original Micro signal bit while adding independent techniques (260.844086ms)
+  ✔ qualifies all 728 identities on their own exact Last-N without borrowing sibling or future closes (1077.359381ms)
+  ✔ matches prefix-only universes for all subsets and leaves no-market relations neutral (200.617226ms)
+  ✔ resets readiness across data gaps and supports genuine 5-second bars (34.82728ms)
+  ✔ keeps Micro/Minimal/Short and TP, SL, trailing identities independently computable (113.201296ms)
+  ✔ adds Bot-free Exit sources independently and respects the type switch (14.218416ms)
+  ✔ keeps parallel-worker Base results identical to local computation (6201.890689ms)
+✔ first-class Micro (8164.113972ms)
+✔ mirrors each complete Micro technique before entry with its own net-return qualification (209.306956ms)
+✔ tacticKey / tacticKeyFor: the same keys as the array join, for all 16 combinations (1.326984ms)
+✔ nextEntryIndex: the first entry at or after each bar (n when none), sparse and dense signals (4.806633ms)
+✔ all Micro and Inverse identities survive identical closed/open order and paper/native lane keys (21.042133ms)
+✔ a real walk-forward admits identical simultaneous onsets independently across all Micro/Inverse sources (702.205799ms)
+▶ two-window Base: the windows of one cell
+  ✔ the halves gate refuses a cell that won only in its first half and admits a steady one (the same whole-history PF) (1.339535ms)
+  ✔ a block with fewer than minN closes is not judged (passes); the recent window widens to 2 × recentH (2.356954ms)
+  ✔ defaults: every block, minN 3, the Base floor (baseSetsMinPf) as PF floor with net > 0 dropped under 1; ranges pick the tags (3.170002ms)
+✔ two-window Base: the windows of one cell (10.542595ms)
+▶ two-window Base in the Base stage
+  ✔ unset: Base computes what it did — no window field, the cell stats and the pass tags of the readout's run (297.042604ms)
+  ✔ report-only never changes the pass tags or rangeTps; each rule's targets are a subset of rangeTps, and some rule drops some (152.90859ms)
+  ✔ the gate drops exactly the cells that fail it: its pass tags and targets are the report readout of the same rule (145.887918ms)
+  ✔ the dump rows carry a passing pair's rules only while report rules are set; the why rows count the gate only while it is set (234.162893ms)
+  ✔ a lane's windows run from its own first bar to the stage's cut (u.nowT: the run start under causalBase) (24.222212ms)
+  ✔ the workers' Base (baseRuns over the series, sent as JSON) and the in-process Base (runPipeline) carry the same windows (147.01939ms)
+✔ two-window Base in the Base stage (1002.488512ms)
+▶ two-window Base: settings bounds
+  ✔ takes rules within split 2–6, need 1–split, recentH 1–336, minPf 0.5–3, minN 1–100, at most 8 report rules (8.619322ms)
+  ✔ refuses a range list that judges nothing: Minimal plus (judged at the default cell: "wide") or an empty list (0.773925ms)
+  ✔ null is off: accepted, and no plan (0.284162ms)
+✔ two-window Base: settings bounds (9.937134ms)
+✔ a failed compute cannot withdraw active Base/config qualifications before publishing new tapes (92.577699ms)
+[core-v2] compute #1 done in 81 ms · sim PF unavailable n 0 · loop max 0 ms
+✔ current qualifications and realtime inputs survive simulation slices, then publish with completed new tapes (99.935847ms)
+✔ simulation failure cannot publish a partial replacement (31.033378ms)
+✔ simulation settings cannot publish a partial replacement (47.502104ms)
+✔ simulation generation cannot publish a partial replacement (38.210134ms)
+[core-v2] compute #1 done in 30 ms · sim PF unavailable n 0 · loop max 0 ms
+✔ timing-only settings changes do not discard a completed economic calculation (48.746997ms)
+✔ timing settings cannot cancel a partially completed exact Base sweep (7.722263ms)
+✔ live settings cannot cancel a partially completed exact Base sweep (3.998258ms)
+✔ unchanged settings cannot cancel a partially completed exact Base sweep (4.935701ms)
+✔ incremental tapes publish only under their current cohort after Paper idle: generation (6.368722ms)
+✔ incremental tapes publish only under their current cohort after Paper idle: economics (4.137708ms)
+✔ incremental tapes publish only under their current cohort after Paper idle: none (3.313636ms)
+✔ charges a flat long or short exactly 0.15% once and caps runtime model overrides (1.788058ms)
+✔ DCA charges once per filled leg, never twice per side or on an unfilled ladder (0.894379ms)
+✔ matches every configured TP/SL/trailing/hold cell at Base, including General and all stop ratios (83.30629ms)
+✔ arms from the peak, never loosens a stop, applies updates next bar, and respects a worse gap fill on both sides (1.338504ms)
+✔ replaces the open mark with a settled net return without charging again; owned measured fees stay authoritative (1.142061ms)
+▶ B1: Base cells
+  ✔ the tape stage builds only the passed cells of a range, not every stop of a passed target (4.312438ms)
+  ✔ Base measures exactly cells the grid builds (every hold, every trail ratio with baseTrailCells) (27.899623ms)
+  ✔ passed cells ⊆ Base cells, and the tapes built from them ⊆ passed cells (76.177016ms)
+✔ B1: Base cells (110.539193ms)
+▶ B2: the validated set V
+  ✔ V is non-empty and a strict subset of the pool (the comparison is not vacuous) (31.884083ms)
+  ✔ every step selects only from V, and exactly the pool's picks that are in V (gates may drop, never add) (3051.995778ms)
+  ✔ a run's executed ids ⊆ result.validated ⊆ the tapes, per side; the default path is unchanged (6131.441104ms)
+  ✔ probe and invertSeats are refused under seatSet validated (5.317148ms)
+  ✔ selectFixedGen under V scans only V's tapes when given the compacted list (same picks) (154.263265ms)
+✔ B2: the validated set V (9375.637815ms)
+▶ B3: Base pass keyed by cell
+  ✔ a tape of a range whose cell Base did not pass is not allowed; a range or pair without cells keeps the pair level (3.554656ms)
+  ✔ the selection seats no tape outside the passed cells, whatever built it (3103.670125ms)
+  ✔ a carried tape outside the current passed cells becomes held-only; the others stay seat-able (3.371212ms)
+  ✔ grid.allSets pairs are reported apart (addedKeys) and carry no cells (15.14291ms)
+✔ B3: Base pass keyed by cell (3126.426505ms)
+▶ B6: skip what cannot seat
+  ✔ a DCA / Axis set is not built while its toggle is off, except a held id (24.955913ms)
+  ✔ a held pair that did not pass Base builds only its held ids; a passed pair is untouched (6.656487ms)
+✔ B6: skip what cannot seat (32.02045ms)
+▶ wf.seatSet reaches the engine
+  ✔ sanitizeWf keeps validated / pool and drops anything else (0.764786ms)
+✔ wf.seatSet reaches the engine (0.893577ms)
+▶ Wide stop and trail cap
+  ✔ no Wide cell has a stop or trail above 3 %, and every target is present (4.14652ms)
+  ✔ unset: the stop is tp × ratio as before (0.441836ms)
+✔ Wide stop and trail cap (6.175227ms)
+ℹ tests 69
+ℹ suites 10
+ℹ pass 69
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 57430.032671

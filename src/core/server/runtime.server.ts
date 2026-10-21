@@ -1979,6 +1979,8 @@ export class CoreRuntime {
     this.incTail = null;
     const sel = this.lastSelection;
     if (!wu || !sel || !this.fastArgs) return;
+    const captureRevision = computeKey(this.settings, this.wf);
+    const capturedArgs = this.fastArgs;
     const s = this.settings;
     const { signal } = splitSignalTapes(this.tapes, this.wf);
     const ids = new Set<string>([...sel.picks.map((p) => p.id), ...signal.map((tp) => tp.id), ...this.paper.positions.map((p) => p.cfg)]);
@@ -1990,7 +1992,8 @@ export class CoreRuntime {
       const r = state.seed(validated.slice(i, i + 8));
       for (const id of r.skipped) others.add(id);
       await yieldNow();
-      if (gen !== this.gen) return;
+      if (gen !== this.gen || this.resetUniverse || capturedArgs !== this.fastArgs ||
+          captureRevision !== computeKey(this.settings, this.wf)) return;
     }
     this.inc = { state, ids, others, hour: this.incHour(), since: 0, heavyBar: this.status.lastBarT };
     this.status.cycleMode = { mode: "full", lightSince: 0, heavyBar: this.status.lastBarT, validated: validated.length, continued: state.entries.size, rebuilt: others.size, why: this.incWhy };
@@ -2004,15 +2007,24 @@ export class CoreRuntime {
   private async lightStep(gen: number): Promise<boolean> {
     const inc = this.inc;
     if (!inc) return false;
+    const economicRevision = computeKey(this.settings, this.wf);
+    const superseded = () => {
+      if (gen === this.gen && this.inc === inc && !this.resetUniverse &&
+        economicRevision === computeKey(this.settings, this.wf)) return false;
+      if (this.inc === inc) this.inc = null;
+      return true;
+    };
     const t0 = performance.now();
     this.dirty = false;
     this.status.state = "computing";
     const prev = this.status.phases;
     this.status.phases = {};
     for (const k of ["Paper", "Adjust", "Audit", "Compare"]) if (prev[k]) this.status.phases[k] = prev[k];
-    const step = inc.state.step(this.candles);
+    const candles = new Map(this.candles);
+    const settings = this.settings, wf = this.wf;
+    const step = inc.state.step(candles);
     await yieldNow();
-    if (gen !== this.gen) return true;
+    if (superseded()) return true;
     if (!step) {
       this.inc = null;
       return false;
@@ -2021,8 +2033,12 @@ export class CoreRuntime {
     const repl = new Map<string, ConfigTape>(step.tapes);
     const need = new Set<string>([...inc.others, ...step.broken]);
     if (need.size) {
-      const rebuilt = await this.rebuildOnUniverse(inc.state.universe, need, gen);
-      if (gen !== this.gen) return true;
+      const needsSignal = [...need].some((id) => isSignalInd(id.split("|")[1] ?? ""));
+      const signalU = needsSignal
+        ? makeUniverse(laneSeriesFrom(candles, settings, 0, signalDataHours(settings, wf)), this.evaluationFromT)
+        : inc.state.universe;
+      const rebuilt = await this.rebuildOnUniverse(inc.state.universe, need, gen, signalU);
+      if (superseded()) return true;
       if (!rebuilt) {
         // the rebuild could not run (no workers and no time): the continued tapes are dropped with it, compute in full
         this.inc = null;
@@ -2034,6 +2050,7 @@ export class CoreRuntime {
     // the realtime entry step stands aside while the tapes are replaced, until the paper step has run on them
     this.fastHold = true;
     await this.paperIdle();
+    if (superseded()) return true;
     this.tapes = this.tapes.map((tp) => repl.get(tp.id) ?? tp);
     this.tapeIdx = null;
     inc.since++;
@@ -2047,29 +2064,29 @@ export class CoreRuntime {
   }
 
   /** The configs `ids` rebuilt on `u` with the last compute's tape arguments (exactly the heavy compute's builder). */
-  private async rebuildOnUniverse(u: ReturnType<typeof makeUniverse>, ids: ReadonlySet<string>, gen: number): Promise<ConfigTape[] | null> {
+  private async rebuildOnUniverse(u: ReturnType<typeof makeUniverse>, ids: ReadonlySet<string>, gen: number, signalU: ReturnType<typeof makeUniverse>): Promise<ConfigTape[] | null> {
     const a = this.fastArgs;
     if (!a) return null;
     const s = this.settings;
     const byId = this.tapeIndex();
-    const sets = { main: new Set<string>(), sig: new Set<string>() };
-    const pairs = { main: new Set<string>(), sig: new Set<string>() };
+    const sets = { main: new Set<string>(), sig: new Set<string>(), coord: new Set<string>(), exit: new Set<string>() };
+    const pairs = { main: new Set<string>(), sig: new Set<string>(), coord: new Set<string>(), exit: new Set<string>() };
     for (const id of ids) {
       const tp = byId.get(id);
       if (!tp) continue;
-      const k = isSignalInd(tp.ind) ? "sig" : "main";
+      const k = tp.kind === "exit" ? "exit" : isSignalCoordinationInd(tp.ind) ? "coord" : isSignalInd(tp.ind) ? "sig" : "main";
       sets[k].add(id);
       pairs[k].add(`${tp.bot}|${tp.ind}`);
     }
     const out: ConfigTape[] = [];
     if (workersAvailable() && !this.workersBroken) {
-      const shared = shareBars(u.series);
+      const shared = { main: shareBars(u.series), sig: shareBars(signalU.series) };
       const msgs: Array<Record<string, unknown>> = [];
-      for (const k of ["main", "sig"] as const)
+      for (const k of ["main", "sig", "coord", "exit"] as const)
         if (sets[k].size)
           msgs.push({
             type: "tapes",
-            bars: shared,
+            bars: shared[k === "sig" || k === "coord" ? "sig" : "main"],
             pairs: [...pairs[k]],
             protects: a[k].protects,
             cost: s.cost,
@@ -2084,9 +2101,9 @@ export class CoreRuntime {
       for (const r of res) out.push(...r.tapes);
       return out;
     }
-    for (const k of ["main", "sig"] as const) {
+    for (const k of ["main", "sig", "coord", "exit"] as const) {
       if (!sets[k].size) continue;
-      const g = buildTapesGen(u, a[k].protects, s.cost, a[k].dcaFor as never, pairs[k], s.tactics, a.adjust, { ...a[k].floors, onlyIds: sets[k] });
+      const g = buildTapesGen(k === "sig" || k === "coord" ? signalU : u, a[k].protects, s.cost, a[k].dcaFor as never, pairs[k], s.tactics, a.adjust, { ...a[k].floors, onlyIds: sets[k] });
       out.push(...(await this.drive("Tapes", g, () => undefined, gen)));
     }
     return out;
@@ -2681,6 +2698,7 @@ export class CoreRuntime {
       signalMaxPositions: this.wf.signalMaxPositions,
       // the Base gates of the last compute: without them every pair took seats until the next compute finished
       basePassed: this.wf.basePassed,
+      basePassedCells: this.wf.basePassedCells,
       exitBasePassed: this.wf.exitBasePassed,
       basePassedRanges: this.wf.basePassedRanges,
       basePassedTargets: this.wf.basePassedTargets,
@@ -4278,8 +4296,7 @@ export class CoreRuntime {
       this.evaluationFromT,
     );
     // runtime.cycle "incremental": the tail the tapes are built on is what the light cycles continue (incCapture)
-    this.inc = null;
-    this.incTail = s.runtime?.cycle === "incremental" && !this.replay ? wu : null;
+    const nextIncTail = s.runtime?.cycle === "incremental" && !this.replay ? wu : null;
     // Main candidates: Base combos by score (default protect, full history), plus every pair held right now
     // Base gate: only config sets with PF ≥ min PF (and positive net, enough trades) continue to Main → Real → Live
     const main = new Set<string>();
@@ -5333,6 +5350,8 @@ export class CoreRuntime {
     this.basePairTags = pairTags;
     this.pipeline = pipeline;
     this.lastUniverse = u;
+    this.inc = null;
+    this.incTail = nextIncTail;
     this.tapes = tapes;
     this.sim = sim;
     this.realtimeLearning = { sim, feed: [...(sim.feed ?? [])], accepted: [] };

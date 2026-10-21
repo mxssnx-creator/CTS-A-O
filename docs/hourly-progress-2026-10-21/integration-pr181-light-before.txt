@@ -1,0 +1,130 @@
+[core-tests] offline Node transport guard; 1 files; concurrency 1; compute workers 1
+✔ a failed compute cannot withdraw active Base/config qualifications before publishing new tapes (96.574892ms)
+[core-v2] compute #1 done in 73 ms · sim PF unavailable n 0 · loop max 0 ms
+✔ current qualifications and realtime inputs survive simulation slices, then publish with completed new tapes (103.744033ms)
+✔ simulation failure cannot publish a partial replacement (64.493138ms)
+✖ simulation settings cannot publish a partial replacement (31.410372ms)
+✔ simulation generation cannot publish a partial replacement (25.207853ms)
+✖ timing-only settings changes do not discard a completed economic calculation (29.635406ms)
+✔ timing settings cannot cancel a partially completed exact Base sweep (8.584024ms)
+✔ live settings cannot cancel a partially completed exact Base sweep (5.037041ms)
+✔ unchanged settings cannot cancel a partially completed exact Base sweep (6.408678ms)
+✖ incremental tapes publish only under their current cohort after Paper idle: generation (4.911854ms)
+✖ incremental tapes publish only under their current cohort after Paper idle: economics (3.913157ms)
+✔ incremental tapes publish only under their current cohort after Paper idle: none (3.696897ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 8
+ℹ fail 4
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1084.917005
+
+✖ failing tests:
+
+test at src/core/server/compute-publication.test.ts:183:3
+✖ simulation settings cannot publish a partial replacement (31.410372ms)
+  AssertionError [ERR_ASSERTION]: basePassedCells: unfinished compute changed current execution qualification
+  + actual - expected
+  
+  + undefined
+  - {
+  -   'follow|old-current@m1': {
+  -     keys: Set(1) {
+  -       'mc|0.01|0.01|0|60'
+  -     },
+  -     tags: Set(1) {
+  -       'mc'
+  -     }
+  -   }
+  - }
+  
+      at assertCurrent (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/compute-publication.test.ts:122:12)
+      at TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/compute-publication.test.ts:200:5)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: { 'follow|old-current@m1': { tags: [Set], keys: [Set] } },
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/server/compute-publication.test.ts:205:1
+✖ timing-only settings changes do not discard a completed economic calculation (29.635406ms)
+  AssertionError [ERR_ASSERTION]: basePassedCells: unfinished compute changed current execution qualification
+  + actual - expected
+  
+  + undefined
+  - {
+  -   'follow|old-current@m1': {
+  -     keys: Set(1) {
+  -       'mc|0.01|0.01|0|60'
+  -     },
+  -     tags: Set(1) {
+  -       'mc'
+  -     }
+  -   }
+  - }
+  
+      at assertCurrent (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/compute-publication.test.ts:122:12)
+      at f.inner.drive (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/compute-publication.test.ts:214:7)
+      at async CoreRuntime.compute (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/runtime.server.ts:4950:17)
+      at async TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/compute-publication.test.ts:218:3)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: { 'follow|old-current@m1': { tags: [Set], keys: [Set] } },
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/server/compute-publication.test.ts:335:3
+✖ incremental tapes publish only under their current cohort after Paper idle: generation (4.911854ms)
+  AssertionError [ERR_ASSERTION]: a superseded incremental attempt replaced the active tape cohort
+  + actual - expected
+  
+    [
+      {
+        id: 'held',
+  +     updated: true
+      }
+    ]
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/compute-publication.test.ts:352:14)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [ { id: 'held', updated: true } ],
+    expected: [ { id: 'held' } ],
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/server/compute-publication.test.ts:335:3
+✖ incremental tapes publish only under their current cohort after Paper idle: economics (3.913157ms)
+  AssertionError [ERR_ASSERTION]: a superseded incremental attempt replaced the active tape cohort
+  + actual - expected
+  
+    [
+      {
+        id: 'held',
+  +     updated: true
+      }
+    ]
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/compute-publication.test.ts:352:14)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [ { id: 'held', updated: true } ],
+    expected: [ { id: 'held' } ],
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

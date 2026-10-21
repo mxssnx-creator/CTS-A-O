@@ -1,0 +1,20 @@
+✔ a span that is not a multiple of 48 h: the last window's session runs over that window only (4.582909ms)
+✔ the split defaults to D1's only on D1; another span is cut inside it, both halves non-empty (2.391041ms)
+✔ the warm-up: the engine's 100 h, and with historic signal configs the 96 h lookback when that is longer (0.306747ms)
+✔ a lane's volatility rank is valid after 336 of its own bars: 5.6 h on 1m, 28 h on 5m, 84 h on 15m, 168 h on 30m (0.686796ms)
+✔ the feed's start is read from the series' first bars (1.93207ms)
+✔ eval-gate --plan: per-window run lengths, a split inside the span, and the windows short of warm-up (1576.762998ms)
+✔ the feed's start read in chunks equals the whole-file reading, a chunk boundary at every offset of a key (83.373863ms)
+✔ eval-gate keeps every window's result in window order when the windows finish out of order (2852.268746ms)
+✔ eval-gate without --toggles / --window-h gives the session today's arguments byte for byte; --toggles merges over the eval's (2406.819763ms)
+✔ eval-gate --window-h: N-hour windows, each its own session over its own hours (2926.356049ms)
+✔ eval-gate's funnel line prints the forward PF over the run (after Base, validated at the start) beside the in-sample one (408.852182ms)
+✔ eval-gate with Block on: per range the volume-weighted PF and the unit PF of the raised and unraised orders (1047.597745ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 11590.933805

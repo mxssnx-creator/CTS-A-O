@@ -646,6 +646,11 @@ export function completeBaseRangeProtects(g: CoreSettings["grid"], cost: number)
       ...(tag ? { tag } : {}),
       ...(range && range.maxHoldMin ? { maxHoldMin: range.maxHoldMin } : {}),
     };
+    // The Wide caps resolve before identity/deduplication, as in the executable grid.
+    if (!tag) {
+      if (g.maxSl && g.maxSl > 0) p.sl = Math.min(p.sl, g.maxSl);
+      if (g.maxTrail && g.maxTrail > 0) p.trail = Math.min(p.trail, g.maxTrail);
+    }
     if (p.trail > 0) {
       p.trailStep = g.trailStep ?? 1;
       p.trailFree = g.trailFree ?? false;

@@ -17,6 +17,7 @@ const heavy = new Set([
   "src/core/processing.test.ts",
   "src/core/sim/block-matrix.test.ts",
   "src/core/server/base-count.test.ts",
+  "src/core/server/cycle-incremental.test.ts",
 ]);
 for (const f of heavy) assert.ok(files.includes(f), `Heavy file disappeared: ${f}`);
 const groups = {
