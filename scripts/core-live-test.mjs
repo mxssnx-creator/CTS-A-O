@@ -640,7 +640,8 @@ async function report(final = false) {
     const chk = rel.relationCheck(w);
     doc.relation = {
       windowH: rel.RELATION_CHECK.windowH,
-      from: new Date(w.from).toISOString(),
+      // (no window yet — a desk without exchange rows or a first start — has no start time: not an exception)
+      from: Number.isFinite(w.from) ? new Date(w.from).toISOString() : null,
       counts: w.counts,
       ...chk,
       gap: w.total.gap,
