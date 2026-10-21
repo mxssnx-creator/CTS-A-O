@@ -17,6 +17,10 @@ export const HOSTS: Record<Network, readonly string[]> = {
 };
 
 const TIMEOUT_MS = 10_000;
+// Match the bounded transport budget: a valid request can spend more than five seconds in transit (observed
+// on VST). Re-signing with the same five-second window only repeats that refusal. This does not retry an
+// unknown write outcome or extend the HTTP deadline.
+const RECEIVE_WINDOW_MS = TIMEOUT_MS;
 const env = (k: string) => (process.env[k] ?? "").trim();
 
 /**
@@ -116,15 +120,25 @@ export async function signed(
   const paused = rateLimitedUntil(Date.now(), `${method} ${path}`);
   if (paused)
     throw new ExchangeRejected(`frequency limit pause (${NOT_SENT}), unblocked after ${paused} [${method} ${path}]`, 100410);
-  let body: { code?: number; msg?: string; data?: unknown };
+  let body: { code?: number; msg?: string; data?: unknown } = {};
   for (let attempt = 0; ; attempt++) {
-    const url = signedUrl(HOSTS[network][0], path, secret, {
-      ...params,
-      recvWindow: 5000,
-      timestamp: Date.now(),
-    });
-    body = (await timedFetch(url, { method, headers: { "X-BX-APIKEY": apiKey } })) as typeof body;
-    signedCalls.set(`${method} ${path}`, (signedCalls.get(`${method} ${path}`) ?? 0) + 1);
+    const hosts = method === "GET" ? HOSTS[network] : HOSTS[network].slice(0, 1);
+    for (let host = 0; host < hosts.length; host++) {
+      const url = signedUrl(hosts[host], path, secret, {
+        ...params,
+        recvWindow: RECEIVE_WINDOW_MS,
+        timestamp: Date.now(),
+      });
+      signedCalls.set(`${method} ${path}`, (signedCalls.get(`${method} ${path}`) ?? 0) + 1);
+      try {
+        body = (await timedFetch(url, { method, headers: { "X-BX-APIKEY": apiKey } })) as typeof body;
+        break; // a business refusal never triggers host failover
+      } catch (error) {
+        // A transport failure can safely fail over a read. Writes have unknown execution outcome and are never
+        // repeated on another host. Each fallback read is newly signed, inside its own bounded deadline.
+        if (host + 1 >= hosts.length) throw error;
+      }
+    }
     // refused as stale (the request left this process seconds after it was signed, e.g. behind a blocked event
     // loop): the exchange executed nothing, so it is signed again with a fresh timestamp and sent once more
     if (Number(body?.code) !== 0 && body?.code != null && attempt === 0 && staleTimestamp(body?.msg)) {
@@ -462,6 +476,8 @@ export function stopPxExchange(
   dist: number,
   spec?: ContractSpec | null,
   learned = 0,
+  /** Optional maximum loss distance. Return zero when no price tick satisfies both venue clearance and this cap. */
+  maxDist = Infinity,
 ): number {
   if (!(px > 0)) return 0;
   const d = Math.max(dist, minStopDist(px, spec, learned));
@@ -471,6 +487,24 @@ export function stopPxExchange(
   const raw = side === 1 ? px * (1 - d) : px * (1 + d);
   const out = Number((side === 1 ? Math.floor(raw / tick) * tick : Math.ceil(raw / tick) * tick).toFixed(prec));
   if (out <= 0) return 0;
+  if (maxDist !== Infinity) {
+    if (!(Number.isFinite(maxDist) && maxDist > 0 && maxDist < 1 && Number.isFinite(d)) ||
+      d > maxDist + 1e-12) return 0;
+    // The ordinary snap rounds AWAY, which can exceed a hard loss cap by a tick. Its boundary must round
+    // TOWARD entry. Scale by an integer rather than divide by an approximate 10**-precision tick: engines
+    // can represent that tick on opposite sides of an exact decimal and floor an extra tick (10.2 -> 9.9959).
+    const scale = 10 ** prec;
+    const units = px * (1 - side * maxDist) * scale;
+    const nearest = Math.round(units);
+    const tolerance = Math.min(1e-6, 8 * Number.EPSILON * Math.max(1, Math.abs(units)));
+    const capUnits = Math.abs(units - nearest) <= tolerance
+      ? nearest : side === 1 ? Math.ceil(units) : Math.floor(units);
+    const boundary = capUnits / scale;
+    const capped = side === 1 ? Math.max(out, boundary) : Math.min(out, boundary);
+    const actual = side * (px - capped) / px;
+    return Number.isFinite(capped) && capped > 0 && actual > 0 && actual <= maxDist + 1e-12 &&
+      actual + 1e-12 >= minStopDist(px, spec, learned) ? capped : 0;
+  }
   // a price whose precision cannot hold the clearance (a sub-tick price): one whole tick off the mark
   const need = side === 1 ? px - tick * STOP_TICK_BUFFER : px + tick * STOP_TICK_BUFFER;
   if (side === 1 && out >= px) return Number(Math.max(tick, need).toFixed(prec));
@@ -528,7 +562,7 @@ export function minQtyFromReject(msg: string): number | null {
  * open — a full round trip for nothing.
  */
 export function stopAlreadyExists(msg: string): boolean {
-  return /(sl|stop).{0,24}order already exists|109400/i.test(msg);
+  return /(sl|stop).{0,24}order already exists/i.test(msg);
 }
 
 export function alreadyFlat(msg: string): boolean {

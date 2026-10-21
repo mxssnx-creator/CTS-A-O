@@ -32,7 +32,7 @@ const NOW = T0 + 400 * H;
 const P = { tp: 0.01, sl: 0.01, trail: 0, hold: 32 };
 const SYM = "AAA-USDT";
 
-/** 60 hourly closes (every third a loser, alternating long / short) and one entry inside the simulated window */
+/** 120 half-hourly closes: each direction has its own full sample inside 24h, plus two simulated entries. */
 function trades(cfg: string, kind: Trade["kind"]): Trade[] {
   const mk = (r: number, entryT: number, side: 1 | -1): Trade =>
     ({
@@ -51,8 +51,8 @@ function trades(cfg: string, kind: Trade["kind"]): Trade[] {
       kind,
     }) as Trade;
   const out: Trade[] = [];
-  for (let i = 0; i < 60; i++)
-    out.push(mk(i % 3 === 2 ? -0.01 : 0.01, NOW - 70 * H + i * H, i % 2 ? -1 : 1));
+  for (let i = 0; i < 120; i++)
+    out.push(mk(i % 3 === 2 ? -0.01 : 0.01, NOW - 70 * H + i * H / 2, i % 2 ? -1 : 1));
   out.push(mk(0.01, NOW - 2 * H + 10 * 60_000, 1));
   out.push(mk(0.01, NOW - 1 * H + 10 * 60_000, -1));
   return out;

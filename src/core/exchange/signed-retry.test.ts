@@ -3,7 +3,7 @@
 // more. Any other refusal is thrown as it is; a second stale refusal too (one retry).
 import { afterEach, beforeEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { ExchangeRejected, signed, staleTimestamp } from "./bingx.server.ts";
+import { ExchangeRejected, signed, staleTimestamp, stopAlreadyExists } from "./bingx.server.ts";
 
 describe("signed requests: stale timestamp", () => {
   const orig = globalThis.fetch;
@@ -33,6 +33,20 @@ describe("signed requests: stale timestamp", () => {
     assert.deepEqual(out, { orders: [] });
     assert.equal(urls.length, 2);
     assert.ok(ts(urls[1]) >= ts(urls[0]), "signed again, not resent as it was");
+    for (const url of urls) assert.equal(new URL(url).searchParams.get("recvWindow"), "10000");
+  });
+
+  it("accepts a request arriving after five seconds within the bounded transport window", async () => {
+    globalThis.fetch = (async (input: string | URL) => {
+      const url = new URL(String(input));
+      urls.push(String(input));
+      const transitMs = 5_400;
+      return new Response(JSON.stringify(transitMs <= Number(url.searchParams.get("recvWindow"))
+        ? { code: 0, data: { orders: [] } }
+        : { code: 109400, msg: "timestamp is invalid" }));
+    }) as typeof fetch;
+    assert.deepEqual(await signed("testnet", "bingx-vst-02", "GET", "/openApi/swap/v2/trade/openOrders"), { orders: [] });
+    assert.equal(urls.length, 1, "slow but in-window delivery needs no duplicate request");
   });
 
   it("a second stale refusal is thrown (one retry), and other refusals are never retried", async () => {
@@ -72,5 +86,21 @@ describe("signed requests: stale timestamp", () => {
     assert.equal(staleTimestamp("Null timestamp or timestamp mismatch"), true);
     assert.equal(staleTimestamp("Insufficient margin"), false);
     assert.equal(staleTimestamp(undefined), false);
+  });
+
+  it("fails over only a transport-failed read to the same network, while an unknown write is sent once", async () => {
+    globalThis.fetch = (async (input: string | URL) => {
+      urls.push(String(input));
+      if(new URL(String(input)).host==="open-api-vst.bingx.com")throw new Error("transport unavailable");
+      return new Response(JSON.stringify({code:0,data:{orders:[]}}));
+    }) as typeof fetch;
+    assert.deepEqual(await signed("testnet","bingx-vst-02","GET","/openApi/swap/v2/trade/openOrders"),{orders:[]});
+    assert.deepEqual(urls.map(u=>new URL(u).host),["open-api-vst.bingx.com","open-api-vst.bingx.pro"]);
+    urls=[];
+    await assert.rejects(signed("testnet","bingx-vst-02","POST","/openApi/swap/v2/trade/order"),/transport unavailable/);
+    assert.equal(urls.length,1);
+    assert.equal(stopAlreadyExists("109400 timestamp is invalid"),false);
+    assert.equal(stopAlreadyExists("109400 invalid quantity"),false);
+    assert.equal(stopAlreadyExists("SL order already exists"),true);
   });
 });

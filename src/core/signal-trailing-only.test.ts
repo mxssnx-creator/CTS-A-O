@@ -282,7 +282,7 @@ describe("Signals: additional independent Trailing only sets", () => {
       tp.pending.push({ sym: SYM, side });
       const [p] = pendingAsOpen(tp, 15 * 60_000, 1, () => 100, 0.002);
       assert.equal(p.target, 0);
-      assert.equal(p.stop, 100 * (1 - side * only.sl));
+      assert.equal(p.stop, 100 * (1 - side * 0.02), "Signal SL is capped before the first entry");
       assert.equal(p.trailOnly, true);
       assert.equal(p.trailFree, false);
     }
@@ -357,8 +357,9 @@ describe("Signals: additional independent Trailing only sets", () => {
   });
 
   it("a winning sibling range never bypasses another config's own return-PF gate", () => {
-    const winning = tape("trailing-only", Array(6).fill(0.03));
-    const losing = tape("trailing-only", Array(6).fill(-0.01), IND, { ...only, sl: 0.06 });
+    const winning = tape("trailing-only", Array(30).fill(0.03));
+    const losing = tape("trailing-only", Array(30).fill(-0.01), IND, { ...only, sl: 0.06 });
+    const at = NOW + 30 * H; // all thirty own closes precede the independent Base check
     const base = defaultWalkForward(DEFAULT_SETTINGS);
     const options = {
       ...base,
@@ -373,12 +374,12 @@ describe("Signals: additional independent Trailing only sets", () => {
       signalOwnBase: true,
       symGate: undefined,
     };
-    assert.equal(execDecision(winning, NOW, options, { sym: SYM, side: 1 }).ok, true);
-    const decision = execDecision(losing, NOW, options, { sym: SYM, side: 1 });
+    assert.equal(execDecision(winning, at, options, { sym: SYM, side: 1 }).ok, true);
+    const decision = execDecision(losing, at, options, { sym: SYM, side: 1 });
     assert.equal(decision.ok, false);
     if (!decision.ok) assert.equal(decision.why, "signalValid");
     winning.heldOnly = true;
-    assert.deepEqual(execDecision(winning, NOW, options, { sym: SYM, side: 1 }), {
+    assert.deepEqual(execDecision(winning, at, options, { sym: SYM, side: 1 }), {
       ok: false,
       why: "heldOnly",
     });
@@ -409,16 +410,14 @@ describe("Signals: additional independent Trailing only sets", () => {
       { ...basePosition, cfg: unbounded.id, target: 0, trailOnly: true, trailFree: false },
     ];
     const rt = {
-      settings: {
-        grid: { trailFree: true },
-        signals: { rangeVolumeFactors: { short: 1, medium: 1 } },
-      },
+      settings: { ...DEFAULT_SETTINGS, grid: { ...DEFAULT_SETTINGS.grid, trailFree: true } },
       paper: { positions },
     } as unknown as CoreRuntime;
     const lanes = laneContributions(rt, new Map([[SYM, 100]]));
     assert.equal(lanes[0].tgt, 103);
     assert.equal(lanes[1].tgt, undefined);
-    assert.ok(lanes.every((l) => l.stopPx === 95));
+    assert.ok(lanes.every((l) => l.stopPx === 98), "venue contributions respect the entry-based cap");
+    assert.ok(positions.every((p) => p.stop === 95), "reporting does not mutate the source positions");
     const result = controlTargets(lanes, new Map([[SYM, 100]]), {
       notionalUsd: 10,
       ratio: 1,
@@ -461,7 +460,8 @@ describe("Signals: additional independent Trailing only sets", () => {
       },
     };
     const local = buildTapes(u, protects, 0.002, undefined, new Set(pairs), null, adjust, floors);
-    assert.equal(local.length, 18);
+    assert.equal(local.length, 10, "18 raw cells deduplicate at the configured 3% cap, including the exact held id");
+    assert.equal(new Set(local.map((tp) => tp.id)).size, local.length);
     assert.ok(
       local.every(
         (tp) => tp.kind === "trailing-only" && tp.protect.trailOnly && tp.protect.tp === 0,
@@ -521,10 +521,11 @@ describe("Signals: additional independent Trailing only sets", () => {
         baseConfigCounter: counter,
       });
       assert.deepEqual(
+        // Configured is the requested raw grid; evaluated is the distinct effective capped grid.
         counter.rows().map((row) => [row.kind, row.configured, row.evaluated]),
         [
-          ["trailing-only", 9, 9],
-          ["trailing-only", 9, 9],
+          ["trailing-only", 9, 6],
+          ["trailing-only", 9, 4],
         ],
       );
     } finally {

@@ -13,6 +13,7 @@
 import type { Gates, MicroGrid, MinimalGrid, ProtectGridSpec, RangeMinPfKey, RangeTag } from "./domain/types.ts";
 import type { MicroIndRule } from "./indications/micro.ts";
 import { POSITION_COST_RT, RT_COST } from "./model-cost.ts";
+import { SIGNAL_MIN_PF } from "./signal-policy.ts";
 
 export const MINIMAL_COORD = "Minimal Coord.";
 
@@ -525,6 +526,7 @@ export function minPfOf(gates: Pick<Gates, "minPf" | "rangeMinPf">, tag: string 
   const key = tag ? RANGE_MIN_PF_KEY[tag as RangeTag] : undefined;
   const v = key ? gates.rangeMinPf?.[key] : undefined;
   const min = typeof v === "number" && Number.isFinite(v) ? Math.min(3, Math.max(1.05, v)) : gates.minPf;
+  if (ind?.startsWith("sig-")) return Math.max(SIGNAL_MIN_PF, min);
   // First-class Tactic, Relate and relational Break configs share a minimum return PF of 1.1 from Base onward.
   return ind && (ind.startsWith("tactic-") || ind.startsWith("relate-") || ind.startsWith("break-rel-") || ind.startsWith("break-mc-rel-"))
     ? Math.max(1.1, min)

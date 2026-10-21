@@ -31,13 +31,16 @@ import { bothSides, simulate } from "./sim/backtest.ts";
 import { filterEntries } from "./sim/walkforward.ts";
 import { adjustProtect } from "./adjust.ts";
 import { isSignalCoordinationInd } from "./signal-coordination.ts";
+import { capSignalProtect } from "./sim/trailing.ts";
 import { POSITION_COST_RT } from "./model-cost.ts";
+import { SIGNAL_MIN_PF, SIGNAL_VALID_LAST_N } from "./signal-policy.ts";
 
 export interface SignalHistValidation {
   cost: number;
   minPf: number;
   minTrades: number;
   maxDdr?: number;
+  lastN?: number;
   /** Coordinator historic configs qualify independently against each enabled exit range's stage PF floor. */
   rangeMinPf?: Partial<Record<"sh" | "gn" | "lg", number>>;
 }
@@ -48,23 +51,26 @@ export function signalHistPassingRanges(
   minPf: number,
   rangeMinPf?: SignalHistValidation["rangeMinPf"],
 ): Array<"sh" | "gn" | "lg" | undefined> {
+  minPf = Math.max(SIGNAL_MIN_PF, minPf);
   if (rangeMinPf === undefined) return pf >= minPf ? [undefined] : [];
   const ranges = Object.entries(rangeMinPf).filter(
     (entry): entry is ["sh" | "gn" | "lg", number] =>
       (entry[0] === "sh" || entry[0] === "gn" || entry[0] === "lg") &&
       Number.isFinite(entry[1]),
   );
-  return ranges.filter(([, threshold]) => pf >= threshold).map(([tag]) => tag);
+  return ranges.filter(([, threshold]) => pf >= Math.max(minPf, threshold)).map(([tag]) => tag);
 }
 
 /** Signals retain the configured stage PF floor; the lower engine Wide prefilter cannot relax it. */
 export function signalHistValidationOf(
   cost: number,
   gates: Pick<Gates, "minPf" | "rangeMinPf" | "baseSetsMinPf" | "minTrades" | "maxDdr">,
+  lastN = SIGNAL_VALID_LAST_N,
 ): SignalHistValidation {
   return {
     cost,
-    minPf: Math.max(minPfOf(gates, undefined), gates.baseSetsMinPf ?? gates.minPf),
+    minPf: Math.max(SIGNAL_MIN_PF, minPfOf(gates, undefined), gates.baseSetsMinPf ?? gates.minPf),
+    lastN,
     minTrades: gates.minTrades,
     maxDdr: gates.maxDdr,
   };
@@ -191,14 +197,22 @@ function signalHistStats(
       const entryT = i + 1 < b.n ? b.t[i + 1] : b.t[i] + b.tfMin * 60_000;
       if (entryT < fromT || i + 1 >= clipped.n) entries[i] = 0;
     }
-    const actual = adjustProtect(lane, { minSl: sig.minSl, minTrail: sig.minTrail });
+    const actual = capSignalProtect(adjustProtect(lane, { minSl: sig.minSl, minTrail: sig.minTrail }));
     const results = bothSides(entries.subarray(0, clipped.n), (side) =>
       simulate(id, clipped, side, actual, { cost: validation.cost, cooldown }),
     );
     for (const result of results) trades.push(...result.trades);
   }
   trades.sort((a, b) => a.exitT - b.exitT || a.entryT - b.entryT || b.side - a.side);
-  return statsOf(trades);
+  const groups = new Map<string, typeof trades>();
+  for (const tr of trades) {
+    const key = `${tr.sym}|${tr.side}`;
+    const own = groups.get(key) ?? [];
+    if (!groups.has(key)) groups.set(key, own);
+    own.push(tr);
+  }
+  const n = validation.lastN ?? SIGNAL_VALID_LAST_N;
+  return [...groups.values()].map((own) => ({ history: statsOf(own), last: statsOf(n > 0 ? own.slice(-n) : own), required: n }));
 }
 
 /** Keep the simulator's bars to completed candles at or before the historic cut. */
@@ -335,42 +349,48 @@ export function* signalHistProtectsGen(
         ) ?? laneTp,
       );
       for (const m of h.slOfTp)
-        for (const t of h.trailOfTp) {
+        for (const t of [0, ...h.trailOfTp.filter((t) => t > 0)])
+        for (const ratio of t > 0 && sig.trailRatios?.length ? sig.trailRatios : [1]) {
           const p: Protect = {
             tp: tpRef,
             sl: Math.max(sig.minSl, onGrid(tpRef * m)),
             trail: onGrid(tpRef * t),
+            ...(ratio !== 1 ? { trailStep: ratio } : {}),
             hold,
+            ...(sig.trailMax !== undefined ? { trailMax: sig.trailMax } : {}),
           };
           const lane = laneProtect(p, ind);
-          if (lane.trail * (lane.trailStep ?? 1) + 1e-12 < sig.minTrail) {
+          if (lane.trail > 0 && lane.trail * (lane.trailStep ?? 1) + 1e-12 < sig.minTrail) {
             if (diagnostics) diagnostics.trailTooShort++;
             continue;
           }
-          const key = `${p.tp}|${p.sl}|${p.trail}|${p.hold}`;
+          const key = `${p.tp}|${p.sl}|${p.trail}|${p.hold}|${p.trailStep ?? 1}|${p.trailMax ?? 0.02}`;
           if (seen.has(key)) continue;
           seen.add(key);
           if (diagnostics) diagnostics.candidates++;
           if (validation) {
-            const st = signalHistStats(u, bot, ind, lane, tactics, sig, fromT, cutT, validation, cooldown);
+            const contexts = signalHistStats(u, bot, ind, lane, tactics, sig, fromT, cutT, validation, cooldown);
             if (diagnostics) diagnostics.evaluated++;
-            if (st.n < Math.max(h.minN, validation.minTrades)) {
+            const sampled = contexts.filter(({ history, last, required }) => history.n >= Math.max(h.minN, validation.minTrades) && last.n >= required);
+            if (!sampled.length) {
               if (diagnostics) diagnostics.insufficientTrades++;
               continue;
             }
-            if (!(st.net > 0 && st.pf >= validation.minPf)) {
+            const minPf = Math.max(SIGNAL_MIN_PF, validation.minPf);
+            const profitable = sampled.filter(({ history, last }) => history.net > 0 && history.pf >= minPf && last.net > 0 && last.pf >= minPf);
+            if (!profitable.length) {
               if (diagnostics) diagnostics.pfRejected++;
               continue;
             }
-            if (ddrFails(st.mdd, st.net, validation.maxDdr)) {
+            const passing = profitable.filter(({ history, last }) => !ddrFails(history.mdd, history.net, validation.maxDdr) && !ddrFails(last.mdd, last.net, validation.maxDdr));
+            if (!passing.length) {
               if (diagnostics) diagnostics.ddrRejected++;
               continue;
             }
-            const passingRanges = signalHistPassingRanges(
-              st.pf,
-              validation.minPf,
+            const passingRanges = [...new Set(passing.flatMap(({ history, last }) => signalHistPassingRanges(
+              Math.min(history.pf, last.pf), minPf,
               isSignalCoordinationInd(ind) ? (validation.rangeMinPf ?? {}) : undefined,
-            );
+            )))];
             if (!passingRanges.length) {
               if (diagnostics) diagnostics.pfRejected++;
               continue;
@@ -396,7 +416,7 @@ export function* signalHistProtectsGen(
  */
 export function heldSignalProtect(id: string): { pair: string; protect: Protect } | null {
   const x = parseConfigId(id);
-  if (!x || x.protect.atr || x.protect.tag || !(x.protect.trail > 0)) return null;
+  if (!x || !x.ind.startsWith("sig-") || x.protect.atr || x.protect.tag || !(x.protect.tp > 0 || x.protect.trail > 0)) return null;
   const tf = laneOf(x.ind).tf ?? REF_TF;
   // the lane's distances are a soft floor on the scaled reference (laneProtect: √(x² + lo²) on the sub-15m lanes), so
   // the reference is found by inverting each field's monotone map, not by dividing by √(tf/15) (bug hunt, 13 Oct: a
@@ -407,11 +427,15 @@ export function heldSignalProtect(id: string): { pair: string; protect: Protect 
     sl: 0,
     trail: 0,
     hold: Math.max(2, Math.round((x.protect.hold * tf) / REF_TF)),
-    ...(x.protect.trailOnly ? { trailOnly: true, trailStep: x.protect.trailStep ?? 1 } : {}),
+    ...(x.protect.trailMax !== undefined ? { trailMax: x.protect.trailMax } : {}),
+    ...(x.protect.trailOnly ? { trailOnly: true } : {}),
+    ...(x.protect.trailStep !== undefined ? { trailStep: x.protect.trailStep } : {}),
+    ...(x.protect.trailFree ? { trailFree: true } : {}),
   };
   for (const f of fields) {
     if (f === "tp" && p.trailOnly) continue;
     const target = x.protect[f];
+    if (target === 0) { p[f] = 0; continue; }
     const r = invertLaneField(
       target,
       (ref) =>
@@ -466,7 +490,8 @@ export function heldHistProtects(
     a.trail === b.trail &&
     a.hold === b.hold &&
     !!a.trailOnly === !!b.trailOnly &&
-    (a.trailStep ?? 1) === (b.trailStep ?? 1);
+    (a.trailStep ?? 1) === (b.trailStep ?? 1) &&
+    a.trailMax === b.trailMax;
   const out: Record<string, Protect[]> = {};
   for (const id of openCfgs) {
     const h = heldSignalProtect(id);
@@ -498,8 +523,11 @@ export function heldCoordinationProtects(
       sl: 0,
       trail: 0,
       hold: Math.max(2, Math.round((x.protect.hold * (laneOf(x.ind).tf ?? REF_TF)) / REF_TF)),
+      ...(x.protect.trailMax !== undefined ? { trailMax: x.protect.trailMax } : {}),
       ...(x.protect.tag ? { tag: x.protect.tag } : {}),
-      ...(x.protect.trailOnly ? { trailOnly: true, trailStep: x.protect.trailStep ?? 1 } : {}),
+      ...(x.protect.trailOnly ? { trailOnly: true } : {}),
+      ...(x.protect.trailStep !== undefined ? { trailStep: x.protect.trailStep } : {}),
+      ...(x.protect.trailFree ? { trailFree: true } : {}),
     };
     let valid = true;
     for (const field of ["tp", "sl", "trail"] as const) {

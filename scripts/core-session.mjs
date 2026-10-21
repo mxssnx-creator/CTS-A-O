@@ -4727,7 +4727,7 @@ function clientMain(D) {
         gl: 0,
       },
     );
-    const types = ["normal", "trailing", "dca", "dca-active", "axis"];
+    const types = ["normal", "trailing", "trailing-only", "exit", "dca", "dca-active", "axis"];
     const fmtSets = (o) =>
       types
         .filter((k) => o[k])
@@ -4767,7 +4767,7 @@ function clientMain(D) {
       wide: "Wide",
     };
     const RO = ["Micro", "Minimal", "Minimal plus", "Short", "General", "Long", "Wide"];
-    const TO = ["normal", "trailing", "dca", "dca-active", "axis"];
+    const TO = ["normal", "trailing", "trailing-only", "exit", "dca", "dca-active", "axis"];
     const col = (x) => `${RG[x.tag] ?? x.tag}|${x.kind}`;
     const cols = [...new Set(C.sets.map(col))].sort(
       (a, b) =>

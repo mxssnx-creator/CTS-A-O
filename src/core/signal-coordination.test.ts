@@ -96,6 +96,7 @@ describe("Signal config identity through execution and persistence", () => {
         entry: 100,
         exit: 100 * (1 + r),
         r,
+        mult: 1,
         kind,
         reason: r > 0 ? "tp" : "sl",
         bars: 2,
@@ -109,19 +110,21 @@ describe("Signal config identity through execution and persistence", () => {
         { tp: 0.01, sl: 0.01, trail: kind === "normal" ? 0 : 0.005, hold: 32 },
         kind,
         ["A"],
-        [...returns.map((r, i) => trade(r, now - (20 - i) * H)), trade(0.01, now - H)],
+        [...returns.map((r, i) => trade(r, now - (returns.length + 8 - i) * H)), trade(0.01, now - H)],
         [],
         [],
       );
     };
-    const qualified = ids.map((id) => tape(id, [0.02, -0.01, 0.02, -0.01]));
-    const unqualified = tape(losing, [0.01, -0.02, 0.01, -0.02]);
+    const qualified = ids.map((id) => tape(id, Array.from({ length: 30 }, (_, i) => i % 2 ? -0.01 : 0.02)));
+    const unqualified = tape(losing, Array.from({ length: 30 }, (_, i) => i % 2 ? -0.02 : 0.01));
     const o = {
       ...defaultWalkForward(DEFAULT_SETTINGS),
       simH: 6,
+      preH: 48,
+      longH: 48,
       lastN: 0,
-      validLastN: 4,
-      signalValidLastN: 4,
+      validLastN: 25,
+      signalValidLastN: 25,
       gates: { ...DEFAULT_SETTINGS.gates, minPf: 1.3, maxDdtH: 1_000, maxDdr: 0, lossPrior: false },
       signalActive: new Set(
         [...qualified, unqualified].map((tp) => sigActiveKey(tp.bot, tp.ind, "A", 1, tp.kind, tp.id)),

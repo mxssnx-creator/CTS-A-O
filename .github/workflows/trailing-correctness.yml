@@ -1,0 +1,73 @@
+name: Trailing correctness
+
+on:
+  push:
+    branches: [fix/signal-trailing-stop-cap-20261018]
+    paths: ['src/**', 'scripts/**', 'package*.json', '.github/workflows/trailing-correctness.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: trailing-correctness-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      CTS_CORE_LIVE: '0'
+      CTS_CORE_AUTOSTART: '0'
+      CTS_CORE_STATE: 'off'
+      CTS_CORE_WORKERS: '1'
+      CTS_CORE_COMPARE: '0'
+      CTS_CORE_VARIANTS: '0'
+      MALLOC_ARENA_MAX: '2'
+      DATABASE_URL: ''
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Preserve the exact public tracked source
+        run: |
+          mkdir -p runs/trailing-audit
+          git rev-parse HEAD > runs/trailing-audit/source-commit.txt
+          git archive --format=tar.gz -o runs/trailing-audit/source.tar.gz HEAD
+          sha256sum runs/trailing-audit/source.tar.gz > runs/trailing-audit/source.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: trailing-source-${{ github.sha }}
+          path: |
+            runs/trailing-audit/source.tar.gz
+            runs/trailing-audit/source.sha256
+            runs/trailing-audit/source-commit.txt
+          retention-days: 30
+          compression-level: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Verify pipeline, all simulation families, Signals and native protection offline
+        run: |
+          node --require ./scripts/lib/core-test-offline-guard.cjs --experimental-strip-types --no-warnings --test --test-concurrency=1 src/core/pipeline/*.test.ts src/core/sim/*.test.ts src/core/signal*.test.ts src/core/server/entries-execution.test.ts src/core/exchange/min-exchange.test.ts src/components/v2/signal-units.test.ts 2>&1 | tee runs/trailing-audit/tests.log
+      - name: Typecheck
+        run: npm run typecheck -- --pretty false 2>&1 | tee runs/trailing-audit/typecheck.log
+      - name: Lint
+        run: npm run lint 2>&1 | tee runs/trailing-audit/lint.log
+      - name: Build app and worker
+        run: npm run build:dev 2>&1 | tee runs/trailing-audit/build.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trailing-checks-${{ github.sha }}
+          path: |
+            runs/trailing-audit/*.log
+            runs/trailing-audit/source-commit.txt
+          retention-days: 30

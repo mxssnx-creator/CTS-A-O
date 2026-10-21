@@ -60,7 +60,7 @@ export function signalConfigCounts(input?: Partial<SignalSettings> | null) {
   const atr = protects.filter((p) => !!p.atr).length;
   // Count distinct requested trail-only cells, including cells below the engine floor, and keep eligibility separate.
   const trailingOnly = s.trailingOnly.enabled
-    ? new Set(s.trailingOnly.sl.flatMap((sl) => s.trailingOnly.trail.map((trail) => `${sl}|${trail}|${s.trailingOnly.trailStep}`))).size
+    ? new Set(s.trailingOnly.sl.flatMap((sl) => s.trailingOnly.trail.map((trail) => `${sl}|${trail}|${s.trailingOnly.trailStep}`))).size * new Set(s.trailRatios?.length ? s.trailRatios : [1]).size
     : 0;
   const activeTrailingOnly = protects.filter((p) => p.trailOnly).length;
   const inactiveTrailingOnly = Math.max(0, trailingOnly - activeTrailingOnly);

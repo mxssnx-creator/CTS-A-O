@@ -130,12 +130,12 @@ export const DEFAULT_TACTICS: Tactics = {
  */
 export const DEFAULT_BLOCK: BlockConfig = {
   sources: {
-    config: false,
+    config: true,
     overall: true,
     symbol: true,
     direction: true,
     indication: true,
-    type: false,
+    type: true,
   },
   mode: "overall",
   historySource: "accepted-orders",
@@ -161,9 +161,8 @@ export const DEFAULT_BLOCK: BlockConfig = {
   },
 };
 /**
- * DCA default from the 12-symbol sweep (6 windows × 24 h, docs/dca-sweep.md): 2 levels 2 % apart (3 stages; the
- * stack is capped at 5), stop 1 × the target (never inside the deepest level + half a step). Walk-forward PF 1.55,
- * positive in 4 of 5 windows, the lowest drawdown of every variant (the former stops: PF 2.03, 3 of 5, drawdown +36 %).
+ * Operator default, 20 October: one additional leg at 2% distance, weighted 2.5 ORIGINAL base units (3.5 total).
+ * The distance is a configurable candidate, not a claim of a universally optimal or profitable spacing.
  */
 /**
  * Ceiling on the protect-grid variants: a memory guard, not a working limit (operator, 5 Oct: caps removed or kept
@@ -171,7 +170,7 @@ export const DEFAULT_BLOCK: BlockConfig = {
  */
 export const GRID_VARIANTS_MAX = 20_000;
 
-export const DEFAULT_DCA: DcaConfig = { levels: 2, step: 0.02, stopGap: 0.5, slOfTp: 1 };
+export const DEFAULT_DCA: DcaConfig = { levels: 1, addRatio: 2.5, step: 0.02, stopGap: 0.5, slOfTp: 1 };
 /** Axis: 3 legs 0.7 ATR apart toward the EMA-50 axis, entered at 0.35–2.6 ATR displacement (desk defaults). */
 export const DEFAULT_AXIS: AxisConfig = {
   levels: 3,
@@ -718,6 +717,7 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   // Short 9–14×, General 15–22×, Long 23–32× (step 1). They replace the wide targets (3 / 5 / 8 %), which General and
   // Long cover.
   grid: {
+    trailingOnly: true,
     // untagged Wide configs use the normal volume unless their own factor is changed
     volumeFactor: 1,
     tp: [],

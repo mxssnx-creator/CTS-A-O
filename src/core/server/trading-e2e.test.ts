@@ -13,12 +13,14 @@ import { liveKv, liveReadiness, resetLiveBackoff, stepLive } from "./live.server
 import { liveTag, type ControlTarget } from "./live.ts";
 import { liveTrades } from "../statistics.ts";
 import { unitReturn, unitStatsOf } from "../metrics/stats.ts";
-import { SIGNAL_SOURCES, signalSettings } from "../signal-config.ts";
-import { H, SimExchange, rng, syntheticExecutionRun, trackRuntimes } from "../test-support.ts";
+import { signalSettings } from "../signal-config.ts";
+import { H, SimExchange, rng, syntheticExecutionRun, trackRuntimes, runtimeFixtureGrid } from "../test-support.ts";
 import { executionRecordKey } from "../live-record.ts";
 import { DEFAULT_PROTECT } from "../config.ts";
 import { makeTape, walkForward } from "../sim/walkforward.ts";
 import { configId } from "../pipeline/pipeline.ts";
+import { capSignalProtect } from "../sim/trailing.ts";
+import { sigActiveKey } from "../signals.ts";
 
 process.env.CTS_CORE_LIVE = "1";
 // the live step refuses a stale book: the synthetic market ends at the current hour
@@ -32,7 +34,8 @@ const small = {
   refineTop: 4,
   evalTop: 8,
   cycleMs: 60_000,
-  grid: { short: false as const },
+  grid: { ...runtimeFixtureGrid(), short: false as const },
+  exitStrategy: { enabled: false },
   tactics: {
     session: false,
     volRegime: false,
@@ -43,9 +46,8 @@ const small = {
   gates: { minPf: 1.05, minTrades: 3, maxDdr: 0 },
   signals: signalSettings({
     exits: "pct",
-    sources: Object.fromEntries(
-      SIGNAL_SOURCES.filter((x) => x.name.startsWith("s2-")).map((x) => [x.name, false]),
-    ),
+    sourcesMode: "allow",
+    sources: { "ema-cross": true, "rsi-reversal": true },
   }),
 };
 
@@ -124,7 +126,8 @@ describe(
       rt.stop();
       rt.settings.live = { ...engineRt.settings.live };
       const a = configId("follow", "rsi-mom-14-25@m15", DEFAULT_PROTECT);
-      const b = configId("follow", "sig-ema-cross-s@m15", DEFAULT_PROTECT);
+      const signalProtect = capSignalProtect(DEFAULT_PROTECT);
+      const b = configId("follow", "sig-ema-cross-s@m15", signalProtect);
       const declared: Identity[] = [
         { cfg: a, sym: "SYN1-USDT", side: 1 },
         { cfg: a, sym: "SYN2-USDT", side: 1 },
@@ -135,29 +138,35 @@ describe(
       hedgePair = { sym: "SYN0-USDT", long: declared[3], short: declared[4] };
       const now = Date.now();
       const n = Math.max(50, 2 * rt.livePromotionGate(declared[0]).minN!);
-      const model = syntheticExecutionRun(declared, [-.008, .012], n, now);
+      // Explicit winning mechanics input, comfortably above the Signal 1.5 floor;
+      // threshold equality/roundoff is tested separately from venue convergence.
+      const model = syntheticExecutionRun(declared, [-.008, .016], n, now);
       const u = { bars: [], caches: [], startT: now - 24 * H, endT: now, splitT: now - 12 * H, nowT: now, baseTf: 15 } as never;
       rt.sim = Object.assign(walkForward(u, [], { ...rt.wf, simH: 24 }), model);
       rt.tapes = [
         makeTape(a, "follow", "rsi-mom-14-25@m15", DEFAULT_PROTECT, "normal", prices.map((p) => p.sym), model.trades.filter((t) => t.cfg === a), [], []),
-        makeTape(b, "follow", "sig-ema-cross-s@m15", DEFAULT_PROTECT, "normal", prices.map((p) => p.sym), model.trades.filter((t) => t.cfg === b), [], []),
+        makeTape(b, "follow", "sig-ema-cross-s@m15", signalProtect, "normal", prices.map((p) => p.sym), model.trades.filter((t) => t.cfg === b), [], []),
       ];
       rt.paper.selected = [a, b];
+      rt.wf.signalBasePassed = new Set(["follow|sig-ema-cross-s@m15"]);
+      rt.wf.signalActive = new Set(declared.filter((p) => p.cfg === b).map((p) =>
+        sigActiveKey("follow", "sig-ema-cross-s@m15", p.sym, p.side, "normal", b)));
       rt.paper.startedAt = model.startT;
       rt.paper.positions = declared.slice(0, 3).map((p) => {
         const px = prices.find((x) => x.sym === p.sym)!.last;
-        return { ...p, entryT: now, entryI: 0, entry: px, stop: px * (1 - p.side * DEFAULT_PROTECT.sl),
-          target: px * (1 + p.side * DEFAULT_PROTECT.tp), peak: px, trailOn: false, mtm: 0, vol: 1, level: 0, heldAt: now };
+        const protect = p.cfg === b ? signalProtect : DEFAULT_PROTECT;
+        return { ...p, entryT: now, entryI: 0, entry: px, stop: px * (1 - p.side * protect.sl),
+          target: px * (1 + p.side * protect.tp), peak: px, trailOn: false, mtm: 0, vol: 1, level: 0, heldAt: now };
       });
       // Separately declared funded OWNED PAPER closes provide the execution axis. Nothing here claims venue
       // performance; the real runtime reads persisted allocation evidence and computes both windows itself.
       for (const p of declared) {
         for (let i = 0; i < n; i++) {
-          const entryT = now - (n - i) * 2000, exitT = entryT + 1000, unitR = i % 2 ? .012 : -.008;
+          const entryT = now - (n - i) * 2000, exitT = entryT + 1000, unitR = i % 2 ? .016 : -.008;
           rt.db.run("INSERT INTO paper_book_trades (cfg,sym,side,entry_t,exit_t,r,vol,reason,held_at,at,unit_r,owned_notional_usd) VALUES (?,?,?,?,?,?,1,'time',?,?,?,10)",
             p.cfg, p.sym, p.side, entryT, exitT, unitR, entryT, now, unitR);
         }
-        assert.equal(rt.livePromotionGate(p).ok, true, `exact two-axis proof for ${executionRecordKey(p.cfg, p.sym, p.side)}`);
+        assert.equal(rt.livePromotionGate(p).ok, true, `exact two-axis proof for ${executionRecordKey(p.cfg, p.sym, p.side)}: ${JSON.stringify(rt.livePromotionGate(p))}`);
       }
       assert.equal(liveReadiness(rt.sim, rt.settings.live, rt.settings.gates.minPf).ok, true);
       resetLiveBackoff();

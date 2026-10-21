@@ -33,6 +33,12 @@ import type { BlockConfig, Trade } from "../domain/types.ts";
 
 const H = 3_600_000;
 const B: BlockConfig = { ratio: 0.2, maxLevel: 3, minActiveLevel: 1, maxMult: 3 };
+// Independent positive config evidence for fixtures that isolate Block or the extra cross-config direction book.
+// These rows never enter the accepted Block book unless a test explicitly feeds them there.
+const qualifiedRows = (cfg: string, side: 1 | -1 = 1): Trade[] =>
+  Array.from({ length: 30 }, (_, i) => ({ cfg, sym: "A", side,
+    entryT: i * 60_000, exitT: (i + 1) * 60_000,
+    entry: 1, exit: 1 + side * .01, r: .01, reason: "tp", bars: 1, mfe: 0, mae: 0 }));
 
 describe("Block sources", () => {
   it("level = count of positive last-n sums", () => {
@@ -279,7 +285,7 @@ describe("Block sources", () => {
       { tp: 0.02, sl: 0.02, trail: 0, hold: 32 },
       "normal",
       ["A"],
-      [tr(0, -0.03)],
+      [...qualifiedRows("x"), ...qualifiedRows("x", -1), tr(.1, -0.03), tr(.2, -0.03), tr(.3, -0.03)],
       [],
       [],
     );
@@ -288,6 +294,9 @@ describe("Block sources", () => {
     for (let i = 0; i < 3; i++) book.add({ sym: "A", side: 1, kind: ind.kind, ind: ind.id, r: 0.01 });
     const base = {
       ...defaultWalkForward(DEFAULT_SETTINGS),
+      longH: 96,
+      preGate: false,
+      validLastN: 0,
       lastN: 0,
       symGate: undefined,
       toggles: { ...DEFAULT_TOGGLES, normal: true, block: true, blockActive: false },
@@ -533,12 +542,14 @@ describe("Block types, Active, steps and pause", () => {
       toggles: { ...base.toggles, normal: true, block: true, blockActive: false },
       block: { ...ON, signalsOwn: true } };
     const d = execDecision(tp, 5 * H, o, { sym: "A", side: -1 });
-    assert.deepEqual(d, { ok: true, level: 0, vol: 1 }, "signalsOwn applies the same exact-side record in execution");
+    assert.deepEqual(d, { ok: false, why: "signalValid" }, "an undersampled losing own context cannot borrow its siblings' wins");
+    const qualified = makeTape(cfg,"follow",tp.ind,tp.protect,"normal",["A"],
+      [1,-1].flatMap(side=>Array.from({length:50},(_,i)=>row("A",side as 1|-1,i%2?.025:-.01,6*H+i*1000))),[],[]);
     const book = new BlockBook(2);
     book.add({ cfg, sym: "A", side: -1, kind: "osc", r: .1, bsrc: ["config"] });
-    assert.deepEqual(execDecision(tp, 7 * H, o, { book, sym: "A", side: -1 }),
+    assert.deepEqual(execDecision(qualified, 7 * H, o, { book, sym: "A", side: -1 }),
       { ok: true, level: 0, vol: 1 }, "signalsOwn still honors its own config pause without reading pooled levels");
-    const long = execDecision(tp, 7 * H, o, { book, sym: "A", side: 1 });
+    const long = execDecision(qualified, 7 * H, o, { book, sym: "A", side: 1 });
     assert.ok(long.ok && long.vol > 1, "the short's pause cannot suppress the independent long");
   });
 
@@ -705,13 +716,16 @@ describe("Block types, Active, steps and pause", () => {
 
   it("execDecision end to end: overall type with Overall, Symbol, Direction and Indication sources", () => {
     const ind = INDICATIONS[0];
-    const t = makeTape("x", "magnet", ind.id, { tp: 0.02, sl: 0.02, trail: 0, hold: 32 }, "normal", ["A"], [], [], []);
+    const t = makeTape("x", "magnet", ind.id, { tp: 0.02, sl: 0.02, trail: 0, hold: 32 }, "normal", ["A"], qualifiedRows("x"), [], []);
     const book = new BlockBook();
     // 3 positive closes on A long of this kind; 2 negative on B short of another kind
     for (let i = 0; i < 3; i++) book.add({ sym: "A", side: 1, kind: ind.kind, ind: ind.id, r: 0.01 });
     for (let i = 0; i < 2; i++) book.add({ sym: "B", side: -1, kind: "zz", r: -0.01 });
     const o = {
       ...defaultWalkForward(DEFAULT_SETTINGS),
+      longH: 96,
+      preGate: false,
+      validLastN: 0,
       lastN: 0,
       symGate: undefined,
       toggles: { ...DEFAULT_TOGGLES, normal: true, block: true, blockActive: false },
@@ -751,9 +765,9 @@ describe("Block accepted Real order evidence", () => {
     sym: "A", side: 1, kind: ind.kind, ind: ind.id, cfg, r, exitT: H, entryT: 0, ...extra,
   });
   const tp = makeTape(cfg, "magnet", ind.id, { tp: .02, sl: .02, trail: 0, hold: 32 }, "normal", ["A"],
-    Array.from({ length: 30 }, (_, i) => i + 1).map((h) => ({ cfg, sym: "A", side: 1 as const, r: .1, entryT: (h - 1) * H, exitT: h * H,
-      entry: 100, exit: 110, reason: "tp" as const, bars: 1, mfe: 0, mae: 0 })), [], []);
-  const o = { ...defaultWalkForward(DEFAULT_SETTINGS), block: b, lastN: 0, symGate: undefined,
+    [...qualifiedRows(cfg), ...Array.from({ length: 30 }, (_, i) => i + 1).map((h) => ({ cfg, sym: "A", side: 1 as const, r: .1, entryT: (h - 1) * H, exitT: h * H,
+      entry: 100, exit: 110, reason: "tp" as const, bars: 1, mfe: 0, mae: 0 }))], [], []);
+  const o = { ...defaultWalkForward(DEFAULT_SETTINGS), longH: 96, block: b, lastN: 0, symGate: undefined,
     toggles: { ...DEFAULT_TOGGLES, normal: true, block: true, blockActive: false } };
 
   it("skipped profitable candidates never become accepted config or pooled evidence; accepted losses remain", () => {
@@ -1025,9 +1039,13 @@ describe("AutoBlockBook (windowAuto)", () => {
 
 describe("Direction gate (sideGateN)", () => {
   const ind = INDICATIONS[0];
-  const t = makeTape("x", "magnet", ind.id, { tp: 0.02, sl: 0.02, trail: 0, hold: 32 }, "normal", ["A"], [], [], []);
+  const t = makeTape("x", "magnet", ind.id, { tp: 0.02, sl: 0.02, trail: 0, hold: 32 }, "normal", ["A"],
+    [...qualifiedRows("x"), ...qualifiedRows("x", -1)], [], []);
   const o = {
     ...defaultWalkForward(DEFAULT_SETTINGS),
+    longH: 96,
+    preGate: false,
+    validLastN: 0,
     lastN: 0,
     symGate: undefined,
     toggles: { ...DEFAULT_TOGGLES, normal: true, block: false },
@@ -1072,7 +1090,13 @@ describe("Direction gate (sideGateN)", () => {
 });
 
 describe("Signal direction acceptance (signalSideAccept)", () => {
-  const sig = makeTape("s", "follow", "sig-ema-trend-s", { tp: 0.02, sl: 0.02, trail: 0, hold: 32 }, "normal", ["A"], [], [], []);
+  // Own causal history is independent of the candidate-side guard being isolated below. An empty Signal no
+  // longer qualifies merely because this separate guard has too few observations.
+  const own:Trade[]=["A","Z"].flatMap(sym=>[1,-1].flatMap(side=>Array.from({length:50},(_,i)=>({
+    cfg:"s",sym,side:side as 1|-1,entryT:i*1000,exitT:i*1000+1,entry:100,exit:100,
+    r:i%2?.025:-.01,unitR:i%2?.025:-.01,reason:"time" as const,bars:1,mfe:0,mae:0,kind:"normal" as const
+  }))));
+  const sig = makeTape("s", "follow", "sig-ema-trend-s", { tp: 0.02, sl: 0.02, trail: 0, hold: 32 }, "normal", ["A","Z"], own, [], []);
   const o = {
     ...defaultWalkForward(DEFAULT_SETTINGS),
     lastN: 0,

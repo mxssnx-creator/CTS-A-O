@@ -116,6 +116,34 @@ describe("stops: never closer to the mark than the venue accepts", () => {
         }
   });
 
+  it("snaps capped stops inward on both sides without violating venue clearance", () => {
+    for (const px of [10.2, 123.45, 1.0001, 0.0042, 62000])
+      for (const pxPrec of [1, 2, 4, 6, 8])
+        for (const side of [1, -1] as const) {
+          const s = spec({ pxPrec });
+          const stop = stopPxExchange(px, side, .02, s, 0, .02);
+          if (minStopDist(px, s) > .02) {
+            assert.equal(stop, 0, "no cap/clearance overlap means no valid stop");
+            continue;
+          }
+          assert.ok(stop > 0, `${px} / ${pxPrec} / ${side}`);
+          const distance = side * (px - stop) / px;
+          assert.ok(distance <= .02 + 1e-12 && distance + 1e-12 >= minStopDist(px, s));
+          assert.equal(Number(stop.toFixed(pxPrec)), stop, "venue-representable price");
+        }
+    const s = spec({ pxPrec: 4 });
+    assert.equal(stopPxExchange(10.2, 1, .02, s, 0, .02), 9.996);
+    assert.equal(stopPxExchange(10.2, -1, .02, s, 0, .02), 10.404);
+    assert.equal(stopPxExchange(1.0001, 1, .02, s, 0, .02), .9801);
+    assert.equal(stopPxExchange(1.0001, -1, .02, s, 0, .02), 1.0201);
+    for (const side of [1, -1] as const) {
+      assert.equal(stopPxExchange(10.2, side, .02, s, .021, .02), 0,
+        "learned venue clearance cannot silently widen the loss cap");
+      assert.equal(stopPxExchange(10.2, side, .01, s, 0, .02), stopPxExchange(10.2, side, .01, s),
+        "a tighter already-valid stop is unchanged");
+    }
+  });
+
   it("a distance under the venue minimum is widened to it, not snapped onto the mark", () => {
     // snapPx alone is the bug: a distance tighter than one tick rounds back to the mark and the venue refuses it
     const s = spec({ pxPrec: 4 });

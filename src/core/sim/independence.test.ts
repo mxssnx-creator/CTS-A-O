@@ -40,6 +40,7 @@ function trades(cfg: string, lose: number, win = 0.01, kind: StratKind = "normal
       entry: 100,
       exit: 100 * (1 + r),
       r,
+      unitR: r,
       reason: r > 0 ? "tp" : "sl",
       bars: 2,
       mfe: 0,
@@ -70,6 +71,10 @@ const base: WalkForwardOptions = {
   symGate: undefined,
   coord: { enabled: false, hourLock: 0, cooldown: "off", conflict: false, confirm: false },
   simH: 6,
+  // The fixture's 100 settled samples end 20h before the run; load that own proof
+  // explicitly instead of relying on an obsolete broad default lookback.
+  preH: 336,
+  longH: 336,
   validLastN: 0,
   lastN: 0,
   robustFrac: 0,
@@ -307,7 +312,7 @@ describe("orders still open at the end of the run", () => {
       for (let e = NOW - 120 * H; e < NOW - 2 * H; e += 30 * 60_000)
         out.push({
           ...{ cfg, sym: "AAA-USDT", side: 1, entryT: e, exitT: e + 20 * 60_000, entry: 100, exit: 100.8 },
-          ...{ r: 0.008, reason: "tp", bars: 2, mfe: 0, mae: 0, kind: "normal" },
+          ...{ r: 0.008, unitR: 0.008, reason: "tp", bars: 2, mfe: 0, mae: 0, kind: "normal" },
         } as Trade);
       return out;
     };
@@ -447,7 +452,7 @@ describe("continuous stability (gates.stableBlocks)", () => {
     for (let i = 0; i < 60; i++) {
       const entryT = t - 60 * H + i * H;
       const r = pattern(i);
-      xs.push({ cfg, sym: "AAA-USDT", side: 1, entryT, exitT: entryT + 30 * 60_000, entry: 100, exit: 100 * (1 + r), r, reason: r > 0 ? "tp" : "sl", bars: 2, mfe: 0, mae: 0, kind: "normal" } as Trade);
+      xs.push({ cfg, sym: "AAA-USDT", side: 1, entryT, exitT: entryT + 30 * 60_000, entry: 100, exit: 100 * (1 + r), r, unitR: r, reason: r > 0 ? "tp" : "sl", bars: 2, mfe: 0, mae: 0, kind: "normal" } as Trade);
     }
     return makeTape(cfg, "follow", IND, P, "normal", ["AAA-USDT"], xs, [], []);
   };

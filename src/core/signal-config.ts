@@ -12,6 +12,9 @@ export const SIGNAL_SOURCES: ReadonlyArray<{
   short: string;
   medium: string;
 }> = [
+  ...["apz-reclaim", "frama-pullback", "st-pullback"].map((name) => ({
+    name: `r-${name}`, label: `${name} (research)`, short: `r-${name}`, medium: `r-${name}-m`,
+  })),
   {
     name: "ema-cross",
     label: "EMA cross",
@@ -585,6 +588,10 @@ export interface SignalSettings {
   trailing: { tp: number[]; trailOfTp: number[]; slOfTp: number };
   /** Additional independent sets with a hard stop and peak trail, without any take-profit. 15m reference. */
   trailingOnly: { enabled: boolean; sl: number[]; trail: number[]; trailStep: number };
+  /** Independent peak-gap multipliers for capped, ATR and no-TP trailing (absent = existing scalar). */
+  trailRatios?: number[];
+  /** Signal protection ceiling from entry, no more than 3%; legacy configs retain their own ceiling. */
+  trailMax?: number;
   holdH: number;
   /** exit model of the signal configs: percent grid (Normal + Trailing), ATR grid, or both */
   exits: SignalExitModel;
@@ -674,6 +681,9 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   // regime breakout, regression channel, session trend, fractal breakout, AO saucer, inside-bar break, NR7 break,
   // Connors RSI); the rest are available but off (no evidence: docs/signals-validation.md)
   sources: {
+    "r-apz-reclaim": false,
+    "r-frama-pullback": false,
+    "r-st-pullback": false,
     // strongly negative over eight replay windows (net Σ trade %, orders, windows negative): Aroon −952 (120, 2 of 3),
     // Ichimoku cloud −462 (66, 2 of 2), Bollinger walk −349 (41, 1 of 2) — switched off again
     aroon: false,
@@ -735,6 +745,7 @@ export const DEFAULT_SIGNALS: SignalSettings = {
     trailStep: 1,
   },
   holdH: 48,
+  trailMax: 0.03,
   // both exit models: 77 percent + 18 ATR configs per signal (1.23× the percent-only tapes)
   // percent exits: with targets of 1–8 % (cost drag ≤ 20 % of the smallest target) and 15m / 30m lanes the signal orders were
   // positive in 4 of 4 windows (PF 1.13 / 2.28 / 2.93 / 4.93); ATR exits lost in 2 of 3
@@ -935,6 +946,11 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
       : [];
     return v.length || (empty && Array.isArray(xs)) ? [...new Set(v)].slice(0, 8) : [...def];
   };
+  if (s?.trailRatios !== undefined) out.trailRatios = nums(s.trailRatios, 0.1, 2, [1]);
+  const trailMax = Number(out.trailMax);
+  out.trailMax = Number.isFinite(trailMax)
+    ? Math.min(0.03, Math.max(0.002, trailMax))
+    : DEFAULT_SIGNALS.trailMax;
   a.sl = nums(a.sl, 0.2, 2, DEFAULT_SIGNALS.atr.sl);
   const to = out.trailingOnly;
   to.enabled = to.enabled !== false;

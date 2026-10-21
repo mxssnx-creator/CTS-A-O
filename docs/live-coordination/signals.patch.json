@@ -16,6 +16,9 @@
     "grid": {
       "micro": { "maxHoldMin": 15 }
     },
+    "grid": {
+      "micro": { "maxHoldMin": 15 }
+    },
     "toggles": {
       "normal": true,
       "trailing": true,

@@ -54,6 +54,8 @@ class Ex implements ExchangeClient {
       const next = +((this.positions.get(key) ?? 0) + (into ? 1 : -1) * Number(p.quantity)).toFixed(6);
       if (next > 1e-9) this.positions.set(key, next);
       else this.positions.delete(key);
+      return { order: { status: "FILLED", executedQty: Number(p.quantity),
+        avgPrice: sym === "S1-USDT" ? 10 : 20 } };
     } else {
       // BingX keeps one close-position stop per position side
       if (
@@ -73,7 +75,8 @@ class Ex implements ExchangeClient {
         stopPrice: Number(p.stopPrice),
       });
     }
-    return undefined;
+    return { order: { orderId: `r${++this.seq}`, status: p.type === "MARKET" ? "FILLED" : "NEW",
+      ...(p.type === "MARKET" ? { executedQty: Number(p.quantity) } : {}) } };
   }
   async cancel(_s: string, id: string) {
     const n = this.orders.length;
@@ -112,6 +115,7 @@ function rtOf() {
         maxExposureX: 0,
         maxRiskPct: 0,
         maxBackstopLossPct: 0,
+        maxChase: 0.25,
       },
     },
     // Settled synthetic accepted outcomes and independent owned-paper execution evidence are declared per exact

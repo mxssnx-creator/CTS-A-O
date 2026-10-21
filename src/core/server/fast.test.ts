@@ -1,12 +1,24 @@
 // The fast loops: engine cycle (250 ms) without needless work, tick (100 ms) marking open positions to market and
 // driving the live step, and a live book read over REST at most every syncMs.
-import { describe, it } from "node:test";
+import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { CoreRuntime } from "./runtime.server.ts";
+import { CoreRuntime as BaseRuntime } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
 import { cachedClient, type ExchangeClient } from "./live.server.ts";
 import { PriceStream } from "./stream.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
+import { pinSyntheticEnd, runtimeFixtureGrid, trackRuntimes } from "../test-support.ts";
+
+pinSyntheticEnd();
+
+const tracked = trackRuntimes();
+class CoreRuntime extends BaseRuntime {
+  constructor(...args: ConstructorParameters<typeof BaseRuntime>) {
+    super(...args);
+    tracked.track(this);
+  }
+}
+afterEach(() => tracked.disposeAll());
 
 const small = {
   symbols: 3,
@@ -15,7 +27,8 @@ const small = {
   mainTop: 10,
   refineTop: 4,
   evalTop: 6,
-  grid: { short: false as const },
+  grid: { ...runtimeFixtureGrid(), short: false as const },
+  exitStrategy: { enabled: false },
 };
 // a limit that only guards against a hang: the first synthetic compute alone takes ~155 s on the 4-core host the live
 // desks share, and the suite runs two files at once (180 s timed out under load, never on a hang)
@@ -47,8 +60,8 @@ describe("fast loops", { timeout: 1_200_000 }, () => {
   });
 
   it("the tick marks open positions to market; cycles without a new bar do not restep the paper book", async () => {
-    // one symbol over six days with the runtime suite's lenient gates and tactics off: the first compute takes ~30 s
-    // (it was ~150–210 s over three symbols and 18 days) and opens paper positions to mark (probed on 11 Oct)
+    // This tests tick/cycle mechanics, independently of whether a random market qualifies a new position.
+    // Use a pinned feed and one explicitly held, unscaled Normal position after the actual first compute.
     const rt = new CoreRuntime(
       new CoreDb(":memory:"),
       {
@@ -63,6 +76,7 @@ describe("fast loops", { timeout: 1_200_000 }, () => {
         tactics: { session: false, volRegime: false, trendStrength: false, cooldown: false, cooldownBars: 4 },
         cycleMs: 250,
         tickMs: 50,
+        sizing: { mode: "fixed", pct: 0.02 },
         focus: [],
         pinned: [],
         toggles: { normal: true } as never,
@@ -73,10 +87,16 @@ describe("fast loops", { timeout: 1_200_000 }, () => {
     rt.wf.validLastN = 0;
     rt.wf.lastN = 0;
     rt.start();
-    await until(
-      () =>
-        rt.status.computes >= 1 && rt.status.state === "running" && rt.paper.positions.length > 0,
-    );
+    await until(() => rt.status.computes >= 1 && rt.status.state === "running", 120_000);
+    const [sym, candles] = rt.candles.entries().next().value!;
+    const last = candles.bar(candles.n - 1);
+    const cfg = "follow|ema-9-21@m15|tp2|sl2|tr0|h32";
+    rt.paper.positions = [{
+      cfg, sym, side: 1, entryT: last.t, entryI: candles.n - 1,
+      entry: last.c, stop: last.c * 0.98, target: last.c * 1.02,
+      peak: last.c, trailOn: false, mtm: -rt.settings.cost,
+    }];
+    rt.paper.selected = [cfg];
     // count paper steps from here on
     // (the cycle drives the paper step as a generator in slices: count its runs, not stepPaper's)
     let steps = 0;
