@@ -50,4 +50,28 @@ describe("control completeness (keyFunnel)", () => {
     assert.equal(keys[0].key, "E|1");
     assert.equal(keys.at(-1)!.key, "A|1");
   });
+
+  it("lanes held back by the signal proof are named when they are most of the lanes not sent", () => {
+    const funnel = new Map([
+      f("P|1", { paper: 3, notSent: 3, unproven: 3 }),
+      f("Q|-1", { paper: 4, notSent: 4, unproven: 2 }),
+      f("R|1", { paper: 3, notSent: 3, unproven: 1 }),
+      f("S|1", { paper: 3, notSelected: 2, notSent: 1, unproven: 1 }),
+    ]);
+    const why = Object.fromEntries(keyFunnel(funnel, [], []).map((k) => [k.key, k.why]));
+    assert.deepEqual(why, {
+      "P|1": "not proven (live.signalProofN)",
+      "Q|-1": "not proven (live.signalProofN)",
+      "R|1": "not sent (live kinds / ranges)",
+      "S|1": "not selected / signal unit inactive",
+    });
+  });
+
+  it("positionSize min: a key whose sent lanes Block raised says Block does nothing on the exchange", () => {
+    const funnel = new Map([f("A|1", { paper: 3, sent: 3, raised: 2 }), f("B|1", { paper: 1, sent: 1 })]);
+    const min = keyFunnel(funnel, [{ key: "A|1" }, { key: "B|1" }], [], { sizeMin: true });
+    assert.match(min.find((k) => k.key === "A|1")!.blockNote ?? "", /Block raised 2 position\(s\); live\.positionSize "min"/);
+    assert.equal(min.find((k) => k.key === "B|1")!.blockNote, undefined, "nothing raised: no note");
+    assert.equal(keyFunnel(funnel, [{ key: "A|1" }], []).find((k) => k.key === "A|1")!.blockNote, undefined, "lane sizing: none");
+  });
 });

@@ -385,6 +385,35 @@ test("preset diagrams and info: positions per hour, PF of the last 12 / 25 / 75 
     assert.ok(s.info.ddtH > 0);
 });
 
+test("preset PF is the unit-return PF; the cash PF is apart (a big losing size does not set the PF)", async () => {
+    const { presetSeries } = await import("./statistics.ts");
+    const T0 = Date.UTC(2026, 9, 1);
+    const base = { cfg: "b|ema-9-21|tp2|sl2|tr0|h16", sym: "A-USDT", side: 1, entry: 100, kind: "normal" as never };
+    // a win of +2 % at 100 USD and a loss of -1 % at 1000 USD: unit PF 2, cash PF 2 / 10
+    const trades = [
+      { ...base, entryT: T0, exitT: T0 + 3_600_000, r: 0.02 },
+      { ...base, entryT: T0 + 7_200_000, exitT: T0 + 10_800_000, r: -0.01 },
+    ];
+    const s = presetSeries(trades, {
+      startT: T0,
+      endT: T0 + 4 * 3_600_000,
+      balance: 1000,
+      unit: (x: { r: number }) => (x.r > 0 ? 100 : 1000),
+      price: () => 100,
+      cost: 0.002,
+      leverage: 10,
+      days: 1,
+      points: 40,
+    });
+    assert.ok(Math.abs(s.info.pf! - 2) < 1e-9, String(s.info.pf));
+    assert.ok(Math.abs(s.info.pfCash - 0.2) < 1e-9, String(s.info.pfCash));
+    assert.ok(s.info.netUsd < 0, "the cash result is still the cash result");
+    // a Block-raised order (mult 2) weighs one unit in the PF, as the eval's unitR
+    const raised = [{ ...trades[0], mult: 2, r: 0.04 }, trades[1]];
+    const s2 = presetSeries(raised, { startT: T0, endT: T0 + 4 * 3_600_000, balance: 1000, unit: () => 100, price: () => 100, cost: 0.002, leverage: 10, days: 1, points: 40 });
+    assert.ok(Math.abs(s2.info.pf! - 2) < 1e-9, String(s2.info.pf));
+});
+
 test("ranges are Normal / Trailing only; Signals and Historic Exit use independent strategy groups", () => {
   const r = buildStatistics({
     source: "sim",
@@ -476,6 +505,102 @@ test("an unmeasured fill is charged the model round-trip fee share, never zero",
   assert.equal(xs.length, 1);
   // +10 gross, −0.1 model fee on the open, −0.05 measured on the close → 9.85 on a notional of 100
   assert.ok(Math.abs(xs[0].r - 0.0985) < 1e-12, `r ${xs[0].r}`);
+});
+
+test("live ledger: a flat marker without its price is booked at a verified price as \"flat\" (out of PF), else counted unpriced", async () => {
+  const { liveLedger, buildStatistics: build } = await import("./statistics.ts");
+  const T = 1_790_000_000_000;
+  const row = (sym: string, coid: string, kind: string, qty: number, px: number, at: number) => ({
+    coid, sym, side: 1, kind, qty, px, status: "ok", at, fillPx: kind === "F" ? null : px, fee: 0,
+  });
+  const rows = [
+    row("A-USDT", "CTSBV2_Ea1", "O", 1, 100, T),
+    row("A-USDT", "flat-1", "F", 0, 0, T + 60_000),
+    row("B-USDT", "CTSBV2_Ea2", "O", 2, 50, T),
+    row("B-USDT", "flat-2", "F", 0, 0, T + 60_000),
+    // still open at the end
+    row("C-USDT", "CTSBV2_Ea3", "O", 1, 10, T + 1),
+  ];
+  const led = liveLedger(rows, "CTSBV2_".length, 0.002, {
+    flatPx: (sym) => (sym === "A-USDT" ? { px: 97, from: "lane exit" } : null),
+  });
+  assert.deepEqual(led.closed.map((x) => [x.sym, x.reason, x.pxFrom, x.coid]), [["A-USDT", "flat", "lane exit", "flat-1"]]);
+  // −3 gross, model fees 0.1 + 0.097
+  assert.ok(Math.abs(led.closed[0].r * led.closed[0].notional - -3.197) < 1e-9);
+  assert.deepEqual(led.unpriced.map((x) => [x.sym, x.qty, x.notional]), [["B-USDT", 2, 100]]);
+  assert.deepEqual(led.open.map((x) => [x.sym, x.qty, x.entry]), [["C-USDT", 1, 10]]);
+  // in the balance, out of every PF; counted apart from hand
+  const r = build({
+    source: "live",
+    trades: [...led.closed, { ...led.closed[0], cfg: "live|A-USDT|tp0|sl0|tr0|h0", reason: "close", r: 0.01, exitT: T + 120_000 }],
+    startT: T - 60_000,
+    endT: T + 3_600_000,
+    balance: 100,
+    unit: (x) => (x as { notional?: number }).notional ?? 100,
+    price: () => 10,
+    cost: 0.002,
+    leverage: 5,
+    minActiveLevel: 1,
+    open: led.open.map((x) => ({ ...x, exitT: Infinity, r: 0 })),
+  });
+  assert.equal(r.total.n, 1, "the flat close is not a result");
+  assert.equal(r.flat.n, 1);
+  assert.ok(Math.abs(r.flat.usd - -3.197) < 1e-9);
+  assert.equal(r.open.positions, 1);
+  // the open position is in the timeline: its margin at the given leverage (10 / 5)
+  assert.ok(Math.abs(r.timeline.points.at(-1)!.margin - 2) < 1e-9, `margin ${r.timeline.points.at(-1)!.margin}`);
+  assert.ok(Math.abs(r.timeline.points.at(-1)!.balance - (100 - 3.197 + 1)) < 1e-6, "flat money in the balance");
+});
+
+test("timeline: an open position's mark charges the round trip once — the equity does not jump when it closes", async () => {
+  const { timeline: tlOf } = await import("./statistics.ts");
+  const M = 60_000;
+  const T = 1_790_000_000_000;
+  // r is net of the round trip (0.2 %): closed at an unchanged price r = −0.002
+  const x = { cfg: "live|A|tp0|sl0|tr0|h0", sym: "A", side: 1, entryT: T, exitT: T + 10 * M, entry: 100, r: -0.002 };
+  const t = tlOf([x], { startT: T, endT: T + 20 * M, balance: 100, unit: () => 50, price: () => 100, cost: 0.002, leverage: 10, points: 20 });
+  const before = t.points.find((p) => p.t === T + 9 * M)!;
+  const after = t.points.find((p) => p.t === T + 10 * M)!;
+  assert.ok(Math.abs(before.equity - after.equity) < 1e-9, `${before.equity} → ${after.equity}`);
+  assert.ok(Math.abs(after.equity - 99.9) < 1e-9);
+});
+
+test("Block Overall per-source rows: each source its own leg's share of the stacked trade, not the whole stack", () => {
+  // one Overall trade at 3× (base 1 + overall leg 1.5 + symbol leg 0.5), +1 % a unit → stored +3 %
+  const ov = tr({ mult: 3, level: 3, legs: { overall: 1.5, symbol: 0.5 }, r: 0.03 });
+  const r = buildStatistics({
+    source: "sim",
+    trades: [ov],
+    startT: T0,
+    endT: T0 + 4 * H,
+    balance: 100,
+    unit: () => 10,
+    price: () => null,
+    cost: 0.002,
+    leverage: 10,
+    minActiveLevel: 2,
+    presets: {},
+  });
+  const row = (k: string) => r.subTypes.find((x) => x.key === k)!;
+  assert.ok(Math.abs(row("Block raised").usd - 0.3) < 1e-9, "the raised row keeps the whole trade");
+  assert.ok(Math.abs(row("Block overall").usd - 0.15) < 1e-9, `overall: 1.5 units of +1 %: ${row("Block overall").usd}`);
+  assert.ok(Math.abs(row("Block symbol").usd - 0.05) < 1e-9, `symbol: 0.5 units: ${row("Block symbol").usd}`);
+  assert.equal(row("Block overall").n, 1);
+  // a relation volume on top (coordVol) scales the trade, not the shares between the sources
+  const cv = buildStatistics({
+    source: "sim",
+    trades: [{ ...ov, mult: 6, coordVol: 2, r: 0.06 }],
+    startT: T0,
+    endT: T0 + 4 * H,
+    balance: 100,
+    unit: () => 10,
+    price: () => null,
+    cost: 0.002,
+    leverage: 10,
+    minActiveLevel: 2,
+    presets: {},
+  });
+  assert.ok(Math.abs(cv.subTypes.find((x) => x.key === "Block overall")!.usd - 0.3) < 1e-9);
 });
 
 test("cash PF uses actual dollars: normalized PF 1.36 can be cash PF 0.20", () => {

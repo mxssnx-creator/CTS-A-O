@@ -71,6 +71,30 @@ describe("walk-forward variants", () => {
     assert.equal(new Set(ids).size, ids.length);
   });
 
+  it("a global last-N row is global: the per-range values of that key are dropped (wf.rangeOpts), the others kept", () => {
+    const ro = { mn: { lastN: 5, validLastN: 30, mode: "durable" as const }, sh: { lastN: 10 } };
+    const vs = walkForwardVariants({ ...base, rangeOpts: ro }, { kinds, signalTapes: 0 });
+    const e = vs.find((v) => v.id === "gate:lastN-5")!;
+    assert.equal(e.opts!.lastN, 5);
+    assert.deepEqual(e.opts!.rangeOpts, { mn: { validLastN: 30, mode: "durable" } });
+    assert.match(e.change, /per-range/);
+    const val = vs.find((v) => v.id === "gate:validLastN-0")!;
+    assert.equal(val.opts!.validLastN, 0);
+    assert.deepEqual(val.opts!.rangeOpts, { mn: { lastN: 5, mode: "durable" }, sh: { lastN: 10 } });
+    // every other row keeps the per-range options as run
+    assert.deepEqual(vs.find((v) => v.id === "gate:warmup")!.opts!.rangeOpts, ro);
+    // without rangeOpts the rows are as before (no key added)
+    const plain = walkForwardVariants(base, { kinds, signalTapes: 0 });
+    const p0 = plain.find((v) => v.id === "gate:lastN-5")!;
+    assert.equal("rangeOpts" in p0.opts!, false);
+    assert.doesNotMatch(p0.change, /per-range/);
+    // a key no range sets leaves rangeOpts as run and the label as before
+    const only = walkForwardVariants({ ...base, rangeOpts: { mn: { mode: "durable" } } }, { kinds, signalTapes: 0 });
+    const o0 = only.find((v) => v.id === "gate:lastN-5")!;
+    assert.deepEqual(o0.opts!.rangeOpts, { mn: { mode: "durable" } });
+    assert.doesNotMatch(o0.change, /per-range/);
+  });
+
   it("signals off empties the active set and drops the ranking", () => {
     const vs = walkForwardVariants(
       { ...base, signalActive: new Set(["b|sig-x|A"]) },

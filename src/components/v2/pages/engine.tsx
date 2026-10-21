@@ -5,7 +5,7 @@ import { useConn } from "../conn";
 import { PrehistoricPanel } from "../prehistoric";
 import { unitStatsPfText } from "../accounting";
 import { MultiArcGauge } from "../charts";
-import { Confirm, Empty, ErrorNote, fmt, Kpi, Line, Panel, Pill, Switch, usePoll } from "../ui";
+import { Age, Confirm, Empty, ErrorNote, fmt, Kpi, Line, Panel, Pill, Switch, usePoll } from "../ui";
 
 type Any = any;
 
@@ -128,7 +128,8 @@ export function EnginePage() {
             )}
             <Line k="Cycles · computes" v={`${st.cycles} · ${st.computes}`} />
             <Line k="Last compute" v={`${fmt.num(st.lastComputeMs)} ms`} />
-            <Line k="Heartbeat" v={fmt.ago(st.heartbeat)} />
+            <Line k="Heartbeat (last progress)" v={<Age at={st.heartbeat} staleMs={isBusy(st.state) ? 60_000 : 600_000} />} />
+            <Line k="Stage since" v={<Age at={st.stageAt} staleMs={Infinity} />} />
             <Line k="Next cycle" v={fmt.time(st.nextCycleAt)} />
             <Line k="Started" v={fmt.time(st.startedAt)} />
             {st.error && <Line k="Error" v={st.error} className="v2-down" />}
@@ -136,7 +137,14 @@ export function EnginePage() {
           <div className="v2-lines">
             <Line k="Source" v={st.source} />
             <Line k="Symbols" v={st.symbols.length} />
-            <Line k="Last closed bar" v={fmt.time(st.lastBarT)} />
+            <Line
+              k="Last closed bar"
+              v={
+                <>
+                  {fmt.time(st.lastBarT)} UTC · opened <Age at={st.lastBarT} staleMs={10 * 60_000} />
+                </>
+              }
+            />
             <Line k="Node" v={d.process.node} />
             <Line k="RSS" v={fmt.bytes(d.process.rss)} />
             <Line k="Uptime" v={fmt.h(d.process.uptime / 3600)} />
@@ -385,7 +393,7 @@ function Connections() {
               <th>live</th>
               <th className="num">computes</th>
               <th className="num">sim PF</th>
-              <th className="num">paper P&amp;L</th>
+              <th className="num">paper P&amp;L (virtual)</th>
               <th />
             </tr>
           </thead>

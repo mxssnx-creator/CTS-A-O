@@ -27,7 +27,18 @@ import {
 } from "./live.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
-import { ExchangeRejected, noteRateLimit } from "../exchange/bingx.server.ts";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  blockingBanUntil,
+  clearRateLimit,
+  ExchangeRejected,
+  KLINES,
+  noteRateLimit,
+  rateLimitedUntil,
+  TICKERS,
+} from "../exchange/bingx.server.ts";
 import {
   authorizeSyntheticLanes,
   rng,
@@ -448,8 +459,8 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     const held = new Map([
       ["A-USDT|1", 5], // 2 ours + 3 added by someone else on the same symbol and direction
       ["B-USDT|1", 4], // exactly ours
-      ["C-USDT|-1", 3], // no ledger entry: left as it is
-      ["D-USDT|1", 4.1], // within the rounding tolerance of ours (4)
+      ["C-USDT|-1", 3], // no ledger entry: own quantity unverified — not held, never touched
+      ["D-USDT|1", 4.1], // 0.1 more than ours (4): held at ours, the rest someone else's
     ]);
     const ledger = new Map([
       ["A-USDT|1", 2],
@@ -457,11 +468,15 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
       ["D-USDT|1", 4],
     ]);
     const excess = capHeldToOwn(held, ledger);
-    assert.deepEqual(excess, [{ key: "A-USDT|1", exchange: 5, own: 2 }]);
+    assert.deepEqual(excess, [
+      { key: "A-USDT|1", exchange: 5, own: 2 },
+      { key: "C-USDT|-1", exchange: 3, own: null },
+      { key: "D-USDT|1", exchange: 4.1, own: 4 },
+    ]);
     assert.equal(held.get("A-USDT|1"), 2);
     assert.equal(held.get("B-USDT|1"), 4);
-    assert.equal(held.get("C-USDT|-1"), 3);
-    assert.equal(held.get("D-USDT|1"), 4.1);
+    assert.equal(held.has("C-USDT|-1"), false);
+    assert.equal(held.get("D-USDT|1"), 4);
     // a lane that ended closes the position: the close is the own 2, never the 5 on the exchange
     const plan = planControl({ targets: [], held, foreign: new Set(), rebalancePct: 0.25 });
     const close = plan.actions.find((x) => x.key === "A-USDT|1")!;
@@ -795,15 +810,17 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     await step(a.rt, ex);
     const held = ex.positions.get("S2-USDT|SHORT");
     assert.ok(held && held > 0);
-    // restart: new process state, same exchange — ownership comes from the own stop on the exchange
+    // restart that lost the database: the own stop rests on the exchange, but no own fill proves any quantity — own
+    // quantity unverified: never adopted, never closed on a guess (relation-design A3: held = min(ledger, exchange))
     const b = fakeRt(new CoreDb(":memory:"));
     b.rt.paper.positions = [];
-    await step(b.rt, ex);
-    assert.equal(
-      ex.positions.has("S2-USDT|SHORT"),
-      false,
-      "own position closed after restart when no lane holds it",
-    );
+    const before = ex.log.length;
+    const unv = await step(b.rt, ex);
+    assert.equal(ex.positions.get("S2-USDT|SHORT"), held, "the position stays as it is after a restart without its ledger");
+    assert.ok(!ex.log.slice(before).some((o) => o.symbol === "S2-USDT"), "no order on it");
+    assert.ok(unv.skipped.some((x) => /own quantity unverified/.test(x.why)), JSON.stringify(unv.skipped));
+    // (the operator settles it by hand; the rest of the run starts from a clean book)
+    ex.closeByHand("S2-USDT|SHORT", 24);
     // connection identity changes → flagged, full re-sync, still consistent
     b.rt.paper.positions = [{ cfg: "k", sym: "S3-USDT", side: 1, entry: 31, stop: 30, vol: 1 }];
     await step(b.rt, ex);
@@ -1349,6 +1366,82 @@ describe("control orders: listed symbols, bans, offline", () => {
     assert.equal(books, 0);
     assert.match(st.reason, /rate limit/);
   });
+
+  it("a market-data ban (klines, tickers) never holds the step: an ended lane closes, a missing stop is repaired", async () => {
+    const ex = new SimExchange(rng(19));
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    const stopOf = (o: { clientOrderId?: string }) => !!o.clientOrderId?.startsWith(`${liveTag("bingx-vst-02")}S`);
+    rt.paper.positions = [
+      { cfg: "a", sym: "S1-USDT", side: 1, entry: 17, stop: 16, vol: 1 },
+      { cfg: "b", sym: "S2-USDT", side: 1, entry: 24, stop: 23, vol: 1 },
+    ];
+    await step(rt, ex);
+    assert.ok(ex.positions.has("S1-USDT|LONG") && ex.positions.has("S2-USDT|LONG"));
+    // the bar pull and the ticker read are banned, as the bar pull notes it (BingX 100410, naming no end or endpoint)
+    const now = Date.now();
+    assert.ok(noteRateLimit("BingX 100410: 请稍后重试", now, KLINES) > now);
+    assert.ok(noteRateLimit("BingX 100410: 请稍后重试", now, TICKERS) > now);
+    // S2's lane ended; S1's stop vanished
+    rt.paper.positions = [{ cfg: "a", sym: "S1-USDT", side: 1, entry: 17, stop: 16, vol: 1 }];
+    ex.orders = ex.orders.filter((o) => !(o.venueSymbol === "S1-USDT" && stopOf(o)));
+    const st = await step(rt, ex);
+    assert.doesNotMatch(st.reason, /rate limit/);
+    assert.equal(ex.positions.has("S2-USDT|LONG"), false, "the ended lane is closed during the klines ban");
+    assert.ok(ex.orders.some((o) => o.venueSymbol === "S1-USDT" && stopOf(o)), "the stop is repaired during the klines ban");
+    assert.ok(ex.positions.has("S1-USDT|LONG"));
+  });
+
+  it("a market-data error inside the step is never noted as a ban of every call", async () => {
+    const ex = new SimExchange(rng(23));
+    const { rt, prices } = fakeRt(new CoreDb(":memory:"));
+    rt.paper.positions = [{ cfg: "a", sym: "S1-USDT", side: 1, entry: 17, stop: 16, vol: 1 }];
+    await step(rt, ex);
+    assert.ok(ex.positions.has("S1-USDT|LONG"));
+    let i = 0;
+    for (const msg of ["BingX 100410: 请稍后重试", `BingX 100410: 请稍后重试 [${TICKERS}]`]) {
+      rt.freshTickers = async () => {
+        throw new Error(msg);
+      };
+      // a lane joins: the step reads its prices
+      rt.paper.positions.push({ cfg: `n${i}`, sym: `S${3 + i++}-USDT`, side: 1, entry: 31, stop: 30, vol: 1 });
+      const st = await step(rt, ex);
+      assert.equal(st.error, msg);
+      assert.doesNotMatch(st.reason ?? "", /rate limit/, msg);
+      assert.equal(rateLimitedUntil(Date.now(), "*"), 0, msg);
+      assert.equal(blockingBanUntil(), 0, msg);
+    }
+    rt.freshTickers = async () => {
+      rt.tickersAt = Date.now();
+      return prices;
+    };
+    // the next step runs: the ended lane is closed
+    rt.paper.positions = [];
+    await step(rt, ex);
+    assert.equal(ex.positions.has("S1-USDT|LONG"), false);
+  });
+
+  it("a \"*\" from an old shared ban file still pauses the control step", async () => {
+    const f = join(mkdtempSync(join(tmpdir(), "cts-ban-")), "ban");
+    process.env.CTS_BINGX_BAN_FILE = f;
+    try {
+      writeFileSync(f, JSON.stringify({ "*": Date.now() + 120_000 }));
+      const ex = new SimExchange(rng(13));
+      let books = 0;
+      const orig = ex.book.bind(ex);
+      ex.book = async () => {
+        books++;
+        return orig();
+      };
+      const { rt } = fakeRt(new CoreDb(":memory:"));
+      rt.paper.positions = [{ cfg: "a", sym: "S1-USDT", side: 1, entry: 17, stop: 16, vol: 1 }];
+      const st = await step(rt, ex);
+      assert.equal(books, 0);
+      assert.match(st.reason, /rate limit/);
+    } finally {
+      delete process.env.CTS_BINGX_BAN_FILE;
+      clearRateLimit();
+    }
+  });
 });
 
 describe("leverage: always the maximum, quantity at the exchange minimum", () => {
@@ -1792,5 +1885,54 @@ describe("live chain at x01 scale (568 configs, 50 symbols, $8.31 equity)", () =
     const byVol = [...targets].sort((a, b) => a.vol - b.vol);
     assert.ok(byVol.every((t, i) => i === 0 || t.notional >= byVol[i - 1].notional - 1e-9));
     assert.ok(new Set(targets.map((t) => t.notional.toFixed(2))).size >= 3, "sizes differ");
+  });
+});
+
+// The account view (operator, 14 Oct): own positions from the exchange with their entry, mark, uPnL, margin, leverage
+// and stop; positions not ours shown apart and never counted in the own numbers (manual quantity is never own).
+describe("account positions: own and foreign apart", () => {
+  it("own sums take the own share only; a foreign position is counted apart; the stop and venue fields are read", async () => {
+    const { accountPositions } = await import("./live.ts");
+    const book = {
+      positions: [
+        { symbol: "AUSDT", venueSymbol: "A-USDT", side: "long" as const, qty: 2, upnl: 1, margin: 4, entry: 10, mark: 10.5, leverage: 20 },
+        { symbol: "BUSDT", venueSymbol: "B-USDT", side: "short" as const, qty: 1, upnl: -3, margin: 5, entry: 7, mark: 7.2, leverage: 10 },
+        // someone added to our A long: the venue merges both, we opened half of it
+        { symbol: "CUSDT", venueSymbol: "C-USDT", side: "long" as const, qty: 4, upnl: 2, margin: 8 },
+      ],
+      orders: [
+        { venueSymbol: "A-USDT", symbol: "AUSDT", positionSide: "LONG" as const, type: "STOP_MARKET", stopPrice: 9.5 },
+        { venueSymbol: "A-USDT", symbol: "AUSDT", positionSide: "LONG" as const, type: "TAKE_PROFIT_MARKET", stopPrice: 12 },
+      ],
+    };
+    const held = new Map([
+      ["A-USDT|1", 2],
+      ["C-USDT|1", 1],
+    ]);
+    const r = accountPositions(book, held, new Set(["B-USDT|-1"]));
+    const a = r.rows.find((x) => x.key === "A-USDT|1")!;
+    assert.deepEqual(
+      [a.ownQty, a.entry, a.mark, a.leverage, a.stop, a.foreign],
+      [2, 10, 10.5, 20, 9.5, false],
+    );
+    assert.equal(r.rows.find((x) => x.key === "B-USDT|-1")?.foreign, true);
+    assert.equal(r.rows[r.rows.length - 1].key, "B-USDT|-1", "foreign rows listed after the own ones");
+    assert.equal(r.own.n, 2);
+    // A whole (1) + a quarter of C (0.5); B (−3) is not ours
+    assert.ok(Math.abs(r.own.upnl - 1.5) < 1e-9, `own upnl ${r.own.upnl}`);
+    assert.ok(Math.abs(r.own.margin - 6) < 1e-9);
+    assert.deepEqual(r.foreign, { n: 1, upnl: -3, margin: 5 });
+  });
+
+  it("the live step stamps the account with the own share and the foreign position apart", async () => {
+    const ex = new SimExchange().withEquity(50);
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    // a position nobody of ours opened (no own order, no ledger row): foreign
+    ex.positions.set("S5-USDT|LONG", 3);
+    await stepLive(rt as unknown as CoreRuntime, [], 1, ex as unknown as ExchangeClient);
+    const st = liveKv<{ account?: { own?: { n: number }; foreign?: { n: number }; positionsDetail?: Array<{ key: string; foreign: boolean; ownQty: number }> } }>(rt.db, "liveStatus")!;
+    assert.equal(st.account?.own?.n, 0);
+    assert.equal(st.account?.foreign?.n, 1);
+    assert.deepEqual(st.account?.positionsDetail?.map((x) => [x.key, x.foreign, x.ownQty]), [["S5-USDT|1", true, 0]]);
   });
 });

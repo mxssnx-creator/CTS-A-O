@@ -125,6 +125,8 @@ export const DEFAULT_TACTICS: Tactics = {
  * Block default from the 12-symbol sweeps (docs/block-sweep.md): Overall, every source of overall / symbol /
  * direction / indication its own Block, 8 levels, Active from level 2, ratio 0.5, total max stack 8× including
  * base and every source, 7 volume steps (one step = one more unit: one exchange minimum lot live), no pause.
+ * The corrected rules (stepFloor false, windowHours, levelMinWin) stay off here: a proposal pending a causal eval
+ * (docs/positive-coordinations.md, "Block Overall: corrected rules").
  */
 export const DEFAULT_BLOCK: BlockConfig = {
   sources: {
@@ -152,7 +154,8 @@ export const DEFAULT_BLOCK: BlockConfig = {
   ranges: {
     levels: [1, 8],
     volRatio: [0.1, 1],
-    steps: [0, 6],
+    // the allowed range holds the default (7 steps: one step = one unit up to 8×); it was [0, 6], below it
+    steps: [0, 7],
     increase: [0.1, 0.5],
     pause: [0, 6],
   },
@@ -261,6 +264,13 @@ export interface CoreSettings {
   symbolRank: "volatility1h" | "volume" | "market" | "gainers" | "losers";
   /** engine cycle: checks for newly closed bars and runs the stages when one closed (ms) */
   cycleMs: number;
+  /**
+   * the cycle's compute mode. "full" (default, also when unset): every new bar recomputes Base → Main → tapes → run.
+   * "incremental": between heavy computes the validated set's tapes are continued over the new bars and the paper step
+   * runs on them (src/core/server/incremental.ts); the heavy compute runs again every `heavyEveryBars` bars, at each
+   * hour (the seats are hourly) and whenever the settings, the universe or the tapes cannot be continued.
+   */
+  runtime?: { cycle?: "full" | "incremental"; heavyEveryBars?: number };
   /** tick: open paper positions marked to market from the price stream and the live step (ms) */
   tickMs: number;
   /** effective round-trip position cost (fraction); = 2 × (taker fee + slippage per side) */
@@ -384,13 +394,23 @@ export interface LiveSettings {
    * overall: how large an exchange position is. "lanes" (default): its lanes' volume × ratio units. "min": ratio
    * units whatever its lanes — with minQty sizing the exchange minimum × ratio (ratio 1: the minimum itself). A
    * position then opens with its first lane and closes with its last, never resized in between, and the budgets carry
-   * a position for every symbol × side the paper book holds.
+   * a position for every symbol × side the paper book holds. "risk": every position risks B × riskPerPositionPct ×
+   * ratio at its stop (B = min(wallet, equity)), whatever its lanes' volume — capped by min(maxNotionalUsd,
+   * maxPositionX × B) and the account budgets on B. With "min" Block does nothing on the exchange: its raised volume
+   * (any type, Overall legs too) never reaches an order — the control status' key funnel says so per key
+   * (KeyFunnel.raised / blockNote), and the paper book and the simulation keep Block's volume.
    */
-  positionSize?: "lanes" | "min";
+  positionSize?: "lanes" | "min" | "risk";
+  /**
+   * overall, positionSize "risk": the share of B = min(wallet, equity) every position risks at its lanes' stop
+   * (× ratio): notional = B × riskPerPositionPct × ratio / risk distance. The venue minimum is taken only while its risk
+   * is at most 2 × that, else the position is skipped. Unset = 0.01 (1 %).
+   */
+  riskPerPositionPct?: number;
   /**
    * overall: every lane the exchange holds is one exchange-minimum unit and carries its own exit orders on the venue —
    * a partial stop at its own stop (moved as the lane trails) and a partial take-profit at its own target
-   * (lane-orders.ts). The position is the sum of its lanes; the closePosition backstop stays behind them all. The
+   * (lane-orders.ts). The position is the sum of its lanes; the backstop (the own quantity) stays behind them all. The
    * venue executes each lane's exit at its level whatever the desk is doing.
    */
   laneOrders?: boolean;
@@ -406,6 +426,14 @@ export interface LiveSettings {
    * a compute, minutes after the bar, and a late entry at a run-away price loses what the simulation booked
    */
   maxChase?: number;
+  /**
+   * overall, hedge mode: a symbol × side holding someone else's position or order (the operator's manual trade, another
+   * system). "avoid" (unset): the desk never touches that side — it is frozen while the other quantity is there.
+   * "independent": the desk trades its own lanes there beside it — only its own quantity (proved by its own fills) is
+   * ever reduced, closed or stopped, every exit order is quantity-bounded, and that side's leverage and margin mode are
+   * never changed. One-way mode always avoids (one position per symbol).
+   */
+  foreignSides?: "avoid" | "independent";
   /**
    * overall: signal lanes' volume weight against engine lanes (default 1). Signals trade only while their hourly
    * index clears its gate; in the simulations and on x01's paper book they are the strongest category (PF 1.9–2.9
@@ -458,6 +486,19 @@ export interface LiveSettings {
   /** Reference promotion is an exact, expiring proof allowlist; [] holds managed engine lanes on paper. */
   promotedLanes?: readonly PromotedLaneProof[];
   /**
+   * signal proof (operator, 14 Oct: built, off): a signal unit — indicator × side, every config of it — reaches
+   * the exchange only once its own forward closes (the exchange record of its lanes once that holds N, else the
+   * paper book's closes of the positions it really held) number at least N, their last N hold PF ≥ signalProofPf
+   * and span at least signalProofEvents distinct events (symbol × side × entry bar: configs entering one bar are
+   * one event). Until then the unit keeps computing and trading on paper; a lane already held on the exchange is
+   * managed until it exits. Engine configs are not judged here (engineProofN). 0 / unset = off; not a default.
+   */
+  signalProofN?: number;
+  /** the PF the signal proof's last N closes must hold (default SIGNAL_PROOF_PF, 1.2) */
+  signalProofPf?: number;
+  /** the distinct events the signal proof's last N closes must span (default SIGNAL_PROOF_EVENTS, 2) */
+  signalProofEvents?: number;
+  /**
    * overall: the strategy kinds whose configs reach the exchange ("normal", "trailing", "trailing-only", "exit",
    * "dca", "dca-active", "axis"). Unset / empty = every kind. The engine keeps computing, validating and paper-trading all of them —
    * this only narrows what the live control sends. A position already held is still managed and closed, whatever
@@ -503,6 +544,15 @@ export interface LiveSettings {
    * a group's losing streaks were followed by its winners (docs/live-group-validation.md).
    */
   liveGroupLastN?: number;
+  /**
+   * live validation per side (plan item 13; default off, and a causal eval decides it): a config's LONG and SHORT
+   * closes are judged on their own record, not on one pooled record. The exchange record, the simulated forward
+   * closes, the engine proof and the group gates key by config and side, and an entry is judged on its own side
+   * (a SHORT is not refused by the LONG closes of its config, nor a LONG by the SHORT ones). Unset / false: one record
+   * per config for both sides, as before. True changes entry decisions, so it is not a default until a causal
+   * comparison on the paper or live book says so (docs/positive-coordinations.md).
+   */
+  sideGates?: boolean;
   /**
    * account exposure factor: the positions' gross notional (long and short both counted) stays within this multiple
    * of the account balance — every target is scaled by the same factor, so the relations between positions stay

@@ -691,6 +691,14 @@ describe("signals: engine", { timeout: 400_000 }, () => {
     const steps = rt.sim!.signalSteps!;
     assert.ok(steps.length > 0);
     assert.deepEqual([...rt.wf.signalActive!], rt.sim!.signalActiveEnd);
+    // the activation report of that end set: the same units, and the status carries it
+    const act = rt.sim!.signalActivationEnd!;
+    assert.ok(act, "signalActivationEnd");
+    assert.equal(
+      act.counts.long.active + act.counts.short.active + 2 * act.counts.pooled.active,
+      rt.sim!.signalActiveEnd!.length,
+    );
+    assert.deepEqual(rt.status.signals?.activation, act);
     for (const x of rt.sim!.trades.filter((x) => isSignalInd(x.cfg.split("|")[1] ?? "")))
       assert.ok(
         signalSetAt(steps, x.entryT)!.has(

@@ -278,6 +278,9 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
         const rangeVol = tp && sim ? rangeVolumeFactorFor(tp, sim.opts) : 1;
         const m = (x.mult ?? 1) / ((x.coordVol ?? 1) * (x.hedgeVol ?? 1) * (x.volFactor ?? 1) * (x.rangeVol ?? rangeVol));
         if (m < 1 - 1e-9) return true;
+        // the Block × relation (Stable-02) stack stays within the same total cap (the simulation caps the relation
+        // volume at maxMult ÷ the Block volume)
+        if (m * (x.coordVol ?? 1) > cap + 1e-9) return true;
         if (!overall) return m > cap + 1e-9;
         const legs = Object.values(x.legs ?? {}).map((v) => v ?? 0);
         return (
@@ -496,6 +499,7 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
         return (
           blockVol < 1 - 1e-9 ||
           blockVol > maxMult + 1e-9 ||
+          blockVol * (x.coordVol ?? 1) > maxMult + 1e-9 ||
           Object.values(x.legs ?? {}).some((v) => (v ?? 0) > maxMult - 1 + 1e-9)
         );
       },

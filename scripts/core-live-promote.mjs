@@ -18,6 +18,7 @@ import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 
 const { DEFAULT_PROMOTE, promoteDecide, promoteLive } = await import("../src/core/live-promote.ts");
+const { OWN_CLOSE_SQL } = await import("../src/core/relation.ts");
 
 const argv = process.argv.slice(2);
 const arg = (k, d) => {
@@ -41,7 +42,8 @@ const o = {
 const db = new DatabaseSync(refDb, { readOnly: true });
 let nominalCloses;
 try {
-  nominalCloses = db.prepare("SELECT COUNT(*) AS n FROM live_lane_trades").get().n;
+  // the reference's own closes only (relation.ts): a manual close or the restart window is not counted
+  nominalCloses = db.prepare(`SELECT COUNT(*) AS n FROM live_lane_trades WHERE ${OWN_CLOSE_SQL}`).get().n;
 } finally {
   db.close();
 }
@@ -69,7 +71,7 @@ const priorIdentities = prev.schema === "cts-live-promotion-state/v2" && prev.by
 const decision = promoteDecide(priorIdentities, evidence, o,
   { referenceId, proofId, nowT: Date.now() });
 if (evidenceError) decision.lines.push(evidenceError);
-const why = `${decision.lines.join("; ")}; nominal reference rows ${nominalCloses} (not funded-execution proof)`;
+const why = `${decision.lines.join("; ")}; nominal reference own rows ${nominalCloses} (not funded-execution proof)`;
 const patch = JSON.parse(readFileSync(patchPath, "utf8"));
 const live = patch.settings?.live ?? {};
 const next = promoteLive(live, decision);

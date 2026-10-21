@@ -6,6 +6,7 @@ import type { ConfigTape } from "./sim/walkforward.ts";
 import { profitFactor } from "./metrics/stats.ts";
 import { isSignalInd } from "./indications/registry.ts";
 import { RANGE_LABEL, rangeOfId } from "./minimal-coord.ts";
+import { eventBar } from "./bot-stats.ts";
 import { isSignalCoordinationInd } from "./signal-coordination.ts";
 import { kindOfId } from "./pipeline/pipeline.ts";
 
@@ -167,6 +168,60 @@ export function liveGate(
   return { ok: pf >= minPf, n, pf };
 }
 
+/** One side's columns of a tape: exit times ascending, gain / loss prefix sums (makeTape's shape). */
+export interface SideColumns {
+  exitT: Float64Array;
+  gp: Float64Array;
+  gl: Float64Array;
+}
+/**
+ * The per-side copies sideTapeOf built, by tape object. The caller owns it and drops it with its compute (one memo
+ * per compute), so the copies are not kept on the tapes between computes.
+ */
+export type SideTapeMemo = Map<object, Map<1 | -1, SideColumns>>;
+/**
+ * One side of a config's simulated tape as a tape of its own (exit order kept, the same gain / loss sums makeTape
+ * keeps): a config judged on its own side's closes (live.sideGates). With a `memo` each side is built once per tape
+ * within it; without one, every call builds its own copy.
+ */
+export function sideTapeOf(
+  tp: Pick<ConfigTape, "id" | "exitT" | "r" | "side">,
+  side: 1 | -1,
+  memo?: SideTapeMemo,
+): Pick<ConfigTape, "id" | "exitT" | "gp" | "gl"> {
+  let m = memo?.get(tp);
+  if (!m) {
+    m = new Map();
+    memo?.set(tp, m);
+  }
+  let s = m.get(side);
+  if (!s) {
+    const n = tp.exitT.length;
+    let c = 0;
+    for (let i = 0; i < n; i++) if (tp.side[i] === side) c++;
+    const exitT = new Float64Array(c);
+    const gp = new Float64Array(c + 1);
+    const gl = new Float64Array(c + 1);
+    let j = 0;
+    for (let i = 0; i < n; i++) {
+      if (tp.side[i] !== side) continue;
+      const r = tp.r[i];
+      exitT[j] = tp.exitT[i];
+      gp[j + 1] = gp[j] + (r > 0 ? r : 0);
+      gl[j + 1] = gl[j] + (r < 0 ? -r : 0);
+      j++;
+    }
+    s = { exitT, gp, gl };
+    m.set(side, s);
+  }
+  return { id: tp.id, exitT: s.exitT, gp: s.gp, gl: s.gl };
+}
+
+/** A live group's key: the group alone, or the group and its side when live.sideGates judges each side apart. */
+export function liveGroupKeyOf(group: string, side?: 1 | -1): string {
+  return side === undefined ? group : `${group}|${side}`;
+}
+
 /**
  * Signals Coordination ranges and Historic Exit retain independent report groups; other engine configs use ranges.
  */
@@ -241,10 +296,70 @@ export function liveGroupGates(
 /** The engine proof's PF floor when live.engineProofPf is unset (operator, 13 Oct). */
 export const ENGINE_PROOF_PF = 1.2;
 
+/** A unit's closes shaped like a tape (exit times ascending, gain / loss prefix sums), with each close's event. */
+export interface ProofTape extends Pick<ConfigTape, "exitT" | "gp" | "gl"> {
+  /** prefix counts of closes whose return is unknown (a unit with one among its last n is counted apart, never judged) */
+  unknown?: Uint32Array;
+  /** per close, in exit order: the event it belongs to (closes of one event are one sample); unset = each close its own */
+  ev?: ReadonlyArray<string>;
+}
+
+/** Distinct events among the last `n` closes up to `now` (the closes liveGate judged). */
+function lastNEvents(tp: ProofTape, now: number, n: number): number {
+  const b = lowerBound(tp.exitT, now + 1);
+  const a = Math.max(0, b - n);
+  if (!tp.ev) return b - a;
+  const seen = new Set<string>();
+  for (let i = a; i < b; i++) seen.add(tp.ev[i]);
+  return seen.size;
+}
+
+/**
+ * The proof of a unit's own forward closes, shared by the engine proof (unit: a config) and the signal proof (unit:
+ * indicator × side): per unit the exchange record once it holds n closes up to `now`, else the paper book's record;
+ * proven when that record's last n closes hold PF ≥ minPf and (with minEvents) span at least minEvents distinct
+ * events. A unit with fewer than n closes on both is not judged and not proven (it trades on paper only). `judge`
+ * picks the units judged (unset = every unit on either record).
+ */
+export function lastNProven(
+  records: { paper: ReadonlyMap<string, ProofTape>; exchange: ReadonlyMap<string, ProofTape> },
+  now: number,
+  o: { n: number; minPf: number; minEvents?: number; judge?: (unit: string) => boolean },
+): { proven: Set<string>; judged: number; unknown: number; unknownConfigs: number } {
+  const { paper, exchange } = records;
+  const { n, minPf } = o;
+  const minEvents = o.minEvents ?? 0;
+  const proven = new Set<string>();
+  let judged = 0;
+  let unknown = 0;
+  let unknownConfigs = 0;
+  if (!(n > 0)) return { proven, judged, unknown, unknownConfigs };
+  for (const id of new Set([...paper.keys(), ...exchange.keys()])) {
+    if (o.judge && !o.judge(id)) continue;
+    const ex = exchange.get(id);
+    const exG = ex ? liveGate(ex, 0, now, n, minPf) : null;
+    const pp = paper.get(id);
+    const onEx = !!exG && exG.pf !== null;
+    const g = onEx ? exG : pp ? liveGate(pp, 0, now, n, minPf) : null;
+    if ((g?.unknown ?? 0) > 0) {
+      unknown += g!.unknown!;
+      unknownConfigs++;
+      continue;
+    }
+    if (!g || g.pf === null) continue;
+    judged++;
+    if (g.ok && (minEvents <= 0 || lastNEvents((onEx ? ex : pp)!, now, n) >= minEvents))
+      proven.add(id);
+  }
+  return { proven, judged, unknown, unknownConfigs };
+}
+
 /**
  * The engine proof (live.engineProofN): the engine configs whose own forward closes prove them — per config the
  * exchange record once it holds n closes, else the paper book's record; proven when its last n closes hold PF ≥ minPf.
  * A config with fewer than n closes is not proven (it trades on paper only). Signal configs are never judged.
+ * The maps are keyed as the caller keyed them: by config, or by config and side with live.sideGates (recordKeyOf),
+ * and the proven keys are those keys.
  */
 export function engineProven(
   paper: ReadonlyMap<string, Pick<ConfigTape, "exitT" | "gp" | "gl"> & { unknown?: Uint32Array }>,
@@ -253,23 +368,90 @@ export function engineProven(
   n: number,
   minPf: number,
 ): { proven: Set<string>; judged: number; unknown: number; unknownConfigs: number } {
-  const proven = new Set<string>();
-  let judged = 0;
-  let unknown = 0;
-  let unknownConfigs = 0;
-  if (!(n > 0)) return { proven, judged, unknown, unknownConfigs };
-  for (const id of new Set([...paper.keys(), ...exchange.keys()])) {
-    if (isSignalInd(id.split("|")[1] ?? "")) continue;
-    const ex = exchange.get(id);
-    const exG = ex ? liveGate(ex, 0, now, n, minPf) : null;
-    const pp = paper.get(id);
-    const g = exG && exG.pf !== null ? exG : pp ? liveGate(pp, 0, now, n, minPf) : null;
-    if ((g?.unknown ?? 0) > 0) { unknown += g!.unknown!; unknownConfigs++; continue; }
-    if (!g || g.pf === null) continue;
-    judged++;
-    if (g.ok) proven.add(id);
+  return lastNProven({ paper, exchange }, now, {
+    n,
+    minPf,
+    judge: (id) => !isSignalInd(id.split("|")[1] ?? ""),
+  });
+}
+
+/** The signal proof's PF floor and event floor when live.signalProofPf / signalProofEvents are unset (14 Oct). */
+export const SIGNAL_PROOF_PF = 1.2;
+export const SIGNAL_PROOF_EVENTS = 2;
+
+/** A signal close as the proof reads it: a paper position (or its lane on the exchange) closed at exitT. */
+export interface ProofClose {
+  /** the position's identity — the lane id cfg|sym|side|paper entryT, or the paper entry time alone */
+  id: string;
+  cfg: string;
+  sym: string;
+  side: number;
+  exitT: number;
+  r: number;
+}
+
+/**
+ * The signal unit of a config on a side: its indicator × side (`ind|1`, `ind|-1`); null for an engine config or a
+ * close without a side (never counted on either). With `bySide` (live.sideGates) a side that is not +1 or -1 is no side
+ * either, as liveRecords keeps it: a close of side 2 is in no unit.
+ */
+export function signalUnitOf(cfg: string, side: number, bySide = false): string | null {
+  if (!(side > 0 || side < 0)) return null;
+  if (bySide && side !== 1 && side !== -1) return null;
+  const i1 = cfg.indexOf("|");
+  const i2 = i1 < 0 ? -1 : cfg.indexOf("|", i1 + 1);
+  const ind = i1 < 0 ? "" : i2 < 0 ? cfg.slice(i1 + 1) : cfg.slice(i1 + 1, i2);
+  return isSignalInd(ind) ? `${ind}|${side > 0 ? 1 : -1}` : null;
+}
+
+/** The signal closes per unit as proof tapes (exit order, ties as given); a close's event: symbol × side × entry bar. */
+function signalTapes(rows: ReadonlyArray<ProofClose>, bySide: boolean): Map<string, ProofTape> {
+  const by = new Map<string, Array<{ t: number; r: number; ev: string }>>();
+  for (const x of rows) {
+    const u = signalUnitOf(x.cfg, x.side, bySide);
+    if (!u) continue;
+    // the event as bot-stats counts it: configs that enter one bar on one symbol × side are one event (a Block leg's
+    // id `…|blk:src` is the same lane: its paper entry time precedes the suffix)
+    const b = x.id.indexOf("|blk:");
+    const ev = `${x.sym}|${x.side > 0 ? 1 : -1}|${eventBar(b < 0 ? x.id : x.id.slice(0, b))}`;
+    (by.get(u) ?? by.set(u, []).get(u)!).push({ t: x.exitT, r: x.r, ev });
   }
-  return { proven, judged, unknown, unknownConfigs };
+  const out = new Map<string, ProofTape>();
+  for (const [u, xs] of by) {
+    xs.sort((a, b) => a.t - b.t);
+    const exitT = new Float64Array(xs.length);
+    const gp = new Float64Array(xs.length + 1);
+    const gl = new Float64Array(xs.length + 1);
+    xs.forEach((v, i) => {
+      exitT[i] = v.t;
+      gp[i + 1] = gp[i] + Math.max(0, v.r);
+      gl[i + 1] = gl[i] + Math.max(0, -v.r);
+    });
+    out.set(u, { exitT, gp, gl, ev: xs.map((v) => v.ev) });
+  }
+  return out;
+}
+
+/**
+ * The signal proof (live.signalProofN): the signal units (indicator × side, every config of it) whose own forward
+ * closes prove them — per unit the exchange record of its lanes once it holds n closes, else the paper book's closes;
+ * proven when the last n closes before `now` hold PF ≥ minPf and span at least minEvents distinct events (symbol ×
+ * side × paper entry bar: configs entering one bar are one sample, not n). Engine configs are never judged. `o.bySide`
+ * (live.sideGates) reads a side that is not +1 or -1 as no side (signalUnitOf).
+ */
+export function signalProven(
+  paper: ReadonlyArray<ProofClose>,
+  exchange: ReadonlyArray<ProofClose>,
+  now: number,
+  o: { n: number; minPf: number; minEvents: number; bySide?: boolean },
+): { proven: Set<string>; judged: number; unknown: number; unknownConfigs: number } {
+  if (!(o.n > 0)) return { proven: new Set(), judged: 0, unknown: 0, unknownConfigs: 0 };
+  const bySide = o.bySide === true;
+  return lastNProven(
+    { paper: signalTapes(paper, bySide), exchange: signalTapes(exchange, bySide) },
+    now,
+    o,
+  );
 }
 
 /**
@@ -288,6 +470,8 @@ export function liveEntryOk(own: LiveGate, group: LiveGate | undefined): boolean
 
 export interface LiveGroupStatus {
   group: string;
+  /** the side the group's gate judges (live.sideGates only; unset = both sides pooled) */
+  side?: 1 | -1;
   /** pooled live closes considered (at most the group N) */
   n: number;
   pf: number | null;
@@ -313,4 +497,6 @@ export interface LiveValidationStatus {
   /** group last N (0 = off) and each group's verdict */
   groupLastN?: number;
   groups?: LiveGroupStatus[];
+  /** live.sideGates on: each config is judged per side (the counts are per config and side) */
+  bySide?: true;
 }

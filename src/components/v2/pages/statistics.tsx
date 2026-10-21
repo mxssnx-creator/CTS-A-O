@@ -67,9 +67,11 @@ function GroupTable(props: {
   label: string;
   empty?: string;
   dates?: boolean;
+  fine?: boolean;
   comparison?: boolean;
   source?: string;
 }) {
+  const usd = props.fine ? fmt.usd4 : fmt.usd;
   if (!props.rows.length) return <Empty>{props.empty ?? "No closes"}</Empty>;
   return (
     <div className="v2-table-wrap">
@@ -119,7 +121,7 @@ function GroupTable(props: {
               </td>
               <td className="num v2-muted">{cashPfText(r)}</td>
               <td className={`num ${tone(r.net)}`}>{fmt.pct(r.net)}</td>
-              <td className={`num ${tone(r.usd)}`}>{fmt.usd(r.usd)}</td>
+              <td className={`num ${tone(r.usd)}`}>{usd(r.usd)}</td>
               <td className="num">{fmt.h(r.ddt)}</td>
               <td className="num">{pct(r.gh)}</td>
               <td className="num">
@@ -399,7 +401,9 @@ export function StatisticsPage() {
   ]);
   const d = data as Any;
   const r = d?.report;
-  const unbasedLive = liveBalanceUnavailable(r?.source, d?.balanceFrom);
+  // a wallet-based baseline ("account wallet", the own ledger's wallet reconstruction) is a based live balance too
+  const unbasedLive =
+    liveBalanceUnavailable(r?.source, d?.balanceFrom) && d?.balanceFrom !== "account wallet";
   const multi = useMemo(() => {
     if (!r) return null;
     const P = r.timeline.points as Any[];
@@ -493,32 +497,47 @@ export function StatisticsPage() {
     );
   const T = r.total;
   const tl = r.timeline;
+  // live amounts on a small account: cents of cents shown (4 decimals below $20)
+  const fine = r.source === "live";
+  const usd = fine ? fmt.usd4 : fmt.usd;
   const typeParts = (r.types as Row[]).map((x) => ({ label: x.key, value: x.n }));
   const hourBars = (r.hourOfDay as Row[]).map((x) => ({
     k: x.key,
     v: x.usd,
-    tip: `${x.key}:00 UTC · ${x.n} orders · return PF ${returnPfText(x)} · ${fmt.usd(x.usd)}`,
+    tip: `${x.key}:00 UTC · ${x.n} orders · return PF ${returnPfText(x)} · ${usd(x.usd)}`,
   }));
   const dailyBars = (r.daily as Row[]).map((x) => ({
     k: x.key.slice(5),
     v: x.usd,
-    tip: `${x.key} · ${x.n} orders · return PF ${returnPfText(x)} · ${fmt.usd(x.usd)}`,
+    tip: `${x.key} · ${x.n} orders · return PF ${returnPfText(x)} · ${usd(x.usd)}`,
   }));
   const heat = new Map<string, Any>((r.heat as Any[]).map((c) => [`${c.d}|${c.h}`, c]));
   // full colour at the largest |net| of a cell
   const heatSpan = Math.max(1e-9, ...(r.heat as Any[]).map((c) => Math.abs(c.net)));
   const balanceNote =
-    d.balanceFrom === "account equity"
-      ? "reconstructed from current account equity; external funding and other activity are not reconciled"
-      : unbasedLive
-        ? "account balance baseline unavailable; ledger net change only"
-        : "";
+    d.balanceFrom === "account wallet"
+      ? "from the account wallet − own closes; external funding and other activity are not reconciled"
+      : d.balanceFrom === "account equity"
+        ? "reconstructed from current account equity; external funding and other activity are not reconciled"
+        : d.balanceFrom === "paper start balance + live P&L"
+          ? "no account read: paper start balance + live P&L"
+          : unbasedLive
+            ? "account balance baseline unavailable; ledger net change only"
+            : r.source === "live"
+              ? ""
+              : "virtual start balance";
+  const apart = [
+    r.hand?.n ? `ended by orders not ours ${r.hand.n} (${fmt.usdSigned(r.hand.usd)})` : "",
+    r.flat?.n ? `exchange-ended, cause not proven ${r.flat.n} (${fmt.usdSigned(r.flat.usd)})` : "",
+    d.unpriced?.n ? `${d.unpriced.n} flat markers without any price (not booked)` : "",
+  ].filter(Boolean);
+  const apartNote = apart.length ? ` · apart: ${apart.join(", ")}` : "";
   return (
     <>
       <ErrorNote error={error} />
       <Panel
         title="Statistics"
-        sub={`${d.conn ?? ""} · ${r.source === "sim" ? "simulated run (full detail)" : r.source === "live" ? "live orders by own client id (fills, fees)" : "paper book"} · ${fmt.time(r.startT)} → ${fmt.time(r.endT)} UTC`}
+        sub={`${d.conn ?? ""} · ${d.sourceLabel ?? r.source} · ${fmt.time(r.startT)} → ${fmt.time(r.endT)} UTC · USD after fees${d.feesModelled ? " (fees modelled: no fill reported a commission)" : ""} · PF and net % per unit of notional${r.source === "live" ? ` · account read ${fmt.ago(d.accountAt)}` : ""}${r.open?.positions ? ` · ${r.open.positions} own positions open (marked in the chart, not closes)` : ""}`}
         right={controls}
       >
         <div className="v2-grid v2-cols-6">
@@ -530,11 +549,11 @@ export function StatisticsPage() {
                   ? "Ledger balance (reconstructed)"
                   : "Closed-trade balance"
             }
-            value={fmt.usd(unbasedLive ? T.usd : T.usdEnd)}
+            value={usd(unbasedLive ? T.usd : T.usdEnd)}
             sub={
               unbasedLive
-                ? balanceNote
-                : `${hours > 0 ? "window start" : "start"} ${fmt.usd(hours > 0 ? (r.balanceStart ?? r.balance0) : r.balance0)} · ${fmt.usd(T.usd)}${balanceNote ? ` · ${balanceNote}` : ""}`
+                ? `${balanceNote}${apartNote}`
+                : `${hours > 0 ? "window start" : "start"} ${usd(hours > 0 ? (r.balanceStart ?? r.balance0) : r.balance0)} · own results ${fmt.usdSigned(T.usd, fine ? 4 : 2)}${balanceNote ? ` · ${balanceNote}` : ""}${apartNote}`
             }
             className={tone(T.usd)}
           />
@@ -547,7 +566,7 @@ export function StatisticsPage() {
                   : "Model return PF before allocation"
             }
             value={returnPfText(T)}
-            sub={`${T.pfBasis === "unavailable" ? `unit-return evidence unavailable for ${fmt.num(T.unknownReturns)} closes · ` : ""}${r.source === "paper" ? "nominal paper cash PF" : "cash PF diagnostic"} ${cashPfText(T)} · ${r.source === "paper" ? "recorded WR" : "WR"} ${pct(T.wr)}`}
+            sub={`${T.pfBasis === "unavailable" ? `unit-return evidence unavailable for ${fmt.num(T.unknownReturns)} closes · ` : ""}${r.source === "paper" ? "nominal paper cash PF" : "cash PF diagnostic"} ${cashPfText(T)} · ${r.source === "paper" ? "recorded WR" : "WR"} ${pct(T.wr)} · SQN ${fmt.pf(T.sqn)}`}
             className={pfTone(returnPf(T))}
           />
           <Kpi
@@ -557,11 +576,11 @@ export function StatisticsPage() {
           />
           <Kpi
             label={unbasedLive ? "Ledger drawdown ($)" : "Equity drawdown"}
-            value={unbasedLive ? fmt.usd(tl.maxDd) : `${tl.maxDdPct.toFixed(2)}%`}
+            value={unbasedLive ? usd(tl.maxDd) : `${tl.maxDdPct.toFixed(2)}%`}
             sub={
               unbasedLive
                 ? `account drawdown % unavailable · under water ${fmt.h(tl.maxDdH)}`
-                : `${fmt.usd(tl.maxDd)} · under water ${fmt.h(tl.maxDdH)}`
+                : `${usd(tl.maxDd)} · under water ${fmt.h(tl.maxDdH)}`
             }
             className={!unbasedLive && tl.maxDdPct > 20 ? "v2-down" : ""}
           />
@@ -569,7 +588,7 @@ export function StatisticsPage() {
           <Kpi
             label="Peak book"
             value={`${tl.positionsMax} pos`}
-            sub={`${tl.ordersMax} orders · ${tl.setsMax} sets · margin ${fmt.usd(tl.marginMax)}`}
+            sub={`${tl.ordersMax} orders · ${tl.setsMax} sets · margin ${usd(tl.marginMax)} at ${d.leverageFrom ?? "–"}`}
           />
         </div>
         {r.source === "sim" && (
@@ -600,20 +619,20 @@ export function StatisticsPage() {
           sub={`${accountSource(d.account)}${d.account?.at ? ` · ${fmt.ago(d.account.at)}` : ""} · return PF above uses owned ledger net returns after costs; fees or fills may be estimated`}
         >
           <div className="v2-grid v2-cols-4">
-            <Kpi label="Wallet balance" value={fmt.usd(d.account?.wallet)} />
+            <Kpi label="Wallet balance" value={usd(d.account?.wallet)} />
             <Kpi
               label="Account equity"
-              value={fmt.usd(d.account?.equity)}
-              sub={`available margin ${fmt.usd(d.account?.availableMargin)}`}
+              value={usd(d.account?.equity)}
+              sub={`available margin ${usd(d.account?.availableMargin)}`}
             />
             <Kpi
               label="Open net"
-              value={fmt.usd(d.account?.openNet)}
+              value={usd(d.account?.openNet)}
               className={tone(d.account?.openNet)}
             />
             <Kpi
               label="Exchange realized"
-              value={fmt.usd(d.account?.realized)}
+              value={usd(d.account?.realized)}
               className={tone(d.account?.realized)}
               sub="account-reported total; exchange reporting period"
             />
@@ -650,9 +669,9 @@ export function StatisticsPage() {
                       <td>{x.sym}</td>
                       <td>{x.side > 0 ? "long" : "short"}</td>
                       <td className="num">{fmt.num(x.entry, 4)}</td>
-                      <td className="num">{fmt.usd(x.notional)}</td>
+                      <td className="num">{usd(x.notional)}</td>
                       <td className={`num ${tone(x.r)}`}>{fmt.frac(x.r)}</td>
-                      <td className={`num ${tone(x.pnl)}`}>{fmt.usd(x.pnl)}</td>
+                      <td className={`num ${tone(x.pnl)}`}>{usd(x.pnl)}</td>
                       <td>{x.reason}</td>
                     </tr>
                   ))}
@@ -682,7 +701,7 @@ export function StatisticsPage() {
           <div style={{ display: "flex", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
             <ArcShare parts={typeParts} size={140} center={`${T.n}`} />
             <div style={{ flex: 1, minWidth: 260 }}>
-              <GroupTable rows={r.types} label="type" source={r.source} />
+              <GroupTable fine={fine} rows={r.types} label="type" source={r.source} />
             </div>
           </div>
         </Panel>
@@ -697,7 +716,7 @@ export function StatisticsPage() {
                 : "The paper book keeps no Block / DCA detail per close: switch to the simulated run for the split."}
             </p>
           )}
-          <GroupTable rows={r.subTypes} label="sub-config" source={r.source} />
+          <GroupTable fine={fine} rows={r.subTypes} label="sub-config" source={r.source} />
         </Panel>
       </div>
       <Panel
@@ -711,24 +730,24 @@ export function StatisticsPage() {
           title="Ranges"
           sub="Normal / Trailing groups: Micro · Minimal · Minimal plus · Short · General · Long · Wide"
         >
-          <GroupTable rows={r.ranges} label="range" source={r.source} />
+          <GroupTable fine={fine} rows={r.ranges} label="range" source={r.source} />
         </Panel>
         <Panel
           title="Strategy groups"
           sub="Signals and Historic Exit are evaluated independently of Normal / Trailing ranges"
         >
-          <GroupTable rows={r.strategyGroups} label="strategy group" source={r.source} />
+          <GroupTable fine={fine} rows={r.strategyGroups} label="strategy group" source={r.source} />
         </Panel>
         <Panel title="Timeframe lanes">
-          <GroupTable rows={r.lanes} label="lane" source={r.source} />
+          <GroupTable fine={fine} rows={r.lanes} label="lane" source={r.source} />
         </Panel>
         <Panel title="Indication kinds">
-          <GroupTable rows={r.indKinds} label="kind" source={r.source} />
+          <GroupTable fine={fine} rows={r.indKinds} label="kind" source={r.source} />
         </Panel>
         <Panel title="Bots · sides · exit reasons">
-          <GroupTable rows={[...r.bots, ...r.sides]} label="bot / side" source={r.source} />
+          <GroupTable fine={fine} rows={[...r.bots, ...r.sides]} label="bot / side" source={r.source} />
           <div style={{ height: 8 }} />
-          <GroupTable rows={r.reasons} label="exit" source={r.source} />
+          <GroupTable fine={fine} rows={r.reasons} label="exit" source={r.source} />
         </Panel>
       </div>
       <div className="v2-grid v2-cols-2">
@@ -757,7 +776,7 @@ export function StatisticsPage() {
         />
       </Panel>
       <Panel title="Symbols" sub="every symbol traded">
-        <GroupTable rows={r.symbols} label="symbol" dates source={r.source} />
+        <GroupTable fine={fine} rows={r.symbols} label="symbol" dates source={r.source} />
       </Panel>
       <Panel
         title="Configs"

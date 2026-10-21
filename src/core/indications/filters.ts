@@ -73,8 +73,8 @@ export const FILTERS: Record<string, FilterFn> = {
   htfAgainst: (s, k) => { const e = k.ema(200), c = k.b.c; return keep(s, (i, d) => (c[i] - e[i]) * d < 0); },
   slope50: (s, k) => { const e = k.ema(50); return keep(s, (i, d) => i >= 10 && (e[i] - e[i - 10]) * d > 0); },
   // volatility regime (ATR% percentile over ~2 weeks of bars)
-  volHi: (s, k) => keep(s, (i) => pctRank(k, "natr", natr(k), VOL_RANK_BARS)[i] >= 0.5),
-  volLo: (s, k) => keep(s, (i) => pctRank(k, "natr", natr(k), VOL_RANK_BARS)[i] < 0.5),
+  volHi: (s, k) => { const r = pctRank(k, "natr", natr(k), VOL_RANK_BARS); return keep(s, (i) => r[i] >= 0.5); },
+  volLo: (s, k) => { const r = pctRank(k, "natr", natr(k), VOL_RANK_BARS); return keep(s, (i) => r[i] < 0.5); },
   // choppiness regime: not in a range (CHOP(14) under the 61.8 range line; unknown = kept out)
   chop: (s, k) => {
     const ch = k.memo("chop14", () => choppiness(k.b.h, k.b.l, k.b.c, 14));
@@ -99,8 +99,8 @@ export const FILTERS: Record<string, FilterFn> = {
   // RSI room: long not overbought, short not oversold
   rsiRoom: (s, k) => { const r = k.rsi(14); return keep(s, (i, d) => (d > 0 ? r[i] < 65 : r[i] > 35)); },
   // market (reference symbol) regime
-  btc: (s, k, ref) => (ref ? keep(s, (i, d) => refTrend(k, ref, 50)[i] === d) : s),
-  btcAgainst: (s, k, ref) => (ref ? keep(s, (i, d) => refTrend(k, ref, 50)[i] === -d) : s),
+  btc: (s, k, ref) => { if (!ref) return s; const r = refTrend(k, ref, 50); return keep(s, (i, d) => r[i] === d); },
+  btcAgainst: (s, k, ref) => { if (!ref) return s; const r = refTrend(k, ref, 50); return keep(s, (i, d) => r[i] === -d); },
 };
 
 export const FILTER_IDS = Object.keys(FILTERS);
@@ -118,12 +118,18 @@ export function applyFilter(
 
 // ── Tactics (engine-wide, switchable in Settings) ─────────────────────────────
 
+/** The four signal tactics' ids in key order (tacticKey joins the active ones with "+"). */
+const TACTIC_IDS = ["euUs", "volHi", "adx20", "chop"] as const;
+/** tacticKey by the bit set of the active tactics (bit order = TACTIC_IDS): no array, filter or join per call */
+const TACTIC_KEYS: readonly string[] = Array.from({ length: 16 }, (_, m) =>
+  TACTIC_IDS.filter((_, b) => m & (1 << b)).join("+"),
+);
+const ADX_BIT = 4;
+const tacticBits = (t: Tactics) => (t.session ? 1 : 0) | (t.volRegime ? 2 : 0) | (t.trendStrength ? 4 : 0) | (t.chopRegime ? 8 : 0);
+
 /** Stable key of the active signal tactics ("" = none) — part of every memo key. */
 export function tacticKey(t?: Tactics | null): string {
-  if (!t) return "";
-  return [t.session && "euUs", t.volRegime && "volHi", t.trendStrength && "adx20", t.chopRegime && "chop"]
-    .filter(Boolean)
-    .join("+");
+  return t ? TACTIC_KEYS[tacticBits(t)] : "";
 }
 
 /**
@@ -148,11 +154,11 @@ export const LOW_ADX_INDS: ReadonlySet<string> = new Set([
 
 /** The tactics key for one indication: without trend strength for a low-ADX indication (LOW_ADX_INDS). */
 export function tacticKeyFor(t: Tactics | null | undefined, base: string): string {
-  const key = tacticKey(t);
+  if (!t) return "";
+  const bits = tacticBits(t);
+  // a relate-adaptive indication skips the trend-strength tactic too (main's rule)
   const relateAdaptive = base.startsWith("relate-") && base.includes("-adaptive-");
-  return key && (LOW_ADX_INDS.has(base) || relateAdaptive)
-    ? key.split("+").filter((x) => x !== "adx20").join("+")
-    : key;
+  return TACTIC_KEYS[LOW_ADX_INDS.has(base) || relateAdaptive ? bits & ~ADX_BIT : bits];
 }
 
 /** Extra history (bars) the active tactics need before their first valid signal. */
@@ -171,9 +177,11 @@ export function withTactics(
   k: SeriesCache,
   key: string,
   memoKey: string,
+  /** `tac:${key}:${memoKey}` when the caller keeps it (the same string object every call: its hash is computed once) */
+  fullKey?: string,
 ): Int8Array {
   if (!key) return sig;
-  return k.memo(`tac:${key}:${memoKey}`, () =>
+  return k.memo(fullKey ?? `tac:${key}:${memoKey}`, () =>
     key.split("+").reduce((x, id) => applyFilter(id, x, k), sig),
   );
 }

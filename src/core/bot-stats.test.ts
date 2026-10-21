@@ -46,6 +46,14 @@ describe("bot statistics: families, sample floors and the frozen verdict", () =>
     assert.ok(Math.abs(repriced(modelled, 0.002) - 0.008) < 1e-12);
   });
 
+  it("a row with no exit price (open at the window end, marked) keeps its stored return, long and short", () => {
+    for (const side of [1, -1]) {
+      const open = { side, entry: 100, exit: 0, r: 0.012 };
+      assert.equal(repriced(open, 0.002), 0.012, `side ${side}`);
+      assert.equal(repriced({ ...open, exit: NaN }, 0.004), 0.012);
+    }
+  });
+
   it("a small sample is not judged, never a pass", () => {
     const rows = Array.from({ length: 40 }, (_, i) => row(i, { move: 0.02 }));
     const f = botStatsFromRows(rows).families[0];

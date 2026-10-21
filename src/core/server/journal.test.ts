@@ -41,12 +41,14 @@ describe("ledger journal", () => {
       const b = new CoreDb(":memory:");
       b.journalPath = journal;
       assert.equal(b.replayJournal(), 1);
+      // relation: all rows — the fixture reads back the one row it replayed
       const rows = b.all<{ entry: number; exit: number; r: number }>("SELECT entry, exit, r FROM live_lane_trades");
       assert.equal(rows.length, 1);
       assert.equal(rows[0].entry, 100);
       assert.equal(rows[0].exit, 98);
       assert.ok(Math.abs(rows[0].r - (-.02 - DEFAULT_SETTINGS.cost)) < 1e-12);
       assert.equal(b.replayJournal(), 1);
+      // relation: all rows — the fixture counts the rows it replayed
       assert.equal(b.get<{ n: number }>("SELECT COUNT(*) AS n FROM live_lane_trades")?.n, 1, "replaying twice is idempotent");
     } finally {
       rmSync(dir, { recursive: true, force: true });

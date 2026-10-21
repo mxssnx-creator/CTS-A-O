@@ -117,6 +117,17 @@ const arg = (k, d) => {
   return i >= 0 ? argv[i + 1] : d;
 };
 const flag = (k) => argv.includes(`--${k}`);
+// --settings is checked as the Settings page checks a patch (src/core/settings-check.ts): the engine takes it as asked, so
+// an unknown key or a value out of bounds ran the session as if the patch were not there
+{
+  const { checkSettings } = await import("../src/core/settings-check.ts");
+  try {
+    checkSettings(JSON.parse(arg("settings", "{}")));
+  } catch (e) {
+    process.stderr.write(`--settings refused: ${e.message}\n`);
+    process.exit(2);
+  }
+}
 if (flag("replay-preload-all")) {
   const end = Date.parse(arg("end-at")),
     from = Date.parse(arg("evaluation-from"));
@@ -1226,10 +1237,13 @@ async function runEngine() {
   // every engine pair's Base statistic, its gate result and its qualified ranges (the dump's basePairs: the
   // survival per range and the filter's quality per window — a range's survivors are the pairs whose tags hold it)
   // (the stored Base runs are slim — no trades — so Base is reported as counts, not per hour)
+  // (with gates.baseWindows.report set, each passing pair also carries `rules`: per report rule, its ranges and targets
+  // that pass the rule too — a dump-only field the eval readers use, scripts/eval-base-rules.mjs)
   const { basePairRows } = await import("../src/core/pipeline/pipeline.ts");
   const basePairs = basePairRows(
     rt.pipeline?.s1 ?? [],
     rt.wf.basePassedRanges ?? rt.basePairTags ?? {},
+    rt.settings.grid?.baseTargets !== false,
   ).map((row) => ({ ...row, builtTags: [...(rt.basePairTags?.[row.pair] ?? [])] }));
   {
     funnel.counts = {
@@ -1359,32 +1373,36 @@ async function runEngine() {
         ...(replaySelectionHours !== null ? { replaySelectionHours } : {}),
         ...(replayMinGreen !== null ? { replayMinGreen } : {}),
       },
-      wf: Object.fromEntries(
-        [
-          "preH",
-          "simH",
-          "longH",
-          "stepH",
-          "causalBase",
-          "portfolio",
-          "lastN",
-          "lastNMinPf",
-          "validLastN",
-          "signalValidLastN",
-          "maxPerSymbol",
-          "maxPerSide",
-          "maxOpen",
-          "maxPositions",
-          "signalMaxPositions",
-          "signalMaxOpen",
-          "guardPct",
-          "coord",
-          "mode",
-          "familySeats",
-          "laneSeats",
-          "symGate",
-        ].map((k) => [k, rt.wf[k] ?? null]),
-      ),
+      wf: {
+        ...Object.fromEntries(
+          [
+            "preH",
+            "simH",
+            "longH",
+            "stepH",
+            "causalBase",
+            "portfolio",
+            "lastN",
+            "lastNMinPf",
+            "validLastN",
+            "signalValidLastN",
+            "maxPerSymbol",
+            "maxPerSide",
+            "maxOpen",
+            "maxPositions",
+            "signalMaxPositions",
+            "signalMaxOpen",
+            "guardPct",
+            "coord",
+            "mode",
+            "familySeats",
+            "laneSeats",
+            "symGate",
+          ].map((k) => [k, rt.wf[k] ?? null]),
+        ),
+        // per-range seat and entry options (--wf '{"rangeOpts":{…}}', as sanitized), dumped only when set
+        ...(rt.wf.rangeOpts ? { rangeOpts: rt.wf.rangeOpts } : {}),
+      },
       gates: s.gates,
       exitStrategy: s.exitStrategy,
       toggles: s.toggles,

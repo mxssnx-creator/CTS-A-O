@@ -389,6 +389,19 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
         return withTrade(i, k, { legs: { ...x.legs, [src]: i.sim!.opts.block.maxMult } });
       },
     },
+    {
+      run: "overall",
+      what: "an Overall stack above the max multiple (maxMult caps the total, not only each leg; its coordination part raised with it)",
+      corrupt: (i) => {
+        const k = i.sim!.trades.findIndex((x) => x.legs && Object.keys(x.legs).length);
+        const x = i.sim!.trades[k];
+        const blockPart = (x.mult ?? 1) / (x.coordVol ?? 1);
+        const mult = Math.min(8, i.sim!.opts.block.maxMult) + 0.5;
+        return withTrade(i, k, { mult, coordVol: mult / blockPart });
+      },
+      // the recorded multiplier also normalizes the unit return (r ÷ mult)
+      alsoFails: UNIT_AND_COST_MULT_FAILS,
+    },
   ],
   "block: volume within [1, max multiple]": [
     {
