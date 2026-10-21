@@ -3,6 +3,15 @@
 // (rankUniverse "volatility1h", the default symbolRank: the last closed 1 h bars of every pool symbol), never a bar
 // after the cut. The rest of a feed (other timeframes, the bars after the cut) is left out before the session starts:
 // the 120-symbol feed held all of it for the whole session (0.1–0.3 GB of heap through the compute peak).
+import { readFileSync } from "node:fs";
+import { gunzipSync } from "node:zlib";
+
+/** Load plain or gzip JSON without requiring a second full-size copy of a frozen market feed on disk. */
+export function readSessionFeed(file) {
+  const bytes = readFileSync(file);
+  const json = bytes[0] === 0x1f && bytes[1] === 0x8b ? gunzipSync(bytes) : bytes;
+  return JSON.parse(json.toString("utf8"));
+}
 
 /** the timeframe the universe ranking reads (minutes) */
 export const RANK_TF = 60;

@@ -8,7 +8,7 @@ import { sessionStudySourceFiles, studyCanonical, studyExactJson, studySha256 } 
 
 const args = process.argv.slice(2), arg = (k, d) => { const i = args.indexOf(`--${k}`); return i < 0 ? d : args[i + 1]; };
 if (args.includes("--help")) {
-  console.log("freeze-session-study --root REPO --basis-root REPO --feed FILE --symbols A-USDT,B-USDT --evaluation-from ISO --end-at ISO --pre 6 --run 6 --id ID --out DIR [--settings FILE]");
+  console.log("freeze-session-study --root REPO --basis-root REPO --feed FILE --provider NAME --symbols A-USDT,B-USDT --evaluation-from ISO --end-at ISO --pre 6 --run 6 --id ID --out DIR [--settings FILE]");
   process.exit(0);
 }
 process.env.CTS_CORE_STATE = "off"; process.env.CTS_CORE_AUTOSTART = "0";
@@ -57,7 +57,7 @@ const files = sessionStudySourceFiles(root);
 const protocol = {
   schema: "cts-session-study-v1", id, createdAt: new Date().toISOString(),
   symbols, window: { evaluationFromT, tradeStartT, endT, preH, runH }, liveSinceT: tradeStartT,
-  feed: { path: feed, sha256: studySha256(readFileSync(feed)), provider: "Binance USD-M public historical candle archive" },
+  feed: { path: feed, sha256: studySha256(readFileSync(feed)), provider: arg("provider", "Binance USD-M public historical candle archive") },
   source: { checkpoint: execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim(), basisCheckpoint: execFileSync("git", ["rev-parse", "HEAD"], { cwd: basisRoot, encoding: "utf8" }).trim(), files, sha256: studySha256(studyExactJson(files)) },
   actualSettings, actualWf,
   account: { balance: 10, leverage: 10, sizing: actualSettings.sizing },

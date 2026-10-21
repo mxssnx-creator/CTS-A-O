@@ -300,7 +300,7 @@ describe("session CLI background comparison policy", () => {
     }
   });
 });
-function replay({ caps = false, weighted = false, invalidReturn = false, qualification, thresholds, variants, presets, exhaustedCap = false, zeroOnlyType = false, allocationOnly = false, noBase = false, legacyRangeRows = false, baseNoLoss = false, signalCoverage = false, liveValidation, selectionPhases = false, marketData } = {}) {
+function replay({ caps = false, weighted = false, invalidReturn = false, qualification, thresholds, variants, presets, exhaustedCap = false, zeroOnlyType = false, allocationOnly = false, noBase = false, legacyRangeRows = false, baseNoLoss = false, signalCoverage = false, exitCoverage = false, signalHistory = false, liveValidation, selectionPhases = false, marketData } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "cts-session-report-"));
   try {
     const raw = {
@@ -341,6 +341,12 @@ function replay({ caps = false, weighted = false, invalidReturn = false, qualifi
     if (marketData) {
       raw.settings.marketDataSource = marketData.source;
       raw.settings.marketDataDetails = marketData.details;
+    }
+    if (signalHistory) {
+      raw.settings.signals = true;
+      raw.settings.preH = 1;
+      raw.settings.effectiveWf = { preH: 1, signalLongH: 336 };
+      raw.settings.provenance = { indicatorStartT: 0, evaluationFromT: 0, tradeStartT: H };
     }
     if (selectionPhases) {
       raw.engine.real = 9;
@@ -415,6 +421,17 @@ function replay({ caps = false, weighted = false, invalidReturn = false, qualifi
         { tag: "", range: "Wide", enabled: true, evaluated: 1, passed: 0, ownCells: legacyRangeRows ? undefined : 1 },
         { tag: "mc", range: "Micro", enabled: true, evaluated: 1, passed: 0, ownCells: legacyRangeRows ? undefined : 1 },
       ];
+    }
+    if (exitCoverage) {
+      raw.settings.signals = { enabled: true, trailingOnly: { enabled: false } };
+      raw.engine.independentExit = { enabled: true, pairs: 1, baseEvaluated: 1, basePassed: 0 };
+      raw.engine.coverage = {
+        expectedCombos: 2, evaluated: 1, engineCombos: 0, signalCombos: 1, exitCombos: 1,
+        kindsAll: [], byKind: { signal: { evaluated: 1, passed: 0 } },
+        toggles: raw.settings.toggles,
+        ranges: { mc: false, mn: false, sh: false, gn: false, lg: false },
+        sets: [], noSets: [], tapes: {}, engineTapes: {}, signalTapes: {},
+      };
     }
     writeFileSync(join(dir, "raw.json"), JSON.stringify(raw));
     const result = spawnSync(process.execPath, ["--experimental-strip-types", "--no-warnings", script,
@@ -499,6 +516,14 @@ describe("session reports: return PF primary, simulated provenance", () => {
     }
   });
 
+  it("reports the configured Signal horizon separately from available input and engine prehistory", () => {
+    const { md, writeup } = replay({ signalHistory: true });
+    for (const text of [md, writeup]) {
+      assert.match(text, /Configured Signal gate history 336 h; available evaluated prehistory 1 h, short by 335 h; indicator-only warm-up 0 h\. The 1 h general engine prehistory is a separate boundary/);
+      assert.doesNotMatch(text, /Signals use the same 1 h minimal evaluated history/);
+    }
+  });
+
   it("rejects replay preload without a cached feed and both explicit replay boundaries before startup", () => {
     const dir = mkdtempSync(join(tmpdir(), "cts-session-preload-"));
     try {
@@ -540,6 +565,16 @@ describe("session reports: return PF primary, simulated provenance", () => {
     assert.equal(data.coverage.tapes["normal|wide"].activeConfigs, 2, "combined rows still report both populations");
     assert.equal(data.coverage.engineTapes["normal|wide"].activeConfigs, 1);
     assert.equal(data.coverage.signalTapes["normal|wide"].activeConfigs, 1);
+  });
+
+  it("counts the separately recorded Signal Exit Base pass in legacy replay coverage", () => {
+    const { data } = replay({ noBase: true, exitCoverage: true });
+    const check = data.checks.find((x) => x.name === "coverage: every combo evaluated at Base (engine + signal + independent Exit)");
+    assert.equal(data.coverage.evaluated, 2);
+    assert.equal(check?.expected, 2);
+    assert.equal(check?.actual, 2);
+    assert.equal(check?.ok, true);
+    assert.deepEqual(data.coverage.kindsAll, ["signal"]);
   });
 
   it("reports measured no-loss PF separately from the finite Base gate score and labels later funnel stages", () => {

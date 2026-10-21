@@ -1,0 +1,265 @@
+{
+  "schema": "cts-signals-12h-run-v1",
+  "id": "signals-all-12h-20261021-worker2",
+  "status": "complete-with-coverage-shortfall",
+  "frozenAt": "2026-10-21T19:00:16.803Z",
+  "protocolSha256": "8cc9ecfebc1992e289ba5716771e12f0781d1af13479d0e89c1e0ac41d29f9e5",
+  "sourceSha256": "d8140d72eca7b2d727e8325753ae34af05b0d570cb6b47f8bf4cbbcdfe98e9bc",
+  "feedSha256": "f79fa937c5649168cfc0dd9fad80324c6d08cecdc8cc9429fbc13ef00964fc03",
+  "feedProvider": "BingX public swap klines",
+  "feedRange": {
+    "fromT": 1792368000000,
+    "toTExclusive": 1792540800000
+  },
+  "window": {
+    "evaluationFromT": 1792411200000,
+    "tradeStartT": 1792497600000,
+    "endT": 1792540800000,
+    "preH": 24,
+    "runH": 12
+  },
+  "resourcePolicy": {
+    "cgroupMemoryMaxBytes": 8589934592,
+    "cgroupCpuMax": "800000 100000",
+    "workerCount": 2,
+    "workerOverride": "CTS_CORE_WORKERS=2",
+    "workerHeapMb": 2048,
+    "allocator": {
+      "MALLOC_ARENA_MAX": "2",
+      "MALLOC_MMAP_THRESHOLD_": "1048576"
+    },
+    "mainProcessRssMaxMb": 2279,
+    "observedContainerCgroupPeakBytes": 7584096256,
+    "observedContainerCgroupPeakScope": "container lifetime through attempt completion; includes reclaimable file cache",
+    "oomEvents": {
+      "low": "0",
+      "high": "0",
+      "max": "0",
+      "oom": "0",
+      "oom_kill": "0",
+      "oom_group_kill": "0"
+    }
+  },
+  "args": [
+    "--symbols",
+    "12",
+    "--pre",
+    "24",
+    "--run",
+    "12",
+    "--feed",
+    "runs/context-bingx-market/feed.json.gz",
+    "--end-at",
+    "2026-10-21T00:00:00.000Z",
+    "--evaluation-from",
+    "2026-10-19T12:00:00.000Z",
+    "--live-since",
+    "2026-10-20T12:00:00.000Z",
+    "--desk",
+    "runs/signals-12h-20261021/attempt-05/frozen/desk.json",
+    "--frozen-session",
+    "runs/signals-12h-20261021/attempt-05/frozen/protocol.json",
+    "--signals",
+    "on",
+    "--replay-preload-all",
+    "--signal-progress",
+    "--tape-trades-all",
+    "--dump-only",
+    "--dump",
+    "runs/signals-12h-20261021/attempt-05/raw.json",
+    "--quiet",
+    "true",
+    "--max-wait-min",
+    "120",
+    "--paper-wait-s",
+    "900",
+    "--balance",
+    "10",
+    "--pct",
+    "0.001",
+    "--leverage",
+    "10"
+  ],
+  "result": {
+    "runSeconds": 101,
+    "computeMs": 87852,
+    "phases": {
+      "Base (workers)": {
+        "ms": 11534,
+        "maxSliceMs": 0,
+        "slowest": "380 of 380 combos on 2 cores"
+      },
+      "Pipeline": {
+        "ms": 2,
+        "maxSliceMs": 2,
+        "slowest": "S5 0 armed (1 ms)"
+      },
+      "Persist": {
+        "ms": 9,
+        "maxSliceMs": 4,
+        "slowest": null
+      },
+      "Exit history": {
+        "ms": 154,
+        "maxSliceMs": 0,
+        "slowest": "2 workers · 2 bounded chunks of at most 16 pairs"
+      },
+      "Signal history": {
+        "ms": 10487,
+        "maxSliceMs": 0,
+        "slowest": "2 cores · 143 replies"
+      },
+      "Signal tapes": {
+        "ms": 5197,
+        "maxSliceMs": 0,
+        "slowest": "2 cores · 120 replies"
+      },
+      "Signal coordination tapes": {
+        "ms": 25569,
+        "maxSliceMs": 0,
+        "slowest": "2 cores · 23 replies"
+      },
+      "Simulation": {
+        "ms": 23780,
+        "maxSliceMs": 858,
+        "slowest": "simulation helper (858 ms)"
+      },
+      "Signal status": {
+        "ms": 1,
+        "maxSliceMs": 1,
+        "slowest": "finish (0 ms)"
+      },
+      "Persist sim": {
+        "ms": 1,
+        "maxSliceMs": 1,
+        "slowest": null
+      },
+      "Auto preset": {
+        "ms": 0,
+        "maxSliceMs": 0,
+        "slowest": null
+      },
+      "Prehistoric": {
+        "ms": 0,
+        "maxSliceMs": 0,
+        "slowest": " (0 ms)"
+      },
+      "Paper": {
+        "ms": 429,
+        "maxSliceMs": 381,
+        "slowest": "select 42 · candidates 385 · entries 2 ms over 0 (wall, sliced)"
+      },
+      "Adjust": {
+        "ms": 1,
+        "maxSliceMs": 1,
+        "slowest": null
+      },
+      "Audit": {
+        "ms": 446,
+        "maxSliceMs": 445,
+        "slowest": " (445 ms)"
+      }
+    },
+    "mainProcessRssMaxMb": 2279,
+    "coverage": {
+      "expected": 665,
+      "evaluated": 570,
+      "missing": 95,
+      "engineCombos": 0,
+      "signalCombos": 380,
+      "exitCombos": 285,
+      "exitBaseEvaluated": 285,
+      "exitBaseInS1": 0,
+      "exitBaseAdditional": 285
+    },
+    "signals": {
+      "pairs": 285,
+      "configs": 145110,
+      "active": 0,
+      "orders": 0,
+      "historic": {
+        "pairs": 285,
+        "insufficientEntries": 285,
+        "trailTooShort": 0,
+        "candidates": 0,
+        "evaluated": 0,
+        "insufficientTrades": 0,
+        "pfRejected": 0,
+        "ddrRejected": 0,
+        "qualified": 0
+      }
+    },
+    "exit": {
+      "pairs": 285,
+      "baseEvaluated": 285,
+      "basePassed": 20,
+      "baseRejected": 265,
+      "configs": 0,
+      "history": {
+        "pairs": 20,
+        "baseEvaluated": 285,
+        "basePassed": 20,
+        "baseRejected": 265,
+        "noPrehistory": 0,
+        "insufficientEntries": 20,
+        "candidates": 0,
+        "capped": 0,
+        "evaluated": 0,
+        "insufficientTrades": 0,
+        "pfRejected": 0,
+        "greenHourRejected": 0,
+        "ddrRejected": 0,
+        "qualified": 0
+      }
+    },
+    "orders": {
+      "closed": 0,
+      "openAtEnd": 0
+    },
+    "tapeTrades": {
+      "scope": "all-built-configs",
+      "records": 418271,
+      "rows": 325911,
+      "sha256": "3c47c9d2beffc606a35e2020c0fe85e0c12f7470c4ad8b21f61920be1c60ced5"
+    },
+    "loop": {
+      "p50": 20.250623,
+      "p99": 54.067199,
+      "max": 1020.264447,
+      "recent": {
+        "ms": 970,
+        "where": "Real",
+        "at": 1792609289267,
+        "n": 25
+      },
+      "slicesOver40Ms": 22
+    }
+  },
+  "comparison": {
+    "baselineAttempt": "attempt-04",
+    "baselineComputeMs": 106512,
+    "computeMsSaved": 18660,
+    "computeSpeedupPct": 17.5,
+    "tapeSha256Matches": true,
+    "tradeCountsMatch": true,
+    "baselineSlicesOver40Ms": 10
+  },
+  "postRunReport": {
+    "sourceSha256": "a302cc8080fb6fea0830354eab4473efec3cd89161b42fdaa8a404227bad1845",
+    "sourceFilesChangedAfterFrozenRun": [
+      "scripts/core-session.mjs"
+    ],
+    "checks": {
+      "total": 62,
+      "passed": 61,
+      "failed": [
+        {
+          "name": "coverage: every combo evaluated at Base (engine + signal + independent Exit)",
+          "expected": 665,
+          "actual": 570
+        }
+      ]
+    },
+    "note": "The only source file changed after the frozen run is scripts/core-session.mjs, for coverage reporting/migration; src/core economic code is unchanged."
+  }
+}

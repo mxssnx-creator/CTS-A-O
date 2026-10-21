@@ -2,7 +2,11 @@
 // timeframe and the 1-hour bars of the universe ranking, up to the cut — and every read answers as on the whole feed.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { lowerBound, pruneFeed, RANK_TF, boundedReplayFeed, readStored } from "./session-feed.mjs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { gzipSync } from "node:zlib";
+import { lowerBound, pruneFeed, RANK_TF, boundedReplayFeed, readStored, readSessionFeed } from "./session-feed.mjs";
 
 // the replay's read (scripts/core-session.mjs stored() under replayFeed(cut)): bars with t in [startT, endT] and
 // t + tf ≤ nowT, the last `limit`
@@ -14,6 +18,19 @@ function read(candles, sym, tf, cut, { startT = 0, endT = cut - 1, limit = Infin
   return cs.slice(Math.max(0, cs.length - limit)).filter((c) => c.t + tf * 60_000 <= cut);
 }
 const bars = (tf, from, n) => Array.from({ length: n }, (_, i) => ({ t: from + i * tf * 60_000, o: 1, h: 1, l: 1, c: 1 + i / 1000, v: i }));
+
+test("loads plain and gzip frozen market feeds identically", () => {
+  const dir = mkdtempSync(join(tmpdir(), "cts-session-feed-"));
+  try {
+    const expected = { source: { provider: "fixture" }, candles: { "AAA-USDT|1": bars(1, 0, 3) } };
+    const json = Buffer.from(JSON.stringify(expected));
+    const plain = join(dir, "feed.json"), zipped = join(dir, "feed.json.gz");
+    writeFileSync(plain, json); writeFileSync(zipped, gzipSync(json));
+    assert.deepEqual(readSessionFeed(plain), expected);
+    assert.deepEqual(readSessionFeed(zipped), expected);
+    assert.ok(readFileSync(zipped).length < json.length);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
 
 test("replay feed honors earlier ranking clocks for both 1H and 5m reads without exposing later bars", async () => {
   const end = Date.UTC(2026, 9, 20), start = end - 12 * 3_600_000;

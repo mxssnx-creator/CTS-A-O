@@ -45,7 +45,7 @@
 //   exchange minimum (USD).
 import { writeFileSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { columnarStore, pruneFeed, RANK_TF, readStored, boundedReplayFeed } from "./lib/session-feed.mjs";
+import { columnarStore, pruneFeed, RANK_TF, readStored, boundedReplayFeed, readSessionFeed } from "./lib/session-feed.mjs";
 import { closesIn } from "./lib/candles.mjs";
 import { captureSignalProgress } from "./lib/signal-progress.mjs";
 import {
@@ -161,6 +161,7 @@ const {
   ddtLimitH,
   EVAL_GATES,
   walkForward,
+  signalHistoryHours,
   selectionScoreAt,
 } = await import("../src/core/sim/walkforward.ts");
 const { signalActiveHas } = await import("../src/core/signals.ts");
@@ -202,6 +203,7 @@ async function coverageOf(rt, s) {
   const { allCombos, microLaneFloor } = await import("../src/core/pipeline/pipeline.ts");
   const { signalCombos } = await import("../src/core/signals.ts");
   const { signalSettings } = await import("../src/core/signal-config.ts");
+  const { EXIT_BOT } = await import("../src/core/exit-strategy.ts");
   const {
     baseFocus,
     baseRangeRules,
@@ -215,9 +217,12 @@ async function coverageOf(rt, s) {
   const engineComboList = allCombos(baseFocus(s), s.disabledKinds, s.tfs, microLaneFloor(s.grid));
   const engineCombos = engineComboList.length;
   const sigCombos = signalCombos(signalSettings(s.signals), s.tfs).length;
-  // Independent Exit pairs are appended to the same Base evaluation ledger by the Normal runtime.
+  // Engine Exit rows are in S1; Signal Exit rows have their own worker pass and must be added here once.
   const exitCombos = rt.status.exitStrategies?.pairs ?? 0;
   const s1 = rt.pipeline?.s1 ?? [];
+  const exitBaseEvaluated = rt.status.exitStrategies?.baseEvaluated ?? 0;
+  const exitBaseInS1 = new Set(s1.filter((r) => r.bot === EXIT_BOT).map((r) => r.ind)).size;
+  const exitBaseAdditional = Math.max(0, exitBaseEvaluated - exitBaseInS1);
   const byKind = {};
   for (const r of s1) {
     const k = isSignalInd(r.ind) ? "signal" : kindOfInd(r.ind);
@@ -228,9 +233,11 @@ async function coverageOf(rt, s) {
   // the kinds Base was asked to evaluate: the focus's combos (a kind outside the focus is not evaluated by design),
   // every kind without a focus; signals when signal combos run
   const comboKinds = new Set(engineComboList.map((c) => kindOfInd(c.ind)));
-  const kindsAll = [...new Set(INDICATIONS.map((x) => x.kind))]
-    .filter((k) => !(s.disabledKinds ?? []).includes(k))
-    .filter((k) => comboKinds.has(k) || (k === "signal" && sigCombos > 0));
+  const kindsAll = [
+    ...[...new Set(INDICATIONS.map((x) => x.kind))]
+      .filter((k) => !(s.disabledKinds ?? []).includes(k) && comboKinds.has(k)),
+    ...(sigCombos > 0 ? ["signal"] : []),
+  ];
   const tapes = {};
   const engineTapes = {};
   const signalTapes = {};
@@ -361,7 +368,10 @@ async function coverageOf(rt, s) {
     engineCombos,
     signalCombos: sigCombos,
     exitCombos,
-    evaluated: s1.length,
+    evaluated: s1.length + exitBaseAdditional,
+    exitBaseEvaluated,
+    exitBaseInS1,
+    exitBaseAdditional,
     byKind,
     kindsAll,
     tapes,
@@ -524,7 +534,7 @@ async function runEngine() {
     process.exit(2);
   }
   const store = feedFile
-    ? JSON.parse(readFileSync(feedFile, "utf8"))
+    ? readSessionFeed(feedFile)
     : { tickers: null, candles: {} };
   const remember = (sym, tf, cs) => {
     const m = new Map((store.candles[`${sym}|${tf}`] ?? []).map((c) => [c.t, c]));
@@ -1608,6 +1618,22 @@ const raw = replay
       verifyUnloaded: ["validation"],
     })
   : await runEngine();
+// Older session dumps counted only pipeline S1 in the coverage total, even though Signal Exit's
+// dedicated Base pass is recorded separately. Recover that count when there are no engine pairs
+// (so none of the Exit Base rows can already be present in S1).
+if (replay) {
+  const cov = raw.engine?.coverage;
+  const exit = raw.engine?.independentExit;
+  if (cov && Array.isArray(cov.kindsAll) && (cov.signalCombos ?? 0) > 0 && !cov.kindsAll.includes("signal"))
+    cov.kindsAll.push("signal");
+  if (cov && exit && cov.exitBaseEvaluated === undefined && cov.engineCombos === 0) {
+    const additional = Math.min(cov.exitCombos ?? 0, exit.baseEvaluated ?? 0);
+    cov.evaluated = (cov.evaluated ?? 0) + additional;
+    cov.exitBaseEvaluated = additional;
+    cov.exitBaseInS1 = 0;
+    cov.exitBaseAdditional = additional;
+  }
+}
 let tapeSourceFile = replay;
 if (arg("frozen-session")) {
   const { validateFrozenSessionResult } = await import("./lib/session-study.mjs");
@@ -2262,6 +2288,24 @@ const baseRangeText = (e) => {
   );
 };
 
+const signalHistoryText = (settings) => {
+  const wf = settings?.effectiveWf ?? settings?.wf ?? { preH: settings?.preH ?? 6 };
+  const signalH = signalHistoryHours(wf);
+  const preH = settings?.preH ?? wf.preH;
+  const evaluationFromT = settings?.provenance?.evaluationFromT;
+  const indicatorStartT = settings?.provenance?.indicatorStartT;
+  const tradeStartT = settings?.provenance?.tradeStartT;
+  const evaluatedHistoryH = Number.isFinite(evaluationFromT) && Number.isFinite(tradeStartT)
+    ? Math.max(0, (tradeStartT - evaluationFromT) / H)
+    : null;
+  const indicatorWarmupH = Number.isFinite(indicatorStartT) && Number.isFinite(evaluationFromT)
+    ? Math.max(0, (evaluationFromT - indicatorStartT) / H)
+    : null;
+  const coverage = evaluatedHistoryH === null ? "" : `; available evaluated prehistory ${evaluatedHistoryH} h, short by ${Math.max(0, signalH - evaluatedHistoryH)} h`;
+  const warmup = indicatorWarmupH === null ? "" : `; indicator-only warm-up ${indicatorWarmupH} h`;
+  return `Configured Signal gate history ${signalH} h${coverage}${warmup}. The ${preH} h general engine prehistory is a separate boundary.`;
+};
+
 const signalHistMd = (e, settings) => {
   const h = e?.signals?.historic;
   if (!h) return [];
@@ -2274,7 +2318,7 @@ const signalHistMd = (e, settings) => {
     ``,
     `### Signal historic Trailing qualification`,
     ``,
-    `Generated candidates use completed entries inside the minimal evaluated history (configured MFE minimum ${histMinN ?? "not recorded"}) and are re-simulated with the lane protect, signal filter, cooldown and modeled costs. A candidate qualifies only with at least ${Math.max(histMinN ?? 0, minTrades ?? 0) || "the configured"} closed trades, PF ≥ ${Number.isFinite(minPf) ? minPf : "the configured minimum"}${maxDdr == null || maxDdr === 0 ? "" : ` and DDR ≤ ${maxDdr}`}.`,
+    `${signalHistoryText(settings)} Missing history is not a pass. Generated candidates use completed entries inside that available Signal history (configured MFE minimum ${histMinN ?? "not recorded"}) and are re-simulated with the lane protect, signal filter, cooldown and modeled costs. A candidate qualifies only with at least ${Math.max(histMinN ?? 0, minTrades ?? 0) || "the configured"} closed trades, PF ≥ ${Number.isFinite(minPf) ? minPf : "the configured minimum"}${maxDdr == null || maxDdr === 0 ? "" : ` and DDR ≤ ${maxDdr}`}.`,
     ``,
     `| pairs | pairs with insufficient entries | trails below minimum | candidates | PF-tested | insufficient closes | PF/net rejected | DDR rejected | qualified |`,
     `|---:|---:|---:|---:|---:|---:|---:|---:|---:|`,
@@ -3622,7 +3666,7 @@ const lines = [
   `# Simulated trading session — ${symText}, ${preH} h pre-historic + ${runH} h run (${tacticsLabel}, signals ${sigOn ? "on" : "off"})`,
   ``,
   `${sessionMarketDataLabel(raw.settings.marketDataSource, raw.settings.marketDataDetails)}. Timeframe lanes ${report.settings.lanes.join(" / ")} min set (independent + combined; traded: ${LANES.join(", ") || "none"}), strategies ${strategiesOn.join(", ") || "none"}${blockText}${sigOn ? ", signals" : ""}. ` +
-    `Signals use the same ${preH} h minimal evaluated history; no additional Signal warmup was loaded. ` +
+    `${sigOn ? `${signalHistoryText(raw.settings)} ` : ""}` +
     `Balance ${usd(balance0)}; ${sizing.mode === "fixed" ? `each order volume unit = ${usd(notional)} notional` : `each order volume unit = ${(sizing.pct * 100).toFixed(1)} % of the realized account balance at entry (${usd(report.settings.unitMin)}–${usd(report.settings.unitMax)} before volume factors)`} at ${leverage}×; ${(cost * 100).toFixed(2)} % round-trip cost on every close. ` +
     `Window ${new Date(startT).toISOString().slice(0, 16)} → ${new Date(endT).toISOString().slice(0, 16)} UTC. ${baseSummaryText(E)}${E.baseBuilt ? ` (+${E.baseBuilt} built for measurement, grid.allSets — not validated)` : ""} — per range, passed / evaluated pairs · applied Base PF floor and passed-pair PF scores: ${baseRangeText(E)}; Main ${E.mainPairs} pairs, ${E.tapes} tapes. ${realText} Compute ${Math.round(E.computeMs / 1000)} s. The combined account PF includes both Base-qualified engine orders and separately activated Signal orders; the Base-to-execution benchmark is engine-only, and Signal PF is separate. Pre-validation candidate-pool PF is diagnostic. ${raw.settings.wf?.causalBase ? "Causal: Base / Main / Real ranked on the history before the run." : "Look-ahead: Base / Main / Real ranked on every bar up to the end (the run is partly in-sample)."}`,
   ``,
@@ -4348,7 +4392,7 @@ function renderWriteup(d, dir) {
     ``,
     `${marketDataText}, the engine itself (Base → Main → Real over the ${s.lanes.join(" / ")} min lanes), ` +
       `pre-historic ${hmd(d.window.preStartT)} → ${hmd(d.window.startT)} UTC, run ${hmd(d.window.startT)} → ${hmd(d.window.endT)} UTC. ` +
-      `Signals use the same ${s.preH} h minimal evaluated history; no additional Signal warmup was loaded. Config evaluation uses the separately recorded ${d.configEvaluationHistoryH ?? "unknown"} h selection lookback. Symbols: ${d.symbols.join(", ")}.`,
+      `${s.signals ? `${signalHistoryText(s)} ` : ""}Config evaluation uses the separately recorded ${d.configEvaluationHistoryH ?? "unknown"} h selection lookback. Symbols: ${d.symbols.join(", ")}.`,
     ``,
     sessionQualificationEvidence(d.evidence?.qualification).note,
     d.evidence?.returns?.note ?? sessionReturnEvidence({}).note,
