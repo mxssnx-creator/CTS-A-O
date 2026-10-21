@@ -1,0 +1,15 @@
+{
+  "schema": "cts-24-native-feed-receipt-v1",
+  "source": "48 official Binance USD-M native 1m archive ZIPs, verified checksums and CRC",
+  "symbols": 24,
+  "bars1m": 69120,
+  "fromUtc": "2026-10-18T00:00:00Z",
+  "toExclusiveUtc": "2026-10-20T00:00:00Z",
+  "rawSha256": "10384d1b8671504de5367059efe19bb02ebfdc174059520fc37139c977b59855",
+  "gzipSha256": "d5996f75203b9d078f5c4edc95b22c595fdeb7716bbec6998bd37ff7ecda4d33",
+  "rawBytes": 6909717,
+  "gzipBytes": 1362228,
+  "missing": 0,
+  "duplicates": 0,
+  "selection": "Preregistered original twenty plus XRP/UNI/XLM/INJ; no outcome-based symbol selection; retrospective correctness study, not a fresh holdout"
+}

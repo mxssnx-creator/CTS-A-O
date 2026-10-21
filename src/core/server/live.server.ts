@@ -2261,7 +2261,8 @@ export function* laneContributionsGen(
       }
     // Minimum-lane units remove intrinsic DCA / Axis ladder weight for every Block mode. A legacy unraised
     // ordinary parent with no ladder/external provenance retains its documented single-unit rule.
-    const externalUnits = legsN > 0 || (p.level ?? 0) > 0 || p.w !== undefined;
+    const externalUnits = legsN > 0 || (p.level ?? 0) > 0 || p.w !== undefined || p.volFactor !== undefined ||
+      p.coordVol !== undefined || p.rangeVol !== undefined || p.hedgeVol !== undefined;
     const intrinsic = p.w ?? 1;
     const multiplier = positionMult(p);
     const unitsKnown = Number.isFinite(intrinsic) && intrinsic > 0 && Number.isFinite(multiplier) && multiplier > 0;
@@ -2282,7 +2283,7 @@ export function* laneContributionsGen(
         chase,
         ...(isBoundedTrailingPosition(p) ? { stopMax: positionTrailMax(p) } : {}),
       };
-      if (externalUnits) x.laneUnits = unitsKnown ? v / intrinsic : NaN;
+      x.laneUnits = externalUnits ? unitsKnown ? v / intrinsic : NaN : 1;
       if (tgt !== undefined) x.tgt = tgt;
       if (stopPx !== undefined) x.stopPx = stopPx;
       x.key = ls.key;
@@ -2521,6 +2522,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
   // the ledger's statistics book the exit the exchange made (statistics.ts liveTrades)
   const flatRows = new Map<string, { coid: string; msg: string }>();
   const pendingKeys = new Set<string>();
+  const unverifiedOwnership = new Set<string>();
   const settledFlat = new Map<string, number>();
   const pendingFlat = new Map<string, { coid: string; qty: number; from: number; to: number }>();
   // Initialised from the reconciled owned book below, then changed only by confirmed cumulative fills.
@@ -2820,6 +2822,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     // the stop each flat marker of this step is priced at, read before the marker is written: a flat row is the key's
     // latest row and clears the memory (as an open does), so a marker written first would never find the stop it closed at
     const stopAtFlat = new Map<string, number | null>();
+    const ownedExitAtFlat = new Map<string, { why: "stop" | "target"; px: number }>();
     // the take-profit the key's current position carried (its last T row since its open; null: none, or cancelled
     // without a new one — a "gone" row)
     const tpPxOf = (k: string) => {
@@ -2981,6 +2984,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         const ck = `${k}|${openAt}`;
         if (Lv.ledgerVerified.has(ck)) continue;
         let gone: boolean | null = null;
+        let incompleteOwnership = false;
         if (ex.ordersSince)
           try {
             const r = await ex.ordersSince(vsym, openAt - 60_000);
@@ -2995,20 +2999,31 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
                   if (!/^(STOP|TAKE_PROFIT)/.test(String(o.type ?? "").toUpperCase())) return false;
                   if (String(o.positionSide ?? "").toUpperCase() !== vps) return false;
                   if (String(o.side ?? "").toUpperCase() !== (Number(vsd) === 1 ? "SELL" : "BUY")) return false;
-                  if (!String(o.status ?? "").toUpperCase().includes("FILLED")) return false;
+                  const state = String(o.status ?? "").toUpperCase();
+                  if (state !== "FILLED" && state !== "PARTIALLY_FILLED") return false;
                   const at = Number(o.updateTime ?? o.time ?? 0);
-                  return !(at > 0) || at >= openAt;
+                  const qty = Number(o.executedQty);
+                  if (!(Number.isFinite(at) && at >= openAt)) return false;
+                  if (state !== "FILLED" || !(Number.isFinite(qty) && qty >= (ledger.get(k) ?? Infinity) - 1e-12)) {
+                    incompleteOwnership = true;
+                    return false;
+                  }
+                  const px = Number(o.avgPrice);
+                  if (Number.isFinite(px) && px > 0) ownedExitAtFlat.set(k, { why: kd === "T" ? "target" : "stop", px });
+                  return true;
                 })
               : null;
           } catch {
             gone = null;
           }
+        if (gone === false && incompleteOwnership) gone = null;
         if (gone === false) {
           Lv.ledgerVerified.add(ck);
           if (Lv.ledgerVerified.size > 2_000) Lv.ledgerVerified.clear();
           continue;
         }
         held.delete(k);
+        if (gone === null) unverifiedOwnership.add(k);
         // our part gone: someone else's ("independent" trades its own beside it); history unreadable: not touched
         if (!gone || !independent) foreign.add(posOneway ? vsym : k);
         if (gone) {
@@ -3017,6 +3032,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           tpAtFlat.set(k, tpPxOf(k));
           const fid = `flat-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e9).toString(36)}`;
           record(fid, { key: k, sym: vsym, side: Number(vsd) }, "F", 0, 0, "ok", "own exit filled while away — the position there is not ours");
+          flatKeys.push(k);
           ledger.set(k, 0);
           rt.db.event("warn", `live: ${k} — our exit filled while the desk was away; the position there now is someone else's and is never touched${independent ? " (the desk trades its own beside it)" : ""}`);
         } else status.skipped.push({ sym: vsym, why: "ownership unverified (order history unreadable) — not touched this step" });
@@ -3141,7 +3157,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         keyState.set(key, "closed"); // metadata refresh is not a new opening after its proven exit
       } catch { /* no measured close is invented while its history is unreadable */ }
     }
-    for (const k of flatKeys) noteExternal(k, prices.get(k.split("|")[0]) ?? 0, false, await outsideOf(k));
+    for (const k of flatKeys) noteExternal(k, prices.get(k.split("|")[0]) ?? 0, false, ownedExitAtFlat.get(k) ?? await outsideOf(k));
     // A position closed outside this system — by its exchange stop, or by hand — never stops processing, and is
     // never put back. The lane orders that held it at that moment are held back, so the SAME position is not
     // reopened: reopening at market while those lanes are still active only pays a round trip and the slippage
@@ -3169,9 +3185,13 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     }
     if (!reconnected) {
       const outside = new Map(externalCloses(prev, held).map((x) => [x.key, x]));
+      // A reconciled flat marker is the evidence to attribute and suppress, not an own requested close.
+      // Include confirmed ledger positions even if the previous book never observed their short lifetime.
+      const observedFlat = new Set(flatKeys);
+      for (const key of observedFlat) outside.set(key, { key, lanes: 0 });
       for (const key of settledFlat.keys()) if (!held.has(key)) outside.set(key, { key, lanes: 0 });
       for (const x of outside.values()) {
-        if (lagging.has(x.key) || pendingKeys.has(x.key) || keyState.get(x.key) === "closed") continue;
+        if (lagging.has(x.key) || pendingKeys.has(x.key) || unverifiedOwnership.has(x.key) || (keyState.get(x.key) === "closed" && !observedFlat.has(x.key))) continue;
         const [xsym, xsd] = x.key.split("|");
         // our own close whose reply timed out (its row still pending) is what emptied the side: it filled. Recorded
         // as done — not reported as an exchange stop-out, and no lane order held back (they asked for that close)
@@ -3186,7 +3206,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         }
         // by hand the position went at the market; by its stop or its take-profit, at that order's price (closedBy:
         // the one still resting did not fill)
-        const by = noteExternal(x.key, prices.get(xsym) ?? 0, true, await outsideOf(x.key));
+        const by = noteExternal(x.key, prices.get(xsym) ?? 0, true, ownedExitAtFlat.get(x.key) ?? await outsideOf(x.key));
         // the ledger still counts it (opened within the last 10 minutes: no flat marker above): marked flat now, so
         // the marker carries this close — found minutes later its stop and take-profit are gone and the venue's
         // history window has passed it

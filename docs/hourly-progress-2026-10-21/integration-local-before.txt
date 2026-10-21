@@ -1,0 +1,2260 @@
+TAP version 13
+# Subtest: exchange snapping (bingx.server.ts)
+    # Subtest: snapQtyExchange: a non-zero quantity is on the lot grid and at least every minimum (500 cases)
+    ok 1 - snapQtyExchange: a non-zero quantity is on the lot grid and at least every minimum (500 cases)
+      ---
+      duration_ms: 8.891238
+      type: 'test'
+      ...
+    # Subtest: snapQtyExchange: nothing to size is zero, no contract leaves the quantity as asked
+    ok 2 - snapQtyExchange: nothing to size is zero, no contract leaves the quantity as asked
+      ---
+      duration_ms: 6.139917
+      type: 'test'
+      ...
+    # Subtest: stopPxExchange: on the protective side, at least the minimum distance, on the price tick (500 cases)
+    ok 3 - stopPxExchange: on the protective side, at least the minimum distance, on the price tick (500 cases)
+      ---
+      duration_ms: 9.127893
+      type: 'test'
+      ...
+    # Subtest: stopPxExchange: no price is no stop
+    ok 4 - stopPxExchange: no price is no stop
+      ---
+      duration_ms: 0.289274
+      type: 'test'
+      ...
+    1..4
+ok 1 - exchange snapping (bingx.server.ts)
+  ---
+  duration_ms: 26.040242
+  type: 'suite'
+  ...
+# Subtest: live control targets (server/live.ts controlTargets)
+    # Subtest: never above the exchange-slot or per-position cap; every key is a target or a reasoned skip (500 cases)
+    ok 1 - never above the exchange-slot or per-position cap; every key is a target or a reasoned skip (500 cases)
+      ---
+      duration_ms: 165.419353
+      type: 'test'
+      ...
+    # Subtest: deterministic: the same input gives the same plan, in any lane order (500 cases)
+    ok 2 - deterministic: the same input gives the same plan, in any lane order (500 cases)
+      ---
+      duration_ms: 100.643309
+      type: 'test'
+      ...
+    1..2
+ok 2 - live control targets (server/live.ts controlTargets)
+  ---
+  duration_ms: 266.382586
+  type: 'suite'
+  ...
+# Subtest: statistics agree with a direct sum (metrics/stats.ts, statistics.ts)
+    # Subtest: statsOf: n, wins, gross profit / loss, net and PF of any trade list, in any order (500 cases)
+    ok 1 - statsOf: n, wins, gross profit / loss, net and PF of any trade list, in any order (500 cases)
+      ---
+      duration_ms: 27.581918
+      type: 'test'
+      ...
+    # Subtest: profitFactor: no loss is PF_NO_LOSS with a profit, 0 without; scale-free
+    ok 2 - profitFactor: no loss is PF_NO_LOSS with a profit, 0 without; scale-free
+      ---
+      duration_ms: 0.527988
+      type: 'test'
+      ...
+    # Subtest: rowOf / groupBy / positionResults: every partition adds up to the whole (500 cases)
+    ok 3 - rowOf / groupBy / positionResults: every partition adds up to the whole (500 cases)
+      ---
+      duration_ms: 255.983097
+      type: 'test'
+      ...
+    # Subtest: buildStatistics: the total and every breakdown agree with the window's trades (100 cases)
+    ok 4 - buildStatistics: the total and every breakdown agree with the window's trades (100 cases)
+      ---
+      duration_ms: 192.623659
+      type: 'test'
+      ...
+    # Subtest: rowOf / groupBy / buildStatistics retain unknown legacy losing returns without hiding cash (100 cases)
+    ok 5 - rowOf / groupBy / buildStatistics retain unknown legacy losing returns without hiding cash (100 cases)
+      ---
+      duration_ms: 321.22422
+      type: 'test'
+      ...
+    1..5
+ok 3 - statistics agree with a direct sum (metrics/stats.ts, statistics.ts)
+  ---
+  duration_ms: 798.716318
+  type: 'suite'
+  ...
+# Subtest: long and short run independently (bothSides / splitSides / mergeSideTrades)
+    # Subtest: a one-sided signal runs once, on the signal itself: the plain single-side result (500 cases)
+    ok 1 - a one-sided signal runs once, on the signal itself: the plain single-side result (500 cases)
+      ---
+      duration_ms: 35.841498
+      type: 'test'
+      ...
+    # Subtest: a mixed signal splits into a long-only and a short-only copy that lose no entry (500 cases)
+    ok 2 - a mixed signal splits into a long-only and a short-only copy that lose no entry (500 cases)
+      ---
+      duration_ms: 26.681492
+      type: 'test'
+      ...
+    # Subtest: merging: time-ordered, every trade of every side kept, each side its own run (500 cases)
+    ok 3 - merging: time-ordered, every trade of every side kept, each side its own run (500 cases)
+      ---
+      duration_ms: 86.561855
+      type: 'test'
+      ...
+    # Subtest: mergeSideTrades of arbitrary lists: a time-ordered permutation (500 cases)
+    ok 4 - mergeSideTrades of arbitrary lists: a time-ordered permutation (500 cases)
+      ---
+      duration_ms: 31.012514
+      type: 'test'
+      ...
+    1..4
+ok 4 - long and short run independently (bothSides / splitSides / mergeSideTrades)
+  ---
+  duration_ms: 181.115976
+  type: 'suite'
+  ...
+# Subtest: live account sizing: one actual balance for sizing, budgets and preview
+    # Subtest: sizes from the account snapshot used for budgets, without a conflicting second equity read
+    ok 1 - sizes from the account snapshot used for budgets, without a conflicting second equity read
+      ---
+      duration_ms: 38.838563
+      type: 'test'
+      ...
+    # Subtest: sizes and applies ratio caps from wallet balance, not unrealized equity
+    ok 2 - sizes and applies ratio caps from wallet balance, not unrealized equity
+      ---
+      duration_ms: 4.965072
+      type: 'test'
+      ...
+    # Subtest: projects the captured range volume once and preserves it across settings edits
+    ok 3 - projects the captured range volume once and preserves it across settings edits
+      ---
+      duration_ms: 5.496258
+      type: 'test'
+      ...
+    # Subtest: an account-only client uses actual equity, and fixed/minimum sizing previews keep that equity too
+    ok 4 - an account-only client uses actual equity, and fixed/minimum sizing previews keep that equity too
+      ---
+      duration_ms: 2.875291
+      type: 'test'
+      ...
+    # Subtest: an unread real balance stays unknown in the preview; only explicit simulated clients use paper
+    ok 5 - an unread real balance stays unknown in the preview; only explicit simulated clients use paper
+      ---
+      duration_ms: 3.16521
+      type: 'test'
+      ...
+    # Subtest: zero, negative and nonfinite wallet balances never become order sizes
+    ok 6 - zero, negative and nonfinite wallet balances never become order sizes
+      ---
+      duration_ms: 2.745468
+      type: 'test'
+      ...
+    # Subtest: a failed equity refresh cannot keep an old high balance alive indefinitely
+    ok 7 - a failed equity refresh cannot keep an old high balance alive indefinitely
+      ---
+      duration_ms: 4.541021
+      type: 'test'
+      ...
+    # Subtest: a stale account snapshot cannot refresh its own age just by passing through another cache
+    ok 8 - a stale account snapshot cannot refresh its own age just by passing through another cache
+      ---
+      duration_ms: 5.428295
+      type: 'test'
+      ...
+    # Subtest: the worst-case budget alone still requires known, finite account balance
+    ok 9 - the worst-case budget alone still requires known, finite account balance
+      ---
+      duration_ms: 32.16156
+      type: 'test'
+      ...
+    # Subtest: a nonfinite free margin cannot bypass the account's free-margin floor
+    ok 10 - a nonfinite free margin cannot bypass the account's free-margin floor
+      ---
+      duration_ms: 6.006633
+      type: 'test'
+      ...
+    # Subtest: a larger venue-minimum retry is rechecked against the free margin and every account budget
+    ok 11 - a larger venue-minimum retry is rechecked against the free margin and every account budget
+      ---
+      duration_ms: 78.876034
+      type: 'test'
+      ...
+    # Subtest: a minimum retry that fits remains allowed, and reserves its larger amount for the next retry
+    ok 12 - a minimum retry that fits remains allowed, and reserves its larger amount for the next retry
+      ---
+      duration_ms: 11.347604
+      type: 'test'
+      ...
+    # Subtest: an equity-only client keeps its verified equity for minimum retries and per-position caps
+    ok 13 - an equity-only client keeps its verified equity for minimum retries and per-position caps
+      ---
+      duration_ms: 37.952425
+      type: 'test'
+      ...
+    1..13
+ok 5 - live account sizing: one actual balance for sizing, budgets and preview
+  ---
+  duration_ms: 237.700234
+  type: 'suite'
+  ...
+# Subtest: stop-risk budget: the strongest targets that fit
+    # Subtest: x01, 13 Oct: ZKP (2.06 USD at 12.15 %) is over the 0.249 USD budget, XPL (2.00 USD at 11 %) fits: XPL is kept
+    ok 1 - x01, 13 Oct: ZKP (2.06 USD at 12.15 %) is over the 0.249 USD budget, XPL (2.00 USD at 11 %) fits: XPL is kept
+      ---
+      duration_ms: 3.092056
+      type: 'test'
+      ...
+    # Subtest: a stronger target over the budget does not take the weaker ones that fit with it
+    ok 2 - a stronger target over the budget does not take the weaker ones that fit with it
+      ---
+      duration_ms: 0.691114
+      type: 'test'
+      ...
+    1..2
+ok 6 - stop-risk budget: the strongest targets that fit
+  ---
+  duration_ms: 6.140927
+  type: 'suite'
+  ...
+# Subtest: the three budgets together (scaleToBudgets)
+    # Subtest: the gross cap fits two minimums; the two strongest fail the risk budget: the next two that fit every budget are kept
+    ok 1 - the gross cap fits two minimums; the two strongest fail the risk budget: the next two that fit every budget are kept
+      ---
+      duration_ms: 1.002094
+      type: 'test'
+      ...
+    # Subtest: a held position takes its budget first and is never dropped; without equity nothing is scaled or dropped
+    ok 2 - a held position takes its budget first and is never dropped; without equity nothing is scaled or dropped
+      ---
+      duration_ms: 1.19574
+      type: 'test'
+      ...
+    1..2
+ok 7 - the three budgets together (scaleToBudgets)
+  ---
+  duration_ms: 6.578329
+  type: 'suite'
+  ...
+# Subtest: control: the budgets admit the targets that fit (end to end)
+    # Subtest: 0.50 USDT wallet, 5 USD gross, 0.25 USD risk: two wide-stop keys are passed over, two tight-stop keys open
+    ok 1 - 0.50 USDT wallet, 5 USD gross, 0.25 USD risk: two wide-stop keys are passed over, two tight-stop keys open
+      ---
+      duration_ms: 53.492528
+      type: 'test'
+      ...
+    1..1
+ok 8 - control: the budgets admit the targets that fit (end to end)
+  ---
+  duration_ms: 53.811562
+  type: 'suite'
+  ...
+# Subtest: the budgets are sized on B = min(wallet, equity)
+    # Subtest: 0.50 USDT wallet with 0.50 open profit (equity 1.00): the budgets are those of 0.50, not 1.00
+    ok 1 - 0.50 USDT wallet with 0.50 open profit (equity 1.00): the budgets are those of 0.50, not 1.00
+      ---
+      duration_ms: 39.966484
+      type: 'test'
+      ...
+    1..1
+ok 9 - the budgets are sized on B = min(wallet, equity)
+  ---
+  duration_ms: 40.293702
+  type: 'suite'
+  ...
+# Subtest: actual execution account budgets across independent Signal sets
+    # Subtest: Overall Block asks for its total capped target once across repeated native cycles (lane orders false)
+    ok 1 - Overall Block asks for its total capped target once across repeated native cycles (lane orders false)
+      ---
+      duration_ms: 82.462965
+      type: 'test'
+      ...
+    # Subtest: Overall Block asks for its total capped target once across repeated native cycles (lane orders true)
+    ok 2 - Overall Block asks for its total capped target once across repeated native cycles (lane orders true)
+      ---
+      duration_ms: 24.341884
+      type: 'test'
+      ...
+    # Subtest: an unfilled capped Block target reserves its whole stack without repeating or funding a sibling (lane orders false)
+    ok 3 - an unfilled capped Block target reserves its whole stack without repeating or funding a sibling (lane orders false)
+      ---
+      duration_ms: 31.464225
+      type: 'test'
+      ...
+    # Subtest: an unfilled capped Block target reserves its whole stack without repeating or funding a sibling (lane orders true)
+    ok 4 - an unfilled capped Block target reserves its whole stack without repeating or funding a sibling (lane orders true)
+      ---
+      duration_ms: 19.188423
+      type: 'test'
+      ...
+    # Subtest: weighted Block exits do not merge unrelated minimum-sized configs or change their one-unit rule
+    ok 5 - weighted Block exits do not merge unrelated minimum-sized configs or change their one-unit rule
+      ---
+      duration_ms: 44.267499
+      type: 'test'
+      ...
+    # Subtest: a partial weighted Block fill reserves its unfilled remainder and cannot fund a new sibling
+    ok 6 - a partial weighted Block fill reserves its unfilled remainder and cannot fund a new sibling
+      ---
+      duration_ms: 22.206729
+      type: 'test'
+      ...
+    # Subtest: a coalesced Block stop suppresses all its source children while an unrelated held config continues
+    ok 7 - a coalesced Block stop suppresses all its source children while an unrelated held config continues
+      ---
+      duration_ms: 23.646618
+      type: 'test'
+      ...
+    # Subtest: gross: a refused reduction releases only its confirmed quantity before a different set grows
+    ok 8 - gross: a refused reduction releases only its confirmed quantity before a different set grows
+      ---
+      duration_ms: 7.272113
+      type: 'test'
+      ...
+    # Subtest: gross: a partial reduction releases only its confirmed quantity before a different set grows
+    ok 9 - gross: a partial reduction releases only its confirmed quantity before a different set grows
+      ---
+      duration_ms: 6.376474
+      type: 'test'
+      ...
+    # Subtest: gross: a pending reduction releases only its confirmed quantity before a different set grows
+    ok 10 - gross: a pending reduction releases only its confirmed quantity before a different set grows
+      ---
+      duration_ms: 6.527943
+      type: 'test'
+      ...
+    # Subtest: gross: a confirmed reduction releases only its confirmed quantity before a different set grows
+    ok 11 - gross: a confirmed reduction releases only its confirmed quantity before a different set grows
+      ---
+      duration_ms: 4.519353
+      type: 'test'
+      ...
+    # Subtest: risk: a refused reduction releases only its confirmed quantity before a different set grows
+    ok 12 - risk: a refused reduction releases only its confirmed quantity before a different set grows
+      ---
+      duration_ms: 8.939447
+      type: 'test'
+      ...
+    # Subtest: risk: a partial reduction releases only its confirmed quantity before a different set grows
+    ok 13 - risk: a partial reduction releases only its confirmed quantity before a different set grows
+      ---
+      duration_ms: 7.777434
+      type: 'test'
+      ...
+    # Subtest: risk: a pending reduction releases only its confirmed quantity before a different set grows
+    ok 14 - risk: a pending reduction releases only its confirmed quantity before a different set grows
+      ---
+      duration_ms: 7.350008
+      type: 'test'
+      ...
+    # Subtest: risk: a confirmed reduction releases only its confirmed quantity before a different set grows
+    ok 15 - risk: a confirmed reduction releases only its confirmed quantity before a different set grows
+      ---
+      duration_ms: 11.413552
+      type: 'test'
+      ...
+    # Subtest: backstop: a refused reduction releases only its confirmed quantity before a different set grows
+    ok 16 - backstop: a refused reduction releases only its confirmed quantity before a different set grows
+      ---
+      duration_ms: 7.638442
+      type: 'test'
+      ...
+    # Subtest: backstop: a partial reduction releases only its confirmed quantity before a different set grows
+    ok 17 - backstop: a partial reduction releases only its confirmed quantity before a different set grows
+      ---
+      duration_ms: 6.363709
+      type: 'test'
+      ...
+    # Subtest: backstop: a pending reduction releases only its confirmed quantity before a different set grows
+    ok 18 - backstop: a pending reduction releases only its confirmed quantity before a different set grows
+      ---
+      duration_ms: 5.042567
+      type: 'test'
+      ...
+    # Subtest: backstop: a confirmed reduction releases only its confirmed quantity before a different set grows
+    ok 19 - backstop: a confirmed reduction releases only its confirmed quantity before a different set grows
+      ---
+      duration_ms: 4.671027
+      type: 'test'
+      ...
+    # Subtest: an accepted unfilled entry reserves its entire account capacity across other keys and later steps
+    ok 20 - an accepted unfilled entry reserves its entire account capacity across other keys and later steps
+      ---
+      duration_ms: 5.464029
+      type: 'test'
+      ...
+    # Subtest: a larger accepted minimum retry reserves its remainder before the next set opens
+    ok 21 - a larger accepted minimum retry reserves its remainder before the next set opens
+      ---
+      duration_ms: 5.382277
+      type: 'test'
+      ...
+    # Subtest: a partial entry reserves confirmed plus remaining quantity exactly once, allowing another set that fits
+    ok 22 - a partial entry reserves confirmed plus remaining quantity exactly once, allowing another set that fits
+      ---
+      duration_ms: 3.02464
+      type: 'test'
+      ...
+    # Subtest: a resting pending MARKET row is never mistaken for zero-distance stop protection
+    ok 23 - a resting pending MARKET row is never mistaken for zero-distance stop protection
+      ---
+      duration_ms: 12.615538
+      type: 'test'
+      ...
+    # Subtest: adding a narrow-stop sibling on a held key cannot dilute the wider quantity's risk to fund growth
+    ok 24 - adding a narrow-stop sibling on a held key cannot dilute the wider quantity's risk to fund growth
+      ---
+      duration_ms: 5.306803
+      type: 'test'
+      ...
+    # Subtest: unfilled entries also reserve free margin when the configured floor is enabled
+    ok 25 - unfilled entries also reserve free margin when the configured floor is enabled
+      ---
+      duration_ms: 5.089679
+      type: 'test'
+      ...
+    # Subtest: unknown held/pending cost and invalid equity cannot silently become zero budget usage
+    ok 26 - unknown held/pending cost and invalid equity cannot silently become zero budget usage
+      ---
+      duration_ms: 0.42644
+      type: 'test'
+      ...
+    # Subtest: lane partial exits follow confirmed equity/ratio resizing and retain exact Block parent weights
+    not ok 27 - lane partial exits follow confirmed equity/ratio resizing and retain exact Block parent weights
+      ---
+      duration_ms: 21.660301
+      type: 'test'
+      location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/server/execution-budgets.test.ts:301:3'
+      failureType: 'testCodeFailure'
+      error: |-
+        one exact parent stop covers the owned stack
+        + actual - expected
+        
+          [
+            4,
+        +   4
+          ]
+        
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected:
+        0: 4
+      actual:
+        0: 4
+        1: 4
+      operator: 'deepStrictEqual'
+      stack: |-
+        TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/execution-budgets.test.ts:316:14)
+        async Test.run (node:internal/test_runner/test:1389:7)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:960:7)
+      ...
+    # Subtest: a refused partial-exit cancellation holds the reduction and preserves its durable quantity
+    not ok 28 - a refused partial-exit cancellation holds the reduction and preserves its durable quantity
+      ---
+      duration_ms: 6.176554
+      type: 'test'
+      location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/server/execution-budgets.test.ts:320:3'
+      failureType: 'testCodeFailure'
+      error: 'the backstop remains'
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected: true
+      actual: false
+      operator: '=='
+      stack: |-
+        TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/execution-budgets.test.ts:337:12)
+        async Test.run (node:internal/test_runner/test:1389:7)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:960:7)
+      ...
+    # Subtest: a stop filling during resize cancellation is reconciled before any second reduction or reopen
+    ok 29 - a stop filling during resize cancellation is reconciled before any second reduction or reopen
+      ---
+      duration_ms: 6.313413
+      type: 'test'
+      ...
+    # Subtest: partial fills replace exact exits only for the confirmed quantity, never the pending remainder
+    not ok 30 - partial fills replace exact exits only for the confirmed quantity, never the pending remainder
+      ---
+      duration_ms: 8.403903
+      type: 'test'
+      location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/server/execution-budgets.test.ts:366:3'
+      failureType: 'testCodeFailure'
+      error: |-
+        Expected values to be strictly deep-equal:
+        + actual - expected
+        
+          [
+            1.5,
+        +   1.5
+          ]
+        
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected:
+        0: 1.5
+      actual:
+        0: 1.5
+        1: 1.5
+      operator: 'deepStrictEqual'
+      stack: |-
+        TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/execution-budgets.test.ts:383:12)
+        async Test.run (node:internal/test_runner/test:1389:7)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:960:7)
+      ...
+    # Subtest: a partially filled reduction retains actual ownership and never installs an oversized partial exit
+    not ok 31 - a partially filled reduction retains actual ownership and never installs an oversized partial exit
+      ---
+      duration_ms: 6.821828
+      type: 'test'
+      location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/server/execution-budgets.test.ts:389:3'
+      failureType: 'testCodeFailure'
+      error: |-
+        only the intended retained share has the exact partial exit
+        + actual - expected
+        
+          [
+        +   0.75,
+            0.5
+          ]
+        
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected:
+        0: 0.5
+      actual:
+        0: 0.75
+        1: 0.5
+      operator: 'deepStrictEqual'
+      stack: |-
+        TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/execution-budgets.test.ts:405:12)
+        async Test.run (node:internal/test_runner/test:1389:7)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:960:7)
+      ...
+    # Subtest: native one-way exits divide only the net owned quantity across the surviving independent parents
+    ok 32 - native one-way exits divide only the net owned quantity across the surviving independent parents
+      ---
+      duration_ms: 9.036629
+      type: 'test'
+      ...
+    # Subtest: a measured conditional partial fill protects the exact remainder without reopening it or diluting siblings
+    not ok 33 - a measured conditional partial fill protects the exact remainder without reopening it or diluting siblings
+      ---
+      duration_ms: 22.941083
+      type: 'test'
+      location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/server/execution-budgets.test.ts:435:3'
+      failureType: 'testCodeFailure'
+      error: |-
+        Expected values to be strictly deep-equal:
+        + actual - expected
+        
+          [
+            0.6,
+            1,
+        +   1.6
+          ]
+        
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected:
+        0: 0.6
+        1: 1
+      actual:
+        0: 0.6
+        1: 1
+        2: 1.6
+      operator: 'deepStrictEqual'
+      stack: |-
+        TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/execution-budgets.test.ts:453:12)
+        async Test.run (node:internal/test_runner/test:1389:7)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:960:7)
+      ...
+    # Subtest: a full conditional fill retains a refused sibling identity until its cancellation confirms
+    ok 34 - a full conditional fill retains a refused sibling identity until its cancellation confirms
+      ---
+      duration_ms: 12.878442
+      type: 'test'
+      ...
+    # Subtest: a terminal cancellation without cumulative quantity remains unknown until zero execution is measured
+    ok 35 - a terminal cancellation without cumulative quantity remains unknown until zero execution is measured
+      ---
+      duration_ms: 6.559248
+      type: 'test'
+      ...
+    # Subtest: a successful cancellation that reveals a partial fill cannot be followed by a double reduction
+    ok 36 - a successful cancellation that reveals a partial fill cannot be followed by a double reduction
+      ---
+      duration_ms: 7.621398
+      type: 'test'
+      ...
+    # Subtest: a failed configured state checkpoint keeps the held backstop and sends no partial conditional
+    not ok 37 - a failed configured state checkpoint keeps the held backstop and sends no partial conditional
+      ---
+      duration_ms: 9.570702
+      type: 'test'
+      location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/server/execution-budgets.test.ts:533:3'
+      failureType: 'testCodeFailure'
+      error: |-
+        Expected values to be strictly equal:
+        
+        2 !== 0
+        
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected: 0
+      actual: 2
+      operator: 'strictEqual'
+      stack: |-
+        TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/execution-budgets.test.ts:555:12)
+        async Test.run (node:internal/test_runner/test:1389:7)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:960:7)
+      ...
+    # Subtest: a failed pending ownership journal prevents funded native submission
+    ok 38 - a failed pending ownership journal prevents funded native submission
+      ---
+      duration_ms: 9.993917
+      type: 'test'
+      ...
+    # Subtest: conditional provisional IDs and partial caps survive an immediate state/journal reopen
+    not ok 39 - conditional provisional IDs and partial caps survive an immediate state/journal reopen
+      ---
+      duration_ms: 9.038522
+      type: 'test'
+      location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/server/execution-budgets.test.ts:580:3'
+      failureType: 'testCodeFailure'
+      error: |-
+        Expected values to be strictly equal:
+        
+        0 !== 2
+        
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected: 2
+      actual: 0
+      operator: 'strictEqual'
+      stack: |-
+        TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/execution-budgets.test.ts:603:12)
+        async Test.run (node:internal/test_runner/test:1389:7)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:960:7)
+      ...
+    # Subtest: an accepted conditional timeout retains its provisional coid and is never placed twice
+    not ok 40 - an accepted conditional timeout retains its provisional coid and is never placed twice
+      ---
+      duration_ms: 8.877134
+      type: 'test'
+      location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/server/execution-budgets.test.ts:629:3'
+      failureType: 'testCodeFailure'
+      error: "Cannot read properties of undefined (reading 's')"
+      code: 'ERR_TEST_FAILURE'
+      name: 'TypeError'
+      stack: |-
+        TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/execution-budgets.test.ts:645:27)
+        async Test.run (node:internal/test_runner/test:1389:7)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:960:7)
+      ...
+    # Subtest: an unknown cancellation while moving a stop retains its order identity and sends no duplicate
+    not ok 41 - an unknown cancellation while moving a stop retains its order identity and sends no duplicate
+      ---
+      duration_ms: 8.377896
+      type: 'test'
+      location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/server/execution-budgets.test.ts:654:3'
+      failureType: 'testCodeFailure'
+      error: |-
+        Expected values to be strictly equal:
+        
+        2 !== 1
+        
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected: 1
+      actual: 2
+      operator: 'strictEqual'
+      stack: |-
+        TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/execution-budgets.test.ts:668:12)
+        async Test.run (node:internal/test_runner/test:1389:7)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:960:7)
+      ...
+    # Subtest: coalesced parent quantities snap down to coarse venue lot steps
+    not ok 42 - coalesced parent quantities snap down to coarse venue lot steps
+      ---
+      duration_ms: 16.397621
+      type: 'test'
+      location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/server/execution-budgets.test.ts:672:3'
+      failureType: 'testCodeFailure'
+      error: |-
+        The expression evaluated to a falsy value:
+        
+          assert.ok(partials.reduce((sum, o) => sum + o.qty , 0) <= ex.positions.get("S0-USDT|LONG") )
+        
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected: true
+      actual: false
+      operator: '=='
+      stack: |-
+        TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/execution-budgets.test.ts:686:12)
+        async Test.run (node:internal/test_runner/test:1389:7)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:960:7)
+      ...
+    # Subtest: DCA and Axis minimum-lane units remove intrinsic ladder weight for every Block mode
+    ok 43 - DCA and Axis minimum-lane units remove intrinsic ladder weight for every Block mode
+      ---
+      duration_ms: 2.650396
+      type: 'test'
+      ...
+    # Subtest: minimum-lane risk weights match equal funded shares despite unequal intrinsic model volume
+    not ok 44 - minimum-lane risk weights match equal funded shares despite unequal intrinsic model volume
+      ---
+      duration_ms: 0.753157
+      type: 'test'
+      location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/server/execution-budgets.test.ts:711:3'
+      failureType: 'testCodeFailure'
+      error: |-
+        Expected values to be strictly equal:
+        
+        11 !== 2
+        
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected: 2
+      actual: 11
+      operator: 'strictEqual'
+      stack: |-
+        TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/execution-budgets.test.ts:717:12)
+        Test.runInAsyncScope (node:async_hooks:227:14)
+        Test.run (node:internal/test_runner/test:1382:25)
+        Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+        Test.postRun (node:internal/test_runner/test:1522:19)
+        Test.run (node:internal/test_runner/test:1447:12)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:960:7)
+      ...
+    # Subtest: one-way lane units net fractional Block weights and choose the side actually funded
+    ok 45 - one-way lane units net fractional Block weights and choose the side actually funded
+      ---
+      duration_ms: 1.200602
+      type: 'test'
+      ...
+    # Subtest: the equity percent and volume factor follow verified balance gains and losses without paper balance fallback
+    ok 46 - the equity percent and volume factor follow verified balance gains and losses without paper balance fallback
+      ---
+      duration_ms: 8.804531
+      type: 'test'
+      ...
+    1..46
+not ok 10 - actual execution account budgets across independent Signal sets
+  ---
+  duration_ms: 558.242519
+  type: 'suite'
+  location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/server/execution-budgets.test.ts:29:1'
+  failureType: 'subtestsFailed'
+  error: '11 subtests failed'
+  code: 'ERR_TEST_FAILURE'
+  ...
+# Subtest: current-equity stop risk and per-position trailing mode
+    # Subtest: a profitable paper trail still risks mark→stop for long and short late live adoption
+    ok 1 - a profitable paper trail still risks mark→stop for long and short late live adoption
+      ---
+      duration_ms: 2.745479
+      type: 'test'
+      ...
+    # Subtest: a higher peak increases current giveback risk until the own trailing stop follows
+    ok 2 - a higher peak increases current giveback risk until the own trailing stop follows
+      ---
+      duration_ms: 2.133736
+      type: 'test'
+      ...
+    # Subtest: capped Signal targets and trailing-only no-target mode survive the global engine free-trail setting
+    ok 3 - capped Signal targets and trailing-only no-target mode survive the global engine free-trail setting
+      ---
+      duration_ms: 2.715451
+      type: 'test'
+      ...
+    1..3
+ok 11 - current-equity stop risk and per-position trailing mode
+  ---
+  duration_ms: 8.183276
+  type: 'suite'
+  ...
+# Subtest: order sides, hedge mode (overall control): LONG and SHORT alike
+    # Subtest: H-A long: the open is a market BUY on positionSide LONG, bounded to the lane's quantity, and the other side stays shut
+    ok 1 - H-A long: the open is a market BUY on positionSide LONG, bounded to the lane's quantity, and the other side stays shut
+      ---
+      duration_ms: 43.591872
+      type: 'test'
+      ...
+    # Subtest: H-B long: the stop is a STOP_MARKET SELL on LONG, triggered below the mark, bounded (no closePosition)
+    ok 2 - H-B long: the stop is a STOP_MARKET SELL on LONG, triggered below the mark, bounded (no closePosition)
+      ---
+      duration_ms: 6.763722
+      type: 'test'
+      ...
+    # Subtest: H-D long: a bounded close of one lane sends its own quantity as a SELL on LONG, never closePosition, and the other side's key is untouched
+    ok 3 - H-D long: a bounded close of one lane sends its own quantity as a SELL on LONG, never closePosition, and the other side's key is untouched
+      ---
+      duration_ms: 48.569727
+      type: 'test'
+      ...
+    # Subtest: H-F long: a manual SHORT position freezes nothing and closes nothing on LONG: the own side still grows, the manual quantity stays
+    ok 4 - H-F long: a manual SHORT position freezes nothing and closes nothing on LONG: the own side still grows, the manual quantity stays
+      ---
+      duration_ms: 25.929448
+      type: 'test'
+      ...
+    # Subtest: H-G long: its side closed by its stop leaves the SHORT side's stop and take-profit resting, and the SHORT position as it was
+    ok 5 - H-G long: its side closed by its stop leaves the SHORT side's stop and take-profit resting, and the SHORT position as it was
+      ---
+      duration_ms: 11.224399
+      type: 'test'
+      ...
+    # Subtest: H-7 long: our stop filled while the desk was away — the quantity someone else opened on LONG is not adopted (flat marker)
+    ok 6 - H-7 long: our stop filled while the desk was away — the quantity someone else opened on LONG is not adopted (flat marker)
+      ---
+      duration_ms: 5.188137
+      type: 'test'
+      ...
+    # Subtest: H-9 long: merged with someone else's quantity on LONG and its stop lost, the stop is re-placed bounded — no closePosition order
+    ok 7 - H-9 long: merged with someone else's quantity on LONG and its stop lost, the stop is re-placed bounded — no closePosition order
+      ---
+      duration_ms: 12.353273
+      type: 'test'
+      ...
+    # Subtest: H-9 long, reduction: merged with someone else's quantity on LONG, their sale takes 3 of ours, the one left is closed by one quantity-bounded MARKET — no closePosition order
+    ok 8 - H-9 long, reduction: merged with someone else's quantity on LONG, their sale takes 3 of ours, the one left is closed by one quantity-bounded MARKET — no closePosition order
+      ---
+      duration_ms: 12.270624
+      type: 'test'
+      ...
+    # Subtest: H-9 long, to nothing: merged with someone else's quantity on LONG, their sale takes all of ours, the SHORT lane opens on SHORT and nothing closes the whole side
+    ok 9 - H-9 long, to nothing: merged with someone else's quantity on LONG, their sale takes all of ours, the SHORT lane opens on SHORT and nothing closes the whole side
+      ---
+      duration_ms: 10.084278
+      type: 'test'
+      ...
+    # Subtest: H-M long: merged with someone else's quantity on LONG, the own take-profit is cancelled and nothing closes the whole side
+    ok 10 - H-M long: merged with someone else's quantity on LONG, the own take-profit is cancelled and nothing closes the whole side
+      ---
+      duration_ms: 7.65082
+      type: 'test'
+      ...
+    # Subtest: H-A short: the open is a market SELL on positionSide SHORT, bounded to the lane's quantity, and the other side stays shut
+    ok 11 - H-A short: the open is a market SELL on positionSide SHORT, bounded to the lane's quantity, and the other side stays shut
+      ---
+      duration_ms: 5.740749
+      type: 'test'
+      ...
+    # Subtest: H-B short: the stop is a STOP_MARKET BUY on SHORT, triggered above the mark, bounded (no closePosition)
+    ok 12 - H-B short: the stop is a STOP_MARKET BUY on SHORT, triggered above the mark, bounded (no closePosition)
+      ---
+      duration_ms: 9.546399
+      type: 'test'
+      ...
+    # Subtest: H-D short: a bounded close of one lane sends its own quantity as a BUY on SHORT, never closePosition, and the other side's key is untouched
+    ok 13 - H-D short: a bounded close of one lane sends its own quantity as a BUY on SHORT, never closePosition, and the other side's key is untouched
+      ---
+      duration_ms: 8.105491
+      type: 'test'
+      ...
+    # Subtest: H-F short: a manual LONG position freezes nothing and closes nothing on SHORT: the own side still grows, the manual quantity stays
+    ok 14 - H-F short: a manual LONG position freezes nothing and closes nothing on SHORT: the own side still grows, the manual quantity stays
+      ---
+      duration_ms: 9.130951
+      type: 'test'
+      ...
+    # Subtest: H-G short: its side closed by its stop leaves the LONG side's stop and take-profit resting, and the LONG position as it was
+    ok 15 - H-G short: its side closed by its stop leaves the LONG side's stop and take-profit resting, and the LONG position as it was
+      ---
+      duration_ms: 6.247739
+      type: 'test'
+      ...
+    # Subtest: H-7 short: our stop filled while the desk was away — the quantity someone else opened on SHORT is not adopted (flat marker)
+    ok 16 - H-7 short: our stop filled while the desk was away — the quantity someone else opened on SHORT is not adopted (flat marker)
+      ---
+      duration_ms: 11.131255
+      type: 'test'
+      ...
+    # Subtest: H-9 short: merged with someone else's quantity on SHORT and its stop lost, the stop is re-placed bounded — no closePosition order
+    ok 17 - H-9 short: merged with someone else's quantity on SHORT and its stop lost, the stop is re-placed bounded — no closePosition order
+      ---
+      duration_ms: 14.655833
+      type: 'test'
+      ...
+    # Subtest: H-9 short, reduction: merged with someone else's quantity on SHORT, their sale takes 3 of ours, the one left is closed by one quantity-bounded MARKET — no closePosition order
+    ok 18 - H-9 short, reduction: merged with someone else's quantity on SHORT, their sale takes 3 of ours, the one left is closed by one quantity-bounded MARKET — no closePosition order
+      ---
+      duration_ms: 8.144209
+      type: 'test'
+      ...
+    # Subtest: H-9 short, to nothing: merged with someone else's quantity on SHORT, their sale takes all of ours, the LONG lane opens on LONG and nothing closes the whole side
+    ok 19 - H-9 short, to nothing: merged with someone else's quantity on SHORT, their sale takes all of ours, the LONG lane opens on LONG and nothing closes the whole side
+      ---
+      duration_ms: 15.020919
+      type: 'test'
+      ...
+    # Subtest: H-M short: merged with someone else's quantity on SHORT, the own take-profit is cancelled and nothing closes the whole side
+    ok 20 - H-M short: merged with someone else's quantity on SHORT, the own take-profit is cancelled and nothing closes the whole side
+      ---
+      duration_ms: 8.302021
+      type: 'test'
+      ...
+    # Subtest: I-6 long (stop/trigger wording): a take-profit the venue refuses for being too close is retried and placed, widened
+    ok 21 - I-6 long (stop/trigger wording): a take-profit the venue refuses for being too close is retried and placed, widened
+      ---
+      duration_ms: 7.392348
+      type: 'test'
+      ...
+    # Subtest: I-6 long (take-profit wording): a take-profit the venue refuses for being too close is retried and placed, widened
+    ok 22 - I-6 long (take-profit wording): a take-profit the venue refuses for being too close is retried and placed, widened # TODO
+      ---
+      duration_ms: 0.530176
+      type: 'test'
+      ...
+    # Subtest: I-6 short (stop/trigger wording): a take-profit the venue refuses for being too close is retried and placed, widened
+    ok 23 - I-6 short (stop/trigger wording): a take-profit the venue refuses for being too close is retried and placed, widened
+      ---
+      duration_ms: 11.207127
+      type: 'test'
+      ...
+    # Subtest: I-6 short (take-profit wording): a take-profit the venue refuses for being too close is retried and placed, widened
+    ok 24 - I-6 short (take-profit wording): a take-profit the venue refuses for being too close is retried and placed, widened # TODO
+      ---
+      duration_ms: 0.152108
+      type: 'test'
+      ...
+    # Subtest: OW-A long: one-way: the open is a market BUY on positionSide BOTH, and its stop closes it with closePosition
+    not ok 25 - OW-A long: one-way: the open is a market BUY on positionSide BOTH, and its stop closes it with closePosition
+      ---
+      duration_ms: 24.168064
+      type: 'test'
+      location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:621:5'
+      failureType: 'testCodeFailure'
+      error: |-
+        the stop is placed
+        
+        0 !== 1
+        
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected: 1
+      actual: 0
+      operator: 'strictEqual'
+      stack: |-
+        TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:632:14)
+        async Test.run (node:internal/test_runner/test:1389:7)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:960:7)
+      ...
+    # Subtest: OW-A short: one-way: the open is a market SELL on positionSide BOTH, and its stop closes it with closePosition
+    not ok 26 - OW-A short: one-way: the open is a market SELL on positionSide BOTH, and its stop closes it with closePosition
+      ---
+      duration_ms: 6.053177
+      type: 'test'
+      location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:621:5'
+      failureType: 'testCodeFailure'
+      error: |-
+        the stop is placed
+        
+        0 !== 1
+        
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected: 1
+      actual: 0
+      operator: 'strictEqual'
+      stack: |-
+        TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:632:14)
+        async Test.run (node:internal/test_runner/test:1389:7)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:960:7)
+      ...
+    # Subtest: OW-7 long: one-way: our stop filled while the desk was away — the quantity someone else opened is not adopted (own exit flat marker, no closePosition order)
+    not ok 27 - OW-7 long: one-way: our stop filled while the desk was away — the quantity someone else opened is not adopted (own exit flat marker, no closePosition order)
+      ---
+      duration_ms: 8.57599
+      type: 'test'
+      location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:642:5'
+      failureType: 'testCodeFailure'
+      error: 'our stop is placed'
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected: true
+      operator: '=='
+      stack: |-
+        TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:650:14)
+        async Test.run (node:internal/test_runner/test:1389:7)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:960:7)
+      ...
+    # Subtest: OW-7 short: one-way: our stop filled while the desk was away — the quantity someone else opened is not adopted (own exit flat marker, no closePosition order)
+    not ok 28 - OW-7 short: one-way: our stop filled while the desk was away — the quantity someone else opened is not adopted (own exit flat marker, no closePosition order)
+      ---
+      duration_ms: 6.65238
+      type: 'test'
+      location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:642:5'
+      failureType: 'testCodeFailure'
+      error: 'our stop is placed'
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected: true
+      operator: '=='
+      stack: |-
+        TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:650:14)
+        async Test.run (node:internal/test_runner/test:1389:7)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:960:7)
+      ...
+    # Subtest: OW-13 long, hedge: a close by hand while the position's own stop and take-profit rest is booked by hand, not by its stop
+    not ok 29 - OW-13 long, hedge: a close by hand while the position's own stop and take-profit rest is booked by hand, not by its stop
+      ---
+      duration_ms: 10.722199
+      type: 'test'
+      location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:680:7'
+      failureType: 'testCodeFailure'
+      error: 'the close is not booked by hand: []'
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected: true
+      actual: false
+      operator: '=='
+      stack: |-
+        TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:694:16)
+        async Test.run (node:internal/test_runner/test:1389:7)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:960:7)
+      ...
+    # Subtest: OW-13 short, hedge: a close by hand while the position's own stop and take-profit rest is booked by hand, not by its stop
+    not ok 30 - OW-13 short, hedge: a close by hand while the position's own stop and take-profit rest is booked by hand, not by its stop
+      ---
+      duration_ms: 11.188261
+      type: 'test'
+      location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:680:7'
+      failureType: 'testCodeFailure'
+      error: 'the close is not booked by hand: []'
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected: true
+      actual: false
+      operator: '=='
+      stack: |-
+        TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:694:16)
+        async Test.run (node:internal/test_runner/test:1389:7)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:960:7)
+      ...
+    # Subtest: OW-13 long, oneway: a close by hand while the position's own stop and take-profit rest is booked by hand, not by its stop
+    not ok 31 - OW-13 long, oneway: a close by hand while the position's own stop and take-profit rest is booked by hand, not by its stop
+      ---
+      duration_ms: 5.763928
+      type: 'test'
+      location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:680:7'
+      failureType: 'testCodeFailure'
+      error: |-
+        own stop and take-profit placed
+        
+        0 !== 2
+        
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected: 2
+      actual: 0
+      operator: 'strictEqual'
+      stack: |-
+        TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:687:16)
+        async Test.run (node:internal/test_runner/test:1389:7)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:960:7)
+      ...
+    # Subtest: OW-13 short, oneway: a close by hand while the position's own stop and take-profit rest is booked by hand, not by its stop
+    not ok 32 - OW-13 short, oneway: a close by hand while the position's own stop and take-profit rest is booked by hand, not by its stop
+      ---
+      duration_ms: 4.935207
+      type: 'test'
+      location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:680:7'
+      failureType: 'testCodeFailure'
+      error: |-
+        own stop and take-profit placed
+        
+        0 !== 2
+        
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected: 2
+      actual: 0
+      operator: 'strictEqual'
+      stack: |-
+        TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:687:16)
+        async Test.run (node:internal/test_runner/test:1389:7)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:960:7)
+      ...
+    # Subtest: OW-13 long, oneway, book names no side (live bingx): a close by hand while the position's own stop and take-profit rest is booked by hand
+    not ok 33 - OW-13 long, oneway, book names no side (live bingx): a close by hand while the position's own stop and take-profit rest is booked by hand
+      ---
+      duration_ms: 3.691431
+      type: 'test'
+      location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:708:5'
+      failureType: 'testCodeFailure'
+      error: |-
+        own stop and take-profit placed
+        
+        0 !== 2
+        
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected: 2
+      actual: 0
+      operator: 'strictEqual'
+      stack: |-
+        TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:716:14)
+        async Test.run (node:internal/test_runner/test:1389:7)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:960:7)
+      ...
+    # Subtest: OW-13 short, oneway, book names no side (live bingx): a close by hand while the position's own stop and take-profit rest is booked by hand
+    not ok 34 - OW-13 short, oneway, book names no side (live bingx): a close by hand while the position's own stop and take-profit rest is booked by hand
+      ---
+      duration_ms: 5.547561
+      type: 'test'
+      location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:708:5'
+      failureType: 'testCodeFailure'
+      error: |-
+        own stop and take-profit placed
+        
+        0 !== 2
+        
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected: 2
+      actual: 0
+      operator: 'strictEqual'
+      stack: |-
+        TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:716:14)
+        async Test.run (node:internal/test_runner/test:1389:7)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:960:7)
+      ...
+    # Subtest: OW-13 long, oneway, book names no side (live bingx): with no control record and no net position, a close by hand is booked outside the desk, unverified at the ticker
+    not ok 35 - OW-13 long, oneway, book names no side (live bingx): with no control record and no net position, a close by hand is booked outside the desk, unverified at the ticker
+      ---
+      duration_ms: 7.304365
+      type: 'test'
+      location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:736:5'
+      failureType: 'testCodeFailure'
+      error: |-
+        own stop and take-profit placed
+        
+        0 !== 2
+        
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected: 2
+      actual: 0
+      operator: 'strictEqual'
+      stack: |-
+        TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:744:14)
+        async Test.run (node:internal/test_runner/test:1389:7)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:960:7)
+      ...
+    # Subtest: OW-13 short, oneway, book names no side (live bingx): with no control record and no net position, a close by hand is booked outside the desk, unverified at the ticker
+    not ok 36 - OW-13 short, oneway, book names no side (live bingx): with no control record and no net position, a close by hand is booked outside the desk, unverified at the ticker
+      ---
+      duration_ms: 5.808503
+      type: 'test'
+      location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:736:5'
+      failureType: 'testCodeFailure'
+      error: |-
+        own stop and take-profit placed
+        
+        0 !== 2
+        
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected: 2
+      actual: 0
+      operator: 'strictEqual'
+      stack: |-
+        TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:744:14)
+        async Test.run (node:internal/test_runner/test:1389:7)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:960:7)
+      ...
+    # Subtest: OW-13 long, hedge: with no control record and no position, a close by hand is booked by hand (the control of the no-record cells)
+    not ok 37 - OW-13 long, hedge: with no control record and no position, a close by hand is booked by hand (the control of the no-record cells)
+      ---
+      duration_ms: 11.214864
+      type: 'test'
+      location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:770:5'
+      failureType: 'testCodeFailure'
+      error: |-
+        the close is booked []
+        
+        0 !== 1
+        
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected: 1
+      actual: 0
+      operator: 'strictEqual'
+      stack: |-
+        TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:788:14)
+        async Test.run (node:internal/test_runner/test:1389:7)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:960:7)
+      ...
+    # Subtest: OW-13 short, hedge: with no control record and no position, a close by hand is booked by hand (the control of the no-record cells)
+    not ok 38 - OW-13 short, hedge: with no control record and no position, a close by hand is booked by hand (the control of the no-record cells)
+      ---
+      duration_ms: 6.755052
+      type: 'test'
+      location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:770:5'
+      failureType: 'testCodeFailure'
+      error: |-
+        the close is booked []
+        
+        0 !== 1
+        
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected: 1
+      actual: 0
+      operator: 'strictEqual'
+      stack: |-
+        TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:788:14)
+        async Test.run (node:internal/test_runner/test:1389:7)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:960:7)
+      ...
+    # Subtest: OW-9 long: one-way: merged with someone else's quantity and its stop lost, no closePosition order is sent on the side
+    ok 39 - OW-9 long: one-way: merged with someone else's quantity and its stop lost, no closePosition order is sent on the side
+      ---
+      duration_ms: 7.179652
+      type: 'test'
+      ...
+    # Subtest: OW-9 short: one-way: merged with someone else's quantity and its stop lost, no closePosition order is sent on the side
+    ok 40 - OW-9 short: one-way: merged with someone else's quantity and its stop lost, no closePosition order is sent on the side
+      ---
+      duration_ms: 4.499266
+      type: 'test'
+      ...
+    # Subtest: OW-9 long, estimate: one-way merged with someone else's 2 units, the other owner's estimate is those 2 units and our side is not booked closed
+    not ok 41 - OW-9 long, estimate: one-way merged with someone else's 2 units, the other owner's estimate is those 2 units and our side is not booked closed
+      ---
+      duration_ms: 5.363261
+      type: 'test'
+      location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:827:5'
+      failureType: 'testCodeFailure'
+      error: "the other owner's estimate 0, against 2 units held by them"
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected: true
+      actual: false
+      operator: '=='
+      stack: |-
+        TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:841:14)
+        async Test.run (node:internal/test_runner/test:1389:7)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:960:7)
+      ...
+    # Subtest: OW-9 short, estimate: one-way merged with someone else's 2 units, the other owner's estimate is those 2 units and our side is not booked closed
+    not ok 42 - OW-9 short, estimate: one-way merged with someone else's 2 units, the other owner's estimate is those 2 units and our side is not booked closed
+      ---
+      duration_ms: 5.7559
+      type: 'test'
+      location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:827:5'
+      failureType: 'testCodeFailure'
+      error: "the other owner's estimate 0, against 2 units held by them"
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected: true
+      actual: false
+      operator: '=='
+      stack: |-
+        TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:841:14)
+        async Test.run (node:internal/test_runner/test:1389:7)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:960:7)
+      ...
+    # Subtest: OW-9 long, reduction: one-way merged by a venue reduction the attribution takes from our quantity, its stop lost, no closePosition order and no order on the symbol in that step
+    not ok 43 - OW-9 long, reduction: one-way merged by a venue reduction the attribution takes from our quantity, its stop lost, no closePosition order and no order on the symbol in that step
+      ---
+      duration_ms: 5.819419
+      type: 'test'
+      location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:854:5'
+      failureType: 'testCodeFailure'
+      error: |-
+        []
+        
+        0 !== 1
+        
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected: 1
+      actual: 0
+      operator: 'strictEqual'
+      stack: |-
+        TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:890:14)
+        async Test.run (node:internal/test_runner/test:1389:7)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:960:7)
+      ...
+    # Subtest: OW-9 short, reduction: one-way merged by a venue reduction the attribution takes from our quantity, its stop lost, no closePosition order and no order on the symbol in that step
+    not ok 44 - OW-9 short, reduction: one-way merged by a venue reduction the attribution takes from our quantity, its stop lost, no closePosition order and no order on the symbol in that step
+      ---
+      duration_ms: 11.406228
+      type: 'test'
+      location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:854:5'
+      failureType: 'testCodeFailure'
+      error: |-
+        []
+        
+        0 !== 1
+        
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected: 1
+      actual: 0
+      operator: 'strictEqual'
+      stack: |-
+        TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:890:14)
+        async Test.run (node:internal/test_runner/test:1389:7)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:960:7)
+      ...
+    # Subtest: OW-9 long, to nothing: one-way merged, the attribution takes all four of ours, a short lane active — no order on the symbol in that step
+    ok 45 - OW-9 long, to nothing: one-way merged, the attribution takes all four of ours, a short lane active — no order on the symbol in that step
+      ---
+      duration_ms: 10.056548
+      type: 'test'
+      ...
+    # Subtest: OW-9 short, to nothing: one-way merged, the attribution takes all four of ours, a long lane active — no order on the symbol in that step
+    ok 46 - OW-9 short, to nothing: one-way merged, the attribution takes all four of ours, a long lane active — no order on the symbol in that step
+      ---
+      duration_ms: 6.324387
+      type: 'test'
+      ...
+    # Subtest: OW-M long, one-way: merged with someone else's quantity, the own take-profit the venue echoes as BOTH is cancelled
+    not ok 47 - OW-M long, one-way: merged with someone else's quantity, the own take-profit the venue echoes as BOTH is cancelled
+      ---
+      duration_ms: 10.194467
+      type: 'test'
+      location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:947:5'
+      failureType: 'testCodeFailure'
+      error: |-
+        own take-profit placed
+        
+        0 !== 1
+        
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected: 1
+      actual: 0
+      operator: 'strictEqual'
+      stack: |-
+        TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:955:14)
+        async Test.run (node:internal/test_runner/test:1389:7)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:960:7)
+      ...
+    # Subtest: OW-M short, one-way: merged with someone else's quantity, the own take-profit the venue echoes as BOTH is cancelled
+    not ok 48 - OW-M short, one-way: merged with someone else's quantity, the own take-profit the venue echoes as BOTH is cancelled
+      ---
+      duration_ms: 3.899846
+      type: 'test'
+      location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:947:5'
+      failureType: 'testCodeFailure'
+      error: |-
+        own take-profit placed
+        
+        0 !== 1
+        
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected: 1
+      actual: 0
+      operator: 'strictEqual'
+      stack: |-
+        TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:955:14)
+        async Test.run (node:internal/test_runner/test:1389:7)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:960:7)
+      ...
+    # Subtest: OW-12 short, hedge: a lane order of the short that fills is booked on the short's key (S2-USDT|-1)
+    ok 49 - OW-12 short, hedge: a lane order of the short that fills is booked on the short's key (S2-USDT|-1)
+      ---
+      duration_ms: 6.446933
+      type: 'test'
+      ...
+    # Subtest: OW-12 short, oneway: a lane order of the short that fills is booked on the short's key (S2-USDT|-1)
+    ok 50 - OW-12 short, oneway: a lane order of the short that fills is booked on the short's key (S2-USDT|-1)
+      ---
+      duration_ms: 5.894499
+      type: 'test'
+      ...
+    # Subtest: OW-12 long: one-way: a plain step keeps the open long's own stop and take-profit resting
+    not ok 51 - OW-12 long: one-way: a plain step keeps the open long's own stop and take-profit resting
+      ---
+      duration_ms: 2.894874
+      type: 'test'
+      location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:1005:5'
+      failureType: 'testCodeFailure'
+      error: |-
+        own stop and take-profit placed
+        
+        0 !== 2
+        
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected: 2
+      actual: 0
+      operator: 'strictEqual'
+      stack: |-
+        TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:1012:14)
+        async Test.run (node:internal/test_runner/test:1389:7)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:960:7)
+      ...
+    # Subtest: OW-12 short: one-way: a plain step keeps the open short's own stop and take-profit resting
+    not ok 52 - OW-12 short: one-way: a plain step keeps the open short's own stop and take-profit resting
+      ---
+      duration_ms: 2.82888
+      type: 'test'
+      location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:1005:5'
+      failureType: 'testCodeFailure'
+      error: |-
+        own stop and take-profit placed
+        
+        0 !== 2
+        
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected: 2
+      actual: 0
+      operator: 'strictEqual'
+      stack: |-
+        TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:1012:14)
+        async Test.run (node:internal/test_runner/test:1389:7)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:960:7)
+      ...
+    # Subtest: OW-16 long, hedge: a fresh open the book does not show yet keeps its own stop and take-profit resting
+    ok 53 - OW-16 long, hedge: a fresh open the book does not show yet keeps its own stop and take-profit resting
+      ---
+      duration_ms: 6.408422
+      type: 'test'
+      ...
+    # Subtest: OW-16 short, hedge: a fresh open the book does not show yet keeps its own stop and take-profit resting
+    ok 54 - OW-16 short, hedge: a fresh open the book does not show yet keeps its own stop and take-profit resting
+      ---
+      duration_ms: 5.035085
+      type: 'test'
+      ...
+    # Subtest: OW-16 long, oneway: a fresh open the book does not show yet keeps its own stop and take-profit resting
+    not ok 55 - OW-16 long, oneway: a fresh open the book does not show yet keeps its own stop and take-profit resting
+      ---
+      duration_ms: 4.649978
+      type: 'test'
+      location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:1029:7'
+      failureType: 'testCodeFailure'
+      error: |-
+        own stop and take-profit placed
+        
+        0 !== 2
+        
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected: 2
+      actual: 0
+      operator: 'strictEqual'
+      stack: |-
+        TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:1036:16)
+        async Test.run (node:internal/test_runner/test:1389:7)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:960:7)
+      ...
+    # Subtest: OW-16 short, oneway: a fresh open the book does not show yet keeps its own stop and take-profit resting
+    not ok 56 - OW-16 short, oneway: a fresh open the book does not show yet keeps its own stop and take-profit resting
+      ---
+      duration_ms: 3.838584
+      type: 'test'
+      location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:1029:7'
+      failureType: 'testCodeFailure'
+      error: |-
+        own stop and take-profit placed
+        
+        0 !== 2
+        
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected: 2
+      actual: 0
+      operator: 'strictEqual'
+      stack: |-
+        TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:1036:16)
+        async Test.run (node:internal/test_runner/test:1389:7)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:960:7)
+      ...
+    # Subtest: OW-12 short, hedge, venue cap: the short's backstop counts on its own key, so its seventh lane gets the slot
+    ok 57 - OW-12 short, hedge, venue cap: the short's backstop counts on its own key, so its seventh lane gets the slot
+      ---
+      duration_ms: 21.845163
+      type: 'test'
+      ...
+    # Subtest: OW-12 short, hedge, venue cap: a count at the trim line is not trimmed for the short's backstop
+    ok 58 - OW-12 short, hedge, venue cap: a count at the trim line is not trimmed for the short's backstop
+      ---
+      duration_ms: 19.309042
+      type: 'test'
+      ...
+    # Subtest: OW-12 short, oneway, venue cap: the short's backstop counts on its own key, so its seventh lane gets the slot
+    not ok 59 - OW-12 short, oneway, venue cap: the short's backstop counts on its own key, so its seventh lane gets the slot
+      ---
+      duration_ms: 7.245687
+      type: 'test'
+      location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:1060:5'
+      failureType: 'testCodeFailure'
+      error: |-
+        the backstop and five lanes: []
+        
+        0 !== 6
+        
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected: 6
+      actual: 0
+      operator: 'strictEqual'
+      stack: |-
+        TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:1067:14)
+        async Test.run (node:internal/test_runner/test:1389:7)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:960:7)
+      ...
+    # Subtest: OW-12 short, oneway, venue cap: a count at the trim line is not trimmed for the short's backstop
+    not ok 60 - OW-12 short, oneway, venue cap: a count at the trim line is not trimmed for the short's backstop
+      ---
+      duration_ms: 6.272342
+      type: 'test'
+      location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:1073:5'
+      failureType: 'testCodeFailure'
+      error: |-
+        the backstop and eight lanes
+        
+        0 !== 9
+        
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected: 9
+      actual: 0
+      operator: 'strictEqual'
+      stack: |-
+        TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:1080:14)
+        async Test.run (node:internal/test_runner/test:1389:7)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:960:7)
+      ...
+    1..60
+not ok 12 - order sides, hedge mode (overall control): LONG and SHORT alike
+  ---
+  duration_ms: 587.662711
+  type: 'suite'
+  location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/server/order-sides.test.ts:303:1'
+  failureType: 'subtestsFailed'
+  error: '26 subtests failed'
+  code: 'ERR_TEST_FAILURE'
+  ...
+# Subtest: order sides, entries mode: the protect pass closes the own quantity only
+    # Subtest: OW-8 long, hedge: an own entry without its stop is closed for its own quantity only, the manual quantity on LONG stays
+    ok 1 - OW-8 long, hedge: an own entry without its stop is closed for its own quantity only, the manual quantity on LONG stays
+      ---
+      duration_ms: 33.876484
+      type: 'test'
+      ...
+    # Subtest: OW-8 short, hedge: an own entry without its stop is closed for its own quantity only, the manual quantity on SHORT stays
+    ok 2 - OW-8 short, hedge: an own entry without its stop is closed for its own quantity only, the manual quantity on SHORT stays
+      ---
+      duration_ms: 9.686791
+      type: 'test'
+      ...
+    # Subtest: OW-8 long, oneway: an own entry without its stop is closed for its own quantity only, the manual quantity on the BOTH position stays
+    ok 3 - OW-8 long, oneway: an own entry without its stop is closed for its own quantity only, the manual quantity on the BOTH position stays
+      ---
+      duration_ms: 9.647566
+      type: 'test'
+      ...
+    # Subtest: OW-8 short, oneway: an own entry without its stop is closed for its own quantity only, the manual quantity on the BOTH position stays
+    ok 4 - OW-8 short, oneway: an own entry without its stop is closed for its own quantity only, the manual quantity on the BOTH position stays
+      ---
+      duration_ms: 9.458484
+      type: 'test'
+      ...
+    1..4
+ok 13 - order sides, entries mode: the protect pass closes the own quantity only
+  ---
+  duration_ms: 62.980518
+  type: 'suite'
+  ...
+# Subtest: order sides, entries mode and exit orders (pure)
+    # Subtest: E-5 foreign LONG position, LONG entry: skipped (the same side)
+    ok 1 - E-5 foreign LONG position, LONG entry: skipped (the same side)
+      ---
+      duration_ms: 1.160133
+      type: 'test'
+      ...
+    # Subtest: E-5 foreign LONG position, SHORT entry: allowed — the other side is not frozen
+    ok 2 - E-5 foreign LONG position, SHORT entry: allowed — the other side is not frozen
+      ---
+      duration_ms: 0.384921
+      type: 'test'
+      ...
+    # Subtest: E-5 foreign SHORT position, LONG entry: allowed — the other side is not frozen
+    ok 3 - E-5 foreign SHORT position, LONG entry: allowed — the other side is not frozen
+      ---
+      duration_ms: 0.125913
+      type: 'test'
+      ...
+    # Subtest: E-5 foreign SHORT position, SHORT entry: skipped (the same side)
+    ok 4 - E-5 foreign SHORT position, SHORT entry: skipped (the same side)
+      ---
+      duration_ms: 0.090314
+      type: 'test'
+      ...
+    # Subtest: E-5 foreign LONG order, LONG entry: skipped (the same side)
+    ok 5 - E-5 foreign LONG order, LONG entry: skipped (the same side)
+      ---
+      duration_ms: 0.528642
+      type: 'test'
+      ...
+    # Subtest: E-5 foreign LONG order, SHORT entry: allowed — the other side is not frozen
+    ok 6 - E-5 foreign LONG order, SHORT entry: allowed — the other side is not frozen
+      ---
+      duration_ms: 0.114223
+      type: 'test'
+      ...
+    # Subtest: E-5 foreign SHORT order, LONG entry: allowed — the other side is not frozen
+    ok 7 - E-5 foreign SHORT order, LONG entry: allowed — the other side is not frozen
+      ---
+      duration_ms: 0.065162
+      type: 'test'
+      ...
+    # Subtest: E-5 foreign SHORT order, SHORT entry: skipped (the same side)
+    ok 8 - E-5 foreign SHORT order, SHORT entry: skipped (the same side)
+      ---
+      duration_ms: 0.055482
+      type: 'test'
+      ...
+    # Subtest: E-5 foreign order with no position side, LONG entry: skipped (the whole symbol is frozen)
+    ok 9 - E-5 foreign order with no position side, LONG entry: skipped (the whole symbol is frozen)
+      ---
+      duration_ms: 0.13528
+      type: 'test'
+      ...
+    # Subtest: E-5 foreign order with no position side, SHORT entry: skipped (the whole symbol is frozen)
+    ok 10 - E-5 foreign order with no position side, SHORT entry: skipped (the whole symbol is frozen)
+      ---
+      duration_ms: 0.08953
+      type: 'test'
+      ...
+    # Subtest: E-5 control: overall ownership marks only the foreign LONG key (S1-USDT|1), not the symbol
+    ok 11 - E-5 control: overall ownership marks only the foreign LONG key (S1-USDT|1), not the symbol
+      ---
+      duration_ms: 0.324435
+      type: 'test'
+      ...
+    # Subtest: E-5 control: overall ownership marks only the foreign SHORT key (S1-USDT|-1), not the symbol
+    ok 12 - E-5 control: overall ownership marks only the foreign SHORT key (S1-USDT|-1), not the symbol
+      ---
+      duration_ms: 0.061616
+      type: 'test'
+      ...
+    # Subtest: E-X long: the entry's exit orders are SELL on LONG, bounded (no closePosition), the stop below and the target above the entry
+    ok 13 - E-X long: the entry's exit orders are SELL on LONG, bounded (no closePosition), the stop below and the target above the entry
+      ---
+      duration_ms: 0.283792
+      type: 'test'
+      ...
+    # Subtest: E-X short: the entry's exit orders are BUY on SHORT, bounded (no closePosition), the stop above and the target below the entry
+    ok 14 - E-X short: the entry's exit orders are BUY on SHORT, bounded (no closePosition), the stop above and the target below the entry
+      ---
+      duration_ms: 0.109708
+      type: 'test'
+      ...
+    1..14
+ok 14 - order sides, entries mode and exit orders (pure)
+  ---
+  duration_ms: 4.400996
+  type: 'suite'
+  ...
+# Subtest: order sides, closes read from the venue history (pure)
+    # Subtest: OW-10 long, hedge: a close by hand (not ours) is the long side's outside close
+    ok 1 - OW-10 long, hedge: a close by hand (not ours) is the long side's outside close
+      ---
+      duration_ms: 0.781981
+      type: 'test'
+      ...
+    # Subtest: OW-10 long, one-way: a close by hand (BOTH, not ours) is the side's outside close (outsideCloseOf reads a BOTH row by the side its order closes)
+    ok 2 - OW-10 long, one-way: a close by hand (BOTH, not ours) is the side's outside close (outsideCloseOf reads a BOTH row by the side its order closes)
+      ---
+      duration_ms: 0.167415
+      type: 'test'
+      ...
+    # Subtest: OW-10 long, one-way: the close fills (closeFillsOf) count the BOTH fill as the side's foreign close
+    ok 3 - OW-10 long, one-way: the close fills (closeFillsOf) count the BOTH fill as the side's foreign close
+      ---
+      duration_ms: 0.140021
+      type: 'test'
+      ...
+    # Subtest: OW-10 long, hedge: the close fills (closeFillsOf) count the long side's foreign close
+    ok 4 - OW-10 long, hedge: the close fills (closeFillsOf) count the long side's foreign close
+      ---
+      duration_ms: 0.103693
+      type: 'test'
+      ...
+    # Subtest: OW-10 short, hedge: a close by hand (not ours) is the short side's outside close
+    ok 5 - OW-10 short, hedge: a close by hand (not ours) is the short side's outside close
+      ---
+      duration_ms: 0.301475
+      type: 'test'
+      ...
+    # Subtest: OW-10 short, one-way: a close by hand (BOTH, not ours) is the side's outside close (outsideCloseOf reads a BOTH row by the side its order closes)
+    ok 6 - OW-10 short, one-way: a close by hand (BOTH, not ours) is the side's outside close (outsideCloseOf reads a BOTH row by the side its order closes)
+      ---
+      duration_ms: 0.064598
+      type: 'test'
+      ...
+    # Subtest: OW-10 short, one-way: the close fills (closeFillsOf) count the BOTH fill as the side's foreign close
+    ok 7 - OW-10 short, one-way: the close fills (closeFillsOf) count the BOTH fill as the side's foreign close
+      ---
+      duration_ms: 0.059779
+      type: 'test'
+      ...
+    # Subtest: OW-10 short, hedge: the close fills (closeFillsOf) count the short side's foreign close
+    ok 8 - OW-10 short, hedge: the close fills (closeFillsOf) count the short side's foreign close
+      ---
+      duration_ms: 0.036158
+      type: 'test'
+      ...
+    # Subtest: OW-11 long, hedge: a lane's stop that filled (LONG) re-prices the unverified close at the fill
+    ok 9 - OW-11 long, hedge: a lane's stop that filled (LONG) re-prices the unverified close at the fill
+      ---
+      duration_ms: 3.099456
+      type: 'test'
+      ...
+    # Subtest: OW-11 long, one-way: a lane's stop that filled (BOTH) re-prices the unverified close at the fill
+    ok 10 - OW-11 long, one-way: a lane's stop that filled (BOTH) re-prices the unverified close at the fill
+      ---
+      duration_ms: 2.035187
+      type: 'test'
+      ...
+    # Subtest: OW-11 short, hedge: a lane's stop that filled (SHORT) re-prices the unverified close at the fill
+    ok 11 - OW-11 short, hedge: a lane's stop that filled (SHORT) re-prices the unverified close at the fill
+      ---
+      duration_ms: 2.610643
+      type: 'test'
+      ...
+    # Subtest: OW-11 short, one-way: a lane's stop that filled (BOTH) re-prices the unverified close at the fill
+    ok 12 - OW-11 short, one-way: a lane's stop that filled (BOTH) re-prices the unverified close at the fill
+      ---
+      duration_ms: 1.874132
+      type: 'test'
+      ...
+    # Subtest: OW-11 long, one-way: the desk's own opening market of the other side (same order side, no close flag), filled 10 s after the lane's stop, does not re-price the close
+    ok 13 - OW-11 long, one-way: the desk's own opening market of the other side (same order side, no close flag), filled 10 s after the lane's stop, does not re-price the close
+      ---
+      duration_ms: 3.453804
+      type: 'test'
+      ...
+    # Subtest: OW-11 long, one-way: a lane's own market exit that the venue flags reduce-only re-prices the close at its fill
+    ok 14 - OW-11 long, one-way: a lane's own market exit that the venue flags reduce-only re-prices the close at its fill
+      ---
+      duration_ms: 4.116478
+      type: 'test'
+      ...
+    # Subtest: OW-11 long, one-way: a liquidation of the position (BOTH, not ours, unflagged) re-prices the close at its fill as "liq"
+    ok 15 - OW-11 long, one-way: a liquidation of the position (BOTH, not ours, unflagged) re-prices the close at its fill as "liq"
+      ---
+      duration_ms: 3.869992
+      type: 'test'
+      ...
+    # Subtest: OW-11 long, hedge: a liquidation of the LONG position re-prices the close at its fill as "liq" (the control of the one-way liquidation cell)
+    ok 16 - OW-11 long, hedge: a liquidation of the LONG position re-prices the close at its fill as "liq" (the control of the one-way liquidation cell)
+      ---
+      duration_ms: 2.748045
+      type: 'test'
+      ...
+    # Subtest: OW-11 long, one-way: a close by hand the venue does not flag (BOTH, MARKET, not ours) does not re-price the close
+    ok 17 - OW-11 long, one-way: a close by hand the venue does not flag (BOTH, MARKET, not ours) does not re-price the close
+      ---
+      duration_ms: 2.546128
+      type: 'test'
+      ...
+    # Subtest: OW-11 long, hedge: a close by hand on the LONG row (not ours, unflagged) re-prices the close as "hand" (the control of the one-way gate)
+    ok 18 - OW-11 long, hedge: a close by hand on the LONG row (not ours, unflagged) re-prices the close as "hand" (the control of the one-way gate)
+      ---
+      duration_ms: 3.111206
+      type: 'test'
+      ...
+    # Subtest: OW-11 short, one-way: the desk's own opening market of the other side (same order side, no close flag), filled 10 s after the lane's stop, does not re-price the close
+    ok 19 - OW-11 short, one-way: the desk's own opening market of the other side (same order side, no close flag), filled 10 s after the lane's stop, does not re-price the close
+      ---
+      duration_ms: 2.865832
+      type: 'test'
+      ...
+    # Subtest: OW-11 short, one-way: a lane's own market exit that the venue flags reduce-only re-prices the close at its fill
+    ok 20 - OW-11 short, one-way: a lane's own market exit that the venue flags reduce-only re-prices the close at its fill
+      ---
+      duration_ms: 2.12245
+      type: 'test'
+      ...
+    # Subtest: OW-11 short, one-way: a liquidation of the position (BOTH, not ours, unflagged) re-prices the close at its fill as "liq"
+    ok 21 - OW-11 short, one-way: a liquidation of the position (BOTH, not ours, unflagged) re-prices the close at its fill as "liq"
+      ---
+      duration_ms: 10.453437
+      type: 'test'
+      ...
+    # Subtest: OW-11 short, hedge: a liquidation of the SHORT position re-prices the close at its fill as "liq" (the control of the one-way liquidation cell)
+    ok 22 - OW-11 short, hedge: a liquidation of the SHORT position re-prices the close at its fill as "liq" (the control of the one-way liquidation cell)
+      ---
+      duration_ms: 1.964262
+      type: 'test'
+      ...
+    # Subtest: OW-11 short, one-way: a close by hand the venue does not flag (BOTH, MARKET, not ours) does not re-price the close
+    ok 23 - OW-11 short, one-way: a close by hand the venue does not flag (BOTH, MARKET, not ours) does not re-price the close
+      ---
+      duration_ms: 2.368489
+      type: 'test'
+      ...
+    # Subtest: OW-11 short, hedge: a close by hand on the SHORT row (not ours, unflagged) re-prices the close as "hand" (the control of the one-way gate)
+    ok 24 - OW-11 short, hedge: a close by hand on the SHORT row (not ours, unflagged) re-prices the close as "hand" (the control of the one-way gate)
+      ---
+      duration_ms: 2.958843
+      type: 'test'
+      ...
+    1..24
+ok 15 - order sides, closes read from the venue history (pure)
+  ---
+  duration_ms: 55.642206
+  type: 'suite'
+  ...
+# Subtest: paper unit-return storage
+    # Subtest: migrates existing files without inferring unit returns or changing weighted/cash fields
+    ok 1 - migrates existing files without inferring unit returns or changing weighted/cash fields
+      ---
+      duration_ms: 103.355539
+      type: 'test'
+      ...
+    # Subtest: upgrades retained legacy databases on hot reload and is idempotent
+    not ok 2 - upgrades retained legacy databases on hot reload and is idempotent
+      ---
+      duration_ms: 41.603361
+      type: 'test'
+      location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/server/paper-unit-schema.test.ts:95:3'
+      failureType: 'testCodeFailure'
+      error: |-
+        Expected values to be strictly deep-equal:
+        + actual - expected
+        ... Skipped lines
+        
+          {
+            book: [
+              {
+                at: 201,
+                cfg: 'legacy',
+        ...
+                held_px: null,
+        -       mult: null,
+                owned_notional_usd: null,
+                r: 0.12,
+                reason: 'tp',
+                side: 1,
+                sym: 'A-USDT',
+        
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected:
+        paper:
+          0:
+            cfg: 'legacy'
+            sym: 'A-USDT'
+            side: 1
+            entry_t: 100
+            exit_t: 200
+            entry: 100
+            exit: 103
+            r: 0.12
+            pnl: 12
+            reason: 'tp'
+            first_at: 101
+            unit_r: ~
+        book:
+          0:
+            cfg: 'legacy'
+            sym: 'A-USDT'
+            side: 1
+            entry_t: 100
+            exit_t: 200
+            r: 0.12
+            vol: 400
+            reason: 'tp'
+            held_at: 101
+            at: 201
+            unit_r: ~
+            owned_notional_usd: ~
+            held_px: ~
+            entry: ~
+            exit: ~
+            mult: ~
+      actual:
+        paper:
+          0:
+            cfg: 'legacy'
+            sym: 'A-USDT'
+            side: 1
+            entry_t: 100
+            exit_t: 200
+            entry: 100
+            exit: 103
+            r: 0.12
+            pnl: 12
+            reason: 'tp'
+            first_at: 101
+            unit_r: ~
+        book:
+          0:
+            cfg: 'legacy'
+            sym: 'A-USDT'
+            side: 1
+            entry_t: 100
+            exit_t: 200
+            r: 0.12
+            vol: 400
+            reason: 'tp'
+            held_at: 101
+            at: 201
+            held_px: ~
+            entry: ~
+            exit: ~
+            unit_r: ~
+            owned_notional_usd: ~
+      operator: 'deepStrictEqual'
+      stack: |-
+        TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/server/paper-unit-schema.test.ts:104:14)
+        Test.runInAsyncScope (node:async_hooks:227:14)
+        Test.run (node:internal/test_runner/test:1382:25)
+        Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+        Test.postRun (node:internal/test_runner/test:1522:19)
+        Test.run (node:internal/test_runner/test:1447:12)
+        async Promise.all (index 0)
+        async Suite.run (node:internal/test_runner/test:1869:7)
+        async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+      ...
+    # Subtest: restores legacy snapshots with NULL unit returns, including replacement of a known row
+    ok 3 - restores legacy snapshots with NULL unit returns, including replacement of a known row
+      ---
+      duration_ms: 80.567975
+      type: 'test'
+      ...
+    # Subtest: sync snapshots restore and reopen both return fields, NULL history and original cash
+    ok 4 - sync snapshots restore and reopen both return fields, NULL history and original cash
+      ---
+      duration_ms: 28.164397
+      type: 'test'
+      ...
+    # Subtest: async snapshots restore and reopen both return fields, NULL history and original cash
+    ok 5 - async snapshots restore and reopen both return fields, NULL history and original cash
+      ---
+      duration_ms: 42.953495
+      type: 'test'
+      ...
+    # Subtest: replays old and new journals over a legacy snapshot without guessing or losing unit returns
+    ok 6 - replays old and new journals over a legacy snapshot without guessing or losing unit returns
+      ---
+      duration_ms: 65.148863
+      type: 'test'
+      ...
+    1..6
+not ok 16 - paper unit-return storage
+  ---
+  duration_ms: 366.845038
+  type: 'suite'
+  location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/server/paper-unit-schema.test.ts:55:1'
+  failureType: 'subtestsFailed'
+  error: '1 subtest failed'
+  code: 'ERR_TEST_FAILURE'
+  ...
+# Subtest: per-range seat and entry options (wf.rangeOpts)
+    # Subtest: the range of a tape: its tag, wide for an untagged engine config, none for a signal or without rangeOpts
+    ok 1 - the range of a tape: its tag, wide for an untagged engine config, none for a signal or without rangeOpts
+      ---
+      duration_ms: 2.919024
+      type: 'test'
+      ...
+    # Subtest: unset, or every range on the global values: the same trades; one selection over the whole list
+    not ok 2 - unset, or every range on the global values: the same trades; one selection over the whole list
+      ---
+      duration_ms: 52.85877
+      type: 'test'
+      location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/sim/range-opts.test.ts:79:3'
+      failureType: 'testCodeFailure'
+      error: |-
+        every tape trades without the per-range gates
+        + actual - expected
+        
+        + []
+        - [
+        -   'follow|rsi-mom-14-20@m15|tp11|sl1|tr0|h32|mn',
+        -   'follow|rsi-mom-14-20@m15|tp12|sl1|tr0|h32|mn',
+        -   'follow|rsi-mom-14-20@m15|tp1|sl1|tr0|h32',
+        -   'follow|rsi-mom-14-20@m15|tp21|sl1|tr0|h32|sh',
+        -   'follow|rsi-mom-14-20@m15|tp22|sl1|tr0|h32|sh',
+        -   'follow|rsi-mom-14-20@m15|tp2|sl1|tr0|h32'
+        - ]
+        
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected:
+        0: 'follow|rsi-mom-14-20@m15|tp11|sl1|tr0|h32|mn'
+        1: 'follow|rsi-mom-14-20@m15|tp12|sl1|tr0|h32|mn'
+        2: 'follow|rsi-mom-14-20@m15|tp1|sl1|tr0|h32'
+        3: 'follow|rsi-mom-14-20@m15|tp21|sl1|tr0|h32|sh'
+        4: 'follow|rsi-mom-14-20@m15|tp22|sl1|tr0|h32|sh'
+        5: 'follow|rsi-mom-14-20@m15|tp2|sl1|tr0|h32'
+      actual:
+      operator: 'deepStrictEqual'
+      stack: |-
+        TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/sim/range-opts.test.ts:81:12)
+        Test.runInAsyncScope (node:async_hooks:227:14)
+        Test.run (node:internal/test_runner/test:1382:25)
+        Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+        Test.postRun (node:internal/test_runner/test:1522:19)
+        Test.run (node:internal/test_runner/test:1447:12)
+        async Promise.all (index 0)
+        async Suite.run (node:internal/test_runner/test:1869:7)
+        async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+      ...
+    # Subtest: validLastN: Minimal's own window refuses its late losers' seat; the other ranges trade bit for bit as before
+    not ok 3 - validLastN: Minimal's own window refuses its late losers' seat; the other ranges trade bit for bit as before
+      ---
+      duration_ms: 2.155644
+      type: 'test'
+      location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/sim/range-opts.test.ts:89:3'
+      failureType: 'testCodeFailure'
+      error: |-
+        Expected values to be strictly deep-equal:
+        + actual - expected
+        
+        + []
+        - [
+        -   'follow|rsi-mom-14-20@m15|tp11|sl1|tr0|h32|mn',
+        -   'follow|rsi-mom-14-20@m15|tp1|sl1|tr0|h32',
+        -   'follow|rsi-mom-14-20@m15|tp21|sl1|tr0|h32|sh'
+        - ]
+        
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected:
+        0: 'follow|rsi-mom-14-20@m15|tp11|sl1|tr0|h32|mn'
+        1: 'follow|rsi-mom-14-20@m15|tp1|sl1|tr0|h32'
+        2: 'follow|rsi-mom-14-20@m15|tp21|sl1|tr0|h32|sh'
+      actual:
+      operator: 'deepStrictEqual'
+      stack: |-
+        TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/sim/range-opts.test.ts:91:12)
+        Test.runInAsyncScope (node:async_hooks:227:14)
+        Test.run (node:internal/test_runner/test:1382:25)
+        Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+        Test.postRun (node:internal/test_runner/test:1522:19)
+        Test.run (node:internal/test_runner/test:1447:12)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:960:7)
+      ...
+    # Subtest: lastN and seatQuietH at the entry, per range ('wide' = the untagged configs)
+    not ok 4 - lastN and seatQuietH at the entry, per range ('wide' = the untagged configs)
+      ---
+      duration_ms: 1.454452
+      type: 'test'
+      location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/sim/range-opts.test.ts:106:3'
+      failureType: 'testCodeFailure'
+      error: |-
+        Expected values to be strictly deep-equal:
+        + actual - expected
+        
+        + []
+        - [
+        -   'follow|rsi-mom-14-20@m15|tp11|sl1|tr0|h32|mn',
+        -   'follow|rsi-mom-14-20@m15|tp12|sl1|tr0|h32|mn',
+        -   'follow|rsi-mom-14-20@m15|tp1|sl1|tr0|h32',
+        -   'follow|rsi-mom-14-20@m15|tp21|sl1|tr0|h32|sh',
+        -   'follow|rsi-mom-14-20@m15|tp22|sl1|tr0|h32|sh'
+        - ]
+        
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected:
+        0: 'follow|rsi-mom-14-20@m15|tp11|sl1|tr0|h32|mn'
+        1: 'follow|rsi-mom-14-20@m15|tp12|sl1|tr0|h32|mn'
+        2: 'follow|rsi-mom-14-20@m15|tp1|sl1|tr0|h32'
+        3: 'follow|rsi-mom-14-20@m15|tp21|sl1|tr0|h32|sh'
+        4: 'follow|rsi-mom-14-20@m15|tp22|sl1|tr0|h32|sh'
+      actual:
+      operator: 'deepStrictEqual'
+      stack: |-
+        TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/sim/range-opts.test.ts:108:12)
+        Test.runInAsyncScope (node:async_hooks:227:14)
+        Test.run (node:internal/test_runner/test:1382:25)
+        Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+        Test.postRun (node:internal/test_runner/test:1522:19)
+        Test.run (node:internal/test_runner/test:1447:12)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:960:7)
+      ...
+    # Subtest: stableBlocks per range
+    not ok 5 - stableBlocks per range
+      ---
+      duration_ms: 3.821859
+      type: 'test'
+      location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/sim/range-opts.test.ts:119:3'
+      failureType: 'testCodeFailure'
+      error: |-
+        Expected values to be strictly deep-equal:
+        + actual - expected
+        
+        + []
+        - [
+        -   'follow|rsi-mom-14-20@m15|tp11|sl1|tr0|h32|mn',
+        -   'follow|rsi-mom-14-20@m15|tp1|sl1|tr0|h32',
+        -   'follow|rsi-mom-14-20@m15|tp21|sl1|tr0|h32|sh',
+        -   'follow|rsi-mom-14-20@m15|tp22|sl1|tr0|h32|sh',
+        -   'follow|rsi-mom-14-20@m15|tp2|sl1|tr0|h32'
+        - ]
+        
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected:
+        0: 'follow|rsi-mom-14-20@m15|tp11|sl1|tr0|h32|mn'
+        1: 'follow|rsi-mom-14-20@m15|tp1|sl1|tr0|h32'
+        2: 'follow|rsi-mom-14-20@m15|tp21|sl1|tr0|h32|sh'
+        3: 'follow|rsi-mom-14-20@m15|tp22|sl1|tr0|h32|sh'
+        4: 'follow|rsi-mom-14-20@m15|tp2|sl1|tr0|h32'
+      actual:
+      operator: 'deepStrictEqual'
+      stack: |-
+        TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/sim/range-opts.test.ts:121:12)
+        Test.runInAsyncScope (node:async_hooks:227:14)
+        Test.run (node:internal/test_runner/test:1382:25)
+        Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+        Test.postRun (node:internal/test_runner/test:1522:19)
+        Test.run (node:internal/test_runner/test:1447:12)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:960:7)
+      ...
+    # Subtest: mode per range: Minimal selects durable, the rest fixed; the other ranges' trades bit for bit
+    not ok 6 - mode per range: Minimal selects durable, the rest fixed; the other ranges' trades bit for bit
+      ---
+      duration_ms: 2.872132
+      type: 'test'
+      location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/sim/range-opts.test.ts:125:3'
+      failureType: 'testCodeFailure'
+      error: |-
+        Expected values to be strictly deep-equal:
+        + actual - expected
+        
+        + []
+        - [
+        -   'follow|rsi-mom-14-20@m15|tp1|sl1|tr0|h32',
+        -   'follow|rsi-mom-14-20@m15|tp21|sl1|tr0|h32|sh',
+        -   'follow|rsi-mom-14-20@m15|tp22|sl1|tr0|h32|sh',
+        -   'follow|rsi-mom-14-20@m15|tp2|sl1|tr0|h32'
+        - ]
+        
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected:
+        0: 'follow|rsi-mom-14-20@m15|tp1|sl1|tr0|h32'
+        1: 'follow|rsi-mom-14-20@m15|tp21|sl1|tr0|h32|sh'
+        2: 'follow|rsi-mom-14-20@m15|tp22|sl1|tr0|h32|sh'
+        3: 'follow|rsi-mom-14-20@m15|tp2|sl1|tr0|h32'
+      actual:
+      operator: 'deepStrictEqual'
+      stack: |-
+        TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/sim/range-opts.test.ts:132:12)
+        Test.runInAsyncScope (node:async_hooks:227:14)
+        Test.run (node:internal/test_runner/test:1382:25)
+        Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+        Test.postRun (node:internal/test_runner/test:1522:19)
+        Test.run (node:internal/test_runner/test:1447:12)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:960:7)
+      ...
+    # Subtest: mode groups only while every config (or every range) has its own seats: the groups never share a seat
+    ok 7 - mode groups only while every config (or every range) has its own seats: the groups never share a seat
+      ---
+      duration_ms: 0.446002
+      type: 'test'
+      ...
+    # Subtest: a durable group seats a held config that still pays (sticky), and only that one
+    not ok 8 - a durable group seats a held config that still pays (sticky), and only that one
+      ---
+      duration_ms: 0.85054
+      type: 'test'
+      location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/sim/range-opts.test.ts:149:3'
+      failureType: 'testCodeFailure'
+      error: 'the held Minimal config stays seated'
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected: true
+      actual: false
+      operator: '=='
+      stack: |-
+        TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/sim/range-opts.test.ts:162:12)
+        Test.runInAsyncScope (node:async_hooks:227:14)
+        Test.run (node:internal/test_runner/test:1382:25)
+        Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+        Test.postRun (node:internal/test_runner/test:1522:19)
+        Test.run (node:internal/test_runner/test:1447:12)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:960:7)
+      ...
+    # Subtest: validOk reads the range's validLastN in the hourly and durable selections
+    not ok 9 - validOk reads the range's validLastN in the hourly and durable selections
+      ---
+      duration_ms: 0.934877
+      type: 'test'
+      location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/sim/range-opts.test.ts:171:3'
+      failureType: 'testCodeFailure'
+      error: 'hourly: the late Minimal tape is seated without a window'
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected: true
+      actual: false
+      operator: '=='
+      stack: |-
+        TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/sim/range-opts.test.ts:178:14)
+        Test.runInAsyncScope (node:async_hooks:227:14)
+        Test.run (node:internal/test_runner/test:1382:25)
+        Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+        Test.postRun (node:internal/test_runner/test:1522:19)
+        Test.run (node:internal/test_runner/test:1447:12)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:960:7)
+      ...
+    1..9
+not ok 17 - per-range seat and entry options (wf.rangeOpts)
+  ---
+  duration_ms: 70.370386
+  type: 'suite'
+  location: '/workspace/scratch/e92abb680845/CTS-A-O/src/core/sim/range-opts.test.ts:69:1'
+  failureType: 'subtestsFailed'
+  error: '7 subtests failed'
+  code: 'ERR_TEST_FAILURE'
+  ...
+# Subtest: rangeOpts settings: sanitised, carried into the compute key, mainnet floors per range
+    # Subtest: unknown ranges and keys dropped, numbers clamped, nothing left = unset
+    ok 1 - unknown ranges and keys dropped, numbers clamped, nothing left = unset
+      ---
+      duration_ms: 183.601089
+      type: 'test'
+      ...
+    # Subtest: a preset starts without per-range options (an earlier patch's rangeOpts does not carry over)
+    ok 2 - a preset starts without per-range options (an earlier patch's rangeOpts does not carry over)
+      ---
+      duration_ms: 89.850489
+      type: 'test'
+      ...
+    # Subtest: a preset backtest skips Base only on a fixed focus set no range selects another way
+    ok 3 - a preset backtest skips Base only on a fixed focus set no range selects another way
+      ---
+      duration_ms: 0.35919
+      type: 'test'
+      ...
+    # Subtest: on the mainnet connection a range's own last-N keeps the floors unless the host waives them
+    ok 4 - on the mainnet connection a range's own last-N keeps the floors unless the host waives them
+      ---
+      duration_ms: 68.928548
+      type: 'test'
+      ...
+    1..4
+ok 18 - rangeOpts settings: sanitised, carried into the compute key, mainnet floors per range
+  ---
+  duration_ms: 343.262749
+  type: 'suite'
+  ...
+1..18
+# tests 204
+# suites 18
+# pass 157
+# fail 45
+# cancelled 0
+# skipped 0
+# todo 2
+# duration_ms 2450.185425

@@ -46,6 +46,7 @@ import type { Candle, Trade } from "../domain/types.ts";
 import { makeTape } from "../sim/walkforward.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import { checkSettings } from "../settings-check.ts";
+import { sigActiveKey } from "../signals.ts";
 import { fakeRt, SimExchange } from "../test-support.ts";
 
 process.env.CTS_CORE_LIVE = "1";
@@ -381,17 +382,17 @@ describe("live.sideGates: a lane or an entry with no side of its own (g)", () =>
   const sigLane = (side: number) => ({ cfg: "b|sig-ema|x", vol: 1, sym: SYM, side }) as ValidLane;
   it("(g) live.sideGates: a side-0 signal lane is valid when its LONG or its SHORT is active on its symbol, as signalOk judges it; a LONG or a SHORT lane needs its own", () => {
     const on = (active: string[]) => liveLaneFilter({ sideGates: true }, new Set([CFG]), new Set(active), null, null);
-    assert.equal(on([`b|sig-ema|${SYM}|1`]).validLane(sigLane(0)), true, "its LONG is active");
-    assert.equal(on([`b|sig-ema|${SYM}|-1`]).validLane(sigLane(0)), true, "its SHORT is active");
+    assert.equal(on([sigActiveKey("b","sig-ema",SYM,1,"trailing","b|sig-ema|x")]).validLane(sigLane(0)), true, "its LONG is active");
+    assert.equal(on([sigActiveKey("b","sig-ema",SYM,-1,"trailing","b|sig-ema|x")]).validLane(sigLane(0)), true, "its SHORT is active");
     assert.equal(on([]).validLane(sigLane(0)), false, "neither is active");
-    assert.equal(on([`b|sig-ema|${SYM}|-1`]).validLane(sigLane(1)), false, "a LONG lane with only its SHORT active");
-    assert.equal(on([`b|sig-ema|${SYM}|1`]).validLane(sigLane(-1)), false, "a SHORT lane with only its LONG active");
+    assert.equal(on([sigActiveKey("b","sig-ema",SYM,-1,"trailing","b|sig-ema|x")]).validLane(sigLane(1)), false, "a LONG lane with only its SHORT active");
+    assert.equal(on([sigActiveKey("b","sig-ema",SYM,1,"trailing","b|sig-ema|x")]).validLane(sigLane(-1)), false, "a SHORT lane with only its LONG active");
   });
 
-  it("(g) control: ungated, a side-0 signal lane is read as a SHORT: valid with its SHORT active, not with only its LONG (pass)", () => {
+  it("(g) control: ungated, an invalid side cannot normalize into an active SHORT or LONG", () => {
     const off = (active: string[]) => liveLaneFilter({}, new Set([CFG]), new Set(active), null, null);
-    assert.equal(off([`b|sig-ema|${SYM}|-1`]).validLane(sigLane(0)), true, "the SHORT is active");
-    assert.equal(off([`b|sig-ema|${SYM}|1`]).validLane(sigLane(0)), false, "only the LONG is active");
+    assert.equal(off([sigActiveKey("b","sig-ema",SYM,-1,"trailing","b|sig-ema|x")]).validLane(sigLane(0)), false, "an invalid side cannot borrow a valid SHORT");
+    assert.equal(off([sigActiveKey("b","sig-ema",SYM,1,"trailing","b|sig-ema|x")]).validLane(sigLane(0)), false, "only the LONG is active");
   });
 
   it("(g) live.sideGates: a close whose side is not +1 or -1 is in no signal unit (signalUnitOf); ungated, a side-2 close keeps the LONG unit it always had", () => {
@@ -461,7 +462,7 @@ async function closedOutside(side: 1 | -1, oldStop: number, newStop: number | nu
  * minutes are `bars`. `side` is the side of the position: 1 LONG, -1 SHORT. With `tp` the position's take-profit filled
  * instead of its stop (the stop stays on the record, untouched, and the history row is the take-profit's fill).
  */
-async function closedOnRelaunch(side: 1 | -1, ownStop: number, bars: Array<Pick<Candle, "h" | "l">>, tp: number | null = null) {
+async function closedOnRelaunch(side: 1 | -1, ownStop: number, bars: Array<Pick<Candle, "h" | "l">>, tp: number | null = null, receipt: Record<string,unknown> = {}) {
   resetLiveBackoff();
   const ex = new SimExchange();
   const { rt } = fakeRt(new CoreDb(":memory:"));
@@ -509,10 +510,12 @@ async function closedOnRelaunch(side: 1 | -1, ownStop: number, bars: Array<Pick<
     executedQty: 1,
     clientOrderId: tp === null ? `${tag}Sa2` : `${tag}Ta3`,
     updateTime: at - H,
+    ...receipt,
   });
   const candles: Candle[] = bars.map((b, i) => ({ t: at - (30 - i) * 60_000, o: 10, h: b.h, l: b.l, c: 10, v: 1 }));
   Object.assign(rt, { candles: new Map([["S0-USDT", CandleSeries.fromCandles(candles)]]) });
   await stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+  if (receipt.status === "PARTIALLY_FILLED") assert.equal(ex.log.length,0,"ambiguous partial ownership cannot adopt or alter the side");
   const flats = rt.db.all<{ px: number; msg: string | null }>(
     "SELECT px, msg FROM live_orders WHERE cfg = ? AND kind = 'F' ORDER BY at, rowid",
     `control|${key}`,
@@ -521,6 +524,9 @@ async function closedOnRelaunch(side: 1 | -1, ownStop: number, bars: Array<Pick<
 }
 
 describe("the stop a flat marker is priced at: a new position's own stop only (live.server.ts stepLive)", { timeout: 60_000 }, () => {
+  for (const side of [1,-1] as const) it(`relaunch side ${side}: a partial stop receipt never erases the whole owned position`,async()=>{
+    assert.equal(await closedOnRelaunch(side,side===1?9.5:10.5,[],null,{status:"PARTIALLY_FILLED",executedQty:.4}),undefined);
+  });
   it("(e) LONG: a new position with no stop row of its own is not closed at the earlier position's stop 9.7 (plan item 15)", async () => {
     const m = await closedOutside(1, 9.7, null, [{ h: 10.1, l: 9.4 }]);
     assert.ok(!String(m.msg).includes("(stop"), `booked at a stop it never had: "${m.msg}" at ${m.px}`);

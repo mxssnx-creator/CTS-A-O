@@ -455,6 +455,7 @@ export type FakePaperPosition = {
   vol: number;
   /** Intrinsic ladder weight, independent of the external execution multiple. */
   w?: number;
+  volFactor?: number;
   level?: number;
   legs?: Partial<Record<"config" | "overall" | "symbol" | "direction" | "indication" | "type", number>>;
   entryT?: number;

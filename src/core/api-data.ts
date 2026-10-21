@@ -1227,7 +1227,7 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
   >;
   let startT: number;
   let endT: number;
-  let paperEvidence: { requested: number; verifiedOwnership: number; unknownOwnership: number; cashBasis: "recorded-paper-history"; recordedReturns: ReturnStatsReport } | null = null;
+  let paperEvidence: { requested: number; verifiedOwnership: number; unknownOwnership: number; cashBasis: "owned-paper-book"; recordedReturns: ReturnStatsReport } | null = null;
   if (data.source === "sim") {
     if (!sim) return ser({ report: null, why: "no simulated run yet" });
     trades = sim.trades as never;
@@ -1303,11 +1303,13 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
       pnl: number;
       owned_notional_usd: number | null;
       owned_unit_r: number | null;
+      vol: number | null;
+      mult: number | null;
     }>(
       // the paper book's own forward record (paper_book_trades: written once at each close, never back-filled or
       // re-priced; paper_trades is rewritten every step) at one unit (r / mult) — sized by the paper sizing below; the
       // persisted unit return and the owned notional beside it (ownership evidence)
-      "SELECT cfg, sym, side, entry_t, exit_t, entry, r / COALESCE(NULLIF(mult, 0), NULLIF(vol, 0), 1) AS r, unit_r, reason, NULL AS pnl, owned_notional_usd, unit_r AS owned_unit_r FROM paper_book_trades WHERE exit_t IS NOT NULL AND r IS NOT NULL AND reason != 'dropped' ORDER BY exit_t",
+      "SELECT cfg, sym, side, entry_t, exit_t, entry, r, vol, mult, unit_r, reason, NULL AS pnl, owned_notional_usd, unit_r AS owned_unit_r FROM paper_book_trades WHERE exit_t IS NOT NULL AND r IS NOT NULL AND reason != 'dropped' ORDER BY exit_t",
     );
     trades = rows.map((x) => ({
       cfg: x.cfg,
@@ -1317,6 +1319,9 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
       exitT: x.exit_t,
       entry: x.entry,
       r: x.r,
+      vol: x.vol,
+      mult: x.mult,
+      notional: x.owned_notional_usd,
       // Match the strict promotion ownership threshold; never infer funding from a unit return or P&L/r.
       unitR: typeof x.owned_notional_usd === "number" && Number.isFinite(x.owned_notional_usd) && x.owned_notional_usd > 1e-9 ? x.owned_unit_r ?? null : null,
       recordedUnitR: x.unit_r ?? null,
@@ -1334,23 +1339,27 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
   if (data.source === "paper") {
     const window = trades.filter((x) => x.exitT > startT && x.exitT <= endT);
     const verifiedOwnership = window.filter((x) => x.ownershipVerified === true).length;
-    paperEvidence = { requested: window.length, verifiedOwnership, unknownOwnership: window.length - verifiedOwnership, cashBasis: "recorded-paper-history",
+    paperEvidence = { requested: window.length, verifiedOwnership, unknownOwnership: window.length - verifiedOwnership, cashBasis: "owned-paper-book",
       recordedReturns: unitReturnReport(window.map((x) => ({ ...x, unitR: typeof x.recordedUnitR === "number" ? x.recordedUnitR : null })), endT) };
   }
-  const sized = sizeBook(trades, [], {
+  const sized = data.source === "sim" ? sizeBook(trades, [], {
     balance,
     sizing: r.settings.sizing,
     fixedNotional: r.settings.paperNotional,
-  });
+  }) : null;
   // Owned live closes retain their measured notional even at zero return.
   // Missing live notional is unavailable, never filled in from the paper sizing setting.
-  // Paper history retains its nominal inferred/model sizing basis.
-  const unit = (x: { cfg: string; sym: string; side: number; entryT: number; r: number; pnl?: unknown; notional?: unknown }) =>
+  // Paper book r already contains its recorded volume. Recover only the funded base notional; today's sizing
+  // settings and the nominal re-simulation cannot reprice a held close or supply missing allocation evidence.
+  const unit = (x: { cfg: string; sym: string; side: number; entryT: number; r: number; pnl?: unknown; notional?: unknown; vol?: unknown }) =>
     data.source === "live"
       ? typeof x.notional === "number" && Number.isFinite(x.notional) && x.notional > 0 ? x.notional : NaN
+      : data.source === "paper"
+        ? typeof x.notional === "number" && Number.isFinite(x.notional) && x.notional > 1e-9 &&
+          typeof x.vol === "number" && Number.isFinite(x.vol) && x.vol > 0 ? x.notional / x.vol : NaN
       : typeof x.pnl === "number" && Number.isFinite(x.pnl) && Number.isFinite(x.r) && Math.abs(x.r) > 1e-12 && Number.isFinite(x.pnl / x.r)
         ? Math.abs(x.pnl / x.r)
-        : (sized.units.get(orderKey(x)) ?? r.settings.paperNotional);
+        : (sized?.units.get(orderKey(x)) ?? r.settings.paperNotional);
   const closes = new Map<string, Map<number, number>>();
   for (const [sym, cs] of r.candles) {
     const m = new Map<number, number>();

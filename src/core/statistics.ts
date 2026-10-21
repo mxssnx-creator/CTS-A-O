@@ -308,7 +308,7 @@ export function rowOf(
       : primary.gp > 0 && primary.gl === 0
         ? "no-loss-sentinel"
         : "gross-return-ratio",
-    cashPf: xs.length ? profitFactor(cashGp, cashGl) : 0,
+    cashPf: !Number.isFinite(cashGp) || !Number.isFinite(cashGl) ? NaN : xs.length ? profitFactor(cashGp, cashGl) : 0,
     cashNoLoss: cashGp > 0 && cashGl === 0,
     net: s.net,
     usd: cashGp - cashGl,

@@ -14,7 +14,7 @@ import { simulateDca } from "./dca.ts";
 import { simulateAxis, simulateAxisDesk } from "./axis.ts";
 import { barsFromCandles } from "../market/bars.ts";
 import { DEFAULT_SETTINGS, DEFAULT_TOGGLES } from "../config.ts";
-import { defaultWalkForward, execDecision, makeTape } from "./walkforward.ts";
+import { blockLevel, defaultWalkForward, execDecision, makeTape } from "./walkforward.ts";
 import { BlockBook, blockDecide, bookLevels, sourceKey, type BlockSource } from "./block.ts";
 import { INDICATIONS } from "../indications/registry.ts";
 import type { AxisConfig, Bars, BlockConfig, DcaConfig, Protect, Side, Trade } from "../domain/types.ts";
@@ -623,6 +623,8 @@ const cfgTape = (trades: Trade[]) =>
 /** the Block base for a block config: BB (block.sideKeys unset) unless another is given */
 const blockBase = (block: BlockConfig = BB) => ({
   ...defaultWalkForward(DEFAULT_SETTINGS),
+  gates: { ...DEFAULT_SETTINGS.gates, minTrades: 3 },
+  validLastN: 0,
   lastN: 0,
   symGate: undefined,
   normalBaseMinPf: 0,
@@ -649,19 +651,23 @@ describe("order sides: Block config source (the config's own closes, per directi
 
     it(`Block config ${name} (e) control, block.sideKeys unset: the opposite direction's wins raise this direction's config level, pooled as before`, () => {
       const res = execDecision(cfgTape(winsAt(opposite(s))), 2 * H, blockBase(), { sym: "A", side: s });
-      assert.deepEqual(res, { ok: true, level: 3, vol: 1.6, src: ["config"] });
+      assert.deepEqual(res, { ok: false, why: "directionValidation" }, "pooled Block wins cannot qualify an unmeasured direction");
+      assert.equal(blockLevel(cfgTape(winsAt(opposite(s))), 2 * H, BB, { sym: "A" }), 3, "the pooled Block source remains independent");
     });
 
-    it(`Block config ${name} (e) control, block.sideKeys unset: an opposite raised win pauses this direction's config, pooled as before`, () => {
+    it(`Block config ${name} (e) control, block.sideKeys unset: an opposite raised win preserves this exact direction's config`, () => {
       const book = new BlockBook(2);
       book.add({ sym: "A", side: opposite(s), kind: IND.kind, r: 0.02, cfg: "x", bsrc: ["config"] });
       const res = execDecision(cfgTape(winsAt(s)), 2 * H, blockBase(), { sym: "A", side: s, book });
-      assert.deepEqual(res, { ok: true, level: 0, vol: 1 });
+      assert.deepEqual(res, { ok: true, level: 3, vol: 1.6, src: ["config"] });
+      assert.equal(book.paused(sourceKey("config", { sym: "A", side: opposite(s), kind: IND.kind, cfg: "x" })), true);
+      assert.equal(book.paused(sourceKey("config", { sym: "A", side: s, kind: IND.kind, cfg: "x" })), false);
     });
 
     it(`Block config ${name} (e), block.sideKeys on: the opposite direction's wins never raise this direction's config level`, () => {
       const res = execDecision(cfgTape(winsAt(opposite(s))), 2 * H, blockBase(BB_SIDE), { sym: "A", side: s });
-      assert.deepEqual(res, { ok: true, level: 0, vol: 1 });
+      assert.deepEqual(res, { ok: false, why: "directionValidation" });
+      assert.equal(blockLevel(cfgTape(winsAt(opposite(s))), 2 * H, BB_SIDE, { sym: "A", side: s }), 0);
     });
 
     it(`Block config ${name} (e), block.sideKeys on: an opposite raised win does not pause this direction's config`, () => {
@@ -685,6 +691,8 @@ describe("order sides: Block config source (the config's own closes, per directi
 /** the seat base: wf.seatQuietH 2 h, wf.seatSideCooloff unset (both directions count) unless `extra` says otherwise */
 const seatBase = (extra: { seatSideCooloff?: boolean } = {}) => ({
   ...defaultWalkForward(DEFAULT_SETTINGS),
+  gates: { ...DEFAULT_SETTINGS.gates, minTrades: 3 },
+  validLastN: 0,
   lastN: 0,
   symGate: undefined,
   normalBaseMinPf: 0,
@@ -692,23 +700,28 @@ const seatBase = (extra: { seatSideCooloff?: boolean } = {}) => ({
   toggles: { ...DEFAULT_TOGGLES, normal: true, block: false, blockActive: false },
   ...extra,
 });
+// Seat timing is tested only after each direction has its own sufficient older qualification history.
+const SEAT_EPOCH = Date.UTC(2026,9,1);
+const seatDecision = (...args: Parameters<typeof execDecision>) => execDecision(args[0], args[1] + SEAT_EPOCH, args[2], args[3]);
+const seatTape = (rows: Trade[]) => cfgTape([...SIDES.flatMap(([,side]) =>
+  [-14,-13,-12].map((h) => closeOf(side,h*H,.02))),...rows].map(x=>({...x,entryT:x.entryT+SEAT_EPOCH,exitT:x.exitT+SEAT_EPOCH})).sort((a,b)=>a.exitT-b.exitT));
 
 describe("order sides: seat cool-off (wf.seatQuietH)", () => {
   for (const [name, s] of SIDES) {
     const other = opposite(s) === 1 ? "LONG" : "SHORT";
 
     it(`${name} seat control: a ${name.toLowerCase()} close 1.5 h before the entry cools off that direction's seat`, () => {
-      const res = execDecision(cfgTape([closeOf(s, 1.5 * H, 0.01)]), 2 * H, seatBase(), { sym: "A", side: s });
+      const res = seatDecision(seatTape([closeOf(s, 1.5 * H, 0.01)]), 2 * H, seatBase(), { sym: "A", side: s });
       assert.deepEqual(res, { ok: false, why: "seatQuiet" });
     });
 
     it(`${name} seat control, wf.seatSideCooloff unset: the ${other} close 1.5 h before cools off the ${name} seat, pooled as before`, () => {
-      const res = execDecision(cfgTape([closeOf(opposite(s), 1.5 * H, 0.01)]), 2 * H, seatBase(), { sym: "A", side: s });
+      const res = seatDecision(seatTape([closeOf(opposite(s), 1.5 * H, 0.01)]), 2 * H, seatBase(), { sym: "A", side: s });
       assert.deepEqual(res, { ok: false, why: "seatQuiet" });
     });
 
     it(`${name} seat, wf.seatSideCooloff on: the ${other} close 1.5 h before does not cool off the ${name} seat`, () => {
-      const res = execDecision(cfgTape([closeOf(opposite(s), 1.5 * H, 0.01)]), 2 * H, seatBase({ seatSideCooloff: true }), {
+      const res = seatDecision(seatTape([closeOf(opposite(s), 1.5 * H, 0.01)]), 2 * H, seatBase({ seatSideCooloff: true }), {
         sym: "A",
         side: s,
       });
@@ -716,7 +729,7 @@ describe("order sides: seat cool-off (wf.seatQuietH)", () => {
     });
 
     it(`${name} seat, wf.seatSideCooloff on: its own ${name.toLowerCase()} close 1.5 h before still cools off the seat`, () => {
-      const res = execDecision(cfgTape([closeOf(s, 1.5 * H, 0.01)]), 2 * H, seatBase({ seatSideCooloff: true }), {
+      const res = seatDecision(seatTape([closeOf(s, 1.5 * H, 0.01)]), 2 * H, seatBase({ seatSideCooloff: true }), {
         sym: "A",
         side: s,
       });
@@ -724,8 +737,8 @@ describe("order sides: seat cool-off (wf.seatQuietH)", () => {
     });
 
     it(`${name} seat, wf.seatSideCooloff on: an own-direction close on another symbol still cools off the seat (across symbols unchanged)`, () => {
-      const res = execDecision(
-        cfgTape([{ ...closeOf(s, 1.5 * H, 0.01), sym: "B" }]),
+      const res = seatDecision(
+        seatTape([{ ...closeOf(s, 1.5 * H, 0.01), sym: "B" }]),
         2 * H,
         seatBase({ seatSideCooloff: true }),
         { sym: "A", side: s },

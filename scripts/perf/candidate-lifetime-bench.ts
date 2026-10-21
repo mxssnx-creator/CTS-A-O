@@ -2,7 +2,7 @@
 // result and simulated-step hashes must match. Heap samples are after explicit GC at completed steps.
 // node --expose-gc --experimental-strip-types --no-warnings scripts/perf/candidate-lifetime-bench.ts ROOT
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 const root = process.argv[2] ?? process.cwd();
@@ -51,6 +51,12 @@ const fixture = () => {
   const o = { ...defaultWalkForward(DEFAULT_SETTINGS),
     // Freeze the archived fixture's inputs (9c037e2); production defaults and independent Exit options changed later.
     // A direct baseline comparison confirms every non-options output field remains identical.
+    axisVolumeFactor: undefined,
+    block: { sources: { config: false, overall: true, symbol: true, direction: true, indication: true, type: false },
+      mode: "overall", historySource: "accepted-orders", ratio: .5, maxLevel: 8, minActiveLevel: 2, maxMult: 8,
+      pause: 0, steps: 7, increase: .4, signalsOwn: true,
+      ranges: { levels: [1,8], volRatio: [.1,1], steps: [0,6], increase: [.1,.5], pause: [0,6] } },
+    dca: { levels: 2, step: .02, stopGap: .5, slOfTp: 1 },
     indicationVolumeFactors: { coordination: 8, combined: {
       trend: 1, break: 1, active: 1, direction: 1, move: 1, rsi: 1, bollinger: 1, sar: 1,
       macd: 1, ema: 1, osc: 1, volume: 1, channel: 1, ichimoku: 1, smooth: 1, tactic: 1, relate: 1,
@@ -96,6 +102,8 @@ for (const [key, value] of Object.entries(result)) {
   if (Array.isArray(value)) for (const row of value) hash.update(`${JSON.stringify(row)}\n`);
   else hash.update(`${JSON.stringify(value)}\n`);
 }
+const dumpIndex = process.argv.indexOf("--result");
+if (dumpIndex >= 0) writeFileSync(process.argv[dumpIndex + 1], JSON.stringify(result));
 const sha256 = (x: string | Uint8Array) => createHash("sha256").update(x).digest("hex");
 console.log(JSON.stringify({ benchmark: "Real candidate retained lifetime", root,
   commit: execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim(),

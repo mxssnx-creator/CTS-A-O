@@ -29,7 +29,7 @@ const arg = (name, fallback) => {
   return i < 0 ? fallback : process.argv[i + 1];
 };
 const mode = process.argv[2],
-  out = resolve(arg("out", "runs/micro-24-trade-sim-20261020-v2")),
+  out = resolve(arg("out", "runs/micro-24-trade-sim-20261020-v3")),
   H = 3_600_000;
 process.env.CTS_CORE_STATE = "off";
 process.env.CTS_CORE_AUTOSTART = "0";
@@ -152,7 +152,7 @@ if (mode === "prepare") {
   const files = sessionStudySourceFiles(root);
   const protocol = {
     schema: "cts-session-study-v1",
-    id: "micro-24-symbols-12h-pre-12h-run-20261020-v2",
+    id: "micro-24-symbols-12h-pre-12h-run-20261020-v3",
     scope: { hold: "standard", focus: selected, purpose: "Fixed retrospective 24-symbol correctness and hourly stability test; no performance-based source selection or gate relaxation; not native execution" },
     symbols,
     window: { indicatorStartT, evaluationFromT, tradeStartT, endT, preH, runH },

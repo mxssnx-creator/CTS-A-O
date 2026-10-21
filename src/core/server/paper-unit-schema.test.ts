@@ -21,6 +21,8 @@ const legacyBook = (cfg: string) => [cfg, "A-USDT", 1, 100, 200, .12, 400, "tp",
 const paperRows = (db: DatabaseSync) => db.prepare("SELECT * FROM paper_trades ORDER BY cfg").all().map((row) => ({ ...row }));
 const bookRows = (db: DatabaseSync) => db.prepare("SELECT * FROM paper_book_trades ORDER BY cfg").all().map((row) => ({ ...row }));
 const values = (db: DatabaseSync) => ({ paper: paperRows(db), book: bookRows(db) });
+const migratedBook = (row: Record<string, unknown>) => ({ ...row, unit_r: null, owned_notional_usd: null,
+  held_px: null, entry: null, exit: null, mult: null });
 
 function putLegacy(db: DatabaseSync, cfg = "legacy") {
   db.prepare(PAPER_INSERT).run(...legacyPaper(cfg));
@@ -61,7 +63,7 @@ describe("paper unit-return storage", () => {
       try {
         assert.deepEqual(values(db.db), {
           paper: original.paper.map((row) => ({ ...row, unit_r: null })),
-          book: original.book.map((row) => ({ ...row, unit_r: null, owned_notional_usd: null })),
+          book: original.book.map(migratedBook),
         });
         assert.equal(db.get<{ user_version: number }>("PRAGMA user_version")?.user_version, 41);
         putUnit(db, "verified", .03);
@@ -101,7 +103,7 @@ describe("paper unit-return storage", () => {
       upgradeShared(retained);
       assert.deepEqual(values(raw), {
         paper: original.paper.map((row) => ({ ...row, unit_r: null })),
-        book: original.book.map((row) => ({ ...row, unit_r: null, owned_notional_usd: null })),
+        book: original.book.map(migratedBook),
       });
       assert.equal(retained.get<{ user_version: number }>("PRAGMA user_version")?.user_version, 41);
       putUnit(retained, "verified", .03);
@@ -121,7 +123,7 @@ describe("paper unit-return storage", () => {
       assert.equal(db.restore(path), true);
       assert.deepEqual(values(db.db), {
         paper: original.paper.map((row) => ({ ...row, unit_r: null })),
-        book: original.book.map((row) => ({ ...row, unit_r: null, owned_notional_usd: null })),
+        book: original.book.map(migratedBook),
       });
       const unchanged = new DatabaseSync(path, { readOnly: true });
       try {

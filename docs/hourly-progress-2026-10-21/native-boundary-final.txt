@@ -1,0 +1,112 @@
+TAP version 13
+# Subtest: quantity: the venue minimum is never undercut
+    # Subtest: flooring an exact multiple of the step returns it, not a step below
+    ok 1 - flooring an exact multiple of the step returns it, not a step below
+      ---
+      duration_ms: 1.880365
+      type: 'test'
+      ...
+    # Subtest: every step size and precision floors its own exact multiples
+    ok 2 - every step size and precision floors its own exact multiples
+      ---
+      duration_ms: 0.551845
+      type: 'test'
+      ...
+    # Subtest: flooring still floors: a quantity between steps goes down, never up
+    ok 3 - flooring still floors: a quantity between steps goes down, never up
+      ---
+      duration_ms: 0.292098
+      type: 'test'
+      ...
+    # Subtest: a minimum the venue named wins over our own view of the contract
+    ok 4 - a minimum the venue named wins over our own view of the contract
+      ---
+      duration_ms: 0.585933
+      type: 'test'
+      ...
+    # Subtest: the raise never lands under what the venue requires, at any step
+    ok 5 - the raise never lands under what the venue requires, at any step
+      ---
+      duration_ms: 0.67925
+      type: 'test'
+      ...
+    # Subtest: a named minimum the position already clears does not raise it
+    ok 6 - a named minimum the position already clears does not raise it
+      ---
+      duration_ms: 1.280256
+      type: 'test'
+      ...
+    # Subtest: the reject message the venue sends is the source of the named minimum
+    ok 7 - the reject message the venue sends is the source of the named minimum
+      ---
+      duration_ms: 1.25924
+      type: 'test'
+      ...
+    1..7
+ok 1 - quantity: the venue minimum is never undercut
+  ---
+  duration_ms: 9.266246
+  type: 'suite'
+  ...
+# Subtest: stops: never closer to the mark than the venue accepts
+    # Subtest: a stop is always on the right side of the mark, at every precision and every asked distance
+    ok 1 - a stop is always on the right side of the mark, at every precision and every asked distance
+      ---
+      duration_ms: 3.839989
+      type: 'test'
+      ...
+    # Subtest: snaps capped stops inward on both sides without violating venue clearance
+    ok 2 - snaps capped stops inward on both sides without violating venue clearance
+      ---
+      duration_ms: 3.84409
+      type: 'test'
+      ...
+    # Subtest: a distance under the venue minimum is widened to it, not snapped onto the mark
+    ok 3 - a distance under the venue minimum is widened to it, not snapped onto the mark
+      ---
+      duration_ms: 0.472011
+      type: 'test'
+      ...
+    # Subtest: the minimum distance comes from the contract's own tick, floored
+    ok 4 - the minimum distance comes from the contract's own tick, floored
+      ---
+      duration_ms: 0.468948
+      type: 'test'
+      ...
+    # Subtest: a distance the venue accepts is kept as asked, not widened
+    ok 5 - a distance the venue accepts is kept as asked, not widened
+      ---
+      duration_ms: 0.194994
+      type: 'test'
+      ...
+    # Subtest: the too-close refusal is recognised, and other refusals are not
+    ok 6 - the too-close refusal is recognised, and other refusals are not
+      ---
+      duration_ms: 0.807355
+      type: 'test'
+      ...
+    # Subtest: widening after a refusal is a real step, bounded, and always above the floor
+    ok 7 - widening after a refusal is a real step, bounded, and always above the floor
+      ---
+      duration_ms: 0.597464
+      type: 'test'
+      ...
+    1..7
+ok 2 - stops: never closer to the mark than the venue accepts
+  ---
+  duration_ms: 11.059574
+  type: 'suite'
+  ...
+# Subtest: contract specs: the lot is the quantity precision
+    # Subtest: a contract whose size is coarser than its precision keeps the venue's own minimum (VST rows, 7 Oct)
+    ok 1 - a contract whose size is coarser than its precision keeps the venue's own minimum (VST rows, 7 Oct)
+      ---
+      duration_ms: 9.034815
+      type: 'test'
+      ...
+    1..1
+ok 3 - contract specs: the lot is the quantity precision
+  ---
+  duration_ms: 9.19629
+  type: 'suite'
+  ...

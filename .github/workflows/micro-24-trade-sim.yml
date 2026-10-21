@@ -1,0 +1,54 @@
+name: Complete 24-symbol Trade Sim
+on:
+  push:
+    branches: [codex/micro-indication-20261020]
+    paths: [src/**, scripts/**, .github/audits/micro-24-trade-sim.mjs, .github/workflows/micro-24-trade-sim.yml, docs/micro-24-sim-2026-10-21/reproduction-feed.json.gz]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  historical:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      MALLOC_ARENA_MAX: "2"
+      MALLOC_MMAP_THRESHOLD_: "1048576"
+      CTS_CORE_STATE: "off"
+      CTS_CORE_AUTOSTART: "0"
+      CTS_CORE_LIVE: "0"
+      CTS_CORE_WORKERS: "2"
+      CTS_CORE_COMPARE: "0"
+      CTS_CORE_VARIANTS: "0"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24.19.0"
+      - run: npm ci
+      - name: Build the exact worker
+        run: npm run build:dev
+        env:
+          NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
+      - name: Freeze actual settings, source, feed and 12h plus 12h window before scoring
+        run: node --require ./scripts/lib/core-test-offline-guard.cjs --experimental-strip-types --no-warnings .github/audits/micro-24-trade-sim.mjs prepare --feed docs/micro-24-sim-2026-10-21/reproduction-feed.json.gz --out runs/micro-24-trade-sim-v3
+      - name: Complete every configured Micro, Minimal, Short, General and Exit tape
+        run: node --require ./scripts/lib/core-test-offline-guard.cjs --experimental-strip-types --no-warnings .github/audits/micro-24-trade-sim.mjs run --out runs/micro-24-trade-sim-v3 --workers 2
+      - name: Reconcile funded source/execution PF and every hourly gate delta
+        env:
+          NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
+        run: |
+          node --experimental-strip-types --no-warnings scripts/audit-micro-execution.mjs runs/micro-24-trade-sim-v3
+          node --experimental-strip-types --no-warnings scripts/audit-micro-stages.mjs runs/micro-24-trade-sim-v3
+          node --experimental-strip-types --no-warnings --max-old-space-size=2048 .github/audits/hourly-progress.mjs runs/micro-24-trade-sim-v3 runs/micro-24-trade-sim-v3/scalar-hours.json --require-all
+          node --experimental-strip-types --no-warnings scripts/audit-stage-transition.mjs runs/micro-24-trade-sim-v3
+          node --experimental-strip-types --no-warnings scripts/audit-simulation-parity.mjs runs/micro-24-trade-sim-v3/raw.json runs/micro-24-trade-sim-v3/simulation-parity.json
+      - name: Preserve complete inputs, settings, outcomes and failures
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: micro-24-trade-sim-${{ github.run_id }}
+          retention-days: 30
+          compression-level: 6
+          path: runs/micro-24-trade-sim-v3/

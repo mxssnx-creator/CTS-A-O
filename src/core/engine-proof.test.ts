@@ -247,10 +247,15 @@ describe("engine proof", () => {
     // ENG: +1 % at 4× (stored +4 %) and −2 % at one unit: sized PF 2, unit PF 0.5 — not proven
     ins(ENG, 1_000, 0.04, 4);
     ins(ENG, 2_000, -0.02, 1);
-    // ENG2, rows of an older build (mult NULL): read by vol — +3 % at 1×, −2 % stored at 2× (−1 % a unit): PF 3
+    // ENG2, rows of an older build: volume alone cannot prove the external return multiplier.
     ins(ENG2, 1_000, 0.03, null, 1);
     ins(ENG2, 2_000, -0.02, null, 2);
-    assert.deepEqual([...rt.engineProof(Date.now())!.proven], [ENG2]);
+    assert.deepEqual([...rt.engineProof(Date.now())!.proven], []);
+    // Two explicit older wins cannot replace unknown newer closes in the current Last-2 window.
+    ins(ENG2, -100_000, .03, 1); ins(ENG2, -90_000, .03, 1);
+    assert.deepEqual([...rt.engineProof(Date.now())!.proven], []);
+    db.run("UPDATE paper_book_trades SET mult = vol WHERE cfg = ? AND mult IS NULL", ENG2);
+    assert.deepEqual([...rt.engineProof(Date.now())!.proven], [ENG2], "explicit known multipliers restore measured PF3");
   });
 
   it("a database of an older build gains paper_book_trades.mult and the unit index on open", async () => {

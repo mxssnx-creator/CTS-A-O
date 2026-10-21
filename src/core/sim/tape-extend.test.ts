@@ -16,6 +16,7 @@ import {
   type TapeResume,
 } from "./tape-extend.ts";
 import type { Bars, Tactics } from "../domain/types.ts";
+import { runtimeFixtureGrid } from "../test-support.ts";
 
 const LANES = [1, 5, 15] as const;
 function lanes(seed: number, syms: number): Bars[] {
@@ -89,7 +90,9 @@ for (const [name, tactics] of tacticVariants)
     const at = (f: number) => Math.floor((full.startT + span * f) / 900_000) * 900_000;
     const cuts = [0.7, 0.85, 1].map(at);
     const uAt = (t: number) => makeUniverse(all.map((b) => headBars(b, t)));
-    const wf = defaultWalkForward(DEFAULT_SETTINGS);
+    // Bound the Cartesian fixture while preserving every range and both endpoints per parameter. Full current
+    // grids have dedicated completeness/stress coverage; this suite compares every byte of each resumed tape.
+    const wf = defaultWalkForward({ ...DEFAULT_SETTINGS, grid: runtimeFixtureGrid() });
     const only = new Set(
       ["mc-tpull-8@m5", "trend-ema@m15", "mc-rsi3-10@m1"].flatMap((i) =>
         ["follow", "revert"].map((b) => `${b}|${i}`),
