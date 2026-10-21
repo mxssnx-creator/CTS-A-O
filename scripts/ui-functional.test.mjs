@@ -406,6 +406,7 @@ describe(
             waitUntil: "domcontentloaded",
             timeout: 120_000,
           });
+          await settleRequests();
           const save = page.getByRole("button", { name: /^save/i }).first();
           await save.waitFor({ state: "visible", timeout: 60_000 });
           assert.ok(await save.count(), "a Save button");

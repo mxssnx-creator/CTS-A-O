@@ -242,11 +242,6 @@ parentPort!.on("message", (m: Msg) => {
         m.validation,
         diagnostics,
       );
-      const total = m.pairs.reduce(
-        (n, pair) => n + seriesOf(u, pair.split("|")[1] ?? "").length,
-        0,
-      );
-      let yielded = 0;
       let last = 0;
       for (;;) {
         const r = g.next();
@@ -254,12 +249,10 @@ parentPort!.on("message", (m: Msg) => {
           parentPort!.postMessage({ id: m.id, ok: true, pairProtects: r.value, diagnostics });
           return;
         }
-        // The generator yields before each series. Count only completed series, so the heartbeat never claims
-        // 100 % while the last one still computes; the pool marks the completed reply whole.
-        const done = yielded++;
+        // Sampling and config evaluations use the same progress contract as local fitting.
         if (Date.now() - last >= 400) {
           last = Date.now();
-          parentPort!.postMessage({ id: m.id, progress: done, total });
+          parentPort!.postMessage({ id: m.id, progress: r.value.done, total: r.value.total });
         }
       }
     }

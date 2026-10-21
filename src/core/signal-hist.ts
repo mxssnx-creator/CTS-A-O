@@ -288,7 +288,12 @@ export function signalHistProtects(
   return r.value;
 }
 
-/** signalHistProtects, yielding after each series of each pair. */
+export interface SignalHistProgress {
+  done: number;
+  total: number;
+}
+
+/** Pair-weighted work progress: MFE sampling (25%) and independent config evaluations (75%). */
 export function* signalHistProtectsGen(
   u: Universe,
   pairs: Iterable<string>,
@@ -297,12 +302,16 @@ export function* signalHistProtectsGen(
   cutT: number,
   validation?: SignalHistValidation,
   diagnostics?: SignalHistDiagnostics,
-): Generator<void, Record<string, Protect[]>> {
+): Generator<SignalHistProgress, Record<string, Protect[]>> {
   const h = sig.hist;
   const out: Record<string, Protect[]> = {};
   if (!h?.enabled) return out;
   const cooldown = tacticCooldown(tactics);
-  for (const pair of pairs) {
+  const order = [...pairs];
+  const total = order.length;
+  for (let pairIndex = 0; pairIndex < total; pairIndex++) {
+    const pair = order[pairIndex];
+    yield { done: pairIndex, total };
     const [bot, ind] = pair.split("|");
     if (!bot || !ind) continue;
     if (diagnostics) diagnostics.pairs++;
@@ -324,7 +333,7 @@ export function* signalHistProtectsGen(
     const availableH = (cutT - fromT) / 3_600_000;
     const holdH = signalHistHoldH(sig.holdH, availableH, laneTf);
     const hold = Math.max(2, Math.round((holdH * 60) / REF_TF));
-    const mfe = (yield* signalMfeGen(
+    const sample = signalMfeGen(
       u,
       bot,
       ind,
@@ -333,13 +342,25 @@ export function* signalHistProtectsGen(
       cutT,
       sig.filter,
       fromT,
-    )).sort((a, b) => a - b);
+    );
+    let sampled = 0;
+    let step = sample.next();
+    while (!step.done) {
+      yield { done: pairIndex + 0.25 * sampled / Math.max(1, series.length), total };
+      sampled++;
+      step = sample.next();
+    }
+    const mfe = step.value.sort((a, b) => a - b);
     if (mfe.length < h.minN) {
       if (diagnostics) diagnostics.insufficientEntries++;
       continue;
     }
     const ps: Protect[] = [];
     const seen = new Set<string>();
+    const trails = [0, ...h.trailOfTp.filter((t) => t > 0)];
+    const candidateTotal = h.quantiles.length * h.slOfTp.length *
+      trails.reduce((n, t) => n + (t > 0 && sig.trailRatios?.length ? sig.trailRatios.length : 1), 0);
+    let candidate = 0;
     for (const q of h.quantiles) {
       const laneTp = Math.max(HIST_MIN_TP, onGrid(quantileSorted(mfe, q)));
       const tpRef = onGrid(
@@ -349,8 +370,11 @@ export function* signalHistProtectsGen(
         ) ?? laneTp,
       );
       for (const m of h.slOfTp)
-        for (const t of [0, ...h.trailOfTp.filter((t) => t > 0)])
+        for (const t of trails)
         for (const ratio of t > 0 && sig.trailRatios?.length ? sig.trailRatios : [1]) {
+          // Yield before every candidate, including duplicates/rejections, so the runtime can check cancellation
+          // and memory pressure between independent simulations. The current candidate is not complete yet.
+          yield { done: pairIndex + 0.25 + 0.75 * candidate++ / Math.max(1, candidateTotal), total };
           const p: Protect = {
             tp: tpRef,
             sl: Math.max(sig.minSl, onGrid(tpRef * m)),
@@ -407,6 +431,7 @@ export function* signalHistProtectsGen(
     }
     if (ps.length) out[pair] = ps;
   }
+  yield { done: total, total };
   return out;
 }
 
