@@ -1,6 +1,6 @@
 {
-  "schema": "cts-universal-integration-plan-v1",
-  "sourceSha256": "95046af82822b827573b13ed9a687957de8f620c0a454a1d3c4ff941f9db255d",
+  "schema": "cts-universal-integration-plan-v2",
+  "sourceSha256": "b8864f5d3c8e4b894f26da2bb62799879760be9080dc35613d34947119e806e8",
   "scope": {
     "registeredSpecs": 1720,
     "families": 19,
@@ -63,5 +63,5 @@
   ],
   "classification": "Correctness/causality and synthetic gate audit, not proof of hourly market profitability or a full Cartesian financial portfolio replay",
   "preserve": "Keep failed/partial receipts and all existing negative financial windows. Never change recorded costs/returns/gates to manufacture positive PF.",
-  "revisionReason": "Merge main PRs 182 and 185 with independent Micro identity, funded accounting and atomic publication; verify the actual combined registry, preserving archived economic experiments unchanged. This is correctness, not profitability evidence."
+  "revisionReason": "Repeat the same combined-source coverage after fixing omitted Trailing-only Base cells. Executable grid generation is unchanged; Base and execution now share canonical no-TP sibling generation. Preserve the failed 9504-source complete test inventory and v1 plan."
 }

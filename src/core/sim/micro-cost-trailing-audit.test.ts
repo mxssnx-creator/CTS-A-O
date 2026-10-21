@@ -75,11 +75,22 @@ it("matches every configured TP/SL/trailing/hold cell at Base, including General
     short: { ...SHORT_RANGE, maxHoldMin: 180 },
     general: { ...GENERAL_RANGE, maxHoldMin: 240 },
   };
-  const a = completeBaseRangeProtects(grid, RT_COST),
-    b = protectGrid(15, grid, RT_COST);
-  const ids = (xs: typeof a) =>
+  const ids = (xs: ReturnType<typeof protectGrid>) =>
     xs.map((p) => configId("follow", "micro-1-break-close-fast@m15", p)).sort();
-  assert.deepEqual(ids(a), ids(b));
+  for (const trailingOnly of [false, true]) for (const trailStep of [0.5, 1, 2]) {
+    const configured = { ...grid, trailingOnly, trailStep };
+    const base = completeBaseRangeProtects(configured, RT_COST);
+    const execution = protectGrid(15, configured, RT_COST);
+    assert.deepEqual(ids(base), ids(execution), `${trailingOnly}/${trailStep}: Base/execution identity`);
+    const noTp = base.filter((p) => p.trailOnly);
+    assert.equal(noTp.length > 0, trailingOnly);
+    assert.equal(new Set(ids(base)).size, base.length, "no collapsed capped cells are counted twice");
+    for (const p of noTp) {
+      assert.equal(p.tp, 0); assert.equal(p.trailFree, false);
+      assert.ok(p.sl <= 0.03 && p.trail <= 0.03 && p.trail * (p.trailStep ?? 1) <= 0.03 + 1e-12);
+    }
+  }
+  const a = completeBaseRangeProtects(grid, RT_COST);
   for (const tag of ["mc", "mn", "sh", "gn"]) {
     const own = a.filter((p) => p.tag === tag);
     assert.ok(own.some((p) => p.trail === 0) && own.some((p) => p.trail > 0), tag);

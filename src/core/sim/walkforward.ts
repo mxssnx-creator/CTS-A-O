@@ -19,7 +19,7 @@ import {
 } from "../minimal-coord.ts";
 import type { RangeTag } from "../domain/types.ts";
 import { createExitProtection } from "./exit-protection.ts";
-import { capSignalProtect, capTrailingOnlyProtect, isSignalConfig } from "./trailing.ts";
+import { capSignalProtect, capTrailingOnlyProtect, trailingOnlyProtects, isSignalConfig } from "./trailing.ts";
 import { SIGNAL_VALID_LAST_N } from "../signal-policy.ts";
 // Walk-forward trade simulation ("simulated trade runs") — the Base → Main → Real → Live coordination.
 //
@@ -727,16 +727,7 @@ export function protectGrid(
           ...(c.trail > 0 ? { trailStep: g.trailStep ?? 1, trailFree: g.trailFree ?? false } : {}),
         });
   }
-  if (g.trailingOnly) {
-    const trailing = out.filter((p) => p.trail > 0 && !p.trailOnly);
-    for (const p of trailing) {
-      const q = capTrailingOnlyProtect({ ...p, tp: 0, trailOnly: true, trailFree: false, trailMax: 0.03 });
-      const key = `to|${q.sl}|${q.trail}|${q.trailStep}|${q.hold}|${q.tag ?? ""}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push(q);
-    }
-  }
+  if (g.trailingOnly) out.push(...trailingOnlyProtects(out));
   return out;
 }
 

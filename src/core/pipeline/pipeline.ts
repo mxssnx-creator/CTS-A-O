@@ -73,6 +73,7 @@ import {
 } from "../sim/backtest.ts";
 import { buildPortfolio, type Portfolio } from "./portfolio.ts";
 import { baseCellAccumulator } from "./base-cell-stats.ts";
+import { trailingOnlyProtects } from "../sim/trailing.ts";
 
 export interface Universe {
   bars: Bars[];
@@ -659,6 +660,7 @@ export function completeBaseRangeProtects(g: CoreSettings["grid"], cost: number)
     (tp, k, tr, h, minSl, minTrail, slEval) => emit(tp, k, tr, h, minSl, minTrail, "mc", slEval),
     cost,
   );
+  if (g.trailingOnly) out.push(...trailingOnlyProtects(out));
   return out;
 }
 
