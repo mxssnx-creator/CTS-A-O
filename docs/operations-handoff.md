@@ -3681,3 +3681,34 @@ versus PF0.452602 expanded. Its losing-hour posthoc diagnostic contains zero
 net-positive Micro15 config-sides in either arm over their respective losing
 portfolio hours. Keep longer-range positive subsets separately labeled; no
 post-validation tuning, venue order, reload or deployment has occurred.
+
+
+## Micro contexts: final verified merge — 2026-10-21
+
+PR191 is merged as e287e234b4b99022db0f1e04e0d38ace1695d225. Its tree
+102f8521873def2020d8a34436b198f980d60475 exactly matches fully verified
+head8a8c364728dc574cc4bebbdbc9a8ee2c1440d698. Exit workflow39556680253
+and Signal workflow39556680375 succeed. Default suite:690 script cases
+passed/8 skipped,83 app cases passed,3132 core cases passed/2 slow skips;
+both slow cases then passed separately. Types/lint0errors/app+worker build
+pass. Keep all prior failing receipts and the explicit Node24 test workaround.
+
+Final source15bee repeats the same funded modeled outcomes: original15607/
+PF0.809978, expanded37581/PF0.452602. All2298898 candidate tuples and all
+53188 funded fields match initial frozen data. Complete independent221268
+hourly decisions and every entry own-direction qualification have zero errors.
+112 additional context IDs preserve all original434 Micro recipes exactly.
+General/Minimal/Short positive subgroups are posthoc diagnostics, not proven
+Micro15 winners. Older training used60min hold. Actual Micro15: original144/
+PF0, expanded2811/PF0.002830. In each arm's negative hours there are zero
+positive Micro config-sides, including per-hour grouping. Expanded2607 losses
+share only18 symbol/side/onsets and lose even before fixed costs. Do not call
+this a high-PF release or promote a posthoc subset as a new holdout.
+
+See docs/negative-hour-contexts-20261021/README.md, final-verification.json,
+full negative-hour diagnostics and cost decomposition. Final evidence archive
+includes verified receipts, source checkpoint mapping and honest primary-data
+404 status. Code source seal15bee9d6359df10deefc71f511eba0604f2dacb674c9303add46a08ccc0cb4dc
+is unchanged by the report-only follow-up. No venue execution, reload or
+deployment was performed. Pre-upgrade cached preset/live evidence still needs
+its own exact settings/source provenance check and backups before a live reload.

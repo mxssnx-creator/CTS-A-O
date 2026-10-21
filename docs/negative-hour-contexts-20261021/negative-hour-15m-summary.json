@@ -1,0 +1,739 @@
+{
+  "classification": "Post-validation diagnostics, not new source/config selection or an independent holdout. Negative hours are selected retrospectively per arm. Older v4 training Micro winners used 60m maximum holds; actual 15m Micro remains separate from other ranges. Counts across protection siblings are correlated, so unique symbol/side/onsets are disclosed.",
+  "returnBasis": "Funded modeled settled net unit returns, after modeled costs once; no venue fills. GP/GL/net in summed decimal-return units. A no-loss group has null ratio, not an invented finite PF.",
+  "detail": "negative-hour-15m-diagnostics.json.gz",
+  "arms": {
+    "original": {
+      "funding": {
+        "basis": "Exact per-close native report allocation",
+        "virtualCloses": 15607,
+        "fundedCloses": 15607,
+        "zeroAllocatedCloses": 0,
+        "unknownAllocations": 0
+      },
+      "sourceSha256": "15bee9d6359df10deefc71f511eba0604f2dacb674c9303add46a08ccc0cb4dc",
+      "negativeHours": [
+        1792501200000,
+        1792504800000,
+        1792508400000,
+        1792526400000
+      ],
+      "negativeCloses": 5069,
+      "fullHours": [
+        {
+          "t": 1792497600000,
+          "n": 803,
+          "gp": 122.17334429784894,
+          "gl": 40.570816949346714,
+          "net": 81.60252734850224,
+          "pf": 3.011360221076747,
+          "pfConvention": "ratio"
+        },
+        {
+          "t": 1792501200000,
+          "n": 1375,
+          "gp": 111.14369374422242,
+          "gl": 144.535951698878,
+          "net": -33.39225795465557,
+          "pf": 0.7689691902799102,
+          "pfConvention": "ratio"
+        },
+        {
+          "t": 1792504800000,
+          "n": 2286,
+          "gp": 6.406250000001321,
+          "gl": 5188.357904299361,
+          "net": -5181.95165429936,
+          "pf": 0.0012347355595289113,
+          "pfConvention": "ratio"
+        },
+        {
+          "t": 1792508400000,
+          "n": 648,
+          "gp": 44.80012397957649,
+          "gl": 436.95937002393396,
+          "net": -392.1592460443574,
+          "pf": 0.10252697860014448,
+          "pfConvention": "ratio"
+        },
+        {
+          "t": 1792512000000,
+          "n": 420,
+          "gp": 595.4643936959043,
+          "gl": 21.925866904494896,
+          "net": 573.5385267914094,
+          "pf": 27.15807754784061,
+          "pfConvention": "ratio"
+        },
+        {
+          "t": 1792515600000,
+          "n": 1044,
+          "gp": 535.5979658606186,
+          "gl": 158.14637724535044,
+          "net": 377.4515886152682,
+          "pf": 3.386722953695516,
+          "pfConvention": "ratio"
+        },
+        {
+          "t": 1792519200000,
+          "n": 1548,
+          "gp": 374.8025751578546,
+          "gl": 47.97463801704922,
+          "net": 326.8279371408054,
+          "pf": 7.812514917249762,
+          "pfConvention": "ratio"
+        },
+        {
+          "t": 1792522800000,
+          "n": 3784,
+          "gp": 2604.2626580173655,
+          "gl": 360.25468532170134,
+          "net": 2244.0079726956637,
+          "pf": 7.2289487524410765,
+          "pfConvention": "ratio"
+        },
+        {
+          "t": 1792526400000,
+          "n": 760,
+          "gp": 321.8393821294362,
+          "gl": 326.83171681073844,
+          "net": -4.992334681302246,
+          "pf": 0.9847250605601622,
+          "pfConvention": "ratio"
+        },
+        {
+          "t": 1792530000000,
+          "n": 813,
+          "gp": 170.65668426276102,
+          "gl": 64.72931456928553,
+          "net": 105.9273696934755,
+          "pf": 2.6364667291523998,
+          "pfConvention": "ratio"
+        },
+        {
+          "t": 1792533600000,
+          "n": 1238,
+          "gp": 583.7252577112773,
+          "gl": 321.75166288648114,
+          "net": 261.9735948247962,
+          "pf": 1.8142105388814245,
+          "pfConvention": "ratio"
+        },
+        {
+          "t": 1792537200000,
+          "n": 888,
+          "gp": 381.99878820444104,
+          "gl": 113.9286781125443,
+          "net": 268.07011009189677,
+          "pf": 3.352964280223492,
+          "pfConvention": "ratio"
+        }
+      ],
+      "microCloses": 144,
+      "microHoldMinutes": [
+        15
+      ],
+      "positiveSourceGroups": 14,
+      "positiveMicroSourceGroups": 0,
+      "positiveMicroConfigSides": 0,
+      "positiveMicroSourceHourGroups": 0,
+      "positiveMicroConfigSideHours": 0,
+      "topPositiveSourceGroups": [
+        {
+          "key": [
+            "follow",
+            "inverse-micro-5-break-close-fast@m5",
+            "mn",
+            "normal",
+            1,
+            120
+          ],
+          "n": 74,
+          "gp": 0.8819999999999976,
+          "gl": 0,
+          "net": 0.8819999999999976,
+          "micro": false,
+          "maxHoldMinutes": 120,
+          "onsets": 3,
+          "hours": [
+            {
+              "t": 1792526400000,
+              "net": 0.8819999999999976
+            }
+          ],
+          "pf": null,
+          "noLoss": true,
+          "pfConvention": "no-loss"
+        },
+        {
+          "key": [
+            "follow",
+            "inverse-micro-5-break-close-fast@m5",
+            "mn",
+            "trailing",
+            1,
+            120
+          ],
+          "n": 77,
+          "gp": 0.7549345574801541,
+          "gl": 0,
+          "net": 0.7549345574801541,
+          "micro": false,
+          "maxHoldMinutes": 120,
+          "onsets": 3,
+          "hours": [
+            {
+              "t": 1792526400000,
+              "net": 0.7549345574801541
+            }
+          ],
+          "pf": null,
+          "noLoss": true,
+          "pfConvention": "no-loss"
+        },
+        {
+          "key": [
+            "follow",
+            "inverse-micro-5-break-close-selective@m5",
+            "mn",
+            "normal",
+            1,
+            120
+          ],
+          "n": 28,
+          "gp": 0.3639999999999978,
+          "gl": 0,
+          "net": 0.3639999999999978,
+          "micro": false,
+          "maxHoldMinutes": 120,
+          "onsets": 1,
+          "hours": [
+            {
+              "t": 1792526400000,
+              "net": 0.3639999999999978
+            }
+          ],
+          "pf": null,
+          "noLoss": true,
+          "pfConvention": "no-loss"
+        },
+        {
+          "key": [
+            "follow",
+            "inverse-micro-5-break-close-fast@m5",
+            "sh",
+            "trailing",
+            1,
+            180
+          ],
+          "n": 23,
+          "gp": 0.358462221210742,
+          "gl": 0,
+          "net": 0.358462221210742,
+          "micro": false,
+          "maxHoldMinutes": 180,
+          "onsets": 2,
+          "hours": [
+            {
+              "t": 1792526400000,
+              "net": 0.358462221210742
+            }
+          ],
+          "pf": null,
+          "noLoss": true,
+          "pfConvention": "no-loss"
+        },
+        {
+          "key": [
+            "follow",
+            "inverse-micro-5-break-close-selective@m5",
+            "mn",
+            "trailing",
+            1,
+            120
+          ],
+          "n": 28,
+          "gp": 0.2379999999999983,
+          "gl": 0,
+          "net": 0.2379999999999983,
+          "micro": false,
+          "maxHoldMinutes": 120,
+          "onsets": 2,
+          "hours": [
+            {
+              "t": 1792508400000,
+              "net": 0.1574999999999992
+            },
+            {
+              "t": 1792526400000,
+              "net": 0.08049999999999911
+            }
+          ],
+          "pf": null,
+          "noLoss": true,
+          "pfConvention": "no-loss"
+        },
+        {
+          "key": [
+            "follow",
+            "inverse-micro-5-break-close-selective@m5",
+            "sh",
+            "trailing",
+            1,
+            180
+          ],
+          "n": 14,
+          "gp": 0.15559626763768716,
+          "gl": 0,
+          "net": 0.15559626763768716,
+          "micro": false,
+          "maxHoldMinutes": 180,
+          "onsets": 1,
+          "hours": [
+            {
+              "t": 1792526400000,
+              "net": 0.15559626763768716
+            }
+          ],
+          "pf": null,
+          "noLoss": true,
+          "pfConvention": "no-loss"
+        },
+        {
+          "key": [
+            "follow",
+            "inverse-micro-5x15-break-close-fast@m5",
+            "mn",
+            "trailing",
+            -1,
+            120
+          ],
+          "n": 33,
+          "gp": 0.1466275421726045,
+          "gl": 0,
+          "net": 0.1466275421726045,
+          "micro": false,
+          "maxHoldMinutes": 120,
+          "onsets": 6,
+          "hours": [
+            {
+              "t": 1792508400000,
+              "net": 0.1466275421726045
+            }
+          ],
+          "pf": null,
+          "noLoss": true,
+          "pfConvention": "no-loss"
+        },
+        {
+          "key": [
+            "follow",
+            "inverse-micro-5-break-close-fast@m5",
+            "sh",
+            "normal",
+            1,
+            180
+          ],
+          "n": 7,
+          "gp": 0.11550000000000009,
+          "gl": 0,
+          "net": 0.11550000000000009,
+          "micro": false,
+          "maxHoldMinutes": 180,
+          "onsets": 1,
+          "hours": [
+            {
+              "t": 1792526400000,
+              "net": 0.11550000000000009
+            }
+          ],
+          "pf": null,
+          "noLoss": true,
+          "pfConvention": "no-loss"
+        }
+      ],
+      "topPositiveMicroHourGroups": [],
+      "topPositiveMicroConfigSideHours": []
+    },
+    "expanded": {
+      "funding": {
+        "basis": "Exact per-close native report allocation",
+        "virtualCloses": 37581,
+        "fundedCloses": 37581,
+        "zeroAllocatedCloses": 0,
+        "unknownAllocations": 0
+      },
+      "sourceSha256": "15bee9d6359df10deefc71f511eba0604f2dacb674c9303add46a08ccc0cb4dc",
+      "negativeHours": [
+        1792501200000,
+        1792504800000,
+        1792508400000,
+        1792519200000
+      ],
+      "negativeCloses": 19337,
+      "fullHours": [
+        {
+          "t": 1792497600000,
+          "n": 1780,
+          "gp": 280.39243816908305,
+          "gl": 99.98274315887721,
+          "net": 180.40969501020584,
+          "pf": 2.8044083339814594,
+          "pfConvention": "ratio"
+        },
+        {
+          "t": 1792501200000,
+          "n": 2457,
+          "gp": 234.38483060971916,
+          "gl": 1182.2642709790082,
+          "net": -947.8794403692891,
+          "pf": 0.19825079414404528,
+          "pfConvention": "ratio"
+        },
+        {
+          "t": 1792504800000,
+          "n": 8604,
+          "gp": 849.3799283114321,
+          "gl": 19930.415776809947,
+          "net": -19081.03584849851,
+          "pf": 0.042617270900074694,
+          "pfConvention": "ratio"
+        },
+        {
+          "t": 1792508400000,
+          "n": 4185,
+          "gp": 895.1576470473968,
+          "gl": 4370.410336748143,
+          "net": -3475.2526897007465,
+          "pf": 0.20482233430590177,
+          "pfConvention": "ratio"
+        },
+        {
+          "t": 1792512000000,
+          "n": 3331,
+          "gp": 3889.1498187451048,
+          "gl": 94.08627440978276,
+          "net": 3795.063544335322,
+          "pf": 41.33599553327329,
+          "pfConvention": "ratio"
+        },
+        {
+          "t": 1792515600000,
+          "n": 3049,
+          "gp": 1484.4041145278459,
+          "gl": 1064.8107233419946,
+          "net": 419.59339118585126,
+          "pf": 1.3940544380215514,
+          "pfConvention": "ratio"
+        },
+        {
+          "t": 1792519200000,
+          "n": 4091,
+          "gp": 1311.9630543586527,
+          "gl": 1727.5529611219713,
+          "net": -415.58990676331877,
+          "pf": 0.7594343466648854,
+          "pfConvention": "ratio"
+        },
+        {
+          "t": 1792522800000,
+          "n": 6001,
+          "gp": 3388.8683578378696,
+          "gl": 1574.5313620461259,
+          "net": 1814.3369957917437,
+          "pf": 2.1523028626333534,
+          "pfConvention": "ratio"
+        },
+        {
+          "t": 1792526400000,
+          "n": 1116,
+          "gp": 524.0365642864474,
+          "gl": 380.20119436996447,
+          "net": 143.835369916483,
+          "pf": 1.3783138297469952,
+          "pfConvention": "ratio"
+        },
+        {
+          "t": 1792530000000,
+          "n": 813,
+          "gp": 170.65668426276102,
+          "gl": 64.72931456928553,
+          "net": 105.9273696934755,
+          "pf": 2.6364667291523998,
+          "pfConvention": "ratio"
+        },
+        {
+          "t": 1792533600000,
+          "n": 1266,
+          "gp": 586.5857000189511,
+          "gl": 322.6777059598556,
+          "net": 263.90799405909553,
+          "pf": 1.8178686943185607,
+          "pfConvention": "ratio"
+        },
+        {
+          "t": 1792537200000,
+          "n": 888,
+          "gp": 381.99878820444104,
+          "gl": 113.9286781125443,
+          "net": 268.07011009189677,
+          "pf": 3.352964280223492,
+          "pfConvention": "ratio"
+        }
+      ],
+      "microCloses": 2811,
+      "microHoldMinutes": [
+        15
+      ],
+      "positiveSourceGroups": 29,
+      "positiveMicroSourceGroups": 0,
+      "positiveMicroConfigSides": 0,
+      "positiveMicroSourceHourGroups": 0,
+      "positiveMicroConfigSideHours": 0,
+      "topPositiveSourceGroups": [
+        {
+          "key": [
+            "follow",
+            "inverse-micro-1x5x15-activity-acceleration-relative-selective@m1",
+            "gn",
+            "trailing",
+            1,
+            240
+          ],
+          "n": 455,
+          "gp": 5.0542968829522605,
+          "gl": 3.2147151665623346,
+          "net": 1.8395817163899297,
+          "micro": false,
+          "maxHoldMinutes": 240,
+          "onsets": 10,
+          "hours": [
+            {
+              "t": 1792504800000,
+              "net": 4.694000000000003
+            },
+            {
+              "t": 1792508400000,
+              "net": -1.9491689943295807
+            },
+            {
+              "t": 1792519200000,
+              "net": -0.9052492892804973
+            }
+          ],
+          "pf": 1.5722378565678925,
+          "noLoss": false,
+          "pfConvention": "ratio"
+        },
+        {
+          "key": [
+            "follow",
+            "inverse-micro-5x15-break-close-fast@m5",
+            "mn",
+            "trailing",
+            -1,
+            120
+          ],
+          "n": 442,
+          "gp": 1.3854471096341507,
+          "gl": 0.11934684190300658,
+          "net": 1.2661002677311448,
+          "micro": false,
+          "maxHoldMinutes": 120,
+          "onsets": 15,
+          "hours": [
+            {
+              "t": 1792508400000,
+              "net": 0.1466275421726045
+            },
+            {
+              "t": 1792519200000,
+              "net": 1.119472725558541
+            }
+          ],
+          "pf": 11.608577885622699,
+          "noLoss": false,
+          "pfConvention": "ratio"
+        },
+        {
+          "key": [
+            "follow",
+            "inverse-micro-1x5x15-activity-acceleration-relative-selective@m1",
+            "gn",
+            "normal",
+            1,
+            240
+          ],
+          "n": 185,
+          "gp": 2.375500000000001,
+          "gl": 1.39608338894761,
+          "net": 0.9794166110523892,
+          "micro": false,
+          "maxHoldMinutes": 240,
+          "onsets": 8,
+          "hours": [
+            {
+              "t": 1792504800000,
+              "net": 2.375500000000001
+            },
+            {
+              "t": 1792508400000,
+              "net": -0.8460000000000003
+            },
+            {
+              "t": 1792519200000,
+              "net": -0.5500833889476096
+            }
+          ],
+          "pf": 1.7015459239800073,
+          "noLoss": false,
+          "pfConvention": "ratio"
+        },
+        {
+          "key": [
+            "follow",
+            "inverse-micro-5x15-break-close-fast@m5",
+            "mn",
+            "trailing-only",
+            -1,
+            120
+          ],
+          "n": 304,
+          "gp": 0.6621371924373984,
+          "gl": 0.08238350300752718,
+          "net": 0.5797536894298722,
+          "micro": false,
+          "maxHoldMinutes": 120,
+          "onsets": 8,
+          "hours": [
+            {
+              "t": 1792519200000,
+              "net": 0.5797536894298722
+            }
+          ],
+          "pf": 8.037254647655617,
+          "noLoss": false,
+          "pfConvention": "ratio"
+        },
+        {
+          "key": [
+            "follow",
+            "inverse-micro-1x5-activity-acceleration-fast@m1",
+            "gn",
+            "trailing-only",
+            1,
+            240
+          ],
+          "n": 25,
+          "gp": 0.3652188170591085,
+          "gl": 0.04968279622237293,
+          "net": 0.3155360208367356,
+          "micro": false,
+          "maxHoldMinutes": 240,
+          "onsets": 7,
+          "hours": [
+            {
+              "t": 1792508400000,
+              "net": -0.045999999999999736
+            },
+            {
+              "t": 1792519200000,
+              "net": 0.36153602083673525
+            }
+          ],
+          "pf": 7.351011714889044,
+          "noLoss": false,
+          "pfConvention": "ratio"
+        },
+        {
+          "key": [
+            "follow",
+            "inverse-micro-1x5x15-activity-acceleration-relative-fast@m1",
+            "sh",
+            "trailing-only",
+            1,
+            180
+          ],
+          "n": 37,
+          "gp": 0.30753046821776836,
+          "gl": 0.030093248332592158,
+          "net": 0.27743721988517617,
+          "micro": false,
+          "maxHoldMinutes": 180,
+          "onsets": 6,
+          "hours": [
+            {
+              "t": 1792508400000,
+              "net": 0.02755091940443646
+            },
+            {
+              "t": 1792519200000,
+              "net": 0.24988630048073973
+            }
+          ],
+          "pf": 10.219251335679203,
+          "noLoss": false,
+          "pfConvention": "ratio"
+        },
+        {
+          "key": [
+            "follow",
+            "inverse-micro-5x15-break-close-fast@m5",
+            "mn",
+            "normal",
+            -1,
+            120
+          ],
+          "n": 30,
+          "gp": 0.2664457460076792,
+          "gl": 0,
+          "net": 0.2664457460076792,
+          "micro": false,
+          "maxHoldMinutes": 120,
+          "onsets": 4,
+          "hours": [
+            {
+              "t": 1792519200000,
+              "net": 0.2664457460076792
+            }
+          ],
+          "pf": null,
+          "noLoss": true,
+          "pfConvention": "no-loss"
+        },
+        {
+          "key": [
+            "follow",
+            "inverse-micro-1x5-activity-acceleration-relative-fast@m1",
+            "sh",
+            "trailing-only",
+            1,
+            180
+          ],
+          "n": 234,
+          "gp": 1.2821446414358932,
+          "gl": 1.0187126399212547,
+          "net": 0.26343200151463875,
+          "micro": false,
+          "maxHoldMinutes": 180,
+          "onsets": 13,
+          "hours": [
+            {
+              "t": 1792508400000,
+              "net": -0.1466141693681879
+            },
+            {
+              "t": 1792519200000,
+              "net": 0.4100461708828253
+            }
+          ],
+          "pf": 1.2585930430145655,
+          "noLoss": false,
+          "pfConvention": "ratio"
+        }
+      ],
+      "topPositiveMicroHourGroups": [],
+      "topPositiveMicroConfigSideHours": []
+    }
+  }
+}
