@@ -1,0 +1,119 @@
+{
+  "classification": "Fixed funded Micro15 cohort, gross-before-fixed-modeled-cost decomposition only. Primary PF remains net. No cost changes, new admission rule or venue execution claim. Counts include correlated protection sibling configs.",
+  "arms": {
+    "original": {
+      "cost": 0.0015,
+      "samples": {
+        "allMicro15": {
+          "net": {
+            "n": 144,
+            "gp": 0,
+            "gl": 2.8068040429929697,
+            "net": -2.8068040429929697,
+            "pf": 0,
+            "noLoss": false
+          },
+          "grossBeforeModeledCostDiagnostic": {
+            "n": 144,
+            "gp": 0,
+            "gl": 2.590806573445675,
+            "net": -2.590806573445675,
+            "pf": 0,
+            "noLoss": false
+          },
+          "positiveNet": 0,
+          "positiveGross": 0,
+          "grossWinsErasedByFixedCost": 0,
+          "uniqueOnsets": 3,
+          "configSides": 48,
+          "maxPriceCostResidual": 1.0397483008253716e-7,
+          "averageHoldingMinutes": 13.25,
+          "maxHoldingMinutes": 15
+        },
+        "withinOwnNegativePortfolioHours": {
+          "net": {
+            "n": 144,
+            "gp": 0,
+            "gl": 2.8068040429929697,
+            "net": -2.8068040429929697,
+            "pf": 0,
+            "noLoss": false
+          },
+          "grossBeforeModeledCostDiagnostic": {
+            "n": 144,
+            "gp": 0,
+            "gl": 2.590806573445675,
+            "net": -2.590806573445675,
+            "pf": 0,
+            "noLoss": false
+          },
+          "positiveNet": 0,
+          "positiveGross": 0,
+          "grossWinsErasedByFixedCost": 0,
+          "uniqueOnsets": 3,
+          "configSides": 48,
+          "maxPriceCostResidual": 1.0397483008253716e-7,
+          "averageHoldingMinutes": 13.25,
+          "maxHoldingMinutes": 15
+        }
+      }
+    },
+    "expanded": {
+      "cost": 0.0015,
+      "samples": {
+        "allMicro15": {
+          "net": {
+            "n": 2811,
+            "gp": 0.1550357546207338,
+            "gl": 54.78060961791952,
+            "net": -54.62557386329878,
+            "pf": 0.002830121017310099,
+            "noLoss": false
+          },
+          "grossBeforeModeledCostDiagnostic": {
+            "n": 2811,
+            "gp": 0.39870094692860125,
+            "gl": 50.80774924786867,
+            "net": -50.40904830094007,
+            "pf": 0.007847246784806677,
+            "noLoss": false
+          },
+          "positiveNet": 102,
+          "positiveGross": 204,
+          "grossWinsErasedByFixedCost": 102,
+          "uniqueOnsets": 25,
+          "configSides": 286,
+          "maxPriceCostResidual": 1.0397483008253716e-7,
+          "averageHoldingMinutes": 12.003557452863749,
+          "maxHoldingMinutes": 15
+        },
+        "withinOwnNegativePortfolioHours": {
+          "net": {
+            "n": 2607,
+            "gp": 0,
+            "gl": 54.71827598358215,
+            "net": -54.71827598358215,
+            "pf": 0,
+            "noLoss": false
+          },
+          "grossBeforeModeledCostDiagnostic": {
+            "n": 2607,
+            "gp": 0,
+            "gl": 50.80774924786867,
+            "net": -50.80774924786867,
+            "pf": 0,
+            "noLoss": false
+          },
+          "positiveNet": 0,
+          "positiveGross": 0,
+          "grossWinsErasedByFixedCost": 0,
+          "uniqueOnsets": 18,
+          "configSides": 286,
+          "maxPriceCostResidual": 1.0397483008253716e-7,
+          "averageHoldingMinutes": 12.049482163406214,
+          "maxHoldingMinutes": 15
+        }
+      }
+    }
+  }
+}

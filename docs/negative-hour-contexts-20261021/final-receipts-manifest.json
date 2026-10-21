@@ -1,0 +1,160 @@
+{
+  "archive": "final-receipts.tar.gz",
+  "sha256": "876072ceef91515fd6de94d70cb55b6f980fefee146eedfbea226fded4089c87",
+  "bytes": 158256,
+  "scope": "Final source study protocols, complete receipts, diagnostic scripts, full successful hosted-CI summary, regression/old-source failure proofs, primary archive404 and repaired slow checks. Identical full candidate and funded arrays remain in the133-file original archive, validated per tuple by final-candidate-parity.json.",
+  "files": {
+    "docs/negative-hour-contexts-20261021/ci-node24-failure-e274.txt": {
+      "sha256": "fb2b372c1c03add57590353c682f70481f11ec7970df3b6ab56458fcf5a4a9c6",
+      "bytes": 9382
+    },
+    "runs/analyze-final-negative-hours.mjs": {
+      "sha256": "e308a10ea0396f5cb6db1a4e4356c3c40f02aaa26fefba5ea291e392d4b8ca37",
+      "bytes": 5404
+    },
+    "runs/check-final-candidate-parity.mjs": {
+      "sha256": "c0cc9e2476d5c85b77f64d811f775edd9978bf38e27bac1234f53451782be8f8",
+      "bytes": 1895
+    },
+    "runs/ci-repair-all-preset-tests.log": {
+      "sha256": "9dcdbc54b8858954b14dfd80cb5bf6cdd4f3e9ddec62e02d9f958da8386287d8",
+      "bytes": 10955
+    },
+    "runs/ci-repair-focused.log": {
+      "sha256": "2f94f2303e8c36e8f4b8ef280deee05bd754d0a28b9d3c9efd502c6e0de15439",
+      "bytes": 2269
+    },
+    "runs/ci-repair-history-tests-v2.log": {
+      "sha256": "d27d2b153ba8fb32aa1711f80b0cb9d8636d4fe68e070af318045ac3fea0e26c",
+      "bytes": 2030
+    },
+    "runs/ci-repair-lint.log": {
+      "sha256": "9920c17d53997fa7ae8b2fb73667584a8dc7e14d9148df606f3568510eda733c",
+      "bytes": 651
+    },
+    "runs/ci-repair-old-missing-native-bar.log": {
+      "sha256": "64bc53b81b21fdd2acec98e499447612a8e3ccf4bdf13efe7124bbc18895526b",
+      "bytes": 1359
+    },
+    "runs/ci-repair-old-source-proof.log": {
+      "sha256": "9d93824b424f1ccde4d2d8a536964b7d2fa9bba35ad6b6af3bcdf82d5b1e2edf",
+      "bytes": 2570
+    },
+    "runs/ci-repair-typecheck.log": {
+      "sha256": "c34ec4c54eee3880917e67f16cb6de62654b2ad041175f1f0fefc6a9306278d5",
+      "bytes": 143
+    },
+    "runs/context-final-expanded-entry.json": {
+      "sha256": "36dc00276f2b9ca9a8a28e5e291bf20b5b831d247fe20f946890024f197c6a8c",
+      "bytes": 1881
+    },
+    "runs/context-final-expanded-hourly.json": {
+      "sha256": "2bcab7215fa0553d331a35343779b8053d63103198dab39362a1ed34da6f441a",
+      "bytes": 297260
+    },
+    "runs/context-final-expanded-run.log": {
+      "sha256": "f9280423be06a866b03a3697fce1afcf7da322c6e690887b9cb139ce36d4b789",
+      "bytes": 1069
+    },
+    "runs/context-final-expanded/command.json": {
+      "sha256": "e6dd68049aeef27b86f39ffc4562eb6752c48603c0a9abf9979f89d6ef3d92a8",
+      "bytes": 1308
+    },
+    "runs/context-final-expanded/desk.json": {
+      "sha256": "d36a0919387702f9e352fc6775c8a3ba3d9a230e61be1800b7b0a820e0de374f",
+      "bytes": 479863
+    },
+    "runs/context-final-expanded/protocol.json": {
+      "sha256": "a78bce57abcdef3a68c3b5adaa5a0b8603fd058b8a36690170443ac08b68d6d7",
+      "bytes": 515052
+    },
+    "runs/context-final-original-entry.json": {
+      "sha256": "e38c2a6b345f504ab5d14ed4af11bd8ddd29992668eef0d302917c4b43e8a434",
+      "bytes": 1881
+    },
+    "runs/context-final-original-hourly.json": {
+      "sha256": "ddf25a65d2f9d96db654c90c1d65378ad000055b261e0e8329a0e2e817143368",
+      "bytes": 298234
+    },
+    "runs/context-final-original-run.log": {
+      "sha256": "30a28751fdc6b4875d72305e96400314a7294069a934bfdec61e5d15a1d69fc2",
+      "bytes": 966
+    },
+    "runs/context-final-original/command.json": {
+      "sha256": "700d9f5928f657d17f290ffd550bf81916effa3cada10ef28ca62dcbcd02c8e1",
+      "bytes": 1308
+    },
+    "runs/context-final-original/desk.json": {
+      "sha256": "ab0a532bbf55a2d9a706e227de60aa8c9c834c33099c7b172e65a3fccb37296e",
+      "bytes": 473143
+    },
+    "runs/context-final-original/protocol.json": {
+      "sha256": "a04377ec939623d29c48106c74e534bd8363b5fdd4f7508a0c9c33f91352c195",
+      "bytes": 502396
+    },
+    "runs/context-final-universal/catalog.json": {
+      "sha256": "3eb76aa90e49653d06c421702935e6c192d76bbf38147ed200c1204739f21bb9",
+      "bytes": 3110
+    },
+    "runs/context-final-universal/causal-partial.json": {
+      "sha256": "eed262593c7e461801cb729083b5e9fc6374d0c76385d7bceeaa5809d43f29de",
+      "bytes": 6791
+    },
+    "runs/context-final-universal/causal.json": {
+      "sha256": "e61b6062f60bb5337d0a3f70c98ae6fde5fefe6e4b08a523f5dc2d697d0fe749",
+      "bytes": 6853
+    },
+    "runs/context-final-universal/identity.json": {
+      "sha256": "03380a042fd2cb8a094b614048c143bd7f4a03a63a40a05a6a7d97c030019205",
+      "bytes": 1581
+    },
+    "runs/decompose-micro15-costs.mjs": {
+      "sha256": "b449998568eced9392cc265bfb945395267fcb51040c67fda95c943c1aa20cf9",
+      "bytes": 2481
+    },
+    "runs/final-candidate-parity.log": {
+      "sha256": "53b591eb068169171d9117dab45bafac3ab0c6a7ac3975f64ef92e89b400100c",
+      "bytes": 906
+    },
+    "runs/final-hosted-ci.json": {
+      "sha256": "667a54b2bdceccba50b9a05958e6d7034da90620e4afc6af80de7d5ed33e5005",
+      "bytes": 3826
+    },
+    "runs/final-negative-hour-analysis.log": {
+      "sha256": "c8d7d7d5ddfd99691e0010c27c4c8db4de03adc0b853454f133532488dba1bd1",
+      "bytes": 323
+    },
+    "runs/final-repair-build.log": {
+      "sha256": "8142ecfa43d80c5bac48ec05fb13d4c0000bbcc34a3d88ca4999978e4eba536b",
+      "bytes": 13985
+    },
+    "runs/latest-main-admission-test.log": {
+      "sha256": "169d710f3692c93e9a8f92bd0ec564876ddd0d5ff8a28fb13a112524ef8cb867",
+      "bytes": 2582
+    },
+    "runs/latest-main-merge-tests.log": {
+      "sha256": "c9b0bd1c89ed90ee1789cb3db60e3212dcf09eb262cbf0ae256cb63648ab5cd0",
+      "bytes": 2020
+    },
+    "runs/micro15-cost-decomposition.log": {
+      "sha256": "23684a38dfa3633173ddb6ef2a7967c4263114cd94da0e7cbbe5b4aa77ffd729",
+      "bytes": 3592
+    },
+    "runs/node24-pool-tests.log": {
+      "sha256": "87c56bf6afd16d01e0f2041c70659a46cfd21c6ce249c65c155efefc96700ced",
+      "bytes": 3049
+    },
+    "runs/node24-runner-tests.log": {
+      "sha256": "900c1fa0c3144bd7e393a5fb08ba7c4b91d92320319ffe0ff211f041d93b94c2",
+      "bytes": 552
+    },
+    "runs/primary-archive-availability-recheck.json": {
+      "sha256": "cc02390b11b6b2947ff15218185f3876f52901f16c81aeb1a5002fdcd6556b91",
+      "bytes": 323
+    },
+    "runs/repaired-source-slow-tests.log": {
+      "sha256": "d9d4ecd2614944b51f5560abce9ca22303f1eeb319d22dce974a4c4e307f96f3",
+      "bytes": 784
+    }
+  }
+}

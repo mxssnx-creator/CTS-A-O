@@ -1,5 +1,7 @@
 # Zusätzliche Kontexte aus negativen Stunden
 Die Erweiterung ist technisch funktionsfähig. Der neue zeitlich spätere Vergleich ist insgesamt schlechter: PF 0,810 → 0,453. Ein durchgehend positiver Ausführungs-PF ist **nicht erreicht**. Verluste, leere Varianten und alle ursprünglichen Quellen bleiben erhalten.
+**Haltedauer beachten:** Die älteren Trainingsgewinner verwendeten maximal60Minuten. Ihre PFs belegen keine Micro15-Profitabilität. Das neue Folgefenster bewertet eigenständig maximal15Minuten. Nur Micro15: Original144 Abschlüsse/PF0; erweitert2.811/PF0,002830.
+
 ## Gefundene Gewinner im Training
 Auswertung des älteren v4-Laufs: 257.095 finanzierte Modellabschlüsse, keine unbekannten oder Null-Zuteilungen. Drei negative Gesamtstunden am 19.10.2026 (12, 13 und 20 UTC). In ihnen waren 202 Quell-/Typ-/Range-/Richtungs-Stundengruppen und 4.852 Config-/Richtungs-Stundengruppen positiv. Dies ist rückblickendes Training unter einem älteren Quellstand, keine unabhängige Vorhersage. Vollständige Gruppen und exakte Configs: `training-negative-hours.json.gz`; aggregierte, über Stunden deduplizierte Onsets: `training-aggregate.json`.
 | Ursprüngliche Quelle | Typ/Range/Richtung | Abschlüsse in negativen Stunden | PF | Einmalige Symbol-Onsets |
@@ -63,3 +65,38 @@ In `training-aggregate.json` bezeichnet `pfConvention=no-loss-score` den bisheri
 Die vollständige Suite des Zwischenstands1205182 meldete zwei Fehler; `ci-failure-1205182.txt` erhält den Befund. Vier selektive1/15- und1/5/15-Retest/Tactic-IDs blieben im bisherigen Schock-/Erholungs-Testmarkt leer. Ein zusätzlicher kontrollierter Trend mit breiter, gleichmäßiger Intrabar-Range prüft jetzt jede der28 Retest/Tactic-Profil-/Subset-/Mirror-Identitäten mit echten Long- und Short-Onsets. Keine Formel, PF-Grenze oder Markt-Auswahl wurde angepasst; der universelle Richtungstest besteht damit ohne Ausnahmen.
 
 Der Preset-Backtest deklarierte ein Ende zur vollen Stunde, ließ aber frische und gecachte Minuten danach in die Historien einfließen. Bei einer späten Teilkerze verdrängte das einen vollständigen15m-Historienbalken (1055 statt1056). Jetzt werden Cache-Fähigkeit, Historienabruf und alle Eingabe-Views am deklarierten Ende begrenzt. Der synthetische Loader verwendet denselben Zeitbezug und endet auf der letzten abgeschlossenen Basiskerze. Der reichere Cache bleibt für andere Leser erhalten. Zwei deterministische13-Minuten-Fälle (frisch/gecacht) scheitern beide auf dem unveränderten alten Quellstand und bestehen mit der Korrektur. Normal/Exit-Kohortenparität und die lange Signal-Historie werden erneut geprüft. Keine Verkürzung des Signal-Auswahlfensters und keine Anpassung wirtschaftlicher Formeln nach dem Folgefenster.
+
+## Abschließende Wiederholung auf dem korrigierten Preset-Stand
+
+Wirtschaftlicher Source-Hash: `15bee9d6359df10deefc71f511eba0604f2dacb674c9303add46a08ccc0cb4dc`. Die Zusammenführung des parallel aktualisierten main0ac änderte diese wirtschaftlichen Dateien nicht. Erneut exakt gleiche Kandidaten-/Fundierungs- und Stundenwerte: Original15.607/PF0,810; erweitert37.581/PF0,453. Alle2.298.898 Kandidatenabschlüsse und sämtliche Felder der53.188 finanzierten Abschlüsse stimmen mit dem vollständig erhaltenen ursprünglichen Archiv überein. Keine ausgelassenen/zusätzlichen ursprünglichen Trades; keine unbekannte Fundierung/Rendite.221.268 vollständige stündliche Config-Entscheidungen, alle Eintrittsprüfungen und alle1.972 Quellen-Präfixprüfungen bestehen erneut ohne Abweichung. `final-verification.json`, `final-candidate-parity.json` und `final-receipts.tar.gz` erhalten den Nachweis. Der erste Code-CI-Lauf39553037021 auf e274b11 endete im unten dokumentierten Node24-Abbruch. Maßgeblicher Folge-Lauf:39556680253 auf8a8c364; vollständig erfolgreich einschließlich beider Langläufer. Die neue Uhr-Korrektur beseitigt einen Datenfehler, macht die beobachteten späteren Verluste aber nicht zu Gewinnen.
+
+
+## Welche Configs gewinnen in den negativen Stunden des neuen Laufs?
+
+`negative-hour-15m-summary.json` und das vollständige `negative-hour-15m-diagnostics.json.gz` werten ausschließlich die finanzierten, abgeschlossenen Modellorders aus. Negative Stunden sind hier rückblickend **pro Arm** definiert: Original13/14/15/20UTC, erweitert13/14/15/18UTC am20.10.2026. Es sind unterschiedliche Stichproben, kein direkter Gewinnervergleich zwischen den Armen. Weder pro Einzelstunde noch über diese Stunden zusammen gibt es eine positive Micro15-Config/Richtung. Die vollständigen negativen und unzureichenden Gruppen bleiben erhalten.
+
+Beispiele positiver Quell-/Range-/Typ-/Richtungsgruppen im erweiterten Arm über dessen negative Stunden:
+
+| Indikation | Range / Typ / Richtung | Abschlüsse | Unterschiedliche Onsets | Netto-Rendite-PF | Max. Hold |
+|---|---|---:|---:|---:|---:|
+| Inverse1×5×15 Relative Activity Acceleration Selective | General / Trailing / Long |455|10|1,572|240min|
+| Inverse1×5×15 Relative Activity Acceleration Selective | General / Normal / Long |185|8|1,702|240min|
+| Inverse5×15 Break Close Fast | Minimal / Trailing / Short |442|15|11,609|120min|
+| Inverse5×15 Break Close Fast | Minimal / Trailing-only / Short |304|8|8,037|120min|
+
+Diese Gruppen sind **nachträglich** auf Verluststunden ausgewählt. Die hohen PFs sind keine unabhängige Bestätigung, und viele Schutz-Configs teilen dieselben Onsets. Exakte Config-IDs, Richtungen, Stunden, GP/GL, Netto und Onset-Anzahlen stehen vollständig im komprimierten Detail. Ursprüngliche inverse5m-Break-Close-Gruppen sind ebenfalls teilweise positiv, haben aber nur1–3 unterschiedliche Onsets und keine Verlustsumme; deshalb wird dort kein endlicher gemessener PF erfunden. Keine Quelle, Schwelle oder Config wurde anhand dieser neuen Auswertung verändert.
+
+`micro15-cost-decomposition.json` erklärt die Micro-Stichprobe auf identischen Abschlüssen: Original144/0 positive Nettoabschlüsse; erweitert2.811/102. Die gesamten Micro15-PFs sind0 bzw.0,002830, vor der unverändert einmal berücksichtigten Kostenpauschale diagnostisch0 bzw.0,007847. In den negativen Stunden verliert Micro sogar vor Kosten: Original144 Abschlüsse auf3 unterschiedlichen Onsets; erweitert2.607 auf18. Das belegt eine starke Wiederholung verlierender Signale über verwandte Configs. Die Eintrittsprüfungen zeigen gleichzeitig, dass diese Orders zu ihrem damaligen Eintritt die eigene historische Qualifikation bestanden. Historischer PF ist damit kein garantierter PF der späteren Abschlüsse. Die Produktions-Kostenannahme bleibt0,0015; sie wird weder angepasst noch als alleinige Ursache ausgegeben.
+
+Die neue Diagnose prüft Fundierungsidentität,15-Minuten-Hold, endliche explizite Einheitsrenditen, exakte Stundenmitgliedschaft und Summenerhaltung in allen vier Gruppierungen. Die Zusammenfassung enthält auch Null-Gewinnerzahlen. Diagnose-Skripte und Logs liegen mit den eingefrorenen Rohdatenbezügen im finalen Receipt-Archiv.
+
+## Node24-Abbruch und begrenzter Test-Workaround
+
+Auf e274b11 bestanden Types/Lint/Build und3.130 Kernfälle. Der Prozess von `pool-cancel.test.ts` brach anschließend mit `jit_page_->allocations_.erase(addr) == 1` in V8 ab. Der Originalausschnitt ist in `ci-node24-failure-e274.txt` erhalten. Dies entspricht dem gemeldeten Runtime-Problem [nodejs/node#66366](https://github.com/nodejs/node/issues/66366). Der Kern-Testprozess verwendet auf Node24 nun den V8-CLI-Schalter `--no-wasm-code-gc`; begrenzte Compiler-Wrapper bleiben bis zum Ende des jeweiligen Testprozesses bestehen. Keine Tests werden übersprungen oder neu versucht, und kein produktiver Worker-/Gate-/Renditeparameter wird geändert. Der reale Runner-Spawn besteht4/4 und zugehörige Abbruch-/Ownership-/Prioritäts-/Speicher-/Modulkopie-Fälle22/22. Der vollständige Folge-Lauf39556680253 ist erfolgreich abgeschlossen:690 Scriptfälle bestanden/8 übersprungen,83 Appfälle bestanden,3.132 Kernfälle bestanden/2 Langläufer im Standardlauf übersprungen und anschließend beide separat bestanden. Types, Lint ohne Fehler, App-/Worker-Build und die unabhängige Signal-Prüfung39556680375 bestehen. Die Skip-Zahlen werden erhalten, nicht als getestete Fälle gezählt.
+
+## Quellstand und Wiederherstellbarkeit der letzten Wiederholung
+
+Die letzten eingefrorenen Protokolle nennen den lokalen Checkpoint269acdd. Dessen identischer veröffentlichter Git-Baum ist über Remote-Commit58fda5fb011f378a436defda76dc4c0560fbe510 mit Baum2ed391971c52ed9ffa6942f734be59ce5b46407b erhalten. Der spätere main0ac-Merge und der Node24-Test-Workaround ändern den wirtschaftlichen Source-Hash15bee nicht. Der finale Code-Head8a8c364 enthält Baum102f8521873def2020d8a34436b198f980d60475. Der Bericht trennt diese Git-Checkpoint-Identität von den einzeln geprüften wirtschaftlichen Datei-Hashes und von den unveränderten Markt-/Settings-/Trade-Daten.
+
+
+PR191 wurde nach diesen Prüfungen als `e287e234b4b99022db0f1e04e0d38ace1695d225` in main zusammengeführt. Der Merge-Baum ist exakt der geprüfte Baum102f8521873def2020d8a34436b198f980d60475. Dieser abschließende Nachtrag ändert ausschließlich Berichte, Nachweise und den Operations-Handoff. Keine Live-Ausführung/kein Reload wurde durchgeführt; die negative wirtschaftliche Bewertung wird durch die erfolgreiche technische Prüfung nicht aufgehoben.
