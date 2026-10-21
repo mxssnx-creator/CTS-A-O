@@ -39,11 +39,18 @@ const o = {
   offPf: Number(arg("off-pf", DEFAULT_PROMOTE.offPf)),
 };
 
+// Validate thresholds before touching snapshot or target evidence. This pure call grants no lane.
+promoteDecide({}, undefined, o, { nowT: Date.now() });
 const db = new DatabaseSync(refDb, { readOnly: true });
 let nominalCloses;
+let nominalOwn = false;
 try {
   // the reference's own closes only (relation.ts): a manual close or the restart window is not counted
-  nominalCloses = db.prepare(`SELECT COUNT(*) AS n FROM live_lane_trades WHERE ${OWN_CLOSE_SQL}`).get().n;
+  const cols = new Set(db.prepare("PRAGMA table_info(live_lane_trades)").all().map((x) => x.name));
+  nominalOwn = cols.has("reason") && cols.has("exit_t");
+  nominalCloses = cols.size
+    ? db.prepare(`SELECT COUNT(*) AS n FROM live_lane_trades${nominalOwn ? ` WHERE ${OWN_CLOSE_SQL}` : ""}`).get().n
+    : 0;
 } finally {
   db.close();
 }
@@ -71,7 +78,7 @@ const priorIdentities = prev.schema === "cts-live-promotion-state/v2" && prev.by
 const decision = promoteDecide(priorIdentities, evidence, o,
   { referenceId, proofId, nowT: Date.now() });
 if (evidenceError) decision.lines.push(evidenceError);
-const why = `${decision.lines.join("; ")}; nominal reference own rows ${nominalCloses} (not funded-execution proof)`;
+const why = `${decision.lines.join("; ")}; nominal reference ${nominalOwn ? "own rows" : "rows"} ${nominalCloses} (not funded-execution proof)${nominalOwn ? "" : "; own-close classification unavailable"}`;
 const patch = JSON.parse(readFileSync(patchPath, "utf8"));
 const live = patch.settings?.live ?? {};
 const next = promoteLive(live, decision);

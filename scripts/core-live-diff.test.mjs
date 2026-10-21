@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -34,4 +34,28 @@ test("legacy snapshots and mixed unknown paper samples keep their identities but
     assert.equal(r.status, 0, r.stderr);
     assert.match(r.stdout, /\| total \| 2 \| Unit basis unavailable \| – \| 2 \| 1\.36 \|/);
   }
+});
+
+test("a current snapshot without an owned-fill ledger keeps the relation diagnostic and invents no venue positions", () => {
+  const dir = mkdtempSync(join(tmpdir(), "cts-modern-diff-"));
+  try {
+    const file = join(dir, "current.sqlite"), db = new DatabaseSync(file);
+    db.exec(`CREATE TABLE paper_trades(cfg TEXT,sym TEXT,side INTEGER,entry_t INTEGER,exit_t INTEGER,entry REAL,exit REAL);
+      CREATE TABLE paper_book_trades(cfg TEXT,sym TEXT,side INTEGER,entry_t INTEGER,exit_t INTEGER,r REAL,vol REAL,reason TEXT,held_at INTEGER,mult REAL);
+      CREATE TABLE paper_positions(cfg TEXT,sym TEXT,side INTEGER,entry_t INTEGER);
+      CREATE TABLE live_lane_trades(id TEXT,cfg TEXT,sym TEXT,side INTEGER,entry_t INTEGER,entry REAL,exit REAL,exit_t INTEGER,r REAL,reason TEXT)`);
+    db.prepare("INSERT INTO paper_trades VALUES (?,?,?,?,?,?,?)").run(cfg, "A", 1, T, T + 60000, 100, 102);
+    db.prepare("INSERT INTO paper_book_trades VALUES (?,?,?,?,?,?,?,?,?,?)").run(cfg, "A", 1, T, T + 60000, 0.02, 1, "tp", T, 1);
+    db.prepare("INSERT INTO live_lane_trades VALUES (?,?,?,?,?,?,?,?,?,?)").run(`${cfg}|A|1|${T}`, cfg, "A", 1, T, 100, 102, T + 60000, 0.02, "exit");
+    db.close();
+    const before = readFileSync(file);
+    const result = spawnSync(process.execPath, ["--experimental-strip-types", "--no-warnings", new URL("./core-live-diff.mjs", import.meta.url).pathname, file, "--json"], { encoding: "utf8", timeout: 10000 });
+    assert.equal(result.status, 0, result.stderr);
+    const report = JSON.parse(result.stdout);
+    assert.equal(report.legacy, undefined);
+    assert.equal(report.relation.counts.matched, 1);
+    assert.equal(report.relation.positions, null, "missing fills never become funded execution");
+    assert.equal(report.check.judged, false, "one attributed match cannot qualify a promotion");
+    assert.deepEqual(readFileSync(file), before, "the snapshot is never migrated by a reader");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
