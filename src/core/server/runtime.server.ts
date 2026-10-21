@@ -5091,6 +5091,13 @@ export class CoreRuntime {
         wu.series.every((b, i) => b === uStage.series[i])
           ? sharedU
           : shareBars(wu.series));
+    // Signal source, coordinator, and Exit tape builds share this immutable walk-forward universe.
+    let sharedSignalWuMemo: typeof sharedSignalStage | null = null;
+    const sharedSignalWuOf = () =>
+      (sharedSignalWuMemo ??=
+        signalWu.series === signalStageU.series
+          ? sharedSignalStage
+          : shareBars(signalWu.series));
     const tapesFor = async (
       pairs: ReadonlySet<string>,
       protects: readonly Protect[],
@@ -5105,7 +5112,7 @@ export class CoreRuntime {
       if (workersAvailable() && !this.workersBroken && pairs.size) {
         const n = poolSize();
         // every series (the short ones too): the worker's market reference is the main thread's (Universe.series)
-        const sharedWu = signalStage ? shareBars(signalWu.series) : sharedWuOf();
+        const sharedWu = signalStage ? sharedSignalWuOf() : sharedWuOf();
         const order = [...pairs];
         // small messages: each reply is deserialised on the main thread in one piece (one part per core
         // stalled it for ~0.5 s at 30 symbols × 43 signal sources; with every config its own seat a pair carries

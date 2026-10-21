@@ -1,4 +1,4 @@
-# Signals 12h replay — attempt 05
+# Signals 12h replay — attempt 05 baseline
 
 **Status: incomplete coverage; not a complete evaluation.** Frozen 12-symbol BingX swap data, 20 Oct 2026 12:00 through 21 Oct 00:00 UTC. It includes 24h of evaluated prehistory and 12h of indicator-only warm-up. The full 336h Signal and 168h Exit history gates were retained.
 
@@ -34,6 +34,19 @@
 | Auto preset | 0 |
 | Prehistoric | 0 |
 
-The loop reported p50 20.3 ms, p99 54.1 ms, and max 1020 ms (22 slices over 40 ms; one-worker: 10). The two-worker compute was faster but consumed more memory and had worse tail loop latency; keep the production worker policy unchanged until repeated runs with a full-history feed confirm the trade-off. Persistence took 9 ms and simulation persistence 1 ms.
+The loop reported p50 20.3 ms, p99 54.1 ms, and max 1020 ms (22 slices over 40 ms; one-worker: 10). Persistence took 9 ms and simulation persistence 1 ms.
 
 The raw simulation was frozen under source SHA d8140d72eca7b2d727e8325753ae34af05b0d570cb6b47f8bf4cbbcdfe98e9bc. After the run, only scripts/core-session.mjs changed for report coverage accounting; the core economic calculation source was unchanged. Refreshed report source SHA: a302cc8080fb6fea0830354eab4473efec3cd89161b42fdaa8a404227bad1845.
+
+## Shared-bar reuse repeat — attempt 06
+
+The same feed, symbols, 12-hour window, frozen desk settings, two-worker policy, and `CTS_CORE_VARIANTS=0` were used. The runtime now memoizes the immutable Signal walk-forward bars in shared memory across Signal source, coordination, and Signal Exit tape builds.
+
+- Compute: 74,344 ms versus 87,852 ms in attempt 05 (15.4% lower).
+- Main-process peak RSS: 1,907 MB versus 2,279 MB (372 MB lower). The container lifetime cgroup high-water remained 7.58 GB, includes attempt 05 and reclaimable file cache, and recorded no OOM events; it cannot isolate this repeat's cgroup peak.
+- Loop latency: p50 20.3 ms, p99 41.5 ms, max 934 ms. The p50 is unchanged; p99 and max are lower than attempt 05.
+- Tape checksums and outcomes match exactly: 92,360 tapes; 418,271 records / 325,911 trade rows; SHA-256 `3c47c9d2beffc606a35e2020c0fe85e0c12f7470c4ad8b21f61920be1c60ced5`.
+- Persist remained negligible at 7 ms (simulation persist <1 ms). The measured time is in Base/history/tape generation and simulation rather than database writes.
+- Coverage and strategy outcome remain unchanged: 570/665 Base evaluations, 0 Signals qualified, 0 Exit configs qualified, 0 orders. The report remains 61/62 because the 95 30m Signal lanes are absent from the 48-hour feed; it is not a complete performance evaluation.
+
+The worker policy stays unchanged pending a full-history rerun: on this 48-hour feed, two workers reduce compute time but have slightly higher process memory and worse max loop latency than one worker. A complete run still needs a continuous 15-day 1m feed.

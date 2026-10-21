@@ -261,5 +261,86 @@
       ]
     },
     "note": "The only source file changed after the frozen run is scripts/core-session.mjs, for coverage reporting/migration; src/core economic code is unchanged."
+  },
+  "optimizationRepeat": {
+    "id": "signals-all-12h-20261021-worker2-sharedbars",
+    "status": "complete-with-same-coverage-shortfall",
+    "protocolSha256": "a6de316de63acc69f26572aa0fbb4691e8fe7708b8107ea7da4a95f28f97789b",
+    "sourceSha256": "073f4143a6f64336507e3d47c9f7452a5c3f0cef616ef538ff46abba2f21cb38",
+    "feedSha256": "f79fa937c5649168cfc0dd9fad80324c6d08cecdc8cc9429fbc13ef00964fc03",
+    "settingsAndWfMatchAttempt05": true,
+    "workerCount": 2,
+    "variantsDisabled": true,
+    "evidencePath": "runs/signals-12h-20261021/attempt-06/raw.json (local ignored run evidence)",
+    "environment": {
+      "CTS_CORE_WORKERS": "2",
+      "CTS_CORE_VARIANTS": "0",
+      "MALLOC_ARENA_MAX": "2",
+      "MALLOC_MMAP_THRESHOLD_": "1048576"
+    },
+    "change": "Memoize the immutable Signal walk-forward bars in shared memory across sequential Signal source, coordination, and Signal Exit tape builds.",
+    "result": {
+      "computeMs": 74344,
+      "mainProcessRssMaxMb": 1907,
+      "coverage": {
+        "expected": 665,
+        "evaluated": 570,
+        "missing": 95,
+        "failedChecks": 1
+      },
+      "signal": {
+        "pairs": 285,
+        "configs": 145110,
+        "active": 0,
+        "historicQualified": 0,
+        "orders": 0
+      },
+      "exit": {
+        "baseEvaluated": 285,
+        "basePassed": 20,
+        "baseRejected": 265,
+        "configs": 0
+      },
+      "orders": {
+        "closed": 0,
+        "openAtEnd": 0
+      },
+      "tapeTrades": {
+        "tapes": 92360,
+        "records": 418271,
+        "rows": 325911,
+        "sha256": "3c47c9d2beffc606a35e2020c0fe85e0c12f7470c4ad8b21f61920be1c60ced5",
+        "matchesAttempt05": true
+      },
+      "loop": {
+        "p50": 20.267007,
+        "p99": 41.549823,
+        "max": 933.756927
+      },
+      "phasesMs": {
+        "Base (workers)": 12175,
+        "Exit history": 114,
+        "Signal history": 6880,
+        "Signal tapes": 2573,
+        "Signal coordination tapes": 21750,
+        "Simulation": 18780,
+        "Persist": 7,
+        "Persist sim": 0
+      },
+      "cgroup": {
+        "peakBytes": 7584096256,
+        "scope": "Container lifetime high-water across both attempts, includes reclaimable file cache; not attributable to attempt 06",
+        "oomEvents": 0
+      }
+    },
+    "comparisonWithAttempt05": {
+      "computeMsSaved": 13508,
+      "computeSpeedupPct": 15.4,
+      "mainProcessRssReductionMb": 372,
+      "p99ReductionPct": 23.2,
+      "tapeChecksumMatches": true,
+      "tradeCountsMatch": true
+    },
+    "note": "The refreshed report again passed 61/62 checks; the only failure is the known 95 missing 30m Signal pairs. Full evaluation still requires a continuous 15-day feed."
   }
 }
