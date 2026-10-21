@@ -1,0 +1,54 @@
+{
+  "schema": "cts-combined-pr-default-verification-v1",
+  "runId": 39545983417,
+  "jobId": 119044211383,
+  "status": "completed",
+  "conclusion": "success",
+  "testedMergeCommit": "46ae9aca4ae401fab6ced86272ab13171a93857b",
+  "testedMergeTree": "b22c5b68c6647f4297a91a1d684292de0eb9dfdf",
+  "parents": [
+    "1f6acd9328e05636ce3ff341e34628ea8e8aa762",
+    "11780ad27ac44427f641ff126e616af9859414e1"
+  ],
+  "economicSourceSha256": "f704356e936a30cc7ae3415f5a58a04dccbf7d81198935414b4d42efb2c0d661",
+  "typecheck": "passed",
+  "productionBuild": "passed",
+  "lint": {
+    "errors": 0,
+    "existingWarnings": 44
+  },
+  "scripts": {
+    "tests": 684,
+    "passed": 676,
+    "failed": 0,
+    "skipped": 8,
+    "skipReason": "Absent optional template fixtures; retained explicit skips"
+  },
+  "appAndComponents": {
+    "tests": 83,
+    "passed": 83,
+    "failed": 0,
+    "skipped": 0
+  },
+  "coreDefault": {
+    "tests": 3127,
+    "passed": 3125,
+    "failed": 0,
+    "skipped": 2
+  },
+  "coreSlow": {
+    "tests": 2,
+    "passed": 2,
+    "failed": 0,
+    "skipped": 0,
+    "basis": "The same two optional runtime tests excluded by default, not extra unique cases"
+  },
+  "localTargetedMergedSource": {
+    "tests": 37,
+    "passed": 37,
+    "failed": 0,
+    "scope": "Exact Base cell admission, incremental evaluation boundary, ranking and replay-feed bounds"
+  },
+  "noVenueExecution": true,
+  "proof": "GitHub completed-job logs; exact checkout merge tree matches the locally frozen v4 calculation source. Financial v4 and full identity/native audits are separately retained."
+}
