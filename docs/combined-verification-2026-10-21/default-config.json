@@ -1,5 +1,5 @@
 {
-  "sourceSha256": "de4cc45e706a9522d538ae26b40a64d6cca9b8319a399fd398418297fb57a632",
+  "sourceSha256": "ecea01ea51606fb0fb33cdcb448acd9b2bb91ab0f8bb50980a740b8afb981921",
   "classification": "Current factory defaults; historical benchmark settings and deployed connections are separate",
   "tfs": [
     1,
@@ -539,7 +539,7 @@
     "stopGap": 0.5,
     "slOfTp": 1
   },
-  "focusCount": 939,
+  "focusCount": 1079,
   "wf": {
     "axisVolumeFactor": 0.1,
     "indicationVolumeFactors": {

@@ -1,0 +1,177 @@
+{
+  "sourceSha256": "de4cc45e706a9522d538ae26b40a64d6cca9b8319a399fd398418297fb57a632",
+  "classification": "Static default protect cells at 15m, before bot/source/strategy permutations; Minimal Plus fits dynamically",
+  "rows": [
+    {
+      "tag": "wide",
+      "cells": 0,
+      "normal": 0,
+      "trailing": 0,
+      "trailingOnly": 0,
+      "tp": null,
+      "sl": null,
+      "trail": null,
+      "holdBars15m": null,
+      "floor": 1.1,
+      "inverseFloor": 1.1
+    },
+    {
+      "tag": "mc",
+      "cells": 1564,
+      "normal": 238,
+      "trailing": 714,
+      "trailingOnly": 612,
+      "tp": {
+        "min": 0,
+        "max": 0.0095,
+        "unique": 8
+      },
+      "sl": {
+        "min": 0.0035,
+        "max": 0.0475,
+        "unique": 95
+      },
+      "trail": {
+        "min": 0,
+        "max": 0.007125,
+        "unique": 22
+      },
+      "holdBars15m": {
+        "min": 64,
+        "max": 96,
+        "unique": 2
+      },
+      "floor": 1.05,
+      "inverseFloor": 1.1
+    },
+    {
+      "tag": "mn",
+      "cells": 754,
+      "normal": 126,
+      "trailing": 378,
+      "trailingOnly": 250,
+      "tp": {
+        "min": 0,
+        "max": 0.016,
+        "unique": 10
+      },
+      "sl": {
+        "min": 0.012,
+        "max": 0.048,
+        "unique": 46
+      },
+      "trail": {
+        "min": 0,
+        "max": 0.012,
+        "unique": 21
+      },
+      "holdBars15m": {
+        "min": 64,
+        "max": 96,
+        "unique": 2
+      },
+      "floor": 1.1,
+      "inverseFloor": 1.1
+    },
+    {
+      "tag": "mp",
+      "cells": 0,
+      "normal": 0,
+      "trailing": 0,
+      "trailingOnly": 0,
+      "tp": null,
+      "sl": null,
+      "trail": null,
+      "holdBars15m": null,
+      "floor": 1.1,
+      "inverseFloor": 1.1
+    },
+    {
+      "tag": "sh",
+      "cells": 432,
+      "normal": 84,
+      "trailing": 252,
+      "trailingOnly": 96,
+      "tp": {
+        "min": 0,
+        "max": 0.028,
+        "unique": 7
+      },
+      "sl": {
+        "min": 0.018,
+        "max": 0.07,
+        "unique": 37
+      },
+      "trail": {
+        "min": 0,
+        "max": 0.021,
+        "unique": 19
+      },
+      "holdBars15m": {
+        "min": 64,
+        "max": 96,
+        "unique": 2
+      },
+      "floor": 1.1,
+      "inverseFloor": 1.1
+    },
+    {
+      "tag": "gn",
+      "cells": 554,
+      "normal": 96,
+      "trailing": 288,
+      "trailingOnly": 170,
+      "tp": {
+        "min": 0,
+        "max": 0.044,
+        "unique": 9
+      },
+      "sl": {
+        "min": 0.01,
+        "max": 0.066,
+        "unique": 40
+      },
+      "trail": {
+        "min": 0,
+        "max": 0.033,
+        "unique": 25
+      },
+      "holdBars15m": {
+        "min": 64,
+        "max": 96,
+        "unique": 2
+      },
+      "floor": 1.2,
+      "inverseFloor": 1.2
+    },
+    {
+      "tag": "lg",
+      "cells": 594,
+      "normal": 120,
+      "trailing": 360,
+      "trailingOnly": 114,
+      "tp": {
+        "min": 0,
+        "max": 0.064,
+        "unique": 11
+      },
+      "sl": {
+        "min": 0.016,
+        "max": 0.096,
+        "unique": 48
+      },
+      "trail": {
+        "min": 0,
+        "max": 0.048,
+        "unique": 31
+      },
+      "holdBars15m": {
+        "min": 64,
+        "max": 96,
+        "unique": 2
+      },
+      "floor": 1.3,
+      "inverseFloor": 1.3
+    }
+  ]
+}

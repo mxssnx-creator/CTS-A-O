@@ -1,6 +1,6 @@
 {
-  "sourceSha256": "de4cc45e706a9522d538ae26b40a64d6cca9b8319a399fd398418297fb57a632",
-  "registeredSpecs": 1720,
+  "sourceSha256": "ecea01ea51606fb0fb33cdcb448acd9b2bb91ab0f8bb50980a740b8afb981921",
+  "registeredSpecs": 1860,
   "byKind": {
     "trend": 70,
     "break": 237,
@@ -19,8 +19,8 @@
     "smooth": 17,
     "tactic": 10,
     "relate": 40,
-    "micro": 364,
-    "inverse": 478
+    "micro": 434,
+    "inverse": 548
   },
   "specs": [
     {
@@ -3599,6 +3599,56 @@
       "label": "Micro · direction-persist · selective · 1m"
     },
     {
+      "id": "micro-1-break-channel-fast",
+      "kind": "micro",
+      "label": "Micro · break-channel · fast · 1m"
+    },
+    {
+      "id": "micro-1-break-channel-selective",
+      "kind": "micro",
+      "label": "Micro · break-channel · selective · 1m"
+    },
+    {
+      "id": "micro-1-break-channel-short-fast",
+      "kind": "micro",
+      "label": "Micro · break-channel-short · fast · 1m"
+    },
+    {
+      "id": "micro-1-break-channel-short-selective",
+      "kind": "micro",
+      "label": "Micro · break-channel-short · selective · 1m"
+    },
+    {
+      "id": "micro-1-break-channel-wide-fast",
+      "kind": "micro",
+      "label": "Micro · break-channel-wide · fast · 1m"
+    },
+    {
+      "id": "micro-1-break-channel-wide-selective",
+      "kind": "micro",
+      "label": "Micro · break-channel-wide · selective · 1m"
+    },
+    {
+      "id": "micro-1-break-channel-activity-fast",
+      "kind": "micro",
+      "label": "Micro · break-channel-activity · fast · 1m"
+    },
+    {
+      "id": "micro-1-break-channel-activity-selective",
+      "kind": "micro",
+      "label": "Micro · break-channel-activity · selective · 1m"
+    },
+    {
+      "id": "micro-1-break-channel-failure-fast",
+      "kind": "micro",
+      "label": "Micro · break-channel-failure · fast · 1m"
+    },
+    {
+      "id": "micro-1-break-channel-failure-selective",
+      "kind": "micro",
+      "label": "Micro · break-channel-failure · selective · 1m"
+    },
+    {
       "id": "micro-5-drawdown-turn-fast",
       "kind": "micro",
       "label": "Micro · drawdown-turn · fast · 5m"
@@ -3857,6 +3907,56 @@
       "id": "micro-5-direction-persist-selective",
       "kind": "micro",
       "label": "Micro · direction-persist · selective · 5m"
+    },
+    {
+      "id": "micro-5-break-channel-fast",
+      "kind": "micro",
+      "label": "Micro · break-channel · fast · 5m"
+    },
+    {
+      "id": "micro-5-break-channel-selective",
+      "kind": "micro",
+      "label": "Micro · break-channel · selective · 5m"
+    },
+    {
+      "id": "micro-5-break-channel-short-fast",
+      "kind": "micro",
+      "label": "Micro · break-channel-short · fast · 5m"
+    },
+    {
+      "id": "micro-5-break-channel-short-selective",
+      "kind": "micro",
+      "label": "Micro · break-channel-short · selective · 5m"
+    },
+    {
+      "id": "micro-5-break-channel-wide-fast",
+      "kind": "micro",
+      "label": "Micro · break-channel-wide · fast · 5m"
+    },
+    {
+      "id": "micro-5-break-channel-wide-selective",
+      "kind": "micro",
+      "label": "Micro · break-channel-wide · selective · 5m"
+    },
+    {
+      "id": "micro-5-break-channel-activity-fast",
+      "kind": "micro",
+      "label": "Micro · break-channel-activity · fast · 5m"
+    },
+    {
+      "id": "micro-5-break-channel-activity-selective",
+      "kind": "micro",
+      "label": "Micro · break-channel-activity · selective · 5m"
+    },
+    {
+      "id": "micro-5-break-channel-failure-fast",
+      "kind": "micro",
+      "label": "Micro · break-channel-failure · fast · 5m"
+    },
+    {
+      "id": "micro-5-break-channel-failure-selective",
+      "kind": "micro",
+      "label": "Micro · break-channel-failure · selective · 5m"
     },
     {
       "id": "micro-15-drawdown-turn-fast",
@@ -4119,6 +4219,56 @@
       "label": "Micro · direction-persist · selective · 15m"
     },
     {
+      "id": "micro-15-break-channel-fast",
+      "kind": "micro",
+      "label": "Micro · break-channel · fast · 15m"
+    },
+    {
+      "id": "micro-15-break-channel-selective",
+      "kind": "micro",
+      "label": "Micro · break-channel · selective · 15m"
+    },
+    {
+      "id": "micro-15-break-channel-short-fast",
+      "kind": "micro",
+      "label": "Micro · break-channel-short · fast · 15m"
+    },
+    {
+      "id": "micro-15-break-channel-short-selective",
+      "kind": "micro",
+      "label": "Micro · break-channel-short · selective · 15m"
+    },
+    {
+      "id": "micro-15-break-channel-wide-fast",
+      "kind": "micro",
+      "label": "Micro · break-channel-wide · fast · 15m"
+    },
+    {
+      "id": "micro-15-break-channel-wide-selective",
+      "kind": "micro",
+      "label": "Micro · break-channel-wide · selective · 15m"
+    },
+    {
+      "id": "micro-15-break-channel-activity-fast",
+      "kind": "micro",
+      "label": "Micro · break-channel-activity · fast · 15m"
+    },
+    {
+      "id": "micro-15-break-channel-activity-selective",
+      "kind": "micro",
+      "label": "Micro · break-channel-activity · selective · 15m"
+    },
+    {
+      "id": "micro-15-break-channel-failure-fast",
+      "kind": "micro",
+      "label": "Micro · break-channel-failure · fast · 15m"
+    },
+    {
+      "id": "micro-15-break-channel-failure-selective",
+      "kind": "micro",
+      "label": "Micro · break-channel-failure · selective · 15m"
+    },
+    {
       "id": "micro-1x5-drawdown-turn-fast",
       "kind": "micro",
       "label": "Micro · drawdown-turn · fast · 1+5m"
@@ -4377,6 +4527,56 @@
       "id": "micro-1x5-direction-persist-selective",
       "kind": "micro",
       "label": "Micro · direction-persist · selective · 1+5m"
+    },
+    {
+      "id": "micro-1x5-break-channel-fast",
+      "kind": "micro",
+      "label": "Micro · break-channel · fast · 1+5m"
+    },
+    {
+      "id": "micro-1x5-break-channel-selective",
+      "kind": "micro",
+      "label": "Micro · break-channel · selective · 1+5m"
+    },
+    {
+      "id": "micro-1x5-break-channel-short-fast",
+      "kind": "micro",
+      "label": "Micro · break-channel-short · fast · 1+5m"
+    },
+    {
+      "id": "micro-1x5-break-channel-short-selective",
+      "kind": "micro",
+      "label": "Micro · break-channel-short · selective · 1+5m"
+    },
+    {
+      "id": "micro-1x5-break-channel-wide-fast",
+      "kind": "micro",
+      "label": "Micro · break-channel-wide · fast · 1+5m"
+    },
+    {
+      "id": "micro-1x5-break-channel-wide-selective",
+      "kind": "micro",
+      "label": "Micro · break-channel-wide · selective · 1+5m"
+    },
+    {
+      "id": "micro-1x5-break-channel-activity-fast",
+      "kind": "micro",
+      "label": "Micro · break-channel-activity · fast · 1+5m"
+    },
+    {
+      "id": "micro-1x5-break-channel-activity-selective",
+      "kind": "micro",
+      "label": "Micro · break-channel-activity · selective · 1+5m"
+    },
+    {
+      "id": "micro-1x5-break-channel-failure-fast",
+      "kind": "micro",
+      "label": "Micro · break-channel-failure · fast · 1+5m"
+    },
+    {
+      "id": "micro-1x5-break-channel-failure-selective",
+      "kind": "micro",
+      "label": "Micro · break-channel-failure · selective · 1+5m"
     },
     {
       "id": "micro-1x15-drawdown-turn-fast",
@@ -4639,6 +4839,56 @@
       "label": "Micro · direction-persist · selective · 1+15m"
     },
     {
+      "id": "micro-1x15-break-channel-fast",
+      "kind": "micro",
+      "label": "Micro · break-channel · fast · 1+15m"
+    },
+    {
+      "id": "micro-1x15-break-channel-selective",
+      "kind": "micro",
+      "label": "Micro · break-channel · selective · 1+15m"
+    },
+    {
+      "id": "micro-1x15-break-channel-short-fast",
+      "kind": "micro",
+      "label": "Micro · break-channel-short · fast · 1+15m"
+    },
+    {
+      "id": "micro-1x15-break-channel-short-selective",
+      "kind": "micro",
+      "label": "Micro · break-channel-short · selective · 1+15m"
+    },
+    {
+      "id": "micro-1x15-break-channel-wide-fast",
+      "kind": "micro",
+      "label": "Micro · break-channel-wide · fast · 1+15m"
+    },
+    {
+      "id": "micro-1x15-break-channel-wide-selective",
+      "kind": "micro",
+      "label": "Micro · break-channel-wide · selective · 1+15m"
+    },
+    {
+      "id": "micro-1x15-break-channel-activity-fast",
+      "kind": "micro",
+      "label": "Micro · break-channel-activity · fast · 1+15m"
+    },
+    {
+      "id": "micro-1x15-break-channel-activity-selective",
+      "kind": "micro",
+      "label": "Micro · break-channel-activity · selective · 1+15m"
+    },
+    {
+      "id": "micro-1x15-break-channel-failure-fast",
+      "kind": "micro",
+      "label": "Micro · break-channel-failure · fast · 1+15m"
+    },
+    {
+      "id": "micro-1x15-break-channel-failure-selective",
+      "kind": "micro",
+      "label": "Micro · break-channel-failure · selective · 1+15m"
+    },
+    {
       "id": "micro-5x15-drawdown-turn-fast",
       "kind": "micro",
       "label": "Micro · drawdown-turn · fast · 5+15m"
@@ -4899,6 +5149,56 @@
       "label": "Micro · direction-persist · selective · 5+15m"
     },
     {
+      "id": "micro-5x15-break-channel-fast",
+      "kind": "micro",
+      "label": "Micro · break-channel · fast · 5+15m"
+    },
+    {
+      "id": "micro-5x15-break-channel-selective",
+      "kind": "micro",
+      "label": "Micro · break-channel · selective · 5+15m"
+    },
+    {
+      "id": "micro-5x15-break-channel-short-fast",
+      "kind": "micro",
+      "label": "Micro · break-channel-short · fast · 5+15m"
+    },
+    {
+      "id": "micro-5x15-break-channel-short-selective",
+      "kind": "micro",
+      "label": "Micro · break-channel-short · selective · 5+15m"
+    },
+    {
+      "id": "micro-5x15-break-channel-wide-fast",
+      "kind": "micro",
+      "label": "Micro · break-channel-wide · fast · 5+15m"
+    },
+    {
+      "id": "micro-5x15-break-channel-wide-selective",
+      "kind": "micro",
+      "label": "Micro · break-channel-wide · selective · 5+15m"
+    },
+    {
+      "id": "micro-5x15-break-channel-activity-fast",
+      "kind": "micro",
+      "label": "Micro · break-channel-activity · fast · 5+15m"
+    },
+    {
+      "id": "micro-5x15-break-channel-activity-selective",
+      "kind": "micro",
+      "label": "Micro · break-channel-activity · selective · 5+15m"
+    },
+    {
+      "id": "micro-5x15-break-channel-failure-fast",
+      "kind": "micro",
+      "label": "Micro · break-channel-failure · fast · 5+15m"
+    },
+    {
+      "id": "micro-5x15-break-channel-failure-selective",
+      "kind": "micro",
+      "label": "Micro · break-channel-failure · selective · 5+15m"
+    },
+    {
       "id": "micro-1x5x15-drawdown-turn-fast",
       "kind": "micro",
       "label": "Micro · drawdown-turn · fast · 1+5+15m"
@@ -5157,6 +5457,56 @@
       "id": "micro-1x5x15-direction-persist-selective",
       "kind": "micro",
       "label": "Micro · direction-persist · selective · 1+5+15m"
+    },
+    {
+      "id": "micro-1x5x15-break-channel-fast",
+      "kind": "micro",
+      "label": "Micro · break-channel · fast · 1+5+15m"
+    },
+    {
+      "id": "micro-1x5x15-break-channel-selective",
+      "kind": "micro",
+      "label": "Micro · break-channel · selective · 1+5+15m"
+    },
+    {
+      "id": "micro-1x5x15-break-channel-short-fast",
+      "kind": "micro",
+      "label": "Micro · break-channel-short · fast · 1+5+15m"
+    },
+    {
+      "id": "micro-1x5x15-break-channel-short-selective",
+      "kind": "micro",
+      "label": "Micro · break-channel-short · selective · 1+5+15m"
+    },
+    {
+      "id": "micro-1x5x15-break-channel-wide-fast",
+      "kind": "micro",
+      "label": "Micro · break-channel-wide · fast · 1+5+15m"
+    },
+    {
+      "id": "micro-1x5x15-break-channel-wide-selective",
+      "kind": "micro",
+      "label": "Micro · break-channel-wide · selective · 1+5+15m"
+    },
+    {
+      "id": "micro-1x5x15-break-channel-activity-fast",
+      "kind": "micro",
+      "label": "Micro · break-channel-activity · fast · 1+5+15m"
+    },
+    {
+      "id": "micro-1x5x15-break-channel-activity-selective",
+      "kind": "micro",
+      "label": "Micro · break-channel-activity · selective · 1+5+15m"
+    },
+    {
+      "id": "micro-1x5x15-break-channel-failure-fast",
+      "kind": "micro",
+      "label": "Micro · break-channel-failure · fast · 1+5+15m"
+    },
+    {
+      "id": "micro-1x5x15-break-channel-failure-selective",
+      "kind": "micro",
+      "label": "Micro · break-channel-failure · selective · 1+5+15m"
     },
     {
       "id": "inverse-known-trend-ema",
@@ -5989,6 +6339,56 @@
       "label": "Inverse · Micro · direction-persist · selective · 1m"
     },
     {
+      "id": "inverse-micro-1-break-channel-fast",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel · fast · 1m"
+    },
+    {
+      "id": "inverse-micro-1-break-channel-selective",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel · selective · 1m"
+    },
+    {
+      "id": "inverse-micro-1-break-channel-short-fast",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-short · fast · 1m"
+    },
+    {
+      "id": "inverse-micro-1-break-channel-short-selective",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-short · selective · 1m"
+    },
+    {
+      "id": "inverse-micro-1-break-channel-wide-fast",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-wide · fast · 1m"
+    },
+    {
+      "id": "inverse-micro-1-break-channel-wide-selective",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-wide · selective · 1m"
+    },
+    {
+      "id": "inverse-micro-1-break-channel-activity-fast",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-activity · fast · 1m"
+    },
+    {
+      "id": "inverse-micro-1-break-channel-activity-selective",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-activity · selective · 1m"
+    },
+    {
+      "id": "inverse-micro-1-break-channel-failure-fast",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-failure · fast · 1m"
+    },
+    {
+      "id": "inverse-micro-1-break-channel-failure-selective",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-failure · selective · 1m"
+    },
+    {
       "id": "inverse-micro-5-drawdown-turn-fast",
       "kind": "inverse",
       "label": "Inverse · Micro · drawdown-turn · fast · 5m"
@@ -6247,6 +6647,56 @@
       "id": "inverse-micro-5-direction-persist-selective",
       "kind": "inverse",
       "label": "Inverse · Micro · direction-persist · selective · 5m"
+    },
+    {
+      "id": "inverse-micro-5-break-channel-fast",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel · fast · 5m"
+    },
+    {
+      "id": "inverse-micro-5-break-channel-selective",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel · selective · 5m"
+    },
+    {
+      "id": "inverse-micro-5-break-channel-short-fast",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-short · fast · 5m"
+    },
+    {
+      "id": "inverse-micro-5-break-channel-short-selective",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-short · selective · 5m"
+    },
+    {
+      "id": "inverse-micro-5-break-channel-wide-fast",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-wide · fast · 5m"
+    },
+    {
+      "id": "inverse-micro-5-break-channel-wide-selective",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-wide · selective · 5m"
+    },
+    {
+      "id": "inverse-micro-5-break-channel-activity-fast",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-activity · fast · 5m"
+    },
+    {
+      "id": "inverse-micro-5-break-channel-activity-selective",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-activity · selective · 5m"
+    },
+    {
+      "id": "inverse-micro-5-break-channel-failure-fast",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-failure · fast · 5m"
+    },
+    {
+      "id": "inverse-micro-5-break-channel-failure-selective",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-failure · selective · 5m"
     },
     {
       "id": "inverse-micro-15-drawdown-turn-fast",
@@ -6509,6 +6959,56 @@
       "label": "Inverse · Micro · direction-persist · selective · 15m"
     },
     {
+      "id": "inverse-micro-15-break-channel-fast",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel · fast · 15m"
+    },
+    {
+      "id": "inverse-micro-15-break-channel-selective",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel · selective · 15m"
+    },
+    {
+      "id": "inverse-micro-15-break-channel-short-fast",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-short · fast · 15m"
+    },
+    {
+      "id": "inverse-micro-15-break-channel-short-selective",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-short · selective · 15m"
+    },
+    {
+      "id": "inverse-micro-15-break-channel-wide-fast",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-wide · fast · 15m"
+    },
+    {
+      "id": "inverse-micro-15-break-channel-wide-selective",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-wide · selective · 15m"
+    },
+    {
+      "id": "inverse-micro-15-break-channel-activity-fast",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-activity · fast · 15m"
+    },
+    {
+      "id": "inverse-micro-15-break-channel-activity-selective",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-activity · selective · 15m"
+    },
+    {
+      "id": "inverse-micro-15-break-channel-failure-fast",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-failure · fast · 15m"
+    },
+    {
+      "id": "inverse-micro-15-break-channel-failure-selective",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-failure · selective · 15m"
+    },
+    {
       "id": "inverse-micro-1x5-drawdown-turn-fast",
       "kind": "inverse",
       "label": "Inverse · Micro · drawdown-turn · fast · 1+5m"
@@ -6767,6 +7267,56 @@
       "id": "inverse-micro-1x5-direction-persist-selective",
       "kind": "inverse",
       "label": "Inverse · Micro · direction-persist · selective · 1+5m"
+    },
+    {
+      "id": "inverse-micro-1x5-break-channel-fast",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel · fast · 1+5m"
+    },
+    {
+      "id": "inverse-micro-1x5-break-channel-selective",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel · selective · 1+5m"
+    },
+    {
+      "id": "inverse-micro-1x5-break-channel-short-fast",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-short · fast · 1+5m"
+    },
+    {
+      "id": "inverse-micro-1x5-break-channel-short-selective",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-short · selective · 1+5m"
+    },
+    {
+      "id": "inverse-micro-1x5-break-channel-wide-fast",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-wide · fast · 1+5m"
+    },
+    {
+      "id": "inverse-micro-1x5-break-channel-wide-selective",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-wide · selective · 1+5m"
+    },
+    {
+      "id": "inverse-micro-1x5-break-channel-activity-fast",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-activity · fast · 1+5m"
+    },
+    {
+      "id": "inverse-micro-1x5-break-channel-activity-selective",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-activity · selective · 1+5m"
+    },
+    {
+      "id": "inverse-micro-1x5-break-channel-failure-fast",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-failure · fast · 1+5m"
+    },
+    {
+      "id": "inverse-micro-1x5-break-channel-failure-selective",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-failure · selective · 1+5m"
     },
     {
       "id": "inverse-micro-1x15-drawdown-turn-fast",
@@ -7029,6 +7579,56 @@
       "label": "Inverse · Micro · direction-persist · selective · 1+15m"
     },
     {
+      "id": "inverse-micro-1x15-break-channel-fast",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel · fast · 1+15m"
+    },
+    {
+      "id": "inverse-micro-1x15-break-channel-selective",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel · selective · 1+15m"
+    },
+    {
+      "id": "inverse-micro-1x15-break-channel-short-fast",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-short · fast · 1+15m"
+    },
+    {
+      "id": "inverse-micro-1x15-break-channel-short-selective",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-short · selective · 1+15m"
+    },
+    {
+      "id": "inverse-micro-1x15-break-channel-wide-fast",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-wide · fast · 1+15m"
+    },
+    {
+      "id": "inverse-micro-1x15-break-channel-wide-selective",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-wide · selective · 1+15m"
+    },
+    {
+      "id": "inverse-micro-1x15-break-channel-activity-fast",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-activity · fast · 1+15m"
+    },
+    {
+      "id": "inverse-micro-1x15-break-channel-activity-selective",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-activity · selective · 1+15m"
+    },
+    {
+      "id": "inverse-micro-1x15-break-channel-failure-fast",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-failure · fast · 1+15m"
+    },
+    {
+      "id": "inverse-micro-1x15-break-channel-failure-selective",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-failure · selective · 1+15m"
+    },
+    {
       "id": "inverse-micro-5x15-drawdown-turn-fast",
       "kind": "inverse",
       "label": "Inverse · Micro · drawdown-turn · fast · 5+15m"
@@ -7289,6 +7889,56 @@
       "label": "Inverse · Micro · direction-persist · selective · 5+15m"
     },
     {
+      "id": "inverse-micro-5x15-break-channel-fast",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel · fast · 5+15m"
+    },
+    {
+      "id": "inverse-micro-5x15-break-channel-selective",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel · selective · 5+15m"
+    },
+    {
+      "id": "inverse-micro-5x15-break-channel-short-fast",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-short · fast · 5+15m"
+    },
+    {
+      "id": "inverse-micro-5x15-break-channel-short-selective",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-short · selective · 5+15m"
+    },
+    {
+      "id": "inverse-micro-5x15-break-channel-wide-fast",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-wide · fast · 5+15m"
+    },
+    {
+      "id": "inverse-micro-5x15-break-channel-wide-selective",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-wide · selective · 5+15m"
+    },
+    {
+      "id": "inverse-micro-5x15-break-channel-activity-fast",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-activity · fast · 5+15m"
+    },
+    {
+      "id": "inverse-micro-5x15-break-channel-activity-selective",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-activity · selective · 5+15m"
+    },
+    {
+      "id": "inverse-micro-5x15-break-channel-failure-fast",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-failure · fast · 5+15m"
+    },
+    {
+      "id": "inverse-micro-5x15-break-channel-failure-selective",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-failure · selective · 5+15m"
+    },
+    {
       "id": "inverse-micro-1x5x15-drawdown-turn-fast",
       "kind": "inverse",
       "label": "Inverse · Micro · drawdown-turn · fast · 1+5+15m"
@@ -7547,6 +8197,56 @@
       "id": "inverse-micro-1x5x15-direction-persist-selective",
       "kind": "inverse",
       "label": "Inverse · Micro · direction-persist · selective · 1+5+15m"
+    },
+    {
+      "id": "inverse-micro-1x5x15-break-channel-fast",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel · fast · 1+5+15m"
+    },
+    {
+      "id": "inverse-micro-1x5x15-break-channel-selective",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel · selective · 1+5+15m"
+    },
+    {
+      "id": "inverse-micro-1x5x15-break-channel-short-fast",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-short · fast · 1+5+15m"
+    },
+    {
+      "id": "inverse-micro-1x5x15-break-channel-short-selective",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-short · selective · 1+5+15m"
+    },
+    {
+      "id": "inverse-micro-1x5x15-break-channel-wide-fast",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-wide · fast · 1+5+15m"
+    },
+    {
+      "id": "inverse-micro-1x5x15-break-channel-wide-selective",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-wide · selective · 1+5+15m"
+    },
+    {
+      "id": "inverse-micro-1x5x15-break-channel-activity-fast",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-activity · fast · 1+5+15m"
+    },
+    {
+      "id": "inverse-micro-1x5x15-break-channel-activity-selective",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-activity · selective · 1+5+15m"
+    },
+    {
+      "id": "inverse-micro-1x5x15-break-channel-failure-fast",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-failure · fast · 1+5+15m"
+    },
+    {
+      "id": "inverse-micro-1x5x15-break-channel-failure-selective",
+      "kind": "inverse",
+      "label": "Inverse · Micro · break-channel-failure · selective · 1+5+15m"
     },
     {
       "id": "bb-walk@x4",

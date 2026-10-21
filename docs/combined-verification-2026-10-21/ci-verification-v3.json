@@ -1,0 +1,111 @@
+{
+  "status": "Core/stress/universal pass; CI browser rerun pending (local complete suite passed)",
+  "productionHead": "ce9c30aff145533471a0219e79e112ae44afe1e4",
+  "sourceSha256": "de4cc45e706a9522d538ae26b40a64d6cca9b8319a399fd398418297fb57a632",
+  "ordinaryFiles": 259,
+  "ordinaryPassed": 3088,
+  "ordinarySkipped": 2,
+  "partitions": [
+    {
+      "name": "micro-ci-functional-3",
+      "files": 62,
+      "tests": 745,
+      "pass": 745,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "filesFailed": 0,
+      "filesSkipped": 0,
+      "status": "success"
+    },
+    {
+      "name": "micro-ci-functional-runtime",
+      "files": 1,
+      "tests": 30,
+      "pass": 28,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 2,
+      "filesFailed": 0,
+      "filesSkipped": 0,
+      "status": "success"
+    },
+    {
+      "name": "micro-ci-functional-1",
+      "files": 63,
+      "tests": 563,
+      "pass": 563,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "filesFailed": 0,
+      "filesSkipped": 0,
+      "status": "success"
+    },
+    {
+      "name": "micro-ci-functional-2",
+      "files": 63,
+      "tests": 952,
+      "pass": 952,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "filesFailed": 0,
+      "filesSkipped": 0,
+      "status": "success"
+    },
+    {
+      "name": "micro-ci-functional-0",
+      "files": 63,
+      "tests": 739,
+      "pass": 739,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "filesFailed": 0,
+      "filesSkipped": 0,
+      "status": "success"
+    },
+    {
+      "name": "micro-ci-functional-heavy",
+      "files": 7,
+      "tests": 61,
+      "pass": 61,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "filesFailed": 0,
+      "filesSkipped": 0,
+      "status": "success"
+    },
+    {
+      "name": "runtime slow (separate)",
+      "files": 1,
+      "pass": 2,
+      "skipped": 0,
+      "status": "success"
+    },
+    {
+      "name": "scripts (local, browser enabled)",
+      "files": "all scripts",
+      "pass": 674,
+      "skipped": 8,
+      "status": "success"
+    },
+    {
+      "name": "app/auth/components (local)",
+      "files": 9,
+      "pass": 83,
+      "skipped": 0,
+      "status": "success"
+    }
+  ],
+  "types": "pass",
+  "lint": {
+    "errors": 0,
+    "warnings": 43
+  },
+  "build": "pass",
+  "scriptFirstAttempt": "Settings-save request settlement timeout; 673 pass,1 fail,8 skip; retained",
+  "universal": "1720 specs;614264 identity cells;20 symbols;zero violations"
+}
