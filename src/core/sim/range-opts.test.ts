@@ -1,7 +1,6 @@
-// Per-range seat and entry options (wf.rangeOpts): a range takes rangeOpts[tag][k] in place of the global validLastN,
-// seatQuietH, gates.stableBlocks, lastN and mode; "wide" is the untagged engine configs, signals never. The ranges
-// trade independently, so a range's options change only that range's seats and trades. Unset = the global values on
-// the same code path.
+// Per-range seat and entry options (wf.rangeOpts): engine ranges take rangeOpts[tag][k] in place of the global
+// validLastN, seatQuietH, gates.stableBlocks, lastN and mode; Signals own their validLastN and entry lastN. "wide" is
+// the untagged engine configs. The ranges trade independently, so a range's options change only that range's gates.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -69,12 +68,12 @@ const all = tapes.map((x) => x.id).sort();
 const without = (...ids: string[]) => all.filter((x) => !ids.includes(x));
 
 describe("per-range seat and entry options (wf.rangeOpts)", () => {
-  it("the range of a tape: its tag, wide for an untagged engine config, none for a signal or without rangeOpts", () => {
-    const ro = { wide: { lastN: 1 }, mn: { lastN: 2 } };
+  it("the range of a tape: its tag, wide for an untagged engine config, Signals for a signal, none when unset", () => {
+    const ro = { wide: { lastN: 1 }, mn: { lastN: 2 }, sig: { validLastN: 7, lastN: 4, mode: "durable" as const } };
     assert.deepEqual(rangeOptsOf({ rangeOpts: ro }, tape(1, undefined, 0)), { lastN: 1 });
     assert.deepEqual(rangeOptsOf({ rangeOpts: ro }, tape(1, "mn", 0)), { lastN: 2 });
     assert.equal(rangeOptsOf({ rangeOpts: ro }, tape(1, "sh", 0)), undefined);
-    assert.equal(rangeOptsOf({ rangeOpts: ro }, { protect: P, ind: "sig-ema-cross-s@m15" }), undefined);
+    assert.deepEqual(rangeOptsOf({ rangeOpts: ro }, { protect: P, ind: "sig-ema-cross-s@m15" }), { validLastN: 7, lastN: 4 });
     assert.equal(rangeOptsOf({}, tape(1, "mn", 0)), undefined);
   });
 
@@ -193,12 +192,12 @@ describe("rangeOpts settings: sanitised, carried into the compute key, mainnet f
         mn: { validLastN: 300, seatQuietH: 60, stableBlocks: 1, lastN: 4.6, mode: "hourly", x: 1 },
         sh: { stableBlocks: 20, mode: "durable", lastN: "7", seatQuietH: "x" },
         wide: { validLastN: -3 },
-        sig: { lastN: 5 },
+        sig: { lastN: 5, validLastN: 7, seatQuietH: 12, stableBlocks: 8, mode: "durable" },
         lg: {},
       }),
-      { wide: { validLastN: 0 }, mn: { validLastN: 200, seatQuietH: 48, stableBlocks: 0, lastN: 5 }, sh: { stableBlocks: 12, lastN: 7, mode: "durable" } },
+      { wide: { validLastN: 0 }, mn: { validLastN: 200, seatQuietH: 48, stableBlocks: 0, lastN: 5 }, sh: { stableBlocks: 12, lastN: 7, mode: "durable" }, sig: { validLastN: 7, lastN: 5 } },
     );
-    assert.equal(sanitizeRangeOpts({ sig: { lastN: 5 } }), undefined);
+    assert.deepEqual(sanitizeRangeOpts({ sig: { lastN: 5, mode: "durable", seatQuietH: 12 } }), { sig: { lastN: 5 } });
     assert.equal(sanitizeRangeOpts(null), undefined);
     assert.deepEqual(sanitizeWf({ rangeOpts: { mn: { lastN: 5 } } } as never).rangeOpts, { mn: { lastN: 5 } });
     assert.ok("rangeOpts" in sanitizeWf({ rangeOpts: {} } as never), "an empty patch clears it");

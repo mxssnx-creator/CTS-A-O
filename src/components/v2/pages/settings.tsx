@@ -4175,14 +4175,31 @@ export function SettingsPage() {
               />
             </Field>
             <Field
-              label="Signal last-N"
-              hint={`signals: validation and live last-N on their own last closes (a signal config closes ~10× in a window) · 0 = off · 0 – 200 · mainnet (${MAINNET_CONN}): at least ${MAINNET_SIGNAL_VALID_LAST_N} enforced${onMainnet ? " — active now" : ""}`}
+              label="Signals range · validation N"
+              hint={`Signals range only: config validation uses this many of its own closed results · 0 = off · 0 – 200 · mainnet (${MAINNET_CONN}): at least ${MAINNET_SIGNAL_VALID_LAST_N} enforced${onMainnet ? " — active now" : ""}`}
             >
               <Num
-                value={wf.signalValidLastN ?? 25}
+                value={wf.rangeOpts?.sig?.validLastN ?? wf.signalValidLastN ?? wf.validLastN ?? 0}
                 min={0}
                 max={200}
-                onChange={(v) => setW("signalValidLastN", Math.round(v))}
+                onChange={(v) => setW("rangeOpts", {
+                  ...(wf.rangeOpts ?? {}),
+                  sig: { ...(wf.rangeOpts?.sig ?? {}), validLastN: Math.round(v) },
+                })}
+              />
+            </Field>
+            <Field
+              label="Signals range · entry N"
+              hint={`Signals range only: skip new entries unless this config's own latest results pass · 0 = off · 0 – 200 · mainnet (${MAINNET_CONN}): at least ${MAINNET_LAST_N} enforced${onMainnet ? " — active now" : ""}`}
+            >
+              <Num
+                value={wf.rangeOpts?.sig?.lastN ?? wf.signalValidLastN ?? wf.lastN}
+                min={0}
+                max={200}
+                onChange={(v) => setW("rangeOpts", {
+                  ...(wf.rangeOpts ?? {}),
+                  sig: { ...(wf.rangeOpts?.sig ?? {}), lastN: Math.round(v) },
+                })}
               />
             </Field>
             <Field

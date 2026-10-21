@@ -171,14 +171,18 @@ export class CoreDb {
     {
       if (!this.statePath) return this.lastStateError === "";
       try {
-        const out: Record<string, unknown> = {};
-        for (const k of DURABLE_KEYS) {
-          const v = this.kvGet(k);
-          if (v !== undefined) out[k] = v;
-        }
+        // Copy the already serialized JSON values in one indexed read. Parsing each durable value and serializing it
+        // again made a flush allocate a second copy of large preset/backtest caches and issued one query per key.
+        const keys = [...DURABLE_KEYS];
+        const marks = keys.map(() => "?").join(", ");
+        const rows = this.all<{ k: string; v: string }>(
+          `SELECT k, v FROM kv WHERE k IN (${marks}) ORDER BY k`,
+          ...keys,
+        );
+        const json = `{${rows.map(({ k, v }) => `${JSON.stringify(k)}:${v}`).join(",")}}`;
         mkdirSync(dirname(this.statePath), { recursive: true });
         const tmp = `${this.statePath}.tmp`;
-        writeFileSync(tmp, JSON.stringify(out));
+        writeFileSync(tmp, json);
         renameSync(tmp, this.statePath);
         return true;
       } catch (err) {

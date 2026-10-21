@@ -27,7 +27,7 @@ import {
 } from "./pipeline/pipeline.ts";
 import { ddrFails, statsOf } from "./metrics/stats.ts";
 import { tacticCooldown } from "./indications/filters.ts";
-import { bothSides, simulate } from "./sim/backtest.ts";
+import { simulate, splitSides } from "./sim/backtest.ts";
 import { filterEntries } from "./sim/walkforward.ts";
 import { adjustProtect } from "./adjust.ts";
 import { isSignalCoordinationInd } from "./signal-coordination.ts";
@@ -169,39 +169,63 @@ export function* signalMfeGen(
   return out;
 }
 
-/** The config-specific PF/DD evidence on complete closes before the causal cut. */
-function signalHistStats(
+interface PreparedSignalHistSeries {
+  bars: Bars;
+  /** Immutable long/short views are split once per signal pair and reused by every protect candidate. */
+  sides: Int8Array[];
+}
+
+/** Filter and clip each pair's entries once, then reuse the prepared history for MFE and every protect candidate. */
+function* prepareSignalHistGen(
   u: Universe,
   bot: string,
   ind: string,
-  lane: Protect,
   tactics: Tactics | null | undefined,
   sig: SignalSettings,
+  holdH: number,
   fromT: number,
   cutT: number,
-  validation: SignalHistValidation,
-  cooldown: number,
-) {
-  const trades: import("./domain/types.ts").Trade[] = [];
-  const id = configId(bot as "follow", ind, lane);
+): Generator<void, { series: PreparedSignalHistSeries[]; mfe: number[] }> {
+  const series: PreparedSignalHistSeries[] = [];
+  const mfe: number[] = [];
+  const effectiveFromT = u.evaluationFromT === undefined ? fromT : Math.max(u.evaluationFromT, fromT);
   for (const s of seriesOf(u, ind)) {
+    yield;
     const b = u.bars[s];
-    const clipped = barsThroughCut(b, cutT);
-    if (clipped.n < 2) continue;
     let entries = entrySignal(bot as "follow", ind, u.caches[s], tactics);
     if (!entries) continue;
     if (sig.filter.trendH > 0 || sig.filter.volFloor > 0)
       entries = filterEntries(entries, b, u.caches[s], sig.filter);
+    // Historic targets use every complete causal excursion; replay warmup still cannot add evaluated entries.
+    entryMfes(b, entries, Math.max(2, Math.round((holdH * 60) / b.tfMin)), cutT, mfe, effectiveFromT);
+    const clipped = barsThroughCut(b, cutT);
+    if (clipped.n < 2) continue;
     entries = Int8Array.from(evaluationSignal(u, b, entries));
     for (let i = 0; i < entries.length; i++) {
       const entryT = i + 1 < b.n ? b.t[i + 1] : b.t[i] + b.tfMin * 60_000;
       if (entryT < fromT || i + 1 >= clipped.n) entries[i] = 0;
     }
-    const actual = capSignalProtect(adjustProtect(lane, { minSl: sig.minSl, minTrail: sig.minTrail }));
-    const results = bothSides(entries.subarray(0, clipped.n), (side) =>
-      simulate(id, clipped, side, actual, { cost: validation.cost, cooldown }),
-    );
-    for (const result of results) trades.push(...result.trades);
+    series.push({ bars: clipped, sides: splitSides(entries.subarray(0, clipped.n)) });
+  }
+  return { series, mfe };
+}
+
+/** The config-specific PF/DD evidence on complete closes before the causal cut. */
+function signalHistStats(
+  prepared: readonly PreparedSignalHistSeries[],
+  id: string,
+  lane: Protect,
+  sig: SignalSettings,
+  validation: SignalHistValidation,
+  cooldown: number,
+) {
+  const trades: import("./domain/types.ts").Trade[] = [];
+  const actual = capSignalProtect(adjustProtect(lane, { minSl: sig.minSl, minTrail: sig.minTrail }));
+  for (const { bars, sides } of prepared) {
+    for (const side of sides) {
+      const result = simulate(id, bars, side, actual, { cost: validation.cost, cooldown });
+      trades.push(...result.trades);
+    }
   }
   trades.sort((a, b) => a.exitT - b.exitT || a.entryT - b.entryT || b.side - a.side);
   const groups = new Map<string, typeof trades>();
@@ -333,15 +357,15 @@ export function* signalHistProtectsGen(
     const availableH = (cutT - fromT) / 3_600_000;
     const holdH = signalHistHoldH(sig.holdH, availableH, laneTf);
     const hold = Math.max(2, Math.round((holdH * 60) / REF_TF));
-    const sample = signalMfeGen(
+    const sample = prepareSignalHistGen(
       u,
       bot,
       ind,
-      holdH,
       tactics,
-      cutT,
-      sig.filter,
+      sig,
+      holdH,
       fromT,
+      cutT,
     );
     let sampled = 0;
     let step = sample.next();
@@ -350,7 +374,8 @@ export function* signalHistProtectsGen(
       sampled++;
       step = sample.next();
     }
-    const mfe = step.value.sort((a, b) => a - b);
+    const prepared = step.value;
+    const mfe = prepared.mfe.sort((a, b) => a - b);
     if (mfe.length < h.minN) {
       if (diagnostics) diagnostics.insufficientEntries++;
       continue;
@@ -393,7 +418,7 @@ export function* signalHistProtectsGen(
           seen.add(key);
           if (diagnostics) diagnostics.candidates++;
           if (validation) {
-            const contexts = signalHistStats(u, bot, ind, lane, tactics, sig, fromT, cutT, validation, cooldown);
+            const contexts = signalHistStats(prepared.series, configId(bot as "follow", ind, lane), lane, sig, validation, cooldown);
             if (diagnostics) diagnostics.evaluated++;
             const sampled = contexts.filter(({ history, last, required }) => history.n >= Math.max(h.minN, validation.minTrades) && last.n >= required);
             if (!sampled.length) {

@@ -13,6 +13,7 @@ import { DEFAULT_SETTINGS, type CoreSettings } from "../config.ts";
 import { MICRO_RANGE } from "../minimal-coord.ts";
 import { isMicroInd } from "../indications/micro.ts";
 import { laneOf } from "../indications/registry.ts";
+import { EXIT_BOT } from "../exit-strategy.ts";
 import type { Bars } from "../domain/types.ts";
 import type { ConfigTape } from "../sim/walkforward.ts";
 
@@ -28,9 +29,20 @@ type BaseOut = {
   main: Set<string>;
   pairTags: Record<string, string[]>;
   pairTps: Record<string, Record<string, readonly number[]>>;
+  exitBasePassed: Set<string>;
+  exitBaseEvaluated: number;
 };
 type Inner = {
-  presetBase(job: unknown, s: CoreSettings, combos: unknown[], lookBars: Bars[]): Promise<BaseOut>;
+  presetBase(
+    job: unknown,
+    s: CoreSettings,
+    combos: unknown[],
+    lookBars: Bars[],
+    exitCombos?: unknown[],
+    exitLookBars?: Bars[],
+    signalExitCombos?: unknown[],
+    signalExitLookBars?: Bars[],
+  ): Promise<BaseOut>;
   runPresetBacktest(p: unknown, days: number, job: unknown): Promise<void>;
   sliced(g: Generator<unknown, unknown>, f: (v: unknown) => void): Promise<unknown>;
 };
@@ -74,6 +86,34 @@ describe("preset backtest Base", { timeout: 300_000 }, () => {
     const remote = await mainOf(lenient, true);
     assert.ok(local.size > 0 && local.size < combos.length, `${local.size} of ${combos.length} pass`);
     assert.deepEqual([...remote].sort(), [...local].sort());
+  });
+
+  it("evaluates Signal Exit sources through the independent Exit Base stage on workers and locally", async () => {
+    const ind = "sig-ema-cross-s@m15";
+    const settings = {
+      ...DEFAULT_SETTINGS,
+      exitStrategy: { ...DEFAULT_SETTINGS.exitStrategy, enabled: true },
+      gates: { ...DEFAULT_SETTINGS.gates, minTrades: 100_000 },
+    };
+    const run = (workers: boolean) => withWorkers(workers, async () => {
+      const rt = mk() as unknown as Inner;
+      return rt.presetBase(
+        job(),
+        settings,
+        [],
+        [],
+        [],
+        [],
+        [{ bot: EXIT_BOT, ind }],
+        bars,
+      );
+    });
+    const local = await run(false);
+    const worker = await run(true);
+    assert.equal(local.exitBaseEvaluated, 1, "the configured Signal source is scored as its own Exit Base pair");
+    assert.deepEqual(local.exitBasePassed, new Set(), "the intentionally strict gate rejects the pair");
+    assert.deepEqual(worker.exitBasePassed, local.exitBasePassed);
+    assert.equal(worker.exitBaseEvaluated, local.exitBaseEvaluated);
   });
 });
 

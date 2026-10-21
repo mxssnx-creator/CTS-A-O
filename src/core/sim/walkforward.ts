@@ -348,8 +348,8 @@ export function coordBlock(
   return null;
 }
 
-/** The ranges wf.rangeOpts sets apart: the range tags, and "wide" for an untagged engine config. */
-export const RANGE_OPT_TAGS = ["wide", "mc", "mn", "mp", "sh", "gn", "lg"] as const;
+/** The ranges wf.rangeOpts sets apart: engine ranges, "sig" for Signals, and "wide" for untagged engine configs. */
+export const RANGE_OPT_TAGS = ["wide", "mc", "mn", "mp", "sh", "gn", "lg", "sig"] as const;
 export type RangeOptTag = (typeof RANGE_OPT_TAGS)[number];
 /** One range's seat and entry options (WalkForwardOptions.rangeOpts); each one unset is the global value. */
 export interface RangeOpts {
@@ -449,8 +449,9 @@ export interface WalkForwardOptions {
   invertSeats?: boolean;
   /**
    * Per-range seat and entry options: a range ("wide" = the untagged engine configs — the Wide grid and the Axis / DCA
-   * ladders; signals never) takes rangeOpts[tag][k] in place of the global validLastN, seatQuietH, gates.stableBlocks,
-   * lastN and mode; a key it leaves unset is the global value. The seats are picked per range, but the ranges are not
+   * ladders; "sig" = Signals) takes rangeOpts[tag][k] in place of the global validLastN and lastN for Signals, and
+   * validLastN, seatQuietH, gates.stableBlocks, lastN and mode for engine ranges; a key it leaves unset is the global
+   * value. The seats are picked per range, but the ranges are not
    * independent: they interact through Block and the signal confirmation, so a range's
    * response measured in one run with a global value need not hold once other ranges change too — a per-range winner
    * is a candidate, and adopting a combination needs a causal run of that combination recorded in
@@ -1541,15 +1542,24 @@ const rangeGateOn = (g: { ranges?: readonly string[] }, tag: string | undefined 
   g.ranges ? !!tag && g.ranges.includes(tag) : rangeGated(tag);
 
 /**
- * A tape's per-range options (wf.rangeOpts): those of its range tag, "wide" for an untagged engine config; a signal
- * has none (its validation and entry last-N are signalValidLastN). Undefined when rangeOpts is unset.
+ * A tape's per-range options (wf.rangeOpts): those of its range tag, "wide" for an untagged engine config, and "sig"
+ * for Signals. Signals use only the supported own-range validation and entry last-N values; they retain their own
+ * source × symbol × direction validation and signal ranking instead of engine seat controls. Undefined when unset.
  */
 export function rangeOptsOf(
   o: Pick<WalkForwardOptions, "rangeOpts">,
   tp: Pick<ConfigTape, "protect" | "ind">,
 ): RangeOpts | undefined {
   const ro = o.rangeOpts;
-  if (!ro || isSignalInd(tp.ind)) return undefined;
+  if (!ro) return undefined;
+  if (isSignalInd(tp.ind)) {
+    const signal = ro.sig;
+    if (!signal) return undefined;
+    return {
+      ...(signal.validLastN !== undefined ? { validLastN: signal.validLastN } : {}),
+      ...(signal.lastN !== undefined ? { lastN: signal.lastN } : {}),
+    };
+  }
   return ro[tp.protect.tag ?? "wide"];
 }
 
@@ -3843,6 +3853,7 @@ function signalEvaluationKey(tp: ConfigTape, t: number, o: WalkForwardOptions): 
     o.rangeGate,
     o.validLastN,
     o.signalValidLastN,
+    o.rangeOpts?.sig,
     o.signalRank?.minTrades,
     tp.heldOnly === true,
     tp.fromT,
@@ -3901,10 +3912,17 @@ function validLastNOf(
   tp: Pick<ConfigTape, "ind" | "protect">,
   o: Pick<WalkForwardOptions, "validLastN" | "signalValidLastN" | "rangeOpts">,
 ): number {
-  // the range's own validLastN (wf.rangeOpts; never a signal's), else the global one
-  return isSignalInd(tp.ind) && o.signalValidLastN !== undefined
-    ? o.signalValidLastN
+  // Signals prefer their dedicated range value, then the legacy signal setting, then the global value.
+  return isSignalInd(tp.ind)
+    ? (rangeOptsOf(o, tp)?.validLastN ?? o.signalValidLastN ?? o.validLastN ?? 0)
     : (rangeOptsOf(o, tp)?.validLastN ?? o.validLastN ?? 0);
+}
+
+/** Signal entry last-N is owned by the Signals range when set; legacy signalValidLastN remains its fallback. */
+function signalEntryLastNOf(tp: Pick<ConfigTape, "ind" | "protect">, o: WalkForwardOptions): number {
+  const own = rangeOptsOf(o, tp)?.lastN;
+  if (own !== undefined) return own;
+  return o.signalValidLastN !== undefined ? Math.min(o.lastN, o.signalValidLastN) : o.lastN;
 }
 
 function minTradesForTape(
@@ -5120,9 +5138,9 @@ export function signalValidationOk(
     tp, sym, side, entryT, n, minPf, o.gates.maxDdtH, o.gates.maxDdr ?? 0,
     o.gates.lastNFloor ?? 0, o.gates.warmup !== false, lossPriorOf(tp, o.gates),
   );
-  const n = o.signalValidLastN ?? o.validLastN ?? 0;
+  const n = validLastNOf(tp, o);
   const floor = minPfOf(o.gates, tp.protect.tag, tp.ind);
-  return signalConfigEval(tp, entryT, o, sym, side).ok && check(n, floor) && check(o.signalValidLastN === undefined ? o.lastN : Math.min(o.lastN, n), Math.max(o.lastNMinPf, floor));
+  return signalConfigEval(tp, entryT, o, sym, side).ok && check(n, floor) && check(signalEntryLastNOf(tp, o), Math.max(o.lastNMinPf, floor));
 }
 
 /** The configured symbol gate is separate from config validation/range Last-N. Reuse the identical
@@ -5252,17 +5270,13 @@ export function execDecision(
   if (tp.heldOnly) return { ok: false, why: "heldOnly" };
   const pair = `${tp.bot}|${tp.ind}`;
   if (
-    !isSignalInd(tp.ind) &&
+    (!isSignalInd(tp.ind) || tp.kind === "exit") &&
     !baseAllowsTape(tp, o, o.invertSeats ? (mirrorId(pair) ?? pair) : pair)
   )
     return { ok: false, why: "base" };
   if (!tapeExecutable(tp, o)) return { ok: false, why: "toggle" };
-  if (
-    tp.kind !== "exit" &&
-    o.excludeRanges?.length &&
-    tp.protect.tag &&
-    o.excludeRanges.includes(tp.protect.tag)
-  )
+  const excludedRange = isSignalInd(tp.ind) ? "sig" : tp.protect.tag;
+  if (tp.kind !== "exit" && o.excludeRanges?.length && excludedRange && o.excludeRanges.includes(excludedRange))
     return { ok: false, why: "rangeOff" };
   // the range's own seatQuietH / lastN (wf.rangeOpts), else the global ones
   const ro = o.rangeOpts ? rangeOptsOf(o, tp) : undefined;
@@ -5281,7 +5295,7 @@ export function execDecision(
   // direction × type whose last N closed results average below zero is disabled
   if (ctx && isSignalInd(tp.ind)) {
     // a signal pair held only for its open positions (it no longer passes Base) opens nothing new
-    if (o.signalBasePassed && !o.signalBasePassed.has(`${tp.bot}|${tp.ind}`))
+    if (tp.kind !== "exit" && o.signalBasePassed && !o.signalBasePassed.has(`${tp.bot}|${tp.ind}`))
       return { ok: false, why: "signalBase" };
     if (
       o.signalActive &&
@@ -5334,7 +5348,7 @@ export function execDecision(
         ctx.sym,
         ctx.side,
         entryT,
-        o.signalValidLastN ?? o.validLastN ?? 0,
+        validLastNOf(tp, o),
         minPfOf(o.gates, tp.protect.tag, tp.ind),
         o.gates.maxDdtH,
         o.gates.maxDdr ?? 0,
@@ -5377,10 +5391,7 @@ export function execDecision(
   // above stays pooled only for engine seats; Signals always judge their own symbol and direction
   // (an engine range's own lastN: wf.rangeOpts)
   const engineN = ro?.lastN ?? o.lastN;
-  const lastN =
-    o.signalValidLastN !== undefined && isSignalInd(tp.ind)
-      ? Math.min(o.lastN, o.signalValidLastN)
-      : engineN;
+  const lastN = isSignalInd(tp.ind) ? signalEntryLastNOf(tp, o) : engineN;
   if (
     !probed &&
     !(ctx && isSignalInd(tp.ind)
@@ -5660,6 +5671,11 @@ interface SignalIndexRow {
   pair: string;
 }
 const signalIndexCache = new WeakMap<object, SignalIndexRow[]>();
+function withSignalExitKeys(active: Set<string>, existing?: ReadonlySet<string>): Set<string> {
+  if (!existing?.size) return active;
+  for (const key of existing) if (key.split("|", 6)[4] === "exit") active.add(key);
+  return active;
+}
 export function signalIndex(sigTapes: readonly ConfigTape[], cacheKey?: object): SignalIndexRow[] {
   const g = signalIndexGen(sigTapes, cacheKey);
   for (let r = g.next(); ; r = g.next()) if (r.done) return r.value;
@@ -5675,7 +5691,8 @@ export function* signalIndexGen(
   const out: SignalIndexRow[] = [];
   for (let i = 0; i < sigTapes.length; i++) {
     const tp = sigTapes[i];
-    if (!tp.heldOnly) out.push({ tp, pair: `${tp.bot}|${tp.ind}` });
+    // Historic Exit signal configs are independently qualified and do not consume the Normal/Trailing active cap.
+    if (!tp.heldOnly && tp.kind !== "exit") out.push({ tp, pair: `${tp.bot}|${tp.ind}` });
     if (i > 0 && i % 1000 === 0) yield i;
   }
   if (cacheKey) signalIndexCache.set(cacheKey, out);
@@ -5858,7 +5875,10 @@ export function activeSignalsAt(
     sigTapes.length && "tp" in sigTapes[0]
       ? (sigTapes as SignalIndexRow[])
       : signalIndex(sigTapes as readonly ConfigTape[]);
-  return activeSignals(signalWindowRows(index, t, windowH, sig.validateH ?? 24, undefined, options), sig, report);
+  return withSignalExitKeys(
+    activeSignals(signalWindowRows(index, t, windowH, sig.validateH ?? 24, undefined, options), sig, report),
+    options?.signalActive,
+  );
 }
 
 function* activeSignalsAtGen(
@@ -5872,7 +5892,7 @@ function* activeSignalsAtGen(
   const gen = activeSignalsGen(signalWindowRows(index, t, windowH, sig.validateH ?? 24, undefined, options), sig, report);
   for (;;) {
     const r = gen.next();
-    if (r.done) return r.value;
+    if (r.done) return withSignalExitKeys(r.value, options?.signalActive);
     yield -15;
   }
 }
