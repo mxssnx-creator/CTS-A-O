@@ -1,0 +1,27 @@
+{
+  "classification": "Independent scalar reproduction on the same cached input; venue provenance not independently verified",
+  "feedSha256": "39d5d25624ffda3197ba4cd381310c85a5b4b3c3aceb6f18fe1e0f1c1afd4b15",
+  "ordersSha256": "eebf87dc1c00b997794872822c32327a333b5692f298bebd4cb53501d70f12e7",
+  "orders": 193,
+  "independentOnsets": 1,
+  "sym": "DOT-USDT",
+  "side": 1,
+  "entryT": 1792162800000,
+  "source": "revert|mc-fbo-48@m15",
+  "formationBar": {
+    "t": 1792161900000,
+    "o": 1.2025,
+    "h": 1.2118,
+    "l": 1.1963,
+    "c": 1.1978
+  },
+  "prior48High": 1.2029,
+  "prior48Low": 1.1368,
+  "rawFailedBreakSignal": -1,
+  "revertDirection": 1,
+  "stopPriceOrClockFailures": [],
+  "firstMinuteStopTouchT": 1792164120000,
+  "lastMinuteStopTouchT": 1792171500000,
+  "maxCostOnceError": 1.1232334506949826e-16,
+  "maxCompactPriceError": 5.9462890611428065e-08
+}

@@ -8,7 +8,7 @@ import {
   passedCellsOf, selectAt, selectDurable, selectFixed,
 } from "./walkforward.ts";
 
-const H = 3_600_000, T = Date.UTC(2026, 9, 17);
+const T = Date.UTC(2026, 9, 17);
 const ind = "rsi-mom-14-20@m15", pair = `follow|${ind}`;
 function fixture(tag: RangeTag, side: 1 | -1, trailing = false) {
   const protect = { tp: .01, sl: .02, trail: trailing ? .005 : 0, hold: 4, tag };

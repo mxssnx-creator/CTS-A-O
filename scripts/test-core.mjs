@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Core fixtures never need exchange connectivity. Install the portable guard before every test import.
 import { spawn } from "node:child_process";
-import { readdirSync, writeFileSync } from "node:fs";
+import { readdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -43,6 +43,14 @@ export function coreTestInvocation(argv = [], sourceEnv = process.env, root = RO
       ? ["src/core/server/runtime.test.ts"]
       : coreTestFiles(root);
   if (!selected.length) throw new Error("No core test files found");
+  const seen = new Set();
+  for (const file of selected) {
+    const path = resolve(root, file);
+    if (!statSync(path, { throwIfNoEntry: false })?.isFile())
+      throw new Error(`Missing or non-file core test: ${file}`);
+    if (seen.has(path)) throw new Error(`Duplicate core test: ${file}`);
+    seen.add(path);
+  }
   const guard = resolve(root, "scripts/lib/core-test-offline-guard.cjs");
   const env = { ...sourceEnv };
   // A nested Node test process must create its own runner/reporting channel.

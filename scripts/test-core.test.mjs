@@ -72,3 +72,10 @@ test("the standard core runner installs offline evidence before test imports and
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("explicit core test inventory refuses missing paths, directories and duplicate aliases", () => {
+  const real = "src/core/sim/symbol-directions.test.ts";
+  for (const missing of ["src/core/server/signals-history-matrix.test.ts", "src/core/sim"])
+    assert.throws(() => coreTestInvocation([real, missing]), /Missing or non-file core test/);
+  assert.throws(() => coreTestInvocation([real, resolve(real)]), /Duplicate core test/);
+});

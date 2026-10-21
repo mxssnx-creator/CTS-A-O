@@ -168,3 +168,15 @@ test("raw incoming-minus-expired conservation survives a change of qualified dir
   assert.ok(Math.abs(after.net - before.net + 50) < 1e-10);
   assert.notEqual(b.net - a.net, after.net - before.net);
 });
+
+test("legacy Micro keeps its configured 1.05 floor while first-class Micro retains its own 1.1 minimum", () => {
+  const old = Array.from({ length: 20 }, (_, i) => ["A", 1, T - 12 * H + i * 60000 - 1, T - 12 * H + i * 60000, .02]);
+  const recent = [.0030963229416467977, .0018820822254040064, -.002604180966307504, -.0021151609205043494]
+    .map((r, i) => ["A", 1, T - H + i * 60000 - 1, T - H + i * 60000, r]);
+  const o = { ...independentOptions, longH: 24, preH: 6, preGate: true, validLastN: 15,
+    gates: { ...independentOptions.gates, rangeMinPf: { micro: 1.05 } } };
+  assert.equal(scalarEval([...old, ...recent], T, o, microProtect, "trailing-only", "mc-rsit5-10@m5").ok, true);
+  const modern = scalarEval([...old, ...recent], T, o, microProtect, "trailing-only", "micro-1-turn-fast@m1");
+  assert.equal(modern.ok, false);
+  assert.equal(modern.directions[0].fail, "pre");
+});

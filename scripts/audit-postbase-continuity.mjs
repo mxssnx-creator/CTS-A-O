@@ -24,6 +24,8 @@ import {
 } from "../src/core/sim/walkforward.ts";
 import { modeledUnitStatsOf } from "../src/core/metrics/stats.ts";
 import { rangeMinTfOf, microIndRule } from "../src/core/minimal-coord.ts";
+import { auditSettledHours } from "./lib/postbase-hourly.mjs";
+import { scalarDirectionEval } from "../.github/audits/hourly-progress.mjs";
 
 const arg = (k, fallback) => {
   const i = process.argv.indexOf(`--${k}`);
@@ -52,8 +54,8 @@ const feedEndT =
   Math.floor(Math.min(...symbols.map((sym) => feed.candles[`${sym}|1`].at(-1).t + 60_000)) / H) * H;
 const endT = Number(arg("end", feedEndT));
 assert.ok(
-  Number.isFinite(endT) && endT <= feedEndT,
-  "end must be an available UTC millisecond timestamp",
+  Number.isFinite(endT) && endT % H === 0 && endT <= feedEndT,
+  "end must be an available whole-hour UTC millisecond timestamp",
 );
 const startT = endT - 6 * H;
 const fromT = startT - 24 * H;
@@ -110,6 +112,9 @@ const protocol = {
   harnessSha256: hash(readFileSync(new URL(import.meta.url))),
   signalScope: "Not scored: engine-only replay; independent 336h Signal history is tested separately",
   allRanges: "Current configured production grids; Micro maximum hold explicitly 15 minutes",
+  settlementHorizon: "Source bars stop at endT; settled exits are in (startT,endT]; endpoint marks remain separate",
+  hourlyReferenceSha256: hash(readFileSync(new URL("./lib/postbase-hourly.mjs", import.meta.url))),
+  scalarReferenceSha256: hash(readFileSync(new URL("../.github/audits/hourly-progress.mjs", import.meta.url))),
 };
 writeFileSync(`${out}/protocol.json`, JSON.stringify(protocol, null, 2));
 let lastMemoryCheck = 0;
@@ -127,7 +132,9 @@ const drain = (g) => {
   }
 };
 const bars = symbols.flatMap((sym) =>
-  settings.tfs.map((tf) => barsFromCandles(sym, tf, resample(feed.candles[`${sym}|1`], 1, tf))),
+  settings.tfs.map((tf) => headBars(
+    barsFromCandles(sym, tf, resample(feed.candles[`${sym}|1`], 1, tf)), endT,
+  )),
 );
 const u = makeUniverse(bars); // Last-N retains the source's available prior closes; selection remains 24h.
 const pre = makeUniverse(
@@ -166,7 +173,36 @@ const tapes = drain(
   ),
 );
 console.log(`Tapes ${tapes.length}; running all admitted configurations together`);
-if (arg("diagnose-parity")) {
+if (arg("diagnose-hourly", "false") === "true") {
+  const hours = Array.from({ length: 7 }, (_, i) => ({ t: startT + i * H, checked: 0, passing: 0, failures: {} }));
+  const violations = [];
+  let mismatches = 0;
+  for (const tp of tapes) {
+    const sides = new Map([1, -1].map((side) => [side, []]));
+    for (let i = 0; i < tp.n; i++) sides.get(tp.side[i]).push([
+      tp.syms[tp.symI[i]], tp.side[i], tp.entryT[i], tp.exitT[i], tp.r[i],
+    ]);
+    for (const hour of hours) for (const side of [1, -1]) {
+      const actual = configDirectionEval(tp, hour.t, wf, side);
+      const expected = scalarDirectionEval(sides.get(side), hour.t, wf, tp.protect, tp.kind, tp.ind);
+      hour.checked++;
+      if (actual.ok) hour.passing++;
+      else hour.failures[actual.fail] = (hour.failures[actual.fail] ?? 0) + 1;
+      const differences = ["n", "pf", "net"].filter((key) =>
+        Math.abs(actual[key] - expected[key]) > 1e-8 * Math.max(1, Math.abs(expected[key])));
+      if (actual.ok !== expected.ok || differences.length) {
+        mismatches++;
+        if (violations.length < 20) violations.push({ cfg: tp.id, side, t: hour.t, actual, expected, differences });
+      }
+    }
+  }
+  const audit = { checked: hours.reduce((n, h) => n + h.checked, 0), mismatches, hours, violations };
+  writeFileSync(`${out}/hourly-gates.json`, JSON.stringify(audit, null, 2));
+  console.log(JSON.stringify(audit));
+  assert.deepEqual(sources(), protocol.source);
+  assert.equal(mismatches, 0, "Independent hourly own-direction evaluation mismatch");
+  process.exit(0);
+} else if (arg("diagnose-parity")) {
   const bytes = readFileSync(arg("diagnose-parity"));
   const orders = JSON.parse(gunzipSync(bytes));
   const byId = new Map(tapes.map((tp) => [tp.id, tp]));
@@ -396,6 +432,9 @@ if (arg("diagnostic-only", "false") === "true") {
   process.exit(0);
 }
 const sim = drain(walkForwardGen(u, tapes, wf));
+assert.equal(sim.startT, startT);
+assert.equal(sim.endT, endT);
+const hourlyAudit = auditSettledHours(sim.trades, startT, endT, sim.hourly);
 const validationSteps = sim.steps.map((step) => ({
   t: step.t,
   passingSets: (step.checks ?? []).filter((row) => row[1] === 1).length,
@@ -507,6 +546,7 @@ const result = {
   allEntriesCurrentlyQualified: violations.length === 0,
   qualificationViolations: violations,
   hourly: sim.hourly,
+  hourlyAudit,
   skips: sim.skips,
   ranges: Object.fromEntries(
     ["", "mc", "mn", "mp", "sh", "gn", "lg"].map((tag) => [
