@@ -52,18 +52,18 @@ jobs:
       - name: Seal both twelve-symbol cases and identical settings before scoring either
         env:
           NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
-        run: node --experimental-strip-types --no-warnings .github/audits/micro-rank-comparison.mjs prepare --out runs/micro-rank-comparison-v2 --expected-file docs/micro-rank-comparison-2026-10-21/expected-v2.json
+        run: node --experimental-strip-types --no-warnings .github/audits/micro-rank-comparison.mjs prepare --out runs/micro-rank-comparison-v3 --expected-file docs/micro-rank-comparison-2026-10-21/expected-v3.json
       - name: Complete all own Micro and Inverse configurations on twelve selected symbols
         env:
           NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
         id: sim
         continue-on-error: true
-        run: node --experimental-strip-types --no-warnings .github/audits/micro-rank-comparison.mjs run --rank ${{ matrix.rank }} --out runs/micro-rank-comparison-v2 --workers 2
+        run: node --experimental-strip-types --no-warnings .github/audits/micro-rank-comparison.mjs run --rank ${{ matrix.rank }} --out runs/micro-rank-comparison-v3 --workers 2
       - name: Independently audit prices, costs, funded PF and every hourly transition
         if: always() && steps.sim.outcome != 'skipped'
         env:
           NODE_OPTIONS: --require ${{ github.workspace }}/scripts/lib/core-test-offline-guard.cjs
-          CASE_DIR: runs/micro-rank-comparison-v2/${{ matrix.rank }}
+          CASE_DIR: runs/micro-rank-comparison-v3/${{ matrix.rank }}
         run: |
           result=0
           node --experimental-strip-types --no-warnings scripts/audit-micro-execution.mjs "$CASE_DIR" || result=1
@@ -83,6 +83,6 @@ jobs:
           retention-days: 30
           compression-level: 6
           path: |
-            runs/micro-rank-comparison-v2/plan.json
-            runs/micro-rank-comparison-v2/*-selection.json
-            runs/micro-rank-comparison-v2/${{ matrix.rank }}/
+            runs/micro-rank-comparison-v3/plan.json
+            runs/micro-rank-comparison-v3/*-selection.json
+            runs/micro-rank-comparison-v3/${{ matrix.rank }}/

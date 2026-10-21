@@ -1,6 +1,6 @@
 {
-  "schema": "cts-universal-integration-plan-v11",
-  "sourceSha256": "431ca46de2df501dc8ac340e1acb5254054540237fe096ed4c0552cfc3f502ec",
+  "schema": "cts-universal-integration-plan-v12",
+  "sourceSha256": "eb588571dfff70db0b79b4b0588fe1d9c5779c0d91aa4bc5011523e8054b7af9",
   "scope": {
     "registeredSpecs": 1860,
     "families": 19,
@@ -63,5 +63,5 @@
   ],
   "classification": "Correctness/causality and synthetic gate audit, not proof of hourly market profitability or a full Cartesian financial portfolio replay",
   "preserve": "Keep failed/partial receipts and all existing negative financial windows. Never change recorded costs/returns/gates to manufacture positive PF.",
-  "revisionReason": "Replay-only ranking clock and native 5m selector lane repair. Same full catalog, gate, identity and causal scope; prior receipts retained."
+  "revisionReason": "Bound each offline feed read by the earlier of the caller clock and fixed replay end. Preserve original causal 12-symbol selections; no economics changed. Same universal coverage."
 }
