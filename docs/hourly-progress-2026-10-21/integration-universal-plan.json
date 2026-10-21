@@ -1,6 +1,6 @@
 {
-  "schema": "cts-universal-integration-plan-v10",
-  "sourceSha256": "61b56cee42745c066877f8b605041dcb54274a874d8686a7f1fe52b2f6a5ad46",
+  "schema": "cts-universal-integration-plan-v11",
+  "sourceSha256": "431ca46de2df501dc8ac340e1acb5254054540237fe096ed4c0552cfc3f502ec",
   "scope": {
     "registeredSpecs": 1860,
     "families": 19,
@@ -63,5 +63,5 @@
   ],
   "classification": "Correctness/causality and synthetic gate audit, not proof of hourly market profitability or a full Cartesian financial portfolio replay",
   "preserve": "Keep failed/partial receipts and all existing negative financial windows. Never change recorded costs/returns/gates to manufacture positive PF.",
-  "revisionReason": "Main720 already integrates Micro f03, Inverse and incremental/streaming processing, plus PR188/189. Preserve the complete reviewed main production source byte-for-byte. Retain only the UI previous-document RPC observer fix, cap-derived negative fixture and external-data-independent original 24-symbol workflow. Repeat 24-symbol v7 on this exact new main source; v5/v6 results retain BF/7f seals. No economic code, cost or gate changed by the finishing PR."
+  "revisionReason": "Replay-only ranking clock and native 5m selector lane repair. Same full catalog, gate, identity and causal scope; prior receipts retained."
 }

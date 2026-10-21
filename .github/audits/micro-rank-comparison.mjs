@@ -95,15 +95,7 @@ export async function selectionAt(source, cutT, rank, n = 12) {
     calls.push({ sym, tf, n: result.length, latestCloseT: result.at(-1)?.t + tf * M });
     return result;
   };
-  // Only the isolated selection phase uses this replay clock. No runtime is scoring or running concurrently.
-  const realNow = Date.now;
-  let selected;
-  Date.now = () => cutT;
-  try {
-    selected = await rankUniverse(tickers, n, rank, feed);
-  } finally {
-    Date.now = realNow;
-  }
+  const selected = await rankUniverse(tickers, n, rank, feed, cutT);
   assert.equal(selected.length, n);
   assert.equal(new Set(selected).size, n);
   assert.ok(calls.every((c) => c.latestCloseT <= cutT));
@@ -132,7 +124,7 @@ export async function main(args = process.argv.slice(2)) {
     const i = args.indexOf(`--${key}`);
     return i < 0 ? fallback : args[i + 1];
   };
-  const out = resolve(arg("out", "runs/micro-rank-comparison-v1"));
+  const out = resolve(arg("out", "runs/micro-rank-comparison-v2"));
   if (mode === "prepare") {
     assert.ok(!fs.existsSync(`${out}/plan.json`), "Never overwrite a frozen comparison");
     const inputPath = resolve(
@@ -172,7 +164,7 @@ export async function main(args = process.argv.slice(2)) {
           "--selection-file",
           file,
           "--label",
-          `micro-12-symbol-rank-${rank}-12h-pre-12h-run-v1`,
+          `micro-12-symbol-rank-${rank}-12h-pre-12h-run-v2`,
           "--out",
           `${out}/${rank}`,
         ],

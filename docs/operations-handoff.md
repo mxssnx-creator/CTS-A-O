@@ -1,3 +1,7 @@
+# Paired 12-symbol replay repair — 21 October 2026 (UTC)
+
+Paired v1 run 39543724516 completed Volatility but Change failed before compute: the historical runtime ranker used today’s clock and the offline feed pruned its missing 5m lane. Preserve both artifacts and `docs/micro-rank-comparison-2026-10-21/replay-failure-v1.json`. Repair supplies a replay-only ranking clock to initial/preset ranking and derives completed 5m bars from genuine cached minute history. Live ranking still uses the wall clock. Both causal symbol selections, formulas, costs and gates remain unchanged. New source 431ca46de2df501dc8ac340e1acb5254054540237fe096ed4c0552cfc3f502ec; paired v2 freezes both protocols before scoring. Twenty targeted selection/runtime/report regressions pass; full CI and detailed HTML pending. No live execution, settings writes, deployment or reload.
+
 # Requested paired 12-symbol comparison frozen — 21 October 2026 (UTC)
 
 Latest user requests12symbols,12hTradeSim +12h evaluated prehistory,1HVolatility vs1HChange, detailed HTML

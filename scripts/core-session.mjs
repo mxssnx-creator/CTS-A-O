@@ -633,6 +633,9 @@ async function runEngine() {
     // only bars that closed by the cut
     const keep = (cs, tf) => cs.filter((c) => c.t + tf * 60_000 <= cut);
     return {
+      rankingAt: arg("frozen-session")
+        ? (JSON.parse(readFileSync(arg("frozen-session"))).symbolSelection?.cutT ?? cut)
+        : cut,
       history: async (sym, tf, bars, opt = {}) =>
         keep(await fetchHistory(sym, tf, bars, { ...opt, nowT: cut }), tf),
       klines: async (sym, tf, opt = {}) =>
@@ -753,7 +756,17 @@ async function runEngine() {
   // a replayed feed keeps only what the engine reads through it, up to the cut (scripts/lib/session-feed.mjs): its own
   // timeframe and the 1-hour bars of the universe ranking
   if (feedFile && cutT) {
-    const dropped = pruneFeed(store.candles, cutT, [rt.settings.tfMin, RANK_TF]);
+    // The 5m-distance selector needs thirteen real completed 5m closes. Old cached feeds often retain
+    // only native minutes and hourly ranking bars. Derive the missing lane before pruning it.
+    const rankingTf = rt.settings.symbolRank === "change1h5m" ? 5 : RANK_TF;
+    if (rankingTf === 5) {
+      const { resample } = await import("../src/core/market/bars.ts");
+      for (const [key, rows] of Object.entries(store.candles)) {
+        if (key.endsWith("|1") && !store.candles[key.replace(/\|1$/, "|5")])
+          store.candles[key.replace(/\|1$/, "|5")] = resample(rows, 1, 5);
+      }
+    }
+    const dropped = pruneFeed(store.candles, cutT, [rt.settings.tfMin, rankingTf]);
     if (dropped)
       process.stderr.write(
         `  feed: ${dropped} bars the engine never reads left out (other timeframes, after the cut)\n`,
