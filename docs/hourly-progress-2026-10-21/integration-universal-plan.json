@@ -1,6 +1,6 @@
 {
-  "schema": "cts-universal-integration-plan-v8",
-  "sourceSha256": "bf502cd9046ea8d3fe23701b0e549521618a143be948ba38f2269df7534d95a2",
+  "schema": "cts-universal-integration-plan-v12",
+  "sourceSha256": "eb588571dfff70db0b79b4b0588fe1d9c5779c0d91aa4bc5011523e8054b7af9",
   "scope": {
     "registeredSpecs": 1860,
     "families": 19,
@@ -63,5 +63,5 @@
   ],
   "classification": "Correctness/causality and synthetic gate audit, not proof of hourly market profitability or a full Cartesian financial portfolio replay",
   "preserve": "Keep failed/partial receipts and all existing negative financial windows. Never change recorded costs/returns/gates to manufacture positive PF.",
-  "revisionReason": "Preserve v7 and all losses. Add separately identified OHLC breakouts over 6/12/24/48 prior bars, activity and failed-auction variants, in all independent/combined 1/5/15m lanes and inverses. Fix neutral-zero momentum agreement; keep stored owned Signal unit returns and unknown Last-N. No loss/PF/sample gate weakened."
+  "revisionReason": "Bound each offline feed read by the earlier of the caller clock and fixed replay end. Preserve original causal 12-symbol selections; no economics changed. Same universal coverage."
 }

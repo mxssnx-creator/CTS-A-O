@@ -29,7 +29,7 @@ const arg = (name, fallback) => {
   return i < 0 ? fallback : process.argv[i + 1];
 };
 const mode = process.argv[2],
-  out = resolve(arg("out", "runs/micro-24-trade-sim-20261020-v5")),
+  out = resolve(arg("out", "runs/micro-24-trade-sim-20261020-v9")),
   H = 3_600_000;
 process.env.CTS_CORE_STATE = "off";
 process.env.CTS_CORE_AUTOSTART = "0";
@@ -38,8 +38,35 @@ if (mode === "prepare") {
     throw new Error("Use a new output directory; do not overwrite a measured protocol");
   const input = readFileSync(resolve(arg("feed")));
   const source = JSON.parse(input[0] === 31 ? gunzipSync(input) : input);
-  const symbols = source.tickers.map((x) => x.sym).sort();
-  const expected = ["AVAX", "LINK", "LTC", "SUI", "NEAR", "DOT", "ATOM", "APT", "BTC", "ETH", "SOL", "BNB", "DOGE", "ADA", "BCH", "TRX", "ETC", "OP", "ARB", "FIL", "XRP", "UNI", "XLM", "INJ"].map((x) => `${x}-USDT`).sort();
+  let symbols = source.tickers.map((x) => x.sym).sort();
+  const expected = [
+    "AVAX",
+    "LINK",
+    "LTC",
+    "SUI",
+    "NEAR",
+    "DOT",
+    "ATOM",
+    "APT",
+    "BTC",
+    "ETH",
+    "SOL",
+    "BNB",
+    "DOGE",
+    "ADA",
+    "BCH",
+    "TRX",
+    "ETC",
+    "OP",
+    "ARB",
+    "FIL",
+    "XRP",
+    "UNI",
+    "XLM",
+    "INJ",
+  ]
+    .map((x) => `${x}-USDT`)
+    .sort();
   if (studyExactJson(symbols) !== studyExactJson(expected))
     throw new Error("Study requires its exact twenty-four preregistered symbols");
   const lastT = Math.min(...symbols.map((sym) => source.candles[`${sym}|1`].at(-1).t + 60_000));
@@ -51,7 +78,28 @@ if (mode === "prepare") {
   const tradeStartT = endT - runH * H,
     evaluationFromT = tradeStartT - preH * H,
     indicatorStartT = evaluationFromT - 24 * H;
-  const feed = { tickers: source.tickers.filter((x) => symbols.includes(x.sym)), candles: {} };
+  const selectionFile = arg("selection-file");
+  const selection = selectionFile ? JSON.parse(readFileSync(resolve(selectionFile))) : null;
+  if (selection) {
+    if (
+      selection.schema !== "cts-micro-symbol-selection-v1" ||
+      selection.cutT !== tradeStartT ||
+      selection.parentFeedSha256 !== studySha256(input) ||
+      !["volatility1h", "change1h5m"].includes(selection.rank) ||
+      selection.selected?.length !== 12 ||
+      new Set(selection.selected).size !== 12 ||
+      selection.selected.some((sym) => !symbols.includes(sym)) ||
+      selection.tickers?.length !== 24 ||
+      selection.latestEvidenceCloseT !== tradeStartT
+    )
+      throw new Error("Invalid causal twelve-symbol selection seal");
+    symbols = [...selection.selected];
+  }
+  const symbolCount = symbols.length;
+  const feed = {
+    tickers: (selection?.tickers ?? source.tickers).filter((x) => symbols.includes(x.sym)),
+    candles: {},
+  };
   for (const sym of symbols)
     for (const tf of [1, 60]) {
       const rows = source.candles[`${sym}|${tf}`].filter(
@@ -70,13 +118,18 @@ if (mode === "prepare") {
   const allIds = [...MICRO_CONFIG_IDS, ...INVERSE_MICRO_CONFIG_IDS];
   const focusFile = arg("focus-file");
   const selected = focusFile ? JSON.parse(readFileSync(resolve(focusFile))) : allIds;
-  if (!Array.isArray(selected) || !selected.length || new Set(selected).size !== selected.length ||
-      selected.some((id) => !allIds.includes(id))) throw new Error("Nonempty unique registered Micro focus required");
+  if (
+    !Array.isArray(selected) ||
+    !selected.length ||
+    new Set(selected).size !== selected.length ||
+    selected.some((id) => !allIds.includes(id))
+  )
+    throw new Error("Nonempty unique registered Micro focus required");
   const seed = structuredClone(DEFAULT_SETTINGS);
   Object.assign(seed, {
-    symbols: 24,
+    symbols: symbolCount,
     forceSymbols: symbols,
-    symbolRank: "market",
+    symbolRank: selection?.rank ?? "market",
     historyDays: 2,
     tfDays: { 1: 2, 5: 2, 15: 2 },
     tfMin: 1,
@@ -126,7 +179,7 @@ if (mode === "prepare") {
   const make = (settings, wf = {}) => {
     const rt = new CoreRuntime(
       new CoreDb(":memory:"),
-      { symbols: 24, signals: { enabled: false } },
+      { symbols: symbolCount, signals: { enabled: false } },
       {
         market: "bingx",
         replay: true,
@@ -137,7 +190,7 @@ if (mode === "prepare") {
       },
     );
     rt.updateSettings(settings);
-    rt.updateSettings({ symbols: 24 });
+    rt.updateSettings({ symbols: symbolCount });
     rt.updateSettings({}, { preH, simH: runH, ...wf, causalBase: true, recordValidation: true });
     rt.wf = { ...rt.wf, longH: 12 };
     return rt;
@@ -154,20 +207,35 @@ if (mode === "prepare") {
     throw new Error("Actual runtime settings failed stable normalization");
   for (const rt of [a, b, c]) rt.dispose();
   const files = sessionStudySourceFiles(root);
+  if (selection && selection.sourceSha256 !== studySha256(studyExactJson(files)))
+    throw new Error("Selection was frozen for a different calculation source");
   const protocol = {
     schema: "cts-session-study-v1",
-    id: arg("label", "micro-24-symbols-12h-pre-12h-run-20261020-v5"),
-    scope: { hold: "standard", focus: selected,
+    id: arg("label", "micro-24-symbols-12h-pre-12h-run-20261020-v9"),
+    scope: {
+      hold: "standard",
+      focus: selected,
       ...(focusFile ? { selectedFocusSha256: studySha256(readFileSync(resolve(focusFile))) } : {}),
-      purpose: focusFile ? "Frozen training-selected focus, independently gated in this later test; losses retained; not native execution"
-        : "Fixed retrospective 24-symbol correctness and hourly stability test; no performance-based source selection or gate relaxation; not native execution" },
+      purpose: selection
+        ? "Causal twelve-symbol universe selected once before this paired 12h replay; identical complete Micro/Inverse grids and own gates; not native execution"
+        : focusFile
+          ? "Frozen training-selected focus, independently gated in this later test; losses retained; not native execution"
+          : "Fixed retrospective 24-symbol correctness and hourly stability test; no performance-based source selection or gate relaxation; not native execution",
+    },
     symbols,
+    ...(selection
+      ? {
+          symbolSelection: selection,
+          symbolSelectionSha256: studySha256(readFileSync(resolve(selectionFile))),
+        }
+      : {}),
     window: { indicatorStartT, evaluationFromT, tradeStartT, endT, preH, runH },
     feed: {
       path: feedPath,
       sha256: studySha256(readFileSync(feedPath)),
       parentSha256: studySha256(input),
-      provider: "Verified official Binance USD-M native 1m archives; scope and chronology in window/feed hashes; not BingX venue execution",
+      provider:
+        "Verified official Binance USD-M native 1m archives; scope and chronology in window/feed hashes; not BingX venue execution",
     },
     source: {
       checkpoint: execFileSync("git", ["rev-parse", "HEAD"], {
@@ -212,7 +280,7 @@ if (mode === "prepare") {
     "--desk",
     `${out}/desk.json`,
     "--symbols",
-    "24",
+    String(p.symbols.length),
     "--pre",
     "12",
     "--run",

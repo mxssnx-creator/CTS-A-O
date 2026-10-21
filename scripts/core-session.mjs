@@ -45,7 +45,7 @@
 //   exchange minimum (USD).
 import { writeFileSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { columnarStore, pruneFeed, RANK_TF, readStored } from "./lib/session-feed.mjs";
+import { columnarStore, pruneFeed, RANK_TF, readStored, boundedReplayFeed } from "./lib/session-feed.mjs";
 import { closesIn } from "./lib/candles.mjs";
 import { captureSignalProgress } from "./lib/signal-progress.mjs";
 import {
@@ -630,21 +630,10 @@ async function runEngine() {
       "--replay-preload-all needs an offline --feed, explicit --end-at and --evaluation-from",
     );
   function replayFeed(cut) {
-    // only bars that closed by the cut
-    const keep = (cs, tf) => cs.filter((c) => c.t + tf * 60_000 <= cut);
-    return {
-      history: async (sym, tf, bars, opt = {}) =>
-        keep(await fetchHistory(sym, tf, bars, { ...opt, nowT: cut }), tf),
-      klines: async (sym, tf, opt = {}) =>
-        keep(
-          await fetchKlines(sym, tf, {
-            ...opt,
-            endT: Math.min(opt.endT ?? cut, cut - 1),
-            nowT: cut,
-          }),
-          tf,
-        ),
-    };
+    const rankingAt = arg("frozen-session")
+      ? (JSON.parse(readFileSync(arg("frozen-session"))).symbolSelection?.cutT ?? cut)
+      : cut;
+    return boundedReplayFeed(fetchHistory, fetchKlines, cut, rankingAt);
   }
   const rt = new CoreRuntime(
     new CoreDb(":memory:"),
@@ -753,7 +742,17 @@ async function runEngine() {
   // a replayed feed keeps only what the engine reads through it, up to the cut (scripts/lib/session-feed.mjs): its own
   // timeframe and the 1-hour bars of the universe ranking
   if (feedFile && cutT) {
-    const dropped = pruneFeed(store.candles, cutT, [rt.settings.tfMin, RANK_TF]);
+    // The 5m-distance selector needs thirteen real completed 5m closes. Old cached feeds often retain
+    // only native minutes and hourly ranking bars. Derive the missing lane before pruning it.
+    const rankingTf = rt.settings.symbolRank === "change1h5m" ? 5 : RANK_TF;
+    if (rankingTf === 5) {
+      const { resample } = await import("../src/core/market/bars.ts");
+      for (const [key, rows] of Object.entries(store.candles)) {
+        if (key.endsWith("|1") && !store.candles[key.replace(/\|1$/, "|5")])
+          store.candles[key.replace(/\|1$/, "|5")] = resample(rows, 1, 5);
+      }
+    }
+    const dropped = pruneFeed(store.candles, cutT, [rt.settings.tfMin, rankingTf]);
     if (dropped)
       process.stderr.write(
         `  feed: ${dropped} bars the engine never reads left out (other timeframes, after the cut)\n`,

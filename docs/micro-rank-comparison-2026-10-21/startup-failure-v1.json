@@ -1,0 +1,14 @@
+{
+  "schema": "cts-micro-rank-startup-failure-v1",
+  "workflowRun": 39543476897,
+  "jobs": [
+    119036291453,
+    119036291736
+  ],
+  "head": "31a39aa93562329a2e7258b5157fd4e72c6e2fe7",
+  "stage": "checkout, before simulation or scoring",
+  "error": "MODULE_NOT_FOUND: job-level NODE_OPTIONS required the repository offline guard before checkout",
+  "correction": "Set NODE_OPTIONS only on test/build/prepare/simulation/audit run steps. Checkout, dependency installation and artifact upload retain their required network access. All actual calculations and children remain guarded.",
+  "selectionOrEconomicChanges": false,
+  "modelResults": null
+}

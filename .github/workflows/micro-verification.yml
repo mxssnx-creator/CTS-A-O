@@ -60,7 +60,7 @@ jobs:
         if: matrix.task == 'functional-0'
         shell: bash
         run: |
-          node --require ./scripts/lib/core-test-offline-guard.cjs --experimental-strip-types --no-warnings --test scripts/core-session.test.mjs scripts/micro-stages.test.mjs scripts/simulation-parity.test.mjs scripts/session-funded-cohort.test.mjs scripts/test-all-offline.test.mjs scripts/core-test-offline.test.mjs scripts/select-micro-24-research.test.mjs .github/audits/hourly-progress.test.mjs
+          node --require ./scripts/lib/core-test-offline-guard.cjs --experimental-strip-types --no-warnings --test scripts/core-session.test.mjs scripts/micro-stages.test.mjs scripts/simulation-parity.test.mjs scripts/session-funded-cohort.test.mjs scripts/test-all-offline.test.mjs scripts/core-test-offline.test.mjs scripts/select-micro-24-research.test.mjs .github/audits/hourly-progress.test.mjs .github/audits/micro-rank-comparison.test.mjs
       - name: Complete frozen chronological optimization
         if: matrix.task == 'study'
         run: node --require ./scripts/lib/core-test-offline-guard.cjs --experimental-strip-types --no-warnings scripts/micro-verification-ci.mjs

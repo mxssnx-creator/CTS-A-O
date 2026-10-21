@@ -149,6 +149,7 @@ export async function rankUniverse(
   n: number,
   rank: SymbolRank,
   klines: typeof fetchKlines = fetchKlines,
+  rankingAt = Date.now(),
 ): Promise<string[]> {
   const skip = /^(USDC|FDUSD|TUSD|DAI|BUSD|USDE|NCCO|NCSK|NCFX|NCSI)/;
   const liquid = [...tickers]
@@ -160,7 +161,7 @@ export async function rankUniverse(
   const take = (xs: readonly Ticker[]) => xs.slice(0, n).map((t) => t.sym);
   switch (rank) {
     case "change1h5m": {
-      const cutT = Math.floor(Date.now() / 300_000) * 300_000;
+      const cutT = Math.floor(rankingAt / 300_000) * 300_000;
       let cache = changeRanks.get(klines);
       if (!cache) changeRanks.set(klines, (cache = new Map()));
       for (const [sym, entry] of cache) if (entry.cutT !== cutT || !pool.some((t) => t.sym === sym)) cache.delete(sym);
@@ -200,7 +201,7 @@ export async function rankUniverse(
     case "volatility1h": {
       const vol = new Map<string, number>();
       let i = 0;
-      const now = Date.now();
+      const now = rankingAt;
       await Promise.all(
         Array.from({ length: Math.min(8, pool.length) }, async () => {
           while (i < pool.length) {

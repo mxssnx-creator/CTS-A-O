@@ -13,6 +13,16 @@ const bars = (change: number, cut = CUT): Candle[] => Array.from({length:13}, (_
 const ticker = (sym: string, quoteVol = 10e6, changePct = 0): Ticker => ({sym,last:100,quoteVol,changePct});
 
 describe("exchange mean absolute 5m price-distance ranking over one hour", () => {
+  it("uses an explicit historical clock independently of today's time and isolates cached intervals", async () => {
+    const calls: number[] = [];
+    const feed: typeof fetchKlines = async (_sym, _tf, opt) => {
+      calls.push(opt!.nowT!); return bars(0.1, opt!.nowT);
+    };
+    const xs = [ticker("A-USDT")];
+    assert.deepEqual(await rankUniverse(xs, 1, "change1h5m", feed, CUT), ["A-USDT"]);
+    assert.deepEqual(await rankUniverse(xs, 1, "change1h5m", feed, CUT + 300_000), ["A-USDT"]);
+    assert.deepEqual(calls, [CUT, CUT + 300_000]);
+  });
   it("averages exactly twelve absolute five-minute percentage distances for both directions", () => {
     assert.ok(Math.abs(priceChange1h5m(bars(0.08),CUT)! - 0.08/12) < 1e-12);
     assert.ok(Math.abs(priceChange1h5m(bars(-0.12),CUT)! - 0.12/12) < 1e-12);

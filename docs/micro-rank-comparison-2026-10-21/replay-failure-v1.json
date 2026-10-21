@@ -1,0 +1,22 @@
+{
+  "schema": "cts-rank-replay-failure-v1",
+  "runId": 39543724516,
+  "head": "f737d93f36e6595714b863938046c18712cf02e9",
+  "sourceSha256": "61b56cee42745c066877f8b605041dcb54274a874d8686a7f1fe52b2f6a5ad46",
+  "volatility1h": {
+    "job": 119037069329,
+    "conclusion": "success",
+    "artifact": 12321002009,
+    "sha256": "929bdaf65f7931a31e17cbcd6d75e4d5659d2975bbaffcec5ac0c38efaf8e87c"
+  },
+  "change1h5m": {
+    "job": 119037069675,
+    "conclusion": "failure-before-compute",
+    "computes": 0,
+    "artifact": 12320992091,
+    "sha256": "9e7347523d69bc3c5d6c41f30bf776978929bf78dcf25f89956677eb3c376f66",
+    "error": "1H average 5m price distance: complete history for 0/12 required symbols; retry after the next 5m close"
+  },
+  "cause": "Historical runtime ranking used wall-clock time; the offline session kept only native 1m and hourly ranking bars. No 5m selector lane survived. Frozen 12-symbol selections themselves were correct.",
+  "repair": "Explicit replay-only ranking clock propagated to initial and preset universe ranking; derive and retain native 5m ranking candles from cached 1m history before pruning. Real feeds retain default wall clock. Re-freeze both cases on the repaired source before scoring. No cost, gate, selection rule, symbol list or TP/SL setting changed."
+}

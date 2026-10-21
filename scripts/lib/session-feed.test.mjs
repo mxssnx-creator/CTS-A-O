@@ -2,7 +2,7 @@
 // timeframe and the 1-hour bars of the universe ranking, up to the cut — and every read answers as on the whole feed.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { lowerBound, pruneFeed, RANK_TF } from "./session-feed.mjs";
+import { lowerBound, pruneFeed, RANK_TF, boundedReplayFeed, readStored } from "./session-feed.mjs";
 
 // the replay's read (scripts/core-session.mjs stored() under replayFeed(cut)): bars with t in [startT, endT] and
 // t + tf ≤ nowT, the last `limit`
@@ -14,6 +14,25 @@ function read(candles, sym, tf, cut, { startT = 0, endT = cut - 1, limit = Infin
   return cs.slice(Math.max(0, cs.length - limit)).filter((c) => c.t + tf * 60_000 <= cut);
 }
 const bars = (tf, from, n) => Array.from({ length: n }, (_, i) => ({ t: from + i * tf * 60_000, o: 1, h: 1, l: 1, c: 1 + i / 1000, v: i }));
+
+test("replay feed honors earlier ranking clocks for both 1H and 5m reads without exposing later bars", async () => {
+  const end = Date.UTC(2026, 9, 20), start = end - 12 * 3_600_000;
+  const calls = [], rows = Object.fromEntries([1, 5, 60].map((tf) => [tf, bars(tf, end - 24 * 3_600_000, 24 * 60 / tf)]));
+  const klines = async (_sym, tf, opt) => { calls.push(opt); return readStored(rows[tf], tf, opt); };
+  const history = async (sym, tf, n, opt) => klines(sym, tf, { ...opt, limit: n });
+  const feed = boundedReplayFeed(history, klines, end, start);
+  assert.equal(feed.rankingAt, start);
+  const hourly = await feed.klines("A", 60, { limit: 4, nowT: start });
+  assert.equal(hourly.length, 4); assert.equal(hourly.at(-1).t + 3_600_000, start);
+  assert.equal(calls.at(-1).nowT, start); assert.equal(calls.at(-1).endT, start - 1);
+  const five = await feed.klines("A", 5, { nowT: start, startT: start - 65 * 60_000, endT: start - 1, limit: 13 });
+  assert.equal(five.length, 13); assert.equal(five.at(-1).t + 300_000, start);
+  const past = await feed.history("A", 1, 10, { nowT: start });
+  assert.equal(past.at(-1).t + 60_000, start);
+  const future = await feed.klines("A", 60, { nowT: end + 3_600_000 });
+  assert.equal(future.at(-1).t + 3_600_000, end, "later caller clocks are clamped to replay end");
+  assert.equal(calls.at(-1).nowT, end);
+});
 
 test("the prune keeps the engine's timeframe and the ranking's 1-hour bars up to the cut; every read answers as before", () => {
   const T0 = Date.parse("2026-10-01T00:00:00Z");
