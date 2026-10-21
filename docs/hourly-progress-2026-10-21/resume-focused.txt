@@ -1,0 +1,48 @@
+▶ simulateFrom resumes simulate
+  ✔ normal cooldown 0 long: any split equals one run (18.892639ms)
+  ✔ normal cooldown 0 mixed: any split equals one run (1.65733ms)
+  ✔ normal cooldown 3 long: any split equals one run (7.825545ms)
+  ✔ normal cooldown 3 mixed: any split equals one run (2.34828ms)
+  ✔ trailing cooldown 0 long: any split equals one run (6.527985ms)
+  ✔ trailing cooldown 0 mixed: any split equals one run (3.063383ms)
+  ✔ trailing cooldown 3 long: any split equals one run (4.176487ms)
+  ✔ trailing cooldown 3 mixed: any split equals one run (4.047513ms)
+  ✔ trailFree cooldown 0 long: any split equals one run (2.966899ms)
+  ✔ trailFree cooldown 0 mixed: any split equals one run (1.850189ms)
+  ✔ trailFree cooldown 3 long: any split equals one run (2.823449ms)
+  ✔ trailFree cooldown 3 mixed: any split equals one run (2.679415ms)
+  ✔ atr cooldown 0 long: any split equals one run (12.53991ms)
+  ✔ atr cooldown 0 mixed: any split equals one run (3.772631ms)
+  ✔ atr cooldown 3 long: any split equals one run (5.925836ms)
+  ✔ atr cooldown 3 mixed: any split equals one run (2.475597ms)
+  ✔ historic-static-sl cooldown 0 long: any split equals one run (9.033855ms)
+  ✔ historic-static-sl cooldown 0 mixed: any split equals one run (3.363471ms)
+  ✔ historic-static-sl cooldown 3 long: any split equals one run (4.413416ms)
+  ✔ historic-static-sl cooldown 3 mixed: any split equals one run (2.199855ms)
+  ✔ historic-adaptive-sl cooldown 0 long: any split equals one run (8.805322ms)
+  ✔ historic-adaptive-sl cooldown 0 mixed: any split equals one run (3.319692ms)
+  ✔ historic-adaptive-sl cooldown 3 long: any split equals one run (2.746363ms)
+  ✔ historic-adaptive-sl cooldown 3 mixed: any split equals one run (1.513006ms)
+  ✔ historic-trailing cooldown 0 long: any split equals one run (5.328048ms)
+  ✔ historic-trailing cooldown 0 mixed: any split equals one run (3.870114ms)
+  ✔ historic-trailing cooldown 3 long: any split equals one run (2.273572ms)
+  ✔ historic-trailing cooldown 3 mixed: any split equals one run (2.107274ms)
+  ✔ historic-trailing-only cooldown 0 long: any split equals one run (5.489246ms)
+  ✔ historic-trailing-only cooldown 0 mixed: any split equals one run (2.198998ms)
+  ✔ historic-trailing-only cooldown 3 long: any split equals one run (3.565335ms)
+  ✔ historic-trailing-only cooldown 3 mixed: any split equals one run (2.206122ms)
+  ✔ historic-breakeven cooldown 0 long: any split equals one run (4.092665ms)
+  ✔ historic-breakeven cooldown 0 mixed: any split equals one run (1.583487ms)
+  ✔ historic-breakeven cooldown 3 long: any split equals one run (2.233504ms)
+  ✔ historic-breakeven cooldown 3 mixed: any split equals one run (1.670229ms)
+  ✔ simulate is unchanged by the state plumbing (no state field) (0.343282ms)
+  ✔ refuses a sink run (0.916801ms)
+✔ simulateFrom resumes simulate (162.902435ms)
+ℹ tests 38
+ℹ suites 1
+ℹ pass 38
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 718.249893

@@ -10,6 +10,7 @@
 //    `ratio` volume each (best one per major relation kind plus every minor one, at most 8), capped at maxMult
 //    (evalBlockRelations → relVolumeFactor)
 // Causal: only results closed before an entry count.
+import { profitFactor } from "../metrics/stats.ts";
 
 export interface S2CoordSettings {
   windows: boolean;
@@ -59,8 +60,9 @@ function tick(w: Win, pnl: number, pauseN?: number) {
   }
   const net = gp - gl;
   w.lastNet = net;
-  w.lastPf = gl < 1e-12 ? (gp > 0 ? 4 : 0) : gp / gl;
-  if (net / w.n < 0 || w.lastPf < 1) w.pauseLeft = pauseN && pauseN > 0 ? pauseN : w.n;
+  w.lastPf = profitFactor(gp, gl);
+  if (!Number.isFinite(net) || !Number.isFinite(w.lastPf) || net / w.n < 0 || w.lastPf < 1)
+    w.pauseLeft = pauseN && pauseN > 0 ? pauseN : w.n;
 }
 
 const symSide = (sym: string, side: number) => `${sym}|${side > 0 ? 1 : -1}`;
@@ -142,7 +144,8 @@ export class S2Coord {
         if (x > 0) gp += x;
         else gl -= x;
       }
-      if ((gl < 1e-12 ? (gp > 0 ? 4 : 0) : gp / gl) < 1) return "s2SymbolPf";
+      const pf = profitFactor(gp, gl);
+      if (!Number.isFinite(pf) || pf < 1) return "s2SymbolPf";
     }
     return null;
   }
@@ -162,7 +165,7 @@ export class S2Coord {
     for (const [key, ws] of this.rel) {
       let best: { key: string; pf: number; net: number; n: number } | null = null;
       for (const w of ws)
-        if (w.closed >= w.n && (!best || w.lastPf > best.pf))
+        if (w.closed >= w.n && Number.isFinite(w.lastPf) && Number.isFinite(w.lastNet) && (!best || w.lastPf > best.pf))
           best = { key, pf: w.lastPf, net: w.lastNet, n: w.n };
       if (best && best.pf >= this.o.minPf) cands.push(best);
     }

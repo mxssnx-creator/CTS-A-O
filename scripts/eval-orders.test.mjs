@@ -44,7 +44,7 @@ describe("the eval sees Block: volume-weighted PF and unit PF raised / unraised"
   // stored r is sized (r × mult, the multiple beside it): a raised loser weighs 4 units, its unit edge one
   const orders = [
     { r: 0.02, mult: 1 },
-    { r: -0.01 },
+    { r: -0.01, mult: 1 },
     { r: -0.04, mult: 4 },
     { r: 0.06, mult: 2 },
   ];
@@ -61,7 +61,7 @@ describe("the eval sees Block: volume-weighted PF and unit PF raised / unraised"
     assert.equal(b.meanMult, 2);
   });
   it("Block off (every order at one unit): both PFs agree, nothing raised", () => {
-    const b = blockSplit([{ r: 0.02 }, { r: -0.01, mult: 1 }]);
+    const b = blockSplit([{ r: 0.02, mult: 1 }, { r: -0.01, mult: 1 }]);
     assert.equal(b.raised, 0);
     assert.equal(b.pfVol, b.pfUnit);
     assert.equal(b.raisedPfUnit, null);

@@ -15,3 +15,13 @@ export function volumeFactorForIndication(ind: string, factors?: SignalVolumeFac
   const kind = INDICATION_BY_ID.get(lane.base)?.kind;
   return kind ? factorOf(factors?.combined[kind], 1) : 1;
 }
+
+/** External sizing only. Intrinsic Axis ladder weights and all unit-return gates remain in the source tape. */
+export function volumeFactorForStrategy(
+  tp: {ind: string; kind: string},
+  o: {indicationVolumeFactors?: SignalVolumeFactors; axisVolumeFactor?: number},
+): number {
+  const configured = o.axisVolumeFactor ?? 0.1;
+  const axis = Number.isFinite(configured) && configured > 0 ? Math.min(5, configured) : 0.1;
+  return volumeFactorForIndication(tp.ind, o.indicationVolumeFactors) * (tp.kind === "axis" ? axis : 1);
+}

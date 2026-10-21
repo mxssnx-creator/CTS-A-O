@@ -22,9 +22,9 @@ function fixture() {
   const statePath = join(dir, "state.json");
   const evidencePath = join(dir, "evidence.json");
   const db = new DatabaseSync(dbPath);
-  db.exec("CREATE TABLE live_lane_trades(cfg TEXT,r REAL,exit_t INTEGER)");
-  const insert = db.prepare("INSERT INTO live_lane_trades VALUES (?,?,?)");
-  for (let i = 0; i < 30; i++) insert.run(CFG, i === 29 ? null : 0.02, Date.now() - i * 1000);
+  db.exec("CREATE TABLE live_lane_trades(cfg TEXT,r REAL,exit_t INTEGER,reason TEXT)");
+  const insert = db.prepare("INSERT INTO live_lane_trades VALUES (?,?,?,?)");
+  for (let i = 0; i < 30; i++) insert.run(CFG, i === 29 ? null : 0.02, Date.now() - i * 1000, "exit");
   db.close();
   put(patchPath, { why: "operator selection", settings: { live: { source: "signals", kinds: ["trailing-only"], ratio: 3 } } });
   put(statePath, { on: { sh: true }, closes: 30 });
@@ -68,7 +68,7 @@ test("legacy nominal rows including NULL cannot retain old ON or manufacture own
     const dbBefore = readFileSync(f.dbPath);
     const result = f.run();
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /nominal reference rows 30 \(not funded-execution proof\)/);
+    assert.match(result.stdout, /nominal reference own rows 30 \(not funded-execution proof\)/);
     const live = read(f.patchPath).settings.live;
     assert.deepEqual(live.promotedLanes, []);
     assert.deepEqual(live.excludeRanges, ["mc", "mn", "mp", "sh", "gn", "lg", "wide"]);

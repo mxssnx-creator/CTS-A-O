@@ -269,7 +269,7 @@ import {
   signalCoordinationHistory,
   signalCoordinationRanges,
 } from "../signal-coordination.ts";
-import { volumeFactorForIndication } from "../volume-factor.ts";
+import { volumeFactorForStrategy } from "../volume-factor.ts";
 
 import os from "node:os";
 import { isDeepStrictEqual } from "node:util";
@@ -8704,7 +8704,7 @@ export class CoreRuntime {
       perSide.set(`${cls}|${op.side}`, sd + 1);
       openBy.set(cls, (openBy.get(cls) ?? 0) + 1);
       // new entries take the relation volume the simulation ended with (within the Block maximum)
-      const vf = held ? 1 : volumeFactorForIndication(tp.ind, this.wf.indicationVolumeFactors);
+      const vf = held ? 1 : volumeFactorForStrategy(tp, this.wf);
       const positionVf = held ? (prev?.volFactor ?? 1) : vf;
       const cv = !held && s2End?.factor ? this.s2EntryVolume(d.vol) : 1;
       const hedge = !held && this.isHedgeEntry(op);
@@ -9284,7 +9284,7 @@ export class CoreRuntime {
           protect: p.protect ?? tp.protect,
           barT,
           kind: tp.kind,
-          volFactor: volumeFactorForIndication(tp.ind, this.wf.indicationVolumeFactors),
+          volFactor: volumeFactorForStrategy(tp, this.wf),
           ...(coordVol !== 1 ? { coordVol } : {}),
           ...(hedge ? { hedge: true, hedgeVol: this.wf.coord?.hedgeVolumeFactor ?? 1 } : {}),
         });

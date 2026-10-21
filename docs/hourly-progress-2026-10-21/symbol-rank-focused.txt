@@ -1,0 +1,16 @@
+▶ exchange mean absolute 5m price-distance ranking over one hour
+  ✔ averages exactly twelve absolute five-minute percentage distances for both directions (2.012216ms)
+  ✔ ignores forming/future bars and rejects gaps, duplicates, stale or invalid evidence (0.327413ms)
+  ✔ ranks absolute hourly moves independently of the 24h ticker change, excludes stable pairs and keeps deterministic ties (3.063662ms)
+  ✔ batches at most four reads, shares in-flight and completed requests, and refreshes after the next completed 5m interval (20.439413ms)
+  ✔ never substitutes 24h changes for missing hourly history or calls the venue for volume ranking (1.270464ms)
+  ✔ accepts and exposes the option in engine and saved-preset settings (2.265501ms)
+✔ exchange mean absolute 5m price-distance ranking over one hour (31.56513ms)
+ℹ tests 6
+ℹ suites 1
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 426.28497

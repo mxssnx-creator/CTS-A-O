@@ -197,6 +197,8 @@ export interface SimState {
   /** the protect in force (an ATR protect's resolved distances) */
   q: Protect;
   dist: number;
+  /** Historic Exit adaptation must continue from the same completed-bar state. */
+  exitProtection?: OpenPosition["exitProtection"];
 }
 
 export function simulate(
@@ -275,7 +277,19 @@ function simCore(
     const resolved = resolveAtrProtect(p, atr![i] / c[i], bars.tfMin);
     return signal ? capSignalProtect(resolved) : resolved;
   };
-  let trailPosition: OpenPosition | undefined;
+  if (from?.inPos) {
+    exitProtection = from.exitProtection ? { ...from.exitProtection } : undefined;
+    if (q.exitType === "historic" && q.exitSet && !exitProtection)
+      throw new Error("simulateFrom: historic position is missing its protection state");
+    exitPosition = exitProtection
+      ? { side, entry, stop, target, peak, trailOn, trail, trailDist: dist, exitProtection }
+      : undefined;
+  }
+  // Restore the reusable ratchet object too. Restoring only scalar stop/peak values left resumed positions
+  // untrailed until their next entry, changing hourly closes and PF relative to a full calculation.
+  let trailPosition: OpenPosition | undefined = inPos && q.trail > 0 && !exitPosition
+    ? { cfg, sym, side, entryT: t[entryI], entryI, entry, stop, target, peak, trailOn, mtm: 0 }
+    : undefined;
   const nx = nextEntryIndex(sig);
 
   const sink = opt.sink;
@@ -465,6 +479,7 @@ function simCore(
         q,
         dist,
         trail,
+        ...(exitProtection ? { exitProtection: { ...exitProtection } } : {}),
       }
     : undefined;
   if (pending && atr)

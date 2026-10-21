@@ -1796,7 +1796,7 @@ async function runStepNow(
       // per-position cap (and the equity caps of the last read). Past either the symbol is too large for this
       // account: skipped with the reason (minRaiseBlock).
       const intentFactor = Number.isFinite(e.volFactor)
-        ? Math.min(22, Math.max(1, Math.round(e.volFactor!)))
+        ? Math.min(110, Math.max(0.01, e.volFactor!))
         : 1;
       const intentUnit = Math.min(unit * intentFactor, cap);
       const minNotional = bx.exchangeMinNotional(spec, px);
@@ -2215,7 +2215,6 @@ export function* laneContributionsGen(
 ): Generator<void, ControlContribution[]> {
   // a lane whose stop was crossed at tick time no longer asks for its volume (its stop executes live now)
   const out: ControlContribution[] = [];
-  const rangeVolumeFactors = rangeVolumeFactorsOf(rt.settings.grid);
   let seen = 0;
   for (const p of positions) {
     if (++seen % LANE_SLICE === 0) yield;
@@ -2225,12 +2224,9 @@ export function* laneContributionsGen(
     if (p.stopHit) continue;
     const ls = laneStringsOf(p);
     const id = ls.id;
-    const ind = p.cfg.split("|")[1] ?? "";
-    const signalRange = isSignalInd(ind) ? signalRangeOf(ind) : null;
-    const rangeFactor = signalRange
-      ? rt.settings.signals.rangeVolumeFactors[signalRange] ?? 1
-      : rangeVolumeFactors[rangeOfId(p.cfg) || "wide"] ?? 1;
-    const vol = (p.vol ?? 1) * rangeFactor;
+    // Paper captures all external factors at entry. Reapplying today's range setting doubles it and resizes
+    // held positions after edits. The recorded volume already includes the Axis set factor and ladder weight.
+    const vol = p.vol ?? 1;
     // the backstop sits at the current price minus this distance: measure it from the current price, so a stop
     // trailed far past the entry does not widen the backstop by its whole run (|entry − stop| did)
     const px = prices?.get(p.sym) ?? 0;

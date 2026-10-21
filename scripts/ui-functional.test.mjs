@@ -428,6 +428,15 @@ describe(
           await saveNow();
           await box.click();
           await saveNow();
+          const ranking = page.getByRole("combobox", { name: "Symbol ranking", exact: true });
+          const previousRank = await ranking.inputValue();
+          await ranking.selectOption("change1h5m");
+          await saveNow();
+          await page.reload({ waitUntil: "domcontentloaded", timeout: 120_000 });
+          await ranking.waitFor({ state: "visible", timeout: 60_000 });
+          assert.equal(await ranking.inputValue(), "change1h5m", "the new exchange ranking persists through a real Settings save/reload");
+          await ranking.selectOption(previousRank);
+          await saveNow();
           await settleRequests();
         },
       );

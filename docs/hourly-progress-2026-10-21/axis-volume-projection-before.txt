@@ -1,0 +1,34 @@
+✔ every Axis source, mode, spacing, depth and hybrid retains its own simulated, Paper and native identity (5.646003ms)
+✔ simultaneous Axis configs execute independently after their own prehistory and Last-N checks (196.341743ms)
+✔ Axis sets use 10% of the matching base sizing while their admission and intrinsic unit returns stay identical (157.00819ms)
+✖ native Axis projection applies captured range and set factors once and never resizes a held ladder after edits (80.790373ms)
+✔ Axis config gates retain losing Last-N samples and honor exact seat cooldowns (17.668872ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 4
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1626.326994
+
+✖ failing tests:
+
+test at src/core/axis-order-identity.test.ts:71:1
+✖ native Axis projection applies captured range and set factors once and never resizes a held ladder after edits (80.790373ms)
+  AssertionError [ERR_ASSERTION]: 2 rung units ×0.1 Axis ×1.4 captured range; no second range factor
+      at check (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/axis-order-identity.test.ts:79:14)
+      at TestContext.<anonymous> (file:///workspace/scratch/e92abb680845/CTS-A-O/src/core/axis-order-identity.test.ts:82:5)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }

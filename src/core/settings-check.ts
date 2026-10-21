@@ -25,7 +25,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
   num(s.symbols, 1, 120, "symbols");
   if (
     s.symbolRank !== undefined &&
-    !["volatility1h", "volume", "market", "gainers", "losers"].includes(s.symbolRank)
+    !["volatility1h", "change1h5m", "volume", "market", "gainers", "losers"].includes(s.symbolRank)
   )
     throw new Error("unknown symbol ranking");
   num(s.historyDays, 2, 45, "historyDays");
@@ -480,6 +480,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
       throw new Error("adjust closes per step must be a whole number");
   }
   if (s.axis) {
+    num(s.axis.volumeFactor, 0.01, 5, "axis set volume factor");
     num(s.axis.levels, 1, 8, "axis levels");
     num(s.axis.spacing, 0.1, 5, "axis spacing (ATR)");
     num(s.axis.ratio, 0.1, 5, "axis rung ratio");

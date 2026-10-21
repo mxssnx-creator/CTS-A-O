@@ -25,7 +25,7 @@ jobs:
       matrix:
         # Archived financial studies remain immutable and still refuse a changed source.
         # Automatic merge verification covers the entire current regression inventory and load test.
-        task: ${{ fromJSON(github.event.inputs.include_frozen_cases == 'true' && '["functional","functional-heavy","functional-runtime","reference","study","stress"]' || '["functional","functional-heavy","functional-runtime","stress"]') }}
+        task: ${{ fromJSON(github.event.inputs.include_frozen_cases == 'true' && '["functional","functional-heavy","functional-runtime","reference","study","stress","stress-axis"]' || '["functional","functional-heavy","functional-runtime","stress","stress-axis"]') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:
@@ -77,9 +77,9 @@ jobs:
           node --experimental-strip-types --no-warnings --max-old-space-size=2048 .github/audits/hourly-progress.mjs runs/micro-identity-reference-v11 runs/micro-identity-reference-v11/scalar-hours.json --require-all
           node --experimental-strip-types --no-warnings scripts/audit-stage-transition.mjs runs/micro-identity-reference-v11
           node --experimental-strip-types --no-warnings scripts/audit-simulation-parity.mjs runs/micro-identity-reference-v11/raw.json runs/micro-identity-reference-v11/simulation-parity.json
-      - name: Exercise all 728 identities with 120 symbols and compute storm
-        if: matrix.task == 'stress'
-        run: node --require ./scripts/lib/core-test-offline-guard.cjs --expose-gc --max-old-space-size=4096 --experimental-strip-types --no-warnings scripts/stress-micro-runtime.mjs --out runs/micro-ci-stress
+      - name: Exercise Micro or complete Axis variants with 120 symbols and compute storm
+        if: startsWith(matrix.task, 'stress')
+        run: node --require ./scripts/lib/core-test-offline-guard.cjs --expose-gc --max-old-space-size=4096 --experimental-strip-types --no-warnings scripts/stress-micro-runtime.mjs --strategy ${{ matrix.task == 'stress-axis' && 'axis' || 'micro' }} --out runs/micro-ci-${{ matrix.task }}
       - name: Preserve successes and failures
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
