@@ -3756,19 +3756,45 @@ function tapeHistoryHours(tp: Pick<ConfigTape, "ind">, o: Pick<WalkForwardOption
   return isSignalInd(tp.ind) ? signalHistoryHours(o) : Math.max(o.longH, o.preH);
 }
 
+const SIGNAL_SIDES = [1, -1] as const;
+
 export function configEval(tp: ConfigTape, t: number, o: WalkForwardOptions): ConfigEval {
   if (isSignalInd(tp.ind)) {
-    const contexts = [...new Set(tp.syms)].flatMap((sym) => [1, -1].map((side) => ({ sym, side, evaluation: signalConfigEval(tp, t, o, sym, side) })));
-    const passing = contexts.map((x) => x.evaluation).filter((x): x is ConfigEval & { ok: true } => x.ok);
+    const key = signalEvaluationKey(tp, t, o);
+    const symbols = new Set(tp.syms);
+    const contexts = new Array<{ sym: string; side: number; evaluation: ConfigEval }>(
+      symbols.size * SIGNAL_SIDES.length,
+    );
+    let contextIndex = 0;
+    let passing = 0;
+    let n = 0;
+    let net = 0;
+    let gp = 0;
+    let gl = 0;
+    let lcb = Infinity;
+    let gh = Infinity;
+    let ddt = -Infinity;
+    let failed: Extract<ConfigEval, { ok: false }> | undefined;
+    for (const sym of symbols) {
+      for (const side of SIGNAL_SIDES) {
+        const evaluation = signalConfigEvalWithKey(tp, t, o, sym, side, key);
+        contexts[contextIndex++] = { sym, side, evaluation };
+        if (evaluation.ok) {
+          passing++;
+          n += evaluation.n;
+          net += evaluation.net;
+          gp += evaluation.gp ?? 0;
+          gl += evaluation.gl ?? 0;
+          lcb = Math.min(lcb, evaluation.lcb);
+          gh = Math.min(gh, evaluation.gh);
+          ddt = Math.max(ddt, evaluation.ddt);
+        } else failed ??= evaluation;
+      }
+    }
     const all = win(tp, lowerBound(tp.exitT, t - signalHistoryHours(o) * H), lowerBound(tp.exitT, t));
     const candidate = { n: all.n, pf: all.pf, net: all.net, gp: all.gp * 100, gl: all.gl * 100 };
-    if (!passing.length) {
-      const failed = contexts.map((x) => x.evaluation).find((x) => !x.ok);
-      return { ok: false, fail: failed && !failed.ok ? failed.fail : "closes", ...candidate, contexts, candidate };
-    }
-    const gp = passing.reduce((v, x) => v + (x.gp ?? 0), 0), gl = passing.reduce((v, x) => v + (x.gl ?? 0), 0);
-    return { ok: true, n: passing.reduce((v, x) => v + x.n, 0), net: passing.reduce((v, x) => v + x.net, 0), pf: profitFactor(gp, gl), gp, gl,
-      lcb: Math.min(...passing.map((x) => x.lcb)), gh: Math.min(...passing.map((x) => x.gh)), ddt: Math.max(...passing.map((x) => x.ddt)), contexts, candidate };
+    if (!passing) return { ok: false, fail: failed?.fail ?? "closes", ...candidate, contexts, candidate };
+    return { ok: true, n, net, pf: profitFactor(gp, gl), gp, gl, lcb, gh, ddt, contexts, candidate };
   }
   if (directionViews.has(tp)) return configEvalRaw(tp, t, o);
   const a = configDirectionEval(tp, t, o, 1),
@@ -3807,8 +3833,29 @@ function configEvalRaw(tp: ConfigTape, t: number, o: WalkForwardOptions): Config
 
 const signalEvaluationCache = new WeakMap<ConfigTape, { key: string; contexts: Map<string, ConfigEval> }>();
 /** The same exact history + Last-N verdict for Strategy Base, causal ranking and native/model entry. */
-export function signalConfigEval(tp: ConfigTape, t: number, o: WalkForwardOptions, sym: string, side: number): ConfigEval {
-  const key = JSON.stringify([t, signalHistoryHours(o), o.preH, o.preGate, o.gates, o.rangeGate, o.validLastN, o.signalValidLastN, o.signalRank?.minTrades, tp.heldOnly === true, tp.fromT]);
+function signalEvaluationKey(tp: ConfigTape, t: number, o: WalkForwardOptions): string {
+  return JSON.stringify([
+    t,
+    signalHistoryHours(o),
+    o.preH,
+    o.preGate,
+    o.gates,
+    o.rangeGate,
+    o.validLastN,
+    o.signalValidLastN,
+    o.signalRank?.minTrades,
+    tp.heldOnly === true,
+    tp.fromT,
+  ]);
+}
+function signalConfigEvalWithKey(
+  tp: ConfigTape,
+  t: number,
+  o: WalkForwardOptions,
+  sym: string,
+  side: number,
+  key: string,
+): ConfigEval {
   let cached = signalEvaluationCache.get(tp);
   if (!cached || cached.key !== key) signalEvaluationCache.set(tp, (cached = { key, contexts: new Map() }));
   const slot = `${sym}|${side}`;
@@ -3838,6 +3885,15 @@ export function signalConfigEval(tp: ConfigTape, t: number, o: WalkForwardOption
   const result: ConfigEval = tp.heldOnly ? { ok: false, fail: "closes", pf: 0, n: 0, net: 0 } : configEvalAt(own, t, o, a, b, win(own, a, b), Math.max(o.gates.minDdtH ?? 0, o.gates.maxDdtH * signalHistoryHours(o) / 72));
   cached.contexts.set(slot, result);
   return result;
+}
+export function signalConfigEval(
+  tp: ConfigTape,
+  t: number,
+  o: WalkForwardOptions,
+  sym: string,
+  side: number,
+): ConfigEval {
+  return signalConfigEvalWithKey(tp, t, o, sym, side, signalEvaluationKey(tp, t, o));
 }
 
 /** Signals have an independently tuned validation sample; every Strategy Base path must use the same sample. */

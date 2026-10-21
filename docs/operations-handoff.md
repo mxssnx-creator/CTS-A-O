@@ -3712,3 +3712,26 @@ includes verified receipts, source checkpoint mapping and honest primary-data
 is unchanged by the report-only follow-up. No venue execution, reload or
 deployment was performed. Pre-upgrade cached preset/live evidence still needs
 its own exact settings/source provenance check and backups before a live reload.
+
+## Signal evaluator performance — 2026-10-21
+
+Code commit `03eeeb18a7689b9384f8925c8da725f5f940b43f` optimizes the repeated
+Signal config evaluator. It computes the identical cache key once per config
+instead of once per symbol/direction and removes intermediate context
+collection arrays. Economic calculations, PF gates, direction identity,
+336-hour Signal history and Last-N evidence are unchanged. Exact benchmark and
+limits: [performance report](performance-20261021/README.md).
+
+Three paired runs of 2,000 configs × 12 symbols × 2 directions × 5 passes
+reduced median warm time from 706.89 to 528.54 ms (25.2%) and the highest
+observed process RSS from 424.14 to 387.66 MiB (8.6%). All 10,000 verdicts and
+240,000 contexts match the parent's output hash exactly. These are synthetic
+Signal-evaluation measurements, not system-wide cycle or profitability proof.
+
+Local core regression: 146/146 passed across the eight source, history,
+publication, incremental, validation-memory and selection-index tests listed
+in the report. The workspace's `node_modules` link target is absent, so local
+`tsc` was unavailable; hosted GitHub checks must pass before merge. No live
+reload, deployment or venue order was performed. The end-to-end cold-compute
+probe exceeded its diagnostic time budget; do not claim a full-cycle latency
+improvement from this targeted change.
