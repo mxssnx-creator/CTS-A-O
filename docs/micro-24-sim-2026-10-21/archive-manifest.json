@@ -1,0 +1,1574 @@
+{
+  "configuration": {
+    "schema": "cts-public-binance-um-archive-v1",
+    "source": "Binance USD-M public historical daily klines",
+    "baseUrl": "https://data.binance.vision/data/futures/um/daily/klines",
+    "from": "2026-10-18T00:00:00.000Z",
+    "toExclusive": "2026-10-20T00:00:00.000Z",
+    "symbols": [
+      "AVAX-USDT",
+      "LINK-USDT",
+      "LTC-USDT",
+      "SUI-USDT",
+      "NEAR-USDT",
+      "DOT-USDT",
+      "ATOM-USDT",
+      "APT-USDT",
+      "BTC-USDT",
+      "ETH-USDT",
+      "SOL-USDT",
+      "BNB-USDT",
+      "DOGE-USDT",
+      "ADA-USDT",
+      "BCH-USDT",
+      "TRX-USDT",
+      "ETC-USDT",
+      "OP-USDT",
+      "ARB-USDT",
+      "FIL-USDT",
+      "XRP-USDT",
+      "UNI-USDT",
+      "XLM-USDT",
+      "INJ-USDT"
+    ],
+    "tfs": [
+      1,
+      5,
+      15,
+      30,
+      60
+    ],
+    "studySymbols": [
+      "AVAX-USDT",
+      "LINK-USDT",
+      "LTC-USDT",
+      "SUI-USDT",
+      "NEAR-USDT",
+      "DOT-USDT",
+      "ATOM-USDT",
+      "APT-USDT",
+      "BTC-USDT",
+      "ETH-USDT",
+      "SOL-USDT",
+      "BNB-USDT",
+      "DOGE-USDT",
+      "ADA-USDT",
+      "BCH-USDT",
+      "TRX-USDT",
+      "ETC-USDT",
+      "OP-USDT",
+      "ARB-USDT",
+      "FIL-USDT",
+      "XRP-USDT",
+      "UNI-USDT",
+      "XLM-USDT",
+      "INJ-USDT"
+    ],
+    "outcomesUsedForSelection": false,
+    "policy": "Preregistered 24-symbol retrospective correctness study; no symbol selection by outcomes; 24h indicator warmup, 12h evaluated prehistory, 12h execution",
+    "venueParity": "Binance USD-M history, distinct from earlier BingX feeds; not venue-owned execution evidence"
+  },
+  "createdAt": "2026-10-21T01:03:30.985Z",
+  "artifacts": {
+    "AVAXUSDT-1m-2026-10-18.zip": {
+      "sym": "AVAX-USDT",
+      "day": "2026-10-18",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/AVAXUSDT/1m/AVAXUSDT-1m-2026-10-18.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/AVAXUSDT/1m/AVAXUSDT-1m-2026-10-18.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:40.653Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 46580,
+      "sha256": "e5388c116aefa76d725fa212ae7be6596124e6cb3ce337b86aa0225ee7b31b68",
+      "checksumStatus": "verified",
+      "checksumSha256": "59662684e5cb27df4eaeb936416d11300e66feabe6ff9bc0351a830549192c92",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792281600000,
+        "lastT": 1792367940000,
+        "endExclusiveT": 1792368000000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:40.653Z"
+    },
+    "AVAXUSDT-1m-2026-10-19.zip": {
+      "sym": "AVAX-USDT",
+      "day": "2026-10-19",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/AVAXUSDT/1m/AVAXUSDT-1m-2026-10-19.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/AVAXUSDT/1m/AVAXUSDT-1m-2026-10-19.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:35.787Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 46336,
+      "sha256": "b11e88889807dae53bbe28e9028b5ca9f02e27b73cddc296ca3b1f6b83ffe37d",
+      "checksumStatus": "verified",
+      "checksumSha256": "989113d1c5758529cd14c897fb5ca95d732a439b710b40d8f9d49ae8e924f631",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792368000000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:35.787Z"
+    },
+    "LINKUSDT-1m-2026-10-18.zip": {
+      "sym": "LINK-USDT",
+      "day": "2026-10-18",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/LINKUSDT/1m/LINKUSDT-1m-2026-10-18.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/LINKUSDT/1m/LINKUSDT-1m-2026-10-18.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:36.624Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 53125,
+      "sha256": "54a65fc7303c7c7296335d2395e4652a43709b069a0671190a900d6cfa3c9bfc",
+      "checksumStatus": "verified",
+      "checksumSha256": "5b578157e1e9c00b2b88c0dea02dc6a518eaabe8b314ee4d56650875acf860b6",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792281600000,
+        "lastT": 1792367940000,
+        "endExclusiveT": 1792368000000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:36.624Z"
+    },
+    "LINKUSDT-1m-2026-10-19.zip": {
+      "sym": "LINK-USDT",
+      "day": "2026-10-19",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/LINKUSDT/1m/LINKUSDT-1m-2026-10-19.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/LINKUSDT/1m/LINKUSDT-1m-2026-10-19.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:37.589Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 53826,
+      "sha256": "5bef8e52946d9f088cfc55684fe08649b383d7fd2fa821dea0e0104667c7542d",
+      "checksumStatus": "verified",
+      "checksumSha256": "985c73acce119bf6a84e1489f99b8d5fa9c009f6184b513de47f234457a3d74f",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792368000000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:37.589Z"
+    },
+    "LTCUSDT-1m-2026-10-18.zip": {
+      "sym": "LTC-USDT",
+      "day": "2026-10-18",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/LTCUSDT/1m/LTCUSDT-1m-2026-10-18.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/LTCUSDT/1m/LTCUSDT-1m-2026-10-18.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:38.541Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 51660,
+      "sha256": "cd90e4a0366b00fbc43864f1660a425731383577ffbecebeb2213b4252796d9a",
+      "checksumStatus": "verified",
+      "checksumSha256": "5c6c7b377094c2e4b58ae45f31051675add387801d88a85589c47f05ef964127",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792281600000,
+        "lastT": 1792367940000,
+        "endExclusiveT": 1792368000000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:38.541Z"
+    },
+    "LTCUSDT-1m-2026-10-19.zip": {
+      "sym": "LTC-USDT",
+      "day": "2026-10-19",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/LTCUSDT/1m/LTCUSDT-1m-2026-10-19.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/LTCUSDT/1m/LTCUSDT-1m-2026-10-19.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:39.478Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 51319,
+      "sha256": "44cd74b963711404d433c60f4c743c78df90dc107d1421848570a6f0933d2c9c",
+      "checksumStatus": "verified",
+      "checksumSha256": "ea05d6d0e5f8459a7537faa6b5af25bb6bd22a80cd2d3d02c9f099c531ca9615",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792368000000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:39.478Z"
+    },
+    "SUIUSDT-1m-2026-10-18.zip": {
+      "sym": "SUI-USDT",
+      "day": "2026-10-18",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/SUIUSDT/1m/SUIUSDT-1m-2026-10-18.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/SUIUSDT/1m/SUIUSDT-1m-2026-10-18.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:40.218Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 57431,
+      "sha256": "0aad81a03614068d554fb8131034c4ded74d0315a3cdaa02b3388d1acf9c4739",
+      "checksumStatus": "verified",
+      "checksumSha256": "3477aae107843dc832872beaf13d32e16b5f0b3e14835272fbf7f2157f57c8f1",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792281600000,
+        "lastT": 1792367940000,
+        "endExclusiveT": 1792368000000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:40.218Z"
+    },
+    "SUIUSDT-1m-2026-10-19.zip": {
+      "sym": "SUI-USDT",
+      "day": "2026-10-19",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/SUIUSDT/1m/SUIUSDT-1m-2026-10-19.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/SUIUSDT/1m/SUIUSDT-1m-2026-10-19.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:41.067Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 57381,
+      "sha256": "64477cd6bb48bf60610e6d32668d0240fd0d682e3751f67634832c1704d058af",
+      "checksumStatus": "verified",
+      "checksumSha256": "4b5a1617630fb0198883dd2ebddb31d3ca0efc22dc8db1f2728a3c6cd0df7876",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792368000000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:41.067Z"
+    },
+    "NEARUSDT-1m-2026-10-18.zip": {
+      "sym": "NEAR-USDT",
+      "day": "2026-10-18",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/NEARUSDT/1m/NEARUSDT-1m-2026-10-18.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/NEARUSDT/1m/NEARUSDT-1m-2026-10-18.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:41.458Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 50446,
+      "sha256": "56e1e45eb2d9a25b6c96c92c193d70371039c76bc04c094120310af52d35736e",
+      "checksumStatus": "verified",
+      "checksumSha256": "6d52626bbf3a6387a5eeb125e9f6417eb6d894cdb16f09b285ad3cc1adeebeba",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792281600000,
+        "lastT": 1792367940000,
+        "endExclusiveT": 1792368000000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:41.458Z"
+    },
+    "NEARUSDT-1m-2026-10-19.zip": {
+      "sym": "NEAR-USDT",
+      "day": "2026-10-19",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/NEARUSDT/1m/NEARUSDT-1m-2026-10-19.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/NEARUSDT/1m/NEARUSDT-1m-2026-10-19.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:41.778Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 50184,
+      "sha256": "1d53bf25e778b3af0f3990e2d79488c6cc47895aef563521732c0cba31c9e749",
+      "checksumStatus": "verified",
+      "checksumSha256": "24d2bc58374f028501083ae014d8be94e13b8f209ee6e3a857659627e713c945",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792368000000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:41.778Z"
+    },
+    "DOTUSDT-1m-2026-10-18.zip": {
+      "sym": "DOT-USDT",
+      "day": "2026-10-18",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/DOTUSDT/1m/DOTUSDT-1m-2026-10-18.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/DOTUSDT/1m/DOTUSDT-1m-2026-10-18.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:42.178Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 55454,
+      "sha256": "361f7a9d5e1dde06c9202a3f4c47798c680a7f180fd547bd1a199e6ed2fa2353",
+      "checksumStatus": "verified",
+      "checksumSha256": "9cfa5ae8848fd6704921384b8ee5f3684f5d372ba7d6fae3ac1dedde84541a0c",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792281600000,
+        "lastT": 1792367940000,
+        "endExclusiveT": 1792368000000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:42.178Z"
+    },
+    "DOTUSDT-1m-2026-10-19.zip": {
+      "sym": "DOT-USDT",
+      "day": "2026-10-19",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/DOTUSDT/1m/DOTUSDT-1m-2026-10-19.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/DOTUSDT/1m/DOTUSDT-1m-2026-10-19.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:42.504Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 56128,
+      "sha256": "41550031a3d9bb30f225ac3d9535156bfcbbacaf06f3de6e99e8560abe5de7b7",
+      "checksumStatus": "verified",
+      "checksumSha256": "1f357618ab86693d805ed9a1effcdafe74f44abc95ec8f47b3c355ae19bb4b9e",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792368000000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:42.504Z"
+    },
+    "ATOMUSDT-1m-2026-10-18.zip": {
+      "sym": "ATOM-USDT",
+      "day": "2026-10-18",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/ATOMUSDT/1m/ATOMUSDT-1m-2026-10-18.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/ATOMUSDT/1m/ATOMUSDT-1m-2026-10-18.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:42.899Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 47226,
+      "sha256": "f94235ddf2e8fdc68a3f88cc7a3ea308b07034c13e2467725f59983b2aad095f",
+      "checksumStatus": "verified",
+      "checksumSha256": "aa5b572aca50d0b4cfc095d2bc881ba050ea494b32689b78ee90871f55f8b1c4",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792281600000,
+        "lastT": 1792367940000,
+        "endExclusiveT": 1792368000000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:42.899Z"
+    },
+    "ATOMUSDT-1m-2026-10-19.zip": {
+      "sym": "ATOM-USDT",
+      "day": "2026-10-19",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/ATOMUSDT/1m/ATOMUSDT-1m-2026-10-19.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/ATOMUSDT/1m/ATOMUSDT-1m-2026-10-19.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:43.423Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 48245,
+      "sha256": "aacf3657facd60ce9ed7a4d92da26e13524d299a539aa0f1cd43e00c0cb8de6e",
+      "checksumStatus": "verified",
+      "checksumSha256": "f3d8f11b0bb299449f6d981e5a74c3b44a264b1e821fc4e0500526a42f268945",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792368000000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:43.423Z"
+    },
+    "APTUSDT-1m-2026-10-18.zip": {
+      "sym": "APT-USDT",
+      "day": "2026-10-18",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/APTUSDT/1m/APTUSDT-1m-2026-10-18.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/APTUSDT/1m/APTUSDT-1m-2026-10-18.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:44.156Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 54214,
+      "sha256": "089f977203397fe5a79cb8eccfb219c9a498f5a1eb8af79fad9e29e31a95c066",
+      "checksumStatus": "verified",
+      "checksumSha256": "008cd4829de4697d710e3d239c0c89872e47b6438da010023bbab21bf3a858cc",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792281600000,
+        "lastT": 1792367940000,
+        "endExclusiveT": 1792368000000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:44.151Z"
+    },
+    "APTUSDT-1m-2026-10-19.zip": {
+      "sym": "APT-USDT",
+      "day": "2026-10-19",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/APTUSDT/1m/APTUSDT-1m-2026-10-19.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/APTUSDT/1m/APTUSDT-1m-2026-10-19.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:44.633Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 54174,
+      "sha256": "feb33775b96c7e3294c82e754fe6c9adfffab5dbc220070af7ee9179e927845c",
+      "checksumStatus": "verified",
+      "checksumSha256": "db328f45aef690cc99141565fde423f2e2cd966705558f32fca9daf5429b2279",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792368000000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:44.633Z"
+    },
+    "BTCUSDT-1m-2026-10-18.zip": {
+      "sym": "BTC-USDT",
+      "day": "2026-10-18",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/BTCUSDT/1m/BTCUSDT-1m-2026-10-18.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/BTCUSDT/1m/BTCUSDT-1m-2026-10-18.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:45.126Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 59759,
+      "sha256": "b2ab88a1e7dde22620a427e6ba745dd98c75ba6448979a7cbe4067df7161d031",
+      "checksumStatus": "verified",
+      "checksumSha256": "aa4fe5d6587ee4c90d7c96ece6766e7e7eff88dbda600d0adce9a6c1f9065cb4",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792281600000,
+        "lastT": 1792367940000,
+        "endExclusiveT": 1792368000000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:45.126Z"
+    },
+    "BTCUSDT-1m-2026-10-19.zip": {
+      "sym": "BTC-USDT",
+      "day": "2026-10-19",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/BTCUSDT/1m/BTCUSDT-1m-2026-10-19.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/BTCUSDT/1m/BTCUSDT-1m-2026-10-19.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:45.966Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 60883,
+      "sha256": "df9be77f675d7bfaa06b4f5849a5f858abb23b5ecaf6d900dd7412c712645402",
+      "checksumStatus": "verified",
+      "checksumSha256": "b56ced10a5131c0f424a1f5858b6fb924e3747b3c8f42a45d279dec030e4a51a",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792368000000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:45.966Z"
+    },
+    "ETHUSDT-1m-2026-10-18.zip": {
+      "sym": "ETH-USDT",
+      "day": "2026-10-18",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/ETHUSDT/1m/ETHUSDT-1m-2026-10-18.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/ETHUSDT/1m/ETHUSDT-1m-2026-10-18.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:46.113Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 62438,
+      "sha256": "81eb72939fa6716dc23a78cdc0c2470e2b3cdc704c61df66236d2908eda83872",
+      "checksumStatus": "verified",
+      "checksumSha256": "7190771b7998264169ea5dcd69fbc9de0da3a1181a5f39a8979a3608863ad00c",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792281600000,
+        "lastT": 1792367940000,
+        "endExclusiveT": 1792368000000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:46.113Z"
+    },
+    "ETHUSDT-1m-2026-10-19.zip": {
+      "sym": "ETH-USDT",
+      "day": "2026-10-19",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/ETHUSDT/1m/ETHUSDT-1m-2026-10-19.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/ETHUSDT/1m/ETHUSDT-1m-2026-10-19.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:46.764Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 62695,
+      "sha256": "11a2169fcd5b813611c63657dfc26eeb0da96428a57cb3bbf6823302a6bff7fd",
+      "checksumStatus": "verified",
+      "checksumSha256": "ab7b07e4f08567c4d70d928a0cfb0f760823fdbe51ba65c891addc5c78f75560",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792368000000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:46.764Z"
+    },
+    "SOLUSDT-1m-2026-10-18.zip": {
+      "sym": "SOL-USDT",
+      "day": "2026-10-18",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/SOLUSDT/1m/SOLUSDT-1m-2026-10-18.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/SOLUSDT/1m/SOLUSDT-1m-2026-10-18.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:47.273Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 56208,
+      "sha256": "03787a48e8578f3ee8fe757909f86ddf47da9310fa92a823239321aa7292c732",
+      "checksumStatus": "verified",
+      "checksumSha256": "d69989559a369e227d1cf421dcc5d8655ddd5fe45571623464817200cda79694",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792281600000,
+        "lastT": 1792367940000,
+        "endExclusiveT": 1792368000000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:47.273Z"
+    },
+    "SOLUSDT-1m-2026-10-19.zip": {
+      "sym": "SOL-USDT",
+      "day": "2026-10-19",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/SOLUSDT/1m/SOLUSDT-1m-2026-10-19.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/SOLUSDT/1m/SOLUSDT-1m-2026-10-19.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:47.393Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 56495,
+      "sha256": "8d9aef3257c2c1ed710c27e104075dd45a4c3ecb9acf2e0fafbdec180e891d43",
+      "checksumStatus": "verified",
+      "checksumSha256": "5093bbe42ce3113c750636b12d662c8b9912118226531931039e58394b0c0f29",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792368000000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:47.393Z"
+    },
+    "BNBUSDT-1m-2026-10-18.zip": {
+      "sym": "BNB-USDT",
+      "day": "2026-10-18",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/BNBUSDT/1m/BNBUSDT-1m-2026-10-18.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/BNBUSDT/1m/BNBUSDT-1m-2026-10-18.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:48.118Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 52819,
+      "sha256": "8bc5079afd18b55838c8fad43ede8fdcc4d8823a274ad19a6b651f07d6baf2e5",
+      "checksumStatus": "verified",
+      "checksumSha256": "ae9f0b239218adcb50bad0afa78ac0b8e1df75bdf44227b925a40dccc449d364",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792281600000,
+        "lastT": 1792367940000,
+        "endExclusiveT": 1792368000000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:48.118Z"
+    },
+    "BNBUSDT-1m-2026-10-19.zip": {
+      "sym": "BNB-USDT",
+      "day": "2026-10-19",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/BNBUSDT/1m/BNBUSDT-1m-2026-10-19.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/BNBUSDT/1m/BNBUSDT-1m-2026-10-19.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:48.052Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 52634,
+      "sha256": "9801f11cfb30cd840c014eb2b7c2686eb453e8bc3644c1f51b8fea701414614b",
+      "checksumStatus": "verified",
+      "checksumSha256": "ac95aa9105d91faef7b33a47bd9108930c35cd857489604e49bb97ef3bfeb6d6",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792368000000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:48.052Z"
+    },
+    "DOGEUSDT-1m-2026-10-18.zip": {
+      "sym": "DOGE-USDT",
+      "day": "2026-10-18",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/DOGEUSDT/1m/DOGEUSDT-1m-2026-10-18.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/DOGEUSDT/1m/DOGEUSDT-1m-2026-10-18.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:49.012Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 55523,
+      "sha256": "011313d365619907d32cf668ccd4f091b21376edadbd70873b9f245cd72b397f",
+      "checksumStatus": "verified",
+      "checksumSha256": "09bcd7925ddbb6c2bd2b34ed59d28e43cdf46003494e7cbde127a16f3d64a0ad",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792281600000,
+        "lastT": 1792367940000,
+        "endExclusiveT": 1792368000000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:49.012Z"
+    },
+    "DOGEUSDT-1m-2026-10-19.zip": {
+      "sym": "DOGE-USDT",
+      "day": "2026-10-19",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/DOGEUSDT/1m/DOGEUSDT-1m-2026-10-19.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/DOGEUSDT/1m/DOGEUSDT-1m-2026-10-19.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:49.453Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 54974,
+      "sha256": "c6076bc4bb05f0099d2090cbf5cf2c26805952f7c7b4d04ccd5970390601efaa",
+      "checksumStatus": "verified",
+      "checksumSha256": "a157ef24f7cd65c76ff2447935aedbebe806c6dd326f3758c303ce4556ac527a",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792368000000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:49.453Z"
+    },
+    "ADAUSDT-1m-2026-10-18.zip": {
+      "sym": "ADA-USDT",
+      "day": "2026-10-18",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/ADAUSDT/1m/ADAUSDT-1m-2026-10-18.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/ADAUSDT/1m/ADAUSDT-1m-2026-10-18.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:49.957Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 48755,
+      "sha256": "89a7c9dd582ab70f5f63215285291061898e1b46437ae114954ede7c0e0238f0",
+      "checksumStatus": "verified",
+      "checksumSha256": "c1e8663b755d6048a83fe91f102474c9ce927093efc184f5582bcf3e6447e4f4",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792281600000,
+        "lastT": 1792367940000,
+        "endExclusiveT": 1792368000000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:49.957Z"
+    },
+    "ADAUSDT-1m-2026-10-19.zip": {
+      "sym": "ADA-USDT",
+      "day": "2026-10-19",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/ADAUSDT/1m/ADAUSDT-1m-2026-10-19.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/ADAUSDT/1m/ADAUSDT-1m-2026-10-19.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:50.392Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 48557,
+      "sha256": "17583fee00310cec464cf9e1253f2439fde60962a60839711b034f39a2d2e54c",
+      "checksumStatus": "verified",
+      "checksumSha256": "e91f2cb291c76337f58de0cdcdfd34070462ecb072abf70704afa412db169399",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792368000000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:50.392Z"
+    },
+    "BCHUSDT-1m-2026-10-18.zip": {
+      "sym": "BCH-USDT",
+      "day": "2026-10-18",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/BCHUSDT/1m/BCHUSDT-1m-2026-10-18.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/BCHUSDT/1m/BCHUSDT-1m-2026-10-18.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:50.895Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 53681,
+      "sha256": "5deab11e83b5401936f3728cf49c9aada6ac955986717eeee36efd2eda6295e8",
+      "checksumStatus": "verified",
+      "checksumSha256": "e14f823e92f9e115bfdb39f4cfa781c1001acb9f4419978e676562c02db43bc5",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792281600000,
+        "lastT": 1792367940000,
+        "endExclusiveT": 1792368000000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:50.895Z"
+    },
+    "BCHUSDT-1m-2026-10-19.zip": {
+      "sym": "BCH-USDT",
+      "day": "2026-10-19",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/BCHUSDT/1m/BCHUSDT-1m-2026-10-19.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/BCHUSDT/1m/BCHUSDT-1m-2026-10-19.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:51.392Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 53638,
+      "sha256": "21439cde7fd26265aefca7856c9871c68a22ec21cc17ef97ddef47981dfc11be",
+      "checksumStatus": "verified",
+      "checksumSha256": "1dc34b3c967b67716192177b13b2719e86d11a22aaf24257f748f00d22619678",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792368000000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:51.392Z"
+    },
+    "TRXUSDT-1m-2026-10-18.zip": {
+      "sym": "TRX-USDT",
+      "day": "2026-10-18",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/TRXUSDT/1m/TRXUSDT-1m-2026-10-18.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/TRXUSDT/1m/TRXUSDT-1m-2026-10-18.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:51.679Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 46328,
+      "sha256": "b49c3074bca740362928fd85700e53a33299f9943e75f530e695c86f908add8a",
+      "checksumStatus": "verified",
+      "checksumSha256": "ea1d4fa5f2d7f19ce0ea99ff67a52a65b9499115547acd32d0398fedaae05ef5",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792281600000,
+        "lastT": 1792367940000,
+        "endExclusiveT": 1792368000000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:51.679Z"
+    },
+    "TRXUSDT-1m-2026-10-19.zip": {
+      "sym": "TRX-USDT",
+      "day": "2026-10-19",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/TRXUSDT/1m/TRXUSDT-1m-2026-10-19.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/TRXUSDT/1m/TRXUSDT-1m-2026-10-19.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:52.200Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 47188,
+      "sha256": "7c8be09ab76c94c908ab5e196abe48b05513611b75ea6e24f93d354ae0672536",
+      "checksumStatus": "verified",
+      "checksumSha256": "42c4f2dfb49878046ddb1fb7197b92d3e28122f0f25f304786455489fab21626",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792368000000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:52.200Z"
+    },
+    "ETCUSDT-1m-2026-10-18.zip": {
+      "sym": "ETC-USDT",
+      "day": "2026-10-18",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/ETCUSDT/1m/ETCUSDT-1m-2026-10-18.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/ETCUSDT/1m/ETCUSDT-1m-2026-10-18.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:52.538Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 49755,
+      "sha256": "3fe0501219f42adf1c4505aa425501e1dd614697566084142c5f90d21daf6dc1",
+      "checksumStatus": "verified",
+      "checksumSha256": "740330fc09cbbb8708050ecda48e27c5c6031417a85e085c3bc0907189a4bc3f",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792281600000,
+        "lastT": 1792367940000,
+        "endExclusiveT": 1792368000000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:52.538Z"
+    },
+    "ETCUSDT-1m-2026-10-19.zip": {
+      "sym": "ETC-USDT",
+      "day": "2026-10-19",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/ETCUSDT/1m/ETCUSDT-1m-2026-10-19.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/ETCUSDT/1m/ETCUSDT-1m-2026-10-19.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:53.053Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 49347,
+      "sha256": "176f7189e78349fff105812843e735b00192b37e13da0fbb4f1cbd5dd24056c7",
+      "checksumStatus": "verified",
+      "checksumSha256": "371c2051080c354f115b640cb0106455d7a42897ca5cf13ae2264ec8eff874ed",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792368000000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:53.053Z"
+    },
+    "OPUSDT-1m-2026-10-18.zip": {
+      "sym": "OP-USDT",
+      "day": "2026-10-18",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/OPUSDT/1m/OPUSDT-1m-2026-10-18.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/OPUSDT/1m/OPUSDT-1m-2026-10-18.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:53.676Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 58969,
+      "sha256": "0ea031653a29954d9c39bda40a55bf7f8ae5c51b26bf1a08950637569d511e54",
+      "checksumStatus": "verified",
+      "checksumSha256": "b9df8d3fbe11c0c7c74ce4d1a6373cea57c2da30cfe1ddeccb5a46e3987a0df5",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792281600000,
+        "lastT": 1792367940000,
+        "endExclusiveT": 1792368000000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:53.676Z"
+    },
+    "OPUSDT-1m-2026-10-19.zip": {
+      "sym": "OP-USDT",
+      "day": "2026-10-19",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/OPUSDT/1m/OPUSDT-1m-2026-10-19.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/OPUSDT/1m/OPUSDT-1m-2026-10-19.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:54.086Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 58855,
+      "sha256": "0c2caa48f5a615b960d59f528d84451b393695c26f7d46d648bd41c9d33a89ea",
+      "checksumStatus": "verified",
+      "checksumSha256": "e2cb6c7d79958ab58751b0c6f2f3ddbe91be99cb37a898c746b107855b7e8754",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792368000000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:54.086Z"
+    },
+    "ARBUSDT-1m-2026-10-18.zip": {
+      "sym": "ARB-USDT",
+      "day": "2026-10-18",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/ARBUSDT/1m/ARBUSDT-1m-2026-10-18.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/ARBUSDT/1m/ARBUSDT-1m-2026-10-18.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:54.815Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 59450,
+      "sha256": "4d8f5ff8ff28b99c310c2cd2ebeb63a747d855e5acc9c2df3a3e0a53f9dcea61",
+      "checksumStatus": "verified",
+      "checksumSha256": "5a0e3b00a1802ace894d8665e999d9d85ad6af971c94887756b06422efabd1db",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792281600000,
+        "lastT": 1792367940000,
+        "endExclusiveT": 1792368000000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:54.815Z"
+    },
+    "ARBUSDT-1m-2026-10-19.zip": {
+      "sym": "ARB-USDT",
+      "day": "2026-10-19",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/ARBUSDT/1m/ARBUSDT-1m-2026-10-19.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/ARBUSDT/1m/ARBUSDT-1m-2026-10-19.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:55.269Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 61478,
+      "sha256": "801016da854d6033d3205ba488f3d6d8cde0d62bb2908f7062529fc348bb7200",
+      "checksumStatus": "verified",
+      "checksumSha256": "b79faf91bdef2364bb981d0c78793f2b68b6ac6b7f631d07c6dee97ff8cbe360",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792368000000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:55.269Z"
+    },
+    "FILUSDT-1m-2026-10-18.zip": {
+      "sym": "FIL-USDT",
+      "day": "2026-10-18",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/FILUSDT/1m/FILUSDT-1m-2026-10-18.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/FILUSDT/1m/FILUSDT-1m-2026-10-18.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:55.515Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 57379,
+      "sha256": "4a77d0b7f1dcfe1105a443732aab93c3755ac5c114d2eca3c2dc8a814bc2e251",
+      "checksumStatus": "verified",
+      "checksumSha256": "28ee72079709edde0fa718d6efba1e7f8717e0e42e8c098778953e8d306bcc1b",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792281600000,
+        "lastT": 1792367940000,
+        "endExclusiveT": 1792368000000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:55.515Z"
+    },
+    "FILUSDT-1m-2026-10-19.zip": {
+      "sym": "FIL-USDT",
+      "day": "2026-10-19",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/FILUSDT/1m/FILUSDT-1m-2026-10-19.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/FILUSDT/1m/FILUSDT-1m-2026-10-19.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:55.996Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 56977,
+      "sha256": "f3faec38da5208b2af32fe9476601b5fa41c066b5bb080d0bcebfe93b3fe2874",
+      "checksumStatus": "verified",
+      "checksumSha256": "488f07c17c96275fb28eeec8d979ddffa97c502f7ff07a7534b9a018a870f8ee",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792368000000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:55.996Z"
+    },
+    "XRPUSDT-1m-2026-10-18.zip": {
+      "sym": "XRP-USDT",
+      "day": "2026-10-18",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/XRPUSDT/1m/XRPUSDT-1m-2026-10-18.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/XRPUSDT/1m/XRPUSDT-1m-2026-10-18.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:56.240Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 56084,
+      "sha256": "04fcb6bd62dce58fcf01e69c3de6233d8a4f01561eb73e56aa72b09eb48154eb",
+      "checksumStatus": "verified",
+      "checksumSha256": "babbaf44db929841bf3535a3f734be6e4d3e7d2b7414dffdb7e038d8f674ca51",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792281600000,
+        "lastT": 1792367940000,
+        "endExclusiveT": 1792368000000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:56.240Z"
+    },
+    "XRPUSDT-1m-2026-10-19.zip": {
+      "sym": "XRP-USDT",
+      "day": "2026-10-19",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/XRPUSDT/1m/XRPUSDT-1m-2026-10-19.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/XRPUSDT/1m/XRPUSDT-1m-2026-10-19.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:57.016Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 55912,
+      "sha256": "cfd228e35c94dae6ebfbd693006147a99bb558cb27f595ae83d83167a5727761",
+      "checksumStatus": "verified",
+      "checksumSha256": "74f56c07840dc7d1c9db546ef89eb48b85920f91c6a36e76bc1342c1ecab77f5",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792368000000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:57.016Z"
+    },
+    "UNIUSDT-1m-2026-10-18.zip": {
+      "sym": "UNI-USDT",
+      "day": "2026-10-18",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/UNIUSDT/1m/UNIUSDT-1m-2026-10-18.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/UNIUSDT/1m/UNIUSDT-1m-2026-10-18.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:57.165Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 47566,
+      "sha256": "fb108f5293b4b5a1d8e73b9292ff0af8f149751581c9b5e3d43092e2ea5c95da",
+      "checksumStatus": "verified",
+      "checksumSha256": "24782ea31a8dac5b54ca212ce22386ab07eeea380836e61b04d4f8c50f9cb53e",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792281600000,
+        "lastT": 1792367940000,
+        "endExclusiveT": 1792368000000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:57.165Z"
+    },
+    "UNIUSDT-1m-2026-10-19.zip": {
+      "sym": "UNI-USDT",
+      "day": "2026-10-19",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/UNIUSDT/1m/UNIUSDT-1m-2026-10-19.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/UNIUSDT/1m/UNIUSDT-1m-2026-10-19.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:57.928Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 47841,
+      "sha256": "f7b1ff99a78916385ed6a5402763ff7fbef595211ef5c9c6fbff66790290a44e",
+      "checksumStatus": "verified",
+      "checksumSha256": "9441e48997372f288d5ab0fa2b6013beb33ef7f76fbb39c638f078c58253eb92",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792368000000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:57.928Z"
+    },
+    "XLMUSDT-1m-2026-10-18.zip": {
+      "sym": "XLM-USDT",
+      "day": "2026-10-18",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/XLMUSDT/1m/XLMUSDT-1m-2026-10-18.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/XLMUSDT/1m/XLMUSDT-1m-2026-10-18.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:58.107Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 51613,
+      "sha256": "483bf3a3bc653c1ce21a8f60667d4aaaa155785678411b3adef77d6e5460f5eb",
+      "checksumStatus": "verified",
+      "checksumSha256": "409910bcba06f6594a337909ad309ae462fb067bf31d549067ff44f4b499c9a0",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792281600000,
+        "lastT": 1792367940000,
+        "endExclusiveT": 1792368000000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:58.107Z"
+    },
+    "XLMUSDT-1m-2026-10-19.zip": {
+      "sym": "XLM-USDT",
+      "day": "2026-10-19",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/XLMUSDT/1m/XLMUSDT-1m-2026-10-19.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/XLMUSDT/1m/XLMUSDT-1m-2026-10-19.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:59.063Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 51722,
+      "sha256": "9a3ee3275822a4d0cca27424e51e9f02053cc6d65d7107e9b890652050f644c5",
+      "checksumStatus": "verified",
+      "checksumSha256": "ee6057b0fabe601cb1a053e1fca33c622ab11fe21fc29f8caa39b9a0efbd0b36",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792368000000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:59.063Z"
+    },
+    "INJUSDT-1m-2026-10-18.zip": {
+      "sym": "INJ-USDT",
+      "day": "2026-10-18",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/INJUSDT/1m/INJUSDT-1m-2026-10-18.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/INJUSDT/1m/INJUSDT-1m-2026-10-18.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:03:59.251Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 53614,
+      "sha256": "fcf27f8ae6758c433b7bd476a2e7987dd381b43906cb47737a600c03cfa079a8",
+      "checksumStatus": "verified",
+      "checksumSha256": "83d7852fca8a7fcaed223ac52849db4414a52d886c1d7046d43eb83fb69d0054",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792281600000,
+        "lastT": 1792367940000,
+        "endExclusiveT": 1792368000000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:03:59.251Z"
+    },
+    "INJUSDT-1m-2026-10-19.zip": {
+      "sym": "INJ-USDT",
+      "day": "2026-10-19",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/INJUSDT/1m/INJUSDT-1m-2026-10-19.zip",
+      "checksumUrl": "https://data.binance.vision/data/futures/um/daily/klines/INJUSDT/1m/INJUSDT-1m-2026-10-19.zip.CHECKSUM",
+      "status": "verified",
+      "attempts": [
+        {
+          "at": "2026-10-21T01:04:00.222Z",
+          "attempt": 1,
+          "status": "verified"
+        }
+      ],
+      "bytes": 53835,
+      "sha256": "7c904c199af9e7813c8882c90f9d8234d77270f947264a7134234c19d83b271e",
+      "checksumStatus": "verified",
+      "checksumSha256": "c1eb9ce56be8e8d67940b5fd68b8b2cc470e4e5d35895bd874827fc0f23df560",
+      "coverage": {
+        "bars": 1440,
+        "firstT": 1792368000000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "verifiedAt": "2026-10-21T01:04:00.222Z"
+    }
+  },
+  "errors": [],
+  "status": "complete",
+  "updatedAt": "2026-10-21T01:04:00.685Z",
+  "feed": {
+    "path": "feed.json",
+    "bytes": 6909717,
+    "sha256": "10384d1b8671504de5367059efe19bb02ebfdc174059520fc37139c977b59855",
+    "symbols": 24,
+    "oneMinuteBars": 69120,
+    "symbolCoverage": {
+      "AVAX-USDT": {
+        "bars": 2880,
+        "firstT": 1792281600000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "LINK-USDT": {
+        "bars": 2880,
+        "firstT": 1792281600000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "LTC-USDT": {
+        "bars": 2880,
+        "firstT": 1792281600000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "SUI-USDT": {
+        "bars": 2880,
+        "firstT": 1792281600000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "NEAR-USDT": {
+        "bars": 2880,
+        "firstT": 1792281600000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "DOT-USDT": {
+        "bars": 2880,
+        "firstT": 1792281600000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "ATOM-USDT": {
+        "bars": 2880,
+        "firstT": 1792281600000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "APT-USDT": {
+        "bars": 2880,
+        "firstT": 1792281600000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "BTC-USDT": {
+        "bars": 2880,
+        "firstT": 1792281600000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "ETH-USDT": {
+        "bars": 2880,
+        "firstT": 1792281600000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "SOL-USDT": {
+        "bars": 2880,
+        "firstT": 1792281600000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "BNB-USDT": {
+        "bars": 2880,
+        "firstT": 1792281600000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "DOGE-USDT": {
+        "bars": 2880,
+        "firstT": 1792281600000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "ADA-USDT": {
+        "bars": 2880,
+        "firstT": 1792281600000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "BCH-USDT": {
+        "bars": 2880,
+        "firstT": 1792281600000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "TRX-USDT": {
+        "bars": 2880,
+        "firstT": 1792281600000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "ETC-USDT": {
+        "bars": 2880,
+        "firstT": 1792281600000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "OP-USDT": {
+        "bars": 2880,
+        "firstT": 1792281600000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "ARB-USDT": {
+        "bars": 2880,
+        "firstT": 1792281600000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "FIL-USDT": {
+        "bars": 2880,
+        "firstT": 1792281600000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "XRP-USDT": {
+        "bars": 2880,
+        "firstT": 1792281600000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "UNI-USDT": {
+        "bars": 2880,
+        "firstT": 1792281600000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "XLM-USDT": {
+        "bars": 2880,
+        "firstT": 1792281600000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      },
+      "INJ-USDT": {
+        "bars": 2880,
+        "firstT": 1792281600000,
+        "lastT": 1792454340000,
+        "endExclusiveT": 1792454400000,
+        "gaps": 0,
+        "duplicates": 0
+      }
+    }
+  }
+}

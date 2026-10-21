@@ -108,3 +108,20 @@ describe("simulateFrom resumes simulate", () => {
     );
   });
 });
+
+
+it("historic legacy resume restores the captured protection and refuses an unproven replacement", () => {
+  const p=PROTECTS["historic-trailing"],cs=walk(7,600),sig=signals(11,600,false);
+  let part: ReturnType<typeof simulateFrom> | undefined;
+  for(let k=2;k<100;k++) {
+    const x=simulateFrom("c",barsFromCandles("X",5,cs.slice(0,k)),sig.slice(0,k),p,{cost:COST});
+    if(x.state.inPos && x.state.exitProtection){part=x;break}
+  }
+  assert.ok(part,"an open historic position is captured");
+  const legacy=structuredClone(part.state);delete legacy.exitPosition;delete legacy.trailPosition;
+  const resumed=simulateFrom("c",barsFromCandles("X",5,cs),sig,p,{cost:COST},legacy);
+  const full=simulate("c",barsFromCandles("X",5,cs),sig,p,{cost:COST});
+  assert.deepEqual([...part.trades,...resumed.trades],full.trades);assert.deepEqual(resumed.open,full.open);
+  delete legacy.exitProtection;
+  assert.throws(()=>simulateFrom("c",barsFromCandles("X",5,cs),sig,p,{cost:COST},legacy),/missing its protection state/);
+});

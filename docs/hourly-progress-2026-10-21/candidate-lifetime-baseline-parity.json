@@ -1,0 +1,12 @@
+{
+  "schema": "cts-candidate-lifetime-baseline-parity-v1",
+  "referenceCommit": "9c037e2bc3d050136e1a8ca4397bb7669b90c00c",
+  "harness": "scripts/perf/candidate-lifetime-bench.ts --small",
+  "completeResultsEqual": true,
+  "differingFields": [],
+  "fullResultStreamSha256": "83198b23fe37899b152593f52c3818c37a3396cebcce621bf5bb9662fc3f6159",
+  "progressSha256": "9b11bef4ae499a18825a4df9d13223436fe392839fbdbd07240611de0404a59a",
+  "settled": 42,
+  "feed": 48,
+  "reason": "Earlier 946e snapshot had different disabled option metadata. The original 9c037e2 source and current source were rerun with the identical fully frozen harness; every output field, row and option matches."
+}

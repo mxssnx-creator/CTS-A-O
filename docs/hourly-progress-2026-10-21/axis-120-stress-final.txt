@@ -1,0 +1,2 @@
+[core-v2] compute #1 done in 7252 ms · sim PF 1.42 n 351 · loop max 180 ms (worst slice of the last 60 s 150 ms in Base, 5 over 40 ms)
+{"out":"/workspace/scratch/e92abb680845/CTS-A-O/runs/micro-axis-stress-final","elapsedMs":14624.780688,"maxRssMb":658.0078125,"maxCompute":1,"kicks":100,"nativeChecks":130,"computes":2,"symbols":120,"progress":{"intervalMs":100,"checks":145,"lagMs":2.411799000001338,"maxLagMs":124.50973700000009,"missed":1,"error":null},"failure":null}

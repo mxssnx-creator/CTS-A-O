@@ -5,7 +5,7 @@
   "symbolOffset": 0,
   "cycleMs": 250,
   "tickMs": 100,
-  "live": { "notionalUsd": 1, "maxNotionalUsd": 200, "syncMs": 15000, "maxPositions": 0, "leverage": "max", "positionSize": "min" },
+  "live": { "notionalUsd": 1, "maxNotionalUsd": 0, "syncMs": 15000, "maxPositions": 100, "leverage": "max", "positionSize": "min" },
   "sizing": { "mode": "minQty", "pct": 0.02 },
   "toggles": { "normal": true, "trailing": true, "block": true, "blockActive": false, "dca": true, "dcaActive": true, "axis": true },
   "disabledKinds": [],

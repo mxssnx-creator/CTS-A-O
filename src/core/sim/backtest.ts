@@ -321,6 +321,10 @@ function simCore(
       throw new RangeError("simulateFrom: the series is shorter than the stored state");
     ({ inPos, side, entryI, entry, stop, target, peak, trailOn, mfe, mae, nextAllowed, q, dist, trail, exitProtection, exitPosition, trailPosition } =
       structuredClone(from));
+    if (inPos && q.exitType === "historic" && q.exitSet) {
+      if (!exitProtection) throw new Error("simulateFrom: historic position is missing its protection state");
+      exitPosition ??= { side, entry, stop, target, peak, trailOn, trail, trailDist: dist, exitProtection };
+    }
     if (inPos && trail > 0 && !exitPosition && !trailPosition)
       trailPosition = { cfg, sym, side, entryT: t[entryI], entryI, entry, stop, target, peak, trailOn, mtm: 0 };
   }

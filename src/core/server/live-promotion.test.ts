@@ -324,7 +324,7 @@ describe("native live boundary preserves held protection without unproven growth
     const { rt } = fakeRt(new CoreDb());
     (rt as unknown as { engineProof: () => unknown }).engineProof = () => ({ proven: new Set([CFG]), judged: 1, n: 25, minPf: 1.2 });
     rt.paper.positions = [paperLane(CFG, "S0-USDT", 1, 10)];
-    const ex = new SimExchange(rng(17));
+    const ex = new SimExchange(rng(17)).withEquity(100);
     await stepLive(rt as never, [], 1, ex as unknown as ExchangeClient);
     const before = (await ex.book()).positions.filter((p) => p.qty > 0).reduce((q, p) => q + p.qty, 0);
     assert.ok(before > 0);

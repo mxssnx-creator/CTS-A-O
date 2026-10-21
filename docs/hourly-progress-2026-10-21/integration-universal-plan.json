@@ -1,6 +1,6 @@
 {
-  "schema": "cts-universal-integration-plan-v5",
-  "sourceSha256": "065be5bb20cad6ab08b6a7021302273da59666f91d12f0ef7aa69238a6874fbc",
+  "schema": "cts-universal-integration-plan-v7",
+  "sourceSha256": "846d9aa1c91c37233a660ab9655247a3684242f2c745ad032ab238cdc8a6ec6f",
   "scope": {
     "registeredSpecs": 1720,
     "families": 19,
@@ -63,5 +63,5 @@
   ],
   "classification": "Correctness/causality and synthetic gate audit, not proof of hourly market profitability or a full Cartesian financial portfolio replay",
   "preserve": "Keep failed/partial receipts and all existing negative financial windows. Never change recorded costs/returns/gates to manufacture positive PF.",
-  "revisionReason": "Integrate main PR 181 without losing PR 182/185 or Micro fixes: independent full Base cells plus cell proofs, capped Wide cells, atomic full/incremental publication and separate long Signal histories during light rebuilds. Preserve v1/v2 receipts and all financial losses. Repeat the same preregistered native correctness cuts."
+  "revisionReason": "Preserve v6 and all failed evidence. Explicit Infinity in a historical SQL multiplier must remain unknown rather than turn a loss into zero and falsely qualify Last-N. Repeat unchanged registry, identity and causal audits at this finite-positive-only source."
 }

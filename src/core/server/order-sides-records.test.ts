@@ -46,6 +46,7 @@ import type { Candle, Trade } from "../domain/types.ts";
 import { makeTape } from "../sim/walkforward.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import { checkSettings } from "../settings-check.ts";
+import { sigActiveKey } from "../signals.ts";
 import { fakeRt, SimExchange } from "../test-support.ts";
 
 process.env.CTS_CORE_LIVE = "1";
@@ -461,7 +462,7 @@ async function closedOutside(side: 1 | -1, oldStop: number, newStop: number | nu
  * minutes are `bars`. `side` is the side of the position: 1 LONG, -1 SHORT. With `tp` the position's take-profit filled
  * instead of its stop (the stop stays on the record, untouched, and the history row is the take-profit's fill).
  */
-async function closedOnRelaunch(side: 1 | -1, ownStop: number, bars: Array<Pick<Candle, "h" | "l">>, tp: number | null = null) {
+async function closedOnRelaunch(side: 1 | -1, ownStop: number, bars: Array<Pick<Candle, "h" | "l">>, tp: number | null = null, receipt: Record<string,unknown> = {}) {
   resetLiveBackoff();
   const ex = new SimExchange();
   const { rt } = fakeRt(new CoreDb(":memory:"));
@@ -509,10 +510,12 @@ async function closedOnRelaunch(side: 1 | -1, ownStop: number, bars: Array<Pick<
     executedQty: 1,
     clientOrderId: tp === null ? `${tag}Sa2` : `${tag}Ta3`,
     updateTime: at - H,
+    ...receipt,
   });
   const candles: Candle[] = bars.map((b, i) => ({ t: at - (30 - i) * 60_000, o: 10, h: b.h, l: b.l, c: 10, v: 1 }));
   Object.assign(rt, { candles: new Map([["S0-USDT", CandleSeries.fromCandles(candles)]]) });
   await stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+  if (receipt.status === "PARTIALLY_FILLED") assert.equal(ex.log.length,0,"ambiguous partial ownership cannot adopt or alter the side");
   const flats = rt.db.all<{ px: number; msg: string | null }>(
     "SELECT px, msg FROM live_orders WHERE cfg = ? AND kind = 'F' ORDER BY at, rowid",
     `control|${key}`,
@@ -521,6 +524,9 @@ async function closedOnRelaunch(side: 1 | -1, ownStop: number, bars: Array<Pick<
 }
 
 describe("the stop a flat marker is priced at: a new position's own stop only (live.server.ts stepLive)", { timeout: 60_000 }, () => {
+  for (const side of [1,-1] as const) it(`relaunch side ${side}: a partial stop receipt never erases the whole owned position`,async()=>{
+    assert.equal(await closedOnRelaunch(side,side===1?9.5:10.5,[],null,{status:"PARTIALLY_FILLED",executedQty:.4}),undefined);
+  });
   it("(e) LONG: a new position with no stop row of its own is not closed at the earlier position's stop 9.7 (plan item 15)", async () => {
     const m = await closedOutside(1, 9.7, null, [{ h: 10.1, l: 9.4 }]);
     assert.ok(!String(m.msg).includes("(stop"), `booked at a stop it never had: "${m.msg}" at ${m.px}`);

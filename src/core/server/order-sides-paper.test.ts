@@ -9,7 +9,8 @@ import assert from "node:assert/strict";
 import { CoreRuntime, crossedExit, sanitizeWf, tickTrail, type TickTrail } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
 import { SIGNAL_SOURCES, signalSettings } from "../signal-config.ts";
-import { fakeRt, pinSyntheticEnd, trackRuntimes } from "../test-support.ts";
+import { fakeRt, pinSyntheticEnd, trackRuntimes, runtimeFixtureGrid } from "../test-support.ts";
+import { PREVIOUS_DEFAULT_FOCUS_17OCT } from "../config.ts";
 import { coordSettings, DEFAULT_COORD, makeTape, type ConfigTape, type CoordSettings } from "../sim/walkforward.ts";
 import { simulate } from "../sim/backtest.ts";
 import { S2Coord } from "../sim/s2coord.ts";
@@ -99,7 +100,8 @@ const small = {
   refineTop: 4,
   evalTop: 8,
   cycleMs: 60_000,
-  grid: { short: false as const },
+  pinned: [],
+  grid: { ...runtimeFixtureGrid(), short: false as const },
   gates: { minPf: 1.0, minTrades: 3, maxDdr: 0 },
   signals: signalSettings({
     exits: "pct",

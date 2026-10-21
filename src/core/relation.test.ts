@@ -336,7 +336,7 @@ describe("relationOf: one window, own lanes against the paper book's own record 
       "CREATE TABLE paper_book_trades (cfg TEXT, sym TEXT, side INTEGER, entry_t INTEGER, exit_t INTEGER, r REAL, vol REAL, reason TEXT, held_at INTEGER, held_px REAL, entry REAL, exit REAL, mult REAL);" +
         "CREATE TABLE paper_trades (cfg TEXT, sym TEXT, side INTEGER, entry_t INTEGER, entry REAL, exit REAL);" +
         "INSERT INTO paper_book_trades VALUES ('c1','A-USDT',1,1000,2000,0.045,1.5,'tp',NULL,NULL,100,103,1.5);" +
-        // an older row: no mult written, the unit is vol
+        // an older row: no explicit external multiplier, so its unit basis stays unknown
         "INSERT INTO paper_book_trades VALUES ('c2','B-USDT',-1,1000,2000,0.04,2,'sl',NULL,NULL,100,98,NULL);" +
         // an explicitly unscaled row
         "INSERT INTO paper_book_trades VALUES ('c3','C-USDT',1,1000,2000,0.01,1,'tp',NULL,NULL,100,101,1);",
@@ -345,6 +345,12 @@ describe("relationOf: one window, own lanes against the paper book's own record 
     const r = Object.fromEntries(rows.map((x) => [x.cfg, x.r]));
     assert.ok(Math.abs(r.c1! - 0.03) < 1e-12, String(r.c1));
     assert.equal(r.c2, null, "volume without external-multiplier evidence cannot recover a unit return");
+    for (const mult of [Infinity,-Infinity,NaN,0]) {
+      db.prepare("UPDATE paper_book_trades SET mult = ? WHERE cfg = 'c1'").run(mult);
+      const invalid = db.prepare(relationSystemSql(new Set(["held_px","entry","exit","mult"]))).all(0) as Array<{cfg:string;r:number|null}>;
+      assert.equal(invalid.find(x=>x.cfg==='c1')!.r,null,`invalid external multiplier ${mult} remains unknown`);
+    }
+    db.prepare("UPDATE paper_book_trades SET mult = 4 WHERE cfg = 'c1'").run();
     assert.ok(Math.abs(r.c3! - 0.01) < 1e-12, String(r.c3));
     db.exec("ALTER TABLE paper_book_trades ADD COLUMN unit_r REAL; UPDATE paper_book_trades SET unit_r=0.007 WHERE cfg='c1'");
     const stored = db.prepare(relationSystemSql()).all(0) as Array<{cfg:string; r:number|null}>;

@@ -1,0 +1,562 @@
+TAP version 13
+# Subtest: engine proof
+    # Subtest: a config is proven by its own last N closes at PF ≥ the floor; fewer than N is not proven (hand-computed)
+    ok 1 - a config is proven by its own last N closes at PF ≥ the floor; fewer than N is not proven (hand-computed)
+      ---
+      duration_ms: 4.708451
+      type: 'test'
+      ...
+    # Subtest: the exchange record decides once it holds N closes; the paper book's until then
+    ok 2 - the exchange record decides once it holds N closes; the paper book's until then
+      ---
+      duration_ms: 0.589017
+      type: 'test'
+      ...
+    # Subtest: engineProven is lastNProven on engine configs: the result before the generalization, bit for bit (random records)
+    ok 3 - engineProven is lastNProven on engine configs: the result before the generalization, bit for bit (random records)
+      ---
+      duration_ms: 11.294369
+      type: 'test'
+      ...
+    # Subtest: the live filter sends an engine lane only when proven; signals are not judged; off = unchanged
+    ok 4 - the live filter sends an engine lane only when proven; signals are not judged; off = unchanged
+      ---
+      duration_ms: 2.512566
+      type: 'test'
+      ...
+    # Subtest: the live step: an exact losing owned engine record opens nothing, a proven engine lane and signal do
+    ok 5 - the live step: an exact losing owned engine record opens nothing, a proven engine lane and signal do
+      ---
+      duration_ms: 70.504378
+      type: 'test'
+      ...
+    # Subtest: an unproven engine lane on a key a signal holds adds no volume and does not keep the position after the signal exits
+    ok 6 - an unproven engine lane on a key a signal holds adds no volume and does not keep the position after the signal exits
+      ---
+      duration_ms: 37.096182
+      type: 'test'
+      ...
+    # Subtest: the runtime reads the paper book's closes ('dropped' marks left out) and the setting is validated
+    ok 7 - the runtime reads the paper book's closes ('dropped' marks left out) and the setting is validated
+      ---
+      duration_ms: 45.657596
+      type: 'test'
+      ...
+    # Subtest: an unchanged book costs no query (every live control step asks); a new close re-reads it from the partial index
+    ok 8 - an unchanged book costs no query (every live control step asks); a new close re-reads it from the partial index
+      ---
+      duration_ms: 43.851313
+      type: 'test'
+      ...
+    # Subtest: judged at one unit: a Block-raised paper close weighs its edge, not its multiple (as the exchange record does)
+    ok 9 - judged at one unit: a Block-raised paper close weighs its edge, not its multiple (as the exchange record does)
+      ---
+      duration_ms: 64.008772
+      type: 'test'
+      ...
+    # Subtest: a database of an older build gains paper_book_trades.mult and the unit index on open
+    ok 10 - a database of an older build gains paper_book_trades.mult and the unit index on open
+      ---
+      duration_ms: 18.223051
+      type: 'test'
+      ...
+    1..10
+ok 1 - engine proof
+  ---
+  duration_ms: 304.42419
+  type: 'suite'
+  ...
+# Subtest: signal proof
+    # Subtest: a unit (indicator × side) is proven by its last N closes at PF ≥ the floor spanning ≥ minEvents events (hand-computed)
+    ok 1 - a unit (indicator × side) is proven by its last N closes at PF ≥ the floor spanning ≥ minEvents events (hand-computed)
+      ---
+      duration_ms: 1.516926
+      type: 'test'
+      ...
+    # Subtest: the exchange record decides once the unit holds N closes; its events are the lanes' paper entry bars
+    ok 2 - the exchange record decides once the unit holds N closes; its events are the lanes' paper entry bars
+      ---
+      duration_ms: 0.603751
+      type: 'test'
+      ...
+    # Subtest: the live filter sends a signal lane only when its unit is proven; engine configs are not judged; off = unchanged
+    ok 3 - the live filter sends a signal lane only when its unit is proven; engine configs are not judged; off = unchanged
+      ---
+      duration_ms: 0.69957
+      type: 'test'
+      ...
+    # Subtest: the live step: an unproven unit opens nothing, a proven one does, a held lane is kept; the funnel names the proof
+    ok 4 - the live step: an unproven unit opens nothing, a proven one does, a held lane is kept; the funnel names the proof
+      ---
+      duration_ms: 23.636416
+      type: 'test'
+      ...
+    # Subtest: the runtime: the paper book ('dropped' left out) until the unit's exchange record holds N; memoized; an event on a change
+    ok 5 - the runtime: the paper book ('dropped' left out) until the unit's exchange record holds N; memoized; an event on a change
+      ---
+      duration_ms: 18.275893
+      type: 'test'
+      ...
+    1..5
+ok 2 - signal proof
+  ---
+  duration_ms: 45.418747
+  type: 'suite'
+  ...
+# Subtest: ledger closes: the P&L sign on each side (statistics.ts liveLedger)
+    # Subtest: (a) LONG: a gain to 105 books +5 % of the notional, a loss to 95 books -5 %, before fees
+    ok 1 - (a) LONG: a gain to 105 books +5 % of the notional, a loss to 95 books -5 %, before fees
+      ---
+      duration_ms: 2.655971
+      type: 'test'
+      ...
+    # Subtest: (a) LONG: measured commissions (0.1 open, 0.2 close) lower the same gain by 0.3 % of the notional
+    ok 2 - (a) LONG: measured commissions (0.1 open, 0.2 close) lower the same gain by 0.3 % of the notional
+      ---
+      duration_ms: 0.351676
+      type: 'test'
+      ...
+    # Subtest: (a) LONG: the model share (0.1 % per side on each fill's notional) is charged with the same sign
+    ok 3 - (a) LONG: the model share (0.1 % per side on each fill's notional) is charged with the same sign
+      ---
+      duration_ms: 1.165014
+      type: 'test'
+      ...
+    # Subtest: (a) SHORT: a gain to 95 books +5 % of the notional, a loss to 105 books -5 %, before fees
+    ok 4 - (a) SHORT: a gain to 95 books +5 % of the notional, a loss to 105 books -5 %, before fees
+      ---
+      duration_ms: 0.469474
+      type: 'test'
+      ...
+    # Subtest: (a) SHORT: measured commissions (0.1 open, 0.2 close) lower the same gain by 0.3 % of the notional
+    ok 5 - (a) SHORT: measured commissions (0.1 open, 0.2 close) lower the same gain by 0.3 % of the notional
+      ---
+      duration_ms: 0.229243
+      type: 'test'
+      ...
+    # Subtest: (a) SHORT: the model share (0.1 % per side on each fill's notional) is charged with the same sign
+    ok 6 - (a) SHORT: the model share (0.1 % per side on each fill's notional) is charged with the same sign
+      ---
+      duration_ms: 0.187543
+      type: 'test'
+      ...
+    1..6
+ok 3 - ledger closes: the P&L sign on each side (statistics.ts liveLedger)
+  ---
+  duration_ms: 7.641429
+  type: 'suite'
+  ...
+# Subtest: flat markers: the reason each one books (statistics.ts liveLedger)
+    # Subtest: (b) LONG: "flat on the exchange (unverified 95)" is not an own stop-out: it books "flat", out of PF (plan item 14)
+    ok 1 - (b) LONG: "flat on the exchange (unverified 95)" is not an own stop-out: it books "flat", out of PF (plan item 14)
+      ---
+      duration_ms: 4.129305
+      type: 'test'
+      ...
+    # Subtest: (b) LONG: "(stop X)", "(target X)" and "(hand X)" book sl, tp and hand
+    ok 2 - (b) LONG: "(stop X)", "(target X)" and "(hand X)" book sl, tp and hand
+      ---
+      duration_ms: 2.069461
+      type: 'test'
+      ...
+    # Subtest: (c) LONG: "(liq X)" is an own loss counted like a stop: reason sl, inside the PF
+    ok 3 - (c) LONG: "(liq X)" is an own loss counted like a stop: reason sl, inside the PF
+      ---
+      duration_ms: 0.720593
+      type: 'test'
+      ...
+    # Subtest: (b) SHORT: "flat on the exchange (unverified 105)" is not an own stop-out: it books "flat", out of PF (plan item 14)
+    ok 4 - (b) SHORT: "flat on the exchange (unverified 105)" is not an own stop-out: it books "flat", out of PF (plan item 14)
+      ---
+      duration_ms: 1.092574
+      type: 'test'
+      ...
+    # Subtest: (b) SHORT: "(stop X)", "(target X)" and "(hand X)" book sl, tp and hand
+    ok 5 - (b) SHORT: "(stop X)", "(target X)" and "(hand X)" book sl, tp and hand
+      ---
+      duration_ms: 0.266336
+      type: 'test'
+      ...
+    # Subtest: (c) SHORT: "(liq X)" is an own loss counted like a stop: reason sl, inside the PF
+    ok 6 - (c) SHORT: "(liq X)" is an own loss counted like a stop: reason sl, inside the PF
+      ---
+      duration_ms: 0.144794
+      type: 'test'
+      ...
+    1..6
+ok 4 - flat markers: the reason each one books (statistics.ts liveLedger)
+  ---
+  duration_ms: 9.429886
+  type: 'suite'
+  ...
+# Subtest: live validation per side (live-record.ts liveRecords, live-validation.ts liveGate)
+    # Subtest: (d) plan item 13: with live.sideGates on, the record keeps a config's LONG and SHORT closes apart (one record per config and side)
+    ok 1 - (d) plan item 13: with live.sideGates on, the record keeps a config's LONG and SHORT closes apart (one record per config and side)
+      ---
+      duration_ms: 1.630668
+      type: 'test'
+      ...
+    # Subtest: (d) plan item 13: with live.sideGates on, a SHORT is not refused by the LONG closes of its config (its own 10 closes all win; the pooled 10 lose)
+    ok 2 - (d) plan item 13: with live.sideGates on, a SHORT is not refused by the LONG closes of its config (its own 10 closes all win; the pooled 10 lose)
+      ---
+      duration_ms: 1.012241
+      type: 'test'
+      ...
+    # Subtest: (d) plan item 13: with live.sideGates on, a SHORT is refused by its own 10 losing closes though the LONG closes of its config win
+    ok 3 - (d) plan item 13: with live.sideGates on, a SHORT is refused by its own 10 losing closes though the LONG closes of its config win
+      ---
+      duration_ms: 0.236062
+      type: 'test'
+      ...
+    # Subtest: (d) a LONG is judged on its own closes both ways (pass: the pooled record gives the same verdict here)
+    ok 4 - (d) a LONG is judged on its own closes both ways (pass: the pooled record gives the same verdict here)
+      ---
+      duration_ms: 0.628922
+      type: 'test'
+      ...
+    # Subtest: (d) control: with live.sideGates off the record stays one pooled record per config, and a SHORT gets the pooled verdict (pass)
+    ok 5 - (d) control: with live.sideGates off the record stays one pooled record per config, and a SHORT gets the pooled verdict (pass)
+      ---
+      duration_ms: 0.9533
+      type: 'test'
+      ...
+    # Subtest: (d) live.sideGates: a side is +1 or -1 only, so a close with side 0, null or 2 is in neither record
+    ok 6 - (d) live.sideGates: a side is +1 or -1 only, so a close with side 0, null or 2 is in neither record
+      ---
+      duration_ms: 0.364808
+      type: 'test'
+      ...
+    1..6
+ok 5 - live validation per side (live-record.ts liveRecords, live-validation.ts liveGate)
+  ---
+  duration_ms: 5.318491
+  type: 'suite'
+  ...
+# Subtest: live.sideGates: the engine proof, the simulated fallback and the settings path (d)
+    # Subtest: (d) plan item 13: with live.sideGates on, the engine proof keys each side: the LONG is proven, the SHORT is not (its own last 3 lose)
+    ok 1 - (d) plan item 13: with live.sideGates on, the engine proof keys each side: the LONG is proven, the SHORT is not (its own last 3 lose)
+      ---
+      duration_ms: 1.435986
+      type: 'test'
+      ...
+    # Subtest: (d) control: with live.sideGates off the engine proof judges the config as one, on the pooled last 3 (pass)
+    ok 2 - (d) control: with live.sideGates off the engine proof judges the config as one, on the pooled last 3 (pass)
+      ---
+      duration_ms: 0.401945
+      type: 'test'
+      ...
+    # Subtest: (d) with live.sideGates on, a side's simulated closes judge it alone: the SHORT's last 3 lose, the LONG's win (id kept)
+    ok 3 - (d) with live.sideGates on, a side's simulated closes judge it alone: the SHORT's last 3 lose, the LONG's win (id kept)
+      ---
+      duration_ms: 0.490716
+      type: 'test'
+      ...
+    # Subtest: (d) control: the pooled simulated tape judges the config as one, on its last 3 (pass)
+    ok 4 - (d) control: the pooled simulated tape judges the config as one, on its last 3 (pass)
+      ---
+      duration_ms: 0.267871
+      type: 'test'
+      ...
+    # Subtest: (d) sideTapeOf builds a side once per memo; without one each call builds its own copy
+    ok 5 - (d) sideTapeOf builds a side once per memo; without one each call builds its own copy
+      ---
+      duration_ms: 0.364275
+      type: 'test'
+      ...
+    # Subtest: (d) live.sideGates is a boolean: true and false are accepted, anything else is refused by the settings path
+    ok 6 - (d) live.sideGates is a boolean: true and false are accepted, anything else is refused by the settings path
+      ---
+      duration_ms: 4.729478
+      type: 'test'
+      ...
+    # Subtest: (d) control: DEFAULT_SETTINGS leaves live.sideGates unset: the default is one pooled record per config, holding both sides' closes (pass)
+    ok 7 - (d) control: DEFAULT_SETTINGS leaves live.sideGates unset: the default is one pooled record per config, holding both sides' closes (pass)
+      ---
+      duration_ms: 0.486601
+      type: 'test'
+      ...
+    # Subtest: (d) live.sideGates: a live group's gate key carries its side (group|1, group|-1); unset, the key is the group alone (the pooled key)
+    ok 8 - (d) live.sideGates: a live group's gate key carries its side (group|1, group|-1); unset, the key is the group alone (the pooled key)
+      ---
+      duration_ms: 0.341509
+      type: 'test'
+      ...
+    # Subtest: (d) live.sideGates: the sides a live count runs over are LONG and SHORT apart, keyed group|1 and group|-1 (LV_SIDES_APART)
+    ok 9 - (d) live.sideGates: the sides a live count runs over are LONG and SHORT apart, keyed group|1 and group|-1 (LV_SIDES_APART)
+      ---
+      duration_ms: 0.217806
+      type: 'test'
+      ...
+    # Subtest: (d) live.sideGates: an entry is judged on its own side (+1 or -1); an entry with no side of its own has none (lvSideOfEntry)
+    ok 10 - (d) live.sideGates: an entry is judged on its own side (+1 or -1); an entry with no side of its own has none (lvSideOfEntry)
+      ---
+      duration_ms: 0.218964
+      type: 'test'
+      ...
+    # Subtest: (d) control: with live.sideGates unset the count runs over the pooled side (keyed by the group alone) and no entry has a side (pass)
+    ok 11 - (d) control: with live.sideGates unset the count runs over the pooled side (keyed by the group alone) and no entry has a side (pass)
+      ---
+      duration_ms: 0.33189
+      type: 'test'
+      ...
+    # Subtest: (d) live.sideGates: a group's last N are judged per side: the SHORT group is refused by its own losses while its pooled last N pass (the helpers the runtime's groupsAt composes; groupsAt itself is not run)
+    ok 12 - (d) live.sideGates: a group's last N are judged per side: the SHORT group is refused by its own losses while its pooled last N pass (the helpers the runtime's groupsAt composes; groupsAt itself is not run)
+      ---
+      duration_ms: 2.72084
+      type: 'test'
+      ...
+    # Subtest: (d) live.sideGates: a proven key is its config and its side (recordKeyOf read back by splitRecordKey); a config id with a '|' is split at its last '|'
+    ok 13 - (d) live.sideGates: a proven key is its config and its side (recordKeyOf read back by splitRecordKey); a config id with a '|' is split at its last '|'
+      ---
+      duration_ms: 0.443603
+      type: 'test'
+      ...
+    1..13
+ok 6 - live.sideGates: the engine proof, the simulated fallback and the settings path (d)
+  ---
+  duration_ms: 13.866141
+  type: 'suite'
+  ...
+# Subtest: live.sideGates: a lane or an entry with no side of its own (g)
+    # Subtest: (g) live.sideGates: a side-0 engine lane is judged on either side, sendable when its LONG or its SHORT is proven (intended: a lane with no side is proven on either side, as signalOk does)
+    ok 1 - (g) live.sideGates: a side-0 engine lane is judged on either side, sendable when its LONG or its SHORT is proven (intended: a lane with no side is proven on either side, as signalOk does)
+      ---
+      duration_ms: 1.380058
+      type: 'test'
+      ...
+    # Subtest: (g) live.sideGates: a LONG or a SHORT lane is judged on its own side only, so the side-0 rule does not widen it (a SHORT with only the LONG proven is refused)
+    ok 2 - (g) live.sideGates: a LONG or a SHORT lane is judged on its own side only, so the side-0 rule does not widen it (a SHORT with only the LONG proven is refused)
+      ---
+      duration_ms: 0.322927
+      type: 'test'
+      ...
+    # Subtest: (g) control: with live.sideGates off the side-0 lane takes the pooled proof of its config (pass)
+    ok 3 - (g) control: with live.sideGates off the side-0 lane takes the pooled proof of its config (pass)
+      ---
+      duration_ms: 0.335056
+      type: 'test'
+      ...
+    # Subtest: (g) live.sideGates: an entry with no side of its own is not judged and is admitted, as no side's group gate applies to it (the entry gate's composition: lvOf's unjudged gate, the group key without a side; the runtime closure itself is not run)
+    ok 4 - (g) live.sideGates: an entry with no side of its own is not judged and is admitted, as no side's group gate applies to it (the entry gate's composition: lvOf's unjudged gate, the group key without a side; the runtime closure itself is not run)
+      ---
+      duration_ms: 0.281186
+      type: 'test'
+      ...
+    # Subtest: (g) live.sideGates: a signal lane with side 0 is judged on either side, so its LONG unit proven makes it sendable; ungated the same lane is a SHORT and is held back (the readers differ on purpose)
+    ok 5 - (g) live.sideGates: a signal lane with side 0 is judged on either side, so its LONG unit proven makes it sendable; ungated the same lane is a SHORT and is held back (the readers differ on purpose)
+      ---
+      duration_ms: 0.905397
+      type: 'test'
+      ...
+    # Subtest: (g) live.sideGates: a side-0 signal lane is valid when its LONG or its SHORT is active on its symbol, as signalOk judges it; a LONG or a SHORT lane needs its own
+    ok 6 - (g) live.sideGates: a side-0 signal lane is valid when its LONG or its SHORT is active on its symbol, as signalOk judges it; a LONG or a SHORT lane needs its own
+      ---
+      duration_ms: 0.746988
+      type: 'test'
+      ...
+    # Subtest: (g) control: ungated, an invalid side cannot normalize into an active SHORT or LONG
+    ok 7 - (g) control: ungated, an invalid side cannot normalize into an active SHORT or LONG
+      ---
+      duration_ms: 0.294265
+      type: 'test'
+      ...
+    # Subtest: (g) live.sideGates: a close whose side is not +1 or -1 is in no signal unit (signalUnitOf); ungated, a side-2 close keeps the LONG unit it always had
+    ok 8 - (g) live.sideGates: a close whose side is not +1 or -1 is in no signal unit (signalUnitOf); ungated, a side-2 close keeps the LONG unit it always had
+      ---
+      duration_ms: 0.288534
+      type: 'test'
+      ...
+    # Subtest: (g) live.sideGates: the signal proof reads a side-2 close as no side (its unit is not judged); ungated the same close proves the LONG unit
+    ok 9 - (g) live.sideGates: the signal proof reads a side-2 close as no side (its unit is not judged); ungated the same close proves the LONG unit
+      ---
+      duration_ms: 1.059489
+      type: 'test'
+      ...
+    1..9
+ok 7 - live.sideGates: a lane or an entry with no side of its own (g)
+  ---
+  duration_ms: 6.431247
+  type: 'suite'
+  ...
+# Subtest: the stop a flat marker is priced at: a new position's own stop only (live.server.ts stepLive)
+    # Subtest: relaunch side 1: a partial stop receipt never erases the whole owned position
+    ok 1 - relaunch side 1: a partial stop receipt never erases the whole owned position
+      ---
+      duration_ms: 34.73126
+      type: 'test'
+      ...
+    # Subtest: relaunch side -1: a partial stop receipt never erases the whole owned position
+    ok 2 - relaunch side -1: a partial stop receipt never erases the whole owned position
+      ---
+      duration_ms: 6.061441
+      type: 'test'
+      ...
+    # Subtest: (e) LONG: a new position with no stop row of its own is not closed at the earlier position's stop 9.7 (plan item 15)
+    ok 3 - (e) LONG: a new position with no stop row of its own is not closed at the earlier position's stop 9.7 (plan item 15)
+      ---
+      duration_ms: 10.603164
+      type: 'test'
+      ...
+    # Subtest: (e) SHORT: a new position with no stop row of its own is not closed at the earlier stop 10.3 (plan item 15)
+    ok 4 - (e) SHORT: a new position with no stop row of its own is not closed at the earlier stop 10.3 (plan item 15)
+      ---
+      duration_ms: 5.728937
+      type: 'test'
+      ...
+    # Subtest: (e) LONG control: the position's own stop 9.5 is the one priced (pass)
+    ok 5 - (e) LONG control: the position's own stop 9.5 is the one priced (pass)
+      ---
+      duration_ms: 9.029207
+      type: 'test'
+      ...
+    # Subtest: (e) SHORT control: the position's own stop 10.1 is the one priced (pass)
+    ok 6 - (e) SHORT control: the position's own stop 10.1 is the one priced (pass)
+      ---
+      duration_ms: 6.528518
+      type: 'test'
+      ...
+    # Subtest: (e) relaunch LONG: our stop filled while the desk was away and the history read finds nothing: the close is booked at that stop 9.5
+    ok 7 - (e) relaunch LONG: our stop filled while the desk was away and the history read finds nothing: the close is booked at that stop 9.5
+      ---
+      duration_ms: 8.327345
+      type: 'test'
+      ...
+    # Subtest: (e) relaunch SHORT: our stop filled while the desk was away and the history read finds nothing: the close is booked at that stop 10.5
+    ok 8 - (e) relaunch SHORT: our stop filled while the desk was away and the history read finds nothing: the close is booked at that stop 10.5
+      ---
+      duration_ms: 6.306599
+      type: 'test'
+      ...
+    # Subtest: (e) relaunch take-profit LONG: our take-profit filled while the desk was away with the stop untouched, and the history read finds nothing: the close is booked at that take-profit 10.5
+    ok 9 - (e) relaunch take-profit LONG: our take-profit filled while the desk was away with the stop untouched, and the history read finds nothing: the close is booked at that take-profit 10.5
+      ---
+      duration_ms: 9.907384
+      type: 'test'
+      ...
+    # Subtest: (e) relaunch take-profit SHORT: our take-profit filled while the desk was away with the stop untouched, and the history read finds nothing: the close is booked at that take-profit 9.5
+    ok 10 - (e) relaunch take-profit SHORT: our take-profit filled while the desk was away with the stop untouched, and the history read finds nothing: the close is booked at that take-profit 9.5
+      ---
+      duration_ms: 8.714431
+      type: 'test'
+      ...
+    1..10
+ok 8 - the stop a flat marker is priced at: a new position's own stop only (live.server.ts stepLive)
+  ---
+  duration_ms: 107.427809
+  type: 'suite'
+  ...
+# Subtest: the take-profit a flat marker is priced at: a new position's own take-profit (live.server.ts stepLive, tpPxOf)
+    # Subtest: (e) take-profit LONG: a position closed at its take-profit 10.5 with no history is booked at that take-profit, not unverified (plan item 15)
+    ok 1 - (e) take-profit LONG: a position closed at its take-profit 10.5 with no history is booked at that take-profit, not unverified (plan item 15)
+      ---
+      duration_ms: 7.980808
+      type: 'test'
+      ...
+    # Subtest: (e) take-profit SHORT: a position closed at its take-profit 9.5 with no history is booked at that take-profit, not unverified (plan item 15)
+    ok 2 - (e) take-profit SHORT: a position closed at its take-profit 9.5 with no history is booked at that take-profit, not unverified (plan item 15)
+      ---
+      duration_ms: 8.477264
+      type: 'test'
+      ...
+    # Subtest: (e) take-profit with the stop still resting LONG: a take-profit that filled while the venue left our stop on the book, no history: booked at the take-profit 10.5 (plan item 15)
+    ok 3 - (e) take-profit with the stop still resting LONG: a take-profit that filled while the venue left our stop on the book, no history: booked at the take-profit 10.5 (plan item 15)
+      ---
+      duration_ms: 7.424126
+      type: 'test'
+      ...
+    # Subtest: (e) take-profit with the stop still resting SHORT: a take-profit that filled while the venue left our stop on the book, no history: booked at the take-profit 9.5 (plan item 15)
+    ok 4 - (e) take-profit with the stop still resting SHORT: a take-profit that filled while the venue left our stop on the book, no history: booked at the take-profit 9.5 (plan item 15)
+      ---
+      duration_ms: 6.028491
+      type: 'test'
+      ...
+    1..4
+ok 9 - the take-profit a flat marker is priced at: a new position's own take-profit (live.server.ts stepLive, tpPxOf)
+  ---
+  duration_ms: 30.409522
+  type: 'suite'
+  ...
+# Subtest: lane exits name their side: reconciled fills and lane closes (f)
+    # Subtest: (f) reconcile: the BUY fill of the SHORT lane's stop is its exit; r is the short's return less the cost; the LONG lane of the symbol is not touched
+    ok 1 - (f) reconcile: the BUY fill of the SHORT lane's stop is its exit; r is the short's return less the cost; the LONG lane of the symbol is not touched
+      ---
+      duration_ms: 7.254606
+      type: 'test'
+      ...
+    # Subtest: (f) attributeLanes: a SHORT lane the desk closes at 95 books +5 % less the cost; one the exchange stops at 105 books the loss
+    ok 2 - (f) attributeLanes: a SHORT lane the desk closes at 95 books +5 % less the cost; one the exchange stops at 105 books the loss
+      ---
+      duration_ms: 0.934668
+      type: 'test'
+      ...
+    1..2
+ok 10 - lane exits name their side: reconciled fills and lane closes (f)
+  ---
+  duration_ms: 8.527311
+  type: 'suite'
+  ...
+# Subtest: durable paper proof uses verified unit returns
+    # Subtest: persists explicit verified unit evidence even when its modeled multiplier is absent
+    ok 1 - persists explicit verified unit evidence even when its modeled multiplier is absent
+      ---
+      duration_ms: 99.278404
+      type: 'test'
+      ...
+    # Subtest: writes both records from known execution multipliers, preserving cash and immutable evidence across restart/conflict
+    ok 2 - writes both records from known execution multipliers, preserving cash and immutable evidence across restart/conflict
+      ---
+      duration_ms: 79.215879
+      type: 'test'
+      ...
+    # Subtest: keeps recent unknowns inside last N instead of qualifying older wins, then recovers after known closes replace them
+    ok 3 - keeps recent unknowns inside last N instead of qualifying older wins, then recovers after known closes replace them
+      ---
+      duration_ms: 16.324187
+      type: 'test'
+      ...
+    # Subtest: nominal attributed exchange rows cannot replace unknown owned-paper funding evidence
+    ok 4 - nominal attributed exchange rows cannot replace unknown owned-paper funding evidence
+      ---
+      duration_ms: 40.367587
+      type: 'test'
+      ...
+    1..4
+ok 11 - durable paper proof uses verified unit returns
+  ---
+  duration_ms: 238.039811
+  type: 'suite'
+  ...
+# Subtest: actual API primary return basis
+    # Subtest: retains modeled rows with missing multipliers as unknown across API, presets and prehistoric reports
+    ok 1 - retains modeled rows with missing multipliers as unknown across API, presets and prehistoric reports
+      ---
+      duration_ms: 74.496766
+      type: 'test'
+      ...
+    # Subtest: reports sim/paper PF 0.8 while cash remains sized, without any market recomputation
+    ok 2 - reports sim/paper PF 0.8 while cash remains sized, without any market recomputation
+      ---
+      duration_ms: 128.379928
+      type: 'test'
+      ...
+    # Subtest: marks aggregate legacy preset and run archives unavailable instead of reusing sized PF
+    ok 3 - marks aggregate legacy preset and run archives unavailable instead of reusing sized PF
+      ---
+      duration_ms: 37.188907
+      type: 'test'
+      ...
+    1..3
+ok 12 - actual API primary return basis
+  ---
+  duration_ms: 240.894507
+  type: 'suite'
+  ...
+1..12
+# tests 78
+# suites 12
+# pass 78
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1696.15053

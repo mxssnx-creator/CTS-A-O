@@ -1,6 +1,6 @@
 {
-  "schema": "cts-combined-system-universal-plan-v2",
-  "sourceSha256": "d77b2c928ff5111e4e0c9ea2f5c87ff5754423799d2f564d5d7e20d43d4b9140",
+  "schema": "cts-combined-system-universal-plan-v3",
+  "sourceSha256": "de4cc45e706a9522d538ae26b40a64d6cca9b8319a399fd398418297fb57a632",
   "scope": {
     "registeredSpecs": 1720,
     "families": 19,
@@ -63,6 +63,6 @@
   ],
   "classification": "Correctness/causality and synthetic gate audit, not proof of hourly market profitability or a full Cartesian financial portfolio replay",
   "preserve": "Keep failed/partial receipts and all existing negative financial windows. Never change recorded costs/returns/gates to manufacture positive PF.",
-  "revisionReason": "Integrate later Axis identity/0.1 sizing, exact ranking, unknown-return relation, conservative mark risk, bounded lane sizing, external-close bookkeeping, hot-reload schema and explicit nominal/forward paper history. Replay the same frozen correctness windows and thresholds; no new unseen alpha evidence.",
-  "previousSourceSha256": "4c5aa081359cf084d5e8c37ecd0bb9bf8b39372475fc6d41ee9ce978ff4cb160"
+  "revisionReason": "Integrate reviewed later Micro/main changes while preserving exact per-lane readiness and separate recorded history. Keep unknown Signal returns chronological, reject nonfinite legacy multipliers, preserve partial/unknown ownership, captured weighted cash and legacy historic Exit state. Identical frozen correctness feed, ranges, cuts and thresholds; not new unseen profitability evidence.",
+  "previousSourceSha256": "d77b2c928ff5111e4e0c9ea2f5c87ff5754423799d2f564d5d7e20d43d4b9140"
 }

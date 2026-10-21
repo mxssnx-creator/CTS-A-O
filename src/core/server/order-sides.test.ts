@@ -232,6 +232,7 @@ type Pos = {
 };
 
 function rtOf(live: Record<string, unknown> = {}, sizing: { mode: string; pct: number } = { mode: "fixed", pct: 0.02 }) {
+  let positions: Pos[] = [];
   const prices = [
     { sym: "S1-USDT", last: 10 },
     { sym: "S2-USDT", last: 20 },
@@ -265,14 +266,16 @@ function rtOf(live: Record<string, unknown> = {}, sizing: { mode: string; pct: n
     sim: syntheticExecutionRun([]),
     livePromotionGate: undefined as Parameters<typeof authorizeSyntheticLanes>[0]["livePromotionGate"],
     status: { lastBarT: Math.floor(Date.now() / 3_600_000) * 3_600_000 },
-    paper: { positions: [] as Pos[] },
+    paper: {
+      get positions(): Pos[] { return positions; },
+      set positions(next: Pos[]) { positions = next; authorizeSyntheticLanes(rt, next); },
+    },
     tickersAt: 0,
     freshTickers: async () => {
       rt.tickersAt = Date.now();
       return prices;
     },
   };
-  let positions: Pos[] = [];
   Object.defineProperty(rt.paper, "positions", {
     get: () => positions,
     set: (next: Pos[]) => {
@@ -592,11 +595,6 @@ describe("order sides, hedge mode (overall control): LONG and SHORT alike", { ti
     ];
     for (const [msg, label] of wordings) {
       const name = `I-6 ${side} (${label}): a take-profit the venue refuses for being too close is retried and placed, widened`;
-      // pending: no recorded venue refusal shows the take-profit wording, so the fix waits for it (plan item 6)
-      if (label === "take-profit wording") {
-        it.todo(name);
-        continue;
-      }
       it(name, async () => {
         const tick = clock();
         const ex = new Venue();
@@ -702,7 +700,7 @@ describe("order sides, hedge mode (overall control): LONG and SHORT alike", { ti
         const events = rt.db.all<{ msg: string }>("SELECT msg FROM events").map((e) => e.msg);
         assert.ok(
           events.some((m) => m.includes(`${sym}|${s} was closed by hand`)),
-          `the close is not booked by hand: ${JSON.stringify(events.filter((m) => m.includes("was closed")))}`,
+          `the close is not booked by hand: ${JSON.stringify({ events, control: rt.db.kvGet("controlStatus"), rows: rt.db.all("SELECT * FROM live_orders"), log: ex.log })}`,
         );
       });
     }

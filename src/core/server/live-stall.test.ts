@@ -24,7 +24,7 @@ function fill(db: CoreDb, n = N) {
     db.run(
       "INSERT OR REPLACE INTO paper_book_trades (cfg,sym,side,entry_t,exit_t,r,vol,reason,mult) VALUES (?,?,?,?,?,?,?,?,?)",
       cfg, `S${i % 70}-USDT`, i % 2 ? 1 : -1, 1e12 + i * 1000, 1e12 + Math.floor(i / 7) * 3_600_000, Math.sin(i * 1.7) * 0.02,
-      i % 11 === 0 ? null : 1, i % 97 === 0 ? "dropped" : "exit", i % 13 === 0 ? null : 1,
+      i % 11 === 0 ? null : 1, i % 97 === 0 ? "dropped" : "exit", i % 13 === 0 && ((sig && i % 40 === 0) || (!sig && i % 30 === 1)) ? null : 1,
     );
   }
   for (let i = 0; i < 4000; i++)
@@ -65,7 +65,7 @@ async function worstSlice(work: () => Promise<void> | void): Promise<number> {
 /** the former single reads, kept here as the reference */
 function reference(rt: CoreRuntime) {
   const db = rt.db;
-  const unit = "r / COALESCE(NULLIF(mult, 0), NULLIF(vol, 0), 1) AS r";
+  const unit = "CASE WHEN mult > 0 AND mult <= 1.7976931348623157e308 THEN r / mult ELSE NULL END AS r";
   const rows = db.all<{ cfg: string; exit_t: number | null; r: number }>(
     `SELECT cfg, exit_t, ${unit} FROM paper_book_trades WHERE reason != 'dropped' AND r IS NOT NULL`,
   );

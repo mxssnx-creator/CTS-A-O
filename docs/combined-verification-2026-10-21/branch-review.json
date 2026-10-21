@@ -4025,5 +4025,12 @@
       "A nested settings.wf object would not be applied by core-live-test; the demo override is at root wf"
     ],
     "scope": "Only repository changes. No live account or global policy mutations."
-  }
+  },
+  "latestIntegratedHeads": {
+    "main": "fafdea2f5ebe8c903a16f2edd8be34606f746c2f",
+    "Micro-184": "82d0e6b48f40027f7a45fd6e8e3a3a8342478f8d",
+    "Inverse-183": "cc2916372debd3b5001e3018d047eece2f57cbe7",
+    "demo-188": "1f37509f5e683117295222693abe90fd2e5f45aa"
+  },
+  "latestResolution": "Reviewed later main/Micro/profile changes. Preserved exact-lane readiness, richer cursor/Exit recovery, two explicit paper sources and original verified candidate golden. Combined nonfinite multiplier rejection, full/partial/unknown ownership and captured cash; repaired Signal unknown-return proof aggregation and prevented exchange unknowns from falling back to older paper wins. Legacy unknown-unit r fallbacks remain rejected. The restored fixed public-price fixture is reused unchanged, not refetched or optimized."
 }

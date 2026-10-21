@@ -1306,6 +1306,8 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
       pnl: number;
       owned_notional_usd: number | null;
       owned_unit_r: number | null;
+      vol: number | null;
+      mult: number | null;
     }>(
       // the paper book's own forward record (paper_book_trades: written once at each close, never back-filled or
       // re-priced; paper_trades is rewritten every step) at one unit (r / mult) — sized by the paper sizing below; the
@@ -1313,9 +1315,9 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
       data.source === "paper-history"
         // Recorded nominal history remains complete. Ownership requires the same config, symbol, side and settled
         // entry/exit identity; a missing allocation retains that close with unknown primary evidence.
-        ? "SELECT p.cfg, p.sym, p.side, p.entry_t, p.exit_t, p.entry, p.r, p.unit_r, p.reason, p.pnl, b.owned_notional_usd, b.unit_r AS owned_unit_r FROM paper_trades p LEFT JOIN paper_book_trades b ON b.cfg=p.cfg AND b.sym=p.sym AND b.side=p.side AND b.entry_t=p.entry_t AND b.exit_t=p.exit_t AND b.reason != 'dropped' WHERE p.exit_t IS NOT NULL ORDER BY p.exit_t"
+        ? "SELECT p.cfg, p.sym, p.side, p.entry_t, p.exit_t, p.entry, p.r, p.unit_r, p.reason, p.pnl, NULL AS vol, NULL AS mult, b.owned_notional_usd, b.unit_r AS owned_unit_r FROM paper_trades p LEFT JOIN paper_book_trades b ON b.cfg=p.cfg AND b.sym=p.sym AND b.side=p.side AND b.entry_t=p.entry_t AND b.exit_t=p.exit_t AND b.reason != 'dropped' WHERE p.exit_t IS NOT NULL ORDER BY p.exit_t"
         // The forward book uses its held return and actual allocated notional, never a model-history replacement.
-        : "SELECT cfg, sym, side, entry_t, exit_t, entry, unit_r AS r, unit_r, reason, unit_r * owned_notional_usd AS pnl, owned_notional_usd, unit_r AS owned_unit_r FROM paper_book_trades WHERE exit_t IS NOT NULL AND reason != 'dropped' ORDER BY exit_t",
+        : "SELECT cfg, sym, side, entry_t, exit_t, entry, r, vol, mult, unit_r, reason, NULL AS pnl, owned_notional_usd, unit_r AS owned_unit_r FROM paper_book_trades WHERE exit_t IS NOT NULL AND reason != 'dropped' ORDER BY exit_t",
     );
     trades = rows.map((x) => ({
       cfg: x.cfg,
@@ -1331,7 +1333,7 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
       ownershipVerified: typeof x.owned_notional_usd === "number" && Number.isFinite(x.owned_notional_usd) && x.owned_notional_usd > 1e-9,
       reason: x.reason,
       pnl: x.pnl,
-      ...(data.source === "paper" ? { notional: x.owned_notional_usd } : {}),
+      ...(data.source === "paper" ? { notional: x.owned_notional_usd, vol: x.vol, mult: x.mult } : {}),
     }));
     endT = Date.now();
     // rows are in exit order: the window starts at the earliest entry
@@ -1346,20 +1348,24 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
     paperEvidence = { requested: window.length, verifiedOwnership, unknownOwnership: window.length - verifiedOwnership, cashBasis: data.source === "paper-history" ? "recorded-paper-history" : "owned-paper-forward",
       recordedReturns: unitReturnReport(window.map((x) => ({ ...x, unitR: typeof x.recordedUnitR === "number" ? x.recordedUnitR : null })), endT) };
   }
-  const sized = sizeBook(trades, [], {
+  const sized = data.source === "paper" || data.source === "live" ? null : sizeBook(trades, [], {
     balance,
     sizing: r.settings.sizing,
     fixedNotional: r.settings.paperNotional,
   });
   // Owned live closes retain their measured notional even at zero return.
   // Missing live notional is unavailable, never filled in from the paper sizing setting.
-  // Paper history retains its nominal inferred/model sizing basis.
-  const unit = (x: { cfg: string; sym: string; side: number; entryT: number; r: number; pnl?: unknown; notional?: unknown }) =>
-    (data.source === "live" || data.source === "paper")
+  // Forward cash uses the recorded weighted return and allocated base notional exactly once.
+  // Nominal history is separate; missing allocation/volume stays unknown rather than using today’s sizing.
+  const unit = (x: { cfg: string; sym: string; side: number; entryT: number; r: number; pnl?: unknown; notional?: unknown; vol?: unknown }) =>
+    data.source === "live"
       ? typeof x.notional === "number" && Number.isFinite(x.notional) && x.notional > 0 ? x.notional : NaN
+      : data.source === "paper"
+        ? typeof x.notional === "number" && Number.isFinite(x.notional) && x.notional > 1e-9 &&
+          typeof x.vol === "number" && Number.isFinite(x.vol) && x.vol > 0 ? x.notional / x.vol : NaN
       : typeof x.pnl === "number" && Number.isFinite(x.pnl) && Number.isFinite(x.r) && Math.abs(x.r) > 1e-12 && Number.isFinite(x.pnl / x.r)
         ? Math.abs(x.pnl / x.r)
-        : (sized.units.get(orderKey(x)) ?? r.settings.paperNotional);
+        : (sized?.units.get(orderKey(x)) ?? r.settings.paperNotional);
   const closes = new Map<string, Map<number, number>>();
   for (const [sym, cs] of r.candles) {
     const m = new Map<number, number>();

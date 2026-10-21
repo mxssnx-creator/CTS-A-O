@@ -7108,10 +7108,10 @@ export class CoreRuntime {
       showProof(this.proofMemo.out);
       return this.proofMemo.out;
     }
-    // legacy_r: a close of an older build (neither unit_r nor owned_notional_usd written) at one unit, r / its
-    // execution multiple — a Block-raised paper close weighs its edge, not its multiple
+    // Legacy unit recovery requires an explicit positive external multiplier. Volume can contain intrinsic
+    // ladder weight and cannot establish that multiplier; retain unknown closes in their own chronological tail.
     const rows = yield* this.paperCloseRows(
-      `cfg, ${bySide ? "side, " : ""}exit_t, unit_r, owned_notional_usd, r / COALESCE(NULLIF(mult, 0), NULLIF(vol, 0), 1) AS legacy_r`,
+      `cfg, ${bySide ? "side, " : ""}exit_t, unit_r, owned_notional_usd, CASE WHEN mult > 0 AND mult <= 1.7976931348623157e308 THEN r / mult ELSE NULL END AS legacy_r`,
       "",
       (x: {
         cfg: string;
@@ -7236,7 +7236,7 @@ export class CoreRuntime {
     // the paper book's signal closes, read from the partial covering index (its entries carry the primary key: symbol,
     // side and entry time); signal ids carry "|sig-" — signalUnitOf keeps exactly the signal configs
     const paper = yield* this.paperCloseRows(
-      "cfg, sym, side, entry_t, exit_t, r / COALESCE(NULLIF(mult, 0), NULLIF(vol, 0), 1) AS r",
+      "cfg, sym, side, entry_t, exit_t, CASE WHEN owned_notional_usd > 1e-9 AND owned_notional_usd <= 1.7976931348623157e308 THEN unit_r WHEN owned_notional_usd IS NULL AND unit_r IS NULL AND mult > 0 AND mult <= 1.7976931348623157e308 THEN r / mult ELSE NULL END AS r",
       " AND cfg LIKE '%|sig-%'",
       (x: { cfg: string; sym: string; side: number; entry_t: number; exit_t: number | null; r: number }) =>
         x.exit_t === null ? null : { id: String(x.entry_t), cfg: x.cfg, sym: x.sym, side: x.side, exitT: x.exit_t, r: x.r },

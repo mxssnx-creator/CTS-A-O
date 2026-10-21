@@ -529,8 +529,8 @@ export function stopPxExchange(
  */
 export function stopTooClose(msg: string): boolean {
   const m = msg.toLowerCase();
-  if (/(stop|trigger)\s*(loss\s*)?price should be (lower|higher|greater|less)/.test(m)) return true;
-  return /(stop|trigger).{0,24}(too close|immediately|current price)/.test(m);
+  if (/(stop|trigger|take[\s-]*profit)\s*(loss\s*)?price should be (lower|higher|greater|less)/.test(m)) return true;
+  return /(stop|trigger|take[\s-]*profit).{0,24}(too close|immediately|current price)/.test(m);
 }
 
 /**

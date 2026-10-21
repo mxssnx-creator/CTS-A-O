@@ -1,0 +1,1458 @@
+TAP version 13
+# Subtest: Overview, lane and connection summaries normalize retained weighted records and retain PF provenance
+ok 1 - Overview, lane and connection summaries normalize retained weighted records and retain PF provenance
+  ---
+  duration_ms: 76.866215
+  type: 'test'
+  ...
+# Subtest: unknown modeled losses preserve every close/count while whole primary summaries become unavailable
+ok 2 - unknown modeled losses preserve every close/count while whole primary summaries become unavailable
+  ---
+  duration_ms: 16.103122
+  type: 'test'
+  ...
+# Subtest: no-loss modeled score four stays distinct from a measured return ratio four
+ok 3 - no-loss modeled score four stays distinct from a measured return ratio four
+  ---
+  duration_ms: 18.842307
+  type: 'test'
+  ...
+# Subtest: a flat measured live close retains actual notional for reconstructed drawdown and margin
+ok 4 - a flat measured live close retains actual notional for reconstructed drawdown and margin
+  ---
+  duration_ms: 15.021347
+  type: 'test'
+  ...
+# Subtest: paper primary retains the losing forward-book close with legacy allocation NULL
+ok 5 - paper primary retains the losing forward-book close with legacy allocation NULL
+  ---
+  duration_ms: 14.050316
+  type: 'test'
+  ...
+# Subtest: paper primary retains the losing forward-book close with zero allocation
+ok 6 - paper primary retains the losing forward-book close with zero allocation
+  ---
+  duration_ms: 15.923466
+  type: 'test'
+  ...
+# Subtest: paper primary retains the losing forward-book close with dust allocation
+ok 7 - paper primary retains the losing forward-book close with dust allocation
+  ---
+  duration_ms: 13.565361
+  type: 'test'
+  ...
+# Subtest: paper statistics retain the actual forward-book different settled exit independently of nominal re-simulation
+ok 8 - paper statistics retain the actual forward-book different settled exit independently of nominal re-simulation
+  ---
+  duration_ms: 13.470308
+  type: 'test'
+  ...
+# Subtest: paper statistics retain the actual forward-book different entry independently of nominal re-simulation
+ok 9 - paper statistics retain the actual forward-book different entry independently of nominal re-simulation
+  ---
+  duration_ms: 21.366617
+  type: 'test'
+  ...
+# Subtest: paper statistics retain the actual forward-book different config/type independently of nominal re-simulation
+ok 10 - paper statistics retain the actual forward-book different config/type independently of nominal re-simulation
+  ---
+  duration_ms: 9.927861
+  type: 'test'
+  ...
+# Subtest: paper statistics retain the actual forward-book different symbol independently of nominal re-simulation
+ok 11 - paper statistics retain the actual forward-book different symbol independently of nominal re-simulation
+  ---
+  duration_ms: 11.432666
+  type: 'test'
+  ...
+# Subtest: paper statistics retain the actual forward-book different direction independently of nominal re-simulation
+ok 12 - paper statistics retain the actual forward-book different direction independently of nominal re-simulation
+  ---
+  duration_ms: 13.604754
+  type: 'test'
+  ...
+# Subtest: nominal closes and dropped marks never become actual forward-book settled orders
+ok 13 - nominal closes and dropped marks never become actual forward-book settled orders
+  ---
+  duration_ms: 10.83108
+  type: 'test'
+  ...
+# Subtest: forward-book sizing is captured once, including flat closes, independent of current settings and nominal history
+ok 14 - forward-book sizing is captured once, including flat closes, independent of current settings and nominal history
+  ---
+  duration_ms: 11.608447
+  type: 'test'
+  ...
+# Subtest: paper book identities are unique while opposite-side holdings remain independent
+ok 15 - paper book identities are unique while opposite-side holdings remain independent
+  ---
+  duration_ms: 12.393561
+  type: 'test'
+  ...
+# Subtest: known nominal returns cannot replace missing owned-book unit evidence or multiplier provenance
+ok 16 - known nominal returns cannot replace missing owned-book unit evidence or multiplier provenance
+  ---
+  duration_ms: 8.146694
+  type: 'test'
+  ...
+# Subtest: strict promotion evidence is exposed unchanged, separate from raw Base and paper-deactivation summaries
+ok 17 - strict promotion evidence is exposed unchanged, separate from raw Base and paper-deactivation summaries
+  ---
+  duration_ms: 9.383141
+  type: 'test'
+  ...
+# Subtest: every Axis source, mode, spacing, depth and hybrid retains its own simulated, Paper and native identity
+ok 18 - every Axis source, mode, spacing, depth and hybrid retains its own simulated, Paper and native identity
+  ---
+  duration_ms: 2.340642
+  type: 'test'
+  ...
+# Subtest: simultaneous Axis configs execute independently after their own prehistory and Last-N checks
+ok 19 - simultaneous Axis configs execute independently after their own prehistory and Last-N checks
+  ---
+  duration_ms: 85.915227
+  type: 'test'
+  ...
+# Subtest: Axis sets use 10% of the matching base sizing while their admission and intrinsic unit returns stay identical
+ok 20 - Axis sets use 10% of the matching base sizing while their admission and intrinsic unit returns stay identical
+  ---
+  duration_ms: 51.536914
+  type: 'test'
+  ...
+# Subtest: native Axis projection applies captured range and set factors once and never resizes a held ladder after edits
+ok 21 - native Axis projection applies captured range and set factors once and never resizes a held ladder after edits
+  ---
+  duration_ms: 51.581521
+  type: 'test'
+  ...
+# Subtest: Axis config gates retain losing Last-N samples and honor exact seat cooldowns
+ok 22 - Axis config gates retain losing Last-N samples and honor exact seat cooldowns
+  ---
+  duration_ms: 11.089362
+  type: 'test'
+  ...
+# Subtest: engine proof
+    # Subtest: a config is proven by its own last N closes at PF ≥ the floor; fewer than N is not proven (hand-computed)
+    ok 1 - a config is proven by its own last N closes at PF ≥ the floor; fewer than N is not proven (hand-computed)
+      ---
+      duration_ms: 2.920441
+      type: 'test'
+      ...
+    # Subtest: the exchange record decides once it holds N closes; the paper book's until then
+    ok 2 - the exchange record decides once it holds N closes; the paper book's until then
+      ---
+      duration_ms: 0.819688
+      type: 'test'
+      ...
+    # Subtest: engineProven is lastNProven on engine configs: the result before the generalization, bit for bit (random records)
+    ok 3 - engineProven is lastNProven on engine configs: the result before the generalization, bit for bit (random records)
+      ---
+      duration_ms: 5.523207
+      type: 'test'
+      ...
+    # Subtest: the live filter sends an engine lane only when proven; signals are not judged; off = unchanged
+    ok 4 - the live filter sends an engine lane only when proven; signals are not judged; off = unchanged
+      ---
+      duration_ms: 1.317091
+      type: 'test'
+      ...
+    # Subtest: the live step: an exact losing owned engine record opens nothing, a proven engine lane and signal do
+    ok 5 - the live step: an exact losing owned engine record opens nothing, a proven engine lane and signal do
+      ---
+      duration_ms: 31.398596
+      type: 'test'
+      ...
+    # Subtest: an unproven engine lane on a key a signal holds adds no volume and does not keep the position after the signal exits
+    ok 6 - an unproven engine lane on a key a signal holds adds no volume and does not keep the position after the signal exits
+      ---
+      duration_ms: 18.921635
+      type: 'test'
+      ...
+    # Subtest: the runtime reads the paper book's closes ('dropped' marks left out) and the setting is validated
+    ok 7 - the runtime reads the paper book's closes ('dropped' marks left out) and the setting is validated
+      ---
+      duration_ms: 23.698605
+      type: 'test'
+      ...
+    # Subtest: an unchanged book costs no query (every live control step asks); a new close re-reads it from the partial index
+    ok 8 - an unchanged book costs no query (every live control step asks); a new close re-reads it from the partial index
+      ---
+      duration_ms: 13.20502
+      type: 'test'
+      ...
+    # Subtest: judged at one unit: a Block-raised paper close weighs its edge, not its multiple (as the exchange record does)
+    ok 9 - judged at one unit: a Block-raised paper close weighs its edge, not its multiple (as the exchange record does)
+      ---
+      duration_ms: 11.473148
+      type: 'test'
+      ...
+    # Subtest: a database of an older build gains paper_book_trades.mult and the unit index on open
+    ok 10 - a database of an older build gains paper_book_trades.mult and the unit index on open
+      ---
+      duration_ms: 36.900982
+      type: 'test'
+      ...
+    1..10
+ok 23 - engine proof
+  ---
+  duration_ms: 148.462884
+  type: 'suite'
+  ...
+# Subtest: signal proof
+    # Subtest: a unit (indicator × side) is proven by its last N closes at PF ≥ the floor spanning ≥ minEvents events (hand-computed)
+    ok 1 - a unit (indicator × side) is proven by its last N closes at PF ≥ the floor spanning ≥ minEvents events (hand-computed)
+      ---
+      duration_ms: 1.054423
+      type: 'test'
+      ...
+    # Subtest: the exchange record decides once the unit holds N closes; its events are the lanes' paper entry bars
+    ok 2 - the exchange record decides once the unit holds N closes; its events are the lanes' paper entry bars
+      ---
+      duration_ms: 13.391542
+      type: 'test'
+      ...
+    # Subtest: the live filter sends a signal lane only when its unit is proven; engine configs are not judged; off = unchanged
+    ok 3 - the live filter sends a signal lane only when its unit is proven; engine configs are not judged; off = unchanged
+      ---
+      duration_ms: 3.313032
+      type: 'test'
+      ...
+    # Subtest: the live step: an unproven unit opens nothing, a proven one does, a held lane is kept; the funnel names the proof
+    ok 4 - the live step: an unproven unit opens nothing, a proven one does, a held lane is kept; the funnel names the proof
+      ---
+      duration_ms: 30.991611
+      type: 'test'
+      ...
+    # Subtest: the runtime: the paper book ('dropped' left out) until the unit's exchange record holds N; memoized; an event on a change
+    ok 5 - the runtime: the paper book ('dropped' left out) until the unit's exchange record holds N; memoized; an event on a change
+      ---
+      duration_ms: 14.754178
+      type: 'test'
+      ...
+    1..5
+ok 24 - signal proof
+  ---
+  duration_ms: 63.830068
+  type: 'suite'
+  ...
+# Subtest: exchange mean absolute 5m price-distance ranking over one hour
+    # Subtest: averages exactly twelve absolute five-minute percentage distances for both directions
+    ok 1 - averages exactly twelve absolute five-minute percentage distances for both directions
+      ---
+      duration_ms: 1.370217
+      type: 'test'
+      ...
+    # Subtest: ignores forming/future bars and rejects gaps, duplicates, stale or invalid evidence
+    ok 2 - ignores forming/future bars and rejects gaps, duplicates, stale or invalid evidence
+      ---
+      duration_ms: 0.293051
+      type: 'test'
+      ...
+    # Subtest: ranks absolute hourly moves independently of the 24h ticker change, excludes stable pairs and keeps deterministic ties
+    ok 3 - ranks absolute hourly moves independently of the 24h ticker change, excludes stable pairs and keeps deterministic ties
+      ---
+      duration_ms: 2.128894
+      type: 'test'
+      ...
+    # Subtest: batches at most four reads, shares in-flight and completed requests, and refreshes after the next completed 5m interval
+    ok 4 - batches at most four reads, shares in-flight and completed requests, and refreshes after the next completed 5m interval
+      ---
+      duration_ms: 33.074689
+      type: 'test'
+      ...
+    # Subtest: never substitutes 24h changes for missing hourly history or calls the venue for volume ranking
+    ok 5 - never substitutes 24h changes for missing hourly history or calls the venue for volume ranking
+      ---
+      duration_ms: 6.140054
+      type: 'test'
+      ...
+    # Subtest: accepts and exposes the option in engine and saved-preset settings
+    ok 6 - accepts and exposes the option in engine and saved-preset settings
+      ---
+      duration_ms: 3.581113
+      type: 'test'
+      ...
+    1..6
+ok 25 - exchange mean absolute 5m price-distance ranking over one hour
+  ---
+  duration_ms: 48.470872
+  type: 'suite'
+  ...
+# Subtest: live account sizing: one actual balance for sizing, budgets and preview
+    # Subtest: sizes from the account snapshot used for budgets, without a conflicting second equity read
+    ok 1 - sizes from the account snapshot used for budgets, without a conflicting second equity read
+      ---
+      duration_ms: 31.810325
+      type: 'test'
+      ...
+    # Subtest: sizes and applies ratio caps from wallet balance, not unrealized equity
+    ok 2 - sizes and applies ratio caps from wallet balance, not unrealized equity
+      ---
+      duration_ms: 5.43089
+      type: 'test'
+      ...
+    # Subtest: projects the captured range volume once and preserves it across settings edits
+    ok 3 - projects the captured range volume once and preserves it across settings edits
+      ---
+      duration_ms: 3.312139
+      type: 'test'
+      ...
+    # Subtest: an account-only client uses actual equity, and fixed/minimum sizing previews keep that equity too
+    ok 4 - an account-only client uses actual equity, and fixed/minimum sizing previews keep that equity too
+      ---
+      duration_ms: 3.104062
+      type: 'test'
+      ...
+    # Subtest: an unread real balance stays unknown in the preview; only explicit simulated clients use paper
+    ok 5 - an unread real balance stays unknown in the preview; only explicit simulated clients use paper
+      ---
+      duration_ms: 2.638157
+      type: 'test'
+      ...
+    # Subtest: zero, negative and nonfinite wallet balances never become order sizes
+    ok 6 - zero, negative and nonfinite wallet balances never become order sizes
+      ---
+      duration_ms: 1.93595
+      type: 'test'
+      ...
+    # Subtest: a failed equity refresh cannot keep an old high balance alive indefinitely
+    ok 7 - a failed equity refresh cannot keep an old high balance alive indefinitely
+      ---
+      duration_ms: 3.834214
+      type: 'test'
+      ...
+    # Subtest: a stale account snapshot cannot refresh its own age just by passing through another cache
+    ok 8 - a stale account snapshot cannot refresh its own age just by passing through another cache
+      ---
+      duration_ms: 5.293599
+      type: 'test'
+      ...
+    # Subtest: the worst-case budget alone still requires known, finite account balance
+    ok 9 - the worst-case budget alone still requires known, finite account balance
+      ---
+      duration_ms: 16.107231
+      type: 'test'
+      ...
+    # Subtest: a nonfinite free margin cannot bypass the account's free-margin floor
+    ok 10 - a nonfinite free margin cannot bypass the account's free-margin floor
+      ---
+      duration_ms: 9.780028
+      type: 'test'
+      ...
+    # Subtest: a larger venue-minimum retry is rechecked against the free margin and every account budget
+    ok 11 - a larger venue-minimum retry is rechecked against the free margin and every account budget
+      ---
+      duration_ms: 24.8704
+      type: 'test'
+      ...
+    # Subtest: a minimum retry that fits remains allowed, and reserves its larger amount for the next retry
+    ok 12 - a minimum retry that fits remains allowed, and reserves its larger amount for the next retry
+      ---
+      duration_ms: 6.257059
+      type: 'test'
+      ...
+    # Subtest: an equity-only client keeps its verified equity for minimum retries and per-position caps
+    ok 13 - an equity-only client keeps its verified equity for minimum retries and per-position caps
+      ---
+      duration_ms: 17.069216
+      type: 'test'
+      ...
+    1..13
+ok 26 - live account sizing: one actual balance for sizing, budgets and preview
+  ---
+  duration_ms: 133.812389
+  type: 'suite'
+  ...
+# Subtest: stop-risk budget: the strongest targets that fit
+    # Subtest: x01, 13 Oct: ZKP (2.06 USD at 12.15 %) is over the 0.249 USD budget, XPL (2.00 USD at 11 %) fits: XPL is kept
+    ok 1 - x01, 13 Oct: ZKP (2.06 USD at 12.15 %) is over the 0.249 USD budget, XPL (2.00 USD at 11 %) fits: XPL is kept
+      ---
+      duration_ms: 2.487452
+      type: 'test'
+      ...
+    # Subtest: a stronger target over the budget does not take the weaker ones that fit with it
+    ok 2 - a stronger target over the budget does not take the weaker ones that fit with it
+      ---
+      duration_ms: 0.329593
+      type: 'test'
+      ...
+    1..2
+ok 27 - stop-risk budget: the strongest targets that fit
+  ---
+  duration_ms: 4.480053
+  type: 'suite'
+  ...
+# Subtest: the three budgets together (scaleToBudgets)
+    # Subtest: the gross cap fits two minimums; the two strongest fail the risk budget: the next two that fit every budget are kept
+    ok 1 - the gross cap fits two minimums; the two strongest fail the risk budget: the next two that fit every budget are kept
+      ---
+      duration_ms: 0.773758
+      type: 'test'
+      ...
+    # Subtest: a held position takes its budget first and is never dropped; without equity nothing is scaled or dropped
+    ok 2 - a held position takes its budget first and is never dropped; without equity nothing is scaled or dropped
+      ---
+      duration_ms: 0.838625
+      type: 'test'
+      ...
+    1..2
+ok 28 - the three budgets together (scaleToBudgets)
+  ---
+  duration_ms: 1.969965
+  type: 'suite'
+  ...
+# Subtest: control: the budgets admit the targets that fit (end to end)
+    # Subtest: 0.50 USDT wallet, 5 USD gross, 0.25 USD risk: two wide-stop keys are passed over, two tight-stop keys open
+    ok 1 - 0.50 USDT wallet, 5 USD gross, 0.25 USD risk: two wide-stop keys are passed over, two tight-stop keys open
+      ---
+      duration_ms: 31.065125
+      type: 'test'
+      ...
+    1..1
+ok 29 - control: the budgets admit the targets that fit (end to end)
+  ---
+  duration_ms: 31.289766
+  type: 'suite'
+  ...
+# Subtest: the budgets are sized on B = min(wallet, equity)
+    # Subtest: 0.50 USDT wallet with 0.50 open profit (equity 1.00): the budgets are those of 0.50, not 1.00
+    ok 1 - 0.50 USDT wallet with 0.50 open profit (equity 1.00): the budgets are those of 0.50, not 1.00
+      ---
+      duration_ms: 9.390733
+      type: 'test'
+      ...
+    1..1
+ok 30 - the budgets are sized on B = min(wallet, equity)
+  ---
+  duration_ms: 9.704981
+  type: 'suite'
+  ...
+# Subtest: control sizing: slots go to targets that can open
+    # Subtest: C1 (planner): a blocked key that is not held takes no slot; a held one is never left out
+    ok 1 - C1 (planner): a blocked key that is not held takes no slot; a held one is never left out
+      ---
+      duration_ms: 5.718471
+      type: 'test'
+      ...
+    # Subtest: C1 (live step): an open the exchange refused waits — and the next target opens in its slot
+    ok 2 - C1 (live step): an open the exchange refused waits — and the next target opens in its slot
+      ---
+      duration_ms: 51.473172
+      type: 'test'
+      ...
+    # Subtest: C1: an offline symbol (margin-mode backoff for hours) does not hold a slot
+    ok 3 - C1: an offline symbol (margin-mode backoff for hours) does not hold a slot
+      ---
+      duration_ms: 12.030715
+      type: 'test'
+      ...
+    # Subtest: C2: a target the worst-case budget drops gives its slot to the next one and is reported
+    ok 4 - C2: a target the worst-case budget drops gives its slot to the next one and is reported
+      ---
+      duration_ms: 12.942066
+      type: 'test'
+      ...
+    # Subtest: C2: without a slot cap a drop is reported once (one pass)
+    ok 5 - C2: without a slot cap a drop is reported once (one pass)
+      ---
+      duration_ms: 11.974313
+      type: 'test'
+      ...
+    # Subtest: C3: a position opened moments ago that the read does not show yet ranks as held — not displaced
+    ok 6 - C3: a position opened moments ago that the read does not show yet ranks as held — not displaced
+      ---
+      duration_ms: 20.970753
+      type: 'test'
+      ...
+    1..6
+ok 31 - control sizing: slots go to targets that can open
+  ---
+  duration_ms: 118.555193
+  type: 'suite'
+  ...
+# Subtest: control orders: increases, stop repair, ownership
+    # Subtest: C4: an increase under the exchange minimum is not raised to it — the position is kept as it is
+    ok 1 - C4: an increase under the exchange minimum is not raised to it — the position is kept as it is
+      ---
+      duration_ms: 12.927545
+      type: 'test'
+      ...
+    # Subtest: C5: a missing stop with the symbol missing from the tickers waits — the position is never closed for it
+    ok 2 - C5: a missing stop with the symbol missing from the tickers waits — the position is never closed for it
+      ---
+      duration_ms: 14.102457
+      type: 'test'
+      ...
+    # Subtest: C6: ownership per side in hedge mode; the whole symbol in one-way mode or for an order without a side
+    ok 3 - C6: ownership per side in hedge mode; the whole symbol in one-way mode or for an order without a side
+      ---
+      duration_ms: 1.275031
+      type: 'test'
+      ...
+    # Subtest: C6 (live step): a foreign short never freezes our long — it is closed when its lanes end; the short is untouched
+    ok 4 - C6 (live step): a foreign short never freezes our long — it is closed when its lanes end; the short is untouched
+      ---
+      duration_ms: 9.023707
+      type: 'test'
+      ...
+    # Subtest: C7: the scalers never size under a minimum the venue named — a minimum that breaks the exposure cap is dropped
+    ok 5 - C7: the scalers never size under a minimum the venue named — a minimum that breaks the exposure cap is dropped
+      ---
+      duration_ms: 8.96925
+      type: 'test'
+      ...
+    # Subtest: the live status says when the volume factor has no effect, and from which factor it would size
+    ok 6 - the live status says when the volume factor has no effect, and from which factor it would size
+      ---
+      duration_ms: 10.708614
+      type: 'test'
+      ...
+    # Subtest: the hint names a budget that scales every position (it cancels the volume factor too), not only the cap
+    ok 7 - the hint names a budget that scales every position (it cancels the volume factor too), not only the cap
+      ---
+      duration_ms: 10.025502
+      type: 'test'
+      ...
+    1..7
+ok 32 - control orders: increases, stop repair, ownership
+  ---
+  duration_ms: 71.579366
+  type: 'suite'
+  ...
+# Subtest: control sizing: the budget base B = min(wallet, equity)
+    # Subtest: budgetBase: the smaller of wallet and equity; either alone; null without a read
+    ok 1 - budgetBase: the smaller of wallet and equity; either alone; null without a read
+      ---
+      duration_ms: 0.718449
+      type: 'test'
+      ...
+    # Subtest: the per-position cap (maxPositionX × B) uses the wallet when open profit lifts the equity above it
+    ok 2 - the per-position cap (maxPositionX × B) uses the wallet when open profit lifts the equity above it
+      ---
+      duration_ms: 12.47953
+      type: 'test'
+      ...
+    # Subtest: %-of-equity sizing takes its unit from B too: open profit never sizes a unit up
+    ok 3 - %-of-equity sizing takes its unit from B too: open profit never sizes a unit up
+      ---
+      duration_ms: 5.257626
+      type: 'test'
+      ...
+    # Subtest: the account read is cached in minimum-quantity sizing too: liveUnitPeek reads it (never the paper balance)
+    ok 4 - the account read is cached in minimum-quantity sizing too: liveUnitPeek reads it (never the paper balance)
+      ---
+      duration_ms: 6.171202
+      type: 'test'
+      ...
+    # Subtest: a step that ends before its account read carries the last account with its read time
+    ok 5 - a step that ends before its account read carries the last account with its read time
+      ---
+      duration_ms: 5.536812
+      type: 'test'
+      ...
+    1..5
+ok 33 - control sizing: the budget base B = min(wallet, equity)
+  ---
+  duration_ms: 30.843058
+  type: 'suite'
+  ...
+# Subtest: control sizing: risk-based (positionSize "risk")
+    # Subtest: notional = B × 1 % × ratio / riskDist, whatever the lanes' volume; the stop risk is B × 1 % × ratio
+    ok 1 - notional = B × 1 % × ratio / riskDist, whatever the lanes' volume; the stop risk is B × 1 % × ratio
+      ---
+      duration_ms: 1.250316
+      type: 'test'
+      ...
+    # Subtest: capped by the per-position cap (min(maxNotionalUsd, maxPositionX × B) is passed in as the cap)
+    ok 2 - capped by the per-position cap (min(maxNotionalUsd, maxPositionX × B) is passed in as the cap)
+      ---
+      duration_ms: 0.318757
+      type: 'test'
+      ...
+    # Subtest: the venue minimum: raised while its risk ≤ 2 × the per-position risk, else skipped with its reason
+    ok 3 - the venue minimum: raised while its risk ≤ 2 × the per-position risk, else skipped with its reason
+      ---
+      duration_ms: 0.658523
+      type: 'test'
+      ...
+    # Subtest: end to end: the live step sizes on B = min(wallet, equity); unknown B opens nothing
+    ok 4 - end to end: the live step sizes on B = min(wallet, equity); unknown B opens nothing
+      ---
+      duration_ms: 9.534783
+      type: 'test'
+      ...
+    1..4
+ok 34 - control sizing: risk-based (positionSize "risk")
+  ---
+  duration_ms: 12.091734
+  type: 'suite'
+  ...
+# Subtest: settings check: position size "risk" and its risk per position
+    # Subtest: accepts risk with 0.05 % – 5 %, refuses other values and the lane-orders combination
+    ok 1 - accepts risk with 0.05 % – 5 %, refuses other values and the lane-orders combination
+      ---
+      duration_ms: 19.328148
+      type: 'test'
+      ...
+    1..1
+ok 35 - settings check: position size "risk" and its risk per position
+  ---
+  duration_ms: 19.460719
+  type: 'suite'
+  ...
+# Subtest: size labels: one wording of the live sizing on every page
+    # Subtest: names the unit per mode and the cap min(maxNotionalUsd, maxPositionX × B)
+    ok 1 - names the unit per mode and the cap min(maxNotionalUsd, maxPositionX × B)
+      ---
+      duration_ms: 2.100453
+      type: 'test'
+      ...
+    1..1
+ok 36 - size labels: one wording of the live sizing on every page
+  ---
+  duration_ms: 2.227676
+  type: 'suite'
+  ...
+# Subtest: live Overall control orders
+    # Subtest: one exchange position cap covers engine and signal orders; lane orders count once
+    ok 1 - one exchange position cap covers engine and signal orders; lane orders count once
+      ---
+      duration_ms: 8.665655
+      type: 'test'
+      ...
+    # Subtest: 1500 strategy orders use only 100 exchange slots, with long/short slots distinct
+    ok 2 - 1500 strategy orders use only 100 exchange slots, with long/short slots distinct
+      ---
+      duration_ms: 8.174641
+      type: 'test'
+      ...
+    # Subtest: existing and pending exchange keys consume slots even without current strategy lanes
+    ok 3 - existing and pending exchange keys consume slots even without current strategy lanes
+      ---
+      duration_ms: 1.172832
+      type: 'test'
+      ...
+    # Subtest: top configs: signals always, engine configs by score — a number of them, or as many as the budget carries
+    ok 4 - top configs: signals always, engine configs by score — a number of them, or as many as the budget carries
+      ---
+      duration_ms: 5.14488
+      type: 'test'
+      ...
+    # Subtest: signal weight: signal lanes count signalWeight units, engine lanes one; default 1
+    ok 5 - signal weight: signal lanes count signalWeight units, engine lanes one; default 1
+      ---
+      duration_ms: 1.608306
+      type: 'test'
+      ...
+    # Subtest: own quantity in time order: a close of a position this ledger never opened does not eat the next open
+    ok 6 - own quantity in time order: a close of a position this ledger never opened does not eat the next open
+      ---
+      duration_ms: 1.047125
+      type: 'test'
+      ...
+    # Subtest: a resize of one exchange lot is not made (the minimum-volume target moves by a lot with the price)
+    ok 7 - a resize of one exchange lot is not made (the minimum-volume target moves by a lot with the price)
+      ---
+      duration_ms: 2.178789
+      type: 'test'
+      ...
+    # Subtest: only the quantity this system opened is ever reduced or closed (a foreign add on the same key stays)
+    ok 8 - only the quantity this system opened is ever reduced or closed (a foreign add on the same key stays)
+      ---
+      duration_ms: 4.475318
+      type: 'test'
+      ...
+    # Subtest: plans exactly one position per symbol + direction and is hash-stable
+    ok 9 - plans exactly one position per symbol + direction and is hash-stable
+      ---
+      duration_ms: 2.008944
+      type: 'test'
+      ...
+    # Subtest: converges to the targets on every step over 400 random steps and never touches foreign positions
+    ok 10 - converges to the targets on every step over 400 random steps and never touches foreign positions
+      ---
+      duration_ms: 9713.121728
+      type: 'test'
+      ...
+    # Subtest: a position closed manually keeps processing, is NOT put back, and a new lane order opens it again
+    ok 11 - a position closed manually keeps processing, is NOT put back, and a new lane order opens it again
+      ---
+      duration_ms: 13.166905
+      type: 'test'
+      ...
+    # Subtest: a position this system closed itself is not treated as closed manually
+    ok 12 - a position this system closed itself is not treated as closed manually
+      ---
+      duration_ms: 5.524441
+      type: 'test'
+      ...
+    # Subtest: is idempotent: unchanged targets and book send nothing and are marked unchanged
+    ok 13 - is idempotent: unchanged targets and book send nothing and are marked unchanged
+      ---
+      duration_ms: 7.330431
+      type: 'test'
+      ...
+    # Subtest: a paper book published while a step waits on the exchange goes out on the next step, on a fresh book read
+    ok 14 - a paper book published while a step waits on the exchange goes out on the next step, on a fresh book read
+      ---
+      duration_ms: 6.800392
+      type: 'test'
+      ...
+    # Subtest: keeps its state in memory: rapid steps write it at most once a second, flushed on shutdown
+    ok 15 - keeps its state in memory: rapid steps write it at most once a second, flushed on shutdown
+      ---
+      duration_ms: 7.208335
+      type: 'test'
+      ...
+    # Subtest: survives rejects and time-outs after fills, then converges once the exchange is healthy
+    ok 16 - survives rejects and time-outs after fills, then converges once the exchange is healthy
+      ---
+      duration_ms: 3411.023559
+      type: 'test'
+      ...
+    # Subtest: re-syncs from the exchange after a restart (fresh DB) and flags a connection change
+    ok 17 - re-syncs from the exchange after a restart (fresh DB) and flags a connection change
+      ---
+      duration_ms: 9.17198
+      type: 'test'
+      ...
+    # Subtest: does nothing while not armed, not ready or disabled
+    ok 18 - does nothing while not armed, not ready or disabled
+      ---
+      duration_ms: 4.636963
+      type: 'test'
+      ...
+    # Subtest: one-way mode: nets long and short lanes into one position per symbol, closes before flipping, reduce-only exits
+    ok 19 - one-way mode: nets long and short lanes into one position per symbol, closes before flipping, reduce-only exits
+      ---
+      duration_ms: 6.593797
+      type: 'test'
+      ...
+    # Subtest: never opens on stale prices or when the exchange refuses the position mode (closing still works)
+    ok 20 - never opens on stale prices or when the exchange refuses the position mode (closing still works)
+      ---
+      duration_ms: 15.568748
+      type: 'test'
+      ...
+    # Subtest: a lane whose stop was crossed at tick time leaves the control at once (live position reduced / closed)
+    ok 21 - a lane whose stop was crossed at tick time leaves the control at once (live position reduced / closed)
+      ---
+      duration_ms: 5.797177
+      type: 'test'
+      ...
+    # Subtest: the protective stop of an opened position is priced from its fill, not from the reference ticker
+    ok 22 - the protective stop of an opened position is priced from its fill, not from the reference ticker
+      ---
+      duration_ms: 2.951282
+      type: 'test'
+      ...
+    # Subtest: the backstop distance of a trailed lane is measured from the current price, not from the entry
+    ok 23 - the backstop distance of a trailed lane is measured from the current price, not from the entry
+      ---
+      duration_ms: 2.270037
+      type: 'test'
+      ...
+    # Subtest: a stop the exchange keeps refusing: one open, one protective close, then no buy-sell-repeat
+    ok 24 - a stop the exchange keeps refusing: one open, one protective close, then no buy-sell-repeat
+      ---
+      duration_ms: 9.396327
+      type: 'test'
+      ...
+    # Subtest: a refused open is marked error (not pending) and not re-sent every tick
+    ok 25 - a refused open is marked error (not pending) and not re-sent every tick
+      ---
+      duration_ms: 7.79456
+      type: 'test'
+      ...
+    # Subtest: not ready only blocks opening: held positions are still closed, reduced and protected
+    ok 26 - not ready only blocks opening: held positions are still closed, reduced and protected
+      ---
+      duration_ms: 4.855626
+      type: 'test'
+      ...
+    # Subtest: unknown account equity or a missing price never closes a held position
+    ok 27 - unknown account equity or a missing price never closes a held position
+      ---
+      duration_ms: 4.398601
+      type: 'test'
+      ...
+    1..27
+ok 37 - live Overall control orders
+  ---
+  duration_ms: 13276.247621
+  type: 'suite'
+  ...
+# Subtest: live sizing: fixed % of equity
+    # Subtest: one lane unit = pct × the account equity; the paper balance when the exchange reports none
+    ok 1 - one lane unit = pct × the account equity; the paper balance when the exchange reports none
+      ---
+      duration_ms: 0.607834
+      type: 'test'
+      ...
+    1..1
+ok 38 - live sizing: fixed % of equity
+  ---
+  duration_ms: 1.263835
+  type: 'suite'
+  ...
+# Subtest: control orders: listed symbols, bans, offline
+    # Subtest: an unlisted symbol is not opened and does not call the exchange
+    ok 1 - an unlisted symbol is not opened and does not call the exchange
+      ---
+      duration_ms: 3.88257
+      type: 'test'
+      ...
+    # Subtest: an offline symbol is asked once, then held without another margin call
+    ok 2 - an offline symbol is asked once, then held without another margin call
+      ---
+      duration_ms: 4.721365
+      type: 'test'
+      ...
+    # Subtest: open orders of an earlier read (rate limited): opening goes on, stop repairs and leftover cancels wait
+    ok 3 - open orders of an earlier read (rate limited): opening goes on, stop repairs and leftover cancels wait
+      ---
+      duration_ms: 4.689857
+      type: 'test'
+      ...
+    # Subtest: a BingX ban pauses the control step before any book read
+    ok 4 - a BingX ban pauses the control step before any book read
+      ---
+      duration_ms: 2.768434
+      type: 'test'
+      ...
+    # Subtest: a market-data ban (klines, tickers) never holds the step: an ended lane closes, a missing stop is repaired
+    ok 5 - a market-data ban (klines, tickers) never holds the step: an ended lane closes, a missing stop is repaired
+      ---
+      duration_ms: 4.207239
+      type: 'test'
+      ...
+    # Subtest: a market-data error inside the step is never noted as a ban of every call
+    ok 6 - a market-data error inside the step is never noted as a ban of every call
+      ---
+      duration_ms: 5.651067
+      type: 'test'
+      ...
+    # Subtest: a "*" from an old shared ban file still pauses the control step
+    ok 7 - a "*" from an old shared ban file still pauses the control step
+      ---
+      duration_ms: 2.958981
+      type: 'test'
+      ...
+    1..7
+ok 39 - control orders: listed symbols, bans, offline
+  ---
+  duration_ms: 29.380267
+  type: 'suite'
+  ...
+# Subtest: leverage: always the maximum, quantity at the exchange minimum
+    # Subtest: sets each side of a symbol to its maximum once, before the first open, at the minimum quantity
+    ok 1 - sets each side of a symbol to its maximum once, before the first open, at the minimum quantity
+      ---
+      duration_ms: 5.545044
+      type: 'test'
+      ...
+    # Subtest: one-way mode sets BOTH; a fixed leverage is capped at the maximum
+    ok 2 - one-way mode sets BOTH; a fixed leverage is capped at the maximum
+      ---
+      duration_ms: 3.10418
+      type: 'test'
+      ...
+    # Subtest: isolated margin caps the leverage so liquidation stays behind the widest protective stop
+    ok 3 - isolated margin caps the leverage so liquidation stays behind the widest protective stop
+      ---
+      duration_ms: 2.838804
+      type: 'test'
+      ...
+    # Subtest: free-margin floor: below it (or unknown) nothing opens, held positions stay; above it opening resumes
+    ok 4 - free-margin floor: below it (or unknown) nothing opens, held positions stay; above it opening resumes
+      ---
+      duration_ms: 8.187758
+      type: 'test'
+      ...
+    # Subtest: open paused (coordination): nothing opens or grows, held positions stay, ended lanes still close
+    ok 5 - open paused (coordination): nothing opens or grows, held positions stay, ended lanes still close
+      ---
+      duration_ms: 6.678538
+      type: 'test'
+      ...
+    # Subtest: a refused leverage blocks opening, never closing; it is retried after the backoff only
+    ok 6 - a refused leverage blocks opening, never closing; it is retried after the backoff only
+      ---
+      duration_ms: 4.095832
+      type: 'test'
+      ...
+    # Subtest: minimum-quantity sizing: one unit is the symbol's exchange minimum, a Block volume of 2 is two minimums
+    ok 7 - minimum-quantity sizing: one unit is the symbol's exchange minimum, a Block volume of 2 is two minimums
+      ---
+      duration_ms: 3.085192
+      type: 'test'
+      ...
+    1..7
+ok 40 - leverage: always the maximum, quantity at the exchange minimum
+  ---
+  duration_ms: 33.908738
+  type: 'suite'
+  ...
+# Subtest: volume factor: sizes follow volume × factor up to the per-position cap
+    # Subtest: plainOnly ignores the configured indication factor but still excludes a Block raise
+    ok 1 - plainOnly ignores the configured indication factor but still excludes a Block raise
+      ---
+      duration_ms: 0.277888
+      type: 'test'
+      ...
+    # Subtest: below the cap a larger factor or volume is a larger position; at the cap it is flagged capped
+    ok 2 - below the cap a larger factor or volume is a larger position; at the cap it is flagged capped
+      ---
+      duration_ms: 0.425846
+      type: 'test'
+      ...
+    # Subtest: regression (x01, $8.31 equity): a cap of 0.25 × equity at the exchange minimum makes every factor the same size
+    ok 3 - regression (x01, $8.31 equity): a cap of 0.25 × equity at the exchange minimum makes every factor the same size
+      ---
+      duration_ms: 0.877218
+      type: 'test'
+      ...
+    # Subtest: regression (x01): configs kept last step are held to the budget — a larger size drops the weakest, not squeezes all
+    ok 4 - regression (x01): configs kept last step are held to the budget — a larger size drops the weakest, not squeezes all
+      ---
+      duration_ms: 0.54162
+      type: 'test'
+      ...
+    # Subtest: live step: a higher factor opens larger positions on the exchange, the sizing summary names the capped ones
+    ok 5 - live step: a higher factor opens larger positions on the exchange, the sizing summary names the capped ones
+      ---
+      duration_ms: 11.300694
+      type: 'test'
+      ...
+    1..5
+ok 41 - volume factor: sizes follow volume × factor up to the per-position cap
+  ---
+  duration_ms: 13.74384
+  type: 'suite'
+  ...
+# Subtest: exposure scaler switch
+    # Subtest: off: the exposure multiple neither scales the positions nor bounds the fill; on: it does
+    ok 1 - off: the exposure multiple neither scales the positions nor bounds the fill; on: it does
+      ---
+      duration_ms: 8.130965
+      type: 'test'
+      ...
+    # Subtest: the settings check takes true / false only
+    ok 2 - the settings check takes true / false only
+      ---
+      duration_ms: 9.574339
+      type: 'test'
+      ...
+    1..2
+ok 42 - exposure scaler switch
+  ---
+  duration_ms: 17.866033
+  type: 'suite'
+  ...
+# Subtest: live chain at x01 scale (568 configs, 50 symbols, $8.31 equity)
+    # Subtest: fill → targets: both directions, many positions within the budget, every size ≥ the minimum, sizes follow volume
+    ok 1 - fill → targets: both directions, many positions within the budget, every size ≥ the minimum, sizes follow volume
+      ---
+      duration_ms: 4.582929
+      type: 'test'
+      ...
+    1..1
+ok 43 - live chain at x01 scale (568 configs, 50 symbols, $8.31 equity)
+  ---
+  duration_ms: 4.78956
+  type: 'suite'
+  ...
+# Subtest: account positions: own and foreign apart
+    # Subtest: own sums take the own share only; a foreign position is counted apart; the stop and venue fields are read
+    ok 1 - own sums take the own share only; a foreign position is counted apart; the stop and venue fields are read
+      ---
+      duration_ms: 0.417055
+      type: 'test'
+      ...
+    # Subtest: the live step stamps the account with the own share and the foreign position apart
+    ok 2 - the live step stamps the account with the own share and the foreign position apart
+      ---
+      duration_ms: 4.641824
+      type: 'test'
+      ...
+    1..2
+ok 44 - account positions: own and foreign apart
+  ---
+  duration_ms: 5.182414
+  type: 'suite'
+  ...
+# [core-v2] state file not writable (EEXIST: file already exists, mkdir '/tmp/cts-block-state-failure-POXfGf/state') — durable state unavailable
+# Subtest: actual execution account budgets across independent Signal sets
+    # Subtest: Overall Block asks for its total capped target once across repeated native cycles (lane orders false)
+    ok 1 - Overall Block asks for its total capped target once across repeated native cycles (lane orders false)
+      ---
+      duration_ms: 33.844545
+      type: 'test'
+      ...
+    # Subtest: Overall Block asks for its total capped target once across repeated native cycles (lane orders true)
+    ok 2 - Overall Block asks for its total capped target once across repeated native cycles (lane orders true)
+      ---
+      duration_ms: 14.613402
+      type: 'test'
+      ...
+    # Subtest: an unfilled capped Block target reserves its whole stack without repeating or funding a sibling (lane orders false)
+    ok 3 - an unfilled capped Block target reserves its whole stack without repeating or funding a sibling (lane orders false)
+      ---
+      duration_ms: 13.948625
+      type: 'test'
+      ...
+    # Subtest: an unfilled capped Block target reserves its whole stack without repeating or funding a sibling (lane orders true)
+    ok 4 - an unfilled capped Block target reserves its whole stack without repeating or funding a sibling (lane orders true)
+      ---
+      duration_ms: 15.657921
+      type: 'test'
+      ...
+    # Subtest: weighted Block exits do not merge unrelated minimum-sized configs or change their one-unit rule
+    ok 5 - weighted Block exits do not merge unrelated minimum-sized configs or change their one-unit rule
+      ---
+      duration_ms: 5.292284
+      type: 'test'
+      ...
+    # Subtest: a partial weighted Block fill reserves its unfilled remainder and cannot fund a new sibling
+    ok 6 - a partial weighted Block fill reserves its unfilled remainder and cannot fund a new sibling
+      ---
+      duration_ms: 8.974006
+      type: 'test'
+      ...
+    # Subtest: a coalesced Block stop suppresses all its source children while an unrelated held config continues
+    ok 7 - a coalesced Block stop suppresses all its source children while an unrelated held config continues
+      ---
+      duration_ms: 20.214148
+      type: 'test'
+      ...
+    # Subtest: gross: a refused reduction releases only its confirmed quantity before a different set grows
+    ok 8 - gross: a refused reduction releases only its confirmed quantity before a different set grows
+      ---
+      duration_ms: 10.937961
+      type: 'test'
+      ...
+    # Subtest: gross: a partial reduction releases only its confirmed quantity before a different set grows
+    ok 9 - gross: a partial reduction releases only its confirmed quantity before a different set grows
+      ---
+      duration_ms: 8.701312
+      type: 'test'
+      ...
+    # Subtest: gross: a pending reduction releases only its confirmed quantity before a different set grows
+    ok 10 - gross: a pending reduction releases only its confirmed quantity before a different set grows
+      ---
+      duration_ms: 8.102377
+      type: 'test'
+      ...
+    # Subtest: gross: a confirmed reduction releases only its confirmed quantity before a different set grows
+    ok 11 - gross: a confirmed reduction releases only its confirmed quantity before a different set grows
+      ---
+      duration_ms: 9.003937
+      type: 'test'
+      ...
+    # Subtest: risk: a refused reduction releases only its confirmed quantity before a different set grows
+    ok 12 - risk: a refused reduction releases only its confirmed quantity before a different set grows
+      ---
+      duration_ms: 8.782282
+      type: 'test'
+      ...
+    # Subtest: risk: a partial reduction releases only its confirmed quantity before a different set grows
+    ok 13 - risk: a partial reduction releases only its confirmed quantity before a different set grows
+      ---
+      duration_ms: 7.89236
+      type: 'test'
+      ...
+    # Subtest: risk: a pending reduction releases only its confirmed quantity before a different set grows
+    ok 14 - risk: a pending reduction releases only its confirmed quantity before a different set grows
+      ---
+      duration_ms: 6.705885
+      type: 'test'
+      ...
+    # Subtest: risk: a confirmed reduction releases only its confirmed quantity before a different set grows
+    ok 15 - risk: a confirmed reduction releases only its confirmed quantity before a different set grows
+      ---
+      duration_ms: 6.620524
+      type: 'test'
+      ...
+    # Subtest: backstop: a refused reduction releases only its confirmed quantity before a different set grows
+    ok 16 - backstop: a refused reduction releases only its confirmed quantity before a different set grows
+      ---
+      duration_ms: 7.894686
+      type: 'test'
+      ...
+    # Subtest: backstop: a partial reduction releases only its confirmed quantity before a different set grows
+    ok 17 - backstop: a partial reduction releases only its confirmed quantity before a different set grows
+      ---
+      duration_ms: 6.494789
+      type: 'test'
+      ...
+    # Subtest: backstop: a pending reduction releases only its confirmed quantity before a different set grows
+    ok 18 - backstop: a pending reduction releases only its confirmed quantity before a different set grows
+      ---
+      duration_ms: 6.466089
+      type: 'test'
+      ...
+    # Subtest: backstop: a confirmed reduction releases only its confirmed quantity before a different set grows
+    ok 19 - backstop: a confirmed reduction releases only its confirmed quantity before a different set grows
+      ---
+      duration_ms: 5.034158
+      type: 'test'
+      ...
+    # Subtest: an accepted unfilled entry reserves its entire account capacity across other keys and later steps
+    ok 20 - an accepted unfilled entry reserves its entire account capacity across other keys and later steps
+      ---
+      duration_ms: 5.617675
+      type: 'test'
+      ...
+    # Subtest: a larger accepted minimum retry reserves its remainder before the next set opens
+    ok 21 - a larger accepted minimum retry reserves its remainder before the next set opens
+      ---
+      duration_ms: 6.495413
+      type: 'test'
+      ...
+    # Subtest: a partial entry reserves confirmed plus remaining quantity exactly once, allowing another set that fits
+    ok 22 - a partial entry reserves confirmed plus remaining quantity exactly once, allowing another set that fits
+      ---
+      duration_ms: 7.55669
+      type: 'test'
+      ...
+    # Subtest: a resting pending MARKET row is never mistaken for zero-distance stop protection
+    ok 23 - a resting pending MARKET row is never mistaken for zero-distance stop protection
+      ---
+      duration_ms: 8.564483
+      type: 'test'
+      ...
+    # Subtest: adding a narrow-stop sibling on a held key cannot dilute the wider quantity's risk to fund growth
+    ok 24 - adding a narrow-stop sibling on a held key cannot dilute the wider quantity's risk to fund growth
+      ---
+      duration_ms: 5.016625
+      type: 'test'
+      ...
+    # Subtest: unfilled entries also reserve free margin when the configured floor is enabled
+    ok 25 - unfilled entries also reserve free margin when the configured floor is enabled
+      ---
+      duration_ms: 4.057463
+      type: 'test'
+      ...
+    # Subtest: unknown held/pending cost and invalid equity cannot silently become zero budget usage
+    ok 26 - unknown held/pending cost and invalid equity cannot silently become zero budget usage
+      ---
+      duration_ms: 0.541515
+      type: 'test'
+      ...
+    # Subtest: lane partial exits follow confirmed equity/ratio resizing and retain exact Block parent weights
+    ok 27 - lane partial exits follow confirmed equity/ratio resizing and retain exact Block parent weights
+      ---
+      duration_ms: 7.168548
+      type: 'test'
+      ...
+    # Subtest: a refused partial-exit cancellation holds the reduction and preserves its durable quantity
+    ok 28 - a refused partial-exit cancellation holds the reduction and preserves its durable quantity
+      ---
+      duration_ms: 5.199082
+      type: 'test'
+      ...
+    # Subtest: a stop filling during resize cancellation is reconciled before any second reduction or reopen
+    ok 29 - a stop filling during resize cancellation is reconciled before any second reduction or reopen
+      ---
+      duration_ms: 6.557039
+      type: 'test'
+      ...
+    # Subtest: partial fills replace exact exits only for the confirmed quantity, never the pending remainder
+    ok 30 - partial fills replace exact exits only for the confirmed quantity, never the pending remainder
+      ---
+      duration_ms: 6.797479
+      type: 'test'
+      ...
+    # Subtest: a partially filled reduction retains actual ownership and never installs an oversized partial exit
+    ok 31 - a partially filled reduction retains actual ownership and never installs an oversized partial exit
+      ---
+      duration_ms: 5.918675
+      type: 'test'
+      ...
+    # Subtest: native one-way exits divide only the net owned quantity across the surviving independent parents
+    ok 32 - native one-way exits divide only the net owned quantity across the surviving independent parents
+      ---
+      duration_ms: 8.281778
+      type: 'test'
+      ...
+    # Subtest: a measured conditional partial fill protects the exact remainder without reopening it or diluting siblings
+    ok 33 - a measured conditional partial fill protects the exact remainder without reopening it or diluting siblings
+      ---
+      duration_ms: 7.610756
+      type: 'test'
+      ...
+    # Subtest: a full conditional fill retains a refused sibling identity until its cancellation confirms
+    ok 34 - a full conditional fill retains a refused sibling identity until its cancellation confirms
+      ---
+      duration_ms: 6.498918
+      type: 'test'
+      ...
+    # Subtest: a terminal cancellation without cumulative quantity remains unknown until zero execution is measured
+    ok 35 - a terminal cancellation without cumulative quantity remains unknown until zero execution is measured
+      ---
+      duration_ms: 4.928113
+      type: 'test'
+      ...
+    # Subtest: a successful cancellation that reveals a partial fill cannot be followed by a double reduction
+    ok 36 - a successful cancellation that reveals a partial fill cannot be followed by a double reduction
+      ---
+      duration_ms: 5.398145
+      type: 'test'
+      ...
+    # Subtest: a failed configured state checkpoint keeps the held backstop and sends no partial conditional
+    ok 37 - a failed configured state checkpoint keeps the held backstop and sends no partial conditional
+      ---
+      duration_ms: 7.254429
+      type: 'test'
+      ...
+    # Subtest: a failed pending ownership journal prevents funded native submission
+    ok 38 - a failed pending ownership journal prevents funded native submission
+      ---
+      duration_ms: 9.271918
+      type: 'test'
+      ...
+    # Subtest: conditional provisional IDs and partial caps survive an immediate state/journal reopen
+    ok 39 - conditional provisional IDs and partial caps survive an immediate state/journal reopen
+      ---
+      duration_ms: 13.109579
+      type: 'test'
+      ...
+    # Subtest: an accepted conditional timeout retains its provisional coid and is never placed twice
+    ok 40 - an accepted conditional timeout retains its provisional coid and is never placed twice
+      ---
+      duration_ms: 7.964101
+      type: 'test'
+      ...
+    # Subtest: an unknown cancellation while moving a stop retains its order identity and sends no duplicate
+    ok 41 - an unknown cancellation while moving a stop retains its order identity and sends no duplicate
+      ---
+      duration_ms: 5.49348
+      type: 'test'
+      ...
+    # Subtest: coalesced parent quantities snap down to coarse venue lot steps
+    ok 42 - coalesced parent quantities snap down to coarse venue lot steps
+      ---
+      duration_ms: 5.773374
+      type: 'test'
+      ...
+    # Subtest: DCA and Axis minimum-lane units remove intrinsic ladder weight for every Block mode
+    ok 43 - DCA and Axis minimum-lane units remove intrinsic ladder weight for every Block mode
+      ---
+      duration_ms: 2.596626
+      type: 'test'
+      ...
+    # Subtest: minimum-lane risk weights match equal funded shares despite unequal intrinsic model volume
+    ok 44 - minimum-lane risk weights match equal funded shares despite unequal intrinsic model volume
+      ---
+      duration_ms: 0.402868
+      type: 'test'
+      ...
+    # Subtest: one-way lane units net fractional Block weights and choose the side actually funded
+    ok 45 - one-way lane units net fractional Block weights and choose the side actually funded
+      ---
+      duration_ms: 0.686783
+      type: 'test'
+      ...
+    # Subtest: the equity percent and volume factor follow verified balance gains and losses without paper balance fallback
+    ok 46 - the equity percent and volume factor follow verified balance gains and losses without paper balance fallback
+      ---
+      duration_ms: 5.965734
+      type: 'test'
+      ...
+    1..46
+ok 45 - actual execution account budgets across independent Signal sets
+  ---
+  duration_ms: 372.728983
+  type: 'suite'
+  ...
+# Subtest: current-equity stop risk and per-position trailing mode
+    # Subtest: a profitable paper trail still risks mark→stop for long and short late live adoption
+    ok 1 - a profitable paper trail still risks mark→stop for long and short late live adoption
+      ---
+      duration_ms: 2.268007
+      type: 'test'
+      ...
+    # Subtest: a higher peak increases current giveback risk until the own trailing stop follows
+    ok 2 - a higher peak increases current giveback risk until the own trailing stop follows
+      ---
+      duration_ms: 1.764717
+      type: 'test'
+      ...
+    # Subtest: capped Signal targets and trailing-only no-target mode survive the global engine free-trail setting
+    ok 3 - capped Signal targets and trailing-only no-target mode survive the global engine free-trail setting
+      ---
+      duration_ms: 2.306006
+      type: 'test'
+      ...
+    1..3
+ok 46 - current-equity stop risk and per-position trailing mode
+  ---
+  duration_ms: 6.707608
+  type: 'suite'
+  ...
+# Subtest: strict live promotion uses two settled independent evidence axes
+    # Subtest: rejects winning raw candidate tapes when post-Base accepted returns lose; removes external volume once
+    ok 1 - rejects winning raw candidate tapes when post-Base accepted returns lose; removes external volume once
+      ---
+      duration_ms: 30.765643
+      type: 'test'
+      ...
+    # Subtest: requires owned execution even with sufficient winning post-Base results; nominal attributed lanes cannot prove funding
+    ok 2 - requires owned execution even with sufficient winning post-Base results; nominal attributed lanes cannot prove funding
+      ---
+      duration_ms: 20.901953
+      type: 'test'
+      ...
+    # Subtest: qualifies only the exact config, timeframe/range, symbol and direction with both complete positive windows
+    ok 3 - qualifies only the exact config, timeframe/range, symbol and direction with both complete positive windows
+      ---
+      duration_ms: 19.627374
+      type: 'test'
+      ...
+    # Subtest: a stale selected measurement config cannot promote outside its current Base-qualified pair/range
+    ok 4 - a stale selected measurement config cannot promote outside its current Base-qualified pair/range
+      ---
+      duration_ms: 10.575553
+      type: 'test'
+      ...
+    # Subtest: native promotion preserves explicit independent untagged ladder admission without qualifying plain Wide or failed pairs
+    ok 5 - native promotion preserves explicit independent untagged ladder admission without qualifying plain Wide or failed pairs
+      ---
+      duration_ms: 109.395689
+      type: 'test'
+      ...
+    # Subtest: a stale active Signal cannot borrow old native proof after its own latest context fails
+    ok 6 - a stale active Signal cannot borrow old native proof after its own latest context fails
+      ---
+      duration_ms: 10.455817
+      type: 'test'
+      ...
+    # Subtest: winning long candidate history cannot promote an unvalidated short despite separate positive execution records
+    ok 7 - winning long candidate history cannot promote an unvalidated short despite separate positive execution records
+      ---
+      duration_ms: 9.301256
+      type: 'test'
+      ...
+    # Subtest: symbol warmup cannot promote a symbol absent from current candidate evidence despite positive owned records
+    ok 8 - symbol warmup cannot promote a symbol absent from current candidate evidence despite positive owned records
+      ---
+      duration_ms: 9.076321
+      type: 'test'
+      ...
+    # Subtest: a previously selected engine config must still pass current Last-N when native execution requests it
+    ok 9 - a previously selected engine config must still pass current Last-N when native execution requests it
+      ---
+      duration_ms: 14.423285
+      type: 'test'
+      ...
+    # Subtest: retains unknown, zero and dust funding inside the chronological last-N window
+    ok 10 - retains unknown, zero and dust funding inside the chronological last-N window
+      ---
+      duration_ms: 25.602506
+      type: 'test'
+      ...
+    # Subtest: does not use future closes or endpoint marks as settled promotion evidence
+    ok 11 - does not use future closes or endpoint marks as settled promotion evidence
+      ---
+      duration_ms: 8.722326
+      type: 'test'
+      ...
+    # Subtest: uses record versions and array identity caches without rescanning history on every live lane
+    ok 12 - uses record versions and array identity caches without rescanning history on every live lane
+      ---
+      duration_ms: 18.582672
+      type: 'test'
+      ...
+    # Subtest: recomputes a reference's CURRENT last N from its exact settled returns instead of clipping an aggregate PF
+    ok 13 - recomputes a reference's CURRENT last N from its exact settled returns instead of clipping an aggregate PF
+      ---
+      duration_ms: 25.956383
+      type: 'test'
+      ...
+    1..13
+ok 47 - strict live promotion uses two settled independent evidence axes
+  ---
+  duration_ms: 315.526753
+  type: 'suite'
+  ...
+# Subtest: strict proof helpers fail closed
+    # Subtest: checks current N, nonfinite PF, unknowns, causal windows, explicit expiry and no-loss convention independently of callers
+    ok 1 - checks current N, nonfinite PF, unknowns, causal windows, explicit expiry and no-loss convention independently of callers
+      ---
+      duration_ms: 0.875923
+      type: 'test'
+      ...
+    # Subtest: group windows preserve unknown returns rather than changing them to zero
+    ok 2 - group windows preserve unknown returns rather than changing them to zero
+      ---
+      duration_ms: 1.408277
+      type: 'test'
+      ...
+    # Subtest: rejects malformed/overflowed local cumulative returns and invalid chronological records
+    ok 3 - rejects malformed/overflowed local cumulative returns and invalid chronological records
+      ---
+      duration_ms: 0.444699
+      type: 'test'
+      ...
+    # Subtest: canonical exact records retain unknown owned funding and normalize each external multiplier once
+    ok 4 - canonical exact records retain unknown owned funding and normalize each external multiplier once
+      ---
+      duration_ms: 0.707529
+      type: 'test'
+      ...
+    # Subtest: does not turn missing/invalid identity fields into winning short evidence or skip their recent unknowns
+    ok 5 - does not turn missing/invalid identity fields into winning short evidence or skip their recent unknowns
+      ---
+      duration_ms: 0.956765
+      type: 'test'
+      ...
+    # Subtest: newer local losing or unknown owned closes cannot be hidden by a still-valid old reference
+    ok 6 - newer local losing or unknown owned closes cannot be hidden by a still-valid old reference
+      ---
+      duration_ms: 1.196621
+      type: 'test'
+      ...
+    1..6
+ok 48 - strict proof helpers fail closed
+  ---
+  duration_ms: 6.008893
+  type: 'suite'
+  ...
+# Subtest: native live boundary preserves held protection without unproven growth
+    # Subtest: blocks missing promotion evidence, prevents resizing a held share upward, and still closes it
+    ok 1 - blocks missing promotion evidence, prevents resizing a held share upward, and still closes it
+      ---
+      duration_ms: 31.457553
+      type: 'test'
+      ...
+    1..1
+ok 49 - native live boundary preserves held protection without unproven growth
+  ---
+  duration_ms: 31.59197
+  type: 'suite'
+  ...
+# Subtest: paper entry allocation provenance
+    # Subtest: a lower explicit Live PF cannot relax the post-Base range floor for paper entries
+    ok 1 - a lower explicit Live PF cannot relax the post-Base range floor for paper entries
+      ---
+      duration_ms: 16.285902
+      type: 'test'
+      ...
+    # Subtest: continues eligible paper learning before live proof and freezes only the newly measured allocation
+    ok 2 - continues eligible paper learning before live proof and freezes only the newly measured allocation
+      ---
+      duration_ms: 12.98126
+      type: 'test'
+      ...
+    # Subtest: persists frozen known adoption allocation across restart, excludes legacy/recomputed units and unconfirmed growth
+    ok 3 - persists frozen known adoption allocation across restart, excludes legacy/recomputed units and unconfirmed growth
+      ---
+      duration_ms: 99.849359
+      type: 'test'
+      ...
+    1..3
+ok 50 - paper entry allocation provenance
+  ---
+  duration_ms: 129.392117
+  type: 'suite'
+  ...

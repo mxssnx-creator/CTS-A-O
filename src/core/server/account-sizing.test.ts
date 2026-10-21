@@ -5,6 +5,7 @@ import { laneContributions, liveKv, liveUnit, liveUnitPeek, resetLiveBackoff, st
 import { SimExchange, fakeRt, lane } from "../test-support.ts";
 import { unitNotional, type SizingSettings } from "../sizing.ts";
 import { ExchangeRejected } from "../exchange/bingx.server.ts";
+import { MICRO_RANGE } from "../config.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
 
 process.env.CTS_CORE_LIVE = "1";

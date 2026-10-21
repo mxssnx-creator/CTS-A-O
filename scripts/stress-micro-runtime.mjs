@@ -39,7 +39,10 @@ const settings = {
   live: { enabled: true, mode: "overall" },
 };
 if (axisLoad) {
-  settings.focus = ["ema-9-21", "rsi-mom-14-20"].flatMap((id) => [1,5,15].map((tf) => `follow|${id}@m${tf}`));
+  // allSets measures the best lane per distinct indication. Use six distinct sources to exercise two on each
+  // timeframe without pretending diagnostic sibling-lane discovery constitutes a Base pass.
+  settings.focus = ["follow|ema-9-21@m1", "follow|rsi-fast@m1", "follow|rsi-mom-14-20@m5",
+    "follow|bb-bounce@m5", "follow|trend-ema@m15", "follow|ema-21-55@m15"];
   settings.disabledKinds = [];
   settings.toggles = { ...settings.toggles, normal: false, trailing: false, axis: true };
   // allSets measures builders even for rejected Base pairs; unchanged PF gates still decide admission.

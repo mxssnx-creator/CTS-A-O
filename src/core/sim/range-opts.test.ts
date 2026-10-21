@@ -35,7 +35,7 @@ const idOf = (k: number, tag?: RangeTag) => `follow|${IND}|tp${k}|sl1|tr0|h32${t
 function tape(k: number, tag: RangeTag | undefined, late: number) {
   const cfg = idOf(k, tag);
   const mk = (r: number, entryT: number) =>
-    ({ cfg, sym: "AAA-USDT", side: 1, entryT, exitT: entryT + 30 * 60_000, entry: 100, exit: 100 * (1 + r), r, reason: r > 0 ? "tp" : "sl", bars: 2, mfe: 0, mae: 0, kind: "normal" }) as Trade;
+    ({ cfg, sym: "AAA-USDT", side: 1, entryT, exitT: entryT + 30 * 60_000, entry: 100, exit: 100 * (1 + r), r, mult: 1, reason: r > 0 ? "tp" : "sl", bars: 2, mfe: 0, mae: 0, kind: "normal" }) as Trade;
   const xs: Trade[] = [];
   for (let i = 0; i < 100; i++) xs.push(mk(i >= 100 - late ? -0.01 : 0.01, NOW - 120 * H + i * H));
   xs.push(mk(0.01, NOW - 2 * H + 10 * 60_000));

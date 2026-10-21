@@ -104,9 +104,10 @@ function paperFixture() {
   return { r, xs };
 }
 function bookRow(r: InstanceType<typeof CoreRuntime>, t: Trade, patch: Record<string, unknown> = {}) {
-  const x = { cfg:t.cfg,sym:t.sym,side:t.side,entry_t:t.entryT,exit_t:t.exitT,r:t.r,unit_r:t.r/(t.mult??1),reason:t.reason,owned_notional_usd:100*(t.mult??1),...patch };
-  r.db.run("INSERT INTO paper_book_trades (cfg,sym,side,entry_t,exit_t,r,unit_r,reason,owned_notional_usd) VALUES (?,?,?,?,?,?,?,?,?)",
-    x.cfg as string,x.sym as string,x.side as number,x.entry_t as number,x.exit_t as number,x.r as number,x.unit_r as number,x.reason as string,x.owned_notional_usd as number|null);
+  const x = { cfg:t.cfg,sym:t.sym,side:t.side,entry_t:t.entryT,exit_t:t.exitT,r:t.r,unit_r:t.r/(t.mult??1),reason:t.reason,owned_notional_usd:100*(t.mult??1),vol:t.mult??1,mult:t.mult??1,...patch };
+  if (typeof patch.unit_r === "number" && !("r" in patch)) x.r = patch.unit_r * (t.mult ?? 1);
+  r.db.run("INSERT INTO paper_book_trades (cfg,sym,side,entry_t,exit_t,r,unit_r,reason,owned_notional_usd,vol,mult) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+    x.cfg as string,x.sym as string,x.side as number,x.entry_t as number,x.exit_t as number,x.r as number,x.unit_r as number,x.reason as string,x.owned_notional_usd as number|null,x.vol as number|null,x.mult as number|null);
 }
 const paperStats = () => coreStatisticsData(coreStatisticsInput({ source: "paper-history", hours: 6 })) as Promise<Any>;
 
@@ -200,4 +201,13 @@ test("forward paper retains a settled unknown-return close in the full sample", 
   assert.equal(result.report.total.n, 2);
   assert.equal(result.report.total.pf, null);
   assert.equal(result.report.total.unknownReturns, 1);
+});
+
+
+test("forward cash retains a close with missing volume as unknown and never reprices it", async () => {
+  const {r,xs}=paperFixture(); bookRow(r,xs[0]); bookRow(r,xs[1],{vol:null});
+  const stats=()=>coreStatisticsData(coreStatisticsInput({source:"paper",hours:6})) as Promise<Any>;
+  const first=await stats(); assert.equal(first.report.total.n,2); assert.equal(first.report.total.cashPf,null);
+  r.settings.paperNotional=999; r.settings.sizing={mode:"equityPct",pct:.9};
+  const second=await stats(); assert.deepEqual(second.report.total,first.report.total);
 });

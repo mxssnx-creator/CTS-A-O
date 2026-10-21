@@ -614,8 +614,9 @@ export function StatisticsPage() {
             Missing ownership or owned-book unit-return evidence makes the whole primary owned-paper
             PF unavailable; it never removes an old losing close. Recorded-unit PF (nominal
             diagnostic only): <b>{unitStatsPfText(d.paperEvidence?.recordedReturns)}</b>. Cash PF,
-            dollar balances, net and curves throughout this report retain nominal paper history,
-            which can differ from the held book; they do not measure owned-book cash performance.
+            dollar balances, net and curves use the forward book’s captured allocation and recorded
+            weighted return once. Missing allocation or volume makes cash performance unavailable;
+            changing today’s sizing cannot reprice a recorded close.
             Paper evidence is not venue fills, and this aggregate cannot substitute for each exact
             lane's strict promotion window.
           </p>
