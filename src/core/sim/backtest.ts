@@ -270,12 +270,16 @@ function simCore(
     ({ inPos, side, entryI, entry, stop, target, peak, trailOn, mfe, mae, nextAllowed, q, dist, trail } =
       from);
   }
+  // (the ratcheting position object is built at entry in the loop; a resumed open position needs it rebuilt from the state)
+  let trailPosition: OpenPosition | undefined =
+    from && from.inPos && q.trail > 0
+      ? { cfg, sym, side, entryT: t[entryI], entryI, entry, stop, target, peak, trailOn, mtm: 0 }
+      : undefined;
   const atr = p.atr ? (opt.atr ?? atrEma(h, l, c, ATR_PERIOD)) : null;
   const resolve = (i: number) => {
     const resolved = resolveAtrProtect(p, atr![i] / c[i], bars.tfMin);
     return signal ? capSignalProtect(resolved) : resolved;
   };
-  let trailPosition: OpenPosition | undefined;
   const nx = nextEntryIndex(sig);
 
   const sink = opt.sink;
