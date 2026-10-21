@@ -1,6 +1,6 @@
 {
   "classification": "Read-only branch inventory and targeted overlap review; not a claim all open PRs have been merged",
-  "main": "fafdea2f5ebe8c903a16f2edd8be34606f746c2f",
+  "main": "3e2c11317cc5cc38300432e7e1e11ad4e669a3dc",
   "reviewed": [
     {
       "number": 179,
@@ -4033,5 +4033,6 @@
     "demo-188": "1f37509f5e683117295222693abe90fd2e5f45aa"
   },
   "latestResolution": "Reviewed later main/Micro/profile changes. Preserved exact-lane readiness, richer cursor/Exit recovery, two explicit paper sources and original verified candidate golden. Combined nonfinite multiplier rejection, full/partial/unknown ownership and captured cash; repaired Signal unknown-return proof aggregation and prevented exchange unknowns from falling back to older paper wins. Legacy unknown-unit r fallbacks remain rejected. The restored fixed public-price fixture is reused unchanged, not refetched or optimized.",
-  "latestIntegrationReview": "Latest reviewed source additions: PR184 f03a36d16ef02b1299889d32c97222932c7cc388 and PR189 944459646e9190a2f8c18e249b85ccf882838b36 are integrated. PR188 3b427b3c88fd4130eeca3f8b0b64dcb94688ac4c is recorded, with its tests resolved in favor of strict current per-direction validation rather than probe bypasses. Main remains fafdea2f5ebe8c903a16f2edd8be34606f746c2f. Previous economic measurements and full green v3 CI remain scoped to ce9c30a / de4cc45; expanded source requires new verification, not relabeling old results."
+  "latestIntegrationReview": "Latest reviewed source additions: PR184 f03a36d16ef02b1299889d32c97222932c7cc388 and PR189 944459646e9190a2f8c18e249b85ccf882838b36 are integrated. PR188 3b427b3c88fd4130eeca3f8b0b64dcb94688ac4c is recorded, with its tests resolved in favor of strict current per-direction validation rather than probe bypasses. Main remains fafdea2f5ebe8c903a16f2edd8be34606f746c2f. Previous economic measurements and full green v3 CI remain scoped to ce9c30a / de4cc45; expanded source requires new verification, not relabeling old results.",
+  "mainMergeReview": "Main advanced only by the already-integrated PR189 merge; local merge937b0cf changes no file and preserves economic source61b56cee. Backup main-before-combined-merge-20261021-3e2c113 preserves it."
 }

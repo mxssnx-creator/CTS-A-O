@@ -1,5 +1,5 @@
 {
-  "sourceSha256": "4d5d1304fbeecda664603f75a0119ec4986ec3301698a0976b8fb8cb4610c765",
+  "sourceSha256": "b4ca3acad127572a75ff8deb382302fdcef490c5d78d5837f27e5b287dfcafdf",
   "sourceManifest": {
     "src/core/adjust.ts": "f3cb7bf5e8f6198974ab36c41561694379febc8bfb40e162d0e92da92e20650c",
     "src/core/api-data.ts": "18e4a5e66acdf8402622784ad443533b16fc03f1ca1a856c6f699352c00530e3",
@@ -8,7 +8,7 @@
     "src/core/base-config-counts.ts": "03ac8b7b46190999527fe6ab2ba4ad6b29a86cc1fcf7037d7336cc17c4d6008c",
     "src/core/bot-stats.ts": "204d14d34f8aa6921d0fde737cbf08e875666410a1ae85cf0586915e76501df9",
     "src/core/bots/bots.ts": "9e148222598d3ef945b7118df93c41209325424bd600f1b23b1284df049e895c",
-    "src/core/config.ts": "d7b8f9b2364893acb1701910f3a9092e39f2204716dfb3db7bc8ed186cb36a2d",
+    "src/core/config.ts": "a66255a3b1300cb21305fe35642b26ead8a5851ff33c8a8bbb10c9ff66654380",
     "src/core/domain/types.ts": "fb8619761dcd5510c94e9695636e950aebd6dba5fc57ffbce462949a1591260f",
     "src/core/eval-family.ts": "72405e472974f8b1a1f9450fbd764fa5ebc00703b8a0d61ec715685311e4a9c2",
     "src/core/evals/evaluator.ts": "886988ab3755eb7c8b212917428adaebb548cdde9cb100e0b8d4248959e5f212",
@@ -83,7 +83,7 @@
     "src/core/server/paper-rows.ts": "2725e808119a39f813c514c16f74f6179be978c5cf2950df45f06739c02d18cc",
     "src/core/server/partition.ts": "7a4a3861a015f64dd2fae2a51c1fd04af7877c5e9326ac0162c2027286b9c16a",
     "src/core/server/pool.server.ts": "0da14eed062645c787f815ee8f7d566e535ccdec6206ad42bdaae3c03beb576d",
-    "src/core/server/runtime.server.ts": "8914b63e069932901cd4311bd5c15e3122ee9c55e48aa74abdbfd02a8829bf7c",
+    "src/core/server/runtime.server.ts": "f7eec213123ca63422d3442fd4070ed0dee8303c78d2afc307ce44cfe065e654",
     "src/core/server/stall-probe.server.ts": "473a6182b692b89a70096c8517329c80937906ed7d2e17a59432abcaff57d45e",
     "src/core/server/stream.server.ts": "6c294f2c9a77edd75302b1f3ea236bc485117cee3453f095288fe251b75a91ba",
     "src/core/server/tapes.worker.ts": "7726493466fae8591d201bc3c0570da0ba6df4d5b9fabe6c9e5c421510edde40",
@@ -145,7 +145,7 @@
     5,
     15
   ],
-  "candidateBuildMs": 10740.254490000001,
+  "candidateBuildMs": 10991.048608000001,
   "classification": "Current re-evaluation of a fixed previously post-Base executed reference cohort; modeled config/direction windows overlap and are not owned funded execution or a portfolio PF",
   "archivedBaseRowsConsidered": 314,
   "basePairsPassed": 314,
