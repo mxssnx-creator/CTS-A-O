@@ -1,6 +1,6 @@
 {
-  "schema": "cts-universal-integration-plan-v12",
-  "sourceSha256": "eb588571dfff70db0b79b4b0588fe1d9c5779c0d91aa4bc5011523e8054b7af9",
+  "schema": "cts-universal-integration-plan-v13",
+  "sourceSha256": "f704356e936a30cc7ae3415f5a58a04dccbf7d81198935414b4d42efb2c0d661",
   "scope": {
     "registeredSpecs": 1860,
     "families": 19,
@@ -63,5 +63,5 @@
   ],
   "classification": "Correctness/causality and synthetic gate audit, not proof of hourly market profitability or a full Cartesian financial portfolio replay",
   "preserve": "Keep failed/partial receipts and all existing negative financial windows. Never change recorded costs/returns/gates to manufacture positive PF.",
-  "revisionReason": "Bound each offline feed read by the earlier of the caller clock and fixed replay end. Preserve original causal 12-symbol selections; no economics changed. Same universal coverage."
+  "revisionReason": "Verify the exact combined PR merge tree46ae, including existing main1f6 exact Base-cell admission and incremental evaluation boundary. Source and all gate/native identity coverage frozen before scoring; paired selection and all economic settings unchanged."
 }

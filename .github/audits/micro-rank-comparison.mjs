@@ -124,7 +124,7 @@ export async function main(args = process.argv.slice(2)) {
     const i = args.indexOf(`--${key}`);
     return i < 0 ? fallback : args[i + 1];
   };
-  const out = resolve(arg("out", "runs/micro-rank-comparison-v3"));
+  const out = resolve(arg("out", "runs/micro-rank-comparison-v4"));
   if (mode === "prepare") {
     assert.ok(!fs.existsSync(`${out}/plan.json`), "Never overwrite a frozen comparison");
     const inputPath = resolve(
@@ -164,7 +164,7 @@ export async function main(args = process.argv.slice(2)) {
           "--selection-file",
           file,
           "--label",
-          `micro-12-symbol-rank-${rank}-12h-pre-12h-run-v3`,
+          `micro-12-symbol-rank-${rank}-12h-pre-12h-run-v4`,
           "--out",
           `${out}/${rank}`,
         ],

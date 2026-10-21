@@ -1,0 +1,3331 @@
+{
+  "schema": "cts-micro-paired-rank-verification-v3",
+  "sourceSha256": "eb588571dfff70db0b79b4b0588fe1d9c5779c0d91aa4bc5011523e8054b7af9",
+  "calculationCheckpoint": "11780ad27ac44427f641ff126e616af9859414e1",
+  "workflowRun": 39545978033,
+  "workflowURL": "https://github.com/mxssnx-creator/CTS-A-O/actions/runs/39545978033",
+  "conclusion": "success",
+  "artifacts": [
+    {
+      "id": 12320824827,
+      "sha": "2c1c97feb1e0ca54d34054ec8d5759a7b3e9f77b6cc9927a9516c3fb00e6d95b",
+      "name": "micro-rank-change1h5m-39545978033"
+    },
+    {
+      "id": 12321813591,
+      "sha": "3ecc80528aa7416bcf63fd70f1d812f236fbb73bedfcbb1206462d428263ec68",
+      "name": "micro-rank-volatility1h-39545978033"
+    }
+  ],
+  "window": {
+    "indicatorStartT": 1792281600000,
+    "evaluationFromT": 1792368000000,
+    "tradeStartT": 1792411200000,
+    "endT": 1792454400000,
+    "preH": 12,
+    "runH": 12
+  },
+  "candidateCount": 24,
+  "symbolsPerCase": 12,
+  "registeredMicroInverseSources": 868,
+  "costRoundTrip": 0.0015,
+  "costChargedOnce": true,
+  "cases": [
+    {
+      "rank": "volatility1h",
+      "unitTotals": {
+        "n": 160300,
+        "wins": 94159,
+        "gp": 510.7300516542665,
+        "gl": 470.62523395308824,
+        "hold": 9580748,
+        "pf": {
+          "value": 1.0852160377468751,
+          "state": "measured"
+        }
+      },
+      "positiveHours": 7,
+      "negativeHours": 5,
+      "audits": {
+        "price": {
+          "rows": 160300,
+          "roundTripChargedOnce": true,
+          "maxReturnError": 1.1627438830340286e-07,
+          "cost": 0.0015,
+          "violations": 0
+        },
+        "parity": {
+          "matched": 160300,
+          "missing": 0,
+          "mismatched": 0,
+          "execution": {
+            "closes": 160300,
+            "gp": 510.7300516542495,
+            "gl": 470.6252339530722,
+            "pf": 1.0852160377468758,
+            "pfState": "measured"
+          },
+          "tape": {
+            "closes": 160300,
+            "gp": 510.7300516542495,
+            "gl": 470.6252339530722,
+            "pf": 1.0852160377468758,
+            "pfState": "measured"
+          }
+        },
+        "scalar": {
+          "tapes": 105966,
+          "decisions": 984528,
+          "violations": 0
+        },
+        "transition": {
+          "decisions": 96684,
+          "mismatches": 0
+        },
+        "report": {
+          "checks": 60,
+          "passed": 60
+        }
+      },
+      "initial": {
+        "t": 1792411200000,
+        "evaluated": 82044,
+        "passed": {
+          "configs": 8057,
+          "closes": 151643,
+          "gp": 672.2973850508976,
+          "gl": 242.21830081635085,
+          "unknownReturns": 0,
+          "pf": 2.7755845977989555,
+          "pfState": "measured"
+        },
+        "seated": {
+          "configs": 8057,
+          "closes": 151643,
+          "gp": 672.2973850508976,
+          "gl": 242.21830081635085,
+          "unknownReturns": 0,
+          "pf": 2.7755845977989555,
+          "pfState": "measured"
+        }
+      },
+      "base": {
+        "evaluatedPairsIncludingExit": 1736,
+        "passedPairsIncludingExit": 281,
+        "ordinaryPassedPairs": 236,
+        "mainPairs": 236,
+        "rangeRepresentativeEvidence": [
+          {
+            "range": "Wide",
+            "tag": "wide",
+            "evaluatedPairs": 868,
+            "passedPairs": 5,
+            "minimumPf": 1.1,
+            "passedPooledPf": 1.8071058019941963,
+            "passedMedianPf": 1.8836734693877615,
+            "gp": 87.0800000000001,
+            "gl": 48.18754934210529
+          },
+          {
+            "range": "Micro",
+            "tag": "mc",
+            "evaluatedPairs": 868,
+            "passedPairs": 85,
+            "minimumPf": 1.1,
+            "passedPooledPf": 1.8789439274066324,
+            "passedMedianPf": 1.9886189814712527,
+            "gp": 518.9689414700338,
+            "gl": 276.2024634691086
+          },
+          {
+            "range": "Minimal",
+            "tag": "mn",
+            "evaluatedPairs": 868,
+            "passedPairs": 121,
+            "minimumPf": 1.1,
+            "passedPooledPf": 1.6111678044596813,
+            "passedMedianPf": 1.6791128249816085,
+            "gp": 1636.5043945996808,
+            "gl": 1015.7256060292841
+          },
+          {
+            "range": "Short",
+            "tag": "sh",
+            "evaluatedPairs": 868,
+            "passedPairs": 57,
+            "minimumPf": 1.1,
+            "passedPooledPf": 1.6312571780357499,
+            "passedMedianPf": 1.7468145539443667,
+            "gp": 1048.7281049375747,
+            "gl": 642.8956261822447
+          },
+          {
+            "range": "General",
+            "tag": "gn",
+            "evaluatedPairs": 868,
+            "passedPairs": 84,
+            "minimumPf": 1.2,
+            "passedPooledPf": 1.915336469392982,
+            "passedMedianPf": 1.9181065696152537,
+            "gp": 1517.529517118911,
+            "gl": 792.3044025783386
+          }
+        ]
+      },
+      "perRange": {
+        "mn": {
+          "initialPassed": {
+            "configs": 3112,
+            "closes": 59055,
+            "gp": 190.3677301319209,
+            "gl": 61.34818931078171,
+            "unknownReturns": 0,
+            "pf": 3.1030700705369387,
+            "pfState": "measured"
+          },
+          "initialSeated": {
+            "configs": 3112,
+            "closes": 59055,
+            "gp": 190.3677301319209,
+            "gl": 61.34818931078171,
+            "unknownReturns": 0,
+            "pf": 3.1030700705369387,
+            "pfState": "measured"
+          },
+          "executed": {
+            "configs": 9402,
+            "closes": 50769,
+            "gp": 182.60781707508315,
+            "gl": 125.28753438842477,
+            "unknownReturns": 0,
+            "pf": 1.4575098629441474,
+            "pfState": "measured"
+          }
+        },
+        "sh": {
+          "initialPassed": {
+            "configs": 708,
+            "closes": 12216,
+            "gp": 88.35973280262388,
+            "gl": 33.029314532776425,
+            "unknownReturns": 0,
+            "pf": 2.675191237012826,
+            "pfState": "measured"
+          },
+          "initialSeated": {
+            "configs": 708,
+            "closes": 12216,
+            "gp": 88.35973280262388,
+            "gl": 33.029314532776425,
+            "unknownReturns": 0,
+            "pf": 2.675191237012826,
+            "pfState": "measured"
+          },
+          "executed": {
+            "configs": 3289,
+            "closes": 17624,
+            "gp": 69.59275457384204,
+            "gl": 51.45327894759596,
+            "unknownReturns": 0,
+            "pf": 1.3525426561195593,
+            "pfState": "measured"
+          }
+        },
+        "gn": {
+          "initialPassed": {
+            "configs": 1860,
+            "closes": 37194,
+            "gp": 285.6068415186726,
+            "gl": 116.0956484103581,
+            "unknownReturns": 0,
+            "pf": 2.460099456175574,
+            "pfState": "measured"
+          },
+          "initialSeated": {
+            "configs": 1860,
+            "closes": 37194,
+            "gp": 285.6068415186726,
+            "gl": 116.0956484103581,
+            "unknownReturns": 0,
+            "pf": 2.460099456175574,
+            "pfState": "measured"
+          },
+          "executed": {
+            "configs": 8558,
+            "closes": 31920,
+            "gp": 142.2327941968304,
+            "gl": 122.5911980019512,
+            "unknownReturns": 0,
+            "pf": 1.1602202810234923,
+            "pfState": "measured"
+          }
+        },
+        "mc": {
+          "initialPassed": {
+            "configs": 2375,
+            "closes": 43091,
+            "gp": 107.56428876861908,
+            "gl": 31.529898807123097,
+            "unknownReturns": 0,
+            "pf": 3.411501236544363,
+            "pfState": "measured"
+          },
+          "initialSeated": {
+            "configs": 2375,
+            "closes": 43091,
+            "gp": 107.56428876861908,
+            "gl": 31.529898807123097,
+            "unknownReturns": 0,
+            "pf": 3.411501236544363,
+            "pfState": "measured"
+          },
+          "executed": {
+            "configs": 12238,
+            "closes": 59816,
+            "gp": 115.85262155949331,
+            "gl": 170.44781166088396,
+            "unknownReturns": 0,
+            "pf": 0.6796955644698389,
+            "pfState": "measured"
+          }
+        },
+        "wide": {
+          "initialPassed": {
+            "configs": 2,
+            "closes": 87,
+            "gp": 0.3987918290731248,
+            "gl": 0.2152497553121261,
+            "unknownReturns": 0,
+            "pf": 1.8526935303357295,
+            "pfState": "measured"
+          },
+          "initialSeated": {
+            "configs": 2,
+            "closes": 87,
+            "gp": 0.3987918290731248,
+            "gl": 0.2152497553121261,
+            "unknownReturns": 0,
+            "pf": 1.8526935303357295,
+            "pfState": "measured"
+          },
+          "executed": {
+            "configs": 22,
+            "closes": 171,
+            "gp": 0.4440642490425466,
+            "gl": 0.8454109541736405,
+            "unknownReturns": 0,
+            "pf": 0.5252643662236477,
+            "pfState": "measured"
+          }
+        }
+      },
+      "cashNetDiagnostic": 80.209635,
+      "feasible": false,
+      "marginMax": 18010.2,
+      "equityMaxDdPct": 0.107304
+    },
+    {
+      "rank": "change1h5m",
+      "unitTotals": {
+        "n": 160220,
+        "wins": 94088,
+        "gp": 510.3277805479689,
+        "gl": 471.02422690859106,
+        "hold": 9575924,
+        "pf": {
+          "value": 1.083442743268926,
+          "state": "measured"
+        }
+      },
+      "positiveHours": 7,
+      "negativeHours": 5,
+      "audits": {
+        "price": {
+          "rows": 160220,
+          "roundTripChargedOnce": true,
+          "maxReturnError": 1.1627438830340286e-07,
+          "cost": 0.0015,
+          "violations": 0
+        },
+        "parity": {
+          "matched": 160220,
+          "missing": 0,
+          "mismatched": 0,
+          "execution": {
+            "closes": 160220,
+            "gp": 510.32778054795136,
+            "gl": 471.02422690857566,
+            "pf": 1.083442743268924,
+            "pfState": "measured"
+          },
+          "tape": {
+            "closes": 160220,
+            "gp": 510.32778054795136,
+            "gl": 471.02422690857566,
+            "pf": 1.083442743268924,
+            "pfState": "measured"
+          }
+        },
+        "scalar": {
+          "tapes": 105938,
+          "decisions": 984192,
+          "violations": 0
+        },
+        "transition": {
+          "decisions": 96984,
+          "mismatches": 0
+        },
+        "report": {
+          "checks": 60,
+          "passed": 60
+        }
+      },
+      "initial": {
+        "t": 1792411200000,
+        "evaluated": 82016,
+        "passed": {
+          "configs": 8082,
+          "closes": 152077,
+          "gp": 673.1900598179851,
+          "gl": 242.5701692443429,
+          "unknownReturns": 0,
+          "pf": 2.7752384471475358,
+          "pfState": "measured"
+        },
+        "seated": {
+          "configs": 8082,
+          "closes": 152077,
+          "gp": 673.1900598179851,
+          "gl": 242.5701692443429,
+          "unknownReturns": 0,
+          "pf": 2.7752384471475358,
+          "pfState": "measured"
+        }
+      },
+      "base": {
+        "evaluatedPairsIncludingExit": 1736,
+        "passedPairsIncludingExit": 281,
+        "ordinaryPassedPairs": 236,
+        "mainPairs": 236,
+        "rangeRepresentativeEvidence": [
+          {
+            "range": "Wide",
+            "tag": "wide",
+            "evaluatedPairs": 868,
+            "passedPairs": 5,
+            "minimumPf": 1.1,
+            "passedPooledPf": 1.8071058019941963,
+            "passedMedianPf": 1.8836734693877615,
+            "gp": 87.0800000000001,
+            "gl": 48.18754934210529
+          },
+          {
+            "range": "Micro",
+            "tag": "mc",
+            "evaluatedPairs": 868,
+            "passedPairs": 85,
+            "minimumPf": 1.1,
+            "passedPooledPf": 1.8789439274066324,
+            "passedMedianPf": 1.9886189814712527,
+            "gp": 518.9689414700338,
+            "gl": 276.2024634691086
+          },
+          {
+            "range": "Minimal",
+            "tag": "mn",
+            "evaluatedPairs": 868,
+            "passedPairs": 121,
+            "minimumPf": 1.1,
+            "passedPooledPf": 1.6111678044596813,
+            "passedMedianPf": 1.6791128249816085,
+            "gp": 1636.5043945996808,
+            "gl": 1015.7256060292841
+          },
+          {
+            "range": "Short",
+            "tag": "sh",
+            "evaluatedPairs": 868,
+            "passedPairs": 57,
+            "minimumPf": 1.1,
+            "passedPooledPf": 1.63125717803575,
+            "passedMedianPf": 1.746814553944367,
+            "gp": 1048.728104937575,
+            "gl": 642.8956261822447
+          },
+          {
+            "range": "General",
+            "tag": "gn",
+            "evaluatedPairs": 868,
+            "passedPairs": 84,
+            "minimumPf": 1.2,
+            "passedPooledPf": 1.915336469392982,
+            "passedMedianPf": 1.9181065696152537,
+            "gp": 1517.529517118911,
+            "gl": 792.3044025783386
+          }
+        ]
+      },
+      "perRange": {
+        "mn": {
+          "initialPassed": {
+            "configs": 3113,
+            "closes": 59029,
+            "gp": 190.02374032015027,
+            "gl": 61.250918024454506,
+            "unknownReturns": 0,
+            "pf": 3.1023819144111937,
+            "pfState": "measured"
+          },
+          "initialSeated": {
+            "configs": 3113,
+            "closes": 59029,
+            "gp": 190.02374032015027,
+            "gl": 61.250918024454506,
+            "unknownReturns": 0,
+            "pf": 3.1023819144111937,
+            "pfState": "measured"
+          },
+          "executed": {
+            "configs": 9389,
+            "closes": 50693,
+            "gp": 182.44436923492148,
+            "gl": 125.6642801570029,
+            "unknownReturns": 0,
+            "pf": 1.4518395283606325,
+            "pfState": "measured"
+          }
+        },
+        "sh": {
+          "initialPassed": {
+            "configs": 708,
+            "closes": 12216,
+            "gp": 88.35973280262388,
+            "gl": 33.029314532776425,
+            "unknownReturns": 0,
+            "pf": 2.675191237012826,
+            "pfState": "measured"
+          },
+          "initialSeated": {
+            "configs": 708,
+            "closes": 12216,
+            "gp": 88.35973280262388,
+            "gl": 33.029314532776425,
+            "unknownReturns": 0,
+            "pf": 2.675191237012826,
+            "pfState": "measured"
+          },
+          "executed": {
+            "configs": 3292,
+            "closes": 17599,
+            "gp": 69.41329722117345,
+            "gl": 51.34147397004024,
+            "unknownReturns": 0,
+            "pf": 1.351992684543471,
+            "pfState": "measured"
+          }
+        },
+        "gn": {
+          "initialPassed": {
+            "configs": 1867,
+            "closes": 37348,
+            "gp": 286.3396258602074,
+            "gl": 116.32034581002908,
+            "unknownReturns": 0,
+            "pf": 2.4616469618122414,
+            "pfState": "measured"
+          },
+          "initialSeated": {
+            "configs": 1867,
+            "closes": 37348,
+            "gp": 286.3396258602074,
+            "gl": 116.32034581002908,
+            "unknownReturns": 0,
+            "pf": 2.4616469618122414,
+            "pfState": "measured"
+          },
+          "executed": {
+            "configs": 8561,
+            "closes": 31922,
+            "gp": 142.12779667936084,
+            "gl": 122.73023069765851,
+            "unknownReturns": 0,
+            "pf": 1.1580504320038927,
+            "pfState": "measured"
+          }
+        },
+        "mc": {
+          "initialPassed": {
+            "configs": 2392,
+            "closes": 43397,
+            "gp": 108.06816900594279,
+            "gl": 31.754341121771265,
+            "unknownReturns": 0,
+            "pf": 3.4032565371620827,
+            "pfState": "measured"
+          },
+          "initialSeated": {
+            "configs": 2392,
+            "closes": 43397,
+            "gp": 108.06816900594279,
+            "gl": 31.754341121771265,
+            "unknownReturns": 0,
+            "pf": 3.4032565371620827,
+            "pfState": "measured"
+          },
+          "executed": {
+            "configs": 12237,
+            "closes": 59835,
+            "gp": 115.89825316349585,
+            "gl": 170.44283112965633,
+            "unknownReturns": 0,
+            "pf": 0.679983149747916,
+            "pfState": "measured"
+          }
+        },
+        "wide": {
+          "initialPassed": {
+            "configs": 2,
+            "closes": 87,
+            "gp": 0.3987918290731248,
+            "gl": 0.2152497553121261,
+            "unknownReturns": 0,
+            "pf": 1.8526935303357295,
+            "pfState": "measured"
+          },
+          "initialSeated": {
+            "configs": 2,
+            "closes": 87,
+            "gp": 0.3987918290731248,
+            "gl": 0.2152497553121261,
+            "unknownReturns": 0,
+            "pf": 1.8526935303357295,
+            "pfState": "measured"
+          },
+          "executed": {
+            "configs": 22,
+            "closes": 171,
+            "gp": 0.4440642490425466,
+            "gl": 0.8454109541736405,
+            "unknownReturns": 0,
+            "pf": 0.5252643662236477,
+            "pfState": "measured"
+          }
+        }
+      },
+      "cashNetDiagnostic": 78.607107,
+      "feasible": false,
+      "marginMax": 17999,
+      "equityMaxDdPct": 0.107253
+    }
+  ],
+  "exactCaseComparison": {
+    "same": false,
+    "matched": 160071,
+    "onlyLeft": 229,
+    "onlyRight": 149,
+    "mismatchedReturns": 0,
+    "maxReturnError": 0,
+    "examples": [
+      {
+        "identity": [
+          "follow|inverse-micro-5-activity-acceleration-fast@m5|tp0|sl0.6875|tr0.1375|h12|mc|to|tm3",
+          "OP-USDT",
+          1,
+          1792416900000,
+          1792417500000
+        ],
+        "left": [
+          -0.004213920817369149
+        ],
+        "right": []
+      },
+      {
+        "identity": [
+          "follow|inverse-micro-5-activity-acceleration-fast@m5|tp0|sl0.6875|tr0.1375|h12|mc|to|tm3",
+          "ARB-USDT",
+          1,
+          1792416900000,
+          1792417500000
+        ],
+        "left": [
+          -0.0010914824082112202
+        ],
+        "right": []
+      },
+      {
+        "identity": [
+          "follow|inverse-micro-5-activity-acceleration-fast@m5|tp0|sl0.6875|tr0.1375|h12|mc|to|tm3",
+          "APT-USDT",
+          1,
+          1792416900000,
+          1792418100000
+        ],
+        "left": [
+          -0.0022775042114812037
+        ],
+        "right": []
+      },
+      {
+        "identity": [
+          "follow|inverse-micro-5-activity-acceleration-fast@m5|tp0|sl0.6875|tr0.1375|h12|mc|to|tm3",
+          "AVAX-USDT",
+          1,
+          1792416900000,
+          1792418700000
+        ],
+        "left": [
+          -0.008374999999999978
+        ],
+        "right": []
+      },
+      {
+        "identity": [
+          "follow|inverse-micro-1x15-break-channel-activity-fast@m1|tp0.8|sl1.8|tr0.4|h120|mn",
+          "INJ-USDT",
+          -1,
+          1792422180000,
+          1792422840000
+        ],
+        "left": [
+          8.294717330865876e-05
+        ],
+        "right": []
+      },
+      {
+        "identity": [
+          "follow|inverse-micro-1x15-break-channel-activity-fast@m1|tp0.8|sl2|tr0.4|h120|mn",
+          "INJ-USDT",
+          -1,
+          1792422180000,
+          1792422840000
+        ],
+        "left": [
+          8.294717330865876e-05
+        ],
+        "right": []
+      },
+      {
+        "identity": [
+          "follow|inverse-micro-1x15-break-channel-activity-fast@m1|tp0.8|sl2.4|tr0.4|h120|mn",
+          "INJ-USDT",
+          -1,
+          1792422180000,
+          1792422840000
+        ],
+        "left": [
+          8.294717330865876e-05
+        ],
+        "right": []
+      },
+      {
+        "identity": [
+          "follow|inverse-micro-1x15-break-channel-activity-fast@m1|tp0.8|sl1.8|tr0.4|h120|mn",
+          "DOT-USDT",
+          -1,
+          1792422300000,
+          1792422840000
+        ],
+        "left": [
+          -0.0001744347826086153
+        ],
+        "right": []
+      },
+      {
+        "identity": [
+          "follow|inverse-micro-1x15-break-channel-activity-fast@m1|tp0.8|sl2|tr0.4|h120|mn",
+          "DOT-USDT",
+          -1,
+          1792422300000,
+          1792422840000
+        ],
+        "left": [
+          -0.0001744347826086153
+        ],
+        "right": []
+      },
+      {
+        "identity": [
+          "follow|inverse-micro-1x15-break-channel-activity-fast@m1|tp0.8|sl2.4|tr0.4|h120|mn",
+          "DOT-USDT",
+          -1,
+          1792422300000,
+          1792422840000
+        ],
+        "left": [
+          -0.0001744347826086153
+        ],
+        "right": []
+      },
+      {
+        "identity": [
+          "follow|inverse-micro-1x5-break-channel-activity-fast@m1|tp1.2|sl2.1|tr0.9|h120|mn",
+          "ARB-USDT",
+          1,
+          1792422900000,
+          1792423320000
+        ],
+        "left": [
+          0.010499999999999995
+        ],
+        "right": []
+      },
+      {
+        "identity": [
+          "follow|inverse-micro-1x5-break-channel-activity-fast@m1|tp1.2|sl2.4|tr0.9|h120|mn",
+          "ARB-USDT",
+          1,
+          1792422900000,
+          1792423320000
+        ],
+        "left": [
+          0.010499999999999995
+        ],
+        "right": []
+      },
+      {
+        "identity": [
+          "follow|inverse-micro-1x5-break-channel-activity-fast@m1|tp1.2|sl2.7|tr0.9|h120|mn",
+          "ARB-USDT",
+          1,
+          1792422900000,
+          1792423320000
+        ],
+        "left": [
+          0.010499999999999995
+        ],
+        "right": []
+      },
+      {
+        "identity": [
+          "follow|inverse-micro-1x5-break-channel-activity-fast@m1|tp1.2|sl3.3|tr0.9|h120|mn",
+          "ARB-USDT",
+          1,
+          1792422900000,
+          1792423320000
+        ],
+        "left": [
+          0.010499999999999995
+        ],
+        "right": []
+      },
+      {
+        "identity": [
+          "follow|inverse-micro-1x5-break-channel-activity-fast@m1|tp1.2|sl3.6|tr0.9|h120|mn",
+          "ARB-USDT",
+          1,
+          1792422900000,
+          1792423320000
+        ],
+        "left": [
+          0.010499999999999995
+        ],
+        "right": []
+      },
+      {
+        "identity": [
+          "follow|inverse-micro-1x5-break-channel-activity-fast@m1|tp1.2|sl3|tr0.9|h120|mn",
+          "ARB-USDT",
+          1,
+          1792422900000,
+          1792423320000
+        ],
+        "left": [
+          0.010499999999999995
+        ],
+        "right": []
+      },
+      {
+        "identity": [
+          "follow|inverse-micro-1x15-break-channel-activity-fast@m1|tp0.8|sl1.8|tr0.4|h120|mn",
+          "DOT-USDT",
+          -1,
+          1792423500000,
+          1792423800000
+        ],
+        "left": [
+          -0.0010236217096803845
+        ],
+        "right": []
+      },
+      {
+        "identity": [
+          "follow|inverse-micro-1x15-break-channel-activity-fast@m1|tp0.8|sl2|tr0.4|h120|mn",
+          "DOT-USDT",
+          -1,
+          1792423500000,
+          1792423800000
+        ],
+        "left": [
+          -0.0010236217096803845
+        ],
+        "right": []
+      },
+      {
+        "identity": [
+          "follow|inverse-micro-1x15-break-channel-activity-fast@m1|tp0.8|sl1.8|tr0.4|h120|mn",
+          "INJ-USDT",
+          -1,
+          1792423260000,
+          1792423980000
+        ],
+        "left": [
+          0.006500000000000006
+        ],
+        "right": []
+      },
+      {
+        "identity": [
+          "follow|inverse-micro-1x15-break-channel-activity-fast@m1|tp0.8|sl2|tr0.4|h120|mn",
+          "INJ-USDT",
+          -1,
+          1792423260000,
+          1792423980000
+        ],
+        "left": [
+          0.006500000000000006
+        ],
+        "right": []
+      }
+    ],
+    "basis": "Funded settled exact identity multiset; duplicate legs retained; verified unit returns compared without charging costs again"
+  },
+  "orderDiagnostic": {
+    "initialCommonGateDecisionChanges": 35,
+    "allInitialChangedConfigsProvedSameRowReturnMultiset": true,
+    "proved": 35,
+    "onlyInitialCheckedA": 28,
+    "onlyInitialCheckedB": 0,
+    "coverageDifferences": [
+      {
+        "key": "inverse-micro-1x15-break-channel-activity-fast|mn|normal",
+        "rows": [
+          {
+            "ind": "inverse-micro-1x15-break-channel-activity-fast",
+            "tag": "mn",
+            "kind": "normal",
+            "lanes": 1,
+            "grid": 63,
+            "built": 35,
+            "kept": 35,
+            "few": 0,
+            "skip": {
+              "baseTarget": 28
+            },
+            "tps": 5,
+            "sls": 24,
+            "trails": 1
+          },
+          {
+            "ind": "inverse-micro-1x15-break-channel-activity-fast",
+            "tag": "mn",
+            "kind": "normal",
+            "lanes": 1,
+            "grid": 63,
+            "built": 28,
+            "kept": 28,
+            "few": 0,
+            "skip": {
+              "baseTarget": 35
+            },
+            "tps": 4,
+            "sls": 21,
+            "trails": 1
+          }
+        ]
+      },
+      {
+        "key": "inverse-micro-1x15-break-channel-activity-fast|mn|trailing",
+        "rows": [
+          {
+            "ind": "inverse-micro-1x15-break-channel-activity-fast",
+            "tag": "mn",
+            "kind": "trailing",
+            "lanes": 1,
+            "grid": 189,
+            "built": 105,
+            "kept": 105,
+            "few": 0,
+            "skip": {
+              "baseTarget": 84
+            },
+            "tps": 5,
+            "sls": 24,
+            "trails": 10
+          },
+          {
+            "ind": "inverse-micro-1x15-break-channel-activity-fast",
+            "tag": "mn",
+            "kind": "trailing",
+            "lanes": 1,
+            "grid": 189,
+            "built": 84,
+            "kept": 84,
+            "few": 0,
+            "skip": {
+              "baseTarget": 105
+            },
+            "tps": 4,
+            "sls": 21,
+            "trails": 9
+          }
+        ]
+      }
+    ],
+    "policy": "Production compareTapeTrades preserves ranked universe source order for equal exit/entry timestamps. symbol-directions and signal-gates regressions explicitly retain this policy. Canonical sorting here is a post-hoc diagnostic only; neither saved execution nor historical gate sample is altered. Shared source rows and returns match; ordering can change Last-N boundary membership and chronological drawdown."
+  },
+  "coreVerification": {
+    "workflowRun": 39545978002,
+    "files": 260,
+    "ordinaryPassed": 3097,
+    "defaultOptionalSkips": 2,
+    "failed": 0,
+    "cancelled": 0,
+    "separatelyPassedSlow": 2,
+    "slowUniversalRun": 39545977982,
+    "scriptAuditPassed": 65,
+    "parts": [
+      {
+        "file": "runs/core-v3-final-evidence/12321528061/runs/micro-ci-functional-2/report-2026-10-21.json",
+        "totals": {
+          "files": 63,
+          "tests": 895,
+          "pass": 895,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "filesFailed": 0,
+          "filesSkipped": 0
+        }
+      },
+      {
+        "file": "runs/core-v3-final-evidence/12321463815/runs/micro-ci-functional-1/report-2026-10-21.json",
+        "totals": {
+          "files": 63,
+          "tests": 664,
+          "pass": 664,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "filesFailed": 0,
+          "filesSkipped": 0
+        }
+      },
+      {
+        "file": "runs/core-v3-final-evidence/12321214499/runs/micro-ci-functional-runtime/report-2026-10-21.json",
+        "totals": {
+          "files": 1,
+          "tests": 30,
+          "pass": 28,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 2,
+          "filesFailed": 0,
+          "filesSkipped": 0
+        }
+      },
+      {
+        "file": "runs/core-v3-final-evidence/12321835173/runs/micro-ci-functional-0/report-2026-10-21.json",
+        "totals": {
+          "files": 63,
+          "tests": 825,
+          "pass": 825,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "filesFailed": 0,
+          "filesSkipped": 0
+        }
+      },
+      {
+        "file": "runs/core-v3-final-evidence/12321063948/runs/micro-ci-functional-3/report-2026-10-21.json",
+        "totals": {
+          "files": 63,
+          "tests": 624,
+          "pass": 624,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "filesFailed": 0,
+          "filesSkipped": 0
+        }
+      },
+      {
+        "file": "runs/core-v3-final-evidence/12321603920/runs/micro-ci-functional-heavy/report-2026-10-21.json",
+        "totals": {
+          "files": 7,
+          "tests": 61,
+          "pass": 61,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "filesFailed": 0,
+          "filesSkipped": 0
+        }
+      }
+    ],
+    "artifacts": [
+      {
+        "id": 12321528061,
+        "name": "micro-functional-2-39545978002-1",
+        "sha": "464ed2354b2e35010a916b5efeba06eadb7834187a23ebc23090c1b9cad6ac5e"
+      },
+      {
+        "id": 12321463815,
+        "name": "micro-functional-1-39545978002-1",
+        "sha": "b0941cc697395a48c15740ebf9e3157f47e38a750250e36a4f9cd736e209c9cb"
+      },
+      {
+        "id": 12321214499,
+        "name": "micro-functional-runtime-39545978002-1",
+        "sha": "6e87199ef6fa328bcfa04935e27b163da7dc16669ab3d833d085d38986db6fad"
+      },
+      {
+        "id": 12321633521,
+        "name": "micro-stress-39545978002-1",
+        "sha": "5aea696df11a3576af5ca5bf9f0f2401c3f1f2ed94e5023a950976d527b51adb"
+      },
+      {
+        "id": 12321835173,
+        "name": "micro-functional-0-39545978002-1",
+        "sha": "41b887bdf637b9d1b2051e684dc7c04862f8f9e0b6aee5cde844b9ebe4ee3acb"
+      },
+      {
+        "id": 12321063948,
+        "name": "micro-functional-3-39545978002-1",
+        "sha": "f8dc2aa9bb4847a3bda3adda139a32a28fb68f823ad785182e6646f2341f29d3"
+      },
+      {
+        "id": 12321603920,
+        "name": "micro-functional-heavy-39545978002-1",
+        "sha": "8fa51fdb1929e6de5160f85f3504194168f9c32b474a70a45079f9fa1f8320b6"
+      }
+    ],
+    "stress": {
+      "schema": "cts-micro-load-v1",
+      "source": "synthetic functional load, no exchange executions",
+      "scope": "120 symbols; all 868 Micro/mirror identities; 1/5/15m singles and combinations; configured Micro protects including enabled Trailing-only siblings; two real runtime computations; 100 coalesced kicks. Full four-range financial grid measured separately on native historical data.",
+      "strategy": "micro",
+      "axisTapes": 1856,
+      "configuredProtects": 6,
+      "configuredTrailingOnly": 2,
+      "elapsedMs": 452181.074839,
+      "maxRssMb": 3584.01171875,
+      "maxCompute": 1,
+      "kicks": 100,
+      "nativeChecks": 4362,
+      "computes": 2,
+      "paperSteps": 1,
+      "symbols": 120,
+      "progress": {
+        "intervalMs": 100,
+        "checks": 4520,
+        "lagMs": 30.442334999970626,
+        "maxLagMs": 140.07275000000664,
+        "missed": 1,
+        "error": null
+      },
+      "status": {
+        "state": "stopped",
+        "stage": "Realtime",
+        "progress": 1,
+        "label": "PF 1.64 \u00b7 DDT 1.3h \u00b7 green 57% \u00b7 validate last 15 \u00b7 live last 0 \u00b7 11 seats \u00b7 7 open",
+        "overall": 1,
+        "computeStartedAt": 1792558330235,
+        "paperSteps": 1,
+        "paperCompute": 2,
+        "cycles": 2,
+        "computes": 2,
+        "startedAt": 1792558103417,
+        "heartbeat": 1792558555568,
+        "lastCycleMs": 225333.891185,
+        "lastComputeMs": 225109.418136,
+        "lastBarT": 1792368000000,
+        "source": "synthetic",
+        "symbols": [
+          "SYN0-USDT",
+          "SYN1-USDT",
+          "SYN2-USDT",
+          "SYN3-USDT",
+          "SYN4-USDT",
+          "SYN5-USDT",
+          "SYN6-USDT",
+          "SYN7-USDT",
+          "SYN8-USDT",
+          "SYN9-USDT",
+          "SYN10-USDT",
+          "SYN11-USDT",
+          "SYN12-USDT",
+          "SYN13-USDT",
+          "SYN14-USDT",
+          "SYN15-USDT",
+          "SYN16-USDT",
+          "SYN17-USDT",
+          "SYN18-USDT",
+          "SYN19-USDT",
+          "SYN20-USDT",
+          "SYN21-USDT",
+          "SYN22-USDT",
+          "SYN23-USDT",
+          "SYN24-USDT",
+          "SYN25-USDT",
+          "SYN26-USDT",
+          "SYN27-USDT",
+          "SYN28-USDT",
+          "SYN29-USDT",
+          "SYN30-USDT",
+          "SYN31-USDT",
+          "SYN32-USDT",
+          "SYN33-USDT",
+          "SYN34-USDT",
+          "SYN35-USDT",
+          "SYN36-USDT",
+          "SYN37-USDT",
+          "SYN38-USDT",
+          "SYN39-USDT",
+          "SYN40-USDT",
+          "SYN41-USDT",
+          "SYN42-USDT",
+          "SYN43-USDT",
+          "SYN44-USDT",
+          "SYN45-USDT",
+          "SYN46-USDT",
+          "SYN47-USDT",
+          "SYN48-USDT",
+          "SYN49-USDT",
+          "SYN50-USDT",
+          "SYN51-USDT",
+          "SYN52-USDT",
+          "SYN53-USDT",
+          "SYN54-USDT",
+          "SYN55-USDT",
+          "SYN56-USDT",
+          "SYN57-USDT",
+          "SYN58-USDT",
+          "SYN59-USDT",
+          "SYN60-USDT",
+          "SYN61-USDT",
+          "SYN62-USDT",
+          "SYN63-USDT",
+          "SYN64-USDT",
+          "SYN65-USDT",
+          "SYN66-USDT",
+          "SYN67-USDT",
+          "SYN68-USDT",
+          "SYN69-USDT",
+          "SYN70-USDT",
+          "SYN71-USDT",
+          "SYN72-USDT",
+          "SYN73-USDT",
+          "SYN74-USDT",
+          "SYN75-USDT",
+          "SYN76-USDT",
+          "SYN77-USDT",
+          "SYN78-USDT",
+          "SYN79-USDT",
+          "SYN80-USDT",
+          "SYN81-USDT",
+          "SYN82-USDT",
+          "SYN83-USDT",
+          "SYN84-USDT",
+          "SYN85-USDT",
+          "SYN86-USDT",
+          "SYN87-USDT",
+          "SYN88-USDT",
+          "SYN89-USDT",
+          "SYN90-USDT",
+          "SYN91-USDT",
+          "SYN92-USDT",
+          "SYN93-USDT",
+          "SYN94-USDT",
+          "SYN95-USDT",
+          "SYN96-USDT",
+          "SYN97-USDT",
+          "SYN98-USDT",
+          "SYN99-USDT",
+          "SYN100-USDT",
+          "SYN101-USDT",
+          "SYN102-USDT",
+          "SYN103-USDT",
+          "SYN104-USDT",
+          "SYN105-USDT",
+          "SYN106-USDT",
+          "SYN107-USDT",
+          "SYN108-USDT",
+          "SYN109-USDT",
+          "SYN110-USDT",
+          "SYN111-USDT",
+          "SYN112-USDT",
+          "SYN113-USDT",
+          "SYN114-USDT",
+          "SYN115-USDT",
+          "SYN116-USDT",
+          "SYN117-USDT",
+          "SYN118-USDT",
+          "SYN119-USDT"
+        ],
+        "error": null,
+        "nextCycleAt": 1792558555768,
+        "phases": {
+          "Base (workers)": {
+            "ms": 37748.58559500001,
+            "maxSliceMs": 0,
+            "slowest": "868 of 868 combos on 2 cores",
+            "mainMs": 188.06545599998208
+          },
+          "Pipeline": {
+            "ms": 11481.530319000012,
+            "maxSliceMs": 151.5580820000032,
+            "slowest": "S2 follow \u00d7 inverse-micro-1x5x15-break-channel-selective@m1 (152 ms)"
+          },
+          "Persist": {
+            "ms": 55.83679500001017,
+            "maxSliceMs": 7.4055670000379905
+          },
+          "Tapes": {
+            "ms": 173790.31111999997,
+            "maxSliceMs": 0,
+            "slowest": "2 cores \u00b7 116 replies",
+            "mainMs": 1471.628243999905
+          },
+          "Simulation": {
+            "ms": 1678.6881459999713,
+            "maxSliceMs": 22.689231000025757,
+            "slowest": "fixed seat selection (13 ms)"
+          },
+          "Persist sim": {
+            "ms": 0.2277349999640137,
+            "maxSliceMs": 0.2277349999640137
+          },
+          "Auto preset": {
+            "ms": 3.245950999960769,
+            "maxSliceMs": 3.245950999960769
+          },
+          "Prehistoric": {
+            "ms": 1.1797529999748804,
+            "maxSliceMs": 1.1797529999748804,
+            "slowest": "finish (1 ms)"
+          },
+          "Paper": {
+            "ms": 113.9791570000234,
+            "maxSliceMs": 20.330201000033412,
+            "slowest": "select 101 \u00b7 candidates 5 \u00b7 entries 8 ms over 41 (wall, sliced)"
+          },
+          "Adjust": {
+            "ms": 0.6636299999663606,
+            "maxSliceMs": 0.6636299999663606
+          },
+          "Audit": {
+            "ms": 46.43860200000927,
+            "maxSliceMs": 32.50485100003425,
+            "slowest": " (30 ms)"
+          }
+        },
+        "mainPairs": 232,
+        "settingsAt": 1792558103419,
+        "appliedSettingsAt": 1792558103419,
+        "lastComputeAt": 1792558555344,
+        "pending": false,
+        "heals": 0,
+        "lastHeal": "",
+        "errorsInRow": 0,
+        "loop": {
+          "p50": 20.217855,
+          "p99": 31.342591,
+          "max": 158.466047,
+          "recent": {
+            "ms": 75,
+            "where": "Paper",
+            "at": 1792558555420,
+            "n": 1
+          }
+        },
+        "executionProgress": {
+          "intervalMs": 100,
+          "checks": 4520,
+          "lagMs": 30.442334999970626,
+          "maxLagMs": 140.07275000000664,
+          "missed": 1,
+          "error": null
+        },
+        "stageAt": 1792558555568,
+        "tick": {
+          "at": 1792558555550,
+          "ms": 1.1786409999476746,
+          "count": 4480,
+          "open": 7,
+          "stream": null,
+          "error": null
+        },
+        "prehistoric": {
+          "hours": 6,
+          "simH": 6,
+          "total": 120,
+          "loaded": 120,
+          "ready": 120,
+          "complete": true,
+          "startedAt": 1792558103417,
+          "readyAt": 1792558330161,
+          "symbols": {
+            "SYN0-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN1-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN2-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 9,
+              "pf": 4
+            },
+            "SYN3-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 1,
+              "pf": 4
+            },
+            "SYN4-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN5-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 1,
+              "pf": 0
+            },
+            "SYN6-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN7-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 6,
+              "pf": 1.5664288874027676
+            },
+            "SYN8-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN9-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 2,
+              "pf": 4
+            },
+            "SYN10-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN11-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 3,
+              "pf": 4
+            },
+            "SYN12-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 4,
+              "pf": 17.984224151508
+            },
+            "SYN13-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 5,
+              "pf": 0.2561615216195845
+            },
+            "SYN14-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN15-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN16-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN17-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN18-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN19-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 10,
+              "pf": 4
+            },
+            "SYN20-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN21-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN22-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN23-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN24-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN25-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 2,
+              "pf": 1.0864010095056982
+            },
+            "SYN26-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN27-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN28-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN29-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN30-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN31-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN32-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN33-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN34-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN35-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 15,
+              "pf": 4
+            },
+            "SYN36-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN37-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN38-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN39-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN40-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN41-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN42-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN43-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 4,
+              "pf": 4
+            },
+            "SYN44-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN45-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN46-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN47-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 5,
+              "pf": 22.373484527915362
+            },
+            "SYN48-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 9,
+              "pf": 4
+            },
+            "SYN49-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 8,
+              "pf": 27.23705598366048
+            },
+            "SYN50-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN51-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN52-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN53-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN54-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN55-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN56-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN57-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN58-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 8,
+              "pf": 0.5041833132235696
+            },
+            "SYN59-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 1,
+              "pf": 0
+            },
+            "SYN60-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN61-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 28,
+              "pf": 0.9355162792896481
+            },
+            "SYN62-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 3,
+              "pf": 4
+            },
+            "SYN63-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN64-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN65-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 12,
+              "pf": 2.8963393373944144
+            },
+            "SYN66-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN67-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN68-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN69-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN70-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN71-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 3,
+              "pf": 0.015827758731467644
+            },
+            "SYN72-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 2,
+              "pf": 4
+            },
+            "SYN73-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN74-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN75-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN76-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN77-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 17,
+              "pf": 4
+            },
+            "SYN78-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN79-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN80-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN81-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN82-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN83-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN84-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 10,
+              "pf": 4
+            },
+            "SYN85-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN86-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN87-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN88-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 7,
+              "pf": 1.5938754224504674
+            },
+            "SYN89-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 10,
+              "pf": 2.0158272877294223
+            },
+            "SYN90-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN91-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN92-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN93-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN94-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN95-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN96-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN97-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN98-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 1,
+              "pf": 4
+            },
+            "SYN99-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 1,
+              "pf": 0
+            },
+            "SYN100-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 1,
+              "pf": 4
+            },
+            "SYN101-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN102-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN103-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 12,
+              "pf": 4
+            },
+            "SYN104-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN105-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 2,
+              "pf": 0
+            },
+            "SYN106-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 5,
+              "pf": 0
+            },
+            "SYN107-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 6,
+              "pf": 4
+            },
+            "SYN108-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN109-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN110-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN111-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN112-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN113-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 0
+            },
+            "SYN114-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 13,
+              "pf": 4
+            },
+            "SYN115-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 7,
+              "pf": 0.5655157109651774
+            },
+            "SYN116-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 24,
+              "pf": 1.3846645793316477
+            },
+            "SYN117-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 2,
+              "pf": 4
+            },
+            "SYN118-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 3,
+              "pf": 4
+            },
+            "SYN119-USDT": {
+              "state": "ready",
+              "bars": 8580,
+              "n": 5,
+              "pf": 0.7338985667189327
+            }
+          },
+          "stats": {
+            "pf": 1.8752504621817352,
+            "pfBasis": "unit-net-returns",
+            "unknownReturns": 0,
+            "gp": 41.515036424172,
+            "gl": 22.13839551644311,
+            "noLoss": false,
+            "pfConvention": "gross-return-ratio",
+            "ddtH": 1.3333333333333333,
+            "n": 267,
+            "wr": 0.7340823970037453,
+            "greenHours": 0.6666666666666666,
+            "net": 19.376640907728845,
+            "avgOpen": 21.218836565096954,
+            "maxOpen": 46,
+            "positions": 63,
+            "avgPositions": 5.360110803324099,
+            "maxPositions": 10,
+            "perSymbol": [
+              {
+                "sym": "SYN61-USDT",
+                "n": 28,
+                "pf": 0.9355162792896481,
+                "net": -0.4939991529177543,
+                "wr": 0.6428571428571429,
+                "gp": 7.1668359768772945,
+                "gl": 7.660835129795052,
+                "noLoss": false,
+                "pfConvention": "gross-return-ratio",
+                "pfBasis": "unit-net-returns",
+                "unknownReturns": 0
+              },
+              {
+                "sym": "SYN116-USDT",
+                "n": 24,
+                "pf": 1.3846645793316477,
+                "net": 0.8238402957864778,
+                "wr": 0.625,
+                "gp": 2.9655511266040575,
+                "gl": 2.1417108308175794,
+                "noLoss": false,
+                "pfConvention": "gross-return-ratio",
+                "pfBasis": "unit-net-returns",
+                "unknownReturns": 0
+              },
+              {
+                "sym": "SYN77-USDT",
+                "n": 17,
+                "pf": 4,
+                "net": 3.3999999999998747,
+                "wr": 1,
+                "gp": 3.3999999999998747,
+                "gl": 0,
+                "noLoss": true,
+                "pfConvention": "no-loss-sentinel",
+                "pfBasis": "unit-net-returns",
+                "unknownReturns": 0
+              },
+              {
+                "sym": "SYN35-USDT",
+                "n": 15,
+                "pf": 4,
+                "net": 2.0413944357597194,
+                "wr": 1,
+                "gp": 2.0413944357597194,
+                "gl": 0,
+                "noLoss": true,
+                "pfConvention": "no-loss-sentinel",
+                "pfBasis": "unit-net-returns",
+                "unknownReturns": 0
+              },
+              {
+                "sym": "SYN114-USDT",
+                "n": 13,
+                "pf": 4,
+                "net": 2.2111037423143944,
+                "wr": 1,
+                "gp": 2.2111037423143944,
+                "gl": 0,
+                "noLoss": true,
+                "pfConvention": "no-loss-sentinel",
+                "pfBasis": "unit-net-returns",
+                "unknownReturns": 0
+              },
+              {
+                "sym": "SYN103-USDT",
+                "n": 12,
+                "pf": 4,
+                "net": 2.8027731489675722,
+                "wr": 1,
+                "gp": 2.8027731489675722,
+                "gl": 0,
+                "noLoss": true,
+                "pfConvention": "no-loss-sentinel",
+                "pfBasis": "unit-net-returns",
+                "unknownReturns": 0
+              },
+              {
+                "sym": "SYN65-USDT",
+                "n": 12,
+                "pf": 2.8963393373944144,
+                "net": 0.7856839064031845,
+                "wr": 0.5,
+                "gp": 1.1999999999999773,
+                "gl": 0.4143160935967929,
+                "noLoss": false,
+                "pfConvention": "gross-return-ratio",
+                "pfBasis": "unit-net-returns",
+                "unknownReturns": 0
+              },
+              {
+                "sym": "SYN84-USDT",
+                "n": 10,
+                "pf": 4,
+                "net": 1.9999999999999427,
+                "wr": 1,
+                "gp": 1.9999999999999427,
+                "gl": 0,
+                "noLoss": true,
+                "pfConvention": "no-loss-sentinel",
+                "pfBasis": "unit-net-returns",
+                "unknownReturns": 0
+              },
+              {
+                "sym": "SYN19-USDT",
+                "n": 10,
+                "pf": 4,
+                "net": 1.51249351911068,
+                "wr": 1,
+                "gp": 1.51249351911068,
+                "gl": 0,
+                "noLoss": true,
+                "pfConvention": "no-loss-sentinel",
+                "pfBasis": "unit-net-returns",
+                "unknownReturns": 0
+              },
+              {
+                "sym": "SYN89-USDT",
+                "n": 10,
+                "pf": 2.0158272877294223,
+                "net": 0.4031406039249212,
+                "wr": 0.4,
+                "gp": 0.8000000000000368,
+                "gl": 0.3968593960751156,
+                "noLoss": false,
+                "pfConvention": "gross-return-ratio",
+                "pfBasis": "unit-net-returns",
+                "unknownReturns": 0
+              },
+              {
+                "sym": "SYN2-USDT",
+                "n": 9,
+                "pf": 4,
+                "net": 1.5975747255321058,
+                "wr": 1,
+                "gp": 1.5975747255321058,
+                "gl": 0,
+                "noLoss": true,
+                "pfConvention": "no-loss-sentinel",
+                "pfBasis": "unit-net-returns",
+                "unknownReturns": 0
+              },
+              {
+                "sym": "SYN48-USDT",
+                "n": 9,
+                "pf": 4,
+                "net": 1.6055400178441668,
+                "wr": 1,
+                "gp": 1.6055400178441668,
+                "gl": 0,
+                "noLoss": true,
+                "pfConvention": "no-loss-sentinel",
+                "pfBasis": "unit-net-returns",
+                "unknownReturns": 0
+              },
+              {
+                "sym": "SYN49-USDT",
+                "n": 8,
+                "pf": 27.23705598366048,
+                "net": 2.1727888620424904,
+                "wr": 0.75,
+                "gp": 2.2556026069762067,
+                "gl": 0.08281374493371617,
+                "noLoss": false,
+                "pfConvention": "gross-return-ratio",
+                "pfBasis": "unit-net-returns",
+                "unknownReturns": 0
+              },
+              {
+                "sym": "SYN58-USDT",
+                "n": 8,
+                "pf": 0.5041833132235696,
+                "net": -0.7867244690925953,
+                "wr": 0.5,
+                "gp": 0.8000000000000282,
+                "gl": 1.5867244690926237,
+                "noLoss": false,
+                "pfConvention": "gross-return-ratio",
+                "pfBasis": "unit-net-returns",
+                "unknownReturns": 0
+              },
+              {
+                "sym": "SYN115-USDT",
+                "n": 7,
+                "pf": 0.5655157109651774,
+                "net": -0.15365949366580953,
+                "wr": 0.14285714285714285,
+                "gp": 0.20000000000001136,
+                "gl": 0.3536594936658209,
+                "noLoss": false,
+                "pfConvention": "gross-return-ratio",
+                "pfBasis": "unit-net-returns",
+                "unknownReturns": 0
+              },
+              {
+                "sym": "SYN88-USDT",
+                "n": 7,
+                "pf": 1.5938754224504674,
+                "net": 0.22355903632823468,
+                "wr": 0.42857142857142855,
+                "gp": 0.6000000000000068,
+                "gl": 0.3764409636717721,
+                "noLoss": false,
+                "pfConvention": "gross-return-ratio",
+                "pfBasis": "unit-net-returns",
+                "unknownReturns": 0
+              },
+              {
+                "sym": "SYN107-USDT",
+                "n": 6,
+                "pf": 4,
+                "net": 1.199999999999946,
+                "wr": 1,
+                "gp": 1.199999999999946,
+                "gl": 0,
+                "noLoss": true,
+                "pfConvention": "no-loss-sentinel",
+                "pfBasis": "unit-net-returns",
+                "unknownReturns": 0
+              },
+              {
+                "sym": "SYN7-USDT",
+                "n": 6,
+                "pf": 1.5664288874027676,
+                "net": 0.1446420943735055,
+                "wr": 0.3333333333333333,
+                "gp": 0.3999999999999812,
+                "gl": 0.25535790562647565,
+                "noLoss": false,
+                "pfConvention": "gross-return-ratio",
+                "pfBasis": "unit-net-returns",
+                "unknownReturns": 0
+              },
+              {
+                "sym": "SYN119-USDT",
+                "n": 5,
+                "pf": 0.7338985667189327,
+                "net": -0.22618621828890675,
+                "wr": 0.8,
+                "gp": 0.623813781711092,
+                "gl": 0.8499999999999989,
+                "noLoss": false,
+                "pfConvention": "gross-return-ratio",
+                "pfBasis": "unit-net-returns",
+                "unknownReturns": 0
+              },
+              {
+                "sym": "SYN47-USDT",
+                "n": 5,
+                "pf": 22.373484527915362,
+                "net": 0.7642433882392503,
+                "wr": 0.8,
+                "gp": 0.8000000000000088,
+                "gl": 0.03575661176075859,
+                "noLoss": false,
+                "pfConvention": "gross-return-ratio",
+                "pfBasis": "unit-net-returns",
+                "unknownReturns": 0
+              },
+              {
+                "sym": "SYN13-USDT",
+                "n": 5,
+                "pf": 0.2561615216195845,
+                "net": -0.5807573859473185,
+                "wr": 0.2,
+                "gp": 0.19999999999999232,
+                "gl": 0.7807573859473108,
+                "noLoss": false,
+                "pfConvention": "gross-return-ratio",
+                "pfBasis": "unit-net-returns",
+                "unknownReturns": 0
+              },
+              {
+                "sym": "SYN106-USDT",
+                "n": 5,
+                "pf": 0,
+                "net": -4.249999999999946,
+                "wr": 0,
+                "gp": 0,
+                "gl": 4.249999999999946,
+                "noLoss": false,
+                "pfConvention": "gross-return-ratio",
+                "pfBasis": "unit-net-returns",
+                "unknownReturns": 0
+              },
+              {
+                "sym": "SYN12-USDT",
+                "n": 4,
+                "pf": 17.984224151508,
+                "net": 0.5666374265052768,
+                "wr": 0.75,
+                "gp": 0.5999999999999845,
+                "gl": 0.033362573494707795,
+                "noLoss": false,
+                "pfConvention": "gross-return-ratio",
+                "pfBasis": "unit-net-returns",
+                "unknownReturns": 0
+              },
+              {
+                "sym": "SYN43-USDT",
+                "n": 4,
+                "pf": 4,
+                "net": 0.7999999999999837,
+                "wr": 1,
+                "gp": 0.7999999999999837,
+                "gl": 0,
+                "noLoss": true,
+                "pfConvention": "no-loss-sentinel",
+                "pfBasis": "unit-net-returns",
+                "unknownReturns": 0
+              },
+              {
+                "sym": "SYN11-USDT",
+                "n": 3,
+                "pf": 4,
+                "net": 0.599999999999996,
+                "wr": 1,
+                "gp": 0.599999999999996,
+                "gl": 0,
+                "noLoss": true,
+                "pfConvention": "no-loss-sentinel",
+                "pfBasis": "unit-net-returns",
+                "unknownReturns": 0
+              },
+              {
+                "sym": "SYN62-USDT",
+                "n": 3,
+                "pf": 4,
+                "net": 0.5999999999999789,
+                "wr": 1,
+                "gp": 0.5999999999999789,
+                "gl": 0,
+                "noLoss": true,
+                "pfConvention": "no-loss-sentinel",
+                "pfBasis": "unit-net-returns",
+                "unknownReturns": 0
+              },
+              {
+                "sym": "SYN118-USDT",
+                "n": 3,
+                "pf": 4,
+                "net": 0.6320322992910767,
+                "wr": 1,
+                "gp": 0.6320322992910767,
+                "gl": 0,
+                "noLoss": true,
+                "pfConvention": "no-loss-sentinel",
+                "pfBasis": "unit-net-returns",
+                "unknownReturns": 0
+              },
+              {
+                "sym": "SYN71-USDT",
+                "n": 3,
+                "pf": 0.015827758731467644,
+                "net": -1.6730928101564957,
+                "wr": 0.3333333333333333,
+                "gp": 0.02690718984349485,
+                "gl": 1.6999999999999909,
+                "noLoss": false,
+                "pfConvention": "gross-return-ratio",
+                "pfBasis": "unit-net-returns",
+                "unknownReturns": 0
+              },
+              {
+                "sym": "SYN105-USDT",
+                "n": 2,
+                "pf": 0,
+                "net": -0.2393528911338638,
+                "wr": 0,
+                "gp": 0,
+                "gl": 0.2393528911338638,
+                "noLoss": false,
+                "pfConvention": "gross-return-ratio",
+                "pfBasis": "unit-net-returns",
+                "unknownReturns": 0
+              },
+              {
+                "sym": "SYN117-USDT",
+                "n": 2,
+                "pf": 4,
+                "net": 0.39999999999999775,
+                "wr": 1,
+                "gp": 0.39999999999999775,
+                "gl": 0,
+                "noLoss": true,
+                "pfConvention": "no-loss-sentinel",
+                "pfBasis": "unit-net-returns",
+                "unknownReturns": 0
+              },
+              {
+                "sym": "SYN72-USDT",
+                "n": 2,
+                "pf": 4,
+                "net": 0.40000000000000807,
+                "wr": 1,
+                "gp": 0.40000000000000807,
+                "gl": 0,
+                "noLoss": true,
+                "pfConvention": "no-loss-sentinel",
+                "pfBasis": "unit-net-returns",
+                "unknownReturns": 0
+              },
+              {
+                "sym": "SYN9-USDT",
+                "n": 2,
+                "pf": 4,
+                "net": 0.4000000000000007,
+                "wr": 1,
+                "gp": 0.4000000000000007,
+                "gl": 0,
+                "noLoss": true,
+                "pfConvention": "no-loss-sentinel",
+                "pfBasis": "unit-net-returns",
+                "unknownReturns": 0
+              },
+              {
+                "sym": "SYN25-USDT",
+                "n": 2,
+                "pf": 1.0864010095056982,
+                "net": 0.004942058809609537,
+                "wr": 0.5,
+                "gp": 0.06214114523097371,
+                "gl": 0.05719908642136417,
+                "noLoss": false,
+                "pfConvention": "gross-return-ratio",
+                "pfBasis": "unit-net-returns",
+                "unknownReturns": 0
+              },
+              {
+                "sym": "SYN3-USDT",
+                "n": 1,
+                "pf": 4,
+                "net": 0.014097558008326766,
+                "wr": 1,
+                "gp": 0.014097558008326766,
+                "gl": 0,
+                "noLoss": true,
+                "pfConvention": "no-loss-sentinel",
+                "pfBasis": "unit-net-returns",
+                "unknownReturns": 0
+              },
+              {
+                "sym": "SYN99-USDT",
+                "n": 1,
+                "pf": 0,
+                "net": -0.30748570764252864,
+                "wr": 0,
+                "gp": 0,
+                "gl": 0.30748570764252864,
+                "noLoss": false,
+                "pfConvention": "gross-return-ratio",
+                "pfBasis": "unit-net-returns",
+                "unknownReturns": 0
+              },
+              {
+                "sym": "SYN5-USDT",
+                "n": 1,
+                "pf": 0,
+                "net": -0.13927575652548113,
+                "wr": 0,
+                "gp": 0,
+                "gl": 0.13927575652548113,
+                "noLoss": false,
+                "pfConvention": "gross-return-ratio",
+                "pfBasis": "unit-net-returns",
+                "unknownReturns": 0
+              },
+              {
+                "sym": "SYN100-USDT",
+                "n": 1,
+                "pf": 4,
+                "net": 0.39717515010106624,
+                "wr": 1,
+                "gp": 0.39717515010106624,
+                "gl": 0,
+                "noLoss": true,
+                "pfConvention": "no-loss-sentinel",
+                "pfBasis": "unit-net-returns",
+                "unknownReturns": 0
+              },
+              {
+                "sym": "SYN98-USDT",
+                "n": 1,
+                "pf": 4,
+                "net": 0.1999999999999984,
+                "wr": 1,
+                "gp": 0.1999999999999984,
+                "gl": 0,
+                "noLoss": true,
+                "pfConvention": "no-loss-sentinel",
+                "pfBasis": "unit-net-returns",
+                "unknownReturns": 0
+              },
+              {
+                "sym": "SYN59-USDT",
+                "n": 1,
+                "pf": 0,
+                "net": -0.4764874762422244,
+                "wr": 0,
+                "gp": 0,
+                "gl": 0.4764874762422244,
+                "noLoss": false,
+                "pfConvention": "gross-return-ratio",
+                "pfBasis": "unit-net-returns",
+                "unknownReturns": 0
+              }
+            ]
+          },
+          "counts": {
+            "base": 868,
+            "main": 232,
+            "sets": 3830,
+            "real": 11,
+            "evals": 48,
+            "armed": 10
+          }
+        },
+        "cycleKind": "research",
+        "mem": {
+          "availMb": 11706,
+          "hostAvailMb": 11706,
+          "rssMb": 3327,
+          "level": "ok",
+          "fallback": 0,
+          "fallbackLabel": "full",
+          "minAvailMb": 11457,
+          "lastAbort": null,
+          "aborts": 0,
+          "abortsInRow": 0,
+          "retryAt": null,
+          "computeLevel": 0,
+          "heapMb": 183,
+          "heapTotalMb": 271,
+          "arrayBuffersMb": 512,
+          "nativeMb": 2544,
+          "dbMb": 7,
+          "tapeMb": 25,
+          "byPhase": {
+            "Paper": {
+              "rssMb": 3107,
+              "heapMb": 150,
+              "arrayBuffersMb": 374
+            },
+            "Base": {
+              "rssMb": 3584,
+              "heapMb": 110,
+              "arrayBuffersMb": 454
+            },
+            "Main": {
+              "rssMb": 3361,
+              "heapMb": 190,
+              "arrayBuffersMb": 1136
+            },
+            "Tapes": {
+              "rssMb": 3535,
+              "heapMb": 187,
+              "arrayBuffersMb": 777
+            },
+            "Real": {
+              "rssMb": 3327,
+              "heapMb": 183,
+              "arrayBuffersMb": 512
+            }
+          }
+        },
+        "workers": "2 cores",
+        "stalls": [
+          {
+            "at": 1792558143160,
+            "ms": 225,
+            "where": "Main"
+          }
+        ],
+        "baseHistory": [
+          {
+            "at": 1792558154529,
+            "compute": 1,
+            "passed": 232,
+            "built": 0,
+            "byRange": {
+              "wide": 219,
+              "mc": 23,
+              "mn": 0,
+              "mp": 0,
+              "sh": 0,
+              "gn": 0,
+              "lg": 0
+            }
+          },
+          {
+            "at": 1792558379848,
+            "compute": 2,
+            "passed": 232,
+            "built": 0,
+            "byRange": {
+              "wide": 219,
+              "mc": 23,
+              "mn": 0,
+              "mp": 0,
+              "sh": 0,
+              "gn": 0,
+              "lg": 0
+            }
+          }
+        ],
+        "exitStrategies": {
+          "enabled": false,
+          "pairs": 0,
+          "baseEvaluated": 0,
+          "basePassed": 0,
+          "baseRejected": 0,
+          "families": 5,
+          "timeframes": [
+            1,
+            5,
+            15
+          ],
+          "tactics": 0,
+          "relations": 0,
+          "configs": 0,
+          "history": {
+            "pairs": 0,
+            "baseEvaluated": 0,
+            "basePassed": 0,
+            "baseRejected": 0,
+            "noPrehistory": 0,
+            "insufficientEntries": 0,
+            "candidates": 0,
+            "capped": 0,
+            "evaluated": 0,
+            "insufficientTrades": 0,
+            "pfRejected": 0,
+            "greenHourRejected": 0,
+            "ddrRejected": 0,
+            "qualified": 0
+          }
+        },
+        "basePassed": 232,
+        "baseBuilt": 0,
+        "baseEvaluated": 868,
+        "signals": {
+          "enabled": false,
+          "combos": 0,
+          "active": 0,
+          "pairs": 0,
+          "configs": 0,
+          "coordinationPairs": 0,
+          "coordinationConfigs": 0,
+          "coordinationActive": 0,
+          "discoveryPairs": 0,
+          "representativePassed": 0,
+          "representativeBaseGate": false,
+          "historic": {
+            "pairs": 0,
+            "insufficientEntries": 0,
+            "trailTooShort": 0,
+            "candidates": 0,
+            "evaluated": 0,
+            "insufficientTrades": 0,
+            "pfRejected": 0,
+            "ddrRejected": 0,
+            "qualified": 0
+          },
+          "openOrders": 0,
+          "openPositions": 0
+        },
+        "baseByRange": [
+          {
+            "tag": "",
+            "evaluated": 868,
+            "passed": 219,
+            "minPf": 1.1,
+            "pfMedian": 1.5938775510204162,
+            "pfPassedMedian": 2.5332880434782528,
+            "pfPassedMean": 2.839296839632343,
+            "pfPassedPooled": 2.1144002802033794,
+            "passedGp": 14005.279999999988,
+            "passedGl": 6623.760000000025,
+            "ownCells": 868,
+            "range": "Wide",
+            "enabled": true
+          },
+          {
+            "tag": "mc",
+            "evaluated": 372,
+            "passed": 23,
+            "minPf": 1.1,
+            "pfMedian": 0.5333333333333216,
+            "pfPassedMedian": 1.5714891002530478,
+            "pfPassedMean": 1.564623229110406,
+            "pfPassedPooled": 1.4318021687126212,
+            "passedGp": 247.45089685258452,
+            "passedGl": 172.8247814256878,
+            "ownCells": 372,
+            "range": "Micro",
+            "enabled": true
+          },
+          {
+            "tag": "mn",
+            "evaluated": 0,
+            "passed": 0,
+            "minPf": 1.1,
+            "pfMedian": null,
+            "pfPassedMedian": null,
+            "pfPassedMean": null,
+            "pfPassedPooled": null,
+            "passedGp": 0,
+            "passedGl": 0,
+            "ownCells": 0,
+            "range": "Minimal",
+            "enabled": false
+          },
+          {
+            "tag": "mp",
+            "evaluated": 0,
+            "passed": 0,
+            "minPf": 1.1,
+            "pfMedian": null,
+            "pfPassedMedian": null,
+            "pfPassedMean": null,
+            "pfPassedPooled": null,
+            "passedGp": 0,
+            "passedGl": 0,
+            "ownCells": 0,
+            "range": "Minimal plus",
+            "enabled": false
+          },
+          {
+            "tag": "sh",
+            "evaluated": 0,
+            "passed": 0,
+            "minPf": 1.1,
+            "pfMedian": null,
+            "pfPassedMedian": null,
+            "pfPassedMean": null,
+            "pfPassedPooled": null,
+            "passedGp": 0,
+            "passedGl": 0,
+            "ownCells": 0,
+            "range": "Short",
+            "enabled": false
+          },
+          {
+            "tag": "gn",
+            "evaluated": 0,
+            "passed": 0,
+            "minPf": 1.2,
+            "pfMedian": null,
+            "pfPassedMedian": null,
+            "pfPassedMean": null,
+            "pfPassedPooled": null,
+            "passedGp": 0,
+            "passedGl": 0,
+            "ownCells": 0,
+            "range": "General",
+            "enabled": false
+          },
+          {
+            "tag": "lg",
+            "evaluated": 0,
+            "passed": 0,
+            "minPf": 1.3,
+            "pfMedian": null,
+            "pfPassedMedian": null,
+            "pfPassedMean": null,
+            "pfPassedPooled": null,
+            "passedGp": 0,
+            "passedGl": 0,
+            "ownCells": 0,
+            "range": "Long",
+            "enabled": false
+          }
+        ],
+        "baseGates": [
+          {
+            "change": "as run",
+            "minPf": 1,
+            "minTrades": 12,
+            "maxDdr": 1,
+            "passed": 219,
+            "passedAnyRange": 50,
+            "share": 0.0576036866359447,
+            "pfPassedMedian": 2.5332880434782528
+          },
+          {
+            "change": "PF \u2265 1.00",
+            "minPf": 1,
+            "minTrades": 12,
+            "maxDdr": 1,
+            "passed": 219,
+            "passedAnyRange": 50,
+            "share": 0.0576036866359447,
+            "pfPassedMedian": 2.5332880434782528
+          },
+          {
+            "change": "PF \u2265 1.05",
+            "minPf": 1.05,
+            "minTrades": 12,
+            "maxDdr": 1,
+            "passed": 219,
+            "passedAnyRange": 50,
+            "share": 0.0576036866359447,
+            "pfPassedMedian": 2.5332880434782528
+          },
+          {
+            "change": "PF \u2265 1.20",
+            "minPf": 1.2,
+            "minTrades": 12,
+            "maxDdr": 1,
+            "passed": 213,
+            "passedAnyRange": 50,
+            "share": 0.0576036866359447,
+            "pfPassedMedian": 2.578124999999987
+          },
+          {
+            "change": "closes \u2265 6",
+            "minPf": 1,
+            "minTrades": 6,
+            "maxDdr": 1,
+            "passed": 256,
+            "passedAnyRange": 80,
+            "share": 0.09216589861751152,
+            "pfPassedMedian": 2.7156249999999886
+          },
+          {
+            "change": "closes \u2265 20",
+            "minPf": 1,
+            "minTrades": 20,
+            "maxDdr": 1,
+            "passed": 181,
+            "passedAnyRange": 25,
+            "share": 0.02880184331797235,
+            "pfPassedMedian": 2.3632812499999907
+          },
+          {
+            "change": "closes \u2265 30",
+            "minPf": 1,
+            "minTrades": 30,
+            "maxDdr": 1,
+            "passed": 172,
+            "passedAnyRange": 19,
+            "share": 0.021889400921658985,
+            "pfPassedMedian": 2.3320312499999902
+          },
+          {
+            "change": "DDR off",
+            "minPf": 1,
+            "minTrades": 12,
+            "maxDdr": 0,
+            "passed": 223,
+            "passedAnyRange": 66,
+            "share": 0.07603686635944701,
+            "pfPassedMedian": 2.5115646258503483
+          },
+          {
+            "change": "DDR \u2264 2",
+            "minPf": 1,
+            "minTrades": 12,
+            "maxDdr": 2,
+            "passed": 223,
+            "passedAnyRange": 63,
+            "share": 0.07258064516129033,
+            "pfPassedMedian": 2.5115646258503483
+          },
+          {
+            "change": "DDR \u2264 0.5",
+            "minPf": 1,
+            "minTrades": 12,
+            "maxDdr": 0.5,
+            "passed": 200,
+            "passedAnyRange": 35,
+            "share": 0.04032258064516129,
+            "pfPassedMedian": 2.6640624999999885
+          },
+          {
+            "change": "PF \u2265 1.00 \u00b7 DDR off",
+            "minPf": 1,
+            "minTrades": 12,
+            "maxDdr": 0,
+            "passed": 223,
+            "passedAnyRange": 66,
+            "share": 0.07603686635944701,
+            "pfPassedMedian": 2.5115646258503483
+          },
+          {
+            "change": "PF \u2265 1.00 \u00b7 DDR off \u00b7 closes \u2265 6",
+            "minPf": 1,
+            "minTrades": 6,
+            "maxDdr": 0,
+            "passed": 266,
+            "passedAnyRange": 102,
+            "share": 0.1175115207373272,
+            "pfPassedMedian": 2.6124999999999923
+          }
+        ],
+        "baseWhy": [
+          {
+            "tag": "",
+            "evaluated": 868,
+            "passed": 219,
+            "first": {
+              "closes": 412,
+              "net": 225,
+              "pf": 8,
+              "ddr": 4
+            },
+            "only": {
+              "closes": 145,
+              "net": 0,
+              "pf": 0,
+              "ddr": 4
+            },
+            "onlyDdrPfMedian": 1.3523809523809582
+          },
+          {
+            "tag": "mc",
+            "evaluated": 372,
+            "passed": 23,
+            "first": {
+              "closes": 133,
+              "net": 198,
+              "pf": 4,
+              "ddr": 14
+            },
+            "only": {
+              "closes": 26,
+              "net": 0,
+              "pf": 0,
+              "ddr": 14
+            },
+            "onlyDdrPfMedian": 1.1979042521645022
+          }
+        ],
+        "baseConfigs": {
+          "state": "cancelled",
+          "key": "3e9d32cdcb4152f0174919a759832444532b66fe659ab0504b6685e53fe1f4d1",
+          "settingsAt": 1792558103419,
+          "cutT": 1792346400000,
+          "fromT": 1792324800000,
+          "cost": 0.0015,
+          "floorPf": 1.1,
+          "population": "focusedIndicationCandidates",
+          "admittedPairs": 232,
+          "admittedPairKeys": [
+            "follow|inverse-micro-1x5x15-break-channel-selective@m1",
+            "follow|inverse-micro-1x5x15-break-channel-wide-fast@m1",
+            "follow|inverse-micro-1x5-break-channel-selective@m1",
+            "follow|inverse-micro-1x5-break-channel-wide-fast@m1",
+            "follow|inverse-micro-1x5-break-channel-short-fast@m1",
+            "follow|inverse-micro-1x5-break-channel-fast@m1",
+            "follow|inverse-micro-1x5-break-channel-short-selective@m1",
+            "follow|inverse-micro-1x5x15-break-channel-fast@m1",
+            "follow|inverse-micro-1x5x15-break-channel-short-selective@m1",
+            "follow|inverse-micro-1x5x15-break-channel-short-fast@m1",
+            "follow|inverse-micro-1x15-break-channel-short-fast@m1",
+            "follow|inverse-micro-1-break-channel-wide-selective@m1",
+            "follow|inverse-micro-1-break-channel-selective@m1",
+            "follow|inverse-micro-1-break-channel-wide-fast@m1",
+            "follow|inverse-micro-1x15-break-channel-selective@m1",
+            "follow|inverse-micro-1x15-break-channel-wide-fast@m1",
+            "follow|inverse-micro-1x5-break-channel-wide-selective@m1",
+            "follow|inverse-micro-1x15-break-channel-fast@m1",
+            "follow|inverse-micro-1x15-break-channel-short-selective@m1",
+            "follow|micro-1-break-channel-failure-selective@m1",
+            "follow|inverse-micro-1-activity-flow-selective@m1",
+            "follow|inverse-micro-1x5x15-activity-acceleration-fast@m1",
+            "follow|inverse-micro-1x15-break-channel-wide-selective@m1",
+            "follow|inverse-micro-1x5-activity-acceleration-selective@m1",
+            "follow|inverse-micro-1-break-activity-selective@m1",
+            "follow|inverse-micro-1x5-break-retest-selective@m1",
+            "follow|inverse-micro-1x5-break-close-selective@m1",
+            "follow|inverse-micro-1-break-close-selective@m1",
+            "follow|inverse-micro-1x5x15-break-channel-wide-selective@m1",
+            "follow|inverse-micro-1-break-activity-fast@m1",
+            "follow|inverse-micro-1x5-break-activity-fast@m1",
+            "follow|inverse-micro-1x5-activity-acceleration-fast@m1",
+            "follow|inverse-micro-1-market-momentum-selective@m1",
+            "follow|inverse-micro-1x15-break-close-fast@m1",
+            "follow|inverse-micro-1x15-activity-flow-fast@m1",
+            "follow|inverse-micro-1x15-drawdown-trend-fast@m1",
+            "follow|inverse-micro-1x5-break-close-fast@m1",
+            "follow|inverse-micro-1x15-break-activity-fast@m1",
+            "follow|inverse-micro-1x15-break-close-selective@m1",
+            "follow|inverse-micro-1-flow-break-selective@m1",
+            "follow|inverse-micro-1x5-break-channel-activity-fast@m1",
+            "follow|inverse-micro-1-break-retest-selective@m1",
+            "follow|inverse-micro-1x15-break-retest-selective@m1",
+            "follow|inverse-micro-1x5x15-break-activity-fast@m1",
+            "follow|inverse-micro-1x5x15-break-channel-activity-fast@m1",
+            "follow|inverse-micro-1-break-channel-activity-fast@m1",
+            "follow|inverse-micro-1x5x15-activity-flow-fast@m1",
+            "follow|inverse-micro-1-break-channel-activity-selective@m1",
+            "follow|inverse-micro-1-activity-flow-fast@m1",
+            "follow|inverse-micro-1x5-break-retest-fast@m1",
+            "follow|inverse-micro-1x15-break-channel-activity-fast@m1",
+            "follow|inverse-micro-1x5x15-activity-acceleration-selective@m1",
+            "follow|inverse-micro-1x5-activity-flow-selective@m1",
+            "follow|inverse-micro-1x5x15-adaptive-fast@m1",
+            "follow|inverse-micro-1x15-impulse-retest-fast@m1",
+            "follow|inverse-micro-1x15-impulse-retest-selective@m1",
+            "follow|inverse-micro-1x5x15-drawdown-trend-fast@m1",
+            "follow|inverse-micro-1-break-channel-fast@m1",
+            "follow|inverse-micro-1-break-channel-short-selective@m1",
+            "follow|inverse-micro-1x5-break-activity-selective@m1",
+            "follow|inverse-micro-1x5-impulse-retest-fast@m1",
+            "follow|inverse-micro-1x5-impulse-retest-selective@m1",
+            "follow|micro-1-range-reclaim-selective@m1",
+            "follow|inverse-micro-1-break-close-fast@m1",
+            "follow|inverse-micro-1x5-break-channel-activity-selective@m1",
+            "follow|inverse-micro-1x5x15-break-close-fast@m1",
+            "follow|inverse-micro-1x5x15-adaptive-selective@m1",
+            "follow|inverse-micro-1x5x15-impulse-retest-fast@m1",
+            "follow|inverse-micro-1x5x15-impulse-retest-selective@m1",
+            "follow|inverse-micro-1x15-break-retest-fast@m1",
+            "follow|inverse-micro-1x5x15-break-close-selective@m1",
+            "follow|inverse-micro-1x5x15-break-retest-selective@m1",
+            "follow|inverse-micro-1x15-activity-acceleration-selective@m1",
+            "follow|inverse-micro-1x15-market-momentum-fast@m1",
+            "follow|inverse-micro-1-market-momentum-fast@m1",
+            "follow|inverse-micro-1x15-adaptive-selective@m1",
+            "follow|inverse-micro-1x15-adaptive-fast@m1",
+            "follow|inverse-micro-1x5-activity-flow-fast@m1",
+            "follow|inverse-micro-1x5x15-break-retest-fast@m1",
+            "follow|inverse-micro-1-impulse-retest-fast@m1",
+            "follow|inverse-micro-1-impulse-retest-selective@m1",
+            "follow|inverse-micro-1x5x15-break-channel-activity-selective@m1",
+            "follow|inverse-micro-1x5x15-change-roc-fast@m1",
+            "follow|inverse-micro-1x5x15-change-roc-selective@m1",
+            "follow|inverse-micro-1x15-activity-flow-selective@m1",
+            "follow|inverse-micro-1x5-drawdown-trend-fast@m1",
+            "follow|inverse-micro-1x15-break-channel-activity-selective@m1",
+            "follow|inverse-micro-1x5x15-market-momentum-fast@m1",
+            "follow|inverse-micro-1x5-market-momentum-selective@m1",
+            "follow|inverse-micro-1-flow-break-fast@m1",
+            "follow|inverse-micro-1x15-break-activity-selective@m1",
+            "follow|inverse-micro-1x5x15-market-momentum-selective@m1",
+            "follow|inverse-micro-1x15-market-momentum-selective@m1",
+            "follow|inverse-micro-1-break-retest-fast@m1",
+            "follow|inverse-micro-1x5-market-momentum-fast@m1",
+            "follow|inverse-micro-1x5x15-activity-flow-selective@m1",
+            "follow|inverse-micro-1x15-flow-break-fast@m1",
+            "follow|inverse-micro-1x5x15-break-activity-selective@m1",
+            "follow|inverse-micro-1-drawdown-trend-fast@m1",
+            "follow|inverse-micro-1-market-continuation-selective@m1",
+            "follow|inverse-micro-1x15-activity-acceleration-fast@m1",
+            "follow|inverse-micro-1x5-adaptive-fast@m1",
+            "follow|inverse-micro-1x15-flow-break-selective@m1",
+            "follow|inverse-micro-1x15-drawdown-trend-selective@m1",
+            "follow|inverse-micro-1x15-trend-reclaim-selective@m1",
+            "follow|inverse-micro-1x5-flow-break-selective@m1",
+            "follow|inverse-micro-1-activity-acceleration-selective@m1",
+            "follow|inverse-micro-1x5-adaptive-selective@m1",
+            "follow|inverse-micro-1x5-flow-break-fast@m1",
+            "follow|inverse-micro-1x5x15-drawdown-trend-selective@m1",
+            "follow|inverse-micro-1x15-pullback-activity-fast@m1",
+            "follow|inverse-micro-1x5-market-continuation-selective@m1",
+            "follow|inverse-micro-1x5-drawdown-trend-selective@m1",
+            "follow|inverse-micro-1x15-market-continuation-selective@m1",
+            "follow|inverse-micro-1x5x15-pullback-activity-fast@m1",
+            "follow|inverse-micro-1x5x15-market-continuation-selective@m1",
+            "follow|micro-1-break-channel-failure-fast@m1",
+            "follow|inverse-micro-1-market-continuation-fast@m1",
+            "follow|inverse-micro-1x5x15-flow-break-selective@m1",
+            "follow|micro-1-drawdown-market-selective@m1",
+            "follow|inverse-micro-1x5-change-roc-selective@m1",
+            "follow|inverse-micro-1x5-market-continuation-fast@m1",
+            "follow|inverse-micro-1x5x15-trend-reclaim-selective@m1",
+            "follow|inverse-micro-1x15-change-roc-fast@m1",
+            "follow|inverse-micro-1x15-change-roc-selective@m1",
+            "follow|inverse-micro-1-trend-reclaim-selective@m1",
+            "follow|inverse-micro-1x15-trend-reclaim-fast@m1",
+            "follow|micro-1-range-reclaim-fast@m1",
+            "follow|inverse-micro-1x5x15-flow-break-fast@m1",
+            "follow|inverse-micro-1x5x15-trend-reclaim-fast@m1",
+            "follow|inverse-micro-1-break-direction-selective@m1",
+            "follow|inverse-micro-1x5x15-market-continuation-fast@m1",
+            "follow|inverse-micro-1-adaptive-fast@m1",
+            "follow|inverse-micro-1-relative-trend-fast@m1",
+            "follow|inverse-micro-1-adaptive-selective@m1",
+            "follow|micro-1x15-range-reclaim-fast@m1",
+            "follow|micro-1x5-drawdown-turn-selective@m1",
+            "follow|inverse-micro-1x15-market-continuation-fast@m1",
+            "follow|micro-1x5-range-reclaim-selective@m1",
+            "follow|inverse-micro-1-squeeze-break-fast@m1",
+            "follow|inverse-micro-1x5-trend-reclaim-selective@m1",
+            "follow|inverse-micro-1x5-break-direction-selective@m1",
+            "follow|inverse-micro-1x5x15-relative-trend-fast@m1",
+            "follow|inverse-micro-1x5-pullback-activity-fast@m1",
+            "follow|inverse-micro-1x5-relative-trend-fast@m1",
+            "follow|inverse-micro-1x5-change-roc-fast@m1",
+            "follow|inverse-micro-1-pullback-activity-fast@m1",
+            "follow|inverse-micro-1x15-break-direction-selective@m1",
+            "follow|inverse-micro-1x5-trend-reclaim-fast@m1",
+            "follow|inverse-micro-1x5x15-market-follow-fast@m1",
+            "follow|inverse-micro-1x15-relative-trend-fast@m1",
+            "follow|micro-1x5-range-reclaim-fast@m1",
+            "follow|inverse-micro-1x5x15-break-direction-selective@m1",
+            "follow|inverse-micro-1-trend-reclaim-fast@m1",
+            "follow|inverse-micro-1x5x15-change-ema-selective@m1",
+            "follow|inverse-micro-1x5-change-ema-selective@m1",
+            "follow|inverse-micro-1x15-pullback-activity-selective@m1",
+            "follow|inverse-micro-1-drawdown-trend-selective@m1",
+            "follow|inverse-micro-1x5-change-ema-fast@m1",
+            "follow|inverse-micro-1x15-break-direction-fast@m1",
+            "follow|micro-1x5-drawdown-market-fast@m1",
+            "follow|inverse-micro-1-relative-trend-selective@m1",
+            "follow|micro-1x5-drawdown-market-selective@m1",
+            "follow|inverse-micro-1x5x15-break-direction-fast@m1",
+            "follow|inverse-micro-1x5x15-pullback-activity-selective@m1",
+            "follow|inverse-micro-1x5x15-change-ema-fast@m1",
+            "follow|inverse-micro-1-pullback-activity-selective@m1",
+            "follow|inverse-micro-1-change-ema-selective@m1",
+            "follow|inverse-micro-1x5-pullback-activity-selective@m1",
+            "follow|inverse-micro-1-break-direction-fast@m1",
+            "follow|inverse-micro-1x15-change-ema-selective@m1",
+            "follow|inverse-micro-1x15-change-ema-fast@m1",
+            "follow|inverse-micro-1x5-break-direction-fast@m1",
+            "follow|micro-1x5x15-drawdown-turn-selective@m1",
+            "follow|micro-1x15-range-reclaim-selective@m1",
+            "follow|micro-1-squeeze-break-selective@m1",
+            "follow|micro-5-drawdown-turn-fast@m5",
+            "follow|micro-5-drawdown-turn-selective@m5",
+            "follow|micro-5-market-follow-fast@m5",
+            "follow|micro-5-market-follow-selective@m5",
+            "follow|micro-5-drawdown-market-fast@m5",
+            "follow|micro-5-drawdown-market-selective@m5",
+            "follow|micro-5-adaptive-fast@m5",
+            "follow|micro-5-adaptive-selective@m5",
+            "follow|micro-5-change-roc-fast@m5",
+            "follow|micro-5-change-roc-selective@m5",
+            "follow|micro-1x5-break-channel-failure-fast@m1",
+            "follow|micro-5x15-drawdown-turn-fast@m5",
+            "follow|micro-5x15-market-follow-selective@m5",
+            "follow|inverse-micro-5-drawdown-turn-fast@m5",
+            "follow|inverse-micro-5-drawdown-turn-selective@m5",
+            "follow|inverse-micro-5-impulse-retest-fast@m5",
+            "follow|inverse-micro-5-impulse-retest-selective@m5",
+            "follow|inverse-micro-5-market-follow-fast@m5",
+            "follow|inverse-micro-5-market-follow-selective@m5",
+            "follow|inverse-micro-5-drawdown-market-fast@m5",
+            "follow|inverse-micro-5-drawdown-market-selective@m5",
+            "follow|inverse-micro-5-adaptive-fast@m5",
+            "follow|inverse-micro-5-adaptive-selective@m5",
+            "follow|inverse-micro-5-break-close-fast@m5",
+            "follow|inverse-micro-5-break-close-selective@m5",
+            "follow|inverse-micro-5-break-retest-fast@m5",
+            "follow|inverse-micro-5-break-retest-selective@m5",
+            "follow|inverse-micro-5-break-activity-fast@m5",
+            "follow|inverse-micro-5-flow-break-fast@m5",
+            "follow|inverse-micro-5-market-continuation-selective@m5",
+            "follow|inverse-micro-5-break-channel-fast@m5",
+            "follow|inverse-micro-5-break-channel-selective@m5",
+            "follow|inverse-micro-5-break-channel-short-fast@m5",
+            "follow|inverse-micro-5-break-channel-short-selective@m5",
+            "follow|inverse-micro-5-break-channel-wide-fast@m5",
+            "follow|inverse-micro-5-break-channel-wide-selective@m5",
+            "follow|inverse-micro-15-market-momentum-selective@m15",
+            "follow|inverse-micro-15-market-continuation-selective@m15",
+            "follow|inverse-micro-1x5-squeeze-break-fast@m1",
+            "follow|inverse-micro-1x5-relative-trend-selective@m1",
+            "follow|inverse-micro-1x15-squeeze-break-fast@m1",
+            "follow|inverse-micro-1x15-relative-trend-selective@m1",
+            "follow|inverse-micro-5x15-market-follow-fast@m5",
+            "follow|inverse-micro-5x15-market-follow-selective@m5",
+            "follow|inverse-micro-5x15-break-close-fast@m5",
+            "follow|inverse-micro-5x15-break-close-selective@m5",
+            "follow|inverse-micro-5x15-break-retest-fast@m5",
+            "follow|inverse-micro-5x15-break-retest-selective@m5",
+            "follow|inverse-micro-5x15-change-roc-fast@m5",
+            "follow|inverse-micro-5x15-change-roc-selective@m5",
+            "follow|inverse-micro-5x15-flow-break-fast@m5",
+            "follow|inverse-micro-5x15-break-channel-fast@m5",
+            "follow|inverse-micro-5x15-break-channel-short-fast@m5",
+            "follow|inverse-micro-5x15-break-channel-short-selective@m5",
+            "follow|inverse-micro-5x15-break-channel-wide-selective@m5",
+            "follow|inverse-micro-1-drawdown-residual-selective@m1"
+          ],
+          "totalPairs": 868,
+          "donePairs": 0,
+          "totalChunks": 1736,
+          "doneChunks": 0,
+          "plannedConfigured": 5208,
+          "configured": 0,
+          "evaluated": 0,
+          "pfPassed": 0,
+          "passed": 0,
+          "updatedAt": 1792558555600,
+          "reason": "stopped"
+        },
+        "tapesReleased": 3830,
+        "liveValidation": {
+          "lastN": 25,
+          "minPf": 1.1,
+          "since": 1792558555506,
+          "judged": 0,
+          "passing": 0,
+          "paused": 0,
+          "skipped": 0,
+          "onExchange": 0,
+          "exchangeCloses": 0,
+          "groupLastN": 0,
+          "groups": []
+        },
+        "paperSkips": {
+          "notSelected": 2,
+          "exec:symPf": 10,
+          "exec:configValidation": 4,
+          "exec:directionValidation": 20
+        },
+        "listings": {
+          "paperStep": 1,
+          "at": 1792558555567,
+          "validated": 11,
+          "active": 0,
+          "proven": null,
+          "byRange": [
+            {
+              "range": "Micro",
+              "validated": 11,
+              "pf": 1.9806313704470673
+            }
+          ],
+          "byGroup": [
+            {
+              "group": "Micro",
+              "validated": 11,
+              "pf": 1.9806313704470673
+            }
+          ]
+        }
+      },
+      "failure": null
+    }
+  },
+  "localChecks": {
+    "selectionRuntimeFeedAndReportRegressions": 23,
+    "fullReportFundingStageAndParityRegressions": 44,
+    "finalReportAndFundingTests": 7,
+    "lintErrors": 0
+  },
+  "browser": {
+    "htmlSha256": "dedd10223ef78213480432c9620849499b96ae3504d82b03548645a128234ae6",
+    "desktop": {
+      "width": 1440,
+      "scroll": 1440,
+      "charts": 13,
+      "sourceCount": "868 / 868 angeforderte Indikationen \u00b7 vollst\u00e4ndige Lane-IDs in der Config-Tabelle",
+      "status": "Abgeschlossen \u00b7 beide L\u00e4ufe und alle Pflichtaudits bestanden"
+    },
+    "mobile": {
+      "width": 390,
+      "scroll": 390,
+      "charts": 13,
+      "sourceCount": "868 / 868 angeforderte Indikationen \u00b7 vollst\u00e4ndige Lane-IDs in der Config-Tabelle",
+      "status": "Abgeschlossen \u00b7 beide L\u00e4ufe und alle Pflichtaudits bestanden"
+    },
+    "filters": [
+      {
+        "n": 7347,
+        "gp": 4.681387592486016,
+        "gl": 31.67433508311694,
+        "actualCount": "7.347",
+        "expectedCount": "7.347",
+        "actualPf": "0,148",
+        "expectedPf": "0,148"
+      },
+      {
+        "n": 7354,
+        "gp": 4.708301585848847,
+        "gl": 31.658377175679878,
+        "actualCount": "7.354",
+        "expectedCount": "7.354",
+        "actualPf": "0,149",
+        "expectedPf": "0,149"
+      }
+    ],
+    "lossSorted": 50,
+    "errors": [],
+    "requests": 1,
+    "externalRequests": 0,
+    "screenshots": [
+      "/workspace/screenshots/rank-final-desktop.png",
+      "/workspace/screenshots/rank-final-charts.png",
+      "/workspace/screenshots/rank-final-stages.png",
+      "/workspace/screenshots/rank-final-mobile.png",
+      "/workspace/screenshots/rank-final-mobile-charts.png",
+      "/workspace/screenshots/rank-final-mobile-hours.png"
+    ]
+  },
+  "reportSha256": "dedd10223ef78213480432c9620849499b96ae3504d82b03548645a128234ae6",
+  "resultsSha256": "dfcd75666038b6cb83c4639fc579dfa91a6d1b1710748c3e9a97b7b8738c5b4a",
+  "builderSha256": {
+    "scripts/report-micro-rank-comparison.mjs": "a9ea3e9abec2d3dbe67b2df136d91fb665cc00fe39aa6191b11dd51f230f8dd0",
+    "scripts/audit-micro-rank-order.mjs": "719b0a7db10df6524757c032dfd65fded56001f34afb8ea02cb23474fb0079c4"
+  },
+  "limits": [
+    "Same cached historical window repeated; not unseen validation.",
+    "Same initial twelve-symbol set, different ranked priority. Differences do not demonstrate market-universe superiority.",
+    "Both cases have five losing hours and Micro execution PF below one.",
+    "The full uncapped grid exceeds the model capital budget. No live sizing or venue execution certification.",
+    "Report financial source is explicitly sealed; unrelated future main changes cannot inherit this financial certificate."
+  ]
+}

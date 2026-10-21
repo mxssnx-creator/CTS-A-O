@@ -1,0 +1,49 @@
+{
+  "htmlSha256": "cce3a0deeb6131a9cc1157cc1a9f8dc5f13f5627554a4574cdc07dd606717735",
+  "desktop": {
+    "width": 1440,
+    "scroll": 1440,
+    "charts": 13,
+    "sourceCount": "868 / 868 angeforderte Indikationen · vollständige Lane-IDs in der Config-Tabelle",
+    "status": "Abgeschlossen · beide Läufe und alle Pflichtaudits bestanden"
+  },
+  "mobile": {
+    "width": 390,
+    "scroll": 390,
+    "charts": 13,
+    "sourceCount": "868 / 868 angeforderte Indikationen · vollständige Lane-IDs in der Config-Tabelle",
+    "status": "Abgeschlossen · beide Läufe und alle Pflichtaudits bestanden"
+  },
+  "filters": [
+    {
+      "n": 7347,
+      "gp": 4.681387592486016,
+      "gl": 31.67433508311694,
+      "actualCount": "7.347",
+      "expectedCount": "7.347",
+      "actualPf": "0,148",
+      "expectedPf": "0,148"
+    },
+    {
+      "n": 7354,
+      "gp": 4.708301585848847,
+      "gl": 31.658377175679878,
+      "actualCount": "7.354",
+      "expectedCount": "7.354",
+      "actualPf": "0,149",
+      "expectedPf": "0,149"
+    }
+  ],
+  "lossSorted": 50,
+  "errors": [],
+  "requests": 1,
+  "externalRequests": 0,
+  "screenshots": [
+    "/workspace/screenshots/rank-release-desktop.png",
+    "/workspace/screenshots/rank-release-charts.png",
+    "/workspace/screenshots/rank-release-stages.png",
+    "/workspace/screenshots/rank-release-mobile.png",
+    "/workspace/screenshots/rank-release-mobile-charts.png",
+    "/workspace/screenshots/rank-release-mobile-hours.png"
+  ]
+}

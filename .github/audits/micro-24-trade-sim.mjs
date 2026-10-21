@@ -29,7 +29,7 @@ const arg = (name, fallback) => {
   return i < 0 ? fallback : process.argv[i + 1];
 };
 const mode = process.argv[2],
-  out = resolve(arg("out", "runs/micro-24-trade-sim-20261020-v9")),
+  out = resolve(arg("out", "runs/micro-24-trade-sim-20261020-v10")),
   H = 3_600_000;
 process.env.CTS_CORE_STATE = "off";
 process.env.CTS_CORE_AUTOSTART = "0";
@@ -215,7 +215,7 @@ if (mode === "prepare") {
     throw new Error("Selection was frozen for a different calculation source");
   const protocol = {
     schema: "cts-session-study-v1",
-    id: arg("label", "micro-24-symbols-12h-pre-12h-run-20261020-v9"),
+    id: arg("label", "micro-24-symbols-12h-pre-12h-run-20261020-v10"),
     scope: {
       hold: microHold === 15 ? "micro-15m" : "standard",
       microHold,

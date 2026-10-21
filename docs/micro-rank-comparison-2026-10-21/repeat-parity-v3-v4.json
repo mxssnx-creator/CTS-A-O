@@ -1,0 +1,30 @@
+{
+  "schema": "cts-paired-source-integration-parity-v1",
+  "beforeSource": "eb588571dfff70db0b79b4b0588fe1d9c5779c0d91aa4bc5011523e8054b7af9",
+  "afterSource": "f704356e936a30cc7ae3415f5a58a04dccbf7d81198935414b4d42efb2c0d661",
+  "basis": "Exact funded settled identities and unit returns on the same historical window, selection, costs and settings. Existing main Base-cell admission and incremental-boundary fixes are included in the after source. This repetition is not unseen financial performance.",
+  "cases": [
+    {
+      "rank": "volatility1h",
+      "same": true,
+      "matched": 160300,
+      "onlyLeft": 0,
+      "onlyRight": 0,
+      "mismatchedReturns": 0,
+      "maxReturnError": 0,
+      "examples": [],
+      "basis": "Funded settled exact identity multiset; duplicate legs retained; verified unit returns compared without charging costs again"
+    },
+    {
+      "rank": "change1h5m",
+      "same": true,
+      "matched": 160220,
+      "onlyLeft": 0,
+      "onlyRight": 0,
+      "mismatchedReturns": 0,
+      "maxReturnError": 0,
+      "examples": [],
+      "basis": "Funded settled exact identity multiset; duplicate legs retained; verified unit returns compared without charging costs again"
+    }
+  ]
+}
