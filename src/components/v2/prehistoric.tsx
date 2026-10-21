@@ -151,7 +151,7 @@ export function PrehistoricPanel(props: {
       {s && !knownReturns && <div className="v2-muted">Unit-return basis unavailable for {fmt.num(s.unknownReturns)} closes. All {fmt.num(s.n)} modeled closes remain counted; this is not a zero-return sample.</div>}
       {st.signals?.enabled && <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
         Signals: {fmt.num(signalCounts.discovery)} initialized discovery pairs · {fmt.num(signalCounts.representativePassed)} representative pairs passed Base · {fmt.num(signalCounts.requested)} requested protection configurations (effective IDs can merge identical cells).
-        {st.signals.historic && ` Historic Trailing: ${fmt.num(st.signals.historic.qualified)} qualified of ${fmt.num(st.signals.historic.evaluated)} PF-tested; ${fmt.num(st.signals.historic.insufficientEntries)} pairs lacked complete historic entries.`}
+        {st.signals.historic && ` Historic exits: ${fmt.num(st.signals.historic.qualified)} qualified range/config variants · ${fmt.num(st.signals.historic.evaluated)} candidates PF-tested; ${fmt.num(st.signals.historic.insufficientEntries)} pairs lacked complete historic entries.`}
         {st.signals.representativeBaseGate === false ? " Representative Base gating is off for discovery; each full config/type still faces its own admission and execution gates." : " Representative Base gating is on; discovery and execution remain different samples."}
       </div>}
       {Array.isArray(st.baseByRange) && st.baseByRange.length > 0 && (

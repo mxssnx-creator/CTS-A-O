@@ -166,6 +166,10 @@ describe(
       page.on("request", (request) => {
         const url = new URL(request.url());
         if (url.origin !== base || url.pathname === "/api/core/events") return;
+        // Wait for finite application data, not Vite's speculative module preloads. During dependency
+        // re-optimization those imports can be abandoned without requestfinished/requestfailed, even after
+        // the replacement document has rendered and hydrated. Console/page-error checks still cover assets.
+        if (!["document", "fetch", "xhr"].includes(request.resourceType())) return;
         // Vite may replace the whole document after first-run dependency discovery.
         // Old-document imports can be abandoned without a terminal network event;
         // the new document and all of its finite requests must still settle below.
@@ -406,6 +410,7 @@ describe(
             waitUntil: "domcontentloaded",
             timeout: 120_000,
           });
+          await settleRequests();
           const save = page.getByRole("button", { name: /^save/i }).first();
           await save.waitFor({ state: "visible", timeout: 60_000 });
           assert.ok(await save.count(), "a Save button");
