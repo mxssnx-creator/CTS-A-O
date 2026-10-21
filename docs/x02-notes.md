@@ -17,3 +17,6 @@ Host shared with the live x01 desk: heap 3072 MB, 12 symbols, `CTS_CORE_WORKERS=
 ## 21 Oct — scoped demo follow-up from PR 187
 
 The requested X02 demo profile uses `live.maxChase: 5` and `wf.symGate: "off"`. The WF object is at the patch root, matching the actual `core-live-test.mjs` loader; nesting it under settings would leave the requested WF change unapplied. The X01 profile and global defaults retain their own policy. This integration edits the repository profile only; no launcher, deployment or venue action was performed.
+
+## 21 Oct 13:10Z — 40 symbols (operator)
+12 symbols with the full tape pool aborted at the 1.2 GB free-memory floor (peak ~12 GB). For 40 symbols the patch adds `wf.seatSet "validated"` and `grid.baseCells true`: only Base-validated cells are built and seated (the P1 options; defaults unchanged for every other desk). Probe/invertSeats are refused with it.
