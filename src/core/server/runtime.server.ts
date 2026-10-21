@@ -8021,7 +8021,10 @@ export class CoreRuntime {
       const sharedSignalBars = () => (sharedSignalExitBars ??= shareBars(signalU.series));
       const clearMemos = () => {
         for (const cache of exitU.caches) cache.clear();
-        for (const cache of signalU.caches) cache.clear();
+        // With Signals disabled, signalU aliases the ordinary preset universe. Exit fitting must not evict that
+        // unrelated indicator cache; only clear the separately initialized Signal history when it was used.
+        if (signalExitFitPairs.length && signalU !== u)
+          for (const cache of signalU.caches) cache.clear();
       };
       try {
         if (exitFitPairs.length) {
