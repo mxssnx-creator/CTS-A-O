@@ -5695,7 +5695,7 @@ export class CoreRuntime {
             key: computeKey(this.settings, this.wf),
           }
         : null;
-    this.computeSummary = `PF ${primaryPfLabel(sim.stats)} · DDT ${sim.stats.ddt.toFixed(1)}h · green ${Math.round(sim.stats.gh * 100)}% · validate last ${wf.validLastN ?? 0} · live last ${wf.lastN}`;
+    this.computeSummary = `Sim PF including ${sim.openAtEnd?.length ?? "unrecorded"} open marks: ${primaryPfLabel(sim.stats)} · DDT ${sim.stats.ddt.toFixed(1)}h · green ${Math.round(sim.stats.gh * 100)}% · validate last ${wf.validLastN ?? 0} · live last ${wf.lastN}`;
     // the paper step on the new tapes follows in this cycle (it was "Real 100 %" again after Compare — backwards)
     this.setStage("Paper", 0, 1, `paper step next · ${this.computeSummary}`);
     this.status.computes++;
@@ -5809,7 +5809,7 @@ export class CoreRuntime {
     if (Date.now() - this.lastConsoleAt > 5 * 60_000) {
       this.lastConsoleAt = Date.now();
       console.info(
-        `[core-v2] compute #${this.status.computes} done in ${Math.round(this.status.lastComputeMs)} ms · sim PF ${primaryPfLabel(sim.stats)} n ${sim.stats.n} · loop max ${this.status.loop.max.toFixed(0)} ms${this.status.loop.recent ? ` (worst slice of the last 60 s ${this.status.loop.recent.ms} ms in ${this.status.loop.recent.where}, ${this.status.loop.recent.n} over 40 ms)` : ""}`,
+        `[core-v2] compute #${this.status.computes} done in ${Math.round(this.status.lastComputeMs)} ms · sim PF including ${sim.openAtEnd?.length ?? "unrecorded"} open marks: ${primaryPfLabel(sim.stats)} n ${sim.stats.n} · loop max ${this.status.loop.max.toFixed(0)} ms${this.status.loop.recent ? ` (worst slice of the last 60 s ${this.status.loop.recent.ms} ms in ${this.status.loop.recent.where}, ${this.status.loop.recent.n} over 40 ms)` : ""}`,
       );
     }
     this.emit("compute");
@@ -5820,7 +5820,7 @@ export class CoreRuntime {
     }
     this.db.event(
       "info",
-      `compute #${this.status.computes}: sim PF ${primaryPfLabel(sim.stats)} net ${sim.stats.net.toFixed(1)}% n ${sim.stats.n} · armed ${pipeline.armed.length} · ${Math.round(this.status.lastComputeMs)}ms`,
+      `compute #${this.status.computes}: sim PF including ${sim.openAtEnd?.length ?? "unrecorded"} open marks: ${primaryPfLabel(sim.stats)} net ${sim.stats.net.toFixed(1)}% n ${sim.stats.n} · armed ${pipeline.armed.length} · ${Math.round(this.status.lastComputeMs)}ms`,
     );
   }
 

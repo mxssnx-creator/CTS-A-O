@@ -80,3 +80,33 @@ test("explicit core test inventory refuses missing paths, directories and duplic
     assert.throws(() => coreTestInvocation([real, missing]), /Missing or non-file core test/);
   assert.throws(() => coreTestInvocation([real, resolve(real)]), /Duplicate core test/);
 });
+
+test("CI shards execute every explicit fixture exactly once across isolated serial runners", () => {
+  const dir = mkdtempSync(join(tmpdir(), "cts-core-shards-"));
+  try {
+    const files = Array.from({ length: 7 }, (_, i) => {
+      const file = join(dir, `part-${i}.test.mjs`);
+      writeFileSync(file, `import {test} from 'node:test'; test('part ${i}',()=>console.log('SHARD_FIXTURE_${i}'));`);
+      return file;
+    });
+    const observed = [];
+    for (let shard = 1; shard <= 4; shard++) {
+      const run = spawnSync(process.execPath, [runner, `--test-shard=${shard}/4`, ...files], {
+        encoding: "utf8", timeout: 30_000,
+        env: { ...process.env, CTS_CORE_TEST_CONCURRENCY: "1", CTS_CORE_TEST_WORKERS: "1" },
+      });
+      assert.equal(run.status, 0, run.stdout + run.stderr);
+      observed.push(...[...run.stdout.matchAll(/SHARD_FIXTURE_(\d+)/g)].map(x => Number(x[1])));
+    }
+    assert.deepEqual(observed.sort((a, b) => a - b), [0, 1, 2, 3, 4, 5, 6]);
+  } finally { rmSync(dir, { recursive:true, force:true }); }
+});
+
+test("invalid or repeated shard specifications cannot silently omit verification", () => {
+  for (const value of ["0/4", "5/4", "1/0", "1.5/4", "1/04", "1/4x", "1/99999999999999999"])
+    assert.throws(() => coreTestInvocation([`--test-shard=${value}`]), /Core test shard/);
+  assert.throws(() => coreTestInvocation(["--test-shard=1/4", "--test-shard=2/4"]), /Core test shard/);
+  const unknown = spawnSync(process.execPath, [resolve("scripts/test.mjs"), "--skip-everything"], { encoding:"utf8", timeout:30_000 });
+  assert.equal(unknown.status, 1);
+  assert.match(unknown.stderr, /Supported test option/);
+});

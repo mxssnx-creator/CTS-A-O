@@ -1,0 +1,415 @@
+{
+  "study": {
+    "id": "signals-enabled-100h-last8-20261023",
+    "protocolSha256": "db30485b5bc2c96607ecae0d9e354e56d06745c6218e587122d3afbe468056f0",
+    "feedSha256": "e21d39b0b7583685e2fe355f6261e0860deff3057ca5c81b43a6c3cf374e2f03",
+    "sourceSha256": "6a81578275a64ed0ef43d48d133709023e94cd54987aff9e2f4c5c6b34a1c070",
+    "sourceCheckpoint": "59f1b6de6219371080eb0cd04547c983fbb76c2f",
+    "symbols": [
+      "BTC-USDT",
+      "ETH-USDT",
+      "BNB-USDT",
+      "SOL-USDT",
+      "XRP-USDT",
+      "DOGE-USDT",
+      "ADA-USDT",
+      "LINK-USDT",
+      "AVAX-USDT",
+      "LTC-USDT",
+      "DOT-USDT",
+      "BCH-USDT"
+    ],
+    "window": {
+      "evaluationFromT": 1791867600000,
+      "tradeStartT": 1792227600000,
+      "endT": 1792270800000,
+      "preH": 100,
+      "runH": 12
+    },
+    "scope": "Base-qualified engine execution and separately qualified exact-config Signals; combined funded account reported separately"
+  },
+  "classification": "Retrospective correctness/performance replay; no live fills or profitable holdout claim",
+  "computeMs": 373431.462363,
+  "peakRssMb": 4051,
+  "loop": {
+    "p50": 20.299775,
+    "p99": 34.242559,
+    "max": 1327.497215,
+    "recent": {
+      "ms": 431,
+      "where": "Real",
+      "at": 1792781877154,
+      "n": 6
+    }
+  },
+  "memory": {
+    "availMb": 3959,
+    "hostAvailMb": 5285,
+    "cgroup": {
+      "version": 2,
+      "basis": "clean-file-estimate",
+      "limitMb": 8192,
+      "usedMb": 5005,
+      "rawAvailMb": 3187,
+      "cacheCreditMb": 772,
+      "availMb": 3959
+    },
+    "rssMb": 3862,
+    "level": "ok",
+    "fallback": 0,
+    "fallbackLabel": "full",
+    "minAvailMb": 3956,
+    "lastAbort": null,
+    "aborts": 0,
+    "abortsInRow": 0,
+    "retryAt": null,
+    "computeLevel": 0,
+    "heapMb": 2825,
+    "heapLimitMb": 4288,
+    "heapAvailMb": 1463,
+    "heapTotalMb": 2919,
+    "arrayBuffersMb": 110,
+    "nativeMb": 832,
+    "dbMb": 0,
+    "tapeMb": 447,
+    "byPhase": {
+      "backfill": {
+        "rssMb": 314,
+        "heapMb": 112,
+        "arrayBuffersMb": 51
+      },
+      "Base": {
+        "rssMb": 644,
+        "heapMb": 38,
+        "arrayBuffersMb": 90
+      },
+      "Tapes": {
+        "rssMb": 809,
+        "heapMb": 48,
+        "arrayBuffersMb": 95
+      },
+      "Signals": {
+        "rssMb": 1581,
+        "heapMb": 347,
+        "arrayBuffersMb": 103
+      },
+      "Real": {
+        "rssMb": 3864,
+        "heapMb": 2891,
+        "arrayBuffersMb": 110
+      }
+    }
+  },
+  "funding": {
+    "basis": "Exact per-close native report allocation",
+    "virtualCloses": 0,
+    "fundedCloses": 0,
+    "zeroAllocatedCloses": 0,
+    "unknownAllocations": 0
+  },
+  "settled": {
+    "n": 0,
+    "gp": 0,
+    "gl": 0,
+    "net": 0,
+    "pf": null,
+    "pfConvention": "unavailable"
+  },
+  "openAtEnd": {
+    "recorded": true,
+    "orders": 16,
+    "positions": 1,
+    "mtm": -0.017842193017686556,
+    "rule": "exact: the orders the engine executed in the run and still open at its end (every gate, cap and Block volume applied), marked to market at the last close"
+  },
+  "endingEquity": 9.982157806982313,
+  "reportChecks": {
+    "passed": 58,
+    "total": 58
+  },
+  "windows": {
+    "ok": true,
+    "scope": "Every built Signal config and observed symbol/direction; raw window count, gross returns, net and PF at 13 hourly boundaries. Gate verdicts and funded execution are separate audits.",
+    "protocolSha256": "db30485b5bc2c96607ecae0d9e354e56d06745c6218e587122d3afbe468056f0",
+    "sourceSha256": "6a81578275a64ed0ef43d48d133709023e94cd54987aff9e2f4c5c6b34a1c070",
+    "historyH": 100,
+    "tapes": 121440,
+    "closes": 6202813,
+    "contexts": 2004241,
+    "comparisons": 26055133,
+    "conservationChecks": 24050892,
+    "hourly": [
+      {
+        "t": 1792227600000,
+        "contexts": 2004241,
+        "n": 5795952,
+        "gp": 41095.93954655456,
+        "gl": 52017.68248014116,
+        "incoming": 0,
+        "expired": 0
+      },
+      {
+        "t": 1792231200000,
+        "contexts": 2004241,
+        "n": 5838846,
+        "gp": 41164.31819486131,
+        "gl": 52297.448767612965,
+        "incoming": 46901,
+        "expired": 4007
+      },
+      {
+        "t": 1792234800000,
+        "contexts": 2004241,
+        "n": 5868812,
+        "gp": 41247.39049123395,
+        "gl": 52499.31749108973,
+        "incoming": 37321,
+        "expired": 7355
+      },
+      {
+        "t": 1792238400000,
+        "contexts": 2004241,
+        "n": 5872653,
+        "gp": 41261.03859274791,
+        "gl": 52562.85171627687,
+        "incoming": 18617,
+        "expired": 14776
+      },
+      {
+        "t": 1792242000000,
+        "contexts": 2004241,
+        "n": 5899242,
+        "gp": 41441.33875615328,
+        "gl": 52956.674353122246,
+        "incoming": 34210,
+        "expired": 7621
+      },
+      {
+        "t": 1792245600000,
+        "contexts": 2004241,
+        "n": 5890750,
+        "gp": 41719.486860622834,
+        "gl": 52825.745450027214,
+        "incoming": 32858,
+        "expired": 41350
+      },
+      {
+        "t": 1792249200000,
+        "contexts": 2004241,
+        "n": 5862337,
+        "gp": 41715.32817406164,
+        "gl": 51950.38828112394,
+        "incoming": 24703,
+        "expired": 53116
+      },
+      {
+        "t": 1792252800000,
+        "contexts": 2004241,
+        "n": 5802569,
+        "gp": 41472.48894839516,
+        "gl": 51318.08203209347,
+        "incoming": 43173,
+        "expired": 102941
+      },
+      {
+        "t": 1792256400000,
+        "contexts": 2004241,
+        "n": 5807610,
+        "gp": 41870.426121640536,
+        "gl": 51499.74973325153,
+        "incoming": 40038,
+        "expired": 34997
+      },
+      {
+        "t": 1792260000000,
+        "contexts": 2004241,
+        "n": 5787349,
+        "gp": 42094.538571461155,
+        "gl": 51523.69762818313,
+        "incoming": 53037,
+        "expired": 73298
+      },
+      {
+        "t": 1792263600000,
+        "contexts": 2004241,
+        "n": 5728635,
+        "gp": 42204.719211377495,
+        "gl": 50752.67428402334,
+        "incoming": 40115,
+        "expired": 98829
+      },
+      {
+        "t": 1792267200000,
+        "contexts": 2004241,
+        "n": 5665391,
+        "gp": 42161.40122667842,
+        "gl": 49970.16676837743,
+        "incoming": 22055,
+        "expired": 85299
+      },
+      {
+        "t": 1792270800000,
+        "contexts": 2004241,
+        "n": 5652894,
+        "gp": 42114.818736391004,
+        "gl": 49931.51240670954,
+        "incoming": 11533,
+        "expired": 24030
+      }
+    ],
+    "elapsedMs": 67509.551573,
+    "peakRssMb": 338.149376
+  },
+  "stepsByRange": [
+    {
+      "t": 1792227600000,
+      "byRange": {
+        "sig": {
+          "tapes": 121440,
+          "validated": 201,
+          "candidates": 0,
+          "taken": 0
+        }
+      }
+    },
+    {
+      "t": 1792231200000,
+      "byRange": {
+        "sig": {
+          "tapes": 121440,
+          "validated": 200,
+          "candidates": 0,
+          "taken": 0
+        }
+      }
+    },
+    {
+      "t": 1792234800000,
+      "byRange": {
+        "sig": {
+          "tapes": 121440,
+          "validated": 199,
+          "candidates": 0,
+          "taken": 0
+        }
+      }
+    },
+    {
+      "t": 1792238400000,
+      "byRange": {
+        "sig": {
+          "tapes": 121440,
+          "validated": 203,
+          "candidates": 0,
+          "taken": 0
+        }
+      }
+    },
+    {
+      "t": 1792242000000,
+      "byRange": {
+        "sig": {
+          "tapes": 121440,
+          "validated": 194,
+          "candidates": 0,
+          "taken": 0
+        }
+      }
+    },
+    {
+      "t": 1792245600000,
+      "byRange": {
+        "sig": {
+          "tapes": 121440,
+          "validated": 193,
+          "candidates": 0,
+          "taken": 0
+        }
+      }
+    },
+    {
+      "t": 1792249200000,
+      "byRange": {
+        "sig": {
+          "tapes": 121440,
+          "validated": 192,
+          "candidates": 0,
+          "taken": 0
+        }
+      }
+    },
+    {
+      "t": 1792252800000,
+      "byRange": {
+        "sig": {
+          "tapes": 121440,
+          "validated": 189,
+          "candidates": 0,
+          "taken": 0
+        }
+      }
+    },
+    {
+      "t": 1792256400000,
+      "byRange": {
+        "sig": {
+          "tapes": 121440,
+          "validated": 167,
+          "candidates": 16,
+          "taken": 16
+        }
+      }
+    },
+    {
+      "t": 1792260000000,
+      "byRange": {
+        "sig": {
+          "tapes": 121440,
+          "validated": 142,
+          "candidates": 0,
+          "taken": 0
+        }
+      }
+    },
+    {
+      "t": 1792263600000,
+      "byRange": {
+        "sig": {
+          "tapes": 121440,
+          "validated": 135,
+          "candidates": 0,
+          "taken": 0
+        }
+      }
+    },
+    {
+      "t": 1792267200000,
+      "byRange": {
+        "sig": {
+          "tapes": 121440,
+          "validated": 122,
+          "candidates": 0,
+          "taken": 0
+        }
+      }
+    }
+  ],
+  "exitHistory": {
+    "pairs": 17,
+    "baseEvaluated": 380,
+    "basePassed": 17,
+    "baseRejected": 363,
+    "noPrehistory": 0,
+    "insufficientEntries": 16,
+    "candidates": 24,
+    "capped": 4,
+    "evaluated": 24,
+    "insufficientTrades": 0,
+    "pfRejected": 7,
+    "greenHourRejected": 17,
+    "ddrRejected": 0,
+    "qualified": 0
+  },
+  "runtimeLabelOnlyFollowup": "After this sealed replay, compute status/log labels were clarified to disclose open marks; no computation or return changed.",
+  "replaySourceEquivalentRemoteCommit": "ea262bb7af0a4fe5e0d571df688e54090056051a"
+}

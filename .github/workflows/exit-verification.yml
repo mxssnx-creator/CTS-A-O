@@ -17,7 +17,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  verify:
+  quality:
     runs-on: ubuntu-24.04
     timeout-minutes: 300
     steps:
@@ -46,7 +46,53 @@ jobs:
       - run: npm run lint
       - name: Build the production app and worker
         run: env -u DATABASE_URL npm run build
-      - name: Run the complete default suite
-        run: npm test
+      - name: Run script, browser, app and component tests
+        run: npm test -- --without-core
+
+  core-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build:core-worker
+      - name: Run the complete core inventory partition
+        run: npm run test:core -- --test-shard=${{ matrix.shard }}/4
+
+  slow-runtime:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build:core-worker
       - name: Run the two longer runtime checks
         run: npm run test:core:slow
+
+  verify:
+    runs-on: ubuntu-24.04
+    if: always()
+    needs: [quality, core-tests, slow-runtime]
+    steps:
+      - name: Require every verification partition
+        env:
+          QUALITY: ${{ needs.quality.result }}
+          CORE: ${{ needs.core-tests.result }}
+          SLOW: ${{ needs.slow-runtime.result }}
+        run: test "$QUALITY" = success && test "$CORE" = success && test "$SLOW" = success
