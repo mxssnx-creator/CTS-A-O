@@ -451,16 +451,18 @@ export function SignalsSettings(props: {
             discovery pairs · {fmt.num(processingCounts.representativePassed)} representative Base
             passes · {fmt.num(st.active)} historically active units (before entry gates) ·{" "}
             {fmt.num(processingCounts.requested)} requested protection configurations
+            {st.builtConfigs !== undefined ? ` · ${fmt.num(st.builtConfigs)} distinct built configs (including ladders and Exit)` : ""}
             {st.positions !== undefined
-              ? ` · positions / orders ${st.positions} / ${st.orders} (peak ${st.peakPositions} / ${st.peakOrders})`
+              ? ` · closed positions / settled orders ${st.positions} / ${st.orders} (peak open ${st.peakPositions} / ${st.peakOrders})`
               : st.trades !== undefined
-                ? ` · ${st.trades} orders`
+                ? ` · ${st.trades} settled orders`
                 : ""}
+            {st.openedOrders !== undefined ? ` · simulation openings ${st.openedOrders} · still open at simulation end ${st.openAtEndOrders}` : ""}
             {st.openPositions !== undefined
-              ? ` · open now ${st.openPositions} / ${st.openOrders}`
+              ? ` · paper open now ${st.openPositions} / ${st.openOrders}`
               : ""}
             {st.coordinationOrders !== undefined
-              ? ` · coordination orders ${fmt.num(st.coordinationOrders)} (PF ${fmt.num(st.coordinationPf)} · net ${fmt.num(st.coordinationNet)})`
+              ? ` · coordination settled orders ${fmt.num(st.coordinationOrders)} (PF ${fmt.num(st.coordinationPf)} · net ${fmt.num(st.coordinationNet)})`
               : ""}
             {st.disabled ? ` · ${st.disabled} guarded` : ""}
           </span>
@@ -1021,7 +1023,7 @@ export function SignalsSettings(props: {
         </Field>
         <Field
           label="Historic: entries needed (minN)"
-          hint="a signal with fewer historic entries gets none (5–1000)"
+          hint="pooled mature source entries for fitting (5–1000); each config separately keeps its own close minimum, PF and Last-N gates"
         >
           <Num
             int
@@ -1085,7 +1087,7 @@ export function SignalsSettings(props: {
           <strong>Signals Coordination (Type)</strong>
           <span className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
             {coordination.enabled
-              ? `${fmt.num(st?.coordinationPairs ?? 0)} pairs · ${fmt.num(st?.coordinationConfigs ?? 0)} range/history configs · ${fmt.num(st?.coordinationActive ?? 0)} active units${st?.coordinationOrders !== undefined ? ` · ${fmt.num(st.coordinationOrders)} orders · PF ${fmt.num(st.coordinationPf)}` : ""}`
+              ? `${fmt.num(st?.coordinationPairs ?? 0)} pairs · ${fmt.num(st?.coordinationBuiltConfigs ?? st?.coordinationConfigs ?? 0)} built range/history configs · ${fmt.num(st?.coordinationActive ?? 0)} active units${st?.coordinationOrders !== undefined ? ` · ${fmt.num(st.coordinationOrders)} settled orders · PF ${fmt.num(st.coordinationPf)}` : ""}`
               : "Off"}
           </span>
         </div>

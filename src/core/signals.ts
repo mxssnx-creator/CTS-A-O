@@ -1220,3 +1220,31 @@ export function signalSeatSymbols(
   });
   return out;
 }
+
+/** Coarse candidate index only: the exact symbol/direction/type check below still authorizes every seat. */
+function* signalActiveConfigIds(active: ReadonlySet<string>): Generator<number, Set<string>> {
+  const ids = new Set<string>();
+  let scanned = 0;
+  for (const key of active) {
+    if (++scanned % 128 === 0) yield 0;
+    const i = key.lastIndexOf("|cfg=");
+    if (i < 0) continue;
+    try { ids.add(decodeURIComponent(key.slice(i + 5))); } catch { /* Malformed recovered evidence cannot seat. */ }
+  }
+  return ids;
+}
+
+/** Avoid constructing every context key for inactive configs; retain stable order and yield bounded work. */
+export function* signalSeatTapesGen<T extends {
+  id: string; bot: string; ind: string; kind?: string; syms: readonly string[]; heldOnly?: boolean;
+}>(tapes: readonly T[], active: ReadonlySet<string> | undefined, fast = false): Generator<number, T[]> {
+  if (!active) return [];
+  const ids = fast ? null : yield* signalActiveConfigIds(active);
+  const selected: T[] = [];
+  let scanned = 0;
+  for (const tp of tapes) {
+    if (!tp.heldOnly && (fast || (ids!.has(tp.id) && signalSeatSymbols(tp, active).size > 0))) selected.push(tp);
+    if (++scanned % 128 === 0) yield 0;
+  }
+  return selected;
+}

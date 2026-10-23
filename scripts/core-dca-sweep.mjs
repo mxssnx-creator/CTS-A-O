@@ -7,6 +7,7 @@
 //   CTS_CORE_WORKERS=1 node --experimental-strip-types scripts/core-dca-sweep.mjs --end-ago 24 [--stage 1|2]
 //     [--best runs/dca/best.json] --out runs/dca/s1-w24
 import { readFileSync, writeFileSync } from "node:fs";
+import { dcaSweepStats } from "./dca-sweep-stats.mjs";
 
 const { CoreRuntime } = await import("../src/core/server/runtime.server.ts");
 const { CoreDb } = await import("../src/core/server/db.server.ts");
@@ -53,7 +54,6 @@ const computeS = (Date.now() - t0) / 1000;
 const u = rt.lastUniverse;
 const only = new Set(rt.tapes.filter((t) => !String(t.ind).startsWith("sig")).map((t) => `${t.bot}|${t.ind}`));
 const floors = { minSl: rt.settings.protectFloor.minSl, minTrail: rt.settings.protectFloor.minTrail };
-const H = 3_600_000;
 
 function run(name, dca) {
   const t = Date.now();
@@ -73,47 +73,9 @@ function run(name, dca) {
   const byKind = {};
   for (const k of ["dca", "dca-active", "all"]) {
     const src = k === "all" ? [...sims.dca.trades, ...sims["dca-active"].trades] : sims[k].trades;
-    const xs = src.filter((x) => k === "all" || x.kind === k).sort((a, b) => a.exitT - b.exitT);
-    let gp = 0;
-    let gl = 0;
-    let w = 0;
-    let eq = 0;
-    let peak = 0;
-    let mdd = 0;
-    let ddFrom = sim.startT;
-    let ddt = 0;
-    let legs = 0;
-    const hours = new Map();
-    for (const x of xs) {
-      if (x.r > 0) {
-        gp += x.r;
-        w++;
-      } else gl -= x.r;
-      legs += x.vol ?? 1;
-      eq += x.r;
-      if (eq >= peak) {
-        ddt = Math.max(ddt, (x.exitT - ddFrom) / H);
-        peak = eq;
-        ddFrom = x.exitT;
-      }
-      mdd = Math.max(mdd, peak - eq);
-      const h = Math.floor(x.exitT / H);
-      hours.set(h, (hours.get(h) ?? 0) + x.r);
-    }
-    ddt = Math.max(ddt, (sim.endT - ddFrom) / H);
-    const gh = hours.size ? [...hours.values()].filter((v) => v > 0).length / hours.size : 0;
-    byKind[k] = {
-      n: xs.length,
-      pf: +(gl > 1e-12 ? gp / gl : gp > 0 ? 99 : 0).toFixed(3),
-      gp: +(gp * 100).toFixed(3),
-      gl: +(gl * 100).toFixed(3),
-      net: +(eq * 100).toFixed(3),
-      wr: +(xs.length ? w / xs.length : 0).toFixed(3),
-      mdd: +(mdd * 100).toFixed(3),
-      ddt: +ddt.toFixed(1),
-      gh: +gh.toFixed(3),
-      legs: +(xs.length ? legs / xs.length : 0).toFixed(2),
-    };
+    const xs = src.filter((x) => k === "all" || x.kind === k);
+    byKind[k] = dcaSweepStats(xs, sim.startT, sim.endT);
+    if (k === "all") byKind[k].basis = "sum-of-alternative-unfunded-scenarios-not-one-account";
   }
   // base: every DCA tape over the window (no selection), per kind; the pooled curve averages the tapes (one unit
   // spread over every tape) so its drawdown is comparable between variants
@@ -121,43 +83,12 @@ function run(name, dca) {
   for (const k of ["dca", "dca-active"]) {
     const ts = tapes.filter((x) => x.kind === k);
     const xs = [];
-    for (const tp of ts)
-      for (let i = 0; i < tp.n; i++)
-        if (tp.exitT[i] > sim.startT && tp.exitT[i] <= sim.endT) xs.push({ exitT: tp.exitT[i], r: tp.r[i], vol: tp.vol[i] });
-    xs.sort((a, b) => a.exitT - b.exitT);
-    let gp = 0;
-    let gl = 0;
-    let w = 0;
-    let eq = 0;
-    let peak = 0;
-    let mdd = 0;
-    let legs = 0;
-    let worst = 0;
-    const per = 1 / Math.max(1, ts.length);
-    for (const x of xs) {
-      if (x.r > 0) {
-        gp += x.r;
-        w++;
-      } else gl -= x.r;
-      legs += x.vol ?? 1;
-      worst = Math.min(worst, x.r);
-      eq += x.r * per;
-      peak = Math.max(peak, eq);
-      mdd = Math.max(mdd, peak - eq);
-    }
-    base[k] = {
-      tapes: ts.length,
-      n: xs.length,
-      pf: +(gl > 1e-12 ? gp / gl : gp > 0 ? 99 : 0).toFixed(3),
-      gp: +(gp * 100).toFixed(3),
-      gl: +(gl * 100).toFixed(3),
-      wr: +(xs.length ? w / xs.length : 0).toFixed(3),
-      avgR: +(xs.length ? ((gp - gl) / xs.length) * 100 : 0).toFixed(4),
-      worst: +(worst * 100).toFixed(3),
-      legs: +(xs.length ? legs / xs.length : 0).toFixed(2),
-      net: +(eq * 100).toFixed(3),
-      mdd: +(mdd * 100).toFixed(3),
-    };
+    for (const tp of ts) for (let i = 0; i < tp.n; i++)
+      if (tp.exitT[i] > sim.startT && tp.exitT[i] <= sim.endT)
+        xs.push({ entryT: tp.entryT[i], exitT: tp.exitT[i], r: tp.r[i], vol: tp.vol[i] });
+    const st = dcaSweepStats(xs, sim.startT, sim.endT, { candidate: true, curveDivisor: Math.max(1, ts.length) });
+    base[k] = { ...st, tapes: ts.length, avgR: xs.length ? (st.gp - st.gl) / xs.length : 0,
+      worst: xs.reduce((n, x) => Math.min(n, x.r * 100), 0) };
   }
   return { name, dca, tapes: tapes.length, base, byKind, ms: Date.now() - t };
 }
@@ -197,7 +128,7 @@ for (const [name, dca] of variants) {
 }
 writeFileSync(
   `${out}.json`,
-  JSON.stringify({ symbols, preH, runH, endAgo, stage, computeS, pairs: only.size, rows }, null, 1),
+  JSON.stringify({ schema: "cts-dca-sweep-v2", evidence: "Unfunded virtual sensitivity scenarios; not account or venue execution. Endpoint marks excluded; own unit returns after costs.", window: { startT: rt.sim.startT, endT: rt.sim.endT }, symbols, preH, runH, endAgo, stage, computeS, pairs: only.size, rows }, null, 1),
 );
 process.stderr.write(`wrote ${out}.json: ${rows.length} variants\n`);
 process.exit(0);

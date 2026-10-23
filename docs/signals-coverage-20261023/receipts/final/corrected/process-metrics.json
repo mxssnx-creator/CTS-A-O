@@ -1,0 +1,12 @@
+{
+  "scenario": "corrected",
+  "runner": "GitHub ubuntu-24.04",
+  "machine": "x86_64",
+  "cpuCount": 4,
+  "sourceSha256": "aeec5a59086e1145a52009f580bd29ecf7042eb6c174677f099a284fe397c82e",
+  "exitCode": 0,
+  "wallSeconds": 483.32259004,
+  "childPeakRssMiB": 2747.7421875,
+  "userSeconds": 869.245863,
+  "systemSeconds": 5.447856
+}

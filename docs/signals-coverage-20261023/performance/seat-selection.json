@@ -1,0 +1,127 @@
+{
+  "ok": true,
+  "basis": "Exact same ordered selected config identities across every recorded selection step; selection-stage benchmark, not a complete new native replay",
+  "studySourceSha256": "731220d22d4519e05df2113a7c0c33fb11f6749af55b8612f84415e780191dee",
+  "rows": [
+    {
+      "t": 1792184400000,
+      "configs": 242565,
+      "activeKeys": 3650,
+      "selected": 2733,
+      "beforeMs": 3525.3220920000003,
+      "afterMs": 90.12152900000001,
+      "slices": 1895,
+      "maxSliceMs": 3.970737999999983
+    },
+    {
+      "t": 1792188000000,
+      "configs": 242565,
+      "activeKeys": 3644,
+      "selected": 2725,
+      "beforeMs": 3247.506146999999,
+      "afterMs": 52.919981999999436,
+      "slices": 1895,
+      "maxSliceMs": 1.874242999998387
+    },
+    {
+      "t": 1792191600000,
+      "configs": 242565,
+      "activeKeys": 3534,
+      "selected": 2652,
+      "beforeMs": 3247.7804229999983,
+      "afterMs": 52.23102300000028,
+      "slices": 1895,
+      "maxSliceMs": 1.6948210000009567
+    },
+    {
+      "t": 1792195200000,
+      "configs": 242565,
+      "activeKeys": 3472,
+      "selected": 2600,
+      "beforeMs": 3597.3579059999993,
+      "afterMs": 52.11951500000032,
+      "slices": 1895,
+      "maxSliceMs": 1.7102279999999155
+    },
+    {
+      "t": 1792198800000,
+      "configs": 242565,
+      "activeKeys": 3438,
+      "selected": 2570,
+      "beforeMs": 3611.885217000001,
+      "afterMs": 55.0743450000009,
+      "slices": 1895,
+      "maxSliceMs": 1.802573000000848
+    },
+    {
+      "t": 1792202400000,
+      "configs": 242565,
+      "activeKeys": 3189,
+      "selected": 2367,
+      "beforeMs": 3893.153736,
+      "afterMs": 47.52112699999998,
+      "slices": 1895,
+      "maxSliceMs": 1.7944229999993695
+    },
+    {
+      "t": 1792206000000,
+      "configs": 242565,
+      "activeKeys": 3042,
+      "selected": 2246,
+      "beforeMs": 3878.7333690000014,
+      "afterMs": 47.34107799999765,
+      "slices": 1895,
+      "maxSliceMs": 1.521984999999404
+    },
+    {
+      "t": 1792209600000,
+      "configs": 242565,
+      "activeKeys": 2595,
+      "selected": 1939,
+      "beforeMs": 4414.761746999997,
+      "afterMs": 64.31138700000156,
+      "slices": 1895,
+      "maxSliceMs": 2.1170749999982945
+    },
+    {
+      "t": 1792213200000,
+      "configs": 242565,
+      "activeKeys": 2410,
+      "selected": 1740,
+      "beforeMs": 4245.430514,
+      "afterMs": 38.14787200000137,
+      "slices": 1895,
+      "maxSliceMs": 1.2904060000000754
+    },
+    {
+      "t": 1792216800000,
+      "configs": 242565,
+      "activeKeys": 2134,
+      "selected": 1534,
+      "beforeMs": 3763.1066009999995,
+      "afterMs": 37.89249900000141,
+      "slices": 1895,
+      "maxSliceMs": 1.3206990000035148
+    },
+    {
+      "t": 1792220400000,
+      "configs": 242565,
+      "activeKeys": 2376,
+      "selected": 1766,
+      "beforeMs": 3441.238756999999,
+      "afterMs": 42.66722600000503,
+      "slices": 1895,
+      "maxSliceMs": 1.251261000004888
+    },
+    {
+      "t": 1792224000000,
+      "configs": 242565,
+      "activeKeys": 2552,
+      "selected": 1895,
+      "beforeMs": 3980.4939710000035,
+      "afterMs": 49.889554000001226,
+      "slices": 1895,
+      "maxSliceMs": 2.0235850000026403
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "scenario": "corrected",
+  "exitCode": 0,
+  "wallSeconds": 406.0032309800008,
+  "cumulativeChildPeakRssMiB": 2717.80859375,
+  "userSeconds": 701.216843,
+  "systemSeconds": 7.920802
+}

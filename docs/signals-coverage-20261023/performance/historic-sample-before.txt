@@ -1,0 +1,34 @@
+▶ signal historic trailing configs
+  ✖ keeps the pooled fitting sample separate from each config's own close minimum (5.592936ms)
+✖ signal historic trailing configs (6.801874ms)
+ℹ tests 1
+ℹ suites 1
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 280.282419
+
+✖ failing tests:
+
+test at src/core/signal-hist.test.ts:59:3
+✖ keeps the pooled fitting sample separate from each config's own close minimum (5.592936ms)
+  AssertionError [ERR_ASSERTION]: 30 pooled mature excursions fit a source whose own contexts have 12–29 closes
+      at TestContext.<anonymous> (file:///workspace/scratch/1bcaeeb063ee/CTS-A-O-signals-report/src/core/signal-hist.test.ts:74:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.start (node:internal/test_runner/test:1242:17)
+      at node:internal/test_runner/test:1867:71
+      at node:internal/per_context/primordials:504:82
+      at new Promise (<anonymous>)
+      at new SafePromise (node:internal/per_context/primordials:478:3)
+      at node:internal/per_context/primordials:504:9
+      at Array.map (<anonymous>) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }

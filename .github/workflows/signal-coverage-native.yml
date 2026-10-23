@@ -1,0 +1,62 @@
+name: Full Signal coverage replay
+on:
+  # This is a frozen retrospective study, not a moving profitability gate. Its
+  # completed source-sealed receipts remain valid for report-only commits.
+  # Dispatch explicitly after freezing a new source; ordinary PR verification
+  # continues to run all core, script, UI, build and slow-runtime checks.
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: signal-coverage-native-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  replay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [corrected, all-sources, dca, dca-block, dca-active]
+    env:
+      CTS_CORE_STATE: 'off'
+      CTS_CORE_AUTOSTART: '0'
+      CTS_CORE_LIVE: '0'
+      CTS_CORE_COMPARE: '0'
+      CTS_CORE_VARIANTS: '0'
+      CTS_CORE_WORKERS: '2'
+      MALLOC_ARENA_MAX: '2'
+      MALLOC_MMAP_THRESHOLD_: '1048576'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: env -u DATABASE_URL npm run build
+      - name: Freeze every comparison before scoring this arm
+        run: node --experimental-strip-types --no-warnings scripts/prepare-signals-coverage.mjs scripts/studies/signals-coverage/base-protocol.json runs/signals-native
+      - name: Native 12-symbol minute replay and complete independent audit
+        run: python3 .github/audits/run-signal-coverage.py ${{ matrix.scenario }}
+      - name: Preserve compact results and failure logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: signals-native-${{ matrix.scenario }}-receipts
+          path: runs/signals-native/receipts/${{ matrix.scenario }}/
+          if-no-files-found: warn
+          retention-days: 90
+      - name: Preserve full raw trades, allocations and every config
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: signals-native-${{ matrix.scenario }}-full
+          path: |
+            runs/signals-native/${{ matrix.scenario }}/
+            runs/signals-native/plan.json
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 3

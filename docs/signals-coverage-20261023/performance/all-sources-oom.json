@@ -1,0 +1,12 @@
+{
+  "scenario": "all-sources",
+  "exitCode": -6,
+  "wallSeconds": 486.1814872649975,
+  "cumulativeChildPeakRssMiB": 5913.2109375,
+  "userSeconds": 1126.754515,
+  "systemSeconds": 18.402867999999998,
+  "classification": "Failed full-source control; no completed outcome or audit",
+  "failure": "Node heap exhausted during Real step 1/12; not a valid comparison score",
+  "heapLimitMiB": 4096,
+  "sourceSha256": "9684e231079cd1e2d90ab23ef9290aef9a75b717516f5ced479d81b24ff651f3"
+}

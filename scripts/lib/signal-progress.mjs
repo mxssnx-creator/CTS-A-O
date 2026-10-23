@@ -6,25 +6,39 @@ import { signalCombos, signalProtects, signalActiveHas } from "../../src/core/si
 import { configId, laneProtect, protectKind } from "../../src/core/pipeline/pipeline.ts";
 import { modeledUnitReturn as unitReturn } from "../../src/core/metrics/stats.ts";
 import { adjustProtect } from "../../src/core/adjust.ts";
+import { parseSignalCoordinationId } from "../../src/core/signal-coordination.ts";
+import { signalCoordinationProtects } from "../../src/core/server/runtime.server.ts";
+import { capSignalProtect } from "../../src/core/sim/trailing.ts";
 import { addReturnEvidence, finishReturnEvidence, returnBucket } from "./return-evidence.mjs";
 
 export function signalConfigDetails(id, protect, kind) {
   const ind = id.split("|")[1] ?? "";
   const lane = laneOf(ind);
-  return { id, ind, source: signalSourceOf(ind), range: /-s$/.test(lane.base) ? "short" : "medium", lane: lane.tf,
-    combined: lane.combined, kind, protect: { ...protect }, holdMinutes: protect.hold * (lane.tf ?? 15) };
+  const coordination = parseSignalCoordinationId(ind);
+  return { id, ind, source: signalSourceOf(ind),
+    range: coordination ? ({ 1: "short", 2: "medium", 3: "short+medium" })[coordination.inputMask] : /-s$/.test(lane.base) ? "short" : "medium",
+    strategyRange: kind === "exit" ? "Exit" : "Signals", protectionRange: protect.tag ?? "signal",
+    lane: lane.tf, combined: lane.combined, kind, protect: { ...protect }, holdMinutes: protect.hold * (lane.tf ?? 15) };
 }
 
-export function captureSignalProgress(rt, sim, startT, endT) {
+/** The requested/effective catalog follows the actual source and coordination builders. */
+export function signalProgressInventory(rt) {
   const sig = signalSettings(rt.settings.signals);
   const combos = signalCombos(sig, rt.settings.tfs);
   const configured = new Map();
   const requestedConfigs = [];
   const floors = rt.fastArgs?.sig?.floors ?? { minSl: sig.minSl, minTrail: sig.minTrail };
   const feedback = rt.fastArgs?.adjust;
-  for (const combo of combos) for (const ref of signalProtects(sig)) {
+  const standard = signalProtects(sig);
+  const coordinated = combos.some((c) => parseSignalCoordinationId(c.ind))
+    ? signalCoordinationProtects(rt.settings.grid, rt.settings.cost, sig.coordination.ranges) : [];
+  for (const combo of combos) for (const ref of parseSignalCoordinationId(combo.ind) ? coordinated : standard) {
     const requested = laneProtect(ref, combo.ind), kind = protectKind(requested);
-    const protect = adjustProtect(adjustProtect(requested, floors), feedback?.[`${combo.bot}|${combo.ind}|${kind}`]);
+    const adjustment = feedback?.[`${combo.bot}|${combo.ind}|${kind}`];
+    const adjusted = !requested.tag ? adjustProtect(adjustProtect(requested, floors), adjustment)
+      : !adjustment || ((adjustment.slMult ?? 1) === 1 && (adjustment.trailMult ?? 1) === 1) ? requested
+      : adjustProtect(requested, { minSl: 0, minTrail: 0, slMult: adjustment.slMult, trailMult: adjustment.trailMult });
+    const protect = capSignalProtect(adjusted.trailMax !== undefined ? adjusted : { ...adjusted, trailMax: sig.trailMax });
     const id = configId(combo.bot, combo.ind, protect);
     const requestedId = configId(combo.bot, combo.ind, requested);
     const alias = { requestedId, effectiveId: id, requestedProtect: { ...requested }, effectiveProtect: { ...protect } };
@@ -32,6 +46,11 @@ export function captureSignalProgress(rt, sim, startT, endT) {
     if (!configured.has(id)) configured.set(id, { ...signalConfigDetails(id, protect, kind), origin: "configured", requestedAliases: [] });
     configured.get(id).requestedAliases.push(alias);
   }
+  return { sig, combos, configured, requestedConfigs };
+}
+
+export function captureSignalProgress(rt, sim, startT, endT) {
+  const { sig, combos, configured, requestedConfigs } = signalProgressInventory(rt);
   const built = new Map(rt.tapes.filter((tp) => isSignalInd(tp.ind)).map((tp) => [tp.id, tp]));
   for (const tp of built.values()) if (!configured.has(tp.id))
     configured.set(tp.id, { ...signalConfigDetails(tp.id, tp.protect, tp.kind), origin: "historic-or-retained", requestedAliases: [] });
@@ -45,6 +64,7 @@ export function captureSignalProgress(rt, sim, startT, endT) {
   };
   const settled = new Map();
   for (const x of sim.trades ?? []) {
+    if (x.markedOpen) continue;
     if (!isSignalInd(x.cfg.split("|")[1] ?? "")) continue;
     const key = `${x.cfg}|${x.side > 0 ? 1 : -1}`;
     if (!settled.has(key)) settled.set(key, returnBucket());
@@ -85,7 +105,7 @@ export function captureSignalProgress(rt, sim, startT, endT) {
         executed: finishReturnEvidence(settled.get(`${info.id}|${side}`) ?? returnBucket()), candidateSymbols: [...r.symbols].sort(),
       }])) });
   }
-  return { version: 2, settings: sig, catalog: SIGNAL_SOURCES.map((s) => ({ name: s.name, enabled: sig.enabled && (sig.sourcesMode === "allow" ? sig.sources[s.name] === true : sig.sources[s.name] !== false) })),
+  return { version: 3, settings: sig, catalog: SIGNAL_SOURCES.map((s) => ({ name: s.name, enabled: sig.enabled && (sig.sourcesMode === "allow" ? sig.sources[s.name] === true : sig.sources[s.name] !== false) })),
     combos, requestedConfigs, configs: rows, steps, endActive: [...(sim.signalActiveEnd ?? [])],
     hourlyCandidates: [...hourly.values()].map(({ evidence, ...info }) => ({ ...info, ...finishReturnEvidence(evidence) })),
     build: (rt.buildStats ?? []).filter((s) => isSignalInd(s.ind)),

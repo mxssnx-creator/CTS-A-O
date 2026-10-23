@@ -50,7 +50,7 @@ import {
 import { CoreRuntime, signalCoordinationProtects } from "./server/runtime.server.ts";
 import { CoreDb } from "./server/db.server.ts";
 import { modeledUnitStatsOf } from "./metrics/stats.ts";
-import { closedPositions } from "./positions.ts";
+import { closedPositions, openBook, openTimeline } from "./positions.ts";
 
 const on = signalSettings({ enabled: true });
 const why = (d: object) => ("why" in d ? d.why : "");
@@ -636,8 +636,18 @@ describe("signals: engine", { timeout: 400_000 }, () => {
     assert.ok((st.active ?? 0) - (st.coordinationActive ?? 0) <= 10, "classic signal cap is independent");
     assert.ok((st.coordinationPairs ?? 0) > 0 && (st.coordinationConfigs ?? 0) > 0);
     const sigTapes = rt.tapes.filter((t) => isSignalInd(t.ind));
+    assert.equal(st.builtConfigs, sigTapes.length);
+    const sigCloses = rt.sim!.trades.filter(t => isSignalInd(t.cfg.split("|")[1] ?? ""));
+    const sigEndpoint = (rt.sim!.openAtEnd ?? []).filter(t => isSignalInd(t.cfg.split("|")[1] ?? ""));
+    const occupancy = openTimeline([...sigCloses, ...sigEndpoint], rt.sim!.startT, rt.sim!.endT);
+    assert.equal(st.openedOrders, sigCloses.length + sigEndpoint.length);
+    assert.equal(st.openAtEndOrders, sigEndpoint.length);
+    assert.equal(st.openAtEndPositions, openBook(sigEndpoint).positions);
+    assert.equal(st.peakOrders, Math.max(occupancy.maxOrders, sigEndpoint.length));
+    assert.equal(st.peakPositions, Math.max(occupancy.maxPositions, openBook(sigEndpoint).positions));
     // Each exact config with an active symbol/direction takes its own seat; sibling protects supply no seat.
     const coordTapes = sigTapes.filter((t) => t.ind.startsWith("sig-coord-"));
+    assert.equal(st.coordinationBuiltConfigs, coordTapes.length);
     assert.ok(coordTapes.length > 0, "coordinator tapes are built");
     assert.ok(coordTapes.every((t) => t.protect.tag === "gn" || t.protect.tag === "lg"), "grid-off Short exits are excluded");
     const coordTrades = rt.sim!.trades.filter((t) => isSignalCoordinationInd(t.cfg.split("|")[1] ?? ""));

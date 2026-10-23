@@ -1,0 +1,20 @@
+{
+  "schema": "cts-signal-derived-catalog-v1",
+  "ok": true,
+  "protocolSha256": "e54d41c310c15771ec78006d34234f488801099114e49dbd98c27f1ea99e5c62",
+  "sourceSha256": "aeec5a59086e1145a52009f580bd29ecf7042eb6c174677f099a284fe397c82e",
+  "basis": "Every enabled DCA, DCA Active and Axis build cell; execution toggles are separate from historical calculation. Zero-execution cells are retained.",
+  "requestedCells": 326992,
+  "expectedEffectiveCells": 193792,
+  "expectedByType": {
+    "dca": 96896,
+    "dca-active": 96896
+  },
+  "builtByType": {
+    "dca": 96896,
+    "dca-active": 96896
+  },
+  "additionalBuiltByType": {},
+  "missingConfiguredCells": 0,
+  "missingExamples": []
+}

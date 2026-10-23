@@ -31,9 +31,11 @@ describe("Signals PF 1.5, own Strategy Base and independent TP/SL", () => {
     for (const ind of ["sig-ema-cross-s@m1", "sig-ema-cross-m@m30", "sig-coord-v2-test@m15"]) {
       assert.equal(minPfOf({ minPf: 1.05 }, undefined, ind), 1.5);
       assert.equal(minPfOf({ minPf: 1.8 }, undefined, ind), 1.8);
-      assert.equal(minPfOf({ minPf: 1.05, rangeMinPf: { short: 1.9 } }, "sh", ind), 1.9);
+      assert.equal(minPfOf({ minPf: 1.05, rangeMinPf: { short: 1.9 } }, "sh", ind), 1.5, "a borrowed protection tag cannot replace the Signals range floor");
+      assert.equal(minPfOf({ minPf: 1.9, rangeMinPf: { short: 1.1 } }, "sh", ind), 1.9, "an explicit global floor still applies");
       assert.equal(liveMinPfOf({ gates: { ...DEFAULT_SETTINGS.gates, minPf: 1.05 }, live: { ...DEFAULT_SETTINGS.live, liveMinPf: 1.1 } }, undefined, ind), 1.5);
     }
+    assert.equal(minPfOf({ minPf: 1.05, rangeMinPf: { short: 1.9 } }, "sh", "ema-cross"), 1.9, "ordinary strategies retain their own range floor");
     assert.equal(signalHistValidationOf(0.002, { ...DEFAULT_SETTINGS.gates, minPf: 1.05 }).minPf, 1.5);
     for (const rank of ["net", "drawdown", "lowdd"] as const) {
       const s = signalSettings({ rank, minBlockShare: 0, minTrades: 3 });
@@ -79,20 +81,21 @@ describe("Signals PF 1.5, own Strategy Base and independent TP/SL", () => {
     counter.record("follow", ind, p, "normal", own(cfg, "B", 1, 1.4));
     const row = counter.rows()[0]; assert.equal(row.minPf, 1.5); assert.equal(row.floorPf, 1.5); assert.equal(row.passed, 1); assert.equal(row.evaluated, 2);
   });
-  it("routes all ranges/lanes/types on twelve symbols through hourly Base, activation and actual modeled admission", () => {
+  it("admits every qualified independent set on twelve symbols, three sources, four protections and all Signal lanes/types", () => {
     const symbols = Array.from({length:12}, (_,i) => `S${i}-USDT`);
-    const tapes = ["s","m"].flatMap(range => [1,5,15,30].flatMap(tf =>
+    const tapes = ["ema-cross","macd-cross","rsi-reversal"].flatMap(source => [0,1,2,3].flatMap(variant => ["s","m"].flatMap(range => [1,5,15,30].flatMap(tf =>
       (["normal","trailing","trailing-only","dca","dca-active","axis"] as StratKind[]).map(kind => {
-        const ind = `sig-ema-cross-${range}@m${tf}`;
-        const p = {tp:kind === "trailing-only" ? 0 : 0.03, sl:0.02, trail:kind === "normal" ? 0 : 0.01, hold:192, trailMax:0.03, ...(kind === "trailing-only" ? {trailOnly:true} : {})};
+        const ind = `sig-${source}-${range}@m${tf}`;
+        const p = {tp:kind === "trailing-only" ? 0 : 0.015+variant*0.005, sl:0.012+variant*0.003, trail:kind === "normal" ? 0 : 0.005+variant*0.002, hold:192, trailMax:0.03, ...(kind === "trailing-only" ? {trailOnly:true} : {})};
         const cfg = configId("follow",ind,p,kind);
         const rows = symbols.flatMap(sym => ([1,-1] as const).flatMap(side => [
           ...own(cfg,sym,side,sym === symbols[0] && side === -1 ? 1.4 : 1.6),
           {cfg,sym,side,entryT:NOW+5*60_000,exitT:NOW+10*60_000,entry:100,exit:100*(1+side*0.004),r:0.004,mult:1,reason:"tp" as const,bars:1,mfe:0,mae:0}
         ]));
         return makeTape(cfg,"follow",ind,p,kind,symbols,rows,[],[]);
-      })));
-    const u = {bars:[],caches:[],startT:NOW-336*H,endT:NOW+H,splitT:NOW,nowT:NOW+H,baseTf:1} as never;
+      })))));
+    assert.equal(tapes.length,576);assert.equal(new Set(tapes.map(t=>t.id)).size,576);
+    const u = {bars:[],caches:[],startT:NOW-100*H,endT:NOW+H,splitT:NOW,nowT:NOW+H,baseTf:1} as never;
     let total = 0;
     for (const active of [false,true]) {
       const subset = tapes.filter(t => (t.kind === "dca-active") === active);
@@ -111,7 +114,7 @@ describe("Signals PF 1.5, own Strategy Base and independent TP/SL", () => {
       for (const tr of run.trades) assert.ok(signalConfigEval(subset.find(t => t.id === tr.cfg)!,tr.entryT,o,tr.sym,tr.side).ok);
       total += run.trades.length;
     }
-    assert.equal(total,1104);
+    assert.equal(total,13248,"576 independent protection sets each admit their own 23 qualified symbol/direction entries");
   });
   it("records every independent Signal config in the Strategy Base step report, including failures", () => {
     const ind = "sig-ema-cross-s@m15";

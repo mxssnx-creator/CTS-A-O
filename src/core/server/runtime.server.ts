@@ -301,7 +301,7 @@ import {
   SignalGuard,
   guardKey,
   sigActiveKey,
-  signalSeatSymbols,
+  signalSeatTapesGen,
 } from "../signals.ts";
 import {
   emptySignalHistDiagnostics,
@@ -344,7 +344,7 @@ import {
 import { primaryPfLabel, unitStatsReport } from "../reporting-stats.ts";
 import { promoteLaneKey, validPromotedLaneProof } from "../live-promote.ts";
 import { auditState, auditStateGen, type AuditInput, type AuditReport } from "../audit.ts";
-import { closedPositions, openTimeline } from "../positions.ts";
+import { closedPositions, openBook, openTimeline } from "../positions.ts";
 import {
   backfillLabel,
   batchesOf,
@@ -583,8 +583,11 @@ export interface RuntimeStatus {
     active: number;
     pairs: number;
     configs: number;
+    /** Distinct built tapes, including enabled ladders and independently fitted Exit cells. */
+    builtConfigs?: number;
     coordinationPairs?: number;
     coordinationConfigs?: number;
+    coordinationBuiltConfigs?: number;
     coordinationActive?: number;
     coordinationTrades?: number;
     coordinationPf?: number;
@@ -607,6 +610,10 @@ export interface RuntimeStatus {
     /** positions (symbol × direction) and orders (all orders and partials) of the simulated signal book */
     positions?: number;
     orders?: number;
+    /** Modeled simulation openings and endpoint inventory; separate from settled PF and current paper holdings. */
+    openedOrders?: number;
+    openAtEndOrders?: number;
+    openAtEndPositions?: number;
     peakPositions?: number;
     peakOrders?: number;
     /** open now in the paper book: positions / orders */
@@ -5394,6 +5401,10 @@ export class CoreRuntime {
     // of carrying their garbage into the simulation's first allocation burst.
     this.collectNow();
     const sigTapes = [...sourceTapes, ...coordTapes];
+    if (nextStatus.signals) {
+      nextStatus.signals.builtConfigs = sigTapes.length + signalExitBuilt.length;
+      nextStatus.signals.coordinationBuiltConfigs = coordTapes.length + signalExitBuilt.filter(tp => isSignalCoordinationInd(tp.ind)).length;
+    }
     // Historic Exit Signal configs run on their own independent protection proof and do not consume the Normal /
     // Trailing Signal ranking cap. Their exact keys are carried into the step gate; own Exit and Signal PF/Last-N
     // gates still recheck every entry causally.
@@ -5524,7 +5535,7 @@ export class CoreRuntime {
           "Real",
           step,
           steps,
-          `${wf.simH}h sim · step ${Math.min(step, steps)}/${steps} · ${wf.preH}h pre · validate last ${wf.validLastN ?? 0} · live last ${wf.lastN}`,
+          `${wf.simH}h sim · step ${Math.min(step, steps)}/${steps} · engine ${wf.preH}h pre / Last-${wf.validLastN ?? 0}${sig.enabled ? ` · Signals ${signalHistoryHours(wf)}h / Last-${wf.rangeOpts?.sig?.validLastN ?? wf.signalValidLastN ?? 0}` : ""} · entry Last-${wf.lastN}`,
         );
       }
     });
@@ -5631,12 +5642,16 @@ export class CoreRuntime {
           if ((i + 1) % 20_000 === 0) yield i;
         }
         const xs = sim.trades.filter((x) => isSignalInd(x.cfg.split("|")[1] ?? ""));
+        const endpoint = (sim.openAtEnd ?? []).filter((x) => isSignalInd(x.cfg.split("|")[1] ?? ""));
+        const endpointBook = openBook(endpoint);
         yield 0;
         const st = unitStatsReport(unitStatsOf(xs), xs.length);
-        const tl = openTimeline(xs, sim.startT, sim.endT);
+        const tl = openTimeline([...xs, ...endpoint], sim.startT, sim.endT);
         const coord = xs.filter((x) => isSignalCoordinationInd(x.cfg.split("|")[1] ?? ""));
         const coordStats = unitStatsOf(coord);
-        const coordTimeline = openTimeline(coord, sim.startT, sim.endT);
+        const coordEndpoint = endpoint.filter((x) => isSignalCoordinationInd(x.cfg.split("|")[1] ?? ""));
+        const coordTimeline = openTimeline([...coord, ...coordEndpoint], sim.startT, sim.endT);
+        const coordEndpointBook = openBook(coordEndpoint);
         yield 0;
         return {
           disabled: sig.guard.enabled ? g.disabledKeys(sig.guard.lastN).length : 0,
@@ -5648,15 +5663,18 @@ export class CoreRuntime {
           // positions (symbol × direction, closed episodes) and orders (every order and partial) apart
           positions: closedPositions(xs),
           orders: xs.length,
-          peakPositions: tl.maxPositions,
-          peakOrders: tl.maxOrders,
+          openedOrders: xs.length + endpoint.length,
+          openAtEndOrders: endpoint.length,
+          openAtEndPositions: endpointBook.positions,
+          peakPositions: Math.max(tl.maxPositions, endpointBook.positions),
+          peakOrders: Math.max(tl.maxOrders, endpoint.length),
           coordinationTrades: coord.length,
           coordinationPf: coordStats.pf,
           coordinationNet: coordStats.net,
           coordinationPositions: closedPositions(coord),
           coordinationOrders: coord.length,
-          coordinationPeakPositions: coordTimeline.maxPositions,
-          coordinationPeakOrders: coordTimeline.maxOrders,
+          coordinationPeakPositions: Math.max(coordTimeline.maxPositions, coordEndpointBook.positions),
+          coordinationPeakOrders: Math.max(coordTimeline.maxOrders, coordEndpoint.length),
         };
       };
       Object.assign(
@@ -9153,11 +9171,7 @@ export class CoreRuntime {
       : this.tapes;
     const { engine: engineTapes, signal: signalCandidates } = splitSignalTapes(selectedTapes, this.wf);
     const signalActive = this.wf.signalActive;
-    const sigTapes = signalActive
-      ? signalCandidates.filter(
-          (tp) => !tp.heldOnly && (fast || signalSeatSymbols(tp, signalActive).size > 0),
-        )
-      : [];
+    const sigTapes = yield* signalSeatTapesGen(signalCandidates, signalActive, !!fast);
     // wf.seatSet "validated": the step selects from the validated set V of the last simulation (its ids), never from the
     // pool; V is refreshed only by the next compute's Base + set evaluation
     let selTapes = engineTapes;

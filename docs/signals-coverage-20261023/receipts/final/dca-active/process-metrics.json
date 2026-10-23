@@ -1,0 +1,12 @@
+{
+  "scenario": "dca-active",
+  "runner": "GitHub ubuntu-24.04",
+  "machine": "x86_64",
+  "cpuCount": 4,
+  "sourceSha256": "aeec5a59086e1145a52009f580bd29ecf7042eb6c174677f099a284fe397c82e",
+  "exitCode": 0,
+  "wallSeconds": 1196.831996083,
+  "childPeakRssMiB": 5860.86328125,
+  "userSeconds": 2172.01008,
+  "systemSeconds": 11.608459
+}

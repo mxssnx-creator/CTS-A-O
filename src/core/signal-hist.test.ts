@@ -56,6 +56,28 @@ function rows(xs: ReadonlyArray<readonly [number, number, number, number]>): Bar
 }
 
 describe("signal historic trailing configs", () => {
+  it("keeps the pooled fitting sample separate from each config's own close minimum", () => {
+    const cycle: Array<[number, number, number, number]> = [[100,100,100,100],[100,104,99.9,103],[103,105,102,104],[104,104,101,102],
+      [102,103,100,100],[100,100,100,100],[100,100,100,100],[100,100,100,100]];
+    const a = rows(Array.from({ length: 160 }, (_, i) => cycle[i % cycle.length]));
+    const b = { ...a, sym: "B-USDT" };
+    const ind = "sig-ema-cross-s@m15", pair = `follow|${ind}`;
+    const make = (bars: Bars[]) => {
+      const u = makeUniverse(bars);
+      for (const cache of u.caches) cache.memo(`combo:follow:${ind}`, () => Int8Array.from({ length: a.n }, (_, i) => i % cycle.length === 0 ? 1 : 0));
+      return u;
+    };
+    const sig = signalSettings({ filter: { trendH: 0, volFloor: 0 }, hist: { enabled: true, minN: 30, lookbackH: 100, quantiles: [0.5], slOfTp: [1], trailOfTp: [0.5] } });
+    const validation = { cost: .002, minPf: 1.5, minTrades: 12, lastN: 8, maxDdr: 1 };
+    const u = make([a, b]);
+    const fitted = signalHistProtects(u, [pair], sig, null, u.nowT, validation);
+    assert.ok(fitted[pair]?.length, "30 pooled mature excursions fit a source whose own contexts have 12–29 closes");
+    const single = make([a]);
+    assert.deepEqual(signalHistProtects(single, [pair], sig, null, single.nowT, validation), {}, "own qualification cannot waive the pooled fitting sample");
+    assert.deepEqual(signalHistProtects(u, [pair], sig, null, u.nowT, { ...validation, minTrades: 30 }), {}, "symbols cannot pool their closes to satisfy an own-config minimum");
+    assert.deepEqual(signalHistProtects(u, [pair], sig, null, u.nowT, { ...validation, minPf: 1e9 }), {}, "the original PF gate remains enforced");
+  });
+
   it("applies the independent PF floor of each coordinator exit range", () => {
     assert.deepEqual(signalHistPassingRanges(1.6, 1.1), [undefined], "classic Signals keep their untagged floor");
     assert.deepEqual(

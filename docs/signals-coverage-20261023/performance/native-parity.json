@@ -1,0 +1,43 @@
+{
+  "ok": true,
+  "classification": "Implementation-only exact data and outcome parity; not unseen profit evidence",
+  "before": "/workspace/scratch/1bcaeeb063ee/CTS-A-O-signals-coverage/runs/signals-coverage-20261023/comparison/corrected",
+  "after": "/workspace/scratch/1bcaeeb063ee/CTS-A-O-signals-final/runs/signals-coverage-20261023/comparison/corrected",
+  "sourceBefore": "9684e231079cd1e2d90ab23ef9290aef9a75b717516f5ced479d81b24ff651f3",
+  "sourceAfter": "731220d22d4519e05df2113a7c0c33fb11f6749af55b8612f84415e780191dee",
+  "feedSha256": "e21d39b0b7583685e2fe355f6261e0860deff3057ca5c81b43a6c3cf374e2f03",
+  "tapes": 121452,
+  "historicalCloses": 7641419,
+  "settled": 1,
+  "endpointOpen": 4,
+  "hours": 12,
+  "identicalAccountFields": [
+    "orders",
+    "fundedOrders",
+    "zeroAllocatedOrders",
+    "unknownAllocations",
+    "pf",
+    "gpR",
+    "glR",
+    "net",
+    "balanceEnd",
+    "equityEnd",
+    "equityMaxDd",
+    "equityMaxDdPct",
+    "equityDdtMaxH"
+  ],
+  "reportingCorrection": {
+    "beforePeakVirtualOpen": 1,
+    "afterPeakVirtualOpen": 5,
+    "fundedOpened": 5,
+    "fundedPeakOpen": 5
+  },
+  "computeMs": {
+    "before": 419004.282213,
+    "after": 383407.08824799996
+  },
+  "rssMaxMb": {
+    "before": 4223,
+    "after": 2064
+  }
+}

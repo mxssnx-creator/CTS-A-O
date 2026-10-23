@@ -91,6 +91,7 @@ function compareAgainstBaseline(verdict) {
 let browser = null;
 try {
   browser = await chromium.launch({
+    ...(process.env.CTS_UI_BROWSER_EXECUTABLE ? { executablePath: process.env.CTS_UI_BROWSER_EXECUTABLE } : {}),
     headless: true,
     args: ["--no-sandbox", "--disable-dev-shm-usage"],
   });

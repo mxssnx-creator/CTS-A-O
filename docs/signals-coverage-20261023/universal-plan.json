@@ -1,0 +1,68 @@
+{
+  "schema": "cts-universal-correctness-plan-v2",
+  "sourceSha256": "aeec5a59086e1145a52009f580bd29ecf7042eb6c174677f099a284fe397c82e",
+  "scope": {
+    "registeredSpecs": 1972,
+    "families": 19,
+    "engineBotLaneCombos": 38402,
+    "timeframes": [
+      1,
+      5,
+      15,
+      30
+    ],
+    "strategyKinds": [
+      "normal",
+      "trailing",
+      "trailing-only",
+      "exit",
+      "dca",
+      "dca-active",
+      "axis"
+    ],
+    "ranges": [
+      "wide",
+      "mc",
+      "mn",
+      "mp",
+      "sh",
+      "gn",
+      "lg"
+    ]
+  },
+  "market": {
+    "feed": "docs/micro-optimization-2026-10-20/reproduction-feed.json.gz",
+    "sha256": "a7beade8b9f2da1f5c2d5fda9b8ef32a4ce5bcc045ad10c67cd5678333c4224e",
+    "nativeSymbols": 20,
+    "historyHours": 96,
+    "endT": 1791633600000,
+    "prefixCutsHoursBeforeEnd": [
+      6,
+      5,
+      4,
+      3,
+      2,
+      1
+    ],
+    "partialPrefix": {
+      "hoursBeforeEnd": 6,
+      "minutesAfterHour": [
+        7,
+        17,
+        37
+      ]
+    }
+  },
+  "acceptance": [
+    "Every registered source and eligible native lane has valid state length/domain on every symbol.",
+    "All six hourly prefix results match the same completed historical states and actual Bot entries with the configured remove-only tactics.",
+    "All three unfinished-higher-bar prefix cuts match the same settled indication states and actual Bot entries; retain all violations and partial receipts.",
+    "Every configured protection identity round-trips without unintended collisions; all seven range tags are explicitly covered, with supplemental Wide/Minimal Plus test cells disclosed.",
+    "Every tested source/lane/type/range/side tape identity preserves unit-return parity and rejects sibling, cost, timestamp and provenance corruption.",
+    "Stable positive synthetic own records pass at each hourly decision; losing own records fail, future losses do not change earlier gates, and same-ID sibling histories cannot contaminate cached results."
+  ],
+  "classification": "Correctness/causality and synthetic gate audit, not proof of hourly market profitability or a full Cartesian financial portfolio replay",
+  "preserve": "Keep failed/partial receipts and all existing negative financial windows. Never change recorded costs/returns/gates to manufacture positive PF.",
+  "revisionReason": "Bounded derived Signal caches and complete opening counts; unchanged registry, market scope and qualification thresholds. Frozen before this revision is scored.",
+  "priorSourceSha256": "9684e231079cd1e2d90ab23ef9290aef9a75b717516f5ced479d81b24ff651f3"
+}

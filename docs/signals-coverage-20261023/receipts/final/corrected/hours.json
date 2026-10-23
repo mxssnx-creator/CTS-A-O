@@ -1,0 +1,100 @@
+{
+  "hours": [
+    {
+      "t": 1792184400000,
+      "orders": 0,
+      "gpR": null,
+      "glR": null,
+      "pf": null,
+      "net": 0
+    },
+    {
+      "t": 1792188000000,
+      "orders": 0,
+      "gpR": null,
+      "glR": null,
+      "pf": null,
+      "net": 0
+    },
+    {
+      "t": 1792191600000,
+      "orders": 0,
+      "gpR": null,
+      "glR": null,
+      "pf": null,
+      "net": 0
+    },
+    {
+      "t": 1792195200000,
+      "orders": 0,
+      "gpR": null,
+      "glR": null,
+      "pf": null,
+      "net": 0
+    },
+    {
+      "t": 1792198800000,
+      "orders": 0,
+      "gpR": null,
+      "glR": null,
+      "pf": null,
+      "net": 0
+    },
+    {
+      "t": 1792202400000,
+      "orders": 0,
+      "gpR": null,
+      "glR": null,
+      "pf": null,
+      "net": 0
+    },
+    {
+      "t": 1792206000000,
+      "orders": 0,
+      "gpR": null,
+      "glR": null,
+      "pf": null,
+      "net": 0
+    },
+    {
+      "t": 1792209600000,
+      "orders": 1,
+      "gpR": 0.008299999999999948,
+      "glR": 0,
+      "pf": 4,
+      "net": 8.299999999999974e-05
+    },
+    {
+      "t": 1792213200000,
+      "orders": 0,
+      "gpR": null,
+      "glR": null,
+      "pf": null,
+      "net": 0
+    },
+    {
+      "t": 1792216800000,
+      "orders": 0,
+      "gpR": null,
+      "glR": null,
+      "pf": null,
+      "net": 0
+    },
+    {
+      "t": 1792220400000,
+      "orders": 0,
+      "gpR": null,
+      "glR": null,
+      "pf": null,
+      "net": 0
+    },
+    {
+      "t": 1792224000000,
+      "orders": 0,
+      "gpR": null,
+      "glR": null,
+      "pf": null,
+      "net": 0
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+▶ signal historic trailing configs
+  ✔ keeps the pooled fitting sample separate from each config's own close minimum (6.899664ms)
+  ✔ applies the independent PF floor of each coordinator exit range (0.256623ms)
+  ✔ tags historic coordinator configs only for ranges that clear their own PF floor (7.770145ms)
+  ✔ the MFE of each entry: from the next bar's open over the hold, long on highs, short on lows (hand-computed) (0.241091ms)
+  ✔ quantiles interpolate between neighbours (0.142383ms)
+  ✔ caps the historic hold to one quarter of the available minimal sample (0.10699ms)
+  ✔ each signal gets targets at its MFE quantiles on the 0.25 % grid, every trail × stop, the floors held (55.194667ms)
+  ✔ historic preparation retains stage PF and stricter custom floors on local and worker paths (264.907573ms)
+  ✔ the tape builder builds a pair's own configs for that pair only, each its own tape (5.060645ms)
+  ✔ deactivates a signal trail that falls under the minimum after lane scaling (1.082067ms)
+  ✔ a held historic config rebuilds exactly its own id (its open position keeps its tape) (2.458545ms)
+  ✔ only a historic config with an open position is rebuilt; a seated one and the standard configs are not (no pile-up) (1.44521ms)
+  ✔ on by default beside the 77 percent configs and nine Trailing only sets (0.168422ms)
+✔ signal historic trailing configs (347.386846ms)
+▶ historic signal configs: the lookback (hist.lookbackH)
+  ✔ explicit unlimited lookback counts every complete historic entry (0.22089ms)
+  ✔ with a lookback only entries made at or after its start count: 96 h is the last few days, not the whole history (0.110084ms)
+✔ historic signal configs: the lookback (hist.lookbackH) (0.42825ms)
+ℹ tests 15
+ℹ suites 2
+ℹ pass 15
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 602.987206
