@@ -10,15 +10,15 @@ const read = (file) => { const b = fs.readFileSync(file); return { data: JSON.pa
 const write = (file, data) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, studyJson(data), { flag: "wx" }); };
 const equal = (a, b) => studyJson(a) === studyJson(b);
 export const PRUNE_POLICY = {
-  schema: "cts-causal-prune-policy-v2", variant: "initial-engine-qualifiers-safe-range-crop-plus-causal-entry-last15",
+  schema: "cts-causal-prune-policy-v3", variant: "initial-engine-qualifiers-safe-range-crop-plus-causal-entry-last15",
   prerequisites: "A structurally complete22-symbol24h baseline must exist before deriving any focus or running this trial.",
   training: "Use only the earliest recorded runtime validation step at the exact simulated tradeStartT. Include an engine bot|ind pair iff at least one of its config checks passed at that step. Ignore later checks, run-window trades, PF, hourly returns and filled PnL.",
-  scope: "Keep each original case's complete normalized settings and nested grid, costs, all Signals sources/voting/configs/ranges, strategy toggles and PF/DDT/DDR/partial-history floors. Replace engine focus, clear pinned pairs, and apply only the predeclared engine-only Micro/Minimal crop. Set native global entry wf.lastN15: engine entry15, Signal config pool25 and additional Signal direction-entry15. signalValidLastN remains25.",
+  scope: "Keep each original case's complete normalized settings and nested grid, costs, all Signals sources/voting/configs/ranges, strategy toggles and PF/DDT/DDR/partial-history floors. Replace engine focus, clear pinned pairs, and apply only the predeclared engine-only Micro/Minimal crop. Set native global entry wf.lastN15: engine entry15; preserve the baseline's own Signal validation and native direction-entry policy (current default Last-8).",
   rangeCrop: "At only the earliest exact tradeStart validation step, an engine-only mc/mn range may be disabled iff >=25 distinct engine configs have n>=current production gates.minTrades(12) and zero engine configs in that range passed. Fewer scored checks retain the range. Never cut sh/gn/lg or any Signal range/source/voting/config based on engine failures; assert signalCombos, standard Signal protections and coordinator effective protection grid unchanged.",
-  runtimeCaveats: "Production baseFocus may automatically retain default Micro pairs; report actual expanded combo reduction. Global lastN15 also adds the native Signal direction-entry last15 check beside its independent config last25; source voting/configs/ranges are unchanged.",
+  runtimeCaveats: "Production baseFocus may automatically retain default Micro pairs; report actual expanded combo reduction. Global lastN15 follows the native Signal entry minimum with its own validation setting; preserve the frozen baseline's Signal policy, source voting/configs/ranges.",
   failClosed: "No empty focus (which production interprets as all). Reject if zero eligible engine pairs, an unknown pair, or no reduction in actual expanded engine combos. Missing history never qualifies through an invented sample.",
   comparisons: "Freeze20-symbol and optional22-symbol variants before their outcomes. Rerun the actual engine with unchanged shared-book sizing. Retain every executed loss, empty result, failed run and endpoint separately. No posthoc trade removal or tuning against test-period outcomes.",
-  entryLastN: 15, signalValidLastN: 25, actualExecution: false, live: false,
+  entryLastN: 15, signalValidLastN: "preserve-baseline", actualExecution: false, live: false,
 };
 
 export function initialPruneFocus(validation, tradeStartT, isSignal, rangeOf = (id) => id.split("|").at(-1), minTrades = 12) {
@@ -57,7 +57,7 @@ export async function materializePruneCase(baseCase, focus, rangeDecisions = [])
     const restore = { ...actual.settings, focus: original.settings.focus, pinned: original.settings.pinned, grid: original.settings.grid };
     if (!equal(restore, original.settings) || !equal(actual.settings.grid, settings.grid)) throw new Error("Unexpected settings change outside predeclared scope");
     const derived = defaultWalkForward(actual.settings), restoredWf = { ...actual.wf, lastN: original.wf.lastN, protects: original.wf.protects, rangeGate: original.wf.rangeGate, rangeSeats: original.wf.rangeSeats };
-    if (!equal(restoredWf, original.wf) || !equal(actual.wf.protects, derived.protects) || !equal(actual.wf.rangeGate, derived.rangeGate) || actual.wf.validLastN !== 15 || actual.wf.signalValidLastN !== 25) throw new Error("Unexpected WF change outside native entry lastN15 and derived engine grids");
+    if (!equal(restoredWf, original.wf) || !equal(actual.wf.protects, derived.protects) || !equal(actual.wf.rangeGate, derived.rangeGate) || actual.wf.validLastN !== 15 || actual.wf.signalValidLastN !== original.wf.signalValidLastN) throw new Error("Unexpected WF change outside native entry lastN15 and derived engine grids");
     const signalIdentity = (s) => { const sig = signalSettings(s.signals); return { combos: signalCombos(sig, s.tfs), protects: signalProtects(sig), coordinators: signalCoordinationProtects(s.grid, s.cost, sig.coordination.ranges) }; };
     const signals = signalIdentity(original.settings); if (!equal(signals, signalIdentity(actual.settings))) throw new Error("Signals voting or protection configuration changed");
     return { ...baseCase, baselineRuntime: original, id: `causal-prune-${baseCase.symbols.length}`, runtime: { ...actual, commandWf: { ...original.commandWf, lastN: PRUNE_POLICY.entryLastN }, settingsSha256: studyHash(studyJson(actual)), laneHistoryDays: original.laneHistoryDays, scope: PRUNE_POLICY.scope },

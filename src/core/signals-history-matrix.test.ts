@@ -7,7 +7,7 @@ import { signalSettings } from "./signal-config.ts";
 import { signalProtects, sigActiveKey } from "./signals.ts";
 import { barsFromCandles, syntheticCandles } from "./market/bars.ts";
 import { CandleSeries } from "./market/candle-series.ts";
-import { laneSeriesFrom, marketHistoryBars, normalizeLanes, sanitizeWf, signalDataHours, signalLaneSeriesFrom } from "./server/runtime.server.ts";
+import { laneSeriesFrom, marketHistoryBars, normalizeLanes, sanitizeWf, signalDataHours, signalLaneDataHours, signalLaneSeriesFrom } from "./server/runtime.server.ts";
 import { checkSettings } from "./settings-check.ts";
 import { laneContributions } from "./server/live.server.ts";
 import { capSignalProtect, enforceSignalPosition, ratchetTrail } from "./sim/trailing.ts";
@@ -38,8 +38,9 @@ describe("Signal history, bounded trailing and exact-context progression", () =>
       const a = engine.find((b) => b.tfMin === tf)!;
       const b = signals.find((b) => b.tfMin === tf)!;
       assert.ok(a.n <= s.tfDays[String(tf)] * 24 * 60 / tf);
-      assert.ok(b.n * tf / 60 >= hours - tf / 60);
-      assert.ok(b.n * tf / 60 <= hours + tf / 60, "ordinary retention cannot expand Signal work");
+      const laneHours = signalLaneDataHours(s, wf, tf);
+      assert.ok(b.n * tf / 60 >= laneHours - tf / 60);
+      assert.ok(b.n * tf / 60 <= laneHours + tf / 60, "ordinary retention cannot expand Signal work");
       assert.equal(b.t.at(-1), a.t.at(-1));
     }
     assert.equal(engine.find((b) => b.tfMin === 1)!.n, 3 * 24 * 60);

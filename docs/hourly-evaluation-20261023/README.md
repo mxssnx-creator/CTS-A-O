@@ -28,3 +28,10 @@ The lane loader previously used Signal history as a minimum, allowing ordinary 1
 Preliminary isolated CPU benchmark (12 synthetic symbols, one-minute data, three timed repetitions): 100-hour / 18,000 excursions, scalar median 62.179 ms versus rolling 5.867 ms (10.60x). At 336 hours / 69,120 excursions: 398.010 ms versus 12.104 ms (32.88x). Exact output hashes match at each history length. This measures excursion extraction, not total trade simulation or profitability. Reproduce with `node --experimental-strip-types --no-warnings scripts/perf/signal-history-bench.ts`.
 
 The frozen 336-hour, 12-symbol baseline reached Real at 991 seconds and aborted for memory pressure around 6.4 GB RSS. Its automatic retry was stopped; it is **not a completed trading study**. The requested 100-hour, 12-hour simulation and release checks are pending at this checkpoint.
+
+
+### One-minute warmup refinement
+
+A per-lane warmup experiment was rejected after it changed three source/lane results (four entry decisions) on the retained 100h+12h window: AVAX RSI2 and coordination at the boundary, and DOT BB-width expansion later in the sample. The revised version preserves the common derived-lane warmup and reduces only the one-minute base lane from 18,840 to 8,516 candles per symbol. All 9,963,600 retained entry decisions across 12 symbols × 380 configured source/lanes then matched exactly. The 24-hour general indicator allowance, 356 one-minute tactic warmup bars, 100h evaluation and 12h simulation remain. Higher lanes retain their required warmup. Full tape/execution parity and final replay timing remain pending.
+
+Research preflight now checks the current shared Signal policy instead of hardcoding Last-25. The optional pruning experiment preserves its frozen baseline's own Signal Last-N; archived protocols/evidence are unchanged. Its 24 focused tests pass.

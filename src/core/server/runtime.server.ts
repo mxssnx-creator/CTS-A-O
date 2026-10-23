@@ -4119,7 +4119,7 @@ export class CoreRuntime {
     const strategyH = strategyDataHours(s, wf);
     for (const [sym, cs] of this.candles) {
       allBars.push(...laneSeriesOf(sym, cs, s, 0, strategyH));
-      if (sigEnabled(s)) signalBars.push(...laneSeriesOf(sym, cs, s, 0, signalH, signalH));
+      if (sigEnabled(s)) signalBars.push(...signalLaneSeriesOf(sym, cs, s, wf));
       await yieldNow();
       if (gen !== this.gen) return;
     }
@@ -11545,12 +11545,29 @@ const sigEnabled = (s: CoreSettings) => s.signals.enabled;
 export function signalDataHours(s: CoreSettings, wf: WalkForwardOptions): number {
   if (!s.signals.enabled) return 0;
   const slowest = Math.max(1, ...s.signals.lanes.filter((tf) => s.tfs.includes(tf)));
-  return 24 + signalHistoryHours(wf) + wf.simH + tacticWarmupBars(s.tactics) * slowest / 60;
+  return signalLaneDataHours(s, wf, slowest);
+}
+/** The 1m base lane uses its own tactic bars. Derived lanes retain their common warmup:
+ * shortening it changed recursive/cross-lane source decisions at the evaluation boundary. */
+export function signalLaneDataHours(s: CoreSettings, wf: WalkForwardOptions, tf: number): number {
+  const warmupTf = tf === s.tfMin ? tf : Math.max(tf, ...s.signals.lanes.filter((lane) => s.tfs.includes(lane)));
+  return 24 + signalHistoryHours(wf) + wf.simH + tacticWarmupBars(s.tactics) * warmupTf / 60;
+}
+function signalLaneSeriesOf(sym: string, cs: CandleSeries, s: CoreSettings, wf: WalkForwardOptions): Bars[] {
+  const lanes = Object.freeze([...s.tfs]);
+  return lanes.map((tf) => {
+    const n = Math.ceil(signalLaneDataHours(s, wf, tf) * 60 / tf);
+    const bars = tf === s.tfMin ? barsOfSeries(sym, tf, cs, cs.n - n, cs.n)
+      : resampleTailBars(sym, cs, s.tfMin, tf, n);
+    bars.lanes = lanes;
+    return bars;
+  });
 }
 /** Bound Signal work independently of an ordinary lane's longer storage/Last-N retention. */
 export function signalLaneSeriesFrom(candles: ReadonlyMap<string, CandleSeries>, s: CoreSettings, wf: WalkForwardOptions): Bars[] {
-  const hours = signalDataHours(s, wf);
-  return laneSeriesFrom(candles, s, 0, hours, hours);
+  const out: Bars[] = [];
+  for (const [sym, cs] of candles) out.push(...signalLaneSeriesOf(sym, cs, s, wf));
+  return out;
 }
 /** General configs need their whole own evaluation window on every lane, plus replay and indicator warmup. */
 export function strategyDataHours(s: CoreSettings, wf: WalkForwardOptions): number {
@@ -11570,10 +11587,9 @@ export function laneSeriesFrom(
   s: CoreSettings,
   extraDays = 0,
   minHistoryH = 0,
-  maxHistoryH = Infinity,
 ): Bars[] {
   const out: Bars[] = [];
-  for (const [sym, cs] of candles) out.push(...laneSeriesOf(sym, cs, s, extraDays, minHistoryH, maxHistoryH));
+  for (const [sym, cs] of candles) out.push(...laneSeriesOf(sym, cs, s, extraDays, minHistoryH));
   return out;
 }
 
@@ -11587,15 +11603,13 @@ export function laneSeriesOf(
   s: CoreSettings,
   extraDays = 0,
   minHistoryH = 0,
-  maxHistoryH = Infinity,
 ): Bars[] {
   // the enabled lanes ride on every series (Bars.lanes): a combined lane agrees with the higher ENABLED lanes, the
   // ones laneInds generates it from (the whole ladder agreed with 15m / 30m on a desk running 1m and 5m only)
   const lanes = Object.freeze([...(s.tfs ?? [s.tfMin])]);
   const out: Bars[] = [];
   for (const tf of lanes) {
-    const n = Math.min(Math.ceil(maxHistoryH * 60 / tf),
-      Math.max(laneBars(s, tf) + Math.round((extraDays * 24 * 60) / tf), Math.ceil(minHistoryH * 60 / tf)));
+    const n = Math.max(laneBars(s, tf) + Math.round((extraDays * 24 * 60) / tf), Math.ceil(minHistoryH * 60 / tf));
     const b =
       tf === s.tfMin
         ? barsOfSeries(sym, tf, cs, cs.n - n, cs.n)

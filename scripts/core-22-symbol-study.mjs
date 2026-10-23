@@ -151,8 +151,8 @@ export function validateStudyFeed(feed, symbols, window) {
 export async function studyRuntimeSettings(symbols, window, laneHistoryDays, { cost = 0.0015, variant = "baseline" } = {}) {
   process.env.CTS_CORE_STATE = "off"; process.env.CTS_CORE_AUTOSTART = "0"; process.env.CTS_CORE_LIVE = "0";
   await import("./lib/core-test-offline-guard.cjs");
-  const [{ DEFAULT_SETTINGS }, { CoreRuntime }, { CoreDb }, { BREAK_CONFIG_IDS, breakAnchorTf }] = await Promise.all([
-    import("../src/core/config.ts"), import("../src/core/server/runtime.server.ts"), import("../src/core/server/db.server.ts"), import("../src/core/indications/break-config.ts"),
+  const [{ DEFAULT_SETTINGS }, { CoreRuntime }, { CoreDb }, { BREAK_CONFIG_IDS, breakAnchorTf }, { SIGNAL_VALID_LAST_N }] = await Promise.all([
+    import("../src/core/config.ts"), import("../src/core/server/runtime.server.ts"), import("../src/core/server/db.server.ts"), import("../src/core/indications/break-config.ts"), import("../src/core/signal-policy.ts"),
   ]);
   // Every nested ladder is supplied in full: production SettingsPatch merges grid one level deep.
   const settings = structuredClone(DEFAULT_SETTINGS);
@@ -174,7 +174,7 @@ export async function studyRuntimeSettings(symbols, window, laneHistoryDays, { c
     const actual = { settings: structuredClone(runtime.settings), wf: structuredClone(runtime.wf) };
     if (!same(actual.settings, settings)) throw new Error("Actual runtime settings differ from the complete frozen default/explicit study patch: " + Object.keys(settings).filter((key) => !same(actual.settings[key], settings[key])).join(", "));
     if (!same(actual.settings.gates, DEFAULT_SETTINGS.gates) || !same(actual.settings.grid, DEFAULT_SETTINGS.grid) || !same(actual.settings.sizing, DEFAULT_SETTINGS.sizing)) throw new Error("Study changed production gates/grid/sizing");
-    if (!same(actual.settings.forceSymbols, symbols) || actual.settings.symbols !== symbols.length || actual.wf.validLastN !== 15 || actual.wf.signalValidLastN !== 25 || actual.wf.causalBase !== true || actual.wf.recordValidation !== true || actual.wf.preH !== window.preH || actual.wf.longH !== window.longH || actual.wf.simH !== window.runH) throw new Error("Runtime settings/WF do not match the frozen protocol");
+    if (!same(actual.settings.forceSymbols, symbols) || actual.settings.symbols !== symbols.length || actual.wf.validLastN !== 15 || actual.wf.signalValidLastN !== SIGNAL_VALID_LAST_N || actual.wf.causalBase !== true || actual.wf.recordValidation !== true || actual.wf.preH !== window.preH || actual.wf.longH !== window.longH || actual.wf.simH !== window.runH) throw new Error("Runtime settings/WF do not match the frozen protocol");
     // Full WF contains thousands of derived protection cells and exceeds Linux's per-argument size limit.
     // Store it as evidence, but send only this explicit patch; the same production defaults derive every cell.
     const commandWf = Object.fromEntries(["causalBase", "recordValidation", "preH", "simH", "longH", "validLastN", "signalValidLastN"].map((key) => [key, actual.wf[key]]));
