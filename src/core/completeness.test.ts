@@ -435,9 +435,9 @@ describe("settings completeness: every leaf of DEFAULT_SETTINGS is range-checked
     assert.deepEqual(loose, []);
   });
 
-  it("Trailing only permits the complete 8 × 8 protection grid and refuses either oversized range", () => {
-    const sl = Array.from({ length: 8 }, (_, i) => 0.002 + i * 0.001);
-    const trail = Array.from({ length: 8 }, (_, i) => 0.002 + i * 0.001);
+  it("Trailing only permits the complete 16 × 16 protection grid and refuses either oversized range", () => {
+    const sl = Array.from({ length: 16 }, (_, i) => 0.002 + i * 0.001);
+    const trail = Array.from({ length: 16 }, (_, i) => 0.002 + i * 0.001);
     assert.doesNotThrow(() =>
       checkSettings(
         withLeaves([
