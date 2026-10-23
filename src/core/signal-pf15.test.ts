@@ -74,7 +74,7 @@ describe("Signals PF 1.5, own Strategy Base and independent TP/SL", () => {
       });
   it("Base configured-cell counts judge the same own symbol/direction history and Last-N", () => {
     const ind = "sig-ema-cross-s@m15", cfg = "follow|" + ind + "|own", p = { tp: 0.03, sl: 0.02, trail: 0, hold: 192 };
-    const counter = new BaseConfigCounter({ gates: options.gates, cost: 0.002, cutT: NOW, fromT: NOW - 336 * H });
+    const counter = new BaseConfigCounter({ gates: options.gates, signalLastN: options.signalValidLastN, cost: 0.002, cutT: NOW, fromT: NOW - 336 * H });
     counter.record("follow", ind, p, "normal", [...own(cfg, "A", 1, 1.6), ...own(cfg, "B", 1, 1.4)]);
     counter.record("follow", ind, p, "normal", own(cfg, "B", 1, 1.4));
     const row = counter.rows()[0]; assert.equal(row.minPf, 1.5); assert.equal(row.floorPf, 1.5); assert.equal(row.passed, 1); assert.equal(row.evaluated, 2);

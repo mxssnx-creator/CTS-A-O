@@ -81,6 +81,7 @@ import {
   fallbackLabel,
   fallbackProtects,
   heapAndBuffersMb,
+  heapPressure,
   MEM_FALLBACK_MAX,
   MEM_READ_MS,
   memHardMb,
@@ -311,6 +312,7 @@ import {
   type SignalHistDiagnostics,
   type SignalHistValidation,
 } from "../signal-hist.ts";
+import { SIGNAL_HISTORY_H, SIGNAL_VALID_LAST_N } from "../signal-policy.ts";
 import {
   EXIT_HISTORY_MAX_PAIRS,
   EXIT_BOT,
@@ -561,6 +563,8 @@ export interface RuntimeStatus {
     computeLevel?: number;
     /** where this process's memory is: V8 heap used / committed, array buffers, the rest (native), MB */
     heapMb?: number;
+    heapLimitMb?: number;
+    heapAvailMb?: number;
     heapTotalMb?: number;
     arrayBuffersMb?: number;
     nativeMb?: number;
@@ -1150,7 +1154,7 @@ export class CoreRuntime {
     if (opts.priceStream !== undefined) this.priceStream = opts.priceStream;
     this.db = db;
     // order caps from before unlimited orders are dropped once (walk-forward and signal caps)
-    const savedWf = migrateWfCaps(db);
+    const savedWf = migrateSignalEvaluationPolicy(db, migrateWfCaps(db));
     migrateMicroBreakoutFocus(db);
     migrateMicroContextFocus(db);
     const saved = db.kvGet<Partial<CoreSettings>>("settings");
@@ -2055,7 +2059,7 @@ export class CoreRuntime {
     if (need.size) {
       const needsSignal = [...need].some((id) => isSignalInd(id.split("|")[1] ?? ""));
       const signalU = needsSignal
-        ? makeUniverse(laneSeriesFrom(candles, settings, 0, signalDataHours(settings, wf)), this.evaluationFromT)
+        ? makeUniverse(signalLaneSeriesFrom(candles, settings, wf), this.evaluationFromT)
         : inc.state.universe;
       const rebuilt = await this.rebuildOnUniverse(inc.state.universe, need, gen, signalU);
       if (superseded()) return true;
@@ -2100,7 +2104,7 @@ export class CoreRuntime {
     }
     // Incremental strategy history is shorter than the independently configured Signal history.
     const signalU = signalUniverse ?? (sets.sig.size || sets.coord.size || sets.exitSig.size
-      ? makeUniverse(laneSeriesFrom(this.candles, s, 0, signalDataHours(s, this.wf)), u.evaluationFromT)
+      ? makeUniverse(signalLaneSeriesFrom(this.candles, s, this.wf), u.evaluationFromT)
       : u);
     const out: ConfigTape[] = [];
     if (workersAvailable() && !this.workersBroken) {
@@ -3759,8 +3763,8 @@ export class CoreRuntime {
    * Once a second while computing: soft pressure frees garbage (at most every 30 s, only after the heap grew:
    * shouldCollect), hard pressure aborts the compute.
    */
-  memGuardTick() {
-    const m = memInfo();
+  memGuardTick(force = false) {
+    const m = memInfo(Date.now(), force);
     this.memMinAvail = Math.min(this.memMinAvail, m.availMb);
     // the highest reading per compute stage (status.mem.byPhase: which stage holds the peak)
     {
@@ -3777,7 +3781,7 @@ export class CoreRuntime {
         this.memSoftNoted = true;
         this.db.event(
           "warn",
-          `memory low: ${m.availMb} MB available (soft ${memSoftMb()} MB), this process ${m.rssMb} MB${gc ? " — garbage collected" : ""}`,
+          `memory low: ${m.availMb} MB available (soft ${memSoftMb()} MB), heap headroom ${m.heapAvailMb ?? "unknown"} MB, this process ${m.rssMb} MB${gc ? " — garbage collected" : ""}`,
         );
       }
     }
@@ -3786,7 +3790,7 @@ export class CoreRuntime {
     if (m.level === "hard" && (!this.memPressured || workerActivity().inFlight > 0)) {
       const first = !this.memPressured;
       this.memPressured = true;
-      const reason = `memory pressure: ${m.availMb} MB available (hard ${memHardMb()} MB), this process ${m.rssMb} MB — compute aborted`;
+      const reason = `memory pressure: ${m.availMb} MB available (hard ${memHardMb()} MB), heap headroom ${m.heapAvailMb ?? "unknown"} MB, this process ${m.rssMb} MB — compute aborted`;
       const busy = abortWorkers(reason);
       if (first) {
         this.memLastAbort = reason;
@@ -3895,6 +3899,8 @@ export class CoreRuntime {
       retryAt: this.memRetryAt > Date.now() ? this.memRetryAt : null,
       computeLevel: this.memComputeLevel,
       heapMb: m.heapMb,
+      heapLimitMb: m.heapLimitMb,
+      heapAvailMb: m.heapAvailMb,
       heapTotalMb: m.heapTotalMb,
       arrayBuffersMb: m.arrayBuffersMb,
       nativeMb: m.nativeMb,
@@ -3938,6 +3944,7 @@ export class CoreRuntime {
           [-14]: "fixed seat selection",
           [-15]: "causal signal ranking",
           [-16]: "negative-hour hedge qualification",
+          [-17]: "completed one-minute candidate batch",
         };
         return simulationSlices[v] ?? (v < 0 ? "simulation helper" : "");
       }
@@ -3967,6 +3974,9 @@ export class CoreRuntime {
         maxSlice = Math.max(maxSlice, el);
         await yieldNow();
         if (runGen !== this.gen) throw new Error("superseded by a newer loop generation");
+        // A burst can cross V8's independent ceiling between one-second RAM samples. Recheck at bounded
+        // generator slice boundaries so a research abort can preserve the previous complete live cohort.
+        if (heapPressure() !== "ok") this.memGuardTick(true);
         if (this.memPressured)
           throw new Error(this.memLastAbort ?? "memory pressure: compute aborted");
         slice = performance.now();
@@ -4118,7 +4128,7 @@ export class CoreRuntime {
     const strategyH = strategyDataHours(s, wf);
     for (const [sym, cs] of this.candles) {
       allBars.push(...laneSeriesOf(sym, cs, s, 0, strategyH));
-      if (sigEnabled(s)) signalBars.push(...laneSeriesOf(sym, cs, s, 0, signalH));
+      if (sigEnabled(s)) signalBars.push(...signalLaneSeriesOf(sym, cs, s, wf));
       await yieldNow();
       if (gen !== this.gen) return;
     }
@@ -4238,7 +4248,10 @@ export class CoreRuntime {
         ck,
       );
       // one indication's combos in one part (the worker builds its series once): see partitionByIndication
-      const parts: Array<typeof combos> = partitionByIndication(todo, n * 2);
+      const parts = [
+        { combos: todo.filter((c) => !isSignalInd(c.ind)), bars: sharedU },
+        { combos: todo.filter((c) => isSignalInd(c.ind)), bars: sharedSignalStage },
+      ].flatMap(({ combos, bars }) => partitionByIndication(combos, n * 2).map((combos) => ({ combos, bars })));
       const baseLabel = `Base on ${n} cores · ${todo.length}${todo.length < combos.length ? ` of ${combos.length}` : ""} combos${
         cache ? ` (slice ${sliceNo + 1}/${slices})` : ""
       }`;
@@ -4248,12 +4261,12 @@ export class CoreRuntime {
       try {
         const res = await runOnWorkers<{ runsJson: string[] }>(
           parts
-            .filter((p) => p.length)
-            .map((c) => ({
+            .filter((p) => p.combos.length)
+            .map(({ combos, bars }) => ({
               type: "s1",
               evaluationFromT: this.evaluationFromT,
-              bars: sharedU,
-              combos: c,
+              bars,
+              combos,
               cost: s.cost,
               tactics: s.tactics,
               rangeProtects: baseRangeProtects(s.grid, s.cost),
@@ -4312,7 +4325,7 @@ export class CoreRuntime {
     }
     const pipeline = await this.drive(
       "Pipeline",
-      runPipeline(uStage, { ...s, focus: baseFocus(s) }, pre, exitCombos),
+      runPipeline(uStage, { ...s, focus: baseFocus(s) }, pre, exitCombos, signalStageU),
       (p: PipelineProgress) => {
         const x = pipelineStage(p);
         this.setStage(x.stage, x.fraction, 1, x.label);
@@ -4588,7 +4601,7 @@ export class CoreRuntime {
     const sigHist: Record<string, Protect[]> = {};
     const retainedSignalIds = new Set<string>();
     const signalHistDiagnostics = emptySignalHistDiagnostics();
-    const signalHistValidation = coordinatorHistValidationOf(s, coordProtects, wf.signalValidLastN);
+    const signalHistValidation = coordinatorHistValidationOf(s, coordProtects, wf.rangeOpts?.sig?.validLastN ?? wf.signalValidLastN);
     const standard = signalProtects(sig);
     try {
       if (s.exitStrategy.enabled && exitFitPairs.length) {
@@ -5370,12 +5383,16 @@ export class CoreRuntime {
         })
       : [];
     sharedWuMemo = null;
+    sharedSignalWuMemo = null;
     if (!coordTapes || gen !== this.gen) return;
     // Await physical exit, not just removal from the pool. Transferred tape arenas remain main-owned; only worker
     // heaps/caches are released. Ownership is rechecked synchronously by the pool, so foreign reuse is preserved.
     await retireOwnedIdleWorkers(computeWorkerOwner);
     if (gen !== this.gen) return;
     if (this.memPressured) throw new Error(this.memLastAbort ?? "memory pressure: compute aborted");
+    // Worker scratch and shared-input references are dead at this phase boundary. Collect once here instead
+    // of carrying their garbage into the simulation's first allocation burst.
+    this.collectNow();
     const sigTapes = [...sourceTapes, ...coordTapes];
     // Historic Exit Signal configs run on their own independent protection proof and do not consume the Normal /
     // Trailing Signal ranking cap. Their exact keys are carried into the step gate; own Exit and Signal PF/Last-N
@@ -5678,7 +5695,7 @@ export class CoreRuntime {
             key: computeKey(this.settings, this.wf),
           }
         : null;
-    this.computeSummary = `PF ${primaryPfLabel(sim.stats)} · DDT ${sim.stats.ddt.toFixed(1)}h · green ${Math.round(sim.stats.gh * 100)}% · validate last ${wf.validLastN ?? 0} · live last ${wf.lastN}`;
+    this.computeSummary = `Sim PF including ${sim.openAtEnd?.length ?? "unrecorded"} open marks: ${primaryPfLabel(sim.stats)} · DDT ${sim.stats.ddt.toFixed(1)}h · green ${Math.round(sim.stats.gh * 100)}% · validate last ${wf.validLastN ?? 0} · live last ${wf.lastN}`;
     // the paper step on the new tapes follows in this cycle (it was "Real 100 %" again after Compare — backwards)
     this.setStage("Paper", 0, 1, `paper step next · ${this.computeSummary}`);
     this.status.computes++;
@@ -5792,7 +5809,7 @@ export class CoreRuntime {
     if (Date.now() - this.lastConsoleAt > 5 * 60_000) {
       this.lastConsoleAt = Date.now();
       console.info(
-        `[core-v2] compute #${this.status.computes} done in ${Math.round(this.status.lastComputeMs)} ms · sim PF ${primaryPfLabel(sim.stats)} n ${sim.stats.n} · loop max ${this.status.loop.max.toFixed(0)} ms${this.status.loop.recent ? ` (worst slice of the last 60 s ${this.status.loop.recent.ms} ms in ${this.status.loop.recent.where}, ${this.status.loop.recent.n} over 40 ms)` : ""}`,
+        `[core-v2] compute #${this.status.computes} done in ${Math.round(this.status.lastComputeMs)} ms · sim PF including ${sim.openAtEnd?.length ?? "unrecorded"} open marks: ${primaryPfLabel(sim.stats)} n ${sim.stats.n} · loop max ${this.status.loop.max.toFixed(0)} ms${this.status.loop.recent ? ` (worst slice of the last 60 s ${this.status.loop.recent.ms} ms in ${this.status.loop.recent.where}, ${this.status.loop.recent.n} over 40 ms)` : ""}`,
       );
     }
     this.emit("compute");
@@ -5803,7 +5820,7 @@ export class CoreRuntime {
     }
     this.db.event(
       "info",
-      `compute #${this.status.computes}: sim PF ${primaryPfLabel(sim.stats)} net ${sim.stats.net.toFixed(1)}% n ${sim.stats.n} · armed ${pipeline.armed.length} · ${Math.round(this.status.lastComputeMs)}ms`,
+      `compute #${this.status.computes}: sim PF including ${sim.openAtEnd?.length ?? "unrecorded"} open marks: ${primaryPfLabel(sim.stats)} net ${sim.stats.net.toFixed(1)}% n ${sim.stats.n} · armed ${pipeline.armed.length} · ${Math.round(this.status.lastComputeMs)}ms`,
     );
   }
 
@@ -7040,7 +7057,7 @@ export class CoreRuntime {
       validation: {
         at,
         engineLastN: this.wf.validLastN ?? 0,
-        signalLastN: this.wf.signalValidLastN ?? 0,
+        signalLastN: this.wf.rangeOpts?.sig?.validLastN ?? this.wf.signalValidLastN ?? 0,
         entryLastN: this.wf.lastN,
         rangeLastN: this.wf.rangeGate?.lastN ?? 0,
         historyH: this.wf.longH,
@@ -7879,7 +7896,7 @@ export class CoreRuntime {
     );
     const u = makeUniverse(bars);
     const signalU = s.signals.enabled
-      ? makeUniverse(laneSeriesFrom(candles, s, 0, signalWantBars * s.tfMin / 60)) : u;
+      ? makeUniverse(signalLaneSeriesFrom(candles, s, { ...wf, simH: days * 24 })) : u;
     const sig = signalSettings(s.signals);
     const configuredSignalCombos = signalCombos(sig, s.tfs);
     const exitU = s.exitStrategy.enabled
@@ -8336,7 +8353,7 @@ export class CoreRuntime {
                 sig,
                 s.tactics,
                 startT,
-                coordinatorHistValidationOf(s, coordProtects, wf.signalValidLastN),
+                coordinatorHistValidationOf(s, coordProtects, wf.rangeOpts?.sig?.validLastN ?? wf.signalValidLastN),
               ),
               () => undefined,
               job,
@@ -10521,6 +10538,40 @@ function migrateMicroBreakoutFocus(db: CoreDb): void {
  * Saved walk-forward options from before unlimited orders carry the old order caps (3 per symbol, 16 per side,
  * 60 open): they are dropped once so every order works; caps chosen afterwards are kept.
  */
+/** Move former factory Signal/Exit values once; preserve explicit custom policies and a restorable snapshot. */
+function migrateSignalEvaluationPolicy(db: CoreDb, saved: Partial<WalkForwardOptions>): Partial<WalkForwardOptions> {
+  if (db.kvGet("signalEvaluation100V1")) return saved;
+  const settings = db.kvGet<SettingsPatch>("settings");
+  const presets = db.kvGet<Preset[]>("presets");
+  const backup = structuredClone({ wf: saved, settings, presets });
+  const out = structuredClone(saved);
+  const upgrade = (s: SettingsPatch | undefined, wf: Partial<WalkForwardOptions> | undefined) => {
+    let changed = false;
+    if (s?.exitStrategy?.lookbackH === 168) { s.exitStrategy.lookbackH = SIGNAL_HISTORY_H; changed = true; }
+    if (s?.exitStrategy?.minValidationTrades === 12) { s.exitStrategy.minValidationTrades = SIGNAL_VALID_LAST_N; changed = true; }
+    if (s?.signals?.hist?.lookbackH === 0) { s.signals.hist.lookbackH = SIGNAL_HISTORY_H; changed = true; }
+    if (wf) {
+      if (wf.signalLongH === 336) { wf.signalLongH = SIGNAL_HISTORY_H; changed = true; }
+      if (wf.signalValidLastN === 25 || wf.signalValidLastN === 12) { wf.signalValidLastN = SIGNAL_VALID_LAST_N; changed = true; }
+      if (wf.exitMinTrades === 12) { wf.exitMinTrades = SIGNAL_VALID_LAST_N; changed = true; }
+      const range = wf.rangeOpts?.sig;
+      for (const key of ["validLastN", "lastN"] as const)
+        if (range?.[key] === 25 || range?.[key] === 12) { range[key] = SIGNAL_VALID_LAST_N; changed = true; }
+    }
+    return changed;
+  };
+  let changed = upgrade(settings, out);
+  if (Array.isArray(presets)) for (const preset of presets) changed = upgrade(preset.settings, preset.wf) || changed;
+  if (changed) {
+    db.kvSet("signalEvaluation100BackupV1", backup);
+    db.kvSet("wf", pickWf(out));
+    if (settings) db.kvSet("settings", settings);
+    if (presets) db.kvSet("presets", presets);
+  }
+  db.kvSet("signalEvaluation100V1", true);
+  return out;
+}
+
 function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
   const saved = db.kvGet<Partial<WalkForwardOptions>>("wf") ?? {};
   const v = db.kvGet<number>("wfCapsV") ?? 0;
@@ -11385,8 +11436,8 @@ export const LIVE_STEP_LIMIT_MS = 180_000;
 /** Mainnet (x01) validation floors: last N closes at entry and for a seat. */
 export const MAINNET_LAST_N = 25;
 export const MAINNET_VALID_LAST_N = 50;
-/** Real money: signals validate on at least their last 10 closes (their activity in a window; see walkforward) */
-export const MAINNET_SIGNAL_VALID_LAST_N = 10;
+/** Signals share the operator's Last-8 floor on every execution path. */
+export const MAINNET_SIGNAL_VALID_LAST_N = SIGNAL_VALID_LAST_N;
 
 export function baseFocus(s: CoreSettings): string[] {
   const f = s.focus ?? [];
@@ -11507,7 +11558,29 @@ const sigEnabled = (s: CoreSettings) => s.signals.enabled;
 export function signalDataHours(s: CoreSettings, wf: WalkForwardOptions): number {
   if (!s.signals.enabled) return 0;
   const slowest = Math.max(1, ...s.signals.lanes.filter((tf) => s.tfs.includes(tf)));
-  return 24 + signalHistoryHours(wf) + wf.simH + tacticWarmupBars(s.tactics) * slowest / 60;
+  return signalLaneDataHours(s, wf, slowest);
+}
+/** The 1m base lane uses its own tactic bars. Derived lanes retain their common warmup:
+ * shortening it changed recursive/cross-lane source decisions at the evaluation boundary. */
+export function signalLaneDataHours(s: CoreSettings, wf: WalkForwardOptions, tf: number): number {
+  const warmupTf = tf === s.tfMin ? tf : Math.max(tf, ...s.signals.lanes.filter((lane) => s.tfs.includes(lane)));
+  return 24 + signalHistoryHours(wf) + wf.simH + tacticWarmupBars(s.tactics) * warmupTf / 60;
+}
+function signalLaneSeriesOf(sym: string, cs: CandleSeries, s: CoreSettings, wf: WalkForwardOptions): Bars[] {
+  const lanes = Object.freeze([...s.tfs]);
+  return lanes.map((tf) => {
+    const n = Math.ceil(signalLaneDataHours(s, wf, tf) * 60 / tf);
+    const bars = tf === s.tfMin ? barsOfSeries(sym, tf, cs, cs.n - n, cs.n)
+      : resampleTailBars(sym, cs, s.tfMin, tf, n);
+    bars.lanes = lanes;
+    return bars;
+  });
+}
+/** Bound Signal work independently of an ordinary lane's longer storage/Last-N retention. */
+export function signalLaneSeriesFrom(candles: ReadonlyMap<string, CandleSeries>, s: CoreSettings, wf: WalkForwardOptions): Bars[] {
+  const out: Bars[] = [];
+  for (const [sym, cs] of candles) out.push(...signalLaneSeriesOf(sym, cs, s, wf));
+  return out;
 }
 /** General configs need their whole own evaluation window on every lane, plus replay and indicator warmup. */
 export function strategyDataHours(s: CoreSettings, wf: WalkForwardOptions): number {

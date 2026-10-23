@@ -6,6 +6,7 @@ import {
   fallbackProtects,
   memInfo,
   memLevel,
+  heapMemLevel,
   memRetryDelayMs,
   nextFallback,
   parseMemAvailable,
@@ -14,6 +15,15 @@ import {
 import { abortWorkers, runOnWorkers, workersAvailable } from "./pool.server.ts";
 
 describe("memory guard", () => {
+  it("detects V8 heap pressure independently of spare host RAM", () => {
+    assert.equal(heapMemLevel(3000, 4096), "ok");
+    assert.equal(heapMemLevel(3700, 4096), "soft");
+    assert.equal(heapMemLevel(4000, 4096), "hard");
+    assert.equal(heapMemLevel(4100, 4096), "hard");
+    assert.equal(heapMemLevel(240, 256), "soft");
+    assert.equal(heapMemLevel(250, 256), "hard");
+    assert.equal(heapMemLevel(1, NaN), "ok");
+  });
   it("reads MemAvailable and grades the pressure", () => {
     assert.equal(parseMemAvailable("MemTotal: 16000000 kB\nMemAvailable:    2097152 kB\n"), 2048);
     assert.equal(parseMemAvailable("MemTotal: 1 kB\n"), null);

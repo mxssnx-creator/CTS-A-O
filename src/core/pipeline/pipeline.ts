@@ -1834,6 +1834,8 @@ export function* runPipeline(
   pre?: { s1: ComboRun[] },
   /** Independent synthetic sources, such as Historic Exit, participate in S1 without joining the Bot grid. */
   additionalCombos: readonly Combo[] = [],
+  /** Signals keep their own bounded history, including on the in-process fallback. */
+  signalUniverse: Universe = u,
 ): Generator<PipelineProgress, PipelineOutput> {
   const timings: Record<string, number> = {};
   const cost = s.cost;
@@ -1853,7 +1855,8 @@ export function* runPipeline(
   const plan = baseWindowsPlan(s.gates);
   for (let i = 0; i < combos.length; i++) {
     const c = combos[i];
-    const steps = runComboSteps(u, c.bot, c.ind, DEFAULT_PROTECT, cost, 1, s.tactics);
+    const source = isSignalInd(c.ind) ? signalUniverse : u;
+    const steps = runComboSteps(source, c.bot, c.ind, DEFAULT_PROTECT, cost, 1, s.tactics);
     let r: ComboRun | null = null;
     for (;;) {
       const x = steps.next();
@@ -1893,7 +1896,7 @@ export function* runPipeline(
       if (ruleTps) r.ruleTps = ruleTps;
     }
     if (r) s1.push(slim(r));
-    forgetCombo(u, c.bot, c.ind);
+    forgetCombo(source, c.bot, c.ind);
     yield { stage: "S1", done: i + 1, total: combos.length, label: `${c.bot} × ${c.ind}` };
   }
   s1.sort((a, b) => b.score - a.score);

@@ -22,7 +22,7 @@ test("only engine Micro/Minimal ranges with25 distinct adequately sampled failur
   assert.deepEqual(p.ranges.map((x) => [x.tag, x.scoredConfigsWithMinimumHistory, x.disable]), [["mc", 25, true], ["mn", 24, false]]);
   checks.push(["follow|micro@m5|passing|mc", true, 12]);
   assert.equal(initialPruneFocus([{ t: 100, checks }], 100, (id) => id.startsWith("sig-")).ranges[0].disable, false);
-  assert.match(PRUNE_POLICY.scope, /Signal config pool25/);
+  assert.match(PRUNE_POLICY.scope, /own Signal validation/);
 });
 
 test("startup memory fallback is rejected before rendering even when engine exits successfully", () => {
@@ -46,7 +46,7 @@ test("actual runtime trial reduces engine combos while preserving all Signal con
   assert.equal(trial.runtime.settings.grid.micro, false);
   assert.deepEqual(trial.runtime.settings.grid.short, runtime.settings.grid.short);
   assert.deepEqual(trial.runtime.settings.signals, runtime.settings.signals);
-  assert.equal(trial.runtime.wf.lastN, 15); assert.equal(trial.runtime.wf.signalValidLastN, 25);
+  assert.equal(trial.runtime.wf.lastN, 15); assert.equal(trial.runtime.wf.signalValidLastN, 8);
   assert.ok(trial.focusEvidence.trialExpandedPairs < trial.focusEvidence.baselineExpandedPairs);
   assert.ok(trial.focusEvidence.unchangedSignals.combos > 0);
   assert.ok(trial.focusEvidence.unchangedSignals.coordinatorProtects > 0);

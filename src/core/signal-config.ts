@@ -1,6 +1,7 @@
 // Signals processing settings and sources (pure, no engine imports: shared by the engine, config and the UI).
 // The engine side (combos, configs, active ranking, guard) is in signals.ts.
 import { INDICATION_KINDS, type IndicationKind } from "./domain/types.ts";
+import { SIGNAL_HISTORY_H } from "./signal-policy.ts";
 
 /**
  * Proven classic signals, each in a short and a medium parameter range (registry ids of the computations they
@@ -767,7 +768,7 @@ export const DEFAULT_SIGNALS: SignalSettings = {
     trailOfTp: [0.25, 0.5, 0.75],
     slOfTp: [1, 2],
     minN: 30,
-    lookbackH: 0,
+    lookbackH: SIGNAL_HISTORY_H,
   },
   guard: { enabled: true, lastN: 8 },
   cluster: { enabled: true, windowMin: 60, minLosses: 8, lossShare: 0.6 },
@@ -820,7 +821,7 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   baseGate: false,
 };
 
-/** active signal units: 0 = no cap (every validated unit), then 10 … 200 in tens and 300 … 2000 */
+/** active signal units: 0 = no cap (every validated unit), then 10 … 200 in tens and up to 10,000 */
 export const SIGNAL_COUNT_CHOICES = [
   0,
   ...Array.from({ length: 20 }, (_, i) => (i + 1) * 10),
@@ -831,6 +832,10 @@ export const SIGNAL_COUNT_CHOICES = [
   1000,
   1500,
   2000,
+  3000,
+  5000,
+  7500,
+  10_000,
 ];
 
 export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettings {
@@ -866,14 +871,14 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
     sources: { ...DEFAULT_SIGNALS.sources, ...(s?.sources ?? {}) },
     lanes: s?.lanes?.length ? [...s.lanes] : [...DEFAULT_SIGNALS.lanes],
   };
-  // active signal units: 0 = no cap (every validated unit is active), otherwise 10-2000 in steps of 10
+  // active signal units: 0 = no cap (every validated unit is active), otherwise 10–10,000 in steps of 10
   out.sourcesMode = out.sourcesMode === "allow" ? "allow" : "deny";
   const c = Number(out.count);
   out.count = !Number.isFinite(c)
     ? DEFAULT_SIGNALS.count
     : c <= 0
       ? 0
-      : Math.min(2000, Math.max(10, Math.round(c / 10) * 10));
+      : Math.min(10_000, Math.max(10, Math.round(c / 10) * 10));
   const sg = out.sourceGate;
   sg.enabled = sg.enabled === true;
   sg.days = Math.min(14, Math.max(1, Math.round(Number(sg.days) || 2)));
@@ -920,7 +925,7 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
     ? DEFAULT_SIGNALS.coordination.count
     : coordinationCount <= 0
       ? 0
-      : Math.min(2000, Math.max(10, Math.round(coordinationCount / 10) * 10));
+      : Math.min(10_000, Math.max(10, Math.round(coordinationCount / 10) * 10));
   out.coordination.ranges.short = out.coordination.ranges.short !== false;
   out.coordination.ranges.normal = out.coordination.ranges.normal !== false;
   out.coordination.ranges.long = out.coordination.ranges.long !== false;
@@ -944,7 +949,7 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
     const v = Array.isArray(xs)
       ? xs.map(Number).filter((x) => Number.isFinite(x) && x >= lo && x <= hi)
       : [];
-    return v.length || (empty && Array.isArray(xs)) ? [...new Set(v)].slice(0, 8) : [...def];
+    return v.length || (empty && Array.isArray(xs)) ? [...new Set(v)].slice(0, 64) : [...def];
   };
   if (s?.trailRatios !== undefined) out.trailRatios = nums(s.trailRatios, 0.1, 2, [1]);
   const trailMax = Number(out.trailMax);

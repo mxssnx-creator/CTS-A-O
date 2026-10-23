@@ -1121,16 +1121,21 @@ describe("Stable-02 ATR exits", () => {
         atr: { ...s.atr, sl: [0.5, 1, 1.5, 2], tpRatio: [1, 1.5, 2, 2.5, 3], trail: [0.8, 1.4, 2] },
       },
     });
-    // above 600 configs it refuses: that grid would not fit in memory
+    // The expanded capacity admits 2400 cells; a valid extra stop crosses that exact product boundary.
+    const ceiling = {
+      ...s.atr,
+      sl: Array.from({ length: 40 }, (_, i) => +(0.5 + i * 0.03).toFixed(2)),
+      tpRatio: Array.from({ length: 15 }, (_, i) => +(.2 + i * .2).toFixed(2)),
+      trail: [0.8, 1.4, 2],
+    };
+    assert.doesNotThrow(() => checkSettings({ signals: { ...s, atr: ceiling } }));
     assert.throws(() =>
       checkSettings({
         signals: {
           ...s,
           atr: {
-            ...s.atr,
-            sl: Array.from({ length: 40 }, (_, i) => +(0.5 + i * 0.03).toFixed(2)),
-            tpRatio: [1, 1.5, 2, 2.5, 3],
-            trail: [0.8, 1.4, 2],
+            ...ceiling,
+            sl: [...ceiling.sl, 1.8],
           },
         },
       }),

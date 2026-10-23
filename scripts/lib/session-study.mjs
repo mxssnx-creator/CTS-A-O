@@ -38,6 +38,13 @@ export function readSessionStudy(protocolPath, root = defaultRoot) {
   return { protocol: p, protocolSha256: studySha256(bytes) };
 }
 
+/** Funding is separate from strategy settings; reject mismatched launcher defaults before expensive history work. */
+export function validateFrozenSessionBook(book, account) {
+  if (account && (book?.balance !== account.balance || book?.leverage !== account.leverage ||
+      studyExactJson(book?.sizing) !== studyExactJson(account.sizing)))
+    throw new Error("Report funding/sizing differs from the frozen study account; supply matching balance, leverage and sizing/pct flags");
+}
+
 /** Called before rt.start(): never score a patch that production normalization silently changed. */
 export function validateFrozenSessionRuntime(rt, protocolPath, feedPath, evaluationFromT, cutT, root = defaultRoot) {
   const sealed = readSessionStudy(protocolPath, root), p = sealed.protocol;
@@ -61,8 +68,7 @@ export function validateFrozenSessionResult(raw, protocolPath, root = defaultRoo
     throw new Error("Completed study did not process the exact frozen symbol universe");
   if (raw.window?.startT !== p.window.tradeStartT || raw.window?.endT !== p.window.endT) throw new Error("Completed study execution window differs");
   if (p.liveSinceT !== undefined && raw.settings?.live?.replaySinceT !== p.liveSinceT) throw new Error("Completed study omitted its frozen paper Live evaluation boundary");
-  if (p.account && (raw.settings?.book?.balance !== p.account.balance || raw.settings?.book?.leverage !== p.account.leverage || studyExactJson(raw.settings?.book?.sizing) !== studyExactJson(p.account.sizing)))
-    throw new Error("Report funding/sizing differs from the frozen study account");
+  validateFrozenSessionBook(raw.settings?.book, p.account);
   const mem = raw.engine?.mem;
   if (!mem || (mem.computeLevel ?? 0) !== 0 || (mem.fallback ?? 0) !== 0 || (mem.aborts ?? 0) !== 0)
     throw new Error("Degraded or unrecorded memory coverage cannot certify a completed study");

@@ -5,6 +5,10 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const argv = process.argv.slice(2);
+if (argv.length && (argv.length !== 1 || argv[0] !== "--without-core"))
+  throw new Error("Supported test option: --without-core (CI runs the complete core inventory separately)");
+const withoutCore = argv[0] === "--without-core";
 const guard = resolve(root, "scripts/lib/core-test-offline-guard.cjs");
 const env = { ...process.env };
 for (const key of Object.keys(env)) {
@@ -54,7 +58,7 @@ const stages = [
       "src/components/v2/progression.test.ts",
     ],
   ],
-  ["core tests", ["scripts/test-core.mjs"]],
+  ...(!withoutCore ? [["core tests", ["scripts/test-core.mjs"]]] : []),
 ];
 
 for (const [label, args] of stages) {

@@ -10,6 +10,7 @@
 //                        lightest level wait 15 s doubling up to 10 min (memRetryDelayMs)
 import { freemem } from "node:os";
 import { readFileSync } from "node:fs";
+import { getHeapStatistics } from "node:v8";
 
 export type MemLevel = "ok" | "soft" | "hard";
 export interface CgroupMemoryEstimate {
@@ -30,6 +31,8 @@ export interface MemInfo {
   /** this process, MB (its workers included: they are threads) */
   rssMb: number;
   heapMb: number;
+  heapLimitMb?: number;
+  heapAvailMb?: number;
   /** the V8 heap this thread has committed (used + free pages kept), MB */
   heapTotalMb?: number;
   /** typed-array / Buffer memory this thread holds (tapes, candles), MB */
@@ -51,6 +54,20 @@ export function parseMemAvailable(meminfo: string): number | null {
 
 export function memLevel(availMb: number, soft = memSoftMb(), hard = memHardMb()): MemLevel {
   return availMb < hard ? "hard" : availMb < soft ? "soft" : "ok";
+}
+
+/** RAM can remain available while V8 reaches its own lower heap ceiling. Preserve room to yield and abort. */
+export function heapMemLevel(usedMb: number, limitMb: number): MemLevel {
+  if (!(limitMb > 0) || !Number.isFinite(limitMb) || !Number.isFinite(usedMb)) return "ok";
+  const free = limitMb - usedMb;
+  return free < Math.min(128, limitMb * .04) ? "hard"
+    : free < Math.min(512, limitMb * .15) ? "soft" : "ok";
+}
+
+/** Cheap between-slice check; avoids filesystem/RSS reads while the heap has ample room. */
+export function heapPressure(): MemLevel {
+  const heap = getHeapStatistics();
+  return heapMemLevel(heap.used_heap_size / 1048576, heap.heap_size_limit / 1048576);
 }
 
 /**
@@ -142,8 +159,8 @@ let cached: MemInfo | null = null;
 /** How long a memory reading is reused (memInfo): a fresh reading is at least this far apart from the last. */
 export const MEM_READ_MS = 1000;
 /** The current memory picture (read at most once a second). */
-export function memInfo(now = Date.now()): MemInfo {
-  if (cached && now - cached.at < MEM_READ_MS) return cached;
+export function memInfo(now = Date.now(), force = false): MemInfo {
+  if (!force && cached && now - cached.at < MEM_READ_MS) return cached;
   let avail: number | null = null;
   try {
     avail = parseMemAvailable(readFileSync("/proc/meminfo", "utf8"));
@@ -155,16 +172,22 @@ export function memInfo(now = Date.now()): MemInfo {
   const cgroup = cgroupMemoryEstimate();
   const availMb = cgroup == null ? host : Math.min(host, cgroup.availMb);
   const mu = process.memoryUsage();
+  const heapLimitMb = getHeapStatistics().heap_size_limit / 1048576;
+  const heapLevel = heapMemLevel(mu.heapUsed / 1048576, heapLimitMb);
+  const ramLevel = memLevel(availMb);
   cached = {
     availMb,
     hostAvailMb: host,
     ...(cgroup ? { cgroup } : {}),
     rssMb: Math.round(mu.rss / 1048576),
     heapMb: Math.round(mu.heapUsed / 1048576),
+    heapLimitMb: Math.round(heapLimitMb),
+    heapAvailMb: Math.max(0, Math.round(heapLimitMb - mu.heapUsed / 1048576)),
     heapTotalMb: Math.round(mu.heapTotal / 1048576),
     arrayBuffersMb: Math.round(mu.arrayBuffers / 1048576),
     nativeMb: Math.max(0, Math.round((mu.rss - mu.heapTotal - mu.arrayBuffers) / 1048576)),
-    level: memLevel(availMb),
+    level: ramLevel === "hard" || heapLevel === "hard" ? "hard"
+      : ramLevel === "soft" || heapLevel === "soft" ? "soft" : "ok",
     at: now,
   };
   return cached;

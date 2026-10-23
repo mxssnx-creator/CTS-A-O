@@ -735,8 +735,9 @@ async function runEngine() {
   if (replayMinGreen !== null)
     rt.wf = { ...rt.wf, gates: { ...rt.wf.gates, minGreen: replayMinGreen } };
   if (arg("frozen-session")) {
-    const { validateFrozenSessionRuntime } = await import("./lib/session-study.mjs");
-    await validateFrozenSessionRuntime(rt, arg("frozen-session"), feedFile, evaluationFromT, cutT);
+    const { validateFrozenSessionRuntime, validateFrozenSessionBook } = await import("./lib/session-study.mjs");
+    const sealed = validateFrozenSessionRuntime(rt, arg("frozen-session"), feedFile, evaluationFromT, cutT);
+    validateFrozenSessionBook({ balance: balance0, sizing, notional, leverage }, sealed.protocol.account);
   }
   if (arg("frozen-block-study")) {
     const { validateFrozenBlockRuntime } = await import("./lib/block-comparison.mjs");
@@ -1651,6 +1652,10 @@ if (replay && raw.settings.book) {
   if (arg("notional") === undefined) notional = b.notional;
   if (arg("sizing") === undefined && arg("pct") === undefined) sizing = b.sizing;
   if (arg("leverage") === undefined) leverage = b.leverage;
+}
+if (replay && arg("frozen-session")) {
+  const { readSessionStudy, validateFrozenSessionBook } = await import("./lib/session-study.mjs");
+  validateFrozenSessionBook({ balance: balance0, sizing, notional, leverage }, readSessionStudy(arg("frozen-session")).protocol.account);
 }
 if (arg("dump")) {
   mkdirSync(dirname(arg("dump")), { recursive: true });

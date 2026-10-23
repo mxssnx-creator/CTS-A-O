@@ -7,7 +7,7 @@ import { signalSettings } from "./signal-config.ts";
 import { signalProtects, sigActiveKey } from "./signals.ts";
 import { barsFromCandles, syntheticCandles } from "./market/bars.ts";
 import { CandleSeries } from "./market/candle-series.ts";
-import { laneSeriesFrom, marketHistoryBars, normalizeLanes, sanitizeWf, signalDataHours } from "./server/runtime.server.ts";
+import { laneSeriesFrom, marketHistoryBars, normalizeLanes, sanitizeWf, signalDataHours, signalLaneDataHours, signalLaneSeriesFrom } from "./server/runtime.server.ts";
 import { checkSettings } from "./settings-check.ts";
 import { laneContributions } from "./server/live.server.ts";
 import { capSignalProtect, enforceSignalPosition, ratchetTrail } from "./sim/trailing.ts";
@@ -17,28 +17,30 @@ const H = 3_600_000;
 const T = Date.UTC(2026, 9, 20, 12);
 
 describe("Signal history, bounded trailing and exact-context progression", () => {
-  it("keeps 336h independent of engine 24h and persists the override through WF sanitization", () => {
+  it("keeps 100h independent of engine 24h and persists the override through WF sanitization", () => {
     const wf = defaultWalkForward(DEFAULT_SETTINGS);
     assert.equal(wf.longH, 24);
-    assert.equal(signalHistoryHours(wf), 336);
+    assert.equal(signalHistoryHours(wf), 100);
     assert.deepEqual(sanitizeWf({ signalLongH: 480 }), { signalLongH: 480 });
-    assert.equal(signalHistoryHours({ preH: 6 }), 336);
+    assert.equal(signalHistoryHours({ preH: 6 }), 100);
   });
 
   it("provides the full Signal history on every lane without expanding ordinary engine cohorts", () => {
     const s = normalizeLanes({ ...DEFAULT_SETTINGS, signals: signalSettings({ lanes: [1, 5, 15, 30] }) });
     const wf = { ...defaultWalkForward(s), simH: 6 };
     const hours = signalDataHours(s, wf);
-    assert.ok(hours >= 24 + 336 + 6);
+    assert.ok(hours >= 24 + 100 + 6);
     assert.ok(marketHistoryBars(s, wf) >= hours * 60);
     const candles = new Map([["A", CandleSeries.fromCandles(syntheticCandles("A", 1, Math.ceil(hours * 60), T))]]);
     const engine = laneSeriesFrom(candles, s);
-    const signals = laneSeriesFrom(candles, s, 0, hours);
+    const signals = signalLaneSeriesFrom(candles, s, wf);
     for (const tf of s.tfs) {
       const a = engine.find((b) => b.tfMin === tf)!;
       const b = signals.find((b) => b.tfMin === tf)!;
       assert.ok(a.n <= s.tfDays[String(tf)] * 24 * 60 / tf);
-      assert.ok(b.n * tf / 60 >= 366 - tf / 60);
+      const laneHours = signalLaneDataHours(s, wf, tf);
+      assert.ok(b.n * tf / 60 >= laneHours - tf / 60);
+      assert.ok(b.n * tf / 60 <= laneHours + tf / 60, "ordinary retention cannot expand Signal work");
       assert.equal(b.t.at(-1), a.t.at(-1));
     }
     assert.equal(engine.find((b) => b.tfMin === 1)!.n, 3 * 24 * 60);
@@ -122,7 +124,7 @@ describe("Signal history, bounded trailing and exact-context progression", () =>
                 entry: 100, exit: 100 * (1 + side * r), r, reason: "time", bars: 1, mfe: 0, mae: 0, kind });
           const tape = makeTape(id, "follow", ind, p, kind, ["A", "A", "B", "B", "C", "C"], rows, [], []);
           const d = defaultWalkForward(DEFAULT_SETTINGS);
-          const options = { ...d, signalOwnBase: true, signalValidLastN: 25,
+          const options = { ...d, signalOwnBase: true, signalLongH: 336, signalValidLastN: 25,
             signalActive: new Set(["A", "B", "C"].flatMap((sym) => [1, -1].map((side) => sigActiveKey("follow", ind, sym, side, kind, id)))),
             signalAccept: undefined, signalSideAccept: undefined, signalCluster: undefined, signalGuardN: 0,
             gates: { ...d.gates, minPf: 1.1, rangeMinPf: undefined, minTrades: 3, maxDdr: 0, maxDdtH: 1000, minGreen: 0, lossPrior: false, lastNFloor: 0 },
@@ -138,7 +140,8 @@ describe("Signal history, bounded trailing and exact-context progression", () =>
         });
 });
 
-it("local runtime Signal tapes retain their independent 336h history beside the 24h engine", async () => {
+for (const hours of [100, 336]) for (const worker of [false, true])
+it(`${worker ? "worker" : "local"} runtime Signal tapes retain their independent ${hours}h history beside the 24h engine`, async () => {
   const { CoreRuntime } = await import("./server/runtime.server.ts");
   const { CoreDb } = await import("./server/db.server.ts");
   const rt = new CoreRuntime(new CoreDb(":memory:"), {
@@ -156,15 +159,17 @@ it("local runtime Signal tapes retain their independent 336h history beside the 
   } as never, { market: "synthetic", priceStream: null });
   try {
     rt.stop();
-    Object.assign(rt, { workersBroken: true, workersBrokenAt: Date.now() });
-    rt.wf = { ...rt.wf, longH: 24, preH: 6, simH: 6, signalLongH: 336,
+    if (!worker) Object.assign(rt, { workersBroken: true, workersBrokenAt: Date.now() });
+    rt.wf = { ...rt.wf, longH: 24, preH: 6, simH: 6, signalLongH: hours,
       signalValidLastN: 0, lastN: 0, validLastN: 0 };
     rt.candles.set("HISTORY-USDT", CandleSeries.fromCandles(syntheticCandles("HISTORY", 1, 380 * 60, T)));
     await rt.compute();
     const signals = rt.tapes.filter((t) => t.ind.startsWith("sig-"));
     assert.ok(signals.length > 0, JSON.stringify({ message: "actual Signal tapes built", enabled: rt.settings.signals.enabled, tfs: rt.settings.tfs, signalStatus: rt.status.signals, tapes: rt.tapes.map(t => t.ind).slice(0,5) }));
     const earliest = Math.min(...signals.flatMap((t) => Array.from(t.entryT)));
-    assert.ok(earliest < T - 300 * H, `independent old Signal trades missing: ${earliest}`);
+    assert.ok(earliest < T - (hours - 36) * H, `independent old Signal trades missing: ${earliest}`);
+    assert.ok(earliest >= T - signalDataHours(rt.settings, rt.wf) * H, "ordinary retention cannot expand Signal history");
+    if (worker) assert.equal((rt as unknown as { workersBroken: boolean }).workersBroken, false, "actual worker path must succeed");
     const engine = rt.tapes.filter((t) => !t.ind.startsWith("sig-"));
     assert.ok(engine.length > 0, "ordinary raw engine tapes also built");
     assert.ok(engine.every((t) => Array.from(t.entryT).every((v) => v >= T - 72 * H)),

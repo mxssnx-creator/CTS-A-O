@@ -512,20 +512,20 @@ describe("signals: guards through the feed (as the simulation runs them)", () =>
 });
 
 describe("signals: settings", () => {
-  it("active count: 0 = no cap, else 10–2000 in steps of 10, default unlimited (exact config units)", () => {
+  it("active count: 0 = no cap, else 10–10,000 in steps of 10, default unlimited (exact config units)", () => {
     assert.equal(DEFAULT_SIGNALS.count, 0);
     assert.equal(SIGNAL_COUNT_CHOICES[0], 0, "no cap is a choice");
     assert.equal(SIGNAL_COUNT_CHOICES[1], 10);
-    assert.equal(SIGNAL_COUNT_CHOICES.at(-1), 2000);
+    assert.equal(SIGNAL_COUNT_CHOICES.at(-1), 10_000);
     assert.equal(signalSettings({ count: 3 }).count, 10);
     assert.equal(signalSettings({ count: 0 }).count, 0, "no cap is kept");
     assert.equal(signalSettings({ count: -5 }).count, 0);
-    assert.equal(signalSettings({ count: 99999 }).count, 2000);
+    assert.equal(signalSettings({ count: 99999 }).count, 10_000);
     assert.doesNotThrow(() => checkSettings({ signals: { ...on, count: 120 } }));
     assert.doesNotThrow(() => checkSettings({ signals: { ...on, count: 0 } }));
     assert.doesNotThrow(() => checkSettings({ signals: { ...on, count: 600 } }));
     assert.throws(() => checkSettings({ signals: { ...on, count: 125 } }));
-    assert.throws(() => checkSettings({ signals: { ...on, count: 3000 } }));
+    assert.throws(() => checkSettings({ signals: { ...on, count: 10_010 } }));
     assert.throws(() => checkSettings({ signals: { ...on, lanes: [60] } }));
     assert.throws(() =>
       checkSettings({ signals: { ...on, ranges: { short: false, medium: false } } }),
@@ -628,7 +628,10 @@ describe("signals: engine", { timeout: 400_000 }, () => {
     const st = rt.status.signals!;
     assert.ok(st.enabled);
     assert.equal(st.combos, (ENABLED * 2 + 15) * DEFAULT_SIGNALS.lanes.length);
-    assert.ok(st.active > 0 && st.active <= 110, `active ${st.active}`);
+    // Synthetic candles are not guaranteed to qualify at the terminal minute. Report the measured own-context
+    // verdict, including an empty set; known passing/losing qualification is covered by the deterministic tapes.
+    assert.equal(st.active, rt.sim!.signalActiveEnd!.length);
+    assert.ok(st.active >= 0 && st.active <= 110, `active ${st.active}`);
     assert.ok((st.coordinationActive ?? 0) <= DEFAULT_SIGNALS.coordination.count);
     assert.ok((st.active ?? 0) - (st.coordinationActive ?? 0) <= 10, "classic signal cap is independent");
     assert.ok((st.coordinationPairs ?? 0) > 0 && (st.coordinationConfigs ?? 0) > 0);

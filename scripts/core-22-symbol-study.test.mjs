@@ -193,7 +193,7 @@ test("preflight uses production complete nested ladders and unchanged gates with
   assert.equal(x.settings.cost, 0.0015);
   assert.deepEqual(x.settings.fees, { ...DEFAULT_SETTINGS.fees, slippage: 0.00025 });
   assert.equal(x.wf.preH, 24); assert.equal(x.wf.longH, 24); assert.equal(x.wf.simH, 24);
-  assert.equal(x.wf.validLastN, 15); assert.equal(x.wf.signalValidLastN, 25);
+  assert.equal(x.wf.validLastN, 15); assert.equal(x.wf.signalValidLastN, 8);
   assert.equal(x.wf.causalBase, true); assert.equal(x.wf.recordValidation, true);
   assert.equal(x.replayPreloadAll, true);
   assert.ok(JSON.stringify(x.wf).length > 131072, "full default protection cells exceed one Linux argument");

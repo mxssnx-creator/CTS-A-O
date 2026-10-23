@@ -2974,12 +2974,12 @@ export function SettingsPage() {
                 </Field>
                 <Field
                   label="Max configs / source"
-                  hint="limit per source before held-out qualification; 6–128"
+                  hint="limit per source before held-out qualification; 6–512"
                 >
                   <Num
                     int
                     min={6}
-                    max={128}
+                    max={512}
                     value={exits.maxConfigsPerPair}
                     onChange={(v) => set(["exitStrategy", "maxConfigsPerPair"], Math.round(v))}
                   />

@@ -24,9 +24,16 @@ export function coreTestInvocation(argv = [], sourceEnv = process.env, root = RO
   const files = [];
   const filters = [];
   let slow = false;
+  let shard;
   for (const arg of argv) {
     if (arg === "--slow") slow = true;
     else if (arg.startsWith("--test-name-pattern=")) filters.push(arg);
+    else if (arg.startsWith("--test-shard=")) {
+      const match = /^--test-shard=([1-9]\d*)\/([1-9]\d*)$/.exec(arg);
+      if (shard || !match || !Number.isSafeInteger(+match[2]) || +match[1] > +match[2])
+        throw new Error("Core test shard must be one index/count with 1 <= index <= count");
+      shard = arg.slice("--test-shard=".length);
+    }
     else if (arg.startsWith("-")) throw new Error(`Unsupported core-test option: ${arg}`);
     else files.push(arg);
   }
@@ -76,6 +83,7 @@ export function coreTestInvocation(argv = [], sourceEnv = process.env, root = RO
     files: selected,
     concurrency,
     workers: Number(testWorkers),
+    shard,
     args: [
       // Node 24's per-process WASM wrapper GC can double-free code while strip-types workers terminate
       // (nodejs/node#66366). Keep those bounded compiler wrappers alive until this test process exits.
@@ -90,6 +98,7 @@ export function coreTestInvocation(argv = [], sourceEnv = process.env, root = RO
       "--no-warnings",
       "--test",
       `--test-concurrency=${concurrency}`,
+      ...(shard ? [`--test-shard=${shard}`] : []),
       ...(slow ? ["--test-name-pattern=stress: a storm|backtests a preset over"] : []),
       ...filters,
       ...selected,
@@ -105,7 +114,7 @@ async function main() {
     /* best effort outside Linux/procfs */
   }
   console.log(
-    `[core-tests] offline Node transport guard; ${invocation.files.length} files; concurrency ${invocation.concurrency}; compute workers ${invocation.workers}`,
+    `[core-tests] offline Node transport guard; ${invocation.files.length} files${invocation.shard ? `; shard ${invocation.shard}` : ""}; concurrency ${invocation.concurrency}; compute workers ${invocation.workers}`,
   );
   const child = spawn(invocation.command, invocation.args, {
     cwd: invocation.cwd,
