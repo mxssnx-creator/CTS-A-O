@@ -37,6 +37,39 @@ function reordered(tp: AcceptTape, order: number[]): AcceptTape {
 }
 
 describe("exact Signal acceptance prefix fast path", () => {
+  it("lazily reconstructs exact causal windows, partial-close counts and forked updates without expanding every context", () => {
+    const a = tape("long|config%with|separators"), b = tape("b", "trailing");
+    const lazy = new SignalAcceptIndex([a, b], true), eager = new SignalAcceptIndex([a, b]);
+    assert.equal(columns(lazy).size, 0, "registered tapes do not allocate expanded prefixes");
+    for (const key of columns(eager).keys())
+      for (const time of [H - 1, H, H + 1, 2 * H, 3 * H, 4 * H])
+        for (const hours of [1 / 60, .5, 1, 2, 6])
+          assert.deepEqual(lazy.stats(key, time, hours), eager.stats(key, time, hours));
+    const next = lazy.fork(), changed = { ...a, r: new Float64Array(a.n).fill(-.02) };
+    for (const _ of next.fill([changed]));
+    const rebuilt = new SignalAcceptIndex([changed, b]);
+    for (const key of columns(eager).keys()) {
+      assert.deepEqual(next.stats(key, 4 * H, 6), rebuilt.stats(key, 4 * H, 6));
+      assert.deepEqual(lazy.stats(key, 4 * H, 6), eager.stats(key, 4 * H, 6), "old generation is unchanged");
+    }
+    const unordered = reordered(a, [8, 9, 10, 11, 0, 1, 2, 3, 4, 5, 6, 7]);
+    for (const _ of next.fill([unordered]));
+    for (const key of columns(eager).keys())
+      assert.deepEqual(next.stats(key, 4 * H, 6), eager.stats(key, 4 * H, 6), "generic refresh replaces lazy source");
+  });
+
+  it("evicts derived groups without losing evidence or changing a reconstructed result", () => {
+    const tapes = Array.from({ length: 4200 }, (_, i) => tape(`cfg-${i}`));
+    const lazy = new SignalAcceptIndex(tapes, true);
+    for (const tp of tapes) lazy.stats(acceptKey(tp.ind, tp.syms[0], 1, tp.kind, tp.id), 3 * H, 6);
+    const state = lazy as unknown as { cached: Map<string, unknown>; cachedBytes: number };
+    assert.ok(state.cached.size <= 4096);
+    assert.ok(state.cachedBytes <= 32 * 1024 * 1024);
+    const first = acceptKey(tapes[0].ind, tapes[0].syms[0], 1, tapes[0].kind, tapes[0].id);
+    assert.equal(state.cached.has(first), false, "oldest derived group was released");
+    assert.deepEqual(lazy.stats(first, 3 * H, 6), { n: 2, pf: 2.8 });
+  });
+
   it("matches every generic prefix byte and causal window with both directions, repeated onsets and partial closes", () => {
     const normal = tape();
     const trailing = tape("config-b", "trailing");

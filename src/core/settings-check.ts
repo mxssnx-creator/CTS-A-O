@@ -299,7 +299,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
     num(e.minGreenHourShare, 0, 1, "historic exit minimum green-hour share");
     num(e.maxDdr, 0, 10, "historic exit max drawdown / net ratio");
     num(e.holdH, 0.5, 96, "historic exit maximum hold (hours)");
-    num(e.maxConfigsPerPair, 6, 128, "historic exit configs per pair");
+    num(e.maxConfigsPerPair, 6, 512, "historic exit configs per pair");
     num(e.minTp, 0.001, 0.5, "historic exit minimum TP");
     num(e.maxTp, 0.002, 1, "historic exit maximum TP");
     num(e.maxSl, 0.005, 1, "historic exit maximum SL");
@@ -778,7 +778,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
     };
     bool(g.enabled, "signals");
     if (g.count !== undefined && g.count !== 0) {
-      num(g.count, 10, 2000, "active signals");
+      num(g.count, 10, 10_000, "active signals");
       if (g.count % 10 !== 0) throw new Error("active signals: steps of 10");
     }
     if (g.sources !== undefined) {
@@ -815,8 +815,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
     num(g.trailing?.slOfTp, 0.2, 5, "signal Trailing SL×TP");
     if (g.trailRatios !== undefined) {
       list(g.trailRatios, 0.1, 2, "signal peak-gap ratios");
-      if (g.trailRatios.length > 8 || new Set(g.trailRatios).size !== g.trailRatios.length)
-        throw new Error("signal peak-gap ratios: at most 8 distinct values");
+      if (g.trailRatios.length > 64 || new Set(g.trailRatios).size !== g.trailRatios.length)
+        throw new Error("signal peak-gap ratios: at most 64 distinct values");
     }
     if (g.trailMax !== undefined) num(g.trailMax, 0.002, 0.03, "Signal maximum trailing from entry");
     if (g.trailingOnly) {
@@ -824,14 +824,14 @@ export function checkSettings(s: Partial<CoreSettings>) {
       list(g.trailingOnly.sl, 0.002, 0.2, "signal Trailing only SL");
       list(g.trailingOnly.trail, 0.002, 0.1, "signal Trailing only activation");
       for (const xs of [g.trailingOnly.sl, g.trailingOnly.trail])
-        if (xs !== undefined && xs.length > 8)
-          throw new Error("signal Trailing only ranges: at most 8 values per list");
+        if (xs !== undefined && xs.length > 64)
+          throw new Error("signal Trailing only ranges: at most 64 values per list");
       num(g.trailingOnly.trailStep, 0.1, 2, "signal Trailing only trail step");
       const n =
         (g.trailingOnly.sl?.length ?? 3) *
         (g.trailingOnly.trail?.length ?? 3) *
         (g.trailRatios?.length ?? 1);
-      if (n > 64) throw new Error(`signal Trailing only grid too large (${n} configs, max 64)`);
+      if (n > 256) throw new Error(`signal Trailing only grid too large (${n} configs, max 256)`);
     }
     num(g.holdH, 0.5, 96, "signal hold");
     if (g.exits !== undefined && !["pct", "atr", "both"].includes(g.exits))
@@ -848,7 +848,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
       int(g.atr.holdBars, "signal ATR hold (15m bars)");
       const n =
         (g.atr.sl?.length ?? 3) * (g.atr.tpRatio?.length ?? 3) * (1 + (g.atr.trail?.length ?? 1));
-      if (n > 600) throw new Error(`signal ATR grid too large (${n} configs, max 600)`);
+      if (n > 2400) throw new Error(`signal ATR grid too large (${n} configs, max 2400)`);
     }
     if (g.hist) {
       bool(g.hist.enabled, "signal historic trailing configs");
@@ -862,7 +862,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
         (g.hist.quantiles?.length ?? 2) *
         (g.hist.trailOfTp?.length ?? 3) *
         (g.hist.slOfTp?.length ?? 2);
-      if (n > 200) throw new Error(`signal historic grid too large (${n} configs, max 200)`);
+      if (n > 1000) throw new Error(`signal historic grid too large (${n} configs, max 1000)`);
     }
     bool(g.guard?.enabled, "signal guard");
     num(g.guard?.lastN, 2, 50, "signal guard last N");
@@ -897,7 +897,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
       num(c.volumeFactor, 1, 22, "signals coordination volume factor");
       int(c.volumeFactor, "signals coordination volume factor");
       if (c.count !== undefined && c.count !== 0) {
-        num(c.count, 10, 2000, "active coordination units");
+        num(c.count, 10, 10_000, "active coordination units");
         if (c.count % 10 !== 0) throw new Error("active coordination units: steps of 10");
       }
       if (c.ranges) {

@@ -562,6 +562,8 @@ export interface RuntimeStatus {
     computeLevel?: number;
     /** where this process's memory is: V8 heap used / committed, array buffers, the rest (native), MB */
     heapMb?: number;
+    heapLimitMb?: number;
+    heapAvailMb?: number;
     heapTotalMb?: number;
     arrayBuffersMb?: number;
     nativeMb?: number;
@@ -3778,7 +3780,7 @@ export class CoreRuntime {
         this.memSoftNoted = true;
         this.db.event(
           "warn",
-          `memory low: ${m.availMb} MB available (soft ${memSoftMb()} MB), this process ${m.rssMb} MB${gc ? " — garbage collected" : ""}`,
+          `memory low: ${m.availMb} MB available (soft ${memSoftMb()} MB), heap headroom ${m.heapAvailMb ?? "unknown"} MB, this process ${m.rssMb} MB${gc ? " — garbage collected" : ""}`,
         );
       }
     }
@@ -3787,7 +3789,7 @@ export class CoreRuntime {
     if (m.level === "hard" && (!this.memPressured || workerActivity().inFlight > 0)) {
       const first = !this.memPressured;
       this.memPressured = true;
-      const reason = `memory pressure: ${m.availMb} MB available (hard ${memHardMb()} MB), this process ${m.rssMb} MB — compute aborted`;
+      const reason = `memory pressure: ${m.availMb} MB available (hard ${memHardMb()} MB), heap headroom ${m.heapAvailMb ?? "unknown"} MB, this process ${m.rssMb} MB — compute aborted`;
       const busy = abortWorkers(reason);
       if (first) {
         this.memLastAbort = reason;
@@ -3896,6 +3898,8 @@ export class CoreRuntime {
       retryAt: this.memRetryAt > Date.now() ? this.memRetryAt : null,
       computeLevel: this.memComputeLevel,
       heapMb: m.heapMb,
+      heapLimitMb: m.heapLimitMb,
+      heapAvailMb: m.heapAvailMb,
       heapTotalMb: m.heapTotalMb,
       arrayBuffersMb: m.arrayBuffersMb,
       nativeMb: m.nativeMb,
@@ -3939,6 +3943,7 @@ export class CoreRuntime {
           [-14]: "fixed seat selection",
           [-15]: "causal signal ranking",
           [-16]: "negative-hour hedge qualification",
+          [-17]: "completed one-minute candidate batch",
         };
         return simulationSlices[v] ?? (v < 0 ? "simulation helper" : "");
       }
@@ -5374,12 +5379,16 @@ export class CoreRuntime {
         })
       : [];
     sharedWuMemo = null;
+    sharedSignalWuMemo = null;
     if (!coordTapes || gen !== this.gen) return;
     // Await physical exit, not just removal from the pool. Transferred tape arenas remain main-owned; only worker
     // heaps/caches are released. Ownership is rechecked synchronously by the pool, so foreign reuse is preserved.
     await retireOwnedIdleWorkers(computeWorkerOwner);
     if (gen !== this.gen) return;
     if (this.memPressured) throw new Error(this.memLastAbort ?? "memory pressure: compute aborted");
+    // Worker scratch and shared-input references are dead at this phase boundary. Collect once here instead
+    // of carrying their garbage into the simulation's first allocation burst.
+    this.collectNow();
     const sigTapes = [...sourceTapes, ...coordTapes];
     // Historic Exit Signal configs run on their own independent protection proof and do not consume the Normal /
     // Trailing Signal ranking cap. Their exact keys are carried into the step gate; own Exit and Signal PF/Last-N

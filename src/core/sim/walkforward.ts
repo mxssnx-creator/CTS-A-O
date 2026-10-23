@@ -3022,7 +3022,7 @@ export function* signalAcceptIndexGen(
 ): Generator<number, SignalAcceptIndex> {
   const hit = acceptIndexCache.get(tapes);
   if (hit) return hit;
-  const x = new SignalAcceptIndex();
+  const x = new SignalAcceptIndex([], true);
   for (const _ of x.fill(tapes)) yield -1;
   acceptIndexCache.set(tapes, x);
   return x;
@@ -6372,57 +6372,27 @@ export function* walkForwardGen(
     }
   };
 
-  // (tape, trade index) by entry time; ranked per step: only the step's active signals are materialised
+  // Read each step directly from immutable tape columns. Expanding every candidate for the entire run here
+  // retained millions of objects and repeated config keys before the first simulated minute could execute.
   // the tapes end at the run's end: their positions still open there are orders of the run too (marked to market),
   // or the run would count only the orders that closed in time — a bias toward configs that exit fast
   const markOpen = stopT === endT;
-  const sigCands: Array<
-    { e: number; i: number; tp: ConfigTape; key: string; op?: OpenPosition } | undefined
-  > = [];
-  let built = 0;
-  // one key string per pair × symbol × direction, shared by every config of the pair and every candidate (a string
-  // per candidate: ~1 M of them, 0.1–0.2 GB through the Real stage); the same values as sigActiveKey per candidate
-  const pairKeys = new Map<string, Map<string, [string | undefined, string | undefined]>>();
+  const signalEntries: Array<{ tp: ConfigTape; order: Uint32Array; next: number }> = [];
   for (const tp of sigTapes) {
-    if (++built % 200 === 0) yield -3; // (a slice, not a simulated step)
-    // keyed per direction (sigActiveKey): long and short of a signal on a symbol are active apart
-    const take = (sym: string, side: number) =>
-      o.signalRank ||
-      !o.signalActive ||
-      signalActiveHas(o.signalActive, tp.bot, tp.ind, sym, side, tp.kind, tp.id);
-    const pk = tp.id;
-    let byPair = pairKeys.get(pk);
-    if (!byPair) pairKeys.set(pk, (byPair = new Map()));
-    const keyOf = (sym: string, side: number) => {
-      let ks = byPair.get(sym);
-      if (!ks) byPair.set(sym, (ks = [undefined, undefined]));
-      const j = side > 0 ? 1 : 0;
-      return (ks[j] ??= sigActiveKey(tp.bot, tp.ind, sym, side, tp.kind, tp.id));
-    };
-    const slots: Array<string | undefined> = [];
+    let n = 0;
     for (let i = 0; i < tp.n; i++) {
-      const e = tp.entryT[i];
-      if (e < startT || e >= stopT) continue;
-      const slot = tp.symI[i] * 2 + (tp.side[i] > 0 ? 1 : 0);
-      const key = (slots[slot] ??= keyOf(tp.syms[tp.symI[i]], tp.side[i]));
-      sigFunnel.candidates++;
-      if (take(tp.syms[tp.symI[i]], tp.side[i])) sigCands.push({ e, i, tp, key });
-      else inactiveSig(tp.side[i]);
+      if (tp.entryT[i] >= startT && tp.entryT[i] < stopT) n++;
+      if ((i & 8191) === 8191) yield -3;
     }
-    if (markOpen)
-      for (const op of tp.open) {
-        if (op.entryT < startT || op.entryT >= stopT) continue;
-        const key = keyOf(op.sym, op.side);
-        sigFunnel.candidates++;
-        if (take(op.sym, op.side)) sigCands.push({ e: op.entryT, i: -1, tp, key, op });
-        else inactiveSig(op.side);
-      }
+    const order = new Uint32Array(n);
+    let j = 0;
+    for (let i = 0; i < tp.n; i++)
+      if (tp.entryT[i] >= startT && tp.entryT[i] < stopT) order[j++] = i;
+    // Four bytes per entry; no Trade objects, per-entry strings or global sort scratch array.
+    order.sort((a, b) => tp.entryT[a] - tp.entryT[b] || a - b);
+    signalEntries.push({ tp, order, next: 0 });
+    yield -3;
   }
-  // All slots are populated through this sort. Processed slots are then released behind the forward-only cursor.
-  yield -3;
-  yield* stableSortGen(sigCands, (a, b) => a!.e - b!.e);
-  yield -13;
-  let sp = 0;
   let held = new Set<string>();
   // re-evaluating more often than one bar cannot change anything: the step is at least one bar
   const barH = (u.baseTf ?? u.bars[0]?.tfMin ?? 60) / 60;
@@ -6511,212 +6481,231 @@ export function* walkForwardGen(
       }
     }
     held = new Set(picks.map((p) => p.id));
-    const cands: Array<{ tr: Trade; tp: ConfigTape }> = [];
-    let pi = 0;
-    for (const p of picks) {
-      if (++pi % 32 === 0) yield -6;
-      // contrarian execution (wf.invertSeats): the seat's entries on its mirror's tape
-      const tid = o.invertSeats ? mirrorId(p.id) : p.id;
-      const tp = tid ? byId.get(tid) : undefined;
-      if (!tp) {
-        invertMissing++;
-        continue;
-      }
-      // a trade entering in [t, t + step) exits at or after t: the scan starts at the first exit ≥ t (exit order) and
-      // stops where even the tape's longest hold cannot reach back into the step (every later exit is later still)
-      const stepEnd = t + stepH * H;
-      const exitCap = stepEnd + maxHoldOf(tp);
-      for (let i = lowerBound(tp.exitT, t); i < tp.n; i++) {
-        if (tp.exitT[i] >= exitCap) break;
-        const e = tp.entryT[i];
-        if (e >= t && e < stepEnd && e < stopT) cands.push({ tr: tradeAt(tp, i), tp });
-      }
-      if (markOpen)
-        for (const op of tp.open)
-          if (op.entryT >= t && op.entryT < t + stepH * H && op.entryT < stopT)
-            cands.push({ tr: markedOpenTrade(tp, op, stopT), tp });
-    }
-    let mergedSignals = 0;
-    while (sp < sigCands.length && sigCands[sp]!.e < t + stepH * H) {
-      const c = sigCands[sp]!;
-      sigCands[sp++] = undefined;
-      if (o.signalRank && !stepOpts.signalActive?.has(c.key)) {
-        inactiveSig(c.op ? c.op.side : c.tp.side[c.i]);
-        continue;
-      }
-      cands.push({ tr: c.op ? markedOpenTrade(c.tp, c.op, stopT) : tradeAt(c.tp, c.i), tp: c.tp });
-      if (++mergedSignals % 32 === 0) yield -7;
-    }
-    // best first: at the same entry time the better candidate takes a capped slot first
-    const prio = bestFirst(picks, stepOpts);
-    yield* stableSortGen(
-      cands,
-      (a, b) =>
-        a.tr.entryT - b.tr.entryT ||
-        prio(a.tp, a.tr.sym, a.tr.side) - prio(b.tp, b.tr.sym, b.tr.side) ||
-        a.tr.cfg.localeCompare(b.tr.cfg),
-    );
-    yield -8;
     let taken = 0;
     let skipped = 0;
     let net = 0;
-    let ci = 0;
     const byRange: NonNullable<StepLog["byRange"]> = {};
     const rangeRow = (k: string) =>
       (byRange[k] ??= { tapes: tapesByRange[k] ?? 0, validated: 0, candidates: 0, taken: 0 });
     for (const k of Object.keys(tapesByRange)) rangeRow(k);
     for (const p of picks) rangeRow(stepRange(p.id)).validated++;
-    // signals: the active units of the step (pair × symbol × side) are their validated set
     if (o.signalRank && sigTapes.length)
       rangeRow("sig").validated = stepOpts.signalActive?.size ?? 0;
-    for (const { tr } of cands) rangeRow(stepRange(tr.cfg)).candidates++;
-    for (const { tr, tp } of cands) {
-      // Entry gates can touch several relation / acceptance books per candidate. A 300-order batch
-      // produced 800 ms main-thread slices on the 12-symbol replay, so hand control back in smaller batches.
-      if (++ci % 32 === 0) yield -9;
-      yield* settle(tr.entryT);
-      // Keep the full candidate feed for guards/confirmation; accepted-order Block reads only the later marker.
-      const fk = `${tr.cfg}|${tr.sym}|${tr.side}|${tr.entryT}`;
-      let fx = seen.get(fk);
-      if (!fx) {
-        const fe = blockEntryOf(tr, "candidate-unit");
-        fx = { exitT: tr.exitT, ...fe, ...(tr.markedOpen ? { open: true } : {}) };
-        // the auto window scores the windows on their levels now, at the entry (paper and the audit replay the stamps)
-        book?.stampEntry(fx);
-        seen.set(fk, fx);
-        vopen.push(fx.exitT, fx);
-        if (!sigCfg(tr.cfg)) engineOpen.add(tr.sym, tr.side, 1);
+    const prio = bestFirst(picks, stepOpts);
+    const stepEnd = Math.min(stopT, t + stepH * H);
+    // Reporting/selection cadence does not determine candle precision or candidate memory. Process one minute
+    // at a time, with the same stable entry ordering, and release the completed batch before assembling the next.
+    const batchMs = sigTapes.length ? 60_000 : stepH * H;
+    for (let batchT = t; batchT < stepEnd; batchT += batchMs) {
+      const batchEnd = Math.min(stepEnd, batchT + batchMs);
+      const cands: Array<{ tr: Trade; tp: ConfigTape }> = [];
+      let pi = 0;
+      for (const p of picks) {
+        if (++pi % 32 === 0) yield -6;
+        // contrarian execution (wf.invertSeats): the seat's entries on its mirror's tape
+        const tid = o.invertSeats ? mirrorId(p.id) : p.id;
+        const tp = tid ? byId.get(tid) : undefined;
+        if (!tp) {
+          if (batchT === t) invertMissing++;
+          continue;
+        }
+        // a trade entering in [t, t + step) exits at or after t: the scan starts at the first exit ≥ t (exit order) and
+        // stops where even the tape's longest hold cannot reach back into the step (every later exit is later still)
+        const exitCap = batchEnd + maxHoldOf(tp);
+        for (let i = lowerBound(tp.exitT, batchT); i < tp.n; i++) {
+          if (tp.exitT[i] >= exitCap) break;
+          const e = tp.entryT[i];
+          if (e >= batchT && e < batchEnd) cands.push({ tr: tradeAt(tp, i), tp });
+        }
+        if (markOpen)
+          for (const op of tp.open)
+            if (op.entryT >= batchT && op.entryT < batchEnd)
+              cands.push({ tr: markedOpenTrade(tp, op, stopT), tp });
       }
-      // signal skips are named apart from the engine's ("sig:why"): the same reason means different gates
-      const skipName = (why: string) => (sigCfg(tr.cfg) ? `sig:${why}` : why);
-      // an evaluation family's run: another family's candidate was processed above (it confirms signals and feeds the
-      // Block sources, as on the desk) but never executes or takes a capped slot
-      if (families && !families.has(botFamilyOf(tr.cfg))) {
-        skipped++;
-        skip(skipName("family"), tr.side, tr.cfg);
-        skipR(skipName("family"), tr.r);
-        continue;
+      let mergedSignals = 0;
+      for (const cursor of signalEntries) {
+        const { tp, order } = cursor;
+        const active: Array<boolean | undefined> = [];
+        const take = (sym: string, side: number, slot: number) => {
+          sigFunnel.candidates++;
+          const yes = (active[slot] ??= !stepOpts.signalActive ||
+            signalActiveHas(stepOpts.signalActive, tp.bot, tp.ind, sym, side, tp.kind, tp.id));
+          if (!yes) inactiveSig(side);
+          return yes;
+        };
+        while (cursor.next < order.length && tp.entryT[order[cursor.next]] < batchEnd) {
+          const i = order[cursor.next++];
+          if (++mergedSignals % 2048 === 0) yield -7;
+          if (take(tp.syms[tp.symI[i]], tp.side[i], tp.symI[i] * 2 + (tp.side[i] > 0 ? 1 : 0)))
+            cands.push({ tr: tradeAt(tp, i), tp });
+        }
+        if (markOpen) for (const op of tp.open) {
+          if (op.entryT < batchT || op.entryT >= batchEnd) continue;
+          if (take(op.sym, op.side, tp.syms.indexOf(op.sym) * 2 + (op.side > 0 ? 1 : 0)))
+            cands.push({ tr: markedOpenTrade(tp, op, stopT), tp });
+        }
+        if (++mergedSignals % 32 === 0) yield -7;
       }
-      // the same order twice: two indications computing the same signal (e.g. an EMA cross under two names) give
-      // identical trades at the same protect — executed once, or the duplicate doubles the position
-      const dk = dupKey(tr);
-      if (executedKeys.has(dk)) {
-        skipped++;
-        skip(skipName("duplicate"), tr.side, tr.cfg);
-        skipR(skipName("duplicate"), tr.r);
-        continue;
-      }
-      const hourKey = Math.floor(tr.entryT / H);
-      let why = "";
-      // engine orders and signal orders are capped each on their own (same class only)
-      const cls = sigCfg(tr.cfg);
-      const caps = capsOf(o, cls);
-      const gateOn = cls && o.signalSourceGate?.enabled;
-      // hedge-only signal: trades while the book is losing (this or the previous hour), without confirmation
-      const hedging =
-        cls &&
-        hedgeKeys.size > 0 &&
-        hedgeKeys.has(sigActiveKey(tp.bot, tp.ind, tr.sym, tr.side, tp.kind, tp.id));
-      const bookLosing =
-        (!o.coord?.hedgePrevOnly && (hourNet.get(hourKey) ?? 0) < 0) ||
-        (hourNet.get(hourKey - 1) ?? 0) < 0;
-      const coordRaw = coordBlock(o.coord, tr, hourNet, open.items, engineOpen);
-      const coordWhy =
-        (hedging
-          ? bookLosing
-            ? coordRaw === "confirm"
-              ? null
-              : coordRaw
-            : "hedgeIdle"
-          : coordRaw) ??
-        s2?.blocked(tr.sym, tr.side) ??
-        (gateOn &&
-        sourceUnstable(
-          srcClosed.get(signalSourceOf(tr.cfg.split("|")[1])),
-          tr.entryT,
-          o.signalSourceGate!,
+      // best first: at the same entry time the better candidate takes a capped slot first
+      yield* stableSortGen(
+        cands,
+        (a, b) =>
+          a.tr.entryT - b.tr.entryT ||
+          prio(a.tp, a.tr.sym, a.tr.side) - prio(b.tp, b.tr.sym, b.tr.side) ||
+          a.tr.cfg.localeCompare(b.tr.cfg),
+      );
+      yield -8;
+      let ci = 0;
+      for (const { tr } of cands) rangeRow(stepRange(tr.cfg)).candidates++;
+      for (const { tr, tp } of cands) {
+        // Entry gates can touch several relation / acceptance books per candidate. A 300-order batch
+        // produced 800 ms main-thread slices on the 12-symbol replay, so hand control back in smaller batches.
+        if (++ci % 32 === 0) yield -9;
+        yield* settle(tr.entryT);
+        // Keep the full candidate feed for guards/confirmation; accepted-order Block reads only the later marker.
+        const fk = `${tr.cfg}|${tr.sym}|${tr.side}|${tr.entryT}`;
+        let fx = seen.get(fk);
+        if (!fx) {
+          const fe = blockEntryOf(tr, "candidate-unit");
+          fx = { exitT: tr.exitT, ...fe, ...(tr.markedOpen ? { open: true } : {}) };
+          // the auto window scores the windows on their levels now, at the entry (paper and the audit replay the stamps)
+          book?.stampEntry(fx);
+          seen.set(fk, fx);
+          vopen.push(fx.exitT, fx);
+          if (!sigCfg(tr.cfg)) engineOpen.add(tr.sym, tr.side, 1);
+        }
+        // signal skips are named apart from the engine's ("sig:why"): the same reason means different gates
+        const skipName = (why: string) => (sigCfg(tr.cfg) ? `sig:${why}` : why);
+        // an evaluation family's run: another family's candidate was processed above (it confirms signals and feeds the
+        // Block sources, as on the desk) but never executes or takes a capped slot
+        if (families && !families.has(botFamilyOf(tr.cfg))) {
+          skipped++;
+          skip(skipName("family"), tr.side, tr.cfg);
+          skipR(skipName("family"), tr.r);
+          continue;
+        }
+        // the same order twice: two indications computing the same signal (e.g. an EMA cross under two names) give
+        // identical trades at the same protect — executed once, or the duplicate doubles the position
+        const dk = dupKey(tr);
+        if (executedKeys.has(dk)) {
+          skipped++;
+          skip(skipName("duplicate"), tr.side, tr.cfg);
+          skipR(skipName("duplicate"), tr.r);
+          continue;
+        }
+        const hourKey = Math.floor(tr.entryT / H);
+        let why = "";
+        // engine orders and signal orders are capped each on their own (same class only)
+        const cls = sigCfg(tr.cfg);
+        const caps = capsOf(o, cls);
+        const gateOn = cls && o.signalSourceGate?.enabled;
+        // hedge-only signal: trades while the book is losing (this or the previous hour), without confirmation
+        const hedging =
+          cls &&
+          hedgeKeys.size > 0 &&
+          hedgeKeys.has(sigActiveKey(tp.bot, tp.ind, tr.sym, tr.side, tp.kind, tp.id));
+        const bookLosing =
+          (!o.coord?.hedgePrevOnly && (hourNet.get(hourKey) ?? 0) < 0) ||
+          (hourNet.get(hourKey - 1) ?? 0) < 0;
+        const coordRaw = coordBlock(o.coord, tr, hourNet, open.items, engineOpen);
+        const coordWhy =
+          (hedging
+            ? bookLosing
+              ? coordRaw === "confirm"
+                ? null
+                : coordRaw
+              : "hedgeIdle"
+            : coordRaw) ??
+          s2?.blocked(tr.sym, tr.side) ??
+          (gateOn &&
+          sourceUnstable(
+            srcClosed.get(signalSourceOf(tr.cfg.split("|")[1])),
+            tr.entryT,
+            o.signalSourceGate!,
+          )
+            ? "sourceUnstable"
+            : null);
+        if (o.guardPct > 0 && (hourNet.get(hourKey) ?? 0) <= -o.guardPct) why = "hourGuard";
+        else if (coordWhy) why = coordWhy;
+        else if (counts.dupe(tr.sym, tr.cfg, tr.side)) why = "dupe";
+        else if (counts.perSymbol(tr.sym, cls) >= caps.perSymbol) why = "perSymbol";
+        else if (counts.open(cls) >= caps.maxOpen) why = "maxOpen";
+        else if (counts.perSide(tr.side, cls) >= caps.perSide) why = "perSide";
+        else if (
+          counts.positionsFull(tr.sym, tr.side, cls, cls ? o.signalMaxPositions : o.maxPositions)
         )
-          ? "sourceUnstable"
-          : null);
-      if (o.guardPct > 0 && (hourNet.get(hourKey) ?? 0) <= -o.guardPct) why = "hourGuard";
-      else if (coordWhy) why = coordWhy;
-      else if (counts.dupe(tr.sym, tr.cfg, tr.side)) why = "dupe";
-      else if (counts.perSymbol(tr.sym, cls) >= caps.perSymbol) why = "perSymbol";
-      else if (counts.open(cls) >= caps.maxOpen) why = "maxOpen";
-      else if (counts.perSide(tr.side, cls) >= caps.perSide) why = "perSide";
-      else if (
-        counts.positionsFull(tr.sym, tr.side, cls, cls ? o.signalMaxPositions : o.maxPositions)
-      )
-        why = "maxPositions";
-      else if (
-        o.entryCrowd &&
-        (crowd.get(crowdKey(tr.cfg, tr.sym, tr.side, tr.entryT)) ?? 0) >= crowdCapOf(o, tr.cfg)
-      )
-        why = "crowd";
-      const dec = why
-        ? null
-        : execDecision(tp, tr.entryT, stepOpts, {
-            book,
-            guard,
-            direction,
-            sym: tr.sym,
-            side: tr.side,
-          });
-      if (dec && !dec.ok) why = dec.why;
-      if (why || !dec || !dec.ok) {
-        skipped++;
-        skip(skipName(why), tr.side, tr.cfg);
-        skipR(skipName(why), tr.r);
-        continue;
+          why = "maxPositions";
+        else if (
+          o.entryCrowd &&
+          (crowd.get(crowdKey(tr.cfg, tr.sym, tr.side, tr.entryT)) ?? 0) >= crowdCapOf(o, tr.cfg)
+        )
+          why = "crowd";
+        const dec = why
+          ? null
+          : execDecision(tp, tr.entryT, stepOpts, {
+              book,
+              guard,
+              direction,
+              sym: tr.sym,
+              side: tr.side,
+            });
+        if (dec && !dec.ok) why = dec.why;
+        if (why || !dec || !dec.ok) {
+          skipped++;
+          skip(skipName(why), tr.side, tr.cfg);
+          skipR(skipName(why), tr.r);
+          continue;
+        }
+        // All account-independent Real entry gates passed. Do not stamp candidates held back by any earlier gate.
+        fx.accepted = true;
+        // the sources that raised it pause once it closes positive (the feed entry carries them into the book)
+        if (dec.vol > 1 && dec.src?.length) fx.bsrc = dec.src;
+        // Stable-02 relation volume on top of the Block volume (the stack stays within the Block maximum)
+        const stackCap = blockStackCap(o.block);
+        const cv = s2 ? Math.min(s2.volume(tr.entryT), Math.max(1, stackCap / dec.vol)) : 1;
+        const vf = indicationVolumeFactors.get(tp.id) ?? 1;
+        const hedgeVol = hedging ? (o.coord?.hedgeVolumeFactor ?? 1) : 1;
+        const rangeVol = rangeVolumeFactorFor(tp, o);
+        const executionMult = dec.vol * cv * vf * hedgeVol * rangeVol;
+        const x: Trade = {
+          ...tr,
+          r: tr.r * executionMult,
+          vol: (tr.vol ?? 1) * executionMult,
+          mult: executionMult,
+          ...(cv !== 1 ? { coordVol: cv } : {}),
+          ...(vf !== 1 ? { volFactor: vf } : {}),
+          ...(hedgeVol !== 1 ? { hedgeVol } : {}),
+          ...(rangeVol !== 1 ? { rangeVol } : {}),
+          ...(hedging ? { hedge: true } : {}),
+          level: tp.kind.startsWith("dca") || tp.kind === "axis" ? tr.level : dec.level,
+          ...(dec.legs ? { legs: dec.legs } : {}),
+          ...(dec.blockLevels
+            ? {
+                blockLevels: dec.blockLevels,
+                blockEffectiveLevels: dec.blockEffectiveLevels,
+                blockSampleCounts: dec.blockSampleCounts,
+              }
+            : {}),
+        };
+        executedKeys.add(dk);
+        if (o.entryCrowd) {
+          const ck = crowdKey(tr.cfg, tr.sym, tr.side, tr.entryT);
+          crowd.set(ck, (crowd.get(ck) ?? 0) + 1);
+        }
+        if (x.markedOpen) openAtEnd.push(x);
+        else trades.push(x);
+        taken++;
+        rangeRow(stepRange(x.cfg)).taken++;
+        net += x.r * 100;
+        open.push(x.exitT, x);
+        counts.add(x, 1);
       }
-      // All account-independent Real entry gates passed. Do not stamp candidates held back by any earlier gate.
-      fx.accepted = true;
-      // the sources that raised it pause once it closes positive (the feed entry carries them into the book)
-      if (dec.vol > 1 && dec.src?.length) fx.bsrc = dec.src;
-      // Stable-02 relation volume on top of the Block volume (the stack stays within the Block maximum)
-      const stackCap = blockStackCap(o.block);
-      const cv = s2 ? Math.min(s2.volume(tr.entryT), Math.max(1, stackCap / dec.vol)) : 1;
-      const vf = indicationVolumeFactors.get(tp.id) ?? 1;
-      const hedgeVol = hedging ? (o.coord?.hedgeVolumeFactor ?? 1) : 1;
-      const rangeVol = rangeVolumeFactorFor(tp, o);
-      const executionMult = dec.vol * cv * vf * hedgeVol * rangeVol;
-      const x: Trade = {
-        ...tr,
-        r: tr.r * executionMult,
-        vol: (tr.vol ?? 1) * executionMult,
-        mult: executionMult,
-        ...(cv !== 1 ? { coordVol: cv } : {}),
-        ...(vf !== 1 ? { volFactor: vf } : {}),
-        ...(hedgeVol !== 1 ? { hedgeVol } : {}),
-        ...(rangeVol !== 1 ? { rangeVol } : {}),
-        ...(hedging ? { hedge: true } : {}),
-        level: tp.kind.startsWith("dca") || tp.kind === "axis" ? tr.level : dec.level,
-        ...(dec.legs ? { legs: dec.legs } : {}),
-        ...(dec.blockLevels
-          ? {
-              blockLevels: dec.blockLevels,
-              blockEffectiveLevels: dec.blockEffectiveLevels,
-              blockSampleCounts: dec.blockSampleCounts,
-            }
-          : {}),
-      };
-      executedKeys.add(dk);
-      if (o.entryCrowd) {
-        const ck = crowdKey(tr.cfg, tr.sym, tr.side, tr.entryT);
-        crowd.set(ck, (crowd.get(ck) ?? 0) + 1);
-      }
-      if (x.markedOpen) openAtEnd.push(x);
-      else trades.push(x);
-      taken++;
-      rangeRow(stepRange(x.cfg)).taken++;
-      net += x.r * 100;
-      open.push(x.exitT, x);
-      counts.add(x, 1);
+      // Every candidate belongs to exactly one disjoint entry window. Keep its feed object in feed/vopen, but its
+      // long deduplication key and materialized Trade are no longer needed after that window has been processed.
+      seen.clear();
+      cands.length = 0;
+      yield -17;
     }
-    // Every candidate belongs to exactly one disjoint entry window. Keep its feed object in feed/vopen, but its
-    // long deduplication key and materialized Trade are no longer needed after that window has been processed.
-    seen.clear();
-    cands.length = 0;
     steps.push({
       t,
       main: eligible,

@@ -463,18 +463,29 @@ function sliceClock(ms = 8): () => boolean {
   };
 }
 
+type AcceptColumns = { t: Float64Array; gp: Float64Array; gl: Float64Array; cn: Int32Array };
+type LazyAcceptSource = { tp: AcceptTape; counts: Int32Array };
+const acceptIdentity = (tp: Pick<AcceptTape, "ind" | "kind" | "id">) => JSON.stringify([tp.ind, tp.kind, tp.id]);
+// These bound derived caches, never evidence. Evicted groups are reconstructed from immutable original columns.
+const ACCEPT_CACHE_GROUPS = 4096;
+const ACCEPT_CACHE_BYTES = 32 * 1024 * 1024;
+
 export class SignalAcceptIndex {
   /** Share immutable group columns, replacing only changed groups in the next published generation. */
   fork(): SignalAcceptIndex {
-    const next = new SignalAcceptIndex();
+    const next = new SignalAcceptIndex([], this.lazy);
     next.groups = new Map(this.groups);
+    next.sources = new Map(this.sources);
+    // Each generation has its own LRU. Immutable tape columns are shared; old qualification remains unchanged.
     return next;
   }
-  private groups = new Map<
-    string,
-    { t: Float64Array; gp: Float64Array; gl: Float64Array; cn: Int32Array }
-  >();
-  constructor(tapes: readonly AcceptTape[] = []) {
+  private groups = new Map<string, AcceptColumns>();
+  private sources = new Map<string, LazyAcceptSource>();
+  private cached = new Map<string, { source: LazyAcceptSource; columns: AcceptColumns; bytes: number }>();
+  private cachedBytes = 0;
+  private lazy: boolean;
+  constructor(tapes: readonly AcceptTape[] = [], lazy = false) {
+    this.lazy = lazy;
     for (const _ of this.fill(tapes));
   }
   /**
@@ -483,6 +494,8 @@ export class SignalAcceptIndex {
    * retain the generic stable sort and onset de-duplication below.
    */
   *fill(tapes: readonly AcceptTape[]): Generator<number, void> {
+    this.cached.clear();
+    this.cachedBytes = 0;
     // time-boxed: a yield every ~8 ms of work (a count of closes left 1–2.6 s slices on x02, 7 Oct profile)
     const clock = sliceClock();
     const keysOf = (tp: AcceptTape) => {
@@ -493,7 +506,7 @@ export class SignalAcceptIndex {
       };
     };
     const sigTapes = tapes.filter((tp) => isSignalInd(tp.ind) && !tp.heldOnly);
-    const identityOf = (tp: AcceptTape) => JSON.stringify([tp.ind, tp.kind, tp.id]);
+    const identityOf = acceptIdentity;
     const identities = new Map<string, number>();
     let identified = 0;
     for (const tp of sigTapes) {
@@ -537,6 +550,11 @@ export class SignalAcceptIndex {
       }
       if (!ordered) {
         fallback.push(tp);
+        continue;
+      }
+      if (this.lazy) {
+        this.sources.set(identityOf(tp), { tp, counts });
+        if (clock()) yield 0;
         continue;
       }
       const cols: Array<
@@ -587,6 +605,8 @@ export class SignalAcceptIndex {
     }
     const count = new Map<string, number>();
     for (const tp of fallback) {
+      // A refreshed duplicate/unordered identity must use the complete generic record, not a stale lazy source.
+      this.sources.delete(identityOf(tp));
       const key = keysOf(tp);
       for (let i = 0; i < tp.n; i++) {
         const k = key(i);
@@ -656,9 +676,56 @@ export class SignalAcceptIndex {
       if (clock()) yield 0;
     }
   }
+  /** Materialize only a requested exact context, preserving original addition order and onset de-duplication. */
+  private context(key: string): AcceptColumns | undefined {
+    const hit = this.cached.get(key);
+    if (hit) {
+      this.cached.delete(key);
+      this.cached.set(key, hit);
+      return hit.columns;
+    }
+    const at = key.lastIndexOf("|cfg=");
+    if (at < 0) return this.groups.get(key);
+    const parts = key.slice(0, at).split("|");
+    const kind = parts.pop()!, side = Number(parts.pop()), sym = parts.pop()!, ind = parts.join("|");
+    let id: string;
+    try { id = decodeURIComponent(key.slice(at + 5)); } catch { return this.groups.get(key); }
+    const source = this.sources.get(acceptIdentity({ ind, kind, id }));
+    if (!source) return this.groups.get(key);
+    const { tp, counts } = source;
+    const symI = tp.syms.indexOf(sym), slot = symI * 2 + (side > 0 ? 1 : 0);
+    const n = symI < 0 || (side !== 1 && side !== -1) ? 0 : counts[slot];
+    if (!n) return undefined;
+    const columns: AcceptColumns = {
+      t: new Float64Array(n), gp: new Float64Array(n + 1), gl: new Float64Array(n + 1), cn: new Int32Array(n + 1),
+    };
+    const seen = tp.entryT ? new Set<number>() : null;
+    let j = 0;
+    for (let i = 0; i < tp.n; i++) {
+      if (tp.symI[i] !== symI || (tp.side[i] > 0 ? 1 : -1) !== side) continue;
+      const r = +tp.r[i], entry = tp.entryT ? +tp.entryT[i] : 0;
+      columns.t[j] = tp.exitT[i];
+      columns.gp[j + 1] = columns.gp[j] + (r > 0 ? r : 0);
+      columns.gl[j + 1] = columns.gl[j] + (r > 0 ? 0 : -r);
+      columns.cn[j + 1] = columns.cn[j] + (seen?.has(entry) ? 0 : 1);
+      seen?.add(entry);
+      j++;
+    }
+    const bytes = columns.t.byteLength + columns.gp.byteLength + columns.gl.byteLength + columns.cn.byteLength;
+    while (this.cached.size && (this.cached.size >= ACCEPT_CACHE_GROUPS || this.cachedBytes + bytes > ACCEPT_CACHE_BYTES)) {
+      const first = this.cached.keys().next().value!;
+      this.cachedBytes -= this.cached.get(first)!.bytes;
+      this.cached.delete(first);
+    }
+    if (bytes <= ACCEPT_CACHE_BYTES) {
+      this.cached.set(key, { source, columns, bytes });
+      this.cachedBytes += bytes;
+    }
+    return columns;
+  }
   /** profit factor (every close) and count (signal entries) of the group's closes in (t − hours, t] */
   stats(key: string, t: number, hours: number): { n: number; pf: number } {
-    const g = this.groups.get(key);
+    const g = this.lazy ? this.context(key) : this.groups.get(key);
     if (!g) return { n: 0, pf: 0 };
     // first index with exit > x
     const above = (x: number) => {

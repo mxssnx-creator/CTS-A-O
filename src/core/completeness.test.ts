@@ -165,7 +165,7 @@ const CASES: Record<string, Case> = {
   "exitStrategy.minGreenHourShare": num(0, 1),
   "exitStrategy.maxDdr": num(0, 10),
   "exitStrategy.holdH": num(0.5, 96),
-  "exitStrategy.maxConfigsPerPair": num(6, 128, { int: true }),
+  "exitStrategy.maxConfigsPerPair": num(6, 512, { int: true }),
   "exitStrategy.quantiles": list(0.2, 0.95, { max: 4 }),
   "exitStrategy.stopQuantiles": list(0.2, 0.95, { max: 4 }),
   "exitStrategy.minTp": { ...num(0.001, 0.5), with: [["exitStrategy.maxTp", 1]] },
@@ -284,14 +284,14 @@ const CASES: Record<string, Case> = {
   "live.leverage": oneOf(["max", 1, 150], ["bogus", 0.5, 151]),
   "live.liveLastN": num(0, 200),
   "live.liveGroupLastN": num(0, 2000),
-  // 0 = no cap; else 10 … 2000 in steps of 10
-  "signals.count": num(10, 2000, { int: true, also: [0, 100], bad: [15] }),
+  // 0 = no cap; else 10 … 10,000 in steps of 10
+  "signals.count": num(10, 10_000, { int: true, also: [0, 100], bad: [15] }),
   "signals.coordination.enabled": {
     ...oneOf([false, true], ["false", 0, 1, null]),
     with: [["signals.coordination.count", 100]],
   },
   "signals.coordination.minSources": num(2, 100, { int: true }),
-  "signals.coordination.count": num(10, 2000, { int: true, also: [0, 100], bad: [15] }),
+  "signals.coordination.count": num(10, 10_000, { int: true, also: [0, 100], bad: [15] }),
   "signals.coordination.volumeFactor": num(1, 22, { int: true }),
   ...Object.fromEntries(
     INDICATION_KINDS.map((kind) => [
@@ -310,14 +310,14 @@ const CASES: Record<string, Case> = {
   "signals.trailing.slOfTp": num(0.2, 5),
   "signals.trailingOnly.enabled": oneOf([false, true], ["false", 0, 1, null]),
   "signals.trailingOnly.sl": {
-    ...list(0.002, 0.2, { max: 8 }),
-    ok: [...list(0.002, 0.2).ok, Array.from({ length: 8 }, () => 0.002)],
-    bad: [...list(0.002, 0.2, { max: 8 }).bad, null, "0.01", ["0.01"], [Number.NaN]],
+    ...list(0.002, 0.2, { max: 64 }),
+    ok: [...list(0.002, 0.2).ok, Array.from({ length: 64 }, () => 0.002)],
+    bad: [...list(0.002, 0.2, { max: 64 }).bad, null, "0.01", ["0.01"], [Number.NaN]],
   },
   "signals.trailingOnly.trail": {
-    ...list(0.002, 0.1, { max: 8 }),
-    ok: [...list(0.002, 0.1).ok, Array.from({ length: 8 }, () => 0.002)],
-    bad: [...list(0.002, 0.1, { max: 8 }).bad, null, "0.01", ["0.01"], [Number.NaN]],
+    ...list(0.002, 0.1, { max: 64 }),
+    ok: [...list(0.002, 0.1).ok, Array.from({ length: 64 }, () => 0.002)],
+    bad: [...list(0.002, 0.1, { max: 64 }).bad, null, "0.01", ["0.01"], [Number.NaN]],
   },
   "signals.trailingOnly.trailStep": num(0.1, 2),
   "signals.holdH": num(0.5, 96),

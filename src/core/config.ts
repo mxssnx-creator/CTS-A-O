@@ -169,7 +169,7 @@ export const DEFAULT_BLOCK: BlockConfig = {
  * Ceiling on the protect-grid variants: a memory guard, not a working limit (operator, 5 Oct: caps removed or kept
  * very high so the engine processes freely). It was 1,200, which a free grid reaches quickly.
  */
-export const GRID_VARIANTS_MAX = 20_000;
+export const GRID_VARIANTS_MAX = 100_000;
 
 export const DEFAULT_DCA: DcaConfig = { levels: 1, addRatio: 2.5, step: 0.02, stopGap: 0.5, slOfTp: 1 };
 /** Axis: 3 legs 0.7 ATR apart toward the EMA-50 axis, entered at 0.35–2.6 ATR displacement (desk defaults). */
