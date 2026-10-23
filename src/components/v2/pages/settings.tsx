@@ -1023,7 +1023,7 @@ export function SignalsSettings(props: {
         </Field>
         <Field
           label="Historic: entries needed (minN)"
-          hint="a signal with fewer historic entries gets none (5–1000)"
+          hint="pooled mature source entries for fitting (5–1000); each config separately keeps its own close minimum, PF and Last-N gates"
         >
           <Num
             int

@@ -451,7 +451,10 @@ export function* signalHistProtectsGen(
           if (validation) {
             const contexts = signalHistStats(prepared.series, configId(bot as "follow", ind, lane), lane, sig, validation, cooldown);
             if (diagnostics) diagnostics.evaluated++;
-            const sampled = contexts.filter(({ history, last, required }) => history.n >= Math.max(h.minN, validation.minTrades) && last.n >= required);
+            // hist.minN already validated the pooled mature excursions used to fit this source's quantiles.
+            // Each exact symbol/direction must satisfy its configured close minimum, without borrowing a
+            // sibling's returns or inheriting the separate pooled fitting count as an extra own-context gate.
+            const sampled = contexts.filter(({ history, last, required }) => history.n >= validation.minTrades && last.n >= required);
             if (!sampled.length) {
               if (diagnostics) diagnostics.insufficientTrades++;
               continue;

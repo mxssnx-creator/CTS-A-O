@@ -16,6 +16,7 @@ import { signalActiveHas } from "../src/core/signals.ts";
 import { parseConfigId, configId, kindOfId } from "../src/core/pipeline/pipeline.ts";
 import { BOOK_NOTIONAL_EPS_USD } from "./lib/book-notional.mjs";
 import { modeledUnitReturn } from "../src/core/metrics/stats.ts";
+import { auditSignalDerivedCatalog } from "./audit-signal-derived-catalog.mjs";
 
 const H = 3_600_000;
 const near = (a, b, why) => assert.ok(Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) <= 1e-8 * Math.max(1, Math.abs(a), Math.abs(b)), why);
@@ -200,11 +201,14 @@ export async function auditSignalCoverage(dir, out = resolve(dir, "coverage")) {
     assert.equal(gs.reduce((n,g)=>n+g.execution.n,0), funded.trades.length, `Funded membership ${dimension}`);
     assert.equal(gs.reduce((n,g)=>n+g.start.contexts,0), hourly[0].contexts, `Coverage denominator ${dimension}`);
   }
-  const result = { schema: "cts-signal-coverage-v1", ok: true, protocolSha256, sourceSha256: protocol.source.sha256, window: protocol.window, symbols,
+  const builtExit = finalized.find(g => g.dimension === "type" && g.label === "exit")?.configs ?? 0;
+  const expectedExit = raw.engine.independentExit?.configs ?? 0;
+  const complete = expected.size === 0 && builtExit === expectedExit;
+  const result = { schema: "cts-signal-coverage-v1", ok: complete, protocolSha256, sourceSha256: protocol.source.sha256, window: protocol.window, symbols,
     policy: { historyH: wf.signalLongH, validLastN: wf.rangeOpts?.sig?.validLastN ?? wf.signalValidLastN, fullWindowMinTrades: wf.gates.minTrades,
       exitMinTrades: wf.exitMinTrades, lastNFloor: wf.gates.lastNFloor, toggles: settings.toggles, signalSettings: settings.signals, gates: wf.gates, exitSettings: settings.exitStrategy },
     catalog: { sources: sourceIds.size, sourceLanes: combos.length, requestedCells: requested, expectedEffectiveConfiguredCells: tapes - additions + expected.size,
-      builtConfigs: tapes, fittedOrRetainedConfigs: additions, missingConfiguredCells: expected.size, missingExamples: [...expected].slice(0,50), closes },
+      builtConfigs: tapes, fittedOrRetainedConfigs: additions, missingConfiguredCells: expected.size, missingExamples: [...expected].slice(0,50), expectedExit, builtExit, closes },
     definitions: { context: "One exact config × symbol × direction; zero-trade contexts remain in the denominator.",
       lastNReady: "At least the full configured Last-N closes strictly before each clock. The separate full-window minTrades and all PF/DDT/DDR/stability gates still apply.",
       qualifiedHistory: "Only exact contexts passing all config gates at this clock. Overlapping configurations are not independent market observations; this PF is not later execution PF.",
@@ -218,6 +222,8 @@ export async function auditSignalCoverage(dir, out = resolve(dir, "coverage")) {
       baseByRange: raw.engine.baseByRange, signals: raw.engine.signals, independentExit: raw.engine.independentExit, skips: raw.engine.skips, skipsByRange: raw.engine.skipsByRange, signalFunnel: raw.engine.signalFunnel },
     audit: { comparisons, elapsedMs: performance.now() - started, peakRssMb }, configFile };
   writeFileSync(out + ".json", JSON.stringify(result,null,2) + "\n");
+  assert.ok(complete, `Incomplete primary/Exit catalog: ${JSON.stringify(result.catalog)}`);
+  if (out === resolve(dir, "coverage")) await auditSignalDerivedCatalog(dir);
   console.log(JSON.stringify({ ok: true, catalog: result.catalog, start: result.hourly[0], end: result.hourly.at(-1), funding: result.funding, audit: result.audit }));
   return result;
 }
