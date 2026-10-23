@@ -65,7 +65,7 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npm run build:core-worker
+      - run: env -u DATABASE_URL npm run build
       - name: Run the complete core inventory partition
         run: npm run test:core -- --test-shard=${{ matrix.shard }}/4
 
@@ -81,7 +81,7 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npm run build:core-worker
+      - run: env -u DATABASE_URL npm run build
       - name: Run the two longer runtime checks
         run: npm run test:core:slow
 
