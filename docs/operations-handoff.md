@@ -3812,3 +3812,19 @@ warnings), and `git diff --check`. The exact two-worker run was validated agains
 its frozen feed, symbol universe, window and source before the final
 report-only coverage-kind adjustment. No runtime deployment or live reload was
 performed; the full 15-day feed remains required for a complete evaluation.
+
+## Hourly evaluation consistency — 2026-10-23
+
+From `5a6285ecd5c10ff3743e621670e8831f559f611f`, repaired the initial validated
+pool's pooled-direction/short-Signal-history calculation, Signal Exit cache
+policy invalidation and future closes in the multi-window evaluator. Signal
+evaluation also avoids allocating/sorting intermediate history Trade objects.
+Details: [hourly evaluation report](hourly-evaluation-20261023/README.md).
+
+Initial 13 regressions fail on the parent and pass after repair; the expanded
+gate matrix passes 237/237 and selection-index checks 6/6. The initial TypeScript
+check passes. Runtime source seal is
+`f6befe08a4096687d33a469cc92a8abb65a38d2b2ffe5026a42849e59537de0e`.
+Full release checks and the recovered 397h-feed Signals/Exit replay remain in
+progress. No live deployment, database/settings change or venue order occurred.
+Do not certify stable hourly profitability from this correctness checkpoint.

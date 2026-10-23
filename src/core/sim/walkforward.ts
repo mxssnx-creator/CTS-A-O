@@ -3855,6 +3855,10 @@ function signalEvaluationKey(tp: ConfigTape, t: number, o: WalkForwardOptions): 
     o.signalValidLastN,
     o.rangeOpts?.sig,
     o.signalRank?.minTrades,
+    o.exitMinTrades,
+    o.exitMinPf,
+    o.exitMinGreenHourShare,
+    o.exitMaxDdr,
     tp.heldOnly === true,
     tp.fromT,
   ]);
@@ -3874,8 +3878,11 @@ function signalConfigEvalWithKey(
   if (hit) return hit;
   const indices = signalContextOf(tp, sym, side);
   const from = t - signalHistoryHours(o) * H;
+  const first = indices ? lowerBound(indices, lowerBound(tp.exitT, from)) : 0;
+  const before = indices ? lowerBound(indices, lowerBound(tp.exitT, t)) : 0;
   let n = 0, gp = 0, gl = 0;
-  if (indices) for (const i of indices) if (tp.exitT[i] >= from && tp.exitT[i] < t) {
+  if (indices) for (let j = first; j < before; j++) {
+    const i = indices[j];
     n++; const r = tp.r[i]; if (r > 0) gp += r; else gl -= r;
   }
   const summary = { n, pf: profitFactor(gp, gl), net: (gp - gl) * 100, gp: gp * 100, gl: gl * 100 };
@@ -3887,11 +3894,10 @@ function signalConfigEvalWithKey(
   const floor = minPfForTape(tp, o);
   if (!Number.isFinite(summary.pf) || summary.pf < floor) return reject("pf");
   if (!signalLastNOk(tp, sym, side, t - 1, validLastNOf(tp, o), floor, o.gates.maxDdtH, maxDdrForTape(tp, o) ?? 0, o.gates.lastNFloor ?? 0, o.gates.warmup !== false, lossPriorOf(tp, o.gates))) return reject("lastN");
-  const rows: Trade[] = [];
-  if (indices) for (const i of indices) rows.push(tradeAt(tp, i));
-  const own = makeTape(tp.id, tp.bot, tp.ind, tp.protect, tp.kind, [sym], rows, [], []);
-  own.fromT = tp.fromT;
-  own.heldOnly = tp.heldOnly;
+  // Preserve the original tied order and all past Last-N evidence without
+  // allocating/sorting Trade objects or copying the unobserved replay future.
+  const end = indices ? lowerBound(indices, lowerBound(tp.exitT, t + 1)) : 0;
+  const own = indexedEvaluationTape(tp, indices!, 0, end);
   const a = lowerBound(own.exitT, t - signalHistoryHours(o) * H), b = lowerBound(own.exitT, t);
   const result: ConfigEval = tp.heldOnly ? { ok: false, fail: "closes", pf: 0, n: 0, net: 0 } : configEvalAt(own, t, o, a, b, win(own, a, b), Math.max(o.gates.minDdtH ?? 0, o.gates.maxDdtH * signalHistoryHours(o) / 72));
   cached.contexts.set(slot, result);
@@ -4313,9 +4319,7 @@ export function* validatedSetGen(
   o: WalkForwardOptions,
 ): Generator<number, Set<string>> {
   const out = new Set<string>();
-  const from = t - Math.max(o.longH, o.preH) * H;
   const botOk = o.bots.length ? new Set<string>(o.bots) : null;
-  const ddtMax = Math.max(o.gates.minDdtH ?? 0, (o.gates.maxDdtH * Math.max(o.longH, o.preH)) / 72);
   const free: WalkForwardOptions = { ...o, seatSet: "pool", validated: undefined };
   let seen = 0;
   let t0 = performance.now();
@@ -4326,12 +4330,9 @@ export function* validatedSetGen(
     }
     const info = selInfoOf(tp, free, botOk);
     if (!info.inScope || !info.canSeat) continue;
-    const a = lowerBound(tp.exitT, from);
-    const b = lowerBound(tp.exitT, t);
-    const gp = tp.gp[b] - tp.gp[a];
-    const gl = tp.gl[b] - tp.gl[a];
-    const net = (tp.rs[b] - tp.rs[a]) * 100;
-    if (configPassAt(tp, t, o, a, b, b - a, net, profitFactor(gp, gl), gp, gl, ddtMax, info)) out.add(tp.id);
+    // The initial validated pool must use the same own-direction / Signal
+    // context proof and independent history as hourly selection and entry.
+    if (configEval(tp, t, o).ok) out.add(tp.id);
   }
   return out;
 }
@@ -4947,6 +4948,38 @@ function directionIndexOf(tp: ConfigTape, side: number): Uint32Array {
   return idx;
 }
 
+/** Compact immutable evaluation view; keep the source's chronological order and return precision. */
+function indexedEvaluationTape(tp: ConfigTape, idx: Uint32Array, start: number, end: number): ConfigTape {
+  const n = end - start;
+  const own: ConfigTape = {
+    ...tp,
+    ...tapeViews(new ArrayBuffer(tapeBytes(n)), 0, n),
+    n,
+    open: [],
+    pending: [],
+  };
+  for (let i = 0; i < n; i++) {
+    const j = idx[start + i];
+    own.exitT[i] = tp.exitT[j];
+    own.entryT[i] = tp.entryT[j];
+    own.r[i] = tp.r[j];
+    own.entry[i] = tp.entry[j];
+    own.exit[i] = tp.exit[j];
+    own.symI[i] = tp.symI[j];
+    own.side[i] = tp.side[j];
+    own.reason[i] = tp.reason[j];
+    own.bars[i] = tp.bars[j];
+    own.vol[i] = tp.vol[j];
+    own.level[i] = tp.level[j];
+    const r = own.r[i];
+    own.gp[i + 1] = own.gp[i] + Math.max(0, r);
+    own.gl[i + 1] = own.gl[i] + Math.max(0, -r);
+    own.rs[i + 1] = own.rs[i] + r;
+    own.r2[i + 1] = own.r2[i] + r * r;
+  }
+  return own;
+}
+
 function directionTape(tp: ConfigTape, t: number, o: WalkForwardOptions, side: number): ConfigTape {
   const idx = directionIndexOf(tp, side);
   const bound = (time: number) => {
@@ -4973,35 +5006,7 @@ function directionTape(tp: ConfigTape, t: number, o: WalkForwardOptions, side: n
     old.tape.fromT = tp.fromT;
     return old.tape;
   }
-  const n = end - start;
-  const own = {
-    ...tp,
-    ...tapeViews(new ArrayBuffer(tapeBytes(n)), 0, n),
-    n,
-    open: [],
-    pending: [],
-  };
-  const columns = [
-    "exitT",
-    "entryT",
-    "r",
-    "entry",
-    "exit",
-    "symI",
-    "side",
-    "reason",
-    "bars",
-    "vol",
-    "level",
-  ] as const;
-  for (let i = 0; i < n; i++) {
-    for (const column of columns) own[column][i] = tp[column][idx[start + i]];
-    const r = own.r[i];
-    own.gp[i + 1] = own.gp[i] + Math.max(0, r);
-    own.gl[i + 1] = own.gl[i] + Math.max(0, -r);
-    own.rs[i + 1] = own.rs[i] + r;
-    own.r2[i + 1] = own.r2[i] + r * r;
-  }
+  const own = indexedEvaluationTape(tp, idx, start, end);
   directionViews.add(own);
   cached.set(side, { start, end, tape: own });
   return own;
