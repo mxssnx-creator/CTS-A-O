@@ -1539,6 +1539,10 @@ export const lossPriorOf = (
 const rangeGateOn = (g: { ranges?: readonly string[] }, tag: string | undefined | null) =>
   g.ranges ? !!tag && g.ranges.includes(tag) : rangeGated(tag);
 
+/** Protection tags describe distances; they never route Signals through ordinary range qualification. */
+const tapeRangeGateOn = (g: { ranges?: readonly string[] }, tp: Pick<ConfigTape, "ind" | "protect">) =>
+  !isSignalInd(tp.ind) && rangeGateOn(g, tp.protect.tag);
+
 /**
  * A tape's per-range options (wf.rangeOpts): those of its range tag, "wide" for an untagged engine config, and "sig"
  * for Signals. Signals use only the supported own-range validation and entry last-N values; they retain their own
@@ -4029,7 +4033,7 @@ function configEvalAt(
   const g = o.rangeGate;
   if (
     g &&
-    rangeGateOn(g, tp.protect.tag) &&
+    tapeRangeGateOn(g, tp) &&
     !lastNOk(
       tp,
       t,
@@ -4197,7 +4201,7 @@ function selInfoOf(
     seatFam: seatFamily(seat, o.familySeats),
     minPf: minPfForTape(tp, o),
     prior: lossPriorOf(tp, o.gates),
-    rangeGate: tp.kind !== "exit" && !!o.rangeGate && rangeGateOn(o.rangeGate, tp.protect.tag),
+    rangeGate: tp.kind !== "exit" && !!o.rangeGate && tapeRangeGateOn(o.rangeGate, tp),
     ro: rangeOptsOf(o, tp),
   };
 }
@@ -4770,7 +4774,7 @@ function validOk(tp: ConfigTape, t: number, o: WalkForwardOptions): boolean {
   const g = o.rangeGate;
   return (
     !g ||
-    !rangeGateOn(g, tp.protect.tag) ||
+    !tapeRangeGateOn(g, tp) ||
     lastNOk(
       tp,
       t,
@@ -4896,7 +4900,7 @@ export function engineValidationLastNOk(
 ): boolean {
   if (isSignalInd(tp.ind)) return true; // Signals retain their stricter exact-symbol/direction proof.
   const prior = lossPriorOf(tp, o.gates);
-  const range = o.rangeGate && rangeGateOn(o.rangeGate, tp.protect.tag) ? o.rangeGate : null;
+  const range = o.rangeGate && tapeRangeGateOn(o.rangeGate, tp) ? o.rangeGate : null;
   const valid = (direction: number) =>
     lastNSideOk(
       tp,
@@ -4992,7 +4996,7 @@ function directionTape(tp: ConfigTape, t: number, o: WalkForwardOptions, side: n
   };
   const end = bound(t + 1),
     from = bound(t - tapeHistoryHours(tp, o) * H);
-  const range = o.rangeGate && rangeGateOn(o.rangeGate, tp.protect.tag) ? o.rangeGate : null;
+  const range = o.rangeGate && tapeRangeGateOn(o.rangeGate, tp) ? o.rangeGate : null;
   const required = Math.max(validationLastNForTape(tp, o), range?.lastN ?? 0, o.lastN);
   const start = Math.min(from, Math.max(0, end - required));
   let cached = directionTapes.get(tp);

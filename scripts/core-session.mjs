@@ -1486,7 +1486,9 @@ async function runEngine() {
           }
           // A dump streams the original typed columns instead of retaining millions
           // of boxed row arrays while its runtime is still being disposed.
-          return { id: tp.id, trades: arg("dump") ? rows() : Array.from(rows()) };
+          return { id: tp.id, kind: tp.kind, protect: tp.protect,
+            fromT: tp.fromT ?? null, heldOnly: tp.heldOnly === true, symbols: [...new Set(tp.syms)],
+            trades: arg("dump") ? rows() : Array.from(rows()) };
         });
     })(),
     variants,
@@ -1523,6 +1525,8 @@ async function runEngine() {
       realSignal,
       realEngine: selected.length - realSignal,
       signals: rt.status.signals ?? null,
+      signalFunnel: sim.signalFunnel ?? null,
+      signalSteps: sim.signalSteps ?? [],
       independentExit: rt.status.exitStrategies ?? null,
       // expose the separate post-Base paper-entry gate; the historical walk-forward trades above are a different stage
       liveValidation: rt.status.liveValidation ?? null,

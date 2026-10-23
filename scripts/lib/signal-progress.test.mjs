@@ -1,9 +1,14 @@
 import { it } from "node:test";
 import assert from "node:assert/strict";
-import { captureSignalProgress } from "./signal-progress.mjs";
+import { captureSignalProgress, signalConfigDetails, signalProgressInventory } from "./signal-progress.mjs";
 import { signalSettings } from "../../src/core/signal-config.ts";
 import { signalProtects, sigActiveKey } from "../../src/core/signals.ts";
-import { configId } from "../../src/core/pipeline/pipeline.ts";
+import { configId, makeUniverse } from "../../src/core/pipeline/pipeline.ts";
+import { DEFAULT_SETTINGS } from "../../src/core/config.ts";
+import { signalCoordinationId } from "../../src/core/signal-coordination.ts";
+import { signalCoordinationProtects } from "../../src/core/server/runtime.server.ts";
+import { buildTapes } from "../../src/core/sim/walkforward.ts";
+import { barsFromCandles, syntheticCandles } from "../../src/core/market/bars.ts";
 const H = 3_600_000;
 it("captures every configured cell separately from actual tapes, active units and executed closes", () => {
   const sig = signalSettings({ sourcesMode: "allow", sources: { "ema-cross": true }, ranges: { short: true, medium: false }, lanes: [15], hist: { enabled: false } });
@@ -19,7 +24,7 @@ it("captures every configured cell separately from actual tapes, active units an
   const rt = { settings: { signals: sig, tfs: [15] }, tapes: [tape], wf: {}, buildStats: [] };
   const p = captureSignalProgress(rt, sim, H, 2 * H);
   assert.equal(p.combos.length, 1);
-  assert.equal(p.configs.length, 86);
+  assert.equal(p.configs.length, 60, "the actual 3% cap merges aliases; raw requests remain separate");
   assert.equal(p.requestedConfigs.length, 86);
   assert.equal(p.configs.filter((x) => x.built).length, 1);
   const row = p.configs.find((x) => x.id === id);
@@ -37,13 +42,56 @@ it("accounts for every raw requested cell while deduplicating identical effectiv
   const rt = { settings: { signals: sig, tfs: [1] }, tapes: [], wf: {}, buildStats: [], fastArgs: { sig: { floors: { minSl: sig.minSl, minTrail: sig.minTrail } }, adjust: {} } };
   const p = captureSignalProgress(rt, { trades: [] }, H, 2 * H);
   assert.equal(p.requestedConfigs.length, 86);
-  assert.equal(p.configs.length, 86);
+  assert.equal(p.configs.length, 85, "effective capped identities match the one-minute builder");
   const requested = p.requestedConfigs.filter((x) => x.kind === "trailing-only"), effective = p.configs.filter((x) => x.kind === "trailing-only");
   assert.equal(requested.length, 9); assert.equal(effective.length, 9);
   assert.equal(effective.reduce((n, x) => n + x.requestedAliases.length, 0), 9);
   assert.ok(effective.every((x) => x.requestedAliases.length === 1));
   assert.ok(effective.every((x) => x.protect.trail >= sig.minTrail));
   assert.ok(effective.every((x) => x.origin === "configured"));
+});
+
+it("excludes endpoint marks from the settled modeled-execution sample", () => {
+  const sig = signalSettings({ sourcesMode: "allow", sources: { "ema-cross": true }, ranges: { short: true, medium: false }, lanes: [15] });
+  const rt = { settings: { signals: sig, tfs: [15] }, tapes: [], wf: {}, buildStats: [] };
+  const id = [...signalProgressInventory(rt).configured.keys()][0];
+  const p = captureSignalProgress(rt, { trades: [
+    { cfg: id, side: 1, r: .01, unitR: .01, markedOpen: true },
+    { cfg: id, side: 1, r: -.02, unitR: -.02 },
+  ] }, H, 2 * H);
+  const actual = p.configs.find(x => x.id === id).sides[1].executed;
+  assert.equal(actual.n, 1); assert.equal(actual.gp, 0); assert.equal(actual.gl, .02);
+});
+
+it("preserves coordination input masks independently of strategy and protection ranges", () => {
+  const sources = ["ema-cross", "bb-walk", "aroon"];
+  for (const [mask, expected] of [[1, "short"], [2, "medium"], [3, "short+medium"]]) {
+    const ind = signalCoordinationId(sources, .6, 3, mask) + "@m15";
+    const protect = { tp: .01, sl: .02, trail: .003, hold: 4, tag: "gn" };
+    const info = signalConfigDetails(configId("follow", ind, protect), protect, "trailing");
+    assert.equal(info.range, expected); assert.equal(info.strategyRange, "Signals");
+    assert.equal(info.protectionRange, "gn");
+    assert.equal(signalConfigDetails(configId("follow", ind, protect), protect, "exit").strategyRange, "Exit");
+  }
+});
+
+it("matches the actual builder's full capped source and coordination catalog on 1m and 15m lanes", () => {
+  const sources = { "ema-cross": true, "bb-walk": true, "aroon": true };
+  for (const tf of [1, 15]) {
+    const sig = signalSettings({ sourcesMode: "allow", sources, ranges: { short: true, medium: false }, lanes: [tf], hist: { enabled: false } });
+    const settings = { ...DEFAULT_SETTINGS, signals: sig, tfs: [tf] };
+    const inventory = signalProgressInventory({ settings, wf: {} });
+    const u = makeUniverse([barsFromCandles("TEST-USDT", tf, syntheticCandles("TEST-USDT", tf, 1600, 200 * H))]);
+    for (const combo of [inventory.combos[0], inventory.combos.find(c => c.ind.includes("sig-coord-"))]) {
+      const protects = combo.ind.includes("sig-coord-") ? signalCoordinationProtects(settings.grid, settings.cost, sig.coordination.ranges) : signalProtects(sig);
+      const tapes = buildTapes(u, protects, settings.cost, undefined, new Set([`${combo.bot}|${combo.ind}`]), null, null,
+        { minSl: sig.minSl, minTrail: sig.minTrail, signalReferenceGrid: true, signalTrailMax: sig.trailMax });
+      const actual = new Map(tapes.map(t => [t.id, t.protect]));
+      const reported = new Map([...inventory.configured.values()].filter(x => x.ind === combo.ind).map(x => [x.id, x.protect]));
+      assert.deepEqual(reported, actual, `exact identities/protections on ${combo.ind}`);
+      assert.ok(actual.size > 0);
+    }
+  }
 });
 it("captures all 288 hourly candidate cells and partitions right-closed hours without changing selection", () => {
   const sig = signalSettings({ sourcesMode: "allow", sources: { "ema-cross": true }, ranges: { short: true, medium: true }, lanes: [1, 5, 15, 30], hist: { enabled: false } });

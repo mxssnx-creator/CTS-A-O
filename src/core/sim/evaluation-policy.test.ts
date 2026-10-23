@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import type { RangeTag, StratKind, Trade } from "../domain/types.ts";
 import {
-  configEval, defaultWalkForward, makeTape, signalConfigEval, validatedSetGen,
+  configEval, defaultWalkForward, execDecision, makeTape, signalConfigEval, validatedSetGen,
 } from "./walkforward.ts";
 
 const H = 3_600_000, NOW = Date.UTC(2026, 9, 17, 9);
@@ -80,4 +80,41 @@ describe("independent validation policy at every selection stage", () => {
       assert.equal(signalConfigEval(tp, NOW, options, "A", 1).ok, true);
     });
   }
+  for (const tag of ["sh", "gn", "lg"] as const)
+    for (const kind of ["normal", "trailing", "trailing-only", "exit", "dca", "dca-active", "axis"] as const)
+      for (const side of [1, -1] as const) {
+    it(`Signal ${tag}/${kind}/${side}: protection distances never select an ordinary range gate`, () => {
+      const ind = "sig-coord-v2-r60-n3-i3-br9a60mhgf0326kw8ow07@m5";
+      const tp = tape(ind, rows("A", side, Array<number>(12).fill(0.02)), kind, tag);
+      const own = { ...options, signalLongH: 100, signalValidLastN: 8,
+        exitMinTrades: 8, rangeGate: { lastN: 75, minPf: 1.35, ranges: [tag] },
+        gates: { ...options.gates, minTrades: 12, warmup: false, lastNFloor: 0 },
+        toggles: { ...options.toggles, normal: true, trailing: true, exit: true,
+          dca: true, dcaActive: kind === "dca-active", axis: true },
+      };
+      assert.equal(signalConfigEval(tp, NOW, own, "A", side).ok, true);
+      assert.equal(configEval(tp, NOW, own).ok, true);
+      assert.equal(execDecision(tp, NOW, own, { sym: "A", side }).ok, true);
+      const shortHistory = tape(ind, rows("A", side, Array<number>(7).fill(0.02)), kind, tag);
+      assert.equal(signalConfigEval(shortHistory, NOW, own, "A", side).ok, false);
+      const engine = tape("rsi-mom-14-20@m5", rows("A", side, Array<number>(12).fill(0.02)), "normal", tag);
+      assert.equal(configEval(engine, NOW, own).ok, false, "ordinary ranges keep their own Last-75");
+    });
+  }
+  it("Signal PF ignores borrowed protection-range floors but retains its own stage and Exit floors", () => {
+    const history = Array.from({ length: 120 }, (_, i) => i % 3 === 0 ? -0.01 : 0.01);
+    const own = { ...options, signalLongH: 100, signalValidLastN: 8,
+      gates: { ...options.gates, minPf: 1.5, rangeMinPf: { short: 3, general: 3, long: 3 } },
+    };
+    for (const tag of ["sh", "gn", "lg"] as const) {
+      const tp = tape("sig-ema-cross-s@m5", rows("A", 1, history), "normal", tag);
+      assert.equal(configEval(tp, NOW, own).ok, true);
+      assert.equal(configEval(tp, NOW, { ...own, gates: { ...own.gates, minPf: 3 } }).ok, false);
+      const exit = tape(tp.ind, rows("A", 1, history), "exit", tag);
+      assert.equal(configEval(exit, NOW, own).ok, true);
+      assert.equal(configEval(exit, NOW, { ...own, exitMinPf: 3 }).ok, false);
+      const engine = tape("rsi-mom-14-20@m5", rows("A", 1, history), "normal", tag);
+      assert.equal(configEval(engine, NOW, own).ok, false);
+    }
+  });
 });
