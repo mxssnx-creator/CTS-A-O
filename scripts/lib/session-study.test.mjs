@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { studySha256, studyExactJson, validateFrozenSessionRuntime, validateFrozenSessionResult } from "./session-study.mjs";
+import { studySha256, studyExactJson, validateFrozenSessionRuntime, validateFrozenSessionResult, validateFrozenSessionBook } from "./session-study.mjs";
 
 function fixture(fn) {
   const root = mkdtempSync(join(tmpdir(), "cts-frozen-session-"));
@@ -20,6 +20,13 @@ function fixture(fn) {
   } finally { rmSync(root, { recursive: true, force: true }); }
 }
 describe("frozen full-engine session study", () => {
+  it("rejects report sizing at preflight instead of wasting a complete history calculation", () => {
+    const account = { balance: 10, leverage: 10, sizing: { mode: "equityPct", pct: .001 } };
+    assert.doesNotThrow(() => validateFrozenSessionBook({ ...account, notional: 5 }, account));
+    assert.throws(() => validateFrozenSessionBook({ ...account, sizing: { mode: "equityPct", pct: .002 } }, account), /funding\/sizing differs/);
+    assert.throws(() => validateFrozenSessionBook({ ...account, balance: 20 }, account), /funding\/sizing differs/);
+    assert.throws(() => validateFrozenSessionBook({ ...account, leverage: 20 }, account), /funding\/sizing differs/);
+  });
   it("rejects unloaded execution placeholders rather than certifying an empty result", () => fixture(({root,file,raw}) => {
     for (const field of ['trades','openEnd']) {
       raw.arraySidecars = { [field]: { schema: 'cts-session-array-v1', items: 100 } };
