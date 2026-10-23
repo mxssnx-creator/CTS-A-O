@@ -120,6 +120,12 @@ describe("exact Signal acceptance prefix fast path", () => {
     const original = tape();
     const aliased = { ...original, syms: ["A-USDT", "A-USDT"] };
     assert.equal(digest(new SignalAcceptIndex([aliased])), digest(generic([aliased])));
+    const lazy = new SignalAcceptIndex([aliased], true), reference = generic([aliased]);
+    assert.equal(columns(lazy).size, 0, "multi-lane symbol dictionaries keep lazy bounded processing");
+    for (const key of columns(reference).keys())
+      for (const time of [H, H + 1, 2 * H, 3 * H, 4 * H])
+        for (const hours of [1 / 60, 1, 2, 6])
+          assert.deepEqual(lazy.stats(key, time, hours), reference.stats(key, time, hours));
     assert.equal(digest(new SignalAcceptIndex([original, { ...original, heldOnly: true }])), digest(generic([original])));
   });
 });

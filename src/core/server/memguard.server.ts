@@ -64,6 +64,12 @@ export function heapMemLevel(usedMb: number, limitMb: number): MemLevel {
     : free < Math.min(512, limitMb * .15) ? "soft" : "ok";
 }
 
+/** Cheap between-slice check; avoids filesystem/RSS reads while the heap has ample room. */
+export function heapPressure(): MemLevel {
+  const heap = getHeapStatistics();
+  return heapMemLevel(heap.used_heap_size / 1048576, heap.heap_size_limit / 1048576);
+}
+
 /**
  * Available-memory estimate for the process's own cgroup: its limit minus what it uses, with eligible file cache
  * credited. Complete v2 counters exclude mapped, dirty, writeback, shmem and unevictable memory; missing or invalid
@@ -153,8 +159,8 @@ let cached: MemInfo | null = null;
 /** How long a memory reading is reused (memInfo): a fresh reading is at least this far apart from the last. */
 export const MEM_READ_MS = 1000;
 /** The current memory picture (read at most once a second). */
-export function memInfo(now = Date.now()): MemInfo {
-  if (cached && now - cached.at < MEM_READ_MS) return cached;
+export function memInfo(now = Date.now(), force = false): MemInfo {
+  if (!force && cached && now - cached.at < MEM_READ_MS) return cached;
   let avail: number | null = null;
   try {
     avail = parseMemAvailable(readFileSync("/proc/meminfo", "utf8"));

@@ -81,6 +81,7 @@ import {
   fallbackLabel,
   fallbackProtects,
   heapAndBuffersMb,
+  heapPressure,
   MEM_FALLBACK_MAX,
   MEM_READ_MS,
   memHardMb,
@@ -3762,8 +3763,8 @@ export class CoreRuntime {
    * Once a second while computing: soft pressure frees garbage (at most every 30 s, only after the heap grew:
    * shouldCollect), hard pressure aborts the compute.
    */
-  memGuardTick() {
-    const m = memInfo();
+  memGuardTick(force = false) {
+    const m = memInfo(Date.now(), force);
     this.memMinAvail = Math.min(this.memMinAvail, m.availMb);
     // the highest reading per compute stage (status.mem.byPhase: which stage holds the peak)
     {
@@ -3973,6 +3974,9 @@ export class CoreRuntime {
         maxSlice = Math.max(maxSlice, el);
         await yieldNow();
         if (runGen !== this.gen) throw new Error("superseded by a newer loop generation");
+        // A burst can cross V8's independent ceiling between one-second RAM samples. Recheck at bounded
+        // generator slice boundaries so a research abort can preserve the previous complete live cohort.
+        if (heapPressure() !== "ok") this.memGuardTick(true);
         if (this.memPressured)
           throw new Error(this.memLastAbort ?? "memory pressure: compute aborted");
         slice = performance.now();
