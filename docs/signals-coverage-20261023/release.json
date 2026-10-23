@@ -1,0 +1,245 @@
+{
+  "schema": "cts-signals-coverage-release-v1",
+  "verifiedAt": "2026-10-23T23:22:43.865Z",
+  "repository": "mxssnx-creator/CTS-A-O",
+  "pullRequest": {
+    "number": 196,
+    "url": "https://github.com/mxssnx-creator/CTS-A-O/pull/196",
+    "merged": true,
+    "head": "c47494c6fe3256183ff8cb2dd0ae1b91e54584c9",
+    "mergedAt": "2026-10-23T23:21:42Z",
+    "mergeCommit": "4705c01077e95a1bef04f9d06724f0c473579a8c"
+  },
+  "backup": {
+    "branch": "backup/main-before-signals-coverage-20261023-14182d9",
+    "sha": "14182d9feab648eec25c9615471017a103273f57"
+  },
+  "sourceSha256": "aeec5a59086e1145a52009f580bd29ecf7042eb6c174677f099a284fe397c82e",
+  "verifiedTree": "7cf2cbf186e011e4648846fb760a3ebbf77cc3c2",
+  "mainCheckout": {
+    "branch": "main",
+    "commitAtMergeVerification": "4705c01077e95a1bef04f9d06724f0c473579a8c",
+    "treeMatchesVerifiedHead": true,
+    "economicSourceMatches": true,
+    "documentationFollowup": "Only this release receipt, operations handoff and preserved browser verification artifacts follow the tested merge."
+  },
+  "workflows": [
+    {
+      "id": 40037966000,
+      "name": "Exit verification",
+      "status": "completed",
+      "conclusion": "success",
+      "headSha": "c47494c6fe3256183ff8cb2dd0ae1b91e54584c9",
+      "url": "https://github.com/mxssnx-creator/CTS-A-O/actions/runs/40037966000",
+      "updatedAt": "2026-10-23T23:20:53Z"
+    },
+    {
+      "id": 40037966038,
+      "name": "Exact Signal study",
+      "status": "completed",
+      "conclusion": "success",
+      "headSha": "c47494c6fe3256183ff8cb2dd0ae1b91e54584c9",
+      "url": "https://github.com/mxssnx-creator/CTS-A-O/actions/runs/40037966038",
+      "updatedAt": "2026-10-23T23:10:31Z"
+    },
+    {
+      "id": 40037966155,
+      "name": "Signal coverage registry audit",
+      "status": "completed",
+      "conclusion": "success",
+      "headSha": "c47494c6fe3256183ff8cb2dd0ae1b91e54584c9",
+      "url": "https://github.com/mxssnx-creator/CTS-A-O/actions/runs/40037966155",
+      "updatedAt": "2026-10-23T23:12:54Z"
+    },
+    {
+      "id": 40037966103,
+      "name": "Signal report preview",
+      "status": "completed",
+      "conclusion": "success",
+      "headSha": "c47494c6fe3256183ff8cb2dd0ae1b91e54584c9",
+      "url": "https://github.com/mxssnx-creator/CTS-A-O/actions/runs/40037966103",
+      "updatedAt": "2026-10-23T23:09:21Z"
+    }
+  ],
+  "tests": {
+    "coreFiles": 270,
+    "ordinaryCorePasses": 3362,
+    "slowRuntimePasses": 2,
+    "scriptPasses": 715,
+    "appComponentPasses": 83,
+    "totalPasses": 4162,
+    "templateOnlySkips": 8,
+    "slowTestsExcludedFromOrdinaryInventoryAndRunSeparately": 2,
+    "lintErrors": 0,
+    "lintWarnings": 43,
+    "jobs": [
+      {
+        "id": 120702875041,
+        "name": "slow-runtime",
+        "status": "completed",
+        "conclusion": "success",
+        "summaries": [
+          "2026-10-23T23:12:13.3277131Z [core-tests] offline Node transport guard; 1 files; concurrency 1; compute workers 1",
+          "2026-10-23T23:15:06.5541515Z ℹ tests 2",
+          "2026-10-23T23:15:06.5542766Z ℹ pass 2",
+          "2026-10-23T23:15:06.5543199Z ℹ fail 0",
+          "2026-10-23T23:15:06.5543553Z ℹ cancelled 0",
+          "2026-10-23T23:15:06.5543935Z ℹ skipped 0"
+        ]
+      },
+      {
+        "id": 120702875272,
+        "name": "core-tests (3)",
+        "status": "completed",
+        "conclusion": "success",
+        "summaries": [
+          "2026-10-23T23:12:06.5022506Z [core-tests] offline Node transport guard; 270 files; shard 3/4; concurrency 1; compute workers 1",
+          "2026-10-23T23:14:02.1942271Z ℹ tests 876",
+          "2026-10-23T23:14:02.1943104Z ℹ pass 876",
+          "2026-10-23T23:14:02.1943440Z ℹ fail 0",
+          "2026-10-23T23:14:02.1943725Z ℹ cancelled 0",
+          "2026-10-23T23:14:02.1944038Z ℹ skipped 0"
+        ]
+      },
+      {
+        "id": 120702875417,
+        "name": "core-tests (2)",
+        "status": "completed",
+        "conclusion": "success",
+        "summaries": [
+          "2026-10-23T23:12:09.3982970Z [core-tests] offline Node transport guard; 270 files; shard 2/4; concurrency 1; compute workers 1",
+          "2026-10-23T23:20:44.9741849Z ℹ tests 708",
+          "2026-10-23T23:20:44.9742325Z ℹ pass 708",
+          "2026-10-23T23:20:44.9742513Z ℹ fail 0",
+          "2026-10-23T23:20:44.9742778Z ℹ cancelled 0",
+          "2026-10-23T23:20:44.9743044Z ℹ skipped 0"
+        ]
+      },
+      {
+        "id": 120702875444,
+        "name": "quality",
+        "status": "completed",
+        "conclusion": "success",
+        "summaries": [
+          "2026-10-23T23:12:09.9436556Z ✖ 43 problems (0 errors, 43 warnings)",
+          "2026-10-23T23:14:03.9947948Z ℹ tests 723",
+          "2026-10-23T23:14:03.9948180Z ℹ pass 715",
+          "2026-10-23T23:14:03.9948294Z ℹ fail 0",
+          "2026-10-23T23:14:03.9948409Z ℹ cancelled 0",
+          "2026-10-23T23:14:03.9948528Z ℹ skipped 8",
+          "2026-10-23T23:14:04.6925545Z ℹ tests 83",
+          "2026-10-23T23:14:04.6925937Z ℹ pass 83",
+          "2026-10-23T23:14:04.6926136Z ℹ fail 0",
+          "2026-10-23T23:14:04.6926322Z ℹ cancelled 0",
+          "2026-10-23T23:14:04.6926511Z ℹ skipped 0"
+        ]
+      },
+      {
+        "id": 120702875457,
+        "name": "core-tests (1)",
+        "status": "completed",
+        "conclusion": "success",
+        "summaries": [
+          "2026-10-23T23:12:03.5800783Z [core-tests] offline Node transport guard; 270 files; shard 1/4; concurrency 1; compute workers 1",
+          "2026-10-23T23:15:52.6398883Z ℹ tests 674",
+          "2026-10-23T23:15:52.6399854Z ℹ pass 674",
+          "2026-10-23T23:15:52.6400052Z ℹ fail 0",
+          "2026-10-23T23:15:52.6400249Z ℹ cancelled 0",
+          "2026-10-23T23:15:52.6400467Z ℹ skipped 0"
+        ]
+      },
+      {
+        "id": 120702875536,
+        "name": "core-tests (4)",
+        "status": "completed",
+        "conclusion": "success",
+        "summaries": [
+          "2026-10-23T23:12:02.3902268Z [core-tests] offline Node transport guard; 270 files; shard 4/4; concurrency 1; compute workers 1",
+          "2026-10-23T23:16:46.4758351Z ℹ tests 1106",
+          "2026-10-23T23:16:46.4759156Z ℹ pass 1104",
+          "2026-10-23T23:16:46.4759419Z ℹ fail 0",
+          "2026-10-23T23:16:46.4759689Z ℹ cancelled 0",
+          "2026-10-23T23:16:46.4759957Z ℹ skipped 2"
+        ]
+      },
+      {
+        "id": 120705811162,
+        "name": "verify",
+        "status": "completed",
+        "conclusion": "success",
+        "summaries": []
+      }
+    ]
+  },
+  "nativeStudy": {
+    "head": "8b2b389cf0f3eb21668934c1fdb87fa2d08e9642",
+    "runId": 40033630586,
+    "url": "https://github.com/mxssnx-creator/CTS-A-O/actions/runs/40033630586",
+    "cases": [
+      "corrected",
+      "all-sources",
+      "dca",
+      "dca-block",
+      "dca-active"
+    ],
+    "allPassed": true,
+    "scalarComparisons": 522563496,
+    "sourceSameAsMerged": true,
+    "fullEvidenceIndex": "archive-index.json"
+  },
+  "browser": {
+    "workflow": 40037966103,
+    "artifact": {
+      "id": 12537378998,
+      "name": "signal-report-preview-40037966103",
+      "size_in_bytes": 193890,
+      "url": "https://api.github.com/repos/mxssnx-creator/CTS-A-O/actions/artifacts/12537378998",
+      "archive_download_url": "https://api.github.com/repos/mxssnx-creator/CTS-A-O/actions/artifacts/12537378998/zip",
+      "expired": false,
+      "created_at": "2026-10-23T23:09:18Z",
+      "expires_at": "2027-01-21T23:08:49Z",
+      "updated_at": "2026-10-23T23:09:18Z",
+      "digest": "sha256:41fb725c9b9be519fd944c48cca51b0f2883bd3610fa10646d98c737527963b6",
+      "workflow_run": {
+        "id": 40037966103,
+        "repository_id": 1389234704,
+        "head_repository_id": 1389234704,
+        "head_branch": "fix/signals-eval-coverage-20261023",
+        "head_sha": "c47494c6fe3256183ff8cb2dd0ae1b91e54584c9"
+      }
+    },
+    "files": {
+      "report.json": {
+        "bytes": 1689,
+        "sha256": "63738639e4e52c773be71937dcd4d10100b2c0fcc5c5cb07c9f58c2b5b247be8"
+      },
+      "report.png": {
+        "bytes": 128284,
+        "sha256": "bb24674c7dff030695ff14ed457094588c02fa8909dbbf6656e324075ce51d48"
+      },
+      "report-mobile.png": {
+        "bytes": 78160,
+        "sha256": "86c0adfdb8a428003411a0466a89f56b0690181162f2bb5c1a8118dc8ddfcca5"
+      }
+    },
+    "visuallyInspected": [
+      "1280x800 desktop",
+      "390x844 mobile"
+    ],
+    "checks": "Both HTTP 200, zero console/page errors, no body horizontal overflow; wide tables scroll within their container. Small nonzero equity percentages remain visible."
+  },
+  "deployment": {
+    "repositoryMerged": true,
+    "mainCheckoutUpdated": true,
+    "runningInstanceReloaded": false,
+    "liveSettingsChanged": false,
+    "venueOrdersPlaced": false
+  },
+  "limitations": [
+    "Research profile expansion is separate from saved live/default source caps.",
+    "Seven settled hours and the 15-minute lane remain losing.",
+    "All 43 additional DCA orders are open at the endpoint; DCA equity is negative.",
+    "DCA Active has no independently qualifying ladder fills; Exit has no qualifying settled execution in this window.",
+    "Historic reused data and modeled execution do not certify live or future profitability."
+  ]
+}
