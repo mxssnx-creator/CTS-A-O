@@ -1,0 +1,37 @@
+  feed: 8784 bars the engine never reads left out (other timeframes, after the cut)
+post-Base modeled-execution replay gate starts 2026-10-16T21:00:00.000Z · config last-N 25 · group last-N 0
+session: 12 symbols · 100h pre-historic · 12h simulated · tactics default · min PF 1.1 · focus 1191 · toggles {"normal":true,"trailing":true,"exit":true,"block":false,"blockActive":false,"dca":false,"dcaActive":false,"axis":false}
+  [0 s] computing Base 0% (job 10%) Base on 2 cores · 884 combos · symbols 12/12 · computes 0 · paper on #0 · rss 373 MB
+  [30 s] computing Base 86% (job 40%) Base on 2 cores · 884 combos · symbols 12/12 · computes 0 · paper on #0 · rss 907 MB
+  [60 s] computing Base 95% (job 43%) Base on 2 cores · 884 combos · symbols 12/12 · computes 0 · paper on #0 · rss 907 MB
+  [90 s] computing Tapes 86% (job 69%) Signal Exit Base · 884 source lanes · symbols 12/12 · computes 0 · paper on #0 · rss 911 MB
+  [120 s] computing Tapes 9% (job 72%) signal historic configs on 2 cores · 884 pairs · symbols 12/12 · computes 0 · paper on #0 · rss 833 MB
+  [150 s] computing Tapes 63% (job 72%) signal historic configs on 2 cores · 884 pairs · symbols 12/12 · computes 0 · paper on #0 · rss 918 MB
+  [181 s] computing Tapes 97% (job 72%) signal historic configs on 2 cores · 884 pairs · symbols 12/12 · computes 0 · paper on #0 · rss 1023 MB
+  [211 s] computing Signals 12% (job 80%) signal tapes on 2 cores · 824 pairs · symbols 12/12 · computes 0 · paper on #0 · rss 1164 MB
+  [241 s] computing Signals 47% (job 80%) signal tapes on 2 cores · 824 pairs · symbols 12/12 · computes 0 · paper on #0 · rss 1467 MB
+  [271 s] computing Signals 79% (job 80%) signal tapes on 2 cores · 824 pairs · symbols 12/12 · computes 0 · paper on #0 · rss 1879 MB
+  [301 s] computing Signals 11% (job 80%) signal coordination tapes on 2 cores · 60 pairs · symbols 12/12 · computes 0 · paper on #0 · rss 2371 MB
+  [331 s] computing Signals 36% (job 80%) signal coordination tapes on 2 cores · 60 pairs · symbols 12/12 · computes 0 · paper on #0 · rss 2601 MB
+  [361 s] computing Signals 54% (job 80%) signal coordination tapes on 2 cores · 60 pairs · symbols 12/12 · computes 0 · paper on #0 · rss 2812 MB
+  [391 s] computing Signals 77% (job 80%) signal coordination tapes on 2 cores · 60 pairs · symbols 12/12 · computes 0 · paper on #0 · rss 3027 MB
+  [421 s] computing Signals 98% (job 80%) signal coordination tapes on 2 cores · 60 pairs · symbols 12/12 · computes 0 · paper on #0 · rss 3251 MB
+  [451 s] computing Real 0% (job 80%) 12h sim · step 0/12 · symbols 12/12 · computes 0 · paper on #0 · rss 6053 MB
+  [481 s] computing Real 8% (job 81%) 12h sim · step 1/12 · 24h pre · validate last 15 · live last 0 · symbols 12/12 · computes 0 · paper on #0 · rss 6192 MB
+
+<--- Last few GCs --->
+
+[32:0x2bf1d000]   484605 ms: Scavenge 4060.0 (4101.6) -> 4047.5 (4136.1) MB, pooled: 0 MB, 6.54 / 0.00 ms  (average mu = 0.277, current mu = 0.222) allocation failure; 
+[32:0x2bf1d000]   485956 ms: Mark-Compact (reduce) 4065.1 (4136.1) -> 4034.1 (4063.9) MB, pooled: 0 MB, 238.47 / 0.00 ms  (+ 1038.3 ms in 319 steps since start of marking, biggest step 8.6 ms, walltime since start of marking 1352 ms) (average mu = 0.271, 
+FATAL ERROR: Ineffective mark-compacts near heap limit Allocation failed - JavaScript heap out of memory
+----- Native stack trace -----
+
+ 1: 0x75356c node::OOMErrorHandler(char const*, v8::OOMDetails const&) [node]
+ 2: 0xc52cd0  [node]
+ 3: 0xc52dbf  [node]
+ 4: 0xef6695  [node]
+ 5: 0xef66c2  [node]
+ 6: 0xef69ba  [node]
+ 7: 0xf076ba  [node]
+ 8: 0xf0ba60  [node]
+ 9: 0x199e0d1  [node]

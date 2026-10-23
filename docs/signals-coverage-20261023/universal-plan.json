@@ -1,6 +1,6 @@
 {
   "schema": "cts-universal-correctness-plan-v2",
-  "sourceSha256": "9684e231079cd1e2d90ab23ef9290aef9a75b717516f5ced479d81b24ff651f3",
+  "sourceSha256": "731220d22d4519e05df2113a7c0c33fb11f6749af55b8612f84415e780191dee",
   "scope": {
     "registeredSpecs": 1972,
     "families": 19,
@@ -63,5 +63,6 @@
   ],
   "classification": "Correctness/causality and synthetic gate audit, not proof of hourly market profitability or a full Cartesian financial portfolio replay",
   "preserve": "Keep failed/partial receipts and all existing negative financial windows. Never change recorded costs/returns/gates to manufacture positive PF.",
-  "revisionReason": "Full registry verification after independent Signal range routing correction; identical market and causal cut policy. Frozen before new scoring."
+  "revisionReason": "Bounded derived Signal caches and complete opening counts; unchanged registry, market scope and qualification thresholds. Frozen before this revision is scored.",
+  "priorSourceSha256": "9684e231079cd1e2d90ab23ef9290aef9a75b717516f5ced479d81b24ff651f3"
 }

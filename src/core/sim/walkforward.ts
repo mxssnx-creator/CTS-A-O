@@ -1,3 +1,4 @@
+import { DerivedCache } from "./derived-cache.ts";
 import {
   coordVariants,
   EVAL_MIN_SL,
@@ -3843,7 +3844,9 @@ function configEvalRaw(tp: ConfigTape, t: number, o: WalkForwardOptions): Config
   );
 }
 
-const signalEvaluationCache = new WeakMap<ConfigTape, { key: string; contexts: Map<string, ConfigEval> }>();
+// A complete Signal scan visits hundreds of thousands of tapes. Weak maps alone retain every
+// derived context while the immutable source catalog is alive; bound the working set instead.
+const signalEvaluationCache = new DerivedCache<ConfigTape, { key: string; contexts: Map<string, ConfigEval> }>(512);
 /** The same exact history + Last-N verdict for Strategy Base, causal ranking and native/model entry. */
 function signalEvaluationKey(tp: ConfigTape, t: number, o: WalkForwardOptions): string {
   return JSON.stringify([
@@ -4618,7 +4621,7 @@ export function* selectGroupsGen(
  * first use — the symbol gate walks only that symbol's closes, not every symbol's in the look-back (at 120 symbols
  * the scan read ~120× the closes it counted, on every engine candidate). null: the tape has no series of the symbol.
  */
-const symIdxMemo = new WeakMap<ConfigTape, Map<string, Int32Array | null>>();
+const symIdxMemo = new DerivedCache<ConfigTape, Map<string, Int32Array | null>>(512);
 function symTradeIdx(tp: ConfigTape, sym: string): Int32Array | null {
   let m = symIdxMemo.get(tp);
   if (!m) symIdxMemo.set(tp, (m = new Map()));
@@ -5073,7 +5076,7 @@ function qualifiedDirectionTape(
 }
 
 /** Only queried config contexts allocate an index; original tape returns/times are never copied. */
-const signalContextIndices = new WeakMap<ConfigTape, Map<number, Uint32Array>>();
+const signalContextIndices = new DerivedCache<ConfigTape, Map<number, Uint32Array>>(512);
 function signalContextOf(tp: ConfigTape, sym: string, side: number): Uint32Array | null {
   if (side !== 1 && side !== -1) return null;
   const si = tp.syms.indexOf(sym);
@@ -5813,11 +5816,12 @@ function* signalWindowRows(
     }
     if (!contexts.size) continue;
     const bySym: Record<string, SymStat> = {};
+    const evaluationKey = options ? signalEvaluationKey(tp, t, options) : "";
     for (const [slot, x] of contexts) {
       flushHour(x);
       if (x.blocks && x.blockNet > 0) x.ok++;
       const sym = tp.syms[Math.floor(slot / 2)];
-      if (options && !signalConfigEval(tp, t, options, sym, slot % 2 ? 1 : -1).ok) continue;
+      if (options && !signalConfigEvalWithKey(tp, t, options, sym, slot % 2 ? 1 : -1, evaluationKey).ok) continue;
       const st = (bySym[sym] ??= { n: 0, net: 0, pf: 0, sides: {} });
       (st.sides ??= {})[slot % 2 ? "1" : "-1"] = {
         n: x.n,

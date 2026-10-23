@@ -300,7 +300,7 @@ describe("session CLI background comparison policy", () => {
     }
   });
 });
-function replay({ caps = false, weighted = false, invalidReturn = false, qualification, thresholds, variants, presets, exhaustedCap = false, zeroOnlyType = false, allocationOnly = false, noBase = false, legacyRangeRows = false, baseNoLoss = false, signalCoverage = false, exitCoverage = false, signalHistory = false, liveValidation, selectionPhases = false, marketData } = {}) {
+function replay({ endpointOccupancy = false, caps = false, weighted = false, invalidReturn = false, qualification, thresholds, variants, presets, exhaustedCap = false, zeroOnlyType = false, allocationOnly = false, noBase = false, legacyRangeRows = false, baseNoLoss = false, signalCoverage = false, exitCoverage = false, signalHistory = false, liveValidation, selectionPhases = false, marketData } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "cts-session-report-"));
   try {
     const raw = {
@@ -337,6 +337,18 @@ function replay({ caps = false, weighted = false, invalidReturn = false, qualifi
       ];
       raw.closes = { "TEST-USDT": Array.from({ length: 60 }, (_, i) => [H + i * M, 100]) };
       if (zeroOnlyType) raw.trades[2].kind = "exit";
+    }
+    if (endpointOccupancy) {
+      raw.settings.book = { balance: 1, notional: 0.1, sizing: { mode: "fixed" }, leverage: 10 };
+      raw.settings.live = { maxPositionX: 0.2, maxExposureX: 0 };
+      raw.trades = [];
+      raw.openEnd = [
+        { cfg: "follow|sig-ema-cross-s@m1|first", sym:"TEST-USDT", side:1, entryT:H+M, entry:100, vol:1, mult:1, kind:"normal" },
+        { cfg: "follow|sig-ema-cross-s@m1|second", sym:"TEST-USDT", side:1, entryT:H+2*M, entry:100, vol:1, mult:1, kind:"normal" },
+        { cfg: "follow|sig-ema-cross-s@m1|zero", sym:"TEST-USDT", side:1, entryT:H+3*M, entry:100, vol:1, mult:1, kind:"trailing" },
+        { cfg: "follow|sig-ema-cross-s@m1|endpoint", sym:"TEST-USDT", side:-1, entryT:2*H, entry:100, vol:1, mult:1, kind:"trailing-only" },
+      ];
+      raw.closes = { "TEST-USDT": Array.from({ length:60 }, (_,i)=>[H+i*M,100]) };
     }
     if (marketData) {
       raw.settings.marketDataSource = marketData.source;
@@ -669,7 +681,7 @@ describe("session reports: return PF primary, simulated provenance", () => {
     assert.ok(data.checks.find((x) => x.name === "hour × type: type columns add up to virtual closes, every hour")?.ok);
     assert.match(md, /\| hour \(UTC\) \| funded orders closed \| virtual closes \|/);
     assert.match(md, /\| 01:00 \| 2 \| 3 \| 2 · – · 0 % · \$0\.00/);
-    assert.match(md, /2 funded orders · 3 virtual closes/);
+    assert.match(md, /2 funded orders opened \(2 settled, 0 still open\) · 3 virtual closes/);
     assert.match(md, /Virtual diagnostic:.*3 closes · Return PF ∞ \(no loss\)/);
     assert.match(writeup, /Separate virtual diagnostic: 3 closes/);
     assert.match(summaryOf(html), /Separate virtual diagnostic:<\/b> 3 closes/);
@@ -870,18 +882,44 @@ it("full tape dumps stream never-qualified own history without changing qualifie
   const source=readFileSync(script,"utf8"),begin=source.indexOf('    tapeTrades: (() => {'),end=source.indexOf('    variants,',begin);
   assert.ok(begin>0&&end>begin);
   const expression=source.slice(begin+'    tapeTrades: '.length,end).trim().replace(/,$/,"");
-  const make=(id,values)=>({id,n:values.length,syms:["TEST-USDT"],symI:values.map(()=>0),side:values.map(()=>1),entryT:values.map((_,i)=>i*M),exitT:values.map((_,i)=>(i+1)*M),r:values});
+  const make=(id,values)=>({id,kind:"normal",protect:{tp:.01,sl:.02,trail:0,hold:4},fromT:0,heldOnly:id==="never-qualified",n:values.length,syms:["TEST-USDT"],symI:values.map(()=>0),side:values.map(()=>1),entryT:values.map((_,i)=>i*M),exitT:values.map((_,i)=>(i+1)*M),r:values});
   const win=make("qualified",[.01,-.001,.02]),loss=make("never-qualified",[-.02,-.01,-.03]);
   const evaluate=(all)=>runInNewContext(expression,{rt:{tapes:[win,loss]},sim:{trades:[{cfg:win.id}],steps:[{real:[win.id]}]},flag:key=>key==="tape-trades-all"&&all,arg:()=>"streamed-dump"});
-  const materialize=items=>Array.from(items,x=>({id:x.id,trades:Array.from(x.trades)}));
+  const materialize=items=>Array.from(items,x=>({...x,trades:Array.from(x.trades)}));
   const ordinary=materialize(evaluate(false)),all=materialize(evaluate(true));
   assert.deepEqual(JSON.parse(JSON.stringify(all.slice(0,1))),JSON.parse(JSON.stringify(ordinary)));
   assert.deepEqual(all.map(x=>x.id),[win.id,loss.id]);
   assert.deepEqual(all[1].trades.map(x=>x[4]),loss.r,"rejected losses remain visible to independent arithmetic");
+  assert.equal(all[1].fromT,0,"the causal history boundary survives serialization");
+  assert.equal(all[1].heldOnly,true,"held-only evaluation policy survives serialization");
+  assert.deepEqual(Array.from(all[1].symbols),["TEST-USDT"]);
+  assert.equal(all[1].kind,"normal");
+  assert.deepEqual(JSON.parse(JSON.stringify(all[1].protect)),loss.protect);
   const dir=mkdtempSync(join(tmpdir(),"cts-complete-history-")),file=join(dir,"raw.json");
   try {
     await writeSessionDump(file,{tapeTrades:evaluate(true),validation:[],trades:[]});
     const restored=await readSessionDump(file);
     assert.deepEqual(restored.tapeTrades,JSON.parse(JSON.stringify(all)));
   } finally {rmSync(dir,{recursive:true,force:true});}
+});
+
+it("opening counts include endpoint-held and endpoint-entered orders while separating zero funding",()=>{
+ const {data,report,md,html}=replay({endpointOccupancy:true,caps:true});
+ const t=report.total;
+ assert.equal(t.orders,0);
+ assert.equal(t.openedOrders,3);
+ assert.equal(t.virtualOpenedOrders,4);
+ assert.equal(t.openEnd.orders,4);
+ assert.equal(t.openEnd.fundedOrders,3);
+ assert.equal(t.openEnd.zeroAllocatedOrders,1);
+ assert.equal(t.maxOpenOrders,4);
+ assert.equal(t.fundedOccupancy.maxOrders,3);
+ assert.ok(Math.abs(t.fundedOccupancy.avgOrders-117/60)<1e-12);
+ assert.equal(report.hours[0].ordersOpened,4);
+ assert.equal(report.hours[0].fundedOrdersOpened,3);
+ assert.equal(data.typeHours.reduce((n,x)=>n+x.opened,0),4);
+ assert.equal(data.typeHours.reduce((n,x)=>n+x.fundedOpened,0),3);
+ assert.ok(data.checks.every(x=>x.ok));
+ assert.match(md,/3 funded orders opened \(0 settled, 3 still open\)/);
+ assert.match(summaryOf(html),/Orders opened/);
 });

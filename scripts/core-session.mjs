@@ -1914,6 +1914,9 @@ const inBook = [
   ...trades,
   ...openEnd.map((o) => ({ ...o, exitT: Infinity, openAtEnd: true })),
 ].sort((a, b) => a.entryT - b.entryT);
+const fundedInBook = inBook.filter(x => sessionAllocation(x, sized.units, orderKey) === "funded");
+const fundedOpenEnd = openEnd.filter(x => sessionAllocation(x, sized.units, orderKey) === "funded");
+const entryInHour = (x, h, hEnd) => x.entryT >= h && (x.entryT < hEnd || (hEnd === endT && x.entryT === endT));
 // Allocations are complete and immutable here. Retain each order and the exact
 // sum order; cache only repeated key/unit/volume and last-closed price lookups.
 const minuteBook = createMinuteBookCache(inBook, {
@@ -2032,7 +2035,9 @@ for (let h = startT; h < endT; h += H) {
   hh.unknownAllocations = hs.unknownAllocations;
   hh.unknownReturns = hs.unknownReturns;
   hh.unknownReturnTotals = hs.unknownReturnTotals;
-  hh.ordersOpened = trades.filter((x) => x.entryT >= h && x.entryT < h + H).length;
+  hh.ordersOpened = inBook.filter(x => entryInHour(x, h, hEnd)).length;
+  hh.fundedOrdersOpened = fundedInBook.filter(x => entryInHour(x, h, hEnd)).length;
+  hh.openCountBasis = "native-virtual-orders";
   // Physical episode and request counts retain the native virtual book's geometry.
   hh.positions = closedPositions(closed);
   hh.posOpened = episodes.filter((e) => hourIdxOf(e.start) === hours.length).length;
@@ -2646,14 +2651,16 @@ const order = (keys, ord) =>
   });
 const groupRows = (keyFn, ord) => {
   const by = new Map();
-  for (const x of trades) {
+  for (const x of inBook) {
     const k = keyFn(x);
     if (k === null) continue;
     if (!by.has(k)) by.set(k, []);
     by.get(k).push(x);
   }
   const keys = ord ? order(by.keys(), ord) : [...by.keys()];
-  return keys.map((k) => ({ key: k, ...curveStats(by.get(k)), opened: by.get(k).length }));
+  return keys.map((k) => ({ key: k, ...curveStats(by.get(k).filter(x => !x.openAtEnd)), opened: by.get(k).length,
+    fundedOpened: by.get(k).filter(x => sessionAllocation(x, sized.units, orderKey) === "funded").length,
+    openCountBasis: "native-virtual-orders" }));
 };
 /** hour × key: orders opened in the hour, closes in the hour (PF, net on them) */
 const hourly = (keyFn) => {
@@ -2666,6 +2673,8 @@ const hourly = (keyFn) => {
         t: h,
         key: k,
         opened: 0,
+        fundedOpened: 0,
+        openCountBasis: "native-virtual-orders",
         closes: 0,
         wins: 0,
         gp: 0,
@@ -2679,10 +2688,15 @@ const hourly = (keyFn) => {
     }
     return by.get(id);
   };
-  for (const x of trades) {
+  for (const x of inBook) {
     const k = keyFn(x);
     if (k === null) continue;
-    if (x.entryT >= startT && x.entryT < endT) get(hourOfEntry(x.entryT), k).opened++;
+    if (x.entryT >= startT && x.entryT <= endT) {
+      const opened = get(hourOfEntry(x.entryT === endT ? endT - 1 : x.entryT), k);
+      opened.opened++;
+      if (sessionAllocation(x, sized.units, orderKey) === "funded") opened.fundedOpened++;
+    }
+    if (x.openAtEnd) continue;
     const e = get(hourOfExit(x.exitT), k);
     (e.rows ??= []).push(x);
   }
@@ -2714,7 +2728,13 @@ const hourly = (keyFn) => {
 };
 
 const tot = curveStats(trades, endT);
-const tl = openTimeline(trades, startT, endT);
+const tl = openTimeline(inBook, startT, endT);
+const fundedTimeline = openTimeline(fundedInBook, startT, endT);
+// An order at the endpoint has zero duration, but is part of the endpoint book.
+tl.maxOrders = Math.max(tl.maxOrders, openEnd.length);
+tl.maxPositions = Math.max(tl.maxPositions, new Set(openEnd.map(x => `${x.sym}|${x.side}`)).size);
+fundedTimeline.maxOrders = Math.max(fundedTimeline.maxOrders, fundedOpenEnd.length);
+fundedTimeline.maxPositions = Math.max(fundedTimeline.maxPositions, new Set(fundedOpenEnd.map(x => `${x.sym}|${x.side}`)).size);
 const fullHours = hours.filter((h) => !h.partial);
 const partialHours = hours.filter((h) => h.partial);
 const observedTypes = groupRows(typeOf, TYPE_ORDER);
@@ -2834,10 +2854,14 @@ check(
   sum(hours, (h) => h.orders),
 );
 check(
-  "Σ hourly orders opened = total orders",
-  trades.length,
+  "Σ hourly virtual orders opened = settled plus still-open orders",
+  inBook.length,
   sum(hours, (h) => h.ordersOpened),
 );
+check("Σ hourly funded orders opened = funded settled plus still-open orders", fundedInBook.length, sum(hours, h => h.fundedOrdersOpened));
+check("Σ type-hour openings = every virtual opening", inBook.length, sum(typeHours, h => h.opened));
+check("Σ per-type funded openings = every funded opening", fundedInBook.length, sum(types, r => r.fundedOpened ?? 0));
+check("all opening allocations are known", 0, inBook.filter(x => sessionAllocation(x, sized.units, orderKey) === "unknown").length);
 check(
   "Σ hourly positions closed = positions closed",
   episodes.filter((e) => e.end !== Infinity).length,
@@ -3420,6 +3444,10 @@ const T = {
   maxOpenOrders: tl.maxOrders,
   avgOpenPositions: tl.avgPositions,
   maxOpenPositions: tl.maxPositions,
+  occupancyBasis: "native-virtual-orders",
+  openedOrders: fundedInBook.length,
+  virtualOpenedOrders: inBook.length,
+  fundedOccupancy: { ...fundedTimeline, basis: "funded-modeled-allocations" },
   marginMax: Math.max(0, ...hours.map((h) => h.marginMax)),
   greenHours: fullHours.filter((h) => h.net > 0).length,
   redHours: fullHours.filter((h) => h.net < 0).length,
@@ -3433,6 +3461,10 @@ const T = {
   openEnd: {
     recorded: openEndRecorded,
     orders: openEnd.length,
+    fundedOrders: fundedOpenEnd.length,
+    zeroAllocatedOrders: openEnd.filter(x => sessionAllocation(x, sized.units, orderKey) === "zero").length,
+    unknownAllocations: openEnd.filter(x => sessionAllocation(x, sized.units, orderKey) === "unknown").length,
+    countBasis: "native-virtual-orders",
     positions: new Set(openEnd.map((o) => `${o.sym}|${o.side > 0 ? 1 : -1}`)).size,
     // marked at the last close of the run (the last minute's mark)
     mtm: hours.at(-1)?.openAtEnd?.mtm ?? 0,
@@ -3666,7 +3698,7 @@ const capLine = !caps.on
     `**Without the caps:** balance ${usd(balance0)} → ${usd(bookUncapped.balanceEnd)} (${f2((bookUncapped.net / balance0) * 100)} %) · Return PF ${pfStr(bookUncapped.gpR, bookUncapped.glR, bookUncapped.n)} · cash PF (base $1) ${pfStr(bookUncapped.gpR, bookUncapped.glR, bookUncapped.n)} · sized $ PF diagnostic ${pfStr(bookUncapped.gp, bookUncapped.gl, bookUncapped.n)} · equity at end ${usd(bookUncapped.equityEnd)} · equity max drawdown ${usd(bookUncapped.equityMaxDd)} (${f2(bookUncapped.equityMaxDdPct * 100)} %) · margin used max ${usd(bookUncapped.marginMax)}${bookUncapped.marginOverMinutes ? ` · infeasible: margin exceeded equity for ${bookUncapped.marginOverMinutes} min` : ""}.`;
 const openText = !T.openEnd.recorded
   ? "open at end: not recorded in this dump (dumped by an older core-session; the equity holds the closed orders only)"
-  : `open at end: ${T.openEnd.positions} positions / ${T.openEnd.orders} orders, MTM ${usd(T.openEnd.mtm)} (${String(T.openEnd.rule ?? "upper bound").split(":")[0]}: ${String(T.openEnd.rule ?? "").startsWith("exact") ? "executed by the engine through every gate, cap and Block volume, marked to market" : "tape-level open positions of the executed configs, one unit of volume, the sim's gates not re-applied"})`;
+  : `open at end: ${T.openEnd.positions} virtual positions / ${T.openEnd.orders} virtual orders (${T.openEnd.fundedOrders} funded), MTM ${usd(T.openEnd.mtm)} (${String(T.openEnd.rule ?? "upper bound").split(":")[0]}: ${String(T.openEnd.rule ?? "").startsWith("exact") ? "executed by the engine through every gate, cap and Block volume, marked to market" : "tape-level open positions of the executed configs, one unit of volume, the sim's gates not re-applied"})`;
 const feasText = T.feasible
   ? ""
   : ` · **infeasible: margin exceeded equity** (${T.marginOver.minutes} min, first ${hm(T.marginOver.firstT)} UTC, max margin ÷ equity ${f2(T.marginOver.maxRatio)}×)`;
@@ -3679,14 +3711,14 @@ const lines = [
     `Balance ${usd(balance0)}; ${sizing.mode === "fixed" ? `each order volume unit = ${usd(notional)} notional` : `each order volume unit = ${(sizing.pct * 100).toFixed(1)} % of the realized account balance at entry (${usd(report.settings.unitMin)}–${usd(report.settings.unitMax)} before volume factors)`} at ${leverage}×; ${(cost * 100).toFixed(2)} % round-trip cost on every close. ` +
     `Window ${new Date(startT).toISOString().slice(0, 16)} → ${new Date(endT).toISOString().slice(0, 16)} UTC. ${baseSummaryText(E)}${E.baseBuilt ? ` (+${E.baseBuilt} built for measurement, grid.allSets — not validated)` : ""} — per range, passed / evaluated pairs · applied Base PF floor and passed-pair PF scores: ${baseRangeText(E)}; Main ${E.mainPairs} pairs, ${E.tapes} tapes. ${realText} Compute ${Math.round(E.computeMs / 1000)} s. The combined account PF includes both Base-qualified engine orders and separately activated Signal orders; the Base-to-execution benchmark is engine-only, and Signal PF is separate. Pre-validation candidate-pool PF is diagnostic. ${raw.settings.wf?.causalBase ? "Causal: Base / Main / Real ranked on the history before the run." : "Look-ahead: Base / Main / Real ranked on every bar up to the end (the run is partly in-sample)."}`,
   ``,
-  `**Simulated result (live sizing replay, ${capsText}):** balance ${usd(balance0)} → ${usd(T.balanceEnd)} (${f2(T.netPct * 100)} %, closed orders) · equity at end ${usd(T.equityEnd)} (${openText}) · Return PF ${pfStr(T.gpR, T.glR, T.orders)} · cash PF (base $1) ${pfStr(T.gpR, T.glR, T.orders)} · sized $ PF diagnostic ${pfStr(T.gp, T.gl, T.orders)} · ${T.positions} positions / ${T.orders} funded orders · ${T.virtual.n} virtual closes (${T.zeroAllocatedOrders} zero allocations) · WR ${f2(T.wr * 100)} % · DDT (closed trades, $) ${f2(T.ddtH)} h · DDR ${T.ddr === null ? "– (net ≤ 0)" : f2(T.ddr)} · equity max drawdown ${usd(T.equityMaxDd)} (${f2(T.equityMaxDdPct * 100)} %) · margin used max ${usd(T.marginMax)} · open avg ${f2(T.avgOpenPositions)} pos / ${f2(T.avgOpenOrders)} orders (peak ${T.maxOpenPositions} / ${T.maxOpenOrders})${feasText}`,
+  `**Simulated result (live sizing replay, ${capsText}):** balance ${usd(balance0)} → ${usd(T.balanceEnd)} (${f2(T.netPct * 100)} %, closed orders) · equity at end ${usd(T.equityEnd)} (${openText}) · Return PF ${pfStr(T.gpR, T.glR, T.orders)} · cash PF (base $1) ${pfStr(T.gpR, T.glR, T.orders)} · sized $ PF diagnostic ${pfStr(T.gp, T.gl, T.orders)} · ${T.positions} closed position episodes / ${T.openedOrders} funded orders opened (${T.orders} settled, ${T.openEnd.fundedOrders} still open) · ${T.virtual.n} virtual closes (${T.zeroAllocatedOrders} zero allocations) · WR ${f2(T.wr * 100)} % · DDT (closed trades, $) ${f2(T.ddtH)} h · DDR ${T.ddr === null ? "– (net ≤ 0)" : f2(T.ddr)} · equity max drawdown ${usd(T.equityMaxDd)} (${f2(T.equityMaxDdPct * 100)} %) · margin used max ${usd(T.marginMax)} · funded open avg ${f2(T.fundedOccupancy.avgPositions)} pos / ${f2(T.fundedOccupancy.avgOrders)} orders (peak ${T.fundedOccupancy.maxPositions} / ${T.fundedOccupancy.maxOrders})${feasText}`,
   ``,
   report.evidence.qualification.note,
   report.evidence.returns.note,
   ``,
   ...signalHistMd(E, raw.settings),
   capLine,
-  `**Virtual diagnostic:** ${T.virtual.n} closes · Return PF ${pfStr(T.virtual.gpR, T.virtual.glR, T.virtual.n)} before funding allocation; ${T.zeroAllocatedOrders} zero allocations and ${T.unknownAllocations} unknown allocations. Position episodes, entry requests and open-order counts describe the native virtual book; settled order counts and PF use the owned cohort.`,
+  `**Virtual diagnostic:** ${T.virtual.n} closes · Return PF ${pfStr(T.virtual.gpR, T.virtual.glR, T.virtual.n)} before funding allocation; ${T.zeroAllocatedOrders} zero allocations and ${T.unknownAllocations} unknown allocations. Position episodes and explicitly virtual counts describe the native virtual book. Funded opening/settlement totals and headline occupancy use verified allocations; PF uses funded settled orders.`,
   baseGateMd(E),
   baseWhyMd(E),
   afterBaseMd(E, raw.tapeAgg, trades),
@@ -4134,7 +4166,7 @@ const data = clean({
       "native virtual-book symbol × direction episodes (preserved separately from funded settled-slice counts): overlapping orders on one symbol and side form one position (per group: episodes of that group's orders)",
     greenHours: "hours whose closed orders netted > 0 (of the hours with closes)",
     hourBucket:
-      "an order belongs to the hour of its close (h, h + 1 h]; opened = entries in [h, h + 1 h)",
+      "a settled order belongs to its close hour (h, h + 1 h]; openings include still-open orders in [h, h + 1 h), with the run endpoint included in the final hour",
     subType:
       "Plain = executed at ×1; Block Active = raised by Block at level ≥ " +
       minActive +
@@ -4164,6 +4196,7 @@ const data = clean({
     marginMax: h.marginMax,
     marginEnd: h.marginEnd,
     ordersOpened: h.ordersOpened,
+    fundedOrdersOpened: h.fundedOrdersOpened,
     orders: h.orders,
     virtual: h.virtual,
     fundedOrders: h.fundedOrders,
@@ -4427,11 +4460,11 @@ function renderWriteup(d, dir) {
     `|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|`,
     `| ${usd(s.balance0)} → ${usd(t.balanceEnd)} | ${usd(t.equityEnd)} | ${usd(t.net)} (${pct(t.netPct)}) | ${pf(t)} | ${cashPf(t)} | ${sizedDollarPf(t)} | ${f2(t.ddtH)} | ${ddr(t.ddr)} | ${usd(t.equityMaxDd)} (${pct(t.equityMaxDdPct)}) | ${t.orders} | ${t.positions} | ${pct(t.wr)} | ${t.greenHours} / ${t.fullHours} | ${usd(t.marginMax)} |`,
     ``,
-    `Simulated live sizing replay (${capsText}); ${openText}${feasText}.`,
+    `Simulated live sizing replay (${capsText}); ${t.openedOrders} funded orders opened: ${t.orders} settled and ${t.openEnd.fundedOrders} still open. ${openText}${feasText}.`,
     ``,
     capLine,
     ``,
-    `Separate virtual diagnostic: ${t.virtual.n} closes · Return PF ${pfStr(t.virtual.gpR, t.virtual.glR, t.virtual.n)} before funding allocation; ${t.zeroAllocatedOrders} zero allocations, ${t.unknownAllocations} unknown allocations. Position episodes, entry requests and open-order counts describe the native virtual book; settled order counts and PF use the owned cohort.`,
+    `Separate virtual diagnostic: ${t.virtual.n} closes · Return PF ${pfStr(t.virtual.gpR, t.virtual.glR, t.virtual.n)} before funding allocation; ${t.zeroAllocatedOrders} zero allocations, ${t.unknownAllocations} unknown allocations. Position episodes and explicitly virtual counts describe the native virtual book. Funded opening/settlement totals and headline occupancy use verified allocations; PF uses funded settled orders.`,
     ``,
     `Combined-book PF includes engine and independently qualified Signal orders. The Base-to-execution benchmark uses funded settled engine orders from Base-qualified pairs whose configs passed later validation/seating; Signals are reported as their own cohort. Pre-validation candidate PF is diagnostic only. Return PF is primary: positive net returns ÷ absolute negative net returns after modeled costs. Cash PF (base $1) applies each canonical unit return to equal $1 notionals and should match Return PF. Sized $ PF is a separate diagnostic using actual funded sizes (${sizingTxt(s)}); it can differ as order sizes vary.` +
       (s.sizing.mode !== "fixed"
@@ -5093,8 +5126,8 @@ function clientMain(D) {
   ${kpi("DDT", n2(T.ddtH) + " h", "closed orders · equity " + n2(T.equityDdtMaxH) + " h")}
   ${kpi("DDR", T.ddr === null ? "–" : n2(T.ddr), "closed DD " + usd(T.closedMdd) + " ÷ net · equity " + (T.equityDdr === null ? "–" : n2(T.equityDdr)))}
   ${kpi("Max equity drawdown", pct(T.equityMaxDdPct), usd(T.equityMaxDd) + " · marked every minute")}
-  ${kpi("Peak margin used", usd(T.marginMax), "open avg " + n2(T.avgOpenPositions, 1) + " pos / " + n2(T.avgOpenOrders, 1) + " orders")}
-  ${kpi("Orders", T.orders.toLocaleString("en-US"), "funded settled · " + (T.virtual?.n ?? T.orders) + " virtual closes · peak open " + T.maxOpenOrders)}
+  ${kpi("Peak margin used", usd(T.marginMax), "funded open avg " + n2(T.fundedOccupancy.avgPositions, 1) + " pos / " + n2(T.fundedOccupancy.avgOrders, 1) + " orders")}
+  ${kpi("Orders opened", T.openedOrders.toLocaleString("en-US"), T.orders + " funded settled · " + T.openEnd.fundedOrders + " still open · funded peak " + T.fundedOccupancy.maxOrders)}
   ${kpi("Virtual positions", T.positions.toLocaleString("en-US"), "symbol × side · peak virtual open " + T.maxOpenPositions)}
   ${kpi("Win rate", pct(T.wr, 1), T.wins + " wins / " + T.losses + " losses")}
   ${kpi("Green hours", T.greenHours + " / " + T.fullHours, T.redHours + " red · " + T.flatHours + " flat" + (T.partialHour ? " · last hour partial" : ""))}
@@ -5102,9 +5135,9 @@ function clientMain(D) {
 </div>
 ${T.ruinT ? `<p class="warn"><b>Equity reached $0 at ${dt(T.ruinT)} UTC</b> (lowest ${usd(T.eqMin)}): at this sizing (${S.sizing.mode === "fixed" ? usd(S.notional) + " per unit" : n2(S.sizing.pct * 100, 1) + " % of account balance per unit"} × the Block multiple, no position caps) an account would have been liquidated there. The book below keeps the engine's orders as they were; orders entered after it are sized at $0. The separate virtual PF records those unallocated closes; the primary PF only uses funded settled orders.</p>` : ""}
 ${T.feasible === false ? `<p class="warn"><b>Infeasible: margin exceeded equity</b> for ${T.marginOver.minutes} min (first ${dt(T.marginOver.firstT)} UTC, max margin ÷ equity ${n2(T.marginOver.maxRatio)}×).</p>` : ""}
-<p class="note"><b>Separate virtual diagnostic:</b> ${T.virtual ? `${T.virtual.n} closes · Return PF ${pfTxt(T.virtual.gpR, T.virtual.glR, T.virtual.n)} before funding allocation; ${T.zeroAllocatedOrders} zero allocations, ${T.unknownAllocations} unknown allocations.` : "not recorded"} Position episodes, entry requests and open-order counts describe the native virtual book; settled order counts and PF use the owned cohort.</p>
+<p class="note"><b>Separate virtual diagnostic:</b> ${T.virtual ? `${T.virtual.n} closes · Return PF ${pfTxt(T.virtual.gpR, T.virtual.glR, T.virtual.n)} before funding allocation; ${T.zeroAllocatedOrders} zero allocations, ${T.unknownAllocations} unknown allocations.` : "not recorded"} Position episodes and explicitly virtual counts describe the native virtual book. Funded opening/settlement totals and headline occupancy use verified allocations; PF uses funded settled orders.</p>
 <p class="note"><b>Simulated live sizing replay:</b> ${T.caps && T.caps.on ? `position cap ${T.caps.maxPositionX}× balance per symbol × side, gross cap ${T.caps.maxExposureX}× balance (${esc(T.caps.source)})` : "no caps"} — ${T.caps ? T.caps.capped : 0} orders capped to $0, ${T.caps ? T.caps.scaled : 0} scaled down.${T.uncapped ? ` <b>Without the caps:</b> balance ${usd(S.balance0)} → ${usd(T.uncapped.balanceEnd)} · Return PF ${pfTxt(T.uncapped.gpR ?? T.gpR, T.uncapped.glR ?? T.glR, T.uncapped.n ?? T.orders)} · cash PF (base $1) ${pfTxt(T.uncapped.gpR ?? T.gpR, T.uncapped.glR ?? T.glR, T.uncapped.n ?? T.orders)} · sized $ PF diagnostic ${pfTxt(T.uncapped.gp, T.uncapped.gl, T.uncapped.n ?? T.orders)} · equity max drawdown ${usd(T.uncapped.equityMaxDd)} (${pct(T.uncapped.equityMaxDdPct)}) · margin max ${usd(T.uncapped.marginMax)}.` : ""}
-${T.openEnd && T.openEnd.recorded ? `Open at the end: ${T.openEnd.positions} positions / ${T.openEnd.orders} orders, MTM ${susd(T.openEnd.mtm)} (${String(T.openEnd.rule ?? "").startsWith("exact") ? "exact: executed by the engine, marked to market" : "upper bound: tape-level open positions of the executed configs, one unit of volume"}), in the end equity ${usd(T.equityEnd)}.` : "Open positions at the end: not recorded in this dump."}</p>
+${T.openEnd && T.openEnd.recorded ? `Open at the end: ${T.openEnd.positions} virtual positions / ${T.openEnd.orders} virtual orders (${T.openEnd.fundedOrders} funded), MTM ${susd(T.openEnd.mtm)} (${String(T.openEnd.rule ?? "").startsWith("exact") ? "exact: executed by the engine, marked to market" : "upper bound: tape-level open positions of the executed configs, one unit of volume"}), in the end equity ${usd(T.equityEnd)}.` : "Open positions at the end: not recorded in this dump."}</p>
 <p class="note">The combined funded account PF includes engine and separately qualified Signal orders. The Base-to-execution benchmark isolates funded engine orders from Base-qualified pairs whose configs passed post-Base validation; Signals are shown separately. Pre-validation candidate PF is diagnostic only. ${esc(baseSummaryText(D.engine))} (per range, passed / evaluated pairs · applied Base PF floor and passed-pair PF scores: ${esc(baseRangeText(D.engine))}) · Main ${D.engine.mainPairs} pairs · ${D.engine.tapes.toLocaleString("en-US")} tapes · ${esc(D.selectionPhaseLabel)} · compute ${Math.round(D.engine.computeMs / 1000)} s · peak RSS ${D.engine.rssMaxMb} MB${D.runSeconds ? " · session " + Math.round(D.runSeconds / 60) + " min" : ""}. Generated ${esc(D.at)}.
 Consistency checks: <b class="${D.checksOk ? "ok" : "bad"}">${D.checks.filter((c) => c.ok).length} of ${D.checks.length} pass</b> (see <a href="#checks">Checks</a>).</p>
 ${
@@ -5374,7 +5407,8 @@ ${sec(
       { l: "DD % (hour max)", f: (r) => pct(r.ddMaxHourPct), v: (r) => r.ddMaxHourPct },
       { l: "max DD % so far", f: (r) => pct(r.maxDdPctSoFar), v: (r) => r.maxDdPctSoFar },
       { l: "margin max", f: (r) => usd(r.marginMax), v: (r) => r.marginMax },
-      numCol("ordersOpened", "orders opened"),
+      numCol("fundedOrdersOpened", "funded opened"),
+      numCol("ordersOpened", "virtual opened"),
       numCol("orders", "orders closed"),
       numCol("posOpened", "pos opened"),
       numCol("posClosed", "pos closed"),
@@ -5430,6 +5464,7 @@ ${sec(
         "",
         pct(T.equityMaxDdPct),
         usd(T.marginMax),
+        D.hours.reduce((a, h) => a + h.fundedOrdersOpened, 0).toLocaleString("en-US"),
         D.hours.reduce((a, h) => a + h.ordersOpened, 0).toLocaleString("en-US"),
         T.orders.toLocaleString("en-US"),
         D.hours.reduce((a, h) => a + h.posOpened, 0),
@@ -5514,7 +5549,7 @@ ${sec(
   const hourCols = (label) => [
     { k: "t", l: "hour (UTC)", t: "s", f: (r) => hm(r.t), v: (r) => String(r.t) },
     { k: "key", l: label, t: "s" },
-    numCol("opened", "orders opened"),
+    numCol("opened", "virtual opened"),
     numCol("closes", "closes"),
     numCol("wins", "wins"),
     pfCol("gpR", "glR", "closes"),

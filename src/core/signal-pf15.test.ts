@@ -31,9 +31,11 @@ describe("Signals PF 1.5, own Strategy Base and independent TP/SL", () => {
     for (const ind of ["sig-ema-cross-s@m1", "sig-ema-cross-m@m30", "sig-coord-v2-test@m15"]) {
       assert.equal(minPfOf({ minPf: 1.05 }, undefined, ind), 1.5);
       assert.equal(minPfOf({ minPf: 1.8 }, undefined, ind), 1.8);
-      assert.equal(minPfOf({ minPf: 1.05, rangeMinPf: { short: 1.9 } }, "sh", ind), 1.9);
+      assert.equal(minPfOf({ minPf: 1.05, rangeMinPf: { short: 1.9 } }, "sh", ind), 1.5, "a borrowed protection tag cannot replace the Signals range floor");
+      assert.equal(minPfOf({ minPf: 1.9, rangeMinPf: { short: 1.1 } }, "sh", ind), 1.9, "an explicit global floor still applies");
       assert.equal(liveMinPfOf({ gates: { ...DEFAULT_SETTINGS.gates, minPf: 1.05 }, live: { ...DEFAULT_SETTINGS.live, liveMinPf: 1.1 } }, undefined, ind), 1.5);
     }
+    assert.equal(minPfOf({ minPf: 1.05, rangeMinPf: { short: 1.9 } }, "sh", "ema-cross"), 1.9, "ordinary strategies retain their own range floor");
     assert.equal(signalHistValidationOf(0.002, { ...DEFAULT_SETTINGS.gates, minPf: 1.05 }).minPf, 1.5);
     for (const rank of ["net", "drawdown", "lowdd"] as const) {
       const s = signalSettings({ rank, minBlockShare: 0, minTrades: 3 });

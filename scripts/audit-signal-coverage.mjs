@@ -11,7 +11,8 @@ import { signalConfigDetails, signalProgressInventory } from "./lib/signal-progr
 import { readFundedSession } from "./lib/session-funded-cohort.mjs";
 import { auditSettledHours } from "./lib/postbase-hourly.mjs";
 import { auditSimulationParity } from "./audit-simulation-parity.mjs";
-import { makeTape, configEval } from "../src/core/sim/walkforward.ts";
+import { makeTape, configEval, signalConfigEval, signalValidationOk } from "../src/core/sim/walkforward.ts";
+import { signalActiveHas } from "../src/core/signals.ts";
 import { parseConfigId, configId, kindOfId } from "../src/core/pipeline/pipeline.ts";
 import { BOOK_NOTIONAL_EPS_USD } from "./lib/book-notional.mjs";
 import { modeledUnitReturn } from "../src/core/metrics/stats.ts";
@@ -19,6 +20,28 @@ import { modeledUnitReturn } from "../src/core/metrics/stats.ts";
 const H = 3_600_000;
 const near = (a, b, why) => assert.ok(Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) <= 1e-8 * Math.max(1, Math.abs(a), Math.abs(b)), why);
 const pf = (gp, gl, n) => ({ pf: n && gl > 0 ? gp / gl : null, pfState: !n ? "empty" : gl > 0 ? "ratio" : gp > 0 ? "no-loss" : "flat" });
+export function signalEntrySelection(tp, rows, steps, wf, startT, endT) {
+  if (!steps?.length) return null;
+  const result = { settledCandidates: 0, selected: 0, ownValidAtEntry: 0, selectedOwnValid: 0,
+    unselectedOwnValid: 0, newlyValidWithinStep: 0, selectedFailures: {}, unselectedExamples: [] };
+  for (const [sym, side, entryT, exitT] of rows) {
+    if (entryT < startT || entryT >= endT || exitT > endT) continue;
+    let lo = 0, hi = steps.length;
+    while (lo < hi) { const mid = (lo + hi) >>> 1; if (steps[mid].t <= entryT) lo = mid + 1; else hi = mid; }
+    assert.ok(lo, "Missing selection state at candidate entry");
+    const step = steps[lo - 1], selected = signalActiveHas(step.keys, tp.bot, tp.ind, sym, side, tp.kind, tp.id);
+    const ev = signalConfigEval(tp, entryT, wf, sym, side), valid = ev.ok && signalValidationOk(tp, entryT, wf, sym, side);
+    result.settledCandidates++; result.selected += selected; result.ownValidAtEntry += valid;
+    if (selected && valid) result.selectedOwnValid++;
+    if (selected && !valid) { const why = ev.ok ? "entry-lastN" : ev.fail; result.selectedFailures[why] = (result.selectedFailures[why] ?? 0) + 1; }
+    if (!selected && valid) {
+      const newlyValid = !signalConfigEval(tp, step.t, wf, sym, side).ok;
+      result.unselectedOwnValid++; result.newlyValidWithinStep += newlyValid;
+      if (result.unselectedExamples.length < 3) result.unselectedExamples.push({ cfg: tp.id, sym, side, entryT, selectionT: step.t, newlyValid });
+    }
+  }
+  return result;
+}
 export function scalarCoverage(rows, t, historyH, lastN) {
   const past = rows.filter(x => x[3] < t), window = past.filter(x => x[3] >= t - historyH * H);
   const recent = lastN > 0 ? past.slice(-lastN) : [];
@@ -83,6 +106,9 @@ export async function auditSignalCoverage(dir, out = resolve(dir, "coverage")) {
   const groups = new Map(), hourly = times.map(bucket);
   const get = (dimension, label) => { const id = JSON.stringify([dimension, label]); if (!groups.has(id)) groups.set(id, { dimension, label, configs: 0, symbols: new Set(), sources: new Set(), start: bucket(times[0]), end: bucket(times.at(-1)), protection: {}, execution: { n: 0, gp: 0, gl: 0, configs: new Set(), open: 0 } }); return groups.get(id); };
   const identities = new Set(), sourceIds = new Set();
+  const selectionSteps = raw.engine.signalSteps?.map(s => ({ t: s.t, keys: new Set(s.keys) }));
+  const entries = { settledCandidates: 0, selected: 0, ownValidAtEntry: 0, selectedOwnValid: 0,
+    unselectedOwnValid: 0, newlyValidWithinStep: 0, selectedFailures: {}, unselectedExamples: [] };
   const executions = new Map(), opens = new Map();
   const funded = await readFundedSession(rawPath), book = funded.book;
   assert.ok(book.checksOk, JSON.stringify(book.checks.filter(c => !c.ok)));
@@ -147,7 +173,13 @@ export async function auditSignalCoverage(dir, out = resolve(dir, "coverage")) {
         for (const g of [...baseGroups, symbolGroups.get(x.sym)]) { g.execution.n++; g.execution.configs.add(row.id); if (r > 0) g.execution.gp += r; else g.execution.gl -= r; }
       }
       for (const x of opens.get(row.id) ?? []) for (const g of [...baseGroups, symbolGroups.get(x.sym)]) g.execution.open++;
-      const line = JSON.stringify({ ...info, snapshots: configSnapshots, executed: executions.get(row.id)?.length ?? 0, open: opens.get(row.id)?.length ?? 0 }) + "\n";
+      const entrySelection = signalEntrySelection(tp, row.trades, selectionSteps, wf, times[0], times.at(-1));
+      if (entrySelection) {
+        for (const k of ["settledCandidates", "selected", "ownValidAtEntry", "selectedOwnValid", "unselectedOwnValid", "newlyValidWithinStep"]) entries[k] += entrySelection[k];
+        for (const [k, n] of Object.entries(entrySelection.selectedFailures)) entries.selectedFailures[k] = (entries.selectedFailures[k] ?? 0) + n;
+        if (entries.unselectedExamples.length < 30) entries.unselectedExamples.push(...entrySelection.unselectedExamples.slice(0, 30 - entries.unselectedExamples.length));
+      }
+      const line = JSON.stringify({ ...info, snapshots: configSnapshots, entrySelection, executed: executions.get(row.id)?.length ?? 0, open: opens.get(row.id)?.length ?? 0 }) + "\n";
       if (!stream.write(line)) await once(stream, "drain");
       tapes++; closes += row.trades.length;
       if (tapes % 5000 === 0) { peakRssMb = Math.max(peakRssMb, process.memoryUsage().rss / 1e6); console.log(JSON.stringify({ tapes, comparisons, elapsedS: (performance.now() - started) / 1000, peakRssMb })); }
@@ -180,9 +212,10 @@ export async function auditSignalCoverage(dir, out = resolve(dir, "coverage")) {
       protection: "Effective percent protections after lane scaling/floors/caps. ATR multiples and floors are separate from resolved per-entry prices.",
       ddt: "Context history DDT uses unit-return running peaks; account equity DDT includes minute open-position marks and is separately reported." },
     hourly: hourly.map(finish), groups: finalized, funding: funded.funding, settled, account: book.total,
+    entrySelection: selectionSteps?.length ? { ...entries, scope: "Settled tape candidates only; own config validation is not complete admission. Ranking, shared guards, funding and endpoint-open candidates are separate." } : null,
     exactTape: { ok: parity.ok, matched: parity.matched, missing: parity.missingCount, mismatched: parity.mismatchCount },
     reportChecks: book.checks, engine: { computeMs: raw.engine.computeMs, rssMaxMb: raw.engine.rssMaxMb, mem: raw.engine.mem, phases: raw.engine.phases,
-      baseByRange: raw.engine.baseByRange, signals: raw.engine.signals, independentExit: raw.engine.independentExit, skips: raw.engine.skips, skipsByRange: raw.engine.skipsByRange },
+      baseByRange: raw.engine.baseByRange, signals: raw.engine.signals, independentExit: raw.engine.independentExit, skips: raw.engine.skips, skipsByRange: raw.engine.skipsByRange, signalFunnel: raw.engine.signalFunnel },
     audit: { comparisons, elapsedMs: performance.now() - started, peakRssMb }, configFile };
   writeFileSync(out + ".json", JSON.stringify(result,null,2) + "\n");
   console.log(JSON.stringify({ ok: true, catalog: result.catalog, start: result.hourly[0], end: result.hourly.at(-1), funding: result.funding, audit: result.audit }));

@@ -1,0 +1,8 @@
+{
+  "scenario": "all-sources",
+  "exitCode": -6,
+  "wallSeconds": 486.1814872649975,
+  "cumulativeChildPeakRssMiB": 5913.2109375,
+  "userSeconds": 1126.754515,
+  "systemSeconds": 18.402867999999998
+}

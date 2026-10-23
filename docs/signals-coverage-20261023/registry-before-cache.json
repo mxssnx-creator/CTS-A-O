@@ -1,0 +1,710 @@
+{
+  "workflowRun": 40023896043,
+  "url": "https://github.com/mxssnx-creator/CTS-A-O/actions/runs/40023896043",
+  "head": "082867dca5658c84933af5b08cc7f5b2c145bc30",
+  "sourceSha256": "9684e231079cd1e2d90ab23ef9290aef9a75b717516f5ced479d81b24ff651f3",
+  "status": "success",
+  "artifacts": [
+    {
+      "mode": "identity",
+      "rows": [
+        {
+          "scope": {
+            "sourceSha256": "9684e231079cd1e2d90ab23ef9290aef9a75b717516f5ced479d81b24ff651f3",
+            "registeredSpecs": 1972,
+            "byKind": {
+              "trend": 70,
+              "break": 237,
+              "active": 163,
+              "direction": 38,
+              "move": 60,
+              "rsi": 39,
+              "bollinger": 31,
+              "sar": 7,
+              "macd": 23,
+              "ema": 20,
+              "osc": 60,
+              "volume": 34,
+              "channel": 21,
+              "ichimoku": 8,
+              "smooth": 17,
+              "tactic": 10,
+              "relate": 40,
+              "micro": 490,
+              "inverse": 604
+            },
+            "engineCombos": 38402,
+            "timeframes": [
+              1,
+              5,
+              15,
+              30
+            ]
+          },
+          "classification": "Synthetic identity contract for all registered source/lane/type/range combinations; three causal hourly own-history gate checks per source. Hypothetical combinations do not override real range eligibility or prove market profits.",
+          "strategyKinds": [
+            "normal",
+            "trailing",
+            "trailing-only",
+            "exit",
+            "dca",
+            "dca-active",
+            "axis"
+          ],
+          "ranges": [
+            "wide",
+            "mc",
+            "mn",
+            "mp",
+            "sh",
+            "gn",
+            "lg"
+          ],
+          "checkedIdentityCells": 638960,
+          "ownHourlyDecisions": 5916,
+          "losingOwnHourlyDecisions": 5916,
+          "completedSpecsByKind": {
+            "trend": 70,
+            "break": 237,
+            "active": 163,
+            "direction": 38,
+            "move": 60,
+            "rsi": 39,
+            "bollinger": 31,
+            "sar": 7,
+            "macd": 23,
+            "ema": 20,
+            "osc": 60,
+            "volume": 34,
+            "channel": 21,
+            "ichimoku": 8,
+            "smooth": 17,
+            "tactic": 10,
+            "relate": 40,
+            "micro": 490,
+            "inverse": 604
+          },
+          "violations": 0
+        }
+      ],
+      "totals": {}
+    },
+    {
+      "mode": "catalog",
+      "rows": [
+        {
+          "scope": {
+            "sourceSha256": "9684e231079cd1e2d90ab23ef9290aef9a75b717516f5ced479d81b24ff651f3",
+            "registeredSpecs": 1972,
+            "byKind": {
+              "trend": 70,
+              "break": 237,
+              "active": 163,
+              "direction": 38,
+              "move": 60,
+              "rsi": 39,
+              "bollinger": 31,
+              "sar": 7,
+              "macd": 23,
+              "ema": 20,
+              "osc": 60,
+              "volume": 34,
+              "channel": 21,
+              "ichimoku": 8,
+              "smooth": 17,
+              "tactic": 10,
+              "relate": 40,
+              "micro": 490,
+              "inverse": 604
+            },
+            "engineCombos": 38402,
+            "timeframes": [
+              1,
+              5,
+              15,
+              30
+            ]
+          },
+          "classification": "Complete static registry and configured protect identity audit; this does not execute every Cartesian market cell",
+          "configuredRanges": [
+            "wide",
+            "mn",
+            "sh",
+            "gn",
+            "lg",
+            "mc",
+            "mp"
+          ],
+          "originalDefaultCells": 3898,
+          "coverageOverrides": [
+            "Wide: explicit 2% target, retaining existing stop/trail/hold arrays",
+            "Minimal Plus: two explicit identity-test cells; production dynamic fitting is tested separately"
+          ],
+          "byTf": {
+            "1": {
+              "rawConfiguredCells": 3916,
+              "uniqueActualProtectIdentities": 3916,
+              "cellsByRange": {
+                "wide": 12,
+                "mn": 754,
+                "sh": 432,
+                "gn": 554,
+                "lg": 594,
+                "mc": 1564,
+                "mp": 6
+              }
+            },
+            "5": {
+              "rawConfiguredCells": 3916,
+              "uniqueActualProtectIdentities": 3916,
+              "cellsByRange": {
+                "wide": 12,
+                "mn": 754,
+                "sh": 432,
+                "gn": 554,
+                "lg": 594,
+                "mc": 1564,
+                "mp": 6
+              }
+            },
+            "15": {
+              "rawConfiguredCells": 3916,
+              "uniqueActualProtectIdentities": 3916,
+              "cellsByRange": {
+                "wide": 12,
+                "mn": 754,
+                "sh": 432,
+                "gn": 554,
+                "lg": 594,
+                "mc": 1564,
+                "mp": 6
+              }
+            },
+            "30": {
+              "rawConfiguredCells": 3916,
+              "uniqueActualProtectIdentities": 3916,
+              "cellsByRange": {
+                "wide": 12,
+                "mn": 754,
+                "sh": 432,
+                "gn": 554,
+                "lg": 594,
+                "mc": 1564,
+                "mp": 6
+              }
+            }
+          },
+          "eligibleEnginePairsByRange": {
+            "wide": 28522,
+            "mn": 38402,
+            "mp": 28522,
+            "sh": 10254,
+            "gn": 10254,
+            "lg": 10254,
+            "mc": 9598
+          },
+          "noEligibleRange": {
+            "count": 0,
+            "examples": []
+          },
+          "violations": [],
+          "notes": [
+            "Minimal Plus is explicitly enabled for this catalog check; all original distance/gate values are retained.",
+            "The actual target/stop/trail/hold identities are checked exhaustively per lane. Bot/indication prefixes are independently unique, so the full Cartesian identity mapping need not be allocated in memory.",
+            "A lane slower than an explicitly requested maximum hold cannot execute that cell; the engine reports this refusal instead of exceeding the configured time.",
+            "Signal sources and Stable-02 ports use their dedicated Signal engine. Legacy equivalent engine aliases share the documented execution key policy; independent source qualification is still separate."
+          ]
+        }
+      ],
+      "totals": {}
+    },
+    {
+      "mode": "causal",
+      "rows": [
+        {
+          "kind": "trend",
+          "specs": 70,
+          "laneSymbolCases": 9800,
+          "comparisons": 58800,
+          "comparedBars": 119658000,
+          "entryComparisons": 308280,
+          "entryCases": 51380,
+          "longStates": 2997266,
+          "shortStates": 3271939,
+          "violations": 0
+        },
+        {
+          "kind": "break",
+          "specs": 237,
+          "laneSymbolCases": 14460,
+          "comparisons": 86760,
+          "comparedBars": 181618200,
+          "entryComparisons": 603000,
+          "entryCases": 100500,
+          "longStates": 861442,
+          "shortStates": 917564,
+          "violations": 0
+        },
+        {
+          "kind": "active",
+          "specs": 163,
+          "laneSymbolCases": 22820,
+          "comparisons": 136920,
+          "comparedBars": 278632200,
+          "entryComparisons": 1240680,
+          "entryCases": 206780,
+          "longStates": 1640622,
+          "shortStates": 1585063,
+          "violations": 0
+        },
+        {
+          "kind": "direction",
+          "specs": 38,
+          "laneSymbolCases": 5320,
+          "comparisons": 31920,
+          "comparedBars": 64957200,
+          "entryComparisons": 152880,
+          "entryCases": 25480,
+          "longStates": 1582146,
+          "shortStates": 1738472,
+          "violations": 0
+        },
+        {
+          "kind": "move",
+          "specs": 60,
+          "laneSymbolCases": 8400,
+          "comparisons": 50400,
+          "comparedBars": 102564000,
+          "entryComparisons": 292320,
+          "entryCases": 48720,
+          "longStates": 649648,
+          "shortStates": 687524,
+          "violations": 0
+        },
+        {
+          "kind": "rsi",
+          "specs": 39,
+          "laneSymbolCases": 5460,
+          "comparisons": 32760,
+          "comparedBars": 66666600,
+          "entryComparisons": 206640,
+          "entryCases": 34440,
+          "longStates": 416611,
+          "shortStates": 472520,
+          "violations": 0
+        },
+        {
+          "kind": "bollinger",
+          "specs": 31,
+          "laneSymbolCases": 4340,
+          "comparisons": 26040,
+          "comparedBars": 52991400,
+          "entryComparisons": 154560,
+          "entryCases": 25760,
+          "longStates": 143230,
+          "shortStates": 139521,
+          "violations": 0
+        },
+        {
+          "kind": "sar",
+          "specs": 7,
+          "laneSymbolCases": 980,
+          "comparisons": 5880,
+          "comparedBars": 11965800,
+          "entryComparisons": 43680,
+          "entryCases": 7280,
+          "longStates": 587502,
+          "shortStates": 607214,
+          "violations": 0
+        },
+        {
+          "kind": "macd",
+          "specs": 23,
+          "laneSymbolCases": 3220,
+          "comparisons": 19320,
+          "comparedBars": 39316200,
+          "entryComparisons": 117600,
+          "entryCases": 19600,
+          "longStates": 864177,
+          "shortStates": 873571,
+          "violations": 0
+        },
+        {
+          "kind": "ema",
+          "specs": 20,
+          "laneSymbolCases": 2800,
+          "comparisons": 16800,
+          "comparedBars": 34188000,
+          "entryComparisons": 122640,
+          "entryCases": 20440,
+          "longStates": 1314797,
+          "shortStates": 1560652,
+          "violations": 0
+        },
+        {
+          "kind": "osc",
+          "specs": 60,
+          "laneSymbolCases": 8400,
+          "comparisons": 50400,
+          "comparedBars": 102564000,
+          "entryComparisons": 352800,
+          "entryCases": 58800,
+          "longStates": 861056,
+          "shortStates": 813096,
+          "violations": 0
+        },
+        {
+          "kind": "volume",
+          "specs": 34,
+          "laneSymbolCases": 4760,
+          "comparisons": 28560,
+          "comparedBars": 58119600,
+          "entryComparisons": 149520,
+          "entryCases": 24920,
+          "longStates": 661076,
+          "shortStates": 851093,
+          "violations": 0
+        },
+        {
+          "kind": "channel",
+          "specs": 21,
+          "laneSymbolCases": 2940,
+          "comparisons": 17640,
+          "comparedBars": 35897400,
+          "entryComparisons": 100800,
+          "entryCases": 16800,
+          "longStates": 365236,
+          "shortStates": 404340,
+          "violations": 0
+        },
+        {
+          "kind": "ichimoku",
+          "specs": 8,
+          "laneSymbolCases": 1120,
+          "comparisons": 6720,
+          "comparedBars": 13675200,
+          "entryComparisons": 36960,
+          "entryCases": 6160,
+          "longStates": 530260,
+          "shortStates": 554296,
+          "violations": 0
+        },
+        {
+          "kind": "smooth",
+          "specs": 17,
+          "laneSymbolCases": 2380,
+          "comparisons": 14280,
+          "comparedBars": 29059800,
+          "entryComparisons": 82320,
+          "entryCases": 13720,
+          "longStates": 1484169,
+          "shortStates": 1579043,
+          "violations": 0
+        },
+        {
+          "kind": "tactic",
+          "specs": 10,
+          "laneSymbolCases": 1400,
+          "comparisons": 8400,
+          "comparedBars": 17094000,
+          "entryComparisons": 84000,
+          "entryCases": 14000,
+          "longStates": 70331,
+          "shortStates": 67057,
+          "violations": 0
+        },
+        {
+          "kind": "relate",
+          "specs": 40,
+          "laneSymbolCases": 800,
+          "comparisons": 4800,
+          "comparedBars": 13142400,
+          "entryComparisons": 48000,
+          "entryCases": 8000,
+          "longStates": 78269,
+          "shortStates": 71808,
+          "violations": 0
+        },
+        {
+          "kind": "micro",
+          "specs": 490,
+          "laneSymbolCases": 9800,
+          "comparisons": 58800,
+          "comparedBars": 208236000,
+          "entryComparisons": 588000,
+          "entryCases": 98000,
+          "longStates": 882808,
+          "shortStates": 970860,
+          "violations": 0
+        },
+        {
+          "kind": "inverse",
+          "specs": 604,
+          "laneSymbolCases": 21200,
+          "comparisons": 127200,
+          "comparedBars": 395515200,
+          "entryComparisons": 127200,
+          "entryCases": 21200,
+          "longStates": 2749426,
+          "shortStates": 2632186,
+          "violations": 0
+        }
+      ],
+      "totals": {
+        "specs": 1972,
+        "laneSymbolCases": 130400,
+        "comparisons": 782400,
+        "comparedBars": 1825861200,
+        "entryComparisons": 4811880,
+        "entryCases": 801980,
+        "longStates": 18740072,
+        "shortStates": 19797819,
+        "violations": 0
+      }
+    },
+    {
+      "mode": "causal-partial",
+      "rows": [
+        {
+          "kind": "trend",
+          "specs": 70,
+          "laneSymbolCases": 9800,
+          "comparisons": 29400,
+          "comparedBars": 58423400,
+          "entryComparisons": 154140,
+          "entryCases": 51380,
+          "longStates": 2997266,
+          "shortStates": 3271939,
+          "violations": 0
+        },
+        {
+          "kind": "break",
+          "specs": 237,
+          "laneSymbolCases": 14460,
+          "comparisons": 43380,
+          "comparedBars": 88675980,
+          "entryComparisons": 301500,
+          "entryCases": 100500,
+          "longStates": 861442,
+          "shortStates": 917564,
+          "violations": 0
+        },
+        {
+          "kind": "active",
+          "specs": 163,
+          "laneSymbolCases": 22820,
+          "comparisons": 68460,
+          "comparedBars": 136043060,
+          "entryComparisons": 620340,
+          "entryCases": 206780,
+          "longStates": 1640622,
+          "shortStates": 1585063,
+          "violations": 0
+        },
+        {
+          "kind": "direction",
+          "specs": 38,
+          "laneSymbolCases": 5320,
+          "comparisons": 15960,
+          "comparedBars": 31715560,
+          "entryComparisons": 76440,
+          "entryCases": 25480,
+          "longStates": 1582146,
+          "shortStates": 1738472,
+          "violations": 0
+        },
+        {
+          "kind": "move",
+          "specs": 60,
+          "laneSymbolCases": 8400,
+          "comparisons": 25200,
+          "comparedBars": 50077200,
+          "entryComparisons": 146160,
+          "entryCases": 48720,
+          "longStates": 649648,
+          "shortStates": 687524,
+          "violations": 0
+        },
+        {
+          "kind": "rsi",
+          "specs": 39,
+          "laneSymbolCases": 5460,
+          "comparisons": 16380,
+          "comparedBars": 32550180,
+          "entryComparisons": 103320,
+          "entryCases": 34440,
+          "longStates": 416611,
+          "shortStates": 472520,
+          "violations": 0
+        },
+        {
+          "kind": "bollinger",
+          "specs": 31,
+          "laneSymbolCases": 4340,
+          "comparisons": 13020,
+          "comparedBars": 25873220,
+          "entryComparisons": 77280,
+          "entryCases": 25760,
+          "longStates": 143230,
+          "shortStates": 139521,
+          "violations": 0
+        },
+        {
+          "kind": "sar",
+          "specs": 7,
+          "laneSymbolCases": 980,
+          "comparisons": 2940,
+          "comparedBars": 5842340,
+          "entryComparisons": 21840,
+          "entryCases": 7280,
+          "longStates": 587502,
+          "shortStates": 607214,
+          "violations": 0
+        },
+        {
+          "kind": "macd",
+          "specs": 23,
+          "laneSymbolCases": 3220,
+          "comparisons": 9660,
+          "comparedBars": 19196260,
+          "entryComparisons": 58800,
+          "entryCases": 19600,
+          "longStates": 864177,
+          "shortStates": 873571,
+          "violations": 0
+        },
+        {
+          "kind": "ema",
+          "specs": 20,
+          "laneSymbolCases": 2800,
+          "comparisons": 8400,
+          "comparedBars": 16692400,
+          "entryComparisons": 61320,
+          "entryCases": 20440,
+          "longStates": 1314797,
+          "shortStates": 1560652,
+          "violations": 0
+        },
+        {
+          "kind": "osc",
+          "specs": 60,
+          "laneSymbolCases": 8400,
+          "comparisons": 25200,
+          "comparedBars": 50077200,
+          "entryComparisons": 176400,
+          "entryCases": 58800,
+          "longStates": 861056,
+          "shortStates": 813096,
+          "violations": 0
+        },
+        {
+          "kind": "volume",
+          "specs": 34,
+          "laneSymbolCases": 4760,
+          "comparisons": 14280,
+          "comparedBars": 28377080,
+          "entryComparisons": 74760,
+          "entryCases": 24920,
+          "longStates": 661076,
+          "shortStates": 851093,
+          "violations": 0
+        },
+        {
+          "kind": "channel",
+          "specs": 21,
+          "laneSymbolCases": 2940,
+          "comparisons": 8820,
+          "comparedBars": 17527020,
+          "entryComparisons": 50400,
+          "entryCases": 16800,
+          "longStates": 365236,
+          "shortStates": 404340,
+          "violations": 0
+        },
+        {
+          "kind": "ichimoku",
+          "specs": 8,
+          "laneSymbolCases": 1120,
+          "comparisons": 3360,
+          "comparedBars": 6676960,
+          "entryComparisons": 18480,
+          "entryCases": 6160,
+          "longStates": 530260,
+          "shortStates": 554296,
+          "violations": 0
+        },
+        {
+          "kind": "smooth",
+          "specs": 17,
+          "laneSymbolCases": 2380,
+          "comparisons": 7140,
+          "comparedBars": 14188540,
+          "entryComparisons": 41160,
+          "entryCases": 13720,
+          "longStates": 1484169,
+          "shortStates": 1579043,
+          "violations": 0
+        },
+        {
+          "kind": "tactic",
+          "specs": 10,
+          "laneSymbolCases": 1400,
+          "comparisons": 4200,
+          "comparedBars": 8346200,
+          "entryComparisons": 42000,
+          "entryCases": 14000,
+          "longStates": 70331,
+          "shortStates": 67057,
+          "violations": 0
+        },
+        {
+          "kind": "relate",
+          "specs": 40,
+          "laneSymbolCases": 800,
+          "comparisons": 2400,
+          "comparedBars": 6417120,
+          "entryComparisons": 24000,
+          "entryCases": 8000,
+          "longStates": 78269,
+          "shortStates": 71808,
+          "violations": 0
+        },
+        {
+          "kind": "micro",
+          "specs": 490,
+          "laneSymbolCases": 9800,
+          "comparisons": 29400,
+          "comparedBars": 101680600,
+          "entryComparisons": 294000,
+          "entryCases": 98000,
+          "longStates": 882808,
+          "shortStates": 970860,
+          "violations": 0
+        },
+        {
+          "kind": "inverse",
+          "specs": 604,
+          "laneSymbolCases": 21200,
+          "comparisons": 63600,
+          "comparedBars": 193124560,
+          "entryComparisons": 63600,
+          "entryCases": 21200,
+          "longStates": 2749426,
+          "shortStates": 2632186,
+          "violations": 0
+        }
+      ],
+      "totals": {
+        "specs": 1972,
+        "laneSymbolCases": 130400,
+        "comparisons": 391200,
+        "comparedBars": 891504880,
+        "entryComparisons": 2405940,
+        "entryCases": 801980,
+        "longStates": 18740072,
+        "shortStates": 19797819,
+        "violations": 0
+      }
+    }
+  ]
+}
