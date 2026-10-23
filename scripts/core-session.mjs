@@ -2599,6 +2599,7 @@ const sizingOut = buildSizingReplay();
 // ── 3. groups ─────────────────────────────────────────────────────────────────────────────────────────────────
 const KIND_LABEL = {
   normal: "Normal",
+  exit: "Exit",
   trailing: "Trailing",
   "trailing-only": "Trailing only",
   axis: "Axis",
@@ -2615,8 +2616,8 @@ const typeOf = (x) => (isSig(x) ? "Signal · " : "") + kindL(x);
 const blockOf = (x) =>
   (x.mult ?? 1) / (x.coordVol ?? 1) > 1 ? (blockActiveOn ? "Block Active" : "Block") : "Plain";
 const laneOfTrade = (x) => laneLabel(indOf(x)) || "plain";
-/** range of an order: Signals apart (signal configs carry no range tag), else its protect cell's range */
-const rangeOfTrade = (x) => (isSig(x) ? "Signals" : (RANGE_LABEL[rangeOfId(x.cfg)] ?? "?"));
+/** Exit is its own strategy range, including Signal-source Exit orders. */
+const rangeOfTrade = (x) => (kindOfTrade(x) === "exit" ? "Exit" : isSig(x) ? "Signals" : (RANGE_LABEL[rangeOfId(x.cfg)] ?? "?"));
 /** indication kind of an order: a signal config by its source (signal:<source>), an engine config by its family */
 const indKindOf = (ind) => (isSignalInd(ind) ? `signal:${signalSourceOf(ind)}` : kindOfInd(ind));
 const RANGE_ORDER = [
@@ -2628,6 +2629,7 @@ const RANGE_ORDER = [
   "Long",
   "Wide",
   "Signals",
+  "Exit",
 ];
 const TYPE_ORDER = [
   "Normal",
@@ -2636,12 +2638,14 @@ const TYPE_ORDER = [
   "Axis",
   "DCA",
   "DCA Active",
+  "Exit",
   "Signal · Normal",
   "Signal · Trailing",
   "Signal · Trailing only",
   "Signal · Axis",
   "Signal · DCA",
   "Signal · DCA Active",
+  "Signal · Exit",
 ];
 const order = (keys, ord) =>
   [...keys].sort((a, b) => {

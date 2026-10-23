@@ -8,7 +8,7 @@ import { createHash } from "node:crypto";
 import { runInNewContext } from "node:vm";
 import { DEFAULT_GATES, DEFAULT_SETTINGS } from "../src/core/config.ts";
 import { statsOf } from "../src/core/metrics/stats.ts";
-import { rangeCellPass } from "../src/core/pipeline/pipeline.ts";
+import { rangeCellPass, configId } from "../src/core/pipeline/pipeline.ts";
 import { ALL_RANGE_TAGS, basePass } from "../src/core/server/runtime.server.ts";
 import { readSessionDump, writeSessionDump } from "./lib/session-dump.mjs";
 import { createMinuteBookCache } from "./lib/session-minute-book.mjs";
@@ -300,7 +300,7 @@ describe("session CLI background comparison policy", () => {
     }
   });
 });
-function replay({ endpointOccupancy = false, caps = false, weighted = false, invalidReturn = false, qualification, thresholds, variants, presets, exhaustedCap = false, zeroOnlyType = false, allocationOnly = false, noBase = false, legacyRangeRows = false, baseNoLoss = false, signalCoverage = false, exitCoverage = false, signalHistory = false, liveValidation, selectionPhases = false, marketData } = {}) {
+function replay({ exitOrders = false, endpointOccupancy = false, caps = false, weighted = false, invalidReturn = false, qualification, thresholds, variants, presets, exhaustedCap = false, zeroOnlyType = false, allocationOnly = false, noBase = false, legacyRangeRows = false, baseNoLoss = false, signalCoverage = false, exitCoverage = false, signalHistory = false, liveValidation, selectionPhases = false, marketData } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "cts-session-report-"));
   try {
     const raw = {
@@ -319,6 +319,10 @@ function replay({ endpointOccupancy = false, caps = false, weighted = false, inv
       closes: { "TEST-USDT": Array.from({ length: 60 }, (_, i) => [H + i * M, i < 1 ? 100 : i < 3 ? 150 : 120]) },
       openEnd: [], engine: { basePassed: 0, baseEvaluated: 0, mainPairs: 0, tapes: 0, real: 0, computeMs: 0 },
     };
+    if (exitOrders) {
+      const protect = { tp: .01, sl: .02, trail: 0, hold: 60, exitType: "historic", exitSide: 1, exitSet: 0 };
+      raw.trades = raw.trades.map((x, i) => ({ ...x, kind: "exit", cfg: configId("follow", i ? "sig-ema-cross-s@m1" : "ema-9-21@m1", protect) }));
+    }
     if (weighted) {
       // The engine stores execution r already multiplied by Block/coordination volume.
       raw.trades[0] = { ...raw.trades[0], r: 1, mult: 2, vol: 2 };
@@ -487,6 +491,15 @@ describe("session reports: return PF primary, simulated provenance", () => {
     assert.doesNotMatch(result.stdout, /computing Base|session: \d+ symbols/);
   });
 
+  it("reports both ordinary and Signal Exit orders under the independent Exit range", () => {
+    const { data } = replay({ exitOrders: true });
+    assert.equal(data.checksOk, true);
+    assert.deepEqual(data.ranges.map(x => [x.key, x.n]), [["Exit", 2]]);
+    assert.deepEqual(data.types.filter(x => x.n).map(x => [x.key, x.n]), [["Exit", 1], ["Signal · Exit", 1]]);
+    assert.equal(data.total.orders, 2);
+    assert.equal(data.total.pf, 2.5);
+  });
+
   it("keeps first simulated-step seats distinct from the later paper selection in every output", () => {
     const { data, report, md, writeup, html } = replay({ selectionPhases: true });
     for (const d of [data, report]) {
@@ -635,7 +648,7 @@ describe("session reports: return PF primary, simulated provenance", () => {
 
   it("a type with only zero-funded closes retains virtual hourly cells without inventing funded coverage", () => {
     const { data } = replay({ caps: true, exhaustedCap: true, zeroOnlyType: true });
-    const zeroType = data.types.find((x) => x.key === "exit");
+    const zeroType = data.types.find((x) => x.key === "Exit");
     assert.equal(zeroType.n, 0);
     assert.equal(zeroType.virtual.n, 1);
     assert.equal(data.total.orders, 2);

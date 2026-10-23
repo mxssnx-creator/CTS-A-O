@@ -301,7 +301,7 @@ import {
   SignalGuard,
   guardKey,
   sigActiveKey,
-  signalSeatSymbols,
+  signalSeatTapesGen,
 } from "../signals.ts";
 import {
   emptySignalHistDiagnostics,
@@ -5524,7 +5524,7 @@ export class CoreRuntime {
           "Real",
           step,
           steps,
-          `${wf.simH}h sim · step ${Math.min(step, steps)}/${steps} · ${wf.preH}h pre · validate last ${wf.validLastN ?? 0} · live last ${wf.lastN}`,
+          `${wf.simH}h sim · step ${Math.min(step, steps)}/${steps} · engine ${wf.preH}h pre / Last-${wf.validLastN ?? 0}${sig.enabled ? ` · Signals ${signalHistoryHours(wf)}h / Last-${wf.rangeOpts?.sig?.validLastN ?? wf.signalValidLastN ?? 0}` : ""} · entry Last-${wf.lastN}`,
         );
       }
     });
@@ -9153,11 +9153,7 @@ export class CoreRuntime {
       : this.tapes;
     const { engine: engineTapes, signal: signalCandidates } = splitSignalTapes(selectedTapes, this.wf);
     const signalActive = this.wf.signalActive;
-    const sigTapes = signalActive
-      ? signalCandidates.filter(
-          (tp) => !tp.heldOnly && (fast || signalSeatSymbols(tp, signalActive).size > 0),
-        )
-      : [];
+    const sigTapes = yield* signalSeatTapesGen(signalCandidates, signalActive, !!fast);
     // wf.seatSet "validated": the step selects from the validated set V of the last simulation (its ids), never from the
     // pool; V is refreshed only by the next compute's Base + set evaluation
     let selTapes = engineTapes;
