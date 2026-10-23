@@ -1,0 +1,46 @@
+[
+  {
+    "name": "Original capped baseline",
+    "dir": "receipts/original"
+  },
+  {
+    "name": "Control \u00b7 corrected",
+    "dir": "receipts/control/corrected"
+  },
+  {
+    "name": "Control \u00b7 all-sources",
+    "dir": "receipts/control/all-sources"
+  },
+  {
+    "name": "Control \u00b7 dca",
+    "dir": "receipts/control/dca"
+  },
+  {
+    "name": "Control \u00b7 dca-block",
+    "dir": "receipts/control/dca-block"
+  },
+  {
+    "name": "Control \u00b7 dca-active",
+    "dir": "receipts/control/dca-active"
+  },
+  {
+    "name": "Final \u00b7 corrected",
+    "dir": "receipts/final/corrected"
+  },
+  {
+    "name": "Final \u00b7 all-sources",
+    "dir": "receipts/final/all-sources"
+  },
+  {
+    "name": "Final \u00b7 dca",
+    "dir": "receipts/final/dca"
+  },
+  {
+    "name": "Final \u00b7 dca-block",
+    "dir": "receipts/final/dca-block"
+  },
+  {
+    "name": "Final \u00b7 dca-active",
+    "dir": "receipts/final/dca-active"
+  }
+]

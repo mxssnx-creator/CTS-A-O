@@ -1,0 +1,8 @@
+{
+  "scenario": "dca-block",
+  "exitCode": 0,
+  "wallSeconds": 1054.3362183980025,
+  "cumulativeChildPeakRssMiB": 5456.66015625,
+  "userSeconds": 1803.856224,
+  "systemSeconds": 22.549963000000005
+}

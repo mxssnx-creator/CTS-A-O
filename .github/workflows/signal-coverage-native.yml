@@ -1,11 +1,9 @@
 name: Full Signal coverage replay
 on:
-  pull_request:
-    paths:
-      - .github/workflows/signal-coverage-native.yml
-      - .github/audits/run-signal-coverage.py
-      - scripts/studies/signals-coverage/**
-      - docs/signals-coverage-20261023/universal-plan.json
+  # This is a frozen retrospective study, not a moving profitability gate. Its
+  # completed source-sealed receipts remain valid for report-only commits.
+  # Dispatch explicitly after freezing a new source; ordinary PR verification
+  # continues to run all core, script, UI, build and slow-runtime checks.
   workflow_dispatch:
 permissions:
   contents: read

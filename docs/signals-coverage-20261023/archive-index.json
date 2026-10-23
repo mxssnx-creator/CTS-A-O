@@ -1,0 +1,102 @@
+{
+  "archives": [
+    {
+      "case": "before",
+      "archive": "signals-before-12h-20261023.tar.gz",
+      "bytes": 126368516,
+      "sha256": "45e60d5c8fac342f843efb949e997abad190d386a08adbd37fbf38386dfe0f03",
+      "persistentFileId": "libfile_f3948797f8b08191a849f1e7fe0e35d4",
+      "scope": "Earlier native control; see enclosed frozen source manifest, not the final pooled-sample correction"
+    },
+    {
+      "case": "corrected",
+      "archive": "signals-corrected-12h-20261023.tar.gz",
+      "bytes": 127056215,
+      "sha256": "a8e67ab0ba84fc629f9949b7bea89005a8ecfca8997f9a80326c5fe3c792bbce",
+      "persistentFileId": "libfile_8a4e0891b4888191a41f7f74363844e8",
+      "scope": "Earlier native control; see enclosed frozen source manifest, not the final pooled-sample correction"
+    },
+    {
+      "case": "all-sources",
+      "archive": "signals-all-sources-12h-20261023.tar.gz",
+      "bytes": 301848252,
+      "sha256": "6c138ff0d7a1bda18f00cee914da05f58f1e912bafa61858b9dfef349e98e69d",
+      "persistentFileId": "libfile_a5cdb4ffcce081918ebc776798c433ff",
+      "scope": "Earlier native control; see enclosed frozen source manifest, not the final pooled-sample correction"
+    },
+    {
+      "case": "dca",
+      "archive": "signals-dca-12h-20261023.tar.gz",
+      "bytes": 312496743,
+      "sha256": "438051d85bb239ea76f38e17c5b352275f499a7e2a235a17baf0a37fbeef75c2",
+      "persistentFileId": "libfile_58f0164147b88191865d0a3cd4228d74",
+      "scope": "Earlier native control; see enclosed frozen source manifest, not the final pooled-sample correction"
+    },
+    {
+      "case": "dca-block",
+      "archive": "signals-dca-block-12h-20261023.tar.gz",
+      "bytes": 320471875,
+      "sha256": "b556ecb0af482463d604c88455398030fd3672f66f56b3df3a6622e25b71da97",
+      "persistentFileId": "libfile_78f890906e44819184fd36a69013fe05",
+      "scope": "Earlier native control; frozen source 731220d22d4519e05df2113a7c0c33fb11f6749af55b8612f84415e780191dee"
+    },
+    {
+      "case": "final-corrected",
+      "archive": "signals-final-corrected-12h-20261023.zip",
+      "bytes": 92451898,
+      "sha256": "33f38ab5371b88ed24b4e08d363ecd3af4712f5e03fe1233d06b07612d92e069",
+      "persistentFileId": "libfile_3e140e6d5374819188a491a9789543e5",
+      "githubArtifactId": 12536756399,
+      "githubRunId": 40033630586,
+      "scope": "Final economic source aeec5a59086e1145a52009f580bd29ecf7042eb6c174677f099a284fe397c82e; 12-symbol 12-hour native replay and complete audit"
+    },
+    {
+      "case": "final-all-sources",
+      "archive": "signals-final-all-sources-12h-20261023.zip",
+      "bytes": 208932715,
+      "sha256": "648fbb714ead7f90c94d6da2ec680beff25bbda481d4f1822bbeab64bd8fd49e",
+      "persistentFileId": "libfile_ee8f5722597881918230bdb6de6e025b",
+      "githubArtifactId": 12537460027,
+      "githubRunId": 40033630586,
+      "scope": "Final economic source aeec5a59086e1145a52009f580bd29ecf7042eb6c174677f099a284fe397c82e; 12-symbol 12-hour native replay and complete audit"
+    },
+    {
+      "case": "dca-active",
+      "archive": "signals-dca-active-12h-20261023.tar.gz",
+      "bytes": 328635163,
+      "sha256": "512db3d2824ec4221b0e26b8c066fcc16c1d2855fc7934100a962081d05b5e9d",
+      "persistentFileId": "libfile_3300a787331c8191a061ecb1b87d8f37",
+      "scope": "Earlier native control; source731220d22d4519e05df2113a7c0c33fb11f6749af55b8612f84415e780191dee"
+    },
+    {
+      "case": "final-dca-active",
+      "archive": "signals-final-dca-active-12h-20261023.zip",
+      "bytes": 289982921,
+      "sha256": "c6f169bc4cf7503a05143eafbebefae0810a434aa7c4d227b679c614f36e9803",
+      "persistentFileId": "libfile_1e24a0a25d8081918748de88fce8f83c",
+      "githubArtifactId": 12537810116,
+      "githubRunId": 40033630586,
+      "scope": "Final economic source aeec5a59086e1145a52009f580bd29ecf7042eb6c174677f099a284fe397c82e; full native replay and audit"
+    },
+    {
+      "case": "final-dca-block",
+      "archive": "signals-final-dca-block-12h-20261023.zip",
+      "bytes": 289987019,
+      "sha256": "6a7918bf5aae4943e1b7966e00ffd3a342c7e51c19e3851ea50cddbc3d3ac2e5",
+      "persistentFileId": "libfile_52bc3a4023608191bedc7d234ae221f7",
+      "githubArtifactId": 12536958532,
+      "githubRunId": 40033630586,
+      "scope": "Final economic source aeec5a59086e1145a52009f580bd29ecf7042eb6c174677f099a284fe397c82e; full native replay and audit"
+    },
+    {
+      "case": "final-dca",
+      "archive": "signals-final-dca-12h-20261023.zip",
+      "bytes": 289982080,
+      "sha256": "810cc999795be72261603fae19e4602166733ff294b0e755edadbea7e0bb8fe7",
+      "persistentFileId": "libfile_32c63a32846081918701c56e307ea69d",
+      "githubArtifactId": 12536389977,
+      "githubRunId": 40033630586,
+      "scope": "Final economic source aeec5a59086e1145a52009f580bd29ecf7042eb6c174677f099a284fe397c82e; full native replay and audit"
+    }
+  ]
+}

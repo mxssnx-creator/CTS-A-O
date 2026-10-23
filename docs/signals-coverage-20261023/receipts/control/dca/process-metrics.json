@@ -1,0 +1,8 @@
+{
+  "scenario": "dca",
+  "exitCode": 0,
+  "wallSeconds": 1047.9160464730012,
+  "cumulativeChildPeakRssMiB": 5456.109375,
+  "userSeconds": 1792.5680069999999,
+  "systemSeconds": 21.695567999999998
+}
