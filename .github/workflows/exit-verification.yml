@@ -30,7 +30,18 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Install the headless browser used by the functional test
-        run: npx playwright install --with-deps chromium
+        timeout-minutes: 10
+        run: |
+          # Hosted images may already supply Chrome. Exercise the same functional tests
+          # with that executable instead of downloading another browser and apt bundle.
+          for browser in google-chrome google-chrome-stable chromium chromium-browser; do
+            if command -v "$browser" >/dev/null 2>&1; then
+              echo "CTS_UI_BROWSER_EXECUTABLE=$(command -v "$browser")" >> "$GITHUB_ENV"
+              "$browser" --version
+              exit 0
+            fi
+          done
+          npx playwright install --with-deps --only-shell chromium
       - run: npm run typecheck -- --pretty false
       - run: npm run lint
       - name: Build the production app and worker
