@@ -1,0 +1,44 @@
+name: Signal coverage registry audit
+on:
+  pull_request:
+    paths:
+      - .github/workflows/signal-coverage-audit.yml
+      - docs/signals-coverage-20261023/universal-plan.json
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: signal-coverage-registry-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  registry:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [catalog, identity, causal, causal-partial]
+    env:
+      CTS_UNIVERSAL_PLAN: docs/signals-coverage-20261023/universal-plan.json
+      CTS_CORE_STATE: 'off'
+      CTS_CORE_AUTOSTART: '0'
+      CTS_CORE_LIVE: '0'
+      CTS_CORE_COMPARE: '0'
+      MALLOC_ARENA_MAX: '2'
+      MALLOC_MMAP_THRESHOLD_: '1048576'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Verify complete registry and causal calculations
+        run: node --expose-gc --max-old-space-size=4096 --experimental-strip-types --no-warnings .github/audits/universal-correctness.mjs ${{ matrix.mode }} runs/signal-coverage-registry
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: signal-coverage-${{ matrix.mode }}-${{ github.run_id }}
+          path: runs/signal-coverage-registry/

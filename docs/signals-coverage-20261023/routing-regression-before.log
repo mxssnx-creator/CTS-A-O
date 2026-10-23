@@ -1,0 +1,964 @@
+[core-tests] offline Node transport guard; 1 files; concurrency 1; compute workers 1
+▶ independent validation policy at every selection stage
+  ✔ a Signal keeps its independent 336h history when ordinary selection uses 24h (6.315324ms)
+  ✔ pooled thin Signal contexts cannot fabricate an independently proven context (0.827737ms)
+  ✔ Signal Exit cache respects exitMinPf edits at the same market time (4.012705ms)
+  ✔ Signal Exit cache respects exitMinTrades edits at the same market time (0.56207ms)
+  ✔ Signal Exit cache respects exitMaxDdr edits at the same market time (0.668719ms)
+  ✖ Signal sh/normal/1: protection distances never select an ordinary range gate (1.449966ms)
+  ✖ Signal sh/normal/-1: protection distances never select an ordinary range gate (0.610152ms)
+  ✖ Signal sh/trailing/1: protection distances never select an ordinary range gate (0.249994ms)
+  ✖ Signal sh/trailing/-1: protection distances never select an ordinary range gate (0.380458ms)
+  ✖ Signal sh/trailing-only/1: protection distances never select an ordinary range gate (0.519075ms)
+  ✖ Signal sh/trailing-only/-1: protection distances never select an ordinary range gate (0.46166ms)
+  ✖ Signal sh/exit/1: protection distances never select an ordinary range gate (0.273188ms)
+  ✖ Signal sh/exit/-1: protection distances never select an ordinary range gate (0.17428ms)
+  ✖ Signal sh/dca/1: protection distances never select an ordinary range gate (0.203624ms)
+  ✖ Signal sh/dca/-1: protection distances never select an ordinary range gate (0.544173ms)
+  ✖ Signal sh/dca-active/1: protection distances never select an ordinary range gate (0.290864ms)
+  ✖ Signal sh/dca-active/-1: protection distances never select an ordinary range gate (0.259558ms)
+  ✖ Signal sh/axis/1: protection distances never select an ordinary range gate (0.250184ms)
+  ✖ Signal sh/axis/-1: protection distances never select an ordinary range gate (0.48823ms)
+  ✖ Signal gn/normal/1: protection distances never select an ordinary range gate (0.298295ms)
+  ✖ Signal gn/normal/-1: protection distances never select an ordinary range gate (0.161801ms)
+  ✖ Signal gn/trailing/1: protection distances never select an ordinary range gate (0.176534ms)
+  ✖ Signal gn/trailing/-1: protection distances never select an ordinary range gate (0.158877ms)
+  ✖ Signal gn/trailing-only/1: protection distances never select an ordinary range gate (0.149994ms)
+  ✖ Signal gn/trailing-only/-1: protection distances never select an ordinary range gate (0.196804ms)
+  ✖ Signal gn/exit/1: protection distances never select an ordinary range gate (0.200489ms)
+  ✖ Signal gn/exit/-1: protection distances never select an ordinary range gate (0.157996ms)
+  ✖ Signal gn/dca/1: protection distances never select an ordinary range gate (0.154651ms)
+  ✖ Signal gn/dca/-1: protection distances never select an ordinary range gate (0.171847ms)
+  ✖ Signal gn/dca-active/1: protection distances never select an ordinary range gate (0.188081ms)
+  ✖ Signal gn/dca-active/-1: protection distances never select an ordinary range gate (0.320649ms)
+  ✖ Signal gn/axis/1: protection distances never select an ordinary range gate (0.176483ms)
+  ✖ Signal gn/axis/-1: protection distances never select an ordinary range gate (0.292687ms)
+  ✖ Signal lg/normal/1: protection distances never select an ordinary range gate (0.204055ms)
+  ✖ Signal lg/normal/-1: protection distances never select an ordinary range gate (0.253959ms)
+  ✖ Signal lg/trailing/1: protection distances never select an ordinary range gate (0.147801ms)
+  ✖ Signal lg/trailing/-1: protection distances never select an ordinary range gate (0.213819ms)
+  ✖ Signal lg/trailing-only/1: protection distances never select an ordinary range gate (0.137615ms)
+  ✖ Signal lg/trailing-only/-1: protection distances never select an ordinary range gate (0.21456ms)
+  ✖ Signal lg/exit/1: protection distances never select an ordinary range gate (0.144726ms)
+  ✖ Signal lg/exit/-1: protection distances never select an ordinary range gate (0.255642ms)
+  ✖ Signal lg/dca/1: protection distances never select an ordinary range gate (0.155513ms)
+  ✖ Signal lg/dca/-1: protection distances never select an ordinary range gate (0.44884ms)
+  ✖ Signal lg/dca-active/1: protection distances never select an ordinary range gate (0.291295ms)
+  ✖ Signal lg/dca-active/-1: protection distances never select an ordinary range gate (0.183354ms)
+  ✖ Signal lg/axis/1: protection distances never select an ordinary range gate (0.181962ms)
+  ✖ Signal lg/axis/-1: protection distances never select an ordinary range gate (0.14052ms)
+  ✖ Signal PF ignores borrowed protection-range floors but retains its own stage and Exit floors (0.550292ms)
+✖ independent validation policy at every selection stage (29.758626ms)
+ℹ tests 48
+ℹ suites 1
+ℹ pass 5
+ℹ fail 43
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 371.755759
+
+✖ failing tests:
+
+test at src/core/sim/evaluation-policy.test.ts:86:5
+✖ Signal sh/normal/1: protection distances never select an ordinary range gate (1.449966ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/1bcaeeb063ee/CTS-A-O-signals-coverage/src/core/sim/evaluation-policy.test.ts:95:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/sim/evaluation-policy.test.ts:86:5
+✖ Signal sh/normal/-1: protection distances never select an ordinary range gate (0.610152ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/1bcaeeb063ee/CTS-A-O-signals-coverage/src/core/sim/evaluation-policy.test.ts:95:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/sim/evaluation-policy.test.ts:86:5
+✖ Signal sh/trailing/1: protection distances never select an ordinary range gate (0.249994ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/1bcaeeb063ee/CTS-A-O-signals-coverage/src/core/sim/evaluation-policy.test.ts:95:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/sim/evaluation-policy.test.ts:86:5
+✖ Signal sh/trailing/-1: protection distances never select an ordinary range gate (0.380458ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/1bcaeeb063ee/CTS-A-O-signals-coverage/src/core/sim/evaluation-policy.test.ts:95:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/sim/evaluation-policy.test.ts:86:5
+✖ Signal sh/trailing-only/1: protection distances never select an ordinary range gate (0.519075ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/1bcaeeb063ee/CTS-A-O-signals-coverage/src/core/sim/evaluation-policy.test.ts:95:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/sim/evaluation-policy.test.ts:86:5
+✖ Signal sh/trailing-only/-1: protection distances never select an ordinary range gate (0.46166ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/1bcaeeb063ee/CTS-A-O-signals-coverage/src/core/sim/evaluation-policy.test.ts:95:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/sim/evaluation-policy.test.ts:86:5
+✖ Signal sh/exit/1: protection distances never select an ordinary range gate (0.273188ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/1bcaeeb063ee/CTS-A-O-signals-coverage/src/core/sim/evaluation-policy.test.ts:95:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/sim/evaluation-policy.test.ts:86:5
+✖ Signal sh/exit/-1: protection distances never select an ordinary range gate (0.17428ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/1bcaeeb063ee/CTS-A-O-signals-coverage/src/core/sim/evaluation-policy.test.ts:95:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/sim/evaluation-policy.test.ts:86:5
+✖ Signal sh/dca/1: protection distances never select an ordinary range gate (0.203624ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/1bcaeeb063ee/CTS-A-O-signals-coverage/src/core/sim/evaluation-policy.test.ts:95:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/sim/evaluation-policy.test.ts:86:5
+✖ Signal sh/dca/-1: protection distances never select an ordinary range gate (0.544173ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/1bcaeeb063ee/CTS-A-O-signals-coverage/src/core/sim/evaluation-policy.test.ts:95:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/sim/evaluation-policy.test.ts:86:5
+✖ Signal sh/dca-active/1: protection distances never select an ordinary range gate (0.290864ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/1bcaeeb063ee/CTS-A-O-signals-coverage/src/core/sim/evaluation-policy.test.ts:95:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/sim/evaluation-policy.test.ts:86:5
+✖ Signal sh/dca-active/-1: protection distances never select an ordinary range gate (0.259558ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/1bcaeeb063ee/CTS-A-O-signals-coverage/src/core/sim/evaluation-policy.test.ts:95:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/sim/evaluation-policy.test.ts:86:5
+✖ Signal sh/axis/1: protection distances never select an ordinary range gate (0.250184ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/1bcaeeb063ee/CTS-A-O-signals-coverage/src/core/sim/evaluation-policy.test.ts:95:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/sim/evaluation-policy.test.ts:86:5
+✖ Signal sh/axis/-1: protection distances never select an ordinary range gate (0.48823ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/1bcaeeb063ee/CTS-A-O-signals-coverage/src/core/sim/evaluation-policy.test.ts:95:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/sim/evaluation-policy.test.ts:86:5
+✖ Signal gn/normal/1: protection distances never select an ordinary range gate (0.298295ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/1bcaeeb063ee/CTS-A-O-signals-coverage/src/core/sim/evaluation-policy.test.ts:95:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/sim/evaluation-policy.test.ts:86:5
+✖ Signal gn/normal/-1: protection distances never select an ordinary range gate (0.161801ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/1bcaeeb063ee/CTS-A-O-signals-coverage/src/core/sim/evaluation-policy.test.ts:95:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/sim/evaluation-policy.test.ts:86:5
+✖ Signal gn/trailing/1: protection distances never select an ordinary range gate (0.176534ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/1bcaeeb063ee/CTS-A-O-signals-coverage/src/core/sim/evaluation-policy.test.ts:95:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/sim/evaluation-policy.test.ts:86:5
+✖ Signal gn/trailing/-1: protection distances never select an ordinary range gate (0.158877ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/1bcaeeb063ee/CTS-A-O-signals-coverage/src/core/sim/evaluation-policy.test.ts:95:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/sim/evaluation-policy.test.ts:86:5
+✖ Signal gn/trailing-only/1: protection distances never select an ordinary range gate (0.149994ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/1bcaeeb063ee/CTS-A-O-signals-coverage/src/core/sim/evaluation-policy.test.ts:95:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/sim/evaluation-policy.test.ts:86:5
+✖ Signal gn/trailing-only/-1: protection distances never select an ordinary range gate (0.196804ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/1bcaeeb063ee/CTS-A-O-signals-coverage/src/core/sim/evaluation-policy.test.ts:95:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/sim/evaluation-policy.test.ts:86:5
+✖ Signal gn/exit/1: protection distances never select an ordinary range gate (0.200489ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/1bcaeeb063ee/CTS-A-O-signals-coverage/src/core/sim/evaluation-policy.test.ts:95:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/sim/evaluation-policy.test.ts:86:5
+✖ Signal gn/exit/-1: protection distances never select an ordinary range gate (0.157996ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/1bcaeeb063ee/CTS-A-O-signals-coverage/src/core/sim/evaluation-policy.test.ts:95:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/sim/evaluation-policy.test.ts:86:5
+✖ Signal gn/dca/1: protection distances never select an ordinary range gate (0.154651ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/1bcaeeb063ee/CTS-A-O-signals-coverage/src/core/sim/evaluation-policy.test.ts:95:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/sim/evaluation-policy.test.ts:86:5
+✖ Signal gn/dca/-1: protection distances never select an ordinary range gate (0.171847ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/1bcaeeb063ee/CTS-A-O-signals-coverage/src/core/sim/evaluation-policy.test.ts:95:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/sim/evaluation-policy.test.ts:86:5
+✖ Signal gn/dca-active/1: protection distances never select an ordinary range gate (0.188081ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/1bcaeeb063ee/CTS-A-O-signals-coverage/src/core/sim/evaluation-policy.test.ts:95:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/sim/evaluation-policy.test.ts:86:5
+✖ Signal gn/dca-active/-1: protection distances never select an ordinary range gate (0.320649ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/1bcaeeb063ee/CTS-A-O-signals-coverage/src/core/sim/evaluation-policy.test.ts:95:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/sim/evaluation-policy.test.ts:86:5
+✖ Signal gn/axis/1: protection distances never select an ordinary range gate (0.176483ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/1bcaeeb063ee/CTS-A-O-signals-coverage/src/core/sim/evaluation-policy.test.ts:95:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/sim/evaluation-policy.test.ts:86:5
+✖ Signal gn/axis/-1: protection distances never select an ordinary range gate (0.292687ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/1bcaeeb063ee/CTS-A-O-signals-coverage/src/core/sim/evaluation-policy.test.ts:95:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/sim/evaluation-policy.test.ts:86:5
+✖ Signal lg/normal/1: protection distances never select an ordinary range gate (0.204055ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/1bcaeeb063ee/CTS-A-O-signals-coverage/src/core/sim/evaluation-policy.test.ts:95:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/sim/evaluation-policy.test.ts:86:5
+✖ Signal lg/normal/-1: protection distances never select an ordinary range gate (0.253959ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/1bcaeeb063ee/CTS-A-O-signals-coverage/src/core/sim/evaluation-policy.test.ts:95:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/sim/evaluation-policy.test.ts:86:5
+✖ Signal lg/trailing/1: protection distances never select an ordinary range gate (0.147801ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/1bcaeeb063ee/CTS-A-O-signals-coverage/src/core/sim/evaluation-policy.test.ts:95:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/sim/evaluation-policy.test.ts:86:5
+✖ Signal lg/trailing/-1: protection distances never select an ordinary range gate (0.213819ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/1bcaeeb063ee/CTS-A-O-signals-coverage/src/core/sim/evaluation-policy.test.ts:95:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/sim/evaluation-policy.test.ts:86:5
+✖ Signal lg/trailing-only/1: protection distances never select an ordinary range gate (0.137615ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/1bcaeeb063ee/CTS-A-O-signals-coverage/src/core/sim/evaluation-policy.test.ts:95:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/sim/evaluation-policy.test.ts:86:5
+✖ Signal lg/trailing-only/-1: protection distances never select an ordinary range gate (0.21456ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/1bcaeeb063ee/CTS-A-O-signals-coverage/src/core/sim/evaluation-policy.test.ts:95:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/sim/evaluation-policy.test.ts:86:5
+✖ Signal lg/exit/1: protection distances never select an ordinary range gate (0.144726ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/1bcaeeb063ee/CTS-A-O-signals-coverage/src/core/sim/evaluation-policy.test.ts:95:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/sim/evaluation-policy.test.ts:86:5
+✖ Signal lg/exit/-1: protection distances never select an ordinary range gate (0.255642ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/1bcaeeb063ee/CTS-A-O-signals-coverage/src/core/sim/evaluation-policy.test.ts:95:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/sim/evaluation-policy.test.ts:86:5
+✖ Signal lg/dca/1: protection distances never select an ordinary range gate (0.155513ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/1bcaeeb063ee/CTS-A-O-signals-coverage/src/core/sim/evaluation-policy.test.ts:95:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/sim/evaluation-policy.test.ts:86:5
+✖ Signal lg/dca/-1: protection distances never select an ordinary range gate (0.44884ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/1bcaeeb063ee/CTS-A-O-signals-coverage/src/core/sim/evaluation-policy.test.ts:95:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/sim/evaluation-policy.test.ts:86:5
+✖ Signal lg/dca-active/1: protection distances never select an ordinary range gate (0.291295ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/1bcaeeb063ee/CTS-A-O-signals-coverage/src/core/sim/evaluation-policy.test.ts:95:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/sim/evaluation-policy.test.ts:86:5
+✖ Signal lg/dca-active/-1: protection distances never select an ordinary range gate (0.183354ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/1bcaeeb063ee/CTS-A-O-signals-coverage/src/core/sim/evaluation-policy.test.ts:95:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/sim/evaluation-policy.test.ts:86:5
+✖ Signal lg/axis/1: protection distances never select an ordinary range gate (0.181962ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/1bcaeeb063ee/CTS-A-O-signals-coverage/src/core/sim/evaluation-policy.test.ts:95:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/sim/evaluation-policy.test.ts:86:5
+✖ Signal lg/axis/-1: protection distances never select an ordinary range gate (0.14052ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/1bcaeeb063ee/CTS-A-O-signals-coverage/src/core/sim/evaluation-policy.test.ts:95:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/core/sim/evaluation-policy.test.ts:104:3
+✖ Signal PF ignores borrowed protection-range floors but retains its own stage and Exit floors (0.550292ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///workspace/scratch/1bcaeeb063ee/CTS-A-O-signals-coverage/src/core/sim/evaluation-policy.test.ts:111:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
