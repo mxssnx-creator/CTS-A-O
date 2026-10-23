@@ -271,6 +271,11 @@ export function entryMfes(
   fromT?: number,
 ): number[] {
   const tfMs = b.tfMin * 60_000;
+  if (!Number.isInteger(hold) || hold < 1 || hold >= b.n) return out;
+  // Monotone extrema queues: every overlapping candle is visited once, instead of
+  // scanning up to thousands of one-minute candles again for each historic entry.
+  const highs = new Int32Array(hold), lows = new Int32Array(hold);
+  let highHead = 0, highSize = 0, lowHead = 0, lowSize = 0, lastBar = 0;
   for (let i = 0; i + hold < b.n; i++) {
     const d = sig[i];
     if (d === 0) continue;
@@ -281,9 +286,35 @@ export function entryMfes(
     if (b.t[i + hold] + tfMs > cutT) break;
     const e = b.o[i + 1];
     if (!(e > 0)) continue;
+    const first = i + 1, end = i + hold;
+    if (first > lastBar) {
+      highHead = highSize = lowHead = lowSize = 0;
+      lastBar = first - 1;
+    }
+    for (let j = lastBar + 1; j <= end; j++) {
+      const windowFirst = j - hold + 1;
+      while (highSize && highs[highHead] < windowFirst) { highHead = (highHead + 1) % hold; highSize--; }
+      while (lowSize && lows[lowHead] < windowFirst) { lowHead = (lowHead + 1) % hold; lowSize--; }
+      if (!Number.isNaN(b.h[j])) {
+        while (highSize && b.h[highs[(highHead + highSize - 1) % hold]] <= b.h[j]) highSize--;
+        highs[(highHead + highSize) % hold] = j; highSize++;
+      }
+      if (!Number.isNaN(b.l[j])) {
+        while (lowSize && b.l[lows[(lowHead + lowSize - 1) % hold]] >= b.l[j]) lowSize--;
+        lows[(lowHead + lowSize) % hold] = j; lowSize++;
+      }
+    }
+    lastBar = end;
+    // Preserve the scalar comparison semantics even for nonfinite input prices.
     let m = 0;
-    for (let j = i + 1; j <= i + hold; j++) {
-      const x = d > 0 ? b.h[j] / e - 1 : 1 - b.l[j] / e;
+    if (e === Infinity) {
+      for (let j = first; j <= end; j++) {
+        const x = d > 0 ? b.h[j] / e - 1 : 1 - b.l[j] / e;
+        if (x > m) m = x;
+      }
+    } else {
+      const x = d > 0 ? (highSize ? b.h[highs[highHead]] / e - 1 : 0)
+        : (lowSize ? 1 - b.l[lows[lowHead]] / e : 0);
       if (x > m) m = x;
     }
     out.push(m);

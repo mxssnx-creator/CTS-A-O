@@ -187,7 +187,7 @@ describe("signal historic trailing configs", () => {
     const sym = (s: string, seed: number) =>
       barsFromCandles(s, 15, syntheticCandles(s, 15, 3000, Date.UTC(2026, 9, 1), seed));
     const u = makeUniverse([sym("A-USDT", 3), sym("B-USDT", 5)]);
-    const sig = signalSettings({ enabled: true });
+    const sig = signalSettings({ enabled: true, hist: { ...DEFAULT_SIGNALS.hist, lookbackH: 0 } });
     const pair = "follow|sig-ema-cross-s@m15";
     const cut = u.nowT;
     const out = signalHistProtects(u, [pair], sig, null, cut);
@@ -375,7 +375,7 @@ describe("historic signal configs: the lookback (hist.lookbackH)", () => {
   };
   const cutT = T0 + 380 * 15 * 60_000;
 
-  it("without a lookback every complete historic entry counts (the default, unchanged)", () => {
+  it("explicit unlimited lookback counts every complete historic entry", () => {
     assert.equal(entryMfes(mk(), sig(), 4, cutT).length, 3);
   });
 

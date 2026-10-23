@@ -1,3 +1,4 @@
+import { SIGNAL_VALID_LAST_N } from "./signal-policy.ts";
 // Saved live coordinations: the settings a live desk ran with, kept as presets for later use (hand-maintained; the
 // measured desk presets in presets.desk.ts are generated). A preset never carries the Live stage — the live part of a
 // coordination (limits, margin floor, control mode, the mainnet readiness waiver, launch flags) is in
@@ -50,7 +51,7 @@ export const LIVE_COORD_PRESETS: Preset[] = [
       maxPerSide: 0,
       // positive coordination: signal confirmation on; hour lock, cooldown and conflict blocking off
       coord: { enabled: true, hourLock: 0, cooldown: "off", conflict: false, confirm: true },
-      signalValidLastN: 25,
+      signalValidLastN: SIGNAL_VALID_LAST_N,
     },
     metrics: {
       pf: 1.11,

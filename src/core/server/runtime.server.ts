@@ -311,6 +311,7 @@ import {
   type SignalHistDiagnostics,
   type SignalHistValidation,
 } from "../signal-hist.ts";
+import { SIGNAL_HISTORY_H, SIGNAL_VALID_LAST_N } from "../signal-policy.ts";
 import {
   EXIT_HISTORY_MAX_PAIRS,
   EXIT_BOT,
@@ -1150,7 +1151,7 @@ export class CoreRuntime {
     if (opts.priceStream !== undefined) this.priceStream = opts.priceStream;
     this.db = db;
     // order caps from before unlimited orders are dropped once (walk-forward and signal caps)
-    const savedWf = migrateWfCaps(db);
+    const savedWf = migrateSignalEvaluationPolicy(db, migrateWfCaps(db));
     migrateMicroBreakoutFocus(db);
     migrateMicroContextFocus(db);
     const saved = db.kvGet<Partial<CoreSettings>>("settings");
@@ -2055,7 +2056,7 @@ export class CoreRuntime {
     if (need.size) {
       const needsSignal = [...need].some((id) => isSignalInd(id.split("|")[1] ?? ""));
       const signalU = needsSignal
-        ? makeUniverse(laneSeriesFrom(candles, settings, 0, signalDataHours(settings, wf)), this.evaluationFromT)
+        ? makeUniverse(signalLaneSeriesFrom(candles, settings, wf), this.evaluationFromT)
         : inc.state.universe;
       const rebuilt = await this.rebuildOnUniverse(inc.state.universe, need, gen, signalU);
       if (superseded()) return true;
@@ -2100,7 +2101,7 @@ export class CoreRuntime {
     }
     // Incremental strategy history is shorter than the independently configured Signal history.
     const signalU = signalUniverse ?? (sets.sig.size || sets.coord.size || sets.exitSig.size
-      ? makeUniverse(laneSeriesFrom(this.candles, s, 0, signalDataHours(s, this.wf)), u.evaluationFromT)
+      ? makeUniverse(signalLaneSeriesFrom(this.candles, s, this.wf), u.evaluationFromT)
       : u);
     const out: ConfigTape[] = [];
     if (workersAvailable() && !this.workersBroken) {
@@ -4118,7 +4119,7 @@ export class CoreRuntime {
     const strategyH = strategyDataHours(s, wf);
     for (const [sym, cs] of this.candles) {
       allBars.push(...laneSeriesOf(sym, cs, s, 0, strategyH));
-      if (sigEnabled(s)) signalBars.push(...laneSeriesOf(sym, cs, s, 0, signalH));
+      if (sigEnabled(s)) signalBars.push(...laneSeriesOf(sym, cs, s, 0, signalH, signalH));
       await yieldNow();
       if (gen !== this.gen) return;
     }
@@ -4238,7 +4239,10 @@ export class CoreRuntime {
         ck,
       );
       // one indication's combos in one part (the worker builds its series once): see partitionByIndication
-      const parts: Array<typeof combos> = partitionByIndication(todo, n * 2);
+      const parts = [
+        { combos: todo.filter((c) => !isSignalInd(c.ind)), bars: sharedU },
+        { combos: todo.filter((c) => isSignalInd(c.ind)), bars: sharedSignalStage },
+      ].flatMap(({ combos, bars }) => partitionByIndication(combos, n * 2).map((combos) => ({ combos, bars })));
       const baseLabel = `Base on ${n} cores · ${todo.length}${todo.length < combos.length ? ` of ${combos.length}` : ""} combos${
         cache ? ` (slice ${sliceNo + 1}/${slices})` : ""
       }`;
@@ -4248,12 +4252,12 @@ export class CoreRuntime {
       try {
         const res = await runOnWorkers<{ runsJson: string[] }>(
           parts
-            .filter((p) => p.length)
-            .map((c) => ({
+            .filter((p) => p.combos.length)
+            .map(({ combos, bars }) => ({
               type: "s1",
               evaluationFromT: this.evaluationFromT,
-              bars: sharedU,
-              combos: c,
+              bars,
+              combos,
               cost: s.cost,
               tactics: s.tactics,
               rangeProtects: baseRangeProtects(s.grid, s.cost),
@@ -4312,7 +4316,7 @@ export class CoreRuntime {
     }
     const pipeline = await this.drive(
       "Pipeline",
-      runPipeline(uStage, { ...s, focus: baseFocus(s) }, pre, exitCombos),
+      runPipeline(uStage, { ...s, focus: baseFocus(s) }, pre, exitCombos, signalStageU),
       (p: PipelineProgress) => {
         const x = pipelineStage(p);
         this.setStage(x.stage, x.fraction, 1, x.label);
@@ -4588,7 +4592,7 @@ export class CoreRuntime {
     const sigHist: Record<string, Protect[]> = {};
     const retainedSignalIds = new Set<string>();
     const signalHistDiagnostics = emptySignalHistDiagnostics();
-    const signalHistValidation = coordinatorHistValidationOf(s, coordProtects, wf.signalValidLastN);
+    const signalHistValidation = coordinatorHistValidationOf(s, coordProtects, wf.rangeOpts?.sig?.validLastN ?? wf.signalValidLastN);
     const standard = signalProtects(sig);
     try {
       if (s.exitStrategy.enabled && exitFitPairs.length) {
@@ -7040,7 +7044,7 @@ export class CoreRuntime {
       validation: {
         at,
         engineLastN: this.wf.validLastN ?? 0,
-        signalLastN: this.wf.signalValidLastN ?? 0,
+        signalLastN: this.wf.rangeOpts?.sig?.validLastN ?? this.wf.signalValidLastN ?? 0,
         entryLastN: this.wf.lastN,
         rangeLastN: this.wf.rangeGate?.lastN ?? 0,
         historyH: this.wf.longH,
@@ -7879,7 +7883,7 @@ export class CoreRuntime {
     );
     const u = makeUniverse(bars);
     const signalU = s.signals.enabled
-      ? makeUniverse(laneSeriesFrom(candles, s, 0, signalWantBars * s.tfMin / 60)) : u;
+      ? makeUniverse(signalLaneSeriesFrom(candles, s, { ...wf, simH: days * 24 })) : u;
     const sig = signalSettings(s.signals);
     const configuredSignalCombos = signalCombos(sig, s.tfs);
     const exitU = s.exitStrategy.enabled
@@ -8336,7 +8340,7 @@ export class CoreRuntime {
                 sig,
                 s.tactics,
                 startT,
-                coordinatorHistValidationOf(s, coordProtects, wf.signalValidLastN),
+                coordinatorHistValidationOf(s, coordProtects, wf.rangeOpts?.sig?.validLastN ?? wf.signalValidLastN),
               ),
               () => undefined,
               job,
@@ -10521,6 +10525,40 @@ function migrateMicroBreakoutFocus(db: CoreDb): void {
  * Saved walk-forward options from before unlimited orders carry the old order caps (3 per symbol, 16 per side,
  * 60 open): they are dropped once so every order works; caps chosen afterwards are kept.
  */
+/** Move former factory Signal/Exit values once; preserve explicit custom policies and a restorable snapshot. */
+function migrateSignalEvaluationPolicy(db: CoreDb, saved: Partial<WalkForwardOptions>): Partial<WalkForwardOptions> {
+  if (db.kvGet("signalEvaluation100V1")) return saved;
+  const settings = db.kvGet<SettingsPatch>("settings");
+  const presets = db.kvGet<Preset[]>("presets");
+  const backup = structuredClone({ wf: saved, settings, presets });
+  const out = structuredClone(saved);
+  const upgrade = (s: SettingsPatch | undefined, wf: Partial<WalkForwardOptions> | undefined) => {
+    let changed = false;
+    if (s?.exitStrategy?.lookbackH === 168) { s.exitStrategy.lookbackH = SIGNAL_HISTORY_H; changed = true; }
+    if (s?.exitStrategy?.minValidationTrades === 12) { s.exitStrategy.minValidationTrades = SIGNAL_VALID_LAST_N; changed = true; }
+    if (s?.signals?.hist?.lookbackH === 0) { s.signals.hist.lookbackH = SIGNAL_HISTORY_H; changed = true; }
+    if (wf) {
+      if (wf.signalLongH === 336) { wf.signalLongH = SIGNAL_HISTORY_H; changed = true; }
+      if (wf.signalValidLastN === 25 || wf.signalValidLastN === 12) { wf.signalValidLastN = SIGNAL_VALID_LAST_N; changed = true; }
+      if (wf.exitMinTrades === 12) { wf.exitMinTrades = SIGNAL_VALID_LAST_N; changed = true; }
+      const range = wf.rangeOpts?.sig;
+      for (const key of ["validLastN", "lastN"] as const)
+        if (range?.[key] === 25 || range?.[key] === 12) { range[key] = SIGNAL_VALID_LAST_N; changed = true; }
+    }
+    return changed;
+  };
+  let changed = upgrade(settings, out);
+  if (Array.isArray(presets)) for (const preset of presets) changed = upgrade(preset.settings, preset.wf) || changed;
+  if (changed) {
+    db.kvSet("signalEvaluation100BackupV1", backup);
+    db.kvSet("wf", pickWf(out));
+    if (settings) db.kvSet("settings", settings);
+    if (presets) db.kvSet("presets", presets);
+  }
+  db.kvSet("signalEvaluation100V1", true);
+  return out;
+}
+
 function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
   const saved = db.kvGet<Partial<WalkForwardOptions>>("wf") ?? {};
   const v = db.kvGet<number>("wfCapsV") ?? 0;
@@ -11385,8 +11423,8 @@ export const LIVE_STEP_LIMIT_MS = 180_000;
 /** Mainnet (x01) validation floors: last N closes at entry and for a seat. */
 export const MAINNET_LAST_N = 25;
 export const MAINNET_VALID_LAST_N = 50;
-/** Real money: signals validate on at least their last 10 closes (their activity in a window; see walkforward) */
-export const MAINNET_SIGNAL_VALID_LAST_N = 10;
+/** Signals share the operator's Last-8 floor on every execution path. */
+export const MAINNET_SIGNAL_VALID_LAST_N = SIGNAL_VALID_LAST_N;
 
 export function baseFocus(s: CoreSettings): string[] {
   const f = s.focus ?? [];
@@ -11509,6 +11547,11 @@ export function signalDataHours(s: CoreSettings, wf: WalkForwardOptions): number
   const slowest = Math.max(1, ...s.signals.lanes.filter((tf) => s.tfs.includes(tf)));
   return 24 + signalHistoryHours(wf) + wf.simH + tacticWarmupBars(s.tactics) * slowest / 60;
 }
+/** Bound Signal work independently of an ordinary lane's longer storage/Last-N retention. */
+export function signalLaneSeriesFrom(candles: ReadonlyMap<string, CandleSeries>, s: CoreSettings, wf: WalkForwardOptions): Bars[] {
+  const hours = signalDataHours(s, wf);
+  return laneSeriesFrom(candles, s, 0, hours, hours);
+}
 /** General configs need their whole own evaluation window on every lane, plus replay and indicator warmup. */
 export function strategyDataHours(s: CoreSettings, wf: WalkForwardOptions): number {
   const slowest = Math.max(1, ...s.tfs);
@@ -11527,9 +11570,10 @@ export function laneSeriesFrom(
   s: CoreSettings,
   extraDays = 0,
   minHistoryH = 0,
+  maxHistoryH = Infinity,
 ): Bars[] {
   const out: Bars[] = [];
-  for (const [sym, cs] of candles) out.push(...laneSeriesOf(sym, cs, s, extraDays, minHistoryH));
+  for (const [sym, cs] of candles) out.push(...laneSeriesOf(sym, cs, s, extraDays, minHistoryH, maxHistoryH));
   return out;
 }
 
@@ -11543,13 +11587,15 @@ export function laneSeriesOf(
   s: CoreSettings,
   extraDays = 0,
   minHistoryH = 0,
+  maxHistoryH = Infinity,
 ): Bars[] {
   // the enabled lanes ride on every series (Bars.lanes): a combined lane agrees with the higher ENABLED lanes, the
   // ones laneInds generates it from (the whole ladder agreed with 15m / 30m on a desk running 1m and 5m only)
   const lanes = Object.freeze([...(s.tfs ?? [s.tfMin])]);
   const out: Bars[] = [];
   for (const tf of lanes) {
-    const n = Math.max(laneBars(s, tf) + Math.round((extraDays * 24 * 60) / tf), Math.ceil(minHistoryH * 60 / tf));
+    const n = Math.min(Math.ceil(maxHistoryH * 60 / tf),
+      Math.max(laneBars(s, tf) + Math.round((extraDays * 24 * 60) / tf), Math.ceil(minHistoryH * 60 / tf)));
     const b =
       tf === s.tfMin
         ? barsOfSeries(sym, tf, cs, cs.n - n, cs.n)

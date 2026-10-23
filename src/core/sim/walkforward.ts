@@ -20,7 +20,7 @@ import {
 import type { RangeTag } from "../domain/types.ts";
 import { createExitProtection } from "./exit-protection.ts";
 import { capSignalProtect, capTrailingOnlyProtect, trailingOnlyProtects, isSignalConfig } from "./trailing.ts";
-import { SIGNAL_VALID_LAST_N } from "../signal-policy.ts";
+import { SIGNAL_HISTORY_H, SIGNAL_VALID_LAST_N } from "../signal-policy.ts";
 // Walk-forward trade simulation ("simulated trade runs") — the Base → Main → Real → Live coordination.
 //
 //   Base  every indication × bot type × protect × sub-strategy (normal, trailing, DCA, DCA Active) has a
@@ -143,7 +143,7 @@ import { volumeFactorForStrategy } from "../volume-factor.ts";
 
 const H = 3_600_000;
 
-/** The Signals' history window in hours (WalkForwardOptions.signalLongH, default 336), never shorter than the warm-up. */
+/** Signals' independent evidence window; indicator warmup is loaded separately. */
 export const signalWindowH = (o: { preH: number; signalLongH?: number; longH?: number }): number => signalHistoryHours(o);
 
 /** Stable merge sort that lets the server yield during large multi-symbol replay orderings. */
@@ -536,8 +536,8 @@ export interface WalkForwardOptions {
   longH: number;
   /**
    * The window (hours) of the Signals' own history: activation (activeSignals rules), hedge and the end-of-run report read
-   * the last signalLongH hours of the signal sources' closes, independent of the engine's longH (operator, 20 Oct: the
-   * engine qualification window was shortened to 24 h; Signals keep their own 336 h of historic calcs). Unset = 336.
+   * the last signalLongH hours of the signal sources' closes, independent of the engine's longH/preH.
+   * Operator, 23 Oct: default 100 hours; indicator warmup remains outside this evidence window.
    */
   signalLongH?: number;
   /** share of a pair's variants that must pass the long window */
@@ -859,9 +859,7 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     // best-set validation: the last 15 closes must clear min PF and the DDT gate before a seat — 6 of 6 hours positive,
     // net +36 % and 42 % more orders than 25, PF 3.43 against 3.62 (50: PF 3.40 at 48 % fewer orders) (12 symbols, 6 h pre-historic + 6 h run, 5-6 Oct, every window on the same tapes (scratchpad lastn12))
     validLastN: 15,
-    // signals: their own last 25 at validation and entry — PF 3.85 against 3.62 with it off, 6 of 6 hours positive,
-    // max drawdown −57 % (12 symbols, 6 h pre-historic + 6 h run, 5-6 Oct, every window on the same tapes (scratchpad lastn12)). A last 10 cut orders and PF on 2 Oct (PR #65) and again here (PF 3.39), so the
-    // window is the 25 that measured best, not the 10 that did not.
+    // Operator, 23 Oct: evaluate Signals and Exit with their own last 8 closed results.
     signalValidLastN: SIGNAL_VALID_LAST_N,
     exitMinTrades: s.exitStrategy.minValidationTrades,
     exitMinPf: s.exitStrategy.minPf,
@@ -889,7 +887,7 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     },
     // Bound broad history-based qualification. Per-symbol history can request a longer window via symH.
     longH: 24,
-    signalLongH: 336,
+    signalLongH: SIGNAL_HISTORY_H,
     robustFrac: 0.6,
     rank: "lcb",
     bots: [],
@@ -3759,7 +3757,7 @@ export function stableOk(
 
 /** Signal ranking/validation window; short replay boundaries remain explicit on Universe. */
 export function signalHistoryHours(o: { preH: number; signalLongH?: number }): number {
-  return Math.max(o.preH, o.signalLongH ?? 336);
+  return o.signalLongH ?? SIGNAL_HISTORY_H;
 }
 
 function tapeHistoryHours(tp: Pick<ConfigTape, "ind">, o: Pick<WalkForwardOptions, "longH" | "preH" | "signalLongH">): number {
@@ -4118,7 +4116,7 @@ const objId = (x: object | null | undefined) => {
 function selSig(o: WalkForwardOptions): string {
   return [
     o.bots.join(","),
-    o.signalLongH ?? 336,
+    o.signalLongH ?? SIGNAL_HISTORY_H,
     objId(o.basePassed),
     objId(o.exitBasePassed),
     objId(o.basePassedRanges),

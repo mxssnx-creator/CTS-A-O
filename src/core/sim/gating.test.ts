@@ -117,7 +117,7 @@ describe("gating: nothing unvalidated executes", () => {
   it("a signal validates on its own last N: a 12-close signal config can trade, a losing one cannot", () => {
     // the default runs no extra signal validation (the acceptance gate judges signals); a set last N still applies
     // the code default since 6 Oct: signals validate on their own last 25 (the best window on the same tapes)
-    assert.equal(defaultWalkForward(DEFAULT_SETTINGS).signalValidLastN, 25, "default");
+    assert.equal(defaultWalkForward(DEFAULT_SETTINGS).signalValidLastN, 8, "default");
     const o = {
       ...base,
       signalValidLastN: 10,

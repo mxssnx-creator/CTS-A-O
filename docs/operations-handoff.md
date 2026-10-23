@@ -3828,3 +3828,8 @@ check passes. Runtime source seal is
 Full release checks and the recovered 397h-feed Signals/Exit replay remain in
 progress. No live deployment, database/settings change or venue order occurred.
 Do not certify stable hourly profitability from this correctness checkpoint.
+
+
+### 2026-10-23 — requested Signal 100h / Last-8 checkpoint
+
+Operator supersedes 336h Signal and Last-25/Exit Last-12 defaults: Signal and Exit fitting now default to 100h, evaluation Last-8; one-minute source data, independent identities, PF/cost floors and full configured grids retained. Signal lane loading is bounded separately from ordinary retention on full/local/worker/incremental/preset paths, including Signal Base. One-time saved settings/preset migration keeps a backup and custom settings. MFE extrema extraction has exact scalar parity with linear-time queues. See `docs/hourly-evaluation-20261023/README.md` and `scripts/perf/signal-history-bench.ts`. 336h baseline aborted at Real for memory; no completed profit claim. 100h replay/release gates pending.

@@ -1,6 +1,7 @@
 // Signals processing settings and sources (pure, no engine imports: shared by the engine, config and the UI).
 // The engine side (combos, configs, active ranking, guard) is in signals.ts.
 import { INDICATION_KINDS, type IndicationKind } from "./domain/types.ts";
+import { SIGNAL_HISTORY_H } from "./signal-policy.ts";
 
 /**
  * Proven classic signals, each in a short and a medium parameter range (registry ids of the computations they
@@ -767,7 +768,7 @@ export const DEFAULT_SIGNALS: SignalSettings = {
     trailOfTp: [0.25, 0.5, 0.75],
     slOfTp: [1, 2],
     minN: 30,
-    lookbackH: 0,
+    lookbackH: SIGNAL_HISTORY_H,
   },
   guard: { enabled: true, lastN: 8 },
   cluster: { enabled: true, windowMin: 60, minLosses: 8, lossShare: 0.6 },
