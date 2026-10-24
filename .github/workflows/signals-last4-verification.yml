@@ -25,12 +25,19 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci --ignore-scripts
-      - name: Build the exact simulation worker
-        run: npm run build:core-worker
+      - name: Build the production app and exact simulation worker
+        run: env -u DATABASE_URL npm run build
       - name: Freeze both settings and the full economic source before scoring
         run: node --experimental-strip-types --no-warnings scripts/prepare-signals-last4.mjs runs/signals-expanded-last4
       - name: Run all configurations and independently reconcile every hourly calculation and funded order
         run: python scripts/run-signals-native-case.py runs/signals-expanded-last4 ${{ matrix.case }}
+      - name: Preserve compact audit receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: signals-expanded-${{ matrix.case }}-receipts-${{ github.run_id }}
+          path: runs/signals-expanded-last4/receipts/${{ matrix.case }}
+          retention-days: 90
       - name: Preserve full histories, failures, protocols and reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -38,3 +45,51 @@ jobs:
           name: signals-expanded-${{ matrix.case }}-${{ github.run_id }}
           path: runs/signals-expanded-last4
           retention-days: 14
+          compression-level: 3
+  report:
+    name: Paired report desktop and mobile verification
+    needs: replay
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - uses: actions/download-artifact@v4
+        with:
+          name: signals-expanded-last4-receipts-${{ github.run_id }}
+          path: runs/paired-report/last4
+      - uses: actions/download-artifact@v4
+        with:
+          name: signals-expanded-last8-receipts-${{ github.run_id }}
+          path: runs/paired-report/last8
+      - name: Render the audited comparison
+        run: |
+          node --input-type=module -e 'import fs from "node:fs";fs.writeFileSync("runs/paired-report/cases.json",JSON.stringify([{name:"Last-8 control",dir:"last8"},{name:"Last-4 requested",dir:"last4"}]))'
+          node scripts/render-signal-coverage.mjs runs/paired-report runs/paired-report/report.html
+      - name: Verify the report on desktop and mobile
+        run: |
+          for browser in google-chrome google-chrome-stable chromium chromium-browser; do
+            if command -v "$browser" >/dev/null 2>&1; then
+              export CTS_UI_BROWSER_EXECUTABLE="$(command -v "$browser")"
+              break
+            fi
+          done
+          if [ -z "${CTS_UI_BROWSER_EXECUTABLE:-}" ]; then npx playwright install --with-deps --only-shell chromium; fi
+          sudo install -d -o "$(id -un)" -g "$(id -gn)" /workspace/screenshots/signals-last4
+          python -m http.server 8765 --bind 127.0.0.1 --directory runs/paired-report > /workspace/screenshots/signals-last4/server.log 2>&1 &
+          server=$!
+          trap 'kill "$server"' EXIT
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8765/report.html > /dev/null && break; sleep 1; done
+          node scripts/browser-smoke.mjs http://127.0.0.1:8765/report.html /workspace/screenshots/signals-last4/report.png
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: signals-expanded-report-${{ github.run_id }}
+          path: |
+            runs/paired-report
+            /workspace/screenshots/signals-last4
+          retention-days: 90
