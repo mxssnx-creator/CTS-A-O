@@ -12,6 +12,7 @@ import { activeSignals, sigActiveKey } from "./signals.ts";
 import { heldSignalProtect, signalHistProtects, signalHistValidationOf } from "./signal-hist.ts";
 import { configEval, defaultWalkForward, execDecision, makeTape, selectAt, selectDurable, selectFixed, signalConfigEval, signalValidationOk, walkForward } from "./sim/walkforward.ts";
 import { closePool, runOnWorkers } from "./server/pool.server.ts";
+import { positionOrderCounts, openTimeline } from "./positions.ts";
 
 const H = 3_600_000, NOW = Date.UTC(2026, 9, 20, 12);
 const defaults = defaultWalkForward(DEFAULT_SETTINGS);
@@ -27,6 +28,40 @@ function own(cfg: string, sym: string, side: 1 | -1, pf: number, count = 75, end
 after(() => closePool());
 
 describe("Signals PF 1.5, own Strategy Base and independent TP/SL", () => {
+  it("Last-4 admits simultaneous independent configs and reopens a closed config while sibling orders remain held", () => {
+    const symbols = Array.from({ length: 12 }, (_, i) => `S${i}-USDT`);
+    const tapes = ["s", "m"].flatMap(range => [1, 5, 15, 30].flatMap(tf => ["normal", "trailing", "trailing-only"].flatMap(kind =>
+      [0, 1].map(variant => {
+        const ind = `sig-ema-cross-${range}@m${tf}`;
+        const protect = { tp: kind === "trailing-only" ? 0 : 0.02 + variant * 0.005, sl: 0.02,
+          trail: kind === "normal" ? 0 : 0.005 + variant * 0.001, hold: 192, ...(kind === "trailing-only" ? { trailOnly: true } : {}) };
+        const cfg = configId("follow", ind, protect, kind as StratKind);
+        const rows = symbols.flatMap(sym => ([1, -1] as const).flatMap(side => {
+          const trade = (entry: number, exit: number): Trade => ({ cfg, sym, side, entryT: NOW + entry * 60_000,
+            exitT: NOW + exit * 60_000, entry: 100, exit: 100 * (1 + side * 0.01), r: 0.01,
+            mult: 1, reason: "tp", bars: 1, mfe: 0, mae: 0, kind: kind as StratKind });
+          return [...own(cfg, sym, side, 4, 12), trade(5, variant ? 50 : 8), ...(variant ? [] : [trade(10, 15)])];
+        }));
+        return makeTape(cfg, "follow", ind, protect, kind as StratKind, symbols, rows, [], []);
+      }))));
+    const o = { ...options, startT: NOW, simH: 1, stepH: 1, signalValidLastN: 4,
+      gates: { ...options.gates, minTrades: 12 }, symGate: undefined,
+      coord: { ...options.coord, enabled: false, confirm: false, conflict: false, hourLock: 0, cooldown: "off" as const },
+      signalRank: signalSettings({ count: 0, minTrades: 3, minBlockShare: 0, validate: false }),
+      signalBasePassed: new Set(tapes.map(tp => `${tp.bot}|${tp.ind}`)) };
+    const run = walkForward({ bars: [], caches: [], nowT: NOW + H, baseTf: 1 } as never, tapes, o);
+    assert.equal(tapes.length, 48);
+    assert.equal(new Set(tapes.map(tp => tp.id)).size, 48, "each fixture protection must be a distinct configuration");
+    assert.equal(run.trades.length, 1728, JSON.stringify(run.skips));
+    assert.equal(new Set(run.trades.map(t => t.cfg)).size, 48);
+    const counts = positionOrderCounts(run.trades, run.openAtEnd);
+    assert.equal(counts.openedPositions, 24);
+    assert.equal(counts.closedPositions, 24);
+    assert.equal(counts.openedOrders, 1728);
+    assert.equal(openTimeline(run.trades, NOW, NOW + H).maxOrders, 1152);
+    assert.equal(run.trades.filter(t => t.entryT === NOW + 10 * 60_000).length, 576);
+    for (const tp of tapes) assert.ok(signalValidationOk(tp, NOW + 5 * 60_000, o, symbols[0], 1));
+  });
   it("retains stricter floors from history through native admission and every ranking mode", () => {
     for (const ind of ["sig-ema-cross-s@m1", "sig-ema-cross-m@m30", "sig-coord-v2-test@m15"]) {
       assert.equal(minPfOf({ minPf: 1.05 }, undefined, ind), 1.5);

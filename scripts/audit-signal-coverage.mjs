@@ -17,6 +17,7 @@ import { parseConfigId, configId, kindOfId } from "../src/core/pipeline/pipeline
 import { BOOK_NOTIONAL_EPS_USD } from "./lib/book-notional.mjs";
 import { modeledUnitReturn } from "../src/core/metrics/stats.ts";
 import { auditSignalDerivedCatalog } from "./audit-signal-derived-catalog.mjs";
+import { positionOrderCounts, positionOrderLedger } from "../src/core/positions.ts";
 
 const H = 3_600_000;
 const near = (a, b, why) => assert.ok(Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) <= 1e-8 * Math.max(1, Math.abs(a), Math.abs(b)), why);
@@ -194,8 +195,31 @@ export async function auditSignalCoverage(dir, out = resolve(dir, "coverage")) {
   const session = JSON.parse(readFileSync(resolve(dir, "session.json"), "utf8"));
   const settled = auditSettledHours(funded.trades, raw.window.startT, raw.window.endT,
     session.hours.map(h => ({ t: h.t, n: h.orders, pf: h.pf, net: h.orders ? 100 * (h.gpR - h.glR) : 0 })));
+  const fundedOpen = [...opens.values()].flat();
+  for (const id of opens.keys()) assert.ok(identities.has(id), "Open config missing its tape");
+  const orderIds = new Set();
+  for (const x of [...funded.trades, ...fundedOpen]) {
+    const key = JSON.stringify([x.cfg, x.sym, x.side, x.entryT]);
+    assert.ok(!orderIds.has(key), `Duplicate modeled parent or both open and closed: ${key}`);orderIds.add(key);
+  }
+  const counts = positionOrderCounts(funded.trades, fundedOpen);
+  assert.equal(counts.openedOrders, counts.settledOrders + counts.openOrders);
+  assert.equal(counts.openedPositions, counts.closedPositions + counts.openPositions);
+  assert.deepEqual(counts, Object.fromEntries(Object.keys(counts).map(k => [k, book.total.fundedCounts[k]])), "Report/funded ledger counts");
+  const ledger = { counts, hourly: positionOrderLedger(funded.trades, fundedOpen, times[0], times.at(-1), H),
+    orphanedOrders: 0, duplicateParents: 0, scope: "Funded modeled parent orders; actual venue partial fills are verified separately in native control fixtures." };
+  for (let i = 0; i < ledger.hourly.length; i++) assert.deepEqual(ledger.hourly[i], session.hours[i].fundedCounts, "Hourly report/funded ledger");
+  const belongs = (x, g) => {
+    if (g.dimension === "symbol") return x.sym === g.label;
+    const c = parseConfigId(x.cfg), info = signalConfigDetails(x.cfg, c.protect, kindOfId(x.cfg));
+    const labels = { type: info.kind, parameterRange: info.range, strategyRange: info.strategyRange,
+      protectionRange: info.protectionRange, lane: String(info.lane), source: info.source,
+      typeRange: `${info.kind} / ${info.range} / ${info.protectionRange}` };
+    return labels[g.dimension] === g.label;
+  };
   const finalized = [...groups.values()].map(g => ({ ...g, symbols: g.symbols.size, sources: g.sources.size, start: finish(g.start), end: finish(g.end),
-    execution: { ...g.execution, configs: g.execution.configs.size, ...pf(g.execution.gp, g.execution.gl, g.execution.n) } }));
+    execution: { ...g.execution, configs: g.execution.configs.size, ...pf(g.execution.gp, g.execution.gl, g.execution.n),
+      counts: positionOrderCounts(funded.trades.filter(x => belongs(x,g)), fundedOpen.filter(x => belongs(x,g))) } }));
   for (const dimension of ["type", "parameterRange", "strategyRange", "protectionRange", "lane", "source", "symbol", "typeRange"]) {
     const gs = finalized.filter(g => g.dimension === dimension);
     assert.equal(gs.reduce((n,g)=>n+g.execution.n,0), funded.trades.length, `Funded membership ${dimension}`);
@@ -215,7 +239,7 @@ export async function auditSignalCoverage(dir, out = resolve(dir, "coverage")) {
       execution: "Funded settled modeled closes after all execution gates, verified against exact source tapes; endpoint marks excluded.",
       protection: "Effective percent protections after lane scaling/floors/caps. ATR multiples and floors are separate from resolved per-entry prices.",
       ddt: "Context history DDT uses unit-return running peaks; account equity DDT includes minute open-position marks and is separately reported." },
-    hourly: hourly.map(finish), groups: finalized, funding: funded.funding, settled, account: book.total,
+    hourly: hourly.map(finish), groups: finalized, funding: funded.funding, settled, ledger, account: book.total,
     entrySelection: selectionSteps?.length ? { ...entries, scope: "Settled tape candidates only; own config validation is not complete admission. Ranking, shared guards, funding and endpoint-open candidates are separate." } : null,
     exactTape: { ok: parity.ok, matched: parity.matched, missing: parity.missingCount, mismatched: parity.mismatchCount },
     reportChecks: book.checks, engine: { computeMs: raw.engine.computeMs, rssMaxMb: raw.engine.rssMaxMb, mem: raw.engine.mem, phases: raw.engine.phases,

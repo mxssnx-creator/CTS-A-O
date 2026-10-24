@@ -12,6 +12,8 @@ import type { CoreRuntime } from "./runtime.server.ts";
 import { blockDecide } from "../sim/block.ts";
 import { DEFAULT_BLOCK } from "../config.ts";
 import type { LaneOrder } from "./lane-orders.ts";
+import { configId } from "../pipeline/pipeline.ts";
+import type { Protect, RangeTag, StratKind } from "../domain/types.ts";
 
 process.env.CTS_CORE_LIVE = "1";
 const core = (rt: unknown) => rt as CoreRuntime;
@@ -28,6 +30,49 @@ const gross = (ex: SimExchange) => [...ex.positions].reduce((sum, [key, q]) => s
 
 describe("actual execution account budgets across independent Signal sets", () => {
   afterEach(() => resetLiveBackoff());
+
+  for (const range of ["mp", "mc", "mn", "sh", "gn", "lg", "sig-s", "sig-m"])
+    for (const kind of ["normal", "trailing", "trailing-only", "exit", "dca", "dca-active", "axis"] as StratKind[])
+      for (const side of [1, -1] as const)
+        it(`${range}/${kind}/${side}: exact partial ownership, sibling protection and complete final closure`, async () => {
+          const { rt, ex, step } = setup();
+          Object.assign(rt.settings.live, { laneOrders: true, notionalUsd: 10 });
+          const ind = range.startsWith("sig-") ? `sig-ema-cross-${range.slice(4)}@m5` : "ema-9-21@m5";
+          const protect: Protect = { tp: kind === "trailing-only" ? 0 : .03, sl: .02,
+            trail: kind === "normal" ? 0 : .005, hold: 32,
+            ...(range.startsWith("sig-") ? {} : { tag: range as RangeTag }),
+            ...(kind === "trailing-only" ? { trailOnly: true } : {}),
+            ...(kind === "exit" ? { exitType: "historic" as const } : {}) };
+          const cfg = configId("follow", ind, protect, kind);
+          const sibling = configId("follow", ind, { ...protect, sl: .021 }, kind);
+          rt.paper.positions = [lane(cfg, "S0-USDT", side, 10), lane(sibling, "S0-USDT", side, 10)];
+          await step();
+          const key = `S0-USDT|${side === 1 ? "LONG" : "SHORT"}`;
+          const original = Object.values(liveKv<Record<string, LaneOrder>>(rt.db, "laneOrders") ?? {}).find(p => p.id.includes(cfg))!;
+          assert.ok(original?.s?.oid, `missing owned stop: ${cfg}`);
+          assert.equal(ex.positions.get(key), 2);
+          ex.positions.set(key, 1.6);
+          const status = ex.orderStatus.bind(ex);
+          const receiptClient: ExchangeClient = ex;
+          receiptClient.orderStatus = async (sym, id) => id === original.s?.oid
+            ? { order: { orderId: id, status: "PARTIALLY_FILLED", executedQty: .4, avgPrice: side === 1 ? 9.8 : 10.2 } }
+            : status(sym, id);
+          const marketCount = ex.log.filter(o => o.type === "MARKET").length;
+          for (let i = 0; i < 3; i++) await step();
+          assert.equal(ex.log.filter(o => o.type === "MARKET").length, marketCount, "no shadow repurchase after a partial");
+          const parents = Object.values(liveKv<Record<string, LaneOrder>>(rt.db, "laneOrders") ?? {});
+          assert.deepEqual(parents.map(p => p.qty).sort(), [.6, 1]);
+          assert.deepEqual(rt.db.all<{qty:number}>("SELECT qty FROM live_orders WHERE coid LIKE 'lanefill-%'").map(r => r.qty), [.4]);
+          for (const parent of parents) { assert.ok(parent.s?.oid);ex.triggerOrder(parent.s.oid); }
+          for (let i = 0; i < 3; i++) await step();
+          assert.equal(ex.positions.size, 0, "all confirmed owned quantity closes");
+          assert.equal(ex.orders.length, 0, "no orphan protective orders after closure");
+          assert.equal(Object.keys(liveKv<Record<string, LaneOrder>>(rt.db, "laneOrders") ?? {}).length, 0);
+          assert.equal(ex.log.filter(o => o.type === "MARKET").length, marketCount, "held paper rows cannot reopen closed parents");
+          const filled = rt.db.all<{qty:number}>("SELECT qty FROM live_orders WHERE coid LIKE 'lanefill-%'");
+          assert.ok(Math.abs(filled.reduce((sum,r) => sum+r.qty,0)-2)<1e-10, "partial plus final slices equal initial owned quantity exactly once");
+          rt.db.db.close();
+        });
 
   for (const laneOrders of [false, true])
   it(`Overall Block asks for its total capped target once across repeated native cycles (lane orders ${laneOrders})`, async () => {

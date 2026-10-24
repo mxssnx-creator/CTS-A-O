@@ -329,6 +329,7 @@ import {
 } from "../exit-strategy.ts";
 import {
   DEFAULT_SIGNALS,
+  PRE_EXPANDED_SIGNAL_SOURCES,
   signalRangeOf,
   type SignalAccept,
   type SignalSettings,
@@ -344,7 +345,7 @@ import {
 import { primaryPfLabel, unitStatsReport } from "../reporting-stats.ts";
 import { promoteLaneKey, validPromotedLaneProof } from "../live-promote.ts";
 import { auditState, auditStateGen, type AuditInput, type AuditReport } from "../audit.ts";
-import { closedPositions, openBook, openTimeline } from "../positions.ts";
+import { closedPositions, openBook, openTimeline, positionOrderCounts } from "../positions.ts";
 import {
   backfillLabel,
   batchesOf,
@@ -612,6 +613,7 @@ export interface RuntimeStatus {
     orders?: number;
     /** Modeled simulation openings and endpoint inventory; separate from settled PF and current paper holdings. */
     openedOrders?: number;
+    openedPositions?: number;
     openAtEndOrders?: number;
     openAtEndPositions?: number;
     peakPositions?: number;
@@ -1161,7 +1163,8 @@ export class CoreRuntime {
     if (opts.priceStream !== undefined) this.priceStream = opts.priceStream;
     this.db = db;
     // order caps from before unlimited orders are dropped once (walk-forward and signal caps)
-    const savedWf = migrateSignalEvaluationPolicy(db, migrateWfCaps(db));
+    const savedWf = migrateSignalLast4Policy(db, migrateSignalEvaluationPolicy(db, migrateWfCaps(db)));
+    migrateExpandedSignalDefaults(db);
     migrateMicroBreakoutFocus(db);
     migrateMicroContextFocus(db);
     const saved = db.kvGet<Partial<CoreSettings>>("settings");
@@ -5644,6 +5647,7 @@ export class CoreRuntime {
         const xs = sim.trades.filter((x) => isSignalInd(x.cfg.split("|")[1] ?? ""));
         const endpoint = (sim.openAtEnd ?? []).filter((x) => isSignalInd(x.cfg.split("|")[1] ?? ""));
         const endpointBook = openBook(endpoint);
+        const counts = positionOrderCounts(xs, endpoint);
         yield 0;
         const st = unitStatsReport(unitStatsOf(xs), xs.length);
         const tl = openTimeline([...xs, ...endpoint], sim.startT, sim.endT);
@@ -5652,6 +5656,7 @@ export class CoreRuntime {
         const coordEndpoint = endpoint.filter((x) => isSignalCoordinationInd(x.cfg.split("|")[1] ?? ""));
         const coordTimeline = openTimeline([...coord, ...coordEndpoint], sim.startT, sim.endT);
         const coordEndpointBook = openBook(coordEndpoint);
+        const coordCounts = positionOrderCounts(coord, coordEndpoint);
         yield 0;
         return {
           disabled: sig.guard.enabled ? g.disabledKeys(sig.guard.lastN).length : 0,
@@ -5661,9 +5666,10 @@ export class CoreRuntime {
           noLoss: st.noLoss,
           pfConvention: st.pfConvention,
           // positions (symbol × direction, closed episodes) and orders (every order and partial) apart
-          positions: closedPositions(xs),
+          positions: counts.closedPositions,
           orders: xs.length,
-          openedOrders: xs.length + endpoint.length,
+          openedOrders: counts.openedOrders,
+          openedPositions: counts.openedPositions,
           openAtEndOrders: endpoint.length,
           openAtEndPositions: endpointBook.positions,
           peakPositions: Math.max(tl.maxPositions, endpointBook.positions),
@@ -5671,7 +5677,7 @@ export class CoreRuntime {
           coordinationTrades: coord.length,
           coordinationPf: coordStats.pf,
           coordinationNet: coordStats.net,
-          coordinationPositions: closedPositions(coord),
+          coordinationPositions: coordCounts.closedPositions,
           coordinationOrders: coord.length,
           coordinationPeakPositions: Math.max(coordTimeline.maxPositions, coordEndpointBook.positions),
           coordinationPeakOrders: Math.max(coordTimeline.maxOrders, coordEndpoint.length),
@@ -10586,6 +10592,77 @@ function migrateSignalEvaluationPolicy(db: CoreDb, saved: Partial<WalkForwardOpt
   return out;
 }
 
+/** Upgrade former factory fields once, retaining explicit custom selections and a transactional backup. */
+function migrateExpandedSignalDefaults(db: CoreDb): void {
+  if (db.kvGet("signalExpandedDefaultsV1")) return;
+  const settings = db.kvGet<SettingsPatch>("settings");
+  const presets = db.kvGet<Preset[]>("presets");
+  const backup = structuredClone({ settings, presets });
+  const upgrade = (s: SettingsPatch | undefined) => {
+    const sig = s?.signals;
+    if (!sig) return false;
+    let changed = false;
+    const sources = sig.sources;
+    if (sig.sourcesMode !== "allow" && sources &&
+      Object.keys(sources).length === Object.keys(PRE_EXPANDED_SIGNAL_SOURCES).length &&
+      Object.entries(PRE_EXPANDED_SIGNAL_SOURCES).every(([name, value]) => sources[name] === value)) {
+      sig.sources = {};
+      changed = true;
+    }
+    if (sig.lanes?.length === 1 && sig.lanes[0] === 15) {
+      sig.lanes = [...DEFAULT_SIGNALS.lanes];
+      changed = true;
+    }
+    if (sig.exits === "pct") { sig.exits = "both"; changed = true; }
+    if (sig.coordination?.count === 100) { sig.coordination.count = 0; changed = true; }
+    return changed;
+  };
+  let changed = upgrade(settings);
+  if (Array.isArray(presets)) for (const preset of presets) changed = upgrade(preset.settings) || changed;
+  db.tx(() => {
+    if (changed) {
+      db.kvSet("signalExpandedDefaultsBackupV1", backup);
+      if (settings) db.kvSet("settings", settings);
+      if (presets) db.kvSet("presets", presets);
+    }
+    db.kvSet("signalExpandedDefaultsV1", true);
+  });
+}
+
+/** Last-4 supersedes Last-8 once; later deliberate settings and stricter custom samples remain intact. */
+function migrateSignalLast4Policy(db: CoreDb, saved: Partial<WalkForwardOptions>): Partial<WalkForwardOptions> {
+  if (db.kvGet("signalLast4V1")) return saved;
+  const settings = db.kvGet<SettingsPatch>("settings");
+  const presets = db.kvGet<Preset[]>("presets");
+  const backup = structuredClone({ settings, wf: saved, presets });
+  const out = structuredClone(saved);
+  const upgrade = (s: SettingsPatch | undefined, wf: Partial<WalkForwardOptions> | undefined) => {
+    let changed = false;
+    if (s?.signals?.guard?.lastN === 8) { s.signals.guard.lastN = SIGNAL_VALID_LAST_N; changed = true; }
+    if (s?.exitStrategy?.minValidationTrades === 8) { s.exitStrategy.minValidationTrades = SIGNAL_VALID_LAST_N; changed = true; }
+    if (wf) {
+      for (const key of ["signalValidLastN", "signalGuardN", "exitMinTrades"] as const)
+        if (wf[key] === 8) { wf[key] = SIGNAL_VALID_LAST_N; changed = true; }
+      const range = wf.rangeOpts?.sig;
+      for (const key of ["validLastN", "lastN"] as const)
+        if (range?.[key] === 8) { range[key] = SIGNAL_VALID_LAST_N; changed = true; }
+    }
+    return changed;
+  };
+  let changed = upgrade(settings, out);
+  if (Array.isArray(presets)) for (const preset of presets) changed = upgrade(preset.settings, preset.wf) || changed;
+  db.tx(() => {
+    if (changed) {
+      db.kvSet("signalLast4BackupV1", backup);
+      db.kvSet("wf", pickWf(out));
+      if (settings) db.kvSet("settings", settings);
+      if (presets) db.kvSet("presets", presets);
+    }
+    db.kvSet("signalLast4V1", true);
+  });
+  return out;
+}
+
 function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
   const saved = db.kvGet<Partial<WalkForwardOptions>>("wf") ?? {};
   const v = db.kvGet<number>("wfCapsV") ?? 0;
@@ -11450,7 +11527,7 @@ export const LIVE_STEP_LIMIT_MS = 180_000;
 /** Mainnet (x01) validation floors: last N closes at entry and for a seat. */
 export const MAINNET_LAST_N = 25;
 export const MAINNET_VALID_LAST_N = 50;
-/** Signals share the operator's Last-8 floor on every execution path. */
+/** Signals share the operator's Last-4 floor on every execution path. */
 export const MAINNET_SIGNAL_VALID_LAST_N = SIGNAL_VALID_LAST_N;
 
 export function baseFocus(s: CoreSettings): string[] {

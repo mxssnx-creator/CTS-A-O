@@ -138,3 +138,56 @@ export function positionEpisodes(
   }
   return out;
 }
+
+/** Compare positions and orders on the same book, retaining endpoint-open siblings in their episode. */
+export function positionOrderCounts(
+  closed: ReadonlyArray<{ sym: string; side: number; entryT: number; exitT: number }>,
+  open: ReadonlyArray<{ sym: string; side: number; entryT: number }> = [],
+) {
+  const episodes = positionEpisodes(closed, open);
+  return {
+    openedPositions: episodes.length,
+    closedPositions: episodes.filter((e) => Number.isFinite(e.end)).length,
+    openPositions: openBook(open).positions,
+    openedOrders: closed.length + open.length,
+    settledOrders: closed.length,
+    openOrders: open.length,
+  };
+}
+
+/** End-of-interval snapshots use (t, end], matching settled closes and minute marks; start entries join interval 0. */
+export function positionOrderLedger(
+  closed: ReadonlyArray<{ sym: string; side: number; entryT: number; exitT: number }>,
+  open: ReadonlyArray<{ sym: string; side: number; entryT: number }>,
+  startT: number, endT: number, intervalMs: number,
+) {
+  if (![startT, endT, intervalMs].every(Number.isFinite) || endT < startT || intervalMs <= 0)
+    throw new Error("Invalid position/order ledger window");
+  const episodes = positionEpisodes(closed, open);
+  const orders = [...closed, ...open.map((x) => ({ ...x, exitT: Infinity }))];
+  const startedBefore = (start: number, end: number) => start < startT && end > startT;
+  let positions = episodes.filter((e) => startedBefore(e.start, e.end)).length;
+  let orderCount = orders.filter((x) => startedBefore(x.entryT, x.exitT)).length;
+  const rows = [];
+  for (let t = startT; t < endT; t += intervalMs) {
+    const until = Math.min(endT, t + intervalMs);
+    const entered = (at: number) => (at > t || (t === startT && at === t)) && at <= until;
+    const exited = (at: number) => at > t && at <= until;
+    const row = {
+      t, endT: until, positionsAtStart: positions, ordersAtStart: orderCount,
+      openedPositions: episodes.filter((e) => entered(e.start)).length,
+      closedPositions: episodes.filter((e) => exited(e.end)).length,
+      openedOrders: orders.filter((x) => entered(x.entryT)).length,
+      settledOrders: closed.filter((x) => exited(x.exitT)).length,
+      openPositions: episodes.filter((e) => e.start <= until && e.end > until).length,
+      openOrders: orders.filter((x) => x.entryT <= until && x.exitT > until).length,
+    };
+    if (positions + row.openedPositions - row.closedPositions !== row.openPositions ||
+      orderCount + row.openedOrders - row.settledOrders !== row.openOrders)
+      throw new Error("Position/order ledger does not reconcile");
+    rows.push(row);
+    positions = row.openPositions;
+    orderCount = row.openOrders;
+  }
+  return rows;
+}

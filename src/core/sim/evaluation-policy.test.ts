@@ -58,6 +58,16 @@ describe("independent validation policy at every selection stage", () => {
     assert.equal(validated(tp), false);
   });
   for (const kind of ["normal", "trailing", "trailing-only", "exit"] as const) {
+    it(`${kind}: Last-4 processes an own four-close sample without borrowing another context`, () => {
+      const own = { ...options, signalLongH: 100, signalValidLastN: 4, exitMinTrades: 4 };
+      const tp = tape("sig-ema-cross-s@m1", [...rows("A", 1, Array<number>(4).fill(0.025)),
+        ...rows("B", -1, Array<number>(10).fill(0.1))], kind);
+      assert.equal(signalConfigEval(tp, NOW, own, "A", 1).ok, true);
+      assert.equal(signalConfigEval(tp, NOW, { ...own, signalValidLastN: 8 }, "A", 1).ok, false);
+      const thin = tape(tp.ind, [...rows("A", 1, Array<number>(3).fill(0.025)),
+        ...rows("B", -1, Array<number>(10).fill(0.1))], kind);
+      assert.equal(signalConfigEval(thin, NOW, own, "A", 1).ok, false);
+    });
     it(`${kind}: requested Last-8 judges exactly eight settled results`, () => {
       const history = [...Array<number>(30).fill(0.1), ...Array<number>(4).fill(-0.1), ...Array<number>(8).fill(0.025)];
       const tp = tape("sig-ema-cross-s@m1", rows("A", 1, history), kind);

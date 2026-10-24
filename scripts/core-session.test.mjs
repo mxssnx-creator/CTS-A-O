@@ -694,7 +694,10 @@ describe("session reports: return PF primary, simulated provenance", () => {
     assert.ok(data.checks.find((x) => x.name === "hour × type: type columns add up to virtual closes, every hour")?.ok);
     assert.match(md, /\| hour \(UTC\) \| funded orders closed \| virtual closes \|/);
     assert.match(md, /\| 01:00 \| 2 \| 3 \| 2 · – · 0 % · \$0\.00/);
-    assert.match(md, /2 funded orders opened \(2 settled, 0 still open\) · 3 virtual closes/);
+    assert.equal(data.total.fundedCounts.openedOrders, 2);
+    assert.equal(data.total.fundedCounts.settledOrders, 2);
+    assert.equal(data.total.fundedCounts.openOrders, 0);
+    assert.match(md, /2 orders opened .*2 orders settled; 0 positions \/ 0 orders still open\) · 3 virtual closes/);
     assert.match(md, /Virtual diagnostic:.*3 closes · Return PF ∞ \(no loss\)/);
     assert.match(writeup, /Separate virtual diagnostic: 3 closes/);
     assert.match(summaryOf(html), /Separate virtual diagnostic:<\/b> 3 closes/);
@@ -933,6 +936,10 @@ it("opening counts include endpoint-held and endpoint-entered orders while separ
  assert.equal(data.typeHours.reduce((n,x)=>n+x.opened,0),4);
  assert.equal(data.typeHours.reduce((n,x)=>n+x.fundedOpened,0),3);
  assert.ok(data.checks.every(x=>x.ok));
- assert.match(md,/3 funded orders opened \(0 settled, 3 still open\)/);
- assert.match(summaryOf(html),/Orders opened/);
+ assert.deepEqual(t.fundedCounts, {openedPositions:2,closedPositions:0,openPositions:2,openedOrders:3,settledOrders:0,openOrders:3,basis:"funded-modeled-allocations"});
+ const hour=report.hours[0].fundedCounts;
+ assert.equal(hour.positionsAtStart+hour.openedPositions-hour.closedPositions,hour.openPositions);
+ assert.equal(hour.ordersAtStart+hour.openedOrders-hour.settledOrders,hour.openOrders);
+ assert.match(md,/2 funded positions \/ 3 orders opened \(0 positions \/ 0 orders settled; 2 positions \/ 3 orders still open\)/);
+ assert.match(summaryOf(html),/Positions \/ orders opened/);
 });

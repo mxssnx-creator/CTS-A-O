@@ -96,7 +96,7 @@ function path(side: 1 | -1): Bars {
 
 describe("Signals: additional independent Trailing only sets", () => {
   it("adds every SL × trail range without replacing Normal, capped Trailing or ATR", () => {
-    const sig = signalSettings({});
+    const sig = signalSettings({ trailRatios: [1] });
     for (const exits of ["pct", "atr", "both"] as const) {
       const enabled = signalProtects({ ...sig, exits });
       const disabled = signalProtects({
@@ -140,7 +140,7 @@ describe("Signals: additional independent Trailing only sets", () => {
     assert.deepEqual(changed.trailingOnly.sl, sig.trailingOnly.sl);
     assert.deepEqual(changed.trailingOnly.trail, [0.02]);
     assert.deepEqual(changed.trailing, sig.trailing);
-    assert.equal(signalProtects(changed).filter((p) => p.trailOnly).length, 2);
+    assert.equal(signalProtects(changed).filter((p) => p.trailOnly).length, 2 * changed.trailRatios!.length);
     assert.throws(
       () =>
         checkSettings({
@@ -435,7 +435,7 @@ describe("Signals: additional independent Trailing only sets", () => {
     ];
     const u = makeUniverse(bars);
     const pairs = [`follow|${IND}`, "follow|sig-ema-cross-m@m15"];
-    const protects = signalProtects(signalSettings({})).filter((p) => p.trailOnly);
+    const protects = signalProtects(signalSettings({ trailRatios: [1] })).filter((p) => p.trailOnly);
     const heldId = configId("follow", IND, protects[0]);
     const floors = {
       minSl: 0,

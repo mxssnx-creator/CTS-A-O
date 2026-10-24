@@ -345,16 +345,16 @@ describe("signals: acceptance on the source's record", () => {
 });
 
 describe("signal defaults (the validated settings, PR #65)", () => {
-  it("judge signals on their own exits, on the 15m lane, with acceptance and their own Block level", async () => {
+  it("judge signals on their own exits, on all four lanes, with acceptance and their own Block level", async () => {
     const { DEFAULT_SIGNALS } = await import("../signal-config.ts");
     const { DEFAULT_BLOCK, DEFAULT_SETTINGS } = await import("../config.ts");
     const { defaultWalkForward } = await import("./walkforward.ts");
     assert.equal(DEFAULT_SIGNALS.baseGate, false);
-    assert.deepEqual(DEFAULT_SIGNALS.lanes, [15]);
+    assert.deepEqual(DEFAULT_SIGNALS.lanes, [1, 5, 15, 30]);
     assert.deepEqual(DEFAULT_SIGNALS.strategies, { dca: false, axis: false });
     assert.deepEqual(DEFAULT_SIGNALS.accept, { enabled: true, minPf: 1.3, hours: 48, minTrades: 6 });
     assert.equal(DEFAULT_BLOCK.signalsOwn, true);
-    // Operator, 23 Oct: their own last 8 closed results.
-    assert.equal(defaultWalkForward(DEFAULT_SETTINGS).signalValidLastN, 8);
+    // Operator, 24 Oct: their own last 4 closed results.
+    assert.equal(defaultWalkForward(DEFAULT_SETTINGS).signalValidLastN, 4);
   });
 });

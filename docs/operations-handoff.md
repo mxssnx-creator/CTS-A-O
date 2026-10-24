@@ -1,3 +1,7 @@
+## Expanded defaults, Last-4 and order reconciliation — in progress, 24 October 2026 UTC
+
+Branch feat/signals-expanded-defaults-20261024 starts at main8ee9073. Expanded source/grid defaults and atomic backed-up migrations are implemented; custom values/off states remain. Signal/Exit Last-N is4; full-history own minTrades12 and PF floors remain. Shared position/order episode counts now retain held siblings and reports expose funded hourly conservation. Targeted policy/report tests pass; synthetic independence proves1728 orders across24 position episodes with1152 peak orders.112 range/type/side partial→final-closure cases pass, plus327 existing native control/accounting tests. Full CI and paired native12-symbol100h/12h Last8/Last4 replay are pending. No venue operations or running-instance reload have occurred. Preserve all prior evidence below.
+
 ## Completed Signal coverage fixes and verification — 23 October 2026 (UTC)
 
 PR196 source checkpoint `8b2b389cf0f3eb21668934c1fdb87fa2d08e9642` (local equivalent `640d8d1079dec034aec631627f7d96bb6782e48d`, tree `6b202a4f3f78f762a78fdefc08e362eec4105ada`) has economic source `aeec5a59086e1145a52009f580bd29ecf7042eb6c174677f099a284fe397c82e`. Signals-only range qualification, pooled-fitting versus own-context sample separation, bounded derived caches, indexed yielding selection, complete catalog audits and separate built/opening/settled/endpoint counters are implemented. Final documentation commits preserve that economic source.

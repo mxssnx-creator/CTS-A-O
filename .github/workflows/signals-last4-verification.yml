@@ -1,0 +1,40 @@
+name: Expanded Signals Last-4 paired verification
+on:
+  pull_request:
+    branches: [main]
+    paths: [src/core/**, scripts/core-session.mjs, scripts/lib/**, scripts/prepare-signals-last4.mjs, scripts/run-signals-native-case.py, scripts/audit-signal-coverage.mjs, .github/workflows/signals-last4-verification.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: signals-last4-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  replay:
+    name: Twelve symbols, 12 hours, ${{ matrix.case }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        case: [last8, last4]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Build the exact simulation worker
+        run: npm run build:core-worker
+      - name: Freeze both settings and the full economic source before scoring
+        run: node --experimental-strip-types --no-warnings scripts/prepare-signals-last4.mjs runs/signals-expanded-last4
+      - name: Run all configurations and independently reconcile every hourly calculation and funded order
+        run: python scripts/run-signals-native-case.py runs/signals-expanded-last4 ${{ matrix.case }}
+      - name: Preserve full histories, failures, protocols and reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: signals-expanded-${{ matrix.case }}-${{ github.run_id }}
+          path: runs/signals-expanded-last4
+          retention-days: 14
