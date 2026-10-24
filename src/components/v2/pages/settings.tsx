@@ -407,14 +407,7 @@ export function SignalsSettings(props: {
     ...DEFAULT_SIGNALS.combinedVolumeFactors,
     ...(g.combinedVolumeFactors ?? {}),
   };
-  const coordGridKeys = { short: "short", normal: "general", long: "long" } as const;
-  const coordRangeAvailable = (range: keyof typeof coordGridKeys) => {
-    if (!props.grid) return true;
-    const x = props.grid[coordGridKeys[range]];
-    return !!x && x !== false && (x.tp?.length ?? 0) > 0;
-  };
-  const coordRangeKeys = ["short", "normal", "long"] as const;
-  const availableCoordRanges = coordRangeKeys.filter(coordRangeAvailable);
+  const coordinationOn = coordination.enabled && Object.values(coordination.ranges).some(Boolean);
   const rangeVolumeFactors = {
     ...DEFAULT_SIGNALS.rangeVolumeFactors,
     ...(g.rangeVolumeFactors ?? {}),
@@ -1070,24 +1063,16 @@ export function SignalsSettings(props: {
         >
           <Switch
             label="Signals Coordination processing"
-            checked={coordination.enabled}
-            disabled={availableCoordRanges.length === 0}
-            onChange={(v) => {
-              if (
-                v &&
-                !coordRangeKeys.some(
-                  (range) => coordination.ranges[range] && coordRangeAvailable(range),
-                )
-              ) {
-                const first = availableCoordRanges[0];
-                if (first) set(["coordination", "ranges", first], true);
-              }
-              set(["coordination", "enabled"], v);
-            }}
+            checked={coordinationOn}
+            onChange={(v) => set(["coordination"], {
+              ...coordination,
+              enabled: v,
+              ranges: v ? { short: true, normal: true, long: true } : coordination.ranges,
+            })}
           />
           <strong>Signals Coordination (Type)</strong>
           <span className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
-            {coordination.enabled
+            {coordinationOn
               ? `${fmt.num(st?.coordinationPairs ?? 0)} pairs · ${fmt.num(st?.coordinationBuiltConfigs ?? st?.coordinationConfigs ?? 0)} built range/history configs · ${fmt.num(st?.coordinationActive ?? 0)} active units${st?.coordinationOrders !== undefined ? ` · ${fmt.num(st.coordinationOrders)} settled orders · PF ${fmt.num(st.coordinationPf)}` : ""}`
               : "Off"}
           </span>
@@ -1147,42 +1132,8 @@ export function SignalsSettings(props: {
               ))}
             </select>
           </Field>
-          <Field
-            label="Exit ranges"
-            hint="each range tag has its own PF / position result group; Normal uses the existing General grid"
-          >
-            <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-              {(
-                [
-                  ["short", "Short", "short"],
-                  ["normal", "Normal (General)", "general"],
-                  ["long", "Long", "long"],
-                ] as const
-              ).map(([key, label, gridKey]) => {
-                const rangeGrid = props.grid?.[gridKey];
-                const configured =
-                  !props.grid ||
-                  (!!rangeGrid && rangeGrid !== false && (rangeGrid.tp?.length ?? 0) > 0);
-                const anotherSelectedRange = coordRangeKeys.some(
-                  (range) =>
-                    range !== key && coordination.ranges[range] && coordRangeAvailable(range),
-                );
-                return (
-                  <span key={key} style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
-                    <Switch
-                      label={`Coordination ${label}`}
-                      checked={coordination.ranges[key] && configured}
-                      disabled={
-                        !configured ||
-                        (coordination.enabled && coordination.ranges[key] && !anotherSelectedRange)
-                      }
-                      onChange={(v) => set(["coordination", "ranges", key], v)}
-                    />
-                    {label}
-                  </span>
-                );
-              })}
-            </div>
+          <Field label="Strategy processing" hint="independent Signal configurations and historic Exit; ordinary strategy grids are not expanded">
+            <span>Signals + Exit</span>
           </Field>
           <div className="v2-muted" style={{ gridColumn: "1 / -1", fontSize: "var(--v-fs-xs)" }}>
             Votes combine the selected source pool and Short / Medium parameter variants. A source

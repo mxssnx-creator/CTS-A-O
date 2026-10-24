@@ -125,14 +125,14 @@ test("local historical fitting reports intermediate progress and completes the j
   assert.equal(rt.status.stage, "Realtime");
   assert.equal(rt.status.overall, 1);
 });
-test("historical coordinator ranges and exact configs survive incremental rebuilds", { timeout: 180_000 }, async () => {
+test("historical coordinators use the Signal range and exact configs survive incremental rebuilds", { timeout: 180_000 }, async () => {
   for (const local of [false, true]) {
     const { rt, inner } = fixture(local, true, true);
     await rt.cycle();
     if (!local) assert.equal(inner.workersBroken, false);
     const historical = Object.values(inner.fastArgs.coord.floors.pairProtects ?? {}).flat();
-    assert.ok(historical.length > 0, "the runtime supplied enabled range floors to historic coordination fitting");
-    assert.ok(historical.every((p) => (p as { tag: string }).tag === "sh"), "disabled General/Long ranges receive no historical variants");
+    assert.ok(historical.length > 0, "the runtime supplied Signal qualification to historic coordination fitting");
+    assert.ok(historical.every((p) => !(p as { tag?: string }).tag), "ordinary strategy ranges receive no historical variants");
     const tapes = rt.tapes.filter((t) => isSignalCoordinationInd(t.ind));
     assert.ok(tapes.length > 0);
     await rebuild(rt, inner, tapes);
