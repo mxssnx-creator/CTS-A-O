@@ -1,0 +1,1321 @@
+﻿2026-10-24T20:14:26.9190815Z Current runner version: '2.338.0'
+2026-10-24T20:14:26.9215205Z ##[group]Runner Image Provisioner
+2026-10-24T20:14:26.9216098Z Hosted Compute Agent
+2026-10-24T20:14:26.9216761Z Version: 20261021.618
+2026-10-24T20:14:26.9217428Z Commit: 21505ad2541d5be6135ed84fc33697146cf75b8e
+2026-10-24T20:14:26.9218172Z Build Date: 2026-10-21T00:45:21Z
+2026-10-24T20:14:26.9218951Z Worker ID: {9f91a388-56ea-4c9d-926f-54a40b05eec0}
+2026-10-24T20:14:26.9219703Z Region: westus
+2026-10-24T20:14:26.9220499Z Cloud: Azure
+2026-10-24T20:14:26.9221130Z ##[endgroup]
+2026-10-24T20:14:26.9222988Z ##[group]Operating System
+2026-10-24T20:14:26.9223742Z Ubuntu
+2026-10-24T20:14:26.9224311Z 24.04.5
+2026-10-24T20:14:26.9224806Z LTS
+2026-10-24T20:14:26.9225385Z ##[endgroup]
+2026-10-24T20:14:26.9226008Z ##[group]Runner Image
+2026-10-24T20:14:26.9226811Z Image: ubuntu-24.04
+2026-10-24T20:14:26.9227413Z Version: 20261012.334.1
+2026-10-24T20:14:26.9228708Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20261012.334/images/ubuntu/Ubuntu2404-Readme.md
+2026-10-24T20:14:26.9230530Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20261012.334
+2026-10-24T20:14:26.9231611Z ##[endgroup]
+2026-10-24T20:14:26.9232741Z ##[group]GITHUB_TOKEN Permissions
+2026-10-24T20:14:26.9234759Z Contents: read
+2026-10-24T20:14:26.9235382Z Metadata: read
+2026-10-24T20:14:26.9235934Z ##[endgroup]
+2026-10-24T20:14:26.9238337Z Secret source: Actions
+2026-10-24T20:14:26.9239305Z Cache mode: write
+2026-10-24T20:14:26.9240101Z Prepare workflow directory
+2026-10-24T20:14:26.9581256Z Prepare all required actions
+2026-10-24T20:14:26.9631088Z Getting action download info
+2026-10-24T20:14:27.3227818Z Download action repository 'actions/checkout@v4' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+2026-10-24T20:14:27.4692016Z Download action repository 'actions/setup-node@v4' (SHA:49933ea5288caeca8642d1e84afbd3f7d6820020)
+2026-10-24T20:14:27.8199236Z Complete job name: core-tests (2)
+2026-10-24T20:14:27.9081774Z ##[group]Run actions/checkout@v4
+2026-10-24T20:14:27.9082673Z with:
+2026-10-24T20:14:27.9083127Z   persist-credentials: false
+2026-10-24T20:14:27.9083686Z   repository: mxssnx-creator/CTS-A-O
+2026-10-24T20:14:27.9087304Z   token: ***
+2026-10-24T20:14:27.9087737Z   ssh-strict: true
+2026-10-24T20:14:27.9088179Z   ssh-user: git
+2026-10-24T20:14:27.9088597Z   clean: true
+2026-10-24T20:14:27.9089033Z   sparse-checkout-cone-mode: true
+2026-10-24T20:14:27.9089559Z   fetch-depth: 1
+2026-10-24T20:14:27.9089991Z   fetch-tags: false
+2026-10-24T20:14:27.9090897Z   show-progress: true
+2026-10-24T20:14:27.9091367Z   lfs: false
+2026-10-24T20:14:27.9091792Z   submodules: false
+2026-10-24T20:14:27.9092235Z   set-safe-directory: true
+2026-10-24T20:14:27.9092742Z   allow-unsafe-pr-checkout: false
+2026-10-24T20:14:27.9093575Z ##[endgroup]
+2026-10-24T20:14:28.0135618Z Syncing repository: mxssnx-creator/CTS-A-O
+2026-10-24T20:14:28.0137847Z ##[group]Getting Git version info
+2026-10-24T20:14:28.0138834Z Working directory is '/home/runner/work/CTS-A-O/CTS-A-O'
+2026-10-24T20:14:28.0167711Z [command]/usr/bin/git version
+2026-10-24T20:14:28.0340123Z git version 2.55.0
+2026-10-24T20:14:28.0366555Z ##[endgroup]
+2026-10-24T20:14:28.0384926Z Temporarily overriding HOME='/home/runner/work/_temp/714f9d83-60bb-4545-8c11-0a0565cf260f' before making global git config changes
+2026-10-24T20:14:28.0387770Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-24T20:14:28.0393272Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/CTS-A-O/CTS-A-O
+2026-10-24T20:14:28.0465913Z Deleting the contents of '/home/runner/work/CTS-A-O/CTS-A-O'
+2026-10-24T20:14:28.0473979Z ##[group]Initializing the repository
+2026-10-24T20:14:28.0481705Z [command]/usr/bin/git init /home/runner/work/CTS-A-O/CTS-A-O
+2026-10-24T20:14:28.0645270Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-10-24T20:14:28.0647281Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-10-24T20:14:28.0649261Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-10-24T20:14:28.0650747Z hint: call:
+2026-10-24T20:14:28.0651212Z hint:
+2026-10-24T20:14:28.0651807Z hint: 	git config --global init.defaultBranch <name>
+2026-10-24T20:14:28.0652568Z hint:
+2026-10-24T20:14:28.0653621Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-10-24T20:14:28.0655224Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-10-24T20:14:28.0656032Z hint:
+2026-10-24T20:14:28.0656490Z hint: 	git branch -m <name>
+2026-10-24T20:14:28.0657042Z hint:
+2026-10-24T20:14:28.0657750Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-10-24T20:14:28.0658800Z Initialized empty Git repository in /home/runner/work/CTS-A-O/CTS-A-O/.git/
+2026-10-24T20:14:28.0665491Z [command]/usr/bin/git remote add origin https://github.com/mxssnx-creator/CTS-A-O
+2026-10-24T20:14:28.0730765Z ##[endgroup]
+2026-10-24T20:14:28.0742310Z ##[group]Disabling automatic garbage collection
+2026-10-24T20:14:28.0743859Z [command]/usr/bin/git config --local gc.auto 0
+2026-10-24T20:14:28.0772753Z ##[endgroup]
+2026-10-24T20:14:28.0774797Z ##[group]Setting up auth
+2026-10-24T20:14:28.0782584Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-24T20:14:28.0817392Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-24T20:14:28.1253255Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-24T20:14:28.1289583Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-24T20:14:28.1516429Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-24T20:14:28.1552175Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-24T20:14:28.1778570Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-10-24T20:14:28.1822189Z ##[endgroup]
+2026-10-24T20:14:28.1823150Z ##[group]Fetching the repository
+2026-10-24T20:14:28.1831694Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +063b77fbc9b45ee0d66ff51049bbeaf565e5074f:refs/remotes/pull/198/merge
+2026-10-24T20:14:30.4551928Z From https://github.com/mxssnx-creator/CTS-A-O
+2026-10-24T20:14:30.4554006Z  * [new ref]         063b77fbc9b45ee0d66ff51049bbeaf565e5074f -> pull/198/merge
+2026-10-24T20:14:30.4558441Z ##[endgroup]
+2026-10-24T20:14:30.4560740Z ##[group]Determining the checkout info
+2026-10-24T20:14:30.4562788Z ##[endgroup]
+2026-10-24T20:14:30.4566683Z [command]/usr/bin/git sparse-checkout disable
+2026-10-24T20:14:30.4628746Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-10-24T20:14:30.4667088Z ##[group]Checking out the ref
+2026-10-24T20:14:30.4670982Z [command]/usr/bin/git checkout --progress --force refs/remotes/pull/198/merge
+2026-10-24T20:14:30.8829147Z Note: switching to 'refs/remotes/pull/198/merge'.
+2026-10-24T20:14:30.8829800Z 
+2026-10-24T20:14:30.8830544Z You are in 'detached HEAD' state. You can look around, make experimental
+2026-10-24T20:14:30.8831631Z changes and commit them, and you can discard any commits you make in this
+2026-10-24T20:14:30.8832599Z state without impacting any branches by switching back to a branch.
+2026-10-24T20:14:30.8832993Z 
+2026-10-24T20:14:30.8833278Z If you want to create a new branch to retain commits you create, you may
+2026-10-24T20:14:30.8833889Z do so (now or later) by using -c with the switch command. Example:
+2026-10-24T20:14:30.8834216Z 
+2026-10-24T20:14:30.8834434Z   git switch -c <new-branch-name>
+2026-10-24T20:14:30.8834951Z 
+2026-10-24T20:14:30.8835114Z Or undo this operation with:
+2026-10-24T20:14:30.8835328Z 
+2026-10-24T20:14:30.8835460Z   git switch -
+2026-10-24T20:14:30.8835669Z 
+2026-10-24T20:14:30.8835998Z Turn off this advice by setting config variable advice.detachedHead to false
+2026-10-24T20:14:30.8836403Z 
+2026-10-24T20:14:30.8836815Z HEAD is now at 063b77f Merge 47600029d7e284fa86db3e03e1251a7d0f047f83 into cb7685cb505d899f7a36fdbac7cabd6d4776598e
+2026-10-24T20:14:30.8881421Z ##[endgroup]
+2026-10-24T20:14:30.8930029Z [command]/usr/bin/git log -1 --format=%H
+2026-10-24T20:14:30.8958178Z 063b77fbc9b45ee0d66ff51049bbeaf565e5074f
+2026-10-24T20:14:30.8971149Z ##[group]Removing auth
+2026-10-24T20:14:30.8980965Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-24T20:14:30.9008275Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-24T20:14:30.9230544Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-24T20:14:30.9258353Z http.https://github.com/.extraheader
+2026-10-24T20:14:30.9266941Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2026-10-24T20:14:30.9301324Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-24T20:14:30.9522530Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-24T20:14:30.9555277Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-24T20:14:30.9776533Z ##[endgroup]
+2026-10-24T20:14:31.0107965Z ##[group]Run actions/setup-node@v4
+2026-10-24T20:14:31.0108564Z with:
+2026-10-24T20:14:31.0108995Z   node-version: 24
+2026-10-24T20:14:31.0109465Z   cache: npm
+2026-10-24T20:14:31.0109887Z   always-auth: false
+2026-10-24T20:14:31.0110623Z   check-latest: false
+2026-10-24T20:14:31.0115868Z   token: ***
+2026-10-24T20:14:31.0116174Z ##[endgroup]
+2026-10-24T20:14:31.2689155Z (node:2352) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-24T20:14:31.2690631Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-24T20:14:31.2691672Z Found in cache @ /opt/hostedtoolcache/node/24.21.0/x64
+2026-10-24T20:14:31.2699555Z ##[group]Environment details
+2026-10-24T20:14:34.5903680Z node: v24.21.0
+2026-10-24T20:14:34.5904204Z npm: 11.19.0
+2026-10-24T20:14:34.5904620Z yarn: 1.22.22
+2026-10-24T20:14:34.5905933Z ##[endgroup]
+2026-10-24T20:14:34.5928865Z [command]/opt/hostedtoolcache/node/24.21.0/x64/bin/npm config get cache
+2026-10-24T20:14:34.9446484Z /home/runner/.npm
+2026-10-24T20:14:35.2093608Z Cache hit for: node-cache-Linux-x64-npm-0572bece56f139ea2909222bc477aa7635ecc82f35e7616385c7ee8b190c33df
+2026-10-24T20:14:35.2187188Z (node:2352) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-10-24T20:14:36.4966852Z Received 0 of 85748699 (0.0%), 0.0 MBs/sec
+2026-10-24T20:14:37.4971472Z Received 73165787 of 85748699 (85.3%), 34.9 MBs/sec
+2026-10-24T20:14:37.9590595Z Received 85748699 of 85748699 (100.0%), 33.2 MBs/sec
+2026-10-24T20:14:37.9591310Z Cache Size: ~82 MB (85748699 B)
+2026-10-24T20:14:37.9627771Z [command]/usr/bin/tar -xf /home/runner/work/_temp/65998d92-52a2-4afa-bc1f-40b9ca06a78f/cache.tzst -P -C /home/runner/work/CTS-A-O/CTS-A-O --use-compress-program unzstd
+2026-10-24T20:14:38.1679045Z Cache restored successfully
+2026-10-24T20:14:38.1725117Z Cache restored from key: node-cache-Linux-x64-npm-0572bece56f139ea2909222bc477aa7635ecc82f35e7616385c7ee8b190c33df
+2026-10-24T20:14:38.1913385Z ##[group]Run npm ci
+2026-10-24T20:14:38.1913986Z [36;1mnpm ci[0m
+2026-10-24T20:14:38.2269083Z shell: /usr/bin/bash -e {0}
+2026-10-24T20:14:38.2269413Z ##[endgroup]
+2026-10-24T20:14:45.5387046Z npm warn deprecated recharts@2.15.4: 1.x and 2.x branches are no longer active. Bump to Recharts v3 to receive latest features and bugfixes. See https://github.com/recharts/recharts/wiki/3.0-migration-guide
+2026-10-24T20:14:45.9432309Z npm warn deprecated eslint@9.39.5: This version is no longer supported. Please see https://eslint.org/version-support for other options.
+2026-10-24T20:14:48.7873227Z 
+2026-10-24T20:14:48.7874152Z added 423 packages, and audited 424 packages in 10s
+2026-10-24T20:14:48.7874642Z 
+2026-10-24T20:14:48.7875283Z 94 packages are looking for funding
+2026-10-24T20:14:48.7883474Z   run `npm fund` for details
+2026-10-24T20:14:48.8062210Z 
+2026-10-24T20:14:48.8062904Z 2 high severity vulnerabilities
+2026-10-24T20:14:48.8063325Z 
+2026-10-24T20:14:48.8063746Z To address all issues, run:
+2026-10-24T20:14:48.8064281Z   npm audit fix
+2026-10-24T20:14:48.8064521Z 
+2026-10-24T20:14:48.8064764Z Run `npm audit` for details.
+2026-10-24T20:14:48.8981476Z ##[group]Run env -u DATABASE_URL npm run build
+2026-10-24T20:14:48.8981900Z [36;1menv -u DATABASE_URL npm run build[0m
+2026-10-24T20:14:48.9047865Z shell: /usr/bin/bash -e {0}
+2026-10-24T20:14:48.9048140Z ##[endgroup]
+2026-10-24T20:14:49.0133760Z 
+2026-10-24T20:14:49.0134084Z > build
+2026-10-24T20:14:49.0135010Z > node scripts/with-app-env.mjs vite build && npm run build:core-worker && npm run db:migrate
+2026-10-24T20:14:49.0135662Z 
+2026-10-24T20:14:49.9306192Z [info] [nitro:vercel] Using `nodejs24.x` runtime.
+2026-10-24T20:14:49.9308230Z [info] [nitro:vercel] Using `web` entry format.
+2026-10-24T20:14:49.9408068Z [33mBoth esbuild and oxc options were set. oxc options will be used and esbuild options will be ignored.[39m The following esbuild options were set: `{ legalComments: 'none' }`
+2026-10-24T20:14:50.1379853Z [36mvite v8.2.2 [32mbuilding client environment for production...[36m[39m
+2026-10-24T20:14:50.1552836Z transforming...
+2026-10-24T20:14:58.1040416Z ✓ 1955 modules transformed.
+2026-10-24T20:14:58.1751549Z rendering chunks...
+2026-10-24T20:14:58.2531754Z .vercel/output/static/assets/styles-EeajTTjQ.css              34.30 kB
+2026-10-24T20:14:58.2532794Z .vercel/output/static/assets/market-Bh2z8jn2.js                0.07 kB
+2026-10-24T20:14:58.2533705Z .vercel/output/static/assets/trading-Die2xBDI.js               0.07 kB
+2026-10-24T20:14:58.2534653Z .vercel/output/static/assets/settings-Dk-M8QYP.js              0.07 kB
+2026-10-24T20:14:58.2535536Z .vercel/output/static/assets/useRouter-VhwLfQSd.js             0.15 kB
+2026-10-24T20:14:58.2536101Z .vercel/output/static/assets/model-cost-BGXH0XjV.js            0.30 kB
+2026-10-24T20:14:58.2536650Z .vercel/output/static/assets/progression-DygnuQpx.js           0.85 kB
+2026-10-24T20:14:58.2537233Z .vercel/output/static/assets/progress-C-M_JKOX.js              0.93 kB
+2026-10-24T20:14:58.2538185Z .vercel/output/static/assets/bots-BxbyHAaK.js                  1.16 kB
+2026-10-24T20:14:58.2539264Z .vercel/output/static/assets/indication-ui-B3C4VKjb.js         1.41 kB
+2026-10-24T20:14:58.2540593Z .vercel/output/static/assets/minimal-coord-iDZCDKap.js         1.42 kB
+2026-10-24T20:14:58.2541667Z .vercel/output/static/assets/execution-summary-B-eCJabb.js     1.54 kB
+2026-10-24T20:14:58.2542842Z .vercel/output/static/assets/matrix-8wA3LsBY.js                2.35 kB
+2026-10-24T20:14:58.2543933Z .vercel/output/static/assets/signal-units-ZXc0Go0w.js          2.69 kB
+2026-10-24T20:14:58.2544998Z .vercel/output/static/assets/compare-D9Fb5LC-.js               3.84 kB
+2026-10-24T20:14:58.2546066Z .vercel/output/static/assets/promotion-evidence-CDz9cdXf.js    4.42 kB
+2026-10-24T20:14:58.2547164Z .vercel/output/static/assets/results-CR60-arQ.js               4.77 kB
+2026-10-24T20:14:58.2548220Z .vercel/output/static/assets/config._id-Bi4Fodc_.js            5.34 kB
+2026-10-24T20:14:58.2549242Z .vercel/output/static/assets/hourly-BMOmPimy.js                5.78 kB
+2026-10-24T20:14:58.2550927Z .vercel/output/static/assets/config-faMawicf.js                8.43 kB
+2026-10-24T20:14:58.2551961Z .vercel/output/static/assets/v2-CqWj3aMq.js                    9.44 kB
+2026-10-24T20:14:58.2552985Z .vercel/output/static/assets/prehistoric-Bl-Mh8v6.js           9.88 kB
+2026-10-24T20:14:58.2554058Z .vercel/output/static/assets/relate-DuvzKl0m.js                9.92 kB
+2026-10-24T20:14:58.2555074Z .vercel/output/static/assets/link-CkKc5ylV.js                 11.26 kB
+2026-10-24T20:14:58.2556125Z .vercel/output/static/assets/preset-settings-BAGhjWOo.js      11.73 kB
+2026-10-24T20:14:58.2557231Z .vercel/output/static/assets/engine-DVrwA4n-.js               11.90 kB
+2026-10-24T20:14:58.2558281Z .vercel/output/static/assets/v2-BBzkUjZD.js                   14.10 kB
+2026-10-24T20:14:58.2559378Z .vercel/output/static/assets/signal-config-Bc0Ixwp4.js        14.91 kB
+2026-10-24T20:14:58.2560940Z .vercel/output/static/assets/charts-BiE6HSJc.js               17.09 kB
+2026-10-24T20:14:58.2562041Z .vercel/output/static/assets/trading-s-N7sfdn.js              18.26 kB
+2026-10-24T20:14:58.2563337Z .vercel/output/static/assets/ui-XsfU_ALq.js                   18.52 kB
+2026-10-24T20:14:58.2564447Z .vercel/output/static/assets/presets-HITC9q70.js              19.54 kB
+2026-10-24T20:14:58.2565504Z .vercel/output/static/assets/statistics-B-G_E_1t.js           22.65 kB
+2026-10-24T20:14:58.2566522Z .vercel/output/static/assets/stages-CB35G37S.js               22.72 kB
+2026-10-24T20:14:58.2567549Z .vercel/output/static/assets/break-config-Cl5wJNxv.js         41.46 kB
+2026-10-24T20:14:58.2568583Z .vercel/output/static/assets/jsx-runtime-D6cXz5cu.js          41.58 kB
+2026-10-24T20:14:58.2569665Z .vercel/output/static/assets/registry-D-FXef54.js             92.17 kB
+2026-10-24T20:14:58.2571180Z .vercel/output/static/assets/settings-CsASQTt8.js            126.79 kB
+2026-10-24T20:14:58.2572261Z .vercel/output/static/assets/index-CKurc9T_.js               351.51 kB
+2026-10-24T20:14:58.2572822Z 
+2026-10-24T20:14:58.2573900Z [33m[33m[PLUGIN_TIMINGS] [0mPlugin hooks ran for 7.9s of this 8.1s build (98%).
+2026-10-24T20:14:58.2575487Z The slowest hooks, timed inside each callback (the wait before a callback starts is excluded, the time it awaits is included):
+2026-10-24T20:14:58.2576803Z   - @tailwindcss/vite:generate:build transform (90%, 7.3s, 1 call)
+2026-10-24T20:14:58.2577818Z Additional hook time came from the hooks below and from hooks under 1s.
+2026-10-24T20:14:58.2579822Z 2 hooks are listed without a time. Their calls overlapped, so the time inside one call includes work from other calls. To find their cost, profile the build with `node --cpu-prof`:
+2026-10-24T20:14:58.2581285Z   - tanstack-start-core:import-protection resolveId (5737 calls)
+2026-10-24T20:14:58.2582099Z   - tanstack-start-core::server-fn:client transform (15 calls)
+2026-10-24T20:14:58.2583330Z See https://rolldown.rs/reference/InputOptions.checks#plugintimings for more details.
+2026-10-24T20:14:58.2584213Z [39m
+2026-10-24T20:14:58.2584901Z [32m✓ built in 8.11s[39m
+2026-10-24T20:14:58.2585472Z [36mvite v8.2.2 [32mbuilding ssr environment for production...[36m[39m
+2026-10-24T20:14:58.2642745Z transforming...
+2026-10-24T20:15:05.3378316Z ✓ 225 modules transformed.
+2026-10-24T20:15:05.3952133Z rendering chunks...
+2026-10-24T20:15:05.4452706Z node_modules/.nitro/vite/services/ssr/assets/styles-EeajTTjQ.css                      34.30 kB
+2026-10-24T20:15:05.4454142Z node_modules/.nitro/vite/services/ssr/assets/start-5Z2QO8AU.js                         0.14 kB
+2026-10-24T20:15:05.4455525Z node_modules/.nitro/vite/services/ssr/assets/market-CGKjtrNW.js                        0.19 kB
+2026-10-24T20:15:05.4456841Z node_modules/.nitro/vite/services/ssr/assets/trading-C3mPDPKU.js                       0.20 kB
+2026-10-24T20:15:05.4458189Z node_modules/.nitro/vite/services/ssr/assets/settings-M25JclNo.js                      0.20 kB
+2026-10-24T20:15:05.4459648Z node_modules/.nitro/vite/services/ssr/assets/empty-plugin-adapters-D9UWiqvJ.js         0.22 kB
+2026-10-24T20:15:05.4461863Z node_modules/.nitro/vite/services/ssr/assets/rolldown-runtime-D7D4PA-g.js              0.36 kB
+2026-10-24T20:15:05.4463318Z node_modules/.nitro/vite/services/ssr/assets/signal-policy-CLNSQ6Os.js                 1.45 kB
+2026-10-24T20:15:05.4464736Z node_modules/.nitro/vite/services/ssr/assets/progression-BUW_uSrV.js                   1.77 kB
+2026-10-24T20:15:05.4466284Z node_modules/.nitro/vite/services/ssr/assets/execution-summary-C1EHL3Ax.js             2.53 kB
+2026-10-24T20:15:05.4467733Z node_modules/.nitro/vite/services/ssr/assets/signal-units-DRZnDzC4.js                  3.14 kB
+2026-10-24T20:15:05.4469069Z node_modules/.nitro/vite/services/ssr/assets/indication-ui-DG5nFsJ4.js                 3.67 kB
+2026-10-24T20:15:05.4470594Z node_modules/.nitro/vite/services/ssr/assets/matrix-DzU0LkF3.js                        3.94 kB
+2026-10-24T20:15:05.4471961Z node_modules/.nitro/vite/services/ssr/assets/_tanstack-start-manifest_v-Bwnwz04-.js    4.31 kB
+2026-10-24T20:15:05.4472948Z node_modules/.nitro/vite/services/ssr/assets/progress-HPmQ_PqK.js                      5.27 kB
+2026-10-24T20:15:05.4473719Z node_modules/.nitro/vite/services/ssr/assets/promotion-evidence-B6N1txKS.js            5.57 kB
+2026-10-24T20:15:05.4474444Z node_modules/.nitro/vite/services/ssr/assets/compare-BEiGN6IK.js                       6.53 kB
+2026-10-24T20:15:05.4475137Z node_modules/.nitro/vite/services/ssr/assets/results-6FqxCukO.js                       8.32 kB
+2026-10-24T20:15:05.4475825Z node_modules/.nitro/vite/services/ssr/assets/api-CHguVJ6-.js                           8.83 kB
+2026-10-24T20:15:05.4476517Z node_modules/.nitro/vite/services/ssr/assets/config._id-CsTL81RP.js                    9.15 kB
+2026-10-24T20:15:05.4477203Z node_modules/.nitro/vite/services/ssr/assets/v2-D_kHLrzy.js                            9.75 kB
+2026-10-24T20:15:05.4477882Z node_modules/.nitro/vite/services/ssr/assets/hourly-C6n1ole6.js                        9.92 kB
+2026-10-24T20:15:05.4478578Z node_modules/.nitro/vite/services/ssr/assets/live-record-DPMMtro1.js                  11.17 kB
+2026-10-24T20:15:05.4479289Z node_modules/.nitro/vite/services/ssr/assets/live-validation-DLgVj5Of.js              14.84 kB
+2026-10-24T20:15:05.4479986Z node_modules/.nitro/vite/services/ssr/assets/prehistoric-B9wMFHfL.js                  15.38 kB
+2026-10-24T20:15:05.4482173Z node_modules/.nitro/vite/services/ssr/assets/engine-BTFj0vmw.js                       19.66 kB
+2026-10-24T20:15:05.4483574Z node_modules/.nitro/vite/services/ssr/assets/preset-settings-DshbPHS4.js              19.97 kB
+2026-10-24T20:15:05.4485547Z node_modules/.nitro/vite/services/ssr/assets/router-MzH5wyzZ.js                       21.60 kB
+2026-10-24T20:15:05.4486696Z node_modules/.nitro/vite/services/ssr/assets/v2-DoiaBgPN.js                           23.28 kB
+2026-10-24T20:15:05.4487932Z node_modules/.nitro/vite/services/ssr/assets/trading-COJZOevU.js                      27.46 kB
+2026-10-24T20:15:05.4489284Z node_modules/.nitro/vite/services/ssr/assets/ui-ZPLkAyEA.js                           27.78 kB
+2026-10-24T20:15:05.4490815Z node_modules/.nitro/vite/services/ssr/assets/charts-DnM24UBU.js                       28.77 kB
+2026-10-24T20:15:05.4492120Z node_modules/.nitro/vite/services/ssr/assets/statistics-CCQs2BL0.js                   29.95 kB
+2026-10-24T20:15:05.4493419Z node_modules/.nitro/vite/services/ssr/assets/presets-BiN8nvn0.js                      30.94 kB
+2026-10-24T20:15:05.4494607Z [33m[33m[PLUGIN_TIMINGS] [0mPlugin hooks ran for 7.1s of this 7.2s build (99%).
+2026-10-24T20:15:05.4495416Z The slowest hooks, timed inside each callback (the wait before a callback starts is excluded, the time it awaits is included):
+2026-10-24T20:15:05.4496114Z   - @tailwindcss/vite:generate:build transform (94%, 6.8s, 1 call)
+2026-10-24T20:15:05.4496645Z Additional hook time came from the hooks below and from hooks under 1s.
+2026-10-24T20:15:05.4498392Z 2 hooks are listed without a time. Their calls overlapped, so the time inside one call includes work from other calls. To find their cost, profile the build with `node --cpu-prof`:
+2026-10-24T20:15:05.4500151Z   - tanstack-start-core:import-protection resolveId (717 calls)
+2026-10-24T20:15:05.4501202Z   - tanstack-start-core::server-fn:ssr transform (14 calls)
+2026-10-24T20:15:05.4502307Z See https://rolldown.rs/reference/InputOptions.checks#plugintimings for more details.
+2026-10-24T20:15:05.4502929Z [39m
+2026-10-24T20:15:05.4503434Z node_modules/.nitro/vite/services/ssr/assets/bingx.server-gjtjqnMi.js                 32.04 kB
+2026-10-24T20:15:05.4504477Z node_modules/.nitro/vite/services/ssr/assets/statistics-DXmDziYO.js                   34.57 kB
+2026-10-24T20:15:05.4505236Z node_modules/.nitro/vite/services/ssr/assets/stages-B7cLmXYo.js                       35.27 kB
+2026-10-24T20:15:05.4505980Z node_modules/.nitro/vite/services/ssr/assets/presets-CG-kiAjI.js                      37.87 kB
+2026-10-24T20:15:05.4506918Z node_modules/.nitro/vite/services/ssr/assets/live-BT_URaA3.js                         48.33 kB
+2026-10-24T20:15:05.4508150Z node_modules/.nitro/vite/services/ssr/index.js                                        79.06 kB
+2026-10-24T20:15:05.4509160Z node_modules/.nitro/vite/services/ssr/assets/api-data-mezyQuzH.js                     92.91 kB
+2026-10-24T20:15:05.4510556Z node_modules/.nitro/vite/services/ssr/assets/live.server-CCLyaj34.js                 192.82 kB
+2026-10-24T20:15:05.4511825Z node_modules/.nitro/vite/services/ssr/assets/settings-CDiK6-VL.js                    199.90 kB
+2026-10-24T20:15:05.4512562Z node_modules/.nitro/vite/services/ssr/assets/registry-SZuX3kdK.js                    293.28 kB
+2026-10-24T20:15:05.4513281Z node_modules/.nitro/vite/services/ssr/assets/walkforward-BPmrc9Fw.js                 417.32 kB
+2026-10-24T20:15:05.4514002Z node_modules/.nitro/vite/services/ssr/assets/runtime.server-drqFd2Yt.js              551.52 kB
+2026-10-24T20:15:05.4514368Z 
+2026-10-24T20:15:05.4514585Z [32m✓ built in 7.19s[39m
+2026-10-24T20:15:05.4515220Z [start] [nitro] Building [[35mNitro[39m] [2m(preset: `vercel`, compatibility: `2026-10-24`)[22m
+2026-10-24T20:15:05.4551519Z [success] [nitro] Generated public [36m.vercel/output/static[39m
+2026-10-24T20:15:05.4560409Z [36mvite v8.2.2 [32mbuilding nitro environment for production...[36m[39m
+2026-10-24T20:15:05.4654994Z transforming...
+2026-10-24T20:15:05.7846648Z ✓ 2028 modules transformed.
+2026-10-24T20:15:05.9430413Z rendering chunks...
+2026-10-24T20:15:06.0677298Z .vercel/output/functions/__server.func/_ssr/start-5Z2QO8AU.mjs                      0.14 kB
+2026-10-24T20:15:06.0678672Z .vercel/output/functions/__server.func/_ssr/market-CGKjtrNW.mjs                     0.21 kB
+2026-10-24T20:15:06.0679952Z .vercel/output/functions/__server.func/_ssr/trading-C3mPDPKU.mjs                    0.22 kB
+2026-10-24T20:15:06.0681301Z .vercel/output/functions/__server.func/_ssr/settings-M25JclNo.mjs                   0.22 kB
+2026-10-24T20:15:06.0682178Z .vercel/output/functions/__server.func/_ssr/empty-plugin-adapters-D9UWiqvJ.mjs      0.23 kB
+2026-10-24T20:15:06.0683598Z .vercel/output/functions/__server.func/_ssr/rolldown-runtime-D7D4PA-g.mjs           0.41 kB
+2026-10-24T20:15:06.0684869Z .vercel/output/functions/__server.func/_chunks/ssr-renderer.mjs                     0.96 kB
+2026-10-24T20:15:06.0686101Z .vercel/output/functions/__server.func/_libs/hookable.mjs                           1.16 kB
+2026-10-24T20:15:06.0687041Z .vercel/output/functions/__server.func/_runtime.mjs                                 1.58 kB
+2026-10-24T20:15:06.0687870Z .vercel/output/functions/__server.func/_ssr/progression-BUW_uSrV.mjs                1.81 kB
+2026-10-24T20:15:06.0688598Z .vercel/output/functions/__server.func/_ssr/execution-summary-C1EHL3Ax.mjs          2.86 kB
+2026-10-24T20:15:06.0689290Z .vercel/output/functions/__server.func/_ssr/signal-units-DRZnDzC4.mjs               3.13 kB
+2026-10-24T20:15:06.0689979Z .vercel/output/functions/__server.func/_ssr/indication-ui-DG5nFsJ4.mjs              3.71 kB
+2026-10-24T20:15:06.0690873Z .vercel/output/functions/__server.func/_tanstack-start-manifest_v-Bwnwz04-.mjs      4.36 kB
+2026-10-24T20:15:06.0691841Z .vercel/output/functions/__server.func/_ssr/matrix-DzU0LkF3.mjs                     4.41 kB
+2026-10-24T20:15:06.0692518Z .vercel/output/functions/__server.func/_ssr/progress-HPmQ_PqK.mjs                   5.31 kB
+2026-10-24T20:15:06.0693208Z .vercel/output/functions/__server.func/_ssr/promotion-evidence-B6N1txKS.mjs         6.57 kB
+2026-10-24T20:15:06.0693897Z .vercel/output/functions/__server.func/_ssr/compare-BEiGN6IK.mjs                    7.69 kB
+2026-10-24T20:15:06.0694562Z .vercel/output/functions/__server.func/_ssr/api-CHguVJ6-.mjs                        8.76 kB
+2026-10-24T20:15:06.0695235Z .vercel/output/functions/__server.func/_libs/h3-v2+rou3.mjs                         9.83 kB
+2026-10-24T20:15:06.0696330Z .vercel/output/functions/__server.func/_ssr/results-6FqxCukO.mjs                    9.98 kB
+2026-10-24T20:15:06.0697376Z .vercel/output/functions/__server.func/_ssr/config._id-CsTL81RP.mjs                10.91 kB
+2026-10-24T20:15:06.0698919Z .vercel/output/functions/__server.func/_ssr/live-record-DPMMtro1.mjs               11.18 kB
+2026-10-24T20:15:06.0700002Z .vercel/output/functions/__server.func/_libs/lucide-react.mjs                      11.40 kB
+2026-10-24T20:15:06.0701105Z .vercel/output/functions/__server.func/_ssr/v2-D_kHLrzy.mjs                        11.42 kB
+2026-10-24T20:15:06.0701844Z .vercel/output/functions/__server.func/_ssr/hourly-C6n1ole6.mjs                    11.78 kB
+2026-10-24T20:15:06.0703062Z .vercel/output/functions/__server.func/_libs/tanstack__history.mjs                 12.50 kB
+2026-10-24T20:15:06.0703988Z .vercel/output/functions/__server.func/_ssr/live-validation-DLgVj5Of.mjs           14.55 kB
+2026-10-24T20:15:06.0704678Z .vercel/output/functions/__server.func/_ssr/prehistoric-B9wMFHfL.mjs               17.62 kB
+2026-10-24T20:15:06.0705342Z .vercel/output/functions/__server.func/_ssr/router-MzH5wyzZ.mjs                    21.17 kB
+2026-10-24T20:15:06.0706002Z .vercel/output/functions/__server.func/_libs/h3+rou3+srvx.mjs                      22.57 kB
+2026-10-24T20:15:06.0706703Z .vercel/output/functions/__server.func/_ssr/preset-settings-DshbPHS4.mjs           22.92 kB
+2026-10-24T20:15:06.0707378Z .vercel/output/functions/__server.func/_ssr/engine-BTFj0vmw.mjs                    23.77 kB
+2026-10-24T20:15:06.0708033Z .vercel/output/functions/__server.func/_ssr/v2-DoiaBgPN.mjs                        27.19 kB
+2026-10-24T20:15:06.0708704Z .vercel/output/functions/__server.func/_ssr/ui-ZPLkAyEA.mjs                        29.12 kB
+2026-10-24T20:15:06.0709362Z .vercel/output/functions/__server.func/_libs/@tanstack/router-core+[...].mjs       29.60 kB
+2026-10-24T20:15:06.0710709Z .vercel/output/functions/__server.func/_ssr/statistics-CCQs2BL0.mjs                29.92 kB
+2026-10-24T20:15:06.0711722Z .vercel/output/functions/__server.func/_ssr/charts-DnM24UBU.mjs                    31.92 kB
+2026-10-24T20:15:06.0712415Z .vercel/output/functions/__server.func/_ssr/bingx.server-gjtjqnMi.mjs              32.01 kB
+2026-10-24T20:15:06.0713295Z .vercel/output/functions/__server.func/index.mjs                                   33.11 kB
+2026-10-24T20:15:06.0714352Z .vercel/output/functions/__server.func/_ssr/trading-COJZOevU.mjs                   33.18 kB
+2026-10-24T20:15:06.0715183Z .vercel/output/functions/__server.func/_ssr/presets-BiN8nvn0.mjs                   34.99 kB
+2026-10-24T20:15:06.0715912Z .vercel/output/functions/__server.func/_ssr/presets-CG-kiAjI.mjs                   37.77 kB
+2026-10-24T20:15:06.0717119Z .vercel/output/functions/__server.func/_ssr/statistics-DXmDziYO.mjs                40.19 kB
+2026-10-24T20:15:06.0718234Z .vercel/output/functions/__server.func/_ssr/stages-B7cLmXYo.mjs                    40.98 kB
+2026-10-24T20:15:06.0719239Z .vercel/output/functions/__server.func/_ssr/live-BT_URaA3.mjs                      48.33 kB
+2026-10-24T20:15:06.0720311Z .vercel/output/functions/__server.func/_ssr/ssr.mjs                                77.18 kB
+2026-10-24T20:15:06.0721066Z .vercel/output/functions/__server.func/_ssr/api-data-mezyQuzH.mjs                  92.94 kB
+2026-10-24T20:15:06.0721942Z .vercel/output/functions/__server.func/_libs/zod.mjs                              159.58 kB
+2026-10-24T20:15:06.0722608Z .vercel/output/functions/__server.func/_ssr/live.server-CCLyaj34.mjs              192.72 kB
+2026-10-24T20:15:06.0723282Z .vercel/output/functions/__server.func/_ssr/settings-CDiK6-VL.mjs                 222.67 kB
+2026-10-24T20:15:06.0723976Z .vercel/output/functions/__server.func/_chunks/live.server.mjs                    239.70 kB
+2026-10-24T20:15:06.0724687Z .vercel/output/functions/__server.func/_ssr/runtime.server-drqFd2Yt.mjs           550.10 kB
+2026-10-24T20:15:06.0725382Z .vercel/output/functions/__server.func/_ssr/walkforward-BPmrc9Fw.mjs              715.56 kB
+2026-10-24T20:15:06.0726058Z .vercel/output/functions/__server.func/_libs/@tanstack/react-router+[...].mjs     776.81 kB
+2026-10-24T20:15:06.0726727Z .vercel/output/functions/__server.func/_chunks/boot.server.mjs                  1,355.64 kB
+2026-10-24T20:15:06.0727072Z 
+2026-10-24T20:15:06.0727590Z [32m✓ built in 612ms[39m
+2026-10-24T20:15:06.0728008Z [info] Generated [36m.vercel/output/nitro.json[39m
+2026-10-24T20:15:06.0728484Z [success] [nitro] You can preview this build using `npx vite preview`
+2026-10-24T20:15:06.0729047Z [success] [nitro] You can deploy this build using `npx nitro deploy --prebuilt`
+2026-10-24T20:15:06.2295507Z 
+2026-10-24T20:15:06.2296081Z > build:core-worker
+2026-10-24T20:15:06.2296659Z > node scripts/build-core-worker.mjs
+2026-10-24T20:15:06.2320891Z 
+2026-10-24T20:15:06.5378141Z [core-worker] packaged cts-core-worker.mjs in /home/runner/work/CTS-A-O/CTS-A-O/.vercel/output/functions/__server.func
+2026-10-24T20:15:06.6430229Z 
+2026-10-24T20:15:06.6430701Z > db:migrate
+2026-10-24T20:15:06.6431350Z > node scripts/migrate.mjs
+2026-10-24T20:15:06.6431560Z 
+2026-10-24T20:15:06.6919305Z [migrate] DATABASE_URL not set — skipping (the PGLite fallback migrates itself).
+2026-10-24T20:15:06.7125354Z ##[group]Run npm run test:core -- --test-shard=2/4
+2026-10-24T20:15:06.7125784Z [36;1mnpm run test:core -- --test-shard=2/4[0m
+2026-10-24T20:15:06.7189339Z shell: /usr/bin/bash -e {0}
+2026-10-24T20:15:06.7189598Z ##[endgroup]
+2026-10-24T20:15:06.8169723Z 
+2026-10-24T20:15:06.8170455Z > test:core
+2026-10-24T20:15:06.8171183Z > node scripts/test-core.mjs --test-shard=2/4
+2026-10-24T20:15:06.8171645Z 
+2026-10-24T20:15:06.8560293Z [core-tests] offline Node transport guard; 271 files; shard 2/4; concurrency 1; compute workers 1
+2026-10-24T20:15:07.5552522Z ▶ auto-adjust
+2026-10-24T20:15:07.5553248Z   ✔ keys sets by bot | indication | sub-strategy (1.509478ms)
+2026-10-24T20:15:07.5555574Z   ✔ applies Exit feedback only to its own tactic and direction (8.299227ms)
+2026-10-24T20:15:07.5557014Z   ✔ widens SL / trail after a losing window, pauses at the caps, steps back on recovery (0.76887ms)
+2026-10-24T20:15:07.5559144Z   ✔ never steps twice on the same positions, and needs a full window (1.314211ms)
+2026-10-24T20:15:07.5561928Z   ✔ relative steps widen a set's own stop and trail, beyond the absolute minimum, up to scaleMax (0.559448ms)
+2026-10-24T20:15:07.5565680Z   ✔ stepEvery: after a step, a set waits for that many new closes before the next one (0.402814ms)
+2026-10-24T20:15:07.5569829Z   ✔ the measured live cost excess turns a marginal set into an adjusted one (0.253315ms)
+2026-10-24T20:15:07.5578046Z   ✔ adjusted protects and paused sets reach tapes and execution (0.937426ms)
+2026-10-24T20:15:07.5579862Z   ✔ reads fills and measures the live round-trip cost (fees + adverse slippage) (21.251329ms)
+2026-10-24T20:15:07.5582058Z   ✔ fills with no commission are unmeasured: no cost is read until 20 fills carry a fee (9.740776ms)
+2026-10-24T20:15:07.5584868Z ✔ auto-adjust (46.901279ms)
+2026-10-24T20:15:07.5591212Z ▶ auto-adjust on range cells
+2026-10-24T20:15:07.5592174Z   ✔ a level-0 entry floors the Wide cell and leaves the range cell's stop as built (3.793456ms)
+2026-10-24T20:15:07.5595822Z   ✔ the relative step widens the range cell's stop without the Wide floor (0.500748ms)
+2026-10-24T20:15:07.5598746Z ✔ auto-adjust on range cells (4.504267ms)
+2026-10-24T20:15:13.4926403Z ▶ audit: every check can fail
+2026-10-24T20:15:13.4927140Z   ✔ matching conservative zeros cannot certify overflowing primary totals (30.85964ms)
+2026-10-24T20:15:13.4928486Z   ✔ the table names every check audit.ts can add (1.791995ms)
+2026-10-24T20:15:13.4932575Z   ✔ the valid input (overall) passes every check it runs (136.55805ms)
+2026-10-24T20:15:13.4936185Z   ✔ the valid input (shared) passes every check it runs (98.74335ms)
+2026-10-24T20:15:13.4940562Z   ✔ the valid input (blockOff) passes every check it runs (108.376677ms)
+2026-10-24T20:15:13.4943279Z   ✔ the valid input (trailingOff) passes every check it runs (70.269307ms)
+2026-10-24T20:15:13.4947490Z   ✔ together the valid inputs run every check (0.424525ms)
+2026-10-24T20:15:13.4951896Z   ✔ stages: Base passed ≤ evaluated ← Base passed above evaluated (99.274685ms)
+2026-10-24T20:15:13.4954829Z   ✔ stages: every validated pair has config sets ← a validated pair without a tape (87.658656ms)
+2026-10-24T20:15:13.4958840Z   ✔ stages: Main ⊆ Base-validated ∪ held ∪ measured ← a Main pair neither validated nor held (102.880447ms)
+2026-10-24T20:15:13.4963290Z   ✔ stages: engine trades come from Main or independent Exit config sets ← an engine pair that traded dropped from Main (127.041615ms)
+2026-10-24T20:15:13.4966847Z   ✔ stages: signal trades come from active signals ← a traded signal × symbol × side missing from the compute's active set (92.892225ms)
+2026-10-24T20:15:13.4969861Z   ✔ stages: Real picks are Main tapes ← a step's Real pick without a tape (86.890047ms)
+2026-10-24T20:15:13.4979484Z   ✔ lanes: trades come from Main tapes ← a trade whose config has no tape (its pair still in Main) (85.420876ms)
+2026-10-24T20:15:13.4980944Z   ✔ lanes: only enabled strategies execute ← a trade booked on a Trailing tape while Trailing is off (69.386454ms)
+2026-10-24T20:15:13.4982892Z   ✔ toggles: Normal off → only Block-raised Normal / Trailing; Trailing off → none ← a trade recorded as Trailing while Trailing is off (68.06486ms)
+2026-10-24T20:15:13.4985976Z   ✔ numbers: finite results, exit ≥ entry ← an exit before its entry (the last trade of its key, so no slot overlaps) (87.599686ms)
+2026-10-24T20:15:13.4991482Z   ✔ replay: every trade passes the Real rules with its recorded Block volume and level ← a recorded Block level the rules did not give (93.988178ms)
+2026-10-24T20:15:13.4993661Z   ✔ replay: every trade passes the Real rules with its recorded Block volume and level ← a recorded Block volume the rules did not give (still within the caps) (80.647038ms)
+2026-10-24T20:15:13.5003438Z   ✔ block: base plus all sources within max multiple ← one source's leg at the max multiple (each source may add max − 1) (87.373722ms)
+2026-10-24T20:15:13.5007261Z   ✔ block: base plus all sources within max multiple ← an Overall stack above the max multiple (maxMult caps the total, not only each leg; its coordination part raised with it) (87.311646ms)
+2026-10-24T20:15:13.5010010Z   ✔ block: volume within [1, max multiple] ← a Block multiple above max after removing independent sizing factors (87.354908ms)
+2026-10-24T20:15:13.5012183Z   ✔ block: off → volume 1 ← a Block multiple of 2 with Block off (99.300985ms)
+2026-10-24T20:15:13.5013688Z   ✔ caps: max open ← the run's own max open below what it held (91.295656ms)
+2026-10-24T20:15:13.5015160Z   ✔ caps: max open ← the signals' max open below what they held (90.796912ms)
+2026-10-24T20:15:13.5016577Z   ✔ caps: per symbol / per side ← per symbol cap 1 (98.46511ms)
+2026-10-24T20:15:13.5018429Z   ✔ caps: per symbol / per side ← per side cap 1 (91.91238ms)
+2026-10-24T20:15:13.5025008Z   ✔ caps: no duplicate config × symbol open at once ← a config × symbol × side held twice (the earlier trade's exit moved past the next entry) (89.958963ms)
+2026-10-24T20:15:13.5047308Z   ✔ caps: max positions (symbol × direction) ← the engine position cap 1 (89.174835ms)
+2026-10-24T20:15:13.5049075Z   ✔ caps: max signal positions (symbol × direction) ← the signal position cap 1 (89.681512ms)
+2026-10-24T20:15:13.5051277Z   ✔ numbers: stats match the trade list ← published net off by 1 (88.074905ms)
+2026-10-24T20:15:13.5052771Z   ✔ numbers: stats match the trade list ← published PF off (87.695646ms)
+2026-10-24T20:15:13.5054220Z   ✔ numbers: stats match the trade list ← published count off (91.216388ms)
+2026-10-24T20:15:13.5055587Z   ✔ numbers: hourly rows add up ← one hour's count off (113.00872ms)
+2026-10-24T20:15:13.5056948Z   ✔ numbers: hourly rows add up ← one hour's net off (87.923291ms)
+2026-10-24T20:15:13.5058995Z   ✔ numbers: sized diagnostics match the trade list ← published sized net off while the primary unit summary remains correct (87.656482ms)
+2026-10-24T20:15:13.5063483Z   ✔ numbers: sized diagnostics match the trade list ← published sized PF off while the primary unit summary remains correct (86.537036ms)
+2026-10-24T20:15:13.5065373Z   ✔ numbers: per-kind rows add up ← one kind's count off (88.222562ms)
+2026-10-24T20:15:13.5067697Z   ✔ numbers: simulated executions retain their exact tape unit returns ← the exact source close differs while the execution and its published PF stay untouched (88.791879ms)
+2026-10-24T20:15:13.5070444Z   ✔ numbers: every plain close pays the round-trip cost ← a plain close whose prices no longer give its result (85.283529ms)
+2026-10-24T20:15:13.5072474Z   ✔ numbers: every plain close pays the round-trip cost ← a modeled unit close with missing multiplier provenance (73.387276ms)
+2026-10-24T20:15:13.5073976Z   ✔ stages: Real selection ⊆ Main tapes ← a selected config without a tape (90.230902ms)
+2026-10-24T20:15:13.5075177Z   ✔ paper: equity = closed + open mark-to-market ← published equity off by 1 (84.819751ms)
+2026-10-24T20:15:13.5076496Z   ✔ paper: Block / relation volume within [1, max multiple] ← a position's source leg at the max multiple (87.88509ms)
+2026-10-24T20:15:13.5078390Z   ✔ paper: Block / relation volume within [1, max multiple] ← a position below one unit (marked flat, so the equity is unchanged) (81.824191ms)
+2026-10-24T20:15:13.5079682Z ✔ audit: every check can fail (3858.5233ms)
+2026-10-24T20:17:35.7894666Z [core-v2] compute #1 done in 141454 ms · sim PF including 4979 open marks: 0.75 n 31404 · loop max 813 ms (worst slice of the last 60 s 153 ms in Real, 2 over 40 ms)
+2026-10-24T20:17:38.8137863Z ▶ every type and range reaches the Real stage and the paper book
+2026-10-24T20:17:38.8152173Z   ✔ the audit is clean and the stages are reported in order (2.457347ms)
+2026-10-24T20:17:38.8153745Z   ✔ every range with tapes is accounted for in the Real stage (27.384465ms)
+2026-10-24T20:17:38.8155311Z   ✔ every strategy type trades on both sides; Block raises some trades (23.923932ms)
+2026-10-24T20:17:38.8156984Z   ✔ the paper step accounts for every tape position it considered (0.303037ms)
+2026-10-24T20:17:38.8158607Z   ✔ the signal funnel counts every candidate of an inactive unit by side (10.479623ms)
+2026-10-24T20:17:38.8160632Z ✔ every type and range reaches the Real stage and the paper book (144785.758173ms)
+2026-10-24T20:17:39.3679515Z ▶ evaluation families
+2026-10-24T20:17:39.3702177Z   ✔ parses the families the statistics name, and refuses anything else (2.691014ms)
+2026-10-24T20:17:39.3712268Z   ✔ an engine family admits its bot's pairs that passed its range, and nothing else (0.237534ms)
+2026-10-24T20:17:39.3713548Z   ✔ a signal family admits the pairs of its source and range only (0.644596ms)
+2026-10-24T20:17:39.3714139Z ✔ evaluation families (6.493257ms)
+2026-10-24T20:17:39.3714525Z ▶ several families at once
+2026-10-24T20:17:39.3715164Z   ✔ parses a ';' list and keeps each label's own tags for a pair (0.60946ms)
+2026-10-24T20:17:39.3716372Z   ✔ a list with a signal family runs Base unnarrowed; the labels name the configs' families (0.752648ms)
+2026-10-24T20:17:39.3740883Z ✔ several families at once (1.600013ms)
+2026-10-24T20:17:39.3765302Z ▶ families that can trade
+2026-10-24T20:17:39.3766458Z   ✔ an engine family needs a cell of its range in the run's grid; a signal family never reads it (0.360996ms)
+2026-10-24T20:17:39.3769707Z   ✔ the protect grid: Wide only with grid.tp, Micro only with grid.micro, Minimal plus only on with cells (57.08854ms)
+2026-10-24T20:17:39.3771272Z ✔ families that can trade (57.792657ms)
+2026-10-24T20:17:39.6365220Z ▶ rate-limit bans
+2026-10-24T20:17:39.6366927Z   ✔ a ban pauses until its end plus this process's jitter; a local refusal does not extend it (2.263003ms)
+2026-10-24T20:17:39.6368940Z   ✔ BingX's error-rate ban (110206) pauses its endpoint until the retry time it names (0.588992ms)
+2026-10-24T20:17:39.6377152Z   ✔ nothing reaches the exchange while banned (1.450473ms)
+2026-10-24T20:17:39.6378738Z   ✔ a ban names its endpoint: only that endpoint is held back, the live step pauses on any ban (0.763148ms)
+2026-10-24T20:17:39.6380692Z   ✔ with a shared ban file, a ban of one process pauses the others (1.228177ms)
+2026-10-24T20:17:39.6383191Z   ✔ market-data bans (klines, tickers) are held to their own endpoints: the live step and signed calls go on (0.84447ms)
+2026-10-24T20:17:39.6387059Z   ✔ a public market-data error names its endpoint, so its ban is held there without a default (1.811178ms)
+2026-10-24T20:17:39.6404213Z   ✔ an old "*" in a shared ban file still pauses everything; a klines ban is shared under its own key (1.09592ms)
+2026-10-24T20:17:39.6413000Z   ✔ a shared book is reused only when read after the desk's own last change and within its age (18.250008ms)
+2026-10-24T20:17:39.6414178Z   ✔ open orders rate limited: fresh positions with the open orders last read, marked with their time (4.016743ms)
+2026-10-24T20:17:39.6414944Z   ✔ a ban the exchange answers is recorded for its endpoint only (1.675755ms)
+2026-10-24T20:17:39.6415657Z   ✔ 19-digit order ids stay exact (a JSON number rounds them and a cancel by id then misses) (0.23541ms)
+2026-10-24T20:17:39.6416206Z ✔ rate-limit bans (36.821458ms)
+2026-10-24T20:17:40.1535225Z ▶ Exit rolling excursion fit
+2026-10-24T20:17:40.1537635Z   ✔ equals the per-entry reference exactly across 300 seeded histories, sparse signals and fit cuts (29.875265ms)
+2026-10-24T20:17:40.1541059Z   ✔ preserves inclusive entry and final-bar boundaries and excludes signal/future bars (0.323885ms)
+2026-10-24T20:17:40.1546408Z   ✔ handles deque wraparound, ties, disjoint windows and invalid price comparisons exactly (3.009169ms)
+2026-10-24T20:17:40.1553233Z   ✔ matches a dense long-window fit with bounded runtime and reports comparison timings (66.344153ms)
+2026-10-24T20:17:40.1555015Z   ℹ 24,000 bars, hold 256: reference 28.44ms, rolling 2.84ms (10.03x); two 256-slot Int32 deques
+2026-10-24T20:17:40.1556369Z ✔ Exit rolling excursion fit (101.270526ms)
+2026-10-24T20:17:40.3992162Z ▶ higher timeframes require complete contiguous buckets
+2026-10-24T20:17:40.4012509Z   ✔ does not publish incomplete or misaligned bars: 0,1,3 (3.601035ms)
+2026-10-24T20:17:40.4017732Z   ✔ does not publish incomplete or misaligned bars: 1,2,3 (0.263623ms)
+2026-10-24T20:17:40.4019651Z   ✔ does not publish incomplete or misaligned bars: 0.5,1.5,2.5,3.5 (0.283069ms)
+2026-10-24T20:17:40.4021122Z   ✔ rejects non-increasing source timestamps consistently: 0,1,1,3 (0.723623ms)
+2026-10-24T20:17:40.4022367Z   ✔ rejects non-increasing source timestamps consistently: 0,1,2,3,3 (0.423382ms)
+2026-10-24T20:17:40.4023598Z   ✔ rejects non-increasing source timestamps consistently: 0,1,3,2 (0.32074ms)
+2026-10-24T20:17:40.4025030Z   ✔ keeps the last complete map across a gap and resumes only after a full aligned bucket (0.960476ms)
+2026-10-24T20:17:40.4026612Z   ✔ tail resampling returns the last n complete bars even across many empty buckets (0.616513ms)
+2026-10-24T20:17:40.4028104Z   ✔ array, column and mapped higher views agree across sparse 1m and 5m sources (4.894845ms)
+2026-10-24T20:17:40.4029465Z ✔ higher timeframes require complete contiguous buckets (14.032765ms)
+2026-10-24T20:17:41.6849426Z ✔ all 28 Retest/Tactic profile, subset and mirror identities have actual onsets in controlled-extension trends (157.246311ms)
+2026-10-24T20:17:41.6853272Z ✔ 112 context identities join the ordinary factory focus without changing any original source state (210.726131ms)
+2026-10-24T20:17:41.6858185Z ✔ every child requires a nonzero causal parent/context agreement and both directions actually fire (88.558477ms)
+2026-10-24T20:17:41.6863544Z ✔ all context subsets and inverses retain closed-prefix causality, including unfinished higher bars (469.953663ms)
+2026-10-24T20:17:42.2442032Z ▶ micro indications
+2026-10-24T20:17:42.2442569Z   ✔ are registered, fire on some bars, and are causal (112.696771ms)
+2026-10-24T20:17:42.2446330Z   ✔ with Micro's own indications, Micro cells go only to them and they take only Micro cells (10.246834ms)
+2026-10-24T20:17:42.2451841Z   ✔ every validated pair, a Micro indication included, builds every strategy set (Normal, Trailing, DCA, DCA Active, Axis) (17.281391ms)
+2026-10-24T20:17:42.2453800Z ✔ micro indications (141.733538ms)
+2026-10-24T20:17:42.2471054Z ▶ trend-aligned micro indications
+2026-10-24T20:17:42.2472062Z   ✔ the 4× timeframe trend reads completed higher bars only and follows the trend (1.982688ms)
+2026-10-24T20:17:42.2474498Z   ✔ RSI(2) with the trend: a dip in an uptrend is bought, the same dip in a downtrend is not (1.260748ms)
+2026-10-24T20:17:42.2478029Z   ✔ the turn: fires on the bar closing beyond the stretched bar, with the trend, not on the extreme bar (0.930981ms)
+2026-10-24T20:17:42.2481164Z   ✔ the streak turn: four falling closes, then a close above the fourth bar's high, in an uptrend (0.358601ms)
+2026-10-24T20:17:42.2492561Z   ✔ are causal: appending other future bars never changes an earlier output (4.917647ms)
+2026-10-24T20:17:42.2498317Z   ✔ every Micro indication is registered under the mc- prefix with a unique id (0.592167ms)
+2026-10-24T20:17:42.2499765Z   ✔ continuation, break and pattern events fire on their constructed pattern, the right way, once (1.200896ms)
+2026-10-24T20:17:42.2503925Z   ✔ quiet-market reversion: an RSI(2) extreme counts only while ADX is low and the band narrower than its median (8.925262ms)
+2026-10-24T20:17:42.2505139Z ✔ trend-aligned micro indications (20.953709ms)
+2026-10-24T20:17:42.2514425Z ▶ the Base-passing families
+2026-10-24T20:17:42.2515636Z   ✔ are sampled finely, with unique ids, and every new spec is registered (1.658101ms)
+2026-10-24T20:17:42.2516987Z ✔ the Base-passing families (1.781341ms)
+2026-10-24T20:17:42.7074767Z ▶ research signals, second batch
+2026-10-24T20:17:42.7076684Z   ✔ every source is registered and included in the expanded catalog; execution still requires own validation (1.253434ms)
+2026-10-24T20:17:42.7078872Z   ✔ causal: appending later bars never changes an earlier state; most sources fire on noise (139.856971ms)
+2026-10-24T20:17:42.7081045Z   ✔ pin bar: a long lower wick closing near the high at a 20-bar low is long, mirrored short (0.458217ms)
+2026-10-24T20:17:42.7086691Z   ✔ morning / evening star (0.261238ms)
+2026-10-24T20:17:42.7088083Z   ✔ failed breakout: a close above the 20-bar high, back below it two bars later, fades short (0.268141ms)
+2026-10-24T20:17:42.7090865Z   ✔ fair value gap: a retest of the gap after a displacement bar is long (0.231533ms)
+2026-10-24T20:17:42.7093250Z   ✔ exhaustion streak: five falling closes on a volume spike, then the first up bar, is long (0.480048ms)
+2026-10-24T20:17:42.7099209Z   ✔ opening range: the breakout above the first hour after 00:00 UTC fires once per day (0.383337ms)
+2026-10-24T20:17:42.7102892Z ✔ research signals, second batch (144.857373ms)
+2026-10-24T20:17:43.4991318Z ▶ Stable-02 ports: registry
+2026-10-24T20:17:43.4992525Z   ✔ every ported id is registered once, every s2 source has its short / medium signal ids (2.266669ms)
+2026-10-24T20:17:43.4993989Z   ✔ every port returns a state per bar and fires long and short on the test series (120.956861ms)
+2026-10-24T20:17:43.5008306Z   ✔ mirrored prices flip every port's direction (confluence's RSI bands overlap: excluded) (24.926569ms)
+2026-10-24T20:17:43.5009926Z ✔ Stable-02 ports: registry (149.453627ms)
+2026-10-24T20:17:43.5013717Z ▶ Stable-02 ports: same signals as the desk
+2026-10-24T20:17:43.5015319Z   ✔ entry ema-cross (short = the desk's parameters) (27.833827ms)
+2026-10-24T20:17:43.5016970Z   ✔ entry rsi-revert (short = the desk's parameters) (10.741148ms)
+2026-10-24T20:17:43.5019944Z   ✔ entry st-trail (short = the desk's parameters) (9.971649ms)
+2026-10-24T20:17:43.5022959Z   ✔ entry bb-bounce (short = the desk's parameters) (17.156938ms)
+2026-10-24T20:17:43.5025548Z   ✔ entry vwap-axis (short = the desk's parameters) (11.762209ms)
+2026-10-24T20:17:43.5028745Z   ✔ entry vol-break (short = the desk's parameters) (10.16413ms)
+2026-10-24T20:17:43.5031449Z   ✔ entry adx-gate (short = the desk's parameters) (15.567966ms)
+2026-10-24T20:17:43.5035020Z   ✔ entry stoch-swing (short = the desk's parameters) (14.250522ms)
+2026-10-24T20:17:43.5037444Z   ✔ entry confluence (short = the desk's parameters) (14.534975ms)
+2026-10-24T20:17:43.5040023Z   ✔ entry range-break (short = the desk's parameters) (21.701157ms)
+2026-10-24T20:17:43.5044119Z   ✔ entry atr-break (short = the desk's parameters) (9.413586ms)
+2026-10-24T20:17:43.5046888Z   ✔ entry active-hf (short = the desk's parameters) (8.129975ms)
+2026-10-24T20:17:43.5050971Z   ✔ entry range-shift (short = the desk's parameters) (10.316003ms)
+2026-10-24T20:17:43.5053619Z   ✔ entry block-stack (short = the desk's parameters) (9.080853ms)
+2026-10-24T20:17:43.5061467Z   ✔ entry block-scale (short = the desk's parameters) (10.316906ms)
+2026-10-24T20:17:43.5066103Z   ✔ every desk indication maps onto a registry state with the same direction (47.202661ms)
+2026-10-24T20:17:43.5067887Z   ✔ not ported (already equivalent): normal = EMA 9/21 cross onsets, macd-mom = MACD signal cross onsets (11.301086ms)
+2026-10-24T20:17:43.5069416Z ✔ Stable-02 ports: same signals as the desk (260.891504ms)
+2026-10-24T20:17:43.5070706Z ▶ Stable-02 ports: hand-built onsets
+2026-10-24T20:17:43.5078836Z   ✔ vol-break: a 2× volume bar closing up above SMA 20 is long, mirrored short (0.459019ms)
+2026-10-24T20:17:43.5081045Z   ✔ range-break: close above the 20-bar high on 1.2× volume with a bar over 1.1 × ATR (0.232204ms)
+2026-10-24T20:17:43.5082794Z   ✔ block-stack: 3 of the last 4 bars up on volume, close above EMA 9 (0.171901ms)
+2026-10-24T20:17:43.5084613Z   ✔ block-stack: a doji counts on neither side (the desk counted it up: a long bias the mirror keeps) (0.222686ms)
+2026-10-24T20:17:43.5086542Z   ✔ st-trail: a sustained rally flips the Supertrend up (onset), a sell-off flips it down (0.292768ms)
+2026-10-24T20:17:43.5088281Z   ✔ rsi-revert: RSI < 32 at the lower band is long, > 68 at the upper band short (0.187791ms)
+2026-10-24T20:17:43.5089718Z ✔ Stable-02 ports: hand-built onsets (1.88241ms)
+2026-10-24T20:17:43.5098073Z ▶ Stable-02 ATR exits
+2026-10-24T20:17:43.5099422Z   ✔ stop = k × ATR, target = ratio × stop, trail arms at 0.95 × stop with the desk's gap (0.562342ms)
+2026-10-24T20:17:43.5101495Z   ✔ ids carry the ATR cell; lanes keep it; live feedback floors the resolved distances (1.506468ms)
+2026-10-24T20:17:43.5103735Z   ✔ simulate: stop, target and time exits at the ATR distances of the signal bar (1.284613ms)
+2026-10-24T20:17:43.5105472Z   ✔ simulate: the ATR trail arms at 0.95 × stop and trails at the stop distance (0.413232ms)
+2026-10-24T20:17:43.5112035Z   ✔ a pending ATR entry carries its resolved distances (live / paper get a concrete stop) (0.215352ms)
+2026-10-24T20:17:43.5113426Z   ✔ settings: exit model and ATR grid validated and defaulted (2.727592ms)
+2026-10-24T20:17:43.5114377Z ✔ Stable-02 ATR exits (7.042441ms)
+2026-10-24T20:17:44.2772079Z ▶ Tactic is a first-class independent indication kind
+2026-10-24T20:17:44.2773600Z   ✔ registers ten techniques/ranges and all seven independent/combined lane modes without aliases (136.763383ms)
+2026-10-24T20:17:44.2775472Z   ✔ executes two techniques/ranges with the same protect and onset independently, equal to their solo runs (27.922803ms)
+2026-10-24T20:17:44.2777016Z ✔ Tactic is a first-class independent indication kind (165.917759ms)
+2026-10-24T20:17:44.2782402Z ▶ Tactic context and closed-bar techniques
+2026-10-24T20:17:44.2784840Z   ✔ keeps low-ADX Tactic range entries under trend strength while session and volatility filters still remove entries (28.420383ms)
+2026-10-24T20:17:44.2787107Z   ✔ each technique fires on both sides of a varied market and remains prefix-stable on every supported timeframe (128.145702ms)
+2026-10-24T20:17:44.2788975Z   ✔ mirrors long and short techniques exactly on reflected prices (6.884787ms)
+2026-10-24T20:17:44.2798467Z   ✔ distinguishes trending pullbacks from ranging reversals and explains the adaptive method (0.777003ms)
+2026-10-24T20:17:44.2800501Z   ✔ uses prior structure and prior volume for breakout, with mirrored behavior and no fake zero-volume participation (0.542555ms)
+2026-10-24T20:17:44.2802958Z   ✔ stays neutral during warmup and after a gap or invalid closed bar until a full fresh warmup (7.13623ms)
+2026-10-24T20:17:44.2806085Z   ✔ combined lanes see only completed higher bars and cannot read poisoned future prices (21.867418ms)
+2026-10-24T20:17:44.2807810Z ✔ Tactic context and closed-bar techniques (194.525172ms)
+2026-10-24T20:17:44.6561894Z ▶ live vs system diff
+2026-10-24T20:17:44.6564355Z   ✔ matches orders by identity and measures the gap (1.216244ms)
+2026-10-24T20:17:44.6565342Z   ✔ splits by range or strategy group and by exit hour (2.070483ms)
+2026-10-24T20:17:44.6566290Z   ✔ a window start drops the older closes on both sides (0.33104ms)
+2026-10-24T20:17:44.6568087Z   ✔ retains every attributed close of a paper identity instead of hiding an earlier loss (0.350246ms)
+2026-10-24T20:17:44.6574486Z   ✔ distinguishes the no-loss score from a measured return PF of four in JSON and Markdown (0.317234ms)
+2026-10-24T20:17:44.6582556Z   ✔ renders missing samples as unavailable while preserving a measured all-loss PF of zero (0.300713ms)
+2026-10-24T20:17:44.6584154Z   ✔ retains unknown legacy closes and matching identities without calculating a partial positive PF (0.295143ms)
+2026-10-24T20:17:44.6585691Z ✔ live vs system diff (8.288953ms)
+2026-10-24T20:17:44.8494190Z ▶ loss limit
+2026-10-24T20:17:44.8495681Z   ✔ a share of the wallet follows the balance; the fixed amount is a floor (0.902468ms)
+2026-10-24T20:17:44.8505681Z   ✔ an unread balance keeps the fixed amount; nothing set is no limit (0.219551ms)
+2026-10-24T20:17:44.8509014Z   ✔ reads with its basis (0.248134ms)
+2026-10-24T20:17:44.8512585Z ✔ loss limit (2.859158ms)
+2026-10-24T20:17:44.8517778Z ✔ the loss budget counts from this session's start, every session (systemwide) (0.213198ms)
+2026-10-24T20:17:44.8522690Z ✔ the 80 % limit is taken of the session's starting wallet, not of a later balance (0.270295ms)
+2026-10-24T20:17:44.8531999Z ▶ loss limit guard (fails closed)
+2026-10-24T20:17:44.8533272Z   ✔ a zero, empty or missing balance is no session wallet (read again), a positive one is (0.524451ms)
+2026-10-24T20:17:44.8540701Z   ✔ a percentage limit without a wallet, or no successful check for 5 min, pauses opening; checked → none (1.79142ms)
+2026-10-24T20:17:44.8542068Z ✔ loss limit guard (fails closed) (2.6574ms)
+2026-10-24T20:17:45.2902300Z ▶ kline requests are spaced across callers
+2026-10-24T20:17:45.2903414Z   ✔ five concurrent requests start at least one gap apart (242.499917ms)
+2026-10-24T20:17:45.3494248Z   ✔ a zero gap sends at once (the bound is off with gapMs 0) (59.496904ms)
+2026-10-24T20:17:45.3496722Z ✔ kline requests are spaced across callers (303.7132ms)
+2026-10-24T20:17:45.6121868Z ▶ trade statistics
+2026-10-24T20:17:45.6131693Z   ✔ uses the completed exit-bar hour just before, exactly at, and after each hourly boundary (3.137157ms)
+2026-10-24T20:17:45.6133530Z   ✔ profit factor: gross profit over gross loss; no loss is the capped PF; nothing is zero (0.250689ms)
+2026-10-24T20:17:45.6134892Z   ✔ the sample statistics of four trades (+2, −1, +3, −2 %) (0.311032ms)
+2026-10-24T20:17:45.6135865Z   ✔ no trades is the empty record (0.158276ms)
+2026-10-24T20:17:45.6137690Z   ✔ the composite score: a sample below its minimum is never positive; a profitable sample scores by net, PF, hours and drawdown (0.308728ms)
+2026-10-24T20:17:45.6139984Z ✔ trade statistics (5.792422ms)
+2026-10-24T20:17:46.0320524Z ✔ minimal plus spans 2x-5x cost and stops 0.5x-3x, and is off by default (23.447624ms)
+2026-10-24T20:17:46.0325849Z ✔ an enabled plus range builds only the selected cells, tagged for their own order id (5.898431ms)
+2026-10-24T20:17:46.0332739Z ✔ the last-N gate keeps a plus tape only after 50 closes above the higher PF (1.730646ms)
+2026-10-24T20:17:46.0335141Z ✔ a control position of only plus lanes keeps the M tracking tag (1.195336ms)
+2026-10-24T20:17:46.0341674Z ✔ the last-N gate as of the run start: closes inside the run never keep or drop a plus tape (0.439522ms)
+2026-10-24T20:18:01.8421670Z ▶ indications
+2026-10-24T20:18:01.8422922Z   ✔ covers every registered indication kind with unique ids (3.088997ms)
+2026-10-24T20:18:01.8424670Z   ✔ higher-timeframe views use completed higher bars only; combined states are prefix-stable (12.702356ms)
+2026-10-24T20:18:01.8428165Z   ✔ never uses future bars (prefix-stable) for every indication (512.128993ms)
+2026-10-24T20:18:01.8431551Z   ✔ produces both directions on a long random walk (1.414215ms)
+2026-10-24T20:18:01.8432750Z ✔ indications (530.768454ms)
+2026-10-24T20:18:01.8438655Z ▶ bots
+2026-10-24T20:18:01.8439626Z   ✔ every bot × filter is prefix-stable (no look-ahead) (4.295144ms)
+2026-10-24T20:18:01.8441900Z   ✔ every bot × every indication (signal and Micro ids included) is prefix-stable — Base sees no future bar (530.764094ms)
+2026-10-24T20:18:01.8445019Z   ✔ revert enters against every onset that follow takes (0.381724ms)
+2026-10-24T20:18:01.8448542Z   ✔ filter only removes signals that disagree (0.502019ms)
+2026-10-24T20:18:01.8450135Z ✔ bots (536.498127ms)
+2026-10-24T20:18:01.8459884Z ▶ last-N
+2026-10-24T20:18:01.8461332Z   ✔ windowDdt counts an open dip up to now (0.415697ms)
+2026-10-24T20:18:01.8462479Z   ✔ only uses trades closed before the entry (1.871551ms)
+2026-10-24T20:18:01.8466629Z   ✔ gating a regime-switching tape beats the ungated baseline and is validated out of sample (5.616034ms)
+2026-10-24T20:18:01.8469010Z   ✔ reports gateOpen as of nowT and never lets future closes qualify it (3.977639ms)
+2026-10-24T20:18:01.8471186Z   ✔ keeps optimizer statistics and gate decisions stable when simultaneous closes are permuted (1.071334ms)
+2026-10-24T20:18:01.8472936Z   ✔ marks N=0 as an open, ungated baseline instead of reusing historical IS/OOS PF (0.192741ms)
+2026-10-24T20:18:01.8476411Z   ✔ a pure loser never succeeds (0.508661ms)
+2026-10-24T20:18:01.8480753Z ✔ last-N (14.181853ms)
+2026-10-24T20:18:01.8485805Z ▶ evals
+2026-10-24T20:18:01.8486939Z   ✔ windows pass, fail and idle independently (0.79663ms)
+2026-10-24T20:18:01.8488564Z ✔ evals (0.885807ms)
+2026-10-24T20:18:01.8493661Z ▶ combos
+2026-10-24T20:18:01.8494833Z   ✔ a focus that matches nothing stays empty (it used to fall back to every combo) (177.078121ms)
+2026-10-24T20:18:01.8496613Z   ✔ Micro indications are not produced on lanes below Micro's floor (they could pass nothing there) (180.657705ms)
+2026-10-24T20:18:01.8497891Z ✔ combos (357.919671ms)
+2026-10-24T20:18:01.8507560Z ▶ pipeline
+2026-10-24T20:18:01.8516258Z   ✔ config ids round-trip (0.902598ms)
+2026-10-24T20:18:01.8517411Z   ✔ runs all stages deterministically and arms only in-sample successes (14009.770818ms)
+2026-10-24T20:18:01.8518389Z ✔ pipeline (14010.901373ms)
+2026-10-24T20:18:01.8519828Z ▶ portfolio
+2026-10-24T20:18:01.8520974Z   ✔ hour guard stops entries after the hour's closed trades lose the limit (0.783295ms)
+2026-10-24T20:18:01.8522273Z ✔ portfolio (0.928236ms)
+2026-10-24T20:18:02.1067038Z ▶ positions vs orders: more cases
+2026-10-24T20:18:02.1070501Z   ✔ openBook: long and short of every symbol are separate positions, counted once each (2.36283ms)
+2026-10-24T20:18:02.1073834Z   ✔ closedPositions: unsorted input, nested orders and both sides of one symbol (0.653061ms)
+2026-10-24T20:18:02.1075882Z   ✔ openTimeline: empty input and orders outside the window are zero (0.394578ms)
+2026-10-24T20:18:02.1081849Z   ✔ openTimeline: orders are clipped to the window (0.302736ms)
+2026-10-24T20:18:02.1087475Z   ✔ openTimeline: an exit and an entry at the same instant do not overlap (0.273361ms)
+2026-10-24T20:18:02.1095690Z   ✔ openTimeline: long and short of one symbol are two positions; partials of one side are one (0.265186ms)
+2026-10-24T20:18:02.1099455Z   ✔ openTimeline: a position stays open while any of its partials is (closing one partial keeps it) (0.276618ms)
+2026-10-24T20:18:02.1102645Z ✔ positions vs orders: more cases (9.276479ms)
+2026-10-24T20:18:02.4121236Z ▶ pre-historic stats
+2026-10-24T20:18:02.4126586Z   ✔ reports unit PF independently of external execution weights and labels unknown basis (2.591077ms)
+2026-10-24T20:18:02.4164646Z   ✔ the most orders open at once matches the event count (ties: a close before an open) (33.602126ms)
+2026-10-24T20:18:02.4166508Z ✔ pre-historic stats (37.531476ms)
+2026-10-24T20:18:02.8793404Z ✔ without a hold limit every Micro and Minimal cell holds as before (16 h and 24 h = 64 and 96 bars of 15m) (15.892218ms)
+2026-10-24T20:18:02.8799383Z ✔ Micro maxHoldMin 15 builds one hold of 15 minutes per cell: 1 bar on the 15m grid, nothing else changes (24.325796ms)
+2026-10-24T20:18:02.8805216Z ✔ a hold limit is the same time on every lane: Micro 15 min is 15 bars of 1m, 3 of 5m, 1 of 15m (0.405078ms)
+2026-10-24T20:18:02.8810093Z ✔ Minimal maxHoldMin 60 holds 4 bars of 15m; rangeHolds and coordVariants follow the limit (6.517472ms)
+2026-10-24T20:18:02.8813777Z ✔ the settings check accepts a hold limit of 1–1440 minutes and refuses others (2.717364ms)
+2026-10-24T20:18:02.8817467Z ✔ maximum hold minutes are never rounded up on a slower lane (21.467547ms)
+2026-10-24T20:18:02.8823069Z ✔ Base judges a range at its own maximum hold: Micro 15 min is 1 bar, Minimal 60 min 4 bars; others keep the grid hold (5.609784ms)
+2026-10-24T20:18:03.5633348Z ▶ settings validation
+2026-10-24T20:18:03.5634253Z   ✔ accepts the defaults (3.897381ms)
+2026-10-24T20:18:03.5635540Z   ✔ Block type and sources (1.377707ms)
+2026-10-24T20:18:03.5637805Z   ✔ rejects out-of-range numbers and unknown rankings (0.333384ms)
+2026-10-24T20:18:03.5639713Z ✔ settings validation (7.010563ms)
+2026-10-24T20:18:03.5645626Z ▶ no silent caps
+2026-10-24T20:18:03.5647086Z   ✔ the walk-forward sanitiser and the settings keep what was asked (nothing silently narrowed) (98.01651ms)
+2026-10-24T20:18:03.5649223Z   ✔ Micro stops start at ratio 1.0 of the price target (which already carries the round-trip cost) (0.41159ms)
+2026-10-24T20:18:03.5650962Z ✔ no silent caps (98.757215ms)
+2026-10-24T20:18:03.5655454Z ▶ Base gate sensitivity (baseGateSensitivity)
+2026-10-24T20:18:03.5656967Z   ✔ reports what each Base gate would admit, from the same results, without recomputing (1.594012ms)
+2026-10-24T20:18:03.5658372Z ✔ Base gate sensitivity (baseGateSensitivity) (1.787263ms)
+2026-10-24T20:18:03.5662200Z ▶ Base trailed cells (grid.baseTrailCells)
+2026-10-24T20:18:03.5663343Z   ✔ off by default: every Base cell is at trail 0; on: one trailed cell per range target as well (5.59165ms)
+2026-10-24T20:18:03.5669483Z ✔ Base trailed cells (grid.baseTrailCells) (5.872084ms)
+2026-10-24T20:18:03.5670787Z ▶ stop floor
+2026-10-24T20:18:03.5672136Z   ✔ every evaluated config's stop is at least the evaluation minimum (0.5 % by default) (9.667073ms)
+2026-10-24T20:18:03.5673263Z ✔ stop floor (9.853883ms)
+2026-10-24T20:18:03.5677186Z ▶ config ids
+2026-10-24T20:18:03.5678479Z   ✔ every Axis variant id parses back to its protect (the variant tag is part of the id) (1.447248ms)
+2026-10-24T20:18:03.5679666Z ✔ config ids (1.561932ms)
+2026-10-24T20:18:03.5687687Z ▶ trailing mechanics
+2026-10-24T20:18:03.5688445Z   ✔ default: stop = peak · (1 − trail), exit as trail (1.106921ms)
+2026-10-24T20:18:03.5691080Z   ✔ trailStep 0.5 locks in more: stop = peak · (1 − trail/2) (0.340927ms)
+2026-10-24T20:18:03.5714884Z   ✔ trailFree lets a winner run past the target (0.247734ms)
+2026-10-24T20:18:03.5715994Z   ✔ trailFree keeps the target while the trail is not active (0.141384ms)
+2026-10-24T20:18:03.5717392Z   ✔ every close pays the round-trip cost (0.113843ms)
+2026-10-24T20:18:03.5718739Z ✔ trailing mechanics (2.222457ms)
+2026-10-24T20:18:03.5719484Z ▶ hot reload keeps the database usable
+2026-10-24T20:18:03.5720828Z   ✔ an instance from an older module version gets the current tables and methods (2.664614ms)
+2026-10-24T20:18:03.5721987Z ✔ hot reload keeps the database usable (2.740165ms)
+2026-10-24T20:18:03.5722714Z ▶ audit without a simulation
+2026-10-24T20:18:03.5723439Z   ✔ checks paper equity and Real selection alone (1.396162ms)
+2026-10-24T20:18:03.5724329Z ✔ audit without a simulation (1.474799ms)
+2026-10-24T20:18:03.5725410Z ▶ live entries mode never mirrors what it cannot follow
+2026-10-24T20:18:03.5726619Z   ✔ skips managed exits (trailing / DCA / Axis) with a reason, keeps plain ones (0.587098ms)
+2026-10-24T20:18:03.5727889Z ✔ live entries mode never mirrors what it cannot follow (0.703727ms)
+2026-10-24T20:18:03.5733720Z ▶ protect grid
+2026-10-24T20:18:03.5735286Z   ✔ trailing variants carry the trail step / free-run settings (default: plain trail); plain variants do not (0.66292ms)
+2026-10-24T20:18:03.5748439Z   ✔ validates the trailing settings (0.354763ms)
+2026-10-24T20:18:03.5760160Z   ✔ position-cost ranges replace the wide targets, every TP × SL × Trail per range, cap held (68.986316ms)
+2026-10-24T20:18:03.5763625Z ✔ protect grid (70.163898ms)
+2026-10-24T20:18:03.5764642Z ▶ hot reload re-attaches what an old module left behind
+2026-10-24T20:18:03.5765824Z   ✔ the shared database gets state persistence it did not have (2.766345ms)
+2026-10-24T20:18:03.5767034Z   ✔ the runtime's live step always comes from the current module (11.400366ms)
+2026-10-24T20:18:03.5767827Z ✔ hot reload re-attaches what an old module left behind (14.295811ms)
+2026-10-24T20:18:03.5768382Z ▶ exchange minimums
+2026-10-24T20:18:03.5769048Z   ✔ quantity is floored to the lot step, and raised to the exchange minimum when below it (0.628375ms)
+2026-10-24T20:18:03.5770498Z   ✔ a reject naming the minimum quantity is parsed, and the next size clears it (0.350216ms)
+2026-10-24T20:18:03.5772064Z   ✔ control targets record the raise, respect the cap and keep the minimum stop (1.442028ms)
+2026-10-24T20:18:03.5773010Z ✔ exchange minimums (2.56625ms)
+2026-10-24T20:18:03.5774273Z ✔ a preset or a settings save can set the symbol gate (veto / proven / per side); anything else is dropped (0.338523ms)
+2026-10-24T20:18:03.5775692Z ✔ the direction gate passes a settings save, clamped to the book's tail (0 = off, at most 64) (0.247804ms)
+2026-10-24T20:18:03.5776609Z ✔ causal evaluation: the stages see only the bars before the run; the option passes a settings save (0.418233ms)
+2026-10-24T20:18:03.5777489Z ✔ the volume factor (live.ratio) accepts up to 500: the caps bound the size, not the factor (0.336058ms)
+2026-10-24T20:18:03.5778361Z ✔ trailing floors hold for the trailing distance (trail × trailStep), also with a step below 1 (0.664834ms)
+2026-10-24T20:18:03.5779323Z ✔ signal acceptance sees every close inside its window, however busy the group (trimmed by time, not count) (2.245781ms)
+2026-10-24T20:18:03.5780060Z ✔ RSI of a flat series is neutral (50), not an extreme (0.444862ms)
+2026-10-24T20:18:03.7362072Z ✔ the live control keeps running through a failed or memory-delayed compute; only unapplied settings hold it (176.899778ms)
+2026-10-24T20:18:03.7933596Z ✔ overall mode does not compute the pending entries before every live step (only for the status, every 30 s) (46.327881ms)
+2026-10-24T20:18:03.7936315Z ✔ raw candidate direction history is fed in slices without seeding accepted Block history: advance(t, max) feeds at most max entries a call, the lookups after it only what closed since (8.053023ms)
+2026-10-24T20:18:03.7938152Z ✔ a target reached at tick time takes the lane out of the live control at once, as a stop does (7.16901ms)
+2026-10-24T20:18:03.8479252Z ✔ the live control step runs when what it acts on changed, otherwise once per idle interval (not every tick) (41.117274ms)
+2026-10-24T20:18:03.8722435Z ✔ a cycle / tick timing change keeps the compute and the live control running (no stale pause) (41.060317ms)
+2026-10-24T20:18:04.1632722Z ✔ a restart waits for the live step in flight (its open gets its stop) before the state is saved (114.094996ms)
+2026-10-24T20:18:04.1635449Z ✔ Micro on its own indications: Base evaluates the Micro indications (a focus without them left Micro with no set) (4.289364ms)
+2026-10-24T20:18:04.1637055Z ▶ progress reporting
+2026-10-24T20:18:04.1638543Z   ✔ Main is one monotonic stage: refine (S2), evaluate (S3) and the final ranking (S5) never move it back (0.643463ms)
+2026-10-24T20:18:04.1640576Z   ✔ the overall bar follows the job's stages in order, never backwards, and reaches 1 at Realtime (0.374401ms)
+2026-10-24T20:18:04.1645534Z   ✔ the backfill line names the batch #/# of the run and the symbols loaded of the universe (0.175278ms)
+2026-10-24T20:18:04.1647532Z   ✔ a step of unknown length (paper, audit) estimates from its last run and never reports done early (0.258173ms)
+2026-10-24T20:18:04.1649549Z   ✔ the UI lines show progress only while busy, the prehistoric bar uses the job's fraction (0.472344ms)
+2026-10-24T20:18:04.1652142Z   ✔ the Real stage's total is the steps the simulation really yields (the start is floored to the hour) (0.255538ms)
+2026-10-24T20:18:04.1653782Z ✔ progress reporting (2.441658ms)
+2026-10-24T20:18:04.1655701Z ✔ the drawdown-time limit scales with a config's history and never drops below gates.minDdtH (default 18 h) (0.345907ms)
+2026-10-24T20:18:04.1658179Z ✔ candidate direction gating preserves rejected losses, recovery and downturn independently of accepted Block history (164.053257ms)
+2026-10-24T20:18:04.1659829Z ✔ candidate direction tails preserve supported last-N, unknown counts and explicit empty evidence (5.846136ms)
+2026-10-24T20:18:04.1661868Z ✔ closed signal candidates still teach the raw engine direction gate while open marks teach no history (5.062991ms)
+2026-10-24T20:18:04.1663510Z ✔ pending-entry cached books use rejected candidate losses and recovery without waiving live qualification (8.247578ms)
+2026-10-24T20:18:05.8097369Z ▶ session report page
+2026-10-24T20:18:05.8098303Z   ✔ clientMain uses only its own names and the browser's (no top-level helper of the script) (946.055152ms)
+2026-10-24T20:18:05.8110854Z   ✔ the check sees a top-level helper the page cannot reach (268.097156ms)
+2026-10-24T20:18:05.8115394Z ✔ session report page (1215.476605ms)
+2026-10-24T20:18:06.2644650Z ✔ concurrent callers share one connection read and 100ms checks retain the 1s REST policy (3.239409ms)
+2026-10-24T20:18:06.2648603Z ✔ an order during the first read fences its old snapshot, including same-millisecond changes (1.092152ms)
+2026-10-24T20:18:06.2653830Z ✔ a stricter freshness request waits for then replaces a looser shared read (1.771243ms)
+2026-10-24T20:18:06.2657335Z ✔ account and contract batches share reads and rejected batches allow a later retry (1.922906ms)
+2026-10-24T20:18:09.1545762Z [core-v2] compute #1 done in 2209 ms · sim PF including 22 open marks: 1.14 n 250 · loop max 78 ms (worst slice of the last 60 s 52 ms in Tapes, 1 over 40 ms)
+2026-10-24T20:18:11.6346094Z [core-v2] compute #1 done in 2303 ms · sim PF including 22 open marks: 1.14 n 250 · loop max 42 ms
+2026-10-24T20:18:11.6496414Z ▶ Base-stage validated count
+2026-10-24T20:18:11.6498065Z   ✔ grid.allSets reports its measurement pairs apart: the passed count is the same as without it (4914.092407ms)
+2026-10-24T20:18:13.8457783Z [core-v2] compute #1 done in 2018 ms · sim PF including 22 open marks: 1.14 n 250 · loop max 50 ms
+2026-10-24T20:18:15.9070791Z   ✔ the passed count is recorded per compute, per range, in order (4259.37791ms)
+2026-10-24T20:18:15.9072275Z ✔ Base-stage validated count (9175.041747ms)
+2026-10-24T20:18:16.4202426Z ▶ stop-risk budget: the strongest targets that fit
+2026-10-24T20:18:16.4203455Z   ✔ x01, 13 Oct: ZKP (2.06 USD at 12.15 %) is over the 0.249 USD budget, XPL (2.00 USD at 11 %) fits: XPL is kept (2.368961ms)
+2026-10-24T20:18:16.4207147Z   ✔ a stronger target over the budget does not take the weaker ones that fit with it (0.271298ms)
+2026-10-24T20:18:16.4210739Z ✔ stop-risk budget: the strongest targets that fit (3.719778ms)
+2026-10-24T20:18:16.4217680Z ▶ the three budgets together (scaleToBudgets)
+2026-10-24T20:18:16.4219302Z   ✔ the gross cap fits two minimums; the two strongest fail the risk budget: the next two that fit every budget are kept (0.696563ms)
+2026-10-24T20:18:16.4221455Z   ✔ a held position takes its budget first and is never dropped; without equity nothing is scaled or dropped (0.366586ms)
+2026-10-24T20:18:16.4226314Z ✔ the three budgets together (scaleToBudgets) (1.287588ms)
+2026-10-24T20:18:16.4232709Z ▶ control: the budgets admit the targets that fit (end to end)
+2026-10-24T20:18:16.4234110Z   ✔ 0.50 USDT wallet, 5 USD gross, 0.25 USD risk: two wide-stop keys are passed over, two tight-stop keys open (23.542297ms)
+2026-10-24T20:18:16.4235924Z ✔ control: the budgets admit the targets that fit (end to end) (23.724767ms)
+2026-10-24T20:18:16.4243985Z ▶ the budgets are sized on B = min(wallet, equity)
+2026-10-24T20:18:16.4244677Z   ✔ 0.50 USDT wallet with 0.50 open profit (equity 1.00): the budgets are those of 0.50, not 1.00 (6.544963ms)
+2026-10-24T20:18:16.4247028Z ✔ the budgets are sized on B = min(wallet, equity) (6.798106ms)
+2026-10-24T20:18:16.9861716Z ✔ a failed compute cannot withdraw active Base/config qualifications before publishing new tapes (79.774301ms)
+2026-10-24T20:18:17.0518291Z [core-v2] compute #1 done in 56 ms · sim PF including 0 open marks: unavailable n 0 · loop max 0 ms
+2026-10-24T20:18:17.0576175Z ✔ current qualifications and realtime inputs survive simulation slices, then publish with completed new tapes (71.180285ms)
+2026-10-24T20:18:17.0971547Z ✔ simulation failure cannot publish a partial replacement (39.739565ms)
+2026-10-24T20:18:17.1428210Z ✔ simulation settings cannot publish a partial replacement (45.685627ms)
+2026-10-24T20:18:17.1764719Z ✔ simulation generation cannot publish a partial replacement (33.676273ms)
+2026-10-24T20:18:17.2278348Z [core-v2] compute #1 done in 43 ms · sim PF including 0 open marks: unavailable n 0 · loop max 0 ms
+2026-10-24T20:18:17.2456821Z ✔ timing-only settings changes do not discard a completed economic calculation (54.824231ms)
+2026-10-24T20:18:17.2458375Z ✔ timing settings cannot cancel a partially completed exact Base sweep (6.336453ms)
+2026-10-24T20:18:17.2459796Z ✔ live settings cannot cancel a partially completed exact Base sweep (3.735367ms)
+2026-10-24T20:18:17.2463736Z ✔ unchanged settings cannot cancel a partially completed exact Base sweep (3.817511ms)
+2026-10-24T20:18:17.2499173Z ✔ incremental tapes publish only under their current cohort after Paper idle: generation (5.306105ms)
+2026-10-24T20:18:17.2531877Z ✔ incremental tapes publish only under their current cohort after Paper idle: economics (3.342843ms)
+2026-10-24T20:18:17.2554618Z ✔ incremental tapes publish only under their current cohort after Paper idle: none (2.825445ms)
+2026-10-24T20:18:17.7495507Z ▶ control: someone else's quantity on a held key
+2026-10-24T20:18:17.7497256Z   ✔ the desk's stop there closes only the desk's quantity, no take-profit; every desk exit order triggers → the operator's 10 stay (25.681027ms)
+2026-10-24T20:18:17.7499043Z   ✔ the operator's part is gone again: one bounded stop for the desk's quantity (8.331484ms)
+2026-10-24T20:18:17.7502984Z ✔ control: someone else's quantity on a held key (35.262259ms)
+2026-10-24T20:18:17.7512508Z ▶ control: restart after the desk's stop filled while it was away
+2026-10-24T20:18:17.7514183Z   ✔ the operator's new position on that side is not adopted through the old ledger: no order, untouched (8.651113ms)
+2026-10-24T20:18:17.7516942Z   ✔ foreignSides "independent": the old ledger adopts nothing; the desk opens its own beside the operator's 5, bounded (8.502194ms)
+2026-10-24T20:18:17.7518432Z ✔ control: restart after the desk's stop filled while it was away (17.408072ms)
+2026-10-24T20:18:25.9826158Z ▶ live Overall control orders
+2026-10-24T20:18:25.9827428Z   ✔ one exchange position cap covers engine and signal orders; lane orders count once (4.091462ms)
+2026-10-24T20:18:25.9829378Z   ✔ 1500 strategy orders use only 100 exchange slots, with long/short slots distinct (3.552805ms)
+2026-10-24T20:18:25.9833480Z   ✔ existing and pending exchange keys consume slots even without current strategy lanes (0.497722ms)
+2026-10-24T20:18:25.9836018Z   ✔ top configs: signals always, engine configs by score — a number of them, or as many as the budget carries (1.823671ms)
+2026-10-24T20:18:25.9838429Z   ✔ signal weight: signal lanes count signalWeight units, engine lanes one; default 1 (0.629017ms)
+2026-10-24T20:18:25.9841352Z   ✔ own quantity in time order: a close of a position this ledger never opened does not eat the next open (0.43804ms)
+2026-10-24T20:18:25.9844031Z   ✔ a resize of one exchange lot is not made (the minimum-volume target moves by a lot with the price) (0.747278ms)
+2026-10-24T20:18:25.9846579Z   ✔ only the quantity this system opened is ever reduced or closed (a foreign add on the same key stays) (0.511136ms)
+2026-10-24T20:18:25.9849709Z   ✔ plans exactly one position per symbol + direction and is hash-stable (0.851643ms)
+2026-10-24T20:18:25.9853678Z   ✔ converges to the targets on every step over 400 random steps and never touches foreign positions (5356.489134ms)
+2026-10-24T20:18:25.9873394Z   ✔ a position closed manually keeps processing, is NOT put back, and a new lane order opens it again (9.399542ms)
+2026-10-24T20:18:25.9875439Z   ✔ a position this system closed itself is not treated as closed manually (3.658633ms)
+2026-10-24T20:18:25.9881553Z   ✔ is idempotent: unchanged targets and book send nothing and are marked unchanged (4.494417ms)
+2026-10-24T20:18:25.9884072Z   ✔ a paper book published while a step waits on the exchange goes out on the next step, on a fresh book read (5.084791ms)
+2026-10-24T20:18:25.9886350Z   ✔ keeps its state in memory: rapid steps write it at most once a second, flushed on shutdown (6.861264ms)
+2026-10-24T20:18:25.9889193Z   ✔ survives rejects and time-outs after fills, then converges once the exchange is healthy (2192.101412ms)
+2026-10-24T20:18:25.9895111Z   ✔ re-syncs from the exchange after a restart (fresh DB) and flags a connection change (6.120048ms)
+2026-10-24T20:18:25.9897478Z   ✔ does nothing while not armed, not ready or disabled (3.525204ms)
+2026-10-24T20:18:25.9906330Z   ✔ one-way mode: nets long and short lanes into one position per symbol, closes before flipping, reduce-only exits (5.47983ms)
+2026-10-24T20:18:25.9908488Z   ✔ never opens on stale prices or when the exchange refuses the position mode (closing still works) (10.62778ms)
+2026-10-24T20:18:25.9910849Z   ✔ a lane whose stop was crossed at tick time leaves the control at once (live position reduced / closed) (4.120567ms)
+2026-10-24T20:18:25.9912871Z   ✔ the protective stop of an opened position is priced from its fill, not from the reference ticker (5.558247ms)
+2026-10-24T20:18:25.9914862Z   ✔ the backstop distance of a trailed lane is measured from the current price, not from the entry (1.978491ms)
+2026-10-24T20:18:25.9932516Z   ✔ a stop the exchange keeps refusing: one open, one protective close, then no buy-sell-repeat (8.240394ms)
+2026-10-24T20:18:25.9934086Z   ✔ a refused open is marked error (not pending) and not re-sent every tick (4.787585ms)
+2026-10-24T20:18:25.9935575Z   ✔ not ready only blocks opening: held positions are still closed, reduced and protected (3.785761ms)
+2026-10-24T20:18:25.9937018Z   ✔ unknown account equity or a missing price never closes a held position (3.426379ms)
+2026-10-24T20:18:25.9938102Z ✔ live Overall control orders (7651.594259ms)
+2026-10-24T20:18:25.9938852Z ▶ live sizing: fixed % of equity
+2026-10-24T20:18:25.9939984Z   ✔ one lane unit = pct × the account equity; the paper balance when the exchange reports none (0.556431ms)
+2026-10-24T20:18:25.9941401Z ✔ live sizing: fixed % of equity (0.711591ms)
+2026-10-24T20:18:25.9942190Z ▶ control orders: listed symbols, bans, offline
+2026-10-24T20:18:25.9943224Z   ✔ an unlisted symbol is not opened and does not call the exchange (2.700762ms)
+2026-10-24T20:18:25.9944524Z   ✔ an offline symbol is asked once, then held without another margin call (2.893994ms)
+2026-10-24T20:18:25.9946036Z   ✔ open orders of an earlier read (rate limited): opening goes on, stop repairs and leftover cancels wait (3.715259ms)
+2026-10-24T20:18:25.9947372Z   ✔ a BingX ban pauses the control step before any book read (1.904623ms)
+2026-10-24T20:18:25.9948858Z   ✔ a market-data ban (klines, tickers) never holds the step: an ended lane closes, a missing stop is repaired (3.473427ms)
+2026-10-24T20:18:25.9950621Z   ✔ a market-data error inside the step is never noted as a ban of every call (3.986648ms)
+2026-10-24T20:18:25.9952559Z   ✔ a "*" from an old shared ban file still pauses the control step (2.142808ms)
+2026-10-24T20:18:25.9954009Z ✔ control orders: listed symbols, bans, offline (21.167014ms)
+2026-10-24T20:18:25.9961052Z ▶ leverage: always the maximum, quantity at the exchange minimum
+2026-10-24T20:18:25.9963025Z   ✔ sets each side of a symbol to its maximum once, before the first open, at the minimum quantity (3.361698ms)
+2026-10-24T20:18:25.9964549Z   ✔ one-way mode sets BOTH; a fixed leverage is capped at the maximum (2.075973ms)
+2026-10-24T20:18:25.9966020Z   ✔ isolated margin caps the leverage so liquidation stays behind the widest protective stop (2.115567ms)
+2026-10-24T20:18:25.9967874Z   ✔ free-margin floor: below it (or unknown) nothing opens, held positions stay; above it opening resumes (5.03573ms)
+2026-10-24T20:18:25.9969788Z   ✔ open paused (coordination): nothing opens or grows, held positions stay, ended lanes still close (4.561292ms)
+2026-10-24T20:18:25.9991678Z   ✔ a refused leverage blocks opening, never closing; it is retried after the backoff only (2.623167ms)
+2026-10-24T20:18:25.9993512Z   ✔ minimum-quantity sizing: one unit is the symbol's exchange minimum, a Block volume of 2 is two minimums (2.456455ms)
+2026-10-24T20:18:25.9995081Z ✔ leverage: always the maximum, quantity at the exchange minimum (22.536224ms)
+2026-10-24T20:18:25.9995772Z ▶ volume factor: sizes follow volume × factor up to the per-position cap
+2026-10-24T20:18:25.9996864Z   ✔ plainOnly ignores the configured indication factor but still excludes a Block raise (0.235771ms)
+2026-10-24T20:18:26.0003259Z   ✔ below the cap a larger factor or volume is a larger position; at the cap it is flagged capped (0.401321ms)
+2026-10-24T20:18:26.0031603Z   ✔ regression (x01, $8.31 equity): a cap of 0.25 × equity at the exchange minimum makes every factor the same size (0.34779ms)
+2026-10-24T20:18:26.0033027Z   ✔ regression (x01): configs kept last step are held to the budget — a larger size drops the weakest, not squeezes all (0.371786ms)
+2026-10-24T20:18:26.0034015Z   ✔ live step: a higher factor opens larger positions on the exchange, the sizing summary names the capped ones (7.984876ms)
+2026-10-24T20:18:26.0034855Z ✔ volume factor: sizes follow volume × factor up to the per-position cap (9.579349ms)
+2026-10-24T20:18:26.0035646Z ▶ exposure scaler switch
+2026-10-24T20:18:26.0036797Z   ✔ off: the exposure multiple neither scales the positions nor bounds the fill; on: it does (5.300305ms)
+2026-10-24T20:18:26.0038358Z   ✔ the settings check takes true / false only (8.369215ms)
+2026-10-24T20:18:26.0039625Z ✔ exposure scaler switch (13.809351ms)
+2026-10-24T20:18:26.0040135Z ▶ live chain at x01 scale (568 configs, 50 symbols, $8.31 equity)
+2026-10-24T20:18:26.0041318Z   ✔ fill → targets: both directions, many positions within the budget, every size ≥ the minimum, sizes follow volume (3.943286ms)
+2026-10-24T20:18:26.0042345Z ✔ live chain at x01 scale (568 configs, 50 symbols, $8.31 equity) (4.042121ms)
+2026-10-24T20:18:26.0043267Z ▶ account positions: own and foreign apart
+2026-10-24T20:18:26.0044532Z   ✔ own sums take the own share only; a foreign position is counted apart; the stop and venue fields are read (0.665695ms)
+2026-10-24T20:18:26.0045482Z   ✔ the live step stamps the account with the own share and the foreign position apart (1.848077ms)
+2026-10-24T20:18:26.0046116Z ✔ account positions: own and foreign apart (2.629548ms)
+2026-10-24T20:18:26.5881316Z ▶ runtime disposal
+2026-10-24T20:18:26.5881927Z   ✔ a constructed, never started runtime is collectable after dispose (20.576039ms)
+2026-10-24T20:18:28.9804007Z [core-v2] compute #1 done in 2276 ms · sim PF including 0 open marks: 0.08 n 8 · loop max 101 ms (worst slice of the last 60 s 53 ms in Base, 1 over 40 ms)
+2026-10-24T20:18:29.0256698Z   ✔ a runtime that computed and stepped paper is collectable after stop → close the pool → dispose (2437.671691ms)
+2026-10-24T20:18:29.0904469Z   ✔ stop() alone keeps it reachable (what dispose is for) (66.916047ms)
+2026-10-24T20:18:29.0905704Z ✔ runtime disposal (2527.004139ms)
+2026-10-24T20:18:29.7156109Z ▶ execution accounting integrity
+2026-10-24T20:18:29.7157834Z   ✔ execution quantity is independent of price and explicit zero or nonfilled status never means a full fill (1.757089ms)
+2026-10-24T20:18:29.7160139Z   ✔ an unfilled accepted entry owns zero, submits no phantom stop, and settles the same order without duplicates (31.644945ms)
+2026-10-24T20:18:29.7162830Z   ✔ an explicit partial quantity with no average price books and protects only that executed quantity (4.038511ms)
+2026-10-24T20:18:29.7164403Z   ✔ a pending close keeps protection and ownership until the same venue order actually executes (7.740361ms)
+2026-10-24T20:18:29.7166068Z   ✔ a continuing partial entry replaces cumulative quantity instead of adding it or submitting the remainder twice (5.76883ms)
+2026-10-24T20:18:29.7167619Z   ✔ a protective close books only its actual partial fill and leaves the remainder owned (5.001423ms)
+2026-10-24T20:18:29.7192026Z   ✔ a protective short close books only its actual partial fill and leaves the remainder owned (4.68446ms)
+2026-10-24T20:18:29.7193644Z   ✔ a protective close accepted with zero fills is not sent again while its execution remains pending (5.579966ms)
+2026-10-24T20:18:29.7194903Z   ✔ entry-stop emergency close distinguishes venue-reject from an actual execution (5.092675ms)
+2026-10-24T20:18:29.7195707Z   ✔ entry-stop emergency close distinguishes network-unknown from an actual execution (5.424395ms)
+2026-10-24T20:18:29.7196579Z   ✔ stop-repair emergency close distinguishes venue-reject from an actual execution (4.938546ms)
+2026-10-24T20:18:29.7198326Z   ✔ stop-repair emergency close distinguishes network-unknown from an actual execution (5.355117ms)
+2026-10-24T20:18:29.7200502Z   ✔ a stopped partial entry preserves its original record and books its known stop once (cancelled) (15.876885ms)
+2026-10-24T20:18:29.7202547Z   ✔ a stopped partial entry preserves its original record and holds ambiguous later growth (growth-flat) (5.820988ms)
+2026-10-24T20:18:29.7204122Z   ✔ a stopped partial entry preserves its original record and holds ambiguous later growth (growth-visible) (5.26634ms)
+2026-10-24T20:18:29.7205715Z   ✔ a cancelled zero-fill close cannot hide the protective stop that actually emptied the position (4.773768ms)
+2026-10-24T20:18:29.7207230Z   ✔ a cancelled partial-fill close cannot hide the protective stop that actually emptied the position (4.786131ms)
+2026-10-24T20:18:29.7208741Z   ✔ a clamped reported overfill charges only the owned fill's proportional commission (2.511101ms)
+2026-10-24T20:18:29.7215510Z   ✔ a restart after a lost entry reply owns zero until venue history confirms the journaled client id (6.855675ms)
+2026-10-24T20:18:29.7218137Z   ✔ an account snapshot keeps its original read time while the control and caches keep running (2.951406ms)
+2026-10-24T20:18:29.7221590Z   ✔ the real fill price and commission survive a crash between snapshots with the order ledger (4.393035ms)
+2026-10-24T20:18:29.7224312Z   ✔ keeps measured commission 0.05 across a same-fill sparse Overall poll, without certifying changed fills (6.937819ms)
+2026-10-24T20:18:29.7227679Z   ✔ keeps measured commission 0 across a same-fill sparse Overall poll, without certifying changed fills (4.900775ms)
+2026-10-24T20:18:29.7231300Z   ✔ overall native fills distinguish measured zero from missing commissions after journal recovery (7.502366ms)
+2026-10-24T20:18:29.7233640Z ✔ execution accounting integrity (161.953678ms)
+2026-10-24T20:18:30.1209641Z ▶ account exposure factor
+2026-10-24T20:18:30.1211282Z   ✔ scales every target by the same factor down to maxX × equity, long and short alike (1.293662ms)
+2026-10-24T20:18:30.1219426Z   ✔ inside the limit, without equity or with the factor off: unchanged (0.216586ms)
+2026-10-24T20:18:30.1230558Z   ✔ a scaled target is snapped to the exchange and never drops below its minimum (0.240911ms)
+2026-10-24T20:18:30.1231604Z ✔ account exposure factor (3.036104ms)
+2026-10-24T20:18:30.5863214Z ▶ late owned venue commissions
+2026-10-24T20:18:30.5864874Z   ✔ reconciles after hard protection; a failed fee-history read never loses an owned fill or its stop (25.816574ms)
+2026-10-24T20:18:30.5866875Z   ✔ matches case-insensitive own IDs, actual cumulative scope and explicit zero fees (2.871246ms)
+2026-10-24T20:18:30.5873017Z   ✔ does not apply a larger cumulative fee, wrong price, wrong symbol/side or unknown commission (7.48834ms)
+2026-10-24T20:18:30.5894403Z   ✔ never overwrites an already measured commission from a sparse or contradictory old receipt (1.371617ms)
+2026-10-24T20:18:30.5895772Z ✔ late owned venue commissions (39.036513ms)
+2026-10-24T20:18:31.2328811Z ✔ Inverse joins the factory Focus and upgrades only the former factory selection, including presets (117.376452ms)
+2026-10-24T20:18:31.2334202Z ✔ the published 102-identity factory selection upgrades at v37 without changing custom or off selections (11.630004ms)
+2026-10-24T20:18:31.2339174Z ✔ the exact pre-context factory upgrades once while custom, reordered, off and disabled choices survive (19.19148ms)
+2026-10-24T20:18:31.2345664Z ✔ the saved 939-entry Micro factory upgrades once, preserving custom/off choices and disabled types (15.357803ms)
+2026-10-24T20:18:31.6754762Z ▶ control completeness (keyFunnel)
+2026-10-24T20:18:31.6755642Z   ✔ names the reason every key without a target lacks one; targets first by paper lanes (2.122393ms)
+2026-10-24T20:18:31.6760574Z   ✔ lanes held back by the signal proof are named when they are most of the lanes not sent (0.285395ms)
+2026-10-24T20:18:31.6766514Z   ✔ positionSize min: a key whose sent lanes Block raised says Block does nothing on the exchange (0.337532ms)
+2026-10-24T20:18:31.6769483Z ✔ control completeness (keyFunnel) (3.999718ms)
+2026-10-24T20:18:32.6207974Z ✔ a losing pooled run cannot veto a qualified native lane; its losing owned sibling still cannot open (24.441248ms)
+2026-10-24T20:18:32.6228254Z ▶ strict live promotion uses two settled independent evidence axes
+2026-10-24T20:18:32.6229693Z   ✔ rejects winning raw candidate tapes when post-Base accepted returns lose; removes external volume once (29.475043ms)
+2026-10-24T20:18:32.6231870Z   ✔ requires owned execution even with sufficient winning post-Base results; nominal attributed lanes cannot prove funding (11.811443ms)
+2026-10-24T20:18:32.6237579Z   ✔ qualifies only the exact config, timeframe/range, symbol and direction with both complete positive windows (14.152076ms)
+2026-10-24T20:18:32.6240604Z   ✔ a stale selected measurement config cannot promote outside its current Base-qualified pair/range (12.298535ms)
+2026-10-24T20:18:32.6243757Z   ✔ a stale selected cell cannot borrow a passing sibling's Base proof at native admission (10.152167ms)
+2026-10-24T20:18:32.6247296Z   ✔ native promotion preserves explicit independent untagged ladder admission without qualifying plain Wide or failed pairs (94.944474ms)
+2026-10-24T20:18:32.6251737Z   ✔ a stale active Signal cannot borrow old native proof after its own latest context fails (8.843797ms)
+2026-10-24T20:18:32.6256914Z   ✔ winning long candidate history cannot promote an unvalidated short despite separate positive execution records (7.144345ms)
+2026-10-24T20:18:32.6260463Z   ✔ symbol warmup cannot promote a symbol absent from current candidate evidence despite positive owned records (8.083083ms)
+2026-10-24T20:18:32.6263927Z   ✔ a previously selected engine config must still pass current Last-N when native execution requests it (8.696782ms)
+2026-10-24T20:18:32.6267098Z   ✔ retains unknown, zero and dust funding inside the chronological last-N window (27.260747ms)
+2026-10-24T20:18:32.6270396Z   ✔ does not use future closes or endpoint marks as settled promotion evidence (7.688184ms)
+2026-10-24T20:18:32.6273851Z   ✔ uses record versions and array identity caches without rescanning history on every live lane (11.241546ms)
+2026-10-24T20:18:32.6277415Z   ✔ recomputes a reference's CURRENT last N from its exact settled returns instead of clipping an aggregate PF (25.084894ms)
+2026-10-24T20:18:32.6280734Z ✔ strict live promotion uses two settled independent evidence axes (278.121527ms)
+2026-10-24T20:18:32.6292200Z ▶ strict proof helpers fail closed
+2026-10-24T20:18:32.6293365Z   ✔ checks current N, nonfinite PF, unknowns, causal windows, explicit expiry and no-loss convention independently of callers (0.721811ms)
+2026-10-24T20:18:32.6295723Z   ✔ group windows preserve unknown returns rather than changing them to zero (0.632585ms)
+2026-10-24T20:18:32.6300043Z   ✔ rejects malformed/overflowed local cumulative returns and invalid chronological records (0.334126ms)
+2026-10-24T20:18:32.6306078Z   ✔ canonical exact records retain unknown owned funding and normalize each external multiplier once (0.300082ms)
+2026-10-24T20:18:32.6308061Z   ✔ does not turn missing/invalid identity fields into winning short evidence or skip their recent unknowns (0.516567ms)
+2026-10-24T20:18:32.6310828Z   ✔ newer local losing or unknown owned closes cannot be hidden by a still-valid old reference (0.321402ms)
+2026-10-24T20:18:32.6313179Z ✔ strict proof helpers fail closed (3.184712ms)
+2026-10-24T20:18:32.6321340Z ▶ native live boundary preserves held protection without unproven growth
+2026-10-24T20:18:32.6325196Z   ✔ blocks missing promotion evidence, prevents resizing a held share upward, and still closes it (8.607025ms)
+2026-10-24T20:18:32.6326868Z ✔ native live boundary preserves held protection without unproven growth (8.702563ms)
+2026-10-24T20:18:32.6339437Z ▶ paper entry allocation provenance
+2026-10-24T20:18:32.6342151Z   ✔ a lower explicit Live PF cannot relax the post-Base range floor for paper entries (14.528641ms)
+2026-10-24T20:18:32.6343981Z   ✔ continues eligible paper learning before live proof and freezes only the newly measured allocation (13.141764ms)
+2026-10-24T20:18:32.6346894Z   ✔ persists frozen known adoption allocation across restart, excludes legacy/recomputed units and unconfirmed growth (81.737769ms)
+2026-10-24T20:18:32.6348847Z ✔ paper entry allocation provenance (109.602517ms)
+2026-10-24T20:18:38.2541540Z [core-v2] compute #1 done in 3917 ms · sim PF including 12 open marks: 0.50 n 73 · loop max 91 ms (worst slice of the last 60 s 69 ms in Base, 2 over 40 ms)
+2026-10-24T20:18:42.0169194Z ▶ memory released after use, results unchanged
+2026-10-24T20:18:42.0171669Z   ✔ after a compute: no indicator memo left on the universe, the swap released the old index and books, no by_sym (7863.844561ms)
+2026-10-24T20:18:45.6873132Z [core-v2] compute #1 done in 3553 ms · sim PF including 12 open marks: 0.50 n 73 · loop max 81 ms (worst slice of the last 60 s 51 ms in Tapes, 1 over 40 ms)
+2026-10-24T20:18:48.6311967Z   ▶ a compute aborted in Exit or Signal history still clears the memos (worker and local fallback)
+2026-10-24T20:18:48.6312594Z     ✔ Exit history: worker (6613.845295ms)
+2026-10-24T20:18:52.3094284Z [core-v2] compute #1 done in 3539 ms · sim PF including 12 open marks: 0.50 n 73 · loop max 77 ms (worst slice of the last 60 s 48 ms in Tapes, 1 over 40 ms)
+2026-10-24T20:18:55.2404400Z     ✔ Exit history: fallback (6608.919495ms)
+2026-10-24T20:18:58.8795811Z [core-v2] compute #1 done in 3519 ms · sim PF including 12 open marks: 0.50 n 73 · loop max 83 ms (worst slice of the last 60 s 41 ms in Tapes, 1 over 40 ms)
+2026-10-24T20:19:01.9554614Z     ✔ Signal history: worker (6713.891562ms)
+2026-10-24T20:19:05.6751978Z [core-v2] compute #1 done in 3597 ms · sim PF including 12 open marks: 0.50 n 73 · loop max 73 ms (worst slice of the last 60 s 43 ms in Tapes, 1 over 40 ms)
+2026-10-24T20:19:08.6391982Z     ✔ Signal history: fallback (6680.044423ms)
+2026-10-24T20:19:08.6394509Z   ✔ a compute aborted in Exit or Signal history still clears the memos (worker and local fallback) (26618.813226ms)
+2026-10-24T20:19:08.6924604Z   ✔ the status' tape size memo does not hold a tape set the runtime replaced (23.861643ms)
+2026-10-24T20:19:08.7231615Z   ✔ the runtime's candles are columns: four complete configured histories add under 4 MB of heap (50.153548ms)
+2026-10-24T20:19:08.7232569Z   ✔ the boot loader streams the candles: the same map, the same symbol order, the same values (16.186988ms)
+2026-10-24T20:19:09.7716989Z ✔ memory released after use, results unchanged (36599.064647ms)
+2026-10-24T20:19:09.7719995Z ▶ signal acceptance record
+2026-10-24T20:19:09.7721455Z   ✔ counts are 4-byte integers and every query answers as the reference does (36.267977ms)
+2026-10-24T20:19:09.7723272Z ✔ signal acceptance record (36.53202ms)
+2026-10-24T20:19:10.0287528Z ▶ memory guard
+2026-10-24T20:19:10.0311397Z   ✔ detects V8 heap pressure independently of spare host RAM (1.363686ms)
+2026-10-24T20:19:10.0331140Z   ✔ reads MemAvailable and grades the pressure (1.813135ms)
+2026-10-24T20:19:10.0341758Z   ✔ steps the fallback up under pressure and back down after three clean computes with room (1.494771ms)
+2026-10-24T20:19:10.0343457Z   ✔ soft pressure: a forced collection at most every 30 s, and only after the heap grew (0.239868ms)
+2026-10-24T20:19:10.0345225Z   ✔ after aborts at the lightest level the next compute waits 15 s doubling to 10 min; lighter levels go on (0.233045ms)
+2026-10-24T20:19:10.0346981Z   ✔ a lighter compute drops micro, then minimal too; other ranges and the wide grid stay (0.357167ms)
+2026-10-24T20:19:10.5546087Z   ✔ aborting the workers rejects a running call with the reason (315.829101ms)
+2026-10-24T20:19:10.5546962Z ✔ memory guard (323.501248ms)
+2026-10-24T20:19:10.5550914Z ▶ allocator settings
+2026-10-24T20:19:10.5552264Z   ✔ warns on Linux when the arena cap or the mmap threshold is missing; quiet when both are set or elsewhere (0.485967ms)
+2026-10-24T20:19:10.5553542Z ✔ allocator settings (0.776249ms)
+2026-10-24T20:19:10.5557143Z ▶ memory guard: the cgroup's limit, not only the host's
+2026-10-24T20:19:10.5558359Z   ✔ reads cgroup v1 and v2 limits, counts inactive page cache as free, and ignores an unlimited cgroup (0.640085ms)
+2026-10-24T20:19:10.5560067Z ✔ memory guard: the cgroup's limit, not only the host's (0.857832ms)
+2026-10-24T20:19:10.5564080Z ▶ memory fallback: partial processing carries a range, never switches it off
+2026-10-24T20:19:10.5565417Z   ✔ a carried range keeps its previous tapes in the new set; rebuilt ids and signal tapes are not duplicated (216.573027ms)
+2026-10-24T20:19:10.5566519Z ✔ memory fallback: partial processing carries a range, never switches it off (216.732856ms)
+2026-10-24T20:19:12.0234698Z ▶ private serial realtime worker
+2026-10-24T20:19:12.0236484Z   ✔ rejects overlap, terminates timed-out work and resumes without affecting another owner (1132.572634ms)
+2026-10-24T20:19:13.2634813Z   ✔ matches local protection/mark math on 20 symbols, Long/Short and 1/5/15m across retained frames (1248.484716ms)
+2026-10-24T20:19:13.4819372Z   ✔ publishes every repaired trailing-only control from the worker, including legacy TP/free flags (220.06208ms)
+2026-10-24T20:19:13.4840014Z ✔ private serial realtime worker (2605.171465ms)
+2026-10-24T20:19:13.6921572Z ▶ Base partition across workers
+2026-10-24T20:19:13.6923623Z   ✔ every combo goes to exactly one part (2.398709ms)
+2026-10-24T20:19:13.6938644Z   ✔ one indication's combos are never split across parts (contiguous after the sort) (0.446716ms)
+2026-10-24T20:19:13.6941728Z   ✔ the parts are of equal size, up to one (0.278171ms)
+2026-10-24T20:19:13.6943336Z   ✔ no combos gives empty parts; one part is everything (0.335067ms)
+2026-10-24T20:19:13.6945424Z ✔ Base partition across workers (5.125342ms)
+2026-10-24T20:19:14.3568211Z ▶ one worker pool across duplicate server module copies
+2026-10-24T20:19:14.3572936Z   ✔ hands an actual worker from one module's routine job to another module's queued job (449.93295ms)
+2026-10-24T20:19:14.8694219Z   ✔ serves cross-module priority waiters before routine work at the same unchanged worker limits (513.886851ms)
+2026-10-24T20:19:14.8766472Z   ✔ shares watchdog activity and abort reasons, rejecting running and queued work in both modules (9.482827ms)
+2026-10-24T20:19:15.1070131Z   ✔ another module's abort rejects an already successful reply before any remaining part can start (230.613799ms)
+2026-10-24T20:19:15.1081204Z ✔ one worker pool across duplicate server module copies (1206.169132ms)
+2026-10-24T20:19:16.1204062Z ✔ a second owned spawn failure drains the first lane and its thread before rejecting, preserving another owner (811.344277ms)
+2026-10-24T20:19:17.5256103Z ▶ preset backtest Base
+2026-10-24T20:19:17.5257016Z   ✔ a pair that fails the Base gate never enters Main on the workers (883.754637ms)
+2026-10-24T20:19:18.0151369Z   ✔ the worker path and the in-process path give the same Main (487.718703ms)
+2026-10-24T20:19:18.0252643Z   ✔ evaluates Signal Exit sources through the independent Exit Base stage on workers and locally (42.244199ms)
+2026-10-24T20:19:18.3623672Z ✔ preset backtest Base (1434.132728ms)
+2026-10-24T20:19:18.3629415Z ▶ Base pass (the compute's and the preset backtest's rule)
+2026-10-24T20:19:18.3631397Z   ✔ a pair builds the ranges and targets it passed, and Micro only on its own indications (0.829351ms)
+2026-10-24T20:19:18.3640497Z ✔ Base pass (the compute's and the preset backtest's rule) (1.027182ms)
+2026-10-24T20:19:18.3646785Z ▶ preset backtest combos
+2026-10-24T20:19:18.3648005Z   ✔ Minimal on Micro's indications: every lane of a Micro pair; Micro alone: its 5m floor (223.993329ms)
+2026-10-24T20:19:18.3649192Z ✔ preset backtest combos (224.294884ms)
+2026-10-24T20:19:22.6536081Z ▶ preset backtest tapes
+2026-10-24T20:19:22.6537884Z   ✔ a fixed focus set passes Base before building only its admitted ranges, keeping the Micro rule (4246.541091ms)
+2026-10-24T20:19:26.0266872Z   ✔ after Base, a pair's tapes are only in the ranges it passed (3510.880252ms)
+2026-10-24T20:19:26.0268284Z ✔ preset backtest tapes (7758.539617ms)
+2026-10-24T20:19:26.5681567Z ▶ realtime market loop
+2026-10-24T20:19:26.5682400Z   ✔ polls a finalized candle after a short publication grace, not after a second full timeframe (0.931995ms)
+2026-10-24T20:19:26.8374087Z   ✔ pulls closed bars during a compute, marks them for the next cycle, and never two pulls at once (203.420154ms)
+2026-10-24T20:19:27.2249216Z   ✔ progressive start: a loaded batch's bars keep up while the next batch loads (458.777583ms)
+2026-10-24T20:19:27.2253407Z   ✔ a klines ban is held to the klines endpoint: the pull waits it out, the live step goes on (11.464566ms)
+2026-10-24T20:19:29.4351378Z   ✔ paces the bar pull: two asks at a time, a symbol with no new bar backed off, a ban's end not a burst (2210.694004ms)
+2026-10-24T20:19:29.4353437Z   ✔ the gap repair sends nothing during a klines ban (its history pages are the klines endpoint) (7.892307ms)
+2026-10-24T20:19:29.4355225Z ✔ realtime market loop (2894.914585ms)
+2026-10-24T20:19:31.4140435Z ▶ background Real worker
+2026-10-24T20:19:31.4142764Z   ✔ matches every full-history result, loss, feed and validation field on 20 symbols and 1/5/15m (1462.395596ms)
+2026-10-24T20:19:31.6565047Z   ✔ runtime routes live research through the worker and preserves the exact result (274.215053ms)
+2026-10-24T20:19:31.6568063Z ✔ background Real worker (1738.205405ms)
+2026-10-24T20:19:32.2369452Z ✔ fresh Signals and Exit use 150h / Last-4 while keeping 1m candles and fitting samples (23.512914ms)
+2026-10-24T20:19:32.2375059Z ✔ upgrades old saved settings and presets once, preserves custom choices and a backup (30.779534ms)
+2026-10-24T20:19:32.2381741Z ✔ backs up and upgrades saved 100h desks/presets once without changing custom horizons (14.882072ms)
+2026-10-24T20:19:33.7553411Z ▶ durable state
+2026-10-24T20:19:33.7554564Z   ✔ persists durable keys across a restart and ignores the rest (1308.323374ms)
+2026-10-24T20:19:33.7561316Z   ✔ restoring an older snapshot never rolls newer durable keys back (10.854156ms)
+2026-10-24T20:19:34.7557389Z [core-v2] state file not writable (EACCES: permission denied, mkdir '/tmp/cts-ro-EudhUf/ro/x') — durable state unavailable
+2026-10-24T20:19:35.0564924Z   ✔ a read-only location falls back to memory without throwing (1302.226611ms)
+2026-10-24T20:19:35.0572616Z ✔ durable state (2623.507137ms)
+2026-10-24T20:19:35.4389207Z ▶ exact Signal acceptance prefix fast path
+2026-10-24T20:19:35.4391613Z   ✔ lazily reconstructs exact causal windows, partial-close counts and forked updates without expanding every context (4.824192ms)
+2026-10-24T20:19:35.4393755Z   ✔ evicts derived groups without losing evidence or changing a reconstructed result (51.067483ms)
+2026-10-24T20:19:35.4398910Z   ✔ matches every generic prefix byte and causal window with both directions, repeated onsets and partial closes (2.503287ms)
+2026-10-24T20:19:35.4402105Z   ✔ falls back for duplicate exact configs and merges their interleaved closes with stable onset de-duplication (0.641093ms)
+2026-10-24T20:19:35.4404388Z   ✔ retains generic sorting for unordered exact tapes and pooled diagnostics (0.615425ms)
+2026-10-24T20:19:35.4410885Z   ✔ counts every close without onset evidence and leaves unit returns independent of execution volumes (0.484318ms)
+2026-10-24T20:19:35.4415113Z   ✔ retains duplicate-symbol alias aggregation and excludes retained duplicates from eligibility (1.052484ms)
+2026-10-24T20:19:35.4416891Z ✔ exact Signal acceptance prefix fast path (62.832927ms)
+2026-10-24T20:19:35.9991959Z ▶ Signals: independent protection discovery
+2026-10-24T20:19:36.0001698Z   ✔ computes own histories even when the unrelated representative has fewer than three closes (116.621366ms)
+2026-10-24T20:19:36.0003425Z   ✔ keeps explicit representative Base gates, initialization and family/configuration restrictions (0.467907ms)
+2026-10-24T20:19:36.0005043Z   ✔ preserves configured floors and accounts for raw-to-effective protection aliases (2.002367ms)
+2026-10-24T20:19:36.3425861Z   ✔ workers and local calculation preserve every effective type without representative pruning (377.736509ms)
+2026-10-24T20:19:36.3430531Z ✔ Signals: independent protection discovery (498.578013ms)
+2026-10-24T20:19:36.8578031Z ✔ Signal proof retains unknown legacy/funded losses and never substitutes volume or a nonfinite multiplier (26.695086ms)
+2026-10-24T20:19:36.8589702Z ✔ a recent unknown exchange Signal return cannot fall back to older known paper wins (0.291888ms)
+2026-10-24T20:19:37.1828227Z ▶ activeSignals report
+2026-10-24T20:19:37.1829184Z   ✔ the active set is the same with and without the collector (3.057703ms)
+2026-10-24T20:19:37.1832598Z   ✔ each test is reported for its unit, on both sides (0.365975ms)
+2026-10-24T20:19:37.1839184Z   ✔ a long and a short with the same record get the same verdict; a ranked-out unit is 'cap' (0.295774ms)
+2026-10-24T20:19:37.1842299Z   ✔ summarizeActivation counts per direction and per reason (0.265377ms)
+2026-10-24T20:19:37.1845923Z   ✔ a pooled record (no sides) is one unit with side 0 (0.186319ms)
+2026-10-24T20:19:37.1851131Z   ✔ activationEnd keeps counts and the ten long units with the most net, best first (0.499214ms)
+2026-10-24T20:19:37.1890688Z ✔ activeSignals report (6.077195ms)
+2026-10-24T20:19:37.8178839Z ▶ independent signal qualification
+2026-10-24T20:19:37.8179533Z   ✔ empty or losing Trailing configs cannot dilute a winning Normal type (4.603496ms)
+2026-10-24T20:19:37.8183671Z   ✔ a winning Trailing type cannot qualify its losing Normal sibling, including hedge selection (0.727822ms)
+2026-10-24T20:19:37.8186564Z   ✔ Normal and Trailing remain distinct through simulation, live filtering and seated statistics (16.435541ms)
+2026-10-24T20:19:37.8191079Z   ✔ legacy Base/discovery keys never authorize any unmeasured strategy type (0.355385ms)
+2026-10-24T20:19:37.8198683Z   ✔ malformed directions never borrow an independently qualified long or short key (9.762613ms)
+2026-10-24T20:19:37.8200569Z   ✔ an untyped recovered key supplies no execution, live or seated evidence (8.062901ms)
+2026-10-24T20:19:37.8206934Z   ✔ same-type empty or losing protects cannot deactivate an independently winning config (0.500296ms)
+2026-10-24T20:19:37.8208893Z   ✔ same-type losing protects cannot satisfy or veto another config's acceptance PF (1.364324ms)
+2026-10-24T20:19:37.8210859Z   ✔ paper seats only the exact independently active protection config (32.179119ms)
+2026-10-24T20:19:37.8213069Z   ✔ Signal last-N cannot borrow another symbol or direction even with the engine entry gate off (7.908312ms)
+2026-10-24T20:19:37.8214917Z   ✔ retained exit-only configs never reactivate or seed another config's sample (9.813718ms)
+2026-10-24T20:19:37.8218839Z   ✔ cached Signal eligibility follows an in-place transition to held-only and back (14.339548ms)
+2026-10-24T20:19:37.8221752Z   ✔ a retained activation verdict cannot replace a config's own minimum PF (6.75295ms)
+2026-10-24T20:19:37.8251953Z   ✔ winning parameter ranges and lanes cannot supply another signal set's minimum PF (0.402113ms)
+2026-10-24T20:19:37.8286696Z ✔ independent signal qualification (115.251612ms)
+2026-10-24T20:19:38.2231249Z ▶ Axis: every configured set
+2026-10-24T20:19:38.2232535Z   ✔ one mode as before: range types × ladder depths (1.016823ms)
+2026-10-24T20:19:38.2235394Z   ✔ every mode, range type, ladder depth and desk plain + hybrid, each with its own id (0.344525ms)
+2026-10-24T20:19:38.2241366Z   ✔ revert with fixed exits: one set per protect, beside the desk sets (0.228858ms)
+2026-10-24T20:19:38.2250397Z   ✔ settings check: modes, hybrids, ladder depths (1.988121ms)
+2026-10-24T20:19:38.2251262Z ✔ Axis: every configured set (4.889462ms)
+2026-10-24T20:19:38.6252373Z ▶ Strategy Base diagnostic and runtime parity
+2026-10-24T20:19:38.6253719Z   ✔ applies the configured minimum DDT allowance to short validation windows (18.866642ms)
+2026-10-24T20:19:38.6262965Z ✔ Strategy Base diagnostic and runtime parity (19.830496ms)
+2026-10-24T20:19:39.2343256Z ▶ Block sources
+2026-10-24T20:19:39.2344396Z   ✔ level = count of positive last-n sums (1.118844ms)
+2026-10-24T20:19:39.2346384Z   ✔ unknown units and overflow cannot raise a window, while finite shorter windows remain independent (0.226374ms)
+2026-10-24T20:19:39.2349781Z   ✔ levelMinWin: seven losses and one big win are level 8 on the sum, no level with a win share (0.760203ms)
+2026-10-24T20:19:39.2353527Z   ✔ poolSignals off: signal closes stay out of the pooled sources (their config's pause still counts down) (1.702596ms)
+2026-10-24T20:19:39.2356835Z   ✔ poolDedupe: the same close under two indication names counts once in the pooled sources (2.049546ms)
+2026-10-24T20:19:39.2360468Z   ✔ windowHours: a pooled source's window scales with its own activity (39.236678ms)
+2026-10-24T20:19:39.2364325Z   ✔ an accepted-orders book (the default history) takes accepted orders only, with the pooled-feed options (0.370443ms)
+2026-10-24T20:19:39.2367823Z   ✔ keeps symbol, direction and indication independent (0.47534ms)
+2026-10-24T20:19:39.2372005Z   ✔ exact indication IDs, timeframe lanes and sides keep independent levels and pauses (0.408535ms)
+2026-10-24T20:19:39.2375230Z   ✔ long histories keep the right tail (1.887403ms)
+2026-10-24T20:19:39.2380804Z   ✔ defaults to the config set only; shared = max, additive = sum (0.479708ms)
+2026-10-24T20:19:39.2386104Z   ✔ execDecision uses the enabled sources; volume stays capped by max multiple (13.142328ms)
+2026-10-24T20:19:39.2388190Z   ✔ the book judges unit results (the Block multiplier does not feed back) (0.349634ms)
+2026-10-24T20:19:39.2389693Z ✔ Block sources (64.332138ms)
+2026-10-24T20:19:39.2414317Z ▶ Block types, Active, steps and pause
+2026-10-24T20:19:39.2417645Z   ✔ shared = strongest source, additive = sum, both one raise (0.38486ms)
+2026-10-24T20:19:39.2422693Z   ✔ Shared accepts any valid independent source, without requiring a losing or paused sibling to qualify (0.346759ms)
+2026-10-24T20:19:39.2424670Z   ✔ ratio 0.2 adds 20% per passing level before the explicit step grid and one aggregate cap (0.26674ms)
+2026-10-24T20:19:39.2427057Z   ✔ an explicit higher Shared ratio changes only Shared, while an unset override preserves existing configs (0.353702ms)
+2026-10-24T20:19:39.2428730Z   ✔ overall: every source (overall, symbol, direction, indication) is its own Block with its own position (0.407322ms)
+2026-10-24T20:19:39.2429862Z   ✔ Active skips every entry below its min level (shared / additive / overall) (0.154199ms)
+2026-10-24T20:19:39.2433281Z   ✔ every source shares the configured total cap, including fractional rounding and repeated decisions (0.676977ms)
+2026-10-24T20:19:39.2437927Z   ✔ the config level uses only the candidate's own symbol and direction, retaining its losses (9.264921ms)
+2026-10-24T20:19:39.2446024Z   ✔ the exact config source retains invalid units and sum overflow instead of raising additional levels (0.461654ms)
+2026-10-24T20:19:39.2448331Z   ✔ a config pause affects only its own symbol and side, and siblings cannot consume it (0.227987ms)
+2026-10-24T20:19:39.2450786Z   ✔ volume steps never inflate the ratio: positive substeps stay exact and larger raises round down (0.144741ms)
+2026-10-24T20:19:39.2453660Z   ✔ stepFloor off: a leg is the nearest step of ratio × level, never a forced full unit (0.232355ms)
+2026-10-24T20:19:39.2456781Z   ✔ maxMult caps the total stack in every type (shared, additive, overall) (0.378348ms)
+2026-10-24T20:19:39.2460488Z   ✔ volume quantization preserves every positive substep and never exceeds requested extra volume or the cap (0.688429ms)
+2026-10-24T20:19:39.2463635Z   ✔ recorded six-decimal raises never round dust or fractional micro-units above the requested addition (0.430196ms)
+2026-10-24T20:19:39.2466979Z   ✔ pause: a positive raised close pauses its sources for N closes, then the level is recalculated (0.24074ms)
+2026-10-24T20:19:39.2470507Z   ✔ execDecision end to end: overall type with Overall, Symbol, Direction and Indication sources (5.459688ms)
+2026-10-24T20:19:39.2472397Z ✔ Block types, Active, steps and pause (20.892594ms)
+2026-10-24T20:19:39.2478604Z ▶ Block pooled window
+2026-10-24T20:19:39.2479795Z   ✔ the book judges pooled sources on n × window closes and keeps that much tail (3.134617ms)
+2026-10-24T20:19:39.2481419Z ✔ Block pooled window (3.227981ms)
+2026-10-24T20:19:39.2488983Z ▶ Block accepted Real order evidence
+2026-10-24T20:19:39.2491424Z   ✔ skipped profitable candidates never become accepted config or pooled evidence; accepted losses remain (1.012004ms)
+2026-10-24T20:19:39.2493639Z   ✔ open marks cannot seed accepted history and filtering Block leaves signal candidate learning intact (0.477283ms)
+2026-10-24T20:19:39.2499348Z   ✔ Normal may bootstrap accepted history, while empty Block Active cannot invent a level or bypass via base PF (0.481561ms)
+2026-10-24T20:19:39.2501066Z ✔ Block accepted Real order evidence (2.16902ms)
+2026-10-24T20:19:39.2508213Z ▶ AutoBlockBook (windowAuto)
+2026-10-24T20:19:39.2509749Z   ✔ scores the actual Active threshold: inactive Block raises any positive level, Active keeps its minimum (0.451635ms)
+2026-10-24T20:19:39.2512230Z   ✔ the production and audit book factory passes the actual Block Active toggle (0.284593ms)
+2026-10-24T20:19:39.2515070Z   ✔ Additive scores a combined passing level even when no single source reaches the Active minimum (0.255919ms)
+2026-10-24T20:19:39.2518210Z   ✔ auto-window eligibility honors exact source pauses, zero ratio and a unit-only stack cap (0.428122ms)
+2026-10-24T20:19:39.2520497Z   ✔ each candidate window pauses its own raising source, retaining causal source stamps for replay (0.495077ms)
+2026-10-24T20:19:39.2523403Z   ✔ accepted-only auto windows cannot score skipped wins and can read the exact accepted config record (0.256641ms)
+2026-10-24T20:19:39.2525998Z   ✔ keeps the configured window until every candidate has 30 raised closes (0.578813ms)
+2026-10-24T20:19:39.2529899Z   ✔ picks the window whose levels raised the better closes (runs of 10 winners, 10 losers) (46.549514ms)
+2026-10-24T20:19:39.2532593Z   ✔ an unknown raised unit return stays in the auto-window sample and cannot become a no-loss score (0.397734ms)
+2026-10-24T20:19:39.2552114Z   ✔ overflow in known auto-window returns remains an unavailable score, not an infinite winning PF (0.348522ms)
+2026-10-24T20:19:39.2553816Z   ✔ scores each window on its level at the candidate's entry, not at its exit (2.075485ms)
+2026-10-24T20:19:39.2555441Z   ✔ a run's feed carries the stamps: its replay scores the windows at the entries (32.813436ms)
+2026-10-24T20:19:39.2558566Z   ✔ blockBookOf: fixed window unless windowAuto (0.228719ms)
+2026-10-24T20:19:39.2559745Z   ✔ tailSum reads the same feed as the fixed book (3.688994ms)
+2026-10-24T20:19:39.2560889Z ✔ AutoBlockBook (windowAuto) (89.582526ms)
+2026-10-24T20:19:39.2561521Z ▶ Direction gate (sideGateN)
+2026-10-24T20:19:39.2562596Z   ✔ a side whose last N candidates sum negative opens nothing; the other side still opens (0.585416ms)
+2026-10-24T20:19:39.2565859Z   ✔ opens while the side has fewer than N candidates, and again once they recover (0.273071ms)
+2026-10-24T20:19:39.2567334Z   ✔ works with Block on and an explicit empty raw record without a Block book (0.231924ms)
+2026-10-24T20:19:39.2568406Z ✔ Direction gate (sideGateN) (1.315122ms)
+2026-10-24T20:19:39.2571512Z ▶ Signal direction acceptance (signalSideAccept)
+2026-10-24T20:19:39.2572855Z   ✔ a side whose pooled signal record is below the PF opens no signal; the other side still opens (0.928538ms)
+2026-10-24T20:19:39.2574714Z   ✔ too few closes: judged on twice the hours, still too few = valid; old closes leave both windows (0.36864ms)
+2026-10-24T20:19:39.2576789Z   ✔ the direction groups pool the run's fed candidates, never the tape record (acceptance index) (1.286287ms)
+2026-10-24T20:19:39.2578401Z ✔ Signal direction acceptance (signalSideAccept) (2.749225ms)
+2026-10-24T20:19:39.7160935Z ▶ coordination volume factors
+2026-10-24T20:19:39.7162054Z   ✔ keeps Signal short and medium range volume factors independent from engine ranges (0.875899ms)
+2026-10-24T20:19:39.7165905Z   ✔ applies the matching Signal range factor to its own Normal and Trailing execution (14.469322ms)
+2026-10-24T20:19:39.7171740Z   ✔ uses the configured relation increment while respecting its cap and the Block ceiling (8.130317ms)
+2026-10-24T20:19:39.7175148Z   ✔ applies the hedge factor only to Signal entries selected from losing hours (17.452345ms)
+2026-10-24T20:19:39.7179021Z ✔ coordination volume factors (42.276196ms)
+2026-10-24T20:19:40.1666706Z ▶ engine direction acceptance (engineSideAccept)
+2026-10-24T20:19:40.1668451Z   ✔ groups by type family × range × side; the losing short base pauses, its long side and Axis shorts trade (4.108781ms)
+2026-10-24T20:19:40.1670170Z   ✔ keeps Historic Exit tactics outside Normal ranges and independently gates each tactic (0.855271ms)
+2026-10-24T20:19:40.1672902Z   ✔ keeps Exit config sets and directions on independent selection seats (29.807038ms)
+2026-10-24T20:19:40.1675495Z   ✔ causal: closes in the entry's own hour are not seen; too few closes in twice the window opens; old hours leave both windows (0.417722ms)
+2026-10-24T20:19:40.1680662Z   ✔ recovers: once the side's recent hours clear the PF it opens again (0.346218ms)
+2026-10-24T20:19:40.1683842Z   ✔ excludeRanges: a listed range opens nothing new (skip rangeOff); other ranges and the wide grid are untouched (0.700702ms)
+2026-10-24T20:19:40.1685287Z   ✔ seat cool-off (seatQuietH): a config that closed within H hours before the entry waits; closes after it never count (1.206288ms)
+2026-10-24T20:19:40.1687902Z   ✔ perInd: a range's group split by indication — a winning indication trades while the pooled range loses (0.87613ms)
+2026-10-24T20:19:40.1691524Z   ✔ perInd: a thin indication group (fewer than minTrades) is judged by its pooled range group, not accepted (0.529421ms)
+2026-10-24T20:19:40.1695203Z   ✔ the slimmed tape set reuses the full set's index (no rebuild on the live tick, the simulation's record) (0.621043ms)
+2026-10-24T20:19:40.1697016Z   ✔ the exchange record reaches the direction acceptance only through the live guard (4.528647ms)
+2026-10-24T20:19:40.1698565Z ✔ engine direction acceptance (engineSideAccept) (45.757522ms)
+2026-10-24T20:19:40.6588616Z ▶ causal per-position Exit protection
+2026-10-24T20:19:40.6590082Z   ✔ keeps legacy Exit ids fixed and gives every tactic its own bounded TP state (1.313733ms)
+2026-10-24T20:19:40.6593211Z   ✔ static SL stays fixed while adaptive SL and trailing ratchet independently in both directions (0.410539ms)
+2026-10-24T20:19:40.6599706Z   ✔ moves breakeven to entry and runs a target-free trailing stop in both directions (0.329147ms)
+2026-10-24T20:19:40.6602649Z   ✔ rejects duplicate and older completed bars and keeps a serialized state deterministic (1.390107ms)
+2026-10-24T20:19:40.6606207Z   ✔ applies the updated target only after the bar that calculated it (1.031414ms)
+2026-10-24T20:19:40.6611093Z   ✔ uses the same completed bar updates in simulation and tick, including restart/carry (1.116874ms)
+2026-10-24T20:19:40.6621960Z ✔ causal per-position Exit protection (7.019982ms)
+2026-10-24T20:19:41.1629787Z ▶ gating: nothing unvalidated executes
+2026-10-24T20:19:41.1631341Z   ✔ keeps broad history short and validates seats on the configured Last-N sample (9.318209ms)
+2026-10-24T20:19:41.1632884Z   ✔ a signal config needs the seat validation (last 50 at min PF) like an engine config (10.412974ms)
+2026-10-24T20:19:41.1634107Z   ✔ a signal validates on its own last N: a 12-close signal config can trade, a losing one cannot (8.156113ms)
+2026-10-24T20:19:41.1640925Z   ✔ carries each exact Base-qualified range through seat and entry without admitting failed siblings (5.598517ms)
+2026-10-24T20:19:41.1642283Z   ✔ only pairs that passed Base take a seat (0.814597ms)
+2026-10-24T20:19:41.1644972Z   ✔ keeps standalone Exit independent of Bot filters and enforces its own Base admission (0.659527ms)
+2026-10-24T20:19:41.1647388Z   ✔ uses Exit's qualified 12-close sample instead of the engine's 50-close seat floor (2.182282ms)
+2026-10-24T20:19:41.1650492Z   ✔ a seat needs min-trades closes in its window even with the seat validation off (0.283211ms)
+2026-10-24T20:19:41.1653582Z   ✔ live: 100 exchange slots aggregate 1500 engine and signal orders (5.908038ms)
+2026-10-24T20:19:41.1655736Z ✔ gating: nothing unvalidated executes (45.166896ms)
+2026-10-24T20:19:41.1662521Z ▶ last-N floor (gates.lastNFloor): a short pre-calculation still seats configs that close rarely
+2026-10-24T20:19:41.1664248Z   ✔ strict by default; with a floor, fewer than N closes are judged on all of them (0.743805ms)
+2026-10-24T20:19:41.1666260Z ✔ last-N floor (gates.lastNFloor): a short pre-calculation still seats configs that close rarely (0.985708ms)
+2026-10-24T20:19:41.1670977Z ▶ sample warm-up (gates.warmup): a check that cannot be computed yet is valid, then judged normally
+2026-10-24T20:19:41.1672528Z   ✔ the per-symbol 'proven' gate no longer refuses a symbol it has too few closes on (6.444353ms)
+2026-10-24T20:19:41.1674248Z   ✔ the stability blocks pass while fewer than two blocks carry a sample (0.321302ms)
+2026-10-24T20:19:41.1676555Z   ✔ Base applies range PF floors while keeping the PF 1 wide-set prefilter (0.796052ms)
+2026-10-24T20:19:41.1680585Z ✔ sample warm-up (gates.warmup): a check that cannot be computed yet is valid, then judged normally (7.731216ms)
+2026-10-24T20:19:41.9023245Z ▶ lane-floor cells in the build statistics
+2026-10-24T20:19:41.9024729Z   ✔ a General / Long cell on the 1m lane is not a baseRange hold when the pair's tags leave those ranges out (242.278155ms)
+2026-10-24T20:19:41.9027618Z ✔ lane-floor cells in the build statistics (243.405809ms)
+2026-10-24T20:19:42.3436695Z ▶ causal range target fitting
+2026-10-24T20:19:42.3438333Z   ✔ keeps target eligibility independent of poisoned future bars while preserving uncut behavior (10.868429ms)
+2026-10-24T20:19:42.3442720Z   ✔ fits only completed higher-timeframe candles and rejects an unknown fit boundary (1.119359ms)
+2026-10-24T20:19:42.6171245Z   ✔ preserves the explicit causal fit cut through pair partitioning and the real worker (279.82476ms)
+2026-10-24T20:19:42.6176899Z ✔ causal range target fitting (293.509069ms)
+2026-10-24T20:19:43.4604383Z ▶ walk-forward variants: every row runs or says why
+2026-10-24T20:19:43.4616557Z   ✔ ids are unique, every row is labelled and described, status and options agree (2.335149ms)
+2026-10-24T20:19:43.4617795Z   ✔ no run row repeats the baseline's options (2.747591ms)
+2026-10-24T20:19:43.4620178Z   ✔ every family of rows appears in some baseline, the not-run ones with their reason (0.571772ms)
+2026-10-24T20:19:43.4621627Z   ✔ every run row's options run a walk-forward on a tiny synthetic input (387.686996ms)
+2026-10-24T20:19:43.4622871Z ✔ walk-forward variants: every row runs or says why (394.886215ms)
+2026-10-24T20:19:43.4655960Z ▶ sizing variants: every row replays
+2026-10-24T20:19:43.4657345Z   ✔ a reference off every grid point lists every variant once, labelled, and each replays (11.965836ms)
+2026-10-24T20:19:43.4659026Z   ✔ variants equal to the reference are left out (0.344676ms)
+2026-10-24T20:19:43.4661642Z ✔ sizing variants: every row replays (12.653776ms)
+2026-10-24T20:19:43.7354190Z ▶ Stable-02 Block coordination
+2026-10-24T20:19:43.7354914Z   ✔ a losing last-N window holds a symbol back for its next N closes (1.382543ms)
+2026-10-24T20:19:43.7361243Z   ✔ a symbol whose latest 24 results have PF < 1 takes no entries, and comes back when they recover (0.467927ms)
+2026-10-24T20:19:43.7363265Z   ✔ winning relations add 0.4 volume each, capped at 1.8×, re-evaluated every 2 h (0.866064ms)
+2026-10-24T20:19:43.7367696Z ✔ Stable-02 Block coordination (4.139732ms)
+2026-10-24T20:19:44.2836041Z ▶ Signal 2% stop policy and independent peak ratios
+2026-10-24T20:19:44.2837731Z   ✔ caps actual SL, activation and peak gap after scaling without widening a tighter stop (1.517094ms)
+2026-10-24T20:19:44.2839303Z   ✔ never accepts invalid SL/activation/ratio as a profitable configuration (0.590958ms)
+2026-10-24T20:19:44.2842201Z   ✔ starts long and short entries protected at 2%, before any trailing activation (1.827337ms)
+2026-10-24T20:19:44.2847154Z   ✔ resolves ATR then applies the cap, retaining independent ratio variants (0.559088ms)
+2026-10-24T20:19:44.2850089Z   ✔ hand-computes different ratios from long highs and short lows and never loosens (0.391293ms)
+2026-10-24T20:19:44.2853715Z   ✔ caps the absolute peak gap at 2% of entry even after a 50% rally (0.169287ms)
+2026-10-24T20:19:44.2858121Z   ✔ does not use a current bar's new peak to close retroactively in that bar (0.385022ms)
+2026-10-24T20:19:44.2862414Z   ✔ reports gaps honestly rather than clamping a stop-loss fill or PF to 2% (0.225884ms)
+2026-10-24T20:19:44.2866760Z   ✔ preserves Ordinary trailing behavior and refuses malformed bars without corrupting peaks (1.625457ms)
+2026-10-24T20:19:44.2870127Z   ✔ keeps scalar ratios and trail-free mode in distinct round-trippable config identities (3.204559ms)
+2026-10-24T20:19:44.2875421Z   ✔ builds independent ratio variants without multiplying the Normal fixed grid (3.108538ms)
+2026-10-24T20:19:44.2878890Z   ✔ applies the actual cap after lane scaling and feedback in every tape (16.836068ms)
+2026-10-24T20:19:44.2885186Z   ✔ repairs restored and first-tick Signal stops without enabling another strategy or widening profits (31.934018ms)
+2026-10-24T20:19:44.2887055Z   ✔ does not fill deeper Signal DCA rungs beyond an already resting capped stop (1.200942ms)
+2026-10-24T20:19:44.2889677Z   ✔ caps Signal Axis fixed and managed entry stops independently of ATR and ladder depth (1.460017ms)
+2026-10-24T20:19:44.2892971Z   ✔ does not enable a TP for a pending trailing-only Signal while applying the initial cap (0.484809ms)
+2026-10-24T20:19:44.2895273Z ✔ Signal 2% stop policy and independent peak ratios (67.710419ms)
+2026-10-24T20:19:44.9773662Z ▶ Independent strategy config sets
+2026-10-24T20:19:44.9774949Z   ✔ native DCA increases each independent set once by 2.5 original units, preserving its sibling and never compounding (35.573031ms)
+2026-10-24T20:19:44.9777189Z   ✔ loads the full own 336h strategy window on every lane even with one-day lane preferences (69.902101ms)
+2026-10-24T20:19:44.9781434Z   ✔ adds and counts independent no-TP cells across every configured engine range (52.961004ms)
+2026-10-24T20:19:44.9785114Z   ✔ ordinary no-TP sets cap start stops at 3%, preserve ratchets and project protection after restart (0.841919ms)
+2026-10-24T20:19:44.9788145Z   ✔ each indication, lane, range and strategy cell owns its Last-N and cannot use sibling or future wins (4.321883ms)
+2026-10-24T20:19:44.9792398Z ✔ Independent strategy config sets (165.197824ms)
+2026-10-24T20:19:45.4735174Z ▶ trailing between computes
+2026-10-24T20:19:45.4735983Z   ✔ trailBar reproduces simulate's open trailing position bar by bar (long and short) (2.252704ms)
+2026-10-24T20:19:45.4741706Z   ✔ the tick moves the stop only when the position's lane bar closes, by that bar's extreme (0.409388ms)
+2026-10-24T20:19:45.4747118Z   ✔ a rebuilt position keeps the stop and peak the tick advanced since the tape's data end (1.455208ms)
+2026-10-24T20:19:45.4751287Z ✔ trailing between computes (5.341596ms)
+2026-10-24T20:19:45.8981247Z ▶ sizing: packed event order
+2026-10-24T20:19:45.8982668Z   ✔ sizes exactly as the sorted event objects did (ties: exit before entry, closed before open, index) (50.227348ms)
+2026-10-24T20:19:45.8984068Z ✔ sizing: packed event order (51.302114ms)
+2026-10-24T20:19:45.8993101Z ▶ sizing
+2026-10-24T20:19:45.8994083Z   ✔ defaults to 0.2 % of account balance per order unit (2.23972ms)
+2026-10-24T20:19:45.8996166Z   ✔ each order takes its unit from the realized equity at its entry (a loss shrinks the next) (0.336471ms)
+2026-10-24T20:19:45.8999443Z   ✔ a close at the same instant as an entry is counted first (0.192612ms)
+2026-10-24T20:19:45.9002677Z   ✔ fixed mode is the former flat notional (0.206216ms)
+2026-10-24T20:19:45.9007313Z   ✔ a preset never carries sizing, balance, costs, loop timing, the adjuster or the Live stage (0.703469ms)
+2026-10-24T20:19:45.9010029Z   ✔ cross-field rules hold against the merged settings (0.429986ms)
+2026-10-24T20:19:45.9013025Z   ✔ reads the account equity from BingX balance replies (0.459862ms)
+2026-10-24T20:19:45.9015016Z ✔ sizing (5.15185ms)
+2026-10-24T20:19:45.9021241Z ▶ sizing: long and short of one config are separate orders
+2026-10-24T20:19:45.9022413Z   ✔ a long and a short entered on the same bar each keep their own unit (0.496591ms)
+2026-10-24T20:19:45.9023673Z ✔ sizing: long and short of one config are separate orders (0.777278ms)
+2026-10-24T20:19:46.3296149Z ▶ indication volume factor settings
+2026-10-24T20:19:46.3297479Z   ✔ defaults coordination to 8× and every other combined indication to neutral 1× (2.543712ms)
+2026-10-24T20:19:46.3301110Z   ✔ merges a single kind without resetting the other settings and applies only to combined lanes (1.201459ms)
+2026-10-24T20:19:46.3306167Z   ✔ validates the factor range as whole numbers from 1 to 22 (2.226588ms)
+2026-10-24T20:19:46.3311799Z   ✔ runs combined-lane orders at the configured factor while strategy PF stays unit-normalized (28.762058ms)
+2026-10-24T20:19:46.3319232Z ✔ indication volume factor settings (36.166099ms)
+2026-10-24T20:19:46.3460960Z ℹ tests 650
+2026-10-24T20:19:46.3461385Z ℹ suites 120
+2026-10-24T20:19:46.3461765Z ℹ pass 650
+2026-10-24T20:19:46.3462120Z ℹ fail 0
+2026-10-24T20:19:46.3462367Z ℹ cancelled 0
+2026-10-24T20:19:46.3462600Z ℹ skipped 0
+2026-10-24T20:19:46.3462808Z ℹ todo 0
+2026-10-24T20:19:46.3463061Z ℹ duration_ms 279385.085261
+2026-10-24T20:19:46.3755364Z Post job cleanup.
+2026-10-24T20:19:46.5011676Z (node:3214) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-24T20:19:46.5012703Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-24T20:19:46.5015702Z Cache hit occurred on the primary key node-cache-Linux-x64-npm-0572bece56f139ea2909222bc477aa7635ecc82f35e7616385c7ee8b190c33df, not saving cache.
+2026-10-24T20:19:46.5181379Z Post job cleanup.
+2026-10-24T20:19:46.6058447Z [command]/usr/bin/git version
+2026-10-24T20:19:46.6100099Z git version 2.55.0
+2026-10-24T20:19:46.6139374Z Temporarily overriding HOME='/home/runner/work/_temp/ca4f38f4-7a36-415d-b104-113b5504a432' before making global git config changes
+2026-10-24T20:19:46.6141206Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-24T20:19:46.6144518Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/CTS-A-O/CTS-A-O
+2026-10-24T20:19:46.6184608Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-24T20:19:46.6219964Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-24T20:19:46.6475390Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-24T20:19:46.6512534Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-24T20:19:46.6815296Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-24T20:19:46.6864945Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-24T20:19:46.7288093Z Cleaning up orphan processes
+2026-10-24T20:19:46.7650093Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-node@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+

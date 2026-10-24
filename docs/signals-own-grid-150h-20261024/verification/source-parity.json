@@ -1,0 +1,9 @@
+{
+  "replaySource": "619ba50f37a7c1e9c8a10ee5167a37baf44306b48b32df7a198f0b10c3cf781e",
+  "finalSource": "619ba50f37a7c1e9c8a10ee5167a37baf44306b48b32df7a198f0b10c3cf781e",
+  "equal": true,
+  "finalTestedHead": "47600029d7e284fa86db3e03e1251a7d0f047f83",
+  "finalTestedTree": "33361a81dd989ca5b5cdf49cab28334d5f23f4e3",
+  "replayProtocolSha256": "c9c03de5cba9c2fb2b8db42011d28a4e0010872e846a0b131a91e813c8487309",
+  "method": "Recomputed sessionStudySourceFiles + studySha256(studyExactJson(files)) after final code and report push"
+}

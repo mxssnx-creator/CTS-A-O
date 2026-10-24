@@ -1,0 +1,45 @@
+{
+  "source": {
+    "groups": 118,
+    "withLast4": 112,
+    "withAllGates": 81,
+    "insufficient": [
+      "r-squeeze",
+      "r-capit",
+      "r-vwap-reclaim",
+      "r-bbw-expand",
+      "r-spring",
+      "r-engulf"
+    ]
+  },
+  "symbol": {
+    "groups": 12,
+    "withLast4": 12,
+    "withAllGates": 11,
+    "insufficient": []
+  },
+  "type": {
+    "groups": 4,
+    "withLast4": 4,
+    "withAllGates": 4,
+    "insufficient": []
+  },
+  "strategyRange": {
+    "groups": 2,
+    "withLast4": 2,
+    "withAllGates": 2,
+    "insufficient": []
+  },
+  "parameterRange": {
+    "groups": 3,
+    "withLast4": 3,
+    "withAllGates": 3,
+    "insufficient": []
+  },
+  "lane": {
+    "groups": 4,
+    "withLast4": 4,
+    "withAllGates": 4,
+    "insufficient": []
+  }
+}

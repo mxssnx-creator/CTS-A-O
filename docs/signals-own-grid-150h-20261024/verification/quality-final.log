@@ -1,0 +1,1604 @@
+﻿2026-10-24T20:14:26.3199957Z Current runner version: '2.338.0'
+2026-10-24T20:14:26.3220385Z ##[group]Runner Image Provisioner
+2026-10-24T20:14:26.3221070Z Hosted Compute Agent
+2026-10-24T20:14:26.3221527Z Version: 20261012.601
+2026-10-24T20:14:26.3222096Z Commit: f3dc54e1fb89da6852db922499a0233137369e1d
+2026-10-24T20:14:26.3222675Z Build Date: 2026-10-12T17:48:21Z
+2026-10-24T20:14:26.3223347Z Worker ID: {622c16f0-0d68-4053-9fc9-e5acc0f79b90}
+2026-10-24T20:14:26.3223921Z Region: westus3
+2026-10-24T20:14:26.3224364Z Cloud: Azure
+2026-10-24T20:14:26.3224835Z ##[endgroup]
+2026-10-24T20:14:26.3226044Z ##[group]Operating System
+2026-10-24T20:14:26.3226661Z Ubuntu
+2026-10-24T20:14:26.3227098Z 24.04.5
+2026-10-24T20:14:26.3227528Z LTS
+2026-10-24T20:14:26.3227986Z ##[endgroup]
+2026-10-24T20:14:26.3228435Z ##[group]Runner Image
+2026-10-24T20:14:26.3228946Z Image: ubuntu-24.04
+2026-10-24T20:14:26.3229466Z Version: 20261012.334.1
+2026-10-24T20:14:26.3230464Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20261012.334/images/ubuntu/Ubuntu2404-Readme.md
+2026-10-24T20:14:26.3231723Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20261012.334
+2026-10-24T20:14:26.3232501Z ##[endgroup]
+2026-10-24T20:14:26.3233450Z ##[group]GITHUB_TOKEN Permissions
+2026-10-24T20:14:26.3234888Z Contents: read
+2026-10-24T20:14:26.3235461Z Metadata: read
+2026-10-24T20:14:26.3236092Z ##[endgroup]
+2026-10-24T20:14:26.3237930Z Secret source: Actions
+2026-10-24T20:14:26.3238660Z Cache mode: write
+2026-10-24T20:14:26.3239231Z Prepare workflow directory
+2026-10-24T20:14:26.3495063Z Prepare all required actions
+2026-10-24T20:14:26.3536663Z Getting action download info
+2026-10-24T20:14:26.6598687Z Download action repository 'actions/checkout@v4' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+2026-10-24T20:14:26.7623346Z Download action repository 'actions/setup-node@v4' (SHA:49933ea5288caeca8642d1e84afbd3f7d6820020)
+2026-10-24T20:14:26.9455761Z Complete job name: quality
+2026-10-24T20:14:27.0139622Z ##[group]Run actions/checkout@v4
+2026-10-24T20:14:27.0140277Z with:
+2026-10-24T20:14:27.0140627Z   persist-credentials: false
+2026-10-24T20:14:27.0141050Z   repository: mxssnx-creator/CTS-A-O
+2026-10-24T20:14:27.0143926Z   token: ***
+2026-10-24T20:14:27.0144279Z   ssh-strict: true
+2026-10-24T20:14:27.0144630Z   ssh-user: git
+2026-10-24T20:14:27.0144967Z   clean: true
+2026-10-24T20:14:27.0145320Z   sparse-checkout-cone-mode: true
+2026-10-24T20:14:27.0145731Z   fetch-depth: 1
+2026-10-24T20:14:27.0146269Z   fetch-tags: false
+2026-10-24T20:14:27.0146618Z   show-progress: true
+2026-10-24T20:14:27.0146965Z   lfs: false
+2026-10-24T20:14:27.0147287Z   submodules: false
+2026-10-24T20:14:27.0147648Z   set-safe-directory: true
+2026-10-24T20:14:27.0148053Z   allow-unsafe-pr-checkout: false
+2026-10-24T20:14:27.0148630Z ##[endgroup]
+2026-10-24T20:14:27.0935299Z Syncing repository: mxssnx-creator/CTS-A-O
+2026-10-24T20:14:27.0937675Z ##[group]Getting Git version info
+2026-10-24T20:14:27.0938636Z Working directory is '/home/runner/work/CTS-A-O/CTS-A-O'
+2026-10-24T20:14:27.0939911Z [command]/usr/bin/git version
+2026-10-24T20:14:27.1011507Z git version 2.55.0
+2026-10-24T20:14:27.1037343Z ##[endgroup]
+2026-10-24T20:14:27.1046721Z Temporarily overriding HOME='/home/runner/work/_temp/6b25f8b9-1f91-4680-a958-20f10acaff27' before making global git config changes
+2026-10-24T20:14:27.1048645Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-24T20:14:27.1050165Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/CTS-A-O/CTS-A-O
+2026-10-24T20:14:27.1091465Z Deleting the contents of '/home/runner/work/CTS-A-O/CTS-A-O'
+2026-10-24T20:14:27.1097129Z ##[group]Initializing the repository
+2026-10-24T20:14:27.1098235Z [command]/usr/bin/git init /home/runner/work/CTS-A-O/CTS-A-O
+2026-10-24T20:14:27.1205666Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-10-24T20:14:27.1207446Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-10-24T20:14:27.1210058Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-10-24T20:14:27.1210973Z hint: call:
+2026-10-24T20:14:27.1211482Z hint:
+2026-10-24T20:14:27.1212096Z hint: 	git config --global init.defaultBranch <name>
+2026-10-24T20:14:27.1212855Z hint:
+2026-10-24T20:14:27.1213570Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-10-24T20:14:27.1214734Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-10-24T20:14:27.1215641Z hint:
+2026-10-24T20:14:27.1216266Z hint: 	git branch -m <name>
+2026-10-24T20:14:27.1216830Z hint:
+2026-10-24T20:14:27.1217574Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-10-24T20:14:27.1218943Z Initialized empty Git repository in /home/runner/work/CTS-A-O/CTS-A-O/.git/
+2026-10-24T20:14:27.1221142Z [command]/usr/bin/git remote add origin https://github.com/mxssnx-creator/CTS-A-O
+2026-10-24T20:14:27.1262718Z ##[endgroup]
+2026-10-24T20:14:27.1263697Z ##[group]Disabling automatic garbage collection
+2026-10-24T20:14:27.1265502Z [command]/usr/bin/git config --local gc.auto 0
+2026-10-24T20:14:27.1294540Z ##[endgroup]
+2026-10-24T20:14:27.1295397Z ##[group]Setting up auth
+2026-10-24T20:14:27.1300155Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-24T20:14:27.1332206Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-24T20:14:27.1651080Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-24T20:14:27.1681588Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-24T20:14:27.1870822Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-24T20:14:27.1900033Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-24T20:14:27.2086313Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-10-24T20:14:27.2154463Z ##[endgroup]
+2026-10-24T20:14:27.2155110Z ##[group]Fetching the repository
+2026-10-24T20:14:27.2161869Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +063b77fbc9b45ee0d66ff51049bbeaf565e5074f:refs/remotes/pull/198/merge
+2026-10-24T20:14:31.3822861Z From https://github.com/mxssnx-creator/CTS-A-O
+2026-10-24T20:14:31.3824211Z  * [new ref]         063b77fbc9b45ee0d66ff51049bbeaf565e5074f -> pull/198/merge
+2026-10-24T20:14:31.3827233Z ##[endgroup]
+2026-10-24T20:14:31.3828634Z ##[group]Determining the checkout info
+2026-10-24T20:14:31.3830268Z ##[endgroup]
+2026-10-24T20:14:31.3833335Z [command]/usr/bin/git sparse-checkout disable
+2026-10-24T20:14:31.3879847Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-10-24T20:14:31.3908526Z ##[group]Checking out the ref
+2026-10-24T20:14:31.3910758Z [command]/usr/bin/git checkout --progress --force refs/remotes/pull/198/merge
+2026-10-24T20:14:31.7378195Z Note: switching to 'refs/remotes/pull/198/merge'.
+2026-10-24T20:14:31.7379071Z 
+2026-10-24T20:14:31.7379376Z You are in 'detached HEAD' state. You can look around, make experimental
+2026-10-24T20:14:31.7380067Z changes and commit them, and you can discard any commits you make in this
+2026-10-24T20:14:31.7380739Z state without impacting any branches by switching back to a branch.
+2026-10-24T20:14:31.7381162Z 
+2026-10-24T20:14:31.7381452Z If you want to create a new branch to retain commits you create, you may
+2026-10-24T20:14:31.7382089Z do so (now or later) by using -c with the switch command. Example:
+2026-10-24T20:14:31.7382435Z 
+2026-10-24T20:14:31.7382673Z   git switch -c <new-branch-name>
+2026-10-24T20:14:31.7382926Z 
+2026-10-24T20:14:31.7383355Z Or undo this operation with:
+2026-10-24T20:14:31.7383588Z 
+2026-10-24T20:14:31.7383721Z   git switch -
+2026-10-24T20:14:31.7383930Z 
+2026-10-24T20:14:31.7384262Z Turn off this advice by setting config variable advice.detachedHead to false
+2026-10-24T20:14:31.7384679Z 
+2026-10-24T20:14:31.7385148Z HEAD is now at 063b77f Merge 47600029d7e284fa86db3e03e1251a7d0f047f83 into cb7685cb505d899f7a36fdbac7cabd6d4776598e
+2026-10-24T20:14:31.7413638Z ##[endgroup]
+2026-10-24T20:14:31.7454166Z [command]/usr/bin/git log -1 --format=%H
+2026-10-24T20:14:31.7477071Z 063b77fbc9b45ee0d66ff51049bbeaf565e5074f
+2026-10-24T20:14:31.7486113Z ##[group]Removing auth
+2026-10-24T20:14:31.7489276Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-24T20:14:31.7517848Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-24T20:14:31.7707468Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-24T20:14:31.7732191Z http.https://github.com/.extraheader
+2026-10-24T20:14:31.7737475Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2026-10-24T20:14:31.7766885Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-24T20:14:31.7955308Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-24T20:14:31.7982769Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-24T20:14:31.8166816Z ##[endgroup]
+2026-10-24T20:14:31.8444088Z ##[group]Run actions/setup-node@v4
+2026-10-24T20:14:31.8444373Z with:
+2026-10-24T20:14:31.8444571Z   node-version: 24
+2026-10-24T20:14:31.8444798Z   cache: npm
+2026-10-24T20:14:31.8444990Z   always-auth: false
+2026-10-24T20:14:31.8445211Z   check-latest: false
+2026-10-24T20:14:31.8447285Z   token: ***
+2026-10-24T20:14:31.8447490Z ##[endgroup]
+2026-10-24T20:14:31.9632627Z Found in cache @ /opt/hostedtoolcache/node/24.21.0/x64
+2026-10-24T20:14:31.9636633Z (node:2156) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-24T20:14:31.9637631Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-24T20:14:31.9638975Z ##[group]Environment details
+2026-10-24T20:14:32.3090971Z node: v24.21.0
+2026-10-24T20:14:32.3091467Z npm: 11.19.0
+2026-10-24T20:14:32.3091706Z yarn: 1.22.22
+2026-10-24T20:14:32.3092535Z ##[endgroup]
+2026-10-24T20:14:32.3126483Z [command]/opt/hostedtoolcache/node/24.21.0/x64/bin/npm config get cache
+2026-10-24T20:14:32.4046674Z /home/runner/.npm
+2026-10-24T20:14:32.6144393Z Cache hit for: node-cache-Linux-x64-npm-0572bece56f139ea2909222bc477aa7635ecc82f35e7616385c7ee8b190c33df
+2026-10-24T20:14:32.6255470Z (node:2156) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-10-24T20:14:33.8450507Z Received 29360128 of 85748699 (34.2%), 28.0 MBs/sec
+2026-10-24T20:14:34.4994741Z Received 85748699 of 85748699 (100.0%), 49.4 MBs/sec
+2026-10-24T20:14:34.4995390Z Cache Size: ~82 MB (85748699 B)
+2026-10-24T20:14:34.5047258Z [command]/usr/bin/tar -xf /home/runner/work/_temp/07009a1b-4660-4fc5-aaab-f00600feba88/cache.tzst -P -C /home/runner/work/CTS-A-O/CTS-A-O --use-compress-program unzstd
+2026-10-24T20:14:34.6604143Z Cache restored successfully
+2026-10-24T20:14:34.6646210Z Cache restored from key: node-cache-Linux-x64-npm-0572bece56f139ea2909222bc477aa7635ecc82f35e7616385c7ee8b190c33df
+2026-10-24T20:14:34.6800518Z ##[group]Run npm ci
+2026-10-24T20:14:34.6800796Z [36;1mnpm ci[0m
+2026-10-24T20:14:34.7029750Z shell: /usr/bin/bash -e {0}
+2026-10-24T20:14:34.7030006Z ##[endgroup]
+2026-10-24T20:14:39.2174200Z npm warn deprecated recharts@2.15.4: 1.x and 2.x branches are no longer active. Bump to Recharts v3 to receive latest features and bugfixes. See https://github.com/recharts/recharts/wiki/3.0-migration-guide
+2026-10-24T20:14:39.4682008Z npm warn deprecated eslint@9.39.5: This version is no longer supported. Please see https://eslint.org/version-support for other options.
+2026-10-24T20:14:41.3100821Z 
+2026-10-24T20:14:41.3101585Z added 423 packages, and audited 424 packages in 7s
+2026-10-24T20:14:41.3101939Z 
+2026-10-24T20:14:41.3106508Z 94 packages are looking for funding
+2026-10-24T20:14:41.3108170Z   run `npm fund` for details
+2026-10-24T20:14:41.3292836Z 
+2026-10-24T20:14:41.3293245Z 2 high severity vulnerabilities
+2026-10-24T20:14:41.3293455Z 
+2026-10-24T20:14:41.3293779Z To address all issues, run:
+2026-10-24T20:14:41.3294203Z   npm audit fix
+2026-10-24T20:14:41.3294469Z 
+2026-10-24T20:14:41.3294938Z Run `npm audit` for details.
+2026-10-24T20:14:41.4108685Z ##[group]Run # Hosted images may already supply Chrome. Exercise the same functional tests
+2026-10-24T20:14:41.4109219Z [36;1m# Hosted images may already supply Chrome. Exercise the same functional tests[0m
+2026-10-24T20:14:41.4109665Z [36;1m# with that executable instead of downloading another browser and apt bundle.[0m
+2026-10-24T20:14:41.4110114Z [36;1mfor browser in google-chrome google-chrome-stable chromium chromium-browser; do[0m
+2026-10-24T20:14:41.4110498Z [36;1m  if command -v "$browser" >/dev/null 2>&1; then[0m
+2026-10-24T20:14:41.4110870Z [36;1m    echo "CTS_UI_BROWSER_EXECUTABLE=$(command -v "$browser")" >> "$GITHUB_ENV"[0m
+2026-10-24T20:14:41.4111199Z [36;1m    "$browser" --version[0m
+2026-10-24T20:14:41.4111404Z [36;1m    exit 0[0m
+2026-10-24T20:14:41.4111574Z [36;1m  fi[0m
+2026-10-24T20:14:41.4111741Z [36;1mdone[0m
+2026-10-24T20:14:41.4111973Z [36;1mnpx playwright install --with-deps --only-shell chromium[0m
+2026-10-24T20:14:41.4171424Z shell: /usr/bin/bash -e {0}
+2026-10-24T20:14:41.4171652Z ##[endgroup]
+2026-10-24T20:14:43.5688861Z Google Chrome 155.0.8059.39 
+2026-10-24T20:14:43.5834637Z ##[group]Run npm run typecheck -- --pretty false
+2026-10-24T20:14:43.5834951Z [36;1mnpm run typecheck -- --pretty false[0m
+2026-10-24T20:14:43.5891817Z shell: /usr/bin/bash -e {0}
+2026-10-24T20:14:43.5892026Z env:
+2026-10-24T20:14:43.5892235Z   CTS_UI_BROWSER_EXECUTABLE: /usr/bin/google-chrome
+2026-10-24T20:14:43.5892484Z ##[endgroup]
+2026-10-24T20:14:43.6735136Z 
+2026-10-24T20:14:43.6735631Z > typecheck
+2026-10-24T20:14:43.6736095Z > tsc --noEmit --pretty false
+2026-10-24T20:14:43.6736265Z 
+2026-10-24T20:14:55.2282505Z ##[group]Run npm run lint
+2026-10-24T20:14:55.2282739Z [36;1mnpm run lint[0m
+2026-10-24T20:14:55.2340181Z shell: /usr/bin/bash -e {0}
+2026-10-24T20:14:55.2340410Z env:
+2026-10-24T20:14:55.2340620Z   CTS_UI_BROWSER_EXECUTABLE: /usr/bin/google-chrome
+2026-10-24T20:14:55.2340886Z ##[endgroup]
+2026-10-24T20:14:55.3140747Z 
+2026-10-24T20:14:55.3141138Z > lint
+2026-10-24T20:14:55.3141441Z > eslint .
+2026-10-24T20:14:55.3141550Z 
+2026-10-24T20:15:09.7896516Z 
+2026-10-24T20:15:09.7926883Z /home/runner/work/CTS-A-O/CTS-A-O/scripts/bench-compute.mjs
+2026-10-24T20:15:09.8013392Z ##[warning]  81:7  warning  'lastT' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-24T20:15:09.8022050Z 
+2026-10-24T20:15:09.8022594Z /home/runner/work/CTS-A-O/CTS-A-O/scripts/bench-cycle.mjs
+2026-10-24T20:15:09.8023990Z ##[warning]  39:9  warning  'closePool' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-24T20:15:09.8024854Z 
+2026-10-24T20:15:09.8025082Z /home/runner/work/CTS-A-O/CTS-A-O/scripts/core-adjust.mjs
+2026-10-24T20:15:09.8026096Z ##[warning]  113:7  warning  'nA' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-24T20:15:09.8026797Z 
+2026-10-24T20:15:09.8027332Z /home/runner/work/CTS-A-O/CTS-A-O/scripts/core-coverage.mjs
+2026-10-24T20:15:09.8028126Z ##[warning]  13:24  warning  'statsOf' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-24T20:15:09.8028804Z 
+2026-10-24T20:15:09.8028980Z /home/runner/work/CTS-A-O/CTS-A-O/scripts/core-mtf.mjs
+2026-10-24T20:15:09.8029784Z ##[warning]  58:9  warning  'factors' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-24T20:15:09.8030495Z 
+2026-10-24T20:15:09.8030677Z /home/runner/work/CTS-A-O/CTS-A-O/scripts/core-session.mjs
+2026-10-24T20:15:09.8031500Z ##[warning]   965:9  warning  'G' is assigned a value but never used. Allowed unused vars must match /^_/u        @typescript-eslint/no-unused-vars
+2026-10-24T20:15:09.8032768Z ##[warning]  1901:7  warning  'byEntry' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-24T20:15:09.8033449Z 
+2026-10-24T20:15:09.8033703Z /home/runner/work/CTS-A-O/CTS-A-O/scripts/core-signal-coordination-replay.mjs
+2026-10-24T20:15:09.8034535Z ##[warning]  4:31  warning  'mkdir' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-24T20:15:09.8035210Z 
+2026-10-24T20:15:09.8035459Z /home/runner/work/CTS-A-O/CTS-A-O/scripts/core-signal-window-report.test.mjs
+2026-10-24T20:15:09.8036595Z ##[warning]  51:13  warning  'provenance' is assigned a value but never used. Allowed unused vars must match /^_/u   @typescript-eslint/no-unused-vars
+2026-10-24T20:15:09.8037924Z ##[warning]  51:25  warning  'generatedAt' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-24T20:15:09.8038613Z 
+2026-10-24T20:15:09.8038783Z /home/runner/work/CTS-A-O/CTS-A-O/scripts/eval-gate.mjs
+2026-10-24T20:15:09.8039537Z ##[warning]  12:33  warning  'readFileSync' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-24T20:15:09.8040237Z 
+2026-10-24T20:15:09.8040453Z /home/runner/work/CTS-A-O/CTS-A-O/scripts/freeze-session-study.mjs
+2026-10-24T20:15:09.8041225Z ##[warning]  4:19  warning  'dirname' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-24T20:15:09.8041920Z 
+2026-10-24T20:15:09.8042177Z /home/runner/work/CTS-A-O/CTS-A-O/scripts/lib/safe-network-interfaces.cjs
+2026-10-24T20:15:09.8042908Z   1:1  warning  Unused eslint-disable directive (no problems were reported from '@typescript-eslint/no-require-imports')
+2026-10-24T20:15:09.8043284Z 
+2026-10-24T20:15:09.8043769Z /home/runner/work/CTS-A-O/CTS-A-O/scripts/signals-12-symbol-study.mjs
+2026-10-24T20:15:09.8044641Z ##[warning]   9:26  warning  'SIGNAL_SOURCES' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-24T20:15:09.8046128Z ##[warning]  13:24  warning  'kindOfId' is defined but never used. Allowed unused vars must match /^_/u        @typescript-eslint/no-unused-vars
+2026-10-24T20:15:09.8046833Z 
+2026-10-24T20:15:09.8047037Z /home/runner/work/CTS-A-O/CTS-A-O/src/components/v2/charts.tsx
+2026-10-24T20:15:09.8048348Z ##[warning]   5:14  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+2026-10-24T20:15:09.8049968Z ##[warning]  17:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+2026-10-24T20:15:09.8050788Z 
+2026-10-24T20:15:09.8050977Z /home/runner/work/CTS-A-O/CTS-A-O/src/components/v2/conn.tsx
+2026-10-24T20:15:09.8052055Z ##[warning]   22:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+2026-10-24T20:15:09.8053703Z ##[warning]  118:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+2026-10-24T20:15:09.8054761Z 
+2026-10-24T20:15:09.8054940Z /home/runner/work/CTS-A-O/CTS-A-O/src/components/v2/ui.tsx
+2026-10-24T20:15:09.8056211Z ##[warning]   12:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+2026-10-24T20:15:09.8057957Z ##[warning]  106:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+2026-10-24T20:15:09.8059583Z ##[warning]  168:14  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+2026-10-24T20:15:09.8061193Z ##[warning]  219:14  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+2026-10-24T20:15:09.8062769Z ##[warning]  221:14  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+2026-10-24T20:15:09.8064341Z ##[warning]  228:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+2026-10-24T20:15:09.8066113Z ##[warning]  344:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+2026-10-24T20:15:09.8067731Z ##[warning]  353:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+2026-10-24T20:15:09.8068550Z 
+2026-10-24T20:15:09.8068787Z /home/runner/work/CTS-A-O/CTS-A-O/src/core/indications/stable02.test.ts
+2026-10-24T20:15:09.8069821Z ##[warning]  204:58  warning  'period' is assigned a value but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-24T20:15:09.8070524Z 
+2026-10-24T20:15:09.8070710Z /home/runner/work/CTS-A-O/CTS-A-O/src/core/regression.test.ts
+2026-10-24T20:15:09.8071464Z ##[warning]  5:47  warning  'RT_COST' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-24T20:15:09.8072148Z 
+2026-10-24T20:15:09.8072534Z /home/runner/work/CTS-A-O/CTS-A-O/src/core/server/account-sizing.test.ts
+2026-10-24T20:15:09.8073420Z ##[warning]  8:10  warning  'MICRO_RANGE' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-24T20:15:09.8096057Z 
+2026-10-24T20:15:09.8096492Z /home/runner/work/CTS-A-O/CTS-A-O/src/core/server/heal.test.ts
+2026-10-24T20:15:09.8097900Z ##[warning]  8:25  warning  'runtimeFixtureGrid' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-24T20:15:09.8098842Z 
+2026-10-24T20:15:09.8099121Z /home/runner/work/CTS-A-O/CTS-A-O/src/core/server/order-sides-paper.test.ts
+2026-10-24T20:15:09.8100181Z ##[warning]  13:10  warning  'PREVIOUS_DEFAULT_FOCUS_17OCT' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-24T20:15:09.8100986Z 
+2026-10-24T20:15:09.8101251Z /home/runner/work/CTS-A-O/CTS-A-O/src/core/server/order-sides-records.test.ts
+2026-10-24T20:15:09.8102151Z ##[warning]  49:10  warning  'sigActiveKey' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-24T20:15:09.8102868Z 
+2026-10-24T20:15:09.8103098Z /home/runner/work/CTS-A-O/CTS-A-O/src/core/server/runtime.server.ts
+2026-10-24T20:15:09.8103975Z ##[warning]  260:3   warning  'sideTapeOf' is defined but never used. Allowed unused vars must match /^_/u       @typescript-eslint/no-unused-vars
+2026-10-24T20:15:09.8105557Z ##[warning]  264:8   warning  'SideTapeMemo' is defined but never used. Allowed unused vars must match /^_/u     @typescript-eslint/no-unused-vars
+2026-10-24T20:15:09.8107211Z ##[warning]  273:3   warning  'preferExchange' is defined but never used. Allowed unused vars must match /^_/u   @typescript-eslint/no-unused-vars
+2026-10-24T20:15:09.8108631Z ##[warning]  288:8   warning  'os' is defined but never used. Allowed unused vars must match /^_/u               @typescript-eslint/no-unused-vars
+2026-10-24T20:15:09.8110016Z ##[warning]  348:10  warning  'closedPositions' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-24T20:15:09.8110715Z 
+2026-10-24T20:15:09.8111014Z /home/runner/work/CTS-A-O/CTS-A-O/src/core/server/runtime.test.ts
+2026-10-24T20:15:09.8112285Z ##[warning]  15:36  warning  'runtimeFixtureGrid' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-24T20:15:09.8113466Z 
+2026-10-24T20:15:09.8113793Z /home/runner/work/CTS-A-O/CTS-A-O/src/core/signal-hist.test.ts
+2026-10-24T20:15:09.8115127Z ##[warning]  24:10  warning  'DEFAULT_TACTICS' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-24T20:15:09.8116430Z 
+2026-10-24T20:15:09.8116737Z /home/runner/work/CTS-A-O/CTS-A-O/src/core/sim/walkforward.ts
+2026-10-24T20:15:09.8118217Z ##[warning]  3580:11  warning  'ddtMax' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-24T20:15:09.8119457Z 
+2026-10-24T20:15:09.8119742Z /home/runner/work/CTS-A-O/CTS-A-O/src/core/statistics.ts
+2026-10-24T20:15:09.8120972Z ##[warning]  1229:16  warning  'gp' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-24T20:15:09.8123092Z ##[warning]  1230:10  warning  'gl' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-24T20:15:09.8124234Z 
+2026-10-24T20:15:09.8124722Z ✖ 43 problems (0 errors, 43 warnings)
+2026-10-24T20:15:09.8125239Z   0 errors and 1 warning potentially fixable with the `--fix` option.
+2026-10-24T20:15:09.8125585Z 
+2026-10-24T20:15:10.0185110Z ##[group]Run env -u DATABASE_URL npm run build
+2026-10-24T20:15:10.0185406Z [36;1menv -u DATABASE_URL npm run build[0m
+2026-10-24T20:15:10.0245221Z shell: /usr/bin/bash -e {0}
+2026-10-24T20:15:10.0245535Z env:
+2026-10-24T20:15:10.0245827Z   CTS_UI_BROWSER_EXECUTABLE: /usr/bin/google-chrome
+2026-10-24T20:15:10.0246322Z ##[endgroup]
+2026-10-24T20:15:10.1038967Z 
+2026-10-24T20:15:10.1039236Z > build
+2026-10-24T20:15:10.1039942Z > node scripts/with-app-env.mjs vite build && npm run build:core-worker && npm run db:migrate
+2026-10-24T20:15:10.1040426Z 
+2026-10-24T20:15:10.7355086Z [info] [nitro:vercel] Using `nodejs24.x` runtime.
+2026-10-24T20:15:10.7355767Z [info] [nitro:vercel] Using `web` entry format.
+2026-10-24T20:15:10.7426090Z [33mBoth esbuild and oxc options were set. oxc options will be used and esbuild options will be ignored.[39m The following esbuild options were set: `{ legalComments: 'none' }`
+2026-10-24T20:15:10.8729215Z [36mvite v8.2.2 [32mbuilding client environment for production...[36m[39m
+2026-10-24T20:15:10.8839569Z transforming...
+2026-10-24T20:15:17.6570854Z ✓ 1955 modules transformed.
+2026-10-24T20:15:17.7154175Z rendering chunks...
+2026-10-24T20:15:17.7755585Z .vercel/output/static/assets/styles-EeajTTjQ.css              34.30 kB
+2026-10-24T20:15:17.7756326Z .vercel/output/static/assets/market-Bh2z8jn2.js                0.07 kB
+2026-10-24T20:15:17.7756768Z .vercel/output/static/assets/trading-Die2xBDI.js               0.07 kB
+2026-10-24T20:15:17.7757198Z .vercel/output/static/assets/settings-Dk-M8QYP.js              0.07 kB
+2026-10-24T20:15:17.7757633Z .vercel/output/static/assets/useRouter-VhwLfQSd.js             0.15 kB
+2026-10-24T20:15:17.7758335Z .vercel/output/static/assets/model-cost-BGXH0XjV.js            0.30 kB
+2026-10-24T20:15:17.7758760Z .vercel/output/static/assets/progression-DygnuQpx.js           0.85 kB
+2026-10-24T20:15:17.7759194Z .vercel/output/static/assets/progress-C-M_JKOX.js              0.93 kB
+2026-10-24T20:15:17.7759600Z .vercel/output/static/assets/bots-BxbyHAaK.js                  1.16 kB
+2026-10-24T20:15:17.7760002Z .vercel/output/static/assets/indication-ui-B3C4VKjb.js         1.41 kB
+2026-10-24T20:15:17.7760422Z .vercel/output/static/assets/minimal-coord-iDZCDKap.js         1.42 kB
+2026-10-24T20:15:17.7761050Z .vercel/output/static/assets/execution-summary-B-eCJabb.js     1.54 kB
+2026-10-24T20:15:17.7761660Z .vercel/output/static/assets/matrix-8wA3LsBY.js                2.35 kB
+2026-10-24T20:15:17.7762133Z .vercel/output/static/assets/signal-units-ZXc0Go0w.js          2.69 kB
+2026-10-24T20:15:17.7762713Z .vercel/output/static/assets/compare-D9Fb5LC-.js               3.84 kB
+2026-10-24T20:15:17.7763414Z .vercel/output/static/assets/promotion-evidence-CDz9cdXf.js    4.42 kB
+2026-10-24T20:15:17.7763846Z .vercel/output/static/assets/results-CR60-arQ.js               4.77 kB
+2026-10-24T20:15:17.7764252Z .vercel/output/static/assets/config._id-Bi4Fodc_.js            5.34 kB
+2026-10-24T20:15:17.7764663Z .vercel/output/static/assets/hourly-BMOmPimy.js                5.78 kB
+2026-10-24T20:15:17.7765066Z .vercel/output/static/assets/config-faMawicf.js                8.43 kB
+2026-10-24T20:15:17.7765567Z .vercel/output/static/assets/v2-CqWj3aMq.js                    9.44 kB
+2026-10-24T20:15:17.7766139Z .vercel/output/static/assets/prehistoric-Bl-Mh8v6.js           9.88 kB
+2026-10-24T20:15:17.7766559Z .vercel/output/static/assets/relate-DuvzKl0m.js                9.92 kB
+2026-10-24T20:15:17.7766955Z .vercel/output/static/assets/link-CkKc5ylV.js                 11.26 kB
+2026-10-24T20:15:17.7767355Z .vercel/output/static/assets/preset-settings-BAGhjWOo.js      11.73 kB
+2026-10-24T20:15:17.7767764Z .vercel/output/static/assets/engine-DVrwA4n-.js               11.90 kB
+2026-10-24T20:15:17.7768157Z .vercel/output/static/assets/v2-BBzkUjZD.js                   14.10 kB
+2026-10-24T20:15:17.7768552Z .vercel/output/static/assets/signal-config-Bc0Ixwp4.js        14.91 kB
+2026-10-24T20:15:17.7769129Z .vercel/output/static/assets/charts-BiE6HSJc.js               17.09 kB
+2026-10-24T20:15:17.7769540Z .vercel/output/static/assets/trading-s-N7sfdn.js              18.26 kB
+2026-10-24T20:15:17.7769934Z .vercel/output/static/assets/ui-XsfU_ALq.js                   18.52 kB
+2026-10-24T20:15:17.7770321Z .vercel/output/static/assets/presets-HITC9q70.js              19.54 kB
+2026-10-24T20:15:17.7770732Z .vercel/output/static/assets/statistics-B-G_E_1t.js           22.65 kB
+2026-10-24T20:15:17.7771131Z .vercel/output/static/assets/stages-CB35G37S.js               22.72 kB
+2026-10-24T20:15:17.7771536Z .vercel/output/static/assets/break-config-Cl5wJNxv.js         41.46 kB
+2026-10-24T20:15:17.7771954Z .vercel/output/static/assets/jsx-runtime-D6cXz5cu.js          41.58 kB
+2026-10-24T20:15:17.7772363Z .vercel/output/static/assets/registry-D-FXef54.js             92.17 kB
+2026-10-24T20:15:17.7772761Z .vercel/output/static/assets/settings-CsASQTt8.js            126.79 kB
+2026-10-24T20:15:17.7773164Z .vercel/output/static/assets/index-CKurc9T_.js               351.51 kB
+2026-10-24T20:15:17.7773370Z 
+2026-10-24T20:15:17.7773906Z [32m✓ built in 6.90s[39m
+2026-10-24T20:15:17.7786899Z [33m[33m[PLUGIN_TIMINGS] [0mPlugin hooks ran for 6.7s of this 6.9s build (98%).
+2026-10-24T20:15:17.7787816Z The slowest hooks, timed inside each callback (the wait before a callback starts is excluded, the time it awaits is included):
+2026-10-24T20:15:17.7788377Z   - @tailwindcss/vite:generate:build transform (92%, 6.4s, 1 call)
+2026-10-24T20:15:17.7788817Z Additional hook time came from the hooks below and from hooks under 1s.
+2026-10-24T20:15:17.7789605Z 2 hooks are listed without a time. Their calls overlapped, so the time inside one call includes work from other calls. To find their cost, profile the build with `node --cpu-prof`:
+2026-10-24T20:15:17.7790456Z   - tanstack-start-core:import-protection resolveId (5737 calls)
+2026-10-24T20:15:17.7790855Z   - tanstack-start-core::server-fn:client transform (15 calls)
+2026-10-24T20:15:17.7791339Z See https://rolldown.rs/reference/InputOptions.checks#plugintimings for more details.
+2026-10-24T20:15:17.7791712Z [39m
+2026-10-24T20:15:17.7792069Z [36mvite v8.2.2 [32mbuilding ssr environment for production...[36m[39m
+2026-10-24T20:15:17.7861031Z transforming...
+2026-10-24T20:15:24.0177473Z ✓ 225 modules transformed.
+2026-10-24T20:15:24.0617271Z rendering chunks...
+2026-10-24T20:15:24.0981171Z node_modules/.nitro/vite/services/ssr/assets/styles-EeajTTjQ.css                      34.30 kB
+2026-10-24T20:15:24.0981814Z node_modules/.nitro/vite/services/ssr/assets/start-5Z2QO8AU.js                         0.14 kB
+2026-10-24T20:15:24.0982398Z node_modules/.nitro/vite/services/ssr/assets/market-CGKjtrNW.js                        0.19 kB
+2026-10-24T20:15:24.0982980Z node_modules/.nitro/vite/services/ssr/assets/trading-C3mPDPKU.js                       0.20 kB
+2026-10-24T20:15:24.0983530Z node_modules/.nitro/vite/services/ssr/assets/settings-M25JclNo.js                      0.20 kB
+2026-10-24T20:15:24.0984112Z node_modules/.nitro/vite/services/ssr/assets/empty-plugin-adapters-D9UWiqvJ.js         0.22 kB
+2026-10-24T20:15:24.0984672Z node_modules/.nitro/vite/services/ssr/assets/rolldown-runtime-D7D4PA-g.js              0.36 kB
+2026-10-24T20:15:24.0985215Z node_modules/.nitro/vite/services/ssr/assets/signal-policy-CLNSQ6Os.js                 1.45 kB
+2026-10-24T20:15:24.0985753Z node_modules/.nitro/vite/services/ssr/assets/progression-BUW_uSrV.js                   1.77 kB
+2026-10-24T20:15:24.0986475Z node_modules/.nitro/vite/services/ssr/assets/execution-summary-C1EHL3Ax.js             2.53 kB
+2026-10-24T20:15:24.0987008Z node_modules/.nitro/vite/services/ssr/assets/signal-units-DRZnDzC4.js                  3.14 kB
+2026-10-24T20:15:24.0987548Z node_modules/.nitro/vite/services/ssr/assets/indication-ui-DG5nFsJ4.js                 3.67 kB
+2026-10-24T20:15:24.0988070Z node_modules/.nitro/vite/services/ssr/assets/matrix-DzU0LkF3.js                        3.94 kB
+2026-10-24T20:15:24.0988835Z node_modules/.nitro/vite/services/ssr/assets/_tanstack-start-manifest_v-Bwnwz04-.js    4.31 kB
+2026-10-24T20:15:24.0989787Z node_modules/.nitro/vite/services/ssr/assets/progress-HPmQ_PqK.js                      5.27 kB
+2026-10-24T20:15:24.0990645Z node_modules/.nitro/vite/services/ssr/assets/promotion-evidence-B6N1txKS.js            5.57 kB
+2026-10-24T20:15:24.0991498Z node_modules/.nitro/vite/services/ssr/assets/compare-BEiGN6IK.js                       6.53 kB
+2026-10-24T20:15:24.0992395Z node_modules/.nitro/vite/services/ssr/assets/results-6FqxCukO.js                       8.32 kB
+2026-10-24T20:15:24.0993286Z node_modules/.nitro/vite/services/ssr/assets/api-CHguVJ6-.js                           8.83 kB
+2026-10-24T20:15:24.0994187Z node_modules/.nitro/vite/services/ssr/assets/config._id-CsTL81RP.js                    9.15 kB
+2026-10-24T20:15:24.0995118Z node_modules/.nitro/vite/services/ssr/assets/v2-D_kHLrzy.js                            9.75 kB
+2026-10-24T20:15:24.0996183Z node_modules/.nitro/vite/services/ssr/assets/hourly-C6n1ole6.js                        9.92 kB
+2026-10-24T20:15:24.0997113Z node_modules/.nitro/vite/services/ssr/assets/live-record-DPMMtro1.js                  11.17 kB
+2026-10-24T20:15:24.0997998Z node_modules/.nitro/vite/services/ssr/assets/live-validation-DLgVj5Of.js              14.84 kB
+2026-10-24T20:15:24.0998951Z node_modules/.nitro/vite/services/ssr/assets/prehistoric-B9wMFHfL.js                  15.38 kB
+2026-10-24T20:15:24.0999880Z node_modules/.nitro/vite/services/ssr/assets/engine-BTFj0vmw.js                       19.66 kB
+2026-10-24T20:15:24.1000885Z node_modules/.nitro/vite/services/ssr/assets/preset-settings-DshbPHS4.js              19.97 kB
+2026-10-24T20:15:24.1001875Z node_modules/.nitro/vite/services/ssr/assets/router-MzH5wyzZ.js                       21.60 kB
+2026-10-24T20:15:24.1003089Z node_modules/.nitro/vite/services/ssr/assets/v2-DoiaBgPN.js                           23.28 kB
+2026-10-24T20:15:24.1004048Z node_modules/.nitro/vite/services/ssr/assets/trading-COJZOevU.js                      27.46 kB
+2026-10-24T20:15:24.1004985Z node_modules/.nitro/vite/services/ssr/assets/ui-ZPLkAyEA.js                           27.78 kB
+2026-10-24T20:15:24.1006721Z node_modules/.nitro/vite/services/ssr/assets/charts-DnM24UBU.js                       28.77 kB
+2026-10-24T20:15:24.1007713Z node_modules/.nitro/vite/services/ssr/assets/statistics-CCQs2BL0.js                   29.95 kB
+2026-10-24T20:15:24.1008639Z node_modules/.nitro/vite/services/ssr/assets/presets-BiN8nvn0.js                      30.94 kB
+2026-10-24T20:15:24.1009574Z node_modules/.nitro/vite/services/ssr/assets/bingx.server-gjtjqnMi.js                 32.04 kB
+2026-10-24T20:15:24.1010482Z node_modules/.nitro/vite/services/ssr/assets/statistics-DXmDziYO.js                   34.57 kB
+2026-10-24T20:15:24.1011417Z node_modules/.nitro/vite/services/ssr/assets/stages-B7cLmXYo.js                       35.27 kB
+2026-10-24T20:15:24.1012347Z node_modules/.nitro/vite/services/ssr/assets/presets-CG-kiAjI.js                      37.87 kB
+2026-10-24T20:15:24.1013269Z node_modules/.nitro/vite/services/ssr/assets/live-BT_URaA3.js                         48.33 kB
+2026-10-24T20:15:24.1014165Z node_modules/.nitro/vite/services/ssr/index.js                                        79.06 kB
+2026-10-24T20:15:24.1015085Z node_modules/.nitro/vite/services/ssr/assets/api-data-mezyQuzH.js                     92.91 kB
+2026-10-24T20:15:24.1016221Z node_modules/.nitro/vite/services/ssr/assets/live.server-CCLyaj34.js                 192.82 kB
+2026-10-24T20:15:24.1017164Z node_modules/.nitro/vite/services/ssr/assets/settings-CDiK6-VL.js                    199.90 kB
+2026-10-24T20:15:24.1018097Z node_modules/.nitro/vite/services/ssr/assets/registry-SZuX3kdK.js                    293.28 kB
+2026-10-24T20:15:24.1019044Z node_modules/.nitro/vite/services/ssr/assets/walkforward-BPmrc9Fw.js                 417.32 kB
+2026-10-24T20:15:24.1019970Z node_modules/.nitro/vite/services/ssr/assets/runtime.server-drqFd2Yt.js              551.52 kB
+2026-10-24T20:15:24.1020442Z 
+2026-10-24T20:15:24.1021048Z [32m✓ built in 6.32s[39m
+2026-10-24T20:15:24.1034610Z [33m[33m[PLUGIN_TIMINGS] [0mPlugin hooks ran for 6.2s of this 6.3s build (99%).
+2026-10-24T20:15:24.1035296Z The slowest hooks, timed inside each callback (the wait before a callback starts is excluded, the time it awaits is included):
+2026-10-24T20:15:24.1036017Z   - @tailwindcss/vite:generate:build transform (95%, 6.0s, 1 call)
+2026-10-24T20:15:24.1036614Z Additional hook time came from the hooks below and from hooks under 1s.
+2026-10-24T20:15:24.1037401Z 2 hooks are listed without a time. Their calls overlapped, so the time inside one call includes work from other calls. To find their cost, profile the build with `node --cpu-prof`:
+2026-10-24T20:15:24.1038072Z   - tanstack-start-core:import-protection resolveId (717 calls)
+2026-10-24T20:15:24.1038465Z   - tanstack-start-core::server-fn:ssr transform (14 calls)
+2026-10-24T20:15:24.1038930Z See https://rolldown.rs/reference/InputOptions.checks#plugintimings for more details.
+2026-10-24T20:15:24.1039297Z [39m
+2026-10-24T20:15:24.1044106Z [start] [nitro] Building [[35mNitro[39m] [2m(preset: `vercel`, compatibility: `2026-10-24`)[22m
+2026-10-24T20:15:24.1086367Z [success] [nitro] Generated public [36m.vercel/output/static[39m
+2026-10-24T20:15:24.1093121Z [36mvite v8.2.2 [32mbuilding nitro environment for production...[36m[39m
+2026-10-24T20:15:24.1172143Z transforming...
+2026-10-24T20:15:24.3499607Z ✓ 2028 modules transformed.
+2026-10-24T20:15:24.4918459Z rendering chunks...
+2026-10-24T20:15:24.5962170Z .vercel/output/functions/__server.func/_ssr/start-5Z2QO8AU.mjs                      0.14 kB
+2026-10-24T20:15:24.5962816Z .vercel/output/functions/__server.func/_ssr/market-CGKjtrNW.mjs                     0.21 kB
+2026-10-24T20:15:24.5963655Z .vercel/output/functions/__server.func/_ssr/trading-C3mPDPKU.mjs                    0.22 kB
+2026-10-24T20:15:24.5964211Z .vercel/output/functions/__server.func/_ssr/settings-M25JclNo.mjs                   0.22 kB
+2026-10-24T20:15:24.5964781Z .vercel/output/functions/__server.func/_ssr/empty-plugin-adapters-D9UWiqvJ.mjs      0.23 kB
+2026-10-24T20:15:24.5965313Z .vercel/output/functions/__server.func/_ssr/rolldown-runtime-D7D4PA-g.mjs           0.41 kB
+2026-10-24T20:15:24.5966013Z .vercel/output/functions/__server.func/_chunks/ssr-renderer.mjs                     0.96 kB
+2026-10-24T20:15:24.5966628Z .vercel/output/functions/__server.func/_libs/hookable.mjs                           1.16 kB
+2026-10-24T20:15:24.5967124Z .vercel/output/functions/__server.func/_runtime.mjs                                 1.58 kB
+2026-10-24T20:15:24.5967620Z .vercel/output/functions/__server.func/_ssr/progression-BUW_uSrV.mjs                1.81 kB
+2026-10-24T20:15:24.5968134Z .vercel/output/functions/__server.func/_ssr/execution-summary-C1EHL3Ax.mjs          2.86 kB
+2026-10-24T20:15:24.5968660Z .vercel/output/functions/__server.func/_ssr/signal-units-DRZnDzC4.mjs               3.13 kB
+2026-10-24T20:15:24.5969173Z .vercel/output/functions/__server.func/_ssr/indication-ui-DG5nFsJ4.mjs              3.71 kB
+2026-10-24T20:15:24.5969696Z .vercel/output/functions/__server.func/_tanstack-start-manifest_v-Bwnwz04-.mjs      4.36 kB
+2026-10-24T20:15:24.5970505Z .vercel/output/functions/__server.func/_ssr/matrix-DzU0LkF3.mjs                     4.41 kB
+2026-10-24T20:15:24.5971273Z .vercel/output/functions/__server.func/_ssr/progress-HPmQ_PqK.mjs                   5.31 kB
+2026-10-24T20:15:24.5971989Z .vercel/output/functions/__server.func/_ssr/promotion-evidence-B6N1txKS.mjs         6.57 kB
+2026-10-24T20:15:24.5972690Z .vercel/output/functions/__server.func/_ssr/compare-BEiGN6IK.mjs                    7.69 kB
+2026-10-24T20:15:24.5973389Z .vercel/output/functions/__server.func/_ssr/api-CHguVJ6-.mjs                        8.76 kB
+2026-10-24T20:15:24.5974099Z .vercel/output/functions/__server.func/_libs/h3-v2+rou3.mjs                         9.83 kB
+2026-10-24T20:15:24.5974790Z .vercel/output/functions/__server.func/_ssr/results-6FqxCukO.mjs                    9.98 kB
+2026-10-24T20:15:24.5975660Z .vercel/output/functions/__server.func/_ssr/config._id-CsTL81RP.mjs                10.91 kB
+2026-10-24T20:15:24.5976554Z .vercel/output/functions/__server.func/_ssr/live-record-DPMMtro1.mjs               11.18 kB
+2026-10-24T20:15:24.5977277Z .vercel/output/functions/__server.func/_libs/lucide-react.mjs                      11.40 kB
+2026-10-24T20:15:24.5978070Z .vercel/output/functions/__server.func/_ssr/v2-D_kHLrzy.mjs                        11.42 kB
+2026-10-24T20:15:24.5978923Z .vercel/output/functions/__server.func/_ssr/hourly-C6n1ole6.mjs                    11.78 kB
+2026-10-24T20:15:24.5979536Z .vercel/output/functions/__server.func/_libs/tanstack__history.mjs                 12.50 kB
+2026-10-24T20:15:24.5980159Z .vercel/output/functions/__server.func/_ssr/live-validation-DLgVj5Of.mjs           14.55 kB
+2026-10-24T20:15:24.5980955Z .vercel/output/functions/__server.func/_ssr/prehistoric-B9wMFHfL.mjs               17.62 kB
+2026-10-24T20:15:24.5981732Z .vercel/output/functions/__server.func/_ssr/router-MzH5wyzZ.mjs                    21.17 kB
+2026-10-24T20:15:24.5982514Z .vercel/output/functions/__server.func/_libs/h3+rou3+srvx.mjs                      22.57 kB
+2026-10-24T20:15:24.5983072Z .vercel/output/functions/__server.func/_ssr/preset-settings-DshbPHS4.mjs           22.92 kB
+2026-10-24T20:15:24.5983581Z .vercel/output/functions/__server.func/_ssr/engine-BTFj0vmw.mjs                    23.77 kB
+2026-10-24T20:15:24.5984079Z .vercel/output/functions/__server.func/_ssr/v2-DoiaBgPN.mjs                        27.19 kB
+2026-10-24T20:15:24.5984576Z .vercel/output/functions/__server.func/_ssr/ui-ZPLkAyEA.mjs                        29.12 kB
+2026-10-24T20:15:24.5985076Z .vercel/output/functions/__server.func/_libs/@tanstack/router-core+[...].mjs       29.60 kB
+2026-10-24T20:15:24.5985712Z .vercel/output/functions/__server.func/_ssr/statistics-CCQs2BL0.mjs                29.92 kB
+2026-10-24T20:15:24.5986387Z .vercel/output/functions/__server.func/_ssr/charts-DnM24UBU.mjs                    31.92 kB
+2026-10-24T20:15:24.5986899Z .vercel/output/functions/__server.func/_ssr/bingx.server-gjtjqnMi.mjs              32.01 kB
+2026-10-24T20:15:24.5987399Z .vercel/output/functions/__server.func/index.mjs                                   33.11 kB
+2026-10-24T20:15:24.5988093Z .vercel/output/functions/__server.func/_ssr/trading-COJZOevU.mjs                   33.18 kB
+2026-10-24T20:15:24.5988852Z .vercel/output/functions/__server.func/_ssr/presets-BiN8nvn0.mjs                   34.99 kB
+2026-10-24T20:15:24.5989386Z .vercel/output/functions/__server.func/_ssr/presets-CG-kiAjI.mjs                   37.77 kB
+2026-10-24T20:15:24.5989908Z .vercel/output/functions/__server.func/_ssr/statistics-DXmDziYO.mjs                40.19 kB
+2026-10-24T20:15:24.5990632Z .vercel/output/functions/__server.func/_ssr/stages-B7cLmXYo.mjs                    40.98 kB
+2026-10-24T20:15:24.5991202Z .vercel/output/functions/__server.func/_ssr/live-BT_URaA3.mjs                      48.33 kB
+2026-10-24T20:15:24.5991924Z .vercel/output/functions/__server.func/_ssr/ssr.mjs                                77.18 kB
+2026-10-24T20:15:24.5992627Z .vercel/output/functions/__server.func/_ssr/api-data-mezyQuzH.mjs                  92.94 kB
+2026-10-24T20:15:24.5993362Z .vercel/output/functions/__server.func/_libs/zod.mjs                              159.58 kB
+2026-10-24T20:15:24.5994015Z .vercel/output/functions/__server.func/_ssr/live.server-CCLyaj34.mjs              192.72 kB
+2026-10-24T20:15:24.5994717Z .vercel/output/functions/__server.func/_ssr/settings-CDiK6-VL.mjs                 222.67 kB
+2026-10-24T20:15:24.5995219Z .vercel/output/functions/__server.func/_chunks/live.server.mjs                    239.70 kB
+2026-10-24T20:15:24.5995732Z .vercel/output/functions/__server.func/_ssr/runtime.server-drqFd2Yt.mjs           550.10 kB
+2026-10-24T20:15:24.5996373Z .vercel/output/functions/__server.func/_ssr/walkforward-BPmrc9Fw.mjs              715.56 kB
+2026-10-24T20:15:24.5996886Z .vercel/output/functions/__server.func/_libs/@tanstack/react-router+[...].mjs     776.81 kB
+2026-10-24T20:15:24.5997636Z .vercel/output/functions/__server.func/_chunks/boot.server.mjs                  1,355.64 kB
+2026-10-24T20:15:24.5997908Z 
+2026-10-24T20:15:24.5998293Z [32m✓ built in 487ms[39m
+2026-10-24T20:15:24.5998637Z [info] Generated [36m.vercel/output/nitro.json[39m
+2026-10-24T20:15:24.5999018Z [success] [nitro] You can preview this build using `npx vite preview`
+2026-10-24T20:15:24.5999470Z [success] [nitro] You can deploy this build using `npx nitro deploy --prebuilt`
+2026-10-24T20:15:24.7335543Z 
+2026-10-24T20:15:24.7336255Z > build:core-worker
+2026-10-24T20:15:24.7336606Z > node scripts/build-core-worker.mjs
+2026-10-24T20:15:24.7336790Z 
+2026-10-24T20:15:24.9813713Z [core-worker] packaged cts-core-worker.mjs in /home/runner/work/CTS-A-O/CTS-A-O/.vercel/output/functions/__server.func
+2026-10-24T20:15:25.0669317Z 
+2026-10-24T20:15:25.0669852Z > db:migrate
+2026-10-24T20:15:25.0670258Z > node scripts/migrate.mjs
+2026-10-24T20:15:25.0670475Z 
+2026-10-24T20:15:25.1075432Z [migrate] DATABASE_URL not set — skipping (the PGLite fallback migrates itself).
+2026-10-24T20:15:25.1241646Z ##[group]Run npm test -- --without-core
+2026-10-24T20:15:25.1242100Z [36;1mnpm test -- --without-core[0m
+2026-10-24T20:15:25.1307589Z shell: /usr/bin/bash -e {0}
+2026-10-24T20:15:25.1307908Z env:
+2026-10-24T20:15:25.1308212Z   CTS_UI_BROWSER_EXECUTABLE: /usr/bin/google-chrome
+2026-10-24T20:15:25.1308591Z ##[endgroup]
+2026-10-24T20:15:25.2237853Z 
+2026-10-24T20:15:25.2238289Z > test
+2026-10-24T20:15:25.2238721Z > node scripts/test.mjs --without-core
+2026-10-24T20:15:25.2239001Z 
+2026-10-24T20:15:25.2487102Z [npm test] scripts (offline fixtures only)
+2026-10-24T20:15:25.3985761Z ✔ flat amendment supplements dual endpoint marks without changing original execution, study, or curves (27.062523ms)
+2026-10-24T20:15:25.4200349Z ✔ chunked amendment supplements dual endpoint marks without changing original execution, study, or curves (21.7452ms)
+2026-10-24T20:15:25.4264332Z ✔ corrupt raw sidecar evidence is rejected before creating an amended report (6.848623ms)
+2026-10-24T20:15:25.4356498Z ✔ corrupt report sidecar evidence is rejected before creating an amended report (6.843986ms)
+2026-10-24T20:15:25.4380302Z ✔ amendment output rejects the original source directory and any pre-existing directory (4.607732ms)
+2026-10-24T20:15:25.5202391Z ✔ the CLI writes the verified amendment and receipt through its public argument contract (80.753662ms)
+2026-10-24T20:15:25.5639184Z ✔ empty endpoint arrays do not waive finite ordered windows or a known finite cost (39.698393ms)
+2026-10-24T20:15:25.5775453Z ✔ an explicitly unknown original endpoint P&L cannot be replaced by inferred engine aliases (17.959554ms)
+2026-10-24T20:15:25.5930305Z ✔ an endpoint allocation with a contradictory order key cannot gain amended evidence (13.875399ms)
+2026-10-24T20:15:25.6028372Z ▶ frozen session independent audit
+2026-10-24T20:15:25.6037182Z   ✔ rejects unloaded trade and allocation placeholders as incomplete evidence (1.755601ms)
+2026-10-24T20:15:25.6038362Z   ✔ reconciles legacy and chunked files identically and verifies unloaded history chunks (34.749944ms)
+2026-10-24T20:15:25.6061636Z   ✔ keeps funded unit PF, weighted cash, cohorts, directions and every hour separate (1.012152ms)
+2026-10-24T20:15:25.6107211Z   ✔ never treats zero allocations as funded performance or permits duplicate allocation joins (0.665922ms)
+2026-10-24T20:15:25.6108547Z   ✔ preserves missing unit or allocation evidence as unknown and prevents pruning (1.008908ms)
+2026-10-24T20:15:25.6122990Z   ✔ proposes only adequately sampled persistent losing cells after the completed 22x24 selection audit (2.71283ms)
+2026-10-24T20:15:25.6125377Z ✔ frozen session independent audit (43.183441ms)
+2026-10-24T20:15:25.8616684Z ✔ keeps empty contexts and full Last-8 readiness separate from older/window samples (0.979113ms)
+2026-10-24T20:15:25.8649797Z ✔ measures completed and still-open drawdown periods from own chronological returns (0.176796ms)
+2026-10-24T20:15:25.8667645Z ✔ requires full tape provenance and rejects mismatched universe/type/protection (3.585905ms)
+2026-10-24T20:15:25.8669112Z ✔ separates own entry qualification from the selected hourly cohort without reading future losses (20.506171ms)
+2026-10-24T20:15:26.1233513Z ✔ matches every enabled ladder build identity/protection across source and coordinator lanes (108.547151ms)
+2026-10-24T20:15:26.1234994Z ✔ does not invent ladders when those historical strategy sets are disabled (8.818517ms)
+2026-10-24T20:15:26.1407685Z ✔ fails and records missing enabled ladder cells instead of certifying a partial catalog (34.928908ms)
+2026-10-24T20:15:26.4659742Z ✔ non-canvas app with no custom card gets a soft BRAND NOTE (utility exception) (1.68842ms)
+2026-10-24T20:15:26.4717967Z ✔ non-canvas app with a compliant card is silent (0.978702ms)
+2026-10-24T20:15:26.4777673Z ✔ card file without site.json card=custom warns (0.646923ms)
+2026-10-24T20:15:26.4836788Z ✔ card file with missing site.json warns for card=custom (1.626587ms)
+2026-10-24T20:15:26.4847497Z ✔ card file with invalid site.json warns for card=custom (0.649838ms)
+2026-10-24T20:15:26.4866684Z ✔ oversized card warns for non-canvas apps too (0.956179ms)
+2026-10-24T20:15:26.4893277Z ✔ canvas app with no card warns 'missing' and missing og:type (0.641896ms)
+2026-10-24T20:15:26.4926811Z ✔ canvas card without type still warns for og:type (0.750028ms)
+2026-10-24T20:15:26.4927824Z ✔ oversized card warns on the scraper budget (jpg and legacy png) (2.244867ms)
+2026-10-24T20:15:26.4957786Z ✔ compliant game (custom card + site.json type + x-banner) is silent (0.83756ms)
+2026-10-24T20:15:26.4986834Z ✔ __root.tsx og:type no longer satisfies the canvas gate (0.918482ms)
+2026-10-24T20:15:26.5036846Z ✔ oversized x-banner warns on the same scraper budget as og.jpg (1.05674ms)
+2026-10-24T20:15:26.5038509Z ✔ legacy png + site.json type still needs the X feed card (0.720994ms)
+2026-10-24T20:15:26.5059835Z ✔ siteDeclaresOgTypeGame reads the site contract (0.141172ms)
+2026-10-24T20:15:26.5123321Z ✔ a fresh og-pending marker silences the whole gate view (0.480593ms)
+2026-10-24T20:15:26.5143545Z ✔ a stale og-pending marker is ignored and the warnings return (0.371299ms)
+2026-10-24T20:15:26.5145460Z ✔ the marker goes stale on the clock, not on the file (0.459722ms)
+2026-10-24T20:15:26.5146850Z ✔ no marker means nothing is in flight (0.308624ms)
+2026-10-24T20:15:26.5157401Z ✔ parseBrandCheckArgs takes --game, --placeholder-ok and --root, and rejects the rest (0.240472ms)
+2026-10-24T20:15:26.5158555Z ✔ cli: a game missing its card reports JSON and exits 1 (61.10713ms)
+2026-10-24T20:15:26.5159377Z ✔ cli: a compliant game passes (61.868156ms)
+2026-10-24T20:15:26.5160203Z ✔ cli: the task's own marker is reported, not honoured (63.607232ms)
+2026-10-24T20:15:26.5161189Z ✔ cli: a bad argument fails with JSON on stderr (68.36536ms)
+2026-10-24T20:15:26.5162151Z ✔ cli: a non-game with no card fails too — the pass exists to produce one (57.381607ms)
+2026-10-24T20:15:26.5163243Z ✔ cli: --placeholder-ok is how a plain-utility pass reports no card as expected (115.717678ms)
+2026-10-24T20:15:26.5164134Z ✔ cli: a non-game with a compliant card passes (74.888654ms)
+2026-10-24T20:15:26.5165168Z ﹣ SKILL.md and AGENTS.md name the marker path and bound this script uses (0.103716ms) # .grok/skills/og not present
+2026-10-24T20:15:26.5166658Z ﹣ the sections that own the brand-task prohibition never affirm a wait (0.071928ms) # .grok/skills/og not present
+2026-10-24T20:15:26.5168006Z ﹣ SKILL.md tells the pass to self-check with the flag this CLI accepts (0.055413ms) # .grok/skills/og not present
+2026-10-24T20:15:26.5168883Z ✔ normalizes whitespace before hashing (1.444893ms)
+2026-10-24T20:15:26.5169607Z ✔ nullish and blank body text normalize to the empty string (0.13323ms)
+2026-10-24T20:15:26.5170333Z ✔ body text prefix is normalized and capped (0.161783ms)
+2026-10-24T20:15:26.5170967Z ✔ identical runs do not diverge (0.645491ms)
+2026-10-24T20:15:26.5171544Z ✔ status change diverges (0.261874ms)
+2026-10-24T20:15:26.5172079Z ✔ title change diverges (0.956279ms)
+2026-10-24T20:15:26.5172839Z ✔ title comparison is skipped when either side lacks one (0.18637ms)
+2026-10-24T20:15:26.5173754Z ✔ canvas disappearing diverges; canvas appearing does not (0.1657ms)
+2026-10-24T20:15:26.5174687Z ✔ horizontal overflow appearing diverges; clearing does not (0.211087ms)
+2026-10-24T20:15:26.5175424Z ✔ new console errors diverge (0.235033ms)
+2026-10-24T20:15:26.5176367Z ✔ errors already present in the baseline do not re-diverge (0.145148ms)
+2026-10-24T20:15:26.5177045Z ✔ body text collapse diverges (0.099009ms)
+2026-10-24T20:15:26.5177705Z ✔ body text dropping to zero reports collapse (0.109725ms)
+2026-10-24T20:15:26.5178632Z ✔ zero-length baseline reports growth via the hash branch, not collapse (0.11293ms)
+2026-10-24T20:15:26.5179628Z ✔ hash mismatch with a trivial length delta and same page start is tolerated (0.07316ms)
+2026-10-24T20:15:26.5180644Z ✔ hash mismatch with a trivial length delta but changed page start diverges (0.081743ms)
+2026-10-24T20:15:26.5181537Z ✔ prefix check is skipped when either side lacks a prefix (0.115935ms)
+2026-10-24T20:15:26.5182976Z ✔ length-delta tolerance boundary: 50 tolerated, 51 diverges (500-char baseline) (0.089034ms)
+2026-10-24T20:15:26.5184195Z ✔ length-delta floor dominates small baselines: 20 tolerated, 21 diverges (100-char baseline) (0.07284ms)
+2026-10-24T20:15:26.5185265Z ✔ collapse boundary: exactly half is 'changed', one below is 'collapsed' (0.080511ms)
+2026-10-24T20:15:26.5186283Z ✔ missing baseline viewport diverges (0.078268ms)
+2026-10-24T20:15:26.5187040Z ✔ empty or null baseline diverges for every viewport (0.152479ms)
+2026-10-24T20:15:26.5187833Z ✔ degenerate current verdict fails closed (0.183476ms)
+2026-10-24T20:15:26.5188589Z ✔ multiple signals across viewports all accumulate (0.087702ms)
+2026-10-24T20:15:26.5189705Z ✔ baselineComparison round-trips a valid baseline (0.13945ms)
+2026-10-24T20:15:26.5190693Z ✔ baselineComparison fails closed on malformed or wrong-shape baselines (0.202925ms)
+2026-10-24T20:15:26.5191510Z ✔ parseSmokeArgs defaults (0.155894ms)
+2026-10-24T20:15:26.5192444Z ✔ parseSmokeArgs consumes --baseline without shifting positionals (0.102625ms)
+2026-10-24T20:15:26.5193441Z ✔ parseSmokeArgs rejects a trailing --baseline flag (0.070956ms)
+2026-10-24T20:15:26.5194283Z ✔ parseSmokeArgs supports the --baseline= form (0.068734ms)
+2026-10-24T20:15:26.5195226Z ✔ parseSmokeArgs rejects unknown flags instead of treating them as positionals (0.068823ms)
+2026-10-24T20:15:26.5196703Z ✔ parseSmokeArgs env fallback and flag precedence (0.074662ms)
+2026-10-24T20:15:26.5197583Z ✔ derivedPaths handles .png, .PNG, and extensionless inputs (0.193982ms)
+2026-10-24T20:15:26.5198355Z ✔ exitCodeFor: clean run exits 0 (0.155343ms)
+2026-10-24T20:15:26.5199144Z ✔ exitCodeFor: errors in any single viewport exit 2 (0.105368ms)
+2026-10-24T20:15:26.5200220Z ✔ exitCodeFor: navigation failure in any viewport exits 1, beating errors (0.171257ms)
+2026-10-24T20:15:26.5201116Z ✔ exitCodeFor: 4xx boundary and missing status (0.130777ms)
+2026-10-24T20:15:26.5201829Z ✔ exitCodeFor: no viewport data is a failure (0.074813ms)
+2026-10-24T20:15:26.5202567Z ✔ browser-smoke wires the guard and verdict helpers (0.315906ms)
+2026-10-24T20:15:26.5203332Z ✔ browser-smoke file I/O only touches guarded paths (0.375575ms)
+2026-10-24T20:15:26.6724209Z ✔ finds the generated Nitro Node entry layout and excludes browser, edge and unrelated API outputs (15.638887ms)
+2026-10-24T20:15:26.6725347Z ✔ fails without a real Nitro server entry before creating worker artifacts (1.692761ms)
+2026-10-24T20:15:26.6726839Z ✔ bundles one real standalone ESM worker, preserves server assets, and completes Base config work without TypeScript flags (346.560163ms)
+2026-10-24T20:15:26.6744672Z ✔ both build modes package the worker after Vite and before production database migration (0.86436ms)
+2026-10-24T20:15:26.6887193Z ✔ daily archive parsing accepts official header, milliseconds/microseconds and genuine zero volume (2.214342ms)
+2026-10-24T20:15:26.6888452Z ✔ bad OHLCV, malformed rows, duplicate timestamps and invalid close boundaries fail closed (0.484128ms)
+2026-10-24T20:15:26.6889268Z ✔ full daily coverage rejects gaps, extra/short data and wrong day without filling candles (8.961972ms)
+2026-10-24T20:15:26.6889925Z ✔ official checksum must match archive bytes and exact filename (0.879764ms)
+2026-10-24T20:15:26.6890483Z ✔ UTC archive days use inclusive-exclusive bounds (0.534905ms)
+2026-10-24T20:15:26.6891113Z ✔ no script reads the runtime's candles as arrays (23.228596ms)
+2026-10-24T20:15:26.7627614Z ✔ the flag predicate matches src/lib/auth (0.803899ms)
+2026-10-24T20:15:26.7632632Z ✔ reads the value a live dev server resolved (0.236556ms)
+2026-10-24T20:15:26.7639662Z ✔ a server started without the flag reads as sign-in on (0.155254ms)
+2026-10-24T20:15:26.7640407Z ✔ agreement passes (0.194773ms)
+2026-10-24T20:15:26.7640936Z ✔ divergence fails in either direction (0.220121ms)
+2026-10-24T20:15:26.7641684Z ✔ an unobservable dev server is indeterminate, not agreement (0.141743ms)
+2026-10-24T20:15:26.7642931Z ✔ a dev server that cannot be reached probes as null (0.151879ms)
+2026-10-24T20:15:26.7643730Z ✔ a server without the endpoint probes as null, not as agreement (0.297237ms)
+2026-10-24T20:15:26.7644497Z ✔ only a divergence warns the smoke verdict (0.749948ms)
+2026-10-24T20:15:26.7645487Z ﹣ the build side resolves the template's shipped app-env (0.216376ms) # .grok/app-env.json not present
+2026-10-24T20:15:26.8144689Z ✔ the CLI reports rather than silently passing when run via a symlink (60.274449ms)
+2026-10-24T20:15:26.8236941Z ✔ public acquisition permits only unsigned public GET routes (1.957745ms)
+2026-10-24T20:15:26.8237882Z ✔ public acquisition rejects HTTP failures before parsing (0.232559ms)
+2026-10-24T20:15:26.8238887Z ✔ frozen universe correction depends on availability, launch history and exact symbol (0.759813ms)
+2026-10-24T20:15:26.8240436Z ✔ OHLCV accepts complete reverse-ordered public pages without filling (0.317688ms)
+2026-10-24T20:15:26.8241366Z ✔ OHLCV rejects gaps, duplicates, bad values and future boundaries (0.318298ms)
+2026-10-24T20:15:26.8242280Z ✔ ranking hours require all60 contiguous aligned completed minutes (0.628876ms)
+2026-10-24T20:15:26.8369714Z ✔ final reducer verifies hourly sums, explicit costs and frozen provenance (1.91431ms)
+2026-10-24T20:15:26.8370732Z ✔ final reducer rejects shifted/missing hours and incorrect measured PF (0.307372ms)
+2026-10-24T20:15:26.8417523Z {
+2026-10-24T20:15:26.8418079Z   "artifacts": 4,
+2026-10-24T20:15:26.8418391Z   "baseArchive": {
+2026-10-24T20:15:26.8418816Z     "path": "/tmp/cts-final-report-Fno3jT/absent.zip",
+2026-10-24T20:15:26.8419270Z     "status": "not available locally"
+2026-10-24T20:15:26.8419592Z   },
+2026-10-24T20:15:26.8419816Z   "cases": [
+2026-10-24T20:15:26.8420104Z     {
+2026-10-24T20:15:26.8420379Z       "id": "baseline/baseline-20",
+2026-10-24T20:15:26.8420708Z       "status": "invalid"
+2026-10-24T20:15:26.8420989Z     },
+2026-10-24T20:15:26.8421207Z     {
+2026-10-24T20:15:26.8421473Z       "id": "baseline/baseline-22",
+2026-10-24T20:15:26.8421797Z       "status": "pending"
+2026-10-24T20:15:26.8422086Z     },
+2026-10-24T20:15:26.8422307Z     {
+2026-10-24T20:15:26.8422641Z       "id": "prune-variant/baseline-20",
+2026-10-24T20:15:26.8423002Z       "status": "pending"
+2026-10-24T20:15:26.8423473Z     },
+2026-10-24T20:15:26.8423847Z     {
+2026-10-24T20:15:26.8424379Z       "id": "prune-variant/baseline-22",
+2026-10-24T20:15:26.8424859Z       "status": "pending"
+2026-10-24T20:15:26.8425331Z     }
+2026-10-24T20:15:26.8425750Z   ],
+2026-10-24T20:15:26.8426256Z   "complete": false,
+2026-10-24T20:15:26.8426856Z   "output": "/tmp/cts-final-report-Fno3jT/report"
+2026-10-24T20:15:26.8427436Z }
+2026-10-24T20:15:26.8427580Z 
+2026-10-24T20:15:26.8436238Z ✔ invalid run never parses or reports its stale summary PF (11.195733ms)
+2026-10-24T20:15:26.8461846Z ✔ actual feed byte tampering fails even with unchanged recorded links (2.760873ms)
+2026-10-24T20:15:26.8484473Z ✔ actual source byte tampering fails and valid files produce an explicit archive snapshot (2.008402ms)
+2026-10-24T20:15:26.8487105Z ✔ empty final report does not imply completed tests or hourly profitability (0.414174ms)
+2026-10-24T20:15:26.8955597Z ✔ study freezes24h evaluated prehistory,24h trade and separate205h indicator warmup (1.201869ms)
+2026-10-24T20:15:26.8957504Z ✔ strict study memory admission uses known host and ancestor headroom, crediting measured inactive cache only (1.474368ms)
+2026-10-24T20:15:26.8971534Z ✔ hosted CI root without non-root-only memory files is known host-bound, with all real ancestor caps retained (1.689151ms)
+2026-10-24T20:15:26.8973266Z ✔ root exemption needs proven ENOENT, real hierarchy evidence and readable controller accounting (1.416982ms)
+2026-10-24T20:15:26.9042820Z ✔ shared nonblocking flock rejects a second study and releases without stale ownership (15.617255ms)
+2026-10-24T20:15:27.1220234Z ✔ owned child interruption and timeout resolve complete failure evidence without hanging (215.439315ms)
+2026-10-24T20:15:28.4002462Z ✔ a running child retains the shared resource flock after its launcher descriptor closes (460.148105ms)
+2026-10-24T20:15:28.4003839Z ✔ case feed trims397h and derives each ranking solely from its prior24h (302.288809ms)
+2026-10-24T20:15:28.4005014Z ✔ feed validation rejects missing bars, extra symbols and omitted ranking history (3.699043ms)
+2026-10-24T20:15:28.4008919Z ✔ preflight uses production complete nested ladders and unchanged gates with explicit loading coverage (494.882852ms)
+2026-10-24T20:15:28.4022272Z ✔ commands run the causal runtime offline with variants off and immutable replay output (0.900013ms)
+2026-10-24T20:15:28.4023725Z ✔ right-closed hour convention retains exact-hour closes in the preceding hour (0.22602ms)
+2026-10-24T20:15:28.4025522Z ✔ summary separates virtual/funded settled cohorts, unscales returns and retains all24 hours (5.557999ms)
+2026-10-24T20:15:28.4027173Z ✔ summary rejects absent or malformed Base coverage and a reordered forced universe (8.068514ms)
+2026-10-24T20:15:28.4028651Z ✔ Base hourly placeholder zeroes remain unavailable while recorded config progress remains visible (1.49574ms)
+2026-10-24T20:15:28.4030177Z ✔ summary rejects a winning diagnostic config outside its independently admitted Base range (0.733093ms)
+2026-10-24T20:15:28.4031597Z ✔ summary uses production qualification for explicitly admitted untagged ladders (1.162929ms)
+2026-10-24T20:15:28.4032944Z ✔ summary detects nested settings, book sizing and missing performance evidence (0.613333ms)
+2026-10-24T20:15:28.4034391Z ✔ summary fails closed when independent WF controls or native accounting checks change (0.670018ms)
+2026-10-24T20:15:28.4036797Z ✔ summary fails closed on memory fallback, partial universe, missing validation or unknown allocations (0.560453ms)
+2026-10-24T20:15:28.4259474Z ✔ frozen candles reject gaps, future bars, invalid OHLC and a changed universe (6.505682ms)
+2026-10-24T20:15:28.4260847Z ✔ actual stopped runtime settings remain default-positive and retain full exit ladders (350.672458ms)
+2026-10-24T20:15:28.4262324Z ✔ child command keeps replay-only history floor, exact settings, guard and bounded native book (0.653233ms)
+2026-10-24T20:15:28.4263528Z ✔ prune plan reads only exact initial IS checks and never later profits/passes (1.467427ms)
+2026-10-24T20:15:28.4264762Z ✔ only engine Micro/Minimal ranges with25 distinct adequately sampled failures may be cropped (1.270761ms)
+2026-10-24T20:15:28.4266316Z ✔ startup memory fallback is rejected before rendering even when engine exits successfully (0.258098ms)
+2026-10-24T20:15:28.4267639Z ✔ actual runtime trial reduces engine combos while preserving all Signal configuration identities (654.649136ms)
+2026-10-24T20:15:28.4268912Z ✔ pools only disjoint verified unit evidence, with no-loss state and no virtual winner promotion (8.006521ms)
+2026-10-24T20:15:28.4269996Z ✔ retains unknown losing evidence and never turns null into zero (0.254152ms)
+2026-10-24T20:15:28.4271247Z ✔ refuses legacy, overlapping, duplicate and configuration-mismatched windows (1.637613ms)
+2026-10-24T20:15:28.4272508Z ✔ canonical unit returns, exact close-index allocations, zero funding and endpoints stay separate (3.559313ms)
+2026-10-24T20:15:28.4273836Z ✔ hourly engine validations and Signal ranking activity retain separate source scopes and unknown samples (1.756481ms)
+2026-10-24T20:15:28.4275169Z ✔ review labels run-start all-cell and post-Base gate denominators separately and displays24 parallel hourly rows (6.300796ms)
+2026-10-24T20:15:28.4276667Z ✔ hourly, config and reclaim win rates include exactly flat funded closes and retain unknown denominators (0.632642ms)
+2026-10-24T20:15:28.4277819Z ✔ unit-return signs preserve the smallest nonzero gains and losses without an epsilon (0.280542ms)
+2026-10-24T20:15:28.4278996Z ✔ unknown unit evidence and mismatched or duplicate allocations cannot drop losses to improve PF (0.728345ms)
+2026-10-24T20:15:28.4280244Z ✔ cash inconsistencies invalidate completeness and sub-epsilon funding does not invent an order (0.335244ms)
+2026-10-24T20:15:28.4281757Z ✔ exclusion rule needs both complete22 cases and matches each scope within the same policy (11.98206ms)
+2026-10-24T20:15:28.4282975Z ✔ minimum samples, unknown returns and exact identity cannot borrow qualification from siblings (5.50601ms)
+2026-10-24T20:15:28.4284077Z ✔ matched comparisons reject sizing, source, feed and chronological split changes (10.884855ms)
+2026-10-24T20:15:28.4285224Z ✔ loader verifies complete-result and protocol/source/feed/raw/book hashes from tiny synthetic files (8.174954ms)
+2026-10-24T20:15:28.4286549Z ✔ all four completion envelopes are required before opening any final raw market evidence (2.213449ms)
+2026-10-24T20:15:30.4332971Z ▶ heatmap evidence provenance
+2026-10-24T20:15:30.4334029Z   ✔ labels profitable forward paper as paper, while losing cash execution remains unverified per cell (210.513813ms)
+2026-10-24T20:15:30.4335420Z   ✔ accepts legacy --live input only as the same explicitly labeled paper source (222.852119ms)
+2026-10-24T20:15:30.4341566Z   ✔ renders no-loss convention, measured 99, tiny losses and empty samples from actual embedded JSON (432.516139ms)
+2026-10-24T20:15:30.4342971Z   ✔ retains legacy weighted/unknown WF diagnostics without inventing unit-return qualification (203.100454ms)
+2026-10-24T20:15:30.4345707Z   ✔ never pools a legacy weighted window into known unit-return WF evidence (175.441673ms)
+2026-10-24T20:15:30.4346929Z   ✔ normalizes direct simulated WF trades only and records probe bypass, model cost and weighted diagnostics (594.975237ms)
+2026-10-24T20:15:30.4352435Z ✔ heatmap evidence provenance (1841.444371ms)
+2026-10-24T20:15:30.4516633Z ▶ walk-forward hourly reporting
+2026-10-24T20:15:30.4517728Z   ✔ assigns before/exact/after-boundary exits and the final end to the shared settled hours (2.574893ms)
+2026-10-24T20:15:30.4519105Z   ✔ the CLI renders the helper's actual clipped window and exposes matching machine-readable hourly counts (618.987835ms)
+2026-10-24T20:15:30.4520479Z   ✔ honors verified unit overrides and makes the entire primary unavailable for an unknown or invalid row (1.232844ms)
+2026-10-24T20:15:30.4521818Z   ✔ uses one settled sample for totals, kinds and exit-bar-end hours, including the final boundary (0.673914ms)
+2026-10-24T20:15:30.4526857Z   ✔ keeps losing endpoint marks visible and separate from primary settled PF (0.36562ms)
+2026-10-24T20:15:30.4528057Z   ✔ reverses the direct walkForward execution multiplier once: return PF 1.36 versus sized PF 0.20 (0.363467ms)
+2026-10-24T20:15:30.4529298Z   ✔ preserves already-unit modeled returns when mult is missing or one and does not mutate inputs (0.335074ms)
+2026-10-24T20:15:30.4530565Z   ✔ uses actual run bounds, retains partial hours, and excludes old entries and unsettled/future exits (0.365019ms)
+2026-10-24T20:15:30.4531822Z   ✔ discloses no-loss sentinel and supports empty windows without inventing trades (0.680433ms)
+2026-10-24T20:15:30.4532743Z ✔ walk-forward hourly reporting (627.111653ms)
+2026-10-24T20:15:30.9030874Z ✔ coordinator labels profitable paper return evidence even when exchange and cash PF conflict (129.98123ms)
+2026-10-24T20:15:30.9032510Z ✔ profitable exchange fields do not replace losing or absent reference paper evidence (229.38906ms)
+2026-10-24T20:15:30.9035093Z ✔ missing reference preserves opt-in and opt-out range starts and the closed opening gate (127.741813ms)
+2026-10-24T20:15:30.9039751Z ✔ default minimum counts and PF hysteresis preserve range and opening decisions (718.569511ms)
+2026-10-24T20:15:30.9044742Z ✔ opening gate includes unmanaged ranges and excludes disabled managed ranges (106.045243ms)
+2026-10-24T20:15:30.9058343Z ✔ custom gate thresholds still apply and patches preserve unrelated settings (261.015628ms)
+2026-10-24T20:15:32.1778956Z ✔ snapshot report uses verified paper unit returns while venue returns remain unchanged (306.401008ms)
+2026-10-24T20:15:32.1783166Z ✔ legacy snapshots and mixed unknown paper samples keep their identities but have no primary ratio (692.721609ms)
+2026-10-24T20:15:32.1791601Z ✔ a current snapshot without an owned-fill ledger keeps the relation diagnostic and invents no venue positions (669.789921ms)
+2026-10-24T20:15:33.4697895Z ✔ Tactic uses its full-indication minimum and warmup is not reported as PF-qualified (600.576306ms)
+2026-10-24T20:15:33.4706447Z ✔ provided stricter range minima apply and known unit returns are independent of stored sized r (326.109324ms)
+2026-10-24T20:15:33.4709562Z ✔ unknown legacy returns are retained as unknown, block the causal window and never become positive proof (668.317011ms)
+2026-10-24T20:15:33.4710763Z ✔ only finite complete nonnegative-delay forward records enter a window (275.121357ms)
+2026-10-24T20:15:33.4712037Z ✔ a close simultaneous with entry is not visible to that decision and invalid windows fail clearly (597.633355ms)
+2026-10-24T20:15:33.4831759Z ✔ the X02 demo WF patch is at the loader's root and applies with unchanged exact-config gates (37.754319ms)
+2026-10-24T20:15:33.4858094Z ✔ the demo override is isolated from the factory defaults and X01 patch (0.314062ms)
+2026-10-24T20:15:41.9328903Z ✔ legacy nominal rows including NULL cannot retain old ON or manufacture owned-execution proof (351.445351ms)
+2026-10-24T20:15:41.9353996Z ✔ verified complete exact evidence produces a byte-hash-bound proof with original kinds and default thresholds (973.327379ms)
+2026-10-24T20:15:41.9358235Z ✔ winning sibling cannot promote losing opposite side or a distinct protection config (398.172209ms)
+2026-10-24T20:15:41.9359678Z ✔ expired, future, NULL and incomplete artifact evidence revokes previously ON exact identities (5893.699688ms)
+2026-10-24T20:15:41.9361264Z ✔ unreadable/malformed artifacts and unbound reference identity fail closed; dry mode never mutates (1226.841035ms)
+2026-10-24T20:15:41.9362500Z ✔ invalid threshold arguments fail before changing the target patch (336.394671ms)
+2026-10-24T20:15:41.9517167Z ▶ tag-scoped close
+2026-10-24T20:15:41.9536952Z   ✔ an own net overstated by untagged closes never reaches the other systems' part (1.011591ms)
+2026-10-24T20:15:41.9557595Z   ✔ a tag alone on a position closes its whole net; a net below the position closes only the net (0.23325ms)
+2026-10-24T20:15:41.9583135Z   ✔ another system's closed-out history counts as zero, not negative (0.186501ms)
+2026-10-24T20:15:41.9583742Z ✔ tag-scoped close (2.703005ms)
+2026-10-24T20:15:41.9584165Z ▶ order history paging
+2026-10-24T20:15:41.9584855Z   ✔ a busy range (more than one 500-order page) is read in full, whichever 500 the exchange returns (5.52848ms)
+2026-10-24T20:15:41.9585776Z   ✔ retains distinct client ids when venue ids round to the same number or are missing (1.494568ms)
+2026-10-24T20:15:41.9586806Z   ✔ counts the latest cumulative fill of a client order once in a supplied history (2.224195ms)
+2026-10-24T20:15:41.9587435Z ✔ order history paging (9.548335ms)
+2026-10-24T20:15:41.9587838Z ▶ exchange report PF
+2026-10-24T20:15:41.9588528Z   ✔ uses return PF as primary, reports cash PF separately, retains open realized money and recognizes every range (1.252073ms)
+2026-10-24T20:15:41.9589605Z   ✔ per-range return PF uses position returns and cannot turn a dollar-only orphan exit into a return (0.650208ms)
+2026-10-24T20:15:41.9590166Z ✔ exchange report PF (2.209322ms)
+2026-10-24T20:15:41.9590791Z ▶ exchange and UI ledger compare identical settled owned close samples
+2026-10-24T20:15:41.9591558Z   ✔ allocates signed entry fees and variable partial quantities identically after an increase (4.697435ms)
+2026-10-24T20:15:41.9592616Z   ✔ matches the UI's exclusive start/inclusive end, using earlier supplied fills only as inventory (1.614513ms)
+2026-10-24T20:15:41.9593749Z   ✔ discloses model fees and uses the same configured cost as the UI for missing commissions (0.650718ms)
+2026-10-24T20:15:41.9594823Z   ✔ labels an omitted-cost estimate without inventing historical cost or changing measured commissions (0.436396ms)
+2026-10-24T20:15:41.9595686Z   ✔ preserves finite explicit zero commissions while missing or legacy zero evidence retains the configured estimate (0.464068ms)
+2026-10-24T20:15:41.9606580Z   ✔ shares the numeric no-loss sentinel and explicitly marks its convention on the same sample (0.426802ms)
+2026-10-24T20:15:41.9607731Z ✔ exchange and UI ledger compare identical settled owned close samples (8.545266ms)
+2026-10-24T20:15:41.9608357Z ▶ dense order history
+2026-10-24T20:15:41.9609043Z   ✔ reads a burst above 500 orders within one minute without silently dropping fills (0.881004ms)
+2026-10-24T20:15:41.9610025Z   ✔ refuses an incomplete instant instead of issuing an apparently complete PF report (0.343527ms)
+2026-10-24T20:15:41.9610748Z ✔ dense order history (1.324031ms)
+2026-10-24T20:15:41.9611192Z ▶ saved exchange report formatting
+2026-10-24T20:15:41.9611967Z   ✔ shows shared return PF, labels no-loss sentinel, and refuses legacy cash or episode sums (1599.702343ms)
+2026-10-24T20:15:41.9613463Z ✔ saved exchange report formatting (1599.855994ms)
+2026-10-24T20:15:41.9614112Z ▶ R-e: the loss check counts own quantity only (own-first)
+2026-10-24T20:15:41.9615158Z   ✔ a manual close on a merged side reduces our quantity first, carries its share of the money and ends our episode as hand (0.646622ms)
+2026-10-24T20:15:41.9616495Z   ✔ someone else's fill into the position never adds to ours; open P&L is our quantity against our own entry (0.415095ms)
+2026-10-24T20:15:41.9617467Z ✔ R-e: the loss check counts own quantity only (own-first) (1.227766ms)
+2026-10-24T20:15:41.9618022Z ▶ flatten sends market orders
+2026-10-24T20:15:41.9618634Z   ✔ refuses to run without CTS_CORE_LIVE=1, before any request (0.498349ms)
+2026-10-24T20:15:41.9619275Z ✔ flatten sends market orders (0.680814ms)
+2026-10-24T20:15:41.9620178Z ✔ selects only two complete predeclared folds with both finite primary PF axes and30 funded onsets (0.860905ms)
+2026-10-24T20:15:41.9621508Z ✔ preserves no-loss/empty/unknown/incomplete folds as insufficient instead of substituting profitable PF (0.246761ms)
+2026-10-24T20:15:41.9622696Z ✔ reads the complete quoted CSV evidence including escaped quotes and empty cohorts (1.043639ms)
+2026-10-24T20:15:41.9623832Z ✔ whole-book aggregation retains every range and loss with return PF separate from cash PF (0.496227ms)
+2026-10-24T20:15:41.9624981Z ✔ prepares only complete cached candles and rejects conflicts rather than preferring a source (1.845856ms)
+2026-10-24T20:15:41.9626422Z ✔ builds exact frozen-case commands without silently enabling sources or changing gates (377.906038ms)
+2026-10-24T20:15:41.9627689Z ✔ applies every serialized full profile to a stopped real runtime with the sealed settings/WF identity (1052.689107ms)
+2026-10-24T20:15:41.9628867Z ✔ seals the exact production/import inventory while excluding test-only file edits (36.148876ms)
+2026-10-24T20:15:41.9629689Z ▶ indication research independent direction simulation
+2026-10-24T20:15:41.9630661Z   ✔ keeps overlapping opposite directions exactly as Base/bothSides rather than suppressing the short slot (2.948966ms)
+2026-10-24T20:15:41.9631685Z   ✔ preserves one-sided, empty and nonoverlapping mixed-signal results (0.466492ms)
+2026-10-24T20:15:41.9632680Z   ✔ preserves closed historical trades under poisoned future bars and next-open causality (0.346141ms)
+2026-10-24T20:15:41.9633603Z   ✔ merges simultaneous exits deterministically in entry-time order (0.253932ms)
+2026-10-24T20:15:41.9634487Z ✔ indication research independent direction simulation (5.128503ms)
+2026-10-24T20:15:54.7713357Z ▶ session CLI settings precedence
+2026-10-24T20:15:54.7714079Z   ✔ applies --focus all after a frozen --settings focus (1.74875ms)
+2026-10-24T20:15:54.7714829Z ✔ session CLI settings precedence (2.869085ms)
+2026-10-24T20:15:54.7716002Z ▶ immutable minute book lookup cache
+2026-10-24T20:15:54.7717024Z   ✔ caches each order and each minute-symbol including zero and missing prices (1.580087ms)
+2026-10-24T20:15:54.7718354Z   ✔ keeps the production minute loop's order, volume, missing-price and unknown-allocation arithmetic (2.431397ms)
+2026-10-24T20:15:54.7719431Z   ✔ keeps secondary capped and uncapped minute passes independent with the legacy multiplication order (1.726546ms)
+2026-10-24T20:15:54.7720330Z ✔ immutable minute book lookup cache (6.038041ms)
+2026-10-24T20:15:54.7720742Z ▶ session CLI sidecar replay preserves complete evidence
+2026-10-24T20:15:54.7721289Z   ✔ matches legacy report data and unit-row SHA while retaining all physical validation history (2207.031306ms)
+2026-10-24T20:15:54.7721909Z   ✔ fails replay when a tape chunk is corrupted instead of skipping stage evidence (534.366248ms)
+2026-10-24T20:15:54.7722660Z   ✔ still fails the stage check when valid sidecar data disagrees with an executed unit return (519.375813ms)
+2026-10-24T20:15:54.7723603Z ✔ session CLI sidecar replay preserves complete evidence (3267.086541ms)
+2026-10-24T20:15:54.7724253Z ▶ session CLI background comparison policy
+2026-10-24T20:15:54.7725209Z   ✔ defaults off before runtime startup and preserves explicit diagnostic opt-in (1319.314532ms)
+2026-10-24T20:15:54.7726108Z ✔ session CLI background comparison policy (1319.481193ms)
+2026-10-24T20:15:54.7733146Z ▶ session reports: return PF primary, simulated provenance
+2026-10-24T20:15:54.7733625Z   ✔ prints CLI help without starting a simulated session (451.521515ms)
+2026-10-24T20:15:54.7735079Z   ✔ reports both ordinary and Signal Exit orders under the independent Exit range (463.810648ms)
+2026-10-24T20:15:54.7739133Z   ✔ keeps first simulated-step seats distinct from the later paper selection in every output (426.477518ms)
+2026-10-24T20:15:54.7741595Z   ✔ reports offline source metadata and never invents a provider for legacy dumps (883.422481ms)
+2026-10-24T20:15:54.7754895Z   ✔ reports the configured Signal horizon separately from available input and engine prehistory (482.459229ms)
+2026-10-24T20:15:54.7756173Z   ✔ rejects replay preload without a cached feed and both explicit replay boundaries before startup (1342.08262ms)
+2026-10-24T20:15:54.7757177Z   ✔ reports an empty Base run as unavailable PF with passing consistency checks (450.8991ms)
+2026-10-24T20:15:54.7758007Z   ✔ checks engine config sets separately from active Signal tapes (349.643732ms)
+2026-10-24T20:15:54.7758881Z   ✔ counts the separately recorded Signal Exit Base pass in legacy replay coverage (359.168576ms)
+2026-10-24T20:15:54.7759928Z   ✔ reports measured no-loss PF separately from the finite Base gate score and labels later funnel stages (352.725957ms)
+2026-10-24T20:15:54.7762858Z   ✔ reports the paper Live last-N gate separately from walk-forward order results (385.419661ms)
+2026-10-24T20:15:54.7767227Z   ✔ keeps equal current range counts labeled as independent measurements (363.557862ms)
+2026-10-24T20:15:54.7768363Z   ✔ marks equal legacy counts as copied when range provenance is absent (351.338661ms)
+2026-10-24T20:15:54.7771590Z   ✔ a type with only zero-funded closes retains virtual hourly cells without inventing funded coverage (497.494982ms)
+2026-10-24T20:15:54.7773884Z   ✔ chunk-allocations preserves complete allocation evidence without enabling Signal research (483.028946ms)
+2026-10-24T20:15:54.7776419Z   ✔ zeros floating-point cap residue before cash/unit allocation and records the original ghost amount (552.713235ms)
+2026-10-24T20:15:54.7777595Z   ✔ keeps return PF primary across JSON, Markdown, write-up and the rendered HTML headline (503.158108ms)
+2026-10-24T20:15:54.7780714Z   ✔ the uncapped comparison uses return PF first on the same closed-order sample (464.813264ms)
+2026-10-24T20:15:54.7782142Z   ✔ removes the execution volume multiple from primary PF while retaining sized cash results (513.698707ms)
+2026-10-24T20:15:54.7801351Z   ✔ does not report a fabricated primary PF when an execution multiplier is invalid (513.563288ms)
+2026-10-24T20:15:54.7816909Z ✔ session reports: return PF primary, simulated provenance (10192.436095ms)
+2026-10-24T20:15:54.7817789Z ▶ session qualification matches the runtime's full indication rules
+2026-10-24T20:15:54.7818739Z   ✔ matches actual runtime admission, Tactic 1.1, range floors and absent own-cell fallback (2.162872ms)
+2026-10-24T20:15:54.7819750Z   ✔ uses runtime Base-set gates, sample/DD gates and the no-loss score rather than infinity (0.364658ms)
+2026-10-24T20:15:54.7820661Z   ✔ records every full indication's effective validation minimum without first-row bias (0.184317ms)
+2026-10-24T20:15:54.7821358Z   ✔ renders mixed current thresholds and marks historical aggregates as unverified without requalifying them (1006.205444ms)
+2026-10-24T20:15:54.7822044Z   ✔ discloses partial return normalization without changing or certifying missing multipliers (0.377968ms)
+2026-10-24T20:15:54.7822695Z   ✔ retains legacy variant/preset aggregates while withholding an unrecorded primary unit PF (508.418728ms)
+2026-10-24T20:15:54.7823298Z ✔ session qualification matches the runtime's full indication rules (1518.060699ms)
+2026-10-24T20:15:55.3018181Z ✔ full tape dumps stream never-qualified own history without changing qualified outcomes (30.303927ms)
+2026-10-24T20:15:55.3019933Z ✔ opening counts include endpoint-held and endpoint-entered orders while separating zero funding (501.626139ms)
+2026-10-24T20:15:55.3211806Z ▶ four-source frozen independent Signal research
+2026-10-24T20:15:55.3247936Z   ✔ uses the frozen runtime-parity v2 grid independently of newer production defaults (15.247942ms)
+2026-10-24T20:15:55.3257193Z   ✔ fails before scoring if frozen parameters, protects, cost, source universe or bars differ (46.808793ms)
+2026-10-24T20:15:55.3287343Z   ✔ keeps the exact return-PF threshold, sample floor, endpoint marks and every IS-qualified identity (0.88432ms)
+2026-10-24T20:15:55.3288537Z   ✔ physically rejects future bars in IS and freezes before any OOS calculation (71.945649ms)
+2026-10-24T20:15:55.3313170Z   ✔ all source/range/lane indicator and default-filter prefixes ignore poisoned future data (152.138916ms)
+2026-10-24T20:15:55.3314477Z   ✔ IS selection and all IS row hashes are unchanged by OOS mutations and repeats are deterministic (41.240039ms)
+2026-10-24T20:15:55.3315730Z   ✔ matches direct engine simulation for closed returns and open marks on a fresh OOS slot (16.76236ms)
+2026-10-24T20:15:55.3317212Z   ✔ preserves the frozen v2 requests and explicitly reconciles current capped runtime identities (76.920311ms)
+2026-10-24T20:15:55.3318411Z ✔ four-source frozen independent Signal research (423.368125ms)
+2026-10-24T20:15:55.3319056Z {
+2026-10-24T20:15:55.3319586Z   "out": "/tmp/cts-signal-report-reader-gteV1b/legacy/out",
+2026-10-24T20:15:55.3320057Z   "files": [
+2026-10-24T20:15:55.3320384Z     "signals-six-hour-summary.json",
+2026-10-24T20:15:55.3320784Z     "signals-six-hour-report.md",
+2026-10-24T20:15:55.3321152Z     "signals-hourly-types.csv",
+2026-10-24T20:15:55.3321592Z     "signals-planned-hourly-types-diagnostic.csv",
+2026-10-24T20:15:55.3322057Z     "signals-hourly-account-book.csv",
+2026-10-24T20:15:55.3322505Z     "signals-planned-hourly-flows-diagnostic.csv",
+2026-10-24T20:15:55.3323016Z     "signals-funded-open-endpoint-marks.csv",
+2026-10-24T20:15:55.3323544Z     "signals-planned-open-endpoint-marks-diagnostic.csv",
+2026-10-24T20:15:55.3324042Z     "signals-type-range-lane-side.csv",
+2026-10-24T20:15:55.3324455Z     "signals-source-range-lane-side.csv",
+2026-10-24T20:15:55.3324971Z     "signals-planned-type-range-lane-side-diagnostic.csv",
+2026-10-24T20:15:55.3325488Z     "signals-planned-trades-diagnostic.csv",
+2026-10-24T20:15:55.3326087Z     "signals-hourly-type-range-lane-side.csv",
+2026-10-24T20:15:55.3326533Z     "signals-all-configurations.csv",
+2026-10-24T20:15:55.3327015Z     "signals-requested-to-effective-configurations.csv",
+2026-10-24T20:15:55.3327488Z     "signals-settled-trades.csv",
+2026-10-24T20:15:55.3327942Z     "signals-stage-progress.csv",
+2026-10-24T20:15:55.3328332Z     "whole-system-book-allocations.csv",
+2026-10-24T20:15:55.3328761Z     "signals-base-pair-diagnostics.csv",
+2026-10-24T20:15:55.3329165Z     "signals-source-catalog.csv",
+2026-10-24T20:15:55.3329541Z     "signals-frozen-protocol.json"
+2026-10-24T20:15:55.3329866Z   ],
+2026-10-24T20:15:55.3330098Z   "closes": 2,
+2026-10-24T20:15:55.3330357Z   "returnPf": "2.00",
+2026-10-24T20:15:55.3330633Z   "long": 1,
+2026-10-24T20:15:55.3330868Z   "short": 1,
+2026-10-24T20:15:55.3331118Z   "configsSides": 2,
+2026-10-24T20:15:55.3331786Z   "hourlyTypeRows": 18,
+2026-10-24T20:15:55.3332102Z   "hourlyDetailRows": 72,
+2026-10-24T20:15:55.3332404Z   "inputHashes": {
+2026-10-24T20:15:55.3332666Z     "raw": {
+2026-10-24T20:15:55.3333178Z       "sha256": "96f3fe3d793a3385e7f38deb9a7084f2d07da870fad05c84bfee1b1b6be99a62",
+2026-10-24T20:15:55.3333699Z       "bytes": 2757
+2026-10-24T20:15:55.3333950Z     },
+2026-10-24T20:15:55.3334183Z     "book": {
+2026-10-24T20:15:55.3334678Z       "sha256": "a366430bb52cc2ea0afada64ccc6c68703d78caaa3e657909eedbde6dbb7539c",
+2026-10-24T20:15:55.3335196Z       "bytes": 877
+2026-10-24T20:15:55.3335451Z     },
+2026-10-24T20:15:55.3335685Z     "protocol": {
+2026-10-24T20:15:55.3336447Z       "sha256": "45e299c24ec1f7f8b2e645834cc7a31373fa98d26004f6c72724dfa4bf0db9c8",
+2026-10-24T20:15:55.3336943Z       "bytes": 128
+2026-10-24T20:15:55.3337199Z     }
+2026-10-24T20:15:55.3337428Z   }
+2026-10-24T20:15:55.3337645Z }
+2026-10-24T20:15:55.3337867Z {
+2026-10-24T20:15:55.3338235Z   "out": "/tmp/cts-signal-report-reader-gteV1b/chunked/out",
+2026-10-24T20:15:55.3338646Z   "files": [
+2026-10-24T20:15:55.3338954Z     "signals-six-hour-summary.json",
+2026-10-24T20:15:55.3339334Z     "signals-six-hour-report.md",
+2026-10-24T20:15:55.3339708Z     "signals-hourly-types.csv",
+2026-10-24T20:15:55.3340147Z     "signals-planned-hourly-types-diagnostic.csv",
+2026-10-24T20:15:55.3340626Z     "signals-hourly-account-book.csv",
+2026-10-24T20:15:55.3341080Z     "signals-planned-hourly-flows-diagnostic.csv",
+2026-10-24T20:15:55.3341566Z     "signals-funded-open-endpoint-marks.csv",
+2026-10-24T20:15:55.3342097Z     "signals-planned-open-endpoint-marks-diagnostic.csv",
+2026-10-24T20:15:55.3342590Z     "signals-type-range-lane-side.csv",
+2026-10-24T20:15:55.3343008Z     "signals-source-range-lane-side.csv",
+2026-10-24T20:15:55.3343522Z     "signals-planned-type-range-lane-side-diagnostic.csv",
+2026-10-24T20:15:55.3344032Z     "signals-planned-trades-diagnostic.csv",
+2026-10-24T20:15:55.3344482Z     "signals-hourly-type-range-lane-side.csv",
+2026-10-24T20:15:55.3344926Z     "signals-all-configurations.csv",
+2026-10-24T20:15:55.3345406Z     "signals-requested-to-effective-configurations.csv",
+2026-10-24T20:15:55.3346093Z     "signals-settled-trades.csv",
+2026-10-24T20:15:55.3346479Z     "signals-stage-progress.csv",
+2026-10-24T20:15:55.3347844Z     "whole-system-book-allocations.csv",
+2026-10-24T20:15:55.3348262Z     "signals-base-pair-diagnostics.csv",
+2026-10-24T20:15:55.3349664Z     "signals-source-catalog.csv",
+2026-10-24T20:15:55.3350966Z     "signals-frozen-protocol.json"
+2026-10-24T20:15:55.3351293Z   ],
+2026-10-24T20:15:55.3352418Z   "closes": 2,
+2026-10-24T20:15:55.3352699Z   "returnPf": "2.00",
+2026-10-24T20:15:55.3352983Z   "long": 1,
+2026-10-24T20:15:55.3354166Z   "short": 1,
+2026-10-24T20:15:55.3354427Z   "configsSides": 2,
+2026-10-24T20:15:55.3355613Z   "hourlyTypeRows": 18,
+2026-10-24T20:15:55.3356112Z   "hourlyDetailRows": 72,
+2026-10-24T20:15:55.3357794Z   "inputHashes": {
+2026-10-24T20:15:55.3358081Z     "raw": {
+2026-10-24T20:15:55.3359603Z       "sha256": "994e207d68fd11b2129c1c532a9a10c5fea958c4f7f0a7661146c847c7c16000",
+2026-10-24T20:15:55.3360233Z       "bytes": 3269
+2026-10-24T20:15:55.3360509Z     },
+2026-10-24T20:15:55.3360750Z     "book": {
+2026-10-24T20:15:55.3361244Z       "sha256": "83e41cf8e44e37b1677fb588dd38c13c01898245b10dd4a76be0913c714e4805",
+2026-10-24T20:15:55.3361759Z       "bytes": 1153
+2026-10-24T20:15:55.3362014Z     },
+2026-10-24T20:15:55.3362260Z     "protocol": {
+2026-10-24T20:15:55.3362761Z       "sha256": "45e299c24ec1f7f8b2e645834cc7a31373fa98d26004f6c72724dfa4bf0db9c8",
+2026-10-24T20:15:55.3363285Z       "bytes": 128
+2026-10-24T20:15:55.3363544Z     }
+2026-10-24T20:15:55.3363776Z   }
+2026-10-24T20:15:55.3364009Z }
+2026-10-24T20:15:55.3364958Z ✔ Signal report reader preserves funded long/short cohorts and physical provenance with sidecars (55.048251ms)
+2026-10-24T20:15:55.3366286Z ✔ Signal report verifies even unloaded raw validation sidecars before publishing a cohort (5.892572ms)
+2026-10-24T20:15:55.3367614Z ✔ hourly type PF aggregates unit-return components and preserves separate cash PF (0.718581ms)
+2026-10-24T20:15:55.3368695Z ✔ unknown unit evidence invalidates the complete hourly sample and no-loss stays labeled (0.409616ms)
+2026-10-24T20:15:55.3369705Z ✔ source, range, kind and direction detail retains losing and empty siblings (0.319089ms)
+2026-10-24T20:15:55.3370351Z ▶ bounded Tactic held-out protocol
+2026-10-24T20:15:55.3371099Z   ✔ counts every technique/range/unique lane and the disclosed 24 protect cells (2.003383ms)
+2026-10-24T20:15:55.3372088Z   ✔ records default entry filters/exemptions/cooldown separately from raw onset diagnostics (52.303294ms)
+2026-10-24T20:15:55.3373353Z   ✔ keeps return PF 1.36 independent of unequal-size cash PF 0.20 and exposes no-loss convention (1.505344ms)
+2026-10-24T20:15:55.3374329Z   ✔ selects only IS-qualifying cells before diagnostic cells and has deterministic ties (9.910855ms)
+2026-10-24T20:15:55.3375259Z   ✔ rejects gaps, duplicates, unequal source bounds and invalid candles (1.574939ms)
+2026-10-24T20:15:55.3426803Z   ✔ uses next-open OOS entry boundaries, closed endpoint bounds and the shared net cost (0.893414ms)
+2026-10-24T20:15:55.3428066Z   ✔ all70 state/signal prefixes and context snapshots survive poisoned future bars; 30m combined deduplicates (502.116953ms)
+2026-10-24T20:15:55.3429478Z   ✔ physically isolates IS selection from poisoned OOS and repeats deterministically with explicit open/closed counts (187.016511ms)
+2026-10-24T20:15:55.3430834Z   ✔ renders standalone raw provenance and exact mode/cache/split reproduction without claiming default parity (9.462441ms)
+2026-10-24T20:15:55.3431732Z ✔ bounded Tactic held-out protocol (768.526418ms)
+2026-10-24T20:15:55.3432680Z ✔ preload is portable, idempotent, clears exchange/proxy credentials and disables live (111.294777ms)
+2026-10-24T20:15:55.3433866Z ✔ denies every nonlocal/custom transport overload before any native transport or dispatcher call (64.407708ms)
+2026-10-24T20:15:55.3435138Z ✔ allows literal loopback overloads, normalizes localhost and keeps in-memory fetch mocks replaceable (68.738461ms)
+2026-10-24T20:15:55.3436423Z ✔ real loopback HTTP, Request clones, fetch and TCP sockets work under the preload (170.960218ms)
+2026-10-24T20:15:55.3437559Z ✔ default 32MB watchdog worker ignores expanded Node --test/V8 flags and guards nested workers (454.936999ms)
+2026-10-24T20:15:55.3438887Z ✔ explicit worker args survive, real preloads run after the guard and TypeScript workers with empty env stay guarded (383.640876ms)
+2026-10-24T20:15:55.3440111Z ✔ DCA research excludes marks/future closes and normalizes verified external sizing once (1.218643ms)
+2026-10-24T20:15:55.3441152Z ✔ all-positive curves have zero DDT and a no-loss state, never a measured PF 99 (0.17283ms)
+2026-10-24T20:15:55.3442190Z ✔ right-closed reporting hours and chronological drawdown survive unordered batches (0.170877ms)
+2026-10-24T20:15:55.3443267Z ✔ unknown unit evidence keeps the sample unknown instead of dropping a losing close (0.150567ms)
+2026-10-24T20:15:55.3444361Z ✔ a span that is not a multiple of 48 h: the last window's session runs over that window only (1.474527ms)
+2026-10-24T20:15:55.3445497Z ✔ the split defaults to D1's only on D1; another span is cut inside it, both halves non-empty (0.581935ms)
+2026-10-24T20:15:55.3446836Z ✔ the warm-up: the engine's 100 h, and with historic signal configs the 96 h lookback when that is longer (0.154262ms)
+2026-10-24T20:15:55.3448097Z ✔ a lane's volatility rank is valid after 336 of its own bars: 5.6 h on 1m, 28 h on 5m, 84 h on 15m, 168 h on 30m (0.306902ms)
+2026-10-24T20:15:55.3449026Z ✔ the feed's start is read from the series' first bars (0.271188ms)
+2026-10-24T20:15:55.3450088Z ✔ eval-gate --plan: per-window run lengths, a split inside the span, and the windows short of warm-up (991.125617ms)
+2026-10-24T20:15:55.3451332Z ✔ the feed's start read in chunks equals the whole-file reading, a chunk boundary at every offset of a key (88.825335ms)
+2026-10-24T20:15:55.3452905Z ✔ eval-gate keeps every window's result in window order when the windows finish out of order (2964.454378ms)
+2026-10-24T20:15:55.3454227Z ✔ eval-gate without --toggles / --window-h gives the session today's arguments byte for byte; --toggles merges over the eval's (1766.825487ms)
+2026-10-24T20:15:55.3454981Z ✔ eval-gate --window-h: N-hour windows, each its own session over its own hours (1972.068236ms)
+2026-10-24T20:15:55.3455737Z ✔ eval-gate's funnel line prints the forward PF over the run (after Base, validated at the start) beside the in-sample one (444.722054ms)
+2026-10-24T20:15:55.3463921Z ✔ eval-gate with Block on: per range the volume-weighted PF and the unit PF of the raised and unraised orders (815.464973ms)
+2026-10-24T20:15:55.3464907Z ▶ evaluation window orders
+2026-10-24T20:15:55.3465587Z   ✔ a loser still open at the window end lowers the window's PF (it was dropped before) (1.102728ms)
+2026-10-24T20:15:55.3466639Z   ✔ a dump without openEnd (older engines) gives the closed orders only (0.114122ms)
+2026-10-24T20:15:55.3467208Z ✔ evaluation window orders (2.16128ms)
+2026-10-24T20:15:55.3467796Z ▶ the eval sees Block: volume-weighted PF and unit PF raised / unraised
+2026-10-24T20:15:55.3468519Z   ✔ splits raised from unraised orders and weighs the book by volume (0.340602ms)
+2026-10-24T20:15:55.3469253Z   ✔ Block off (every order at one unit): both PFs agree, nothing raised (0.156115ms)
+2026-10-24T20:15:55.3470021Z ✔ the eval sees Block: volume-weighted PF and unit PF raised / unraised (0.693633ms)
+2026-10-24T20:15:55.3470944Z ✔ legacy unknown or invalid multiplier evidence makes primary unit PF unavailable (0.201452ms)
+2026-10-24T20:15:56.5048372Z ✔ --json: the rows in order, events against orders, PF with the open order against pfClosed, each verdict (120.217301ms)
+2026-10-24T20:15:56.5061242Z ✔ the forward pair: a valid one makes Long work; one with a memory-fallback window gives no outcome (246.13465ms)
+2026-10-24T20:15:56.5063730Z ✔ text: a section per row with its rule lines and the window flags; an invalid run: rerun and the no-verdict line (398.725586ms)
+2026-10-24T20:15:56.5065206Z ✔ refused (exit 2): another split, another feed, a missing label, an unknown kind, no variant (616.885471ms)
+2026-10-24T20:15:58.8163865Z ✔ eval-gate reads flat and chunked session cohorts with identical losses, marks, and PF (841.557738ms)
+2026-10-24T20:15:58.8170829Z ✔ eval-families reads every flat/chunked window and retains endpoint losses (1758.153889ms)
+2026-10-24T20:15:58.8176939Z ✔ positive-types actual CLI reports the same two settled trades from flat/chunked dumps (821.176517ms)
+2026-10-24T20:15:58.8262451Z ✔ modeled orders need a recorded multiplier or verified unit return (1.14374ms)
+2026-10-24T20:15:58.8263671Z ✔ a marked-open order keeps its multiple through windowOrders, so it scores at one unit too (0.88431ms)
+2026-10-24T20:15:58.8264935Z ✔ open marks retain explicit unknown unit evidence and unknown mark values instead of dropping their samples (0.187141ms)
+2026-10-24T20:15:58.8266493Z ✔ unknown normalized returns stay unscored after JSON null conversion and retain every variant sample (0.755857ms)
+2026-10-24T20:15:58.8267673Z ✔ each evaluator PF helper rejects unknown numeric evidence before it can become a no-loss score (4.09984ms)
+2026-10-24T20:15:58.8268925Z ✔ eval-gate keeps invalid closed/open dump samples and marks whole primary periods and families unavailable (370.750771ms)
+2026-10-24T20:15:58.8270116Z ✔ eval-families never sends an unknown unit group or period into numeric bot-stat qualification (2.043844ms)
+2026-10-24T20:15:58.8271421Z ✔ endpoint marks retain primary unit PF/counts while absent or malformed gross-price basis withholds whole stress sample (1.089689ms)
+2026-10-24T20:15:58.8272801Z ✔ eval-families holds stress-based qualification with a known endpoint loss and retains its complete primary sample (1.271862ms)
+2026-10-24T20:15:58.8274137Z ✔ settled-only positive-types keeps its declared primary sample but withholds stress on a malformed settled exit (0.708695ms)
+2026-10-24T20:15:58.8275682Z ✔ positive-type selection holds archived stress-unavailable or missing-evidence candidates (0.927144ms)
+2026-10-24T20:15:58.8277020Z ✔ eval-gate family stress cannot substitute a profitable closed subset for a known endpoint mark (1.115217ms)
+2026-10-24T20:15:58.8278160Z ✔ validation CLI retains identical hourly checks and executed cohorts for legacy and chunked dumps (157.101638ms)
+2026-10-24T20:15:58.8279238Z ✔ validation CLI rejects corrupt validation chunks instead of reporting zero steps (67.566588ms)
+2026-10-24T20:15:58.8279876Z ✔ injects before </head> (2.860661ms)
+2026-10-24T20:15:58.8280491Z ✔ injects the extensions script without a project id (0.411458ms)
+2026-10-24T20:15:58.8281421Z ✔ injects project id on the script and meta when provided (0.337237ms)
+2026-10-24T20:15:58.8282012Z ✔ does not duplicate grok:app_id (0.563157ms)
+2026-10-24T20:15:58.8282596Z ✔ omits x:creator tags without both creator values (0.754915ms)
+2026-10-24T20:15:58.8283429Z ✔ injects x:creator tags when both creator values are set (0.27281ms)
+2026-10-24T20:15:58.8283967Z ✔ escapes x:creator values (0.188874ms)
+2026-10-24T20:15:58.8284438Z ✔ does not duplicate x:creator tags (0.306591ms)
+2026-10-24T20:15:58.8285198Z ✔ platform chrome overwrites share-card metas and always sets og:title (0.396146ms)
+2026-10-24T20:15:58.8286076Z ✔ does not duplicate twitter:card or og:title (0.605711ms)
+2026-10-24T20:15:58.8286719Z ✔ a baked site.image is treated as a custom card (0.547894ms)
+2026-10-24T20:15:58.8287393Z ✔ baked identity does not need a workspace filesystem (0.297688ms)
+2026-10-24T20:15:58.8288132Z ✔ a public card file wins over a baked site without card=custom (0.38559ms)
+2026-10-24T20:15:58.8288781Z ✔ public/og.png wins when jpg is absent (0.281023ms)
+2026-10-24T20:15:58.8289501Z ✔ resolveOgCardAsset: disk file, then bake, then empty (placeholder) (0.310707ms)
+2026-10-24T20:15:58.8290259Z ✔ snapshotOgIdentity stamps card=custom from a public card file (0.35874ms)
+2026-10-24T20:15:58.8291091Z ✔ snapshotOgIdentity stamps banner from public/x-banner.jpg (0.257136ms)
+2026-10-24T20:15:58.8291832Z ✔ emits x:game:image for a public host when site.banner is set (0.207231ms)
+2026-10-24T20:15:58.8292626Z ✔ does not emit x:game:image without a public host or banner (0.232079ms)
+2026-10-24T20:15:58.8293465Z ✔ site title Grok App is a real name, not a sentinel (0.262805ms)
+2026-10-24T20:15:58.8294122Z ✔ published grok.me slug is still a title fallback (0.251919ms)
+2026-10-24T20:15:58.8294799Z ✔ rejects Vercel system hosts as og:image origins (0.091617ms)
+2026-10-24T20:15:58.8295331Z ✔ published VITE_PUBLIC_HOSTNAME wins over request Host for og:image (0.261813ms)
+2026-10-24T20:15:58.8295816Z ✔ vercel Host without a public hostname emits no og:image (0.173771ms)
+2026-10-24T20:15:58.8296480Z ✔ emits og:image for a public host and prefers a custom card (0.258188ms)
+2026-10-24T20:15:58.8296979Z ✔ placeholder og:image appends site.color when it is 6-digit hex (0.247132ms)
+2026-10-24T20:15:58.8297464Z ✔ document title entities are not double-escaped on og:title (0.122424ms)
+2026-10-24T20:15:58.8297866Z ✔ site.json title wins over the host slug (0.131157ms)
+2026-10-24T20:15:58.8298242Z ✔ injects into documents with no head element (0.218338ms)
+2026-10-24T20:15:58.8298663Z ✔ streaming injector matches </HEAD> case-insensitively (0.334833ms)
+2026-10-24T20:15:58.8299185Z ✔ does not duplicate the extensions script (1.036839ms)
+2026-10-24T20:15:58.8299653Z ✔ is idempotent (0.211458ms)
+2026-10-24T20:15:58.8300156Z ✔ uses the app name in the injected title tag (0.110747ms)
+2026-10-24T20:15:58.8300797Z ✔ streaming injector handles </head> split across chunks (0.354624ms)
+2026-10-24T20:15:58.8301552Z ✔ streaming injector passes post-head chunks through untouched (0.262324ms)
+2026-10-24T20:15:58.8302312Z ✔ streaming injector falls back when no </head> is seen (0.183676ms)
+2026-10-24T20:15:58.8302869Z ✔ detects install query (0.222755ms)
+2026-10-24T20:15:58.8303242Z ✔ filters non-document paths (0.257587ms)
+2026-10-24T20:15:58.8303771Z ✔ strips install params from the app link (0.11272ms)
+2026-10-24T20:15:58.8304121Z ✔ names the install page from host slug (0.06652ms)
+2026-10-24T20:15:58.8304461Z ✔ rejects hosts that are not plain slugs (0.052258ms)
+2026-10-24T20:15:58.8304780Z ✔ renders install page markup (0.202404ms)
+2026-10-24T20:15:58.8305144Z ✔ escapes host-derived values in the install page (0.124286ms)
+2026-10-24T20:15:58.8305532Z ✔ renders the manifest with the per-app name (0.159059ms)
+2026-10-24T20:15:58.8306092Z ✔ vite config keeps the nitro serverDir wiring (0.135433ms)
+2026-10-24T20:15:58.8306494Z ✔ nitro middleware and its bundled assets exist (0.331188ms)
+2026-10-24T20:15:58.8306915Z ✔ vite plugin bakes og identity as a virtual module (0.139109ms)
+2026-10-24T20:15:58.8307487Z ✔ the project's own site.json brands the share card as CTS-A-O (0.393192ms)
+2026-10-24T20:15:58.8308154Z ✔ uses the same positive-owned settled cohort for strict unit PF and cash, retaining zero allocations separately (10.91022ms)
+2026-10-24T20:15:58.8308889Z ✔ retains unknown return provenance in its own exact type, direction, config and hourly samples (3.901437ms)
+2026-10-24T20:15:58.8309657Z ✔ retains missing, mismatched and duplicate allocation slices rather than replacing them with older winning evidence (1.963732ms)
+2026-10-24T20:15:58.8310440Z ✔ preserves partial close slices and makes unreconciled cash unknown without deleting known owned returns (1.040545ms)
+2026-10-24T20:15:58.8311215Z ✔ seeds empty built and requested Signal identities on all symbols and both sides without manufacturing PF passes (0.848877ms)
+2026-10-24T20:15:58.8311952Z ✔ keeps empty, flat, no-loss sentinel and exact measured PF 4 distinct, and excludes endpoint marks (4.944535ms)
+2026-10-24T20:15:58.8312668Z ✔ uses only unique exact positive-owned common slices and preserves full-arm losses, zeros and unknowns (1.398783ms)
+2026-10-24T20:15:58.8313360Z ✔ rejects duplicated parent closes before source legs can inflate funded PF or close frequency (2.685919ms)
+2026-10-24T20:15:58.8314044Z ✔ rejects forged duplicate evidence before common-slice omission or performance assessment (1.522499ms)
+2026-10-24T20:15:58.8314797Z ✔ retains unknown unit evidence inside the common owned intersection and rejects cash sign changes below a tolerance (1.224541ms)
+2026-10-24T20:15:58.8315514Z ✔ rejects relabeled windows, source, costs and duplicate arms before comparing results (0.69185ms)
+2026-10-24T20:15:58.8316466Z ✔ retains independent indication × symbol × direction groups including zero-activity siblings (0.569517ms)
+2026-10-24T20:15:58.8317219Z ✔ separates native minute equity risk from sampled display ratios without inventing liquidation or stop proof (0.237137ms)
+2026-10-24T20:15:58.8317889Z ✔ audits the base plus all Overall source legs against one external stack cap (0.71845ms)
+2026-10-24T20:15:58.8318571Z ✔ uses provenance-bound unrounded minute risk at policy thresholds and rejects stale or invalid evidence (0.599401ms)
+2026-10-24T20:15:58.8319352Z ✔ requires actual return-PF improvement and bounded equity drawdown instead of a cash-weighted improvement (6.468276ms)
+2026-10-24T20:15:58.8320036Z ✔ uses measured native completion instead of allSets mode or an invented complete flag (0.535345ms)
+2026-10-24T20:15:58.8320670Z ✔ Block arms preserve every independent source/type/gate and never mutate shared options (2.668312ms)
+2026-10-24T20:15:58.8321403Z ✔ predeclares ten arms separating weighting, Active selection, Shared sensitivity and configured step arithmetic (0.858791ms)
+2026-10-24T20:15:58.8322069Z ✔ pre-score parity rejects silent settings or WF changes and any prior compute (0.363427ms)
+2026-10-24T20:15:58.8322712Z ✔ normalizes exhausted-cap floating-point residue before it can establish simulated ownership (0.767394ms)
+2026-10-24T20:15:58.8323396Z ✔ keeps meaningful partial allocation and every amount above the frozen numerical threshold (0.204347ms)
+2026-10-24T20:15:58.8324062Z ✔ keeps invalid/unknown monetary evidence unavailable instead of manufacturing zero allocation (0.712681ms)
+2026-10-24T20:15:58.8324774Z ✔ every helper answers on a series as the inline code did on the bars (47.764131ms)
+2026-10-24T20:15:58.8325380Z ✔ two-leg long keeps native engine mark separate from the existing arithmetic-entry book mark (1.660407ms)
+2026-10-24T20:15:58.8326174Z ✔ two-leg short retains the opposite signed engine-versus-book reconciliation difference (0.16594ms)
+2026-10-24T20:15:58.8326851Z ✔ one-leg Normal endpoint agrees across bases while preserving native multiplication order (0.168704ms)
+2026-10-24T20:15:58.8327492Z ✔ explicit engine unit-return evidence is retained without changing the book mark (0.211177ms)
+2026-10-24T20:15:58.8328127Z ✔ confirmed zero funding remains zero while unknown or inconsistent allocations are rejected (0.32581ms)
+2026-10-24T20:15:58.8328856Z ✔ marks only a bar closed by the endpoint and carries a known close across gaps (0.238138ms)
+2026-10-24T20:15:58.8329404Z ✔ precomputed price cannot bypass an unknown or nonfinite endpoint time (0.24646ms)
+2026-10-24T20:16:00.8419718Z ✔ a config id gives its range tag and its target as a fraction (0.91759ms)
+2026-10-24T20:16:00.8424223Z ✔ per range × rule: the pairs, orders, events and PF the rule keeps, by window, beside the run as it was (1.477212ms)
+2026-10-24T20:16:00.8426203Z ✔ eval-gate carries a dump's basePairs[].rules into windows[].pairs and the report rules into summary.baseRules (unset: neither) (1635.826754ms)
+2026-10-24T20:16:00.8434759Z ✔ an Axis config is kept wherever the rule keeps its range (its ladder targets are not Base cells) (0.693072ms)
+2026-10-24T20:16:00.8436079Z ✔ a run whose orders are not its Base pairs' is marked (contrarian seats, every set, ranges without Base) (58.274302ms)
+2026-10-24T20:16:00.8437046Z ✔ eval-gate and core-session refuse a settings patch checkSettings refuses (exit 2, before any run) (747.621421ms)
+2026-10-24T20:16:00.8536243Z ✔ a config id gives its range, trail distance and hold time in hours (1.497261ms)
+2026-10-24T20:16:00.8537607Z ✔ a trail distance reads as a fraction without float noise (112 % of an id is 0.0112, not 0.011200000000000002) (0.167642ms)
+2026-10-24T20:16:00.8538670Z ✔ a range tag before a DCA or Axis suffix still names the range (0.184217ms)
+2026-10-24T20:16:00.8539413Z ✔ an inherited object key is not a range tag (0.145368ms)
+2026-10-24T20:16:00.8540233Z ✔ a signal's lanes are its own variants: two lanes of one signal are not pooled (0.198458ms)
+2026-10-24T20:16:00.8541399Z ✔ ATR protects keep their atr token: ATR variants do not merge with each other or with pct variants (0.469957ms)
+2026-10-24T20:16:00.8542372Z ✔ pf: no loss is 9, no gain is 0, else gross profit over gross loss (0.174562ms)
+2026-10-24T20:16:00.8543296Z ✔ the score is the minimum PF over the windows; a window with no trades counts as 0 (0.367572ms)
+2026-10-24T20:16:00.8544344Z ✔ a window the run did not compute for the range is unscored, not 0 and not a pass (5.960793ms)
+2026-10-24T20:16:00.8545199Z ✔ the minimum trade count is an option, off by default (0.314102ms)
+2026-10-24T20:16:00.8547440Z ✔ variants are kept apart by range, trail, hold and atr, and sorted by their minimum PF (0.352911ms)
+2026-10-24T20:16:00.8548788Z ✔ two signals with the same trail and hold are two variants: a signal's historic configs are never pooled (0.195715ms)
+2026-10-24T20:16:00.8550111Z ✔ a config id's row and kind: its range tag, sig- indications as Signals, untagged as Wide (summary.funnel's names) (1.291602ms)
+2026-10-24T20:16:00.8551459Z ✔ a run reduced per range: orders against events, PF with the open orders against pfClosed, D1a / D1b by entry time (2.328561ms)
+2026-10-24T20:16:00.8552644Z ✔ a run with a short warm-up window or a memory-fallback window gives no verdict (rerun) (0.350377ms)
+2026-10-24T20:16:00.8553940Z ✔ --matched-mirror: a baseline order counts only in a window where the inverted run traded its config's mirror (0.429045ms)
+2026-10-24T20:16:00.8555424Z ✔ the decision rule: valid (≥ 30 events, ≥ 40 % of b0's in both halves), choose (D1a +0.05), judge (D1b +0.03, 3 of 5 windows, no fall > 0.2) (0.870859ms)
+2026-10-24T20:16:00.8557376Z ✔ forward (F: PF ≥ b0's with ≥ 30 events) and the target (PF ≥ 1.2 on D1a, D1b and F, 300 D1 events, 100 F orders, no window < 1) (0.51168ms)
+2026-10-24T20:16:00.8558638Z ✔ no "works" from an invalid run: targetRow takes the runs' problems (the forward pair's among them) (0.148603ms)
+2026-10-24T20:16:00.8559975Z ✔ --matched-mirror keeps the baseline's Signals orders whatever the inverted run traded (signals are never inverted) (0.302275ms)
+2026-10-24T20:16:00.8561164Z ✔ a run carries its feed (size and start); runs on different feeds are not compared (0.386281ms)
+2026-10-24T20:16:00.8562185Z ✔ the /proc readings: MemAvailable and VmHWM in MB, null when the line is missing (1.078382ms)
+2026-10-24T20:16:00.8563446Z ✔ a child is admitted at once when the memory is there, after the others' need when it is not (0.804159ms)
+2026-10-24T20:16:00.8564525Z ✔ past the wait limit a child runs alone, but only once no other child of the runner runs (1.169098ms)
+2026-10-24T20:16:00.8565687Z ✔ workers that ask at once are admitted one at a time: each child counts as running from its admission (0.884049ms)
+2026-10-24T20:16:00.8567585Z ✔ a running child is stopped when the host falls under the floor (the desk's memory comes first) (81.135182ms)
+2026-10-24T20:16:00.8568733Z ✔ schema7 preserves explicit unit returns and weighted diagnostics without dividing twice (2.321632ms)
+2026-10-24T20:16:00.8569697Z ✔ legacy schema3 tuples without explicit unit evidence remain whole and unavailable (0.232609ms)
+2026-10-24T20:16:00.8570545Z ✔ unit metadata requires a recorded basis and follows named columns (0.231237ms)
+2026-10-24T20:16:00.8571445Z ✔ a null unit-return loss blocks the complete period rather than selecting known winners (0.214463ms)
+2026-10-24T20:16:00.8572454Z ✔ cost repricing deducts only missing cost and preserves already greater recorded costs (0.416737ms)
+2026-10-24T20:16:00.8573599Z ✔ endpoint marks stay in the primary sample but missing mark prices block the complete repriced objective (0.207332ms)
+2026-10-24T20:16:00.8574718Z ✔ the frozen no-loss objective stays unbounded while primary evidence retains engine score4 (0.264839ms)
+2026-10-24T20:16:00.8575733Z ✔ D1a alone orders candidates; a better D1b cannot replace its frozen selection (7.925029ms)
+2026-10-24T20:16:00.8576974Z ✔ separates accepted virtual/funded unit PF from cash PF and counts partial closes as one onset (5.633922ms)
+2026-10-24T20:16:00.8578054Z ✔ preserves missing/duplicate ownership as unknown rather than dropping a loss (2.556335ms)
+2026-10-24T20:16:00.8579091Z ✔ requires30 unique own-side historical onsets plus the actual initial gate pass (4.239897ms)
+2026-10-24T20:16:00.8580036Z ✔ does not promote two symbols with15 onsets each from their pooled30 (1.153715ms)
+2026-10-24T20:16:00.8580956Z ✔ never substitutes a later validation verdict for the initial historical gate (1.127356ms)
+2026-10-24T20:16:00.8582047Z ✔ uses total allocated USD precision, preserving a meaningful fill with a tiny unit value (3.386933ms)
+2026-10-24T20:16:00.8583244Z ✔ keeps endpoint marks separate and refuses settled-window contamination (1.158883ms)
+2026-10-24T20:16:00.8806774Z ✔ requires the exact existing regular/combined focus and three actually distinct profiles (124.774105ms)
+2026-10-24T20:16:00.8822906Z ✔ keeps full effective identity universes and PF/sample/cost gates identical across profiles (614.70098ms)
+2026-10-24T20:16:00.8837162Z ✔ keeps historical indicator initialization outside the evaluated entry window (20.60065ms)
+2026-10-24T20:16:00.9241931Z ✔ immutable latest replay refuses superseded, changed and source-stale evidence (12.884506ms)
+2026-10-24T20:16:01.0787589Z ✔ unit return PF and sized P&L remain independent (1.163049ms)
+2026-10-24T20:16:01.0794591Z ✔ unknown legacy loss cannot disappear behind a known winner (0.173551ms)
+2026-10-24T20:16:01.0805681Z ✔ No losses differs from measured PF4 and an empty sample (0.160221ms)
+2026-10-24T20:16:01.0811813Z ✔ merging finalized groups keeps unknown returns unavailable instead of treating null as zero (0.278769ms)
+2026-10-24T20:16:01.0815140Z ✔ missing sized P&L remains unavailable independently of a known unit return (0.222765ms)
+2026-10-24T20:16:01.1451326Z ✔ chunked dump round-trips exact config ordering, empty tapes, split tapes, and UTF-8 rows (30.164974ms)
+2026-10-24T20:16:01.1452934Z ✔ duplicate config IDs and additional tape metadata retain their exact ordering (4.500388ms)
+2026-10-24T20:16:01.1454313Z ✔ legacy flat dumps, absent tapeTrades, and empty tapeTrades remain readable losslessly (5.383096ms)
+2026-10-24T20:16:01.1456004Z ✔ the streamed generic JSON writer preserves normal JSON serialization and escaped data (116.21971ms)
+2026-10-24T20:16:01.1471965Z ✔ streamed JSON retains special own keys and excludes inherited properties (1.817965ms)
+2026-10-24T20:16:01.1512906Z ✔ flat array sidecars reject reserved storage and prototype fields on both write and read (4.37558ms)
+2026-10-24T20:16:01.1541335Z ✔ nonfinite and missing row entries normalize exactly as legacy JSON.stringify (2.888093ms)
+2026-10-24T20:16:01.1558393Z ✔ a failed generic serialization retains the prior file and removes its temporary file (1.577101ms)
+2026-10-24T20:16:01.1585540Z ✔ a later sidecar failure preserves the prior dump and cleans earlier staged sidecars (2.024204ms)
+2026-10-24T20:16:01.1614349Z ✔ dump writes with absent or empty tape arrays retain the exact original JSON shape (3.057458ms)
+2026-10-24T20:16:01.1667455Z ✔ the async tape iterator reconstructs each complete tape, including empty tapes (5.449426ms)
+2026-10-24T20:16:01.1711458Z ✔ a metadata-only read leaves the sidecar manifest without loading chunk files (4.25571ms)
+2026-10-24T20:16:01.2030180Z ✔ the bounded verifier checks complete sidecar counts without hydrating or changing trade order (31.430037ms)
+2026-10-24T20:16:01.2273981Z ✔ projected reads can verify unloaded validation and reject its corrupted physical evidence (24.155422ms)
+2026-10-24T20:16:01.2385145Z ✔ the sidecar writer accepts an iterable without requiring an expanded tape array (11.235962ms)
+2026-10-24T20:16:01.2514831Z ✔ validation history splits checks losslessly and preserves empty steps and metadata (12.692799ms)
+2026-10-24T20:16:01.2538304Z ✔ flat executed trade sidecars retain exact closeIndex and settlement ordering (2.845059ms)
+2026-10-24T20:16:01.2780725Z ✔ reader rejects altered chunk sha256 (21.13868ms)
+2026-10-24T20:16:01.2867245Z ✔ reader rejects altered chunk bytes (10.694734ms)
+2026-10-24T20:16:01.2902670Z ✔ reader rejects altered chunk records (4.776313ms)
+2026-10-24T20:16:01.2980063Z ✔ reader rejects altered chunk tapes (7.556224ms)
+2026-10-24T20:16:01.3042919Z ✔ reader rejects altered chunk rows (6.131911ms)
+2026-10-24T20:16:01.3104625Z ✔ reader rejects altered total records (5.508364ms)
+2026-10-24T20:16:01.3170614Z ✔ reader rejects altered total tapes (7.451987ms)
+2026-10-24T20:16:01.3230660Z ✔ reader rejects altered total rows (5.011446ms)
+2026-10-24T20:16:01.3276387Z ✔ reader rejects modified sidecar bytes even when their length is unchanged (5.363366ms)
+2026-10-24T20:16:01.3316845Z ✔ reader enforces config ordinals even when changed content has a valid checksum (3.973185ms)
+2026-10-24T20:16:01.3370534Z ✔ reader enforces each tape's row offsets even when changed content has valid checksums (4.356642ms)
+2026-10-24T20:16:01.3426433Z ✔ reader validates the ordered whole-sidecar checksum (6.48304ms)
+2026-10-24T20:16:01.3502575Z ✔ reader rejects reversed chunk order rather than silently reordering tape rows (7.668903ms)
+2026-10-24T20:16:01.3544415Z ✔ reader rejects unsafe sidecar path "/tmp/foreign.jsonl" (3.892549ms)
+2026-10-24T20:16:01.3582677Z ✔ reader rejects unsafe sidecar path "../foreign.jsonl" (4.154453ms)
+2026-10-24T20:16:01.3612241Z ✔ reader rejects unsafe sidecar path "parts/../foreign.jsonl" (2.819946ms)
+2026-10-24T20:16:01.3643036Z ✔ reader rejects unsafe sidecar path "parts\\foreign.jsonl" (3.13207ms)
+2026-10-24T20:16:01.3673168Z ✔ reader rejects unsafe sidecar path "C:\\foreign.jsonl" (2.834102ms)
+2026-10-24T20:16:01.3720510Z ✔ reader rejects a relative symlink escaping the dump directory (3.510975ms)
+2026-10-24T20:16:01.3721643Z ✔ writer rejects invalid chunk byte limit 0 (0.416516ms)
+2026-10-24T20:16:01.3722518Z ✔ writer rejects invalid chunk byte limit -1 (0.259991ms)
+2026-10-24T20:16:01.3723371Z ✔ writer rejects invalid chunk byte limit 1.5 (0.218439ms)
+2026-10-24T20:16:01.3730648Z ✔ writer rejects invalid chunk byte limit 8388609 (0.21291ms)
+2026-10-24T20:16:01.3736926Z ✔ writer rejects a single row larger than the chunk bound (1.758184ms)
+2026-10-24T20:16:01.3867288Z ✔ loads plain and gzip frozen market feeds identically (2.606029ms)
+2026-10-24T20:16:01.3896824Z ✔ replay feed honors earlier ranking clocks for both 1H and 5m reads without exposing later bars (1.181216ms)
+2026-10-24T20:16:01.3902558Z ✔ the prune keeps the engine's timeframe and the ranking's 1-hour bars up to the cut; every read answers as before (11.908759ms)
+2026-10-24T20:16:01.3904089Z ✔ the replay's read answers on columns as on the bars; the store writes itself as its bars (122.704507ms)
+2026-10-24T20:16:01.4875484Z ✔ funded PF and virtual PF use explicitly different samples without changing cash or return weighting (1.505574ms)
+2026-10-24T20:16:01.4887299Z ✔ unknown allocation or unknown own return stays in the sample and invalidates PF (0.359491ms)
+2026-10-24T20:16:01.4888854Z ✔ zero allocations never acquire return evidence, while funded loss/zero and no-loss sentinel remain explicit (0.188985ms)
+2026-10-24T20:16:01.4890214Z ✔ empty, unknown-volume and overflowed samples cannot claim a finite primary PF (0.324839ms)
+2026-10-24T20:16:01.4891439Z ✔ missing and malformed allocation evidence cannot invent funded cash while known zero stays zero (0.29884ms)
+2026-10-24T20:16:01.4892830Z ✔ cash PF scales the base-one return by funded unit notional without multiplying execution volume twice (0.196936ms)
+2026-10-24T20:16:01.4990637Z ✔ preserves complete normalized replay controls and serializes Base cohort metadata (2.358266ms)
+2026-10-24T20:16:01.5007826Z ✔ redacts private owned-execution close rows while binding their count and content hash (0.389185ms)
+2026-10-24T20:16:01.5598130Z ▶ frozen full-engine session study
+2026-10-24T20:16:01.5599394Z   ✔ rejects report sizing at preflight instead of wasting a complete history calculation (1.119885ms)
+2026-10-24T20:16:01.5609903Z   ✔ rejects unloaded execution placeholders rather than certifying an empty result (1.099213ms)
+2026-10-24T20:16:01.5611219Z   ✔ checks the actual normalized runtime before compute and records empty evidence honestly (1.139403ms)
+2026-10-24T20:16:01.5612443Z   ✔ rejects changed economic settings, time boundaries and feed bytes (1.117561ms)
+2026-10-24T20:16:01.5614730Z   ✔ rejects an incomplete symbol universe and memory fallback rather than calling them a full test (0.891791ms)
+2026-10-24T20:16:01.5616106Z   ✔ rejects stale source and out-of-scope entries (1.016419ms)
+2026-10-24T20:16:01.5617311Z   ✔ rejects a changed report funding size even when strategy settings are unchanged (1.744664ms)
+2026-10-24T20:16:01.5618305Z ✔ frozen full-engine session study (9.276731ms)
+2026-10-24T20:16:01.5715760Z ✔ limits acquisition to frozen public GET OHLCV symbols, endpoint and exact twelve-hour window (1.26342ms)
+2026-10-24T20:16:01.5717460Z ✔ requires every finite valid completed minute without fills or conflicting duplicate prices (7.619128ms)
+2026-10-24T20:16:01.5718663Z ✔ ticker metadata cannot read the trade window (2.145386ms)
+2026-10-24T20:16:01.5719894Z ✔ merges cached warmup with exact matching overlaps, complete timestamps and six-hour-only metadata (5.772371ms)
+2026-10-24T20:16:02.5374557Z ✔ captures every configured cell separately from actual tapes, active units and executed closes (9.523251ms)
+2026-10-24T20:16:02.5376886Z ✔ accounts for every raw requested cell while deduplicating identical effective hard-floor protections (2.237185ms)
+2026-10-24T20:16:02.5380529Z ✔ excludes endpoint marks from the settled modeled-execution sample (10.947504ms)
+2026-10-24T20:16:02.5386286Z ✔ preserves coordination input masks independently of strategy and protection ranges (1.539776ms)
+2026-10-24T20:16:02.5387404Z ✔ matches the actual builder's full capped source and coordination catalog on 1m and 15m lanes (488.610424ms)
+2026-10-24T20:16:02.5388497Z ✔ captures all 288 hourly candidate cells and partitions right-closed hours without changing selection (32.053464ms)
+2026-10-24T20:16:02.5621459Z ✔ keeps all zero type/range/lane/direction cells and all six hours without a measured PF (17.935603ms)
+2026-10-24T20:16:02.5622745Z ✔ uses unit returns, settled hour boundaries and both directions while keeping cash book diagnostics separate (11.201616ms)
+2026-10-24T20:16:02.5623681Z ✔ makes positive-notional ownership primary, retains zero-allocation diagnostics and never drops unknown allocation rows (8.274514ms)
+2026-10-24T20:16:02.5624534Z ✔ matches repeated entry allocation units to each partial close's own return, not the last slice P&L (7.603064ms)
+2026-10-24T20:16:02.5625258Z ✔ keeps a missing modeled multiplier inside its funded type and hourly cohort as unknown (7.482382ms)
+2026-10-24T20:16:02.5627024Z ✔ keeps mixed engine book equity separate and reconciles Signal cash from actual shared allocations (4.523113ms)
+2026-10-24T20:16:02.5637072Z ✔ retains unknown losing evidence and rejects endpoint marks or wrong windows instead of creating qualified subsets (3.967817ms)
+2026-10-24T20:16:02.5638261Z ✔ exports full pre/candidate/active/executed gross evidence and literal CSV safely (4.133266ms)
+2026-10-24T20:16:02.5639120Z ✔ comparison primary PF 1.36 and sized PF 0.20 retain the same settled closes (2.738628ms)
+2026-10-24T20:16:02.5639672Z ✔ ranking uses primary PF rather than the opposing sized result (1.321658ms)
+2026-10-24T20:16:02.5640258Z ✔ unknown losing close remains in the full sample and cannot enter ranked results (1.893027ms)
+2026-10-24T20:16:02.5641139Z ✔ aggregate overflow retains the complete sample with unavailable PF and no false no-loss claim (0.414553ms)
+2026-10-24T20:16:02.5642096Z ✔ a positive endpoint mark cannot turn a settled losing run positive (0.503206ms)
+2026-10-24T20:16:02.5642940Z ✔ settled selection keeps end-boundary closes and excludes marks and out-of-window rows (0.339551ms)
+2026-10-24T20:16:02.5643746Z ✔ no-loss score 4 is distinct from a measured finite PF 4 (0.218739ms)
+2026-10-24T20:16:02.5644336Z ✔ verified unit returns override weighted r without a second normalization (0.1464ms)
+2026-10-24T20:16:02.5644904Z ✔ one unavailable run makes the aggregate positive-run count unavailable (0.370918ms)
+2026-10-24T20:16:02.7114067Z ✔ Python losing-config CLI retains both directions, losing closes and PF for flat and chunked dumps (501.074685ms)
+2026-10-24T20:16:02.7302271Z ✔ stage PF includes only individually passing configs and the actual seated subset (1.836702ms)
+2026-10-24T20:16:02.7305074Z ✔ empty, missing evidence and the no-loss gate convention never become measured finite profitability (0.178218ms)
+2026-10-24T20:16:02.7341090Z ✔ source-hour selection assigns exact-hour settlements to the same completed hour as central statistics (7.327299ms)
+2026-10-24T20:16:05.1788574Z ✔ actual study preparation preserves provider metadata, labels unknown input and retains context hold/range options (2397.137054ms)
+2026-10-24T20:16:05.1962532Z ✔ _migrations keys on basename, not path (0.734424ms)
+2026-10-24T20:16:05.1963579Z ✔ a file already applied from another directory does not re-apply (0.552661ms)
+2026-10-24T20:16:05.1964556Z ✔ pending migrations are returned in name order (6.645454ms)
+2026-10-24T20:16:05.1965484Z ✔ non-.sql entries are dropped (readdir also yields the auth/ directory) (0.167001ms)
+2026-10-24T20:16:05.1966594Z ✔ the auth schema ships outside the globbed directory (0.322695ms)
+2026-10-24T20:16:05.1967493Z ✔ this workspace's auth schema copy is byte-identical to its source (0.29253ms)
+2026-10-24T20:16:05.1968840Z ✔ the copy check reads both files and catches an edit (0.598601ms)
+2026-10-24T20:16:05.1969806Z ✔ a range in a patch is merged over the current range, the rest of the grid is kept (1.099734ms)
+2026-10-24T20:16:05.1970781Z ✔ a patch value wins; a range switched off or on stays what the patch says (0.210637ms)
+2026-10-24T20:16:05.1971746Z ✔ settings without a grid pass through; the current grid is not mutated (0.155303ms)
+2026-10-24T20:16:05.1972807Z ✔ exact-hour settlements, empty scope and external weighting retain one fixed hourly cohort (1.683162ms)
+2026-10-24T20:16:05.1974039Z ✔ rejects future close instead of proving hourly stability (0.59178ms)
+2026-10-24T20:16:05.1974975Z ✔ rejects missing multiplier instead of proving hourly stability (0.210456ms)
+2026-10-24T20:16:05.1976063Z ✔ rejects unknown persisted return instead of proving hourly stability (0.202855ms)
+2026-10-24T20:16:05.1976913Z ✔ rejects invalid multiplier instead of proving hourly stability (0.222064ms)
+2026-10-24T20:16:05.1977808Z ✔ rejects duplicate instead of proving hourly stability (0.188874ms)
+2026-10-24T20:16:05.1978677Z ✔ rejects endpoint mark instead of proving hourly stability (0.21896ms)
+2026-10-24T20:16:05.1979667Z ✔ rejects a shifted hour, an omitted losing hour and a weighted primary PF (0.774244ms)
+2026-10-24T20:16:05.5620222Z ✔ older post-Base replay windows cannot report settlements from later input candles (2511.7747ms)
+2026-10-24T20:16:05.5718554Z ✔ parsePreviewArgs accepts the two actions (1.749451ms)
+2026-10-24T20:16:05.5719654Z ✔ parsePreviewArgs rejects missing, unknown and extra arguments (0.263466ms)
+2026-10-24T20:16:05.5720640Z ✔ parsePid reads a pidfile and rejects junk (0.198819ms)
+2026-10-24T20:16:05.5721559Z ✔ parsePgid reads the pgrp field past a comm containing spaces (0.247683ms)
+2026-10-24T20:16:05.5722567Z ✔ parseListenerInodes picks LISTEN sockets on the wanted port only (0.330908ms)
+2026-10-24T20:16:05.5723528Z ✔ parseListenerInodes reads the tcp6 dump the same way (0.25993ms)
+2026-10-24T20:16:05.5724559Z ✔ looksLikePreviewProcess matches the npm wrapper and its vite child (0.341133ms)
+2026-10-24T20:16:05.5725617Z ✔ looksLikePreviewProcess spares the sibling scripts and re-used pids (0.615756ms)
+2026-10-24T20:16:05.5728361Z ✔ previewOwners trusts port owners and dedupes the pidfile pid (0.327492ms)
+2026-10-24T20:16:05.5729368Z ✔ previewOwners adds a pidfile pid whose command line is still the preview (0.29911ms)
+2026-10-24T20:16:05.5730308Z ✔ previewOwners drops a stale pidfile pid re-used by another process (0.763432ms)
+2026-10-24T20:16:05.5731234Z ✔ previewOwners drops a pidfile pid that no longer exists (0.210677ms)
+2026-10-24T20:16:05.5737829Z ✔ previewOwners on a free port with no pidfile signals nothing (0.152379ms)
+2026-10-24T20:16:05.5738714Z ✔ stopOutcome fails when a pid survives or the port is still held (0.197537ms)
+2026-10-24T20:16:05.5739421Z ✔ stopOutcome reports a verified free port (0.446331ms)
+2026-10-24T20:16:05.5740132Z ✔ stopOutcome fails on a listener whose owner cannot be attributed (0.150146ms)
+2026-10-24T20:16:05.5740936Z ✔ terminatePids SIGTERMs live pids and skips dead ones (0.453793ms)
+2026-10-24T20:16:05.5741700Z ✔ terminatePids escalates to SIGKILL when SIGTERM is ignored (0.501595ms)
+2026-10-24T20:16:05.5742902Z ✔ terminatePids reports a pid that survives SIGKILL as stubborn (0.508254ms)
+2026-10-24T20:16:05.5743623Z ✔ terminatePids on a free port signals nothing (0.141542ms)
+2026-10-24T20:16:05.5957925Z ✔ report PF uses known net unit returns once and distinguishes empty, flat and no-loss (3.675077ms)
+2026-10-24T20:16:05.5959086Z ✔ same-time order changes preserve a multiset; missing duplicate legs and costs are exposed (0.740463ms)
+2026-10-24T20:16:05.5960165Z ✔ standalone HTML has no external dependencies or unescaped embedded data (1.059203ms)
+2026-10-24T20:16:05.6543563Z ▶ route tree
+2026-10-24T20:16:05.6580205Z   ✔ every route file under src/routes/v2 is registered (0.796729ms)
+2026-10-24T20:16:05.6581274Z   ✔ the app keeps its overview, engine, trading and settings pages (0.131438ms)
+2026-10-24T20:16:05.6582935Z   ✔ the document shell keeps the platform bridge and branding hooks (0.328114ms)
+2026-10-24T20:16:05.6583821Z ✔ route tree (2.24043ms)
+2026-10-24T20:16:10.5640282Z ▶ dev server renders every page
+2026-10-24T20:16:10.5641416Z   ✔ GET /api/core/events streams server-sent events (202.884098ms)
+2026-10-24T20:16:10.5818037Z   ✔ GET / answers without a server error (15.317235ms)
+2026-10-24T20:16:10.5953329Z   ✔ GET /v2 answers without a server error (18.733428ms)
+2026-10-24T20:16:10.6271325Z   ✔ GET /v2/compare answers without a server error (31.827799ms)
+2026-10-24T20:16:10.6649811Z   ✔ GET /v2/engine answers without a server error (37.662339ms)
+2026-10-24T20:16:10.6924252Z   ✔ GET /v2/hourly answers without a server error (27.468669ms)
+2026-10-24T20:16:10.7322343Z   ✔ GET /v2/market answers without a server error (39.790659ms)
+2026-10-24T20:16:10.7631913Z   ✔ GET /v2/matrix answers without a server error (30.783986ms)
+2026-10-24T20:16:10.8069098Z   ✔ GET /v2/presets answers without a server error (43.614971ms)
+2026-10-24T20:16:10.8734418Z   ✔ GET /v2/results answers without a server error (66.653392ms)
+2026-10-24T20:16:10.8940550Z   ✔ GET /v2/settings answers without a server error (16.402002ms)
+2026-10-24T20:16:10.9456194Z   ✔ GET /v2/stages answers without a server error (55.587104ms)
+2026-10-24T20:16:10.9841565Z   ✔ GET /v2/statistics answers without a server error (38.583134ms)
+2026-10-24T20:16:10.9964109Z   ✔ GET /v2/trading answers without a server error (12.173988ms)
+2026-10-24T20:16:10.9983294Z   ✔ GET /v2/ answers without a server error (2.052326ms)
+2026-10-24T20:16:11.0107258Z   ✔ pages carry the CTS-A-O title and description (7.325046ms)
+2026-10-24T20:16:11.0238226Z   ✔ an unknown path is a 404, not a crash (17.218174ms)
+2026-10-24T20:16:11.0242809Z   ✔ the dev server logged no unhandled errors while rendering (0.303206ms)
+2026-10-24T20:16:11.0243749Z ✔ dev server renders every page (5387.625553ms)
+2026-10-24T20:16:11.1053436Z ✔ research disables both optional report variants and background preset comparisons regardless of parent environment (1.254848ms)
+2026-10-24T20:16:11.1054673Z ✔ fixed chronological folds preserve20/22symbols and six evaluated prehistory hours (0.926003ms)
+2026-10-24T20:16:11.1056041Z ✔ 24h folds cannot inherit the development desk's6h simulation, and entry research preserves other gates (0.473312ms)
+2026-10-24T20:16:11.1057068Z ✔ simulation keeps exact source bounds/account and full progress while splitting report memory (0.298119ms)
+2026-10-24T20:16:11.1058107Z ✔ completed-study report provenance verifies full allocation sidecars and rejects changed rows (11.088006ms)
+2026-10-24T20:16:11.1059072Z ✔ development arms reject even one changed range, gate or walk-forward setting (0.565ms)
+2026-10-24T20:16:11.1059993Z ✔ final window remains locked until exact matching selection conclusion exists (0.449847ms)
+2026-10-24T20:16:11.1060832Z ✔ economic source proof rejects drift and unsealed new files (1.561198ms)
+2026-10-24T20:16:11.1061870Z ✔ completed-study provenance verifies every lossless raw sidecar and rejects a changed chunk (6.642349ms)
+2026-10-24T20:16:11.1062702Z ✔ training selection keeps funded Micro evidence independent of winning siblings and refuses reuse or later windows (1147.774747ms)
+2026-10-24T20:16:11.1063885Z ✔ range and Block file consumers preserve trades, funding, validation and histories for flat and sidecar evidence (43.887601ms)
+2026-10-24T20:16:11.1064729Z ✔ funded stage and parity cohorts exclude a known unfunded winner while keeping every virtual close (1.859065ms)
+2026-10-24T20:16:11.1066697Z ✔ missing, duplicate, wrong-identity, invalid and unknown funding cannot certify a primary execution cohort (1.74222ms)
+2026-10-24T20:16:11.1068090Z ✔ archived all-funded evidence is sufficient only with exactly zero exclusions and unknowns (0.605641ms)
+2026-10-24T20:16:11.1069293Z ✔ saved stage and exact-tape audits reproduce primary report PF on the same funded cohort (11.880608ms)
+2026-10-24T20:16:11.1070552Z ✔ preview: a successful sign-out clears the token, then redirects (1.971675ms)
+2026-10-24T20:16:11.1071432Z ✔ preview: a rejected sign-out still clears the token and redirects (0.222755ms)
+2026-10-24T20:16:11.1072318Z ✔ preview: a sign-out that throws synchronously still clears and redirects (0.249786ms)
+2026-10-24T20:16:11.1073257Z ✔ preview: a sign-out that never settles clears and redirects once the wait expires (9.10966ms)
+2026-10-24T20:16:11.1074200Z ✔ preview: no bearer means nothing to invalidate, so no request is made (0.273572ms)
+2026-10-24T20:16:11.1075033Z ✔ preview: a stored bearer is still invalidated server-side (0.172659ms)
+2026-10-24T20:16:11.1075824Z ✔ deployed: a confirmed sign-out clears the token, then redirects (0.226962ms)
+2026-10-24T20:16:11.1076990Z ✔ deployed: a sign-out that never settles throws and does NOT redirect (20.917267ms)
+2026-10-24T20:16:11.1077816Z ✔ deployed: a rejected sign-out throws and does NOT redirect (0.50577ms)
+2026-10-24T20:16:11.1078569Z ✔ deployed: the timeout is distinguishable from a rejection (22.042379ms)
+2026-10-24T20:16:11.1079363Z ✔ settleWithin reports the outcome and never rejects (19.858644ms)
+2026-10-24T20:16:11.1080192Z ✔ settleWithin waits its full window, then gives up rather than hanging (3.788257ms)
+2026-10-24T20:16:11.1081030Z ✔ pre-sign-in: the preview clear gives up at the preview bound (0.674574ms)
+2026-10-24T20:16:11.1081945Z ✔ pre-sign-in: a deployed session gets the deployed window, not the preview one (1.925555ms)
+2026-10-24T20:16:11.1082761Z ✔ pre-sign-in: a failed clear never blocks sign-in (0.344939ms)
+2026-10-24T20:16:11.1083545Z ✔ pre-sign-in: the preview skips the request when there is no bearer (0.123927ms)
+2026-10-24T20:16:11.1084242Z ✔ every sign-out bound comes from one rule (0.08008ms)
+2026-10-24T20:16:11.1084994Z ✔ the defaults are bounded, and deployed waits longer than preview (0.318809ms)
+2026-10-24T20:16:11.1085676Z ▶ positive family simulation unit-return reporting
+2026-10-24T20:16:11.1086745Z   ✔ honors verified unit overrides and withholds the whole primary/stress sample on unknown unit rows (3.280223ms)
+2026-10-24T20:16:11.1087863Z   ✔ uses return PF 1.36 for total/family/botStats while exposing unequal-size PF 0.20 separately (0.581654ms)
+2026-10-24T20:16:11.1089005Z   ✔ assigns both boundary exits including final close to their completed hours with reconciled counts/net (0.537739ms)
+2026-10-24T20:16:11.1090088Z   ✔ does not mix old entries, future exits, endpoint marks or siblings from another sample (0.269175ms)
+2026-10-24T20:16:11.1091039Z   ✔ keeps full Signal source/range families and empty/no-loss results honest (1.229018ms)
+2026-10-24T20:16:11.1091863Z ✔ positive family simulation unit-return reporting (7.151815ms)
+2026-10-24T20:16:11.1092851Z ✔ identical simulation cohort preserves every return after exactly one external weighting removal (2.802474ms)
+2026-10-24T20:16:11.1093934Z ✔ the audit catches double costs, duplicate executions, wrong side and unknown provenance (0.549537ms)
+2026-10-24T20:16:11.7715656Z ✔ all-runner invocation cleans nested test context and credentials, preserves explicit slow policy, and guards caller preloads first (286.897317ms)
+2026-10-24T20:16:11.7719730Z ✔ real all-runner preserves coverage, pinned END and CommonJS worker protection for one lightweight fixture (440.252135ms)
+2026-10-24T20:16:11.7725183Z ✔ real all-runner retains a fixture's failing exit status and failure report (442.658699ms)
+2026-10-24T20:16:11.7736450Z ✔ real all-runner retains its memory kill governor and reports the killed file (2096.687929ms)
+2026-10-24T20:16:13.2626161Z ✔ core compute workers default to one and an explicit two leaves serial file execution unchanged (1.524012ms)
+2026-10-24T20:16:13.2632629Z ✔ core compute worker selection rejects unsupported values before spawning any test (0.423307ms)
+2026-10-24T20:16:13.2633910Z ✔ the standard core runner installs offline evidence before test imports and preserves failed-test status (494.72205ms)
+2026-10-24T20:16:13.2640176Z ✔ explicit core test inventory refuses missing paths, directories and duplicate aliases (0.43886ms)
+2026-10-24T20:16:13.2641931Z ✔ CI shards execute every explicit fixture exactly once across isolated serial runners (1533.106379ms)
+2026-10-24T20:16:13.2643148Z ✔ invalid or repeated shard specifications cannot silently omit verification (73.366723ms)
+2026-10-24T20:16:15.9420111Z [ui-fixture] starting synthetic dev server +5ms
+2026-10-24T20:16:15.9420943Z [ui-fixture] HTTP ready; launching Chromium +4103ms
+2026-10-24T20:16:20.3573830Z [ui-fixture] Chromium launched; opening Compare +8519ms
+2026-10-24T20:16:29.2719905Z [ui-fixture] Compare loaded; waiting for the real computed comparison table +17434ms
+2026-10-24T20:16:31.4434637Z [ui-fixture] real compute and Compare finished; checking every page +19606ms
+2026-10-24T20:16:31.5729100Z [ui-fixture] desktop: /v2 +19735ms
+2026-10-24T20:16:33.7124206Z [ui-fixture] desktop: /v2/compare +21873ms
+2026-10-24T20:16:35.1605173Z [ui-fixture] desktop: /v2/engine +23323ms
+2026-10-24T20:16:36.7115601Z [ui-fixture] desktop: /v2/hourly +24873ms
+2026-10-24T20:16:38.1756194Z [ui-fixture] desktop: /v2/market +26338ms
+2026-10-24T20:16:39.6952325Z [ui-fixture] desktop: /v2/matrix +27857ms
+2026-10-24T20:16:41.5903621Z [ui-fixture] desktop: /v2/presets +29752ms
+2026-10-24T20:16:43.2025610Z [ui-fixture] desktop: /v2/results +31364ms
+2026-10-24T20:16:44.6128103Z [ui-fixture] desktop: /v2/settings +32774ms
+2026-10-24T20:16:46.1761482Z [ui-fixture] desktop: /v2/stages +34338ms
+2026-10-24T20:16:47.7545503Z [ui-fixture] desktop: /v2/statistics +35916ms
+2026-10-24T20:16:49.3031787Z [ui-fixture] desktop: /v2/trading +37465ms
+2026-10-24T20:16:50.7990681Z ▶ UI functional: every page on computed numbers, desktop and phone
+2026-10-24T20:16:50.7991955Z   ✔ desktop: every page renders numbers, logs no error and never scrolls sideways (19323.842786ms)
+2026-10-24T20:16:50.8018823Z [ui-fixture] phone: /v2 +38964ms
+2026-10-24T20:16:52.4525380Z [ui-fixture] phone: /v2/compare +40615ms
+2026-10-24T20:16:53.8925152Z [ui-fixture] phone: /v2/engine +42054ms
+2026-10-24T20:16:55.3196874Z [ui-fixture] phone: /v2/hourly +43482ms
+2026-10-24T20:16:56.7282123Z [ui-fixture] phone: /v2/market +44890ms
+2026-10-24T20:16:58.1446311Z [ui-fixture] phone: /v2/matrix +46307ms
+2026-10-24T20:17:00.0022859Z [ui-fixture] phone: /v2/presets +48163ms
+2026-10-24T20:17:01.5929917Z [ui-fixture] phone: /v2/results +49755ms
+2026-10-24T20:17:02.9362580Z [ui-fixture] phone: /v2/settings +51098ms
+2026-10-24T20:17:04.4125560Z [ui-fixture] phone: /v2/stages +52574ms
+2026-10-24T20:17:05.8928371Z [ui-fixture] phone: /v2/statistics +54055ms
+2026-10-24T20:17:07.3922184Z [ui-fixture] phone: /v2/trading +55554ms
+2026-10-24T20:17:08.8515815Z   ✔ phone: every page renders numbers, logs no error and never scrolls sideways (18053.634449ms)
+2026-10-24T20:17:16.2470015Z   ✔ Settings: saving unchanged settings succeeds without an error (7395.39065ms)
+2026-10-24T20:17:16.2471182Z   ✔ the dev server logged no unhandled errors (0.534063ms)
+2026-10-24T20:17:16.3458218Z ✔ UI functional: every page on computed numbers, desktop and phone (64507.623713ms)
+2026-10-24T20:17:16.5294203Z ✔ keeps VITE_-prefixed string entries (1.998776ms)
+2026-10-24T20:17:16.5295030Z ✔ drops non-VITE keys, non-string values and malformed documents (0.237618ms)
+2026-10-24T20:17:16.5296249Z ✔ a missing app-env.json is a clean no-op (0.444098ms)
+2026-10-24T20:17:16.5296872Z ✔ reads the app env from a workspace (0.433943ms)
+2026-10-24T20:17:16.5297407Z ✔ an explicit process-env override wins over the file (0.257437ms)
+2026-10-24T20:17:16.5297903Z ﹣ the template ships auth off (0.123826ms) # .grok/app-env.json not present
+2026-10-24T20:17:16.5298331Z ✔ vite loadEnv resolves the wrapped value (0.441965ms)
+2026-10-24T20:17:16.5298871Z ﹣ the wrapped command runs with the app env applied (0.142574ms) # .grok/app-env.json not present
+2026-10-24T20:17:16.5299434Z ✔ the wrapped command sees an explicit override, not the file value (134.687931ms)
+2026-10-24T20:17:16.5299907Z ✔ the wrapper propagates the command's exit code (134.384069ms)
+2026-10-24T20:17:16.5300546Z ✔ a signal-killed command is never reported as success (118.933248ms)
+2026-10-24T20:17:16.5301146Z ﹣ the CLI still runs when invoked through a symlinked path (0.229355ms) # .grok/app-env.json not present
+2026-10-24T20:17:16.5301981Z ✔ parseWriteAtomicArgs needs exactly a staged file and a target (1.293605ms)
+2026-10-24T20:17:16.5302788Z ✔ stagingError refuses a temp inside public/ and a no-op move (0.227712ms)
+2026-10-24T20:17:16.5303361Z ✔ handOver replaces the target and clears the staged file (0.525841ms)
+2026-10-24T20:17:16.5303821Z ✔ handOver creates a missing target directory (0.403356ms)
+2026-10-24T20:17:16.5304457Z ✔ an interrupted pass leaves the target on its old bytes, temp-free (0.795867ms)
+2026-10-24T20:17:16.5305067Z ✔ a failed hand-over creates no directory for the target it never wrote (0.383597ms)
+2026-10-24T20:17:16.5305583Z ✔ a staged file on another filesystem is refused, not copied (0.651489ms)
+2026-10-24T20:17:16.5306712Z ✔ cli: hands the file over, and refuses a temp staged in public/ (130.450413ms)
+2026-10-24T20:17:16.5307264Z ✔ cli: relative paths follow the script's root, not the caller's cwd (69.166817ms)
+2026-10-24T20:17:16.5307879Z ﹣ every hand-over the og skill prints is one this script accepts (0.184998ms) # .grok/skills/og not present
+2026-10-24T20:17:16.5308438Z ✔ cli: a missing staged file fails without touching the target (61.014417ms)
+2026-10-24T20:17:16.5308882Z ✔ a live desk is reported alive and never relaunched (47.824747ms)
+2026-10-24T20:17:16.5309349Z ✔ a down desk is relaunched with the loss percentage and the symbols (26.949572ms)
+2026-10-24T20:17:16.5309803Z ✔ a dry run reports the decision and launches nothing (20.149643ms)
+2026-10-24T20:17:16.5310313Z ✔ the default matcher recognizes the launcher's Node flags and desk arguments (41.916527ms)
+2026-10-24T20:17:16.5310877Z ✔ the default matcher ignores a helper that only mentions the desk command (37.448046ms)
+2026-10-24T20:17:16.5311406Z ✔ a failed process query refuses to launch a possible duplicate desk (8.009235ms)
+2026-10-24T20:17:16.5311893Z ✔ a HALT file stops every relaunch until a person removes it (7.395707ms)
+2026-10-24T20:17:16.5312527Z ✔ an own fill that takes out more than the desk held writes HALT, and the supervisor then refuses to relaunch (8.647489ms)
+2026-10-24T20:17:16.5313259Z ✔ the desk runs the ownership check and writes HALT into its --out folder, the file the supervisor reads (0.523908ms)
+2026-10-24T20:17:16.5313842Z ✔ no launch.json and no argument: the old defaults 80 % / 60 symbols (17.876825ms)
+2026-10-24T20:17:16.5314351Z ✔ launch.json: the active run's loss limit, symbols and heap are used (28.395572ms)
+2026-10-24T20:17:16.5314856Z ✔ an explicit number wins over launch.json, auto fills the other (20.838088ms)
+2026-10-24T20:17:16.5315341Z ✔ the heap from the environment is not overridden by launch.json (23.094712ms)
+2026-10-24T20:17:16.5315805Z ✔ a HALT file stops the relaunch whatever the parameters (6.687828ms)
+2026-10-24T20:17:16.5319286Z ✔ a running desk: its own command line is read for the status line (329.586861ms)
+2026-10-24T20:17:16.5319616Z ℹ tests 723
+2026-10-24T20:17:16.5319799Z ℹ suites 27
+2026-10-24T20:17:16.5319968Z ℹ pass 715
+2026-10-24T20:17:16.5320137Z ℹ fail 0
+2026-10-24T20:17:16.5320312Z ℹ cancelled 0
+2026-10-24T20:17:16.5320489Z ℹ skipped 8
+2026-10-24T20:17:16.5320831Z ℹ todo 0
+2026-10-24T20:17:16.5321030Z ℹ duration_ms 111233.13936
+2026-10-24T20:17:16.5388396Z [npm test] app and component tests (offline fixtures only)
+2026-10-24T20:17:16.7014643Z ✔ return PF is the primary metric and cash PF remains a separate diagnostic (1.124851ms)
+2026-10-24T20:17:16.7016101Z ✔ missing, invalid and empty execution ledgers never report profitability (0.297077ms)
+2026-10-24T20:17:16.7018073Z ✔ position-only reads cannot claim an exchange balance snapshot (0.152509ms)
+2026-10-24T20:17:16.7026428Z ✔ a source, range or connection switch cannot display a prior request's figures (0.195494ms)
+2026-10-24T20:17:16.7028014Z ✔ live ledger with no exchange baseline cannot claim a paper-funded account balance (0.178708ms)
+2026-10-24T20:17:16.7029962Z ✔ a no-loss return PF sample discloses the sentinel without changing its numeric ranking value (0.215674ms)
+2026-10-24T20:17:16.7032330Z ✔ cash PF text uses explicit no-loss provenance without reinterpreting measured or legacy four (0.202535ms)
+2026-10-24T20:17:16.7033752Z ✔ preset comparisons distinguish a no-loss score from an actual finite ratio of four (2.191725ms)
+2026-10-24T20:17:16.7035053Z ✔ old comparison payloads cannot present a legacy score or delta as a measured ratio (0.290607ms)
+2026-10-24T20:17:16.7047019Z ✔ paper close displays use persisted unit returns and never fall back to size-weighted returns (0.301102ms)
+2026-10-24T20:17:16.7061717Z ✔ unavailable archived unit history is distinct from a known empty run and a no-loss score (0.225739ms)
+2026-10-24T20:17:16.7072206Z ✔ saved preset cards require verified unit evidence while fixed research keeps its disclosed study basis (0.215955ms)
+2026-10-24T20:17:16.7180638Z ✔ full-grid cell results do not broaden representative admission across bot, range or lane (0.826082ms)
+2026-10-24T20:17:16.8072575Z ✔ registered first-class indication kinds have named UI labels without changing other identities (0.767915ms)
+2026-10-24T20:17:16.8088114Z ✔ Signal configs show each actual strategy type in simulation and paper (0.195564ms)
+2026-10-24T20:17:16.8112593Z ✔ live aggregate rows never turn a guessed strategy into an executed type (0.107953ms)
+2026-10-24T20:17:16.8113834Z ✔ including Tactic merges all ten bases without replacing custom Focus, and is idempotent (0.636356ms)
+2026-10-24T20:17:16.8115066Z ✔ empty Focus keeps its all-indications meaning and coverage distinguishes lane-specific pairs (0.383486ms)
+2026-10-24T20:17:16.8116403Z ✔ Relate focus includes its exact IDs additively and reports lane coverage (0.206841ms)
+2026-10-24T20:17:16.8117407Z ✔ Break focus includes its exact IDs additively and reports anchor-lane coverage (0.18644ms)
+2026-10-24T20:17:16.8234807Z ✔ Base pooled PF uses gross evidence rather than treating a no-loss score as an exact ratio (0.915706ms)
+2026-10-24T20:17:16.8236188Z ✔ strict promotion evidence never converts unknown or insufficient owned history into a positive PF (0.294603ms)
+2026-10-24T20:17:16.8237425Z ✔ Signal discovery counts cannot be inferred from the different representative or config populations (1.049858ms)
+2026-10-24T20:17:17.0814483Z ✔ signal unit rows keep types, ranges, lanes, symbols and directions independent (1.05054ms)
+2026-10-24T20:17:17.0834811Z ✔ legacy discovery rows are explicit and never labeled as a qualified Normal unit (0.207732ms)
+2026-10-24T20:17:17.0836879Z ✔ Historic Exit labels preserve every family and direction without assigning a range or changing the kind (0.621965ms)
+2026-10-24T20:17:17.0838512Z ✔ Signal UI counts match the engine and include no-TP sets independently of percent/ATR selection (4.380796ms)
+2026-10-24T20:17:17.0847500Z ✔ No-TP labels require the explicit mode, and trailing gap is separate from its activation move (0.549376ms)
+2026-10-24T20:17:17.1418524Z ▶ callTool failure memo
+2026-10-24T20:17:17.1447031Z   ✔ replays an identical failure within the memo window without refetching (4.828449ms)
+2026-10-24T20:17:17.1461080Z   ✔ keys by token identity so a reminted token shares the memo entry (1.498543ms)
+2026-10-24T20:17:17.1466931Z   ✔ sweeps expired entries on write so unique keys do not accumulate (2.588121ms)
+2026-10-24T20:17:17.1467689Z   ✔ never memoizes login-required 401s (0.94452ms)
+2026-10-24T20:17:17.1469443Z ✔ callTool failure memo (11.297264ms)
+2026-10-24T20:17:17.1469991Z ▶ callTool in the workspace preview vs deployed
+2026-10-24T20:17:17.1470738Z   ✔ returns pending (no loginRequired) when the preview has no token yet (0.872522ms)
+2026-10-24T20:17:17.1471612Z   ✔ returns a plain error (no sign-in CTA) when a deployed app has no token (0.384198ms)
+2026-10-24T20:17:17.1472476Z   ✔ treats a gate 401 in the preview as pending and parks the rejected token (0.950789ms)
+2026-10-24T20:17:17.1473502Z   ✔ keeps loginRequired for a gate 401 on a deployed app (0.601935ms)
+2026-10-24T20:17:17.1474195Z ✔ callTool in the workspace preview vs deployed (3.201443ms)
+2026-10-24T20:17:17.1474650Z ▶ callTool
+2026-10-24T20:17:17.1475236Z   ✔ resolves ok:false for non-serializable args instead of rejecting (0.394823ms)
+2026-10-24T20:17:17.1476017Z ✔ callTool (0.541023ms)
+2026-10-24T20:17:17.1476369Z ▶ isLoginRequired
+2026-10-24T20:17:17.1476872Z   ✔ is true only for login-required failures (0.218569ms)
+2026-10-24T20:17:17.1477393Z ✔ isLoginRequired (0.321913ms)
+2026-10-24T20:17:17.1478688Z ▶ redirectToLoginIfRequired
+2026-10-24T20:17:17.1481352Z   ✔ no-ops when login is not required (0.275044ms)
+2026-10-24T20:17:17.1483933Z   ✔ navigates to the server-built loginUrl in the browser (0.157487ms)
+2026-10-24T20:17:17.1489918Z   ✔ opens a new tab instead of navigating when framed (0.176325ms)
+2026-10-24T20:17:17.1490731Z   ✔ falls back to navigation when framed and the popup is blocked (0.17936ms)
+2026-10-24T20:17:17.1492029Z   ✔ returns false when the result has no loginUrl (0.140221ms)
+2026-10-24T20:17:17.1507954Z   ✔ returns false on the server (no window) (0.122083ms)
+2026-10-24T20:17:17.1532002Z ✔ redirectToLoginIfRequired (1.347205ms)
+2026-10-24T20:17:17.1532858Z ▶ GoogleCalendarTools
+2026-10-24T20:17:17.1533575Z   ✔ does not expose a list_events name (0.134352ms)
+2026-10-24T20:17:17.1534320Z ✔ GoogleCalendarTools (0.238008ms)
+2026-10-24T20:17:17.1535023Z ▶ classifyCallToolError
+2026-10-24T20:17:17.1535690Z   ✔ returns null for successful results (5.96665ms)
+2026-10-24T20:17:17.1536820Z   ✔ classifies a pending preview token as pending before any other kind (0.216055ms)
+2026-10-24T20:17:17.1537840Z   ✔ classifies a deployed missing token as error, not a login CTA (0.109515ms)
+2026-10-24T20:17:17.1538878Z   ✔ classifies gate loginRequired without a missing-token message as login (0.143035ms)
+2026-10-24T20:17:17.1539874Z   ✔ classifies not_connected and failed_precondition (0.177407ms)
+2026-10-24T20:17:17.1540832Z   ✔ classifies scope_denied without claiming a missing grant (0.105018ms)
+2026-10-24T20:17:17.1541629Z   ✔ classifies access_denied (0.069485ms)
+2026-10-24T20:17:17.1542396Z   ✔ falls back to a generic error with the raw message (0.115133ms)
+2026-10-24T20:17:17.1543164Z ✔ classifyCallToolError (11.870866ms)
+2026-10-24T20:17:17.2175448Z ▶ readinessProbeDelayMs
+2026-10-24T20:17:17.2176619Z   ✔ backs off through the schedule and then holds the last delay (1.393465ms)
+2026-10-24T20:17:17.2224559Z   ✔ clamps a negative attempt to the first delay (0.176165ms)
+2026-10-24T20:17:17.2248362Z ✔ readinessProbeDelayMs (2.689533ms)
+2026-10-24T20:17:17.2249063Z ▶ readinessProbeExhausted
+2026-10-24T20:17:17.2249781Z   ✔ gives up only once the total wait budget has elapsed (0.185058ms)
+2026-10-24T20:17:17.2250538Z ✔ readinessProbeExhausted (0.349556ms)
+2026-10-24T20:17:17.3335736Z ▶ verifyGateIdentityToken
+2026-10-24T20:17:17.3357126Z   ✔ returns the identity for a valid token (15.824024ms)
+2026-10-24T20:17:17.3362312Z   ✔ omits optional claims as nulls (2.26802ms)
+2026-10-24T20:17:17.3378901Z   ✔ rejects a wrong audience (2.052005ms)
+2026-10-24T20:17:17.3406263Z   ✔ rejects a wrong issuer (1.712525ms)
+2026-10-24T20:17:17.3419170Z   ✔ rejects an expired token (2.236192ms)
+2026-10-24T20:17:17.3435071Z   ✔ rejects a token without exp (1.387887ms)
+2026-10-24T20:17:17.3454338Z   ✔ rejects a token signed by a different key with the same kid (1.633886ms)
+2026-10-24T20:17:17.3498825Z   ✔ refetches the JWKS when the kid rotates (2.493799ms)
+2026-10-24T20:17:17.3499749Z ✔ verifyGateIdentityToken (31.629926ms)
+2026-10-24T20:17:17.3530664Z ▶ gateIdentityFromHeaders
+2026-10-24T20:17:17.3531358Z   ✔ verifies the header token end to end and fails closed without it (3.992792ms)
+2026-10-24T20:17:17.3554222Z   ✔ activates on a deployed-shaped request without GROK_GATE_ORIGIN (1.897192ms)
+2026-10-24T20:17:17.3624536Z   ✔ verifies a preview-audience token with no gate env vars via the loopback default (6.507232ms)
+2026-10-24T20:17:17.3669968Z   ✔ rejects a wrong-issuer token in the loopback default mode (4.160685ms)
+2026-10-24T20:17:17.3678514Z   ✔ verifies a preview-audience token when only GROK_GATE_ORIGIN is set (3.058743ms)
+2026-10-24T20:17:17.3690333Z   ✔ rejects a preview-audience token when GROK_PROJECT_ID is set (1.086914ms)
+2026-10-24T20:17:17.3714355Z   ✔ rejects an app-audience token in preview mode (0.959652ms)
+2026-10-24T20:17:17.3715433Z ✔ gateIdentityFromHeaders (22.446881ms)
+2026-10-24T20:17:17.3723072Z ▶ gateIdentityEnabled
+2026-10-24T20:17:17.3723972Z   ✔ is enabled by default with no gate env vars (0.106631ms)
+2026-10-24T20:17:17.3724943Z   ✔ is disabled when VITE_AUTH_ENABLED is false (0.083216ms)
+2026-10-24T20:17:17.3733297Z ✔ gateIdentityEnabled (0.295454ms)
+2026-10-24T20:17:17.3734289Z ▶ gateTokenAudience
+2026-10-24T20:17:17.3735446Z   ✔ pins app:<id> when GROK_PROJECT_ID is set, even alongside GROK_GATE_ORIGIN (0.101292ms)
+2026-10-24T20:17:17.3736772Z   ✔ pins preview when GROK_PROJECT_ID is unset (0.068723ms)
+2026-10-24T20:17:17.3743604Z ✔ gateTokenAudience (0.248363ms)
+2026-10-24T20:17:17.3744522Z ▶ gateIdentityUserInfo
+2026-10-24T20:17:17.3745651Z   ✔ falls back to a synthetic email and name for sub-only claims (0.129184ms)
+2026-10-24T20:17:17.3747166Z   ✔ keeps real claims, lowercasing the email and marking it verified (0.085629ms)
+2026-10-24T20:17:17.3748313Z ✔ gateIdentityUserInfo (0.29952ms)
+2026-10-24T20:17:17.3751535Z ▶ sessionBoundToGateIdentity
+2026-10-24T20:17:17.3752499Z   ✔ keeps the session when it is bound to the same gate sub (0.153701ms)
+2026-10-24T20:17:17.3753598Z   ✔ rotates when the session belongs to a different gate sub (0.061012ms)
+2026-10-24T20:17:17.3754809Z   ✔ rotates when the session user has no gate-bound account (0.05303ms)
+2026-10-24T20:17:17.3755727Z ✔ sessionBoundToGateIdentity (0.364799ms)
+2026-10-24T20:17:17.3885112Z ▶ resolveSignInGateState
+2026-10-24T20:17:17.3885816Z   ✔ is pending while the session check is in flight, user or not (0.839362ms)
+2026-10-24T20:17:17.3886612Z   ✔ is signed_in once a user is present (0.120601ms)
+2026-10-24T20:17:17.3887290Z   ✔ is signed_out only after the check resolved with no user (0.094522ms)
+2026-10-24T20:17:17.3888195Z ✔ resolveSignInGateState (2.218615ms)
+2026-10-24T20:17:17.3888557Z ℹ tests 83
+2026-10-24T20:17:17.3888828Z ℹ suites 16
+2026-10-24T20:17:17.3889080Z ℹ pass 83
+2026-10-24T20:17:17.3889352Z ℹ fail 0
+2026-10-24T20:17:17.3889570Z ℹ cancelled 0
+2026-10-24T20:17:17.3889749Z ℹ skipped 0
+2026-10-24T20:17:17.3889918Z ℹ todo 0
+2026-10-24T20:17:17.3890114Z ℹ duration_ms 801.707579
+2026-10-24T20:17:17.4137159Z Post job cleanup.
+2026-10-24T20:17:17.5102799Z (node:6803) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-24T20:17:17.5103795Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-24T20:17:17.5105558Z Cache hit occurred on the primary key node-cache-Linux-x64-npm-0572bece56f139ea2909222bc477aa7635ecc82f35e7616385c7ee8b190c33df, not saving cache.
+2026-10-24T20:17:17.5249957Z Post job cleanup.
+2026-10-24T20:17:17.5929758Z [command]/usr/bin/git version
+2026-10-24T20:17:17.5967469Z git version 2.55.0
+2026-10-24T20:17:17.5996375Z Temporarily overriding HOME='/home/runner/work/_temp/78e3c7e8-8488-4d64-ad4f-8dc2f06bfda6' before making global git config changes
+2026-10-24T20:17:17.5997578Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-24T20:17:17.6000658Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/CTS-A-O/CTS-A-O
+2026-10-24T20:17:17.6039339Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-24T20:17:17.6068585Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-24T20:17:17.6286161Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-24T20:17:17.6316080Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-24T20:17:17.6535349Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-24T20:17:17.6571039Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-24T20:17:17.6939783Z Cleaning up orphan processes
+2026-10-24T20:17:17.7249528Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-node@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+

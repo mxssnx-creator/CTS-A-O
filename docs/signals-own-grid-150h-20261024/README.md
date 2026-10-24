@@ -1,6 +1,6 @@
 # Signal 150-hour history verification
 
-Source: `619ba50f37a7c1e9c8a10ee5167a37baf44306b48b32df7a198f0b10c3cf781e`. Tested GitHub head `11979323d9059b21585ec41823e8bdf9d37de0a4`, PR198. Offline modeled replay; no live deployment or venue orders.
+Source: `619ba50f37a7c1e9c8a10ee5167a37baf44306b48b32df7a198f0b10c3cf781e`. Final tested GitHub head `47600029d7e284fa86db3e03e1251a7d0f047f83`; PR198 merged as `1ce96f68ebabab090735e7529ad138702342d9dc`. The replay fingerprint matches the final source exactly. Offline modeled replay; no live deployment or venue orders.
 
 150 evaluated hours, Last-4, 12 symbols and 12 trading hours. Pricing and execution remain minute-based. Hourly clocks are audit/reporting boundaries. Signal coordination uses the own Signals grid plus independent Exit. Ordinary strategy grids are not multiplied into Signals. All configured cells were built: 160,115 configs, 118 sources, 884 source/lane identities, 122/122 Exit configs.
 
@@ -32,4 +32,8 @@ Compute 600.663 seconds; native/report wall 638.379 seconds; child peak RSS 4092
 
 Superseded 100h attempts and the first150h launcher failure are preserved in the raw archive. The launcher failure correctly rejected a mismatched frozen ordinary-engine window; the corrected run retains ordinary longH100 while Signal/Exit history is150.
 
-Verification: focused216+6+23+103+4 tests passed, build/types pass. Complete CI status and archive receipt are recorded separately when finalized.
+Verification: all 4,289 tests pass (3,489 ordinary core, 2 slow runtime, 715 scripts, 83 app/component). Eight template-only skips; the two slow cases excluded from ordinary partitions pass separately. Types/build pass; lint has zero errors and 43 existing warnings. All three final-head workflows pass. Desktop/mobile report screenshots were visually inspected: readable content, no page/console errors or outer horizontal overflow. See release.json and verification/.
+
+All 4 protection types, all 3 parameter ranges, both strategy ranges and all 4 lanes have Last-4-ready contexts. 112/118 sources (94.92%) have a ready context; 81 have at least one all-gates-passing context. Six sources are insufficient: r-squeeze, r-capit, r-vwap-reclaim, r-bbw-expand, r-spring, r-engulf. All 12 symbols have enough Last-4 history somewhere; 11 have an all-gates-passing context. Zero orphaned orders and zero duplicate parents.
+
+Reproduce in a new directory: `node --experimental-strip-types --no-warnings scripts/prepare-signals-last4.mjs runs/NEW_150H 150`, then `python3 scripts/run-signals-native-case.py runs/NEW_150H last4`. The older paired-study launcher retains its explicit 100h compatibility default; pass150 for this study. Production Signal/Exit defaults are150h.

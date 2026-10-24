@@ -1,0 +1,36 @@
+{
+  "pr": 198,
+  "testedHead": "47600029d7e284fa86db3e03e1251a7d0f047f83",
+  "testedTree": "33361a81dd989ca5b5cdf49cab28334d5f23f4e3",
+  "merge": "1ce96f68ebabab090735e7529ad138702342d9dc",
+  "economicSource": "619ba50f37a7c1e9c8a10ee5167a37baf44306b48b32df7a198f0b10c3cf781e",
+  "backup": "backup/main-before-signals150-20261024-cb7685c",
+  "workflows": {
+    "verification": 40128771044,
+    "exactStudy": 40128770989,
+    "reportPreview": 40128771061
+  },
+  "allWorkflows": "success",
+  "tests": {
+    "corePartitions": [
+      868,
+      650,
+      793,
+      1178
+    ],
+    "slowRuntime": 2,
+    "scripts": 715,
+    "appComponents": 83,
+    "totalPassed": 4289,
+    "templateSkips": 8,
+    "slowExcludedFromOrdinaryButPassedSeparately": 2
+  },
+  "typecheck": "passed",
+  "build": "passed",
+  "lint": {
+    "errors": 0,
+    "existingWarnings": 43
+  },
+  "browser": "desktop/mobile visible, no page/console errors or outer horizontal overflow; screenshots visually inspected",
+  "deployment": "No running-instance deployment, venue order or account write"
+}

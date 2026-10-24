@@ -1,0 +1,1120 @@
+﻿2026-10-24T20:06:11.6207671Z Current runner version: '2.338.0'
+2026-10-24T20:06:11.6231837Z ##[group]Runner Image Provisioner
+2026-10-24T20:06:11.6232704Z Hosted Compute Agent
+2026-10-24T20:06:11.6233354Z Version: 20261021.618
+2026-10-24T20:06:11.6234040Z Commit: 21505ad2541d5be6135ed84fc33697146cf75b8e
+2026-10-24T20:06:11.6234758Z Build Date: 2026-10-21T00:45:21Z
+2026-10-24T20:06:11.6235487Z Worker ID: {08a85ea8-5205-41b6-a67d-ea0bd19edab6}
+2026-10-24T20:06:11.6236212Z Region: westus
+2026-10-24T20:06:11.6236830Z Cloud: Azure
+2026-10-24T20:06:11.6237695Z ##[endgroup]
+2026-10-24T20:06:11.6239140Z ##[group]Operating System
+2026-10-24T20:06:11.6239865Z Ubuntu
+2026-10-24T20:06:11.6240392Z 24.04.5
+2026-10-24T20:06:11.6240887Z LTS
+2026-10-24T20:06:11.6241500Z ##[endgroup]
+2026-10-24T20:06:11.6242059Z ##[group]Runner Image
+2026-10-24T20:06:11.6242697Z Image: ubuntu-24.04
+2026-10-24T20:06:11.6243279Z Version: 20261012.334.1
+2026-10-24T20:06:11.6244571Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20261012.334/images/ubuntu/Ubuntu2404-Readme.md
+2026-10-24T20:06:11.6246145Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20261012.334
+2026-10-24T20:06:11.6247341Z ##[endgroup]
+2026-10-24T20:06:11.6248520Z ##[group]GITHUB_TOKEN Permissions
+2026-10-24T20:06:11.6250412Z Contents: read
+2026-10-24T20:06:11.6251106Z Metadata: read
+2026-10-24T20:06:11.6251645Z ##[endgroup]
+2026-10-24T20:06:11.6253710Z Secret source: Actions
+2026-10-24T20:06:11.6254625Z Cache mode: write
+2026-10-24T20:06:11.6255438Z Prepare workflow directory
+2026-10-24T20:06:11.6613114Z Prepare all required actions
+2026-10-24T20:06:11.6687729Z Getting action download info
+2026-10-24T20:06:12.0070211Z Download action repository 'actions/checkout@v4' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+2026-10-24T20:06:12.0949628Z Download action repository 'actions/setup-node@v4' (SHA:49933ea5288caeca8642d1e84afbd3f7d6820020)
+2026-10-24T20:06:12.2820788Z Complete job name: quality
+2026-10-24T20:06:12.3718323Z ##[group]Run actions/checkout@v4
+2026-10-24T20:06:12.3719257Z with:
+2026-10-24T20:06:12.3719701Z   persist-credentials: false
+2026-10-24T20:06:12.3720247Z   repository: mxssnx-creator/CTS-A-O
+2026-10-24T20:06:12.3724126Z   token: ***
+2026-10-24T20:06:12.3724554Z   ssh-strict: true
+2026-10-24T20:06:12.3724990Z   ssh-user: git
+2026-10-24T20:06:12.3725413Z   clean: true
+2026-10-24T20:06:12.3725852Z   sparse-checkout-cone-mode: true
+2026-10-24T20:06:12.3726377Z   fetch-depth: 1
+2026-10-24T20:06:12.3726799Z   fetch-tags: false
+2026-10-24T20:06:12.3727426Z   show-progress: true
+2026-10-24T20:06:12.3727880Z   lfs: false
+2026-10-24T20:06:12.3728288Z   submodules: false
+2026-10-24T20:06:12.3728734Z   set-safe-directory: true
+2026-10-24T20:06:12.3729245Z   allow-unsafe-pr-checkout: false
+2026-10-24T20:06:12.3730008Z ##[endgroup]
+2026-10-24T20:06:12.4769274Z Syncing repository: mxssnx-creator/CTS-A-O
+2026-10-24T20:06:12.4771463Z ##[group]Getting Git version info
+2026-10-24T20:06:12.4772255Z Working directory is '/home/runner/work/CTS-A-O/CTS-A-O'
+2026-10-24T20:06:12.4773325Z [command]/usr/bin/git version
+2026-10-24T20:06:12.4833582Z git version 2.55.0
+2026-10-24T20:06:12.4868967Z ##[endgroup]
+2026-10-24T20:06:12.4880497Z Temporarily overriding HOME='/home/runner/work/_temp/4767d55a-bf9f-40e6-a26a-544387b927ff' before making global git config changes
+2026-10-24T20:06:12.4882148Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-24T20:06:12.4885424Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/CTS-A-O/CTS-A-O
+2026-10-24T20:06:12.4938394Z Deleting the contents of '/home/runner/work/CTS-A-O/CTS-A-O'
+2026-10-24T20:06:12.4943584Z ##[group]Initializing the repository
+2026-10-24T20:06:12.4951252Z [command]/usr/bin/git init /home/runner/work/CTS-A-O/CTS-A-O
+2026-10-24T20:06:12.5063344Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-10-24T20:06:12.5065212Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-10-24T20:06:12.5067605Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-10-24T20:06:12.5068880Z hint: call:
+2026-10-24T20:06:12.5069622Z hint:
+2026-10-24T20:06:12.5070211Z hint: 	git config --global init.defaultBranch <name>
+2026-10-24T20:06:12.5070821Z hint:
+2026-10-24T20:06:12.5071620Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-10-24T20:06:12.5073347Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-10-24T20:06:12.5074735Z hint:
+2026-10-24T20:06:12.5075475Z hint: 	git branch -m <name>
+2026-10-24T20:06:12.5076226Z hint:
+2026-10-24T20:06:12.5076861Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-10-24T20:06:12.5078280Z Initialized empty Git repository in /home/runner/work/CTS-A-O/CTS-A-O/.git/
+2026-10-24T20:06:12.5081554Z [command]/usr/bin/git remote add origin https://github.com/mxssnx-creator/CTS-A-O
+2026-10-24T20:06:12.5134306Z ##[endgroup]
+2026-10-24T20:06:12.5135714Z ##[group]Disabling automatic garbage collection
+2026-10-24T20:06:12.5139479Z [command]/usr/bin/git config --local gc.auto 0
+2026-10-24T20:06:12.5172104Z ##[endgroup]
+2026-10-24T20:06:12.5173441Z ##[group]Setting up auth
+2026-10-24T20:06:12.5184502Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-24T20:06:12.5222216Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-24T20:06:12.5607863Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-24T20:06:12.5646819Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-24T20:06:12.5870971Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-24T20:06:12.5910260Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-24T20:06:12.6143483Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-10-24T20:06:12.6184706Z ##[endgroup]
+2026-10-24T20:06:12.6185628Z ##[group]Fetching the repository
+2026-10-24T20:06:12.6194819Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +c6639919358eae6a51b169bf4ceddd4da8c456cf:refs/remotes/pull/198/merge
+2026-10-24T20:06:16.7572726Z From https://github.com/mxssnx-creator/CTS-A-O
+2026-10-24T20:06:16.7574752Z  * [new ref]         c6639919358eae6a51b169bf4ceddd4da8c456cf -> pull/198/merge
+2026-10-24T20:06:16.7582960Z ##[endgroup]
+2026-10-24T20:06:16.7588016Z ##[group]Determining the checkout info
+2026-10-24T20:06:16.7590247Z ##[endgroup]
+2026-10-24T20:06:16.7592406Z [command]/usr/bin/git sparse-checkout disable
+2026-10-24T20:06:16.7659369Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-10-24T20:06:16.7694005Z ##[group]Checking out the ref
+2026-10-24T20:06:16.7698505Z [command]/usr/bin/git checkout --progress --force refs/remotes/pull/198/merge
+2026-10-24T20:06:17.1815170Z Note: switching to 'refs/remotes/pull/198/merge'.
+2026-10-24T20:06:17.1816201Z 
+2026-10-24T20:06:17.1816988Z You are in 'detached HEAD' state. You can look around, make experimental
+2026-10-24T20:06:17.1818398Z changes and commit them, and you can discard any commits you make in this
+2026-10-24T20:06:17.1820201Z state without impacting any branches by switching back to a branch.
+2026-10-24T20:06:17.1820861Z 
+2026-10-24T20:06:17.1821316Z If you want to create a new branch to retain commits you create, you may
+2026-10-24T20:06:17.1822341Z do so (now or later) by using -c with the switch command. Example:
+2026-10-24T20:06:17.1822910Z 
+2026-10-24T20:06:17.1823220Z   git switch -c <new-branch-name>
+2026-10-24T20:06:17.1823627Z 
+2026-10-24T20:06:17.1824148Z Or undo this operation with:
+2026-10-24T20:06:17.1824522Z 
+2026-10-24T20:06:17.1824742Z   git switch -
+2026-10-24T20:06:17.1825052Z 
+2026-10-24T20:06:17.1825590Z Turn off this advice by setting config variable advice.detachedHead to false
+2026-10-24T20:06:17.1826641Z 
+2026-10-24T20:06:17.1827872Z HEAD is now at c663991 Merge 11979323d9059b21585ec41823e8bdf9d37de0a4 into cb7685cb505d899f7a36fdbac7cabd6d4776598e
+2026-10-24T20:06:17.1868520Z ##[endgroup]
+2026-10-24T20:06:17.1913726Z [command]/usr/bin/git log -1 --format=%H
+2026-10-24T20:06:17.1942175Z c6639919358eae6a51b169bf4ceddd4da8c456cf
+2026-10-24T20:06:17.1955222Z ##[group]Removing auth
+2026-10-24T20:06:17.1957596Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-24T20:06:17.1991378Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-24T20:06:17.2217731Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-24T20:06:17.2246280Z http.https://github.com/.extraheader
+2026-10-24T20:06:17.2253388Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2026-10-24T20:06:17.2287658Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-24T20:06:17.2508693Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-24T20:06:17.2541154Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-24T20:06:17.2759249Z ##[endgroup]
+2026-10-24T20:06:17.3088566Z ##[group]Run actions/setup-node@v4
+2026-10-24T20:06:17.3088930Z with:
+2026-10-24T20:06:17.3089185Z   node-version: 24
+2026-10-24T20:06:17.3089451Z   cache: npm
+2026-10-24T20:06:17.3089691Z   always-auth: false
+2026-10-24T20:06:17.3089951Z   check-latest: false
+2026-10-24T20:06:17.3092819Z   token: ***
+2026-10-24T20:06:17.3093071Z ##[endgroup]
+2026-10-24T20:06:17.4491642Z Found in cache @ /opt/hostedtoolcache/node/24.21.0/x64
+2026-10-24T20:06:17.4496040Z (node:2339) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-24T20:06:17.4496826Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-24T20:06:17.4500666Z ##[group]Environment details
+2026-10-24T20:06:17.8354048Z node: v24.21.0
+2026-10-24T20:06:17.8354674Z npm: 11.19.0
+2026-10-24T20:06:17.8355055Z yarn: 1.22.22
+2026-10-24T20:06:17.8356206Z ##[endgroup]
+2026-10-24T20:06:17.8379595Z [command]/opt/hostedtoolcache/node/24.21.0/x64/bin/npm config get cache
+2026-10-24T20:06:17.9484240Z /home/runner/.npm
+2026-10-24T20:06:18.2112510Z Cache hit for: node-cache-Linux-x64-npm-0572bece56f139ea2909222bc477aa7635ecc82f35e7616385c7ee8b190c33df
+2026-10-24T20:06:18.2223594Z (node:2339) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-10-24T20:06:19.5186117Z Received 0 of 85748699 (0.0%), 0.0 MBs/sec
+2026-10-24T20:06:20.5199588Z Received 58720256 of 85748699 (68.5%), 28.0 MBs/sec
+2026-10-24T20:06:21.5206590Z Received 81554395 of 85748699 (95.1%), 25.9 MBs/sec
+2026-10-24T20:06:22.5214447Z Received 81554395 of 85748699 (95.1%), 19.4 MBs/sec
+2026-10-24T20:06:22.8600768Z Received 85748699 of 85748699 (100.0%), 18.8 MBs/sec
+2026-10-24T20:06:22.8601913Z Cache Size: ~82 MB (85748699 B)
+2026-10-24T20:06:22.8641460Z [command]/usr/bin/tar -xf /home/runner/work/_temp/62cb4f03-54f5-455f-b45a-a4691126d663/cache.tzst -P -C /home/runner/work/CTS-A-O/CTS-A-O --use-compress-program unzstd
+2026-10-24T20:06:23.0675179Z Cache restored successfully
+2026-10-24T20:06:23.0721971Z Cache restored from key: node-cache-Linux-x64-npm-0572bece56f139ea2909222bc477aa7635ecc82f35e7616385c7ee8b190c33df
+2026-10-24T20:06:23.0892129Z ##[group]Run npm ci
+2026-10-24T20:06:23.0892431Z [36;1mnpm ci[0m
+2026-10-24T20:06:23.1146369Z shell: /usr/bin/bash -e {0}
+2026-10-24T20:06:23.1146677Z ##[endgroup]
+2026-10-24T20:06:29.4606106Z npm warn deprecated recharts@2.15.4: 1.x and 2.x branches are no longer active. Bump to Recharts v3 to receive latest features and bugfixes. See https://github.com/recharts/recharts/wiki/3.0-migration-guide
+2026-10-24T20:06:29.8706619Z npm warn deprecated eslint@9.39.5: This version is no longer supported. Please see https://eslint.org/version-support for other options.
+2026-10-24T20:06:32.6199724Z 
+2026-10-24T20:06:32.6200740Z added 423 packages, and audited 424 packages in 9s
+2026-10-24T20:06:32.6201511Z 
+2026-10-24T20:06:32.6202111Z 94 packages are looking for funding
+2026-10-24T20:06:32.6202806Z   run `npm fund` for details
+2026-10-24T20:06:32.6401731Z 
+2026-10-24T20:06:32.6402530Z 2 high severity vulnerabilities
+2026-10-24T20:06:32.6402985Z 
+2026-10-24T20:06:32.6403322Z To address all issues, run:
+2026-10-24T20:06:32.6403848Z   npm audit fix
+2026-10-24T20:06:32.6404098Z 
+2026-10-24T20:06:32.6404357Z Run `npm audit` for details.
+2026-10-24T20:06:32.7305890Z ##[group]Run # Hosted images may already supply Chrome. Exercise the same functional tests
+2026-10-24T20:06:32.7306587Z [36;1m# Hosted images may already supply Chrome. Exercise the same functional tests[0m
+2026-10-24T20:06:32.7307462Z [36;1m# with that executable instead of downloading another browser and apt bundle.[0m
+2026-10-24T20:06:32.7308177Z [36;1mfor browser in google-chrome google-chrome-stable chromium chromium-browser; do[0m
+2026-10-24T20:06:32.7308678Z [36;1m  if command -v "$browser" >/dev/null 2>&1; then[0m
+2026-10-24T20:06:32.7309133Z [36;1m    echo "CTS_UI_BROWSER_EXECUTABLE=$(command -v "$browser")" >> "$GITHUB_ENV"[0m
+2026-10-24T20:06:32.7309552Z [36;1m    "$browser" --version[0m
+2026-10-24T20:06:32.7309844Z [36;1m    exit 0[0m
+2026-10-24T20:06:32.7310069Z [36;1m  fi[0m
+2026-10-24T20:06:32.7310265Z [36;1mdone[0m
+2026-10-24T20:06:32.7310558Z [36;1mnpx playwright install --with-deps --only-shell chromium[0m
+2026-10-24T20:06:32.7376059Z shell: /usr/bin/bash -e {0}
+2026-10-24T20:06:32.7376344Z ##[endgroup]
+2026-10-24T20:06:32.8837538Z Google Chrome 155.0.8059.39 
+2026-10-24T20:06:32.8951736Z ##[group]Run npm run typecheck -- --pretty false
+2026-10-24T20:06:32.8952338Z [36;1mnpm run typecheck -- --pretty false[0m
+2026-10-24T20:06:32.9023544Z shell: /usr/bin/bash -e {0}
+2026-10-24T20:06:32.9023820Z env:
+2026-10-24T20:06:32.9024087Z   CTS_UI_BROWSER_EXECUTABLE: /usr/bin/google-chrome
+2026-10-24T20:06:32.9024411Z ##[endgroup]
+2026-10-24T20:06:33.0103836Z 
+2026-10-24T20:06:33.0104350Z > typecheck
+2026-10-24T20:06:33.0104852Z > tsc --noEmit --pretty false
+2026-10-24T20:06:33.0105171Z 
+2026-10-24T20:06:48.0723259Z ##[group]Run npm run lint
+2026-10-24T20:06:48.0723579Z [36;1mnpm run lint[0m
+2026-10-24T20:06:48.0786682Z shell: /usr/bin/bash -e {0}
+2026-10-24T20:06:48.0786944Z env:
+2026-10-24T20:06:48.0787438Z   CTS_UI_BROWSER_EXECUTABLE: /usr/bin/google-chrome
+2026-10-24T20:06:48.0787786Z ##[endgroup]
+2026-10-24T20:06:48.1779558Z 
+2026-10-24T20:06:48.1780133Z > lint
+2026-10-24T20:06:48.1780556Z > eslint .
+2026-10-24T20:06:48.1780770Z 
+2026-10-24T20:07:04.9887766Z 
+2026-10-24T20:07:04.9888934Z /home/runner/work/CTS-A-O/CTS-A-O/scripts/bench-compute.mjs
+2026-10-24T20:07:04.9984359Z ##[warning]  81:7  warning  'lastT' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-24T20:07:04.9994813Z 
+2026-10-24T20:07:05.0008394Z /home/runner/work/CTS-A-O/CTS-A-O/scripts/bench-cycle.mjs
+2026-10-24T20:07:05.0010678Z ##[warning]  39:9  warning  'closePool' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-24T20:07:05.0012694Z 
+2026-10-24T20:07:05.0013366Z /home/runner/work/CTS-A-O/CTS-A-O/scripts/core-adjust.mjs
+2026-10-24T20:07:05.0015255Z ##[warning]  113:7  warning  'nA' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-24T20:07:05.0016254Z 
+2026-10-24T20:07:05.0016527Z /home/runner/work/CTS-A-O/CTS-A-O/scripts/core-coverage.mjs
+2026-10-24T20:07:05.0017883Z ##[warning]  13:24  warning  'statsOf' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-24T20:07:05.0018842Z 
+2026-10-24T20:07:05.0019094Z /home/runner/work/CTS-A-O/CTS-A-O/scripts/core-mtf.mjs
+2026-10-24T20:07:05.0020256Z ##[warning]  58:9  warning  'factors' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-24T20:07:05.0021198Z 
+2026-10-24T20:07:05.0021451Z /home/runner/work/CTS-A-O/CTS-A-O/scripts/core-session.mjs
+2026-10-24T20:07:05.0022563Z ##[warning]   965:9  warning  'G' is assigned a value but never used. Allowed unused vars must match /^_/u        @typescript-eslint/no-unused-vars
+2026-10-24T20:07:05.0024302Z ##[warning]  1901:7  warning  'byEntry' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-24T20:07:05.0025277Z 
+2026-10-24T20:07:05.0025654Z /home/runner/work/CTS-A-O/CTS-A-O/scripts/core-signal-coordination-replay.mjs
+2026-10-24T20:07:05.0026763Z ##[warning]  4:31  warning  'mkdir' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-24T20:07:05.0027974Z 
+2026-10-24T20:07:05.0028321Z /home/runner/work/CTS-A-O/CTS-A-O/scripts/core-signal-window-report.test.mjs
+2026-10-24T20:07:05.0029562Z ##[warning]  51:13  warning  'provenance' is assigned a value but never used. Allowed unused vars must match /^_/u   @typescript-eslint/no-unused-vars
+2026-10-24T20:07:05.0031472Z ##[warning]  51:25  warning  'generatedAt' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-24T20:07:05.0032454Z 
+2026-10-24T20:07:05.0032690Z /home/runner/work/CTS-A-O/CTS-A-O/scripts/eval-gate.mjs
+2026-10-24T20:07:05.0033761Z ##[warning]  12:33  warning  'readFileSync' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-24T20:07:05.0034701Z 
+2026-10-24T20:07:05.0035033Z /home/runner/work/CTS-A-O/CTS-A-O/scripts/freeze-session-study.mjs
+2026-10-24T20:07:05.0036175Z ##[warning]  4:19  warning  'dirname' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-24T20:07:05.0037283Z 
+2026-10-24T20:07:05.0037616Z /home/runner/work/CTS-A-O/CTS-A-O/scripts/lib/safe-network-interfaces.cjs
+2026-10-24T20:07:05.0038505Z   1:1  warning  Unused eslint-disable directive (no problems were reported from '@typescript-eslint/no-require-imports')
+2026-10-24T20:07:05.0038966Z 
+2026-10-24T20:07:05.0039546Z /home/runner/work/CTS-A-O/CTS-A-O/scripts/signals-12-symbol-study.mjs
+2026-10-24T20:07:05.0040708Z ##[warning]   9:26  warning  'SIGNAL_SOURCES' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-24T20:07:05.0042517Z ##[warning]  13:24  warning  'kindOfId' is defined but never used. Allowed unused vars must match /^_/u        @typescript-eslint/no-unused-vars
+2026-10-24T20:07:05.0043437Z 
+2026-10-24T20:07:05.0043706Z /home/runner/work/CTS-A-O/CTS-A-O/src/components/v2/charts.tsx
+2026-10-24T20:07:05.0045401Z ##[warning]   5:14  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+2026-10-24T20:07:05.0047828Z ##[warning]  17:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+2026-10-24T20:07:05.0048953Z 
+2026-10-24T20:07:05.0049229Z /home/runner/work/CTS-A-O/CTS-A-O/src/components/v2/conn.tsx
+2026-10-24T20:07:05.0050645Z ##[warning]   22:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+2026-10-24T20:07:05.0055073Z ##[warning]  118:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+2026-10-24T20:07:05.0057390Z 
+2026-10-24T20:07:05.0057696Z /home/runner/work/CTS-A-O/CTS-A-O/src/components/v2/ui.tsx
+2026-10-24T20:07:05.0059214Z ##[warning]   12:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+2026-10-24T20:07:05.0061623Z ##[warning]  106:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+2026-10-24T20:07:05.0063881Z ##[warning]  168:14  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+2026-10-24T20:07:05.0066113Z ##[warning]  219:14  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+2026-10-24T20:07:05.0068685Z ##[warning]  221:14  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+2026-10-24T20:07:05.0070964Z ##[warning]  228:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+2026-10-24T20:07:05.0073169Z ##[warning]  344:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+2026-10-24T20:07:05.0075352Z ##[warning]  353:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+2026-10-24T20:07:05.0076421Z 
+2026-10-24T20:07:05.0076871Z /home/runner/work/CTS-A-O/CTS-A-O/src/core/indications/stable02.test.ts
+2026-10-24T20:07:05.0078557Z ##[warning]  204:58  warning  'period' is assigned a value but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-24T20:07:05.0079568Z 
+2026-10-24T20:07:05.0079834Z /home/runner/work/CTS-A-O/CTS-A-O/src/core/regression.test.ts
+2026-10-24T20:07:05.0106809Z ##[warning]  5:47  warning  'RT_COST' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-24T20:07:05.0108348Z 
+2026-10-24T20:07:05.0108949Z /home/runner/work/CTS-A-O/CTS-A-O/src/core/server/account-sizing.test.ts
+2026-10-24T20:07:05.0110399Z ##[warning]  8:10  warning  'MICRO_RANGE' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-24T20:07:05.0111417Z 
+2026-10-24T20:07:05.0111701Z /home/runner/work/CTS-A-O/CTS-A-O/src/core/server/heal.test.ts
+2026-10-24T20:07:05.0112868Z ##[warning]  8:25  warning  'runtimeFixtureGrid' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-24T20:07:05.0113967Z 
+2026-10-24T20:07:05.0114333Z /home/runner/work/CTS-A-O/CTS-A-O/src/core/server/order-sides-paper.test.ts
+2026-10-24T20:07:05.0115685Z ##[warning]  13:10  warning  'PREVIOUS_DEFAULT_FOCUS_17OCT' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-24T20:07:05.0116783Z 
+2026-10-24T20:07:05.0117108Z /home/runner/work/CTS-A-O/CTS-A-O/src/core/server/order-sides-records.test.ts
+2026-10-24T20:07:05.0148808Z ##[warning]  49:10  warning  'sigActiveKey' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-24T20:07:05.0150817Z 
+2026-10-24T20:07:05.0151325Z /home/runner/work/CTS-A-O/CTS-A-O/src/core/server/runtime.server.ts
+2026-10-24T20:07:05.0153263Z ##[warning]  260:3   warning  'sideTapeOf' is defined but never used. Allowed unused vars must match /^_/u       @typescript-eslint/no-unused-vars
+2026-10-24T20:07:05.0156323Z ##[warning]  264:8   warning  'SideTapeMemo' is defined but never used. Allowed unused vars must match /^_/u     @typescript-eslint/no-unused-vars
+2026-10-24T20:07:05.0159763Z ##[warning]  273:3   warning  'preferExchange' is defined but never used. Allowed unused vars must match /^_/u   @typescript-eslint/no-unused-vars
+2026-10-24T20:07:05.0162699Z ##[warning]  288:8   warning  'os' is defined but never used. Allowed unused vars must match /^_/u               @typescript-eslint/no-unused-vars
+2026-10-24T20:07:05.0165725Z ##[warning]  348:10  warning  'closedPositions' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-24T20:07:05.0167580Z 
+2026-10-24T20:07:05.0168056Z /home/runner/work/CTS-A-O/CTS-A-O/src/core/server/runtime.test.ts
+2026-10-24T20:07:05.0170028Z ##[warning]  15:36  warning  'runtimeFixtureGrid' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-24T20:07:05.0171714Z 
+2026-10-24T20:07:05.0172166Z /home/runner/work/CTS-A-O/CTS-A-O/src/core/signal-hist.test.ts
+2026-10-24T20:07:05.0174045Z ##[warning]  24:10  warning  'DEFAULT_TACTICS' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-24T20:07:05.0175681Z 
+2026-10-24T20:07:05.0176120Z /home/runner/work/CTS-A-O/CTS-A-O/src/core/sim/walkforward.ts
+2026-10-24T20:07:05.0181798Z ##[warning]  3580:11  warning  'ddtMax' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-24T20:07:05.0182874Z 
+2026-10-24T20:07:05.0183142Z /home/runner/work/CTS-A-O/CTS-A-O/src/core/statistics.ts
+2026-10-24T20:07:05.0184253Z ##[warning]  1229:16  warning  'gp' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-24T20:07:05.0185951Z ##[warning]  1230:10  warning  'gl' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+2026-10-24T20:07:05.0186875Z 
+2026-10-24T20:07:05.0187620Z ✖ 43 problems (0 errors, 43 warnings)
+2026-10-24T20:07:05.0188089Z   0 errors and 1 warning potentially fixable with the `--fix` option.
+2026-10-24T20:07:05.0188378Z 
+2026-10-24T20:07:05.2046960Z ##[group]Run env -u DATABASE_URL npm run build
+2026-10-24T20:07:05.2047647Z [36;1menv -u DATABASE_URL npm run build[0m
+2026-10-24T20:07:05.2112364Z shell: /usr/bin/bash -e {0}
+2026-10-24T20:07:05.2112632Z env:
+2026-10-24T20:07:05.2112890Z   CTS_UI_BROWSER_EXECUTABLE: /usr/bin/google-chrome
+2026-10-24T20:07:05.2113222Z ##[endgroup]
+2026-10-24T20:07:05.3103522Z 
+2026-10-24T20:07:05.3103797Z > build
+2026-10-24T20:07:05.3104686Z > node scripts/with-app-env.mjs vite build && npm run build:core-worker && npm run db:migrate
+2026-10-24T20:07:05.3105132Z 
+2026-10-24T20:07:06.1534478Z [info] [nitro:vercel] Using `nodejs24.x` runtime.
+2026-10-24T20:07:06.1536170Z [info] [nitro:vercel] Using `web` entry format.
+2026-10-24T20:07:06.1631421Z [33mBoth esbuild and oxc options were set. oxc options will be used and esbuild options will be ignored.[39m The following esbuild options were set: `{ legalComments: 'none' }`
+2026-10-24T20:07:06.3472811Z [36mvite v8.2.2 [32mbuilding client environment for production...[36m[39m
+2026-10-24T20:07:06.3623294Z transforming...
+2026-10-24T20:07:19.0135295Z ✓ 1955 modules transformed.
+2026-10-24T20:07:19.0825508Z rendering chunks...
+2026-10-24T20:07:19.1563231Z .vercel/output/static/assets/styles-EeajTTjQ.css              34.30 kB
+2026-10-24T20:07:19.1564418Z .vercel/output/static/assets/market-Bh2z8jn2.js                0.07 kB
+2026-10-24T20:07:19.1565505Z .vercel/output/static/assets/trading-Die2xBDI.js               0.07 kB
+2026-10-24T20:07:19.1566931Z .vercel/output/static/assets/settings-Dk-M8QYP.js              0.07 kB
+2026-10-24T20:07:19.1568283Z .vercel/output/static/assets/useRouter-VhwLfQSd.js             0.15 kB
+2026-10-24T20:07:19.1569356Z .vercel/output/static/assets/model-cost-BGXH0XjV.js            0.30 kB
+2026-10-24T20:07:19.1570492Z .vercel/output/static/assets/progression-DygnuQpx.js           0.85 kB
+2026-10-24T20:07:19.1571621Z .vercel/output/static/assets/progress-C-M_JKOX.js              0.93 kB
+2026-10-24T20:07:19.1572694Z .vercel/output/static/assets/bots-BxbyHAaK.js                  1.16 kB
+2026-10-24T20:07:19.1573820Z .vercel/output/static/assets/indication-ui-B3C4VKjb.js         1.41 kB
+2026-10-24T20:07:19.1574968Z .vercel/output/static/assets/minimal-coord-iDZCDKap.js         1.42 kB
+2026-10-24T20:07:19.1576206Z .vercel/output/static/assets/execution-summary-B-eCJabb.js     1.54 kB
+2026-10-24T20:07:19.1577641Z .vercel/output/static/assets/matrix-8wA3LsBY.js                2.35 kB
+2026-10-24T20:07:19.1578760Z .vercel/output/static/assets/signal-units-ZXc0Go0w.js          2.69 kB
+2026-10-24T20:07:19.1579813Z .vercel/output/static/assets/compare-D9Fb5LC-.js               3.84 kB
+2026-10-24T20:07:19.1580890Z .vercel/output/static/assets/promotion-evidence-CDz9cdXf.js    4.42 kB
+2026-10-24T20:07:19.1581715Z .vercel/output/static/assets/results-CR60-arQ.js               4.77 kB
+2026-10-24T20:07:19.1582807Z .vercel/output/static/assets/config._id-Bi4Fodc_.js            5.34 kB
+2026-10-24T20:07:19.1583874Z .vercel/output/static/assets/hourly-BMOmPimy.js                5.78 kB
+2026-10-24T20:07:19.1584947Z .vercel/output/static/assets/config-faMawicf.js                8.43 kB
+2026-10-24T20:07:19.1585996Z .vercel/output/static/assets/v2-CqWj3aMq.js                    9.44 kB
+2026-10-24T20:07:19.1587090Z .vercel/output/static/assets/prehistoric-Bl-Mh8v6.js           9.88 kB
+2026-10-24T20:07:19.1590168Z .vercel/output/static/assets/relate-DuvzKl0m.js                9.92 kB
+2026-10-24T20:07:19.1591297Z .vercel/output/static/assets/link-CkKc5ylV.js                 11.26 kB
+2026-10-24T20:07:19.1592373Z .vercel/output/static/assets/preset-settings-BAGhjWOo.js      11.73 kB
+2026-10-24T20:07:19.1593382Z .vercel/output/static/assets/engine-DVrwA4n-.js               11.90 kB
+2026-10-24T20:07:19.1594342Z .vercel/output/static/assets/v2-BBzkUjZD.js                   14.10 kB
+2026-10-24T20:07:19.1595328Z .vercel/output/static/assets/signal-config-Bc0Ixwp4.js        14.91 kB
+2026-10-24T20:07:19.1596129Z .vercel/output/static/assets/charts-BiE6HSJc.js               17.09 kB
+2026-10-24T20:07:19.1596897Z .vercel/output/static/assets/trading-s-N7sfdn.js              18.26 kB
+2026-10-24T20:07:19.1598081Z .vercel/output/static/assets/ui-XsfU_ALq.js                   18.52 kB
+2026-10-24T20:07:19.1598650Z .vercel/output/static/assets/presets-HITC9q70.js              19.54 kB
+2026-10-24T20:07:19.1599215Z .vercel/output/static/assets/statistics-B-G_E_1t.js           22.65 kB
+2026-10-24T20:07:19.1599775Z .vercel/output/static/assets/stages-CB35G37S.js               22.72 kB
+2026-10-24T20:07:19.1600321Z .vercel/output/static/assets/break-config-Cl5wJNxv.js         41.46 kB
+2026-10-24T20:07:19.1600874Z .vercel/output/static/assets/jsx-runtime-D6cXz5cu.js          41.58 kB
+2026-10-24T20:07:19.1601447Z .vercel/output/static/assets/registry-D-FXef54.js             92.17 kB
+2026-10-24T20:07:19.1601997Z .vercel/output/static/assets/settings-CsASQTt8.js            126.79 kB
+2026-10-24T20:07:19.1602536Z .vercel/output/static/assets/index-CKurc9T_.js               351.51 kB
+2026-10-24T20:07:19.1602823Z 
+2026-10-24T20:07:19.1603372Z [32m✓ built in 12.81s[39m
+2026-10-24T20:07:19.1604374Z [33m[33m[PLUGIN_TIMINGS] [0mPlugin hooks ran for 12.6s of this 12.8s build (99%).
+2026-10-24T20:07:19.1605452Z The slowest hooks, timed inside each callback (the wait before a callback starts is excluded, the time it awaits is included):
+2026-10-24T20:07:19.1606189Z   - @tailwindcss/vite:generate:build transform (94%, 12.0s, 1 call)
+2026-10-24T20:07:19.1606955Z Additional hook time came from the hooks below and from hooks under 1s.
+2026-10-24T20:07:19.1608982Z 2 hooks are listed without a time. Their calls overlapped, so the time inside one call includes work from other calls. To find their cost, profile the build with `node --cpu-prof`:
+2026-10-24T20:07:19.1610530Z   - tanstack-start-core:import-protection resolveId (5737 calls)
+2026-10-24T20:07:19.1611421Z   - tanstack-start-core::server-fn:client transform (15 calls)
+2026-10-24T20:07:19.1612146Z See https://rolldown.rs/reference/InputOptions.checks#plugintimings for more details.
+2026-10-24T20:07:19.1612650Z [39m
+2026-10-24T20:07:19.1613109Z [36mvite v8.2.2 [32mbuilding ssr environment for production...[36m[39m
+2026-10-24T20:07:19.1701764Z transforming...
+2026-10-24T20:07:26.7128614Z ✓ 225 modules transformed.
+2026-10-24T20:07:26.7701424Z rendering chunks...
+2026-10-24T20:07:26.8174361Z node_modules/.nitro/vite/services/ssr/assets/styles-EeajTTjQ.css                      34.30 kB
+2026-10-24T20:07:26.8175802Z node_modules/.nitro/vite/services/ssr/assets/start-5Z2QO8AU.js                         0.14 kB
+2026-10-24T20:07:26.8177357Z node_modules/.nitro/vite/services/ssr/assets/market-CGKjtrNW.js                        0.19 kB
+2026-10-24T20:07:26.8178710Z node_modules/.nitro/vite/services/ssr/assets/trading-C3mPDPKU.js                       0.20 kB
+2026-10-24T20:07:26.8180024Z node_modules/.nitro/vite/services/ssr/assets/settings-M25JclNo.js                      0.20 kB
+2026-10-24T20:07:26.8181213Z node_modules/.nitro/vite/services/ssr/assets/empty-plugin-adapters-D9UWiqvJ.js         0.22 kB
+2026-10-24T20:07:26.8181996Z node_modules/.nitro/vite/services/ssr/assets/rolldown-runtime-D7D4PA-g.js              0.36 kB
+2026-10-24T20:07:26.8182726Z node_modules/.nitro/vite/services/ssr/assets/signal-policy-CLNSQ6Os.js                 1.45 kB
+2026-10-24T20:07:26.8183467Z node_modules/.nitro/vite/services/ssr/assets/progression-BUW_uSrV.js                   1.77 kB
+2026-10-24T20:07:26.8184652Z node_modules/.nitro/vite/services/ssr/assets/execution-summary-C1EHL3Ax.js             2.53 kB
+2026-10-24T20:07:26.8186000Z node_modules/.nitro/vite/services/ssr/assets/signal-units-DRZnDzC4.js                  3.14 kB
+2026-10-24T20:07:26.8187507Z node_modules/.nitro/vite/services/ssr/assets/indication-ui-DG5nFsJ4.js                 3.67 kB
+2026-10-24T20:07:26.8188655Z node_modules/.nitro/vite/services/ssr/assets/matrix-DzU0LkF3.js                        3.94 kB
+2026-10-24T20:07:26.8189613Z node_modules/.nitro/vite/services/ssr/assets/_tanstack-start-manifest_v-Bwnwz04-.js    4.31 kB
+2026-10-24T20:07:26.8190591Z node_modules/.nitro/vite/services/ssr/assets/progress-HPmQ_PqK.js                      5.27 kB
+2026-10-24T20:07:26.8192044Z node_modules/.nitro/vite/services/ssr/assets/promotion-evidence-B6N1txKS.js            5.57 kB
+2026-10-24T20:07:26.8192996Z node_modules/.nitro/vite/services/ssr/assets/compare-BEiGN6IK.js                       6.53 kB
+2026-10-24T20:07:26.8193715Z node_modules/.nitro/vite/services/ssr/assets/results-6FqxCukO.js                       8.32 kB
+2026-10-24T20:07:26.8194428Z node_modules/.nitro/vite/services/ssr/assets/api-CHguVJ6-.js                           8.83 kB
+2026-10-24T20:07:26.8195130Z node_modules/.nitro/vite/services/ssr/assets/config._id-CsTL81RP.js                    9.15 kB
+2026-10-24T20:07:26.8196543Z node_modules/.nitro/vite/services/ssr/assets/v2-D_kHLrzy.js                            9.75 kB
+2026-10-24T20:07:26.8198068Z node_modules/.nitro/vite/services/ssr/assets/hourly-C6n1ole6.js                        9.92 kB
+2026-10-24T20:07:26.8199397Z node_modules/.nitro/vite/services/ssr/assets/live-record-DPMMtro1.js                  11.17 kB
+2026-10-24T20:07:26.8200745Z node_modules/.nitro/vite/services/ssr/assets/live-validation-DLgVj5Of.js              14.84 kB
+2026-10-24T20:07:26.8202319Z node_modules/.nitro/vite/services/ssr/assets/prehistoric-B9wMFHfL.js                  15.38 kB
+2026-10-24T20:07:26.8203629Z node_modules/.nitro/vite/services/ssr/assets/engine-BTFj0vmw.js                       19.66 kB
+2026-10-24T20:07:26.8205213Z node_modules/.nitro/vite/services/ssr/assets/preset-settings-DshbPHS4.js              19.97 kB
+2026-10-24T20:07:26.8206153Z node_modules/.nitro/vite/services/ssr/assets/router-MzH5wyzZ.js                       21.60 kB
+2026-10-24T20:07:26.8206970Z node_modules/.nitro/vite/services/ssr/assets/v2-DoiaBgPN.js                           23.28 kB
+2026-10-24T20:07:26.8208087Z node_modules/.nitro/vite/services/ssr/assets/trading-COJZOevU.js                      27.46 kB
+2026-10-24T20:07:26.8208814Z node_modules/.nitro/vite/services/ssr/assets/ui-ZPLkAyEA.js                           27.78 kB
+2026-10-24T20:07:26.8209537Z node_modules/.nitro/vite/services/ssr/assets/charts-DnM24UBU.js                       28.77 kB
+2026-10-24T20:07:26.8211069Z node_modules/.nitro/vite/services/ssr/assets/statistics-CCQs2BL0.js                   29.95 kB
+2026-10-24T20:07:26.8211826Z node_modules/.nitro/vite/services/ssr/assets/presets-BiN8nvn0.js                      30.94 kB
+2026-10-24T20:07:26.8212561Z node_modules/.nitro/vite/services/ssr/assets/bingx.server-gjtjqnMi.js                 32.04 kB
+2026-10-24T20:07:26.8213606Z node_modules/.nitro/vite/services/ssr/assets/statistics-DXmDziYO.js                   34.57 kB
+2026-10-24T20:07:26.8214727Z node_modules/.nitro/vite/services/ssr/assets/stages-B7cLmXYo.js                       35.27 kB
+2026-10-24T20:07:26.8215487Z node_modules/.nitro/vite/services/ssr/assets/presets-CG-kiAjI.js                      37.87 kB
+2026-10-24T20:07:26.8216200Z node_modules/.nitro/vite/services/ssr/assets/live-BT_URaA3.js                         48.33 kB
+2026-10-24T20:07:26.8216900Z node_modules/.nitro/vite/services/ssr/index.js                                        79.06 kB
+2026-10-24T20:07:26.8217878Z node_modules/.nitro/vite/services/ssr/assets/api-data-mezyQuzH.js                     92.91 kB
+2026-10-24T20:07:26.8218597Z node_modules/.nitro/vite/services/ssr/assets/live.server-CCLyaj34.js                 192.82 kB
+2026-10-24T20:07:26.8219313Z node_modules/.nitro/vite/services/ssr/assets/settings-CDiK6-VL.js                    199.90 kB
+2026-10-24T20:07:26.8220287Z node_modules/.nitro/vite/services/ssr/assets/registry-SZuX3kdK.js                    293.28 kB
+2026-10-24T20:07:26.8221562Z node_modules/.nitro/vite/services/ssr/assets/walkforward-BPmrc9Fw.js                 417.32 kB
+2026-10-24T20:07:26.8223311Z node_modules/.nitro/vite/services/ssr/assets/runtime.server-drqFd2Yt.js              551.52 kB
+2026-10-24T20:07:26.8224289Z 
+2026-10-24T20:07:26.8224894Z [32m✓ built in 7.66s[39m
+2026-10-24T20:07:26.8225848Z [33m[33m[PLUGIN_TIMINGS] [0mPlugin hooks ran for 7.6s of this 7.6s build (99%).
+2026-10-24T20:07:26.8227047Z The slowest hooks, timed inside each callback (the wait before a callback starts is excluded, the time it awaits is included):
+2026-10-24T20:07:26.8228026Z   - @tailwindcss/vite:generate:build transform (95%, 7.3s, 1 call)
+2026-10-24T20:07:26.8228571Z Additional hook time came from the hooks below and from hooks under 1s.
+2026-10-24T20:07:26.8229917Z 2 hooks are listed without a time. Their calls overlapped, so the time inside one call includes work from other calls. To find their cost, profile the build with `node --cpu-prof`:
+2026-10-24T20:07:26.8230882Z   - tanstack-start-core:import-protection resolveId (717 calls)
+2026-10-24T20:07:26.8231638Z   - tanstack-start-core::server-fn:ssr transform (14 calls)
+2026-10-24T20:07:26.8232675Z See https://rolldown.rs/reference/InputOptions.checks#plugintimings for more details.
+2026-10-24T20:07:26.8233318Z [39m
+2026-10-24T20:07:26.8234192Z [start] [nitro] Building [[35mNitro[39m] [2m(preset: `vercel`, compatibility: `2026-10-24`)[22m
+2026-10-24T20:07:26.8259252Z [success] [nitro] Generated public [36m.vercel/output/static[39m
+2026-10-24T20:07:26.8267623Z [36mvite v8.2.2 [32mbuilding nitro environment for production...[36m[39m
+2026-10-24T20:07:26.8363345Z transforming...
+2026-10-24T20:07:27.1571141Z ✓ 2028 modules transformed.
+2026-10-24T20:07:27.3147497Z rendering chunks...
+2026-10-24T20:07:27.4378423Z .vercel/output/functions/__server.func/_ssr/start-5Z2QO8AU.mjs                      0.14 kB
+2026-10-24T20:07:27.4379826Z .vercel/output/functions/__server.func/_ssr/market-CGKjtrNW.mjs                     0.21 kB
+2026-10-24T20:07:27.4380591Z .vercel/output/functions/__server.func/_ssr/trading-C3mPDPKU.mjs                    0.22 kB
+2026-10-24T20:07:27.4381311Z .vercel/output/functions/__server.func/_ssr/settings-M25JclNo.mjs                   0.22 kB
+2026-10-24T20:07:27.4382044Z .vercel/output/functions/__server.func/_ssr/empty-plugin-adapters-D9UWiqvJ.mjs      0.23 kB
+2026-10-24T20:07:27.4382764Z .vercel/output/functions/__server.func/_ssr/rolldown-runtime-D7D4PA-g.mjs           0.41 kB
+2026-10-24T20:07:27.4383454Z .vercel/output/functions/__server.func/_chunks/ssr-renderer.mjs                     0.96 kB
+2026-10-24T20:07:27.4384670Z .vercel/output/functions/__server.func/_libs/hookable.mjs                           1.16 kB
+2026-10-24T20:07:27.4385884Z .vercel/output/functions/__server.func/_runtime.mjs                                 1.58 kB
+2026-10-24T20:07:27.4386595Z .vercel/output/functions/__server.func/_ssr/progression-BUW_uSrV.mjs                1.81 kB
+2026-10-24T20:07:27.4387414Z .vercel/output/functions/__server.func/_ssr/execution-summary-C1EHL3Ax.mjs          2.86 kB
+2026-10-24T20:07:27.4388108Z .vercel/output/functions/__server.func/_ssr/signal-units-DRZnDzC4.mjs               3.13 kB
+2026-10-24T20:07:27.4388795Z .vercel/output/functions/__server.func/_ssr/indication-ui-DG5nFsJ4.mjs              3.71 kB
+2026-10-24T20:07:27.4389499Z .vercel/output/functions/__server.func/_tanstack-start-manifest_v-Bwnwz04-.mjs      4.36 kB
+2026-10-24T20:07:27.4390183Z .vercel/output/functions/__server.func/_ssr/matrix-DzU0LkF3.mjs                     4.41 kB
+2026-10-24T20:07:27.4390855Z .vercel/output/functions/__server.func/_ssr/progress-HPmQ_PqK.mjs                   5.31 kB
+2026-10-24T20:07:27.4391542Z .vercel/output/functions/__server.func/_ssr/promotion-evidence-B6N1txKS.mjs         6.57 kB
+2026-10-24T20:07:27.4392242Z .vercel/output/functions/__server.func/_ssr/compare-BEiGN6IK.mjs                    7.69 kB
+2026-10-24T20:07:27.4392937Z .vercel/output/functions/__server.func/_ssr/api-CHguVJ6-.mjs                        8.76 kB
+2026-10-24T20:07:27.4393619Z .vercel/output/functions/__server.func/_libs/h3-v2+rou3.mjs                         9.83 kB
+2026-10-24T20:07:27.4394293Z .vercel/output/functions/__server.func/_ssr/results-6FqxCukO.mjs                    9.98 kB
+2026-10-24T20:07:27.4395836Z .vercel/output/functions/__server.func/_ssr/config._id-CsTL81RP.mjs                10.91 kB
+2026-10-24T20:07:27.4396651Z .vercel/output/functions/__server.func/_ssr/live-record-DPMMtro1.mjs               11.18 kB
+2026-10-24T20:07:27.4397999Z .vercel/output/functions/__server.func/_libs/lucide-react.mjs                      11.40 kB
+2026-10-24T20:07:27.4399543Z .vercel/output/functions/__server.func/_ssr/v2-D_kHLrzy.mjs                        11.42 kB
+2026-10-24T20:07:27.4400381Z .vercel/output/functions/__server.func/_ssr/hourly-C6n1ole6.mjs                    11.78 kB
+2026-10-24T20:07:27.4401080Z .vercel/output/functions/__server.func/_libs/tanstack__history.mjs                 12.50 kB
+2026-10-24T20:07:27.4401771Z .vercel/output/functions/__server.func/_ssr/live-validation-DLgVj5Of.mjs           14.55 kB
+2026-10-24T20:07:27.4403265Z .vercel/output/functions/__server.func/_ssr/prehistoric-B9wMFHfL.mjs               17.62 kB
+2026-10-24T20:07:27.4403988Z .vercel/output/functions/__server.func/_ssr/router-MzH5wyzZ.mjs                    21.17 kB
+2026-10-24T20:07:27.4404681Z .vercel/output/functions/__server.func/_libs/h3+rou3+srvx.mjs                      22.57 kB
+2026-10-24T20:07:27.4405369Z .vercel/output/functions/__server.func/_ssr/preset-settings-DshbPHS4.mjs           22.92 kB
+2026-10-24T20:07:27.4406057Z .vercel/output/functions/__server.func/_ssr/engine-BTFj0vmw.mjs                    23.77 kB
+2026-10-24T20:07:27.4406733Z .vercel/output/functions/__server.func/_ssr/v2-DoiaBgPN.mjs                        27.19 kB
+2026-10-24T20:07:27.4407929Z .vercel/output/functions/__server.func/_ssr/ui-ZPLkAyEA.mjs                        29.12 kB
+2026-10-24T20:07:27.4408624Z .vercel/output/functions/__server.func/_libs/@tanstack/router-core+[...].mjs       29.60 kB
+2026-10-24T20:07:27.4409325Z .vercel/output/functions/__server.func/_ssr/statistics-CCQs2BL0.mjs                29.92 kB
+2026-10-24T20:07:27.4410260Z .vercel/output/functions/__server.func/_ssr/charts-DnM24UBU.mjs                    31.92 kB
+2026-10-24T20:07:27.4411314Z .vercel/output/functions/__server.func/_ssr/bingx.server-gjtjqnMi.mjs              32.01 kB
+2026-10-24T20:07:27.4411991Z .vercel/output/functions/__server.func/index.mjs                                   33.11 kB
+2026-10-24T20:07:27.4412656Z .vercel/output/functions/__server.func/_ssr/trading-COJZOevU.mjs                   33.18 kB
+2026-10-24T20:07:27.4413333Z .vercel/output/functions/__server.func/_ssr/presets-BiN8nvn0.mjs                   34.99 kB
+2026-10-24T20:07:27.4414483Z .vercel/output/functions/__server.func/_ssr/presets-CG-kiAjI.mjs                   37.77 kB
+2026-10-24T20:07:27.4415521Z .vercel/output/functions/__server.func/_ssr/statistics-DXmDziYO.mjs                40.19 kB
+2026-10-24T20:07:27.4416221Z .vercel/output/functions/__server.func/_ssr/stages-B7cLmXYo.mjs                    40.98 kB
+2026-10-24T20:07:27.4417613Z .vercel/output/functions/__server.func/_ssr/live-BT_URaA3.mjs                      48.33 kB
+2026-10-24T20:07:27.4418457Z .vercel/output/functions/__server.func/_ssr/ssr.mjs                                77.18 kB
+2026-10-24T20:07:27.4419152Z .vercel/output/functions/__server.func/_ssr/api-data-mezyQuzH.mjs                  92.94 kB
+2026-10-24T20:07:27.4420399Z .vercel/output/functions/__server.func/_libs/zod.mjs                              159.58 kB
+2026-10-24T20:07:27.4421304Z .vercel/output/functions/__server.func/_ssr/live.server-CCLyaj34.mjs              192.72 kB
+2026-10-24T20:07:27.4421989Z .vercel/output/functions/__server.func/_ssr/settings-CDiK6-VL.mjs                 222.67 kB
+2026-10-24T20:07:27.4422694Z .vercel/output/functions/__server.func/_chunks/live.server.mjs                    239.70 kB
+2026-10-24T20:07:27.4423387Z .vercel/output/functions/__server.func/_ssr/runtime.server-drqFd2Yt.mjs           550.10 kB
+2026-10-24T20:07:27.4424090Z .vercel/output/functions/__server.func/_ssr/walkforward-BPmrc9Fw.mjs              715.56 kB
+2026-10-24T20:07:27.4424771Z .vercel/output/functions/__server.func/_libs/@tanstack/react-router+[...].mjs     776.81 kB
+2026-10-24T20:07:27.4425790Z .vercel/output/functions/__server.func/_chunks/boot.server.mjs                  1,355.64 kB
+2026-10-24T20:07:27.4426414Z 
+2026-10-24T20:07:27.4426940Z [32m✓ built in 611ms[39m
+2026-10-24T20:07:27.4427869Z [info] Generated [36m.vercel/output/nitro.json[39m
+2026-10-24T20:07:27.4428673Z [success] [nitro] You can preview this build using `npx vite preview`
+2026-10-24T20:07:27.4429564Z [success] [nitro] You can deploy this build using `npx nitro deploy --prebuilt`
+2026-10-24T20:07:27.6045330Z 
+2026-10-24T20:07:27.6045893Z > build:core-worker
+2026-10-24T20:07:27.6046326Z > node scripts/build-core-worker.mjs
+2026-10-24T20:07:27.6046571Z 
+2026-10-24T20:07:27.9072120Z [core-worker] packaged cts-core-worker.mjs in /home/runner/work/CTS-A-O/CTS-A-O/.vercel/output/functions/__server.func
+2026-10-24T20:07:28.0179156Z 
+2026-10-24T20:07:28.0179643Z > db:migrate
+2026-10-24T20:07:28.0180001Z > node scripts/migrate.mjs
+2026-10-24T20:07:28.0180221Z 
+2026-10-24T20:07:28.0669520Z [migrate] DATABASE_URL not set — skipping (the PGLite fallback migrates itself).
+2026-10-24T20:07:28.0870337Z ##[group]Run npm test -- --without-core
+2026-10-24T20:07:28.0870933Z [36;1mnpm test -- --without-core[0m
+2026-10-24T20:07:28.0934326Z shell: /usr/bin/bash -e {0}
+2026-10-24T20:07:28.0934590Z env:
+2026-10-24T20:07:28.0934851Z   CTS_UI_BROWSER_EXECUTABLE: /usr/bin/google-chrome
+2026-10-24T20:07:28.0935174Z ##[endgroup]
+2026-10-24T20:07:28.1963426Z 
+2026-10-24T20:07:28.1963862Z > test
+2026-10-24T20:07:28.1964416Z > node scripts/test.mjs --without-core
+2026-10-24T20:07:28.1965047Z 
+2026-10-24T20:07:28.2298650Z [npm test] scripts (offline fixtures only)
+2026-10-24T20:07:28.4195625Z ✔ flat amendment supplements dual endpoint marks without changing original execution, study, or curves (36.585286ms)
+2026-10-24T20:07:28.4510639Z ✔ chunked amendment supplements dual endpoint marks without changing original execution, study, or curves (31.806785ms)
+2026-10-24T20:07:28.4590784Z ✔ corrupt raw sidecar evidence is rejected before creating an amended report (8.757749ms)
+2026-10-24T20:07:28.4677974Z ✔ corrupt report sidecar evidence is rejected before creating an amended report (8.563029ms)
+2026-10-24T20:07:28.4738150Z ✔ amendment output rejects the original source directory and any pre-existing directory (5.655454ms)
+2026-10-24T20:07:28.6209534Z ✔ the CLI writes the verified amendment and receipt through its public argument contract (143.281299ms)
+2026-10-24T20:07:28.6446749Z ✔ empty endpoint arrays do not waive finite ordered windows or a known finite cost (26.914803ms)
+2026-10-24T20:07:28.6514022Z ✔ an explicitly unknown original endpoint P&L cannot be replaced by inferred engine aliases (5.168204ms)
+2026-10-24T20:07:28.6556883Z ✔ an endpoint allocation with a contradictory order key cannot gain amended evidence (6.223404ms)
+2026-10-24T20:07:28.6758065Z ▶ frozen session independent audit
+2026-10-24T20:07:28.6759240Z   ✔ rejects unloaded trade and allocation placeholders as incomplete evidence (2.310601ms)
+2026-10-24T20:07:28.6773011Z   ✔ reconciles legacy and chunked files identically and verifies unloaded history chunks (46.254606ms)
+2026-10-24T20:07:28.6778408Z   ✔ keeps funded unit PF, weighted cash, cohorts, directions and every hour separate (1.193166ms)
+2026-10-24T20:07:28.6787318Z   ✔ never treats zero allocations as funded performance or permits duplicate allocation joins (0.940739ms)
+2026-10-24T20:07:28.6789841Z   ✔ preserves missing unit or allocation evidence as unknown and prevents pruning (1.325911ms)
+2026-10-24T20:07:28.6792426Z   ✔ proposes only adequately sampled persistent losing cells after the completed 22x24 selection audit (3.988653ms)
+2026-10-24T20:07:28.6794343Z ✔ frozen session independent audit (57.607933ms)
+2026-10-24T20:07:29.0261190Z ✔ keeps empty contexts and full Last-8 readiness separate from older/window samples (1.397583ms)
+2026-10-24T20:07:29.0279024Z ✔ measures completed and still-open drawdown periods from own chronological returns (0.235896ms)
+2026-10-24T20:07:29.0281049Z ✔ requires full tape provenance and rejects mismatched universe/type/protection (4.229438ms)
+2026-10-24T20:07:29.0283172Z ✔ separates own entry qualification from the selected hourly cohort without reading future losses (22.906433ms)
+2026-10-24T20:10:24.5492298Z 
+2026-10-24T20:10:24.5518108Z Interrupted while running:
+2026-10-24T20:10:24.5523082Z 
+2026-10-24T20:10:24.5907786Z ⚠ scripts/audit-signal-derived-catalog.test.mjs (scripts/audit-signal-derived-catalog.test.mjs:1:1)
+2026-10-24T20:10:24.5911944Z ⚠ scripts/brand-check.test.mjs (scripts/brand-check.test.mjs:1:1)
+2026-10-24T20:10:24.5917851Z ⚠ scripts/browser-smoke-verdict.test.mjs (scripts/browser-smoke-verdict.test.mjs:1:1)
+2026-10-24T20:10:24.5922468Z ⚠ scripts/build-core-worker.test.mjs (scripts/build-core-worker.test.mjs:1:1)
+2026-10-24T20:10:24.5925903Z ⚠ scripts/build-public-eval-feed.test.mjs (scripts/build-public-eval-feed.test.mjs:1:1)
+2026-10-24T20:10:24.5939579Z ⚠ scripts/candles-usage.test.mjs (scripts/candles-usage.test.mjs:1:1)
+2026-10-24T20:10:24.5966315Z ⚠ scripts/check-auth-invariant.test.mjs (scripts/check-auth-invariant.test.mjs:1:1)
+2026-10-24T20:10:24.5976333Z ⚠ scripts/core-22-symbol-data.test.mjs (scripts/core-22-symbol-data.test.mjs:1:1)
+2026-10-24T20:10:24.5991910Z ⚠ scripts/core-22-symbol-final-report.test.mjs (scripts/core-22-symbol-final-report.test.mjs:1:1)
+2026-10-24T20:10:24.6003558Z ⚠ scripts/core-22-symbol-study.test.mjs (scripts/core-22-symbol-study.test.mjs:1:1)
+2026-10-24T20:10:24.6018078Z ⚠ scripts/core-block-comparison.test.mjs (scripts/core-block-comparison.test.mjs:1:1)
+2026-10-24T20:10:24.6034203Z ⚠ scripts/core-causal-prune-study.test.mjs (scripts/core-causal-prune-study.test.mjs:1:1)
+2026-10-24T20:10:24.6044589Z ⚠ scripts/core-dca-sweep-report.test.mjs (scripts/core-dca-sweep-report.test.mjs:1:1)
+2026-10-24T20:10:24.6052182Z ⚠ scripts/core-expanded-study-review.test.mjs (scripts/core-expanded-study-review.test.mjs:1:1)
+2026-10-24T20:10:24.6055607Z ⚠ scripts/core-heatmap.test.mjs (scripts/core-heatmap.test.mjs:1:1)
+2026-10-24T20:10:24.6062270Z ⚠ scripts/core-hourly.test.mjs (scripts/core-hourly.test.mjs:1:1)
+2026-10-24T20:10:24.6068510Z ⚠ scripts/core-live-coord.test.mjs (scripts/core-live-coord.test.mjs:1:1)
+2026-10-24T20:10:24.6075835Z ⚠ scripts/core-live-diff.test.mjs (scripts/core-live-diff.test.mjs:1:1)
+2026-10-24T20:10:24.6082044Z ⚠ scripts/core-live-group-replay.test.mjs (scripts/core-live-group-replay.test.mjs:1:1)
+2026-10-24T20:10:24.6089414Z ⚠ scripts/core-live-patch.test.mjs (scripts/core-live-patch.test.mjs:1:1)
+2026-10-24T20:10:24.6284662Z ⚠ scripts/core-live-promote.test.mjs (scripts/core-live-promote.test.mjs:1:1)
+2026-10-24T20:10:24.6293281Z ✖ scripts/audit-signal-derived-catalog.test.mjs (175915.057227ms)
+2026-10-24T20:10:24.6299565Z ✔ non-canvas app with no custom card gets a soft BRAND NOTE (utility exception) (2.488943ms)
+2026-10-24T20:10:24.6305704Z ✔ non-canvas app with a compliant card is silent (1.589018ms)
+2026-10-24T20:10:24.6309632Z ✔ card file without site.json card=custom warns (0.731342ms)
+2026-10-24T20:10:24.6316460Z ✔ card file with missing site.json warns for card=custom (1.506094ms)
+2026-10-24T20:10:24.6320723Z ✔ card file with invalid site.json warns for card=custom (0.841565ms)
+2026-10-24T20:10:24.6327817Z ✔ oversized card warns for non-canvas apps too (1.40141ms)
+2026-10-24T20:10:24.6334915Z ✔ canvas app with no card warns 'missing' and missing og:type (0.609497ms)
+2026-10-24T20:10:24.6340242Z ✔ canvas card without type still warns for og:type (0.693191ms)
+2026-10-24T20:10:24.6348986Z ✔ oversized card warns on the scraper budget (jpg and legacy png) (3.123091ms)
+2026-10-24T20:10:24.6356279Z ✔ compliant game (custom card + site.json type + x-banner) is silent (1.140318ms)
+2026-10-24T20:10:24.6377437Z ✔ __root.tsx og:type no longer satisfies the canvas gate (1.185141ms)
+2026-10-24T20:10:24.6393078Z ✔ oversized x-banner warns on the same scraper budget as og.jpg (1.463065ms)
+2026-10-24T20:10:24.6406624Z ✔ legacy png + site.json type still needs the X feed card (0.757841ms)
+2026-10-24T20:10:24.6416098Z ✔ siteDeclaresOgTypeGame reads the site contract (0.171067ms)
+2026-10-24T20:10:24.6424578Z ✔ a fresh og-pending marker silences the whole gate view (0.661042ms)
+2026-10-24T20:10:24.6428714Z ✔ a stale og-pending marker is ignored and the warnings return (0.492641ms)
+2026-10-24T20:10:24.6432142Z ✔ the marker goes stale on the clock, not on the file (0.623773ms)
+2026-10-24T20:10:24.6439864Z ✔ no marker means nothing is in flight (0.346169ms)
+2026-10-24T20:10:24.6459460Z ✔ parseBrandCheckArgs takes --game, --placeholder-ok and --root, and rejects the rest (0.306837ms)
+2026-10-24T20:10:24.6468717Z ✔ cli: a game missing its card reports JSON and exits 1 (70.438607ms)
+2026-10-24T20:10:24.6474834Z ✔ cli: a compliant game passes (76.836913ms)
+2026-10-24T20:10:24.6478419Z ✔ cli: the task's own marker is reported, not honoured (70.018423ms)
+2026-10-24T20:10:24.6481845Z ✔ cli: a bad argument fails with JSON on stderr (68.335089ms)
+2026-10-24T20:10:24.6485310Z ✔ cli: a non-game with no card fails too — the pass exists to produce one (69.174518ms)
+2026-10-24T20:10:24.6492161Z ✔ cli: --placeholder-ok is how a plain-utility pass reports no card as expected (154.45864ms)
+2026-10-24T20:10:24.6502750Z ✔ cli: a non-game with a compliant card passes (71.928582ms)
+2026-10-24T20:10:24.6514155Z ﹣ SKILL.md and AGENTS.md name the marker path and bound this script uses (0.10315ms) # .grok/skills/og not present
+2026-10-24T20:10:24.6520304Z ﹣ the sections that own the brand-task prohibition never affirm a wait (0.076782ms) # .grok/skills/og not present
+2026-10-24T20:10:24.6526690Z ﹣ SKILL.md tells the pass to self-check with the flag this CLI accepts (0.060612ms) # .grok/skills/og not present
+2026-10-24T20:10:24.6535034Z ✔ normalizes whitespace before hashing (1.895774ms)
+2026-10-24T20:10:24.6541420Z ✔ nullish and blank body text normalize to the empty string (0.185312ms)
+2026-10-24T20:10:24.6545958Z ✔ body text prefix is normalized and capped (0.248499ms)
+2026-10-24T20:10:24.6549687Z ✔ identical runs do not diverge (0.834542ms)
+2026-10-24T20:10:24.6553345Z ✔ status change diverges (0.365045ms)
+2026-10-24T20:10:24.6556352Z ✔ title change diverges (0.199348ms)
+2026-10-24T20:10:24.6561176Z ✔ title comparison is skipped when either side lacks one (0.212633ms)
+2026-10-24T20:10:24.6564457Z ✔ canvas disappearing diverges; canvas appearing does not (0.299464ms)
+2026-10-24T20:10:24.6569719Z ✔ horizontal overflow appearing diverges; clearing does not (0.333877ms)
+2026-10-24T20:10:24.6576587Z ✔ new console errors diverge (0.32965ms)
+2026-10-24T20:10:24.6584357Z ✔ errors already present in the baseline do not re-diverge (0.228373ms)
+2026-10-24T20:10:24.6591626Z ✔ body text collapse diverges (0.164604ms)
+2026-10-24T20:10:24.6595890Z ✔ body text dropping to zero reports collapse (0.180264ms)
+2026-10-24T20:10:24.6637820Z ✔ zero-length baseline reports growth via the hash branch, not collapse (0.17851ms)
+2026-10-24T20:10:24.6773447Z ✔ hash mismatch with a trivial length delta and same page start is tolerated (0.138315ms)
+2026-10-24T20:10:24.6779156Z ✔ hash mismatch with a trivial length delta but changed page start diverges (0.180494ms)
+2026-10-24T20:10:24.6788158Z ✔ prefix check is skipped when either side lacks a prefix (0.216651ms)
+2026-10-24T20:10:24.6792023Z ✔ length-delta tolerance boundary: 50 tolerated, 51 diverges (500-char baseline) (0.174823ms)
+2026-10-24T20:10:24.6793897Z ✔ length-delta floor dominates small baselines: 20 tolerated, 21 diverges (100-char baseline) (0.183369ms)
+2026-10-24T20:10:24.6800660Z ✔ collapse boundary: exactly half is 'changed', one below is 'collapsed' (0.171678ms)
+2026-10-24T20:10:24.6809226Z ✔ missing baseline viewport diverges (0.157992ms)
+2026-10-24T20:10:24.6814620Z ✔ empty or null baseline diverges for every viewport (0.185323ms)
+2026-10-24T20:10:24.6815812Z ✔ degenerate current verdict fails closed (0.389129ms)
+2026-10-24T20:10:24.6816903Z ✔ multiple signals across viewports all accumulate (0.171116ms)
+2026-10-24T20:10:24.6818431Z ✔ baselineComparison round-trips a valid baseline (0.236708ms)
+2026-10-24T20:10:24.6819813Z ✔ baselineComparison fails closed on malformed or wrong-shape baselines (0.385062ms)
+2026-10-24T20:10:24.6821112Z ✔ parseSmokeArgs defaults (0.34589ms)
+2026-10-24T20:10:24.6822270Z ✔ parseSmokeArgs consumes --baseline without shifting positionals (0.142904ms)
+2026-10-24T20:10:24.6829739Z ✔ parseSmokeArgs rejects a trailing --baseline flag (0.131884ms)
+2026-10-24T20:10:24.6832873Z ✔ parseSmokeArgs supports the --baseline= form (0.169885ms)
+2026-10-24T20:10:24.6835423Z ✔ parseSmokeArgs rejects unknown flags instead of treating them as positionals (0.153995ms)
+2026-10-24T20:10:24.6838542Z ✔ parseSmokeArgs env fallback and flag precedence (0.231618ms)
+2026-10-24T20:10:24.6839885Z ✔ derivedPaths handles .png, .PNG, and extensionless inputs (0.29174ms)
+2026-10-24T20:10:24.6841095Z ✔ exitCodeFor: clean run exits 0 (0.441336ms)
+2026-10-24T20:10:24.6842193Z ✔ exitCodeFor: errors in any single viewport exit 2 (0.148655ms)
+2026-10-24T20:10:24.6843616Z ✔ exitCodeFor: navigation failure in any viewport exits 1, beating errors (0.170285ms)
+2026-10-24T20:10:24.6845247Z ✔ exitCodeFor: 4xx boundary and missing status (0.181536ms)
+2026-10-24T20:10:24.6846347Z ✔ exitCodeFor: no viewport data is a failure (0.143445ms)
+2026-10-24T20:10:24.6849979Z ✔ browser-smoke wires the guard and verdict helpers (0.59466ms)
+2026-10-24T20:10:24.6858300Z ✔ browser-smoke file I/O only touches guarded paths (0.830556ms)
+2026-10-24T20:10:24.6859993Z ✔ finds the generated Nitro Node entry layout and excludes browser, edge and unrelated API outputs (23.962165ms)
+2026-10-24T20:10:24.6862271Z ✔ fails without a real Nitro server entry before creating worker artifacts (3.108929ms)
+2026-10-24T20:10:24.6868130Z ✔ bundles one real standalone ESM worker, preserves server assets, and completes Base config work without TypeScript flags (464.838421ms)
+2026-10-24T20:10:24.8080376Z ✔ both build modes package the worker after Vite and before production database migration (1.123126ms)
+2026-10-24T20:10:24.8083939Z ✔ daily archive parsing accepts official header, milliseconds/microseconds and genuine zero volume (4.650707ms)
+2026-10-24T20:10:24.8091704Z ✔ bad OHLCV, malformed rows, duplicate timestamps and invalid close boundaries fail closed (0.623493ms)
+2026-10-24T20:10:24.8103219Z ✔ full daily coverage rejects gaps, extra/short data and wrong day without filling candles (18.162402ms)
+2026-10-24T20:10:24.8108484Z ✔ official checksum must match archive bytes and exact filename (1.229613ms)
+2026-10-24T20:10:24.8114905Z ✔ UTC archive days use inclusive-exclusive bounds (0.641475ms)
+2026-10-24T20:10:24.8118396Z ✔ no script reads the runtime's candles as arrays (41.159454ms)
+2026-10-24T20:10:24.8125036Z ✔ the flag predicate matches src/lib/auth (1.134317ms)
+2026-10-24T20:10:24.8128448Z ✔ reads the value a live dev server resolved (0.301277ms)
+2026-10-24T20:10:24.8130960Z ✔ a server started without the flag reads as sign-in on (0.173341ms)
+2026-10-24T20:10:24.8134558Z ✔ agreement passes (0.21628ms)
+2026-10-24T20:10:24.8137548Z ✔ divergence fails in either direction (0.2434ms)
+2026-10-24T20:10:24.8141075Z ✔ an unobservable dev server is indeterminate, not agreement (0.142123ms)
+2026-10-24T20:10:24.8144938Z ✔ a dev server that cannot be reached probes as null (0.222231ms)
+2026-10-24T20:10:24.8149979Z ✔ a server without the endpoint probes as null, not as agreement (0.413275ms)
+2026-10-24T20:10:24.8154919Z ✔ only a divergence warns the smoke verdict (0.833641ms)
+2026-10-24T20:10:24.8159202Z ﹣ the build side resolves the template's shipped app-env (0.332264ms) # .grok/app-env.json not present
+2026-10-24T20:10:24.8169266Z ✔ the CLI reports rather than silently passing when run via a symlink (78.226541ms)
+2026-10-24T20:10:24.8173987Z ✔ public acquisition permits only unsigned public GET routes (2.79674ms)
+2026-10-24T20:10:24.8178487Z ##[error]The runner has received a shutdown signal. This can happen when the runner service is stopped, or a manually started runner is canceled.
+2026-10-24T20:10:24.8185365Z ✔ public acquisition rejects HTTP failures before parsing (0.307308ms)
+2026-10-24T20:10:24.8193330Z ✔ frozen universe correction depends on availability, launch history and exact symbol (1.156968ms)
+2026-10-24T20:10:24.8200638Z ✔ OHLCV accepts complete reverse-ordered public pages without filling (0.42708ms)
+2026-10-24T20:10:24.8206733Z ✔ OHLCV rejects gaps, duplicates, bad values and future boundaries (0.412071ms)
+2026-10-24T20:10:24.8211984Z ✔ ranking hours require all60 contiguous aligned completed minutes (1.653236ms)
+2026-10-24T20:10:24.8215462Z ✔ final reducer verifies hourly sums, explicit costs and frozen provenance (2.601198ms)
+2026-10-24T20:10:24.8221694Z ✔ final reducer rejects shifted/missing hours and incorrect measured PF (0.348845ms)
+2026-10-24T20:10:24.8226160Z {
+2026-10-24T20:10:24.8230561Z   "artifacts": 4,
+2026-10-24T20:10:24.8234184Z   "baseArchive": {
+2026-10-24T20:10:24.8236502Z     "path": "/tmp/cts-final-report-UFK9tk/absent.zip",
+2026-10-24T20:10:24.8238731Z     "status": "not available locally"
+2026-10-24T20:10:24.8244811Z   },
+2026-10-24T20:10:24.8250964Z   "cases": [
+2026-10-24T20:10:24.8253347Z     {
+2026-10-24T20:10:24.8257619Z       "id": "baseline/baseline-20",
+2026-10-24T20:10:24.8263930Z       "status": "invalid"
+2026-10-24T20:10:24.8267004Z     },
+2026-10-24T20:10:24.8269846Z     {
+2026-10-24T20:10:24.8274937Z       "id": "baseline/baseline-22",
+2026-10-24T20:10:24.8279623Z       "status": "pending"
+2026-10-24T20:10:24.8282303Z     },
+2026-10-24T20:10:24.8285191Z     {
+2026-10-24T20:10:24.8290804Z       "id": "prune-variant/baseline-20",
+2026-10-24T20:10:24.8292971Z       "status": "pending"
+2026-10-24T20:10:24.8293917Z     },
+2026-10-24T20:10:24.8300311Z     {
+2026-10-24T20:10:24.8303104Z       "id": "prune-variant/baseline-22",
+2026-10-24T20:10:24.8306564Z       "status": "pending"
+2026-10-24T20:10:24.8309484Z     }
+2026-10-24T20:10:24.8311545Z   ],
+2026-10-24T20:10:24.8316441Z   "complete": false,
+2026-10-24T20:10:24.8317407Z   "output": "/tmp/cts-final-report-UFK9tk/report"
+2026-10-24T20:10:24.8318099Z }
+2026-10-24T20:10:24.8320635Z 
+2026-10-24T20:10:24.8321410Z ✔ invalid run never parses or reports its stale summary PF (14.404627ms)
+2026-10-24T20:10:24.8326706Z ✔ actual feed byte tampering fails even with unchanged recorded links (2.882388ms)
+2026-10-24T20:10:24.8332360Z ✔ actual source byte tampering fails and valid files produce an explicit archive snapshot (2.433749ms)
+2026-10-24T20:10:24.8336085Z ✔ empty final report does not imply completed tests or hourly profitability (0.513749ms)
+2026-10-24T20:10:24.8343522Z ✔ study freezes24h evaluated prehistory,24h trade and separate205h indicator warmup (1.543292ms)
+2026-10-24T20:10:24.8351836Z ✔ strict study memory admission uses known host and ancestor headroom, crediting measured inactive cache only (1.802362ms)
+2026-10-24T20:10:24.8354005Z ✔ hosted CI root without non-root-only memory files is known host-bound, with all real ancestor caps retained (1.666281ms)
+2026-10-24T20:10:24.8359903Z ✔ root exemption needs proven ENOENT, real hierarchy evidence and readable controller accounting (3.133931ms)
+2026-10-24T20:10:24.8365403Z ✔ shared nonblocking flock rejects a second study and releases without stale ownership (29.851441ms)
+2026-10-24T20:10:24.8367371Z ✔ owned child interruption and timeout resolve complete failure evidence without hanging (211.009195ms)
+2026-10-24T20:10:24.8370679Z ✔ a running child retains the shared resource flock after its launcher descriptor closes (479.8544ms)
+2026-10-24T20:10:24.8373812Z ✔ case feed trims397h and derives each ranking solely from its prior24h (392.141144ms)
+2026-10-24T20:10:24.8375200Z ✔ feed validation rejects missing bars, extra symbols and omitted ranking history (4.31625ms)
+2026-10-24T20:10:24.8379887Z ✔ preflight uses production complete nested ladders and unchanged gates with explicit loading coverage (571.367876ms)
+2026-10-24T20:10:24.8388946Z ✔ commands run the causal runtime offline with variants off and immutable replay output (0.866351ms)
+2026-10-24T20:10:24.8397897Z ✔ right-closed hour convention retains exact-hour closes in the preceding hour (0.293042ms)
+2026-10-24T20:10:24.8402299Z ✔ summary separates virtual/funded settled cohorts, unscales returns and retains all24 hours (5.394674ms)
+2026-10-24T20:10:24.8405627Z ✔ summary rejects absent or malformed Base coverage and a reordered forced universe (5.64711ms)
+2026-10-24T20:10:24.8411163Z ✔ Base hourly placeholder zeroes remain unavailable while recorded config progress remains visible (1.876278ms)
+2026-10-24T20:10:24.8417092Z ✔ summary rejects a winning diagnostic config outside its independently admitted Base range (1.015958ms)
+2026-10-24T20:10:24.8420668Z ✔ summary uses production qualification for explicitly admitted untagged ladders (3.581401ms)
+2026-10-24T20:10:24.8424264Z ✔ summary detects nested settings, book sizing and missing performance evidence (0.716484ms)
+2026-10-24T20:10:24.8428046Z ✔ summary fails closed when independent WF controls or native accounting checks change (0.770685ms)
+2026-10-24T20:10:24.8433596Z ✔ summary fails closed on memory fallback, partial universe, missing validation or unknown allocations (0.677332ms)
+2026-10-24T20:10:24.8438601Z ✔ frozen candles reject gaps, future bars, invalid OHLC and a changed universe (5.502504ms)
+2026-10-24T20:10:24.8442074Z ✔ actual stopped runtime settings remain default-positive and retain full exit ladders (510.877254ms)
+2026-10-24T20:10:24.8443703Z ✔ child command keeps replay-only history floor, exact settings, guard and bounded native book (0.813704ms)
+2026-10-24T20:10:24.8449729Z ✔ prune plan reads only exact initial IS checks and never later profits/passes (2.066069ms)
+2026-10-24T20:10:24.8453401Z ✔ only engine Micro/Minimal ranges with25 distinct adequately sampled failures may be cropped (1.959603ms)
+2026-10-24T20:10:24.8458873Z ✔ startup memory fallback is rejected before rendering even when engine exits successfully (0.339448ms)
+2026-10-24T20:10:24.8466410Z ✔ actual runtime trial reduces engine combos while preserving all Signal configuration identities (889.734112ms)
+2026-10-24T20:10:24.8470052Z ✔ pools only disjoint verified unit evidence, with no-loss state and no virtual winner promotion (9.754614ms)
+2026-10-24T20:10:24.8478083Z ✔ retains unknown losing evidence and never turns null into zero (0.295626ms)
+2026-10-24T20:10:24.8479478Z ✔ refuses legacy, overlapping, duplicate and configuration-mismatched windows (2.080837ms)
+2026-10-24T20:10:24.8482168Z ✔ canonical unit returns, exact close-index allocations, zero funding and endpoints stay separate (4.471277ms)
+2026-10-24T20:10:24.8483958Z ✔ hourly engine validations and Signal ranking activity retain separate source scopes and unknown samples (2.122884ms)
+2026-10-24T20:10:24.8492693Z ✔ review labels run-start all-cell and post-Base gate denominators separately and displays24 parallel hourly rows (10.277712ms)
+2026-10-24T20:10:24.8494619Z ✔ hourly, config and reclaim win rates include exactly flat funded closes and retain unknown denominators (0.956388ms)
+2026-10-24T20:10:24.8514084Z ✔ unit-return signs preserve the smallest nonzero gains and losses without an epsilon (0.440455ms)
+2026-10-24T20:10:24.8520959Z ✔ unknown unit evidence and mismatched or duplicate allocations cannot drop losses to improve PF (1.333886ms)
+2026-10-24T20:10:24.8529778Z ✔ cash inconsistencies invalidate completeness and sub-epsilon funding does not invent an order (0.512127ms)
+2026-10-24T20:10:24.8537460Z ✔ exclusion rule needs both complete22 cases and matches each scope within the same policy (22.166613ms)
+2026-10-24T20:10:24.8541435Z ✔ minimum samples, unknown returns and exact identity cannot borrow qualification from siblings (11.483098ms)
+2026-10-24T20:10:24.8546666Z ✔ matched comparisons reject sizing, source, feed and chronological split changes (9.654201ms)
+2026-10-24T20:10:24.8554730Z ✔ loader verifies complete-result and protocol/source/feed/raw/book hashes from tiny synthetic files (5.369056ms)
+2026-10-24T20:10:24.8562998Z ✔ all four completion envelopes are required before opening any final raw market evidence (1.981143ms)
+2026-10-24T20:10:24.8571237Z ▶ heatmap evidence provenance
+2026-10-24T20:10:24.8576303Z   ✔ labels profitable forward paper as paper, while losing cash execution remains unverified per cell (240.036277ms)
+2026-10-24T20:10:24.8580701Z   ✔ accepts legacy --live input only as the same explicitly labeled paper source (251.710323ms)
+2026-10-24T20:10:24.8584182Z   ✔ renders no-loss convention, measured 99, tiny losses and empty samples from actual embedded JSON (549.72555ms)
+2026-10-24T20:10:24.8587770Z   ✔ retains legacy weighted/unknown WF diagnostics without inventing unit-return qualification (274.063909ms)
+2026-10-24T20:10:24.8595042Z   ✔ never pools a legacy weighted window into known unit-return WF evidence (254.585787ms)
+2026-10-24T20:10:24.8606891Z   ✔ normalizes direct simulated WF trades only and records probe bypass, model cost and weighted diagnostics (801.542861ms)
+2026-10-24T20:10:24.8613872Z ✔ heatmap evidence provenance (2373.760912ms)
+2026-10-24T20:10:24.8622827Z ▶ walk-forward hourly reporting
+2026-10-24T20:10:24.8631468Z   ✔ assigns before/exact/after-boundary exits and the final end to the shared settled hours (9.442181ms)
+2026-10-24T20:10:24.8634211Z   ✔ the CLI renders the helper's actual clipped window and exposes matching machine-readable hourly counts (685.771289ms)
+2026-10-24T20:10:24.8638863Z   ✔ honors verified unit overrides and makes the entire primary unavailable for an unknown or invalid row (1.689694ms)
+2026-10-24T20:10:24.8659841Z   ✔ uses one settled sample for totals, kinds and exit-bar-end hours, including the final boundary (0.810328ms)
+2026-10-24T20:10:24.8664594Z   ✔ keeps losing endpoint marks visible and separate from primary settled PF (0.455632ms)
+2026-10-24T20:10:24.8670316Z   ✔ reverses the direct walkForward execution multiplier once: return PF 1.36 versus sized PF 0.20 (0.360847ms)
+2026-10-24T20:10:24.8675310Z   ✔ preserves already-unit modeled returns when mult is missing or one and does not mutate inputs (0.40021ms)
+2026-10-24T20:10:24.8678884Z   ✔ uses actual run bounds, retains partial hours, and excludes old entries and unsettled/future exits (0.356569ms)
+2026-10-24T20:10:24.8684924Z   ✔ discloses no-loss sentinel and supports empty windows without inventing trades (0.841826ms)
+2026-10-24T20:10:24.8686005Z ✔ walk-forward hourly reporting (702.382094ms)
+2026-10-24T20:10:24.8696421Z ✔ coordinator labels profitable paper return evidence even when exchange and cash PF conflict (160.868269ms)
+2026-10-24T20:10:24.8706733Z ✔ profitable exchange fields do not replace losing or absent reference paper evidence (285.226091ms)
+2026-10-24T20:10:24.8717547Z ✔ missing reference preserves opt-in and opt-out range starts and the closed opening gate (146.904762ms)
+2026-10-24T20:10:24.8724399Z ✔ default minimum counts and PF hysteresis preserve range and opening decisions (888.716348ms)
+2026-10-24T20:10:24.8729009Z ✔ opening gate includes unmanaged ranges and excludes disabled managed ranges (144.955636ms)
+2026-10-24T20:10:24.8733944Z ✔ custom gate thresholds still apply and patches preserve unrelated settings (298.861591ms)
+2026-10-24T20:10:24.8737938Z ✔ snapshot report uses verified paper unit returns while venue returns remain unchanged (384.086302ms)
+2026-10-24T20:10:24.8741854Z ✔ legacy snapshots and mixed unknown paper samples keep their identities but have no primary ratio (750.462615ms)
+2026-10-24T20:10:24.8745521Z ✔ a current snapshot without an owned-fill ledger keeps the relation diagnostic and invents no venue positions (752.605359ms)
+2026-10-24T20:10:24.8750458Z ✔ Tactic uses its full-indication minimum and warmup is not reported as PF-qualified (760.878343ms)
+2026-10-24T20:10:24.8758086Z ✔ provided stricter range minima apply and known unit returns are independent of stored sized r (381.498353ms)
+2026-10-24T20:10:24.8759913Z ✔ unknown legacy returns are retained as unknown, block the causal window and never become positive proof (760.211978ms)
+2026-10-24T20:10:24.8763429Z ✔ only finite complete nonnegative-delay forward records enter a window (380.135716ms)
+2026-10-24T20:10:24.8799757Z ✔ a close simultaneous with entry is not visible to that decision and invalid windows fail clearly (768.611196ms)
+2026-10-24T20:10:24.8804251Z ✔ the X02 demo WF patch is at the loader's root and applies with unchanged exact-config gates (65.398913ms)
+2026-10-24T20:10:24.8808415Z ✔ the demo override is isolated from the factory defaults and X01 patch (0.620367ms)
+2026-10-24T20:10:24.8813013Z ✖ scripts/core-live-promote.test.mjs (158242.124886ms)
+2026-10-24T20:10:24.8813969Z ✖ scripts/core-live-report.test.mjs
+2026-10-24T20:10:24.8816996Z ✖ scripts/core-range-study-report.test.mjs
+2026-10-24T20:10:24.8822477Z ✖ scripts/core-range-study.test.mjs
+2026-10-24T20:10:24.8825744Z ✖ scripts/core-research.test.mjs
+2026-10-24T20:10:24.8828308Z ✖ scripts/core-session.test.mjs
+2026-10-24T20:10:24.8832796Z ✖ scripts/core-signal-research.test.mjs
+2026-10-24T20:10:24.8833752Z ✖ scripts/core-signal-window-report.test.mjs
+2026-10-24T20:10:24.8836855Z ✖ scripts/core-tactic-research.test.mjs
+2026-10-24T20:10:24.8840075Z ✖ scripts/core-test-offline.test.mjs
+2026-10-24T20:10:24.8843607Z ✖ scripts/dca-sweep-stats.test.mjs
+2026-10-24T20:10:24.8846622Z ✖ scripts/eval-gate.test.mjs
+2026-10-24T20:10:24.8847565Z ✖ scripts/eval-orders.test.mjs
+2026-10-24T20:10:24.8850466Z ✖ scripts/eval-range-verdict.test.mjs
+2026-10-24T20:10:24.8851442Z ✖ scripts/eval-session-consumers.test.mjs
+2026-10-24T20:10:24.8852129Z ✖ scripts/eval-unit-basis.test.mjs
+2026-10-24T20:10:24.8856300Z ✖ scripts/eval-validation.test.mjs
+2026-10-24T20:10:24.8859304Z ✖ scripts/grok-pwa-plugin.test.mjs
+2026-10-24T20:10:24.8860309Z ✖ scripts/lib/block-comparison-evidence.test.mjs
+2026-10-24T20:10:24.8871157Z ✖ scripts/lib/block-comparison.test.mjs
+2026-10-24T20:10:24.8876381Z ✖ scripts/lib/book-notional.test.mjs
+2026-10-24T20:10:24.8879200Z ✖ scripts/lib/candles.test.mjs
+2026-10-24T20:10:24.8882051Z ✖ scripts/lib/endpoint-mark.test.mjs
+2026-10-24T20:10:24.8885015Z ✖ scripts/lib/eval-base-rules.test.mjs
+2026-10-24T20:10:24.8887845Z ✖ scripts/lib/eval-variants.test.mjs
+2026-10-24T20:10:24.8888748Z ✖ scripts/lib/eval-verdict.test.mjs
+2026-10-24T20:10:24.8891643Z ✖ scripts/lib/mem-admission.test.mjs
+2026-10-24T20:10:24.8894535Z ✖ scripts/lib/pf-search-evidence.test.mjs
+2026-10-24T20:10:24.8901035Z ✖ scripts/lib/range-study-evidence.test.mjs
+2026-10-24T20:10:24.8904032Z ✖ scripts/lib/range-study.test.mjs
+2026-10-24T20:10:24.8906991Z ✖ scripts/lib/replay-evidence.test.mjs
+2026-10-24T20:10:24.8908068Z ✖ scripts/lib/return-evidence.test.mjs
+2026-10-24T20:10:24.8914581Z ✖ scripts/lib/session-dump.test.mjs
+2026-10-24T20:10:24.8915226Z ✖ scripts/lib/session-feed.test.mjs
+2026-10-24T20:10:24.8915936Z ✖ scripts/lib/session-owned-returns.test.mjs
+2026-10-24T20:10:24.8916652Z ✖ scripts/lib/session-settings.test.mjs
+2026-10-24T20:10:24.8917681Z ✖ scripts/lib/session-study.test.mjs
+2026-10-24T20:10:24.8918326Z ✖ scripts/lib/signal-market.test.mjs
+2026-10-24T20:10:24.8918968Z ✖ scripts/lib/signal-progress.test.mjs
+2026-10-24T20:10:24.8919667Z ✖ scripts/lib/signal-window-report.test.mjs
+2026-10-24T20:10:24.8920482Z ✖ scripts/lib/walkforward-comparison-report.test.mjs
+2026-10-24T20:10:24.8921223Z ✖ scripts/losing-configs.test.mjs
+2026-10-24T20:10:24.8924437Z ✖ scripts/micro-stages.test.mjs
+2026-10-24T20:10:24.8925100Z ✖ scripts/micro-study-provenance.test.mjs
+2026-10-24T20:10:24.8925777Z ✖ scripts/migration-plan.test.mjs
+2026-10-24T20:10:24.8926383Z ✖ scripts/patch-grid.test.mjs
+2026-10-24T20:10:24.8926985Z ✖ scripts/postbase-hourly.test.mjs
+2026-10-24T20:10:24.8927843Z ✖ scripts/postbase-window.test.mjs
+2026-10-24T20:10:24.8928401Z ✖ scripts/preview.test.mjs
+2026-10-24T20:10:24.8929082Z ✖ scripts/report-micro-rank-comparison.test.mjs
+2026-10-24T20:10:24.8929824Z ✖ scripts/routes-regression.test.mjs
+2026-10-24T20:10:24.8930505Z ✖ scripts/run-exact-signal-study.test.mjs
+2026-10-24T20:10:24.8931243Z ✖ scripts/select-micro-24-research.test.mjs
+2026-10-24T20:10:24.8931965Z ✖ scripts/session-dump-consumers.test.mjs
+2026-10-24T20:10:24.8932667Z ✖ scripts/session-funded-cohort.test.mjs
+2026-10-24T20:10:24.8933326Z ✖ scripts/sign-out-plan.test.mjs
+2026-10-24T20:10:24.8933960Z ✖ scripts/sim-positive-types.test.mjs
+2026-10-24T20:10:24.8934617Z ✖ scripts/simulation-parity.test.mjs
+2026-10-24T20:10:24.8935259Z ✖ scripts/test-all-offline.test.mjs
+2026-10-24T20:10:24.8935832Z ✖ scripts/test-core.test.mjs
+2026-10-24T20:10:24.8936422Z ✖ scripts/ui-functional.test.mjs
+2026-10-24T20:10:24.8937013Z ✖ scripts/with-app-env.test.mjs
+2026-10-24T20:10:24.8937774Z ✖ scripts/write-atomic.test.mjs
+2026-10-24T20:10:24.8938355Z ✖ scripts/x01-supervise.test.mjs
+2026-10-24T20:10:24.8938819Z ℹ tests 259
+2026-10-24T20:10:24.8939184Z ℹ suites 3
+2026-10-24T20:10:24.8939550Z ℹ pass 190
+2026-10-24T20:10:24.8939896Z ℹ fail 0
+2026-10-24T20:10:24.8940247Z ℹ cancelled 65
+2026-10-24T20:10:24.8940624Z ℹ skipped 4
+2026-10-24T20:10:24.8940967Z ℹ todo 0
+2026-10-24T20:10:24.8941418Z ℹ duration_ms 176261.860802
+2026-10-24T20:10:24.8941683Z 
+2026-10-24T20:10:24.8941877Z ✖ failing tests:
+2026-10-24T20:10:24.8942090Z 
+2026-10-24T20:10:24.8942522Z test at scripts/audit-signal-derived-catalog.test.mjs:1:1
+2026-10-24T20:10:24.8943568Z ✖ scripts/audit-signal-derived-catalog.test.mjs (175915.057227ms)
+2026-10-24T20:10:24.8944578Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.8945156Z 
+2026-10-24T20:10:24.8945779Z test at scripts/core-live-promote.test.mjs:1:1
+2026-10-24T20:10:24.8946651Z ✖ scripts/core-live-promote.test.mjs (158242.124886ms)
+2026-10-24T20:10:24.8947725Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.8948305Z 
+2026-10-24T20:10:24.8948636Z test at scripts/core-live-report.test.mjs:1:1
+2026-10-24T20:10:24.8949533Z ✖ scripts/core-live-report.test.mjs
+2026-10-24T20:10:24.8950316Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.8950874Z 
+2026-10-24T20:10:24.8951252Z test at scripts/core-range-study-report.test.mjs:1:1
+2026-10-24T20:10:24.8952034Z ✖ scripts/core-range-study-report.test.mjs
+2026-10-24T20:10:24.8952854Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.8953424Z 
+2026-10-24T20:10:24.8953746Z test at scripts/core-range-study.test.mjs:1:1
+2026-10-24T20:10:24.8954445Z ✖ scripts/core-range-study.test.mjs
+2026-10-24T20:10:24.8955231Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.8955791Z 
+2026-10-24T20:10:24.8956088Z test at scripts/core-research.test.mjs:1:1
+2026-10-24T20:10:24.8956742Z ✖ scripts/core-research.test.mjs
+2026-10-24T20:10:24.8957696Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.8958282Z 
+2026-10-24T20:10:24.8958577Z test at scripts/core-session.test.mjs:1:1
+2026-10-24T20:10:24.8959236Z ✖ scripts/core-session.test.mjs
+2026-10-24T20:10:24.8959978Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.8960564Z 
+2026-10-24T20:10:24.8960957Z test at scripts/core-signal-research.test.mjs:1:1
+2026-10-24T20:10:24.8961761Z ✖ scripts/core-signal-research.test.mjs
+2026-10-24T20:10:24.8962634Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.8963203Z 
+2026-10-24T20:10:24.8963599Z test at scripts/core-signal-window-report.test.mjs:1:1
+2026-10-24T20:10:24.8964433Z ✖ scripts/core-signal-window-report.test.mjs
+2026-10-24T20:10:24.8965264Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.8965819Z 
+2026-10-24T20:10:24.8966165Z test at scripts/core-tactic-research.test.mjs:1:1
+2026-10-24T20:10:24.8966908Z ✖ scripts/core-tactic-research.test.mjs
+2026-10-24T20:10:24.8967852Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.8968457Z 
+2026-10-24T20:10:24.8968790Z test at scripts/core-test-offline.test.mjs:1:1
+2026-10-24T20:10:24.8969526Z ✖ scripts/core-test-offline.test.mjs
+2026-10-24T20:10:24.8970309Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.8970868Z 
+2026-10-24T20:10:24.8971178Z test at scripts/dca-sweep-stats.test.mjs:1:1
+2026-10-24T20:10:24.8971863Z ✖ scripts/dca-sweep-stats.test.mjs
+2026-10-24T20:10:24.8972631Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.8973189Z 
+2026-10-24T20:10:24.8973515Z test at scripts/eval-gate.test.mjs:1:1
+2026-10-24T20:10:24.8974110Z ✖ scripts/eval-gate.test.mjs
+2026-10-24T20:10:24.8974853Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.8975412Z 
+2026-10-24T20:10:24.8975708Z test at scripts/eval-orders.test.mjs:1:1
+2026-10-24T20:10:24.8976345Z ✖ scripts/eval-orders.test.mjs
+2026-10-24T20:10:24.8977087Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.8977827Z 
+2026-10-24T20:10:24.8978165Z test at scripts/eval-range-verdict.test.mjs:1:1
+2026-10-24T20:10:24.8978886Z ✖ scripts/eval-range-verdict.test.mjs
+2026-10-24T20:10:24.8979680Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.8980278Z 
+2026-10-24T20:10:24.8980664Z test at scripts/eval-session-consumers.test.mjs:1:1
+2026-10-24T20:10:24.8981446Z ✖ scripts/eval-session-consumers.test.mjs
+2026-10-24T20:10:24.8982449Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.8983048Z 
+2026-10-24T20:10:24.8983365Z test at scripts/eval-unit-basis.test.mjs:1:1
+2026-10-24T20:10:24.8984066Z ✖ scripts/eval-unit-basis.test.mjs
+2026-10-24T20:10:24.8984836Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.8985536Z 
+2026-10-24T20:10:24.8985841Z test at scripts/eval-validation.test.mjs:1:1
+2026-10-24T20:10:24.8986560Z ✖ scripts/eval-validation.test.mjs
+2026-10-24T20:10:24.8987629Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.8988225Z 
+2026-10-24T20:10:24.8988599Z test at scripts/grok-pwa-plugin.test.mjs:1:1
+2026-10-24T20:10:24.8989331Z ✖ scripts/grok-pwa-plugin.test.mjs
+2026-10-24T20:10:24.8990191Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.8990768Z 
+2026-10-24T20:10:24.8991235Z test at scripts/lib/block-comparison-evidence.test.mjs:1:1
+2026-10-24T20:10:24.8992240Z ✖ scripts/lib/block-comparison-evidence.test.mjs
+2026-10-24T20:10:24.8993144Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.8993698Z 
+2026-10-24T20:10:24.8994053Z test at scripts/lib/block-comparison.test.mjs:1:1
+2026-10-24T20:10:24.8994815Z ✖ scripts/lib/block-comparison.test.mjs
+2026-10-24T20:10:24.8999936Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.9000698Z 
+2026-10-24T20:10:24.9002670Z test at scripts/lib/book-notional.test.mjs:1:1
+2026-10-24T20:10:24.9006205Z ✖ scripts/lib/book-notional.test.mjs
+2026-10-24T20:10:24.9007499Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.9008250Z 
+2026-10-24T20:10:24.9008688Z test at scripts/lib/candles.test.mjs:1:1
+2026-10-24T20:10:24.9012007Z ✖ scripts/lib/candles.test.mjs
+2026-10-24T20:10:24.9014387Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.9017685Z 
+2026-10-24T20:10:24.9018190Z test at scripts/lib/endpoint-mark.test.mjs:1:1
+2026-10-24T20:10:24.9020905Z ✖ scripts/lib/endpoint-mark.test.mjs
+2026-10-24T20:10:24.9027022Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.9033197Z 
+2026-10-24T20:10:24.9034949Z test at scripts/lib/eval-base-rules.test.mjs:1:1
+2026-10-24T20:10:24.9039600Z ✖ scripts/lib/eval-base-rules.test.mjs
+2026-10-24T20:10:24.9042031Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.9045170Z 
+2026-10-24T20:10:24.9049760Z test at scripts/lib/eval-variants.test.mjs:1:1
+2026-10-24T20:10:24.9053819Z ✖ scripts/lib/eval-variants.test.mjs
+2026-10-24T20:10:24.9058055Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.9060181Z 
+2026-10-24T20:10:24.9064105Z test at scripts/lib/eval-verdict.test.mjs:1:1
+2026-10-24T20:10:24.9068141Z ✖ scripts/lib/eval-verdict.test.mjs
+2026-10-24T20:10:24.9069308Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.9071528Z 
+2026-10-24T20:10:24.9075608Z test at scripts/lib/mem-admission.test.mjs:1:1
+2026-10-24T20:10:24.9078359Z ✖ scripts/lib/mem-admission.test.mjs
+2026-10-24T20:10:24.9081738Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.9084433Z 
+2026-10-24T20:10:24.9086765Z test at scripts/lib/pf-search-evidence.test.mjs:1:1
+2026-10-24T20:10:24.9091637Z ✖ scripts/lib/pf-search-evidence.test.mjs
+2026-10-24T20:10:24.9092826Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.9095444Z 
+2026-10-24T20:10:24.9098131Z test at scripts/lib/range-study-evidence.test.mjs:1:1
+2026-10-24T20:10:24.9099348Z ✖ scripts/lib/range-study-evidence.test.mjs
+2026-10-24T20:10:24.9102769Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.9105470Z 
+2026-10-24T20:10:24.9106173Z test at scripts/lib/range-study.test.mjs:1:1
+2026-10-24T20:10:24.9109327Z ✖ scripts/lib/range-study.test.mjs
+2026-10-24T20:10:24.9114363Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.9117934Z 
+2026-10-24T20:10:24.9122226Z test at scripts/lib/replay-evidence.test.mjs:1:1
+2026-10-24T20:10:24.9126878Z ✖ scripts/lib/replay-evidence.test.mjs
+2026-10-24T20:10:24.9131243Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.9133468Z 
+2026-10-24T20:10:24.9137629Z test at scripts/lib/return-evidence.test.mjs:1:1
+2026-10-24T20:10:24.9143874Z ✖ scripts/lib/return-evidence.test.mjs
+2026-10-24T20:10:24.9144962Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.9148220Z 
+2026-10-24T20:10:24.9148665Z test at scripts/lib/session-dump.test.mjs:1:1
+2026-10-24T20:10:24.9154886Z ✖ scripts/lib/session-dump.test.mjs
+2026-10-24T20:10:24.9157547Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.9158235Z 
+2026-10-24T20:10:24.9161175Z test at scripts/lib/session-feed.test.mjs:1:1
+2026-10-24T20:10:24.9164533Z ✖ scripts/lib/session-feed.test.mjs
+2026-10-24T20:10:24.9168144Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.9168888Z 
+2026-10-24T20:10:24.9169465Z test at scripts/lib/session-owned-returns.test.mjs:1:1
+2026-10-24T20:10:24.9172828Z ✖ scripts/lib/session-owned-returns.test.mjs
+2026-10-24T20:10:24.9178053Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.9178772Z 
+2026-10-24T20:10:24.9180928Z test at scripts/lib/session-settings.test.mjs:1:1
+2026-10-24T20:10:24.9185427Z ✖ scripts/lib/session-settings.test.mjs
+2026-10-24T20:10:24.9190422Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.9190840Z 
+2026-10-24T20:10:24.9193274Z test at scripts/lib/session-study.test.mjs:1:1
+2026-10-24T20:10:24.9194075Z ✖ scripts/lib/session-study.test.mjs
+2026-10-24T20:10:24.9196961Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.9200030Z 
+2026-10-24T20:10:24.9200541Z test at scripts/lib/signal-market.test.mjs:1:1
+2026-10-24T20:10:24.9203622Z ✖ scripts/lib/signal-market.test.mjs
+2026-10-24T20:10:24.9207890Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.9208594Z 
+2026-10-24T20:10:24.9210995Z test at scripts/lib/signal-progress.test.mjs:1:1
+2026-10-24T20:10:24.9211991Z ✖ scripts/lib/signal-progress.test.mjs
+2026-10-24T20:10:24.9215313Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.9218602Z 
+2026-10-24T20:10:24.9219139Z test at scripts/lib/signal-window-report.test.mjs:1:1
+2026-10-24T20:10:24.9222552Z ✖ scripts/lib/signal-window-report.test.mjs
+2026-10-24T20:10:24.9225861Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.9226589Z 
+2026-10-24T20:10:24.9229744Z test at scripts/lib/walkforward-comparison-report.test.mjs:1:1
+2026-10-24T20:10:24.9230971Z ✖ scripts/lib/walkforward-comparison-report.test.mjs
+2026-10-24T20:10:24.9234402Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.9237751Z 
+2026-10-24T20:10:24.9238233Z test at scripts/losing-configs.test.mjs:1:1
+2026-10-24T20:10:24.9241193Z ✖ scripts/losing-configs.test.mjs
+2026-10-24T20:10:24.9244196Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.9244832Z 
+2026-10-24T20:10:24.9247598Z test at scripts/micro-stages.test.mjs:1:1
+2026-10-24T20:10:24.9248507Z ✖ scripts/micro-stages.test.mjs
+2026-10-24T20:10:24.9252599Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.9254736Z 
+2026-10-24T20:10:24.9256640Z test at scripts/micro-study-provenance.test.mjs:1:1
+2026-10-24T20:10:24.9259269Z ✖ scripts/micro-study-provenance.test.mjs
+2026-10-24T20:10:24.9263966Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.9264677Z 
+2026-10-24T20:10:24.9266990Z test at scripts/migration-plan.test.mjs:1:1
+2026-10-24T20:10:24.9268181Z ✖ scripts/migration-plan.test.mjs
+2026-10-24T20:10:24.9272056Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.9276844Z 
+2026-10-24T20:10:24.9277431Z test at scripts/patch-grid.test.mjs:1:1
+2026-10-24T20:10:24.9280151Z ✖ scripts/patch-grid.test.mjs
+2026-10-24T20:10:24.9282364Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.9284415Z 
+2026-10-24T20:10:24.9284812Z test at scripts/postbase-hourly.test.mjs:1:1
+2026-10-24T20:10:24.9289935Z ✖ scripts/postbase-hourly.test.mjs
+2026-10-24T20:10:24.9292880Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.9293566Z 
+2026-10-24T20:10:24.9293941Z test at scripts/postbase-window.test.mjs:1:1
+2026-10-24T20:10:24.9296682Z ✖ scripts/postbase-window.test.mjs
+2026-10-24T20:10:24.9299822Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.9302446Z 
+2026-10-24T20:10:24.9302762Z test at scripts/preview.test.mjs:1:1
+2026-10-24T20:10:24.9305641Z ✖ scripts/preview.test.mjs
+2026-10-24T20:10:24.9308637Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.9311422Z 
+2026-10-24T20:10:24.9311915Z test at scripts/report-micro-rank-comparison.test.mjs:1:1
+2026-10-24T20:10:24.9314712Z ✖ scripts/report-micro-rank-comparison.test.mjs
+2026-10-24T20:10:24.9317923Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.9318623Z 
+2026-10-24T20:10:24.9320507Z test at scripts/routes-regression.test.mjs:1:1
+2026-10-24T20:10:24.9322946Z ✖ scripts/routes-regression.test.mjs
+2026-10-24T20:10:24.9325194Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.9327573Z 
+2026-10-24T20:10:24.9328019Z test at scripts/run-exact-signal-study.test.mjs:1:1
+2026-10-24T20:10:24.9333936Z ✖ scripts/run-exact-signal-study.test.mjs
+2026-10-24T20:10:24.9336879Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.9339919Z 
+2026-10-24T20:10:24.9340377Z test at scripts/select-micro-24-research.test.mjs:1:1
+2026-10-24T20:10:24.9343461Z ✖ scripts/select-micro-24-research.test.mjs
+2026-10-24T20:10:24.9346387Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.9347091Z 
+2026-10-24T20:10:24.9349711Z test at scripts/session-dump-consumers.test.mjs:1:1
+2026-10-24T20:10:24.9355386Z ✖ scripts/session-dump-consumers.test.mjs
+2026-10-24T20:10:24.9360367Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.9362822Z 
+2026-10-24T20:10:24.9365565Z test at scripts/session-funded-cohort.test.mjs:1:1
+2026-10-24T20:10:24.9368949Z ✖ scripts/session-funded-cohort.test.mjs
+2026-10-24T20:10:24.9370149Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.9372966Z 
+2026-10-24T20:10:24.9373477Z test at scripts/sign-out-plan.test.mjs:1:1
+2026-10-24T20:10:24.9376581Z ✖ scripts/sign-out-plan.test.mjs
+2026-10-24T20:10:24.9380073Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.9381209Z 
+2026-10-24T20:10:24.9383742Z test at scripts/sim-positive-types.test.mjs:1:1
+2026-10-24T20:10:24.9388242Z ✖ scripts/sim-positive-types.test.mjs
+2026-10-24T20:10:24.9389385Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.9391918Z 
+2026-10-24T20:10:24.9394425Z test at scripts/simulation-parity.test.mjs:1:1
+2026-10-24T20:10:24.9401209Z ✖ scripts/simulation-parity.test.mjs
+2026-10-24T20:10:24.9403724Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.9404422Z 
+2026-10-24T20:10:24.9408225Z test at scripts/test-all-offline.test.mjs:1:1
+2026-10-24T20:10:24.9411350Z ✖ scripts/test-all-offline.test.mjs
+2026-10-24T20:10:24.9414445Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.9415192Z 
+2026-10-24T20:10:24.9417936Z test at scripts/test-core.test.mjs:1:1
+2026-10-24T20:10:24.9420483Z ✖ scripts/test-core.test.mjs
+2026-10-24T20:10:24.9428106Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.9430421Z 
+2026-10-24T20:10:24.9433160Z test at scripts/ui-functional.test.mjs:1:1
+2026-10-24T20:10:24.9439426Z ✖ scripts/ui-functional.test.mjs
+2026-10-24T20:10:24.9442080Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.9445010Z 
+2026-10-24T20:10:24.9445514Z test at scripts/with-app-env.test.mjs:1:1
+2026-10-24T20:10:24.9448630Z ✖ scripts/with-app-env.test.mjs
+2026-10-24T20:10:24.9451856Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.9454062Z 
+2026-10-24T20:10:24.9454491Z test at scripts/write-atomic.test.mjs:1:1
+2026-10-24T20:10:24.9457741Z ✖ scripts/write-atomic.test.mjs
+2026-10-24T20:10:24.9459000Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:24.9461531Z 
+2026-10-24T20:10:24.9464245Z test at scripts/x01-supervise.test.mjs:1:1
+2026-10-24T20:10:24.9465294Z ✖ scripts/x01-supervise.test.mjs
+2026-10-24T20:10:24.9469975Z   'Promise resolution is still pending but the event loop has already resolved'
+2026-10-24T20:10:25.0023715Z ##[error]The operation was canceled.
+2026-10-24T20:10:25.0486646Z Cleaning up orphan processes
+2026-10-24T20:10:25.1568310Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-node@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+
