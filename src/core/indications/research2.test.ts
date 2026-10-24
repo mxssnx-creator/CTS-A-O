@@ -31,11 +31,8 @@ const mirror = (cs: readonly Candle[]): Candle[] => {
   return cs.map((x) => ({ t: x.t, o: K - x.o, h: K - x.l, l: K - x.h, c: K - x.c, v: x.v }));
 };
 
-/** validated research sources of this batch (positive net in replay windows, lower drawdown; docs/signals-validation.md) */
-const ON = new Set(["r-linreg", "r-fractal", "r-awesome", "r-inside", "r-connors"]);
-
 describe("research signals, second batch", () => {
-  it("every source is registered (short + medium) and listed; only the validated ones are on", () => {
+  it("every source is registered and included in the expanded catalog; execution still requires own validation", () => {
     assert.equal(RESEARCH2_SOURCES.length, 24);
     for (const r of RESEARCH2_SOURCES) {
       assert.ok(INDICATION_BY_ID.has(r.name), r.name);
@@ -47,8 +44,8 @@ describe("research signals, second batch", () => {
       );
       assert.equal(
         DEFAULT_SIGNALS.sources[r.name] === false,
-        !ON.has(r.name),
-        `${r.name} on only when validated`,
+        false,
+        `${r.name} included for independent evaluation`,
       );
     }
   });

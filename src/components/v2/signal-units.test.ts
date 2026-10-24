@@ -61,13 +61,14 @@ test("Signal UI counts match the engine and include no-TP sets independently of 
     const counts = signalConfigCounts(settings);
     const protects = signalProtects(settings);
     assert.equal(counts.total, protects.length);
-    assert.equal(counts.trailingOnly, 9);
+    assert.equal(counts.trailingOnly, 27, "3 stops × 3 activations × 3 independent peak-gap ratios");
     assert.equal(protects.filter((p) => p.trailOnly).length, counts.trailingOnly);
   }
   const disabled = signalSettings({ trailingOnly: { ...DEFAULT_SIGNALS.trailingOnly, enabled: false } });
   assert.equal(signalConfigCounts(disabled).trailingOnly, 0);
   assert.equal(signalConfigCounts(disabled).total, signalProtects(disabled).length);
   const custom = signalSettings({
+    exits: "pct", trailRatios: [1],
     minTrail: 0.006,
     normal: { tp: [0.02], slOfTp: [1] },
     trailing: { tp: [0.02], slOfTp: 1, trailOfTp: [0.5] },

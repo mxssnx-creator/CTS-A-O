@@ -860,7 +860,7 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     // best-set validation: the last 15 closes must clear min PF and the DDT gate before a seat — 6 of 6 hours positive,
     // net +36 % and 42 % more orders than 25, PF 3.43 against 3.62 (50: PF 3.40 at 48 % fewer orders) (12 symbols, 6 h pre-historic + 6 h run, 5-6 Oct, every window on the same tapes (scratchpad lastn12))
     validLastN: 15,
-    // Operator, 23 Oct: evaluate Signals and Exit with their own last 8 closed results.
+    // Operator, 24 Oct: evaluate Signals and Exit with their own last 4 closed results.
     signalValidLastN: SIGNAL_VALID_LAST_N,
     exitMinTrades: s.exitStrategy.minValidationTrades,
     exitMinPf: s.exitStrategy.minPf,

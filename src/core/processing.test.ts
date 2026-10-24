@@ -243,6 +243,9 @@ describe("processing through the stages, every strategy type, every toggle combi
         pinned: [],
         mainTop: 24,
         grid,
+        // This 128-toggle matrix exercises the ordinary range/DCA/Axis pipeline. Keep its former Signal
+        // scalar lane explicit; the full Expanded catalog has a separate frozen native replay.
+        signals: { lanes: [15], exits: "pct", trailRatios: [1] },
         // Historic Exit evaluates every initialized engine pair and has its own focused runtime regression. Keep this
         // 128-toggle matrix scoped to the shared range/DCA/Axis pipeline so it does not fit the full Exit universe.
         exitStrategy: { enabled: false },

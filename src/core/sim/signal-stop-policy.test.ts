@@ -144,7 +144,7 @@ describe("Signal 2% stop policy and independent peak ratios", () => {
   });
 
   it("builds independent ratio variants without multiplying the Normal fixed grid", () => {
-    const scalar=signalSettings({ minTrail:0, trailingOnly:{enabled:true,sl:[0.01],trail:[0.01],trailStep:1},
+    const scalar=signalSettings({ exits:"pct", minTrail:0, trailingOnly:{enabled:true,sl:[0.01],trail:[0.01],trailStep:1},
       normal:{tp:[0.02],slOfTp:[1]}, trailing:{tp:[0.02],slOfTp:1,trailOfTp:[0.5]} });
     const sig=signalSettings({...scalar,trailRatios:[0.5,0.75,1]});
     const variants=signalProtects(sig);

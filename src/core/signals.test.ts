@@ -50,12 +50,13 @@ import {
 import { CoreRuntime, signalCoordinationProtects } from "./server/runtime.server.ts";
 import { CoreDb } from "./server/db.server.ts";
 import { modeledUnitStatsOf } from "./metrics/stats.ts";
-import { closedPositions, openBook, openTimeline } from "./positions.ts";
+import { openBook, openTimeline, positionOrderCounts } from "./positions.ts";
 
-const on = signalSettings({ enabled: true });
+// Scalar-protection fixtures retain their explicit single gap ratio; Expanded is covered separately.
+const on = signalSettings({ enabled: true, trailRatios: [1] });
 const why = (d: object) => ("why" in d ? d.why : "");
 
-/** sources on by default (research sources are available but off until validated as better) */
+/** Expanded calculates every source; independent qualification still determines execution. */
 const ENABLED = SIGNAL_SOURCES.filter((x) => DEFAULT_SIGNALS.sources[x.name] !== false).length;
 const runtimes: CoreRuntime[] = [];
 afterEach(() => { for (const rt of runtimes.splice(0)) rt.dispose(); });
@@ -83,7 +84,7 @@ describe("signals: sources and combos", () => {
     assert.equal(signalCombos({ ...DEFAULT_SIGNALS, enabled: false }, [1, 5, 15, 30]).length, 0);
     assert.equal(DEFAULT_SIGNALS.enabled, true, "on by default");
     const c = signalCombos(on, [1, 5, 15, 30]);
-    // Classic sources × 2 parameter ranges + 5 ratio bands × 3 input mixes, each on default lanes 15 / 30.
+    // Classic sources × 2 parameter ranges + 5 ratio bands × 3 input mixes, each on the four independent default lanes.
     assert.equal(c.length, (ENABLED * 2 + 15) * DEFAULT_SIGNALS.lanes.length);
     assert.ok(c.every((x) => x.bot === "follow" && isSignalInd(x.ind)));
     // a source off, a range off, a lane the engine does not run
@@ -161,8 +162,8 @@ describe("signals: sources and combos", () => {
     assert.ok(!protects.some((p) => p.trail === 0.001), "too-short capped trailing stops are omitted");
   });
 
-  it("exit models: percent (default), ATR (Stable-02: 9 cells × no trail / trail 0.8 %) or both", () => {
-    assert.equal(on.exits, "pct");
+  it("exit models: percent, ATR (Stable-02: 9 cells × no trail / trail 0.8 %) or both (default)", () => {
+    assert.equal(on.exits, "both");
     const pct = signalProtects({ ...on, exits: "pct" });
     const atr = signalProtects({ ...on, exits: "atr" });
     const both = signalProtects({ ...on, exits: "both" });
@@ -613,7 +614,9 @@ describe("signals: engine", { timeout: 400_000 }, () => {
         // engine families/independent Exit fitting out of this generic Signal lifecycle compute.
         disabledKinds: ["micro", "inverse"],
         exitStrategy: { enabled: false },
-        signals: signalSettings({ enabled: true, count: 10, minTrades: 1 }),
+        // Keep this generic lifecycle fixture's scalar grid explicit. Expanded defaults and every lane /
+        // ratio are covered by signal-expanded-defaults and the source-sealed 12-symbol native study.
+        signals: signalSettings({ enabled: true, count: 10, minTrades: 1, lanes: [15], exits: "pct", trailRatios: [1] }),
       },
       { market: "synthetic" },
     );
@@ -627,12 +630,12 @@ describe("signals: engine", { timeout: 400_000 }, () => {
     rt.stop();
     const st = rt.status.signals!;
     assert.ok(st.enabled);
-    assert.equal(st.combos, (ENABLED * 2 + 15) * DEFAULT_SIGNALS.lanes.length);
+    assert.equal(st.combos, (ENABLED * 2 + 15) * rt.settings.signals.lanes.length);
     // Synthetic candles are not guaranteed to qualify at the terminal minute. Report the measured own-context
     // verdict, including an empty set; known passing/losing qualification is covered by the deterministic tapes.
     assert.equal(st.active, rt.sim!.signalActiveEnd!.length);
-    assert.ok(st.active >= 0 && st.active <= 110, `active ${st.active}`);
-    assert.ok((st.coordinationActive ?? 0) <= DEFAULT_SIGNALS.coordination.count);
+    assert.ok(st.active >= 0 && st.active <= (st.builtConfigs ?? 0) * rt.settings.symbols * 2, `active ${st.active}`);
+    assert.ok(DEFAULT_SIGNALS.coordination.count === 0 || (st.coordinationActive ?? 0) <= DEFAULT_SIGNALS.coordination.count);
     assert.ok((st.active ?? 0) - (st.coordinationActive ?? 0) <= 10, "classic signal cap is independent");
     assert.ok((st.coordinationPairs ?? 0) > 0 && (st.coordinationConfigs ?? 0) > 0);
     const sigTapes = rt.tapes.filter((t) => isSignalInd(t.ind));
@@ -656,16 +659,15 @@ describe("signals: engine", { timeout: 400_000 }, () => {
     assert.equal(st.coordinationTrades, coordTrades.length);
     assert.equal(st.coordinationPf, coordStats.pf);
     assert.equal(st.coordinationNet, coordStats.net);
-    assert.equal(st.coordinationPositions, closedPositions(coordTrades));
+    assert.equal(st.coordinationPositions, positionOrderCounts(coordTrades, sigEndpoint.filter(t => isSignalCoordinationInd(t.cfg.split("|")[1] ?? ""))).closedPositions);
     // every config of every active signal runs (not selected into seats): all of them in the paper selection
     const sel = new Set(rt.paper.selected);
     for (const t of sigTapes)
       if (signalSeatSymbols(t, rt.wf.signalActive!).size) assert.ok(sel.has(t.id), t.id);
     // 42 Normal + 35 capped Trailing + nine Trailing-only configs per percent-mode signal pair; ATR adds 18 in ATR /
     // both mode. Coordinators use their own enabled range grid and historic additions qualify independently.
-    const coordProtections = signalCoordinationProtects(rt.settings.grid, rt.settings.cost, rt.settings.signals.coordination.ranges);
     const sourcePairs = st.pairs - (st.coordinationPairs ?? 0);
-    const pct = sourcePairs * signalProtects(signalSettings({ enabled: true })).length + (st.coordinationPairs ?? 0) * signalCoordinationProtects(rt.settings.grid, rt.settings.cost, rt.settings.signals.coordination.ranges).length;
+    const pct = sourcePairs * signalProtects(rt.settings.signals).length + (st.coordinationPairs ?? 0) * signalCoordinationProtects(rt.settings.grid, rt.settings.cost, rt.settings.signals.coordination.ranges).length;
     const full = st.configs;
     assert.ok(st.historic, "history calculations report their eligibility diagnostics");
     assert.ok(st.historic.qualified <= st.historic.candidates);
@@ -1145,8 +1147,8 @@ describe("signals: PF acceptance", () => {
   });
 });
 
-describe("signals: sources switched off after the per-source check", () => {
-  it("the strongly negative sources are off by default (older ones and the research ones), the validated ones on", () => {
+describe("signals: Expanded source discovery", () => {
+  it("all sources are calculated by default, with explicit user source switches preserved", () => {
     for (const n of [
       "aroon",
       "ichi-cloud",
@@ -1157,7 +1159,7 @@ describe("signals: sources switched off after the per-source check", () => {
       "r-vwap-reclaim",
       "r-elder",
     ])
-      assert.equal(signalSettings({}).sources[n], false, n);
+      assert.notEqual(signalSettings({}).sources[n], false, n);
     for (const n of [
       "keltner",
       "donchian",
@@ -1168,7 +1170,7 @@ describe("signals: sources switched off after the per-source check", () => {
     ])
       assert.notEqual(signalSettings({}).sources[n], false, n);
     // a user's explicit choice still wins
-    assert.equal(signalSettings({ sources: { aroon: true } }).sources.aroon, true);
+    assert.equal(signalSettings({ sources: { aroon: false } }).sources.aroon, false);
   });
 });
 

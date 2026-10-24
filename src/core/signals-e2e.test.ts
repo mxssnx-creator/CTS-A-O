@@ -115,15 +115,24 @@ describe("signals end to end: sources mode allow", { timeout: 600_000 }, () => {
     for (const step of steps) for (const key of step.keys) {
       const tp = rt.tapes.find(t => key.endsWith(`|cfg=${encodeURIComponent(t.id)}`));
       assert.ok(tp, "activation preserves its exact config identity");
+      if (tp.kind === "exit") {
+        assert.ok(rt.wf.exitBasePassed?.has(`${tp.bot}|${tp.ind}`), "Exit has independent Base proof");
+        continue; // Exit membership is retained; its own entry gates below decide actual execution.
+      }
       // Check the tape's own contexts; no active key may come from a pooled or failed sibling.
       const ownKeys = [...new Set(tp.syms)].flatMap(sym => [1, -1].filter(side => signalConfigEval(tp, step.t, rt.wf, sym, side).ok).map(side => sigActiveKey(tp.bot, tp.ind, sym, side, tp.kind, tp.id)));
-      assert.ok(ownKeys.includes(key));
+      assert.ok(ownKeys.includes(key), JSON.stringify({ key, t: step.t, ownKeys,
+        evaluations: [...new Set(tp.syms)].flatMap(sym => [1, -1].map(side => ({ sym, side, ...signalConfigEval(tp, step.t, rt.wf, sym, side) }))),
+      }));
     }
     const tradeSources = new Set(trades.map((x) => srcOf(x.cfg.split("|")[1] ?? "")));
     assert.ok([...tradeSources].every((source) => ALLOW.includes(source)), `executed sources: ${[...tradeSources]}`);
     for (const x of trades) {
       const [bot, ind] = x.cfg.split("|");
       assert.ok(signalSetAt(steps, x.entryT)!.has(sigActiveKey(bot, ind, x.sym, x.side, x.kind, x.cfg)), x.cfg);
+      const tp = rt.tapes.find(t => t.id === x.cfg)!;
+      assert.ok(signalConfigEval(tp, x.entryT, rt.wf, x.sym, x.side).ok,
+        `executed ${x.kind} has passing own config/symbol/side history at its exact entry: ${x.cfg}`);
     }
     const f = sim.signalFunnel!;
     assert.ok(f, "funnel reported");

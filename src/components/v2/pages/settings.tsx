@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { progressText } from "@/core/progress";
+import { SIGNAL_VALID_LAST_N } from "@/core/signal-policy";
 import { boundedModelCost, DEFAULT_MODEL_FEES, MAX_MODEL_RT_COST } from "@/core/model-cost";
 import { MICRO_CONFIG_IDS, MICRO_METHODS } from "@/core/indications/micro-family";
 import { sizeText } from "@/core/live-labels";
@@ -226,7 +227,7 @@ const AXIS_RANGES: AxisRange[] = ["atr", "linear", "geo", "fib", "volume"];
 const MAINNET_CONN = "bingx-x01";
 const MAINNET_LAST_N = 25;
 const MAINNET_VALID_LAST_N = 50;
-const MAINNET_SIGNAL_VALID_LAST_N = 10;
+const MAINNET_SIGNAL_VALID_LAST_N = SIGNAL_VALID_LAST_N;
 /** DCA targets the engine uses while none are set (walkforward.ts dcaProtects). */
 const DCA_TP_DEFAULT = [0.008, 0.012, 0.026, 0.035];
 /** Live strategy-kind choices (live.kinds; "" = every kind). A saved list that is none of these shows as custom. */
@@ -457,7 +458,7 @@ export function SignalsSettings(props: {
               : st.trades !== undefined
                 ? ` · ${st.trades} settled orders`
                 : ""}
-            {st.openedOrders !== undefined ? ` · simulation openings ${st.openedOrders} · still open at simulation end ${st.openAtEndOrders}` : ""}
+            {st.openedOrders !== undefined ? ` · simulation opened positions / orders ${st.openedPositions ?? "–"} / ${st.openedOrders} · still open at simulation end ${st.openAtEndPositions ?? "–"} / ${st.openAtEndOrders}` : ""}
             {st.openPositions !== undefined
               ? ` · paper open now ${st.openPositions} / ${st.openOrders}`
               : ""}

@@ -1,7 +1,7 @@
 // Signals processing settings and sources (pure, no engine imports: shared by the engine, config and the UI).
 // The engine side (combos, configs, active ranking, guard) is in signals.ts.
 import { INDICATION_KINDS, type IndicationKind } from "./domain/types.ts";
-import { SIGNAL_HISTORY_H } from "./signal-policy.ts";
+import { SIGNAL_HISTORY_H, SIGNAL_VALID_LAST_N } from "./signal-policy.ts";
 
 /**
  * Proven classic signals, each in a short and a medium parameter range (registry ids of the computations they
@@ -673,64 +673,61 @@ export function signalVolumeFactorsOf(settings: SignalSettings): SignalVolumeFac
   };
 }
 
+/** Exact former factory deny-list; custom source selections never inherit its migration. */
+export const PRE_EXPANDED_SIGNAL_SOURCES: Readonly<Record<string, boolean>> = {
+  "r-apz-reclaim": false,
+  "r-frama-pullback": false,
+  "r-st-pullback": false,
+  aroon: false,
+  "ichi-cloud": false,
+  "bb-walk": false,
+  "r-squeeze": false,
+  "r-donch-vol": false,
+  "r-sweep": false,
+  "r-capit": false,
+  "r-vwap-reclaim": false,
+  "r-cvd-div": false,
+  "r-rsi2": false,
+  "r-bb-adx": false,
+  "r-bbw-expand": false,
+  "r-zdist": false,
+  "r-clv-thrust": false,
+  "r-roofing": false,
+  "r-fisher": false,
+  "r-stc": false,
+  "r-vortex": false,
+  "r-tsi": false,
+  "r-elder": false,
+  "r-camarilla": false,
+  "r-fakeout": false,
+  "r-spring": false,
+  "r-valuearea": false,
+  "r-orb": false,
+  "r-pdhl": false,
+  "r-bos": false,
+  "r-choch": false,
+  "r-fvg": false,
+  "r-engulf": false,
+  "r-pin": false,
+  "r-star": false,
+  "r-streak": false,
+  "r-laguerre": false,
+  "r-chand": false,
+  "r-klinger": false,
+  "r-rvi": false,
+};
+
 export const DEFAULT_SIGNALS: SignalSettings = {
   enabled: true,
   // Every independently qualified config context may process; explicit nonzero counts retain ranked selection.
   count: 0,
   sourcesMode: "deny",
-  // research sources: 8 are on (positive net in 7 of 8 replay windows and lower drawdown than the older sources alone:
-  // regime breakout, regression channel, session trend, fractal breakout, AO saucer, inside-bar break, NR7 break,
-  // Connors RSI); the rest are available but off (no evidence: docs/signals-validation.md)
-  sources: {
-    "r-apz-reclaim": false,
-    "r-frama-pullback": false,
-    "r-st-pullback": false,
-    // strongly negative over eight replay windows (net Σ trade %, orders, windows negative): Aroon −952 (120, 2 of 3),
-    // Ichimoku cloud −462 (66, 2 of 2), Bollinger walk −349 (41, 1 of 2) — switched off again
-    aroon: false,
-    "ichi-cloud": false,
-    "bb-walk": false,
-    "r-squeeze": false,
-    "r-donch-vol": false,
-    "r-sweep": false,
-    "r-capit": false,
-    "r-vwap-reclaim": false,
-    "r-cvd-div": false,
-    "r-rsi2": false,
-    "r-bb-adx": false,
-    "r-bbw-expand": false,
-    "r-zdist": false,
-    "r-clv-thrust": false,
-    "r-roofing": false,
-    "r-fisher": false,
-    "r-stc": false,
-    "r-vortex": false,
-    "r-tsi": false,
-    "r-elder": false,
-    "r-camarilla": false,
-    "r-fakeout": false,
-    "r-spring": false,
-    "r-valuearea": false,
-    "r-orb": false,
-    "r-pdhl": false,
-    "r-bos": false,
-    "r-choch": false,
-    "r-fvg": false,
-    "r-engulf": false,
-    "r-pin": false,
-    "r-star": false,
-    "r-streak": false,
-    // Available for separate chronological research; no automatic promotion from a reported winning subset.
-    "r-laguerre": false,
-    "r-chand": false,
-    "r-klinger": false,
-    "r-rvi": false,
-  },
+  // Expanded: calculate every registered source, then qualify each exact config/symbol/direction independently.
+  sources: {},
   ranges: { short: true, medium: true },
   rangeVolumeFactors: { short: 1, medium: 1 },
-  // 15m lane: raw signal PF 0.89 (15m) vs 0.76 (5m) vs 0.67 (1m) (docs/signals-validation.md); the 30m lane lost on
-  // all three causal 50-symbol windows (3 Oct / 2 Oct / 23 Sep, PR #65) — the 15m lane carries the edge
-  lanes: [15],
+  // All four independent Expanded lanes retain minute-based pricing and causal entry/exit calculations.
+  lanes: [1, 5, 15, 30],
   // 7 targets × 6 stop ratios = 42 Normal configs; include 1 % / 1.5 % targets and tighter risk ratios.
   normal: { tp: [0.01, 0.015, 0.025, 0.03, 0.04, 0.05, 0.06], slOfTp: [0.5, 0.75, 1, 1.5, 2, 3] },
   // 7 targets × 5 trail widths = 35 capped Trailing configs, stops at 3 × target.
@@ -745,12 +742,11 @@ export const DEFAULT_SIGNALS: SignalSettings = {
     trail: [0.005, 0.01, 0.02],
     trailStep: 1,
   },
+  trailRatios: [0.5, 1, 1.5],
   holdH: 48,
   trailMax: 0.03,
-  // both exit models: 77 percent + 18 ATR configs per signal (1.23× the percent-only tapes)
-  // percent exits: with targets of 1–8 % (cost drag ≤ 20 % of the smallest target) and 15m / 30m lanes the signal orders were
-  // positive in 4 of 4 windows (PF 1.13 / 2.28 / 2.93 / 4.93); ATR exits lost in 2 of 3
-  exits: "pct",
+  // Expanded builds percent and ATR protection cells, with independent peak-gap ratios.
+  exits: "both",
   // Stable-02 defaults: SL 0.7 × ATR (its default), 1.15 (SHORT_SL_ATR), 1.5 · TP 1 / 1.6 / 2.2 R (2.2 its default)
   // · trail 0.8 % (its default) · hold 3 × 15m bars (DEFAULT_MAX_HOLD_BARS)
   atr: {
@@ -770,12 +766,12 @@ export const DEFAULT_SIGNALS: SignalSettings = {
     minN: 30,
     lookbackH: SIGNAL_HISTORY_H,
   },
-  guard: { enabled: true, lastN: 8 },
+  guard: { enabled: true, lastN: SIGNAL_VALID_LAST_N },
   cluster: { enabled: true, windowMin: 60, minLosses: 8, lossShare: 0.6 },
   coordination: {
     enabled: true,
     minSources: 3,
-    count: 100,
+    count: 0,
     volumeFactor: 8,
     ranges: { short: true, normal: true, long: true },
   },
@@ -951,7 +947,7 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
       : [];
     return v.length || (empty && Array.isArray(xs)) ? [...new Set(v)].slice(0, 64) : [...def];
   };
-  if (s?.trailRatios !== undefined) out.trailRatios = nums(s.trailRatios, 0.1, 2, [1]);
+  out.trailRatios = nums(out.trailRatios, 0.1, 2, DEFAULT_SIGNALS.trailRatios!);
   const trailMax = Number(out.trailMax);
   out.trailMax = Number.isFinite(trailMax)
     ? Math.min(0.03, Math.max(0.002, trailMax))

@@ -11,7 +11,7 @@ import { buildTapes } from "../../src/core/sim/walkforward.ts";
 import { barsFromCandles, syntheticCandles } from "../../src/core/market/bars.ts";
 const H = 3_600_000;
 it("captures every configured cell separately from actual tapes, active units and executed closes", () => {
-  const sig = signalSettings({ sourcesMode: "allow", sources: { "ema-cross": true }, ranges: { short: true, medium: false }, lanes: [15], hist: { enabled: false } });
+  const sig = signalSettings({ exits: "pct", trailRatios: [1], sourcesMode: "allow", sources: { "ema-cross": true }, ranges: { short: true, medium: false }, lanes: [15], hist: { enabled: false } });
   const ind = "sig-ema-cross-s@m15";
   const protect = signalProtects(sig).find((x) => x.trailOnly);
   const id = configId("follow", ind, protect);
@@ -38,7 +38,7 @@ it("captures every configured cell separately from actual tapes, active units an
   assert.ok(p.configs.filter((x) => !x.built).every((x) => x.historyCalculated === false && x.sides[1].pre.n === 0));
 });
 it("accounts for every raw requested cell while deduplicating identical effective hard-floor protections", () => {
-  const sig = signalSettings({ sourcesMode: "allow", sources: { "ema-cross": true }, ranges: { short: true, medium: false }, lanes: [1], hist: { enabled: false } });
+  const sig = signalSettings({ exits: "pct", trailRatios: [1], sourcesMode: "allow", sources: { "ema-cross": true }, ranges: { short: true, medium: false }, lanes: [1], hist: { enabled: false } });
   const rt = { settings: { signals: sig, tfs: [1] }, tapes: [], wf: {}, buildStats: [], fastArgs: { sig: { floors: { minSl: sig.minSl, minTrail: sig.minTrail } }, adjust: {} } };
   const p = captureSignalProgress(rt, { trades: [] }, H, 2 * H);
   assert.equal(p.requestedConfigs.length, 86);

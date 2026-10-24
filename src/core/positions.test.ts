@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { closedPositions, openBook, openTimeline } from "./positions.ts";
+import { closedPositions, openBook, openTimeline, positionOrderCounts, positionOrderLedger } from "./positions.ts";
 
 const M = 60_000;
 const o = (sym: string, side: number, a: number, b: number) => ({
@@ -11,6 +11,19 @@ const o = (sym: string, side: number, a: number, b: number) => ({
 });
 
 describe("positions vs orders", () => {
+  it("keeps a position open while independent sibling orders settle and reconciles boundary entries", () => {
+    const closed = [o("A", 1, 0, 30), o("A", 1, 10, 90), o("B", -1, 60, 100)];
+    const open = [{ sym: "A", side: 1, entryT: 20 * M }, { sym: "B", side: -1, entryT: 80 * M }];
+    assert.deepEqual(positionOrderCounts(closed, open), {
+      openedPositions: 2, closedPositions: 0, openPositions: 2,
+      openedOrders: 5, settledOrders: 3, openOrders: 2,
+    });
+    const rows = positionOrderLedger(closed, open, 0, 120 * M, 60 * M);
+    assert.deepEqual(rows.map(({ openedPositions, closedPositions, openedOrders, settledOrders, openPositions, openOrders }) =>
+      [openedPositions, closedPositions, openedOrders, settledOrders, openPositions, openOrders]),
+    [[2, 0, 4, 1, 2, 3], [0, 0, 1, 2, 2, 2]]);
+    assert.throws(() => positionOrderLedger([], [], 0, 10, 0), /window/);
+  });
   it("a position is symbol × direction; each direction counts once; orders are the partials", () => {
     const book = openBook([
       { sym: "BTC", side: 1 },

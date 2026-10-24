@@ -2,13 +2,14 @@
 // them as server functions; tests call them directly against a runtime). Server modules load on demand.
 import { MAX_BACKTEST_DAYS, type CoreSettings } from "./config.ts";
 import { checkMerged, checkSettings } from "./settings-check.ts";
-import { closedPositions, openBook } from "./positions.ts";
+import { positionOrderCounts, openBook } from "./positions.ts";
 import { statsOf, modeledUnitStatsOf as unitStatsOf } from "./metrics/stats.ts";
 import { returnGroup, modeledReturnReport as unitReturnReport, unitStatsReport, type ReturnStatsReport } from "./reporting-stats.ts";
 import { runBlocks, runStable, type WalkForwardResult } from "./sim/walkforward.ts";
 
 type ReturnGroup = ReturnType<typeof returnGroup>;
 type PrimarySimSummary = {
+  orderCounts: ReturnType<typeof positionOrderCounts>;
   stats: ReturnStatsReport;
   sizedStats: WalkForwardResult["sizedStats"];
   hourly: Array<ReturnGroup & { t: number }>;
@@ -39,6 +40,7 @@ function primarySimSummary(sim: WalkForwardResult): PrimarySimSummary {
   const byKind = Object.fromEntries(group((t) => t.kind ?? "normal").map(({ key, ...s }) => [key, s]));
   const side = (n: number) => returnGroup(unitReturnReport((sim.trades ?? []).filter((t) => t.side === n), sim.endT));
   const summary: PrimarySimSummary = {
+    orderCounts: positionOrderCounts(sim.trades ?? [], sim.openAtEnd),
     stats: unitStatsReport(stats, Array.isArray(sim.trades) ? outcomes.length : sim.stats.n), sizedStats: sim.sizedStats ?? (Array.isArray(sim.trades) ? statsOf(outcomes, sim.endT) : sim.stats),
     hourly: group((t) => String(Math.floor((t.exitT - 1) / 3_600_000) * 3_600_000))
       .map(({ key, ...s }) => ({ t: Number(key), ...s })).sort((a, b) => a.t - b.t),
@@ -243,7 +245,8 @@ export async function coreOverviewData(data: ReturnType<typeof connInput>) {
           endT: sim.endT,
           stats: primary!.stats,
           sizedStats: primary!.sizedStats ?? null,
-          positions: closedPositions(sim.trades),
+          positions: primary!.orderCounts.closedPositions,
+          orderCounts: primary!.orderCounts,
           hourly: primary!.hourly,
           blocks: primary!.blocks,
           byKind: primary!.byKind,
@@ -292,11 +295,12 @@ async function laneSummary(r: Awaited<ReturnType<typeof rt>>) {
       tapes: number;
       trades: Array<{ r: number; exitT: number; entryT: number; sym: string; side: number }>;
       open: Array<{ sym: string; side: number }>;
+      simOpen: Array<{ sym: string; side: number; entryT: number }>;
     }
   >();
   const row = (lane: string) => {
     let x = rows.get(lane);
-    if (!x) rows.set(lane, (x = { lane, base: 0, passed: 0, tapes: 0, trades: [], open: [] }));
+    if (!x) rows.set(lane, (x = { lane, base: 0, passed: 0, tapes: 0, trades: [], open: [], simOpen: [] }));
     return x;
   };
   for (const c of r.pipeline?.s1 ?? []) {
@@ -312,19 +316,22 @@ async function laneSummary(r: Awaited<ReturnType<typeof rt>>) {
   for (const t of r.tapes) row(lab(t.ind)).tapes++;
   const indOf = (cfg: string) => cfg.split("|")[1] ?? "";
   for (const t of r.sim?.trades ?? []) row(lab(indOf(t.cfg))).trades.push(t);
+  for (const p of r.sim?.openAtEnd ?? []) row(lab(indOf(p.cfg))).simOpen.push(p);
   for (const p of r.paper.positions) row(lab(indOf(p.cfg))).open.push(p);
   const order = ["1m", "1m+", "5m", "5m+", "15m", "15m+", "30m", "plain"];
   return [...rows.values()]
     .sort((a, b) => order.indexOf(a.lane) - order.indexOf(b.lane))
     .map((x) => {
       const st = unitReturnReport([...x.trades].sort((a, b) => a.exitT - b.exitT) as never);
+      const counts = positionOrderCounts(x.trades, x.simOpen);
       return {
         lane: x.lane,
         base: x.base,
         passed: x.passed,
         tapes: x.tapes,
         ...returnGroup(st),
-        positions: closedPositions(x.trades),
+        positions: counts.closedPositions,
+        orderCounts: counts,
         open: openBook(x.open),
       };
     });
@@ -475,7 +482,8 @@ export async function coreSimData(data: ReturnType<typeof connInput>) {
       endT: sim.endT,
       stats: primary.stats,
       sizedStats: primary.sizedStats ?? null,
-      positions: closedPositions(sim.trades),
+      positions: primary.orderCounts.closedPositions,
+      orderCounts: primary.orderCounts,
       hourly: primary.hourly,
       blocks: primary.blocks,
       byKind: primary.byKind,
@@ -526,6 +534,7 @@ async function paperRealizedOf(r: Awaited<ReturnType<typeof rt>>) {
 export async function coreTradingData(data: ReturnType<typeof connInput>) {
   const r = await rt(data.conn);
   const { realized, unitOf } = await paperRealizedOf(r);
+  const counts = positionOrderCounts(r.paper.trades, r.paper.positions);
   return ser({
     // open orders from the in-memory book (the database copy trails it): with Block level, volume and unit
     positions: [...r.paper.positions]
@@ -549,7 +558,8 @@ export async function coreTradingData(data: ReturnType<typeof connInput>) {
     adjustWindow: r.settings.adjust.window,
     // positions = symbol × direction; orders = every lane's partial (open and closed)
     book: openBook(r.paper.positions),
-    closed: { orders: r.paper.trades.length, positions: closedPositions(r.paper.trades) },
+    closed: { orders: counts.settledOrders, positions: counts.closedPositions },
+    orderCounts: counts,
     trades: r.db.all<Row>(`SELECT * FROM paper_trades ORDER BY exit_t DESC LIMIT ${TRADES_SHOWN}`),
     tradesShown: TRADES_SHOWN,
     selected: r.paper.selected,

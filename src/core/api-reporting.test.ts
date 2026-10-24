@@ -8,7 +8,7 @@ const { walkForward } = await import("./sim/walkforward.ts");
 const { statsOf } = await import("./metrics/stats.ts");
 const { CandleSeries } = await import("./market/candle-series.ts");
 const { liveTag } = await import("./server/live.ts");
-const { coreOverviewData, coreSimData, coreConnsData, coreStatisticsData, coreStatisticsInput, coreStatusData, connInput } = await import("./api-data.ts");
+const { coreOverviewData, coreSimData, coreTradingData, coreConnsData, coreStatisticsData, coreStatisticsInput, coreStatusData, connInput } = await import("./api-data.ts");
 import type { Trade } from "./domain/types.ts";
 
 type Any = any;
@@ -42,6 +42,30 @@ test("Overview, lane and connection summaries normalize retained weighted record
   const conn = conns.conns.find((x: Any) => x.conn === conns.primary);
   assert.ok(Math.abs(conn.sim.pf - 1.36) < 1e-10); assert.equal(conn.sim.noLoss, false);
   assert.ok(Math.abs(r.sim!.stats.pf - 0.2) < 1e-10, "API reads preserve the retained sized archive");
+});
+
+test("Overview, Sim and Trading keep a position open until its last independently owned sibling closes", async () => {
+  const r = fixture(), held = { ...r.sim!.trades[0], cfg: r.sim!.trades[0].cfg + "|sibling",
+    entryT: END - 2 * H, exitT: END, markedOpen: true, stop: 95, vol: 1, mtm: 0,
+    entryI: 0, target: 110, peak: 100, trailOn: false };
+  r.sim!.openAtEnd = [held];
+  r.paper.trades = r.sim!.trades;
+  r.paper.positions = [held];
+  const overview = await coreOverviewData(connInput()) as Any;
+  const run = await coreSimData(connInput()) as Any;
+  const trading = await coreTradingData(connInput()) as Any;
+  const expected = { openedPositions: 1, closedPositions: 0, openPositions: 1, openedOrders: 3, settledOrders: 2, openOrders: 1 };
+  for (const row of [overview.sim, overview.lanes[0], run.sim]) {
+    assert.equal(row.positions, 0);assert.deepEqual(row.orderCounts, expected);
+  }
+  assert.deepEqual(trading.closed, { positions: 0, orders: 2 });
+  assert.deepEqual(trading.orderCounts, expected);
+  assert.equal(trading.book.positions, 1);assert.equal(trading.book.orders, 1);
+  r.sim!.trades.push({ ...held, markedOpen: undefined } as Trade);
+  r.sim!.openAtEnd = [];r.paper.positions = [];
+  const closed = await coreTradingData(connInput()) as Any;
+  assert.deepEqual(closed.closed, { positions: 1, orders: 3 });
+  assert.equal(closed.orderCounts.openedPositions, 1);assert.equal(closed.orderCounts.openOrders, 0);
 });
 
 test("unknown modeled losses preserve every close/count while whole primary summaries become unavailable", async () => {

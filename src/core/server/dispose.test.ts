@@ -26,6 +26,9 @@ const tiny = {
   cycleMs: 60_000,
   grid: { ...runtimeFixtureGrid(), short: false as const },
   exitStrategy: { enabled: false },
+  // Exercise collection of real Signal tapes without repeating the exhaustive Expanded financial study.
+  signals: { sourcesMode: "allow", sources: { "ema-cross": true, "rsi-reversal": true },
+    lanes: [15], exits: "pct", trailRatios: [1] },
   gates: { minPf: 1.05, minTrades: 3, maxDdr: 0 },
 };
 const gc = (globalThis as { gc?: () => void }).gc;
